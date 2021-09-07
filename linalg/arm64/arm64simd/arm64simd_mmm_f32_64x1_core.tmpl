@@ -140,73 +140,7 @@
     subs        x3, x3, #1
     bne         .packed_packed_loop_1
 
-.non_linear:
-    ldr         x1, [x0, #32]
-    cmp         x1, #0
-    bne         .non_linear_loop_entry
-
-.store:
-    ldr         x3, [x0, #16]
-    mov         x0, #0
-    ldp         x5, x6, [x3]                // c base ptr, rsc$
-
-    cmp         x6, #4
-    beq         .store_strides_contig
-
-    {% for reg in (16..31) %}
-        {% for lane in (0..3) %}
-            st1 { v{{reg}}.s }[{{lane}}], [ x5 ], x6
-        {% endfor %}
-    {% endfor %}
-    b           .return
-
-.store_strides_contig:
-
-    {% for reg in (16..31) %}
-        st1 { v{{reg}}.4s }, [ x5 ], #16
-    {% endfor %}
-
-.return:
-
-    ldp         d8, d9, [sp, #0]
-    ldp         d10, d11, [sp, #16]
-    ldp         d12, d13, [sp, #32]
-    ldp         d14, d15, [sp, #48]
-    add         sp, sp, 64
-
-    ret
-
-.non_linear_loop_entry:
-    sub         x1, x1, 40
-
-.non_linear_loop:
-    add         x1, x1, 40
-    ldr         x2, [x1]
-    cmp         x2, #0
-    beq         .store
-    cmp         x2, #1
-    beq         .min
-    cmp         x2, #2
-    beq         .max
-    cmp         x2, #3
-    beq         .add_unicast
-    cmp         x2, #4
-    beq         .per_row_mul
-    cmp         x2, #5
-    beq         .per_row_add
-    cmp         x2, #6
-    beq         .per_col_mul
-    cmp         x2, #7
-    beq         .per_col_add
-    cmp         x2, #8
-    beq         .add_row_col_product
-    cmp         x2, #9
-    beq         .scalar_mul
-    cmp         x2, #10
-    beq         .scalar_add
-
-    add         x0, x2, #4000
-    b           .return
+{% include "dispatcher.tmpliq" %}
 
 .min:
     add         x2, x1, #8
@@ -336,7 +270,36 @@
 
     b           .non_linear_loop
 
+.store:
+    ldp         x5, x6, [x1, #8]                // c base ptr, rsc$
 
-.unsupported:
-    mov         x0, #1
-    b           .return
+    cmp         x6, #4
+    beq         .store_strides_contig
+
+    {% for reg in (16..31) %}
+        {% for lane in (0..3) %}
+            st1 { v{{reg}}.s }[{{lane}}], [ x5 ], x6
+        {% endfor %}
+    {% endfor %}
+    b           .non_linear_loop
+
+.store_strides_contig:
+
+    {% for reg in (16..31) %}
+        st1 { v{{reg}}.4s }, [ x5 ], #16
+    {% endfor %}
+    b           .non_linear_loop
+
+.q_scale:
+    b   .unsupported
+
+.return:
+
+    ldp         d8, d9, [sp, #0]
+    ldp         d10, d11, [sp, #16]
+    ldp         d12, d13, [sp, #32]
+    ldp         d14, d15, [sp, #48]
+    add         sp, sp, 64
+
+    ret
+
