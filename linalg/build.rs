@@ -171,6 +171,14 @@ fn preprocess_files(
     files
 }
 
+fn strip_comments(s: String, msvc: bool) -> String {
+    if msvc {
+        s.lines().map(|line| line.replace("//", ";")).collect::<Vec<String>>().join("\n")
+    } else {
+        s
+    }
+}
+
 fn preprocess_file(
     template: impl AsRef<path::Path>,
     output: impl AsRef<path::Path>,
@@ -185,10 +193,7 @@ fn preprocess_file(
     let msvc = use_masm();
     println!("cargo:rerun-if-changed={}", template.as_ref().to_string_lossy());
     let mut input = fs::read_to_string(&template).unwrap();
-    if msvc {
-        input =
-            input.lines().map(|line| line.replace("//", ";")).collect::<Vec<String>>().join("\n");
-    }
+    input = strip_comments(input, msvc);
     let l = if os == "macos" {
         "L"
     } else if family == "windows" {
@@ -209,7 +214,7 @@ fn preprocess_file(
     for (k, v) in variants {
         globals.insert(k.to_string().into(), liquid::model::Value::scalar(*v));
     }
-    let partials = load_partials(&template.as_ref().parent().unwrap());
+    let partials = load_partials(&template.as_ref().parent().unwrap(), msvc);
     liquid::ParserBuilder::with_stdlib()
         .partials(liquid::partials::LazyCompiler::new(partials))
         .build()
@@ -220,19 +225,22 @@ fn preprocess_file(
         .unwrap();
 }
 
-fn load_partials(p: &path::Path) -> liquid::partials::InMemorySource {
+fn load_partials(p: &path::Path, msvc: bool) -> liquid::partials::InMemorySource {
     let mut mem = liquid::partials::InMemorySource::new();
     for f in walkdir::WalkDir::new(p) {
         let f = f.unwrap();
+        if f.path().is_dir() {
+            continue;
+        }
         let ext = f.path().extension().map(|s| s.to_string_lossy()).unwrap_or("".into());
+        let text = std::fs::read_to_string(f.path()).unwrap();
         let text = match ext.as_ref() {
-            "tmpli" => Some(
-                std::fs::read_to_string(f.path()).unwrap().replace("{{", "{").replace("}}", "}"),
-            ),
-            "tmpliq" => Some(std::fs::read_to_string(f.path()).unwrap()),
+            "tmpli" => Some(text.replace("{{", "{").replace("}}", "}")),
+            "tmpliq" => Some(text),
             _ => None,
         };
         if let Some(text) = text {
+            let text = strip_comments(text, msvc);
             let key = f.path().strip_prefix(p).unwrap().to_str().unwrap().to_owned();
             println!("cargo:rerun-if-changed={}", f.path().to_string_lossy());
             mem.add(key, text);
