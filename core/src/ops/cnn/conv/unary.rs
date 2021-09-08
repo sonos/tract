@@ -502,7 +502,10 @@ impl ConvUnary {
     ) -> TractResult<OutletId> {
         let kernels = self.kernel_as_packed_as(&mmm.a_pack(k), m)?;
         let shape = kernels.shape();
-        let fused_ops = dispatch_copy!(Self::bias_as_non_linear(mmm.internal_type())(self))?;
+        let mut fused_ops = dispatch_copy!(Self::bias_as_non_linear(mmm.internal_type())(self))?;
+        for fo in &mut fused_ops {
+            fo.push(ProtoFusedSpec::Store);
+        }
         let mut iter = kernels.iter().cloned().zip(fused_ops.iter().cloned());
         let micro_ops = ArrayD::from_shape_fn(shape, |_| iter.next().unwrap());
 

@@ -116,6 +116,7 @@ fn cblas(crit: &mut BenchmarkGroup<WallTime>, m: usize, k: usize, n: usize) {
 }
 
 fn tract(crit: &mut BenchmarkGroup<WallTime>, m: usize, k: usize, n: usize) {
+    use tract_linalg::frame::mmm::FusedSpec;
     let a = Tensor::zero_dt(DatumType::F32, &[m, k]).unwrap();
     let b = Tensor::zero_dt(DatumType::F32, &[k, n]).unwrap();
     let mut c = Tensor::zero_dt(DatumType::F32, &[n, m]).unwrap();
@@ -162,7 +163,7 @@ fn tract(crit: &mut BenchmarkGroup<WallTime>, m: usize, k: usize, n: usize) {
                     &a_storage.wrap(&pa.view()),
                     &b_storage.wrap(&pb.view()),
                     &mut c_storage.wrap(&mut c.view_mut()),
-                    &[],
+                    &[FusedSpec::Store],
                 )
                 .unwrap()
             });

@@ -1,4 +1,4 @@
-use super::lir_unary::{ConcreteMatMulGeometry, LirMatMulUnary, MatMulGeometry};
+use super::lir_unary::{ConcreteMatMulGeometry, LirMatMulUnary, MatMulGeometry, ProtoFusedSpec};
 use super::*;
 use crate::internal::*;
 use tract_ndarray::prelude::*;
@@ -200,7 +200,7 @@ impl MatMulUnary {
                     !self.a_trans as usize,
                     self.a_trans as usize,
                 );
-                (pa.into_arc_tensor(), vec![])
+                (pa.into_arc_tensor(), vec![ProtoFusedSpec::Store])
             });
         unsafe {
             let mut packed_b_shape: TVec<usize> = b_shape[..b_shape.len() - 2].into();
