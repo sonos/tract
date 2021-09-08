@@ -284,88 +284,27 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
 
     b .non_linear
 
-.non_linear:
-    ldr     r1, [r0, #16]
-    cmp     r1, #0
-    bne     .non_linear_loop_entry
-
-.store:
-    ldr     r3, [r0, #8]
-    ldm     r3, { r4, r5, r6, r7 } // ptr, rsc, csc, size
-
-    {% for col in (0..3) %}
-        mov         r8, r4
-        {% for reg in (0..3) %}
-            fsts        s{{col|times:4|plus:reg|plus:16}}, [ r8 ]
-            {% if reg < 3 %}
-                add         r8, r8, r5
-            {% endif %}
-        {% endfor %}
-        {% if col < 3 %}
-            add r4, r4, r6
-        {% endif %}
-    {% endfor %}
-
-    mov         r0,     #0
-    b   .return
-
-.return:
-    vpop        { s16-s31 }
-    pop         { r4-r12 }
-
-    bx          lr
-
-.non_linear_loop_entry:
-    sub     r1, #20
-
-.non_linear_loop:
-    add     r1, #20
-    ldr     r2, [r1]
-    cmp     r2, #0
-    beq     .store
-    cmp     r2, #1
-    beq     .min
-    cmp     r2, #2
-    beq     .max
-    cmp     r2, #3
-    beq     .add_unicast
-    cmp     r2, #4
-    beq     .per_row_mul
-    cmp     r2, #5
-    beq     .per_row_add
-    cmp     r2, #6
-    beq     .per_col_mul
-    cmp     r2, #7
-    beq     .per_col_add
-    cmp     r2, #8
-    beq     .add_row_col_product
-    cmp     r2, #9
-    beq     .scalar_mul
-    cmp     r2, #10
-    beq     .scalar_add
-
-    b .unsupported
+{% include "dispatcher.tmpliq" %}
 
 .add_unicast:
-    ldm         r1, { r3, r4, r5, r6, r7 } // r3 unsused, already used enum discriminant, just here to make ldm "work"
     {% for col in (0..3) %}
-        mov         r8, r4
+        mov         r8, r3
         {% for reg in (0..3) %}
             vldr            s0, [ r8 ]
             vadd.f32        s{{col|times:4|plus:reg|plus:16}}, s{{col|times:4|plus:reg|plus:16}}, s0
             {% if reg < 3 %}
-                add         r8, r8, r5
+                add         r8, r8, r4
             {% endif %}
         {% endfor %}
         {% if col < 3 %}
-            add r4, r4, r6
+            add r3, r3, r5
         {% endif %}
     {% endfor %}
 
     b .non_linear_loop
 
 .min:
-    vldr            s0, [r1, #4]
+    vmov            s0, r3
     {% for reg in (16..31) %}
         vcmp.f32        s{{reg}}, s0
         vmrs            apsr_nzcv, fpscr
@@ -375,7 +314,7 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
     b .non_linear_loop
 
 .max:
-    vldr            s0, [r1, #4]
+    vmov            s0, r3
     {% for reg in (16..31) %}
         vcmp.f32        s{{reg}}, s0
         vmrs            apsr_nzcv, fpscr
@@ -385,8 +324,7 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
     b .non_linear_loop
 
 .per_row_mul:
-    ldr     r2, [r1, #4]
-    vldm    r2, {s0, s1, s2, s3}
+    vldm    r3, {s0, s1, s2, s3}
     {% for row in (0..3) %}
         {% for col in (0..3) %}
             vmul.f32    s{{col|times:4|plus:row|plus:16}}, s{{col|times:4|plus:row|plus:16}}, s{{row}}
@@ -396,8 +334,7 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
     b .non_linear_loop
 
 .per_row_add:
-    ldr     r2, [r1, #4]
-    vldm    r2, {s0, s1, s2, s3}
+    vldm    r3, {s0, s1, s2, s3}
     {% for row in (0..3) %}
         {% for col in (0..3) %}
             vadd.f32    s{{col|times:4|plus:row|plus:16}}, s{{col|times:4|plus:row|plus:16}}, s{{row}}
@@ -407,8 +344,7 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
     b .non_linear_loop
 
 .per_col_mul:
-    ldr     r2, [r1, #4]
-    vldm    r2, {s0, s1, s2, s3}
+    vldm    r3, {s0, s1, s2, s3}
     {% for row in (0..3) %}
         {% for col in (0..3) %}
             vmul.f32    s{{col|times:4|plus:row|plus:16}}, s{{col|times:4|plus:row|plus:16}}, s{{col}}
@@ -418,8 +354,7 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
     b .non_linear_loop
 
 .per_col_add:
-    ldr     r2, [r1, #4]
-    vldm    r2, {s0, s1, s2, s3}
+    vldm    r3, {s0, s1, s2, s3}
     {% for row in (0..3) %}
         {% for col in (0..3) %}
             vadd.f32    s{{col|times:4|plus:row|plus:16}}, s{{col|times:4|plus:row|plus:16}}, s{{col}}
@@ -429,16 +364,13 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
     b .non_linear_loop
 
 .add_row_col_product:
-    ldr     r2, [r1, #4]
-    ldr     r3, [r1, #8]
-
-    vldmia          r2!, { s0, s1 }
-    vldmia          r3!, { s8, s9 }
+    vldmia          r3!, { s0, s1 }
+    vldmia          r4!, { s8, s9 }
 
     vmla.f32        s16, s0, s8
-    vldmia          r2!, { s2, s3 }
+    vldmia          r3!, { s2, s3 }
     vmla.f32        s17, s1, s8
-    vldmia          r3!, { s10, s11 }
+    vldmia          r4!, { s10, s11 }
     vmla.f32        s18, s2, s8
     vmla.f32        s19, s3, s8
 
@@ -460,8 +392,7 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
     b .non_linear_loop
 
 .scalar_mul:
-    vldr    s0, [ r1, #4 ]
-
+    vmov            s0, r3
     {% for s in (16..31) %}
         vmul.f32    s{{s}}, s{{s}}, s0
     {% endfor %}
@@ -469,15 +400,37 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
     b .non_linear_loop
 
 .scalar_add:
-    vldr    s0, [ r1, #4 ]
-
+    vmov            s0, r3
     {% for s in (16..31) %}
         vadd.f32    s{{s}}, s{{s}}, s0
     {% endfor %}
 
     b .non_linear_loop
 
-.unsupported:
-    mov         r0,     #1
-    b           .return
+.store:
+    {% for col in (0..3) %}
+        mov         r8, r3
+        {% for reg in (0..3) %}
+            fsts        s{{col|times:4|plus:reg|plus:16}}, [ r8 ]
+            {% if reg < 3 %}
+                add         r8, r8, r4
+            {% endif %}
+        {% endfor %}
+        {% if col < 3 %}
+            add r3, r3, r5
+        {% endif %}
+    {% endfor %}
+
+    mov         r0,     #0
+    b   .return
+
+
+.q_scale:
+    b .unsupported
+
+.return:
+    vpop        { s16-s31 }
+    pop         { r4-r12 }
+
+    bx          lr
 
