@@ -7,6 +7,7 @@ pub mod pack;
 
 use crate::internal::*;
 use tract_itertools::Itertools;
+use tract_linalg::mmm::FusedSpec;
 use tract_ndarray::prelude::*;
 
 pub use self::mir::MatMul;
@@ -125,7 +126,7 @@ pub(super) fn eval(
                 &mm.a_packed(a.datum_type().size_of(), k).wrap(&packed_a.view()),
                 &mm.b_packed(b.datum_type().size_of(), k).wrap(&packed_b.view()),
                 &mut c_storage.wrap(&c.view_at_prefix_mut(prefix.slice())?),
-                &[],
+                &[FusedSpec::Store],
             )?;
         }
         Ok(c)
