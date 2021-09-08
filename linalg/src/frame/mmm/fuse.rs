@@ -312,12 +312,11 @@ pub mod test {
         TI: Copy + Debug,
     {
         let mut v = vec![TC::max_value(); K::mr() * K::nr()];
-        let mut c = mmm_stride_storage(&mut v, K::nr());
+        let c = mmm_stride_storage(&mut v, K::nr());
         let non_linear = tvec![FusedKerSpec::Store(c), FusedKerSpec::Done];
         let err = K::kernel(&MatMatMulKerSpec {
             a: &null_packed_storage(),
             b: &null_packed_storage(),
-            c: &mut c,
             linear: &LinearSpec::k(0),
             non_linear: non_linear.as_ptr(),
         });
@@ -335,7 +334,7 @@ pub mod test {
     {
         assert!(c.len() == K::mr() * K::nr());
         let mut v = c.to_vec();
-        let mut c = mmm_stride_storage(&mut v, K::nr());
+        let c = mmm_stride_storage(&mut v, K::nr());
         let mut ops = ops.to_vec();
         ops.insert(0, FusedKerSpec::AddUnicast(c));
         ops.push(FusedKerSpec::Store(c));
@@ -343,7 +342,6 @@ pub mod test {
         let err = K::kernel(&MatMatMulKerSpec {
             a: &null_packed_storage(),
             b: &null_packed_storage(),
-            c: &mut c,
             linear: &LinearSpec::k(0),
             non_linear: ops.as_ptr(),
         });

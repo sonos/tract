@@ -2,7 +2,7 @@
 
 .non_linear:
 
-    ldr     r1, [r0, #16]
+    ldr     r1, [r0, #12]
 
 .non_linear_loop_entry:
     sub     r1, #20

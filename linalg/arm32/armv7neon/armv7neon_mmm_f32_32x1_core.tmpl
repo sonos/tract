@@ -34,9 +34,8 @@ armv7neon_mmm_f32_32x1_{{core}}_{{suffix}}:
     veor    q14, q14 ,q14
     veor    q15, q15 ,q15
 
-    ldm     r0, { r7, r8, r9, r10 }      // a, b, c, lin
+    ldm     r0, { r7, r8, r9 }      // a, b, lin
     ldm     r7, { r1, r2 }
-    pld     [r10]
     pld     [r8]
     pld     [r9]
     // check a->discriminant == 1 (packed)
@@ -45,7 +44,7 @@ armv7neon_mmm_f32_32x1_{{core}}_{{suffix}}:
     mov     r1, r2                       // packed A ptr
 
     // check linear
-    ldm     r10, {r5, r6}
+    ldm     r9, {r5, r6}
     pld     [r1]
     pld     [r1, #64]
     cmp     r5, #0

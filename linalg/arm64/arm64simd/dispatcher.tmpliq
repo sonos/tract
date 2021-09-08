@@ -1,7 +1,7 @@
 // vim: ft=arm
 
 .non_linear:
-    ldr         x1, [x0, #32]
+    ldr         x1, [x0, #24]
     cmp         x1, #0
     bne         .non_linear_loop_entry
 
