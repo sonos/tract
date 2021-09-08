@@ -10,7 +10,6 @@ where
 {
     pub a: &'a PanelStore,
     pub b: &'a PanelStore,
-    pub c: &'a Tile,
     pub linear: &'a LinearSpec,
     pub non_linear: *const FusedKerSpec<TI>,
 }
@@ -366,7 +365,7 @@ pub mod test {
                     .collect::<Vec<_>>();
                 let pb = Tensor::from_slice_align(&b, K::alignment_bytes_packed_b()).unwrap();
                 let mut v = vec![TC::zero(); K::mr() * K::nr()];
-                let mut c = if self.trans_c {
+                let c = if self.trans_c {
                     mmm_stride_storage(&mut v, 1, K::mr())
                 } else {
                     mmm_stride_storage(&mut v, K::nr(), 1)
@@ -381,7 +380,6 @@ pub mod test {
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: &PanelStore::Packed { ptr: pa.as_ptr_unchecked::<TA>() as _ },
                     b: &PanelStore::Packed { ptr: pb.as_ptr_unchecked::<TB>() as _ },
-                    c: &mut c,
                     linear: &LinearSpec::k(self.k),
                     non_linear: non_linear_ops.as_ptr(),
                 });
@@ -495,7 +493,7 @@ pub mod test {
                 self.cols_offsets.iter().map(|o| self.b.as_ptr().offset(*o as isize)).collect()
             };
             let mut v = vec![TC::zero(); K::mr() * K::nr()];
-            let mut c = mmm_stride_storage(&mut v, K::nr(), 1);
+            let c = mmm_stride_storage(&mut v, K::nr(), 1);
             let mut non_linear_ops = tvec!();
             if self.add_one {
                 non_linear_ops.push(FusedKerSpec::ScalarAdd(TI::one()));
@@ -508,7 +506,6 @@ pub mod test {
                     row_byte_offsets: rows_offset.as_ptr(),
                     col_ptrs: col_ptrs.as_ptr() as _,
                 },
-                c: &mut c,
                 linear: &LinearSpec::k(self.rows_offsets.len()),
                 non_linear: non_linear_ops.as_ptr(),
             });
@@ -563,7 +560,7 @@ pub mod test {
         let b: Vec<TB> = (0..(k * t)).map(|x| x.as_()).collect();
         let len = K::mr() * K::nr();
         let mut v: Vec<TC> = vec![TC::zero(); len];
-        let mut c = mmm_stride_storage(&mut v, K::nr(), 1);
+        let c = mmm_stride_storage(&mut v, K::nr(), 1);
         let col_ptrs = (0..K::nr()).map(|i| (&b[i]) as *const TB as _).collect::<Vec<_>>();
         let row_byte_offsets =
             (0..k).map(|i| (i * std::mem::size_of::<TB>() * t) as isize).collect::<Vec<_>>();
@@ -576,7 +573,6 @@ pub mod test {
                 col_ptrs: col_ptrs.as_ptr(),
                 row_byte_offsets: row_byte_offsets.as_ptr(),
             },
-            c: &mut c,
             linear: &LinearSpec::k(k),
             non_linear: non_linear_ops.as_ptr()
         });
@@ -621,12 +617,6 @@ pub mod test {
         let err = K::kernel(&MatMatMulKerSpec {
             a: &PanelStore::Packed { ptr: unsafe { pa.as_ptr_unchecked::<TA>() as _ } },
             b: &PanelStore::Packed { ptr: b.as_ptr() as _ },
-            c: &Tile {
-                ptr: c.as_ptr() as _,
-                row_byte_stride: std::mem::size_of::<TC>() as isize,
-                col_byte_stride: (std::mem::size_of::<TC>() * K::mr()) as isize,
-                item_size: std::mem::size_of::<TC>(),
-            },
             linear: &LinearSpec::k(k),
             non_linear: non_linear_ops.as_ptr(),
         });

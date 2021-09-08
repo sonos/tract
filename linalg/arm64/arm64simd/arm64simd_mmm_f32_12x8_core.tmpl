@@ -37,7 +37,7 @@
 {% endfor %}
 
     ldp         x7, x8, [x0]        // a, b
-    ldp         x9, x10, [x0, #16]  // c, lin
+    ldr         x10, [x0, #16]      // lin
 
     ldp         x2, x1, [x7]        // a disc, a first arg
 

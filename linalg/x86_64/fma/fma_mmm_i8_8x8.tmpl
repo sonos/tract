@@ -87,7 +87,7 @@ fma_mmm_i8_8x8_{{suffix}} proc
     mov     rax,    [rdi]       // A
     mov     rbx,    [rdi + 8]   // B
 
-    mov     rcx,    [rdi + 24]  // Linear spec
+    mov     rcx,    [rdi + 16]  // Linear spec
     mov     rcx,    [rcx + 8]   // k
     test    rcx,    rcx
 
@@ -101,7 +101,7 @@ fma_mmm_i8_8x8_{{suffix}} proc
     cmp     rsi,  3
     je      {{L}}packed_vec
 
-    jmp     {{L}}unimplemented
+    jmp     {{L}}unsupported
 
 {{L}}packed_tops_and_offsets:
     mov     rax,    [rax + 8]   // A
@@ -254,11 +254,7 @@ fma_mmm_i8_8x8_{{suffix}} proc
     dec             rcx
     jnz             {{L}}packed_vec_loop
 
-{{L}}non_linear:
-
-    mov     rcx,    [rdi + 32]          // non linear spec
-    test    rcx,    rcx
-    jnz     {{L}}non_linear_loop_enter
+{% include "dispatcher.tmpliq" %}
 
 {{L}}return:
     ldmxcsr     [rsp + 4]
@@ -289,63 +285,6 @@ fma_mmm_i8_8x8_{{suffix}} proc
     mov rsp, rbp
     pop rbp
     ret
-
-{{L}}unimplemented:
-    mov     rax,    1
-    jmp     {{L}}return
-
-// NON LINEAR LOOP
-
-{{L}}non_linear_loop_enter:
-    sub     rcx,    40
-{{L}}non_linear_loop:
-    add     rcx,    40
-    mov     rax,    [rcx]
-
-    cmp     rax,    0
-    je      {{L}}done
-
-    cmp     rax,    1
-    je      {{L}}min
-
-    cmp     rax,    2
-    je      {{L}}max
-
-    cmp     rax,    3
-    je      {{L}}add_unicast
-
-    cmp     rax,    4
-    je      {{L}}per_row_mul
-
-    cmp     rax,    5
-    je      {{L}}per_row_add
-
-    cmp     rax,    6
-    je      {{L}}per_col_mul
-
-    cmp     rax,    7
-    je      {{L}}per_col_add
-
-    cmp     rax,    8
-    je      {{L}}add_row_col_products
-
-    cmp     rax,    9
-    je      {{L}}scalar_mul
-
-    cmp     rax,    10
-    je      {{L}}scalar_add
-
-    cmp     rax,    11
-    je      {{L}}q_scale
-
-    cmp     rax,    12
-    je      {{L}}store
-
-    jmp     {{L}}unimplemented
-
-{{L}}done:
-    mov     rax, 0
-    jmp     {{L}}return
 
 // NON LINEAR / ADDC
 
@@ -567,7 +506,7 @@ i128_shuffle dd              0, 4
     cmp     r8, 6
     je      {{L}}q_shift_right_rounding_odd
 
-    jmp    {{L}}unimplemented
+    jmp    {{L}}unsupported
 
 {{L}}q_shift_right_rounding_zero:           // signum * ( (abs + nudge) >> shift )
 {% for i in (0..7) %}

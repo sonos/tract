@@ -57,9 +57,9 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
     vmov.f32    s30, s16
     vmov.f32    s31, s16
 
-    ldm     r0, { r7, r8, r9, r10 }      // a, b, c, lin
+    ldm     r0, { r7, r8, r9 }      // a, b, lin
     ldm     r7, { r1, r2 }
-    pld     [r10]
+    pld     [r9]
     pld     [r8]
     // check a->discriminant == 1 (packed)
     cmp     r1, #1
@@ -68,7 +68,7 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
     pld     [r1]
 
     // check linear
-    ldm     r10, {r5, r6}
+    ldm     r9, {r5, r6}
     cmp     r5, #0
     bne     .unsupported
     cmp     r6, #0

@@ -90,7 +90,7 @@ fma_mmm_f32_64x1_{{suffix}} proc
     mov     rax,    [rdi]       // A
     mov     rbx,    [rdi + 8]   // B
 
-    mov     rcx,    [rdi + 24]  // Linear spec
+    mov     rcx,    [rdi + 16]  // Linear spec
     mov     rcx,    [rcx + 8]   // k
     test    rcx,    rcx
 
@@ -102,7 +102,7 @@ fma_mmm_f32_64x1_{{suffix}} proc
     cmp     rsi,  2
     je      {{L}}packed_tops_and_offsets
 
-    jmp     {{L}}unimplemented
+    jmp     {{L}}unsupported
 
 {{L}}packed_tops_and_offsets:
     mov     rax,    [rax + 8]   // A
@@ -147,95 +147,7 @@ fma_mmm_f32_64x1_{{suffix}} proc
 
     jmp             {{L}}non_linear
 
-{{L}}non_linear:
-
-    mov     rcx,    [rdi + 32]          // non linear spec
-    test    rcx,    rcx
-    jnz     {{L}}non_linear_loop_enter
-
-{{L}}return:
-    ldmxcsr     [rsp + 4]
-    add         rsp, 8
-
-    pop r15
-    pop r14
-    pop r13
-    pop r12
-    pop rbx
-
-{% if family == "windows" %}
-    pop rsi
-    pop rdi
-
-    vmovaps xmm15, [rsp+16*9]
-    vmovaps xmm14, [rsp+16*8]
-    vmovaps xmm13, [rsp+16*7]
-    vmovaps xmm12, [rsp+16*6]
-    vmovaps xmm11, [rsp+16*5]
-    vmovaps xmm10, [rsp+16*4]
-    vmovaps xmm9, [rsp+16*3]
-    vmovaps xmm8, [rsp+16*2]
-    vmovaps xmm7, [rsp+16*1]
-    vmovaps xmm6, [rsp]
-{% endif %}
-
-    mov rsp, rbp
-    pop rbp
-    ret
-
-{{L}}unimplemented:
-    mov     rax,    1
-    jmp     {{L}}return
-
-// NON LINEAR LOOP
-
-{{L}}non_linear_loop_enter:
-    sub     rcx,    40
-{{L}}non_linear_loop:
-    add     rcx,    40
-    mov     rax,    [rcx]
-
-    cmp     rax,    0
-    je      {{L}}done
-
-    cmp     rax,    1
-    je      {{L}}min
-
-    cmp     rax,    2
-    je      {{L}}max
-
-    cmp     rax,    3
-    je      {{L}}add_unicast
-
-    cmp     rax,    4
-    je      {{L}}per_row_mul
-
-    cmp     rax,    5
-    je      {{L}}per_row_add
-
-    cmp     rax,    6
-    je      {{L}}per_col_mul
-
-    cmp     rax,    7
-    je      {{L}}per_col_add
-
-    cmp     rax,    8
-    je      {{L}}add_row_col_products
-
-    cmp     rax,    9
-    je      {{L}}scalar_mul
-
-    cmp     rax,    10
-    je      {{L}}scalar_add
-
-    cmp     rax,    12
-    je      {{L}}store
-
-    jmp     {{L}}unimplemented
-
-{{L}}done:
-    mov     rax, 0
-    jmp     {{L}}return
+{% include "dispatcher.tmpliq" %}
 
 // NON LINEAR / ADDC
 {{L}}add_unicast:
@@ -388,6 +300,38 @@ fma_mmm_f32_64x1_{{suffix}} proc
 
     jmp    {{L}}non_linear_loop
 
+{{L}}q_scale:
+    jmp {{L}}unsupported
+
+{{L}}return:
+    ldmxcsr     [rsp + 4]
+    add         rsp, 8
+
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+
+{% if family == "windows" %}
+    pop rsi
+    pop rdi
+
+    vmovaps xmm15, [rsp+16*9]
+    vmovaps xmm14, [rsp+16*8]
+    vmovaps xmm13, [rsp+16*7]
+    vmovaps xmm12, [rsp+16*6]
+    vmovaps xmm11, [rsp+16*5]
+    vmovaps xmm10, [rsp+16*4]
+    vmovaps xmm9, [rsp+16*3]
+    vmovaps xmm8, [rsp+16*2]
+    vmovaps xmm7, [rsp+16*1]
+    vmovaps xmm6, [rsp]
+{% endif %}
+
+    mov rsp, rbp
+    pop rbp
+    ret
 
 {% if msvc %}
 fma_mmm_f32_64x1_{{suffix}} endp
