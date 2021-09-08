@@ -1,0 +1,50 @@
+// vim: ft=arm
+
+.non_linear:
+
+    ldr     r1, [r0, #16]
+
+.non_linear_loop_entry:
+    sub     r1, #20
+
+.non_linear_loop:
+    add     r1, #20
+    ldm     r1, { r2, r3, r4, r5, r6 }
+    cmp     r2, #0
+    beq     .done
+    cmp     r2, #1
+    beq     .min
+    cmp     r2, #2
+    beq     .max
+    cmp     r2, #3
+    beq     .add_unicast
+    cmp     r2, #4
+    beq     .per_row_mul
+    cmp     r2, #5
+    beq     .per_row_add
+    cmp     r2, #6
+    beq     .per_col_mul
+    cmp     r2, #7
+    beq     .per_col_add
+    cmp     r2, #8
+    beq     .add_row_col_product
+    cmp     r2, #9
+    beq     .scalar_mul
+    cmp     r2, #10
+    beq     .scalar_add
+    cmp     r2, #11
+    beq     .q_scale
+    cmp     r2, #12
+    beq     .store
+
+    add     r0, r4, #4000
+    b           .return
+
+.unsupported:
+    mov         r0,     #1
+    b           .return
+
+.done:
+    mov         r0,     #0
+    b           .return
+

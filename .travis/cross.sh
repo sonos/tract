@@ -118,6 +118,7 @@ case "$PLATFORM" in
                 export RUSTC_TRIPLE=armv7-unknown-linux-gnueabihf
                 export DEBIAN_TRIPLE=arm-linux-gnueabihf
                 export TARGET_CC=$DEBIAN_TRIPLE-gcc
+                export TRACT_CPU_ARM32_NEON=true
                 export DINGHY_TEST_ARGS="--env TRACT_CPU_ARM32_NEON=true"
                 ;;
             "aarch64-unknown-linux-musl")
@@ -132,6 +133,7 @@ case "$PLATFORM" in
                 export QEMU_ARCH=arm
                 export RUSTC_TRIPLE=armv7-unknown-linux-musleabihf
                 export CUSTOM_TC=`pwd`/armv7l-linux-musleabihf-cross
+                export TRACT_CPU_ARM32_NEON=true
                 export DINGHY_TEST_ARGS="--env TRACT_CPU_ARM32_NEON=true"
                 [ -d "$CUSTOM_TC" ] || curl -s http://musl.cc/armv7l-linux-musleabihf-cross.tgz | tar zx
                 export TARGET_CFLAGS="-mfpu=neon"
