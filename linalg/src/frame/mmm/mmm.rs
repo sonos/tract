@@ -315,7 +315,6 @@ where
         if n == 1 && K::nr() == 1 {
             return self.run_with_scratch_space_vec(m, k, scratch, a, b, c, &non_linear);
         }
-
         let scratch = scratch
             .downcast_mut::<ScratchSpaceFusedNonLinear<TI>>()
             .context("Wrong scratch space type")?;
