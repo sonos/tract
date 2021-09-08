@@ -72,7 +72,11 @@ fn mmm(c: &mut Criterion) {
                 });
                 let op = LirMatMulUnary {
                     c_fact: TypedFact::dt_shape(f32::datum_type(), &[8, 64]),
-                    micro_ops: tract_ndarray::arr0((packed_a.into_arc_tensor(), vec![])).into_dyn(),
+                    micro_ops: tract_ndarray::arr0((
+                        packed_a.into_arc_tensor(),
+                        vec![ProtoFusedSpec::Store],
+                    ))
+                    .into_dyn(),
                     reshape_post: vec![],
                     c_m_axis: 1,
                     c_n_axis: 0,

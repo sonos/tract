@@ -16,6 +16,7 @@ pub enum ProtoFusedSpec {
     ScalarAdd(AttrOrInput),
     AddUnicast(AttrOrInput),
     QScale(usize, RoundingPolicy, i32),
+    Store,
 }
 
 impl ProtoFusedSpec {
@@ -34,6 +35,7 @@ impl ProtoFusedSpec {
             }
             ProtoFusedSpec::AddUnicast(v) => FusedSpec::AddUnicast(v.tensor(inputs).view()),
             ProtoFusedSpec::QScale(s, rp, m) => FusedSpec::QScale(*s, *rp, *m),
+            ProtoFusedSpec::Store => FusedSpec::Store,
         }
     }
 }
@@ -321,9 +323,11 @@ impl TypedOp for LirMatMulUnary {
                      additional_inputs: &[OutletId]|
          -> TractResult<Option<TypedModelPatch>> {
             let mut new_op = self.clone();
-            new_op
-                .micro_ops
-                .zip_mut_with(fused_micro_op, |lhs, rhs| lhs.1.extend(rhs.iter().cloned()));
+            new_op.micro_ops.zip_mut_with(fused_micro_op, |lhs, rhs| {
+                lhs.1.pop();
+                lhs.1.extend(rhs.iter().cloned());
+                lhs.1.push(ProtoFusedSpec::Store);
+            });
             let mut patch = TypedModelPatch::new(format!("fusing {}", succ));
             patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ.name, node.name));
             let inputs = node

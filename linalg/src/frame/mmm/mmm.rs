@@ -312,8 +312,6 @@ where
     ) -> anyhow::Result<()> {
         let mr = K::mr();
         let nr = K::nr();
-        let mut non_linear: TVec<FusedSpec> = non_linear.into();
-        non_linear.push(FusedSpec::Store);
         if n == 1 && K::nr() == 1 {
             return self.run_with_scratch_space_vec(m, k, scratch, a, b, c, &non_linear);
         }
