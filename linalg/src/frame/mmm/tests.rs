@@ -306,7 +306,7 @@ where
             &mut op
                 .c_from_data_and_strides(TC::datum_type().size_of(), n as isize, 1)
                 .wrap(&found.view_mut()),
-            &[],
+            &[FusedSpec::Store],
         )
         .unwrap();
 
@@ -362,7 +362,7 @@ where
             &op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view()),
             &op.b_packed(b.datum_type().size_of(), k).wrap(&packed_b.view()),
             &mut op.c_view().wrap(&c.view_mut()),
-            &[],
+            &[FusedSpec::Store],
         )
         .unwrap();
 
@@ -412,6 +412,8 @@ where
     op.b_pack(k).pack(packed_b.view_mut(), b.view(), 0, 1);
 
     let mut found = Tensor::zero::<TC>(&[m, n]).unwrap();
+    let mut spec:TVec<FusedSpec> = spec.into();
+    spec.push(FusedSpec::Store);
 
     op.run(
         m,
@@ -422,7 +424,7 @@ where
         &mut op
             .c_from_data_and_strides(TC::datum_type().size_of(), n as isize, 1)
             .wrap(&mut found.view_mut()),
-        spec,
+        &spec,
     )
     .unwrap();
 
@@ -704,7 +706,7 @@ impl<TA: LADatum, TB: LADatum> ConvProblem<TA, TB> {
                 &mut op
                     .c_from_data_and_strides(TC::datum_type().size_of(), self.n() as isize, 1)
                     .wrap(&found.view_mut()),
-                &[],
+                &[FusedSpec::Store],
             )
             .unwrap();
             found
