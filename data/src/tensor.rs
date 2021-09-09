@@ -24,6 +24,7 @@ pub struct Tensor {
     dt: DatumType,
     shape: TVec<usize>,
     strides: TVec<isize>,
+    len: usize,
     layout: alloc::Layout,
     data: *mut u8,
 }
@@ -153,7 +154,7 @@ impl Tensor {
             assert!(!ptr.is_null());
             ptr
         } as *mut u8;
-        let mut tensor = Tensor { strides: tvec!(), layout, dt, shape: shape.into(), data };
+        let mut tensor = Tensor { strides: tvec!(), layout, dt, shape: shape.into(), data, len: 0 };
         #[cfg(debug_assertions)]
         {
             if dt == DatumType::F32 {
@@ -162,7 +163,7 @@ impl Tensor {
                 tensor.as_slice_mut_unchecked::<i32>().iter_mut().for_each(|f| *f = std::i32::MIN)
             }
         }
-        tensor.update_strides();
+        tensor.update_strides_and_len();
         Ok(tensor)
     }
 
@@ -308,8 +309,9 @@ impl Tensor {
     }
 
     /// Get the number of valeus in the tensor.
+    #[inline]
     pub fn len(&self) -> usize {
-        self.shape.iter().cloned().product::<usize>()
+        self.len
     }
 
     /// Get the shape of the tensor.
@@ -318,9 +320,14 @@ impl Tensor {
         &self.strides
     }
 
-    fn update_strides(&mut self) {
+    fn update_strides_and_len(&mut self) {
         self.strides.clear();
         compute_natural_stride_to(&mut self.strides, &self.shape);
+        self.len = if self.rank() == 0 {
+            1
+        } else {
+            unsafe { *self.strides.get_unchecked(0) as usize * self.shape.get_unchecked(0) }
+        }
     }
 
     /// Force the tensor shape, no consistency check.
@@ -328,7 +335,7 @@ impl Tensor {
         if shape != &*self.shape {
             self.shape.clear();
             self.shape.extend_from_slice(shape);
-            self.update_strides();
+            self.update_strides_and_len();
         }
     }
 
@@ -374,7 +381,7 @@ impl Tensor {
 
     pub fn broadcast_into_rank(mut self, rank: usize) -> anyhow::Result<Tensor> {
         self.broadcast_to_rank(rank)?;
-        self.update_strides();
+        self.update_strides_and_len();
         Ok(self)
     }
 
@@ -385,7 +392,7 @@ impl Tensor {
         while self.shape.len() < rank {
             self.shape.insert(0, 1)
         }
-        self.update_strides();
+        self.update_strides_and_len();
         Ok(())
     }
 
@@ -530,11 +537,13 @@ impl Tensor {
     }
 
     /// Get the datum type of the tensor.
+    #[inline]
     pub fn datum_type(&self) -> DatumType {
         self.dt
     }
 
     /// Set the datum type of the tensor.
+    #[inline]
     pub unsafe fn set_datum_type(&mut self, dt: DatumType) {
         self.dt = dt
     }
@@ -1010,8 +1019,8 @@ impl Tensor {
             let shape = it.shape().into();
             let vec = it.into_raw_vec().into_boxed_slice();
             let data = Box::into_raw(vec) as *mut u8;
-            let mut t = Tensor { dt: T::datum_type(), shape, layout, data, strides: tvec!() };
-            t.update_strides();
+            let mut t = Tensor { dt: T::datum_type(), shape, layout, data, strides: tvec!(), len: 0 };
+            t.update_strides_and_len();
             return t;
         }
         unsafe {
