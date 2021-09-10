@@ -55,7 +55,7 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
         unsafe { std::slice::from_raw_parts_mut(buf, len) }
     }
 
-    #[inline(always)]
+    #[inline]
     pub unsafe fn for_tile<K: MatMatMulKer<TI>>(
         &mut self,
         specs: &[FusedSpec],
