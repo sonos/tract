@@ -197,7 +197,7 @@ fn preprocess_file(
     let l = if os == "macos" {
         "L"
     } else if family == "windows" {
-        ""
+        ".L"
     } else {
         "."
     }
