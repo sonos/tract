@@ -14,44 +14,32 @@
     add     rcx,    40
     mov     rax,    [rcx]
 
-    cmp     rax,    0
-    je      {{L}}done
+    mov     r8, 13
+    cmp     rax, 0
+    cmovl   rax, r8
+    cmp     rax, 12
+    cmovg   rax, r8
 
-    cmp     rax,    1
-    je      {{L}}min
+    lea     r8, [ rip + {{L}}jmp_table ]
+    movsx   r9, dword ptr [ r8 + rax * 4 ]
+    lea     r8, [ r8 + r9 ]
+    jmp     r8
 
-    cmp     rax,    2
-    je      {{L}}max
+{{L}}jmp_table:
+    .long      {{L}}done - {{L}}jmp_table
+    .long      {{L}}min - {{L}}jmp_table
+    .long      {{L}}max - {{L}}jmp_table
+    .long      {{L}}add_unicast - {{L}}jmp_table
+    .long      {{L}}per_row_mul - {{L}}jmp_table
+    .long      {{L}}per_row_add - {{L}}jmp_table
+    .long      {{L}}per_col_mul - {{L}}jmp_table
+    .long      {{L}}per_col_add - {{L}}jmp_table
+    .long      {{L}}add_row_col_products - {{L}}jmp_table
+    .long      {{L}}scalar_mul - {{L}}jmp_table
+    .long      {{L}}scalar_add - {{L}}jmp_table
+    .long      {{L}}q_scale - {{L}}jmp_table
+    .long      {{L}}store - {{L}}jmp_table
 
-    cmp     rax,    3
-    je      {{L}}add_unicast
-
-    cmp     rax,    4
-    je      {{L}}per_row_mul
-
-    cmp     rax,    5
-    je      {{L}}per_row_add
-
-    cmp     rax,    6
-    je      {{L}}per_col_mul
-
-    cmp     rax,    7
-    je      {{L}}per_col_add
-
-    cmp     rax,    8
-    je      {{L}}add_row_col_products
-
-    cmp     rax,    9
-    je      {{L}}scalar_mul
-
-    cmp     rax,    10
-    je      {{L}}scalar_add
-
-    cmp     rax,    11
-    je      {{L}}q_scale
-
-    cmp     rax,    12
-    je      {{L}}store
 
     jmp     {{L}}unsupported
 

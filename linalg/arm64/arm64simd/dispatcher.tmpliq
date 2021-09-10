@@ -15,11 +15,11 @@
     cmp         x2, #0
     csel        x2, x4, x2, lt
 
-    adr         x3, jmp_table
+    adr         x3, .jmp_table
     add         x3, x3, x2, LSL#2
     br          x3
 
-jmp_table:
+.jmp_table:
     b   .done
     b   .min
     b   .max
@@ -33,6 +33,9 @@ jmp_table:
     b   .scalar_add
     b   .q_scale
     b   .store
+
+    add x0, x2, #4000
+    b .return
 
 .unsupported:
     mov         x0, #1
