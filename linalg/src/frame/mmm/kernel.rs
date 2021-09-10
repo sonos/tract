@@ -96,19 +96,6 @@ macro_rules! test_mmm_kernel_i8_u8_i32 {
     };
 }
 
-#[macro_export]
-macro_rules! test_mmm_kernel_u8 {
-    ($k: ty, $id: ident, $cond: expr) => {
-        #[cfg(test)]
-        #[allow(non_snake_case)]
-        mod $id {
-            mmm_kernel_tests!($cond, $k, u8, u8, u8, i32);
-            mmm_kernel_fuse_tests!($cond, $k, u8, i32);
-            qmmm_kernel_fuse_tests!($cond, $k, u8, u8, u8, i32);
-        }
-    };
-}
-
 #[cfg(test)]
 #[macro_use]
 pub mod test {
