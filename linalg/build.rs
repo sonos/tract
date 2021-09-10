@@ -202,6 +202,7 @@ fn preprocess_file(
         "."
     }
     .to_owned();
+    let long = if msvc { "dd" } else { ".long" };
     let g = if os == "macos" || os == "ios" { "_" } else { "" };
     let mut globals = liquid::object!({
         "msvc": msvc,
@@ -210,6 +211,7 @@ fn preprocess_file(
         "L": l,
         "G": g,
         "suffix": suffix,
+        "long": long
     });
     for (k, v) in variants {
         globals.insert(k.to_string().into(), liquid::model::Value::scalar(*v));
