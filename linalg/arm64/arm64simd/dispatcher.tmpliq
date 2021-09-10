@@ -2,52 +2,43 @@
 
 .non_linear:
     ldr         x1, [x0, #24]
-    cmp         x1, #0
-    bne         .non_linear_loop_entry
-
-    cmp         x0, #0
-    beq         .done
-
-.non_linear_loop_entry:
     sub         x1, x1, 40
 
 .non_linear_loop:
     add         x1, x1, 40
     ldr         x2, [x1]
-    cmp         x2, #0
-    beq         .done
-    cmp         x2, #1
-    beq         .min
-    cmp         x2, #2
-    beq         .max
-    cmp         x2, #3
-    beq         .add_unicast
-    cmp         x2, #4
-    beq         .per_row_mul
-    cmp         x2, #5
-    beq         .per_row_add
-    cmp         x2, #6
-    beq         .per_col_mul
-    cmp         x2, #7
-    beq         .per_col_add
-    cmp         x2, #8
-    beq         .add_row_col_product
-    cmp         x2, #9
-    beq         .scalar_mul
-    cmp         x2, #10
-    beq         .scalar_add
-    cmp         x2, #11
-    beq         .q_scale
+
+    mov         x4, #13
+
     cmp         x2, #12
-    beq         .store
+    csel        x2, x4, x2, gt
+    cmp         x2, #0
+    csel        x2, x4, x2, lt
 
-    b           .unsupported
+    adr         x3, jmp_table
+    add         x3, x3, x2, LSL#2
+    br          x3
 
-.done:
-    mov         x0, 0
-    b           .return
+jmp_table:
+    b   .done
+    b   .min
+    b   .max
+    b   .add_unicast
+    b   .per_row_mul
+    b   .per_row_add
+    b   .per_col_mul
+    b   .per_col_add
+    b   .add_row_col_product
+    b   .scalar_mul
+    b   .scalar_add
+    b   .q_scale
+    b   .store
 
 .unsupported:
     mov         x0, #1
+    b           .return
+
+.done:
+    mov         x0, 0
     b           .return
 
