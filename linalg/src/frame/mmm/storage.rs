@@ -29,6 +29,7 @@ pub enum MatrixStoreSpec {
 }
 
 impl MatrixStoreSpec {
+    #[inline]
     pub unsafe fn wrap<'t>(&self, tensor: &'t TensorView) -> MatrixStore<'_, 't> {
         MatrixStore::new(self, tensor)
     }
