@@ -55,7 +55,33 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
         unsafe { std::slice::from_raw_parts_mut(buf, len) }
     }
 
+    #[inline(always)]
     pub unsafe fn for_tile<K: MatMatMulKer<TI>>(
+        &mut self,
+        specs: &[FusedSpec],
+        down: usize,
+        right: usize,
+        c_store: &MatrixStore,
+        valid: bool,
+    ) -> *const FusedKerSpec<TI>
+    where
+        TI: Datum + Copy + Debug + Zero,
+    {
+        // inline fast track for trivial cases
+        if valid
+            && specs.len() == 1
+            && self.uspecs.len() == 2
+            && matches!(specs.get_unchecked(0), FusedSpec::Store)
+        {
+            *self.uspecs.get_unchecked_mut(0) = FusedKerSpec::Store(c_store.tile_c(down, right));
+            self.uspecs.as_ptr()
+        } else {
+            self.for_tile_ext::<K>(specs, down, right, c_store, valid)
+        }
+    }
+
+    #[inline(never)]
+    unsafe fn for_tile_ext<K: MatMatMulKer<TI>>(
         &mut self,
         specs: &[FusedSpec],
         down: usize,
@@ -198,13 +224,14 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
         right: usize,
         c_store: &mut MatrixStore,
         m_remnant: usize,
-        n_remnant: usize
+        n_remnant: usize,
     ) where
         TI: Datum + Copy + Debug + Zero,
     {
         for (i, spec) in specs.iter().enumerate() {
             let ker_spec = ker_specs.offset(i as isize);
-            if let (FusedSpec::Store, FusedKerSpec::Store(tmp)) = (spec, ker_spec.as_ref().unwrap()) {
+            if let (FusedSpec::Store, FusedKerSpec::Store(tmp)) = (spec, ker_spec.as_ref().unwrap())
+            {
                 c_store.set_from_tile(down, right, m_remnant, n_remnant, &tmp)
             }
         }
