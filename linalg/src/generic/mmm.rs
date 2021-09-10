@@ -1,4 +1,4 @@
-use num_traits::{AsPrimitive, Bounded, Zero};
+use num_traits::{AsPrimitive, Zero};
 use std::marker::PhantomData;
 use std::{fmt, ops};
 
@@ -12,11 +12,10 @@ use crate::frame::mmm::*;
 use num_traits::sign::Signed;
 
 #[derive(Copy, Clone, Debug)]
-pub struct GenericMmm4x4<TA, TB, TC, TI>(PhantomData<(TA, TB, TC, TI)>)
+pub struct GenericMmm4x4<TA, TB, TI>(PhantomData<(TA, TB, TI)>)
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TC: Datum + Copy + fmt::Debug + AsPrimitive<TI> + 'static,
     TI: Datum
         + Copy
         + ops::AddAssign
@@ -27,14 +26,12 @@ where
         + Zero
         + fmt::Debug
         + fmt::Display
-        + AsPrimitive<TC>
         + 'static;
 
-unsafe impl<TA, TB, TC, TI> Send for GenericMmm4x4<TA, TB, TC, TI>
+unsafe impl<TA, TB, TI> Send for GenericMmm4x4<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TC: Datum + Copy + fmt::Debug + AsPrimitive<TI> + 'static,
     TI: Datum
         + Copy
         + ops::AddAssign
@@ -45,16 +42,14 @@ where
         + Zero
         + fmt::Debug
         + fmt::Display
-        + AsPrimitive<TC>
         + 'static,
 {
 }
 
-unsafe impl<TA, TB, TC, TI> Sync for GenericMmm4x4<TA, TB, TC, TI>
+unsafe impl<TA, TB, TI> Sync for GenericMmm4x4<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TC: Datum + Copy + fmt::Debug + AsPrimitive<TI> + 'static,
     TI: Datum
         + Copy
         + ops::AddAssign
@@ -65,16 +60,14 @@ where
         + Zero
         + fmt::Debug
         + fmt::Display
-        + AsPrimitive<TC>
         + 'static,
 {
 }
 
-impl<TA, TB, TC, TI> MatMatMulKer<TI> for GenericMmm4x4<TA, TB, TC, TI>
+impl<TA, TB, TI> MatMatMulKer<TI> for GenericMmm4x4<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TC: Datum + Copy + fmt::Debug + AsPrimitive<TI> + 'static + Bounded,
     TI: Datum
         + Copy
         + ops::AddAssign
@@ -86,7 +79,6 @@ where
         + Signed
         + fmt::Debug
         + fmt::Display
-        + AsPrimitive<TC>
         + 'static,
     usize: AsPrimitive<TI>,
 {
@@ -254,7 +246,7 @@ where
                             }
                         }
                     }
-                    FusedKerSpec::AddUnicast(tile) => add_unicast::<TC, TI, _>(&tile, &mut ab),
+                    FusedKerSpec::AddUnicast(tile) => add_unicast::<TI, _>(&tile, &mut ab),
                     FusedKerSpec::QScale(shift, rp, mult) => {
                         for i in 0..4 {
                             for j in 0..4 {
@@ -272,11 +264,10 @@ where
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct GenericMmm4x1<TA, TB, TC, TI>(PhantomData<(TA, TB, TC, TI)>)
+pub struct GenericMmm4x1<TA, TB, TI>(PhantomData<(TA, TB, TI)>)
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TC: Datum + Copy + fmt::Debug + AsPrimitive<TI> + 'static,
     TI: Datum
         + Copy
         + ops::AddAssign
@@ -287,14 +278,12 @@ where
         + Zero
         + fmt::Debug
         + fmt::Display
-        + AsPrimitive<TC>
         + 'static;
 
-unsafe impl<TA, TB, TC, TI> Send for GenericMmm4x1<TA, TB, TC, TI>
+unsafe impl<TA, TB, TI> Send for GenericMmm4x1<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TC: Datum + Copy + fmt::Debug + AsPrimitive<TI> + 'static,
     TI: Datum
         + Copy
         + ops::AddAssign
@@ -305,16 +294,14 @@ where
         + Zero
         + fmt::Debug
         + fmt::Display
-        + AsPrimitive<TC>
         + 'static,
 {
 }
 
-unsafe impl<TA, TB, TC, TI> Sync for GenericMmm4x1<TA, TB, TC, TI>
+unsafe impl<TA, TB, TI> Sync for GenericMmm4x1<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TC: Datum + Copy + fmt::Debug + AsPrimitive<TI> + 'static,
     TI: Datum
         + Copy
         + ops::AddAssign
@@ -325,16 +312,14 @@ where
         + Zero
         + fmt::Debug
         + fmt::Display
-        + AsPrimitive<TC>
         + 'static,
 {
 }
 
-impl<TA, TB, TC, TI> MatMatMulKer<TI> for GenericMmm4x1<TA, TB, TC, TI>
+impl<TA, TB, TI> MatMatMulKer<TI> for GenericMmm4x1<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TC: Datum + Copy + fmt::Debug + AsPrimitive<TI> + 'static + Bounded,
     TI: Datum
         + Copy
         + ops::AddAssign
@@ -346,7 +331,6 @@ where
         + Signed
         + fmt::Debug
         + fmt::Display
-        + AsPrimitive<TC>
         + 'static,
     usize: AsPrimitive<TI>,
 {
@@ -465,7 +449,7 @@ where
                             ab[i] *= a;
                         }
                     }
-                    FusedKerSpec::AddUnicast(tile) => add_unicast::<TC, TI, _>(
+                    FusedKerSpec::AddUnicast(tile) => add_unicast::<TI, _>(
                         &tile,
                         &mut [
                             std::slice::from_raw_parts_mut(ab.as_ptr().offset(0) as _, 1),
@@ -498,11 +482,10 @@ where
 
 #[cfg(test)]
 #[derive(Copy, Clone, Debug)]
-pub struct GenericMmmTest3x2<TA, TB, TC, TI>(PhantomData<(TA, TB, TC, TI)>)
+pub struct GenericMmmTest3x2<TA, TB, TI>(PhantomData<(TA, TB, TI)>)
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TC: Datum + Copy + fmt::Debug + AsPrimitive<TI> + 'static,
     TI: Datum
         + Copy
         + ops::AddAssign
@@ -512,15 +495,13 @@ where
         + Zero
         + fmt::Debug
         + fmt::Display
-        + AsPrimitive<TC>
         + 'static;
 
 #[cfg(test)]
-unsafe impl<TA, TB, TC, TI> Send for GenericMmmTest3x2<TA, TB, TC, TI>
+unsafe impl<TA, TB, TI> Send for GenericMmmTest3x2<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TC: Datum + Copy + fmt::Debug + AsPrimitive<TI> + 'static,
     TI: Datum
         + Copy
         + ops::AddAssign
@@ -530,17 +511,15 @@ where
         + Zero
         + fmt::Debug
         + fmt::Display
-        + AsPrimitive<TC>
         + 'static,
 {
 }
 
 #[cfg(test)]
-unsafe impl<TA, TB, TC, TI> Sync for GenericMmmTest3x2<TA, TB, TC, TI>
+unsafe impl<TA, TB, TI> Sync for GenericMmmTest3x2<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TC: Datum + Copy + fmt::Debug + AsPrimitive<TI> + 'static,
     TI: Datum
         + Copy
         + ops::AddAssign
@@ -550,17 +529,15 @@ where
         + Zero
         + fmt::Debug
         + fmt::Display
-        + AsPrimitive<TC>
         + 'static,
 {
 }
 
 #[cfg(test)]
-impl<TA, TB, TC, TI> MatMatMulKer<TI> for GenericMmmTest3x2<TA, TB, TC, TI>
+impl<TA, TB, TI> MatMatMulKer<TI> for GenericMmmTest3x2<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TC: Datum + Copy + fmt::Debug + AsPrimitive<TI> + 'static + Bounded,
     TI: Datum
         + Copy
         + ops::AddAssign
@@ -572,7 +549,6 @@ where
         + Signed
         + fmt::Debug
         + fmt::Display
-        + AsPrimitive<TC>
         + 'static,
     usize: AsPrimitive<TI>,
 {
@@ -710,7 +686,7 @@ where
                             }
                         }
                     }
-                    FusedKerSpec::AddUnicast(tile) => add_unicast::<TC, TI, _>(&tile, &mut ab),
+                    FusedKerSpec::AddUnicast(tile) => add_unicast::<TI, _>(&tile, &mut ab),
                     FusedKerSpec::QScale(shift, rp, mult) => {
                         for i in 0..3 {
                             for j in 0..2 {
@@ -755,9 +731,8 @@ where
     }
 }
 
-unsafe fn add_unicast<TC, TI, AB>(tile: &Tile, ab: &mut [AB])
+unsafe fn add_unicast<TI, AB>(tile: &Tile, ab: &mut [AB])
 where
-    TC: AsPrimitive<TI> + Copy,
     TI: Datum + ops::AddAssign<TI> + Copy,
     AB: AsMut<[TI]> + fmt::Debug,
 {
@@ -774,11 +749,12 @@ where
     } else if TI::datum_type() == i32::datum_type() && tile.item_size == 1 {
         for i in 0usize..ab.len() {
             for j in 0usize..ab[0].as_mut().len() {
-                let value: *const TC = tile
+                let value: i8 = *(tile
                     .ptr
                     .offset(tile.row_byte_stride * i as isize + tile.col_byte_stride * j as isize)
-                    as _;
-                ab[i].as_mut()[j] += (*value).as_();
+                    as *const i8);
+                let acc: *mut i32 = ab[i].as_mut().as_mut_ptr().offset(j as isize) as *mut i32;
+                *acc += value as i32;
             }
         }
     } else {
@@ -786,20 +762,11 @@ where
     }
 }
 
-test_mmm_kernel_f32!(crate::generic::mmm::GenericMmm4x4<f32, f32, f32, f32>, test_GenericMmm4x4_f32, true);
-test_mmm_kernel_i8!(crate::generic::mmm::GenericMmm4x4<i8, i8, i8, i32>, test_GenericMmm4x4_i8, true);
-test_mmm_kernel_u8!(crate::generic::mmm::GenericMmm4x4<u8, u8, u8, i32>, test_GenericMmm4x4_u8, true);
-test_mmm_kernel_i8_i32!(crate::generic::mmm::GenericMmm4x4<i8, i8, i32, i32>, test_GenericMmm4x4_i8_i32, true);
-test_mmm_kernel_i8_u8_i32!(crate::generic::mmm::GenericMmm4x4<i8, u8, i32, i32>, test_GenericMmm4x4_i8_u8_i32, true);
+test_mmm_kernel_f32!(crate::generic::mmm::GenericMmm4x4<f32, f32, f32>, test_GenericMmm4x4_f32, true);
+test_mmm_kernel_i8!(crate::generic::mmm::GenericMmm4x4<i8, i8, i32>, test_GenericMmm4x4_i8, true);
 
-test_mmm_kernel_f32!(crate::generic::mmm::GenericMmm4x1<f32, f32, f32, f32>, test_GenericMmm4x1_f32, true);
-test_mmm_kernel_i8!(crate::generic::mmm::GenericMmm4x1<i8, i8, i8, i32>, test_GenericMmm4x1_i8, true);
-test_mmm_kernel_u8!(crate::generic::mmm::GenericMmm4x1<u8, u8, u8, i32>, test_GenericMmm4x1_u8, true);
-test_mmm_kernel_i8_i32!(crate::generic::mmm::GenericMmm4x1<i8, i8, i32, i32>, test_GenericMmm4x1_i8_i32, true);
-test_mmm_kernel_i8_u8_i32!(crate::generic::mmm::GenericMmm4x1<i8, u8, i32, i32>, test_GenericMmm4x1_i8_u8_i32, true);
+test_mmm_kernel_f32!(crate::generic::mmm::GenericMmm4x1<f32, f32, f32>, test_GenericMmm4x1_f32, true);
+test_mmm_kernel_i8!(crate::generic::mmm::GenericMmm4x1<i8, i8, i32>, test_GenericMmm4x1_i8, true);
 
-test_mmm_kernel_f32!(crate::generic::mmm::GenericMmmTest3x2<f32, f32, f32, f32>, test_GenericMmmTest3x2_f32, true);
-test_mmm_kernel_i8!(crate::generic::mmm::GenericMmmTest3x2<i8, i8, i8, i32>, test_GenericMmmTest3x2_i8, true);
-test_mmm_kernel_u8!(crate::generic::mmm::GenericMmmTest3x2<u8, u8, u8, i32>, test_GenericMmmTest3x2_u8, true);
-test_mmm_kernel_i8_i32!(crate::generic::mmm::GenericMmmTest3x2<i8, i8, i32, i32>, test_GenericMmmTest3x2_i8_i32, true);
-test_mmm_kernel_i8_u8_i32!(crate::generic::mmm::GenericMmmTest3x2<i8, u8, i32, i32>, test_GenericMmmTest3x2_i8_u8_i32, true);
+test_mmm_kernel_f32!(crate::generic::mmm::GenericMmmTest3x2<f32, f32, f32>, test_GenericMmmTest3x2_f32, true);
+test_mmm_kernel_i8!(crate::generic::mmm::GenericMmmTest3x2<i8, i8, i32>, test_GenericMmmTest3x2_i8, true);
