@@ -24,8 +24,8 @@
     lea     r8, [ offset {{L}}jmp_table ]
 {% else %}
     lea     r8, [ rip + {{L}}jmp_table ]
-{% endid %}
-    movsx   r9, dword ptr [ r8 + rax * 4 ]
+{% endif %}
+    movsxd  r9, dword ptr [ r8 + rax * 4 ]
     lea     r8, [ r8 + r9 ]
     jmp     r8
 
