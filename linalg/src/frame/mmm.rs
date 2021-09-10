@@ -37,19 +37,23 @@ macro_rules! MMMKernel {
             fn nr() -> usize {
                 $nr
             }
+            #[inline(always)]
             fn alignment_bytes_packed_a() -> usize {
                 $alignment_bytes_packed_a
             }
+            #[inline(always)]
             fn alignment_bytes_packed_b() -> usize {
                 $alignment_bytes_packed_b
             }
+            #[inline(always)]
             fn end_padding_packed_a() -> usize {
                 $end_padding_packed_a
             }
+            #[inline(always)]
             fn end_padding_packed_b() -> usize {
                 $end_padding_packed_b
             }
-            #[inline(never)]
+            #[inline(always)]
             fn kernel(spec: &MatMatMulKerSpec<$ti>) -> isize {
                 unsafe { $func(spec) }
             }
