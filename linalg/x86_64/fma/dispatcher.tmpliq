@@ -30,19 +30,19 @@
     jmp     r8
 
 {{L}}jmp_table:
-    .long      {{L}}done - {{L}}jmp_table
-    .long      {{L}}min - {{L}}jmp_table
-    .long      {{L}}max - {{L}}jmp_table
-    .long      {{L}}add_unicast - {{L}}jmp_table
-    .long      {{L}}per_row_mul - {{L}}jmp_table
-    .long      {{L}}per_row_add - {{L}}jmp_table
-    .long      {{L}}per_col_mul - {{L}}jmp_table
-    .long      {{L}}per_col_add - {{L}}jmp_table
-    .long      {{L}}add_row_col_products - {{L}}jmp_table
-    .long      {{L}}scalar_mul - {{L}}jmp_table
-    .long      {{L}}scalar_add - {{L}}jmp_table
-    .long      {{L}}q_scale - {{L}}jmp_table
-    .long      {{L}}store - {{L}}jmp_table
+    .long      {{L}}done-{{L}}jmp_table
+    .long      {{L}}min-{{L}}jmp_table
+    .long      {{L}}max-{{L}}jmp_table
+    .long      {{L}}add_unicast-{{L}}jmp_table
+    .long      {{L}}per_row_mul-{{L}}jmp_table
+    .long      {{L}}per_row_add-{{L}}jmp_table
+    .long      {{L}}per_col_mul-{{L}}jmp_table
+    .long      {{L}}per_col_add-{{L}}jmp_table
+    .long      {{L}}add_row_col_products-{{L}}jmp_table
+    .long      {{L}}scalar_mul-{{L}}jmp_table
+    .long      {{L}}scalar_add-{{L}}jmp_table
+    .long      {{L}}q_scale-{{L}}jmp_table
+    .long      {{L}}store-{{L}}jmp_table
 
 
     jmp     {{L}}unsupported
