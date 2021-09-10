@@ -20,8 +20,8 @@
 
 .jmp_table:
     .word     .done
-    .word     .max
     .word     .min
+    .word     .max
     .word     .add_unicast
     .word     .per_row_mul
     .word     .per_row_add
