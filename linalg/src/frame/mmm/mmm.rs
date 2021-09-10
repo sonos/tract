@@ -258,10 +258,10 @@ where
             .downcast_mut::<ScratchSpaceFusedNonLinear<TI>>()
             .context("Wrong scratch space type")?;
         let ref linear = LinearSpec::k(k);
-        for ia in 0..m / mr {
-            let ref a = a.panel_a(ia);
-            if K::nr() == 1 && n == 1 {
-                let ref b = b.panel_b(0);
+        if K::nr() == 1 && n == 1 {
+            let ref b = b.panel_b(0);
+            for ia in 0..m / mr {
+                let ref a = a.panel_a(ia);
                 self.prefetch(a, b);
                 scratch.clear();
                 let non_linear = scratch.for_tile::<K>(&non_linear, ia, 0, c);
@@ -274,7 +274,26 @@ where
                     non_linear,
                 });
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
-            } else {
+            }
+            if m % mr != 0 {
+                let ref panel_a = a.panel_a(m / mr);
+                self.prefetch(panel_a, b);
+                scratch.clear();
+                let tmpc = scratch.tmp_tile_c(c.item_size(), mr, nr);
+                let non_linear = scratch.for_tile::<K>(&non_linear, m / mr, 0, c);
+                let err = K::kernel(&MatMatMulKerSpec {
+                    a: panel_a as _,
+                    b: b as _,
+                    c: &tmpc,
+                    linear,
+                    non_linear,
+                });
+                debug_assert_eq!(err, 0, "Kernel return error {}", err);
+                c.set_from_tile(m / mr, 0, m % mr, nr, &tmpc);
+            }
+        } else {
+            for ia in 0..m / mr {
+                let ref a = a.panel_a(ia);
                 for ib in 0..n / nr {
                     let ref b = b.panel_b(ib);
                     self.prefetch(a, b);
@@ -307,25 +326,8 @@ where
                     c.set_from_tile(ia, n / nr, mr, n % nr, &tmpc);
                 }
             }
-        }
-        if m % mr != 0 {
-            let ref panel_a = a.panel_a(m / mr);
-            if K::nr() == 1 && n == 1 {
-                let ref b = b.panel_b(0);
-                self.prefetch(panel_a, b);
-                scratch.clear();
-                let tmpc = scratch.tmp_tile_c(c.item_size(), mr, nr);
-                let non_linear = scratch.for_tile::<K>(&non_linear, m / mr, 0, c);
-                let err = K::kernel(&MatMatMulKerSpec {
-                    a: panel_a as _,
-                    b: b as _,
-                    c: &tmpc,
-                    linear,
-                    non_linear,
-                });
-                debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                c.set_from_tile(m / mr, 0, m % mr, nr, &tmpc);
-            } else {
+            if m % mr != 0 {
+                let ref panel_a = a.panel_a(m / mr);
                 for ib in 0..n / nr {
                     let ref b = b.panel_b(ib);
                     self.prefetch(panel_a, b);
