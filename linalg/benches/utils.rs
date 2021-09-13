@@ -1,20 +1,19 @@
 #![allow(dead_code)]
 use criterion::*;
 use tract_data::internal::*;
-use tract_linalg::frame::mmm::InputStore;
-use tract_linalg::frame::mmm::OutputStore;
+use tract_linalg::frame::mmm::{FusedSpec, InputStore, OutputStore};
 use tract_linalg::frame::MatMatMul;
 
 use DatumType::*;
 
-pub fn packed_packed(c: &mut Criterion, name: &str, m: usize, k: usize, n: usize, tr: bool) {
+pub fn packed_packed(c: &mut Criterion, name: &str, m: usize, k: usize, n: usize) {
     let mut group = c.benchmark_group(format!("{}/packed_packed", name));
     group.throughput(Throughput::Elements((m * k * n) as u64));
     let id = format!("{}x{}x{}", m, k, n);
-    group.bench_with_input(BenchmarkId::new("f32/cold", &id), &(F32, m, k, n, true, tr), mat_mat);
-    group.bench_with_input(BenchmarkId::new("f32/hot", &id), &(F32, m, k, n, false, tr), mat_mat);
-    group.bench_with_input(BenchmarkId::new("i8/cold", &id), &(I8, m, k, n, true, tr), mat_mat);
-    group.bench_with_input(BenchmarkId::new("i8/hot", &id), &(I8, m, k, n, false, tr), mat_mat);
+    group.bench_with_input(BenchmarkId::new("f32/cold", &id), &(F32, m, k, n, true), mat_mat);
+    group.bench_with_input(BenchmarkId::new("f32/hot", &id), &(F32, m, k, n, false), mat_mat);
+    group.bench_with_input(BenchmarkId::new("i8/cold", &id), &(I8, m, k, n, true), mat_mat);
+    group.bench_with_input(BenchmarkId::new("i8/hot", &id), &(I8, m, k, n, false), mat_mat);
 }
 
 pub fn packed_vec(c: &mut Criterion, name: &str, m: usize, k: usize, n: usize) {
@@ -60,7 +59,6 @@ unsafe fn run(
     mm: &dyn MatMatMul,
     pa: &InputStore,
     pb: &InputStore,
-    c: &mut OutputStore,
     cold: bool,
 ) {
     let mut scratch = mm.allocate_scratch_space();
@@ -71,7 +69,7 @@ unsafe fn run(
                 ruin_cache();
             }
             let instant = std::time::Instant::now();
-            mm.run_with_scratch_space(m, k, n, scratch.as_mut(), &pa, &pb, c, &[]).unwrap();
+            mm.run_with_scratch_space(m, k, n, scratch.as_mut(), &pa, &pb, &[]).unwrap();
             let time = instant.elapsed();
             dur += time;
         }
@@ -79,16 +77,11 @@ unsafe fn run(
     });
 }
 
-fn mat_mat(
-    be: &mut Bencher,
-    &(dt, m, k, n, cold, c_trans): &(DatumType, usize, usize, usize, bool, bool),
-) {
+fn mat_mat(be: &mut Bencher, &(dt, m, k, n, cold): &(DatumType, usize, usize, usize, bool)) {
     let mm = tract_linalg::ops().mmm(dt, dt, dt, Some(m), Some(k), Some(n)).unwrap();
     let pa = Tensor::zero_aligned_dt(dt, &[mm.a_pack(k).len(m)], mm.a_pack(k).alignment()).unwrap();
     let pb = Tensor::zero_aligned_dt(dt, &[mm.b_pack(k).len(n)], mm.b_pack(k).alignment()).unwrap();
-    let mut c = Tensor::zero_dt(dt, &if c_trans { [n, m] } else { [m, n] }).unwrap();
     unsafe {
-        let c_sto = if c_trans { mm.c_view_with_axis(1, 0) } else { mm.c_view() };
         run(
             m,
             k,
@@ -97,7 +90,6 @@ fn mat_mat(
             &*mm,
             &mm.a_packed(dt.size_of(), k).wrap(&pa.view()),
             &mm.b_packed(dt.size_of(), k).wrap(&pb.view()),
-            &mut c_sto.wrap(&mut c.view_mut()),
             cold,
         );
     }
@@ -108,7 +100,6 @@ fn mat_vec(be: &mut Bencher, &(dt, m, k, n, cold): &(DatumType, usize, usize, us
     let mm = tract_linalg::ops().mmm(dt, dt, dt, Some(m), Some(k), Some(n)).unwrap();
     let pa = Tensor::zero_aligned_dt(dt, &[mm.a_pack(k).len(m)], mm.a_pack(k).alignment()).unwrap();
     let pb = Tensor::zero_dt(dt, &[k, 1]).unwrap();
-    let mut c = Tensor::zero_dt(dt, &[m, n]).unwrap();
     unsafe {
         run(
             m,
@@ -118,7 +109,6 @@ fn mat_vec(be: &mut Bencher, &(dt, m, k, n, cold): &(DatumType, usize, usize, us
             &*mm,
             &mm.a_packed(dt.size_of(), k).wrap(&pa.view()),
             &mm.b_packed(dt.size_of(), k).wrap(&pb.view()),
-            &mut mm.c_view().wrap(&mut c.view_mut()),
             cold,
         );
     }
@@ -154,8 +144,7 @@ fn direct_conv_mmm_f32(be: &mut Bencher, geo: &ConvGeo) {
                 &mm.a_packed(f32::datum_type().size_of(), k).wrap(&pa.view()),
                 &mm.b_from_data_and_offsets(c.datum_type().size_of(), &rows_offsets, &cols_offsets)
                     .wrap(&pb.view()),
-                &mut mm.c_view().wrap(&c.view_mut()),
-                &[],
+                &[FusedSpec::Store(&mm.c_view().wrap(&c.view_mut()))],
             )
         })
     }
@@ -182,8 +171,7 @@ fn direct_conv_i8(be: &mut Bencher, geo: &ConvGeo) {
                     &cols_offsets,
                 )
                 .wrap(&pb.view()),
-                &mut mm.c_view().wrap(&c.view_mut()),
-                &[],
+                &[FusedSpec::Store(&mm.c_view().wrap(&c.view_mut()))],
             )
         })
     }

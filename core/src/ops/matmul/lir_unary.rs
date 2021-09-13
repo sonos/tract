@@ -1,7 +1,10 @@
 use crate::internal::*;
 use ndarray::*;
 
-use tract_linalg::mmm::{FusedSpec, MatMatMul, InputStoreSpec, RoundingPolicy, ScratchSpace};
+use tract_linalg::mmm::{
+    FusedSpec, InputStoreSpec, MatMatMul, OutputStore, OutputStoreSpec, RoundingPolicy,
+    ScratchSpace,
+};
 
 #[derive(PartialEq, Clone, Hash, Debug)]
 pub enum ProtoFusedSpec {
@@ -20,7 +23,12 @@ pub enum ProtoFusedSpec {
 }
 
 impl ProtoFusedSpec {
-    pub fn resolve<'t>(&'t self, inputs: &'t [Arc<Tensor>]) -> FusedSpec<'t> {
+    pub fn resolve<'t>(
+        &'t self,
+        inputs: &'t [Arc<Tensor>],
+        output_spec: &'t OutputStoreSpec,
+        output: &'t OutputStore,
+    ) -> FusedSpec<'t> {
         match self {
             ProtoFusedSpec::Min(v) => FusedSpec::Min(v.tensor(inputs)),
             ProtoFusedSpec::Max(v) => FusedSpec::Max(v.tensor(inputs)),
@@ -33,9 +41,11 @@ impl ProtoFusedSpec {
             ProtoFusedSpec::AddRowColProducts(row, col) => {
                 FusedSpec::AddRowColProducts(row.tensor(inputs), col.tensor(inputs))
             }
-            ProtoFusedSpec::AddUnicast(v) => FusedSpec::AddUnicast(v.tensor(inputs).view()),
+            ProtoFusedSpec::AddUnicast(v) => unsafe {
+                FusedSpec::AddUnicast(Cow::Owned(output_spec.wrap(&v.tensor(inputs).view())))
+            },
             ProtoFusedSpec::QScale(s, rp, m) => FusedSpec::QScale(*s, *rp, *m),
-            ProtoFusedSpec::Store => FusedSpec::Store,
+            ProtoFusedSpec::Store => FusedSpec::Store(output),
         }
     }
 }
@@ -233,7 +243,11 @@ fn eval(
                     c_view.offset_axis_unchecked(ix, dim as isize);
                 }
                 let (pa, fused) = ops.iter().next().unwrap();
-                let f: Vec<FusedSpec> = fused.iter().map(|f| f.resolve(inputs)).collect::<Vec<_>>();
+                let c_store = c_storage.wrap(&c_view);
+                let f: Vec<FusedSpec> = fused
+                    .iter()
+                    .map(|f| f.resolve(inputs, &c_storage, &c_store))
+                    .collect::<Vec<_>>();
                 op.mmm.run_with_scratch_space(
                     geometry.m,
                     geometry.k,
@@ -243,13 +257,13 @@ fn eval(
                     &geometry
                         .b_storage
                         .wrap(&TensorView::at_prefix_unchecked(&inputs[0], &*b_prefix)),
-                    &mut c_storage.wrap(&c_view),
                     &f,
                 )?;
             }
         } else {
             let (pa, fused) = op.micro_ops.iter().next().unwrap();
-            let f: Vec<FusedSpec> = fused.iter().map(|f| f.resolve(inputs)).collect::<Vec<_>>();
+            let c_store = c_storage.wrap(&c.view_mut());
+            let f: Vec<FusedSpec> = fused.iter().map(|f| f.resolve(inputs, &c_storage, &c_store)).collect::<Vec<_>>();
             op.mmm.run_with_scratch_space(
                 geometry.m,
                 geometry.k,
@@ -257,7 +271,6 @@ fn eval(
                 scratch,
                 &op.mmm.a_packed(a_dt.size_of(), geometry.k).wrap(&pa.view()),
                 &geometry.b_storage.wrap(&inputs[0].view()),
-                &mut c_storage.wrap(&c.view_mut()),
                 &f,
             )?;
         }

@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use super::OutputStoreKer;
+use super::{OutputStore, OutputStoreKer};
 use tract_data::internal::*;
 
 #[repr(usize)]
@@ -26,9 +26,9 @@ pub enum FusedSpec<'t> {
     AddRowColProducts(&'t Tensor, &'t Tensor),
     ScalarMul(&'t Tensor),
     ScalarAdd(&'t Tensor),
-    AddUnicast(TensorView<'t>),
+    AddUnicast(std::borrow::Cow<'t, OutputStore>),
     QScale(usize, RoundingPolicy, i32),
-    Store,
+    Store(&'t OutputStore),
 }
 
 #[repr(C, usize)]

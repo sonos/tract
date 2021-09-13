@@ -48,11 +48,10 @@ pub trait MatMatMul:
         n: usize,
         a: &InputStore,
         b: &InputStore,
-        c: &mut OutputStore,
         non_linear: &[FusedSpec],
     ) -> anyhow::Result<()> {
         let mut scratch = self.allocate_scratch_space();
-        self.run_with_scratch_space(m, k, n, &mut *scratch, a, b, c, non_linear)
+        self.run_with_scratch_space(m, k, n, &mut *scratch, a, b, non_linear)
     }
 
     unsafe fn allocate_scratch_space(&self) -> Box<dyn ScratchSpace>;
@@ -65,7 +64,6 @@ pub trait MatMatMul:
         scratch: &mut dyn ScratchSpace,
         a: &InputStore,
         b: &InputStore,
-        c: &mut OutputStore,
         non_linear: &[FusedSpec],
     ) -> anyhow::Result<()>;
 
@@ -76,7 +74,6 @@ pub trait MatMatMul:
         scratch: &mut dyn ScratchSpace,
         a: &InputStore,
         b: &InputStore,
-        c: &mut OutputStore,
         non_linear: &[FusedSpec],
     ) -> anyhow::Result<()>;
 }
@@ -259,7 +256,6 @@ where
         scratch: &mut dyn ScratchSpace,
         a: &InputStore,
         b: &InputStore,
-        c: &mut OutputStore,
         non_linear: &[FusedSpec],
     ) -> anyhow::Result<()> {
         let mr = K::mr();
@@ -272,7 +268,7 @@ where
             let ref b = b.panel_b(0);
             self.prefetch(a, b);
             scratch.clear();
-            let non_linear_ker = scratch.for_tile::<K>(&non_linear, ia, 0, c, true);
+            let non_linear_ker = scratch.for_tile::<K>(&non_linear, ia, 0, true);
             let err = K::kernel(&MatMatMulKerSpec {
                 a: a as _,
                 b: b as _,
@@ -286,7 +282,7 @@ where
             let ref b = b.panel_b(0);
             self.prefetch(panel_a, b);
             scratch.clear();
-            let non_linear_ker = scratch.for_tile::<K>(&non_linear, m / mr, 0, c, false);
+            let non_linear_ker = scratch.for_tile::<K>(&non_linear, m / mr, 0, false);
             let err = K::kernel(&MatMatMulKerSpec {
                 a: panel_a as _,
                 b: b as _,
@@ -294,7 +290,7 @@ where
                 non_linear: non_linear_ker,
             });
             debug_assert_eq!(err, 0, "Kernel return error {}", err);
-            scratch.postprocess_tile::<K>(&non_linear, non_linear_ker, m / mr, 0, c, m % mr, 1);
+            scratch.postprocess_tile::<K>(&non_linear, non_linear_ker, m / mr, 0, m % mr, 1);
         }
         Ok(())
     }
@@ -307,13 +303,12 @@ where
         scratch: &mut dyn ScratchSpace,
         a: &InputStore,
         b: &InputStore,
-        c: &mut OutputStore,
         non_linear: &[FusedSpec],
     ) -> anyhow::Result<()> {
         let mr = K::mr();
         let nr = K::nr();
         if n == 1 && K::nr() == 1 {
-            return self.run_with_scratch_space_vec(m, k, scratch, a, b, c, &non_linear);
+            return self.run_with_scratch_space_vec(m, k, scratch, a, b, &non_linear);
         }
         let scratch = scratch
             .downcast_mut::<ScratchSpaceFusedNonLinear<TI>>()
@@ -325,7 +320,7 @@ where
                 let ref b = b.panel_b(ib);
                 self.prefetch(a, b);
                 scratch.clear();
-                let non_linear_ker = scratch.for_tile::<K>(&non_linear, ia, ib, c, true);
+                let non_linear_ker = scratch.for_tile::<K>(&non_linear, ia, ib, true);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: a as _,
                     b: b as _,
@@ -338,7 +333,7 @@ where
                 let ref b = b.panel_b(n / nr);
                 self.prefetch(a, b);
                 scratch.clear();
-                let non_linear_ker = scratch.for_tile::<K>(&non_linear, ia, n / nr, c, false);
+                let non_linear_ker = scratch.for_tile::<K>(&non_linear, ia, n / nr, false);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: a as _,
                     b: b as _,
@@ -346,15 +341,7 @@ where
                     non_linear: non_linear_ker,
                 });
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                scratch.postprocess_tile::<K>(
-                    &non_linear,
-                    non_linear_ker,
-                    ia,
-                    n / nr,
-                    c,
-                    mr,
-                    n % nr,
-                );
+                scratch.postprocess_tile::<K>(&non_linear, non_linear_ker, ia, n / nr, mr, n % nr);
             }
         }
         if m % mr != 0 {
@@ -363,7 +350,7 @@ where
                 let ref b = b.panel_b(ib);
                 self.prefetch(panel_a, b);
                 scratch.clear();
-                let non_linear_ker = scratch.for_tile::<K>(&non_linear, m / mr, ib, c, false);
+                let non_linear_ker = scratch.for_tile::<K>(&non_linear, m / mr, ib, false);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: panel_a as _,
                     b: b as _,
@@ -371,21 +358,13 @@ where
                     non_linear: non_linear_ker,
                 });
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                scratch.postprocess_tile::<K>(
-                    &non_linear,
-                    non_linear_ker,
-                    m / mr,
-                    ib,
-                    c,
-                    m % mr,
-                    nr,
-                );
+                scratch.postprocess_tile::<K>(&non_linear, non_linear_ker, m / mr, ib, m % mr, nr);
             }
             if n % nr != 0 {
                 let ref b = b.panel_b(n / nr);
                 self.prefetch(panel_a, b);
                 scratch.clear();
-                let non_linear_ker = scratch.for_tile::<K>(&non_linear, m / mr, n / nr, c, false);
+                let non_linear_ker = scratch.for_tile::<K>(&non_linear, m / mr, n / nr, false);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: panel_a as _,
                     b: b as _,
@@ -398,7 +377,6 @@ where
                     non_linear_ker,
                     m / mr,
                     n / nr,
-                    c,
                     m % mr,
                     n % nr,
                 );
