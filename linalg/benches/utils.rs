@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use criterion::*;
 use tract_data::internal::*;
-use tract_linalg::frame::mmm::{FusedSpec, InputStore, OutputStore};
+use tract_linalg::frame::mmm::{FusedSpec, InputStore};
 use tract_linalg::frame::MatMatMul;
 
 use DatumType::*;
@@ -144,7 +144,7 @@ fn direct_conv_mmm_f32(be: &mut Bencher, geo: &ConvGeo) {
                 &mm.a_packed(f32::datum_type().size_of(), k).wrap(&pa.view()),
                 &mm.b_from_data_and_offsets(c.datum_type().size_of(), &rows_offsets, &cols_offsets)
                     .wrap(&pb.view()),
-                &[FusedSpec::Store(&mm.c_view().wrap(&c.view_mut()))],
+                &[FusedSpec::Store(mm.c_view().wrap(&c.view_mut()))],
             )
         })
     }
@@ -171,7 +171,7 @@ fn direct_conv_i8(be: &mut Bencher, geo: &ConvGeo) {
                     &cols_offsets,
                 )
                 .wrap(&pb.view()),
-                &[FusedSpec::Store(&mm.c_view().wrap(&c.view_mut()))],
+                &[FusedSpec::Store(mm.c_view().wrap(&c.view_mut()))],
             )
         })
     }
