@@ -3,6 +3,7 @@ use std::fmt;
 use std::fmt::Debug;
 use tract_data::internal::*;
 
+#[derive(Clone, Copy, Debug)]
 pub enum OutputStoreSpec {
     View {
         axes: Option<(usize, usize)>,
@@ -19,7 +20,7 @@ pub enum OutputStoreSpec {
     },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct OutputStore {
     pub(crate) ptr: *mut c_void,
     pub(crate) row_byte_stride: isize,

@@ -26,9 +26,9 @@ pub enum FusedSpec<'t> {
     AddRowColProducts(&'t Tensor, &'t Tensor),
     ScalarMul(&'t Tensor),
     ScalarAdd(&'t Tensor),
-    AddUnicast(std::borrow::Cow<'t, OutputStore>),
+    AddUnicast(OutputStore),
     QScale(usize, RoundingPolicy, i32),
-    Store(&'t OutputStore),
+    Store(OutputStore),
 }
 
 #[repr(C, usize)]

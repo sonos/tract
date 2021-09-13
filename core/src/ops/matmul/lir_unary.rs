@@ -27,7 +27,7 @@ impl ProtoFusedSpec {
         &'t self,
         inputs: &'t [Arc<Tensor>],
         output_spec: &'t OutputStoreSpec,
-        output: &'t OutputStore,
+        output: OutputStore,
     ) -> FusedSpec<'t> {
         match self {
             ProtoFusedSpec::Min(v) => FusedSpec::Min(v.tensor(inputs)),
@@ -42,7 +42,7 @@ impl ProtoFusedSpec {
                 FusedSpec::AddRowColProducts(row.tensor(inputs), col.tensor(inputs))
             }
             ProtoFusedSpec::AddUnicast(v) => unsafe {
-                FusedSpec::AddUnicast(Cow::Owned(output_spec.wrap(&v.tensor(inputs).view())))
+                FusedSpec::AddUnicast(output_spec.wrap(&v.tensor(inputs).view()))
             },
             ProtoFusedSpec::QScale(s, rp, m) => FusedSpec::QScale(*s, *rp, *m),
             ProtoFusedSpec::Store => FusedSpec::Store(output),
@@ -246,7 +246,7 @@ fn eval(
                 let c_store = c_storage.wrap(&c_view);
                 let f: Vec<FusedSpec> = fused
                     .iter()
-                    .map(|f| f.resolve(inputs, &c_storage, &c_store))
+                    .map(|f| f.resolve(inputs, &c_storage, c_store))
                     .collect::<Vec<_>>();
                 op.mmm.run_with_scratch_space(
                     geometry.m,
@@ -263,7 +263,8 @@ fn eval(
         } else {
             let (pa, fused) = op.micro_ops.iter().next().unwrap();
             let c_store = c_storage.wrap(&c.view_mut());
-            let f: Vec<FusedSpec> = fused.iter().map(|f| f.resolve(inputs, &c_storage, &c_store)).collect::<Vec<_>>();
+            let f: Vec<FusedSpec> =
+                fused.iter().map(|f| f.resolve(inputs, &c_storage, c_store)).collect::<Vec<_>>();
             op.mmm.run_with_scratch_space(
                 geometry.m,
                 geometry.k,

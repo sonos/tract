@@ -304,8 +304,7 @@ where
             &op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view()),
             &op.b_packed(TB::datum_type().size_of(), k).wrap(&packed_b.view()),
             &[FusedSpec::Store(
-                &mut op
-                    .c_from_data_and_strides(TC::datum_type().size_of(), n as isize, 1)
+                op.c_from_data_and_strides(TC::datum_type().size_of(), n as isize, 1)
                     .wrap(&found.view_mut()),
             )],
         )
@@ -362,7 +361,7 @@ where
             1,
             &op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view()),
             &op.b_packed(b.datum_type().size_of(), k).wrap(&packed_b.view()),
-            &[FusedSpec::Store(&mut op.c_view().wrap(&c.view_mut()))],
+            &[FusedSpec::Store(op.c_view().wrap(&c.view_mut()))],
         )
         .unwrap();
 
@@ -415,20 +414,18 @@ where
     let c_store = op
         .c_from_data_and_strides(TC::datum_type().size_of(), n as isize, 1)
         .wrap(&mut found.view_mut());
-    {
-        let mut spec: TVec<FusedSpec> = spec.into();
-        spec.push(FusedSpec::Store(&c_store));
+    let mut spec: TVec<FusedSpec> = spec.into();
+    spec.push(FusedSpec::Store(c_store));
 
-        op.run(
-            m,
-            k,
-            n,
-            &op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view()),
-            &op.b_packed(TB::datum_type().size_of(), k).wrap(&packed_b.view()),
-            &spec,
-        )
-        .unwrap();
-    }
+    op.run(
+        m,
+        k,
+        n,
+        &op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view()),
+        &op.b_packed(TB::datum_type().size_of(), k).wrap(&packed_b.view()),
+        &spec,
+    )
+    .unwrap();
     let mut inter = Tensor::zero::<TI>(&[m, n]).unwrap();
     for x in 0..n {
         for y in 0..m {
@@ -558,7 +555,7 @@ where
         m,
         k,
         n,
-        &[FusedSpec::AddUnicast(std::borrow::Cow::Owned(store_spec.wrap(&d.view())))],
+        &[FusedSpec::AddUnicast(store_spec.wrap(&d.view()))],
         |exp| {
             for x in 0..n {
                 for y in 0..m {
@@ -712,8 +709,7 @@ impl<TA: LADatum, TB: LADatum> ConvProblem<TA, TB> {
                 )
                 .wrap(&self.data.view()),
                 &[FusedSpec::Store(
-                    &mut op
-                        .c_from_data_and_strides(TC::datum_type().size_of(), self.n() as isize, 1)
+                    op.c_from_data_and_strides(TC::datum_type().size_of(), self.n() as isize, 1)
                         .wrap(&found.view_mut()),
                 )],
             )
