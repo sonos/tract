@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use super::Tile;
+use super::OutputStoreKer;
 use tract_data::internal::*;
 
 #[repr(usize)]
@@ -37,7 +37,7 @@ pub enum FusedKerSpec<TI: Copy> {
     Done,
     Min(TI),
     Max(TI),
-    AddUnicast(Tile),
+    AddUnicast(OutputStoreKer),
     PerRowMul(*const TI),
     PerRowAdd(*const TI),
     PerColMul(*const TI),
@@ -46,7 +46,7 @@ pub enum FusedKerSpec<TI: Copy> {
     ScalarMul(TI),
     ScalarAdd(TI),
     QScale(usize, RoundingPolicy, i32),
-    Store(Tile),
+    Store(OutputStoreKer),
 }
 
 #[cfg(test)]
@@ -66,7 +66,7 @@ pub mod test {
         assert_eq!(std::mem::size_of::<RoundingPolicy>(), std::mem::size_of::<usize>());
         assert_eq!(
             std::mem::size_of::<super::FusedKerSpec<f32>>(),
-            std::mem::size_of::<usize>() + std::mem::size_of::<Tile>()
+            std::mem::size_of::<usize>() + std::mem::size_of::<OutputStoreKer>()
         );
         assert_eq!(
             std::mem::size_of::<super::FusedKerSpec<f32>>(),
@@ -292,12 +292,12 @@ pub mod test {
         };
     }
 
-    pub fn null_packed_storage() -> PanelStore {
-        PanelStore::Packed { ptr: std::ptr::null() }
+    pub fn null_packed_storage() -> InputStoreKer {
+        InputStoreKer::Packed { ptr: std::ptr::null() }
     }
 
-    pub fn mmm_stride_storage<T: Copy>(v: &mut [T], rsc: usize) -> Tile {
-        Tile {
+    pub fn mmm_stride_storage<T: Copy>(v: &mut [T], rsc: usize) -> OutputStoreKer {
+        OutputStoreKer {
             ptr: v.as_mut_ptr() as _,
             row_byte_stride: (std::mem::size_of::<T>() * rsc) as isize,
             col_byte_stride: std::mem::size_of::<T>() as isize,
@@ -376,7 +376,7 @@ pub mod test {
             (0..len).map(|ix| (AsPrimitive::<TI>::as_(ix) + d[ix]).as_()).collect::<Vec<TC>>();
         let found = fused_ops::<K, TC, TI>(
             &*v,
-            &[FusedKerSpec::AddUnicast(Tile {
+            &[FusedKerSpec::AddUnicast(OutputStoreKer {
                 ptr: d.as_ptr() as _,
                 row_byte_stride: (K::nr() * std::mem::size_of::<TI>()) as isize,
                 col_byte_stride: (std::mem::size_of::<TI>()) as isize,

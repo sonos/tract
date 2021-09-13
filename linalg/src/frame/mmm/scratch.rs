@@ -1,7 +1,7 @@
 use num_traits::Zero;
 use std::fmt::Debug;
 
-use super::{FusedKerSpec, FusedSpec, MatMatMulKer, MatrixStore, Tile};
+use super::{FusedKerSpec, FusedSpec, MatMatMulKer, OutputStore, OutputStoreKer};
 use downcast_rs::{impl_downcast, Downcast};
 use tract_data::prelude::*;
 
@@ -61,7 +61,7 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
         specs: &[FusedSpec],
         down: usize,
         right: usize,
-        c_store: &MatrixStore,
+        c_store: &OutputStore,
         valid: bool,
     ) -> *const FusedKerSpec<TI>
     where
@@ -86,7 +86,7 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
         specs: &[FusedSpec],
         down: usize,
         right: usize,
-        c_store: &MatrixStore,
+        c_store: &OutputStore,
         valid: bool,
     ) -> *const FusedKerSpec<TI>
     where
@@ -150,38 +150,31 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                 FusedSpec::ScalarMul(t) => FusedKerSpec::ScalarMul(*t.to_scalar_unchecked()),
                 FusedSpec::ScalarAdd(t) => FusedKerSpec::ScalarAdd(*t.to_scalar_unchecked()),
                 FusedSpec::AddUnicast(tensor) => {
-                    let (rsc, csc, item_count) = match c_store {
-                        MatrixStore::Strides {
-                            row_item_stride,
-                            col_item_stride,
-                            item_count,
-                            ..
-                        } => (*row_item_stride, *col_item_stride, *item_count),
-                        _ => panic!(),
-                    };
-                    let tile_offset = rsc * down as isize * K::mr() as isize
-                        + csc * right as isize * K::nr() as isize;
+                    let row_item_stride = c_store.row_item_stride;
+                    let col_item_stride = c_store.col_item_stride;
+                    let tile_offset = row_item_stride * down as isize * K::mr() as isize
+                        + col_item_stride * right as isize * K::nr() as isize;
                     let tile_ptr: *const TI = tensor.as_ptr_unchecked::<TI>().offset(tile_offset);
 
                     if valid {
-                        FusedKerSpec::AddUnicast(Tile {
+                        FusedKerSpec::AddUnicast(OutputStoreKer {
                             ptr: tile_ptr as _,
-                            row_byte_stride: (rsc as usize * std::mem::size_of::<TI>()) as isize,
-                            col_byte_stride: (csc as usize * std::mem::size_of::<TI>()) as isize,
+                            row_byte_stride: (row_item_stride as usize * std::mem::size_of::<TI>()) as isize,
+                            col_byte_stride: (col_item_stride as usize * std::mem::size_of::<TI>()) as isize,
                             item_size: std::mem::size_of::<TI>(),
                         })
                     } else {
                         let tmp_d_tile = self.get_temp_slice::<TI>(K::mr() * K::nr());
                         for r in 0..K::mr() as isize {
                             for c in 0..K::nr() as isize {
-                                let inner_offset = c * csc + r * rsc;
-                                if inner_offset + tile_offset < item_count as isize {
+                                let inner_offset = c * col_item_stride + r * row_item_stride;
+                                if inner_offset + tile_offset < c_store.item_count as isize {
                                     tmp_d_tile[r as usize + c as usize * K::mr()] =
                                         *tile_ptr.offset(inner_offset);
                                 }
                             }
                         }
-                        FusedKerSpec::AddUnicast(Tile {
+                        FusedKerSpec::AddUnicast(OutputStoreKer {
                             ptr: tmp_d_tile.as_ptr() as _,
                             row_byte_stride: std::mem::size_of::<TI>() as isize,
                             col_byte_stride: (std::mem::size_of::<TI>() * K::mr()) as isize,
@@ -206,9 +199,9 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
     }
 
     #[inline]
-    pub unsafe fn tmp_tile_c(&mut self, item_size: usize, mr: usize, nr: usize) -> Tile {
+    pub unsafe fn tmp_tile_c(&mut self, item_size: usize, mr: usize, nr: usize) -> OutputStoreKer {
         let ptr = self.get_raw_buffer(mr * nr * item_size);
-        Tile {
+        OutputStoreKer {
             ptr: ptr as _,
             item_size,
             row_byte_stride: item_size as isize,
@@ -222,7 +215,7 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
         ker_specs: *const FusedKerSpec<TI>,
         down: usize,
         right: usize,
-        c_store: &mut MatrixStore,
+        c_store: &mut OutputStore,
         m_remnant: usize,
         n_remnant: usize,
     ) where

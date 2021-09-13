@@ -8,8 +8,8 @@ pub struct MatMatMulKerSpec<'a, TI>
 where
     TI: Copy + Debug,
 {
-    pub a: &'a PanelStore,
-    pub b: &'a PanelStore,
+    pub a: &'a InputStoreKer,
+    pub b: &'a InputStoreKer,
     pub linear: &'a LinearSpec,
     pub non_linear: *const FusedKerSpec<TI>,
 }
@@ -365,8 +365,8 @@ pub mod test {
                 non_linear_ops.push(FusedKerSpec::Store(c));
                 non_linear_ops.push(FusedKerSpec::Done);
                 let err = K::kernel(&MatMatMulKerSpec {
-                    a: &PanelStore::Packed { ptr: pa.as_ptr_unchecked::<TA>() as _ },
-                    b: &PanelStore::Packed { ptr: pb.as_ptr_unchecked::<TB>() as _ },
+                    a: &InputStoreKer::Packed { ptr: pa.as_ptr_unchecked::<TA>() as _ },
+                    b: &InputStoreKer::Packed { ptr: pb.as_ptr_unchecked::<TB>() as _ },
                     linear: &LinearSpec::k(self.k),
                     non_linear: non_linear_ops.as_ptr(),
                 });
@@ -488,8 +488,8 @@ pub mod test {
             non_linear_ops.push(FusedKerSpec::Store(c));
             non_linear_ops.push(FusedKerSpec::Done);
             let err = K::kernel(&MatMatMulKerSpec {
-                a: &PanelStore::Packed { ptr: unsafe { pa.as_ptr_unchecked::<TA>() as _ } },
-                b: &PanelStore::OffsetsAndPtrs {
+                a: &InputStoreKer::Packed { ptr: unsafe { pa.as_ptr_unchecked::<TA>() as _ } },
+                b: &InputStoreKer::OffsetsAndPtrs {
                     row_byte_offsets: rows_offset.as_ptr(),
                     col_ptrs: col_ptrs.as_ptr() as _,
                 },
@@ -524,8 +524,8 @@ pub mod test {
         assert_eq!(pb.run(), pb.reference())
     }
 
-    pub fn mmm_stride_storage<T: Copy>(v: &mut [T], rsc: usize, csc: usize) -> Tile {
-        Tile {
+    pub fn mmm_stride_storage<T: Copy>(v: &mut [T], rsc: usize, csc: usize) -> OutputStoreKer {
+        OutputStoreKer {
             ptr: v.as_mut_ptr() as _,
             row_byte_stride: (std::mem::size_of::<T>() * rsc) as isize,
             col_byte_stride: (std::mem::size_of::<T>() * csc) as isize,
@@ -555,8 +555,8 @@ pub mod test {
         non_linear_ops.push(FusedKerSpec::Store(c));
         non_linear_ops.push(FusedKerSpec::Done);
         let err = K::kernel(&MatMatMulKerSpec {
-            a: &PanelStore::Packed { ptr: unsafe { pa.as_ptr_unchecked::<TA>() as _ } },
-            b: &PanelStore::OffsetsAndPtrs {
+            a: &InputStoreKer::Packed { ptr: unsafe { pa.as_ptr_unchecked::<TA>() as _ } },
+            b: &InputStoreKer::OffsetsAndPtrs {
                 col_ptrs: col_ptrs.as_ptr(),
                 row_byte_offsets: row_byte_offsets.as_ptr(),
             },
@@ -602,8 +602,8 @@ pub mod test {
         non_linear_ops.push(FusedKerSpec::Store(tile));
         non_linear_ops.push(FusedKerSpec::Done);
         let err = K::kernel(&MatMatMulKerSpec {
-            a: &PanelStore::Packed { ptr: unsafe { pa.as_ptr_unchecked::<TA>() as _ } },
-            b: &PanelStore::Packed { ptr: b.as_ptr() as _ },
+            a: &InputStoreKer::Packed { ptr: unsafe { pa.as_ptr_unchecked::<TA>() as _ } },
+            b: &InputStoreKer::Packed { ptr: b.as_ptr() as _ },
             linear: &LinearSpec::k(k),
             non_linear: non_linear_ops.as_ptr(),
         });

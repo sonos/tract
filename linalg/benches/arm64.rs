@@ -4,7 +4,7 @@ use tract_data::prelude::*;
 use tract_linalg::frame::mmm::LinearSpec;
 use tract_linalg::frame::mmm::MatMatMulKer;
 use tract_linalg::frame::mmm::MatMatMulKerSpec;
-use tract_linalg::mmm::{PanelStore, Tile};
+use tract_linalg::mmm::{InputStoreKer, OutputStoreKer};
 
 fn ruin_cache() {
     let _a = (0..1000000).collect::<Vec<i32>>();
@@ -26,9 +26,9 @@ fn bench_to_nanos<T: Datum + Copy + num_traits::Zero, K: MatMatMulKer<T>>(
     )
     .unwrap();
     let mut c = Tensor::zero::<T>(&[K::mr() * K::nr()]).unwrap();
-    let ref a = PanelStore::Packed { ptr: unsafe { a.as_ptr_unchecked::<u8>() as _ } };
-    let ref b = PanelStore::Packed { ptr: unsafe { b.as_ptr_unchecked::<u8>() as _ } };
-    let ref c = Tile {
+    let ref a = InputStoreKer::Packed { ptr: unsafe { a.as_ptr_unchecked::<u8>() as _ } };
+    let ref b = InputStoreKer::Packed { ptr: unsafe { b.as_ptr_unchecked::<u8>() as _ } };
+    let ref c = OutputStoreKer {
         ptr: unsafe { c.as_ptr_mut_unchecked::<u8>() as _ },
         item_size,
         col_byte_stride: (item_size * K::mr()) as isize,

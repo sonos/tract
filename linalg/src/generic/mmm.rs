@@ -6,7 +6,7 @@ use tract_data::prelude::*;
 
 use super::*;
 use crate::frame::mmm::LinearSpec::*;
-use crate::frame::mmm::PanelStore::*;
+use crate::frame::mmm::InputStoreKer::*;
 use crate::frame::mmm::*;
 
 use num_traits::sign::Signed;
@@ -703,7 +703,7 @@ where
     }
 }
 
-unsafe fn store_t<TC, TI, AB>(tile: &Tile, ab: &[AB])
+unsafe fn store_t<TC, TI, AB>(tile: &OutputStoreKer, ab: &[AB])
 where
     TC: Copy,
     AB: AsRef<[TI]> + fmt::Debug,
@@ -720,7 +720,7 @@ where
     }
 }
 
-unsafe fn store<TI, AB>(tile: &Tile, ab: &[AB])
+unsafe fn store<TI, AB>(tile: &OutputStoreKer, ab: &[AB])
 where
     AB: AsRef<[TI]> + fmt::Debug,
 {
@@ -731,7 +731,7 @@ where
     }
 }
 
-unsafe fn add_unicast<TI, AB>(tile: &Tile, ab: &mut [AB])
+unsafe fn add_unicast<TI, AB>(tile: &OutputStoreKer, ab: &mut [AB])
 where
     TI: Datum + ops::AddAssign<TI> + Copy,
     AB: AsMut<[TI]> + fmt::Debug,

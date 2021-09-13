@@ -22,33 +22,33 @@ pub trait MatMatMul:
 
     fn internal_type(&self) -> DatumType;
 
-    unsafe fn a_packed(&self, item_size: usize, k: usize) -> MatrixStoreSpec;
+    unsafe fn a_packed(&self, item_size: usize, k: usize) -> InputStoreSpec;
 
-    unsafe fn b_packed(&self, item_size: usize, k: usize) -> MatrixStoreSpec;
+    unsafe fn b_packed(&self, item_size: usize, k: usize) -> InputStoreSpec;
     unsafe fn b_from_data_and_offsets(
         &self,
         item_size: usize,
         rows_offsets: &[isize],
         cols_offsets: &[isize],
-    ) -> MatrixStoreSpec;
+    ) -> InputStoreSpec;
 
-    unsafe fn c_view(&self) -> MatrixStoreSpec;
-    unsafe fn c_view_with_axis(&self, m_axis: usize, n_axis: usize) -> MatrixStoreSpec;
+    unsafe fn c_view(&self) -> OutputStoreSpec;
+    unsafe fn c_view_with_axis(&self, m_axis: usize, n_axis: usize) -> OutputStoreSpec;
     unsafe fn c_from_data_and_strides(
         &self,
         item_size: usize,
         row_stride: isize,
         col_stride: isize,
-    ) -> MatrixStoreSpec;
+    ) -> OutputStoreSpec;
 
     unsafe fn run(
         &self,
         m: usize,
         k: usize,
         n: usize,
-        a: &MatrixStore,
-        b: &MatrixStore,
-        c: &mut MatrixStore,
+        a: &InputStore,
+        b: &InputStore,
+        c: &mut OutputStore,
         non_linear: &[FusedSpec],
     ) -> anyhow::Result<()> {
         let mut scratch = self.allocate_scratch_space();
@@ -63,9 +63,9 @@ pub trait MatMatMul:
         k: usize,
         n: usize,
         scratch: &mut dyn ScratchSpace,
-        a: &MatrixStore,
-        b: &MatrixStore,
-        c: &mut MatrixStore,
+        a: &InputStore,
+        b: &InputStore,
+        c: &mut OutputStore,
         non_linear: &[FusedSpec],
     ) -> anyhow::Result<()>;
 
@@ -74,9 +74,9 @@ pub trait MatMatMul:
         m: usize,
         k: usize,
         scratch: &mut dyn ScratchSpace,
-        a: &MatrixStore,
-        b: &MatrixStore,
-        c: &mut MatrixStore,
+        a: &InputStore,
+        b: &InputStore,
+        c: &mut OutputStore,
         non_linear: &[FusedSpec],
     ) -> anyhow::Result<()>;
 }
@@ -139,13 +139,13 @@ where
     }
 
     #[inline]
-    fn prefetch(&self, a: &PanelStore, b: &PanelStore) {
+    fn prefetch(&self, a: &InputStoreKer, b: &InputStoreKer) {
         if let Some(prefetch) = self.prefetch {
-            if let PanelStore::Packed { ptr } = a {
+            if let InputStoreKer::Packed { ptr } = a {
                 prefetch(*ptr as *const u8, 512);
             }
             match b {
-                PanelStore::Packed { ptr } => prefetch(*ptr as *const u8, 512),
+                InputStoreKer::Packed { ptr } => prefetch(*ptr as *const u8, 512),
                 _ => (),
             }
         }
@@ -183,12 +183,12 @@ where
         TI::datum_type()
     }
 
-    unsafe fn a_packed(&self, item_size: usize, k: usize) -> MatrixStoreSpec {
-        MatrixStoreSpec::Packed { panel_bytes: (k * K::mr() * item_size) }
+    unsafe fn a_packed(&self, item_size: usize, k: usize) -> InputStoreSpec {
+        InputStoreSpec::Packed { panel_bytes: (k * K::mr() * item_size) }
     }
 
-    unsafe fn b_packed(&self, item_size: usize, k: usize) -> MatrixStoreSpec {
-        MatrixStoreSpec::Packed { panel_bytes: (k * K::nr() * item_size) }
+    unsafe fn b_packed(&self, item_size: usize, k: usize) -> InputStoreSpec {
+        InputStoreSpec::Packed { panel_bytes: (k * K::nr() * item_size) }
     }
 
     unsafe fn b_from_data_and_offsets(
@@ -196,7 +196,7 @@ where
         item_size: usize,
         rows_offsets: &[isize],
         cols_offsets: &[isize],
-    ) -> MatrixStoreSpec {
+    ) -> InputStoreSpec {
         debug_assert!(rows_offsets.len() > 0);
         debug_assert!(cols_offsets.len() > 0);
         // repeat the last offset to get to the panel boundary (pad to next multiple of nr)
@@ -217,15 +217,15 @@ where
         for i in 0..4 {
             *row_byte_offsets.get_unchecked_mut(rows_offsets.len() + i) = pad;
         }
-        MatrixStoreSpec::OffsetsAndPtrs { col_byte_offsets, row_byte_offsets, nr: K::nr() }
+        InputStoreSpec::OffsetsAndPtrs { col_byte_offsets, row_byte_offsets, nr: K::nr() }
     }
 
-    unsafe fn c_view(&self) -> MatrixStoreSpec {
-        MatrixStoreSpec::View { axes: None, mr: K::mr(), nr: K::nr() }
+    unsafe fn c_view(&self) -> OutputStoreSpec {
+        OutputStoreSpec::View { axes: None, mr: K::mr(), nr: K::nr() }
     }
 
-    unsafe fn c_view_with_axis(&self, m_axis: usize, n_axis: usize) -> MatrixStoreSpec {
-        MatrixStoreSpec::View { axes: Some((m_axis, n_axis)), mr: K::mr(), nr: K::nr() }
+    unsafe fn c_view_with_axis(&self, m_axis: usize, n_axis: usize) -> OutputStoreSpec {
+        OutputStoreSpec::View { axes: Some((m_axis, n_axis)), mr: K::mr(), nr: K::nr() }
     }
 
     unsafe fn c_from_data_and_strides(
@@ -233,8 +233,8 @@ where
         item_size: usize,
         row_stride: isize,
         col_stride: isize,
-    ) -> MatrixStoreSpec {
-        MatrixStoreSpec::Strides {
+    ) -> OutputStoreSpec {
+        OutputStoreSpec::Strides {
             row_byte_stride: row_stride * item_size as isize,
             col_byte_stride: col_stride * item_size as isize,
             row_item_stride: row_stride,
@@ -257,9 +257,9 @@ where
         m: usize,
         k: usize,
         scratch: &mut dyn ScratchSpace,
-        a: &MatrixStore,
-        b: &MatrixStore,
-        c: &mut MatrixStore,
+        a: &InputStore,
+        b: &InputStore,
+        c: &mut OutputStore,
         non_linear: &[FusedSpec],
     ) -> anyhow::Result<()> {
         let mr = K::mr();
@@ -305,9 +305,9 @@ where
         k: usize,
         n: usize,
         scratch: &mut dyn ScratchSpace,
-        a: &MatrixStore,
-        b: &MatrixStore,
-        c: &mut MatrixStore,
+        a: &InputStore,
+        b: &InputStore,
+        c: &mut OutputStore,
         non_linear: &[FusedSpec],
     ) -> anyhow::Result<()> {
         let mr = K::mr();
