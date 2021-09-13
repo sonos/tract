@@ -3,6 +3,7 @@ extern crate criterion;
 extern crate tract_data;
 extern crate tract_linalg;
 use criterion::Criterion;
+use tract_linalg::frame::mmm::FusedSpec;
 
 use tract_data::internal::*;
 use DatumType::F32;
@@ -29,8 +30,7 @@ fn conv(c: &mut Criterion, dilation: usize, pulse: usize, ci: usize, co: usize) 
                 t,
                 &mm.a_packed(F32.size_of(), k).wrap(&mut a.view()),
                 &mm.b_packed(F32.size_of(), k).wrap(&input.view()),
-                &mut mm.c_view().wrap(&output.view_mut()),
-                &[],
+                &[FusedSpec::Store(&mm.c_view().wrap(&output.view_mut()))],
             )
             .unwrap()
         });

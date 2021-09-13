@@ -105,7 +105,7 @@ impl OutputStore {
 
     #[inline]
     pub(super) unsafe fn set_from_tile(
-        &mut self,
+        &self,
         down: usize,
         right: usize,
         height: usize,
@@ -121,7 +121,7 @@ impl OutputStore {
 
     #[inline]
     unsafe fn set_from_tile_t<T: Datum + Copy>(
-        &mut self,
+        &self,
         down: usize,
         right: usize,
         height: usize,

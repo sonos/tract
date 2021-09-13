@@ -1,7 +1,7 @@
 use num_traits::Zero;
 use std::fmt::Debug;
 
-use super::{FusedKerSpec, FusedSpec, MatMatMulKer, OutputStore, OutputStoreKer};
+use super::{FusedKerSpec, FusedSpec, MatMatMulKer, OutputStoreKer};
 use downcast_rs::{impl_downcast, Downcast};
 use tract_data::prelude::*;
 
@@ -61,23 +61,19 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
         specs: &[FusedSpec],
         down: usize,
         right: usize,
-        c_store: &OutputStore,
         valid: bool,
     ) -> *const FusedKerSpec<TI>
     where
         TI: Datum + Copy + Debug + Zero,
     {
         // inline fast track for trivial cases
-        if valid
-            && specs.len() == 1
-            && self.uspecs.len() == 2
-            && matches!(specs.get_unchecked(0), FusedSpec::Store)
-        {
-            *self.uspecs.get_unchecked_mut(0) = FusedKerSpec::Store(c_store.tile_c(down, right));
-            self.uspecs.as_ptr()
-        } else {
-            self.for_tile_ext::<K>(specs, down, right, c_store, valid)
+        if valid && specs.len() == 1 && self.uspecs.len() == 2 {
+            if let FusedSpec::Store(store) = specs.get_unchecked(0) {
+                *self.uspecs.get_unchecked_mut(0) = FusedKerSpec::Store(store.tile_c(down, right));
+                return self.uspecs.as_ptr();
+            }
         }
+        self.for_tile_ext::<K>(specs, down, right, valid)
     }
 
     #[inline(never)]
@@ -86,7 +82,6 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
         specs: &[FusedSpec],
         down: usize,
         right: usize,
-        c_store: &OutputStore,
         valid: bool,
     ) -> *const FusedKerSpec<TI>
     where
@@ -149,30 +144,29 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                 }
                 FusedSpec::ScalarMul(t) => FusedKerSpec::ScalarMul(*t.to_scalar_unchecked()),
                 FusedSpec::ScalarAdd(t) => FusedKerSpec::ScalarAdd(*t.to_scalar_unchecked()),
-                FusedSpec::AddUnicast(tensor) => {
-                    let row_item_stride = c_store.row_item_stride;
-                    let col_item_stride = c_store.col_item_stride;
-                    let tile_offset = row_item_stride * down as isize * K::mr() as isize
-                        + col_item_stride * right as isize * K::nr() as isize;
-                    let tile_ptr: *const TI = tensor.as_ptr_unchecked::<TI>().offset(tile_offset);
-
+                FusedSpec::AddUnicast(store) => {
                     if valid {
-                        FusedKerSpec::AddUnicast(OutputStoreKer {
-                            ptr: tile_ptr as _,
-                            row_byte_stride: (row_item_stride as usize * std::mem::size_of::<TI>()) as isize,
-                            col_byte_stride: (col_item_stride as usize * std::mem::size_of::<TI>()) as isize,
-                            item_size: std::mem::size_of::<TI>(),
-                        })
+                        FusedKerSpec::AddUnicast(store.tile_c(down, right))
                     } else {
+                        let row_byte_stride = store.row_byte_stride;
+                        let col_byte_stride = store.col_byte_stride;
+                        let tile_offset = row_byte_stride * down as isize * K::mr() as isize
+                            + col_byte_stride * right as isize * K::nr() as isize;
+                        let tile_ptr = store.ptr.offset(tile_offset);
                         let tmp_d_tile = self.get_temp_slice::<TI>(K::mr() * K::nr());
-                        for r in 0..K::mr() as isize {
-                            for c in 0..K::nr() as isize {
-                                let inner_offset = c * col_item_stride + r * row_item_stride;
-                                if inner_offset + tile_offset < c_store.item_count as isize {
-                                    tmp_d_tile[r as usize + c as usize * K::mr()] =
-                                        *tile_ptr.offset(inner_offset);
+                        if store.item_size == 4 {
+                            // assumes TI is f32 or i32
+                            for r in 0..K::mr() as isize {
+                                for c in 0..K::nr() as isize {
+                                    let inner_offset = c * col_byte_stride + r * row_byte_stride;
+                                    if inner_offset + tile_offset < 4 * store.item_count as isize {
+                                        tmp_d_tile[r as usize + c as usize * K::mr()] =
+                                            *(tile_ptr.offset(inner_offset) as *const TI);
+                                    }
                                 }
                             }
+                        } else {
+                            unreachable!();
                         }
                         FusedKerSpec::AddUnicast(OutputStoreKer {
                             ptr: tmp_d_tile.as_ptr() as _,
@@ -183,7 +177,7 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                     }
                 }
                 FusedSpec::QScale(s, rp, m) => FusedKerSpec::QScale(*s, *rp, *m),
-                FusedSpec::Store => {
+                FusedSpec::Store(c_store) => {
                     if valid {
                         FusedKerSpec::Store(c_store.tile_c(down, right))
                     } else {
@@ -215,7 +209,6 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
         ker_specs: *const FusedKerSpec<TI>,
         down: usize,
         right: usize,
-        c_store: &mut OutputStore,
         m_remnant: usize,
         n_remnant: usize,
     ) where
@@ -223,7 +216,8 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
     {
         for (i, spec) in specs.iter().enumerate() {
             let ker_spec = ker_specs.offset(i as isize);
-            if let (FusedSpec::Store, FusedKerSpec::Store(tmp)) = (spec, ker_spec.as_ref().unwrap())
+            if let (FusedSpec::Store(c_store), FusedKerSpec::Store(tmp)) =
+                (spec, ker_spec.as_ref().unwrap())
             {
                 c_store.set_from_tile(down, right, m_remnant, n_remnant, &tmp)
             }

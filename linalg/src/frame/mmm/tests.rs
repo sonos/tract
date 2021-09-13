@@ -303,10 +303,11 @@ where
             n,
             &op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view()),
             &op.b_packed(TB::datum_type().size_of(), k).wrap(&packed_b.view()),
-            &mut op
-                .c_from_data_and_strides(TC::datum_type().size_of(), n as isize, 1)
-                .wrap(&found.view_mut()),
-            &[FusedSpec::Store],
+            &[FusedSpec::Store(
+                &mut op
+                    .c_from_data_and_strides(TC::datum_type().size_of(), n as isize, 1)
+                    .wrap(&found.view_mut()),
+            )],
         )
         .unwrap();
 
@@ -361,8 +362,7 @@ where
             1,
             &op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view()),
             &op.b_packed(b.datum_type().size_of(), k).wrap(&packed_b.view()),
-            &mut op.c_view().wrap(&c.view_mut()),
-            &[FusedSpec::Store],
+            &[FusedSpec::Store(&mut op.c_view().wrap(&c.view_mut()))],
         )
         .unwrap();
 
@@ -412,22 +412,23 @@ where
     op.b_pack(k).pack(packed_b.view_mut(), b.view(), 0, 1);
 
     let mut found = Tensor::zero::<TC>(&[m, n]).unwrap();
-    let mut spec:TVec<FusedSpec> = spec.into();
-    spec.push(FusedSpec::Store);
+    let c_store = op
+        .c_from_data_and_strides(TC::datum_type().size_of(), n as isize, 1)
+        .wrap(&mut found.view_mut());
+    {
+        let mut spec: TVec<FusedSpec> = spec.into();
+        spec.push(FusedSpec::Store(&c_store));
 
-    op.run(
-        m,
-        k,
-        n,
-        &op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view()),
-        &op.b_packed(TB::datum_type().size_of(), k).wrap(&packed_b.view()),
-        &mut op
-            .c_from_data_and_strides(TC::datum_type().size_of(), n as isize, 1)
-            .wrap(&mut found.view_mut()),
-        &spec,
-    )
-    .unwrap();
-
+        op.run(
+            m,
+            k,
+            n,
+            &op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view()),
+            &op.b_packed(TB::datum_type().size_of(), k).wrap(&packed_b.view()),
+            &spec,
+        )
+        .unwrap();
+    }
     let mut inter = Tensor::zero::<TI>(&[m, n]).unwrap();
     for x in 0..n {
         for y in 0..m {
@@ -552,14 +553,21 @@ where
 {
     let d = (0..m * n).map(|i| i.as_()).collect::<Vec<TI>>();
     let d = tensor1(&*d).into_shape(&[m, n]).unwrap();
-    fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::AddUnicast(d.view())], |exp| {
-        for x in 0..n {
-            for y in 0..m {
-                exp[x + y * n] =
-                    (exp[x + y * n] + d.as_slice::<TI>().unwrap()[x + n * y]).as_().as_();
+    let store_spec = OutputStoreSpec::View { axes: None, mr: K::mr(), nr: K::nr() };
+    fused_op::<K, TA, TB, TC, TI, _>(
+        m,
+        k,
+        n,
+        &[FusedSpec::AddUnicast(std::borrow::Cow::Owned(store_spec.wrap(&d.view())))],
+        |exp| {
+            for x in 0..n {
+                for y in 0..m {
+                    exp[x + y * n] =
+                        (exp[x + y * n] + d.as_slice::<TI>().unwrap()[x + n * y]).as_().as_();
+                }
             }
-        }
-    })
+        },
+    )
 }
 
 pub unsafe fn max<K: MatMatMulKer<TI>, TA, TB, TC, TI>(
@@ -703,10 +711,11 @@ impl<TA: LADatum, TB: LADatum> ConvProblem<TA, TB> {
                     &self.data_cols_offsets(),
                 )
                 .wrap(&self.data.view()),
-                &mut op
-                    .c_from_data_and_strides(TC::datum_type().size_of(), self.n() as isize, 1)
-                    .wrap(&found.view_mut()),
-                &[FusedSpec::Store],
+                &[FusedSpec::Store(
+                    &mut op
+                        .c_from_data_and_strides(TC::datum_type().size_of(), self.n() as isize, 1)
+                        .wrap(&found.view_mut()),
+                )],
             )
             .unwrap();
             found
