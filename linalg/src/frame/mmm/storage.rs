@@ -3,16 +3,12 @@ use std::fmt;
 use std::fmt::Debug;
 use tract_data::internal::*;
 
-#[derive(PartialEq, Clone, Debug, Hash)]
-pub enum MatrixStoreSpec {
+pub enum OutputStoreSpec {
     View {
         axes: Option<(usize, usize)>,
         mr: usize,
         nr: usize,
     },
-    Packed {
-        panel_bytes: usize,
-    },
     Strides {
         row_byte_stride: isize,
         row_item_stride: isize,
@@ -21,128 +17,47 @@ pub enum MatrixStoreSpec {
         mr: usize,
         nr: usize,
     },
-    OffsetsAndPtrs {
-        row_byte_offsets: Vec<isize>,
-        col_byte_offsets: Vec<isize>,
-        nr: usize,
-    },
-}
-
-impl MatrixStoreSpec {
-    #[inline]
-    pub unsafe fn wrap<'t>(&self, tensor: &'t TensorView) -> MatrixStore<'_, 't> {
-        MatrixStore::new(self, tensor)
-    }
-}
-
-impl fmt::Display for MatrixStoreSpec {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            MatrixStoreSpec::View { .. } => write!(fmt, "ViewAxis"),
-            MatrixStoreSpec::Packed { .. } => write!(fmt, "Packed"),
-            MatrixStoreSpec::Strides { .. } => write!(fmt, "Strides"),
-            MatrixStoreSpec::OffsetsAndPtrs { .. } => write!(fmt, "OffsetsAndPtrs"),
-        }
-    }
 }
 
 #[derive(Clone, Debug)]
-pub enum MatrixStore<'s, 't> {
-    Strides {
-        ptr: *mut c_void,
-        row_byte_stride: isize,
-        col_byte_stride: isize,
-        row_item_stride: isize,
-        col_item_stride: isize,
-        panel_row_byte_stride: isize,
-        panel_col_byte_stride: isize,
-        item_size: usize,
-        item_count: usize,
-        mr: usize,
-    },
-    Packed {
-        ptr: *const c_void,
-        item_size: usize,
-        panel_bytes: isize,
-    },
-    OffsetsAndPtrs {
-        row_byte_offsets: *const isize,
-        col_ptrs: Vec<*const c_void>,
-        nr: usize,
-    },
-    _Phantom(&'s (), &'t ()),
+pub struct OutputStore {
+    pub(crate) ptr: *mut c_void,
+    pub(crate) row_byte_stride: isize,
+    pub(crate) col_byte_stride: isize,
+    pub(crate) row_item_stride: isize,
+    pub(crate) col_item_stride: isize,
+    pub(crate) panel_row_byte_stride: isize,
+    pub(crate) panel_col_byte_stride: isize,
+    pub(crate) item_size: usize,
+    pub(crate) item_count: usize,
+    pub(crate) mr: usize,
 }
 
-impl<'s, 't> MatrixStore<'s, 't> {
-    unsafe fn new(spec: &'s MatrixStoreSpec, tensor: &'t TensorView) -> MatrixStore<'s, 't> {
-        use MatrixStore::*;
-        use MatrixStoreSpec as S;
-        match spec {
-            S::View { mr, nr, .. } | S::Strides { mr, nr, .. } => {
-                let (row_item_stride, col_item_stride, row_byte_stride, col_byte_stride) =
-                    Self::compute_strides(spec, tensor);
-                Strides {
-                    ptr: tensor.as_ptr_unchecked::<u8>() as _,
-                    row_byte_stride,
-                    col_byte_stride,
-                    row_item_stride,
-                    col_item_stride,
-                    panel_row_byte_stride: row_byte_stride * *mr as isize,
-                    panel_col_byte_stride: col_byte_stride * *nr as isize,
-                    item_size: tensor.datum_type().size_of(),
-                    mr: *mr,
-                    item_count: tensor.len(),
-                }
-            }
-            S::Packed { panel_bytes } => Packed {
-                ptr: tensor.as_ptr_unchecked::<u8>() as _,
-                item_size: tensor.datum_type().size_of(),
-                panel_bytes: *panel_bytes as isize,
-            },
-            S::OffsetsAndPtrs { row_byte_offsets, col_byte_offsets, nr } => OffsetsAndPtrs {
-                row_byte_offsets: row_byte_offsets.as_ptr(),
-                col_ptrs: col_byte_offsets
-                    .iter()
-                    .map(|offset| tensor.as_ptr_unchecked::<u8>().offset(*offset) as _)
-                    .collect(),
-                    nr: *nr,
-            },
-        }
-    }
-
-    #[inline]
-    pub(super) unsafe fn panel_a(&self, i: usize) -> PanelStore {
-        match self {
-            MatrixStore::Packed { ptr, panel_bytes, .. } => {
-                PanelStore::Packed { ptr: ptr.offset(panel_bytes * i as isize) }
-            }
-            _ => unimplemented!(),
-        }
-    }
-
-    #[inline]
-    pub(super) unsafe fn panel_b(&self, i: usize) -> PanelStore {
-        match self {
-            MatrixStore::Packed { ptr, panel_bytes, .. } => {
-                PanelStore::Packed { ptr: ptr.offset(panel_bytes * i as isize) }
-            }
-            MatrixStore::OffsetsAndPtrs { row_byte_offsets, col_ptrs, nr, .. } => {
-                PanelStore::OffsetsAndPtrs {
-                    row_byte_offsets: *row_byte_offsets,
-                    col_ptrs: col_ptrs.as_ptr().offset((nr * i) as isize),
-                }
-            }
-            _ => unimplemented!(),
+impl OutputStoreSpec {
+    pub unsafe fn wrap(self: &Self, tensor: &TensorView) -> OutputStore {
+        let (mr, nr, row_item_stride, col_item_stride, row_byte_stride, col_byte_stride) =
+            self.compute_strides(tensor);
+        OutputStore {
+            ptr: tensor.as_ptr_unchecked::<u8>() as _,
+            row_byte_stride,
+            col_byte_stride,
+            row_item_stride,
+            col_item_stride,
+            panel_row_byte_stride: row_byte_stride * mr as isize,
+            panel_col_byte_stride: col_byte_stride * nr as isize,
+            item_size: tensor.datum_type().size_of(),
+            mr,
+            item_count: tensor.len(),
         }
     }
 
     unsafe fn compute_strides(
-        spec: &MatrixStoreSpec,
+        &self,
         tensor: &TensorView,
-        ) -> (isize, isize, isize, isize) {
+    ) -> (usize, usize, isize, isize, isize, isize) {
         let size_of = tensor.datum_type().size_of() as isize;
-        match spec {
-            MatrixStoreSpec::View { axes, .. } => {
+        match self {
+            OutputStoreSpec::View { axes, mr, nr, .. } => {
                 let (m_axis, n_axis) = if let Some(axes) = axes {
                     axes.clone()
                 } else {
@@ -154,40 +69,38 @@ impl<'s, 't> MatrixStore<'s, 't> {
                 let col_item_stride = *tensor_strides.get_unchecked(n_axis);
                 let row_byte_stride = row_item_stride * size_of;
                 let col_byte_stride = col_item_stride * size_of;
-                (row_item_stride, col_item_stride, row_byte_stride, col_byte_stride)
+                (*mr, *nr, row_item_stride, col_item_stride, row_byte_stride, col_byte_stride)
             }
-            MatrixStoreSpec::Strides {
+            OutputStoreSpec::Strides {
                 row_byte_stride,
                 col_byte_stride,
                 col_item_stride,
                 row_item_stride,
-                ..
-            } => (*row_item_stride, *col_item_stride, *row_byte_stride, *col_byte_stride),
-            _ => panic!(),
+                mr,
+                nr,
+            } => (*mr, *nr, *row_item_stride, *col_item_stride, *row_byte_stride, *col_byte_stride),
+        }
+    }
+}
+
+impl OutputStore {
+    #[inline]
+    pub(super) unsafe fn tile_c(&self, down: usize, right: usize) -> OutputStoreKer {
+        let (down, right) = (down as isize, right as isize);
+        OutputStoreKer {
+            ptr: self
+                .ptr
+                .offset(self.panel_row_byte_stride * down + self.panel_col_byte_stride * right)
+                as *mut _,
+            row_byte_stride: self.row_byte_stride,
+            col_byte_stride: self.col_byte_stride,
+            item_size: self.item_size,
         }
     }
 
     #[inline]
-    pub(super) unsafe fn tile_c(&self, down: usize, right: usize) -> Tile {
-        let (down, right) = (down as isize, right as isize);
-        match self {
-            MatrixStore::Strides {
-                ptr,
-                row_byte_stride,
-                col_byte_stride,
-                item_size,
-                panel_row_byte_stride,
-                panel_col_byte_stride,
-                ..
-            } => Tile {
-                ptr: ptr.offset(panel_row_byte_stride * down + panel_col_byte_stride * right)
-                    as *mut _,
-                    row_byte_stride: *row_byte_stride,
-                    col_byte_stride: *col_byte_stride,
-                    item_size: *item_size,
-            },
-            _ => unimplemented!(),
-        }
+    pub fn item_size(&self) -> usize {
+        self.item_size
     }
 
     #[inline]
@@ -197,8 +110,8 @@ impl<'s, 't> MatrixStore<'s, 't> {
         right: usize,
         height: usize,
         width: usize,
-        tile: &Tile)
-    {
+        tile: &OutputStoreKer,
+    ) {
         if self.item_size() == 1 {
             self.set_from_tile_t::<i8>(down, right, height, width, tile)
         } else {
@@ -213,56 +126,110 @@ impl<'s, 't> MatrixStore<'s, 't> {
         right: usize,
         height: usize,
         width: usize,
-        tile: &Tile,
+        tile: &OutputStoreKer,
     ) {
         let tile = tile.ptr as *mut T;
+        let dst = self.ptr.offset(
+            (self.panel_row_byte_stride as usize * down
+                + self.panel_col_byte_stride as usize * right) as isize,
+        );
+        for y in 0..height as isize {
+            for x in 0..width as isize {
+                let value = tile.offset(y + x * self.mr as isize);
+                let dst =
+                    dst.offset((y * self.row_byte_stride + x * self.col_byte_stride) as isize);
+                *(dst as *mut T) = *value;
+            }
+        }
+    }
+}
+
+#[derive(PartialEq, Clone, Debug, Hash)]
+pub enum InputStoreSpec {
+    Packed { panel_bytes: usize },
+    OffsetsAndPtrs { row_byte_offsets: Vec<isize>, col_byte_offsets: Vec<isize>, nr: usize },
+}
+
+impl InputStoreSpec {
+    #[inline]
+    pub unsafe fn wrap(&self, tensor: &TensorView) -> InputStore {
+        InputStore::new(self, tensor)
+    }
+}
+
+impl fmt::Display for InputStoreSpec {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            MatrixStore::Strides {
-                ptr,
-                row_byte_stride,
-                col_byte_stride,
-                panel_row_byte_stride,
-                panel_col_byte_stride,
-                mr,
-                ..
-            } => {
-                let dst = ptr.offset(
-                    (*panel_row_byte_stride as usize * down
-                     + *panel_col_byte_stride as usize * right) as isize,
-                     );
-                for y in 0..height as isize {
-                    for x in 0..width as isize {
-                        let value = tile.offset(y + x * *mr as isize);
-                        let dst =
-                            dst.offset((y * *row_byte_stride + x * *col_byte_stride) as isize);
-                        *(dst as *mut T) = *value;
-                    }
-                }
+            InputStoreSpec::Packed { .. } => write!(fmt, "Packed"),
+            InputStoreSpec::OffsetsAndPtrs { .. } => write!(fmt, "OffsetsAndPtrs"),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum InputStore {
+    Packed { ptr: *const c_void, item_size: usize, panel_bytes: isize },
+    OffsetsAndPtrs { row_byte_offsets: *const isize, col_ptrs: Vec<*const c_void>, nr: usize },
+}
+
+impl InputStore {
+    unsafe fn new(spec: &InputStoreSpec, tensor: &TensorView) -> InputStore {
+        use InputStore::*;
+        use InputStoreSpec as S;
+        match spec {
+            S::Packed { panel_bytes } => Packed {
+                ptr: tensor.as_ptr_unchecked::<u8>() as _,
+                item_size: tensor.datum_type().size_of(),
+                panel_bytes: *panel_bytes as isize,
+            },
+            S::OffsetsAndPtrs { row_byte_offsets, col_byte_offsets, nr } => OffsetsAndPtrs {
+                row_byte_offsets: row_byte_offsets.as_ptr(),
+                col_ptrs: col_byte_offsets
+                    .iter()
+                    .map(|offset| tensor.as_ptr_unchecked::<u8>().offset(*offset) as _)
+                    .collect(),
+                nr: *nr,
+            },
+        }
+    }
+
+    #[inline]
+    pub(super) unsafe fn panel_a(&self, i: usize) -> InputStoreKer {
+        match self {
+            InputStore::Packed { ptr, panel_bytes, .. } => {
+                InputStoreKer::Packed { ptr: ptr.offset(panel_bytes * i as isize) }
             }
             _ => unimplemented!(),
         }
     }
 
     #[inline]
-    pub fn item_size(&self) -> usize {
+    pub(super) unsafe fn panel_b(&self, i: usize) -> InputStoreKer {
         match self {
-            MatrixStore::Strides { item_size, .. } => *item_size,
-            _ => unimplemented!(),
+            InputStore::Packed { ptr, panel_bytes, .. } => {
+                InputStoreKer::Packed { ptr: ptr.offset(panel_bytes * i as isize) }
+            }
+            InputStore::OffsetsAndPtrs { row_byte_offsets, col_ptrs, nr, .. } => {
+                InputStoreKer::OffsetsAndPtrs {
+                    row_byte_offsets: *row_byte_offsets,
+                    col_ptrs: col_ptrs.as_ptr().offset((nr * i) as isize),
+                }
+            }
         }
     }
 }
 
 #[repr(C, usize)]
 #[derive(PartialEq, Copy, Clone, Debug)]
-pub enum PanelStore {
-    Strides(Tile),
+pub enum InputStoreKer {
+    Strides(OutputStoreKer),
     Packed { ptr: *const c_void },
     OffsetsAndPtrs { row_byte_offsets: *const isize, col_ptrs: *const *const c_void },
 }
 
 #[repr(C)]
 #[derive(PartialEq, Copy, Clone, Debug)]
-pub struct Tile {
+pub struct OutputStoreKer {
     pub ptr: *mut c_void,
     pub row_byte_stride: isize,
     pub col_byte_stride: isize,

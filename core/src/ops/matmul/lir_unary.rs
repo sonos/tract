@@ -1,7 +1,7 @@
 use crate::internal::*;
 use ndarray::*;
 
-use tract_linalg::mmm::{FusedSpec, MatMatMul, MatrixStoreSpec, RoundingPolicy, ScratchSpace};
+use tract_linalg::mmm::{FusedSpec, MatMatMul, InputStoreSpec, RoundingPolicy, ScratchSpace};
 
 #[derive(PartialEq, Clone, Hash, Debug)]
 pub enum ProtoFusedSpec {
@@ -45,7 +45,7 @@ pub struct ConcreteMatMulGeometry {
     pub m: usize,
     pub k: usize,
     pub n: usize,
-    pub b_storage: MatrixStoreSpec,
+    pub b_storage: InputStoreSpec,
 }
 
 #[derive(Clone, Debug, Hash)]
