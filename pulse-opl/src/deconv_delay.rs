@@ -13,8 +13,8 @@ pub struct DeconvDelay {
     pub delay: usize,
     pub stride: usize,
     pub pulse: usize,
-    pub input_dim: TDim,
-    pub output_dim: TDim,
+    pub deconv_input_dim: TDim,
+    pub deconv_output_dim: TDim,
 }
 
 impl_dyn_hash!(DeconvDelay);
@@ -96,7 +96,7 @@ impl DeconvDelayState {
         let input_pulse = input.shape()[op.axis];
         let output_pulse = input_pulse - op.overlap;
         self.valid_inputed += output_pulse as isize;
-        if let Ok(input_dim) = op.input_dim.eval(&session.resolved_symbols).to_isize() {
+        if let Ok(input_dim) = op.deconv_input_dim.eval(&session.resolved_symbols).to_isize() {
             if self.valid_inputed > input_dim {
                 let to_be_zeroed = ((self.valid_inputed - input_dim) as usize).min(input_pulse);
                 let mut zeroed =

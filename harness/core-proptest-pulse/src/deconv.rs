@@ -45,11 +45,18 @@ impl Arbitrary for DeconvOp {
             1usize..4,
             0usize..4,
             vec(1usize..4),
-            prop_oneof![Just(cnn::PaddingSpec::Valid), Just(cnn::PaddingSpec::SameUpper)],
+            prop_oneof![
+                Just(cnn::PaddingSpec::Valid),
+                Just(cnn::PaddingSpec::SameUpper),
+                Just(cnn::PaddingSpec::SameLower)
+            ],
         )
-            .prop_filter("Same padding geometry constraint" ,|(stride, dilation, adj, ker, padding)| {
-                padding == &cnn::PaddingSpec::Valid || ((ker.len() - 1) * dilation > stride - 1)
-            })
+            .prop_filter(
+                "Same padding geometry constraint",
+                |(stride, dilation, adj, ker, padding)| {
+                    padding == &cnn::PaddingSpec::Valid || ((ker.len() - 1) * dilation > stride - 1)
+                },
+            )
             .prop_map(|(stride, dilation, adj, ker, padding)| DeconvOp {
                 stride,
                 dilation,
@@ -241,7 +248,6 @@ fn dilation_1() {
     };
     pb.run().unwrap()
 }
-
 
 #[test]
 fn stride_0() {

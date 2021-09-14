@@ -23,26 +23,7 @@ fn pulsify(
     let geo_axis = fact.axis - op.pool_spec.data_format.h_axis();
     let stride = op.pool_spec.stride(geo_axis);
     let mut pulse_op = op.clone();
-    if stride > 1 {
-        /*
-           let geo_rank = op.pool_spec.rank();
-           let padding = PaddingSpec::Explicit(
-           tvec!(0; geo_rank),
-           (0..geo_rank).map(|axis| (axis == geo_axis) as usize * (stride - 1)).collect(),
-           false,
-           );
-           let pool_spec = PoolSpec::new(
-           op.pool_spec.data_format,
-           op.pool_spec.kernel_shape.clone(),
-           padding,
-           op.pool_spec.dilations.clone(),
-           op.pool_spec.strides.clone(),
-           op.pool_spec.output_channel_override,
-           );
-           pulse_op.pool_spec = pool_spec;
-           */
-        pulse_op.adjustments[geo_axis] += stride - 1;
-    }
+    pulse_op.adjustments[geo_axis] = stride - 1;
     pulse_op.pool_spec.padding = PaddingSpec::Valid;
     let deconv =
         target.wire_node(format!("{}.deconv", node.name), pulse_op, &[mapping[&node.inputs[0]]])?
@@ -72,10 +53,10 @@ fn pulsify(
             axis: fact.axis,
             overlap,
             delay: paddings[geo_axis].pad_before.to_usize()? + fact.delay,
-            input_dim: deconv_input_dim,
+            deconv_input_dim,
             stride,
             pulse,
-            output_dim: output_shape[fact.axis].clone(),
+            deconv_output_dim: output_shape[fact.axis].clone(),
         },
         &[deconv],
         )?;
@@ -131,7 +112,7 @@ impl PulsedOp for DeconvUnary {
 impl PulsedOp for DeconvDelay {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
-        fact.dim = self.output_dim.clone();
+        fact.dim = self.deconv_output_dim.clone();
         let pulse_len = fact.shape[fact.axis].clone();
         fact.shape.set(fact.axis, pulse_len - self.overlap);
         fact.delay = self.delay;
