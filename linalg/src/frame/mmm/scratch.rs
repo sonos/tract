@@ -1,7 +1,7 @@
 use num_traits::Zero;
 use std::fmt::Debug;
 
-use super::{FusedKerSpec, FusedSpec, MatMatMulKer, OutputStoreKer};
+use super::{FusedKerSpec, FusedSpec, InputStoreKer, MatMatMulKer, OutputStoreKer};
 use downcast_rs::{impl_downcast, Downcast};
 use tract_data::prelude::*;
 
@@ -55,14 +55,19 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
         unsafe { std::slice::from_raw_parts_mut(buf, len) }
     }
 
+    fn get_temp<'a, T>(&mut self) -> &'a mut T {
+        let buf = self.get_raw_buffer(std::mem::size_of::<T>()) as *mut T;
+        unsafe { buf.as_mut().unwrap() }
+    }
+
     #[inline]
-    pub unsafe fn for_tile<K: MatMatMulKer<TI>>(
+    pub unsafe fn for_tile<'a, K: MatMatMulKer<TI>>(
         &mut self,
         specs: &[FusedSpec],
         down: usize,
         right: usize,
         valid: bool,
-    ) -> *const FusedKerSpec<TI>
+    ) -> &[FusedKerSpec<TI>]
     where
         TI: Datum + Copy + Debug + Zero,
     {
@@ -70,20 +75,20 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
         if valid && specs.len() == 1 && self.uspecs.len() == 2 {
             if let FusedSpec::Store(store) = specs.get_unchecked(0) {
                 *self.uspecs.get_unchecked_mut(0) = FusedKerSpec::Store(store.tile_c(down, right));
-                return self.uspecs.as_ptr();
+                return &self.uspecs;
             }
         }
         self.for_tile_ext::<K>(specs, down, right, valid)
     }
 
     #[inline(never)]
-    unsafe fn for_tile_ext<K: MatMatMulKer<TI>>(
-        &mut self,
+    unsafe fn for_tile_ext<'a, K: MatMatMulKer<TI>>(
+        &'a mut self,
         specs: &[FusedSpec],
         down: usize,
         right: usize,
         valid: bool,
-    ) -> *const FusedKerSpec<TI>
+    ) -> &'a [FusedKerSpec<TI>]
     where
         TI: Datum + Copy + Debug + Zero,
     {
@@ -185,11 +190,17 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                         FusedKerSpec::Store(tmpc)
                     }
                 }
+                FusedSpec::AddMatMul { k, a, b } => {
+                    let pb: &mut InputStoreKer = self.get_temp();
+                    let mut tb = b.panel_b(right);
+                    std::mem::swap(pb, &mut tb);
+                    FusedKerSpec::AddMatMul { k: *k, pa: a.panel(down).ptr, pb, cpu_variant: 0 }
+                }
             };
             self.uspecs.push(s);
         }
         self.uspecs.push(FusedKerSpec::Done);
-        self.uspecs.as_ptr()
+        &self.uspecs
     }
 
     #[inline]
@@ -206,7 +217,6 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
     pub unsafe fn postprocess_tile<K: MatMatMulKer<TI>>(
         &mut self,
         specs: &[FusedSpec],
-        ker_specs: *const FusedKerSpec<TI>,
         down: usize,
         right: usize,
         m_remnant: usize,
@@ -215,9 +225,9 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
         TI: Datum + Copy + Debug + Zero,
     {
         for (i, spec) in specs.iter().enumerate() {
-            let ker_spec = ker_specs.offset(i as isize);
+            let ker_spec = self.uspecs.get_unchecked(i);
             if let (FusedSpec::Store(c_store), FusedKerSpec::Store(tmp)) =
-                (spec, ker_spec.as_ref().unwrap())
+                (spec, ker_spec)
             {
                 c_store.set_from_tile(down, right, m_remnant, n_remnant, &tmp)
             }

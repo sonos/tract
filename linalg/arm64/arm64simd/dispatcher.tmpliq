@@ -1,12 +1,11 @@
 // vim: ft=arm
 
 .non_linear:
-    ldr         x1, [x0, #24]
-    sub         x1, x1, 40
+    sub         x0, x0, 40
 
 .non_linear_loop:
-    add         x1, x1, 40
-    ldr         x2, [x1]
+    add         x0, x0, 40
+    ldr         x2, [x0]
 
     mov         x4, #13
 
@@ -33,6 +32,7 @@
     b   .scalar_add
     b   .q_scale
     b   .store
+    b   .add_mat_mul
 
     add x0, x2, #4000
     b .return

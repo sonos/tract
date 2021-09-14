@@ -26,11 +26,15 @@ fn conv(c: &mut Criterion, dilation: usize, pulse: usize, ci: usize, co: usize) 
         be.iter(move || {
             mm.run(
                 co,
-                k,
                 t,
-                &mm.a_packed(F32.size_of(), k).wrap(&mut a.view()),
-                &mm.b_packed(F32.size_of(), k).wrap(&input.view()),
-                &[FusedSpec::Store(mm.c_view().wrap(&output.view_mut()))],
+                &[
+                    FusedSpec::AddMatMul {
+                        a: mm.a_packed(F32.size_of(), k).wrap(&mut a.view()),
+                        b: mm.b_packed(F32.size_of(), k).wrap(&input.view()),
+                        k,
+                    },
+                    FusedSpec::Store(mm.c_view().wrap(&output.view_mut())),
+                ],
             )
             .unwrap()
         });

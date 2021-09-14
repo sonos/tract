@@ -54,10 +54,11 @@ macro_rules! MMMKernel {
                 $end_padding_packed_b
             }
             #[inline(always)]
-            fn kernel(spec: &MatMatMulKerSpec<$ti>) -> isize {
-                unsafe { $func(spec) }
+            fn kernel(spec: &[FusedKerSpec<$ti>]) -> isize {
+                debug_assert!(spec.len() > 0);
+                debug_assert!(matches!(spec[spec.len() - 1], FusedKerSpec::Done));
+                unsafe { $func(spec.as_ptr()) }
             }
         }
-    }
+    };
 }
-

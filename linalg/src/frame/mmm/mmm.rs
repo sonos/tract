@@ -41,17 +41,9 @@ pub trait MatMatMul:
         col_stride: isize,
     ) -> OutputStoreSpec;
 
-    unsafe fn run(
-        &self,
-        m: usize,
-        k: usize,
-        n: usize,
-        a: &PackedStore,
-        b: &InputStore,
-        non_linear: &[FusedSpec],
-    ) -> anyhow::Result<()> {
+    unsafe fn run(&self, m: usize, n: usize, non_linear: &[FusedSpec]) -> anyhow::Result<()> {
         let mut scratch = self.allocate_scratch_space();
-        self.run_with_scratch_space(m, k, n, &mut *scratch, a, b, non_linear)
+        self.run_with_scratch_space(m, n, &mut *scratch, non_linear)
     }
 
     unsafe fn allocate_scratch_space(&self) -> Box<dyn ScratchSpace>;
@@ -59,21 +51,15 @@ pub trait MatMatMul:
     unsafe fn run_with_scratch_space(
         &self,
         m: usize,
-        k: usize,
         n: usize,
         scratch: &mut dyn ScratchSpace,
-        a: &PackedStore,
-        b: &InputStore,
         non_linear: &[FusedSpec],
     ) -> anyhow::Result<()>;
 
     unsafe fn run_with_scratch_space_vec(
         &self,
         m: usize,
-        k: usize,
         scratch: &mut dyn ScratchSpace,
-        a: &PackedStore,
-        b: &InputStore,
         non_linear: &[FusedSpec],
     ) -> anyhow::Result<()>;
 }
@@ -137,6 +123,7 @@ where
 
     #[inline]
     fn prefetch(&self, a: &InputStoreKer, b: &InputStoreKer) {
+        /*
         if let Some(prefetch) = self.prefetch {
             if let InputStoreKer::Packed { ptr } = a {
                 prefetch(*ptr as *const u8, 512);
@@ -146,6 +133,7 @@ where
                 _ => (),
             }
         }
+        */
     }
 }
 
@@ -253,45 +241,27 @@ where
     unsafe fn run_with_scratch_space_vec(
         &self,
         m: usize,
-        k: usize,
         scratch: &mut dyn ScratchSpace,
-        a: &PackedStore,
-        b: &InputStore,
         non_linear: &[FusedSpec],
     ) -> anyhow::Result<()> {
         let mr = K::mr();
         let scratch = scratch
             .downcast_mut::<ScratchSpaceFusedNonLinear<TI>>()
             .context("Wrong scratch space type")?;
-        let ref linear = LinearSpec::k(k);
         for ia in 0..m / mr {
-            let ref a = a.panel(ia);
-            let ref b = b.panel_b(0);
-            self.prefetch(a, b);
+            // self.prefetch(a, b);
             scratch.clear();
             let non_linear_ker = scratch.for_tile::<K>(&non_linear, ia, 0, true);
-            let err = K::kernel(&MatMatMulKerSpec {
-                a: a as _,
-                b: b as _,
-                linear,
-                non_linear: non_linear_ker,
-            });
+            let err = K::kernel(&non_linear_ker);
             debug_assert_eq!(err, 0, "Kernel return error {}", err);
         }
         if m % mr != 0 {
-            let ref panel_a = a.panel(m / mr);
-            let ref b = b.panel_b(0);
-            self.prefetch(panel_a, b);
+            //            self.prefetch(panel_a, b);
             scratch.clear();
             let non_linear_ker = scratch.for_tile::<K>(&non_linear, m / mr, 0, false);
-            let err = K::kernel(&MatMatMulKerSpec {
-                a: panel_a as _,
-                b: b as _,
-                linear,
-                non_linear: non_linear_ker,
-            });
+            let err = K::kernel(&non_linear_ker);
             debug_assert_eq!(err, 0, "Kernel return error {}", err);
-            scratch.postprocess_tile::<K>(&non_linear, non_linear_ker, m / mr, 0, m % mr, 1);
+            scratch.postprocess_tile::<K>(&non_linear, m / mr, 0, m % mr, 1);
         }
         Ok(())
     }
@@ -299,88 +269,51 @@ where
     unsafe fn run_with_scratch_space(
         &self,
         m: usize,
-        k: usize,
         n: usize,
         scratch: &mut dyn ScratchSpace,
-        a: &PackedStore,
-        b: &InputStore,
         non_linear: &[FusedSpec],
     ) -> anyhow::Result<()> {
         let mr = K::mr();
         let nr = K::nr();
         if n == 1 && K::nr() == 1 {
-            return self.run_with_scratch_space_vec(m, k, scratch, a, b, &non_linear);
+            return self.run_with_scratch_space_vec(m, scratch, &non_linear);
         }
         let scratch = scratch
             .downcast_mut::<ScratchSpaceFusedNonLinear<TI>>()
             .context("Wrong scratch space type")?;
-        let ref linear = LinearSpec::k(k);
         for ia in 0..m / mr {
-            let ref a = a.panel(ia);
             for ib in 0..n / nr {
-                let ref b = b.panel_b(ib);
-                self.prefetch(a, b);
+                //                self.prefetch(a, b);
                 scratch.clear();
                 let non_linear_ker = scratch.for_tile::<K>(&non_linear, ia, ib, true);
-                let err = K::kernel(&MatMatMulKerSpec {
-                    a: a as _,
-                    b: b as _,
-                    linear,
-                    non_linear: non_linear_ker,
-                });
+                let err = K::kernel(non_linear_ker);
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
             }
             if n % nr != 0 {
-                let ref b = b.panel_b(n / nr);
-                self.prefetch(a, b);
+                //                self.prefetch(a, b);
                 scratch.clear();
                 let non_linear_ker = scratch.for_tile::<K>(&non_linear, ia, n / nr, false);
-                let err = K::kernel(&MatMatMulKerSpec {
-                    a: a as _,
-                    b: b as _,
-                    linear,
-                    non_linear: non_linear_ker,
-                });
+                let err = K::kernel(non_linear_ker);
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                scratch.postprocess_tile::<K>(&non_linear, non_linear_ker, ia, n / nr, mr, n % nr);
+                scratch.postprocess_tile::<K>(&non_linear, ia, n / nr, mr, n % nr);
             }
         }
         if m % mr != 0 {
-            let ref panel_a = a.panel(m / mr);
             for ib in 0..n / nr {
-                let ref b = b.panel_b(ib);
-                self.prefetch(panel_a, b);
+                //                self.prefetch(panel_a, b);
                 scratch.clear();
                 let non_linear_ker = scratch.for_tile::<K>(&non_linear, m / mr, ib, false);
-                let err = K::kernel(&MatMatMulKerSpec {
-                    a: panel_a as _,
-                    b: b as _,
-                    linear,
-                    non_linear: non_linear_ker,
-                });
+                let err = K::kernel(non_linear_ker);
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                scratch.postprocess_tile::<K>(&non_linear, non_linear_ker, m / mr, ib, m % mr, nr);
+                scratch.postprocess_tile::<K>(&non_linear, m / mr, ib, m % mr, nr);
             }
             if n % nr != 0 {
-                let ref b = b.panel_b(n / nr);
-                self.prefetch(panel_a, b);
+                //                self.prefetch(panel_a, b);
                 scratch.clear();
                 let non_linear_ker = scratch.for_tile::<K>(&non_linear, m / mr, n / nr, false);
-                let err = K::kernel(&MatMatMulKerSpec {
-                    a: panel_a as _,
-                    b: b as _,
-                    linear,
-                    non_linear: non_linear_ker,
-                });
+                let err = K::kernel(non_linear_ker);
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                scratch.postprocess_tile::<K>(
-                    &non_linear,
-                    non_linear_ker,
-                    m / mr,
-                    n / nr,
-                    m % mr,
-                    n % nr,
-                );
+                scratch.postprocess_tile::<K>(&non_linear, m / mr, n / nr, m % mr, n % nr);
             }
         }
         Ok(())
