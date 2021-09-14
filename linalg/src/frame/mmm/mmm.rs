@@ -22,7 +22,7 @@ pub trait MatMatMul:
 
     fn internal_type(&self) -> DatumType;
 
-    unsafe fn a_packed(&self, item_size: usize, k: usize) -> InputStoreSpec;
+    unsafe fn a_packed(&self, item_size: usize, k: usize) -> PackedStoreSpec;
 
     unsafe fn b_packed(&self, item_size: usize, k: usize) -> InputStoreSpec;
     unsafe fn b_from_data_and_offsets(
@@ -46,7 +46,7 @@ pub trait MatMatMul:
         m: usize,
         k: usize,
         n: usize,
-        a: &InputStore,
+        a: &PackedStore,
         b: &InputStore,
         non_linear: &[FusedSpec],
     ) -> anyhow::Result<()> {
@@ -62,7 +62,7 @@ pub trait MatMatMul:
         k: usize,
         n: usize,
         scratch: &mut dyn ScratchSpace,
-        a: &InputStore,
+        a: &PackedStore,
         b: &InputStore,
         non_linear: &[FusedSpec],
     ) -> anyhow::Result<()>;
@@ -72,7 +72,7 @@ pub trait MatMatMul:
         m: usize,
         k: usize,
         scratch: &mut dyn ScratchSpace,
-        a: &InputStore,
+        a: &PackedStore,
         b: &InputStore,
         non_linear: &[FusedSpec],
     ) -> anyhow::Result<()>;
@@ -180,12 +180,13 @@ where
         TI::datum_type()
     }
 
-    unsafe fn a_packed(&self, item_size: usize, k: usize) -> InputStoreSpec {
-        InputStoreSpec::Packed { panel_bytes: (k * K::mr() * item_size) }
+    unsafe fn a_packed(&self, item_size: usize, k: usize) -> PackedStoreSpec {
+        PackedStoreSpec { panel_bytes: (k * K::mr() * item_size) }
     }
 
     unsafe fn b_packed(&self, item_size: usize, k: usize) -> InputStoreSpec {
-        InputStoreSpec::Packed { panel_bytes: (k * K::nr() * item_size) }
+        let panel_bytes = k * K::nr() * item_size;
+        InputStoreSpec::Packed(PackedStoreSpec { panel_bytes })
     }
 
     unsafe fn b_from_data_and_offsets(
@@ -254,7 +255,7 @@ where
         m: usize,
         k: usize,
         scratch: &mut dyn ScratchSpace,
-        a: &InputStore,
+        a: &PackedStore,
         b: &InputStore,
         non_linear: &[FusedSpec],
     ) -> anyhow::Result<()> {
@@ -264,7 +265,7 @@ where
             .context("Wrong scratch space type")?;
         let ref linear = LinearSpec::k(k);
         for ia in 0..m / mr {
-            let ref a = a.panel_a(ia);
+            let ref a = a.panel(ia);
             let ref b = b.panel_b(0);
             self.prefetch(a, b);
             scratch.clear();
@@ -278,7 +279,7 @@ where
             debug_assert_eq!(err, 0, "Kernel return error {}", err);
         }
         if m % mr != 0 {
-            let ref panel_a = a.panel_a(m / mr);
+            let ref panel_a = a.panel(m / mr);
             let ref b = b.panel_b(0);
             self.prefetch(panel_a, b);
             scratch.clear();
@@ -301,7 +302,7 @@ where
         k: usize,
         n: usize,
         scratch: &mut dyn ScratchSpace,
-        a: &InputStore,
+        a: &PackedStore,
         b: &InputStore,
         non_linear: &[FusedSpec],
     ) -> anyhow::Result<()> {
@@ -315,7 +316,7 @@ where
             .context("Wrong scratch space type")?;
         let ref linear = LinearSpec::k(k);
         for ia in 0..m / mr {
-            let ref a = a.panel_a(ia);
+            let ref a = a.panel(ia);
             for ib in 0..n / nr {
                 let ref b = b.panel_b(ib);
                 self.prefetch(a, b);
@@ -345,7 +346,7 @@ where
             }
         }
         if m % mr != 0 {
-            let ref panel_a = a.panel_a(m / mr);
+            let ref panel_a = a.panel(m / mr);
             for ib in 0..n / nr {
                 let ref b = b.panel_b(ib);
                 self.prefetch(panel_a, b);
