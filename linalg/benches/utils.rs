@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use criterion::*;
 use tract_data::internal::*;
-use tract_linalg::frame::mmm::{FusedSpec, InputStore};
+use tract_linalg::frame::mmm::{FusedSpec, InputStore, PackedStore};
 use tract_linalg::frame::MatMatMul;
 
 use DatumType::*;
@@ -57,8 +57,8 @@ unsafe fn run(
     n: usize,
     be: &mut Bencher,
     mm: &dyn MatMatMul,
-    pa: &InputStore,
-    pb: &InputStore,
+    pa: PackedStore,
+    pb: InputStore,
     cold: bool,
 ) {
     let mut scratch = mm.allocate_scratch_space();
@@ -69,7 +69,13 @@ unsafe fn run(
                 ruin_cache();
             }
             let instant = std::time::Instant::now();
-            mm.run_with_scratch_space(m, k, n, scratch.as_mut(), &pa, &pb, &[]).unwrap();
+            mm.run_with_scratch_space(
+                m,
+                n,
+                scratch.as_mut(),
+                &[FusedSpec::AddMatMul { a: pa, b: pb.clone(), k }],
+            )
+            .unwrap();
             let time = instant.elapsed();
             dur += time;
         }
@@ -88,8 +94,8 @@ fn mat_mat(be: &mut Bencher, &(dt, m, k, n, cold): &(DatumType, usize, usize, us
             n,
             be,
             &*mm,
-            &mm.a_packed(dt.size_of(), k).wrap(&pa.view()),
-            &mm.b_packed(dt.size_of(), k).wrap(&pb.view()),
+            mm.a_packed(dt.size_of(), k).wrap(&pa.view()),
+            mm.b_packed(dt.size_of(), k).wrap(&pb.view()),
             cold,
         );
     }
@@ -107,8 +113,8 @@ fn mat_vec(be: &mut Bencher, &(dt, m, k, n, cold): &(DatumType, usize, usize, us
             n,
             be,
             &*mm,
-            &mm.a_packed(dt.size_of(), k).wrap(&pa.view()),
-            &mm.b_packed(dt.size_of(), k).wrap(&pb.view()),
+            mm.a_packed(dt.size_of(), k).wrap(&pa.view()),
+            mm.b_packed(dt.size_of(), k).wrap(&pb.view()),
             cold,
         );
     }
@@ -139,12 +145,21 @@ fn direct_conv_mmm_f32(be: &mut Bencher, geo: &ConvGeo) {
         be.iter(move || {
             mm.run(
                 m,
-                k,
                 n,
-                &mm.a_packed(f32::datum_type().size_of(), k).wrap(&pa.view()),
-                &mm.b_from_data_and_offsets(c.datum_type().size_of(), &rows_offsets, &cols_offsets)
-                    .wrap(&pb.view()),
-                &[FusedSpec::Store(mm.c_view().wrap(&c.view_mut()))],
+                &[
+                    FusedSpec::AddMatMul {
+                        a: mm.a_packed(f32::datum_type().size_of(), k).wrap(&pa.view()),
+                        b: mm
+                            .b_from_data_and_offsets(
+                                c.datum_type().size_of(),
+                                &rows_offsets,
+                                &cols_offsets,
+                            )
+                            .wrap(&pb.view()),
+                        k,
+                    },
+                    FusedSpec::Store(mm.c_view().wrap(&c.view_mut())),
+                ],
             )
         })
     }
@@ -162,16 +177,21 @@ fn direct_conv_i8(be: &mut Bencher, geo: &ConvGeo) {
         be.iter(move || {
             mm.run(
                 m,
-                k,
                 n,
-                &mm.a_packed(i8::datum_type().size_of(), k).wrap(&pa.view()),
-                &mm.b_from_data_and_offsets(
-                    pb.datum_type().size_of(),
-                    &rows_offsets,
-                    &cols_offsets,
-                )
-                .wrap(&pb.view()),
-                &[FusedSpec::Store(mm.c_view().wrap(&c.view_mut()))],
+                &[
+                    FusedSpec::AddMatMul {
+                        a: mm.a_packed(i8::datum_type().size_of(), k).wrap(&pa.view()),
+                        b: mm
+                            .b_from_data_and_offsets(
+                                pb.datum_type().size_of(),
+                                &rows_offsets,
+                                &cols_offsets,
+                            )
+                            .wrap(&pb.view()),
+                        k,
+                    },
+                    FusedSpec::Store(mm.c_view().wrap(&c.view_mut())),
+                ],
             )
         })
     }

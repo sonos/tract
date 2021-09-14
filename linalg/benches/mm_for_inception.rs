@@ -18,11 +18,15 @@ fn mat_mul_smmm(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize))
         be.iter(move || {
             mm.run(
                 m,
-                k,
                 n,
-                &mm.a_packed(F32.size_of(), k).wrap(&pa.view()),
-                &mm.b_packed(F32.size_of(), k).wrap(&pb.view()),
-                &[FusedSpec::Store(mm.c_view().wrap(&c.view_mut()))],
+                &[
+                    FusedSpec::AddMatMul {
+                        a: mm.a_packed(F32.size_of(), k).wrap(&pa.view()),
+                        b: mm.b_packed(F32.size_of(), k).wrap(&pb.view()),
+                        k,
+                    },
+                    FusedSpec::Store(mm.c_view().wrap(&c.view_mut())),
+                ],
             )
         });
     }

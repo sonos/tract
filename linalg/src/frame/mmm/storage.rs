@@ -151,7 +151,7 @@ pub enum InputStoreSpec {
     OffsetsAndPtrs { row_byte_offsets: Vec<isize>, col_byte_offsets: Vec<isize>, nr: usize },
 }
 
-#[derive(PartialEq, Clone, Debug, Hash)]
+#[derive(PartialEq, Clone, Copy, Debug, Hash)]
 pub struct PackedStoreSpec {
     pub(crate) panel_bytes: usize,
 }
@@ -204,7 +204,7 @@ pub enum InputStore {
     OffsetsAndPtrs { row_byte_offsets: *const isize, col_ptrs: Vec<*const c_void>, nr: usize },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct PackedStore {
     ptr: *const c_void,
     item_size: usize,
@@ -213,8 +213,8 @@ pub struct PackedStore {
 
 impl PackedStore {
     #[inline]
-    pub(super) unsafe fn panel(&self, i: usize) -> InputStoreKer {
-        InputStoreKer::Packed { ptr: self.ptr.offset(self.panel_bytes * i as isize) }
+    pub(super) unsafe fn panel(&self, i: usize) -> PackedStoreKer {
+        PackedStoreKer { ptr: self.ptr.offset(self.panel_bytes * i as isize) }
     }
 }
 
@@ -222,7 +222,7 @@ impl InputStore {
     #[inline]
     pub(super) unsafe fn panel_b(&self, i: usize) -> InputStoreKer {
         match self {
-            InputStore::Packed(packed) => packed.panel(i),
+            InputStore::Packed(packed) => InputStoreKer::Packed(packed.panel(i)),
             InputStore::OffsetsAndPtrs { row_byte_offsets, col_ptrs, nr, .. } => {
                 InputStoreKer::OffsetsAndPtrs {
                     row_byte_offsets: *row_byte_offsets,
@@ -236,10 +236,16 @@ impl InputStore {
 #[repr(C, usize)]
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub enum InputStoreKer {
-    Strides(OutputStoreKer),
-    Packed { ptr: *const c_void },
+    Packed(PackedStoreKer),
     OffsetsAndPtrs { row_byte_offsets: *const isize, col_ptrs: *const *const c_void },
 }
+
+#[repr(C)]
+#[derive(PartialEq, Copy, Clone, Debug)]
+pub struct PackedStoreKer {
+    pub ptr: *const c_void,
+}
+
 
 #[repr(C)]
 #[derive(PartialEq, Copy, Clone, Debug)]

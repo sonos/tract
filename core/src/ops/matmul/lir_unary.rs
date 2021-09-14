@@ -244,36 +244,26 @@ fn eval(
                 }
                 let (pa, fused) = ops.iter().next().unwrap();
                 let c_store = c_storage.wrap(&c_view);
-                let f: Vec<FusedSpec> = fused
-                    .iter()
-                    .map(|f| f.resolve(inputs, &c_storage, c_store))
-                    .collect::<Vec<_>>();
-                op.mmm.run_with_scratch_space(
-                    geometry.m,
-                    geometry.k,
-                    geometry.n,
-                    scratch,
-                    &op.mmm.a_packed(a_dt.size_of(), geometry.k).wrap(&pa.view()),
-                    &geometry
+                let mut f = tvec!(FusedSpec::AddMatMul {
+                    k: geometry.k,
+                    a: op.mmm.a_packed(a_dt.size_of(), geometry.k).wrap(&pa.view()),
+                    b: geometry
                         .b_storage
                         .wrap(&TensorView::at_prefix_unchecked(&inputs[0], &*b_prefix)),
-                    &f,
-                )?;
+                });
+                f.extend(fused.iter().map(|f| f.resolve(inputs, &c_storage, c_store)));
+                op.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch, &f)?;
             }
         } else {
             let (pa, fused) = op.micro_ops.iter().next().unwrap();
             let c_store = c_storage.wrap(&c.view_mut());
-            let f: Vec<FusedSpec> =
-                fused.iter().map(|f| f.resolve(inputs, &c_storage, c_store)).collect::<Vec<_>>();
-            op.mmm.run_with_scratch_space(
-                geometry.m,
-                geometry.k,
-                geometry.n,
-                scratch,
-                &op.mmm.a_packed(a_dt.size_of(), geometry.k).wrap(&pa.view()),
-                &geometry.b_storage.wrap(&inputs[0].view()),
-                &f,
-            )?;
+            let mut f = tvec!(FusedSpec::AddMatMul {
+                k: geometry.k,
+                a: op.mmm.a_packed(a_dt.size_of(), geometry.k).wrap(&pa.view()),
+                b: geometry.b_storage.wrap(&inputs[0].view()),
+            });
+            f.extend(fused.iter().map(|f| f.resolve(inputs, &c_storage, c_store)));
+            op.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch, &f)?;
         }
         c.set_shape_unchecked(c_final_shape);
         Ok(tvec!(c.into_arc_tensor()))

@@ -299,14 +299,18 @@ where
 
         op.run(
             m,
-            k,
             n,
-            &op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view()),
-            &op.b_packed(TB::datum_type().size_of(), k).wrap(&packed_b.view()),
-            &[FusedSpec::Store(
-                op.c_from_data_and_strides(TC::datum_type().size_of(), n as isize, 1)
-                    .wrap(&found.view_mut()),
-            )],
+            &[
+                FusedSpec::AddMatMul {
+                    a: op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view()),
+                    b: op.b_packed(TB::datum_type().size_of(), k).wrap(&packed_b.view()),
+                    k,
+                },
+                FusedSpec::Store(
+                    op.c_from_data_and_strides(TC::datum_type().size_of(), n as isize, 1)
+                        .wrap(&found.view_mut()),
+                ),
+            ],
         )
         .unwrap();
 
@@ -355,13 +359,16 @@ where
 
         let mut c = Tensor::uninitialized::<TC>(&[m, 1]).unwrap();
 
+        let pa = op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view());
+        let pb = op.b_packed(b.datum_type().size_of(), k).wrap(&packed_b.view());
+
         op.run(
             m,
-            k,
             1,
-            &op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view()),
-            &op.b_packed(b.datum_type().size_of(), k).wrap(&packed_b.view()),
-            &[FusedSpec::Store(op.c_view().wrap(&c.view_mut()))],
+            &[
+                FusedSpec::AddMatMul { k, a: pa, b: pb },
+                FusedSpec::Store(op.c_view().wrap(&c.view_mut())),
+            ],
         )
         .unwrap();
 
@@ -415,17 +422,12 @@ where
         .c_from_data_and_strides(TC::datum_type().size_of(), n as isize, 1)
         .wrap(&mut found.view_mut());
     let mut spec: TVec<FusedSpec> = spec.into();
+    let a_store = op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view());
+    let b_store = op.b_packed(TB::datum_type().size_of(), k).wrap(&packed_b.view());
+    spec.insert(0, FusedSpec::AddMatMul { k, a: a_store, b: b_store });
     spec.push(FusedSpec::Store(c_store));
 
-    op.run(
-        m,
-        k,
-        n,
-        &op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view()),
-        &op.b_packed(TB::datum_type().size_of(), k).wrap(&packed_b.view()),
-        &spec,
-    )
-    .unwrap();
+    op.run(m, n, &spec).unwrap();
     let mut inter = Tensor::zero::<TI>(&[m, n]).unwrap();
     for x in 0..n {
         for y in 0..m {
@@ -699,19 +701,28 @@ impl<TA: LADatum, TB: LADatum> ConvProblem<TA, TB> {
                 .unwrap();
             op.run(
                 self.m(),
-                self.k(),
                 self.n(),
-                &op.a_packed(TA::datum_type().size_of(), self.k()).wrap(&packed_a.view()),
-                &op.b_from_data_and_offsets(
-                    TB::datum_type().size_of(),
-                    &self.data_rows_offsets(),
-                    &self.data_cols_offsets(),
-                )
-                .wrap(&self.data.view()),
-                &[FusedSpec::Store(
-                    op.c_from_data_and_strides(TC::datum_type().size_of(), self.n() as isize, 1)
+                &[
+                    FusedSpec::AddMatMul {
+                        a: op.a_packed(TA::datum_type().size_of(), self.k()).wrap(&packed_a.view()),
+                        b: op
+                            .b_from_data_and_offsets(
+                                TB::datum_type().size_of(),
+                                &self.data_rows_offsets(),
+                                &self.data_cols_offsets(),
+                            )
+                            .wrap(&self.data.view()),
+                        k: self.k(),
+                    },
+                    FusedSpec::Store(
+                        op.c_from_data_and_strides(
+                            TC::datum_type().size_of(),
+                            self.n() as isize,
+                            1,
+                        )
                         .wrap(&found.view_mut()),
-                )],
+                    ),
+                ],
             )
             .unwrap();
             found

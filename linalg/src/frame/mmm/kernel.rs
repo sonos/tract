@@ -1,38 +1,13 @@
 use std::fmt::Debug;
 
-use super::*;
-
-#[repr(C)]
-#[derive(PartialEq, Copy, Clone, Debug)]
-pub struct MatMatMulKerSpec<'a, TI>
-where
-    TI: Copy + Debug,
-{
-    pub a: &'a InputStoreKer,
-    pub b: &'a InputStoreKer,
-    pub linear: &'a LinearSpec,
-    pub non_linear: *const FusedKerSpec<TI>,
-}
-
-#[repr(C, usize)]
-#[derive(PartialEq, Copy, Clone, Debug)]
-pub enum LinearSpec {
-    Mul { k: usize },
-    Noop,
-}
-
-impl LinearSpec {
-    pub fn k(k: usize) -> LinearSpec {
-        LinearSpec::Mul { k }
-    }
-}
+use crate::frame::mmm::FusedKerSpec;
 
 pub trait MatMatMulKer<TI>: Copy + Clone + Debug + Send + Sync + 'static
 where
     TI: Copy + Debug,
 {
     fn name() -> &'static str;
-    fn kernel(op: &MatMatMulKerSpec<TI>) -> isize;
+    fn kernel(op: &[FusedKerSpec<TI>]) -> isize;
     fn mr() -> usize;
     fn nr() -> usize;
     fn alignment_bytes_packed_a() -> usize;
@@ -100,6 +75,7 @@ macro_rules! test_mmm_kernel_i8_u8_i32 {
 #[macro_use]
 pub mod test {
     use super::*;
+    use crate::frame::mmm::{ InputStoreKer, PackedStoreKer, OutputStoreKer };
     use num_traits::{AsPrimitive, One, Zero};
     use proptest::collection::vec;
     use proptest::prelude::*;
@@ -189,10 +165,10 @@ pub mod test {
                         let len = pa.len() - 1;
                         pa[len] = 1 as _;
                         let pb = PackedOffsetsProblem::<$ker, $ta, $tb, $tc, $ti>::new(pa,
-                            vec!(0 as _, 1 as _),
-                            vec!(0usize; <$ker>::nr()),
-                            vec!(1usize, 0, 0),
-                            true);
+                                                                                       vec!(0 as _, 1 as _),
+                                                                                       vec!(0usize; <$ker>::nr()),
+                                                                                       vec!(1usize, 0, 0),
+                                                                                       true);
                         assert_eq!(pb.run(), pb.reference())
                     }
                 }
@@ -357,19 +333,21 @@ pub mod test {
                 } else {
                     mmm_stride_storage(&mut v, K::nr(), 1)
                 };
+                let b_store =
+                    InputStoreKer::Packed(PackedStoreKer { ptr: pb.as_ptr_unchecked::<TB>() as _ });
 
-                let mut non_linear_ops = tvec!();
+                let mut non_linear_ops = tvec!(FusedKerSpec::AddMatMul {
+                    k: self.k,
+                    pa: pa.as_ptr_unchecked::<u8>() as _,
+                    pb: &b_store,
+                    cpu_variant: 0,
+                });
                 if self.add_one {
                     non_linear_ops.push(FusedKerSpec::ScalarAdd(TI::one()));
                 }
                 non_linear_ops.push(FusedKerSpec::Store(c));
                 non_linear_ops.push(FusedKerSpec::Done);
-                let err = K::kernel(&MatMatMulKerSpec {
-                    a: &InputStoreKer::Packed { ptr: pa.as_ptr_unchecked::<TA>() as _ },
-                    b: &InputStoreKer::Packed { ptr: pb.as_ptr_unchecked::<TB>() as _ },
-                    linear: &LinearSpec::k(self.k),
-                    non_linear: non_linear_ops.as_ptr(),
-                });
+                let err = K::kernel(&non_linear_ops);
                 assert_eq!(err, 0);
                 v
             }
@@ -481,21 +459,23 @@ pub mod test {
             };
             let mut v = vec![TC::zero(); K::mr() * K::nr()];
             let c = mmm_stride_storage(&mut v, K::nr(), 1);
-            let mut non_linear_ops = tvec!();
+            let b_store = InputStoreKer::OffsetsAndPtrs {
+                row_byte_offsets: rows_offset.as_ptr(),
+                col_ptrs: col_ptrs.as_ptr() as _,
+            };
+
+            let mut non_linear_ops = tvec!(FusedKerSpec::AddMatMul {
+                k: self.rows_offsets.len(),
+                pa: unsafe { pa.as_ptr_unchecked::<u8>() as _ },
+                pb: &b_store,
+                cpu_variant: 0,
+            });
             if self.add_one {
                 non_linear_ops.push(FusedKerSpec::ScalarAdd(TI::one()));
             }
             non_linear_ops.push(FusedKerSpec::Store(c));
             non_linear_ops.push(FusedKerSpec::Done);
-            let err = K::kernel(&MatMatMulKerSpec {
-                a: &InputStoreKer::Packed { ptr: unsafe { pa.as_ptr_unchecked::<TA>() as _ } },
-                b: &InputStoreKer::OffsetsAndPtrs {
-                    row_byte_offsets: rows_offset.as_ptr(),
-                    col_ptrs: col_ptrs.as_ptr() as _,
-                },
-                linear: &LinearSpec::k(self.rows_offsets.len()),
-                non_linear: non_linear_ops.as_ptr(),
-            });
+            let err = K::kernel(&non_linear_ops);
             assert_eq!(err, 0);
             v
         }
@@ -551,18 +531,20 @@ pub mod test {
         let col_ptrs = (0..K::nr()).map(|i| (&b[i]) as *const TB as _).collect::<Vec<_>>();
         let row_byte_offsets =
             (0..k).map(|i| (i * std::mem::size_of::<TB>() * t) as isize).collect::<Vec<_>>();
-        let mut non_linear_ops = tvec!();
+        let b_store = InputStoreKer::OffsetsAndPtrs {
+            row_byte_offsets: row_byte_offsets.as_ptr(),
+            col_ptrs: col_ptrs.as_ptr(),
+        };
+
+        let mut non_linear_ops = tvec!(FusedKerSpec::AddMatMul {
+            k,
+            pa: unsafe { pa.as_ptr_unchecked::<u8>() as _ },
+            pb: &b_store,
+            cpu_variant: 0,
+        });
         non_linear_ops.push(FusedKerSpec::Store(c));
         non_linear_ops.push(FusedKerSpec::Done);
-        let err = K::kernel(&MatMatMulKerSpec {
-            a: &InputStoreKer::Packed { ptr: unsafe { pa.as_ptr_unchecked::<TA>() as _ } },
-            b: &InputStoreKer::OffsetsAndPtrs {
-                col_ptrs: col_ptrs.as_ptr(),
-                row_byte_offsets: row_byte_offsets.as_ptr(),
-            },
-            linear: &LinearSpec::k(k),
-            non_linear: non_linear_ops.as_ptr()
-        });
+        let err = K::kernel(&non_linear_ops);
         assert_eq!(err, 0);
         let expected: Vec<TC> = (0..v.len())
             .map(|ix| {
@@ -599,14 +581,16 @@ pub mod test {
         let mut c: Vec<TC> = vec![TC::zero(); K::mr() * K::nr()];
         let mut non_linear_ops = tvec!();
         let tile = mmm_stride_storage(&mut c, 1, 0);
+        let b_store = InputStoreKer::Packed(PackedStoreKer { ptr: b.as_ptr() as _ });
+        non_linear_ops.push(FusedKerSpec::AddMatMul {
+            pa: unsafe { pa.as_ptr_unchecked::<u8>() as _ },
+            pb: &b_store,
+            k,
+            cpu_variant: 0,
+        });
         non_linear_ops.push(FusedKerSpec::Store(tile));
         non_linear_ops.push(FusedKerSpec::Done);
-        let err = K::kernel(&MatMatMulKerSpec {
-            a: &InputStoreKer::Packed { ptr: unsafe { pa.as_ptr_unchecked::<TA>() as _ } },
-            b: &InputStoreKer::Packed { ptr: b.as_ptr() as _ },
-            linear: &LinearSpec::k(k),
-            non_linear: non_linear_ops.as_ptr(),
-        });
+        let err = K::kernel(&non_linear_ops);
         assert_eq!(err, 0);
         let expected = vec![k.as_(); K::mr()];
         assert_eq!(c[..K::mr()], expected);

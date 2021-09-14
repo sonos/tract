@@ -17,11 +17,6 @@
 .global {{G}}arm64simd_mmm_f32_12x8_{{core}}_{{suffix}}
 {{G}}arm64simd_mmm_f32_12x8_{{core}}_{{suffix}}:
 
-/*
-    prfm        pldl1keep, [x1]
-    prfm        pldl1keep, [x2]
-*/
-
     stp         x20, x21, [sp, #-16]!
     stp         x22, x23, [sp, #-16]!
     stp         x24, x25, [sp, #-16]!
@@ -36,26 +31,18 @@
     eor         v{{r}}.8b, v{{r}}.8b, v{{r}}.8b
 {% endfor %}
 
-    ldp         x7, x8, [x0]        // a, b
-    ldr         x10, [x0, #16]      // lin
+{% include "dispatcher.tmpliq" %}
 
-    ldp         x2, x1, [x7]        // a disc, a first arg
-
-    cmp         x2, #1
-    bne         .unsupported
-
-    ldp         x5, x3, [x10]       // lin disc, k
-    cmp         x5, #0
-    bne         .unsupported
-    cmp         x3, #0
-    beq         .non_linear
-
+.add_mat_mul:
+    ldr         x8, [x0, #24]       // b
+    ldp         x3, x1, [x0, #8]    // k, a
     ldp         x4, x2, [x8]        // b disc, first arg
-    cmp         x4, #1
+
+    cmp         x3, #0
+    beq         .non_linear_loop
+
+    cmp         x4, #0
     beq         .packed_packed
-    cmp         x4, #2
-    beq         .packed_tops_and_offsets
-    b           .unsupported
 
 .packed_tops_and_offsets:
     ldr         x8, [x8, #16]       // cols ptr ptr (x2 = row offsets ptr)
@@ -98,12 +85,7 @@
     subs        x3, x3, #1
     bne         .packed_tops_and_offsets_loop_1
 
-    b           .non_linear
-
-    subs        x3, x3, #1
-    bne .packed_packed_loop_1
-
-    b .non_linear
+    b           .non_linear_loop
 
 .packed_packed:
     ld1         { v0.4s, v1.4s, v2.4s }, [ x1 ], #48
@@ -132,7 +114,7 @@
     bge .packed_packed_loop_4
 
     cmp x3, #0
-    beq .non_linear
+    beq .non_linear_loop
 
 
 .p2align 4
@@ -141,12 +123,10 @@
     subs        x3, x3, #1
     bne .packed_packed_loop_1
 
-    b .non_linear
-
-{% include "dispatcher.tmpliq" %}
+    b .non_linear_loop
 
 .min:
-    add         x2, x1, #8
+    add         x2, x0, #8
     ld1         {v0.s}[0], [ x2 ]
     dup         v0.4s, v0.s[0]
     {% for reg in (8..31) %}
@@ -156,7 +136,7 @@
     b           .non_linear_loop
 
 .max:
-    add         x2, x1, #8
+    add         x2, x0, #8
     ld1         {v0.s}[0], [ x2 ]
     dup         v0.4s, v0.s[0]
     {% for reg in (8..31) %}
@@ -166,8 +146,8 @@
     b           .non_linear_loop
 
 .add_unicast:
-    ldp         x5, x6, [x1, #8 ]           // c base ptr, rsc
-    ldp         x7, x8, [x1, #24]           // csc, item_size
+    ldp         x5, x6, [x0, #8 ]           // c base ptr, rsc
+    ldp         x7, x8, [x0, #24]           // csc, item_size
 
     {% for col in (0..7) %}
         mov x4, x5
@@ -183,7 +163,7 @@
     b           .non_linear_loop
 
 .per_col_mul:
-    ldr         x2, [x1, #8]
+    ldr         x2, [x0, #8]
     ldr         q0, [ x2 ], #16
     ldr         q1, [ x2 ], #16
 
@@ -196,7 +176,7 @@
     b           .non_linear_loop
 
 .per_col_add:
-    ldr         x2, [x1, #8]
+    ldr         x2, [x0, #8]
     ldr         q0, [ x2 ], #16
     ldr         q1, [ x2 ], #16
 
@@ -210,7 +190,7 @@
     b           .non_linear_loop
 
 .per_row_mul:
-    ldr         x2, [x1, #8]
+    ldr         x2, [x0, #8]
     ldr         q0, [ x2 ], #16
     ldr         q1, [ x2 ], #16
     ldr         q2, [ x2 ], #16
@@ -224,7 +204,7 @@
     b           .non_linear_loop
 
 .per_row_add:
-    ldr         x2, [x1, #8]
+    ldr         x2, [x0, #8]
     ldr         q0, [ x2 ], #16
     ldr         q1, [ x2 ], #16
     ldr         q2, [ x2 ], #16
@@ -238,8 +218,8 @@
     b           .non_linear_loop
 
 .add_row_col_product:
-    ldr     x2, [x1, #8]
-    ldr     x3, [x1, #16]
+    ldr     x2, [x0, #8]
+    ldr     x3, [x0, #16]
 
     ld1         { v0.4s, v1.4s, v2.4s }, [ x2 ]
     ld1         { v4.4s, v5.4s }, [ x3 ]
@@ -253,7 +233,7 @@
     b           .non_linear_loop
 
 .scalar_mul:
-    add         x2, x1, #8
+    add         x2, x0, #8
     ld1         {v0.s}[0], [ x2 ]
     dup         v0.4s, v0.s[0]
     {% for reg in (8..31) %}
@@ -263,7 +243,7 @@
     b           .non_linear_loop
 
 .scalar_add:
-    add         x2, x1, #8
+    add         x2, x0, #8
     ld1         {v0.s}[0], [ x2 ]
     dup         v0.4s, v0.s[0]
     {% for reg in (8..31) %}
@@ -273,8 +253,8 @@
     b           .non_linear_loop
 
 .store:
-    ldp         x5, x6, [x1, #8]            // c base ptr, rsc
-    ldp         x7, x8, [x1, #24]           // csc, item_size
+    ldp         x5, x6, [x0, #8]            // c base ptr, rsc
+    ldp         x7, x8, [x0, #24]           // csc, item_size
 
     cmp         x6, #4
     bne         .store_strides_generic

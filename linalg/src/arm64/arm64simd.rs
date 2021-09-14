@@ -1,16 +1,16 @@
 use crate::frame::element_wise::ElementWiseKer;
 use crate::frame::mmm::*;
 
-extern_kernel!(fn arm64simd_mmm_f32_16x4_a53(op: *const MatMatMulKerSpec<f32>) -> isize);
-extern_kernel!(fn arm64simd_mmm_f32_8x8_a53(op: *const MatMatMulKerSpec<f32>) -> isize);
-extern_kernel!(fn arm64simd_mmm_f32_16x4_gen(op: *const MatMatMulKerSpec<f32>) -> isize);
-extern_kernel!(fn arm64simd_mmm_f32_8x8_gen(op: *const MatMatMulKerSpec<f32>) -> isize);
-extern_kernel!(fn arm64simd_mmm_f32_12x8_a53(op: *const MatMatMulKerSpec<f32>) -> isize);
-extern_kernel!(fn arm64simd_mmm_f32_12x8_gen(op: *const MatMatMulKerSpec<f32>) -> isize);
-extern_kernel!(fn arm64simd_mmm_f32_64x1_a53(op: *const MatMatMulKerSpec<f32>) -> isize);
-extern_kernel!(fn arm64simd_mmm_f32_64x1_gen(op: *const MatMatMulKerSpec<f32>) -> isize);
-extern_kernel!(fn arm64simd_mmm_i8_8x8(op: *const MatMatMulKerSpec<i32>) -> isize);
-extern_kernel!(fn arm64simd_mmm_i8_64x1(op: *const MatMatMulKerSpec<i32>) -> isize);
+extern_kernel!(fn arm64simd_mmm_f32_16x4_a53(op: *const FusedKerSpec<f32>) -> isize);
+extern_kernel!(fn arm64simd_mmm_f32_8x8_a53(op: *const FusedKerSpec<f32>) -> isize);
+extern_kernel!(fn arm64simd_mmm_f32_16x4_gen(op: *const FusedKerSpec<f32>) -> isize);
+extern_kernel!(fn arm64simd_mmm_f32_8x8_gen(op: *const FusedKerSpec<f32>) -> isize);
+extern_kernel!(fn arm64simd_mmm_f32_12x8_a53(op: *const FusedKerSpec<f32>) -> isize);
+extern_kernel!(fn arm64simd_mmm_f32_12x8_gen(op: *const FusedKerSpec<f32>) -> isize);
+extern_kernel!(fn arm64simd_mmm_f32_64x1_a53(op: *const FusedKerSpec<f32>) -> isize);
+extern_kernel!(fn arm64simd_mmm_f32_64x1_gen(op: *const FusedKerSpec<f32>) -> isize);
+extern_kernel!(fn arm64simd_mmm_i8_8x8(op: *const FusedKerSpec<i32>) -> isize);
+extern_kernel!(fn arm64simd_mmm_i8_64x1(op: *const FusedKerSpec<i32>) -> isize);
 extern_kernel!(fn arm64simd_sigmoid_f32_4n(ptr: *mut f32, count: usize) -> ());
 extern_kernel!(fn arm64simd_tanh_f32_4n(ptr: *mut f32, count: usize) -> ());
 

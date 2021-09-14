@@ -1,6 +1,7 @@
+use std::ffi::c_void;
 use std::fmt::Debug;
 
-use super::{OutputStore, OutputStoreKer};
+use super::{InputStore, InputStoreKer, OutputStore, OutputStoreKer, PackedStore};
 use tract_data::internal::*;
 
 #[repr(usize)]
@@ -29,6 +30,7 @@ pub enum FusedSpec<'t> {
     AddUnicast(OutputStore),
     QScale(usize, RoundingPolicy, i32),
     Store(OutputStore),
+    AddMatMul { k: usize, a: PackedStore, b: InputStore },
 }
 
 #[repr(C, usize)]
@@ -47,6 +49,7 @@ pub enum FusedKerSpec<TI: Copy> {
     ScalarAdd(TI),
     QScale(usize, RoundingPolicy, i32),
     Store(OutputStoreKer),
+    AddMatMul { k: usize, pa: *const c_void, pb: *const InputStoreKer, cpu_variant: usize },
 }
 
 #[cfg(test)]
@@ -293,7 +296,7 @@ pub mod test {
     }
 
     pub fn null_packed_storage() -> InputStoreKer {
-        InputStoreKer::Packed { ptr: std::ptr::null() }
+        InputStoreKer::Packed(PackedStoreKer { ptr: std::ptr::null() })
     }
 
     pub fn mmm_stride_storage<T: Copy>(v: &mut [T], rsc: usize) -> OutputStoreKer {
@@ -314,12 +317,7 @@ pub mod test {
         let mut v = vec![TC::max_value(); K::mr() * K::nr()];
         let c = mmm_stride_storage(&mut v, K::nr());
         let non_linear = tvec![FusedKerSpec::Store(c), FusedKerSpec::Done];
-        let err = K::kernel(&MatMatMulKerSpec {
-            a: &null_packed_storage(),
-            b: &null_packed_storage(),
-            linear: &LinearSpec::k(0),
-            non_linear: non_linear.as_ptr(),
-        });
+        let err = K::kernel(&non_linear);
         assert_eq!(err, 0);
         let expected = vec![TC::zero(); v.len()];
         assert_eq!(v, expected);
@@ -339,12 +337,7 @@ pub mod test {
         ops.insert(0, FusedKerSpec::AddUnicast(c));
         ops.push(FusedKerSpec::Store(c));
         ops.push(FusedKerSpec::Done);
-        let err = K::kernel(&MatMatMulKerSpec {
-            a: &null_packed_storage(),
-            b: &null_packed_storage(),
-            linear: &LinearSpec::k(0),
-            non_linear: ops.as_ptr(),
-        });
+        let err = K::kernel(&ops);
         assert_eq!(err, 0);
         v
     }
