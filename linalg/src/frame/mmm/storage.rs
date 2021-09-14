@@ -147,14 +147,45 @@ impl OutputStore {
 
 #[derive(PartialEq, Clone, Debug, Hash)]
 pub enum InputStoreSpec {
-    Packed { panel_bytes: usize },
+    Packed(PackedStoreSpec),
     OffsetsAndPtrs { row_byte_offsets: Vec<isize>, col_byte_offsets: Vec<isize>, nr: usize },
+}
+
+#[derive(PartialEq, Clone, Debug, Hash)]
+pub struct PackedStoreSpec {
+    pub(crate) panel_bytes: usize,
+}
+
+impl PackedStoreSpec {
+    pub unsafe fn wrap(&self, tensor: &TensorView) -> PackedStore {
+        PackedStore {
+            ptr: tensor.as_ptr_unchecked::<u8>() as _,
+            item_size: tensor.datum_type().size_of(),
+            panel_bytes: self.panel_bytes as isize,
+        }
+    }
 }
 
 impl InputStoreSpec {
     #[inline]
     pub unsafe fn wrap(&self, tensor: &TensorView) -> InputStore {
-        InputStore::new(self, tensor)
+        use InputStore::*;
+        use InputStoreSpec as S;
+        match self {
+            S::Packed(PackedStoreSpec { panel_bytes }) => Packed(PackedStore {
+                ptr: tensor.as_ptr_unchecked::<u8>() as _,
+                item_size: tensor.datum_type().size_of(),
+                panel_bytes: *panel_bytes as isize,
+            }),
+            S::OffsetsAndPtrs { row_byte_offsets, col_byte_offsets, nr } => OffsetsAndPtrs {
+                row_byte_offsets: row_byte_offsets.as_ptr(),
+                col_ptrs: col_byte_offsets
+                    .iter()
+                    .map(|offset| tensor.as_ptr_unchecked::<u8>().offset(*offset) as _)
+                    .collect(),
+                nr: *nr,
+            },
+        }
     }
 }
 
@@ -169,47 +200,29 @@ impl fmt::Display for InputStoreSpec {
 
 #[derive(Clone, Debug)]
 pub enum InputStore {
-    Packed { ptr: *const c_void, item_size: usize, panel_bytes: isize },
+    Packed(PackedStore),
     OffsetsAndPtrs { row_byte_offsets: *const isize, col_ptrs: Vec<*const c_void>, nr: usize },
 }
 
-impl InputStore {
-    unsafe fn new(spec: &InputStoreSpec, tensor: &TensorView) -> InputStore {
-        use InputStore::*;
-        use InputStoreSpec as S;
-        match spec {
-            S::Packed { panel_bytes } => Packed {
-                ptr: tensor.as_ptr_unchecked::<u8>() as _,
-                item_size: tensor.datum_type().size_of(),
-                panel_bytes: *panel_bytes as isize,
-            },
-            S::OffsetsAndPtrs { row_byte_offsets, col_byte_offsets, nr } => OffsetsAndPtrs {
-                row_byte_offsets: row_byte_offsets.as_ptr(),
-                col_ptrs: col_byte_offsets
-                    .iter()
-                    .map(|offset| tensor.as_ptr_unchecked::<u8>().offset(*offset) as _)
-                    .collect(),
-                nr: *nr,
-            },
-        }
-    }
+#[derive(Clone, Debug)]
+pub struct PackedStore {
+    ptr: *const c_void,
+    item_size: usize,
+    panel_bytes: isize,
+}
 
+impl PackedStore {
     #[inline]
-    pub(super) unsafe fn panel_a(&self, i: usize) -> InputStoreKer {
-        match self {
-            InputStore::Packed { ptr, panel_bytes, .. } => {
-                InputStoreKer::Packed { ptr: ptr.offset(panel_bytes * i as isize) }
-            }
-            _ => unimplemented!(),
-        }
+    pub(super) unsafe fn panel(&self, i: usize) -> InputStoreKer {
+        InputStoreKer::Packed { ptr: self.ptr.offset(self.panel_bytes * i as isize) }
     }
+}
 
+impl InputStore {
     #[inline]
     pub(super) unsafe fn panel_b(&self, i: usize) -> InputStoreKer {
         match self {
-            InputStore::Packed { ptr, panel_bytes, .. } => {
-                InputStoreKer::Packed { ptr: ptr.offset(panel_bytes * i as isize) }
-            }
+            InputStore::Packed(packed) => packed.panel(i),
             InputStore::OffsetsAndPtrs { row_byte_offsets, col_ptrs, nr, .. } => {
                 InputStoreKer::OffsetsAndPtrs {
                     row_byte_offsets: *row_byte_offsets,
