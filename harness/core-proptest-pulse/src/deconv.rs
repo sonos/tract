@@ -53,7 +53,7 @@ impl Arbitrary for DeconvOp {
         )
             .prop_filter(
                 "Same padding geometry constraint",
-                |(stride, dilation, adj, ker, padding)| {
+                |(stride, dilation, _adj, ker, padding)| {
                     padding == &cnn::PaddingSpec::Valid || ((ker.len() - 1) * dilation > stride - 1)
                 },
             )
@@ -105,48 +105,6 @@ impl DeconvProblem {
         proptest_regular_against_pulse(model, self.pulse as _, self.input.clone().into_dyn(), 2)
     }
 }
-
-/*
-#[derive(Debug, Clone)]
-struct ConvPlusConvProblem {
-input: Array3<f32>,
-pulse: usize,
-conv1: ConvOp,
-conv2: ConvOp,
-}
-
-impl Arbitrary for ConvPlusConvProblem {
-type Parameters = ();
-type Strategy = BoxedStrategy<Self>;
-
-fn arbitrary_with(_: Self::Parameters) -> BoxedStrategy<Self> {
-(ConvOp::arbitrary(), ConvOp::arbitrary(), 1usize..3)
-.prop_flat_map(|(conv1, conv2, pulse_factor)| {
-let pulse = conv1.stride * conv2.stride * pulse_factor;
-let min_input = 4usize;
-(Just(conv1), Just(conv2), Just(pulse), vec(min_input..3 * min_input))
-})
-.prop_map(|(conv1, conv2, pulse, input)| {
-let input = Array3::from_shape_vec((1, 1, input.len()), input).unwrap(); // NCHW
-ConvPlusConvProblem { input, pulse, conv1, conv2 }
-})
-.boxed()
-}
-}
-
-impl ConvPlusConvProblem {
-pub fn run(&self) -> TestCaseResult {
-let mut model = InferenceModel::default();
-let input = model
-.add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(1, 1, S)))
-.unwrap();
-let id = self.conv1.chain("conv1", &mut model, input);
-let _id = self.conv2.chain("conv2", &mut model, id);
-model.auto_outputs().unwrap();
-proptest_regular_against_pulse(model, self.pulse as _, self.input.clone().into_dyn(), 2)
-}
-}
-*/
 
 proptest! {
     #[test]
