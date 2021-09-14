@@ -151,16 +151,16 @@ impl EvalOp for DeconvUnary {
 
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
+        // dbg!(&input);
         let mut model = TypedModel::default();
         let source =
             model.add_source("source", TypedFact::dt_shape(input.datum_type(), input.shape()))?;
         let output = self.wire_with_deconv_sum("adhoc", &mut model, source)?;
         model.set_output_outlets(&*output)?;
-        Ok(tvec!(model
-            .into_runnable()?
-            .run(tvec!(input.into_tensor()))?
-            .remove(0)
-            .into_arc_tensor()))
+        let output =
+            model.into_runnable()?.run(tvec!(input.into_tensor()))?.remove(0).into_arc_tensor();
+        // dbg!(&output);
+        Ok(tvec!(output))
     }
 }
 
@@ -169,6 +169,26 @@ impl TypedOp for DeconvUnary {
         let x_fact = inputs[0];
         let output_shape = super::output_shape(&self.pool_spec, &*x_fact.shape, &self.adjustments)?;
         Ok(tvec!(TypedFact::dt_shape(x_fact.datum_type, &output_shape)))
+    }
+
+    fn invariants(
+        &self,
+        _inputs: &[&TypedFact],
+        _outputs: &[&TypedFact],
+    ) -> TractResult<Invariants> {
+        let mut invariants = Invariants::default();
+        if self.pool_spec.data_format.has_n() {
+            invariants.axes.push(AxisInfo::simple(0))
+        }
+        for geo_axis in 0..self.pool_spec.kernel_shape.len() {
+            let kernel_len = self.pool_spec.kernel_shape[geo_axis];
+            if kernel_len == 1 {
+                invariants
+                    .axes
+                    .push(AxisInfo::simple(geo_axis + self.pool_spec.data_format.h_axis()))
+            }
+        }
+        Ok(invariants)
     }
 
     fn codegen(

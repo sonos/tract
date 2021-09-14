@@ -10,7 +10,7 @@ fn pulsify(
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
     _pulse: usize,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Option<TVec<OutletId>>> {
     let input = mapping[&node.inputs[0]];
     let pulse = target.outlet_fact(input)?.pulse();
     let stride = if op.stride > 0 {
@@ -21,7 +21,7 @@ fn pulsify(
     if pulse % stride != 0 {
         bail!("Pulsificaton requires pulse to be a stride multiple")
     }
-    target.wire_node(&*node.name, op.clone(), &[input])
+    Ok(Some(target.wire_node(&*node.name, op.clone(), &[input])?))
 }
 
 impl PulsedOp for Downsample {

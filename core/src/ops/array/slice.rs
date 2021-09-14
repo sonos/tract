@@ -160,5 +160,22 @@ impl TypedOp for Slice {
         Ok(None)
     }
 
+    fn concretize_dims(
+        &self,
+        _source: &TypedModel,
+        node: &TypedNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        values: &SymbolValues,
+    ) -> TractResult<TVec<OutletId>> {
+        let op = Slice {
+            axis: self.axis,
+            start: self.start.eval(values),
+            end: self.end.eval(values),
+        };
+        let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>();
+        target.wire_node(&node.name, op, &inputs)
+    }
+
     as_op!();
 }

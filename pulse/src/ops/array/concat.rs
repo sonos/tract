@@ -13,14 +13,14 @@ fn pulsify(
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
     _pulse: usize,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Option<TVec<OutletId>>> {
     let input = mapping[&node.inputs[0]];
     let fact = target.outlet_fact(input)?;
 
     if fact.axis == op.axis {
         pulsify_along_concat_axis(op, source, node, target, mapping)
     } else {
-        pulsify_across_concat_axis(op, source, node, target, mapping)
+        Ok(None)
     }
 }
 
@@ -30,7 +30,7 @@ fn pulsify_along_concat_axis(
     node: &TypedNode,
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Option<TVec<OutletId>>> {
     if node.inputs.len() > 1 {
         bail!("Concat can not pulse more than on input on concat axis")
     }
@@ -64,34 +64,7 @@ fn pulsify_along_concat_axis(
         input_delay: fact.delay.saturating_sub(before),
         input_len: fact.dim.clone(),
     };
-    target.wire_node(&*node.name, main_op, &[input])
-}
-
-fn pulsify_across_concat_axis(
-    op: &TypedConcat,
-    _source: &TypedModel,
-    node: &TypedNode,
-    target: &mut PulsedModel,
-    mapping: &HashMap<OutletId, OutletId>,
-) -> TractResult<TVec<OutletId>> {
-    let sync_inputs = crate::ops::binary::sync_inputs(node, target, mapping)?;
-    target.wire_node(&node.name, op.clone(), &sync_inputs)
-}
-
-impl PulsedOp for TypedConcat {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
-        let typed_input_facts: TVec<TypedFact> =
-            inputs.iter().map(|pf| pf.to_typed_fact()).collect::<TractResult<_>>()?;
-        let typed_input_facts_ref: TVec<&TypedFact> = typed_input_facts.iter().collect();
-
-        let typed_fact = self.output_facts(&typed_input_facts_ref)?.remove(0);
-        let mut fact = inputs[0].clone();
-        fact.shape.set(self.axis, typed_fact.shape[self.axis].clone());
-        Ok(tvec!(fact))
-    }
-
-    as_op!();
-    pulsed_op_to_typed_op!();
+    Ok(Some(target.wire_node(&*node.name, main_op, &[input])?))
 }
 
 /// Concat with pulse along concat axis
