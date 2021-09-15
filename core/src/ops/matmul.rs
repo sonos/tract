@@ -21,12 +21,12 @@ pub fn compute_shape<D: DimLike>(
     a_trans: bool,
     b_trans: bool,
     c_trans: bool,
-    ) -> TractResult<(D, D, D, TVec<D>)> {
+) -> TractResult<(D, D, D, TVec<D>)> {
     let mut c_shape = crate::broadcast::multi_broadcast(&[
-                                                        &ashape[..(ashape.len() - 2)],
-                                                        &bshape[..(bshape.len() - 2)],
+        &ashape[..(ashape.len() - 2)],
+        &bshape[..(bshape.len() - 2)],
     ])
-        .ok_or_else(|| format_err!("Could not broadcast"))?;
+    .ok_or_else(|| format_err!("Could not broadcast"))?;
     let (mut m, mut ka) = (ashape[ashape.len() - 2].clone(), ashape[ashape.len() - 1].clone());
     let (mut kb, mut n) = (bshape[bshape.len() - 2].clone(), bshape[bshape.len() - 1].clone());
     if a_trans {
@@ -43,7 +43,7 @@ pub fn compute_shape<D: DimLike>(
             a_trans,
             b_trans,
             c_trans
-            );
+        );
     }
     if c_trans {
         c_shape.push(n.clone());
@@ -69,7 +69,7 @@ pub(super) fn eval(
     a_trans: bool,
     b_trans: bool,
     c_trans: bool,
-    ) -> TractResult<Tensor> {
+) -> TractResult<Tensor> {
     unsafe {
         let rank = a.rank();
         let (m, k, n, c_shape) = compute_shape(a.shape(), b.shape(), a_trans, b_trans, c_trans)?;
@@ -82,13 +82,13 @@ pub(super) fn eval(
                     a.datum_type(),
                     b.datum_type(),
                     dt
-                    )
+                )
             })?;
         let c_storage = mm.c_from_data_and_strides(
             dt.size_of(),
             if c_trans { 1 } else { c_shape[rank - 1] as isize },
             if !c_trans { 1 } else { c_shape[rank - 1] as isize },
-            );
+        );
 
         let mut c = Tensor::uninitialized_dt(dt, &c_shape)?;
 
@@ -112,24 +112,25 @@ pub(super) fn eval(
                 &a.view_at_prefix(&a_prefix)?,
                 !a_trans as usize,
                 a_trans as usize,
-                );
+            );
             b_pack.pack(
                 packed_b.view_mut(),
                 &b.view_at_prefix(&b_prefix)?,
                 b_trans as usize,
                 !b_trans as usize,
-                );
+            );
             mm.run(
                 m,
                 n,
                 &[
-                FusedSpec::AddMatMul {
-                    a: mm.a_packed(a.datum_type().size_of(), k).wrap(&packed_a.view()),
-                    b: mm.b_packed(b.datum_type().size_of(), k).wrap(&packed_b.view()),
-                    k,
-                },
-                FusedSpec::Store(c_storage.wrap(&c.view_at_prefix_mut(prefix.slice())?))],
-                )?;
+                    FusedSpec::AddMatMul {
+                        a: mm.a_packed(a.datum_type().size_of(), k).wrap(&packed_a.view()),
+                        b: mm.b_packed(b.datum_type().size_of(), k).wrap(&packed_b.view()),
+                        k,
+                    },
+                    FusedSpec::Store(c_storage.wrap(&c.view_at_prefix_mut(prefix.slice())?)),
+                ],
+            )?;
         }
         Ok(c)
     }
@@ -141,14 +142,14 @@ pub(super) fn cost<A: DimLike + Clone, B: DimLike + Clone>(
     dt: DatumType,
     a_trans: bool,
     b_trans: bool,
-    ) -> TractResult<TVec<(Cost, TDim)>> {
+) -> TractResult<TVec<(Cost, TDim)>> {
     let (m, k, n, c_shape) = compute_shape(
         &a.iter().map(|d| d.clone().to_dim()).collect::<TVec<_>>(),
         &b.iter().map(|d| d.clone().to_dim()).collect::<TVec<_>>(),
         a_trans,
         b_trans,
         false,
-        )?;
+    )?;
     let mul = c_shape.iter().rev().skip(2).cloned().product();
     Ok(tvec!((Cost::FMA(dt), [mul, m.to_dim(), k.to_dim(), n.to_dim()].iter().product())))
 }
