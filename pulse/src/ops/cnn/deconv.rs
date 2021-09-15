@@ -1,12 +1,8 @@
 use crate::internal::*;
+use tract_core::num_traits::Zero;
 use tract_core::ops::cnn::DeconvUnary;
-use tract_pulse_opl::{
-    ops::DeconvDelay,
-    tract_core::{
-        num_traits::Zero,
-        ops::cnn::{PaddingSpec, PoolSpec},
-    },
-};
+use tract_core::ops::cnn::PaddingSpec;
+use tract_pulse_opl::ops::DeconvDelay;
 
 register_all!(DeconvUnary: pulsify);
 
@@ -17,7 +13,7 @@ fn pulsify(
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
     _pulse: usize,
-    ) -> TractResult<Option<TVec<OutletId>>> {
+) -> TractResult<Option<TVec<OutletId>>> {
     let fact = target.outlet_fact(mapping[&node.inputs[0]])?.clone();
     let pulse = fact.pulse();
     let geo_axis = fact.axis - op.pool_spec.data_format.h_axis();
@@ -27,14 +23,14 @@ fn pulsify(
     pulse_op.pool_spec.padding = PaddingSpec::Valid;
     let deconv =
         target.wire_node(format!("{}.deconv", node.name), pulse_op, &[mapping[&node.inputs[0]]])?
-        [0];
+            [0];
     let overlap = overlap(fact.axis, op);
     let deconv_input_dim = (fact.dim.clone() - 1) * stride + 1;
     let output_shape = tract_core::ops::cnn::deconv::output_shape(
         &op.pool_spec,
         &fact.streaming_shape(),
         &op.adjustments,
-        )?;
+    )?;
     let kernel_spatial_shape = match op.kernel_format {
         tract_core::ops::cnn::KernelFormat::OIHW => &op.kernel.shape()[2..],
         tract_core::ops::cnn::KernelFormat::HWIO => &op.kernel.shape()[..op.kernel.rank() - 2],
@@ -46,7 +42,7 @@ fn pulsify(
         &op.pool_spec.dilations(),
         &op.pool_spec.strides(),
         &op.adjustments,
-        )?;
+    )?;
     let mut wire = target.wire_node(
         &node.name,
         DeconvDelay {
@@ -59,10 +55,9 @@ fn pulsify(
             deconv_output_dim: output_shape[fact.axis].clone(),
         },
         &[deconv],
-        )?;
+    )?;
 
-    for (geo_axis, padding) in paddings.iter().enumerate()
-    {
+    for (geo_axis, padding) in paddings.iter().enumerate() {
         if !padding.pad_before.is_zero() || !padding.pad_after.is_zero() {
             let axis = geo_axis + shape.h_axis();
             if axis == fact.axis {
@@ -72,7 +67,7 @@ fn pulsify(
                 axis,
                 padding.pad_before.clone(),
                 padding.deconvoluted.clone() + &padding.pad_before,
-                );
+            );
             wire = target.wire_node(format!("{}.padding.{}", node.name, geo_axis), op, &wire)?;
         }
     }
@@ -98,7 +93,7 @@ impl PulsedOp for DeconvUnary {
             &self.pool_spec,
             &fact.streaming_shape(),
             &self.adjustments,
-            )?;
+        )?;
         fact.dim = output_shape[fact.axis].clone();
         let pulse_len = fact.shape[fact.axis].clone() * stride;
         fact.shape.set(fact.axis, pulse_len + overlap);

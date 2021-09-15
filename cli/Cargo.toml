@@ -18,7 +18,7 @@ maintenance = { status = "actively-developed" }
 ansi_term = "0.12.1"
 atty = "0.2.14"
 box_drawing = "0.1.2"
-cast = "0.2.7"
+cast = "0.3"
 clap = "2.33.3"
 criterion = "0.3.5"
 colorous = "1.0.5"
