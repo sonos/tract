@@ -1,10 +1,8 @@
 use std::ops::AddAssign;
 
-use tract_nnef::{
-    internal::*,
-    tract_ndarray::{arr0, Axis},
-    tract_num_traits::Zero,
-};
+use tract_ndarray::Axis;
+use tract_nnef::internal::*;
+use tract_num_traits::Zero;
 
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub struct DeconvDelay {
