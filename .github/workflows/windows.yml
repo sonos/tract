@@ -29,7 +29,6 @@ jobs:
             $ProgressPreference = "SilentlyContinue"
             Invoke-WebRequest https://win.rustup.rs/ -OutFile rustup-init.exe
             .\rustup-init.exe -y --default-host=x86_64-pc-windows-msvc --profile=minimal
-            del rustup-init.exe
     - uses: nick-invision/retry@v2
       name: Install the target
       with:
