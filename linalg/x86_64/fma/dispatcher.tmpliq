@@ -2,17 +2,11 @@
 
 {{L}}non_linear:
 
-    mov     rcx,    [rdi + 24]          // non linear spec
-    test    rcx,    rcx
-    jnz     {{L}}non_linear_loop_enter
-
-// NON LINEAR LOOP
-
 {{L}}non_linear_loop_enter:
-    sub     rcx,    40
+    sub     rdi,    40
 {{L}}non_linear_loop:
-    add     rcx,    40
-    mov     rax,    [rcx]
+    add     rdi,    40
+    mov     rax,    [rdi]
 
     mov     r8, 13
     cmp     rax, 0
@@ -43,7 +37,7 @@
     {{long}}      {{L}}scalar_add-{{L}}jmp_table
     {{long}}      {{L}}q_scale-{{L}}jmp_table
     {{long}}      {{L}}store-{{L}}jmp_table
-
+    {{long}}      {{L}}add_mat_mul-{{L}}jmp_table
 
     jmp     {{L}}unsupported
 
