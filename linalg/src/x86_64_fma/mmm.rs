@@ -1,8 +1,8 @@
 use crate::frame::mmm::*;
 
-extern_kernel!(fn fma_mmm_f32_16x6(op: *const MatMatMulKerSpec<f32>) -> isize);
-extern_kernel!(fn fma_mmm_f32_64x1(op: *const MatMatMulKerSpec<f32>) -> isize);
-extern_kernel!(fn fma_mmm_i8_8x8(op: *const MatMatMulKerSpec<i32>) -> isize);
+extern_kernel!(fn fma_mmm_f32_16x6(op: *const FusedKerSpec<f32>) -> isize);
+extern_kernel!(fn fma_mmm_f32_64x1(op: *const FusedKerSpec<f32>) -> isize);
+extern_kernel!(fn fma_mmm_i8_8x8(op: *const FusedKerSpec<i32>) -> isize);
 
 MMMKernel!(MatMatMulF32x16x6<f32>, "fma", fma_mmm_f32_16x6; 16, 6; 32, 4; 0, 0);
 MMMKernel!(MatMatMulF32x64x1<f32>, "fma", fma_mmm_f32_64x1; 64, 1; 32, 4; 0, 0);

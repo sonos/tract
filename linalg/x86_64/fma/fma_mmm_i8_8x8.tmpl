@@ -84,27 +84,21 @@ fma_mmm_i8_8x8_{{suffix}} proc
 
     vzeroall
 
-    mov     rax,    [rdi]       // A
-    mov     rbx,    [rdi + 8]   // B
+{% include "dispatcher.tmpliq" %}
 
-    mov     rcx,    [rdi + 16]  // Linear spec
-    mov     rcx,    [rcx + 8]   // k
+{{L}}add_mat_mul:
+    mov     rbx,    [rdi + 24]   // B
+    mov     rax,    [rdi + 16]   // A
+
+    mov     rcx,    [rdi + 8]    // k
     test    rcx,    rcx
-
-    je      {{L}}non_linear
+    jz      {{L}}non_linear_loop
 
     mov     rsi, [rbx]   // B discriminant
-    cmp     rsi,  1
+    cmp     rsi,  0
     je      {{L}}packed_packed
-    cmp     rsi,  2
-    je      {{L}}packed_tops_and_offsets
-    cmp     rsi,  3
-    je      {{L}}packed_vec
-
-    jmp     {{L}}unsupported
 
 {{L}}packed_tops_and_offsets:
-    mov     rax,    [rax + 8]   // A
     mov     rsi,    [rbx + 16]  // B cols head
     mov     rbx,    [rbx + 8]   // rbx: current row offset ptr
 
@@ -172,11 +166,9 @@ fma_mmm_i8_8x8_{{suffix}} proc
     dec             rcx
     jnz             {{L}}main_loop_packed_tops_and_offsets
 
-    jmp             {{L}}non_linear
+    jmp             {{L}}non_linear_loop
 
 {{L}}packed_packed:
-
-    mov     rax,   [rax + 8] // A
     mov     rbx,   [rbx + 8] // B 
 
 {{L}}main_loop_packed_packed:
@@ -232,68 +224,14 @@ fma_mmm_i8_8x8_{{suffix}} proc
     dec             rcx
     jnz             {{L}}main_loop_packed_packed
 
-    jmp             {{L}}non_linear
-
-{{L}}packed_vec:
-    mov     rax,   [rax + 8]    // A
-    mov     rsi,   [rbx + 16]   // B stride
-    mov     rbx,   [rbx + 8]    // B ptr
-
-{{L}}packed_vec_loop:
-    vpbroadcastb    ymm14,  byte ptr [rbx]
-    vpmovsxbw       ymm14,  xmm14
-    movq            xmm12,  qword ptr [rax]
-    vpmovsxbw       ymm12,  xmm12
-
-    vpmullw         ymm12,  ymm12, ymm14
-    vpmovsxwd       ymm12,  xmm12
-    vpaddd          ymm0, ymm0, ymm12
-
-    add             rbx,    rsi
-    add             rax,    8
-    dec             rcx
-    jnz             {{L}}packed_vec_loop
-
-{% include "dispatcher.tmpliq" %}
-
-{{L}}return:
-    ldmxcsr     [rsp + 4]
-    add         rsp, 8
-
-    pop r15
-    pop r14
-    pop r13
-    pop r12
-    pop rbx
-
-{% if family == "windows" %}
-    pop rsi
-    pop rdi
-
-    vmovaps xmm15, [rsp+16*9]
-    vmovaps xmm14, [rsp+16*8]
-    vmovaps xmm13, [rsp+16*7]
-    vmovaps xmm12, [rsp+16*6]
-    vmovaps xmm11, [rsp+16*5]
-    vmovaps xmm10, [rsp+16*4]
-    vmovaps xmm9, [rsp+16*3]
-    vmovaps xmm8, [rsp+16*2]
-    vmovaps xmm7, [rsp+16*1]
-    vmovaps xmm6, [rsp]
-{% endif %}
-
-    mov rsp, rbp
-    pop rbp
-    ret
-
-// NON LINEAR / ADDC
+    jmp             {{L}}non_linear_loop
 
 {{L}}add_unicast:
 
-    mov     r10,    [rcx + 8]           // c ptr
-    mov     rsi,    [rcx + 16]          // row stride
-    mov     rbx,    [rcx + 24]          // col stride
-    mov     r8,     [rcx + 32]          // item size
+    mov     r10,    [rdi + 8]           // c ptr
+    mov     rsi,    [rdi + 16]          // row stride
+    mov     rbx,    [rdi + 24]          // col stride
+    mov     r8,     [rdi + 32]          // item size
 
     cmp     r8,    4
     je      {{L}}non_linear_addc_i32
@@ -379,7 +317,7 @@ i128_shuffle dd              0, 4
 // NON LINEAR / MAX
 
 {{L}}max:
-    vbroadcastss    ymm12, dword ptr [rcx + 8]
+    vbroadcastss    ymm12, dword ptr [rdi + 8]
 {% for i in (0..7) %}
     vpmaxsd         ymm{{i}}, ymm{{i}}, ymm12
 {% endfor %}
@@ -388,7 +326,7 @@ i128_shuffle dd              0, 4
 // NON LINEAR / MIN
 
 {{L}}min:
-    vbroadcastss    ymm12, dword ptr [rcx + 8]
+    vbroadcastss    ymm12, dword ptr [rdi + 8]
 {% for i in (0..7) %}
     vpminsd         ymm{{i}}, ymm{{i}}, ymm12
 {% endfor %}
@@ -397,7 +335,7 @@ i128_shuffle dd              0, 4
 // NON LINEAR / PER ROW MUL
 
 {{L}}per_row_mul:
-    mov             rax, [ rcx + 8 ]
+    mov             rax, [ rdi + 8 ]
 
     vmovups         ymm12,  [rax]
 
@@ -410,7 +348,7 @@ i128_shuffle dd              0, 4
 // NON LINEAR / PER ROW ADD
 
 {{L}}per_row_add:
-    mov             rax, [ rcx + 8 ]
+    mov             rax, [ rdi + 8 ]
 
     vmovups         ymm12,  [rax]
 
@@ -423,7 +361,7 @@ i128_shuffle dd              0, 4
 // NON LINEAR / PER COL MUL
 
 {{L}}per_col_mul:
-    mov             rax, [ rcx + 8 ]
+    mov             rax, [ rdi + 8 ]
 
 {% for i in (0..7) %}
     vbroadcastss    ymm12, dword ptr [rax + {{i|times:4}}]
@@ -435,7 +373,7 @@ i128_shuffle dd              0, 4
 // NON LINEAR / PER COL ADD
 
 {{L}}per_col_add:
-    mov             rax, [ rcx + 8 ]
+    mov             rax, [ rdi + 8 ]
 
 {% for i in (0..7) %}
     vbroadcastss    ymm12, dword ptr [rax + {{i|times:4}}]
@@ -445,8 +383,8 @@ i128_shuffle dd              0, 4
     jmp    {{L}}non_linear_loop
 
 {{L}}add_row_col_products:
-    mov             rax, [ rcx + 8 ]
-    mov             rbx, [ rcx + 16 ]
+    mov             rax, [ rdi + 8 ]
+    mov             rbx, [ rdi + 16 ]
 
     vmovups         ymm12,  [rax]
 
@@ -458,7 +396,7 @@ i128_shuffle dd              0, 4
     jmp    {{L}}non_linear_loop
 
 {{L}}scalar_mul:
-    vbroadcastss    ymm12, dword ptr [rcx + 8]
+    vbroadcastss    ymm12, dword ptr [rdi + 8]
 
 {% for i in (0..7) %}
     vpmulld         ymm{{i}}, ymm{{i}}, ymm12
@@ -467,7 +405,7 @@ i128_shuffle dd              0, 4
     jmp    {{L}}non_linear_loop
 
 {{L}}scalar_add:
-    vpbroadcastd    ymm12, dword ptr [rcx + 8]
+    vpbroadcastd    ymm12, dword ptr [rdi + 8]
 
 {% for i in (0..7) %}
     vpaddd          ymm{{i}}, ymm{{i}}, ymm12
@@ -476,14 +414,14 @@ i128_shuffle dd              0, 4
     jmp    {{L}}non_linear_loop
 
 {{L}}q_scale:
-    mov             r8, [ rcx + 16 ]        // policy
-    vbroadcastss    ymm8, dword ptr [rcx + 24] // multi
+    mov             r8, [ rdi + 16 ]        // policy
+    vbroadcastss    ymm8, dword ptr [rdi + 24] // multi
 
     mov             rax, 1
     movq            xmm9, rax
     vpbroadcastq    ymm9, xmm9              // ymm9 <- 1
 
-    mov             rax, [ rcx + 8 ]        // xmm10 <- shift + 31
+    mov             rax, [ rdi + 8 ]        // xmm10 <- shift + 31
     add             rax, 31
     movq            xmm10, rax
     vpbroadcastq    ymm10, xmm10
@@ -683,12 +621,12 @@ i128_shuffle dd              0, 4
     jmp    {{L}}non_linear_loop
 
 {{L}}store:
-    mov     r8,     [rcx + 8]           // c ptr
-    mov     rsi,    [rcx + 16]          // row stride
-    mov     rdx,    [rcx + 24]          // col stride
-    mov     rdi,    [rcx + 32]          // item size
+    mov     r8,     [rdi + 8]           // c ptr
+    mov     rsi,    [rdi + 16]          // row stride
+    mov     rdx,    [rdi + 24]          // col stride
+    mov     rcx,    [rdi + 32]          // item size
 
-    cmp     rdi,    4
+    cmp     rcx,    4
     je      {{L}}store_strides_i32
 
     {% for col in (0..7) %}
@@ -727,6 +665,37 @@ i128_shuffle dd              0, 4
     {% endfor %}
 
     jmp     {{L}}non_linear_loop
+
+{{L}}return:
+    ldmxcsr     [rsp + 4]
+    add         rsp, 8
+
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+
+{% if family == "windows" %}
+    pop rsi
+    pop rdi
+
+    vmovaps xmm15, [rsp+16*9]
+    vmovaps xmm14, [rsp+16*8]
+    vmovaps xmm13, [rsp+16*7]
+    vmovaps xmm12, [rsp+16*6]
+    vmovaps xmm11, [rsp+16*5]
+    vmovaps xmm10, [rsp+16*4]
+    vmovaps xmm9, [rsp+16*3]
+    vmovaps xmm8, [rsp+16*2]
+    vmovaps xmm7, [rsp+16*1]
+    vmovaps xmm6, [rsp]
+{% endif %}
+
+    mov rsp, rbp
+    pop rbp
+    ret
+
 
 {{L}}one_32bit:
 {% if msvc %}

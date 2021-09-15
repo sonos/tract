@@ -85,25 +85,21 @@ fma_mmm_f32_16x6_{{suffix}} proc
 
     vzeroall
 
-    mov     rax,    [rdi]       // A
-    mov     rbx,    [rdi + 8]   // B
+{% include "dispatcher.tmpliq" %}
 
-    mov     rcx,    [rdi + 16]  // Linear spec
-    mov     rcx,    [rcx + 8]   // k
+{{L}}add_mat_mul:
+    mov     rbx,    [rdi + 24]   // B
+    mov     rax,    [rdi + 16]   // A
+
+    mov     rcx,    [rdi + 8]    // k
     test    rcx,    rcx
-
-    je      {{L}}non_linear
+    jz      {{L}}non_linear_loop
 
     mov     rsi, [rbx]   // B discriminant
-    cmp     rsi,  1
+    cmp     rsi,  0
     je      {{L}}packed_packed
-    cmp     rsi,  2
-    je      {{L}}packed_tops_and_offsets
-
-    jmp     {{L}}unsupported
 
 {{L}}packed_tops_and_offsets:
-    mov     rax,    [rax + 8]   // A
     mov     rsi,    [rbx + 16]  // B cols head
     mov     rbx,    [rbx + 8]   // rbx: current row offset ptr
 
@@ -154,11 +150,9 @@ fma_mmm_f32_16x6_{{suffix}} proc
     dec             rcx
     jnz             {{L}}main_loop_packed_tops_and_offsets
 
-    jmp             {{L}}non_linear
+    jmp             {{L}}non_linear_loop
 
 {{L}}packed_packed:
-
-    mov     rax,   [rax + 8] // A
     mov     rbx,   [rbx + 8] // B 
 
 {{L}}main_loop_packed_packed:
@@ -199,17 +193,15 @@ fma_mmm_f32_16x6_{{suffix}} proc
     dec             rcx
     jnz             {{L}}main_loop_packed_packed
 
-    jmp             {{L}}non_linear
-
-{% include "dispatcher.tmpliq" %}
+    jmp             {{L}}non_linear_loop
 
 // NON LINEAR / ADDC
 
 {{L}}add_unicast:
 
-    mov     r10,    [rcx + 8]           // c ptr
-    mov     rsi,    [rcx + 16]          // row stride
-    mov     rbx,    [rcx + 24]          // col stride
+    mov     r10,    [rdi + 8]           // c ptr
+    mov     rsi,    [rdi + 16]          // row stride
+    mov     rbx,    [rdi + 24]          // col stride
 
     mov     eax,    0
 {% for i in (0..3) %}
@@ -241,7 +233,7 @@ fma_mmm_f32_16x6_{{suffix}} proc
 // NON LINEAR / MAX
 
 {{L}}max:
-    vbroadcastss    ymm12, dword ptr [rcx + 8]
+    vbroadcastss    ymm12, dword ptr [rdi + 8]
 {% for i in (0..11) %}
     vmaxps          ymm{{i}}, ymm{{i}}, ymm12
 {% endfor %}
@@ -250,7 +242,7 @@ fma_mmm_f32_16x6_{{suffix}} proc
 // NON LINEAR / MIN
 
 {{L}}min:
-    vbroadcastss    ymm12, dword ptr [rcx + 8]
+    vbroadcastss    ymm12, dword ptr [rdi + 8]
 {% for i in (0..11) %}
     vminps          ymm{{i}}, ymm{{i}}, ymm12
 {% endfor %}
@@ -259,7 +251,7 @@ fma_mmm_f32_16x6_{{suffix}} proc
 // NON LINEAR / PER ROW MUL
 
 {{L}}per_row_mul:
-    mov             rax, [ rcx + 8 ]
+    mov             rax, [ rdi + 8 ]
 
     vmovups         ymm12,  [rax]
     vmovups         ymm13,  [rax + 32]
@@ -274,7 +266,7 @@ fma_mmm_f32_16x6_{{suffix}} proc
 // NON LINEAR / PER ROW ADD
 
 {{L}}per_row_add:
-    mov             rax, [ rcx + 8 ]
+    mov             rax, [ rdi + 8 ]
 
     vmovups         ymm12,  [rax]
     vmovups         ymm13,  [rax + 32]
@@ -289,7 +281,7 @@ fma_mmm_f32_16x6_{{suffix}} proc
 // NON LINEAR / PER COL MUL
 
 {{L}}per_col_mul:
-    mov             rax, [ rcx + 8 ]
+    mov             rax, [ rdi + 8 ]
 
 {% for i in (0..5) %}
     vbroadcastss    ymm12, dword ptr [rax + {{i|times:4}}]
@@ -302,7 +294,7 @@ fma_mmm_f32_16x6_{{suffix}} proc
 // NON LINEAR / PER COL ADD
 
 {{L}}per_col_add:
-    mov             rax, [ rcx + 8 ]
+    mov             rax, [ rdi + 8 ]
 
 {% for i in (0..5) %}
     vbroadcastss    ymm12, dword ptr [rax + {{i|times:4}}]
@@ -313,8 +305,8 @@ fma_mmm_f32_16x6_{{suffix}} proc
     jmp    {{L}}non_linear_loop
 
 {{L}}add_row_col_products:
-    mov             rax, [ rcx + 8 ]
-    mov             rbx, [ rcx + 16 ]
+    mov             rax, [ rdi + 8 ]
+    mov             rbx, [ rdi + 16 ]
 
     vmovups         ymm12,  [rax]
     vmovups         ymm13,  [rax + 32]
@@ -327,7 +319,7 @@ fma_mmm_f32_16x6_{{suffix}} proc
     jmp    {{L}}non_linear_loop
 
 {{L}}scalar_mul:
-    vbroadcastss    ymm12, dword ptr [rcx + 8]
+    vbroadcastss    ymm12, dword ptr [rdi + 8]
 
 {% for i in (0..5) %}
     vmulps          ymm{{i|times:2}}, ymm{{i|times:2}}, ymm12
@@ -337,7 +329,7 @@ fma_mmm_f32_16x6_{{suffix}} proc
     jmp    {{L}}non_linear_loop
 
 {{L}}scalar_add:
-    vbroadcastss    ymm12, dword ptr [rcx + 8]
+    vbroadcastss    ymm12, dword ptr [rdi + 8]
 
 {% for i in (0..5) %}
     vaddps          ymm{{i|times:2}}, ymm{{i|times:2}}, ymm12
@@ -347,9 +339,9 @@ fma_mmm_f32_16x6_{{suffix}} proc
     jmp    {{L}}non_linear_loop
 
 {{L}}store:
-    mov     r8,     [rcx + 8]           // c ptr
-    mov     rsi,    [rcx + 16]          // row stride
-    mov     rbx,    [rcx + 24]          // col stride
+    mov     r8,     [rdi + 8]           // c ptr
+    mov     rsi,    [rdi + 16]          // row stride
+    mov     rbx,    [rdi + 24]          // col stride
 
     // tops of cols
     lea     r9,     [ r8 + rbx ]
