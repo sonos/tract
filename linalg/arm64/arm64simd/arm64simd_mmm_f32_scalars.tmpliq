@@ -1,0 +1,7 @@
+// vim: ft=arm
+
+{% include "arm64simd_mmm_4s_scalar.tmpliq" label:"min", op:"fmin", from:from, to:to%}
+{% include "arm64simd_mmm_4s_scalar.tmpliq" label:"max", op:"fmax", from:from, to:to%}
+{% include "arm64simd_mmm_4s_scalar.tmpliq" label:"scalar_mul", op:"fmul", from:from, to:to%}
+{% include "arm64simd_mmm_4s_scalar.tmpliq" label:"scalar_add", op:"fadd", from:from, to:to%}
+
