@@ -1,17 +1,17 @@
 use crate::frame::element_wise::*;
 use crate::frame::mmm::*;
 
-extern_kernel!(fn armv7neon_mmm_i8_8x4(op: *const MatMatMulKerSpec<i32>) -> isize);
-extern_kernel!(fn armv7neon_mmm_i8_32x1(op: *const MatMatMulKerSpec<i32>) -> isize);
-extern_kernel!(fn armv7neon_mmm_f32_8x4_cortexa7(op: *const MatMatMulKerSpec<f32>) -> isize);
-extern_kernel!(fn armv7neon_mmm_f32_8x4_cortexa9(op: *const MatMatMulKerSpec<f32>) -> isize);
-extern_kernel!(fn armv7neon_mmm_f32_8x4_generic(op: *const MatMatMulKerSpec<f32>) -> isize);
-extern_kernel!(fn armv7neon_mmm_f32_8x6_cortexa7(op: *const MatMatMulKerSpec<f32>) -> isize);
-extern_kernel!(fn armv7neon_mmm_f32_8x6_cortexa9(op: *const MatMatMulKerSpec<f32>) -> isize);
-extern_kernel!(fn armv7neon_mmm_f32_8x6_generic(op: *const MatMatMulKerSpec<f32>) -> isize);
-extern_kernel!(fn armv7neon_mmm_f32_32x1_cortexa7(op: *const MatMatMulKerSpec<f32>) -> isize);
-extern_kernel!(fn armv7neon_mmm_f32_32x1_cortexa9(op: *const MatMatMulKerSpec<f32>) -> isize);
-extern_kernel!(fn armv7neon_mmm_f32_32x1_generic(op: *const MatMatMulKerSpec<f32>) -> isize);
+extern_kernel!(fn armv7neon_mmm_i8_8x4(op: *const FusedKerSpec<i32>) -> isize);
+extern_kernel!(fn armv7neon_mmm_i8_32x1(op: *const FusedKerSpec<i32>) -> isize);
+extern_kernel!(fn armv7neon_mmm_f32_8x4_cortexa7(op: *const FusedKerSpec<f32>) -> isize);
+extern_kernel!(fn armv7neon_mmm_f32_8x4_cortexa9(op: *const FusedKerSpec<f32>) -> isize);
+extern_kernel!(fn armv7neon_mmm_f32_8x4_generic(op: *const FusedKerSpec<f32>) -> isize);
+extern_kernel!(fn armv7neon_mmm_f32_8x6_cortexa7(op: *const FusedKerSpec<f32>) -> isize);
+extern_kernel!(fn armv7neon_mmm_f32_8x6_cortexa9(op: *const FusedKerSpec<f32>) -> isize);
+extern_kernel!(fn armv7neon_mmm_f32_8x6_generic(op: *const FusedKerSpec<f32>) -> isize);
+extern_kernel!(fn armv7neon_mmm_f32_32x1_cortexa7(op: *const FusedKerSpec<f32>) -> isize);
+extern_kernel!(fn armv7neon_mmm_f32_32x1_cortexa9(op: *const FusedKerSpec<f32>) -> isize);
+extern_kernel!(fn armv7neon_mmm_f32_32x1_generic(op: *const FusedKerSpec<f32>) -> isize);
 extern_kernel!(fn armv7neon_sigmoid_f32_4n(ptr: *mut f32, count: usize) -> ());
 extern_kernel!(fn armv7neon_tanh_f32_4n(ptr: *mut f32, count: usize) -> ());
 extern_kernel!(fn armv7neon_prefetch(start: *const u8, end: *const u8) -> ());
