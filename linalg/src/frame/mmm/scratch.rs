@@ -191,6 +191,8 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                     }
                 }
                 FusedSpec::AddMatMul { k, a, b } => {
+                    let pa = a.panel(down);
+                    K::prefetch(pa.ptr as _, 512);
                     let pb: &mut InputStoreKer = self.get_temp();
                     let mut tb = b.panel_b(right);
                     std::mem::swap(pb, &mut tb);

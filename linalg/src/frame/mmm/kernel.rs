@@ -14,6 +14,10 @@ where
     fn end_padding_packed_a() -> usize;
     fn alignment_bytes_packed_b() -> usize;
     fn end_padding_packed_b() -> usize;
+
+    #[allow(unused_variables)]
+    fn prefetch(ptr: *const u8, len: usize) {
+    }
 }
 
 #[macro_export]

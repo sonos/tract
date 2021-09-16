@@ -20,7 +20,7 @@ pub use storage::*;
 pub use tests::*;
 
 macro_rules! MMMKernel {
-    ($typ:ident<$ti:ident>, $name:expr, $func:ident; $mr: expr, $nr: expr; $alignment_bytes_packed_a: expr, $alignment_bytes_packed_b: expr; $end_padding_packed_a: expr, $end_padding_packed_b: expr) => {
+    ($typ:ident<$ti:ident>, $name:expr, $func:ident; $mr: expr, $nr: expr; $alignment_bytes_packed_a: expr, $alignment_bytes_packed_b: expr; $end_padding_packed_a: expr, $end_padding_packed_b: expr $(, $prefetch: ident)?) => {
         #[derive(Copy, Clone, Debug, new)]
         pub struct $typ;
 
@@ -59,6 +59,11 @@ macro_rules! MMMKernel {
                 debug_assert!(matches!(spec[spec.len() - 1], FusedKerSpec::Done));
                 unsafe { $func(spec.as_ptr()) }
             }
+            $(
+                fn prefetch(ptr: *const u8, len: usize) {
+                    ($prefetch)(ptr, len)
+                }
+            )?
         }
     };
 }

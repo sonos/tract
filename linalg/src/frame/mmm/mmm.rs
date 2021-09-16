@@ -120,21 +120,6 @@ where
     pub fn new() -> MatMatMulImpl<K, TI> {
         MatMatMulImpl { prefetch: crate::ops().prefetch, phantom: PhantomData }
     }
-
-    #[inline]
-    fn prefetch(&self, a: &InputStoreKer, b: &InputStoreKer) {
-        /*
-        if let Some(prefetch) = self.prefetch {
-            if let InputStoreKer::Packed { ptr } = a {
-                prefetch(*ptr as *const u8, 512);
-            }
-            match b {
-                InputStoreKer::Packed { ptr } => prefetch(*ptr as *const u8, 512),
-                _ => (),
-            }
-        }
-        */
-    }
 }
 
 impl<K, TI> MatMatMul for MatMatMulImpl<K, TI>

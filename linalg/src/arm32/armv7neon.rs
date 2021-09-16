@@ -16,23 +16,24 @@ extern_kernel!(fn armv7neon_sigmoid_f32_4n(ptr: *mut f32, count: usize) -> ());
 extern_kernel!(fn armv7neon_tanh_f32_4n(ptr: *mut f32, count: usize) -> ());
 extern_kernel!(fn armv7neon_prefetch(start: *const u8, end: *const u8) -> ());
 
+#[inline(always)]
 pub fn prefetch(start: *const u8, len: usize) {
     unsafe { armv7neon_prefetch(start, start.offset(len as isize)) }
 }
 
-MMMKernel!(MatMatMulI8x8x4<i32>, "neon", armv7neon_mmm_i8_8x4; 8, 4; 32, 4; 0, 0);
-MMMKernel!(MatMatMulI8x32x1<i32>, "neon", armv7neon_mmm_i8_32x1; 32,1 ; 32, 4; 0, 0);
-MMMKernel!(MatMatMulI8xI32x8x4<i32>, "neon", armv7neon_mmm_i8_8x4; 8, 4; 4, 4; 0, 0);
-MMMKernel!(MatMatMulI8xI32x32x1<i32>, "neon", armv7neon_mmm_i8_32x1; 32, 1; 4, 4; 0, 0);
-MMMKernel!(MatMatMulF32x8x4CortexA7<f32>, "neon/cortex-a7", armv7neon_mmm_f32_8x4_cortexa7; 8, 4; 4, 4; 0, 0);
-MMMKernel!(MatMatMulF32x8x4CortexA9<f32>, "neon/cortex-a9", armv7neon_mmm_f32_8x4_cortexa9; 8, 4; 4, 4; 0, 0);
-MMMKernel!(MatMatMulF32x8x4Generic<f32>, "neon/generic", armv7neon_mmm_f32_8x4_generic; 8, 4; 4, 4; 0, 0);
-MMMKernel!(MatMatMulF32x8x6CortexA7<f32>, "neon/cortex-a7", armv7neon_mmm_f32_8x6_cortexa7; 8, 6; 4, 4; 0, 0);
-MMMKernel!(MatMatMulF32x8x6CortexA9<f32>, "neon/cortex-a9", armv7neon_mmm_f32_8x6_cortexa9; 8, 6; 4, 4; 0, 0);
-MMMKernel!(MatMatMulF32x8x6Generic<f32>, "neon/generic", armv7neon_mmm_f32_8x6_generic; 8, 6; 4, 4; 0, 0);
-MMMKernel!(MatMatMulF32x32x1CortexA7<f32>, "neon/cortex-a7", armv7neon_mmm_f32_32x1_cortexa7; 32, 1; 4, 4; 0, 0);
-MMMKernel!(MatMatMulF32x32x1CortexA9<f32>, "neon/cortex-a9", armv7neon_mmm_f32_32x1_cortexa9; 32, 1; 4, 4; 0, 0);
-MMMKernel!(MatMatMulF32x32x1Generic<f32>, "neon/generic", armv7neon_mmm_f32_32x1_generic; 32, 1; 4, 4; 0, 0);
+MMMKernel!(MatMatMulI8x8x4<i32>, "neon", armv7neon_mmm_i8_8x4; 8, 4; 32, 4; 0, 0, prefetch);
+MMMKernel!(MatMatMulI8x32x1<i32>, "neon", armv7neon_mmm_i8_32x1; 32,1 ; 32, 4; 0, 0, prefetch);
+MMMKernel!(MatMatMulI8xI32x8x4<i32>, "neon", armv7neon_mmm_i8_8x4; 8, 4; 4, 4; 0, 0, prefetch);
+MMMKernel!(MatMatMulI8xI32x32x1<i32>, "neon", armv7neon_mmm_i8_32x1; 32, 1; 4, 4; 0, 0, prefetch);
+MMMKernel!(MatMatMulF32x8x4CortexA7<f32>, "neon/cortex-a7", armv7neon_mmm_f32_8x4_cortexa7; 8, 4; 4, 4; 0, 0, prefetch);
+MMMKernel!(MatMatMulF32x8x4CortexA9<f32>, "neon/cortex-a9", armv7neon_mmm_f32_8x4_cortexa9; 8, 4; 4, 4; 0, 0, prefetch);
+MMMKernel!(MatMatMulF32x8x4Generic<f32>, "neon/generic", armv7neon_mmm_f32_8x4_generic; 8, 4; 4, 4; 0, 0, prefetch);
+MMMKernel!(MatMatMulF32x8x6CortexA7<f32>, "neon/cortex-a7", armv7neon_mmm_f32_8x6_cortexa7; 8, 6; 4, 4; 0, 0, prefetch);
+MMMKernel!(MatMatMulF32x8x6CortexA9<f32>, "neon/cortex-a9", armv7neon_mmm_f32_8x6_cortexa9; 8, 6; 4, 4; 0, 0, prefetch);
+MMMKernel!(MatMatMulF32x8x6Generic<f32>, "neon/generic", armv7neon_mmm_f32_8x6_generic; 8, 6; 4, 4; 0, 0, prefetch);
+MMMKernel!(MatMatMulF32x32x1CortexA7<f32>, "neon/cortex-a7", armv7neon_mmm_f32_32x1_cortexa7; 32, 1; 4, 4; 0, 0, prefetch);
+MMMKernel!(MatMatMulF32x32x1CortexA9<f32>, "neon/cortex-a9", armv7neon_mmm_f32_32x1_cortexa9; 32, 1; 4, 4; 0, 0, prefetch);
+MMMKernel!(MatMatMulF32x32x1Generic<f32>, "neon/generic", armv7neon_mmm_f32_32x1_generic; 32, 1; 4, 4; 0, 0, prefetch);
 
 #[derive(Copy, Clone, Debug)]
 pub struct SigmoidF32x4n;
