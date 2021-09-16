@@ -85,24 +85,6 @@
 
     b .non_linear_loop
 
-.min:
-    add         x2, x0, #8
-    ld1r        {v0.4s}, [ x2 ]
-    {% for reg in (16..31) %}
-        smin        v{{reg}}.4s, v{{reg}}.4s, v0.4s
-    {% endfor %}
-
-    b           .non_linear_loop
-
-.max:
-    add         x2, x0, #8
-    ld1r        {v0.4s}, [ x2 ]
-    {% for reg in (16..31) %}
-        smax        v{{reg}}.4s, v{{reg}}.4s, v0.4s
-    {% endfor %}
-
-    b           .non_linear_loop
-
 .add_unicast:
     ldp         x5, x6, [x0, #8]
     ldp         x7, x8, [x0, #24]
@@ -203,24 +185,17 @@ non_linear_addc_i32:
 
     b           .non_linear_loop
 
-.scalar_mul:
-    add         x2, x0, #8
-    ld1         {v0.s}[0], [ x2 ]
-    {% for reg in (16..31) %}
-        mul       v{{reg}}.4s, v{{reg}}.4s, v0.s[0]
-    {% endfor %}
-
-    b           .non_linear_loop
-
-.scalar_add:
-    add         x2, x0, #8
-    ld1         {v0.s}[0], [ x2 ]
-    dup         v0.4s, v0.s[0]
-    {% for reg in (16..31) %}
-        add        v{{reg}}.4s, v{{reg}}.4s, v0.4s
-    {% endfor %}
-
-    b           .non_linear_loop
+// .scalar_mul:
+//     add         x2, x0, #8
+//     ld1         {v0.s}[0], [ x2 ]
+//     dup         v0.4s, v0.s[0]
+//     {% for reg in (16..31) %}
+//         mul       v{{reg}}.4s, v{{reg}}.4s, v0.4s
+//     {% endfor %}
+// 
+//     b           .non_linear_loop
+// 
+{% include "arm64simd_mmm_i32_scalars.tmpliq" from:16, to:31 %}
 
     {% include "arm64simd_mmm_i8_scale_q16_q31.tmpliq" %}
 
