@@ -19,7 +19,7 @@ pub mod prelude {
 
 pub mod ops {
     pub use super::deconv_delay::DeconvDelay;
-    pub use super::delay::Delay;
+    pub use super::delay::{ Delay, DelayState };
     pub use super::pad::PulsePad;
     pub use super::slice::PulsedAxisSlice;
 }

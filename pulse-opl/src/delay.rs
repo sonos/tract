@@ -22,13 +22,45 @@ fn de_delay(
     let delay = invocation.named_arg_as::<i64>(builder, "delay")? as usize;
     let overlap = invocation.named_arg_as::<i64>(builder, "overlap")? as usize;
     let input_fact = builder.model.outlet_fact(wire)?;
-    let op = Delay::new_typed(input_fact, axis, delay, overlap)?;
+    let op = Delay::new_typed(input_fact, axis, delay, overlap);
     builder.wire(op, &[wire])
 }
 
 #[derive(Debug, Clone)]
-struct DelayState {
-    buffer: Option<Tensor>,
+pub struct DelayState {
+    pub buffer: Option<Tensor>,
+}
+
+impl DelayState {
+    pub unsafe fn apply_delay_unchecked(&mut self, op: &Delay, input: &Tensor, output: &mut Tensor) {
+        let buffered = op.delay + op.overlap;
+        let input_pulse = input.shape()[op.axis];
+        let output_pulse = input_pulse + op.overlap;
+        let buffer = self.buffer.as_mut().unwrap();
+        if op.delay < input_pulse {
+            let from_input = input_pulse - op.delay;
+            let from_buffer = output_pulse - from_input;
+            output.assign_slice_unchecked(..from_buffer, &buffer, ..from_buffer, op.axis);
+            output.assign_slice_unchecked(from_buffer.., &input, ..from_input, op.axis);
+        } else {
+            output.assign_slice_unchecked(.., &buffer, ..output_pulse, op.axis);
+        };
+        // maintain buffer
+        if buffered < input_pulse {
+            buffer.assign_slice_unchecked(.., &input, (input_pulse - buffered).., op.axis);
+        } else {
+            let stride = buffer.shape().iter().skip(op.axis + 1).product::<usize>()
+                * input.datum_type().size_of()
+                * input_pulse;
+            std::slice::from_raw_parts_mut(
+                buffer.as_ptr_mut_unchecked::<u8>(),
+                buffer.len() * input.datum_type().size_of(),
+            )
+            .rotate_left(stride);
+            buffer.assign_slice_unchecked((buffered - input_pulse).., &input, .., op.axis);
+        }
+
+    }
 }
 
 impl OpState for DelayState {
@@ -52,30 +84,8 @@ impl OpState for DelayState {
                 shape[op.axis] = buffered;
                 self.buffer = Some(Tensor::zero_dt(input.datum_type(), &shape)?)
             };
-            let buffer = self.buffer.as_mut().unwrap();
             let mut output = Tensor::uninitialized_dt(input.datum_type(), &*output_shape)?;
-            if op.delay < input_pulse {
-                let from_input = input_pulse - op.delay;
-                let from_buffer = output_pulse - from_input;
-                output.assign_slice_unchecked(..from_buffer, &buffer, ..from_buffer, op.axis);
-                output.assign_slice_unchecked(from_buffer.., &input, ..from_input, op.axis);
-            } else {
-                output.assign_slice_unchecked(.., &buffer, ..output_pulse, op.axis);
-            };
-            // maintain buffer
-            if buffered < input_pulse {
-                buffer.assign_slice_unchecked(.., &input, (input_pulse - buffered).., op.axis);
-            } else {
-                let stride = buffer.shape().iter().skip(op.axis + 1).product::<usize>()
-                    * input.datum_type().size_of()
-                    * input_pulse;
-                std::slice::from_raw_parts_mut(
-                    buffer.as_ptr_mut_unchecked::<u8>(),
-                    buffer.len() * input.datum_type().size_of(),
-                )
-                .rotate_left(stride);
-                buffer.assign_slice_unchecked((buffered - input_pulse).., &input, .., op.axis);
-            }
+            self.apply_delay_unchecked(op, &input, &mut output);            
             let output = output.into_arc_tensor();
             Ok(tvec!(output))
         }
@@ -94,22 +104,15 @@ pub struct Delay {
 impl_dyn_hash!(Delay);
 
 impl Delay {
-    pub fn new(axis: usize, input_fact: &TypedFact, delay: usize, overlap: usize) -> Delay {
-        let axis = axis;
-        let mut buffer_shape = input_fact.shape.to_tvec();
-        buffer_shape[axis] = (delay + overlap).to_dim();
-        Delay { datum_type: input_fact.datum_type, buffer_shape, axis, delay, overlap }
-    }
-
     pub fn new_typed(
         input_fact: &TypedFact,
         axis: usize,
         delay: usize,
         overlap: usize,
-    ) -> TractResult<Delay> {
+    ) -> Delay {
         let mut buffer_shape: TVec<TDim> = input_fact.shape.iter().map(|d| d.clone()).collect();
         buffer_shape[axis] = (delay + overlap).to_dim();
-        Ok(Delay { datum_type: input_fact.datum_type, buffer_shape, axis, delay, overlap })
+        Delay { datum_type: input_fact.datum_type, buffer_shape, axis, delay, overlap }
     }
 }
 
