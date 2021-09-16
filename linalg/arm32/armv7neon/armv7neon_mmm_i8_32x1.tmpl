@@ -22,37 +22,25 @@ armv7neon_mmm_i8_32x1_{{suffix}}:
     veor    q14, q14 ,q14
     veor    q15, q15 ,q15
 
-    ldm     r0, { r7, r8, r9 }      // a, b,lin
-    ldm     r7, { r1, r2 }
-    pld     [r9]
-    pld     [r8]
-    // check a->discriminant == 1 (packed)
-    cmp     r1, #1
-    bne     .unsupported
-    mov     r1, r2 // packed A ptr
-    pld     [r1]
+{% include "dispatcher.tmpliq" %}
 
-    // check linear
-    ldm     r9, {r5, r6}
-    cmp     r5, #0
-    bne     .unsupported
+.add_mat_mul:
+    cmp     r3, #0
+    beq     .non_linear_loop
+
+    ldm     r5, { r6, r7 } //  b disc, b ptr
+    mov     r1, r4 // packed A ptr
+    pld     [r3]
+    pld     [r7]
+
     cmp     r6, #0
-    beq     .non_linear
-
-    mov     r3, r6 // k
-
-    // B
-    ldm     r8, { r4, r5, r6 }
-    cmp     r4, #1
     beq     .packed_packed
-    cmp     r4, #2
-    beq     .packed_tops_and_offsets
-    b       .unsupported
 
-    .packed_tops_and_offsets:   // r5: rows offsets ptr, r6: cols ptr ptr
-    mov             r2, r5                  // r2 <- rows offsets ptr
-    ldm             r6, { r7 }              // r7 col ptr
+    .packed_tops_and_offsets:
+    mov             r2, r7                  // r2 <- rows offsets ptr
+    ldr             r7, [r5, #8]                    
     pld             [r2]
+    ldr             r7, [r7]                // col ptr
 
     .packed_tops_and_offsets_loop_1:
     vldmia          r1!, { q4-q5 }
@@ -82,7 +70,7 @@ armv7neon_mmm_i8_32x1_{{suffix}}:
     bne .packed_tops_and_offsets_loop_1
 
     .packed_tops_and_offsets_end:
-    b   .non_linear
+    b   .non_linear_loop
 
     .packed_packed:
     pld     [r5]                           // packed B ptr       
@@ -90,7 +78,7 @@ armv7neon_mmm_i8_32x1_{{suffix}}:
     .packed_packed_loop_1:
     vldmia          r1!, { q4-q5 }
 
-    vld1.8          { d0[0] }, [ r5 ]!
+    vld1.8          { d0[0] }, [ r7 ]!
     vmovl.s8        q0, d0
 
     vmovl.s8        q1, d8
@@ -111,9 +99,7 @@ armv7neon_mmm_i8_32x1_{{suffix}}:
 
     subs r3, r3, #1
     bne .packed_packed_loop_1
-    b   .non_linear
-
-{% include "dispatcher.tmpliq" %}
+    b   .non_linear_loop
 
 .add_unicast:
     // r3, r4, r5, r6 <- ptr, rsc, csc, size

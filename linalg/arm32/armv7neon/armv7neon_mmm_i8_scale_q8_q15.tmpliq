@@ -1,8 +1,7 @@
 // vim: ft=arm
 
 .q_scale:
-    // *r1 -> discr, shift, policy, multiplier
-    ldm         r1, { r4, r5, r6, r7 }
+    ldm         r0, { r4, r5, r6, r7 }      // fixme params are already loaded by disp.
     vdup.s32    q0, r7                      // q0 <- multiplier
 
     mov         r3, #1
