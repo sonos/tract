@@ -34,6 +34,11 @@ armv7neon_mmm_f32_32x1_{{core}}_{{suffix}}:
     veor    q14, q14 ,q14
     veor    q15, q15 ,q15
 
+{% include "dispatcher.tmpliq" %}
+
+.add_mat_mul:
+    b   .non_linear_loop
+
     ldm     r0, { r7, r8, r9 }      // a, b, lin
     ldm     r7, { r1, r2 }
     pld     [r8]
@@ -202,8 +207,6 @@ armv7neon_mmm_f32_32x1_{{core}}_{{suffix}}:
     bne .packed_packed_loop_1
 
     b   .non_linear
-
-{% include "dispatcher.tmpliq" %}
 
 .add_unicast:
     {% for reg in (0..15) %}

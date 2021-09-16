@@ -32,36 +32,24 @@ armv7neon_mmm_i8_8x4_{{suffix}}:
     veor    q14, q14 ,q14
     veor    q15, q15 ,q15
 
-    ldm     r0, { r7, r8, r9 }      // a, b, lin
-    ldm     r7, { r1, r2 }
-    pld     [r9]
-    pld     [r8]
-    // check a->discriminant == 1 (packed)
-    cmp     r1, #1
-    bne     .unsupported
-    mov     r1, r2 // packed A ptr
-    pld     [r1]
+{% include "dispatcher.tmpliq" %}
 
-    // check linear
-    ldm     r9, {r5, r6}
-    cmp     r5, #0
-    bne     .unsupported
+.add_mat_mul:
+    cmp     r3, #0
+    beq     .non_linear_loop
+
+    ldm     r5, { r6, r7 } //  b disc, b ptr
+    mov     r1, r4 // packed A ptr
+    pld     [r3]
+    pld     [r7]
+
     cmp     r6, #0
-    beq     .non_linear
-
-    mov     r3, r6 // k
-
-    // B
-    ldm     r8, { r4, r5, r6 }
-    cmp     r4, #1
     beq     .packed_packed
-    cmp     r4, #2
-    beq     .packed_tops_and_offsets
-    b       .unsupported
 
-    .packed_tops_and_offsets:   // r5: rows offsets ptr, r6: cols ptr ptr
-    mov             r2, r5                  // r2 <- rows offsets ptr
-    ldm             r6, { r7, r8, r9, r10 } // cols ptr
+    .packed_tops_and_offsets:
+    mov             r2, r7                  // r2 <- rows offsets ptr
+    ldr             r7, [r5, #8]                    
+    ldm             r7, { r7, r8, r9, r10 } // cols ptr
     eor             r5, r5                  // previous offset to sub
     pld             [r2]
 
@@ -236,26 +224,26 @@ armv7neon_mmm_i8_8x4_{{suffix}}:
     bne .packed_tops_and_offsets_loop_1
 
     .packed_tops_and_offsets_end:
-    b   .non_linear
+    b   .non_linear_loop
 
     .packed_packed:
-    pld     [r5]                           // packed B ptr       
+    pld     [r7]                           // packed B ptr       
 
     cmp r3, #4
     blt .packed_packed_loop_1
 
     .packed_packed_loop_4:
     pld             [r1, #64]
-    pld             [r5, #64]
+    pld             [r7, #64]
 
     // q2: d4 -> d4,d5 A even cols (from r1)
     // q3: d6 -> d6,d7 A odd cols (from r1)
-    // q0: s0 -> d0 : B even lines (from r5)
-    // q1: s4 -> d2 : B odd lines (from r5)
+    // q0: s0 -> d0 : B even lines (from r7)
+    // q1: s4 -> d2 : B odd lines (from r7)
 
     // 0
     vldmia          r1!, { d4 }
-    vldmia          r5!, { s0 }
+    vldmia          r7!, { s0 }
 
     vmovl.s8        q2, d4
     vmovl.s8        q0, d0
@@ -268,7 +256,7 @@ armv7neon_mmm_i8_8x4_{{suffix}}:
     vmlal.s16       q10, d4, d0[1]
     vmlal.s16       q11, d5, d0[1]
 
-    vldmia          r5!, { s4 }
+    vldmia          r7!, { s4 }
 
     vmlal.s16       q12, d4, d0[2]
     vmlal.s16       q13, d5, d0[2]
@@ -283,7 +271,7 @@ armv7neon_mmm_i8_8x4_{{suffix}}:
     vmlal.s16       q8, d6, d2[0]
     vldmia          r1!, { d4 }
     vmlal.s16       q9, d7, d2[0]
-    vldmia          r5!, { s0 }
+    vldmia          r7!, { s0 }
 
     vmlal.s16       q10, d6, d2[1]
     vmlal.s16       q11, d7, d2[1]
@@ -306,7 +294,7 @@ armv7neon_mmm_i8_8x4_{{suffix}}:
     vmlal.s16       q10, d4, d0[1]
     vmlal.s16       q11, d5, d0[1]
 
-    vldmia          r5!, { s4 }
+    vldmia          r7!, { s4 }
 
     vmlal.s16       q12, d4, d0[2]
     vmlal.s16       q13, d5, d0[2]
@@ -335,13 +323,13 @@ armv7neon_mmm_i8_8x4_{{suffix}}:
     bge .packed_packed_loop_4
 
     cmp r3, #0
-    beq .non_linear
+    beq .non_linear_loop
 
     .packed_packed_loop_1:
 
     vldmia          r1!, { s0, s1 }
     vmovl.s8        q0, d0
-    vldmia          r5!, { s4 }
+    vldmia          r7!, { s4 }
     vmovl.s8        q1, d2
 
     vmlal.s16       q8, d0, d2[0]
@@ -358,9 +346,7 @@ armv7neon_mmm_i8_8x4_{{suffix}}:
 
     subs r3, r3, #1
     bne .packed_packed_loop_1
-    b   .non_linear
-
-{% include "dispatcher.tmpliq" %}
+    b   .non_linear_loop
 
 .add_unicast:
     // r3, r4, r5, r6 <- ptr, rsc, csc, size
