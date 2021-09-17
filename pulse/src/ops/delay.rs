@@ -46,7 +46,7 @@ mod test {
         };
         let source = model.add_source("source", fact1.clone()).unwrap();
         model
-            .wire_node("delay", Delay::new(fact1.axis, &(&fact1).into(), delay, overlap), &[source])
+            .wire_node("delay", Delay::new_typed(&(&fact1).into(), fact1.axis, delay, overlap), &[source])
             .unwrap();
         model.auto_outputs().unwrap();
 
@@ -97,11 +97,11 @@ mod test {
         };
         let source = model.add_source("source", fact_0.clone()).unwrap();
         let delay_1 = model
-            .wire_node("delay-1", Delay::new(fact_0.axis, &(&fact_0).into(), 2, 0), &[source])
+            .wire_node("delay-1", Delay::new_typed(&(&fact_0).into(), fact_0.axis, 2, 0), &[source])
             .unwrap()[0];
         let fact_1 = model.outlet_fact(delay_1).unwrap().clone();
         let delay_2 = model
-            .wire_node("delay-1", Delay::new(fact_1.axis, &(&fact_1).into(), 2, 0), &[delay_1])
+            .wire_node("delay-1", Delay::new_typed(&(&fact_1).into(), fact_1.axis, 2, 0), &[delay_1])
             .unwrap();
         model.set_output_outlets(&delay_2).unwrap();
 
