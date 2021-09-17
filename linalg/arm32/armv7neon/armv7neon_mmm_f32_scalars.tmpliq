@@ -1,0 +1,7 @@
+// vim: ft=arm
+
+{% include "armv7neon_mmm_q_scalar.tmpliq" label:"min", op:"vmin.f32", from:from, to:to%}
+{% include "armv7neon_mmm_q_scalar.tmpliq" label:"max", op:"vmax.f32", from:from, to:to%}
+{% include "armv7neon_mmm_q_scalar.tmpliq" label:"scalar_mul", op:"vmul.f32", from:from, to:to%}
+{% include "armv7neon_mmm_q_scalar.tmpliq" label:"scalar_add", op:"vadd.f32", from:from, to:to%}
+
