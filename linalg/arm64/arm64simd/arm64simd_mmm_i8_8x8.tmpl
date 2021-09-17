@@ -138,7 +138,7 @@
 
     b .non_linear_loop
 
-{% include "arm64simd_mmm_f32_scalars.tmpliq" from:16, to:31%}
+{% include "arm64simd_mmm_i32_scalars.tmpliq" from:16, to:31%}
 
 .add_unicast:
     ldp         x5, x6, [x0, #8]
