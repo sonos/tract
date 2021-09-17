@@ -53,7 +53,7 @@ fn pulsify_along_concat_axis(
     if fact.delay < before {
         input = target.wire_node(
             format!("{}.Delay", node.name),
-            Delay::new(fact.axis, &(&fact).into(), before - fact.delay, 0),
+            Delay::new_typed(&(&fact).into(), fact.axis, before - fact.delay, 0),
             &[input],
         )?[0];
     }

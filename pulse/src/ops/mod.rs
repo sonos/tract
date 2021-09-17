@@ -29,9 +29,10 @@ pub(crate) fn sync_inputs(
         let fact = target.outlet_fact(input)?.clone();
         if fact.delay < delay {
             let add_delay = delay - fact.delay;
+            let delay_axis = fact.axis;
             input = target.wire_node(
                 format!("{}.Delay", &*node.name),
-                Delay::new(fact.axis, &fact.into(), add_delay, 0),
+                Delay::new_typed(&fact.into(), delay_axis, add_delay, 0),
                 &[input],
             )?[0];
         }

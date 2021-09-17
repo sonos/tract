@@ -39,7 +39,7 @@ fn pulsify(
     if extra_delay > 0 {
         input = target.wire_node(
             format!("{}.Delay", node.name),
-            Delay::new(fact.axis, &(&fact).into(), extra_delay, 0),
+            Delay::new_typed(&(&fact).into(), fact.axis, extra_delay, 0),
             &[input],
         )?[0];
     }
