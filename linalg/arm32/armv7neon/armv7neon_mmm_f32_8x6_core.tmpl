@@ -160,6 +160,8 @@ armv7neon_mmm_f32_8x6_{{core}}_{{suffix}}:
     bne .packed_packed_loop_1
     b   .non_linear_loop
 
+{% include "armv7neon_mmm_f32_scalars.tmpliq" from:4, to:15 %}
+
 .add_unicast:
     //  r3, r4, r5, r6 <- ptr, rsc, csc, size
     {% for col in (0..5) %}
@@ -172,23 +174,6 @@ armv7neon_mmm_f32_8x6_{{core}}_{{suffix}}:
         add r3, r3, r5
     {% endfor %}
 
-    b .non_linear_loop
-
-.max:
-    vmov            s0, r3
-    vdup.32         q0, d0[0]
-    {% for reg in (4..15) %}
-        vmax.f32    q{{reg}}, q{{reg}}, q0
-    {% endfor %}
-
-    b .non_linear_loop
-
-.min:
-    vmov            s0, r3
-    vdup.32         q0, d0[0]
-    {% for reg in (4..15) %}
-        vmin.f32    q{{reg}}, q{{reg}}, q0
-    {% endfor %}
     b .non_linear_loop
 
 .per_row_add:
@@ -250,26 +235,6 @@ armv7neon_mmm_f32_8x6_{{core}}_{{suffix}}:
 
     vmla.f32        q14, q0, d6[1]
     vmla.f32        q15, q1, d6[1]
-
-    b .non_linear_loop
-
-.scalar_mul:
-    vmov             s0, r3
-    vdup.f32    q0, d0[0]
-
-    {% for q in (4..15) %}
-        vmul.f32 q{{q}}, q{{q}}, q0
-    {% endfor %}
-
-    b .non_linear_loop
-
-.scalar_add:
-    vmov             s0, r3
-    vdup.f32    q0, d0[0]
-
-    {% for q in (4..15) %}
-        vadd.f32 q{{q}}, q{{q}}, q0
-    {% endfor %}
 
     b .non_linear_loop
 
