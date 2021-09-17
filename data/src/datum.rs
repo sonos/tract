@@ -183,6 +183,7 @@ impl DatumType {
 
     pub fn is_copy(&self) -> bool {
         *self == DatumType::Bool || self.is_unsigned() || self.is_signed() || self.is_float()
+            || self.is_complex()
     }
 
     pub fn is_quantized(&self) -> bool {
