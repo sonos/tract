@@ -1,10 +1,10 @@
 #![allow(non_snake_case)]
+#[cfg(feature = "accelerate")]
+extern crate accelerate_src;
 #[cfg(feature = "blis")]
 extern crate blis_src;
 #[cfg(feature = "blis")]
 extern crate cblas;
-#[cfg(feature = "accelerate")]
-extern crate accelerate_src;
 
 use criterion::measurement::WallTime;
 use criterion::*;
@@ -124,14 +124,7 @@ fn tract(crit: &mut BenchmarkGroup<WallTime>, m: usize, k: usize, n: usize) {
     unsafe {
         crit.bench_function("tract", |be| {
             let mmm = tract_linalg::ops()
-                .mmm(
-                    DatumType::F32,
-                    DatumType::F32,
-                    DatumType::F32,
-                    Some(m),
-                    Some(k),
-                    Some(n),
-                )
+                .mmm(DatumType::F32, DatumType::F32, DatumType::F32, Some(m), Some(k), Some(n))
                 .unwrap();
             let a_storage = mmm.a_packed(f32::datum_type().size_of(), k);
             let b_storage = mmm.b_packed(f32::datum_type().size_of(), k);
@@ -157,13 +150,16 @@ fn tract(crit: &mut BenchmarkGroup<WallTime>, m: usize, k: usize, n: usize) {
             be.iter(|| {
                 mmm.run_with_scratch_space(
                     m,
-                    k,
                     n,
                     &mut *scratch,
-                    &a_storage.wrap(&pa.view()),
-                    &b_storage.wrap(&pb.view()),
-                    &mut c_storage.wrap(&mut c.view_mut()),
-                    &[FusedSpec::Store],
+                    &[
+                        FusedSpec::AddMatMul {
+                            k,
+                            a: a_storage.wrap(&pa.view()),
+                            b: b_storage.wrap(&pb.view()),
+                        },
+                        FusedSpec::Store(c_storage.wrap(&mut c.view_mut())),
+                    ],
                 )
                 .unwrap()
             });
