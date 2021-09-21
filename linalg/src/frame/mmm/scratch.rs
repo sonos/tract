@@ -30,7 +30,7 @@ impl<TI: Copy> Drop for ScratchSpaceFusedNonLinear<TI> {
     }
 }
 
-impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
+impl<TI: Copy + Datum + Zero> ScratchSpaceFusedNonLinear<TI> {
     #[inline]
     pub fn clear(&mut self) {
         self.buffers.iter_mut().for_each(|(used, _, _)| *used = false);
@@ -61,40 +61,22 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
     }
 
     #[inline]
-    pub unsafe fn for_tile<'a, K: MatMatMulKer<TI>>(
+    pub unsafe fn prepare<K: MatMatMulKer<TI>>(&mut self, specs: &[FusedSpec]) {
+        self.uspecs = tvec!(FusedKerSpec::Done; specs.len() + 1)
+    }
+
+    #[inline]
+    pub unsafe fn for_tile<K: MatMatMulKer<TI>>(
         &mut self,
         specs: &[FusedSpec],
         down: usize,
         right: usize,
         valid: bool,
-    ) -> &[FusedKerSpec<TI>]
-    where
-        TI: Datum + Copy + Debug + Zero,
-    {
-        // inline fast track for trivial cases
-        if valid && specs.len() == 1 && self.uspecs.len() == 2 {
-            if let FusedSpec::Store(store) = specs.get_unchecked(0) {
-                *self.uspecs.get_unchecked_mut(0) = FusedKerSpec::Store(store.tile_c(down, right));
-                return &self.uspecs;
-            }
-        }
-        self.for_tile_ext::<K>(specs, down, right, valid)
-    }
-
-    #[inline(never)]
-    unsafe fn for_tile_ext<'a, K: MatMatMulKer<TI>>(
-        &'a mut self,
-        specs: &[FusedSpec],
-        down: usize,
-        right: usize,
-        valid: bool,
-    ) -> &'a [FusedKerSpec<TI>]
-    where
-        TI: Datum + Copy + Debug + Zero,
-    {
-        self.uspecs.clear();
-        for spec in specs {
-            let s = match spec {
+    ) {
+        self.clear();
+        for ix in 0..specs.len() {
+            let spec = &specs[ix];
+            self.uspecs[ix] = match spec {
                 FusedSpec::Min(m) => FusedKerSpec::Min(*m.to_scalar_unchecked()),
                 FusedSpec::Max(m) => FusedKerSpec::Max(*m.to_scalar_unchecked()),
                 FusedSpec::PerRowAdd(v)
@@ -199,9 +181,11 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                     FusedKerSpec::AddMatMul { k: *k, pa: a.panel(down).ptr, pb, cpu_variant: 0 }
                 }
             };
-            self.uspecs.push(s);
         }
-        self.uspecs.push(FusedKerSpec::Done);
+    }
+
+    #[inline]
+    pub fn uspecs(&self) -> &[FusedKerSpec<TI>] {
         &self.uspecs
     }
 
@@ -228,9 +212,7 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
     {
         for (i, spec) in specs.iter().enumerate() {
             let ker_spec = self.uspecs.get_unchecked(i);
-            if let (FusedSpec::Store(c_store), FusedKerSpec::Store(tmp)) =
-                (spec, ker_spec)
-            {
+            if let (FusedSpec::Store(c_store), FusedKerSpec::Store(tmp)) = (spec, ker_spec) {
                 c_store.set_from_tile(down, right, m_remnant, n_remnant, &tmp)
             }
         }
