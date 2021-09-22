@@ -389,13 +389,14 @@ impl Tensor {
         self.permute_axes(&permutation)
     }
 
-    pub fn collapse_axis_with_next(&mut self, axis: usize) {
+    pub fn collapse_axis_with_next(mut self, axis: usize) -> Tensor {
         let removed = self.shape.remove(axis + 1);
         self.shape[axis] *= removed;
         self.update_strides_and_len();
+        self
     }
 
-    pub fn split_axis(&mut self, axis: usize, outer_dim: usize) -> anyhow::Result<()> {
+    pub fn split_axis(mut self, axis: usize, outer_dim: usize) -> anyhow::Result<Tensor> {
         if self.shape[axis] % outer_dim != 0 {
             anyhow::bail!(
                 "Invalid axis split, shape is {:?}, axis split at {}, outer {}",
@@ -407,7 +408,7 @@ impl Tensor {
         self.shape.insert(axis + 1, self.shape[axis] / outer_dim);
         self.shape[axis] = outer_dim;
         self.update_strides_and_len();
-        Ok(())
+        Ok(self)
     }
 
     /// Reshape the tensor to `shape`.

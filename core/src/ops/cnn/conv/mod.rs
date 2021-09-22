@@ -64,19 +64,15 @@ impl KernelFormat {
         match self {
             KernelFormat::HWIO => {
                 // HWGIO
-                let mut tensor = kernel.clone();
-                tensor.split_axis(kernel.rank() - 2, input_channels / group)?;
+                let tensor = kernel.clone().split_axis(hw_rank, input_channels / group)?;
                 // GOIHW
                 let mut permutation: Vec<usize> = vec![hw_rank + 1, hw_rank + 2, hw_rank];
                 permutation.extend(0..hw_rank);
-                let mut tensor = tensor.permute_axes(&permutation)?;
-                // G_O_IHW
-                tensor.set_shape(&final_shape)?;
-                Ok(tensor.into_arc_tensor())
+                let tensor =
+                    tensor.permute_axes(&permutation)?.into_shape(&final_shape)?.into_arc_tensor();
+                Ok(tensor)
             }
-            KernelFormat::OIHW => {
-                Ok(kernel.clone().into_shape(&final_shape)?.into_arc_tensor())
-            }
+            KernelFormat::OIHW => Ok(kernel.clone().into_shape(&final_shape)?.into_arc_tensor()),
         }
     }
 }
