@@ -20,6 +20,7 @@ pub struct DeconvSum {
     pub input_shape: TVec<TDim>,
     pub adjustments: TVec<usize>,
     pub bias: Option<Arc<Tensor>>,
+    pub group: usize,
 }
 
 impl_dyn_hash!(DeconvSum);
