@@ -56,6 +56,7 @@ impl ConvUnary {
         self.kernel_fmt.kernel_as_group_o_ihw(
             &self.kernel,
             self.group,
+            self.input_channels(),
             self.output_channels(),
         )
     }

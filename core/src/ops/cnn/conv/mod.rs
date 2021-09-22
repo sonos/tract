@@ -55,6 +55,7 @@ impl KernelFormat {
         &self,
         kernel: &Tensor,
         group: usize,
+        input_channels: usize,
         output_channels: usize,
     ) -> TractResult<Arc<Tensor>> {
         let final_shape = [group, output_channels / group, kernel.len() / output_channels];
@@ -62,9 +63,9 @@ impl KernelFormat {
         let hw_rank = kernel.rank() - 2;
         match self {
             KernelFormat::HWIO => {
-                // HWIGO
+                // HWGIO
                 let mut tensor = kernel.clone();
-                tensor.split_axis(hw_rank + 1, group)?;
+                tensor.split_axis(kernel.rank() - 2, input_channels / group)?;
                 // GOIHW
                 let mut permutation: Vec<usize> = vec![hw_rank + 1, hw_rank + 2, hw_rank];
                 permutation.extend(0..hw_rank);
