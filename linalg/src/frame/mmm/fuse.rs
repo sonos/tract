@@ -33,6 +33,14 @@ pub enum FusedSpec<'t> {
     AddMatMul { k: usize, a: PackedStore, b: InputStore },
 }
 
+#[derive(Clone, Debug)]
+pub enum FusedKerScratch<TI> {
+    None,
+    AddMatMul(InputStoreKer),
+    OneVec(Vec<TI>),
+    TwoVecs(Vec<TI>, Vec<TI>),
+}
+
 #[repr(C, usize)]
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub enum FusedKerSpec<TI: Copy> {
