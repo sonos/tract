@@ -65,9 +65,10 @@ impl DeconvUnary {
 
         // kernel: insert G: before O in OIHW, before I in HWIO
         let kernel_shape_with_g: TVec<usize> = match self.kernel_format {
-            KernelFormat::OIHW => once(self.group)
-                .chain(once(self.kernel.shape()[0] / self.group))
-                .chain(self.kernel.shape()[1..].iter().cloned())
+            KernelFormat::OIHW => once(self.kernel.shape()[0])
+                .chain(once(self.group))
+                .chain(once(self.kernel.shape()[1] / self.group))
+                .chain(self.kernel.shape()[2..].iter().cloned())
                 .collect(),
             KernelFormat::HWIO => kernel_spatial_shape
                 .iter()
@@ -84,9 +85,9 @@ impl DeconvUnary {
         // kernel from OIHW to [(batch=1), (group maybe), OHW, I]
 
         let permutation_to_g_o_h_w_i: TVec<usize> = match self.kernel_format {
-            // kernel_with_group is in G O I H W
+            // kernel_with_group is in O G I H W
             KernelFormat::OIHW => {
-                once(0).chain(once(1)).chain(3..kernel_with_group.rank()).chain(once(2)).collect()
+                once(1).chain(once(0)).chain(3..kernel_with_group.rank()).chain(once(2)).collect()
             }
             // kernel_with_group is in H W G I O
             KernelFormat::HWIO => once(kernel_with_group.rank() - 3)
@@ -127,6 +128,7 @@ impl DeconvUnary {
                 input_shape.to_tvec(),
                 self.adjustments.clone(),
                 self.bias.clone(),
+                self.group,
             ),
             &gemm,
         )?;
@@ -151,7 +153,6 @@ impl EvalOp for DeconvUnary {
 
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
-        // dbg!(&input);
         let mut model = TypedModel::default();
         let source =
             model.add_source("source", TypedFact::dt_shape(input.datum_type(), input.shape()))?;
@@ -159,13 +160,23 @@ impl EvalOp for DeconvUnary {
         model.set_output_outlets(&*output)?;
         let output =
             model.into_runnable()?.run(tvec!(input.into_tensor()))?.remove(0).into_arc_tensor();
-        // dbg!(&output);
         Ok(tvec!(output))
     }
 }
 
 impl TypedOp for DeconvUnary {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        let input_shape = self.pool_spec.data_format.shape(&inputs[0].shape)?;
+        let cinput = input_shape.c_dim();
+        let ci = *self.kernel_format.i(self.kernel.shape());
+        if ci != cinput.to_usize()? {
+            bail!(
+                "Inconsistent deconv: input has {} channels, kernel shape ({:?}) is {:?}",
+                cinput,
+                self.kernel_format,
+                self.kernel.shape()
+            );
+        }
         let x_fact = inputs[0];
         let output_shape = super::output_shape(&self.pool_spec, &*x_fact.shape, &self.adjustments)?;
         Ok(tvec!(TypedFact::dt_shape(x_fact.datum_type, &output_shape)))

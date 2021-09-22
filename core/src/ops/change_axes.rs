@@ -279,10 +279,7 @@ impl AxisOp {
             Add(ix) => tensor.insert_axis(*ix),
             Rm(ix) => tensor.remove_axis(*ix),
             Move(from, to) => {
-                let mut permutation: Vec<usize> = (0..tensor.rank()).collect();
-                permutation.remove(*from);
-                permutation.insert(*to, *from);
-                let mut tmp = tensor.clone().permute_axes(&permutation)?;
+                let mut tmp = tensor.clone().move_axis(*from, *to)?;
                 std::mem::swap(tensor, &mut tmp);
                 Ok(())
             }

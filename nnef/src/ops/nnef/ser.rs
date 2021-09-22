@@ -273,7 +273,6 @@ pub fn deconv(
     let weights = op.kernel_format.kernel_as_group_o_ihw(
         &*op.kernel,
         op.group,
-        *op.kernel_format.i(op.kernel.shape()),
         *op.kernel_format.o(op.kernel.shape()),
     )?;
     conv_or_deconv(

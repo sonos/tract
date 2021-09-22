@@ -382,6 +382,34 @@ impl Tensor {
         }
     }
 
+    pub fn move_axis(self, from: usize, to: usize) -> anyhow::Result<Tensor> {
+        let mut permutation: Vec<usize> = (0..self.rank()).collect();
+        permutation.remove(from);
+        permutation.insert(to, from);
+        self.permute_axes(&permutation)
+    }
+
+    pub fn collapse_axis_with_next(&mut self, axis: usize) {
+        let removed = self.shape.remove(axis + 1);
+        self.shape[axis] *= removed;
+        self.update_strides_and_len();
+    }
+
+    pub fn split_axis(&mut self, axis: usize, outer_dim: usize) -> anyhow::Result<()> {
+        if self.shape[axis] % outer_dim != 0 {
+            anyhow::bail!(
+                "Invalid axis split, shape is {:?}, axis split at {}, outer {}",
+                self.shape,
+                axis,
+                outer_dim
+            );
+        }
+        self.shape.insert(axis + 1, self.shape[axis] / outer_dim);
+        self.shape[axis] = outer_dim;
+        self.update_strides_and_len();
+        Ok(())
+    }
+
     /// Reshape the tensor to `shape`.
     pub fn into_shape(mut self, shape: &[usize]) -> anyhow::Result<Tensor> {
         self.set_shape(shape)?;
@@ -1040,7 +1068,8 @@ impl Tensor {
             let shape = it.shape().into();
             let vec = it.into_raw_vec().into_boxed_slice();
             let data = Box::into_raw(vec) as *mut u8;
-            let mut t = Tensor { dt: T::datum_type(), shape, layout, data, strides: tvec!(), len: 0 };
+            let mut t =
+                Tensor { dt: T::datum_type(), shape, layout, data, strides: tvec!(), len: 0 };
             t.update_strides_and_len();
             return t;
         }

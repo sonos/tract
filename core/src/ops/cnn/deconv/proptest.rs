@@ -9,6 +9,7 @@ use KernelFormat::*;
 
 #[derive(Debug)]
 struct DeconvProblem {
+    optimized: bool,
     data_format: DataFormat,
     kernel_format: KernelFormat,
     padding: PaddingSpec,
@@ -33,9 +34,10 @@ impl Arbitrary for DeconvProblem {
     type Strategy = BoxedStrategy<DeconvProblem>;
     type Parameters = ();
     fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-        (1usize..4)
-            .prop_flat_map(|georank| {
+        (any::<bool>(), 1usize..4)
+            .prop_flat_map(|(opt, georank)| {
                 (
+                    Just(opt),
                     any::<DataFormat>(),
                     any::<KernelFormat>(),
                     prop_oneof![Just(PaddingSpec::Valid), Just(PaddingSpec::SameUpper)],
@@ -51,7 +53,7 @@ impl Arbitrary for DeconvProblem {
             })
             .prop_filter(
                 "dilation, strides and shapes in SAME",
-                |(_, _, pad, _, _, _, hwk, _, strides, dilations, _)| {
+                |(_, _, _, pad, _, _, _, hwk, _, strides, dilations, _)| {
                     pad == &PaddingSpec::Valid
                         || tract_itertools::izip!(hwk, dilations, strides)
                             .all(|(k, d, s)| (k - 1) * d > s - 1)
@@ -59,6 +61,7 @@ impl Arbitrary for DeconvProblem {
             )
             .prop_flat_map(
                 |(
+                    opt,
                     df,
                     kf,
                     pad,
@@ -74,8 +77,8 @@ impl Arbitrary for DeconvProblem {
                     let mut kernel_shape = hwk;
                     match kf {
                         OIHW => {
-                            kernel_shape.insert(0, co_over_group * group);
-                            kernel_shape.insert(1, ci_over_group);
+                            kernel_shape.insert(0, co_over_group);
+                            kernel_shape.insert(1, ci_over_group * group);
                         }
                         HWIO => {
                             kernel_shape.push(ci_over_group * group);
@@ -84,6 +87,7 @@ impl Arbitrary for DeconvProblem {
                     };
                     let data_shape = df.from_n_c_hw(n, ci_over_group * group, &hwi).unwrap();
                     (
+                        Just(opt),
                         Just(df),
                         Just(kf),
                         Just(pad),
@@ -98,6 +102,7 @@ impl Arbitrary for DeconvProblem {
             )
             .prop_map(
                 |(
+                    optimized,
                     data_format,
                     kernel_format,
                     padding,
@@ -110,6 +115,7 @@ impl Arbitrary for DeconvProblem {
                 )| {
                     let adjustments = tvec!(0; kernel.ndim() - 2); // FIXME maybe
                     DeconvProblem {
+                        optimized,
                         data_format,
                         kernel_format,
                         padding,
@@ -128,7 +134,7 @@ impl Arbitrary for DeconvProblem {
 }
 
 impl DeconvProblem {
-    fn tract(&self) -> ArrayD<f32> {
+    fn as_op(&self) -> DeconvUnary {
         let pool_spec = PoolSpec::new(
             self.data_format,
             self.kernel_format.spatial_shape(self.kernel.shape()).into(),
@@ -136,7 +142,7 @@ impl DeconvProblem {
             Some(self.dilations.clone()),
             Some(self.strides.clone()),
             Some(match self.kernel_format {
-                KernelFormat::OIHW => self.kernel.shape()[0],
+                KernelFormat::OIHW => self.kernel.shape()[0] * self.group,
                 KernelFormat::HWIO => self.kernel.shape()[self.kernel.ndim() - 1] * self.group,
             }),
         );
@@ -148,6 +154,24 @@ impl DeconvProblem {
             self.adjustments.clone(),
             self.group,
         );
+        let fact = TypedFact::shape::<f32, _>(self.input.shape());
+        op.output_facts(&[&fact]).unwrap();
+        op
+    }
+
+    fn model_eval(&self) -> ArrayD<f32> {
+        let mut model = TypedModel::default();
+        let src = model.add_source("src", TypedFact::shape::<f32, _>(self.input.shape())).unwrap();
+        let output = model.wire_node("deconv", self.as_op(), &[src]).unwrap();
+        model.set_output_outlets(&output).unwrap();
+        let model = model.into_optimized().unwrap();
+        let mut outputs =
+            model.into_runnable().unwrap().run(tvec!(self.input.clone().into_tensor())).unwrap();
+        outputs.remove(0).into_tensor().into_array().unwrap().into_dimensionality().unwrap()
+    }
+
+    fn op_eval(&self) -> ArrayD<f32> {
+        let op = self.as_op();
         let mut outputs = op.eval(tvec!(self.input.clone().into_arc_tensor())).unwrap();
         outputs.remove(0).into_tensor().into_array().unwrap().into_dimensionality().unwrap()
     }
@@ -156,7 +180,7 @@ impl DeconvProblem {
         use std::iter::once;
         let co = match self.kernel_format {
             KernelFormat::HWIO => self.kernel.shape()[self.kernel.ndim() - 1] * self.group,
-            KernelFormat::OIHW => self.kernel.shape()[0],
+            KernelFormat::OIHW => self.kernel.shape()[0] * self.group,
         };
         let input_shape = self.data_format.shape(self.input.shape()).unwrap();
         let n = if self.data_format.has_n() { self.input.shape()[0] } else { 1 };
@@ -223,8 +247,8 @@ impl DeconvProblem {
                                     .from_n_c_hw(n, co + g * co_per_group, hwo)
                                     .unwrap();
                                 let k: TVec<usize> = match self.kernel_format {
-                                    OIHW => once(co + co_per_group * g)
-                                        .chain(once(ci))
+                                    OIHW => once(co)
+                                        .chain(once(ci + ci_per_group * g))
                                         .chain(hwk.slice().iter().cloned())
                                         .collect(),
                                     HWIO => hwk
@@ -246,18 +270,28 @@ impl DeconvProblem {
         }
         output
     }
+
+    fn check(&self) -> Result<(), TestCaseError> {
+        if self.optimized {
+            prop_assert_eq!(self.model_eval(), self.reference());
+        } else {
+            prop_assert_eq!(self.op_eval(), self.reference());
+        }
+        Ok(())
+    }
 }
 
 proptest::proptest! {
     #[test]
     fn prop(pb in any::<DeconvProblem>()) {
-        prop_assert_eq!(pb.tract(), pb.reference());
+        pb.check().unwrap();
     }
 }
 
 #[test]
 fn test_trivial_0() {
     let pb = DeconvProblem {
+        optimized: false,
         data_format: NCHW,
         kernel_format: OIHW,
         padding: PaddingSpec::Valid,
@@ -269,12 +303,13 @@ fn test_trivial_0() {
         adjustments: tvec!(0, 0),
         group: 1,
     };
-    assert_eq!(pb.tract(), pb.reference());
+    pb.check().unwrap();
 }
 
 #[test]
 fn test_hwc_0() {
     let pb = DeconvProblem {
+        optimized: false,
         data_format: HWC,
         kernel_format: OIHW,
         padding: PaddingSpec::Valid,
@@ -286,12 +321,13 @@ fn test_hwc_0() {
         adjustments: tvec!(0, 0),
         group: 1,
     };
-    assert_eq!(pb.tract(), pb.reference());
+    pb.check().unwrap();
 }
 
 #[test]
 fn test_geo_0() {
     let pb = DeconvProblem {
+        optimized: false,
         data_format: HWC,
         kernel_format: OIHW,
         padding: PaddingSpec::Valid,
@@ -303,12 +339,13 @@ fn test_geo_0() {
         adjustments: tvec!(0, 0),
         group: 1,
     };
-    assert_eq!(pb.tract(), pb.reference());
+    pb.check().unwrap();
 }
 
 #[test]
 fn test_hwio_0() {
     let pb = DeconvProblem {
+        optimized: false,
         data_format: HWC,
         kernel_format: HWIO,
         padding: PaddingSpec::Valid,
@@ -320,12 +357,13 @@ fn test_hwio_0() {
         adjustments: tvec!(0, 0),
         group: 1,
     };
-    assert_eq!(pb.tract(), pb.reference());
+    pb.check().unwrap();
 }
 
 #[test]
 fn test_strides_1() {
     let pb = DeconvProblem {
+        optimized: false,
         data_format: HWC,
         kernel_format: OIHW,
         padding: PaddingSpec::Valid,
@@ -337,12 +375,13 @@ fn test_strides_1() {
         adjustments: tvec!(0, 0),
         group: 1,
     };
-    assert_eq!(pb.tract(), pb.reference());
+    pb.check().unwrap();
 }
 
 #[test]
 fn test_same_upper_1() {
     let pb = DeconvProblem {
+        optimized: false,
         data_format: HWC,
         kernel_format: OIHW,
         padding: PaddingSpec::SameUpper,
@@ -354,12 +393,13 @@ fn test_same_upper_1() {
         adjustments: tvec!(0, 0),
         group: 1,
     };
-    assert_eq!(pb.tract(), pb.reference());
+    pb.check().unwrap();
 }
 
 #[test]
 fn test_same_upper_dil() {
     let pb = DeconvProblem {
+        optimized: false,
         data_format: HWC,
         kernel_format: OIHW,
         padding: PaddingSpec::SameUpper,
@@ -371,12 +411,13 @@ fn test_same_upper_dil() {
         adjustments: tvec!(0, 0),
         group: 1,
     };
-    assert_eq!(pb.tract(), pb.reference());
+    pb.check().unwrap();
 }
 
 #[test]
 fn test_same_upper_strides() {
     let pb = DeconvProblem {
+        optimized: false,
         data_format: HWC,
         kernel_format: OIHW,
         padding: PaddingSpec::SameUpper,
@@ -388,12 +429,13 @@ fn test_same_upper_strides() {
         adjustments: tvec!(0, 0),
         group: 1,
     };
-    assert_eq!(pb.tract(), pb.reference());
+    pb.check().unwrap();
 }
 
 #[test]
 fn test_channel_0() {
     let pb = DeconvProblem {
+        optimized: false,
         data_format: HWC,
         kernel_format: OIHW,
         padding: PaddingSpec::Valid,
@@ -405,29 +447,31 @@ fn test_channel_0() {
         adjustments: tvec!(0),
         group: 1,
     };
-    assert_eq!(pb.tract(), pb.reference());
+    pb.check().unwrap();
 }
 
 #[test]
 fn test_group_0() {
     let pb = DeconvProblem {
+        optimized: false,
         data_format: HWC,
         kernel_format: OIHW,
         padding: PaddingSpec::Valid,
         input: arr2(&[[0.0, 0.0]]).into_dyn(),
-        kernel: arr3(&[[[0.0]], [[0.0]]]).into_dyn(),
+        kernel: arr3(&[[[0.0], [0.0]]]).into_dyn(),
         bias: None,
         strides: tvec!(1),
         dilations: tvec!(1),
         adjustments: tvec!(0),
         group: 2,
     };
-    assert_eq!(pb.tract(), pb.reference());
+    pb.check().unwrap();
 }
 
 #[test]
 fn test_group_1() {
     let pb = DeconvProblem {
+        optimized: false,
         data_format: HWC,
         kernel_format: HWIO,
         padding: PaddingSpec::Valid,
@@ -439,12 +483,49 @@ fn test_group_1() {
         adjustments: tvec!(0),
         group: 2,
     };
-    assert_eq!(pb.tract(), pb.reference());
+    pb.check().unwrap();
+}
+
+#[test]
+fn test_group_2() {
+    let pb = DeconvProblem {
+        optimized: false,
+        data_format: HWC,
+        kernel_format: OIHW,
+        padding: PaddingSpec::Valid,
+        input: ndarray::arr2(&[[1.0, 0.0]]).into_dyn(),
+        kernel: ndarray::arr3(&[[[1.0], [0.0]]]).into_dyn(),
+        bias: None,
+        strides: tvec!(1),
+        dilations: tvec!(1),
+        adjustments: tvec!(0),
+        group: 2,
+    };
+    pb.check().unwrap();
+}
+
+#[test]
+fn test_group_3() {
+    let pb = DeconvProblem {
+        optimized: false,
+        data_format: HWC,
+        kernel_format: OIHW,
+        padding: PaddingSpec::Valid,
+        input: ndarray::arr2(&[[0.0, 1.0]]).into_dyn(),
+        kernel: ndarray::arr3(&[[[0.0], [0.0]], [[1.0], [0.0]]]).into_dyn(),
+        bias: None,
+        strides: tvec!(1),
+        dilations: tvec!(1),
+        adjustments: tvec!(0),
+        group: 2,
+    };
+    pb.check().unwrap();
 }
 
 #[test]
 fn test_bias_0() {
     let pb = DeconvProblem {
+        optimized: false,
         data_format: HWC,
         kernel_format: OIHW,
         padding: PaddingSpec::Valid,
@@ -456,18 +537,19 @@ fn test_bias_0() {
         adjustments: tvec!(0),
         group: 1,
     };
-    assert_eq!(pb.tract(), pb.reference());
+    pb.check().unwrap();
 }
 
 #[test]
 fn test_rank_5_with_group() {
     let pb = DeconvProblem {
+        optimized: false,
         data_format: HWC,
         kernel_format: OIHW,
         padding: PaddingSpec::Valid,
         input: arr4(&[[[[0.0, 0.0, 0.0, 1.0]]]]).into_dyn(),
         kernel: arr1(&[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0])
-            .into_shape(vec![2, 2, 1, 2, 1])
+            .into_shape(vec![1, 4, 1, 2, 1])
             .unwrap()
             .into_dyn(),
         bias: None,
@@ -476,5 +558,23 @@ fn test_rank_5_with_group() {
         adjustments: tvec!(0, 0, 0),
         group: 2,
     };
-    assert_eq!(pb.tract(), pb.reference());
+    pb.check().unwrap();
+}
+
+#[test]
+fn test_issue_512_simplified() {
+    let pb = DeconvProblem {
+        optimized: false,
+        data_format: NCHW,
+        kernel_format: OIHW,
+        padding: PaddingSpec::Valid,
+        input: ndarray::Array4::zeros([1, 4, 1, 1]).into_dyn(),
+        kernel: ndarray::Array4::zeros([1, 4, 1, 1]).into_dyn(),
+        bias: None,
+        strides: tvec!(1, 1),
+        dilations: tvec!(1, 1),
+        adjustments: tvec!(0, 0),
+        group: 2,
+    };
+    pb.check().unwrap();
 }
