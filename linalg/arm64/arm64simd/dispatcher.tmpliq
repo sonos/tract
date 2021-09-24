@@ -7,10 +7,10 @@
     add         x0, x0, 40
     ldr         x2, [x0]
 
-    mov         x4, #13
+    mov         x4, #{{ jump_table | size }}
 
-    cmp         x2, #12
-    csel        x2, x4, x2, gt
+    cmp         x2, #{{ jump_table | size }}
+    csel        x2, x2, x4, lt
     cmp         x2, #0
     csel        x2, x4, x2, lt
 
@@ -22,6 +22,7 @@
 {% for j in jump_table %}
     b   .{{j}}
 {% endfor %}
+    b   .unsupported
 
     add x0, x2, #4000
     b .return

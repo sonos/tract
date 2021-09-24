@@ -8,10 +8,10 @@
     add     rdi,    40
     mov     rax,    [rdi]
 
-    mov     r8, 13
+    mov     r8, {{ jump_table | size }}
     cmp     rax, 0
     cmovl   rax, r8
-    cmp     rax, 12
+    cmp     rax, {{ jump_table | size }}
     cmovg   rax, r8
 
 {% if msvc %}
@@ -27,9 +27,7 @@
 {% for j in jump_table %}
     {{long}}      {{L}}{{j}}-{{L}}jmp_table
 {% endfor %}
-
-    jmp     {{L}}unsupported
-
+    {{long}}      {{L}}unsupported-{{L}}jmp_table
 
 {{L}}unsupported:
     mov     rax,    1
