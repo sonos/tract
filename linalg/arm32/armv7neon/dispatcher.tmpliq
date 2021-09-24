@@ -17,20 +17,9 @@
     ldr     pc, [r7, r2, lsl #2]
 
 .jmp_table:
-    .word     .done
-    .word     .min
-    .word     .max
-    .word     .add_unicast
-    .word     .per_row_mul
-    .word     .per_row_add
-    .word     .per_col_mul
-    .word     .per_col_add
-    .word     .add_row_col_product
-    .word     .scalar_mul
-    .word     .scalar_add
-    .word     .q_scale
-    .word     .store
-    .word     .add_mat_mul
+{% for j in jump_table %}
+    .word   .{{j}}
+{% endfor %}
     .word     .unsupported
 
 .unsupported:
