@@ -295,10 +295,6 @@ pub mod test {
         };
     }
 
-    pub fn null_packed_storage() -> InputStoreKer {
-        InputStoreKer::Packed(PackedStoreKer { ptr: std::ptr::null() })
-    }
-
     pub fn mmm_stride_storage<T: Copy>(v: &mut [T], rsc: usize) -> OutputStoreKer {
         OutputStoreKer {
             ptr: v.as_mut_ptr() as _,
