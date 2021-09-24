@@ -18,8 +18,8 @@ pub enum RoundingPolicy {
 
 #[derive(Clone, Debug)]
 pub enum FusedSpec<'t> {
-    Min(&'t Tensor),
-    Max(&'t Tensor),
+    ScalarMin(&'t Tensor),
+    ScalarMax(&'t Tensor),
     PerRowMul(&'t Tensor),
     PerRowAdd(&'t Tensor),
     PerColMul(&'t Tensor),
@@ -33,23 +33,24 @@ pub enum FusedSpec<'t> {
     AddMatMul { k: usize, a: PackedStore, b: InputStore },
 }
 
+// Careful here, the jump_to comments are used by the build script.
 #[repr(C, usize)]
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub enum FusedKerSpec<TI: Copy> {
-    Done,
-    Min(TI),
-    Max(TI),
-    AddUnicast(OutputStoreKer),
-    PerRowMul(*const TI),
-    PerRowAdd(*const TI),
-    PerColMul(*const TI),
-    PerColAdd(*const TI),
-    AddRowColProducts(*const TI, *const TI),
-    ScalarMul(TI),
-    ScalarAdd(TI),
-    QScale(usize, RoundingPolicy, i32),
-    Store(OutputStoreKer),
-    AddMatMul { k: usize, pa: *const c_void, pb: *const InputStoreKer, cpu_variant: usize },
+    Done,                                    // jump_to:done
+    ScalarMin(TI),                           // jump_to:scalar_min
+    ScalarMax(TI),                           // jump_to:scalar_max
+    ScalarMul(TI),                           // jump_to:scalar_mul
+    ScalarAdd(TI),                           // jump_to:scalar_add
+    QScale(usize, RoundingPolicy, i32),      // jump_to:q_scale
+    PerRowMul(*const TI),                    // jump_to:per_row_mul
+    PerRowAdd(*const TI),                    // jump_to:per_row_add
+    PerColMul(*const TI),                    // jump_to:per_col_mul
+    PerColAdd(*const TI),                    // jump_to:per_col_add
+    AddUnicast(OutputStoreKer),              // jump_to:add_unicast
+    AddRowColProducts(*const TI, *const TI), // jump_to:add_row_col_products
+    Store(OutputStoreKer),                   // jump_to:store
+    AddMatMul { k: usize, pa: *const c_void, pb: *const InputStoreKer, cpu_variant: usize }, // jump_to:add_mat_mul
 }
 
 #[cfg(test)]
@@ -538,7 +539,7 @@ pub mod test {
     {
         let len = K::mr() * K::nr();
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-        let found = fused_ops::<K, TC, TI>(&*v, &[FusedKerSpec::Max(5.as_())]);
+        let found = fused_ops::<K, TC, TI>(&*v, &[FusedKerSpec::ScalarMax(5.as_())]);
         assert!(found.iter().enumerate().all(|(ix, &a)| {
             let ix: TI = ix.as_();
             a == if ix > 5.as_() { ix.as_() } else { 5.as_() }
@@ -563,7 +564,7 @@ pub mod test {
     {
         let len = K::mr() * K::nr();
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-        let found = fused_ops::<K, TC, TI>(&*v, &[FusedKerSpec::Min(5.as_())]);
+        let found = fused_ops::<K, TC, TI>(&*v, &[FusedKerSpec::ScalarMin(5.as_())]);
         assert!(found.iter().enumerate().all(|(ix, &a)| {
             let ix: TI = ix.as_();
             a == if ix < 5.as_() { ix.as_() } else { 5.as_() }

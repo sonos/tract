@@ -232,7 +232,7 @@ fma_mmm_f32_16x6_{{suffix}} proc
 
 // NON LINEAR / MAX
 
-{{L}}max:
+{{L}}scalar_max:
     vbroadcastss    ymm12, dword ptr [rdi + 8]
 {% for i in (0..11) %}
     vmaxps          ymm{{i}}, ymm{{i}}, ymm12
@@ -241,7 +241,7 @@ fma_mmm_f32_16x6_{{suffix}} proc
 
 // NON LINEAR / MIN
 
-{{L}}min:
+{{L}}scalar_min:
     vbroadcastss    ymm12, dword ptr [rdi + 8]
 {% for i in (0..11) %}
     vminps          ymm{{i}}, ymm{{i}}, ymm12

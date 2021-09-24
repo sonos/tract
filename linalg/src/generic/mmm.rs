@@ -150,14 +150,14 @@ where
                             ab[3][i] += *bias.offset(i as isize);
                         }
                     }
-                    FusedKerSpec::Min(m) => {
+                    FusedKerSpec::ScalarMin(m) => {
                         for i in 0..4 {
                             for j in 0..4 {
                                 ab[i][j] = if m < ab[i][j] { m } else { ab[i][j] }
                             }
                         }
                     }
-                    FusedKerSpec::Max(m) => {
+                    FusedKerSpec::ScalarMax(m) => {
                         for i in 0..4 {
                             for j in 0..4 {
                                 ab[i][j] = if m > ab[i][j] { m } else { ab[i][j] }
@@ -392,12 +392,12 @@ where
                         ab[2] += *bias;
                         ab[3] += *bias;
                     }
-                    FusedKerSpec::Min(m) => {
+                    FusedKerSpec::ScalarMin(m) => {
                         for i in 0..4 {
                             ab[i] = if m < ab[i] { m } else { ab[i] }
                         }
                     }
-                    FusedKerSpec::Max(m) => {
+                    FusedKerSpec::ScalarMax(m) => {
                         for i in 0..4 {
                             ab[i] = if m > ab[i] { m } else { ab[i] }
                         }
@@ -614,14 +614,14 @@ where
                             ab[2][i] += *bias.offset(i as isize);
                         }
                     }
-                    FusedKerSpec::Min(m) => {
+                    FusedKerSpec::ScalarMin(m) => {
                         for i in 0..3 {
                             for j in 0..2 {
                                 ab[i][j] = if m < ab[i][j] { m } else { ab[i][j] }
                             }
                         }
                     }
-                    FusedKerSpec::Max(m) => {
+                    FusedKerSpec::ScalarMax(m) => {
                         for i in 0..3 {
                             for j in 0..2 {
                                 ab[i][j] = if m > ab[i][j] { m } else { ab[i][j] }

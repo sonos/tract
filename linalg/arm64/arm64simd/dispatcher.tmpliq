@@ -19,20 +19,9 @@
     br          x3
 
 .jmp_table:
-    b   .done
-    b   .min
-    b   .max
-    b   .add_unicast
-    b   .per_row_mul
-    b   .per_row_add
-    b   .per_col_mul
-    b   .per_col_add
-    b   .add_row_col_product
-    b   .scalar_mul
-    b   .scalar_add
-    b   .q_scale
-    b   .store
-    b   .add_mat_mul
+{% for j in jump_table %}
+    b   .{{j}}
+{% endfor %}
 
     add x0, x2, #4000
     b .return

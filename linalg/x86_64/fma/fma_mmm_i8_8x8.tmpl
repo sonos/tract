@@ -316,7 +316,7 @@ i128_shuffle dd              0, 4
 
 // NON LINEAR / MAX
 
-{{L}}max:
+{{L}}scalar_max:
     vbroadcastss    ymm12, dword ptr [rdi + 8]
 {% for i in (0..7) %}
     vpmaxsd         ymm{{i}}, ymm{{i}}, ymm12
@@ -325,7 +325,7 @@ i128_shuffle dd              0, 4
 
 // NON LINEAR / MIN
 
-{{L}}min:
+{{L}}scalar_min:
     vbroadcastss    ymm12, dword ptr [rdi + 8]
 {% for i in (0..7) %}
     vpminsd         ymm{{i}}, ymm{{i}}, ymm12

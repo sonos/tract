@@ -30,8 +30,8 @@ impl<TI: Copy + Datum + Zero> ScratchSpaceFusedNonLinear<TI> {
         for ix in 0..specs.len() {
             let spec = &specs[ix];
             let uspec = match spec {
-                FS::Min(m) => FKS::Min(*m.to_scalar_unchecked()),
-                FS::Max(m) => FKS::Max(*m.to_scalar_unchecked()),
+                FS::ScalarMin(m) => FKS::ScalarMin(*m.to_scalar_unchecked()),
+                FS::ScalarMax(m) => FKS::ScalarMax(*m.to_scalar_unchecked()),
                 FS::ScalarMul(t) => FKS::ScalarMul(*t.to_scalar_unchecked()),
                 FS::ScalarAdd(t) => FKS::ScalarAdd(*t.to_scalar_unchecked()),
                 FS::QScale(s, rp, m) => FKS::QScale(*s, *rp, *m),
@@ -70,7 +70,7 @@ impl<TI: Copy + Datum + Zero> ScratchSpaceFusedNonLinear<TI> {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     pub unsafe fn for_valid_tile<K: MatMatMulKer<TI>>(
         &mut self,
         specs: &[FusedSpec],

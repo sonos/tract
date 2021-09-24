@@ -30,8 +30,8 @@ impl ProtoFusedSpec {
         output: OutputStore,
     ) -> FusedSpec<'t> {
         match self {
-            ProtoFusedSpec::Min(v) => FusedSpec::Min(v.tensor(inputs)),
-            ProtoFusedSpec::Max(v) => FusedSpec::Max(v.tensor(inputs)),
+            ProtoFusedSpec::Min(v) => FusedSpec::ScalarMin(v.tensor(inputs)),
+            ProtoFusedSpec::Max(v) => FusedSpec::ScalarMax(v.tensor(inputs)),
             ProtoFusedSpec::PerColAdd(v) => FusedSpec::PerColAdd(v.tensor(inputs)),
             ProtoFusedSpec::PerRowAdd(v) => FusedSpec::PerRowAdd(v.tensor(inputs)),
             ProtoFusedSpec::PerColMul(v) => FusedSpec::PerColMul(v.tensor(inputs)),

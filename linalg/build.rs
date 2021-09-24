@@ -8,6 +8,15 @@ fn use_masm() -> bool {
     env::var("CARGO_CFG_TARGET_ENV") == Ok("msvc".to_string()) && var("HOST").contains("-windows-")
 }
 
+fn jump_table() -> Vec<String> {
+    std::fs::read_to_string("src/frame/mmm/fuse.rs")
+        .unwrap()
+        .lines()
+        .filter(|l| l.contains("// jump_to:"))
+        .map(|l| l.split("jump_to:").nth(1).unwrap().to_owned())
+        .collect()
+}
+
 fn main() {
     let target = var("TARGET");
     let arch = var("CARGO_CFG_TARGET_ARCH");
@@ -211,7 +220,8 @@ fn preprocess_file(
         "L": l,
         "G": g,
         "suffix": suffix,
-        "long": long
+        "long": long,
+        "jump_table": jump_table(),
     });
     for (k, v) in variants {
         globals.insert(k.to_string().into(), liquid::model::Value::scalar(*v));
