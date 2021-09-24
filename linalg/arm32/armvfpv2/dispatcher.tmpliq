@@ -8,10 +8,10 @@
 .non_linear_loop:
     add     r0, #20
     ldm     r0, { r2, r3, r4, r5, r6 }
-    cmp     r2, #12
-    movgt   r2, #13
+    cmp     r2, #{{ jump_table | size }}
+    movgt   r2, #{{ jump_table | size }}
     cmp     r2, #0
-    movlt   r2, #13
+    movlt   r2, #{{ jump_table | size }}
 
     adr     r7, .jmp_table
     ldr     pc, [r7, r2, lsl #2]
