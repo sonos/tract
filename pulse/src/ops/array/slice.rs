@@ -23,20 +23,6 @@ fn pulsify(
     }
 }
 
-impl PulsedOp for Slice {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
-        let mut fact = inputs[0].clone();
-        let len = (self.end.clone() - &self.start).to_dim();
-        debug_assert_eq!(fact.axis, self.axis);
-        fact.delay += self.start.to_usize()?;
-        fact.dim = len;
-        Ok(tvec!(fact))
-    }
-
-    as_op!();
-    pulsed_op_to_typed_op!();
-}
-
 #[derive(Debug, Clone, Default, Hash)]
 pub struct PulsedAxisSlice {
     pub axis: usize,
