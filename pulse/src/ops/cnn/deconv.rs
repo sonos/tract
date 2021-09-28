@@ -15,6 +15,10 @@ fn pulsify(
     _pulse: usize,
 ) -> TractResult<Option<TVec<OutletId>>> {
     let fact = target.outlet_fact(mapping[&node.inputs[0]])?.clone();
+    let c_axis = op.pool_spec.data_format.shape(&fact.shape)?.c_axis();
+    if c_axis == fact.axis {
+        bail!("Pulsification on C axis is not supported");
+    }
     let pulse = fact.pulse();
     let geo_axis = fact.axis - op.pool_spec.data_format.h_axis();
     let stride = op.pool_spec.stride(geo_axis);
@@ -63,11 +67,11 @@ fn pulsify(
             if axis == fact.axis {
                 continue;
             };
-            let op = tract_core::ops::array::Slice::new(
+            let op = crate::model::PulseWrappingOp(Box::new(tract_core::ops::array::Slice::new(
                 axis,
                 padding.pad_before.clone(),
                 padding.deconvoluted.clone() + &padding.pad_before,
-            );
+            )));
             wire = target.wire_node(format!("{}.padding.{}", node.name, geo_axis), op, &wire)?;
         }
     }
@@ -97,6 +101,10 @@ impl PulsedOp for DeconvUnary {
         fact.dim = output_shape[fact.axis].clone();
         let pulse_len = fact.shape[fact.axis].clone() * stride;
         fact.shape.set(fact.axis, pulse_len + overlap);
+        if let Some(c) = self.pool_spec.output_channel_override {
+            let c_axis = self.pool_spec.data_format.shape(&fact.shape)?.c_axis();
+            fact.shape.set(c_axis, c.to_dim())
+        }
         Ok(tvec!(fact))
     }
 
