@@ -10,6 +10,7 @@ pub struct ShapeFact {
 }
 
 impl ShapeFact {
+    #[inline]
     pub fn rank(&self) -> usize {
         self.dims.len()
     }
@@ -20,11 +21,13 @@ impl ShapeFact {
     }
 
     /// Shape of the tensor, unless it has symbolic dimensions.
+    #[inline]
     pub fn as_concrete(&self) -> Option<&[usize]> {
         self.concrete.as_deref()
     }
 
     /// Do we have a symbol-less value ?
+    #[inline]
     pub fn is_concrete(&self) -> bool {
         self.concrete.is_some()
     }
@@ -35,10 +38,12 @@ impl ShapeFact {
     }
 
     /// Convert the shape to an array of extended dimensions.
+    #[inline]
     pub fn to_tvec(&self) -> TVec<TDim> {
         self.dims.clone()
     }
 
+    #[inline]
     pub fn eval_to_usize(&self, values: &SymbolValues) -> TractResult<Cow<TVec<usize>>> {
         if let Some(c) = &self.concrete {
             Ok(Cow::Borrowed(c))
@@ -51,12 +56,22 @@ impl ShapeFact {
         }
     }
 
-    pub fn eval_to_isize(&self, values: &SymbolValues) -> TractResult<TVec<isize>> {
-        self.iter().map(|d| d.eval(&values).to_isize()).collect::<TractResult<_>>()
+    #[inline]
+    pub fn eval_to_isize(&self, values: &SymbolValues) -> TractResult<Cow<TVec<isize>>> {
+        if let Some(c) = &self.concrete {
+            Ok(unsafe { std::mem::transmute(Cow::Borrowed(c)) })
+        } else {
+            Ok(Cow::Owned(
+                self.iter()
+                    .map(|d| d.eval(&values).to_isize())
+                    .collect::<TractResult<TVec<_>>>()?,
+            ))
+        }
     }
 
     pub fn from_dims<D: ToDim, T: IntoIterator<Item = D>>(it: T) -> ShapeFact {
-        let mut dims = ShapeFact { dims: it.into_iter().map(|d| d.to_dim()).collect(), concrete: None };
+        let mut dims =
+            ShapeFact { dims: it.into_iter().map(|d| d.to_dim()).collect(), concrete: None };
         dims.compute_concrete();
         dims
     }
@@ -81,7 +96,6 @@ impl ShapeFact {
         }
         Ok(())
     }
-
 }
 
 impl std::ops::Deref for ShapeFact {
@@ -118,7 +132,6 @@ impl<D: ToDim> std::iter::FromIterator<D> for ShapeFact {
     fn from_iter<T: IntoIterator<Item = D>>(iter: T) -> Self {
         ShapeFact::from_dims(iter.into_iter().map(|d| d.to_dim()))
     }
-
 }
 
 impl fmt::Debug for ShapeFact {
