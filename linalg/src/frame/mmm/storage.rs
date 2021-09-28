@@ -35,6 +35,7 @@ pub struct OutputStore {
 }
 
 impl OutputStoreSpec {
+    #[inline]
     pub unsafe fn wrap(self: &Self, tensor: &TensorView) -> OutputStore {
         let (mr, nr, row_item_stride, col_item_stride, row_byte_stride, col_byte_stride) =
             self.compute_strides(tensor);
@@ -52,6 +53,7 @@ impl OutputStoreSpec {
         }
     }
 
+    #[inline]
     unsafe fn compute_strides(
         &self,
         tensor: &TensorView,
@@ -157,6 +159,7 @@ pub struct PackedStoreSpec {
 }
 
 impl PackedStoreSpec {
+    #[inline]
     pub unsafe fn wrap(&self, tensor: &TensorView) -> PackedStore {
         PackedStore {
             ptr: tensor.as_ptr_unchecked::<u8>() as _,
