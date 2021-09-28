@@ -218,7 +218,8 @@ fn eval(
     c_final_shape: &[usize],
 ) -> TractResult<TVec<Arc<Tensor>>> {
     unsafe {
-        let a_dt = op.micro_ops.iter().next().unwrap().0.datum_type();
+        debug_assert!(op.micro_ops.len() > 0);
+        let size_of_a = (&*op.micro_ops.as_ptr()).0.datum_type().size_of();
         let mut c = Tensor::uninitialized_dt(op.c_fact.datum_type, &c_shape)?;
         let c_storage = op.mmm.c_view_with_axis(c_m_axis, c_n_axis);
         if op
@@ -246,7 +247,7 @@ fn eval(
                 let c_store = c_storage.wrap(&c_view);
                 let mut f = tvec!(FusedSpec::AddMatMul {
                     k: geometry.k,
-                    a: op.mmm.a_packed(a_dt.size_of(), geometry.k).wrap(&pa.view()),
+                    a: op.mmm.a_packed(size_of_a, geometry.k).wrap(&pa.view()),
                     b: geometry
                         .b_storage
                         .wrap(&TensorView::at_prefix_unchecked(&inputs[0], &*b_prefix)),
@@ -255,14 +256,17 @@ fn eval(
                 op.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch, &f)?;
             }
         } else {
-            let (pa, fused) = op.micro_ops.iter().next().unwrap();
+            let (pa, fused) = &*op.micro_ops.as_ptr();
             let c_store = c_storage.wrap(&c.view_mut());
-            let mut f = tvec!(FusedSpec::AddMatMul {
+            let mut f = Vec::with_capacity(fused.len() + 1);
+            f.push(FusedSpec::AddMatMul {
                 k: geometry.k,
-                a: op.mmm.a_packed(a_dt.size_of(), geometry.k).wrap(&pa.view()),
+                a: op.mmm.a_packed(size_of_a, geometry.k).wrap(&pa.view()),
                 b: geometry.b_storage.wrap(&inputs[0].view()),
             });
-            f.extend(fused.iter().map(|f| f.resolve(inputs, &c_storage, c_store)));
+            for ix in 0..fused.len() {
+                f.push(fused.get_unchecked(ix).resolve(inputs, &c_storage, c_store));
+            }
             op.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch, &f)?;
         }
         c.set_shape_unchecked(c_final_shape);
