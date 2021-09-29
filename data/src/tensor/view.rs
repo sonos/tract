@@ -58,6 +58,7 @@ impl<'a> TensorView<'a> {
         self.tensor.datum_type()
     }
 
+    #[inline]
     pub fn shape(&self) -> &[usize] {
         match &self.indexing {
             Indexing::Prefix(i) => &self.tensor.shape()[*i..],
@@ -65,6 +66,7 @@ impl<'a> TensorView<'a> {
         }
     }
 
+    #[inline]
     pub fn strides(&self) -> &[isize] {
         match &self.indexing {
             Indexing::Prefix(i) => &self.tensor.strides()[*i..],
@@ -72,10 +74,12 @@ impl<'a> TensorView<'a> {
         }
     }
 
+    #[inline]
     pub fn len(&self) -> usize {
         self.shape().iter().product::<usize>()
     }
 
+    #[inline]
     pub fn rank(&self) -> usize {
         self.shape().len()
     }
@@ -103,62 +107,74 @@ impl<'a> TensorView<'a> {
     }
 
     /// Access the data as a pointer.
+    #[inline]
     pub fn as_ptr<D: Datum>(&self) -> anyhow::Result<*const D> {
         self.check_dt::<D>()?;
         Ok(unsafe { self.as_ptr_unchecked() })
     }
 
     /// Access the data as a pointer.
+    #[inline]
     pub unsafe fn as_ptr_unchecked<D: Datum>(&self) -> *const D {
         self.tensor.as_ptr_unchecked::<u8>().offset(self.offset_bytes) as *const D
     }
 
     /// Access the data as a pointer.
+    #[inline]
     pub unsafe fn as_ptr_mut_unchecked<D: Datum>(&mut self) -> *mut D {
         self.as_ptr_unchecked::<D>() as *mut D
     }
 
     /// Access the data as a mutable pointer.
+    #[inline]
     pub fn as_ptr_mut<D: Datum>(&mut self) -> anyhow::Result<*mut D> {
         Ok(self.as_ptr::<D>()? as *mut D)
     }
 
     /// Access the data as a slice.
+    #[inline]
     pub unsafe fn as_slice_unchecked<D: Datum>(&self) -> &[D] {
         std::slice::from_raw_parts::<D>(self.as_ptr_unchecked(), self.len())
     }
 
     /// Access the data as a slice.
+    #[inline]
     pub fn as_slice<D: Datum>(&self) -> anyhow::Result<&[D]> {
         self.check_dt::<D>()?;
         unsafe { Ok(self.as_slice_unchecked()) }
     }
 
     /// Access the data as a mutable slice.
+    #[inline]
     pub unsafe fn as_slice_mut_unchecked<D: Datum>(&mut self) -> &mut [D] {
         std::slice::from_raw_parts_mut::<D>(self.as_ptr_mut_unchecked(), self.len())
     }
 
     /// Access the data as a mutable slice.
+    #[inline]
     pub fn as_slice_mut<D: Datum>(&mut self) -> anyhow::Result<&mut [D]> {
         self.check_dt::<D>()?;
         unsafe { Ok(self.as_slice_mut_unchecked()) }
     }
 
+    #[inline]
     pub unsafe fn offset_bytes(&mut self, offset: isize) {
         self.offset_bytes += offset
     }
 
+    #[inline]
     pub unsafe fn offset_axis_unchecked(&mut self, axis: usize, pos: isize) {
         let stride = self.strides()[axis] * self.datum_type().size_of() as isize;
         self.offset_bytes(stride * pos)
     }
 
+    #[inline]
     pub unsafe fn offset_axis(&mut self, axis: usize, pos: isize) {
         let stride = self.strides()[axis] * self.datum_type().size_of() as isize;
         self.offset_bytes(stride * pos)
     }
 
+    #[inline]
     fn offset_for_coords(&self, coords: &[usize]) -> isize {
         self.strides()
             .iter()
@@ -167,6 +183,7 @@ impl<'a> TensorView<'a> {
             .sum::<isize>()
     }
 
+    #[inline]
     pub unsafe fn at_unchecked<T: Datum>(&self, coords: impl AsRef<[usize]>) -> &T {
         self.as_ptr_unchecked::<T>()
             .offset(self.offset_for_coords(coords.as_ref()))
@@ -174,6 +191,7 @@ impl<'a> TensorView<'a> {
             .unwrap()
     }
 
+    #[inline]
     pub unsafe fn at_mut_unchecked<T: Datum>(&mut self, coords: impl AsRef<[usize]>) -> &mut T {
         self.as_ptr_mut_unchecked::<T>()
             .offset(self.offset_for_coords(coords.as_ref()))
@@ -181,6 +199,7 @@ impl<'a> TensorView<'a> {
             .unwrap()
     }
 
+    #[inline]
     pub fn at<T: Datum>(&self, coords: impl AsRef<[usize]>) -> anyhow::Result<&T> {
         self.check_dt::<T>()?;
         let coords = coords.as_ref();
@@ -188,6 +207,7 @@ impl<'a> TensorView<'a> {
         unsafe { Ok(self.at_unchecked(coords)) }
     }
 
+    #[inline]
     pub fn at_mut<T: Datum>(&mut self, coords: impl AsRef<[usize]>) -> anyhow::Result<&mut T> {
         self.check_dt::<T>()?;
         let coords = coords.as_ref();
