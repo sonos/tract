@@ -253,14 +253,14 @@ impl Tensor {
 
     /// Create a tensor with a given shape and a slice of elements. 
     /// The data is copied and aligned to size of T. 
-    pub fn from_shape<T: Datum>(shape: &[usize], data: &[T]) -> anyhow::Result<Tensor> {
+    pub fn from_shape<T: Datum + Copy>(shape: &[usize], data: &[T]) -> anyhow::Result<Tensor> {
         let dt = T::datum_type();
         Self::from_shape_align(shape, data, dt.alignment())
     }
 
     /// Create a tensor with a given shape and a slice of elements. 
     /// The data is copied and aligned to given alignment. 
-    pub fn from_shape_align<T: Datum>(shape: &[usize], data: &[T], align: usize) -> anyhow::Result<Tensor> {
+    pub fn from_shape_align<T: Datum + Copy>(shape: &[usize], data: &[T], align: usize) -> anyhow::Result<Tensor> {
         anyhow::ensure!(data.len() == shape.iter().product::<usize>(), "Shape product must be equal to data length");
         unsafe {
             let bytes = std::slice::from_raw_parts(
