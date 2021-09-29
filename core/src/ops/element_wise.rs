@@ -93,9 +93,14 @@ impl EvalOp for ElementWiseOp {
         if let Some(_dt) = self.0.output_type(inputs[0].datum_type()) {
             Ok(tvec!(self.0.eval_out_of_place(&inputs[0])?.into_arc_tensor()))
         } else {
-            let mut t = args_1!(inputs).into_tensor();
-            self.0.eval_in_place(&mut t)?;
-            Ok(tvec!(t.into_arc_tensor()))
+            if let Some(m) = Arc::get_mut(&mut inputs[0]) {
+                self.0.eval_in_place(m)?;
+            } else {
+                let mut t = inputs.remove(0).into_tensor();
+                self.0.eval_in_place(&mut t)?;
+                inputs.push(t.into_arc_tensor());
+            }
+            Ok(inputs)
         }
     }
 }
