@@ -227,14 +227,16 @@ fn preprocess_file(
         globals.insert(k.to_string().into(), liquid::model::Value::scalar(*v));
     }
     let partials = load_partials(&template.as_ref().parent().unwrap(), msvc);
-    liquid::ParserBuilder::with_stdlib()
+    if let Err(e) = liquid::ParserBuilder::with_stdlib()
         .partials(liquid::partials::LazyCompiler::new(partials))
         .build()
-        .unwrap()
-        .parse(&*input)
-        .unwrap()
-        .render_to(&mut fs::File::create(&output).unwrap(), &globals)
-        .unwrap();
+        .and_then(|p| p.parse(&*input))
+        .and_then(|r| r.render_to(&mut fs::File::create(&output).unwrap(), &globals))
+    {
+        eprintln!("Processing {}", template.as_ref().to_string_lossy());
+        eprintln!("{}", e);
+        panic!()
+    }
 }
 
 fn load_partials(p: &path::Path, msvc: bool) -> liquid::partials::InMemorySource {
