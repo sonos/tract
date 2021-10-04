@@ -197,6 +197,8 @@ fma_mmm_f32_16x6_{{suffix}} proc
 
 // NON LINEAR / ADDC
 
+{% include "fma_mmm_f32_scalars.tmpliq" from:0, to:11 %}
+
 {{L}}add_unicast:
 
     mov     r10,    [rdi + 8]           // c ptr
@@ -228,24 +230,6 @@ fma_mmm_f32_16x6_{{suffix}} proc
     vaddps          ymm{{i | times:2 | plus: 1}}, ymm{{i | times:2 | plus:1 }},   ymm13
 {% endfor %}
 
-    jmp    {{L}}non_linear_loop
-
-// NON LINEAR / MAX
-
-{{L}}scalar_max:
-    vbroadcastss    ymm12, dword ptr [rdi + 8]
-{% for i in (0..11) %}
-    vmaxps          ymm{{i}}, ymm{{i}}, ymm12
-{% endfor %}
-    jmp    {{L}}non_linear_loop
-
-// NON LINEAR / MIN
-
-{{L}}scalar_min:
-    vbroadcastss    ymm12, dword ptr [rdi + 8]
-{% for i in (0..11) %}
-    vminps          ymm{{i}}, ymm{{i}}, ymm12
-{% endfor %}
     jmp    {{L}}non_linear_loop
 
 // NON LINEAR / PER ROW MUL
@@ -316,26 +300,6 @@ fma_mmm_f32_16x6_{{suffix}} proc
     vfmadd231ps     ymm{{i|times:2}},   ymm12, ymm14
     vfmadd231ps     ymm{{i|times:2|plus:1}}, ymm13, ymm14
 {% endfor %}
-    jmp    {{L}}non_linear_loop
-
-{{L}}scalar_mul:
-    vbroadcastss    ymm12, dword ptr [rdi + 8]
-
-{% for i in (0..5) %}
-    vmulps          ymm{{i|times:2}}, ymm{{i|times:2}}, ymm12
-    vmulps          ymm{{i|times:2|plus:1}}, ymm{{i|times:2|plus:1}}, ymm12
-{% endfor %}
-
-    jmp    {{L}}non_linear_loop
-
-{{L}}scalar_add:
-    vbroadcastss    ymm12, dword ptr [rdi + 8]
-
-{% for i in (0..5) %}
-    vaddps          ymm{{i|times:2}}, ymm{{i|times:2}}, ymm12
-    vaddps          ymm{{i|times:2|plus:1}}, ymm{{i|times:2|plus:1}}, ymm12
-{% endfor %}
-
     jmp    {{L}}non_linear_loop
 
 {{L}}store:
