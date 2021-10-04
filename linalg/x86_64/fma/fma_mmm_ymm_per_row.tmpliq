@@ -1,4 +1,4 @@
-/* vim: set syntax=asm : */
+// vim: set syntax=asm :
 
 {{L}}{{label}}:
     mov             rax, [ rdi + 8 ]
