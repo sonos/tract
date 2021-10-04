@@ -1,4 +1,4 @@
-/* vim: set syntax=asm : */
+// vim: set syntax=asm :
 
 {% include "fma_mmm_ymm_per_row.tmpliq" label:"per_row_min", op:"vminps", mr:mr, from:from, to:to%}
 {% include "fma_mmm_ymm_per_row.tmpliq" label:"per_row_max", op:"vmaxps", mr:mr, from:from, to:to%}
