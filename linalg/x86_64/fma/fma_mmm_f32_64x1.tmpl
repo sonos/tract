@@ -142,6 +142,7 @@ fma_mmm_f32_64x1_{{suffix}} proc
     jmp             {{L}}non_linear_loop
 
 {% include "fma_mmm_f32_scalars.tmpliq" from:0, to:7 %}
+{% include "fma_mmm_f32_per_rows.tmpliq" mr:64, from:0, to:7 %}
 
 {{L}}add_unicast:
 
@@ -166,36 +167,6 @@ fma_mmm_f32_64x1_{{suffix}} proc
 
     vaddps          ymm{{i}},   ymm{{i}},   ymm12
     lea             r10, [ r10 + rsi * 8 ]
-{% endfor %}
-
-    jmp    {{L}}non_linear_loop
-
-// NON LINEAR / PER ROW MUL
-
-{{L}}per_row_mul:
-    mov             rax, [ rdi + 8 ]
-
-{% for i in (0..7) %}
-    vmovups         ymm{{8|plus:i}},  [rax + {{i | times: 32}}]
-{% endfor %}
-
-{% for i in (0..7) %}
-    vmulps         ymm{{i}}, ymm{{i}}, ymm{{i | plus: 8 }}
-{% endfor %}
-
-    jmp    {{L}}non_linear_loop
-
-// NON LINEAR / PER ROW ADD
-
-{{L}}per_row_add:
-    mov             rax, [ rdi + 8 ]
-
-{% for i in (0..7) %}
-    vmovups         ymm{{8|plus:i}},  [rax + {{i | times: 32}}]
-{% endfor %}
-
-{% for i in (0..7) %}
-    vaddps         ymm{{i}}, ymm{{i}}, ymm{{i | plus: 8 }}
 {% endfor %}
 
     jmp    {{L}}non_linear_loop

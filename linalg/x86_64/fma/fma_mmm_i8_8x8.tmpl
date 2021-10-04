@@ -227,6 +227,7 @@ fma_mmm_i8_8x8_{{suffix}} proc
     jmp             {{L}}non_linear_loop
 
 {% include "fma_mmm_i32_scalars.tmpliq" from:0, to:7 %}
+{% include "fma_mmm_i32_per_rows.tmpliq" mr:8,from:0, to:7 %}
 
 {{L}}add_unicast:
 
@@ -315,32 +316,6 @@ i128_shuffle dd              0, 4
 {{L}}byte_shuffle: .int            201851904 // 0x0c080400
 {{L}}i128_shuffle: .int            0, 4
 {% endif %}
-
-// NON LINEAR / PER ROW MUL
-
-{{L}}per_row_mul:
-    mov             rax, [ rdi + 8 ]
-
-    vmovups         ymm12,  [rax]
-
-{% for i in (0..7) %}
-    vpmulld         ymm{{i}}, ymm{{i}}, ymm12
-{% endfor %}
-
-    jmp    {{L}}non_linear_loop
-
-// NON LINEAR / PER ROW ADD
-
-{{L}}per_row_add:
-    mov             rax, [ rdi + 8 ]
-
-    vmovups         ymm12,  [rax]
-
-{% for i in (0..7) %}
-    vpaddd          ymm{{i}}, ymm{{i}}, ymm12
-{% endfor %}
-
-    jmp    {{L}}non_linear_loop
 
 // NON LINEAR / PER COL MUL
 
