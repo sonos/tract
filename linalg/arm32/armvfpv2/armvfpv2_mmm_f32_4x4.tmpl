@@ -303,6 +303,32 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
 
     b .non_linear_loop
 
+.per_row_min:
+    vldm    r3, {s0, s1, s2, s3}
+    {% for row in (0..3) %}
+        {% for col in (0..3) %}
+            {%capture s%}s{{col|times:4|plus:row|plus:16}}{%endcapture%}
+            vcmp.f32        {{s}}, s{{row}}
+            vmrs            apsr_nzcv, fpscr
+            vmovge          {{s}}, s{{row}}
+        {% endfor %}
+    {% endfor %}
+
+    b .non_linear_loop
+
+.per_row_max:
+    vldm    r3, {s0, s1, s2, s3}
+    {% for row in (0..3) %}
+        {% for col in (0..3) %}
+            {%capture s%}s{{col|times:4|plus:row|plus:16}}{%endcapture%}
+            vcmp.f32        {{s}}, s{{row}}
+            vmrs            apsr_nzcv, fpscr
+            vmovlt          {{s}}, s{{row}}
+        {% endfor %}
+    {% endfor %}
+
+    b .non_linear_loop
+
 .per_row_mul:
     vldm    r3, {s0, s1, s2, s3}
     {% for row in (0..3) %}
