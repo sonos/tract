@@ -102,6 +102,7 @@ armv7neon_mmm_i8_32x1_{{suffix}}:
     b   .non_linear_loop
 
 {% include "armv7neon_mmm_i32_scalars.tmpliq" from:8, to:15 %}
+{% include "armv7neon_mmm_i32_per_rows.tmpliq" mr:32, from:8, to:15 %}
 
 .add_unicast:
     // r3, r4, r5, r6 <- ptr, rsc, csc, size
@@ -125,26 +126,6 @@ armv7neon_mmm_i8_32x1_{{suffix}}:
         vld1.s32    d0[1], [ r3 ], r4
         vadd.i32    d{{reg}}, d0
     {% endfor %}
-    b .non_linear_loop
-
-.per_row_add:
-    vldmia  r3!, { q0-q3 }
-    vldmia  r3!, { q4-q7 }
-
-    {% for reg in (0..7) %}
-        vadd.s32 q{{reg|plus:8}}, q{{reg|plus:8}}, q{{reg}}
-    {% endfor %}
-
-    b .non_linear_loop
-
-.per_row_mul:
-    vldmia  r3!, { q0-q3 }
-    vldmia  r3!, { q4-q7 }
-
-    {% for reg in (0..7) %}
-        vmul.s32 q{{reg|plus:8}}, q{{reg|plus:8}}, q{{reg}}
-    {% endfor %}
-
     b .non_linear_loop
 
 .per_col_add:
