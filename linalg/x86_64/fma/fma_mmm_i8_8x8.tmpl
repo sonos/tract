@@ -226,6 +226,8 @@ fma_mmm_i8_8x8_{{suffix}} proc
 
     jmp             {{L}}non_linear_loop
 
+{% include "fma_mmm_i32_scalars.tmpliq" from:0, to:7 %}
+
 {{L}}add_unicast:
 
     mov     r10,    [rdi + 8]           // c ptr
@@ -314,24 +316,6 @@ i128_shuffle dd              0, 4
 {{L}}i128_shuffle: .int            0, 4
 {% endif %}
 
-// NON LINEAR / MAX
-
-{{L}}scalar_max:
-    vbroadcastss    ymm12, dword ptr [rdi + 8]
-{% for i in (0..7) %}
-    vpmaxsd         ymm{{i}}, ymm{{i}}, ymm12
-{% endfor %}
-    jmp    {{L}}non_linear_loop
-
-// NON LINEAR / MIN
-
-{{L}}scalar_min:
-    vbroadcastss    ymm12, dword ptr [rdi + 8]
-{% for i in (0..7) %}
-    vpminsd         ymm{{i}}, ymm{{i}}, ymm12
-{% endfor %}
-    jmp    {{L}}non_linear_loop
-
 // NON LINEAR / PER ROW MUL
 
 {{L}}per_row_mul:
@@ -393,24 +377,6 @@ i128_shuffle dd              0, 4
     vpmulld         ymm15, ymm12, ymm14
     vpaddd          ymm{{i}}, ymm{{i}}, ymm15
 {% endfor %}
-    jmp    {{L}}non_linear_loop
-
-{{L}}scalar_mul:
-    vbroadcastss    ymm12, dword ptr [rdi + 8]
-
-{% for i in (0..7) %}
-    vpmulld         ymm{{i}}, ymm{{i}}, ymm12
-{% endfor %}
-
-    jmp    {{L}}non_linear_loop
-
-{{L}}scalar_add:
-    vpbroadcastd    ymm12, dword ptr [rdi + 8]
-
-{% for i in (0..7) %}
-    vpaddd          ymm{{i}}, ymm{{i}}, ymm12
-{% endfor %}
-
     jmp    {{L}}non_linear_loop
 
 {{L}}q_scale:

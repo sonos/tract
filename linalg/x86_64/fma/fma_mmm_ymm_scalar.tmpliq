@@ -1,0 +1,9 @@
+/* vim: set syntax=asm : */
+
+{{L}}{{label}}:
+    vbroadcastss    ymm12, dword ptr [rdi + 8]
+    {% for reg in (from..to) %}
+        {{op}}          ymm{{reg}}, ymm{{reg}}, ymm12
+    {% endfor %}
+
+    jmp    {{L}}non_linear_loop
