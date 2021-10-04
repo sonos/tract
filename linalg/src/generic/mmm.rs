@@ -63,6 +63,36 @@ where
 {
 }
 
+macro_rules! scalar {
+    ($ab: expr, $m: expr, $f: expr) => {
+        for i in 0..$ab.len() {
+            for j in 0..$ab[0].len() {
+                $ab[i][j] = $f($m, $ab[i][j])
+            }
+        }
+    };
+}
+
+macro_rules! per_row {
+    ($ab: expr, $m: expr, $f: expr) => {
+        for i in 0..$ab.len() {
+            for j in 0..$ab[0].len() {
+                $ab[i][j] = $f(*$m.offset(i as isize), $ab[i][j])
+            }
+        }
+    };
+}
+
+macro_rules! per_col {
+    ($ab: expr, $m: expr, $f: expr) => {
+        for i in 0..$ab.len() {
+            for j in 0..$ab[0].len() {
+                $ab[i][j] = $f(*$m.offset(j as isize), $ab[i][j])
+            }
+        }
+    };
+}
+
 impl<TA, TB, TI> MatMatMulKer<TI> for GenericMmm4x4<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
@@ -118,70 +148,18 @@ where
                 }
                 match *pnl {
                     FusedKerSpec::Done => break,
-                    FusedKerSpec::PerRowMul(bias) => {
-                        for i in 0..4 {
-                            ab[i][0] *= *bias.offset(i as isize);
-                            ab[i][1] *= *bias.offset(i as isize);
-                            ab[i][2] *= *bias.offset(i as isize);
-                            ab[i][3] *= *bias.offset(i as isize);
-                        }
-                    }
-                    FusedKerSpec::PerRowAdd(bias) => {
-                        for i in 0..4 {
-                            ab[i][0] += *bias.offset(i as isize);
-                            ab[i][1] += *bias.offset(i as isize);
-                            ab[i][2] += *bias.offset(i as isize);
-                            ab[i][3] += *bias.offset(i as isize);
-                        }
-                    }
-                    FusedKerSpec::PerColMul(bias) => {
-                        for i in 0..4 {
-                            ab[0][i] *= *bias.offset(i as isize);
-                            ab[1][i] *= *bias.offset(i as isize);
-                            ab[2][i] *= *bias.offset(i as isize);
-                            ab[3][i] *= *bias.offset(i as isize);
-                        }
-                    }
-                    FusedKerSpec::PerColAdd(bias) => {
-                        for i in 0..4 {
-                            ab[0][i] += *bias.offset(i as isize);
-                            ab[1][i] += *bias.offset(i as isize);
-                            ab[2][i] += *bias.offset(i as isize);
-                            ab[3][i] += *bias.offset(i as isize);
-                        }
-                    }
-                    FusedKerSpec::ScalarMin(m) => {
-                        for i in 0..4 {
-                            for j in 0..4 {
-                                ab[i][j] = if m < ab[i][j] { m } else { ab[i][j] }
-                            }
-                        }
-                    }
-                    FusedKerSpec::ScalarMax(m) => {
-                        for i in 0..4 {
-                            for j in 0..4 {
-                                ab[i][j] = if m > ab[i][j] { m } else { ab[i][j] }
-                            }
-                        }
-                    }
+                    FusedKerSpec::ScalarAdd(a) => scalar!(ab, a, |a, b| a + b),
+                    FusedKerSpec::ScalarMul(a) => scalar!(ab, a, |a, b| a * b),
+                    FusedKerSpec::ScalarMin(m) => scalar!(ab, m, |a, b| if a < b { a } else { b }),
+                    FusedKerSpec::ScalarMax(m) => scalar!(ab, m, |a, b| if a > b { a } else { b }),
+                    FusedKerSpec::PerRowMul(bias) => per_row!(ab, bias, |a, b| a * b),
+                    FusedKerSpec::PerRowAdd(bias) => per_row!(ab, bias, |a, b| a + b),
+                    FusedKerSpec::PerColMul(bias) => per_col!(ab, bias, |a, b| a * b),
+                    FusedKerSpec::PerColAdd(bias) => per_col!(ab, bias, |a, b| a + b),
                     FusedKerSpec::AddRowColProducts(rows, cols) => {
                         for i in 0..4 {
                             for j in 0..4 {
                                 ab[i][j] += *rows.offset(i as isize) * *cols.offset(j as isize);
-                            }
-                        }
-                    }
-                    FusedKerSpec::ScalarAdd(a) => {
-                        for i in 0..4 {
-                            for j in 0..4 {
-                                ab[i][j] += a;
-                            }
-                        }
-                    }
-                    FusedKerSpec::ScalarMul(a) => {
-                        for i in 0..4 {
-                            for j in 0..4 {
-                                ab[i][j] *= a;
                             }
                         }
                     }
@@ -362,7 +340,7 @@ where
     #[inline(never)]
     fn kernel(spec: &[FusedKerSpec<TI>]) -> isize {
         unsafe {
-            let mut ab = [TI::zero(); 4];
+            let mut ab = [[TI::zero(); 1]; 4];
             let mut pnl = spec.as_ptr();
             loop {
                 if pnl.is_null() {
@@ -370,52 +348,18 @@ where
                 }
                 match *pnl {
                     FusedKerSpec::Done => break,
-                    FusedKerSpec::PerRowMul(bias) => {
-                        for i in 0..4 {
-                            ab[i] *= *bias.offset(i as isize);
-                        }
-                    }
-                    FusedKerSpec::PerRowAdd(bias) => {
-                        for i in 0..4 {
-                            ab[i] += *bias.offset(i as isize);
-                        }
-                    }
-                    FusedKerSpec::PerColMul(bias) => {
-                        ab[0] *= *bias;
-                        ab[1] *= *bias;
-                        ab[2] *= *bias;
-                        ab[3] *= *bias;
-                    }
-                    FusedKerSpec::PerColAdd(bias) => {
-                        ab[0] += *bias;
-                        ab[1] += *bias;
-                        ab[2] += *bias;
-                        ab[3] += *bias;
-                    }
-                    FusedKerSpec::ScalarMin(m) => {
-                        for i in 0..4 {
-                            ab[i] = if m < ab[i] { m } else { ab[i] }
-                        }
-                    }
-                    FusedKerSpec::ScalarMax(m) => {
-                        for i in 0..4 {
-                            ab[i] = if m > ab[i] { m } else { ab[i] }
-                        }
-                    }
+                    FusedKerSpec::ScalarAdd(a) => scalar!(ab, a, |a, b| a + b),
+                    FusedKerSpec::ScalarMul(a) => scalar!(ab, a, |a, b| a * b),
+                    FusedKerSpec::ScalarMin(m) => scalar!(ab, m, |a, b| if a < b { a } else { b }),
+                    FusedKerSpec::ScalarMax(m) => scalar!(ab, m, |a, b| if a > b { a } else { b }),
+                    FusedKerSpec::PerRowMul(bias) => per_row!(ab, bias, |a, b| a * b),
+                    FusedKerSpec::PerRowAdd(bias) => per_row!(ab, bias, |a, b| a + b),
+                    FusedKerSpec::PerColMul(bias) => per_col!(ab, bias, |a, b| a * b),
+                    FusedKerSpec::PerColAdd(bias) => per_col!(ab, bias, |a, b| a + b),
                     FusedKerSpec::AddRowColProducts(rows, cols) => {
                         let col = *cols;
                         for i in 0..4 {
-                            ab[i] += *rows.offset(i as isize) * col;
-                        }
-                    }
-                    FusedKerSpec::ScalarAdd(a) => {
-                        for i in 0..4 {
-                            ab[i] += a;
-                        }
-                    }
-                    FusedKerSpec::ScalarMul(a) => {
-                        for i in 0..4 {
-                            ab[i] *= a;
+                            ab[i][0] += *rows.offset(i as isize) * col;
                         }
                     }
                     FusedKerSpec::AddUnicast(tile) => add_unicast::<TI, _>(
@@ -429,7 +373,7 @@ where
                     ),
                     FusedKerSpec::QScale(shift, rp, mult) => {
                         for i in 0..4 {
-                            ab[i] = ab[i].q_scale(mult, shift, rp);
+                            ab[i][0] = ab[i][0].q_scale(mult, shift, rp);
                         }
                     }
                     FusedKerSpec::AddMatMul { k, pa, pb, .. } => {
@@ -440,10 +384,10 @@ where
                                 for i in 0..k {
                                     let a = std::slice::from_raw_parts(a.offset(4 * i as isize), 4);
                                     let b = *b.offset(i as isize);
-                                    ab[0] += a[0].as_() * b.as_();
-                                    ab[1] += a[1].as_() * b.as_();
-                                    ab[2] += a[2].as_() * b.as_();
-                                    ab[3] += a[3].as_() * b.as_();
+                                    ab[0][0] += a[0].as_() * b.as_();
+                                    ab[1][0] += a[1].as_() * b.as_();
+                                    ab[2][0] += a[2].as_() * b.as_();
+                                    ab[3][0] += a[3].as_() * b.as_();
                                 }
                             }
                             OffsetsAndPtrs { row_byte_offsets, col_ptrs } => {
@@ -454,10 +398,10 @@ where
                                     let offset = *row_byte_offsets.offset(i as isize)
                                         / std::mem::size_of::<TB>() as isize;
                                     let b0 = *(pb0.offset(offset));
-                                    ab[0] += a[0].as_() * b0.as_();
-                                    ab[1] += a[1].as_() * b0.as_();
-                                    ab[2] += a[2].as_() * b0.as_();
-                                    ab[3] += a[3].as_() * b0.as_();
+                                    ab[0][0] += a[0].as_() * b0.as_();
+                                    ab[1][0] += a[1].as_() * b0.as_();
+                                    ab[2][0] += a[2].as_() * b0.as_();
+                                    ab[3][0] += a[3].as_() * b0.as_();
                                 }
                             }
                         }
@@ -588,64 +532,18 @@ where
                 }
                 match *pnl {
                     FusedKerSpec::Done => break,
-                    FusedKerSpec::PerRowMul(bias) => {
-                        for i in 0..3 {
-                            ab[i][0] *= *bias.offset(i as isize);
-                            ab[i][1] *= *bias.offset(i as isize);
-                        }
-                    }
-                    FusedKerSpec::PerRowAdd(bias) => {
-                        for i in 0..3 {
-                            ab[i][0] += *bias.offset(i as isize);
-                            ab[i][1] += *bias.offset(i as isize);
-                        }
-                    }
-                    FusedKerSpec::PerColMul(bias) => {
-                        for i in 0..2 {
-                            ab[0][i] *= *bias.offset(i as isize);
-                            ab[1][i] *= *bias.offset(i as isize);
-                            ab[2][i] *= *bias.offset(i as isize);
-                        }
-                    }
-                    FusedKerSpec::PerColAdd(bias) => {
-                        for i in 0..2 {
-                            ab[0][i] += *bias.offset(i as isize);
-                            ab[1][i] += *bias.offset(i as isize);
-                            ab[2][i] += *bias.offset(i as isize);
-                        }
-                    }
-                    FusedKerSpec::ScalarMin(m) => {
-                        for i in 0..3 {
-                            for j in 0..2 {
-                                ab[i][j] = if m < ab[i][j] { m } else { ab[i][j] }
-                            }
-                        }
-                    }
-                    FusedKerSpec::ScalarMax(m) => {
-                        for i in 0..3 {
-                            for j in 0..2 {
-                                ab[i][j] = if m > ab[i][j] { m } else { ab[i][j] }
-                            }
-                        }
-                    }
+                    FusedKerSpec::ScalarAdd(a) => scalar!(ab, a, |a, b| a + b),
+                    FusedKerSpec::ScalarMul(a) => scalar!(ab, a, |a, b| a * b),
+                    FusedKerSpec::ScalarMin(m) => scalar!(ab, m, |a, b| if a < b { a } else { b }),
+                    FusedKerSpec::ScalarMax(m) => scalar!(ab, m, |a, b| if a > b { a } else { b }),
+                    FusedKerSpec::PerRowMul(bias) => per_row!(ab, bias, |a, b| a * b),
+                    FusedKerSpec::PerRowAdd(bias) => per_row!(ab, bias, |a, b| a + b),
+                    FusedKerSpec::PerColMul(bias) => per_col!(ab, bias, |a, b| a * b),
+                    FusedKerSpec::PerColAdd(bias) => per_col!(ab, bias, |a, b| a + b),
                     FusedKerSpec::AddRowColProducts(rows, cols) => {
                         for i in 0..3 {
                             for j in 0..2 {
                                 ab[i][j] += *rows.offset(i as isize) * *cols.offset(j as isize);
-                            }
-                        }
-                    }
-                    FusedKerSpec::ScalarAdd(a) => {
-                        for i in 0..3 {
-                            for j in 0..2 {
-                                ab[i][j] += a;
-                            }
-                        }
-                    }
-                    FusedKerSpec::ScalarMul(a) => {
-                        for i in 0..3 {
-                            for j in 0..2 {
-                                ab[i][j] *= a;
                             }
                         }
                     }
