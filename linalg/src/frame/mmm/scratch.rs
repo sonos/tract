@@ -1,7 +1,7 @@
 use num_traits::Zero;
 use std::fmt::Debug;
 
-use super::{FusedKerSpec, FusedSpec, InputStoreKer, MatMatMulKer, OutputStoreKer};
+use super::{BinOp, FusedKerSpec, FusedSpec, InputStoreKer, MatMatMulKer, OutputStoreKer};
 use downcast_rs::{impl_downcast, Downcast};
 use tract_data::prelude::*;
 
@@ -30,10 +30,12 @@ impl<TI: Copy + Datum + Zero> ScratchSpaceFusedNonLinear<TI> {
         for ix in 0..specs.len() {
             let spec = &specs[ix];
             let uspec = match spec {
-                FS::ScalarMin(m) => FKS::ScalarMin(*m.to_scalar_unchecked()),
-                FS::ScalarMax(m) => FKS::ScalarMax(*m.to_scalar_unchecked()),
-                FS::ScalarMul(t) => FKS::ScalarMul(*t.to_scalar_unchecked()),
-                FS::ScalarAdd(t) => FKS::ScalarAdd(*t.to_scalar_unchecked()),
+                FS::BinScalar(t, op) => match op {
+                    BinOp::Min => FKS::ScalarMin(*t.to_scalar_unchecked()),
+                    BinOp::Max => FKS::ScalarMax(*t.to_scalar_unchecked()),
+                    BinOp::Mul => FKS::ScalarMul(*t.to_scalar_unchecked()),
+                    BinOp::Add => FKS::ScalarAdd(*t.to_scalar_unchecked()),
+                },
                 FS::QScale(s, rp, m) => FKS::QScale(*s, *rp, *m),
                 FS::PerRowAdd(_) | FS::PerRowMul(_) => {
                     self.loc_dependant.push((ix, offset as _));

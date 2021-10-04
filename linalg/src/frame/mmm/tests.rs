@@ -583,7 +583,7 @@ where
     usize: AsPrimitive<TI>,
 {
     let five: TI = 5.as_();
-    fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::ScalarMax(&tensor0(five))], |exp| {
+    fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::BinScalar(&tensor0(five), BinOp::Max)], |exp| {
         exp.iter_mut().for_each(|x| *x = if *x < five { five } else { *x })
     })
 }
@@ -602,7 +602,7 @@ where
     usize: AsPrimitive<TI>,
 {
     let five: TI = 5.as_();
-    fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::ScalarMin(&tensor0(five))], |exp| {
+    fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::BinScalar(&tensor0(five), BinOp::Min)], |exp| {
         exp.iter_mut().for_each(|x| *x = if *x > five { five } else { *x })
     })
 }
