@@ -9,6 +9,7 @@ fn use_masm() -> bool {
 }
 
 fn jump_table() -> Vec<String> {
+    println!("cargo:rerun-if-changed=src/frame/mmm/fuse.rs");
     std::fs::read_to_string("src/frame/mmm/fuse.rs")
         .unwrap()
         .lines()
