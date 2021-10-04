@@ -134,32 +134,6 @@ non_linear_addc_i32:
 
     b           .non_linear_loop
 
-.per_row_mul:
-    ldr         x2, [x0, #8]
-    ld1         { v0.4s-v3.4s }, [ x2 ], #64
-    ld1         { v4.4s-v7.4s }, [ x2 ], #64
-    ld1         { v8.4s-v11.4s }, [ x2 ], #64
-    ld1         { v12.4s-v15.4s }, [ x2 ], #64
-
-    {% for reg in (0..15) %}
-        mul v{{reg|plus:16}}.4s, v{{reg | plus: 16}}.4s, v{{reg}}.4s
-    {% endfor %}
-
-    b           .non_linear_loop
-
-.per_row_add:
-    ldr         x2, [x0, #8]
-    ld1         { v0.4s-v3.4s }, [ x2 ], #64
-    ld1         { v4.4s-v7.4s }, [ x2 ], #64
-    ld1         { v8.4s-v11.4s }, [ x2 ], #64
-    ld1         { v12.4s-v15.4s }, [ x2 ], #64
-
-    {% for reg in (0..15) %}
-        add v{{reg|plus:16}}.4s, v{{reg | plus: 16}}.4s, v{{reg}}.4s
-    {% endfor %}
-
-    b           .non_linear_loop
-
 .add_row_col_products:
     ldr     x2, [x0, #8]
     ldr     x3, [x0, #16]
@@ -185,19 +159,9 @@ non_linear_addc_i32:
 
     b           .non_linear_loop
 
-// .scalar_mul:
-//     add         x2, x0, #8
-//     ld1         {v0.s}[0], [ x2 ]
-//     dup         v0.4s, v0.s[0]
-//     {% for reg in (16..31) %}
-//         mul       v{{reg}}.4s, v{{reg}}.4s, v0.4s
-//     {% endfor %}
-// 
-//     b           .non_linear_loop
-// 
 {% include "arm64simd_mmm_i32_scalars.tmpliq" from:16, to:31 %}
-
-    {% include "arm64simd_mmm_i8_scale_q16_q31.tmpliq" %}
+{% include "arm64simd_mmm_i32_per_rows.tmpliq" mr:64, from:16, to:31 %}
+{% include "arm64simd_mmm_i8_scale_q16_q31.tmpliq" %}
 
 .store:
     ldp         x5, x6, [x0, #8]            // c base ptr, rsc

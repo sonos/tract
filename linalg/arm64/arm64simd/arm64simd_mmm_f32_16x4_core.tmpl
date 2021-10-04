@@ -124,6 +124,7 @@
     b   .non_linear_loop
 
 {% include "arm64simd_mmm_f32_scalars.tmpliq" from:8, to:31%}
+{% include "arm64simd_mmm_f32_per_rows.tmpliq" mr:16, from:8, to:31 %}
 
 .add_unicast:
     ldp         x5, x6, [x0, #8]
@@ -163,30 +164,6 @@
         {% for reg in (0..3) %}
             fadd v{{col | times:4 | plus: reg|plus:16}}.4s, v{{col | times:4 | plus: reg|plus:16}}.4s, v2.4s
     	{% endfor %}
-    {% endfor %}
-
-    b           .non_linear_loop
-
-.per_row_mul:
-    ldr         x2, [x0, #8]
-    ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [ x2 ]
-
-    {% for col in (0..3) %}
-        {% for reg in (0..3) %}
-            fmul v{{col | times:4 | plus: reg | plus:16}}.4s, v{{col | times:4 | plus: reg | plus:16}}.4s, v{{reg}}.4s
-        {% endfor %}
-    {% endfor %}
-
-    b           .non_linear_loop
-
-.per_row_add:
-    ldr         x2, [x0, #8]
-    ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [ x2 ]
-
-    {% for col in (0..3) %}
-        {% for reg in (0..3) %}
-            fadd v{{col | times:4 | plus: reg | plus:16}}.4s, v{{col | times:4 | plus: reg | plus:16}}.4s, v{{reg}}.4s
-        {% endfor %}
     {% endfor %}
 
     b           .non_linear_loop
