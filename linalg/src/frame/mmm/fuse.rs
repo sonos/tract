@@ -16,17 +16,22 @@ pub enum RoundingPolicy {
     Odd,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Hash)]
+pub enum BinOp {
+    Add,
+    Mul,
+    Min,
+    Max,
+}
+
 #[derive(Clone, Debug)]
 pub enum FusedSpec<'t> {
-    ScalarMin(&'t Tensor),
-    ScalarMax(&'t Tensor),
+    BinScalar(&'t Tensor, BinOp),
     PerRowMul(&'t Tensor),
     PerRowAdd(&'t Tensor),
     PerColMul(&'t Tensor),
     PerColAdd(&'t Tensor),
     AddRowColProducts(&'t Tensor, &'t Tensor),
-    ScalarMul(&'t Tensor),
-    ScalarAdd(&'t Tensor),
     AddUnicast(OutputStore),
     QScale(usize, RoundingPolicy, i32),
     Store(OutputStore),

@@ -106,6 +106,9 @@ pub trait BinMiniOp:
     fn cost_per_element(&self, dt: DatumType) -> TVec<(Cost, usize)> {
         tvec!()
     }
+    fn as_linalg_binop(&self) -> Option<tract_linalg::mmm::BinOp> {
+        None
+    }
 }
 dyn_clone::clone_trait_object!(BinMiniOp);
 downcast_rs::impl_downcast!(BinMiniOp);
@@ -548,6 +551,7 @@ macro_rules! bin_to_super_type {
      $(declutter_unary: $declutter_unary:expr,)?
      $(eval_override: $eval_override: expr,)?
      $(flip: $flip:expr,)?
+     $(linalg: $linalg:ident,)?
      $(out_of_place: $out_of_place:expr,)?
      $(validation: $validation:expr,)?
      $(q: $([$($typ_dt:ident),*] => $cab_dt:expr),* ;)?
@@ -719,6 +723,11 @@ macro_rules! bin_to_super_type {
                 $(
                     fn validation(&self) -> Validation {
                         $validation
+                    }
+                 )?
+                $(
+                    fn as_linalg_binop(&self) -> Option<tract_linalg::mmm::BinOp> {
+                        Some(tract_linalg::mmm::BinOp::$linalg)
                     }
                  )?
         }

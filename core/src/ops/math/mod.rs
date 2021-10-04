@@ -13,6 +13,7 @@ use tract_num_traits::AsPrimitive;
 bin_to_super_type!(add, Add,
     declutter_unary: declutter_unary_add,
     flip:commute,
+    linalg: Add,
     validation: Validation::Rounding,
     q: [i8, u8] => add_quant;
     [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() + b);
@@ -74,6 +75,7 @@ bin_to_super_type!(mul, Mul,
  cost: |dt| tvec!((Cost::FMA(dt), 1)),
  declutter_unary: declutter_unary_mul,
  flip: commute,
+ linalg: Mul,
  out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
      if c.datum_type() == TDim::datum_type() &&
          a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
@@ -176,10 +178,10 @@ bin_to_super_type!(rem, Rem,
                    },
                    [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64] => |c, a, b| *c = a.clone() % b);
 
-bin_to_super_type!(min, Min, flip:commute,
+bin_to_super_type!(min, Min, flip:commute, linalg:Min,
                    [f32, f64] => |c,a,b| *c = a.min(*b),
                    [i8, i16, i32, i64, u8, u16, u32, u64] => |c, a, b| *c = *a.min(b));
-bin_to_super_type!(max, Max, flip:commute,
+bin_to_super_type!(max, Max, flip:commute, linalg:Max,
                    [f32, f64] => |c,a,b| *c = a.max(*b),
                    [i8, i16, i32, i64, u8, u16, u32, u64] => |c, a, b| *c = *a.max(b));
 

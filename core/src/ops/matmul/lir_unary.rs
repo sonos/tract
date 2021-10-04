@@ -2,21 +2,18 @@ use crate::internal::*;
 use ndarray::*;
 
 use tract_linalg::mmm::{
-    FusedSpec, InputStoreSpec, MatMatMul, OutputStore, OutputStoreSpec, RoundingPolicy,
+    BinOp, FusedSpec, InputStoreSpec, MatMatMul, OutputStore, OutputStoreSpec, RoundingPolicy,
     ScratchSpace,
 };
 
 #[derive(PartialEq, Clone, Hash, Debug)]
 pub enum ProtoFusedSpec {
-    Min(AttrOrInput),
-    Max(AttrOrInput),
+    BinScalar(AttrOrInput, BinOp),
     PerRowMul(AttrOrInput),
     PerRowAdd(AttrOrInput),
     PerColMul(AttrOrInput),
     PerColAdd(AttrOrInput),
     AddRowColProducts(AttrOrInput, AttrOrInput),
-    ScalarMul(AttrOrInput),
-    ScalarAdd(AttrOrInput),
     AddUnicast(AttrOrInput),
     QScale(usize, RoundingPolicy, i32),
     Store,
@@ -30,14 +27,11 @@ impl ProtoFusedSpec {
         output: OutputStore,
     ) -> FusedSpec<'t> {
         match self {
-            ProtoFusedSpec::Min(v) => FusedSpec::ScalarMin(v.tensor(inputs)),
-            ProtoFusedSpec::Max(v) => FusedSpec::ScalarMax(v.tensor(inputs)),
+            ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(v.tensor(inputs), *op),
             ProtoFusedSpec::PerColAdd(v) => FusedSpec::PerColAdd(v.tensor(inputs)),
             ProtoFusedSpec::PerRowAdd(v) => FusedSpec::PerRowAdd(v.tensor(inputs)),
             ProtoFusedSpec::PerColMul(v) => FusedSpec::PerColMul(v.tensor(inputs)),
             ProtoFusedSpec::PerRowMul(v) => FusedSpec::PerRowMul(v.tensor(inputs)),
-            ProtoFusedSpec::ScalarMul(v) => FusedSpec::ScalarMul(v.tensor(inputs)),
-            ProtoFusedSpec::ScalarAdd(v) => FusedSpec::ScalarAdd(v.tensor(inputs)),
             ProtoFusedSpec::AddRowColProducts(row, col) => {
                 FusedSpec::AddRowColProducts(row.tensor(inputs), col.tensor(inputs))
             }
@@ -386,16 +380,10 @@ impl TypedOp for LirMatMulUnary {
                 );
             }
         } else if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
+            let binop =
+                if let Some(op) = op.mini_op.as_linalg_binop() { op } else { return Ok(None) };
             if op.a.len() == 1 {
-                if op.mini_op.is::<ops::math::Max>() {
-                    return merge_broadcast(&[ProtoFusedSpec::Max((&op.a).into())], &[]);
-                } else if op.mini_op.is::<ops::math::Min>() {
-                    return merge_broadcast(&[ProtoFusedSpec::Min((&op.a).into())], &[]);
-                } else if op.mini_op.is::<ops::math::Mul>() {
-                    return merge_broadcast(&[ProtoFusedSpec::ScalarMul((&op.a).into())], &[]);
-                } else {
-                    return Ok(None);
-                }
+                return merge_broadcast(&[ProtoFusedSpec::BinScalar((&op.a).into(), binop)], &[]);
             }
             let mut arg = op.a.clone().into_tensor();
             for axis_change in self.reshape_post.iter().rev() {
