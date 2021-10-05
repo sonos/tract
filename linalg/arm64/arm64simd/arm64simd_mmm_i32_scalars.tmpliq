@@ -4,4 +4,5 @@
 {% include "arm64simd_mmm_4s_scalar.tmpliq" label:"scalar_max", op:"smax", from:from, to:to%}
 {% include "arm64simd_mmm_4s_scalar.tmpliq" label:"scalar_mul", op:"mul", from:from, to:to%}
 {% include "arm64simd_mmm_4s_scalar.tmpliq" label:"scalar_add", op:"add", from:from, to:to%}
-
+{% include "arm64simd_mmm_4s_scalar.tmpliq" label:"scalar_sub", op:"sub", from:from, to:to%}
+{% include "arm64simd_mmm_4s_scalar.tmpliq" label:"scalar_sub_flipped", op:"sub", from:from, to:to, flipped:true%}
