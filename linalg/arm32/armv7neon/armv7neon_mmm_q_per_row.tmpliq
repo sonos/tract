@@ -9,9 +9,16 @@
     vldmia         r3!, { q{{reg}} }
 {% endfor %}
 
-{% for acc in (from..to) %}
-    {% capture other%}{{acc | minus: from | modulo: mr_over_4}}{%endcapture%}
-    {{op}} q{{acc}}, q{{acc}}, q{{other}}
-{% endfor %}
+{% if flipped %}
+    {% for acc in (from..to) %}
+        {% capture other%}{{acc | minus: from | modulo: mr_over_4}}{%endcapture%}
+        {{op}} q{{acc}}, q{{acc}}, q{{other}}
+    {% endfor %}
+{% else %}
+    {% for acc in (from..to) %}
+        {% capture other%}{{acc | minus: from | modulo: mr_over_4}}{%endcapture%}
+        {{op}} q{{acc}}, q{{other}}, q{{acc}}
+    {% endfor %}
+{% endif %}
 
 b           .non_linear_loop

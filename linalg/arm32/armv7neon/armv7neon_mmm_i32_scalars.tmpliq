@@ -4,4 +4,6 @@
 {% include "armv7neon_mmm_q_scalar.tmpliq" label:"scalar_max", op:"vmax.s32", from:from, to:to%}
 {% include "armv7neon_mmm_q_scalar.tmpliq" label:"scalar_mul", op:"vmul.s32", from:from, to:to%}
 {% include "armv7neon_mmm_q_scalar.tmpliq" label:"scalar_add", op:"vadd.s32", from:from, to:to%}
+{% include "armv7neon_mmm_q_scalar.tmpliq" label:"scalar_sub", op:"vsub.s32", from:from, to:to%}
+{% include "armv7neon_mmm_q_scalar.tmpliq" label:"scalar_sub_flipped", op:"vsub.s32", from:from, to:to, flipped:true%}
 
