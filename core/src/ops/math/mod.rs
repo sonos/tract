@@ -41,7 +41,7 @@ fn declutter_unary_add(
 }
 
 bin_to_super_type!(sub, Sub, 
-    declutter_unary: declutter_unary_sub, flip:flip_sub,
+    declutter_unary: declutter_unary_sub, flip:flip_sub, linalg:Sub,
     q: [i8, u8] => sub_quant;
     [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() - b);
 

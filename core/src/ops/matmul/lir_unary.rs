@@ -420,6 +420,36 @@ impl TypedOp for LirMatMulUnary {
                 });
                 return merge(&arg, &[]);
             }
+        } else if let Some(op) = succ.op_as::<ops::binary::TypedBinOp>() {
+            let mut binop =
+                if let Some(op) = op.0.as_linalg_binop() { op } else { return Ok(None) };
+            let flipped = succ.inputs[0].node == node.id;
+            if flipped {
+                binop = binop.flip();
+            }
+            let other_outlet = succ.inputs[flipped as usize];
+            let other_fact = model.outlet_fact(other_outlet)?;
+            if other_fact.shape.iter().product::<TDim>() == 1.to_dim() {
+                return merge_broadcast(
+                    &[ProtoFusedSpec::BinScalar(node.inputs.len().into(), binop)],
+                    &[other_outlet],
+                );
+            }
+            dbg!("#########################");
+            let mut other_shape = other_fact.shape.to_owned();
+            for axis_change in self.reshape_post.iter().rev() {
+                dbg!(axis_change);
+                axis_change.recip().change_shape(&mut other_shape, true)?;
+            }
+            dbg!(self.c_m_axis);
+            dbg!(self.c_n_axis);
+            dbg!(&self.c_fact);
+            dbg!(&other_shape);
+            if other_shape[self.c_m_axis] == self.c_fact.shape[self.c_m_axis] &&
+                other_shape[self.c_m_axis] == other_shape.iter().product()
+            {
+                dbg!(op, other_shape);
+            }
         } else if let Some(op) = succ.op_as::<ops::binary::MergeOpUnicast>() {
             if self.c_n_axis == self.c_final_shape.rank() - 2
                 && self.c_m_axis == self.c_final_shape.rank() - 1

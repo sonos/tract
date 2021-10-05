@@ -2,8 +2,14 @@
 
 {{L}}{{label}}:
     vbroadcastss    ymm12, dword ptr [rdi + 8]
-    {% for reg in (from..to) %}
-        {{op}}          ymm{{reg}}, ymm{{reg}}, ymm12
-    {% endfor %}
+    {% if flipped %}
+        {% for reg in (from..to) %}
+            {{op}}          ymm{{reg}}, ymm{{reg}}, ymm12
+        {% endfor %}
+    {% else %}
+        {% for reg in (from..to) %}
+            {{op}}          ymm{{reg}}, ymm12, ymm{{reg}}
+        {% endfor %}
+    {% endif %}
 
     jmp    {{L}}non_linear_loop

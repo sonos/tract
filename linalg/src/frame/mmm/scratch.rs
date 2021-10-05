@@ -35,6 +35,8 @@ impl<TI: Copy + Datum + Zero> ScratchSpaceFusedNonLinear<TI> {
                     BinOp::Max => FKS::ScalarMax(*t.to_scalar_unchecked()),
                     BinOp::Mul => FKS::ScalarMul(*t.to_scalar_unchecked()),
                     BinOp::Add => FKS::ScalarAdd(*t.to_scalar_unchecked()),
+                    BinOp::Sub => FKS::ScalarSub(*t.to_scalar_unchecked()),
+                    BinOp::SubF => FKS::ScalarSubF(*t.to_scalar_unchecked()),
                 },
                 FS::QScale(s, rp, m) => FKS::QScale(*s, *rp, *m),
                 FS::BinPerRow(_, _) => {
@@ -93,6 +95,8 @@ impl<TI: Copy + Datum + Zero> ScratchSpaceFusedNonLinear<TI> {
                         BinOp::Max => FKS::PerRowMax(v),
                         BinOp::Add => FKS::PerRowAdd(v),
                         BinOp::Mul => FKS::PerRowMul(v),
+                        BinOp::Sub => FKS::PerRowSub(v),
+                        BinOp::SubF => FKS::PerRowSubF(v),
                     }
                 }
                 FS::PerColAdd(v) => FKS::PerColAdd(v.as_ptr_unchecked::<TI>().add(right * K::nr())),
@@ -150,6 +154,8 @@ impl<TI: Copy + Datum + Zero> ScratchSpaceFusedNonLinear<TI> {
                         BinOp::Max => FKS::PerRowMax(ptr),
                         BinOp::Add => FKS::PerRowAdd(ptr),
                         BinOp::Mul => FKS::PerRowMul(ptr),
+                        BinOp::Sub => FKS::PerRowSub(ptr),
+                        BinOp::SubF => FKS::PerRowSubF(ptr),
                     }
                 }
                 FS::PerColMul(v) | FS::PerColAdd(v) => {
