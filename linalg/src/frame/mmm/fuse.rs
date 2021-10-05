@@ -27,8 +27,7 @@ pub enum BinOp {
 #[derive(Clone, Debug)]
 pub enum FusedSpec<'t> {
     BinScalar(&'t Tensor, BinOp),
-    PerRowMul(&'t Tensor),
-    PerRowAdd(&'t Tensor),
+    BinPerRow(&'t Tensor, BinOp),
     PerColMul(&'t Tensor),
     PerColAdd(&'t Tensor),
     AddRowColProducts(&'t Tensor, &'t Tensor),
