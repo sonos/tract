@@ -160,8 +160,12 @@ where
                     FusedKerSpec::PerRowMul(m) => per_row!(ab, m, |a, b| a * b),
                     FusedKerSpec::PerRowSub(m) => per_row!(ab, m, |a, b| a - b),
                     FusedKerSpec::PerRowSubF(m) => per_row!(ab, m, |a, b| b - a),
-                    FusedKerSpec::PerColMul(m) => per_col!(ab, m, |a, b| a * b),
+                    FusedKerSpec::PerColMin(m) => per_col!(ab, m, |a, b| if a < b { a } else { b }),
+                    FusedKerSpec::PerColMax(m) => per_col!(ab, m, |a, b| if a > b { a } else { b }),
                     FusedKerSpec::PerColAdd(m) => per_col!(ab, m, |a, b| a + b),
+                    FusedKerSpec::PerColMul(m) => per_col!(ab, m, |a, b| a * b),
+                    FusedKerSpec::PerColSub(m) => per_col!(ab, m, |a, b| a - b),
+                    FusedKerSpec::PerColSubF(m) => per_col!(ab, m, |a, b| b - a),
                     FusedKerSpec::AddRowColProducts(rows, cols) => {
                         for i in 0..4 {
                             for j in 0..4 {
@@ -367,8 +371,12 @@ where
                     FusedKerSpec::PerRowAdd(m) => per_row!(ab, m, |a, b| a + b),
                     FusedKerSpec::PerRowSub(m) => per_row!(ab, m, |a, b| a - b),
                     FusedKerSpec::PerRowSubF(m) => per_row!(ab, m, |a, b| b - a),
-                    FusedKerSpec::PerColMul(m) => per_col!(ab, m, |a, b| a * b),
+                    FusedKerSpec::PerColMin(m) => per_col!(ab, m, |a, b| if a < b { a } else { b }),
+                    FusedKerSpec::PerColMax(m) => per_col!(ab, m, |a, b| if a > b { a } else { b }),
                     FusedKerSpec::PerColAdd(m) => per_col!(ab, m, |a, b| a + b),
+                    FusedKerSpec::PerColMul(m) => per_col!(ab, m, |a, b| a * b),
+                    FusedKerSpec::PerColSub(m) => per_col!(ab, m, |a, b| a - b),
+                    FusedKerSpec::PerColSubF(m) => per_col!(ab, m, |a, b| b - a),
                     FusedKerSpec::AddRowColProducts(rows, cols) => {
                         let col = *cols;
                         for i in 0..4 {
@@ -551,14 +559,18 @@ where
                     FusedKerSpec::ScalarMax(m) => scalar!(ab, m, |a, b| if a > b { a } else { b }),
                     FusedKerSpec::ScalarSub(m) => scalar!(ab, m, |a, b| a - b),
                     FusedKerSpec::ScalarSubF(m) => scalar!(ab, m, |a, b| b - a),
-                    FusedKerSpec::PerRowMul(m) => per_row!(ab, m, |a, b| a * b),
                     FusedKerSpec::PerRowMin(m) => per_row!(ab, m, |a, b| if a < b { a } else { b }),
                     FusedKerSpec::PerRowMax(m) => per_row!(ab, m, |a, b| if a > b { a } else { b }),
                     FusedKerSpec::PerRowAdd(m) => per_row!(ab, m, |a, b| a + b),
+                    FusedKerSpec::PerRowMul(m) => per_row!(ab, m, |a, b| a * b),
                     FusedKerSpec::PerRowSub(m) => per_row!(ab, m, |a, b| a - b),
                     FusedKerSpec::PerRowSubF(m) => per_row!(ab, m, |a, b| b - a),
-                    FusedKerSpec::PerColMul(m) => per_col!(ab, m, |a, b| a * b),
+                    FusedKerSpec::PerColMin(m) => per_col!(ab, m, |a, b| if a < b { a } else { b }),
+                    FusedKerSpec::PerColMax(m) => per_col!(ab, m, |a, b| if a > b { a } else { b }),
                     FusedKerSpec::PerColAdd(m) => per_col!(ab, m, |a, b| a + b),
+                    FusedKerSpec::PerColMul(m) => per_col!(ab, m, |a, b| a * b),
+                    FusedKerSpec::PerColSub(m) => per_col!(ab, m, |a, b| a - b),
+                    FusedKerSpec::PerColSubF(m) => per_col!(ab, m, |a, b| b - a),
                     FusedKerSpec::AddRowColProducts(rows, cols) => {
                         for i in 0..3 {
                             for j in 0..2 {

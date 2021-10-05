@@ -41,8 +41,7 @@ impl BinOp {
 pub enum FusedSpec<'t> {
     BinScalar(&'t Tensor, BinOp),
     BinPerRow(&'t Tensor, BinOp),
-    PerColMul(&'t Tensor),
-    PerColAdd(&'t Tensor),
+    BinPerCol(&'t Tensor, BinOp),
     AddRowColProducts(&'t Tensor, &'t Tensor),
     AddUnicast(OutputStore),
     QScale(usize, RoundingPolicy, i32),
@@ -55,20 +54,28 @@ pub enum FusedSpec<'t> {
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub enum FusedKerSpec<TI: Copy> {
     Done,                                    // jump_to:done
+
     ScalarMin(TI),                           // jump_to:scalar_min
     ScalarMax(TI),                           // jump_to:scalar_max
     ScalarAdd(TI),                           // jump_to:scalar_add
     ScalarMul(TI),                           // jump_to:scalar_mul
     ScalarSub(TI),                           // jump_to:scalar_sub
     ScalarSubF(TI),                          // jump_to:scalar_sub_flipped
+
     PerRowMin(*const TI),                    // jump_to:per_row_min
     PerRowMax(*const TI),                    // jump_to:per_row_max
     PerRowAdd(*const TI),                    // jump_to:per_row_add
     PerRowMul(*const TI),                    // jump_to:per_row_mul
     PerRowSub(*const TI),                    // jump_to:per_row_sub
     PerRowSubF(*const TI),                   // jump_to:per_row_sub_flipped
+
+    PerColMin(*const TI),                    // jump_to:per_col_min
+    PerColMax(*const TI),                    // jump_to:per_col_max
     PerColAdd(*const TI),                    // jump_to:per_col_add
     PerColMul(*const TI),                    // jump_to:per_col_mul
+    PerColSub(*const TI),                    // jump_to:per_col_sub
+    PerColSubF(*const TI),                   // jump_to:per_col_sub_flipped
+
     QScale(usize, RoundingPolicy, i32),      // jump_to:q_scale
     AddUnicast(OutputStoreKer),              // jump_to:add_unicast
     AddRowColProducts(*const TI, *const TI), // jump_to:add_row_col_products
