@@ -37,7 +37,7 @@ impl<TI: Copy + Datum + Zero> ScratchSpaceFusedNonLinear<TI> {
                     BinOp::Add => FKS::ScalarAdd(*t.to_scalar_unchecked()),
                 },
                 FS::QScale(s, rp, m) => FKS::QScale(*s, *rp, *m),
-                FS::PerRowAdd(_) | FS::PerRowMul(_) => {
+                FS::BinPerRow(_, _) => {
                     self.loc_dependant.push((ix, offset as _));
                     offset += TI::datum_type().size_of() * K::mr();
                     FusedKerSpec::Done
@@ -86,8 +86,15 @@ impl<TI: Copy + Datum + Zero> ScratchSpaceFusedNonLinear<TI> {
         for (ix, ptr) in loc_dependant.iter_mut() {
             let spec = specs.get_unchecked(*ix);
             *uspecs.get_unchecked_mut(*ix) = match spec {
-                FS::PerRowAdd(v) => FKS::PerRowAdd(v.as_ptr_unchecked::<TI>().add(down * K::mr())),
-                FS::PerRowMul(v) => FKS::PerRowMul(v.as_ptr_unchecked::<TI>().add(down * K::mr())),
+                FS::BinPerRow(v, op) => {
+                    let v = v.as_ptr_unchecked::<TI>().add(down * K::mr());
+                    match op {
+                        BinOp::Min => FKS::PerRowMin(v),
+                        BinOp::Max => FKS::PerRowMax(v),
+                        BinOp::Add => FKS::PerRowAdd(v),
+                        BinOp::Mul => FKS::PerRowMul(v),
+                    }
+                }
                 FS::PerColAdd(v) => FKS::PerColAdd(v.as_ptr_unchecked::<TI>().add(right * K::nr())),
                 FS::PerColMul(v) => FKS::PerColMul(v.as_ptr_unchecked::<TI>().add(right * K::nr())),
                 FS::AddRowColProducts(rows, cols) => {
@@ -123,29 +130,44 @@ impl<TI: Copy + Datum + Zero> ScratchSpaceFusedNonLinear<TI> {
         for (ix, ptr) in loc_dependant.iter_mut() {
             let spec = specs.get_unchecked(*ix);
             *uspecs.get_unchecked_mut(*ix) = match spec {
-                FS::PerRowAdd(v) | FS::PerRowMul(v) | FS::PerColMul(v) | FS::PerColAdd(v) => {
-                    let (dir, r) = if matches!(spec, FS::PerColAdd(_) | FS::PerColMul(_)) {
-                        (right, K::nr())
-                    } else {
-                        (down, K::mr())
-                    };
-                    let buf = std::slice::from_raw_parts_mut(*ptr as *mut TI, r);
-                    let have = v.len().saturating_sub(dir * r).min(r);
+                FS::BinPerRow(v, op) => {
+                    let buf = std::slice::from_raw_parts_mut(*ptr as *mut TI, K::mr());
+                    let have = v.len().saturating_sub(down * K::mr()).min(K::mr());
                     let ptr = if have < K::mr() {
                         if have > 0 {
                             buf.get_unchecked_mut(..have).copy_from_slice(
                                 &v.as_slice_unchecked()
-                                    .get_unchecked(dir * r..)
+                                    .get_unchecked(down * K::mr()..)
                                     .get_unchecked(..have),
                             );
                         }
                         buf.as_ptr()
                     } else {
-                        v.as_ptr_unchecked::<TI>().add(dir * r)
+                        v.as_ptr_unchecked::<TI>().add(down * K::mr())
+                    };
+                    match op {
+                        BinOp::Min => FKS::PerRowMin(ptr),
+                        BinOp::Max => FKS::PerRowMax(ptr),
+                        BinOp::Add => FKS::PerRowAdd(ptr),
+                        BinOp::Mul => FKS::PerRowMul(ptr),
+                    }
+                }
+                FS::PerColMul(v) | FS::PerColAdd(v) => {
+                    let buf = std::slice::from_raw_parts_mut(*ptr as *mut TI, K::nr());
+                    let have = v.len().saturating_sub(right * K::nr()).min(K::nr());
+                    let ptr = if have < K::mr() {
+                        if have > 0 {
+                            buf.get_unchecked_mut(..have).copy_from_slice(
+                                &v.as_slice_unchecked()
+                                    .get_unchecked(right * K::nr()..)
+                                    .get_unchecked(..have),
+                            );
+                        }
+                        buf.as_ptr()
+                    } else {
+                        v.as_ptr_unchecked::<TI>().add(right * K::nr())
                     };
                     match spec {
-                        FS::PerRowAdd(_) => FKS::PerRowAdd(ptr),
-                        FS::PerRowMul(_) => FKS::PerRowMul(ptr),
                         FS::PerColAdd(_) => FKS::PerColAdd(ptr),
                         FS::PerColMul(_) => FKS::PerColMul(ptr),
                         _ => std::hint::unreachable_unchecked(),

@@ -9,8 +9,7 @@ use tract_linalg::mmm::{
 #[derive(PartialEq, Clone, Hash, Debug)]
 pub enum ProtoFusedSpec {
     BinScalar(AttrOrInput, BinOp),
-    PerRowMul(AttrOrInput),
-    PerRowAdd(AttrOrInput),
+    BinPerRow(AttrOrInput, BinOp),
     PerColMul(AttrOrInput),
     PerColAdd(AttrOrInput),
     AddRowColProducts(AttrOrInput, AttrOrInput),
@@ -28,10 +27,9 @@ impl ProtoFusedSpec {
     ) -> FusedSpec<'t> {
         match self {
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(v.tensor(inputs), *op),
+            ProtoFusedSpec::BinPerRow(v, op) => FusedSpec::BinPerRow(v.tensor(inputs), *op),
             ProtoFusedSpec::PerColAdd(v) => FusedSpec::PerColAdd(v.tensor(inputs)),
-            ProtoFusedSpec::PerRowAdd(v) => FusedSpec::PerRowAdd(v.tensor(inputs)),
             ProtoFusedSpec::PerColMul(v) => FusedSpec::PerColMul(v.tensor(inputs)),
-            ProtoFusedSpec::PerRowMul(v) => FusedSpec::PerRowMul(v.tensor(inputs)),
             ProtoFusedSpec::AddRowColProducts(row, col) => {
                 FusedSpec::AddRowColProducts(row.tensor(inputs), col.tensor(inputs))
             }
@@ -391,7 +389,6 @@ impl TypedOp for LirMatMulUnary {
             }
             if arg.shape()[self.c_n_axis] == 1
                 && arg.shape()[self.c_m_axis].to_dim() == self.c_fact.shape[self.c_m_axis]
-                && (op.mini_op.is::<ops::math::Mul>() || op.mini_op.is::<ops::math::Add>())
             {
                 let prefix = arg
                     .shape()
@@ -416,21 +413,10 @@ impl TypedOp for LirMatMulUnary {
                 let arg = arg.into_shape(&[arg_len])?;
                 let mut i = 0;
                 let arg = ArrayD::from_shape_simple_fn(&*prefix, || {
-                    let t = arg
-                        .slice(
-                            0,
-                            i * self.geometry.m().to_usize().unwrap(),
-                            (i + 1) * self.geometry.m().to_usize().unwrap(),
-                        )
-                        .unwrap();
+                    let m = self.geometry.m().to_usize().unwrap();
+                    let t = arg.slice(0, i * m, (i + 1) * m).unwrap();
                     i += 1;
-                    if op.mini_op.is::<ops::math::Mul>() {
-                        vec![ProtoFusedSpec::PerRowMul(t.into())]
-                    } else if op.mini_op.is::<ops::math::Add>() {
-                        vec![ProtoFusedSpec::PerRowAdd(t.into())]
-                    } else {
-                        unreachable!()
-                    }
+                    vec![ProtoFusedSpec::BinPerRow(t.into(), binop)]
                 });
                 return merge(&arg, &[]);
             }

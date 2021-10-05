@@ -160,7 +160,10 @@ impl ConvUnary {
             let bias = bias.as_slice::<T>()?;
             ops.iter_mut().zip(bias.chunks(self.output_channels() / self.group)).for_each(
                 |(ops, bias)| {
-                    ops.push(ProtoFusedSpec::PerRowAdd(rctensor1(bias).into()));
+                    ops.push(ProtoFusedSpec::BinPerRow(
+                        rctensor1(bias).into(),
+                        tract_linalg::mmm::BinOp::Add,
+                    ));
                 },
             )
         }
