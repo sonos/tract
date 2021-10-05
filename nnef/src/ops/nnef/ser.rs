@@ -217,23 +217,13 @@ pub fn conv_or_deconv(
     ast: &mut IntoAst,
     node: &TypedNode,
     pool_spec: &PoolSpec,
-    mut weights: Tensor,
+    weights: Tensor,
     bias: &Option<Arc<Tensor>>,
     group: usize,
     deconv: bool,
     adjustments: Option<&[usize]>,
 ) -> TractResult<Option<Arc<RValue>>> {
-    let ci = pool_spec
-        .data_format
-        .shape(&ast.model.outlet_fact(node.inputs[0])?.shape.to_tvec())?
-        .c()
-        .to_usize()?;
-    let output_shape = pool_spec.data_format.shape(node.outputs[0].fact.shape.to_tvec())?;
-    let co = output_shape.c().to_usize()?;
     let mut wire = ast.mapping[&node.inputs[0]].clone();
-    let mut kernel_shape = tvec!(co, ci / group);
-    kernel_shape.extend(pool_spec.kernel_shape.iter().copied());
-    weights.set_shape(&*kernel_shape)?;
     let weigths =
         ast.konst_variable(format!("{}_weigths", node.name), &weights.into_arc_tensor())?;
     wire = ast.force_assign(format!("{}_input", node.name), &wire);
@@ -261,8 +251,15 @@ pub fn conv(
     if op.q_params.is_some() && !node.outputs[0].fact.datum_type.is_quantized() {
         return Ok(None);
     }
-    let weights = op.kernel_as_group_o_ihw()?.into_tensor();
-    conv_or_deconv(ast, node, &op.pool_spec, weights, &op.bias, op.group, false, None)
+    // tract HWIO: H W I/g O
+    // tract OIHW: O I/g H W
+    // nnef: O I/g H W
+    let mut kernel = op.kernel.clone().into_tensor();
+    if op.kernel_fmt == ops::cnn::KernelFormat::HWIO {
+        let geo_rank = op.kernel.rank() - 2;
+        kernel = kernel.move_axis(geo_rank, 0)?.move_axis(geo_rank + 1, 0)?;
+    }
+    conv_or_deconv(ast, node, &op.pool_spec, kernel, &op.bias, op.group, false, None)
 }
 
 pub fn deconv(
@@ -270,17 +267,19 @@ pub fn deconv(
     node: &TypedNode,
     op: &ops::cnn::deconv::DeconvUnary,
 ) -> TractResult<Option<Arc<RValue>>> {
-    let weights = op.kernel_format.kernel_as_group_o_ihw(
-        &*op.kernel,
-        op.group,
-        *op.kernel_format.i(op.kernel.shape()),
-        *op.kernel_format.o(op.kernel.shape()),
-    )?;
+    // tract HWIO: H W I O/g -> tract OIHW: O/g I H W
+    let mut kernel = op.kernel.clone().into_tensor();
+    if op.kernel_format == ops::cnn::KernelFormat::HWIO {
+        let geo_rank = op.kernel.rank() - 2;
+        kernel = kernel.move_axis(geo_rank, 0)?.move_axis(geo_rank + 1, 0)?;
+    }
+    // tract: O/g I H W -> O I/g H W
+    kernel = kernel.split_axis(1, op.group)?.move_axis(1, 0)?.collapse_axis_with_next(0);
     conv_or_deconv(
         ast,
         node,
         &op.pool_spec,
-        weights.into_tensor(),
+        kernel,
         &op.bias,
         op.group,
         true,
