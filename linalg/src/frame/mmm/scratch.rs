@@ -44,7 +44,7 @@ impl<TI: Copy + Datum + Zero> ScratchSpaceFusedNonLinear<TI> {
                     offset += TI::datum_type().size_of() * K::mr();
                     FusedKerSpec::Done
                 }
-                FS::PerColAdd(_) | FS::PerColMul(_) => {
+                FS::BinPerCol(_, _) => {
                     self.loc_dependant.push((ix, offset as _));
                     offset += TI::datum_type().size_of() * K::nr();
                     FusedKerSpec::Done
@@ -99,8 +99,17 @@ impl<TI: Copy + Datum + Zero> ScratchSpaceFusedNonLinear<TI> {
                         BinOp::SubF => FKS::PerRowSubF(v),
                     }
                 }
-                FS::PerColAdd(v) => FKS::PerColAdd(v.as_ptr_unchecked::<TI>().add(right * K::nr())),
-                FS::PerColMul(v) => FKS::PerColMul(v.as_ptr_unchecked::<TI>().add(right * K::nr())),
+                FS::BinPerCol(v, op) => {
+                    let v = v.as_ptr_unchecked::<TI>().add(right * K::nr());
+                    match op {
+                        BinOp::Min => FKS::PerColMin(v),
+                        BinOp::Max => FKS::PerColMax(v),
+                        BinOp::Add => FKS::PerColAdd(v),
+                        BinOp::Mul => FKS::PerColMul(v),
+                        BinOp::Sub => FKS::PerColSub(v),
+                        BinOp::SubF => FKS::PerColSubF(v),
+                    }
+                }
                 FS::AddRowColProducts(rows, cols) => {
                     let row_ptr = rows.as_ptr_unchecked::<TI>().add(down * K::mr());
                     let col_ptr = cols.as_ptr_unchecked::<TI>().add(right * K::nr());
@@ -158,7 +167,7 @@ impl<TI: Copy + Datum + Zero> ScratchSpaceFusedNonLinear<TI> {
                         BinOp::SubF => FKS::PerRowSubF(ptr),
                     }
                 }
-                FS::PerColMul(v) | FS::PerColAdd(v) => {
+                FS::BinPerCol(v, op) => {
                     let buf = std::slice::from_raw_parts_mut(*ptr as *mut TI, K::nr());
                     let have = v.len().saturating_sub(right * K::nr()).min(K::nr());
                     let ptr = if have < K::mr() {
@@ -173,10 +182,13 @@ impl<TI: Copy + Datum + Zero> ScratchSpaceFusedNonLinear<TI> {
                     } else {
                         v.as_ptr_unchecked::<TI>().add(right * K::nr())
                     };
-                    match spec {
-                        FS::PerColAdd(_) => FKS::PerColAdd(ptr),
-                        FS::PerColMul(_) => FKS::PerColMul(ptr),
-                        _ => std::hint::unreachable_unchecked(),
+                    match op {
+                        BinOp::Min => FKS::PerColMin(ptr),
+                        BinOp::Max => FKS::PerColMax(ptr),
+                        BinOp::Add => FKS::PerColAdd(ptr),
+                        BinOp::Mul => FKS::PerColMul(ptr),
+                        BinOp::Sub => FKS::PerColSub(ptr),
+                        BinOp::SubF => FKS::PerColSubF(ptr),
                     }
                 }
                 FS::AddRowColProducts(rows, cols) => {

@@ -517,7 +517,7 @@ where
     usize: AsPrimitive<TI>,
 {
     let bias = (0..n).map(|i| i.as_()).collect::<Vec<TI>>();
-    fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::PerColAdd(&tensor1(&*bias))], |exp| {
+    fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::BinPerCol(&tensor1(&*bias), BinOp::Add)], |exp| {
         for x in 0..n {
             for y in 0..m {
                 exp[x + y * n] += bias[x]
@@ -540,7 +540,7 @@ where
     usize: AsPrimitive<TI>,
 {
     let bias = (0..n).map(|i| i.as_()).collect::<Vec<TI>>();
-    fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::PerColMul(&tensor1(&*bias))], |exp| {
+    fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::BinPerCol(&tensor1(&*bias), BinOp::Mul)], |exp| {
         for x in 0..n {
             for y in 0..m {
                 exp[x + y * n] *= bias[x]
