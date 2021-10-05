@@ -93,14 +93,15 @@ impl PulsedOp for DeconvUnary {
         let overlap = overlap(fact.axis, self);
         let geo_axis = fact.axis - self.pool_spec.data_format.h_axis();
         let stride = self.pool_spec.stride(geo_axis);
-        let output_shape = tract_core::ops::cnn::deconv::output_shape(
+        let mut output_shape = tract_core::ops::cnn::deconv::output_shape(
             &self.pool_spec,
             &fact.streaming_shape(),
             &self.adjustments,
         )?;
         fact.dim = output_shape[fact.axis].clone();
         let pulse_len = fact.shape[fact.axis].clone() * stride;
-        fact.shape.set(fact.axis, pulse_len + overlap);
+        output_shape[fact.axis] = pulse_len + overlap;
+        fact.shape = output_shape.into();
         if let Some(c) = self.pool_spec.output_channel_override {
             let c_axis = self.pool_spec.data_format.shape(&fact.shape)?.c_axis();
             fact.shape.set(c_axis, c.to_dim())
