@@ -356,7 +356,6 @@ where
                 if pnl.is_null() {
                     break;
                 }
-                dbg!(&*pnl);
                 match *pnl {
                     FusedKerSpec::Done => break,
                     FusedKerSpec::ScalarAdd(a) => scalar!(ab, a, |a, b| a + b),
