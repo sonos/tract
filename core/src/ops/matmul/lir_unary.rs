@@ -10,8 +10,7 @@ use tract_linalg::mmm::{
 pub enum ProtoFusedSpec {
     BinScalar(AttrOrInput, BinOp),
     BinPerRow(AttrOrInput, BinOp),
-    PerColMul(AttrOrInput),
-    PerColAdd(AttrOrInput),
+    BinPerCol(AttrOrInput, BinOp),
     AddRowColProducts(AttrOrInput, AttrOrInput),
     AddUnicast(AttrOrInput),
     QScale(usize, RoundingPolicy, i32),
@@ -28,8 +27,7 @@ impl ProtoFusedSpec {
         match self {
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(v.tensor(inputs), *op),
             ProtoFusedSpec::BinPerRow(v, op) => FusedSpec::BinPerRow(v.tensor(inputs), *op),
-            ProtoFusedSpec::PerColAdd(v) => FusedSpec::PerColAdd(v.tensor(inputs)),
-            ProtoFusedSpec::PerColMul(v) => FusedSpec::PerColMul(v.tensor(inputs)),
+            ProtoFusedSpec::BinPerCol(v, op) => FusedSpec::BinPerRow(v.tensor(inputs), *op),
             ProtoFusedSpec::AddRowColProducts(row, col) => {
                 FusedSpec::AddRowColProducts(row.tensor(inputs), col.tensor(inputs))
             }
