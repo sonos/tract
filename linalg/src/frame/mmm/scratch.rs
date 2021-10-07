@@ -170,7 +170,7 @@ impl<TI: Copy + Datum + Zero> ScratchSpaceFusedNonLinear<TI> {
                 FS::BinPerCol(v, op) => {
                     let buf = std::slice::from_raw_parts_mut(*ptr as *mut TI, K::nr());
                     let have = v.len().saturating_sub(right * K::nr()).min(K::nr());
-                    let ptr = if have < K::mr() {
+                    let ptr = if have < K::nr() {
                         if have > 0 {
                             buf.get_unchecked_mut(..have).copy_from_slice(
                                 &v.as_slice_unchecked()

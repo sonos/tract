@@ -43,6 +43,12 @@ impl ShapeFact {
         self.dims.clone()
     }
 
+    /// Compute the volume of the tensor.
+    #[inline]
+    pub fn volume(&self) -> TDim {
+        self.dims.iter().product()
+    }
+
     #[inline]
     pub fn eval_to_usize(&self, values: &SymbolValues) -> TractResult<Cow<TVec<usize>>> {
         if let Some(c) = &self.concrete {

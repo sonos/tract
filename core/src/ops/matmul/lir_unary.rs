@@ -27,7 +27,7 @@ impl ProtoFusedSpec {
         match self {
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(v.tensor(inputs), *op),
             ProtoFusedSpec::BinPerRow(v, op) => FusedSpec::BinPerRow(v.tensor(inputs), *op),
-            ProtoFusedSpec::BinPerCol(v, op) => FusedSpec::BinPerRow(v.tensor(inputs), *op),
+            ProtoFusedSpec::BinPerCol(v, op) => FusedSpec::BinPerCol(v.tensor(inputs), *op),
             ProtoFusedSpec::AddRowColProducts(row, col) => {
                 FusedSpec::AddRowColProducts(row.tensor(inputs), col.tensor(inputs))
             }
@@ -71,13 +71,6 @@ impl ResolveTo<ConcreteMatMulGeometry> for SymbolicMatMulGeometry {
 pub type MatMulGeometry = GeometryBound<SymbolicMatMulGeometry, ConcreteMatMulGeometry>;
 
 impl MatMulGeometry {
-    fn m(&self) -> Cow<TDim> {
-        match self {
-            Self::Symbolic(it) => Cow::Borrowed(&it.m),
-            Self::Concrete(it) => Cow::Owned(it.m.to_dim()),
-        }
-    }
-
     fn k(&self) -> Cow<TDim> {
         match self {
             Self::Symbolic(it) => Cow::Borrowed(&it.k),
@@ -317,33 +310,6 @@ impl TypedOp for LirMatMulUnary {
             }
         }
 
-        let merge = |fused_micro_op: &ArrayD<Vec<ProtoFusedSpec>>,
-                     additional_inputs: &[OutletId]|
-         -> TractResult<Option<TypedModelPatch>> {
-            let mut new_op = self.clone();
-            new_op.micro_ops.zip_mut_with(fused_micro_op, |lhs, rhs| {
-                lhs.1.pop();
-                lhs.1.extend(rhs.iter().cloned());
-                lhs.1.push(ProtoFusedSpec::Store);
-            });
-            let mut patch = TypedModelPatch::new(format!("fusing {}", succ));
-            patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ.name, node.name));
-            let inputs = node
-                .inputs
-                .iter()
-                .chain(additional_inputs.iter())
-                .map(|i| patch.tap_model(model, *i))
-                .collect::<TractResult<TVec<OutletId>>>()?;
-            let output = patch.wire_node(&node.name, new_op, &inputs)?;
-            patch.shunt_outside(model, succ.id.into(), output[0])?;
-            Ok(Some(patch))
-        };
-
-        let merge_broadcast = |spec: &[ProtoFusedSpec], additional_inputs: &[OutletId]| {
-            let array = arr0(spec.to_vec()).into_dyn();
-            merge(&array, additional_inputs)
-        };
-
         if let Some(op) = succ.op_as::<ops::element_wise::ElementWiseOp>().map(|ew| ew.0.as_ref()) {
             if let Some(cast) = op.downcast_ref::<ops::cast::Cast>().map(|cast| cast.to) {
                 if cast == i8::datum_type() && self.c_fact.datum_type == i32::datum_type() {
@@ -370,7 +336,9 @@ impl TypedOp for LirMatMulUnary {
                     return Ok(Some(patch));
                 }
             } else if let Some(op) = op.downcast_ref::<ops::math::QScale>() {
-                return merge_broadcast(
+                return self.fuse_op_with_broadcast(
+                    model,
+                    node,
                     &[ProtoFusedSpec::QScale(op.shift, op.policy, op.mult)],
                     &[],
                 );
@@ -378,46 +346,8 @@ impl TypedOp for LirMatMulUnary {
         } else if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
             let binop =
                 if let Some(op) = op.mini_op.as_linalg_binop() { op } else { return Ok(None) };
-            if op.a.len() == 1 {
-                return merge_broadcast(&[ProtoFusedSpec::BinScalar((&op.a).into(), binop)], &[]);
-            }
-            let mut arg = op.a.clone().into_tensor();
-            for axis_change in self.reshape_post.iter().rev() {
-                axis_change.recip().change_tensor(&mut arg, true)?;
-            }
-            if arg.shape()[self.c_n_axis] == 1
-                && arg.shape()[self.c_m_axis].to_dim() == self.c_fact.shape[self.c_m_axis]
-            {
-                let prefix = arg
-                    .shape()
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(ix, d)| {
-                        if ix != self.c_n_axis && ix != self.c_m_axis {
-                            Some(*d)
-                        } else {
-                            None
-                        }
-                    })
-                    .collect::<TVec<_>>();
-
-                assert_eq!(
-                    prefix.iter().cloned().product::<usize>()
-                        * self.geometry.m().to_usize().unwrap(),
-                    arg.len()
-                );
-
-                let arg_len = arg.len();
-                let arg = arg.into_shape(&[arg_len])?;
-                let mut i = 0;
-                let arg = ArrayD::from_shape_simple_fn(&*prefix, || {
-                    let m = self.geometry.m().to_usize().unwrap();
-                    let t = arg.slice(0, i * m, (i + 1) * m).unwrap();
-                    i += 1;
-                    vec![ProtoFusedSpec::BinPerRow(t.into(), binop)]
-                });
-                return merge(&arg, &[]);
-            }
+            let shape = op.a.shape().into();
+            return self.fuse_binary(model, node, &shape, op.a.clone().into(), binop, &[]);
         } else if let Some(op) = succ.op_as::<ops::binary::TypedBinOp>() {
             let mut binop =
                 if let Some(op) = op.0.as_linalg_binop() { op } else { return Ok(None) };
@@ -427,27 +357,8 @@ impl TypedOp for LirMatMulUnary {
             }
             let other_outlet = succ.inputs[flipped as usize];
             let other_fact = model.outlet_fact(other_outlet)?;
-            if other_fact.shape.iter().product::<TDim>() == 1.to_dim() {
-                return merge_broadcast(
-                    &[ProtoFusedSpec::BinScalar(node.inputs.len().into(), binop)],
-                    &[other_outlet],
-                );
-            }
-            dbg!("#########################");
-            let mut other_shape = other_fact.shape.to_owned();
-            for axis_change in self.reshape_post.iter().rev() {
-                dbg!(axis_change);
-                axis_change.recip().change_shape(&mut other_shape, true)?;
-            }
-            dbg!(self.c_m_axis);
-            dbg!(self.c_n_axis);
-            dbg!(&self.c_fact);
-            dbg!(&other_shape);
-            if other_shape[self.c_m_axis] == self.c_fact.shape[self.c_m_axis] &&
-                other_shape[self.c_m_axis] == other_shape.iter().product()
-            {
-                dbg!(op, other_shape);
-            }
+            let value = node.inputs.len().into();
+            return self.fuse_binary(model, node, &other_fact.shape, value, binop, &[other_outlet]);
         } else if let Some(op) = succ.op_as::<ops::binary::MergeOpUnicast>() {
             if self.c_n_axis == self.c_final_shape.rank() - 2
                 && self.c_m_axis == self.c_final_shape.rank() - 1
@@ -457,7 +368,9 @@ impl TypedOp for LirMatMulUnary {
                 let other_input = succ.inputs[other_slot];
 
                 if op.0.is::<ops::math::Add>() {
-                    return merge_broadcast(
+                    return self.fuse_op_with_broadcast(
+                        model,
+                        node,
                         &[ProtoFusedSpec::AddUnicast(node.inputs.len().into())],
                         &[other_input],
                     );
@@ -468,4 +381,88 @@ impl TypedOp for LirMatMulUnary {
     }
 
     as_op!();
+}
+
+impl LirMatMulUnary {
+    fn fuse_op(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        fused_micro_op: &ArrayD<Vec<ProtoFusedSpec>>,
+        additional_inputs: &[OutletId],
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let succ = model.node(node.outputs[0].successors[0].node);
+        let mut new_op = self.clone();
+        new_op.micro_ops.zip_mut_with(fused_micro_op, |lhs, rhs| {
+            lhs.1.pop();
+            lhs.1.extend(rhs.iter().cloned());
+            lhs.1.push(ProtoFusedSpec::Store);
+        });
+        let mut patch = TypedModelPatch::new(format!("fusing {}", succ));
+        patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ.name, node.name));
+        let inputs = node
+            .inputs
+            .iter()
+            .chain(additional_inputs.iter())
+            .map(|i| patch.tap_model(model, *i))
+            .collect::<TractResult<TVec<OutletId>>>()?;
+        let output = patch.wire_node(&node.name, new_op, &inputs)?;
+        patch.shunt_outside(model, succ.id.into(), output[0])?;
+        Ok(Some(patch))
+    }
+
+    fn fuse_op_with_broadcast(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        fused_micro_op: &[ProtoFusedSpec],
+        additional_inputs: &[OutletId],
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let array = arr0(fused_micro_op.to_vec()).into_dyn();
+        self.fuse_op(model, node, &array, additional_inputs)
+    }
+
+    fn fuse_binary(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        shape: &ShapeFact,
+        value: AttrOrInput,
+        binop: BinOp,
+        additional_inputs: &[OutletId],
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if shape.volume() == 1.to_dim() {
+            return self.fuse_op_with_broadcast(
+                model,
+                node,
+                &[ProtoFusedSpec::BinScalar(value, binop)],
+                additional_inputs,
+            );
+        }
+        let mut other_shape = shape.to_owned();
+        for axis_change in self.reshape_post.iter().rev() {
+            axis_change.recip().change_shape(&mut other_shape, true)?;
+        }
+        if other_shape[self.c_m_axis] == self.c_fact.shape[self.c_m_axis]
+            && other_shape[self.c_m_axis] == other_shape.volume()
+        {
+            return self.fuse_op_with_broadcast(
+                model,
+                node,
+                &[ProtoFusedSpec::BinPerRow(value, binop)],
+                additional_inputs,
+            );
+        }
+        if other_shape[self.c_n_axis] == self.c_fact.shape[self.c_n_axis]
+            && other_shape[self.c_n_axis] == other_shape.volume()
+        {
+            return self.fuse_op_with_broadcast(
+                model,
+                node,
+                &[ProtoFusedSpec::BinPerCol(value, binop)],
+                additional_inputs,
+            );
+        }
+        Ok(None)
+    }
 }
