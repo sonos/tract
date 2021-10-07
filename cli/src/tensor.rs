@@ -360,7 +360,7 @@ pub fn random(sizes: &[usize], datum_type: DatumType) -> Tensor {
         .into()
     }
     use DatumType::*;
-    match datum_type {
+    let mut t = match datum_type {
         Bool => make::<bool>(sizes),
         I8 => make::<i8>(sizes),
         I16 => make::<i16>(sizes),
@@ -374,5 +374,7 @@ pub fn random(sizes: &[usize], datum_type: DatumType) -> Tensor {
         QU8(_) => make::<u8>(sizes),
         QI8(_) => make::<i8>(sizes),
         _ => panic!("Can generate random tensor for {:?}", datum_type),
-    }
+    };
+    unsafe { t.set_datum_type(datum_type); }
+    t
 }
