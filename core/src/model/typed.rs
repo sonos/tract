@@ -102,8 +102,8 @@ impl TypedModel {
                 .any(|(a, b)| a.datum_type != b.datum_type || a.shape != b.shape)
             {
                 bail!(
-                            "Inconsistent model, node output types mismatch. Op says: {:?}, node says: {:?}. {} with inputs {:?}",
-                            output_facts, node.outputs.iter().map(|o| &o.fact).collect::<Vec<_>>(), node, input_facts)
+                            "Inconsistent model, output types mismatch. Op says: {:?}, node says: {:?}. {} with inputs {:?}. {}",
+                            output_facts, node.outputs.iter().map(|o| &o.fact).collect::<Vec<_>>(), node, input_facts, node)
             }
         }
         for node in &self.nodes {
