@@ -1,3 +1,5 @@
+use std::borrow::Borrow;
+
 use crate::internal::*;
 use crate::model::{TypedModel, TypedNode};
 use crate::ops::identity::Identity;
@@ -55,6 +57,45 @@ impl AxisOp {
         match self {
             Move(from, to) if *from == to + 1 => Cow::Owned(Move(*to, *from)),
             other => Cow::Borrowed(other),
+        }
+    }
+
+    pub fn simplify(&self) -> TVec<AxisOp> {
+        match self.canonical().borrow() {
+            Reshape(_, from, to) if from == to => tvec!(),
+            Reshape(at, from, to) if to.len() == 0 => tvec!(Rm(*at); from.len()),
+            Reshape(at, from, to) if from.len() == 0 => tvec!(Add(*at); to.len()),
+            Reshape(at, from, to) if from[0] == to[0] => {
+                Reshape(at + 1, from[1..].into(), to[1..].into()).simplify()
+            }
+            Reshape(at, from, to) if from[from.len() - 1] == to[to.len() - 1] => {
+                Reshape(*at, from[..from.len() - 1].into(), to[..to.len() - 1].into()).simplify()
+            }
+            Reshape(at, from, to) if from[0] == 1.to_dim() => std::iter::once(Rm(*at))
+                .chain(Reshape(*at, from[1..].into(), to.clone()).simplify().into_iter())
+                .collect(),
+            Reshape(at, from, to) if to[0] == 1.to_dim() => {
+                Reshape(*at, from.clone(), to[1..].into())
+                    .simplify()
+                    .into_iter()
+                    .chain(std::iter::once(Add(*at)))
+                    .collect()
+            }
+            Reshape(at, from, to) if from[from.len() - 1] == 1.to_dim() => {
+                Reshape(*at, from[..from.len() - 1].into(), to.clone())
+                    .simplify()
+                    .into_iter()
+                    .chain(std::iter::once(Rm(at + from.len() - 1)))
+                    .collect()
+            }
+            Reshape(at, from, to) if to[to.len() - 1] == 1.to_dim() => {
+                Reshape(*at, from.clone(), to[..to.len() - 1].into())
+                    .simplify()
+                    .into_iter()
+                    .chain(std::iter::once(Add(at + to.len() - 1)))
+                    .collect()
+            }
+            other => tvec!(other.clone()),
         }
     }
 
@@ -236,8 +277,7 @@ impl AxisOp {
             }
             Reshape(at, from, to) => {
                 if shape.len() < from.len() + *at
-                    || (!broadcast
-                        && shape.iter().skip(*at).zip(from.iter()).any(|(s, f)| &s.to_dim() != f))
+                    || (shape.iter().skip(*at).zip(from.iter()).any(|(s, f)| &s.to_dim() != f))
                 {
                     bail!("Incompatible reshape for shape {:?} and {:?}", shape, self);
                 }
@@ -464,7 +504,11 @@ impl TypedOp for AxisOp {
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, shape)))
     }
 
-    fn invariants(&self, _inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
+    fn invariants(
+        &self,
+        _inputs: &[&TypedFact],
+        outputs: &[&TypedFact],
+    ) -> TractResult<Invariants> {
         let mut axes = vec![];
         for i in 0..outputs[0].rank() {
             if let Some(out) = self.transform_axis(i) {
@@ -487,7 +531,18 @@ impl TypedOp for AxisOp {
         if self.is_noop() {
             Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
         } else {
-            Ok(None)
+            let simplified = self.simplify();
+            if simplified.len() != 1 || &simplified[0] != self {
+                let mut patch = TypedModelPatch::default();
+                let mut wire = patch.tap_model(model, node.inputs[0])?;
+                for (ix, op) in simplified.into_iter().enumerate() {
+                    wire =patch.wire_node(format!("{}.{}", node.name, ix), op, &[wire])?[0];
+                }
+                patch.shunt_outside(model, node.id.into(), wire)?;
+                Ok(Some(patch))
+            } else {
+                Ok(None)
+            }
         }
     }
 
@@ -1172,5 +1227,41 @@ mod proptests {
             ops: tvec![Move(0, 1), Move(2, 0), Move(2, 0)],
         };
         pb.check().unwrap();
+    }
+
+    #[test]
+    fn simplify_reshape() {
+        macro_rules! d {
+            ($($dim: expr),*) =>  { tvec!($($dim.to_dim()),*) }
+        }
+        assert_eq!(Reshape(3, d!(), d!()).simplify(), tvec!());
+        assert_eq!(Reshape(3, d!(2, 3), d!(2, 3)).simplify(), tvec!());
+        assert_eq!(Reshape(3, d!(1), d!()).simplify(), tvec!(Rm(3)));
+        assert_eq!(Reshape(3, d!(), d!(1)).simplify(), tvec!(Add(3)));
+        assert_eq!(
+            Reshape(3, d!(2, 3, 4), d!(2, 4, 3)).simplify(),
+            tvec!(Reshape(4, d!(3, 4), d!(4, 3)))
+        );
+        assert_eq!(
+            Reshape(3, d!(3, 4, 2), d!(4, 3, 2)).simplify(),
+            tvec!(Reshape(3, d!(3, 4), d!(4, 3)))
+        );
+        assert_eq!(
+            Reshape(3, d!(1, 2, 3), d!(3, 2)).simplify(),
+            tvec!(Rm(3), Reshape(3, d!(2, 3), d!(3, 2)))
+        );
+        assert_eq!(
+            Reshape(3, d!(2, 3), d!(1, 3, 2)).simplify(),
+            tvec!(Reshape(3, d!(2, 3), d!(3, 2)), Add(3))
+        );
+        assert_eq!(
+            Reshape(3, d!(2, 3, 1), d!(3, 2)).simplify(),
+            tvec!(Reshape(3, d!(2, 3), d!(3, 2)), Rm(5))
+        );
+        assert_eq!(
+            Reshape(3, d!(2, 3), d!(3, 2, 1)).simplify(),
+            tvec!(Reshape(3, d!(2, 3), d!(3, 2)), Add(5))
+        );
+        assert_eq!(Reshape(1, d!(1, 2), d!(2)).simplify(), tvec!(Rm(1)));
     }
 }

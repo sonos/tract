@@ -139,7 +139,7 @@ where
         Ok(())
     }
 
-    /// Convenience method creating a patch that replace a single operation.
+    /// Convenience method creating a patch that replaces a single operation.
     pub fn replace_single_op<IO: Into<O>>(
         patched_model: &Graph<F, O>,
         node: &Node<F, O>,
@@ -159,7 +159,7 @@ where
         Ok(patch)
     }
 
-    /// Convenience method creating a patch that replace a single operation.
+    /// Convenience method creating a patch that fuses an op with the next one.
     pub fn fuse_with_next<IO: Into<O>>(
         patched_model: &Graph<F, O>,
         node: &Node<F, O>,
@@ -187,7 +187,7 @@ where
         Ok(patch)
     }
 
-    /// Convenience method creating a patch that shunt the given node.
+    /// Convenience method creating a patch that shunts the given node.
     pub fn shunt_one_op(
         patched_model: &Graph<F, O>,
         node: &Node<F, O>,
