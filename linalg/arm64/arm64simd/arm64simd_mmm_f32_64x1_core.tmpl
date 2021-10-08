@@ -127,6 +127,7 @@
 
 {% include "arm64simd_mmm_f32_scalars.tmpliq" from:16, to:31%}
 {% include "arm64simd_mmm_f32_per_rows.tmpliq" mr:64, from:16, to:31%}
+{% include "arm64simd_mmm_f32_per_cols.tmpliq" mr:64, from:16, to:31%}
 
 .add_unicast:
     ldp         x5, x6, [x0, #8]           // c base ptr, rsc
@@ -189,28 +190,6 @@
     fmla        v29.4s, v5.4s, v8.s[0] 
     fmla        v30.4s, v6.4s, v8.s[0] 
     fmla        v31.4s, v7.4s, v8.s[0] 
-
-    b           .non_linear_loop
-
-.per_col_mul:
-    ldr         x2, [x0, #8]
-.mul_all:
-    ld1         {v0.s}[0], [ x2 ]
-    dup         v0.4s, v0.s[0]
-    {% for reg in (16..31) %}
-        fmul        v{{reg}}.4s, v{{reg}}.4s, v0.4s
-    {% endfor %}
-
-    b           .non_linear_loop
-
-.per_col_add:
-    ldr         x2, [x0, #8]
-.add_all:
-    ld1         {v0.s}[0], [ x2 ]
-    dup         v0.4s, v0.s[0]
-    {% for reg in (16..31) %}
-        fadd        v{{reg}}.4s, v{{reg}}.4s, v0.4s
-    {% endfor %}
 
     b           .non_linear_loop
 

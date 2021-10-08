@@ -126,6 +126,7 @@
 
 {% include "arm64simd_mmm_f32_scalars.tmpliq" from:8, to:31%}
 {% include "arm64simd_mmm_f32_per_rows.tmpliq" mr:12, from:8, to:31 %}
+{% include "arm64simd_mmm_f32_per_cols.tmpliq" mr:12, from:8, to:31 %}
 
 .add_unicast:
     ldp         x5, x6, [x0, #8 ]           // c base ptr, rsc
@@ -144,6 +145,7 @@
 
     b           .non_linear_loop
 
+/*
 .per_col_mul:
     ldr         x2, [x0, #8]
     ldr         q0, [ x2 ], #16
@@ -171,6 +173,7 @@
     {% endfor %}
 
     b           .non_linear_loop
+*/
 
 .add_row_col_products:
     ldr     x2, [x0, #8]
