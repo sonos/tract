@@ -234,34 +234,6 @@ fma_mmm_f32_16x6_{{suffix}} proc
 
     jmp    {{L}}non_linear_loop
 
-/*
-// NON LINEAR / PER COL MUL
-
-{{L}}per_col_mul:
-    mov             rax, [ rdi + 8 ]
-
-{% for i in (0..5) %}
-    vbroadcastss    ymm12, dword ptr [rax + {{i|times:4}}]
-    vmulps          ymm{{i|times:2}}, ymm{{i|times:2}}, ymm12
-    vmulps          ymm{{i|times:2|plus:1}}, ymm{{i|times:2|plus:1}}, ymm12
-{% endfor %}
-
-    jmp    {{L}}non_linear_loop
-
-// NON LINEAR / PER COL ADD
-
-{{L}}per_col_add:
-    mov             rax, [ rdi + 8 ]
-
-{% for i in (0..5) %}
-    vbroadcastss    ymm12, dword ptr [rax + {{i|times:4}}]
-    vaddps          ymm{{i|times:2}}, ymm{{i|times:2}}, ymm12
-    vaddps          ymm{{i|times:2|plus:1}}, ymm{{i|times:2|plus:1}}, ymm12
-{% endfor %}
-
-    jmp    {{L}}non_linear_loop
-*/
-
 {{L}}add_row_col_products:
     mov             rax, [ rdi + 8 ]
     mov             rbx, [ rdi + 16 ]
