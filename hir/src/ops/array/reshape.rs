@@ -103,7 +103,7 @@ pub fn to_axis_ops(input_orig: &[TDim], output_spec: &[TDim]) -> TractResult<TVe
         let current_input =
             stack.iter().try_fold(TVec::from(input_orig), |shape, op| -> TractResult<_> {
                 let mut shape = shape.into();
-                op.change_shape_array(&mut shape, false)?;
+                op.change_shape_array(&mut shape)?;
                 Ok(shape)
             })?;
         if &current_input == &final_output {

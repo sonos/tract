@@ -81,18 +81,18 @@ impl AxisOp {
                     .chain(std::iter::once(Add(*at)))
                     .collect()
             }
-            Reshape(at, from, to) if from[from.len() - 1] == 1.to_dim() => {
-                Reshape(*at, from[..from.len() - 1].into(), to.clone())
-                    .simplify()
-                    .into_iter()
-                    .chain(std::iter::once(Rm(at + from.len() - 1)))
-                    .collect()
-            }
+            Reshape(at, from, to) if from[from.len() - 1] == 1.to_dim() => std::iter::once(Rm(at
+                + from.len()
+                - 1))
+            .chain(Reshape(*at, from[..from.len() - 1].into(), to.clone()).simplify().into_iter())
+            .collect(),
             Reshape(at, from, to) if to[to.len() - 1] == 1.to_dim() => {
-                Reshape(*at, from.clone(), to[..to.len() - 1].into())
-                    .simplify()
-                    .into_iter()
-                    .chain(std::iter::once(Add(at + to.len() - 1)))
+                std::iter::once(Add(at + from.len()))
+                    .chain(
+                        Reshape(*at, from.clone(), to[..to.len() - 1].into())
+                            .simplify()
+                            .into_iter(),
+                    )
                     .collect()
             }
             other => tvec!(other.clone()),
@@ -260,11 +260,7 @@ impl AxisOp {
         }
     }
 
-    pub fn change_shape_array<D: DimLike>(
-        &self,
-        shape: &mut TVec<D>,
-        broadcast: bool,
-    ) -> TractResult<()> {
+    pub fn change_shape_array<D: DimLike>(&self, shape: &mut TVec<D>) -> TractResult<()> {
         use std::convert::TryInto;
         match self.canonical().as_ref() {
             Add(ix) => shape.insert(*ix, D::one()),
@@ -292,7 +288,7 @@ impl AxisOp {
         Ok(())
     }
 
-    pub fn change_shape(&self, shape: &mut ShapeFact, broadcast: bool) -> TractResult<()> {
+    pub fn change_shape(&self, shape: &mut ShapeFact) -> TractResult<()> {
         match self.canonical().as_ref() {
             Add(ix) => shape.insert_axis(*ix),
             Rm(ix) => {
@@ -306,7 +302,7 @@ impl AxisOp {
             }
             _ => {
                 let mut array = shape.to_tvec();
-                self.change_shape_array(&mut array, broadcast)?;
+                self.change_shape_array(&mut array)?;
                 let mut new_shape = ShapeFact::from_dims(array);
                 std::mem::swap(shape, &mut new_shape);
                 Ok(())
@@ -328,7 +324,7 @@ impl AxisOp {
             }
             Reshape(at, from, to) => {
                 let mut shape: TVec<usize> = tensor.shape().into();
-                self.change_shape_array(&mut shape, broadcasting)?;
+                self.change_shape_array(&mut shape)?;
                 if tensor.set_shape(&shape).is_ok() {
                     Ok(())
                 } else if broadcasting
@@ -500,7 +496,7 @@ impl TypedOp for AxisOp {
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut shape = inputs[0].shape.clone();
-        self.change_shape(&mut shape, false)?;
+        self.change_shape(&mut shape)?;
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, shape)))
     }
 
@@ -536,7 +532,7 @@ impl TypedOp for AxisOp {
                 let mut patch = TypedModelPatch::default();
                 let mut wire = patch.tap_model(model, node.inputs[0])?;
                 for (ix, op) in simplified.into_iter().enumerate() {
-                    wire =patch.wire_node(format!("{}.{}", node.name, ix), op, &[wire])?[0];
+                    wire = patch.wire_node(format!("{}.{}", node.name, ix), op, &[wire])?[0];
                 }
                 patch.shunt_outside(model, node.id.into(), wire)?;
                 Ok(Some(patch))
@@ -1047,7 +1043,7 @@ mod proptests {
                     AxisOp::arbitrary_with(shape.clone().into())
                         .prop_flat_map(move |op| {
                             let mut shape = shape.clone();
-                            op.change_shape_array(&mut shape, false).unwrap();
+                            op.change_shape_array(&mut shape).unwrap();
                             tail(len - 1, shape.clone()).prop_map(move |mut t| {
                                 t.insert(0, op.clone());
                                 t
@@ -1256,11 +1252,15 @@ mod proptests {
         );
         assert_eq!(
             Reshape(3, d!(2, 3, 1), d!(3, 2)).simplify(),
-            tvec!(Reshape(3, d!(2, 3), d!(3, 2)), Rm(5))
+            tvec!(Rm(5), Reshape(3, d!(2, 3), d!(3, 2)))
         );
         assert_eq!(
             Reshape(3, d!(2, 3), d!(3, 2, 1)).simplify(),
-            tvec!(Reshape(3, d!(2, 3), d!(3, 2)), Add(5))
+            tvec!(Add(5), Reshape(3, d!(2, 3), d!(3, 2)))
+        );
+        assert_eq!(
+            Reshape(2, d!(2, 2, 1), d!(4)).simplify(),
+            tvec!(Rm(4), Reshape(2, d!(2, 2), d!(4)))
         );
         assert_eq!(Reshape(1, d!(1, 2), d!(2)).simplify(), tvec!(Rm(1)));
     }

@@ -914,11 +914,11 @@ impl TypedOp for ConvUnary {
         let mut kernel = self.kernel.clone().into_tensor();
         kernel_adjusted.change_tensor(&mut kernel, false)?;
         let mut dilations = self.pool_spec.dilations().into_owned().into();
-        geo_adjusted.change_shape_array(&mut dilations, false)?;
+        geo_adjusted.change_shape_array(&mut dilations)?;
         let mut kernel_shape = self.pool_spec.kernel_shape.clone();
-        geo_adjusted.change_shape_array(&mut kernel_shape, false)?;
+        geo_adjusted.change_shape_array(&mut kernel_shape)?;
         let mut strides = self.pool_spec.strides().into_owned().into();
-        geo_adjusted.change_shape_array(&mut strides, false)?;
+        geo_adjusted.change_shape_array(&mut strides)?;
         let new_op = ConvUnary {
             pool_spec: PoolSpec {
                 data_format: self.pool_spec.data_format,

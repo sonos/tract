@@ -520,7 +520,7 @@ fn batch_0() -> anyhow::Result<()> {
 }
 
 #[test]
-fn bias_3d() -> anyhow::Result<()> {
+fn bias_3d_1() -> anyhow::Result<()> {
     let pb = ConvProblem {
         shape_in: DataFormat::CHW.from_n_c_hw(1, 1, &[1, 1, 2])?,
         shape_out: DataFormat::CHW.from_n_c_hw(1, 1, &[1, 1, 2])?,
@@ -529,6 +529,21 @@ fn bias_3d() -> anyhow::Result<()> {
         data: ndarray::ArrayD::<f32>::zeros(vec![1, 1, 1, 2]),
         kernel: ndarray::ArrayD::<f32>::zeros(vec![1, 1, 1, 1, 1]),
         bias: Some(ndarray::ArrayD::<f32>::ones(vec![1])),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
+fn batch_3d() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::NCHW.from_n_c_hw(1, 1, &[2, 2, 1])?,
+        shape_out: DataFormat::NCHW.from_n_c_hw(1, 1, &[2, 2, 1])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data: ndarray::ArrayD::<f32>::zeros(vec![1, 1, 2, 2, 1]),
+        kernel: ndarray::ArrayD::<f32>::zeros(vec![1, 1, 1, 1, 1]),
+        bias: None,
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
