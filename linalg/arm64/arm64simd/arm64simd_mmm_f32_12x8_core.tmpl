@@ -145,36 +145,6 @@
 
     b           .non_linear_loop
 
-/*
-.per_col_mul:
-    ldr         x2, [x0, #8]
-    ldr         q0, [ x2 ], #16
-    ldr         q1, [ x2 ], #16
-
-    {% for col in (0..7) %}
-        dup v3.4s, v{{col|divided_by:4}}.s[{{col|modulo:4}}]
-        {% for reg in (0..2) %}
-            fmul v{{col | times:3 | plus: reg|plus:8}}.4s, v{{col | times:3 | plus: reg|plus:8}}.4s, v3.4s
-        {% endfor %}
-    {% endfor %}
-
-    b           .non_linear_loop
-
-.per_col_add:
-    ldr         x2, [x0, #8]
-    ldr         q0, [ x2 ], #16
-    ldr         q1, [ x2 ], #16
-
-    {% for col in (0..7) %}
-        dup v3.4s, v{{col|divided_by:4}}.s[{{col|modulo:4}}]
-        {% for reg in (0..2) %}
-            fadd v{{col | times:3 | plus: reg|plus:8}}.4s, v{{col | times:3 | plus: reg|plus:8}}.4s, v3.4s
-        {% endfor %}
-    {% endfor %}
-
-    b           .non_linear_loop
-*/
-
 .add_row_col_products:
     ldr     x2, [x0, #8]
     ldr     x3, [x0, #16]
