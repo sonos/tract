@@ -312,7 +312,10 @@ impl TypedOp for LirMatMulUnary {
 
         if let Some(op) = succ.op_as::<ops::element_wise::ElementWiseOp>().map(|ew| ew.0.as_ref()) {
             if let Some(cast) = op.downcast_ref::<ops::cast::Cast>().map(|cast| cast.to) {
-                if cast == i8::datum_type() && self.c_fact.datum_type == i32::datum_type() {
+                if (cast.unquantized() == i8::datum_type()
+                    || cast.unquantized() == u8::datum_type())
+                    && self.c_fact.datum_type == i32::datum_type()
+                {
                     let at = self.micro_ops.iter().nth(0).unwrap().0.datum_type();
                     let bt = model.outlet_fact(node.inputs[0])?.datum_type;
                     let mmm = tract_linalg::ops()
@@ -326,7 +329,7 @@ impl TypedOp for LirMatMulUnary {
                         )
                         .unwrap();
 
-                    let c_fact = TypedFact::dt_shape(i8::datum_type(), self.c_fact.shape.clone());
+                    let c_fact = TypedFact::dt_shape(cast, self.c_fact.shape.clone());
                     let mut patch = TypedModelPatch::fuse_with_next(
                         model,
                         &node,

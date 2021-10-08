@@ -982,4 +982,23 @@ mod test {
         }
         .check();
     }
+
+
+    #[test]
+    fn test_qmmup_u8_u8_u8_4() {
+        QMatMulUnaryProblemU8U8U8 {
+            a: arr2(&[[0], [0]]),
+            b: arr2(&[[0]]),
+            bias: tensor0(0),
+            a0: 0,
+            b0: 0,
+            c0: 0,
+            a_scale: 0.05,
+            b_scale: 1.0,
+            c_scale: 1.0,
+            opt: true,
+            dyn_qp: false,
+        }
+        .check()
+    }
 }
