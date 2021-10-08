@@ -829,7 +829,7 @@ impl TypedOp for ConvUnary {
         let one = 1.to_dim();
         Ok(tvec!(
             (
-                Cost::Params(inputs[0].datum_type),
+                Cost::Params(inputs[0].datum_type.unquantized()),
                 (self.kernel.len() + self.bias.as_ref().map(|b| b.len()).unwrap_or(0)).to_dim()
             ),
             (

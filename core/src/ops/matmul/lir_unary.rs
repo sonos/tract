@@ -277,7 +277,7 @@ impl TypedOp for LirMatMulUnary {
         Ok(tvec!(
             (Cost::FMA(self.mmm.internal_type()), sums * self.geometry.k().as_ref()),
             (
-                Cost::Params(self.micro_ops.as_slice().unwrap()[0].0.datum_type()),
+                Cost::Params(self.micro_ops.as_slice().unwrap()[0].0.datum_type().unquantized()),
                 self.micro_ops.iter().fold(0.to_dim(), |sum, a| sum + a.0.len())
             )
         ))

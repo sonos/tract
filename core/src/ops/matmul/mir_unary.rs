@@ -141,7 +141,7 @@ impl TypedOp for MatMulUnary {
             self.a_trans,
             self.b_trans,
         )?;
-        cost.push((Cost::Params(self.a.datum_type()), self.a.len().to_dim()));
+        cost.push((Cost::Params(self.a.datum_type().unquantized()), self.a.len().to_dim()));
         Ok(cost)
     }
 
