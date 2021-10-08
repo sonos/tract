@@ -444,7 +444,7 @@ impl LirMatMulUnary {
         }
         let mut other_shape = shape.to_owned();
         for axis_change in self.reshape_post.iter().rev() {
-            if axis_change.recip().change_shape(&mut other_shape, true).is_err() {
+            if axis_change.recip().change_shape(&mut other_shape).is_err() {
                 return Ok(None)
             }
         }
