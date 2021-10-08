@@ -444,7 +444,9 @@ impl LirMatMulUnary {
         }
         let mut other_shape = shape.to_owned();
         for axis_change in self.reshape_post.iter().rev() {
-            axis_change.recip().change_shape(&mut other_shape, true)?;
+            if axis_change.recip().change_shape(&mut other_shape, true).is_err() {
+                return Ok(None)
+            }
         }
         if other_shape[self.c_m_axis] == self.c_fact.shape[self.c_m_axis]
             && other_shape[self.c_m_axis] == other_shape.volume()
