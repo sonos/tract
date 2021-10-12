@@ -30,6 +30,7 @@ pub enum AxisOp {
     Move(usize, usize),
     Reshape(usize, TVec<TDim>, TVec<TDim>),
 }
+
 use AxisOp::*;
 
 impl PartialEq for AxisOp {
@@ -276,18 +277,27 @@ impl AxisOp {
                 shape.insert(*to, axis);
             }
             Reshape(at, from, to) => {
-                if shape.len() < from.len() + *at
-                    || !tract_itertools::izip!(shape.iter().skip(*at), from).all(|(shape, spec)| {
-                        shape.to_dim() == *spec || (broadcasting && shape.to_dim() == 1.to_dim())
-                    })
+                if shape.len() >= from.len() + *at
+                    && tract_itertools::izip!(shape.iter().skip(*at), from)
+                        .all(|(shape, spec)| shape.to_dim() == *spec)
                 {
+                    for _ in from {
+                        shape.remove(*at);
+                    }
+                    for d in to.iter().rev() {
+                        shape.insert(*at, d.try_into()?);
+                    }
+                } else if broadcasting
+                    && shape.iter().skip(*at).take(from.len()).all(|d| d.to_dim() == 1.to_dim())
+                {
+                    for _ in from {
+                        shape.remove(*at);
+                    }
+                    for _ in to.iter().rev() {
+                        shape.insert(*at, 1.into());
+                    }
+                } else {
                     bail!("Incompatible reshape for shape {:?} and {:?}", shape, self);
-                }
-                for _ in from {
-                    shape.remove(*at);
-                }
-                for d in to.iter().rev() {
-                    shape.insert(*at, d.try_into()?);
                 }
             }
         }
