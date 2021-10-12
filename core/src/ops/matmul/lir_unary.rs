@@ -285,6 +285,7 @@ impl TypedOp for LirMatMulUnary {
 
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         use crate::ops;
+        eprintln!("self: {}", node);
         if node.outputs.len() != 1
             || node.outputs[0].successors.len() != 1
             || model.output_outlets()?.iter().any(|outlet| outlet.node == node.id)
@@ -292,6 +293,7 @@ impl TypedOp for LirMatMulUnary {
             return Ok(None);
         }
         let succ = model.node(node.outputs[0].successors[0].node);
+        eprintln!(" * succ: {:?}", succ);
         if let Some(op) = succ.op_as::<ops::AxisOp>() {
             if op.only_shape() {
                 let mut reshape_post = self.reshape_post.clone();
@@ -444,7 +446,7 @@ impl LirMatMulUnary {
         }
         let mut other_shape = shape.to_owned();
         for axis_change in self.reshape_post.iter().rev() {
-            if axis_change.recip().change_shape(&mut other_shape).is_err() {
+            if axis_change.recip().change_shape(&mut other_shape, true).is_err() {
                 return Ok(None)
             }
         }
