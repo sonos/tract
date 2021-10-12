@@ -56,7 +56,7 @@ impl TypedOp for TypedSource {
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
         let mut fact = self.fact.clone();
-        change.change_shape(&mut fact.shape)?;
+        change.change_shape(&mut fact.shape, false)?;
         Ok(Some(AxisChangeConsequence::new(
             model,
             node,
