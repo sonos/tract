@@ -46,41 +46,28 @@ struct DepthToSpace {
 impl_dyn_hash!(DepthToSpace);
 
 impl DepthToSpace {
-    pub fn compute_shape(&self, shape: &[TDim]) -> TractResult<TVec<TDim>> {
-        let oshape = tvec!(
+    pub fn compute_shape<D: DimLike>(&self, shape: &[D]) -> TVec<D> {
+        tvec!(
             shape[0].clone(),
             shape[1].clone() / (self.blocksize * self.blocksize),
             shape[2].clone() * self.blocksize,
-            shape[3].clone() * self.blocksize,
-        );
-        Ok(oshape)
+            shape[3].clone() * self.blocksize
+        )
     }
 
-    pub fn to_axis_ops(
-        &self,
-        input_depth: usize,
-        input_height: usize,
-        input_width: usize,
-    ) -> TractResult<TVec<AxisOp>> {
+    pub fn to_axis_ops(&self, shape: &[TDim]) -> TractResult<TVec<AxisOp>> {
         let mut stack: TVec<AxisOp> = tvec!();
 
-        let ishape_from = tvec!(input_depth.to_dim());
+        let ishape_from = tvec!(shape[1].clone());
         let mut ishape_to = tvec!(
-            self.blocksize.to_dim(),
-            self.blocksize.to_dim(),
-            (input_depth / (self.blocksize * self.blocksize)).to_dim()
+            self.blocksize.into(),
+            self.blocksize.into(),
+            shape[1].clone() / (self.blocksize * self.blocksize)
         );
 
-        let oshape_from = tvec!(
-            input_height.to_dim(),
-            self.blocksize.to_dim(),
-            input_width.to_dim(),
-            self.blocksize.to_dim()
-        );
-        let oshape_to = tvec!(
-            (input_height * self.blocksize).to_dim(),
-            (input_width * self.blocksize).to_dim()
-        );
+        let oshape_from =
+            tvec!(shape[2].clone(), self.blocksize.into(), shape[3].clone(), self.blocksize.into());
+        let oshape_to = tvec!(shape[2].clone() * self.blocksize, shape[3].clone() * self.blocksize);
 
         match self.mode {
             DepthToSpaceMode::DCR => {
@@ -121,7 +108,7 @@ impl Expansion for DepthToSpace {
         s.equals(&outputs[0].rank, 4)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         s.given(&inputs[0].shape, move |s, ishape| {
-            let oshape = self.compute_shape(&*ishape)?;
+            let oshape = self.compute_shape(&*ishape);
             s.equals(&outputs[0].shape, ShapeFactoid::from(oshape))
         })
     }
@@ -134,14 +121,12 @@ impl Expansion for DepthToSpace {
     ) -> TractResult<TVec<OutletId>> {
         let ishape = model.outlet_fact(inputs[0])?.shape.to_tvec();
         let idepth = ishape[1].to_usize()?;
-        let iheight = ishape[2].to_usize()?;
-        let iwidth = ishape[3].to_usize()?;
 
         if idepth % (self.blocksize * self.blocksize) != 0 {
             bail!("DepthToSpace requires input depth to be a multiple of (blocksize * bloksize)")
         }
         let mut wire = tvec!(inputs[0]);
-        for (ix, op) in self.to_axis_ops(idepth, iheight, iwidth)?.into_iter().enumerate() {
+        for (ix, op) in self.to_axis_ops(&ishape)?.into_iter().enumerate() {
             wire = model.wire_node(format!("{}.{}", prefix, ix), op, &wire)?;
         }
         Ok(wire)
