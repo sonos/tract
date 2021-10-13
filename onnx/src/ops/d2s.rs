@@ -46,12 +46,12 @@ struct DepthToSpace {
 impl_dyn_hash!(DepthToSpace);
 
 impl DepthToSpace {
-    pub fn compute_shape<D: DimLike>(&self, shape: &[D]) -> TVec<D> {
+    pub fn compute_shape(&self, shape: &[TDim]) -> TVec<TDim> {
         tvec!(
             shape[0].clone(),
             shape[1].clone() / (self.blocksize * self.blocksize),
             shape[2].clone() * self.blocksize,
-            shape[3].clone() * self.blocksize
+            shape[3].clone() * self.blocksize,
         )
     }
 
