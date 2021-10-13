@@ -47,9 +47,6 @@ impl_dyn_hash!(DepthToSpace);
 
 impl DepthToSpace {
     pub fn compute_shape(&self, shape: &[TDim]) -> TractResult<TVec<TDim>> {
-        if shape.iter().filter(|d| d.to_usize().is_err()).count() > 1 {
-            bail!("Can not compute a shape with square of symbols")
-        }
         let oshape = tvec!(
             shape[0].clone(),
             shape[1].clone() / (self.blocksize * self.blocksize),
