@@ -13,6 +13,7 @@ tract-linalg = { path = ".." }
 cblas = { version = "0.3", optional = true }
 accelerate-src = { version = "0.3", optional = true }
 blis-src = { version = "0.2", features = ["static"], optional = true }
+matrixmultiply = "*"
 
 [features]
 default = []
@@ -22,7 +23,6 @@ accelerate = ["accelerate-src", "blas"]
 
 [dev-dependencies]
 criterion = "*"
-matrixmultiply = "*"
 
 [[bench]]
 name = "matmul"
