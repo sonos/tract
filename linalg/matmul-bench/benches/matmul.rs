@@ -10,112 +10,27 @@ use criterion::measurement::WallTime;
 use criterion::*;
 use tract_data::internal::*;
 
-fn naive(crit: &mut BenchmarkGroup<WallTime>, m: usize, k: usize, n: usize) {
-    let a = vec![0f32; m * k];
-    let b = vec![0f32; k * n];
-    let mut c = vec![0f32; m * n];
-    crit.bench_function("naive", |be| {
-        be.iter(|| {
-            for row in 0..m {
-                for col in 0..n {
-                    let mut sum = 0.0;
-                    for i in 0..k {
-                        sum += a[row * k + i] * b[i * n + col];
-                    }
-                    c[row * n + col] = sum;
-                }
-            }
-        })
-    });
+macro_rules! b {
+    ($id:ident) => {
+        pub fn $id(crit: &mut BenchmarkGroup<WallTime>, m: usize, k: usize, n: usize) {
+            let a = vec![0f32; m * k];
+            let b = vec![0f32; k * n];
+            let mut c = vec![0f32; m * n];
+            crit.bench_function(stringify!($id), |be| {
+                be.iter(|| matmul_bench::$id(m, k, n, &a, &b, &mut c))
+            });
+        }
+    };
 }
 
-fn tile_2x2(crit: &mut BenchmarkGroup<WallTime>, m: usize, k: usize, n: usize) {
-    let a = vec![0f32; m * k];
-    let b = vec![0f32; k * n];
-    let mut c = vec![0f32; m * n];
-    crit.bench_function("tile_2x2", |be| {
-        be.iter(|| {
-            for row in 0..m / 2 {
-                for col in 0..n / 2 {
-                    let mut sum00 = 0.0;
-                    let mut sum01 = 0.0;
-                    let mut sum10 = 0.0;
-                    let mut sum11 = 0.0;
-                    for i in 0..k {
-                        let a0 = a[row * k + i];
-                        let a1 = a[(row + 1) * k + i];
-                        let b0 = b[i * n + col];
-                        let b1 = b[i * n + col + 1];
-                        sum00 += a0 * b0;
-                        sum01 += a0 * b1;
-                        sum10 += a1 * b0;
-                        sum11 += a1 * b1;
-                    }
-                    c[row * n + col] = sum00;
-                    c[row * n + col + 1] = sum01;
-                    c[(row + 1) * n + col] = sum10;
-                    c[(row + 1) * n + col + 1] = sum11;
-                }
-            }
-        })
-    });
-}
+b!(naive);
+b!(tile_2x2);
+b!(tile_4x4);
+b!(tile_8x8);
+b!(matrixmultiply);
+b!(cblas);
 
-fn matrixmultiply(crit: &mut BenchmarkGroup<WallTime>, m: usize, k: usize, n: usize) {
-    let a = vec![0f32; m * k];
-    let b = vec![0f32; k * n];
-    let mut c = vec![0f32; m * n];
-    crit.bench_function("matrixmultiply", |be| {
-        be.iter(|| unsafe {
-            matrixmultiply::sgemm(
-                m,
-                k,
-                n,
-                1.0,
-                a.as_ptr(),
-                k as _,
-                1,
-                b.as_ptr(),
-                n as _,
-                1,
-                0.0,
-                c.as_mut_ptr(),
-                n as _,
-                1,
-            )
-        });
-    });
-}
-
-#[allow(unused_variables, unused_mut)]
-fn cblas(crit: &mut BenchmarkGroup<WallTime>, m: usize, k: usize, n: usize) {
-    let a = vec![0f32; m * k];
-    let b = vec![0f32; k * n];
-    let mut c = vec![0f32; m * n];
-    #[cfg(feature = "blas")]
-    crit.bench_function("blas", |be| {
-        be.iter(|| unsafe {
-            cblas::sgemm(
-                cblas::Layout::RowMajor,
-                cblas::Transpose::None,
-                cblas::Transpose::None,
-                m as _,
-                n as _,
-                k as _,
-                1.0,
-                &a,
-                k as _,
-                &b,
-                n as _,
-                0.0,
-                &mut c,
-                n as _,
-            )
-        })
-    });
-}
-
-fn tract(crit: &mut BenchmarkGroup<WallTime>, m: usize, k: usize, n: usize) {
+pub fn tract(crit: &mut BenchmarkGroup<WallTime>, m: usize, k: usize, n: usize) {
     use tract_linalg::frame::mmm::FusedSpec;
     let a = Tensor::zero_dt(DatumType::F32, &[m, k]).unwrap();
     let b = Tensor::zero_dt(DatumType::F32, &[k, n]).unwrap();
@@ -172,6 +87,8 @@ fn matmul(c: &mut Criterion, m: usize, k: usize, n: usize) {
     c.throughput(Throughput::Elements((m * k * n) as _));
     naive(&mut c, m, k, n);
     tile_2x2(&mut c, m, k, n);
+    tile_4x4(&mut c, m, k, n);
+    tile_8x8(&mut c, m, k, n);
     matrixmultiply(&mut c, m, k, n);
     cblas(&mut c, m, k, n);
     tract(&mut c, m, k, n);
