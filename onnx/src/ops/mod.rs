@@ -22,6 +22,7 @@ mod nn;
 mod quant;
 pub mod rec;
 mod resize;
+mod s2d;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Cast", cast::cast);
@@ -37,6 +38,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     nn::register_all_ops(reg);
     quant::register_all_ops(reg);
     rec::register_all_ops(reg);
+    s2d::register_all_ops(reg);
 }
 
 fn konst(
