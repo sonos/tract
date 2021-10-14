@@ -103,6 +103,8 @@ test_cos
 test_cos_example
 test_cosh
 test_cosh_example
+test_depthtospace
+test_depthtospace_example
 test_dequantizelinear                                                               input:x not-nnef
 test_div
 test_div_bcast
