@@ -29,15 +29,16 @@ b!(tile_4x4);
 b!(tile_8x8);
 b!(matrixmultiply);
 b!(cblas);
+b!(tract);
 
-pub fn tract(crit: &mut BenchmarkGroup<WallTime>, m: usize, k: usize, n: usize) {
+pub fn tract_unfair(crit: &mut BenchmarkGroup<WallTime>, m: usize, k: usize, n: usize) {
     use tract_linalg::frame::mmm::FusedSpec;
     let a = Tensor::zero_dt(DatumType::F32, &[m, k]).unwrap();
     let b = Tensor::zero_dt(DatumType::F32, &[k, n]).unwrap();
     let mut c = Tensor::zero_dt(DatumType::F32, &[n, m]).unwrap();
 
     unsafe {
-        crit.bench_function("tract", |be| {
+        crit.bench_function("tract_unfair", |be| {
             let mmm = tract_linalg::ops()
                 .mmm(DatumType::F32, DatumType::F32, DatumType::F32, Some(m), Some(k), Some(n))
                 .unwrap();
@@ -92,6 +93,7 @@ fn matmul(c: &mut Criterion, m: usize, k: usize, n: usize) {
     matrixmultiply(&mut c, m, k, n);
     cblas(&mut c, m, k, n);
     tract(&mut c, m, k, n);
+    tract_unfair(&mut c, m, k, n);
     c.finish();
 }
 
