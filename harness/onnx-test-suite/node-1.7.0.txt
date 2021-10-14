@@ -143,6 +143,10 @@ test_cos
 test_cos_example
 test_cosh
 test_cosh_example
+test_depthtospace_crd_mode
+test_depthtospace_crd_mode_example
+test_depthtospace_dcr_mode
+test_depthtospace_example
 test_dequantizelinear                                                               input:x not-nnef
 test_div
 test_div_bcast
