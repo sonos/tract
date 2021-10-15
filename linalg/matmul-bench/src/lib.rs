@@ -26,19 +26,19 @@ pub fn tile_2x2(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32
             let mut sum10 = 0.0;
             let mut sum11 = 0.0;
             for i in 0..k {
-                let a0 = a[row * k + i];
-                let a1 = a[(row + 1) * k + i];
-                let b0 = b[i * n + col];
-                let b1 = b[i * n + col + 1];
+                let a0 = a[2 * row * k + i];
+                let a1 = a[(2 * row + 1) * k + i];
+                let b0 = b[i * n + 2 * col];
+                let b1 = b[i * n + 2 * col + 1];
                 sum00 += a0 * b0;
                 sum01 += a0 * b1;
                 sum10 += a1 * b0;
                 sum11 += a1 * b1;
             }
-            c[row * n + col] = sum00;
-            c[row * n + col + 1] = sum01;
-            c[(row + 1) * n + col] = sum10;
-            c[(row + 1) * n + col + 1] = sum11;
+            c[2 * row * n + 2 * col] = sum00;
+            c[2 * row * n + 2 * col + 1] = sum01;
+            c[(2 * row + 1) * n + 2 * col] = sum10;
+            c[(2 * row + 1) * n + 2 * col + 1] = sum11;
         }
     }
 }
@@ -63,14 +63,14 @@ pub fn tile_4x4(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32
             let mut sum32 = 0.0;
             let mut sum33 = 0.0;
             for i in 0..k {
-                let a0 = a[row * k + i];
-                let a1 = a[(row + 1) * k + i];
-                let a2 = a[(row + 2) * k + i];
-                let a3 = a[(row + 3) * k + i];
-                let b0 = b[i * n + col];
-                let b1 = b[i * n + col + 1];
-                let b2 = b[i * n + col + 2];
-                let b3 = b[i * n + col + 3];
+                let a0 = a[4 * row * k + i];
+                let a1 = a[(4 * row + 1) * k + i];
+                let a2 = a[(4 * row + 2) * k + i];
+                let a3 = a[(4 * row + 3) * k + i];
+                let b0 = b[i * n + 4 * col];
+                let b1 = b[i * n + 4 * col + 1];
+                let b2 = b[i * n + 4 * col + 2];
+                let b3 = b[i * n + 4 * col + 3];
                 sum00 += a0 * b0;
                 sum01 += a0 * b1;
                 sum02 += a0 * b2;
@@ -88,22 +88,22 @@ pub fn tile_4x4(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32
                 sum32 += a3 * b2;
                 sum33 += a3 * b3;
             }
-            c[(row + 0) * n + col] = sum00;
-            c[(row + 0) * n + col + 1] = sum01;
-            c[(row + 0) * n + col + 2] = sum02;
-            c[(row + 0) * n + col + 3] = sum03;
-            c[(row + 1) * n + col] = sum10;
-            c[(row + 1) * n + col + 1] = sum11;
-            c[(row + 1) * n + col + 2] = sum12;
-            c[(row + 1) * n + col + 3] = sum13;
-            c[(row + 2) * n + col] = sum20;
-            c[(row + 2) * n + col + 1] = sum21;
-            c[(row + 2) * n + col + 2] = sum22;
-            c[(row + 2) * n + col + 3] = sum23;
-            c[(row + 3) * n + col] = sum30;
-            c[(row + 3) * n + col + 1] = sum31;
-            c[(row + 3) * n + col + 2] = sum32;
-            c[(row + 3) * n + col + 3] = sum33;
+            c[(4 * row + 0) * n + 4 * col] = sum00;
+            c[(4 * row + 0) * n + 4 * col + 1] = sum01;
+            c[(4 * row + 0) * n + 4 * col + 2] = sum02;
+            c[(4 * row + 0) * n + 4 * col + 3] = sum03;
+            c[(4 * row + 1) * n + 4 * col] = sum10;
+            c[(4 * row + 1) * n + 4 * col + 1] = sum11;
+            c[(4 * row + 1) * n + 4 * col + 2] = sum12;
+            c[(4 * row + 1) * n + 4 * col + 3] = sum13;
+            c[(4 * row + 2) * n + 4 * col] = sum20;
+            c[(4 * row + 2) * n + 4 * col + 1] = sum21;
+            c[(4 * row + 2) * n + 4 * col + 2] = sum22;
+            c[(4 * row + 2) * n + 4 * col + 3] = sum23;
+            c[(4 * row + 3) * n + 4 * col] = sum30;
+            c[(4 * row + 3) * n + 4 * col + 1] = sum31;
+            c[(4 * row + 3) * n + 4 * col + 2] = sum32;
+            c[(4 * row + 3) * n + 4 * col + 3] = sum33;
         }
     }
 }
@@ -176,22 +176,22 @@ pub fn tile_8x8(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32
             let mut sum76 = 0.0;
             let mut sum77 = 0.0;
             for i in 0..k {
-                let a0 = a[row * k + i];
-                let a1 = a[(row + 1) * k + i];
-                let a2 = a[(row + 2) * k + i];
-                let a3 = a[(row + 3) * k + i];
-                let a4 = a[(row + 4) * k + i];
-                let a5 = a[(row + 5) * k + i];
-                let a6 = a[(row + 6) * k + i];
-                let a7 = a[(row + 7) * k + i];
-                let b0 = b[i * n + col];
-                let b1 = b[i * n + col + 1];
-                let b2 = b[i * n + col + 2];
-                let b3 = b[i * n + col + 3];
-                let b4 = b[i * n + col + 4];
-                let b5 = b[i * n + col + 5];
-                let b6 = b[i * n + col + 6];
-                let b7 = b[i * n + col + 7];
+                let a0 = a[8 * row * k + i];
+                let a1 = a[(8 * row + 1) * k + i];
+                let a2 = a[(8 * row + 2) * k + i];
+                let a3 = a[(8 * row + 3) * k + i];
+                let a4 = a[(8 * row + 4) * k + i];
+                let a5 = a[(8 * row + 5) * k + i];
+                let a6 = a[(8 * row + 6) * k + i];
+                let a7 = a[(8 * row + 7) * k + i];
+                let b0 = b[i * n + 8 * col];
+                let b1 = b[i * n + 8 * col + 1];
+                let b2 = b[i * n + 8 * col + 2];
+                let b3 = b[i * n + 8 * col + 3];
+                let b4 = b[i * n + 8 * col + 4];
+                let b5 = b[i * n + 8 * col + 5];
+                let b6 = b[i * n + 8 * col + 6];
+                let b7 = b[i * n + 8 * col + 7];
                 sum00 += a0 * b0;
                 sum01 += a0 * b1;
                 sum02 += a0 * b2;
@@ -257,72 +257,95 @@ pub fn tile_8x8(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32
                 sum76 += a7 * b6;
                 sum77 += a7 * b7;
             }
-            c[(row + 0) * n + col] = sum00;
-            c[(row + 0) * n + col + 1] = sum01;
-            c[(row + 0) * n + col + 2] = sum02;
-            c[(row + 0) * n + col + 3] = sum03;
-            c[(row + 0) * n + col + 4] = sum04;
-            c[(row + 0) * n + col + 5] = sum05;
-            c[(row + 0) * n + col + 6] = sum06;
-            c[(row + 0) * n + col + 7] = sum07;
-            c[(row + 1) * n + col] = sum10;
-            c[(row + 1) * n + col + 1] = sum11;
-            c[(row + 1) * n + col + 2] = sum12;
-            c[(row + 1) * n + col + 3] = sum13;
-            c[(row + 1) * n + col + 4] = sum14;
-            c[(row + 1) * n + col + 5] = sum15;
-            c[(row + 1) * n + col + 6] = sum16;
-            c[(row + 1) * n + col + 7] = sum17;
-            c[(row + 2) * n + col] = sum20;
-            c[(row + 2) * n + col + 1] = sum21;
-            c[(row + 2) * n + col + 2] = sum22;
-            c[(row + 2) * n + col + 3] = sum23;
-            c[(row + 2) * n + col + 4] = sum24;
-            c[(row + 2) * n + col + 5] = sum25;
-            c[(row + 2) * n + col + 6] = sum26;
-            c[(row + 2) * n + col + 7] = sum27;
-            c[(row + 3) * n + col] = sum30;
-            c[(row + 3) * n + col + 1] = sum31;
-            c[(row + 3) * n + col + 2] = sum32;
-            c[(row + 3) * n + col + 3] = sum33;
-            c[(row + 3) * n + col + 4] = sum34;
-            c[(row + 3) * n + col + 5] = sum35;
-            c[(row + 3) * n + col + 6] = sum36;
-            c[(row + 3) * n + col + 7] = sum37;
-            c[(row + 4) * n + col] = sum40;
-            c[(row + 4) * n + col + 1] = sum41;
-            c[(row + 4) * n + col + 2] = sum42;
-            c[(row + 4) * n + col + 3] = sum43;
-            c[(row + 4) * n + col + 4] = sum44;
-            c[(row + 4) * n + col + 5] = sum45;
-            c[(row + 4) * n + col + 6] = sum46;
-            c[(row + 4) * n + col + 7] = sum47;
-            c[(row + 5) * n + col] = sum50;
-            c[(row + 5) * n + col + 1] = sum51;
-            c[(row + 5) * n + col + 2] = sum52;
-            c[(row + 5) * n + col + 3] = sum53;
-            c[(row + 5) * n + col + 4] = sum54;
-            c[(row + 5) * n + col + 5] = sum55;
-            c[(row + 5) * n + col + 6] = sum56;
-            c[(row + 5) * n + col + 7] = sum57;
-            c[(row + 6) * n + col] = sum60;
-            c[(row + 6) * n + col + 1] = sum61;
-            c[(row + 6) * n + col + 2] = sum62;
-            c[(row + 6) * n + col + 3] = sum63;
-            c[(row + 6) * n + col + 4] = sum64;
-            c[(row + 6) * n + col + 5] = sum65;
-            c[(row + 6) * n + col + 6] = sum66;
-            c[(row + 6) * n + col + 7] = sum67;
-            c[(row + 7) * n + col] = sum70;
-            c[(row + 7) * n + col + 1] = sum71;
-            c[(row + 7) * n + col + 2] = sum72;
-            c[(row + 7) * n + col + 3] = sum73;
-            c[(row + 7) * n + col + 4] = sum74;
-            c[(row + 7) * n + col + 5] = sum75;
-            c[(row + 7) * n + col + 6] = sum76;
-            c[(row + 7) * n + col + 7] = sum77;
+            c[(8 * row + 0) * n + 8 * col] = sum00;
+            c[(8 * row + 0) * n + 8 * col + 1] = sum01;
+            c[(8 * row + 0) * n + 8 * col + 2] = sum02;
+            c[(8 * row + 0) * n + 8 * col + 3] = sum03;
+            c[(8 * row + 0) * n + 8 * col + 4] = sum04;
+            c[(8 * row + 0) * n + 8 * col + 5] = sum05;
+            c[(8 * row + 0) * n + 8 * col + 6] = sum06;
+            c[(8 * row + 0) * n + 8 * col + 7] = sum07;
+            c[(8 * row + 1) * n + 8 * col] = sum10;
+            c[(8 * row + 1) * n + 8 * col + 1] = sum11;
+            c[(8 * row + 1) * n + 8 * col + 2] = sum12;
+            c[(8 * row + 1) * n + 8 * col + 3] = sum13;
+            c[(8 * row + 1) * n + 8 * col + 4] = sum14;
+            c[(8 * row + 1) * n + 8 * col + 5] = sum15;
+            c[(8 * row + 1) * n + 8 * col + 6] = sum16;
+            c[(8 * row + 1) * n + 8 * col + 7] = sum17;
+            c[(8 * row + 2) * n + 8 * col] = sum20;
+            c[(8 * row + 2) * n + 8 * col + 1] = sum21;
+            c[(8 * row + 2) * n + 8 * col + 2] = sum22;
+            c[(8 * row + 2) * n + 8 * col + 3] = sum23;
+            c[(8 * row + 2) * n + 8 * col + 4] = sum24;
+            c[(8 * row + 2) * n + 8 * col + 5] = sum25;
+            c[(8 * row + 2) * n + 8 * col + 6] = sum26;
+            c[(8 * row + 2) * n + 8 * col + 7] = sum27;
+            c[(8 * row + 3) * n + 8 * col] = sum30;
+            c[(8 * row + 3) * n + 8 * col + 1] = sum31;
+            c[(8 * row + 3) * n + 8 * col + 2] = sum32;
+            c[(8 * row + 3) * n + 8 * col + 3] = sum33;
+            c[(8 * row + 3) * n + 8 * col + 4] = sum34;
+            c[(8 * row + 3) * n + 8 * col + 5] = sum35;
+            c[(8 * row + 3) * n + 8 * col + 6] = sum36;
+            c[(8 * row + 3) * n + 8 * col + 7] = sum37;
+            c[(8 * row + 4) * n + 8 * col] = sum40;
+            c[(8 * row + 4) * n + 8 * col + 1] = sum41;
+            c[(8 * row + 4) * n + 8 * col + 2] = sum42;
+            c[(8 * row + 4) * n + 8 * col + 3] = sum43;
+            c[(8 * row + 4) * n + 8 * col + 4] = sum44;
+            c[(8 * row + 4) * n + 8 * col + 5] = sum45;
+            c[(8 * row + 4) * n + 8 * col + 6] = sum46;
+            c[(8 * row + 4) * n + 8 * col + 7] = sum47;
+            c[(8 * row + 5) * n + 8 * col] = sum50;
+            c[(8 * row + 5) * n + 8 * col + 1] = sum51;
+            c[(8 * row + 5) * n + 8 * col + 2] = sum52;
+            c[(8 * row + 5) * n + 8 * col + 3] = sum53;
+            c[(8 * row + 5) * n + 8 * col + 4] = sum54;
+            c[(8 * row + 5) * n + 8 * col + 5] = sum55;
+            c[(8 * row + 5) * n + 8 * col + 6] = sum56;
+            c[(8 * row + 5) * n + 8 * col + 7] = sum57;
+            c[(8 * row + 6) * n + 8 * col] = sum60;
+            c[(8 * row + 6) * n + 8 * col + 1] = sum61;
+            c[(8 * row + 6) * n + 8 * col + 2] = sum62;
+            c[(8 * row + 6) * n + 8 * col + 3] = sum63;
+            c[(8 * row + 6) * n + 8 * col + 4] = sum64;
+            c[(8 * row + 6) * n + 8 * col + 5] = sum65;
+            c[(8 * row + 6) * n + 8 * col + 6] = sum66;
+            c[(8 * row + 6) * n + 8 * col + 7] = sum67;
+            c[(8 * row + 7) * n + 8 * col] = sum70;
+            c[(8 * row + 7) * n + 8 * col + 1] = sum71;
+            c[(8 * row + 7) * n + 8 * col + 2] = sum72;
+            c[(8 * row + 7) * n + 8 * col + 3] = sum73;
+            c[(8 * row + 7) * n + 8 * col + 4] = sum74;
+            c[(8 * row + 7) * n + 8 * col + 5] = sum75;
+            c[(8 * row + 7) * n + 8 * col + 6] = sum76;
+            c[(8 * row + 7) * n + 8 * col + 7] = sum77;
         }
     }
+}
+
+extern "C" {
+    fn c_tile_4x4(m: usize, k: usize, n: usize, a: *const f32, b: *const f32, c: *mut f32);
+    fn c_packed_tile_4x4(m: usize, k: usize, n: usize, a: *const f32, b: *const f32, c: *mut f32);
+    fn c_tile_8x8(m: usize, k: usize, n: usize, a: *const f32, b: *const f32, c: *mut f32);
+    fn c_packed_tile_8x8(m: usize, k: usize, n: usize, a: *const f32, b: *const f32, c: *mut f32);
+}
+
+pub fn ctile_4x4(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) {
+    unsafe { c_tile_4x4(m, k, n, a.as_ptr(), b.as_ptr(), c.as_mut_ptr()) }
+}
+
+pub fn cpacked_tile_4x4(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) {
+    unsafe { c_packed_tile_4x4(m, k, n, a.as_ptr(), b.as_ptr(), c.as_mut_ptr()) }
+}
+
+pub fn ctile_8x8(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) {
+    unsafe { c_tile_8x8(m, k, n, a.as_ptr(), b.as_ptr(), c.as_mut_ptr()) }
+}
+
+pub fn cpacked_tile_8x8(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) {
+    unsafe { c_packed_tile_8x8(m, k, n, a.as_ptr(), b.as_ptr(), c.as_mut_ptr()) }
 }
 
 pub fn matrixmultiply(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) {
@@ -382,7 +405,7 @@ pub fn tract(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) 
 
         let a = Tensor::from_shape(&[m, k], a).unwrap();
         let b = Tensor::from_shape(&[k, n], b).unwrap();
-        let mut tc = Tensor::uninitialized_dt(f32::datum_type(), &[m,n]).unwrap();
+        let mut tc = Tensor::uninitialized_dt(f32::datum_type(), &[m, n]).unwrap();
 
         let mut pa = Tensor::uninitialized_aligned_dt(
             DatumType::F32,
