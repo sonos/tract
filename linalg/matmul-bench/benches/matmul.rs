@@ -26,7 +26,11 @@ macro_rules! b {
 b!(naive);
 b!(tile_2x2);
 b!(tile_4x4);
+b!(ctile_4x4);
+b!(cpacked_tile_4x4);
 b!(tile_8x8);
+b!(ctile_8x8);
+b!(cpacked_tile_8x8);
 b!(matrixmultiply);
 b!(cblas);
 b!(tract);
@@ -89,7 +93,11 @@ fn matmul(c: &mut Criterion, m: usize, k: usize, n: usize) {
     naive(&mut c, m, k, n);
     tile_2x2(&mut c, m, k, n);
     tile_4x4(&mut c, m, k, n);
+    ctile_4x4(&mut c, m, k, n);
+    cpacked_tile_4x4(&mut c, m, k, n);
     tile_8x8(&mut c, m, k, n);
+    ctile_8x8(&mut c, m, k, n);
+    cpacked_tile_8x8(&mut c, m, k, n);
     matrixmultiply(&mut c, m, k, n);
     cblas(&mut c, m, k, n);
     tract(&mut c, m, k, n);
