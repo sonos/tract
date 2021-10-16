@@ -26,6 +26,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("GatherND", gather_nd);
     reg.insert("NonZero", |_, _| Ok((Box::new(nonzero::NonZero::non_zero()), vec![])));
     reg.insert("OneHot", one_hot::one_hot);
+    reg.insert("Range", |_, _| Ok((Box::new(array::Range::default()), vec![])));
     reg.insert("Pad", pad::pad);
     reg.insert("Reshape", |_, _| Ok((expand(array::Reshape::default()), vec![])));
     reg.insert("Scatter", scatter_elements);
@@ -138,4 +139,3 @@ pub fn transpose(
     let perm = node.get_attr_opt_vec("perm")?;
     Ok((expand(array::PermuteAxes::new(perm.map(|t| t.into()))), vec![]))
 }
-

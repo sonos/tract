@@ -11,7 +11,6 @@ mod gather_nd;
 mod gather_v2;
 mod pack;
 mod pad;
-mod range;
 mod squeeze;
 mod transpose;
 
@@ -23,7 +22,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("GatherV2", gather_v2::gather_v2);
     reg.insert("Pack", pack::pack);
     reg.insert("Pad", pad::pad);
-    reg.insert("Range", range::range);
+    reg.insert("Range", | _, _ | Ok(Box::new(tract_hir::ops::array::Range::default())));
     reg.insert("Reshape", |_, _| Ok(expand(tract_hir::ops::array::Reshape::new())));
     reg.insert("Shape", |_, _| Ok(expand(tract_hir::ops::array::Shape::new(DatumType::I32))));
     reg.insert("Slice", slice);
