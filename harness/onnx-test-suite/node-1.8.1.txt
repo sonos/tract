@@ -401,6 +401,7 @@ test_qlinearconv                                                                
 test_qlinearmatmul_2D                                                                
 test_qlinearmatmul_3D                                                                
 test_quantizelinear                                                                 input:x not-nnef
+test_range_float_type_positive_delta not-nnef not-typable
 test_reciprocal
 test_reciprocal_example
 test_reduce_l1_default_axes_keepdims_example
