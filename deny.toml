@@ -20,7 +20,8 @@ vulnerability = "deny"
 unmaintained = "warn"
 yanked = "deny"
 ignore = [
-    "RUSTSEC-2020-0071" # this could only impact use through our usage of liquid, and we are not using time related liquid helpers. (and only use liquid templates at build-time anyway)
+    "RUSTSEC-2020-0071", # this could only impact use through our usage of liquid, and we are not using time related liquid helpers. (and only use liquid templates at build-time anyway)
+    "RUSTSEC-2020-0159"
 ]
 
 [bans]
