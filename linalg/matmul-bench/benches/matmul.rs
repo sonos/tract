@@ -24,7 +24,9 @@ macro_rules! b {
 }
 
 b!(naive);
+b!(ctile_1x1);
 b!(tile_2x2);
+b!(ctile_2x2);
 b!(tile_4x4);
 b!(ctile_4x4);
 b!(cpacked_tile_4x4);
@@ -62,10 +64,10 @@ pub fn tract_unfair(crit: &mut BenchmarkGroup<WallTime>, m: usize, k: usize, n: 
                 mmm.b_pack(k).alignment(),
             )
             .unwrap();
+            let mut scratch = mmm.allocate_scratch_space();
+
             mmm.a_pack(k).pack(&mut pa.view_mut(), &a.view(), 1, 0);
             mmm.b_pack(k).pack(&mut pb.view_mut(), &b.view(), 0, 1);
-
-            let mut scratch = mmm.allocate_scratch_space();
 
             be.iter(|| {
                 mmm.run_with_scratch_space(
@@ -91,7 +93,9 @@ fn matmul(c: &mut Criterion, m: usize, k: usize, n: usize) {
     let mut c = c.benchmark_group(format!("{}x{}x{}", m, k, n));
     c.throughput(Throughput::Elements((m * k * n) as _));
     naive(&mut c, m, k, n);
+    ctile_1x1(&mut c, m, k, n);
     tile_2x2(&mut c, m, k, n);
+    ctile_2x2(&mut c, m, k, n);
     tile_4x4(&mut c, m, k, n);
     ctile_4x4(&mut c, m, k, n);
     cpacked_tile_4x4(&mut c, m, k, n);

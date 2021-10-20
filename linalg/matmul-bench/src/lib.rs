@@ -326,10 +326,20 @@ pub fn tile_8x8(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32
 }
 
 extern "C" {
+    fn c_tile_1x1(m: usize, k: usize, n: usize, a: *const f32, b: *const f32, c: *mut f32);
+    fn c_tile_2x2(m: usize, k: usize, n: usize, a: *const f32, b: *const f32, c: *mut f32);
     fn c_tile_4x4(m: usize, k: usize, n: usize, a: *const f32, b: *const f32, c: *mut f32);
     fn c_packed_tile_4x4(m: usize, k: usize, n: usize, a: *const f32, b: *const f32, c: *mut f32);
     fn c_tile_8x8(m: usize, k: usize, n: usize, a: *const f32, b: *const f32, c: *mut f32);
     fn c_packed_tile_8x8(m: usize, k: usize, n: usize, a: *const f32, b: *const f32, c: *mut f32);
+}
+
+pub fn ctile_1x1(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) {
+    unsafe { c_tile_1x1(m, k, n, a.as_ptr(), b.as_ptr(), c.as_mut_ptr()) }
+}
+
+pub fn ctile_2x2(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) {
+    unsafe { c_tile_2x2(m, k, n, a.as_ptr(), b.as_ptr(), c.as_mut_ptr()) }
 }
 
 pub fn ctile_4x4(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) {
@@ -386,7 +396,7 @@ pub fn cblas(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) 
             &b,
             n as _,
             0.0,
-            &mut c,
+            c,
             n as _,
         )
     }
