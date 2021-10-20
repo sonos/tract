@@ -21,14 +21,14 @@ void c_tile_4x4(size_t m, size_t k, size_t n, float *a, float *b, float *c) {
             float  sum32 = 0.0;
             float  sum33 = 0.0;
             for(size_t i = 0; i < k ; i++) {
-                float a0 = a[row * k + i];
-                float a1 = a[(row + 1) * k + i];
-                float a2 = a[(row + 2) * k + i];
-                float a3 = a[(row + 3) * k + i];
-                float b0 = b[i * n + col];
-                float b1 = b[i * n + col + 1];
-                float b2 = b[i * n + col + 2];
-                float b3 = b[i * n + col + 3];
+                float a0 = a[4 * row * k + i];
+                float a1 = a[(4 * row + 1) * k + i];
+                float a2 = a[(4 * row + 2) * k + i];
+                float a3 = a[(4 * row + 3) * k + i];
+                float b0 = b[i * n + 4 * col];
+                float b1 = b[i * n + 4 * col + 1];
+                float b2 = b[i * n + 4 * col + 2];
+                float b3 = b[i * n + 4 * col + 3];
                 sum00 += a0 * b0;
                 sum01 += a0 * b1;
                 sum02 += a0 * b2;
@@ -46,22 +46,22 @@ void c_tile_4x4(size_t m, size_t k, size_t n, float *a, float *b, float *c) {
                 sum32 += a3 * b2;
                 sum33 += a3 * b3;
             }
-            c[(row + 0) * n + col] = sum00;
-            c[(row + 0) * n + col + 1] = sum01;
-            c[(row + 0) * n + col + 2] = sum02;
-            c[(row + 0) * n + col + 3] = sum03;
-            c[(row + 1) * n + col] = sum10;
-            c[(row + 1) * n + col + 1] = sum11;
-            c[(row + 1) * n + col + 2] = sum12;
-            c[(row + 1) * n + col + 3] = sum13;
-            c[(row + 2) * n + col] = sum20;
-            c[(row + 2) * n + col + 1] = sum21;
-            c[(row + 2) * n + col + 2] = sum22;
-            c[(row + 2) * n + col + 3] = sum23;
-            c[(row + 3) * n + col] = sum30;
-            c[(row + 3) * n + col + 1] = sum31;
-            c[(row + 3) * n + col + 2] = sum32;
-            c[(row + 3) * n + col + 3] = sum33;
+            c[(4 * row + 0) * n + 4 * col] = sum00;
+            c[(4 * row + 0) * n + 4 * col + 1] = sum01;
+            c[(4 * row + 0) * n + 4 * col + 2] = sum02;
+            c[(4 * row + 0) * n + 4 * col + 3] = sum03;
+            c[(4 * row + 1) * n + 4 * col] = sum10;
+            c[(4 * row + 1) * n + 4 * col + 1] = sum11;
+            c[(4 * row + 1) * n + 4 * col + 2] = sum12;
+            c[(4 * row + 1) * n + 4 * col + 3] = sum13;
+            c[(4 * row + 2) * n + 4 * col] = sum20;
+            c[(4 * row + 2) * n + 4 * col + 1] = sum21;
+            c[(4 * row + 2) * n + 4 * col + 2] = sum22;
+            c[(4 * row + 2) * n + 4 * col + 3] = sum23;
+            c[(4 * row + 3) * n + 4 * col] = sum30;
+            c[(4 * row + 3) * n + 4 * col + 1] = sum31;
+            c[(4 * row + 3) * n + 4 * col + 2] = sum32;
+            c[(4 * row + 3) * n + 4 * col + 3] = sum33;
         }
     }
 }
