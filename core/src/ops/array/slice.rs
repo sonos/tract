@@ -67,7 +67,11 @@ impl TypedOp for Slice {
         Ok(tvec!(fact))
     }
 
-    fn invariants(&self, inputs: &[&TypedFact], _outputs: &[&TypedFact]) -> TractResult<Invariants> {
+    fn invariants(
+        &self,
+        inputs: &[&TypedFact],
+        _outputs: &[&TypedFact],
+    ) -> TractResult<Invariants> {
         let axes = (0..inputs[0].rank())
             .filter(|&ax| self.axis != ax)
             .map(|axis| AxisInfo::simple(axis))
@@ -114,10 +118,12 @@ impl TypedOp for Slice {
             return Ok(None);
         };
         let mut patch = TypedModelPatch::default();
+        let suffix = format!("axis{}_{}_{}", self.axis, start, end);
         if let Some(wire) = prec.op().as_typed().unwrap().slice_output(
             model,
             prec,
             &mut patch,
+            &suffix,
             node.inputs[0].slot,
             self.axis,
             start,
@@ -142,6 +148,7 @@ impl TypedOp for Slice {
         model: &TypedModel,
         node: &TypedNode,
         patch: &mut TypedModelPatch,
+        suffix: &str,
         _output_slot: usize,
         axis: usize,
         start: usize,
@@ -153,8 +160,10 @@ impl TypedOp for Slice {
                 .op()
                 .as_typed()
                 .unwrap()
-                .slice_output(model, &prec, patch, node.inputs[0].slot, axis, start, end)?
-                .map(|w| Ok(patch.wire_node(&node.name, self.clone(), &[w])?[0]))
+                .slice_output(model, &prec, patch, suffix, node.inputs[0].slot, axis, start, end)?
+                .map(|w| {
+                    Ok(patch.wire_node(format!("{}.{}", node.name, suffix), self.clone(), &[w])?[0])
+                })
                 .transpose();
         }
         Ok(None)
@@ -168,11 +177,8 @@ impl TypedOp for Slice {
         mapping: &HashMap<OutletId, OutletId>,
         values: &SymbolValues,
     ) -> TractResult<TVec<OutletId>> {
-        let op = Slice {
-            axis: self.axis,
-            start: self.start.eval(values),
-            end: self.end.eval(values),
-        };
+        let op =
+            Slice { axis: self.axis, start: self.start.eval(values), end: self.end.eval(values) };
         let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>();
         target.wire_node(&node.name, op, &inputs)
     }

@@ -14,33 +14,33 @@ fragment scan_body_1(
     four_parts_W_k_256_384_split_m_256__512_a: tensor<scalar>,
     four_parts_W_k_256_384_split_m_512__768_a: tensor<scalar>,
     four_parts_W_k_256_384_split_m_768__1024_a: tensor<scalar>,
-    four_parts_sliced_0_256_a: tensor<scalar>,
-    four_parts_sliced_256_512_a: tensor<scalar>,
-    four_parts_sliced_512_768_a: tensor<scalar>,
-    four_parts_sliced_768_1024_a: tensor<scalar>,
+    four_parts_axis1_0_256_a: tensor<scalar>,
+    four_parts_axis1_256_512_a: tensor<scalar>,
+    four_parts_axis1_512_768_a: tensor<scalar>,
+    four_parts_axis1_768_1024_a: tensor<scalar>,
     h_new_W_split_m_0__128_a: tensor<scalar>,
-    h_new_sliced_0_128_a: tensor<scalar>,
+    h_new_axis1_0_128_a: tensor<scalar>,
     peephole0_mul_a: tensor<scalar>,
     peephole1_mul_a: tensor<scalar>,
     peephole2_mul_a: tensor<scalar>
-) -> (c_new: tensor<scalar>, h_new_sliced_0_128: tensor<scalar>, h_new_W_split_m_0__128: tensor<scalar>, m: tensor<scalar>)
+) -> (c_new: tensor<scalar>, h_new_axis1_0_128: tensor<scalar>, h_new_W_split_m_0__128: tensor<scalar>, m: tensor<scalar>)
 {
   peephole0_mul = mul(peephole0_mul_a, c);
   four_parts_W_k_256_384_split_m_0__256 = matmul(r, four_parts_W_k_256_384_split_m_0__256_a, transposeA = false, transposeB = false);
   four_parts_W_k_add_0_slice_1_0__256 = add(c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_m_0__256, four_parts_W_k_256_384_split_m_0__256);
-  four_parts_sliced_0_256 = add(four_parts_sliced_0_256_a, four_parts_W_k_add_0_slice_1_0__256);
-  peephole0_output = add(peephole0_mul, four_parts_sliced_0_256);
+  four_parts_axis1_0_256 = add(four_parts_axis1_0_256_a, four_parts_W_k_add_0_slice_1_0__256);
+  peephole0_output = add(peephole0_mul, four_parts_axis1_0_256);
   peephole0_output_nolin = sigmoid(peephole0_output);
   four_parts_W_k_256_384_split_m_512__768 = matmul(r, four_parts_W_k_256_384_split_m_512__768_a, transposeA = false, transposeB = false);
   four_parts_W_k_add_0_slice_1_512__768 = add(c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_m_512__768, four_parts_W_k_256_384_split_m_512__768);
-  four_parts_sliced_512_768 = add(four_parts_sliced_512_768_a, four_parts_W_k_add_0_slice_1_512__768);
-  four_parts_j_nolin = tanh(four_parts_sliced_512_768);
+  four_parts_axis1_512_768 = add(four_parts_axis1_512_768_a, four_parts_W_k_add_0_slice_1_512__768);
+  four_parts_j_nolin = tanh(four_parts_axis1_512_768);
   c_update = mul(peephole0_output_nolin, four_parts_j_nolin);
   peephole1_mul = mul(peephole1_mul_a, c);
   four_parts_W_k_256_384_split_m_256__512 = matmul(r, four_parts_W_k_256_384_split_m_256__512_a, transposeA = false, transposeB = false);
   four_parts_W_k_add_0_slice_1_256__512 = add(c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_m_256__512, four_parts_W_k_256_384_split_m_256__512);
-  four_parts_sliced_256_512 = add(four_parts_sliced_256_512_a, four_parts_W_k_add_0_slice_1_256__512);
-  peephole1_output = add(peephole1_mul, four_parts_sliced_256_512);
+  four_parts_axis1_256_512 = add(four_parts_axis1_256_512_a, four_parts_W_k_add_0_slice_1_256__512);
+  peephole1_output = add(peephole1_mul, four_parts_axis1_256_512);
   peephole1_output_nolin = sigmoid(peephole1_output);
   c_prop = mul(peephole1_output_nolin, c);
   c_new = add(c_update, c_prop);
@@ -48,12 +48,12 @@ fragment scan_body_1(
   peephole2_mul = mul(peephole2_mul_a, c_new);
   four_parts_W_k_256_384_split_m_768__1024 = matmul(r, four_parts_W_k_256_384_split_m_768__1024_a, transposeA = false, transposeB = false);
   four_parts_W_k_add_0_slice_1_768__1024 = add(c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_m_768__1024, four_parts_W_k_256_384_split_m_768__1024);
-  four_parts_sliced_768_1024 = add(four_parts_sliced_768_1024_a, four_parts_W_k_add_0_slice_1_768__1024);
-  peephole2_output = add(peephole2_mul, four_parts_sliced_768_1024);
+  four_parts_axis1_768_1024 = add(four_parts_axis1_768_1024_a, four_parts_W_k_add_0_slice_1_768__1024);
+  peephole2_output = add(peephole2_mul, four_parts_axis1_768_1024);
   peephole2_output_nolin = sigmoid(peephole2_output);
   m = mul(tanh_c, peephole2_output_nolin);
   h_new_W_split_m_0__128 = matmul(m, h_new_W_split_m_0__128_a, transposeA = false, transposeB = false);
-  h_new_sliced_0_128 = add(h_new_sliced_0_128_a, h_new_W_split_m_0__128);
+  h_new_axis1_0_128 = add(h_new_axis1_0_128_a, h_new_W_split_m_0__128);
 }
 
 fragment scan_body_2(
@@ -67,33 +67,33 @@ fragment scan_body_2(
     four_parts_W_k_256_384_split_m_256__512_a: tensor<scalar>,
     four_parts_W_k_256_384_split_m_512__768_a: tensor<scalar>,
     four_parts_W_k_256_384_split_m_768__1024_a: tensor<scalar>,
-    four_parts_sliced_0_256_a: tensor<scalar>,
-    four_parts_sliced_256_512_a: tensor<scalar>,
-    four_parts_sliced_512_768_a: tensor<scalar>,
-    four_parts_sliced_768_1024_a: tensor<scalar>,
+    four_parts_axis1_0_256_a: tensor<scalar>,
+    four_parts_axis1_256_512_a: tensor<scalar>,
+    four_parts_axis1_512_768_a: tensor<scalar>,
+    four_parts_axis1_768_1024_a: tensor<scalar>,
     h_new_W_split_m_0__128_a: tensor<scalar>,
-    h_new_sliced_0_128_a: tensor<scalar>,
+    h_new_axis1_0_128_a: tensor<scalar>,
     peephole0_mul_a: tensor<scalar>,
     peephole1_mul_a: tensor<scalar>,
     peephole2_mul_a: tensor<scalar>
-) -> (c_new: tensor<scalar>, h_new_sliced_0_128: tensor<scalar>, h_new_W_split_m_0__128: tensor<scalar>, m: tensor<scalar>)
+) -> (c_new: tensor<scalar>, h_new_axis1_0_128: tensor<scalar>, h_new_W_split_m_0__128: tensor<scalar>, m: tensor<scalar>)
 {
   peephole0_mul = mul(peephole0_mul_a, c);
   four_parts_W_k_256_384_split_m_0__256 = matmul(r, four_parts_W_k_256_384_split_m_0__256_a, transposeA = false, transposeB = false);
   four_parts_W_k_add_0_slice_1_0__256 = add(c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_m_0__256, four_parts_W_k_256_384_split_m_0__256);
-  four_parts_sliced_0_256 = add(four_parts_sliced_0_256_a, four_parts_W_k_add_0_slice_1_0__256);
-  peephole0_output = add(peephole0_mul, four_parts_sliced_0_256);
+  four_parts_axis1_0_256 = add(four_parts_axis1_0_256_a, four_parts_W_k_add_0_slice_1_0__256);
+  peephole0_output = add(peephole0_mul, four_parts_axis1_0_256);
   peephole0_output_nolin = sigmoid(peephole0_output);
   four_parts_W_k_256_384_split_m_512__768 = matmul(r, four_parts_W_k_256_384_split_m_512__768_a, transposeA = false, transposeB = false);
   four_parts_W_k_add_0_slice_1_512__768 = add(c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_m_512__768, four_parts_W_k_256_384_split_m_512__768);
-  four_parts_sliced_512_768 = add(four_parts_sliced_512_768_a, four_parts_W_k_add_0_slice_1_512__768);
-  four_parts_j_nolin = tanh(four_parts_sliced_512_768);
+  four_parts_axis1_512_768 = add(four_parts_axis1_512_768_a, four_parts_W_k_add_0_slice_1_512__768);
+  four_parts_j_nolin = tanh(four_parts_axis1_512_768);
   c_update = mul(peephole0_output_nolin, four_parts_j_nolin);
   peephole1_mul = mul(peephole1_mul_a, c);
   four_parts_W_k_256_384_split_m_256__512 = matmul(r, four_parts_W_k_256_384_split_m_256__512_a, transposeA = false, transposeB = false);
   four_parts_W_k_add_0_slice_1_256__512 = add(c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_m_256__512, four_parts_W_k_256_384_split_m_256__512);
-  four_parts_sliced_256_512 = add(four_parts_sliced_256_512_a, four_parts_W_k_add_0_slice_1_256__512);
-  peephole1_output = add(peephole1_mul, four_parts_sliced_256_512);
+  four_parts_axis1_256_512 = add(four_parts_axis1_256_512_a, four_parts_W_k_add_0_slice_1_256__512);
+  peephole1_output = add(peephole1_mul, four_parts_axis1_256_512);
   peephole1_output_nolin = sigmoid(peephole1_output);
   c_prop = mul(peephole1_output_nolin, c);
   c_new = add(c_update, c_prop);
@@ -101,12 +101,12 @@ fragment scan_body_2(
   peephole2_mul = mul(peephole2_mul_a, c_new);
   four_parts_W_k_256_384_split_m_768__1024 = matmul(r, four_parts_W_k_256_384_split_m_768__1024_a, transposeA = false, transposeB = false);
   four_parts_W_k_add_0_slice_1_768__1024 = add(c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_m_768__1024, four_parts_W_k_256_384_split_m_768__1024);
-  four_parts_sliced_768_1024 = add(four_parts_sliced_768_1024_a, four_parts_W_k_add_0_slice_1_768__1024);
-  peephole2_output = add(peephole2_mul, four_parts_sliced_768_1024);
+  four_parts_axis1_768_1024 = add(four_parts_axis1_768_1024_a, four_parts_W_k_add_0_slice_1_768__1024);
+  peephole2_output = add(peephole2_mul, four_parts_axis1_768_1024);
   peephole2_output_nolin = sigmoid(peephole2_output);
   m = mul(tanh_c, peephole2_output_nolin);
   h_new_W_split_m_0__128 = matmul(m, h_new_W_split_m_0__128_a, transposeA = false, transposeB = false);
-  h_new_sliced_0_128 = add(h_new_sliced_0_128_a, h_new_W_split_m_0__128);
+  h_new_axis1_0_128 = add(h_new_axis1_0_128_a, h_new_W_split_m_0__128);
 }
 
 fragment tract_conv_hwc_1d(
@@ -181,16 +181,16 @@ graph network( input ) -> ( output_affine_output ) {
   fastlstm1_four_parts_W_k_256_384_split_m_256__512_a = variable<scalar>(label = "fastlstm1.four_parts.W.k-256-384.split-m.256..512_a", shape = [128, 256]);
   fastlstm1_four_parts_W_k_256_384_split_m_512__768_a = variable<scalar>(label = "fastlstm1.four_parts.W.k-256-384.split-m.512..768_a", shape = [128, 256]);
   fastlstm1_four_parts_W_k_256_384_split_m_768__1024_a = variable<scalar>(label = "fastlstm1.four_parts.W.k-256-384.split-m.768..1024_a", shape = [128, 256]);
-  fastlstm1_four_parts_sliced_0_256_a = variable<scalar>(label = "fastlstm1.four_parts.sliced-0-256-a", shape = [1, 256]);
-  fastlstm1_four_parts_sliced_256_512_a = variable<scalar>(label = "fastlstm1.four_parts.sliced-256-512-a", shape = [1, 256]);
-  fastlstm1_four_parts_sliced_512_768_a = variable<scalar>(label = "fastlstm1.four_parts.sliced-512-768-a", shape = [1, 256]);
-  fastlstm1_four_parts_sliced_768_1024_a = variable<scalar>(label = "fastlstm1.four_parts.sliced-768-1024-a", shape = [1, 256]);
+  fastlstm1_four_parts_axis1_0_256_a = variable<scalar>(label = "fastlstm1.four_parts.axis1_0_256-a", shape = [1, 256]);
+  fastlstm1_four_parts_axis1_256_512_a = variable<scalar>(label = "fastlstm1.four_parts.axis1_256_512-a", shape = [1, 256]);
+  fastlstm1_four_parts_axis1_512_768_a = variable<scalar>(label = "fastlstm1.four_parts.axis1_512_768-a", shape = [1, 256]);
+  fastlstm1_four_parts_axis1_768_1024_a = variable<scalar>(label = "fastlstm1.four_parts.axis1_768_1024-a", shape = [1, 256]);
   fastlstm1_h_new_W_split_m_0__128_a = variable<scalar>(label = "fastlstm1.h_new.W.split-m.0..128_a", shape = [256, 128]);
-  fastlstm1_h_new_sliced_0_128_a = variable<scalar>(label = "fastlstm1.h_new.sliced-0-128-a", shape = [1, 128]);
+  fastlstm1_h_new_axis1_0_128_a = variable<scalar>(label = "fastlstm1.h_new.axis1_0_128-a", shape = [1, 128]);
   fastlstm1_peephole0_mul_a = variable<scalar>(label = "fastlstm1.peephole0.mul-a", shape = [1, 256]);
   fastlstm1_peephole1_mul_a = variable<scalar>(label = "fastlstm1.peephole1.mul-a", shape = [1, 256]);
   fastlstm1_peephole2_mul_a = variable<scalar>(label = "fastlstm1.peephole2.mul-a", shape = [1, 256]);
-  ( fastlstm1_c_final, fastlstm1_c_final_1 ) = tract_core_scan(body = "scan_body_1", scan = [("c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_m_0__256", fastlstm1_c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_m_0__256, 0, 1), ("c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_m_512__768", fastlstm1_c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_m_512__768, 0, 1), ("c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_m_256__512", fastlstm1_c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_m_256__512, 0, 1), ("c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_m_768__1024", fastlstm1_c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_m_768__1024, 0, 1)], full = [("four_parts_W_k_256_384_split_m_0__256_a", fastlstm1_four_parts_W_k_256_384_split_m_0__256_a), ("four_parts_W_k_256_384_split_m_256__512_a", fastlstm1_four_parts_W_k_256_384_split_m_256__512_a), ("four_parts_W_k_256_384_split_m_512__768_a", fastlstm1_four_parts_W_k_256_384_split_m_512__768_a), ("four_parts_W_k_256_384_split_m_768__1024_a", fastlstm1_four_parts_W_k_256_384_split_m_768__1024_a), ("four_parts_sliced_0_256_a", fastlstm1_four_parts_sliced_0_256_a), ("four_parts_sliced_256_512_a", fastlstm1_four_parts_sliced_256_512_a), ("four_parts_sliced_512_768_a", fastlstm1_four_parts_sliced_512_768_a), ("four_parts_sliced_768_1024_a", fastlstm1_four_parts_sliced_768_1024_a), ("h_new_W_split_m_0__128_a", fastlstm1_h_new_W_split_m_0__128_a), ("h_new_sliced_0_128_a", fastlstm1_h_new_sliced_0_128_a), ("peephole0_mul_a", fastlstm1_peephole0_mul_a), ("peephole1_mul_a", fastlstm1_peephole1_mul_a), ("peephole2_mul_a", fastlstm1_peephole2_mul_a)], state = [("c", fastlstm1_c_final_state_init_0, "c_new"), ("r", fastlstm1_c_final_state_init_1, "h_new_sliced_0_128")], output = [("h_new_W_split_m_0__128", "full", 0), ("m", "full", 0)], skip = 2);
+  ( fastlstm1_c_final, fastlstm1_c_final_1 ) = tract_core_scan(body = "scan_body_1", scan = [("c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_m_0__256", fastlstm1_c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_m_0__256, 0, 1), ("c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_m_512__768", fastlstm1_c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_m_512__768, 0, 1), ("c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_m_256__512", fastlstm1_c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_m_256__512, 0, 1), ("c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_m_768__1024", fastlstm1_c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_m_768__1024, 0, 1)], full = [("four_parts_W_k_256_384_split_m_0__256_a", fastlstm1_four_parts_W_k_256_384_split_m_0__256_a), ("four_parts_W_k_256_384_split_m_256__512_a", fastlstm1_four_parts_W_k_256_384_split_m_256__512_a), ("four_parts_W_k_256_384_split_m_512__768_a", fastlstm1_four_parts_W_k_256_384_split_m_512__768_a), ("four_parts_W_k_256_384_split_m_768__1024_a", fastlstm1_four_parts_W_k_256_384_split_m_768__1024_a), ("four_parts_axis1_0_256_a", fastlstm1_four_parts_axis1_0_256_a), ("four_parts_axis1_256_512_a", fastlstm1_four_parts_axis1_256_512_a), ("four_parts_axis1_512_768_a", fastlstm1_four_parts_axis1_512_768_a), ("four_parts_axis1_768_1024_a", fastlstm1_four_parts_axis1_768_1024_a), ("h_new_W_split_m_0__128_a", fastlstm1_h_new_W_split_m_0__128_a), ("h_new_axis1_0_128_a", fastlstm1_h_new_axis1_0_128_a), ("peephole0_mul_a", fastlstm1_peephole0_mul_a), ("peephole1_mul_a", fastlstm1_peephole1_mul_a), ("peephole2_mul_a", fastlstm1_peephole2_mul_a)], state = [("c", fastlstm1_c_final_state_init_0, "c_new"), ("r", fastlstm1_c_final_state_init_1, "h_new_axis1_0_128")], output = [("h_new_W_split_m_0__128", "full", 0), ("m", "full", 0)], skip = 2);
   fastlstm1_h_new_W_split_m_128__256_a = variable<scalar>(label = "fastlstm1.h_new.W.split-m.128..256_a", shape = [256, 128]);
   fastlstm1_h_new_W_split_m_128__256 = matmul(fastlstm1_c_final_1, fastlstm1_h_new_W_split_m_128__256_a, transposeA = false, transposeB = false);
   fastlstm1_h_new_W_concat_m_full = concat([fastlstm1_c_final, fastlstm1_h_new_W_split_m_128__256], axis = 1);
@@ -230,16 +230,16 @@ graph network( input ) -> ( output_affine_output ) {
   fastlstm2_four_parts_W_k_256_384_split_m_256__512_a = variable<scalar>(label = "fastlstm2.four_parts.W.k-256-384.split-m.256..512_a", shape = [128, 256]);
   fastlstm2_four_parts_W_k_256_384_split_m_512__768_a = variable<scalar>(label = "fastlstm2.four_parts.W.k-256-384.split-m.512..768_a", shape = [128, 256]);
   fastlstm2_four_parts_W_k_256_384_split_m_768__1024_a = variable<scalar>(label = "fastlstm2.four_parts.W.k-256-384.split-m.768..1024_a", shape = [128, 256]);
-  fastlstm2_four_parts_sliced_0_256_a = variable<scalar>(label = "fastlstm2.four_parts.sliced-0-256-a", shape = [1, 256]);
-  fastlstm2_four_parts_sliced_256_512_a = variable<scalar>(label = "fastlstm2.four_parts.sliced-256-512-a", shape = [1, 256]);
-  fastlstm2_four_parts_sliced_512_768_a = variable<scalar>(label = "fastlstm2.four_parts.sliced-512-768-a", shape = [1, 256]);
-  fastlstm2_four_parts_sliced_768_1024_a = variable<scalar>(label = "fastlstm2.four_parts.sliced-768-1024-a", shape = [1, 256]);
+  fastlstm2_four_parts_axis1_0_256_a = variable<scalar>(label = "fastlstm2.four_parts.axis1_0_256-a", shape = [1, 256]);
+  fastlstm2_four_parts_axis1_256_512_a = variable<scalar>(label = "fastlstm2.four_parts.axis1_256_512-a", shape = [1, 256]);
+  fastlstm2_four_parts_axis1_512_768_a = variable<scalar>(label = "fastlstm2.four_parts.axis1_512_768-a", shape = [1, 256]);
+  fastlstm2_four_parts_axis1_768_1024_a = variable<scalar>(label = "fastlstm2.four_parts.axis1_768_1024-a", shape = [1, 256]);
   fastlstm2_h_new_W_split_m_0__128_a = variable<scalar>(label = "fastlstm2.h_new.W.split-m.0..128_a", shape = [256, 128]);
-  fastlstm2_h_new_sliced_0_128_a = variable<scalar>(label = "fastlstm2.h_new.sliced-0-128-a", shape = [1, 128]);
+  fastlstm2_h_new_axis1_0_128_a = variable<scalar>(label = "fastlstm2.h_new.axis1_0_128-a", shape = [1, 128]);
   fastlstm2_peephole0_mul_a = variable<scalar>(label = "fastlstm2.peephole0.mul-a", shape = [1, 256]);
   fastlstm2_peephole1_mul_a = variable<scalar>(label = "fastlstm2.peephole1.mul-a", shape = [1, 256]);
   fastlstm2_peephole2_mul_a = variable<scalar>(label = "fastlstm2.peephole2.mul-a", shape = [1, 256]);
-  ( fastlstm2_c_final, fastlstm2_c_final_1 ) = tract_core_scan(body = "scan_body_2", scan = [("c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_m_0__256", fastlstm2_c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_m_0__256, 0, 1), ("c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_m_512__768", fastlstm2_c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_m_512__768, 0, 1), ("c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_m_256__512", fastlstm2_c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_m_256__512, 0, 1), ("c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_m_768__1024", fastlstm2_c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_m_768__1024, 0, 1)], full = [("four_parts_W_k_256_384_split_m_0__256_a", fastlstm2_four_parts_W_k_256_384_split_m_0__256_a), ("four_parts_W_k_256_384_split_m_256__512_a", fastlstm2_four_parts_W_k_256_384_split_m_256__512_a), ("four_parts_W_k_256_384_split_m_512__768_a", fastlstm2_four_parts_W_k_256_384_split_m_512__768_a), ("four_parts_W_k_256_384_split_m_768__1024_a", fastlstm2_four_parts_W_k_256_384_split_m_768__1024_a), ("four_parts_sliced_0_256_a", fastlstm2_four_parts_sliced_0_256_a), ("four_parts_sliced_256_512_a", fastlstm2_four_parts_sliced_256_512_a), ("four_parts_sliced_512_768_a", fastlstm2_four_parts_sliced_512_768_a), ("four_parts_sliced_768_1024_a", fastlstm2_four_parts_sliced_768_1024_a), ("h_new_W_split_m_0__128_a", fastlstm2_h_new_W_split_m_0__128_a), ("h_new_sliced_0_128_a", fastlstm2_h_new_sliced_0_128_a), ("peephole0_mul_a", fastlstm2_peephole0_mul_a), ("peephole1_mul_a", fastlstm2_peephole1_mul_a), ("peephole2_mul_a", fastlstm2_peephole2_mul_a)], state = [("c", fastlstm2_c_final_state_init_0, "c_new"), ("r", fastlstm2_c_final_state_init_1, "h_new_sliced_0_128")], output = [("h_new_W_split_m_0__128", "full", 0), ("m", "full", 0)], skip = 6);
+  ( fastlstm2_c_final, fastlstm2_c_final_1 ) = tract_core_scan(body = "scan_body_2", scan = [("c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_m_0__256", fastlstm2_c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_m_0__256, 0, 1), ("c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_m_512__768", fastlstm2_c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_m_512__768, 0, 1), ("c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_m_256__512", fastlstm2_c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_m_256__512, 0, 1), ("c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_m_768__1024", fastlstm2_c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_m_768__1024, 0, 1)], full = [("four_parts_W_k_256_384_split_m_0__256_a", fastlstm2_four_parts_W_k_256_384_split_m_0__256_a), ("four_parts_W_k_256_384_split_m_256__512_a", fastlstm2_four_parts_W_k_256_384_split_m_256__512_a), ("four_parts_W_k_256_384_split_m_512__768_a", fastlstm2_four_parts_W_k_256_384_split_m_512__768_a), ("four_parts_W_k_256_384_split_m_768__1024_a", fastlstm2_four_parts_W_k_256_384_split_m_768__1024_a), ("four_parts_axis1_0_256_a", fastlstm2_four_parts_axis1_0_256_a), ("four_parts_axis1_256_512_a", fastlstm2_four_parts_axis1_256_512_a), ("four_parts_axis1_512_768_a", fastlstm2_four_parts_axis1_512_768_a), ("four_parts_axis1_768_1024_a", fastlstm2_four_parts_axis1_768_1024_a), ("h_new_W_split_m_0__128_a", fastlstm2_h_new_W_split_m_0__128_a), ("h_new_axis1_0_128_a", fastlstm2_h_new_axis1_0_128_a), ("peephole0_mul_a", fastlstm2_peephole0_mul_a), ("peephole1_mul_a", fastlstm2_peephole1_mul_a), ("peephole2_mul_a", fastlstm2_peephole2_mul_a)], state = [("c", fastlstm2_c_final_state_init_0, "c_new"), ("r", fastlstm2_c_final_state_init_1, "h_new_axis1_0_128")], output = [("h_new_W_split_m_0__128", "full", 0), ("m", "full", 0)], skip = 6);
   fastlstm2_h_new_W_split_m_128__256_a = variable<scalar>(label = "fastlstm2.h_new.W.split-m.128..256_a", shape = [256, 128]);
   fastlstm2_h_new_W_split_m_128__256 = matmul(fastlstm2_c_final_1, fastlstm2_h_new_W_split_m_128__256_a, transposeA = false, transposeB = false);
   fastlstm2_h_new_W_concat_m_full = concat([fastlstm2_c_final, fastlstm2_h_new_W_split_m_128__256], axis = 1);

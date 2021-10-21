@@ -225,6 +225,7 @@ impl TypedOp for QMatMulUnary {
         model: &TypedModel,
         node: &TypedNode,
         patch: &mut TypedModelPatch,
+        suffix: &str,
         _output_slot: usize,
         axis: usize,
         start: usize,
@@ -245,7 +246,7 @@ impl TypedOp for QMatMulUnary {
             let wire = patch.tap_model(model, node.inputs[0])?;
             return Ok(Some(
                 patch.wire_node(
-                    format!("{}.sliced-m-{}-{}", node.name, start, end),
+                    format!("{}.{}", node.name, suffix),
                     Self { a, bias, ..self.clone() },
                     &[wire],
                 )?[0],
@@ -982,7 +983,6 @@ mod test {
         }
         .check();
     }
-
 
     #[test]
     fn test_qmmup_u8_u8_u8_4() {
