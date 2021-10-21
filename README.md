@@ -35,14 +35,16 @@ squeezenet, vgg19, zfnet512.
 
 The following operators are implemented and tested.
 
-Abs, Acos, Acosh, Add, And, ArgMax, ArgMin, Asin, Asinh, Atan, Atanh, AveragePool, BatchNormalization, BitShift, Cast, CategoryMapper, Ceil, Clip, Compress, Concat, Constant, ConstantLike, ConstantOfShape, Conv, ConvInteger, ConvTranspose, Cos, Cosh, CumSum, DequantizeLinear, Div, Dropout, DynamicQuantizeLinear, Elu, Equal, Erf, Exp, Expand, EyeLike, Flatten, Floor, GRU, Gather, GatherElements, GatherND, Gemm, GlobalAveragePool, GlobalLpPool, GlobalMaxPool, Greater, GreaterOrEqual, HardSigmoid, Hardmax, Identity, If, InstanceNormalization, IsInf, IsNaN, LRN, LSTM, LeakyRelu, Less, LessOrEqual, Log, LogSoftmax, MatMul, MatMulInteger, Max, MaxPool, Mean, Min, Mod, Mul, Neg, NonZero, Not, OneHot, Or, PRelu, Pad, ParametricSoftplus, Pow, QLinearConv, QLinearMatMul, QuantizeLinear, RNN, Reciprocal, ReduceL1, ReduceL2, ReduceLogSum, ReduceLogSumExp, ReduceMax, ReduceMean, ReduceMin, ReduceProd, ReduceSum, ReduceSumSquare, Relu, Reshape, Resize, Round, Rsqrt, ScaledTanh, Scan, Scatter, ScatterElements, ScatterND, Selu, Shape, Shrink, Sigmoid, Sign, Sin, Sinh, Size, Slice, Softmax, Softplus, Softsign, Split, Sqrt, Squeeze, Sub, Sum, Tan, Tanh, ThresholdedRelu, Tile, Transpose, TreeEnsembleClassifier, Unsqueeze, Where, Xor
+Abs, Acos, Acosh, Add, And, ArgMax, ArgMin, Asin, Asinh, Atan, Atanh, AveragePool, BatchNormalization, BitShift, Cast, CategoryMapper, Ceil, Clip, Compress, Concat, Constant, ConstantLike, ConstantOfShape, Conv, ConvInteger, ConvTranspose, Cos, Cosh, CumSum, DepthToSpace, DequantizeLinear, Div, Dropout, DynamicQuantizeLinear, Elu, Equal, Erf, Exp, Expand, EyeLike, Flatten, Floor, GRU, Gather, GatherElements, GatherND, Gemm, GlobalAveragePool, GlobalLpPool, GlobalMaxPool, Greater, GreaterOrEqual, HardSigmoid, Hardmax, Identity, If, InstanceNormalization, IsInf, IsNaN, LRN, LSTM, LeakyRelu, Less, LessOrEqual, Log, LogSoftmax, MatMul, MatMulInteger, Max, MaxPool, Mean, Min, Mod, Mul, Neg, NonZero, Not, OneHot, Or, PRelu, Pad, ParametricSoftplus, Pow, QLinearConv, QLinearMatMul, QuantizeLinear, RNN, Range, Reciprocal, ReduceL1, ReduceL2, ReduceLogSum, ReduceLogSumExp, ReduceMax, ReduceMean, ReduceMin, ReduceProd, ReduceSum, ReduceSumSquare, Relu, Reshape, Resize, Round, Rsqrt, ScaledTanh, Scan, Scatter, ScatterElements, ScatterND, Selu, Shape, Shrink, Sigmoid, Sign, Sin, Sinh, Size, Slice, Softmax, Softplus, Softsign, SpaceToDepth, Split, Sqrt, Squeeze, Sub, Sum, Tan, Tanh, ThresholdedRelu, Tile, Transpose, TreeEnsembleClassifier, Unsqueeze, Where, Xor
 
 
 We test these operators against Onnx 1.4.1 (operator set 9), Onnx 1.5.0
-(operator set 10), Onnx 1.6.0 (operator set 11), and Onnx 1.7.0 (operator set
-12). Many networks in operator set 8 are also working.
+(operator set 10), Onnx 1.6.0 (operator set 11), Onnx 1.7.0 (operator set
+12), Onnx 1.8.1 (operator set 13), Onnx 1.9.0 (operator set 14), and Onnx
+1.10.1 (operator set 15).
+Many networks in operator set 8 are also working.
 
-### TensorFlow
+### TensorFlow 1.x
 
 Even if `tract` is very far from supporting any arbitrary model, it can run
 Google Inception v3 and Snips wake word models. Missing operators are relatively 
@@ -53,16 +55,9 @@ The following operators are implemented and tested:
 
 Abs, Add, AddN, AddV2, Assign, AvgPool, BatchToSpaceND, BiasAdd, BlockLSTM, Cast, Ceil, ConcatV2, Const, Conv2D, DepthwiseConv2dNative, Div, Enter, Equal, Exit, ExpandDims, FakeQuantWithMinMaxVars, Fill, FloorMod, FusedBatchNorm, GatherNd, GatherV2, Greater, GreaterEqual, Identity, Less, LessEqual, Log, LogicalAnd, LogicalOr, LoopCond, MatMul, Max, MaxPool, Maximum, Mean, Merge, Min, Minimum, Mul, Neg, NoOp, Pack, Pad, Placeholder, Pow, Prod, RandomUniform, RandomUniformInt, Range, RealDiv, Relu, Relu6, Reshape, Rsqrt, Shape, Sigmoid, Slice, Softmax, SpaceToBatchND, Squeeze, StridedSlice, Sub, Sum, Switch, Tanh, Tile, Transpose, VariableV2
 
-### TensorFlow-Lite
-
-TensorFlow-Lite is a TensorFlow subproject that also focuses on inference on
-smaller devices. It uses a precompiler to transform a TensorFlow network to
-its own format. It only supports a subset of operators from TensorFlow though,
-and is only optimised for devices with Arm Neon support.
-
-Tract supports a wider subset of TensorFlow operators, and has been optimised
-for CPU of the previous generation (ARM VFP), also targetting devices in the
-Raspberry Pi Zero family that TensorFlow Lite does not address.
+Addiotionaly, the complexity of TensorFlow 2 make it very unlikely that a direct
+support will ever exist in tract. Many TensorFlow 2 nets can be
+converted to ONNX and loaded in tract.
 
 ### NNEF
 
@@ -135,17 +130,6 @@ Notes:
      performance results for TensorFlow (not -Lite) on the Pi 3.
      They use all four cores of the device. Both TensorFlow-Lite and tract
      here have been made to run on a single-core.
-
-## Roadmap
-
-One important guiding cross-concern: this library must cross-compile as
-easily as practical to small-ish devices (think 20$ boards).
-
-* nearly complete ONNX support, and wraps it as a backend
-* integrate other TF models to use as example, test and benches
-    * https://github.com/ARM-software/ML-KWS-for-MCU
-    * https://github.com/mozilla/DeepSpeech
-* consider acting as kaldi backend
 
 # License
 
