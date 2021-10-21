@@ -18,6 +18,10 @@ impl Slice {
     pub fn new(axis: usize, start: impl ToDim, end: impl ToDim) -> Slice {
         Slice { axis, start: start.to_dim(), end: end.to_dim() }
     }
+
+    pub fn suffix(&self) -> String {
+        format!("axis{}_{}_{}", self.axis, self.start, self.end)
+    }
 }
 
 impl Op for Slice {
@@ -118,12 +122,11 @@ impl TypedOp for Slice {
             return Ok(None);
         };
         let mut patch = TypedModelPatch::default();
-        let suffix = format!("axis{}_{}_{}", self.axis, start, end);
         if let Some(wire) = prec.op().as_typed().unwrap().slice_output(
             model,
             prec,
             &mut patch,
-            &suffix,
+            &self.suffix(),
             node.inputs[0].slot,
             self.axis,
             start,
@@ -156,13 +159,14 @@ impl TypedOp for Slice {
     ) -> TractResult<Option<OutletId>> {
         let prec = model.node(node.inputs[0].node);
         if axis != self.axis {
+            let suffix = suffix.to_string() + "." + &self.suffix();
             return prec
                 .op()
                 .as_typed()
                 .unwrap()
-                .slice_output(model, &prec, patch, suffix, node.inputs[0].slot, axis, start, end)?
+                .slice_output(model, &prec, patch, &suffix, node.inputs[0].slot, axis, start, end)?
                 .map(|w| {
-                    Ok(patch.wire_node(format!("{}.{}", node.name, suffix), self.clone(), &[w])?[0])
+                    Ok(patch.wire_node(format!("{}.{}", node.name, &suffix), self.clone(), &[w])?[0])
                 })
                 .transpose();
         }

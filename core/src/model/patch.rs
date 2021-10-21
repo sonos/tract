@@ -244,18 +244,32 @@ where
                     continue;
                 }
             }
-            let Node { id, name, inputs, op, outputs } = node;
+            let Node { id: patch_node_id, name, inputs, op, outputs } = node;
             let n_outputs = outputs.len();
+            for dup in 0..target.nodes.len() {
+                if target.node(dup).op().same_as(op.as_ref())
+                    && inputs.len() == target.node(dup).inputs.len()
+                    && inputs
+                        .iter()
+                        .zip(target.node(dup).inputs.iter())
+                        .all(|(patch_input, d)| mapping[patch_input] == *d)
+                {
+                    for ix in 0..n_outputs {
+                        mapping.insert(OutletId::new(patch_node_id, ix), OutletId::new(dup, ix));
+                    }
+                    continue;
+                }
+            }
             let facts = outputs.into_iter().map(|of| of.fact).collect();
             let added_node_id = target.add_node(name, op, facts)?;
             for ix in 0..n_outputs {
-                mapping.insert(OutletId::new(id, ix), OutletId::new(added_node_id, ix));
+                mapping.insert(OutletId::new(patch_node_id, ix), OutletId::new(added_node_id, ix));
             }
             all_inputs.insert(added_node_id, inputs);
             if <Graph<F, O>>::is_source(&target.node(added_node_id).op) {
                 // this is actually an input replacement
                 model_input_outlets.iter_mut().for_each(|oo| {
-                    if oo.node == replaced_inputs[&id] {
+                    if oo.node == replaced_inputs[&patch_node_id] {
                         oo.node = added_node_id;
                     }
                 });
