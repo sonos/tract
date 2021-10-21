@@ -1,5 +1,9 @@
 # Unreleased
 
+# 0.15.4 - 2021-10-21
+* ConvTranspose/deconv pulse support
+* ONNX SpaceToDepth/DepthToSpace
+
 # 0.15.3 - 2021-07-29
 * optimise i8*u8, u8*i8 and u8*u8 matrix products (and convo)
 
