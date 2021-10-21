@@ -20,6 +20,9 @@ fn versions() -> Vec<&'static str> {
     if cfg!(feature = "onnx_1_9_0") {
         versions.push("1.9.0");
     }
+    if cfg!(feature = "onnx_1_10_1") {
+        versions.push("1.10.1");
+    }
     versions
 }
 
