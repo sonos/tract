@@ -213,6 +213,7 @@ impl TypedOp for TypedBinOp {
         model: &TypedModel,
         node: &TypedNode,
         patch: &mut TypedModelPatch,
+        suffix: &str,
         _output_slot: usize,
         axis: usize,
         start: usize,
@@ -229,6 +230,7 @@ impl TypedOp for TypedBinOp {
                 model,
                 a_prec_node,
                 patch,
+                suffix,
                 a_input.slot,
                 axis,
                 start,
@@ -238,6 +240,7 @@ impl TypedOp for TypedBinOp {
                 model,
                 b_prec_node,
                 patch,
+                suffix,
                 b_input.slot,
                 axis,
                 start,
@@ -414,6 +417,7 @@ impl TypedOp for UnaryOp {
         model: &TypedModel,
         node: &TypedNode,
         patch: &mut TypedModelPatch,
+        suffix: &str,
         _output_slot: usize,
         axis: usize,
         start: usize,
@@ -426,6 +430,7 @@ impl TypedOp for UnaryOp {
             model,
             &prec,
             patch,
+            suffix,
             node.inputs[0].slot,
             axis,
             start,
@@ -439,7 +444,7 @@ impl TypedOp for UnaryOp {
         };
         Ok(Some(
             patch.wire_node(
-                format!("{}.sliced-{}-{}", node.name, start, end),
+                format!("{}.{}", node.name, suffix),
                 UnaryOp::new(self.mini_op.clone(), a),
                 &[wire],
             )?[0],
@@ -582,25 +587,25 @@ macro_rules! bin_to_super_type {
                     )*
                  )*
 
-                 $(
-                     $(
-                        $(if a.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
-                            let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
-                            let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
-                            let a = a.to_scalar::<$typ_dt>()?;
-                            let b = b.as_slice_mut::<$typ_dt>()?;
-                            unsafe {
-                                for i in 0..b.len() {
-                                    let mut c = $typ_dt::default();
-                                    cab(&mut c, a, b.get_unchecked_mut(i), zp, scale);
-                                    b[i] = c;
+                    $(
+                        $(
+                            $(if a.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
+                                let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
+                                let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
+                                let a = a.to_scalar::<$typ_dt>()?;
+                                let b = b.as_slice_mut::<$typ_dt>()?;
+                                unsafe {
+                                    for i in 0..b.len() {
+                                        let mut c = $typ_dt::default();
+                                        cab(&mut c, a, b.get_unchecked_mut(i), zp, scale);
+                                        b[i] = c;
+                                    }
                                 }
+                                return Ok(())
                             }
-                            return Ok(())
-                        }
-                        )*
-                    )*
-                 )?
+                            )*
+                         )*
+                     )?
                     bail!("{} does not support {:?} (inplace uniform)", self.name(), a.datum_type());
             }
 
@@ -621,25 +626,25 @@ macro_rules! bin_to_super_type {
                     }
                     )*
                  )*
-                 $(
                     $(
-                       $(if a.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
-                           let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
-                           let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
-                           let a = a.as_slice::<$typ_dt>()?;
-                           let b = b.as_slice_mut::<$typ_dt>()?;
-                           unsafe {
-                               for i in 0..a.len() {
-                                   let mut c = $typ_dt::default();
-                                   cab(&mut c, &a[i], b.get_unchecked(i), zp, scale);
-                                   *b.get_unchecked_mut(i) = c;
-                               }
-                           }
-                           return Ok(())
-                       }
-                       )*
-                   )*
-                 )?
+                        $(
+                            $(if a.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
+                                let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
+                                let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
+                                let a = a.as_slice::<$typ_dt>()?;
+                                let b = b.as_slice_mut::<$typ_dt>()?;
+                                unsafe {
+                                    for i in 0..a.len() {
+                                        let mut c = $typ_dt::default();
+                                        cab(&mut c, &a[i], b.get_unchecked(i), zp, scale);
+                                        *b.get_unchecked_mut(i) = c;
+                                    }
+                                }
+                                return Ok(())
+                            }
+                            )*
+                         )*
+                     )?
                     bail!("{} does not support {:?} (inplace)", self.name(), a.datum_type());
             }
 
@@ -654,19 +659,19 @@ macro_rules! bin_to_super_type {
                             return Ok(())
                         })*
                      )*
-                     $(
+                    $(
                         $(
-                           $(if a.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
-                               let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
-                               let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
-                               let a = a.to_array_view::<$typ_dt>()?;
-                               let b = b.to_array_view::<$typ_dt>()?;
-                               let mut c = c.to_array_view_mut::<$typ_dt>()?;
-                               $crate::ndarray::Zip::from(&mut c).and_broadcast(a).and_broadcast(b).for_each(|c, a, b| cab(c, a, b, zp, scale));
-                               return Ok(())
-                           }
-                           )*
-                       )*
+                            $(if a.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
+                                let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
+                                let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
+                                let a = a.to_array_view::<$typ_dt>()?;
+                                let b = b.to_array_view::<$typ_dt>()?;
+                                let mut c = c.to_array_view_mut::<$typ_dt>()?;
+                                $crate::ndarray::Zip::from(&mut c).and_broadcast(a).and_broadcast(b).for_each(|c, a, b| cab(c, a, b, zp, scale));
+                                return Ok(())
+                            }
+                            )*
+                         )*
                      )?
                     bail!("{} does not support {:?} (out of place)", self.name(), c.datum_type());
             }
