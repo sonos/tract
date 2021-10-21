@@ -215,12 +215,10 @@ impl TypedOp for Im2Col {
             && model.outlet_fact(node.inputs[1])?.konst.as_ref().and_then(|t| t.as_uniform())
                 == Some(Tensor::zero_scalar_dt(input_fact.datum_type)?)
         {
-            Ok(Some(TypedModelPatch::replace_single_op(
-                model,
-                node,
-                &node.inputs[0..1],
-                self.clone(),
-            )?))
+            Ok(Some(
+                TypedModelPatch::replace_single_op(model, node, &node.inputs[0..1], self.clone())?
+                    .with_context("b0 is zero"),
+            ))
         } else {
             Ok(None)
         }
