@@ -11,11 +11,6 @@ pub trait SpecialOps<F, O> {
     fn create_dummy(&self) -> O;
     fn create_source(&self, fact: F) -> O;
     fn is_source(op: &O) -> bool;
-    fn compute_output_facts(&self,
-        name: &str,
-        op: &O,
-        inputs: &[OutletId]) -> TractResult<TVec<F>>;
-
     fn wire_node(
         &mut self,
         name: impl Into<String>,
@@ -95,24 +90,6 @@ where
         let id = OutletId::new(id, 0);
         self.inputs.push(id);
         Ok(id)
-    }
-
-    /// Update all node facts on the graph.  
-    pub fn update_node_facts(&mut self) -> TractResult<()> {
-        for node_id in self.eval_order()? {
-            let output_facts = {
-                let node = &self.nodes[node_id];
-                let inlets = &node.inputs;
-                let facts = self.compute_output_facts(node.name.as_str(), &node.op, inlets)?;
-                anyhow::ensure!(node.outputs.len() == facts.len(), "Mismatched after update on node output facts. Previously: {}, computed: {}", node.outputs.len(), facts.len());
-                facts
-            };
-
-            for (o_slot, o_f) in output_facts.into_iter().enumerate() {
-                self.nodes[node_id].outputs[o_slot].fact = o_f;
-            }
-        }
-        Ok(())
     }
 }
 

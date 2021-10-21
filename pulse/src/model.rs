@@ -55,13 +55,6 @@ impl SpecialOps<PulsedFact, Box<dyn PulsedOp>> for PulsedModel {
         Box::new(tract_core::ops::dummy::Dummy::new())
     }
 
-    fn compute_output_facts(&self, name: &str, op: &Box<dyn PulsedOp>, inputs: &[OutletId]) -> TractResult<TVec<PulsedFact>> {
-        let input_facts =
-                inputs.iter().map(|o| self.outlet_fact(*o)).collect::<TractResult<TVec<_>>>()?;
-        op.pulsed_output_facts(&*input_facts)
-          .with_context(|| format!("Error while computing {} output facts ({:?})", name, op))
-    }
-
     fn wire_node(
         &mut self,
         name: impl Into<String>,
@@ -69,8 +62,11 @@ impl SpecialOps<PulsedFact, Box<dyn PulsedOp>> for PulsedModel {
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         let op = op.into();
-        let name = name.into();
-        let output_facts = self.compute_output_facts(&name, &op, inputs)?;
+        let output_facts = {
+            let input_facts =
+                inputs.iter().map(|o| self.outlet_fact(*o)).collect::<TractResult<TVec<_>>>()?;
+            op.pulsed_output_facts(&*input_facts)?
+        };
         let id = self.add_node(name, op, output_facts)?;
         inputs
             .iter()

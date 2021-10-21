@@ -34,24 +34,6 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
         Box::new(crate::ops::source::TypedSource::new(fact))
     }
 
-    fn compute_output_facts(&self,
-        name: &str,
-        op: &Box<dyn TypedOp>,
-        inputs: &[OutletId]) -> TractResult<TVec<TypedFact>> {
-        let input_facts =
-                inputs.iter().map(|o| self.outlet_fact(*o)).collect::<TractResult<TVec<_>>>()?;
-            if input_facts.iter().all(|f| f.konst.is_some()) && op.is_stateless() {
-                let tensors =
-                    input_facts.iter().map(|f| f.konst.clone().unwrap()).collect::<TVec<_>>();
-                let outputs =
-                    op.eval(tensors).with_context(|| format!("Eager eval of {} {:?}", name, op))?;
-                Ok(outputs.into_iter().map(|t| TypedFact::from(t)).collect())
-            } else {
-                op.output_facts(&*input_facts)
-                    .with_context(|| format!("Error while computing {} output facts ({:?})", name, op))
-            }
-    }
-
     fn wire_node(
         &mut self,
         name: impl Into<String>,
@@ -71,6 +53,40 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
 }
 
 impl TypedModel {
+    /// Compute output facts for a named operator given its inputs OutletId. 
+    pub fn compute_output_facts(&self, name: &str, op: &Box<dyn TypedOp>, inputs: &[OutletId]) -> TractResult<TVec<TypedFact>> {
+        let input_facts =
+            inputs.iter().map(|o| self.outlet_fact(*o)).collect::<TractResult<TVec<_>>>()?;
+        if input_facts.iter().all(|f| f.konst.is_some()) && op.is_stateless() {
+            let tensors =
+                input_facts.iter().map(|f| f.konst.clone().unwrap()).collect::<TVec<_>>();
+            let outputs =
+                op.eval(tensors).with_context(|| format!("Eager eval of {} {:?}", name, op))?;
+            Ok(outputs.into_iter().map(|t| TypedFact::from(t)).collect())
+        } else {
+            op.output_facts(&*input_facts)
+                .with_context(|| format!("wiring {} ({:?})", name, op))
+        }
+    }
+
+    /// Update all node facts on the graph.  
+    pub fn update_node_facts(&mut self) -> TractResult<()> {
+        for node_id in self.eval_order()? {
+            let output_facts = {
+                let node = &self.nodes[node_id];
+                let inlets = &node.inputs;
+                let facts = self.compute_output_facts(node.name.as_str(), &node.op, inlets)?;
+                anyhow::ensure!(node.outputs.len() == facts.len(), "Mismatched after update on node output facts. Previously: {}, computed: {}", node.outputs.len(), facts.len());
+                facts
+            };
+
+            for (o_slot, o_f) in output_facts.into_iter().enumerate() {
+                self.nodes[node_id].outputs[o_slot].fact = o_f;
+            }
+        }
+        Ok(())
+    }
+
     pub fn signature(&self) -> u64 {
         use std::hash::Hasher;
         let mut hasher = std::collections::hash_map::DefaultHasher::new();

@@ -138,10 +138,6 @@ impl SpecialOps<InferenceFact, Box<dyn InferenceOp>> for InferenceModel {
         Box::new(crate::ops::source::Source::new())
     }
 
-    fn compute_output_facts(&self, _name: &str, op: &Box<dyn InferenceOp>, _inputs: &[OutletId]) -> TractResult<TVec<InferenceFact>> {
-        Ok((0..op.nboutputs()?).map(|_| InferenceFact::default()).collect())
-    }
-
     fn wire_node(
         &mut self,
         name: impl Into<String>,
@@ -149,8 +145,8 @@ impl SpecialOps<InferenceFact, Box<dyn InferenceOp>> for InferenceModel {
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         let op = op.into();
-        let name = name.into();
-        let output_facts: TVec<InferenceFact> = self.compute_output_facts(&name, &op, inputs)?;
+        let output_facts: TVec<InferenceFact> =
+            (0..op.nboutputs()?).map(|_| InferenceFact::default()).collect();
         let id = self.add_node(name, op, output_facts)?;
         inputs
             .iter()
