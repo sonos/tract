@@ -16,6 +16,7 @@ struct ConvProblem {
     data: ArrayD<f32>,
     kernel: ArrayD<f32>,
     bias: Option<ArrayD<f32>>,
+    pad: PaddingSpec,
 }
 
 impl ConvProblem {
@@ -30,6 +31,11 @@ impl ConvProblem {
         let n = *self.shape_in.n().clone().unwrap_or(&1);
         let ci_per_g = self.shape_in.c() / self.group;
         let co_per_g = self.shape_out.c() / self.group;
+        let left_pads = if self.pad == PaddingSpec::Valid {
+            tvec!(0; self.shape_in.hw_rank())
+        } else {
+            izip!(self.shape_in.hw_dims(), self.geo_ker()).map(|(_i, k)| (k - 1) / 2).collect()
+        };
         for n in 0..n {
             for g in 0..self.group {
                 for geo_out in tract_ndarray::indices(self.shape_out.hw_dims()) {
@@ -39,8 +45,17 @@ impl ConvProblem {
                     }
                     output_coords.insert(self.shape_out.c_axis(), 0);
                     for geo_ker in tract_ndarray::indices(self.geo_ker()) {
+                        let input_coords: TVec<isize> =
+                            izip!(geo_out.slice(), geo_ker.slice(), &left_pads)
+                                .map(|(out, ker, pad)| *out as isize + *ker as isize - *pad as isize)
+                                .collect();
+                        if izip!(&input_coords, self.shape_in.hw_dims())
+                            .any(|(c, i)| *c < 0 || *c >= *i as isize)
+                        {
+                            continue;
+                        }
                         let mut input_coords: TVec<usize> =
-                            izip!(geo_out.slice(), geo_ker.slice()).map(|(a, b)| a + b).collect();
+                            input_coords.into_iter().map(|d| d as usize).collect();
                         if self.shape_in.fmt.has_n() {
                             input_coords.insert(0, n);
                         }
@@ -87,7 +102,7 @@ impl ConvProblem {
             PoolSpec::new(
                 self.shape_in.fmt,
                 self.geo_ker().into(),
-                PaddingSpec::Valid,
+                self.pad.clone(),
                 None,
                 None,
                 Some(*self.shape_out.c()),
@@ -113,20 +128,24 @@ impl Arbitrary for ConvProblem {
         (
             any::<DataFormat>(),
             any::<KernelFormat>(),
+            prop_oneof![Just(PaddingSpec::Valid), Just(PaddingSpec::SameUpper)],
             1usize..=3,
             1usize..=4,
             1usize..=4,
             1usize..=3,
             (1usize..=3).prop_flat_map(|r| shapes(r)),
         )
-            .prop_flat_map(|(df, kf, n, mut ci0, co0, group, (mut ker_shape, data_shape))| {
+            .prop_flat_map(|(df, kf, pad, n, mut ci0, co0, group, (mut ker_shape, data_shape))| {
                 // FIXME in HWIO order, only regular and depthwise are supported
                 if kf == KernelFormat::HWIO && group > 1 {
                     ci0 = 1;
                 }
                 let shape_in = df.from_n_c_hw(n, ci0 * group, &data_shape).unwrap();
-                let shape_out: TVec<_> =
-                    izip!(&ker_shape, data_shape).map(|(k, d)| d - k + 1).collect();
+                let shape_out: TVec<_> = if pad == PaddingSpec::Valid {
+                    izip!(&ker_shape, data_shape).map(|(k, d)| d - k + 1).collect()
+                } else {
+                    shape_in.hw_dims().into()
+                };
                 let shape_out = df.from_n_c_hw(n, co0 * group, &shape_out).unwrap();
                 let data_in = tensor(shape_in.shape.iter().cloned().collect());
                 match kf {
@@ -141,10 +160,10 @@ impl Arbitrary for ConvProblem {
                 };
                 let kernel = tensor(ker_shape);
                 let bias = proptest::option::of(tensor(vec![co0 * group]));
-                (Just((kf, shape_in, shape_out, group)), data_in, kernel, bias)
+                (Just((kf, pad, shape_in, shape_out, group)), data_in, kernel, bias)
             })
-            .prop_map(|((kernel_format, shape_in, shape_out, group), data, kernel, bias)| {
-                ConvProblem { shape_in, shape_out, kernel_format, group, data, kernel, bias }
+            .prop_map(|((kernel_format, pad, shape_in, shape_out, group), data, kernel, bias)| {
+                ConvProblem { shape_in, shape_out, kernel_format, group, data, kernel, bias, pad }
             })
             .boxed()
     }
@@ -180,7 +199,7 @@ pub fn tensor(shape: Vec<usize>) -> BoxedStrategy<ArrayD<f32>> {
 }
 
 pub fn shapes(rank: usize) -> BoxedStrategy<(Vec<usize>, Vec<usize>)> {
-    vec((1usize..3, 0usize..3).prop_map(|(k, exceed)| (k, k + exceed)), rank..=rank)
+    vec((1usize..4, 0usize..5).prop_map(|(k, exceed)| (k, k + exceed)), rank..=rank)
         .prop_map(|v| v.into_iter().unzip())
         .boxed()
 }
@@ -202,6 +221,7 @@ fn trivial_0() -> anyhow::Result<()> {
         data: ndarray::arr3(&[[[0.0f32]]]).into_dyn(),
         kernel: arr4(&[[[[0.0f32]]]]).into_dyn(),
         bias: None,
+        pad: PaddingSpec::Valid,
     };
     assert_eq!(pb.tract()?, pb.reference());
     Ok(())
@@ -217,6 +237,7 @@ fn trivial_1() -> anyhow::Result<()> {
         data: ndarray::arr3(&[[[1.0f32]]]).into_dyn(),
         kernel: ndarray::arr3(&[[[1.0f32]]]).into_dyn(),
         bias: None,
+        pad: PaddingSpec::Valid,
     };
     assert_eq!(pb.tract()?, pb.reference());
     Ok(())
@@ -232,6 +253,7 @@ fn trivial_2() -> anyhow::Result<()> {
         data: ndarray::arr3(&[[[1.0f32], [0.0]]]).into_dyn(),
         kernel: ndarray::arr3(&[[[1.0f32]]]).into_dyn(),
         bias: None,
+        pad: PaddingSpec::Valid,
     };
     assert_eq!(pb.tract()?, pb.reference());
     Ok(())
@@ -247,6 +269,7 @@ fn trivial_3() -> anyhow::Result<()> {
         data: ndarray::arr3(&[[[0.0f32, 1.0]]]).into_dyn(),
         kernel: ndarray::arr3(&[[[0.0f32], [1.0]]]).into_dyn(),
         bias: None,
+        pad: PaddingSpec::Valid,
     };
     assert_eq!(pb.tract()?, pb.reference());
     Ok(())
@@ -262,6 +285,7 @@ fn nchw_0() -> anyhow::Result<()> {
         data: ndarray::arr3(&[[[0f32, 1.0]]]).into_dyn(),
         kernel: ndarray::arr3(&[[[1f32]]]).into_dyn(),
         bias: None,
+        pad: PaddingSpec::Valid,
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
@@ -277,6 +301,7 @@ fn group_1() -> anyhow::Result<()> {
         data: ndarray::arr2(&[[0.0f32, 1.0]]).into_dyn(),
         kernel: ndarray::arr3(&[[[0.0f32]], [[1.0]]]).into_dyn(),
         bias: None,
+        pad: PaddingSpec::Valid,
     };
     assert_eq!(pb.tract()?, pb.reference());
     Ok(())
@@ -309,6 +334,7 @@ fn group_3() -> anyhow::Result<()> {
         data: ndarray::arr2(&[[0.0f32, 1.0]]).into_dyn(),
         kernel: ndarray::arr3(&[[[0.0f32]], [[1.0]]]).into_dyn(),
         bias: None,
+        pad: PaddingSpec::Valid,
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
@@ -324,6 +350,7 @@ fn group_4() -> anyhow::Result<()> {
         data: ndarray::arr2(&[[0.0f32, 1.0]]).into_dyn(),
         kernel: ndarray::arr3(&[[[0.0f32]], [[0.0]], [[0.0]], [[1.0]]]).into_dyn(),
         bias: None,
+        pad: PaddingSpec::Valid,
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
@@ -342,6 +369,7 @@ fn group_5() -> anyhow::Result<()> {
             .unwrap()
             .into_dyn(),
         bias: None,
+        pad: PaddingSpec::Valid,
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
@@ -360,6 +388,7 @@ fn group_6() -> anyhow::Result<()> {
             .unwrap()
             .into_dyn(),
         bias: None,
+        pad: PaddingSpec::Valid,
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
@@ -378,6 +407,7 @@ fn group_7() -> anyhow::Result<()> {
             .unwrap()
             .into_dyn(),
         bias: None,
+        pad: PaddingSpec::Valid,
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
@@ -396,6 +426,7 @@ fn group_8() -> anyhow::Result<()> {
             .unwrap()
             .into_dyn(),
         bias: None,
+        pad: PaddingSpec::Valid,
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
@@ -414,6 +445,7 @@ fn group_9() -> anyhow::Result<()> {
             .unwrap()
             .into_dyn(),
         bias: None,
+        pad: PaddingSpec::Valid,
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
@@ -429,6 +461,7 @@ fn group_10() -> anyhow::Result<()> {
         data: ndarray::ArrayD::<f32>::zeros(vec![2, 2, 1, 4]),
         kernel: ndarray::ArrayD::from_elem(vec![4, 1, 1, 1, 2], 1.0f32),
         bias: None,
+        pad: PaddingSpec::Valid,
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
@@ -454,6 +487,7 @@ fn group_11() -> anyhow::Result<()> {
         ])
         .into_dyn(),
         bias: None,
+        pad: PaddingSpec::Valid,
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
@@ -469,6 +503,7 @@ fn group_12() -> anyhow::Result<()> {
         data: tract_ndarray::arr2(&[[0.0, 0.0]]).into_dyn(),
         kernel: tract_ndarray::arr3(&[[[0.0], [0.0]]]).into_dyn(),
         bias: None,
+        pad: PaddingSpec::Valid,
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
@@ -484,6 +519,7 @@ fn group_13() -> anyhow::Result<()> {
         data: tract_ndarray::arr2(&[[0.0, 1.0]]).into_dyn(),
         kernel: tract_ndarray::arr3(&[[[0.0, 0.0], [1.0, 0.0]]]).into_dyn(),
         bias: None,
+        pad: PaddingSpec::Valid,
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
@@ -499,6 +535,7 @@ fn group_bias_0() -> anyhow::Result<()> {
         data: ndarray::ArrayD::<f32>::zeros(vec![1, 1, 2]),
         kernel: ndarray::ArrayD::<f32>::zeros(vec![4, 1, 1]),
         bias: Some(ndarray::ArrayD::<f32>::zeros(vec![4])),
+        pad: PaddingSpec::Valid,
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
@@ -514,6 +551,7 @@ fn bias_0() -> anyhow::Result<()> {
         data: ndarray::ArrayD::<f32>::zeros(vec![2, 1]),
         kernel: ndarray::ArrayD::<f32>::zeros(vec![1, 1, 2]),
         bias: Some(ndarray::ArrayD::<f32>::zeros(vec![1])),
+        pad: PaddingSpec::Valid,
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
@@ -529,6 +567,7 @@ fn bias_chw_0() -> anyhow::Result<()> {
         data: ndarray::arr2(&[[0f32, 0., 0.]]).into_dyn(),
         kernel: ndarray::arr3(&[[[0f32]], [[0.]], [[0.]]]).into_dyn(),
         bias: Some(ndarray::arr1(&[0f32, 0., 1.]).into_dyn()),
+        pad: PaddingSpec::Valid,
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
@@ -544,6 +583,7 @@ fn batch_0() -> anyhow::Result<()> {
         data: ndarray::ArrayD::<f32>::zeros(vec![2, 2, 1]),
         kernel: ndarray::ArrayD::<f32>::zeros(vec![1, 1, 2]),
         bias: None,
+        pad: PaddingSpec::Valid,
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
@@ -559,6 +599,7 @@ fn bias_3d_1() -> anyhow::Result<()> {
         data: ndarray::ArrayD::<f32>::zeros(vec![1, 1, 1, 2]),
         kernel: ndarray::ArrayD::<f32>::zeros(vec![1, 1, 1, 1, 1]),
         bias: Some(ndarray::ArrayD::<f32>::ones(vec![1])),
+        pad: PaddingSpec::Valid,
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
@@ -574,6 +615,39 @@ fn batch_3d() -> anyhow::Result<()> {
         data: ndarray::ArrayD::<f32>::zeros(vec![1, 1, 2, 2, 1]),
         kernel: ndarray::ArrayD::<f32>::zeros(vec![1, 1, 1, 1, 1]),
         bias: None,
+        pad: PaddingSpec::Valid,
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
+fn same_0() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, &[1])?,
+        shape_out: DataFormat::HWC.from_n_c_hw(1, 1, &[1])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data: ndarray::ArrayD::<f32>::zeros(vec![1, 1]),
+        kernel: ndarray::ArrayD::<f32>::zeros(vec![1, 1, 1]),
+        bias: None,
+        pad: PaddingSpec::SameUpper,
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
+fn same_1() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, &[2])?,
+        shape_out: DataFormat::HWC.from_n_c_hw(1, 1, &[2])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data: tract_ndarray::arr2(&[[0.0], [1.0]]).into_dyn(),
+        kernel: tract_ndarray::arr3(&[[[0.0, 1.0]]]).into_dyn(),
+        bias: None,
+        pad: PaddingSpec::SameUpper,
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
