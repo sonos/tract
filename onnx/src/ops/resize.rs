@@ -51,7 +51,7 @@ impl CoordTransformer {
             CoordTransformer::Asymmetric => x_out as f32 * scale,
             CoordTransformer::HalfPixel => (x_out as f32 + 0.5) * scale - 0.5,
             CoordTransformer::PytorchHalfPixel => {
-                if len_out > 0 {
+                if len_out > 1 {
                     (x_out as f32 + 0.5) * scale - 0.5
                 } else {
                     0.0
