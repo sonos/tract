@@ -148,7 +148,7 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn write(&mut self, t: T) {
         unsafe {
             *self.ptr = t;
@@ -212,7 +212,7 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn write(&mut self, t: T) {
         unsafe {
             *self.ptr = t;

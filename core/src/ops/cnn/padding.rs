@@ -279,6 +279,11 @@ mod tests {
     }
 
     #[test]
+    fn same_ker_3_stride_3() {
+        assert_eq!(PS::same(&3usize, 3usize, 1, 3, true), ComputedPaddedDim::new(3, 1, 0, 0));
+    }
+
+    #[test]
     fn valid_1() {
         assert_eq!(PS::valid(&10usize, 2usize, 1, 3), ComputedPaddedDim::new(10, 3, 0, 0));
     }
