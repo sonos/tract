@@ -203,7 +203,7 @@ impl PatchSpec {
             valid_output_zone,
             invalid_output_zones,
             zones,
-            valid_zone,
+            valid_zone_id: valid_zone,
             zone_strides,
         }
     }
@@ -223,7 +223,7 @@ pub struct Patch {
     pub valid_output_zone: TVec<Range<usize>>,
     pub invalid_output_zones: TVec<TVec<Range<usize>>>,
     pub zones: Vec<Zone>,
-    pub valid_zone: Option<usize>,
+    pub valid_zone_id: Option<usize>,
     pub zone_strides: TVec<isize>,
     pub input_layout_strides: TVec<isize>,
 }
@@ -247,6 +247,10 @@ impl Patch {
             }
         }
         true
+    }
+
+    pub fn valid_zone(&self) -> Option<&Zone> {
+        self.valid_zone_id.map(|id| &self.zones[id])
     }
 
     #[inline]
@@ -317,13 +321,13 @@ impl Patch {
 
 #[derive(Clone, Debug, PartialEq, Hash)]
 pub struct Zone {
-    valid: bool,
-    input_zone_offset: isize,
-    output_zone_offset: isize,
-    output_ranges: TVec<Range<usize>>,
-    output_shape: TVec<usize>,
+    pub valid: bool,
+    pub input_zone_offset: isize,
+    pub output_zone_offset: isize,
+    pub output_ranges: TVec<Range<usize>>,
+    pub output_shape: TVec<usize>,
     /// (index, raw offset)
-    values_offsets: TVec<(usize, isize)>,
+    pub values_offsets: TVec<(usize, isize)>,
 }
 
 impl Zone {
