@@ -6,7 +6,6 @@ use proptest::collection::vec;
 use proptest::prelude::*;
 use tract_itertools::izip;
 use tract_ndarray::prelude::*;
-use tract_num_traits::Saturating;
 
 #[derive(Debug)]
 struct ConvProblem {
@@ -35,13 +34,6 @@ impl ConvProblem {
             KernelFormat::OIHW => self.kernel.shape()[0] / self.group,
             KernelFormat::HWIO => self.kernel.shape()[self.kernel.ndim() - 1],
         };
-        /*
-        let left_pads = if self.pad == PaddingSpec::Valid {
-            tvec!(0; self.shape_in.hw_rank())
-        } else {
-            izip!(self.shape_in.hw_dims(), self.geo_ker()).map(|(_i, k)| (k - 1) / 2).collect()
-        };
-        */
         let (shape_out, left_pads): (TVec<_>, TVec<_>) = if self.pad == PaddingSpec::Valid {
             izip!(self.shape_in.hw_dims(), self.geo_ker(), &self.strides)
                 .map(|(i, k, s)| {
@@ -692,6 +684,22 @@ fn same_1() -> anyhow::Result<()> {
 }
 
 #[test]
+fn same_2() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, &[2, 2])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data: tract_ndarray::arr3(&[[[0.0], [0.0]], [[0.0], [1.0]]]).into_dyn(),
+        kernel: arr4(&[[[[0.0], [0.0]]], [[[0.0], [1.0]]]]).into_dyn(),
+        bias: None,
+        pad: PaddingSpec::SameUpper,
+        strides: tvec!(1, 1),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
 fn same_2d_0() -> anyhow::Result<()> {
     let pb = ConvProblem {
         shape_in: DataFormat::HWC.from_n_c_hw(1, 1, &[1, 3])?,
@@ -750,6 +758,22 @@ fn strides_2() -> anyhow::Result<()> {
         bias: None,
         pad: PaddingSpec::SameUpper,
         strides: tvec!(3),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
+fn strides_2d_same() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, &[1, 3])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data: tract_ndarray::arr3(&[[[0.0], [0.0], [1.0]]]).into_dyn(),
+        kernel: arr4(&[[[[1.0, 0.0]]]]).into_dyn(),
+        bias: None,
+        pad: PaddingSpec::SameUpper,
+        strides: tvec!(1, 2),
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
