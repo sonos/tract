@@ -2,6 +2,7 @@ use tract_linalg::frame::{MatMatMul, Packer};
 
 use crate::internal::*;
 use ndarray::prelude::*;
+use num_integer::Integer;
 
 use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolGeometry};
 use crate::ops::cnn::{GeometryBound, PoolSpec, ResolveTo};
@@ -349,12 +350,14 @@ impl Patcher {
             let mut writer = geometry.b_pack.write_with_k_outer(pack, geometry.n);
             let iptr = input.as_ptr_unchecked::<T>();
             let iptr = iptr.offset((g * geometry.ci_per_group * shape.c_stride()) as isize);
+            let output_width = *geometry.pool.patch.output_shape.get_unchecked(1);
             for ci in 0..geometry.ci_per_group {
                 let iptr = iptr.offset(ci as isize * c_stride_ptr);
                 for kitem in 0..kernel_len {
                     let dy = *geometry.pool.patch.data_field.as_ptr().offset(kitem as isize * 2);
                     let dx =
                         *geometry.pool.patch.data_field.as_ptr().offset(1 + kitem as isize * 2);
+
                     let iptr = iptr.offset(
                         *geometry.pool.patch.standard_layout_data_field.get_unchecked(kitem),
                     );
@@ -362,24 +365,53 @@ impl Patcher {
                         let y = yo as isize * y_stride + dy;
                         let iptr = iptr.offset(yo as isize * y_stride_ptr);
                         if y >= 0 && y < input_heigth {
-                            for xo in 0..*geometry.pool.patch.output_shape.get_unchecked(1) {
-                                let x = xo as isize * x_stride + dx;
-                                if x >= 0 && x < input_width {
-                                    writer.write(*iptr.offset(xo as isize * x_stride_ptr));
-                                } else {
-                                    writer.write(pad_value);
-                                }
-                            }
+                            let start = (-dx).div_ceil(&x_stride).max(0);
+                            let end = (input_width - dx).div_ceil(&x_stride).min(output_width as _);
+                            Self::padded_2d_invalid_x_loop(start as usize, pad_value, &mut writer);
+                            Self::padded_2d_valid_x_loop(
+                                start,
+                                end,
+                                x_stride_ptr,
+                                iptr,
+                                &mut writer,
+                            );
+                            Self::padded_2d_invalid_x_loop(
+                                output_width - end as usize,
+                                pad_value,
+                                &mut writer,
+                            );
                         } else {
-                            for _x in 0..*geometry.pool.patch.output_shape.get_unchecked(1) {
-                                writer.write(pad_value);
-                            }
+                            Self::padded_2d_invalid_x_loop(output_width, pad_value, &mut writer);
                         }
                     }
                 }
             }
         }
         Ok(())
+    }
+
+    #[inline(never)]
+    unsafe fn padded_2d_invalid_x_loop<'i, 'p, T: Copy + Datum>(
+        count: usize,
+        pad_value: T,
+        writer: &mut tract_linalg::frame::pack::KOutWriter<T>,
+    ) {
+        for _ in 0..count {
+            writer.write(pad_value);
+        }
+    }
+
+    #[inline(never)]
+    unsafe fn padded_2d_valid_x_loop<'i, 'p, T: Copy + Datum>(
+        x_min: isize,
+        x_max: isize,
+        x_stride_ptr: isize,
+        iptr: *const T,
+        writer: &mut tract_linalg::frame::pack::KOutWriter<T>,
+    ) {
+        for x in x_min..x_max {
+            writer.write(*iptr.offset(x as isize * x_stride_ptr));
+        }
     }
 
     #[inline(never)]
