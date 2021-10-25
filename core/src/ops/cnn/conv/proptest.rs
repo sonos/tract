@@ -716,6 +716,22 @@ fn same_2d_0() -> anyhow::Result<()> {
 }
 
 #[test]
+fn same_2d_1() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, &[2, 2])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data: tract_ndarray::arr3(&[[[0.0], [0.0]], [[1.0], [0.0]]]).into_dyn(),
+        kernel: arr4(&[[[[0.0, 1.0]]]]).into_dyn(),
+        bias: None,
+        pad: PaddingSpec::SameUpper,
+        strides: tvec!(1, 1),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
 fn strides_0() -> anyhow::Result<()> {
     let pb = ConvProblem {
         shape_in: DataFormat::HWC.from_n_c_hw(1, 1, &[2])?,
@@ -764,13 +780,45 @@ fn strides_2() -> anyhow::Result<()> {
 }
 
 #[test]
-fn strides_2d_same() -> anyhow::Result<()> {
+fn strides_2d_same_0() -> anyhow::Result<()> {
     let pb = ConvProblem {
         shape_in: DataFormat::HWC.from_n_c_hw(1, 1, &[1, 3])?,
         kernel_format: KernelFormat::OIHW,
         group: 1,
         data: tract_ndarray::arr3(&[[[0.0], [0.0], [1.0]]]).into_dyn(),
         kernel: arr4(&[[[[1.0, 0.0]]]]).into_dyn(),
+        bias: None,
+        pad: PaddingSpec::SameUpper,
+        strides: tvec!(1, 2),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
+fn strides_2d_same_1() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, &[2, 3])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data: ndarray::ArrayD::<f32>::zeros(vec![2, 3, 1]),
+        kernel: ndarray::ArrayD::<f32>::zeros(vec![1, 1, 1, 3]),
+        bias: None,
+        pad: PaddingSpec::SameUpper,
+        strides: tvec!(1, 2),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
+fn strides_2d_same_2() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, &[2, 3])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data: tract_ndarray::arr3(&[[[0.0], [0.0], [1.0]], [[0.0], [0.0], [0.0]]]).into_dyn(),
+        kernel: arr4(&[[[[1.0, 0.0, 0.0]]]]).into_dyn(),
         bias: None,
         pad: PaddingSpec::SameUpper,
         strides: tvec!(1, 2),
