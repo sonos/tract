@@ -357,6 +357,8 @@ impl Patcher {
                     let dy = *geometry.pool.patch.data_field.as_ptr().offset(kitem as isize * 2);
                     let dx =
                         *geometry.pool.patch.data_field.as_ptr().offset(1 + kitem as isize * 2);
+                    let valid_x_start = (-dx).div_ceil(&x_stride).max(0);
+                    let valid_x_end = (input_width - dx).div_ceil(&x_stride).min(output_width as _);
 
                     let iptr = iptr.offset(
                         *geometry.pool.patch.standard_layout_data_field.get_unchecked(kitem),
@@ -365,18 +367,16 @@ impl Patcher {
                         let y = yo as isize * y_stride + dy;
                         let iptr = iptr.offset(yo as isize * y_stride_ptr);
                         if y >= 0 && y < input_heigth {
-                            let start = (-dx).div_ceil(&x_stride).max(0);
-                            let end = (input_width - dx).div_ceil(&x_stride).min(output_width as _);
-                            Self::padded_2d_invalid_x_loop(start as usize, pad_value, &mut writer);
+                            Self::padded_2d_invalid_x_loop(valid_x_start as usize, pad_value, &mut writer);
                             Self::padded_2d_valid_x_loop(
-                                start,
-                                end,
+                                valid_x_start,
+                                valid_x_end,
                                 x_stride_ptr,
                                 iptr,
                                 &mut writer,
                             );
                             Self::padded_2d_invalid_x_loop(
-                                output_width - end as usize,
+                                output_width - valid_x_end as usize,
                                 pad_value,
                                 &mut writer,
                             );
