@@ -1,5 +1,8 @@
 # Unreleased
 
+# 0.15.5 - 2021-10-26
+* hold half at 1.7.x for compat with rust 1.50
+
 # 0.15.4 - 2021-10-21
 * ConvTranspose/deconv pulse support
 * ONNX SpaceToDepth/DepthToSpace
