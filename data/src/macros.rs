@@ -159,6 +159,11 @@ macro_rules! dispatch_numbers {
             DatumType::F64  => $($path)::*::<f64>($($args),*),
             DatumType::QI8(_)  => $($path)::*::<i8>($($args),*),
             DatumType::QU8(_)  => $($path)::*::<u8>($($args),*),
+            DatumType::ComplexI32 => $($path)::*::<Complex<i32>>($($args),*),
+            DatumType::ComplexI64 => $($path)::*::<Complex<i64>>($($args),*),
+            DatumType::ComplexF16 => $($path)::*::<Complex<f16>>($($args),*),
+            DatumType::ComplexF32 => $($path)::*::<Complex<f32>>($($args),*),
+            DatumType::ComplexF64 => $($path)::*::<Complex<f64>>($($args),*),
             _ => $crate::anyhow::bail!("{:?} is not a number", $dt)
         }
     } }
