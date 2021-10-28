@@ -225,11 +225,11 @@ impl Tensor {
     }
 
     pub fn zero_scalar_dt(dt: DatumType) -> anyhow::Result<Tensor> {
-        dispatch_numbers!(Self::zero_scalar(dt)())
+        Tensor::zero_dt(dt, &[])
     }
 
     pub fn zero_dt(dt: DatumType, shape: &[usize]) -> anyhow::Result<Tensor> {
-        dispatch_numbers!(Self::zero(dt)(shape))
+        dispatch_zerolike!(Self::zero(dt)(shape))
     }
 
     pub fn zero_aligned_dt(
@@ -237,7 +237,7 @@ impl Tensor {
         shape: &[usize],
         alignment: usize,
     ) -> anyhow::Result<Tensor> {
-        dispatch_numbers!(Self::zero_aligned(dt)(shape, alignment))
+        dispatch_zerolike!(Self::zero_aligned(dt)(shape, alignment))
     }
 
     pub fn zero_aligned<T: Datum + num_traits::Zero>(

@@ -159,12 +159,35 @@ macro_rules! dispatch_numbers {
             DatumType::F64  => $($path)::*::<f64>($($args),*),
             DatumType::QI8(_)  => $($path)::*::<i8>($($args),*),
             DatumType::QU8(_)  => $($path)::*::<u8>($($args),*),
+            _ => $crate::anyhow::bail!("{:?} is not a number", $dt)
+        }
+    } }
+}
+
+#[macro_export]
+macro_rules! dispatch_zerolike {
+    ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => { {
+        use $crate::prelude::DatumType;
+        match $dt {
+            DatumType::U8   => $($path)::*::<u8>($($args),*),
+            DatumType::U16  => $($path)::*::<u16>($($args),*),
+            DatumType::U32  => $($path)::*::<u32>($($args),*),
+            DatumType::U64  => $($path)::*::<u64>($($args),*),
+            DatumType::I8   => $($path)::*::<i8>($($args),*),
+            DatumType::I16  => $($path)::*::<i16>($($args),*),
+            DatumType::I32  => $($path)::*::<i32>($($args),*),
+            DatumType::I64  => $($path)::*::<i64>($($args),*),
+            DatumType::F16  => $($path)::*::<f16>($($args),*),
+            DatumType::F32  => $($path)::*::<f32>($($args),*),
+            DatumType::F64  => $($path)::*::<f64>($($args),*),
+            DatumType::QI8(_)  => $($path)::*::<i8>($($args),*),
+            DatumType::QU8(_)  => $($path)::*::<u8>($($args),*),
             DatumType::ComplexI32 => $($path)::*::<Complex<i32>>($($args),*),
             DatumType::ComplexI64 => $($path)::*::<Complex<i64>>($($args),*),
             DatumType::ComplexF16 => $($path)::*::<Complex<f16>>($($args),*),
             DatumType::ComplexF32 => $($path)::*::<Complex<f32>>($($args),*),
             DatumType::ComplexF64 => $($path)::*::<Complex<f64>>($($args),*),
-            _ => $crate::anyhow::bail!("{:?} is not a number", $dt)
+            _ => $crate::anyhow::bail!("{:?} is doesn't implement num_traits::Zero", $dt)
         }
     } }
 }
