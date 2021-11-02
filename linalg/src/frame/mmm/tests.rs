@@ -141,6 +141,24 @@ macro_rules! mmm_frame_tests {
             }
 
             #[test]
+            fn conv_4() {
+                if $cond {
+                    let pb = ConvProblem::<$ta, $tb> {
+                        ci: 1,
+                        co: 5,
+                        kt: 1,
+                        stride: 1,
+                        dilation: 1,
+                        filters: tensor2(&[[0 as $ta], [0 as $ta], [0 as $ta], [0 as $ta], [5 as $ta]]),
+                        data: tensor2(&[[1 as $tb]]),
+                        phantom: std::marker::PhantomData,
+                    };
+                    let expected = pb.expected::<$tc, $ti>();
+                    pb.run::<$ker, $tc, $ti>().close_enough(&expected, true).unwrap();
+                }
+            }
+
+            #[test]
             fn mat_vec_1() {
                 if $cond {
                     let a = tensor2(&[[0], [1]]).cast_to::<$ta>().unwrap().into_owned();
@@ -517,13 +535,19 @@ where
     usize: AsPrimitive<TI>,
 {
     let bias = (0..n).map(|i| i.as_()).collect::<Vec<TI>>();
-    fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::BinPerCol(&tensor1(&*bias), BinOp::Add)], |exp| {
-        for x in 0..n {
-            for y in 0..m {
-                exp[x + y * n] += bias[x]
+    fused_op::<K, TA, TB, TC, TI, _>(
+        m,
+        k,
+        n,
+        &[FusedSpec::BinPerCol(&tensor1(&*bias), BinOp::Add)],
+        |exp| {
+            for x in 0..n {
+                for y in 0..m {
+                    exp[x + y * n] += bias[x]
+                }
             }
-        }
-    })
+        },
+    )
 }
 
 pub unsafe fn col_mul<K: MatMatMulKer<TI> + 'static, TA, TB, TC, TI>(
@@ -540,13 +564,19 @@ where
     usize: AsPrimitive<TI>,
 {
     let bias = (0..n).map(|i| i.as_()).collect::<Vec<TI>>();
-    fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::BinPerCol(&tensor1(&*bias), BinOp::Mul)], |exp| {
-        for x in 0..n {
-            for y in 0..m {
-                exp[x + y * n] *= bias[x]
+    fused_op::<K, TA, TB, TC, TI, _>(
+        m,
+        k,
+        n,
+        &[FusedSpec::BinPerCol(&tensor1(&*bias), BinOp::Mul)],
+        |exp| {
+            for x in 0..n {
+                for y in 0..m {
+                    exp[x + y * n] *= bias[x]
+                }
             }
-        }
-    })
+        },
+    )
 }
 
 pub unsafe fn add_d<K: MatMatMulKer<TI> + 'static, TA, TB, TC, TI>(
