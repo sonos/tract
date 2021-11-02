@@ -75,3 +75,8 @@ harness = false
 bench = false
 name = "arm32neon"
 harness = false
+
+[[bench]]
+bench = false
+name = "packing"
+harness = false

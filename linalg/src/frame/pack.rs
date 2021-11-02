@@ -49,10 +49,21 @@ impl Packer {
         if self.r == 1 && k_stride == 1 && mn == 1 {
             pb[..self.k].copy_from_slice(b);
         } else if mn_stride == 1 {
-            let mut packer = self.write_with_k_outer(pb, mn);
-            for k in 0..self.k as isize {
-                for x in 0..mn as isize {
-                    packer.write(*b.get_unchecked((x + k_stride * k) as usize))
+            let size_of = T::datum_type().size_of();
+            let rbytes = self.r * size_of;
+            let bp = b.as_ptr() as _;
+            let pp = pb.as_mut_ptr() as _;
+            match rbytes {
+                16 => pack_mn_major::<[u8; 16]>(bp, pp, mn * size_of, self.k),
+                24 => pack_mn_major::<[u8; 24]>(bp, pp, mn * size_of, self.k),
+                32 => pack_mn_major::<[u8; 32]>(bp, pp, mn * size_of, self.k),
+                _ => {
+                    let mut packer = self.write_with_k_outer(pb, mn);
+                    for k in 0..self.k as isize {
+                        for x in 0..mn as isize {
+                            packer.write(*b.get_unchecked((x + k_stride * k) as usize))
+                        }
+                    }
                 }
             }
         } else if k_stride == 1 {
@@ -233,6 +244,25 @@ where
                     }
                 }
             }
+        }
+    }
+}
+
+#[inline(never)]
+pub unsafe fn pack_mn_major<Chunk: Copy>(mut b: *const u8, p: *mut u8, mn: usize, k: usize) {
+    let mnr = std::mem::size_of::<Chunk>();
+    let full_panes = mn / mnr;
+    let partial_pane = mn % mnr;
+    for ki in 0..k {
+        let mut p_row = p.offset((ki * mnr) as isize);
+        for _ in 0..full_panes {
+            p_row.copy_from_nonoverlapping(b, mnr);
+            p_row = p_row.offset((k * mnr) as isize);
+            b = b.offset(mnr as isize);
+        }
+        if partial_pane > 0 {
+            p_row.copy_from_nonoverlapping(b, partial_pane);
+            b = b.offset(partial_pane as isize);
         }
     }
 }
