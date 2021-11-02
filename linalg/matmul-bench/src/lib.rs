@@ -411,7 +411,7 @@ pub fn tract(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) 
             .unwrap();
         let a_storage = mmm.a_packed(f32::datum_type().size_of(), k);
         let b_storage = mmm.b_packed(f32::datum_type().size_of(), k);
-        let c_storage = mmm.c_view_with_axis(1, 0);
+        let c_storage = mmm.c_view();
 
         let a = Tensor::from_shape(&[m, k], a).unwrap();
         let b = Tensor::from_shape(&[k, n], b).unwrap();

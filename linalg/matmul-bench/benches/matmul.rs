@@ -41,7 +41,7 @@ pub fn tract_blaslike(crit: &mut BenchmarkGroup<WallTime>, m: usize, k: usize, n
     use tract_linalg::frame::mmm::FusedSpec;
     let a = Tensor::zero_dt(DatumType::F32, &[m, k]).unwrap();
     let b = Tensor::zero_dt(DatumType::F32, &[k, n]).unwrap();
-    let mut c = Tensor::zero_dt(DatumType::F32, &[n, m]).unwrap();
+    let mut c = Tensor::zero_dt(DatumType::F32, &[m, n]).unwrap();
 
     unsafe {
         let mmm = tract_linalg::ops()
