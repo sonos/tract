@@ -8,7 +8,6 @@ use tract_data::internal::*;
 pub enum Bit {
     PackA,
     PackB,
-    PackRowMajorB,
     Compute,
 }
 
@@ -51,7 +50,6 @@ pub fn run(
             be.iter(|| match bit {
                 Bit::PackA => mmm.a_pack(k).pack(&mut pa.view_mut(), &a.view(), 1, 0),
                 Bit::PackB => mmm.b_pack(k).pack(&mut pb.view_mut(), &b.view(), 0, 1),
-                Bit::PackRowMajorB => pack_row_major_b::<[f32;6]>(b.as_bytes().as_ptr(), pb.as_bytes_mut().as_mut_ptr(), n, k),
                 Bit::Compute => mmm
                     .run_with_scratch_space(
                         m,
@@ -73,12 +71,11 @@ pub fn run(
 }
 
 fn matmul(c: &mut Criterion, m: usize, k: usize, n: usize) {
+    use Throughput::Elements;
     let mut c = c.benchmark_group(format!("{}x{}x{}", m, k, n));
-    c.throughput(Throughput::Elements((m * k * n) as _));
-    run(&mut c, m, k, n, "packa", Bit::PackA);
-    run(&mut c, m, k, n, "packb", Bit::PackB);
-    run(&mut c, m, k, n, "packrowmajorb", Bit::PackRowMajorB);
-    run(&mut c, m, k, n, "compute", Bit::Compute);
+    run(&mut c.throughput(Elements((m * k) as _)), m, k, n, "packa", Bit::PackA);
+    run(&mut c.throughput(Elements((k * n) as _)), m, k, n, "packb", Bit::PackB);
+    run(&mut c.throughput(Elements((m * k * n) as _)), m, k, n, "compute", Bit::Compute);
     c.finish();
 }
 
@@ -104,4 +101,3 @@ fn inception(c: &mut Criterion) {
 
 criterion_group!(benches, big, wavenet, asr_15M, inception);
 criterion_main!(benches);
-
