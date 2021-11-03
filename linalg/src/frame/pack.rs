@@ -57,6 +57,7 @@ impl Packer {
                 16 => pack_mn_major::<[u8; 16]>(bp, pp, mn * size_of, self.k),
                 24 => pack_mn_major::<[u8; 24]>(bp, pp, mn * size_of, self.k),
                 32 => pack_mn_major::<[u8; 32]>(bp, pp, mn * size_of, self.k),
+                64 => pack_mn_major::<[u8; 64]>(bp, pp, mn * size_of, self.k),
                 _ => {
                     let mut packer = self.write_with_k_outer(pb, mn);
                     for k in 0..self.k as isize {
