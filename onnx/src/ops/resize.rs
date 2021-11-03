@@ -114,7 +114,10 @@ impl Resize {
                 return Ok(size.as_slice::<i64>()?.iter().map(|i| *i as usize).collect());
             }
         }
-        bail!("Neither shape not scale makes sense: input_shape: {:?}, scale: {:?}, sizes: {:?}")
+        bail!(
+            "Neither shape not scale makes sense: input_shape: {:?}, scale: {:?}, sizes: {:?}",
+            input_shape, input_scale, input_sizes,
+        );
     }
 }
 
