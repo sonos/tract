@@ -40,7 +40,9 @@ pub fn parse_coma_spec(size: &str) -> CliResult<InferenceFact> {
     let splits = size.split(",").collect::<Vec<_>>();
 
     if splits.len() < 1 {
-        bail!("The <size> argument should be formatted as {size},{...},{type}.");
+        // Hide '{' in this error message from the formatting machinery in bail macro
+        let msg = "The <size> argument should be formatted as {size},{...},{type}.";
+        bail!(msg);
     }
 
     let last = splits.last().unwrap();
@@ -95,7 +97,9 @@ pub fn parse_x_spec(size: &str) -> CliResult<InferenceFact> {
     let splits = size.split("x").collect::<Vec<_>>();
 
     if splits.len() < 1 {
-        bail!("The <size> argument should be formatted as {size},{...},{type}.");
+        // Hide '{' in this error message from the formatting machinery in bail macro
+        let msg = "The <size> argument should be formatted as {size},{...},{type}.";
+        bail!(msg);
     }
 
     let last = splits.last().unwrap();
