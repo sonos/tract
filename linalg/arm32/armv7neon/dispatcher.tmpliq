@@ -30,3 +30,8 @@
     mov         r0,     #0
     b           .return
 
+.clear:
+{% for r in (4..15) %}
+    veor    q{{r}}, q{{r}}, q{{r}}
+{% endfor %}
+    b           .non_linear_loop

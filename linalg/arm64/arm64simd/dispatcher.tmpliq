@@ -35,3 +35,8 @@
     mov         x0, 0
     b           .return
 
+.clear:
+{% for r in (8..31) %}
+    eor         v{{r}}.8b, v{{r}}.8b, v{{r}}.8b
+{% endfor %}
+    b .non_linear_loop

@@ -12,7 +12,14 @@ impl_downcast!(ScratchSpace);
 pub struct ScratchSpaceFusedNonLinear<TI: Copy> {
     uspecs: Vec<FusedKerSpec<TI>>,
     pub buffer: Vec<u8>,
-    loc_dependant: TVec<(usize, *const u8)>,
+    loc_dependant: TVec<LocDependant>,
+}
+
+#[derive(Debug, new)]
+struct LocDependant {
+    spec: usize,
+    uspec: usize,
+    loc: *const u8,
 }
 
 impl<TI: Copy + 'static> ScratchSpace for ScratchSpaceFusedNonLinear<TI> {}
@@ -24,8 +31,12 @@ impl<TI: Copy + Datum + Zero> ScratchSpaceFusedNonLinear<TI> {
         use FusedSpec as FS;
         self.uspecs.clear();
         self.loc_dependant.clear();
-        self.uspecs.reserve(specs.len() + 1);
+        self.uspecs.reserve(specs.len() + 2);
+        self.uspecs.push(FusedKerSpec::Clear);
         let mut offset = 0;
+        fn ld(spec: usize, uspec: usize, loc: *const u8) -> LocDependant {
+            LocDependant { spec, uspec, loc }
+        }
         // we're cheating here, storing offset as the buf pointer first
         for ix in 0..specs.len() {
             let spec = &specs[ix];
@@ -40,27 +51,27 @@ impl<TI: Copy + Datum + Zero> ScratchSpaceFusedNonLinear<TI> {
                 },
                 FS::QScale(s, rp, m) => FKS::QScale(*s, *rp, *m),
                 FS::BinPerRow(_, _) => {
-                    self.loc_dependant.push((ix, offset as _));
+                    self.loc_dependant.push(ld(ix, self.uspecs.len(), offset as _));
                     offset += TI::datum_type().size_of() * K::mr();
                     FusedKerSpec::Done
                 }
                 FS::BinPerCol(_, _) => {
-                    self.loc_dependant.push((ix, offset as _));
+                    self.loc_dependant.push(ld(ix, self.uspecs.len(), offset as _));
                     offset += TI::datum_type().size_of() * K::nr();
                     FusedKerSpec::Done
                 }
                 FS::AddRowColProducts(_, _) => {
-                    self.loc_dependant.push((ix, offset as _));
+                    self.loc_dependant.push(ld(ix, self.uspecs.len(), offset as _));
                     offset += TI::datum_type().size_of() * (K::mr() + K::nr());
                     FusedKerSpec::Done
                 }
                 FS::Store(_) | FS::AddUnicast(_) => {
-                    self.loc_dependant.push((ix, offset as _));
+                    self.loc_dependant.push(ld(ix, self.uspecs.len(), offset as _));
                     offset += TI::datum_type().size_of() * K::mr() * K::nr();
                     FusedKerSpec::Done
                 }
                 FS::AddMatMul { .. } => {
-                    self.loc_dependant.push((ix, offset as _));
+                    self.loc_dependant.push(ld(ix, self.uspecs.len(), offset as _));
                     offset += std::mem::size_of::<InputStoreKer>();
                     FusedKerSpec::Done
                 }
@@ -69,7 +80,7 @@ impl<TI: Copy + Datum + Zero> ScratchSpaceFusedNonLinear<TI> {
         }
         self.uspecs.push(FKS::Done);
         self.buffer.resize(offset, 0);
-        for (_, loc) in &mut self.loc_dependant {
+        for LocDependant { loc, .. } in &mut self.loc_dependant {
             *loc = self.buffer.as_ptr().offset(*loc as _);
         }
     }
@@ -84,10 +95,10 @@ impl<TI: Copy + Datum + Zero> ScratchSpaceFusedNonLinear<TI> {
         use FusedKerSpec as FKS;
         use FusedSpec as FS;
         let ScratchSpaceFusedNonLinear { uspecs, loc_dependant, .. } = self;
-        debug_assert!(specs.len() + 1 == uspecs.len());
-        for (ix, ptr) in loc_dependant.iter_mut() {
-            let spec = specs.get_unchecked(*ix);
-            *uspecs.get_unchecked_mut(*ix) = match spec {
+        debug_assert!(specs.len() + 2 == uspecs.len());
+        for LocDependant { spec, uspec, loc } in loc_dependant.iter_mut() {
+            let spec = specs.get_unchecked(*spec);
+            *uspecs.get_unchecked_mut(*uspec) = match spec {
                 FS::BinPerRow(v, op) => {
                     let v = v.as_ptr_unchecked::<TI>().add(down * K::mr());
                     match op {
@@ -120,7 +131,7 @@ impl<TI: Copy + Datum + Zero> ScratchSpaceFusedNonLinear<TI> {
                 FS::AddMatMul { k, a, b } => {
                     let pa = a.panel(down).ptr;
                     K::prefetch(pa as _, 512);
-                    let scratch = *ptr as *mut InputStoreKer;
+                    let scratch = *loc as *mut InputStoreKer;
                     *scratch = b.panel_b(right);
                     FKS::AddMatMul { k: *k, pa, pb: scratch, cpu_variant: 0 }
                 }
@@ -139,12 +150,12 @@ impl<TI: Copy + Datum + Zero> ScratchSpaceFusedNonLinear<TI> {
         use FusedKerSpec as FKS;
         use FusedSpec as FS;
         let ScratchSpaceFusedNonLinear { uspecs, loc_dependant, .. } = self;
-        debug_assert!(specs.len() + 1 == uspecs.len());
-        for (ix, ptr) in loc_dependant.iter_mut() {
-            let spec = specs.get_unchecked(*ix);
-            *uspecs.get_unchecked_mut(*ix) = match spec {
+        debug_assert!(specs.len() + 2 == uspecs.len());
+        for LocDependant { spec, uspec, loc } in loc_dependant.iter_mut() {
+            let spec = specs.get_unchecked(*spec);
+            *uspecs.get_unchecked_mut(*uspec) = match spec {
                 FS::BinPerRow(v, op) => {
-                    let buf = std::slice::from_raw_parts_mut(*ptr as *mut TI, K::mr());
+                    let buf = std::slice::from_raw_parts_mut(*loc as *mut TI, K::mr());
                     let have = v.len().saturating_sub(down * K::mr()).min(K::mr());
                     let ptr = if have < K::mr() {
                         if have > 0 {
@@ -168,7 +179,7 @@ impl<TI: Copy + Datum + Zero> ScratchSpaceFusedNonLinear<TI> {
                     }
                 }
                 FS::BinPerCol(v, op) => {
-                    let buf = std::slice::from_raw_parts_mut(*ptr as *mut TI, K::nr());
+                    let buf = std::slice::from_raw_parts_mut(*loc as *mut TI, K::nr());
                     let have = v.len().saturating_sub(right * K::nr()).min(K::nr());
                     let ptr = if have < K::nr() {
                         if have > 0 {
@@ -192,7 +203,7 @@ impl<TI: Copy + Datum + Zero> ScratchSpaceFusedNonLinear<TI> {
                     }
                 }
                 FS::AddRowColProducts(rows, cols) => {
-                    let r = std::slice::from_raw_parts_mut(*ptr as *mut TI, K::mr());
+                    let r = std::slice::from_raw_parts_mut(*loc as *mut TI, K::mr());
                     let have = rows.len() - down * K::mr();
                     let row_ptr = if have < K::mr() {
                         r.get_unchecked_mut(..have).copy_from_slice(
@@ -206,7 +217,7 @@ impl<TI: Copy + Datum + Zero> ScratchSpaceFusedNonLinear<TI> {
                         rows.as_ptr_unchecked::<TI>().add(down * K::mr())
                     };
                     let c = std::slice::from_raw_parts_mut(
-                        (*ptr as *mut TI).offset(K::mr() as isize),
+                        (*loc as *mut TI).offset(K::mr() as isize),
                         K::nr(),
                     );
                     let have = cols.len() - right * K::nr();
@@ -230,7 +241,7 @@ impl<TI: Copy + Datum + Zero> ScratchSpaceFusedNonLinear<TI> {
                         + col_byte_stride * right as isize * K::nr() as isize;
                     let tile_ptr = store.ptr.offset(tile_offset);
                     let tmp_d_tile =
-                        std::slice::from_raw_parts_mut(*ptr as *mut TI, K::mr() * K::nr());
+                        std::slice::from_raw_parts_mut(*loc as *mut TI, K::mr() * K::nr());
                     debug_assert_eq!(store.item_size, 4);
                     // assumes TI is f32 or i32
                     for r in 0..K::mr() as isize {
@@ -251,7 +262,7 @@ impl<TI: Copy + Datum + Zero> ScratchSpaceFusedNonLinear<TI> {
                 }
                 FS::Store(c_store) => {
                     let tmpc = OutputStoreKer {
-                        ptr: *ptr as _,
+                        ptr: *loc as _,
                         item_size: c_store.item_size,
                         row_byte_stride: c_store.item_size as isize,
                         col_byte_stride: (c_store.item_size * K::mr()) as isize,
@@ -261,7 +272,7 @@ impl<TI: Copy + Datum + Zero> ScratchSpaceFusedNonLinear<TI> {
                 FS::AddMatMul { k, a, b } => {
                     let pa = a.panel(down).ptr;
                     K::prefetch(pa as _, 512);
-                    let scratch = *ptr as *mut InputStoreKer;
+                    let scratch = *loc as *mut InputStoreKer;
                     *scratch = b.panel_b(right);
                     FKS::AddMatMul { k: *k, pa, pb: scratch, cpu_variant: 0 }
                 }
@@ -285,8 +296,9 @@ impl<TI: Copy + Datum + Zero> ScratchSpaceFusedNonLinear<TI> {
     ) where
         TI: Datum + Copy + Debug + Zero,
     {
-        for (i, spec) in specs.iter().enumerate() {
-            let ker_spec = self.uspecs.get_unchecked(i);
+        for LocDependant { spec, uspec, .. } in self.loc_dependant.iter() {
+            let spec = specs.get_unchecked(*spec);
+            let ker_spec = self.uspecs.get_unchecked(*uspec);
             if let (FusedSpec::Store(c_store), FusedKerSpec::Store(tmp)) = (spec, ker_spec) {
                 c_store.set_from_tile(down, right, m_remnant, n_remnant, &tmp)
             }

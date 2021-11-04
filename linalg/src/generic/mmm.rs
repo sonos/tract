@@ -148,6 +148,7 @@ where
                 }
                 match *pnl {
                     FusedKerSpec::Done => break,
+                    FusedKerSpec::Clear => ab = std::mem::zeroed(),
                     FusedKerSpec::ScalarAdd(a) => scalar!(ab, a, |a, b| a + b),
                     FusedKerSpec::ScalarMul(a) => scalar!(ab, a, |a, b| a * b),
                     FusedKerSpec::ScalarMin(m) => scalar!(ab, m, |a, b| if a < b { a } else { b }),
@@ -358,6 +359,7 @@ where
                 }
                 match *pnl {
                     FusedKerSpec::Done => break,
+                    FusedKerSpec::Clear => ab = std::mem::zeroed(),
                     FusedKerSpec::ScalarAdd(a) => scalar!(ab, a, |a, b| a + b),
                     FusedKerSpec::ScalarMul(a) => scalar!(ab, a, |a, b| a * b),
                     FusedKerSpec::ScalarMin(m) => scalar!(ab, m, |a, b| if a < b { a } else { b }),
@@ -552,6 +554,7 @@ where
                 }
                 match *pnl {
                     FusedKerSpec::Done => break,
+                    FusedKerSpec::Clear => ab = std::mem::zeroed(),
                     FusedKerSpec::ScalarAdd(a) => scalar!(ab, a, |a, b| a + b),
                     FusedKerSpec::ScalarMul(a) => scalar!(ab, a, |a, b| a * b),
                     FusedKerSpec::ScalarMin(m) => scalar!(ab, m, |a, b| if a < b { a } else { b }),

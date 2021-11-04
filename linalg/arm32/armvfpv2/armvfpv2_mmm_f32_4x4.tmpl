@@ -39,6 +39,9 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
 
     vpush       { s16-s31 }
 
+{% include "dispatcher.tmpliq" %}
+
+.clear:
     eor         r6, r6
     vmov        s16, r6
     vmov.f32    s17, s16
@@ -56,8 +59,7 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
     vmov.f32    s29, s16
     vmov.f32    s30, s16
     vmov.f32    s31, s16
-
-{% include "dispatcher.tmpliq" %}
+    b     .non_linear_loop
 
 .add_mat_mul:
     // r3 <- k, r4 <- a, r5 <- &b

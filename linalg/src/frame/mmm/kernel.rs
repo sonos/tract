@@ -16,8 +16,7 @@ where
     fn end_padding_packed_b() -> usize;
 
     #[allow(unused_variables)]
-    fn prefetch(ptr: *const u8, len: usize) {
-    }
+    fn prefetch(ptr: *const u8, len: usize) {}
 }
 
 #[macro_export]
@@ -79,7 +78,7 @@ macro_rules! test_mmm_kernel_i8_u8_i32 {
 #[macro_use]
 pub mod test {
     use super::*;
-    use crate::frame::mmm::{ InputStoreKer, PackedStoreKer, OutputStoreKer };
+    use crate::frame::mmm::{InputStoreKer, OutputStoreKer, PackedStoreKer};
     use num_traits::{AsPrimitive, One, Zero};
     use proptest::collection::vec;
     use proptest::prelude::*;
@@ -351,6 +350,7 @@ pub mod test {
                 }
                 non_linear_ops.push(FusedKerSpec::Store(c));
                 non_linear_ops.push(FusedKerSpec::Done);
+                non_linear_ops.insert(0, FusedKerSpec::Clear);
                 let err = K::kernel(&non_linear_ops);
                 assert_eq!(err, 0);
                 v
@@ -468,12 +468,15 @@ pub mod test {
                 col_ptrs: col_ptrs.as_ptr() as _,
             };
 
-            let mut non_linear_ops = tvec!(FusedKerSpec::AddMatMul {
-                k: self.rows_offsets.len(),
-                pa: unsafe { pa.as_ptr_unchecked::<u8>() as _ },
-                pb: &b_store,
-                cpu_variant: 0,
-            });
+            let mut non_linear_ops = tvec!(
+                FusedKerSpec::Clear,
+                FusedKerSpec::AddMatMul {
+                    k: self.rows_offsets.len(),
+                    pa: unsafe { pa.as_ptr_unchecked::<u8>() as _ },
+                    pb: &b_store,
+                    cpu_variant: 0,
+                }
+            );
             if self.add_one {
                 non_linear_ops.push(FusedKerSpec::ScalarAdd(TI::one()));
             }
@@ -540,14 +543,17 @@ pub mod test {
             col_ptrs: col_ptrs.as_ptr(),
         };
 
-        let mut non_linear_ops = tvec!(FusedKerSpec::AddMatMul {
-            k,
-            pa: unsafe { pa.as_ptr_unchecked::<u8>() as _ },
-            pb: &b_store,
-            cpu_variant: 0,
-        });
-        non_linear_ops.push(FusedKerSpec::Store(c));
-        non_linear_ops.push(FusedKerSpec::Done);
+        let non_linear_ops = tvec!(
+            FusedKerSpec::Clear,
+            FusedKerSpec::AddMatMul {
+                k,
+                pa: unsafe { pa.as_ptr_unchecked::<u8>() as _ },
+                pb: &b_store,
+                cpu_variant: 0,
+            },
+            FusedKerSpec::Store(c),
+            FusedKerSpec::Done
+        );
         let err = K::kernel(&non_linear_ops);
         assert_eq!(err, 0);
         let expected: Vec<TC> = (0..v.len())
@@ -583,17 +589,19 @@ pub mod test {
         };
         let b = vec![TB::one(); (k + 1) * K::nr()];
         let mut c: Vec<TC> = vec![TC::zero(); K::mr() * K::nr()];
-        let mut non_linear_ops = tvec!();
         let tile = mmm_stride_storage(&mut c, 1, 0);
         let b_store = InputStoreKer::Packed(PackedStoreKer { ptr: b.as_ptr() as _ });
-        non_linear_ops.push(FusedKerSpec::AddMatMul {
-            pa: unsafe { pa.as_ptr_unchecked::<u8>() as _ },
-            pb: &b_store,
-            k,
-            cpu_variant: 0,
-        });
-        non_linear_ops.push(FusedKerSpec::Store(tile));
-        non_linear_ops.push(FusedKerSpec::Done);
+        let non_linear_ops = tvec!(
+            FusedKerSpec::Clear,
+            FusedKerSpec::AddMatMul {
+                pa: unsafe { pa.as_ptr_unchecked::<u8>() as _ },
+                pb: &b_store,
+                k,
+                cpu_variant: 0,
+            },
+            FusedKerSpec::Store(tile),
+            FusedKerSpec::Done
+        );
         let err = K::kernel(&non_linear_ops);
         assert_eq!(err, 0);
         let expected = vec![k.as_(); K::mr()];

@@ -85,9 +85,11 @@ fma_mmm_f32_64x1_{{suffix}} proc
     mov         [rsp], eax
     ldmxcsr     [rsp]
 
-    vzeroall
-
 {% include "dispatcher.tmpliq" %}
+
+{{L}}clear:
+    vzeroall
+    jmp     {{L}}non_linear_loop
 
 {{L}}add_mat_mul:
     mov     rbx,    [rdi + 24]   // B
