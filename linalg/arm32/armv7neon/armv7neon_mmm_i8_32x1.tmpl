@@ -13,15 +13,6 @@ armv7neon_mmm_i8_32x1_{{suffix}}:
     push    { r4-r12 }
     vpush   { q4-q7 }
 
-    veor    q8, q8 ,q8
-    veor    q9, q9 ,q9
-    veor    q10, q10 ,q10
-    veor    q11, q11 ,q11
-    veor    q12, q12 ,q12
-    veor    q13, q13 ,q13
-    veor    q14, q14 ,q14
-    veor    q15, q15 ,q15
-
 {% include "dispatcher.tmpliq" %}
 
 .add_mat_mul:

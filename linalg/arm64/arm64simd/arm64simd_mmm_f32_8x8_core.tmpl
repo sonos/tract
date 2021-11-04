@@ -33,10 +33,6 @@
 
     str         q8, [sp, #-16]!
 
-{% for r in (16..31) %}
-    eor         v{{r}}.8b, v{{r}}.8b, v{{r}}.8b
-{% endfor %}
-
 {% include "dispatcher.tmpliq" %}
 
 .add_mat_mul:

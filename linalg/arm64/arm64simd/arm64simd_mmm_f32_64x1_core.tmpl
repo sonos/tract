@@ -30,10 +30,6 @@
     stp         d12, d13, [sp, #32]
     stp         d14, d15, [sp, #48]
 
-{% for r in (16..31) %}
-    eor         v{{r}}.8b, v{{r}}.8b, v{{r}}.8b
-{% endfor %}
-
 {% include "dispatcher.tmpliq" %}
 
 .add_mat_mul:
