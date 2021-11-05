@@ -19,10 +19,9 @@ fn packa(crit: &mut BenchmarkGroup<WallTime>, m: usize, k: usize, n: usize) {
         )
         .unwrap();
 
-        crit.bench_function("packa", |be| {
+        crit.throughput(Elements((m * k) as _)).bench_function("packa", |be| {
             be.iter(|| mmm.a_pack(k).pack(&mut pa.view_mut(), &a.view(), 1, 0));
-        })
-        .throughput(Elements((m * k) as _));
+        });
     }
 }
 
@@ -40,10 +39,9 @@ fn packb(crit: &mut BenchmarkGroup<WallTime>, m: usize, k: usize, n: usize) {
         )
         .unwrap();
 
-        crit.bench_function("packb", |be| {
+        crit.throughput(Elements((k * n) as _)).bench_function("packb", |be| {
             be.iter(|| mmm.b_pack(k).pack(&mut pb.view_mut(), &b.view(), 0, 1));
-        })
-        .throughput(Elements((k * n) as _));
+        });
     }
 }
 
@@ -73,7 +71,7 @@ pub fn prepacked(crit: &mut BenchmarkGroup<WallTime>, m: usize, k: usize, n: usi
         .unwrap();
         let mut scratch = mmm.allocate_scratch_space();
 
-        crit.bench_function("prepacked", |be| {
+        crit.throughput(Elements((m * k * n) as _)).bench_function("prepacked", |be| {
             be.iter(|| {
                 mmm.run_with_scratch_space(
                     m,
@@ -90,8 +88,7 @@ pub fn prepacked(crit: &mut BenchmarkGroup<WallTime>, m: usize, k: usize, n: usi
                 )
                 .unwrap()
             })
-        })
-        .throughput(Elements((m * k * n) as _));
+        });
     }
 }
 
