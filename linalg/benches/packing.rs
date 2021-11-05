@@ -3,25 +3,52 @@
 use criterion::measurement::WallTime;
 use criterion::*;
 use tract_data::internal::*;
+use Throughput::Elements;
 
-#[derive(Copy, Clone)]
-pub enum Bit {
-    PackA,
-    PackB,
-    Compute,
+fn packa(crit: &mut BenchmarkGroup<WallTime>, m: usize, k: usize, n: usize) {
+    let a = Tensor::zero_dt(DatumType::F32, &[m, k]).unwrap();
+
+    unsafe {
+        let mmm = tract_linalg::ops()
+            .mmm(DatumType::F32, DatumType::F32, DatumType::F32, Some(m), Some(k), Some(n))
+            .unwrap();
+        let mut pa = Tensor::zero_aligned_dt(
+            DatumType::F32,
+            &[mmm.a_pack(k).len(m)],
+            mmm.a_pack(k).alignment(),
+        )
+        .unwrap();
+
+        crit.bench_function("packa", |be| {
+            be.iter(|| mmm.a_pack(k).pack(&mut pa.view_mut(), &a.view(), 1, 0));
+        })
+        .throughput(Elements((m * k) as _));
+    }
 }
 
-pub fn run(
-    crit: &mut BenchmarkGroup<WallTime>,
-    m: usize,
-    k: usize,
-    n: usize,
-    name: &str,
-    bit: Bit,
-) {
-    use tract_linalg::frame::mmm::FusedSpec;
-    let a = Tensor::zero_dt(DatumType::F32, &[m, k]).unwrap();
+fn packb(crit: &mut BenchmarkGroup<WallTime>, m: usize, k: usize, n: usize) {
     let b = Tensor::zero_dt(DatumType::F32, &[k, n]).unwrap();
+
+    unsafe {
+        let mmm = tract_linalg::ops()
+            .mmm(DatumType::F32, DatumType::F32, DatumType::F32, Some(m), Some(k), Some(n))
+            .unwrap();
+        let mut pb = Tensor::zero_aligned_dt(
+            DatumType::F32,
+            &[mmm.b_pack(k).len(n)],
+            mmm.b_pack(k).alignment(),
+        )
+        .unwrap();
+
+        crit.bench_function("packb", |be| {
+            be.iter(|| mmm.b_pack(k).pack(&mut pb.view_mut(), &b.view(), 0, 1));
+        })
+        .throughput(Elements((k * n) as _));
+    }
+}
+
+pub fn prepacked(crit: &mut BenchmarkGroup<WallTime>, m: usize, k: usize, n: usize) {
+    use tract_linalg::frame::mmm::FusedSpec;
     let mut c = Tensor::zero_dt(DatumType::F32, &[m, n]).unwrap();
 
     unsafe {
@@ -32,13 +59,13 @@ pub fn run(
         let b_storage = mmm.b_packed(f32::datum_type().size_of(), k);
         let c_storage = mmm.c_view();
 
-        let mut pa = Tensor::zero_aligned_dt(
+        let pa = Tensor::zero_aligned_dt(
             DatumType::F32,
             &[mmm.a_pack(k).len(m)],
             mmm.a_pack(k).alignment(),
         )
         .unwrap();
-        let mut pb = Tensor::zero_aligned_dt(
+        let pb = Tensor::zero_aligned_dt(
             DatumType::F32,
             &[mmm.b_pack(k).len(n)],
             mmm.b_pack(k).alignment(),
@@ -46,36 +73,33 @@ pub fn run(
         .unwrap();
         let mut scratch = mmm.allocate_scratch_space();
 
-        crit.bench_function(name, |be| {
-            be.iter(|| match bit {
-                Bit::PackA => mmm.a_pack(k).pack(&mut pa.view_mut(), &a.view(), 1, 0),
-                Bit::PackB => mmm.b_pack(k).pack(&mut pb.view_mut(), &b.view(), 0, 1),
-                Bit::Compute => mmm
-                    .run_with_scratch_space(
-                        m,
-                        n,
-                        &mut *scratch,
-                        &[
-                            FusedSpec::AddMatMul {
-                                k,
-                                a: a_storage.wrap(&pa.view()),
-                                b: b_storage.wrap(&pb.view()),
-                            },
-                            FusedSpec::Store(c_storage.wrap(&mut c.view_mut())),
-                        ],
-                    )
-                    .unwrap(),
-            });
-        });
+        crit.bench_function("prepacked", |be| {
+            be.iter(|| {
+                mmm.run_with_scratch_space(
+                    m,
+                    n,
+                    &mut *scratch,
+                    &[
+                        FusedSpec::AddMatMul {
+                            k,
+                            a: a_storage.wrap(&pa.view()),
+                            b: b_storage.wrap(&pb.view()),
+                        },
+                        FusedSpec::Store(c_storage.wrap(&mut c.view_mut())),
+                    ],
+                )
+                .unwrap()
+            })
+        })
+        .throughput(Elements((m * k * n) as _));
     }
 }
 
 fn matmul(c: &mut Criterion, m: usize, k: usize, n: usize) {
-    use Throughput::Elements;
     let mut c = c.benchmark_group(format!("{}x{}x{}", m, k, n));
-    run(&mut c.throughput(Elements((m * k) as _)), m, k, n, "packa", Bit::PackA);
-    run(&mut c.throughput(Elements((k * n) as _)), m, k, n, "packb", Bit::PackB);
-    run(&mut c.throughput(Elements((m * k * n) as _)), m, k, n, "compute", Bit::Compute);
+    packa(&mut c, m, k, n);
+    packb(&mut c, m, k, n);
+    prepacked(&mut c, m, k, n);
     c.finish();
 }
 
