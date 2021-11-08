@@ -1,23 +1,19 @@
 use std::fmt::Debug;
 use std::marker::PhantomData;
+use std::ops::Range;
 use tract_data::internal::*;
 
 #[derive(Clone, Debug, Eq, PartialEq, Educe)]
 #[educe(Hash)]
 pub struct Packer {
-    k: usize,
     r: usize,
     alignment: usize,
     end_padding_record: usize,
 }
 
 impl Packer {
-    pub fn new(k: usize, nr: usize, alignment: usize, end_padding_record: usize) -> Packer {
-        Packer { k, r: nr, alignment, end_padding_record }
-    }
-
-    pub fn k(&self) -> usize {
-        self.k
+    pub fn new(nr: usize, alignment: usize, end_padding_record: usize) -> Packer {
+        Packer { r: nr, alignment, end_padding_record }
     }
 
     pub fn alignment(&self) -> usize {
@@ -28,8 +24,8 @@ impl Packer {
         self.r
     }
 
-    pub fn len<D: DimLike>(&self, n: D) -> D {
-        (n.divceil(self.r) * (self.k + self.end_padding_record)) * self.r
+    pub fn len<D: DimLike>(&self, k: D, n: D) -> D {
+        (n.divceil(self.r) * (k + self.end_padding_record)) * self.r
     }
 
     unsafe fn pack_t<'p, 'i, T: Datum + Copy>(
@@ -39,6 +35,8 @@ impl Packer {
         mn: usize,
         k_stride: isize,
         mn_stride: isize,
+        k_range: Range<usize>,
+        mn_range: Range<usize>,
     ) {
         let pb = pb.as_slice_mut_unchecked::<T>();
         let b = b.as_slice_unchecked::<T>();
@@ -47,54 +45,61 @@ impl Packer {
             pb.iter_mut().for_each(|v| *v = T::default());
         }
         if self.r == 1 && k_stride == 1 && mn == 1 {
-            pb[..self.k].copy_from_slice(b);
+            pb[k_range.clone()].copy_from_slice(&b[k_range]);
         } else if mn_stride == 1 {
             let size_of = T::datum_type().size_of();
             let rbytes = self.r * size_of;
             let bp = b.as_ptr() as _;
             let pp = pb.as_mut_ptr() as _;
+            let mn_range_bytes = mn_range.start * size_of..mn_range.end * size_of;
             match rbytes {
-                16 => pack_mn_major::<[u8; 16]>(bp, pp, mn * size_of, self.k),
-                24 => pack_mn_major::<[u8; 24]>(bp, pp, mn * size_of, self.k),
-                32 => pack_mn_major::<[u8; 32]>(bp, pp, mn * size_of, self.k),
-                64 => pack_mn_major::<[u8; 64]>(bp, pp, mn * size_of, self.k),
+                16 => pack_mn_major::<[u8; 16]>(bp, pp, mn_range_bytes, k_range),
+                24 => pack_mn_major::<[u8; 24]>(bp, pp, mn_range_bytes, k_range),
+                32 => pack_mn_major::<[u8; 32]>(bp, pp, mn_range_bytes, k_range),
+                48 => pack_mn_major::<[u8; 32]>(bp, pp, mn_range_bytes, k_range),
+                64 => pack_mn_major::<[u8; 64]>(bp, pp, mn_range_bytes, k_range),
                 _ => {
-                    let mut packer = self.write_with_k_outer(pb, mn);
-                    for k in 0..self.k as isize {
-                        for x in 0..mn as isize {
-                            packer.write(*b.get_unchecked((x + k_stride * k) as usize))
+                    let mut packer = self.write_with_k_outer(pb, k_range.len(), mn);
+                    for k in k_range {
+                        for x in mn_range.clone() {
+                            packer.write(
+                                *b.get_unchecked((x as isize + k_stride * k as isize) as usize),
+                            )
                         }
                     }
                 }
             }
         } else if k_stride == 1 {
-            let mut packer = self.write_with_k_inner(pb, mn);
-            for x in 0..mn as isize {
-                for k in 0..self.k as isize {
-                    packer.write(*b.get_unchecked((x * mn_stride + k) as usize))
+            let mut packer = self.write_with_k_inner(pb, k_range.len(), mn);
+            for x in mn_range {
+                for k in k_range.clone() {
+                    packer.write(*b.get_unchecked((x as isize * mn_stride + k as isize) as usize))
                 }
             }
         } else {
-            let mut packer = self.write_with_k_outer(pb, mn);
-            for k in 0..self.k as isize {
-                for x in 0..mn as isize {
-                    packer.write(*b.get_unchecked((x * mn_stride + k_stride * k) as usize))
+            let mut packer = self.write_with_k_outer(pb, k_range.len(), mn);
+            for k in k_range {
+                for x in mn_range.clone() {
+                    packer.write(
+                        *b.get_unchecked((x as isize * mn_stride + k_stride * k as isize) as usize),
+                    )
                 }
             }
         }
     }
 
-    pub unsafe fn pack<'a, 'b>(
+    pub unsafe fn pack_segment<'a, 'b>(
         &self,
         mut pb: impl std::borrow::BorrowMut<TensorView<'a>>,
         b: impl std::borrow::Borrow<TensorView<'b>>,
         k_axis: usize,
         mn_axis: usize,
+        k_range: Range<usize>,
+        mn_range: Range<usize>,
     ) {
+        debug_assert_eq!(pb.borrow().len(), self.len(k_range.len(), mn_range.len()));
         let pb = pb.borrow_mut();
         let b = b.borrow();
-        debug_assert_eq!(b.shape()[k_axis], self.k);
-        debug_assert_eq!(pb.len(), self.len(b.shape()[mn_axis]));
         let dt = pb.datum_type();
         dispatch_copy!(Self::pack_t(dt)(
             self,
@@ -102,24 +107,40 @@ impl Packer {
             b,
             b.shape()[mn_axis],
             b.strides()[k_axis],
-            b.strides()[mn_axis]
+            b.strides()[mn_axis],
+            k_range,
+            mn_range
         ));
+    }
+
+    pub unsafe fn pack<'a, 'b>(
+        &self,
+        pb: impl std::borrow::BorrowMut<TensorView<'a>>,
+        b: impl std::borrow::Borrow<TensorView<'b>>,
+        k_axis: usize,
+        mn_axis: usize,
+    ) {
+        let k = b.borrow().shape()[k_axis];
+        let mn = b.borrow().shape()[mn_axis];
+        self.pack_segment(pb, b, k_axis, mn_axis, 0..k, 0..mn);
     }
 
     pub fn write_with_k_outer<'p, T: Copy + Debug>(
         &self,
         pb: &'p mut [T],
+        k: usize,
         mn: usize,
     ) -> KOutWriter<'p, T> {
-        KOutWriter::new(pb, self.r, mn, self.k)
+        KOutWriter::new(pb, self.r, mn, k)
     }
 
     pub fn write_with_k_inner<'p, T: Copy + Debug>(
         &self,
         pb: &'p mut [T],
+        k: usize,
         mn: usize,
     ) -> KInWriter<'p, T> {
-        KInWriter::new(pb, self.r, mn, self.k)
+        KInWriter::new(pb, self.r, mn, k)
     }
 }
 
@@ -250,15 +271,20 @@ where
 }
 
 #[inline(never)]
-pub unsafe fn pack_mn_major<Chunk: Copy>(mut b: *const u8, p: *mut u8, mn: usize, k: usize) {
+pub unsafe fn pack_mn_major<Chunk: Copy>(
+    mut b: *const u8,
+    p: *mut u8,
+    mn_range: Range<usize>,
+    k_range: Range<usize>,
+) {
     let mnr = std::mem::size_of::<Chunk>();
-    let full_panes = mn / mnr;
-    let partial_pane = mn % mnr;
-    for ki in 0..k {
-        let mut p_row = p.offset((ki * mnr) as isize);
+    let full_panes = mn_range.len() / mnr;
+    let partial_pane = mn_range.len() % mnr;
+    for k in k_range.clone() {
+        let mut p_row = p.offset((k * mnr) as isize);
         for _ in 0..full_panes {
             p_row.copy_from_nonoverlapping(b, mnr);
-            p_row = p_row.offset((k * mnr) as isize);
+            p_row = p_row.offset((k_range.len() * mnr) as isize);
             b = b.offset(mnr as isize);
         }
         if partial_pane > 0 {
@@ -285,9 +311,9 @@ mod test {
 
     impl PackProblem {
         fn packer(&self) -> Vec<u32> {
-            let packer = super::Packer::new(self.k, self.r, 1, 0);
+            let packer = super::Packer::new(self.r, 1, 0);
             let input = self.input.clone().into_tensor();
-            let mut output = Tensor::zero::<u32>(&[packer.len(self.mn)]).unwrap();
+            let mut output = Tensor::zero::<u32>(&[packer.len(self.k, self.mn)]).unwrap();
             unsafe {
                 packer.pack(
                     output.view_mut(),

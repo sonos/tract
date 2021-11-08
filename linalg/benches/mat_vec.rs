@@ -16,8 +16,8 @@ fn mat_vec_mul(c: &mut Criterion) {
                     let mm =
                         tract_linalg::ops().mmm(F32, F32, F32, Some(m), Some(k), Some(1)).unwrap();
                     let pa = Tensor::uninitialized_aligned::<f32>(
-                        &[mm.a_pack(k).len(m)],
-                        mm.a_pack(k).alignment(),
+                        &[mm.a_pack().len(k, m)],
+                        mm.a_pack().alignment(),
                     )
                     .unwrap();
                     let b = tensor1(&vec![0.0; k]);

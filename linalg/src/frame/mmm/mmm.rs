@@ -16,8 +16,8 @@ pub trait MatMatMul:
     fn mr(&self) -> usize;
     fn nr(&self) -> usize;
 
-    fn a_pack(&self, k: usize) -> Packer;
-    fn b_pack(&self, k: usize) -> Packer;
+    fn a_pack(&self) -> Packer;
+    fn b_pack(&self) -> Packer;
 
     fn internal_type(&self) -> DatumType;
 
@@ -137,12 +137,12 @@ where
         K::nr()
     }
 
-    fn a_pack(&self, k: usize) -> Packer {
-        Packer::new(k, K::mr(), K::alignment_bytes_packed_a(), K::end_padding_packed_a())
+    fn a_pack(&self) -> Packer {
+        Packer::new(K::mr(), K::alignment_bytes_packed_a(), K::end_padding_packed_a())
     }
 
-    fn b_pack(&self, k: usize) -> Packer {
-        Packer::new(k, K::nr(), K::alignment_bytes_packed_b(), K::end_padding_packed_b())
+    fn b_pack(&self) -> Packer {
+        Packer::new(K::nr(), K::alignment_bytes_packed_b(), K::end_padding_packed_b())
     }
 
     fn internal_type(&self) -> DatumType {

@@ -20,7 +20,7 @@ fn conv(c: &mut Criterion, dilation: usize, pulse: usize, ci: usize, co: usize) 
             .unwrap();
         mm.c_from_data_and_strides(F32.size_of(), t as _, 1);
         let a =
-            Tensor::zero_aligned::<f32>(&[mm.a_pack(k).len(co)], mm.a_pack(k).alignment()).unwrap();
+            Tensor::zero_aligned::<f32>(&[mm.a_pack().len(k, co)], mm.a_pack().alignment()).unwrap();
         let input = Tensor::zero::<f32>(&[ci, t]).unwrap();
         let mut output = Tensor::zero::<f32>(&[co, t]).unwrap();
         be.iter(move || {

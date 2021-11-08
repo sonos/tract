@@ -92,13 +92,19 @@ pub(super) fn eval(
 
         let mut c = Tensor::uninitialized_dt(dt, &c_shape)?;
 
-        let a_pack = mm.a_pack(k);
-        let b_pack = mm.b_pack(k);
+        let a_pack = mm.a_pack();
+        let b_pack = mm.b_pack();
 
-        let mut packed_a =
-            Tensor::uninitialized_aligned_dt(a.datum_type(), &[a_pack.len(m)], a_pack.alignment())?;
-        let mut packed_b =
-            Tensor::uninitialized_aligned_dt(b.datum_type(), &[b_pack.len(n)], b_pack.alignment())?;
+        let mut packed_a = Tensor::uninitialized_aligned_dt(
+            a.datum_type(),
+            &[a_pack.len(k, m)],
+            a_pack.alignment(),
+        )?;
+        let mut packed_b = Tensor::uninitialized_aligned_dt(
+            b.datum_type(),
+            &[b_pack.len(k, n)],
+            b_pack.alignment(),
+        )?;
 
         for prefix in tract_ndarray::indices(&c_shape[..rank - 2]).into_iter() {
             let mut a_prefix = tvec!();

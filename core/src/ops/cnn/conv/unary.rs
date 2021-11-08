@@ -61,7 +61,7 @@ impl ConvUnary {
         )
     }
 
-    fn kernel_as_packed_as(&self, packer: &Packer, m: usize) -> TractResult<ArrayD<Arc<Tensor>>> {
+    fn kernel_as_packed_as(&self, packer: &Packer, k: usize, m: usize) -> TractResult<ArrayD<Arc<Tensor>>> {
         let kernel = self.kernel_as_group_o_ihw()?;
         unsafe {
             let mut packed_as = Array1::from(
@@ -69,7 +69,7 @@ impl ConvUnary {
                     .map(|g| {
                         let mut packed = Tensor::uninitialized_aligned_dt(
                             kernel.datum_type(),
-                            &[packer.len(m)],
+                            &[packer.len(k, m)],
                             packer.alignment(),
                         )?;
                         packer.pack(
@@ -233,7 +233,7 @@ impl ConvUnary {
 
         let mut sum_b = model.wire_node(
             format!("{}.sum_b", name),
-            super::QSumB { n: n.clone(), r: mmm.b_pack(k).panel_width(), k },
+            super::QSumB { n: n.clone(), r: mmm.b_pack().panel_width(), k },
             &[im2col],
         )?[0];
 
@@ -503,7 +503,7 @@ impl ConvUnary {
         c_m_axis: usize,
         c_n_axis: usize,
     ) -> TractResult<OutletId> {
-        let kernels = self.kernel_as_packed_as(&mmm.a_pack(k), m)?;
+        let kernels = self.kernel_as_packed_as(&mmm.a_pack(), k, m)?;
         let shape = kernels.shape();
         let mut fused_ops = dispatch_copy!(Self::bias_as_non_linear(mmm.internal_type())(self))?;
         for fo in &mut fused_ops {

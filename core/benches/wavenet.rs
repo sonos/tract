@@ -57,11 +57,11 @@ fn mmm(c: &mut Criterion) {
                     tract_linalg::ops().mmm(F32, F32, F32, Some(64), Some(48), Some(8)).unwrap();
                 let packed_a = Tensor::zero_aligned_dt(
                     f32::datum_type(),
-                    &[mmm.a_pack(48).len(64)],
-                    mmm.a_pack(48).alignment(),
+                    &[mmm.a_pack().len(48, 64)],
+                    mmm.a_pack().alignment(),
                 )
                 .unwrap();
-                let input = tvec!(Tensor::zero_dt(f32::datum_type(), &[mmm.b_pack(48).len(8)])
+                let input = tvec!(Tensor::zero_dt(f32::datum_type(), &[mmm.b_pack().len(48, 8)])
                     .unwrap()
                     .into_arc_tensor());
                 let geometry = MatMulGeometry::Concrete(ConcreteMatMulGeometry {
