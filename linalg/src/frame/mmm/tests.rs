@@ -304,14 +304,14 @@ where
     let op = MatMatMulImpl::<K, TI>::new();
     unsafe {
         let mut packed_a =
-            Tensor::uninitialized_aligned::<TA>(&[op.a_pack(k).len(m)], op.a_pack(k).alignment())
+            Tensor::uninitialized_aligned::<TA>(&[op.a_pack().len(k, m)], op.a_pack().alignment())
                 .unwrap();
-        op.a_pack(k).pack(packed_a.view_mut(), a.view(), 1, 0);
+        op.a_pack().pack(packed_a.view_mut(), a.view(), 1, 0);
 
         let mut packed_b =
-            Tensor::uninitialized_aligned::<TB>(&[op.b_pack(k).len(n)], op.b_pack(k).alignment())
+            Tensor::uninitialized_aligned::<TB>(&[op.b_pack().len(k, n)], op.b_pack().alignment())
                 .unwrap();
-        op.b_pack(k).pack(packed_b.view_mut(), b.view(), 0, 1);
+        op.b_pack().pack(packed_b.view_mut(), b.view(), 0, 1);
 
         let mut found = tensor0(TC::max_value()).broadcast_scalar_to_shape(&[m, n]).unwrap();
 
@@ -366,14 +366,14 @@ where
     unsafe {
         let op = MatMatMulImpl::<K, TI>::new();
         let mut packed_a =
-            Tensor::uninitialized_aligned::<TA>(&[op.a_pack(k).len(m)], op.a_pack(k).alignment())
+            Tensor::uninitialized_aligned::<TA>(&[op.a_pack().len(k, m)], op.a_pack().alignment())
                 .unwrap();
         let mut packed_b =
-            Tensor::uninitialized_aligned::<TB>(&[op.b_pack(k).len(1)], op.b_pack(k).alignment())
+            Tensor::uninitialized_aligned::<TB>(&[op.b_pack().len(k, 1)], op.b_pack().alignment())
                 .unwrap();
-        op.a_pack(k).pack(&mut packed_a.view_mut(), &a.view(), 1, 0);
+        op.a_pack().pack(&mut packed_a.view_mut(), &a.view(), 1, 0);
         let b = b.clone().into_shape(&[k, 1]).unwrap();
-        op.b_pack(k).pack(&mut packed_b.view_mut(), &b.view(), 0, 1);
+        op.b_pack().pack(&mut packed_b.view_mut(), &b.view(), 0, 1);
 
         let mut c = Tensor::uninitialized::<TC>(&[m, 1]).unwrap();
 
@@ -426,14 +426,14 @@ where
     let op = MatMatMulImpl::<K, TI>::new();
 
     let mut packed_a =
-        Tensor::uninitialized_aligned::<TA>(&[op.a_pack(k).len(m)], op.a_pack(k).alignment())
+        Tensor::uninitialized_aligned::<TA>(&[op.a_pack().len(k, m)], op.a_pack().alignment())
             .unwrap();
-    op.a_pack(k).pack(packed_a.view_mut(), a.view(), 1, 0);
+    op.a_pack().pack(packed_a.view_mut(), a.view(), 1, 0);
 
     let mut packed_b =
-        Tensor::uninitialized_aligned::<TB>(&[op.b_pack(k).len(n)], op.b_pack(k).alignment())
+        Tensor::uninitialized_aligned::<TB>(&[op.b_pack().len(k, n)], op.b_pack().alignment())
             .unwrap();
-    op.b_pack(k).pack(packed_b.view_mut(), b.view(), 0, 1);
+    op.b_pack().pack(packed_b.view_mut(), b.view(), 0, 1);
 
     let mut found = Tensor::zero::<TC>(&[m, n]).unwrap();
     let c_store = op
@@ -740,11 +740,11 @@ impl<TA: LADatum, TB: LADatum> ConvProblem<TA, TB> {
         unsafe {
             let op = MatMatMulImpl::<K, TI>::new();
             let mut packed_a = Tensor::uninitialized_aligned::<TA>(
-                &[op.a_pack(self.k()).len(self.m())],
-                op.a_pack(self.k()).alignment(),
+                &[op.a_pack().len(self.k(), self.m())],
+                op.a_pack().alignment(),
             )
             .unwrap();
-            op.a_pack(self.k()).pack(packed_a.view_mut(), self.filters.view(), 1, 0);
+            op.a_pack().pack(packed_a.view_mut(), self.filters.view(), 1, 0);
 
             let mut found = tensor0(TC::max_value())
                 .broadcast_scalar_to_shape(&[self.co, self.output_width()])
