@@ -104,7 +104,7 @@ impl Expansion for RemInt {
         )?;
         model.wire_node(
             name.to_string(),
-            tract_hir::ops::logic::Iff,
+            tract_core::ops::logic::Iff,
             &[adjust[0], adjusted[0], rem],
         )
     }

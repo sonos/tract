@@ -353,7 +353,7 @@ impl Expansion for Prelu {
             tract_hir::ops::logic::greater::unary(zero.into_arc_tensor()),
             &[a],
         )?;
-        model.wire_node(name.to_string() + ".iff", tract_hir::ops::logic::Iff, &[test[0], ab, a])
+        model.wire_node(name.to_string() + ".iff", tract_core::ops::logic::Iff, &[test[0], ab, a])
     }
 }
 
