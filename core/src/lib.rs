@@ -78,15 +78,11 @@ pub mod plan;
 
 pub use dyn_clone;
 
-pub type TractError = anyhow::Error;
-pub type TractResult<T> = Result<T, anyhow::Error>;
-
 /// This prelude is meant for code using tract.
 pub mod prelude {
     pub use crate::framework::Framework;
     pub use crate::model::*;
     pub use crate::plan::{SimplePlan, SimpleState};
-    pub use crate::{TractError, TractResult};
     pub use std::sync::Arc;
     pub use tract_data::prelude::*;
 

@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use crate::TractResult;
+use crate::prelude::TractResult;
 
 pub trait ResolveTo<Concrete> {
     type Param: ?Sized;
