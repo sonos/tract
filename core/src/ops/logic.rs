@@ -95,4 +95,25 @@ impl TypedOp for Iff {
         .unwrap();
         Ok(tvec!(TypedFact::dt_shape(inputs[1].datum_type, shape)))
     }
+
+    fn invariants(
+        &self,
+        inputs: &[&TypedFact],
+        _outputs: &[&TypedFact],
+    ) -> TractResult<Invariants> {
+        let a = &inputs[0];
+        let b = &inputs[1];
+        let c = &inputs[2];
+        assert!(a.rank() == b.rank() && c.rank() == a.rank());
+        let rank = a.rank();
+        Ok((0..rank)
+            .into_iter()
+            .map(|axis| AxisInfo {
+                inputs: tvec!(Some(axis), Some(axis), Some(axis)),
+                outputs: tvec!(Some(axis)),
+                period: 1,
+                disposable: true,
+            })
+            .collect())
+    }
 }
