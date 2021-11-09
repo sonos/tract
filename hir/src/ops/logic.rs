@@ -2,9 +2,21 @@ use crate::infer::*;
 use crate::internal::*;
 
 use tract_core::broadcast::multi_broadcast;
+pub use tract_core::ops::binary::wire_with_rank_broadcast;
 pub use tract_core::ops::logic::*;
 
-impl InferenceRulesOp for Iff {
+#[derive(Debug, Clone, Hash)]
+pub struct Iff;
+
+impl_dyn_hash!(Iff);
+
+impl Expansion for Iff {
+    fn name(&self) -> Cow<str> {
+        "Iff".into()
+    }
+
+    op_hir!();
+
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -24,6 +36,7 @@ impl InferenceRulesOp for Iff {
         Ok(())
     }
 
-    as_op!();
-    to_typed!();
+    fn wire(&self, prefix: &str, model: &mut TypedModel, inputs: &[OutletId]) -> TractResult<TVec<OutletId>> {
+        wire_with_rank_broadcast(prefix, model, tract_core::ops::logic::Iff, inputs)
+    }
 }

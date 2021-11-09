@@ -3,7 +3,7 @@ use crate::model::ParseResult;
 use crate::model::ParsingContext;
 use crate::pb::NodeProto;
 use tract_hir::internal::*;
-use tract_hir::ops;
+use tract_core::ops;
 use tract_itertools::Itertools;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
@@ -18,7 +18,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("LessOrEqual", |_, _| Ok((ops::logic::LesserEqual.into_hir(), vec![])));
     reg.insert("GreaterOrEqual", |_, _| Ok((ops::logic::GreaterEqual.into_hir(), vec![])));
 
-    reg.insert("Where", |_, _| Ok((Box::new(ops::logic::Iff::default()), vec![])));
+    reg.insert("Where", |_, _| Ok((expand(tract_hir::ops::logic::Iff), vec![])));
 
     reg.insert("If", _if)
 }

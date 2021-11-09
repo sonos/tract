@@ -84,8 +84,12 @@ impl TypedOp for Iff {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        anyhow::ensure!(inputs.len() == 3, "Iff expects 3 intputs.");
         if inputs[1].datum_type != inputs[2].datum_type {
             bail!("Then and else tensors type mismatch ({:?} and {:?}).", inputs[1], inputs[2]);
+        }
+        if inputs[0].rank() != inputs[1].rank() || inputs[0].rank() != inputs[2].rank() {
+            bail!("Inconsistent ranks, {:?}", inputs);
         }
         let shape = multi_broadcast(&[
             inputs[0].shape.to_tvec(),
@@ -104,7 +108,7 @@ impl TypedOp for Iff {
         let a = &inputs[0];
         let b = &inputs[1];
         let c = &inputs[2];
-        assert!(a.rank() == b.rank() && c.rank() == a.rank());
+        assert!(a.rank() == b.rank() && b.rank() == c.rank());
         let rank = a.rank();
         Ok((0..rank)
             .into_iter()

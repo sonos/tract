@@ -8,10 +8,13 @@ pub fn wire_rank_broadcast(
     target: &mut TypedModel,
     inputs: &[OutletId],
 ) -> TractResult<TVec<OutletId>> {
-    let facts = [target.outlet_fact(inputs[0])?.clone(), target.outlet_fact(inputs[1])?.clone()];
-    let max_rank = facts[0].rank().max(facts[1].rank());
+    let facts = inputs
+        .iter()
+        .map(|o| target.outlet_fact(*o).map(|ok| ok.clone()))
+        .collect::<TractResult<TVec<_>>>()?;
+    let max_rank = facts.iter().map(|f| f.rank()).max().unwrap();
     let mut wires = tvec!();
-    for i in 0..2 {
+    for i in 0..inputs.len() {
         let mut wire = inputs[i];
         for j in facts[i].rank()..max_rank {
             wire = target.wire_node(
@@ -31,20 +34,7 @@ pub fn wire_with_rank_broadcast(
     op: impl Into<Box<dyn TypedOp>>,
     inputs: &[OutletId],
 ) -> TractResult<TVec<OutletId>> {
-    let facts = [target.outlet_fact(inputs[0])?.clone(), target.outlet_fact(inputs[1])?.clone()];
-    let max_rank = facts[0].rank().max(facts[1].rank());
-    let mut wires = tvec!();
-    for i in 0..2 {
-        let mut wire = inputs[i];
-        for j in facts[i].rank()..max_rank {
-            wire = target.wire_node(
-                format!("{}.fix-rank-{}-{}", prefix, i, j),
-                AxisOp::Add(0),
-                &[wire],
-            )?[0];
-        }
-        wires.push(wire);
-    }
+    let wires = wire_rank_broadcast(prefix, target, inputs)?;
     target.wire_node(prefix, &op.into(), &wires)
 }
 
