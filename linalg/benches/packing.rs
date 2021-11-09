@@ -17,13 +17,13 @@ fn packa<K: MatMatMulKer<f32>>(crit: &mut BenchmarkGroup<WallTime>, m: usize, k:
         let mmm = MatMatMulImpl::<K, f32>::new();
         let mut pa = Tensor::zero_aligned_dt(
             DatumType::F32,
-            &[mmm.a_pack(k).len(m)],
-            mmm.a_pack(k).alignment(),
+            &[mmm.a_pack().len(k, m)],
+            mmm.a_pack().alignment(),
         )
         .unwrap();
 
         crit.throughput(Elements((m * k) as _)).bench_function("packa", |be| {
-            be.iter(|| mmm.a_pack(k).pack(&mut pa.view_mut(), &a.view(), 1, 0));
+            be.iter(|| mmm.a_pack().pack(&mut pa.view_mut(), &a.view(), 1, 0));
         });
     }
 }
@@ -35,13 +35,13 @@ fn packb<K: MatMatMulKer<f32>>(crit: &mut BenchmarkGroup<WallTime>, k: usize, n:
         let mmm = MatMatMulImpl::<K, f32>::new();
         let mut pb = Tensor::zero_aligned_dt(
             DatumType::F32,
-            &[mmm.b_pack(k).len(n)],
-            mmm.b_pack(k).alignment(),
+            &[mmm.b_pack().len(k, n)],
+            mmm.b_pack().alignment(),
         )
         .unwrap();
 
         crit.throughput(Elements((k * n) as _)).bench_function("packb", |be| {
-            be.iter(|| mmm.b_pack(k).pack(&mut pb.view_mut(), &b.view(), 0, 1));
+            be.iter(|| mmm.b_pack().pack(&mut pb.view_mut(), &b.view(), 0, 1));
         });
     }
 }
@@ -67,14 +67,14 @@ pub fn compute<
 
         let pa = Tensor::zero_aligned_dt(
             DatumType::F32,
-            &[mmm.a_pack(k).len(m)],
-            mmm.a_pack(k).alignment(),
+            &[mmm.a_pack().len(k, m)],
+            mmm.a_pack().alignment(),
         )
         .unwrap();
         let pb = Tensor::zero_aligned_dt(
             DatumType::F32,
-            &[mmm.b_pack(k).len(n)],
-            mmm.b_pack(k).alignment(),
+            &[mmm.b_pack().len(k, n)],
+            mmm.b_pack().alignment(),
         )
         .unwrap();
         let mut scratch = ScratchSpaceFusedNonLinear::<f32>::default();
