@@ -256,8 +256,8 @@ fn load_partials(p: &path::Path, msvc: bool) -> liquid::partials::InMemorySource
         };
         if let Some(text) = text {
             let text = strip_comments(text, msvc);
-            let key = f.path().strip_prefix(p).unwrap().to_str().unwrap().to_owned();
-            println!("cargo:rerun-if-changed={}", f.path().to_string_lossy());
+            let key = f.path().strip_prefix(p).unwrap().to_str().unwrap().to_owned().replace("\\", "/");
+            println!("cargo:rerun-if-changed={}", f.path().to_string_lossy().replace("\\", "/"));
             mem.add(key, text);
         }
     }
