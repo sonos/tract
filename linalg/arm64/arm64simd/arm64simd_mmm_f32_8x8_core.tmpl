@@ -129,7 +129,7 @@
     ld1         { v4.4s, v5.4s }, [ x2 ], #32
 
 {% capture packed_packed_loop1 %}
-{% if core == "a53" %}
+    {% if core == "a53" %}
         {% include "arm64simd_mmm_f32_8x8/packed_packed_loop1/ldr_w_preload.tmpli" %}
     {% else %}
         {% include "arm64simd_mmm_f32_8x8/packed_packed_loop1/naive.tmpli" %}
