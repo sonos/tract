@@ -1,6 +1,5 @@
 use crate::internal::*;
 use crate::ops::konst::Const;
-use crate::TractResult;
 
 #[derive(Clone, Debug)]
 pub struct PropConst;

@@ -6,8 +6,7 @@ use std::ops;
 mod tree;
 
 pub use self::tree::{Symbol, SymbolValues, TDim, UndeterminedSymbol};
-type TractError = anyhow::Error;
-type TractResult<T> = anyhow::Result<T>;
+use crate::{ TractError, TractResult };
 
 /// A super-trait for value acting as tensor dimensions in tract.
 ///

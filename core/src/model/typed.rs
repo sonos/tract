@@ -3,7 +3,6 @@ use crate::model::*;
 use crate::ops;
 use crate::ops::invariants;
 use crate::plan::{SimplePlan, SimpleState};
-use crate::TractResult;
 
 /// A model with completely determined types and shapes.
 pub type TypedModel = Graph<TypedFact, Box<dyn TypedOp>>;

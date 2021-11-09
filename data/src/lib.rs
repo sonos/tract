@@ -12,7 +12,12 @@ mod macros;
 /// tensor dimensions.
 pub type TVec<T> = smallvec::SmallVec<[T; 4]>;
 
+pub type TractError = anyhow::Error;
+pub type TractResult<T> = anyhow::Result<T>;
+
+
 pub mod prelude {
+    pub use crate::{ TractError, TractResult };
     pub use crate::datum::{round_ties_to_even, Blob, Datum, DatumType, QParams};
     pub use crate::dim::{Symbol, SymbolValues, TDim, ToDim};
     pub use crate::f16::*;
