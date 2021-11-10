@@ -30,7 +30,7 @@ fn conv(c: &mut Criterion, dilation: usize, pulse: usize, ci: usize, co: usize) 
                 &[
                     FusedSpec::AddMatMul {
                         a: mm.a_packed(F32.size_of(), k).wrap(&mut a.view()),
-                        b: mm.b_packed(F32.size_of(), k).wrap(&input.view()),
+                        b: mm.b_packed(F32.size_of(), k).wrap(&input.view()).unwrap(),
                         k,
                     },
                     FusedSpec::Store(mm.c_view().wrap(&output.view_mut())),

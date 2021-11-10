@@ -321,7 +321,7 @@ where
             &[
                 FusedSpec::AddMatMul {
                     a: op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view()),
-                    b: op.b_packed(TB::datum_type().size_of(), k).wrap(&packed_b.view()),
+                    b: op.b_packed(TB::datum_type().size_of(), k).wrap(&packed_b.view()).unwrap(),
                     k,
                 },
                 FusedSpec::Store(
@@ -378,7 +378,7 @@ where
         let mut c = Tensor::uninitialized::<TC>(&[m, 1]).unwrap();
 
         let pa = op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view());
-        let pb = op.b_packed(b.datum_type().size_of(), k).wrap(&packed_b.view());
+        let pb = op.b_packed(b.datum_type().size_of(), k).wrap(&packed_b.view()).unwrap();
 
         op.run(
             m,
@@ -441,7 +441,7 @@ where
         .wrap(&mut found.view_mut());
     let mut spec: TVec<FusedSpec> = spec.into();
     let a_store = op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view());
-    let b_store = op.b_packed(TB::datum_type().size_of(), k).wrap(&packed_b.view());
+    let b_store = op.b_packed(TB::datum_type().size_of(), k).wrap(&packed_b.view()).unwrap();
     spec.insert(0, FusedSpec::AddMatMul { k, a: a_store, b: b_store });
     spec.push(FusedSpec::Store(c_store));
 
@@ -761,7 +761,7 @@ impl<TA: LADatum, TB: LADatum> ConvProblem<TA, TB> {
                                 &self.data_rows_offsets(),
                                 &self.data_cols_offsets(),
                             )
-                            .wrap(&self.data.view()),
+                            .wrap(&self.data.view()).unwrap(),
                         k: self.k(),
                     },
                     FusedSpec::Store(
