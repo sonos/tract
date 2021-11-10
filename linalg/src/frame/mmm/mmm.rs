@@ -155,7 +155,7 @@ where
 
     unsafe fn b_packed(&self, item_size: usize, k: usize) -> InputStoreSpec {
         let panel_bytes = k * K::nr() * item_size;
-        InputStoreSpec::Packed(PackedStoreSpec { panel_bytes })
+        InputStoreSpec::Prepacked(PackedStoreSpec { panel_bytes })
     }
 
     unsafe fn b_from_data_and_offsets(

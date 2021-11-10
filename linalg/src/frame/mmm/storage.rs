@@ -1,5 +1,4 @@
 use std::ffi::c_void;
-use std::fmt;
 use std::fmt::Debug;
 use tract_data::internal::*;
 

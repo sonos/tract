@@ -29,7 +29,7 @@ fn mat_vec_mul(c: &mut Criterion) {
                             &[
                                 FusedSpec::AddMatMul {
                                     a: mm.a_packed(F32.size_of(), k).wrap(&pa.view()),
-                                    b: mm.b_packed(b.datum_type().size_of(), k).wrap(&b.view()),
+                                    b: mm.b_packed(b.datum_type().size_of(), k).wrap(&b.view()).unwrap(),
                                     k,
                                 },
                                 FusedSpec::Store(mm.c_view().wrap(&c.view_mut())),

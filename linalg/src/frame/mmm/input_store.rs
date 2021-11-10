@@ -4,7 +4,7 @@ use tract_data::internal::*;
 
 #[derive(PartialEq, Clone, Debug, Hash)]
 pub enum InputStoreSpec {
-    Packed(PackedStoreSpec),
+    Prepacked(PackedStoreSpec),
     OffsetsAndPtrs { row_byte_offsets: Vec<isize>, col_byte_offsets: Vec<isize>, nr: usize },
 }
 
@@ -15,23 +15,23 @@ pub struct PackedStoreSpec {
 
 impl InputStoreSpec {
     #[inline]
-    pub unsafe fn wrap(&self, tensor: &TensorView) -> InputStore {
+    pub unsafe fn wrap(&self, tensor: &TensorView) -> TractResult<InputStore> {
         use InputStore::*;
         use InputStoreSpec as S;
         match self {
-            S::Packed(PackedStoreSpec { panel_bytes }) => Packed(PackedStore {
+            S::Prepacked(PackedStoreSpec { panel_bytes }) => Ok(Packed(PackedStore {
                 ptr: tensor.as_ptr_unchecked::<u8>() as _,
                 item_size: tensor.datum_type().size_of(),
                 panel_bytes: *panel_bytes as isize,
-            }),
-            S::OffsetsAndPtrs { row_byte_offsets, col_byte_offsets, nr } => OffsetsAndPtrs {
+            })),
+            S::OffsetsAndPtrs { row_byte_offsets, col_byte_offsets, nr } => Ok(OffsetsAndPtrs {
                 row_byte_offsets: row_byte_offsets.as_ptr(),
                 col_ptrs: col_byte_offsets
                     .iter()
                     .map(|offset| tensor.as_ptr_unchecked::<u8>().offset(*offset) as _)
                     .collect(),
                 nr: *nr,
-            },
+            }),
         }
     }
 }
@@ -39,7 +39,7 @@ impl InputStoreSpec {
 impl fmt::Display for InputStoreSpec {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            InputStoreSpec::Packed { .. } => write!(fmt, "Packed"),
+            InputStoreSpec::Prepacked { .. } => write!(fmt, "Packed"),
             InputStoreSpec::OffsetsAndPtrs { .. } => write!(fmt, "OffsetsAndPtrs"),
         }
     }
@@ -97,7 +97,6 @@ pub enum InputStoreKer {
     Packed(PackedStoreKer),
     OffsetsAndPtrs { row_byte_offsets: *const isize, col_ptrs: *const *const c_void },
 }
-
 
 #[repr(C)]
 #[derive(PartialEq, Copy, Clone, Debug)]
