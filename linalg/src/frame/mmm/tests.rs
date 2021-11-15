@@ -166,6 +166,24 @@ macro_rules! mmm_frame_tests {
             }
 
             #[test]
+            fn conv_5() {
+                if $cond {
+                    let pb = ConvProblem::<$ta, $tb> {
+                        ci: 1,
+                        co: 8,
+                        kt: 1,
+                        stride: 1,
+                        dilation: 1,
+                        filters: tensor2(&[[0 as $ta], [0 as $ta], [0 as $ta], [0 as $ta], [0 as $ta], [0 as $ta], [0 as $ta], [1 as $ta]]),
+                        data: tensor2(&[[0 as $tb, 0 as $tb, 1 as $tb, 0 as $tb, 0 as $tb]]),
+                        phantom: std::marker::PhantomData,
+                    };
+                    let expected = pb.expected::<$tc, $ti>();
+                    pb.run::<$ker, $tc, $ti>().close_enough(&expected, true).unwrap();
+                }
+            }
+
+            #[test]
             fn mat_vec_1() {
                 if $cond {
                     let a = tensor2(&[[0], [1]]).cast_to::<$ta>().unwrap().into_owned();
@@ -253,6 +271,20 @@ macro_rules! mmm_frame_tests {
     };
 }
 
+fn tensor(dt: DatumType, shape: Vec<usize>) -> BoxedStrategy<Tensor> {
+    let len = shape.iter().product::<usize>();
+    proptest::collection::vec(any::<i8>(), len..=len)
+        .prop_map(move |vec| {
+            tract_ndarray::ArrayD::from_shape_vec(shape.clone(), vec)
+                .unwrap()
+                .into_tensor()
+                .cast_to_dt(dt)
+                .unwrap()
+                .into_owned()
+        })
+        .boxed()
+}
+
 pub fn strat_mat_mat_mul<TA: LADatum, TB: LADatum>(
 ) -> BoxedStrategy<(usize, usize, usize, Tensor, Tensor)> {
     (1usize..5, 1usize..5, 1usize..5)
@@ -261,17 +293,8 @@ pub fn strat_mat_mat_mul<TA: LADatum, TB: LADatum>(
                 Just(m),
                 Just(k),
                 Just(n),
-                proptest::collection::vec(TA::strat(), m * k),
-                proptest::collection::vec(TB::strat(), n * k),
-            )
-        })
-        .prop_map(move |(m, k, n, a, b)| {
-            (
-                m,
-                k,
-                n,
-                tensor1(&a).into_shape(&[m, k]).unwrap(),
-                tensor1(&b).into_shape(&[k, n]).unwrap(),
+                tensor(TA::datum_type(), vec![m, k]),
+                tensor(TB::datum_type(), vec![k, n]),
             )
         })
         .boxed()
@@ -441,7 +464,7 @@ where
     TA: LADatum + AsPrimitive<TI> + 'static,
     TB: LADatum + AsPrimitive<TI> + 'static,
     TC: LADatum + AsPrimitive<TI> + 'static,
-    TI: LADatum + AsPrimitive<TC> + 'static + Neg<Output = TI>,
+    TI: LADatum + AsPrimitive<TC> + 'static,
     i32: AsPrimitive<TI>,
     usize: AsPrimitive<TI>,
 {

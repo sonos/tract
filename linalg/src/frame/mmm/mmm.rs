@@ -268,13 +268,15 @@ where
             .downcast_mut::<ScratchSpaceFusedNonLinear<TI>>()
             .context("Wrong scratch space type")?;
         scratch.prepare::<K>(non_linear);
-        for ia in 0..m / mr {
-            for ib in 0..n / nr {
+        for ib in 0..n / nr {
+            for ia in 0..m / mr {
                 scratch.for_valid_tile::<K>(&non_linear, ia, ib);
                 let err = K::kernel(&scratch.uspecs());
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
             }
-            if n % nr != 0 {
+        }
+        if n % nr != 0 {
+            for ia in 0..m / mr {
                 scratch.for_border_tile::<K>(&non_linear, ia, n / nr);
                 let err = K::kernel(&scratch.uspecs());
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
