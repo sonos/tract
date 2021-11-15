@@ -5,7 +5,7 @@ use proptest::prelude::*;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::Neg;
-use tract_data::prelude::*;
+use tract_data::internal::*;
 
 #[macro_export]
 macro_rules! mmm_frame_tests {
@@ -21,6 +21,13 @@ macro_rules! mmm_frame_tests {
                 fn mat_mul_prepacked_prop((m, k, n, ref a, ref b) in strat_mat_mat_mul::<$ta, $tb>()) {
                     if $cond {
                         test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(m, k, n, &a, &b)?
+                    }
+                }
+
+                #[test]
+                fn mat_mul_prepacked_late((m, k, n, ref a, ref b) in strat_mat_mat_mul::<$ta, $tb>()) {
+                    if $cond {
+                        test_mat_mat_mul_late::<$ker, $ta, $tb, $tc, $ti>(m, k, n, &a, &b)?
                     }
                 }
 
@@ -190,56 +197,56 @@ macro_rules! mmm_frame_tests {
             #[test]
             fn row_mul_2_1_3() {
                 if $cond {
-                    unsafe { row_mul::<$ker, $ta, $tb, $tc, $ti>(2, 1, 3).unwrap() }
+                    unsafe { row_mul::<$ker, $ta, $tb, $tc, $ti>(2, 3).unwrap() }
                 }
             }
 
             #[test]
             fn row_add_2_1_3() {
                 if $cond {
-                    unsafe { row_add::<$ker, $ta, $tb, $tc, $ti>(2, 1, 3).unwrap() }
+                    unsafe { row_add::<$ker, $ta, $tb, $tc, $ti>(2, 3).unwrap() }
                 }
             }
 
             #[test]
             fn col_mul_2_1_3() {
                 if $cond {
-                    unsafe { col_mul::<$ker, $ta, $tb, $tc, $ti>(2, 1, 3).unwrap() }
+                    unsafe { col_mul::<$ker, $ta, $tb, $tc, $ti>(2, 3).unwrap() }
                 }
             }
 
             #[test]
             fn col_add_2_1_3() {
                 if $cond {
-                    unsafe { col_add::<$ker, $ta, $tb, $tc, $ti>(2, 1, 3).unwrap() }
+                    unsafe { col_add::<$ker, $ta, $tb, $tc, $ti>(2, 3).unwrap() }
                 }
             }
 
             #[test]
             fn max_2_1_3() {
                 if $cond {
-                    unsafe { max::<$ker, $ta, $tb, $tc, $ti>(2, 1, 3).unwrap() }
+                    unsafe { max::<$ker, $ta, $tb, $tc, $ti>(2, 3).unwrap() }
                 }
             }
 
             #[test]
             fn min_2_1_3() {
                 if $cond {
-                    unsafe { min::<$ker, $ta, $tb, $tc, $ti>(2, 3, 3).unwrap() }
+                    unsafe { min::<$ker, $ta, $tb, $tc, $ti>(2, 3).unwrap() }
                 }
             }
 
             #[test]
             fn add_d_2_1_3() {
                 if $cond {
-                    unsafe { add_d::<$ker, $ta, $tb, $tc, $ti>(2, 1, 3).unwrap() }
+                    unsafe { add_d::<$ker, $ta, $tb, $tc, $ti>(2, 3).unwrap() }
                 }
             }
 
             #[test]
             fn add_d_big() {
                 if $cond {
-                    unsafe { add_d::<$ker, $ta, $tb, $tc, $ti>(197, 1, 1).unwrap() }
+                    unsafe { add_d::<$ker, $ta, $tb, $tc, $ti>(197, 1).unwrap() }
                 }
             }
         }
@@ -313,39 +320,76 @@ where
                 .unwrap();
         op.b_pack().pack(packed_b.view_mut(), b.view(), 0, 1);
 
-        let mut found = tensor0(TC::max_value()).broadcast_scalar_to_shape(&[m, n]).unwrap();
-
-        op.run(
+        fused_ops::<K, TA, TB, TC, TI, _>(
             m,
             n,
-            &[
-                FusedSpec::AddMatMul {
-                    a: op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view()),
-                    b: op.b_packed(TB::datum_type().size_of(), k).wrap(&packed_b.view()).unwrap(),
-                    k,
-                },
-                FusedSpec::Store(
-                    op.c_from_data_and_strides(TC::datum_type().size_of(), n as isize, 1)
-                        .wrap(&found.view_mut()),
-                ),
-            ],
-        )
-        .unwrap();
-
-        let mut expected = Tensor::zero::<TC>(&[m, n]).unwrap();
-        for x in 0..n {
-            for y in 0..m {
+            &[FusedSpec::AddMatMul {
+                a: op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view()),
+                b: op.b_packed(TB::datum_type().size_of(), k).wrap(&packed_b.view()).unwrap(),
+                k,
+            }],
+            |r, c| {
                 let mut v: TI = TI::zero();
                 for i in 0..k {
-                    let a: TI = a.as_slice::<TA>().unwrap()[i + k * y].as_();
-                    let b: TI = b.as_slice::<TB>().unwrap()[x + i * n].as_();
+                    let a: TI = a.as_slice::<TA>().unwrap()[i + k * r].as_();
+                    let b: TI = b.as_slice::<TB>().unwrap()[c + i * n].as_();
                     v = v + a * b;
                 }
-                expected.as_slice_mut::<TC>().unwrap()[x + y * n] = v.as_();
-            }
-        }
-        found.close_enough(&expected, true).unwrap();
-        Ok(())
+                v.as_()
+            },
+        )
+    }
+}
+
+pub fn test_mat_mat_mul_late<K: MatMatMulKer<TI> + 'static, TA, TB, TC, TI>(
+    m: usize,
+    k: usize,
+    n: usize,
+    a: &Tensor,
+    b: &Tensor,
+) -> Result<(), proptest::test_runner::TestCaseError>
+where
+    TA: LADatum + AsPrimitive<TI> + 'static,
+    TB: LADatum + AsPrimitive<TI> + 'static,
+    TC: LADatum + AsPrimitive<TI> + 'static,
+    TI: LADatum + AsPrimitive<TC> + 'static + Neg<Output = TI>,
+    i32: AsPrimitive<TI>,
+    usize: AsPrimitive<TI>,
+{
+    assert_eq!(a.datum_type(), TA::datum_type());
+    let op = MatMatMulImpl::<K, TI>::new();
+    unsafe {
+        let mut packed_a =
+            Tensor::uninitialized_aligned::<TA>(&[op.a_pack().len(k, m)], op.a_pack().alignment())
+                .unwrap();
+        op.a_pack().pack(packed_a.view_mut(), a.view(), 1, 0);
+
+        fused_ops::<K, TA, TB, TC, TI, _>(
+            m,
+            n,
+            &[FusedSpec::AddMatMul {
+                a: op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view()),
+                b: InputStore::LatePacking {
+                    packer: op.b_pack(),
+                    ptr: b.as_bytes().as_ptr(),
+                    dt: TB::datum_type(),
+                    k,
+                    mn: n,
+                    k_stride: n as isize,
+                    mn_stride: 1,
+                },
+                k,
+            }],
+            |r, c| {
+                let mut v: TI = TI::zero();
+                for i in 0..k {
+                    let a: TI = a.as_slice::<TA>().unwrap()[i + k * r].as_();
+                    let b: TI = b.as_slice::<TB>().unwrap()[c + i * n].as_();
+                    v = v + a * b;
+                }
+                v.as_()
+            },
+        )
     }
 }
 
@@ -375,40 +419,28 @@ where
         let b = b.clone().into_shape(&[k, 1]).unwrap();
         op.b_pack().pack(&mut packed_b.view_mut(), &b.view(), 0, 1);
 
-        let mut c = Tensor::uninitialized::<TC>(&[m, 1]).unwrap();
-
         let pa = op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view());
         let pb = op.b_packed(b.datum_type().size_of(), k).wrap(&packed_b.view()).unwrap();
 
-        op.run(
+        fused_ops::<K, TA, TB, TC, TI, _>(
             m,
             1,
-            &[
-                FusedSpec::AddMatMul { k, a: pa, b: pb },
-                FusedSpec::Store(op.c_view().wrap(&c.view_mut())),
-            ],
+            &[FusedSpec::AddMatMul { k, a: pa, b: pb }],
+            |r, _| {
+                let mut inter = TI::zero();
+                for i in 0..k {
+                    let a: TI = a.as_slice::<TA>().unwrap()[i + k * r].as_();
+                    let b: TI = b.as_slice::<TB>().unwrap()[i].as_();
+                    inter = inter + a * b;
+                }
+                inter.as_()
+            },
         )
-        .unwrap();
-
-        let mut expected = Tensor::zero::<TC>(&[m, 1]).unwrap();
-        for y in 0..m {
-            let mut inter = TI::zero();
-            for i in 0..k {
-                let a: TI = a.as_slice::<TA>().unwrap()[i + k * y].as_();
-                let b: TI = b.as_slice::<TB>().unwrap()[i].as_();
-                inter = inter + a * b;
-            }
-            expected.as_slice_mut().unwrap()[y] = inter.as_();
-        }
-
-        c.close_enough(&expected, true).unwrap();
-        Ok(())
     }
 }
 
-pub unsafe fn fused_op<K: MatMatMulKer<TI> + 'static, TA, TB, TC, TI, F: Fn(&mut [TI])>(
+pub unsafe fn fused_ops<K: MatMatMulKer<TI> + 'static, TA, TB, TC, TI, F: Fn(usize, usize) -> TC>(
     m: usize,
-    k: usize,
     n: usize,
     spec: &[FusedSpec],
     expect: F,
@@ -421,51 +453,37 @@ where
     i32: AsPrimitive<TI>,
     usize: AsPrimitive<TI>,
 {
-    let a = tensor1(&*vec![TA::one(); m * k]).into_shape(&[m, k]).unwrap();
-    let b = tensor1(&*vec![TB::one(); k * n]).into_shape(&[k, n]).unwrap();
     let op = MatMatMulImpl::<K, TI>::new();
-
-    let mut packed_a =
-        Tensor::uninitialized_aligned::<TA>(&[op.a_pack().len(k, m)], op.a_pack().alignment())
-            .unwrap();
-    op.a_pack().pack(packed_a.view_mut(), a.view(), 1, 0);
-
-    let mut packed_b =
-        Tensor::uninitialized_aligned::<TB>(&[op.b_pack().len(k, n)], op.b_pack().alignment())
-            .unwrap();
-    op.b_pack().pack(packed_b.view_mut(), b.view(), 0, 1);
 
     let mut found = Tensor::zero::<TC>(&[m, n]).unwrap();
     let c_store = op
         .c_from_data_and_strides(TC::datum_type().size_of(), n as isize, 1)
         .wrap(&mut found.view_mut());
     let mut spec: TVec<FusedSpec> = spec.into();
-    let a_store = op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view());
-    let b_store = op.b_packed(TB::datum_type().size_of(), k).wrap(&packed_b.view()).unwrap();
-    spec.insert(0, FusedSpec::AddMatMul { k, a: a_store, b: b_store });
     spec.push(FusedSpec::Store(c_store));
 
     op.run(m, n, &spec).unwrap();
-    let mut inter = Tensor::zero::<TI>(&[m, n]).unwrap();
-    for x in 0..n {
-        for y in 0..m {
-            let mut s = TI::zero();
-            for i in 0..k {
-                s += a.as_slice::<TA>().unwrap()[i + k * y].as_()
-                    * b.as_slice::<TB>().unwrap()[x + i * n].as_()
+    let expected =
+        tract_ndarray::prelude::Array2::from_shape_fn((m, n), |(r, c)| expect(r, c)).into_tensor();
+    if found.close_enough(&expected, true).is_err() {
+        println!("found, expected:");
+        for r in 0..m {
+            for c in 0..n {
+                print!("{:4} ", found.as_slice_unchecked::<TC>()[r * n + c]);
             }
-            inter.as_slice_mut::<TI>().unwrap()[x + y * n] = s;
+            print!("      ");
+            for c in 0..n {
+                print!("{:4} ", expected.as_slice_unchecked::<TC>()[r * n + c]);
+            }
+            println!();
         }
     }
-    expect(inter.as_slice_mut::<TI>().unwrap());
-    let expected = inter.cast_to::<TC>().unwrap().into_owned();
-    found.close_enough(&expected, true).unwrap();
-    Ok(())
+    assert!(found == expected);
+    found.close_enough(&expected, true).map_err(|e| TestCaseError::Fail(e.to_string().into()))
 }
 
 pub unsafe fn row_add<K: MatMatMulKer<TI> + 'static, TA, TB, TC, TI>(
     m: usize,
-    k: usize,
     n: usize,
 ) -> proptest::test_runner::TestCaseResult
 where
@@ -477,24 +495,16 @@ where
     usize: AsPrimitive<TI>,
 {
     let bias = (0..m).map(|i| i.as_()).collect::<Vec<TI>>();
-    fused_op::<K, TA, TB, TC, TI, _>(
+    fused_ops::<K, TA, TB, TC, TI, _>(
         m,
-        k,
         n,
         &[FusedSpec::BinPerRow(&tensor1(&*bias), BinOp::Add)],
-        |exp| {
-            for x in 0..n {
-                for y in 0..m {
-                    exp[x + y * n] += bias[y]
-                }
-            }
-        },
+        |r, _| bias[r].as_(),
     )
 }
 
 pub unsafe fn row_mul<K: MatMatMulKer<TI> + 'static, TA, TB, TC, TI>(
     m: usize,
-    k: usize,
     n: usize,
 ) -> proptest::test_runner::TestCaseResult
 where
@@ -506,24 +516,19 @@ where
     usize: AsPrimitive<TI>,
 {
     let bias = (0..m).map(|i| i.as_()).collect::<Vec<TI>>();
-    fused_op::<K, TA, TB, TC, TI, _>(
+    fused_ops::<K, TA, TB, TC, TI, _>(
         m,
-        k,
         n,
-        &[FusedSpec::BinPerRow(&tensor1(&*bias), BinOp::Mul)],
-        |exp| {
-            for x in 0..n {
-                for y in 0..m {
-                    exp[x + y * n] *= bias[y]
-                }
-            }
-        },
+        &[
+            FusedSpec::BinScalar(&tensor0(1i32.as_()), BinOp::Add),
+            FusedSpec::BinPerRow(&tensor1(&*bias), BinOp::Mul),
+        ],
+        |r, _| bias[r].as_(),
     )
 }
 
 pub unsafe fn col_add<K: MatMatMulKer<TI> + 'static, TA, TB, TC, TI>(
     m: usize,
-    k: usize,
     n: usize,
 ) -> proptest::test_runner::TestCaseResult
 where
@@ -535,24 +540,16 @@ where
     usize: AsPrimitive<TI>,
 {
     let bias = (0..n).map(|i| i.as_()).collect::<Vec<TI>>();
-    fused_op::<K, TA, TB, TC, TI, _>(
+    fused_ops::<K, TA, TB, TC, TI, _>(
         m,
-        k,
         n,
         &[FusedSpec::BinPerCol(&tensor1(&*bias), BinOp::Add)],
-        |exp| {
-            for x in 0..n {
-                for y in 0..m {
-                    exp[x + y * n] += bias[x]
-                }
-            }
-        },
+        |_, c| bias[c].as_(),
     )
 }
 
 pub unsafe fn col_mul<K: MatMatMulKer<TI> + 'static, TA, TB, TC, TI>(
     m: usize,
-    k: usize,
     n: usize,
 ) -> proptest::test_runner::TestCaseResult
 where
@@ -564,24 +561,19 @@ where
     usize: AsPrimitive<TI>,
 {
     let bias = (0..n).map(|i| i.as_()).collect::<Vec<TI>>();
-    fused_op::<K, TA, TB, TC, TI, _>(
+    fused_ops::<K, TA, TB, TC, TI, _>(
         m,
-        k,
         n,
-        &[FusedSpec::BinPerCol(&tensor1(&*bias), BinOp::Mul)],
-        |exp| {
-            for x in 0..n {
-                for y in 0..m {
-                    exp[x + y * n] *= bias[x]
-                }
-            }
-        },
+        &[
+            FusedSpec::BinScalar(&tensor0(1i32.as_()), BinOp::Add),
+            FusedSpec::BinPerCol(&tensor1(&*bias), BinOp::Mul),
+        ],
+        |_, c| bias[c].as_(),
     )
 }
 
 pub unsafe fn add_d<K: MatMatMulKer<TI> + 'static, TA, TB, TC, TI>(
     m: usize,
-    k: usize,
     n: usize,
 ) -> proptest::test_runner::TestCaseResult
 where
@@ -595,25 +587,16 @@ where
     let d = (0..m * n).map(|i| i.as_()).collect::<Vec<TI>>();
     let d = tensor1(&*d).into_shape(&[m, n]).unwrap();
     let store_spec = OutputStoreSpec::View { axes: None, mr: K::mr(), nr: K::nr() };
-    fused_op::<K, TA, TB, TC, TI, _>(
+    fused_ops::<K, TA, TB, TC, TI, _>(
         m,
-        k,
         n,
         &[FusedSpec::AddUnicast(store_spec.wrap(&d.view()))],
-        |exp| {
-            for x in 0..n {
-                for y in 0..m {
-                    exp[x + y * n] =
-                        (exp[x + y * n] + d.as_slice::<TI>().unwrap()[x + n * y]).as_().as_();
-                }
-            }
-        },
+        |r, c| d.to_array_view_unchecked::<TI>().into_dimensionality().unwrap()[(r, c)].as_(),
     )
 }
 
 pub unsafe fn max<K: MatMatMulKer<TI>, TA, TB, TC, TI>(
     m: usize,
-    k: usize,
     n: usize,
 ) -> proptest::test_runner::TestCaseResult
 where
@@ -625,18 +608,16 @@ where
     usize: AsPrimitive<TI>,
 {
     let five: TI = 5.as_();
-    fused_op::<K, TA, TB, TC, TI, _>(
+    fused_ops::<K, TA, TB, TC, TI, _>(
         m,
-        k,
         n,
         &[FusedSpec::BinScalar(&tensor0(five), BinOp::Max)],
-        |exp| exp.iter_mut().for_each(|x| *x = if *x < five { five } else { *x }),
+        |_, _| five.as_(),
     )
 }
 
 pub unsafe fn min<K: MatMatMulKer<TI>, TA, TB, TC, TI>(
     m: usize,
-    k: usize,
     n: usize,
 ) -> proptest::test_runner::TestCaseResult
 where
@@ -648,12 +629,11 @@ where
     usize: AsPrimitive<TI>,
 {
     let five: TI = 5.as_();
-    fused_op::<K, TA, TB, TC, TI, _>(
+    fused_ops::<K, TA, TB, TC, TI, _>(
         m,
-        k,
         n,
         &[FusedSpec::BinScalar(&tensor0(five), BinOp::Min)],
-        |exp| exp.iter_mut().for_each(|x| *x = if *x > five { five } else { *x }),
+        |_, _| TC::zero(),
     )
 }
 
@@ -761,7 +741,8 @@ impl<TA: LADatum, TB: LADatum> ConvProblem<TA, TB> {
                                 &self.data_rows_offsets(),
                                 &self.data_cols_offsets(),
                             )
-                            .wrap(&self.data.view()).unwrap(),
+                            .wrap(&self.data.view())
+                            .unwrap(),
                         k: self.k(),
                     },
                     FusedSpec::Store(
