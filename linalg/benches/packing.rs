@@ -46,6 +46,18 @@ fn packb<K: MatMatMulKer<f32>>(crit: &mut BenchmarkGroup<WallTime>, k: usize, n:
     }
 }
 
+fn packed_a<K: MatMatMulKer<f32>>(m: usize, k: usize) -> Tensor {
+    let mmm = MatMatMulImpl::<K, f32>::new();
+    Tensor::zero_aligned_dt(DatumType::F32, &[mmm.a_pack().len(k, m)], mmm.a_pack().alignment())
+        .unwrap()
+}
+
+fn packed_b<K: MatMatMulKer<f32>>(k: usize, n: usize) -> Tensor {
+    let mmm = MatMatMulImpl::<K, f32>::new();
+    Tensor::zero_aligned_dt(DatumType::F32, &[mmm.b_pack().len(k, n)], mmm.b_pack().alignment())
+        .unwrap()
+}
+
 pub fn compute<
     K: MatMatMulKer<f32>,
     F: Fn(&mut ScratchSpaceFusedNonLinear<f32>, &[FusedSpec], usize, usize, usize),
@@ -65,18 +77,8 @@ pub fn compute<
         let b_storage = mmm.b_packed(f32::datum_type().size_of(), k);
         let c_storage = mmm.c_view();
 
-        let pa = Tensor::zero_aligned_dt(
-            DatumType::F32,
-            &[mmm.a_pack().len(k, m)],
-            mmm.a_pack().alignment(),
-        )
-        .unwrap();
-        let pb = Tensor::zero_aligned_dt(
-            DatumType::F32,
-            &[mmm.b_pack().len(k, n)],
-            mmm.b_pack().alignment(),
-        )
-        .unwrap();
+        let pa = packed_a::<K>(m, k);
+        let pb = packed_a::<K>(k, n);
         let mut scratch = ScratchSpaceFusedNonLinear::<f32>::default();
 
         let ops = tvec!(
@@ -93,53 +95,99 @@ pub fn compute<
     }
 }
 
-fn prepacked_mr_nr<K: MatMatMulKer<f32>>(
+unsafe fn valid_tile(
     scratch: &mut ScratchSpaceFusedNonLinear<f32>,
     ops: &[FusedSpec],
+    ia: usize,
+    ib: usize,
+) {
+    scratch.for_valid_tile::<K>(ops, ia, ib);
+    let err = K::kernel(&scratch.uspecs());
+    debug_assert_eq!(err, 0, "Kernel return error {}", err);
+}
+
+unsafe fn prepacked<K>(m: usize, k: usize, n: usize) -> (Tensor, Tensor, Tensor)
+where
+    K: MatMatMulKer<f32>,
+{
+    let c = Tensor::zero_dt(DatumType::F32, &[m, n]).unwrap();
+    let pa = packed_a::<K>(m, k);
+    let pb = packed_b::<K>(k, n);
+    (pa, pb, c)
+}
+
+unsafe fn prepacked_ops<'a, K: MatMatMulKer<f32>>(
+    k: usize,
+    pa: &'a Tensor,
+    pb: &'a Tensor,
+    c: &'a mut Tensor,
+) -> TVec<FusedSpec<'a>> {
+    let mmm = MatMatMulImpl::<K, f32>::new();
+    tvec!(
+        FusedSpec::AddMatMul {
+            k,
+            a: mmm.a_packed(4, k).wrap(&pa.view()),
+            b: mmm.b_packed(4, k).wrap(&pb.view()).unwrap(),
+        },
+        FusedSpec::Store(mmm.c_view().wrap(&mut c.view_mut())),
+    )
+}
+
+fn prepacked_mr_nr<K: MatMatMulKer<f32>>(
+    crit: &mut BenchmarkGroup<WallTime>,
     m: usize,
-    _k: usize,
+    k: usize,
     n: usize,
 ) {
     unsafe {
-        scratch.prepare::<K>(&ops);
-        for ia in 0..m / K::mr() {
-            for ib in 0..n / K::nr() {
-                scratch.for_valid_tile::<K>(&ops, ia, ib);
-                let err = K::kernel(&scratch.uspecs());
-                debug_assert_eq!(err, 0, "Kernel return error {}", err);
-            }
-        }
+        let (mut c, pa, pb) = prepacked::<K>(m, k, n);
+        let ops = prepacked_ops::<K>(k, &pa, &pb, &mut c);
+        let mut scratch = ScratchSpaceFusedNonLinear::<f32>::default();
+        crit.throughput(Elements((m * k * n) as _)).bench_function("prepacked_mr_nr", |be| {
+            be.iter(|| {
+                scratch.prepare::<K>(&ops);
+                for ia in 0..m / K::mr() {
+                    for ib in 0..n / K::nr() {
+                        valid_tile(&mut scratch, &ops, ia, ib);
+                    }
+                }
+            })
+        });
     }
 }
 
 fn prepacked_mc_nc_mr_nr<K: MatMatMulKer<f32>>(
-    scratch: &mut ScratchSpaceFusedNonLinear<f32>,
-    ops: &[FusedSpec],
+    crit: &mut BenchmarkGroup<WallTime>,
     m: usize,
-    _k: usize,
+    k: usize,
     n: usize,
 ) {
     unsafe {
-        scratch.prepare::<K>(&ops);
-        let mc = 128 - K::mr() % 128;
-        let nc = 128 - K::nr() % 128;
-        //    eprintln!("{}x{} {}x{} {}x{}", m, n, mc, nc, K::mr(), K::nr());
-        for oa in 0..m.divceil(mc) {
-            for ob in 0..n.divceil(nc) {
-                for ia in 0..mc / K::mr() {
-                    for ib in 0..nc / K::nr() {
-                        let a = oa * mc / K::mr() + ia;
-                        let b = ob * nc / K::nr() + ib;
-                        if (a + 1) * K::mr() > m || (b + 1) * K::nr() > n {
-                            continue;
+        let (mut c, pa, pb) = prepacked::<K>(m, k, n);
+        let ops = prepacked_ops::<K>(k, &pa, &pb, &mut c);
+        let mut scratch = ScratchSpaceFusedNonLinear::<f32>::default();
+        crit.throughput(Elements((m * k * n) as _)).bench_function("prepacked_mc_nc_mr_nr", |be| {
+            be.iter(|| {
+                scratch.prepare::<K>(&ops);
+                let mc = 128 - K::mr() % 128;
+                let nc = 128 - K::nr() % 128;
+                //    eprintln!("{}x{} {}x{} {}x{}", m, n, mc, nc, K::mr(), K::nr());
+                for oa in 0..m.divceil(mc) {
+                    for ob in 0..n.divceil(nc) {
+                        for ia in 0..mc / K::mr() {
+                            for ib in 0..nc / K::nr() {
+                                let a = oa * mc / K::mr() + ia;
+                                let b = ob * nc / K::nr() + ib;
+                                if (a + 1) * K::mr() > m || (b + 1) * K::nr() > n {
+                                    continue;
+                                }
+                                valid_tile(&mut scratch, &ops, ia, ib);
+                            }
                         }
-                        scratch.for_valid_tile::<K>(&ops, a, b);
-                        let err = K::kernel(&scratch.uspecs());
-                        debug_assert_eq!(err, 0, "Kernel return error {}", err);
                     }
                 }
-            }
-        }
+            })
+        });
     }
 }
 
@@ -153,8 +201,8 @@ fn matmul(c: &mut Criterion, m: usize, k: usize, n: usize) {
     let mut c = c.benchmark_group(format!("{}x{}x{}", m, k, n));
     packa::<K>(&mut c, m, k);
     packb::<K>(&mut c, k, n);
-    compute::<K, _>(&mut c, m, k, n, "prepacked_mr_nr", prepacked_mr_nr::<K>);
-    compute::<K, _>(&mut c, m, k, n, "prepacked_mc_nc_mr_nr", prepacked_mc_nc_mr_nr::<K>);
+    prepacked_mr_nr::<K>(&mut c, m, k, n);
+    prepacked_mc_nc_mr_nr::<K>(&mut c, m, k, n);
     c.finish();
 }
 
