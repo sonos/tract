@@ -331,7 +331,7 @@ impl Patcher {
                 * geometry.pool.patch.spec.strides[0] as isize;
             let c_stride = *geometry.input_shape_with_n.c_stride() as isize;
             let pack = pack.as_slice_mut_unchecked::<T>();
-            let mut writer = geometry.b_pack.write_with_k_outer(pack, geometry.k, geometry.n);
+            let mut writer = geometry.b_pack.write_with_k_outer(pack.as_mut_ptr(), geometry.k, geometry.n);
             let iptr = input.as_ptr_unchecked::<T>();
             let iptr = iptr.offset(
                 (g * geometry.ci_per_group * geometry.input_shape_with_n.c_stride()) as isize,
@@ -369,7 +369,7 @@ impl Patcher {
             let input_heigth = shape.hw_dims()[0] as isize;
             let input_width = shape.hw_dims()[1] as isize;
             let kernel_len = geometry.pool.patch.standard_layout_data_field.len();
-            let mut writer = geometry.b_pack.write_with_k_outer(pack, geometry.k, geometry.n);
+            let mut writer = geometry.b_pack.write_with_k_outer(pack.as_mut_ptr(), geometry.k, geometry.n);
             let iptr = input.as_ptr_unchecked::<T>();
             let iptr = iptr.offset((g * geometry.ci_per_group * shape.c_stride()) as isize);
             let output_width = *geometry.pool.patch.output_shape.get_unchecked(1);
@@ -455,7 +455,7 @@ impl Patcher {
             let y_stride_ptr = y_stride * *shape.h_stride() as isize;
             let x_stride_ptr = x_stride * *shape.w_stride() as isize;
             let c_stride_ptr = *shape.c_stride() as isize;
-            let mut writer = geometry.b_pack.write_with_k_outer(pack, geometry.k, geometry.n);
+            let mut writer = geometry.b_pack.write_with_k_outer(pack.as_mut_ptr(), geometry.k, geometry.n);
             let iptr = input.as_ptr_unchecked::<T>();
             let iptr = iptr.offset((g * geometry.ci_per_group * shape.c_stride()) as isize);
             for ci in 0..geometry.ci_per_group {

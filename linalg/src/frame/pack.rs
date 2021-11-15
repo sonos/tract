@@ -6,7 +6,7 @@ use tract_data::internal::*;
 #[derive(Clone, Debug, Eq, PartialEq, Educe)]
 #[educe(Hash)]
 pub struct Packer {
-    r: usize,
+    pub r: usize,
     alignment: usize,
     end_padding_record: usize,
 }
@@ -28,44 +28,40 @@ impl Packer {
         (n.divceil(self.r) * (k + self.end_padding_record)) * self.r
     }
 
-    unsafe fn pack_t<'p, 'i, T: Datum + Copy>(
+    pub fn single_panel_len(&self, k: usize) -> usize {
+        (k + self.end_padding_record) * self.r
+    }
+
+    pub(crate) unsafe fn pack_t<'p, 'i, T: Datum + Copy>(
         &self,
-        pb: &mut TensorView<'p>,
-        b: &TensorView<'i>,
+        pb: *mut T,
+        b: *const T,
         mn: usize,
         k_stride: isize,
         mn_stride: isize,
         k_range: Range<usize>,
         mn_range: Range<usize>,
     ) {
-        let pb = pb.as_slice_mut_unchecked::<T>();
-        let b = b.as_slice_unchecked::<T>();
-        #[cfg(debug_assertions)]
-        {
-            pb.iter_mut().for_each(|v| *v = T::default());
-        }
         if self.r == 1 && k_stride == 1 && mn == 1 {
-            pb[..k_range.len()].copy_from_slice(&b[k_range]);
+            pb.copy_from_nonoverlapping(b.offset(k_range.start as isize), k_range.len())
         } else if mn_stride == 1 {
             let size_of = T::datum_type().size_of();
             let rbytes = self.r * size_of;
-            let bp = b.as_ptr() as _;
-            let pp = pb.as_mut_ptr() as _;
             let mn_range_bytes = mn_range.start * size_of..mn_range.end * size_of;
             let k_stride_bytes = k_stride * size_of as isize;
+            let bb = b as *const u8;
+            let pbb = pb as *mut u8;
             match rbytes {
-                16 => pack_mn_major::<[u8; 16]>(bp, pp, k_stride_bytes, mn_range_bytes, k_range),
-                24 => pack_mn_major::<[u8; 24]>(bp, pp, k_stride_bytes, mn_range_bytes, k_range),
-                32 => pack_mn_major::<[u8; 32]>(bp, pp, k_stride_bytes, mn_range_bytes, k_range),
-                48 => pack_mn_major::<[u8; 48]>(bp, pp, k_stride_bytes, mn_range_bytes, k_range),
-                64 => pack_mn_major::<[u8; 64]>(bp, pp, k_stride_bytes, mn_range_bytes, k_range),
+                16 => pack_mn_major::<[u8; 16]>(bb, pbb, k_stride_bytes, mn_range_bytes, k_range),
+                24 => pack_mn_major::<[u8; 24]>(bb, pbb, k_stride_bytes, mn_range_bytes, k_range),
+                32 => pack_mn_major::<[u8; 32]>(bb, pbb, k_stride_bytes, mn_range_bytes, k_range),
+                48 => pack_mn_major::<[u8; 48]>(bb, pbb, k_stride_bytes, mn_range_bytes, k_range),
+                64 => pack_mn_major::<[u8; 64]>(bb, pbb, k_stride_bytes, mn_range_bytes, k_range),
                 _ => {
                     let mut packer = self.write_with_k_outer(pb, k_range.len(), mn_range.len());
                     for k in k_range {
                         for x in mn_range.clone() {
-                            packer.write(
-                                *b.get_unchecked((x as isize + k_stride * k as isize) as usize),
-                            )
+                            packer.write(*b.offset(x as isize + k_stride * k as isize))
                         }
                     }
                 }
@@ -74,16 +70,14 @@ impl Packer {
             let mut packer = self.write_with_k_inner(pb, k_range.len(), mn);
             for x in mn_range {
                 for k in k_range.clone() {
-                    packer.write(*b.get_unchecked((x as isize * mn_stride + k as isize) as usize))
+                    packer.write(*b.offset(x as isize * mn_stride + k as isize))
                 }
             }
         } else {
             let mut packer = self.write_with_k_outer(pb, k_range.len(), mn);
             for k in k_range {
                 for x in mn_range.clone() {
-                    packer.write(
-                        *b.get_unchecked((x as isize * mn_stride + k_stride * k as isize) as usize),
-                    )
+                    packer.write(*b.offset(x as isize * mn_stride + k_stride * k as isize))
                 }
             }
         }
@@ -104,8 +98,8 @@ impl Packer {
         let dt = pb.datum_type();
         dispatch_copy!(Self::pack_t(dt)(
             self,
-            pb,
-            b,
+            pb.as_ptr_mut_unchecked(),
+            b.as_ptr_unchecked(),
             b.shape()[mn_axis],
             b.strides()[k_axis],
             b.strides()[mn_axis],
@@ -128,7 +122,7 @@ impl Packer {
 
     pub fn write_with_k_outer<'p, T: Copy + Debug>(
         &self,
-        pb: &'p mut [T],
+        pb: *mut T,
         k: usize,
         mn: usize,
     ) -> KOutWriter<'p, T> {
@@ -137,7 +131,7 @@ impl Packer {
 
     pub fn write_with_k_inner<'p, T: Copy + Debug>(
         &self,
-        pb: &'p mut [T],
+        pb: *mut T,
         k: usize,
         mn: usize,
     ) -> KInWriter<'p, T> {
@@ -165,11 +159,11 @@ impl<'p, T> KOutWriter<'p, T>
 where
     T: Copy + std::fmt::Debug,
 {
-    pub fn new(data: &'p mut [T], panel_width: usize, mn: usize, k: usize) -> KOutWriter<'p, T> {
+    pub fn new(ptr: *mut T, panel_width: usize, mn: usize, k: usize) -> KOutWriter<'p, T> {
         let panels = (mn + panel_width - 1) / panel_width;
         let last_panel_width = mn - (panels - 1) * panel_width;
         KOutWriter {
-            ptr: data.as_mut_ptr(),
+            ptr,
             panels,
             panel_width,
             last_panel_width,
@@ -228,11 +222,11 @@ impl<'p, T> KInWriter<'p, T>
 where
     T: Copy + Debug,
 {
-    pub fn new(data: &'p mut [T], panel_width: usize, mn: usize, k: usize) -> KInWriter<'p, T> {
+    pub fn new(ptr: *mut T, panel_width: usize, mn: usize, k: usize) -> KInWriter<'p, T> {
         let panels = (mn + panel_width - 1) / panel_width;
         let last_panel_width = mn - (panels - 1) * panel_width;
         KInWriter {
-            ptr: data.as_mut_ptr(),
+            ptr,
             k,
             panels,
             panel_width,
