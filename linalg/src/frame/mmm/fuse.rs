@@ -1,4 +1,3 @@
-use std::ffi::c_void;
 use std::fmt::Debug;
 
 use super::{InputStore, InputStoreKer, OutputStore, OutputStoreKer, PackedStore};
@@ -84,7 +83,7 @@ pub enum FusedKerSpec<TI: Copy> {
     Store(OutputStoreKer),                      // jump_to:store
 
     // jump_to:add_mat_mul
-    AddMatMul { k: usize, pa: *const c_void, pb: *const InputStoreKer, cpu_variant: usize },
+    AddMatMul { k: usize, pa: *const u8, pb: *const InputStoreKer, cpu_variant: usize },
 }
 
 #[cfg(test)]

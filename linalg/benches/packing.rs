@@ -83,7 +83,7 @@ pub fn compute<
             FusedSpec::AddMatMul {
                 k,
                 a: a_storage.wrap(&pa.view()),
-                b: b_storage.wrap(&pb.view()),
+                b: b_storage.wrap(&pb.view()).unwrap(),
             },
             FusedSpec::Store(c_storage.wrap(&mut c.view_mut())),
         );

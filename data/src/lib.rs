@@ -40,6 +40,8 @@ pub mod internal {
     pub use crate::tensor::view::TensorView;
     pub use ndarray as tract_ndarray;
     pub use smallvec as tract_smallvec;
+    pub use anyhow::{ bail, ensure };
+    pub use num_integer;
 }
 
 pub use anyhow;

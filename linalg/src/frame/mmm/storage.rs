@@ -1,4 +1,3 @@
-use std::ffi::c_void;
 use std::fmt::Debug;
 use tract_data::internal::*;
 
@@ -21,7 +20,7 @@ pub enum OutputStoreSpec {
 
 #[derive(Clone, Copy, Debug)]
 pub struct OutputStore {
-    pub(crate) ptr: *mut c_void,
+    pub(crate) ptr: *mut u8,
     pub(crate) row_byte_stride: isize,
     pub(crate) col_byte_stride: isize,
     pub(crate) row_item_stride: isize,
@@ -149,7 +148,7 @@ impl OutputStore {
 #[repr(C)]
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub struct OutputStoreKer {
-    pub ptr: *mut c_void,
+    pub ptr: *mut u8,
     pub row_byte_stride: isize,
     pub col_byte_stride: isize,
     pub item_size: usize,
