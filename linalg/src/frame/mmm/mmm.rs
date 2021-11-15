@@ -30,6 +30,10 @@ pub trait MatMatMul:
         rows_offsets: &[isize],
         cols_offsets: &[isize],
     ) -> InputStoreSpec;
+    unsafe fn b_late_packing(&self) -> InputStoreSpec {
+        self.b_late_packing_with_axes(0, 1)
+    }
+    unsafe fn b_late_packing_with_axes(&self, k_axis: usize, n_axis: usize) -> InputStoreSpec;
 
     unsafe fn c_view(&self) -> OutputStoreSpec;
     unsafe fn c_view_with_axis(&self, m_axis: usize, n_axis: usize) -> OutputStoreSpec;
@@ -156,6 +160,10 @@ where
     unsafe fn b_packed(&self, item_size: usize, k: usize) -> InputStoreSpec {
         let panel_bytes = k * K::nr() * item_size;
         InputStoreSpec::Prepacked(PackedStoreSpec { panel_bytes })
+    }
+
+    unsafe fn b_late_packing_with_axes(&self, k_axis: usize, n_axis: usize) -> InputStoreSpec {
+        InputStoreSpec::LatePacking { packer: self.b_pack(), k_axis, mn_axis: n_axis }
     }
 
     unsafe fn b_from_data_and_offsets(

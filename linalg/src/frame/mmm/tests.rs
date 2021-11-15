@@ -369,15 +369,7 @@ where
             n,
             &[FusedSpec::AddMatMul {
                 a: op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view()),
-                b: InputStore::LatePacking {
-                    packer: op.b_pack(),
-                    ptr: b.as_bytes().as_ptr(),
-                    dt: TB::datum_type(),
-                    k,
-                    mn: n,
-                    k_stride: n as isize,
-                    mn_stride: 1,
-                },
+                b: op.b_late_packing().wrap(&b.view()).unwrap(),
                 k,
             }],
             |r, c| {
@@ -478,7 +470,6 @@ where
             println!();
         }
     }
-    assert!(found == expected);
     found.close_enough(&expected, true).map_err(|e| TestCaseError::Fail(e.to_string().into()))
 }
 
