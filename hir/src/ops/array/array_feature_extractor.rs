@@ -45,7 +45,7 @@ impl Expansion for ArrayFeatureExtractor {
 
         // Check ranks
         s.equals(inputs[0].rank.bex(), outputs[0].rank.bex())?;
-        s.equals(inputs[0].rank.bex(), 1)?;
+        s.equals(inputs[1].rank.bex(), 1)?;
 
         // Check shapes
         s.given_2(&inputs[0].shape, &inputs[1].shape, move |s, input_shape, indices_shape| {
