@@ -1,6 +1,6 @@
 [package]
 name = "tract-nnef"
-version = "0.15.6-pre"
+version = "0.15.7"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT/Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -19,7 +19,7 @@ log = "0.4.14"
 nom = "7.0.0"
 tar = "0.4.37"
 flate2 = { version = "1.0.20", optional = true }
-tract-core = { path = "../core" }
+tract-core = "=0.15.7"
 walkdir = "2.3.2"
 
 [features]

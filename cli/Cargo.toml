@@ -1,6 +1,6 @@
 [package]
 name = "tract"
-version = "0.15.6-pre"
+version = "0.15.7"
 authors = [ "Romain Liautaud <romain.liautaud@snips.ai>", "Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT/Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -35,14 +35,14 @@ reqwest = { version = "0.11.4", features = [ "blocking", "rustls" ], default-fea
 serde = "1.0.127"
 serde_json = "1.0.66"
 serde_derive = "1.0.127"
-tract-core = { path = "../core" }
-tract-hir = { path = "../hir" }
-tract-nnef = { path = "../nnef" }
-tract-pulse-opl = { optional = true, path = "../pulse-opl" }
-tract-pulse = { optional = true, path = "../pulse" }
-tract-kaldi = { optional = true, path = "../kaldi" }
-tract-onnx = { optional = true, path = "../onnx" }
-tract-tensorflow = { optional = true, path = "../tensorflow" }
+tract-core = "=0.15.7"
+tract-hir = "=0.15.7"
+tract-nnef = "=0.15.7"
+tract-pulse-opl = { optional = true, version = "=0.15.7" }
+tract-pulse = { optional = true, version = "=0.15.7" }
+tract-kaldi = { optional = true, version = "=0.15.7" }
+tract-onnx = { optional = true, version = "=0.15.7" }
+tract-tensorflow = { optional = true, version = "=0.15.7" }
 
 [features]
 default = ["kaldi", "onnx", "tf", "pulse", "pulse-opl"]
