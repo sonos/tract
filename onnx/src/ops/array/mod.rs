@@ -14,6 +14,7 @@ use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::*;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
+    reg.insert("ArrayFeatureExtractor", array_feature_extractor);
     reg.insert("Compress", compress::compress);
     reg.insert("Concat", concat);
     reg.insert("ConstantLike", constant_like);
@@ -40,6 +41,13 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Tile", |_, _| Ok((expand(array::Tile::default()), vec![])));
     reg.insert("Transpose", transpose);
     reg.insert("Unsqueeze", unsqueeze::unsqueeze);
+}
+
+pub fn array_feature_extractor(
+    _ctx: &ParsingContext,
+    node: &NodeProto,
+) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
+    Ok((expand(array::ArrayFeatureExtractor), vec![]))
 }
 
 pub fn concat(

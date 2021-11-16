@@ -1,4 +1,5 @@
 mod add_dims;
+mod array_feature_extractor;
 mod broadcast;
 mod concat;
 mod constant_like;
@@ -24,6 +25,7 @@ mod strided_slice;
 mod tile;
 
 pub use add_dims::AddDims;
+pub use array_feature_extractor::ArrayFeatureExtractor;
 pub use broadcast::MultiBroadcastTo;
 pub use concat::{Concat, ConcatSlice, TypedConcat};
 pub use constant_like::{ConstantLike, EyeLike};
