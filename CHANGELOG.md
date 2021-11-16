@@ -1,8 +1,11 @@
 # Unreleased
 
-# 0.15.6- 2021-11-16
+# 0.15.7 - 2021-11-16
 * ONNX ArrayFeatureExtractor
 * ConvTranspose/deconv optimisation
+
+# 0.15.6 - yanked 
+* just a release script failure
 
 # 0.15.5 - 2021-10-26
 * hold half at 1.7.x for compat with rust 1.50
