@@ -45,7 +45,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
 
 pub fn array_feature_extractor(
     _ctx: &ParsingContext,
-    node: &NodeProto,
+    _node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     Ok((expand(array::ArrayFeatureExtractor), vec![]))
 }
