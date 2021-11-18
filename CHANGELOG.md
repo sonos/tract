@@ -1,5 +1,8 @@
 # Unreleased
 
+# 0.15.8 - 2021-11-18
+* Fix brand new ArrayFeatureExtractor inference
+
 # 0.15.7 - 2021-11-16
 * ONNX ArrayFeatureExtractor
 * ConvTranspose/deconv optimisation
