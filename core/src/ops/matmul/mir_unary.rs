@@ -238,6 +238,7 @@ impl MatMulUnary {
                 &[wire],
             )?[0];
             patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
+            patch.obliterate(node.id)?;
         }
         Ok(patch)
     }

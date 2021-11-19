@@ -955,6 +955,7 @@ impl TypedOp for ConvUnary {
             let new_op = self.kernel_offset_u8_as_i8(&mut inputs, &mut patch)?.unwrap();
             let wire = patch.wire_node(&node.name, new_op, &inputs)?;
             patch.shunt_outside(model, node.id.into(), wire[0])?;
+            patch.obliterate(node.id)?;
             return Ok(Some(patch));
         }
 
@@ -979,6 +980,7 @@ impl TypedOp for ConvUnary {
                     &inputs,
                 )?;
                 patch.shunt_outside(model, node.id.into(), wire)?;
+                patch.obliterate(node.id)?;
                 return Ok(Some(patch));
             } else if kernel_spatial_shape.iter().product::<usize>() == 1
                 && (0..spatial_rank)
@@ -1045,6 +1047,7 @@ impl TypedOp for ConvUnary {
                     &[wire],
                 )?[0];
                 patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
+                patch.obliterate(node.id)?;
                 return Ok(Some(patch));
             } else if input_fact
                 .shape
@@ -1069,6 +1072,7 @@ impl TypedOp for ConvUnary {
                     )
                     .context("in wire_as_direct")?;
                 patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
+                patch.obliterate(node.id)?;
                 return Ok(Some(patch));
             } else if self.group != 1
                 && self.group == self.output_channels()
@@ -1085,6 +1089,7 @@ impl TypedOp for ConvUnary {
                     .wire_as_im2col_pair(&mut patch, &*node.name, wire)
                     .context("in wire_as_im2col_pair")?;
                 patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
+                patch.obliterate(node.id)?;
                 return Ok(Some(patch));
             }
         }
