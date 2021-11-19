@@ -156,6 +156,7 @@ where
         for (ix, o) in wires.iter().enumerate() {
             patch.shunt_outside(patched_model, OutletId::new(node.id, ix), *o)?;
         }
+        patch.obliterate(node.id)?;
         Ok(patch)
     }
 
