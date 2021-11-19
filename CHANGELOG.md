@@ -1,4 +1,5 @@
 # Unreleased
+* [Breaking] Small API changes in model api: .compact(), .optimize(), .declutter() now take &mut self and work in place.
 
 # 0.15.8 - 2021-11-18
 * Fix brand new ArrayFeatureExtractor inference
