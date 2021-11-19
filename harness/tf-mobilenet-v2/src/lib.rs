@@ -101,7 +101,7 @@ mod tests {
             .model_for_path(mobilenet_v2())?
             .with_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), &[1, 224, 224, 3]))?
             .into_typed()?
-            .declutter()?
+            .into_decluttered()?
             .into_runnable()?;
         run(tfd)
     }

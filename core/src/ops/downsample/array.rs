@@ -74,7 +74,7 @@ mod tests {
         modulo: usize,
     ) -> TestCaseResult {
         let _ = env_logger::Builder::from_env("TRACT_LOG").try_init();
-        let model = {
+        let mut model = {
             let mut model = TypedModel::default();
             let input = model
                 .add_source("input", TypedFact::dt_shape(i32::datum_type(), [len].as_ref()))
@@ -98,7 +98,7 @@ mod tests {
         let expected = SimplePlan::new(&model).unwrap().run(tvec!(input.clone())).unwrap();
 
         info!("Decluttering");
-        let model = model.declutter().unwrap();
+        model.declutter().unwrap();
         trace!("{:#?}", model);
         let order = model.eval_order().unwrap();
         prop_assert!(

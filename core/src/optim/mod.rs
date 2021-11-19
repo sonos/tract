@@ -53,22 +53,21 @@ impl Optimizer {
         ])
     }
 
-    pub fn optimize(&self, model: &TypedModel) -> TractResult<TypedModel> {
+    pub fn optimize(&self, model: &mut TypedModel) -> TractResult<()> {
         #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
         {
             model.check_consistent_facts()?;
         }
         let mut seen = HashSet::new();
-        let mut model = model.compact()?;
+        model.compact()?;
         let mut counter = 0;
         for i in 0.. {
-            let counter_and_model = self.run_all_passes(i, counter, model, &mut seen)?;
-            if counter_and_model.0 == counter {
-                return Ok(counter_and_model.1);
+            let new_counter = self.run_all_passes(i, counter, model, &mut seen)?;
+            if new_counter == counter {
+                return Ok(());
             }
-            counter = counter_and_model.0;
-            model = counter_and_model.1.compact()?;
-            model = model.compact()?;
+            counter = new_counter;
+            model.compact()?;
         }
         unreachable!()
     }
@@ -77,16 +76,15 @@ impl Optimizer {
         &self,
         i: usize,
         mut counter: usize,
-        mut model: TypedModel,
+        model: &mut TypedModel,
         seen: &mut HashSet<String>,
-    ) -> TractResult<(usize, TypedModel)> {
+    ) -> TractResult<usize> {
         let mut passes = self.passes.clone();
         for p in passes.iter_mut() {
-            let counter_and_model = self.run_one_pass_outer(i, p.as_mut(), counter, model, seen)?;
-            counter = counter_and_model.0;
-            model = counter_and_model.1.compact()?;
+            counter = self.run_one_pass_outer(i, p.as_mut(), counter, model, seen)?;
+            model.compact()?;
         }
-        Ok((counter, model))
+        Ok(counter)
     }
 
     pub fn run_one_pass_outer(
@@ -94,16 +92,16 @@ impl Optimizer {
         i: usize,
         p: &mut dyn TypedPass,
         mut counter: usize,
-        mut model: TypedModel,
+        model: &mut TypedModel,
         seen: &mut HashSet<String>,
-    ) -> TractResult<(usize, TypedModel)> {
+    ) -> TractResult<usize> {
         loop {
-            let counter_and_model = self.run_one_pass_inner(i, p, counter, model, seen)?;
-            if counter_and_model.0 == counter {
-                return Ok(counter_and_model);
+            let new_counter = self.run_one_pass_inner(i, p, counter, model, seen)?;
+            if new_counter == counter {
+                return Ok(counter);
             }
-            counter = counter_and_model.0;
-            model = counter_and_model.1.compact()?;
+            counter = new_counter;
+            model.compact()?;
         }
     }
 
@@ -112,14 +110,14 @@ impl Optimizer {
         i: usize,
         p: &mut dyn TypedPass,
         mut counter: usize,
-        mut model: TypedModel,
+        model: &mut TypedModel,
         seen: &mut HashSet<String>,
-    ) -> TractResult<(usize, TypedModel)> {
+    ) -> TractResult<usize> {
         p.reset()?;
         while let Some(mut patch) = p.next(&model)? {
             if let Some(steps) = self.steps {
                 if counter >= steps {
-                    return Ok((counter, model));
+                    return Ok(counter);
                 }
             }
             patch.push_context(format!("{:?}/{}", p, i));
@@ -139,7 +137,7 @@ impl Optimizer {
                 }
             }
             debug!("applying patch #{}: {}", counter, patch.context.iter().rev().join(" >> "),);
-            patch.apply(&mut model)?;
+            patch.apply(model)?;
             counter += 1;
         }
         #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
@@ -149,6 +147,6 @@ impl Optimizer {
                 .check_consistent_facts()
                 .with_context(|| format!("after declutter pass {:?}", p))?
         }
-        Ok((counter, model))
+        Ok(counter)
     }
 }

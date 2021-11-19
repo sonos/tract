@@ -1099,7 +1099,7 @@ mod proptests {
             let input = self.input()?;
             let model = self.model()?;
             let raw = model.into_runnable()?.run(tvec!(input.clone()))?;
-            let optimized = self.model()?.declutter()?;
+            let optimized = self.model()?.into_decluttered()?;
             let opt = optimized.into_runnable()?.run(tvec!(input))?;
             opt[0].close_enough(&raw[0], false)
         }

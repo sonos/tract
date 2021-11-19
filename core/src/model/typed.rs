@@ -72,8 +72,10 @@ impl TypedModel {
         hasher.finish()
     }
 
-    pub fn into_optimized(self) -> TractResult<TypedModel> {
-        self.declutter()?.optimize()
+    pub fn into_optimized(mut self) -> TractResult<TypedModel> {
+        self.declutter()?;
+        self.optimize()?;
+        Ok(self)
     }
 
     #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
@@ -115,9 +117,14 @@ impl TypedModel {
         Ok(())
     }
 
+    pub fn into_decluttered(mut self) -> TractResult<TypedModel> {
+        self.declutter()?;
+        Ok(self)
+    }
+
     /// Perform declutter passes on the network.
-    pub fn declutter(&self) -> TractResult<TypedModel> {
-        crate::optim::Optimizer::declutter().optimize(&self)
+    pub fn declutter(&mut self) -> TractResult<()> {
+        crate::optim::Optimizer::declutter().optimize(self)
     }
 
     pub fn concretize_dims(&self, values: &SymbolValues) -> TractResult<TypedModel> {
@@ -137,8 +144,8 @@ impl TypedModel {
     }
 
     /// Translate the graph to locally optimized operators (LIR or MIR ops).
-    pub fn optimize(self) -> TractResult<TypedModel> {
-        crate::optim::Optimizer::codegen().optimize(&self)
+    pub fn optimize(&mut self) -> TractResult<()> {
+        crate::optim::Optimizer::codegen().optimize(self)
     }
 
     pub fn invariants(&self) -> TractResult<invariants::Invariants> {

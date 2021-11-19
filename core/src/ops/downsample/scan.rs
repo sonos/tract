@@ -32,7 +32,7 @@ pub fn pull_downsample_over_scan(
         })
         .collect::<TractResult<Vec<_>>>()?;
     inner_model.set_output_outlets(&*downsample_outputs)?;
-    let mut inner_model = inner_model.declutter()?;
+    let mut inner_model = inner_model.into_decluttered()?;
     #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
     {
         inner_model.check_consistent_facts()?;
@@ -66,7 +66,7 @@ pub fn pull_downsample_over_scan(
     {
         inner_model.check_consistent_facts()?;
     }
-    let inner_model = inner_model.declutter()?;
+    let inner_model = inner_model.into_decluttered()?;
 
     let mut new_scan = scan_op.clone();
     new_scan.body = inner_model;
