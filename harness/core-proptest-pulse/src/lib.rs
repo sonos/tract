@@ -31,7 +31,7 @@ fn proptest_regular_against_pulse(
     let s = stream_symbol();
 
     let len = input_array.shape()[axis];
-    let model = model.declutter().unwrap();
+    let model = model.into_decluttered().unwrap();
     let runnable = model
         .clone()
         .concretize_dims(&SymbolValues::default().with(s, len as i64))

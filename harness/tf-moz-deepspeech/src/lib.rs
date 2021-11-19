@@ -139,9 +139,9 @@ fn deepspeech_optimized() -> TractResult<()> {
 #[cfg(test)]
 fn deepspeech_run(opt: bool) -> TractResult<()> {
     setup_test_logger();
-    let mut model = initialized_model()?.declutter()?;
+    let mut model = initialized_model()?.into_decluttered()?;
     if opt {
-        model = model.optimize()?;
+        model.optimize()?;
     }
     let plan = SimplePlan::new(model)?;
     let mut state = SimpleState::new(plan)?;

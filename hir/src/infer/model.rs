@@ -56,7 +56,7 @@ impl InferenceModelExt for InferenceModel {
                 break;
             }
         }
-        model = model.compact()?;
+        model = model.into_compact()?;
         model.analyse(false)?;
         Ok(model)
     }
@@ -84,7 +84,7 @@ impl InferenceModelExt for InferenceModel {
     ///
     /// This may break stateful networks.
     fn eliminate_dead_branches(self) -> TractResult<InferenceModel> {
-        self.compact()
+        self.into_compact()
     }
 
     /// Attempt full analyse and conversion to TypedModel.

@@ -653,22 +653,23 @@ impl Parameters {
         }
         stage!("incorporate", inference_model -> inference_model, |m:InferenceModel| { Ok(m.incorporate()?)});
         stage!("type", inference_model -> typed_model, |m:InferenceModel| Ok(m.into_typed()?));
-        stage!("declutter", typed_model -> typed_model, |m:TypedModel| {
+        stage!("declutter", typed_model -> typed_model, |mut m:TypedModel| {
             let mut dec = tract_core::optim::Optimizer::declutter();
             if let Some(steps) = matches.value_of("declutter_step") {
                 dec = dec.stopping_at(steps.parse()?);
             }
-            dec.optimize(&m)
+            dec.optimize(&mut m)?;
+            Ok(m)
         });
         #[cfg(feature = "pulse")]
         {
             if let Some(dim) = concretize_stream_dim {
                 stage!("concretize-stream-dim", typed_model -> typed_model, |m:TypedModel| Ok(m.concretize_dims(&SymbolValues::default().with(stream_symbol(), dim as _))?));
-                stage!("concretize-stream-dim-declutter", typed_model -> typed_model, |m:TypedModel| Ok(m.declutter()?));
+                stage!("concretize-stream-dim-declutter", typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
             } else if let Some(pulse) = pulse {
                 stage!("pulse", typed_model -> pulsed_model, |m:TypedModel| Ok(PulsedModel::new(&m, pulse)?));
                 stage!("pulse-to-type", pulsed_model -> typed_model, |m:PulsedModel| Ok(m.into_typed()?));
-                stage!("pulse-declutter", typed_model -> typed_model, |m:TypedModel| Ok(m.declutter()?));
+                stage!("pulse-declutter", typed_model -> typed_model, |m:TypedModel| Ok(m.into_decluttered()?));
             }
         }
         if nnef_cycle {
@@ -679,7 +680,7 @@ impl Parameters {
                 info!("Dumped, now reloading...");
                 Ok(nnef.model_for_read(&mut &*vec)?)
             });
-            stage!("nnef-declutter", typed_model -> typed_model, |m:TypedModel| Ok(m.declutter()?));
+            stage!("nnef-declutter", typed_model -> typed_model, |m:TypedModel| Ok(m.into_decluttered()?));
         }
         if let Some(sub) = matches.value_of("extract_decluttered_sub") {
             stage!("extract", typed_model -> typed_model, |m:TypedModel| {
@@ -688,12 +689,13 @@ impl Parameters {
             });
         }
         stage!("before-optimize", typed_model -> typed_model, |m:TypedModel| Ok(m));
-        stage!("optimize", typed_model -> typed_model, |m:TypedModel| {
+        stage!("optimize", typed_model -> typed_model, |mut m:TypedModel| {
             let mut opt = tract_core::optim::Optimizer::codegen();
             if let Some(steps) = matches.value_of("optimize_step") {
                 opt = opt.stopping_at(steps.parse()?);
             }
-            opt.optimize(&m)
+            opt.optimize(&mut m)?;
+            Ok(m)
         });
         Ok((typed_model.clone().unwrap(), pulsed_model, reference_model))
     }
@@ -817,9 +819,9 @@ impl Parameters {
 
         if matches.is_present("partial") {
             if let Some(m) = raw_model.downcast_ref::<InferenceModel>() {
-                raw_model = Box::new(m.compact()?);
+                raw_model = Box::new(m.clone().into_compact()?);
             } else if let Some(m) = raw_model.downcast_ref::<TypedModel>() {
-                raw_model = Box::new(m.compact()?);
+                raw_model = Box::new(m.clone().into_compact()?);
             }
         }
 

@@ -142,7 +142,7 @@ impl QConvProblem {
         if self.optim {
             model = model.into_optimized()?;
         } else {
-            model = model.declutter()?;
+            model = model.into_decluttered()?;
         }
         let mut output = model.into_runnable()?.run(tvec![self.data.clone().into_tensor()])?;
         Ok(output.remove(0).into_tensor().into_array::<i8>()?)

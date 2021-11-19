@@ -19,7 +19,7 @@ impl Scan {
     pub fn to_codegen_op(&self, optimize_inner: bool) -> TractResult<LirScan> {
         let mut model = self.body.clone();
         if optimize_inner {
-            model = model.optimize()?;
+            model = model.into_optimized()?;
         }
         let plan = SimplePlan::new(model)?;
         let input_mapping = self
@@ -95,7 +95,7 @@ impl Scan {
     ) -> TractResult<Option<TypedModelPatch>> {
         if !self.decluttered {
             let mut new = self.clone();
-            new.body = self.body.clone().declutter()?;
+            new.body = self.body.clone().into_decluttered()?;
             new.decluttered = true;
             Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, new)?))
         } else {
@@ -240,7 +240,7 @@ impl Scan {
                 patch.obliterate(source_node.id)?;
                 patch.apply(&mut body)?;
                 body.set_input_outlets(&model_inputs)?;
-                let body = body.declutter()?;
+                body.declutter()?;
                 let op = Self {
                     body,
                     skip: self.skip,
@@ -563,7 +563,7 @@ impl Scan {
         };
         let mut body = self.body.clone();
         patch.apply(&mut body)?;
-        body = body.compact()?;
+        body.compact()?;
         let mut wire_changes = tvec!();
         let mut input_mapping: Vec<InputMapping> = self.input_mapping.clone();
         for (ix, m) in input_mapping.iter_mut().enumerate() {

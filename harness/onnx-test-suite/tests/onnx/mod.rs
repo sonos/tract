@@ -144,7 +144,7 @@ pub fn run_one<P: AsRef<path::Path>>(
                     }
                     info!("Into type");
                     let model = model.into_typed().unwrap();
-                    let optimized = model.declutter().unwrap().optimize().unwrap();
+                    let optimized = model.into_decluttered().unwrap().into_optimized().unwrap();
                     trace!("Run optimized model:\n{:#?}", optimized);
                     run_model(optimized, inputs, &data_path)
                 }
@@ -155,7 +155,7 @@ pub fn run_one<P: AsRef<path::Path>>(
                 NNEF => {
                     let model = model.into_typed().unwrap();
                     info!("Declutter");
-                    let optimized = model.declutter().unwrap();
+                    let optimized = model.into_decluttered().unwrap();
                     info!("Store to NNEF");
                     let mut buffer = vec![];
                     nnef.write_to_tar(&optimized, &mut buffer).unwrap();
