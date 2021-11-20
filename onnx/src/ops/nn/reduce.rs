@@ -7,29 +7,29 @@ pub(crate) fn reduce(
     node: &NodeProto,
     reducer: tract_hir::ops::nn::Reducer,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    if ctx.onnx_operator_set_version < 13 {
-        let axes = node.get_attr_opt_vec("axes")?;
-        let keep_dims = node.get_attr_opt("keepdims")?.unwrap_or(1i64) == 1;
-        Ok((expand(tract_hir::ops::nn::Reduce::new(axes, keep_dims, reducer)), vec![]))
-    } else {
+    if ctx.onnx_operator_set_version >= 13 && "ReduceSum" == node.op_type {
         let have_axis_input = node.input.len() == 2;
         let keep_dims = node.get_attr_opt("keepdims")?.unwrap_or(1i64) == 1;
         let noop_with_empty_axes = node.get_attr_opt("noop_with_empty_axes")?.unwrap_or(0i64) == 1;
-        Ok((expand(Reduce13 { have_axis_input, keep_dims, noop_with_empty_axes, reducer }), vec![]))
+        Ok((expand(ReduceSum13 { have_axis_input, keep_dims, noop_with_empty_axes, reducer }), vec![]))
+    } else {
+        let axes = node.get_attr_opt_vec("axes")?;
+        let keep_dims = node.get_attr_opt("keepdims")?.unwrap_or(1i64) == 1;
+        Ok((expand(tract_hir::ops::nn::Reduce::new(axes, keep_dims, reducer)), vec![]))
     }
 }
 
 #[derive(Debug, Clone, Hash)]
-struct Reduce13 {
+struct ReduceSum13 {
     have_axis_input: bool,
     keep_dims: bool,
     noop_with_empty_axes: bool,
     reducer: tract_hir::ops::nn::Reducer,
 }
 
-impl_dyn_hash!(Reduce13);
+impl_dyn_hash!(ReduceSum13);
 
-impl Expansion for Reduce13 {
+impl Expansion for ReduceSum13 {
     fn name(&self) -> Cow<str> {
         "Reduce13".into()
     }
