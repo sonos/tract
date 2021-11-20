@@ -13,10 +13,11 @@ impl AddDims {
     pub fn output_shape<D: DimLike>(&self, input: &[D]) -> TVec<D> {
         let rank = input.len() as isize;
         let mut shape: TVec<D> = input.iter().cloned().collect();
+        let output_rank = rank + self.axes.len() as isize;
         let axes = self
             .axes
             .iter()
-            .map(|&axis| if axis < 0 { axis + rank } else { axis } as usize)
+            .map(|&axis| if axis < 0 { axis + output_rank } else { axis } as usize)
             .sorted();
         for axis in axes {
             shape.insert(axis, D::one())
@@ -59,10 +60,11 @@ impl Expansion for AddDims {
     ) -> TractResult<TVec<OutletId>> {
         let rank = model.outlet_fact(inputs[0])?.rank() as isize;
         let mut wire: TVec<OutletId> = inputs.into();
+        let output_rank = rank + self.axes.len() as isize;
         let axes = self
             .axes
             .iter()
-            .map(|&axis| if axis < 0 { axis + rank } else { axis } as usize)
+            .map(|&axis| if axis < 0 { axis + output_rank } else { axis } as usize)
             .sorted();
         for axis in axes {
             wire =
