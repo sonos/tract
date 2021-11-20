@@ -148,10 +148,10 @@ impl InferenceOp for If {
                 (&self.else_body, &self.else_input_mapping)
             };
             let mut inner_mapping: HashMap<OutletId, OutletId> = HashMap::default();
+            let body = body.clone().into_typed()?;
             for (input_ix, outlet) in tract_itertools::izip!(input_mapping, body.input_outlets()?) {
                 inner_mapping.insert(*outlet, mapping[&node.inputs[*input_ix]]);
             }
-            let body = body.clone().into_typed()?;
             for node in body.eval_order()? {
                 if Graph::is_source(&body.node(node).op) {
                     continue;
