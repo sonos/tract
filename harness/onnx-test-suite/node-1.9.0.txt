@@ -272,6 +272,7 @@ test_logsoftmax_default_axis_expanded
 test_logsoftmax_example_1
 test_logsoftmax_example_1_expanded
 test_logsoftmax_large_number
+test_logsoftmax_large_number_expanded
 test_logsoftmax_negative_axis
 test_logsoftmax_negative_axis_expanded
 test_lrn
@@ -548,6 +549,7 @@ test_softmax_default_axis_expanded
 test_softmax_example
 test_softmax_example_expanded
 test_softmax_large_number
+test_softmax_large_number_expanded
 test_softmax_negative_axis
 test_softmax_negative_axis_expanded
 test_softplus
