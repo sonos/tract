@@ -226,6 +226,9 @@ pub fn for_npz(npz: &mut ndarray_npy::NpzReader<fs::File>, name: &str) -> CliRes
     if let Ok(t) = npz.by_name::<tract_ndarray::OwnedRepr<u64>, tract_ndarray::IxDyn>(name) {
         return Ok(rewrap(t));
     }
+    if let Ok(t) = npz.by_name::<tract_ndarray::OwnedRepr<bool>, tract_ndarray::IxDyn>(name) {
+        return Ok(rewrap(t));
+    }
     bail!("Can not extract tensor from {}", name);
 }
 
