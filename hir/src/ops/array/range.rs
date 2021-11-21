@@ -26,8 +26,9 @@ impl EvalOp for Range {
         let start = start.cast_to_scalar::<u64>()?;
         let limit = limit.cast_to_scalar::<u64>()?;
         let delta = delta.cast_to_scalar::<u64>()?;
-        let value =
-            Array1::from_shape_fn(((limit - start) / delta) as usize, |ix| ix as u64 * delta + start);
+        let value = Array1::from_shape_fn(((limit - start) / delta) as usize, |ix| {
+            ix as u64 * delta + start
+        });
         let value = value.into_tensor().cast_to_dt(dt)?.into_owned();
         Ok(tvec!(value.into_arc_tensor()))
     }
