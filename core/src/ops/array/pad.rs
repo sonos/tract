@@ -122,6 +122,50 @@ impl TypedOp for Pad {
         Ok(tvec!(fact))
     }
 
+    fn invariants(
+        &self,
+        _inputs: &[&TypedFact],
+        _outputs: &[&TypedFact],
+    ) -> TractResult<Invariants> {
+        let mut inv = Invariants::none();
+        for (axis, pads) in self.pads.iter().enumerate() {
+            if pads == &(0, 0) {
+                inv.axes.push(AxisInfo::simple(axis))
+            }
+        }
+        Ok(inv)
+    }
+
+    fn change_axes(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        let mut new_op = self.clone();
+        if let (InOut::In(0), AxisOp::Rm(ix)) = (io, change) {
+            if new_op.pads.remove(*ix) == (0, 0) {
+                return Ok(Some(AxisChangeConsequence::new(
+                    model,
+                    node,
+                    Some(Box::new(new_op)),
+                    change,
+                )));
+            }
+        }
+        if let (InOut::In(0), AxisOp::Add(ix)) = (io, change) {
+            new_op.pads.insert(*ix, (0,0));
+            return Ok(Some(AxisChangeConsequence::new(
+                model,
+                node,
+                Some(Box::new(new_op)),
+                change,
+            )));
+        }
+        Ok(None)
+    }
+
     fn declutter(
         &self,
         model: &TypedModel,
