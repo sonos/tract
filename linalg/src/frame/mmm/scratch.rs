@@ -218,6 +218,9 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                                     .get_unchecked(..have),
                             );
                         }
+                        if cfg!(debug_assertions) {
+                            buf.get_unchecked_mut(have..).iter_mut().for_each(|x| *x = TI::zero());
+                        }
                         buf.as_ptr()
                     } else {
                         v.as_ptr_unchecked::<TI>().add(down * K::mr())
@@ -242,6 +245,9 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                                     .get_unchecked(..have),
                             );
                         }
+                        if cfg!(debug_assertions) {
+                            buf.get_unchecked_mut(have..).iter_mut().for_each(|x| *x = TI::zero());
+                        }
                         buf.as_ptr()
                     } else {
                         v.as_ptr_unchecked::<TI>().add(right * K::nr())
@@ -265,6 +271,9 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                                 .get_unchecked(down * K::mr()..)
                                 .get_unchecked(..have),
                         );
+                        if cfg!(debug_assertions) {
+                            r.get_unchecked_mut(have..).iter_mut().for_each(|x| *x = TI::zero());
+                        }
                         r.as_ptr()
                     } else {
                         rows.as_ptr_unchecked::<TI>().add(down * K::mr())
@@ -281,6 +290,9 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                                 .get_unchecked(right * K::nr()..)
                                 .get_unchecked(..have),
                         );
+                        if cfg!(debug_assertions) {
+                            r.get_unchecked_mut(have..).iter_mut().for_each(|x| *x = TI::zero());
+                        }
                         c.as_ptr()
                     } else {
                         cols.as_ptr_unchecked::<TI>().add(right * K::nr())

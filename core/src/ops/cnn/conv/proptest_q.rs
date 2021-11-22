@@ -508,3 +508,25 @@ fn bias_2() {
     .check()
     .unwrap();
 }
+
+#[test]
+fn bias_3() {
+    let mut qp = MatMulQParams::noop_static(i8::datum_type());
+    qp.b0 = tensor0(-1).into();
+    let data = ArrayD::zeros(vec![2, 1]);
+    let mut kernel = ArrayD::zeros(vec![5, 1, 2]);
+    *kernel.as_slice_mut().unwrap().last_mut().unwrap() = -1;
+    QConvProblem {
+        shape_in: HWC.from_n_c_hw(1, 1, &[2]).unwrap(),
+        co: 5,
+        kernel_format: OIHW,
+        group: 1,
+        data,
+        kernel,
+        bias: Some(ArrayD::zeros([5].as_ref())),
+        qp,
+        optim: true,
+    }
+    .check()
+    .unwrap();
+}
