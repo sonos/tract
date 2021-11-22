@@ -669,8 +669,8 @@ fn packed_packed_8x8_loop1(c: &mut Criterion) {
                     out("x12") _, out("x13") _, out("x14") _, out("x15") _,
                     out("x20") _, out("x21") _, out("x22") _,
                     out("x23") _, out("x24") _, out("x25") _, out("x26") _,
-                    out("v0") _, out("v1") _, out("v2") _,
-                    out("v4") _, out("v5") _,
+                    out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+                    out("v4") _, out("v5") _, out("v6") _, out("v7") _,
                     out("v16") _, out("v17") _, out("v18") _, out("v19") _,
                     out("v20") _, out("v21") _, out("v22") _, out("v23") _,
                     out("v24") _, out("v25") _, out("v26") _, out("v27") _,
@@ -682,9 +682,42 @@ fn packed_packed_8x8_loop1(c: &mut Criterion) {
     }
 
     bench_4_loop_1!(naive);
+    bench_4_loop_1!(broken_chains);
     bench_4_loop_1!(ldr_x_no_preload);
     bench_4_loop_1!(ldr_w_no_preload);
     bench_4_loop_1!(ldr_w_preload);
+}
+
+fn packed_packed_8x8_loop2(c: &mut Criterion) {
+    let mut group = c.benchmark_group("packed_packed_8x8_loop2");
+    group.throughput(criterion::Throughput::Elements(8 * 8 * 4 * 2));
+
+    macro_rules! bench_4_loop_2 {
+        ($id:ident) => {
+            group.bench_function(stringify!($id), |b| {
+                b.iter(|| unsafe {
+                    let mut p = F32;
+                    let mut q = F32;
+                    r4!(asm!(include_str!(concat!("../arm64/arm64simd/arm64simd_mmm_f32_8x8/packed_packed_loop2/", stringify!($id), ".tmpli")),
+                    inout("x1") p, inout("x2") q,
+                    out("x4") _, out("x5") _, out("x6") _, out("x7") _,
+                    out("x8") _, out("x9") _, out("x10") _, out("x11") _,
+                    out("x12") _, out("x13") _, out("x14") _, out("x15") _,
+                    out("x20") _, out("x21") _, out("x22") _,
+                    out("x23") _, out("x24") _, out("x25") _, out("x26") _,
+                    out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+                    out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+                    out("v16") _, out("v17") _, out("v18") _, out("v19") _,
+                    out("v20") _, out("v21") _, out("v22") _, out("v23") _,
+                    out("v24") _, out("v25") _, out("v26") _, out("v27") _,
+                    out("v28") _, out("v29") _, out("v30") _, out("v31") _,
+                    ));
+                })
+            });
+        }
+    }
+
+    bench_4_loop_2!(broken_chains);
 }
 
 fn packed_packed_12x8_loop1(c: &mut Criterion) {
@@ -719,6 +752,7 @@ fn packed_packed_12x8_loop1(c: &mut Criterion) {
     bench_4_loop_1!(naive);
     bench_4_loop_1!(ldr_w_no_preload);
     bench_4_loop_1!(ldr_w_preload);
+    bench_4_loop_1!(ldr_x_preload);
 }
 
 fn packed_packed_16x4_loop1(c: &mut Criterion) {
@@ -758,6 +792,7 @@ criterion_group!(
     ld_64F32,
     packed_packed_12x8_loop1,
     packed_packed_8x8_loop1,
+    packed_packed_8x8_loop2,
     packed_packed_16x4_loop1
 );
 criterion_main!(benches);
