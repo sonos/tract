@@ -271,6 +271,24 @@ pub fn ld_64F32(c: &mut Criterion) {
             ));
         })
     });
+    group.bench_function("ins_64b_same_v", |b| {
+        b.iter(|| unsafe {
+            r8!(asm!("
+                ins v8.d[0], x20
+                ins v8.d[1], x20
+                ins v8.d[0], x20
+                ins v8.d[1], x20
+                ins v8.d[0], x20
+                ins v8.d[1], x20
+                ins v8.d[0], x20
+                ins v8.d[1], x20
+                ",
+            out("x20") _,
+            out("v8") _, out("v9") _, out("v10") _, out("v11") _,
+            out("v12") _, out("v13") _, out("v14") _, out("v15") _,
+            ));
+        })
+    });
     group.bench_function("fmla_with_w_load", |b| {
         b.iter(|| unsafe {
             let mut p = F32;
