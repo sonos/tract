@@ -21,13 +21,16 @@ fn all(c: &mut Criterion) {
     packed_packed(c, "asr_8M", 512, 256, 1); // fastlstm1 and 2 (four parts, rec mat*vec)
     packed_vec(c, "asr_8M", 512, 256, 1); // fastlstm1 and 2 (four parts, rec mat*vec)
 
+    // pseudo 15M
+    packed_packed(c, "asr_pseudo15M", 768, 200, 24); // tdnn1
+    packed_packed(c, "asr_pseudo15M", 768, 2304, 24); // tdnn2
+    packed_packed(c, "asr_pseudo15M", 768, 2304, 8); // tdnn3,4,5
+    packed_packed(c, "asr_pseudo15M", 768, 768, 8); // fastlstm1 and 2 (four parts, rec mat*mat)
+    packed_packed(c, "asr_pseudo15M", 768, 384, 1); // fastlstm1 and 2 (four parts, rec mat*vec)
+    packed_vec(c, "asr_pseudo15M", 768, 384, 1); // fastlstm1 and 2 (four parts, rec mat*vec)
+
     // 15M
-    packed_packed(c, "asr_15M", 768, 200, 24); // tdnn1
-    packed_packed(c, "asr_15M", 768, 2304, 24); // tdnn2
-    packed_packed(c, "asr_15M", 768, 2304, 8); // tdnn3,4,5
-    packed_packed(c, "asr_15M", 768, 768, 8); // fastlstm1 and 2 (four parts, rec mat*mat)
-    packed_packed(c, "asr_15M", 768, 384, 1); // fastlstm1 and 2 (four parts, rec mat*vec)
-    packed_vec(c, "asr_15M", 768, 384, 1); // fastlstm1 and 2 (four parts, rec mat*vec)
+    packed_vec(c, "asr_15M", 768, 256, 1); // fastlstm1 and 2 (four parts, rec mat*vec)
 }
 
 criterion_group!(benches, all);
