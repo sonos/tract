@@ -26,6 +26,19 @@ pub fn ld_64F32(c: &mut Criterion) {
             r64!(asm!("orr x0, x0, x0"));
         })
     });
+    group.bench_function("vands", |b| {
+        b.iter(|| unsafe {
+            r16!(asm!("
+                and v0.16b, v1.16b, v1.16b
+                and v2.16b, v3.16b, v3.16b
+                and v4.16b, v5.16b, v5.16b
+                and v6.16b, v7.16b, v7.16b
+                     ",
+            out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+            out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+                     ));
+        })
+    });
     group.bench_function("fmla", |b| {
         b.iter(|| unsafe {
             r4!(asm!("
@@ -286,6 +299,36 @@ pub fn ld_64F32(c: &mut Criterion) {
             out("x20") _,
             out("v8") _, out("v9") _, out("v10") _, out("v11") _,
             out("v12") _, out("v13") _, out("v14") _, out("v15") _,
+            ));
+        })
+    });
+    group.bench_function("fmla_with_prfm", |b| {
+        b.iter(|| unsafe {
+            let mut p = F32;
+            r8!(asm!("
+                        prfm pldl1keep, [{0}, #256]
+                        fmla v0.4s, v0.4s, v0.4s
+                        prfm pldl1keep, [{0}, #320]
+                        fmla v1.4s, v1.4s, v1.4s
+                        prfm pldl1keep, [{0}, #384]
+                        fmla v2.4s, v2.4s, v2.4s
+                        prfm pldl1keep, [{0}, #448]
+                        fmla v3.4s, v3.4s, v3.4s
+                        prfm pldl1keep, [{0}, #512]
+                        fmla v4.4s, v4.4s, v4.4s
+                        prfm pldl1keep, [{0}, #576]
+                        fmla v5.4s, v5.4s, v5.4s
+                        prfm pldl1keep, [{0}, #640]
+                        fmla v6.4s, v6.4s, v6.4s
+                        prfm pldl1keep, [{0}, #704]
+                        fmla v7.4s, v7.4s, v7.4s
+                        prfm pldl1keep, [{0}, #768]
+                      ",
+            inout(reg) p,
+            out("x20") _, out("x21") _, out("x22") _, out("x23") _,
+            out("x24") _, out("x25") _, out("x26") _, out("x27") _,
+            out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+            out("v4") _, out("v5") _, out("v6") _, out("v7") _,
             ));
         })
     });
@@ -702,6 +745,7 @@ fn packed_packed_8x8_loop1(c: &mut Criterion) {
     bench_4_loop_1!(naive);
     bench_4_loop_1!(broken_chains);
     bench_4_loop_1!(ldr_x_no_preload);
+    bench_4_loop_1!(ldr_x_preload);
     bench_4_loop_1!(ldr_w_no_preload);
     bench_4_loop_1!(ldr_w_preload);
 }
