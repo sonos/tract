@@ -255,30 +255,54 @@ impl Expansion for StridedSlice {
             (0..input_shape.rank()).collect()
         };
         let mut wire = inputs[0];
-        let begin = params[0]
-            .as_ref()
-            .context("StridedSlice is typable only if start is a const")?;
-        let end = params[1]
-            .as_ref()
-            .context("StridedSlice is typable only if end is a const")?;
+        let begin = params[0].as_ref();
+        let end = params[1].as_ref();
         for (ix, &axis) in axes.iter().enumerate() {
-            let d = &input_shape[axis];
-            let preped = self.prepare_one_dim(ix, &d, &begin, &end, &strides)?;
-            let (left, right) = if preped.stride > 0 {
-                (preped.begin, preped.end)
-            } else {
-                (preped.end + 1, preped.begin + 1)
-            };
-            wire = target.wire_node(
-                format!("{}.slice-axis-{}", prefix, axis),
-                crate::ops::array::Slice::new(axis, left, right),
-                [wire].as_ref(),
-            )?[0];
-            if preped.stride != 1 {
+            if let (Some(begin), Some(end)) = (begin, end) {
+                let d = &input_shape[axis];
+                let preped = self.prepare_one_dim(ix, &d, &begin, &end, &strides)?;
+                let (left, right) = if preped.stride > 0 {
+                    (preped.begin, preped.end)
+                } else {
+                    (preped.end + 1, preped.begin + 1)
+                };
                 wire = target.wire_node(
-                    format!("{}.stride-axis-{}", prefix, axis),
-                    crate::ops::downsample::Downsample::new(ix, preped.stride as isize, 0),
+                    format!("{}.slice-axis-{}", prefix, axis),
+                    crate::ops::array::Slice::new(axis, left, right),
                     [wire].as_ref(),
+                )?[0];
+                if preped.stride != 1 {
+                    wire = target.wire_node(
+                        format!("{}.stride-axis-{}", prefix, axis),
+                        crate::ops::downsample::Downsample::new(ix, preped.stride as isize, 0),
+                        [wire].as_ref(),
+                    )?[0];
+                }
+            } else if strides[ix] == 1 {
+                let left = target.wire_node(
+                    format!("{}.slice-axis-{}-start", prefix, axis),
+                    crate::ops::array::Slice::new(0, axis, axis + 1),
+                    &[inputs[1]],
+                )?;
+                let left = target.wire_node(
+                    format!("{}.slice-axis-{}-start-rm-axis", prefix, axis),
+                    AxisOp::Rm(0),
+                    &left,
+                )?[0];
+                let right = target.wire_node(
+                    format!("{}.slice-axis-{}-end", prefix, axis),
+                    crate::ops::array::Slice::new(0, axis, axis + 1),
+                    &[inputs[2]],
+                )?;
+                let right= target.wire_node(
+                    format!("{}.slice-axis-{}-end-rm-axis", prefix, axis),
+                    AxisOp::Rm(0),
+                    &right,
+                )?[0];
+                wire = target.wire_node(
+                    format!("{}.slice-axis-{}", prefix, axis),
+                    tract_core::ops::array::DynSlice::new(axis, true, true),
+                    &[wire, left, right]
                 )?[0];
             }
         }

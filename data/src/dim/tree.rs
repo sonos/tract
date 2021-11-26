@@ -8,7 +8,7 @@ pub struct UndeterminedSymbol(TDim);
 
 impl std::fmt::Display for UndeterminedSymbol {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Undertermined symbol in expression: {}", self.0)
+        write!(f, "Undetermined symbol in expression: {}", self.0)
     }
 }
 
