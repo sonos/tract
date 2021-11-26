@@ -107,7 +107,7 @@ impl EvalOp for ElementWiseOp {
 
 impl TypedOp for ElementWiseOp {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let mut fact = inputs[0].clone();
+        let mut fact = inputs[0].clone().without_value();
         if let Some(dt) = self.0.output_type(fact.datum_type) {
             fact.datum_type = dt;
         }

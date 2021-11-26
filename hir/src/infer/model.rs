@@ -118,9 +118,17 @@ impl InferenceModelExt for InferenceModel {
                         })
                         .collect()
                 } else {
-                    node.op
+                    let outputs = node
+                        .op
                         .to_typed(source, node, target, mapping)
-                        .with_context(|| format!("translating op {:?}", node.op))
+                        .with_context(|| format!("translating op {:?}", node.op))?;
+                    for output in &outputs {
+                        target
+                            .outlet_fact(*output)?
+                            .consistent()
+                            .with_context(|| format!("Checking consistency after translating op {:?}", node.op))?;
+                    }
+                    Ok(outputs)
                 }
             }
         }

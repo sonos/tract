@@ -41,20 +41,22 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
     ) -> TractResult<TVec<OutletId>> {
         let op = op.into();
         let name = name.into();
-        let output_facts = {
+
+        let output_facts = || {
             let input_facts =
                 inputs.iter().map(|o| self.outlet_fact(*o)).collect::<TractResult<TVec<_>>>()?;
             if input_facts.iter().all(|f| f.konst.is_some()) && op.is_stateless() {
                 let tensors =
                     input_facts.iter().map(|f| f.konst.clone().unwrap()).collect::<TVec<_>>();
-                let outputs =
-                    op.eval(tensors).with_context(|| format!("Eager eval of {} {:?}", name, op))?;
-                outputs.into_iter().map(|t| TypedFact::from(t)).collect()
-            } else {
-                op.output_facts(&*input_facts)
-                    .with_context(|| format!("wiring {} ({:?})", name, op))?
+                if let Ok(outputs) = op.eval(tensors) {
+                   return Ok( outputs.into_iter().map(|t| TypedFact::from(t)).collect())
+                }
             }
+            op.output_facts(&*input_facts)
+                .with_context(|| format!("wiring {} ({:?})", name, op))
         };
+
+        let output_facts = output_facts()?;
         let id = self.add_node(name, op, output_facts)?;
         inputs
             .iter()
