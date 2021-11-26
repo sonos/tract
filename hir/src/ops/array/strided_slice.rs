@@ -232,74 +232,72 @@ impl Expansion for StridedSlice {
             .iter()
             .map(|i| Ok(target.outlet_fact(*i)?.konst.clone()))
             .collect::<TractResult<_>>()?;
-        if params.iter().all(|p| p.is_some()) {
-            let params: TVec<&Tensor> = params.iter().map(|o| &**o.as_ref().unwrap()).collect();
-            let input_shape = target.outlet_fact(inputs[0])?.shape.clone();
-            let strides: TVec<i32> = if let Some(i) = self.optional_steps_input {
-                let strides = params[i - 1].cast_to::<i32>()?;
-                strides.as_slice::<i32>()?.into()
-            } else {
-                tvec![1; input_shape.rank()]
-            };
-            let axes: TVec<usize> = if let Some(i) = self.optional_axes_input {
-                let axes = params[i - 1].cast_to::<i32>()?;
-                axes.as_slice::<i32>()?
-                    .iter()
-                    .map(|&i| if i < 0 { input_shape.rank() as i32 + i } else { i } as usize)
-                    .collect()
-            } else {
-                (0..input_shape.rank()).collect()
-            };
-            let mut wire = inputs[0];
-            let input = target.outlet_fact(wire)?.clone();
-            for (ix, &axis) in axes.iter().enumerate() {
-                let d = &input_shape[axis];
-                let preped = self.prepare_one_dim(ix, &d, &params[0], &params[1], &strides)?;
-                if preped.stride > 0 {
-                    if preped.begin != 0.to_dim() || preped.end != input.shape[ix] {
-                        wire = target.wire_node(
-                            format!("{}.slice-axis-{}", prefix, axis),
-                            crate::ops::array::Slice::new(axis, preped.begin, preped.end),
-                            [wire].as_ref(),
-                        )?[0];
-                    }
-                } else {
-                    if preped.end != 0.to_dim() || preped.begin != input.shape[ix] {
-                        wire = target.wire_node(
-                            format!("{}.slice-axis-{}", prefix, axis),
-                            crate::ops::array::Slice::new(axis, preped.end + 1, preped.begin + 1),
-                            [wire].as_ref(),
-                        )?[0];
-                    }
-                }
-                if preped.stride != 1 {
-                    wire = target.wire_node(
-                        format!("{}.stride-axis-{}", prefix, axis),
-                        crate::ops::downsample::Downsample::new(ix, preped.stride as isize, 0),
-                        [wire].as_ref(),
-                    )?[0];
-                }
-            }
-            let mut shrink = input
-                .shape
+        let input_shape = target.outlet_fact(inputs[0])?.shape.clone();
+        let strides: TVec<i32> = if let Some(i) = self.optional_steps_input {
+            let strides = params[i - 1]
+                .as_ref()
+                .context("StridedSlice is typable only if stride is a const")?
+                .cast_to::<i32>()?;
+            strides.as_slice::<i32>()?.into()
+        } else {
+            tvec![1; input_shape.rank()]
+        };
+        let axes: TVec<usize> = if let Some(i) = self.optional_axes_input {
+            let axes = params[i - 1]
+                .as_ref()
+                .context("StridedSlice is typable only if axis is a const")?
+                .cast_to::<i32>()?;
+            axes.as_slice::<i32>()?
                 .iter()
-                .enumerate()
-                .filter(|(ix, _d)| self.must_shrink(*ix))
-                .map(|pair| pair.0)
-                .collect::<Vec<_>>();
-            shrink.sort();
-            for axis in shrink.iter().rev() {
+                .map(|&i| if i < 0 { input_shape.rank() as i32 + i } else { i } as usize)
+                .collect()
+        } else {
+            (0..input_shape.rank()).collect()
+        };
+        let mut wire = inputs[0];
+        let begin = params[0]
+            .as_ref()
+            .context("StridedSlice is typable only if start is a const")?;
+        let end = params[1]
+            .as_ref()
+            .context("StridedSlice is typable only if end is a const")?;
+        for (ix, &axis) in axes.iter().enumerate() {
+            let d = &input_shape[axis];
+            let preped = self.prepare_one_dim(ix, &d, &begin, &end, &strides)?;
+            let (left, right) = if preped.stride > 0 {
+                (preped.begin, preped.end)
+            } else {
+                (preped.end + 1, preped.begin + 1)
+            };
+            wire = target.wire_node(
+                format!("{}.slice-axis-{}", prefix, axis),
+                crate::ops::array::Slice::new(axis, left, right),
+                [wire].as_ref(),
+            )?[0];
+            if preped.stride != 1 {
                 wire = target.wire_node(
-                    format!("{}.RmDim-{}", prefix, axis),
-                    AxisOp::Rm(*axis),
+                    format!("{}.stride-axis-{}", prefix, axis),
+                    crate::ops::downsample::Downsample::new(ix, preped.stride as isize, 0),
                     [wire].as_ref(),
                 )?[0];
             }
-            target.rename_node(wire.node, prefix)?;
-            Ok(tvec!(wire))
-        } else {
-            bail!("StridedSlice in not typable when params are dynamic: got:{:?}", params);
         }
+        let mut shrink = input_shape
+            .iter()
+            .enumerate()
+            .filter(|(ix, _d)| self.must_shrink(*ix))
+            .map(|pair| pair.0)
+            .collect::<Vec<_>>();
+        shrink.sort();
+        for axis in shrink.iter().rev() {
+            wire = target.wire_node(
+                format!("{}.RmDim-{}", prefix, axis),
+                AxisOp::Rm(*axis),
+                [wire].as_ref(),
+            )?[0];
+        }
+        target.rename_node(wire.node, prefix)?;
+        Ok(tvec!(wire))
     }
 }
 
