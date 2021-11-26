@@ -759,6 +759,20 @@ impl Tensor {
         &*(self.data as *mut D)
     }
 
+    /// Mutable access the data as a scalar.
+    pub fn to_scalar_mut<'a, D: Datum>(&'a self) -> anyhow::Result<&mut D> {
+        self.check_for_access::<D>()?;
+        if self.len() == 0 {
+            anyhow::bail!("to_scalar_mut called on empty tensor ({:?})", self)
+        }
+        unsafe { Ok(self.to_scalar_mut_unchecked()) }
+    }
+
+    /// Mutable access the data as a scalar.
+    pub unsafe fn to_scalar_mut_unchecked<'a, D: Datum>(&'a self) -> &mut D {
+        &mut *(self.data as *mut D)
+    }
+
     pub unsafe fn as_bytes(&self) -> &[u8] {
         std::slice::from_raw_parts(self.data, self.layout.size())
     }
