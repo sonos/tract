@@ -43,6 +43,7 @@ pub mod internal {
 }
 
 pub use anyhow;
+pub use half;
 pub use dim::UndeterminedSymbol;
 
 mod datum;
