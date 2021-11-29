@@ -14,6 +14,7 @@ rustc --version
 
 if [ `uname` = "Darwin" ]
 then
+    sysctl -n machdep.cpu.brand_string
     brew install coreutils
 fi
 
