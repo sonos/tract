@@ -20,7 +20,7 @@ pub mod ops {
     pub mod activations;
     pub mod array;
     pub mod binary;
-    pub use tract_core::ops::cast::cast;
+    pub mod cast;
     pub mod cnn;
     pub mod downsample;
     pub mod dummy;

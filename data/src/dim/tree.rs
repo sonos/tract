@@ -486,6 +486,22 @@ impl Default for TDim {
     }
 }
 
+impl num_traits::Bounded for TDim {
+    fn min_value() -> Self {
+        TDim::Val(i64::min_value())
+    }
+
+    fn max_value() -> Self {
+        TDim::Val(i64::max_value())
+    }
+}
+
+impl num_traits::One for TDim {
+    fn one() -> Self {
+        TDim::Val(1)
+    }
+}
+
 impl ::std::iter::Sum for TDim {
     fn sum<I: Iterator<Item = TDim>>(iter: I) -> TDim {
         iter.fold(0.into(), |a, b| a + b)

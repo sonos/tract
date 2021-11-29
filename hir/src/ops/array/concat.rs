@@ -97,7 +97,7 @@ impl Expansion for Concat {
                 None => {
                     let casted = target.wire_node(
                         format!("{}.cast-{}", prefix, ix),
-                        crate::ops::cast(super_type),
+                        crate::ops::cast::cast(super_type),
                         &[*outlet],
                     )?[0];
                     kept_inputs.push(casted);

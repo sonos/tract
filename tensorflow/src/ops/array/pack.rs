@@ -1,19 +1,18 @@
 use tract_hir::internal::*;
+use tract_hir::ops::binary::wire_cast;
 
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
 
 pub fn pack(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
-    let dtype = pb.get_attr_datum_type("T")?;
     let n = pb.input.len();
     let axis = pb.get_attr_int("axis")?;
 
-    Ok(expand(Pack::new(dtype, n, axis)))
+    Ok(expand(Pack::new(n, axis)))
 }
 
 #[derive(Debug, Clone, new, Hash)]
 pub struct Pack {
-    t: DatumType,
     n: usize, // The number of inputs
     axis: usize,
 }
@@ -75,19 +74,15 @@ impl Expansion for Pack {
             .map(|&i| Ok(model.outlet_fact(i)?.datum_type))
             .collect::<TractResult<TVec<DatumType>>>()?;
         let dt = DatumType::super_type_for(dt.iter()).context("No supertype")?;
-        let inputs: TVec<OutletId> = inputs
+        let wires = wire_cast(prefix, model, inputs, dt)?;
+        let inputs: TVec<OutletId> = wires
             .iter()
             .enumerate()
             .map(|(ix, &o)| {
-                let wire = model.wire_node(
-                    format!("{}.cast-{}", prefix, ix),
-                    tract_hir::ops::cast(dt),
-                    &[o],
-                )?[0];
                 Ok(model.wire_node(
                     format!("{}.add_dims-{}", prefix, ix),
                     AxisOp::Add(self.axis),
-                    &[wire],
+                    &[o],
                 )?[0])
             })
             .collect::<TractResult<TVec<OutletId>>>()?;

@@ -1,8 +1,8 @@
 use super::Factoid;
-use tract_data::UndeterminedSymbol;
 use crate::infer::*;
 use std::fmt;
 use tract_core::downcast_rs::Downcast;
+use tract_data::UndeterminedSymbol;
 
 tract_core::dyn_clone::clone_trait_object!(InferenceOp);
 

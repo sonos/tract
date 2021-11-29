@@ -310,35 +310,36 @@ impl TypedOp for LirMatMulUnary {
             }
         }
 
-        if let Some(op) = succ.op_as::<ops::element_wise::ElementWiseOp>().map(|ew| ew.0.as_ref()) {
-            if let Some(cast) = op.downcast_ref::<ops::cast::Cast>().map(|cast| cast.to) {
-                if (cast.unquantized() == i8::datum_type()
-                    || cast.unquantized() == u8::datum_type())
-                    && self.c_fact.datum_type == i32::datum_type()
-                {
-                    let at = self.micro_ops.iter().nth(0).unwrap().0.datum_type();
-                    let bt = model.outlet_fact(node.inputs[0])?.datum_type;
-                    let mmm = tract_linalg::ops()
-                        .mmm(
-                            at,
-                            bt,
-                            i8::datum_type(),
-                            self.c_fact.shape[self.c_m_axis].to_usize().ok(),
-                            None,
-                            self.c_fact.shape[self.c_n_axis].to_usize().ok(),
-                        )
-                        .unwrap();
+        if let Some(cast) = succ.op_as::<ops::cast::Cast>().map(|cast| cast.to) {
+            if (cast.unquantized() == i8::datum_type() || cast.unquantized() == u8::datum_type())
+                && self.c_fact.datum_type == i32::datum_type()
+            {
+                let at = self.micro_ops.iter().nth(0).unwrap().0.datum_type();
+                let bt = model.outlet_fact(node.inputs[0])?.datum_type;
+                let mmm = tract_linalg::ops()
+                    .mmm(
+                        at,
+                        bt,
+                        i8::datum_type(),
+                        self.c_fact.shape[self.c_m_axis].to_usize().ok(),
+                        None,
+                        self.c_fact.shape[self.c_n_axis].to_usize().ok(),
+                    )
+                    .unwrap();
 
-                    let c_fact = TypedFact::dt_shape(cast, self.c_fact.shape.clone());
-                    let mut patch = TypedModelPatch::fuse_with_next(
-                        model,
-                        &node,
-                        Self { mmm, c_fact, ..self.clone() },
-                    )?;
-                    patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ, node));
-                    return Ok(Some(patch));
-                }
-            } else if let Some(op) = op.downcast_ref::<ops::math::QScale>() {
+                let c_fact = TypedFact::dt_shape(cast, self.c_fact.shape.clone());
+                let mut patch = TypedModelPatch::fuse_with_next(
+                    model,
+                    &node,
+                    Self { mmm, c_fact, ..self.clone() },
+                )?;
+                patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ, node));
+                return Ok(Some(patch));
+            }
+        }
+
+        if let Some(op) = succ.op_as::<ops::element_wise::ElementWiseOp>().map(|ew| ew.0.as_ref()) {
+            if let Some(op) = op.downcast_ref::<ops::math::QScale>() {
                 return self.fuse_op_with_broadcast(
                     model,
                     node,
@@ -445,7 +446,7 @@ impl LirMatMulUnary {
         let mut other_shape = shape.to_owned();
         for axis_change in self.reshape_post.iter().rev() {
             if axis_change.recip().change_shape(&mut other_shape, true).is_err() {
-                return Ok(None)
+                return Ok(None);
             }
         }
         if other_shape[self.c_m_axis] == self.c_fact.shape[self.c_m_axis]

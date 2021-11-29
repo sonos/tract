@@ -93,12 +93,13 @@ impl Reducer {
                     &[wire],
                 )?[0];
                 let size: TDim = axes.iter().map(|ax| &fact.shape[*ax]).product();
-                let size = size.to_i64()?;
-                let size = tensor0(size)
-                    .cast_to_dt(fact.datum_type)?
-                    .into_owned()
-                    .into_shape(&*tvec!(1; fact.rank()))?;
-                let size = target.add_const(name.to_string() + ".divisor", size)?;
+                let size = tensor0(size).broadcast_into_rank(fact.rank())?;
+                let size = target.add_const(name.to_string() + ".size", size)?;
+                let size = target.wire_node(
+                    name.to_string() + ".cast",
+                    tract_core::ops::cast::cast(fact.datum_type),
+                    &[size],
+                )?[0];
                 wire = target.wire_node(
                     name.to_string() + ".norm",
                     math::div::bin_typed(),
@@ -218,7 +219,8 @@ impl Expansion for Reduce {
         let fact = target.outlet_fact(input)?;
         let mut axes = self.resolve_axes(fact.rank())?;
         axes.sort();
-        let mut wire = self.reducer.wire(axes.clone(), name, target, input)?;
+        let mut wire =
+            self.reducer.wire(axes.clone(), name, target, input).context("wiring reducer")?;
         if !self.keep_dims {
             for axis in axes.into_iter().rev() {
                 wire = target.wire_node(

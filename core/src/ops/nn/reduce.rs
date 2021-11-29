@@ -50,6 +50,11 @@ impl Reducer {
     pub fn reduce(&self, axes: &[usize], input: &Tensor) -> TractResult<Tensor> {
         use Reducer::*;
         let dt = input.datum_type();
+        let input = if input.datum_type() == TDim::datum_type() {
+            input.cast_to::<i64>()?
+        } else {
+            Cow::Borrowed(input)
+        };
         let output_shape: Vec<usize> = input
             .shape()
             .iter()
@@ -60,25 +65,25 @@ impl Reducer {
         Ok(unsafe {
             match self {
                 ArgMax(last) => {
-                    r!(Self::reduce_t(dt)(self, axes, &output_shape, input, argmax_t, *last))
+                    r!(Self::reduce_t(dt)(self, axes, &output_shape, &input, argmax_t, *last))
                 }
                 ArgMin(last) => {
-                    r!(Self::reduce_t(dt)(self, axes, &output_shape, input, argmin_t, *last))
+                    r!(Self::reduce_t(dt)(self, axes, &output_shape, &input, argmin_t, *last))
                 }
-                Min => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, min_t, ())),
-                Max => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, max_t, ())),
+                Min => r!(Self::reduce_t(dt)(self, axes, &output_shape, &input, min_t, ())),
+                Max => r!(Self::reduce_t(dt)(self, axes, &output_shape, &input, max_t, ())),
                 Prod => {
-                    r!(Self::reduce_t(dt)(self, axes, &output_shape, input, prod_t, ()); Self::reduce_t(self, axes, &output_shape, input, q_prod_t, (zp, scale)))
+                    r!(Self::reduce_t(dt)(self, axes, &output_shape, &input, prod_t, ()); Self::reduce_t(self, axes, &output_shape, &input, q_prod_t, (zp, scale)))
                 }
                 Sum => {
                     if dt.is_float() {
-                        dispatch_floatlike!(Self::sum(dt)(self, axes, input))
+                        dispatch_floatlike!(Self::sum(dt)(self, axes, &input))
                     } else {
                         r!(Self::reduce_t(dt)(
                             self,
                             axes,
                             &output_shape,
-                            input,
+                            &input,
                             q_sum_t,
                             (zp, scale)
                         ))
@@ -280,7 +285,11 @@ impl TypedOp for Reduce {
         Ok(tvec!(TypedFact::dt_shape(dt, shape)))
     }
 
-    fn invariants(&self, inputs: &[&TypedFact], _outputs: &[&TypedFact]) -> TractResult<Invariants> {
+    fn invariants(
+        &self,
+        inputs: &[&TypedFact],
+        _outputs: &[&TypedFact],
+    ) -> TractResult<Invariants> {
         let axes = (0..inputs[0].rank())
             .filter(|axis| !self.axes.contains(axis))
             .map(|axis| AxisInfo::simple(axis))

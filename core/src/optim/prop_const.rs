@@ -1,5 +1,8 @@
+use tract_data::UndeterminedSymbol;
+
 use crate::internal::*;
 use crate::ops::konst::Const;
+use crate::ops::source::TypedSource;
 
 #[derive(Clone, Debug)]
 pub struct PropConst;
@@ -11,21 +14,32 @@ impl super::TypedPass for PropConst {
     fn next(&mut self, model: &TypedModel) -> TractResult<Option<TypedModelPatch>> {
         let mut patch = TypedModelPatch::default();
         for node in model.eval_order()? {
-            if model.node(node).op.is_stateless() && !model.node(node).op_is::<Const>() {
+            if model.node(node).op.is_stateless()
+                && !model.node(node).op_is::<Const>()
+                && !model.node(node).op_is::<TypedSource>()
+            {
                 if let Some(inputs) =
                     model.node_input_facts(node)?.iter().map(|f| f.konst.clone()).collect()
                 {
-                    let outputs = model
-                        .node(node)
-                        .op
-                        .eval(inputs)
-                        .context("Eager eval during optimisation")?;
-                    for (ix, output) in outputs.into_iter().enumerate() {
-                        let wire =
-                            patch.add_const(format!("{}.{}", model.node(node).name, ix), output)?;
-                        patch.shunt_outside(model, (node, ix).into(), wire)?;
+                    match model.node(node).op.eval(inputs) {
+                        Ok(res) => {
+                            for (ix, output) in res.into_iter().enumerate() {
+                                let wire = patch.add_const(
+                                    format!("{}.{}", model.node(node).name, ix),
+                                    output,
+                                )?;
+                                patch.shunt_outside(model, (node, ix).into(), wire)?;
+                            }
+                            return Ok(Some(patch));
+                        }
+                        Err(e) => {
+                            if !e.root_cause().is::<UndeterminedSymbol>() {
+                                Err(e).with_context(|| {
+                                    format!("Eager eval {} during optimisation", model.node(node))
+                                })?;
+                            }
+                        }
                     }
-                    return Ok(Some(patch));
                 }
             }
         }
@@ -38,7 +52,7 @@ impl super::TypedPass for PropConst {
                     if knode.op_is::<Const>() {
                         continue;
                     }
-                    let k = patch.add_const(&*knode.name, k)?;
+                    let k = patch.add_const(knode.name.to_string() + ".konst", k)?;
                     patch.shunt_outside(model, outlet, k)?;
                 }
             }

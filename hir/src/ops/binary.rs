@@ -76,11 +76,10 @@ pub fn wire_cast(
     inputs: &[OutletId],
     operating_datum_type: DatumType,
 ) -> TractResult<TVec<OutletId>> {
-    let facts = [target.outlet_fact(inputs[0])?.clone(), target.outlet_fact(inputs[1])?.clone()];
     let mut wires = tvec!();
     for i in 0..inputs.len() {
         let mut wire = inputs[i];
-        if facts[i].datum_type != operating_datum_type {
+        if target.outlet_fact(wire)?.datum_type != operating_datum_type {
             wire = target.wire_node(
                 format!("{}.cast-{}", prefix, i),
                 mir::cast::cast(operating_datum_type),
