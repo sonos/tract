@@ -19,6 +19,7 @@ then
         $SUDO apt-get install -y unzip wget curl python awscli build-essential
     fi
 else
+    sysctl -n machdep.cpu.brand_string
     brew install coreutils
 fi
 
