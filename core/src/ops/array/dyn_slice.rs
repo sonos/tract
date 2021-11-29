@@ -59,6 +59,9 @@ impl EvalOp for DynSlice {
             } else {
                 inputs[0].shape()[self.axis]
             };
+            if start >= end {
+                bail!("Invalid range {}-{}", start, end );
+            }
             let mut shape: TVec<_> = inputs[0].shape().into();
             shape[self.axis] = end - start;
             let mut tensor = Tensor::uninitialized_dt(inputs[0].datum_type(), &shape)?;
