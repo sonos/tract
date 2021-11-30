@@ -697,7 +697,7 @@ impl std::str::FromStr for TDim {
     type Err = anyhow::Error;
     fn from_str(s: &str) -> Result<TDim, Self::Err> {
         let first = s.chars().next().unwrap();
-        if first.is_digit(10) {
+        if first.is_digit(10) || first == '-' {
             Ok(s.parse::<i64>()?.into())
         } else if first.is_alphabetic() && s.len() == 1 {
             Ok(Symbol::from(first).into())
