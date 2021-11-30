@@ -103,6 +103,12 @@ pub enum InputStore {
         k_stride: isize,
         mn_stride: isize,
     },
+    VirtualPacking {
+        packer: Packer,
+        input: Box<dyn VirtualInput>,
+        k: usize,
+        dt: DatumType,
+    },
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -114,12 +120,15 @@ pub struct PackedStore {
 
 impl InputStore {
     pub(super) unsafe fn scratch_panel_buffer_layout(&self) -> Option<Layout> {
-        if let InputStore::LatePacking { packer, dt, k, .. } = self {
-            let size = packer.single_panel_len(*k) * dt.size_of();
-            let align = packer.alignment();
-            Some(Layout::from_size_align_unchecked(size, align))
-        } else {
-            None
+        match self {
+            InputStore::Packed(_) => None,
+            InputStore::OffsetsAndPtrs { .. } => None,
+            InputStore::LatePacking { packer, dt, k, .. }
+            | InputStore::VirtualPacking { packer, dt, k, .. } => {
+                let size = packer.single_panel_len(*k) * dt.size_of();
+                let align = packer.alignment();
+                Some(Layout::from_size_align_unchecked(size, align))
+            }
         }
     }
 
@@ -144,6 +153,10 @@ impl InputStore {
                     0..*k,
                     packer.r * i..packer.r * (i + 1)
                 ));
+                InputStoreKer::Packed(PackedStoreKer { ptr: buffer.unwrap() })
+            }
+            InputStore::VirtualPacking { packer, input, k, .. } => {
+                input.input(&packer, buffer.unwrap(), 0..*k, packer.r * i..packer.r * (i + 1));
                 InputStoreKer::Packed(PackedStoreKer { ptr: buffer.unwrap() })
             }
         }
