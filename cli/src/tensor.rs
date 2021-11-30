@@ -19,8 +19,9 @@ fn parse_dt(dt: &str) -> CliResult<DatumType> {
         "u16" => DatumType::U16,
         "u32" => DatumType::U32,
         "u64" => DatumType::U64,
+        "tdim" => DatumType::TDim,
         _ => bail!(
-            "Type of the input should be f16, f32, f64, i8, i16, i16, i32, u8, u16, u32, u64."
+            "Type of the input should be f16, f32, f64, i8, i16, i16, i32, u8, u16, u32, u64, TDim."
         ),
     })
 }
