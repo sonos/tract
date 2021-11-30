@@ -16,7 +16,6 @@ pub type TractError = anyhow::Error;
 pub type TractResult<T> = anyhow::Result<T>;
 
 pub mod prelude {
-    pub use crate::{ TractError, TractResult };
     pub use crate::datum::{round_ties_to_even, Blob, Datum, DatumType, QParams};
     pub use crate::dim::{Symbol, SymbolValues, TDim, ToDim};
     pub use crate::f16::*;
@@ -28,28 +27,31 @@ pub mod prelude {
         dispatch_copy, dispatch_copy_by_size, dispatch_datum, dispatch_datum_by_size,
         dispatch_floatlike, dispatch_hash, dispatch_numbers, dispatch_signed,
     };
+    pub use crate::{TractError, TractResult};
     pub use ::num_complex::Complex;
     pub use itertools as tract_itertools;
 }
 
 pub mod internal {
-    pub use crate::prelude::*;
     pub use crate::datum::ClampCast;
     pub use crate::dim::{DimLike, TDim, ToDim};
+    pub use crate::hash::{dyn_hash, DynHash};
+    pub use crate::impl_dyn_hash;
     pub use crate::prelude::*;
     pub use crate::tensor::view::TensorView;
+    pub use anyhow::{bail, ensure};
     pub use ndarray as tract_ndarray;
-    pub use smallvec as tract_smallvec;
-    pub use anyhow::{ bail, ensure };
     pub use num_integer;
+    pub use smallvec as tract_smallvec;
 }
 
 pub use anyhow;
-pub use half;
 pub use dim::UndeterminedSymbol;
+pub use half;
 
 mod datum;
 mod dim;
 mod f16;
+pub mod hash;
 mod scatter;
 mod tensor;
