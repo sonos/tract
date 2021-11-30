@@ -45,21 +45,6 @@ impl_sloppy_hash!(u32);
 impl_sloppy_hash!(u64);
 impl_sloppy_hash!(String);
 
-#[macro_export]
-macro_rules! impl_dyn_hash {
-    ($t: ty) => {
-        impl DynHash for $t {
-            fn dyn_hash(&self, state: &mut dyn std::hash::Hasher) {
-                dyn_hash(self, state)
-            }
-        }
-    };
-}
-
-pub trait DynHash {
-    fn dyn_hash(&self, state: &mut dyn Hasher);
-}
-
 pub fn hash_f32<H: Hasher>(s: &f32, state: &mut H) {
     Hash::hash(&s.to_bits(), state)
 }
@@ -69,21 +54,6 @@ pub fn hash_opt_f32<H: Hasher>(s: &Option<f32>, state: &mut H) {
     if let Some(s) = s {
         Hash::hash(&s.to_bits(), state)
     }
-}
-
-struct WrappedHasher<'a>(&'a mut dyn Hasher);
-
-impl<'a> Hasher for WrappedHasher<'a> {
-    fn finish(&self) -> u64 {
-        self.0.finish()
-    }
-    fn write(&mut self, bytes: &[u8]) {
-        self.0.write(bytes)
-    }
-}
-
-pub fn dyn_hash<H: Hash>(h: H, s: &mut dyn Hasher) {
-    h.hash(&mut WrappedHasher(s))
 }
 
 impl Hash for Box<dyn TypedOp> {
