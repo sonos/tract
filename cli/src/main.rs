@@ -289,6 +289,14 @@ fn main() -> tract_core::anyhow::Result<()> {
         .arg(Arg::with_name("dump").long("dump").help("Show output"))
         .arg(Arg::with_name("steps").long("steps").help("Show all inputs and outputs"))
         .arg(
+                Arg::with_name("set")
+                .long("set")
+                .takes_value(true)
+                .multiple(true)
+                .number_of_values(1)
+                .help("Set a symbol value (--set S=12)")
+        )
+        .arg(
             Arg::with_name("save-steps")
                 .long("save-steps")
                 .takes_value(true)
