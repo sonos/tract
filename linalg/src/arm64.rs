@@ -9,11 +9,20 @@ use crate::frame::MatMatMulImpl;
 
 use tract_data::internal::DimLike;
 
-fn is_cortex_a53() -> std::io::Result<bool> {
+const PART_ARM53: &str = "0xd03";
+
+fn max_cpuid() -> std::io::Result<String> {
     let cpu_info = std::fs::read_to_string("/proc/cpuinfo")?;
-    let a53 =
-        cpu_info.split("\n").any(|line| line.starts_with("CPU part") && line.contains("0xd03"));
-    Ok(a53)
+    let max = cpu_info
+        .split("\n")
+        .filter(|line| line.starts_with("CPU part"))
+        .map(|line| line.split_whitespace().last().unwrap_or(""))
+        .max();
+    Ok(max.unwrap_or("").to_string())
+}
+
+fn is_cortex_a53() -> std::io::Result<bool> {
+    Ok(max_cpuid()? == PART_ARM53)
 }
 
 pub fn plug(ops: &mut Ops) {
