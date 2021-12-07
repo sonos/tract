@@ -32,7 +32,7 @@ impl Packer {
         (k + self.end_padding_record) * self.r
     }
 
-    pub(crate) unsafe fn pack_t<'p, 'i, T: Datum + Copy>(
+    pub unsafe fn pack_t<'p, 'i, T: Datum + Copy>(
         &self,
         pb: *mut T,
         b: *const T,
