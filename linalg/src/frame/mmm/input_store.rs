@@ -5,12 +5,17 @@ use tract_data::internal::*;
 
 use crate::frame::Packer;
 
+pub trait VirtualInputSpec: DynHash + dyn_clone::DynClone + std::fmt::Debug + Sync + Send {
+    fn wrap(&self, view: &TensorView) -> Box<dyn VirtualInput>;
+}
+dyn_clone::clone_trait_object!(VirtualInputSpec);
+
 pub trait VirtualInput: DynHash + dyn_clone::DynClone + std::fmt::Debug + Sync + Send {
-    fn input(&self, packer: &Packer, packed: *const u8, k: Range<usize>, mn: Range<usize>);
+    fn input(&self, packer: &Packer, packed_output: *mut u8, k: Range<usize>, mn: Range<usize>);
 }
 dyn_clone::clone_trait_object!(VirtualInput);
 
-impl std::hash::Hash for Box<dyn VirtualInput> {
+impl std::hash::Hash for Box<dyn VirtualInputSpec> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         use std::any::Any;
         std::hash::Hash::hash(&self.type_id(), state);
@@ -23,7 +28,7 @@ pub enum InputStoreSpec {
     Prepacked(PackedStoreSpec),
     OffsetsAndPtrs { row_byte_offsets: Vec<isize>, col_byte_offsets: Vec<isize>, nr: usize },
     LatePacking { packer: Packer, k_axis: usize, mn_axis: usize },
-    VirtualPacking { packer: Packer, func: Box<dyn VirtualInput> },
+    VirtualPacking { packer: Packer, func: Box<dyn VirtualInputSpec>, k: usize },
 }
 
 #[derive(PartialEq, Clone, Copy, Debug, Hash)]
@@ -59,7 +64,12 @@ impl InputStoreSpec {
                 k_stride: tensor.strides()[*k_axis],
                 mn_stride: tensor.strides()[*mn_axis],
             }),
-            S::VirtualPacking { .. } => panic!(),
+            S::VirtualPacking { packer, func, k } => Ok(InputStore::VirtualPacking {
+                packer: packer.clone(),
+                input: func.wrap(tensor),
+                k: *k,
+                dt: tensor.datum_type(),
+            }),
         }
     }
 }
@@ -107,7 +117,7 @@ pub enum InputStore {
         packer: Packer,
         input: Box<dyn VirtualInput>,
         k: usize,
-        dt: DatumType,
+        dt: DatumType, // TODO discard me ?
     },
 }
 
@@ -156,7 +166,7 @@ impl InputStore {
                 InputStoreKer::Packed(PackedStoreKer { ptr: buffer.unwrap() })
             }
             InputStore::VirtualPacking { packer, input, k, .. } => {
-                input.input(&packer, buffer.unwrap(), 0..*k, packer.r * i..packer.r * (i + 1));
+                input.input(&packer, buffer.unwrap() as _, 0..*k, packer.r * i..packer.r * (i + 1));
                 InputStoreKer::Packed(PackedStoreKer { ptr: buffer.unwrap() })
             }
         }

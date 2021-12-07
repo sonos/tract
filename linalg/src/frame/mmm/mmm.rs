@@ -34,6 +34,7 @@ pub trait MatMatMul:
         self.b_late_packing_with_axes(0, 1)
     }
     unsafe fn b_late_packing_with_axes(&self, k_axis: usize, n_axis: usize) -> InputStoreSpec;
+    unsafe fn b_virtual_input(&self, func: Box<dyn VirtualInputSpec>, k: usize) -> InputStoreSpec;
 
     unsafe fn c_view(&self) -> OutputStoreSpec;
     unsafe fn c_view_with_axis(&self, m_axis: usize, n_axis: usize) -> OutputStoreSpec;
@@ -193,6 +194,10 @@ where
             *row_byte_offsets.get_unchecked_mut(rows_offsets.len() + i) = pad;
         }
         InputStoreSpec::OffsetsAndPtrs { col_byte_offsets, row_byte_offsets, nr: K::nr() }
+    }
+
+    unsafe fn b_virtual_input(&self, func: Box<dyn VirtualInputSpec>, k: usize) -> InputStoreSpec {
+        InputStoreSpec::VirtualPacking { packer: self.b_pack(), func, k }
     }
 
     unsafe fn c_view(&self) -> OutputStoreSpec {

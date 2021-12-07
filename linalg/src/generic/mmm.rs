@@ -152,6 +152,8 @@ where
                                 for i in 0..k {
                                     let a = std::slice::from_raw_parts(a.offset(4 * i as isize), 4);
                                     let b = std::slice::from_raw_parts(b.offset(4 * i as isize), 4);
+                                    dbg!(&a);
+                                    dbg!(&b);
                                     ab[0][0] += a[0].as_() * b[0].as_();
                                     ab[0][1] += a[0].as_() * b[1].as_();
                                     ab[0][2] += a[0].as_() * b[2].as_();
