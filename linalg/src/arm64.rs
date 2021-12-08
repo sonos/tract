@@ -16,6 +16,7 @@ lazy_static::lazy_static! {
 // https://en.wikipedia.org/wiki/Comparison_of_ARMv8-A_cores
 const PART_A53: &str = "0xd03";
 const PART_A55: &str = "0xd05";
+#[allow(dead_code)]
 const PART_A72: &str = "0xd08";
 #[allow(dead_code)]
 const PART_A73: &str = "0xd09";
@@ -56,7 +57,7 @@ impl Kind {
                 log::info!("CPU part auto detected: {}", part);
                 part
             };
-            if [PART_A72, PART_A55, PART_A53].contains(&&*part) {
+            if [PART_A55, PART_A53].contains(&&*part) {
                 Kind::CortexA53Like
             } else {
                 Kind::Generic
