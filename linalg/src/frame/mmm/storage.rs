@@ -5,19 +5,8 @@ use tract_data::internal::*;
 
 #[derive(Clone, Copy, Debug)]
 pub enum OutputStoreSpec {
-    View {
-        axes: Option<(usize, usize)>,
-        mr: usize,
-        nr: usize,
-    },
-    Strides {
-        row_byte_stride: isize,
-        row_item_stride: isize,
-        col_byte_stride: isize,
-        col_item_stride: isize,
-        mr: usize,
-        nr: usize,
-    },
+    View { axes: Option<(usize, usize)>, mr: usize, nr: usize },
+    Strides { row_byte_stride: isize, col_byte_stride: isize, mr: usize, nr: usize },
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -25,8 +14,6 @@ pub struct OutputStore {
     pub(crate) ptr: *mut c_void,
     pub(crate) row_byte_stride: isize,
     pub(crate) col_byte_stride: isize,
-    pub(crate) row_item_stride: isize,
-    pub(crate) col_item_stride: isize,
     pub(crate) panel_row_byte_stride: isize,
     pub(crate) panel_col_byte_stride: isize,
     pub(crate) item_size: usize,
@@ -37,14 +24,11 @@ pub struct OutputStore {
 impl OutputStoreSpec {
     #[inline]
     pub unsafe fn wrap(self: &Self, tensor: &TensorView) -> OutputStore {
-        let (mr, nr, row_item_stride, col_item_stride, row_byte_stride, col_byte_stride) =
-            self.compute_strides(tensor);
+        let (mr, nr, row_byte_stride, col_byte_stride) = self.compute_strides(tensor);
         OutputStore {
             ptr: tensor.as_ptr_unchecked::<u8>() as _,
             row_byte_stride,
             col_byte_stride,
-            row_item_stride,
-            col_item_stride,
             panel_row_byte_stride: row_byte_stride * mr as isize,
             panel_col_byte_stride: col_byte_stride * nr as isize,
             item_size: tensor.datum_type().size_of(),
@@ -54,10 +38,7 @@ impl OutputStoreSpec {
     }
 
     #[inline]
-    unsafe fn compute_strides(
-        &self,
-        tensor: &TensorView,
-    ) -> (usize, usize, isize, isize, isize, isize) {
+    unsafe fn compute_strides(&self, tensor: &TensorView) -> (usize, usize, isize, isize) {
         let size_of = tensor.datum_type().size_of() as isize;
         match self {
             OutputStoreSpec::View { axes, mr, nr, .. } => {
@@ -72,16 +53,11 @@ impl OutputStoreSpec {
                 let col_item_stride = *tensor_strides.get_unchecked(n_axis);
                 let row_byte_stride = row_item_stride * size_of;
                 let col_byte_stride = col_item_stride * size_of;
-                (*mr, *nr, row_item_stride, col_item_stride, row_byte_stride, col_byte_stride)
+                (*mr, *nr, row_byte_stride, col_byte_stride)
             }
-            OutputStoreSpec::Strides {
-                row_byte_stride,
-                col_byte_stride,
-                col_item_stride,
-                row_item_stride,
-                mr,
-                nr,
-            } => (*mr, *nr, *row_item_stride, *col_item_stride, *row_byte_stride, *col_byte_stride),
+            OutputStoreSpec::Strides { row_byte_stride, col_byte_stride, mr, nr } => {
+                (*mr, *nr, *row_byte_stride, *col_byte_stride)
+            }
         }
     }
 }
@@ -163,7 +139,6 @@ impl PackedStoreSpec {
     pub unsafe fn wrap(&self, tensor: &TensorView) -> PackedStore {
         PackedStore {
             ptr: tensor.as_ptr_unchecked::<u8>() as _,
-            item_size: tensor.datum_type().size_of(),
             panel_bytes: self.panel_bytes as isize,
         }
     }
@@ -177,7 +152,6 @@ impl InputStoreSpec {
         match self {
             S::Packed(PackedStoreSpec { panel_bytes }) => Packed(PackedStore {
                 ptr: tensor.as_ptr_unchecked::<u8>() as _,
-                item_size: tensor.datum_type().size_of(),
                 panel_bytes: *panel_bytes as isize,
             }),
             S::OffsetsAndPtrs { row_byte_offsets, col_byte_offsets, nr } => OffsetsAndPtrs {
@@ -210,7 +184,6 @@ pub enum InputStore {
 #[derive(Clone, Copy, Debug)]
 pub struct PackedStore {
     ptr: *const c_void,
-    item_size: usize,
     panel_bytes: isize,
 }
 
@@ -248,7 +221,6 @@ pub enum InputStoreKer {
 pub struct PackedStoreKer {
     pub ptr: *const c_void,
 }
-
 
 #[repr(C)]
 #[derive(PartialEq, Copy, Clone, Debug)]

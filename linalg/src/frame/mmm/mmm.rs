@@ -84,7 +84,6 @@ where
     TI: Copy + Add + Mul + Zero + Debug + 'static,
     K: MatMatMulKer<TI> + 'static,
 {
-    prefetch: Option<&'static (dyn Fn(*const u8, usize) + Send + Sync)>,
     phantom: PhantomData<(K, TI)>,
 }
 
@@ -118,7 +117,7 @@ where
     K: MatMatMulKer<TI> + 'static,
 {
     pub fn new() -> MatMatMulImpl<K, TI> {
-        MatMatMulImpl { prefetch: crate::ops().prefetch, phantom: PhantomData }
+        MatMatMulImpl { phantom: PhantomData }
     }
 }
 
@@ -208,8 +207,6 @@ where
         OutputStoreSpec::Strides {
             row_byte_stride: row_stride * item_size as isize,
             col_byte_stride: col_stride * item_size as isize,
-            row_item_stride: row_stride,
-            col_item_stride: col_stride,
             mr: K::mr(),
             nr: K::nr(),
         }
