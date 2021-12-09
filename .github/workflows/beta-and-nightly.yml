@@ -21,6 +21,21 @@ jobs:
         RUST_VERSION: ${{matrix.rust}}
       run: .travis/regular-tests.sh
 
+  warnings:
+    strategy:
+      matrix:
+        rust: [ stable, beta ]
+      fail-fast: false
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: cargo check, -D warnings
+      env:
+        RUSTFLAGS: -D warnings
+      run: cargo check
+
   cargo-deny:
     strategy:
       fail-fast: false
