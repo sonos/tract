@@ -83,5 +83,15 @@ impl TypedOp for Cast {
         Invariants::new_element_wise(inputs, outputs)
     }
 
+    fn change_axes(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        _io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        Ok(Some(AxisChangeConsequence::new(model, node, None, change)))
+    }
+
     as_op!();
 }
