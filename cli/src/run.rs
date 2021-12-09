@@ -70,11 +70,14 @@ fn run_regular(
     dispatch_model!(tract, |m| {
         let plan = SimplePlan::new(m)?;
         let mut state = SimpleState::new(plan)?;
-        for set in options.values_of("set").unwrap() {
-            let (sym, value) = set.split_once("=").context("--set expect S=12 form")?;
-            let sym = Symbol::from(sym.chars().next().unwrap());
-            let value: i64 = value.parse().context("Can not parse symbol value in set")?;
-            state.session_state.resolved_symbols = state.session_state.resolved_symbols.with(sym, value);
+        if let Some(set) = options.values_of("set") {
+            for set in set {
+                let (sym, value) = set.split_once("=").context("--set expect S=12 form")?;
+                let sym = Symbol::from(sym.chars().next().unwrap());
+                let value: i64 = value.parse().context("Can not parse symbol value in set")?;
+                state.session_state.resolved_symbols =
+                    state.session_state.resolved_symbols.with(sym, value);
+            }
         }
         let mut results = tvec!();
         for (turn, inputs) in
