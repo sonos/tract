@@ -19,10 +19,11 @@ targets = [
 vulnerability = "deny"
 unmaintained = "warn"
 yanked = "deny"
-ignore = [
-    "RUSTSEC-2020-0071", # this could only impact use through our usage of liquid, and we are not using time related liquid helpers. (and only use liquid templates at build-time anyway)
-    "RUSTSEC-2020-0159"
-]
+ ignore = [
+     "RUSTSEC-2020-0071", # this could only impact use through our usage of liquid, and we are not using time related liquid helpers. (and only use liquid templates at build-time anyway)
+     "RUSTSEC-2020-0159",
+     "RUSTSEC-2021-0127" # dependency on abandoned serde_cbor, through criterion, irrelevant out of build.
+ ]
 
 [bans]
 multiple-versions = "deny"
@@ -34,7 +35,6 @@ deny = [
 # Skip some multiple-versions checks, until they can be fixed.
 skip = [
     { name = "cast", version="<0.3" },  # because of criterion
-    { name = "ansi_term", version="<0.12.1" },  # clap brings in an old one.
     { name = "miniz_oxide", version="<0.4" }, # ndarray-npy pulls in an old version of flate
 #    { name = "cfg-if", version="<1.0" }, # cascading from flate too
     { name = "quick-error", version="<2" }, # cascading from flate too
