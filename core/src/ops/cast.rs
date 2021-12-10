@@ -22,7 +22,7 @@ impl Op for Cast {
 
 impl EvalOp for Cast {
     fn is_stateless(&self) -> bool {
-        false
+        true
     }
 
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
