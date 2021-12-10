@@ -83,7 +83,6 @@ pub fn plug(ops: &mut Ops) {
         ops.sigmoid_f32 =
             Box::new(|| Box::new(ElementWiseImpl::<armv7neon::SigmoidF32x4n, f32>::new()));
         ops.tanh_f32 = Box::new(|| Box::new(ElementWiseImpl::<armv7neon::TanhF32x4n, f32>::new()));
-        ops.prefetch = Some(&armv7neon::prefetch);
     } else {
         log::info!("armvfpv2 activated for smmm");
         ops.mmm_f32 =

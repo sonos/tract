@@ -190,12 +190,6 @@ enum TreeNode {
     Leaf(LeafNode),
 }
 
-#[derive(Copy, Clone, Debug)]
-struct Leaf {
-    class_id: u32,
-    weight: f32,
-}
-
 pub trait AggregateFn: Default {
     fn aggregate(&mut self, score: f32, total: &mut f32);
 
