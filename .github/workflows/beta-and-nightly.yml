@@ -30,10 +30,12 @@ jobs:
     steps:
     - uses: actions/checkout@v1
     - name: Install cargo-deny
-      run: cargo install cargo-deny --locked
+      run: |
+        curl -L https://github.com/EmbarkStudios/cargo-deny/releases/download/0.11.0/cargo-deny-0.11.0-x86_64-unknown-linux-musl.tar.gz \
+            | tar -zx --strip-components=1 "cargo-deny-0.11.0-x86_64-unknown-linux-musl/cargo-deny"
     - name: Run cargo-deny
       run:  |
         for crate in onnx pulse kaldi tensorflow
         do
-            cargo deny check -p tract-$crate
+            (cd $crate ; ../cargo-deny check)
         done
