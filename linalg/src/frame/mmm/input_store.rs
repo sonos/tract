@@ -44,7 +44,6 @@ impl InputStoreSpec {
         match self {
             S::Prepacked(PackedStoreSpec { panel_bytes }) => Ok(Packed(PackedStore {
                 ptr: tensor.as_ptr_unchecked::<u8>() as _,
-                item_size: tensor.datum_type().size_of(),
                 panel_bytes: *panel_bytes as isize,
             })),
             S::OffsetsAndPtrs { row_byte_offsets, col_byte_offsets, nr } => Ok(OffsetsAndPtrs {
@@ -90,7 +89,6 @@ impl PackedStoreSpec {
     pub unsafe fn wrap(&self, tensor: &TensorView) -> PackedStore {
         PackedStore {
             ptr: tensor.as_ptr_unchecked::<u8>() as _,
-            item_size: tensor.datum_type().size_of(),
             panel_bytes: self.panel_bytes as isize,
         }
     }
@@ -124,7 +122,6 @@ pub enum InputStore {
 #[derive(Clone, Copy, Debug)]
 pub struct PackedStore {
     ptr: *const u8,
-    item_size: usize,
     panel_bytes: isize,
 }
 
