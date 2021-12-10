@@ -351,8 +351,8 @@ impl TypedOp for QMatMulUnary {
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         cost(
+            self.a.shape(),
             &inputs[0].shape.to_tvec(),
-            &inputs[1].shape.to_tvec(),
             inputs[0].datum_type,
             self.a_trans,
             self.b_trans,
