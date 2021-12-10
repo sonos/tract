@@ -1,5 +1,6 @@
 # Unreleased
 * [Breaking] Small API changes in model api: .compact(), .optimize(), .declutter() now take &mut self and work in place.
+* [LICENSE] Only the licensing for dependencies of the top-level library crates (tensorflow, onnx, kaldi, pulse) will now be monitored. The command line tool (tract crate in cli folder) is for developpers (tract developpers or tract integrators), is not meant to be shipped to end-user, and it concentrates most of the license and dependency complexity.
 
 # 0.15.8 - 2021-11-18
 * Fix brand new ArrayFeatureExtractor inference
