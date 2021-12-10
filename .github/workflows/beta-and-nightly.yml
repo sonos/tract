@@ -16,6 +16,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
+    - name: Rustup update
+      run: rustup update
     - name: Native script
       env:
         RUST_VERSION: ${{matrix.rust}}
@@ -31,6 +33,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
+    - name: Rustup update
+      run: rustup update
     - name: cargo check, -D warnings
       env:
         RUSTFLAGS: "-D warnings"
@@ -47,6 +51,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
+    - name: Rustup update
+      run: rustup update
     - name: Install cargo-deny
       run: |
         curl -L https://github.com/EmbarkStudios/cargo-deny/releases/download/0.11.0/cargo-deny-0.11.0-x86_64-unknown-linux-musl.tar.gz \
