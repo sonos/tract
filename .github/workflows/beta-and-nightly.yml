@@ -35,7 +35,9 @@ jobs:
       env:
         RUSTFLAGS: "-D warnings"
         RUST_VERSION: ${{matrix.rust}}
-      run: cargo check
+      run: |
+          rustc --version
+          cargo check
 
   cargo-deny:
     strategy:
