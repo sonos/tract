@@ -10,9 +10,7 @@ pub enum OutputStoreSpec {
     },
     Strides {
         row_byte_stride: isize,
-        row_item_stride: isize,
         col_byte_stride: isize,
-        col_item_stride: isize,
         mr: usize,
         nr: usize,
     },
@@ -23,8 +21,6 @@ pub struct OutputStore {
     pub(crate) ptr: *mut u8,
     pub(crate) row_byte_stride: isize,
     pub(crate) col_byte_stride: isize,
-    pub(crate) row_item_stride: isize,
-    pub(crate) col_item_stride: isize,
     pub(crate) panel_row_byte_stride: isize,
     pub(crate) panel_col_byte_stride: isize,
     pub(crate) item_size: usize,
@@ -35,14 +31,12 @@ pub struct OutputStore {
 impl OutputStoreSpec {
     #[inline]
     pub unsafe fn wrap(self: &Self, tensor: &TensorView) -> OutputStore {
-        let (mr, nr, row_item_stride, col_item_stride, row_byte_stride, col_byte_stride) =
+        let (mr, nr, row_byte_stride, col_byte_stride) =
             self.compute_strides(tensor);
         OutputStore {
             ptr: tensor.as_ptr_unchecked::<u8>() as _,
             row_byte_stride,
             col_byte_stride,
-            row_item_stride,
-            col_item_stride,
             panel_row_byte_stride: row_byte_stride * mr as isize,
             panel_col_byte_stride: col_byte_stride * nr as isize,
             item_size: tensor.datum_type().size_of(),
@@ -55,7 +49,7 @@ impl OutputStoreSpec {
     unsafe fn compute_strides(
         &self,
         tensor: &TensorView,
-    ) -> (usize, usize, isize, isize, isize, isize) {
+    ) -> (usize, usize, isize, isize) {
         let size_of = tensor.datum_type().size_of() as isize;
         match self {
             OutputStoreSpec::View { axes, mr, nr, .. } => {
@@ -70,16 +64,14 @@ impl OutputStoreSpec {
                 let col_item_stride = *tensor_strides.get_unchecked(n_axis);
                 let row_byte_stride = row_item_stride * size_of;
                 let col_byte_stride = col_item_stride * size_of;
-                (*mr, *nr, row_item_stride, col_item_stride, row_byte_stride, col_byte_stride)
+                (*mr, *nr, row_byte_stride, col_byte_stride)
             }
             OutputStoreSpec::Strides {
                 row_byte_stride,
                 col_byte_stride,
-                col_item_stride,
-                row_item_stride,
                 mr,
                 nr,
-            } => (*mr, *nr, *row_item_stride, *col_item_stride, *row_byte_stride, *col_byte_stride),
+            } => (*mr, *nr, *row_byte_stride, *col_byte_stride),
         }
     }
 }
