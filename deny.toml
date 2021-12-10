@@ -34,8 +34,6 @@ deny = [
 
 # Skip some multiple-versions checks, until they can be fixed.
 skip = [
-    { name = "cast", version="<0.3" },  # because of criterion
-    { name = "miniz_oxide", version="<0.4" }, # ndarray-npy pulls in an old version of flate
 #    { name = "cfg-if", version="<1.0" }, # cascading from flate too
     { name = "quick-error", version="<2" }, # cascading from flate too
 #    { name = "py_literal", version="<0.4" }, # cascading from flate too
@@ -51,18 +49,7 @@ allow-git = [
 [licenses]
 allow = [
     "Apache-2.0",                     # https://tldrlegal.com/license/apache-license-2.0-(apache-2.0)
-    "ISC",                            # https://tldrlegal.com/license/-isc-license
-    "OpenSSL",                        # https://tldrlegal.com/license/openssl-license-(openssl)
-    "MIT",                            # https://tldrlegal.com/license/mit-license
-    "Zlib",                           # https://tldrlegal.com/license/zlib-libpng-license-(zlib)
-    "Zlib"                            # https://tldrlegal.com/license/zlib-libpng-license-(zlib)
+    "MIT"                             # https://tldrlegal.com/license/mit-license
 ]
 clarify = [
-    # ring has a rather complicated LICENSE file due to reasons spelled out
-    # in said LICENSE file, but is basically OpenSSL for older parts, and ISC
-    # for newer parts
-    { name = "ring", expression = "ISC AND OpenSSL", license-files = [ { path = "LICENSE", hash = 0xbd0eed23 } ] },
-    # encoding_rs derives data from files under the WHATWG license... which looks like a 3-clause BSD
-    # usage is in the command line, which is a developper tool anyway
-    { name = "encoding_rs", expression = "Apache-2.0 AND MIT AND BSD-3-Clause", license-files = [ { path = "LICENSE", hash = 0xbd0eed23 } ] }
 ]
