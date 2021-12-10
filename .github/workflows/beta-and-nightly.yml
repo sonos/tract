@@ -32,4 +32,8 @@ jobs:
     - name: Install cargo-deny
       run: cargo install cargo-deny --locked
     - name: Run cargo-deny
-      run: cargo deny check
+      run:  |
+        for crate in onnx pulse kaldi tensorflow
+        do
+            cargo deny check -p tract-$crate
+        done
