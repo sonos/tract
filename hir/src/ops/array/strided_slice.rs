@@ -281,7 +281,7 @@ impl Expansion for StridedSlice {
             } else if strides[ix] == 1 {
                 let left = target.wire_node(
                     format!("{}.slice-axis-{}-start", prefix, axis),
-                    crate::ops::array::Slice::new(0, axis, axis + 1),
+                    crate::ops::array::Slice::new(0, ix, ix + 1),
                     &[inputs[1]],
                 )?;
                 let left = target.wire_node(
@@ -291,10 +291,10 @@ impl Expansion for StridedSlice {
                 )?[0];
                 let right = target.wire_node(
                     format!("{}.slice-axis-{}-end", prefix, axis),
-                    crate::ops::array::Slice::new(0, axis, axis + 1),
+                    crate::ops::array::Slice::new(0, ix, ix + 1),
                     &[inputs[2]],
                 )?;
-                let right= target.wire_node(
+                let right = target.wire_node(
                     format!("{}.slice-axis-{}-end-rm-axis", prefix, axis),
                     AxisOp::Rm(0),
                     &right,
@@ -302,7 +302,7 @@ impl Expansion for StridedSlice {
                 wire = target.wire_node(
                     format!("{}.slice-axis-{}", prefix, axis),
                     tract_core::ops::array::DynSlice::new(axis, true, true),
-                    &[wire, left, right]
+                    &[wire, left, right],
                 )?[0];
             }
         }
