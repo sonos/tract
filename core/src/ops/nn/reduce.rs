@@ -50,11 +50,6 @@ impl Reducer {
     pub fn reduce(&self, axes: &[usize], input: &Tensor) -> TractResult<Tensor> {
         use Reducer::*;
         let dt = input.datum_type();
-        let input = if input.datum_type() == TDim::datum_type() {
-            input.cast_to::<i64>()?
-        } else {
-            Cow::Borrowed(input)
-        };
         let output_shape: Vec<usize> = input
             .shape()
             .iter()
@@ -273,6 +268,9 @@ impl EvalOp for Reduce {
 impl TypedOp for Reduce {
     as_op!();
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        if inputs[0].datum_type == TDim::datum_type() {
+            bail!("Reduce input must be cast from TDim to i64 beforehand")
+        }
         let mut shape: TVec<_> = inputs[0].shape.to_tvec();
         for &ax in &self.axes {
             shape[ax] = 1.to_dim();

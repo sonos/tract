@@ -238,6 +238,17 @@ where
                     eval(session_state, states[node.id].as_mut().map(|s| &mut **s), node, inputs)
                         .map_err(|e| e.into())?;
 
+                for (o, v) in node.outputs.iter().zip(vs.iter()) {
+                    let f = o.fact.to_typed_fact()?;
+                    for (dim_abstract, dim_concrete) in f.shape.iter().zip(v.shape()) {
+                        Self::resolve(
+                            &mut session_state.resolved_symbols,
+                            &dim_abstract,
+                            *dim_concrete as i64,
+                        );
+                    }
+                }
+
                 if cfg!(debug_assertions) {
                     let facts = model.node_output_facts(node.id)?;
                     if facts.len() != vs.len() {
@@ -282,22 +293,23 @@ where
         Ok(())
     }
 
+    fn resolve(symbols: &mut SymbolValues, expected: &TDim, provided: i64) {
+        match expected {
+            TDim::Sym(s) => symbols[*s] = Some(provided),
+            TDim::MulInt(x, expr) => Self::resolve(symbols, expr, provided / *x),
+            _ => (),
+        }
+    }
+
     pub fn set_input(&mut self, input: usize, t: Tensor) -> TractResult<()> {
         let outlet: OutletId = *self
             .model()
             .input_outlets()?
             .get(input)
             .ok_or_else(|| format_err!("Invalid input id for model ({}).", input))?;
-        fn resolve(symbols: &mut SymbolValues, expected: &TDim, provided: i64) {
-            match expected {
-                TDim::Sym(s) => symbols[*s] = Some(provided),
-                TDim::MulInt(x, expr) => resolve(symbols, expr, provided / *x),
-                _ => (),
-            }
-        }
         if let Ok(fact) = self.model().outlet_fact(outlet)?.to_typed_fact() {
             for (expected, provided) in fact.shape.iter().zip(t.shape()) {
-                resolve(&mut self.session_state.resolved_symbols, &expected, *provided as i64)
+                Self::resolve(&mut self.session_state.resolved_symbols, &expected, *provided as i64)
             }
         }
         self.plan
@@ -441,6 +453,5 @@ where
         None => node.op().eval(input),
     }
     .with_context(|| format!("Evaluating {}", node));
-//    eprintln!("{} {:?}", node, r);
     r
 }
