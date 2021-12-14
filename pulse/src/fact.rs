@@ -93,8 +93,8 @@ impl fmt::Debug for PulsedFact {
 }
 
 impl Fact for PulsedFact {
-    fn to_typed_fact(&self) -> TractResult<TypedFact> {
-        Ok(self.into())
+    fn to_typed_fact(&self) -> TractResult<Cow<TypedFact>> {
+        Ok(Cow::Owned(self.into()))
     }
 
     fn same_as(&self, other: &dyn Fact) -> bool {

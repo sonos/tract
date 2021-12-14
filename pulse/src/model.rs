@@ -160,7 +160,7 @@ impl PulsedOp for PulseWrappingOp {
         let input_stream_axis = inputs[0].axis;
         let input_facts =
             inputs.iter().map(|pf| pf.to_typed_fact()).collect::<TractResult<TVec<_>>>()?;
-        let input_facts_ref = input_facts.iter().collect::<TVec<_>>();
+        let input_facts_ref = input_facts.iter().map(|f| f.as_ref()).collect::<TVec<_>>();
         let output_facts = self.0.output_facts(&*input_facts_ref)?;
         let output_facts_ref = output_facts.iter().collect::<TVec<_>>();
         let invariant = self.0.invariants(&input_facts_ref, &output_facts_ref)?;

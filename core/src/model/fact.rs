@@ -120,7 +120,7 @@ impl<D: ToDim, T: IntoIterator<Item = D>> From<T> for ShapeFact {
 /// Type information about a tensor: shape, and element type, in various state
 /// of determination.
 pub trait Fact: std::fmt::Debug + Downcast + dyn_clone::DynClone + Send + Sync + 'static {
-    fn to_typed_fact(&self) -> TractResult<TypedFact>;
+    fn to_typed_fact(&self) -> TractResult<Cow<TypedFact>>;
 
     fn matches(&self, t: &Tensor, symbols: Option<&SymbolValues>) -> TractResult<bool> {
         self.to_typed_fact()?.matches(t, symbols)
@@ -248,11 +248,11 @@ impl TypedFact {
 }
 
 impl Fact for TypedFact {
-    fn to_typed_fact(&self) -> TractResult<TypedFact> {
+    fn to_typed_fact(&self) -> TractResult<Cow<TypedFact>> {
         if cfg!(debug_assertions) {
             self.consistent()?
         }
-        Ok(self.clone())
+        Ok(Cow::Borrowed(self))
     }
 
     fn matches(&self, t: &Tensor, symbols: Option<&SymbolValues>) -> TractResult<bool> {
