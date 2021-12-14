@@ -77,7 +77,7 @@ impl ConvProblem {
         let output_shape = [m, h, w];
         let internal_output_shape = [m, h * w];
         let mmm = tract_linalg::generic().mmm(F32, F32, F32, Some(m), Some(k), Some(n)).unwrap();
-        let mut output = Tensor::zero::<f32>(&internal_output_shape).unwrap();
+        let output = Tensor::zero::<f32>(&internal_output_shape).unwrap();
         let mut packed_filter =
             Tensor::zero_aligned::<f32>(&[mmm.a_pack().len(k, m)], mmm.a_pack().alignment())
                 .unwrap();
@@ -115,7 +115,7 @@ impl ConvProblem {
 impl Arbitrary for ConvProblem {
     type Parameters = ();
     type Strategy = BoxedStrategy<Self>;
-    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
+    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
         (1..4usize, 1..4usize, 1..4usize, 1..4usize, 0..3usize, 0..3usize)
             .prop_flat_map(|(h, w, i, o, extra_h, extra_w)| {
                 let filters = tensor(vec![h, w, i, o]);

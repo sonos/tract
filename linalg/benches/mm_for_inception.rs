@@ -25,7 +25,7 @@ fn mat_mul_smmm(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize))
                         b: mm.b_packed(F32.size_of(), k).wrap(&pb.view()).unwrap(),
                         k,
                     },
-                    FusedSpec::Store(mm.c_view().wrap(&c.view_mut())),
+                    FusedSpec::Store(mm.c_view(0, 1).wrap(&c.view_mut())),
                 ],
             )
         });
