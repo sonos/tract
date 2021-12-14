@@ -49,25 +49,25 @@ pub fn tract_blaslike(crit: &mut BenchmarkGroup<WallTime>, m: usize, k: usize, n
             .unwrap();
         let a_storage = mmm.a_packed(f32::datum_type().size_of(), k);
         let b_storage = mmm.b_packed(f32::datum_type().size_of(), k);
-        let c_storage = mmm.c_view_with_axis(1, 0);
+        let c_storage = mmm.c_view(1, 0);
 
         let mut pa = Tensor::zero_aligned_dt(
             DatumType::F32,
-            &[mmm.a_pack(k).len(m)],
-            mmm.a_pack(k).alignment(),
+            &[mmm.a_pack().len(k, m)],
+            mmm.a_pack().alignment(),
         )
         .unwrap();
         let mut pb = Tensor::zero_aligned_dt(
             DatumType::F32,
-            &[mmm.b_pack(k).len(n)],
-            mmm.b_pack(k).alignment(),
+            &[mmm.b_pack().len(k, n)],
+            mmm.b_pack().alignment(),
         )
         .unwrap();
         let mut scratch = mmm.allocate_scratch_space();
 
         crit.bench_function("tract_blaslike", |be| {
-            mmm.a_pack(k).pack(&mut pa.view_mut(), &a.view(), 1, 0);
-            mmm.b_pack(k).pack(&mut pb.view_mut(), &b.view(), 0, 1);
+            mmm.a_pack().pack(&mut pa.view_mut(), &a.view(), 1, 0);
+            mmm.b_pack().pack(&mut pb.view_mut(), &b.view(), 0, 1);
 
             be.iter(|| {
                 mmm.run_with_scratch_space(
@@ -78,7 +78,7 @@ pub fn tract_blaslike(crit: &mut BenchmarkGroup<WallTime>, m: usize, k: usize, n
                         FusedSpec::AddMatMul {
                             k,
                             a: a_storage.wrap(&pa.view()),
-                            b: b_storage.wrap(&pb.view()),
+                            b: b_storage.wrap(&pb.view()).unwrap(),
                         },
                         FusedSpec::Store(c_storage.wrap(&mut c.view_mut())),
                     ],
