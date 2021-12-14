@@ -34,11 +34,8 @@ deny = [
 
 # Skip some multiple-versions checks, until they can be fixed.
 skip = [
-#    { name = "cfg-if", version="<1.0" }, # cascading from flate too
-    { name = "quick-error", version="<2" }, # cascading from flate too
-#    { name = "py_literal", version="<0.4" }, # cascading from flate too
-#    { name = "num-complex", version="<0.4" }, # cascading from flate too
-#    { name = "num-bigint", version="<0.4" }, # cascading from flate too
+    { name = "quick-error", version="<2" }, # cascading from flate
+    { name = "itoa", version="<1" }, # cascading from flate criterion
 ]
 
 [sources]
