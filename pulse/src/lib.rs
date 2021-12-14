@@ -64,7 +64,7 @@ mod tests {
         model.auto_outputs().unwrap();
         let pulse = PulsedModel::new(&model, 4).unwrap();
         assert_eq!(
-            pulse.outlet_fact(OutletId::new(0, 0)).unwrap().to_typed_fact().unwrap(),
+            *pulse.outlet_fact(OutletId::new(0, 0)).unwrap().to_typed_fact().unwrap(),
             TypedFact::dt_shape(DatumType::F32, &[1usize, 4, 3])
         );
     }
@@ -86,11 +86,11 @@ mod tests {
         let pulse = PulsedModel::new(&model, 4).unwrap();
 
         assert_eq!(
-            pulse.input_fact(0).unwrap().to_typed_fact().unwrap(),
+            *pulse.input_fact(0).unwrap().to_typed_fact().unwrap(),
             TypedFact::dt_shape(DatumType::F32, &[4, 2, 3])
         );
         assert_eq!(
-            pulse.output_fact(0).unwrap().to_typed_fact().unwrap(),
+            *pulse.output_fact(0).unwrap().to_typed_fact().unwrap(),
             TypedFact::dt_shape(DatumType::F32, &[4, 2, 3])
         );
     }
