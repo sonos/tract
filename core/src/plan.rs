@@ -239,13 +239,14 @@ where
                         .map_err(|e| e.into())?;
 
                 for (o, v) in node.outputs.iter().zip(vs.iter()) {
-                    let f = o.fact.to_typed_fact()?;
-                    for (dim_abstract, dim_concrete) in f.shape.iter().zip(v.shape()) {
-                        Self::resolve(
-                            &mut session_state.resolved_symbols,
-                            &dim_abstract,
-                            *dim_concrete as i64,
-                        );
+                    if let Ok(f) = o.fact.to_typed_fact() {
+                        for (dim_abstract, dim_concrete) in f.shape.iter().zip(v.shape()) {
+                            Self::resolve(
+                                &mut session_state.resolved_symbols,
+                                &dim_abstract,
+                                *dim_concrete as i64,
+                            );
+                        }
                     }
                 }
 
