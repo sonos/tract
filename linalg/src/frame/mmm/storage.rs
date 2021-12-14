@@ -4,7 +4,8 @@ use tract_data::internal::*;
 #[derive(Clone, Copy, Debug)]
 pub enum OutputStoreSpec {
     View {
-        axes: Option<(usize, usize)>,
+        m_axis: usize,
+        n_axis: usize,
         mr: usize,
         nr: usize,
     },
@@ -52,16 +53,10 @@ impl OutputStoreSpec {
     ) -> (usize, usize, isize, isize) {
         let size_of = tensor.datum_type().size_of() as isize;
         match self {
-            OutputStoreSpec::View { axes, mr, nr, .. } => {
-                let (m_axis, n_axis) = if let Some(axes) = axes {
-                    axes.clone()
-                } else {
-                    let rank = tensor.rank();
-                    (rank - 2, rank - 1)
-                };
+            OutputStoreSpec::View { m_axis, n_axis, mr, nr, .. } => {
                 let tensor_strides = tensor.strides();
-                let row_item_stride = *tensor_strides.get_unchecked(m_axis);
-                let col_item_stride = *tensor_strides.get_unchecked(n_axis);
+                let row_item_stride = *tensor_strides.get_unchecked(*m_axis);
+                let col_item_stride = *tensor_strides.get_unchecked(*n_axis);
                 let row_byte_stride = row_item_stride * size_of;
                 let col_byte_stride = col_item_stride * size_of;
                 (*mr, *nr, row_byte_stride, col_byte_stride)
@@ -108,7 +103,7 @@ impl OutputStore {
         if self.item_size() == 1 {
             self.set_from_tile_t::<i8>(down, right, height, width, tile)
         } else {
-            self.set_from_tile_t::<i32>(down, right, height, width, tile)
+            self.set_from_tile_t::<f32>(down, right, height, width, tile)
         }
     }
 

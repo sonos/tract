@@ -36,8 +36,7 @@ pub trait MatMatMul:
     unsafe fn b_late_packing_with_axes(&self, k_axis: usize, n_axis: usize) -> InputStoreSpec;
     unsafe fn b_virtual_input(&self, func: Box<dyn VirtualInputSpec>, k: usize) -> InputStoreSpec;
 
-    unsafe fn c_view(&self) -> OutputStoreSpec;
-    unsafe fn c_view_with_axis(&self, m_axis: usize, n_axis: usize) -> OutputStoreSpec;
+    unsafe fn c_view(&self, m_axis: usize, n_axis: usize) -> OutputStoreSpec;
     unsafe fn c_from_data_and_strides(
         &self,
         item_size: usize,
@@ -200,12 +199,8 @@ where
         InputStoreSpec::VirtualPacking { packer: self.b_pack(), func, k }
     }
 
-    unsafe fn c_view(&self) -> OutputStoreSpec {
-        OutputStoreSpec::View { axes: None, mr: K::mr(), nr: K::nr() }
-    }
-
-    unsafe fn c_view_with_axis(&self, m_axis: usize, n_axis: usize) -> OutputStoreSpec {
-        OutputStoreSpec::View { axes: Some((m_axis, n_axis)), mr: K::mr(), nr: K::nr() }
+    unsafe fn c_view(&self, m_axis: usize, n_axis: usize) -> OutputStoreSpec {
+        OutputStoreSpec::View { m_axis, n_axis, mr: K::mr(), nr: K::nr() }
     }
 
     unsafe fn c_from_data_and_strides(
