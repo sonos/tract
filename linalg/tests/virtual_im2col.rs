@@ -15,26 +15,66 @@ proptest::proptest! {
 
 #[test]
 fn test1() {
-    ConvProblem { input: tensor3(&[[[1f32]]]), filters: tensor4(&[[[[-1f32]]]]) }.check()
+    ConvProblem {
+        lazy_im2col: false,
+        input: tensor3(&[[[1f32]]]),
+        filters: tensor4(&[[[[-1f32]]]]),
+    }
+    .check()
 }
 
 #[test]
 fn test_axes_0() {
-    ConvProblem { input: tensor3(&[[[0f32], [-1.0]]]), filters: tensor4(&[[[[0f32, -1f32]]]]) }
-        .check()
+    // CHW HWIO CHW
+    // 121 1112 221
+    ConvProblem {
+        lazy_im2col: false,
+        input: tensor3(&[[[0f32], [-1.0]]]),
+        filters: tensor4(&[[[[0f32, -1f32]]]]),
+    }
+    .check()
 }
 
 #[test]
 fn test_axes_1() {
-    ConvProblem { input: tensor3(&[[[0f32, 1.]]]), filters: tensor4(&[[[[1f32]]]]) }.check()
+    ConvProblem {
+        lazy_im2col: false,
+        input: tensor3(&[[[0f32, 1.]]]),
+        filters: tensor4(&[[[[1f32]]]]),
+    }
+    .check()
 }
 
-// CHW HWIO CHW
-// 121 1112 221
+#[test]
+fn test_lazy_0() {
+    ConvProblem { lazy_im2col: true, input: tensor3(&[[[1f32]]]), filters: tensor4(&[[[[1f32]]]]) }
+        .check()
+}
+
+#[test]
+fn test_lazy_1() {
+    ConvProblem {
+        lazy_im2col: true,
+        input: tensor3(&[[[0f32], [0.], [0.]]]),
+        filters: tensor4(&[[[[0f32]]]]),
+    }
+    .check()
+}
+
+#[test]
+fn test_lazy_2() {
+    ConvProblem {
+        lazy_im2col: true,
+        input: tensor3(&[[[0f32, 0.], [0., 1.]]]),
+        filters: tensor4(&[[[[0f32]], [[1.]]]]),
+    }
+    .check()
+}
 
 // 2D valid, no group, no dil, no stride, HWIO, CHW
 #[derive(Clone, Debug)]
 struct ConvProblem {
+    lazy_im2col: bool,
     input: Tensor,
     filters: Tensor,
 }
@@ -85,9 +125,12 @@ impl ConvProblem {
         unsafe {
             mmm.a_pack().pack(packed_filter.view_mut(), reshaped_filters.view(), 0, 1);
             let a_store = mmm.a_packed(F32.size_of(), k).wrap(&packed_filter.view());
-            let im2col = EagerIm2colSpec { full_kernel_shape: self.filters.shape().into() };
-            let b_store =
-                mmm.b_virtual_input(Box::new(im2col), k).wrap(&self.input.view()).unwrap();
+            let im2col: Box<dyn VirtualInputSpec> = if self.lazy_im2col {
+                Box::new(LazyIm2colSpec { full_kernel_shape: self.filters.shape().into() })
+            } else {
+                Box::new(EagerIm2colSpec { full_kernel_shape: self.filters.shape().into() })
+            };
+            let b_store = mmm.b_virtual_input(im2col, k).wrap(&self.input.view()).unwrap();
             let c_store = mmm.c_view(0, 1).wrap(&mut output.view());
             mmm.run(
                 m,
@@ -116,13 +159,17 @@ impl Arbitrary for ConvProblem {
     type Parameters = ();
     type Strategy = BoxedStrategy<Self>;
     fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-        (1..4usize, 1..4usize, 1..4usize, 1..4usize, 0..3usize, 0..3usize)
-            .prop_flat_map(|(h, w, i, o, extra_h, extra_w)| {
+        (any::<bool>(), 1..4usize, 1..4usize, 1..4usize, 1..4usize, 0..3usize, 0..3usize)
+            .prop_flat_map(|(eager_im2col, h, w, i, o, extra_h, extra_w)| {
                 let filters = tensor(vec![h, w, i, o]);
                 let input = tensor(vec![i, h + extra_h, w + extra_w]);
-                (filters, input)
+                (Just(eager_im2col), filters, input)
             })
-            .prop_map(|(filters, input)| ConvProblem { filters, input })
+            .prop_map(|(eager_im2col, filters, input)| ConvProblem {
+                lazy_im2col: eager_im2col,
+                filters,
+                input,
+            })
             .boxed()
     }
 }
@@ -165,11 +212,10 @@ impl VirtualInputSpec for EagerIm2colSpec {
     }
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 struct EagerIm2col {
     im2col: Tensor,
 }
-impl_dyn_hash!(EagerIm2col);
 
 impl VirtualInput for EagerIm2col {
     fn input(
@@ -190,7 +236,78 @@ impl VirtualInput for EagerIm2col {
                 k_range,
                 mn_range,
             );
-            std::slice::from_raw_parts(packed as *const f32, 4);
+        }
+    }
+}
+
+#[derive(Clone, Debug, Hash)]
+struct LazyIm2colSpec {
+    full_kernel_shape: TVec<usize>,
+}
+
+impl_dyn_hash!(LazyIm2colSpec);
+
+impl VirtualInputSpec for LazyIm2colSpec {
+    fn wrap(&self, input: &TensorView) -> Box<dyn VirtualInput> {
+        let (_, _, _, h, w) = mknhw(&self.full_kernel_shape, input.shape());
+        dbg!(&self.full_kernel_shape);
+        let kh = self.full_kernel_shape[0];
+        let kw = self.full_kernel_shape[1];
+        let ci = self.full_kernel_shape[2];
+        let input_strides = input.strides();
+        dbg!(&input);
+        dbg!(&input_strides);
+        let k_offsets = (0..ci as isize)
+            .flat_map(|ci| {
+                (0..kh as isize).flat_map(move |kh| {
+                    (0..kw as isize).map(move |kw| {
+                        dbg!(ci, kh, kw);
+                        ci * input_strides[0] + kh * input_strides[1] + kw * input_strides[2]
+                    })
+                })
+            })
+            .collect();
+        let n_offsets = (0..h as isize)
+            .flat_map(|h| {
+                (0..w as isize).map(move |w| (h * input_strides[1] + w * input_strides[2]))
+            })
+            .collect();
+        dbg!(&input);
+        unsafe {
+            dbg!(*input.as_ptr_unchecked::<f32>());
+        }
+        unsafe { Box::new(LazyIm2col { image: input.as_ptr_unchecked(), k_offsets, n_offsets }) }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct LazyIm2col {
+    image: *const f32,
+    n_offsets: Vec<isize>,
+    k_offsets: Vec<isize>,
+}
+unsafe impl Send for LazyIm2col {}
+unsafe impl Sync for LazyIm2col {}
+
+impl VirtualInput for LazyIm2col {
+    fn input(
+        &self,
+        packer: &tract_linalg::frame::Packer,
+        packed: *mut u8,
+        k_range: std::ops::Range<usize>,
+        mn_range: std::ops::Range<usize>,
+    ) {
+        dbg!(&self);
+        dbg!(&mn_range);
+        let mn_range = mn_range.start..mn_range.end.min(self.n_offsets.len());
+        unsafe {
+            let mut writer = packer.write_with_k_outer(packed as _, k_range.len(), mn_range.len());
+            for k in k_range {
+                for n in mn_range.clone() {
+                    dbg!(k, n);
+                    writer.write(dbg!(*self.image.offset(self.n_offsets[n] + self.k_offsets[k])))
+                }
+            }
         }
     }
 }

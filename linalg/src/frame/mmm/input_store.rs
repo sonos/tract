@@ -10,7 +10,7 @@ pub trait VirtualInputSpec: DynHash + dyn_clone::DynClone + std::fmt::Debug + Sy
 }
 dyn_clone::clone_trait_object!(VirtualInputSpec);
 
-pub trait VirtualInput: DynHash + dyn_clone::DynClone + std::fmt::Debug + Sync + Send {
+pub trait VirtualInput: dyn_clone::DynClone + std::fmt::Debug + Sync + Send {
     fn input(&self, packer: &Packer, packed_output: *mut u8, k: Range<usize>, mn: Range<usize>);
 }
 dyn_clone::clone_trait_object!(VirtualInput);
