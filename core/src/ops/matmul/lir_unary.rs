@@ -204,7 +204,7 @@ fn eval(
         debug_assert!(op.micro_ops.len() > 0);
         let size_of_a = (&*op.micro_ops.as_ptr()).0.datum_type().size_of();
         let mut c = Tensor::uninitialized_dt(op.c_fact.datum_type, &c_shape)?;
-        let c_storage = op.mmm.c_view_with_axis(c_m_axis, c_n_axis);
+        let c_storage = op.mmm.c_view(c_m_axis, c_n_axis);
         if op
             .c_fact
             .shape

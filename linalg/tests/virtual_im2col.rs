@@ -19,12 +19,18 @@ fn test1() {
 }
 
 #[test]
-fn test2() {
-    ConvProblem { input: tensor3(&[[[0f32], [-1.0]]]), filters: tensor4(&[[[[0f32, -1f32]]]]) }.check()
+fn test_axes_0() {
+    ConvProblem { input: tensor3(&[[[0f32], [-1.0]]]), filters: tensor4(&[[[[0f32, -1f32]]]]) }
+        .check()
 }
 
-// CHW HWIO CHW 
-// 121 1112 221 
+#[test]
+fn test_axes_1() {
+    ConvProblem { input: tensor3(&[[[0f32, 1.]]]), filters: tensor4(&[[[[1f32]]]]) }.check()
+}
+
+// CHW HWIO CHW
+// 121 1112 221
 
 // 2D valid, no group, no dil, no stride, HWIO, CHW
 #[derive(Clone, Debug)]
@@ -69,21 +75,20 @@ impl ConvProblem {
     fn tract(&self) -> Tensor {
         let (m, k, n, h, w) = mknhw(self.filters.shape(), self.input.shape());
         let output_shape = [m, h, w];
-        let mut output = Tensor::zero::<f32>(&output_shape).unwrap();
+        let internal_output_shape = [m, h * w];
         let mmm = tract_linalg::generic().mmm(F32, F32, F32, Some(m), Some(k), Some(n)).unwrap();
-        let mut output = Tensor::zero::<f32>(&output_shape).unwrap();
+        let mut output = Tensor::zero::<f32>(&internal_output_shape).unwrap();
         let mut packed_filter =
             Tensor::zero_aligned::<f32>(&[mmm.a_pack().len(k, m)], mmm.a_pack().alignment())
                 .unwrap();
         let reshaped_filters = self.filters.clone().into_shape(&[k, m]).unwrap();
         unsafe {
             mmm.a_pack().pack(packed_filter.view_mut(), reshaped_filters.view(), 0, 1);
-            dbg!(&packed_filter);
             let a_store = mmm.a_packed(F32.size_of(), k).wrap(&packed_filter.view());
             let im2col = EagerIm2colSpec { full_kernel_shape: self.filters.shape().into() };
             let b_store =
                 mmm.b_virtual_input(Box::new(im2col), k).wrap(&self.input.view()).unwrap();
-            let c_store = mmm.c_view().wrap(&mut output.view());
+            let c_store = mmm.c_view(0, 1).wrap(&mut output.view());
             mmm.run(
                 m,
                 n,
@@ -91,7 +96,7 @@ impl ConvProblem {
             )
             .unwrap()
         }
-        output
+        output.into_shape(&output_shape).unwrap()
     }
 
     fn check(&self) {
@@ -153,8 +158,9 @@ impl VirtualInputSpec for EagerIm2colSpec {
         let output = tract_ndarray::Array5::<f32>::from_shape_fn(
             [kh, kw, ci, h, w],
             |(kh, kw, ci, h, w)| *input.at([ci, h + kh, w + kw]).unwrap(),
-        ).into_shape([k, n]).unwrap();
-        dbg!(&output);
+        )
+        .into_shape([k, n])
+        .unwrap();
         Box::new(EagerIm2col { im2col: output.into_tensor() })
     }
 }
@@ -184,7 +190,7 @@ impl VirtualInput for EagerIm2col {
                 k_range,
                 mn_range,
             );
-            dbg!(std::slice::from_raw_parts(packed as *const f32, 4));
+            std::slice::from_raw_parts(packed as *const f32, 4);
         }
     }
 }
