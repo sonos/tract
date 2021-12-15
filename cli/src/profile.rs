@@ -50,7 +50,7 @@ pub fn profile(
             let inputs: TVec<TypedFact> = model
                 .node_input_facts(outer_node.id)?
                 .iter()
-                .map(|&i| i.to_typed_fact())
+                .map(|&i| i.to_typed_fact().map(|f| f.into_owned()))
                 .collect::<TractResult<_>>()?;
             let ref_inputs: TVec<&TypedFact> = inputs.iter().collect();
             for ((inner_model_name, inner_model), multiplier) in model

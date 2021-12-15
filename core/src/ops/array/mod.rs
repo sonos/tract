@@ -1,6 +1,7 @@
 /// # Operators on array and shapes
 mod broadcast;
 pub(crate) mod concat;
+pub mod dyn_slice;
 mod gather;
 mod gather_elements;
 mod gather_nd;
@@ -14,6 +15,7 @@ mod tile;
 
 pub use self::broadcast::MultiBroadcastTo;
 pub use self::concat::{ConcatSlice, TypedConcat};
+pub use self::dyn_slice::DynSlice;
 pub use self::gather::Gather;
 pub use self::gather_elements::GatherElements;
 pub use self::gather_nd::GatherNd;

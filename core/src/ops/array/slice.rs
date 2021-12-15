@@ -52,9 +52,12 @@ impl EvalOp for Slice {
 
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
+        let start = self.start.to_usize()?;
+        let end = self.end.to_usize()?;
+        if end > input.shape()[self.axis] || start > end {
+            bail!("Invalid range {}..{} for slicing {:?} on axis {}", start, end, input, self.axis);
+        }
         unsafe {
-            let start = self.start.to_usize()?;
-            let end = self.end.to_usize()?;
             let mut shape: TVec<_> = input.shape().into();
             shape[self.axis] = end - start;
             let mut tensor = Tensor::uninitialized_dt(input.datum_type(), &shape)?;
@@ -166,7 +169,8 @@ impl TypedOp for Slice {
                 .unwrap()
                 .slice_output(model, &prec, patch, &suffix, node.inputs[0].slot, axis, start, end)?
                 .map(|w| {
-                    Ok(patch.wire_node(format!("{}.{}", node.name, &suffix), self.clone(), &[w])?[0])
+                    Ok(patch.wire_node(format!("{}.{}", node.name, &suffix), self.clone(), &[w])?
+                        [0])
                 })
                 .transpose();
         }

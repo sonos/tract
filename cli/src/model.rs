@@ -172,7 +172,7 @@ where
     }
 
     fn outlet_typedfact(&self, outlet: OutletId) -> TractResult<TypedFact> {
-        self.outlet_fact(outlet)?.to_typed_fact()
+        Ok(self.outlet_fact(outlet)?.to_typed_fact()?.into_owned())
     }
 
     fn outlet_fact_format(&self, outlet: OutletId) -> String {

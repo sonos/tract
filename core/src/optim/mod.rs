@@ -142,7 +142,8 @@ impl Optimizer {
         }
         #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
         {
-            model.check_edges()?;
+            model.check_edges()
+                .with_context(|| format!("after declutter pass {:?}", p))?;
             model
                 .check_consistent_facts()
                 .with_context(|| format!("after declutter pass {:?}", p))?

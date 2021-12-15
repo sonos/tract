@@ -70,6 +70,17 @@ fn run_regular(
     dispatch_model!(tract, |m| {
         let plan = SimplePlan::new(m)?;
         let mut state = SimpleState::new(plan)?;
+        if let Some(set) = options.values_of("set") {
+            for set in set {
+                let mut tokens = set.split("=");
+                let sym = tokens.next().context("--set expect S=12 form")?;
+                let value = tokens.next().context("--set expect S=12 form")?;
+                let sym = Symbol::from(sym.chars().next().unwrap());
+                let value: i64 = value.parse().context("Can not parse symbol value in set")?;
+                state.session_state.resolved_symbols =
+                    state.session_state.resolved_symbols.with(sym, value);
+            }
+        }
         let mut results = tvec!();
         for (turn, inputs) in
             crate::tensor::retrieve_or_make_inputs(tract, params)?.into_iter().enumerate()

@@ -60,25 +60,25 @@ impl Reducer {
         Ok(unsafe {
             match self {
                 ArgMax(last) => {
-                    r!(Self::reduce_t(dt)(self, axes, &output_shape, input, argmax_t, *last))
+                    r!(Self::reduce_t(dt)(self, axes, &output_shape, &input, argmax_t, *last))
                 }
                 ArgMin(last) => {
-                    r!(Self::reduce_t(dt)(self, axes, &output_shape, input, argmin_t, *last))
+                    r!(Self::reduce_t(dt)(self, axes, &output_shape, &input, argmin_t, *last))
                 }
-                Min => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, min_t, ())),
-                Max => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, max_t, ())),
+                Min => r!(Self::reduce_t(dt)(self, axes, &output_shape, &input, min_t, ())),
+                Max => r!(Self::reduce_t(dt)(self, axes, &output_shape, &input, max_t, ())),
                 Prod => {
-                    r!(Self::reduce_t(dt)(self, axes, &output_shape, input, prod_t, ()); Self::reduce_t(self, axes, &output_shape, input, q_prod_t, (zp, scale)))
+                    r!(Self::reduce_t(dt)(self, axes, &output_shape, &input, prod_t, ()); Self::reduce_t(self, axes, &output_shape, &input, q_prod_t, (zp, scale)))
                 }
                 Sum => {
                     if dt.is_float() {
-                        dispatch_floatlike!(Self::sum(dt)(self, axes, input))
+                        dispatch_floatlike!(Self::sum(dt)(self, axes, &input))
                     } else {
                         r!(Self::reduce_t(dt)(
                             self,
                             axes,
                             &output_shape,
-                            input,
+                            &input,
                             q_sum_t,
                             (zp, scale)
                         ))
@@ -268,6 +268,9 @@ impl EvalOp for Reduce {
 impl TypedOp for Reduce {
     as_op!();
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        if inputs[0].datum_type == TDim::datum_type() {
+            bail!("Reduce input must be cast from TDim to i64 beforehand")
+        }
         let mut shape: TVec<_> = inputs[0].shape.to_tvec();
         for &ax in &self.axes {
             shape[ax] = 1.to_dim();
@@ -280,7 +283,11 @@ impl TypedOp for Reduce {
         Ok(tvec!(TypedFact::dt_shape(dt, shape)))
     }
 
-    fn invariants(&self, inputs: &[&TypedFact], _outputs: &[&TypedFact]) -> TractResult<Invariants> {
+    fn invariants(
+        &self,
+        inputs: &[&TypedFact],
+        _outputs: &[&TypedFact],
+    ) -> TractResult<Invariants> {
         let axes = (0..inputs[0].rank())
             .filter(|axis| !self.axes.contains(axis))
             .map(|axis| AxisInfo::simple(axis))

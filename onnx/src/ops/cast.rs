@@ -62,7 +62,7 @@ impl ElementWiseMiniOp for Cast {
                 model,
                 node,
                 &node.inputs,
-                tract_hir::ops::cast(self.to),
+                tract_hir::ops::cast::cast(self.to),
             )?))
         }
     }

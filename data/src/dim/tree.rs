@@ -8,7 +8,7 @@ pub struct UndeterminedSymbol(TDim);
 
 impl std::fmt::Display for UndeterminedSymbol {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Undertermined symbol in expression: {}", self.0)
+        write!(f, "Undetermined symbol in expression: {}", self.0)
     }
 }
 
@@ -486,6 +486,22 @@ impl Default for TDim {
     }
 }
 
+impl num_traits::Bounded for TDim {
+    fn min_value() -> Self {
+        TDim::Val(i64::min_value())
+    }
+
+    fn max_value() -> Self {
+        TDim::Val(i64::max_value())
+    }
+}
+
+impl num_traits::One for TDim {
+    fn one() -> Self {
+        TDim::Val(1)
+    }
+}
+
 impl ::std::iter::Sum for TDim {
     fn sum<I: Iterator<Item = TDim>>(iter: I) -> TDim {
         iter.fold(0.into(), |a, b| a + b)
@@ -678,9 +694,16 @@ impl<I: AsPrimitive<u64> + PrimInt> ops::Rem<I> for TDim {
 }
 
 impl std::str::FromStr for TDim {
-    type Err = std::num::ParseIntError;
+    type Err = anyhow::Error;
     fn from_str(s: &str) -> Result<TDim, Self::Err> {
-        s.parse::<i64>().map(|i| i.into())
+        let first = s.chars().next().unwrap();
+        if first.is_digit(10) || first == '-' {
+            Ok(s.parse::<i64>()?.into())
+        } else if first.is_alphabetic() && s.len() == 1 {
+            Ok(Symbol::from(first).into())
+        } else {
+            anyhow::bail!("Can't parse {} as TDim", s)
+        }
     }
 }
 

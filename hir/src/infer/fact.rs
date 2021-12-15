@@ -120,8 +120,8 @@ impl fmt::Debug for InferenceFact {
 use crate::infer::factoid::Factoid;
 
 impl Fact for InferenceFact {
-    fn to_typed_fact(&self) -> TractResult<TypedFact> {
-        TypedFact::try_from(self)
+    fn to_typed_fact(&self) -> TractResult<Cow<TypedFact>> {
+        Ok(Cow::Owned(TypedFact::try_from(self)?))
     }
 
     fn matches(&self, t: &Tensor, _symbols: Option<&SymbolValues>) -> TractResult<bool> {

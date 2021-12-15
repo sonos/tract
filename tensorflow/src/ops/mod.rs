@@ -41,7 +41,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
 
 fn cast(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let dtype = node.get_attr_datum_type("DstT")?;
-    Ok(Box::new(::tract_hir::ops::cast(dtype)))
+    Ok(Box::new(tract_hir::ops::cast::cast(dtype)))
 }
 
 fn konst(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
@@ -52,7 +52,7 @@ fn konst(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn Inference
         bail!("Const node {:?} doesn't have the expected {:?} type.", mat, dtype);
     }
 
-    Ok(Box::new(::tract_hir::ops::konst::Const(mat.into())))
+    Ok(Box::new(tract_hir::ops::konst::Const(mat.into())))
 }
 
 #[derive(Clone, Debug, new, Hash)]
