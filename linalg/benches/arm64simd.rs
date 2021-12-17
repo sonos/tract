@@ -1,6 +1,6 @@
-#![feature(asm)]
 #![allow(dead_code, non_upper_case_globals, unused_macros, non_snake_case, unused_assignments)]
 
+use std::arch::asm;
 use criterion::{criterion_group, criterion_main, Criterion};
 
 macro_rules! r2 { ($($stat:stmt)*) => { $( $stat )* $( $stat )* } }
@@ -10,8 +10,10 @@ macro_rules! r16 { ($($stat:stmt)*) => { r4!(r4!($($stat)*)) }}
 macro_rules! r32 { ($($stat:stmt)*) => { r8!(r4!($($stat)*)) }}
 macro_rules! r64 { ($($stat:stmt)*) => { r8!(r8!($($stat)*)) }}
 
-const _F32: [f32; 64] = [12.; 64];
-const F32: *const f32 = _F32.as_ptr();
+#[repr(C, align(8))]
+struct Floats([f32; 64]);
+const _F32: Floats = Floats([12.; 64]);
+const F32: *const f32 = (&_F32) as *const Floats as *const f32;
 
 pub fn ld_64F32(c: &mut Criterion) {
     let mut group = c.benchmark_group("ld64f32");
