@@ -153,8 +153,12 @@ fn preprocess_files(
 ) -> Vec<path::PathBuf> {
     let out_dir = path::PathBuf::from(var("OUT_DIR"));
     let mut files = vec![];
-    for f in input.as_ref().read_dir().unwrap() {
-        let f = f.unwrap();
+    let dir_entries = {
+        let mut dir_entries = input.as_ref().read_dir().unwrap().map(|r| r.unwrap()).collect();
+        dir_entries.sort();
+        dir_entries
+    };
+    for f in dir_entries {
         if f.path().extension() == Some(ffi::OsStr::new("tmpl")) {
             let tmpl_file = f.path().file_name().unwrap().to_str().unwrap().to_owned();
             let concerned_variants: Vec<&Variant> =
