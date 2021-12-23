@@ -156,7 +156,7 @@ fn preprocess_files(
     let dir_entries = {
         let mut dir_entries: Vec<fs::DirEntry> =
             input.as_ref().read_dir().unwrap().map(|f| f.unwrap()).collect();
-        dir_entries.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+        dir_entries.sort_by(|a, b| a.path().cmp(&b.path()));
         dir_entries
     };
     for f in dir_entries {
