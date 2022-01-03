@@ -19,8 +19,8 @@ impl Slice {
         Slice { axis, start: start.to_dim(), end: end.to_dim() }
     }
 
-    pub fn suffix(&self) -> String {
-        format!("axis{}_{}_{}", self.axis, self.start, self.end)
+    pub fn suffix(&self, name: &str) -> String {
+        format!("{}.axis{}_{}_{}", name, self.axis, self.start, self.end)
     }
 }
 
@@ -129,7 +129,7 @@ impl TypedOp for Slice {
             model,
             prec,
             &mut patch,
-            &self.suffix(),
+            &self.suffix(&node.name),
             node.inputs[0].slot,
             self.axis,
             start,
@@ -162,7 +162,7 @@ impl TypedOp for Slice {
     ) -> TractResult<Option<OutletId>> {
         let prec = model.node(node.inputs[0].node);
         if axis != self.axis {
-            let suffix = suffix.to_string() + "." + &self.suffix();
+            let suffix = self.suffix(&node.name) + "." + suffix;
             return prec
                 .op()
                 .as_typed()

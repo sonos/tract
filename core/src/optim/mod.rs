@@ -101,7 +101,7 @@ impl Optimizer {
                 return Ok(counter);
             }
             counter = new_counter;
-            model.compact()?;
+            model.compact().with_context(|| format!("after pass {:?}", p))?;
         }
     }
 
@@ -142,8 +142,7 @@ impl Optimizer {
         }
         #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
         {
-            model.check_edges()
-                .with_context(|| format!("after declutter pass {:?}", p))?;
+            model.check_edges().with_context(|| format!("after declutter pass {:?}", p))?;
             model
                 .check_consistent_facts()
                 .with_context(|| format!("after declutter pass {:?}", p))?

@@ -681,7 +681,7 @@ where
         let mut result = crate::model::translator::IntoTranslator.translate_model(self)?;
         #[cfg(debug_assertions)]
         {
-            result.check_compact()?;
+            result.check_compact().context("after graph compaction")?;
         }
         std::mem::swap(self, &mut result);
         Ok(())
