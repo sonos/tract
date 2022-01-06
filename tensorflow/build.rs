@@ -1,13 +1,18 @@
 use std::{env, fs, path};
 
 fn main() -> std::io::Result<()> {
-    let mut inputs: Vec<path::PathBuf> = vec![];
+    let inputs: Vec<path::PathBuf> = {
+        let mut inputs: Vec<path::PathBuf> = vec![];
 
-    for dir in &["protos/tensorflow/core/framework", "protos/tensorflow/core/protobuf"] {
-        for pb in fs::read_dir(dir)? {
-            inputs.push(pb?.path())
+        for dir in &["protos/tensorflow/core/framework", "protos/tensorflow/core/protobuf"] {
+            for pb in fs::read_dir(dir)? {
+                inputs.push(pb?.path())
+            }
         }
-    }
+
+        inputs.sort();
+        inputs
+    };
 
     let gen = path::PathBuf::from(env::var("OUT_DIR").unwrap()).join("prost");
     let _ = fs::create_dir_all(&gen);
