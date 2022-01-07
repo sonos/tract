@@ -179,9 +179,9 @@ test_exp
 test_exp_example
 test_expand_dim_changed input:data
 test_expand_dim_unchanged input:data
-test_eyelike_populate_off_main_diagonal not-nnef
-test_eyelike_with_dtype not-nnef
-test_eyelike_without_dtype not-nnef
+test_eyelike_populate_off_main_diagonal
+test_eyelike_with_dtype
+test_eyelike_without_dtype
 test_flatten_axis0
 test_flatten_axis1
 test_flatten_axis2
