@@ -39,6 +39,7 @@ fmla        v25.4s, v5.4s, v7.s[2]
         prfm        pldl1keep, [x2, #256]
 
 fmla        v26.4s, v0.4s, v7.s[3]
+    prfm        pldl1keep, [x1, #320]
 fmla        v27.4s, v1.4s, v7.s[3]
 fmla        v28.4s, v2.4s, v7.s[3]
 fmla        v29.4s, v3.4s, v7.s[3]
