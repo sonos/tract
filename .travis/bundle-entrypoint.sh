@@ -35,6 +35,13 @@ then
     cat sizes >> metrics
 fi
 
+
+if [ -r /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor -a `cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor` = "userspace" ]
+then
+        F=$(printf "%s\n" `cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_frequencies` | sort -n | tail -1)
+        echo $F > /sys/devices/system/cpu/cpu0/cpufreq/scaling_setspeed
+fi
+
 net_bench() {
     net=$1
     pb=$2
