@@ -80,3 +80,8 @@ harness = false
 bench = false
 name = "packing"
 harness = false
+
+[[bench]]
+bench = false
+name = "virtual_im2col"
+harness = false

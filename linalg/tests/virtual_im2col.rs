@@ -90,10 +90,10 @@ fn test_lazy_3() {
 
 // 2D valid, no group, no dil, no stride, HWIO, CHW
 #[derive(Clone, Debug)]
-struct ConvProblem {
-    lazy_im2col: bool,
-    input: Tensor,
-    filters: Tensor,
+pub struct ConvProblem {
+    pub lazy_im2col: bool,
+    pub input: Tensor,
+    pub filters: Tensor,
 }
 
 fn mknhw(filters: &[usize], input: &[usize]) -> (usize, usize, usize, usize, usize) {
@@ -129,11 +129,11 @@ impl ConvProblem {
         output
     }
 
-    fn tract(&self) -> Tensor {
+    pub fn tract(&self) -> Tensor {
         let (m, k, n, h, w) = mknhw(self.filters.shape(), self.input.shape());
         let output_shape = [m, h, w];
         let internal_output_shape = [m, h * w];
-        let mmm = tract_linalg::generic().mmm(F32, F32, F32, Some(m), Some(k), Some(n)).unwrap();
+        let mmm = tract_linalg::ops().mmm(F32, F32, F32, Some(m), Some(k), Some(n)).unwrap();
         let output = Tensor::zero::<f32>(&internal_output_shape).unwrap();
         let mut packed_filter =
             Tensor::zero_aligned::<f32>(&[mmm.a_pack().len(k, m)], mmm.a_pack().alignment())
@@ -311,7 +311,11 @@ impl VirtualInput for LazyIm2col {
             let mut writer = packer.write_with_k_outer(packed as _, k_range.len(), mn_range.len());
             for k in k_range {
                 for n in mn_range.clone() {
-                    writer.write(*self.image.offset(self.n_offsets[n] + self.k_offsets[k]))
+                    writer.write(
+                        *self.image.offset(
+                            self.n_offsets.get_unchecked(n) + self.k_offsets.get_unchecked(k),
+                        ),
+                    )
                 }
             }
         }
