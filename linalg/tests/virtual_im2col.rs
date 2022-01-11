@@ -71,6 +71,23 @@ fn test_lazy_2() {
     .check()
 }
 
+#[test]
+fn test_lazy_3() {
+    // CHW HWIO CHW
+    // 212 1221 111
+    // im2col: k=4, n=1, k <- kh, kw, c
+    // 0 X X X X kh=0, kw=0, c=0
+    // 1 X X X X kh=0, kw=0, c=1
+    // 0 X X X X kh=0, kw=1, c=0
+    // 0 X X X X kh=0, kw=1, c=1
+    ConvProblem {
+        lazy_im2col: true,
+        input: tensor3(&[[[0f32, 0.]], [[1., 0.]]]),
+        filters: tensor4(&[[[[0f32], [0.]], [[1.], [0.]]]]),
+    }
+    .check()
+}
+
 // 2D valid, no group, no dil, no stride, HWIO, CHW
 #[derive(Clone, Debug)]
 struct ConvProblem {
@@ -202,13 +219,13 @@ impl VirtualInputSpec for EagerIm2colSpec {
         let ci = input.shape()[0];
         let kh = self.full_kernel_shape[0];
         let kw = self.full_kernel_shape[1];
-        let output = tract_ndarray::Array5::<f32>::from_shape_fn(
+        let im2col = tract_ndarray::Array5::<f32>::from_shape_fn(
             [kh, kw, ci, h, w],
             |(kh, kw, ci, h, w)| *input.at([ci, h + kh, w + kw]).unwrap(),
         )
         .into_shape([k, n])
         .unwrap();
-        Box::new(EagerIm2col { im2col: output.into_tensor() })
+        Box::new(EagerIm2col { im2col: im2col.into_tensor() })
     }
 }
 
@@ -250,18 +267,14 @@ impl_dyn_hash!(LazyIm2colSpec);
 impl VirtualInputSpec for LazyIm2colSpec {
     fn wrap(&self, input: &TensorView) -> Box<dyn VirtualInput> {
         let (_, _, _, h, w) = mknhw(&self.full_kernel_shape, input.shape());
-        dbg!(&self.full_kernel_shape);
         let kh = self.full_kernel_shape[0];
         let kw = self.full_kernel_shape[1];
         let ci = self.full_kernel_shape[2];
         let input_strides = input.strides();
-        dbg!(&input);
-        dbg!(&input_strides);
-        let k_offsets = (0..ci as isize)
-            .flat_map(|ci| {
-                (0..kh as isize).flat_map(move |kh| {
-                    (0..kw as isize).map(move |kw| {
-                        dbg!(ci, kh, kw);
+        let k_offsets = (0..kh as isize)
+            .flat_map(|kh| {
+                (0..kw as isize).flat_map(move |kw| {
+                    (0..ci as isize).map(move |ci| {
                         ci * input_strides[0] + kh * input_strides[1] + kw * input_strides[2]
                     })
                 })
@@ -272,10 +285,6 @@ impl VirtualInputSpec for LazyIm2colSpec {
                 (0..w as isize).map(move |w| (h * input_strides[1] + w * input_strides[2]))
             })
             .collect();
-        dbg!(&input);
-        unsafe {
-            dbg!(*input.as_ptr_unchecked::<f32>());
-        }
         unsafe { Box::new(LazyIm2col { image: input.as_ptr_unchecked(), k_offsets, n_offsets }) }
     }
 }
@@ -297,15 +306,12 @@ impl VirtualInput for LazyIm2col {
         k_range: std::ops::Range<usize>,
         mn_range: std::ops::Range<usize>,
     ) {
-        dbg!(&self);
-        dbg!(&mn_range);
         let mn_range = mn_range.start..mn_range.end.min(self.n_offsets.len());
         unsafe {
             let mut writer = packer.write_with_k_outer(packed as _, k_range.len(), mn_range.len());
             for k in k_range {
                 for n in mn_range.clone() {
-                    dbg!(k, n);
-                    writer.write(dbg!(*self.image.offset(self.n_offsets[n] + self.k_offsets[k])))
+                    writer.write(*self.image.offset(self.n_offsets[n] + self.k_offsets[k]))
                 }
             }
         }
