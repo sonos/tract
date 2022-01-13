@@ -70,14 +70,14 @@ pub fn run_bench<T, F: Fn() -> T>(f: F) -> f64 {
     } else {
         once.as_secs_f64()
     };
-    let warmup = (1.0 / evaled) as usize;
-    for _ in 0..warmup {
-        black_box(f());
-    }
-    let iters = (1.0 / evaled) as usize;
+    let warmup = (2.0 / evaled) as usize;
+    let iters = (3.0 / evaled) as usize;
     let chunks = 1000;
     let chunk = iters / chunks;
     let mut measures = vec![0.0; chunks];
+    for _ in 0..warmup {
+        black_box(f());
+    }
     for i in 0..chunks {
         let start = Instant::now();
         for _ in 0..chunk {
