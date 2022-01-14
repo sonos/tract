@@ -47,7 +47,7 @@ pub fn direct_conv(
     group.bench_with_input(BenchmarkId::new("i8", &id), &(p, kl, ci, co, stride), direct_conv_i8);
 }
 
-fn ruin_cache() {
+pub fn ruin_cache() {
     let _a = (0..1000000).collect::<Vec<i32>>();
 }
 
@@ -83,8 +83,13 @@ unsafe fn run(
     });
 }
 
-fn mat_mat(be: &mut Bencher, &(dt, m, k, n, cold): &(DatumType, usize, usize, usize, bool)) {
+fn mat_mat(be: &mut Bencher, params: &(DatumType, usize, usize, usize, bool)) {
+    let (dt, m, k, n, _) = *params;
     let mm = tract_linalg::ops().mmm(dt, dt, dt, Some(m), Some(k), Some(n)).unwrap();
+    mat_mat_with_mm(be, &*mm, params)
+}
+
+pub fn mat_mat_with_mm(be: &mut Bencher, mm: &dyn MatMatMul, &(dt, m, k, n, cold): &(DatumType, usize, usize, usize, bool)) {
     let pa = Tensor::zero_aligned_dt(dt, &[mm.a_pack(k).len(m)], mm.a_pack(k).alignment()).unwrap();
     let pb = Tensor::zero_aligned_dt(dt, &[mm.b_pack(k).len(n)], mm.b_pack(k).alignment()).unwrap();
     unsafe {

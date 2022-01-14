@@ -57,7 +57,7 @@ fn black_box<T>(dummy: T) -> T {
     }
 }
 
-pub fn run_bench<T, F: Fn() -> T>(f: F) -> f64 {
+pub fn run_bench<T, F: FnMut() -> T>(mut f: F) -> f64 {
     let start = Instant::now();
     black_box(f());
     let once = start.elapsed();
@@ -70,8 +70,8 @@ pub fn run_bench<T, F: Fn() -> T>(f: F) -> f64 {
     } else {
         once.as_secs_f64()
     };
-    let warmup = (2.0 / evaled) as usize;
-    let iters = (3.0 / evaled) as usize;
+    let warmup = (5.0 / evaled) as usize;
+    let iters = (5.0 / evaled) as usize;
     let chunks = 1000;
     let chunk = iters / chunks;
     let mut measures = vec![0.0; chunks];
