@@ -9,8 +9,8 @@ extern_kernel!(fn arm64simd_mmm_f32_12x8_a53(op: *const FusedKerSpec<f32>) -> is
 extern_kernel!(fn arm64simd_mmm_f32_12x8_gen(op: *const FusedKerSpec<f32>) -> isize);
 extern_kernel!(fn arm64simd_mmm_f32_64x1_a53(op: *const FusedKerSpec<f32>) -> isize);
 extern_kernel!(fn arm64simd_mmm_f32_64x1_gen(op: *const FusedKerSpec<f32>) -> isize);
-extern_kernel!(fn arm64simd_mmm_i8_8x8(op: *const FusedKerSpec<i32>) -> isize);
-extern_kernel!(fn arm64simd_mmm_i8_64x1(op: *const FusedKerSpec<i32>) -> isize);
+extern_kernel!(fn arm64simd_mmm_i32_8x8(op: *const FusedKerSpec<i32>) -> isize);
+extern_kernel!(fn arm64simd_mmm_i32_64x1(op: *const FusedKerSpec<i32>) -> isize);
 extern_kernel!(fn arm64simd_sigmoid_f32_4n(ptr: *mut f32, count: usize) -> ());
 extern_kernel!(fn arm64simd_tanh_f32_4n(ptr: *mut f32, count: usize) -> ());
 
@@ -24,11 +24,8 @@ MMMKernel!(MatMatMulF32x8x8<f32>, "arm64simd (generic)", arm64simd_mmm_f32_8x8_g
 MMMKernel!(MatMatMulF32x12x8<f32>, "arm64simd (generic)", arm64simd_mmm_f32_12x8_gen; 12, 8; 16, 16; 1, 1);
 MMMKernel!(MatMatMulF32x64x1<f32>, "arm64simd (generic)", arm64simd_mmm_f32_64x1_gen; 64, 1; 16, 16; 1, 1);
 
-MMMKernel!(MatMatMulI8x8x8<i32>, "arm64simd (generic)", arm64simd_mmm_i8_8x8; 8, 8; 16, 16; 0,0);
-MMMKernel!(MatMatMulI8x64x1<i32>, "arm64simd (generic)", arm64simd_mmm_i8_64x1; 64, 1; 16, 1; 0,0);
-
-MMMKernel!(MatMatMulI8xI32x8x8<i32>, "arm64simd (generic)", arm64simd_mmm_i8_8x8; 8, 8; 16, 16; 0,0);
-MMMKernel!(MatMatMulI8xI32x64x1<i32>, "arm64simd (generic)", arm64simd_mmm_i8_64x1; 64, 1; 16, 1; 0,0);
+MMMKernel!(MatMatMulI32x8x8<i32>, "arm64simd (generic)", arm64simd_mmm_i32_8x8; 8, 8; 16, 16; 0,0);
+MMMKernel!(MatMatMulI32x64x1<i32>, "arm64simd (generic)", arm64simd_mmm_i32_64x1; 64, 1; 16, 1; 0,0);
 
 #[derive(Copy, Clone, Debug)]
 pub struct SigmoidF32x4n;
@@ -98,18 +95,8 @@ test_mmm_kernel_f32!(
     true
 );
 test_mmm_kernel_f32!(crate::arm64::arm64simd::MatMatMulF32x64x1, test_MatMatMulF32x64x1, true);
-test_mmm_kernel_i8!(crate::arm64::arm64simd::MatMatMulI8x8x8, test_MatMatMulI8x8x8, true);
-test_mmm_kernel_i8!(crate::arm64::arm64simd::MatMatMulI8x64x1, test_MatMatMulI8x64x1, true);
-test_mmm_kernel_i8_i32!(
-    crate::arm64::arm64simd::MatMatMulI8xI32x8x8,
-    test_MatMatMulI8xI32x8x8,
-    true
-);
-test_mmm_kernel_i8_i32!(
-    crate::arm64::arm64simd::MatMatMulI8xI32x64x1,
-    test_MatMatMulI8xI32x64x1,
-    true
-);
+test_mmm_kernel_i32!(crate::arm64::arm64simd::MatMatMulI32x8x8, test_MatMatMulI32x8x8, true);
+test_mmm_kernel_i32!(crate::arm64::arm64simd::MatMatMulI32x64x1, test_MatMatMulI32x64x1, true);
 
 #[cfg(test)]
 mod test_simd {

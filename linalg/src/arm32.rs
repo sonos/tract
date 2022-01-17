@@ -77,9 +77,9 @@ pub fn plug(ops: &mut Ops) {
             }),
         };
         ops.qmmm_i32 =
-            Box::new(|_, _, _| Box::new(MatMatMulImpl::<armv7neon::MatMatMulI8x8x4, i32>::new()));
+            Box::new(|_, _, _| Box::new(MatMatMulImpl::<armv7neon::MatMatMulI32x8x4, i32>::new()));
         ops.qmmv_i32 =
-            Box::new(|_, _| Box::new(MatMatMulImpl::<armv7neon::MatMatMulI8x32x1, i32>::new()));
+            Box::new(|_, _| Box::new(MatMatMulImpl::<armv7neon::MatMatMulI32x32x1, i32>::new()));
         ops.sigmoid_f32 =
             Box::new(|| Box::new(ElementWiseImpl::<armv7neon::SigmoidF32x4n, f32>::new()));
         ops.tanh_f32 = Box::new(|| Box::new(ElementWiseImpl::<armv7neon::TanhF32x4n, f32>::new()));

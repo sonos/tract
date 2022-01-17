@@ -33,7 +33,7 @@ macro_rules! test_mmm_kernel_f32 {
 }
 
 #[macro_export]
-macro_rules! test_mmm_kernel_i8 {
+macro_rules! test_mmm_kernel_i32 {
     ($k: ty, $id: ident, $cond: expr) => {
         #[cfg(test)]
         #[allow(non_snake_case)]
@@ -42,34 +42,6 @@ macro_rules! test_mmm_kernel_i8 {
             mmm_kernel_fuse_tests!($cond, $k, i8, i32);
             mmm_frame_tests!($cond, $k, i8, i8, i8, i32);
             qmmm_kernel_fuse_tests!($cond, $k, i8, i8, i8, i32);
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! test_mmm_kernel_i8_i32 {
-    ($k: ty, $id: ident, $cond: expr) => {
-        #[cfg(test)]
-        #[allow(non_snake_case)]
-        mod $id {
-            mmm_kernel_tests!($cond, $k, i8, i8, i32, i32);
-            mmm_kernel_fuse_tests!($cond, $k, i32, i32);
-            mmm_frame_tests!($cond, $k, i8, i8, i32, i32);
-            qmmm_kernel_fuse_tests!($cond, $k, i8, i8, i32, i32);
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! test_mmm_kernel_i8_u8_i32 {
-    ($k: ty, $id: ident, $cond: expr) => {
-        #[cfg(test)]
-        #[allow(non_snake_case)]
-        mod $id {
-            mmm_kernel_tests!($cond, $k, i8, u8, i32, i32);
-            mmm_kernel_fuse_tests!($cond, $k, i32, i32);
-            mmm_frame_tests!($cond, $k, i8, u8, i32, i32);
-            qmmm_kernel_fuse_tests!($cond, $k, i8, u8, i32, i32);
         }
     };
 }
