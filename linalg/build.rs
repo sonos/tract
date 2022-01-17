@@ -77,7 +77,7 @@ fn main() {
                         // root directory that we need to clean up so we don't pollute
                         // the build output/working directory
                         let _ = fs::remove_file("fma_mmm_f32_16x6.asm");
-                        let _ = fs::remove_file("fma_mmm_i8_8x8.asm");
+                        let _ = fs::remove_file("fma_mmm_i32_8x8.asm");
                         let _ = fs::remove_file("fma_sigmoid_f32.asm");
                         let _ = fs::remove_file("fma_tanh_f32.asm");
                     }

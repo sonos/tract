@@ -20,8 +20,8 @@
 .align 4
 
 .cpu generic+fp+simd
-.global {{G}}arm64simd_mmm_i8_8x8_{{suffix}}
-{{G}}arm64simd_mmm_i8_8x8_{{suffix}}:
+.global {{G}}arm64simd_mmm_i32_8x8_{{suffix}}
+{{G}}arm64simd_mmm_i32_8x8_{{suffix}}:
 
 /*
     prfm        pldl1keep, [x1]
@@ -206,7 +206,7 @@ non_linear_addc_i32:
 
     b           .non_linear_loop
 
-    {% include "arm64simd_mmm_i8_scale_q16_q31.tmpliq" %}
+    {% include "arm64simd_mmm_i32_scale_q16_q31.tmpliq" %}
 
 .store:
     ldp         x5, x6, [x0, #8]            // c base ptr, rsc

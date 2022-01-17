@@ -18,9 +18,7 @@ pub fn plug(ops: &mut Ops) {
     }
     if is_x86_feature_detected!("avx2") {
         ops.qmmm_i32 =
-            Box::new(|_, _, _| Box::new(MatMatMulImpl::<mmm::MatMatMulI8x8x8, i32>::new()));
-        ops.qmmm_i32 =
-            Box::new(|_, _, _| Box::new(MatMatMulImpl::<mmm::MatMatMulI8xI32x8x8, i32>::new()));
+            Box::new(|_, _, _| Box::new(MatMatMulImpl::<mmm::MatMatMulI32x8x8, i32>::new()));
         log::info!("mmm_i8_i8 and mmm_i8_i32: x86_64/avx2 activated");
     }
 }

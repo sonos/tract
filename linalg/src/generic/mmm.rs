@@ -693,10 +693,10 @@ where
 }
 
 test_mmm_kernel_f32!(crate::generic::mmm::GenericMmm4x4<f32, f32, f32>, test_GenericMmm4x4_f32, true);
-test_mmm_kernel_i8!(crate::generic::mmm::GenericMmm4x4<i8, i8, i32>, test_GenericMmm4x4_i8, true);
+test_mmm_kernel_i32!(crate::generic::mmm::GenericMmm4x4<i8, i8, i32>, test_GenericMmm4x4_i32, true);
 
 test_mmm_kernel_f32!(crate::generic::mmm::GenericMmm4x1<f32, f32, f32>, test_GenericMmm4x1_f32, true);
-test_mmm_kernel_i8!(crate::generic::mmm::GenericMmm4x1<i8, i8, i32>, test_GenericMmm4x1_i8, true);
+test_mmm_kernel_i32!(crate::generic::mmm::GenericMmm4x1<i8, i8, i32>, test_GenericMmm4x1_i32, true);
 
 test_mmm_kernel_f32!(crate::generic::mmm::GenericMmmTest3x2<f32, f32, f32>, test_GenericMmmTest3x2_f32, true);
-test_mmm_kernel_i8!(crate::generic::mmm::GenericMmmTest3x2<i8, i8, i32>, test_GenericMmmTest3x2_i8, true);
+test_mmm_kernel_i32!(crate::generic::mmm::GenericMmmTest3x2<i8, i8, i32>, test_GenericMmmTest3x2_i32, true);

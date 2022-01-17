@@ -1,8 +1,8 @@
 use crate::frame::element_wise::*;
 use crate::frame::mmm::*;
 
-extern_kernel!(fn armv7neon_mmm_i8_8x4(op: *const FusedKerSpec<i32>) -> isize);
-extern_kernel!(fn armv7neon_mmm_i8_32x1(op: *const FusedKerSpec<i32>) -> isize);
+extern_kernel!(fn armv7neon_mmm_i32_8x4(op: *const FusedKerSpec<i32>) -> isize);
+extern_kernel!(fn armv7neon_mmm_i32_32x1(op: *const FusedKerSpec<i32>) -> isize);
 extern_kernel!(fn armv7neon_mmm_f32_8x4_cortexa7(op: *const FusedKerSpec<f32>) -> isize);
 extern_kernel!(fn armv7neon_mmm_f32_8x4_cortexa9(op: *const FusedKerSpec<f32>) -> isize);
 extern_kernel!(fn armv7neon_mmm_f32_8x4_generic(op: *const FusedKerSpec<f32>) -> isize);
@@ -21,10 +21,8 @@ pub fn prefetch(start: *const u8, len: usize) {
     unsafe { armv7neon_prefetch(start, start.offset(len as isize)) }
 }
 
-MMMKernel!(MatMatMulI8x8x4<i32>, "neon", armv7neon_mmm_i8_8x4; 8, 4; 32, 4; 0, 0, prefetch);
-MMMKernel!(MatMatMulI8x32x1<i32>, "neon", armv7neon_mmm_i8_32x1; 32,1 ; 32, 4; 0, 0, prefetch);
-MMMKernel!(MatMatMulI8xI32x8x4<i32>, "neon", armv7neon_mmm_i8_8x4; 8, 4; 4, 4; 0, 0, prefetch);
-MMMKernel!(MatMatMulI8xI32x32x1<i32>, "neon", armv7neon_mmm_i8_32x1; 32, 1; 4, 4; 0, 0, prefetch);
+MMMKernel!(MatMatMulI32x8x4<i32>, "neon", armv7neon_mmm_i32_8x4; 8, 4; 32, 4; 0, 0, prefetch);
+MMMKernel!(MatMatMulI32x32x1<i32>, "neon", armv7neon_mmm_i32_32x1; 32,1 ; 32, 4; 0, 0, prefetch);
 MMMKernel!(MatMatMulF32x8x4CortexA7<f32>, "neon/cortex-a7", armv7neon_mmm_f32_8x4_cortexa7; 8, 4; 4, 4; 0, 0, prefetch);
 MMMKernel!(MatMatMulF32x8x4CortexA9<f32>, "neon/cortex-a9", armv7neon_mmm_f32_8x4_cortexa9; 8, 4; 4, 4; 0, 0, prefetch);
 MMMKernel!(MatMatMulF32x8x4Generic<f32>, "neon/generic", armv7neon_mmm_f32_8x4_generic; 8, 4; 4, 4; 0, 0, prefetch);
@@ -141,25 +139,15 @@ test_mmm_kernel_f32!(
     crate::arm32::has_neon()
 );
 
-test_mmm_kernel_i8!(
-    crate::arm32::armv7neon::MatMatMulI8x8x4,
-    test_MatMatMulI8x8x4,
-    crate::arm32::has_neon()
-);
-test_mmm_kernel_i8_i32!(
-    crate::arm32::armv7neon::MatMatMulI8xI32x8x4,
-    test_MatMatMulI8xI32x8x4,
+test_mmm_kernel_i32!(
+    crate::arm32::armv7neon::MatMatMulI32x8x4,
+    test_MatMatMulI32x8x4,
     crate::arm32::has_neon()
 );
 
-test_mmm_kernel_i8!(
-    crate::arm32::armv7neon::MatMatMulI8x32x1,
+test_mmm_kernel_i32!(
+    crate::arm32::armv7neon::MatMatMulI32x32x1,
     test_MatMatMulI8x32x1,
-    crate::arm32::has_neon()
-);
-test_mmm_kernel_i8_i32!(
-    crate::arm32::armv7neon::MatMatMulI8xI32x32x1,
-    test_MatMatMulI8xI32x32x1,
     crate::arm32::has_neon()
 );
 

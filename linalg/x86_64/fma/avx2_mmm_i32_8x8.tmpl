@@ -22,15 +22,15 @@ Windows ABI:
 {% if msvc %}
 
 _text segment
-fma_mmm_i8_8x8_{{suffix}} proc
+avx2_mmm_i32_8x8_{{suffix}} proc
 
 {% else %}
 
 .intel_syntax noprefix
 .text
 .p2align 5
-.globl {{G}}fma_mmm_i8_8x8_{{suffix}}
-{{G}}fma_mmm_i8_8x8_{{suffix}}:
+.globl {{G}}avx2_mmm_i32_8x8_{{suffix}}
+{{G}}avx2_mmm_i32_8x8_{{suffix}}:
 .cfi_startproc
 
 {% endif %}
@@ -625,7 +625,7 @@ i128_shuffle dd              0, 4
 {% endif %}
 
 {% if msvc %}
-fma_mmm_i8_8x8_{{suffix}} endp
+avx2_mmm_i32_8x8_{{suffix}} endp
 _text ends
 end
 {% else %}
