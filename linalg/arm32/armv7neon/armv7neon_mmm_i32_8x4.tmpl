@@ -14,10 +14,10 @@
 
     .arm
     .text
-    .global armv7neon_mmm_i8_8x4_{{suffix}}
-    .type armv7neon_mmm_i8_8x4_{{suffix}}, %function
+    .global armv7neon_mmm_i32_8x4_{{suffix}}
+    .type armv7neon_mmm_i32_8x4_{{suffix}}, %function
 
-armv7neon_mmm_i8_8x4_{{suffix}}:
+armv7neon_mmm_i32_8x4_{{suffix}}:
 
     pld     [r0]
     push    { r4-r12 }
@@ -396,7 +396,7 @@ b .non_linear_loop
 
     b .non_linear_loop
 
-    {% include "armv7neon_mmm_i8_scale_q8_q15.tmpliq" %}
+    {% include "armv7neon_mmm_i32_scale_q8_q15.tmpliq" %}
 
 .store:
     // r3, r4, r5, r6 <- ptr, rsc, csc, size
