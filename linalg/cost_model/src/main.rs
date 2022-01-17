@@ -1,4 +1,7 @@
-use linregress::fit_low_level_regression_model_without_statistics;
+use linregress::{
+    fit_low_level_regression_model, fit_low_level_regression_model_without_statistics,
+};
+use pbr::ProgressBar;
 use tract_data::internal::*;
 use tract_linalg::{
     frame::MatMatMul,
@@ -51,33 +54,45 @@ struct Dataset(Vec<(usize, usize, usize, f64)>);
 impl Dataset {
     pub fn make_dataset(mm: &dyn MatMatMul, dt: DatumType) -> Dataset {
         let mut rng = rand::thread_rng();
-        let mut data = vec![];
-        let mut append = |m: usize, k: usize, n: usize| {
-            let y = measure_add_mat_mul(mm, dt, m, k, n);
-            data.push((m, k, n, y))
-        };
-        for _ in 0..10 {
-            let m: usize = mm.mr() * rng.gen_range(1..=14);
-            let k: usize = rng.gen_range(0..128);
-            let n: usize = mm.nr() * rng.gen_range(1..=4);
-            append(m, 64, 64);
+        let mut samples = vec![];
+        for _ in 0..100 {
+            let m: usize = mm.mr() * rng.gen_range(1..=6);
+            let k: usize = rng.gen_range(0..256);
+            let n: usize = mm.nr() * rng.gen_range(1..=6);
+            samples.push((m, k, n, 0.));
         }
-        for _ in 0..10 {
+        for _ in 0..100 {
             let m: usize = mm.mr() * rng.gen_range(1..=16);
-            let k: usize = rng.gen_range(0..128);
-            let n: usize = mm.nr() * rng.gen_range(1..=4);
-            append(m, 64, 64);
+            let k: usize = rng.gen_range(0..256);
+            let n: usize = mm.nr() * rng.gen_range(1..=16);
+            samples.push((m, k, n, 0.));
         }
-        for m in 1..(4 * mm.mr()).min(32) {
-            append(m, 64, 64);
+        for x in 1..=(4 * mm.mr()).min(32) {
+            samples.push((x, 64, 64, 0.));
+            samples.push((64, x, 64, 0.));
+            samples.push((64, 64, x, 0.));
         }
         for _ in 0..20 {
             let m: usize = rng.gen_range(1..16 * mm.mr());
             let k: usize = rng.gen_range(0..128);
-            let n: usize = rng.gen_range(1..4 * mm.nr());
-            append(m, 64, 64);
+            let n: usize = rng.gen_range(1..16 * mm.nr());
+            samples.push((m, k, n, 0.));
         }
-        Dataset(data)
+        for _ in 0..20 {
+            let m: usize = rng.gen_range(1..128 * mm.mr());
+            let k: usize = rng.gen_range(0..128);
+            let n: usize = rng.gen_range(1..128 * mm.nr());
+            samples.push((m, k, n, 0.));
+        }
+        let mut progress_bar = ProgressBar::new(samples.len() as _);
+        for ix in 0..samples.len() {
+            let (m, k, n, _) = samples[ix];
+            let y = measure_add_mat_mul(mm, dt, m, k, n);
+            samples[ix].3 = y;
+            progress_bar.inc();
+        }
+        progress_bar.finish();
+        Dataset(samples)
     }
 
     pub fn save(&self, filename: &str) {
@@ -121,26 +136,47 @@ impl Model {
         mr: usize,
         nr: usize,
         m: usize,
-        _k: usize,
+        k: usize,
         n: usize,
     ) -> impl IntoIterator<Item = f64> + fmt::Debug {
         let rows = m.divceil(mr);
-        let cols = 1; // n.divceil(nr);
+        let cols = n.divceil(nr);
         [
+            (rows * cols) as f64,
+            (rows * cols * k) as f64,
+            (rows * rows * cols * cols) as f64,
+            (rows * rows * cols * cols * k) as f64,
+            cols as f64,
+            rows as f64,
+            (rows * rows) as f64,
+            (cols * cols) as f64,
             // rows, cols
             //            m.divceil(mr) as f64,
             //            n.divceil(nr) as f64,
             //            // tiles
-            (rows * cols) as f64,
             ((rows == 1) as usize) as f64,
+            ((cols == 1) as usize) as f64,
             ((rows == 1) as usize * cols) as f64,
+            ((cols == 1) as usize * rows) as f64,
             (rows * rows * cols) as f64,
+            (rows * cols * cols) as f64,
             //            // partial tiles right
             //            (m.divceil(mr) * ((n % nr) != 0) as usize) as f64,
             //            (m.divceil(mr) * (n % nr) as usize) as f64,
             //            // partial tiles down
             (cols * ((m % mr) != 0) as usize) as f64,
+            (rows * ((n % nr) != 0) as usize) as f64,
             (cols * (m % mr) as usize) as f64,
+            (rows * (n % nr) as usize) as f64,
+            (cols * rows * (m % mr) as usize) as f64,
+            (cols * rows * (n % nr) as usize) as f64,
+            (cols * cols * (m % mr) as usize) as f64,
+            (rows * rows * (n % nr) as usize) as f64,
+            (cols * rows * ((n % nr) != 0) as usize * ((m % mr) != 0) as usize) as f64,
+            (((n % nr) != 0) as usize * ((m % mr) != 0) as usize) as f64,
+            ((n % nr) * (m % mr)) as f64,
+            (cols * cols * rows * rows * ((n % nr) != 0) as usize * ((m % mr) != 0) as usize)
+                as f64,
         ]
     }
 
@@ -153,9 +189,9 @@ impl Model {
             data.extend(Self::features(mm.mr(), mm.nr(), m, k, n));
             count += 1;
         }
-        let mut model =
-            fit_low_level_regression_model_without_statistics(&*data, count, data.len() / count)
-                .unwrap();
+        let model = fit_low_level_regression_model(&*data, count, data.len() / count).unwrap();
+        dbg!(&model);
+        let mut model = model.parameters;
         Model { mr: mm.mr(), nr: mm.nr(), intercept: model.remove(0), coef: model }
     }
 
