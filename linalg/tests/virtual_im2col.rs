@@ -307,10 +307,11 @@ impl VirtualInput for LazyIm2col {
         mn_range: std::ops::Range<usize>,
     ) {
         let mn_end = mn_range.end.min(self.n_offsets.len());
+        let n_range = mn_range.start..mn_end;
         unsafe {
-            let mut writer = packer.write_with_k_outer(packed as _, k_range.len(), mn_range.len());
+            let mut writer = packer.write_with_k_outer(packed as _, k_range.len(), n_range.len());
             for k in k_range.start..k_range.end {
-                for n in mn_range.start..mn_end {
+                for n in n_range.start..n_range.end {
                     writer.write(
                         *self.image.offset(
                             self.n_offsets.get_unchecked(n) + self.k_offsets.get_unchecked(k),
