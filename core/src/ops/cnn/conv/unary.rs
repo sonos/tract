@@ -61,7 +61,12 @@ impl ConvUnary {
         )
     }
 
-    fn kernel_as_packed_as(&self, packer: &Packer, k: usize, m: usize) -> TractResult<ArrayD<Arc<Tensor>>> {
+    fn kernel_as_packed_as(
+        &self,
+        packer: &Packer,
+        k: usize,
+        m: usize,
+    ) -> TractResult<ArrayD<Arc<Tensor>>> {
         let kernel = self.kernel_as_group_o_ihw()?;
         unsafe {
             let mut packed_as = Array1::from(
@@ -411,6 +416,59 @@ impl ConvUnary {
             &[wire],
         )?;
         Ok(wire[0])
+    }
+
+    pub unsafe fn wire_as_lazy_im2col(
+        &self,
+        model: &mut TypedModel,
+        name: &str,
+        wire: OutletId,
+        input_shape: &[usize],
+    ) -> TractResult<OutletId> {
+        let b_fact = model.outlet_fact(wire)?.clone();
+        let c_dt = crate::ops::matmul::output_type(b_fact.datum_type);
+        let (geo, m, k, n, mmm) = self.compute_geo(&b_fact)?;
+        let geo = geo.to_concrete(input_shape)?;
+        let input_shape: DataShape = self.pool_spec.data_format.shape(input_shape.into())?;
+        let c_stride = input_shape.c_stride();
+        let data_item_offsets: Vec<isize> = geo.patch.centers_offsets();
+        let kernel_item_offsets: Vec<isize> = (0..self.input_channels())
+            .flat_map(|ici| {
+                geo.patch
+                    .standard_layout_data_field
+                    .iter()
+                    .map(move |x| x + (ici * c_stride) as isize)
+            })
+            .collect();
+        let virtual_input = super::lazy_im2col::LazyIm2colSpec {
+            n_item_offsets: data_item_offsets,
+            k_item_offsets: kernel_item_offsets,
+        };
+        let b_storage = mmm.b_virtual_input(Box::new(virtual_input), k);
+        let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&geo.output_shape)?;
+
+        let geometry = MatMulGeometry::Concrete(ConcreteMatMulGeometry {
+            m,
+            k,
+            n: n.to_usize().unwrap(),
+            b_storage,
+        });
+        let wire = self.wire_lir_matmatmul(
+            model,
+            name,
+            wire,
+            mmm,
+            c_dt,
+            mmm_output_shape.into(),
+            m.to_usize().unwrap(),
+            k,
+            geometry,
+            c_axis,
+            h_axis,
+        )?;
+
+        let wire = Self::wire_geo_reshape(model, name, wire, &geo.output_shape)?;
+        Ok(wire)
     }
 
     pub unsafe fn wire_as_direct(
@@ -980,6 +1038,22 @@ impl TypedOp for ConvUnary {
                     &inputs,
                 )?;
                 patch.shunt_outside(model, node.id.into(), wire)?;
+                patch.obliterate(node.id)?;
+                return Ok(Some(patch));
+                // TODO: this is lazy im2col. should not stay here
+            } else if self.group == 1
+                && (0..spatial_rank).all(|ax| self.pool_spec.padding.valid_dim(ax))
+                && input_fact.shape.is_concrete()
+            {
+                let mut patch = TypedModelPatch::new("wire_as_lazy_im2col");
+                let mut wire = patch.tap_model(model, node.inputs[0])?;
+                wire = self.wire_as_lazy_im2col(
+                    &mut patch,
+                    &*node.name,
+                    wire,
+                    input_fact.shape.as_concrete().unwrap(),
+                )?;
+                patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                 patch.obliterate(node.id)?;
                 return Ok(Some(patch));
             } else if kernel_spatial_shape.iter().product::<usize>() == 1
