@@ -9,7 +9,7 @@ use tract_linalg::{
     mmm::{self, FusedSpec},
 };
 
-use rand::Rng;
+use rand::{Rng, prelude::SliceRandom};
 use std::fmt;
 use tract_itertools::Itertools;
 use DatumType::F32;
@@ -55,6 +55,7 @@ impl Dataset {
     pub fn make_dataset(mm: &dyn MatMatMul, dt: DatumType) -> Dataset {
         let mut rng = rand::thread_rng();
         let mut samples = vec![];
+        /*
         for _ in 0..100 {
             let m: usize = mm.mr() * rng.gen_range(1..=6);
             let k: usize = rng.gen_range(0..256);
@@ -72,18 +73,36 @@ impl Dataset {
             samples.push((64, x, 64, 0.));
             samples.push((64, 64, x, 0.));
         }
-        for _ in 0..20 {
+        */
+        /*
+        for m in 1..=(2 * mm.mr()) {
+            for n in 1..=(2 * mm.nr()) {
+                for k in 1..16 {
+                    samples.push((m, k, n, 0.));
+                }
+            }
+        }
+        */
+        for k in 1..128 {
+            samples.push((64, k, 64, 0.));
+        }
+        /*
+        for _ in 0..300 {
             let m: usize = rng.gen_range(1..16 * mm.mr());
-            let k: usize = rng.gen_range(0..128);
+            let k: usize = rng.gen_range(1..128);
             let n: usize = rng.gen_range(1..16 * mm.nr());
             samples.push((m, k, n, 0.));
         }
+        */
+        /*
         for _ in 0..20 {
             let m: usize = rng.gen_range(1..128 * mm.mr());
             let k: usize = rng.gen_range(0..128);
             let n: usize = rng.gen_range(1..128 * mm.nr());
             samples.push((m, k, n, 0.));
         }
+        */
+        samples.shuffle(&mut rng);
         let mut progress_bar = ProgressBar::new(samples.len() as _);
         for ix in 0..samples.len() {
             let (m, k, n, _) = samples[ix];
@@ -142,41 +161,45 @@ impl Model {
         let rows = m.divceil(mr);
         let cols = n.divceil(nr);
         [
-            (rows * cols) as f64,
-            (rows * cols * k) as f64,
-            (rows * rows * cols * cols) as f64,
-            (rows * rows * cols * cols * k) as f64,
-            cols as f64,
-            rows as f64,
-            (rows * rows) as f64,
-            (cols * cols) as f64,
-            // rows, cols
-            //            m.divceil(mr) as f64,
-            //            n.divceil(nr) as f64,
-            //            // tiles
-            ((rows == 1) as usize) as f64,
-            ((cols == 1) as usize) as f64,
-            ((rows == 1) as usize * cols) as f64,
-            ((cols == 1) as usize * rows) as f64,
-            (rows * rows * cols) as f64,
-            (rows * cols * cols) as f64,
-            //            // partial tiles right
-            //            (m.divceil(mr) * ((n % nr) != 0) as usize) as f64,
-            //            (m.divceil(mr) * (n % nr) as usize) as f64,
-            //            // partial tiles down
-            (cols * ((m % mr) != 0) as usize) as f64,
-            (rows * ((n % nr) != 0) as usize) as f64,
-            (cols * (m % mr) as usize) as f64,
-            (rows * (n % nr) as usize) as f64,
-            (cols * rows * (m % mr) as usize) as f64,
-            (cols * rows * (n % nr) as usize) as f64,
-            (cols * cols * (m % mr) as usize) as f64,
-            (rows * rows * (n % nr) as usize) as f64,
-            (cols * rows * ((n % nr) != 0) as usize * ((m % mr) != 0) as usize) as f64,
-            (((n % nr) != 0) as usize * ((m % mr) != 0) as usize) as f64,
-            ((n % nr) * (m % mr)) as f64,
-            (cols * cols * rows * rows * ((n % nr) != 0) as usize * ((m % mr) != 0) as usize)
-                as f64,
+            k as f64,
+            (k * k) as f64, /*
+                   (rows * cols) as f64,
+                   (rows * cols * k) as f64,
+                   (rows * rows * cols * cols) as f64,
+                   (rows * rows * cols * cols * k) as f64,
+                   cols as f64,
+                   rows as f64,
+                   (rows * rows) as f64,
+                   (cols * cols) as f64,
+                   // rows, cols
+                   //            m.divceil(mr) as f64,
+                   //            n.divceil(nr) as f64,
+                   //            // tiles
+                   ((m == 1) as usize) as f64,
+                   ((rows == 1) as usize) as f64,
+                   ((cols == 1) as usize) as f64,
+                   ((rows == 1) as usize * cols) as f64,
+                   ((cols == 1) as usize * rows) as f64,
+                   (rows * rows * cols) as f64,
+                   (rows * cols * cols) as f64,
+                   //            // partial tiles right
+                   //            (m.divceil(mr) * ((n % nr) != 0) as usize) as f64,
+                   //            (m.divceil(mr) * (n % nr) as usize) as f64,
+                   //            // partial tiles down
+                   (cols * ((m % mr) != 0) as usize) as f64,
+                   (rows * ((n % nr) != 0) as usize) as f64,
+                   (cols * (m % mr) as usize) as f64,
+                   (rows * (n % nr) as usize) as f64,
+                   (cols * rows * (m % mr) as usize) as f64,
+                   (cols * rows * (n % nr) as usize) as f64,
+                   (cols * cols * (m % mr) as usize) as f64,
+                   (rows * rows * (n % nr) as usize) as f64,
+                   (cols * rows * ((n % nr) != 0) as usize * ((m % mr) != 0) as usize) as f64,
+                   (((n % nr) != 0) as usize * ((m % mr) != 0) as usize) as f64,
+                   ((n % nr) * (m % mr)) as f64,
+                   (cols * cols * rows * rows * ((n % nr) != 0) as usize * ((m % mr) != 0) as usize)
+                       as f64,
+                       */
         ]
     }
 
