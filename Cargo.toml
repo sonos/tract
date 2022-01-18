@@ -2,6 +2,7 @@
 members = [
     "data",
     "linalg",
+    "linalg/cost_model",
     "core",
     "pulse",
     "pulse-opl",
