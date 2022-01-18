@@ -1,5 +1,6 @@
 mod depth_wise;
 mod im2col;
+mod lazy_im2col;
 #[cfg(test)]
 pub mod proptest;
 #[cfg(test)]

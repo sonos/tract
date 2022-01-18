@@ -27,7 +27,7 @@ impl ConvProblem {
     fn reference(&self) -> ArrayD<f32> {
         use num_integer::Integer;
         setup_test_logger();
-        assert_eq!(self.data.shape(), &*self.shape_in.shape);
+        assert_eq!(self.data.shape(), &*self.shape_in.shape, "inconsistent shapes in test");
         let n = *self.shape_in.n().clone().unwrap_or(&1);
         let ci_per_g = self.shape_in.c() / self.group;
         let co_per_g = match self.kernel_format {
@@ -116,7 +116,7 @@ impl ConvProblem {
 
     fn tract(&self) -> anyhow::Result<ArrayD<f32>> {
         setup_test_logger();
-        assert_eq!(self.data.shape(), &*self.shape_in.shape);
+        assert_eq!(self.data.shape(), &*self.shape_in.shape, "inconsistent shapes in test");
         let mut model = TypedModel::default();
         let wire = model
             .add_source("input", TypedFact::dt_shape(f32::datum_type(), &self.shape_in.shape))?;
@@ -822,6 +822,60 @@ fn strides_2d_same_2() -> anyhow::Result<()> {
         bias: None,
         pad: PaddingSpec::SameUpper,
         strides: tvec!(1, 2),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
+fn lazy_im2col_0() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::CHW.from_n_c_hw(1, 1, &[2])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data: tract_ndarray::arr2(&[[0.0, 0.0]]).into_dyn(),
+        kernel: tract_ndarray::arr3(&[[[0.0, 0.0]]]).into_dyn(),
+        bias: None,
+        pad: PaddingSpec::Valid,
+        strides: tvec!(1),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
+fn lazy_im2col_big() -> anyhow::Result<()> {
+    let mut kernel = tract_ndarray::ArrayD::<f32>::zeros(vec![1, 4, 1, 3, 2]);
+    let len = kernel.len();
+    kernel.as_slice_mut().unwrap()[len - 1] = 1.0;
+    let pb = ConvProblem {
+        shape_in: DataFormat::CHW.from_n_c_hw(1, 4, &[2, 5, 4])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data: tract_ndarray::ArrayD::<f32>::zeros(vec![4, 2, 5, 4]),
+        kernel,
+        bias: None,
+        pad: PaddingSpec::Valid,
+        strides: tvec!(2, 2, 2),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
+fn lazy_im2col_big_2() -> anyhow::Result<()> {
+    let mut kernel = tract_ndarray::ArrayD::<f32>::zeros(vec![1, 4, 1, 3, 2]);
+    let len = kernel.len();
+    kernel.as_slice_mut().unwrap()[len - 1] = 1.0;
+    let pb = ConvProblem {
+        shape_in: DataFormat::NHWC.from_n_c_hw(1, 4, &[2, 5, 4])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data: tract_ndarray::ArrayD::<f32>::zeros(vec![1, 2, 5, 4, 4]),
+        kernel,
+        bias: None,
+        pad: PaddingSpec::Valid,
+        strides: tvec!(2, 3, 2),
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
