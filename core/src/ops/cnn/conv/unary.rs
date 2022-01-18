@@ -1040,22 +1040,6 @@ impl TypedOp for ConvUnary {
                 patch.shunt_outside(model, node.id.into(), wire)?;
                 patch.obliterate(node.id)?;
                 return Ok(Some(patch));
-                // TODO: this is lazy im2col. should not stay here
-            } else if self.group == 1
-                && (0..spatial_rank).all(|ax| self.pool_spec.padding.valid_dim(ax))
-                && input_fact.shape.is_concrete()
-            {
-                let mut patch = TypedModelPatch::new("wire_as_lazy_im2col");
-                let mut wire = patch.tap_model(model, node.inputs[0])?;
-                wire = self.wire_as_lazy_im2col(
-                    &mut patch,
-                    &*node.name,
-                    wire,
-                    input_fact.shape.as_concrete().unwrap(),
-                )?;
-                patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
-                patch.obliterate(node.id)?;
-                return Ok(Some(patch));
             } else if kernel_spatial_shape.iter().product::<usize>() == 1
                 && (0..spatial_rank)
                     .all(|i| self.pool_spec.stride(i) == 1 && self.pool_spec.dilation(i) == 1)
@@ -1120,6 +1104,21 @@ impl TypedOp for ConvUnary {
                     ),
                     &[wire],
                 )?[0];
+                patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
+                patch.obliterate(node.id)?;
+                return Ok(Some(patch));
+            } else if self.group == 1
+                && (0..spatial_rank).all(|ax| self.pool_spec.padding.valid_dim(ax))
+                && input_fact.shape.is_concrete()
+            {
+                let mut patch = TypedModelPatch::new("wire_as_lazy_im2col");
+                let mut wire = patch.tap_model(model, node.inputs[0])?;
+                wire = self.wire_as_lazy_im2col(
+                    &mut patch,
+                    &*node.name,
+                    wire,
+                    input_fact.shape.as_concrete().unwrap(),
+                )?;
                 patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                 patch.obliterate(node.id)?;
                 return Ok(Some(patch));
