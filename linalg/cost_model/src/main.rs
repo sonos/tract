@@ -277,8 +277,8 @@ fn main() {
 
     let matches = parser.get_matches();
 
-//    let mm = mmm::MatMatMulImpl::<generic::GenericMmm4x4<f32, f32, f32>, f32>::new();
-    let mm = mmm::MatMatMulImpl::<tract_linalg::arm64::MatMatMulF32x12x8, f32>::new();
+    let mm = mmm::MatMatMulImpl::<generic::GenericMmm4x4<f32, f32, f32>, f32>::new();
+//    let mm = mmm::MatMatMulImpl::<tract_linalg::arm64::MatMatMulF32x12x8, f32>::new();
     match matches.subcommand() {
         Some(("ds", sub)) => {
             Dataset::make_dataset(&mm, F32).save(sub.value_of("name").unwrap());

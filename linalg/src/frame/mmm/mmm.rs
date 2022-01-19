@@ -1,12 +1,12 @@
 use super::ScratchSpaceFusedNonLinear;
 use super::*;
+use crate::LADatum;
 use crate::frame::Packer;
 use anyhow::Context;
-use num_traits::{AsPrimitive, Zero};
+use num_traits::AsPrimitive;
 use std::fmt;
 use std::fmt::Debug;
 use std::marker::PhantomData;
-use std::ops::{Add, Mul, Neg};
 use tract_data::anyhow;
 use tract_data::internal::*;
 
@@ -81,7 +81,7 @@ impl std::hash::Hash for Box<dyn MatMatMul> {
 #[derive(Clone)]
 pub struct MatMatMulImpl<K, TI>
 where
-    TI: Copy + Add + Mul + Zero + Debug + 'static,
+    TI: LADatum,
     K: MatMatMulKer<TI> + 'static,
 {
     phantom: PhantomData<(K, TI)>,
@@ -89,21 +89,21 @@ where
 
 unsafe impl<K, TI> Send for MatMatMulImpl<K, TI>
 where
-    TI: Copy + Add + Mul + Zero + Debug + 'static,
+    TI: LADatum,
     K: MatMatMulKer<TI> + 'static,
 {
 }
 
 unsafe impl<K, TI> Sync for MatMatMulImpl<K, TI>
 where
-    TI: Copy + Add + Mul + Zero + Debug + 'static,
+    TI: LADatum,
     K: MatMatMulKer<TI> + 'static,
 {
 }
 
 impl<K, TI> fmt::Debug for MatMatMulImpl<K, TI>
 where
-    TI: Copy + Add + Mul + Zero + Debug + 'static,
+    TI: LADatum,
     K: MatMatMulKer<TI> + 'static,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -113,7 +113,7 @@ where
 
 impl<K, TI> MatMatMulImpl<K, TI>
 where
-    TI: Copy + Add + Mul + Zero + Debug + 'static,
+    TI: LADatum,
     K: MatMatMulKer<TI> + 'static,
 {
     pub fn new() -> MatMatMulImpl<K, TI> {
@@ -123,7 +123,7 @@ where
 
 impl<K, TI> MatMatMul for MatMatMulImpl<K, TI>
 where
-    TI: Datum + Copy + Add + Mul<Output = TI> + Zero + Debug + 'static + Neg<Output = TI>,
+    TI: LADatum,
     K: MatMatMulKer<TI> + 'static,
     i32: AsPrimitive<TI>,
     usize: AsPrimitive<TI>,
@@ -294,7 +294,7 @@ where
 
 impl<K, TI> fmt::Display for MatMatMulImpl<K, TI>
 where
-    TI: Copy + Add + Mul + Zero + Debug + 'static,
+    TI: LADatum,
     K: MatMatMulKer<TI>,
 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
