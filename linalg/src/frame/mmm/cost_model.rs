@@ -19,7 +19,7 @@ impl Model {
     ) -> impl IntoIterator<Item = f64> + fmt::Debug {
         let rows = m.divceil(mr);
         let cols = n.divceil(nr);
-        [
+        vec![
             k as f64,
             (k * k) as f64,
             (rows * cols) as f64,
