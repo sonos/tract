@@ -120,56 +120,65 @@ pub fn ops() -> &'static Ops {
     &*OPS
 }
 
+use num_traits::*;
+use std::fmt::Debug;
+use std::ops::*;
+
+pub trait LADatum:
+    Sized
+    + Debug
+    + Copy
+    + Clone
+    + Zero
+    + One
+    + 'static
+    + Add<Output = Self>
+    + Sub<Output = Self>
+    + Mul
+    + AddAssign
+    + MulAssign
+    + PartialOrd
+    + Bounded
+    + tract_data::prelude::Datum
+{
+    #[cfg(test)]
+    fn strat() -> proptest::prelude::BoxedStrategy<Self>;
+    #[cfg(test)]
+    fn close(&self, other: &Self) -> bool;
+}
+
 #[cfg(test)]
 mod test {
-    use num_traits::*;
+    use super::LADatum;
     use proptest::prelude::*;
-    use std::fmt::Debug;
-    use std::ops::*;
-
-    pub trait LADatum:
-        Sized
-        + Debug
-        + Copy
-        + Clone
-        + Zero
-        + One
-        + 'static
-        + Add
-        + Sub
-        + Mul
-        + AddAssign
-        + MulAssign
-        + PartialOrd
-        + Bounded
-        + tract_data::prelude::Datum
-    {
-        fn strat() -> BoxedStrategy<Self>;
-        fn close(&self, other: &Self) -> bool;
-    }
-
     impl LADatum for f32 {
+        #[cfg(test)]
         fn strat() -> BoxedStrategy<Self> {
             (-1000isize..1000).prop_map(|i| i as f32 / 1000.0).boxed()
         }
+        #[cfg(test)]
         fn close(&self, other: &Self) -> bool {
             (self - other).abs() < 0.001
         }
     }
 
     impl LADatum for u8 {
+        #[cfg(test)]
         fn strat() -> BoxedStrategy<Self> {
             any::<u8>().boxed()
         }
+        #[cfg(test)]
         fn close(&self, other: &Self) -> bool {
             self == other
         }
     }
 
     impl LADatum for i8 {
+        #[cfg(test)]
         fn strat() -> BoxedStrategy<Self> {
             any::<i8>().boxed()
         }
+        #[cfg(test)]
         fn close(&self, other: &Self) -> bool {
             self == other
         }

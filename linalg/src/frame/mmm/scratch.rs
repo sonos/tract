@@ -1,5 +1,6 @@
-use num_traits::Zero;
 use std::fmt::Debug;
+
+use crate::LADatum;
 
 use super::{BinOp, FusedKerSpec, FusedSpec, InputStoreKer, MatMatMulKer, OutputStoreKer};
 use downcast_rs::{impl_downcast, Downcast};
@@ -9,7 +10,7 @@ pub trait ScratchSpace: Downcast + Send {}
 impl_downcast!(ScratchSpace);
 
 #[derive(Default, Debug)]
-pub struct ScratchSpaceFusedNonLinear<TI: Copy> {
+pub struct ScratchSpaceFusedNonLinear<TI: LADatum> {
     uspecs: Vec<FusedKerSpec<TI>>,
     pub buffer: Vec<u8>,
     loc_dependant: TVec<LocDependant>,
@@ -22,10 +23,10 @@ struct LocDependant {
     loc: *const u8,
 }
 
-impl<TI: Copy + 'static> ScratchSpace for ScratchSpaceFusedNonLinear<TI> {}
-unsafe impl<TI: Copy + 'static> Send for ScratchSpaceFusedNonLinear<TI> {}
+impl<TI: LADatum> ScratchSpace for ScratchSpaceFusedNonLinear<TI> {}
+unsafe impl<TI: LADatum> Send for ScratchSpaceFusedNonLinear<TI> {}
 
-impl<TI: Copy + Datum + Zero> ScratchSpaceFusedNonLinear<TI> {
+impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
     pub unsafe fn prepare<K: MatMatMulKer<TI>>(&mut self, specs: &[FusedSpec]) {
         use FusedKerSpec as FKS;
         use FusedSpec as FS;
@@ -294,7 +295,7 @@ impl<TI: Copy + Datum + Zero> ScratchSpaceFusedNonLinear<TI> {
         m_remnant: usize,
         n_remnant: usize,
     ) where
-        TI: Datum + Copy + Debug + Zero,
+        TI: LADatum,
     {
         for LocDependant { spec, uspec, .. } in self.loc_dependant.iter() {
             let spec = specs.get_unchecked(*spec);

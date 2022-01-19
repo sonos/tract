@@ -1,3 +1,4 @@
+use crate::LADatum;
 use std::ffi::c_void;
 use std::fmt::Debug;
 
@@ -94,9 +95,8 @@ pub mod test {
     use crate::frame::mmm::storage::*;
     use crate::frame::mmm::*;
     use crate::generic::ScaleShiftAndRound;
-    use num_traits::{AsPrimitive, Bounded, Zero};
+    use num_traits::{AsPrimitive, Bounded};
     use proptest::prelude::*;
-    use std::ops::{Add, Mul, Sub};
 
     #[test]
     fn check_non_linear_enum_size() {
@@ -366,8 +366,8 @@ pub mod test {
     pub fn return_zeros<K, TC, TI>()
     where
         K: MatMatMulKer<TI>,
-        TC: Copy + Debug + Bounded + Zero + PartialEq,
-        TI: Copy + Debug,
+        TC: LADatum,
+        TI: LADatum + Bounded + PartialEq,
     {
         let mut v = vec![TC::max_value(); K::mr() * K::nr()];
         let c = mmm_stride_storage(&mut v, K::nr());
@@ -381,8 +381,8 @@ pub mod test {
     pub fn fused_ops<K, TC, TI, E>(c: &[TC], ops: &[FusedKerSpec<TI>], expect: E)
     where
         K: MatMatMulKer<TI>,
-        TC: Datum + Copy + AsPrimitive<TI>,
-        TI: Datum + Copy + AsPrimitive<TC>,
+        TC: Datum + AsPrimitive<TI>,
+        TI: LADatum + AsPrimitive<TC>,
         E: Fn(usize, usize, TI) -> TI,
     {
         assert!(c.len() == K::mr() * K::nr());
@@ -417,8 +417,8 @@ pub mod test {
     pub fn return_c<K, TC, TI>(v: &[TC])
     where
         K: MatMatMulKer<TI>,
-        TC: Datum + Copy + AsPrimitive<TI>,
-        TI: Datum + Copy + AsPrimitive<TC> + Zero + Add<Output = TI> + Sub<Output = TI>,
+        TC: LADatum + AsPrimitive<TI>,
+        TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
         fused_ops::<K, TC, TI, _>(&*v, &[], |_, _, c| c + 1.as_() - 1.as_())
@@ -427,8 +427,8 @@ pub mod test {
     pub fn return_c_plus_d<K, TC, TI>()
     where
         K: MatMatMulKer<TI>,
-        TC: Datum + Copy + AsPrimitive<TI>,
-        TI: Datum + Copy + AsPrimitive<TC> + Add<Output = TI>,
+        TC: LADatum + AsPrimitive<TI>,
+        TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
         let len = K::mr() * K::nr();
@@ -444,8 +444,8 @@ pub mod test {
     pub fn return_c_min_row<K, TC, TI>()
     where
         K: MatMatMulKer<TI>,
-        TC: Datum + Copy + AsPrimitive<TI>,
-        TI: Datum + Copy + AsPrimitive<TC> + std::cmp::PartialOrd,
+        TC: LADatum + AsPrimitive<TI>,
+        TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
         let len = K::mr() * K::nr();
@@ -463,8 +463,8 @@ pub mod test {
     pub fn return_c_max_row<K, TC, TI>()
     where
         K: MatMatMulKer<TI>,
-        TC: Datum + Copy + AsPrimitive<TI>,
-        TI: Datum + Copy + AsPrimitive<TC> + std::cmp::PartialOrd,
+        TC: LADatum + AsPrimitive<TI>,
+        TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
         let len = K::mr() * K::nr();
@@ -482,8 +482,8 @@ pub mod test {
     pub fn return_c_add_row<K, TC, TI>()
     where
         K: MatMatMulKer<TI>,
-        TC: Datum + Copy + AsPrimitive<TI>,
-        TI: Datum + Copy + AsPrimitive<TC> + Add<Output = TI>,
+        TC: LADatum + AsPrimitive<TI>,
+        TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
         let len = K::mr() * K::nr();
@@ -497,8 +497,8 @@ pub mod test {
     pub fn return_c_mul_row<K, TC, TI>()
     where
         K: MatMatMulKer<TI>,
-        TC: Datum + Copy + AsPrimitive<TI>,
-        TI: Datum + Copy + AsPrimitive<TC> + Mul<Output = TI>,
+        TC: LADatum + AsPrimitive<TI>,
+        TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
         let len = K::mr() * K::nr();
@@ -512,8 +512,8 @@ pub mod test {
     pub fn return_c_sub_row<K, TC, TI>()
     where
         K: MatMatMulKer<TI>,
-        TC: Datum + Copy + AsPrimitive<TI>,
-        TI: Datum + Copy + AsPrimitive<TC> + Sub<Output = TI>,
+        TC: LADatum + AsPrimitive<TI>,
+        TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
         let len = K::mr() * K::nr();
@@ -527,8 +527,8 @@ pub mod test {
     pub fn return_c_subf_row<K, TC, TI>()
     where
         K: MatMatMulKer<TI>,
-        TC: Datum + Copy + AsPrimitive<TI>,
-        TI: Datum + Copy + AsPrimitive<TC> + Sub<Output = TI>,
+        TC: LADatum + AsPrimitive<TI>,
+        TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
         let len = K::mr() * K::nr();
@@ -542,8 +542,8 @@ pub mod test {
     pub fn return_c_add_col<K, TC, TI>()
     where
         K: MatMatMulKer<TI>,
-        TC: Datum + Copy + AsPrimitive<TI>,
-        TI: Datum + Copy + AsPrimitive<TC> + Add<Output = TI>,
+        TC: LADatum + AsPrimitive<TI>,
+        TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
         let len = K::mr() * K::nr();
@@ -557,8 +557,8 @@ pub mod test {
     pub fn return_c_mul_col<K, TC, TI>()
     where
         K: MatMatMulKer<TI>,
-        TC: Datum + Copy + AsPrimitive<TI>,
-        TI: Datum + Copy + AsPrimitive<TC> + Mul<Output = TI>,
+        TC: LADatum + AsPrimitive<TI>,
+        TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
         let len = K::mr() * K::nr();
@@ -572,8 +572,8 @@ pub mod test {
     pub fn return_c_add_row_col_product<K, TC, TI>()
     where
         K: MatMatMulKer<TI>,
-        TC: Datum + Copy + AsPrimitive<TI>,
-        TI: Datum + Copy + AsPrimitive<TC> + Add<Output = TI> + Mul<Output = TI>,
+        TC: LADatum + AsPrimitive<TI>,
+        TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
         let len = K::mr() * K::nr();
@@ -590,8 +590,8 @@ pub mod test {
     pub fn return_c_scalar_min<K, TC, TI>()
     where
         K: MatMatMulKer<TI>,
-        TC: Datum + Copy + AsPrimitive<TI>,
-        TI: Datum + Copy + AsPrimitive<TC> + std::cmp::PartialOrd,
+        TC: LADatum + AsPrimitive<TI>,
+        TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
         let len = K::mr() * K::nr();
@@ -608,8 +608,8 @@ pub mod test {
     pub fn return_c_scalar_max<K, TC, TI>()
     where
         K: MatMatMulKer<TI>,
-        TC: Datum + Copy + AsPrimitive<TI>,
-        TI: Datum + Copy + AsPrimitive<TC> + std::cmp::PartialOrd,
+        TC: LADatum + AsPrimitive<TI>,
+        TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
         let len = K::mr() * K::nr();
@@ -626,8 +626,8 @@ pub mod test {
     pub fn return_c_scalar_add<K, TC, TI>()
     where
         K: MatMatMulKer<TI>,
-        TC: Datum + Copy + AsPrimitive<TI>,
-        TI: Datum + Copy + AsPrimitive<TC> + Add<Output = TI>,
+        TC: LADatum + AsPrimitive<TI>,
+        TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
         let len = K::mr() * K::nr();
@@ -638,8 +638,8 @@ pub mod test {
     pub fn return_c_scalar_mul<K, TC, TI>()
     where
         K: MatMatMulKer<TI>,
-        TC: Datum + Copy + AsPrimitive<TI>,
-        TI: Datum + Copy + AsPrimitive<TC> + Mul<Output = TI>,
+        TC: LADatum + AsPrimitive<TI>,
+        TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
         let len = K::mr() * K::nr();
@@ -650,8 +650,8 @@ pub mod test {
     pub fn return_c_scalar_sub<K, TC, TI>()
     where
         K: MatMatMulKer<TI>,
-        TC: Datum + Copy + AsPrimitive<TI>,
-        TI: Datum + Copy + AsPrimitive<TC> + Sub<Output = TI>,
+        TC: LADatum + AsPrimitive<TI>,
+        TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
         let len = K::mr() * K::nr();
@@ -663,8 +663,8 @@ pub mod test {
     pub fn return_c_scalar_subf<K, TC, TI>()
     where
         K: MatMatMulKer<TI>,
-        TC: Datum + Copy + AsPrimitive<TI>,
-        TI: Datum + Copy + AsPrimitive<TC> + Sub<Output = TI>,
+        TC: LADatum + AsPrimitive<TI>,
+        TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
         let len = K::mr() * K::nr();
@@ -677,8 +677,8 @@ pub mod test {
     pub struct QScaleProblem<K, TC, TI>
     where
         K: MatMatMulKer<TI>,
-        TC: Copy + Debug + 'static,
-        TI: Copy + Debug,
+        TC: LADatum,
+        TI: LADatum + AsPrimitive<TC>,
         i64: AsPrimitive<TC>,
     {
         pub c: Vec<TC>,
@@ -691,8 +691,8 @@ pub mod test {
     impl<K, TC, TI> Arbitrary for QScaleProblem<K, TC, TI>
     where
         K: MatMatMulKer<TI>,
-        TC: Copy + Debug + Arbitrary + 'static,
-        TI: Copy + Debug,
+        TC: LADatum + Arbitrary,
+        TI: LADatum + AsPrimitive<TC>,
         i64: AsPrimitive<TC>,
     {
         type Parameters = ();
@@ -727,8 +727,8 @@ pub mod test {
     impl<K, TC, TI> QScaleProblem<K, TC, TI>
     where
         K: MatMatMulKer<TI>,
-        TC: Copy + Datum + 'static + AsPrimitive<TI> + PartialEq,
-        TI: Copy + Datum + 'static + AsPrimitive<i64> + ScaleShiftAndRound + AsPrimitive<TC>,
+        TC: LADatum + AsPrimitive<TI>,
+        TI: LADatum + AsPrimitive<TC> + ScaleShiftAndRound + AsPrimitive<i64>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
         i64: AsPrimitive<TC>,
     {
@@ -744,8 +744,8 @@ pub mod test {
     pub fn tile<K, TC, TI>() -> BoxedStrategy<Vec<TC>>
     where
         K: MatMatMulKer<TI>,
-        TC: Copy + Debug + 'static,
-        TI: Copy + Debug,
+        TC: LADatum,
+        TI: LADatum + AsPrimitive<TC>,
         i8: AsPrimitive<TC>,
     {
         let len = K::mr() * K::nr();

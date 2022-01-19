@@ -1,4 +1,4 @@
-use num_traits::{AsPrimitive, Zero};
+use num_traits::AsPrimitive;
 use std::marker::PhantomData;
 use std::{fmt, ops};
 
@@ -7,6 +7,7 @@ use tract_data::prelude::*;
 use super::*;
 use crate::frame::mmm::InputStoreKer::*;
 use crate::frame::mmm::*;
+use crate::LADatum;
 
 use num_traits::sign::Signed;
 
@@ -15,33 +16,27 @@ pub struct GenericMmm4x4<TA, TB, TI>(PhantomData<(TA, TB, TI)>)
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: Datum
-        + Copy
+    TI: LADatum
         + ops::AddAssign
         + ops::Mul<Output = TI>
         + ops::MulAssign
         + ScaleShiftAndRound
         + PartialOrd
-        + Zero
-        + fmt::Debug
-        + fmt::Display
-        + 'static;
+        + Signed
+        + fmt::Display;
 
 unsafe impl<TA, TB, TI> Send for GenericMmm4x4<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: Datum
-        + Copy
+    TI: LADatum
         + ops::AddAssign
         + ops::Mul<Output = TI>
         + ops::MulAssign
         + ScaleShiftAndRound
         + PartialOrd
-        + Zero
-        + fmt::Debug
-        + fmt::Display
-        + 'static,
+        + Signed
+        + fmt::Display,
 {
 }
 
@@ -49,17 +44,14 @@ unsafe impl<TA, TB, TI> Sync for GenericMmm4x4<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: Datum
-        + Copy
+    TI: LADatum
         + ops::AddAssign
         + ops::Mul<Output = TI>
         + ops::MulAssign
         + ScaleShiftAndRound
         + PartialOrd
-        + Zero
-        + fmt::Debug
-        + fmt::Display
-        + 'static,
+        + Signed
+        + fmt::Display,
 {
 }
 
@@ -97,18 +89,14 @@ impl<TA, TB, TI> MatMatMulKer<TI> for GenericMmm4x4<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: Datum
-        + Copy
+    TI: LADatum
         + ops::AddAssign
         + ops::Mul<Output = TI>
         + ops::MulAssign
         + ScaleShiftAndRound
         + PartialOrd
-        + Zero
         + Signed
-        + fmt::Debug
-        + fmt::Display
-        + 'static,
+        + fmt::Display,
     usize: AsPrimitive<TI>,
 {
     #[inline(always)]
@@ -256,33 +244,27 @@ pub struct GenericMmm4x1<TA, TB, TI>(PhantomData<(TA, TB, TI)>)
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: Datum
-        + Copy
+    TI: LADatum
         + ops::AddAssign
         + ops::Mul<Output = TI>
         + ops::MulAssign
         + ScaleShiftAndRound
         + PartialOrd
-        + Zero
-        + fmt::Debug
-        + fmt::Display
-        + 'static;
+        + Signed
+        + fmt::Display;
 
 unsafe impl<TA, TB, TI> Send for GenericMmm4x1<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: Datum
-        + Copy
+    TI: LADatum
         + ops::AddAssign
         + ops::Mul<Output = TI>
         + ops::MulAssign
         + ScaleShiftAndRound
         + PartialOrd
-        + Zero
-        + fmt::Debug
-        + fmt::Display
-        + 'static,
+        + Signed
+        + fmt::Display,
 {
 }
 
@@ -290,17 +272,14 @@ unsafe impl<TA, TB, TI> Sync for GenericMmm4x1<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: Datum
-        + Copy
+    TI: LADatum
         + ops::AddAssign
         + ops::Mul<Output = TI>
         + ops::MulAssign
         + ScaleShiftAndRound
         + PartialOrd
-        + Zero
-        + fmt::Debug
-        + fmt::Display
-        + 'static,
+        + Signed
+        + fmt::Display,
 {
 }
 
@@ -308,18 +287,14 @@ impl<TA, TB, TI> MatMatMulKer<TI> for GenericMmm4x1<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: Datum
-        + Copy
+    TI: LADatum
         + ops::AddAssign
         + ops::Mul<Output = TI>
         + ops::MulAssign
         + ScaleShiftAndRound
         + PartialOrd
-        + Zero
         + Signed
-        + fmt::Debug
-        + fmt::Display
-        + 'static,
+        + fmt::Display,
     usize: AsPrimitive<TI>,
 {
     #[inline(always)]
@@ -451,32 +426,28 @@ pub struct GenericMmmTest3x2<TA, TB, TI>(PhantomData<(TA, TB, TI)>)
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: Datum
-        + Copy
+    TI: LADatum
         + ops::AddAssign
         + ops::Mul<Output = TI>
         + ops::MulAssign
+        + ScaleShiftAndRound
         + PartialOrd
-        + Zero
-        + fmt::Debug
-        + fmt::Display
-        + 'static;
+        + Signed
+        + fmt::Display;
 
 #[cfg(test)]
 unsafe impl<TA, TB, TI> Send for GenericMmmTest3x2<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: Datum
-        + Copy
+    TI: LADatum
         + ops::AddAssign
         + ops::Mul<Output = TI>
         + ops::MulAssign
+        + ScaleShiftAndRound
         + PartialOrd
-        + Zero
-        + fmt::Debug
-        + fmt::Display
-        + 'static,
+        + Signed
+        + fmt::Display,
 {
 }
 
@@ -485,16 +456,14 @@ unsafe impl<TA, TB, TI> Sync for GenericMmmTest3x2<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: Datum
-        + Copy
+    TI: LADatum
         + ops::AddAssign
         + ops::Mul<Output = TI>
         + ops::MulAssign
+        + ScaleShiftAndRound
         + PartialOrd
-        + Zero
-        + fmt::Debug
-        + fmt::Display
-        + 'static,
+        + Signed
+        + fmt::Display,
 {
 }
 
@@ -503,18 +472,14 @@ impl<TA, TB, TI> MatMatMulKer<TI> for GenericMmmTest3x2<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: Datum
-        + Copy
+    TI: LADatum
         + ops::AddAssign
         + ops::Mul<Output = TI>
         + ops::MulAssign
-        + PartialOrd
         + ScaleShiftAndRound
-        + Zero
+        + PartialOrd
         + Signed
-        + fmt::Debug
-        + fmt::Display
-        + 'static,
+        + fmt::Display,
     usize: AsPrimitive<TI>,
 {
     #[inline(always)]
@@ -663,7 +628,7 @@ where
 
 unsafe fn add_unicast<TI, AB>(tile: &OutputStoreKer, ab: &mut [AB])
 where
-    TI: Datum + ops::AddAssign<TI> + Copy,
+    TI: LADatum + ops::AddAssign<TI>,
     AB: AsMut<[TI]> + fmt::Debug,
 {
     if tile.item_size == TI::datum_type().size_of() {

@@ -1,10 +1,11 @@
 use std::fmt::Debug;
 
 use crate::frame::mmm::FusedKerSpec;
+use crate::LADatum;
 
 pub trait MatMatMulKer<TI>: Copy + Clone + Debug + Send + Sync + 'static
 where
-    TI: Copy + Debug,
+    TI: LADatum,
 {
     fn name() -> &'static str;
     fn kernel(op: &[FusedKerSpec<TI>]) -> isize;
@@ -56,7 +57,6 @@ pub mod test {
     use proptest::prelude::*;
     use std::fmt;
     use std::marker::PhantomData;
-    use std::ops::{Add, Mul};
     use tract_data::internal::*;
 
     #[macro_export]
@@ -215,7 +215,7 @@ pub mod test {
         TA: 'static + Debug + AsPrimitive<TI>,
         TB: 'static + Debug + AsPrimitive<TI>,
         TC: Copy + PartialEq + 'static + Debug,
-        TI: Copy + Add + Mul + Zero + Debug + fmt::Display + AsPrimitive<TC>,
+        TI: LADatum + fmt::Display + AsPrimitive<TC>,
         usize: AsPrimitive<TA> + AsPrimitive<TB>,
     {
         pub k: usize,
@@ -232,7 +232,7 @@ pub mod test {
         TA: 'static + Debug + AsPrimitive<TI>,
         TB: 'static + Debug + AsPrimitive<TI>,
         TC: Copy + PartialEq + 'static + Debug,
-        TI: Copy + Add + Mul + Zero + Debug + fmt::Display + AsPrimitive<TC>,
+        TI: LADatum + fmt::Display + AsPrimitive<TC>,
         usize: AsPrimitive<TA> + AsPrimitive<TB>,
     {
         type Parameters = ();
@@ -265,7 +265,7 @@ pub mod test {
         TA: 'static + Debug + AsPrimitive<TI> + Datum,
         TB: 'static + Debug + AsPrimitive<TI> + Datum,
         TC: Copy + Zero + PartialEq + 'static + Debug,
-        TI: Copy + Add + Mul<Output = TI> + Zero + One + Debug + fmt::Display + AsPrimitive<TC>,
+        TI: LADatum + fmt::Display + AsPrimitive<TC>,
         usize: AsPrimitive<TA> + AsPrimitive<TB>,
     {
         pub fn reference(&self) -> Vec<TC> {
@@ -337,7 +337,7 @@ pub mod test {
         TA: 'static + Debug + AsPrimitive<TI>,
         TB: 'static + Debug + AsPrimitive<TI>,
         TC: Copy + PartialEq + 'static + Debug,
-        TI: Copy + Add + Mul + Zero + Debug + fmt::Display + AsPrimitive<TC>,
+        TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TA> + AsPrimitive<TB>,
     {
         a: Vec<TA>,
@@ -354,7 +354,7 @@ pub mod test {
         TA: 'static + Debug + AsPrimitive<TI>,
         TB: 'static + Debug + AsPrimitive<TI>,
         TC: Copy + PartialEq + 'static + Debug,
-        TI: Copy + Add + Mul + Zero + Debug + fmt::Display + AsPrimitive<TC>,
+        TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TA> + AsPrimitive<TB>,
     {
         type Parameters = ();
@@ -395,7 +395,7 @@ pub mod test {
         TA: 'static + Debug + AsPrimitive<TI> + Datum,
         TB: 'static + Debug + AsPrimitive<TI> + Datum,
         TC: Copy + Zero + PartialEq + 'static + Debug,
-        TI: Copy + Add + Mul<Output = TI> + Zero + One + Debug + fmt::Display + AsPrimitive<TC>,
+        TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TA> + AsPrimitive<TB>,
     {
         pub fn reference(&self) -> Vec<TC> {
@@ -466,15 +466,7 @@ pub mod test {
         TA: Copy + One + Datum + AsPrimitive<TI>,
         TB: Copy + One + Datum + AsPrimitive<TI>,
         TC: Copy + PartialEq + Zero + 'static + Debug,
-        TI: Copy
-            + Add
-            + Mul<Output = TI>
-            + Zero
-            + One
-            + Debug
-            + fmt::Display
-            + 'static
-            + AsPrimitive<TC>,
+        TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TA> + AsPrimitive<TB>,
     {
         let a = vec![TA::one(); K::mr() * k];
@@ -498,7 +490,7 @@ pub mod test {
         TA: Copy + One + AsPrimitive<TI> + Datum,
         TB: Copy + One + AsPrimitive<TI> + Datum,
         TC: Copy + PartialEq + Zero + 'static + Debug,
-        TI: Copy + Add + Zero + Mul<Output = TI> + Debug + fmt::Display + 'static + AsPrimitive<TC>,
+        TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TA> + AsPrimitive<TB>,
     {
         let a: Vec<TA> = (1..=(k * K::mr())).map(|x| x.as_()).collect();
@@ -549,7 +541,7 @@ pub mod test {
         TA: Copy + One + AsPrimitive<TI> + Debug + Datum,
         TB: Copy + One + AsPrimitive<TI> + Debug + Datum,
         TC: Copy + PartialEq + Zero + 'static + Debug,
-        TI: Copy + Add + Zero + Mul<Output = TI> + Debug + fmt::Display + 'static + AsPrimitive<TC>,
+        TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC>,
     {
         let pa = unsafe {

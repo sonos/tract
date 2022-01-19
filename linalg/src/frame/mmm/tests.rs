@@ -1,5 +1,5 @@
 use super::*;
-use crate::test::*;
+use crate::LADatum;
 use num_traits::AsPrimitive;
 use proptest::prelude::*;
 use std::fmt::Debug;
@@ -278,7 +278,7 @@ where
     TA: LADatum + AsPrimitive<TI> + 'static,
     TB: LADatum + AsPrimitive<TI> + 'static,
     TC: LADatum + AsPrimitive<TI> + 'static,
-    TI: LADatum + AsPrimitive<TC> + 'static + Neg<Output = TI>,
+    TI: LADatum + AsPrimitive<TC>,
     i32: AsPrimitive<TI>,
     usize: AsPrimitive<TI>,
 {
