@@ -55,6 +55,6 @@ pub mod test {
         }
         op.run(&mut found).unwrap();
         let expected = values.iter().map(|x| 1.0 / (1.0 + (-x).exp())).collect::<Vec<_>>();
-        crate::test::check_close(&found[..values.len()], &*expected)
+        crate::check_close(&found[..values.len()], &*expected)
     }
 }

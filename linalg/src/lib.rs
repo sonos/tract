@@ -90,7 +90,7 @@ pub fn generic() -> Ops {
             generic::GenericMmm4x4::<f32, f32, f32>::mmm(),
             generic::GenericMmm4x1::<f32, f32, f32>::mmm(),
         ],
-//        mmm_f32: Box::new(|_, _, _| generic::GenericMmm4x4::<f32, f32, f32>::mmm()),
+        //        mmm_f32: Box::new(|_, _, _| generic::GenericMmm4x4::<f32, f32, f32>::mmm()),
         mmv_f32: Box::new(|_, _| generic::GenericMmm4x1::<f32, f32, f32>::mmm()),
         qmmm_i32: Box::new(|_, _, _| generic::GenericMmm4x4::<i8, i8, i32>::mmm()),
         qmmv_i32: Box::new(|_, _| generic::GenericMmm4x1::<i8, i8, i32>::mmm()),
@@ -155,61 +155,61 @@ pub trait LADatum:
 }
 
 #[cfg(test)]
-mod test {
-    use super::LADatum;
-    use proptest::prelude::*;
-    impl LADatum for f32 {
-        #[cfg(test)]
-        fn strat() -> BoxedStrategy<Self> {
-            (-1000isize..1000).prop_map(|i| i as f32 / 1000.0).boxed()
-        }
-        #[cfg(test)]
-        fn close(&self, other: &Self) -> bool {
-            (self - other).abs() < 0.001
-        }
+use proptest::prelude::*;
+impl LADatum for f32 {
+    #[cfg(test)]
+    fn strat() -> BoxedStrategy<Self> {
+        (-1000isize..1000).prop_map(|i| i as f32 / 1000.0).boxed()
     }
+    #[cfg(test)]
+    fn close(&self, other: &Self) -> bool {
+        (self - other).abs() < 0.001
+    }
+}
 
-    impl LADatum for u8 {
-        #[cfg(test)]
-        fn strat() -> BoxedStrategy<Self> {
-            any::<u8>().boxed()
-        }
-        #[cfg(test)]
-        fn close(&self, other: &Self) -> bool {
-            self == other
-        }
+impl LADatum for u8 {
+    #[cfg(test)]
+    fn strat() -> BoxedStrategy<Self> {
+        any::<u8>().boxed()
     }
+    #[cfg(test)]
+    fn close(&self, other: &Self) -> bool {
+        self == other
+    }
+}
 
-    impl LADatum for i8 {
-        #[cfg(test)]
-        fn strat() -> BoxedStrategy<Self> {
-            any::<i8>().boxed()
-        }
-        #[cfg(test)]
-        fn close(&self, other: &Self) -> bool {
-            self == other
-        }
+impl LADatum for i8 {
+    #[cfg(test)]
+    fn strat() -> BoxedStrategy<Self> {
+        any::<i8>().boxed()
     }
+    #[cfg(test)]
+    fn close(&self, other: &Self) -> bool {
+        self == other
+    }
+}
 
-    impl LADatum for i32 {
-        fn strat() -> BoxedStrategy<Self> {
-            any::<i32>().boxed()
-        }
-        fn close(&self, other: &Self) -> bool {
-            self == other
-        }
+impl LADatum for i32 {
+    #[cfg(test)]
+    fn strat() -> BoxedStrategy<Self> {
+        any::<i32>().boxed()
     }
+    #[cfg(test)]
+    fn close(&self, other: &Self) -> bool {
+        self == other
+    }
+}
 
-    pub(crate) fn check_close<T: LADatum>(
-        found: &[T],
-        expected: &[T],
-    ) -> proptest::test_runner::TestCaseResult {
-        proptest::prop_assert!(
-            found.iter().zip(expected.iter()).all(|(a, b)| a.close(b)),
-            "found: {:?} expected: {:?}",
-            found,
-            expected
-        );
-        Ok(())
-    }
+#[cfg(test)]
+pub(crate) fn check_close<T: LADatum>(
+    found: &[T],
+    expected: &[T],
+) -> proptest::test_runner::TestCaseResult {
+    proptest::prop_assert!(
+        found.iter().zip(expected.iter()).all(|(a, b)| a.close(b)),
+        "found: {:?} expected: {:?}",
+        found,
+        expected
+    );
+    Ok(())
 }

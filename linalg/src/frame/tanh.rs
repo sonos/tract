@@ -51,6 +51,6 @@ pub mod test {
         let mut found = values.to_vec();
         op.run(&mut found).unwrap();
         let expected = values.iter().map(|x| x.tanh()).collect::<Vec<_>>();
-        crate::test::check_close(&*found, &*expected)
+        crate::check_close(&*found, &*expected)
     }
 }
