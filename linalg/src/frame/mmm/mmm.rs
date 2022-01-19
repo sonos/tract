@@ -1,9 +1,8 @@
 use super::ScratchSpaceFusedNonLinear;
 use super::*;
-use crate::LADatum;
 use crate::frame::Packer;
+use crate::LADatum;
 use anyhow::Context;
-use num_traits::AsPrimitive;
 use std::fmt;
 use std::fmt::Debug;
 use std::marker::PhantomData;
@@ -125,8 +124,6 @@ impl<K, TI> MatMatMul for MatMatMulImpl<K, TI>
 where
     TI: LADatum,
     K: MatMatMulKer<TI> + 'static,
-    i32: AsPrimitive<TI>,
-    usize: AsPrimitive<TI>,
 {
     fn kernel_name(&self) -> &'static str {
         K::name()
