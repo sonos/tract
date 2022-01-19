@@ -9,20 +9,18 @@ use crate::frame::mmm::InputStoreKer::*;
 use crate::frame::mmm::*;
 use crate::LADatum;
 
-use num_traits::sign::Signed;
-
 #[derive(Copy, Clone, Debug)]
 pub struct GenericMmm4x4<TA, TB, TI>(PhantomData<(TA, TB, TI)>)
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum + ScaleShiftAndRound + Signed;
+    TI: LADatum + ScaleShiftAndRound;
 
 unsafe impl<TA, TB, TI> Send for GenericMmm4x4<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum + ScaleShiftAndRound + Signed,
+    TI: LADatum + ScaleShiftAndRound,
 {
 }
 
@@ -30,7 +28,7 @@ unsafe impl<TA, TB, TI> Sync for GenericMmm4x4<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum + ScaleShiftAndRound + Signed,
+    TI: LADatum + ScaleShiftAndRound,
 {
 }
 
@@ -68,7 +66,7 @@ impl<TA, TB, TI> MatMatMulKer<TI> for GenericMmm4x4<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum + ScaleShiftAndRound + Signed,
+    TI: LADatum + ScaleShiftAndRound,
     usize: AsPrimitive<TI>,
 {
     #[inline(always)]
@@ -216,13 +214,13 @@ pub struct GenericMmm4x1<TA, TB, TI>(PhantomData<(TA, TB, TI)>)
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum + ScaleShiftAndRound + Signed;
+    TI: LADatum + ScaleShiftAndRound;
 
 unsafe impl<TA, TB, TI> Send for GenericMmm4x1<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum + ScaleShiftAndRound + Signed,
+    TI: LADatum + ScaleShiftAndRound,
 {
 }
 
@@ -230,7 +228,7 @@ unsafe impl<TA, TB, TI> Sync for GenericMmm4x1<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum + ScaleShiftAndRound + Signed,
+    TI: LADatum + ScaleShiftAndRound,
 {
 }
 
@@ -238,7 +236,7 @@ impl<TA, TB, TI> MatMatMulKer<TI> for GenericMmm4x1<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum + ScaleShiftAndRound + Signed,
+    TI: LADatum + ScaleShiftAndRound,
     usize: AsPrimitive<TI>,
 {
     #[inline(always)]
@@ -370,14 +368,14 @@ pub struct GenericMmmTest3x2<TA, TB, TI>(PhantomData<(TA, TB, TI)>)
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum + ScaleShiftAndRound + Signed;
+    TI: LADatum + ScaleShiftAndRound;
 
 #[cfg(test)]
 unsafe impl<TA, TB, TI> Send for GenericMmmTest3x2<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum + ScaleShiftAndRound + Signed,
+    TI: LADatum + ScaleShiftAndRound,
 {
 }
 
@@ -386,7 +384,7 @@ unsafe impl<TA, TB, TI> Sync for GenericMmmTest3x2<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum + ScaleShiftAndRound + Signed,
+    TI: LADatum + ScaleShiftAndRound,
 {
 }
 
@@ -395,7 +393,7 @@ impl<TA, TB, TI> MatMatMulKer<TI> for GenericMmmTest3x2<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum + ScaleShiftAndRound + Signed,
+    TI: LADatum + ScaleShiftAndRound,
     usize: AsPrimitive<TI>,
 {
     #[inline(always)]
