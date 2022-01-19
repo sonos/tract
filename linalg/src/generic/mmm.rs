@@ -71,7 +71,11 @@ where
 {
     #[inline(always)]
     fn name() -> &'static str {
-        "generic"
+        match TI::datum_type() {
+            DatumType::F32 => "generic_f32_4x4",
+            DatumType::I32 => "generic_i32_4x4",
+            _ => panic!(),
+        }
     }
     #[inline(always)]
     fn mr() -> usize {
@@ -241,7 +245,11 @@ where
 {
     #[inline(always)]
     fn name() -> &'static str {
-        "generic"
+        match TI::datum_type() {
+            DatumType::F32 => "generic_f32_4x1",
+            DatumType::I32 => "generic_i32_4x1",
+            _ => panic!(),
+        }
     }
     #[inline(always)]
     fn mr() -> usize {
@@ -398,7 +406,11 @@ where
 {
     #[inline(always)]
     fn name() -> &'static str {
-        "generic-test-3x2"
+        match TI::datum_type() {
+            DatumType::F32 => "generic_f32_3x2",
+            DatumType::I32 => "generic_i32_3x2",
+            _ => panic!(),
+        }
     }
     #[inline(always)]
     fn mr() -> usize {
