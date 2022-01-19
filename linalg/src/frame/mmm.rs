@@ -20,14 +20,14 @@ pub use storage::*;
 pub use tests::*;
 
 macro_rules! MMMKernel {
-    ($typ:ident<$ti:ident>, $name:expr, $func:ident; $mr: expr, $nr: expr; $alignment_bytes_packed_a: expr, $alignment_bytes_packed_b: expr; $end_padding_packed_a: expr, $end_padding_packed_b: expr $(, $prefetch: ident)?) => {
+    ($typ:ident<$ti:ident>, $func:ident; $mr: expr, $nr: expr; $alignment_bytes_packed_a: expr, $alignment_bytes_packed_b: expr; $end_padding_packed_a: expr, $end_padding_packed_b: expr $(, $prefetch: ident)?) => {
         #[derive(Copy, Clone, Debug, new)]
         pub struct $typ;
 
         impl MatMatMulKer<$ti> for $typ {
             #[inline(always)]
             fn name() -> &'static str {
-                $name
+                stringify!($name)
             }
             #[inline(always)]
             fn mr() -> usize {
