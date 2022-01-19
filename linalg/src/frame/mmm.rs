@@ -1,3 +1,4 @@
+pub(crate) mod cost_model;
 #[macro_use]
 pub(crate) mod fuse;
 #[macro_use]
@@ -10,6 +11,7 @@ mod storage;
 #[macro_use]
 pub mod tests;
 
+pub use cost_model::*;
 pub use fuse::*;
 pub use kernel::*;
 pub use mmm::*;

@@ -16,6 +16,7 @@ include!(concat!(env!("OUT_DIR"), "/extern_kernel_macro.rs"));
 #[macro_use]
 pub mod frame;
 pub mod generic;
+use frame::MatMatMul;
 pub use generic::ScaleShiftAndRound;
 #[cfg(target_arch = "x86_64")]
 pub mod x86_64_fma;
@@ -32,11 +33,14 @@ use crate::frame::mmm::kernel::MatMatMulKer;
 use tract_data::prelude::*;
 
 pub struct Ops {
+    mmm_f32_impls: Vec<Box<dyn MatMatMul>>,
+    /*
     mmm_f32: Box<
         dyn Fn(Option<usize>, Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul>
             + Send
             + Sync,
     >,
+    */
     mmv_f32: Box<dyn Fn(Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul> + Send + Sync>,
     qmmm_i32: Box<
         dyn Fn(Option<usize>, Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul>
@@ -50,6 +54,9 @@ pub struct Ops {
 }
 
 impl Ops {
+    fn mmm_f32(&self, m: Option<usize>, k: Option<usize>, n: Option<usize>) -> &dyn mmm::MatMatMul {
+        &*self.mmm_f32_impls[0]
+    }
     pub fn mmm(
         &self,
         a: DatumType,
@@ -61,9 +68,11 @@ impl Ops {
     ) -> Option<Box<dyn mmm::MatMatMul>> {
         use DatumType::*;
         match (a.unquantized(), b.unquantized(), c.unquantized()) {
-            (F32, F32, F32) => {
-                Some(if n == Some(1) { (self.mmv_f32)(m, k) } else { (self.mmm_f32)(m, k, n) })
-            }
+            (F32, F32, F32) => Some(if n == Some(1) {
+                (self.mmv_f32)(m, k)
+            } else {
+                dyn_clone::clone_box(self.mmm_f32(m, k, n))
+            }),
             (I8, I8, I32) => {
                 Some(if n == Some(1) { (self.qmmv_i32)(m, k) } else { (self.qmmm_i32)(m, k, n) })
             }
@@ -77,7 +86,11 @@ impl Ops {
 
 pub fn generic() -> Ops {
     Ops {
-        mmm_f32: Box::new(|_, _, _| generic::GenericMmm4x4::<f32, f32, f32>::mmm()),
+        mmm_f32_impls: vec![
+            generic::GenericMmm4x4::<f32, f32, f32>::mmm(),
+            generic::GenericMmm4x1::<f32, f32, f32>::mmm(),
+        ],
+//        mmm_f32: Box::new(|_, _, _| generic::GenericMmm4x4::<f32, f32, f32>::mmm()),
         mmv_f32: Box::new(|_, _| generic::GenericMmm4x1::<f32, f32, f32>::mmm()),
         qmmm_i32: Box::new(|_, _, _| generic::GenericMmm4x4::<i8, i8, i32>::mmm()),
         qmmv_i32: Box::new(|_, _| generic::GenericMmm4x1::<i8, i8, i32>::mmm()),
