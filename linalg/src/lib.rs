@@ -28,6 +28,7 @@ pub mod arm32;
 
 pub use self::frame::{element_wise, lut, mmm};
 
+use crate::frame::mmm::kernel::MatMatMulKer;
 use tract_data::prelude::*;
 
 pub struct Ops {
@@ -76,18 +77,10 @@ impl Ops {
 
 pub fn generic() -> Ops {
     Ops {
-        mmm_f32: Box::new(|_, _, _| {
-            Box::new(mmm::MatMatMulImpl::<generic::GenericMmm4x4<f32, f32, f32>, f32>::new())
-        }),
-        mmv_f32: Box::new(|_, _| {
-            Box::new(mmm::MatMatMulImpl::<generic::GenericMmm4x1<f32, f32, f32>, f32>::new())
-        }),
-        qmmm_i32: Box::new(|_, _, _| {
-            Box::new(mmm::MatMatMulImpl::<generic::GenericMmm4x4<i8, i8, i32>, i32>::new())
-        }),
-        qmmv_i32: Box::new(|_, _| {
-            Box::new(mmm::MatMatMulImpl::<generic::GenericMmm4x1<i8, i8, i32>, i32>::new())
-        }),
+        mmm_f32: Box::new(|_, _, _| generic::GenericMmm4x4::<f32, f32, f32>::mmm()),
+        mmv_f32: Box::new(|_, _| generic::GenericMmm4x1::<f32, f32, f32>::mmm()),
+        qmmm_i32: Box::new(|_, _, _| generic::GenericMmm4x4::<i8, i8, i32>::mmm()),
+        qmmv_i32: Box::new(|_, _| generic::GenericMmm4x1::<i8, i8, i32>::mmm()),
         sigmoid_f32: Box::new(|| {
             Box::new(element_wise::ElementWiseImpl::<generic::SSigmoid4, f32>::new())
         }),

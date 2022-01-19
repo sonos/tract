@@ -3,6 +3,8 @@ use std::fmt::Debug;
 use crate::frame::mmm::FusedKerSpec;
 use crate::LADatum;
 
+use super::{MatMatMul, MatMatMulImpl};
+
 pub trait MatMatMulKer<TI>: Copy + Clone + Debug + Send + Sync + 'static
 where
     TI: LADatum,
@@ -18,6 +20,10 @@ where
 
     #[allow(unused_variables)]
     fn prefetch(ptr: *const u8, len: usize) {}
+
+    fn mmm() -> Box<dyn MatMatMul> {
+        Box::new(MatMatMulImpl::<Self, TI>::new())
+    }
 }
 
 #[macro_export]
