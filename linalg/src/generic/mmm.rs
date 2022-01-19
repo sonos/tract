@@ -16,27 +16,13 @@ pub struct GenericMmm4x4<TA, TB, TI>(PhantomData<(TA, TB, TI)>)
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum
-        + ops::AddAssign
-        + ops::Mul<Output = TI>
-        + ops::MulAssign
-        + ScaleShiftAndRound
-        + PartialOrd
-        + Signed
-        + fmt::Display;
+    TI: LADatum + ScaleShiftAndRound + Signed;
 
 unsafe impl<TA, TB, TI> Send for GenericMmm4x4<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum
-        + ops::AddAssign
-        + ops::Mul<Output = TI>
-        + ops::MulAssign
-        + ScaleShiftAndRound
-        + PartialOrd
-        + Signed
-        + fmt::Display,
+    TI: LADatum + ScaleShiftAndRound + Signed,
 {
 }
 
@@ -44,14 +30,7 @@ unsafe impl<TA, TB, TI> Sync for GenericMmm4x4<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum
-        + ops::AddAssign
-        + ops::Mul<Output = TI>
-        + ops::MulAssign
-        + ScaleShiftAndRound
-        + PartialOrd
-        + Signed
-        + fmt::Display,
+    TI: LADatum + ScaleShiftAndRound + Signed,
 {
 }
 
@@ -89,14 +68,7 @@ impl<TA, TB, TI> MatMatMulKer<TI> for GenericMmm4x4<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum
-        + ops::AddAssign
-        + ops::Mul<Output = TI>
-        + ops::MulAssign
-        + ScaleShiftAndRound
-        + PartialOrd
-        + Signed
-        + fmt::Display,
+    TI: LADatum + ScaleShiftAndRound + Signed,
     usize: AsPrimitive<TI>,
 {
     #[inline(always)]
@@ -244,27 +216,13 @@ pub struct GenericMmm4x1<TA, TB, TI>(PhantomData<(TA, TB, TI)>)
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum
-        + ops::AddAssign
-        + ops::Mul<Output = TI>
-        + ops::MulAssign
-        + ScaleShiftAndRound
-        + PartialOrd
-        + Signed
-        + fmt::Display;
+    TI: LADatum + ScaleShiftAndRound + Signed;
 
 unsafe impl<TA, TB, TI> Send for GenericMmm4x1<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum
-        + ops::AddAssign
-        + ops::Mul<Output = TI>
-        + ops::MulAssign
-        + ScaleShiftAndRound
-        + PartialOrd
-        + Signed
-        + fmt::Display,
+    TI: LADatum + ScaleShiftAndRound + Signed,
 {
 }
 
@@ -272,14 +230,7 @@ unsafe impl<TA, TB, TI> Sync for GenericMmm4x1<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum
-        + ops::AddAssign
-        + ops::Mul<Output = TI>
-        + ops::MulAssign
-        + ScaleShiftAndRound
-        + PartialOrd
-        + Signed
-        + fmt::Display,
+    TI: LADatum + ScaleShiftAndRound + Signed,
 {
 }
 
@@ -287,14 +238,7 @@ impl<TA, TB, TI> MatMatMulKer<TI> for GenericMmm4x1<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum
-        + ops::AddAssign
-        + ops::Mul<Output = TI>
-        + ops::MulAssign
-        + ScaleShiftAndRound
-        + PartialOrd
-        + Signed
-        + fmt::Display,
+    TI: LADatum + ScaleShiftAndRound + Signed,
     usize: AsPrimitive<TI>,
 {
     #[inline(always)]
@@ -426,28 +370,14 @@ pub struct GenericMmmTest3x2<TA, TB, TI>(PhantomData<(TA, TB, TI)>)
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum
-        + ops::AddAssign
-        + ops::Mul<Output = TI>
-        + ops::MulAssign
-        + ScaleShiftAndRound
-        + PartialOrd
-        + Signed
-        + fmt::Display;
+    TI: LADatum + ScaleShiftAndRound + Signed;
 
 #[cfg(test)]
 unsafe impl<TA, TB, TI> Send for GenericMmmTest3x2<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum
-        + ops::AddAssign
-        + ops::Mul<Output = TI>
-        + ops::MulAssign
-        + ScaleShiftAndRound
-        + PartialOrd
-        + Signed
-        + fmt::Display,
+    TI: LADatum + ScaleShiftAndRound + Signed,
 {
 }
 
@@ -456,14 +386,7 @@ unsafe impl<TA, TB, TI> Sync for GenericMmmTest3x2<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum
-        + ops::AddAssign
-        + ops::Mul<Output = TI>
-        + ops::MulAssign
-        + ScaleShiftAndRound
-        + PartialOrd
-        + Signed
-        + fmt::Display,
+    TI: LADatum + ScaleShiftAndRound + Signed,
 {
 }
 
@@ -472,14 +395,7 @@ impl<TA, TB, TI> MatMatMulKer<TI> for GenericMmmTest3x2<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum
-        + ops::AddAssign
-        + ops::Mul<Output = TI>
-        + ops::MulAssign
-        + ScaleShiftAndRound
-        + PartialOrd
-        + Signed
-        + fmt::Display,
+    TI: LADatum + ScaleShiftAndRound + Signed,
     usize: AsPrimitive<TI>,
 {
     #[inline(always)]

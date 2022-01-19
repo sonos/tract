@@ -126,6 +126,7 @@ use std::ops::*;
 
 pub trait LADatum:
     Sized
+    + std::fmt::Display
     + Debug
     + Copy
     + Clone
