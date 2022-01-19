@@ -9,7 +9,7 @@ use tract_linalg::{
     mmm::{self, FusedSpec},
 };
 
-use rand::{Rng, prelude::SliceRandom};
+use rand::{prelude::SliceRandom, Rng};
 use std::fmt;
 use tract_itertools::Itertools;
 use DatumType::F32;
@@ -83,17 +83,39 @@ impl Dataset {
             }
         }
         */
-        for k in 1..128 {
-            samples.push((64, k, 64, 0.));
-        }
         /*
-        for _ in 0..300 {
-            let m: usize = rng.gen_range(1..16 * mm.mr());
-            let k: usize = rng.gen_range(1..128);
-            let n: usize = rng.gen_range(1..16 * mm.nr());
-            samples.push((m, k, n, 0.));
+        let mut k = 0;
+        loop {
+            samples.push((64, k, 64, 0.));
+            k += (k / 16).max(1);
+            if k > 4096 {
+                break;
+            }
         }
         */
+        /*
+        for k in 0..32 {
+            samples.push((64, k, 64, 0.));
+        }
+        */
+        for _ in 0..100 {
+            let m: usize = rng.gen_range(1..=2 * mm.mr());
+            let k: usize = rng.gen_range(1..=2 * (mm.mr() + mm.nr()));
+            let n: usize = mm.nr() * rng.gen_range(1..=2);
+            samples.push((m, k, n, 0.));
+        }
+        for _ in 0..100 {
+            let m: usize = mm.mr() * rng.gen_range(1..=2);
+            let k: usize = rng.gen_range(1..=2 * (mm.mr() + mm.nr()));
+            let n: usize = rng.gen_range(1..=2 * mm.nr());
+            samples.push((m, k, n, 0.));
+        }
+        for _ in 0..100 {
+            let m: usize = rng.gen_range(1..=2 * mm.mr());
+            let k: usize = rng.gen_range(1..=2 * (mm.mr() + mm.nr()));
+            let n: usize = rng.gen_range(1..=2 * mm.nr());
+            samples.push((m, k, n, 0.));
+        }
         /*
         for _ in 0..20 {
             let m: usize = rng.gen_range(1..128 * mm.mr());
@@ -162,44 +184,43 @@ impl Model {
         let cols = n.divceil(nr);
         [
             k as f64,
-            (k * k) as f64, /*
-                   (rows * cols) as f64,
-                   (rows * cols * k) as f64,
-                   (rows * rows * cols * cols) as f64,
-                   (rows * rows * cols * cols * k) as f64,
-                   cols as f64,
-                   rows as f64,
-                   (rows * rows) as f64,
-                   (cols * cols) as f64,
-                   // rows, cols
-                   //            m.divceil(mr) as f64,
-                   //            n.divceil(nr) as f64,
-                   //            // tiles
-                   ((m == 1) as usize) as f64,
-                   ((rows == 1) as usize) as f64,
-                   ((cols == 1) as usize) as f64,
-                   ((rows == 1) as usize * cols) as f64,
-                   ((cols == 1) as usize * rows) as f64,
-                   (rows * rows * cols) as f64,
-                   (rows * cols * cols) as f64,
-                   //            // partial tiles right
-                   //            (m.divceil(mr) * ((n % nr) != 0) as usize) as f64,
-                   //            (m.divceil(mr) * (n % nr) as usize) as f64,
-                   //            // partial tiles down
-                   (cols * ((m % mr) != 0) as usize) as f64,
-                   (rows * ((n % nr) != 0) as usize) as f64,
-                   (cols * (m % mr) as usize) as f64,
-                   (rows * (n % nr) as usize) as f64,
-                   (cols * rows * (m % mr) as usize) as f64,
-                   (cols * rows * (n % nr) as usize) as f64,
-                   (cols * cols * (m % mr) as usize) as f64,
-                   (rows * rows * (n % nr) as usize) as f64,
-                   (cols * rows * ((n % nr) != 0) as usize * ((m % mr) != 0) as usize) as f64,
-                   (((n % nr) != 0) as usize * ((m % mr) != 0) as usize) as f64,
-                   ((n % nr) * (m % mr)) as f64,
-                   (cols * cols * rows * rows * ((n % nr) != 0) as usize * ((m % mr) != 0) as usize)
-                       as f64,
-                       */
+            (k * k) as f64,
+            (rows * cols) as f64,
+            (rows * cols * k) as f64,
+            (rows * rows * cols * cols) as f64,
+            (rows * rows * cols * cols * k) as f64,
+            cols as f64,
+            rows as f64,
+            (rows * rows) as f64,
+            (cols * cols) as f64,
+            // rows, cols
+            //            m.divceil(mr) as f64,
+            //            n.divceil(nr) as f64,
+            //            // tiles
+            ((m == 1) as usize) as f64,
+            ((rows == 1) as usize) as f64,
+            ((cols == 1) as usize) as f64,
+            ((rows == 1) as usize * cols) as f64,
+            ((cols == 1) as usize * rows) as f64,
+            (rows * rows * cols) as f64,
+            (rows * cols * cols) as f64,
+            //            // partial tiles right
+            //            (m.divceil(mr) * ((n % nr) != 0) as usize) as f64,
+            //            (m.divceil(mr) * (n % nr) as usize) as f64,
+            //            // partial tiles down
+            (cols * ((m % mr) != 0) as usize) as f64,
+            (rows * ((n % nr) != 0) as usize) as f64,
+            (cols * (m % mr) as usize) as f64,
+            (rows * (n % nr) as usize) as f64,
+            (cols * rows * (m % mr) as usize) as f64,
+            (cols * rows * (n % nr) as usize) as f64,
+            (cols * cols * (m % mr) as usize) as f64,
+            (rows * rows * (n % nr) as usize) as f64,
+            (cols * rows * ((n % nr) != 0) as usize * ((m % mr) != 0) as usize) as f64,
+            (((n % nr) != 0) as usize * ((m % mr) != 0) as usize) as f64,
+            ((n % nr) * (m % mr)) as f64,
+            (cols * cols * rows * rows * ((n % nr) != 0) as usize * ((m % mr) != 0) as usize)
+                as f64,
         ]
     }
 
@@ -229,7 +250,7 @@ impl Model {
         let color = colorous::RED_YELLOW_GREEN.eval_continuous(1.0 - ratio_for_color);
         let color = ansi_term::Color::RGB(color.r, color.g, color.b);
         let line = format!(
-            "{:4} {:4} {:4}  pred:{:8.03} us truth:{:8.03} us {:5.2}%",
+            "{:4} {:4} {:4}  pred: {:9.03} us truth: {:9.03} us {:5.2}%",
             m,
             k,
             n,
@@ -256,7 +277,8 @@ fn main() {
 
     let matches = parser.get_matches();
 
-    let mm = mmm::MatMatMulImpl::<generic::GenericMmm4x4<f32, f32, f32>, f32>::new();
+//    let mm = mmm::MatMatMulImpl::<generic::GenericMmm4x4<f32, f32, f32>, f32>::new();
+    let mm = mmm::MatMatMulImpl::<tract_linalg::arm64::MatMatMulF32x12x8, f32>::new();
     match matches.subcommand() {
         Some(("ds", sub)) => {
             Dataset::make_dataset(&mm, F32).save(sub.value_of("name").unwrap());
