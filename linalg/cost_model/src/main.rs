@@ -3,7 +3,7 @@ use pbr::ProgressBar;
 use tract_data::internal::*;
 use tract_linalg::{frame::MatMatMul, mmm::FusedSpec};
 
-use rand::{prelude::SliceRandom, Rng};
+use rand::prelude::*;
 use std::time::{Duration, Instant};
 use tract_itertools::Itertools;
 
@@ -25,6 +25,14 @@ pub fn ruin_cache() {
     let _a = (0..1000000).collect::<Vec<i32>>();
 }
 
+fn order_f64(&a: &f64, &b: &f64) -> std::cmp::Ordering {
+    if a < b {
+        std::cmp::Ordering::Less
+    } else {
+        std::cmp::Ordering::Greater
+    }
+}
+
 pub fn run_bench<T, F: FnMut() -> T>(mut f: F) -> f64 {
     let start = Instant::now();
     black_box(f());
@@ -43,35 +51,29 @@ pub fn run_bench<T, F: FnMut() -> T>(mut f: F) -> f64 {
     // chunk just need to be big enough be measurable
     let chunk = ((0.001 / evaled) as usize).max(1);
     // chunks is the number of measure. make it 1000 at least, 10000 at most
-//    let chunks = (1.0 / (evaled * chunk as f64)).max(1000.).min(10000.) as usize;
-let chunks = 10;
+    //    let chunks = (1.0 / (evaled * chunk as f64)).max(1000.).min(10000.) as usize;
+    let chunks = 10;
     let mut measures = vec![0.0; chunks];
     /*
     for _ in 0..warmup {
     black_box(f());
     }
     */
-    dbg!(chunk);
     for i in 0..chunks {
         let start = Instant::now();
         for _ in 0..chunk {
             black_box(f());
         }
         let time = start.elapsed().as_secs_f64();
-        dbg!(chunk);
-        dbg!(time);
-        assert!(time.is_normal());
-        measures[i] = dbg!(time / chunk as f64);
-        dbg!(&measures[i]);
+        measures[i] = time / chunk as f64;
     }
-    measures
-        .sort_by(|a, b| if a < b { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater });
+    measures.sort_by(order_f64);
     let q1 = measures[chunks / 4];
-    if !q1.is_normal() {
-        eprintln!("{:?}", measures);
-    }
-    assert!(q1.is_normal());
     /*
+       if !q1.is_normal() {
+       eprintln!("{:?}", measures);
+       }
+       assert!(q1.is_normal());
        let q3 = measures[chunks - chunks / 4];
        let iq = q3 - q1;
     //    measures.retain(|&x| x >= q1 && x <= q3);
@@ -87,7 +89,7 @@ let chunks = 10;
     eprintln!("avg: {}", );
     measures[chunks / 4] //[..chunks / 2].iter().copied().sum::<f64>() / (chunks / 2) as f64
     */
-    dbg!(q1)
+    q1
 }
 
 fn measure_add_mat_mul(mm: &dyn MatMatMul, m: usize, k: usize, n: usize) -> f64 {
@@ -117,6 +119,7 @@ fn measure_add_mat_mul(mm: &dyn MatMatMul, m: usize, k: usize, n: usize) -> f64 
 struct Dataset(Vec<(String, usize, usize, usize, f64)>);
 
 impl Dataset {
+    /*
     pub fn gen_inputs(
         wanted: usize,
         mm: &dyn MatMatMul,
@@ -133,17 +136,18 @@ impl Dataset {
         }
         samples
     }
+    */
 
     pub fn make_dataset(mmm: &[impl AsRef<dyn MatMatMul>]) -> Dataset {
-        let mut rng = rand::thread_rng();
+        let mut rng = thread_rng();
         let mut inputs = vec![];
         for mm in mmm {
             let mm = mm.as_ref();
             let ms =
-                [1, 2].iter().map(|m| m * mm.mr()).flat_map(|m| [m - 1, m, m + 1]).collect_vec();
+                [1, 2, 3].iter().map(|m| m * mm.mr()).flat_map(|m| [m - 1, m, m + 1]).collect_vec();
             let ns =
-                [1, 2].iter().map(|m| m * mm.nr()).flat_map(|m| [m - 1, m, m + 1]).collect_vec();
-            let ks = [4, 32];
+                [1, 2, 3].iter().map(|m| m * mm.nr()).flat_map(|m| [m - 1, m, m + 1]).collect_vec();
+            let ks = [4, 32, 128];
             for m in ms {
                 for &n in &ns {
                     for k in ks {
@@ -153,10 +157,10 @@ impl Dataset {
             }
         }
         /*
-           inputs.push((mm.kernel_name().to_string(), m * mm.mr(),
-           }
-           }
-           }
+                   inputs.push((mm.kernel_name().to_string(), m * mm.mr(),
+                   }
+                   }
+                   }
         /*
         let wanted = 10;
         let mult = SamplingStrat::MultipleOfR(2);
@@ -173,7 +177,6 @@ impl Dataset {
         let mut samples = vec![];
         for (s, m, k, n) in inputs {
             let mm = mmm.iter().find(|mm| mm.as_ref().kernel_name() == s).unwrap().as_ref();
-            dbg!(mm.kernel_name());
             let y = measure_add_mat_mul(mm, m, k, n);
             samples.push((s, m, k, n, y));
             progress_bar.inc();
@@ -215,6 +218,7 @@ fn train(ds: &Dataset, mm: &impl AsRef<dyn MatMatMul>) -> Model {
         }
     }
     let model = fit_low_level_regression_model(&*data, count, data.len() / count).unwrap();
+    dbg!(&mm.kernel_name());
     dbg!(&model.rsquared);
     dbg!(&model.pvalues);
     let mut model = model.parameters;
@@ -248,6 +252,7 @@ fn eval(model: &Model, name: &str, ds: &Dataset) {
     }
 }
 
+/*
 #[derive(Debug, Copy, Clone)]
 enum SamplingStrat {
     MultipleOfR(usize),
@@ -256,19 +261,28 @@ enum SamplingStrat {
 
 impl SamplingStrat {
     fn sample(&self, r: usize) -> usize {
-        let mut rng = rand::thread_rng();
+        let mut rng = thread_rng();
         match *self {
             SamplingStrat::MultipleOfR(n) => r * rng.gen_range(1..=n),
             SamplingStrat::AnyUpToRs(n) => rng.gen_range(1..=r * n),
         }
     }
 }
+*/
 
 fn main() {
     use clap::*;
 
     let parser = App::new("tract-linalg-cost-model")
         .subcommand(App::new("list-models"))
+        .subcommand(App::new("e2e"))
+        .subcommand(
+            App::new("train-eval")
+                .arg(Arg::new("train").required(true))
+                .arg(Arg::new("m"))
+                .arg(Arg::new("k"))
+                .arg(Arg::new("n")),
+        )
         .subcommand(
             App::new("ds")
                 .arg(Arg::new("mm").long("mm").help("Filter kernels").takes_value(true))
@@ -296,19 +310,76 @@ fn main() {
             }
             Dataset::make_dataset(&mmms).save(sub.value_of("name").unwrap());
         }
+        Some(("e2e", _)) => {
+            let mmms = tract_linalg::ops().mmm_f32_impls().to_vec();
+            let ds = Dataset::make_dataset(&mmms);
+            for mm in mmms {
+                let model = train(&ds, &mm);
+                println!("const {}: Model = {:?};", mm.kernel_name(), model);
+            }
+        }
         Some(("train", sub)) => {
             let ds = Dataset::load(sub.value_of("train").unwrap());
             let mut mmms = tract_linalg::ops().mmm_f32_impls().to_vec();
             if let Some(mm) = sub.value_of("mm") {
                 mmms.retain(|m| m.kernel_name().contains(mm));
             }
-            for mm in mmms {
+            let models = ds.0.iter().map(|p| &p.0).unique();
+            for mm in models {
+                let mm = tract_linalg::ops()
+                    .mmm_f32_impls()
+                    .iter()
+                    .find(|p| p.kernel_name() == mm)
+                    .unwrap();
                 let model = train(&ds, &mm);
                 if let Some(ds2) = sub.value_of("eval") {
                     let ds2 = Dataset::load(ds2);
                     eval(&model, mm.kernel_name(), &ds2);
                 }
             }
+        }
+        Some(("train-eval", sub)) => {
+            let ds = Dataset::load(sub.value_of("train").unwrap());
+            let mut mmms = tract_linalg::ops().mmm_f32_impls().to_vec();
+            if let Some(mm) = sub.value_of("mm") {
+                mmms.retain(|m| m.kernel_name().contains(mm));
+            }
+            let models = ds.0.iter().map(|p| &p.0).unique();
+            let m: usize = sub.value_of("m").unwrap().parse().unwrap();
+            let k: usize = sub.value_of("k").unwrap().parse().unwrap();
+            let n: usize = sub.value_of("n").unwrap().parse().unwrap();
+            let mut alts = vec![];
+            for mm in models {
+                let mm = tract_linalg::ops()
+                    .mmm_f32_impls()
+                    .iter()
+                    .find(|p| p.kernel_name() == mm)
+                    .unwrap();
+                let model = train(&ds, &mm);
+                let y = measure_add_mat_mul(&**mm, m, k, n);
+                alts.push((mm.kernel_name(), y, model.predict(m, k, n)));
+            }
+            let best_choice = alts.iter().min_by(|a, b| order_f64(&a.2, &b.2)).unwrap();
+            alts.iter().sorted_by(|a, b| order_f64(&a.1, &b.1)).enumerate().for_each(
+                |(ix, (s, t, p))| {
+                    let line = format!(
+                        "{:30} pred: {:9.03} us truth: {:9.03} us {:5.2}%",
+                        s,
+                        p * 1e6,
+                        t * 1e6,
+                        (p - t) / t * 100.
+                    );
+                    if &best_choice.0 == s {
+                        if ix == 0 {
+                            println!("{}", ansi_term::Color::Green.bold().paint(line));
+                        } else {
+                            println!("{}", ansi_term::Color::Red.bold().paint(line));
+                        }
+                    } else {
+                        println!("{}", line);
+                    }
+                },
+            );
         }
         _ => panic!(),
     };
