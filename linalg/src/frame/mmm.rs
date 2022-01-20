@@ -1,4 +1,4 @@
-pub(crate) mod cost_model;
+pub mod cost_model;
 #[macro_use]
 pub(crate) mod fuse;
 #[macro_use]
@@ -29,7 +29,7 @@ macro_rules! MMMKernel {
         impl MatMatMulKer<$ti> for $typ {
             #[inline(always)]
             fn name() -> &'static str {
-                stringify!($name)
+                stringify!($func)
             }
             #[inline(always)]
             fn mr() -> usize {
