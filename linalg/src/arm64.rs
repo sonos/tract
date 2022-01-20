@@ -3,11 +3,9 @@ pub use arm64simd::*;
 
 use crate::Ops;
 
+use crate::frame::mmm::kernel::MatMatMulKer;
 use crate::frame::ElementWiseImpl;
-use crate::frame::MatMatMul;
 use crate::frame::MatMatMulImpl;
-
-use tract_data::internal::DimLike;
 
 lazy_static::lazy_static! {
     static ref KIND: Kind = Kind::choose();
@@ -69,40 +67,22 @@ impl Kind {
 }
 
 pub fn plug(ops: &mut Ops) {
+    ops.mmm_f32_impls.push(MatMatMulF32x12x8A53::mmm());
+    ops.mmm_f32_impls.push(MatMatMulF32x8x8A53::mmm());
+    ops.mmm_f32_impls.push(MatMatMulF32x16x4A53::mmm());
+    ops.mmm_f32_impls.push(MatMatMulF32x12x8::mmm());
+    ops.mmm_f32_impls.push(MatMatMulF32x8x8::mmm());
+    ops.mmm_f32_impls.push(MatMatMulF32x16x4::mmm());
     match *KIND {
         Kind::CortexA53Like => {
             ops.mmv_f32 =
                 Box::new(|_, _| Box::new(MatMatMulImpl::<MatMatMulF32x64x1A53, f32>::new()));
-            ops.mmm_f32 = Box::new(|m, k, n| {
-                best_of(
-                    m,
-                    k,
-                    n,
-                    &[
-                        Box::new(MatMatMulImpl::<MatMatMulF32x12x8A53, f32>::new()),
-                        Box::new(MatMatMulImpl::<MatMatMulF32x8x8A53, f32>::new()),
-                        Box::new(MatMatMulImpl::<MatMatMulF32x16x4A53, f32>::new()),
-                    ],
-                )
-            })
         }
         Kind::Generic => {
             ops.mmv_f32 =
                 Box::new(
                     |_, _| Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x64x1, f32>::new()),
                 );
-            ops.mmm_f32 = Box::new(|m, k, n| {
-                best_of(
-                    m,
-                    k,
-                    n,
-                    &[
-                        Box::new(MatMatMulImpl::<MatMatMulF32x12x8, f32>::new()),
-                        Box::new(MatMatMulImpl::<MatMatMulF32x8x8, f32>::new()),
-                        Box::new(MatMatMulImpl::<MatMatMulF32x16x4, f32>::new()),
-                    ],
-                )
-            });
         }
     }
     ops.qmmm_i32 = Box::new(|_, _, _| Box::new(MatMatMulImpl::<MatMatMulI32x8x8, i32>::new()));
@@ -111,61 +91,3 @@ pub fn plug(ops: &mut Ops) {
     ops.tanh_f32 = Box::new(|| Box::new(ElementWiseImpl::<TanhF32x4n, f32>::new()));
 }
 
-fn best_of(
-    m: Option<usize>,
-    k: Option<usize>,
-    n: Option<usize>,
-    kernels: &[Box<dyn MatMatMul>],
-) -> Box<dyn MatMatMul> {
-    if let (Some(m), Some(k), Some(n)) = (m, k, n) {
-        // eprintln!("{}x{}x{}", m, k, n);
-        let ker = kernels
-            .iter()
-            .min_by_key(|ker| {
-                let rows = m.divceil(ker.mr());
-                let cols = n.divceil(ker.nr());
-                let tiles = rows * cols;
-                let cost = match *KIND {
-                    Kind::CortexA53Like => match (ker.kernel_name(), ker.mr(), ker.nr()) {
-                        ("arm64simd (generic)", 16, 4) => 31043 * k + 937000,
-                        ("arm64simd (generic)", 12, 8) => 37448 * k + 990000,
-                        ("arm64simd (generic)", 8, 8) => 28228 * k + 990000,
-                        ("arm64simd (cortex A53)", 16, 4) => 32239 * k + 990000,
-                        ("arm64simd (cortex A53)", 12, 8) => 36823 * k + 990000,
-                        ("arm64simd (cortex A53)", 8, 8) => 28333 * k + 990000,
-                        _ => panic!("uncosted kernel"),
-                    },
-                    Kind::Generic => match (ker.kernel_name(), ker.mr(), ker.nr()) {
-                        ("arm64simd (generic)", 16, 4) => 1500 * k + 83000,
-                        ("arm64simd (generic)", 12, 8) => 2083 * k + 83000,
-                        ("arm64simd (generic)", 8, 8) => 1458 * k + 83000,
-                        ("arm64simd (cortex A53)", 16, 4) => 4792 * k + 83000,
-                        ("arm64simd (cortex A53)", 12, 8) => 5625 * k + 83000,
-                        ("arm64simd (cortex A53)", 8, 8) => 4834 * k + 41000,
-                        _ => panic!("uncosted kernel"),
-                    },
-                };
-                let indirect_tiles =
-                    (rows * ker.mr() > m) as usize * cols + (cols * ker.nr() > n) as usize * rows;
-                let score = tiles * cost + indirect_tiles * ker.nr() * ker.mr() * 25000;
-                /*
-                eprintln!(
-                " {} {}x{} cost: {} tiles: {} indirect_tiles: {} score: {}",
-                ker.kernel_name(),
-                ker.mr(),
-                ker.nr(),
-                cost,
-                tiles,
-                indirect_tiles,
-                score,
-                );
-                */
-                score
-            })
-            .unwrap()
-            .clone();
-        ker
-    } else {
-        kernels.iter().max_by_key(|k| k.mr() * k.nr()).unwrap().clone()
-    }
-}

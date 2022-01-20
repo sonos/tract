@@ -1,6 +1,7 @@
 use std::{env, fs};
 mod armv7neon;
 mod armvfpv2;
+use crate::frame::mmm::kernel::MatMatMulKer;
 use crate::frame::ElementWiseImpl;
 use crate::frame::MatMatMulImpl;
 
@@ -44,32 +45,16 @@ pub fn plug(ops: &mut Ops) {
         ops.mmv_f32 = match cpu {
             0xc07 => Box::new(|_, _| armv7neon::MatMatMulF32x32x1CortexA7::mmm()),
             0xc09 => Box::new(|_, _| armv7neon::MatMatMulF32x32x1CortexA9::mmm()),
-            _ => Box::new(|_, _| armv7neon::MatMatMulF32x32x1Generic::mm()),
+            _ => Box::new(|_, _| armv7neon::MatMatMulF32x32x1Generic::mmm()),
         };
 
-        ops.mmm_f32 = match cpu {
-            0xc07 => Box::new(|m, k, n| {
-                if prefer_8x4(m, k, n) {
-                    armv7neon::MatMatMulF32x8x4CortexA7::mmm()
-                } else {
-                    armv7neon::MatMatMulF32x8x6CortexA7::mmm()
-                }
-            }),
-            0xc09 => Box::new(|m, k, n| {
-                if prefer_8x4(m, k, n) {
-                    armv7neon::MatMatMulF32x8x4CortexA9::mmm()
-                } else {
-                    armv7neon::MatMatMulF32x8x6CortexA9::mmm()
-                }
-            }),
-            _ => Box::new(|m, k, n| {
-                if prefer_8x4(m, k, n) {
-                    armv7neon::MatMatMulF32x8x4Generic::mmm()
-                } else {
-                    armv7neon::MatMatMulF32x8x6Generic::mm()
-                }
-            }),
-        };
+        ops.mmm_f32_impls.push(armv7neon::MatMatMulF32x8x4CortexA7::mmm());
+        ops.mmm_f32_impls.push(armv7neon::MatMatMulF32x8x6CortexA7::mmm());
+        ops.mmm_f32_impls.push(armv7neon::MatMatMulF32x8x4CortexA9::mmm());
+        ops.mmm_f32_impls.push(armv7neon::MatMatMulF32x8x6CortexA9::mmm());
+        ops.mmm_f32_impls.push(armv7neon::MatMatMulF32x8x4Generic::mmm());
+        ops.mmm_f32_impls.push(armv7neon::MatMatMulF32x8x6Generic::mmm());
+
         ops.qmmm_i32 = Box::new(|_, _, _| armv7neon::MatMatMulI32x8x4::mmm());
         ops.qmmv_i32 = Box::new(|_, _| armv7neon::MatMatMulI32x32x1::mmm());
         ops.sigmoid_f32 =
@@ -77,7 +62,7 @@ pub fn plug(ops: &mut Ops) {
         ops.tanh_f32 = Box::new(|| Box::new(ElementWiseImpl::<armv7neon::TanhF32x4n, f32>::new()));
     } else {
         log::info!("armvfpv2 activated for smmm");
-        ops.mmm_f32 = Box::new(|_, _, _| armvfpv2::MatMatMulF32x4x4::mmm());
+        ops.mmm_f32_impls.push(armvfpv2::MatMatMulF32x4x4::mmm());
     }
 }
 
