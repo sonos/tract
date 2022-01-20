@@ -2,11 +2,11 @@ use std::fmt;
 
 use tract_data::internal::DimLike;
 
-struct Model {
-    mr: usize,
-    nr: usize,
-    intercept: f64,
-    coef: Vec<f64>,
+pub struct Model {
+    pub mr: usize,
+    pub nr: usize,
+    pub intercept: f64,
+    pub coef: Vec<f64>,
 }
 
 impl Model {

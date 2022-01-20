@@ -34,13 +34,6 @@ use tract_data::prelude::*;
 
 pub struct Ops {
     mmm_f32_impls: Vec<Box<dyn MatMatMul>>,
-    /*
-    mmm_f32: Box<
-        dyn Fn(Option<usize>, Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul>
-            + Send
-            + Sync,
-    >,
-    */
     mmv_f32: Box<dyn Fn(Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul> + Send + Sync>,
     qmmm_i32: Box<
         dyn Fn(Option<usize>, Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul>
@@ -56,6 +49,9 @@ pub struct Ops {
 impl Ops {
     fn mmm_f32(&self, m: Option<usize>, k: Option<usize>, n: Option<usize>) -> &dyn mmm::MatMatMul {
         &*self.mmm_f32_impls[0]
+    }
+    pub fn mmm_f32_impls(&self) -> &[Box<dyn MatMatMul>] {
+        &self.mmm_f32_impls
     }
     pub fn mmm(
         &self,
@@ -86,10 +82,7 @@ impl Ops {
 
 pub fn generic() -> Ops {
     Ops {
-        mmm_f32_impls: vec![
-            generic::GenericMmm4x4::<f32, f32, f32>::mmm(),
-            generic::GenericMmm4x1::<f32, f32, f32>::mmm(),
-        ],
+        mmm_f32_impls: vec![generic::GenericMmm4x4::<f32, f32, f32>::mmm()],
         //        mmm_f32: Box::new(|_, _, _| generic::GenericMmm4x4::<f32, f32, f32>::mmm()),
         mmv_f32: Box::new(|_, _| generic::GenericMmm4x1::<f32, f32, f32>::mmm()),
         qmmm_i32: Box::new(|_, _, _| generic::GenericMmm4x4::<i8, i8, i32>::mmm()),

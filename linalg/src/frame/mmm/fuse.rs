@@ -90,7 +90,7 @@ pub enum FusedKerSpec<TI: Copy> {
 #[cfg(test)]
 #[macro_use]
 pub mod test {
-    use super::*;
+    use tract_data::internal::*;
     use crate::frame::mmm::storage::*;
     use crate::frame::mmm::*;
     use crate::generic::ScaleShiftAndRound;
@@ -328,30 +328,30 @@ pub mod test {
                                     let len = (<$ker>::mr() * <$ker>::nr()) as i64;
                                     let v = (0..len).map(|i| (i - len / 2) as $tc).collect();
                                     QScaleProblem::<$ker, $tc, $ti>::new(v, 1<<30, 2, RoundingPolicy::$policy).run()
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            test_q_scale!(Zero);
-            test_q_scale!(Away);
-            test_q_scale!(MinusInf);
-            test_q_scale!(PlusInf);
-            test_q_scale!(Even);
-            test_q_scale!(Odd);
+                test_q_scale!(Zero);
+                test_q_scale!(Away);
+                test_q_scale!(MinusInf);
+                test_q_scale!(PlusInf);
+                test_q_scale!(Even);
+                test_q_scale!(Odd);
 
-            proptest::proptest! {
-                #[test]
-                fn return_q_scale_prop(pb in any::<QScaleProblem<$ker, $tc, $ti>>()) {
-                    if $cond {
-                        pb.run()
+                proptest::proptest! {
+                    #[test]
+                    fn return_q_scale_prop(pb in any::<QScaleProblem<$ker, $tc, $ti>>()) {
+                        if $cond {
+                            pb.run()
+                        }
                     }
                 }
             }
-        }
-    };
-}
+        };
+    }
 
     pub fn mmm_stride_storage<T: Copy>(v: &[T], rsc: usize) -> OutputStoreKer {
         OutputStoreKer {
@@ -362,6 +362,7 @@ pub mod test {
         }
     }
 
+    use crate::LADatum;
     pub fn return_zeros<K, TC, TI>()
     where
         K: MatMatMulKer<TI>,
