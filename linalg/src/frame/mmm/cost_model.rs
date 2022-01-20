@@ -20,14 +20,19 @@ impl Model {
         let rows = m.divceil(mr);
         let cols = n.divceil(nr);
         vec![
+            /*
             k as f64,
             (k * k) as f64,
+            */
             (rows * cols) as f64,
             (rows * cols * k) as f64,
             (rows * rows * cols * cols) as f64,
             (rows * rows * cols * cols * k) as f64,
+            /*
             cols as f64,
             rows as f64,
+            */
+            /*
             (rows * rows) as f64,
             (cols * cols) as f64,
             ((m == 1) as usize) as f64,
@@ -37,19 +42,24 @@ impl Model {
             ((cols == 1) as usize * rows) as f64,
             (rows * rows * cols) as f64,
             (rows * cols * cols) as f64,
+            */
             (cols * ((m % mr) != 0) as usize) as f64,
             (rows * ((n % nr) != 0) as usize) as f64,
             (cols * (m % mr) as usize) as f64,
             (rows * (n % nr) as usize) as f64,
+            /*
             (cols * rows * (m % mr) as usize) as f64,
             (cols * rows * (n % nr) as usize) as f64,
             (cols * cols * (m % mr) as usize) as f64,
             (rows * rows * (n % nr) as usize) as f64,
             (cols * rows * ((n % nr) != 0) as usize * ((m % mr) != 0) as usize) as f64,
+            */
             (((n % nr) != 0) as usize * ((m % mr) != 0) as usize) as f64,
+            /*
             ((n % nr) * (m % mr)) as f64,
             (cols * cols * rows * rows * ((n % nr) != 0) as usize * ((m % mr) != 0) as usize)
                 as f64,
+            */
         ]
     }
 
