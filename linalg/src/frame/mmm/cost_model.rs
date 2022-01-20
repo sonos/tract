@@ -2,6 +2,7 @@ use std::fmt;
 
 use tract_data::internal::DimLike;
 
+#[derive(Debug)]
 pub struct Model {
     pub mr: usize,
     pub nr: usize,
@@ -19,47 +20,20 @@ impl Model {
     ) -> impl IntoIterator<Item = f64> + fmt::Debug {
         let rows = m.divceil(mr);
         let cols = n.divceil(nr);
+        let rows_recip = (rows as f64 + 1.0).recip();
+        let cols_recip = (cols as f64 + 1.0).recip();
         vec![
-            /*
-            k as f64,
-            (k * k) as f64,
-            */
             (rows * cols) as f64,
             (rows * cols * k) as f64,
-            (rows * rows * cols * cols) as f64,
-            (rows * rows * cols * cols * k) as f64,
-            /*
-            cols as f64,
-            rows as f64,
-            */
-            /*
-            (rows * rows) as f64,
-            (cols * cols) as f64,
-            ((m == 1) as usize) as f64,
-            ((rows == 1) as usize) as f64,
-            ((cols == 1) as usize) as f64,
-            ((rows == 1) as usize * cols) as f64,
-            ((cols == 1) as usize * rows) as f64,
-            (rows * rows * cols) as f64,
-            (rows * cols * cols) as f64,
-            */
+            rows_recip,
+            rows_recip * k as f64,
+            cols_recip,
+            cols_recip * k as f64,
             (cols * ((m % mr) != 0) as usize) as f64,
             (rows * ((n % nr) != 0) as usize) as f64,
             (cols * (m % mr) as usize) as f64,
             (rows * (n % nr) as usize) as f64,
-            /*
-            (cols * rows * (m % mr) as usize) as f64,
-            (cols * rows * (n % nr) as usize) as f64,
-            (cols * cols * (m % mr) as usize) as f64,
-            (rows * rows * (n % nr) as usize) as f64,
-            (cols * rows * ((n % nr) != 0) as usize * ((m % mr) != 0) as usize) as f64,
-            */
             (((n % nr) != 0) as usize * ((m % mr) != 0) as usize) as f64,
-            /*
-            ((n % nr) * (m % mr)) as f64,
-            (cols * cols * rows * rows * ((n % nr) != 0) as usize * ((m % mr) != 0) as usize)
-                as f64,
-            */
         ]
     }
 
