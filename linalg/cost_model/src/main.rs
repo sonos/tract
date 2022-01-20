@@ -1,31 +1,97 @@
 use linregress::fit_low_level_regression_model;
 use pbr::ProgressBar;
 use tract_data::internal::*;
-use tract_linalg::{
-    frame::MatMatMul,
-    generic,
-    mmm::{self, FusedSpec},
-};
+use tract_linalg::{frame::MatMatMul, mmm::FusedSpec};
 
 use rand::{prelude::SliceRandom, Rng};
+use std::time::{Duration, Instant};
 use tract_itertools::Itertools;
-use DatumType::F32;
 
 use tract_linalg::frame::mmm::cost_model::Model;
 
-#[path = "../../benches/nano.rs"]
-mod nano;
-use nano::*;
-
 lazy_static::lazy_static! {
     static ref RUIN_CACHE:f64 = run_bench(|| ruin_cache());
+}
+
+fn black_box<T>(dummy: T) -> T {
+    unsafe {
+        let ret = std::ptr::read_volatile(&dummy);
+        std::mem::forget(dummy);
+        ret
+    }
 }
 
 pub fn ruin_cache() {
     let _a = (0..1000000).collect::<Vec<i32>>();
 }
 
-fn measure_add_mat_mul(mm: &dyn MatMatMul, dt: DatumType, m: usize, k: usize, n: usize) -> f64 {
+pub fn run_bench<T, F: FnMut() -> T>(mut f: F) -> f64 {
+    let start = Instant::now();
+    black_box(f());
+    let once = start.elapsed();
+    let evaled = if once < Duration::from_millis(1) {
+        let start = Instant::now();
+        for _ in 0..1000 {
+            black_box(f());
+        }
+        start.elapsed().as_secs_f64() / 1000.
+    } else {
+        once.as_secs_f64()
+    };
+    //    let warmup = (0.2 / evaled) as usize;
+    //    let iters = 5.0 / evaled as f64;
+    // chunk just need to be big enough be measurable
+    let chunk = ((0.001 / evaled) as usize).max(1);
+    // chunks is the number of measure. make it 1000 at least, 10000 at most
+//    let chunks = (1.0 / (evaled * chunk as f64)).max(1000.).min(10000.) as usize;
+let chunks = 10;
+    let mut measures = vec![0.0; chunks];
+    /*
+    for _ in 0..warmup {
+    black_box(f());
+    }
+    */
+    dbg!(chunk);
+    for i in 0..chunks {
+        let start = Instant::now();
+        for _ in 0..chunk {
+            black_box(f());
+        }
+        let time = start.elapsed().as_secs_f64();
+        dbg!(chunk);
+        dbg!(time);
+        assert!(time.is_normal());
+        measures[i] = dbg!(time / chunk as f64);
+        dbg!(&measures[i]);
+    }
+    measures
+        .sort_by(|a, b| if a < b { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater });
+    let q1 = measures[chunks / 4];
+    if !q1.is_normal() {
+        eprintln!("{:?}", measures);
+    }
+    assert!(q1.is_normal());
+    /*
+       let q3 = measures[chunks - chunks / 4];
+       let iq = q3 - q1;
+    //    measures.retain(|&x| x >= q1 && x <= q3);
+    let epsilon = iq * 2. / (q3 + q1);
+    eprintln!("evaled: {} chunk:{} chunks: {} epsilon: {:.3e}", evaled, chunk, chunks, epsilon);
+    let mut hist = vec![0; 101];
+    for m in &measures {
+    let bucket = (m - measures[0]) / (measures[measures.len() - 1] - measures[0]);
+    hist[(100. * bucket) as usize] += 1;
+    }
+    eprintln!("{hist:?}");
+    eprintln!("q1: {}", measures[measures.len() / 4]);
+    eprintln!("avg: {}", );
+    measures[chunks / 4] //[..chunks / 2].iter().copied().sum::<f64>() / (chunks / 2) as f64
+    */
+    dbg!(q1)
+}
+
+fn measure_add_mat_mul(mm: &dyn MatMatMul, m: usize, k: usize, n: usize) -> f64 {
+    let dt = mm.internal_type();
     let pa = Tensor::zero_aligned_dt(dt, &[mm.a_pack(k).len(m)], mm.a_pack(k).alignment()).unwrap();
     let pb = Tensor::zero_aligned_dt(dt, &[mm.b_pack(k).len(n)], mm.b_pack(k).alignment()).unwrap();
     let pc = Tensor::zero_dt(dt, &[m, n]).unwrap();
@@ -51,42 +117,69 @@ fn measure_add_mat_mul(mm: &dyn MatMatMul, dt: DatumType, m: usize, k: usize, n:
 struct Dataset(Vec<(String, usize, usize, usize, f64)>);
 
 impl Dataset {
-    pub fn make_dataset(mmm: &[impl AsRef<dyn MatMatMul>], dt: DatumType) -> Dataset {
+    pub fn gen_inputs(
+        wanted: usize,
+        mm: &dyn MatMatMul,
+        m: SamplingStrat,
+        k: SamplingStrat,
+        n: SamplingStrat,
+    ) -> Vec<(String, usize, usize, usize)> {
+        let mut samples = vec![];
+        for _ in 0..wanted {
+            let m = m.sample(mm.mr());
+            let k = k.sample(mm.mr() + mm.nr());
+            let n = n.sample(mm.nr());
+            samples.push((mm.kernel_name().to_string(), m, k, n));
+        }
+        samples
+    }
+
+    pub fn make_dataset(mmm: &[impl AsRef<dyn MatMatMul>]) -> Dataset {
         let mut rng = rand::thread_rng();
-        let mut data = vec![];
+        let mut inputs = vec![];
         for mm in mmm {
             let mm = mm.as_ref();
-            let mut samples = vec![];
-            for _ in 0..30 {
-                let m: usize = rng.gen_range(1..=2 * mm.mr());
-                let k: usize = rng.gen_range(1..=2 * (mm.mr() + mm.nr()));
-                let n: usize = mm.nr() * rng.gen_range(1..=2);
-                samples.push((m, k, n));
+            let ms =
+                [1, 2].iter().map(|m| m * mm.mr()).flat_map(|m| [m - 1, m, m + 1]).collect_vec();
+            let ns =
+                [1, 2].iter().map(|m| m * mm.nr()).flat_map(|m| [m - 1, m, m + 1]).collect_vec();
+            let ks = [4, 32];
+            for m in ms {
+                for &n in &ns {
+                    for k in ks {
+                        inputs.push((mm.kernel_name().to_string(), m, k, n));
+                    }
+                }
             }
-            for _ in 0..30 {
-                let m: usize = mm.mr() * rng.gen_range(1..=2);
-                let k: usize = rng.gen_range(1..=2 * (mm.mr() + mm.nr()));
-                let n: usize = rng.gen_range(1..=2 * mm.nr());
-                samples.push((m, k, n));
-            }
-            for _ in 0..30 {
-                let m: usize = rng.gen_range(1..=2 * mm.mr());
-                let k: usize = rng.gen_range(1..=2 * (mm.mr() + mm.nr()));
-                let n: usize = rng.gen_range(1..=2 * mm.nr());
-                samples.push((m, k, n));
-            }
-            samples.shuffle(&mut rng);
-            let mut progress_bar = ProgressBar::new(samples.len() as _);
-            println!("Sampling: `{}'", mm.kernel_name());
-            for ix in 0..samples.len() {
-                let (m, k, n) = samples[ix];
-                let y = measure_add_mat_mul(mm, dt, m, k, n);
-                data.push((mm.kernel_name().to_string(), m, k, n, y));
-                progress_bar.inc();
-            }
-            progress_bar.finish();
         }
-        Dataset(data)
+        /*
+           inputs.push((mm.kernel_name().to_string(), m * mm.mr(),
+           }
+           }
+           }
+        /*
+        let wanted = 10;
+        let mult = SamplingStrat::MultipleOfR(2);
+        let any = SamplingStrat::AnyUpToRs(2);
+        inputs.extend(Self::gen_inputs(wanted / 4, mm, mult, any, mult));
+        inputs.extend(Self::gen_inputs(wanted / 4, mm, mult, any, any));
+        inputs.extend(Self::gen_inputs(wanted / 4, mm, any, any, mult));
+        inputs.extend(Self::gen_inputs(wanted / 4, mm, any, any, any));
+        */
+        }
+        */
+        inputs.shuffle(&mut rng);
+        let mut progress_bar = ProgressBar::new(inputs.len() as _);
+        let mut samples = vec![];
+        for (s, m, k, n) in inputs {
+            let mm = mmm.iter().find(|mm| mm.as_ref().kernel_name() == s).unwrap().as_ref();
+            dbg!(mm.kernel_name());
+            let y = measure_add_mat_mul(mm, m, k, n);
+            samples.push((s, m, k, n, y));
+            progress_bar.inc();
+        }
+        progress_bar.finish();
+        Dataset(samples)
     }
 
     pub fn save(&self, filename: &str) {
@@ -109,9 +202,10 @@ impl Dataset {
     }
 }
 
-fn train(ds: &Dataset, mm: &dyn MatMatMul) -> Model {
+fn train(ds: &Dataset, mm: &impl AsRef<dyn MatMatMul>) -> Model {
     let mut data = vec![];
     let mut count = 0;
+    let mm = mm.as_ref();
     for (s, m, k, n, y) in &ds.0 {
         if mm.kernel_name() == s {
             data.push(*y);
@@ -121,7 +215,8 @@ fn train(ds: &Dataset, mm: &dyn MatMatMul) -> Model {
         }
     }
     let model = fit_low_level_regression_model(&*data, count, data.len() / count).unwrap();
-    dbg!(&model);
+    dbg!(&model.rsquared);
+    dbg!(&model.pvalues);
     let mut model = model.parameters;
     Model { mr: mm.mr(), nr: mm.nr(), intercept: model.remove(0), coef: model }
 }
@@ -153,18 +248,41 @@ fn eval(model: &Model, name: &str, ds: &Dataset) {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+enum SamplingStrat {
+    MultipleOfR(usize),
+    AnyUpToRs(usize),
+}
+
+impl SamplingStrat {
+    fn sample(&self, r: usize) -> usize {
+        let mut rng = rand::thread_rng();
+        match *self {
+            SamplingStrat::MultipleOfR(n) => r * rng.gen_range(1..=n),
+            SamplingStrat::AnyUpToRs(n) => rng.gen_range(1..=r * n),
+        }
+    }
+}
+
 fn main() {
     use clap::*;
 
     let parser = App::new("tract-linalg-cost-model")
         .subcommand(App::new("list-models"))
-        .subcommand(App::new("ds").arg(Arg::new("name").required(true)))
-        .subcommand(App::new("train").arg(Arg::new("train").required(true)).arg(Arg::new("eval")));
+        .subcommand(
+            App::new("ds")
+                .arg(Arg::new("mm").long("mm").help("Filter kernels").takes_value(true))
+                .arg(Arg::new("name").required(true)),
+        )
+        .subcommand(
+            App::new("train")
+                .arg(Arg::new("mm").long("mm").help("Filter kernels").takes_value(true))
+                .arg(Arg::new("train").required(true))
+                .arg(Arg::new("eval")),
+        );
 
     let matches = parser.get_matches();
 
-    let mm = mmm::MatMatMulImpl::<generic::GenericMmm4x4<f32, f32, f32>, f32>::new();
-    //    let mm = mmm::MatMatMulImpl::<tract_linalg::arm64::MatMatMulF32x12x8, f32>::new();
     match matches.subcommand() {
         Some(("list-models", _sub)) => {
             for mmm in tract_linalg::ops().mmm_f32_impls() {
@@ -172,15 +290,24 @@ fn main() {
             }
         }
         Some(("ds", sub)) => {
-            Dataset::make_dataset(&tract_linalg::ops().mmm_f32_impls(), F32)
-                .save(sub.value_of("name").unwrap());
+            let mut mmms = tract_linalg::ops().mmm_f32_impls().to_vec();
+            if let Some(mm) = sub.value_of("mm") {
+                mmms.retain(|m| m.kernel_name().contains(mm));
+            }
+            Dataset::make_dataset(&mmms).save(sub.value_of("name").unwrap());
         }
         Some(("train", sub)) => {
             let ds = Dataset::load(sub.value_of("train").unwrap());
-            let model = train(&ds, &mm);
-            if let Some(ds2) = sub.value_of("eval") {
-                let ds2 = Dataset::load(ds2);
-                eval(&model, mm.kernel_name(), &ds2);
+            let mut mmms = tract_linalg::ops().mmm_f32_impls().to_vec();
+            if let Some(mm) = sub.value_of("mm") {
+                mmms.retain(|m| m.kernel_name().contains(mm));
+            }
+            for mm in mmms {
+                let model = train(&ds, &mm);
+                if let Some(ds2) = sub.value_of("eval") {
+                    let ds2 = Dataset::load(ds2);
+                    eval(&model, mm.kernel_name(), &ds2);
+                }
             }
         }
         _ => panic!(),
