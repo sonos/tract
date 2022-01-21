@@ -6,10 +6,12 @@ pub mod mmm;
 pub mod sigmoid;
 pub mod tanh;
 
+mod intel;
+
 pub fn plug(ops: &mut Ops) {
     if is_x86_feature_detected!("fma") {
-        ops.mmm_f32_impls.push(mmm::MatMatMulF32x16x6::mmm());
-        ops.mmm_f32_impls.push(mmm::MatMatMulF32x64x1::mmm());
+        ops.mmm_f32_impls.push((mmm::MatMatMulF32x16x6::mmm(), None));
+        ops.mmm_f32_impls.push((mmm::MatMatMulF32x64x1::mmm(), None));
         ops.mmv_f32 = Box::new(|_, _| mmm::MatMatMulF32x64x1::mmm());
         ops.sigmoid_f32 = Box::new(|| Box::new(ElementWiseImpl::<sigmoid::SigmoidF32, f32>::new()));
         ops.tanh_f32 = Box::new(|| Box::new(ElementWiseImpl::<tanh::TanhF32, f32>::new()));
@@ -19,4 +21,5 @@ pub fn plug(ops: &mut Ops) {
         ops.qmmm_i32 = Box::new(|_, _, _| mmm::MatMatMulI32x8x8::mmm());
         log::info!("mmm_i8_i8 and mmm_i8_i32: x86_64/avx2 activated");
     }
+    ops.set_cost_models(intel::models());
 }

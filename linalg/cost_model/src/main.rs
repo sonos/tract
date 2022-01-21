@@ -7,7 +7,7 @@ use rand::prelude::*;
 use std::time::{Duration, Instant};
 use tract_itertools::Itertools;
 
-use tract_linalg::frame::mmm::cost_model::Model;
+use tract_linalg::frame::mmm::cost_model::CostModel;
 
 lazy_static::lazy_static! {
     static ref RUIN_CACHE:f64 = run_bench(|| ruin_cache());
@@ -121,20 +121,20 @@ struct Dataset(Vec<(String, usize, usize, usize, f64)>);
 impl Dataset {
     /*
     pub fn gen_inputs(
-        wanted: usize,
-        mm: &dyn MatMatMul,
-        m: SamplingStrat,
-        k: SamplingStrat,
-        n: SamplingStrat,
+    wanted: usize,
+    mm: &dyn MatMatMul,
+    m: SamplingStrat,
+    k: SamplingStrat,
+    n: SamplingStrat,
     ) -> Vec<(String, usize, usize, usize)> {
-        let mut samples = vec![];
-        for _ in 0..wanted {
-            let m = m.sample(mm.mr());
-            let k = k.sample(mm.mr() + mm.nr());
-            let n = n.sample(mm.nr());
-            samples.push((mm.kernel_name().to_string(), m, k, n));
-        }
-        samples
+    let mut samples = vec![];
+    for _ in 0..wanted {
+    let m = m.sample(mm.mr());
+    let k = k.sample(mm.mr() + mm.nr());
+    let n = n.sample(mm.nr());
+    samples.push((mm.kernel_name().to_string(), m, k, n));
+    }
+    samples
     }
     */
 
@@ -205,7 +205,7 @@ impl Dataset {
     }
 }
 
-fn train(ds: &Dataset, mm: &impl AsRef<dyn MatMatMul>) -> Model {
+fn train(ds: &Dataset, mm: &impl AsRef<dyn MatMatMul>) -> CostModel {
     let mut data = vec![];
     let mut count = 0;
     let mm = mm.as_ref();
@@ -213,7 +213,7 @@ fn train(ds: &Dataset, mm: &impl AsRef<dyn MatMatMul>) -> Model {
         if mm.kernel_name() == s {
             data.push(*y);
             data.push(1.0);
-            data.extend(Model::features(mm.mr(), mm.nr(), *m, *k, *n));
+            data.extend(CostModel::features(mm.mr(), mm.nr(), *m, *k, *n));
             count += 1;
         }
     }
@@ -222,10 +222,10 @@ fn train(ds: &Dataset, mm: &impl AsRef<dyn MatMatMul>) -> Model {
     dbg!(&model.rsquared);
     dbg!(&model.pvalues);
     let mut model = model.parameters;
-    Model { mr: mm.mr(), nr: mm.nr(), intercept: model.remove(0), coef: model }
+    CostModel { mr: mm.mr(), nr: mm.nr(), intercept: model.remove(0), coef: model }
 }
 
-fn compare(model: &Model, m: usize, k: usize, n: usize, t: f64) {
+fn compare(model: &CostModel, m: usize, k: usize, n: usize, t: f64) {
     let prediction = model.predict(m, k, n);
     let ratio_for_color = ((prediction - t).abs() / t * 50.).min(1.);
     let color = colorous::RED_YELLOW_GREEN.eval_continuous(1.0 - ratio_for_color);
@@ -242,7 +242,7 @@ fn compare(model: &Model, m: usize, k: usize, n: usize, t: f64) {
     println!("{}", color.bold().paint(line));
 }
 
-fn eval(model: &Model, name: &str, ds: &Dataset) {
+fn eval(model: &CostModel, name: &str, ds: &Dataset) {
     for (_, m, k, n, y) in
         ds.0.iter()
             .filter(|p| p.0 == name)
@@ -255,18 +255,18 @@ fn eval(model: &Model, name: &str, ds: &Dataset) {
 /*
 #[derive(Debug, Copy, Clone)]
 enum SamplingStrat {
-    MultipleOfR(usize),
-    AnyUpToRs(usize),
+MultipleOfR(usize),
+AnyUpToRs(usize),
 }
 
 impl SamplingStrat {
-    fn sample(&self, r: usize) -> usize {
-        let mut rng = thread_rng();
-        match *self {
-            SamplingStrat::MultipleOfR(n) => r * rng.gen_range(1..=n),
-            SamplingStrat::AnyUpToRs(n) => rng.gen_range(1..=r * n),
-        }
-    }
+fn sample(&self, r: usize) -> usize {
+let mut rng = thread_rng();
+match *self {
+SamplingStrat::MultipleOfR(n) => r * rng.gen_range(1..=n),
+SamplingStrat::AnyUpToRs(n) => rng.gen_range(1..=r * n),
+}
+}
 }
 */
 
@@ -275,7 +275,15 @@ fn main() {
 
     let parser = App::new("tract-linalg-cost-model")
         .subcommand(App::new("list-models"))
-        .subcommand(App::new("e2e"))
+        .subcommand(
+            App::new("e2e").arg(
+                Arg::new("output")
+                    .short('o')
+                    .long("output")
+                    .takes_value(true)
+                    .help("Filename to write models to (in rust form)"),
+            ),
+        )
         .subcommand(
             App::new("train-eval")
                 .arg(Arg::new("train").required(true))
@@ -297,40 +305,61 @@ fn main() {
 
     let matches = parser.get_matches();
 
+    let impls = tract_linalg::ops().mmm_f32_impls().iter().map(|p| p.0.clone()).collect_vec();
     match matches.subcommand() {
         Some(("list-models", _sub)) => {
-            for mmm in tract_linalg::ops().mmm_f32_impls() {
+            for mmm in impls {
                 println!("{}", mmm.kernel_name());
             }
         }
         Some(("ds", sub)) => {
-            let mut mmms = tract_linalg::ops().mmm_f32_impls().to_vec();
+            let mut mmms = impls.clone();
             if let Some(mm) = sub.value_of("mm") {
                 mmms.retain(|m| m.kernel_name().contains(mm));
             }
             Dataset::make_dataset(&mmms).save(sub.value_of("name").unwrap());
         }
-        Some(("e2e", _)) => {
-            let mmms = tract_linalg::ops().mmm_f32_impls().to_vec();
-            let ds = Dataset::make_dataset(&mmms);
-            for mm in mmms {
+        Some(("e2e", sub)) => {
+            let ds = Dataset::make_dataset(&impls);
+            let mut writer: Box<dyn std::io::Write> = if let Some(filename) = sub.value_of("output")
+            {
+                Box::new(std::fs::File::create(filename).unwrap())
+            } else {
+                Box::new(std::io::stdout())
+            };
+            writeln!(writer, "use crate::frame::mmm::cost_model::CostModel;").unwrap();
+            writeln!(writer, "pub fn models() -> Vec<(&'static str, CostModel)> {{").unwrap();
+            writeln!(writer, "vec!(").unwrap();
+            for mm in impls {
                 let model = train(&ds, &mm);
-                println!("const {}: Model = {:?};", mm.kernel_name(), model);
+                writeln!(
+                    writer,
+                    "(\"{}\", CostModel {{ mr: {}, nr: {},",
+                    mm.kernel_name(),
+                    mm.mr(),
+                    mm.nr()
+                )
+                .unwrap();
+                writeln!(writer, "intercept: {},", model.intercept).unwrap();
+                writeln!(
+                    writer,
+                    "coef: vec!({}),",
+                    model.coef.iter().map(|c| format!("{:.e}", c)).join(", ")
+                )
+                .unwrap();
+                writeln!(writer, "}}),").unwrap();
             }
+            writeln!(writer, ")}}").unwrap();
         }
         Some(("train", sub)) => {
             let ds = Dataset::load(sub.value_of("train").unwrap());
-            let mut mmms = tract_linalg::ops().mmm_f32_impls().to_vec();
+            let mut mmms = impls.clone();
             if let Some(mm) = sub.value_of("mm") {
                 mmms.retain(|m| m.kernel_name().contains(mm));
             }
             let models = ds.0.iter().map(|p| &p.0).unique();
             for mm in models {
-                let mm = tract_linalg::ops()
-                    .mmm_f32_impls()
-                    .iter()
-                    .find(|p| p.kernel_name() == mm)
-                    .unwrap();
+                let mm = impls.iter().find(|p| p.kernel_name() == mm).unwrap();
                 let model = train(&ds, &mm);
                 if let Some(ds2) = sub.value_of("eval") {
                     let ds2 = Dataset::load(ds2);
@@ -340,7 +369,7 @@ fn main() {
         }
         Some(("train-eval", sub)) => {
             let ds = Dataset::load(sub.value_of("train").unwrap());
-            let mut mmms = tract_linalg::ops().mmm_f32_impls().to_vec();
+            let mut mmms = impls.clone();
             if let Some(mm) = sub.value_of("mm") {
                 mmms.retain(|m| m.kernel_name().contains(mm));
             }
@@ -350,11 +379,7 @@ fn main() {
             let n: usize = sub.value_of("n").unwrap().parse().unwrap();
             let mut alts = vec![];
             for mm in models {
-                let mm = tract_linalg::ops()
-                    .mmm_f32_impls()
-                    .iter()
-                    .find(|p| p.kernel_name() == mm)
-                    .unwrap();
+                let mm = impls.iter().find(|p| p.kernel_name() == mm).unwrap();
                 let model = train(&ds, &mm);
                 let y = measure_add_mat_mul(&**mm, m, k, n);
                 alts.push((mm.kernel_name(), y, model.predict(m, k, n)));

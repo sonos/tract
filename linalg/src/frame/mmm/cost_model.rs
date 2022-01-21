@@ -2,15 +2,15 @@ use std::fmt;
 
 use tract_data::internal::DimLike;
 
-#[derive(Debug)]
-pub struct Model {
+#[derive(Debug, Clone)]
+pub struct CostModel {
     pub mr: usize,
     pub nr: usize,
     pub intercept: f64,
     pub coef: Vec<f64>,
 }
 
-impl Model {
+impl CostModel {
     pub fn features(
         mr: usize,
         nr: usize,
