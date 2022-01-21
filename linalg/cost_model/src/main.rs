@@ -4,6 +4,7 @@ use tract_data::internal::*;
 use tract_linalg::{frame::MatMatMul, mmm::FusedSpec};
 
 use rand::prelude::*;
+use std::io::Write;
 use std::time::{Duration, Instant};
 use tract_itertools::Itertools;
 
@@ -22,7 +23,7 @@ fn black_box<T>(dummy: T) -> T {
 }
 
 pub fn ruin_cache() {
-    let _a = (0..1000000).collect::<Vec<i32>>();
+//    let _a = (0..80_000).collect::<Vec<i32>>();
 }
 
 fn order_f64(&a: &f64, &b: &f64) -> std::cmp::Ordering {
@@ -34,9 +35,11 @@ fn order_f64(&a: &f64, &b: &f64) -> std::cmp::Ordering {
 }
 
 pub fn run_bench<T, F: FnMut() -> T>(mut f: F) -> f64 {
+    black_box(f());
     let start = Instant::now();
     black_box(f());
     let once = start.elapsed();
+ //   dbg!(once);
     let evaled = if once < Duration::from_millis(1) {
         let start = Instant::now();
         for _ in 0..1000 {
@@ -49,10 +52,12 @@ pub fn run_bench<T, F: FnMut() -> T>(mut f: F) -> f64 {
     //    let warmup = (0.2 / evaled) as usize;
     //    let iters = 5.0 / evaled as f64;
     // chunk just need to be big enough be measurable
+//    dbg!(evaled);
     let chunk = ((0.001 / evaled) as usize).max(1);
     // chunks is the number of measure. make it 1000 at least, 10000 at most
-    //    let chunks = (1.0 / (evaled * chunk as f64)).max(1000.).min(10000.) as usize;
-    let chunks = 10;
+    let chunks = (1.0 / (evaled * chunk as f64)).max(200.).min(10000.) as usize;
+    // let chunks = 10;
+    //dbg!(chunk, chunks);
     let mut measures = vec![0.0; chunks];
     /*
     for _ in 0..warmup {
@@ -70,10 +75,6 @@ pub fn run_bench<T, F: FnMut() -> T>(mut f: F) -> f64 {
     measures.sort_by(order_f64);
     let q1 = measures[chunks / 4];
     /*
-       if !q1.is_normal() {
-       eprintln!("{:?}", measures);
-       }
-       assert!(q1.is_normal());
        let q3 = measures[chunks - chunks / 4];
        let iq = q3 - q1;
     //    measures.retain(|&x| x >= q1 && x <= q3);
@@ -86,6 +87,8 @@ pub fn run_bench<T, F: FnMut() -> T>(mut f: F) -> f64 {
     }
     eprintln!("{hist:?}");
     eprintln!("q1: {}", measures[measures.len() / 4]);
+    */
+    /*
     eprintln!("avg: {}", );
     measures[chunks / 4] //[..chunks / 2].iter().copied().sum::<f64>() / (chunks / 2) as f64
     */
@@ -186,7 +189,6 @@ impl Dataset {
     }
 
     pub fn save(&self, filename: &str) {
-        use std::io::Write;
         let mut f = std::fs::File::create(filename).unwrap();
         for (s, m, k, n, y) in &self.0 {
             writeln!(&mut f, "{} {} {} {} {}", s, m, k, n, y).unwrap();
@@ -205,7 +207,7 @@ impl Dataset {
     }
 }
 
-fn train(ds: &Dataset, mm: &impl AsRef<dyn MatMatMul>) -> CostModel {
+fn train(ds: &Dataset, mm: impl AsRef<dyn MatMatMul>) -> CostModel {
     let mut data = vec![];
     let mut count = 0;
     let mm = mm.as_ref();
@@ -252,6 +254,33 @@ fn eval(model: &CostModel, name: &str, ds: &Dataset) {
     }
 }
 
+fn train_and_dump(impls: &[impl AsRef<dyn MatMatMul>], ds: &Dataset, writer: &mut dyn Write) {
+    writeln!(writer, "use crate::frame::mmm::cost_model::CostModel;").unwrap();
+    writeln!(writer, "pub fn models() -> Vec<(&'static str, CostModel)> {{").unwrap();
+    writeln!(writer, "vec!(").unwrap();
+    for mm in impls {
+        let model = train(&ds, mm);
+        let mm = mm.as_ref();
+        writeln!(
+            writer,
+            "(\"{}\", CostModel {{ mr: {}, nr: {},",
+            mm.kernel_name(),
+            mm.mr(),
+            mm.nr()
+        )
+        .unwrap();
+        writeln!(writer, "intercept: {},", model.intercept).unwrap();
+        writeln!(
+            writer,
+            "coef: vec!({}),",
+            model.coef.iter().map(|c| format!("{:.e}", c)).join(", ")
+        )
+        .unwrap();
+        writeln!(writer, "}}),").unwrap();
+    }
+    writeln!(writer, ")}}").unwrap();
+}
+
 /*
 #[derive(Debug, Copy, Clone)]
 enum SamplingStrat {
@@ -276,13 +305,22 @@ fn main() {
     let parser = App::new("tract-linalg-cost-model")
         .subcommand(App::new("list-models"))
         .subcommand(
-            App::new("e2e").arg(
-                Arg::new("output")
-                    .short('o')
-                    .long("output")
-                    .takes_value(true)
-                    .help("Filename to write models to (in rust form)"),
-            ),
+            App::new("e2e")
+                .arg(
+                    Arg::new("output")
+                        .short('o')
+                        .long("output")
+                        .takes_value(true)
+                        .help("Filename to write models to (in rust form)"),
+                )
+                .arg(Arg::new("ds").long("dataset").takes_value(true).help("Dataset to read")),
+        )
+        .subcommand(
+            App::new("time")
+                .arg(Arg::new("mm").long("mm").help("Filter kernels").takes_value(true))
+                .arg(Arg::new("m"))
+                .arg(Arg::new("k"))
+                .arg(Arg::new("n")),
         )
         .subcommand(
             App::new("train-eval")
@@ -320,36 +358,18 @@ fn main() {
             Dataset::make_dataset(&mmms).save(sub.value_of("name").unwrap());
         }
         Some(("e2e", sub)) => {
-            let ds = Dataset::make_dataset(&impls);
+            let ds = if let Some(ds) = sub.value_of("ds") {
+                Dataset::load(ds)
+            } else {
+                Dataset::make_dataset(&impls)
+            };
             let mut writer: Box<dyn std::io::Write> = if let Some(filename) = sub.value_of("output")
             {
                 Box::new(std::fs::File::create(filename).unwrap())
             } else {
                 Box::new(std::io::stdout())
             };
-            writeln!(writer, "use crate::frame::mmm::cost_model::CostModel;").unwrap();
-            writeln!(writer, "pub fn models() -> Vec<(&'static str, CostModel)> {{").unwrap();
-            writeln!(writer, "vec!(").unwrap();
-            for mm in impls {
-                let model = train(&ds, &mm);
-                writeln!(
-                    writer,
-                    "(\"{}\", CostModel {{ mr: {}, nr: {},",
-                    mm.kernel_name(),
-                    mm.mr(),
-                    mm.nr()
-                )
-                .unwrap();
-                writeln!(writer, "intercept: {},", model.intercept).unwrap();
-                writeln!(
-                    writer,
-                    "coef: vec!({}),",
-                    model.coef.iter().map(|c| format!("{:.e}", c)).join(", ")
-                )
-                .unwrap();
-                writeln!(writer, "}}),").unwrap();
-            }
-            writeln!(writer, ")}}").unwrap();
+            train_and_dump(&*impls, &ds, &mut writer);
         }
         Some(("train", sub)) => {
             let ds = Dataset::load(sub.value_of("train").unwrap());
@@ -365,6 +385,19 @@ fn main() {
                     let ds2 = Dataset::load(ds2);
                     eval(&model, mm.kernel_name(), &ds2);
                 }
+            }
+        }
+        Some(("time", sub)) => {
+            let mut mmms = impls.clone();
+            if let Some(mm) = sub.value_of("mm") {
+                mmms.retain(|m| m.kernel_name().contains(mm));
+            }
+            let m: usize = sub.value_of("m").unwrap().parse().unwrap();
+            let k: usize = sub.value_of("k").unwrap().parse().unwrap();
+            let n: usize = sub.value_of("n").unwrap().parse().unwrap();
+            for mm in mmms {
+                let y = measure_add_mat_mul(&*mm, m, k, n);
+                println!("{:30} {:5} {:5} {:5} {:8.3}us", mm.kernel_name(), m, k, n, y * 1e6);
             }
         }
         Some(("train-eval", sub)) => {
