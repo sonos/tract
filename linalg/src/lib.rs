@@ -29,11 +29,12 @@ pub mod arm32;
 
 pub use self::frame::{element_wise, lut, mmm};
 
+use crate::frame::mmm::cost_model::CostModel;
 use crate::frame::mmm::kernel::MatMatMulKer;
 use tract_data::prelude::*;
 
 pub struct Ops {
-    mmm_f32_impls: Vec<Box<dyn MatMatMul>>,
+    mmm_f32_impls: Vec<(Box<dyn MatMatMul>, Option<CostModel>)>,
     mmv_f32: Box<dyn Fn(Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul> + Send + Sync>,
     qmmm_i32: Box<
         dyn Fn(Option<usize>, Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul>
@@ -48,11 +49,30 @@ pub struct Ops {
 
 impl Ops {
     fn mmm_f32(&self, m: Option<usize>, k: Option<usize>, n: Option<usize>) -> &dyn mmm::MatMatMul {
-        &*self.mmm_f32_impls[0]
+        use std::cmp::Ordering;
+        let m = m.unwrap_or(1024);
+        let k = k.unwrap_or(1024);
+        let n = n.unwrap_or(1024);
+        &*self
+            .mmm_f32_impls
+            .iter()
+            .min_by(|a, b| {
+                let a = a.1.as_ref().map(|model| model.predict(m, k, n)).unwrap_or(std::f64::MAX);
+                let b = b.1.as_ref().map(|model| model.predict(m, k, n)).unwrap_or(std::f64::MAX);
+                if a < b {
+                    Ordering::Less
+                } else {
+                    Ordering::Greater
+                }
+            })
+            .unwrap()
+            .0
     }
-    pub fn mmm_f32_impls(&self) -> &[Box<dyn MatMatMul>] {
+
+    pub fn mmm_f32_impls(&self) -> &[(Box<dyn MatMatMul>, Option<CostModel>)] {
         &self.mmm_f32_impls
     }
+
     pub fn mmm(
         &self,
         a: DatumType,
@@ -78,11 +98,20 @@ impl Ops {
             _ => None,
         }
     }
+
+    fn set_cost_models(&mut self, models: Vec<(&'static str, CostModel)>) {
+        for (name, model) in models {
+            if let Some(pair) = self.mmm_f32_impls.iter_mut().find(|mm| mm.0.kernel_name() == name)
+            {
+                pair.1 = Some(model)
+            }
+        }
+    }
 }
 
 pub fn generic() -> Ops {
     Ops {
-        mmm_f32_impls: vec![generic::GenericMmm4x4::<f32, f32, f32>::mmm()],
+        mmm_f32_impls: vec![(generic::GenericMmm4x4::<f32, f32, f32>::mmm(), None)],
         //        mmm_f32: Box::new(|_, _, _| generic::GenericMmm4x4::<f32, f32, f32>::mmm()),
         mmv_f32: Box::new(|_, _| generic::GenericMmm4x1::<f32, f32, f32>::mmm()),
         qmmm_i32: Box::new(|_, _, _| generic::GenericMmm4x4::<i8, i8, i32>::mmm()),

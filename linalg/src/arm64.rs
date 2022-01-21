@@ -1,4 +1,5 @@
 mod arm64simd;
+mod cortex_a53;
 pub use arm64simd::*;
 
 use crate::Ops;
@@ -67,12 +68,16 @@ impl Kind {
 }
 
 pub fn plug(ops: &mut Ops) {
-    ops.mmm_f32_impls.push(MatMatMulF32x12x8A53::mmm());
-    ops.mmm_f32_impls.push(MatMatMulF32x8x8A53::mmm());
-    ops.mmm_f32_impls.push(MatMatMulF32x16x4A53::mmm());
-    ops.mmm_f32_impls.push(MatMatMulF32x12x8::mmm());
-    ops.mmm_f32_impls.push(MatMatMulF32x8x8::mmm());
-    ops.mmm_f32_impls.push(MatMatMulF32x16x4::mmm());
+    for mm in vec![
+        MatMatMulF32x12x8A53::mmm(),
+        MatMatMulF32x8x8A53::mmm(),
+        MatMatMulF32x16x4A53::mmm(),
+        MatMatMulF32x12x8::mmm(),
+        MatMatMulF32x8x8::mmm(),
+        MatMatMulF32x16x4::mmm(),
+    ] {
+        ops.mmm_f32_impls.push((mm, None));
+    } 
     match *KIND {
         Kind::CortexA53Like => {
             ops.mmv_f32 =
@@ -89,5 +94,5 @@ pub fn plug(ops: &mut Ops) {
     ops.qmmv_i32 = Box::new(|_, _| Box::new(MatMatMulImpl::<MatMatMulI32x64x1, i32>::new()));
     ops.sigmoid_f32 = Box::new(|| Box::new(ElementWiseImpl::<SigmoidF32x4n, f32>::new()));
     ops.tanh_f32 = Box::new(|| Box::new(ElementWiseImpl::<TanhF32x4n, f32>::new()));
+    ops.set_cost_models(cortex_a53::models());
 }
-
