@@ -23,7 +23,7 @@ fn black_box<T>(dummy: T) -> T {
 }
 
 pub fn ruin_cache() {
-//    let _a = (0..80_000).collect::<Vec<i32>>();
+    //    let _a = (0..80_000).collect::<Vec<i32>>();
 }
 
 fn order_f64(&a: &f64, &b: &f64) -> std::cmp::Ordering {
@@ -39,7 +39,7 @@ pub fn run_bench<T, F: FnMut() -> T>(mut f: F) -> f64 {
     let start = Instant::now();
     black_box(f());
     let once = start.elapsed();
- //   dbg!(once);
+    //   dbg!(once);
     let evaled = if once < Duration::from_millis(1) {
         let start = Instant::now();
         for _ in 0..1000 {
@@ -52,10 +52,10 @@ pub fn run_bench<T, F: FnMut() -> T>(mut f: F) -> f64 {
     //    let warmup = (0.2 / evaled) as usize;
     //    let iters = 5.0 / evaled as f64;
     // chunk just need to be big enough be measurable
-//    dbg!(evaled);
-    let chunk = ((0.001 / evaled) as usize).max(1);
+    //    dbg!(evaled);
+    let chunk = ((1.0/ evaled) as usize).max(1);
     // chunks is the number of measure. make it 1000 at least, 10000 at most
-    let chunks = (1.0 / (evaled * chunk as f64)).max(200.).min(10000.) as usize;
+    let chunks = (1.0 / (evaled * chunk as f64)).max(100.).min(10000.) as usize;
     // let chunks = 10;
     //dbg!(chunk, chunks);
     let mut measures = vec![0.0; chunks];
@@ -74,12 +74,12 @@ pub fn run_bench<T, F: FnMut() -> T>(mut f: F) -> f64 {
     }
     measures.sort_by(order_f64);
     let q1 = measures[chunks / 4];
-    /*
-       let q3 = measures[chunks - chunks / 4];
-       let iq = q3 - q1;
+    let q3 = measures[chunks - chunks / 4];
+    let iq = q3 - q1;
     //    measures.retain(|&x| x >= q1 && x <= q3);
     let epsilon = iq * 2. / (q3 + q1);
     eprintln!("evaled: {} chunk:{} chunks: {} epsilon: {:.3e}", evaled, chunk, chunks, epsilon);
+    /*
     let mut hist = vec![0; 101];
     for m in &measures {
     let bucket = (m - measures[0]) / (measures[measures.len() - 1] - measures[0]);
