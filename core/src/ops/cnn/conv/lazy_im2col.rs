@@ -45,6 +45,128 @@ struct LazyIm2col<T: Datum + Copy> {
 unsafe impl<T: Datum + Copy> Send for LazyIm2col<T> {}
 unsafe impl<T: Datum + Copy> Sync for LazyIm2col<T> {}
 
+impl<T: Datum + Copy> LazyIm2col<T> {
+    fn input_8n(
+        &self,
+        packer: &tract_linalg::frame::Packer,
+        packed: *mut u8,
+        k_range: std::ops::Range<usize>,
+        n: usize,
+    ) {
+        unsafe {
+            let o1 = *self.n_byte_offsets.get_unchecked(n);
+            let o2 = *self.n_byte_offsets.get_unchecked(n + 1);
+            let o3 = *self.n_byte_offsets.get_unchecked(n + 2);
+            let o4 = *self.n_byte_offsets.get_unchecked(n + 3);
+            let o5 = *self.n_byte_offsets.get_unchecked(n + 4);
+            let o6 = *self.n_byte_offsets.get_unchecked(n + 5);
+            let o7 = *self.n_byte_offsets.get_unchecked(n + 6);
+            let o8 = *self.n_byte_offsets.get_unchecked(n + 7);
+            let mut writer = packer.write_with_k_outer(packed as *mut T, k_range.len(), 8);
+            for k in k_range.start..k_range.end {
+                let ptr = (self.ptr as *const u8).offset(*self.k_byte_offsets.get_unchecked(k));
+                let v1 = *(ptr.offset(o1) as *const T);
+                let v2 = *(ptr.offset(o2) as *const T);
+                let v3 = *(ptr.offset(o3) as *const T);
+                let v4 = *(ptr.offset(o4) as *const T);
+                let v5 = *(ptr.offset(o5) as *const T);
+                let v6 = *(ptr.offset(o6) as *const T);
+                let v7 = *(ptr.offset(o7) as *const T);
+                let v8 = *(ptr.offset(o8) as *const T);
+                writer.write(v1);
+                writer.write(v2);
+                writer.write(v3);
+                writer.write(v4);
+                writer.write(v5);
+                writer.write(v6);
+                writer.write(v7);
+                writer.write(v8);
+            }
+        }
+    }
+
+    fn input_6n(
+        &self,
+        packer: &tract_linalg::frame::Packer,
+        packed: *mut u8,
+        k_range: std::ops::Range<usize>,
+        n: usize,
+    ) {
+        unsafe {
+            let o1 = *self.n_byte_offsets.get_unchecked(n);
+            let o2 = *self.n_byte_offsets.get_unchecked(n + 1);
+            let o3 = *self.n_byte_offsets.get_unchecked(n + 2);
+            let o4 = *self.n_byte_offsets.get_unchecked(n + 3);
+            let o5 = *self.n_byte_offsets.get_unchecked(n + 4);
+            let o6 = *self.n_byte_offsets.get_unchecked(n + 5);
+            let mut writer = packer.write_with_k_outer(packed as *mut T, k_range.len(), 6);
+            for k in k_range.start..k_range.end {
+                let ptr = (self.ptr as *const u8).offset(*self.k_byte_offsets.get_unchecked(k));
+                let v1 = *(ptr.offset(o1) as *const T);
+                let v2 = *(ptr.offset(o2) as *const T);
+                let v3 = *(ptr.offset(o3) as *const T);
+                let v4 = *(ptr.offset(o4) as *const T);
+                let v5 = *(ptr.offset(o5) as *const T);
+                let v6 = *(ptr.offset(o6) as *const T);
+                writer.write(v1);
+                writer.write(v2);
+                writer.write(v3);
+                writer.write(v4);
+                writer.write(v5);
+                writer.write(v6);
+            }
+        }
+    }
+
+    fn input_4n(
+        &self,
+        packer: &tract_linalg::frame::Packer,
+        packed: *mut u8,
+        k_range: std::ops::Range<usize>,
+        n: usize,
+    ) {
+        unsafe {
+            let o1 = *self.n_byte_offsets.get_unchecked(n);
+            let o2 = *self.n_byte_offsets.get_unchecked(n + 1);
+            let o3 = *self.n_byte_offsets.get_unchecked(n + 2);
+            let o4 = *self.n_byte_offsets.get_unchecked(n + 3);
+            let mut writer = packer.write_with_k_outer(packed as *mut T, k_range.len(), 4);
+            for k in k_range.start..k_range.end {
+                let ptr = (self.ptr as *const u8).offset(*self.k_byte_offsets.get_unchecked(k));
+                let v1 = *(ptr.offset(o1) as *const T);
+                let v2 = *(ptr.offset(o2) as *const T);
+                let v3 = *(ptr.offset(o3) as *const T);
+                let v4 = *(ptr.offset(o4) as *const T);
+                writer.write(v1);
+                writer.write(v2);
+                writer.write(v3);
+                writer.write(v4);
+            }
+        }
+    }
+
+    fn input_2n(
+        &self,
+        packer: &tract_linalg::frame::Packer,
+        packed: *mut u8,
+        k_range: std::ops::Range<usize>,
+        n: usize,
+    ) {
+        unsafe {
+            let o1 = *self.n_byte_offsets.get_unchecked(n);
+            let o2 = *self.n_byte_offsets.get_unchecked(n + 1);
+            let mut writer = packer.write_with_k_outer(packed as *mut T, k_range.len(), 2);
+            for k in k_range.start..k_range.end {
+                let ptr = (self.ptr as *const u8).offset(*self.k_byte_offsets.get_unchecked(k));
+                let v1 = *(ptr.offset(o1) as *const T);
+                let v2 = *(ptr.offset(o2) as *const T);
+                writer.write(v1);
+                writer.write(v2);
+            }
+        }
+    }
+}
+
 impl<T: Datum + Copy> VirtualInput for LazyIm2col<T> {
     fn input(
         &self,
@@ -55,6 +177,13 @@ impl<T: Datum + Copy> VirtualInput for LazyIm2col<T> {
     ) {
         let mn_end = mn_range.end.min(self.n_byte_offsets.len());
         let n_range = mn_range.start..mn_end;
+        match n_range.len() {
+            8 => return self.input_8n(packer, packed, k_range, n_range.start),
+            6 => return self.input_6n(packer, packed, k_range, n_range.start),
+            4 => return self.input_4n(packer, packed, k_range, n_range.start),
+            2 => return self.input_2n(packer, packed, k_range, n_range.start),
+            _ => (),
+        }
         unsafe {
             let mut writer =
                 packer.write_with_k_outer(packed as *mut T, k_range.len(), n_range.len());
