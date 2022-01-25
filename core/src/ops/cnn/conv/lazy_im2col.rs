@@ -51,10 +51,9 @@ impl<T: Datum + Copy> VirtualInput for LazyIm2col<T> {
             let mut writer =
                 packer.write_with_k_outer(packed as *mut T, k_range.len(), n_range.len());
             for k in k_range.start..k_range.end {
+                let ptr = self.ptr.offset(*self.k_item_offsets.get_unchecked(k));
                 for n in n_range.start..n_range.end {
-                    writer.write(*self.ptr.offset(
-                        self.n_item_offsets.get_unchecked(n) + self.k_item_offsets.get_unchecked(k),
-                    ))
+                    writer.write(*ptr.offset(*self.n_item_offsets.get_unchecked(n)))
                 }
             }
         }
