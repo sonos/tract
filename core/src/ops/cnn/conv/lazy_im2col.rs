@@ -247,7 +247,7 @@ impl<T: Datum + Copy> VirtualInput for LazyIm2col<T> {
             let mut writer = packer.write_single_panel_with_k_outer(packed as *mut T);
             self.write(&mut writer, k_range, mn_range)
         } else {
-            let mut writer = packer.write_with_k_outer(packed as *mut T, k_range.len(), packer.r);
+            let mut writer = packer.write_with_k_outer(packed as *mut T, k_range.len(), n_range.len());
             self.write(&mut writer, k_range, mn_range)
         }
     }

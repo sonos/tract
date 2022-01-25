@@ -4,6 +4,7 @@ use proptest::strategy::{BoxedStrategy, Strategy};
 use tract_data::internal::*;
 use tract_linalg::frame::mmm::FusedSpec;
 use tract_linalg::frame::mmm::{VirtualInput, VirtualInputSpec};
+use tract_linalg::frame::PackingWriter;
 use DatumType::F32;
 
 proptest::proptest! {
