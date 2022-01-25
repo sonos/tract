@@ -129,6 +129,13 @@ impl Packer {
         KOutWriter::new(pb, self.r, mn, k)
     }
 
+    pub fn write_single_panel_with_k_outer<'p, T: Copy + Debug>(
+        &self,
+        pb: *mut T,
+    ) -> KOutSinglePanelWriter<'p, T> {
+        KOutSinglePanelWriter::new(pb)
+    }
+
     pub fn write_with_k_inner<'p, T: Copy + Debug>(
         &self,
         pb: *mut T,
@@ -136,6 +143,41 @@ impl Packer {
         mn: usize,
     ) -> KInWriter<'p, T> {
         KInWriter::new(pb, self.r, mn, k)
+    }
+}
+
+pub trait PackingWriter<T: Copy> {
+    fn write(&mut self, t: T);
+}
+
+#[derive(Debug)]
+pub struct KOutSinglePanelWriter<'p, T>
+where
+    T: Copy + std::fmt::Debug,
+{
+    ptr: *mut T,
+    _phantom: PhantomData<&'p T>,
+}
+
+impl<'p, T> KOutSinglePanelWriter<'p, T>
+where
+    T: Copy + std::fmt::Debug,
+{
+    pub fn new(ptr: *mut T) -> KOutSinglePanelWriter<'p, T> {
+        KOutSinglePanelWriter { ptr, _phantom: PhantomData }
+    }
+}
+
+impl<'p, T> PackingWriter<T> for KOutSinglePanelWriter<'p, T>
+where
+    T: Copy + std::fmt::Debug,
+{
+    #[inline(always)]
+    fn write(&mut self, t: T) {
+        unsafe {
+            *self.ptr = t;
+            self.ptr = self.ptr.offset(1);
+        }
     }
 }
 
@@ -175,9 +217,14 @@ where
             _phantom: PhantomData,
         }
     }
+}
 
+impl<'p, T> PackingWriter<T> for KOutWriter<'p, T>
+where
+    T: Copy + std::fmt::Debug,
+{
     #[inline(always)]
-    pub fn write(&mut self, t: T) {
+    fn write(&mut self, t: T) {
         unsafe {
             *self.ptr = t;
             self.remain -= 1;
@@ -239,9 +286,14 @@ where
             _phantom: PhantomData,
         }
     }
+}
 
+impl<'p, T> PackingWriter<T> for KInWriter<'p, T>
+where
+    T: Copy + std::fmt::Debug,
+{
     #[inline(always)]
-    pub fn write(&mut self, t: T) {
+    fn write(&mut self, t: T) {
         unsafe {
             *self.ptr = t;
             self.remain_on_k -= 1;
