@@ -422,14 +422,37 @@ impl ConvUnary {
         &self,
         model: &mut TypedModel,
         name: &str,
-        wire: OutletId,
-        input_shape: &[usize],
+        mut wire: OutletId,
     ) -> TractResult<OutletId> {
-        let b_fact = model.outlet_fact(wire)?.clone();
-        let c_dt = crate::ops::matmul::output_type(b_fact.datum_type);
+        let mut b_fact = model.outlet_fact(wire)?.clone();
         let (geo, m, k, n, mmm) = self.compute_geo(&b_fact)?;
-        let geo = geo.to_concrete(input_shape)?;
-        let input_shape: DataShape = self.pool_spec.data_format.shape(input_shape.into())?;
+        let input_shape = b_fact.shape.as_concrete().unwrap().to_vec();
+        let mut geo = geo.to_concrete(&input_shape)?.into_owned();
+        let mut input_shape: DataShape = self.pool_spec.data_format.shape(input_shape.into())?;
+        let padding = self.pool_spec.computed_padding(input_shape.hw_dims());
+        if padding.iter().any(|axis| axis.pad_before != 0 || axis.pad_after != 0) {
+            let mut pads = vec![(0, 0); b_fact.rank()];
+            for (ix, ax) in padding.iter().enumerate() {
+                pads[input_shape.h_axis() + ix] = (ax.pad_before, ax.pad_after);
+            }
+            let op = crate::ops::array::Pad {
+                mode: crate::ops::array::PadMode::Constant(
+                    Tensor::zero_scalar_dt(b_fact.datum_type)?.into_arc_tensor(),
+                ),
+                pads,
+            };
+            wire = model.wire_node(format!("{}.pad", name), op, &[wire])?[0];
+            let valid_pool_spec =
+                PoolSpec { padding: ops::cnn::PaddingSpec::Valid, ..self.pool_spec.clone() };
+            b_fact = model.outlet_fact(wire)?.clone();
+            let concrete_shape = b_fact.shape.as_concrete().unwrap();
+            input_shape = valid_pool_spec.data_format.shape(concrete_shape.into())?;
+            geo = valid_pool_spec
+                .compute_geo(&b_fact.shape)?
+                .to_concrete(&*concrete_shape)?
+                .into_owned();
+        }
+        let c_dt = crate::ops::matmul::output_type(b_fact.datum_type);
         let c_stride = input_shape.c_stride();
         let data_item_offsets: Vec<isize> = geo.patch.centers_offsets();
         let kernel_item_offsets: Vec<isize> = (0..self.input_channels())
@@ -803,11 +826,11 @@ impl TypedOp for ConvUnary {
         }
         if self.pool_spec.output_channel_override != Some(self.output_channels()) {
             bail!(
-                    "Inconsistent convolution: output channels from pool spec is {:?}, kernel expects {} output channels, {:?}",
-                    self.pool_spec.output_channel_override,
-                    self.output_channels(),
-                    self
-                    );
+                "Inconsistent convolution: output channels from pool spec is {:?}, kernel expects {} output channels, {:?}",
+                self.pool_spec.output_channel_override,
+                self.output_channels(),
+                self
+                );
         }
         if let Some(bias) = &self.bias {
             if bias.len() != self.output_channels() {
@@ -1107,19 +1130,10 @@ impl TypedOp for ConvUnary {
                 patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                 patch.obliterate(node.id)?;
                 return Ok(Some(patch));
-            } else if self.group == 1
-                && (0..spatial_rank)
-                    .all(|ax| self.pool_spec.padding.valid_dim(ax, self.pool_spec.stride(ax) == 1))
-                && input_fact.shape.is_concrete()
-            {
+            } else if self.group == 1 && input_fact.shape.is_concrete() {
                 let mut patch = TypedModelPatch::new("wire_as_lazy_im2col");
                 let mut wire = patch.tap_model(model, node.inputs[0])?;
-                wire = self.wire_as_lazy_im2col(
-                    &mut patch,
-                    &*node.name,
-                    wire,
-                    input_fact.shape.as_concrete().unwrap(),
-                )?;
+                wire = self.wire_as_lazy_im2col(&mut patch, &*node.name, wire)?;
                 patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                 patch.obliterate(node.id)?;
                 return Ok(Some(patch));
@@ -1180,12 +1194,12 @@ fn should_use_direct(input_shape: &DataShape, pool_spec: &PoolSpec, group: usize
         return false;
     }
     let direct =
-            // no real rationale here, pure heuristic to force "right" pick in
-            // both hey_snips v3 and v4. just hope this will generalize ok
-            (0..spatial_rank).any(|d| pool_spec.dilation(d) > 1 && pool_spec.kernel_shape[d] > 2) ||
-            // that one kind of make sense, better use direct that generate a huge
-            // im2col matrix (when both kernel and input are big)
-            pool_spec.kernel_shape.iter().product::<usize>() * input_shape.shape.iter().product::<usize>() > 1048576;
+        // no real rationale here, pure heuristic to force "right" pick in
+        // both hey_snips v3 and v4. just hope this will generalize ok
+        (0..spatial_rank).any(|d| pool_spec.dilation(d) > 1 && pool_spec.kernel_shape[d] > 2) ||
+        // that one kind of make sense, better use direct that generate a huge
+        // im2col matrix (when both kernel and input are big)
+        pool_spec.kernel_shape.iter().product::<usize>() * input_shape.shape.iter().product::<usize>() > 1048576;
     direct
 }
 
