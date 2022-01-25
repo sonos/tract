@@ -137,7 +137,7 @@ fn main() {
         }
         "aarch64" => {
             let files =
-                preprocess_files("arm64/arm64simd", &[("core", vec!["a53", "gen"])], &suffix);
+                preprocess_files("arm64/arm64simd", &[("core", vec!["a53", "a55", "gen"])], &suffix);
             cc::Build::new().files(files).static_flag(true).compile("arm64");
         }
         _ => {}

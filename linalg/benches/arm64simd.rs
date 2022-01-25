@@ -138,6 +138,23 @@ pub unsafe fn ld_64F32() {
         out("v24") _, out("v25") _, out("v26") _, out("v27") _,
         ));
     });
+    s32!("d_load_as_v", 64, {
+        let mut p = F32;
+        r8!(asm!("
+       ld1 {{v20.d}}[0], [{0}]
+       ld1 {{v21.d}}[0], [{0}]
+       ld1 {{v22.d}}[0], [{0}]
+       ld1 {{v23.d}}[0], [{0}]
+       ld1 {{v24.d}}[0], [{0}]
+       ld1 {{v25.d}}[0], [{0}]
+       ld1 {{v26.d}}[0], [{0}]
+       ld1 {{v27.d}}[0], [{0}]
+       ",
+        inout(reg) p,
+        out("v20") _, out("v21") _, out("v22") _, out("v23") _,
+        out("v24") _, out("v25") _, out("v26") _, out("v27") _,
+        ));
+    });
     s32!("v_load", 64, {
         let mut p = F32;
         r8!(asm!("
@@ -265,6 +282,20 @@ pub unsafe fn ld_64F32() {
                      ins v8.d[1], x20
                      ins v8.d[0], x20
                      ins v8.d[1], x20
+                     ",
+        out("v8") _,
+        ));
+    });
+    s32!("ins_64b_from_v", 64, {
+        r8!(asm!("
+                     ins v8.d[0], v9.d[0]
+                     ins v8.d[1], v9.d[0]
+                     ins v8.d[0], v9.d[1]
+                     ins v8.d[1], v9.d[1]
+                     ins v8.d[0], v9.d[0]
+                     ins v8.d[1], v9.d[0]
+                     ins v8.d[0], v9.d[1]
+                     ins v8.d[1], v9.d[1]
                      ",
         out("v8") _,
         ));
@@ -487,6 +518,33 @@ pub unsafe fn ld_64F32() {
         out("v20") _, out("v21") _, out("v22") _, out("v23") _,
         ));
     });
+    s32!("fmla_with_d_load_as_v", 64, {
+        let mut p = F32;
+        r8!(asm!("
+                     fmla v0.4s, v0.4s, v0.4s
+                     ld1 {{ v9.d }}[0], [{0}]
+                     fmla v1.4s, v1.4s, v1.4s
+                     ld1 {{ v10.d }}[0], [{0}]
+                     fmla v2.4s, v2.4s, v2.4s
+                     ld1 {{ v11.d }}[0], [{0}]
+                     fmla v3.4s, v3.4s, v3.4s
+                     ld1 {{ v12.d }}[0], [{0}]
+                     fmla v4.4s, v4.4s, v4.4s
+                     ld1 {{ v13.d }}[0], [{0}]
+                     fmla v5.4s, v5.4s, v5.4s
+                     ld1 {{ v14.d }}[0], [{0}]
+                     fmla v6.4s, v6.4s, v6.4s
+                     ld1 {{ v15.d }}[0], [{0}]
+                     fmla v7.4s, v7.4s, v7.4s
+                     ld1 {{ v16.d }}[0], [{0}]
+                     ",
+        inout(reg) p,
+        out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+        out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+        out("v8") _, out("v9") _, out("v10") _, out("v11") _,
+        out("v12") _, out("v13") _, out("v14") _, out("v15") _,
+        ));
+    });
     s32!("fmla_with_v_load", 64, {
         let mut p = F32;
         r8!(asm!("
@@ -558,6 +616,32 @@ pub unsafe fn ld_64F32() {
                      ins v14.d[0], x20
                      fmla v7.4s, v7.4s, v7.4s
                      ins v15.d[0], x20
+                     ",
+        out("x20") _,
+        out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+        out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+        out("v8") _, out("v9") _, out("v10") _, out("v11") _,
+        out("v12") _, out("v13") _, out("v14") _, out("v15") _,
+        ));
+    });
+    s32!("fmla_with_ins_64b_cross_parity", 64, {
+        r8!(asm!("
+                     fmla v0.4s, v0.4s, v0.4s
+                     ins v9.d[0], x20
+                     fmla v1.4s, v1.4s, v1.4s
+                     ins v10.d[0], x20
+                     fmla v2.4s, v2.4s, v2.4s
+                     ins v11.d[0], x20
+                     fmla v3.4s, v6.4s, v3.4s
+                     ins v12.d[0], x20
+                     fmla v4.4s, v4.4s, v4.4s
+                     ins v13.d[0], x20
+                     fmla v5.4s, v5.4s, v5.4s
+                     ins v14.d[0], x20
+                     fmla v6.4s, v6.4s, v6.4s
+                     ins v15.d[0], x20
+                     fmla v7.4s, v7.4s, v7.4s
+                     ins v8.d[0], x20
                      ",
         out("x20") _,
         out("v0") _, out("v1") _, out("v2") _, out("v3") _,
@@ -687,6 +771,7 @@ unsafe fn packed_packed_8x8_loop1() {
     kloop!("8x8x1", 64, t, "arm64simd_mmm_f32_8x8/packed_packed_loop1/ldr_w_no_preload.tmpli");
     kloop!("8x8x1", 64, t, "arm64simd_mmm_f32_8x8/packed_packed_loop1/ldr_w_preload.tmpli");
     kloop!("8x8x2", 128, t, "arm64simd_mmm_f32_8x8/packed_packed_loop2/broken_chains.tmpli");
+    kloop!("8x8x2", 128, t, "arm64simd_mmm_f32_8x8/packed_packed_loop2/cortex_a55.tmpli");
 }
 
 unsafe fn packed_packed_12x8_loop1() {
