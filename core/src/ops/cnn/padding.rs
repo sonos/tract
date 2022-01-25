@@ -23,10 +23,12 @@ pub struct ComputedPaddedDim<D: DimLike> {
 }
 
 impl PaddingSpec {
-    pub fn valid_dim(&self, d: usize) -> bool {
+    pub fn valid_dim(&self, d: usize, stride_is_one: bool) -> bool {
         match self {
             PaddingSpec::Valid => true,
-            PaddingSpec::Explicit(a, b, ceil_mode) => *ceil_mode && a[d] == 0 && b[d] == 0,
+            PaddingSpec::Explicit(a, b, ceil_mode) => {
+                (*ceil_mode || stride_is_one) && a[d] == 0 && b[d] == 0
+            }
             _ => false,
         }
     }

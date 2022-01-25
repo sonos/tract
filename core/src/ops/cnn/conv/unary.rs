@@ -612,7 +612,7 @@ impl ConvUnary {
         let input_fact = model.outlet_fact(node.inputs[0])?;
         let spatial_rank = self.kernel.rank() - 2;
         if let Some(axis) = (0..spatial_rank).find(|&ax| {
-            self.pool_spec.padding.valid_dim(ax)
+            self.pool_spec.padding.valid_dim(ax, self.pool_spec.stride(ax) == 1)
                 && self.pool_spec.stride(ax) > 1
                 && self.pool_spec.dilation(ax) % self.pool_spec.stride(ax) == 0
         }) {
@@ -1108,7 +1108,8 @@ impl TypedOp for ConvUnary {
                 patch.obliterate(node.id)?;
                 return Ok(Some(patch));
             } else if self.group == 1
-                && (0..spatial_rank).all(|ax| self.pool_spec.padding.valid_dim(ax))
+                && (0..spatial_rank)
+                    .all(|ax| self.pool_spec.padding.valid_dim(ax, self.pool_spec.stride(ax) == 1))
                 && input_fact.shape.is_concrete()
             {
                 let mut patch = TypedModelPatch::new("wire_as_lazy_im2col");
@@ -1173,7 +1174,9 @@ impl TypedOp for ConvUnary {
 
 fn should_use_direct(input_shape: &DataShape, pool_spec: &PoolSpec, group: usize) -> bool {
     let spatial_rank = input_shape.hw_rank();
-    if group != 1 || !(0..spatial_rank).all(|ax| pool_spec.padding.valid_dim(ax)) {
+    if group != 1
+        || !(0..spatial_rank).all(|ax| pool_spec.padding.valid_dim(ax, pool_spec.stride(ax) == 1))
+    {
         return false;
     }
     let direct =
