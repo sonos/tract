@@ -1,4 +1,4 @@
-use tract_linalg::frame::{MatMatMul, Packer};
+use tract_linalg::frame::{MatMatMul, Packer, PackingWriter};
 
 use crate::internal::*;
 use ndarray::prelude::*;
