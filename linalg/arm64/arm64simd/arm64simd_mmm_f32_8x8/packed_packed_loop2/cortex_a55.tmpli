@@ -1,15 +1,15 @@
 fmla        v16.4s, v0.4s, v4.s[0]
-ld1         {{ v2.d }}[0], [x1], #8
+ldr         d2, [x1], #8
 fmla        v17.4s, v1.4s, v4.s[0]
-ld1         {{ v6.d }}[0], [x2], #8
+ldr         d6, [x2], #8
 fmla        v18.4s, v0.4s, v4.s[1]
 ldr         x5, [x1], #8
 fmla        v19.4s, v1.4s, v4.s[1]
 ldr         x7, [x2], #8
 fmla        v20.4s, v0.4s, v4.s[2]
-ld1         {{ v3.d }}[0], [x1], #8
+ldr         d3, [x1], #8
 fmla        v21.4s, v1.4s, v4.s[2]
-ld1         {{ v7.d }}[0], [x2], #8
+ldr         d7, [x2], #8
 fmla        v22.4s, v0.4s, v4.s[3]
 ldr         x6, [x1], #8
 fmla        v23.4s, v1.4s, v4.s[3]
@@ -29,17 +29,17 @@ fmla        v31.4s, v1.4s, v5.s[3]
 ins         v7.d[1], x8
 
 fmla        v16.4s, v2.4s, v6.s[0]
-ld1         {{ v0.d }}[0], [x1], #8
+ldr         d0, [x1], #8
 fmla        v17.4s, v3.4s, v6.s[0]
-ld1         {{ v4.d }}[0], [x2], #8
+ldr         d4, [x2], #8
 fmla        v18.4s, v2.4s, v6.s[1]
 ldr         x5, [x1], #8
 fmla        v19.4s, v3.4s, v6.s[1]
 ldr         x7, [x2], #8
 fmla        v20.4s, v2.4s, v6.s[2]
-ld1         {{ v1.d }}[0], [x1], #8
+ldr         d1, [x1], #8
 fmla        v21.4s, v3.4s, v6.s[2]
-ld1         {{ v5.d }}[0], [x2], #8
+ldr         d5, [x2], #8
 fmla        v22.4s, v2.4s, v6.s[3]
 ldr         x6, [x1], #8
 fmla        v23.4s, v3.4s, v6.s[3]
