@@ -9,31 +9,39 @@ struct Floats([f32; 1024]);
 const _F32: Floats = Floats([12.; 1024]);
 const F32: *const f32 = (&_F32) as *const Floats as *const f32;
 
-pub unsafe fn ld_64F32() {
+pub unsafe fn ld_64F32(filter: Option<&str>) {
     let tick = b8192!(asm!("orr x20, x20, x20", out("x20") _));
     println!("freq {:.2}GHz\n", 1e-9 / tick);
 
     macro_rules! s32 {
         ($label: literal, $n: expr, $stmt:block) => {
-            println!("{:40} {:.2}", $label, b32!($stmt) / $n as f64 / tick);
+            if $label.contains(filter.unwrap_or("")) {
+                println!("{:40} {:.2}", $label, b32!($stmt) / $n as f64 / tick);
+            }
         };
     }
 
     macro_rules! s128 {
         ($label: literal, $n: expr, $stmt:block) => {
-            println!("{:40} {:.2}", $label, b128!($stmt) / $n as f64 / tick);
+            if $label.contains(filter.unwrap_or("")) {
+                println!("{:40} {:.2}", $label, b128!($stmt) / $n as f64 / tick);
+            }
         };
     }
 
     macro_rules! s1024 {
         ($label: literal, $n: expr, $stmt:block) => {
-            println!("{:40} {:.2}", $label, b1024!($stmt) / $n as f64 / tick);
+            if $label.contains(filter.unwrap_or("")) {
+                println!("{:40} {:.2}", $label, b1024!($stmt) / $n as f64 / tick);
+            }
         };
     }
 
     macro_rules! s8192 {
         ($label: literal, $n: expr, $stmt:block) => {
-            println!("{:40} {:.2}", $label, b8192!($stmt) / $n as f64 / tick);
+            if $label.contains(filter.unwrap_or("")) {
+                println!("{:40} {:.2}", $label, b8192!($stmt) / $n as f64 / tick);
+            }
         };
     }
 
@@ -709,75 +717,79 @@ pub unsafe fn ld_64F32() {
 }
 
 macro_rules! kloop {
-    ($geo: literal, $n: expr, $tick: expr, $path: literal) => {
+    ($filter: expr, $geo: literal, $n: expr, $tick: expr, $path: literal) => {
         let label = $path.split("/").last().unwrap().split_once(".").unwrap().0;
-        let time = b32!({
-            let mut p = F32;
-            let mut q = F32;
-            r4!(asm!(include_str!(concat!("../arm64/arm64simd/", $path)),
-            inout("x1") p, inout("x2") q, out("x3") _,
-            out("x4") _, out("x5") _, out("x6") _, out("x7") _,
-            out("x8") _, out("x9") _, out("x10") _, out("x11") _,
-            out("x12") _, out("x13") _, out("x14") _, out("x15") _,
-            out("x20") _, out("x21") _, out("x22") _,
-            out("x23") _, out("x24") _, out("x25") _, out("x26") _,
-            out("x27") _,
-            out("v0") _, out("v1") _, out("v2") _, out("v3") _,
-            out("v4") _, out("v5") _, out("v6") _, out("v7") _,
-            out("v8") _, out("v9") _, out("v10") _, out("v11") _,
-            out("v12") _, out("v13") _, out("v14") _, out("v15") _,
-            out("v16") _, out("v17") _, out("v18") _, out("v19") _,
-            out("v20") _, out("v21") _, out("v22") _, out("v23") _,
-            out("v24") _, out("v25") _, out("v26") _, out("v27") _,
-            out("v28") _, out("v29") _, out("v30") _, out("v31") _,
-            ));
-        });
-        println!("{:8} {:40} {:.0}%", $geo, label, $n as f64 / time * 100. * $tick);
+        let full_label = format!("{:8} {:40}", $geo, label);
+        if full_label.contains($filter.unwrap_or("")) {
+            let time = b32!({
+                let mut p = F32;
+                let mut q = F32;
+                r4!(asm!(include_str!(concat!("../arm64/arm64simd/", $path)),
+                inout("x1") p, inout("x2") q, out("x3") _,
+                out("x4") _, out("x5") _, out("x6") _, out("x7") _,
+                out("x8") _, out("x9") _, out("x10") _, out("x11") _,
+                out("x12") _, out("x13") _, out("x14") _, out("x15") _,
+                out("x20") _, out("x21") _, out("x22") _,
+                out("x23") _, out("x24") _, out("x25") _, out("x26") _,
+                out("x27") _,
+                out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+                out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+                out("v8") _, out("v9") _, out("v10") _, out("v11") _,
+                out("v12") _, out("v13") _, out("v14") _, out("v15") _,
+                out("v16") _, out("v17") _, out("v18") _, out("v19") _,
+                out("v20") _, out("v21") _, out("v22") _, out("v23") _,
+                out("v24") _, out("v25") _, out("v26") _, out("v27") _,
+                out("v28") _, out("v29") _, out("v30") _, out("v31") _,
+                ));
+            });
+            println!("{} {:.0}%", full_label, $n as f64 / time * 100. * $tick);
+        }
     }
 }
 
-unsafe fn packed_packed_8x8_loop1() {
+unsafe fn packed_packed_8x8_loop1(f: Option<&str>) {
     let t = b8192!(asm!("orr x20, x20, x20", out("x20") _));
-    kloop!("8x8x1", 64, t, "arm64simd_mmm_f32_8x8/packed_packed_loop1/naive.tmpli");
-    kloop!("8x8x1", 64, t, "arm64simd_mmm_f32_8x8/packed_packed_loop1/broken_chains.tmpli");
-    kloop!("8x8x1", 64, t, "arm64simd_mmm_f32_8x8/packed_packed_loop1/ldr_x_no_preload.tmpli");
-    kloop!("8x8x1", 64, t, "arm64simd_mmm_f32_8x8/packed_packed_loop1/ldr_x_preload.tmpli");
-    kloop!("8x8x1", 64, t, "arm64simd_mmm_f32_8x8/packed_packed_loop1/ldr_w_no_preload.tmpli");
-    kloop!("8x8x1", 64, t, "arm64simd_mmm_f32_8x8/packed_packed_loop1/ldr_w_preload.tmpli");
-    kloop!("8x8x2", 128, t, "arm64simd_mmm_f32_8x8/packed_packed_loop2/broken_chains.tmpli");
-    kloop!("8x8x2", 128, t, "arm64simd_mmm_f32_8x8/packed_packed_loop2/cortex_a55.tmpli");
+    kloop!(f, "8x8x1", 64, t, "arm64simd_mmm_f32_8x8/packed_packed_loop1/naive.tmpli");
+    kloop!(f, "8x8x1", 64, t, "arm64simd_mmm_f32_8x8/packed_packed_loop1/broken_chains.tmpli");
+    kloop!(f, "8x8x1", 64, t, "arm64simd_mmm_f32_8x8/packed_packed_loop1/ldr_x_no_preload.tmpli");
+    kloop!(f, "8x8x1", 64, t, "arm64simd_mmm_f32_8x8/packed_packed_loop1/ldr_x_preload.tmpli");
+    kloop!(f, "8x8x1", 64, t, "arm64simd_mmm_f32_8x8/packed_packed_loop1/ldr_w_no_preload.tmpli");
+    kloop!(f, "8x8x1", 64, t, "arm64simd_mmm_f32_8x8/packed_packed_loop1/ldr_w_preload.tmpli");
+    kloop!(f, "8x8x2", 128, t, "arm64simd_mmm_f32_8x8/packed_packed_loop2/broken_chains.tmpli");
+    kloop!(f, "8x8x2", 128, t, "arm64simd_mmm_f32_8x8/packed_packed_loop2/cortex_a55.tmpli");
 }
 
-unsafe fn packed_packed_12x8_loop1() {
+unsafe fn packed_packed_12x8_loop1(f: Option<&str>) {
     let t = b8192!(asm!("orr x20, x20, x20", out("x20") _));
-    kloop!("12x8x1", 96, t, "arm64simd_mmm_f32_12x8/packed_packed_loop1/naive.tmpli");
-    kloop!("12x8x1", 96, t, "arm64simd_mmm_f32_12x8/packed_packed_loop1/ldr_w_no_preload.tmpli");
-    kloop!("12x8x1", 96, t, "arm64simd_mmm_f32_12x8/packed_packed_loop1/ldr_w_preload.tmpli");
-    kloop!("12x8x1", 96, t, "arm64simd_mmm_f32_12x8/packed_packed_loop1/ldr_x_preload.tmpli");
+    kloop!(f, "12x8x1", 96, t, "arm64simd_mmm_f32_12x8/packed_packed_loop1/naive.tmpli");
+    kloop!(f, "12x8x1", 96, t, "arm64simd_mmm_f32_12x8/packed_packed_loop1/ldr_w_no_preload.tmpli");
+    kloop!(f, "12x8x1", 96, t, "arm64simd_mmm_f32_12x8/packed_packed_loop1/ldr_w_preload.tmpli");
+    kloop!(f, "12x8x1", 96, t, "arm64simd_mmm_f32_12x8/packed_packed_loop1/ldr_x_preload.tmpli");
 }
 
-unsafe fn packed_packed_16x4_loop1() {
+unsafe fn packed_packed_16x4_loop1(f: Option<&str>) {
     let t = b8192!(asm!("orr x20, x20, x20", out("x20") _));
-    kloop!("16x4x1", 64, t, "arm64simd_mmm_f32_16x4/packed_packed_loop1/naive.tmpli");
-    kloop!("16x4x1", 64, t, "arm64simd_mmm_f32_16x4/packed_packed_loop1/cortex_a53.tmpli");
+    kloop!(f, "16x4x1", 64, t, "arm64simd_mmm_f32_16x4/packed_packed_loop1/naive.tmpli");
+    kloop!(f, "16x4x1", 64, t, "arm64simd_mmm_f32_16x4/packed_packed_loop1/cortex_a53.tmpli");
 }
 
-unsafe fn packed_packed_24x4_loop1() {
+unsafe fn packed_packed_24x4_loop1(f: Option<&str>) {
     let t = b8192!(asm!("orr x20, x20, x20", out("x20") _));
-    kloop!("24x4x1", 96, t, "arm64simd_mmm_f32_24x4/packed_packed_loop1/naive.tmpli");
-    kloop!("24x4x1", 96, t, "arm64simd_mmm_f32_24x4/packed_packed_loop1/cortex_a53.tmpli");
+    kloop!(f, "24x4x1", 96, t, "arm64simd_mmm_f32_24x4/packed_packed_loop1/naive.tmpli");
+    kloop!(f, "24x4x1", 96, t, "arm64simd_mmm_f32_24x4/packed_packed_loop1/cortex_a53.tmpli");
 }
 
 fn main() {
+    let filter = std::env::args().skip(1).filter(|a| a != "--bench").next();
     unsafe {
-        ld_64F32();
+        ld_64F32(filter.as_deref());
         println!("");
-        packed_packed_8x8_loop1();
+        packed_packed_8x8_loop1(filter.as_deref());
         println!("");
-        packed_packed_12x8_loop1();
+        packed_packed_12x8_loop1(filter.as_deref());
         println!("");
-        packed_packed_16x4_loop1();
+        packed_packed_16x4_loop1(filter.as_deref());
         println!("");
-        packed_packed_24x4_loop1();
+        packed_packed_24x4_loop1(filter.as_deref());
     }
 }
