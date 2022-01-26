@@ -53,7 +53,7 @@ pub fn run_bench<T, F: FnMut() -> T>(mut f: F) -> f64 {
     //    let iters = 5.0 / evaled as f64;
     // chunk just need to be big enough be measurable
     //    dbg!(evaled);
-    let chunk = ((1.0/ evaled) as usize).max(1);
+    let chunk = ((1.0 / evaled) as usize).max(1);
     // chunks is the number of measure. make it 1000 at least, 10000 at most
     let chunks = (1.0 / (evaled * chunk as f64)).max(100.).min(10000.) as usize;
     // let chunks = 10;
@@ -147,10 +147,10 @@ impl Dataset {
         for mm in mmm {
             let mm = mm.as_ref();
             let ms =
-                [1, 2, 3].iter().map(|m| m * mm.mr()).flat_map(|m| [m - 1, m, m + 1]).collect_vec();
+                [1, 2, 4, 32, 128].iter().map(|m| m * mm.mr()).flat_map(|m| [m - 1, m, m + 1]).collect_vec();
             let ns =
-                [1, 2, 3].iter().map(|m| m * mm.nr()).flat_map(|m| [m - 1, m, m + 1]).collect_vec();
-            let ks = [4, 32, 128];
+                [1, 2, 4, 32, 128].iter().map(|m| m * mm.nr()).flat_map(|m| [m - 1, m, m + 1]).collect_vec();
+            let ks = [32, 128, 1024];
             for m in ms {
                 for &n in &ns {
                     for k in ks {
@@ -159,22 +159,6 @@ impl Dataset {
                 }
             }
         }
-        /*
-                   inputs.push((mm.kernel_name().to_string(), m * mm.mr(),
-                   }
-                   }
-                   }
-        /*
-        let wanted = 10;
-        let mult = SamplingStrat::MultipleOfR(2);
-        let any = SamplingStrat::AnyUpToRs(2);
-        inputs.extend(Self::gen_inputs(wanted / 4, mm, mult, any, mult));
-        inputs.extend(Self::gen_inputs(wanted / 4, mm, mult, any, any));
-        inputs.extend(Self::gen_inputs(wanted / 4, mm, any, any, mult));
-        inputs.extend(Self::gen_inputs(wanted / 4, mm, any, any, any));
-        */
-        }
-        */
         inputs.shuffle(&mut rng);
         let mut progress_bar = ProgressBar::new(inputs.len() as _);
         let mut samples = vec![];
@@ -222,7 +206,7 @@ fn train(ds: &Dataset, mm: impl AsRef<dyn MatMatMul>) -> CostModel {
     let model = fit_low_level_regression_model(&*data, count, data.len() / count).unwrap();
     dbg!(&mm.kernel_name());
     dbg!(&model.rsquared);
-    dbg!(&model.pvalues);
+//    dbg!(&model.pvalues);
     let mut model = model.parameters;
     CostModel { mr: mm.mr(), nr: mm.nr(), intercept: model.remove(0), coef: model }
 }
@@ -324,6 +308,12 @@ fn main() {
         )
         .subcommand(
             App::new("train-eval")
+                .arg(
+                    Arg::new("no-truth")
+                        .long("no-truth")
+                        .takes_value(false)
+                        .help("Do not measure ground truth."),
+                )
                 .arg(Arg::new("train").required(true))
                 .arg(Arg::new("m"))
                 .arg(Arg::new("k"))
@@ -410,22 +400,26 @@ fn main() {
             let m: usize = sub.value_of("m").unwrap().parse().unwrap();
             let k: usize = sub.value_of("k").unwrap().parse().unwrap();
             let n: usize = sub.value_of("n").unwrap().parse().unwrap();
+            let do_truth = !sub.is_present("no-truth");
             let mut alts = vec![];
             for mm in models {
                 let mm = impls.iter().find(|p| p.kernel_name() == mm).unwrap();
                 let model = train(&ds, &mm);
-                let y = measure_add_mat_mul(&**mm, m, k, n);
-                alts.push((mm.kernel_name(), y, model.predict(m, k, n)));
+                let p = model.predict(m, k, n);
+                let y = if do_truth { measure_add_mat_mul(&**mm, m, k, n) } else { p };
+                alts.push((mm.kernel_name(), y, p));
             }
             let best_choice = alts.iter().min_by(|a, b| order_f64(&a.2, &b.2)).unwrap();
             alts.iter().sorted_by(|a, b| order_f64(&a.1, &b.1)).enumerate().for_each(
                 |(ix, (s, t, p))| {
                     let line = format!(
-                        "{:30} pred: {:9.03} us truth: {:9.03} us {:5.2}%",
+                        "{:30} pred: {:9.03} us / {:9.03} GFlops ; truth: {:9.03} us / {:9.03} GFLops ; diff: {:5.2}%",
                         s,
                         p * 1e6,
+                        (m * k * n) as f64 / p / 1e9,
                         t * 1e6,
-                        (p - t) / t * 100.
+                        (m * k * n) as f64 / t / 1e9,
+                        (p - t) / t * 100.,
                     );
                     if &best_choice.0 == s {
                         if ix == 0 {
