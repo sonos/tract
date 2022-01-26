@@ -650,32 +650,6 @@ pub unsafe fn ld_64F32() {
         out("v12") _, out("v13") _, out("v14") _, out("v15") _,
         ));
     });
-    s32!("fmla_with_ins_64b_cross_parity", 64, {
-        r8!(asm!("
-                     fmla v0.4s, v0.4s, v0.4s
-                     ins v9.d[0], x20
-                     fmla v1.4s, v1.4s, v1.4s
-                     ins v10.d[0], x20
-                     fmla v2.4s, v2.4s, v2.4s
-                     ins v11.d[0], x20
-                     fmla v3.4s, v6.4s, v3.4s
-                     ins v12.d[0], x20
-                     fmla v4.4s, v4.4s, v4.4s
-                     ins v13.d[0], x20
-                     fmla v5.4s, v5.4s, v5.4s
-                     ins v14.d[0], x20
-                     fmla v6.4s, v6.4s, v6.4s
-                     ins v15.d[0], x20
-                     fmla v7.4s, v7.4s, v7.4s
-                     ins v8.d[0], x20
-                     ",
-        out("x20") _,
-        out("v0") _, out("v1") _, out("v2") _, out("v3") _,
-        out("v4") _, out("v5") _, out("v6") _, out("v7") _,
-        out("v8") _, out("v9") _, out("v10") _, out("v11") _,
-        out("v12") _, out("v13") _, out("v14") _, out("v15") _,
-        ));
-    });
     s32!("ins_32b_with_load_s", 64, {
         let mut p = F32;
         r8!(asm!("
