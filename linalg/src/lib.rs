@@ -35,6 +35,13 @@ use tract_data::prelude::*;
 
 pub struct Ops {
     mmm_f32_impls: Vec<(Box<dyn MatMatMul>, Option<CostModel>)>,
+    mmm_f32: Option<
+        Box<
+            dyn Fn(Option<usize>, Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul>
+                + Send
+                + Sync,
+        >,
+    >,
     mmv_f32: Box<dyn Fn(Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul> + Send + Sync>,
     qmmm_i32: Box<
         dyn Fn(Option<usize>, Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul>
@@ -48,27 +55,6 @@ pub struct Ops {
 }
 
 impl Ops {
-    fn mmm_f32(&self, m: Option<usize>, k: Option<usize>, n: Option<usize>) -> &dyn mmm::MatMatMul {
-        use std::cmp::Ordering;
-        let m = m.unwrap_or(1024);
-        let k = k.unwrap_or(1024);
-        let n = n.unwrap_or(1024);
-        &*self
-            .mmm_f32_impls
-            .iter()
-            .min_by(|a, b| {
-                let a = a.1.as_ref().map(|model| model.predict(m, k, n)).unwrap_or(std::f64::MAX);
-                let b = b.1.as_ref().map(|model| model.predict(m, k, n)).unwrap_or(std::f64::MAX);
-                if a < b {
-                    Ordering::Less
-                } else {
-                    Ordering::Greater
-                }
-            })
-            .unwrap()
-            .0
-    }
-
     pub fn mmm_f32_impls(&self) -> &[(Box<dyn MatMatMul>, Option<CostModel>)] {
         &self.mmm_f32_impls
     }
@@ -87,7 +73,11 @@ impl Ops {
             (F32, F32, F32) => Some(if n == Some(1) {
                 (self.mmv_f32)(m, k)
             } else {
-                dyn_clone::clone_box(self.mmm_f32(m, k, n))
+                if let Some(heuristics) = &self.mmm_f32 {
+                    heuristics(m, k, n)
+                } else {
+                    dyn_clone::clone_box(pick_best_impl(&self.mmm_f32_impls, m, k, n))
+                }
             }),
             (I8, I8, I32) => {
                 Some(if n == Some(1) { (self.qmmv_i32)(m, k) } else { (self.qmmm_i32)(m, k, n) })
@@ -99,6 +89,7 @@ impl Ops {
         }
     }
 
+    #[allow(dead_code)]
     fn set_cost_models(&mut self, models: Vec<(&'static str, CostModel)>) {
         for (name, model) in models {
             if let Some(pair) = self.mmm_f32_impls.iter_mut().find(|mm| mm.0.kernel_name() == name)
@@ -109,9 +100,35 @@ impl Ops {
     }
 }
 
+fn pick_best_impl(
+    impls: &[(Box<dyn MatMatMul>, Option<CostModel>)],
+    m: Option<usize>,
+    k: Option<usize>,
+    n: Option<usize>,
+) -> &dyn mmm::MatMatMul {
+    use std::cmp::Ordering;
+    let m = m.unwrap_or(1024);
+    let k = k.unwrap_or(1024);
+    let n = n.unwrap_or(1024);
+    &*impls
+        .iter()
+        .min_by(|a, b| {
+            let a = a.1.as_ref().map(|model| model.predict(m, k, n)).unwrap_or(std::f64::MAX);
+            let b = b.1.as_ref().map(|model| model.predict(m, k, n)).unwrap_or(std::f64::MAX);
+            if a < b {
+                Ordering::Less
+            } else {
+                Ordering::Greater
+            }
+        })
+        .unwrap()
+        .0
+}
+
 pub fn generic() -> Ops {
     Ops {
         mmm_f32_impls: vec![(generic::GenericMmm4x4::<f32, f32, f32>::mmm(), None)],
+        mmm_f32: None,
         //        mmm_f32: Box::new(|_, _, _| generic::GenericMmm4x4::<f32, f32, f32>::mmm()),
         mmv_f32: Box::new(|_, _| generic::GenericMmm4x1::<f32, f32, f32>::mmm()),
         qmmm_i32: Box::new(|_, _, _| generic::GenericMmm4x4::<i8, i8, i32>::mmm()),
