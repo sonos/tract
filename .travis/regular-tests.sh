@@ -6,8 +6,10 @@ which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
 
 PATH=$PATH:$HOME/.cargo/bin
 
-: "${RUST_VERSION:=stable}"
-rustup toolchain add $RUST_VERSION
+if [ ${RUST_VERSION:=stable} != "stable" ]
+then
+    rustup toolchain add $RUST_VERSION
+fi
 export RUSTUP_TOOLCHAIN=$RUST_VERSION
 
 rustc --version
