@@ -765,6 +765,7 @@ unsafe fn packed_packed_12x8_loop1(f: Option<&str>) {
     kloop!(f, "12x8x1", 96, t, "arm64simd_mmm_f32_12x8/packed_packed_loop1/ldr_w_no_preload.tmpli");
     kloop!(f, "12x8x1", 96, t, "arm64simd_mmm_f32_12x8/packed_packed_loop1/ldr_w_preload.tmpli");
     kloop!(f, "12x8x1", 96, t, "arm64simd_mmm_f32_12x8/packed_packed_loop1/ldr_x_preload.tmpli");
+    kloop!(f, "12x8x2", 192, t, "arm64simd_mmm_f32_12x8/packed_packed_loop2/cortex_a55");
 }
 
 unsafe fn packed_packed_16x4_loop1(f: Option<&str>) {
