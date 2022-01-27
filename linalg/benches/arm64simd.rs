@@ -747,7 +747,7 @@ macro_rules! kloop {
     }
 }
 
-unsafe fn packed_packed_8x8_loop1(f: Option<&str>) {
+unsafe fn packed_packed_8x8(f: Option<&str>) {
     let t = b8192!(asm!("orr x20, x20, x20", out("x20") _));
     kloop!(f, "8x8x1", 64, t, "arm64simd_mmm_f32_8x8/packed_packed_loop1/naive.tmpli");
     kloop!(f, "8x8x1", 64, t, "arm64simd_mmm_f32_8x8/packed_packed_loop1/broken_chains.tmpli");
@@ -759,16 +759,16 @@ unsafe fn packed_packed_8x8_loop1(f: Option<&str>) {
     kloop!(f, "8x8x2", 128, t, "arm64simd_mmm_f32_8x8/packed_packed_loop2/cortex_a55.tmpli");
 }
 
-unsafe fn packed_packed_12x8_loop1(f: Option<&str>) {
+unsafe fn packed_packed_12x8(f: Option<&str>) {
     let t = b8192!(asm!("orr x20, x20, x20", out("x20") _));
     kloop!(f, "12x8x1", 96, t, "arm64simd_mmm_f32_12x8/packed_packed_loop1/naive.tmpli");
     kloop!(f, "12x8x1", 96, t, "arm64simd_mmm_f32_12x8/packed_packed_loop1/ldr_w_no_preload.tmpli");
     kloop!(f, "12x8x1", 96, t, "arm64simd_mmm_f32_12x8/packed_packed_loop1/ldr_w_preload.tmpli");
     kloop!(f, "12x8x1", 96, t, "arm64simd_mmm_f32_12x8/packed_packed_loop1/ldr_x_preload.tmpli");
-    kloop!(f, "12x8x2", 192, t, "arm64simd_mmm_f32_12x8/packed_packed_loop2/cortex_a55");
+    kloop!(f, "12x8x2", 192, t, "arm64simd_mmm_f32_12x8/packed_packed_loop2/cortex_a55.tmpli");
 }
 
-unsafe fn packed_packed_16x4_loop1(f: Option<&str>) {
+unsafe fn packed_packed_16x4(f: Option<&str>) {
     let t = b8192!(asm!("orr x20, x20, x20", out("x20") _));
     kloop!(f, "16x4x1", 64, t, "arm64simd_mmm_f32_16x4/packed_packed_loop1/naive.tmpli");
     kloop!(f, "16x4x1", 64, t, "arm64simd_mmm_f32_16x4/packed_packed_loop1/cortex_a53.tmpli");
@@ -785,9 +785,9 @@ fn main() {
     unsafe {
         ld_64F32(filter.as_deref());
         println!("");
-        packed_packed_8x8_loop1(filter.as_deref());
+        packed_packed_8x8(filter.as_deref());
         println!("");
-        packed_packed_12x8_loop1(filter.as_deref());
+        packed_packed_12x8(filter.as_deref());
         println!("");
         packed_packed_16x4_loop1(filter.as_deref());
         println!("");
