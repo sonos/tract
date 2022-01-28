@@ -1,8 +1,6 @@
 use crate::frame::element_wise::ElementWiseKer;
 use crate::frame::mmm::*;
 
-
-
 extern_kernel!(fn arm64simd_mmm_f32_16x4_a53(op: *const FusedKerSpec<f32>) -> isize);
 extern_kernel!(fn arm64simd_mmm_f32_16x4_gen(op: *const FusedKerSpec<f32>) -> isize);
 extern_kernel!(fn arm64simd_mmm_f32_24x4_a53(op: *const FusedKerSpec<f32>) -> isize);
