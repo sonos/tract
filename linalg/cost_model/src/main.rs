@@ -14,20 +14,8 @@ use tract_itertools::Itertools;
 
 use tract_linalg::frame::mmm::cost_model::CostModel;
 
-lazy_static::lazy_static! {
-    static ref RUIN_CACHE:f64 = run_bench(|| ruin_cache());
-}
-
-fn black_box<T>(dummy: T) -> T {
-    unsafe {
-        let ret = std::ptr::read_volatile(&dummy);
-        std::mem::forget(dummy);
-        ret
-    }
-}
-
 pub fn ruin_cache() {
-    //    let _a = (0..80_000).collect::<Vec<i32>>();
+    let _a = (0..1_000_000).collect::<Vec<i32>>();
 }
 
 fn order_f64(&a: &f64, &b: &f64) -> std::cmp::Ordering {
@@ -46,68 +34,94 @@ fn order_f32(&a: &f32, &b: &f32) -> std::cmp::Ordering {
     }
 }
 
-pub fn run_bench<T, F: FnMut() -> T>(mut f: F) -> f64 {
-    black_box(f());
-    let start = Instant::now();
-    black_box(f());
-    let once = start.elapsed();
-    //   dbg!(once);
-    let evaled = if once < Duration::from_millis(1) {
-        let start = Instant::now();
-        for _ in 0..1000 {
-            black_box(f());
-        }
-        start.elapsed().as_secs_f64() / 1000.
-    } else {
-        once.as_secs_f64()
-    };
-    //    let warmup = (0.2 / evaled) as usize;
-    //    let iters = 5.0 / evaled as f64;
-    // chunk just need to be big enough be measurable
-    //    dbg!(evaled);
-    let chunk = ((1.0 / evaled) as usize).max(1);
-    // chunks is the number of measure. make it 1000 at least, 10000 at most
-    let chunks = (1.0 / (evaled * chunk as f64)).max(100.).min(10000.) as usize;
-    // let chunks = 10;
-    //dbg!(chunk, chunks);
-    let mut measures = vec![0.0; chunks];
-    /*
-    for _ in 0..warmup {
-    black_box(f());
-    }
-    */
-    for i in 0..chunks {
-        let start = Instant::now();
-        for _ in 0..chunk {
-            black_box(f());
-        }
-        let time = start.elapsed().as_secs_f64();
-        measures[i] = time / chunk as f64;
-    }
-    measures.sort_by(order_f64);
-    let q1 = measures[chunks / 4];
-    let q3 = measures[chunks - chunks / 4];
-    let iq = q3 - q1;
-    //    measures.retain(|&x| x >= q1 && x <= q3);
-    let epsilon = iq * 2. / (q3 + q1);
-    eprintln!("evaled: {} chunk:{} chunks: {} epsilon: {:.3e}", evaled, chunk, chunks, epsilon);
-    /*
-    let mut hist = vec![0; 101];
-    for m in &measures {
-    let bucket = (m - measures[0]) / (measures[measures.len() - 1] - measures[0]);
-    hist[(100. * bucket) as usize] += 1;
-    }
-    eprintln!("{hist:?}");
-    eprintln!("q1: {}", measures[measures.len() / 4]);
-    */
-    /*
-    eprintln!("avg: {}", );
-    measures[chunks / 4] //[..chunks / 2].iter().copied().sum::<f64>() / (chunks / 2) as f64
-    */
-    q1
+pub struct Bencher {
+    bench_time_target: Duration,
+    chunk_time_target: Duration,
+    chunks_min_count: usize,
+    chunks_max_count: usize,
 }
 
-fn measure_add_mat_mul(mm: &dyn MatMatMul, m: usize, k: usize, n: usize) -> f64 {
+impl Bencher {
+    fn black_box<T>(dummy: T) -> T {
+        unsafe {
+            let ret = std::ptr::read_volatile(&dummy);
+            std::mem::forget(dummy);
+            ret
+        }
+    }
+
+    pub fn run_bench<T, F: FnMut() -> T>(&self, mut f: F) -> f64 {
+        Self::black_box(f());
+        let start = Instant::now();
+        Self::black_box(f());
+        let once = start.elapsed();
+        //   dbg!(once);
+        let evaled = if once < Duration::from_millis(1) {
+            let start = Instant::now();
+            for _ in 0..1000 {
+                Self::black_box(f());
+            }
+            start.elapsed().as_secs_f64() / 1000.
+        } else {
+            once.as_secs_f64()
+        };
+        //    let warmup = (0.2 / evaled) as usize;
+        //    let iters = 5.0 / evaled as f64;
+        // chunk just need to be big enough be measurable
+        //    dbg!(evaled);
+        let chunk = ((self.chunk_time_target.as_secs_f64() / evaled) as usize).max(1);
+        // chunks is the number of measure. make it 1000 at least, 10000 at most
+        let chunks = ((self.bench_time_target.as_secs_f64() / (evaled * chunk as f64)) as usize)
+            .max(self.chunks_min_count)
+            .min(self.chunks_max_count);
+        // let chunks = 10;
+        //dbg!(chunk, chunks);
+        let mut measures = vec![0.0; chunks];
+        /*
+        for _ in 0..warmup {
+        black_box(f());
+        }
+        */
+        for i in 0..chunks {
+            let start = Instant::now();
+            for _ in 0..chunk {
+                Self::black_box(f());
+            }
+            let time = start.elapsed().as_secs_f64();
+            measures[i] = time / chunk as f64;
+        }
+        measures.sort_by(order_f64);
+        let q1 = measures[chunks / 4];
+        let q3 = measures[chunks - chunks / 4];
+        let iq = q3 - q1;
+        //    measures.retain(|&x| x >= q1 && x <= q3);
+        let epsilon = iq * 2. / (q3 + q1);
+        eprintln!("evaled: {} chunk:{} chunks: {} epsilon: {:.3e}", evaled, chunk, chunks, epsilon);
+        /*
+        let mut hist = vec![0; 101];
+        for m in &measures {
+        let bucket = (m - measures[0]) / (measures[measures.len() - 1] - measures[0]);
+        hist[(100. * bucket) as usize] += 1;
+        }
+        eprintln!("{hist:?}");
+        eprintln!("q1: {}", measures[measures.len() / 4]);
+        */
+        /*
+        eprintln!("avg: {}", );
+        measures[chunks / 4] //[..chunks / 2].iter().copied().sum::<f64>() / (chunks / 2) as f64
+        */
+        q1
+    }
+}
+
+fn measure_add_mat_mul(
+    bencher: &Bencher,
+    ruin_cache_time: f64,
+    mm: &dyn MatMatMul,
+    m: usize,
+    k: usize,
+    n: usize,
+) -> f64 {
     let dt = mm.internal_type();
     let pa = Tensor::zero_aligned_dt(dt, &[mm.a_pack().len(k, m)], mm.a_pack().alignment()).unwrap();
     let pb = Tensor::zero_aligned_dt(dt, &[mm.b_pack().len(k, n)], mm.b_pack().alignment()).unwrap();
@@ -117,7 +131,7 @@ fn measure_add_mat_mul(mm: &dyn MatMatMul, m: usize, k: usize, n: usize) -> f64 
         let pb = mm.b_packed(dt.size_of(), k).wrap(&pb.view()).unwrap();
         let pc = mm.c_view(0, 1).wrap(&pc.view());
         let mut scratch = mm.allocate_scratch_space();
-        let time = run_bench(|| {
+        let time = bencher.run_bench(|| {
             ruin_cache();
             mm.run_with_scratch_space(
                 m,
@@ -127,7 +141,7 @@ fn measure_add_mat_mul(mm: &dyn MatMatMul, m: usize, k: usize, n: usize) -> f64 
             )
             .unwrap();
         });
-        time - *RUIN_CACHE
+        time - ruin_cache_time
     }
 }
 
@@ -153,7 +167,8 @@ impl Dataset {
     }
     */
 
-    pub fn make_dataset(mmm: &[impl AsRef<dyn MatMatMul>]) -> Dataset {
+    pub fn make_dataset(bencher: &Bencher, mmm: &[impl AsRef<dyn MatMatMul>]) -> Dataset {
+        let ruin_cache_time = bencher.run_bench(|| ruin_cache());
         let mut rng = thread_rng();
         let mut inputs = vec![];
         for mm in mmm {
@@ -182,7 +197,7 @@ impl Dataset {
         let mut samples = vec![];
         for (s, m, k, n) in inputs {
             let mm = mmm.iter().find(|mm| mm.as_ref().kernel_name() == s).unwrap().as_ref();
-            let y = measure_add_mat_mul(mm, m, k, n);
+            let y = measure_add_mat_mul(&bencher, ruin_cache_time, mm, m, k, n);
             samples.push((s, m, k, n, y));
             progress_bar.inc();
         }
@@ -225,6 +240,8 @@ fn train(ds: &Dataset, mm: impl AsRef<dyn MatMatMul>) -> CostModel {
         }
     }
     let model = fit_low_level_regression_model(&*data, count, data.len() / count).unwrap();
+    dbg!(&mm.kernel_name());
+    dbg!(&model.rsquared);
     let mut model = model.parameters;
     let intercept = model.remove(0);
     let alpha = model.remove(0);
@@ -325,28 +342,34 @@ fn train_and_dump(impls: &[impl AsRef<dyn MatMatMul>], ds: &Dataset, writer: &mu
     writeln!(writer, ")}}").unwrap();
 }
 
-/*
-#[derive(Debug, Copy, Clone)]
-enum SamplingStrat {
-MultipleOfR(usize),
-AnyUpToRs(usize),
-}
-
-impl SamplingStrat {
-fn sample(&self, r: usize) -> usize {
-let mut rng = thread_rng();
-match *self {
-SamplingStrat::MultipleOfR(n) => r * rng.gen_range(1..=n),
-SamplingStrat::AnyUpToRs(n) => rng.gen_range(1..=r * n),
-}
-}
-}
-*/
-
 fn main() {
     use clap::*;
 
     let parser = App::new("tract-linalg-cost-model")
+        .arg(
+            Arg::new("bench-time-target")
+                .long("bench-time-target")
+                .default_value("0.1")
+                .help("Target time for chunk sizing"),
+        )
+        .arg(
+            Arg::new("chunk-time-target")
+                .long("chunk-time-target")
+                .default_value("0.01")
+                .help("Target time for chunk sizing"),
+        )
+        .arg(
+            Arg::new("chunks-min-count")
+                .long("chunks-min-count")
+                .default_value("100")
+                .help("Minimum number of chunks"),
+        )
+        .arg(
+            Arg::new("chunks-max-count")
+                .long("chunks-max-count")
+                .default_value("10000")
+                .help("Minimum number of chunks"),
+        )
         .subcommand(App::new("list-models"))
         .subcommand(
             App::new("e2e")
@@ -393,6 +416,17 @@ fn main() {
 
     let matches = parser.get_matches();
 
+    let bencher = Bencher {
+        bench_time_target: Duration::from_secs_f64(
+            matches.value_of_t("bench-time-target").unwrap(),
+        ),
+        chunk_time_target: Duration::from_secs_f64(
+            matches.value_of_t("chunk-time-target").unwrap(),
+        ),
+        chunks_min_count: matches.value_of_t("chunks-min-count").unwrap(),
+        chunks_max_count: matches.value_of_t("chunks-max-count").unwrap(),
+    };
+
     let impls = tract_linalg::ops().mmm_f32_impls().iter().map(|p| p.0.clone()).collect_vec();
     match matches.subcommand() {
         Some(("list-models", _sub)) => {
@@ -405,13 +439,13 @@ fn main() {
             if let Some(mm) = sub.value_of("mm") {
                 mmms.retain(|m| m.kernel_name().contains(mm));
             }
-            Dataset::make_dataset(&mmms).save(sub.value_of("name").unwrap());
+            Dataset::make_dataset(&bencher, &mmms).save(sub.value_of("name").unwrap());
         }
         Some(("e2e", sub)) => {
             let ds = if let Some(ds) = sub.value_of("ds") {
                 Dataset::load(ds)
             } else {
-                Dataset::make_dataset(&impls)
+                Dataset::make_dataset(&bencher, &impls)
             };
             let mut writer: Box<dyn std::io::Write> = if let Some(filename) = sub.value_of("output")
             {
@@ -439,6 +473,7 @@ fn main() {
             }
         }
         Some(("time", sub)) => {
+            let ruin_cache_time = bencher.run_bench(|| ruin_cache());
             let mut mmms = impls.clone();
             if let Some(mm) = sub.value_of("mm") {
                 mmms.retain(|m| m.kernel_name().contains(mm));
@@ -447,11 +482,12 @@ fn main() {
             let k: usize = sub.value_of("k").unwrap().parse().unwrap();
             let n: usize = sub.value_of("n").unwrap().parse().unwrap();
             for mm in mmms {
-                let y = measure_add_mat_mul(&*mm, m, k, n);
+                let y = measure_add_mat_mul(&bencher, ruin_cache_time, &*mm, m, k, n);
                 println!("{:30} {:5} {:5} {:5} {:8.3}us", mm.kernel_name(), m, k, n, y * 1e6);
             }
         }
         Some(("train-eval", sub)) => {
+            let ruin_cache_time = bencher.run_bench(|| ruin_cache());
             let ds = Dataset::load(sub.value_of("train").unwrap());
             let mut mmms = impls.clone();
             if let Some(mm) = sub.value_of("mm") {
@@ -467,7 +503,11 @@ fn main() {
                 let mm = impls.iter().find(|p| p.kernel_name() == mm).unwrap();
                 let model = train(&ds, &mm);
                 let p = model.predict(m, k, n);
-                let y = if do_truth { measure_add_mat_mul(&**mm, m, k, n) as f32 } else { p };
+                let y = if do_truth {
+                    measure_add_mat_mul(&bencher, ruin_cache_time, &**mm, m, k, n) as f32
+                } else {
+                    p
+                };
                 alts.push((mm.kernel_name(), y, p));
             }
             let best_choice = alts.iter().min_by(|a, b| order_f32(&a.2, &b.2)).unwrap();
