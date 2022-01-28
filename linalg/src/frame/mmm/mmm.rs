@@ -210,9 +210,7 @@ where
         col_stride: isize,
     ) -> OutputStoreSpec {
         OutputStoreSpec::Strides {
-            row_item_stride: row_stride,
             row_byte_stride: row_stride * item_size as isize,
-            col_item_stride: col_stride,
             col_byte_stride: col_stride * item_size as isize,
             mr: K::mr(),
             nr: K::nr(),
