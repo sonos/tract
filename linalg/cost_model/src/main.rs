@@ -342,6 +342,32 @@ fn train_and_dump(impls: &[impl AsRef<dyn MatMatMul>], ds: &Dataset, writer: &mu
     writeln!(writer, ")}}").unwrap();
 }
 
+fn display_comaparison(m: usize, k: usize, n: usize, alts: &[(&str, f64, f64)]) {
+    let best_choice = alts.iter().min_by(|a, b| order_f64(&a.2, &b.2)).unwrap();
+    alts.iter().sorted_by(|a, b| order_f64(&a.1, &b.1)).enumerate().for_each(
+                |(ix, (s, t, p))| {
+                    let line = format!(
+                        "{:30} pred: {:9.03} us / {:9.03} GFlops ; truth: {:9.03} us / {:9.03} GFLops ; diff: {:5.2}%",
+                        s,
+                        p * 1e6,
+                        (m * k * n) as f64 / p / 1e9,
+                        t * 1e6,
+                        (m * k * n) as f64 / t / 1e9,
+                        (p - t) / t * 100.,
+                        );
+                    if &best_choice.0 == s {
+                        if ix == 0 {
+                            println!("{}", ansi_term::Color::Green.bold().paint(line));
+                        } else {
+                            println!("{}", ansi_term::Color::Red.bold().paint(line));
+                        }
+                    } else {
+                        println!("{}", line);
+                    }
+                },
+                );
+}
+
 fn main() {
     use clap::*;
 
@@ -481,10 +507,13 @@ fn main() {
             let m: usize = sub.value_of("m").unwrap().parse().unwrap();
             let k: usize = sub.value_of("k").unwrap().parse().unwrap();
             let n: usize = sub.value_of("n").unwrap().parse().unwrap();
-            for mm in mmms {
-                let y = measure_add_mat_mul(&bencher, ruin_cache_time, &*mm, m, k, n);
-                println!("{:30} {:5} {:5} {:5} {:8.3}us", mm.kernel_name(), m, k, n, y * 1e6);
+            let mut alts = vec![];
+            for (mm, model) in &mmms {
+                let y = measure_add_mat_mul(&bencher, ruin_cache_time, &**mm, m, k, n);
+                let predicted = model.as_ref().map(|model| model.predict(m, k, n));
+                alts.push((mm.kernel_name(), y, predicted.unwrap_or(0.)));
             }
+            display_comaparison(m, k, n, &alts);
         }
         Some(("train-eval", sub)) => {
             let ruin_cache_time = bencher.run_bench(|| ruin_cache());
@@ -510,29 +539,7 @@ fn main() {
                 };
                 alts.push((mm.kernel_name(), y, p));
             }
-            let best_choice = alts.iter().min_by(|a, b| order_f32(&a.2, &b.2)).unwrap();
-            alts.iter().sorted_by(|a, b| order_f32(&a.1, &b.1)).enumerate().for_each(
-                |(ix, (s, t, p))| {
-                    let line = format!(
-                        "{:30} pred: {:9.03} us / {:9.03} GFlops ; truth: {:9.03} us / {:9.03} GFLops ; diff: {:5.2}%",
-                        s,
-                        p * 1e6,
-                        p / 1e9 * (m *k * n) as f32,
-                        t * 1e6,
-                        t / 1e9 * (m *k * n) as f32,
-                        (p - t) / t * 100.,
-                        );
-                    if &best_choice.0 == s {
-                        if ix == 0 {
-                            println!("{}", ansi_term::Color::Green.bold().paint(line));
-                        } else {
-                            println!("{}", ansi_term::Color::Red.bold().paint(line));
-                        }
-                    } else {
-                        println!("{}", line);
-                    }
-                },
-                );
+            display_comaparison(m, k, n, &alts);
         }
         _ => panic!(),
     };
