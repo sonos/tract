@@ -740,8 +740,8 @@ macro_rules! kloop {
                 out("v24") _, out("v25") _, out("v26") _, out("v27") _,
                 out("v28") _, out("v29") _, out("v30") _, out("v31") _,
                 ));
-            });
-            println!("{} {:3.0}% ({:0.2} cy)", full_label, $n as f64 / time * 100. * $tick, time / $tick / 4.);
+            }) / 4.;
+            println!("{} {:3.0}% ({:0.2} cy)", full_label, $n as f64 / 4. / time * 100. * $tick, time / $tick);
         }
     }
 }
