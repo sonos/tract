@@ -1,10 +1,14 @@
 use linregress::fit_low_level_regression_model;
 use pbr::ProgressBar;
+use randomforest::criterion::Mse;
+use randomforest::table::TableBuilder;
+use randomforest::RandomForestRegressorOptions;
 use tract_data::internal::*;
 use tract_linalg::{frame::MatMatMul, mmm::FusedSpec};
 
 use rand::prelude::*;
 use std::io::Write;
+use std::num::NonZeroUsize;
 use std::time::{Duration, Instant};
 use tract_itertools::Itertools;
 
@@ -27,6 +31,14 @@ pub fn ruin_cache() {
 }
 
 fn order_f64(&a: &f64, &b: &f64) -> std::cmp::Ordering {
+    if a < b {
+        std::cmp::Ordering::Less
+    } else {
+        std::cmp::Ordering::Greater
+    }
+}
+
+fn order_f32(&a: &f32, &b: &f32) -> std::cmp::Ordering {
     if a < b {
         std::cmp::Ordering::Less
     } else {
@@ -146,10 +158,16 @@ impl Dataset {
         let mut inputs = vec![];
         for mm in mmm {
             let mm = mm.as_ref();
-            let ms =
-                [1, 2, 4, 32, 128].iter().map(|m| m * mm.mr()).flat_map(|m| [m - 1, m, m + 1]).collect_vec();
-            let ns =
-                [1, 2, 4, 32, 128].iter().map(|m| m * mm.nr()).flat_map(|m| [m - 1, m, m + 1]).collect_vec();
+            let ms = [1, 2, 4, 32, 128]
+                .iter()
+                .map(|m| m * mm.mr())
+                .flat_map(|m| [m - 1, m, m + 1])
+                .collect_vec();
+            let ns = [1, 2, 4, 32, 128]
+                .iter()
+                .map(|m| m * mm.nr())
+                .flat_map(|m| [m - 1, m, m + 1])
+                .collect_vec();
             let ks = [32, 128, 1024];
             for m in ms {
                 for &n in &ns {
@@ -192,29 +210,76 @@ impl Dataset {
 }
 
 fn train(ds: &Dataset, mm: impl AsRef<dyn MatMatMul>) -> CostModel {
+    let mm = mm.as_ref();
+    dbg!(&mm.kernel_name());
     let mut data = vec![];
     let mut count = 0;
-    let mm = mm.as_ref();
     for (s, m, k, n, y) in &ds.0 {
         if mm.kernel_name() == s {
             data.push(*y);
             data.push(1.0);
-            data.extend(CostModel::features(mm.mr(), mm.nr(), *m, *k, *n));
+            let rows = m.divceil(mm.mr());
+            let cols = n.divceil(mm.nr());
+            data.push((rows * cols * k) as f64);
             count += 1;
         }
     }
     let model = fit_low_level_regression_model(&*data, count, data.len() / count).unwrap();
-    dbg!(&mm.kernel_name());
-    dbg!(&model.rsquared);
-//    dbg!(&model.pvalues);
     let mut model = model.parameters;
-    CostModel { mr: mm.mr(), nr: mm.nr(), intercept: model.remove(0), coef: model }
+    let intercept = model.remove(0);
+    let alpha = model.remove(0);
+
+    let mut residuals = 0.;
+    let mut table_builder = TableBuilder::new();
+    for (s, m, k, n, y) in &ds.0 {
+        if mm.kernel_name() == s {
+            let rows = m.divceil(mm.mr());
+            let cols = n.divceil(mm.nr());
+            let mkn = rows * cols * k;
+            let features: Vec<f64> =
+                CostModel::features(mm.mr(), mm.nr(), *m, *k, *n).into_iter().collect();
+            let residual = *y - mkn as f64 * alpha - intercept;
+            residuals += (residual / y).powi(2);
+            table_builder.add_row(&features, residual).unwrap();
+            let rows = m.divceil(mm.mr());
+            let cols = n.divceil(mm.nr());
+            data.push((rows * cols * k) as f64);
+            count += 1;
+        }
+    }
+    let table = table_builder.build().unwrap();
+    let forest = RandomForestRegressorOptions::new()
+        .seed(0)
+        .trees(NonZeroUsize::new(3).unwrap())
+        .fit(Mse, table);
+    let mut v = vec![];
+    forest.serialize(&mut v).unwrap();
+
+    let model = CostModel {
+        mr: mm.mr(),
+        nr: mm.nr(),
+        intercept: intercept as f32,
+        alpha: alpha as f32,
+        forest,
+    };
+
+    let mut sqr = 0.;
+    for (s, m, k, n, y) in &ds.0 {
+        if mm.kernel_name() == s {
+            sqr += ((model.predict(*m, *k, *n) - *y as f32) / *y as f32).powi(2);
+        }
+    }
+
+    dbg!(v.len());
+    dbg!(residuals / count as f64);
+    dbg!(sqr / count as f32);
+    model
 }
 
-fn compare(model: &CostModel, m: usize, k: usize, n: usize, t: f64) {
+fn compare(model: &CostModel, m: usize, k: usize, n: usize, t: f32) {
     let prediction = model.predict(m, k, n);
     let ratio_for_color = ((prediction - t).abs() / t * 50.).min(1.);
-    let color = colorous::RED_YELLOW_GREEN.eval_continuous(1.0 - ratio_for_color);
+    let color = colorous::RED_YELLOW_GREEN.eval_continuous((1.0 - ratio_for_color) as _);
     let color = ansi_term::Color::RGB(color.r, color.g, color.b);
     let line = format!(
         "{:4} {:4} {:4}  pred: {:9.03} us truth: {:9.03} us {:5.2}%",
@@ -234,7 +299,7 @@ fn eval(model: &CostModel, name: &str, ds: &Dataset) {
             .filter(|p| p.0 == name)
             .sorted_by_key(|p| (p.1, p.2, p.3, (p.4 * 1e12) as usize))
     {
-        compare(model, *m, *k, *n, *y);
+        compare(model, *m, *k, *n, *y as f32);
     }
 }
 
@@ -253,13 +318,8 @@ fn train_and_dump(impls: &[impl AsRef<dyn MatMatMul>], ds: &Dataset, writer: &mu
             mm.nr()
         )
         .unwrap();
+        writeln!(writer, "alpha: {},", model.alpha).unwrap();
         writeln!(writer, "intercept: {},", model.intercept).unwrap();
-        writeln!(
-            writer,
-            "coef: vec!({}),",
-            model.coef.iter().map(|c| format!("{:.e}", c)).join(", ")
-        )
-        .unwrap();
         writeln!(writer, "}}),").unwrap();
     }
     writeln!(writer, ")}}").unwrap();
@@ -369,11 +429,12 @@ fn main() {
             }
             let models = ds.0.iter().map(|p| &p.0).unique();
             for mm in models {
-                let mm = impls.iter().find(|p| p.kernel_name() == mm).unwrap();
-                let model = train(&ds, &mm);
-                if let Some(ds2) = sub.value_of("eval") {
-                    let ds2 = Dataset::load(ds2);
-                    eval(&model, mm.kernel_name(), &ds2);
+                if let Some(mm) = impls.iter().find(|p| p.kernel_name() == mm) {
+                    let model = train(&ds, &mm);
+                    if let Some(ds2) = sub.value_of("eval") {
+                        let ds2 = Dataset::load(ds2);
+                        eval(&model, mm.kernel_name(), &ds2);
+                    }
                 }
             }
         }
@@ -406,21 +467,21 @@ fn main() {
                 let mm = impls.iter().find(|p| p.kernel_name() == mm).unwrap();
                 let model = train(&ds, &mm);
                 let p = model.predict(m, k, n);
-                let y = if do_truth { measure_add_mat_mul(&**mm, m, k, n) } else { p };
+                let y = if do_truth { measure_add_mat_mul(&**mm, m, k, n) as f32 } else { p };
                 alts.push((mm.kernel_name(), y, p));
             }
-            let best_choice = alts.iter().min_by(|a, b| order_f64(&a.2, &b.2)).unwrap();
-            alts.iter().sorted_by(|a, b| order_f64(&a.1, &b.1)).enumerate().for_each(
+            let best_choice = alts.iter().min_by(|a, b| order_f32(&a.2, &b.2)).unwrap();
+            alts.iter().sorted_by(|a, b| order_f32(&a.1, &b.1)).enumerate().for_each(
                 |(ix, (s, t, p))| {
                     let line = format!(
                         "{:30} pred: {:9.03} us / {:9.03} GFlops ; truth: {:9.03} us / {:9.03} GFLops ; diff: {:5.2}%",
                         s,
                         p * 1e6,
-                        (m * k * n) as f64 / p / 1e9,
+                        p / 1e9 * (m *k * n) as f32,
                         t * 1e6,
-                        (m * k * n) as f64 / t / 1e9,
+                        t / 1e9 * (m *k * n) as f32,
                         (p - t) / t * 100.,
-                    );
+                        );
                     if &best_choice.0 == s {
                         if ix == 0 {
                             println!("{}", ansi_term::Color::Green.bold().paint(line));
@@ -431,7 +492,7 @@ fn main() {
                         println!("{}", line);
                     }
                 },
-            );
+                );
         }
         _ => panic!(),
     };
