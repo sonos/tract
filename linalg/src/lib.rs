@@ -113,8 +113,8 @@ fn pick_best_impl(
     &*impls
         .iter()
         .min_by(|a, b| {
-            let a = a.1.as_ref().map(|model| model.predict(m, k, n)).unwrap_or(std::f64::MAX);
-            let b = b.1.as_ref().map(|model| model.predict(m, k, n)).unwrap_or(std::f64::MAX);
+            let a = a.1.as_ref().map(|model| model.predict(m, k, n)).unwrap_or(std::f32::MAX);
+            let b = b.1.as_ref().map(|model| model.predict(m, k, n)).unwrap_or(std::f32::MAX);
             if a < b {
                 Ordering::Less
             } else {

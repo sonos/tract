@@ -25,6 +25,7 @@ num-traits = "0.2.14"
 tract-data = { path = "../data" }
 paste = "1.0.5"
 scan_fmt = "0.2.6"
+randomforest = "0.1.6"
 
 [build-dependencies]
 cc = "1.0.69"
