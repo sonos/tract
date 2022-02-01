@@ -729,9 +729,8 @@ macro_rules! kloop {
                 out("x4") _, out("x5") _, out("x6") _, out("x7") _,
                 out("x8") _, out("x9") _, out("x10") _, out("x11") _,
                 out("x12") _, out("x13") _, out("x14") _, out("x15") _,
-                out("x20") _, out("x21") _, out("x22") _,
-                out("x23") _, out("x24") _, out("x25") _, out("x26") _,
-                out("x27") _,
+                out("x20") _, out("x21") _, out("x22") _, out("x23") _,
+                out("x24") _, out("x25") _, out("x26") _, out("x27") _,
                 out("v0") _, out("v1") _, out("v2") _, out("v3") _,
                 out("v4") _, out("v5") _, out("v6") _, out("v7") _,
                 out("v8") _, out("v9") _, out("v10") _, out("v11") _,
@@ -742,7 +741,7 @@ macro_rules! kloop {
                 out("v28") _, out("v29") _, out("v30") _, out("v31") _,
                 ));
             });
-            println!("{} {:.0}%", full_label, $n as f64 / time * 100. * $tick);
+            println!("{} {:3.0}% ({:0.2} cy)", full_label, $n as f64 / time * 100. * $tick, time / $tick / 4.);
         }
     }
 }
