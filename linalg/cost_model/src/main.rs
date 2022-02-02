@@ -18,15 +18,7 @@ pub fn ruin_cache() {
     let _a = (0..1_000_000).collect::<Vec<i32>>();
 }
 
-fn order_f64(&a: &f64, &b: &f64) -> std::cmp::Ordering {
-    if a < b {
-        std::cmp::Ordering::Less
-    } else {
-        std::cmp::Ordering::Greater
-    }
-}
-
-fn order_f32(&a: &f32, &b: &f32) -> std::cmp::Ordering {
+fn order_f<F: tract_num_traits::Float>(&a: &F, &b: &F) -> std::cmp::Ordering {
     if a < b {
         std::cmp::Ordering::Less
     } else {
@@ -90,13 +82,15 @@ impl Bencher {
             let time = start.elapsed().as_secs_f64();
             measures[i] = time / chunk as f64;
         }
-        measures.sort_by(order_f64);
+        measures.sort_by(order_f);
         let q1 = measures[chunks / 4];
+        /*
         let q3 = measures[chunks - chunks / 4];
         let iq = q3 - q1;
         //    measures.retain(|&x| x >= q1 && x <= q3);
         let epsilon = iq * 2. / (q3 + q1);
         eprintln!("evaled: {} chunk:{} chunks: {} epsilon: {:.3e}", evaled, chunk, chunks, epsilon);
+        */
         /*
         let mut hist = vec![0; 101];
         for m in &measures {
@@ -346,8 +340,8 @@ fn train_and_dump(impls: &[&dyn MatMatMul], ds: &Dataset, writer: &mut dyn Write
 }
 
 fn display_comparison(m: usize, k: usize, n: usize, alts: &[(&str, f64, f64)]) {
-    let best_choice = alts.iter().min_by(|a, b| order_f64(&a.2, &b.2)).unwrap();
-    alts.iter().sorted_by(|a, b| order_f64(&a.1, &b.1)).enumerate().for_each(
+    let best_choice = alts.iter().min_by(|a, b| order_f(&a.2, &b.2)).unwrap();
+    alts.iter().sorted_by(|a, b| order_f(&a.1, &b.1)).enumerate().for_each(
                 |(ix, (s, t, p))| {
                     let line = format!(
                         "{:30} pred: {:9.03} us / {:9.03} GFlops ; truth: {:9.03} us / {:9.03} GFLops ; diff: {:5.2}%",
@@ -434,6 +428,14 @@ fn main() {
         .subcommand(
             App::new("ds")
                 .arg(Arg::new("mm").long("mm").help("Filter kernels").takes_value(true))
+                .arg(
+                    Arg::new("strat")
+                        .long("strat")
+                        .help("Strategy for sampling")
+                        .takes_value(true)
+                        .possible_values(["smart", "random"])
+                        .default_value("smart"),
+                )
                 .arg(Arg::new("name").required(true)),
         )
         .subcommand(
@@ -469,7 +471,11 @@ fn main() {
             if let Some(mm) = sub.value_of("mm") {
                 mmms.retain(|m| m.kernel_name().contains(mm));
             }
-            let inputs = Dataset::smart_sample(&*mmms);
+            let inputs = match sub.value_of("strat").unwrap() {
+                "smart" => Dataset::smart_sample(&*mmms),
+                "random" => Dataset::compare_random_sample(&*mmms, 64),
+                _ => unreachable!()
+            };
             Dataset::make_dataset(&bencher, inputs, &mmms).save(sub.value_of("name").unwrap());
         }
         Some(("e2e", sub)) => {
