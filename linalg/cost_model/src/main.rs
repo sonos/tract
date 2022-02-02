@@ -148,31 +148,9 @@ fn measure_add_mat_mul(
 struct Dataset(Vec<(String, usize, usize, usize, f64)>);
 
 impl Dataset {
-    /*
-    pub fn gen_inputs(
-    wanted: usize,
-    mm: &dyn MatMatMul,
-    m: SamplingStrat,
-    k: SamplingStrat,
-    n: SamplingStrat,
-    ) -> Vec<(String, usize, usize, usize)> {
-    let mut samples = vec![];
-    for _ in 0..wanted {
-    let m = m.sample(mm.mr());
-    let k = k.sample(mm.mr() + mm.nr());
-    let n = n.sample(mm.nr());
-    samples.push((mm.kernel_name().to_string(), m, k, n));
-    }
-    samples
-    }
-    */
-
-    pub fn make_dataset(bencher: &Bencher, mmm: &[impl AsRef<dyn MatMatMul>]) -> Dataset {
-        let ruin_cache_time = bencher.run_bench(|| ruin_cache());
-        let mut rng = thread_rng();
+    pub fn smart_sample(mmm: &[&dyn MatMatMul]) -> Vec<(String, usize, usize, usize)> {
         let mut inputs = vec![];
         for mm in mmm {
-            let mm = mm.as_ref();
             let ms = [1, 2, 4, 32, 128]
                 .iter()
                 .map(|m| m * mm.mr())
@@ -192,12 +170,39 @@ impl Dataset {
                 }
             }
         }
+        inputs
+    }
+
+    pub fn compare_random_sample(
+        mmm: &[&dyn MatMatMul],
+        size: usize,
+    ) -> Vec<(String, usize, usize, usize)> {
+        let mut inputs = vec![];
+        let mut rng = thread_rng();
+        for _ in 0..size {
+            let m = rng.gen_range(1..512);
+            let k = rng.gen_range(0..512);
+            let n = rng.gen_range(1..512);
+            for mm in mmm {
+                inputs.push((mm.kernel_name().to_string(), m, k, n));
+            }
+        }
+        inputs
+    }
+
+    pub fn make_dataset(
+        bencher: &Bencher,
+        mut inputs: Vec<(String, usize, usize, usize)>,
+        mmm: &[&dyn MatMatMul],
+    ) -> Dataset {
+        let ruin_cache_time = bencher.run_bench(|| ruin_cache());
+        let mut rng = thread_rng();
         inputs.shuffle(&mut rng);
         let mut progress_bar = ProgressBar::new(inputs.len() as _);
         let mut samples = vec![];
         for (s, m, k, n) in inputs {
-            let mm = mmm.iter().find(|mm| mm.as_ref().kernel_name() == s).unwrap().as_ref();
-            let y = measure_add_mat_mul(&bencher, ruin_cache_time, mm, m, k, n);
+            let mm = mmm.iter().find(|mm| mm.kernel_name() == s).unwrap();
+            let y = measure_add_mat_mul(&bencher, ruin_cache_time, *mm, m, k, n);
             samples.push((s, m, k, n, y));
             progress_bar.inc();
         }
@@ -224,8 +229,7 @@ impl Dataset {
     }
 }
 
-fn train(ds: &Dataset, mm: impl AsRef<dyn MatMatMul>) -> CostModel {
-    let mm = mm.as_ref();
+fn train(ds: &Dataset, mm: &dyn MatMatMul) -> CostModel {
     dbg!(&mm.kernel_name());
     let mut data = vec![];
     let mut count = 0;
@@ -320,13 +324,12 @@ fn eval(model: &CostModel, name: &str, ds: &Dataset) {
     }
 }
 
-fn train_and_dump(impls: &[impl AsRef<dyn MatMatMul>], ds: &Dataset, writer: &mut dyn Write) {
+fn train_and_dump(impls: &[&dyn MatMatMul], ds: &Dataset, writer: &mut dyn Write) {
     writeln!(writer, "use crate::frame::mmm::cost_model::CostModel;").unwrap();
     writeln!(writer, "pub fn models() -> Vec<(&'static str, CostModel)> {{").unwrap();
     writeln!(writer, "vec!(").unwrap();
     for mm in impls {
-        let model = train(&ds, mm);
-        let mm = mm.as_ref();
+        let model = train(&ds, *mm);
         writeln!(
             writer,
             "(\"{}\", CostModel {{ mr: {}, nr: {},",
@@ -342,7 +345,7 @@ fn train_and_dump(impls: &[impl AsRef<dyn MatMatMul>], ds: &Dataset, writer: &mu
     writeln!(writer, ")}}").unwrap();
 }
 
-fn display_comaparison(m: usize, k: usize, n: usize, alts: &[(&str, f64, f64)]) {
+fn display_comparison(m: usize, k: usize, n: usize, alts: &[(&str, f64, f64)]) {
     let best_choice = alts.iter().min_by(|a, b| order_f64(&a.2, &b.2)).unwrap();
     alts.iter().sorted_by(|a, b| order_f64(&a.1, &b.1)).enumerate().for_each(
                 |(ix, (s, t, p))| {
@@ -453,25 +456,28 @@ fn main() {
         chunks_max_count: matches.value_of_t("chunks-max-count").unwrap(),
     };
 
-    let impls = tract_linalg::ops().mmm_f32_impls().iter().map(|p| p.0.clone()).collect_vec();
+    let impls = tract_linalg::ops().mmm_f32_impls().iter().collect_vec();
+    let mmms: Vec<&dyn MatMatMul> = impls.iter().map(|p| &*p.0).collect_vec();
     match matches.subcommand() {
         Some(("list-models", _sub)) => {
-            for mmm in impls {
+            for mmm in mmms {
                 println!("{}", mmm.kernel_name());
             }
         }
         Some(("ds", sub)) => {
-            let mut mmms = impls.clone();
+            let mut mmms = mmms.clone();
             if let Some(mm) = sub.value_of("mm") {
                 mmms.retain(|m| m.kernel_name().contains(mm));
             }
-            Dataset::make_dataset(&bencher, &mmms).save(sub.value_of("name").unwrap());
+            let inputs = Dataset::smart_sample(&*mmms);
+            Dataset::make_dataset(&bencher, inputs, &mmms).save(sub.value_of("name").unwrap());
         }
         Some(("e2e", sub)) => {
             let ds = if let Some(ds) = sub.value_of("ds") {
                 Dataset::load(ds)
             } else {
-                Dataset::make_dataset(&bencher, &impls)
+                let inputs = Dataset::smart_sample(&*mmms);
+                Dataset::make_dataset(&bencher, inputs, &mmms)
             };
             let mut writer: Box<dyn std::io::Write> = if let Some(filename) = sub.value_of("output")
             {
@@ -479,18 +485,18 @@ fn main() {
             } else {
                 Box::new(std::io::stdout())
             };
-            train_and_dump(&*impls, &ds, &mut writer);
+            train_and_dump(&*mmms, &ds, &mut writer);
         }
         Some(("train", sub)) => {
             let ds = Dataset::load(sub.value_of("train").unwrap());
-            let mut mmms = impls.clone();
+            let mut mmms = mmms.clone();
             if let Some(mm) = sub.value_of("mm") {
                 mmms.retain(|m| m.kernel_name().contains(mm));
             }
             let models = ds.0.iter().map(|p| &p.0).unique();
             for mm in models {
-                if let Some(mm) = impls.iter().find(|p| p.kernel_name() == mm) {
-                    let model = train(&ds, &mm);
+                if let Some(mm) = mmms.iter().find(|p| p.kernel_name() == mm) {
+                    let model = train(&ds, *mm);
                     if let Some(ds2) = sub.value_of("eval") {
                         let ds2 = Dataset::load(ds2);
                         eval(&model, mm.kernel_name(), &ds2);
@@ -502,7 +508,7 @@ fn main() {
             let ruin_cache_time = bencher.run_bench(|| ruin_cache());
             let mut mmms = impls.clone();
             if let Some(mm) = sub.value_of("mm") {
-                mmms.retain(|m| m.kernel_name().contains(mm));
+                mmms.retain(|m| m.0.kernel_name().contains(mm));
             }
             let m: usize = sub.value_of("m").unwrap().parse().unwrap();
             let k: usize = sub.value_of("k").unwrap().parse().unwrap();
@@ -511,14 +517,14 @@ fn main() {
             for (mm, model) in &mmms {
                 let y = measure_add_mat_mul(&bencher, ruin_cache_time, &**mm, m, k, n);
                 let predicted = model.as_ref().map(|model| model.predict(m, k, n));
-                alts.push((mm.kernel_name(), y, predicted.unwrap_or(0.)));
+                alts.push((mm.kernel_name(), y, predicted.unwrap_or(0.) as f64));
             }
-            display_comaparison(m, k, n, &alts);
+            display_comparison(m, k, n, &*alts);
         }
         Some(("train-eval", sub)) => {
             let ruin_cache_time = bencher.run_bench(|| ruin_cache());
             let ds = Dataset::load(sub.value_of("train").unwrap());
-            let mut mmms = impls.clone();
+            let mut mmms = mmms.clone();
             if let Some(mm) = sub.value_of("mm") {
                 mmms.retain(|m| m.kernel_name().contains(mm));
             }
@@ -529,17 +535,17 @@ fn main() {
             let do_truth = !sub.is_present("no-truth");
             let mut alts = vec![];
             for mm in models {
-                let mm = impls.iter().find(|p| p.kernel_name() == mm).unwrap();
-                let model = train(&ds, &mm);
+                let mm = mmms.iter().find(|p| p.kernel_name() == mm).unwrap();
+                let model = train(&ds, *mm);
                 let p = model.predict(m, k, n);
                 let y = if do_truth {
                     measure_add_mat_mul(&bencher, ruin_cache_time, &**mm, m, k, n) as f32
                 } else {
                     p
                 };
-                alts.push((mm.kernel_name(), y, p));
+                alts.push((mm.kernel_name(), y as f64, p as f64));
             }
-            display_comaparison(m, k, n, &alts);
+            display_comparison(m, k, n, &*alts);
         }
         _ => panic!(),
     };
