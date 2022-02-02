@@ -28,7 +28,7 @@ pub mod prelude {
         dispatch_floatlike, dispatch_hash, dispatch_numbers, dispatch_signed,
     };
     pub use crate::{TractError, TractResult};
-    pub use ::num_complex::Complex;
+    pub use num_complex::Complex;
     pub use itertools as tract_itertools;
 }
 
@@ -43,6 +43,7 @@ pub mod internal {
     pub use ndarray as tract_ndarray;
     pub use num_integer;
     pub use smallvec as tract_smallvec;
+    pub use num_traits as tract_num_traits;
 }
 
 pub use anyhow;
