@@ -15,8 +15,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
-    - name: show envir
-      run: env
     - uses: actions/cache@v2
       with:
         path: |
