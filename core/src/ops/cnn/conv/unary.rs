@@ -1129,7 +1129,18 @@ impl TypedOp for ConvUnary {
                 patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                 patch.obliterate(node.id)?;
                 return Ok(Some(patch));
-            } else if self.group == 1 && input_fact.shape.is_concrete() {
+            } else if input_fact
+                .shape
+                .as_concrete()
+                .map(|s| {
+                    should_use_lazy(
+                        &self.pool_spec.data_format.shape(s.into()).unwrap(),
+                        &self.pool_spec,
+                        self.group,
+                    )
+                })
+                .unwrap_or(false)
+            {
                 let mut patch = TypedModelPatch::new("wire_as_lazy_im2col");
                 let mut wire = patch.tap_model(model, node.inputs[0])?;
                 wire = self.wire_as_lazy_im2col(&mut patch, &*node.name, wire)?;
@@ -1183,6 +1194,13 @@ impl TypedOp for ConvUnary {
     }
 
     as_op!();
+}
+
+fn should_use_lazy(input_shape: &DataShape, pool_spec: &PoolSpec, group: usize) -> bool {
+    group == 1
+        && pool_spec.kernel_shape.iter().product::<usize>()
+            * input_shape.shape.iter().product::<usize>()
+            > 1048576
 }
 
 fn should_use_direct(input_shape: &DataShape, pool_spec: &PoolSpec, group: usize) -> bool {
