@@ -454,19 +454,18 @@ impl ConvUnary {
         }
         let c_dt = crate::ops::matmul::output_type(b_fact.datum_type);
         let c_stride = input_shape.c_stride();
-        let data_item_offsets: Vec<isize> = geo.patch.centers_offsets();
-        let kernel_item_offsets: Vec<isize> = (0..self.input_channels())
+        let size_of_b = b_fact.datum_type.size_of() as isize;
+        let n_bytes_offsets: Vec<isize> =
+            geo.patch.centers_offsets().into_iter().map(|x| x * size_of_b).collect();
+        let k_bytes_offsets: Vec<isize> = (0..self.input_channels())
             .flat_map(|ici| {
                 geo.patch
                     .standard_layout_data_field
                     .iter()
-                    .map(move |x| x + (ici * c_stride) as isize)
+                    .map(move |x| (x + (ici * c_stride) as isize) * size_of_b)
             })
             .collect();
-        let virtual_input = super::lazy_im2col::LazyIm2colSpec {
-            n_item_offsets: data_item_offsets,
-            k_item_offsets: kernel_item_offsets,
-        };
+        let virtual_input = super::lazy_im2col::LazyIm2colSpec { n_bytes_offsets, k_bytes_offsets };
         let b_storage = mmm.b_virtual_input(Box::new(virtual_input), k);
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&geo.output_shape)?;
 
