@@ -3,8 +3,8 @@
 set -ex
 
 TRAVIS_COMMIT=${GITHUB_SHA:-dummy-commit-id}
-BRANCH=$(echo $GITHUB_REF | cut -d / -f 3-)
-BRANCH=${BRANCH:-master}
+BRANCH=$(echo $GITHUB_HEAD_REF | tr '/' '_')
+BRANCH=${BRANCH:-main}
 PLATFORM=${PLATFORM:-dummy-platform}
 
 dates=`date -u +"%Y%m%dT%H%M%S %s"`
