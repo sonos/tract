@@ -1201,6 +1201,8 @@ fn should_use_lazy(_input_shape: &DataShape, pool_spec: &PoolSpec, group: usize)
 }
 
 fn should_use_direct(input_shape: &DataShape, pool_spec: &PoolSpec, group: usize) -> bool {
+    false
+    /*
     let spatial_rank = input_shape.hw_rank();
     if group != 1
         || !(0..spatial_rank).all(|ax| pool_spec.padding.valid_dim(ax, pool_spec.stride(ax) == 1))
@@ -1215,6 +1217,7 @@ fn should_use_direct(input_shape: &DataShape, pool_spec: &PoolSpec, group: usize
         // im2col matrix (when both kernel and input are big)
         pool_spec.kernel_shape.iter().product::<usize>() * input_shape.shape.iter().product::<usize>() > 1048576;
     direct
+    */
 }
 
 #[allow(non_snake_case)]
