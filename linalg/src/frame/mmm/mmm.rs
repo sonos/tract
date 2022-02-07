@@ -24,12 +24,6 @@ pub trait MatMatMul:
     unsafe fn a_packed(&self, item_size: usize, k: usize) -> PackedStoreSpec;
 
     unsafe fn b_packed(&self, item_size: usize, k: usize) -> InputStoreSpec;
-    unsafe fn b_from_data_and_offsets(
-        &self,
-        item_size: usize,
-        rows_offsets: &[isize],
-        cols_offsets: &[isize],
-    ) -> InputStoreSpec;
     unsafe fn b_late_packing(&self) -> InputStoreSpec {
         self.b_late_packing_with_axes(0, 1)
     }
@@ -172,35 +166,6 @@ where
 
     unsafe fn b_late_packing_with_axes(&self, k_axis: usize, n_axis: usize) -> InputStoreSpec {
         InputStoreSpec::LatePacking { packer: self.b_pack(), k_axis, mn_axis: n_axis }
-    }
-
-    unsafe fn b_from_data_and_offsets(
-        &self,
-        item_size: usize,
-        rows_offsets: &[isize],
-        cols_offsets: &[isize],
-    ) -> InputStoreSpec {
-        debug_assert!(rows_offsets.len() > 0);
-        debug_assert!(cols_offsets.len() > 0);
-        // repeat the last offset to get to the panel boundary (pad to next multiple of nr)
-        let wanted = (cols_offsets.len() + K::nr() - 1) / K::nr() * K::nr();
-        let mut col_byte_offsets: Vec<_> =
-            cols_offsets.iter().map(|o| o * item_size as isize).collect();
-        while col_byte_offsets.len() < wanted {
-            col_byte_offsets.push(*col_byte_offsets.last().unwrap());
-        }
-        // repeat the last offset four times to simplify kernel loop unrolling
-        let mut row_byte_offsets: Vec<_> = Vec::with_capacity(rows_offsets.len() + 4);
-        row_byte_offsets.set_len(rows_offsets.len() + 4);
-        for i in 0..rows_offsets.len() {
-            *row_byte_offsets.get_unchecked_mut(i) =
-                *rows_offsets.get_unchecked(i) * item_size as isize;
-        }
-        let pad = *row_byte_offsets.get_unchecked(rows_offsets.len() - 1);
-        for i in 0..4 {
-            *row_byte_offsets.get_unchecked_mut(rows_offsets.len() + i) = pad;
-        }
-        InputStoreSpec::OffsetsAndPtrs { col_byte_offsets, row_byte_offsets, nr: K::nr() }
     }
 
     unsafe fn b_virtual_input(&self, func: Box<dyn VirtualInputSpec>, k: usize) -> InputStoreSpec {

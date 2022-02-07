@@ -26,7 +26,6 @@ impl std::hash::Hash for Box<dyn VirtualInputSpec> {
 #[derive(Clone, Debug, Hash)]
 pub enum InputStoreSpec {
     Prepacked(PackedStoreSpec),
-    OffsetsAndPtrs { row_byte_offsets: Vec<isize>, col_byte_offsets: Vec<isize>, nr: usize },
     LatePacking { packer: Packer, k_axis: usize, mn_axis: usize },
     VirtualPacking { packer: Packer, func: Box<dyn VirtualInputSpec>, k: usize },
 }
@@ -46,14 +45,6 @@ impl InputStoreSpec {
                 ptr: tensor.as_ptr_unchecked::<u8>() as _,
                 panel_bytes: *panel_bytes as isize,
             })),
-            S::OffsetsAndPtrs { row_byte_offsets, col_byte_offsets, nr } => Ok(OffsetsAndPtrs {
-                row_byte_offsets: row_byte_offsets.as_ptr(),
-                col_ptrs: col_byte_offsets
-                    .iter()
-                    .map(|offset| tensor.as_ptr_unchecked::<u8>().offset(*offset) as _)
-                    .collect(),
-                nr: *nr,
-            }),
             S::LatePacking { packer, k_axis, mn_axis } => Ok(InputStore::LatePacking {
                 packer: packer.clone(),
                 ptr: tensor.as_ptr_unchecked::<u8>() as _,
@@ -77,7 +68,6 @@ impl fmt::Display for InputStoreSpec {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self {
             InputStoreSpec::Prepacked { .. } => write!(fmt, "Packed"),
-            InputStoreSpec::OffsetsAndPtrs { .. } => write!(fmt, "OffsetsAndPtrs"),
             InputStoreSpec::LatePacking { .. } => write!(fmt, "LatePacking"),
             InputStoreSpec::VirtualPacking { .. } => write!(fmt, "VirtualPacking"),
         }
@@ -97,11 +87,6 @@ impl PackedStoreSpec {
 #[derive(Clone, Debug)]
 pub enum InputStore {
     Packed(PackedStore),
-    OffsetsAndPtrs {
-        row_byte_offsets: *const isize,
-        col_ptrs: Vec<*const u8>,
-        nr: usize,
-    },
     LatePacking {
         packer: Packer,
         ptr: *const u8,
@@ -129,7 +114,6 @@ impl InputStore {
     pub(super) unsafe fn scratch_panel_buffer_layout(&self) -> Option<Layout> {
         match self {
             InputStore::Packed(_) => None,
-            InputStore::OffsetsAndPtrs { .. } => None,
             InputStore::LatePacking { packer, dt, k, .. }
             | InputStore::VirtualPacking { packer, dt, k, .. } => {
                 let size = packer.single_panel_len(*k) * dt.size_of();
@@ -143,12 +127,6 @@ impl InputStore {
     pub(super) unsafe fn panel_b(&self, i: usize, buffer: Option<*const u8>) -> InputStoreKer {
         match self {
             InputStore::Packed(packed) => InputStoreKer::Packed(packed.panel(i)),
-            InputStore::OffsetsAndPtrs { row_byte_offsets, col_ptrs, nr, .. } => {
-                InputStoreKer::OffsetsAndPtrs {
-                    row_byte_offsets: *row_byte_offsets,
-                    col_ptrs: col_ptrs.as_ptr().offset((nr * i) as isize),
-                }
-            }
             InputStore::LatePacking { packer, ptr, dt, k, mn, mn_stride, k_stride } => {
                 dispatch_copy!(Packer::pack_t(dt)(
                     packer,
@@ -181,7 +159,6 @@ impl PackedStore {
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub enum InputStoreKer {
     Packed(PackedStoreKer),
-    OffsetsAndPtrs { row_byte_offsets: *const isize, col_ptrs: *const *const u8 },
 }
 
 #[repr(C)]

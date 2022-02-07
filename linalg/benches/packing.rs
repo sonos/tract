@@ -58,6 +58,7 @@ fn packed_b<K: MatMatMulKer<f32>>(k: usize, n: usize) -> Tensor {
         .unwrap()
 }
 
+#[inline(always)]
 unsafe fn valid_tile(
     scratch: &mut ScratchSpaceFusedNonLinear<f32>,
     ops: &[FusedSpec],
@@ -92,7 +93,7 @@ unsafe fn packedpacked_ops<'a, K: MatMatMulKer<f32>>(
             a: mmm.a_packed(4, k).wrap(&pa.view()),
             b: mmm.b_packed(4, k).wrap(&pb.view()).unwrap(),
         },
-        FusedSpec::Store(mmm.c_view().wrap(&mut c.view_mut())),
+        FusedSpec::Store(mmm.c_view(0, 1).wrap(&mut c.view_mut())),
     )
 }
 
@@ -119,7 +120,7 @@ unsafe fn packedpacking_ops<'a, K: MatMatMulKer<f32>>(
             a: mmm.a_packed(4, k).wrap(&pa.view()),
             b: mmm.b_late_packing().wrap(&b.view()).unwrap(),
         },
-        FusedSpec::Store(mmm.c_view().wrap(&mut c.view_mut())),
+        FusedSpec::Store(mmm.c_view(0, 1).wrap(&mut c.view_mut())),
     )
 }
 
@@ -138,6 +139,29 @@ fn packedpacked_mr_nr<K: MatMatMulKer<f32>>(
                 scratch.prepare::<K>(&ops);
                 for ia in 0..m / K::mr() {
                     for ib in 0..n / K::nr() {
+                        valid_tile(&mut scratch, &ops, ia, ib);
+                    }
+                }
+            })
+        });
+    }
+}
+
+fn packedpacked_nr_mr<K: MatMatMulKer<f32>>(
+    crit: &mut BenchmarkGroup<WallTime>,
+    m: usize,
+    k: usize,
+    n: usize,
+) {
+    unsafe {
+        let (pa, pb, mut c) = packedpacked::<K>(m, k, n);
+        let ops = packedpacked_ops::<K>(k, &pa, &pb, &mut c);
+        let mut scratch = ScratchSpaceFusedNonLinear::<f32>::default();
+        crit.throughput(Elements((m * k * n) as _)).bench_function("packedpacked_nr_mr", |be| {
+            be.iter(|| {
+                scratch.prepare::<K>(&ops);
+                for ib in 0..n / K::nr() {
+                    for ia in 0..m / K::mr() {
                         valid_tile(&mut scratch, &ops, ia, ib);
                     }
                 }
@@ -274,11 +298,15 @@ type K = tract_linalg::x86_64_fma::mmm::MatMatMulF32x16x6;
 #[cfg(target_arch = "aarch64")]
 type K = tract_linalg::arm64::MatMatMulF32x12x8;
 
+#[cfg(target_arch = "arm")]
+type K = tract_linalg::arm32::armv7neon::MatMatMulF32x8x6CortexA9;
+
 fn matmul(c: &mut Criterion, m: usize, k: usize, n: usize) {
     let mut c = c.benchmark_group(format!("{}x{}x{}", m, k, n));
     packa::<K>(&mut c, m, k);
     packb::<K>(&mut c, k, n);
     packedpacked_mr_nr::<K>(&mut c, m, k, n);
+    packedpacked_nr_mr::<K>(&mut c, m, k, n);
     packedpacked_mc_nc_mr_nr::<K>(&mut c, m, k, n);
     packedpacking_mr_nr::<K>(&mut c, m, k, n);
     packedpacking_nr_mr::<K>(&mut c, m, k, n);
@@ -295,14 +323,15 @@ fn big(c: &mut Criterion) {
 }
 
 fn wavenet(c: &mut Criterion) {
-    matmul(c, 32, 32, 8);
-    matmul(c, 16, 60, 8);
+    matmul(c, 64, 48, 8);
+    matmul(c, 16, 64, 8);
+    matmul(c, 32, 64, 8);
 }
 
 fn asr_15M(c: &mut Criterion) {
-    matmul(c, 768, 200, 24);
-    matmul(c, 768, 2304, 24);
-    matmul(c, 768, 2304, 8);
+    matmul(c, 768, 200, 18);
+    matmul(c, 768, 2304, 18);
+    matmul(c, 768, 2304, 6);
 }
 
 fn inception(c: &mut Criterion) {

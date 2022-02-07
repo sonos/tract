@@ -493,59 +493,6 @@ impl ConvUnary {
         Ok(wire)
     }
 
-    pub unsafe fn wire_as_direct(
-        &self,
-        model: &mut TypedModel,
-        name: &str,
-        wire: OutletId,
-        input_shape: &[usize],
-    ) -> TractResult<OutletId> {
-        let b_fact = model.outlet_fact(wire)?.clone();
-        let c_dt = crate::ops::matmul::output_type(b_fact.datum_type);
-        let (geo, m, k, n, mmm) = self.compute_geo(&b_fact)?;
-        let geo = geo.to_concrete(input_shape)?;
-        let input_shape: DataShape = self.pool_spec.data_format.shape(input_shape.into())?;
-        let c_stride = input_shape.c_stride();
-        let data_offsets: Vec<isize> = geo.patch.centers_offsets();
-        let kernel_offsets: Vec<isize> = (0..self.input_channels())
-            .flat_map(|ici| {
-                geo.patch
-                    .standard_layout_data_field
-                    .iter()
-                    .map(move |x| x + (ici * c_stride) as isize)
-            })
-            .collect();
-        let b_storage = mmm.b_from_data_and_offsets(
-            b_fact.datum_type.size_of(),
-            &kernel_offsets,
-            &data_offsets,
-        );
-        let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&geo.output_shape)?;
-
-        let geometry = MatMulGeometry::Concrete(ConcreteMatMulGeometry {
-            m,
-            k,
-            n: n.to_usize().unwrap(),
-            b_storage,
-        });
-        let wire = self.wire_lir_matmatmul(
-            model,
-            name,
-            wire,
-            mmm,
-            c_dt,
-            mmm_output_shape.into(),
-            m.to_usize().unwrap(),
-            k,
-            geometry,
-            c_axis,
-            h_axis,
-        )?;
-
-        let wire = Self::wire_geo_reshape(model, name, wire, &geo.output_shape)?;
-        Ok(wire)
-    }
-
     fn compute_geo(
         &self,
         input_fact: &TypedFact,
@@ -1147,33 +1094,6 @@ impl TypedOp for ConvUnary {
                 patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                 patch.obliterate(node.id)?;
                 return Ok(Some(patch));
-                /*
-            } else if input_fact
-                .shape
-                .as_concrete()
-                .map(|s| {
-                    should_use_direct(
-                        &self.pool_spec.data_format.shape(s.into()).unwrap(),
-                        &self.pool_spec,
-                        self.group,
-                    )
-                })
-                .unwrap_or(false)
-            {
-                let mut patch = TypedModelPatch::default();
-                let wire = patch.tap_model(model, node.inputs[0])?;
-                let wire = self
-                    .wire_as_direct(
-                        &mut patch,
-                        &*node.name,
-                        wire,
-                        input_fact.shape.as_concrete().unwrap(),
-                    )
-                    .context("in wire_as_direct")?;
-                patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
-                patch.obliterate(node.id)?;
-                return Ok(Some(patch));
-                */
             } else if self.group != 1
                 && self.group == self.output_channels()
                 && self.group == self.input_channels()
@@ -1200,23 +1120,6 @@ impl TypedOp for ConvUnary {
 
 fn should_use_lazy(_input_shape: &DataShape, pool_spec: &PoolSpec, group: usize) -> bool {
     group == 1 && pool_spec.kernel_shape.iter().product::<usize>() > 5
-}
-
-fn should_use_direct(input_shape: &DataShape, pool_spec: &PoolSpec, group: usize) -> bool {
-    let spatial_rank = input_shape.hw_rank();
-    if group != 1
-        || !(0..spatial_rank).all(|ax| pool_spec.padding.valid_dim(ax, pool_spec.stride(ax) == 1))
-    {
-        return false;
-    }
-    let direct =
-        // no real rationale here, pure heuristic to force "right" pick in
-        // both hey_snips v3 and v4. just hope this will generalize ok
-        (0..spatial_rank).any(|d| pool_spec.dilation(d) > 1 && pool_spec.kernel_shape[d] > 2) ||
-        // that one kind of make sense, better use direct that generate a huge
-        // im2col matrix (when both kernel and input are big)
-        pool_spec.kernel_shape.iter().product::<usize>() * input_shape.shape.iter().product::<usize>() > 1048576;
-    direct
 }
 
 #[allow(non_snake_case)]
@@ -1254,121 +1157,5 @@ mod test {
         );
         let output = op.eval(input).unwrap();
         assert_eq!(&*output[0], &tensor4(&[[[[8i32, 12], [20, 24]]]]));
-    }
-
-    #[test]
-    fn conv_vs_direct_arm_ml_kws_cnn_m_0() {
-        let input = NHWC.from_n_c_hw(1, 1, &[49, 10]).unwrap();
-        let pool = {
-            PoolSpec::new(
-                HWC,
-                tvec!(10, 4),
-                PaddingSpec::Valid,
-                Some(tvec!(1, 1)),
-                Some(tvec!(1, 1)),
-                Some(64),
-            )
-        };
-        assert!(!should_use_direct(&input, &pool, 1));
-    }
-
-    #[test]
-    fn conv_vs_direct_arm_ml_kws_cnn_m_1() {
-        let input = NHWC.from_n_c_hw(1, 64, &[40, 7]).unwrap();
-        let pool = {
-            PoolSpec::new(
-                HWC,
-                tvec!(10, 4),
-                PaddingSpec::Valid,
-                Some(tvec!(2, 1)),
-                Some(tvec!(1, 1)),
-                Some(48),
-            )
-        };
-        assert!(should_use_direct(&input, &pool, 1));
-    }
-
-    #[test]
-    fn conv_vs_direct_hey_snips_v31() {
-        use crate::ops::cnn::PaddingSpec;
-        use DataFormat::HWC;
-
-        fn dil_use_direct(size: usize, d: usize) -> bool {
-            let input = HWC.from_n_c_hw(1, 128, &[size]).unwrap();
-            let pool = {
-                PoolSpec::new(
-                    HWC,
-                    tvec!(2),
-                    PaddingSpec::Valid,
-                    Some(tvec!(d)),
-                    Some(tvec!(1)),
-                    Some(64),
-                )
-            };
-            should_use_direct(&input, &pool, 1)
-        }
-        assert!(!dil_use_direct(36, 1));
-        assert!(!dil_use_direct(33, 2));
-        assert!(!dil_use_direct(27, 4));
-        assert!(!dil_use_direct(18, 8));
-    }
-
-    #[test]
-    fn conv_vs_direct_hey_snips_v4() {
-        fn dil_use_direct(d: usize) -> bool {
-            let input = HWC.from_n_c_hw(1, 16, &[8 + 2 * d]).unwrap();
-            let pool = {
-                PoolSpec::new(
-                    HWC,
-                    tvec!(3),
-                    PaddingSpec::Valid,
-                    Some(tvec!(d)),
-                    Some(tvec!(1)),
-                    Some(64),
-                )
-            };
-            should_use_direct(&input, &pool, 1)
-        }
-        assert!(!dil_use_direct(1));
-        assert!(dil_use_direct(2));
-        assert!(dil_use_direct(4));
-        assert!(dil_use_direct(8));
-    }
-
-    #[test]
-    fn conv_vs_direct_am_lda_2M() {
-        let pool = {
-            PoolSpec::new(
-                HWC,
-                tvec!(5),
-                PaddingSpec::Valid,
-                Some(tvec!(1)),
-                Some(tvec!(1)),
-                Some(200),
-            )
-        };
-        let input = HWC.from_n_c_hw(1, 40, &[28]).unwrap();
-        assert!(!should_use_direct(&input, &pool, 1));
-    }
-
-    #[test]
-    fn conv_vs_direct_hey_am_tdnn_2M() {
-        fn use_direct(size: usize, stride: usize) -> bool {
-            let input = HWC.from_n_c_hw(1, 256, &[size]).unwrap();
-            let pool = {
-                PoolSpec::new(
-                    HWC,
-                    tvec!(3),
-                    PaddingSpec::Valid,
-                    Some(tvec!(1)),
-                    Some(tvec!(stride)),
-                    Some(64),
-                )
-            };
-            should_use_direct(&input, &pool, 1)
-        }
-        assert!(!use_direct(26, 1)); // tdnn2
-        assert!(!use_direct(24, 3)); // tdnn3
-        assert!(!use_direct(10, 1)); // tdnn4,5
     }
 }

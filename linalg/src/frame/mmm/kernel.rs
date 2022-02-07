@@ -73,19 +73,12 @@ pub mod test {
                 use proptest::prelude::*;
                 #[allow(unused_imports)]
                 use crate::frame::mmm::kernel::test;
-                use crate::frame::mmm::kernel::test::{ PackedOffsetsProblem, PackedPackedProblem };
+                use crate::frame::mmm::kernel::test::PackedPackedProblem;
                 use crate::frame::mmm::MatMatMulKer;
 
                 proptest::proptest! {
                     #[test]
                     fn packed_packed_prop(pb in any::<PackedPackedProblem<$ker, $ta, $tb, $tc, $ti>>()) {
-                        if $cond {
-                            prop_assert_eq!(pb.run(), pb.reference())
-                        }
-                    }
-
-                    #[test]
-                    fn packed_offsets_prop(pb in any::<PackedOffsetsProblem<$ker, $ta, $tb, $tc, $ti>>()) {
                         if $cond {
                             prop_assert_eq!(pb.run(), pb.reference())
                         }
@@ -127,56 +120,6 @@ pub mod test {
                 }
 
                 #[test]
-                fn packed_offsets_bug_1() {
-                    if $cond {
-                        let pb = PackedOffsetsProblem::<$ker, $ta, $tb, $tc, $ti>::new(
-                            vec!(<$ta>::zero(); <$ker>::mr()),
-                            vec!(<$tb>::zero()),
-                            vec!(0usize; <$ker>::nr()),
-                            vec!(0usize),
-                            true);
-                        assert_eq!(pb.run(), pb.reference())
-                    }
-                }
-
-                #[test]
-                fn packed_offsets_bug_2() {
-                    if $cond {
-                        let mut pa = vec!(<$ta>::zero(); <$ker>::mr() * 3);
-                        let len = pa.len() - 1;
-                        pa[len] = 1 as _;
-                        let pb = PackedOffsetsProblem::<$ker, $ta, $tb, $tc, $ti>::new(pa,
-                                                                                       vec!(0 as _, 1 as _),
-                                                                                       vec!(0usize; <$ker>::nr()),
-                                                                                       vec!(1usize, 0, 0),
-                                                                                       true);
-                        assert_eq!(pb.run(), pb.reference())
-                    }
-                }
-
-
-                #[test]
-                fn packed_offsets_k1() {
-                    if $cond {
-                        test::packed_offsets::<$ker, $ta, $tb, $tc, $ti>(1, <$ker>::nr())
-                    }
-                }
-
-                #[test]
-                fn packed_offsets_k2() {
-                    if $cond {
-                        test::packed_offsets::<$ker, $ta, $tb, $tc, $ti>(2, <$ker>::nr())
-                    }
-                }
-
-                #[test]
-                fn packed_offsets_k13() {
-                    if $cond {
-                        test::packed_offsets::<$ker, $ta, $tb, $tc, $ti>(13, <$ker>::nr())
-                    }
-                }
-
-                #[test]
                 fn packed_vec_k1() {
                     if $cond {
                         test::packed_vec::<$ker, $ta, $tb, $tc, $ti>(1)
@@ -201,13 +144,6 @@ pub mod test {
                 fn packed_vec_k13() {
                     if $cond {
                         test::packed_vec::<$ker, $ta, $tb, $tc, $ti>(13)
-                    }
-                }
-
-                #[test]
-                fn packed_offsets_with_row_stride() {
-                    if $cond {
-                        test::packed_offsets::<$ker, $ta, $tb, $tc, $ti>(2, <$ker>::nr() + 5)
                     }
                 }
             }
@@ -336,136 +272,6 @@ pub mod test {
         }
     }
 
-    #[derive(Debug, new)]
-    pub struct PackedOffsetsProblem<K, TA, TB, TC, TI>
-    where
-        K: MatMatMulKer<TI>,
-        TA: 'static + Debug + AsPrimitive<TI>,
-        TB: 'static + Debug + AsPrimitive<TI>,
-        TC: Copy + PartialEq + 'static + Debug,
-        TI: LADatum + AsPrimitive<TC>,
-        usize: AsPrimitive<TA> + AsPrimitive<TB>,
-    {
-        a: Vec<TA>,
-        b: Vec<TB>,
-        cols_offsets: Vec<usize>,
-        rows_offsets: Vec<usize>,
-        add_one: bool,
-        _phantom: PhantomData<(K, TC, TI)>,
-    }
-
-    impl<K, TA, TB, TC, TI> Arbitrary for PackedOffsetsProblem<K, TA, TB, TC, TI>
-    where
-        K: MatMatMulKer<TI>,
-        TA: 'static + Debug + AsPrimitive<TI>,
-        TB: 'static + Debug + AsPrimitive<TI>,
-        TC: Copy + PartialEq + 'static + Debug,
-        TI: LADatum + AsPrimitive<TC>,
-        usize: AsPrimitive<TA> + AsPrimitive<TB>,
-    {
-        type Parameters = ();
-        type Strategy = BoxedStrategy<Self>;
-
-        fn arbitrary_with(_: ()) -> Self::Strategy {
-            (vec(0usize..100, 1usize..20), vec(0usize..100, K::nr()..=K::nr()), any::<bool>())
-                .prop_flat_map(|(rows_offsets, cols_offsets, add_one)| {
-                    let k = rows_offsets.len();
-                    let m = k * K::mr();
-                    let a = (0usize..10).prop_map(|x| x.as_());
-                    let b = (0usize..10).prop_map(|x| x.as_());
-                    let len =
-                        rows_offsets.iter().max().unwrap() + cols_offsets.iter().max().unwrap() + 1;
-                    (
-                        vec(a, m..=m),
-                        vec(b, len..=len),
-                        Just(rows_offsets),
-                        Just(cols_offsets),
-                        Just(add_one),
-                    )
-                })
-                .prop_map(|(a, b, rows_offsets, cols_offsets, add_one)| Self {
-                    a,
-                    b,
-                    rows_offsets,
-                    cols_offsets,
-                    add_one,
-                    _phantom: PhantomData,
-                })
-                .boxed()
-        }
-    }
-
-    impl<K, TA, TB, TC, TI> PackedOffsetsProblem<K, TA, TB, TC, TI>
-    where
-        K: MatMatMulKer<TI>,
-        TA: 'static + Debug + AsPrimitive<TI> + Datum,
-        TB: 'static + Debug + AsPrimitive<TI> + Datum,
-        TC: Copy + Zero + PartialEq + 'static + Debug,
-        TI: LADatum + AsPrimitive<TC>,
-        usize: AsPrimitive<TA> + AsPrimitive<TB>,
-    {
-        pub fn reference(&self) -> Vec<TC> {
-            let init = if self.add_one { TI::one() } else { TI::zero() };
-            let mut vi = vec![init; K::mr() * K::nr()];
-            let mr = K::mr();
-            let nr = K::nr();
-            for m in 0..mr {
-                for n in 0..nr {
-                    for k in 0..self.rows_offsets.len() {
-                        let a: TI = self.a[m + mr * k].as_();
-                        let b: TI = self.b[self.rows_offsets[k] + self.cols_offsets[n]].as_();
-                        let offset = n + m * nr;
-                        vi[offset] = vi[offset] + a * b;
-                    }
-                }
-            }
-            vi.into_iter().map(|ti| ti.as_()).collect()
-        }
-
-        pub fn run(&self) -> Vec<TC> {
-            let a = self
-                .a
-                .iter()
-                .cloned()
-                .chain(vec![0.as_(); K::end_padding_packed_a() * K::mr()])
-                .collect::<Vec<_>>();
-            let pa =
-                unsafe { Tensor::from_slice_align(&a, K::alignment_bytes_packed_a()).unwrap() };
-            let rows_offset: Vec<isize> = self
-                .rows_offsets
-                .iter()
-                .map(|o| (o * std::mem::size_of::<TB>()) as isize)
-                .collect();
-            let col_ptrs: Vec<*const TB> = unsafe {
-                self.cols_offsets.iter().map(|o| self.b.as_ptr().offset(*o as isize)).collect()
-            };
-            let mut v = vec![TC::zero(); K::mr() * K::nr()];
-            let c = mmm_stride_storage(&mut v, K::nr(), 1);
-            let b_store = InputStoreKer::OffsetsAndPtrs {
-                row_byte_offsets: rows_offset.as_ptr(),
-                col_ptrs: col_ptrs.as_ptr() as _,
-            };
-
-            let mut non_linear_ops = tvec!(
-                FusedKerSpec::Clear,
-                FusedKerSpec::AddMatMul {
-                    k: self.rows_offsets.len(),
-                    pa: unsafe { pa.as_ptr_unchecked::<u8>() as _ },
-                    pb: &b_store,
-                    cpu_variant: 0,
-                }
-            );
-            if self.add_one {
-                non_linear_ops.push(FusedKerSpec::ScalarAdd(TI::one()));
-            }
-            non_linear_ops.push(FusedKerSpec::Store(c));
-            non_linear_ops.push(FusedKerSpec::Done);
-            let err = K::kernel(&non_linear_ops);
-            assert_eq!(err, 0);
-            v
-        }
-    }
-
     pub fn packed_packed<K, TA, TB, TC, TI>(k: usize)
     where
         K: MatMatMulKer<TI>,
@@ -488,57 +294,6 @@ pub mod test {
             col_byte_stride: (std::mem::size_of::<T>() * csc) as isize,
             item_size: std::mem::size_of::<T>(),
         }
-    }
-
-    pub fn packed_offsets<K, TA, TB, TC, TI>(k: usize, t: usize)
-    where
-        K: MatMatMulKer<TI>,
-        TA: Copy + One + AsPrimitive<TI> + Datum,
-        TB: Copy + One + AsPrimitive<TI> + Datum,
-        TC: Copy + PartialEq + Zero + 'static + Debug,
-        TI: LADatum + AsPrimitive<TC>,
-        usize: AsPrimitive<TA> + AsPrimitive<TB>,
-    {
-        let a: Vec<TA> = (1..=(k * K::mr())).map(|x| x.as_()).collect();
-        let pa = unsafe { Tensor::from_slice_align(&a, K::alignment_bytes_packed_a()).unwrap() };
-        let b: Vec<TB> = (0..(k * t)).map(|x| x.as_()).collect();
-        let len = K::mr() * K::nr();
-        let mut v: Vec<TC> = vec![TC::zero(); len];
-        let c = mmm_stride_storage(&mut v, K::nr(), 1);
-        let col_ptrs = (0..K::nr()).map(|i| (&b[i]) as *const TB as _).collect::<Vec<_>>();
-        let row_byte_offsets =
-            (0..k).map(|i| (i * std::mem::size_of::<TB>() * t) as isize).collect::<Vec<_>>();
-        let b_store = InputStoreKer::OffsetsAndPtrs {
-            row_byte_offsets: row_byte_offsets.as_ptr(),
-            col_ptrs: col_ptrs.as_ptr(),
-        };
-
-        let non_linear_ops = tvec!(
-            FusedKerSpec::Clear,
-            FusedKerSpec::AddMatMul {
-                k,
-                pa: unsafe { pa.as_ptr_unchecked::<u8>() as _ },
-                pb: &b_store,
-                cpu_variant: 0,
-            },
-            FusedKerSpec::Store(c),
-            FusedKerSpec::Done
-        );
-        let err = K::kernel(&non_linear_ops);
-        assert_eq!(err, 0);
-        let expected: Vec<TC> = (0..v.len())
-            .map(|ix| {
-                let row = ix / K::nr();
-                let col = ix % K::nr();
-                (0..k)
-                    .map(|i| {
-                        pa.as_slice::<TA>().unwrap()[K::mr() * i + row].as_() * b[t * i + col].as_()
-                    })
-                    .fold(TI::zero(), |s, a| s + a)
-                    .as_()
-            })
-            .collect();
-        assert_eq!(v, expected);
     }
 
     pub fn packed_vec<K, TA, TB, TC, TI>(k: usize)

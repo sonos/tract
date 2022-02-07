@@ -52,7 +52,6 @@ impl<'t> FusedSpec<'t> {
     pub fn prefer_col_outer(&self) -> bool {
         if let FusedSpec::AddMatMul { b, .. } = self {
             match &b {
-                &InputStore::OffsetsAndPtrs { .. } => false,
                 &InputStore::Packed { .. } => false,
                 &InputStore::VirtualPacking { .. } => true,
                 &InputStore::LatePacking { .. } => true,
