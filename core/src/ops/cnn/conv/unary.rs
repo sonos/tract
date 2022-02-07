@@ -1199,7 +1199,7 @@ impl TypedOp for ConvUnary {
 }
 
 fn should_use_lazy(_input_shape: &DataShape, pool_spec: &PoolSpec, group: usize) -> bool {
-    group == 1 && pool_spec.kernel_shape.iter().product::<usize>() > 3
+    group == 1 && pool_spec.kernel_shape.iter().product::<usize>() > 5
 }
 
 fn should_use_direct(input_shape: &DataShape, pool_spec: &PoolSpec, group: usize) -> bool {
