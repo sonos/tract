@@ -124,9 +124,9 @@ impl InputStore {
     }
 
     #[inline]
-    pub(super) unsafe fn panel_b(&self, i: usize, buffer: Option<*const u8>) -> InputStoreKer {
+    pub(super) unsafe fn panel_b(&self, i: usize, buffer: Option<*const u8>) -> *const u8 {
         match self {
-            InputStore::Packed(packed) => InputStoreKer::Packed(packed.panel(i)),
+            InputStore::Packed(packed) => packed.panel(i),
             InputStore::LatePacking { packer, ptr, dt, k, mn, mn_stride, k_stride } => {
                 dispatch_copy!(Packer::pack_t(dt)(
                     packer,
@@ -138,11 +138,11 @@ impl InputStore {
                     0..*k,
                     packer.r * i..packer.r * (i + 1)
                 ));
-                InputStoreKer::Packed(PackedStoreKer { ptr: buffer.unwrap() })
+                buffer.unwrap()
             }
             InputStore::VirtualPacking { packer, input, k, .. } => {
                 input.input(&packer, buffer.unwrap() as _, 0..*k, packer.r * i..packer.r * (i + 1));
-                InputStoreKer::Packed(PackedStoreKer { ptr: buffer.unwrap() })
+                buffer.unwrap()
             }
         }
     }
@@ -150,19 +150,7 @@ impl InputStore {
 
 impl PackedStore {
     #[inline]
-    pub(super) unsafe fn panel(&self, i: usize) -> PackedStoreKer {
-        PackedStoreKer { ptr: self.ptr.offset(self.panel_bytes * i as isize) }
+    pub(super) unsafe fn panel(&self, i: usize) -> *const u8 {
+        self.ptr.offset(self.panel_bytes * i as isize)
     }
-}
-
-#[repr(C, usize)]
-#[derive(PartialEq, Copy, Clone, Debug)]
-pub enum InputStoreKer {
-    Packed(PackedStoreKer),
-}
-
-#[repr(C)]
-#[derive(PartialEq, Copy, Clone, Debug)]
-pub struct PackedStoreKer {
-    pub ptr: *const u8,
 }

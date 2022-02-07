@@ -5,7 +5,7 @@ use tract_data::internal::*;
 
 use crate::LADatum;
 
-use super::{BinOp, FusedKerSpec, FusedSpec, InputStoreKer, MatMatMulKer, OutputStoreKer};
+use super::{BinOp, FusedKerSpec, FusedSpec, MatMatMulKer, OutputStoreKer};
 use downcast_rs::{impl_downcast, Downcast};
 
 pub trait ScratchSpace: Downcast + Send {}
@@ -51,7 +51,7 @@ impl<TI: LADatum> Drop for ScratchSpaceFusedNonLinear<TI> {
     }
 }
 
-struct AddMatMulTemp(InputStoreKer, usize);
+struct AddMatMulTemp(*const u8, usize);
 
 impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
     pub unsafe fn prepare<K: MatMatMulKer<TI>>(&mut self, specs: &[FusedSpec]) {
@@ -179,14 +179,14 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                 FS::AddUnicast(store) => FKS::AddUnicast(store.tile_c(down, right)),
                 FS::Store(c_store) => FKS::Store(c_store.tile_c(down, right)),
                 FS::AddMatMul { k, a, b } => {
-                    let pa = a.panel(down).ptr;
+                    let pa = a.panel(down);
                     K::prefetch(pa as _, 512);
                     let scratch = *loc as *mut AddMatMulTemp;
                     if (*scratch).1 != right {
                         (*scratch).0 = b.panel_b(right, *buffer);
                         (*scratch).1 = right;
                     }
-                    FKS::AddMatMul { k: *k, pa, pb: &(*scratch).0, cpu_variant: 0 }
+                    FKS::AddMatMul { k: *k, pa, pb: (*scratch).0, cpu_variant: 0 }
                 }
                 _ => std::hint::unreachable_unchecked(),
             };
@@ -335,14 +335,14 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                     FKS::Store(tmpc)
                 }
                 FS::AddMatMul { k, a, b } => {
-                    let pa = a.panel(down).ptr;
+                    let pa = a.panel(down);
                     K::prefetch(pa as _, 512);
                     let scratch = *loc as *mut AddMatMulTemp;
                     if (*scratch).1 != right {
                         (*scratch).0 = b.panel_b(right, *buffer);
                         (*scratch).1 = right;
                     }
-                    FKS::AddMatMul { k: *k, pa, pb: &(*scratch).0, cpu_variant: 0 }
+                    FKS::AddMatMul { k: *k, pa, pb: (*scratch).0, cpu_variant: 0 }
                 }
                 _ => std::hint::unreachable_unchecked(),
             };

@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use super::{InputStore, InputStoreKer, OutputStore, OutputStoreKer, PackedStore};
+use super::{InputStore, OutputStore, OutputStoreKer, PackedStore};
 use tract_data::internal::*;
 
 #[repr(usize)]
@@ -97,7 +97,7 @@ pub enum FusedKerSpec<TI: Copy> {
     Store(OutputStoreKer),                      // jump_to:store
 
     // jump_to:add_mat_mul
-    AddMatMul { k: usize, pa: *const u8, pb: *const InputStoreKer, cpu_variant: usize },
+    AddMatMul { k: usize, pa: *const u8, pb: *const u8, cpu_variant: usize },
 }
 
 #[cfg(test)]

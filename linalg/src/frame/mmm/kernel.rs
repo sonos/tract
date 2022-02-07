@@ -57,7 +57,7 @@ macro_rules! test_mmm_kernel_i32 {
 #[macro_use]
 pub mod test {
     use super::*;
-    use crate::frame::mmm::{InputStoreKer, OutputStoreKer, PackedStoreKer};
+    use crate::frame::mmm::OutputStoreKer;
     use num_traits::{AsPrimitive, One, Zero};
     use proptest::collection::vec;
     use proptest::prelude::*;
@@ -250,13 +250,12 @@ pub mod test {
                 } else {
                     mmm_stride_storage(&mut v, K::nr(), 1)
                 };
-                let b_store =
-                    InputStoreKer::Packed(PackedStoreKer { ptr: pb.as_ptr_unchecked::<TB>() as _ });
+                let b_store = pb.as_ptr_unchecked::<TB>() as _;
 
                 let mut non_linear_ops = tvec!(FusedKerSpec::AddMatMul {
                     k: self.k,
                     pa: pa.as_ptr_unchecked::<u8>() as _,
-                    pb: &b_store,
+                    pb: b_store,
                     cpu_variant: 0,
                 });
                 if self.add_one {
@@ -315,12 +314,12 @@ pub mod test {
         let b = vec![TB::one(); (k + 1) * K::nr()];
         let mut c: Vec<TC> = vec![TC::zero(); K::mr() * K::nr()];
         let tile = mmm_stride_storage(&mut c, 1, 0);
-        let b_store = InputStoreKer::Packed(PackedStoreKer { ptr: b.as_ptr() as _ });
+        let b_store = b.as_ptr() as _;
         let non_linear_ops = tvec!(
             FusedKerSpec::Clear,
             FusedKerSpec::AddMatMul {
                 pa: unsafe { pa.as_ptr_unchecked::<u8>() as _ },
-                pb: &b_store,
+                pb: b_store,
                 k,
                 cpu_variant: 0,
             },

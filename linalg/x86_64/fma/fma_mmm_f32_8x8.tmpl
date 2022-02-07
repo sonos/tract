@@ -89,7 +89,6 @@ fma_mmm_f32_8x8_{{suffix}} proc
     vzeroall
     jmp             {{L}}non_linear_loop
 
-
 {{L}}add_mat_mul:
     mov     rbx,    [rdi + 24]   // B
     mov     rax,    [rdi + 16]   // A
@@ -97,58 +96,6 @@ fma_mmm_f32_8x8_{{suffix}} proc
     mov     rcx,    [rdi + 8]    // k
     test    rcx,    rcx
     jz      {{L}}non_linear_loop
-
-    mov     rsi, [rbx]   // B discriminant
-    cmp     rsi,  0
-    je      {{L}}packed_packed
-
-{{L}}packed_tops_and_offsets:
-    mov     rsi,    [rbx + 16]  // B cols head
-    mov     rbx,    [rbx + 8]   // rbx: current row offset ptr
-
-    mov     r8,     [rsi]
-    mov     r9,     [rsi + 8]
-    mov     r10,    [rsi + 16]
-    mov     r11,    [rsi + 24]
-    mov     r12,    [rsi + 32]
-    mov     r13,    [rsi + 40]
-    mov     r14,    [rsi + 48]
-    mov     r15,    [rsi + 56]
- 
-{{L}}main_loop_packed_tops_and_offsets:
-    mov             rsi,    [rbx]   // rsi: current row offset
-
-    vmovaps         ymm8,  [rax]
-
-    vbroadcastss    ymm12,  dword ptr [r8 + rsi]
-    vbroadcastss    ymm13,  dword ptr [r9 + rsi]
-    vbroadcastss    ymm14,  dword ptr [r10 + rsi]
-    vbroadcastss    ymm15,  dword ptr [r11 + rsi]
-
-    vfmadd231ps     ymm0,   ymm8, ymm12
-    vfmadd231ps     ymm1,   ymm8, ymm13
-    vfmadd231ps     ymm2,   ymm8, ymm14
-    vfmadd231ps     ymm3,   ymm8, ymm15
-
-    vbroadcastss    ymm12,  dword ptr [r12 + rsi]
-    vbroadcastss    ymm13,  dword ptr [r13 + rsi]
-    vbroadcastss    ymm14,  dword ptr [r14 + rsi]
-    vbroadcastss    ymm15,  dword ptr [r15 + rsi]
-
-    vfmadd231ps     ymm4,   ymm8, ymm12
-    vfmadd231ps     ymm5,   ymm8, ymm13
-    vfmadd231ps     ymm6,   ymm8, ymm14
-    vfmadd231ps     ymm7,   ymm8, ymm15
-
-    add             rbx,    8
-    add             rax,    32
-    dec             rcx
-    jnz             {{L}}main_loop_packed_tops_and_offsets
-
-    jmp             {{L}}non_linear_loop
-
-{{L}}packed_packed:
-    mov     rbx,   [rbx + 8] // B 
 
 {{L}}main_loop_packed_packed:
     vmovaps         ymm12,  [rax]

@@ -99,35 +99,6 @@ fma_mmm_f32_64x1_{{suffix}} proc
     test    rcx,    rcx
     jz      {{L}}non_linear_loop
 
-    mov     rsi, [rbx]   // B discriminant
-    cmp     rsi,  0
-    je      {{L}}packed_packed
-
-{{L}}packed_tops_and_offsets:
-    mov     rsi,    [rbx + 16]  // B cols head
-    mov     rbx,    [rbx + 8]   // rbx: current row offset ptr
-
-    mov     r8,     [rsi]
- 
-{{L}}main_loop_packed_tops_and_offsets:
-    mov             rsi,    [rbx]   // rsi: current row offset
-    vbroadcastss    ymm14,  dword ptr [r8 + rsi]
-
-{% for i in (0..7) %}
-    vmovaps         ymm12, [rax + {{i | times: 32}}]
-    vfmadd231ps     ymm{{i}}, ymm12, ymm14
-{% endfor %}
-
-    add             rbx, 8
-    add             rax, 256
-    dec             rcx
-    jnz             {{L}}main_loop_packed_tops_and_offsets
-
-    jmp             {{L}}non_linear_loop
-
-{{L}}packed_packed:
-    mov     rbx,   [rbx + 8] // B 
-
 {{L}}main_loop_packed_packed:
     vbroadcastss    ymm14,  dword ptr [rbx]
 

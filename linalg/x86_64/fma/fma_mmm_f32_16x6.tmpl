@@ -97,66 +97,6 @@ fma_mmm_f32_16x6_{{suffix}} proc
     test    rcx,    rcx
     jz      {{L}}non_linear_loop
 
-    mov     rsi, [rbx]   // B discriminant
-    cmp     rsi,  0
-    je      {{L}}packed_packed
-
-{{L}}packed_tops_and_offsets:
-    mov     rsi,    [rbx + 16]  // B cols head
-    mov     rbx,    [rbx + 8]   // rbx: current row offset ptr
-
-    mov     r8,     [rsi]
-    mov     r9,     [rsi + 8]
-    mov     r10,    [rsi + 16]
-    mov     r11,    [rsi + 24]
-    mov     r12,    [rsi + 32]
-    mov     r13,    [rsi + 40]
- 
-{{L}}main_loop_packed_tops_and_offsets:
-    mov             rsi,    [rbx]   // rsi: current row offset
-
-    vmovaps         ymm12,  [rax]
-    vmovaps         ymm13,  [rax + 32]
-
-    vbroadcastss    ymm14,  dword ptr [r8 + rsi]
-    vbroadcastss    ymm15,  dword ptr [r9 + rsi]
-
-    vfmadd231ps     ymm0,   ymm12, ymm14
-    vfmadd231ps     ymm1,   ymm13, ymm14
-
-    vbroadcastss    ymm14,  dword ptr [r10 + rsi]
-
-    vfmadd231ps     ymm2,   ymm12, ymm15
-    vfmadd231ps     ymm3,   ymm13, ymm15
-
-    vbroadcastss    ymm15,  dword ptr [r11 + rsi]
-
-    vfmadd231ps     ymm4,   ymm12, ymm14
-    vfmadd231ps     ymm5,   ymm13, ymm14
-
-    vbroadcastss    ymm14,  dword ptr [r12 + rsi]
-
-    vfmadd231ps     ymm6,   ymm12, ymm15
-    vfmadd231ps     ymm7,   ymm13, ymm15
-
-    vbroadcastss    ymm15,  dword ptr [r13 + rsi]
-
-    vfmadd231ps     ymm8,   ymm12, ymm14
-    vfmadd231ps     ymm9,   ymm13, ymm14
-
-    vfmadd231ps     ymm10,   ymm12, ymm15
-    vfmadd231ps     ymm11,   ymm13, ymm15
-
-    add             rbx,    8
-    add             rax,    64
-    dec             rcx
-    jnz             {{L}}main_loop_packed_tops_and_offsets
-
-    jmp             {{L}}non_linear_loop
-
-{{L}}packed_packed:
-    mov     rbx,   [rbx + 8] // B 
-
 {{L}}main_loop_packed_packed:
     vbroadcastss    ymm14,  dword ptr [rbx]
     vbroadcastss    ymm15,  dword ptr [rbx + 4]

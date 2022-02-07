@@ -5,7 +5,6 @@ use std::{fmt, ops};
 use tract_data::prelude::*;
 
 use super::*;
-use crate::frame::mmm::InputStoreKer::*;
 use crate::frame::mmm::*;
 use crate::LADatum;
 
@@ -146,30 +145,26 @@ where
                     }
                     FusedKerSpec::AddMatMul { k, pa, pb, .. } => {
                         let a = pa as *const TA;
-                        match *pb {
-                            Packed(PackedStoreKer { ptr: b }) => {
-                                let b = b as *const TB;
-                                for i in 0..k {
-                                    let a = std::slice::from_raw_parts(a.offset(4 * i as isize), 4);
-                                    let b = std::slice::from_raw_parts(b.offset(4 * i as isize), 4);
-                                    ab[0][0] += a[0].as_() * b[0].as_();
-                                    ab[0][1] += a[0].as_() * b[1].as_();
-                                    ab[0][2] += a[0].as_() * b[2].as_();
-                                    ab[0][3] += a[0].as_() * b[3].as_();
-                                    ab[1][0] += a[1].as_() * b[0].as_();
-                                    ab[1][1] += a[1].as_() * b[1].as_();
-                                    ab[1][2] += a[1].as_() * b[2].as_();
-                                    ab[1][3] += a[1].as_() * b[3].as_();
-                                    ab[2][0] += a[2].as_() * b[0].as_();
-                                    ab[2][1] += a[2].as_() * b[1].as_();
-                                    ab[2][2] += a[2].as_() * b[2].as_();
-                                    ab[2][3] += a[2].as_() * b[3].as_();
-                                    ab[3][0] += a[3].as_() * b[0].as_();
-                                    ab[3][1] += a[3].as_() * b[1].as_();
-                                    ab[3][2] += a[3].as_() * b[2].as_();
-                                    ab[3][3] += a[3].as_() * b[3].as_();
-                                }
-                            }
+                        let b = pb as *const TB;
+                        for i in 0..k {
+                            let a = std::slice::from_raw_parts(a.offset(4 * i as isize), 4);
+                            let b = std::slice::from_raw_parts(b.offset(4 * i as isize), 4);
+                            ab[0][0] += a[0].as_() * b[0].as_();
+                            ab[0][1] += a[0].as_() * b[1].as_();
+                            ab[0][2] += a[0].as_() * b[2].as_();
+                            ab[0][3] += a[0].as_() * b[3].as_();
+                            ab[1][0] += a[1].as_() * b[0].as_();
+                            ab[1][1] += a[1].as_() * b[1].as_();
+                            ab[1][2] += a[1].as_() * b[2].as_();
+                            ab[1][3] += a[1].as_() * b[3].as_();
+                            ab[2][0] += a[2].as_() * b[0].as_();
+                            ab[2][1] += a[2].as_() * b[1].as_();
+                            ab[2][2] += a[2].as_() * b[2].as_();
+                            ab[2][3] += a[2].as_() * b[3].as_();
+                            ab[3][0] += a[3].as_() * b[0].as_();
+                            ab[3][1] += a[3].as_() * b[1].as_();
+                            ab[3][2] += a[3].as_() * b[2].as_();
+                            ab[3][3] += a[3].as_() * b[3].as_();
                         }
                     }
                     FusedKerSpec::Store(tile) => store(&tile, &ab),
@@ -293,18 +288,14 @@ where
                     }
                     FusedKerSpec::AddMatMul { k, pa, pb, .. } => {
                         let a = pa as *const TA;
-                        match *pb {
-                            Packed(PackedStoreKer { ptr: b }) => {
-                                let b = b as *const TB;
-                                for i in 0..k {
-                                    let a = std::slice::from_raw_parts(a.offset(4 * i as isize), 4);
-                                    let b = *b.offset(i as isize);
-                                    ab[0][0] += a[0].as_() * b.as_();
-                                    ab[1][0] += a[1].as_() * b.as_();
-                                    ab[2][0] += a[2].as_() * b.as_();
-                                    ab[3][0] += a[3].as_() * b.as_();
-                                }
-                            }
+                        let b = pb as *const TB;
+                        for i in 0..k {
+                            let a = std::slice::from_raw_parts(a.offset(4 * i as isize), 4);
+                            let b = *b.offset(i as isize);
+                            ab[0][0] += a[0].as_() * b.as_();
+                            ab[1][0] += a[1].as_() * b.as_();
+                            ab[2][0] += a[2].as_() * b.as_();
+                            ab[3][0] += a[3].as_() * b.as_();
                         }
                     }
                     FusedKerSpec::Store(tile) => store(
@@ -435,20 +426,16 @@ where
                     }
                     FusedKerSpec::AddMatMul { k, pa, pb, .. } => {
                         let a = pa as *const TA;
-                        match *pb {
-                            Packed(PackedStoreKer { ptr: b }) => {
-                                let b = b as *const TB;
-                                for i in 0..k {
-                                    let a = std::slice::from_raw_parts(a.offset(3 * i as isize), 3);
-                                    let b = std::slice::from_raw_parts(b.offset(2 * i as isize), 2);
-                                    ab[0][0] += a[0].as_() * b[0].as_();
-                                    ab[0][1] += a[0].as_() * b[1].as_();
-                                    ab[1][0] += a[1].as_() * b[0].as_();
-                                    ab[1][1] += a[1].as_() * b[1].as_();
-                                    ab[2][0] += a[2].as_() * b[0].as_();
-                                    ab[2][1] += a[2].as_() * b[1].as_();
-                                }
-                            }
+                        let b = pb as *const TB;
+                        for i in 0..k {
+                            let a = std::slice::from_raw_parts(a.offset(3 * i as isize), 3);
+                            let b = std::slice::from_raw_parts(b.offset(2 * i as isize), 2);
+                            ab[0][0] += a[0].as_() * b[0].as_();
+                            ab[0][1] += a[0].as_() * b[1].as_();
+                            ab[1][0] += a[1].as_() * b[0].as_();
+                            ab[1][1] += a[1].as_() * b[1].as_();
+                            ab[2][0] += a[2].as_() * b[0].as_();
+                            ab[2][1] += a[2].as_() * b[1].as_();
                         }
                     }
                     FusedKerSpec::Store(tile) => store(&tile, &ab),
