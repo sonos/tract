@@ -48,6 +48,21 @@ pub enum FusedSpec<'t> {
     AddMatMul { k: usize, a: PackedStore, b: InputStore },
 }
 
+impl<'t> FusedSpec<'t> {
+    pub fn prefer_col_outer(&self) -> bool {
+        if let FusedSpec::AddMatMul { b, .. } = self {
+            match &b {
+                &InputStore::OffsetsAndPtrs { .. } => false,
+                &InputStore::Packed { .. } => false,
+                &InputStore::VirtualPacking { .. } => true,
+                &InputStore::LatePacking { .. } => true,
+            }
+        } else {
+            false
+        }
+    }
+}
+
 // Careful here, the jump_to comments are used by the build script.
 #[repr(C, usize)]
 #[derive(PartialEq, Copy, Clone, Debug)]
@@ -89,12 +104,12 @@ pub enum FusedKerSpec<TI: Copy> {
 #[cfg(test)]
 #[macro_use]
 pub mod test {
-    use tract_data::internal::*;
     use crate::frame::mmm::storage::*;
     use crate::frame::mmm::*;
     use crate::generic::ScaleShiftAndRound;
     use num_traits::{AsPrimitive, Bounded};
     use proptest::prelude::*;
+    use tract_data::internal::*;
 
     #[test]
     fn check_non_linear_enum_size() {
