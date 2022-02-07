@@ -26,42 +26,11 @@
 {% include "dispatcher.tmpliq" %}
 
 .add_mat_mul:
-    ldr         x8, [x0, #24]       // b
+    ldr         x2, [x0, #24]       // b
     ldp         x3, x1, [x0, #8]    // k, a
-    ldp         x4, x2, [x8]        // b disc, first arg
 
     cmp         x3, #0
     beq         .non_linear_loop
-
-    cmp         x4, #0
-    beq         .packed_packed
-
-.packed_tops_and_offsets:
-    ldr         x8, [x8, #16]   // cols ptr ptr
-    ldr         x4, [x2], #8    // fist row offset
-    ldr         x5, [x8]        // heads of cols ptr
-
-.packed_tops_and_offsets_loop_1:
-    add         x8, x4, x5
-    ld1         {v9.b}[0], [ x8 ]
-    ldr         x4, [ x2 ], #8
-    sshll       v9.8h, v9.8b, 0
-
-    ld1	        { v0.8b-v3.8b }, [ x1 ], #32
-    ld1	        { v4.8b-v7.8b }, [ x1 ], #32
-
-    {% for reg in (0..7) %}
-        sshll       v10.8h, v{{reg}}.8b, 0
-        smlal       v{{reg | times: 2 | plus: 16 }}.4s, v10.4h, v9.h[0]
-        smlal2      v{{reg | times: 2 | plus: 17 }}.4s, v10.8h, v9.h[0]
-    {% endfor %}
-
-    subs        x3, x3, #1
-    bne         .packed_tops_and_offsets_loop_1
-
-    b           .non_linear_loop
-
-.packed_packed:
 
 .packed_packed_loop_1:
     ld1         {v9.b}[0], [ x2 ], 1
