@@ -19,57 +19,16 @@ armv7neon_mmm_i32_32x1_{{suffix}}:
     cmp     r3, #0
     beq     .non_linear_loop
 
-    ldm     r5, { r6, r7 } //  b disc, b ptr
     mov     r1, r4 // packed A ptr
     pld     [r3]
     pld     [r7]
 
-    cmp     r6, #0
-    beq     .packed_packed
-
-    .packed_tops_and_offsets:
-    mov             r2, r7                  // r2 <- rows offsets ptr
-    ldr             r7, [r5, #8]                    
-    pld             [r2]
-    ldr             r7, [r7]                // col ptr
-
-    .packed_tops_and_offsets_loop_1:
-    vldmia          r1!, { q4-q5 }
-
-    ldm             r2!, { r4 }     // r4 <- next row ptr
-    add             r8, r7, r4
-    vld1.s8         d0[0], [ r8 ]
-    vmovl.s8        q0, d0
-
-    vmovl.s8        q1, d8
-    vmlal.s16       q8, d2, d0[0]
-    vmlal.s16       q9, d3, d0[0]
-
-    vmovl.s8        q1, d9
-    vmlal.s16       q10, d2, d0[0]
-    vmlal.s16       q11, d3, d0[0]
-
-    vmovl.s8        q1, d10
-    vmlal.s16       q12, d2, d0[0]
-    vmlal.s16       q13, d3, d0[0]
-
-    vmovl.s8        q1, d11
-    vmlal.s16       q14, d2, d0[0]
-    vmlal.s16       q15, d3, d0[0]
-
-    subs            r3, r3, #1
-    bne .packed_tops_and_offsets_loop_1
-
-    .packed_tops_and_offsets_end:
-    b   .non_linear_loop
-
     .packed_packed:
-    pld     [r5]                           // packed B ptr       
 
     .packed_packed_loop_1:
     vldmia          r1!, { q4-q5 }
 
-    vld1.8          { d0[0] }, [ r7 ]!
+    vld1.8          { d0[0] }, [ r5 ]!
     vmovl.s8        q0, d0
 
     vmovl.s8        q1, d8

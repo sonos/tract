@@ -32,10 +32,9 @@ armv7neon_mmm_f32_32x1_{{core}}_{{suffix}}:
     cmp     r3, #0
     beq     .non_linear_loop
 
-    ldm     r5, { r6, r7 } //  b disc, b ptr
     mov     r1, r4 // packed A ptr
     pld     [r3]
-    pld     [r7]
+    pld     [r5]
 
     pld     [r1, #128]
     pld     [r1, #192]
@@ -45,51 +44,8 @@ armv7neon_mmm_f32_32x1_{{core}}_{{suffix}}:
     pld     [r1, #448]
     pld     [r1, #512]
 
-    cmp     r6, #0
-    beq     .packed_packed
-
-.packed_tops_and_offsets:
-    mov             r2, r7                  // &row_byte_offsets
-    ldr             r7, [r5,#8]
-    ldr             r6, [r7]                // cols tops ptr
-    pld             [r5]
-
-.packed_tops_and_offsets_loop_1:
-    ldr             r4, [ r2 ], #4
-
-    add             r7, r6, r4
-    vldr            s16, [r7]
-
-    vldmia          r1!, { q0-q3 }
-
-    vmla.f32        q8, q0, d8[0]
-    vmla.f32        q9, q1, d8[0]
-
-    vldmia          r1!, { q0-q1 }
-
-    vmla.f32        q10, q2, d8[0]
-    vmla.f32        q11, q3, d8[0]
-
-    vldmia          r1!, { q2-q3 }
-    vmla.f32        q12, q0, d8[0]
-    vmla.f32        q13, q1, d8[0]
-
-    vmla.f32        q14, q2, d8[0]
-    vmla.f32        q15, q3, d8[0]
-
-    subs            r3, r3, #1
-    bne .packed_tops_and_offsets_loop_1
-
-    .packed_tops_and_offsets_end:
-    b   .non_linear_loop
-
-    .packed_packed:
+.packed_packed_loop_1:
     pld     [r5]                           // packed B ptr
-
-    cmp r3, #4
-    blt .packed_packed_loop_1
-
-    .packed_packed_loop_1:
 
 {% if core == "cortexa7" %}
 
@@ -105,11 +61,11 @@ armv7neon_mmm_f32_32x1_{{core}}_{{suffix}}:
     vldr            d9, [r1, #72]
     vldr            d10, [r1, #80]
     vldr            d11, [r1, #88]
-    vldr            s30, [r7]
+    vldr            s30, [r5]
 
     pld             [r1, #512]
     pld             [r1, #576]
-    pld             [r7, #64]
+    pld             [r5, #64]
 
     vmla.f32        q8, q0, d15[0]
     vmla.f32        q9, q1, d15[0]
@@ -129,7 +85,7 @@ armv7neon_mmm_f32_32x1_{{core}}_{{suffix}}:
     vmla.f32        q15, q1, d15[0]
 
     add             r1, #128
-    add             r7, #4
+    add             r5, #4
 
 {% elsif core == "cortexa9" %}
 
@@ -138,8 +94,8 @@ armv7neon_mmm_f32_32x1_{{core}}_{{suffix}}:
     pld             [r1, #512]
     pld             [r1, #576]
     vld1.64         {d8-d11}, [r1]!
-    vld1.f32        d15[0], [r7]!
-    pld             [r7, #64]
+    vld1.f32        d15[0], [r5]!
+    pld             [r5, #64]
 
     vmla.f32        q8, q0, d15[0]
     vmla.f32        q9, q1, d15[0]
@@ -157,7 +113,7 @@ armv7neon_mmm_f32_32x1_{{core}}_{{suffix}}:
 {% else %}
 
     vldmia          r1!, { q0-q3 }
-    vldmia          r7!, { s30 }
+    vldmia          r5!, { s30 }
 
     vmla.f32        q8, q0, d15[0]
     vmla.f32        q9, q1, d15[0]
