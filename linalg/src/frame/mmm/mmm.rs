@@ -65,6 +65,14 @@ pub trait MatMatMul:
         scratch: &mut dyn ScratchSpace,
         non_linear: &[FusedSpec],
     ) -> anyhow::Result<()>;
+
+    unsafe fn run_with_scratch_space_col_outer(
+        &self,
+        m: usize,
+        n: usize,
+        scratch: &mut dyn ScratchSpace,
+        non_linear: &[FusedSpec],
+    ) -> anyhow::Result<()>;
 }
 
 dyn_clone::clone_trait_object!(MatMatMul);
@@ -250,6 +258,49 @@ where
         Ok(())
     }
 
+    unsafe fn run_with_scratch_space_col_outer(
+        &self,
+        m: usize,
+        n: usize,
+        scratch: &mut dyn ScratchSpace,
+        non_linear: &[FusedSpec],
+    ) -> anyhow::Result<()> {
+        let mr = K::mr();
+        let nr = K::nr();
+        let scratch = scratch
+            .downcast_mut::<ScratchSpaceFusedNonLinear<TI>>()
+            .context("Wrong scratch space type")?;
+        scratch.prepare::<K>(non_linear);
+        for ib in 0..n / nr {
+            for ia in 0..m / mr {
+                scratch.for_valid_tile::<K>(&non_linear, ia, ib);
+                let err = K::kernel(&scratch.uspecs());
+                debug_assert_eq!(err, 0, "Kernel return error {}", err);
+            }
+            if m % mr != 0 {
+                scratch.for_border_tile::<K>(&non_linear, m / mr, ib);
+                let err = K::kernel(&scratch.uspecs());
+                debug_assert_eq!(err, 0, "Kernel return error {}", err);
+                scratch.postprocess_tile::<K>(&non_linear, m / mr, ib, m % mr, nr);
+            }
+        }
+        if n % nr != 0 {
+            for ia in 0..m / mr {
+                scratch.for_border_tile::<K>(&non_linear, ia, n / nr);
+                let err = K::kernel(&scratch.uspecs());
+                debug_assert_eq!(err, 0, "Kernel return error {}", err);
+                scratch.postprocess_tile::<K>(&non_linear, ia, n / nr, mr, n % nr);
+            }
+            if m % mr != 0 {
+                scratch.for_border_tile::<K>(&non_linear, m / mr, n / nr);
+                let err = K::kernel(&scratch.uspecs());
+                debug_assert_eq!(err, 0, "Kernel return error {}", err);
+                scratch.postprocess_tile::<K>(&non_linear, m / mr, n / nr, m % mr, n % nr);
+            }
+        }
+        Ok(())
+    }
+
     unsafe fn run_with_scratch_space(
         &self,
         m: usize,
@@ -262,17 +313,22 @@ where
         if n == 1 && K::nr() == 1 {
             return self.run_with_scratch_space_vec(m, scratch, &non_linear);
         }
+        if non_linear.iter().any(|f| f.prefer_col_outer()) {
+            return self.run_with_scratch_space_col_outer(m, n, scratch, &non_linear);
+        }
         let scratch = scratch
             .downcast_mut::<ScratchSpaceFusedNonLinear<TI>>()
             .context("Wrong scratch space type")?;
         scratch.prepare::<K>(non_linear);
-        for ib in 0..n / nr {
-            for ia in 0..m / mr {
+        for ia in 0..m / mr {
+            for ib in 0..n / nr {
                 scratch.for_valid_tile::<K>(&non_linear, ia, ib);
                 let err = K::kernel(&scratch.uspecs());
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
             }
-            if m % mr != 0 {
+        }
+        if m % mr != 0 {
+            for ib in 0..n / nr {
                 scratch.for_border_tile::<K>(&non_linear, m / mr, ib);
                 let err = K::kernel(&scratch.uspecs());
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
