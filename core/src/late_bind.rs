@@ -34,6 +34,13 @@ impl<S: ResolveTo<C>, C: Clone> GeometryBound<S, C> {
         }
     }
 
+    pub fn as_concrete(&self) -> Option<&C> {
+        match self {
+            Self::Symbolic(sym) => None,
+            Self::Concrete(conc) => Some(conc),
+        }
+    }
+
     pub fn optimize_if(self, param: Option<&S::Param>) -> TractResult<Self> {
         if let Some(param) = param {
             self.into_concrete(&param)
