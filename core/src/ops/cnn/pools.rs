@@ -3,6 +3,8 @@ use crate::internal::*;
 use crate::ops::cnn::{PaddingSpec, Patch, PatchSpec};
 use crate::ops::nn::{BaseDataShape, DataFormat, DataShape, SymDataShape};
 
+use super::padding::ComputedPaddedDim;
+
 #[derive(Debug, Clone, new, Default, Hash, PartialEq)]
 pub struct PoolSpec {
     pub data_format: DataFormat,
@@ -48,14 +50,13 @@ impl PoolSpec {
             .map_or_else(|| vec![1; self.kernel_shape.len()].into(), |d| d.into())
     }
 
+    pub fn computed_padding<D: DimLike>(&self, input_hw: &[D]) -> TVec<ComputedPaddedDim<D>> {
+        self.padding.compute(input_hw, &*self.kernel_shape, &self.dilations(), &self.strides())
+    }
+
     pub fn output_shape<D: DimLike>(&self, input: &[D]) -> TractResult<BaseDataShape<D, TVec<D>>> {
         let ishape: BaseDataShape<D, TVec<D>> = self.data_format.shape(input.into())?;
-        let computed = self.padding.compute(
-            ishape.hw_dims(),
-            &*self.kernel_shape,
-            &self.dilations(),
-            &self.strides(),
-        );
+        let computed = self.computed_padding(ishape.hw_dims());
         let spatial_dims = computed.into_iter().map(|d| d.convoluted).collect::<TVec<D>>();
         let oshape = self.data_format.from_n_c_hw(
             ishape.n().cloned().unwrap_or(1.into()),
@@ -130,4 +131,3 @@ impl super::ResolveTo<ConcretePoolGeometry> for SymbolicPoolGeometry {
         Ok(ConcretePoolGeometry { input_shape, patch, output_shape })
     }
 }
-

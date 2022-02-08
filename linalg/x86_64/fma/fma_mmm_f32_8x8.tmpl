@@ -23,15 +23,15 @@ Windows ABI:
 {% if msvc %}
 
 _text segment
-fma_mmm_f32_16x6_{{suffix}} proc
+fma_mmm_f32_8x8_{{suffix}} proc
 
 {% else %}
 
 .intel_syntax noprefix
 .text
 .p2align 5
-.globl {{G}}fma_mmm_f32_16x6_{{suffix}}
-{{G}}fma_mmm_f32_16x6_{{suffix}}:
+.globl {{G}}fma_mmm_f32_8x8_{{suffix}}
+{{G}}fma_mmm_f32_8x8_{{suffix}}:
 .cfi_startproc
 
 {% endif %}
@@ -84,10 +84,10 @@ fma_mmm_f32_16x6_{{suffix}} proc
     ldmxcsr     [rsp]
 
 {% include "dispatcher.tmpliq" %}
-    
+
 {{L}}clear:
     vzeroall
-    jmp     {{L}}non_linear_loop
+    jmp             {{L}}non_linear_loop
 
 {{L}}add_mat_mul:
     mov     rbx,    [rdi + 24]   // B
@@ -98,50 +98,24 @@ fma_mmm_f32_16x6_{{suffix}} proc
     jz      {{L}}non_linear_loop
 
 {{L}}main_loop_packed_packed:
-    vbroadcastss    ymm14,  dword ptr [rbx]
-    vbroadcastss    ymm15,  dword ptr [rbx + 4]
-
     vmovaps         ymm12,  [rax]
-    vmovaps         ymm13,  [rax + 32]
+    
+    {% for i in (0..7) %}
+        vbroadcastss    ymm14, dword ptr [rbx + {{i}} * 4]
+        vfmadd231ps     ymm{{i}}, ymm12, ymm14
+    {% endfor %}
 
-    vfmadd231ps     ymm0,   ymm12, ymm14
-    vfmadd231ps     ymm1,   ymm13, ymm14
-
-    vbroadcastss    ymm14,  dword ptr [rbx + 8]
-
-    vfmadd231ps     ymm2,   ymm12, ymm15
-    vfmadd231ps     ymm3,   ymm13, ymm15
-
-    vbroadcastss    ymm15,  dword ptr [rbx + 12]
-
-    vfmadd231ps     ymm4,   ymm12, ymm14
-    vfmadd231ps     ymm5,   ymm13, ymm14
-
-    vbroadcastss    ymm14,  dword ptr [rbx + 16]
-
-    vfmadd231ps     ymm6,   ymm12, ymm15
-    vfmadd231ps     ymm7,   ymm13, ymm15
-
-    vbroadcastss    ymm15,  dword ptr [rbx + 20]
-
-    vfmadd231ps     ymm8,   ymm12, ymm14
-    vfmadd231ps     ymm9,   ymm13, ymm14
-
-    vfmadd231ps     ymm10,   ymm12, ymm15
-    vfmadd231ps     ymm11,   ymm13, ymm15
-
-    add             rbx,    24
-    add             rax,    64
+    add             rax,    32
+    add             rbx,    32
     dec             rcx
     jnz             {{L}}main_loop_packed_packed
-
     jmp             {{L}}non_linear_loop
 
 // NON LINEAR / ADDC
 
-{% include "fma_mmm_f32_scalars.tmpliq" from:0, to:11 %}
-{% include "fma_mmm_f32_per_rows.tmpliq" mr:16, from:0, to:11 %}
-{% include "fma_mmm_f32_per_cols.tmpliq" mr:16, from:0, to:11 %}
+{% include "fma_mmm_f32_scalars.tmpliq" from:0, to:7 %}
+{% include "fma_mmm_f32_per_rows.tmpliq" mr:8, from:0, to:7 %}
+{% include "fma_mmm_f32_per_cols.tmpliq" mr:8, from:0, to:7 %}
 
 {{L}}add_unicast:
 
@@ -161,17 +135,11 @@ fma_mmm_f32_16x6_{{suffix}} proc
 
     vperm2f128      ymm14,  ymm14, ymm15,         32 // ymm14 <- xmm14::xmm15
 
-    lea             r8, [ r10 + rsi * 8 ]
-
-{% for i in (0..5) %}
+{% for i in (0..7) %}
     vpcmpeqd        ymm15,  ymm15, ymm15
     vgatherdps      ymm12,  [ r10 + ymm14 ],      ymm15
-    vpcmpeqd        ymm15,  ymm15, ymm15
-    vgatherdps      ymm13,  [ r8  + ymm14 ],      ymm15
     add     r10, rbx
-    add     r8, rbx
-    vaddps          ymm{{i | times:2 }},   ymm{{i | times:2}},   ymm12
-    vaddps          ymm{{i | times:2 | plus: 1}}, ymm{{i | times:2 | plus:1 }},   ymm13
+    vaddps          ymm{{i}},   ymm{{i}},   ymm12
 {% endfor %}
 
     jmp    {{L}}non_linear_loop
@@ -181,12 +149,10 @@ fma_mmm_f32_16x6_{{suffix}} proc
     mov             rbx, [ rdi + 16 ]
 
     vmovups         ymm12,  [rax]
-    vmovups         ymm13,  [rax + 32]
 
-{% for i in (0..5) %}
+{% for i in (0..7) %}
     vbroadcastss    ymm14, dword ptr [rbx + {{i|times:4}} ]
-    vfmadd231ps     ymm{{i|times:2}},   ymm12, ymm14
-    vfmadd231ps     ymm{{i|times:2|plus:1}}, ymm13, ymm14
+    vfmadd231ps     ymm{{i}},   ymm12, ymm14
 {% endfor %}
     jmp    {{L}}non_linear_loop
 
@@ -201,20 +167,19 @@ fma_mmm_f32_16x6_{{suffix}} proc
     lea     r12,    [ r8 + 4 * rbx ]
     lea     r11,    [ r10 + rbx ]
     lea     r13,    [ r12 + rbx ]
+    lea     r14,    [ r12 + 2 * rbx ]
+    lea     r15,    [ r13 + 2 * rbx ]
 
-    {% for quarter in (0..3) %}
+    {% for quarter in (0..1) %}
         {% if quarter != 0 %}
             // move next four rows at top (xmm0,2,..10)
-            vperm2f128  ymm0,   ymm0,   ymm1,  {{quarter}}
-            vperm2f128  ymm2,   ymm2,   ymm3,  {{quarter}}
-            vperm2f128  ymm4,   ymm4,   ymm5,  {{quarter}}
-            vperm2f128  ymm6,   ymm6,   ymm7,  {{quarter}}
-            vperm2f128  ymm8,   ymm8,   ymm9,  {{quarter}}
-            vperm2f128  ymm10,  ymm10,  ymm11, {{quarter}}
+            {% for r in (0..7) %}
+                vperm2f128  ymm{{r}},   ymm{{r}},   ymm{{r}},  {{quarter}}
+            {% endfor %}
         {% endif %}
         {% for row in (0..3) %}
-            {% for i in (0..5) %}
-                vextractps  dword ptr [r{{i | plus: 8}}], xmm{{i | times:2}}, {{row}}
+            {% for i in (0..7) %}
+                vextractps  dword ptr [r{{i | plus: 8}}], xmm{{i}}, {{row}}
                 add         r{{i | plus: 8}}, rsi
             {% endfor %}
         {% endfor %}
@@ -257,7 +222,7 @@ fma_mmm_f32_16x6_{{suffix}} proc
 
 
 {% if msvc %}
-fma_mmm_f32_16x6_{{suffix}} endp
+fma_mmm_f32_8x8_{{suffix}} endp
 _text ends
 end
 

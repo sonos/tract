@@ -30,63 +30,12 @@
 {% include "dispatcher.tmpliq" %}
 
 .add_mat_mul:
-    ldr         x8, [x0, #24]       // b
+    ldr         x2, [x0, #24]       // b
     ldp         x3, x1, [x0, #8]    // k, a
-    ldp         x4, x2, [x8]        // b disc, first arg
 
     cmp         x3, #0
     beq         .non_linear_loop
 
-    cmp         x4, #0
-    beq         .packed_packed
-
-.packed_tops_and_offsets:
-    ldr         x8, [x8, #16]       // cols ptr ptr (x2 = row offsets ptr)
-    ldr         x4, [ x2 ], #8      // fist row offset
-
-    ldp         x20, x21, [x8], #16 // heads of cols ptrs
-    ldp         x22, x23, [x8], #16
-
-.p2align 4
-.packed_tops_and_offsets_loop_1:
-
-    ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [ x1 ], #64
-
-    add         x8, x4, x20
-    ld1         {v4.s}[0], [ x8 ]
-    add         x9, x4, x21
-    ld1         {v4.s}[1], [ x9 ]
-    add         x10, x4, x22
-    ld1         {v4.s}[2], [ x10 ]
-    add         x11, x4, x23
-    ld1         {v4.s}[3], [ x11 ]
-
-    ldr         x4, [ x2 ], #8
-
-    fmla        v16.4s, v0.4s, v4.s[0]
-    fmla        v17.4s, v1.4s, v4.s[0]
-    fmla        v18.4s, v2.4s, v4.s[0]
-    fmla        v19.4s, v3.4s, v4.s[0]
-    fmla        v20.4s, v0.4s, v4.s[1]
-    fmla        v21.4s, v1.4s, v4.s[1]
-    fmla        v22.4s, v2.4s, v4.s[1]
-    fmla        v23.4s, v3.4s, v4.s[1]
-
-    fmla        v24.4s, v0.4s, v4.s[2]
-    fmla        v25.4s, v1.4s, v4.s[2]
-    fmla        v26.4s, v2.4s, v4.s[2]
-    fmla        v27.4s, v3.4s, v4.s[2]
-    fmla        v28.4s, v0.4s, v4.s[3]
-    fmla        v29.4s, v1.4s, v4.s[3]
-    fmla        v30.4s, v2.4s, v4.s[3]
-    fmla        v31.4s, v3.4s, v4.s[3]
-
-    subs        x3, x3, #1
-    bne         .packed_tops_and_offsets_loop_1
-
-    b           .non_linear_loop
-
-.packed_packed:
     ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [ x1 ], #64
     ld1         { v4.4s }, [ x2 ], #16
 

@@ -1,17 +1,25 @@
-use std::ffi::c_void;
-use std::fmt;
 use std::fmt::Debug;
 use tract_data::internal::*;
 
 #[derive(Clone, Copy, Debug)]
 pub enum OutputStoreSpec {
-    View { axes: Option<(usize, usize)>, mr: usize, nr: usize },
-    Strides { row_byte_stride: isize, col_byte_stride: isize, mr: usize, nr: usize },
+    View {
+        m_axis: usize,
+        n_axis: usize,
+        mr: usize,
+        nr: usize,
+    },
+    Strides {
+        row_byte_stride: isize,
+        col_byte_stride: isize,
+        mr: usize,
+        nr: usize,
+    },
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct OutputStore {
-    pub(crate) ptr: *mut c_void,
+    pub(crate) ptr: *mut u8,
     pub(crate) row_byte_stride: isize,
     pub(crate) col_byte_stride: isize,
     pub(crate) panel_row_byte_stride: isize,
@@ -24,7 +32,8 @@ pub struct OutputStore {
 impl OutputStoreSpec {
     #[inline]
     pub unsafe fn wrap(self: &Self, tensor: &TensorView) -> OutputStore {
-        let (mr, nr, row_byte_stride, col_byte_stride) = self.compute_strides(tensor);
+        let (mr, nr, row_byte_stride, col_byte_stride) =
+            self.compute_strides(tensor);
         OutputStore {
             ptr: tensor.as_ptr_unchecked::<u8>() as _,
             row_byte_stride,
@@ -38,26 +47,26 @@ impl OutputStoreSpec {
     }
 
     #[inline]
-    unsafe fn compute_strides(&self, tensor: &TensorView) -> (usize, usize, isize, isize) {
+    unsafe fn compute_strides(
+        &self,
+        tensor: &TensorView,
+    ) -> (usize, usize, isize, isize) {
         let size_of = tensor.datum_type().size_of() as isize;
         match self {
-            OutputStoreSpec::View { axes, mr, nr, .. } => {
-                let (m_axis, n_axis) = if let Some(axes) = axes {
-                    axes.clone()
-                } else {
-                    let rank = tensor.rank();
-                    (rank - 2, rank - 1)
-                };
+            OutputStoreSpec::View { m_axis, n_axis, mr, nr, .. } => {
                 let tensor_strides = tensor.strides();
-                let row_item_stride = *tensor_strides.get_unchecked(m_axis);
-                let col_item_stride = *tensor_strides.get_unchecked(n_axis);
+                let row_item_stride = *tensor_strides.get_unchecked(*m_axis);
+                let col_item_stride = *tensor_strides.get_unchecked(*n_axis);
                 let row_byte_stride = row_item_stride * size_of;
                 let col_byte_stride = col_item_stride * size_of;
                 (*mr, *nr, row_byte_stride, col_byte_stride)
             }
-            OutputStoreSpec::Strides { row_byte_stride, col_byte_stride, mr, nr } => {
-                (*mr, *nr, *row_byte_stride, *col_byte_stride)
-            }
+            OutputStoreSpec::Strides {
+                row_byte_stride,
+                col_byte_stride,
+                mr,
+                nr,
+            } => (*mr, *nr, *row_byte_stride, *col_byte_stride),
         }
     }
 }
@@ -94,7 +103,7 @@ impl OutputStore {
         if self.item_size() == 1 {
             self.set_from_tile_t::<i8>(down, right, height, width, tile)
         } else {
-            self.set_from_tile_t::<i32>(down, right, height, width, tile)
+            self.set_from_tile_t::<f32>(down, right, height, width, tile)
         }
     }
 
@@ -123,109 +132,10 @@ impl OutputStore {
     }
 }
 
-#[derive(PartialEq, Clone, Debug, Hash)]
-pub enum InputStoreSpec {
-    Packed(PackedStoreSpec),
-    OffsetsAndPtrs { row_byte_offsets: Vec<isize>, col_byte_offsets: Vec<isize>, nr: usize },
-}
-
-#[derive(PartialEq, Clone, Copy, Debug, Hash)]
-pub struct PackedStoreSpec {
-    pub(crate) panel_bytes: usize,
-}
-
-impl PackedStoreSpec {
-    #[inline]
-    pub unsafe fn wrap(&self, tensor: &TensorView) -> PackedStore {
-        PackedStore {
-            ptr: tensor.as_ptr_unchecked::<u8>() as _,
-            panel_bytes: self.panel_bytes as isize,
-        }
-    }
-}
-
-impl InputStoreSpec {
-    #[inline]
-    pub unsafe fn wrap(&self, tensor: &TensorView) -> InputStore {
-        use InputStore::*;
-        use InputStoreSpec as S;
-        match self {
-            S::Packed(PackedStoreSpec { panel_bytes }) => Packed(PackedStore {
-                ptr: tensor.as_ptr_unchecked::<u8>() as _,
-                panel_bytes: *panel_bytes as isize,
-            }),
-            S::OffsetsAndPtrs { row_byte_offsets, col_byte_offsets, nr } => OffsetsAndPtrs {
-                row_byte_offsets: row_byte_offsets.as_ptr(),
-                col_ptrs: col_byte_offsets
-                    .iter()
-                    .map(|offset| tensor.as_ptr_unchecked::<u8>().offset(*offset) as _)
-                    .collect(),
-                nr: *nr,
-            },
-        }
-    }
-}
-
-impl fmt::Display for InputStoreSpec {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            InputStoreSpec::Packed { .. } => write!(fmt, "Packed"),
-            InputStoreSpec::OffsetsAndPtrs { .. } => write!(fmt, "OffsetsAndPtrs"),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub enum InputStore {
-    Packed(PackedStore),
-    OffsetsAndPtrs { row_byte_offsets: *const isize, col_ptrs: Vec<*const c_void>, nr: usize },
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct PackedStore {
-    ptr: *const c_void,
-    panel_bytes: isize,
-}
-
-impl PackedStore {
-    #[inline]
-    pub(super) unsafe fn panel(&self, i: usize) -> PackedStoreKer {
-        PackedStoreKer { ptr: self.ptr.offset(self.panel_bytes * i as isize) }
-    }
-}
-
-impl InputStore {
-    #[inline]
-    pub(super) unsafe fn panel_b(&self, i: usize) -> InputStoreKer {
-        match self {
-            InputStore::Packed(packed) => InputStoreKer::Packed(packed.panel(i)),
-            InputStore::OffsetsAndPtrs { row_byte_offsets, col_ptrs, nr, .. } => {
-                InputStoreKer::OffsetsAndPtrs {
-                    row_byte_offsets: *row_byte_offsets,
-                    col_ptrs: col_ptrs.as_ptr().offset((nr * i) as isize),
-                }
-            }
-        }
-    }
-}
-
-#[repr(C, usize)]
-#[derive(PartialEq, Copy, Clone, Debug)]
-pub enum InputStoreKer {
-    Packed(PackedStoreKer),
-    OffsetsAndPtrs { row_byte_offsets: *const isize, col_ptrs: *const *const c_void },
-}
-
-#[repr(C)]
-#[derive(PartialEq, Copy, Clone, Debug)]
-pub struct PackedStoreKer {
-    pub ptr: *const c_void,
-}
-
 #[repr(C)]
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub struct OutputStoreKer {
-    pub ptr: *mut c_void,
+    pub ptr: *mut u8,
     pub row_byte_stride: isize,
     pub col_byte_stride: isize,
     pub item_size: usize,

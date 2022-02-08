@@ -16,23 +16,21 @@ pub trait MatMatMul:
     fn mr(&self) -> usize;
     fn nr(&self) -> usize;
 
-    fn a_pack(&self, k: usize) -> Packer;
-    fn b_pack(&self, k: usize) -> Packer;
+    fn a_pack(&self) -> Packer;
+    fn b_pack(&self) -> Packer;
 
     fn internal_type(&self) -> DatumType;
 
     unsafe fn a_packed(&self, item_size: usize, k: usize) -> PackedStoreSpec;
 
     unsafe fn b_packed(&self, item_size: usize, k: usize) -> InputStoreSpec;
-    unsafe fn b_from_data_and_offsets(
-        &self,
-        item_size: usize,
-        rows_offsets: &[isize],
-        cols_offsets: &[isize],
-    ) -> InputStoreSpec;
+    unsafe fn b_late_packing(&self) -> InputStoreSpec {
+        self.b_late_packing_with_axes(0, 1)
+    }
+    unsafe fn b_late_packing_with_axes(&self, k_axis: usize, n_axis: usize) -> InputStoreSpec;
+    unsafe fn b_virtual_input(&self, func: Box<dyn VirtualInputSpec>, k: usize) -> InputStoreSpec;
 
-    unsafe fn c_view(&self) -> OutputStoreSpec;
-    unsafe fn c_view_with_axis(&self, m_axis: usize, n_axis: usize) -> OutputStoreSpec;
+    unsafe fn c_view(&self, m_axis: usize, n_axis: usize) -> OutputStoreSpec;
     unsafe fn c_from_data_and_strides(
         &self,
         item_size: usize,
@@ -58,6 +56,14 @@ pub trait MatMatMul:
     unsafe fn run_with_scratch_space_vec(
         &self,
         m: usize,
+        scratch: &mut dyn ScratchSpace,
+        non_linear: &[FusedSpec],
+    ) -> anyhow::Result<()>;
+
+    unsafe fn run_with_scratch_space_col_outer(
+        &self,
+        m: usize,
+        n: usize,
         scratch: &mut dyn ScratchSpace,
         non_linear: &[FusedSpec],
     ) -> anyhow::Result<()>;
@@ -137,12 +143,12 @@ where
         K::nr()
     }
 
-    fn a_pack(&self, k: usize) -> Packer {
-        Packer::new(k, K::mr(), K::alignment_bytes_packed_a(), K::end_padding_packed_a())
+    fn a_pack(&self) -> Packer {
+        Packer::new(K::mr(), K::alignment_bytes_packed_a(), K::end_padding_packed_a())
     }
 
-    fn b_pack(&self, k: usize) -> Packer {
-        Packer::new(k, K::nr(), K::alignment_bytes_packed_b(), K::end_padding_packed_b())
+    fn b_pack(&self) -> Packer {
+        Packer::new(K::nr(), K::alignment_bytes_packed_b(), K::end_padding_packed_b())
     }
 
     fn internal_type(&self) -> DatumType {
@@ -155,44 +161,19 @@ where
 
     unsafe fn b_packed(&self, item_size: usize, k: usize) -> InputStoreSpec {
         let panel_bytes = k * K::nr() * item_size;
-        InputStoreSpec::Packed(PackedStoreSpec { panel_bytes })
+        InputStoreSpec::Prepacked(PackedStoreSpec { panel_bytes })
     }
 
-    unsafe fn b_from_data_and_offsets(
-        &self,
-        item_size: usize,
-        rows_offsets: &[isize],
-        cols_offsets: &[isize],
-    ) -> InputStoreSpec {
-        debug_assert!(rows_offsets.len() > 0);
-        debug_assert!(cols_offsets.len() > 0);
-        // repeat the last offset to get to the panel boundary (pad to next multiple of nr)
-        let wanted = (cols_offsets.len() + K::nr() - 1) / K::nr() * K::nr();
-        let mut col_byte_offsets: Vec<_> =
-            cols_offsets.iter().map(|o| o * item_size as isize).collect();
-        while col_byte_offsets.len() < wanted {
-            col_byte_offsets.push(*col_byte_offsets.last().unwrap());
-        }
-        // repeat the last offset four times to simplify kernel loop unrolling
-        let mut row_byte_offsets: Vec<_> = Vec::with_capacity(rows_offsets.len() + 4);
-        row_byte_offsets.set_len(rows_offsets.len() + 4);
-        for i in 0..rows_offsets.len() {
-            *row_byte_offsets.get_unchecked_mut(i) =
-                *rows_offsets.get_unchecked(i) * item_size as isize;
-        }
-        let pad = *row_byte_offsets.get_unchecked(rows_offsets.len() - 1);
-        for i in 0..4 {
-            *row_byte_offsets.get_unchecked_mut(rows_offsets.len() + i) = pad;
-        }
-        InputStoreSpec::OffsetsAndPtrs { col_byte_offsets, row_byte_offsets, nr: K::nr() }
+    unsafe fn b_late_packing_with_axes(&self, k_axis: usize, n_axis: usize) -> InputStoreSpec {
+        InputStoreSpec::LatePacking { packer: self.b_pack(), k_axis, mn_axis: n_axis }
     }
 
-    unsafe fn c_view(&self) -> OutputStoreSpec {
-        OutputStoreSpec::View { axes: None, mr: K::mr(), nr: K::nr() }
+    unsafe fn b_virtual_input(&self, func: Box<dyn VirtualInputSpec>, k: usize) -> InputStoreSpec {
+        InputStoreSpec::VirtualPacking { packer: self.b_pack(), func, k }
     }
 
-    unsafe fn c_view_with_axis(&self, m_axis: usize, n_axis: usize) -> OutputStoreSpec {
-        OutputStoreSpec::View { axes: Some((m_axis, n_axis)), mr: K::mr(), nr: K::nr() }
+    unsafe fn c_view(&self, m_axis: usize, n_axis: usize) -> OutputStoreSpec {
+        OutputStoreSpec::View { m_axis, n_axis, mr: K::mr(), nr: K::nr() }
     }
 
     unsafe fn c_from_data_and_strides(
@@ -242,6 +223,49 @@ where
         Ok(())
     }
 
+    unsafe fn run_with_scratch_space_col_outer(
+        &self,
+        m: usize,
+        n: usize,
+        scratch: &mut dyn ScratchSpace,
+        non_linear: &[FusedSpec],
+    ) -> anyhow::Result<()> {
+        let mr = K::mr();
+        let nr = K::nr();
+        let scratch = scratch
+            .downcast_mut::<ScratchSpaceFusedNonLinear<TI>>()
+            .context("Wrong scratch space type")?;
+        scratch.prepare::<K>(non_linear);
+        for ib in 0..n / nr {
+            for ia in 0..m / mr {
+                scratch.for_valid_tile::<K>(&non_linear, ia, ib);
+                let err = K::kernel(&scratch.uspecs());
+                debug_assert_eq!(err, 0, "Kernel return error {}", err);
+            }
+            if m % mr != 0 {
+                scratch.for_border_tile::<K>(&non_linear, m / mr, ib);
+                let err = K::kernel(&scratch.uspecs());
+                debug_assert_eq!(err, 0, "Kernel return error {}", err);
+                scratch.postprocess_tile::<K>(&non_linear, m / mr, ib, m % mr, nr);
+            }
+        }
+        if n % nr != 0 {
+            for ia in 0..m / mr {
+                scratch.for_border_tile::<K>(&non_linear, ia, n / nr);
+                let err = K::kernel(&scratch.uspecs());
+                debug_assert_eq!(err, 0, "Kernel return error {}", err);
+                scratch.postprocess_tile::<K>(&non_linear, ia, n / nr, mr, n % nr);
+            }
+            if m % mr != 0 {
+                scratch.for_border_tile::<K>(&non_linear, m / mr, n / nr);
+                let err = K::kernel(&scratch.uspecs());
+                debug_assert_eq!(err, 0, "Kernel return error {}", err);
+                scratch.postprocess_tile::<K>(&non_linear, m / mr, n / nr, m % mr, n % nr);
+            }
+        }
+        Ok(())
+    }
+
     unsafe fn run_with_scratch_space(
         &self,
         m: usize,
@@ -254,6 +278,9 @@ where
         if n == 1 && K::nr() == 1 {
             return self.run_with_scratch_space_vec(m, scratch, &non_linear);
         }
+        if non_linear.iter().any(|f| f.prefer_col_outer()) {
+            return self.run_with_scratch_space_col_outer(m, n, scratch, &non_linear);
+        }
         let scratch = scratch
             .downcast_mut::<ScratchSpaceFusedNonLinear<TI>>()
             .context("Wrong scratch space type")?;
@@ -264,12 +291,6 @@ where
                 let err = K::kernel(&scratch.uspecs());
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
             }
-            if n % nr != 0 {
-                scratch.for_border_tile::<K>(&non_linear, ia, n / nr);
-                let err = K::kernel(&scratch.uspecs());
-                debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                scratch.postprocess_tile::<K>(&non_linear, ia, n / nr, mr, n % nr);
-            }
         }
         if m % mr != 0 {
             for ib in 0..n / nr {
@@ -278,7 +299,15 @@ where
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
                 scratch.postprocess_tile::<K>(&non_linear, m / mr, ib, m % mr, nr);
             }
-            if n % nr != 0 {
+        }
+        if n % nr != 0 {
+            for ia in 0..m / mr {
+                scratch.for_border_tile::<K>(&non_linear, ia, n / nr);
+                let err = K::kernel(&scratch.uspecs());
+                debug_assert_eq!(err, 0, "Kernel return error {}", err);
+                scratch.postprocess_tile::<K>(&non_linear, ia, n / nr, mr, n % nr);
+            }
+            if m % mr != 0 {
                 scratch.for_border_tile::<K>(&non_linear, m / mr, n / nr);
                 let err = K::kernel(&scratch.uspecs());
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);

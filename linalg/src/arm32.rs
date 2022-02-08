@@ -1,5 +1,5 @@
 use std::{env, fs};
-mod armv7neon;
+pub mod armv7neon;
 mod armvfpv2;
 use crate::frame::ElementWiseImpl;
 use crate::frame::MatMatMulImpl;

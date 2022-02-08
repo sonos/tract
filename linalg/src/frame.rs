@@ -11,6 +11,7 @@ pub mod sigmoid;
 pub mod tanh;
 
 pub use pack::Packer;
+pub use pack::PackingWriter;
 
 pub use self::element_wise::{ ElementWise, ElementWiseImpl};
 pub use self::mmm::{MatMatMul, MatMatMulImpl};

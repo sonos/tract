@@ -62,63 +62,13 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
     b     .non_linear_loop
 
 .add_mat_mul:
-    // r3 <- k, r4 <- a, r5 <- &b
+    // r3 <- k, r4 <- a, r5 <- b
     cmp     r3, #0
     beq     .non_linear_loop
 
-    ldm     r5, { r6, r7 } //  b disc, b ptr
     mov     r1, r4 // packed A ptr
     pld     [r3]
-    pld     [r7]
-
-    cmp     r6, #0
-    beq     .packed_packed
-
-    .packed_tops_and_offsets:
-    mov             r2, r7                  // &row_byte_offsets
-    ldr             r7, [r5, #8]
-    ldm             r7, {r5, r6, r7, r8}    // cols tops ptr
-    pld             [r5]
-
-    .packed_tops_and_offsets_loop_1:
-    ldm             r2!, { r4 }
-    vldmia          r1!, { s0, s1, s2, s3 }
-
-    add             r9, r5, r4
-    add             r10, r6, r4
-    add             r11, r7, r4
-    add             r12, r8, r4
-
-    vldr            s8, [r9]
-    vldr            s9, [r10]
-    vldr            s10, [r11]
-    vldr            s11, [r12]
-
-    vmla.f32        s16, s0, s8
-    vmla.f32        s17, s1, s8
-    vmla.f32        s18, s2, s8
-    vmla.f32        s19, s3, s8
-
-    vmla.f32        s20, s0, s9
-    vmla.f32        s21, s1, s9
-    vmla.f32        s22, s2, s9
-    vmla.f32        s23, s3, s9
-
-    vmla.f32        s24, s0, s10
-    vmla.f32        s25, s1, s10
-    vmla.f32        s26, s2, s10
-    vmla.f32        s27, s3, s10
-
-    vmla.f32        s28, s0, s11
-    vmla.f32        s29, s1, s11
-    vmla.f32        s30, s2, s11
-    vmla.f32        s31, s3, s11
-
-    subs            r3, r3, #1
-    bne .packed_tops_and_offsets_loop_1
-
-    .packed_tops_and_offsets_end:
-    b   .non_linear_loop
+    pld     [r5]
 
     .packed_packed:
     cmp r3, #4
@@ -128,12 +78,12 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
 
     // 1
     vldmia          r1!, { s0, s1 }
-    vldmia          r7!, { s8, s9 }
+    vldmia          r5!, { s8, s9 }
 
     vmla.f32        s16, s0, s8
     vldmia          r1!, { s2, s3 }
     vmla.f32        s17, s1, s8
-    vldmia          r7!, { s10, s11 }
+    vldmia          r5!, { s10, s11 }
     vmla.f32        s18, s2, s8
     vmla.f32        s19, s3, s8
 
@@ -148,7 +98,7 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
     vmla.f32        s26, s2, s10
     vmla.f32        s27, s3, s10
 
-    vldmia          r7!, { s12-s15 }
+    vldmia          r5!, { s12-s15 }
     vmla.f32        s28, s0, s11
     vmla.f32        s29, s1, s11
     vmla.f32        s30, s2, s11
@@ -167,7 +117,7 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
     vmla.f32        s22, s6, s13
     vmla.f32        s23, s7, s13
 
-    vldmia          r7!, { s8-s11 }
+    vldmia          r5!, { s8-s11 }
 
     vmla.f32        s24, s4, s14
     vmla.f32        s25, s5, s14
@@ -192,7 +142,7 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
     vmla.f32        s22, s2, s9
     vmla.f32        s23, s3, s9
 
-    vldmia          r7!, { s12-s15 }
+    vldmia          r5!, { s12-s15 }
 
     vmla.f32        s24, s0, s10
     vmla.f32        s25, s1, s10
@@ -239,12 +189,12 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
     .packed_packed_loop_1:
 
     vldmia          r1!, { s0, s1 }
-    vldmia          r7!, { s8, s9 }
+    vldmia          r5!, { s8, s9 }
 
     vmla.f32        s16, s0, s8
     vldmia          r1!, { s2, s3 }
     vmla.f32        s17, s1, s8
-    vldmia          r7!, { s10, s11 }
+    vldmia          r5!, { s10, s11 }
     vmla.f32        s18, s2, s8
     vmla.f32        s19, s3, s8
 

@@ -178,7 +178,7 @@ macro_rules! element_wise {
         #[derive(Debug, Clone, Educe)]
         #[educe(Hash)]
         pub struct $Op { $( $( $(#[$meta])? pub $var: $var_typ),* )? }
-        $crate::impl_dyn_hash!($Op);
+        tract_data::internal::impl_dyn_hash!($Op);
         impl $crate::ops::element_wise::ElementWiseMiniOp for $Op {
             fn name(&self) -> String {
                 format!("{}{}", self.prefix(), stringify!($Op))
@@ -267,7 +267,7 @@ macro_rules! element_wise_oop {
         #[derive(Debug, Clone, Educe)]
         #[educe(Hash)]
         pub struct $Op { $( $($(#[$meta])? pub $var: $var_typ),* )? }
-        $crate::impl_dyn_hash!($Op);
+        tract_data::internal::impl_dyn_hash!($Op);
         impl $crate::ops::element_wise::ElementWiseMiniOp for $Op {
             fn name(&self) -> String {
                 format!("{}{}", self.prefix(), stringify!($Op))

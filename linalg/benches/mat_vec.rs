@@ -16,8 +16,8 @@ fn mat_vec_mul(c: &mut Criterion) {
                     let mm =
                         tract_linalg::ops().mmm(F32, F32, F32, Some(m), Some(k), Some(1)).unwrap();
                     let pa = Tensor::uninitialized_aligned::<f32>(
-                        &[mm.a_pack(k).len(m)],
-                        mm.a_pack(k).alignment(),
+                        &[mm.a_pack().len(k, m)],
+                        mm.a_pack().alignment(),
                     )
                     .unwrap();
                     let b = tensor1(&vec![0.0; k]);
@@ -29,10 +29,10 @@ fn mat_vec_mul(c: &mut Criterion) {
                             &[
                                 FusedSpec::AddMatMul {
                                     a: mm.a_packed(F32.size_of(), k).wrap(&pa.view()),
-                                    b: mm.b_packed(b.datum_type().size_of(), k).wrap(&b.view()),
+                                    b: mm.b_packed(b.datum_type().size_of(), k).wrap(&b.view()).unwrap(),
                                     k,
                                 },
-                                FusedSpec::Store(mm.c_view().wrap(&c.view_mut())),
+                                FusedSpec::Store(mm.c_view(0, 0).wrap(&c.view_mut())),
                             ],
                         )
                     });

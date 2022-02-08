@@ -1,19 +1,33 @@
+use num_integer::Integer;
+use std::alloc::Layout;
 use std::fmt::Debug;
+use tract_data::internal::*;
 
 use crate::LADatum;
 
-use super::{BinOp, FusedKerSpec, FusedSpec, InputStoreKer, MatMatMulKer, OutputStoreKer};
+use super::{BinOp, FusedKerSpec, FusedSpec, MatMatMulKer, OutputStoreKer};
 use downcast_rs::{impl_downcast, Downcast};
-use tract_data::prelude::*;
 
 pub trait ScratchSpace: Downcast + Send {}
 impl_downcast!(ScratchSpace);
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub struct ScratchSpaceFusedNonLinear<TI: LADatum> {
     uspecs: Vec<FusedKerSpec<TI>>,
-    pub buffer: Vec<u8>,
+    layout: Layout,
+    buffer: *const u8,
     loc_dependant: TVec<LocDependant>,
+}
+
+impl<TI: LADatum> Default for ScratchSpaceFusedNonLinear<TI> {
+    fn default() -> Self {
+        ScratchSpaceFusedNonLinear {
+            uspecs: vec![],
+            layout: unsafe { Layout::from_size_align_unchecked(0, 1) },
+            buffer: std::ptr::null(),
+            loc_dependant: tvec!(),
+        }
+    }
 }
 
 #[derive(Debug, new)]
@@ -21,10 +35,23 @@ struct LocDependant {
     spec: usize,
     uspec: usize,
     loc: *const u8,
+    buffer: Option<*const u8>,
 }
 
 impl<TI: LADatum> ScratchSpace for ScratchSpaceFusedNonLinear<TI> {}
 unsafe impl<TI: LADatum> Send for ScratchSpaceFusedNonLinear<TI> {}
+
+impl<TI: LADatum> Drop for ScratchSpaceFusedNonLinear<TI> {
+    fn drop(&mut self) {
+        if !self.buffer.is_null() {
+            unsafe {
+                std::alloc::dealloc(self.buffer as _, self.layout);
+            }
+        }
+    }
+}
+
+struct AddMatMulTemp(*const u8, usize);
 
 impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
     pub unsafe fn prepare<K: MatMatMulKer<TI>>(&mut self, specs: &[FusedSpec]) {
@@ -35,8 +62,9 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
         self.uspecs.reserve(specs.len() + 2);
         self.uspecs.push(FusedKerSpec::Clear);
         let mut offset = 0;
+        let mut align = 1;
         fn ld(spec: usize, uspec: usize, loc: *const u8) -> LocDependant {
-            LocDependant { spec, uspec, loc }
+            LocDependant { spec, uspec, loc, buffer: None }
         }
         // we're cheating here, storing offset as the buf pointer first
         for ix in 0..specs.len() {
@@ -71,18 +99,39 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                     offset += TI::datum_type().size_of() * K::mr() * K::nr();
                     FusedKerSpec::Done
                 }
-                FS::AddMatMul { .. } => {
-                    self.loc_dependant.push(ld(ix, self.uspecs.len(), offset as _));
-                    offset += std::mem::size_of::<InputStoreKer>();
+                FS::AddMatMul { b, .. } => {
+                    let mut ld = ld(ix, self.uspecs.len(), offset as _);
+                    offset += std::mem::size_of::<AddMatMulTemp>();
+                    if let Some(tmp) = b.scratch_panel_buffer_layout() {
+                        align = tmp.align().lcm(&align);
+                        offset = offset.next_multiple_of(&tmp.align());
+                        ld.buffer = Some(offset as _);
+                        offset += tmp.size();
+                    }
+                    self.loc_dependant.push(ld);
                     FusedKerSpec::Done
                 }
             };
             self.uspecs.push(uspec);
         }
         self.uspecs.push(FKS::Done);
-        self.buffer.resize(offset, 0);
-        for LocDependant { loc, .. } in &mut self.loc_dependant {
-            *loc = self.buffer.as_ptr().offset(*loc as _);
+        if offset > self.layout.size() || align > self.layout.align() {
+            self.layout = Layout::from_size_align_unchecked(offset, align);
+            self.buffer = std::alloc::alloc(self.layout);
+        }
+        for LocDependant { loc, buffer, spec, .. } in &mut self.loc_dependant {
+            *loc = self.buffer.offset(*loc as _);
+            if let Some(b) = buffer {
+                *b = self.buffer.offset(*b as _);
+            }
+            let spec = specs.get_unchecked(*spec);
+            match spec {
+                FS::AddMatMul { .. } => {
+                    let scratch = *loc as *mut AddMatMulTemp;
+                    (*scratch).1 = usize::MAX;
+                }
+                _ => (),
+            };
         }
     }
 
@@ -97,7 +146,7 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
         use FusedSpec as FS;
         let ScratchSpaceFusedNonLinear { uspecs, loc_dependant, .. } = self;
         debug_assert!(specs.len() + 2 == uspecs.len());
-        for LocDependant { spec, uspec, loc } in loc_dependant.iter_mut() {
+        for LocDependant { spec, uspec, loc, buffer } in loc_dependant.iter_mut() {
             let spec = specs.get_unchecked(*spec);
             *uspecs.get_unchecked_mut(*uspec) = match spec {
                 FS::BinPerRow(v, op) => {
@@ -130,11 +179,14 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                 FS::AddUnicast(store) => FKS::AddUnicast(store.tile_c(down, right)),
                 FS::Store(c_store) => FKS::Store(c_store.tile_c(down, right)),
                 FS::AddMatMul { k, a, b } => {
-                    let pa = a.panel(down).ptr;
+                    let pa = a.panel(down);
                     K::prefetch(pa as _, 512);
-                    let scratch = *loc as *mut InputStoreKer;
-                    *scratch = b.panel_b(right);
-                    FKS::AddMatMul { k: *k, pa, pb: scratch, cpu_variant: 0 }
+                    let scratch = *loc as *mut AddMatMulTemp;
+                    if (*scratch).1 != right {
+                        (*scratch).0 = b.panel_b(right, *buffer);
+                        (*scratch).1 = right;
+                    }
+                    FKS::AddMatMul { k: *k, pa, pb: (*scratch).0, cpu_variant: 0 }
                 }
                 _ => std::hint::unreachable_unchecked(),
             };
@@ -152,7 +204,7 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
         use FusedSpec as FS;
         let ScratchSpaceFusedNonLinear { uspecs, loc_dependant, .. } = self;
         debug_assert!(specs.len() + 2 == uspecs.len());
-        for LocDependant { spec, uspec, loc } in loc_dependant.iter_mut() {
+        for LocDependant { spec, uspec, loc, buffer } in loc_dependant.iter_mut() {
             let spec = specs.get_unchecked(*spec);
             *uspecs.get_unchecked_mut(*uspec) = match spec {
                 FS::BinPerRow(v, op) => {
@@ -165,6 +217,9 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                                     .get_unchecked(down * K::mr()..)
                                     .get_unchecked(..have),
                             );
+                        }
+                        if cfg!(debug_assertions) {
+                            buf.get_unchecked_mut(have..).iter_mut().for_each(|x| *x = TI::zero());
                         }
                         buf.as_ptr()
                     } else {
@@ -190,6 +245,9 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                                     .get_unchecked(..have),
                             );
                         }
+                        if cfg!(debug_assertions) {
+                            buf.get_unchecked_mut(have..).iter_mut().for_each(|x| *x = TI::zero());
+                        }
                         buf.as_ptr()
                     } else {
                         v.as_ptr_unchecked::<TI>().add(right * K::nr())
@@ -213,6 +271,9 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                                 .get_unchecked(down * K::mr()..)
                                 .get_unchecked(..have),
                         );
+                        if cfg!(debug_assertions) {
+                            r.get_unchecked_mut(have..).iter_mut().for_each(|x| *x = TI::zero());
+                        }
                         r.as_ptr()
                     } else {
                         rows.as_ptr_unchecked::<TI>().add(down * K::mr())
@@ -229,6 +290,9 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                                 .get_unchecked(right * K::nr()..)
                                 .get_unchecked(..have),
                         );
+                        if cfg!(debug_assertions) {
+                            r.get_unchecked_mut(have..).iter_mut().for_each(|x| *x = TI::zero());
+                        }
                         c.as_ptr()
                     } else {
                         cols.as_ptr_unchecked::<TI>().add(right * K::nr())
@@ -271,11 +335,14 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                     FKS::Store(tmpc)
                 }
                 FS::AddMatMul { k, a, b } => {
-                    let pa = a.panel(down).ptr;
+                    let pa = a.panel(down);
                     K::prefetch(pa as _, 512);
-                    let scratch = *loc as *mut InputStoreKer;
-                    *scratch = b.panel_b(right);
-                    FKS::AddMatMul { k: *k, pa, pb: scratch, cpu_variant: 0 }
+                    let scratch = *loc as *mut AddMatMulTemp;
+                    if (*scratch).1 != right {
+                        (*scratch).0 = b.panel_b(right, *buffer);
+                        (*scratch).1 = right;
+                    }
+                    FKS::AddMatMul { k: *k, pa, pb: (*scratch).0, cpu_variant: 0 }
                 }
                 _ => std::hint::unreachable_unchecked(),
             };

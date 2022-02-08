@@ -1,7 +1,6 @@
-use std::ffi::c_void;
 use std::fmt::Debug;
 
-use super::{InputStore, InputStoreKer, OutputStore, OutputStoreKer, PackedStore};
+use super::{InputStore, OutputStore, OutputStoreKer, PackedStore};
 use tract_data::internal::*;
 
 #[repr(usize)]
@@ -49,6 +48,20 @@ pub enum FusedSpec<'t> {
     AddMatMul { k: usize, a: PackedStore, b: InputStore },
 }
 
+impl<'t> FusedSpec<'t> {
+    pub fn prefer_col_outer(&self) -> bool {
+        if let FusedSpec::AddMatMul { b, .. } = self {
+            match &b {
+                &InputStore::Packed { .. } => false,
+                &InputStore::VirtualPacking { .. } => true,
+                &InputStore::LatePacking { .. } => true,
+            }
+        } else {
+            false
+        }
+    }
+}
+
 // Careful here, the jump_to comments are used by the build script.
 #[repr(C, usize)]
 #[derive(PartialEq, Copy, Clone, Debug)]
@@ -84,18 +97,18 @@ pub enum FusedKerSpec<TI: Copy> {
     Store(OutputStoreKer),                      // jump_to:store
 
     // jump_to:add_mat_mul
-    AddMatMul { k: usize, pa: *const c_void, pb: *const InputStoreKer, cpu_variant: usize },
+    AddMatMul { k: usize, pa: *const u8, pb: *const u8, cpu_variant: usize },
 }
 
 #[cfg(test)]
 #[macro_use]
 pub mod test {
-    use tract_data::internal::*;
     use crate::frame::mmm::storage::*;
     use crate::frame::mmm::*;
     use crate::generic::ScaleShiftAndRound;
     use num_traits::{AsPrimitive, Bounded};
     use proptest::prelude::*;
+    use tract_data::internal::*;
 
     #[test]
     fn check_non_linear_enum_size() {

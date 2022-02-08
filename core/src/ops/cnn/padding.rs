@@ -23,10 +23,12 @@ pub struct ComputedPaddedDim<D: DimLike> {
 }
 
 impl PaddingSpec {
-    pub fn valid_dim(&self, d: usize) -> bool {
+    pub fn valid_dim(&self, d: usize, stride_is_one: bool) -> bool {
         match self {
             PaddingSpec::Valid => true,
-            PaddingSpec::Explicit(a, b, ceil_mode) => *ceil_mode && a[d] == 0 && b[d] == 0,
+            PaddingSpec::Explicit(a, b, ceil_mode) => {
+                (*ceil_mode || stride_is_one) && a[d] == 0 && b[d] == 0
+            }
             _ => false,
         }
     }
@@ -276,6 +278,11 @@ mod tests {
         assert_eq!(PS::same(&2usize, 3usize, 1, 1, true), ComputedPaddedDim::new(2, 2, 1, 1));
         assert_eq!(PS::same(&3usize, 3usize, 1, 1, true), ComputedPaddedDim::new(3, 3, 1, 1));
         assert_eq!(PS::same(&4usize, 3usize, 1, 1, true), ComputedPaddedDim::new(4, 4, 1, 1));
+    }
+
+    #[test]
+    fn same_ker_3_stride_3() {
+        assert_eq!(PS::same(&3usize, 3usize, 1, 3, true), ComputedPaddedDim::new(3, 1, 0, 0));
     }
 
     #[test]

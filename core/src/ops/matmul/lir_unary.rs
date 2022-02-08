@@ -204,7 +204,7 @@ fn eval(
         debug_assert!(op.micro_ops.len() > 0);
         let size_of_a = (&*op.micro_ops.as_ptr()).0.datum_type().size_of();
         let mut c = Tensor::uninitialized_dt(op.c_fact.datum_type, &c_shape)?;
-        let c_storage = op.mmm.c_view_with_axis(c_m_axis, c_n_axis);
+        let c_storage = op.mmm.c_view(c_m_axis, c_n_axis);
         if op
             .c_fact
             .shape
@@ -233,7 +233,7 @@ fn eval(
                     a: op.mmm.a_packed(size_of_a, geometry.k).wrap(&pa.view()),
                     b: geometry
                         .b_storage
-                        .wrap(&TensorView::at_prefix_unchecked(&inputs[0], &*b_prefix)),
+                        .wrap(&TensorView::at_prefix_unchecked(&inputs[0], &*b_prefix))?,
                 });
                 f.extend(fused.iter().map(|f| f.resolve(inputs, &c_storage, c_store)));
                 op.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch, &f)?;
@@ -245,7 +245,7 @@ fn eval(
             f.push(FusedSpec::AddMatMul {
                 k: geometry.k,
                 a: op.mmm.a_packed(size_of_a, geometry.k).wrap(&pa.view()),
-                b: geometry.b_storage.wrap(&inputs[0].view()),
+                b: geometry.b_storage.wrap(&inputs[0].view())?,
             });
             for ix in 0..fused.len() {
                 f.push(fused.get_unchecked(ix).resolve(inputs, &c_storage, c_store));

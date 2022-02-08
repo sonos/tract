@@ -63,11 +63,10 @@ impl Problem {
         let input = model.add_source("input", self.image_type()).unwrap();
         let output = unsafe {
             if direct {
-                conv.wire_as_direct(
+                conv.wire_as_lazy_im2col(
                     &mut model,
                     "",
                     input,
-                    self.image_fact().shape.as_concrete().unwrap(),
                 )
                 .unwrap()
             } else {

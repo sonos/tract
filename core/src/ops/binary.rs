@@ -553,7 +553,7 @@ macro_rules! bin_to_super_type {
      $( [$($typ:ident),*] => $cab:expr),*) => {
         #[derive(Debug, Clone, Hash)]
         pub struct $Op;
-        $crate::impl_dyn_hash!($Op);
+        tract_data::internal::impl_dyn_hash!($Op);
         impl $crate::ops::binary::BinMiniOp for $Op {
             fn name(&self) -> &'static str {
                 stringify!($Op)
@@ -745,7 +745,7 @@ macro_rules! bin_to_bool {
      $( [$($typ:ident),*] => $cab:expr),*) => {
         #[derive(Debug, Clone, Hash)]
         pub struct $Op;
-        $crate::impl_dyn_hash!($Op);
+        tract_data::internal::impl_dyn_hash!($Op);
         impl $crate::ops::binary::BinMiniOp for $Op {
             fn name(&self) -> &'static str {
                 stringify!($Op)

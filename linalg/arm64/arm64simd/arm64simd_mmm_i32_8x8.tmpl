@@ -36,73 +36,11 @@
 {% include "dispatcher.tmpliq" %}
 
 .add_mat_mul:
-    ldr         x8, [x0, #24]       // b
+    ldr         x2, [x0, #24]       // b
     ldp         x3, x1, [x0, #8]    // k, a
-    ldp         x4, x2, [x8]        // b disc, first arg
 
     cmp         x3, #0
     beq         .non_linear_loop
-
-    cmp         x4, #0
-    beq         .packed_packed
-
-.packed_tops_and_offsets:
-    ldr         x4, [x8, #16]
-
-    ldp         x20, x21, [x4], #16 // heads of cols ptrs
-    ldp         x22, x23, [x4], #16
-    ldp         x24, x25, [x4], #16
-    ldp         x26, x27, [x4], #16
-
-.packed_tops_and_offsets_loop_1:
-    ld1	        { v0.8b }, [ x1 ], #8
-    sshll       v0.8h, v0.8b, 0
-
-    ldr         x4, [ x2 ], #8
-
-    add         x9, x4, x20
-    ld1         {v4.b}[0], [ x9 ]
-    add         x10, x4, x21
-    ld1         {v4.b}[1], [ x10 ]
-    add         x11, x4, x22
-    ld1         {v4.b}[2], [ x11 ]
-    add         x12, x4, x23
-    ld1         {v4.b}[3], [ x12 ]
-    add         x13, x4, x24
-    ld1         {v4.b}[4], [ x13 ]
-    add         x14, x4, x25
-    ld1         {v4.b}[5], [ x14 ]
-    add         x15, x4, x26
-    ld1         {v4.b}[6], [ x15 ]
-    add         x9, x4, x27
-    ld1         {v4.b}[7], [ x9 ]
-
-    sshll        v4.8h, v4.8b, 0
-
-    smlal        v16.4s, v0.4h, v4.h[0]
-    smlal2       v17.4s, v0.8h, v4.h[0]
-    smlal        v18.4s, v0.4h, v4.h[1]
-    smlal2       v19.4s, v0.8h, v4.h[1]
-    smlal        v20.4s, v0.4h, v4.h[2]
-    smlal2       v21.4s, v0.8h, v4.h[2]
-    smlal        v22.4s, v0.4h, v4.h[3]
-    smlal2       v23.4s, v0.8h, v4.h[3]
-
-    smlal        v24.4s, v0.4h, v4.h[4]
-    smlal2       v25.4s, v0.8h, v4.h[4]
-    smlal        v26.4s, v0.4h, v4.h[5]
-    smlal2       v27.4s, v0.8h, v4.h[5]
-    smlal        v28.4s, v0.4h, v4.h[6]
-    smlal2       v29.4s, v0.8h, v4.h[6]
-    smlal        v30.4s, v0.4h, v4.h[7]
-    smlal2       v31.4s, v0.8h, v4.h[7]
-
-    subs        x3, x3, #1
-    bne         .packed_tops_and_offsets_loop_1
-
-    b           .non_linear_loop
-
-.packed_packed:
 
 .packed_packed_loop_1:
 
