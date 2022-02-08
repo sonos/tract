@@ -1,5 +1,5 @@
-use std::borrow::Cow;
 use crate::prelude::TractResult;
+use std::borrow::Cow;
 
 pub trait ResolveTo<Concrete> {
     type Param: ?Sized;
@@ -31,6 +31,14 @@ impl<S: ResolveTo<C>, C: Clone> GeometryBound<S, C> {
         match self {
             Self::Symbolic(sym) => Ok(Cow::Owned(sym.resolve(param)?)),
             Self::Concrete(conc) => Ok(Cow::Borrowed(conc)),
+        }
+    }
+
+    pub fn as_concrete(&self) -> Option<&C> {
+        if let Self::Concrete(conc) = self {
+            Some(conc)
+        } else {
+            None
         }
     }
 

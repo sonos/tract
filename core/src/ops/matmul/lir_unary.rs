@@ -113,7 +113,11 @@ impl Op for LirMatMulUnary {
             "c_shape:{:?}, c_m_axis:{} c_n_axis:{} b_storage:{:?}",
             self.c_fact, self.c_m_axis, self.c_n_axis, self.geometry,
         )];
-        infos.push(format!("Mult: {}", self.mmm));
+        if let Some(geo) = self.geometry.as_concrete() {
+            infos.push(format!("Mult: m:{} k:{} n:{} with {}", geo.m, geo.k, geo.n, self.mmm));
+        } else {
+            infos.push(format!("Mult: {}", self.mmm));
+        }
         infos.push(format!("Ops: {:?}", self.micro_ops));
         Ok(infos)
     }
