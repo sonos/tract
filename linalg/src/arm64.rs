@@ -91,9 +91,11 @@ pub fn plug(ops: &mut Ops) {
         MatMatMulF32x12x8A53::mmm(),
         MatMatMulF32x8x8A53::mmm(),
         MatMatMulF32x16x4A53::mmm(),
+        MatMatMulF32x24x4A53::mmm(),
         MatMatMulF32x12x8::mmm(),
         MatMatMulF32x8x8::mmm(),
         MatMatMulF32x16x4::mmm(),
+        MatMatMulF32x24x4::mmm(),
     ] {
         ops.mmm_f32_impls.push((mm, None));
     }
@@ -117,7 +119,7 @@ pub fn plug(ops: &mut Ops) {
         Kind::CortexA53 => ops.set_cost_models(cortex_a53::models()),
         Kind::CortexA55 => ops.set_cost_models(cortex_a55::models()),
         Kind::CortexA72 => ops.set_cost_models(cortex_a72::models()),
-        Kind::CortexA73 => ops.set_cost_models(cortex_a72::models()),
+        Kind::CortexA73 => ops.set_cost_models(cortex_a73::models()),
         _ => ops.set_cost_models(cortex_a53::models()),
     }
 }

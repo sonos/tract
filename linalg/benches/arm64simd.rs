@@ -703,6 +703,12 @@ unsafe fn packed_packed_16x4_loop1() {
     kloop!("16x4x1", 64, t, "arm64simd_mmm_f32_16x4/packed_packed_loop1/cortex_a53.tmpli");
 }
 
+unsafe fn packed_packed_24x4_loop1() {
+    let t = b8192!(asm!("orr x20, x20, x20", out("x20") _));
+    kloop!("24x4x1", 96, t, "arm64simd_mmm_f32_24x4/packed_packed_loop1/naive.tmpli");
+    kloop!("24x4x1", 96, t, "arm64simd_mmm_f32_24x4/packed_packed_loop1/cortex_a53.tmpli");
+}
+
 fn main() {
     unsafe {
         ld_64F32();
@@ -712,5 +718,7 @@ fn main() {
         packed_packed_12x8_loop1();
         println!("");
         packed_packed_16x4_loop1();
+        println!("");
+        packed_packed_24x4_loop1();
     }
 }
