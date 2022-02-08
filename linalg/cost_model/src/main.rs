@@ -85,8 +85,8 @@ impl Bencher {
         measures.sort_by(order_f);
         let q1 = measures[chunks / 4];
         /*
-        let q3 = measures[chunks - chunks / 4];
-        let iq = q3 - q1;
+           let q3 = measures[chunks - chunks / 4];
+           let iq = q3 - q1;
         //    measures.retain(|&x| x >= q1 && x <= q3);
         let epsilon = iq * 2. / (q3 + q1);
         eprintln!("evaled: {} chunk:{} chunks: {} epsilon: {:.3e}", evaled, chunk, chunks, epsilon);
@@ -117,8 +117,10 @@ fn measure_add_mat_mul(
     n: usize,
 ) -> f64 {
     let dt = mm.internal_type();
-    let pa = Tensor::zero_aligned_dt(dt, &[mm.a_pack().len(k, m)], mm.a_pack().alignment()).unwrap();
-    let pb = Tensor::zero_aligned_dt(dt, &[mm.b_pack().len(k, n)], mm.b_pack().alignment()).unwrap();
+    let pa =
+        Tensor::zero_aligned_dt(dt, &[mm.a_pack().len(k, m)], mm.a_pack().alignment()).unwrap();
+    let pb =
+        Tensor::zero_aligned_dt(dt, &[mm.b_pack().len(k, n)], mm.b_pack().alignment()).unwrap();
     let pc = Tensor::zero_dt(dt, &[m, n]).unwrap();
     unsafe {
         let pa = mm.a_packed(dt.size_of(), k).wrap(&pa.view());
@@ -167,18 +169,24 @@ impl Dataset {
         inputs
     }
 
-    pub fn compare_random_sample(
+    pub fn allkernels_random_sample(
         mmm: &[&dyn MatMatMul],
         size: usize,
+        max_m: usize,
+        max_k: usize,
+        max_n: usize,
+        max_mkn: usize,
     ) -> Vec<(String, usize, usize, usize)> {
         let mut inputs = vec![];
         let mut rng = thread_rng();
-        for _ in 0..size {
-            let m = rng.gen_range(1..512);
-            let k = rng.gen_range(0..512);
-            let n = rng.gen_range(1..512);
-            for mm in mmm {
-                inputs.push((mm.kernel_name().to_string(), m, k, n));
+        while inputs.len() < size {
+            let m = rng.gen_range(1..max_m);
+            let k = rng.gen_range(0..max_k);
+            let n = rng.gen_range(1..max_n);
+            if max_mkn >= m * k * n {
+                for mm in mmm {
+                    inputs.push((mm.kernel_name().to_string(), m, k, n));
+                }
             }
         }
         inputs
@@ -342,27 +350,27 @@ fn train_and_dump(impls: &[&dyn MatMatMul], ds: &Dataset, writer: &mut dyn Write
 fn display_comparison(m: usize, k: usize, n: usize, alts: &[(&str, f64, f64)]) {
     let best_choice = alts.iter().min_by(|a, b| order_f(&a.2, &b.2)).unwrap();
     alts.iter().sorted_by(|a, b| order_f(&a.1, &b.1)).enumerate().for_each(
-                |(ix, (s, t, p))| {
-                    let line = format!(
-                        "{:30} pred: {:9.03} us / {:9.03} GFlops ; truth: {:9.03} us / {:9.03} GFLops ; diff: {:5.2}%",
-                        s,
-                        p * 1e6,
-                        (m * k * n) as f64 / p / 1e9,
-                        t * 1e6,
-                        (m * k * n) as f64 / t / 1e9,
-                        (p - t) / t * 100.,
-                        );
-                    if &best_choice.0 == s {
-                        if ix == 0 {
-                            println!("{}", ansi_term::Color::Green.bold().paint(line));
-                        } else {
-                            println!("{}", ansi_term::Color::Red.bold().paint(line));
-                        }
-                    } else {
-                        println!("{}", line);
-                    }
-                },
+        |(ix, (s, t, p))| {
+            let line = format!(
+                "{:30} pred: {:9.03} us / {:9.03} GFlops ; truth: {:9.03} us / {:9.03} GFLops ; diff: {:5.2}%",
+                s,
+                p * 1e6,
+                (m * k * n) as f64 / p / 1e9,
+                t * 1e6,
+                (m * k * n) as f64 / t / 1e9,
+                (p - t) / t * 100.,
                 );
+            if &best_choice.0 == s {
+                if ix == 0 {
+                    println!("{}", ansi_term::Color::Green.bold().paint(line));
+                } else {
+                    println!("{}", ansi_term::Color::Red.bold().paint(line));
+                }
+            } else {
+                println!("{}", line);
+            }
+        },
+        );
 }
 
 fn main() {
@@ -429,6 +437,41 @@ fn main() {
             App::new("ds")
                 .arg(Arg::new("mm").long("mm").help("Filter kernels").takes_value(true))
                 .arg(
+                    Arg::new("m")
+                        .short('m')
+                        .help("Max m value")
+                        .takes_value(true)
+                        .default_value("512"),
+                )
+                .arg(
+                    Arg::new("k")
+                        .short('k')
+                        .help("Max k value")
+                        .takes_value(true)
+                        .default_value("512"),
+                )
+                .arg(
+                    Arg::new("n")
+                        .short('n')
+                        .help("Max n value")
+                        .takes_value(true)
+                        .default_value("512"),
+                )
+                .arg(
+                    Arg::new("mkn")
+                        .long("mkn")
+                        .help("Max m*k*n value")
+                        .takes_value(true)
+                        .default_value("4194304"),
+                )
+                .arg(
+                    Arg::new("size")
+                        .short('s')
+                        .help("Sample size (total)")
+                        .takes_value(true)
+                        .default_value("128"),
+                )
+                .arg(
                     Arg::new("strat")
                         .long("strat")
                         .help("Strategy for sampling")
@@ -473,8 +516,15 @@ fn main() {
             }
             let inputs = match sub.value_of("strat").unwrap() {
                 "smart" => Dataset::smart_sample(&*mmms),
-                "random" => Dataset::compare_random_sample(&*mmms, 64),
-                _ => unreachable!()
+                "random" => Dataset::allkernels_random_sample(
+                    &*mmms,
+                    sub.value_of_t("size").unwrap(),
+                    sub.value_of_t("m").unwrap(),
+                    sub.value_of_t("k").unwrap(),
+                    sub.value_of_t("n").unwrap(),
+                    sub.value_of_t("mkn").unwrap(),
+                ),
+                _ => unreachable!(),
             };
             Dataset::make_dataset(&bencher, inputs, &mmms).save(sub.value_of("name").unwrap());
         }
