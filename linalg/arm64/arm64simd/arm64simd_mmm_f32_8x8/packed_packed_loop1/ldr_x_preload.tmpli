@@ -39,5 +39,5 @@ ins         v1.d[0], x7
 ins         v5.d[0], x11
 ins         v0.d[1], x6
 ins         v4.d[1], x10
-ins         v3.d[1], x8
+ins         v1.d[1], x8
 ins         v5.d[1], x12
