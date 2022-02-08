@@ -2,6 +2,7 @@ use std::alloc::Layout;
 use std::fmt;
 use std::ops::Range;
 use tract_data::internal::*;
+use tract_data::internal::DynHash;
 
 use crate::frame::Packer;
 

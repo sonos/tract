@@ -1,4 +1,3 @@
-use num_integer::Integer;
 use std::alloc::Layout;
 use std::fmt::Debug;
 use tract_data::internal::*;
@@ -7,6 +6,7 @@ use crate::LADatum;
 
 use super::{BinOp, FusedKerSpec, FusedSpec, MatMatMulKer, OutputStoreKer};
 use downcast_rs::{impl_downcast, Downcast};
+use tract_data::internal::num_integer::Integer;
 
 pub trait ScratchSpace: Downcast + Send {}
 impl_downcast!(ScratchSpace);
