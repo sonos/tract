@@ -773,7 +773,7 @@ unsafe fn packed_packed_16x4(f: Option<&str>) {
     kloop!(f, "16x4x1", 64, t, "arm64simd_mmm_f32_16x4/packed_packed_loop1/cortex_a53.tmpli");
 }
 
-unsafe fn packed_packed_24x4_loop1(f: Option<&str>) {
+unsafe fn packed_packed_24x4(f: Option<&str>) {
     let t = b8192!(asm!("orr x20, x20, x20", out("x20") _));
     kloop!(f, "24x4x1", 96, t, "arm64simd_mmm_f32_24x4/packed_packed_loop1/naive.tmpli");
     kloop!(f, "24x4x1", 96, t, "arm64simd_mmm_f32_24x4/packed_packed_loop1/cortex_a53.tmpli");
@@ -788,8 +788,8 @@ fn main() {
         println!("");
         packed_packed_12x8(filter.as_deref());
         println!("");
-        packed_packed_16x4_loop1(filter.as_deref());
+        packed_packed_16x4(filter.as_deref());
         println!("");
-        packed_packed_24x4_loop1(filter.as_deref());
+        packed_packed_24x4(filter.as_deref());
     }
 }
