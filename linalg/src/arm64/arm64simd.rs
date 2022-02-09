@@ -1,6 +1,7 @@
 use crate::frame::element_wise::ElementWiseKer;
 use crate::frame::mmm::*;
 
+extern_kernel!(fn arm64simd_mmm_f32_16x4_a55(op: *const FusedKerSpec<f32>) -> isize);
 extern_kernel!(fn arm64simd_mmm_f32_16x4_a53(op: *const FusedKerSpec<f32>) -> isize);
 extern_kernel!(fn arm64simd_mmm_f32_16x4_gen(op: *const FusedKerSpec<f32>) -> isize);
 extern_kernel!(fn arm64simd_mmm_f32_24x4_a53(op: *const FusedKerSpec<f32>) -> isize);
@@ -21,6 +22,7 @@ extern_kernel!(fn arm64simd_tanh_f32_4n(ptr: *mut f32, count: usize) -> ());
 
 MMMKernel!(MatMatMulF32x8x8A55<f32>, arm64simd_mmm_f32_8x8_a55; 8, 8; 16, 16; 1, 1);
 MMMKernel!(MatMatMulF32x12x8A55<f32>, arm64simd_mmm_f32_12x8_a55; 12, 8; 16, 16; 1, 1);
+MMMKernel!(MatMatMulF32x16x4A55<f32>, arm64simd_mmm_f32_16x4_a55; 16, 4; 16, 16; 1, 1);
 
 MMMKernel!(MatMatMulF32x16x4A53<f32>,  arm64simd_mmm_f32_16x4_a53; 16, 4; 16, 16; 1, 1);
 MMMKernel!(MatMatMulF32x24x4A53<f32>,  arm64simd_mmm_f32_24x4_a53; 24, 4; 16, 16; 1, 1);
@@ -91,6 +93,7 @@ impl ElementWiseKer<f32> for TanhF32x4n {
 
 test_mmm_kernel_f32!(crate::arm64::arm64simd::MatMatMulF32x8x8A55, test_MatMatMulF32x8x8a55, true);
 test_mmm_kernel_f32!(crate::arm64::arm64simd::MatMatMulF32x12x8A55, test_MatMatMulF32x12x8a55, true);
+test_mmm_kernel_f32!(crate::arm64::arm64simd::MatMatMulF32x16x4A55, test_MatMatMulF32x16x4a55, true);
 
 test_mmm_kernel_f32!(
     crate::arm64::arm64simd::MatMatMulF32x16x4A53,
