@@ -47,7 +47,7 @@ impl Packer {
         } else if mn_stride == 1 {
             let size_of = T::datum_type().size_of();
             let rbytes = self.r * size_of;
-            let mn_range_bytes = mn_range.start * size_of..mn_range.end * size_of;
+            let mn_range_bytes = mn_range.start * size_of..mn_range.end.min(mn) * size_of;
             let k_stride_bytes = k_stride * size_of as isize;
             let bb = b as *const u8;
             let pbb = pb as *mut u8;
