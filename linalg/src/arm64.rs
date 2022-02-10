@@ -35,7 +35,7 @@ fn max_cpuid() -> std::io::Result<String> {
     Ok(max.unwrap_or("").to_string())
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 enum Kind {
     Generic,
     CortexA53,
@@ -121,5 +121,14 @@ pub fn plug(ops: &mut Ops) {
         Kind::CortexA72 => ops.set_cost_models(cortex_a72::models()),
         Kind::CortexA73 => ops.set_cost_models(cortex_a73::models()),
         _ => ops.set_cost_models(cortex_a53::models()),
+    }
+    if *KIND == Kind::CortexA55 {
+        ops.mmm_f32 = Some(Box::new(|_, _, n| {
+            if n.unwrap_or(8) < 8 {
+                MatMatMulF32x16x4A55::mmm()
+            } else {
+                MatMatMulF32x8x8A55::mmm()
+            }
+        }));
     }
 }
