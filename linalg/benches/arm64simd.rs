@@ -5,8 +5,8 @@ use std::arch::asm;
 mod nano;
 
 #[repr(C, align(8))]
-struct Floats([f32; 1024]);
-const _F32: Floats = Floats([12.; 1024]);
+struct Floats([f32; 4096]);
+const _F32: Floats = Floats([12.; 4096]);
 const F32: *const f32 = (&_F32) as *const Floats as *const f32;
 
 pub unsafe fn ld_64F32(filter: Option<&str>) {
@@ -780,6 +780,11 @@ unsafe fn packed_packed_24x4(f: Option<&str>) {
     kloop!(f, "24x4x1", 96, t, "arm64simd_mmm_f32_24x4/packed_packed_loop1/cortex_a53.tmpli");
 }
 
+unsafe fn packed_packed_64x1(f: Option<&str>) {
+    let t = b8192!(asm!("orr x20, x20, x20", out("x20") _));
+    kloop!(f, "64x1x2", 64, t, "arm64simd_mmm_f32_64x1/loop2/naive.tmpli");
+}
+
 fn main() {
     let filter = std::env::args().skip(1).filter(|a| a != "--bench").next();
     unsafe {
@@ -792,5 +797,7 @@ fn main() {
         packed_packed_16x4(filter.as_deref());
         println!("");
         packed_packed_24x4(filter.as_deref());
+        println!("");
+        packed_packed_64x1(filter.as_deref());
     }
 }
