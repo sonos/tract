@@ -782,7 +782,8 @@ unsafe fn packed_packed_24x4(f: Option<&str>) {
 
 unsafe fn packed_packed_64x1(f: Option<&str>) {
     let t = b8192!(asm!("orr x20, x20, x20", out("x20") _));
-    kloop!(f, "64x1x2", 64, t, "arm64simd_mmm_f32_64x1/loop2/naive.tmpli");
+    kloop!(f, "64x1x1", 64, t, "arm64simd_mmm_f32_64x1/loop1/cortex_a53.tmpli");
+    kloop!(f, "64x1x2", 128, t, "arm64simd_mmm_f32_64x1/loop2/naive.tmpli");
 }
 
 fn main() {
