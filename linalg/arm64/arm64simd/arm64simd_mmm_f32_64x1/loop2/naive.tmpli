@@ -1,7 +1,6 @@
 // load a: v9, v10, v11, v12, v13, v14, v15
 // load a: v0, v1, v2, v3, v4, v4, v6, v7
 
-
     ld1         {{ v9.4s, v10.4s, v11.4s, v12.4s }}, [x1], #64
     ld1         {{ v13.4s, v14.4s, v15.4s }}, [x1], #48
 
@@ -51,8 +50,9 @@
     fmla        v26.4s, v12.4s, v8.s[0]
     fmla        v27.4s, v13.4s, v8.s[0]
     fmla        v28.4s, v14.4s, v8.s[0]
-    fmla        v29.4s, v0.4s, v8.s[0]
-    fmla        v30.4s, v1.4s, v8.s[0]
+    fmla        v29.4s, v15.4s, v8.s[0]
+    fmla        v30.4s, v0.4s, v8.s[0]
+    fmla        v31.4s, v1.4s, v8.s[0]
     ld1         {{ v8.s }}[0], [ x2 ], #4
 
     ld1         {{ v0.4s, v1.4s, v2.4s, v3.4s }}, [x1], #64
