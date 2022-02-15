@@ -122,6 +122,7 @@ fn asr_15M(c: &mut Criterion) {
     matmul(c, 768, 200, 24);
     matmul(c, 768, 2304, 24);
     matmul(c, 768, 2304, 8);
+    matmul(c, 768, 384, 1);
 }
 
 fn inception(c: &mut Criterion) {

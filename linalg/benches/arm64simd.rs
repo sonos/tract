@@ -783,6 +783,7 @@ unsafe fn packed_packed_64x1(f: Option<&str>) {
     kloop!(f, "64x1x1", 64, "arm64simd_mmm_f32_64x1/loop1/naive.tmpli");
     kloop!(f, "64x1x1", 64, "arm64simd_mmm_f32_64x1/loop1/cortex_a53.tmpli");
     kloop!(f, "64x1x2", 128, "arm64simd_mmm_f32_64x1/loop2/naive.tmpli");
+    kloop!(f, "64x1x2", 128, "arm64simd_mmm_f32_64x1/loop2/cortex_a55.tmpli");
 }
 
 fn main() {
