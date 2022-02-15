@@ -49,27 +49,27 @@ pub fn plug(ops: &mut Ops) {
         };
 
         ops.mmm_f32 = match cpu {
-            0xc07 => Some(Box::new(|m, k, n| {
+            0xc07 => Box::new(|m, k, n| {
                 if prefer_8x4(m, k, n) {
                     armv7neon::armv7neon_mmm_f32_8x4_cortexa7::mmm()
                 } else {
                     armv7neon::armv7neon_mmm_f32_8x6_cortexa7::mmm()
                 }
-            })),
-            0xc09 => Some(Box::new(|m, k, n| {
+            }),
+            0xc09 => Box::new(|m, k, n| {
                 if prefer_8x4(m, k, n) {
                     armv7neon::armv7neon_mmm_f32_8x4_cortexa9::mmm()
                 } else {
                     armv7neon::armv7neon_mmm_f32_8x6_cortexa9::mmm()
                 }
-            })),
-            _ => Some(Box::new(|m, k, n| {
+            }),
+            _ => Box::new(|m, k, n| {
                 if prefer_8x4(m, k, n) {
                     armv7neon::armv7neon_mmm_f32_8x4_generic::mmm()
                 } else {
                     armv7neon::armv7neon_mmm_f32_8x6_generic::mmm()
                 }
-            })),
+            }),
         };
         ops.qmmm_i32 = Box::new(|_, _, _| armv7neon::armv7neon_mmm_i32_8x4::mmm());
         ops.qmmv_i32 = Box::new(|_, _| armv7neon::armv7neon_mmm_i32_32x1::mmm());
@@ -78,7 +78,7 @@ pub fn plug(ops: &mut Ops) {
         ops.tanh_f32 = Box::new(|| Box::new(ElementWiseImpl::<armv7neon::TanhF32x4n, f32>::new()));
     } else {
         log::info!("armvfpv2 activated for smmm");
-        ops.mmm_f32 = Some(Box::new(|_, _, _| armvfpv2::armvfpv2_mmm_f32_4x4::mmm()));
+        ops.mmm_f32 = Box::new(|_, _, _| armvfpv2::armvfpv2_mmm_f32_4x4::mmm());
     }
 }
 

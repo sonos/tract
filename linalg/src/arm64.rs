@@ -87,7 +87,7 @@ impl Kind {
 }
 
 pub fn plug(ops: &mut Ops) {
-    for mm in vec![
+    let impls = vec![
         arm64simd_mmm_f32_12x8_a53::mmm(),
         arm64simd_mmm_f32_12x8_gen::mmm(),
         arm64simd_mmm_f32_8x8_a53::mmm(),
@@ -96,37 +96,37 @@ pub fn plug(ops: &mut Ops) {
         arm64simd_mmm_f32_16x4_gen::mmm(),
         arm64simd_mmm_f32_24x4_a53::mmm(),
         arm64simd_mmm_f32_24x4_gen::mmm(),
-    ] {
-        ops.mmm_f32_impls.push((mm, None));
-    }
+    ];
     match *KIND {
         Kind::CortexA53 => {
             ops.mmv_f32 =
-                Box::new(|_, _| Box::new(MatMatMulImpl::<arm64simd_mmm_f32_64x1_a53, f32>::new()));
+                Box::new(|_, _| arm64simd_mmm_f32_64x1_a53::mmm());
         }
         _ => {
             ops.mmv_f32 =
-                Box::new(|_, _| Box::new(MatMatMulImpl::<arm64simd_mmm_f32_64x1_gen, f32>::new()));
+                Box::new(|_, _| arm64simd_mmm_f32_64x1_gen::mmm());
         }
     }
-    ops.qmmm_i32 = Box::new(|_, _, _| Box::new(MatMatMulImpl::<arm64simd_mmm_i32_8x8, i32>::new()));
-    ops.qmmv_i32 = Box::new(|_, _| Box::new(MatMatMulImpl::<arm64simd_mmm_i32_64x1, i32>::new()));
+    ops.qmmm_i32 = Box::new(|_, _, _| arm64simd_mmm_i32_8x8::mmm());
+    ops.qmmv_i32 = Box::new(|_, _| arm64simd_mmm_i32_64x1::mmm());
     ops.sigmoid_f32 = Box::new(|| Box::new(ElementWiseImpl::<SigmoidF32x4n, f32>::new()));
     ops.tanh_f32 = Box::new(|| Box::new(ElementWiseImpl::<TanhF32x4n, f32>::new()));
+    /*
     match *KIND {
-        Kind::CortexA53 => ops.set_cost_models(cortex_a53::models()),
-        Kind::CortexA55 => ops.set_cost_models(cortex_a55::models()),
-        Kind::CortexA72 => ops.set_cost_models(cortex_a72::models()),
-        Kind::CortexA73 => ops.set_cost_models(cortex_a73::models()),
-        _ => ops.set_cost_models(cortex_a53::models()),
+    Kind::CortexA53 => ops.set_cost_models(cortex_a53::models()),
+    Kind::CortexA55 => ops.set_cost_models(cortex_a55::models()),
+    Kind::CortexA72 => ops.set_cost_models(cortex_a72::models()),
+    Kind::CortexA73 => ops.set_cost_models(cortex_a73::models()),
+    _ => ops.set_cost_models(cortex_a53::models()),
     }
+    */
     if *KIND == Kind::CortexA55 {
-        ops.mmm_f32 = Some(Box::new(|_, _, n| {
+        ops.mmm_f32 = Box::new(|_, _, n| {
             if n.unwrap_or(8) < 8 {
                 arm64simd_mmm_f32_16x4_a55::mmm()
             } else {
                 arm64simd_mmm_f32_8x8_a55::mmm()
             }
-        }));
+        });
     }
 }

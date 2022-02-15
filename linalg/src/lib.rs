@@ -29,18 +29,15 @@ pub mod arm32;
 
 pub use self::frame::{element_wise, lut, mmm};
 
-use crate::frame::mmm::cost_model::CostModel;
 use crate::frame::mmm::kernel::MatMatMulKer;
 use tract_data::prelude::*;
 
 pub struct Ops {
-    mmm_f32_impls: Vec<(Box<dyn MatMatMul>, Option<CostModel>)>,
-    mmm_f32: Option<
-        Box<
-            dyn Fn(Option<usize>, Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul>
-                + Send
-                + Sync,
-        >,
+    mmm_f32_impls: Vec<Box<dyn MatMatMul>>,
+    mmm_f32: Box<
+        dyn Fn(Option<usize>, Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul>
+            + Send
+            + Sync,
     >,
     mmv_f32: Box<dyn Fn(Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul> + Send + Sync>,
     qmmm_i32: Box<
@@ -55,7 +52,7 @@ pub struct Ops {
 }
 
 impl Ops {
-    pub fn mmm_f32_impls(&self) -> &[(Box<dyn MatMatMul>, Option<CostModel>)] {
+    pub fn mmm_f32_impls(&self) -> &[Box<dyn MatMatMul>] {
         &self.mmm_f32_impls
     }
 
@@ -73,11 +70,7 @@ impl Ops {
             (F32, F32, F32) => Some(if n == Some(1) {
                 (self.mmv_f32)(m, k)
             } else {
-                if let Some(heuristics) = &self.mmm_f32 {
-                    heuristics(m, k, n)
-                } else {
-                    dyn_clone::clone_box(pick_best_impl(&self.mmm_f32_impls, m, k, n))
-                }
+                (self.mmm_f32)(m, k, n)
             }),
             (I8, I8, I32) => {
                 Some(if n == Some(1) { (self.qmmv_i32)(m, k) } else { (self.qmmm_i32)(m, k, n) })
@@ -88,18 +81,9 @@ impl Ops {
             _ => None,
         }
     }
-
-    #[allow(dead_code)]
-    fn set_cost_models(&mut self, models: Vec<(&'static str, CostModel)>) {
-        for (name, model) in models {
-            if let Some(pair) = self.mmm_f32_impls.iter_mut().find(|mm| mm.0.kernel_name() == name)
-            {
-                pair.1 = Some(model)
-            }
-        }
-    }
 }
 
+/*
 fn pick_best_impl(
     impls: &[(Box<dyn MatMatMul>, Option<CostModel>)],
     m: Option<usize>,
@@ -124,12 +108,12 @@ fn pick_best_impl(
         .unwrap()
         .0
 }
+*/
 
 pub fn generic() -> Ops {
     Ops {
-        mmm_f32_impls: vec![(generic::GenericMmm4x4::<f32, f32, f32>::mmm(), None)],
-        mmm_f32: None,
-        //        mmm_f32: Box::new(|_, _, _| generic::GenericMmm4x4::<f32, f32, f32>::mmm()),
+        mmm_f32_impls: vec![generic::GenericMmm4x4::<f32, f32, f32>::mmm()],
+        mmm_f32: Box::new(|_, _, _| generic::GenericMmm4x4::<f32, f32, f32>::mmm()),
         mmv_f32: Box::new(|_, _| generic::GenericMmm4x1::<f32, f32, f32>::mmm()),
         qmmm_i32: Box::new(|_, _, _| generic::GenericMmm4x4::<i8, i8, i32>::mmm()),
         qmmv_i32: Box::new(|_, _| generic::GenericMmm4x1::<i8, i8, i32>::mmm()),

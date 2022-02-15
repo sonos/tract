@@ -7,9 +7,9 @@ edition = "2018"
 members = []
 
 [dependencies]
+ndarray-npy = { version = "0.8.0", features = [ "compressed_npz" ] }
 tract-data = { path = "../../data" }
 tract-linalg = { path = ".." }
-linregress = "0.4"
 lazy_static = "1.4.0"
 clap = "3.0.7"
 scan_fmt = "0.2.6"
@@ -17,4 +17,3 @@ rand = "0.8.4"
 colorous = "1.0.6"
 ansi_term = "0.12.1"
 pbr = "1"
-randomforest = "0.1.6"
