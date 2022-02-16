@@ -506,24 +506,20 @@ where
     }
 }
 
-#[cfg(test)]
 #[allow(non_camel_case_types)]
-type generic_f32_4x4 = GenericMmm4x4<f32, f32, f32>;
+pub type generic_f32_4x4 = GenericMmm4x4<f32, f32, f32>;
 test_mmm_kernel_f32!(generic_f32_4x4, true);
 
-#[cfg(test)]
 #[allow(non_camel_case_types)]
-type generic_i32_4x4 = GenericMmm4x4<i8, i8, i32>;
+pub type generic_i32_4x4 = GenericMmm4x4<i8, i8, i32>;
 test_mmm_kernel_i32!(generic_i32_4x4, true);
 
-#[cfg(test)]
 #[allow(non_camel_case_types)]
-type generic_f32_4x1 = GenericMmm4x1<f32, f32, f32>;
+pub type generic_f32_4x1 = GenericMmm4x1<f32, f32, f32>;
 test_mmm_kernel_f32!(generic_f32_4x1, true);
 
-#[cfg(test)]
 #[allow(non_camel_case_types)]
-type generic_i32_4x1 = GenericMmm4x1<i8, i8, i32>;
+pub type generic_i32_4x1 = GenericMmm4x1<i8, i8, i32>;
 test_mmm_kernel_i32!(generic_i32_4x1, true);
 
 #[cfg(test)]

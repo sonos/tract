@@ -7,6 +7,7 @@ edition = "2018"
 members = []
 
 [dependencies]
+quote = "1.0"
 ndarray-npy = { version = "0.8.0", features = [ "compressed_npz" ] }
 tract-data = { path = "../../data" }
 tract-linalg = { path = ".." }
