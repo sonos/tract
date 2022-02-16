@@ -296,32 +296,34 @@ model
 }
 */
 
+/*
 fn compare(model: &CostModel, m: usize, k: usize, n: usize, t: f32) {
-    let prediction = model.predict(m, k, n);
-    let ratio_for_color = ((prediction - t).abs() / t * 50.).min(1.);
-    let color = colorous::RED_YELLOW_GREEN.eval_continuous((1.0 - ratio_for_color) as _);
-    let color = ansi_term::Color::RGB(color.r, color.g, color.b);
-    let line = format!(
-        "{:4} {:4} {:4}  pred: {:9.03} us truth: {:9.03} us {:5.2}%",
-        m,
-        k,
-        n,
-        prediction * 1e6,
-        t * 1e6,
-        (prediction - t) / t * 100.
-    );
-    println!("{}", color.bold().paint(line));
+let prediction = model.predict(m, k, n);
+let ratio_for_color = ((prediction - t).abs() / t * 50.).min(1.);
+let color = colorous::RED_YELLOW_GREEN.eval_continuous((1.0 - ratio_for_color) as _);
+let color = ansi_term::Color::RGB(color.r, color.g, color.b);
+let line = format!(
+"{:4} {:4} {:4}  pred: {:9.03} us truth: {:9.03} us {:5.2}%",
+m,
+k,
+n,
+prediction * 1e6,
+t * 1e6,
+(prediction - t) / t * 100.
+);
+println!("{}", color.bold().paint(line));
 }
 
 fn eval(model: &CostModel, name: &str, ds: &Dataset) {
-    for (_, m, k, n, y) in
-        ds.0.iter()
-            .filter(|p| p.0 == name)
-            .sorted_by_key(|p| (p.1, p.2, p.3, (p.4 * 1e12) as usize))
-    {
-        compare(model, *m, *k, *n, *y as f32);
-    }
+for (_, m, k, n, y) in
+ds.0.iter()
+.filter(|p| p.0 == name)
+.sorted_by_key(|p| (p.1, p.2, p.3, (p.4 * 1e12) as usize))
+{
+compare(model, *m, *k, *n, *y as f32);
 }
+}
+*/
 
 /*
 fn train_and_dump(impls: &[&dyn MatMatMul], ds: &Dataset, writer: &mut dyn Write) {
@@ -364,6 +366,55 @@ fn display_comparison(m: usize, k: usize, n: usize, alts: &[(&str, f64)], choice
             println!("{}", line);
         }
     });
+}
+
+fn translate(model: &str, writer: &mut dyn Write) {
+    use crate::tract_ndarray::{Array1, Array2};
+    let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(model).unwrap()).unwrap();
+    let kernels = [
+        "arm64simd_mmm_f32_8x8_a53",
+        "arm64simd_mmm_f32_12x8_a53",
+        "arm64simd_mmm_f32_16x4_a53",
+        "arm64simd_mmm_f32_24x4_a53",
+        "arm64simd_mmm_f32_8x8_gen",
+        "arm64simd_mmm_f32_12x8_gen",
+        "arm64simd_mmm_f32_16x4_gen",
+        "arm64simd_mmm_f32_24x4_gen",
+        "generic_f32_4x4",
+    ];
+    let mrs = vec![8u32, 12, 16, 24];
+    let nrs = vec![4u32, 8];
+    let feat_norm_mean: Array2<f64> = npz.by_name("input.mean.npy").unwrap();
+    let feat_norm_mean = feat_norm_mean.mapv(|x:f64| x as f32);
+    let feat_norm_mean = feat_norm_mean.as_slice().unwrap();
+    let feat_norm_stddev: Array2<f64> = npz.by_name("input.std.npy").unwrap();
+    let feat_norm_stddev = feat_norm_stddev.mapv(|x:f64| x as f32);
+    let feat_norm_stddev = feat_norm_stddev.as_slice().unwrap();
+    let w1: Array2<f32> = npz.by_name("linear_1.weight.npy").unwrap();
+    let w1 = w1.as_slice().unwrap();
+    let b1: Array1<f32> = npz.by_name("linear_1.bias.npy").unwrap();
+    let b1 = b1.as_slice().unwrap();
+    let w2: Array2<f32> = npz.by_name("linear_2.weight.npy").unwrap();
+    let w2 = w2.as_slice().unwrap();
+    let b2: Array1<f32> = npz.by_name("linear_2.bias.npy").unwrap();
+    let b2 = b2.as_slice().unwrap();
+    let rs = quote::quote! {
+        use crate::frame::mmm::CostModel;
+        pub fn model() -> CostModel {
+            CostModel {
+                kernels: vec!(#(#kernels),*),
+                mrs: vec!(#(#mrs),*),
+                nrs: vec!(#(#nrs),*),
+                feat_norm_mean: vec!(#(#feat_norm_mean),*),
+                feat_norm_stddev: vec!(#(#feat_norm_stddev),*),
+                w1: vec!(#(#w1),*),
+                b1: vec!(#(#b1),*),
+                w2: vec!(#(#w2),*),
+                b2: vec!(#(#b2),*),
+            }
+        }
+    };
+    write!(writer, "{}", rs);
 }
 
 fn main() {
@@ -415,77 +466,88 @@ fn main() {
             .arg(Arg::new("k"))
             .arg(Arg::new("n")),
             )
-        /*
-           .subcommand(
-           App::new("train-eval")
-           .arg(
-           Arg::new("no-truth")
-           .long("no-truth")
-           .takes_value(false)
-           .help("Do not measure ground truth."),
-           )
-           .arg(Arg::new("train").required(true))
-           .arg(Arg::new("m"))
-           .arg(Arg::new("k"))
-           .arg(Arg::new("n")),
-           )
-           */
         .subcommand(
-            App::new("ds")
-            .arg(Arg::new("mm").long("mm").help("Filter kernels").takes_value(true))
+            App::new("translate")
+            .arg(Arg::new("model").help("Model to translate in npz form").takes_value(true).required(true))
             .arg(
-                Arg::new("m")
-                .short('m')
-                .help("Max m value")
+                Arg::new("output")
+                .short('o')
+                .long("output")
                 .takes_value(true)
-                .default_value("512"),
+                .help("Filename to write models to (in rust form)"),
                 )
-            .arg(
-                Arg::new("k")
-                .short('k')
-                .help("Max k value")
-                .takes_value(true)
-                .default_value("512"),
-                )
-            .arg(
-                Arg::new("n")
-                .short('n')
-                .help("Max n value")
-                .takes_value(true)
-                .default_value("512"),
-                )
-            .arg(
-                Arg::new("mkn")
-                .long("mkn")
-                .help("Max m*k*n value")
-                .takes_value(true)
-                .default_value("4194304"),
-                )
-            .arg(
-                Arg::new("size")
-                .short('s')
-                .help("Sample size (total)")
-                .takes_value(true)
-                .default_value("128"),
-                )
-            .arg(
-                Arg::new("strat")
-                .long("strat")
-                .help("Strategy for sampling")
-                .takes_value(true)
-                .possible_values(["smart", "random"])
-                .default_value("smart"),
-                )
-            .arg(Arg::new("name").required(true)),
             )
-                /*
-                   .subcommand(
-                   App::new("train")
-                   .arg(Arg::new("mm").long("mm").help("Filter kernels").takes_value(true))
-                   .arg(Arg::new("train").required(true))
-                   .arg(Arg::new("eval")),
-                   )
-                   */;
+            /*
+               .subcommand(
+               App::new("train-eval")
+               .arg(
+               Arg::new("no-truth")
+               .long("no-truth")
+               .takes_value(false)
+               .help("Do not measure ground truth."),
+               )
+               .arg(Arg::new("train").required(true))
+               .arg(Arg::new("m"))
+               .arg(Arg::new("k"))
+               .arg(Arg::new("n")),
+               )
+               */
+            .subcommand(
+                App::new("ds")
+                .arg(Arg::new("mm").long("mm").help("Filter kernels").takes_value(true))
+                .arg(
+                    Arg::new("m")
+                    .short('m')
+                    .help("Max m value")
+                    .takes_value(true)
+                    .default_value("512"),
+                    )
+                .arg(
+                    Arg::new("k")
+                    .short('k')
+                    .help("Max k value")
+                    .takes_value(true)
+                    .default_value("512"),
+                    )
+                .arg(
+                    Arg::new("n")
+                    .short('n')
+                    .help("Max n value")
+                    .takes_value(true)
+                    .default_value("512"),
+                    )
+                .arg(
+                    Arg::new("mkn")
+                    .long("mkn")
+                    .help("Max m*k*n value")
+                    .takes_value(true)
+                    .default_value("4194304"),
+                    )
+                .arg(
+                    Arg::new("size")
+                    .short('s')
+                    .help("Sample size (total)")
+                    .takes_value(true)
+                    .default_value("128"),
+                    )
+                .arg(
+                    Arg::new("strat")
+                    .long("strat")
+                    .help("Strategy for sampling")
+                    .takes_value(true)
+                    .possible_values(["smart", "random"])
+                    .default_value("smart"),
+                    )
+                .arg(Arg::new("name").required(true)),
+                )
+                    /*
+                       .subcommand(
+                       App::new("train")
+                       .arg(Arg::new("mm").long("mm").help("Filter kernels").takes_value(true))
+                       .arg(Arg::new("train").required(true))
+                       .arg(Arg::new("eval")),
+                       )
+                       */;
 
     let matches = parser.get_matches();
 
@@ -576,6 +638,15 @@ fn main() {
                 alts.push((mm.kernel_name(), y));
             }
             display_comparison(m, k, n, &*alts, None);
+        }
+        Some(("translate", sub)) => {
+            let mut writer: Box<dyn std::io::Write> = if let Some(filename) = sub.value_of("output")
+            {
+                Box::new(std::fs::File::create(filename).unwrap())
+            } else {
+                Box::new(std::io::stdout())
+            };
+            translate(sub.value_of("model").unwrap(), &mut writer)
         }
         /*
         Some(("train-eval", sub)) => {

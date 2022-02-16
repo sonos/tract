@@ -1,5 +1,5 @@
 mod arm64simd;
-mod cortex_a53;
+pub mod cortex_a53;
 mod cortex_a55;
 mod cortex_a72;
 mod cortex_a73;
@@ -9,7 +9,8 @@ use crate::Ops;
 
 use crate::frame::mmm::kernel::MatMatMulKer;
 use crate::frame::ElementWiseImpl;
-use crate::frame::MatMatMulImpl;
+use crate::frame::{MatMatMul, MatMatMulImpl};
+use crate::mmm::CostModel;
 
 lazy_static::lazy_static! {
     static ref KIND: Kind = Kind::choose();
@@ -96,30 +97,25 @@ pub fn plug(ops: &mut Ops) {
         arm64simd_mmm_f32_16x4_gen::mmm(),
         arm64simd_mmm_f32_24x4_a53::mmm(),
         arm64simd_mmm_f32_24x4_gen::mmm(),
+        crate::generic::mmm::generic_f32_4x4::mmm(),
     ];
-    match *KIND {
-        Kind::CortexA53 => {
-            ops.mmv_f32 =
-                Box::new(|_, _| arm64simd_mmm_f32_64x1_a53::mmm());
-        }
-        _ => {
-            ops.mmv_f32 =
-                Box::new(|_, _| arm64simd_mmm_f32_64x1_gen::mmm());
-        }
-    }
+    ops.mmm_f32_impls = impls.clone();
     ops.qmmm_i32 = Box::new(|_, _, _| arm64simd_mmm_i32_8x8::mmm());
     ops.qmmv_i32 = Box::new(|_, _| arm64simd_mmm_i32_64x1::mmm());
+    ops.mmv_f32 = match *KIND {
+        Kind::CortexA53 => Box::new(|_, _| arm64simd_mmm_f32_64x1_a53::mmm()),
+        _ => Box::new(|_, _| arm64simd_mmm_f32_64x1_gen::mmm()),
+    };
     ops.sigmoid_f32 = Box::new(|| Box::new(ElementWiseImpl::<SigmoidF32x4n, f32>::new()));
     ops.tanh_f32 = Box::new(|| Box::new(ElementWiseImpl::<TanhF32x4n, f32>::new()));
-    /*
     match *KIND {
-    Kind::CortexA53 => ops.set_cost_models(cortex_a53::models()),
-    Kind::CortexA55 => ops.set_cost_models(cortex_a55::models()),
-    Kind::CortexA72 => ops.set_cost_models(cortex_a72::models()),
-    Kind::CortexA73 => ops.set_cost_models(cortex_a73::models()),
-    _ => ops.set_cost_models(cortex_a53::models()),
+        Kind::CortexA53 => {
+            let model = cortex_a53::model();
+            ops.mmm_f32 =
+                Box::new(move |m, k, n| pick(&model, &impls, m.unwrap(), k.unwrap(), n.unwrap()))
+        }
+        _ => todo!(),
     }
-    */
     if *KIND == Kind::CortexA55 {
         ops.mmm_f32 = Box::new(|_, _, n| {
             if n.unwrap_or(8) < 8 {
@@ -129,4 +125,15 @@ pub fn plug(ops: &mut Ops) {
             }
         });
     }
+}
+
+fn pick(
+    model: &CostModel,
+    impls: &[Box<dyn MatMatMul>],
+    m: usize,
+    k: usize,
+    n: usize,
+) -> Box<dyn MatMatMul> {
+    let choice = model.predict(m, k, n);
+    impls.iter().find(|k| k.kernel_name() == choice).unwrap().clone()
 }
