@@ -114,7 +114,7 @@ pub fn plug(ops: &mut Ops) {
             ops.mmm_f32 =
                 Box::new(move |m, k, n| pick(&model, &impls, m.unwrap(), k.unwrap(), n.unwrap()))
         }
-        _ => todo!(),
+        _ => (),
     }
     if *KIND == Kind::CortexA55 {
         ops.mmm_f32 = Box::new(|_, _, n| {

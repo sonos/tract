@@ -1,6 +1,3 @@
-use std::fmt;
-
-use crate::element_wise::ElementWise;
 use tract_data::internal::*;
 use tract_data::itertools::{izip, Itertools};
 
@@ -63,7 +60,7 @@ impl CostModel {
         self.normalize(&mut x);
         let mut hidden = Self::dnn(&*x, &*self.w1, &*self.b1);
         (crate::generic().tanh_f32)().run(&mut hidden).unwrap();
-        let mut output = Self::dnn(&*hidden, &*self.w2, &*self.b2);
+        let output = Self::dnn(&*hidden, &*self.w2, &*self.b2);
         let ix = output.iter().copied().position_max_by(order_f).unwrap();
         &self.kernels[ix]
     }
