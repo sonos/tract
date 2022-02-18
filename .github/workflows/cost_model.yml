@@ -1,0 +1,24 @@
+
+on:
+    workflow_dispatch:
+
+name: Generate cost model analysis dataset
+
+jobs:
+  build:
+    name: Upload cost model tasks
+    runs-on: ubuntu-20.04
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [ "aarch64", "armv7" ]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Build and upload
+        run: ./.travis/cost_model_build.sh ${{matrix.target}}
+        env:
+          AWS_ACCESS_KEY_ID: ${{secrets.TRACT_CI_AWS_ACCESS_KEY_ID}}
+          AWS_SECRET_ACCESS_KEY: ${{secrets.TRACT_CI_AWS_SECRET_ACCESS_KEY}}
+          AWS_EC2_METADATA_DISABLED: true
