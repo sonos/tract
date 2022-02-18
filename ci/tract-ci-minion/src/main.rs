@@ -29,12 +29,14 @@ struct Config {
     s3_tasks: String,
     #[serde(default = "default_logs")]
     s3_logs: String,
+    #[serde(default = "default_products")]
+    s3_products: String,
     platform: String,
     graphite: Option<Graphite>,
     #[serde(default = "default_idle_sleep_secs")]
     idle_sleep_secs: usize,
     #[serde(default)]
-    env: HashMap<String, String>
+    env: HashMap<String, String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -74,6 +76,10 @@ fn default_tasks() -> String {
 
 fn default_logs() -> String {
     "logs".to_string()
+}
+
+fn default_products() -> String {
+    "products".to_string()
 }
 
 fn default_idle_sleep_secs() -> usize {
@@ -129,13 +135,17 @@ fn run_task(task_name: &str) -> Result<()> {
     let uncompressed = flate2::read::GzDecoder::new(reader);
     tar::Archive::new(uncompressed).unpack(task_dir_2)?;
     let vars_file = task_dir.join(task_name).join("vars");
-    log::info!("Reading vars...");
     let mut vars: HashMap<String, String> = config.env.clone();
-    for line in std::fs::read_to_string(vars_file)?.lines() {
-        if line.starts_with("export ") {
-            let mut pair = line.split_whitespace().nth(1).unwrap().split("=");
-            vars.insert(pair.next().unwrap().to_string(), pair.next().unwrap().to_string());
+    if vars_file.exists() {
+        log::info!("Reading vars...");
+        for line in std::fs::read_to_string(vars_file)?.lines() {
+            if line.starts_with("export ") {
+                let mut pair = line.split_whitespace().nth(1).unwrap().split("=");
+                vars.insert(pair.next().unwrap().to_string(), pair.next().unwrap().to_string());
+            }
         }
+    } else {
+        log::info!("No vars file");
     }
     let mut cmd = std::process::Command::new("sh");
     cmd.current_dir(task_dir.join(task_name))
@@ -185,6 +195,16 @@ fn run_task(task_name: &str) -> Result<()> {
                 )?;
             }
         }
+    }
+    let product_dir = task_dir.join(task_name).join("product");
+    if product_dir.exists() {
+        let tar_name = format!("{}.{}", task_name, config.id);
+        let s3name =
+            Path::new(&config.s3_products).join(&config.id).join(task_name).with_extension("gz");
+        let mut buf = vec![];
+        let tgz = flate2::write::GzEncoder::new(&mut buf, flate2::Compression::default());
+        tar::Builder::new(tgz).append_dir_all(tar_name, product_dir)?;
+        bucket.put_object_blocking(s3name.to_str().unwrap(), &buf)?;
     }
     Ok(())
 }

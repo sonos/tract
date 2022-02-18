@@ -1,6 +1,6 @@
 id = "tsar"
 workdir = "tmp/workdir"
-platform = "raspbian"
+platform = "test"
 graphite = { host = "...", port = 2003, prefix = "tract" }
 
 # MINION_ID=
