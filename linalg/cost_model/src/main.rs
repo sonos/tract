@@ -97,13 +97,13 @@ pub fn run_bench<T, F: FnMut() -> T>(mut f: F) -> f64 {
 
 fn measure_add_mat_mul(mm: &dyn MatMatMul, m: usize, k: usize, n: usize) -> f64 {
     let dt = mm.internal_type();
-    let pa = Tensor::zero_aligned_dt(dt, &[mm.a_pack(k).len(m)], mm.a_pack(k).alignment()).unwrap();
-    let pb = Tensor::zero_aligned_dt(dt, &[mm.b_pack(k).len(n)], mm.b_pack(k).alignment()).unwrap();
+    let pa = Tensor::zero_aligned_dt(dt, &[mm.a_pack().len(k, m)], mm.a_pack().alignment()).unwrap();
+    let pb = Tensor::zero_aligned_dt(dt, &[mm.b_pack().len(k, n)], mm.b_pack().alignment()).unwrap();
     let pc = Tensor::zero_dt(dt, &[m, n]).unwrap();
     unsafe {
         let pa = mm.a_packed(dt.size_of(), k).wrap(&pa.view());
-        let pb = mm.b_packed(dt.size_of(), k).wrap(&pb.view());
-        let pc = mm.c_view_with_axis(0, 1).wrap(&pc.view());
+        let pb = mm.b_packed(dt.size_of(), k).wrap(&pb.view()).unwrap();
+        let pc = mm.c_view(0, 1).wrap(&pc.view());
         let mut scratch = mm.allocate_scratch_space();
         let time = run_bench(|| {
             ruin_cache();
