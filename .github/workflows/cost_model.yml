@@ -17,7 +17,7 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Build and upload
-        run: ./.travis/cost_model_build.sh ${{matrix.target}}
+        run: ./.travis/cost_model_task_build.sh ${{matrix.target}}
         env:
           AWS_ACCESS_KEY_ID: ${{secrets.TRACT_CI_AWS_ACCESS_KEY_ID}}
           AWS_SECRET_ACCESS_KEY: ${{secrets.TRACT_CI_AWS_SECRET_ACCESS_KEY}}
