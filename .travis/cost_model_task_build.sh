@@ -43,7 +43,8 @@ TASK_NAME=cost-model-dataset-$date_iso
 mkdir $TASK_NAME
 mv linalg/cost_model/target/${RUST_TRIPLE}/release/cost_model $TASK_NAME
 echo "#!/bin/sh" > $TASK_NAME/entrypoint.sh
-echo "./cost_model ds --size 10 $TASK_NAME.txt" >> $TASK_NAME/entrypoint.sh
+echo "mkdir products"
+echo "./cost_model ds --size 10 products/$TASK_NAME.txt" >> $TASK_NAME/entrypoint.sh
 chmod +x $TASK_NAME/entrypoint.sh
 tar czf $TASK_NAME.tgz $TASK_NAME
 
