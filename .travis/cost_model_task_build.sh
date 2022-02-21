@@ -8,10 +8,12 @@ case $ARCH in
     aarch64)
         MUSL_TRIPLE=aarch64-linux-musl
         RUST_TRIPLE=aarch64-unknown-linux-musl
+        PLATFORM=aarch64-unknown-linux-musl
     ;;
     armv7)
         MUSL_TRIPLE=armv7l-linux-musleabihf
         RUST_TRIPLE=armv7-unknown-linux-musleabi
+        PLATFORM=aarch64-unknown-linux-musl
     ;;
     *)
         exit "Can't build with musl for $ARCH"
