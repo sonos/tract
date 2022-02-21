@@ -537,7 +537,7 @@ fn main() {
                     .help("Strategy for sampling")
                     .takes_value(true)
                     .possible_values(["smart", "random"])
-                    .default_value("smart"),
+                    .default_value("random"),
                     )
                 .arg(Arg::new("name").required(true)),
                 )
