@@ -200,7 +200,7 @@ fn run_task(task_name: &str) -> Result<()> {
     if product_dir.exists() {
         let tar_name = format!("{}.{}", task_name, config.id);
         let s3name =
-            Path::new(&config.s3_products).join(&config.id).join(task_name).with_extension("gz");
+            Path::new(&config.s3_products).join(&config.id).join(task_name).with_extension("tgz");
         let mut buf = vec![];
         let tgz = flate2::write::GzEncoder::new(&mut buf, flate2::Compression::default());
         tar::Builder::new(tgz).append_dir_all(tar_name, product_dir)?;
