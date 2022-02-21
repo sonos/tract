@@ -44,3 +44,8 @@ echo "#!/bin/sh" > $TASK_NAME/entrypoint.sh
 echo "./cost_mmodel $TASK_NAME.txt" >> $TASK_NAME/entrypoint.sh
 chmod +x $TASK_NAME/entrypoint.sh
 tar czf $TASK_NAME.tgz $TASK_NAME
+
+if [ -n "$AWS_ACCESS_KEY_ID" ]
+then
+    aws s3 cp $TASK_NAME.tgz s3://tract-ci-builds/tasks/$PLATFORM/$TASK_NAME.tgz
+fi
