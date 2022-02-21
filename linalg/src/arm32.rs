@@ -34,6 +34,16 @@ fn has_neon() -> bool {
 }
 
 pub fn plug(ops: &mut Ops) {
+    let impls = vec![
+        armv7neon::MatMatMulF32x8x4CortexA7::mmm(),
+        armv7neon::MatMatMulF32x8x6CortexA7::mmm(),
+        armv7neon::MatMatMulF32x8x4CortexA9::mmm(),
+        armv7neon::MatMatMulF32x8x6CortexA9::mmm(),
+        armv7neon::MatMatMulF32x8x4Generic::mmm(),
+        armv7neon::MatMatMulF32x8x6Generic::mmm(),
+        crate::generic::GenericMmm4x4::<f32, f32, f32>::mmm(),
+    ];
+    ops.mmm_f32_impls = impls;
     if has_neon() {
         log::info!("armv7neon activated (smmm, ssigmoid), stanh)");
         let cpu = cpu_part().unwrap_or(0);
