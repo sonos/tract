@@ -526,6 +526,7 @@ fn main() {
                 .arg(
                     Arg::new("size")
                     .short('s')
+                    .short("size")
                     .help("Sample size (total)")
                     .takes_value(true)
                     .default_value("128"),
