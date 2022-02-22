@@ -287,22 +287,16 @@ fn consider_task(config: &Config, task: &Object) -> Result<bool> {
     if done_file.exists() {
         return Ok(false);
     }
-    for _ in 0..5 {
+    for attempt in 0.. {
         match subcommand("dl-task", &task_name, Duration::from_secs(60)) {
-            Err(e) if e.root_cause().is::<Timeout>() => continue,
+            Err(e) if e.root_cause().is::<Timeout>() && attempt < 5 => continue,
             Err(e) => Err(e)?,
             Ok(()) => break,
         }
     }
     let vars = vars(&task_name)?;
     let timeout = vars.get("TIMEOUT").map(|s| &**s).unwrap_or("1800").parse()?;
-    for _ in 0..5 {
-        match subcommand("run-task", &task_name, Duration::from_secs(timeout)) {
-            Err(e) if e.root_cause().is::<Timeout>() => continue,
-            Err(e) => Err(e)?,
-            Ok(()) => break,
-        }
-    }
+    let _ = subcommand("run-task", &task_name, Duration::from_secs(timeout));
     std::fs::File::create(&done_file)?;
     Ok(true)
 }
@@ -392,14 +386,14 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.get(1).map(|s| &**s) == Some("dl-task") {
         let task_id = &args[2];
-        log::info!("Worker starting on {}", task_id);
+        log::info!("Worker starting on dl-task {}", task_id);
         if let Err(e) = dl_task(task_id) {
             eprintln!("{:?}", e);
             std::process::exit(1);
         }
     } else if args.get(1).map(|s| &**s) == Some("run-task") {
         let task_id = &args[2];
-        log::info!("Worker starting on {}", task_id);
+        log::info!("Worker starting on run-task {}", task_id);
         if let Err(e) = run_task(task_id) {
             eprintln!("{:?}", e);
             std::process::exit(1);
