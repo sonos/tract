@@ -42,6 +42,7 @@ TASK_NAME=cost-model-dataset-$date_iso
 
 mkdir $TASK_NAME
 mv linalg/cost_model/target/${RUST_TRIPLE}/release/cost_model $TASK_NAME
+echo "export TIMEOUT=86400" > $TASK_NAME/vars
 echo "#!/bin/sh" > $TASK_NAME/entrypoint.sh
 echo "mkdir product" >> $TASK_NAME/entrypoint.sh
 echo "./cost_model ds --size 10000 product/$TASK_NAME.txt" >> $TASK_NAME/entrypoint.sh
