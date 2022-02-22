@@ -120,7 +120,7 @@ fn read_config(path: impl AsRef<Path>) -> Result<Config> {
     Ok(config)
 }
 
-fn run_task(task_name: &str) -> Result<()> {
+fn dl_task(task_name: &str) -> Result<()> {
     let config = config()?;
     let bucket = bucket(&config)?;
     let task_url = std::path::PathBuf::from(&config.s3_tasks)
@@ -141,6 +141,13 @@ fn run_task(task_name: &str) -> Result<()> {
     });
     let uncompressed = flate2::read::GzDecoder::new(reader);
     tar::Archive::new(uncompressed).unpack(task_dir_2)?;
+    Ok(())
+}
+
+fn vars(task_name: &str) -> Result<HashMap<String, String>> {
+    let config = config()?;
+    log::info!("Running task {}", task_name);
+    let task_dir = config.workdir.join("current");
     let vars_file = task_dir.join(task_name).join("vars");
     let mut vars: HashMap<String, String> = config.env.clone();
     if vars_file.exists() {
@@ -154,6 +161,15 @@ fn run_task(task_name: &str) -> Result<()> {
     } else {
         log::info!("No vars file");
     }
+    Ok(vars)
+}
+
+fn run_task(task_name: &str) -> Result<()> {
+    let config = config()?;
+    let bucket = bucket(&config)?;
+    log::info!("Running task {}", task_name);
+    let task_dir = config.workdir.join("current");
+    let vars: HashMap<String, String> = vars(task_name)?;
     let mut cmd = std::process::Command::new("sh");
     cmd.current_dir(task_dir.join(task_name))
         .envs(&vars)
@@ -216,6 +232,49 @@ fn run_task(task_name: &str) -> Result<()> {
     Ok(())
 }
 
+#[derive(Debug)]
+struct Timeout;
+impl std::error::Error for Timeout {}
+
+impl std::fmt::Display for Timeout {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Timeout")
+    }
+}
+
+fn subcommand(command: &str, task_name: &str, timeout: Duration) -> Result<()> {
+    let mut process = unsafe {
+        std::process::Command::new(std::env::args().next().unwrap())
+            .arg(command)
+            .arg(&task_name)
+            .pre_exec(|| {
+                if libc::setpgid(0 as i32, 0 as i32) < 0 {
+                    libc::perror(std::ptr::null());
+                }
+                Ok(())
+            })
+            .spawn()?
+    };
+    CHILD.store(process.id() as i32, std::sync::atomic::Ordering::SeqCst);
+    match process.wait_timeout(timeout)? {
+        Some(status) => {
+            log::info!("dl-task {} return status {}", task_name, status);
+            if status.success() {
+                Ok(())
+            } else {
+                anyhow::bail!("running {} {}, got {:?}", command, task_name, status)
+            }
+        }
+        None => {
+            log::warn!("{} {} timeout after {:?}", command, task_name, timeout,);
+            unsafe { libc::kill(-(process.id() as i32), libc::SIGTERM) };
+            process.wait()?;
+            CHILD.store(0, std::sync::atomic::Ordering::SeqCst);
+            Err(Timeout).with_context(|| format!("running {} {}", command, task_name))
+        }
+    }
+}
+
 fn consider_task(config: &Config, task: &Object) -> Result<bool> {
     let task_path = Path::new(&task.key);
     let task_name = task_path
@@ -228,40 +287,23 @@ fn consider_task(config: &Config, task: &Object) -> Result<bool> {
     if done_file.exists() {
         return Ok(false);
     }
-    for attempt in 0..5 {
-        let mut process = unsafe {
-            std::process::Command::new(std::env::args().next().unwrap())
-                .arg("run-task")
-                .arg(&task_name)
-                .pre_exec(|| {
-                    if libc::setpgid(0 as i32, 0 as i32) < 0 {
-                        libc::perror(std::ptr::null());
-                    }
-                    Ok(())
-                })
-                .spawn()?
-        };
-        CHILD.store(process.id() as i32, std::sync::atomic::Ordering::SeqCst);
-        let timeout = std::time::Duration::from_secs(1800);
-        match process.wait_timeout(timeout)? {
-            Some(status) => {
-                log::info!("Task {} return status {}", task_name, status);
-                std::fs::File::create(&done_file)?;
-                break;
-            }
-            None => {
-                log::warn!(
-                    "Task {} timeout after {:?} (attempt #{})",
-                    task_name,
-                    timeout,
-                    attempt + 1
-                );
-                unsafe { libc::kill(-(process.id() as i32), libc::SIGTERM) };
-                process.wait()?;
-                CHILD.store(0, std::sync::atomic::Ordering::SeqCst);
-            }
+    for _ in 0..5 {
+        match subcommand("dl-task", &task_name, Duration::from_secs(60)) {
+            Err(e) if e.root_cause().is::<Timeout>() => continue,
+            Err(e) => Err(e)?,
+            Ok(()) => break,
         }
     }
+    let vars = vars(&task_name)?;
+    let timeout = vars.get("TIMEOUT").map(|s| &**s).unwrap_or("1800").parse()?;
+    for _ in 0..5 {
+        match subcommand("run-task", &task_name, Duration::from_secs(timeout)) {
+            Err(e) if e.root_cause().is::<Timeout>() => continue,
+            Err(e) => Err(e)?,
+            Ok(()) => break,
+        }
+    }
+    std::fs::File::create(&done_file)?;
     Ok(true)
 }
 
@@ -348,7 +390,14 @@ fn main() {
     .unwrap();
 
     let args: Vec<String> = std::env::args().collect();
-    if args.get(1).map(|s| &**s) == Some("run-task") {
+    if args.get(1).map(|s| &**s) == Some("dl-task") {
+        let task_id = &args[2];
+        log::info!("Worker starting on {}", task_id);
+        if let Err(e) = dl_task(task_id) {
+            eprintln!("{:?}", e);
+            std::process::exit(1);
+        }
+    } else if args.get(1).map(|s| &**s) == Some("run-task") {
         let task_id = &args[2];
         log::info!("Worker starting on {}", task_id);
         if let Err(e) = run_task(task_id) {
