@@ -367,21 +367,26 @@ fn main_loop() -> Result<()> {
     }
 }
 
+extern "C" fn signal_handler(sig: libc::size_t) -> libc::size_t {
+    let child_id = CHILD.load(std::sync::atomic::Ordering::SeqCst);
+    if child_id != 0 {
+        unsafe {
+            libc::kill(-(child_id as i32), sig as _);
+        }
+    }
+    eprintln!("** Caught signal, cleanup...");
+    std::process::exit(1);
+}
+
 fn main() {
     env_logger::Builder::new()
         .filter_level(log::LevelFilter::Info)
         .parse_env("TRACT_MINION_LOG")
         .init();
-    ctrlc::set_handler(|| {
-        let child_id = CHILD.load(std::sync::atomic::Ordering::SeqCst);
-        if child_id != 0 {
-            unsafe {
-                libc::kill(-(child_id as i32), libc::SIGTERM);
-            }
-        }
-        std::process::exit(1);
-    })
-    .unwrap();
+    unsafe {
+        libc::signal(libc::SIGTERM, signal_handler as libc::sighandler_t);
+        libc::signal(libc::SIGINT, signal_handler as libc::sighandler_t);
+    }
 
     let args: Vec<String> = std::env::args().collect();
     if args.get(1).map(|s| &**s) == Some("dl-task") {
