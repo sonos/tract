@@ -11,9 +11,16 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
 use std::net::TcpStream;
+use std::os::unix::prelude::CommandExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use wait_timeout::ChildExt;
+
+use std::sync::atomic::AtomicI32;
+
+lazy_static::lazy_static! {
+    static ref CHILD: std::sync::Arc<AtomicI32> = std::sync::Arc::new(AtomicI32::new(0));
+}
 
 #[derive(Deserialize, Debug)]
 struct Config {
@@ -222,10 +229,19 @@ fn consider_task(config: &Config, task: &Object) -> Result<bool> {
         return Ok(false);
     }
     for attempt in 0..5 {
-        let mut process = std::process::Command::new(std::env::args().next().unwrap())
-            .arg("run-task")
-            .arg(&task_name)
-            .spawn()?;
+        let mut process = unsafe {
+            std::process::Command::new(std::env::args().next().unwrap())
+                .arg("run-task")
+                .arg(&task_name)
+                .pre_exec(|| {
+                    if libc::setpgid(0 as i32, 0 as i32) < 0 {
+                        libc::perror(std::ptr::null());
+                    }
+                    Ok(())
+                })
+                .spawn()?
+        };
+        CHILD.store(process.id() as i32, std::sync::atomic::Ordering::SeqCst);
         let timeout = std::time::Duration::from_secs(1800);
         match process.wait_timeout(timeout)? {
             Some(status) => {
@@ -240,8 +256,9 @@ fn consider_task(config: &Config, task: &Object) -> Result<bool> {
                     timeout,
                     attempt + 1
                 );
-                process.kill()?;
+                unsafe { libc::kill(-(process.id() as i32), libc::SIGTERM) };
                 process.wait()?;
+                CHILD.store(0, std::sync::atomic::Ordering::SeqCst);
             }
         }
     }
@@ -319,6 +336,17 @@ fn main() {
         .filter_level(log::LevelFilter::Info)
         .parse_env("TRACT_MINION_LOG")
         .init();
+    ctrlc::set_handler(|| {
+        let child_id = CHILD.load(std::sync::atomic::Ordering::SeqCst);
+        if child_id != 0 {
+            unsafe {
+                libc::kill(-(child_id as i32), libc::SIGTERM);
+            }
+        }
+        std::process::exit(1);
+    })
+    .unwrap();
+
     let args: Vec<String> = std::env::args().collect();
     if args.get(1).map(|s| &**s) == Some("run-task") {
         let task_id = &args[2];
