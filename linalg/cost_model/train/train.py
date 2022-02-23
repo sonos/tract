@@ -230,22 +230,27 @@ class MLP(nn.Module):
                 break
 
 
-def save(mlp, dataset, output):
-    params = {
-        "input.mean": mlp.mean,
-        "input.std": mlp.std,
-    }
-
-    for name, tensor in mlp.named_parameters():
-        params[name] = tensor.detach().numpy()
-
-    params["kernels"] = mlp.kernels
-
-    mrs, nrs = dataset.get_mr_nr_values()
-    params["mrs"] = mrs
-    params["nrs"] = nrs
-    np.savez(output, **params)
-
+def save_as_rust(mlp, dataset, output):
+    with open(output, 'w') as f:
+        mrs, nrs = dataset.get_mr_nr_values()
+        params = {}
+        for name, tensor in mlp.named_parameters():
+            params[name] = tensor.detach().numpy()
+        f.write(f"""use crate::frame::mmm::CostModel;
+        pub fn model() -> CostModel<'static> {{
+            CostModel {{
+                kernels: &{str(list(map(lambda k: k[0], mlp.kernels))).replace("'", '"')},
+                mrs: &{mrs},
+                nrs: &{nrs},
+                feat_norm_mean: &{mlp.mean.flatten().tolist()},
+                feat_norm_stddev: &{mlp.std.flatten().tolist()},
+                w1: &{params["linear_1.weight"].flatten().tolist()},
+                b1: &{params["linear_1.bias"].flatten().tolist()},
+                w2: &{params["linear_2.weight"].flatten().tolist()},
+                b2: &{params["linear_2.bias"].flatten().tolist()},
+            }}
+        }}
+""")
 
 def train_one_mlp(
     dataset, hidden_layer_size, validation=0.2, num_updates=3000,
@@ -304,7 +309,7 @@ def main():
     )
     parser.add_argument("--platform", default="a53", choices=["a53"], help="Platform")
     parser.add_argument("dataset")
-    parser.add_argument("output_npz")
+    parser.add_argument("output_rs")
     args = parser.parse_args()
     print("Loading dataset...")
     dataset = Dataset.from_tract_outputs(args.dataset, platform=args.platform)
@@ -333,8 +338,8 @@ def main():
             f"\tAccuracy: {accuracy:.1f}% ... \033[{color}mPASSED {num_passed} / {len(tests)}\033[0m"
         )
         passed = passed and trained >= args.num_trainings
-    print(f"Saving model to {args.output_npz}")
-    save(best, dataset, args.output_npz)
+    print(f"Saving model to {args.output_rs}")
+    save_as_rust(best, dataset, args.output_rs)
 
 
 if __name__ == "__main__":

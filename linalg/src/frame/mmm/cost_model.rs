@@ -10,19 +10,19 @@ fn order_f<F: tract_num_traits::Float>(&a: &F, &b: &F) -> std::cmp::Ordering {
 }
 
 #[derive(Debug)]
-pub struct CostModel {
-    pub kernels: Vec<&'static str>,
-    pub mrs: Vec<u32>,
-    pub nrs: Vec<u32>,
-    pub feat_norm_mean: Vec<f32>,
-    pub feat_norm_stddev: Vec<f32>,
-    pub w1: Vec<f32>,
-    pub b1: Vec<f32>,
-    pub w2: Vec<f32>,
-    pub b2: Vec<f32>,
+pub struct CostModel<'a> {
+    pub kernels: &'a [&'a str],
+    pub mrs: &'a [u32],
+    pub nrs: &'a [u32],
+    pub feat_norm_mean: &'a [f32],
+    pub feat_norm_stddev: &'a [f32],
+    pub w1: &'a [f32],
+    pub b1: &'a [f32],
+    pub w2: &'a [f32],
+    pub b2: &'a [f32],
 }
 
-impl CostModel {
+impl<'a> CostModel<'a> {
     pub fn features(&self, m: usize, k: usize, n: usize) -> Vec<f32> {
         let mut feat = vec![
             (m as f32).ln(),
@@ -30,12 +30,12 @@ impl CostModel {
             (n as f32).ln(),
             (n as f32 * m as f32 * k as f32).ln(),
         ];
-        for &mr in &self.mrs {
+        for &mr in self.mrs {
             let mr = mr as usize;
             feat.push((m % mr) as f32);
             feat.push((m % mr != 0) as usize as f32);
         }
-        for &nr in &self.nrs {
+        for &nr in self.nrs {
             let nr = nr as usize;
             feat.push((n % nr) as f32);
             feat.push((n % nr != 0) as usize as f32);
@@ -44,7 +44,7 @@ impl CostModel {
     }
 
     fn normalize(&self, feat: &mut [f32]) {
-        izip!(feat, &self.feat_norm_mean, &self.feat_norm_stddev)
+        izip!(feat, self.feat_norm_mean, self.feat_norm_stddev)
             .for_each(|(x, m, s)| *x = (*x - m) / s)
     }
 

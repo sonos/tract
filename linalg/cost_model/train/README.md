@@ -12,21 +12,18 @@ pip install -r requirements.txt
 ```
 
 To train `N=15` neural networks on the dataset (e.g. `a53-dataset`) and save the
-best one to `neural_net_a53.npz`, run:
+best one to `neural_net_a53.rs`, run:
 
 ```sh
-python train.py -N 15 --platform=a53 a53-dataset neural_net_a53.npz
+python train.py -N 15 --platform=a53 a53-dataset neural_net_a53.rs
 ```
 
-This will save the neural network in an archive with keys:
+This will save the neural network as an instance of ../../src/frame/mmm/cost_model.rs.
 
-  - `input.mean` and `input.std`: normalization parameter for the input features
-  - `linear_1.weight` and `linear_1.bias`: the weight and biases for the first layer
-  - `linear_2.weight` and `linear_2.bias`: the weight and biases for the first layer
-  - `kernels`: the output classes
-
-The neural network computes
+The neural network computes:
 
 ```
-  softmax( linear_2.bias + linear_2.weight * tanh(linear_1.bias + linear_1.weight * (x - input.mean) / input.std ) )
+  softmax( b2 + w2 * tanh(b1 + w1 * (x - feat_norm_mean) / feat_norm_stddev ) )
 ```
+
+Rust CostModel implementation is for kernel selection. It is only interested in the ArgMax, so it skips the SoftMax.
