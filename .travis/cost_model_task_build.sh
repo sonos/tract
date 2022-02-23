@@ -3,6 +3,7 @@
 set -ex
 
 ARCH=$1
+ID=$2
 
 case $ARCH in
     aarch64)
@@ -36,9 +37,7 @@ export CARGO_TARGET_${RUST_TRIPLE_ENV}_LINKER=$TARGET_CC
 
 ( cd linalg/cost_model ; cargo build --target $RUST_TRIPLE --release )
 
-dates=`date -u +"%Y%m%dT%H%M%S %s"`
-date_iso=`echo $dates | cut -f 1 -d ' '`
-TASK_NAME=cost-model-dataset-$date_iso
+TASK_NAME=cost-model-dataset-$ID
 
 mkdir $TASK_NAME
 mv linalg/cost_model/target/${RUST_TRIPLE}/release/cost_model $TASK_NAME

@@ -1,6 +1,10 @@
 
 on:
-    workflow_dispatch:
+  workflow_dispatch:
+    inputs:
+      dataset_id:
+        description: 'dataset identifier'
+        required: true
 
 name: Generate cost model analysis dataset
 
@@ -17,7 +21,7 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Build and upload
-        run: ./.travis/cost_model_task_build.sh ${{matrix.target}}
+        run: ./.travis/cost_model_task_build.sh ${{matrix.target}} ${{github.event.inputs.dataset_id}}
         env:
           AWS_ACCESS_KEY_ID: ${{secrets.TRACT_CI_AWS_ACCESS_KEY_ID}}
           AWS_SECRET_ACCESS_KEY: ${{secrets.TRACT_CI_AWS_SECRET_ACCESS_KEY}}
