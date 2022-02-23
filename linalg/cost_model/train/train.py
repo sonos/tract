@@ -5,32 +5,6 @@ import torch
 from torch import nn
 
 
-def parse_kernel(kernel_str, platform):
-    if kernel_str.startswith("arm64simd_mmm_f32_"):
-        if kernel_str.endswith(f"_{platform}"):
-            mr, nr = (
-                kernel_str.replace("arm64simd_mmm_f32_", "")
-                .replace(f"_{platform}", "")
-                .split("x")
-            )
-            ktyp = platform
-        elif kernel_str.endswith("_gen"):
-            mr, nr = (
-                kernel_str.replace("arm64simd_mmm_f32_", "")
-                .replace("_gen", "")
-                .split("x")
-            )
-            ktyp = "gen"
-        else:
-            return None
-    elif kernel_str.startswith("generic_f32_"):
-        mr, nr = 4, 4
-        ktyp = "generic"
-    else:
-        return None
-    return ktyp, float(mr), float(nr)
-
-
 class Dataset:
     def __init__(self, data, kernels, platform="a53"):
         self.data = data
@@ -44,20 +18,18 @@ class Dataset:
         params = []
         for line in open(input_file):
             x = line.strip().split()
-            if len(x) < 5:
+            if len(x) < 7:
                 continue
-            krn = parse_kernel(x[0], platform)
-            if krn is None:
-                continue
-            m, k, n = list(map(float, x[1:4]))
+            m, k, n = list(map(float, x[3:6]))
             dur = float(x[-1])
-            kernels.add(x[0])
+            kernels.add((x[0], int(x[1]), int(x[2])))
             mkn.add((m, k, n))
             params.append((x[0], m, k, n, dur))
         kernels = sorted(list(kernels))
+        kernel_names = list(map(lambda ker: ker[0], kernels))
         mkn_kernels = {mkn_value: [0 for k in kernels] for mkn_value in mkn}
         for krn, m, k, n, dur in params:
-            i = kernels.index(krn)
+            i = kernel_names.index(krn)
             mkn_kernels[(m, k, n)][i] = dur
         sorted_mkn = sorted(list([(m * k * n, (m, k, n)) for m, k, n in mkn]))
 
@@ -96,9 +68,7 @@ class Dataset:
         return len(self.data)
 
     def get_mr_nr_values(self):
-        dc_kernels = [parse_kernel(kstr, self.platform) for kstr in self.kernels]
-        dc_kernels = [k for k in dc_kernels if k is not None]
-        _, mrs, nrs = zip(*dc_kernels)
+        _, mrs, nrs = zip(*self.kernels)
         return sorted(list(set(mrs))), sorted(list(set(nrs)))
 
     def get_classif_features_for(self, x):
