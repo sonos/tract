@@ -190,7 +190,7 @@ impl Dataset {
     ) -> Vec<Sample> {
         let mut inputs = vec![];
         let mut rng = thread_rng();
-        while inputs.len() < size {
+        while inputs.len() < size * mmm.len() {
             let m = rng.gen_range(1..max_m);
             let k = rng.gen_range(0..max_k);
             let n = rng.gen_range(1..max_n);
