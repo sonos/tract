@@ -125,11 +125,12 @@ pub mod test {
 
     #[macro_export]
     macro_rules! mmm_kernel_fuse_tests {
-        ($cond:expr, $ker:ty, $tc:ty, $ti: ty) => {
+        ($cond:expr, $ker:ident, $tc:ty, $ti: ty) => {
             mod fuse {
                 #[allow(unused_imports)]
                 use crate::frame::mmm::fuse::test;
                 use crate::frame::mmm::fuse::test::tile;
+                use super::super::$ker;
 
                 #[test]
                 fn return_zeros() {
@@ -264,7 +265,7 @@ pub mod test {
 
     #[macro_export]
     macro_rules! qmmm_kernel_fuse_tests {
-        ($cond:expr, $ker:ty, $ta:ty, $tb:ty, $tc:ty, $ti: ty) => {
+        ($cond:expr, $ker:ident, $ta:ty, $tb:ty, $tc:ty, $ti: ty) => {
             mod fuseq {
                 use crate::frame::mmm::fuse::RoundingPolicy;
                 #[allow(unused_imports)]
@@ -272,6 +273,7 @@ pub mod test {
                 use crate::frame::mmm::fuse::test::QScaleProblem;
                 use crate::frame::mmm::kernel::MatMatMulKer;
                 use proptest::prelude::*;
+                use super::super::$ker;
 
                 #[test]
                 fn return_q_scale_0() {

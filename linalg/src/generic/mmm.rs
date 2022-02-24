@@ -507,8 +507,8 @@ where
 }
 
 #[cfg(test)]
-type GenericMmm4x4xF32 = GenericMmm4x4<f32, f32, f32>;
-test_mmm_kernel_f32!(GenericMmm4x4, true);
+pub type GenericMmm4x4xF32 = GenericMmm4x4<f32, f32, f32>;
+test_mmm_kernel_f32!(GenericMmm4x4xF32, true);
 
 #[cfg(test)]
 type GenericMmm4x4xI32 = GenericMmm4x4<i8, i8, i32>;
@@ -516,14 +516,16 @@ test_mmm_kernel_i32!(GenericMmm4x4xI32, true);
 
 #[cfg(test)]
 type GenericMmm4x1xF32 = GenericMmm4x1<f32, f32, f32>;
-test_mmm_kernel_f32!(GenericMmm4x1F32, true);
-#[cfg(test)]
-type GenericMmm4x1xI32 = GenericMmm4x1<i8, i8, i32>;
-test_mmm_kernel_i32!(GenericMmm4x1, true);
+test_mmm_kernel_f32!(GenericMmm4x1xF32, true);
 
 #[cfg(test)]
-type GenericMmm3x2xF32 = GenericMmm3x2<f32, f32, f32>;
-test_mmm_kernel_f32!(GenericMmmTest3x2, true);
+type GenericMmm4x1xI32 = GenericMmm4x1<i8, i8, i32>;
+test_mmm_kernel_i32!(GenericMmm4x1xI32, true);
+
 #[cfg(test)]
-type GenericMmm3x2xI32 = GenericMmm3x2<i8, i8, i32>;
-test_mmm_kernel_i32!(GenericMmmTest3x2, true);
+type GenericMmmTest3x2xF32 = GenericMmmTest3x2<f32, f32, f32>;
+test_mmm_kernel_f32!(GenericMmmTest3x2xF32, true);
+
+#[cfg(test)]
+type GenericMmmTest3x2xI32 = GenericMmmTest3x2<i8, i8, i32>;
+test_mmm_kernel_i32!(GenericMmmTest3x2xI32, true);
