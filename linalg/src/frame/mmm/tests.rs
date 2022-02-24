@@ -7,11 +7,12 @@ use tract_data::internal::*;
 
 #[macro_export]
 macro_rules! mmm_frame_tests {
-    ($cond:expr, $ker:ty, $ta:ty, $tb:ty, $tc:ty, $ti:ty) => {
+    ($cond:expr, $ker:ident, $ta:ty, $tb:ty, $tc:ty, $ti:ty) => {
         mod frame {
             #[allow(unused_imports)]
             use $crate::frame::mmm::tests::*;
             use tract_data::internal::*;
+            use super::super::$ker;
 
             proptest::proptest! {
                 #[test]

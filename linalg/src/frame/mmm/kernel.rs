@@ -30,11 +30,9 @@ where
 macro_rules! test_mmm_kernel_f32 {
     ($k: ident, $cond: expr) => {
         paste! {
-            #[cfg(test)]
             #[allow(non_snake_case)]
             #[cfg(test)]
             mod [<test_ $k>] {
-                use super::$k;
                 mmm_kernel_tests!($cond, $k, f32, f32, f32, f32);
                 mmm_frame_tests!($cond, $k, f32, f32, f32, f32);
                 mmm_kernel_fuse_tests!($cond, $k, f32, f32);
@@ -72,8 +70,9 @@ pub mod test {
 
     #[macro_export]
     macro_rules! mmm_kernel_tests {
-            ($cond:expr, $ker:ty, $ta:ty, $tb:ty, $tc:ty, $ti: ty) => {
+            ($cond:expr, $ker:ident, $ta:ty, $tb:ty, $tc:ty, $ti: ty) => {
                 mod kernel {
+                    use super::super::$ker;
                     use num_traits::Zero;
                     use proptest::prelude::*;
                     #[allow(unused_imports)]
