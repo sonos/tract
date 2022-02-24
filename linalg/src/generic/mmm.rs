@@ -506,11 +506,24 @@ where
     }
 }
 
-test_mmm_kernel_f32!(crate::generic::mmm::GenericMmm4x4<f32, f32, f32>, test_GenericMmm4x4_f32, true);
-test_mmm_kernel_i32!(crate::generic::mmm::GenericMmm4x4<i8, i8, i32>, test_GenericMmm4x4_i32, true);
+#[cfg(test)]
+type GenericMmm4x4xF32 = GenericMmm4x4<f32, f32, f32>;
+test_mmm_kernel_f32!(GenericMmm4x4, true);
 
-test_mmm_kernel_f32!(crate::generic::mmm::GenericMmm4x1<f32, f32, f32>, test_GenericMmm4x1_f32, true);
-test_mmm_kernel_i32!(crate::generic::mmm::GenericMmm4x1<i8, i8, i32>, test_GenericMmm4x1_i32, true);
+#[cfg(test)]
+type GenericMmm4x4xI32 = GenericMmm4x4<i8, i8, i32>;
+test_mmm_kernel_i32!(GenericMmm4x4xI32, true);
 
-test_mmm_kernel_f32!(crate::generic::mmm::GenericMmmTest3x2<f32, f32, f32>, test_GenericMmmTest3x2_f32, true);
-test_mmm_kernel_i32!(crate::generic::mmm::GenericMmmTest3x2<i8, i8, i32>, test_GenericMmmTest3x2_i32, true);
+#[cfg(test)]
+type GenericMmm4x1xF32 = GenericMmm4x1<f32, f32, f32>;
+test_mmm_kernel_f32!(GenericMmm4x1F32, true);
+#[cfg(test)]
+type GenericMmm4x1xI32 = GenericMmm4x1<i8, i8, i32>;
+test_mmm_kernel_i32!(GenericMmm4x1, true);
+
+#[cfg(test)]
+type GenericMmm3x2xF32 = GenericMmm3x2<f32, f32, f32>;
+test_mmm_kernel_f32!(GenericMmmTest3x2, true);
+#[cfg(test)]
+type GenericMmm3x2xI32 = GenericMmm3x2<i8, i8, i32>;
+test_mmm_kernel_i32!(GenericMmmTest3x2, true);

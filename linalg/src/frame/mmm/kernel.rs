@@ -28,27 +28,32 @@ where
 
 #[macro_export]
 macro_rules! test_mmm_kernel_f32 {
-    ($k: ty, $id: ident, $cond: expr) => {
-        #[cfg(test)]
-        #[allow(non_snake_case)]
-        mod $id {
-            mmm_kernel_tests!($cond, $k, f32, f32, f32, f32);
-            mmm_frame_tests!($cond, $k, f32, f32, f32, f32);
-            mmm_kernel_fuse_tests!($cond, $k, f32, f32);
+    ($k: ident, $cond: expr) => {
+        paste! {
+            #[cfg(test)]
+            #[allow(non_snake_case)]
+            #[cfg(test)]
+            mod [<test_ $k>] {
+                use super::$k;
+                mmm_kernel_tests!($cond, $k, f32, f32, f32, f32);
+                mmm_frame_tests!($cond, $k, f32, f32, f32, f32);
+                mmm_kernel_fuse_tests!($cond, $k, f32, f32);
+            }
         }
     };
 }
 
 #[macro_export]
 macro_rules! test_mmm_kernel_i32 {
-    ($k: ty, $id: ident, $cond: expr) => {
-        #[cfg(test)]
-        #[allow(non_snake_case)]
-        mod $id {
-            mmm_kernel_tests!($cond, $k, i8, i8, i8, i32);
-            mmm_kernel_fuse_tests!($cond, $k, i8, i32);
-            mmm_frame_tests!($cond, $k, i8, i8, i8, i32);
-            qmmm_kernel_fuse_tests!($cond, $k, i8, i8, i8, i32);
+    ($k: ident, $cond: expr) => {
+        paste! {
+            #[cfg(test)]
+            mod [<test_ $k>] {
+                mmm_kernel_tests!($cond, $k, i8, i8, i8, i32);
+                mmm_kernel_fuse_tests!($cond, $k, i8, i32);
+                mmm_frame_tests!($cond, $k, i8, i8, i8, i32);
+                qmmm_kernel_fuse_tests!($cond, $k, i8, i8, i8, i32);
+            }
         }
     };
 }
@@ -67,88 +72,88 @@ pub mod test {
 
     #[macro_export]
     macro_rules! mmm_kernel_tests {
-        ($cond:expr, $ker:ty, $ta:ty, $tb:ty, $tc:ty, $ti: ty) => {
-            mod kernel {
-                use num_traits::Zero;
-                use proptest::prelude::*;
-                #[allow(unused_imports)]
-                use crate::frame::mmm::kernel::test;
-                use crate::frame::mmm::kernel::test::PackedPackedProblem;
-                use crate::frame::mmm::MatMatMulKer;
+            ($cond:expr, $ker:ty, $ta:ty, $tb:ty, $tc:ty, $ti: ty) => {
+                mod kernel {
+                    use num_traits::Zero;
+                    use proptest::prelude::*;
+                    #[allow(unused_imports)]
+                    use crate::frame::mmm::kernel::test;
+                    use crate::frame::mmm::kernel::test::PackedPackedProblem;
+                    use crate::frame::mmm::MatMatMulKer;
 
-                proptest::proptest! {
+                    proptest::proptest! {
+                        #[test]
+                        fn packed_packed_prop(pb in any::<PackedPackedProblem<$ker, $ta, $tb, $tc, $ti>>()) {
+                            if $cond {
+                                prop_assert_eq!(pb.run(), pb.reference())
+                            }
+                        }
+                    }
+
                     #[test]
-                    fn packed_packed_prop(pb in any::<PackedPackedProblem<$ker, $ta, $tb, $tc, $ti>>()) {
+                    fn packed_packed_1() {
                         if $cond {
-                            prop_assert_eq!(pb.run(), pb.reference())
+                            test::packed_packed::<$ker, $ta, $tb, $tc, $ti>(1)
+                        }
+                    }
+
+                    #[test]
+                    fn packed_packed_2() {
+                        if $cond {
+                            test::packed_packed::<$ker, $ta, $tb, $tc, $ti>(2)
+                        }
+                    }
+
+                    #[test]
+                    fn packed_packed_13() {
+                        if $cond {
+                            test::packed_packed::<$ker, $ta, $tb, $tc, $ti>(13)
+                        }
+                    }
+
+                    #[test]
+                    fn packed_packed_bug_1() {
+                        if $cond {
+                            let pb = PackedPackedProblem::<$ker, $ta, $tb, $tc, $ti>::new(
+                                1,
+                                vec!(<$ta>::zero(); <$ker>::mr()),
+                                vec!(<$tb>::zero(); <$ker>::nr()),
+                                true,
+                                true);
+                            assert_eq!(pb.run(), pb.reference())
+                        }
+                    }
+
+                    #[test]
+                    fn packed_vec_k1() {
+                        if $cond {
+                            test::packed_vec::<$ker, $ta, $tb, $tc, $ti>(1)
+                        }
+                    }
+
+                    #[test]
+                    fn packed_vec_k2() {
+                        if $cond {
+                            test::packed_vec::<$ker, $ta, $tb, $tc, $ti>(2)
+                        }
+                    }
+
+                    #[test]
+                    fn packed_vec_k4() {
+                        if $cond {
+                            test::packed_vec::<$ker, $ta, $tb, $tc, $ti>(4)
+                        }
+                    }
+
+                    #[test]
+                    fn packed_vec_k13() {
+                        if $cond {
+                            test::packed_vec::<$ker, $ta, $tb, $tc, $ti>(13)
                         }
                     }
                 }
-
-                #[test]
-                fn packed_packed_1() {
-                    if $cond {
-                        test::packed_packed::<$ker, $ta, $tb, $tc, $ti>(1)
-                    }
-                }
-
-                #[test]
-                fn packed_packed_2() {
-                    if $cond {
-                        test::packed_packed::<$ker, $ta, $tb, $tc, $ti>(2)
-                    }
-                }
-
-                #[test]
-                fn packed_packed_13() {
-                    if $cond {
-                        test::packed_packed::<$ker, $ta, $tb, $tc, $ti>(13)
-                    }
-                }
-
-                #[test]
-                fn packed_packed_bug_1() {
-                    if $cond {
-                        let pb = PackedPackedProblem::<$ker, $ta, $tb, $tc, $ti>::new(
-                            1,
-                            vec!(<$ta>::zero(); <$ker>::mr()),
-                            vec!(<$tb>::zero(); <$ker>::nr()),
-                            true,
-                            true);
-                        assert_eq!(pb.run(), pb.reference())
-                    }
-                }
-
-                #[test]
-                fn packed_vec_k1() {
-                    if $cond {
-                        test::packed_vec::<$ker, $ta, $tb, $tc, $ti>(1)
-                    }
-                }
-
-                #[test]
-                fn packed_vec_k2() {
-                    if $cond {
-                        test::packed_vec::<$ker, $ta, $tb, $tc, $ti>(2)
-                    }
-                }
-
-                #[test]
-                fn packed_vec_k4() {
-                    if $cond {
-                        test::packed_vec::<$ker, $ta, $tb, $tc, $ti>(4)
-                    }
-                }
-
-                #[test]
-                fn packed_vec_k13() {
-                    if $cond {
-                        test::packed_vec::<$ker, $ta, $tb, $tc, $ti>(13)
-                    }
-                }
-            }
-        };
-    }
+            };
+        }
 
     #[derive(Debug, new)]
     pub struct PackedPackedProblem<K, TA, TB, TC, TI>
