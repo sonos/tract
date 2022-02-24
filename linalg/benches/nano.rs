@@ -4,6 +4,8 @@ use std::time::Duration;
 use std::time::Instant;
 
 #[macro_export]
+macro_rules! r1 { ($($stat:stmt)*) => { $( $stat )* } }
+#[macro_export]
 macro_rules! r2 { ($($stat:stmt)*) => { $( $stat )* $( $stat )* } }
 #[macro_export]
 macro_rules! r4 { ($($stat:stmt)*) => { r2!(r2!($($stat)*)) }}
@@ -30,6 +32,16 @@ macro_rules! r4096 { ($($stat:stmt)*) => { r2!(r2048!($($stat)*)) }}
 #[macro_export]
 macro_rules! r8192 { ($($stat:stmt)*) => { r2!(r4096!($($stat)*)) }}
 
+#[macro_export]
+macro_rules! b1 { ($($stat:stmt)*) => { nano::run_bench(|| { r1!($($stat)*); }) / 1.0 } }
+#[macro_export]
+macro_rules! b2 { ($($stat:stmt)*) => { nano::run_bench(|| { r2!($($stat)*); }) / 2.0 } }
+#[macro_export]
+macro_rules! b4 { ($($stat:stmt)*) => { nano::run_bench(|| { r4!($($stat)*); }) / 4.0 } }
+#[macro_export]
+macro_rules! b8 { ($($stat:stmt)*) => { nano::run_bench(|| { r8!($($stat)*); }) / 8.0 } }
+#[macro_export]
+macro_rules! b16 { ($($stat:stmt)*) => { nano::run_bench(|| { r16!($($stat)*); }) / 16.0 } }
 #[macro_export]
 macro_rules! b32 { ($($stat:stmt)*) => { nano::run_bench(|| { r32!($($stat)*); }) / 32.0 } }
 #[macro_export]
