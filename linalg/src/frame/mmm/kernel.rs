@@ -30,8 +30,8 @@ where
 macro_rules! test_mmm_kernel_f32 {
     ($k: ident, $cond: expr) => {
         paste! {
-            #[allow(non_snake_case)]
             #[cfg(test)]
+            #[allow(non_snake_case)]
             mod [<test_ $k>] {
                 mmm_kernel_tests!($cond, $k, f32, f32, f32, f32);
                 mmm_frame_tests!($cond, $k, f32, f32, f32, f32);
@@ -46,6 +46,7 @@ macro_rules! test_mmm_kernel_i32 {
     ($k: ident, $cond: expr) => {
         paste! {
             #[cfg(test)]
+            #[allow(non_snake_case)]
             mod [<test_ $k>] {
                 mmm_kernel_tests!($cond, $k, i8, i8, i8, i32);
                 mmm_kernel_fuse_tests!($cond, $k, i8, i32);
