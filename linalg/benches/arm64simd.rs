@@ -724,7 +724,7 @@ macro_rules! kloop {
         let label = $path.split("/").last().unwrap().split_once(".").unwrap().0;
         let full_label = format!("{:8} {:40}", $geo, label);
         if full_label.contains($filter.unwrap_or("")) {
-            let time = b32!({
+            let time = b2!({
                 let mut p = F32;
                 let mut q = F32;
                 r4!(asm!(include_str!(concat!("../arm64/arm64simd/", $path)),
