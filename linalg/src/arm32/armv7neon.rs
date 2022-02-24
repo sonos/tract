@@ -85,71 +85,20 @@ impl ElementWiseKer<f32> for TanhF32x4n {
     }
 }
 
-test_mmm_kernel_f32!(
-    crate::arm32::armv7neon::MatMatMulF32x8x4Generic,
-    test_MatMatMulF32x8x4Generic,
-    crate::arm32::has_neon()
-);
+test_mmm_kernel_f32!(MatMatMulF32x8x4Generic, crate::arm32::has_neon());
+test_mmm_kernel_f32!(MatMatMulF32x8x4CortexA7, crate::arm32::has_neon());
+test_mmm_kernel_f32!(MatMatMulF32x8x4CortexA9, crate::arm32::has_neon());
 
-test_mmm_kernel_f32!(
-    crate::arm32::armv7neon::MatMatMulF32x8x4CortexA7,
-    test_MatMatMulF32x8x4CortextA7,
-    crate::arm32::has_neon()
-);
+test_mmm_kernel_f32!(MatMatMulF32x8x6Generic, crate::arm32::has_neon());
+test_mmm_kernel_f32!(MatMatMulF32x8x6CortexA7, crate::arm32::has_neon());
+test_mmm_kernel_f32!(MatMatMulF32x8x6CortexA9, crate::arm32::has_neon());
 
-test_mmm_kernel_f32!(
-    crate::arm32::armv7neon::MatMatMulF32x8x4CortexA9,
-    test_MatMatMulF32x8x4CortextA9,
-    crate::arm32::has_neon()
-);
+test_mmm_kernel_f32!(MatMatMulF32x32x1Generic, crate::arm32::has_neon());
+test_mmm_kernel_f32!(MatMatMulF32x32x1CortexA7, crate::arm32::has_neon());
+test_mmm_kernel_f32!(MatMatMulF32x32x1CortexA9, crate::arm32::has_neon());
 
-test_mmm_kernel_f32!(
-    crate::arm32::armv7neon::MatMatMulF32x8x6Generic,
-    test_MatMatMulF32x8x6Generic,
-    crate::arm32::has_neon()
-);
-
-test_mmm_kernel_f32!(
-    crate::arm32::armv7neon::MatMatMulF32x8x6CortexA7,
-    test_MatMatMulF32x8x6CortexA7,
-    crate::arm32::has_neon()
-);
-
-test_mmm_kernel_f32!(
-    crate::arm32::armv7neon::MatMatMulF32x8x6CortexA9,
-    test_MatMatMulF32x8x6CortexA9,
-    crate::arm32::has_neon()
-);
-
-test_mmm_kernel_f32!(
-    crate::arm32::armv7neon::MatMatMulF32x32x1Generic,
-    test_MatMatMulF32x32x1Generic,
-    crate::arm32::has_neon()
-);
-
-test_mmm_kernel_f32!(
-    crate::arm32::armv7neon::MatMatMulF32x32x1CortexA7,
-    test_MatMatMulF32x32x1CortexA7,
-    crate::arm32::has_neon()
-);
-
-test_mmm_kernel_f32!(
-    crate::arm32::armv7neon::MatMatMulF32x32x1CortexA9,
-    test_MatMatMulF32x32x1CortexA9,
-    crate::arm32::has_neon()
-);
-
-test_mmm_kernel_i32!(
-    crate::arm32::armv7neon::MatMatMulI32x8x4,
-    test_MatMatMulI32x8x4,
-    crate::arm32::has_neon()
-);
-
-test_mmm_kernel_i32!(
-    crate::arm32::armv7neon::MatMatMulI32x32x1,
-    test_MatMatMulI8x32x1,
-    crate::arm32::has_neon()
-);
+test_mmm_kernel_i32!(MatMatMulI32x8x4, crate::arm32::has_neon());
+test_mmm_kernel_i32!(MatMatMulI32x32x1, crate::arm32::has_neon());
 
 #[cfg(test)]
 mod test_neon_fn {
