@@ -35,16 +35,19 @@ impl Bencher {
         }
     }
 
-    pub fn run_bench<T, F: FnMut() -> T>(&self, mut f: F) -> f64 {
-        Self::black_box(f());
+    pub fn run_bench<T, I, P: FnMut() -> I, F: FnMut(I) -> T>(&self, mut prep: P, mut f: F) -> f64 {
+        let i = prep();
+        let i2 = prep();
+        Self::black_box(f(i));
         let start = Instant::now();
-        Self::black_box(f());
+        Self::black_box(f(i2));
         let once = start.elapsed();
         //   dbg!(once);
         let evaled = if once < Duration::from_millis(1) {
+            let is = (0..1000).map(|_| prep()).collect_vec();
             let start = Instant::now();
-            for _ in 0..1000 {
-                Self::black_box(f());
+            for i in is {
+                Self::black_box(f(i));
             }
             start.elapsed().as_secs_f64() / 1000.
         } else {
@@ -68,9 +71,10 @@ impl Bencher {
         }
         */
         for i in 0..chunks {
+            let is = (0..chunk).map(|_| prep());
             let start = Instant::now();
-            for _ in 0..chunk {
-                Self::black_box(f());
+            for i in is {
+                Self::black_box(f(i));
             }
             let time = start.elapsed().as_secs_f64();
             measures[i] = time / chunk as f64;
@@ -103,34 +107,39 @@ impl Bencher {
 
 fn measure_add_mat_mul(
     bencher: &Bencher,
-    ruin_cache_time: f64,
     mm: &dyn MatMatMul,
     m: usize,
     k: usize,
     n: usize,
 ) -> f64 {
     let dt = mm.internal_type();
-    let pa =
-        Tensor::zero_aligned_dt(dt, &[mm.a_pack().len(k, m)], mm.a_pack().alignment()).unwrap();
-    let pb =
-        Tensor::zero_aligned_dt(dt, &[mm.b_pack().len(k, n)], mm.b_pack().alignment()).unwrap();
-    let pc = Tensor::zero_dt(dt, &[m, n]).unwrap();
     unsafe {
-        let pa = mm.a_packed(dt.size_of(), k).wrap(&pa.view());
-        let pb = mm.b_packed(dt.size_of(), k).wrap(&pb.view()).unwrap();
-        let pc = mm.c_view(0, 1).wrap(&pc.view());
-        let mut scratch = mm.allocate_scratch_space();
-        let time = bencher.run_bench(|| {
-            ruin_cache();
-            mm.run_with_scratch_space(
-                m,
-                n,
-                scratch.as_mut(),
-                &[FusedSpec::AddMatMul { a: pa, b: pb.clone(), k }, FusedSpec::Store(pc)],
-            )
-            .unwrap();
-        });
-        time - ruin_cache_time
+        let time = bencher.run_bench(
+            || {
+                let a =
+                    Tensor::zero_aligned_dt(dt, &[mm.a_pack().len(k, m)], mm.a_pack().alignment())
+                        .unwrap();
+                let b =
+                    Tensor::zero_aligned_dt(dt, &[mm.b_pack().len(k, n)], mm.b_pack().alignment())
+                        .unwrap();
+                let c = Tensor::zero_dt(dt, &[m, n]).unwrap();
+                let pa = mm.a_packed(dt.size_of(), k).wrap(&a.view());
+                let pb = mm.b_packed(dt.size_of(), k).wrap(&b.view()).unwrap();
+                let pc = mm.c_view(0, 1).wrap(&c.view());
+                let scratch = mm.allocate_scratch_space();
+                (scratch, a, b, c, pa, pb, pc)
+            },
+            |(mut scratch, _, _, _, pa, pb, pc)| {
+                mm.run_with_scratch_space(
+                    m,
+                    n,
+                    scratch.as_mut(),
+                    &[FusedSpec::AddMatMul { a: pa, b: pb.clone(), k }, FusedSpec::Store(pc)],
+                )
+                .unwrap();
+            },
+        );
+        time
     }
 }
 
@@ -215,14 +224,14 @@ impl Dataset {
         mut inputs: Vec<Sample>,
         mmm: &[&dyn MatMatMul],
     ) -> Dataset {
-        let ruin_cache_time = bencher.run_bench(|| ruin_cache());
+        //        let ruin_cache_time = bencher.run_bench(|| ruin_cache());
         let mut rng = thread_rng();
         inputs.shuffle(&mut rng);
         let mut progress_bar = ProgressBar::new(inputs.len() as _);
         let mut samples = vec![];
         for s in inputs {
             let mm = mmm.iter().find(|mm| mm.kernel_name() == s.kernel).unwrap();
-            let y = measure_add_mat_mul(&bencher, ruin_cache_time, *mm, s.m, s.k, s.n);
+            let y = measure_add_mat_mul(&bencher, *mm, s.m, s.k, s.n);
             samples.push((s.clone(), y));
             progress_bar.inc();
         }
@@ -410,7 +419,6 @@ fn main() {
             Dataset::make_dataset(&bencher, inputs, &mmms).save(sub.value_of("name").unwrap());
         }
         Some(("time", sub)) => {
-            let ruin_cache_time = bencher.run_bench(|| ruin_cache());
             let mut mmms = impls.clone();
             if let Some(mm) = sub.value_of("mm") {
                 mmms.retain(|m| m.kernel_name().contains(mm));
@@ -420,7 +428,7 @@ fn main() {
             let n: usize = sub.value_of("n").unwrap().parse().unwrap();
             let mut alts = vec![];
             for mm in &mmms {
-                let y = measure_add_mat_mul(&bencher, ruin_cache_time, &***mm, m, k, n);
+                let y = measure_add_mat_mul(&bencher, &***mm, m, k, n);
                 alts.push((mm.kernel_name(), y));
             }
             display_comparison(m, k, n, &*alts, None);
