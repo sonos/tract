@@ -1,47 +1,29 @@
 use crate::frame::element_wise::ElementWiseKer;
 use crate::frame::mmm::*;
 
-extern_kernel!(fn arm64simd_mmm_f32_16x4_a55(op: *const FusedKerSpec<f32>) -> isize);
-extern_kernel!(fn arm64simd_mmm_f32_16x4_a53(op: *const FusedKerSpec<f32>) -> isize);
-extern_kernel!(fn arm64simd_mmm_f32_16x4_gen(op: *const FusedKerSpec<f32>) -> isize);
-extern_kernel!(fn arm64simd_mmm_f32_24x4_a53(op: *const FusedKerSpec<f32>) -> isize);
-extern_kernel!(fn arm64simd_mmm_f32_24x4_a55(op: *const FusedKerSpec<f32>) -> isize);
-extern_kernel!(fn arm64simd_mmm_f32_24x4_gen(op: *const FusedKerSpec<f32>) -> isize);
-extern_kernel!(fn arm64simd_mmm_f32_8x8_a53(op: *const FusedKerSpec<f32>) -> isize);
-extern_kernel!(fn arm64simd_mmm_f32_8x8_a55(op: *const FusedKerSpec<f32>) -> isize);
-extern_kernel!(fn arm64simd_mmm_f32_8x8_gen(op: *const FusedKerSpec<f32>) -> isize);
-extern_kernel!(fn arm64simd_mmm_f32_12x8_a53(op: *const FusedKerSpec<f32>) -> isize);
-extern_kernel!(fn arm64simd_mmm_f32_12x8_a55(op: *const FusedKerSpec<f32>) -> isize);
-extern_kernel!(fn arm64simd_mmm_f32_12x8_gen(op: *const FusedKerSpec<f32>) -> isize);
-extern_kernel!(fn arm64simd_mmm_f32_64x1_a55(op: *const FusedKerSpec<f32>) -> isize);
-extern_kernel!(fn arm64simd_mmm_f32_64x1_a53(op: *const FusedKerSpec<f32>) -> isize);
-extern_kernel!(fn arm64simd_mmm_f32_64x1_gen(op: *const FusedKerSpec<f32>) -> isize); // todo
-
-extern_kernel!(fn arm64simd_mmm_i32_8x8(op: *const FusedKerSpec<i32>) -> isize);
-extern_kernel!(fn arm64simd_mmm_i32_64x1(op: *const FusedKerSpec<i32>) -> isize);
 extern_kernel!(fn arm64simd_sigmoid_f32_4n(ptr: *mut f32, count: usize) -> ());
 extern_kernel!(fn arm64simd_tanh_f32_4n(ptr: *mut f32, count: usize) -> ());
 
-MMMKernel!(MatMatMulF32x8x8A55<f32>, arm64simd_mmm_f32_8x8_a55; 8, 8; 16, 16; 1, 1);
-MMMKernel!(MatMatMulF32x12x8A55<f32>, arm64simd_mmm_f32_12x8_a55; 12, 8; 16, 16; 1, 1);
-MMMKernel!(MatMatMulF32x16x4A55<f32>, arm64simd_mmm_f32_16x4_a55; 16, 4; 16, 16; 1, 1);
-MMMKernel!(MatMatMulF32x24x4A55<f32>, arm64simd_mmm_f32_24x4_a55; 24, 4; 16, 16; 1, 1);
-MMMKernel!(MatMatMulF32x64x1A55<f32>, arm64simd_mmm_f32_64x1_a55; 64, 1; 16, 16; 1, 1);
+MMMKernel!(f32, arm64simd_mmm_f32_8x8_a55; 8, 8; 16, 16; 1, 1; no_prefetch, true);
+MMMKernel!(f32, arm64simd_mmm_f32_12x8_a55; 12, 8; 16, 16; 1, 1; no_prefetch, true);
+MMMKernel!(f32, arm64simd_mmm_f32_16x4_a55; 16, 4; 16, 16; 1, 1; no_prefetch, true);
+MMMKernel!(f32, arm64simd_mmm_f32_24x4_a55; 24, 4; 16, 16; 1, 1; no_prefetch, true);
+MMMKernel!(f32, arm64simd_mmm_f32_64x1_a55; 64, 1; 16, 16; 1, 1; no_prefetch, true);
 
-MMMKernel!(MatMatMulF32x16x4A53<f32>,  arm64simd_mmm_f32_16x4_a53; 16, 4; 16, 16; 1, 1);
-MMMKernel!(MatMatMulF32x24x4A53<f32>,  arm64simd_mmm_f32_24x4_a53; 24, 4; 16, 16; 1, 1);
-MMMKernel!(MatMatMulF32x8x8A53<f32>, arm64simd_mmm_f32_8x8_a53; 8, 8; 16, 16; 1, 1);
-MMMKernel!(MatMatMulF32x12x8A53<f32>, arm64simd_mmm_f32_12x8_a53; 12, 8; 16, 16; 1, 1);
-MMMKernel!(MatMatMulF32x64x1A53<f32>, arm64simd_mmm_f32_64x1_a53; 64, 1; 16, 16; 1, 1);
+MMMKernel!(f32, arm64simd_mmm_f32_16x4_a53; 16, 4; 16, 16; 1, 1; no_prefetch, true);
+MMMKernel!(f32, arm64simd_mmm_f32_24x4_a53; 24, 4; 16, 16; 1, 1; no_prefetch, true);
+MMMKernel!(f32, arm64simd_mmm_f32_8x8_a53; 8, 8; 16, 16; 1, 1; no_prefetch, true);
+MMMKernel!(f32, arm64simd_mmm_f32_12x8_a53; 12, 8; 16, 16; 1, 1; no_prefetch, true);
+MMMKernel!(f32, arm64simd_mmm_f32_64x1_a53; 64, 1; 16, 16; 1, 1; no_prefetch, true);
 
-MMMKernel!(MatMatMulF32x16x4<f32>, arm64simd_mmm_f32_16x4_gen; 16, 4; 16, 16; 1, 1);
-MMMKernel!(MatMatMulF32x24x4<f32>, arm64simd_mmm_f32_24x4_gen; 24, 4; 16, 16; 1, 1);
-MMMKernel!(MatMatMulF32x8x8<f32>, arm64simd_mmm_f32_8x8_gen; 8, 8; 16, 16; 1, 1);
-MMMKernel!(MatMatMulF32x12x8<f32>, arm64simd_mmm_f32_12x8_gen; 12, 8; 16, 16; 1, 1);
-MMMKernel!(MatMatMulF32x64x1<f32>, arm64simd_mmm_f32_64x1_gen; 64, 1; 16, 16; 1, 1);
+MMMKernel!(f32, arm64simd_mmm_f32_16x4_gen; 16, 4; 16, 16; 1, 1; no_prefetch, true);
+MMMKernel!(f32, arm64simd_mmm_f32_24x4_gen; 24, 4; 16, 16; 1, 1; no_prefetch, true);
+MMMKernel!(f32, arm64simd_mmm_f32_8x8_gen; 8, 8; 16, 16; 1, 1; no_prefetch, true);
+MMMKernel!(f32, arm64simd_mmm_f32_12x8_gen; 12, 8; 16, 16; 1, 1; no_prefetch, true);
+MMMKernel!(f32, arm64simd_mmm_f32_64x1_gen; 64, 1; 16, 16; 1, 1; no_prefetch, true);
 
-MMMKernel!(MatMatMulI32x8x8<i32>, arm64simd_mmm_i32_8x8; 8, 8; 16, 16; 0,0);
-MMMKernel!(MatMatMulI32x64x1<i32>, arm64simd_mmm_i32_64x1; 64, 1; 16, 1; 0,0);
+MMMKernel!(i32, arm64simd_mmm_i32_8x8; 8, 8; 16, 16; 0,0; no_prefetch, true);
+MMMKernel!(i32, arm64simd_mmm_i32_64x1; 64, 1; 16, 1; 0,0; no_prefetch, true);
 
 #[derive(Copy, Clone, Debug)]
 pub struct SigmoidF32x4n;
@@ -94,26 +76,6 @@ impl ElementWiseKer<f32> for TanhF32x4n {
         unsafe { arm64simd_tanh_f32_4n(buf.as_mut_ptr(), buf.len()) }
     }
 }
-
-test_mmm_kernel_f32!(MatMatMulF32x8x8A55, true);
-test_mmm_kernel_f32!(MatMatMulF32x12x8A55, true);
-test_mmm_kernel_f32!(MatMatMulF32x16x4A55, true);
-
-test_mmm_kernel_f32!(MatMatMulF32x16x4A53, true);
-
-test_mmm_kernel_f32!(MatMatMulF32x24x4A53, true);
-
-test_mmm_kernel_f32!(MatMatMulF32x8x8A53, true);
-test_mmm_kernel_f32!(MatMatMulF32x16x4, true);
-test_mmm_kernel_f32!(MatMatMulF32x24x4, true);
-test_mmm_kernel_f32!(MatMatMulF32x8x8, true);
-test_mmm_kernel_f32!(MatMatMulF32x12x8A53, true);
-test_mmm_kernel_f32!(MatMatMulF32x12x8, true);
-test_mmm_kernel_f32!(MatMatMulF32x64x1A53, true);
-test_mmm_kernel_f32!(MatMatMulF32x64x1A55, true);
-test_mmm_kernel_f32!(MatMatMulF32x64x1, true);
-test_mmm_kernel_i32!(MatMatMulI32x8x8, true);
-test_mmm_kernel_i32!(MatMatMulI32x64x1, true);
 
 #[cfg(test)]
 mod test_simd {
