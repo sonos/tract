@@ -1,4 +1,4 @@
-// mul a: v0, v1, v2, v3 b: v4
+// mul a: v0, v1, v2, v3, v4, v5 b: v7
 // load a: v5(d5/x5), v6(d6,x6), v7(d7,x7), v8(d8, x8)
 // load b: v9(d9/x9)
 
