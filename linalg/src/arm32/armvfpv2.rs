@@ -1,7 +1,3 @@
 use crate::frame::mmm::*;
 
-extern_kernel!(fn armvfpv2_mmm_f32_4x4(op: *const FusedKerSpec<f32>) -> isize);
-
-MMMKernel!(MatMatMulF32x4x4<f32>, armvfpv2_mmm_f32_4x4; 4, 4; 4, 4; 0, 0);
-
-test_mmm_kernel_f32!(MatMatMulF32x4x4, true);
+MMMKernel!(f32, armvfpv2_mmm_f32_4x4; 4, 4; 4, 4; 0, 0; no_prefetch, true);
