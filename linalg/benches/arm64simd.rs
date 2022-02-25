@@ -777,6 +777,7 @@ unsafe fn packed_packed_16x4(f: Option<&str>) {
 unsafe fn packed_packed_24x4(f: Option<&str>) {
     kloop!(f, "24x4x1", 96, "arm64simd_mmm_f32_24x4/packed_packed_loop1/naive.tmpli");
     kloop!(f, "24x4x1", 96, "arm64simd_mmm_f32_24x4/packed_packed_loop1/cortex_a53.tmpli");
+    kloop!(f, "24x4x1", 96, "arm64simd_mmm_f32_24x4/packed_packed_loop1/cortex_a55.tmpli");
 }
 
 unsafe fn packed_packed_64x1(f: Option<&str>) {
