@@ -104,7 +104,7 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                     offset += std::mem::size_of::<AddMatMulTemp>();
                     if let Some(tmp) = b.scratch_panel_buffer_layout() {
                         align = tmp.align().lcm(&align);
-                        offset = offset.next_multiple_of(&tmp.align());
+                        offset = Integer::next_multiple_of(&offset, &tmp.align());
                         ld.buffer = Some(offset as _);
                         offset += tmp.size();
                     }
