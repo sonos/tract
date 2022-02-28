@@ -1,6 +1,8 @@
 use tract_data::internal::*;
 use tract_data::itertools::{izip, Itertools};
 
+use super::MatMatMul;
+
 fn order_f<F: tract_num_traits::Float>(&a: &F, &b: &F) -> std::cmp::Ordering {
     if a < b {
         std::cmp::Ordering::Less
@@ -63,5 +65,16 @@ impl<'a> CostModel<'a> {
         let output = Self::dnn(&*hidden, &*self.w2, &*self.b2);
         let ix = output.iter().copied().position_max_by(order_f).unwrap();
         &self.kernels[ix]
+    }
+
+    pub fn pick(
+        &self,
+        impls: &[Box<dyn MatMatMul>],
+        m: usize,
+        k: usize,
+        n: usize,
+    ) -> Box<dyn MatMatMul> {
+        let choice = self.predict(m, k, n);
+        impls.iter().find(|k| k.kernel_name() == choice).unwrap().clone()
     }
 }

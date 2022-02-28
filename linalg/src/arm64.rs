@@ -112,7 +112,7 @@ pub fn plug(ops: &mut Ops) {
         Kind::CortexA53 => {
             let model = cortex_a53::model();
             ops.mmm_f32 =
-                Box::new(move |m, k, n| pick(&model, &impls, m.unwrap(), k.unwrap(), n.unwrap()))
+                Box::new(move |m, k, n| model.pick(&impls, m.unwrap(), k.unwrap(), n.unwrap()))
         }
         _ => (),
     }
@@ -125,15 +125,4 @@ pub fn plug(ops: &mut Ops) {
             }
         });
     }
-}
-
-fn pick(
-    model: &CostModel,
-    impls: &[Box<dyn MatMatMul>],
-    m: usize,
-    k: usize,
-    n: usize,
-) -> Box<dyn MatMatMul> {
-    let choice = model.predict(m, k, n);
-    impls.iter().find(|k| k.kernel_name() == choice).unwrap().clone()
 }
