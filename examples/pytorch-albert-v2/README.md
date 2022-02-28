@@ -8,7 +8,7 @@ First export the pre-trained transformer model using Python and PyTorch
 python export.py
 ```
 
-the exported model and tokenizer are saved in `./albert`. The load the model into tract and make prediction.
+the exported model and tokenizer are saved in `./albert`. Then load the model into tract and make prediction.
 
 ``` rust
 cargo run --release
