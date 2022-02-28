@@ -1,7 +1,9 @@
 use std::{env, fs};
 pub mod armv7neon;
 mod armvfpv2;
+mod cortex_a9;
 use crate::frame::ElementWiseImpl;
+use armv7neon::*;
 
 use crate::frame::mmm::kernel::MatMatMulKer;
 
@@ -35,15 +37,15 @@ fn has_neon() -> bool {
 
 pub fn plug(ops: &mut Ops) {
     let impls = vec![
-        armv7neon::MatMatMulF32x8x4CortexA7::mmm(),
-        armv7neon::MatMatMulF32x8x6CortexA7::mmm(),
-        armv7neon::MatMatMulF32x8x4CortexA9::mmm(),
-        armv7neon::MatMatMulF32x8x6CortexA9::mmm(),
-        armv7neon::MatMatMulF32x8x4Generic::mmm(),
-        armv7neon::MatMatMulF32x8x6Generic::mmm(),
-        crate::generic::GenericMmm4x4::<f32, f32, f32>::mmm(),
+        armv7neon_mmm_f32_8x4_cortexa7::mmm(),
+        armv7neon_mmm_f32_8x6_cortexa7::mmm(),
+        armv7neon_mmm_f32_8x4_cortexa9::mmm(),
+        armv7neon_mmm_f32_8x6_cortexa9::mmm(),
+        armv7neon_mmm_f32_8x4_generic::mmm(),
+        armv7neon_mmm_f32_8x6_generic::mmm(),
+        crate::generic::mmm::generic_f32_4x4::mmm(),
     ];
-    ops.mmm_f32_impls = impls;
+    ops.mmm_f32_impls = impls.clone();
     if has_neon() {
         log::info!("armv7neon activated (smmm, ssigmoid), stanh)");
         let cpu = cpu_part().unwrap_or(0);
@@ -66,12 +68,9 @@ pub fn plug(ops: &mut Ops) {
                     armv7neon::armv7neon_mmm_f32_8x6_cortexa7::mmm()
                 }
             }),
-            0xc09 => Box::new(|m, k, n| {
-                if prefer_8x4(m, k, n) {
-                    armv7neon::armv7neon_mmm_f32_8x4_cortexa9::mmm()
-                } else {
-                    armv7neon::armv7neon_mmm_f32_8x6_cortexa9::mmm()
-                }
+            0xc09 => Box::new(move |m, k, n| {
+                let model = cortex_a9::model();
+                model.pick(&impls, m.unwrap(), k.unwrap(), n.unwrap())
             }),
             _ => Box::new(|m, k, n| {
                 if prefer_8x4(m, k, n) {
