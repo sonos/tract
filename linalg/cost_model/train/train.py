@@ -282,8 +282,8 @@ def train_one_mlp(
 
 PASS_TESTS = {
     "a9": [
-        ([16, 60, 8], "armv7neon_mmm_f32_8x4_generic"),
-        ([16, 64, 8], "armv7neon_mmm_f32_8x4_generic"),
+        ([16, 60, 8], "armv7neon_mmm_f32_8x4_cortexa9"),
+        ([16, 64, 8], "armv7neon_mmm_f32_8x4_cortexa9"),
 #         ([2, 32, 8], "generic_f32_4x4"),
         ([64, 48, 8], "armv7neon_mmm_f32_8x4_cortexa9"),
         ([256, 768, 6], "armv7neon_mmm_f32_8x6_cortexa9"),
