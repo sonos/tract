@@ -24,6 +24,7 @@ pub struct Bencher {
     chunk_time_target: Duration,
     chunks_min_count: usize,
     chunks_max_count: usize,
+    probe: readings_probe::Probe,
 }
 
 impl Bencher {
@@ -113,6 +114,7 @@ fn measure_add_mat_mul(
     n: usize,
 ) -> f64 {
     let dt = mm.internal_type();
+    bencher.probe.log_event(&format!("start_{},{},{}", m,k,n)).unwrap();
     unsafe {
         let time = bencher.run_bench(
             || {
@@ -295,6 +297,10 @@ fn display_comparison(m: usize, k: usize, n: usize, alts: &[(&str, f64)], choice
 fn main() {
     use clap::*;
 
+     let mut probe =
+        readings_probe::Probe::new(std::fs::File::create("readings.out").unwrap()).unwrap();
+    probe.spawn_heartbeat(std::time::Duration::from_millis(1000)).unwrap();
+
     let parser = App::new("tract-linalg-cost-model")
         .arg(
             Arg::new("bench-time-target")
@@ -389,6 +395,7 @@ fn main() {
         ),
         chunks_min_count: matches.value_of_t("chunks-min-count").unwrap(),
         chunks_max_count: matches.value_of_t("chunks-max-count").unwrap(),
+        probe
     };
 
     let impls = tract_linalg::ops().mmm_f32_impls().iter().collect_vec();
