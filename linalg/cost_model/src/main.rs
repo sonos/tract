@@ -163,7 +163,7 @@ fn measure_add_mat_mul(bencher: &Bencher, mm: &dyn MatMatMul, m: usize, k: usize
 
 #[derive(Clone)]
 struct Sample {
-    kernel: String,
+    kernel: &'static str,
     mr: usize,
     nr: usize,
     m: usize,
@@ -193,7 +193,7 @@ impl Dataset {
                 for &n in &ns {
                     for k in ks {
                         inputs.push(Sample {
-                            kernel: mm.kernel_name().to_string(),
+                            kernel: mm.kernel_name(),
                             mr: mm.mr(),
                             nr: mm.nr(),
                             m,
@@ -224,7 +224,7 @@ impl Dataset {
             if max_mkn >= m * k * n {
                 for mm in mmm {
                     inputs.push(Sample {
-                        kernel: mm.kernel_name().to_string(),
+                        kernel: mm.kernel_name(),
                         mr: mm.mr(),
                         nr: mm.nr(),
                         m,
@@ -265,6 +265,7 @@ impl Dataset {
         }
     }
 
+    /*
     #[allow(dead_code)]
     pub fn load(filename: &str) -> Dataset {
         let samples = std::fs::read_to_string(filename)
@@ -288,6 +289,7 @@ impl Dataset {
             .collect();
         Dataset(samples)
     }
+    */
 }
 
 fn display_comparison(m: usize, k: usize, n: usize, alts: &[(&str, f64)], choice: Option<&str>) {
