@@ -36,19 +36,22 @@ impl Bencher {
         }
     }
 
-    pub fn run_bench<T, I, P: FnMut() -> I, F: FnMut(I) -> T>(&self, mut prep: P, mut f: F) -> f64 {
-        let i = prep();
-        let i2 = prep();
-        Self::black_box(f(i));
+    pub fn run_bench<T, I, P: FnMut() -> Vec<I>, F: FnMut(&mut I) -> T>(
+        &self,
+        mut prep: P,
+        mut f: F,
+    ) -> f64 {
+        let mut inputs = prep();
+        let islen = inputs.len();
+        Self::black_box(f(&mut inputs[0]));
         let start = Instant::now();
-        Self::black_box(f(i2));
+        Self::black_box(f(&mut inputs[1.min(islen - 1)]));
         let once = start.elapsed();
         //   dbg!(once);
         let evaled = if once < Duration::from_millis(1) {
-            let is = (0..1000).map(|_| prep()).collect_vec();
             let start = Instant::now();
-            for i in is {
-                Self::black_box(f(i));
+            for i in 0..1000 {
+                Self::black_box(f(&mut inputs[i % islen]));
             }
             start.elapsed().as_secs_f64() / 1000.
         } else {
@@ -71,11 +74,15 @@ impl Bencher {
         black_box(f());
         }
         */
+        let mut input = 0;
         for i in 0..chunks {
-            let is = (0..chunk).map(|_| prep());
             let start = Instant::now();
-            for i in is {
-                Self::black_box(f(i));
+            for _ in 0..chunk {
+                Self::black_box(f(&mut inputs[input]));
+                input += 1;
+                if input == inputs.len() {
+                    input = 0
+                }
             }
             let time = start.elapsed().as_secs_f64();
             measures[i] = time / chunk as f64;
@@ -106,37 +113,46 @@ impl Bencher {
     }
 }
 
-fn measure_add_mat_mul(
-    bencher: &Bencher,
-    mm: &dyn MatMatMul,
-    m: usize,
-    k: usize,
-    n: usize,
-) -> f64 {
+fn measure_add_mat_mul(bencher: &Bencher, mm: &dyn MatMatMul, m: usize, k: usize, n: usize) -> f64 {
     let dt = mm.internal_type();
-    bencher.probe.log_event(&format!("start_{},{},{}", m,k,n)).unwrap();
+    bencher.probe.log_event(&format!("start_{},{},{}", m, k, n)).unwrap();
     unsafe {
         let time = bencher.run_bench(
             || {
-                let a =
-                    Tensor::zero_aligned_dt(dt, &[mm.a_pack().len(k, m)], mm.a_pack().alignment())
+                let pb_size = 4 * (m * k + m * n + k * n);
+                let inputs = (10_000_000 / pb_size).max(1);
+                (0..inputs)
+                    .map(|_| {
+                        let a = Tensor::zero_aligned_dt(
+                            dt,
+                            &[mm.a_pack().len(k, m)],
+                            mm.a_pack().alignment(),
+                        )
                         .unwrap();
-                let b =
-                    Tensor::zero_aligned_dt(dt, &[mm.b_pack().len(k, n)], mm.b_pack().alignment())
+                        let b = Tensor::zero_aligned_dt(
+                            dt,
+                            &[mm.b_pack().len(k, n)],
+                            mm.b_pack().alignment(),
+                        )
                         .unwrap();
-                let c = Tensor::zero_dt(dt, &[m, n]).unwrap();
-                let pa = mm.a_packed(dt.size_of(), k).wrap(&a.view());
-                let pb = mm.b_packed(dt.size_of(), k).wrap(&b.view()).unwrap();
-                let pc = mm.c_view(0, 1).wrap(&c.view());
-                let scratch = mm.allocate_scratch_space();
-                (scratch, a, b, c, pa, pb, pc)
+                        let c = Tensor::zero_dt(dt, &[m, n]).unwrap();
+                        let pa = mm.a_packed(dt.size_of(), k).wrap(&a.view());
+                        let pb = mm.b_packed(dt.size_of(), k).wrap(&b.view()).unwrap();
+                        let pc = mm.c_view(0, 1).wrap(&c.view());
+                        let scratch = mm.allocate_scratch_space();
+                        (scratch, a, b, c, pa, pb, pc)
+                    })
+                    .collect()
             },
-            |(mut scratch, _, _, _, pa, pb, pc)| {
+            |input| {
                 mm.run_with_scratch_space(
                     m,
                     n,
-                    scratch.as_mut(),
-                    &[FusedSpec::AddMatMul { a: pa, b: pb.clone(), k }, FusedSpec::Store(pc)],
+                    input.0.as_mut(),
+                    &[
+                        FusedSpec::AddMatMul { a: input.4.clone(), b: input.5.clone(), k },
+                        FusedSpec::Store(input.6.clone()),
+                    ],
                 )
                 .unwrap();
             },
@@ -297,7 +313,7 @@ fn display_comparison(m: usize, k: usize, n: usize, alts: &[(&str, f64)], choice
 fn main() {
     use clap::*;
 
-     let mut probe =
+    let mut probe =
         readings_probe::Probe::new(std::fs::File::create("readings.out").unwrap()).unwrap();
     probe.spawn_heartbeat(std::time::Duration::from_millis(1000)).unwrap();
 
@@ -395,7 +411,7 @@ fn main() {
         ),
         chunks_min_count: matches.value_of_t("chunks-min-count").unwrap(),
         chunks_max_count: matches.value_of_t("chunks-max-count").unwrap(),
-        probe
+        probe,
     };
 
     let impls = tract_linalg::ops().mmm_f32_impls().iter().collect_vec();
