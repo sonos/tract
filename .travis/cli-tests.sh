@@ -55,7 +55,7 @@ cd $CACHEDIR
 )
 
 ./target/release/tract $CACHEDIR/squeezenet.onnx \
-    run -q --assert-output 1,1000,1,1,f32
+    run -q --assert-output-fact 1,1000,1,1,f32
 
 ./target/release/tract \
     $CACHEDIR/inception_v3_2016_08_28_frozen.pb \
