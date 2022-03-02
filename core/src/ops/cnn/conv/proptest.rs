@@ -25,7 +25,6 @@ impl ConvProblem {
     }
 
     fn reference(&self) -> ArrayD<f32> {
-        use num_integer::Integer;
         setup_test_logger();
         assert_eq!(self.data.shape(), &*self.shape_in.shape, "inconsistent shapes in test");
         let n = *self.shape_in.n().clone().unwrap_or(&1);
@@ -37,14 +36,14 @@ impl ConvProblem {
         let (shape_out, left_pads): (TVec<_>, TVec<_>) = if self.pad == PaddingSpec::Valid {
             izip!(self.shape_in.hw_dims(), self.geo_ker(), &self.strides)
                 .map(|(i, k, s)| {
-                    let out = (*i + 1).saturating_sub(*k).div_ceil(&s);
+                    let out = (*i + 1).saturating_sub(*k).divceil(*s);
                     (out, 0)
                 })
                 .unzip()
         } else {
             izip!(self.shape_in.hw_dims(), self.geo_ker(), &self.strides)
                 .map(|(input, k, stride)| {
-                    let out = input.div_ceil(stride);
+                    let out = input.divceil(*stride);
                     let pad = ((out - 1) * stride + k).saturating_sub(*input);
                     (out, pad / 2)
                 })
