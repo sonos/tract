@@ -11,7 +11,7 @@ case $ARCH in
     ;;
     armv7)
         MUSL_TRIPLE=armv7l-linux-musleabihf
-        RUST_TRIPLE=armv7-unknown-linux-musleabi
+        RUST_TRIPLE=armv7-unknown-linux-musleabihf
     ;;
     *)
         exit "Can't build with musl for $ARCH"
