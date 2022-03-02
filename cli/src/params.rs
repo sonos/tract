@@ -164,7 +164,7 @@ impl Parameters {
                 info_usage("loaded framework (kaldi)", probe);
                 let mut graph = kaldi.proto_model_for_read(&mut *location.read()?)?;
                 info_usage("proto model loaded", probe);
-                if let Some(i) = matches.value_of("kaldi_adjust_final_offset") {
+                if let Some(i) = matches.value_of("kaldi-adjust-final-offset") {
                     graph.adjust_final_offset = i.parse()?;
                 }
                 let parsed = kaldi.model_for_proto_model(&graph)?;
@@ -239,7 +239,7 @@ impl Parameters {
                 }
                 let mut model_and_ext = tf.parse_graph(&graph)?;
                 model_and_ext.1.initializing_nodes = matches
-                    .values_of("tf_initializer_output_node")
+                    .values_of("tf-initializer-output-node")
                     .map(|values| {
                         values
                             .map(|name| model_and_ext.0.node_id_by_name(name))
@@ -446,7 +446,7 @@ impl Parameters {
             }
         }
 
-        if let Some(bundle) = matches.values_of("input_bundle") {
+        if let Some(bundle) = matches.values_of("input-bundle") {
             for input in bundle {
                 let mut npz = ndarray_npy::NpzReader::new(
                     std::fs::File::open(input).with_context(|| format!("opening {:?}", input))?,
@@ -526,7 +526,7 @@ impl Parameters {
             )?
         }
 
-        if let Some(tc) = matches.value_of("onnx_test_data_set") {
+        if let Some(tc) = matches.value_of("onnx-test-data-set") {
             Self::use_onnx_test_case_data_set(
                 raw_model,
                 &mut input_values,
@@ -535,7 +535,7 @@ impl Parameters {
             )?
         }
 
-        let const_inputs = matches.values_of("const_input").map(|c| c.collect()).unwrap_or(vec![]);
+        let const_inputs = matches.values_of("const-input").map(|c| c.collect()).unwrap_or(vec![]);
         for i in (0..raw_model.inputs.len()).rev() {
             let input = raw_model.inputs[i];
             let name = raw_model.node_name(input.node);
@@ -571,7 +571,7 @@ impl Parameters {
             matches.value_of("pulse").map(|s| s.parse::<usize>()).transpose()?;
         #[cfg(feature = "pulse")]
         let concretize_stream_dim: Option<usize> =
-            matches.value_of("concretize_stream_dim").map(|s| s.parse()).transpose()?;
+            matches.value_of("concretize-stream-dim").map(|s| s.parse()).transpose()?;
 
         let stop_at = matches.value_of("pass").unwrap_or(if matches.is_present("optimize") {
             "optimize"
@@ -579,7 +579,7 @@ impl Parameters {
             "before-optimize"
         });
 
-        let nnef_cycle = matches.is_present("nnef_cycle");
+        let nnef_cycle = matches.is_present("nnef-cycle");
 
         info!("Will stop at {}", stop_at);
 
@@ -642,7 +642,7 @@ impl Parameters {
 
         stage!("analyse", inference_model -> inference_model,
         |mut m:InferenceModel| -> TractResult<_> {
-            let result = m.analyse(matches.is_present("analyse_fail_fast"));
+            let result = m.analyse(matches.is_present("analyse-fail-fast"));
             match result {
                 Ok(_) => Ok(m),
                 Err(e) => Err(ModelBuildingError(Box::new(m), e.into()).into())
@@ -655,7 +655,7 @@ impl Parameters {
         stage!("type", inference_model -> typed_model, |m:InferenceModel| Ok(m.into_typed()?));
         stage!("declutter", typed_model -> typed_model, |mut m:TypedModel| {
             let mut dec = tract_core::optim::Optimizer::declutter();
-            if let Some(steps) = matches.value_of("declutter_step") {
+            if let Some(steps) = matches.value_of("declutter-step") {
                 dec = dec.stopping_at(steps.parse()?);
             }
             dec.optimize(&mut m)?;
@@ -682,7 +682,7 @@ impl Parameters {
             });
             stage!("nnef-declutter", typed_model -> typed_model, |m:TypedModel| Ok(m.into_decluttered()?));
         }
-        if let Some(sub) = matches.value_of("extract_decluttered_sub") {
+        if let Some(sub) = matches.value_of("extract-decluttered-sub") {
             stage!("extract", typed_model -> typed_model, |m:TypedModel| {
                 let node = m.node_id_by_name(sub)?;
                 Ok(m.nested_models(node)[0].1.downcast_ref::<TypedModel>().unwrap().clone())
@@ -691,7 +691,7 @@ impl Parameters {
         stage!("before-optimize", typed_model -> typed_model, |m:TypedModel| Ok(m));
         stage!("optimize", typed_model -> typed_model, |mut m:TypedModel| {
             let mut opt = tract_core::optim::Optimizer::codegen();
-            if let Some(steps) = matches.value_of("optimize_step") {
+            if let Some(steps) = matches.value_of("optimize-step") {
                 opt = opt.stopping_at(steps.parse()?);
             }
             opt.optimize(&mut m)?;
@@ -711,7 +711,7 @@ impl Parameters {
         info_usage("model loaded", probe);
 
         let (need_tensorflow_model, need_reference_model) = match matches.subcommand() {
-            ("compare", Some(sm)) => {
+            Some(("compare", sm)) => {
                 if let Some(with) = sm.value_of("stage") {
                     (false, Some(with))
                 } else {
@@ -758,17 +758,17 @@ impl Parameters {
             }
         }
 
-        if let Some(inputs) = matches.values_of("input_node") {
+        if let Some(inputs) = matches.values_of("input-node") {
             let inputs: Vec<&str> = inputs.map(|s| s).collect();
             raw_model.set_input_names(&inputs)?;
         };
 
-        if let Some(outputs) = matches.values_of("output_node") {
+        if let Some(outputs) = matches.values_of("output-node") {
             let outputs: Vec<&str> = outputs.map(|s| s).collect();
             raw_model.set_output_names(&outputs)?;
         };
 
-        if let Some(override_facts) = matches.values_of("override_fact") {
+        if let Some(override_facts) = matches.values_of("override-fact") {
             for fact in override_facts {
                 let (name, fact) = tensor::for_string(fact)?;
                 let node = raw_model.node_id_by_name(&name.unwrap())?;
@@ -797,15 +797,15 @@ impl Parameters {
 
         let mut assertions = Assertions::from_clap(matches, &*output_names_and_labels)?;
 
-        if let Some(sub) = matches.value_of("kaldi_downsample") {
+        if let Some(sub) = matches.value_of("kaldi-downsample") {
             dispatch_model_mut_no_pulse!(raw_model, |m| Self::kaldi_downsample(m, sub.parse()?))?;
         }
 
-        if matches.value_of("kaldi_left_context").is_some()
-            || matches.value_of("kaldi_right_context").is_some()
+        if matches.value_of("kaldi-left-context").is_some()
+            || matches.value_of("kaldi-right-context").is_some()
         {
-            let left = matches.value_of("kaldi_left_context").unwrap_or("0").parse()?;
-            let right = matches.value_of("kaldi_right_context").unwrap_or("0").parse()?;
+            let left = matches.value_of("kaldi-left-context").unwrap_or("0").parse()?;
+            let right = matches.value_of("kaldi-right-context").unwrap_or("0").parse()?;
             dispatch_model_mut_no_pulse!(raw_model, |m| Self::kaldi_context(m, left, right))?;
         }
 
@@ -843,7 +843,7 @@ impl Parameters {
                 tf_model,
                 input_values,
                 assertions,
-                machine_friendly: matches.is_present("machine_friendly"),
+                machine_friendly: matches.is_present("machine-friendly"),
                 multiturn: matches.is_present("multiturn"),
             }
         })
@@ -855,10 +855,16 @@ pub struct BenchLimits {
     pub max_time: std::time::Duration,
 }
 
+impl Default for BenchLimits {
+    fn default() -> Self {
+        BenchLimits { max_iters: 100_000, max_time: std::time::Duration::from_secs(5) }
+    }
+}
+
 impl BenchLimits {
     pub fn from_clap(matches: &clap::ArgMatches) -> CliResult<BenchLimits> {
         let max_iters =
-            matches.value_of("max_iters").map(usize::from_str).transpose()?.unwrap_or(100_000);
+            matches.value_of("max-iters").map(usize::from_str).transpose()?.unwrap_or(100_000);
         let max_time = matches
             .value_of("max-time")
             .map(u64::from_str)
@@ -882,11 +888,11 @@ pub fn display_params_from_clap(
         quiet: matches.is_present("quiet"),
         natural_order: matches.is_present("natural-order"),
         debug_op: matches.is_present("debug-op"),
-        node_ids: matches.values_of("node_id").map(|values| {
+        node_ids: matches.values_of("node-id").map(|values| {
             values.map(|id| tvec!((id.parse::<usize>().unwrap(), "".to_string()))).collect()
         }),
-        node_name: matches.value_of("node_name").map(String::from),
-        op_name: matches.value_of("op_name").map(String::from),
+        node_name: matches.value_of("node-name").map(String::from),
+        op_name: matches.value_of("op-name").map(String::from),
         //        successors: matches.value_of("successors").map(|id| id.parse().unwrap()),
         expect_core: root_matches.value_of("pass").unwrap_or("declutter") == "declutter"
             && !root_matches.is_present("optimize"),
@@ -915,7 +921,7 @@ impl Assertions {
         matches: &clap::ArgMatches,
         output_names: &[Vec<String>],
     ) -> CliResult<Assertions> {
-        if let Some(sub) = matches.subcommand.as_ref().map(|sub| &sub.matches) {
+        if let Some(sub) = matches.subcommand().as_ref().map(|sub| &sub.1) {
             let mut assert_outputs: Vec<Option<Arc<Tensor>>> = vec![None; output_names.len()];
             if let Some(values) = sub.values_of("assert-output") {
                 for (ix, o) in values.enumerate() {
@@ -952,7 +958,7 @@ impl Assertions {
                 }
             }
 
-            if sub.values_of("assert_output").is_some()
+            if sub.values_of("assert-output").is_some()
                 || sub.values_of("assert-output-bundle").is_some()
             {
                 if assert_outputs.contains(&None) {

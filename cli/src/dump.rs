@@ -13,6 +13,8 @@ pub fn handle(
     bench_limits: &BenchLimits,
     _inner: Vec<String>,
 ) -> CliResult<()> {
+    dbg!(&matches);
+    dbg!(&sub_matches);
     let model = &*params.tract_model;
     let mut annotations = Annotations::from_model(model)?.with_graph_def(model, &params.graph)?;
     if options.cost {
