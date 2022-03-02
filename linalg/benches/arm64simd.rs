@@ -1,4 +1,5 @@
 #![allow(dead_code, non_upper_case_globals, unused_macros, non_snake_case, unused_assignments)]
+#![feature(aarch64_target_feature)]
 
 use std::arch::asm;
 
@@ -13,9 +14,7 @@ lazy_static::lazy_static! {
     static ref TICK: f64 = unsafe { b8192!(asm!("orr x20, x20, x20", out("x20") _)) };
 }
 
-pub unsafe fn ld_64F32(filter: Option<&str>) {
-    println!("freq {:.2}GHz\n", 1e-9 / *TICK);
-
+pub unsafe fn armv8(filter: Option<&str>) {
     macro_rules! s32 {
         ($label: literal, $n: expr, $stmt:block) => {
             if $label.contains(filter.unwrap_or("")) {
@@ -749,6 +748,98 @@ macro_rules! kloop {
     }
 }
 
+fn has_asimdhp() -> bool {
+    std::fs::read_to_string("/proc/cpuinfo").unwrap().contains("asimdhp")
+}
+
+#[target_feature(enable="fp16")]
+pub unsafe fn asimdhp(filter: Option<&str>) {
+    macro_rules! s32 {
+        ($label: literal, $n: expr, $stmt:block) => {
+            if $label.contains(filter.unwrap_or("")) {
+                println!("{:40} {:.2}", $label, b32!($stmt) / $n as f64 / *TICK);
+            }
+        };
+    }
+
+    s32!("fmlahp", 16, {
+        asm!(" fmla v0.8h, v0.8h, v0.8h
+               fmla v1.8h, v1.8h, v1.8h
+               fmla v2.8h, v2.8h, v2.8h
+               fmla v3.8h, v3.8h, v3.8h
+               fmla v4.8h, v4.8h, v4.8h
+               fmla v5.8h, v5.8h, v5.8h
+               fmla v6.8h, v6.8h, v6.8h
+               fmla v7.8h, v7.8h, v7.8h
+               fmla v8.8h, v8.8h, v8.8h
+               fmla v9.8h, v9.8h, v9.8h
+               fmla v10.8h,v10.8h,v10.8h
+               fmla v11.8h,v11.8h,v11.8h
+               fmla v12.8h,v12.8h,v12.8h
+               fmla v13.8h,v13.8h,v13.8h
+               fmla v14.8h,v14.8h,v14.8h
+               fmla v15.8h,v15.8h,v15.8h ",
+        out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+        out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+        out("v8") _, out("v9") _, out("v10") _, out("v11") _,
+        out("v12") _, out("v13") _, out("v14") _, out("v15") _,
+        )
+    });
+    
+    s32!("fcvt", 16, {
+        asm!(" fcvtn v0.4h,  v0.4s 
+               fcvtn v1.4h,  v1.4s 
+               fcvtn v2.4h,  v2.4s 
+               fcvtn v3.4h,  v3.4s 
+               fcvtn v4.4h,  v4.4s 
+               fcvtn v5.4h,  v5.4s 
+               fcvtn v6.4h,  v6.4s 
+               fcvtn v7.4h,  v7.4s 
+               fcvtn v8.4h,  v8.4s 
+               fcvtn v9.4h,  v9.4s 
+               fcvtn v10.4h, v10.4s
+               fcvtn v11.4h, v11.4s
+               fcvtn v12.4h, v12.4s
+               fcvtn v13.4h, v13.4s
+               fcvtn v14.4h, v14.4s
+               fcvtn v15.4h, v15.4s",
+        out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+        out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+        out("v8") _, out("v9") _, out("v10") _, out("v11") _,
+        out("v12") _, out("v13") _, out("v14") _, out("v15") _,
+        )
+    });
+
+    s32!("fcvt2", 16, {
+        asm!(" fcvtn2 v0.8h,  v0.4s 
+               fcvtn2 v1.8h,  v1.4s 
+               fcvtn2 v2.8h,  v2.4s 
+               fcvtn2 v3.8h,  v3.4s 
+               fcvtn2 v4.8h,  v4.4s 
+               fcvtn2 v5.8h,  v5.4s 
+               fcvtn2 v6.8h,  v6.4s 
+               fcvtn2 v7.8h,  v7.4s 
+               fcvtn2 v8.8h,  v8.4s 
+               fcvtn2 v9.8h,  v9.4s 
+               fcvtn2 v10.8h, v10.4s
+               fcvtn2 v11.8h, v11.4s
+               fcvtn2 v12.8h, v12.4s
+               fcvtn2 v13.8h, v13.4s
+               fcvtn2 v14.8h, v14.4s
+               fcvtn2 v15.8h, v15.4s",
+        out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+        out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+        out("v8") _, out("v9") _, out("v10") _, out("v11") _,
+        out("v12") _, out("v13") _, out("v14") _, out("v15") _,
+        )
+    });
+
+    s32!("fmlahp_with_dep", 1, { asm!("fmla v0.8h, v0.8h, v0.8h", out("v0") _) });
+    s32!("fcvtn_with_dep", 1, { asm!("fcvtn v0.4h, v0.4s", out("v0") _) });
+    s32!("fcvtn2_with_dep", 1, { asm!("fcvtn2 v0.8h, v0.4s", out("v0") _) });
+}
+
+
 unsafe fn packed_packed_8x8(f: Option<&str>) {
     kloop!(f, "8x8x1", 64, "arm64simd_mmm_f32_8x8/packed_packed_loop1/naive.tmpli");
     kloop!(f, "8x8x1", 64, "arm64simd_mmm_f32_8x8/packed_packed_loop1/broken_chains.tmpli");
@@ -788,9 +879,14 @@ unsafe fn packed_packed_64x1(f: Option<&str>) {
 }
 
 fn main() {
+    println!("freq {:.2}GHz\n", 1e-9 / *TICK);
+
     let filter = std::env::args().skip(1).filter(|a| a != "--bench").next();
     unsafe {
-        ld_64F32(filter.as_deref());
+        armv8(filter.as_deref());
+        if has_asimdhp() {
+            asimdhp(filter.as_deref());
+        }
         packed_packed_8x8(filter.as_deref());
         packed_packed_12x8(filter.as_deref());
         packed_packed_16x4(filter.as_deref());
