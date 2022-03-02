@@ -795,7 +795,10 @@ impl Parameters {
             })
             .collect();
 
-        let mut assertions = Assertions::from_clap(matches, &*output_names_and_labels)?;
+        let mut assertions = match matches.subcommand() {
+            Some(("dump" | "run", sm)) => Assertions::from_clap(&sm, &*output_names_and_labels)?,
+            _ => Assertions::default(),
+        };
 
         if let Some(sub) = matches.value_of("kaldi-downsample") {
             dispatch_model_mut_no_pulse!(raw_model, |m| Self::kaldi_downsample(m, sub.parse()?))?;
@@ -909,7 +912,7 @@ pub fn display_params_from_clap(
     })
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Assertions {
     pub assert_outputs: Vec<Option<Arc<Tensor>>>,
     pub assert_output_facts: Option<Vec<InferenceFact>>,

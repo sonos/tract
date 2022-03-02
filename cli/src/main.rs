@@ -185,60 +185,26 @@ fn main() -> tract_core::anyhow::Result<()> {
         .arg(Arg::new("steps").long("steps").help("Show all inputs and outputs"))
         .arg(
             Arg::new("set")
-            .long("set")
-            .takes_value(true)
-            .multiple_occurrences(true)
-            .number_of_values(1)
-            .help("Set a symbol value (--set S=12)")
-            )
+                .long("set")
+                .takes_value(true)
+                .multiple_occurrences(true)
+                .number_of_values(1)
+                .help("Set a symbol value (--set S=12)"),
+        )
         .arg(
             Arg::new("save-steps")
-            .long("save-steps")
-            .takes_value(true)
-            .help("Save intermediary values"),
-            )
+                .long("save-steps")
+                .takes_value(true)
+                .help("Save intermediary values"),
+        )
         .arg(
             Arg::new("assert-sane-floats")
-            .long("assert-sane-floats")
-            .help("Check float for NaN and infinites at each step"),
-            )
-        .arg(
-            Arg::new("assert-output-bundle")
-            .takes_value(true)
-            .long("assert-output-bundle")
-            .help("Checks values against these tensor (.npz)"),
-            )
-        .arg(
-            Arg::new("assert-output-count")
-            .takes_value(true)
-            .long("assert-output-count")
-            .help("Check the number of outputs found."),
-            )
-        .arg(
-            Arg::new("assert-output")
-            .takes_value(true)
-            .long("assert-output")
-            .multiple_occurrences(true)
-            .number_of_values(1)
-            .help("Fact to check the ouput tensor against (@filename, or 3x4xf32)"),
-            )
-        .arg(
-            Arg::new("assert-op-count")
-            .takes_value(true)
-            .forbid_empty_values(true)
-            .number_of_values(2)
-            .value_names(&["operator", "count"])
-            .multiple_occurrences(true)
-            .long("assert-op-count")
-            .help("Specified operator must appear exactly the specified number of times. This argument can appear multiple times."),
-            )
-        .arg(
-            Arg::new("assert-output-fact")
-            .takes_value(true)
-            .long("assert-output-fact")
-            .help("Infered shape and datum type must match exactly this"),
-            );
-    app = app.subcommand(output_options(run));
+                .long("assert-sane-floats")
+                .help("Check float for NaN and infinites at each step"),
+        );
+    let run = output_options(run);
+    let run = assertions_options(run);
+    app = app.subcommand(run);
 
     let optimize = clap::Command::new("optimize").about("Optimize the graph");
     app = app.subcommand(output_options(optimize));
@@ -327,18 +293,47 @@ fn dump_subcommand<'a>() -> clap::Command<'a> {
             .help("Dump the network definition (without the weights) as a graph.nnef-like file"),
             )
         .arg(
-            Arg::new("assert-output")
+            Arg::new("inner")
             .takes_value(true)
-            .multiple_occurrences(true)
             .number_of_values(1)
-            .long("assert-output")
-            .help("Fact to check the ouput tensor against (@filename, or 3x4xf32)"),
-            )
+            .multiple_occurrences(true)
+            .long("inner")
+            .help("Navigate to a sub-model"),
+            );
+    let dump = output_options(dump);
+    let dump = assertions_options(dump);
+    let dump = benchlimits_options(dump);
+    dump
+}
+
+fn assertions_options(command: clap::Command) -> clap::Command {
+    use clap::*;
+    command
+        .arg(
+            Arg::new("assert-output")
+                .takes_value(true)
+                .multiple_occurrences(true)
+                .number_of_values(1)
+                .long("assert-output")
+                .help("Fact to check the ouput tensor against (@filename, or 3x4xf32)"),
+        )
+        .arg(
+            Arg::new("assert-output-bundle")
+                .takes_value(true)
+                .long("assert-output-bundle")
+                .help("Checks values against these tensor (.npz)"),
+        )
         .arg(
             Arg::new("assert-output-fact")
             .takes_value(true)
             .long("assert-output-fact")
             .help("Infered shape and datum type must match exactly this"),
+            )
+        .arg(
+            Arg::new("assert-output-count")
+            .takes_value(true)
+            .long("assert-output-count")
+            .help("Check the number of outputs found."),
             )
         .arg(
             Arg::new("assert-op-count")
@@ -350,17 +345,6 @@ fn dump_subcommand<'a>() -> clap::Command<'a> {
             .long("assert-op-count")
             .help("Specified operator must appear exactly the specified number of times. This argument can appear multiple times."),
             )
-        .arg(
-            Arg::new("inner")
-            .takes_value(true)
-            .number_of_values(1)
-            .multiple_occurrences(true)
-            .long("inner")
-            .help("Navigate to a sub-model"),
-            );
-    let dump = output_options(dump);
-    let dump = benchlimits_options(dump);
-    dump
 }
 
 fn benchlimits_options(command: clap::Command) -> clap::Command {
