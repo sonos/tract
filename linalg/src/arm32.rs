@@ -1,6 +1,7 @@
 use std::{env, fs};
 pub mod armv7neon;
 mod armvfpv2;
+mod cortex_a7;
 mod cortex_a9;
 use crate::frame::ElementWiseImpl;
 use armv7neon::*;
@@ -61,17 +62,14 @@ pub fn plug(ops: &mut Ops) {
         };
 
         ops.mmm_f32 = match cpu {
-            0xc07 => Box::new(|m, k, n| {
-                if prefer_8x4(m, k, n) {
-                    armv7neon::armv7neon_mmm_f32_8x4_cortexa7::mmm()
-                } else {
-                    armv7neon::armv7neon_mmm_f32_8x6_cortexa7::mmm()
-                }
-            }),
-            0xc09 => Box::new(move |m, k, n| {
+            0xc07 => {
+                let model = cortex_a7::model();
+                Box::new(move |m, k, n| model.pick(&impls, m.unwrap(), k.unwrap(), n.unwrap()))
+            }
+            0xc09 => {
                 let model = cortex_a9::model();
-                model.pick(&impls, m.unwrap(), k.unwrap(), n.unwrap())
-            }),
+                Box::new(move |m, k, n| model.pick(&impls, m.unwrap(), k.unwrap(), n.unwrap()))
+            }
             _ => Box::new(|m, k, n| {
                 if prefer_8x4(m, k, n) {
                     armv7neon::armv7neon_mmm_f32_8x4_generic::mmm()

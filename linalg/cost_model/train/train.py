@@ -6,13 +6,13 @@ from torch import nn
 
 
 class Dataset:
-    def __init__(self, data, kernels, platform="a53"):
+    def __init__(self, data, kernels, platform="cortex_a53"):
         self.data = data
         self.kernels = kernels
         self.platform = platform
 
     @classmethod
-    def from_tract_outputs(cls, input_file, platform="a53"):
+    def from_tract_outputs(cls, input_file, platform="cortex_a53"):
         kernels = set()
         mkn = set()
         params = []
@@ -281,20 +281,34 @@ def train_one_mlp(
 
 
 PASS_TESTS = {
-    "a9": [
+    "cortex_a7": [
+        ([16, 60, 8], "armv7neon_mmm_f32_8x4_cortexa7"),
+        ([16, 64, 8], "armv7neon_mmm_f32_8x4_cortexa7"),
+#         ([2, 32, 8], "generic_f32_4x4"),
+        ([64, 48, 8], "armv7neon_mmm_f32_8x4_cortexa7"),
+        ([256, 768, 6], "armv7neon_mmm_f32_8x6_cortexa7"),
+    ],
+    "cortex_a9": [
         ([16, 60, 8], "armv7neon_mmm_f32_8x4_cortexa9"),
         ([16, 64, 8], "armv7neon_mmm_f32_8x4_cortexa9"),
 #         ([2, 32, 8], "generic_f32_4x4"),
         ([64, 48, 8], "armv7neon_mmm_f32_8x4_cortexa9"),
         ([256, 768, 6], "armv7neon_mmm_f32_8x6_cortexa9"),
     ],
-    "a53": [
+    "cortex_a53": [
         ([16, 60, 8], "arm64simd_mmm_f32_8x8_a53"),
         ([16, 64, 8], "arm64simd_mmm_f32_8x8_a53"),
         ([2, 32, 8], "arm64simd_mmm_f32_8x8_a53"),
         ([64, 48, 8], "arm64simd_mmm_f32_8x8_a53"),
         ([256, 768, 4], "arm64simd_mmm_f32_24x4_a53"),
-    ]
+    ],
+    "cortex_a55": [
+        ([16, 60, 8], "arm64simd_mmm_f32_8x8_a55"),
+        ([16, 64, 8], "arm64simd_mmm_f32_8x8_a55"),
+        ([2, 32, 8], "arm64simd_mmm_f32_8x8_a55"),
+        ([64, 48, 8], "arm64simd_mmm_f32_8x8_a53"),
+        ([256, 768, 4], "arm64simd_mmm_f32_16x4_a55"),
+    ],
 }
 
 
@@ -314,7 +328,7 @@ def main():
     parser.add_argument(
         "-N", "--num-trainings", type=int, default=1, help="Number of trainings.",
     )
-    parser.add_argument("--platform", default="a53", choices=["a9", "a53"], help="Platform")
+    parser.add_argument("--platform", default="cortex_a53", choices=PASS_TESTS.keys(), help="Platform")
     parser.add_argument("dataset")
     parser.add_argument("output_rs")
     args = parser.parse_args()
@@ -340,7 +354,7 @@ def main():
             if dataset.kernels[int(y)][0] == ker:
                 num_passed += 1
             else:
-                print(mkn, dataset.kernels[int(y)], ker)
+                print(f"for {mkn} predicted: {dataset.kernels[int(y)]}, expected: {ker}")
         passed = num_passed == len(tests)
         color = 92 if passed else 91
         print(
