@@ -7,5 +7,5 @@ edition = "2018"
 
 [dependencies]
 ndarray = "0.15.4"
-tokenizers = "0.10.1"
+tokenizers = "0.11.0"
 tract-onnx = { path = "../../onnx" }
