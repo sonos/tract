@@ -1,7 +1,6 @@
 name: Windows unit tests
 
 on:
-  pull_request:
   schedule:
     - cron:  '0 3 * * *'
 
