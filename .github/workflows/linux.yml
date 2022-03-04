@@ -17,7 +17,7 @@ jobs:
       RUST_BACKTRACE: full
       RUSTC_WRAPPER: sccache
       SCCACHE_CACHE_SIZE: 2G
-      SCCACHE_DIR: ~/.cache/sccache
+      SCCACHE_DIR: /home/runner/.cache/sccache
 
     steps:
     - uses: actions/checkout@v1
@@ -27,7 +27,7 @@ jobs:
           ~/.rustup
           ~/.cargo/registry
           ~/.cargo/git
-          ~/.cache/sccache
+          /home/runner/.cache/sccache
         key: ${{ runner.os }}-cargo-${{matrix.rust}}
 
     - name: Install sccache (ubuntu-latest)
