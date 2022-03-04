@@ -39,6 +39,7 @@ jobs:
         mkdir -p $HOME/.local/bin
         curl -L "$LINK/$SCCACHE_VERSION/$SCCACHE_FILE.tar.gz" | tar xz
         mv -f $SCCACHE_FILE/sccache $HOME/.local/bin/sccache
+        chmod +x $HOME/.local/bin/sccache
         echo "$HOME/.local/bin" >> $GITHUB_PATH
         ls -l $HOME/.local/bin
         find $HOME/.local/bin
