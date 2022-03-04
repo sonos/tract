@@ -44,8 +44,10 @@ jobs:
         echo "$HOME/.local/bin" >> $GITHUB_PATH
         ls -l $HOME/.local/bin
         find $HOME/.local/bin
+
     - name: Start sccache server
-      run: sccache --start-server
+      run:
+        SCCACHE_ERROR_LOG=/tmp/sccache_log.txt SCCACHE_LOG=debug sccache --start-server || cat /tmp/sccache_log.txt 
     - name: Native script
       run: .travis/regular-tests.sh
       env:
