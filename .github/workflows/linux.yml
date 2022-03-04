@@ -35,6 +35,7 @@ jobs:
         LINK: https://github.com/mozilla/sccache/releases/download
         SCCACHE_VERSION: v0.2.15
       run: |
+        echo $HOME
         SCCACHE_FILE=sccache-$SCCACHE_VERSION-x86_64-unknown-linux-musl
         mkdir -p $SCCACHE_DIR
         mkdir -p $HOME/.local/bin
