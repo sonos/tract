@@ -89,14 +89,18 @@ impl Kind {
 
 pub fn plug(ops: &mut Ops) {
     let impls = vec![
-        arm64simd_mmm_f32_12x8_a53::mmm(),
         arm64simd_mmm_f32_12x8_gen::mmm(),
-        arm64simd_mmm_f32_8x8_a53::mmm(),
+        arm64simd_mmm_f32_12x8_a53::mmm(),
+        arm64simd_mmm_f32_12x8_a55::mmm(),
         arm64simd_mmm_f32_8x8_gen::mmm(),
-        arm64simd_mmm_f32_16x4_a53::mmm(),
+        arm64simd_mmm_f32_8x8_a53::mmm(),
+        arm64simd_mmm_f32_8x8_a55::mmm(),
         arm64simd_mmm_f32_16x4_gen::mmm(),
-        arm64simd_mmm_f32_24x4_a53::mmm(),
+        arm64simd_mmm_f32_16x4_a53::mmm(),
+        arm64simd_mmm_f32_16x4_a55::mmm(),
         arm64simd_mmm_f32_24x4_gen::mmm(),
+        arm64simd_mmm_f32_24x4_a53::mmm(),
+        arm64simd_mmm_f32_24x4_a55::mmm(),
         crate::generic::mmm::generic_f32_4x4::mmm(),
     ];
     ops.mmm_f32_impls = impls.clone();
