@@ -18,7 +18,6 @@ pub type TractResult<T> = anyhow::Result<T>;
 pub mod prelude {
     pub use crate::datum::{round_ties_to_even, Blob, Datum, DatumType, QParams};
     pub use crate::dim::{Symbol, SymbolValues, TDim, ToDim};
-    pub use crate::f16::*;
     pub use crate::tensor::litteral::*;
     pub use crate::tensor::{natural_strides, IntoArcTensor, IntoTensor, Tensor};
     pub use crate::tvec;
@@ -30,6 +29,7 @@ pub mod prelude {
     pub use crate::{TractError, TractResult};
     pub use num_complex::Complex;
     pub use itertools as tract_itertools;
+    pub use half::f16;
 }
 
 pub mod internal {
@@ -52,7 +52,6 @@ pub use half;
 
 mod datum;
 mod dim;
-mod f16;
 pub mod hash;
 mod scatter;
 mod tensor;

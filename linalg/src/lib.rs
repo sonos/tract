@@ -32,14 +32,28 @@ pub use self::frame::{element_wise, lut, mmm};
 use crate::frame::mmm::kernel::MatMatMulKer;
 use tract_data::prelude::*;
 
+type MMMImpl = 
+        Box<
+            dyn Fn(Option<usize>, Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul>
+                + Send
+                + Sync,
+        >;
+
+type MMVImpl = 
+        Box<
+            dyn Fn(Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul>
+                + Send
+                + Sync,
+        >;
+
 pub struct Ops {
     mmm_f32_impls: Vec<Box<dyn MatMatMul>>,
-    mmm_f32: Box<
-        dyn Fn(Option<usize>, Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul>
-            + Send
-            + Sync,
-    >,
-    mmv_f32: Box<dyn Fn(Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul> + Send + Sync>,
+    mmm_f32: MMMImpl,
+    mmv_f32: MMVImpl,
+
+    mmm_f16: MMMImpl,
+    mmv_f16: MMVImpl,
+
     qmmm_i32: Box<
         dyn Fn(Option<usize>, Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul>
             + Send
@@ -70,6 +84,9 @@ impl Ops {
             (F32, F32, F32) => {
                 Some(if n == Some(1) { (self.mmv_f32)(m, k) } else { (self.mmm_f32)(m, k, n) })
             }
+            (F16, F16, F16) => {
+                Some(if n == Some(1) { (self.mmv_f32)(m, k) } else { (self.mmm_f32)(m, k, n) })
+            }
             (I8, I8, I32) => {
                 Some(if n == Some(1) { (self.qmmv_i32)(m, k) } else { (self.qmmm_i32)(m, k, n) })
             }
@@ -86,6 +103,8 @@ pub fn generic() -> Ops {
         mmm_f32_impls: vec![generic::GenericMmm4x4::<f32, f32, f32>::mmm()],
         mmm_f32: Box::new(|_, _, _| generic::GenericMmm4x4::<f32, f32, f32>::mmm()),
         mmv_f32: Box::new(|_, _| generic::GenericMmm4x1::<f32, f32, f32>::mmm()),
+        mmm_f16: Box::new(|_, _, _| generic::GenericMmm4x4::<f16, f16, f16>::mmm()),
+        mmv_f16: Box::new(|_, _| generic::GenericMmm4x1::<f16, f16, f16>::mmm()),
         qmmm_i32: Box::new(|_, _, _| generic::GenericMmm4x4::<i8, i8, i32>::mmm()),
         qmmv_i32: Box::new(|_, _| generic::GenericMmm4x1::<i8, i8, i32>::mmm()),
         sigmoid_f32: Box::new(|| {
@@ -137,7 +156,6 @@ pub trait LADatum:
     + Sub<Output = Self>
     + Mul
     + AddAssign
-    + MulAssign
     + PartialOrd
     + Bounded
     + tract_data::prelude::Datum
@@ -150,6 +168,18 @@ pub trait LADatum:
 
 #[cfg(test)]
 use proptest::prelude::*;
+
+impl LADatum for f16 {
+    #[cfg(test)]
+    fn strat() -> BoxedStrategy<Self> {
+        f32::strat().prop_map(|f| f.as_()).boxed()
+    }
+    #[cfg(test)]
+    fn close(&self, other: &Self) -> bool {
+        (*self - *other).abs() < 0.001.as_()
+    }
+}
+
 impl LADatum for f32 {
     #[cfg(test)]
     fn strat() -> BoxedStrategy<Self> {

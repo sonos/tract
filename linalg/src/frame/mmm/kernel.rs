@@ -27,6 +27,21 @@ where
 }
 
 #[macro_export]
+macro_rules! test_mmm_kernel_f16 {
+    ($k: ident, $cond: expr) => {
+        paste! {
+            #[cfg(test)]
+            #[allow(non_snake_case)]
+            mod [<test_ $k>] {
+                mmm_kernel_tests!($cond, $k, f16, f16, f16, f16);
+                mmm_frame_tests!($cond, $k, f16, f16, f16, f16);
+                mmm_kernel_fuse_tests!($cond, $k, f16, f16);
+            }
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! test_mmm_kernel_f32 {
     ($k: ident, $cond: expr) => {
         paste! {
@@ -84,6 +99,8 @@ pub mod test {
                     use super::super::$ker;
                     use num_traits::Zero;
                     use proptest::prelude::*;
+                    #[allow(unused_imports)]
+                    use tract_data::prelude::f16;
                     #[allow(unused_imports)]
                     use crate::frame::mmm::kernel::test;
                     use crate::frame::mmm::kernel::test::PackedPackedProblem;

@@ -1,7 +1,7 @@
 //! `Tensor`, tract main data object of interest.
 use crate::datum::{round_ties_to_even, scale_by, Blob, ClampCast, Datum, DatumType, QParams};
 use crate::dim::TDim;
-use crate::f16::f16;
+use half::f16;
 use crate::TVec;
 use itertools::Itertools;
 use ndarray::prelude::*;

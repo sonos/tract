@@ -118,7 +118,7 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
         }
         self.uspecs.push(FKS::Done);
         if offset > self.layout.size() || align > self.layout.align() {
-            if!self.buffer.is_null() {
+            if !self.buffer.is_null() {
                 std::alloc::dealloc(self.buffer as _, self.layout);
             }
             self.layout = Layout::from_size_align_unchecked(offset, align);
@@ -317,7 +317,9 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                     for r in 0..m as isize {
                         for c in 0..n as isize {
                             let inner_offset = c * col_byte_stride + r * row_byte_stride;
-                            if inner_offset + tile_offset < (store.item_size * store.item_count) as isize {
+                            if inner_offset + tile_offset
+                                < (store.item_size * store.item_count) as isize
+                            {
                                 *tmp_d_tile.get_unchecked_mut(r as usize + c as usize * K::mr()) =
                                     *(tile_ptr.offset(inner_offset) as *const TI);
                             }

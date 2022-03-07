@@ -135,6 +135,8 @@ pub mod test {
                 #[allow(unused_imports)]
                 use crate::frame::mmm::fuse::test;
                 use crate::frame::mmm::fuse::test::tile;
+                #[allow(unused_imports)]
+                use tract_data::prelude::f16;
 
                 #[test]
                 fn return_zeros() {

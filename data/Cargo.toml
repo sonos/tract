@@ -16,7 +16,8 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 anyhow = "1.0.43"
 educe = "0.4.18"
-half = "1.8.2"
+#half = { version = "1.8.2", features = [ "std", "num-traits" ] }
+half = { git = "https://github.com/mathieupoumeyrolsonos/half-rs", features = [ "std", "num-traits" ] }
 itertools = "0.10.1"
 maplit = "1.0.2"
 ndarray = "0.15.3"

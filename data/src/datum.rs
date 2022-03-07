@@ -1,6 +1,6 @@
 //! `Tensor` is the main data container for tract
 use crate::dim::TDim;
-use crate::f16::f16;
+use half::f16;
 use crate::tensor::litteral::*;
 use crate::tensor::Tensor;
 use crate::TVec;
@@ -299,7 +299,7 @@ impl DatumType {
             DatumType::I16 => tensor0(i16::MIN),
             DatumType::I32 => tensor0(i32::MIN),
             DatumType::I64 => tensor0(i64::MIN),
-            DatumType::F16 => tensor0(f16(half::f16::MIN)),
+            DatumType::F16 => tensor0(f16::MIN),
             DatumType::F32 => tensor0(f32::MIN),
             DatumType::F64 => tensor0(f64::MIN),
             _ => panic!("No min value for datum type {:?}", self),
@@ -316,7 +316,7 @@ impl DatumType {
             DatumType::I32 => tensor0(i32::MAX),
             DatumType::I64 => tensor0(i64::MAX),
             DatumType::QI32(_) => tensor0(i32::MAX),
-            DatumType::F16 => tensor0(f16(half::f16::MAX)),
+            DatumType::F16 => tensor0(f16::MAX),
             DatumType::F32 => tensor0(f32::MAX),
             DatumType::F64 => tensor0(f64::MAX),
             _ => panic!("No max value for datum type {:?}", self),
