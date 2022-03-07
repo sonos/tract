@@ -510,6 +510,7 @@ where
 {
     match tile.item_size {
         1 => store_t::<u8, _, _>(tile, ab),
+        2 => store_t::<u16, _, _>(tile, ab),
         4 => store_t::<u32, _, _>(tile, ab),
         _ => unimplemented!(),
     }
@@ -545,6 +546,10 @@ where
         unimplemented!("Missing AddUnicast type");
     }
 }
+
+#[allow(non_camel_case_types)]
+pub type generic_f16_4x4 = GenericMmm4x4<f16, f16, f16>;
+test_mmm_kernel_f16!(generic_f16_4x4, true);
 
 #[allow(non_camel_case_types)]
 pub type generic_f32_4x4 = GenericMmm4x4<f32, f32, f32>;
