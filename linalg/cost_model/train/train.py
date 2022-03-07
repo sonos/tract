@@ -294,6 +294,7 @@ PASS_TESTS = {
 #         ([2, 32, 8], "generic_f32_4x4"),
         ([64, 48, 8], "armv7neon_mmm_f32_8x4_cortexa9"),
         ([256, 768, 6], "armv7neon_mmm_f32_8x6_cortexa9"),
+        ([512, 1536, 18], "armv7neon_mmm_f32_8x6_cortexa9"),
     ],
     "cortex_a53": [
         ([16, 60, 8], "arm64simd_mmm_f32_8x8_a53"),
