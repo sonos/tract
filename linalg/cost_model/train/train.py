@@ -345,9 +345,6 @@ def main():
         print(f"[{trained + 1}] Training MLP with {args.hidden_size} units...")
         accuracy, _, _, model = train_one_mlp(dataset, args.hidden_size)
         trained += 1
-        if accuracy > best_acc:
-            best_acc = accuracy
-            best = model
         num_passed = 0
         for mkn, ker in tests:
             x = dataset.get_classif_features_for(mkn)
@@ -357,6 +354,9 @@ def main():
             else:
                 print(f"for {mkn} predicted: {dataset.kernels[int(y)]}, expected: {ker}")
         passed = num_passed == len(tests)
+        if passed and accuracy > best_acc:
+            best_acc = accuracy
+            best = model
         color = 92 if passed else 91
         print(
             f"\tAccuracy: {accuracy:.1f}% ... \033[{color}mPASSED {num_passed} / {len(tests)}\033[0m"
