@@ -2,6 +2,8 @@
 
 set -ex
 
+rustup update
+
 ./.travis/regular-tests.sh
 
 cargo test -p tract-core --features paranoid_assertions
