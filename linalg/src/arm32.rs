@@ -64,11 +64,11 @@ pub fn plug(ops: &mut Ops) {
         ops.mmm_f32 = match cpu {
             0xc07 => {
                 let model = cortex_a7::model();
-                Box::new(move |m, k, n| model.pick(&impls, m.unwrap(), k.unwrap(), n.unwrap()))
+                Box::new(move |m, k, n| model.pick(&impls, m, k, n))
             }
             0xc09 => {
                 let model = cortex_a9::model();
-                Box::new(move |m, k, n| model.pick(&impls, m.unwrap(), k.unwrap(), n.unwrap()))
+                Box::new(move |m, k, n| model.pick(&impls, m, k, n))
             }
             _ => Box::new(|m, k, n| {
                 if prefer_8x4(m, k, n) {

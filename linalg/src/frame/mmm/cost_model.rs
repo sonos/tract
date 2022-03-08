@@ -13,6 +13,8 @@ fn order_f<F: tract_num_traits::Float>(&a: &F, &b: &F) -> std::cmp::Ordering {
 
 #[derive(Debug)]
 pub struct CostModel<'a> {
+    pub big_product_mkn_threshold: f32,
+    pub big_product_kernel_choice: &'a str,
     pub kernels: &'a [&'a str],
     pub mrs: &'a [u32],
     pub nrs: &'a [u32],
@@ -70,11 +72,20 @@ impl<'a> CostModel<'a> {
     pub fn pick(
         &self,
         impls: &[Box<dyn MatMatMul>],
-        m: usize,
-        k: usize,
-        n: usize,
+        m: Option<usize>,
+        k: Option<usize>,
+        n: Option<usize>,
     ) -> Box<dyn MatMatMul> {
-        let choice = self.predict(m, k, n);
-        impls.iter().find(|k| k.kernel_name() == choice).unwrap().clone()
+        if let (Some(m), Some(k), Some(n)) = (m, k, n) {
+            if (m as f32) * (k as f32) * (n as f32) < self.big_product_mkn_threshold {
+                let choice = self.predict(m, k, n);
+                return impls.iter().find(|k| k.kernel_name() == choice).unwrap().clone();
+            }
+        }
+        return impls
+            .iter()
+            .find(|k| k.kernel_name() == self.big_product_kernel_choice)
+            .unwrap()
+            .clone();
     }
 }
