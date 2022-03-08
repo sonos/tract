@@ -65,6 +65,15 @@ macro_rules! mmm_frame_tests {
             }
 
             #[test]
+            fn mat_mul_4() {
+                if $cond {
+                    let a = tensor2(&[[122, 82]]).cast_to::<$ta>().unwrap().into_owned();
+                    let b = tensor2(&[[0, 0, 37],[ 0, 0, 57]]).cast_to::<$tb>().unwrap().into_owned();
+                    test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(1, 2, 3, &a, &b).unwrap()
+                }
+            }
+
+            #[test]
             fn mat_mul_1_2_1() {
                 if $cond {
                     test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(
@@ -177,7 +186,9 @@ macro_rules! mmm_frame_tests {
 
 fn tensor(dt: DatumType, shape: Vec<usize>) -> BoxedStrategy<Tensor> {
     let len = shape.iter().product::<usize>();
-    proptest::collection::vec(any::<i8>(), len..=len)
+    // for f16, positive numbers only to avoid worst rounding side effects
+    let number = if dt == f16::datum_type() { any::<u8>().prop_map(|i| i as i16 ).boxed() } else { any::<i8>().prop_map(|i| i as i16 ).boxed() };
+    proptest::collection::vec(number, len..=len)
         .prop_map(move |vec| {
             tract_ndarray::ArrayD::from_shape_vec(shape.clone(), vec)
                 .unwrap()

@@ -34,6 +34,10 @@ fn max_cpuid() -> std::io::Result<String> {
     Ok(max.unwrap_or("").to_string())
 }
 
+pub fn has_fp16() -> bool {
+    KIND.has_fp16()
+}
+
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 enum Kind {
     Generic,
@@ -45,6 +49,13 @@ enum Kind {
 }
 
 impl Kind {
+    fn has_fp16(&self) -> bool {
+        match self {
+            Kind::CortexA55 | Kind::CortexA75 => true,
+            _ => false,
+        }
+    }
+
     fn choose() -> Kind {
         let kind = if let Ok(kind) = std::env::var("TRACT_CPU_AARCH64_KIND") {
             log::info!("CPU kind forced with TRACT_CPU_AARCH64_KIND: {}", kind);
