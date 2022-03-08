@@ -3,6 +3,7 @@ from math import ceil
 import numpy as np
 import torch
 from torch import nn
+from collections import Counter
 
 
 class Dataset:
@@ -116,6 +117,14 @@ class Dataset:
             diffs.append((y[z] - y.min()) / y.min())
         return np.array(diffs)
 
+    def big_product_behaviour(self):
+        sorted_data = sorted((np.prod(x), np.argmin(y)) for x, y in self.data)
+        biggest_exp = sorted_data[:-int(len(self) / 100)]
+        _, choices = zip(*biggest_exp)
+        kernel_ix = Counter(choices).most_common(1)[0][0]
+        kernel = self.kernels[kernel_ix][0]
+        threshold = sorted_data[-1][0]
+        return (threshold, kernel)
 
 class MLP(nn.Module):
     def __init__(
@@ -229,16 +238,18 @@ class MLP(nn.Module):
             if num_iter_no_impr > 4:
                 break
 
-
 def save_as_rust(mlp, dataset, output):
     with open(output, 'w') as f:
         mrs, nrs = dataset.get_mr_nr_values()
         params = {}
         for name, tensor in mlp.named_parameters():
             params[name] = tensor.detach().numpy()
+        big_product_mkn_threshold, big_product_kernel_choice = dataset.big_product_behaviour()
         f.write(f"""use crate::frame::mmm::CostModel;
         pub fn model() -> CostModel<'static> {{
             CostModel {{
+                big_product_mkn_threshold: {big_product_mkn_threshold},
+                big_product_kernel_choice: "{big_product_kernel_choice}",
                 kernels: &{str(list(map(lambda k: k[0], mlp.kernels))).replace("'", '"')},
                 mrs: &{mrs},
                 nrs: &{nrs},
@@ -294,7 +305,6 @@ PASS_TESTS = {
 #         ([2, 32, 8], "generic_f32_4x4"),
         ([64, 48, 8], "armv7neon_mmm_f32_8x4_cortexa9"),
         ([256, 768, 6], "armv7neon_mmm_f32_8x6_cortexa9"),
-        ([512, 1536, 18], "armv7neon_mmm_f32_8x6_cortexa9"),
     ],
     "cortex_a53": [
         ([16, 60, 8], "arm64simd_mmm_f32_8x8_a53"),
