@@ -718,41 +718,11 @@ pub unsafe fn armv8(filter: Option<&str>) {
     });
 }
 
-macro_rules! kloop {
-    ($filter: expr, $geo: literal, $n: expr, $path: literal) => {
-        let label = $path.split("/").last().unwrap().split_once(".").unwrap().0;
-        let full_label = format!("{:8} {:40}", $geo, label);
-        if full_label.contains($filter.unwrap_or("")) {
-            let time = b2!({
-                let mut p = F32;
-                let mut q = F32;
-                r4!(asm!(include_str!(concat!("../arm64/arm64simd/", $path)),
-                inout("x1") p, inout("x2") q, out("x3") _,
-                out("x4") _, out("x5") _, out("x6") _, out("x7") _,
-                out("x8") _, out("x9") _, out("x10") _, out("x11") _,
-                out("x12") _, out("x13") _, out("x14") _, out("x15") _,
-                out("x20") _, out("x21") _, out("x22") _, out("x23") _,
-                out("x24") _, out("x25") _, out("x26") _, out("x27") _,
-                out("v0") _, out("v1") _, out("v2") _, out("v3") _,
-                out("v4") _, out("v5") _, out("v6") _, out("v7") _,
-                out("v8") _, out("v9") _, out("v10") _, out("v11") _,
-                out("v12") _, out("v13") _, out("v14") _, out("v15") _,
-                out("v16") _, out("v17") _, out("v18") _, out("v19") _,
-                out("v20") _, out("v21") _, out("v22") _, out("v23") _,
-                out("v24") _, out("v25") _, out("v26") _, out("v27") _,
-                out("v28") _, out("v29") _, out("v30") _, out("v31") _,
-                ));
-            }) / 4.;
-            println!("{} {:3.0}% ({:0.2}/{} cy)", full_label, $n as f64 / 4. / time * 100. * *TICK, time / *TICK, $n as f64 / 4.);
-        }
-    }
-}
-
 fn has_asimdhp() -> bool {
     std::fs::read_to_string("/proc/cpuinfo").unwrap().contains("asimdhp")
 }
 
-#[target_feature(enable="fp16")]
+#[target_feature(enable = "fp16")]
 pub unsafe fn asimdhp(filter: Option<&str>) {
     macro_rules! s32 {
         ($label: literal, $n: expr, $stmt:block) => {
@@ -785,9 +755,9 @@ pub unsafe fn asimdhp(filter: Option<&str>) {
         out("v12") _, out("v13") _, out("v14") _, out("v15") _,
         )
     });
-    
+
     s32!("fcvt", 16, {
-        asm!(" fcvtn v0.4h,  v0.4s 
+        asm!(" fcvtn v0.4h,  v0.4s
                fcvtn v1.4h,  v1.4s 
                fcvtn v2.4h,  v2.4s 
                fcvtn v3.4h,  v3.4s 
@@ -811,7 +781,7 @@ pub unsafe fn asimdhp(filter: Option<&str>) {
     });
 
     s32!("fcvt2", 16, {
-        asm!(" fcvtn2 v0.8h,  v0.4s 
+        asm!(" fcvtn2 v0.8h,  v0.4s
                fcvtn2 v1.8h,  v1.4s 
                fcvtn2 v2.8h,  v2.4s 
                fcvtn2 v3.8h,  v3.4s 
@@ -839,43 +809,90 @@ pub unsafe fn asimdhp(filter: Option<&str>) {
     s32!("fcvtn2_with_dep", 1, { asm!("fcvtn2 v0.8h, v0.4s", out("v0") _) });
 }
 
-
-unsafe fn packed_packed_8x8(f: Option<&str>) {
-    kloop!(f, "8x8x1", 64, "arm64simd_mmm_f32_8x8/packed_packed_loop1/naive.tmpli");
-    kloop!(f, "8x8x1", 64, "arm64simd_mmm_f32_8x8/packed_packed_loop1/broken_chains.tmpli");
-    kloop!(f, "8x8x1", 64, "arm64simd_mmm_f32_8x8/packed_packed_loop1/ldr_x_no_preload.tmpli");
-    kloop!(f, "8x8x1", 64, "arm64simd_mmm_f32_8x8/packed_packed_loop1/ldr_x_preload.tmpli");
-    kloop!(f, "8x8x1", 64, "arm64simd_mmm_f32_8x8/packed_packed_loop1/ldr_w_no_preload.tmpli");
-    kloop!(f, "8x8x1", 64, "arm64simd_mmm_f32_8x8/packed_packed_loop1/ldr_w_preload.tmpli");
-    kloop!(f, "8x8x2", 128, "arm64simd_mmm_f32_8x8/packed_packed_loop2/broken_chains.tmpli");
-    kloop!(f, "8x8x2", 128, "arm64simd_mmm_f32_8x8/packed_packed_loop2/cortex_a55.tmpli");
+macro_rules! ksimd {
+    ($filter: expr, $vector_size: expr, $geo: literal, $n: expr, $path: literal) => {
+        kloop!($filter, $vector_size, $geo, $n, "arm64simd", $path)
+    }
 }
 
-unsafe fn packed_packed_12x8(f: Option<&str>) {
-    kloop!(f, "12x8x1", 96, "arm64simd_mmm_f32_12x8/packed_packed_loop1/naive.tmpli");
-    kloop!(f, "12x8x1", 96, "arm64simd_mmm_f32_12x8/packed_packed_loop1/ldr_w_no_preload.tmpli");
-    kloop!(f, "12x8x1", 96, "arm64simd_mmm_f32_12x8/packed_packed_loop1/ldr_w_preload.tmpli");
-    kloop!(f, "12x8x1", 96, "arm64simd_mmm_f32_12x8/packed_packed_loop1/ldr_x_preload.tmpli");
-    kloop!(f, "12x8x2", 192, "arm64simd_mmm_f32_12x8/packed_packed_loop2/cortex_a55.tmpli");
+macro_rules! kfp16 {
+    ($filter: expr, $vector_size: expr, $geo: literal, $n: expr, $path: literal) => {
+        kloop!($filter, $vector_size, $geo, $n, "arm64fp16", $path)
+    }
 }
 
-unsafe fn packed_packed_16x4(f: Option<&str>) {
-    kloop!(f, "16x4x1", 64, "arm64simd_mmm_f32_16x4/packed_packed_loop1/naive.tmpli");
-    kloop!(f, "16x4x1", 64, "arm64simd_mmm_f32_16x4/packed_packed_loop1/cortex_a53.tmpli");
-    kloop!(f, "16x4x2", 128, "arm64simd_mmm_f32_16x4/packed_packed_loop2/cortex_a55.tmpli");
+macro_rules! kloop {
+    ($filter: expr, $vector_size: expr, $geo: literal, $n: expr, $dir: literal, $path: literal) => {
+        let label = $path.split("/").last().unwrap().split_once(".").unwrap().0;
+        let full_label = format!("{:8} {:40}", $geo, label);
+        if full_label.contains($filter.unwrap_or("")) {
+            let time = b2!({
+                let mut p = F32;
+                let mut q = F32;
+                r4!(asm!(include_str!(concat!("../arm64/", $dir, "/", $path)),
+                inout("x1") p, inout("x2") q, out("x3") _,
+                out("x4") _, out("x5") _, out("x6") _, out("x7") _,
+                out("x8") _, out("x9") _, out("x10") _, out("x11") _,
+                out("x12") _, out("x13") _, out("x14") _, out("x15") _,
+                out("x20") _, out("x21") _, out("x22") _, out("x23") _,
+                out("x24") _, out("x25") _, out("x26") _, out("x27") _,
+                out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+                out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+                out("v8") _, out("v9") _, out("v10") _, out("v11") _,
+                out("v12") _, out("v13") _, out("v14") _, out("v15") _,
+                out("v16") _, out("v17") _, out("v18") _, out("v19") _,
+                out("v20") _, out("v21") _, out("v22") _, out("v23") _,
+                out("v24") _, out("v25") _, out("v26") _, out("v27") _,
+                out("v28") _, out("v29") _, out("v30") _, out("v31") _,
+                ));
+            }) / 4.;
+            println!("{} {:3.0}% ({:0.2}/{} cy)", full_label, $n as f64 / $vector_size as f64 / time * 100. * *TICK, time / *TICK, $n as f64 / $vector_size as f64);
+        }
+    }
 }
 
-unsafe fn packed_packed_24x4(f: Option<&str>) {
-    kloop!(f, "24x4x1", 96, "arm64simd_mmm_f32_24x4/packed_packed_loop1/naive.tmpli");
-    kloop!(f, "24x4x1", 96, "arm64simd_mmm_f32_24x4/packed_packed_loop1/cortex_a53.tmpli");
-    kloop!(f, "24x4x1", 96, "arm64simd_mmm_f32_24x4/packed_packed_loop1/cortex_a55.tmpli");
+unsafe fn f32_8x8(f: Option<&str>) {
+    ksimd!(f, 4, "8x8x1xf32", 64, "arm64simd_mmm_f32_8x8/packed_packed_loop1/naive.tmpli");
+    ksimd!(f, 4, "8x8x1xf32", 64, "arm64simd_mmm_f32_8x8/packed_packed_loop1/broken_chains.tmpli");
+    ksimd!(f, 4, "8x8x1xf32", 64, "arm64simd_mmm_f32_8x8/packed_packed_loop1/ldr_x_no_preload.tmpli");
+    ksimd!(f, 4, "8x8x1xf32", 64, "arm64simd_mmm_f32_8x8/packed_packed_loop1/ldr_x_preload.tmpli");
+    ksimd!(f, 4, "8x8x1xf32", 64, "arm64simd_mmm_f32_8x8/packed_packed_loop1/ldr_w_no_preload.tmpli");
+    ksimd!(f, 4, "8x8x1xf32", 64, "arm64simd_mmm_f32_8x8/packed_packed_loop1/ldr_w_preload.tmpli");
+    ksimd!(f, 4, "8x8x2xf32", 128, "arm64simd_mmm_f32_8x8/packed_packed_loop2/broken_chains.tmpli");
+    ksimd!(f, 4, "8x8x2xf32", 128, "arm64simd_mmm_f32_8x8/packed_packed_loop2/cortex_a55.tmpli");
 }
 
-unsafe fn packed_packed_64x1(f: Option<&str>) {
-    kloop!(f, "64x1x1", 64, "arm64simd_mmm_f32_64x1/loop1/naive.tmpli");
-    kloop!(f, "64x1x1", 64, "arm64simd_mmm_f32_64x1/loop1/cortex_a53.tmpli");
-    kloop!(f, "64x1x2", 128, "arm64simd_mmm_f32_64x1/loop2/naive.tmpli");
-    kloop!(f, "64x1x2", 128, "arm64simd_mmm_f32_64x1/loop2/cortex_a55.tmpli");
+unsafe fn f32_12x8(f: Option<&str>) {
+    ksimd!(f, 4, "12x8x1xf32", 96, "arm64simd_mmm_f32_12x8/packed_packed_loop1/naive.tmpli");
+    ksimd!(f, 4, "12x8x1xf32", 96, "arm64simd_mmm_f32_12x8/packed_packed_loop1/ldr_w_no_preload.tmpli");
+    ksimd!(f, 4, "12x8x1xf32", 96, "arm64simd_mmm_f32_12x8/packed_packed_loop1/ldr_w_preload.tmpli");
+    ksimd!(f, 4, "12x8x1xf32", 96, "arm64simd_mmm_f32_12x8/packed_packed_loop1/ldr_x_preload.tmpli");
+    ksimd!(f, 4, "12x8x2xf32", 192, "arm64simd_mmm_f32_12x8/packed_packed_loop2/cortex_a55.tmpli");
+}
+
+unsafe fn f32_16x4(f: Option<&str>) {
+    ksimd!(f, 4, "16x4x1xf32", 64, "arm64simd_mmm_f32_16x4/packed_packed_loop1/naive.tmpli");
+    ksimd!(f, 4, "16x4x1xf32", 64, "arm64simd_mmm_f32_16x4/packed_packed_loop1/cortex_a53.tmpli");
+    ksimd!(f, 4, "16x4x2xf32", 128, "arm64simd_mmm_f32_16x4/packed_packed_loop2/cortex_a55.tmpli");
+}
+
+unsafe fn f32_24x4(f: Option<&str>) {
+    ksimd!(f, 4, "24x4x1xf32", 96, "arm64simd_mmm_f32_24x4/packed_packed_loop1/naive.tmpli");
+    ksimd!(f, 4, "24x4x1xf32", 96, "arm64simd_mmm_f32_24x4/packed_packed_loop1/cortex_a53.tmpli");
+    ksimd!(f, 4, "24x4x1xf32", 96, "arm64simd_mmm_f32_24x4/packed_packed_loop1/cortex_a55.tmpli");
+}
+
+unsafe fn f32_64x1(f: Option<&str>) {
+    ksimd!(f, 4, "64x1x1xf32", 64, "arm64simd_mmm_f32_64x1/loop1/naive.tmpli");
+    ksimd!(f, 4, "64x1x1xf32", 64, "arm64simd_mmm_f32_64x1/loop1/cortex_a53.tmpli");
+    ksimd!(f, 4, "64x1x2xf32", 128, "arm64simd_mmm_f32_64x1/loop2/naive.tmpli");
+    ksimd!(f, 4, "64x1x2xf32", 128, "arm64simd_mmm_f32_64x1/loop2/cortex_a55.tmpli");
+}
+
+// RUSTFLAGS="-C target-feature=+fp16" cargo +nightly dinghy -d khadas-paris bench --bench arm64simd
+#[target_feature(enable = "fp16")]
+unsafe fn f16_16x8(f: Option<&str>) {
+    kfp16!(f, 8, "16x8x1xf16", 128, "arm64fp16_mmm_f16_16x8/loop1/naive.tmpli");
 }
 
 fn main() {
@@ -887,10 +904,11 @@ fn main() {
         if has_asimdhp() {
             asimdhp(filter.as_deref());
         }
-        packed_packed_8x8(filter.as_deref());
-        packed_packed_12x8(filter.as_deref());
-        packed_packed_16x4(filter.as_deref());
-        packed_packed_24x4(filter.as_deref());
-        packed_packed_64x1(filter.as_deref());
+        f32_8x8(filter.as_deref());
+        f32_12x8(filter.as_deref());
+        f32_16x4(filter.as_deref());
+        f32_24x4(filter.as_deref());
+        f32_64x1(filter.as_deref());
+        f16_16x8(filter.as_deref());
     }
 }
