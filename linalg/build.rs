@@ -136,9 +136,17 @@ fn main() {
                 .compile("armv7neon");
         }
         "aarch64" => {
-            let files =
-                preprocess_files("arm64/arm64simd", &[("core", vec!["a53", "a55", "gen"])], &suffix);
-            cc::Build::new().files(files).static_flag(true).compile("arm64");
+            let files = preprocess_files(
+                "arm64/arm64simd",
+                &[("core", vec!["a53", "a55", "gen"])],
+                &suffix,
+            );
+            cc::Build::new().files(files).static_flag(true).compile("arm64simd");
+            if os != "android" {
+                let files =
+                    preprocess_files("arm64/arm64fp16", &[("core", vec!["a55", "gen"])], &suffix);
+                cc::Build::new().files(files).static_flag(true).compile("arm64fp16");
+            }
         }
         _ => {}
     }
@@ -261,7 +269,8 @@ fn load_partials(p: &path::Path, msvc: bool) -> liquid::partials::InMemorySource
         };
         if let Some(text) = text {
             let text = strip_comments(text, msvc);
-            let key = f.path().strip_prefix(p).unwrap().to_str().unwrap().to_owned().replace("\\", "/");
+            let key =
+                f.path().strip_prefix(p).unwrap().to_str().unwrap().to_owned().replace("\\", "/");
             println!("cargo:rerun-if-changed={}", f.path().to_string_lossy().replace("\\", "/"));
             mem.add(key, text);
         }
