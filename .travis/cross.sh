@@ -17,7 +17,7 @@ then
     if [ -z "$TRAVIS" -a -z "$GITHUB_WORKFLOW" ]
     then
         $SUDO apt-get -y upgrade
-        $SUDO apt-get install -y --no-install-recommends unzip wget curl python awscli build-essential
+        $SUDO apt-get install -y --no-install-recommends unzip wget curl python awscli build-essential sudo
     fi
 else
     sysctl -n machdep.cpu.brand_string
@@ -26,9 +26,10 @@ fi
 
 ROOT=$(dirname $(dirname $(realpath $0)))
 
+PATH=$PATH:$HOME/.cargo/bin
+
 which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
 
-PATH=$PATH:$HOME/.cargo/bin
 
 which cargo-dinghy || ( mkdir -p /tmp/cargo-dinghy
 if [ `arch` = x86_64 ]
