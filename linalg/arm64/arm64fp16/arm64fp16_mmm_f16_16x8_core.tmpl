@@ -23,8 +23,8 @@
 .align 4
 
 .cpu generic+fp+simd+fp16
-.global {{G}}arm64simd_mmm_f16_16x8_{{core}}_{{suffix}}
-{{G}}arm64simd_mmm_f16_16x8_{{core}}_{{suffix}}:
+.global {{G}}arm64fp16_mmm_f16_16x8_{{core}}_{{suffix}}
+{{G}}arm64fp16_mmm_f16_16x8_{{core}}_{{suffix}}:
 
     stp         x20, x21, [sp, #-16]!
     stp         x22, x23, [sp, #-16]!
@@ -47,12 +47,12 @@
     ld1         { v4.4s }, [ x2 ], #16
 
 {% capture packed_packed_loop1 %}
-    {% include "arm64simd_mmm_f16_16x8/loop1/naive.tmpli" %}
+    {% include "arm64fp16_mmm_f16_16x8/loop1/naive.tmpli" %}
 {% endcapture %}
 
 {% comment %}
 {% capture packed_packed_loop2 %}
-    { % include "arm64simd_mmm_f16_16x8/packed_packed_loop2/cortex_a55.tmpli" % }
+    { % include "arm64fp16_mmm_f16_16x8/packed_packed_loop2/cortex_a55.tmpli" % }
 {% endcapture %}
 {% endcomment %}
 
@@ -82,9 +82,9 @@
 
     b .non_linear_loop
 
-{% include "arm64simd_mmm_f16_scalars.tmpliq" from:16, to:31%}
-{% include "arm64simd_mmm_f16_per_rows.tmpliq" mr:16, from:16, to:31 %}
-{% include "arm64simd_mmm_f16_per_cols.tmpliq" mr:16, from:16, to:31 %}
+{% include "arm64fp16_mmm_f16_scalars.tmpliq" from:16, to:31%}
+{% include "arm64fp16_mmm_f16_per_rows.tmpliq" mr:16, from:16, to:31 %}
+{% include "arm64fp16_mmm_f16_per_cols.tmpliq" mr:16, from:16, to:31 %}
 
 .add_unicast:
     ldp         x5, x6, [x0, #8]
