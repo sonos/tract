@@ -199,8 +199,10 @@ impl MatMulQParams {
                 let (x0_name, x0) = params.next().unwrap();
                 let (x_scale_name, x_scale) = params.next().unwrap();
                 ensure!(
-                    matches!(x0, QParamKind::FromQType) && matches!(x_scale, QParamKind::FromQType),
-                    "Quantization cannot be specified both in the type and in params"
+                    (matches!(x0, QParamKind::FromQType)
+                        || x0 == &QParamKind::Attr(rctensor0(qp.zp_scale().0)))
+                        && (matches!(x_scale, QParamKind::FromQType)
+                            || x_scale == &QParamKind::Attr(rctensor0(qp.zp_scale().1))),
                 );
                 let (zp, scale) = qp.zp_scale();
                 let zp = tensor0(zp);
