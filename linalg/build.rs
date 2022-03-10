@@ -142,7 +142,7 @@ fn main() {
                 &suffix,
             );
             cc::Build::new().files(files).static_flag(true).compile("arm64simd");
-            if os != "android" {
+            if os != "android" && os != "ios" {
                 let files =
                     preprocess_files("arm64/arm64fp16", &[("core", vec!["a55", "gen"])], &suffix);
                 cc::Build::new().files(files).static_flag(true).compile("arm64fp16");
