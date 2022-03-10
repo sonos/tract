@@ -142,11 +142,13 @@ fn main() {
                 &suffix,
             );
             cc::Build::new().files(files).static_flag(true).compile("arm64simd");
-            if os != "android" && os != "ios" {
-                let files =
-                    preprocess_files("arm64/arm64fp16", &[("core", vec!["a55", "gen"])], &suffix);
-                cc::Build::new().files(files).static_flag(true).compile("arm64fp16");
+            let files =
+                preprocess_files("arm64/arm64fp16", &[("core", vec!["a55", "gen"])], &suffix);
+            let mut cc = cc::Build::new();
+            if cc.get_compiler().is_like_clang() {
+                cc.flag("-mcpu=cortex-a55");
             }
+            cc.files(files).static_flag(true).compile("arm64fp16");
         }
         _ => {}
     }
@@ -214,6 +216,7 @@ fn preprocess_file(
     // We also check to see if we're on a windows host, if we aren't, we won't be
     // able to use the Microsoft assemblers,
     let msvc = use_masm();
+    let clang = cc::Build::new().get_compiler().is_like_clang();
     println!("cargo:rerun-if-changed={}", template.as_ref().to_string_lossy());
     let mut input = fs::read_to_string(&template).unwrap();
     input = strip_comments(input, msvc);
@@ -229,6 +232,7 @@ fn preprocess_file(
     let g = if os == "macos" || os == "ios" { "_" } else { "" };
     let mut globals = liquid::object!({
         "msvc": msvc,
+        "clang": clang,
         "family": family,
         "os": os,
         "L": l,
