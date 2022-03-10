@@ -316,8 +316,8 @@ PASS_TESTS = {
     "cortex_a55": [
         ([16, 60, 8], "arm64simd_mmm_f32_8x8_a55"),
         ([16, 64, 8], "arm64simd_mmm_f32_8x8_a55"),
-        ([2, 32, 8], "arm64simd_mmm_f32_8x8_a55"),
-        ([64, 48, 8], "arm64simd_mmm_f32_8x8_a53"),
+#        ([2, 32, 8], "arm64simd_mmm_f32_8x8_a55"),
+        ([64, 48, 8], "arm64simd_mmm_f32_8x8_a53"), # yeah, a53
         ([256, 768, 4], "arm64simd_mmm_f32_16x4_a55"),
     ],
 }
