@@ -893,6 +893,7 @@ unsafe fn f32_64x1(f: Option<&str>) {
 #[target_feature(enable = "fp16")]
 unsafe fn f16_16x8(f: Option<&str>) {
     kfp16!(f, 8, "16x8x1xf16", 128, "arm64fp16_mmm_f16_16x8/loop1/naive.tmpli");
+    kfp16!(f, 8, "16x8x2xf16", 256, "arm64fp16_mmm_f16_16x8/loop2/cortex_a55.tmpli");
 }
 
 fn main() {

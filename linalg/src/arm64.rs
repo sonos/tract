@@ -130,4 +130,7 @@ pub fn plug(ops: &mut Ops) {
     if let Some(model) = model {
         ops.mmm_f32 = Box::new(move |m, k, n| model.pick(&impls, m, k, n));
     }
+    if *KIND == Kind::CortexA55 {
+        ops.mmm_f16 = Box::new(|_, _, _| { arm64fp16_mmm_f16_16x8_a55::mmm() });
+    }
 }

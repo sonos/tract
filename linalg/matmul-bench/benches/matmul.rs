@@ -37,35 +37,33 @@ b!(matrixmultiply);
 b!(cblas);
 b!(tract);
 
-pub fn tract_blaslike(crit: &mut BenchmarkGroup<WallTime>, m: usize, k: usize, n: usize) {
+pub fn tract_blaslike(
+    crit: &mut BenchmarkGroup<WallTime>,
+    m: usize,
+    k: usize,
+    n: usize,
+    dt: DatumType,
+) {
     use tract_linalg::frame::mmm::FusedSpec;
-    let a = Tensor::zero_dt(DatumType::F32, &[m, k]).unwrap();
-    let b = Tensor::zero_dt(DatumType::F32, &[k, n]).unwrap();
-    let mut c = Tensor::zero_dt(DatumType::F32, &[m, n]).unwrap();
+    let a = Tensor::zero_dt(dt, &[m, k]).unwrap();
+    let b = Tensor::zero_dt(dt, &[k, n]).unwrap();
+    let mut c = Tensor::zero_dt(dt, &[m, n]).unwrap();
 
     unsafe {
-        let mmm = tract_linalg::ops()
-            .mmm(DatumType::F32, DatumType::F32, DatumType::F32, Some(m), Some(k), Some(n))
-            .unwrap();
-        let a_storage = mmm.a_packed(f32::datum_type().size_of(), k);
-        let b_storage = mmm.b_packed(f32::datum_type().size_of(), k);
+        let mmm = tract_linalg::ops().mmm(dt, dt, dt, Some(m), Some(k), Some(n)).unwrap();
+        let a_storage = mmm.a_packed(f16::datum_type().size_of(), k);
+        let b_storage = mmm.b_packed(f16::datum_type().size_of(), k);
         let c_storage = mmm.c_view(1, 0);
 
-        let mut pa = Tensor::zero_aligned_dt(
-            DatumType::F32,
-            &[mmm.a_pack().len(k, m)],
-            mmm.a_pack().alignment(),
-        )
-        .unwrap();
-        let mut pb = Tensor::zero_aligned_dt(
-            DatumType::F32,
-            &[mmm.b_pack().len(k, n)],
-            mmm.b_pack().alignment(),
-        )
-        .unwrap();
+        let mut pa =
+            Tensor::zero_aligned_dt(dt, &[mmm.a_pack().len(k, m)], mmm.a_pack().alignment())
+                .unwrap();
+        let mut pb =
+            Tensor::zero_aligned_dt(dt, &[mmm.b_pack().len(k, n)], mmm.b_pack().alignment())
+                .unwrap();
         let mut scratch = mmm.allocate_scratch_space();
 
-        crit.bench_function("tract_blaslike", |be| {
+        crit.bench_function(&format!("tract_blaslike_{:?}", dt), |be| {
             mmm.a_pack().pack(&mut pa.view_mut(), &a.view(), 1, 0);
             mmm.b_pack().pack(&mut pb.view_mut(), &b.view(), 0, 1);
 
@@ -105,7 +103,8 @@ fn matmul(c: &mut Criterion, m: usize, k: usize, n: usize) {
     matrixmultiply(&mut c, m, k, n);
     cblas(&mut c, m, k, n);
     tract(&mut c, m, k, n);
-    tract_blaslike(&mut c, m, k, n);
+    tract_blaslike(&mut c, m, k, n, f32::datum_type());
+    tract_blaslike(&mut c, m, k, n, f16::datum_type());
     c.finish();
 }
 
