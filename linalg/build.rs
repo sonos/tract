@@ -8,6 +8,10 @@ fn use_masm() -> bool {
     env::var("CARGO_CFG_TARGET_ENV") == Ok("msvc".to_string()) && var("HOST").contains("-windows-")
 }
 
+fn use_clang() -> bool {
+    var("TARGET").contains("-android") || var("TARGET").contains("-ios")
+}
+
 fn jump_table() -> Vec<String> {
     println!("cargo:rerun-if-changed=src/frame/mmm/fuse.rs");
     std::fs::read_to_string("src/frame/mmm/fuse.rs")
@@ -19,6 +23,7 @@ fn jump_table() -> Vec<String> {
 }
 
 fn main() {
+
     let target = var("TARGET");
     let arch = var("CARGO_CFG_TARGET_ARCH");
     let os = var("CARGO_CFG_TARGET_OS");
@@ -145,7 +150,7 @@ fn main() {
             let files =
                 preprocess_files("arm64/arm64fp16", &[("core", vec!["a55", "gen"])], &suffix);
             let mut cc = cc::Build::new();
-            if cc.get_compiler().is_like_clang() {
+            if use_clang() {
                 cc.flag("-mcpu=cortex-a55");
             }
             cc.files(files).static_flag(true).compile("arm64fp16");
@@ -216,7 +221,7 @@ fn preprocess_file(
     // We also check to see if we're on a windows host, if we aren't, we won't be
     // able to use the Microsoft assemblers,
     let msvc = use_masm();
-    let clang = cc::Build::new().get_compiler().is_like_clang();
+    let clang = use_clang();
     println!("cargo:rerun-if-changed={}", template.as_ref().to_string_lossy());
     let mut input = fs::read_to_string(&template).unwrap();
     input = strip_comments(input, msvc);
