@@ -10,6 +10,8 @@
 
 {%if cols == "1" %}
         ld1         {v0.h}[0], [ x2 ]
+{% elsif cols == "4" %}
+        ldr         d0, [ x2 ]
 {% else %}
     {% for reg in (1..loads) %}
         ldr         q{{reg |minus:1}}, [ x2 ], #16
