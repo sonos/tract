@@ -187,7 +187,12 @@ macro_rules! mmm_frame_tests {
 fn tensor(dt: DatumType, shape: Vec<usize>) -> BoxedStrategy<Tensor> {
     let len = shape.iter().product::<usize>();
     // for f16, positive numbers only to avoid worst rounding side effects
-    let number = if dt == f16::datum_type() { any::<u8>().prop_map(|i| i as i16 ).boxed() } else { any::<i8>().prop_map(|i| i as i16 ).boxed() };
+    // and not too big either to avoid overflow :)
+    let number = if dt == f16::datum_type() {
+        (0i16..100).boxed()
+    } else {
+        any::<i8>().prop_map(|i| i as i16).boxed()
+    };
     proptest::collection::vec(number, len..=len)
         .prop_map(move |vec| {
             tract_ndarray::ArrayD::from_shape_vec(shape.clone(), vec)
