@@ -20,7 +20,9 @@
 .text
 .align 4
 
-.cpu generic+fp+fp16
+{% if clang == false %}
+.cpu generic+fp+simd+fp16
+{% endif %}
 .global {{G}}arm64fp16_mmm_f16_128x1_{{core}}_{{suffix}}
 {{G}}arm64fp16_mmm_f16_128x1_{{core}}_{{suffix}}:
 
