@@ -222,11 +222,10 @@ pub fn strat_mat_vec_mul<TA: LADatum, TB: LADatum>() -> BoxedStrategy<(usize, us
             (
                 Just(m),
                 Just(k),
-                proptest::collection::vec(TA::strat(), m * k),
-                proptest::collection::vec(TB::strat(), k),
+                tensor(TA::datum_type(), vec![m, k]),
+                tensor(TB::datum_type(), vec![k, 1]),
             )
         })
-        .prop_map(move |(m, k, a, b)| (m, k, tensor1(&a).into_shape(&[m, k]).unwrap(), tensor1(&b)))
         .boxed()
 }
 
