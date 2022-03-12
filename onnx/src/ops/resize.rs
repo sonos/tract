@@ -16,6 +16,7 @@ pub fn resize(
         };
     let interpolator = match node.get_attr("mode")? {
         "linear" => Interpolator::Linear,
+        "nearest" => Interpolator::Nearest,
         s => todo!("mode: {}", s),
     };
     let nearest = match node.get_attr_opt("nearest_mode")?.unwrap_or("round_prefer_floor") {
@@ -58,12 +59,14 @@ impl CoordTransformer {
 #[derive(Clone, Debug, Hash)]
 enum Interpolator {
     Linear,
+    Nearest,
 }
 
 impl Interpolator {
     fn interpolate(&self, y_left: f32, y_right: f32, x_ratio: f32) -> f32 {
         match self {
             Interpolator::Linear => y_left * (1.0 - x_ratio) + y_right * x_ratio,
+            Interpolator::Nearest => y_left,
         }
     }
 }
