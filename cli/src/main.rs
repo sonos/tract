@@ -362,16 +362,16 @@ fn output_options(command: clap::Command) -> clap::Command {
             arg!(-q --quiet "don't dump"),
         ])
         .arg(Arg::new("debug-op").long("debug-op").help("show debug dump for each op"))
-        .arg(Arg::new("node_id").long("node-id").takes_value(true).help("Select a node to dump"))
+        .arg(Arg::new("node-id").long("node-id").takes_value(true).help("Select a node to dump"))
         .arg(
             Arg::new("successors")
                 .long("successors")
                 .takes_value(true)
                 .help("Show successors of node"),
         )
-        .arg(Arg::new("op_name").long("op-name").takes_value(true).help("Select one op to dump"))
+        .arg(Arg::new("op-name").long("op-name").takes_value(true).help("Select one op to dump"))
         .arg(
-            Arg::new("node_name")
+            Arg::new("node-name")
                 .long("node-name")
                 .takes_value(true)
                 .help("Select one node to dump"),
