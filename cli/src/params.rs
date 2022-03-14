@@ -796,7 +796,7 @@ impl Parameters {
             .collect();
 
         let mut assertions = match matches.subcommand() {
-            Some(("dump" | "run", sm)) => Assertions::from_clap(&sm, &*output_names_and_labels)?,
+            Some(("dump" | "run", sm)) => Assertions::from_clap(&matches, &*output_names_and_labels)?,
             _ => Assertions::default(),
         };
 
@@ -969,7 +969,7 @@ impl Assertions {
                 }
             }
 
-            let assert_output_facts: Option<Vec<InferenceFact>> = matches
+            let assert_output_facts: Option<Vec<InferenceFact>> = sub
                 .values_of("assert-output-fact")
                 .map(|vs| vs.map(|v| tensor::for_string(v).unwrap().1).collect());
             let assert_op_count: Option<Vec<(String, usize)>> = sub
