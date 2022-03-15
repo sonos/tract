@@ -18,10 +18,10 @@ bin_to_bool!(not_equals, NotEquals, flip: commute,
  [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, TDim] => |c, a, b | *c = a != b
 );
 
-bin_to_bool!(lesser, Lesser, 
+bin_to_bool!(less, Less, 
     codegen_unary: codegen_compare_to_zero,
     [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a < b);
-bin_to_bool!(lesser_equal, LesserEqual,
+bin_to_bool!(less_equal, LessEqual,
     codegen_unary: codegen_compare_to_zero,
     [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a <= b);
 bin_to_bool!(greater, Greater,
@@ -34,14 +34,14 @@ bin_to_bool!(greater_equal, GreaterEqual,
 fn codegen_compare_to_zero(op: &dyn BinMiniOp, model: &TypedModel, node: &TypedNode, a: &Arc<Tensor>) -> TractResult<Option<TypedModelPatch>> {
     if let Some(a) = a.as_uniform() {
         if (a.datum_type().is_signed() || a.datum_type().is_float()) && a == Tensor::zero_scalar_dt(a.datum_type())? {
-            let op: Box<dyn ElementWiseMiniOp> = if op.is::<Lesser>() {
+            let op: Box<dyn ElementWiseMiniOp> = if op.is::<Less>() {
                 Box::new(GreaterThanZero{})
-            } else if op.is::<LesserEqual>() {
+            } else if op.is::<LessEqual>() {
                 Box::new(GreaterEqualThanZero{})
             } else if op.is::<Greater>() {
-                Box::new(LesserThanZero{})
+                Box::new(LessThanZero{})
             } else if op.is::<GreaterEqual>() {
-                Box::new(LesserEqualThanZero{})
+                Box::new(LessEqualThanZero{})
             } else {
                 unreachable!();
             };
@@ -51,12 +51,12 @@ fn codegen_compare_to_zero(op: &dyn BinMiniOp, model: &TypedModel, node: &TypedN
     Ok(None)
 }
 
-element_wise_oop!(lesser_than_zero, LesserThanZero, [f16, f32, f64, i8, i16, i32, i64] => bool |_op, xs, ys| {
+element_wise_oop!(less_than_zero, LessThanZero, [f16, f32, f64, i8, i16, i32, i64] => bool |_op, xs, ys| {
     xs.iter().zip(ys.iter_mut()).for_each(|(x,y)| *y = *x < num_traits::Zero::zero());
     Ok(())
 });
 
-element_wise_oop!(lesser_equal_than_zero, LesserEqualThanZero, [f16, f32, f64, i8, i16, i32, i64] => bool |_op, xs, ys| {
+element_wise_oop!(less_equal_than_zero, LessEqualThanZero, [f16, f32, f64, i8, i16, i32, i64] => bool |_op, xs, ys| {
     xs.iter().zip(ys.iter_mut()).for_each(|(x,y)| *y = *x <= num_traits::Zero::zero());
     Ok(())
 });
