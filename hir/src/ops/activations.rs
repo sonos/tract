@@ -96,7 +96,7 @@ activation!(Elu, |op, name: &str, model: &mut TypedModel, inputs| {
     let neg = model.wire_node(name.to_string() + ".mul_alpha", mul::unary(alpha), &minus_one)?;
     let test = model.wire_node(
         name.to_string() + ".test",
-        tract_core::ops::logic::lesser::unary(zero),
+        tract_core::ops::logic::less::unary(zero),
         &[inputs[0]],
     )?;
     let wire = model.wire_node(
@@ -136,7 +136,7 @@ activation!(LeakyRelu, |op, name: &str, model: &mut TypedModel, inputs| {
     let neg = model.wire_node(name.to_string() + ".mul_alpha", mul::unary(alpha), &inputs)?;
     let test = model.wire_node(
         name.to_string() + ".test",
-        tract_core::ops::logic::lesser::unary(zero),
+        tract_core::ops::logic::less::unary(zero),
         &[inputs[0]],
     )?;
     let wire = model.wire_node(
@@ -199,7 +199,7 @@ activation!(Selu, |op, name: &str, model: &mut TypedModel, inputs| {
     let wire = model.wire_node(name.to_string() + ".sub_alpha", add::unary(minus_alpha), &wire)?;
     let test = model.wire_node(
         name.to_string() + ".test",
-        tract_core::ops::logic::lesser::unary(zero),
+        tract_core::ops::logic::less::unary(zero),
         &[inputs[0]],
     )?;
     let wire = model.wire_node(
@@ -227,7 +227,7 @@ activation!(Shrink, |op, name: &str, model: &mut TypedModel, inputs| {
         model.add_const(name.to_string() + ".zero", broadcast_scalar(0.0, model, inputs)?)?;
     let test_pos = model.wire_node(
         name.to_string() + ".test_pos",
-        tract_core::ops::logic::lesser::unary(lambda),
+        tract_core::ops::logic::less::unary(lambda),
         &inputs,
     )?;
     let pos = model.wire_node(
@@ -268,7 +268,7 @@ activation!(ThresholdRelu, |op, name: &str, model: &mut TypedModel, inputs| {
     let alpha = broadcast_scalar(op.0, model, inputs)?;
     let test = model.wire_node(
         name.to_string() + ".test",
-        tract_core::ops::logic::lesser::unary(alpha),
+        tract_core::ops::logic::less::unary(alpha),
         &[inputs[0]],
     )?;
     let wire = model.wire_node(

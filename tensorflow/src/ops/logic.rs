@@ -10,8 +10,8 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Equal", |_, _| Ok(ops::logic::Equals.into_hir()));
     reg.insert("Greater", |_, _| Ok(ops::logic::Greater.into_hir()));
     reg.insert("GreaterEqual", |_, _| Ok(ops::logic::GreaterEqual.into_hir()));
-    reg.insert("Less", |_, _| Ok(ops::logic::Lesser.into_hir()));
-    reg.insert("LessEqual", |_, _| Ok(ops::logic::LesserEqual.into_hir()));
+    reg.insert("Less", |_, _| Ok(ops::logic::Less.into_hir()));
+    reg.insert("LessEqual", |_, _| Ok(ops::logic::LessEqual.into_hir()));
     reg.insert("LogicalAnd", |_, _| Ok(ops::logic::And.into_hir()));
     reg.insert("LogicalOr", |_, _| Ok(ops::logic::Or.into_hir()));
     reg.insert("Merge", merge);

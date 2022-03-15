@@ -74,9 +74,9 @@ pub fn tract_nnef() -> Registry {
 
     registry.register_unit_element_wise("neg", &ops::math::Neg {});
 
-    registry.register_binary("lt", &ops::logic::Lesser {});
+    registry.register_binary("lt", &ops::logic::Less {});
     registry.register_binary("gt", &ops::logic::Greater {});
-    registry.register_binary("le", &ops::logic::LesserEqual {});
+    registry.register_binary("le", &ops::logic::LessEqual {});
     registry.register_binary("ge", &ops::logic::GreaterEqual {});
     registry.register_binary("eq", &ops::logic::Equals {});
     registry.register_binary("ne", &ops::logic::NotEquals {});
