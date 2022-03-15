@@ -341,7 +341,7 @@ impl_dyn_hash!(UnaryOp);
 
 impl Op for UnaryOp {
     fn name(&self) -> Cow<str> {
-        self.mini_op.name().into()
+        format!("{}Unary", self.mini_op.name()).into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -488,7 +488,7 @@ impl_dyn_hash!(MergeOpUnicast);
 
 impl Op for MergeOpUnicast {
     fn name(&self) -> Cow<str> {
-        self.0.name().into()
+        format!("{}Unicast", self.0.name()).into()
     }
 
     op_core_lir_mir!();
@@ -741,6 +741,7 @@ macro_rules! bin_to_super_type {
 macro_rules! bin_to_bool {
     ($func:ident, $Op:ident,
      $( cost: $cost:expr, )?
+     $( declutter_unary: $declutter_unary:expr, )?
      $( flip: $flip:expr, )?
      $( [$($typ:ident),*] => $cab:expr),*) => {
         #[derive(Debug, Clone, Hash)]
@@ -813,6 +814,17 @@ macro_rules! bin_to_bool {
             fn result_datum_type(&self, _a: DatumType, _b: DatumType) -> TractResult<DatumType> {
                 Ok(bool::datum_type())
             }
+
+            $(
+                fn declutter_unary(
+                    &self,
+                    model: &TypedModel,
+                    node: &TypedNode,
+                    a: &Arc<Tensor>,
+                    ) -> TractResult<Option<TypedModelPatch>> {
+                    ($declutter_unary)(self, model, node, a)
+                }
+             )?
 
             $(
                 fn unary_with_b_const(&self, b: &Arc<Tensor>) -> Option<$crate::ops::binary::UnaryOp> {

@@ -3,7 +3,8 @@ use ndarray::*;
 use crate::broadcast::multi_broadcast;
 use crate::internal::*;
 
-use super::binary::commute;
+use super::binary::{commute, BinMiniOp};
+use super::element_wise::ElementWiseOp;
 
 bin_to_super_type!(and, And, flip: commute,
                    [bool, u8, u16, u32, u64, i8, i16, i32, i64] => |c, &a, &b| *c = (a as i64 != 0 && b as i64 != 0) as _);
@@ -17,10 +18,58 @@ bin_to_bool!(not_equals, NotEquals, flip: commute,
  [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, TDim] => |c, a, b | *c = a != b
 );
 
-bin_to_bool!(lesser, Lesser, [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a < b);
-bin_to_bool!(lesser_equal, LesserEqual, [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a <= b);
-bin_to_bool!(greater, Greater, [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a > b);
-bin_to_bool!(greater_equal, GreaterEqual, [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a >= b);
+bin_to_bool!(lesser, Lesser, 
+    declutter_unary: declutter_compare_to_zero,
+    [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a < b);
+bin_to_bool!(lesser_equal, LesserEqual,
+    declutter_unary: declutter_compare_to_zero,
+    [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a <= b);
+bin_to_bool!(greater, Greater,
+    declutter_unary: declutter_compare_to_zero,
+    [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a > b);
+bin_to_bool!(greater_equal, GreaterEqual,
+    declutter_unary: declutter_compare_to_zero,
+    [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a >= b);
+
+fn declutter_compare_to_zero(op: &dyn BinMiniOp, model: &TypedModel, node: &TypedNode, a: &Arc<Tensor>) -> TractResult<Option<TypedModelPatch>> {
+    if let Some(a) = a.as_uniform() {
+        if (a.datum_type().is_signed() || a.datum_type().is_float()) && a == Tensor::zero_scalar_dt(a.datum_type())? {
+            let op: Box<dyn ElementWiseMiniOp> = if op.is::<Lesser>() {
+                Box::new(LesserThanZero{})
+            } else if op.is::<LesserEqual>() {
+                Box::new(LesserEqualThanZero{})
+            } else if op.is::<Greater>() {
+                Box::new(GreaterThanZero{})
+            } else if op.is::<GreaterEqual>() {
+                Box::new(GreaterEqualThanZero{})
+            } else {
+                unreachable!();
+            };
+            return Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, ElementWiseOp(op))?));
+        }
+    }
+    Ok(None)
+}
+
+element_wise_oop!(lesser_than_zero, LesserThanZero, [f16, f32, f64, i8, i16, i32, i64] => bool |_op, xs, ys| {
+    xs.iter().zip(ys.iter_mut()).for_each(|(x,y)| *y = *x < num_traits::Zero::zero());
+    Ok(())
+});
+
+element_wise_oop!(lesser_equal_than_zero, LesserEqualThanZero, [f16, f32, f64, i8, i16, i32, i64] => bool |_op, xs, ys| {
+    xs.iter().zip(ys.iter_mut()).for_each(|(x,y)| *y = *x <= num_traits::Zero::zero());
+    Ok(())
+});
+
+element_wise_oop!(greater_than_zero, GreaterThanZero, [f16, f32, f64, i8, i16, i32, i64] => bool |_op, xs, ys| {
+    xs.iter().zip(ys.iter_mut()).for_each(|(x,y)| *y = *x > num_traits::Zero::zero());
+    Ok(())
+});
+
+element_wise_oop!(greater_equal_than_zero, GreaterEqualThanZero, [f16, f32, f64, i8, i16, i32, i64] => bool |_op, xs, ys| {
+    xs.iter().zip(ys.iter_mut()).for_each(|(x,y)| *y = *x >= num_traits::Zero::zero());
+    Ok(())
+});
 
 element_wise!(not, Not, [bool] => |_, vs| {
     vs.iter_mut().for_each(|a| *a = !*a);
