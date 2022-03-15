@@ -19,29 +19,29 @@ bin_to_bool!(not_equals, NotEquals, flip: commute,
 );
 
 bin_to_bool!(lesser, Lesser, 
-    declutter_unary: declutter_compare_to_zero,
+    codegen_unary: codegen_compare_to_zero,
     [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a < b);
 bin_to_bool!(lesser_equal, LesserEqual,
-    declutter_unary: declutter_compare_to_zero,
+    codegen_unary: codegen_compare_to_zero,
     [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a <= b);
 bin_to_bool!(greater, Greater,
-    declutter_unary: declutter_compare_to_zero,
+    codegen_unary: codegen_compare_to_zero,
     [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a > b);
 bin_to_bool!(greater_equal, GreaterEqual,
-    declutter_unary: declutter_compare_to_zero,
+    codegen_unary: codegen_compare_to_zero,
     [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a >= b);
 
-fn declutter_compare_to_zero(op: &dyn BinMiniOp, model: &TypedModel, node: &TypedNode, a: &Arc<Tensor>) -> TractResult<Option<TypedModelPatch>> {
+fn codegen_compare_to_zero(op: &dyn BinMiniOp, model: &TypedModel, node: &TypedNode, a: &Arc<Tensor>) -> TractResult<Option<TypedModelPatch>> {
     if let Some(a) = a.as_uniform() {
         if (a.datum_type().is_signed() || a.datum_type().is_float()) && a == Tensor::zero_scalar_dt(a.datum_type())? {
             let op: Box<dyn ElementWiseMiniOp> = if op.is::<Lesser>() {
-                Box::new(LesserThanZero{})
-            } else if op.is::<LesserEqual>() {
-                Box::new(LesserEqualThanZero{})
-            } else if op.is::<Greater>() {
                 Box::new(GreaterThanZero{})
-            } else if op.is::<GreaterEqual>() {
+            } else if op.is::<LesserEqual>() {
                 Box::new(GreaterEqualThanZero{})
+            } else if op.is::<Greater>() {
+                Box::new(LesserThanZero{})
+            } else if op.is::<GreaterEqual>() {
+                Box::new(LesserEqualThanZero{})
             } else {
                 unreachable!();
             };

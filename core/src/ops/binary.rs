@@ -93,6 +93,15 @@ pub trait BinMiniOp:
         Ok(None)
     }
     #[allow(unused_variables)]
+    fn codegen_unary(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        a: &Arc<Tensor>,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        Ok(None)
+    }
+    #[allow(unused_variables)]
     fn cost_per_element(&self, dt: DatumType) -> TVec<(Cost, usize)> {
         tvec!()
     }
@@ -463,6 +472,16 @@ impl TypedOp for UnaryOp {
         })
     }
 
+    fn codegen(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        self.mini_op.codegen_unary(model, node, &self.a).with_context(|| {
+            format!("In specific codegen_unary for bin mini op {}", self.mini_op.name())
+        })
+    }
+
     fn change_axes(
         &self,
         model: &TypedModel,
@@ -542,6 +561,7 @@ impl TypedOp for MergeOpUnicast {
 macro_rules! bin_to_super_type {
     ($func:ident, $Op:ident,
      $(cost: $cost:expr,)?
+     $(codegen_unary: $codegen_unary:expr,)?
      $(declutter_bin: $declutter_bin:expr,)?
      $(declutter_unary: $declutter_unary:expr,)?
      $(eval_override: $eval_override: expr,)?
@@ -701,6 +721,16 @@ macro_rules! bin_to_super_type {
                     }
                  )?
                 $(
+                    fn codegen_unary(
+                        &self,
+                        model: &TypedModel,
+                        node: &TypedNode,
+                        a: &Arc<Tensor>,
+                        ) -> TractResult<Option<TypedModelPatch>> {
+                        ($codegen_unary)(self, model, node, a)
+                    }
+                 )?
+                $(
                     fn declutter_unary(
                         &self,
                         model: &TypedModel,
@@ -741,6 +771,7 @@ macro_rules! bin_to_super_type {
 macro_rules! bin_to_bool {
     ($func:ident, $Op:ident,
      $( cost: $cost:expr, )?
+     $( codegen_unary: $codegen_unary:expr, )?
      $( declutter_unary: $declutter_unary:expr, )?
      $( flip: $flip:expr, )?
      $( [$($typ:ident),*] => $cab:expr),*) => {
@@ -814,6 +845,18 @@ macro_rules! bin_to_bool {
             fn result_datum_type(&self, _a: DatumType, _b: DatumType) -> TractResult<DatumType> {
                 Ok(bool::datum_type())
             }
+
+            $(
+                fn codegen_unary(
+                    &self,
+                    model: &TypedModel,
+                    node: &TypedNode,
+                    a: &Arc<Tensor>,
+                    ) -> TractResult<Option<TypedModelPatch>> {
+                    ($codegen_unary)(self, model, node, a)
+                }
+             )?
+
 
             $(
                 fn declutter_unary(
