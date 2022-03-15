@@ -90,15 +90,6 @@ cd $CACHEDIR
     -i S,20,f32 --pulse 8 dump --cost -q \
     --assert-cost "FMA(F32)=2060448,Div(F32)=24576,Buffer(F32)=2920,Params(F32)=222250"
 
-./target/release/tract $CACHEDIR/mdl-en-2019-Q3-librispeech.onnx \
-    -O -i S,40,f32 --output-node output --pulse 24 \
-    dump -q \
-    --assert-op-count Add 6 --assert-op-count Mul 22 --assert-op-count Max 0 \
-    --assert-op-count LirMatMulUnary 27 \
-    --assert-op-count MatMatMulPack 10
-    # LirMatMulUnary: 1 output + 1 lda + 5 tdnn + 2*(4 + 4 + 2) lstm
-    # MatMatMulPack: 4*(2) + tdnn1 + output
-
 ./target/release/tract $CACHEDIR/hey_snips_v4_model17.pb -i S,20,f32 \
     dump -q \
     --assert-op-count AddAxis 0
@@ -139,9 +130,6 @@ done
 if [ -e "$HOME/.aws/credentials" ]
 then
     BENCH_OPTS="--max-iters 1" sh .travis/bundle-entrypoint.sh
-    ./target/release/tract $CACHEDIR/en_tdnn_15M.onnx \
-            -O -i S,40,f32 --output-node output --pulse 24 \
-            dump --assert-op-count Add 6 --assert-op-count Mul 22 --assert-op-count Max 0
 #    ./target/release/tract .cached/en_tdnn_lstm_bn_q7/model.onnx \
 #            -O -i S,40,f32 --output-node output --pulse 24 \
 #            dump --assert-op-count Add 13 --assert-op-count Mul 17 --assert-op-count Max 7
