@@ -18,6 +18,8 @@ pub fn gru(
     gru.optional_y_output = options.next().unwrap();
     gru.optional_y_h_output = options.next().unwrap();
 
+    gru.linear_before_reset = pb.get_attr("linear_before_reset").unwrap_or(false);
+
     Ok((expand(gru), vec![]))
 }
 
