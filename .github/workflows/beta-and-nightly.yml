@@ -26,7 +26,7 @@ jobs:
   warnings:
     strategy:
       matrix:
-        rust: [ stable, beta ]
+        rust: [ 1.59.0, beta ]
       fail-fast: false
 
     runs-on: ubuntu-latest
