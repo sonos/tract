@@ -12,6 +12,12 @@ jobs:
         rust: [ 1.59.0 ]
 
     runs-on: ubuntu-latest
+    env:
+      RUST_VERSION: ${{matrix.rust}}
+      RUST_BACKTRACE: full
+      RUSTC_WRAPPER: sccache
+      SCCACHE_CACHE_SIZE: 2G
+      SCCACHE_DIR: /home/runner/.cache/sccache
 
     steps:
     - uses: actions/checkout@v1
@@ -21,10 +27,34 @@ jobs:
           ~/.rustup
           ~/.cargo/registry
           ~/.cargo/git
-          target
-        key: ${{ runner.os }}-cargo-${{matrix.rust}}-1
+          /home/runner/.cache/sccache
+        key: ${{ runner.os }}-cargo-${{matrix.rust}}
+
+    - name: Install sccache (ubuntu-latest)
+      env:
+        LINK: https://github.com/mozilla/sccache/releases/download
+        SCCACHE_VERSION: v0.2.15
+      run: |
+        echo $HOME
+        SCCACHE_FILE=sccache-$SCCACHE_VERSION-x86_64-unknown-linux-musl
+        mkdir -p $SCCACHE_DIR
+        mkdir -p $HOME/.local/bin
+        curl -L "$LINK/$SCCACHE_VERSION/$SCCACHE_FILE.tar.gz" | tar xz
+        mv -f $SCCACHE_FILE/sccache $HOME/.local/bin/sccache
+        chmod +x $HOME/.local/bin/sccache
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
+        ls -l $HOME/.local/bin
+        find $HOME/.local/bin
+
+    - name: Start sccache server
+      run:
+        SCCACHE_ERROR_LOG=/tmp/sccache_log.txt SCCACHE_LOG=debug sccache --start-server || cat /tmp/sccache_log.txt 
     - name: Native script
       run: .travis/regular-tests.sh
       env:
         SHORT: yes
-        RUST_VERSION: ${{matrix.rust}}
+        RUST_BACKTRACE: full
+    - name: Print sccache stats
+      run: sccache --show-stats
+    - name: Stop sccache server
+      run: sccache --stop-server || true
