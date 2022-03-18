@@ -251,17 +251,24 @@ impl Tensor {
         }
     }
 
-    /// Create a tensor with a given shape and a slice of elements. 
-    /// The data is copied and aligned to size of T. 
+    /// Create a tensor with a given shape and a slice of elements.
+    /// The data is copied and aligned to size of T.
     pub fn from_shape<T: Datum + Copy>(shape: &[usize], data: &[T]) -> anyhow::Result<Tensor> {
         let dt = T::datum_type();
         Self::from_shape_align(shape, data, dt.alignment())
     }
 
-    /// Create a tensor with a given shape and a slice of elements. 
-    /// The data is copied and aligned to given alignment. 
-    pub fn from_shape_align<T: Datum + Copy>(shape: &[usize], data: &[T], align: usize) -> anyhow::Result<Tensor> {
-        anyhow::ensure!(data.len() == shape.iter().product::<usize>(), "Shape product must be equal to data length");
+    /// Create a tensor with a given shape and a slice of elements.
+    /// The data is copied and aligned to given alignment.
+    pub fn from_shape_align<T: Datum + Copy>(
+        shape: &[usize],
+        data: &[T],
+        align: usize,
+    ) -> anyhow::Result<Tensor> {
+        anyhow::ensure!(
+            data.len() == shape.iter().product::<usize>(),
+            "Shape product must be equal to data length"
+        );
         unsafe {
             let bytes = std::slice::from_raw_parts(
                 data.as_ptr() as *const u8,
@@ -800,7 +807,11 @@ impl Tensor {
 
     pub fn as_uniform(&self) -> Option<Tensor> {
         if self.len() >= 1 && self.is_uniform() {
-            unsafe { Some(dispatch_datum!(Tensor::as_uniform_t(self.datum_type())(self))) }
+            unsafe {
+                let mut t = dispatch_datum!(Tensor::as_uniform_t(self.datum_type())(self));
+                t.set_datum_type(self.datum_type());
+                Some(t)
+            }
         } else {
             None
         }
