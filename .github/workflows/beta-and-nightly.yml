@@ -1,6 +1,7 @@
 name: Beta and nightly Rust
 
 on:
+  pull_request:
   schedule:
     - cron:  '0 5 * * *'
 
