@@ -18,6 +18,8 @@ pub fn gru(
     gru.optional_y_output = options.next().unwrap();
     gru.optional_y_h_output = options.next().unwrap();
 
+    gru.linear_before_reset = pb.get_attr("linear_before_reset").unwrap_or(false);
+
     Ok((expand(gru), vec![]))
 }
 
@@ -309,22 +311,35 @@ impl GRU {
         // ht = g(Xt*(Wh^T) + (rt (.) Ht-1)*(Rh^T) + Rbh + Wbh) # default, when linear_before_reset = 0
         // ht = g(Xt*(Wh^T) + (rt (.) (Ht-1*(Rh^T) + Rbh)) + Wbh) # when linear_before_reset != 0
         wire!(Xt_WhT = matmul::MatMul::default().with_b_trans(true), Xt, Wh);
-        let rt_Ht_1_RhT = if self.linear_before_reset {
+        let rt_Ht_1_RhT_Rbh = if self.linear_before_reset {
+            // rt (.) (Ht-1*(Rh^T) + Rbh)
             wire!(Ht_1_RhT = matmul::MatMul::default().with_b_trans(true), Ht_1, Rh);
-            wire!(rt_Ht_1_RhT = math::mul::bin_typed(), rt, Ht_1_RhT);
-            rt_Ht_1_RhT
+            let Ht_1_RhT_Rbh = if let Some(b) = b {
+                wire!(Rbh = array::Slice::new(1, 5.to_dim() * h_size, 6.to_dim() * h_size), b);
+                wire!(Ht_1_RhT_Rbh = math::add::bin_typed(), Ht_1_RhT, Rbh);
+                Ht_1_RhT_Rbh
+            } else {
+                Ht_1_RhT
+            };
+            wire!(rt_Ht_1_RhT_Rbh = math::mul::bin_typed(), rt, Ht_1_RhT_Rbh);
+            rt_Ht_1_RhT_Rbh
         } else {
+            // (rt (.) Ht-1)*(Rh^T) + Rbh
             wire!(rt_Ht_1 = math::mul::bin_typed(), rt, Ht_1);
             wire!(rt_Ht_1_RhT = matmul::MatMul::default().with_b_trans(true), rt_Ht_1, Rh);
-            rt_Ht_1_RhT
+            if let Some(b) = b {
+                wire!(Rbh = array::Slice::new(1, 5.to_dim() * h_size, 6.to_dim() * h_size), b);
+                wire!(rt_Ht_1_RhT_Rbh = math::add::bin_typed(), rt_Ht_1_RhT, Rbh);
+                rt_Ht_1_RhT_Rbh
+            } else {
+                rt_Ht_1_RhT
+            }
         };
-        wire!(ht0 = math::add::bin_typed(), Xt_WhT, rt_Ht_1_RhT);
+        wire!(ht0 = math::add::bin_typed(), Xt_WhT, rt_Ht_1_RhT_Rbh);
         let mut ht0 = ht0;
         if let Some(b) = b {
             wire!(Wbh = array::Slice::new(1, 2.to_dim() * h_size, 3.to_dim() * h_size), b);
-            wire!(Rbh = array::Slice::new(1, 5.to_dim() * h_size, 6.to_dim() * h_size), b);
-            wire!(Wbh_Rbh = math::add::bin_typed(), Wbh, Rbh);
-            wire!(ht0_biased = math::add::bin_typed(), ht0, Wbh_Rbh);
+            wire!(ht0_biased = math::add::bin_typed(), ht0, Wbh);
             ht0 = ht0_biased
         }
         wire!(ht = self.g.clone(), ht0);
@@ -335,6 +350,22 @@ impl GRU {
         wire!(one_sub_zt_ht = math::mul::bin_typed(), one_sub_zt, ht);
         wire!(zt_Ht_1 = math::mul::bin_typed(), zt, Ht_1);
         wire!(Ht = math::add::bin_typed(), one_sub_zt_ht, zt_Ht_1);
+
+        /*
+        // Ht = ht + (- (zt (.) ht) + zt (.) Ht-1)
+        wire!(zt_ht = math::mul::bin_typed(), zt, ht);
+        wire!(zt_Ht_1 = math::mul::bin_typed(), zt, Ht_1);
+        wire!(zt_Ht_1_sub_zt_ht = math::sub::bin_typed(), zt_Ht_1, zt_ht);
+        wire!(Ht = math::add::bin_typed(), ht, zt_Ht_1_sub_zt_ht);
+        */
+
+        // Ht = ht - (zt (.) ht) + zt (.) Ht-1)
+        /*
+        wire!(zt_ht = math::mul::bin_typed(), zt, ht);
+        wire!(zt_Ht_1 = math::mul::bin_typed(), zt, Ht_1);
+        wire!(ht_zt_ht = math::sub::bin_typed(), ht, zt_ht);
+        wire!(Ht = math::add::bin_typed(), ht_zt_ht, zt_Ht_1);
+        */
 
         wire!(y_h = AxisOp::Add(0), Ht);
         body.set_output_outlets(&[y_h])?;

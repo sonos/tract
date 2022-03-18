@@ -253,8 +253,6 @@ fn dump_subcommand<'a>() -> clap::Command<'a> {
     use clap::*;
     let dump = clap::Command::new("dump")
         .long_about("Dumps the Tensorflow graph in human readable form.")
-        .arg(Arg::new("cost").long("cost").help("Include const information"))
-        .arg(Arg::new("profile").long("profile").help("Include results for profile run"))
         .arg(
             Arg::new("assert-cost")
             .takes_value(true)
@@ -382,6 +380,8 @@ fn output_options(command: clap::Command) -> clap::Command {
         .arg(Arg::new("io-none").long("io-none").help("hide i/o information"))
         .arg(Arg::new("json").long("json").help("dump performance info as json"))
         .arg(Arg::new("outlet-labels").long("outlet-labels").help("display outlet labels"))
+        .arg(Arg::new("cost").long("cost").help("Include const information"))
+        .arg(Arg::new("profile").long("profile").help("Include results for profile run"))
         .arg(
             Arg::new("invariants")
                 .takes_value(false)
