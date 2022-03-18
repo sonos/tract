@@ -41,5 +41,5 @@ opt-level = 3
 
 [profile.dev.build-override]
 debug = false
-strip = "debuginfo"
+# strip = "debuginfo"
 incremental = false
