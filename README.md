@@ -25,6 +25,8 @@ or NNEF, optimize them and run data through them.
 * [From Keras and TensorFlow 2 in Jupyter to tract](examples/jupyter-keras-tract-tf2)
 * [ResNet with PyTorch](examples/pytorch-resnet)
 
+There is also [some technical documentation](doc/) and [blog](https://tech-blog.sonos.com/posts/optimising-a-neural-network-for-inference/) posts.
+
 ## Tract in the landscape
 
 ### ONNX
