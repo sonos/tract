@@ -10,7 +10,7 @@ the network without assuming it will always run on one single image.
 Model is the same as in the quick start example:
 
 ```sh
-wget https://github.com/onnx/models/raw/master/vision/classification/mobilenet/model/mobilenetv2-7.onnx
+wget https://github.com/onnx/models/raw/main/vision/classification/mobilenet/model/mobilenetv2-7.onnx
 ```
 
 We will use Grace Hopper portrait again, and a cat image.
