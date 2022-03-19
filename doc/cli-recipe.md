@@ -6,7 +6,7 @@ interactive usage.
 Please do not make assumptions on the exact forms of its outputs. We do not commit on
 any form of stability suitable to script writting.
 
-We are going to use (../examples/onnx-mobilenet-v2) as examples in these notes. See its
+We are going to use [ONNX mobilenet](../examples/onnx-mobilenet-v2) as examples in these notes. See its
 code and README to download a the model.
 
 ## Install `tract`
@@ -88,7 +88,7 @@ tract -O mobilenetv2-7.onnx -i 1,3,224,224,f32 criterion
 ```
 
 The first one is a simple bench runner customized for tract specific needs, the second one
-uses the (criterion)[https://docs.rs/criterion] crate.
+uses the [criterion](https://docs.rs/criterion) crate.
 
 ## Profiling a network
 
@@ -123,7 +123,7 @@ The `run` subcommand accepts an `--assert-output-bundle`. This time, the tensors
 matched with the model output names. `tract` will run over the input and check that its finding
 are the same to the expected output (with some leeway for rounding differences).
 
-For instance, in [onnx/test_cases/qtanh_1]:
+[Example here](onnx/test_cases/qtanh_1) for a quantized tanh in onnx.
 
 ```
 tract --input-bundle io.npz model.onnx -O run --assert-output-bundle io.npz
@@ -137,5 +137,5 @@ tract -v --input-bundle io.npz model.onnx -O run --assert-output-bundle io.npz
 
 The log displays "Checked output #0, ok." (among other information).
 
-[onnx/test_cases/transformer-mlm/generate_io.py] contains an example building a
+[generate_io.py here](onnx/test_cases/transformer-mlm/generate_io.py) contains an example building a
 testcase for a BERT model from huggingface for inspiration.
