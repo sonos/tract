@@ -193,8 +193,12 @@ impl DeconvSum {
         let y_dil = self.pool_spec.dilations().as_ref()[1];
         let x_pad = spatial_output_details[0].pad_before as isize;
         let y_pad = spatial_output_details[1].pad_before as isize;
-        for n in 0..n {
-            for o in 0..*output_shape.c() {
+        let output_c_stride = output_shape.c_stride();
+        unsafe {
+            for n in 0..n {
+                let output = output
+                    .as_mut_ptr()
+                    .offset((n * *output_shape.n_stride().unwrap_or(&0)) as isize);
                 for (kix, (kx, ky)) in tract_ndarray::indices(kernel_shape).into_iter().enumerate()
                 {
                     for (gix, (gx, gy)) in
@@ -209,16 +213,13 @@ impl DeconvSum {
                         {
                             continue;
                         }
-                        let coord = if self.pool_spec.data_format.c_is_last() {
-                            [n, x as usize, y as usize, o]
-                        } else {
-                            [n, o, x as usize, y as usize]
-                        };
-                        unsafe {
+                        let output = output.offset(
+                            x * output_shape.hw_strides()[0] as isize
+                                + y * output_shape.hw_strides()[1] as isize,
+                        );
+                        for o in 0..*output_shape.c() {
                             let value = *n_o_hkwk_hw.uget((n, o, kix, gix));
-                            if !value.is_nan() {
-                                *output.uget_mut(coord) += value;
-                            }
+                            *output.offset((o * output_c_stride) as isize) += value;
                         }
                     }
                 }
