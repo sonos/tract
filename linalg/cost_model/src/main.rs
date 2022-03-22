@@ -4,6 +4,8 @@ use tract_linalg::{frame::MatMatMul, mmm::FusedSpec};
 
 use rand::prelude::*;
 use std::io::Write;
+use std::ops::Range;
+use std::str::FromStr;
 use std::time::{Duration, Instant};
 use tract_itertools::Itertools;
 
@@ -161,7 +163,38 @@ fn measure_add_mat_mul(bencher: &Bencher, mm: &dyn MatMatMul, m: usize, k: usize
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
+enum SamplingStrategy {
+    Random(Range<usize>),
+    Fixed(Vec<usize>),
+}
+
+impl SamplingStrategy {
+    fn sample(&self) -> Vec<usize> {
+        use SamplingStrategy::*;
+        let mut rng = thread_rng();
+        match self {
+            Random(range) => vec!(rng.gen_range(range.clone())),
+            Fixed(v) => v.clone(),
+        }
+    }
+}
+
+impl FromStr for SamplingStrategy {
+    type Err = TractError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.contains("-") {
+            let (min, max) = s.split_once("-").unwrap();
+            Ok(SamplingStrategy::Random(
+                min.parse::<usize>().unwrap()..max.parse::<usize>().unwrap() + 1,
+            ))
+        } else {
+            Ok(SamplingStrategy::Fixed(s.split(",").map(|s| s.parse::<usize>().unwrap()).collect()))
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 struct Sample {
     kernel: &'static str,
     mr: usize,
@@ -171,7 +204,7 @@ struct Sample {
     n: usize,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Dataset(Vec<(Sample, f64)>);
 
 impl Dataset {
@@ -210,27 +243,33 @@ impl Dataset {
     pub fn allkernels_random_sample(
         mmm: &[&dyn MatMatMul],
         size: usize,
-        max_m: usize,
-        max_k: usize,
-        max_n: usize,
+        m: SamplingStrategy,
+        k: SamplingStrategy,
+        n: SamplingStrategy,
         max_mkn: usize,
     ) -> Vec<Sample> {
         let mut inputs = vec![];
-        let mut rng = thread_rng();
-        while inputs.len() < size * mmm.len() {
-            let m = rng.gen_range(1..max_m);
-            let k = rng.gen_range(0..max_k);
-            let n = rng.gen_range(1..max_n);
-            if max_mkn >= m * k * n {
-                for mm in mmm {
-                    inputs.push(Sample {
-                        kernel: mm.kernel_name(),
-                        mr: mm.mr(),
-                        nr: mm.nr(),
-                        m,
-                        k,
-                        n,
-                    });
+        for _ in 0..size {
+            let ms = m.sample();
+            let ks = k.sample();
+            let ns = n.sample();
+            for m in ms {
+                for &k in &ks {
+                    for &n in &ns {
+                        for mm in mmm {
+                            if max_mkn < m * k * n {
+                                continue;
+                            }
+                            inputs.push(Sample {
+                                kernel: mm.kernel_name(),
+                                mr: mm.mr(),
+                                nr: mm.nr(),
+                                m,
+                                k,
+                                n,
+                            });
+                        }
+                    }
                 }
             }
         }
@@ -264,32 +303,6 @@ impl Dataset {
                 .unwrap();
         }
     }
-
-    /*
-    #[allow(dead_code)]
-    pub fn load(filename: &str) -> Dataset {
-        let samples = std::fs::read_to_string(filename)
-            .unwrap()
-            .lines()
-            .map(|l| {
-                let (kernel, mr, nr, m, k, n, y) = scan_fmt::scan_fmt!(
-                    l,
-                    "{} {} {} {} {} {} {}",
-                    String,
-                    usize,
-                    usize,
-                    usize,
-                    usize,
-                    usize,
-                    f64
-                )
-                .unwrap();
-                (Sample { kernel, mr, nr, m, k, n }, y)
-            })
-            .collect();
-        Dataset(samples)
-    }
-    */
 }
 
 fn display_comparison(m: usize, k: usize, n: usize, alts: &[(&str, f64)], choice: Option<&str>) {
@@ -358,30 +371,30 @@ fn main() {
                 .arg(
                     Arg::new("m")
                         .short('m')
-                        .help("Max m value")
+                        .help("m values: 1-512 or 1,16,32")
                         .takes_value(true)
-                        .default_value("512"),
+                        .default_value("1-512"),
                 )
                 .arg(
                     Arg::new("k")
                         .short('k')
-                        .help("Max k value")
+                        .help("k values: 1-512 or 1,16,32")
                         .takes_value(true)
-                        .default_value("512"),
+                        .default_value("1-512"),
                 )
                 .arg(
                     Arg::new("n")
                         .short('n')
-                        .help("Max n value")
+                        .help("m values: 1-512 or 1,16,32")
                         .takes_value(true)
-                        .default_value("512"),
+                        .default_value("1-512"),
                 )
                 .arg(
                     Arg::new("mkn")
                         .long("mkn")
                         .help("Max m*k*n value")
                         .takes_value(true)
-                        .default_value("4194304"),
+                        .default_value("9999999999"),
                 )
                 .arg(
                     Arg::new("size")
