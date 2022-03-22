@@ -271,20 +271,19 @@ impl DeconvProblem {
         output
     }
 
-    fn check(&self) -> Result<(), TestCaseError> {
+    fn check(&self) {
         if self.optimized {
-            prop_assert_eq!(self.model_eval(), self.reference());
+            self.model_eval().into_tensor().close_enough(&self.reference().into_tensor(), true).unwrap()
         } else {
-            prop_assert_eq!(self.op_eval(), self.reference());
+            self.op_eval().into_tensor().close_enough(&self.reference().into_tensor(), true).unwrap()
         }
-        Ok(())
     }
 }
 
 proptest::proptest! {
     #[test]
     fn prop(pb in any::<DeconvProblem>()) {
-        pb.check().unwrap();
+        pb.check();
     }
 }
 
@@ -303,7 +302,7 @@ fn test_trivial_0() {
         adjustments: tvec!(0, 0),
         group: 1,
     };
-    pb.check().unwrap();
+    pb.check();
 }
 
 #[test]
@@ -321,7 +320,7 @@ fn test_hwc_0() {
         adjustments: tvec!(0, 0),
         group: 1,
     };
-    pb.check().unwrap();
+    pb.check();
 }
 
 #[test]
@@ -339,7 +338,7 @@ fn test_geo_0() {
         adjustments: tvec!(0, 0),
         group: 1,
     };
-    pb.check().unwrap();
+    pb.check();
 }
 
 #[test]
@@ -357,7 +356,7 @@ fn test_hwio_0() {
         adjustments: tvec!(0, 0),
         group: 1,
     };
-    pb.check().unwrap();
+    pb.check();
 }
 
 #[test]
@@ -375,7 +374,7 @@ fn test_strides_1() {
         adjustments: tvec!(0, 0),
         group: 1,
     };
-    pb.check().unwrap();
+    pb.check();
 }
 
 #[test]
@@ -393,7 +392,7 @@ fn test_same_upper_1() {
         adjustments: tvec!(0, 0),
         group: 1,
     };
-    pb.check().unwrap();
+    pb.check();
 }
 
 #[test]
@@ -411,7 +410,7 @@ fn test_same_upper_dil() {
         adjustments: tvec!(0, 0),
         group: 1,
     };
-    pb.check().unwrap();
+    pb.check();
 }
 
 #[test]
@@ -429,7 +428,7 @@ fn test_same_upper_strides() {
         adjustments: tvec!(0, 0),
         group: 1,
     };
-    pb.check().unwrap();
+    pb.check();
 }
 
 #[test]
@@ -447,7 +446,7 @@ fn test_channel_0() {
         adjustments: tvec!(0),
         group: 1,
     };
-    pb.check().unwrap();
+    pb.check();
 }
 
 #[test]
@@ -465,7 +464,7 @@ fn test_group_0() {
         adjustments: tvec!(0),
         group: 2,
     };
-    pb.check().unwrap();
+    pb.check();
 }
 
 #[test]
@@ -483,7 +482,7 @@ fn test_group_1() {
         adjustments: tvec!(0),
         group: 2,
     };
-    pb.check().unwrap();
+    pb.check();
 }
 
 #[test]
@@ -501,7 +500,7 @@ fn test_group_2() {
         adjustments: tvec!(0),
         group: 2,
     };
-    pb.check().unwrap();
+    pb.check();
 }
 
 #[test]
@@ -519,7 +518,7 @@ fn test_group_3() {
         adjustments: tvec!(0),
         group: 2,
     };
-    pb.check().unwrap();
+    pb.check();
 }
 
 #[test]
@@ -537,7 +536,7 @@ fn test_bias_0() {
         adjustments: tvec!(0),
         group: 1,
     };
-    pb.check().unwrap();
+    pb.check();
 }
 
 #[test]
@@ -558,7 +557,7 @@ fn test_rank_5_with_group() {
         adjustments: tvec!(0, 0, 0),
         group: 2,
     };
-    pb.check().unwrap();
+    pb.check();
 }
 
 #[test]
@@ -576,5 +575,5 @@ fn test_issue_512_simplified() {
         adjustments: tvec!(0, 0),
         group: 2,
     };
-    pb.check().unwrap();
+    pb.check();
 }
