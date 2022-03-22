@@ -57,14 +57,34 @@ impl EvalOp for DeconvSum {
             &self.pool_spec.strides(),
             &self.adjustments,
         )?;
-        let mut tensor = Tensor::zero::<f32>(&*output_shape.shape)?;
+        let mut tensor = if let Some(b) = &self.bias {
+            if output_shape.shape[0..output_shape.c_axis()].iter().all(|d| *d == 1) {
+                unsafe {
+                    let mut tensor = Tensor::uninitialized::<f32>(&*output_shape.shape)?;
+                    let values = b.as_ptr::<f32>()?;
+                    let slice = tensor.as_ptr_mut::<f32>()?;
+                    let stride = *output_shape.c_stride();
+                    for ix in 0..b.len() {
+                        let v = *values.offset(ix as isize);
+                        for p in 0..stride {
+                            *slice.offset((stride * ix + p) as isize) = v;
+                        }
+                    }
+                    tensor
+                }
+            } else {
+                let mut tensor = Tensor::zero::<f32>(&*output_shape.shape)?;
+                let mut output = tensor.to_array_view_mut::<f32>()?;
+                let mut bias_shape = tvec!(1; output_shape.rank());
+                bias_shape[output_shape.c_axis()] = b.len();
+                let b = b.clone().into_tensor().into_shape(&bias_shape)?;
+                output += &b.to_array_view::<f32>()?;
+                tensor
+            }
+        } else {
+            Tensor::zero::<f32>(&*output_shape.shape)?
+        };
         let mut output = tensor.to_array_view_mut::<f32>()?;
-        if let Some(b) = &self.bias {
-            let mut bias_shape = tvec!(1; output_shape.rank());
-            bias_shape[output_shape.c_axis()] = b.len();
-            let b = b.clone().into_tensor().into_shape(&bias_shape)?;
-            output += &b.to_array_view::<f32>()?;
-        }
         let hw = *gemm.shape().last().unwrap();
         let n = *output_shape.n().unwrap_or(&1);
         let n_o_hkwk_hw = gemm.into_shape(&[
