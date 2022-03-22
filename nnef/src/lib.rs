@@ -33,5 +33,5 @@ pub mod internal {
 }
 
 pub fn nnef() -> framework::Nnef {
-    framework::Nnef::new()
+    framework::Nnef::new().with_tract_core()
 }

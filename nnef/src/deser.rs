@@ -29,7 +29,16 @@ impl<'mb> ModelBuilder<'mb> {
                     if self.framework.registries.iter().any(|reg| reg.id == ext[1]) {
                         self.registries.push(ext[1].to_string())
                     } else {
-                        bail!("Registry not found {}", &ext[1])
+                        bail!(
+                            "Registry not found {} among [{:?}]",
+                            &ext[1],
+                            self.framework
+                                .registries
+                                .iter()
+                                .map(|reg| reg.id.to_string())
+                                .reduce(|cur_id, nxt| cur_id + ", " + &nxt)
+                                .unwrap()
+                        )
                     }
                 }
                 _ => warn!("Ignore unknown extension {}", ext.join(" ")),
