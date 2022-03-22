@@ -194,31 +194,37 @@ impl DeconvSum {
         let x_pad = spatial_output_details[0].pad_before as isize;
         let y_pad = spatial_output_details[1].pad_before as isize;
         let output_c_stride = output_shape.c_stride();
+        let temp_o_stride = n_o_hkwk_hw.strides()[1];
+        let temp_k_stride = n_o_hkwk_hw.strides()[2];
+        let temp_i_stride = n_o_hkwk_hw.strides()[3];
         unsafe {
             for n in 0..n {
                 let output = output
                     .as_mut_ptr()
                     .offset((n * *output_shape.n_stride().unwrap_or(&0)) as isize);
+                let temp = n_o_hkwk_hw.as_ptr().offset(n as isize * n_o_hkwk_hw.strides()[0]);
                 for (kix, (kx, ky)) in tract_ndarray::indices(kernel_shape).into_iter().enumerate()
                 {
-                    for (gix, (gx, gy)) in
+                    for (gix, (ix, iy)) in
                         tract_ndarray::indices(geo_input_shape).into_iter().enumerate()
                     {
-                        let x = (kx * x_dil + gx * x_stride) as isize - x_pad;
-                        let y = (ky * y_dil + gy * y_stride) as isize - y_pad;
-                        if x < 0
-                            || y < 0
-                            || x >= geo_output_shape[0] as isize
-                            || y >= geo_output_shape[1] as isize
+                        let ox = (kx * x_dil + ix * x_stride) as isize - x_pad;
+                        let oy = (ky * y_dil + iy * y_stride) as isize - y_pad;
+                        if ox < 0
+                            || oy < 0
+                            || ox >= geo_output_shape[0] as isize
+                            || oy >= geo_output_shape[1] as isize
                         {
                             continue;
                         }
                         let output = output.offset(
-                            x * output_shape.hw_strides()[0] as isize
-                                + y * output_shape.hw_strides()[1] as isize,
+                            ox * output_shape.hw_strides()[0] as isize
+                                + oy * output_shape.hw_strides()[1] as isize,
                         );
+                        let temp = temp
+                            .offset(kix as isize * temp_k_stride + gix as isize * temp_i_stride);
                         for o in 0..*output_shape.c() {
-                            let value = *n_o_hkwk_hw.uget((n, o, kix, gix));
+                            let value = *temp.offset(o as isize * temp_o_stride);
                             *output.offset((o * output_c_stride) as isize) += value;
                         }
                     }

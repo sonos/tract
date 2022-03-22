@@ -577,3 +577,21 @@ fn test_issue_512_simplified() {
     };
     pb.check();
 }
+
+#[test]
+fn test_issue_optim_2d() {
+    let pb = DeconvProblem {
+        optimized: false,
+        data_format: HWC,
+        kernel_format: OIHW,
+        padding: PaddingSpec::Valid,
+        input: ndarray::Array3::zeros([2, 2, 1]).into_dyn(),
+        kernel: ndarray::Array4::zeros([1, 1, 1, 1]).into_dyn(),
+        bias: None,
+        strides: tvec!(1, 2),
+        dilations: tvec!(1, 1),
+        adjustments: tvec!(0, 0),
+        group: 1,
+    };
+    pb.check();
+}
