@@ -57,6 +57,11 @@ impl<'mb> ModelBuilder<'mb> {
             .map(|s| s.to::<OutletId>(self))
             .collect::<TractResult<TVec<OutletId>>>()?;
         self.model.set_output_outlets(&outputs)?;
+
+        for (ix, name) in self.proto_model.doc.graph_def.results.iter().enumerate() {
+            self.model.set_outlet_label(outputs[ix], name.to_string())?;
+        }
+
         if let Some(properties) = self
             .proto_model
             .doc
