@@ -142,6 +142,11 @@ impl Op for DeconvUnary {
     fn name(&self) -> Cow<str> {
         "DeconvUnary".into()
     }
+
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec!(format!("{:?}", self.pool_spec)))
+    }
+
     op_core_mir!();
     op_as_typed_op!();
 }

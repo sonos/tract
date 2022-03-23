@@ -183,55 +183,115 @@ impl DeconvSum {
         output: &mut ArrayViewMut4<f32>,
     ) -> TractResult<()> {
         let n = *output_shape.n().unwrap_or(&1);
-        let kernel_shape: [usize; 2] =
-            [self.pool_spec.kernel_shape[0], self.pool_spec.kernel_shape[1]];
-        let geo_input_shape: [usize; 2] = [input_shape.hw_dims()[0], input_shape.hw_dims()[1]];
-        let geo_output_shape: [usize; 2] = [output_shape.hw_dims()[0], output_shape.hw_dims()[1]];
         let x_stride = self.pool_spec.strides().as_ref()[0];
         let y_stride = self.pool_spec.strides().as_ref()[1];
         let x_dil = self.pool_spec.dilations().as_ref()[0];
         let y_dil = self.pool_spec.dilations().as_ref()[1];
         let x_pad = spatial_output_details[0].pad_before as isize;
         let y_pad = spatial_output_details[1].pad_before as isize;
-        let output_c_stride = output_shape.c_stride();
+        let output_c = *output_shape.c();
+        let output_c_stride = *output_shape.c_stride() as isize;
+        let output_x_stride = output_shape.hw_strides()[0] as isize;
+        let output_y_stride = output_shape.hw_strides()[1] as isize;
+        let temp_n_stride = n_o_hkwk_hw.strides()[0];
         let temp_o_stride = n_o_hkwk_hw.strides()[1];
         let temp_k_stride = n_o_hkwk_hw.strides()[2];
         let temp_i_stride = n_o_hkwk_hw.strides()[3];
+        let ox_len = output_shape.hw_dims()[0];
+        let oy_len = output_shape.hw_dims()[1];
+        let ix_len = input_shape.hw_dims()[0];
+        let iy_len = input_shape.hw_dims()[1];
+        let kx_len = self.pool_spec.kernel_shape[0];
+        let ky_len = self.pool_spec.kernel_shape[1];
         unsafe {
             for n in 0..n {
                 let output = output
                     .as_mut_ptr()
                     .offset((n * *output_shape.n_stride().unwrap_or(&0)) as isize);
-                let temp = n_o_hkwk_hw.as_ptr().offset(n as isize * n_o_hkwk_hw.strides()[0]);
-                for (kix, (kx, ky)) in tract_ndarray::indices(kernel_shape).into_iter().enumerate()
-                {
-                    for (gix, (ix, iy)) in
-                        tract_ndarray::indices(geo_input_shape).into_iter().enumerate()
-                    {
+                let temp = n_o_hkwk_hw.as_ptr().offset(n as isize * temp_n_stride);
+                for kx in 0..kx_len {
+                    let temp = temp.offset((kx * ky_len) as isize * temp_k_stride);
+                    for ix in 0..ix_len {
                         let ox = (kx * x_dil + ix * x_stride) as isize - x_pad;
-                        let oy = (ky * y_dil + iy * y_stride) as isize - y_pad;
-                        if ox < 0
-                            || oy < 0
-                            || ox >= geo_output_shape[0] as isize
-                            || oy >= geo_output_shape[1] as isize
-                        {
+                        if ox < 0 || ox >= ox_len as isize {
                             continue;
                         }
-                        let output = output.offset(
-                            ox * output_shape.hw_strides()[0] as isize
-                                + oy * output_shape.hw_strides()[1] as isize,
-                        );
-                        let temp = temp
-                            .offset(kix as isize * temp_k_stride + gix as isize * temp_i_stride);
-                        for o in 0..*output_shape.c() {
-                            let value = *temp.offset(o as isize * temp_o_stride);
-                            *output.offset((o * output_c_stride) as isize) += value;
+                        let temp = temp.offset((ix * iy_len) as isize * temp_i_stride);
+                        let output = output.offset(ox * output_x_stride);
+                        for ky in 0..ky_len {
+                            let temp = temp.offset(ky as isize * temp_k_stride);
+                            let oy = (ky * y_dil) as isize - y_pad;
+                            for iy in 0..iy_len {
+                                let oy = oy + (iy * y_stride) as isize;
+                                if oy < 0 || oy >= oy_len as isize {
+                                    continue;
+                                }
+                                let temp = temp.offset(iy as isize * temp_i_stride);
+                                let output = output.offset(oy * output_y_stride as isize);
+                                Self::main_loop_2d_inner(
+                                    output_c,
+                                    temp,
+                                    temp_o_stride,
+                                    output,
+                                    output_c_stride,
+                                )
+                            }
                         }
                     }
                 }
             }
         }
         Ok(())
+    }
+
+    #[inline(never)]
+    unsafe fn main_loop_2d_inner(
+        output_c: usize,
+        temp: *const f32,
+        temp_o_stride: isize,
+        output: *mut f32,
+        output_c_stride: isize,
+    ) {
+        let mut c = 0;
+        while c + 8 < output_c {
+            let mut left0 = *output.offset(0 * output_c_stride);
+            let mut left1 = *output.offset(1 * output_c_stride);
+            let mut left2 = *output.offset(2 * output_c_stride);
+            let mut left3 = *output.offset(3 * output_c_stride);
+            let mut left4 = *output.offset(4 * output_c_stride);
+            let mut left5 = *output.offset(5 * output_c_stride);
+            let mut left6 = *output.offset(6 * output_c_stride);
+            let mut left7 = *output.offset(7 * output_c_stride);
+            let right0 = *temp.offset(0 * temp_o_stride);
+            let right1 = *temp.offset(1 * temp_o_stride);
+            let right2 = *temp.offset(2 * temp_o_stride);
+            let right3 = *temp.offset(3 * temp_o_stride);
+            let right4 = *temp.offset(4 * temp_o_stride);
+            let right5 = *temp.offset(5 * temp_o_stride);
+            let right6 = *temp.offset(6 * temp_o_stride);
+            let right7 = *temp.offset(7 * temp_o_stride);
+            left0 += right0;
+            left1 += right1;
+            left2 += right2;
+            left3 += right3;
+            left4 += right4;
+            left5 += right5;
+            left6 += right6;
+            left7 += right7;
+            *output.offset(0 * output_c_stride) = left0;
+            *output.offset(1 * output_c_stride) = left1;
+            *output.offset(2 * output_c_stride) = left2;
+            *output.offset(3 * output_c_stride) = left3;
+            *output.offset(4 * output_c_stride) = left4;
+            *output.offset(5 * output_c_stride) = left5;
+            *output.offset(6 * output_c_stride) = left6;
+            *output.offset(7 * output_c_stride) = left7;
+            c += 8;
+        }
+        for c in c..output_c {
+            let value = *temp.offset(c as isize * temp_o_stride);
+            *output.offset(c as isize * output_c_stride) += value;
+        }
     }
 
     pub fn main_loop_3d(
