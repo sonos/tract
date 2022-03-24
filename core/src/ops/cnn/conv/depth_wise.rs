@@ -85,13 +85,41 @@ impl DepthWise {
         visitor: &Scanner,
     ) {
         let mut sum = *bias.offset(c);
-        for (ix, v) in visitor.valid_offsets_with_indexes() {
-            let k = *kptr.offset(ix as isize);
-            let i = *iptr.offset(v as isize);
-            sum = sum + k * i;
+        let mut iter = visitor.valid_offsets_with_indexes();
+        if iter.size_hint() == (4, Some(4)) {
+            let (ix, v) = iter.next().unwrap();
+            let k0 = *kptr.offset(ix as isize);
+            let i0 = *iptr.offset(v as isize);
+            let (ix, v) = iter.next().unwrap();
+            let k1 = *kptr.offset(ix as isize);
+            let i1 = *iptr.offset(v as isize);
+            let (ix, v) = iter.next().unwrap();
+            let k2 = *kptr.offset(ix as isize);
+            let i2 = *iptr.offset(v as isize);
+            let (ix, v) = iter.next().unwrap();
+            let k3 = *kptr.offset(ix as isize);
+            let i3 = *iptr.offset(v as isize);
+            sum = sum + k0 * i0 + k1 * i1 + k2 * i2 + k3 * i3;
+        } else if iter.size_hint() == (3, Some(3)) {
+            let (ix, v) = iter.next().unwrap();
+            let k0 = *kptr.offset(ix as isize);
+            let i0 = *iptr.offset(v as isize);
+            let (ix, v) = iter.next().unwrap();
+            let k1 = *kptr.offset(ix as isize);
+            let i1 = *iptr.offset(v as isize);
+            let (ix, v) = iter.next().unwrap();
+            let k2 = *kptr.offset(ix as isize);
+            let i2 = *iptr.offset(v as isize);
+            sum = sum + k0 * i0 + k1 * i1 + k2 * i2;
+        } else {
+            for (ix, v) in iter {
+                let k = *kptr.offset(ix as isize);
+                let i = *iptr.offset(v as isize);
+                sum = sum + k * i;
+            }
         }
-        let ptr = optr.offset(visitor.output_offset);
-        *ptr = sum;
+        let optr = optr.offset(visitor.output_offset);
+        *optr = sum;
     }
 }
 
