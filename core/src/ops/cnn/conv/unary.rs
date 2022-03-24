@@ -563,12 +563,17 @@ impl ConvUnary {
         let input_shape = input.shape.as_concrete().unwrap();
         let ConcretePoolGeometry { input_shape, patch, output_shape } =
             self.pool_spec.compute_geo(&input.shape)?.to_concrete(input_shape)?.into_owned();
+        let bias = if let Some(b) = &self.bias {
+            b.clone()
+        } else {
+            Tensor::zero::<T>(&[*input_shape.c()])?.into_arc_tensor()
+        };
         let op = DepthWise::new(
             patch,
             input_shape,
             output_shape,
             self.kernel_as_group_o_ihw().context("in kernel_as_group_o_ihw")?,
-            self.bias.clone(),
+            bias,
         );
         Ok(Box::new(op))
     }
