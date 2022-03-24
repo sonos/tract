@@ -431,6 +431,7 @@ impl Tensor {
     }
 
     pub fn remove_axis(&mut self, axis: usize) -> anyhow::Result<()> {
+        anyhow::ensure!(self.shape[axis] == 1, "Remove a non-1 axis: axis {} in {:?}", axis, self);
         self.shape.remove(axis);
         self.strides.remove(axis);
         Ok(())
