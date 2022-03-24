@@ -5,11 +5,12 @@ use ndarray::prelude::*;
 
 use super::PatchAxis;
 
+use std::fmt::Debug;
 use std::ops::Range;
 
 use tract_itertools::{izip, zip, Itertools};
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Clone, PartialEq, Hash)]
 pub struct PatchSpec {
     pub input_shape: TVec<usize>,
     pub input_inner_stride: usize,
@@ -18,6 +19,19 @@ pub struct PatchSpec {
     pub strides: TVec<usize>,
     pub dilations: TVec<usize>,
     pub padding: PaddingSpec,
+}
+
+impl Debug for PatchSpec {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "kernel: {:?} strides: {:?} dil: {:?} pad: {:?}",
+            self.kernel_shape.iter().join(","),
+            self.strides.iter().join(","),
+            self.dilations.iter().join(","),
+            self.padding
+        )
+    }
 }
 
 impl PatchSpec {
@@ -209,7 +223,7 @@ impl PatchSpec {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Clone, PartialEq, Hash)]
 pub struct Patch {
     pub spec: PatchSpec,
     pub pad_before: TVec<usize>,
@@ -226,6 +240,12 @@ pub struct Patch {
     pub valid_zone_id: Option<usize>,
     pub zone_strides: TVec<isize>,
     pub input_layout_strides: TVec<isize>,
+}
+
+impl Debug for Patch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.spec)
+    }
 }
 
 impl Patch {
