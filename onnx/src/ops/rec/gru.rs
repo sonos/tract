@@ -132,9 +132,9 @@ impl Expansion for GRU {
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         use tract_hir::tract_core::ops::array::TypedConcat;
-        let fore = self.wire_one_side(prefix, target, inputs, 0)?;
         let w_fact = target.outlet_fact(inputs[1])?;
         if w_fact.shape[0] == 2.into() {
+            let fore = self.wire_one_side(&format!("{}.fore", prefix), target, inputs, 0)?;
             let back = self.wire_one_side(&format!("{}.back", prefix), target, inputs, 1)?;
             let mut outputs = tvec!(0.into(); self.nboutputs()?);
             if let Some(ix) = self.optional_y_output {
@@ -151,9 +151,12 @@ impl Expansion for GRU {
                     &[fore[ix], back[ix]],
                 )?[0];
             }
+            if outputs.len() == 1 {
+                target.set_outlet_label(outputs[0], prefix.into())?;
+            }
             Ok(outputs)
         } else {
-            Ok(fore)
+            self.wire_one_side(prefix, target, inputs, 0)
         }
     }
 }
