@@ -607,7 +607,7 @@ macro_rules! tuple {
                             Value::Tuple(vec) => {
                                 let mut vec = vec.iter();
                                 Ok((
-                                        $($d::coerce(builder, vec.next().unwrap())?),*
+                                        $($d::coerce(builder, vec.next().context("Too small a tuple")?)?),*
                                    ))
                             }
                             _ => bail!("Can not build a tuple from {:?}", from),

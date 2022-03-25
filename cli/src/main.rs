@@ -225,17 +225,18 @@ fn main() -> tract_core::anyhow::Result<()> {
         None
     };
 
-    if ::std::env::var("RUST_LOG").is_err() {
+    if ::std::env::var("TRACT_LOG").is_err() {
         let level = match matches.occurrences_of("verbose") {
             0 => "cli=warn,tract=warn",
             1 => "cli=info,tract=info",
             2 => "cli=debug,tract=debug",
             _ => "cli=trace,tract=trace",
         };
-        ::std::env::set_var("RUST_LOG", level);
+        ::std::env::set_var("TRACT_LOG", level);
     }
 
-    let env = env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "warn");
+    let env = env_logger::Env::default()
+        .filter_or("TRACT_LOG", "warn");
 
     env_logger::Builder::from_env(env).format_timestamp_nanos().init();
     info_usage("init", probe.as_ref());

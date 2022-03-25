@@ -36,7 +36,8 @@ pub fn register(registry: &mut Registry) {
             ast::TypeSpec::Tuple(vec![
                 TypeName::String.spec(),  // body param name
                 TypeName::String.spec(),  // "full" or "last"
-                TypeName::Integer.spec(), // axis
+                TypeName::Integer.spec(), // axis (ignored for last)
+                TypeName::Integer.spec(), // step (ignored for last)
             ])
             .array()
             .named("output"),
@@ -103,18 +104,20 @@ fn ser_scan(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValu
         if let Some((r_ix, om)) =
             op.output_mapping.iter().enumerate().find(|(_ix, om)| om.full_slot == Some(slot))
         {
-            outputs.push(tuple_3(
+            outputs.push(tuple_4(
                 string(body.decl.results[r_ix].id.clone()),
                 string("full"),
                 numeric(om.axis),
+                numeric(om.chunk),
             ));
         } else if let Some((r_ix, om)) =
             op.output_mapping.iter().enumerate().find(|(_ix, om)| om.last_value_slot == Some(slot))
         {
-            outputs.push(tuple_3(
+            outputs.push(tuple_4(
                 string(body.decl.results[r_ix].id.clone()),
                 string("last"),
                 numeric(om.axis),
+                numeric(om.chunk),
             ));
         } else {
             bail!("output {} is unbound", slot);
@@ -197,22 +200,39 @@ fn de_scan(
         })
         .collect::<TractResult<Vec<&Value>>>()?;
 
-
     let body_outputs: Vec<OutletId> = body_outputs
         .iter()
         .map(|v| v.to::<OutletId>(builder))
         .collect::<TractResult<Vec<OutletId>>>()?;
     body.model.set_output_outlets(&body_outputs)?;
-    let outputs: TVec<(String, String, usize)> = invocation.named_arg_as(builder, "output")?;
+    // preferred form for output is 4 arguments, but early models had 3 arguments output,
+    // breaking support for bidirectional
+    // this awkward dance somewhat maintains compatibility
+    let outputs: TVec<(String, String, usize, isize)> = if let Ok(tuples_4) =
+        invocation.named_arg_as(builder, "output")
+    {
+        tuples_4
+    } else {
+        let outputs: TVec<(String, String, usize)> = invocation.named_arg_as(builder, "output")?;
+        outputs.into_iter().map(|(a, b, c)| (a, b, c, 1)).collect()
+    };
     for output in &outputs {
         if output.1 != "full" && output.1 != "last" {
-            bail!("output named `{}' must specify type \"full\" or \"last\", found `{}'", output.0, output.1)
+            bail!(
+                "output named `{}' must specify type \"full\" or \"last\", found `{}'",
+                output.0,
+                output.1
+            )
         }
     }
     let mut output_mapping = vec![];
     for output_name in fragment.decl.results.iter().map(|o| &*o.id) {
         output_mapping.push(OutputMapping {
-            chunk: 1, // FIXME
+            chunk: outputs
+                .iter()
+                .find(|om| om.0 == output_name && om.1 == "full")
+                .map(|om| om.3)
+                .unwrap_or(1),
             full_dim_hint: None,
             full_slot: outputs
                 .iter()
