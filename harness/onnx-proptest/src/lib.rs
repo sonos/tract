@@ -75,21 +75,22 @@ impl Arbitrary for GruProblem {
     type Parameters = ();
     type Strategy = BoxedStrategy<Self>;
     fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-        (1usize..5, 1usize..3, 1usize..5, 1usize..5)
-            .prop_flat_map(|(s, b, i, h)| {
+        (any::<bool>(), 1usize..5, 1usize..3, 1usize..5, 1usize..5)
+            .prop_flat_map(|(bidi, s, b, i, h)| {
+                let dir = 1 + bidi as usize;
                 let x = tensor(&[s, b, i]);
-                let w = tensor(&[1, 3 * h, i]);
-                let r = tensor(&[1, 3 * h, h]);
-                let bias = option::of(tensor(&[1, 6 * h]));
+                let w = tensor(&[dir, 3 * h, i]);
+                let r = tensor(&[dir, 3 * h, h]);
+                let bias = option::of(tensor(&[dir, 6 * h]));
                 /*
                 let sl = if s > 1 {
-                    option::of(vec(1..s as i32, b..=b).prop_map(|v| tensor1(&*v))).boxed()
+                option::of(vec(1..s as i32, b..=b).prop_map(|v| tensor1(&*v))).boxed()
                 } else {
-                    Just(None).boxed()
+                Just(None).boxed()
                 };
                 */
                 let sl = Just(None).boxed();
-                let initial_h = option::of(tensor(&[1, b, h]));
+                let initial_h = option::of(tensor(&[dir, b, h]));
                 let linear_before_reset = any::<bool>();
                 (x, w, r, bias, sl, Just(h), initial_h, linear_before_reset)
             })
@@ -119,6 +120,7 @@ impl GruProblem {
         lower_input(&mut graph, "x", self.x.shape());
         lower_const_f32(&mut graph, "w", &self.w);
         lower_const_f32(&mut graph, "r", &self.r);
+        let dirs = self.w.shape()[0];
         let mut inputs = vec!["x", "wO", "rO", "", "", ""];
         if let Some(b) = &self.bias {
             lower_const_f32(&mut graph, "b", &b);
@@ -138,6 +140,10 @@ impl GruProblem {
             .outputs(["gru0", "gru1"])
             .op("GRU")
             .attribute("hidden_size", Attribute::Int(self.hidden_size as _))
+            .attribute(
+                "direction",
+                Attribute::String(if dirs == 2 { "bidirectional" } else { "forward" }.to_string()),
+            )
             .attribute(
                 "linear_before_reset",
                 Attribute::Int(self.linear_before_reset as usize as _),
@@ -202,15 +208,15 @@ fn gru_0() {
 /*
 #[test]
 fn gru_sl_0() {
-    let pb = GruProblem {
-        hidden_size: 1,
-        x: tensor3(&[[[0f32]], [[0f32]]]),
-        w: tensor3(&[[[0f32], [0f32], [0f32]]]),
-        r: tensor3(&[[[0f32], [0f32], [0f32]]]),
-        bias: None,
-        sl: None,
-    };
-    pb.lower().unwrap().check().unwrap()
+let pb = GruProblem {
+hidden_size: 1,
+x: tensor3(&[[[0f32]], [[0f32]]]),
+w: tensor3(&[[[0f32], [0f32], [0f32]]]),
+r: tensor3(&[[[0f32], [0f32], [0f32]]]),
+bias: None,
+sl: None,
+};
+pb.lower().unwrap().check().unwrap()
 }
 */
 
