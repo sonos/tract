@@ -226,7 +226,9 @@ pub fn handle_with_model(
     for inputs in crate::tensor::retrieve_or_make_inputs(reference_model, params)? {
         state.run_plan_with_eval(inputs, |session, state, node, input| -> TractResult<_> {
             let result: TVec<Arc<Tensor>> = tract_core::plan::eval(session, state, node, input)?;
-            values.entry(node.name.clone()).or_default().push(Ok(result[0].clone()));
+            if node.outputs.len() == 1 {
+                values.entry(node.name.clone()).or_default().push(Ok(result[0].clone()));
+            }
             for (output_slot, v) in result.iter().enumerate() {
                 if let Some(tag) = reference_model.outlet_label((node.id, output_slot).into()) {
                     if tag != node.name {
