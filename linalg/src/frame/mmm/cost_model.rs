@@ -77,10 +77,10 @@ impl<'a> CostModel<'a> {
         n: Option<usize>,
     ) -> Box<dyn MatMatMul> {
         if let (Some(m), Some(k), Some(n)) = (m, k, n) {
-            if (m as f32) * (k as f32) * (n as f32) < self.big_product_mkn_threshold {
+      //      if (m as f32) * (k as f32) * (n as f32) < self.big_product_mkn_threshold {
                 let choice = self.predict(m, k, n);
                 return impls.iter().find(|k| k.kernel_name() == choice).unwrap().clone();
-            }
+      //}
         }
         return impls
             .iter()
