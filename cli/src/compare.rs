@@ -270,6 +270,11 @@ where
     let mut failing = std::collections::HashSet::new();
     let mut unchecked = std::collections::HashSet::new();
     let mut ok = 0;
+    fn canonic(s: &str) -> String {
+        s.replace(".", "_").replace("-", "_")
+    }
+    let all_values: HashMap<String, &Vec<CliResult<Arc<Tensor>>>> =
+        all_values.iter().map(|(k, v)| (canonic(k), v)).collect();
     for (turn, inputs) in tensor::retrieve_or_make_inputs(tract, params)?.into_iter().enumerate() {
         state.run_plan_with_eval(
             inputs,
@@ -279,7 +284,7 @@ where
                     .map(|ix| {
                         let get_value = |label: &str| {
                             all_values
-                                .get(label)
+                                .get(&canonic(label))
                                 .and_then(|v| v.get(turn))
                                 .and_then(|r| r.as_ref().ok())
                                 .cloned()
