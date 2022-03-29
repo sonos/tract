@@ -37,7 +37,10 @@ lto = true
 debug = true
 
 [profile.dev.package."*"]
-opt-level = 2
+opt-level = 3
+
+[profile.dev.package.darling_macro]
+opt-level = 0 # work around never ending build on wondows
 
 [profile.dev.build-override]
 debug = false
