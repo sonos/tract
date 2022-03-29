@@ -1,18 +1,13 @@
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'version identifier'
-        required: true
-    #   release:
-    #     types:
-    #       - created
+  release:
+    types:
+      - created
 
-name: Upload Release Assets
+name: Upload Release Binaries
 
 jobs:
   assets:
-    name: Upload Release Assets
+    name: Upload Release Binaries
     strategy:
       fail-fast: false
       matrix:
@@ -40,22 +35,22 @@ jobs:
         exclude:
           - os: macOS-latest
             arch: armv7
+
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
 
-          #      - name: Extract version tag
-          #        id: version
-          #        run: echo ::set-output name=value::$(echo ${{ github.ref }} | cut -f 3 -d / | tr -d 'v' )
+      - name: Extract version tag
+        id: version
+        run: echo ::set-output name=value::$(echo ${{ github.ref }} | cut -f 3 -d / | tr -d 'v' )
 
       - name: Build tract
         run: |
           set -ex
-          #          version=${{github.event.inputs.outputs.value}}
           target=${{matrix.target}}
-          version=${{github.event.inputs.version}}
-          name=${target}_${version}
+          version=${{steps.version.outputs.value}}
+          name=${target}-${version}
 
           rustup update
           rustup target add ${target}
@@ -77,14 +72,14 @@ jobs:
 
           cargo build --target ${target} --release -p tract
           mkdir tract-$name
-          cp target/${target}/release/tract tract-$name
-          tar czf tract-$name.tgz tract-$name
+          cp target/${target}/release/tract tract-${name}
+          tar czf tract-${name}.tgz tract-${name}
 
-          #       - name: Upload asset
-          #         uses: softprops/action-gh-release@v1
-          #         with:
-          #           files: tract-${{matrix.name}}-${{ steps.version.outputs.value }}.tgz
-          #           name: ${{ steps.version.outputs.value }}
-          #         env:
-          #           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload asset
+        uses: softprops/action-gh-release@v1
+        with:
+          files: tract-${{matrix.target}}-${{ steps.version.outputs.value }}.tgz
+          name: ${{ steps.version.outputs.value }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
