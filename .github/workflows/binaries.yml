@@ -1,8 +1,12 @@
 on:
   workflow_dispatch:
-  release:
-    types:
-      - created
+    inputs:
+      version:
+        description: 'version identifier'
+        required: true
+    #   release:
+    #     types:
+    #       - created
 
 name: Upload Release Assets
 
@@ -10,35 +14,76 @@ jobs:
   assets:
     name: Upload Release Assets
     strategy:
+      fail-fast: false
       matrix:
         os: [ ubuntu-latest, macOS-latest ]
+        arch: [ x86_64, aarch64, armv7 ]
         include:
           - os: ubuntu-latest
-            name: linux
+            arch: x86_64
+            target: x86_64-unknown-linux-musl
+            musl: x86_64-linux-musl
+          - os: ubuntu-latest
+            arch: aarch64
+            target: aarch64-unknown-linux-musl
+            musl: aarch64-linux-musl
+          - os: ubuntu-latest
+            arch: armv7
+            target: armv7-unknown-linux-musleabihf
+            musl: armv7l-linux-musleabihf
           - os: macOS-latest
-            name: macos
+            arch: x86_64
+            target: x86_64-apple-darwin
+          - os: macOS-latest
+            arch: aarch64
+            target: aarch64-apple-darwin
+        exclude:
+          - os: macOS-latest
+            arch: armv7
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
 
-      - name: Extract version tag
-        id: version
-        run: echo ::set-output name=value::$(echo ${{ github.ref }} | cut -f 3 -d / | tr -d 'v' )
+          #      - name: Extract version tag
+          #        id: version
+          #        run: echo ::set-output name=value::$(echo ${{ github.ref }} | cut -f 3 -d / | tr -d 'v' )
 
       - name: Build tract
         run: |
-          cargo build --release -p tract
-          mkdir cargo-dinghy-${{ steps.version.outputs.value }}
-          mkdir tract-${{matrix.name}}-${{ steps.version.outputs.value }}
-          cp target/release/tract tract-${{matrix.name}}-${{ steps.version.outputs.value }}
-          tar czf tract-${{matrix.name}}-${{ steps.version.outputs.value }}.tgz tract-${{matrix.name}}-${{ steps.version.outputs.value }}
+          #          version=${{github.event.inputs.outputs.value}}
+          version=${{github.event.inputs.version}}
+          name=${{matrix.target}}_$version
+          target=${{matrix.target}}
 
-      - name: Upload asset
-        uses: softprops/action-gh-release@v1
-        with:
-          files: tract-${{matrix.name}}-${{ steps.version.outputs.value }}.tgz
-          name: ${{ steps.version.outputs.value }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          rustup update
+          rustup target add $target
+
+          if [ -n "${{matrix.musl}}" ]
+          then
+            MUSL_TRIPLE=${{matrix.musl}}
+            curl -s https://musl.cc/${MUSL_TRIPLE}-cross.tgz | tar zx
+
+            MUSL_BIN=`pwd`/${MUSL_TRIPLE}-cross/bin
+            export PATH=$MUSL_BIN:$PATH
+
+            export TARGET_CC=$MUSL_BIN/${MUSL_TRIPLE}-gcc
+
+            RUST_TRIPLE_ENV=$(echo $RUST_TRIPLE | tr 'a-z-' 'A-Z_')
+            export CARGO_TARGET_${RUST_TRIPLE_ENV}_CC=$TARGET_CC
+            export CARGO_TARGET_${RUST_TRIPLE_ENV}_LINKER=$TARGET_CC
+          fi
+
+          cargo build --release -p tract
+          mkdir tract-$name
+          cp target/release/tract tract-$name
+          tar czf tract-$name.tgz tract-$name
+
+          #       - name: Upload asset
+          #         uses: softprops/action-gh-release@v1
+          #         with:
+          #           files: tract-${{matrix.name}}-${{ steps.version.outputs.value }}.tgz
+          #           name: ${{ steps.version.outputs.value }}
+          #         env:
+          #           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
