@@ -51,13 +51,14 @@ jobs:
 
       - name: Build tract
         run: |
+          set -ex
           #          version=${{github.event.inputs.outputs.value}}
           version=${{github.event.inputs.version}}
-          name=${{matrix.target}}_$version
+          name=${{matrix.target}}_${version}
           target=${{matrix.target}}
 
           rustup update
-          rustup target add $target
+          rustup target add ${target}
 
           if [ -n "${{matrix.musl}}" ]
           then
@@ -74,9 +75,9 @@ jobs:
             export CARGO_TARGET_${RUST_TRIPLE_ENV}_LINKER=$TARGET_CC
           fi
 
-          cargo build --release -p tract
+          cargo build --target ${target} --release -p tract
           mkdir tract-$name
-          cp target/release/tract tract-$name
+          cp target/${target}/release/tract tract-$name
           tar czf tract-$name.tgz tract-$name
 
           #       - name: Upload asset
