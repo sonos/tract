@@ -53,9 +53,9 @@ jobs:
         run: |
           set -ex
           #          version=${{github.event.inputs.outputs.value}}
-          version=${{github.event.inputs.version}}
-          name=${{matrix.target}}_${version}
           target=${{matrix.target}}
+          version=${{github.event.inputs.version}}
+          name=${target}_${version}
 
           rustup update
           rustup target add ${target}
@@ -70,7 +70,7 @@ jobs:
 
             export TARGET_CC=$MUSL_BIN/${MUSL_TRIPLE}-gcc
 
-            RUST_TRIPLE_ENV=$(echo $RUST_TRIPLE | tr 'a-z-' 'A-Z_')
+            RUST_TRIPLE_ENV=$(echo ${target} | tr 'a-z-' 'A-Z_')
             export CARGO_TARGET_${RUST_TRIPLE_ENV}_CC=$TARGET_CC
             export CARGO_TARGET_${RUST_TRIPLE_ENV}_LINKER=$TARGET_CC
           fi
