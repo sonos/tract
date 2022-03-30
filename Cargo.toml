@@ -39,6 +39,9 @@ debug = true
 [profile.dev.package."*"]
 opt-level = 2
 
+[profile.dev.package.darling_macro]
+opt-level = 0 # work around never ending build on wondows
+
 [profile.dev.build-override]
 debug = false
 # strip = "debuginfo" does not work on android and ios
