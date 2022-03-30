@@ -1,6 +1,6 @@
 # Unreleased
 
-# 0.16.2 - 2022-03-30
+# 0.16.3 - 2022-03-30
 * [Breaking] tract-opl models Scan syntax changed a bit. Models exported by <0.16.2 are loadable in >=0.16.2, but not the other way around.
 * Optimisation in deconv
 
