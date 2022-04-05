@@ -25,7 +25,8 @@ impl Debug for PatchSpec {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "kernel: {:?} strides: {:?} dil: {:?} pad: {:?}",
+            "input: {} kernel: {} strides: {} dil: {} pad: {:?}",
+            self.input_shape.iter().join(","),
             self.kernel_shape.iter().join(","),
             self.strides.iter().join(","),
             self.dilations.iter().join(","),
@@ -119,12 +120,12 @@ impl PatchSpec {
             strides
         }
 
-        let input_layout_strides = strides(&*self.input_shape, self.input_inner_stride);
-        let output_layout_strides = strides(&*output, self.output_inner_stride);
+        let input_storage_strides = strides(&*self.input_shape, self.input_inner_stride);
+        let output_storage_strides = strides(&*output, self.output_inner_stride);
 
         let standard_layout_data_field: Vec<isize> = data_field
             .outer_iter()
-            .map(|coords| zip(coords, &input_layout_strides).map(|(a, b)| a * b).sum::<isize>())
+            .map(|coords| zip(coords, &input_storage_strides).map(|(a, b)| a * b).sum::<isize>())
             .collect();
 
         // regions[axis][range+mask]
@@ -154,7 +155,7 @@ impl PatchSpec {
                 input_zone_offset: 0,
                 output_ranges: regions.iter().map(|reg| reg.range.clone()).collect(),
                 output_shape: regions.iter().map(|reg| reg.range.end - reg.range.start).collect(),
-                output_zone_offset: zip(&regions, &output_layout_strides)
+                output_zone_offset: zip(&regions, &output_storage_strides)
                     .map(|(reg, &stride)| reg.range.start as isize * stride)
                     .sum::<isize>(),
                 valid: regions.iter().all(|reg| reg.mask.is_none()),
@@ -201,7 +202,7 @@ impl PatchSpec {
         }
 
         let op_strides_times_input_storage_strides =
-            zip(&self.strides, &input_layout_strides).map(|(a, b)| (*a as isize * b)).collect();
+            zip(&self.strides, &input_storage_strides).map(|(a, b)| (*a as isize * b)).collect();
 
         Patch {
             spec: self,
@@ -212,7 +213,8 @@ impl PatchSpec {
             data_field,
             data_field_min_max,
             standard_layout_data_field,
-            input_layout_strides,
+            input_storage_strides,
+            output_storage_strides,
             op_strides_times_input_storage_strides,
             valid_output_zone,
             invalid_output_zones,
@@ -239,7 +241,8 @@ pub struct Patch {
     pub zones: Vec<Zone>,
     pub valid_zone_id: Option<usize>,
     pub zone_strides: TVec<isize>,
-    pub input_layout_strides: TVec<isize>,
+    pub input_storage_strides: TVec<isize>,
+    pub output_storage_strides: TVec<isize>,
 }
 
 impl Debug for Patch {
@@ -345,6 +348,7 @@ pub struct Zone {
     pub input_zone_offset: isize,
     pub output_zone_offset: isize,
     pub output_ranges: TVec<Range<usize>>,
+    // FIXME: do we need this one ?
     pub output_shape: TVec<usize>,
     /// (index, raw offset)
     pub values_offsets: TVec<(usize, isize)>,
@@ -353,6 +357,98 @@ pub struct Zone {
 impl Zone {
     pub fn contains_output(&self, coords: &[usize]) -> bool {
         self.output_ranges.iter().zip(coords).all(|(range, &x)| x >= range.start && x < range.end)
+    }
+
+    #[inline]
+    pub fn visit_output(&self, patch: &Patch, mut acceptor: impl FnMut(&ZoneScanner)) {
+        let mut scanner = ZoneScanner::new(self, patch);
+        while !scanner.done() {
+            acceptor(&scanner);
+            scanner.next();
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ZoneScanner<'p> {
+    pub patch: &'p Patch,
+    pub zone: &'p Zone,
+    pub output_offset: isize,
+    pub output_coords: TVec<usize>,
+    pub input_center_offset: isize,
+    done: bool,
+}
+
+impl<'p> ZoneScanner<'p> {
+    fn new(zone: &'p Zone, patch: &'p Patch) -> ZoneScanner<'p> {
+        let mut scan = ZoneScanner {
+            patch,
+            zone,
+            output_offset: 0,
+            input_center_offset: 0,
+            output_coords: zone.output_ranges.iter().map(|r| r.start).collect(),
+            done: false,
+        };
+        scan.refresh_dependent();
+        scan
+    }
+
+    #[inline]
+    pub fn valid_offsets_ker_in(&self) -> impl Iterator<Item = (usize, isize)> + '_ {
+        self.zone.values_offsets.iter().map(move |pair| (pair.0, pair.1 + self.input_center_offset))
+    }
+
+    fn refresh_dependent(&mut self) {
+        self.input_center_offset = self
+            .patch
+            .op_strides_times_input_storage_strides
+            .iter()
+            .zip(self.output_coords.iter())
+            .map(|(a, b)| *a * *b as isize)
+            .sum();
+        self.output_offset = self
+            .patch
+            .output_storage_strides
+            .iter()
+            .zip(self.output_coords.iter())
+            .map(|(a, b)| a * *b as isize)
+            .sum();
+    }
+
+    #[inline]
+    pub fn next(&mut self) {
+        let rank = self.patch.rank();
+        let inner_dim = rank - 1;
+        unsafe {
+            // FIXME: should we denormalize the deeply nested constants ?
+            *self.output_coords.get_unchecked_mut(inner_dim) += 1;
+            if *self.output_coords.get_unchecked(inner_dim)
+                < self.zone.output_ranges.get_unchecked(inner_dim).end
+            {
+                self.input_center_offset +=
+                    self.patch.op_strides_times_input_storage_strides.get_unchecked(inner_dim);
+                self.output_offset += self.patch.output_storage_strides.get_unchecked(inner_dim);
+                return;
+            }
+            *self.output_coords.get_unchecked_mut(inner_dim) =
+                self.zone.output_ranges.get_unchecked(inner_dim).start;
+            for axis in (0..rank - 1).rev() {
+                *self.output_coords.get_unchecked_mut(axis) += 1;
+                if *self.output_coords.get_unchecked_mut(axis)
+                    < self.zone.output_ranges.get_unchecked(axis).end
+                {
+                    self.refresh_dependent();
+                    return;
+                }
+                *self.output_coords.get_unchecked_mut(axis) =
+                    self.zone.output_ranges.get_unchecked(axis).start;
+            }
+            self.done = true;
+        }
+    }
+
+    pub fn done(&self) -> bool {
+        self.done
     }
 }
 
@@ -386,12 +482,6 @@ impl<'p> Scanner<'p> {
         }
     }
 
-    /*
-    pub fn valid_offsets_with_indexes(&self) -> impl Iterator<Item = (usize, isize)> + '_ {
-        self.zone.values_offsets.iter().map(move |pair| (pair.0, pair.1 + self.input_center_offset))
-    }
-    */
-
     #[inline]
     pub fn valid_count(&self) -> usize {
         self.zone.values_offsets.len()
@@ -403,7 +493,7 @@ impl<'p> Scanner<'p> {
     }
 
     #[inline]
-    pub fn valid_offsets_with_indexes(&self) -> impl Iterator<Item = (usize, isize)> + '_ {
+    pub fn valid_offsets_ker_in(&self) -> impl Iterator<Item = (usize, isize)> + '_ {
         self.zone.values_offsets.iter().map(move |pair| (pair.0, pair.1 + self.input_center_offset))
     }
 
@@ -458,7 +548,7 @@ impl<'p> Scanner<'p> {
                     self.zone_id += *self.zone_coords.get_unchecked(i) as usize
                         * *self.patch.zone_strides.get_unchecked(i) as usize;
                     self.input_center_offset += *self.input_coords.get_unchecked(i) as isize
-                        * *self.patch.input_layout_strides.get_unchecked(i) as isize;
+                        * *self.patch.input_storage_strides.get_unchecked(i) as isize;
                 }
                 self.zone = &self.patch.zones.get_unchecked(self.zone_id);
             }
@@ -548,7 +638,7 @@ impl<'p> Iterator for SafePatchIterator<'p> {
 #[cfg(test)]
 pub mod test {
     use super::*;
-    use crate::ops::nn::DataFormat::NCHW;
+    use crate::ops::nn::DataFormat::*;
     use proptest::prelude::*;
     use proptest::*;
 
@@ -608,96 +698,279 @@ pub mod test {
         assert_eq!(field(&[2, 2], &[2, 1]), arr2(&[[0, 0], [0, 1], [2, 0], [2, 1]]));
     }
 
-    pub fn patch_2d() -> BoxedStrategy<(DataShape, Patch)> {
-        (
-            Just(DataFormat::NCHW),
-            (1usize..3, 1usize..3),
-            1usize..3,
-            (1usize..3, 1usize..3),
-            //prop_oneof![PaddingSpec::SameLower, PaddingSpec::Valid],
-            Just(PaddingSpec::SameLower),
-            (1usize..4, 1usize..4),
-        )
-            .prop_flat_map(|p| {
-                let size = p.3;
-                (Just(p), (size.0 + 5..=size.0 + 10, size.1 + 5..=size.1 + 10))
-            })
-            .prop_map(|((fmt, dil, c, ks, pad, strides), inp)| {
-                (
-                    fmt.shape(tvec!(1, c, inp.0, inp.1)).unwrap(),
-                    PatchSpec::for_full_shape(fmt, &[1, c, inp.0, inp.1])
-                        .unwrap()
-                        .with_dilations(tvec!(dil.0, dil.1))
-                        .with_kernel_shape(tvec!(ks.0, ks.1))
-                        .with_padding(pad)
-                        .with_strides(tvec![strides.0, strides.1])
-                        .into_patch(),
-                )
-            })
+    pub fn tensor(shape: &[usize]) -> BoxedStrategy<Tensor> {
+        let len = shape.iter().product::<usize>();
+        let shape = shape.to_vec();
+        proptest::collection::vec(any::<i8>().prop_map(|i| i as f32), len..=len)
+            .prop_map(move |vec| ArrayD::from_shape_vec(shape.clone(), vec).unwrap().into_tensor())
             .boxed()
     }
 
-    fn in_zone(coords: &[usize], h_axis: usize, zone: &[Range<usize>]) -> bool {
-        for a in 0..zone.len() {
-            if coords[h_axis + a] < zone[a].start || coords[h_axis + a] >= zone[a].end {
-                return false;
+    #[derive(Debug)]
+    struct Problem {
+        patch: Patch,
+        input: Tensor,
+        data_format: DataFormat,
+    }
+
+    impl Arbitrary for Problem {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<Problem>;
+        fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+            (
+                prop_oneof!(Just(NCHW), Just(NHWC)),
+                (1usize..3, 1usize..3),
+                1usize..3,
+                (1usize..3, 1usize..3),
+                prop_oneof![
+                    Just(PaddingSpec::Valid),
+                    Just(PaddingSpec::SameLower),
+                    Just(PaddingSpec::SameUpper)
+                ],
+                (1usize..4, 1usize..4),
+            )
+                .prop_flat_map(|p| {
+                    let dil = p.1;
+                    let ks = p.3;
+                    let strides = p.5;
+                    let min_size: (usize, usize) = (1 + (ks.0 - 1) * dil.0, 1 + (ks.1 - 1) * dil.1);
+                    (
+                        Just(p),
+                        (min_size.0..min_size.0 + strides.0 * 3),
+                        (min_size.1..min_size.1 + strides.1 * 3),
+                    )
+                })
+                .prop_flat_map(|(p, h, w)| {
+                    let input_shape = p.0.from_n_c_hw(1, p.2, &[h, w]).unwrap();
+                    let input = tensor(&input_shape.shape);
+                    (Just(p), input)
+                })
+                .prop_map(|((fmt, dil, c, ks, pad, strides), input)| {
+                    let output_inner_stride = if fmt.c_is_last() { c } else { 1 };
+                    Problem {
+                        patch: PatchSpec::for_full_shape(fmt, input.shape())
+                            .unwrap()
+                            .with_dilations(tvec!(dil.0, dil.1))
+                            .with_kernel_shape(tvec!(ks.0, ks.1))
+                            .with_padding(pad)
+                            .with_strides(tvec![strides.0, strides.1])
+                            .with_output_inner_stride(output_inner_stride)
+                            .into_patch(),
+                        input,
+                        data_format: fmt,
+                    }
+                })
+                .boxed()
+        }
+    }
+
+    impl Problem {
+        fn input_shape(&self) -> DataShape {
+            self.data_format.shape(self.input.shape().into()).unwrap()
+        }
+
+        fn output_shape(&self) -> DataShape {
+            self.data_format
+                .from_n_c_hw(
+                    self.input_shape().n().cloned().unwrap_or(1),
+                    *self.input_shape().c(),
+                    &*self.patch.output_shape,
+                )
+                .unwrap()
+        }
+
+        fn reference_sumpool(&self) -> Tensor {
+            let input_shape = self.input_shape();
+            let output_shape = self.output_shape();
+            let mut output = Tensor::zero::<f32>(&output_shape.shape).unwrap();
+            for geo_out in tract_ndarray::indices(output_shape.hw_dims()) {
+                for geo_ker in tract_ndarray::indices(&*self.patch.spec.kernel_shape) {
+                    let geo_in: TVec<isize> = izip!(
+                        geo_out.slice(),
+                        geo_ker.slice(),
+                        &self.patch.spec.strides,
+                        &self.patch.spec.dilations,
+                        &self.patch.pad_before
+                    )
+                    .map(|(o, k, s, d, p)| (o * s + k * d) as isize - *p as isize)
+                    .collect();
+                    if izip!(&geo_in, input_shape.hw_dims())
+                        .any(|(g, i)| *g >= *i as isize || *g < 0)
+                    {
+                        continue;
+                    }
+                    let geo_in: TVec<usize> = geo_in.into_iter().map(|x| x as usize).collect();
+                    for c in 0..*output_shape.c() {
+                        let ocoords = self.data_format.from_n_c_hw(0, c, geo_out.slice()).unwrap();
+                        let icoords = self.data_format.from_n_c_hw(0, c, &geo_in).unwrap();
+                        output.to_array_view_mut::<f32>().unwrap()[&*ocoords.shape] +=
+                            self.input.to_array_view::<f32>().unwrap()[&*icoords.shape];
+                    }
+                }
+            }
+            output
+        }
+
+        fn check_visitor(&self) {
+            let input_shape = self.input_shape();
+            let output_shape = self.output_shape();
+            let mut output = Tensor::zero::<f32>(&*output_shape.shape).unwrap();
+            self.patch.visit_output(|visitor| {
+                for (_k, offset_in) in visitor.valid_offsets_ker_in() {
+                    for c in 0..*output_shape.c() {
+                        output.as_slice_mut::<f32>().unwrap()
+                            [visitor.output_offset as usize + c * output_shape.c_stride()] +=
+                            self.input.as_slice::<f32>().unwrap()
+                                [offset_in as usize + c * input_shape.c_stride()];
+                    }
+                }
+            });
+            assert_eq!(output, self.reference_sumpool());
+        }
+
+        fn check_zone_visitor(&self) {
+            let input_shape = self.input_shape();
+            let output_shape = self.output_shape();
+            let mut output = Tensor::zero::<f32>(&*output_shape.shape).unwrap();
+            for zone in &self.patch.zones {
+                zone.visit_output(&self.patch, |visitor| {
+                    for (_k, offset_in) in visitor.valid_offsets_ker_in() {
+                        for c in 0..*output_shape.c() {
+                            output.as_slice_mut::<f32>().unwrap()
+                                [visitor.output_offset as usize + c * output_shape.c_stride()] +=
+                                self.input.as_slice::<f32>().unwrap()
+                                    [offset_in as usize + c * input_shape.c_stride()];
+                        }
+                    }
+                });
+            }
+            assert_eq!(output, self.reference_sumpool());
+        }
+
+        fn check_zoning(&self) {
+            fn in_zone(full_coords: &[usize], h_axis: usize, zone: &[Range<usize>]) -> bool {
+                for a in 0..zone.len() {
+                    if full_coords[h_axis + a] < zone[a].start
+                        || full_coords[h_axis + a] >= zone[a].end
+                    {
+                        return false;
+                    }
+                }
+                true
+            }
+
+            let valid_zone = &self.patch.valid_output_zone;
+            let invalid_zones = &self.patch.invalid_output_zones;
+            let output_full_shape = self.output_shape();
+            let h_axis = self.input_shape().h_axis();
+            for coords in ndarray::indices(&*output_full_shape.shape) {
+                let inside_valid = in_zone(coords.slice(), h_axis, valid_zone);
+                let invalid_count =
+                    invalid_zones.iter().filter(|z| in_zone(coords.slice(), h_axis, z)).count();
+                unsafe {
+                    assert_eq!(
+                        inside_valid,
+                        self.patch.is_valid(&coords.slice()[self.input_shape().hw_axes()]),
+                        "coords {:?}, valid_zone: {:?} inside_valid: {:?}",
+                        coords.slice(),
+                        valid_zone,
+                        inside_valid
+                    );
+                }
+                if inside_valid {
+                    assert_eq!(invalid_count, 0);
+                } else {
+                    assert_eq!(
+                        invalid_count,
+                        1,
+                        "coords {:?}, valid_zone: {:?} inside_valid: {:?} invalid_zones: {:?}",
+                        coords.slice(),
+                        valid_zone,
+                        inside_valid,
+                        invalid_zones
+                    );
+                }
             }
         }
-        true
     }
 
     proptest! {
         #[test]
-        fn test_zoning((input_shape, p) in patch_2d()) {
-            let valid_zone = &p.valid_output_zone;
-            let invalid_zones = &p.invalid_output_zones;
-            let output_full_shape = input_shape.fmt.from_n_c_hw(input_shape.n().cloned().unwrap_or(1), 1, &*p.output_shape).unwrap();
-            let h_axis = input_shape.h_axis();
-            for coords in ndarray::indices(&*output_full_shape.shape) {
-                let inside_valid = in_zone(coords.slice(), h_axis, valid_zone);
-                let invalid_count = invalid_zones.iter().filter(|z| in_zone(coords.slice(), h_axis, z)).count();
-                unsafe {
-                    prop_assert_eq!(inside_valid, p.is_valid(&coords.slice()[input_shape.hw_axes()]), "coords {:?}, valid_zone: {:?} inside_valid: {:?}", coords.slice(), valid_zone, inside_valid);
-                }
-                if inside_valid {
-                    prop_assert_eq!(invalid_count, 0);
-                } else {
-                    prop_assert_eq!(invalid_count, 1, "coords {:?}, valid_zone: {:?} inside_valid: {:?} invalid_zones: {:?}", coords.slice(), valid_zone, inside_valid, invalid_zones);
-                }
-            };
+        fn test_visitor(pb in any::<Problem>()) {
+            pb.check_visitor();
         }
 
         #[test]
-        fn test_zone_visitor((input_shape, p) in patch_2d()) {
-            let output_shape = input_shape.fmt.from_n_c_hw(input_shape.n().cloned().unwrap_or(1), 1, &*p.output_shape).unwrap();
-            let mut output = ndarray::ArrayD::<i32>::zeros(&*output_shape.shape);
-            let mut count = 0;
-            for n in 0..*output_shape.n().unwrap_or(&1) as isize {
-                p.visit_output(|w| {
-                    let offset = (n * *output_shape.n_stride().unwrap_or(&0) as isize + w.output_offset) as usize;
-                    output.as_slice_mut().unwrap()[offset] = 1;
-                    count += 1;
-                });
-            }
-            prop_assert!(output.iter().all(|&x| x == 1));
-            prop_assert_eq!(count, output.len());
+        fn test_zone_visitor(pb in any::<Problem>()) {
+            pb.check_zone_visitor();
+        }
+
+        #[test]
+        fn test_zoning(pb in any::<Problem>()) {
+            pb.check_zoning();
         }
     }
+
     #[test]
-    fn test_zone_visitor_1() {
-        let p = PatchSpec::for_full_shape(DataFormat::NCHW, &[1, 1, 2, 2])
-            .unwrap()
+    fn test_visitor_1() {
+        let input_shape = NCHW.from_n_c_hw(1, 1, &[2, 2]).unwrap();
+        let input = Tensor::zero::<f32>(&input_shape.shape).unwrap();
+        let patch = PatchSpec::for_data_shape(input_shape.clone())
             .with_kernel_shape(tvec![2, 1])
             .with_padding(PaddingSpec::SameLower)
             .with_strides(tvec![1, 2])
             .into_patch();
-        let output_shape = DataFormat::NCHW.from_n_c_hw(1, 1, &*p.output_shape).unwrap();
-        let mut output = ndarray::ArrayD::<i32>::zeros(&*output_shape.shape);
-        let mut count = 0;
-        p.visit_output(|w| {
-            output.as_slice_mut().unwrap()[w.output_offset as usize] = 1;
-            count += 1;
-        });
-        assert!(output.iter().all(|&x| x == 1));
+        Problem { patch, input, data_format: input_shape.fmt }.check_visitor();
+    }
+
+    #[test]
+    fn test_visitor_2() {
+        let input_shape = NCHW.from_n_c_hw(1, 2, &[1, 1]).unwrap();
+        let input = tensor4(&[[[[0.]], [[1f32]]]]);
+        assert_eq!(&*input.shape(), &*input_shape.shape);
+        let patch =
+            PatchSpec::for_data_shape(input_shape.clone()).with_output_inner_stride(2).into_patch();
+        Problem { patch, input, data_format: input_shape.fmt }.check_visitor();
+    }
+
+    #[test]
+    fn test_visitor_3() {
+        let input_shape = NHWC.from_n_c_hw(1, 2, &[2, 1]).unwrap();
+        let input = tensor4(&[[[[0., 0.]], [[1., 0f32]]]]);
+        assert_eq!(&*input.shape(), &*input_shape.shape);
+        let patch =
+            PatchSpec::for_data_shape(input_shape.clone()).with_output_inner_stride(2).into_patch();
+        Problem { patch, input, data_format: input_shape.fmt }.check_visitor();
+    }
+
+    #[test]
+    fn test_visitor_4() {
+        let input_shape = NCHW.from_n_c_hw(1, 1, &[1, 2]).unwrap();
+        let input = tensor4(&[[[[0., 1f32]]]]);
+        assert_eq!(&*input.shape(), &*input_shape.shape);
+        let patch = PatchSpec::for_data_shape(input_shape.clone())
+            .with_kernel_shape(tvec!(1, 2))
+            .with_output_inner_stride(1)
+            .with_padding(PaddingSpec::SameLower)
+            .into_patch();
+        Problem { patch, input, data_format: input_shape.fmt }.check_visitor();
+    }
+
+    #[test]
+    fn test_zone_visitor_1() {
+        let input_shape = NCHW.from_n_c_hw(1, 1, &[2, 1]).unwrap();
+        let input = tensor4(&[[[[0.], [1f32]]]]);
+        assert_eq!(&*input.shape(), &*input_shape.shape);
+        let patch = PatchSpec::for_data_shape(input_shape.clone()).into_patch();
+        Problem { patch, input, data_format: input_shape.fmt }.check_zone_visitor();
+    }
+
+    #[test]
+    fn test_zone_visitor_2() {
+        let input_shape = NCHW.from_n_c_hw(1, 1, &[1, 2]).unwrap();
+        let input = tensor4(&[[[[0., 1f32]]]]);
+        assert_eq!(&*input.shape(), &*input_shape.shape);
+        let patch = PatchSpec::for_data_shape(input_shape.clone()).into_patch();
+        Problem { patch, input, data_format: input_shape.fmt }.check_zone_visitor();
     }
 }

@@ -1,4 +1,5 @@
 use crate::internal::*;
+use tract_itertools::Itertools;
 use std::fmt;
 
 #[derive(Copy, Clone, Debug, PartialEq, Hash)]
@@ -73,7 +74,7 @@ impl DataFormat {
         match self {
             &DataFormat::CHW => DataFormat::NCHW,
             &DataFormat::HWC => DataFormat::NHWC,
-            _ => *self
+            _ => *self,
         }
     }
 }
@@ -81,7 +82,7 @@ impl DataFormat {
 pub type SymDataShape = BaseDataShape<TDim, TVec<TDim>>;
 pub type DataShape = BaseDataShape<usize, TVec<usize>>;
 
-#[derive(Clone, Debug, PartialEq, Hash)]
+#[derive(Clone, PartialEq, Hash)]
 pub struct BaseDataShape<D, S>
 where
     D: DimLike,
@@ -90,6 +91,22 @@ where
     pub fmt: DataFormat,
     pub shape: S,
     pub strides: TVec<D>,
+}
+
+impl<D, S> fmt::Debug for BaseDataShape<D, S>
+where
+    D: DimLike,
+    S: AsRef<[D]> + fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{:?} {} (strides: {})",
+            self.fmt,
+            self.shape.as_ref().iter().join(","),
+            self.strides.iter().join(",")
+        )
+    }
 }
 
 impl<D, S> BaseDataShape<D, S>

@@ -85,7 +85,7 @@ impl DepthWise {
         visitor: &Scanner,
     ) {
         let mut sum = *bias.offset(c);
-        let mut iter = visitor.valid_offsets_with_indexes();
+        let mut iter = visitor.valid_offsets_ker_in();
         if iter.size_hint() == (4, Some(4)) {
             let (ix, v) = iter.next().unwrap();
             let k0 = *kptr.offset(ix as isize);
