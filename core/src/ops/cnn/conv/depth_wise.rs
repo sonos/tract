@@ -1,5 +1,5 @@
 use crate::internal::*;
-use crate::ops::cnn::patches::Scanner;
+use crate::ops::cnn::patches::{Scanner, Zone, ZoneScanner};
 use crate::ops::cnn::Patch;
 use crate::ops::nn::DataShape;
 
@@ -62,17 +62,82 @@ impl DepthWise {
             for n in 0..n as isize {
                 let iptr = iptr.offset(n_stride_i * n);
                 let optr = optr.offset(n_stride_o * n);
-                self.patch.visit_output(|visitor| {
-                    for c in 0..*self.input_shape.c() as isize {
-                        let iptr = iptr.offset(c_stride_i * c);
-                        let optr = optr.offset(c_stride_o * c);
-                        let kptr = kptr.offset(k_stride_i * c);
-                        Self::inner_loop::<T>(iptr, kptr, bias, optr, c, visitor)
-                    }
-                })
+                for zone in &self.patch.zones {
+                    self.process_zone(
+                        zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr,
+                    )
+                }
             }
         }
         Ok(tvec!(output.into_arc_tensor()))
+    }
+
+    #[inline(never)]
+    unsafe fn process_zone<T: Datum + Copy + ndarray::LinalgScalar>(
+        &self,
+        zone: &Zone,
+        c_stride_i: isize,
+        c_stride_o: isize,
+        k_stride_i: isize,
+        iptr: *const T,
+        kptr: *const T,
+        bias: *const T,
+        optr: *mut T,
+    ) {
+        if zone.values_offsets.len() == 4 {
+            self.process_zone_4(zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr)
+        } else {
+            zone.visit_output(&self.patch, |visitor| {
+                for c in 0..*self.input_shape.c() as isize {
+                    let iptr = iptr.offset(c_stride_i * c);
+                    let optr = optr.offset(c_stride_o * c);
+                    let kptr = kptr.offset(k_stride_i * c);
+                    Self::inner_loop::<T>(iptr, kptr, bias, optr, c, visitor)
+                }
+            })
+        }
+    }
+
+    #[inline(never)]
+    unsafe fn process_zone_4<T: Datum + Copy + ndarray::LinalgScalar>(
+        &self,
+        zone: &Zone,
+        c_stride_i: isize,
+        c_stride_o: isize,
+        k_stride_i: isize,
+        iptr: *const T,
+        kptr: *const T,
+        bias: *const T,
+        optr: *mut T,
+    ) {
+        for c in 0..*self.input_shape.c() as isize {
+            let kptr = kptr.offset(k_stride_i * c);
+            let iptr = iptr.offset(c_stride_i * c);
+            let optr = optr.offset(c_stride_o * c);
+            let k0 = *kptr.offset(zone.values_offsets[0].0 as isize);
+            let k1 = *kptr.offset(zone.values_offsets[1].0 as isize);
+            let k2 = *kptr.offset(zone.values_offsets[2].0 as isize);
+            let k3 = *kptr.offset(zone.values_offsets[3].0 as isize);
+            let ioffset0 = zone.values_offsets[0].1;
+            let ioffset1 = zone.values_offsets[1].1;
+            let ioffset2 = zone.values_offsets[2].1;
+            let ioffset3 = zone.values_offsets[3].1;
+            let bias = *bias.offset(c);
+            zone.visit_output(&self.patch, |visitor| {
+                let iptr = iptr.offset(visitor.input_center_offset);
+                let mut sum = bias;
+                let i0 = *iptr.offset(ioffset0);
+                let i1 = *iptr.offset(ioffset1);
+                let i2 = *iptr.offset(ioffset2);
+                let i3 = *iptr.offset(ioffset3);
+                let p0 = i0 * k0;
+                let p1 = i1 * k1;
+                let p2 = i2 * k2;
+                let p3 = i3 * k3;
+                sum = sum + p0 + p1 + p2 + p3;
+                *optr.offset(visitor.output_offset) = sum;
+            })
+        }
     }
 
     #[inline(never)]
@@ -82,7 +147,7 @@ impl DepthWise {
         bias: *const T,
         optr: *mut T,
         c: isize,
-        visitor: &Scanner,
+        visitor: &ZoneScanner,
     ) {
         let mut sum = *bias.offset(c);
         let mut iter = visitor.valid_offsets_ker_in();

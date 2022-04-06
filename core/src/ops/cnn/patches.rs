@@ -374,18 +374,32 @@ pub struct ZoneScanner<'p> {
     pub patch: &'p Patch,
     pub zone: &'p Zone,
     pub output_offset: isize,
-    pub output_coords: TVec<usize>,
+    pub output_coords: Box<[usize]>,
     pub input_center_offset: isize,
+    pub inner_loop_axis: usize,
+    pub inner_loop_output_range: Range<usize>,
+    pub inner_loop_output_stride: isize,
+    pub inner_loop_input_full_stride: isize,
     done: bool,
 }
 
 impl<'p> ZoneScanner<'p> {
     fn new(zone: &'p Zone, patch: &'p Patch) -> ZoneScanner<'p> {
+        let inner_loop_axis =
+            zone.output_shape.iter().enumerate().max_by_key(|(_, dim)| *dim).unwrap().0;
+        let inner_loop_output_range = zone.output_ranges[inner_loop_axis].clone();
+        let inner_loop_output_stride = patch.output_storage_strides[inner_loop_axis];
+        let inner_loop_input_full_stride =
+            patch.op_strides_times_input_storage_strides[inner_loop_axis];
         let mut scan = ZoneScanner {
             patch,
             zone,
             output_offset: 0,
             input_center_offset: 0,
+            inner_loop_axis,
+            inner_loop_output_range,
+            inner_loop_output_stride,
+            inner_loop_input_full_stride,
             output_coords: zone.output_ranges.iter().map(|r| r.start).collect(),
             done: false,
         };
@@ -398,6 +412,7 @@ impl<'p> ZoneScanner<'p> {
         self.zone.values_offsets.iter().map(move |pair| (pair.0, pair.1 + self.input_center_offset))
     }
 
+    #[inline(never)]
     fn refresh_dependent(&mut self) {
         self.input_center_offset = self
             .patch
@@ -418,32 +433,32 @@ impl<'p> ZoneScanner<'p> {
     #[inline]
     pub fn next(&mut self) {
         let rank = self.patch.rank();
-        let inner_dim = rank - 1;
+        let inner_loop_axis = self.inner_loop_axis;
         unsafe {
-            // FIXME: should we denormalize the deeply nested constants ?
-            *self.output_coords.get_unchecked_mut(inner_dim) += 1;
-            if *self.output_coords.get_unchecked(inner_dim)
-                < self.zone.output_ranges.get_unchecked(inner_dim).end
+            *self.output_coords.get_unchecked_mut(inner_loop_axis) += 1;
+            if *self.output_coords.get_unchecked(inner_loop_axis) < self.inner_loop_output_range.end
             {
-                self.input_center_offset +=
-                    self.patch.op_strides_times_input_storage_strides.get_unchecked(inner_dim);
-                self.output_offset += self.patch.output_storage_strides.get_unchecked(inner_dim);
-                return;
-            }
-            *self.output_coords.get_unchecked_mut(inner_dim) =
-                self.zone.output_ranges.get_unchecked(inner_dim).start;
-            for axis in (0..rank - 1).rev() {
-                *self.output_coords.get_unchecked_mut(axis) += 1;
-                if *self.output_coords.get_unchecked_mut(axis)
-                    < self.zone.output_ranges.get_unchecked(axis).end
-                {
-                    self.refresh_dependent();
-                    return;
+                self.input_center_offset += self.inner_loop_input_full_stride;
+                self.output_offset += self.inner_loop_output_stride;
+            } else {
+                *self.output_coords.get_unchecked_mut(inner_loop_axis) =
+                    self.inner_loop_output_range.start;
+                for axis in (0..rank).rev() {
+                    if axis == inner_loop_axis {
+                        continue;
+                    }
+                    *self.output_coords.get_unchecked_mut(axis) += 1;
+                    if *self.output_coords.get_unchecked_mut(axis)
+                        < self.zone.output_ranges.get_unchecked(axis).end
+                    {
+                        self.refresh_dependent();
+                        return;
+                    }
+                    *self.output_coords.get_unchecked_mut(axis) =
+                        self.zone.output_ranges.get_unchecked(axis).start;
                 }
-                *self.output_coords.get_unchecked_mut(axis) =
-                    self.zone.output_ranges.get_unchecked(axis).start;
+                self.done = true;
             }
-            self.done = true;
         }
     }
 
