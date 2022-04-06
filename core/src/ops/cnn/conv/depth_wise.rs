@@ -1,5 +1,5 @@
 use crate::internal::*;
-use crate::ops::cnn::patches::{Scanner, Zone, ZoneScanner};
+use crate::ops::cnn::patches::{Zone, ZoneScanner};
 use crate::ops::cnn::Patch;
 use crate::ops::nn::DataShape;
 
