@@ -347,11 +347,10 @@ pub struct Zone {
     pub valid: bool,
     pub input_zone_offset: isize,
     pub output_zone_offset: isize,
-    pub output_ranges: TVec<Range<usize>>,
-    // FIXME: do we need this one ?
-    pub output_shape: TVec<usize>,
-    /// (index, raw offset)
-    pub values_offsets: TVec<(usize, isize)>,
+    pub output_ranges: Box<[Range<usize>]>,
+    pub output_shape: Box<[usize]>,
+    /// (index in kernel, offset from center in image)
+    pub values_offsets: Box<[(usize, isize)]>,
 }
 
 impl Zone {
@@ -377,14 +376,15 @@ pub struct ZoneScanner<'p> {
     pub output_coords: Box<[usize]>,
     pub input_center_offset: isize,
     pub inner_loop_axis: usize,
+    pub inner_loop_len: usize,
     pub inner_loop_output_range: Range<usize>,
     pub inner_loop_output_stride: isize,
     pub inner_loop_input_full_stride: isize,
-    done: bool,
+    pub done: bool,
 }
 
 impl<'p> ZoneScanner<'p> {
-    fn new(zone: &'p Zone, patch: &'p Patch) -> ZoneScanner<'p> {
+    pub fn new(zone: &'p Zone, patch: &'p Patch) -> ZoneScanner<'p> {
         let inner_loop_axis =
             zone.output_shape.iter().enumerate().max_by_key(|(_, dim)| *dim).unwrap().0;
         let inner_loop_output_range = zone.output_ranges[inner_loop_axis].clone();
@@ -397,6 +397,7 @@ impl<'p> ZoneScanner<'p> {
             output_offset: 0,
             input_center_offset: 0,
             inner_loop_axis,
+            inner_loop_len: inner_loop_output_range.len(),
             inner_loop_output_range,
             inner_loop_output_stride,
             inner_loop_input_full_stride,
@@ -410,6 +411,35 @@ impl<'p> ZoneScanner<'p> {
     #[inline]
     pub fn valid_offsets_ker_in(&self) -> impl Iterator<Item = (usize, isize)> + '_ {
         self.zone.values_offsets.iter().map(move |pair| (pair.0, pair.1 + self.input_center_offset))
+    }
+
+    pub unsafe fn next_non_inner_axis(&mut self) {
+        let rank = self.patch.rank();
+        let inner_loop_axis = self.inner_loop_axis;
+        for axis in (0..rank).rev() {
+            if axis == inner_loop_axis {
+                continue;
+            }
+            *self.output_coords.get_unchecked_mut(axis) += 1;
+            if *self.output_coords.get_unchecked_mut(axis)
+                < self.zone.output_ranges.get_unchecked(axis).end
+            {
+                self.refresh_dependent();
+                return;
+            }
+            *self.output_coords.get_unchecked_mut(axis) =
+                self.zone.output_ranges.get_unchecked(axis).start;
+        }
+        self.done = true;
+    }
+
+    pub unsafe fn reset(&mut self) {
+        self.output_offset = 0;
+        self.input_center_offset = 0;
+        for ix in 0..self.output_coords.len() {
+            *self.output_coords.get_unchecked_mut(ix) = self.zone.output_ranges.get_unchecked(ix).start;
+        }
+        self.refresh_dependent()
     }
 
     #[inline(never)]
@@ -432,7 +462,6 @@ impl<'p> ZoneScanner<'p> {
 
     #[inline]
     pub fn next(&mut self) {
-        let rank = self.patch.rank();
         let inner_loop_axis = self.inner_loop_axis;
         unsafe {
             *self.output_coords.get_unchecked_mut(inner_loop_axis) += 1;
@@ -443,21 +472,7 @@ impl<'p> ZoneScanner<'p> {
             } else {
                 *self.output_coords.get_unchecked_mut(inner_loop_axis) =
                     self.inner_loop_output_range.start;
-                for axis in (0..rank).rev() {
-                    if axis == inner_loop_axis {
-                        continue;
-                    }
-                    *self.output_coords.get_unchecked_mut(axis) += 1;
-                    if *self.output_coords.get_unchecked_mut(axis)
-                        < self.zone.output_ranges.get_unchecked(axis).end
-                    {
-                        self.refresh_dependent();
-                        return;
-                    }
-                    *self.output_coords.get_unchecked_mut(axis) =
-                        self.zone.output_ranges.get_unchecked(axis).start;
-                }
-                self.done = true;
+                self.next_non_inner_axis();
             }
         }
     }

@@ -110,7 +110,13 @@ impl DepthWise {
         bias: *const T,
         optr: *mut T,
     ) {
+        let mut visitor = ZoneScanner::new(zone, &self.patch);
+        let ioffset0 = zone.values_offsets[0].1;
+        let ioffset1 = zone.values_offsets[1].1;
+        let ioffset2 = zone.values_offsets[2].1;
+        let ioffset3 = zone.values_offsets[3].1;
         for c in 0..*self.input_shape.c() as isize {
+            visitor.reset();
             let kptr = kptr.offset(k_stride_i * c);
             let iptr = iptr.offset(c_stride_i * c);
             let optr = optr.offset(c_stride_o * c);
@@ -118,25 +124,26 @@ impl DepthWise {
             let k1 = *kptr.offset(zone.values_offsets[1].0 as isize);
             let k2 = *kptr.offset(zone.values_offsets[2].0 as isize);
             let k3 = *kptr.offset(zone.values_offsets[3].0 as isize);
-            let ioffset0 = zone.values_offsets[0].1;
-            let ioffset1 = zone.values_offsets[1].1;
-            let ioffset2 = zone.values_offsets[2].1;
-            let ioffset3 = zone.values_offsets[3].1;
             let bias = *bias.offset(c);
-            zone.visit_output(&self.patch, |visitor| {
+            while !visitor.done {
                 let iptr = iptr.offset(visitor.input_center_offset);
-                let mut sum = bias;
-                let i0 = *iptr.offset(ioffset0);
-                let i1 = *iptr.offset(ioffset1);
-                let i2 = *iptr.offset(ioffset2);
-                let i3 = *iptr.offset(ioffset3);
-                let p0 = i0 * k0;
-                let p1 = i1 * k1;
-                let p2 = i2 * k2;
-                let p3 = i3 * k3;
-                sum = sum + p0 + p1 + p2 + p3;
-                *optr.offset(visitor.output_offset) = sum;
-            })
+                let optr = optr.offset(visitor.output_offset);
+                for i in 0..visitor.inner_loop_len as isize {
+                    let iptr = iptr.offset(visitor.inner_loop_input_full_stride * i);
+                    let optr = optr.offset(visitor.inner_loop_output_stride * i);
+                    let i0 = *iptr.offset(ioffset0);
+                    let i1 = *iptr.offset(ioffset1);
+                    let i2 = *iptr.offset(ioffset2);
+                    let i3 = *iptr.offset(ioffset3);
+                    let p0 = i0 * k0;
+                    let p1 = i1 * k1;
+                    let p2 = i2 * k2;
+                    let p3 = i3 * k3;
+                    let sum = bias + p0 + p1 + p2 + p3;
+                    *optr = sum
+                }
+                visitor.next_non_inner_axis()
+            }
         }
     }
 
