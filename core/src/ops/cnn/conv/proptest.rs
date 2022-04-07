@@ -236,7 +236,7 @@ pub fn shapes(rank: usize) -> BoxedStrategy<(Vec<usize>, Vec<usize>)> {
 proptest::proptest! {
     #[test]
     fn prop(pb in any::<ConvProblem>()) {
-        prop_assert_eq!(pb.tract().unwrap(), pb.reference());
+        pb.tract().unwrap().into_tensor().close_enough(&pb.reference().into_tensor(), true).unwrap();
     }
 }
 
@@ -875,6 +875,28 @@ fn lazy_im2col_big_2() -> anyhow::Result<()> {
         bias: None,
         pad: PaddingSpec::Valid,
         strides: tvec!(2, 3, 2),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+
+#[test]
+fn depthwise_0() -> anyhow::Result<()> {
+    let mut kernel = tract_ndarray::ArrayD::<f32>::zeros(vec![2, 2, 2, 1]);
+    let len = kernel.len();
+    kernel.as_slice_mut().unwrap()[len - 1] = 1.0;
+    let mut data = tract_ndarray::ArrayD::<f32>::zeros(vec![2, 2, 2]);
+    *data.as_slice_mut().unwrap().last_mut().unwrap() = 1.0;
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 2, &[2, 2])?,
+        kernel_format: KernelFormat::HWIO,
+        group: 2,
+        data,
+        kernel,
+        bias: None,
+        pad: PaddingSpec::SameUpper,
+        strides: tvec!(1, 1),
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
