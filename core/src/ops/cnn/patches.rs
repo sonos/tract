@@ -439,6 +439,7 @@ impl<'p> ZoneScanner<'p> {
         for ix in 0..self.output_coords.len() {
             *self.output_coords.get_unchecked_mut(ix) = self.zone.output_ranges.get_unchecked(ix).start;
         }
+        self.done = false;
         self.refresh_dependent()
     }
 
