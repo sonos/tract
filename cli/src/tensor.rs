@@ -1,6 +1,8 @@
+use std::collections::HashSet;
 use std::fs;
 use std::io::Read;
 use std::str::FromStr;
+use std::sync::Mutex;
 
 use crate::model::Model;
 use crate::{CliResult, Parameters};
@@ -275,6 +277,16 @@ fn parse_dim_stream(s: &str) -> CliResult<TDim> {
     Ok(s.parse::<i64>().map(|i| i.into())?)
 }
 
+lazy_static::lazy_static! {
+    static ref WARNING_ONCE: Mutex<HashSet<String>> = Mutex::new(HashSet::new());
+}
+
+fn warn_once(msg: String) {
+    if WARNING_ONCE.lock().unwrap().insert(msg.clone()) {
+        warn!("{}", msg);
+    }
+}
+
 pub fn retrieve_or_make_inputs(
     tract: &dyn Model,
     params: &Parameters,
@@ -287,7 +299,7 @@ pub fn retrieve_or_make_inputs(
             tmp.push(input.iter().map(|t| t.clone().into_tensor()).collect())
         } else {
             let fact = tract.outlet_typedfact(*input)?;
-            warn!("Using random input for input called {:?}: {:?}", name, fact);
+            warn_once(format!("Using random input for input called {:?}: {:?}", name, fact));
             tmp.push(vec![crate::tensor::tensor_for_fact(&fact, None)?]);
         }
     }
