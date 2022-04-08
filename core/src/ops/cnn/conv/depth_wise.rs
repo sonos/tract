@@ -128,7 +128,55 @@ impl DepthWise {
             while !visitor.done {
                 let iptr = iptr.offset(visitor.input_center_offset);
                 let optr = optr.offset(visitor.output_offset);
-                for i in 0..visitor.inner_loop_len as isize {
+                let mut i = 0isize;
+                while i + 4 < visitor.inner_loop_len as isize {
+                    let iptr_a = iptr.offset(visitor.inner_loop_input_full_stride * i);
+                    let iptr_b = iptr.offset(visitor.inner_loop_input_full_stride * (i + 1));
+                    let iptr_c = iptr.offset(visitor.inner_loop_input_full_stride * (i + 2));
+                    let iptr_d = iptr.offset(visitor.inner_loop_input_full_stride * (i + 3));
+                    let optr_a = optr.offset(visitor.inner_loop_output_stride * i);
+                    let optr_b = optr.offset(visitor.inner_loop_output_stride * (i + 1));
+                    let optr_c = optr.offset(visitor.inner_loop_output_stride * (i + 2));
+                    let optr_d = optr.offset(visitor.inner_loop_output_stride * (i + 3));
+                    let i0_a = *iptr_a.offset(ioffset0);
+                    let i0_b = *iptr_b.offset(ioffset0);
+                    let i0_c = *iptr_c.offset(ioffset0);
+                    let i0_d = *iptr_d.offset(ioffset0);
+                    let i1_a = *iptr_a.offset(ioffset1);
+                    let i1_b = *iptr_b.offset(ioffset1);
+                    let i1_c = *iptr_c.offset(ioffset1);
+                    let i1_d = *iptr_d.offset(ioffset1);
+                    let i2_a = *iptr_a.offset(ioffset2);
+                    let i2_b = *iptr_b.offset(ioffset2);
+                    let i2_c = *iptr_c.offset(ioffset2);
+                    let i2_d = *iptr_d.offset(ioffset2);
+                    let i3_a = *iptr_a.offset(ioffset3);
+                    let i3_b = *iptr_b.offset(ioffset3);
+                    let i3_c = *iptr_c.offset(ioffset3);
+                    let i3_d = *iptr_d.offset(ioffset3);
+                    let p0_a = i0_a * k0;
+                    let p1_a = i1_a * k1;
+                    let p2_a = i2_a * k2;
+                    let p3_a = i3_a * k3;
+                    let p0_b = i0_b * k0;
+                    let p1_b = i1_b * k1;
+                    let p2_b = i2_b * k2;
+                    let p3_b = i3_b * k3;
+                    let p0_c = i0_c * k0;
+                    let p1_c = i1_c * k1;
+                    let p2_c = i2_c * k2;
+                    let p3_c = i3_c * k3;
+                    let p0_d = i0_d * k0;
+                    let p1_d = i1_d * k1;
+                    let p2_d = i2_d * k2;
+                    let p3_d = i3_d * k3;
+                    *optr_a = bias + p0_a + p1_a + p2_a + p3_a;
+                    *optr_b = bias + p0_b + p1_b + p2_b + p3_b;
+                    *optr_c = bias + p0_c + p1_c + p2_c + p3_c;
+                    *optr_d = bias + p0_d + p1_d + p2_d + p3_d;
+                    i += 4;
+                }
+                while i < visitor.inner_loop_len as isize {
                     let iptr = iptr.offset(visitor.inner_loop_input_full_stride * i);
                     let optr = optr.offset(visitor.inner_loop_output_stride * i);
                     let i0 = *iptr.offset(ioffset0);
@@ -140,7 +188,8 @@ impl DepthWise {
                     let p2 = i2 * k2;
                     let p3 = i3 * k3;
                     let sum = bias + p0 + p1 + p2 + p3;
-                    *optr = sum
+                    *optr = sum;
+                    i += 1;
                 }
                 visitor.next_non_inner_axis()
             }
@@ -220,3 +269,164 @@ impl TypedOp for DepthWise {
 
     as_op!();
 }
+
+
+/* partial alternative impl that may be relevant when simd gets better */
+
+    /*
+    #[inline(never)]
+    unsafe fn process_zone_4_f32(
+        &self,
+        zone: &Zone,
+        c_stride_i: isize,
+        c_stride_o: isize,
+        k_stride_i: isize,
+        iptr: *const f32,
+        kptr: *const f32,
+        bias: *const f32,
+        optr: *mut f32,
+    ) {
+        use std::simd::*;
+        let mut visitor = ZoneScanner::new(zone, &self.patch);
+        let ioffset0 = zone.values_offsets[0].1;
+        let ioffset1 = zone.values_offsets[1].1;
+        let ioffset2 = zone.values_offsets[2].1;
+        let ioffset3 = zone.values_offsets[3].1;
+        for c in 0..*self.input_shape.c() as isize {
+            visitor.reset();
+            let kptr = kptr.offset(k_stride_i * c);
+            let iptr = iptr.offset(c_stride_i * c);
+            let optr = optr.offset(c_stride_o * c);
+            let k0 = *kptr.offset(zone.values_offsets[0].0 as isize);
+            let k1 = *kptr.offset(zone.values_offsets[1].0 as isize);
+            let k2 = *kptr.offset(zone.values_offsets[2].0 as isize);
+            let k3 = *kptr.offset(zone.values_offsets[3].0 as isize);
+            let k0 = f32x4::splat(k0);
+            let k1 = f32x4::splat(k1);
+            let k2 = f32x4::splat(k2);
+            let k3 = f32x4::splat(k3);
+            let bias = f32x4::splat(*bias.offset(c));
+            while !visitor.done {
+                let iptr = iptr.offset(visitor.input_center_offset);
+                let optr = optr.offset(visitor.output_offset);
+                let mut i  = 0;
+                while i + 4 <
+                for i in 0..visitor.inner_loop_len as isize {
+                    let iptr = iptr.offset(visitor.inner_loop_input_full_stride * i);
+                    let optr = optr.offset(visitor.inner_loop_output_stride * i);
+                    let i0 = *iptr.offset(ioffset0);
+                    let i1 = *iptr.offset(ioffset1);
+                    let i2 = *iptr.offset(ioffset2);
+                    let i3 = *iptr.offset(ioffset3);
+                    let i = f32x4::from_array([i0, i1, i2, i3]);
+                    let p = (i * k).reduce_sum();
+                    let sum = bias + p;
+                    *optr = sum
+                }
+                visitor.next_non_inner_axis()
+            }
+        }
+    }
+    */
+
+    /*
+    #[inline(never)]
+    unsafe fn process_zone_4_f32(
+        &self,
+        zone: &Zone,
+        c_stride_i: isize,
+        c_stride_o: isize,
+        k_stride_i: isize,
+        iptr: *const f32,
+        kptr: *const f32,
+        bias: *const f32,
+        optr: *mut f32,
+    ) {
+        use std::simd::*;
+        let mut visitor = ZoneScanner::new(zone, &self.patch);
+        let ioffset0 = zone.values_offsets[0].1;
+        let ioffset1 = zone.values_offsets[1].1;
+        let ioffset2 = zone.values_offsets[2].1;
+        let ioffset3 = zone.values_offsets[3].1;
+        for c in 0..*self.input_shape.c() as isize {
+            visitor.reset();
+            let kptr = kptr.offset(k_stride_i * c);
+            let iptr = iptr.offset(c_stride_i * c);
+            let optr = optr.offset(c_stride_o * c);
+            let k0 = *kptr.offset(zone.values_offsets[0].0 as isize);
+            let k1 = *kptr.offset(zone.values_offsets[1].0 as isize);
+            let k2 = *kptr.offset(zone.values_offsets[2].0 as isize);
+            let k3 = *kptr.offset(zone.values_offsets[3].0 as isize);
+            let k = f32x4::from_array([k0, k1, k2, k3]);
+            let bias = *bias.offset(c);
+            while !visitor.done {
+                let iptr = iptr.offset(visitor.input_center_offset);
+                let optr = optr.offset(visitor.output_offset);
+                for i in 0..visitor.inner_loop_len as isize {
+                    let iptr = iptr.offset(visitor.inner_loop_input_full_stride * i);
+                    let optr = optr.offset(visitor.inner_loop_output_stride * i);
+                    let i0 = *iptr.offset(ioffset0);
+                    let i1 = *iptr.offset(ioffset1);
+                    let i2 = *iptr.offset(ioffset2);
+                    let i3 = *iptr.offset(ioffset3);
+                    let i = f32x4::from_array([i0, i1, i2, i3]);
+                    let p = (i * k).reduce_sum();
+                    let sum = bias + p;
+                    *optr = sum
+                }
+                visitor.next_non_inner_axis()
+            }
+        }
+    }
+    */
+
+    /*
+    #[inline(never)]
+    unsafe fn process_zone_4<T: Datum + Copy + ndarray::LinalgScalar>(
+        &self,
+        zone: &Zone,
+        c_stride_i: isize,
+        c_stride_o: isize,
+        k_stride_i: isize,
+        iptr: *const T,
+        kptr: *const T,
+        bias: *const T,
+        optr: *mut T,
+    ) {
+        let mut visitor = ZoneScanner::new(zone, &self.patch);
+        let ioffset0 = zone.values_offsets[0].1;
+        let ioffset1 = zone.values_offsets[1].1;
+        let ioffset2 = zone.values_offsets[2].1;
+        let ioffset3 = zone.values_offsets[3].1;
+        for c in 0..*self.input_shape.c() as isize {
+            visitor.reset();
+            let kptr = kptr.offset(k_stride_i * c);
+            let iptr = iptr.offset(c_stride_i * c);
+            let optr = optr.offset(c_stride_o * c);
+            let k0 = *kptr.offset(zone.values_offsets[0].0 as isize);
+            let k1 = *kptr.offset(zone.values_offsets[1].0 as isize);
+            let k2 = *kptr.offset(zone.values_offsets[2].0 as isize);
+            let k3 = *kptr.offset(zone.values_offsets[3].0 as isize);
+            let bias = *bias.offset(c);
+            while !visitor.done {
+                let iptr = iptr.offset(visitor.input_center_offset);
+                let optr = optr.offset(visitor.output_offset);
+                for i in 0..visitor.inner_loop_len as isize {
+                    let iptr = iptr.offset(visitor.inner_loop_input_full_stride * i);
+                    let optr = optr.offset(visitor.inner_loop_output_stride * i);
+                    let i0 = *iptr.offset(ioffset0);
+                    let i1 = *iptr.offset(ioffset1);
+                    let i2 = *iptr.offset(ioffset2);
+                    let i3 = *iptr.offset(ioffset3);
+                    let p0 = i0 * k0;
+                    let p1 = i1 * k1;
+                    let p2 = i2 * k2;
+                    let p3 = i3 * k3;
+                    let sum = bias + p0 + p1 + p2 + p3;
+                    *optr = sum
+                }
+                visitor.next_non_inner_axis()
+            }
+        }
+    }
+    */
