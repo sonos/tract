@@ -194,7 +194,7 @@ pub fn tile(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
 ) -> TractResult<TVec<OutletId>> {
-    let multipliers: TVec<usize> = invocation.named_arg_as(builder, "repeats")?;
+    let multipliers: TVec<usize> = invocation.named_arg_as(builder, "repeat")?;
     let wire = tvec!(invocation.named_arg_as(builder, "input")?);
     Ok(builder.wire(ops::array::Tile { multipliers }, &wire)?)
 }
