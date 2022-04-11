@@ -253,23 +253,25 @@ impl DeconvSum {
         output_c_stride: isize,
     ) {
         let mut c = 0;
+        let mut right = temp;
+        let mut left = output;
         while c + 8 < output_c {
-            let mut left0 = *output.offset(0 * output_c_stride);
-            let mut left1 = *output.offset(1 * output_c_stride);
-            let mut left2 = *output.offset(2 * output_c_stride);
-            let mut left3 = *output.offset(3 * output_c_stride);
-            let mut left4 = *output.offset(4 * output_c_stride);
-            let mut left5 = *output.offset(5 * output_c_stride);
-            let mut left6 = *output.offset(6 * output_c_stride);
-            let mut left7 = *output.offset(7 * output_c_stride);
-            let right0 = *temp.offset(0 * temp_o_stride);
-            let right1 = *temp.offset(1 * temp_o_stride);
-            let right2 = *temp.offset(2 * temp_o_stride);
-            let right3 = *temp.offset(3 * temp_o_stride);
-            let right4 = *temp.offset(4 * temp_o_stride);
-            let right5 = *temp.offset(5 * temp_o_stride);
-            let right6 = *temp.offset(6 * temp_o_stride);
-            let right7 = *temp.offset(7 * temp_o_stride);
+            let mut left0 = *left.offset(0 * output_c_stride);
+            let mut left1 = *left.offset(1 * output_c_stride);
+            let mut left2 = *left.offset(2 * output_c_stride);
+            let mut left3 = *left.offset(3 * output_c_stride);
+            let mut left4 = *left.offset(4 * output_c_stride);
+            let mut left5 = *left.offset(5 * output_c_stride);
+            let mut left6 = *left.offset(6 * output_c_stride);
+            let mut left7 = *left.offset(7 * output_c_stride);
+            let right0 = *right.offset(0 * temp_o_stride);
+            let right1 = *right.offset(1 * temp_o_stride);
+            let right2 = *right.offset(2 * temp_o_stride);
+            let right3 = *right.offset(3 * temp_o_stride);
+            let right4 = *right.offset(4 * temp_o_stride);
+            let right5 = *right.offset(5 * temp_o_stride);
+            let right6 = *right.offset(6 * temp_o_stride);
+            let right7 = *right.offset(7 * temp_o_stride);
             left0 += right0;
             left1 += right1;
             left2 += right2;
@@ -278,15 +280,17 @@ impl DeconvSum {
             left5 += right5;
             left6 += right6;
             left7 += right7;
-            *output.offset(0 * output_c_stride) = left0;
-            *output.offset(1 * output_c_stride) = left1;
-            *output.offset(2 * output_c_stride) = left2;
-            *output.offset(3 * output_c_stride) = left3;
-            *output.offset(4 * output_c_stride) = left4;
-            *output.offset(5 * output_c_stride) = left5;
-            *output.offset(6 * output_c_stride) = left6;
-            *output.offset(7 * output_c_stride) = left7;
+            *left.offset(0 * output_c_stride) = left0;
+            *left.offset(1 * output_c_stride) = left1;
+            *left.offset(2 * output_c_stride) = left2;
+            *left.offset(3 * output_c_stride) = left3;
+            *left.offset(4 * output_c_stride) = left4;
+            *left.offset(5 * output_c_stride) = left5;
+            *left.offset(6 * output_c_stride) = left6;
+            *left.offset(7 * output_c_stride) = left7;
             c += 8;
+            left = left.offset(8 * output_c_stride);
+            right = right.offset(8 * temp_o_stride);
         }
         for c in c..output_c {
             let value = *temp.offset(c as isize * temp_o_stride);
