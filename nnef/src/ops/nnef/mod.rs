@@ -1,4 +1,4 @@
-use crate::internal::*;
+use crate::{internal::*, ops::tract_core};
 
 pub mod deser;
 pub mod ser;
@@ -83,6 +83,14 @@ pub fn tract_nnef() -> Registry {
     registry.register_unit_element_wise("not", &ops::logic::Not {});
 
     registry.register_unit_element_wise("neg", &ops::math::Neg {});
+
+    registry.register_element_wise(
+        "prelu",
+        TypeId::of::<ops::nn::Prelu>(),
+        ser::prelu,
+        vec![TypeName::Scalar.tensor().named("x"), TypeName::Scalar.tensor().named("alpha")],
+        deser::prelu,
+    );
 
     registry.register_binary("lt", &ops::logic::Less {});
     registry.register_binary("gt", &ops::logic::Greater {});
