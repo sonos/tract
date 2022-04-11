@@ -8,8 +8,6 @@ use num_complex::Complex;
 use std::hash::Hash;
 use std::{fmt, ops};
 
-mod arrays;
-pub use arrays::ArrayDatum;
 use num_traits::AsPrimitive;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Educe)]

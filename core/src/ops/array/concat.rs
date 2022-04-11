@@ -58,6 +58,10 @@ impl Op for TypedConcat {
         "Concat".into()
     }
 
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![format!("axis: {}", self.axis)])
+    }
+
     op_core_lir_mir!();
     op_as_typed_op!();
 }
@@ -229,30 +233,18 @@ impl EvalOp for TypedConcat {
     }
 
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let refs: TVec<&Tensor> = inputs.iter().map(|i| i.as_ref()).collect();
-        let mats = slices(&self.slices, &refs)?;
+        let mut mats: TVec<&Tensor> = tvec![];
+        let mut input_idx = 0;
+        for slice in &self.slices {
+            match slice {
+                ConcatSlice::Const(c) => mats.push(c),
+                ConcatSlice::Var => {
+                    mats.push(inputs[input_idx].as_ref());
+                    input_idx += 1
+                }
+            }
+        }
         let result = Tensor::stack_tensors(self.axis, &mats)?;
         Ok(tvec![result.into_arc_tensor()])
     }
-}
-
-////////////////////////////////////////////////
-
-fn slices<'a, 'i: 'a, 'o: 'a>(
-    slices: &'o [ConcatSlice],
-    inputs: &'i [&'i Tensor],
-) -> TractResult<TVec<&'a Tensor>> {
-    let mut mats: TVec<&'a Tensor> = tvec![];
-    let mut input_idx = 0;
-    for slice in slices {
-        match slice {
-            ConcatSlice::Const(c) => mats.push(c),
-            ConcatSlice::Var => {
-                let inp_view = inputs[input_idx];
-                mats.push(inp_view);
-                input_idx += 1
-            }
-        }
-    }
-    Ok(mats)
 }
