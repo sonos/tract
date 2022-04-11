@@ -59,16 +59,6 @@ pub fn tract_nnef() -> Registry {
     registry.register_unit_element_wise("sign", &ops::math::Sign {});
     registry.register_unit_element_wise("recip", &ops::math::Recip {});
 
-    registry.register_unit_element_wise("tan", &ops::math::Tan {});
-    registry.register_unit_element_wise("acos", &ops::math::Acos {});
-    registry.register_unit_element_wise("asin", &ops::math::Asin {});
-    registry.register_unit_element_wise("atan", &ops::math::Atan {});
-    registry.register_unit_element_wise("cosh", &ops::math::Cosh {});
-    registry.register_unit_element_wise("sinh", &ops::math::Sinh {});
-    registry.register_unit_element_wise("acosh", &ops::math::Acosh {});
-    registry.register_unit_element_wise("asinh", &ops::math::Asinh {});
-    registry.register_unit_element_wise("atanh", &ops::math::Atanh {});
-
     registry.register_unit_element_wise("floor", &ops::math::Floor {});
     registry.register_unit_element_wise("ceil", &ops::math::Ceil {});
     registry.register_unit_element_wise("round", &ops::math::Round {});
