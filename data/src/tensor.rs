@@ -171,46 +171,47 @@ impl Tensor {
         axis: usize,
         tensors: &[impl std::borrow::Borrow<Tensor>],
     ) -> anyhow::Result<Tensor> {
-        use crate::datum::ArrayDatum;
+        anyhow::ensure!(tensors.len() > 0);
+        let rank = tensors[0].borrow().rank();
+        anyhow::ensure!(axis < rank);
+        anyhow::ensure!(tensors.iter().all(|t| t.borrow().rank() == rank));
         let dt = tensors[0].borrow().datum_type();
-        if tensors.iter().any(|t| t.borrow().datum_type() != dt) {
-            anyhow::bail!("Inconsistent datum type in stack.")
-        }
-        // map all copy types to the i* of the same size
-        let mut tensor = unsafe {
-            match dt {
-                DatumType::F16 => i16::stack_tensors(axis, &tensors),
-                DatumType::F32 => i32::stack_tensors(axis, &tensors),
-                DatumType::F64 => i64::stack_tensors(axis, &tensors),
-                DatumType::Bool => i8::stack_tensors(axis, &tensors),
-                DatumType::U8 => i8::stack_tensors(axis, &tensors),
-                DatumType::U16 => i16::stack_tensors(axis, &tensors),
-                DatumType::U32 => i32::stack_tensors(axis, &tensors),
-                DatumType::U64 => i64::stack_tensors(axis, &tensors),
-                DatumType::I8 => i8::stack_tensors(axis, &tensors),
-                DatumType::I16 => i16::stack_tensors(axis, &tensors),
-                DatumType::I32 => i32::stack_tensors(axis, &tensors),
-                DatumType::I64 => i64::stack_tensors(axis, &tensors),
-                DatumType::TDim => TDim::stack_tensors(axis, &tensors),
-                DatumType::Blob => Blob::stack_tensors(axis, &tensors),
-                DatumType::String => String::stack_tensors(axis, &tensors),
-                DatumType::QI8(_) => i8::stack_tensors(axis, &tensors),
-                DatumType::QU8(_) => i8::stack_tensors(axis, &tensors),
-                DatumType::ComplexI16 => Complex::<i16>::stack_tensors(axis, &tensors),
-                DatumType::ComplexI32 => Complex::<i32>::stack_tensors(axis, &tensors),
-                DatumType::ComplexI64 => Complex::<i64>::stack_tensors(axis, &tensors),
-                DatumType::ComplexF16 => Complex::<i16>::stack_tensors(axis, &tensors),
-                DatumType::ComplexF32 => Complex::<i32>::stack_tensors(axis, &tensors),
-                DatumType::ComplexF64 => Complex::<i64>::stack_tensors(axis, &tensors),
+        anyhow::ensure!(tensors.iter().all(|t| t.borrow().datum_type() == dt));
+        let mut shape: TVec<usize> = tensors[0].borrow().shape().into();
+        for ax in 0..rank {
+            if ax != axis {
+                anyhow::ensure!(tensors.iter().all(|t| t.borrow().shape()[ax] == shape[ax]));
             }
-        }?;
-        tensor.dt = dt;
-        Ok(tensor)
+        }
+        shape[axis] = tensors.iter().map(|v| v.borrow().shape()[axis]).sum();
+        unsafe {
+            let mut result = Tensor::uninitialized_dt(dt, &shape)?;
+            if dt.is_copy() && shape[..axis].iter().all(|d| *d == 1) {
+                let mut offset = 0isize;
+                for v in tensors {
+                    let v = v.borrow();
+                    let len = v.layout.size();
+                    std::ptr::copy_nonoverlapping(v.data, result.data.offset(offset), len);
+                    offset += len as isize;
+                }
+            } else {
+                let mut offset = 0;
+                for t in tensors {
+                    let t = t.borrow();
+                    let len = t.shape()[axis];
+                    result.assign_slice_from_resolved(offset..offset + len, t, 0..len, axis);
+                    offset += len;
+                }
+            }
+
+            Ok(result)
+        }
     }
 
     pub unsafe fn clear<T: Datum + num_traits::Zero>(&mut self) {
         self.as_slice_mut_unchecked::<T>().iter_mut().for_each(|item| *item = T::zero());
     }
+
     //FIXME : zero for quantised dt ?
     pub fn zero<T: Datum + num_traits::Zero>(shape: &[usize]) -> anyhow::Result<Tensor> {
         unsafe {
@@ -532,7 +533,7 @@ impl Tensor {
             range,
             self
         );
-        self.assign_slice_from_resolved(range, src, src_range, axis);
+        unsafe { self.assign_slice_from_resolved(range, src, src_range, axis) };
         Ok(())
     }
 
@@ -548,7 +549,7 @@ impl Tensor {
         self.assign_slice_from_resolved(range, src, src_range, axis);
     }
 
-    fn assign_slice_from_resolved(
+    unsafe fn assign_slice_from_resolved(
         &mut self,
         range: std::ops::Range<usize>,
         src: &Tensor,
@@ -571,26 +572,22 @@ impl Tensor {
                         .slice_axis(Axis(axis), Slice::from(from_range)),
                 )
         }
-        unsafe {
-            if axis == 0 && self.datum_type().is_copy() {
-                let stride = self.strides[0] as usize * self.datum_type().size_of();
-                let dst_start = (stride * range.start) as isize;
-                let src_start = (stride * src_range.start) as isize;
-                let len = stride * range.len();
-                if self.data != src.data {
-                    std::ptr::copy_nonoverlapping(
-                        src.data.offset(src_start),
-                        self.data.offset(dst_start),
-                        len,
-                    );
-                } else {
-                    std::ptr::copy(src.data.offset(src_start), self.data.offset(dst_start), len);
-                }
+        if self.datum_type().is_copy() && self.shape[..axis].iter().all(|d| *d == 1) {
+            let stride = self.strides[axis] as usize * self.datum_type().size_of();
+            let dst_start = (stride * range.start) as isize;
+            let src_start = (stride * src_range.start) as isize;
+            let len = stride * range.len();
+            if self.data != src.data {
+                std::ptr::copy_nonoverlapping(
+                    src.data.offset(src_start),
+                    self.data.offset(dst_start),
+                    len,
+                );
             } else {
-                dispatch_datum!(assign_slice_t(self.datum_type())(
-                    self, range, src, src_range, axis
-                ));
+                std::ptr::copy(src.data.offset(src_start), self.data.offset(dst_start), len);
             }
+        } else {
+            dispatch_datum!(assign_slice_t(self.datum_type())(self, range, src, src_range, axis));
         }
     }
 
