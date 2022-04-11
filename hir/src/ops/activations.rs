@@ -126,25 +126,13 @@ activation!(HardSigmoid, |op, name: &str, model: &mut TypedModel, inputs| {
     Ok(wire)
 });
 
+
 #[derive(Debug, Clone, new, Educe)]
 #[educe(Hash)]
 pub struct LeakyRelu(#[educe(Hash(method = "hash_f32"))] pub f32);
 
 activation!(LeakyRelu, |op, name: &str, model: &mut TypedModel, inputs| {
-    let zero = broadcast_scalar(0.0, model, inputs)?;
-    let alpha = broadcast_scalar(op.0, model, inputs)?;
-    let neg = model.wire_node(name.to_string() + ".mul_alpha", mul::unary(alpha), &inputs)?;
-    let test = model.wire_node(
-        name.to_string() + ".test",
-        tract_core::ops::logic::less::unary(zero),
-        &[inputs[0]],
-    )?;
-    let wire = model.wire_node(
-        name.to_string() + ".iff",
-        tract_core::ops::logic::Iff,
-        &[test[0], inputs[0], neg[0]],
-    )?;
-    Ok(wire)
+    model.wire_node(name, tract_core::ops::nn::prelu(op.0), inputs)
 });
 
 #[derive(Debug, Clone, new, Educe)]

@@ -562,3 +562,16 @@ pub fn select(
 
     builder.wire(ops::logic::Iff {}, &inputs)
 }
+
+/*
+ * fragment prelu( x: tensor<scalar>, alpha: tensor<scalar> )-> ( y: tensor<scalar> )
+ */
+
+pub fn prelu(
+    builder: &mut ModelBuilder,
+    invocation: &ResolvedInvocation,
+) -> TractResult<TVec<OutletId>> {
+    let x = invocation.named_arg_as(builder, "x")?;
+    let alpha = invocation.named_arg_as(builder, "alpha")?;
+    builder.wire(ops::nn::prelu(alpha) , &[x])
+}
