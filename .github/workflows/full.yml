@@ -21,6 +21,10 @@ jobs:
     steps:
     - uses: actions/checkout@v1
     - name: Full test 
+      env:
+        AWS_ACCESS_KEY_ID: ${{secrets.TRACT_CI_AWS_ACCESS_KEY_ID}}
+        AWS_SECRET_ACCESS_KEY: ${{secrets.TRACT_CI_AWS_SECRET_ACCESS_KEY}}
+        AWS_EC2_METADATA_DISABLED: true
       run: .travis/cli-tests.sh
 
   onnx-tests:
