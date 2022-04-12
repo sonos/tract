@@ -145,17 +145,18 @@ fi
 ( cd kaldi/test_cases ; TRACT_RUN=../../target/release/tract ./run_all.sh )
 ( cd onnx/test_cases ; TRACT_RUN=../../target/release/tract ./run_all.sh )
 
+(
 if aws s3 ls tract-ci-builds/private
 then
     if [ -n "$CI" ]
     then
+        set +x
         OUTPUT=/dev/null
     else
         OUTPUT=/dev/stdout
     fi
     export TRACT_RUN=`pwd`/target/release/tract
     (
-    set +x
     cd $CACHEDIR
     aws s3 sync s3://tract-ci-builds/private private
     for t in `find private -name t.sh`
@@ -164,3 +165,4 @@ then
     done
     ) 2>&1 > $OUTPUT
 fi
+)
