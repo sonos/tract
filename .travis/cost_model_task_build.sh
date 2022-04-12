@@ -44,10 +44,10 @@ mv linalg/cost_model/target/${RUST_TRIPLE}/release/cost_model $TASK_NAME
 echo "export TIMEOUT=$((86400*4))" > $TASK_NAME/vars
 echo "#!/bin/sh" > $TASK_NAME/entrypoint.sh
 echo "mkdir product" >> $TASK_NAME/entrypoint.sh
-# echo "./cost_model ds --size 10000 product/$TASK_NAME.txt" >> $TASK_NAME/entrypoint.sh
+echo "./cost_model ds --size 10000 product/$TASK_NAME.txt" >> $TASK_NAME/entrypoint.sh
 # echo "./cost_model ds --size 2000 -k 128 -n 16 product/$TASK_NAME-small-k-tiny-n.txt" >> $TASK_NAME/entrypoint.sh
 # echo "./cost_model ds --size 5000 -m 1-512 -k 16,64,256 -n 1-20 product/$TASK_NAME-multiple-k-tiny-n.txt" >> $TASK_NAME/entrypoint.sh
-echo "./cost_model ds --size 1000 -m 1-512 -k 256,1024 -n 1-512 product/$TASK_NAME-bigmn" >> $TASK_NAME/entrypoint.sh
+# echo "./cost_model ds --size 1000 -m 1-512 -k 256,1024 -n 1-512 product/$TASK_NAME-bigmn" >> $TASK_NAME/entrypoint.sh
 chmod +x $TASK_NAME/entrypoint.sh
 tar czf $TASK_NAME.tgz $TASK_NAME
 
