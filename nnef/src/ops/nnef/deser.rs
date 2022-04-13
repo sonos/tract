@@ -24,6 +24,8 @@ pub fn external(
         f32::datum_type()
     } else if type_name == TypeName::Logical {
         bool::datum_type()
+    } else if type_name == TypeName::Integer {
+        i64::datum_type()
     } else {
         todo!()
     };
