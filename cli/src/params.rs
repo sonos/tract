@@ -1,6 +1,6 @@
 use reqwest::Url;
 use std::io::Read;
-use std::path::{PathBuf, Path};
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use tract_core::anyhow::ensure;
 #[allow(unused_imports)]
@@ -45,13 +45,6 @@ impl ModelLocation {
             p.is_dir()
         } else {
             false
-        }
-    }
-
-    fn as_dir(&self) -> Option<&Path> {
-        match self {
-            ModelLocation::Fs(p) => Some(&p),
-            ModelLocation::Http(_) => None
         }
     }
 
@@ -183,8 +176,12 @@ impl Parameters {
             }
             "nnef" => {
                 let nnef = super::nnef(&matches);
-                let proto_model = if let Some(dir) = location.as_dir() {
-                    nnef.proto_model_for_path(dir)?
+                let proto_model = if location.is_dir() {
+                    if let ModelLocation::Fs(dir) = location {
+                        nnef.proto_model_for_path(dir)?
+                    } else {
+                        unreachable!();
+                    }
                 } else if location
                     .path()
                     .extension()
@@ -803,7 +800,9 @@ impl Parameters {
             .collect();
 
         let mut assertions = match matches.subcommand() {
-            Some(("dump" | "run", sm)) => Assertions::from_clap(&matches, &*output_names_and_labels)?,
+            Some(("dump" | "run", sm)) => {
+                Assertions::from_clap(&matches, &*output_names_and_labels)?
+            }
             _ => Assertions::default(),
         };
 
