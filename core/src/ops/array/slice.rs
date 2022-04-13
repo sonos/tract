@@ -136,13 +136,8 @@ impl TypedOp for Slice {
             end,
         )? {
             patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
-            if patch.model.nodes.len() == 2 && patch.model.node(1).op().same_as(self) {
-                return Ok(None);
-            } else if patch.model.nodes.len() == 3 {
-                let other = model.node(node.inputs[0].node);
-                if other.op_is::<Self>() {
-                    patch.dont_apply_twice = Some(format!("Swap {} and {}", node.name, other.name));
-                }
+            if patch.nodes().iter().skip(1).all(|n| n.op_is::<Self>()) {
+                return Ok(None)
             }
             return Ok(Some(patch));
         }
