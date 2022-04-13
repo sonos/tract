@@ -21,6 +21,7 @@ impl ProtoFusedSpec {
     pub fn resolve<'t>(
         &'t self,
         inputs: &'t [Arc<Tensor>],
+        prefix: &[usize],
         output_spec: &'t OutputStoreSpec,
         output: OutputStore,
     ) -> FusedSpec<'t> {
@@ -32,7 +33,11 @@ impl ProtoFusedSpec {
                 FusedSpec::AddRowColProducts(row.tensor(inputs), col.tensor(inputs))
             }
             ProtoFusedSpec::AddUnicast(v) => unsafe {
-                FusedSpec::AddUnicast(output_spec.wrap(&v.tensor(inputs).view()))
+                let mut view = v.tensor(inputs).view();
+                for (ix, &dim) in prefix.iter().enumerate() {
+                    view.offset_axis_unchecked(ix, dim as isize);
+                }
+                FusedSpec::AddUnicast(output_spec.wrap(&view))
             },
             ProtoFusedSpec::QScale(s, rp, m) => FusedSpec::QScale(*s, *rp, *m),
             ProtoFusedSpec::Store => FusedSpec::Store(output),
@@ -239,7 +244,7 @@ fn eval(
                         .b_storage
                         .wrap(&TensorView::at_prefix_unchecked(&inputs[0], &*b_prefix))?,
                 });
-                f.extend(fused.iter().map(|f| f.resolve(inputs, &c_storage, c_store)));
+                f.extend(fused.iter().map(|f| f.resolve(inputs, prefix.slice(), &c_storage, c_store)));
                 op.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch, &f)?;
             }
         } else {
@@ -252,7 +257,7 @@ fn eval(
                 b: geometry.b_storage.wrap(&inputs[0].view())?,
             });
             for ix in 0..fused.len() {
-                f.push(fused.get_unchecked(ix).resolve(inputs, &c_storage, c_store));
+                f.push(fused.get_unchecked(ix).resolve(inputs, &[], &c_storage, c_store));
             }
             op.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch, &f)?;
         }
