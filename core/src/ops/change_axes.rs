@@ -312,7 +312,7 @@ impl AxisOp {
                     bail!("Attempt to remove {} axis on shape {:?}", ix, shape);
                 }
                 if shape[*ix] != 1.to_dim() {
-                    bail!("Removing a non-trivial axis.");
+                    bail!("Removing non-trivial {} axis of dim: {:?}", ix, shape);
                 }
                 shape.remove_axis(*ix)
             }
