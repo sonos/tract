@@ -1,6 +1,6 @@
 use reqwest::Url;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
 use std::str::FromStr;
 use tract_core::anyhow::ensure;
 #[allow(unused_imports)]
@@ -45,6 +45,13 @@ impl ModelLocation {
             p.is_dir()
         } else {
             false
+        }
+    }
+
+    fn as_dir(&self) -> Option<&Path> {
+        match self {
+            ModelLocation::Fs(p) => Some(&p),
+            ModelLocation::Http(_) => None
         }
     }
 
@@ -176,8 +183,8 @@ impl Parameters {
             }
             "nnef" => {
                 let nnef = super::nnef(&matches);
-                let proto_model = if location.is_dir() {
-                    nnef.proto_model_for_read(&mut *location.read()?)?
+                let proto_model = if let Some(dir) = location.as_dir() {
+                    nnef.proto_model_for_path(dir)?
                 } else if location
                     .path()
                     .extension()
