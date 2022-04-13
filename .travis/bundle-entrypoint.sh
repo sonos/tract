@@ -16,14 +16,18 @@ fi
 
 CACHEDIR=${CACHEDIR:-$HOME/.cache}
 case $CACHEDIR in
-  "http"*) ;;
-  *) 
-      [ -d $CACHEDIR ] || mkdir $CACHEDIR
-      aws s3 sync s3://tract-ci-builds/model $CACHEDIR
-      (cd $CACHEDIR
-          [ -d en_libri_real ] || tar zxf en_libri_real.tar.gz
-          [ -d en_tdnn_lstm_bn_q7 ] || tar zxf en_tdnn_lstm_bn_q7.tar.gz
-      )
+    "http"*)
+        wget $CACHEDIR/private/private-benches.sh
+        PRIVATE=`pwd`/private-benches.sh
+    ;;
+    *) 
+        [ -d $CACHEDIR ] || mkdir $CACHEDIR
+        aws s3 sync s3://tract-ci-builds/model $CACHEDIR
+        (cd $CACHEDIR
+            [ -d en_libri_real ] || tar zxf en_libri_real.tar.gz
+            [ -d en_tdnn_lstm_bn_q7 ] || tar zxf en_tdnn_lstm_bn_q7.tar.gz
+        )
+        PRIVATE=$CACHEDIR/private/private-benches.sh
     ;;
 esac
 
@@ -67,15 +71,6 @@ net_bench() {
 }
 
 mem=$(free -m | grep Mem | awk '{ print $2 }')
-
-# if [ $mem -gt 600 ]
-# then
-#     net_bench deepspeech_0_4_1 pass \
-#         $CACHEDIR/deepspeech-0.4.1.pb \
-#         --input-node input_node -i 1,16,19,26,f32 \
-#         --input-node input_lengths -i 1,i32=16 --const-input input_lengths \
-#         --tf-initializer-output-node initialize_state
-# fi
 
 net_bench arm_ml_kws_cnn_m pass $CACHEDIR/ARM-ML-KWS-CNN-M.pb -i 49,10,f32 --partial --input-node Mfcc
 
@@ -121,6 +116,9 @@ net_bench speaker_id pulse8 $CACHEDIR/speaker-id-2019-03.onnx -i 1,S,40,f32 --ou
 net_bench voicecom_fake_quant 2sec $CACHEDIR/snips-voice-commands-cnn-fake-quant.pb -i 200,10,f32
 net_bench voicecom_float 2sec $CACHEDIR/snips-voice-commands-cnn-float.pb -i 200,10,f32
 
+. $PRIVATE
+
 end=$(date +%s)
 
 echo bundle.bench-runtime  $(($end - $start)) >> metrics
+

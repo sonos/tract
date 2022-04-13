@@ -126,22 +126,6 @@ do
     (export TRACT_RUN=`pwd`/target/release/tract ; cd $t ; ./runme.sh)
 done
 
-# these tests require access to private snips models
-if [ -e "$HOME/.aws/credentials" ]
-then
-    BENCH_OPTS="--max-iters 1" sh .travis/bundle-entrypoint.sh
-#    ./target/release/tract .cached/en_tdnn_lstm_bn_q7/model.onnx \
-#            -O -i S,40,f32 --output-node output --pulse 24 \
-#            dump --assert-op-count Add 13 --assert-op-count Mul 17 --assert-op-count Max 7
-    (
-    cd onnx/test_cases
-#    [ -e en_tdnn_lstm_bn_q7 ] || ln -s "$CACHEDIR/en_tdnn_lstm_bn_q7" .
-#    echo 'IGNORE="plain nnef"' >> en_tdnn_lstm_bn_q7/vars.sh
-#    echo 'OPTIONS="--output-node output"' >> en_tdnn_lstm_bn_q7/vars.sh
-#    TRACT_RUN=../../target/release/tract ./run_all.sh en_tdnn_lstm_bn_q7
-)
-fi
-
 ( cd kaldi/test_cases ; TRACT_RUN=../../target/release/tract ./run_all.sh )
 ( cd onnx/test_cases ; TRACT_RUN=../../target/release/tract ./run_all.sh )
 
