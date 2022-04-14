@@ -65,7 +65,7 @@ echo
 ( cd onnx/test_cases ; TRACT_RUN=../../target/release/tract ./run_all.sh )
 
 echo
-echo $WHITE • (old) integreation test cases $NC
+echo $WHITE • old integreation test cases $NC
 echo
 
 ./.travis/cache_file.sh \
