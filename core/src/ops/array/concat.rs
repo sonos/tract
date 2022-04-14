@@ -155,7 +155,7 @@ impl TypedOp for TypedConcat {
         axis: usize,
         start: usize,
         end: usize,
-    ) -> TractResult<Option<OutletId>> {
+    ) -> TractResult<Option<(OutletId, bool)>> {
         let inputs = model.node_input_facts(node.id)?;
         if self.axis == axis {
             let mut input = 0;
@@ -168,14 +168,17 @@ impl TypedOp for TypedConcat {
                 if start >= offsets[ix] && end <= offsets[ix + 1] {
                     match slice {
                         ConcatSlice::Const(t) => {
-                            return Ok(Some(patch.add_const(
-                                format!("{}-const", node.name),
-                                t.slice(axis, start - offsets[ix], end - offsets[ix])?,
-                            )?))
+                            return Ok(Some((
+                                patch.add_const(
+                                    format!("{}-const", node.name),
+                                    t.slice(axis, start - offsets[ix], end - offsets[ix])?,
+                                )?,
+                                true,
+                            )))
                         }
                         ConcatSlice::Var => {
                             let prec = model.node(node.inputs[input].node);
-                            return prec.op().as_typed().unwrap().slice_output(
+                            if let Some((wire, _)) = prec.op().as_typed().unwrap().slice_output(
                                 model,
                                 &prec,
                                 patch,
@@ -184,7 +187,11 @@ impl TypedOp for TypedConcat {
                                 axis,
                                 start - offsets[ix],
                                 end - offsets[ix],
-                            );
+                            )? {
+                                return Ok(Some((wire, true)));
+                            } else {
+                                return Ok(None);
+                            }
                         }
                     };
                 }
