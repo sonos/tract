@@ -1,5 +1,10 @@
 # Unreleased
 
+# 0.16.4 - 2022-04-14
+* some optimisations in depthwise convolutions
+* various bugfixes
+* [Breaking] Fixed nnef "tile" operator definition ("repeats" is plural). As a consequence models using "tile" serialized with tract with prior versions can not be loaded anymore (and vice-versa).
+
 # 0.16.3 - 2022-03-30
 * [Breaking] tract-opl models Scan syntax changed a bit. Models exported by <0.16.2 are loadable in >=0.16.2, but not the other way around.
 * Optimisation in deconv
