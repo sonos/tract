@@ -83,33 +83,6 @@ impl Ops {
     }
 }
 
-/*
-fn pick_best_impl(
-    impls: &[(Box<dyn MatMatMul>, Option<CostModel>)],
-    m: Option<usize>,
-    k: Option<usize>,
-    n: Option<usize>,
-) -> &dyn mmm::MatMatMul {
-    use std::cmp::Ordering;
-    let m = m.unwrap_or(1024);
-    let k = k.unwrap_or(1024);
-    let n = n.unwrap_or(1024);
-    &*impls
-        .iter()
-        .min_by(|a, b| {
-            let a = a.1.as_ref().map(|model| model.predict(m, k, n)).unwrap_or(std::f32::MAX);
-            let b = b.1.as_ref().map(|model| model.predict(m, k, n)).unwrap_or(std::f32::MAX);
-            if a < b {
-                Ordering::Less
-            } else {
-                Ordering::Greater
-            }
-        })
-        .unwrap()
-        .0
-}
-*/
-
 pub fn generic() -> Ops {
     Ops {
         mmm_f32_impls: vec![generic::GenericMmm4x4::<f32, f32, f32>::mmm()],

@@ -1,16 +1,14 @@
 mod arm64simd;
 pub mod cortex_a53;
 mod cortex_a55;
-mod cortex_a72;
-mod cortex_a73;
+//mod cortex_a72;
+//mod cortex_a73;
 pub use arm64simd::*;
 
 use crate::Ops;
 
 use crate::frame::mmm::kernel::MatMatMulKer;
 use crate::frame::ElementWiseImpl;
-use crate::frame::{MatMatMul, MatMatMulImpl};
-use crate::mmm::CostModel;
 
 lazy_static::lazy_static! {
     static ref KIND: Kind = Kind::choose();
@@ -112,21 +110,12 @@ pub fn plug(ops: &mut Ops) {
     };
     ops.sigmoid_f32 = Box::new(|| Box::new(ElementWiseImpl::<SigmoidF32x4n, f32>::new()));
     ops.tanh_f32 = Box::new(|| Box::new(ElementWiseImpl::<TanhF32x4n, f32>::new()));
-    match *KIND {
-        Kind::CortexA53 => {
-            let model = cortex_a53::model();
-            ops.mmm_f32 =
-                Box::new(move |m, k, n| model.pick(&impls, m, k, n))
-        }
-        _ => (),
-    }
-    if *KIND == Kind::CortexA55 {
-        ops.mmm_f32 = Box::new(|_, _, n| {
-            if n.unwrap_or(8) < 8 {
-                arm64simd_mmm_f32_16x4_a55::mmm()
-            } else {
-                arm64simd_mmm_f32_8x8_a55::mmm()
-            }
-        });
+    let model = match *KIND {
+        Kind::CortexA53 => Some(cortex_a53::model()),
+        Kind::CortexA55 => Some(cortex_a55::model()),
+        _ => None,
+    };
+    if let Some(model) = model {
+        ops.mmm_f32 = Box::new(move |m, k, n| model.pick(&impls, m, k, n));
     }
 }
