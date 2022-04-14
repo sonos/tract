@@ -167,9 +167,9 @@ then
     echo
     if [ -n "$CI" ]
     then
-        set +x
         OUTPUT=/dev/null
     else
+        set -x
         OUTPUT=/dev/stdout
     fi
     export TRACT_RUN=`pwd`/target/release/tract
