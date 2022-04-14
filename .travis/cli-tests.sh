@@ -1,6 +1,9 @@
 #!/bin/sh
 
-set -ex
+WHITE='\033[1;37m'
+NC='\033[0m' # No Color
+
+set -e
 
 which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
 
@@ -33,7 +36,37 @@ fi
 
 export CACHEDIR
 
+echo
+echo $WHITE • build tract $NC
+echo
+
 cargo -q build -q -p tract --release
+
+echo
+echo $WHITE • harness/nnef-test-cases $NC
+echo
+
+for t in `find harness/nnef-test-cases -name runme.sh`
+do
+    echo $WHITE$t$NC
+    (export TRACT_RUN=`pwd`/target/release/tract ; $t)
+done
+
+echo
+echo $WHITE • kaldi/test_cases $NC
+echo
+
+( cd kaldi/test_cases ; TRACT_RUN=../../target/release/tract ./run_all.sh )
+
+echo
+echo $WHITE • onnx/test_cases $NC
+echo
+
+( cd onnx/test_cases ; TRACT_RUN=../../target/release/tract ./run_all.sh )
+
+echo
+echo $WHITE • (old) integreation test cases $NC
+echo
 
 ./.travis/cache_file.sh \
     inceptionv1_quant.io.npz \
@@ -126,12 +159,12 @@ do
     (export TRACT_RUN=`pwd`/target/release/tract ; cd $t ; ./runme.sh)
 done
 
-( cd kaldi/test_cases ; TRACT_RUN=../../target/release/tract ./run_all.sh )
-( cd onnx/test_cases ; TRACT_RUN=../../target/release/tract ./run_all.sh )
-
 (
 if aws s3 ls tract-ci-builds/model/private
 then
+    echo
+    echo $WHITE • private tests $NC
+    echo
     if [ -n "$CI" ]
     then
         set +x
