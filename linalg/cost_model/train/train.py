@@ -316,11 +316,11 @@ PASS_TESTS = {
         ([256, 768, 4], "arm64simd_mmm_f32_24x4_a53"),
     ],
     "cortex_a55": [
-        ([16, 60, 8], "arm64simd_mmm_f32_8x8_a55"),
-        ([16, 64, 8], "arm64simd_mmm_f32_8x8_a55"),
-#        ([2, 32, 8], "arm64simd_mmm_f32_8x8_a55"),
-        ([64, 48, 8], "arm64simd_mmm_f32_8x8_a53"), # yeah, a53
+        ([16, 60, 8], "arm64simd_mmm_f32_8x8_a53"),
+        ([16, 64, 8], "arm64simd_mmm_f32_8x8_a53"),
+        ([64, 48, 8], "arm64simd_mmm_f32_8x8_a53"),
         ([256, 768, 4], "arm64simd_mmm_f32_16x4_a55"),
+        ([512, 1536, 24], "arm64simd_mmm_f32_12x8_a55"),
     ],
 }
 
