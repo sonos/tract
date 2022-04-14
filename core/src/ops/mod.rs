@@ -202,11 +202,11 @@ pub trait TypedOp:
         axis: usize,
         start: usize,
         end: usize,
-    ) -> TractResult<Option<OutletId>> {
+    ) -> TractResult<Option<(OutletId, bool)>> {
         let outlet = OutletId::new(node.id, output_slot);
         let output = model.outlet_fact(outlet)?;
         if start == 0 && Some(end) == output.shape[axis].to_usize().ok() {
-            Ok(Some(patch.tap_model(model, outlet)?))
+            Ok(Some((patch.tap_model(model, outlet)?, true)))
         } else {
             let wire = patch.tap_model(model, outlet)?;
             let wire = patch.wire_node(
@@ -214,7 +214,7 @@ pub trait TypedOp:
                 crate::ops::array::Slice { start: start.to_dim(), axis, end: end.to_dim() },
                 &[wire],
             )?[0];
-            Ok(Some(wire))
+            Ok(Some((wire, false)))
         }
     }
 

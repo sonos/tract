@@ -230,7 +230,7 @@ impl TypedOp for QMatMulUnary {
         axis: usize,
         start: usize,
         end: usize,
-    ) -> TractResult<Option<OutletId>> {
+    ) -> TractResult<Option<(OutletId, bool)>> {
         let b_fact = model.outlet_fact(node.inputs[0])?;
         let c_fact = &self.output_facts(&[b_fact])?[0];
         if axis + self.c_trans as usize == c_fact.shape.rank() {
@@ -244,13 +244,14 @@ impl TypedOp for QMatMulUnary {
                 self.bias.clone()
             };
             let wire = patch.tap_model(model, node.inputs[0])?;
-            return Ok(Some(
+            return Ok(Some((
                 patch.wire_node(
                     format!("{}.{}", node.name, suffix),
                     Self { a, bias, ..self.clone() },
                     &[wire],
                 )?[0],
-            ));
+                true,
+            )));
         }
         return Ok(None);
     }

@@ -217,7 +217,7 @@ impl TypedOp for TypedBinOp {
         axis: usize,
         start: usize,
         end: usize,
-    ) -> TractResult<Option<OutletId>> {
+    ) -> TractResult<Option<(OutletId, bool)>> {
         let a_input = node.inputs[0];
         let b_input = node.inputs[1];
         let a = model.outlet_fact(a_input)?;
@@ -245,9 +245,9 @@ impl TypedOp for TypedBinOp {
                 start,
                 end,
             )?;
-            if let (Some(a), Some(b)) = (a_sliced, b_sliced) {
+            if let (Some((a, _)), Some((b, _))) = (a_sliced, b_sliced) {
                 let name = format!("{}-slice-{}-{}..{}", node.name, axis, start, end);
-                return Ok(Some(patch.wire_node(&*name, self.clone(), &[a, b])?[0]));
+                return Ok(Some((patch.wire_node(&*name, self.clone(), &[a, b])?[0], true)));
             }
         }
         Ok(None)
@@ -421,7 +421,7 @@ impl TypedOp for UnaryOp {
         axis: usize,
         start: usize,
         end: usize,
-    ) -> TractResult<Option<OutletId>> {
+    ) -> TractResult<Option<(OutletId, bool)>> {
         let b = model.outlet_fact(node.inputs[0])?;
         debug_assert_eq!(self.a.rank(), b.rank());
         let prec = model.node(node.inputs[0].node);
@@ -435,19 +435,20 @@ impl TypedOp for UnaryOp {
             start,
             end,
         )?;
-        let wire = if let Some(w) = wire { w } else { return Ok(None) };
+        let wire = if let Some(w) = wire { w.0 } else { return Ok(None) };
         let a = if self.a.shape()[axis] != 1 {
             self.a.slice(axis, start, end)?.into_arc_tensor()
         } else {
             self.a.clone()
         };
-        Ok(Some(
+        Ok(Some((
             patch.wire_node(
                 format!("{}.{}", node.name, suffix),
                 UnaryOp::new(self.mini_op.clone(), a),
                 &[wire],
             )?[0],
-        ))
+            true,
+        )))
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
@@ -858,22 +859,22 @@ macro_rules! bin_to_bool {
              )?
 
 
-            $(
-                fn declutter_unary(
-                    &self,
-                    model: &TypedModel,
-                    node: &TypedNode,
-                    a: &Arc<Tensor>,
-                    ) -> TractResult<Option<TypedModelPatch>> {
-                    ($declutter_unary)(self, model, node, a)
-                }
-             )?
+                $(
+                    fn declutter_unary(
+                        &self,
+                        model: &TypedModel,
+                        node: &TypedNode,
+                        a: &Arc<Tensor>,
+                        ) -> TractResult<Option<TypedModelPatch>> {
+                        ($declutter_unary)(self, model, node, a)
+                    }
+                 )?
 
-            $(
-                fn unary_with_b_const(&self, b: &Arc<Tensor>) -> Option<$crate::ops::binary::UnaryOp> {
-                    ($flip)(self, b)
-                }
-             )?
+                $(
+                    fn unary_with_b_const(&self, b: &Arc<Tensor>) -> Option<$crate::ops::binary::UnaryOp> {
+                        ($flip)(self, b)
+                    }
+                 )?
                 $(
                     fn cost_per_element(&self, dt: DatumType) -> TVec<(Cost, usize)> {
                         ($cost)(dt)

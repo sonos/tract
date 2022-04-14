@@ -125,7 +125,7 @@ impl TypedOp for Slice {
             return Ok(None);
         };
         let mut patch = TypedModelPatch::default();
-        if let Some(wire) = prec.op().as_typed().unwrap().slice_output(
+        if let Some((wire, no_slice_op)) = prec.op().as_typed().unwrap().slice_output(
             model,
             prec,
             &mut patch,
@@ -135,10 +135,16 @@ impl TypedOp for Slice {
             start,
             end,
         )? {
-            patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
-            if patch.nodes().iter().skip(1).all(|n| n.op_is::<Self>()) {
-                return Ok(None)
+            /*
+            dbg!(node);
+            dbg!(prec);
+            dbg!(&patch);
+            dbg!(no_slice_op);
+            */
+            if !no_slice_op {
+                return Ok(None);
             }
+            patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
             return Ok(Some(patch));
         }
         Ok(None)
@@ -154,7 +160,7 @@ impl TypedOp for Slice {
         axis: usize,
         start: usize,
         end: usize,
-    ) -> TractResult<Option<OutletId>> {
+    ) -> TractResult<Option<(OutletId, bool)>> {
         let prec = model.node(node.inputs[0].node);
         if axis != self.axis {
             let suffix = self.suffix(&node.name) + "." + suffix;
@@ -163,9 +169,15 @@ impl TypedOp for Slice {
                 .as_typed()
                 .unwrap()
                 .slice_output(model, &prec, patch, &suffix, node.inputs[0].slot, axis, start, end)?
-                .map(|w| {
-                    Ok(patch.wire_node(format!("{}.{}", node.name, &suffix), self.clone(), &[w])?
-                        [0])
+                .map(|(w, no_slice_op)| {
+                    Ok((
+                        patch.wire_node(
+                            format!("{}.{}", node.name, &suffix),
+                            self.clone(),
+                            &[w],
+                        )?[0],
+                        no_slice_op,
+                    ))
                 })
                 .transpose();
         }
