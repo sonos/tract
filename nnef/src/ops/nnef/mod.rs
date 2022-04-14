@@ -85,11 +85,11 @@ pub fn tract_nnef() -> Registry {
     registry.register_unit_element_wise("neg", &ops::math::Neg {});
 
     registry.register_element_wise(
-        "prelu",
-        TypeId::of::<ops::nn::Prelu>(),
-        ser::prelu,
-        vec![TypeName::Scalar.tensor().named("x"), TypeName::Scalar.tensor().named("alpha")],
-        deser::prelu,
+        "leaky_relu",
+        TypeId::of::<ops::nn::LeakyRelu>(),
+        ser::leaky_relu,
+        vec![TypeName::Scalar.tensor().named("x"), TypeName::Scalar.named("alpha")],
+        deser::leaky_relu,
     );
 
     registry.register_binary("lt", &ops::logic::Less {});

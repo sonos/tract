@@ -132,7 +132,7 @@ activation!(HardSigmoid, |op, name: &str, model: &mut TypedModel, inputs| {
 pub struct LeakyRelu(#[educe(Hash(method = "hash_f32"))] pub f32);
 
 activation!(LeakyRelu, |op, name: &str, model: &mut TypedModel, inputs| {
-    model.wire_node(name, tract_core::ops::nn::prelu(op.0), inputs)
+    model.wire_node(name, tract_core::ops::nn::leaky_relu(op.0), inputs)
 });
 
 #[derive(Debug, Clone, new, Educe)]

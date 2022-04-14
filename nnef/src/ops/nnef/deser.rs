@@ -564,14 +564,14 @@ pub fn select(
 }
 
 /*
- * fragment prelu( x: tensor<scalar>, alpha: tensor<scalar> )-> ( y: tensor<scalar> )
+ * fragment leaky_relu( x: tensor<scalar>, alpha: scalar )-> ( y: tensor<scalar> )
  */
 
-pub fn prelu(
+pub fn leaky_relu(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
 ) -> TractResult<TVec<OutletId>> {
     let x = invocation.named_arg_as(builder, "x")?;
     let alpha = invocation.named_arg_as(builder, "alpha")?;
-    builder.wire(ops::nn::prelu(alpha) , &[x])
+    builder.wire(ops::nn::leaky_relu(alpha) , &[x])
 }
