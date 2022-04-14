@@ -524,14 +524,14 @@ pub fn select(
     )))
 }
 
-pub fn prelu(
+pub fn leaky_relu(
     ast: &mut IntoAst,
     node: &TypedNode,
 ) -> TractResult<Option<Arc<RValue>>> {
     let op = node.op_as::<ops::element_wise::ElementWiseOp>().context("Wrong op")?;
-    let op = op.0.downcast_ref::<ops::nn::Prelu>().context("Wrong op")?;
+    let op = op.0.downcast_ref::<ops::nn::LeakyRelu>().context("Wrong op")?;
     Ok(Some(invocation(
-        "prelu",
+        "leaky_relu",
         &node.inputs.iter().map(|o| ast.mapping[o].clone()).collect::<TVec<_>>(),
         &[("alpha", RValue::Literal(op.alpha.into()))],
     )))

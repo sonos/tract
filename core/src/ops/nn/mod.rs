@@ -12,6 +12,6 @@ element_wise!(sigmoid, Sigmoid, [f32] => |_, xs| {
 cost: |dt| {tvec!((Cost::FMA(dt), 11), (Cost::Div(dt), 1))}
 );
 
-element_wise!(prelu, Prelu { #[educe(Hash(method = "hash_f32"))] alpha: f32 },
-[f32] => |op, xs| { xs.iter_mut().for_each(|x| *x *= if *x < 0. { op.alpha } else { 1.0 }); Ok(()) }
-                                                                );
+element_wise!(leaky_relu, LeakyRelu { #[educe(Hash(method = "hash_f32"))] alpha: f32 },
+    [f32] => |op, xs| { xs.iter_mut().for_each(|x| *x *= if *x < 0. { op.alpha } else { 1.0 }); Ok(()) }
+);
