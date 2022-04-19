@@ -83,8 +83,7 @@ fn main() -> tract_core::anyhow::Result<()> {
         .arg(arg!([model] "Sets the model to use"))
         .arg(arg!(-f --format [format]
                   "Hint the model format ('kaldi', 'onnx', 'nnef' or 'tf') instead of guess from extension."))
-
-        .arg(arg!(-i --input [input] ...
+        .arg(Arg::new("input").long("input").short('i').multiple_occurrences(true).takes_value(true).long_help(
                   "Set input shape and type (@file.pb or @file.npz:thing.npy or 3x4xi32)."))
 
         .arg(arg!(--"const-input" [const_input] ... "Treat input as a Const (by name), retaining its value."))
