@@ -754,16 +754,18 @@ impl TypedOp for Scan {
     fn change_axes(
         &self,
         _model: &TypedModel,
-        _node: &TypedNode,
+        node: &TypedNode,
         io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
+        trace!("Entering node {}", node);
         let body_leading_outlet = match io {
             InOut::In(ix) => {
                 if let Some(input) = self.input_mapping.iter().position(|im| im.slot() == Some(ix))
                 {
                     self.body.input_outlets()?[input]
                 } else {
+                    trace!("Node {} blocking (input mapping) ", node);
                     return Ok(None);
                 }
             }
@@ -777,7 +779,13 @@ impl TypedOp for Scan {
             }
         };
         let axis_change = AxisChange { outlet: body_leading_outlet, op: change.clone() };
-        self.try_body_axes_change(axis_change, false)
+        let result = self.try_body_axes_change(axis_change, false)?;
+        if result.is_some() {
+            trace!("{} accepted axis change", node);
+        } else {
+            trace!("{} rejected axis change", node);
+        }
+        Ok(result)
     }
 
     fn declutter_with_session(
