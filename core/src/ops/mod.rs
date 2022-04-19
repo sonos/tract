@@ -34,6 +34,9 @@ pub mod unimpl;
 pub use downsample::Downsample;
 pub use invariants::*;
 
+use crate::internal::*;
+use crate::optim::OptimizerSession;
+
 /// Level of precision to be expected in implementations comparisons.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Validation {
@@ -62,8 +65,6 @@ impl Cost {
         }
     }
 }
-
-use crate::internal::*;
 
 pub trait OpState: fmt::Debug + Send + dyn_clone::DynClone {
     fn eval(
@@ -144,6 +145,17 @@ pub trait TypedOp:
     /// Fuse op after codegen to deal with local optimisations.
     fn fuse(&self, _model: &TypedModel, _node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         Ok(None)
+    }
+
+    /// Declutter the op to the tract_core operator set as much as possible.
+    #[allow(unused_variables)]
+    fn declutter_with_session(
+        &self,
+        session: &mut OptimizerSession,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        self.declutter(model, node)
     }
 
     /// Declutter the op to the tract_core operator set as much as possible.

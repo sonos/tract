@@ -1,6 +1,7 @@
 use crate::internal::*;
 
 use tract_itertools::Itertools;
+use crate::optim::OptimizerSession;
 
 #[derive(Clone, Debug)]
 pub struct PushSplitDown;
@@ -9,7 +10,7 @@ impl super::TypedPass for PushSplitDown {
     fn reset(&mut self) -> TractResult<()> {
         Ok(())
     }
-    fn next(&mut self, model: &TypedModel) -> TractResult<Option<TypedModelPatch>> {
+    fn next(&mut self, _session: &mut OptimizerSession, model: &TypedModel) -> TractResult<Option<TypedModelPatch>> {
         let mut patch = TypedModelPatch::default();
         for node in model.eval_order()? {
             for output in &model.node(node).outputs {
