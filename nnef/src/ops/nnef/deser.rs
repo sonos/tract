@@ -677,3 +677,21 @@ pub fn unstack(
         })
         .collect()
 }
+
+/*
+* fragment softmax( x: tensor<scalar>, axes: integer[] = [1] ) -> ( y: tensor<scalar> )
+ * {
+ *    m = max_reduce(x, axes = axes);
+ *    e = exp(x - m);
+ *    y = e / sum_reduce(e, axes = axes);
+ * }
+ */
+
+pub fn softmax(
+    builder: &mut ModelBuilder,
+    invocation: &ResolvedInvocation,
+) -> TractResult<TVec<OutletId>> {
+    let x = invocation.named_arg_as(builder, "x")?;
+    let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
+    builder.wire(ops::nn::Softmax { axes, beta: 1.0 }, &[x])
+}
