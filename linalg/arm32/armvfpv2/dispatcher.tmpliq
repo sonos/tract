@@ -8,19 +8,31 @@
 .non_linear_loop:
     add     r0, #20
     ldm     r0, { r2, r3, r4, r5, r6 }
+
     cmp     r2, #{{ jump_table | size }}
     movgt   r2, #{{ jump_table | size }}
     cmp     r2, #0
     movlt   r2, #{{ jump_table | size }}
 
-    adr     r7, .jmp_table
-    ldr     pc, [r7, r2, lsl #2]
+{% if os == 'android' %}
+        add     pc, pc, r2, LSL#2
+        nop     // pc in Rn above is start of the add instruction + 8, hence a nop is needed
+                // This is A32 asm, for T32/Thump2 use nop.w and b.w to avoid problems.
+    {% for j in jump_table %}
+            b .{{j}}
+    {% endfor %}
+        b .unsupported
 
-.jmp_table:
-{% for j in jump_table %}
-    .word   .{{j}}
-{% endfor %}
-    .word     .unsupported
+{% else %}
+        adr     r7, .jmp_table
+        ldr     pc, [r7, r2, lsl #2]
+
+    .jmp_table:
+    {% for j in jump_table %}
+        .word   .{{j}}
+    {% endfor %}
+        .word     .unsupported
+{% endif %}
 
 .unsupported:
     mov         r0,     #1
