@@ -262,7 +262,7 @@ pub fn layer_soft_max(
     if ctx.onnx_operator_set_version < 13 {
         Ok((expand(ops::nn::LayerSoftmax::new(axis.unwrap_or(1), true)), vec![]))
     } else {
-        Ok((expand(ops::nn::LayerSoftmax::new(axis.unwrap_or(-1), false)), vec![]))
+        Ok((expand(ops::nn::Softmax::new(axis.unwrap_or(-1))), vec![]))
     }
 }
 

@@ -693,5 +693,5 @@ pub fn softmax(
 ) -> TractResult<TVec<OutletId>> {
     let x = invocation.named_arg_as(builder, "x")?;
     let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
-    builder.wire(ops::nn::Softmax { axes, beta: 1.0 }, &[x])
+    builder.wire(ops::nn::Softmax { axes }, &[x])
 }

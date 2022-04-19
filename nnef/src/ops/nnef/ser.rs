@@ -512,3 +512,16 @@ pub fn leaky_relu(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc
         &[("alpha", RValue::Literal(op.alpha.into()))],
     )))
 }
+
+pub fn softmax(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &ops::nn::Softmax,
+) -> TractResult<Option<Arc<RValue>>> {
+    let litteral_axes: Vec<_> = op.axes.iter().map(|&it| (it as i64).into()).collect();
+    Ok(Some(invocation(
+        "softmax",
+        &[ast.mapping[&node.inputs[0]].clone()],
+        &[("axes", RValue::Literal(crate::ast::Literal::Array(litteral_axes)))],
+    )))
+}
