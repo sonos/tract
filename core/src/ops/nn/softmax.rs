@@ -1,12 +1,9 @@
 use crate::internal::*;
 use ndarray::prelude::*;
 
-#[derive(Debug, Clone, new, Educe)]
-#[educe(Hash)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct Softmax {
     pub axes: TVec<usize>,
-    #[educe(Hash(method = "hash_f32"))]
-    pub beta: f32,
 }
 
 impl_dyn_hash!(Softmax);
@@ -17,7 +14,7 @@ impl Op for Softmax {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("Axis: {:?}", self.axes), format!("Beta: {:?}", self.beta)])
+        Ok(vec![format!("Axis: {:?}", self.axes)])
     }
 
     op_core_mir!();
@@ -40,21 +37,28 @@ impl EvalOp for Softmax {
 
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
-        let input_dt = input.datum_type();
-        let input = input.to_array_view()?;
-        let mut output = input.to_owned();
+        let mut iterating_shape: TVec<usize> = input.shape().into();
 
-        let row_max = output.fold_axis(Axis(1), 0.0, |max_value, x: &f32| x.max(*max_value));
-        output.axis_iter_mut(Axis(0)).zip(row_max.iter()).for_each(|(mut row_x, max_i)| {
-            row_x.iter_mut().for_each(|x| *x = (*x - max_i).exp());
-        });
-        let row_exp_sum = output.fold_axis(Axis(1), 0.0, |exp_sum, x| *x + exp_sum);
-        output.axis_iter_mut(Axis(0)).zip(row_exp_sum.iter()).for_each(|(mut row_x, exp_sum_i)| {
-            row_x.iter_mut().for_each(|x| *x = *x / exp_sum_i);
-        });
+        for i in 0..iterating_shape.len() {
+            if self.axes.contains(&i) {
+                iterating_shape[i] = 1
+            }
+        }
 
-        let mut output = output.into_tensor();
-        unsafe { output.set_datum_type(input_dt) };
+        let mut output = input.into_tensor().into_array::<f32>()?;
+
+        for it_coords in tract_ndarray::indices(&*iterating_shape) {
+            let mut view = output.view_mut();
+            for ix in 0..iterating_shape.len() {
+                if !self.axes.contains(&ix) {
+                    view.collapse_axis(Axis(ix), it_coords[ix]);
+                }
+            }
+            let max: f32 = *view.iter().max_by(|i, j| i.partial_cmp(j).unwrap()).unwrap(); //FIXME
+            view.mapv_inplace(|x| (x - max).exp());
+            let exp_sum: f32 = view.iter().sum();
+            view.mapv_inplace(|x| x / exp_sum);
+        }
 
         Ok(tvec!(output.into_arc_tensor()))
     }
