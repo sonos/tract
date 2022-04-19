@@ -2,6 +2,7 @@ use crate::internal::*;
 use crate::model::*;
 use crate::ops;
 use crate::ops::invariants;
+use crate::optim::OptimizerSession;
 use crate::plan::{SimplePlan, SimpleState};
 
 /// A model with completely determined types and shapes.
@@ -138,7 +139,12 @@ impl TypedModel {
 
     /// Perform declutter passes on the network.
     pub fn declutter(&mut self) -> TractResult<()> {
-        crate::optim::Optimizer::declutter().optimize(self)
+        crate::optim::Optimizer::declutter().session().optimize(self)
+    }
+
+    /// Perform optimization passes on the model, using a given optimizer session.
+    pub fn optimize_with_session(&mut self, session: &mut OptimizerSession) -> TractResult<()> {
+        session.optimize(self)
     }
 
     pub fn concretize_dims(&self, values: &SymbolValues) -> TractResult<TypedModel> {

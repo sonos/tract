@@ -15,11 +15,16 @@ use op_optim::OpOptim;
 
 pub trait TypedPass: Debug + Send + Sync + dyn_clone::DynClone {
     fn reset(&mut self) -> TractResult<()>;
-    fn next(&mut self, model: &TypedModel) -> TractResult<Option<TypedModelPatch>>;
+    fn next(
+        &mut self,
+        session: &mut OptimizerSession,
+        model: &TypedModel,
+    ) -> TractResult<Option<TypedModelPatch>>;
 }
 
 dyn_clone::clone_trait_object!(TypedPass);
 
+#[derive(Debug)]
 pub struct Optimizer {
     passes: Vec<Box<dyn TypedPass>>,
     steps: Option<usize>,
@@ -37,7 +42,7 @@ impl Optimizer {
     pub fn declutter() -> Optimizer {
         Optimizer::passes(vec![
             Box::new(PropConst),
-            Box::new(OpOptim("declutter", TypedOp::declutter, 0)),
+            Box::new(OpOptim("declutter", TypedOp::declutter_with_session, 0)),
             Box::new(PushSplitDown),
             Box::new(ChangeAxes),
         ])
@@ -46,10 +51,18 @@ impl Optimizer {
     pub fn codegen() -> Optimizer {
         Optimizer::passes(vec![
             Box::new(PropConst),
-            Box::new(OpOptim("codegen", TypedOp::codegen, 0)),
-            Box::new(OpOptim("declutter", TypedOp::declutter, 0)),
+            Box::new(OpOptim(
+                "codegen",
+                |op, _session, model, node| TypedOp::codegen(op, model, node),
+                0,
+            )),
+            Box::new(OpOptim("declutter", TypedOp::declutter_with_session, 0)),
             Box::new(PushSplitDown),
-            Box::new(OpOptim("fuse", TypedOp::fuse, 0)),
+            Box::new(OpOptim(
+                "fuse",
+                |op, _session, model, node| TypedOp::fuse(op, model, node),
+                0,
+            )),
         ])
     }
 
@@ -58,68 +71,73 @@ impl Optimizer {
         {
             model.check_consistent_facts()?;
         }
-        let mut seen = HashSet::new();
         model.compact()?;
-        let mut counter = 0;
+        self.session().optimize(model)
+    }
+
+    pub fn session(&self) -> OptimizerSession {
+        OptimizerSession { optimizer: self, counter: 0, seen: Default::default() }
+    }
+}
+
+#[derive(Debug)]
+pub struct OptimizerSession<'o> {
+    optimizer: &'o Optimizer,
+    counter: usize,
+    seen: HashSet<String>,
+}
+
+impl<'o> OptimizerSession<'o> {
+    pub fn optimize(&mut self, model: &mut TypedModel) -> TractResult<()> {
         for i in 0.. {
-            let new_counter = self.run_all_passes(i, counter, model, &mut seen)?;
-            if new_counter == counter {
+            let old = self.counter;
+            self.run_all_passes(i, model)?;
+            if old == self.counter {
                 return Ok(());
             }
-            counter = new_counter;
             model.compact()?;
         }
         unreachable!()
     }
 
-    pub fn run_all_passes(
-        &self,
-        i: usize,
-        mut counter: usize,
-        model: &mut TypedModel,
-        seen: &mut HashSet<String>,
-    ) -> TractResult<usize> {
-        let mut passes = self.passes.clone();
+    pub fn run_all_passes(&mut self, i: usize, model: &mut TypedModel) -> TractResult<()> {
+        let mut passes = self.optimizer.passes.clone();
         for p in passes.iter_mut() {
-            counter = self.run_one_pass_outer(i, p.as_mut(), counter, model, seen)?;
+            self.run_one_pass_outer(i, p.as_mut(), model)?;
             model.compact()?;
         }
-        Ok(counter)
+        Ok(())
     }
 
     pub fn run_one_pass_outer(
-        &self,
+        &mut self,
         i: usize,
         p: &mut dyn TypedPass,
-        mut counter: usize,
         model: &mut TypedModel,
-        seen: &mut HashSet<String>,
-    ) -> TractResult<usize> {
+    ) -> TractResult<()> {
         loop {
-            let new_counter = self.run_one_pass_inner(i, p, counter, model, seen)?;
-            if new_counter == counter {
-                return Ok(counter);
+            let old_counter = self.counter;
+            self.run_one_pass_inner(i, p, model)?;
+            if self.counter == old_counter {
+                return Ok(());
             }
-            counter = new_counter;
             model.compact().with_context(|| format!("after pass {:?}", p))?;
         }
     }
 
     pub fn run_one_pass_inner(
-        &self,
+        &mut self,
         i: usize,
         p: &mut dyn TypedPass,
-        mut counter: usize,
         model: &mut TypedModel,
-        seen: &mut HashSet<String>,
-    ) -> TractResult<usize> {
+    ) -> TractResult<()> {
         p.reset()?;
-        while let Some(mut patch) = p.next(&model)? {
-            if let Some(steps) = self.steps {
-                if counter >= steps {
-                    return Ok(counter);
-                }
+        if let Some(steps) = self.optimizer.steps {
+            if self.counter >= steps {
+                return Ok(());
             }
+        }
+        while let Some(mut patch) = p.next(self, &model)? {
             patch.push_context(format!("{:?}/{}", p, i));
             #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
             {
@@ -129,16 +147,21 @@ impl Optimizer {
                 model.invariants()?;
             }
             if let Some(watchdog) = patch.dont_apply_twice.take() {
-                if seen.contains(&watchdog) {
+                if self.seen.contains(&watchdog) {
                     debug!("Loop detected: {} seen before", watchdog);
                     continue;
                 } else {
-                    seen.insert(watchdog);
+                    self.seen.insert(watchdog);
                 }
             }
-            debug!("applying patch #{}: {}", counter, patch.context.iter().rev().join(" >> "),);
+            debug!("applying patch #{}: {}", self.counter, patch.context.iter().rev().join(" >> "),);
             patch.apply(model)?;
-            counter += 1;
+            self.counter += 1;
+            if let Some(steps) = self.optimizer.steps {
+                if self.counter >= steps {
+                    return Ok(());
+                }
+            }
         }
         #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
         {
@@ -147,6 +170,6 @@ impl Optimizer {
                 .check_consistent_facts()
                 .with_context(|| format!("after declutter pass {:?}", p))?
         }
-        Ok(counter)
+        Ok(())
     }
 }

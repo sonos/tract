@@ -1,10 +1,13 @@
 use crate::internal::*;
 
+use super::OptimizerSession;
+
 #[derive(Clone)]
 pub struct OpOptim(
     pub &'static str,
     pub  fn(
         op: &dyn TypedOp,
+        session: &mut OptimizerSession,
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>>,
@@ -12,10 +15,10 @@ pub struct OpOptim(
 );
 
 impl OpOptim {
-    fn full_pass(&mut self, new: &TypedModel) -> TractResult<Option<TypedModelPatch>> {
+    fn full_pass(&mut self, session: &mut OptimizerSession, new: &TypedModel) -> TractResult<Option<TypedModelPatch>> {
         for (ix, &id) in new.eval_order()?.iter().enumerate().skip(self.2) {
             let node = &new.nodes()[id];
-            let patch = (self.1)(node.op.as_ref(), &new, node)
+            let patch = (self.1)(node.op.as_ref(), session, &new, node)
                 .with_context(|| format!("{:?} node {}", self, node))?;
             if let Some(mut p) = patch {
                 p.push_context(format!("{:?} {}", self, node));
@@ -39,7 +42,11 @@ impl super::TypedPass for OpOptim {
         Ok(())
     }
 
-    fn next(&mut self, model: &TypedModel) -> TractResult<Option<TypedModelPatch>> {
-        self.full_pass(model)
+    fn next(
+        &mut self,
+        session: &mut OptimizerSession,
+        model: &TypedModel,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        self.full_pass(session, model)
     }
 }

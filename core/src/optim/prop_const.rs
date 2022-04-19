@@ -3,6 +3,7 @@ use tract_data::UndeterminedSymbol;
 use crate::internal::*;
 use crate::ops::konst::Const;
 use crate::ops::source::TypedSource;
+use crate::optim::OptimizerSession;
 
 #[derive(Clone, Debug)]
 pub struct PropConst;
@@ -11,7 +12,11 @@ impl super::TypedPass for PropConst {
     fn reset(&mut self) -> TractResult<()> {
         return Ok(());
     }
-    fn next(&mut self, model: &TypedModel) -> TractResult<Option<TypedModelPatch>> {
+    fn next(
+        &mut self,
+        _session: &mut OptimizerSession,
+        model: &TypedModel,
+    ) -> TractResult<Option<TypedModelPatch>> {
         let mut patch = TypedModelPatch::default();
         for node in model.eval_order()? {
             if model.node(node).op.is_stateless()

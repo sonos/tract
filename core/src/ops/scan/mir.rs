@@ -1,3 +1,5 @@
+use crate::optim::OptimizerSession;
+
 use super::lir::{LirScan, LirScanOpParams};
 use tract_data::internal::*;
 
@@ -90,13 +92,17 @@ impl Scan {
 
     fn declutter_body(
         &self,
+        session: &mut OptimizerSession,
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         if !self.decluttered {
             let mut new = self.clone();
-            new.body = self.body.clone().into_decluttered()?;
+            let mut body = self.body.clone();
+            session.optimize(&mut body)?;
+            new.body = body;
             new.decluttered = true;
+            dbg!("apply body patch");
             Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, new)?))
         } else {
             Ok(None)
@@ -105,6 +111,7 @@ impl Scan {
 
     fn declutter_body_axes(
         &self,
+        _session: &mut OptimizerSession,
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
@@ -178,6 +185,7 @@ impl Scan {
 
     fn declutter_const_initializer(
         &self,
+        _session: &mut OptimizerSession,
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
@@ -210,6 +218,7 @@ impl Scan {
 
     fn declutter_discard_unused_input_mapping(
         &self,
+        _session: &mut OptimizerSession,
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
@@ -257,6 +266,7 @@ impl Scan {
 
     fn declutter_discard_useless_outer_output(
         &self,
+        _session: &mut OptimizerSession,
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
@@ -300,6 +310,7 @@ impl Scan {
 
     fn declutter_discard_empty_output_mapping_with_body_output(
         &self,
+        _session: &mut OptimizerSession,
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
@@ -322,6 +333,7 @@ impl Scan {
 
     fn declutter_pull_batcheable_input(
         &self,
+        _session: &mut OptimizerSession,
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
@@ -403,6 +415,7 @@ impl Scan {
 
     fn declutter_pull_batcheable_output(
         &self,
+        _session: &mut OptimizerSession,
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
@@ -768,15 +781,17 @@ impl TypedOp for Scan {
         self.try_body_axes_change(axis_change, false)
     }
 
-    fn declutter(
+    fn declutter_with_session(
         &self,
+        session: &mut OptimizerSession,
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         macro_rules! pass {
             ($func:ident) => {
-                if let Some(mut r) =
-                    self.$func(model, node).with_context(|| format!("{}", stringify!($func)))?
+                if let Some(mut r) = self
+                    .$func(session, model, node)
+                    .with_context(|| format!("{}", stringify!($func)))?
                 {
                     trace!(stringify!($func));
                     r.push_context(stringify!($func));

@@ -1,3 +1,4 @@
+use super::OptimizerSession;
 use super::TypedPass;
 use crate::internal::*;
 use crate::model::*;
@@ -11,7 +12,7 @@ impl TypedPass for ChangeAxes {
     fn reset(&mut self) -> TractResult<()> {
         Ok(())
     }
-    fn next(&mut self, model: &TypedModel) -> TractResult<Option<TypedModelPatch>> {
+    fn next(&mut self, _session: &mut OptimizerSession, model: &TypedModel) -> TractResult<Option<TypedModelPatch>> {
         let mut interfaces = model.output_outlets()?.to_vec();
         interfaces.extend(model.input_outlets()?.iter());
         for n in model.eval_order()? {
