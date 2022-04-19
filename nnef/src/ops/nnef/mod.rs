@@ -134,7 +134,7 @@ pub fn tract_nnef() -> Registry {
     dumper!(ops::cnn::MaxPool, ser::max_pool);
     primitive(&mut registry, "box", deser::sum_pool);
     dumper!(ops::cnn::SumPool, ser::sum_pool);
-
+    primitive(&mut registry, "softmax", deser::softmax);
     for frag in stdlib {
         if frag.body.is_some() {
             registry.register_fragment(frag);
