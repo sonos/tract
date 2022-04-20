@@ -224,7 +224,7 @@ impl Scan {
     ) -> TractResult<Option<TypedModelPatch>> {
         for (inner_input_id, input) in self.body.input_outlets()?.iter().enumerate() {
             let source_node = self.body.node(input.node);
-            if source_node.outputs[0].successors.len() == 0 {
+            if source_node.outputs[0].successors.len() == 0 && !self.body.output_outlets()?.contains(input) {
                 let mut new_inputs = node.inputs.clone();
                 let slot = match &self.input_mapping[inner_input_id] {
                     InputMapping::Full { slot } => Some(slot),
