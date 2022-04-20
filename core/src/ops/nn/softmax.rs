@@ -27,6 +27,31 @@ impl TypedOp for Softmax {
         Ok(tvec!(fact))
     }
 
+    fn invariants(&self, inputs: &[&TypedFact], _outputs: &[&TypedFact]) -> TractResult<Invariants>{
+        let axes = (0..inputs[0].rank())
+            .map(|axis| {
+                AxisInfo::simple(axis)
+            })
+            .collect();
+        Ok(axes)
+    }
+
+    fn change_axes(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        _io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        let axes: Option<TVec<usize>> = self.axes.iter().map(|it| change.transform_axis(*it)).collect();
+        if let Some(axes) = axes {
+            Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(Softmax {axes})), change)))
+        } else {
+            Ok(None)
+        }
+
+    }
+
     as_op!();
 }
 

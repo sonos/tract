@@ -1,0 +1,12 @@
+version 1.0;
+
+fragment tract_core_properties(
+) -> (properties: (string, tensor<scalar>)[])
+{
+  properties = [("tract_nnef_format_version", "alpha1")];
+}
+
+graph network( input ) -> ( softmax1 ) {
+  input = external(shape = [2, 1, 3]);
+  softmax1 = softmax(input, axes = [2]);
+}
