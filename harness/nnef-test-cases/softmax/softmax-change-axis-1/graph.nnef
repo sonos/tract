@@ -1,0 +1,9 @@
+version 1.0;
+
+graph add_softmax_rm(input) -> (output)
+{
+    input = external<scalar>(shape = [2, 1, 3]);
+    tmp1 = unsqueeze( input, axes = [1] );
+    softmax1 = softmax( tmp1, axes = [3] );
+    output = squeeze( softmax1, axes = [1] );
+}
