@@ -44,6 +44,8 @@ pub fn tract_nnef() -> Registry {
     primitive(&mut registry, "pad", deser::pad);
     dumper!(ops::array::Pad, ser::pad);
 
+    primitive(&mut registry, "stack", deser::stack);
+
     registry.register_binary("add", &ops::math::Add {});
     registry.register_binary("sub", &ops::math::Sub {});
     registry.register_binary("mul", &ops::math::Mul {});

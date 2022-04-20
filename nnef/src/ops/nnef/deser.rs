@@ -575,5 +575,33 @@ pub fn leaky_relu(
 ) -> TractResult<TVec<OutletId>> {
     let x = invocation.named_arg_as(builder, "x")?;
     let alpha = invocation.named_arg_as(builder, "alpha")?;
-    builder.wire(ops::nn::leaky_relu(alpha) , &[x])
+    builder.wire(ops::nn::leaky_relu(alpha), &[x])
+}
+
+/*
+ * fragment stack<?>( values: tensor<?>[], axis: integer ) -> ( value: tensor<?> )
+ *
+ * Same as concat but on dedicated axis
+ */
+
+pub fn stack(
+    builder: &mut ModelBuilder,
+    invocation: &ResolvedInvocation,
+) -> TractResult<TVec<OutletId>> {
+    let axis: usize = invocation.named_arg_as(builder, "axis")?;
+    let mut values: TVec<OutletId> = invocation.named_arg_as(builder, "values")?;
+    if let Some(Some(dt)) = invocation.dt_from_quant_file.get(0) {
+        for value in &mut values {
+            if builder.model.node(value.node).outputs[value.slot].fact.datum_type != *dt {
+                *value = builder.wire(ops::cast::cast(*dt), &[*value])?[0];
+            }
+        }
+    }
+
+    for value in &mut values {
+        // add unsqueeze before maybe casting
+        *value = builder.wire(ops::change_axes::AxisOp::Add(axis as usize), &[*value])?[0];
+    }
+
+    builder.wire(ops::array::TypedConcat::concat_vars(axis, values.len()), &values)
 }
