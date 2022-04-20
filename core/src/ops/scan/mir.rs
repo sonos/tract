@@ -102,7 +102,6 @@ impl Scan {
             session.optimize(&mut body)?;
             new.body = body;
             new.decluttered = true;
-            dbg!("apply body patch");
             Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, new)?))
         } else {
             Ok(None)
