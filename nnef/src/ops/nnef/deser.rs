@@ -599,9 +599,37 @@ pub fn stack(
     }
 
     for value in &mut values {
-        // add unsqueeze before maybe casting
+        // add unsqueeze
         *value = builder.wire(ops::change_axes::AxisOp::Add(axis as usize), &[*value])?[0];
     }
 
     builder.wire(ops::array::TypedConcat::concat_vars(axis, values.len()), &values)
+}
+
+/*
+ * fragment unstack<?>( value: tensor<?>, axis: integer ) -> ( values: tensor<?>[] )
+ *
+ * Inverse of stack operator
+ */
+pub fn unstack(
+    builder: &mut ModelBuilder,
+    invocation: &ResolvedInvocation,
+) -> TractResult<TVec<OutletId>> {
+    let wire = tvec!(invocation.named_arg_as(builder, "value")?);
+    let axis: usize = invocation.named_arg_as(builder, "axis")?;
+
+    let input_fact = builder.model.outlet_fact(wire[0])?.clone();
+
+    (0..input_fact.shape[axis].clone().to_i32().unwrap())
+        .into_iter()
+        .map(|start_int| {
+            let start = start_int.to_dim();
+            let end = (start_int + 1).to_dim();
+            let sliced_wire =
+                builder.wire(tract_core::ops::array::Slice { axis, start, end }, &wire)?;
+            let squeezed_wire =
+                builder.wire(ops::change_axes::AxisOp::Rm(axis as usize), &sliced_wire)?;
+            Ok(squeezed_wire[0])
+        })
+        .collect()
 }
