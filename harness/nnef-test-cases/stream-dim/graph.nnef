@@ -1,0 +1,9 @@
+version 1.0;
+
+extension tract_symbol S;
+
+graph streaming(input) -> (output)
+{
+    input = external<scalar>(shape = [1,S,40]);
+    output = input;
+}

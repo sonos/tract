@@ -274,9 +274,13 @@ fn rvalue(i: &str) -> IResult<&str, RValue> {
         ($name:ident, $operand: ident, $operator: expr) => {
             fn $name(i: &str) -> IResult<&str, RValue> {
                 let (i, init) = $operand(i)?;
-                fold_many0(pair($operator, $operand), move || init.clone(), |left, (op, right)| {
-                    RValue::Binary(Box::new(left), op.to_string(), Box::new(right))
-                })(i)
+                fold_many0(
+                    pair($operator, $operand),
+                    move || init.clone(),
+                    |left, (op, right)| {
+                        RValue::Binary(Box::new(left), op.to_string(), Box::new(right))
+                    },
+                )(i)
             }
         };
     }
