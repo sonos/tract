@@ -37,7 +37,7 @@ impl WithPulse for tract_nnef::framework::Nnef {
 }
 
 pub fn tract_nnef_registry() -> Registry {
-    let mut reg = Registry::new("pulse");
+    let mut reg = Registry::new("tract_pulse");
     delay::register(&mut reg);
     reg
 }

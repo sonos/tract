@@ -18,6 +18,8 @@ pub mod internal {
     pub use tract_pulse_opl::op_pulse;
 }
 
+use std::ops::ControlFlow;
+
 use internal::*;
 
 pub use ops::PulsedOp;
@@ -37,7 +39,20 @@ impl WithPulse for tract_nnef::framework::Nnef {
 fn tract_nnef_registry() -> Registry {
     let mut reg = tract_pulse_opl::tract_nnef_registry();
     ops::delay::register(&mut reg);
+    reg.extensions.push(Box::new(decl_stream_symbol));
     reg
+}
+
+fn decl_stream_symbol(
+    proto_model: &mut ModelBuilder,
+    args: &[String],
+) -> TractResult<ControlFlow<(), ()>> {
+    if args[0] == "tract_pulse_streaming_symbol" {
+        proto_model.symbols.push(crate::stream_symbol());
+        Ok(ControlFlow::Break(()))
+    } else {
+        Ok(ControlFlow::Continue(()))
+    }
 }
 
 #[cfg(test)]

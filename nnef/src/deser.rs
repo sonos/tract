@@ -1,3 +1,5 @@
+use std::ops::ControlFlow;
+
 use crate::ast::*;
 use crate::internal::*;
 
@@ -25,7 +27,7 @@ impl<'mb> ModelBuilder<'mb> {
     }
 
     fn translate(&mut self) -> TractResult<()> {
-        for ext in &self.proto_model.doc.extension {
+        'ext: for ext in &self.proto_model.doc.extension {
             match &*ext[0] {
                 "tract_registry" => {
                     if self.framework.registries.iter().any(|reg| reg.id == ext[1]) {
@@ -45,7 +47,17 @@ impl<'mb> ModelBuilder<'mb> {
                     let symbol = Symbol::from(ext[1].chars().next().unwrap());
                     self.symbols.push(symbol);
                 }
-                _ => warn!("Ignore unknown extension {}", ext.join(" ")),
+                _ => {
+                    for reg in &self.framework.registries {
+                        for reg_ext in &reg.extensions {
+                            match reg_ext(self, &**ext)? {
+                                ControlFlow::Continue(_) => (),
+                                ControlFlow::Break(_) => continue 'ext,
+                            }
+                        }
+                    }
+                    warn!("Ignore unknown extension {}", ext.join(" "));
+                }
             };
         }
         self.scopes.push(HashMap::new());
