@@ -14,25 +14,13 @@
     cmp     r2, #0
     movlt   r2, #{{ jump_table | size }}
 
-{% if os == 'android' %}
-        add     pc, pc, r2, LSL#2
-        nop     // pc in Rn above is start of the add instruction + 8, hence a nop is needed
-                // This is A32 asm, for T32/Thump2 use nop.w and b.w to avoid problems.
-    {% for j in jump_table %}
-            b .{{j}}
-    {% endfor %}
-        b .unsupported
-
-{% else %}
-        adr     r7, .jmp_table
-        ldr     pc, [r7, r2, lsl #2]
-
-    .jmp_table:
-    {% for j in jump_table %}
-        .word   .{{j}}
-    {% endfor %}
-        .word     .unsupported
-{% endif %}
+    add     pc, pc, r2, LSL#2
+    nop     // pc in Rn above is start of the add instruction + 8, hence a nop is needed
+            // This is A32 asm, for T32/Thump2 use nop.w and b.w to avoid problems.
+{% for j in jump_table %}
+        b .{{j}}
+{% endfor %}
+    b .unsupported
 
 .unsupported:
     mov         r0,     #1
