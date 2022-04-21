@@ -620,7 +620,7 @@ pub fn unstack(
 
     let input_fact = builder.model.outlet_fact(wire[0])?.clone();
 
-    (0..input_fact.shape[axis].clone().to_i32().unwrap())
+    (0..input_fact.shape[axis].clone().to_i32()?)
         .into_iter()
         .map(|start_int| {
             let start = start_int.to_dim();
