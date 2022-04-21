@@ -152,12 +152,13 @@ impl<'a> ParsingContext<'a> {
         }
         let mut outputs = vec![];
         for output in graph.output.iter() {
-            let fact = if let Some(fact) = output.r#type.as_ref().and_then(|t| t.value.as_ref()) {
-                let pb::type_proto::Value::TensorType(fact) = fact;
-                fact.try_into()?
-            } else {
-                InferenceFact::default()
-            };
+            let mut fact = InferenceFact::default();
+            if !self.framework.ignore_output_shapes {
+                if let Some(f) = output.r#type.as_ref().and_then(|t| t.value.as_ref()) {
+                    let pb::type_proto::Value::TensorType(f) = f;
+                    fact = f.try_into()?
+                };
+            }
             let outlet = outlets_by_name[&*output.name];
             outputs.push(outlet);
             model.set_outlet_label(outlet, output.name.clone())?;
@@ -196,6 +197,7 @@ impl OnnxOpRegister {
 #[derive(Clone, Default)]
 pub struct Onnx {
     pub op_register: OnnxOpRegister,
+    pub ignore_output_shapes: bool,
 }
 
 impl Onnx {
@@ -223,6 +225,10 @@ impl Onnx {
             onnx_operator_set_version,
         };
         ctx.parse_graph(graph)
+    }
+
+    pub fn with_ignore_output_shapes(self, ignore: bool) -> Onnx {
+        Self { ignore_output_shapes: ignore, ..self }
     }
 }
 
