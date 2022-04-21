@@ -29,7 +29,7 @@ pub fn external(
     } else {
         todo!()
     };
-    let shape: TVec<usize> = invocation.named_arg_as(builder, "shape")?;
+    let shape: TVec<TDim> = invocation.named_arg_as(builder, "shape")?;
     Ok(tvec!(builder.model.add_source("", TypedFact::dt_shape(dt, &shape))?))
 }
 

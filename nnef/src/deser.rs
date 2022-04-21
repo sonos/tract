@@ -8,6 +8,7 @@ pub struct ModelBuilder<'a> {
     pub naming_scopes: Vec<String>,
     pub scopes: Vec<HashMap<String, Value>>,
     pub proto_model: &'a ProtoModel,
+    pub symbols: Vec<Symbol>,
 }
 
 impl<'mb> ModelBuilder<'mb> {
@@ -19,6 +20,7 @@ impl<'mb> ModelBuilder<'mb> {
             naming_scopes: vec![],
             scopes: vec![],
             proto_model,
+            symbols: vec![],
         }
     }
 
@@ -31,6 +33,17 @@ impl<'mb> ModelBuilder<'mb> {
                     } else {
                         bail!("Registry not found {}", &ext[1])
                     }
+                }
+                "tract_symbol" => {
+                    if ext.len() != 2 {
+                        bail!("tract_symbol expects symbol: example: \"extension tract_symbol S;\"")
+                    }
+                    let symbol = &ext[1];
+                    if symbol.len() != 1 {
+                        bail!("tract symbol must be one single letter, found {}", symbol);
+                    }
+                    let symbol = Symbol::from(ext[1].chars().next().unwrap());
+                    self.symbols.push(symbol);
                 }
                 _ => warn!("Ignore unknown extension {}", ext.join(" ")),
             };
@@ -312,32 +325,35 @@ impl RValue {
     ) -> TractResult<Value> {
         match self {
             RValue::Identifier(id) => {
-                let mut outlet = builder
-                    .scopes
-                    .last()
-                    .unwrap()
-                    .get(id)
-                    .cloned()
-                    .ok_or_else(|| format_err!("No value for name {}", id))?;
-                if let Value::Wire(outlet_id) = outlet {
-                    let out_dt =
-                        builder.model.node(outlet_id.node).outputs[outlet_id.slot].fact.datum_type;
-                    if let Some(Some(dt)) = dt.get(0) {
-                        if out_dt.unquantized() != dt.unquantized() {
-                            return Err(format_err!(
-                                "Mismatched types expected {:?}, got {:?}",
-                                dt,
-                                out_dt
-                            ));
-                        }
-                        if out_dt != *dt {
-                            outlet = Value::Wire(
-                                builder.wire(tract_core::ops::cast::cast(*dt), &[outlet_id])?[0],
-                            )
+                if let Some(mut outlet) = builder.scopes.last().unwrap().get(id).cloned() {
+                    if let Value::Wire(outlet_id) = outlet {
+                        let out_dt = builder.model.node(outlet_id.node).outputs[outlet_id.slot]
+                            .fact
+                            .datum_type;
+                        if let Some(Some(dt)) = dt.get(0) {
+                            if out_dt.unquantized() != dt.unquantized() {
+                                return Err(format_err!(
+                                    "Mismatched types expected {:?}, got {:?}",
+                                    dt,
+                                    out_dt
+                                ));
+                            }
+                            if out_dt != *dt {
+                                outlet = Value::Wire(
+                                    builder.wire(tract_core::ops::cast::cast(*dt), &[outlet_id])?
+                                        [0],
+                                )
+                            }
                         }
                     }
+                    Ok(outlet)
+                } else if id.len() == 1
+                    && builder.symbols.contains(&id.chars().next().unwrap().into())
+                {
+                    Ok(Value::Dim(id.chars().next().unwrap().into()))
+                } else {
+                    bail!("No value for name {}", id)
                 }
-                Ok(outlet)
             }
             RValue::Invocation(inv) => builder
                 .wire_invocation(inv, dt)
