@@ -217,7 +217,10 @@ impl Parameters {
             }
             #[cfg(feature = "onnx")]
             "onnx" => {
-                let onnx = tract_onnx::onnx();
+                let mut onnx = tract_onnx::onnx();
+                if matches.is_present("onnx-ignore-output-shapes") {
+                    onnx = onnx.with_ignore_output_shapes(true);
+                }
                 info_usage("loaded framework (onnx)", probe);
                 let graph = onnx.proto_model_for_read(&mut *location.read()?)?;
                 info_usage("proto model loaded", probe);
