@@ -1,3 +1,5 @@
+use std::ops::ControlFlow;
+
 use crate::internal::*;
 
 use crate::ast;
@@ -17,6 +19,8 @@ pub struct Registry {
     pub element_wise_ops: Vec<(String, TypeId, FromTract, Vec<ast::Parameter>, ToTract)>,
     pub binary_ops: Vec<(String, Box<dyn BinMiniOp>, Option<Box<dyn BinMiniOp>>)>,
     pub from_tract: HashMap<TypeId, FromTract>,
+    pub extensions:
+        Vec<Box<dyn Fn(&mut crate::deser::ModelBuilder, &[String]) -> TractResult<ControlFlow<(), ()>>>>,
 }
 
 impl Registry {
@@ -29,6 +33,7 @@ impl Registry {
             unit_element_wise_ops: Default::default(),
             element_wise_ops: Default::default(),
             binary_ops: Default::default(),
+            extensions: Default::default(),
         }
     }
 
@@ -171,7 +176,8 @@ impl Registry {
             return Ok(Some(Value::Wire(outlet[0])));
         }
         if let Some(ew) = self.element_wise_ops.iter().find(|ew| ew.0 == invocation.id) {
-            let resolved = ResolvedInvocation { invocation, default_params: &ew.3, dt_from_quant_file: dt };
+            let resolved =
+                ResolvedInvocation { invocation, default_params: &ew.3, dt_from_quant_file: dt };
             return Ok(Some(Value::Wire(
                 (ew.4)(builder, &resolved)
                     .with_context(|| format!("Deserializing op `{}'", invocation.id))?[0],
