@@ -13,4 +13,4 @@ fi
 
 $TRACT_RUN $CACHEDIR/hey_snips_v4_model17.pb -i S,20,f32 --pulse 8 --nnef-tract-pulse dump -q --nnef-graph found
 
-diff expected found
+diff -u expected found
