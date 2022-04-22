@@ -106,6 +106,7 @@ pub fn plug(ops: &mut Ops) {
     ops.qmmv_i32 = Box::new(|_, _| arm64simd_mmm_i32_64x1::mmm());
     ops.mmv_f32 = match *KIND {
         Kind::CortexA53 => Box::new(|_, _| arm64simd_mmm_f32_64x1_a53::mmm()),
+        Kind::CortexA55 => Box::new(|_, _| arm64simd_mmm_f32_64x1_a55::mmm()),
         _ => Box::new(|_, _| arm64simd_mmm_f32_64x1_gen::mmm()),
     };
     ops.sigmoid_f32 = Box::new(|| Box::new(ElementWiseImpl::<SigmoidF32x4n, f32>::new()));
