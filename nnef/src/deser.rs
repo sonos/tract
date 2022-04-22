@@ -32,6 +32,8 @@ impl<'mb> ModelBuilder<'mb> {
                 "tract_registry" => {
                     if self.framework.registries.iter().any(|reg| reg.id == ext[1]) {
                         self.registries.push(ext[1].to_string())
+                    } else if let Some(reg) = self.framework.registries.iter().find(|reg| reg.aliases.contains(&ext[1])) {
+                        self.registries.push(reg.id.clone())
                     } else {
                         bail!("Registry not found {}", &ext[1])
                     }

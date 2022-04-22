@@ -13,6 +13,7 @@ pub type FromTract = fn(&mut IntoAst, node: &TypedNode) -> TractResult<Option<Ar
 
 pub struct Registry {
     pub id: String,
+    pub aliases: Vec<String>,
     pub fragments: HashMap<String, FragmentDef>,
     pub primitives: HashMap<String, (Vec<ast::Parameter>, ToTract)>,
     pub unit_element_wise_ops: Vec<(String, Box<dyn ElementWiseMiniOp>)>,
@@ -27,6 +28,7 @@ impl Registry {
     pub fn new(id: impl Into<String>) -> Registry {
         Registry {
             id: id.into(),
+            aliases: Default::default(),
             primitives: Default::default(),
             fragments: Default::default(),
             from_tract: Default::default(),

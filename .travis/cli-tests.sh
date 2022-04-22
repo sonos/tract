@@ -183,3 +183,9 @@ then
     ) 2>&1 > $OUTPUT
 fi
 )
+
+echo
+echo $WHITE • benches models $NC
+echo
+
+./.travis/bundle-entrypoint.sh
