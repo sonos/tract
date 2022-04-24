@@ -7,7 +7,10 @@ pub fn cast(
     _ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let to = node.get_attr::<DatumType>("to")?;
+    let mut to = node.get_attr::<DatumType>("to")?;
+    if to == i64::datum_type() {
+        to = TDim::datum_type();
+    }
     Ok((Box::new(ElementWiseOp(Box::new(Cast::new(to)))), vec![]))
 }
 

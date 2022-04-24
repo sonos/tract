@@ -881,7 +881,9 @@ impl Tensor {
                 }
                 return Ok(Cow::Owned(ints.cast_to_dt(dst_dt)?.into_owned()));
             }
-            if self.dt == bool::datum_type() && (dst_dt.is_integer() || dst_dt.is_float()) {
+            if self.dt == bool::datum_type()
+                && (dst_dt.is_integer() || dst_dt.is_float() || dst_dt == TDim::datum_type())
+            {
                 let slice = self.as_slice_unchecked::<bool>();
                 let mut ints = Self::uninitialized::<i8>(&self.shape)?;
                 let ints_slice = ints.as_slice_mut_unchecked::<i8>();

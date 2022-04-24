@@ -114,7 +114,7 @@ bin_to_super_type!(mul, Mul,
              }
          }
  },
- [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64] => |c, a, b| *c = a.clone() * b
+ [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() * b
 );
 
 bin_to_super_type!(div, Div,
