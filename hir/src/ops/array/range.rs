@@ -43,13 +43,28 @@ impl InferenceRulesOp for Range {
     ) -> InferenceResult {
         check_input_arity(&inputs, 3)?;
         check_output_arity(&outputs, 1)?;
-        s.equals(&inputs[0].datum_type, &inputs[1].datum_type)?;
-        s.equals(&inputs[0].datum_type, &inputs[2].datum_type)?;
-        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
+        s.given_3(
+            &inputs[0].datum_type,
+            &inputs[1].datum_type,
+            &inputs[2].datum_type,
+            move |s, dt0, dt1, dt2| {
+                let dt =
+                    DatumType::super_type_for([dt0, dt1, dt2]).context("No supertype found")?;
+                s.equals(&dt, &outputs[0].datum_type)
+            },
+        )?;
         s.equals(&inputs[0].rank, 0)?;
         s.equals(&inputs[1].rank, 0)?;
         s.equals(&inputs[2].rank, 0)?;
         s.equals(&outputs[0].rank, 1)?;
+        s.given_3(&inputs[0].value, &inputs[1].value, &inputs[2].value, move |s, v0, v1, v2| {
+            let v0 = v0.cast_to::<TDim>()?;
+            let v1 = v1.cast_to::<TDim>()?;
+            let v2 = v2.cast_to::<i64>()?;
+            let out = (v1.to_scalar::<TDim>()?.clone() - v0.to_scalar::<TDim>()?)
+                .divceil(*v2.to_scalar::<i64>()? as _);
+            s.equals(&outputs[0].shape[0], out)
+        })?;
         Ok(())
     }
 
