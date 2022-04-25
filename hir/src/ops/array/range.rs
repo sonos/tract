@@ -1,40 +1,17 @@
 use crate::internal::*;
-use tract_ndarray::prelude::*;
 
 #[derive(Debug, Default, Clone, new, Hash)]
 pub struct Range;
 
 impl_dyn_hash!(Range);
 
-impl Op for Range {
+impl Expansion for Range {
     fn name(&self) -> Cow<str> {
         "Range".into()
     }
 
     op_hir!();
-    not_a_typed_op!();
-}
 
-impl EvalOp for Range {
-    fn is_stateless(&self) -> bool {
-        true
-    }
-
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let (start, limit, delta) = args_3!(inputs);
-        let dt = start.datum_type();
-        let start = start.cast_to_scalar::<u64>()?;
-        let limit = limit.cast_to_scalar::<u64>()?;
-        let delta = delta.cast_to_scalar::<u64>()?;
-        let value = Array1::from_shape_fn(((limit - start) / delta) as usize, |ix| {
-            ix as u64 * delta + start
-        });
-        let value = value.into_tensor().cast_to_dt(dt)?.into_owned();
-        Ok(tvec!(value.into_arc_tensor()))
-    }
-}
-
-impl InferenceRulesOp for Range {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -68,15 +45,36 @@ impl InferenceRulesOp for Range {
         Ok(())
     }
 
-    as_op!();
-
-    fn to_typed(
+    fn wire(
         &self,
-        _source: &InferenceModel,
-        _node: &InferenceNode,
-        _target: &mut TypedModel,
-        _mapping: &HashMap<OutletId, OutletId>,
+        prefix: &str,
+        model: &mut TypedModel,
+        inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        bail!("Range input are expected to be constant")
+        let start = model
+            .outlet_fact(inputs[0])?
+            .konst
+            .clone()
+            .context("Range needs fixed inputs")?
+            .into_tensor();
+        let end = model
+            .outlet_fact(inputs[1])?
+            .konst
+            .clone()
+            .context("Range needs fixed inputs")?
+            .into_tensor();
+        let step = model
+            .outlet_fact(inputs[2])?
+            .konst
+            .clone()
+            .context("Range needs fixed inputs")?
+            .into_tensor();
+        let dt =
+            DatumType::super_type_for(&[start.datum_type(), end.datum_type(), step.datum_type()])
+                .context("No supertype found for range inputs")?;
+        let start = start.cast_to_dt(dt)?.into_owned();
+        let end = end.cast_to_dt(dt)?.into_owned();
+        let step = step.cast_to_dt(dt)?.into_owned();
+        model.wire_node(prefix, tract_core::ops::array::Range { start, end, step }, &[])
     }
 }
