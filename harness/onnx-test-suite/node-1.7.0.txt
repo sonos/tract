@@ -324,14 +324,23 @@ test_mul_example
 test_mvn_expanded
 test_neg
 test_neg_example
+test_negative_log_likelihood_loss_iinput_shape_is_NCd1_weight_ignore_index_expanded
 test_negative_log_likelihood_loss_input_shape_is_NC_expanded
 test_negative_log_likelihood_loss_input_shape_is_NCd1_expanded
 test_negative_log_likelihood_loss_input_shape_is_NCd1_ignore_index_expanded
+test_negative_log_likelihood_loss_input_shape_is_NCd1_mean_weight_negative_ignore_index_expanded
+test_negative_log_likelihood_loss_input_shape_is_NCd1_weight_expanded
 test_negative_log_likelihood_loss_input_shape_is_NCd1d2_expanded
 test_negative_log_likelihood_loss_input_shape_is_NCd1d2_no_weight_reduction_mean_ignore_index_expanded
 test_negative_log_likelihood_loss_input_shape_is_NCd1d2_reduction_mean_expanded
 test_negative_log_likelihood_loss_input_shape_is_NCd1d2_reduction_sum_expanded
+test_negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_expanded
+test_negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_mean_expanded
+test_negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_sum_expanded
+test_negative_log_likelihood_loss_input_shape_is_NCd1d2_with_weight_reduction_sum_ignore_index_expanded
 test_negative_log_likelihood_loss_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_expanded
+test_negative_log_likelihood_loss_input_shape_is_NCd1d2d3_sum_weight_high_ignore_index_expanded
+test_negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_mean_weight_expanded
 test_negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_none_no_weight_expanded
 test_nonzero_example not-nnef
 test_not_2d
@@ -370,6 +379,7 @@ test_qlinearmatmul_2D
 test_qlinearmatmul_3D                                                                
 test_quantizelinear                                                                 input:x not-nnef
 test_range_float_type_positive_delta not-nnef not-typable
+test_range_int32_type_negative_delta not-nnef not-typable
 test_reciprocal
 test_reciprocal_example
 test_reduce_l1_default_axes_keepdims_example
