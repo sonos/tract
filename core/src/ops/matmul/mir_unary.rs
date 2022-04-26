@@ -96,6 +96,13 @@ impl TypedOp for MatMulUnary {
                     Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
                 Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
             }
+            AxisOp::Add(axis) if b.shape[..*axis].iter().all(|d| *d == 1.to_dim()) => {
+                let mut a = self.a.clone().into_tensor();
+                a.insert_axis(0)?;
+                let op =
+                    Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
+                Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
+            }
             // b is [.. 1, n], can add axis to the right and transpose
             AxisOp::Add(axis) if *axis == b.rank() && b.shape[b.rank() - 2] == 1.to_dim() => {
                 let mut a = self.a.clone().into_tensor();
@@ -309,7 +316,12 @@ impl MatMulUnary {
         use crate::ops::array::Slice;
         let m_axis = node.outputs[0].fact.rank() - 2 + self.c_trans as usize;
         if let Some(slice) = node.outputs[0].successors.iter().find_map(|inlet| {
-            if model.node(inlet.node).op_as::<Slice>().filter(|slice| slice.axis == m_axis).is_some() {
+            if model
+                .node(inlet.node)
+                .op_as::<Slice>()
+                .filter(|slice| slice.axis == m_axis)
+                .is_some()
+            {
                 Some(inlet.node)
             } else {
                 None
