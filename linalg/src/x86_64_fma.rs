@@ -12,6 +12,7 @@ pub fn plug(ops: &mut Ops) {
     if is_x86_feature_detected!("fma") {
         ops.mmv_f32 = Box::new(|_, _| mmm::fma_mmm_f32_64x1::mmm());
         ops.mmm_f32_impls.push(mmm::fma_mmm_f32_16x6::mmm());
+        ops.mmm_f32 = Box::new(|_,_,_| mmm::fma_mmm_f32_16x6::mmm());
         ops.mmm_f32_impls.push(mmm::fma_mmm_f32_8x8::mmm());
         ops.sigmoid_f32 = Box::new(|| Box::new(ElementWiseImpl::<sigmoid::SigmoidF32, f32>::new()));
         ops.tanh_f32 = Box::new(|| Box::new(ElementWiseImpl::<tanh::TanhF32, f32>::new()));
