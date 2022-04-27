@@ -23,10 +23,7 @@ impl BatchNorm {
         var: &Tensor,
     ) -> TractResult<(Tensor, Tensor)>
     where
-        T: Datum
-            + tract_num_traits::Float
-            + tract_num_traits::FromPrimitive
-            + tract_ndarray::ScalarOperand,
+        T: Datum + tract_num_traits::Float,
         f32: AsPrimitive<T>,
     {
         let scale = scale.to_array_view::<T>()?.into_shape((c_dim,))?;
@@ -34,7 +31,7 @@ impl BatchNorm {
         let mean = mean.to_array_view::<T>()?.into_shape((c_dim,))?;
         let var = var.to_array_view::<T>()?.into_shape((c_dim,))?;
 
-        let denominator = (var.to_owned() + self.epsilon.as_()).map(|x| x.sqrt());
+        let denominator = var.mapv(|x| (x + self.epsilon.as_()).sqrt());
 
         let slope = &scale / &denominator;
         let intercept = beta.to_owned() - (&mean * &scale) / denominator;
