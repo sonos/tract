@@ -1,4 +1,5 @@
 use reqwest::Url;
+use std::any::Any;
 use std::io::Read;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -403,6 +404,7 @@ impl Parameters {
         matches: &clap::ArgMatches,
         location: &ModelLocation,
         onnx_tc: bool,
+        ignore_input_shape: bool,
     ) -> CliResult<HashMap<String, Vec<Arc<Tensor>>>>
     where
         F: std::fmt::Debug + Clone + Hash + Fact + for<'a> TryFrom<&'a InferenceFact, Error = E>,
@@ -414,7 +416,7 @@ impl Parameters {
             + Hash
             + Send
             + Sync,
-        Graph<F, O>: SpecialOps<F, O> + Send,
+        Graph<F, O>: SpecialOps<F, O> + Send + Any,
         tract_core::ops::konst::Const: Into<O>,
         E: std::fmt::Debug,
     {
@@ -512,8 +514,10 @@ impl Parameters {
                             unsafe {
                                 t.set_datum_type(dt);
                             }
-                            let fact = InferenceFact::dt_shape(dt, shape);
-                            raw_model.set_input_fact(ix, (&fact).try_into().unwrap())?;
+                            if !ignore_input_shape {
+                                let fact = InferenceFact::dt_shape(dt, shape);
+                                raw_model.set_input_fact(ix, (&fact).try_into().unwrap())?;
+                            }
                             values.push(t.into_arc_tensor());
                         }
                     }
@@ -821,12 +825,14 @@ impl Parameters {
             dispatch_model_mut_no_pulse!(raw_model, |m| Self::kaldi_context(m, left, right))?;
         }
 
+        let ignore_input_facts = raw_model.is::<TypedModel>();
         let input_values = dispatch_model_mut_no_pulse!(raw_model, |m| Self::inputs(
             m,
             &mut assertions,
             matches,
             &filename,
-            onnx_tc
+            onnx_tc,
+            ignore_input_facts
         ))?;
 
         if matches.is_present("partial") {
