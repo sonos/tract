@@ -1,5 +1,9 @@
 # Unreleased
 
+# 0.16.5 - 2022-04-27
+* Intel optimisation are back
+* Range is now more flexible, should unlock some BERT models with symbolic dimensions.
+
 # 0.16.4 - 2022-04-14
 * some optimisations in depthwise convolutions
 * various bugfixes
