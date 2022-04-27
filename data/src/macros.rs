@@ -203,7 +203,7 @@ macro_rules! dispatch_floatlike {
     ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => { {
         use $crate::prelude::DatumType;
         match $dt {
-            DatumType::F16  => $($path)::*::<f32>($($args),*), // FIXME !!!
+            DatumType::F16  => $($path)::*::<f16>($($args),*),
             DatumType::F32  => $($path)::*::<f32>($($args),*),
             DatumType::F64  => $($path)::*::<f64>($($args),*),
             _ => $crate::anyhow::bail!("{:?} is not float-like", $dt)
@@ -216,7 +216,7 @@ macro_rules! dispatch_signed {
     ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => { {
         use $crate::prelude::DatumType;
         match $dt {
-            DatumType::F16  => $($path)::*::<f32>($($args),*), // FIXME !!!
+            DatumType::F16  => $($path)::*::<f16>($($args),*),
             DatumType::F32  => $($path)::*::<f32>($($args),*),
             DatumType::F64  => $($path)::*::<f64>($($args),*),
             DatumType::I8   => $($path)::*::<i8>($($args),*),

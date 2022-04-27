@@ -16,12 +16,10 @@ pub struct Lrn {
 impl_dyn_hash!(Lrn);
 
 impl Lrn {
-    fn eval_t<
-        T: Datum + tract_num_traits::Float + tract_num_traits::FromPrimitive + ::std::iter::Sum,
-    >(
-        &self,
-        input: Arc<Tensor>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval_t<T>(&self, input: Arc<Tensor>) -> TractResult<TVec<Arc<Tensor>>>
+    where
+        T: Datum + tract_num_traits::Float + ::std::iter::Sum,
+    {
         let input = input.to_array_view::<T>()?;
         let channels = input.shape()[1];
         let output = Array::from_shape_fn(input.shape(), |mut coords| {
