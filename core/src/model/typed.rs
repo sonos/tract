@@ -92,9 +92,15 @@ impl TypedModel {
         self.optimize()?;
         Ok(self)
     }
+    #[cfg(not(all(debug_assertions, feature = "paranoid_assertions")))]
+    #[inline]
+    pub fn check_consistency(&self) -> TractResult<()> {
+        Ok(())
+    }
 
     #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
-    pub fn check_consistent_facts(&self) -> TractResult<()> {
+    pub fn check_consistency(&self) -> TractResult<()> {
+        self.check_edges()?;
         for node_id in &self.eval_order()? {
             let input_facts = self.node_input_facts(*node_id)?;
             let node = &self.nodes[*node_id];
