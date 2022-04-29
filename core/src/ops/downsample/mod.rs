@@ -110,10 +110,7 @@ fn pull_downsample_up(
     model: &TypedModel,
     down_node: &TypedNode,
 ) -> TractResult<Option<TypedModelPatch>> {
-    #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
-    {
-        model.check_consistent_facts()?;
-    }
+    model.check_consistency()?;
     let down_op = down_node.op_as::<Downsample>().unwrap();
     if let Some(prec) = model.single_prec(down_node.id)? {
         let (input_facts, output_facts) = model.node_facts(prec.id)?;

@@ -70,12 +70,9 @@ impl Scan {
         seq_length_input_slot: Option<usize>,
         skip: usize,
     ) -> TractResult<Scan> {
-        #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
-        {
-            body.check_consistent_facts()?;
-            assert_eq!(input_mapping.len(), body.input_outlets()?.len());
-            assert_eq!(output_mapping.len(), body.output_outlets()?.len());
-        }
+        body.check_consistency()?;
+        ensure!(input_mapping.len() == body.input_outlets()?.len());
+        ensure!(output_mapping.len() == body.output_outlets()?.len());
         Ok(Scan {
             skip,
             body,
@@ -557,10 +554,7 @@ impl Scan {
         change: AxisChange,
         locked_interface: bool,
     ) -> TractResult<Option<AxisChangeConsequence>> {
-        #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
-        {
-            self.body.check_consistent_facts()?;
-        }
+        self.body.check_consistency()?;
         let interface = self.body_exposed_outlets()?;
         let (patch, body_changed_wires) = if let Some(changes) =
             crate::ops::change_axes::change_axes(
@@ -631,10 +625,7 @@ impl Scan {
                 }
             };
         }
-        #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
-        {
-            body.check_consistent_facts()?;
-        }
+        body.check_consistency()?;
         let op = Some(Box::new(Scan {
             body,
             input_mapping,

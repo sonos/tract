@@ -445,7 +445,15 @@ where
         eval_order(&self)
     }
 
+    #[cfg(not(all(debug_assertions, feature = "paranoid_assertions")))]
+    #[inline]
+    pub fn check_edges(&self) -> TractResult<()> {
+        Ok(())
+    }
+
     /// Performs a sanity check on network connections.
+    #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
+    #[inline]
     pub fn check_edges(&self) -> TractResult<()> {
         for node_id in self.eval_order()? {
             let node = &self.nodes[node_id];

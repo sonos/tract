@@ -67,10 +67,7 @@ impl Optimizer {
     }
 
     pub fn optimize(&self, model: &mut TypedModel) -> TractResult<()> {
-        #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
-        {
-            model.check_consistent_facts()?;
-        }
+        model.check_consistency()?;
         model.compact()?;
         self.session().optimize(model)
     }
@@ -139,13 +136,8 @@ impl<'o> OptimizerSession<'o> {
         }
         while let Some(mut patch) = p.next(self, &model)? {
             patch.push_context(format!("{:?}/{}", p, i));
-            #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
-            {
-                patch.model.check_consistent_facts()?;
-                model.check_consistent_facts()?;
-                patch.model.invariants()?;
-                model.invariants()?;
-            }
+            patch.model.check_consistency()?;
+            model.check_consistency()?;
             if let Some(watchdog) = patch.dont_apply_twice.take() {
                 if self.seen.contains(&watchdog) {
                     debug!("Loop detected: {} seen before", watchdog);
@@ -163,13 +155,7 @@ impl<'o> OptimizerSession<'o> {
                 }
             }
         }
-        #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
-        {
-            model.check_edges().with_context(|| format!("after declutter pass {:?}", p))?;
-            model
-                .check_consistent_facts()
-                .with_context(|| format!("after declutter pass {:?}", p))?
-        }
+        model.check_consistency().with_context(|| format!("after pass {:?}", p))?;
         Ok(())
     }
 }
