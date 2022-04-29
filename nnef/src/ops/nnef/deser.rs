@@ -527,7 +527,7 @@ pub fn linear(
     let filter: OutletId = invocation.named_arg_as(builder, "filter")?;
     let bias: OutletId = invocation.named_arg_as(builder, "bias")?;
     if let Some(Some(dt)) = &invocation.dt_from_quant_file.get(0) {
-        if let Some(qparams) = dt.qparams() {
+        if let Some(_) = dt.qparams() {
             return builder.wire(
                 ops::matmul::QMatMul {
                     a_trans: false,
