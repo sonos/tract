@@ -65,6 +65,7 @@ impl TryFrom<DatumType> for DataType {
             DatumType::String => Ok(DataType::DtString),
             DatumType::QI8(_) => Ok(DataType::DtQint8),
             DatumType::QU8(_) => Ok(DataType::DtQint8),
+            DatumType::QI32(_) => Ok(DataType::DtQint32),
             DatumType::ComplexI16 
                 | DatumType::ComplexI32 
                 | DatumType::ComplexI64  

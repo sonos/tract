@@ -57,6 +57,7 @@ impl Hash for Tensor {
                 Blob => self.as_slice_unchecked::<crate::datum::Blob>().hash(state),
                 QI8(_) => self.as_slice_unchecked::<i8>().hash(state),
                 QU8(_) => self.as_slice_unchecked::<u8>().hash(state),
+                QI32(_) => self.as_slice_unchecked::<i32>().hash(state),
                 ComplexI16 => self.as_slice_unchecked::<Complex<i16>>().hash(state),
                 ComplexI32 => self.as_slice_unchecked::<Complex<i32>>().hash(state),
                 ComplexI64 => self.as_slice_unchecked::<Complex<i64>>().hash(state),
