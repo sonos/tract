@@ -15,12 +15,12 @@ bin_to_super_type!(add, Add,
     flip:commute,
     linalg: Add,
     validation: Validation::Rounding,
-    q: [i8, u8] => add_quant;
+    q: [i8, u8, i32, i32] => add_quant;
     [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() + b);
 
 fn add_quant<T>(c: &mut T, a: &T, b: &T, zp: i32, _: f32)
 where
-    T: PrimInt + Bounded + AsPrimitive<i16>,
+    T: PrimInt + Bounded + AsPrimitive<i16> + Datum,
     i16: AsPrimitive<T>,
 {
     *c = (a.as_() + b.as_() - zp as i16).clamp_cast()
@@ -42,12 +42,12 @@ fn declutter_unary_add(
 
 bin_to_super_type!(sub, Sub, 
     declutter_unary: declutter_unary_sub, flip:flip_sub, linalg:Sub,
-    q: [i8, u8] => sub_quant;
+    q: [i8, u8, i32, i32] => sub_quant;
     [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() - b);
 
 fn sub_quant<T>(c: &mut T, a: &T, b: &T, zp: i32, _: f32)
 where
-    T: PrimInt + Bounded + AsPrimitive<i16>,
+    T: PrimInt + Bounded + AsPrimitive<i16> + Datum,
     i16: AsPrimitive<T>,
 {
     *c = (a.as_() - b.as_() + zp as i16).clamp_cast()
@@ -371,13 +371,13 @@ element_wise!(abs, Abs, [i8, i16, i32, i64, f16, f32, i32] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.abs());
     Ok(())
 };
-q: [i8, u8] => f32::abs);
+q: [i8, u8, i32, i32] => f32::abs);
 
 element_wise!(exp, Exp, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.exp());
     Ok(())
 };
-q: [i8, u8] => f32::exp;
+q: [i8, u8, i32, i32] => f32::exp;
 validation: Validation::Rounding
 );
 
@@ -385,7 +385,7 @@ element_wise!(ln, Ln, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.ln());
     Ok(())
 };
-q: [i8, u8] => f32::ln;
+q: [i8, u8, i32, i32] => f32::ln;
 validation: Validation::Rounding
 );
 
@@ -393,7 +393,7 @@ element_wise!(square, Square, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.powi(2));
     Ok(())
 };
-q: [i8, u8] => |f : f32| f.powi(2);
+q: [i8, u8, i32, i32] => |f : f32| f.powi(2);
 validation: Validation::Rounding
 );
 
@@ -401,7 +401,7 @@ element_wise!(cube, Cube, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.powi(3));
     Ok(())
 };
-q: [i8, u8] => |f : f32| f.powi(3);
+q: [i8, u8, i32, i32] => |f : f32| f.powi(3);
 validation: Validation::Rounding
 );
 
@@ -409,7 +409,7 @@ element_wise!(sqrt, Sqrt, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.sqrt());
     Ok(())
 };
-q: [i8, u8] => f32::sqrt;
+q: [i8, u8, i32, i32] => f32::sqrt;
 validation: Validation::Rounding
 );
 
@@ -417,7 +417,7 @@ element_wise!(recip, Recip, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.recip());
     Ok(())
 };
-q: [i8, u8] => f32::recip;
+q: [i8, u8, i32, i32] => f32::recip;
 cost: |dt| {tvec!((Cost::Div(dt), 1))};
 declutter: declutter_recip;
 validation: Validation::Rounding
@@ -450,7 +450,7 @@ element_wise!(rsqrt, Rsqrt, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.sqrt().recip());
     Ok(())
 };
-q: [i8, u8] => |x : f32| x.sqrt().recip();
+q: [i8, u8, i32] => |x : f32| x.sqrt().recip();
 validation: Validation::Rounding
 );
 
@@ -458,19 +458,19 @@ element_wise!(ceil, Ceil, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.ceil());
     Ok(())
 };
-q: [i8, u8] => f32::recip);
+q: [i8, u8, i32] => f32::recip);
 
 element_wise!(floor, Floor, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.floor());
     Ok(())
 };
-q: [i8, u8] => f32::floor);
+q: [i8, u8, i32] => f32::floor);
 
 element_wise!(round, Round, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.round());
     Ok(())
 };
-q: [i8, u8] => f32::round);
+q: [i8, u8, i32] => f32::round);
 
 element_wise!(q_scale, QScale {mult: i32, policy: RoundingPolicy, shift: usize},[i32] => |op, xs| {
     xs.iter_mut().for_each(|x| *x = x.q_scale(op.mult, op.shift, op.policy));
@@ -481,60 +481,60 @@ element_wise!(round_half_to_even, RoundHalfToEven,[ f32] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = round_ties_to_even(*x));
     Ok(())
 };
-q: [i8, u8] => round_ties_to_even);
+q: [i8, u8, i32] => round_ties_to_even);
 
 element_wise!(cos, Cos, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.cos());
     Ok(())
 };
-q: [i8, u8] => f32::cos);
+q: [i8, u8, i32] => f32::cos);
 
 element_wise!(sin, Sin, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.sin());
     Ok(())
 };
-q: [i8, u8] => f32::sin);
+q: [i8, u8, i32] => f32::sin);
 
 element_wise!(tan, Tan, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.tan());
     Ok(())
 };
-q: [i8, u8] => f32::tan);
+q: [i8, u8, i32] => f32::tan);
 
 element_wise!(acos, Acos, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.acos());
     Ok(())
 };
-q: [i8, u8] => f32::acos);
+q: [i8, u8, i32] => f32::acos);
 
 element_wise!(asin, Asin, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.asin());
     Ok(())
 };
-q: [i8, u8] => f32::asin);
+q: [i8, u8, i32] => f32::asin);
 
 element_wise!(atan, Atan, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.atan());
     Ok(())
 };
-q: [i8, u8] => f32::atan);
+q: [i8, u8, i32] => f32::atan);
 
 element_wise!(cosh, Cosh, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.cosh());
     Ok(())
 };
-q: [i8, u8] => f32::cosh);
+q: [i8, u8, i32] => f32::cosh);
 
 element_wise!(sinh, Sinh, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.sinh());
     Ok(())
 };
-q: [i8, u8] => f32::sinh);
+q: [i8, u8, i32] => f32::sinh);
 
 element_wise!(tanh, Tanh,
  [f32] => |_, xs| { (tract_linalg::ops().tanh_f32)().run(xs) },
  [f16, f64] => |_, xs| { xs.iter_mut().for_each(|x| *x = x.tanh()); Ok(()) };
- q: [i8, u8] => f32::tanh;
+ q: [i8, u8, i32] => f32::tanh;
  cost: |dt| {tvec!((Cost::FMA(dt), 11), (Cost::Div(dt), 1))}
 );
 
@@ -542,29 +542,29 @@ element_wise!(acosh, Acosh, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.acosh()); 
     Ok(()) 
 };
-q: [i8, u8] => f32::acosh);
+q: [i8, u8, i32] => f32::acosh);
 element_wise!(asinh, Asinh, [f16, f32, f64] => |_, xs| { 
     xs.iter_mut().for_each(|x| *x = x.asinh()); 
     Ok(()) 
 };
-q: [i8, u8] => f32::asinh);
+q: [i8, u8, i32] => f32::asinh);
 element_wise!(atanh, Atanh, [f16, f32, f64] => |_, xs| { 
     xs.iter_mut().for_each(|x| *x = x.atanh()); 
     Ok(()) 
 };
-q: [i8, u8] => f32::atanh);
+q: [i8, u8, i32] => f32::atanh);
 
 element_wise!(neg, Neg, [i8, i16, i32, i64, f16, f32, f64, TDim] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = -x.clone());
     Ok(())
 };
-q: [i8, u8] => |x: f32| -x);
+q: [i8, u8, i32] => |x: f32| -x);
 
 element_wise!(sign, Sign, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = if x.is_zero() { *x } else { x.signum() });
     Ok(())
 };
-q: [i8, u8] => f32::signum);
+q: [i8, u8, i32] => f32::signum);
 
 #[cfg(test)]
 mod tests {

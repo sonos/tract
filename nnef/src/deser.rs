@@ -32,7 +32,9 @@ impl<'mb> ModelBuilder<'mb> {
                 "tract_registry" => {
                     if self.framework.registries.iter().any(|reg| reg.id == ext[1]) {
                         self.registries.push(ext[1].to_string())
-                    } else if let Some(reg) = self.framework.registries.iter().find(|reg| reg.aliases.contains(&ext[1])) {
+                    } else if let Some(reg) =
+                        self.framework.registries.iter().find(|reg| reg.aliases.contains(&ext[1]))
+                    {
                         self.registries.push(reg.id.clone())
                     } else {
                         bail!("Registry not found {}", &ext[1])
@@ -126,7 +128,7 @@ impl<'mb> ModelBuilder<'mb> {
                 })
                 .collect::<Vec<_>>();
             self.naming_scopes.push(identifiers[0].to_string());
-            let values = if identifiers.len() == 1 {
+            let mut values = if identifiers.len() == 1 {
                 let value: OutletId = assignment
                     .right
                     .resolve(self, &datum_types)
@@ -152,16 +154,19 @@ impl<'mb> ModelBuilder<'mb> {
                 }
                 values
             };
+            for (qparam, value) in datum_types.into_iter().zip(values.iter_mut()) {
+                if let Some(qparam) = qparam {
+                    self.model.node_mut(value.node).name = format!("{}.raw", self.naming_scopes.join("."));
+                    *value = self.model.wire_node(
+                        "foo",
+                        tract_core::ops::cast::cast(qparam),
+                        &[*value],
+                    )?[0];
+                }
+            }
             self.model.node_mut(values[0].node).name = format!("{}", self.naming_scopes.join("."));
             for (id, outlet) in identifiers.iter().zip(values.iter()) {
                 self.scopes.last_mut().unwrap().insert(id.to_string(), Value::Wire(*outlet));
-            }
-            for (qparam, value) in datum_types.into_iter().zip(values.iter()) {
-                if let Some(qparam) = qparam {
-                    let node = self.model.node_mut(value.node);
-                    let output_fact = &mut node.outputs[value.slot].fact;
-                    output_fact.datum_type = qparam;
-                }
             }
             self.naming_scopes.pop();
         }
