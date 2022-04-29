@@ -964,8 +964,8 @@ impl Tensor {
                                 .iter()
                                 .zip(result.as_slice_mut_unchecked::<$typ>().iter_mut())
                                 .for_each(|(&s, d)| {
-                                    *d = (d_zp as i16
-                                        + scale_by(s as i16 - s_zp as i16, s_scale / d_scale))
+                                    *d = (d_zp as i32
+                                        + scale_by(s as i32 - s_zp as i32, s_scale / d_scale))
                                     .clamp_cast()
                                 });
                             return Ok(Cow::Owned(result));
@@ -1030,12 +1030,18 @@ impl Tensor {
 
                 q_f!(f32, i8, round_ties_to_even);
                 q_f!(f32, u8, round_ties_to_even);
+                q_f!(f32, i32, round_ties_to_even);
                 q_f!(i8, f32, |f| f);
                 q_f!(u8, f32, |f| f);
+                q_f!(i32, f32, |f| f);
 
                 if dst_dt.is_quantized() && self.datum_type().is_quantized() {
                     q_f!(u8, i8, round_ties_to_even);
                     q_f!(i8, u8, round_ties_to_even);
+                    q_f!(i32, u8, round_ties_to_even);
+                    q_f!(i32, i8, round_ties_to_even);
+                    q_f!(u8, i32, round_ties_to_even);
+                    q_f!(i8, i32, round_ties_to_even);
                 }
 
                 q_n!(i8, i32);

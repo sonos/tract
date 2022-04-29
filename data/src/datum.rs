@@ -225,7 +225,9 @@ impl DatumType {
 
     pub fn qparams(&self) -> Option<QParams> {
         match self {
-            DatumType::QI8(qparams) | DatumType::QU8(qparams) | DatumType::QI32(qparams) => Some(*qparams),
+            DatumType::QI8(qparams) | DatumType::QU8(qparams) | DatumType::QI32(qparams) => {
+                Some(*qparams)
+            }
             _ => None,
         }
     }
@@ -387,10 +389,15 @@ pub trait ClampCast: PartialOrd + Copy + 'static {
     #[inline(always)]
     fn clamp_cast<O>(self) -> O
     where
-        Self: AsPrimitive<O>,
-        O: AsPrimitive<Self> + num_traits::Bounded,
+        Self: AsPrimitive<O> + Datum,
+        O: AsPrimitive<Self> + num_traits::Bounded + Datum,
     {
-        num_traits::clamp(self, O::min_value().as_(), O::max_value().as_()).as_()
+        // this fails if we're upcasting, in which case clamping is useless
+        if O::min_value().as_() < O::max_value().as_() {
+            num_traits::clamp(self, O::min_value().as_(), O::max_value().as_()).as_()
+        } else {
+            self.as_()
+        }
     }
 }
 impl<T: PartialOrd + Copy + 'static> ClampCast for T {}

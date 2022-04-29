@@ -218,7 +218,7 @@ where
 
 fn q_prod_t<'a, T>(v: ArrayViewD<'a, T>, zp_scale: (i32, f32)) -> T
 where
-    T: Copy + num_traits::AsPrimitive<f32> + Bounded,
+    T: Copy + num_traits::AsPrimitive<f32> + Bounded + Datum,
     f32: num_traits::AsPrimitive<T>,
 {
     let (zp, scale) = zp_scale;
@@ -229,7 +229,7 @@ where
 
 fn q_sum_t<'a, T>(v: ArrayViewD<'a, T>, zp_scale: (i32, f32)) -> T
 where
-    T: Copy + Bounded + num_traits::AsPrimitive<i32>,
+    T: Copy + Bounded + num_traits::AsPrimitive<i32> + Datum,
     i32: num_traits::AsPrimitive<T>,
 {
     let (zp, _) = zp_scale;
