@@ -34,7 +34,7 @@ impl std::str::FromStr for Blob {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
+#[derive(Copy, Clone, PartialEq, PartialOrd)]
 pub enum QParams {
     MinMax { min: f32, max: f32 },
     ZpScale { zero_point: i32, scale: f32 },
@@ -75,6 +75,23 @@ impl QParams {
             QParams::ZpScale { zero_point, scale } => (*zero_point, *scale),
         }
     }
+
+    pub fn q(&self, f: f32) -> i32 {
+        let (zp, scale) = self.zp_scale();
+        (f / scale) as i32 + zp
+    }
+
+    pub fn dq(&self, i: i32) -> f32 {
+        let (zp, scale) = self.zp_scale();
+        (i - zp) as f32 * scale
+    }
+}
+
+impl std::fmt::Debug for QParams {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (zp, scale) = self.zp_scale();
+        write!(f, "Z:{} S:{}", zp, scale)
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
@@ -111,9 +128,17 @@ impl DatumType {
         {
             tvec!(*self)
         } else if self.is_complex_float() {
-            [ComplexF16, ComplexF32, ComplexF64].iter().filter(|s| s.size_of() >= self.size_of()).copied().collect()
+            [ComplexF16, ComplexF32, ComplexF64]
+                .iter()
+                .filter(|s| s.size_of() >= self.size_of())
+                .copied()
+                .collect()
         } else if self.is_complex_signed() {
-            [ComplexI16, ComplexI32, ComplexI64].iter().filter(|s| s.size_of() >= self.size_of()).copied().collect()
+            [ComplexI16, ComplexI32, ComplexI64]
+                .iter()
+                .filter(|s| s.size_of() >= self.size_of())
+                .copied()
+                .collect()
         } else if self.is_float() {
             [F16, F32, F64].iter().filter(|s| s.size_of() >= self.size_of()).copied().collect()
         } else if self.is_signed() {
@@ -156,11 +181,17 @@ impl DatumType {
     }
 
     pub fn is_unsigned(&self) -> bool {
-        matches!(self.unquantized(), DatumType::U8 | DatumType::U16 | DatumType::U32 | DatumType::U64)
+        matches!(
+            self.unquantized(),
+            DatumType::U8 | DatumType::U16 | DatumType::U32 | DatumType::U64
+        )
     }
 
     pub fn is_signed(&self) -> bool {
-        matches!(self.unquantized(), DatumType::I8 | DatumType::I16 | DatumType::I32 | DatumType::I64)
+        matches!(
+            self.unquantized(),
+            DatumType::I8 | DatumType::I16 | DatumType::I32 | DatumType::I64
+        )
     }
 
     pub fn is_float(&self) -> bool {
@@ -180,7 +211,10 @@ impl DatumType {
     }
 
     pub fn is_copy(&self) -> bool {
-        *self == DatumType::Bool || self.is_unsigned() || self.is_signed() || self.is_float()
+        *self == DatumType::Bool
+            || self.is_unsigned()
+            || self.is_signed()
+            || self.is_float()
             || self.is_complex()
     }
 
@@ -307,11 +341,11 @@ impl std::str::FromStr for DatumType {
             "String" | "string" => Ok(DatumType::String),
             "TDim" | "tdim" => Ok(DatumType::TDim),
             "ComplexI16" | "complexi16" => Ok(DatumType::ComplexI16),
-            "ComplexI32" | "complexi32"  => Ok(DatumType::ComplexI32),
-            "ComplexI64" | "complexi64"  => Ok(DatumType::ComplexI64),
-            "ComplexF16" | "complexf16"  => Ok(DatumType::ComplexF16),
-            "ComplexF32" | "complexf32"  => Ok(DatumType::ComplexF32),
-            "ComplexF64" | "complexf64"  => Ok(DatumType::ComplexF64),
+            "ComplexI32" | "complexi32" => Ok(DatumType::ComplexI32),
+            "ComplexI64" | "complexi64" => Ok(DatumType::ComplexI64),
+            "ComplexF16" | "complexf16" => Ok(DatumType::ComplexF16),
+            "ComplexF32" | "complexf32" => Ok(DatumType::ComplexF32),
+            "ComplexF64" | "complexf64" => Ok(DatumType::ComplexF64),
             _ => anyhow::bail!("Unknown type {}", s),
         }
     }

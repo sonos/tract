@@ -608,7 +608,15 @@ impl Tensor {
     /// `force_full` will force the tensor to be dump in full even if it is big.
     pub fn dump(&self, force_full: bool) -> anyhow::Result<String> {
         unsafe fn dump_t<D: Datum>(tensor: &Tensor, n: usize) -> String {
-            tensor.as_slice_unchecked::<D>()[0..n].iter().join(", ")
+            if let Some(qp) = tensor.datum_type().qparams() {
+                let integers = tensor.cast_to::<i32>().unwrap();
+                integers.as_slice_unchecked::<i32>()[0..n]
+                    .iter()
+                    .map(|x| format!("[{}]({})", x, qp.dq(*x)))
+                    .join(", ")
+            } else {
+                tensor.as_slice_unchecked::<D>()[0..n].iter().join(", ")
+            }
         }
         unsafe {
             let trunc = self.len() > 12 && !force_full;
