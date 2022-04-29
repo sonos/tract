@@ -116,6 +116,7 @@ pub fn tract_nnef() -> Registry {
     dumper!(ops::matmul::MatMulUnary, ser::matmul_unary);
     dumper!(ops::matmul::MatMul, ser::matmul);
     dumper!(ops::matmul::QMatMul, ser::qmatmul);
+    primitive(&mut registry, "linear", deser::linear);
 
     primitive(&mut registry, "conv", deser::conv);
     dumper!(ops::cnn::ConvUnary, ser::conv);

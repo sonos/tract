@@ -510,6 +510,43 @@ pub fn reduce(
     bail!("Normalization only works with float items and known dimensions");
 }
 
+/* override linear to manage quantization in intermediaries
+* fragment linear(
+*    input: tensor<scalar>,
+*    filter: tensor<scalar>,
+*    bias: tensor<scalar> = 0.0 ) -> ( output: tensor<scalar> )
+    {
+        output = matmul(input, filter, transposeB = true) + bias;
+    }
+*/
+pub fn linear(
+    builder: &mut ModelBuilder,
+    invocation: &ResolvedInvocation,
+) -> TractResult<TVec<OutletId>> {
+    let input: OutletId = invocation.named_arg_as(builder, "input")?;
+    let filter: OutletId = invocation.named_arg_as(builder, "filter")?;
+    let bias: OutletId = invocation.named_arg_as(builder, "bias")?;
+    if let Some(Some(dt)) = &invocation.dt_from_quant_file.get(0) {
+        if let Some(qparams) = dt.qparams() {
+            return builder.wire(
+                ops::matmul::QMatMul {
+                    a_trans: false,
+                    b_trans: true,
+                    c_trans: false,
+                    output_type: *dt,
+                    params: MatMulQParams::all_from_qtype(),
+                },
+                &[input, filter, bias],
+            );
+        }
+    }
+    let mul = builder.wire(
+        ops::matmul::MatMul { a_trans: false, b_trans: true, c_trans: false },
+        &[input, filter],
+    )?[0];
+    builder.wire(ops::math::add::bin_typed(), &[bias, mul])
+}
+
 /*
  * fragment matmul( A: tensor<scalar>, B: tensor<scalar>, transposeA: logical = false, transposeB: logical = false ) -> ( C: tensor<scalar> );
  */
