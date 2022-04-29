@@ -156,12 +156,15 @@ impl<'mb> ModelBuilder<'mb> {
             };
             for (qparam, value) in datum_types.into_iter().zip(values.iter_mut()) {
                 if let Some(qparam) = qparam {
-                    self.model.node_mut(value.node).name = format!("{}.raw", self.naming_scopes.join("."));
-                    *value = self.model.wire_node(
-                        "foo",
-                        tract_core::ops::cast::cast(qparam),
-                        &[*value],
-                    )?[0];
+                    if qparam != self.model.outlet_fact(*value)?.datum_type {
+                        self.model.node_mut(value.node).name =
+                            format!("{}.raw", self.naming_scopes.join("."));
+                        *value = self.model.wire_node(
+                            "foo",
+                            tract_core::ops::cast::cast(qparam),
+                            &[*value],
+                        )?[0];
+                    }
                 }
             }
             self.model.node_mut(values[0].node).name = format!("{}", self.naming_scopes.join("."));
