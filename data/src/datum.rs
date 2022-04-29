@@ -113,6 +113,7 @@ pub enum DatumType {
     String,
     QI8(QParams),
     QU8(QParams),
+    QI32(QParams),
     ComplexI16,
     ComplexI32,
     ComplexI64,
@@ -219,15 +220,12 @@ impl DatumType {
     }
 
     pub fn is_quantized(&self) -> bool {
-        match self {
-            DatumType::QI8(_) | DatumType::QU8(_) => true,
-            _ => false,
-        }
+        self.qparams().is_some()
     }
 
     pub fn qparams(&self) -> Option<QParams> {
         match self {
-            DatumType::QI8(qparams) | DatumType::QU8(qparams) => Some(*qparams),
+            DatumType::QI8(qparams) | DatumType::QU8(qparams) | DatumType::QI32(qparams) => Some(*qparams),
             _ => None,
         }
     }
@@ -236,6 +234,7 @@ impl DatumType {
         match self {
             DatumType::QI8(_) => DatumType::QI8(qparams),
             DatumType::QU8(_) => DatumType::QI8(qparams),
+            DatumType::QI32(_) => DatumType::QI32(qparams),
             _ => *self,
         }
     }
@@ -248,6 +247,7 @@ impl DatumType {
         match self {
             DatumType::QI8(_) => DatumType::I8,
             DatumType::QU8(_) => DatumType::U8,
+            DatumType::QI32(_) => DatumType::I32,
             _ => *self,
         }
     }
@@ -293,6 +293,7 @@ impl DatumType {
             | DatumType::U32
             | DatumType::U64 => Tensor::zero_dt(*self, &[1]).unwrap(),
             DatumType::I8 | DatumType::QI8(_) => tensor0(i8::MIN),
+            DatumType::QI32(_) => tensor0(i32::MIN),
             DatumType::I16 => tensor0(i16::MIN),
             DatumType::I32 => tensor0(i32::MIN),
             DatumType::I64 => tensor0(i64::MIN),
@@ -312,6 +313,7 @@ impl DatumType {
             DatumType::I16 => tensor0(i16::MAX),
             DatumType::I32 => tensor0(i32::MAX),
             DatumType::I64 => tensor0(i64::MAX),
+            DatumType::QI32(_) => tensor0(i32::MAX),
             DatumType::F16 => tensor0(f16(half::f16::MAX)),
             DatumType::F32 => tensor0(f32::MAX),
             DatumType::F64 => tensor0(f64::MAX),

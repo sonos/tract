@@ -426,10 +426,10 @@ pub fn max_pool_with_index(
     let input_fact = builder.model.outlet_fact(input)?;
     if input_fact.rank() != size.len() {
         bail!(
-                "Max pool input expected as NCHW, and \"size\" paramater must be [ 1, 1, x, y ]. Got {:?}, and {:?}",
-                input_fact,
-                size
-                );
+            "Max pool input expected as NCHW, and \"size\" paramater must be [ 1, 1, x, y ]. Got {:?}, and {:?}",
+            input_fact,
+            size
+            );
     }
     let border: String = invocation.named_arg_as(builder, "border")?;
     assert!(&*border == "ignore" || &*border == "constant");
@@ -454,10 +454,10 @@ pub fn sum_pool(
     let input_fact = builder.model.outlet_fact(input)?;
     if input_fact.rank() != size.len() {
         bail!(
-                "Max pool input expected as NCHW, and \"size\" paramater must be [ 1, 1, x, y ]. Got {:?}, and {:?}",
-                input_fact,
-                size
-                );
+            "Max pool input expected as NCHW, and \"size\" paramater must be [ 1, 1, x, y ]. Got {:?}, and {:?}",
+            input_fact,
+            size
+            );
     }
     let border: String = invocation.named_arg_as(builder, "border")?;
     assert!(&*border == "ignore" || &*border == "constant");
@@ -510,19 +510,20 @@ pub fn reduce(
     bail!("Normalization only works with float items and known dimensions");
 }
 
+/*
 /* override linear to manage quantization in intermediaries
-* fragment linear(
-*    input: tensor<scalar>,
-*    filter: tensor<scalar>,
-*    bias: tensor<scalar> = 0.0 ) -> ( output: tensor<scalar> )
-    {
-        output = matmul(input, filter, transposeB = true) + bias;
-    }
-*/
+ * fragment linear(
+ *    input: tensor<scalar>,
+ *    filter: tensor<scalar>,
+ *    bias: tensor<scalar> = 0.0 ) -> ( output: tensor<scalar> )
+ {
+ output = matmul(input, filter, transposeB = true) + bias;
+ }
+ */
 pub fn linear(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+    ) -> TractResult<TVec<OutletId>> {
     let input: OutletId = invocation.named_arg_as(builder, "input")?;
     let filter: OutletId = invocation.named_arg_as(builder, "filter")?;
     let bias: OutletId = invocation.named_arg_as(builder, "bias")?;
@@ -533,19 +534,20 @@ pub fn linear(
                     a_trans: false,
                     b_trans: true,
                     c_trans: false,
-                    output_type: *dt,
+                    output_type_foo: *dt,
                     params: MatMulQParams::all_from_qtype(),
                 },
                 &[input, filter, bias],
-            );
+                );
         }
     }
     let mul = builder.wire(
         ops::matmul::MatMul { a_trans: false, b_trans: true, c_trans: false },
         &[input, filter],
-    )?[0];
+        )?[0];
     builder.wire(ops::math::add::bin_typed(), &[bias, mul])
 }
+*/
 
 /*
  * fragment matmul( A: tensor<scalar>, B: tensor<scalar>, transposeA: logical = false, transposeB: logical = false ) -> ( C: tensor<scalar> );
@@ -558,28 +560,33 @@ pub fn matmul(
     let b: OutletId = invocation.named_arg_as(builder, "B")?;
     let a_trans = invocation.named_arg_as(builder, "transposeA")?;
     let b_trans = invocation.named_arg_as(builder, "transposeB")?;
-    if let Some(Some(dt)) = &invocation.dt_from_quant_file.get(0) {
-        if let Some(qparams) = dt.qparams() {
-            //FIXME: bias is not specified in the nnef format, but whether the bias is a bias or an add later changes the quantized behaviour
-            let bias = builder.model.add_const(
-                format!("{}.bias", invocation.invocation.id),
-                Tensor::zero_dt(DatumType::QI8(qparams), &[1])?,
-            )?;
-            builder.model.node(a.node);
+    let a_dt = builder.model.outlet_fact(a)?.datum_type;
+    let b_dt = builder.model.outlet_fact(b)?.datum_type;
+    if a_dt.is_quantized() || b_dt.is_quantized() {
+        let accum_dt = DatumType::QI32(QParams::ZpScale {
+            scale: a_dt.zp_scale().1 * b_dt.zp_scale().1,
+            zero_point: 0,
+        });
+        let dt = invocation.dt_from_quant_file.get(0).cloned().flatten().unwrap_or(accum_dt);
+        let bias = builder.model.add_const(
+            format!("{}.bias", invocation.invocation.id),
+            Tensor::zero_dt(accum_dt, &[1])?,
+        )?;
+        builder.model.node(a.node);
 
-            return builder.wire(
-                ops::matmul::QMatMul {
-                    a_trans,
-                    b_trans,
-                    c_trans: false,
-                    output_type: DatumType::QI8(qparams),
-                    params: MatMulQParams::all_from_qtype(),
-                },
-                &[a, b, bias],
-            );
-        }
+        return builder.wire(
+            ops::matmul::QMatMul {
+                a_trans,
+                b_trans,
+                c_trans: false,
+                output_type: dt,
+                params: MatMulQParams::all_from_qtype(),
+            },
+            &[a, b, bias],
+        );
+    } else {
+        builder.wire(ops::matmul::MatMul { a_trans, b_trans, c_trans: false }, &[a, b])
     }
-    builder.wire(ops::matmul::MatMul { a_trans, b_trans, c_trans: false }, &[a, b])
 }
 
 /*
