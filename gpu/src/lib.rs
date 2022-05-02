@@ -12,8 +12,9 @@ use wgpu::{
 pub struct GPUTensor {
     dt: DatumType,
     shape: TVec<usize>,
-    strides: TVec<isize>,
+    strides: TVec<usize>,
     len: usize,
+    info_uniform: Buffer,
     buffer: Buffer,
 }
 
@@ -65,16 +66,42 @@ impl GpuAccel {
         self.device.create_buffer_init(&BufferInitDescriptor {
             label: Some(&label),
             contents: bytemuck::cast_slice(bytes),
-            usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
+            usage: BufferUsages::STORAGE,
+        })
+    }
+
+    fn create_tensor_info_uniform(
+        &self,
+        shape: &TVec<usize>,
+        strides: &TVec<usize>,
+        label: String,
+    ) -> Buffer {
+        let mut tensor_info = vec![];
+        tensor_info.push(*shape.get(0).unwrap_or(&1) as u32);
+        tensor_info.push(*shape.get(1).unwrap_or(&1) as u32);
+        tensor_info.push(*shape.get(2).unwrap_or(&1) as u32);
+        tensor_info.push(*shape.get(3).unwrap_or(&1) as u32);
+        tensor_info.push(*strides.get(0).unwrap_or(&0) as u32);
+        tensor_info.push(*strides.get(1).unwrap_or(&0) as u32);
+        tensor_info.push(*strides.get(2).unwrap_or(&0) as u32);
+        tensor_info.push(*strides.get(3).unwrap_or(&0) as u32);
+        self.device.create_buffer_init(&BufferInitDescriptor {
+            label: Some(&(label + "_info")),
+            contents: bytemuck::cast_slice(&tensor_info),
+            usage: BufferUsages::UNIFORM,
         })
     }
 
     pub fn import_tensor(&self, label: String, t: &Tensor) -> GPUTensor {
+        let shape: TVec<usize> = t.shape().into();
+        let strides: TVec<usize> = t.strides().iter().map(|x| *x as usize).collect();
+
         GPUTensor {
             dt: t.datum_type(),
-            shape: t.shape().into(),
-            strides: t.strides().into(),
+            shape: shape.clone(),
+            strides: strides.clone(),
             len: t.len(),
+            info_uniform: self.create_tensor_info_uniform(&shape, &strides, label.clone()),
             // TODO: proper type
             buffer: self.alloc_in_buffer(label, &Vec::from(t.as_slice::<f32>().unwrap())),
         }
@@ -107,11 +134,14 @@ impl GpuAccel {
             *strides.get(0).unwrap() as usize * shape.get(0).unwrap()
         };
 
+        let unsigned_strides: TVec<usize> = strides.iter().map(|x| *x as usize).collect();
+
         GPUTensor {
             dt,
-            shape,
-            strides,
+            shape: shape.clone(),
+            strides: strides.iter().map(|x| *x as usize).collect(),
             len,
+            info_uniform: self.create_tensor_info_uniform(&shape, &unsigned_strides, label.clone()),
             buffer: self.alloc_storage_buffer(label, len as u64 * dt.size_of() as u64, output),
         }
     }
@@ -156,34 +186,44 @@ impl GpuAccel {
     }
 
     pub fn sigmoid(&self, in_tensor: &GPUTensor, out_tensor: &GPUTensor) {
+        if in_tensor.shape != out_tensor.shape {
+            panic!("Trying to do sigmoid between different tensor shapes");
+        }
+
         let bind_group = vec![
-            BindGroupEntry { binding: 0, resource: in_tensor.buffer.as_entire_binding() },
-            BindGroupEntry { binding: 1, resource: out_tensor.buffer.as_entire_binding() },
+            BindGroupEntry { binding: 0, resource: out_tensor.info_uniform.as_entire_binding() },
+            BindGroupEntry { binding: 1, resource: in_tensor.buffer.as_entire_binding() },
+            BindGroupEntry { binding: 2, resource: out_tensor.buffer.as_entire_binding() },
         ];
 
         self.execute_shader(
             &"sigmoid".to_string(),
             &self.sigmoid_shader,
             bind_group,
-            out_tensor.len as u32,
-            1,
-            1,
+            *out_tensor.shape.get(0).unwrap() as u32,
+            *out_tensor.shape.get(1).unwrap_or(&1) as u32,
+            *out_tensor.shape.get(2).unwrap_or(&1) as u32,
         );
     }
 
     pub fn tanh(&self, in_tensor: &GPUTensor, out_tensor: &GPUTensor) {
+        if in_tensor.shape != out_tensor.shape {
+            panic!("Trying to do tanh between different tensor shapes");
+        }
+
         let bind_group = vec![
-            BindGroupEntry { binding: 0, resource: in_tensor.buffer.as_entire_binding() },
-            BindGroupEntry { binding: 1, resource: out_tensor.buffer.as_entire_binding() },
+            BindGroupEntry { binding: 0, resource: out_tensor.info_uniform.as_entire_binding() },
+            BindGroupEntry { binding: 1, resource: in_tensor.buffer.as_entire_binding() },
+            BindGroupEntry { binding: 2, resource: out_tensor.buffer.as_entire_binding() },
         ];
 
         self.execute_shader(
             &"tanh".to_string(),
             &self.tanh_shader,
             bind_group,
-            out_tensor.len as u32,
-            1,
-            1,
+            *out_tensor.shape.get(0).unwrap() as u32,
+            *out_tensor.shape.get(1).unwrap_or(&1) as u32,
+            *out_tensor.shape.get(2).unwrap_or(&1) as u32,
         );
     }
 
