@@ -20,10 +20,10 @@ bin_to_super_type!(add, Add,
 
 fn add_quant<T>(c: &mut T, a: &T, b: &T, zp: i32, _: f32)
 where
-    T: PrimInt + Bounded + AsPrimitive<i16> + Datum,
-    i16: AsPrimitive<T>,
+    T: PrimInt + Bounded + AsPrimitive<i64> + Datum,
+    i64: AsPrimitive<T>,
 {
-    *c = (a.as_() + b.as_() - zp as i16).clamp_cast()
+    *c = (a.as_() + b.as_() - zp as i64).clamp_cast()
 }
 
 fn declutter_unary_add(
