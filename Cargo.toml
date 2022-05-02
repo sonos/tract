@@ -12,6 +12,7 @@ members = [
     "onnx",
     "kaldi",
     "cli",
+    "gpu",
     "examples/tensorflow-mobilenet-v2",
     "examples/jupyter-keras-tract-tf1",
     "examples/jupyter-keras-tract-tf2",
@@ -29,6 +30,7 @@ members = [
     "harness/tf-mobilenet-v2",
     "harness/tf-moz-deepspeech",
 ]
+resolver = "2"
 
 [profile.release]
 lto = true

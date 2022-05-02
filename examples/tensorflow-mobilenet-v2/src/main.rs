@@ -6,10 +6,12 @@ fn main() -> TractResult<()> {
         .model_for_path("mobilenet_v2_1.4_224_frozen.pb")?
         // specify input type and shape
         .with_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), tvec!(1, 224, 224, 3)))?
-        // optimize the model
-        .into_optimized()?
-        // make the model runnable and fix its inputs and outputs
-        .into_runnable()?;
+        // declutter the model
+        .into_typed()?
+        .into_decluttered()?;
+
+    // GPU state
+    println!("{:#?}", SimplePlan::new(model.clone())?);
 
     // open image, resize it and make a Tensor out of it
     let image = image::open("grace_hopper.jpg").unwrap().to_rgb8();
@@ -21,7 +23,7 @@ fn main() -> TractResult<()> {
     .into();
 
     // run the model on the input
-    let result = model.run(tvec!(image))?;
+    let result = model.into_runnable()?.run(tvec!(image))?;
 
     // find and display the max value with its index
     let best = result[0]
