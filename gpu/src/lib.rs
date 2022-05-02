@@ -96,14 +96,15 @@ impl GpuAccel {
         let shape: TVec<usize> = t.shape().into();
         let strides: TVec<usize> = t.strides().iter().map(|x| *x as usize).collect();
 
-        GPUTensor {
-            dt: t.datum_type(),
-            shape: shape.clone(),
-            strides: strides.clone(),
-            len: t.len(),
-            info_uniform: self.create_tensor_info_uniform(&shape, &strides, label.clone()),
-            // TODO: proper type
-            buffer: self.alloc_in_buffer(label, &Vec::from(t.as_slice::<f32>().unwrap())),
+        unsafe {
+            GPUTensor {
+                dt: t.datum_type(),
+                shape: shape.clone(),
+                strides: strides.clone(),
+                len: t.len(),
+                info_uniform: self.create_tensor_info_uniform(&shape, &strides, label.clone()),
+                buffer: self.alloc_in_buffer(label, &Vec::from(t.as_bytes())),
+            }
         }
     }
 
@@ -186,6 +187,9 @@ impl GpuAccel {
     }
 
     pub fn sigmoid(&self, in_tensor: &GPUTensor, out_tensor: &GPUTensor) {
+        if in_tensor.dt != out_tensor.dt || in_tensor.dt != DatumType::F32 {
+            panic!("Sigmoid only supports F32 tensors");
+        }
         if in_tensor.shape != out_tensor.shape {
             panic!("Trying to do sigmoid between different tensor shapes");
         }
@@ -207,6 +211,9 @@ impl GpuAccel {
     }
 
     pub fn tanh(&self, in_tensor: &GPUTensor, out_tensor: &GPUTensor) {
+        if in_tensor.dt != out_tensor.dt || in_tensor.dt != DatumType::F32 {
+            panic!("Tanh only supports F32 tensors");
+        }
         if in_tensor.shape != out_tensor.shape {
             panic!("Trying to do tanh between different tensor shapes");
         }
