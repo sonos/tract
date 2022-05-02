@@ -6,12 +6,17 @@ use tract_gpu::GpuAccel;
 fn main() {
     let gpu = block_on(GpuAccel::default()).unwrap();
 
-    let inp = gpu.import_tensor(
-        "inp".to_string(),
-        &Tensor::from_shape(&tvec![2, 2], &vec![1.0f32, 2.0f32, 3.0f32, 4.0f32]).unwrap(),
-    );
-    let a = gpu.create_storage_tensor("a".to_string(), DatumType::F32, tvec![2, 2]);
-    let out = gpu.create_out_tensor("out".to_string(), DatumType::F32, tvec![2, 2]);
+    let x = 255;
+    let y = 255;
+    let mut data = Vec::new();
+    for i in 1..(x * y + 1) {
+        data.push(i as f32);
+    }
+
+    let inp =
+        gpu.import_tensor("inp".to_string(), &Tensor::from_shape(&tvec![x, y], &data).unwrap());
+    let a = gpu.create_storage_tensor("a".to_string(), DatumType::F32, tvec![x, y]);
+    let out = gpu.create_out_tensor("out".to_string(), DatumType::F32, tvec![x, y]);
 
     gpu.tanh(&inp, &a);
     gpu.sigmoid(&a, &out);
