@@ -27,7 +27,8 @@ pub struct GpuAccel {
 
 impl GpuAccel {
     pub async fn default() -> Option<GpuAccel> {
-        let instance = Instance::new(wgpu::Backends::all());
+        let instance =
+            Instance::new(wgpu::util::backend_bits_from_env().unwrap_or_else(wgpu::Backends::all));
         let adapter = match wgpu::util::initialize_adapter_from_env_or_default(
             &instance,
             wgpu::util::backend_bits_from_env().unwrap_or_else(wgpu::Backends::all),
@@ -45,7 +46,7 @@ impl GpuAccel {
                 None => return None,
             };
 
-        println!("{:#?}", adapter.get_info());
+        println!("Running inference on adapter: {:#?}", adapter.get_info());
 
         let sigmoid_shader = device.create_shader_module(&ShaderModuleDescriptor {
             label: None,
@@ -140,8 +141,6 @@ impl GpuAccel {
 
             drop(data);
             buf.unmap();
-
-            println!("Moved buffer {:?} out from GPU memory", buf);
 
             return result;
         } else {
