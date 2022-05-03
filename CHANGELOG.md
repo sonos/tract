@@ -1,5 +1,8 @@
 # Unreleased
 
+# 0.16.6 - 2022-05-03
+* Various changes around quantization support (qi32 appearance)
+
 # 0.16.5 - 2022-04-27
 * Intel optimisation are back
 * Range is now more flexible, should unlock some BERT models with symbolic dimensions.
