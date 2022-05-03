@@ -28,7 +28,8 @@ fn pulsify(
 
 impl PulsedOp for ConvUnary {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
-        super::pools::pulsed_output_facts(&self.pool_spec, inputs)
+        let dt = if let Some(q) = &self.q_params { q.0 } else { inputs[0].datum_type };
+        super::pools::pulsed_output_facts(&self.pool_spec, inputs, dt)
     }
 
     as_op!();

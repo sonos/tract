@@ -988,7 +988,7 @@ impl TypedOp for ConvUnary {
             let wire = patch.wire_node(&node.name, new_op, &inputs)?;
             patch.shunt_outside(model, node.id.into(), wire[0])?;
             patch.obliterate(node.id)?;
-            return Ok(Some(patch));
+            return Ok(Some(patch.with_context("kernel-u8-to-i8")));
         }
 
         let full_input_shape = model.outlet_fact(node.inputs[0])?.shape.to_tvec();
@@ -1013,7 +1013,7 @@ impl TypedOp for ConvUnary {
                 )?;
                 patch.shunt_outside(model, node.id.into(), wire)?;
                 patch.obliterate(node.id)?;
-                return Ok(Some(patch));
+                return Ok(Some(patch.with_context("quantized-codegen")));
             } else if kernel_spatial_shape.iter().product::<usize>() == 1
                 && (0..spatial_rank)
                     .all(|i| self.pool_spec.stride(i) == 1 && self.pool_spec.dilation(i) == 1)

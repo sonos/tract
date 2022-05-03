@@ -45,7 +45,7 @@ fn pulsify_sum_pool(
 
 impl PulsedOp for SumPool {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
-        pulsed_output_facts(&self.pool_spec, inputs)
+        pulsed_output_facts(&self.pool_spec, inputs, inputs[0].datum_type)
     }
 
     as_op!();
@@ -54,7 +54,7 @@ impl PulsedOp for SumPool {
 
 impl PulsedOp for MaxPool {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
-        let mut facts = pulsed_output_facts(&self.pool_spec, inputs)?;
+        let mut facts = pulsed_output_facts(&self.pool_spec, inputs, inputs[0].datum_type)?;
         if let Some(idt) = self.with_index_outputs {
             facts.push(facts[0].clone());
             facts[1].datum_type = idt;
@@ -69,6 +69,7 @@ impl PulsedOp for MaxPool {
 pub fn pulsed_output_facts(
     spec: &PoolSpec,
     inputs: &[&PulsedFact],
+    output_dt: DatumType,
 ) -> TractResult<TVec<PulsedFact>> {
     let ishape = spec.data_format.shape(&inputs[0].shape)?;
     let computed = spec.padding.compute(
@@ -92,6 +93,7 @@ pub fn pulsed_output_facts(
     fact.delay /= stride;
     fact.dim = (fact.dim.clone() - kernel_len.to_dim()).div_ceil(stride as _);
     fact.shape = oshape.shape.into();
+    fact.datum_type = output_dt;
     Ok(tvec!(fact))
 }
 
