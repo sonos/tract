@@ -14,7 +14,7 @@ fn external_dump(_ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc
         &[],
         &[
             ("shape", ints(&op.fact.shape.as_concrete().unwrap())),
-            ("datum_type", string(format!("{:?}", op.fact.datum_type))),
+            ("datum_type", string(format!("{:?}", op.fact.datum_type.unquantized()))),
         ],
     )))
 }

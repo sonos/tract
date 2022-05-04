@@ -4,8 +4,8 @@ use tract_itertools::Itertools;
 
 pub fn to_proto_model(framework: &Nnef, model: &TypedModel) -> TractResult<ProtoModel> {
     let mut into_ast = IntoAst::new(framework, model);
-    into_ast.translate()?;
-    into_ast.into_proto_model()
+    into_ast.translate().context("Translating model to AST")?;
+    into_ast.into_proto_model().context("Translating AST to proto model")
 }
 
 pub fn to_fragment_def(
@@ -100,7 +100,8 @@ impl<'a> IntoAst<'a> {
             if self.model.input_outlets()?.iter().any(|io| io.node == node) {
                 continue;
             }
-            self.node(self.model.node(node))?;
+            self.node(self.model.node(node))
+                .with_context(|| format!("translating node {}", self.model.node(node)))?;
         }
         let outlets: Vec<OutletId> = self.model.output_outlets()?.to_vec();
         for (ix, o) in outlets.into_iter().enumerate() {
@@ -213,7 +214,7 @@ impl<'a> IntoAst<'a> {
     fn node(&mut self, node: &TypedNode) -> TractResult<TVec<Arc<RValue>>> {
         let mut required_registries = Vec::new();
         for reg in &self.framework.registries {
-            if let Some(outputs) = reg.serialize(self, node)? {
+            if let Some(outputs) = reg.serialize(self, node).context("Serializing op")? {
                 if self.ensure_registry(&reg.id).is_err() {
                     required_registries.push(&reg.id);
                     continue;
@@ -237,7 +238,7 @@ impl<'a> IntoAst<'a> {
                     if let Some(params) = outlet.fact.datum_type.qparams() {
                         let quant_format = QuantFormat::Linear {
                             params,
-                            bits: outlet.fact.datum_type.size_of() as i8,
+                            bits: 8 * outlet.fact.datum_type.size_of() as i8,
                             signed: outlet.fact.datum_type.is_signed(),
                         };
                         self.quantization.insert(name.to_string(), quant_format);
@@ -322,9 +323,11 @@ impl<'a> IntoAst<'a> {
             } else if tensor.datum_type() == DatumType::F32 {
                 return Ok(numeric(tensor.cast_to_scalar::<f32>().unwrap()).into());
             } else if self.ensure_registry("tract_core").is_ok() {
-                let value = numeric(tensor.cast_to_scalar::<i64>()?);
-                let to = string(format!("{:?}", tensor.datum_type()).to_lowercase());
-                return Ok(invocation("tract_core_cast", &[value.into()], &[("to", to)]));
+                if let Ok(value) = tensor.cast_to_scalar::<i64>() {
+                    let to = string(format!("{:?}", tensor.datum_type()).to_lowercase());
+                    let value = numeric(value);
+                    return Ok(invocation("tract_core_cast", &[value.into()], &[("to", to)]));
+                }
             };
         }
         let name = name.into();

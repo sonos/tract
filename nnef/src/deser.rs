@@ -65,7 +65,7 @@ impl<'mb> ModelBuilder<'mb> {
             };
         }
         self.scopes.push(HashMap::new());
-        self.wire_body(&self.proto_model.doc.graph_def.body)?;
+        self.wire_body(&self.proto_model.doc.graph_def.body).context("Wiring root graph body")?;
         let vars = self.scopes.pop().unwrap();
 
         let outputs = self
@@ -87,10 +87,23 @@ impl<'mb> ModelBuilder<'mb> {
             .collect::<TractResult<TVec<OutletId>>>()?;
         self.model.set_output_outlets(&outputs)?;
 
+        self.parse_properties().context("Parsing properties")?;
+
         for (ix, name) in self.proto_model.doc.graph_def.results.iter().enumerate() {
             self.model.set_outlet_label(outputs[ix], name.to_string())?;
         }
 
+        Ok(())
+    }
+
+    pub fn into_typed_model(mut self) -> Result<TypedModel, (TypedModel, TractError)> {
+        match self.translate().context("In ModelBuilder::translate") {
+            Ok(()) => Ok(self.model),
+            Err(e) => Err((self.model, e)),
+        }
+    }
+
+    fn parse_properties(&mut self) -> TractResult<()> {
         if let Some(properties) = self
             .proto_model
             .doc
@@ -105,13 +118,6 @@ impl<'mb> ModelBuilder<'mb> {
             self.model.properties = properties.into_iter().collect();
         }
         Ok(())
-    }
-
-    pub fn into_typed_model(mut self) -> Result<TypedModel, (TypedModel, TractError)> {
-        match self.translate() {
-            Ok(()) => Ok(self.model),
-            Err(e) => Err((self.model, e)),
-        }
     }
 
     pub fn wire_body(&mut self, body: &[Assignment]) -> TractResult<()> {
@@ -500,6 +506,7 @@ impl CoerceFrom<Value> for Arc<Tensor> {
         match from {
             Value::Dim(t) => Ok(rctensor0(t.to_i32()?)),
             Value::Tensor(t) => Ok(t.clone()),
+            Value::Tuple(t) if t.len() == 1 => t[0].to(builder),
             Value::Scalar(f) => Ok(rctensor0(*f)),
             Value::String(f) => Ok(rctensor0(f.clone())),
             Value::Wire(o) => builder
