@@ -28,14 +28,10 @@ fn cast_load(
     let input = invocation.named_arg_as(builder, "input")?;
     let invocation_dt = invocation.dt_from_quant_file.get(0).copied().flatten();
     let to = if let Ok(s) = invocation.named_arg_as::<String>(builder, "to") {
-        let dt = s.parse()?;
+        let dt: DatumType = s.parse()?;
         if let Some(invocation_dt) = invocation_dt {
             if invocation_dt.unquantized() != dt.unquantized() {
-                bail!(
-                    "Mismatched cast: graph.quant {:?}, got graph.nnef {:?}",
-                    invocation_dt.unwrap(),
-                    dt
-                )
+                bail!("Mismatched cast: graph.quant {:?}, got graph.nnef {:?}", invocation_dt, dt)
             }
         }
         dt
