@@ -619,7 +619,7 @@ impl Parameters {
                     let block: &dyn Fn(_) -> CliResult<_> = &$block;
                     let owned_model =
                         Arc::try_unwrap(from).unwrap_or_else(|from| from.as_ref().clone());
-                    match block(owned_model) {
+                    match block(owned_model).context(concat!("Error at stage ", $name)) {
                         Ok(it) => {
                             $to = Some(Arc::new(it));
                         }
@@ -627,7 +627,7 @@ impl Parameters {
                             if let Some(last_model) = last_model.take() {
                                 return Err(ModelBuildingError(last_model, e.into()))?;
                             } else {
-                                return Err(e);
+                                return Err(e)?;
                             }
                         }
                     }
@@ -687,9 +687,9 @@ impl Parameters {
             stage!("nnef-cycle", typed_model -> typed_model, |m:TypedModel| {
                 let nnef = super::nnef(&matches);
                 let mut vec = vec!();
-                nnef.write(&m, &mut vec)?;
+                nnef.write(&m, &mut vec).context("Serializing")?;
                 info!("Dumped, now reloading...");
-                Ok(nnef.model_for_read(&mut &*vec)?)
+                Ok(nnef.model_for_read(&mut &*vec).context("Deserializing")?)
             });
             stage!("nnef-declutter", typed_model -> typed_model, |m:TypedModel| Ok(m.into_decluttered()?));
         }

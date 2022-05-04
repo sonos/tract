@@ -49,7 +49,7 @@ pub fn handle(
             rename_outputs(&mut typed, sub_matches)?;
             let file = std::fs::File::create(path)?;
             let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
-            nnef.write_to_tar(&typed, encoder)?;
+            nnef.write_to_tar(&typed, encoder).context("Writting model to tar")?;
         } else {
             bail!("Only typed model can be dumped")
         }
@@ -60,7 +60,7 @@ pub fn handle(
         if let Some(mut typed) = model.downcast_ref::<TypedModel>().cloned() {
             rename_outputs(&mut typed, sub_matches)?;
             let file = std::fs::File::create(path)?;
-            nnef.write_to_tar(&typed, file)?;
+            nnef.write_to_tar(&typed, file).context("Writting model to tar")?;
         } else {
             bail!("Only typed model can be dumped")
         }
