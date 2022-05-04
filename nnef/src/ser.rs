@@ -340,6 +340,9 @@ impl<'a> IntoAst<'a> {
             })
             .into(),
         );
+        if let Some(qp) = QuantFormat::from_dt(tensor.datum_type()) {
+            self.quantization.insert(id.clone(), qp);
+        }
         Ok(ident(id).into())
     }
 
