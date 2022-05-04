@@ -235,13 +235,8 @@ impl<'a> IntoAst<'a> {
                 };
 
                 for (outlet, name) in node.outputs.iter().zip(names.iter()) {
-                    if let Some(params) = outlet.fact.datum_type.qparams() {
-                        let quant_format = QuantFormat::Linear {
-                            params,
-                            bits: 8 * outlet.fact.datum_type.size_of() as i8,
-                            signed: outlet.fact.datum_type.is_signed(),
-                        };
-                        self.quantization.insert(name.to_string(), quant_format);
+                    if let Some(qf) = QuantFormat::from_dt(outlet.fact.datum_type) {
+                        self.quantization.insert(name.to_string(), qf);
                     }
                 }
 
