@@ -209,15 +209,14 @@ impl Tensor {
         }
     }
 
-    pub unsafe fn clear<T: Datum + num_traits::Zero>(&mut self) {
-        self.as_slice_mut_unchecked::<T>().iter_mut().for_each(|item| *item = T::zero());
+    pub fn clear<T: Datum + num_traits::Zero + Clone>(&mut self) -> anyhow::Result<()> {
+        self.fill_t(T::zero())
     }
 
-    //FIXME : zero for quantised dt ?
     pub fn zero<T: Datum + num_traits::Zero>(shape: &[usize]) -> anyhow::Result<Tensor> {
         unsafe {
             let mut t = Tensor::uninitialized::<T>(shape)?;
-            t.clear::<T>();
+            t.clear::<T>()?;
             Ok(t)
         }
     }
@@ -231,7 +230,12 @@ impl Tensor {
     }
 
     pub fn zero_dt(dt: DatumType, shape: &[usize]) -> anyhow::Result<Tensor> {
-        dispatch_zerolike!(Self::zero(dt)(shape))
+        Tensor::zero_aligned_dt(dt, shape, 4)
+    }
+
+    fn fill_t<T: Datum + Clone>(&mut self, value: T) -> anyhow::Result<()> {
+        self.as_slice_mut::<T>()?.iter_mut().for_each(|item| *item = value.clone());
+        Ok(())
     }
 
     pub fn zero_aligned_dt(
@@ -239,7 +243,27 @@ impl Tensor {
         shape: &[usize],
         alignment: usize,
     ) -> anyhow::Result<Tensor> {
-        dispatch_zerolike!(Self::zero_aligned(dt)(shape, alignment))
+        if dt.zp_scale().0 != 0 {
+            unsafe {
+                let mut t = Tensor::uninitialized_dt(dt, shape)?;
+                let zp = dt.zp_scale().0;
+                match dt.unquantized() {
+                    DatumType::I8 => {
+                        t.as_slice_mut::<i8>()?.iter_mut().for_each(|item| *item = zp as _)
+                    }
+                    DatumType::U8 => {
+                        t.as_slice_mut::<u8>()?.iter_mut().for_each(|item| *item = zp as _)
+                    }
+                    DatumType::I32 => {
+                        t.as_slice_mut::<i32>()?.iter_mut().for_each(|item| *item = zp as _)
+                    }
+                    _ => unreachable!(),
+                }
+                Ok(t)
+            }
+        } else {
+            dispatch_zerolike!(Self::zero_aligned(dt)(shape, alignment))
+        }
     }
 
     pub fn zero_aligned<T: Datum + num_traits::Zero>(
@@ -248,7 +272,7 @@ impl Tensor {
     ) -> anyhow::Result<Tensor> {
         unsafe {
             let mut tensor = Self::uninitialized_aligned::<T>(shape, alignment)?;
-            tensor.clear::<T>();
+            tensor.clear::<T>()?;
             Ok(tensor)
         }
     }

@@ -24,7 +24,7 @@ fn parse_dt(dt: &str) -> CliResult<DatumType> {
         "tdim" => DatumType::TDim,
         _ => bail!(
             "Type of the input should be f16, f32, f64, i8, i16, i16, i32, u8, u16, u32, u64, TDim."
-        ),
+            ),
     })
 }
 
@@ -294,11 +294,47 @@ pub fn retrieve_or_make_inputs(
     let mut tmp: TVec<Vec<Tensor>> = tvec![];
     for input in tract.input_outlets() {
         let name = tract.node_name(input.node);
-        if let Some(input) = params.input_values.get(name) {
-            info!("Using fixed input for input called {} ({} turn(s))", name, input.len());
-            tmp.push(input.iter().map(|t| t.clone().into_tensor()).collect())
+        let fact = tract.outlet_typedfact(*input)?;
+        if let Some(value) = params.input_values.get(name) {
+            if fact.compatible_with(&TypedFact::from(value[0].clone())) {
+                info!("Using fixed input for input called {} ({} turn(s))", name, value.len());
+                tmp.push(value.iter().map(|t| t.clone().into_tensor()).collect())
+            } else if value.len() == 1
+                && tract.properties().contains_key("pulse.delay")
+                && tract.input_outlets().len() == 1
+                && tract.output_outlets().len() == 1
+            {
+                let value = &value[0];
+                let input_pulse_axis =
+                    tract.properties()["pulse.input_axes"].as_slice::<i64>()?[0] as usize;
+                let input_pulse = fact.shape.get(input_pulse_axis).unwrap().to_usize().unwrap();
+                let input_len = value.shape()[input_pulse_axis];
+
+                let output_pulse_axis =
+                    tract.properties()["pulse.output_axes"].as_slice::<i64>()?[0] as usize;
+                let output_fact = tract.outlet_typedfact(tract.output_outlets()[0])?;
+                let output_pulse =
+                    output_fact.shape.get(output_pulse_axis).unwrap().to_usize().unwrap();
+                let output_len = input_len * output_pulse / input_pulse;
+                let output_delay = tract.properties()["pulse.delay"].as_slice::<i64>()?[0] as usize;
+                let last_frame = output_len + output_delay;
+                let needed_pulses = last_frame.divceil(output_pulse);
+                let mut values = vec!();
+                for ix in 0..needed_pulses {
+                    let mut t = Tensor::zero_dt(fact.datum_type, fact.shape.as_concrete().unwrap())?;
+                    let start = ix * input_pulse;
+                    let end = (start + input_pulse).min(input_len);
+                    if end > start {
+                        t.assign_slice(0..end-start, value, start..end, input_pulse_axis)?;
+                    }
+                    values.push(t);
+                }
+                info!("Generated {} pulse of input", needed_pulses);
+                tmp.push(values);
+            } else {
+                bail!("For input {}, can not reconcile model input fact {:?} with provided input {:?}", name, fact, value[0]);
+            };
         } else {
-            let fact = tract.outlet_typedfact(*input)?;
             warn_once(format!("Using random input for input called {:?}: {:?}", name, fact));
             tmp.push(vec![crate::tensor::tensor_for_fact(&fact, None)?]);
         }
@@ -386,8 +422,11 @@ pub fn random(sizes: &[usize], datum_type: DatumType) -> Tensor {
         F64 => make::<f64>(sizes),
         QU8(_) => make::<u8>(sizes),
         QI8(_) => make::<i8>(sizes),
+        QI32(_) => make::<i32>(sizes),
         _ => panic!("Can generate random tensor for {:?}", datum_type),
     };
-    unsafe { t.set_datum_type(datum_type); }
+    unsafe {
+        t.set_datum_type(datum_type);
+    }
     t
 }

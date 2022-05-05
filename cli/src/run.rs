@@ -82,9 +82,9 @@ fn run_regular(
             }
         }
         let mut results = tvec!();
-        for (turn, inputs) in
-            crate::tensor::retrieve_or_make_inputs(tract, params)?.into_iter().enumerate()
-        {
+        let inputs = crate::tensor::retrieve_or_make_inputs(tract, params)?;
+        let multiturn = params.multiturn || inputs.len() > 1;
+        for (turn, inputs) in inputs.into_iter().enumerate() {
             results = state.run_plan_with_eval(inputs, |session_state, state, node, input| {
                 if steps {
                     for (ix, i) in input.iter().enumerate() {
@@ -116,7 +116,7 @@ fn run_regular(
                         } else {
                             format!("{}:{}", node.name, ix)
                         };
-                        if params.multiturn {
+                        if multiturn {
                             name = format!("turn_{}/{}", turn, name);
                         }
                         match t.datum_type() {
@@ -125,6 +125,15 @@ fn run_regular(
                             DatumType::I32 => npz.add_array(name, &t.to_array_view::<i32>()?)?,
                             DatumType::I8 => npz.add_array(name, &t.to_array_view::<i8>()?)?,
                             DatumType::U8 => npz.add_array(name, &t.to_array_view::<u8>()?)?,
+                            DatumType::QI8(_) => unsafe {
+                                npz.add_array(name, &t.to_array_view_unchecked::<i8>())?
+                            },
+                            DatumType::QU8(_) => unsafe {
+                                npz.add_array(name, &t.to_array_view_unchecked::<u8>())?
+                            },
+                            DatumType::QI32(_) => unsafe {
+                                npz.add_array(name, &t.to_array_view_unchecked::<i32>())?
+                            },
                             _ => warn!("Not writing {}, {:?}, unsupported type", name, t),
                         }
                     }
