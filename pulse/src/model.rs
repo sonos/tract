@@ -38,6 +38,22 @@ impl PulsedModelExt for PulsedModel {
                 .collect::<TractResult<TVec<i64>>>()?,
         );
         typed.properties.insert("pulse.delay".to_string(), delays.into_arc_tensor());
+        let input_axes = tensor1(
+            &&self
+                .output_outlets()?
+                .iter()
+                .map(|oo| Ok(self.outlet_fact(*oo)?.axis as _))
+                .collect::<TractResult<TVec<i64>>>()?,
+        );
+        typed.properties.insert("pulse.input_axes".to_string(), input_axes.into_arc_tensor());
+        let output_axes = tensor1(
+            &self
+                .output_outlets()?
+                .iter()
+                .map(|oo| Ok(self.outlet_fact(*oo)?.axis as _))
+                .collect::<TractResult<TVec<i64>>>()?,
+        );
+        typed.properties.insert("pulse.output_axes".to_string(), output_axes.into_arc_tensor());
         Ok(typed)
     }
 }

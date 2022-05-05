@@ -1,3 +1,4 @@
+use crate::ast::QuantFormat;
 use crate::internal::*;
 use crate::ser::*;
 use tract_core::ops;
@@ -129,50 +130,6 @@ fn data_from_ncwh(data_format: DataFormat, geo_rank: usize, mut wire: Arc<RValue
     wire
 }
 
-fn conv_or_deconv_fragment<'a>(
-    ast: &'a mut IntoAst,
-    data_format: DataFormat,
-    geo_rank: usize,
-    deconv: bool,
-) -> String {
-    let name = if deconv { "deconv" } else { "conv" };
-    if data_format == DataFormat::NCHW {
-        return name.into();
-    }
-    let fragment_name = format!("tract_{}_{:?}_{}D", name, data_format, geo_rank).to_lowercase();
-    if ast.fragments.contains_key(&fragment_name) {
-        return fragment_name;
-    }
-
-    let mut body = vec![];
-    let mut fragment = ast.framework.stdlib.iter().find(|f| f.decl.id == name).unwrap().clone();
-    fragment.decl.id = fragment_name.clone();
-
-    let mut wire = ident("input").into();
-    wire = data_into_ncwh(data_format, geo_rank, wire);
-
-    body.push(assignment("nchw", wire));
-    wire = invocation(
-        name,
-        &[ident("nchw").into(), ident("filter").into(), ident("bias").into()],
-        &*fragment
-            .decl
-            .parameters
-            .iter()
-            .skip(3)
-            .map(|f| (&*f.id, ident(&f.id)))
-            .collect::<Vec<_>>(),
-    );
-    body.push(assignment(name, wire));
-
-    wire = data_from_ncwh(data_format, geo_rank, ident(name).into());
-
-    body.push(assignment("output", wire));
-    fragment.body = Some(body);
-    ast.fragments.insert(fragment_name.clone(), fragment);
-    fragment_name
-}
-
 pub fn make_conv_named_args<'a>(
     node: &'a TypedNode,
     pool_spec: &'a PoolSpec,
@@ -224,22 +181,44 @@ pub fn conv_or_deconv(
     adjustments: Option<&[usize]>,
 ) -> TractResult<Option<Arc<RValue>>> {
     let mut wire = ast.mapping[&node.inputs[0]].clone();
-    let weigths =
-        ast.konst_variable(format!("{}_weigths", node.name), &weights.into_arc_tensor())?;
+    let data_format = pool_spec.data_format;
+    if !data_format.has_n() {
+        wire = invocation("unsqueeze", &[wire], &[("axes", ints(&[0]))]);
+    }
+    if data_format.c_is_last() {
+        let mut perm: TVec<usize> = (0..pool_spec.rank() + 1).collect();
+        perm.insert(1, pool_spec.rank() + 1);
+        wire = invocation("transpose", &[wire], &[("axes", ints(&perm))]);
+    }
     wire = ast.force_assign(format!("{}_input", node.name), &wire);
-    let conv_fragment =
-        conv_or_deconv_fragment(ast, pool_spec.data_format, pool_spec.rank(), deconv);
 
-    let mut inputs = tvec![wire, weigths];
+    let mut inputs = tvec![wire];
+    inputs.push(ast.konst_variable(format!("{}_weigths", node.name), &weights.into_arc_tensor())?);
     if let Some(bias) = bias.as_ref() {
-        let bias = ast.konst(format!("{}_bias", node.name), bias)?;
-        inputs.push(bias)
+        inputs.push(ast.konst(format!("{}_bias", node.name), bias)?);
     }
 
     let named_args = make_conv_named_args(node, pool_spec, group, deconv, adjustments)?;
 
-    wire = invocation(&conv_fragment, &inputs, &&named_args);
-    wire = ast.force_assign(&node.name, &wire);
+    let name = if deconv { "deconv" } else { "conv" };
+    wire = invocation(name, &inputs, &&named_args);
+    // need to force quantization storage as output code may miss it
+    let var_name = format!("{}_{}", node.name, name);
+    if let Some(qp) = QuantFormat::from_dt(node.outputs[0].fact.datum_type) {
+        ast.quantization.insert(var_name.clone(), qp);
+    }
+    wire = ast.force_assign(var_name, &wire);
+
+    if data_format.c_is_last() {
+        let mut perm: TVec<usize> = (0..pool_spec.rank() + 2).collect();
+        perm.remove(1);
+        perm.push(1);
+        wire = invocation("transpose", &[wire], &[("axes", ints(&perm))]);
+    }
+    if !data_format.has_n() {
+        wire = invocation("squeeze", &[wire], &[("axes", ints(&[0]))]);
+    }
+
     Ok(Some(wire))
 }
 
@@ -524,10 +503,7 @@ pub fn select(
     )))
 }
 
-pub fn leaky_relu(
-    ast: &mut IntoAst,
-    node: &TypedNode,
-) -> TractResult<Option<Arc<RValue>>> {
+pub fn leaky_relu(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
     let op = node.op_as::<ops::element_wise::ElementWiseOp>().context("Wrong op")?;
     let op = op.0.downcast_ref::<ops::nn::LeakyRelu>().context("Wrong op")?;
     Ok(Some(invocation(

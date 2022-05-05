@@ -702,10 +702,10 @@ impl Op for ConvUnary {
     fn info(&self) -> TractResult<Vec<String>> {
         let mut info = self.pool_spec.info();
         info.push(format!(
-            "Kernel shape, {:?}: {:?} (groups:{}))",
+            "Kernel {:?} (groups:{}), {:?}",
             self.kernel_fmt,
-            self.kernel.shape(),
-            self.group
+            self.group,
+            self.kernel
         ));
         if let Some(b) = &self.bias {
             info.push(format!("Bias: {:?}", b))

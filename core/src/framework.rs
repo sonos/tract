@@ -27,8 +27,8 @@ where
 
     /// Read a model from a reader
     fn model_for_read(&self, r: &mut dyn Read) -> TractResult<Model> {
-        let proto_model = self.proto_model_for_read(r)?;
-        self.model_for_proto_model(&proto_model)
+        let proto_model = self.proto_model_for_read(r).context("Reading proto model")?;
+        self.model_for_proto_model(&proto_model).context("Translating proto model to model")
     }
 
     /// Build a model from a filename.

@@ -24,6 +24,19 @@ pub enum QuantFormat {
 }
 
 impl QuantFormat {
+    pub fn from_dt(datum_type: DatumType) -> Option<QuantFormat> {
+        if let Some(params) = datum_type.qparams() {
+            let quant_format = QuantFormat::Linear {
+                params,
+                bits: 8 * datum_type.size_of() as i8,
+                signed: datum_type.is_signed(),
+            };
+            Some(quant_format)
+        } else {
+            None
+        }
+    }
+
     pub fn datum_type(&self) -> DatumType {
         match self {
             QuantFormat::Linear { params, bits, signed } => match (bits, signed) {
@@ -36,6 +49,7 @@ impl QuantFormat {
         }
     }
 }
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Document {
     pub version: NumericLiteral,

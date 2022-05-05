@@ -14,7 +14,7 @@ fn external_dump(_ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc
         &[],
         &[
             ("shape", ints(&op.fact.shape.as_concrete().unwrap())),
-            ("datum_type", string(format!("{:?}", op.fact.datum_type))),
+            ("datum_type", string(format!("{:?}", op.fact.datum_type.unquantized()))),
         ],
     )))
 }
@@ -28,7 +28,10 @@ fn external_load(
     invocation: &ResolvedInvocation,
 ) -> TractResult<TVec<OutletId>> {
     let shape: TVec<usize> = invocation.named_arg_as(builder, "shape")?;
-    let dt = invocation.named_arg_as::<String>(builder, "datum_type")?.parse()?;
+    let mut dt:DatumType = invocation.named_arg_as::<String>(builder, "datum_type")?.parse()?;
+    if let Some(Some(qdt)) = invocation.dt_from_quant_file.get(0) {
+        dt = *qdt;
+    }
     let fact = TypedFact::dt_shape(dt, &*shape);
     Ok(tvec!(builder.model.add_source("", fact)?))
 }

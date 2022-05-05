@@ -17,7 +17,7 @@ fn cast_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RVal
     Ok(Some(invocation(
         "tract_core_cast",
         &[input],
-        &[("to", string(format!("{:?}", op.to).to_lowercase()))],
+        &[("to", string(format!("{:?}", op.to.unquantized()).to_lowercase()))],
     )))
 }
 
@@ -28,9 +28,11 @@ fn cast_load(
     let input = invocation.named_arg_as(builder, "input")?;
     let invocation_dt = invocation.dt_from_quant_file.get(0).copied().flatten();
     let to = if let Ok(s) = invocation.named_arg_as::<String>(builder, "to") {
-        let dt = s.parse()?;
-        if invocation_dt.is_some() && dt != invocation_dt.unwrap() {
-            bail!("Mismatched cast: expected {:?}, got {:?}", invocation_dt.unwrap(), dt)
+        let dt: DatumType = s.parse()?;
+        if let Some(invocation_dt) = invocation_dt {
+            if invocation_dt.unquantized() != dt.unquantized() {
+                bail!("Mismatched cast: graph.quant {:?}, got graph.nnef {:?}", invocation_dt, dt)
+            }
         }
         dt
     } else {

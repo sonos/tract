@@ -2,7 +2,7 @@ use crate::ast::quant::write_quant_format;
 use crate::ast::{ProtoModel, QuantFormat};
 use crate::internal::*;
 use std::io::Read;
-#[cfg(target_family="unix")]
+#[cfg(target_family = "unix")]
 use std::os::unix::prelude::OsStrExt;
 use std::path::Path;
 
@@ -43,10 +43,12 @@ impl Nnef {
     }
 
     pub fn write_to_tar<W: std::io::Write>(&self, model: &TypedModel, w: W) -> TractResult<W> {
-        let proto_model = crate::ser::to_proto_model(&self, model)?;
+        let proto_model = crate::ser::to_proto_model(&self, model).context("Translating model to proto_model")?;
         let mut ar = tar::Builder::new(w);
         let mut graph_data = vec![];
-        crate::ast::dump::Dumper::new(&mut graph_data).document(&proto_model.doc)?;
+        crate::ast::dump::Dumper::new(&mut graph_data)
+            .document(&proto_model.doc)
+            .context("Serializing graph.nnef")?;
         let now =
             std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap();
         let mut header = tar::Header::new_gnu();
@@ -61,7 +63,8 @@ impl Nnef {
             let mut quant_data = vec![];
 
             for (name, format) in quantization.into_iter() {
-                write_quant_format(&mut quant_data, name, format)?;
+                write_quant_format(&mut quant_data, name, format)
+                    .context("Serializing graph.quant")?;
             }
 
             header.set_path("graph.quant")?;
@@ -76,7 +79,8 @@ impl Nnef {
             let label = label.to_string() + ".dat";
             let filename = std::path::Path::new(&label);
             let mut data = vec![];
-            crate::tensors::write_tensor(&mut data, t)?;
+            crate::tensors::write_tensor(&mut data, t)
+                .with_context(|| format!("Serializing tensor {:?}: {:?}", filename, t))?;
 
             let mut header = tar::Header::new_gnu();
             header.set_size(data.len() as u64);
@@ -198,9 +202,9 @@ fn read_stream<R: std::io::Read>(
     quantization: &mut Option<HashMap<String, QuantFormat>>,
 ) -> TractResult<()> {
     // ignore path with any component starting with "." (because OSX's tar is weird)
-    #[cfg(target_family="unix")]
+    #[cfg(target_family = "unix")]
     if path.components().any(|name| name.as_os_str().as_bytes().get(0) == Some(&b'.')) {
-        return Ok(())
+        return Ok(());
     }
     if path.file_name().map(|n| n == "graph.nnef").unwrap_or(false) {
         let mut t = String::new();
