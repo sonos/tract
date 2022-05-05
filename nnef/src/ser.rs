@@ -164,6 +164,7 @@ impl<'a> IntoAst<'a> {
             .model
             .properties
             .iter()
+            .sorted_by_key(|(k,_v)| k.clone())
             .map(|(k, v)| Ok(tuple_2(string(k), self.konst(k, v)?.as_ref().clone())))
             .collect::<TractResult<Vec<_>>>()?;
         properties.push(tuple_2(

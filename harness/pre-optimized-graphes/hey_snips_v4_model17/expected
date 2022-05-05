@@ -6,7 +6,7 @@ extension tract_registry tract_pulse;
 fragment tract_core_properties(
 ) -> (properties: (string, tensor<scalar>)[])
 {
-  properties = [("pulse.delay", tract_core_cast(182, to = "i64")), ("tract_nnef_format_version", "alpha1")];
+  properties = [("pulse.delay", tract_core_cast(182, to = "i64")), ("pulse.input_axes", tract_core_cast(0, to = "i64")), ("pulse.output_axes", tract_core_cast(0, to = "i64")), ("tract_nnef_format_version", "alpha1")];
 }
 
 graph wavenet_2( input_node ) -> ( post_proc_2_1x1_conv_conv1d_convolution_Conv2D_matmul ) {
