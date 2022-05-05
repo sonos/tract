@@ -15,6 +15,7 @@ mod array;
 mod cast;
 mod cumsum;
 mod d2s;
+mod einsum;
 mod logic;
 mod math;
 mod ml;
@@ -27,6 +28,7 @@ mod s2d;
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Cast", cast::cast);
     reg.insert("Constant", konst);
+    reg.insert("Einsum", einsum::einsum);
     reg.insert("Identity", |_, _| Ok((Box::new(ops::identity::Identity::default()), vec![])));
     reg.insert("Resize", resize::resize);
     array::register_all_ops(reg);
