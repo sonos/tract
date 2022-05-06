@@ -693,5 +693,10 @@ pub fn softmax(
 ) -> TractResult<TVec<OutletId>> {
     let x = invocation.named_arg_as(builder, "x")?;
     let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
-    builder.wire(ops::nn::Softmax { axes }, &[x])
+
+    let input_fact = builder.model.outlet_fact(x)?.clone();
+    let output_dt =
+        invocation.dt_from_quant_file.get(0).cloned().flatten().unwrap_or(input_fact.datum_type);
+
+    builder.wire(ops::nn::Softmax { axes, output_dt }, &[x])
 }

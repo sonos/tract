@@ -6,7 +6,7 @@ use num_traits::PrimInt;
 // https://github.com/tensorflow/tensorflow/blob/8c6f391a2282684a25cbfec7687bd5d35261a209/tensorflow/lite/kernels/internal/common.h#L765
 pub(crate) fn get_reciprocal(x: i32, fixed_point: usize) -> (i32, usize) {
     assert!(fixed_point > 0);
-    assert!(x as f32 / 2_f32.powi((31 - fixed_point) as i32) > 1.0);
+    //assert!(x as f32 / 2_f32.powi((31 - fixed_point) as i32) > 1.0);
     // Sounds like we compute the smallest amount of integer bits needed to represent
     // the integer part of the number.
     let headroom_plus_one = (x as u32).leading_zeros() as usize;
@@ -153,9 +153,9 @@ pub(crate) fn exp_on_interval_between_negative_one_quarter_and_0_excl(a: i32) ->
 pub fn rounding_divide_by_pot(x: i32, exponent: i32) -> i32 {
     // Exponent is a bit shift so it should be in [0,31[
     assert!(exponent >= 0);
-    assert!(exponent <= 32);
+    assert!(exponent <= 31);
 
-    let mask = (1 << exponent) - 1;
+    let mask = ((1_i64 << exponent) - 1) as i32;
     let remainder = x & mask;
 
     // Basic division
