@@ -108,7 +108,6 @@ fn main() -> tract_core::anyhow::Result<()> {
         .arg(arg!(--recursive "Apply to sub graphes"))
         .arg(arg!(--proto "Keep proto model around after parse"))
         .arg(arg!(--determinize "Enforce a seed in random operator"))
-        .arg(arg!(--multiturn "Switch run and compare to multiturn, session state preserving"))
         .arg(arg!(--partial "Before analyse, eliminate dead branches"))
 
         .arg(arg!(--pass [STAGE] "Pass to stop preprocessing after.").possible_values(STAGES))

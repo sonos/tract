@@ -108,7 +108,6 @@ pub struct Parameters {
     pub assertions: Assertions,
 
     pub machine_friendly: bool,
-    pub multiturn: bool,
 }
 
 #[cfg(feature = "tf")]
@@ -467,7 +466,8 @@ impl Parameters {
                     }
                 }
                 let input_outlets = raw_model.input_outlets()?.to_vec();
-                let last_turn = if npz.names().iter().any(|npy| npy.contains(&"/turn_".to_string())) {
+                let multiturn = npz.names()?.iter().any(|npy| npy.starts_with("turn_0/"));
+                let last_turn = if multiturn {
                     npz.names()?
                         .iter()
                         .map(|name| {
@@ -862,7 +862,6 @@ impl Parameters {
                 input_values,
                 assertions,
                 machine_friendly: matches.is_present("machine-friendly"),
-                multiturn: matches.is_present("multiturn"),
             }
         })
     }
