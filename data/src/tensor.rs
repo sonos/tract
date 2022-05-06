@@ -243,7 +243,7 @@ impl Tensor {
         shape: &[usize],
         alignment: usize,
     ) -> anyhow::Result<Tensor> {
-        if dt.zp_scale().0 != 0 {
+        if dt.is_quantized() {
             unsafe {
                 let mut t = Tensor::uninitialized_dt(dt, shape)?;
                 let zp = dt.zp_scale().0;
