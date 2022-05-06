@@ -467,7 +467,7 @@ impl Parameters {
                     }
                 }
                 let input_outlets = raw_model.input_outlets()?.to_vec();
-                let last_turn = if matches.is_present("multiturn") {
+                let last_turn = if npz.names().iter().any(|npy| npy.contains(&"/turn_".to_string())) {
                     npz.names()?
                         .iter()
                         .map(|name| {

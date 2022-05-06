@@ -757,12 +757,14 @@ pub(crate) fn clamp_and_cast_to(
     }
     let rank = model.outlet_fact(wire)?.rank();
     let inf = dt
+        .unquantized()
         .min_value()
         .cast_to_dt(DatumType::I32)?
         .into_owned()
         .broadcast_into_rank(rank)?
         .into_arc_tensor();
     let sup = dt
+        .unquantized()
         .max_value()
         .cast_to_dt(DatumType::I32)?
         .into_owned()
