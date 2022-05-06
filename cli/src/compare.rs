@@ -293,6 +293,21 @@ where
                             .outlet_label((node.id, ix).into())
                             .and_then(get_value)
                             .or_else(|| get_value(&node.name))
+                            .map(|t| {
+                                // big ugly, doing this for the npz case, where model is not
+                                // exploited at all, so quantization information is erased.
+                                let needed_type =
+                                    node.outputs[ix].fact.to_typed_fact().unwrap().datum_type;
+                                if needed_type != t.datum_type()
+                                    && needed_type.unquantized() == t.datum_type().unquantized()
+                                {
+                                    let mut t = t.into_tensor();
+                                    unsafe { t.set_datum_type(needed_type) };
+                                    t.into_arc_tensor()
+                                } else {
+                                    t
+                                }
+                            })
                     })
                     .collect();
                 let mut tested = None;
