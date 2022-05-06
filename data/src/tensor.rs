@@ -160,8 +160,9 @@ impl Tensor {
         {
             if dt == DatumType::F32 {
                 tensor.as_slice_mut_unchecked::<f32>().iter_mut().for_each(|f| *f = std::f32::NAN)
-            } else if dt == DatumType::I32 {
-                tensor.as_slice_mut_unchecked::<i32>().iter_mut().for_each(|f| *f = std::i32::MIN)
+            } else {
+                // safe, non copy types have been dealts with
+                tensor.as_bytes_mut().iter_mut().for_each(|x| *x = (-1i8) as u8);
             }
         }
         tensor.update_strides_and_len();
