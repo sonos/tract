@@ -37,12 +37,19 @@ impl Expansion for Softmax {
         target: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let axis =  if self.axis < 0 {
+        let axis = if self.axis < 0 {
             (target.outlet_fact(inputs[0])?.rank() as isize + self.axis) as usize
         } else {
             self.axis as usize
         };
 
-        target.wire_node(name, tract_core::ops::nn::Softmax {axes: tvec![axis]}, inputs)
+        // Quantization parameters are not specified in ONNX (v13) so we set this value as default
+        // in order to maximize the precision of the output.
+        let output_dt = DatumType::QU8(QParams::ZpScale { zero_point: 0, scale: 0.0078125 });
+        target.wire_node(
+            name,
+            tract_core::ops::nn::Softmax { axes: tvec![axis], output_dt },
+            inputs,
+        )
     }
 }
