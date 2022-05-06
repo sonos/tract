@@ -60,8 +60,6 @@ pub const STAGES: &'static [&'static str] = &[
     "incorporate",
     "type",
     "declutter",
-    "concretize-stream-dim",
-    "concretize-stream-dim-declutter",
     "pulse",
     "pulse-to-type",
     "pulse-declutter",
@@ -123,7 +121,6 @@ fn main() -> tract_core::anyhow::Result<()> {
 
         .arg(arg!(-O --optimize "Optimize before running"))
         .arg(arg!(--pulse [PULSE] "Translate to pulse network"))
-        .arg(arg!(--"concretize-stream-dim" [VALUE] "Replace streaming dim by a concrete value"))
 
         .arg(arg!(--"machine-friendly" "Machine friendly output"))
 
