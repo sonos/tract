@@ -5,13 +5,17 @@ use tract_hir::internal::*;
 #[cfg(feature = "pulse")]
 use tract_pulse::internal::*;
 
-pub fn handle(params: &Parameters, options: &clap::ArgMatches) -> CliResult<()> {
-    let dump = options.is_present("dump");
+pub fn handle(
+    params: &Parameters,
+    matches: &clap::ArgMatches,
+    sub_matches: &clap::ArgMatches,
+) -> CliResult<()> {
+    let dump = sub_matches.is_present("dump");
     #[cfg(feature = "pulse")]
     let outputs = if let Some(pulse) = params.tract_model.downcast_ref::<PulsedModel>() {
         run_pulse_t(pulse, &params)?
     } else {
-        dispatch_model!(&*params.tract_model, |m| run_regular(m, &params, options))?
+        dispatch_model!(&*params.tract_model, |m| run_regular(m, &params, matches, sub_matches))?
     };
 
     #[cfg(not(feature = "pulse"))]
@@ -23,7 +27,7 @@ pub fn handle(params: &Parameters, options: &clap::ArgMatches) -> CliResult<()> 
         }
     }
 
-    if let Some(count) = options.value_of("assert-output-count") {
+    if let Some(count) = sub_matches.value_of("assert-output-count") {
         let count = count.parse::<usize>()?;
         if count != outputs.len() {
             bail!(
@@ -57,11 +61,12 @@ pub fn handle(params: &Parameters, options: &clap::ArgMatches) -> CliResult<()> 
 fn run_regular(
     tract: &dyn Model,
     params: &Parameters,
-    options: &clap::ArgMatches,
+    matches: &clap::ArgMatches,
+    sub_matches: &clap::ArgMatches,
 ) -> CliResult<TVec<Arc<Tensor>>> {
-    let steps = options.is_present("steps");
-    let assert_sane_floats = options.is_present("assert-sane-floats");
-    let mut npz = if let Some(npz) = options.value_of("save-steps") {
+    let steps = sub_matches.is_present("steps");
+    let assert_sane_floats = sub_matches.is_present("assert-sane-floats");
+    let mut npz = if let Some(npz) = sub_matches.value_of("save-steps") {
         let npz = std::fs::File::create(npz).with_context(|| format!("Creating {}", npz))?;
         Some(ndarray_npy::NpzWriter::new_compressed(npz))
     } else {
@@ -70,7 +75,7 @@ fn run_regular(
     dispatch_model!(tract, |m| {
         let plan = SimplePlan::new(m)?;
         let mut state = SimpleState::new(plan)?;
-        if let Some(set) = options.values_of("set") {
+        if let Some(set) = sub_matches.values_of("set") {
             for set in set {
                 let mut tokens = set.split("=");
                 let sym = tokens.next().context("--set expect S=12 form")?;
@@ -81,8 +86,9 @@ fn run_regular(
                     state.session_state.resolved_symbols.with(sym, value);
             }
         }
+        let allow_random_input = matches.is_present("allow-random-input");
         let mut results = tvec!();
-        let inputs = crate::tensor::retrieve_or_make_inputs(tract, params)?;
+        let inputs = crate::tensor::retrieve_or_make_inputs(tract, params, allow_random_input)?;
         let multiturn = inputs.len() > 1;
         for (turn, inputs) in inputs.into_iter().enumerate() {
             results = state.run_plan_with_eval(inputs, |session_state, state, node, input| {

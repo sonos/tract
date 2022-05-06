@@ -23,7 +23,8 @@ pub fn handle(
             .tract_model
             .downcast_ref::<TypedModel>()
             .context("Can only profile typed models")?;
-        crate::profile::profile(model, bench_limits, &mut annotations, params)?;
+        let allow_random_input = matches.is_present("allow-random-input");
+        crate::profile::profile(model, bench_limits, &mut annotations, params, allow_random_input)?;
     }
 
     if let Some(asserts) = &params.assertions.assert_output_facts {

@@ -51,11 +51,11 @@ net_bench() {
     pb=$2
     shift 2
 
-    $TRACT "$@" --machine-friendly -O bench $BENCH_OPTS > tract.out
+    $TRACT "$@" --machine-friendly -O --allow-random-input bench $BENCH_OPTS > tract.out
     v=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
     echo net.$net.evaltime.$pb $v >> metrics
 
-    $TRACT "$@" --readings --readings-heartbeat 1000 --machine-friendly -O bench $BENCH_OPTS > tract.out
+    $TRACT "$@" --readings --readings-heartbeat 1000 --machine-friendly --allow-random-input -O bench $BENCH_OPTS > tract.out
 
     for stage in model_ready before_optimize
     do

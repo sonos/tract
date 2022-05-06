@@ -290,6 +290,7 @@ fn warn_once(msg: String) {
 pub fn retrieve_or_make_inputs(
     tract: &dyn Model,
     params: &Parameters,
+    allow_random: bool,
 ) -> CliResult<Vec<TVec<Tensor>>> {
     let mut tmp: TVec<Vec<Tensor>> = tvec![];
     for input in tract.input_outlets() {
@@ -334,9 +335,12 @@ pub fn retrieve_or_make_inputs(
             } else {
                 bail!("For input {}, can not reconcile model input fact {:?} with provided input {:?}", name, fact, value[0]);
             };
-        } else {
+        } else if allow_random {
+            let fact = tract.outlet_typedfact(*input)?;
             warn_once(format!("Using random input for input called {:?}: {:?}", name, fact));
             tmp.push(vec![crate::tensor::tensor_for_fact(&fact, None)?]);
+        } else {
+            bail!("Unmatched tensor {}. Fix the input or use \"--allow-random-input\" if this was intended", name);
         }
     }
     Ok((0..tmp[0].len()).map(|turn| tmp.iter().map(|t| t[turn].clone()).collect()).collect())

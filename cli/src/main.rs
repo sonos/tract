@@ -86,6 +86,7 @@ fn main() -> tract_core::anyhow::Result<()> {
 
         .arg(arg!(--"const-input" [const_input] ... "Treat input as a Const (by name), retaining its value."))
         .arg(arg!(--"input-bundle" [input_bundle] "Path to an input container (.npz)"))
+        .arg(arg!(--"allow-random-input" "WIll use random generated input"))
 
         .arg(arg!(--"kaldi-adjust-final-offset" [frames] "Adjust value of final offset in network (for reproducibility)"))
         .arg(arg!(--"kaldi-downsample" [frames] "Add a subsampling to output on axis 0"))
@@ -439,19 +440,19 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
     match matches.subcommand() {
         Some(("bench", m)) => {
             need_optimisations = true;
-            bench::handle(&params, &BenchLimits::from_clap(&m)?, probe)
+            bench::handle(&params, &matches, &BenchLimits::from_clap(&m)?, probe)
         }
 
         Some(("criterion", _)) => {
             need_optimisations = true;
-            bench::criterion(&params)
+            bench::criterion(&params, &matches)
         }
 
         Some(("compare", m)) => {
-            compare::handle(&mut params, &m, display_params_from_clap(&matches, m)?)
+            compare::handle(&mut params, &matches, &m, display_params_from_clap(&matches, m)?)
         }
 
-        Some(("run", m)) => run::handle(&params, m),
+        Some(("run", m)) => run::handle(&params, &matches, m),
 
         #[cfg(feature = "pulse")]
         Some(("stream-check", m)) => {
