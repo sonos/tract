@@ -20,6 +20,7 @@ pub fn profile(
     bench_limits: &BenchLimits,
     dg: &mut Annotations,
     params: &Parameters,
+    allow_random: bool,
 ) -> CliResult<()> {
     info!("Running entire network");
     let plan = SimplePlan::new(model)?;
@@ -27,7 +28,7 @@ pub fn profile(
     let mut iters = 0usize;
     let start = Instant::now();
     while iters < bench_limits.max_iters && start.elapsed() < bench_limits.max_time {
-        let input = crate::tensor::retrieve_or_make_inputs(model, params)?;
+        let input = crate::tensor::retrieve_or_make_inputs(model, params, allow_random)?;
         let _ = state.run_plan_with_eval(input[0].clone(), |session_state, state, node, input| {
             let start = Instant::now();
             let r = tract_core::plan::eval(session_state, state, node, input);

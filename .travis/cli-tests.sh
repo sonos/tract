@@ -88,35 +88,43 @@ cd $CACHEDIR
 )
 
 ./target/release/tract $CACHEDIR/squeezenet.onnx \
+    --allow-random-input \
     run -q --assert-output-fact 1,1000,1,1,f32
 
 ./target/release/tract \
     $CACHEDIR/inception_v3_2016_08_28_frozen.pb \
+    --allow-random-input \
     -i 1,299,299,3,f32 \
     run -q --assert-output-fact 1,1001,f32
 
 ./target/release/tract \
     $CACHEDIR/inception_v3_2016_08_28_frozen.pb \
+    --allow-random-input \
     -i 1,299,299,3,f32 -O \
     run -q --assert-output-fact 1,1001,f32
 
 ./target/release/tract $CACHEDIR/ARM-ML-KWS-CNN-M.pb \
+    --allow-random-input \
     -O -i 49,10,f32 --partial \
     --input-node Mfcc run -q
 
 ./target/release/tract $CACHEDIR/mdl-en-2019-Q3-librispeech.onnx \
+    --allow-random-input \
     -O -i S,40,f32 --output-node output --pulse 24 \
     run -q
 
 ./target/release/tract $CACHEDIR/mobilenet_v1_1.0_224_frozen.pb \
+    --allow-random-input \
     -O -i 1,224,224,3,f32 \
     run -q --assert-output-fact 1,1001,f32
 
 ./target/release/tract $CACHEDIR/mobilenet_v2_1.4_224_frozen.pb \
+    --allow-random-input \
     -O -i 1,224,224,3,f32 \
     run -q --assert-output-fact 1,1001,f32
 
 ./target/release/tract $CACHEDIR/GRU128KeywordSpotter-v2-10epochs.onnx \
+    --allow-random-input \
     -O run -q --assert-output-fact 1,3,f32
 
 ./target/release/tract $CACHEDIR/hey_snips_v4_model17.pb \
@@ -131,6 +139,7 @@ cd $CACHEDIR
     -f kaldi --output-node output \
     --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
     --input-bundle $CACHEDIR/en_libri_real/io.npz \
+    --allow-random-input \
     run \
     --assert-output-bundle $CACHEDIR/en_libri_real/io.npz
 
@@ -138,6 +147,7 @@ cd $CACHEDIR
     -f kaldi --output-node output \
     --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
     --input-bundle $CACHEDIR/en_libri_real/io.npz \
+    --allow-random-input \
     run \
     --assert-output-bundle $CACHEDIR/en_libri_real/io.npz
 
@@ -145,12 +155,14 @@ cd $CACHEDIR
     --output-node output \
     --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
     --input-bundle $CACHEDIR/en_libri_real/io.npz \
+    --allow-random-input \
     run \
     --assert-output-bundle $CACHEDIR/en_libri_real/io.npz
 
 ./target/release/tract $CACHEDIR/inceptionv1_quant.nnef.tar.gz \
     --nnef-tract-core \
     --input-bundle $CACHEDIR/inceptionv1_quant.io.npz \
+    --allow-random-input \
     run \
     --assert-output-bundle $CACHEDIR/inceptionv1_quant.io.npz \
 
