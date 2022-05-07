@@ -489,7 +489,7 @@ impl Parameters {
                     let mut values = vec![];
                     let name = raw_model.node(input.node).name.clone();
                     for turn in 0..=last_turn {
-                        let filename = if matches.is_present("multiturn") {
+                        let filename = if multiturn {
                             format!("turn_{}/{}", turn, name)
                         } else {
                             name.to_string()
