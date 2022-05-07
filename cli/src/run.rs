@@ -83,7 +83,7 @@ fn run_regular(
         }
         let mut results = tvec!();
         let inputs = crate::tensor::retrieve_or_make_inputs(tract, params)?;
-        let multiturn = params.multiturn || inputs.len() > 1;
+        let multiturn = inputs.len() > 1;
         for (turn, inputs) in inputs.into_iter().enumerate() {
             results = state.run_plan_with_eval(inputs, |session_state, state, node, input| {
                 if steps {

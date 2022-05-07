@@ -1,9 +1,0 @@
-version 1.0;
-
-extension tract_pulse_streaming_symbol;
-
-graph streaming(input) -> (output)
-{
-    input = external<scalar>(shape = [1,S,40]);
-    output = input;
-}

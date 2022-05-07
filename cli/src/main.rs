@@ -60,8 +60,6 @@ pub const STAGES: &'static [&'static str] = &[
     "incorporate",
     "type",
     "declutter",
-    "concretize-stream-dim",
-    "concretize-stream-dim-declutter",
     "pulse",
     "pulse-to-type",
     "pulse-declutter",
@@ -108,7 +106,6 @@ fn main() -> tract_core::anyhow::Result<()> {
         .arg(arg!(--recursive "Apply to sub graphes"))
         .arg(arg!(--proto "Keep proto model around after parse"))
         .arg(arg!(--determinize "Enforce a seed in random operator"))
-        .arg(arg!(--multiturn "Switch run and compare to multiturn, session state preserving"))
         .arg(arg!(--partial "Before analyse, eliminate dead branches"))
 
         .arg(arg!(--pass [STAGE] "Pass to stop preprocessing after.").possible_values(STAGES))
@@ -124,7 +121,6 @@ fn main() -> tract_core::anyhow::Result<()> {
 
         .arg(arg!(-O --optimize "Optimize before running"))
         .arg(arg!(--pulse [PULSE] "Translate to pulse network"))
-        .arg(arg!(--"concretize-stream-dim" [VALUE] "Replace streaming dim by a concrete value"))
 
         .arg(arg!(--"machine-friendly" "Machine friendly output"))
 

@@ -108,7 +108,6 @@ pub struct Parameters {
     pub assertions: Assertions,
 
     pub machine_friendly: bool,
-    pub multiturn: bool,
 }
 
 #[cfg(feature = "tf")]
@@ -467,7 +466,8 @@ impl Parameters {
                     }
                 }
                 let input_outlets = raw_model.input_outlets()?.to_vec();
-                let last_turn = if npz.names().iter().any(|npy| npy.contains(&"/turn_".to_string())) {
+                let multiturn = npz.names()?.iter().any(|npy| npy.starts_with("turn_0/"));
+                let last_turn = if multiturn {
                     npz.names()?
                         .iter()
                         .map(|name| {
@@ -581,8 +581,6 @@ impl Parameters {
         let pulse: Option<usize> =
             matches.value_of("pulse").map(|s| s.parse::<usize>()).transpose()?;
         #[cfg(feature = "pulse")]
-        let concretize_stream_dim: Option<usize> =
-            matches.value_of("concretize-stream-dim").map(|s| s.parse()).transpose()?;
 
         let stop_at = matches.value_of("pass").unwrap_or(if matches.is_present("optimize") {
             "optimize"
@@ -674,10 +672,7 @@ impl Parameters {
         });
         #[cfg(feature = "pulse")]
         {
-            if let Some(dim) = concretize_stream_dim {
-                stage!("concretize-stream-dim", typed_model -> typed_model, |m:TypedModel| Ok(m.concretize_dims(&SymbolValues::default().with(stream_symbol(), dim as _))?));
-                stage!("concretize-stream-dim-declutter", typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
-            } else if let Some(pulse) = pulse {
+            if let Some(pulse) = pulse {
                 stage!("pulse", typed_model -> pulsed_model, |m:TypedModel| Ok(PulsedModel::new(&m, pulse)?));
                 stage!("pulse-to-type", pulsed_model -> typed_model, |m:PulsedModel| Ok(m.into_typed()?));
                 stage!("pulse-declutter", typed_model -> typed_model, |m:TypedModel| Ok(m.into_decluttered()?));
@@ -862,7 +857,6 @@ impl Parameters {
                 input_values,
                 assertions,
                 machine_friendly: matches.is_present("machine-friendly"),
-                multiturn: matches.is_present("multiturn"),
             }
         })
     }

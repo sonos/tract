@@ -127,9 +127,10 @@ pub fn handle_npz(
     use tensor::for_npz;
     let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(npz)?)?;
     let mut values: HashMap<String, Vec<CliResult<Arc<Tensor>>>> = HashMap::new();
+    let multiturn = npz.names()?.iter().any(|n| n.starts_with("turn_0/"));
     for name in npz.names()? {
         if let Ok(value) = for_npz(&mut npz, &name) {
-            if params.multiturn {
+            if multiturn {
                 let name = name
                     .split("/")
                     .nth(1)
