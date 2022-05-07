@@ -8,8 +8,8 @@ pub fn pad(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     match ctx.onnx_operator_set_version {
-        2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 => pad_2(ctx, node),
-        v if v >= 10 => pad_11(ctx, node),
+        2..=10 => pad_2(ctx, node),
+        11.. => pad_11(ctx, node),
         _ => bail!("Unsupported operator set for Pad operator"),
     }
 }
@@ -83,15 +83,13 @@ impl Expansion for Pad11 {
         s.equals(&inputs[1].rank, 1)?;
         s.equals(&inputs[1].shape[0], 2 * inputs[0].rank.bex().to_dim())?;
         s.given(&inputs[1].value, move |s, pads| {
-            let pads = pads.as_slice::<i64>()?;
+            let pads = pads.cast_to::<TDim>()?;
+            let pads = pads.as_slice::<TDim>()?;
             let rank = pads.len() / 2;
-            let pads: Vec<_> =
-                (0..rank).map(|ax| (pads[ax] as usize, pads[ax + rank] as usize)).collect();
             for i in 0..rank {
-                s.equals(
-                    &outputs[0].shape[i],
-                    inputs[0].shape[i].bex() + pads[i].0.to_dim() + pads[i].1.to_dim(),
-                )?;
+                let left = pads[i].clone();
+                let right = pads[i + rank].clone();
+                s.equals(&outputs[0].shape[i], inputs[0].shape[i].bex() + left + right)?;
             }
             Ok(())
         })?;
