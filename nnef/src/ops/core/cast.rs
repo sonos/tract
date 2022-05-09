@@ -32,9 +32,12 @@ fn cast_load(
         if let Some(invocation_dt) = invocation_dt {
             if invocation_dt.unquantized() != dt.unquantized() {
                 bail!("Mismatched cast: graph.quant {:?}, got graph.nnef {:?}", invocation_dt, dt)
+            } else {
+                invocation_dt
             }
+        } else {
+            dt
         }
-        dt
     } else {
         invocation_dt.ok_or(format_err!("No datum type for cast"))?
     };
