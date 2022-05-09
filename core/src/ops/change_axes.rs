@@ -519,7 +519,8 @@ impl TypedOp for AxisOp {
         outputs: &[&TypedFact],
     ) -> TractResult<Invariants> {
         let mut axes = vec![];
-        for i in 0..outputs[0].rank() {
+        let is_rm = matches!(self, AxisOp::Rm(_));
+        for i in 0..(outputs[0].rank() + is_rm as usize) {
             if let Some(out) = self.transform_axis(i) {
                 axes.push(AxisInfo {
                     inputs: tvec!(Some(i)),
