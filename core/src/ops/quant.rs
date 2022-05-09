@@ -349,25 +349,53 @@ impl crate::ops::binary::BinMiniOp for Scale {
             return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?));
         } else if a.is_uniform() && node.outputs[0].fact.datum_type == DatumType::I32 {
             let factor = *a.to_scalar::<f32>()?;
-            if factor <= 0.0 || factor >= 0.5 {
+            if let Some((int_multi, shift)) = convert_scale_to_mult_shift(factor) {
+                let op = ElementWiseOp(Box::new(QScale {
+                    mult: int_multi,
+                    shift,
+                    policy: RoundingPolicy::Even,
+                }));
+                let patch = TypedModelPatch::replace_single_op(model, node, &*node.inputs, op)?;
+
+                return Ok(Some(patch));
+            } else {
                 return Ok(None);
             }
-            let factor_bits = factor.to_bits();
-            let current_exponent = factor_bits >> 23;
-            let bumped_multi = f32::from_bits(factor_bits & 0x007fffff | 0x3f000000);
-            let int_multi = (bumped_multi * (1i64 << 31) as f32).round() as i32;
-            let shift = 126usize - current_exponent as usize;
-            let op = ElementWiseOp(Box::new(QScale {
-                mult: int_multi,
-                shift,
-                policy: RoundingPolicy::Even,
-            }));
-            let patch = TypedModelPatch::replace_single_op(model, node, &*node.inputs, op)?;
-
-            return Ok(Some(patch));
         }
         Ok(None)
     }
+}
+
+
+#[inline]
+// This function convert a scale (actually a fraction of two integers Q/D)
+// into an integer multiplier and a shift (the multiplier being 1/D in Q1_30).
+pub(crate) fn convert_scale_to_mult_shift(scale: f32) -> Option<(i32, isize)> {
+    if scale <= 0.0 {
+        return None;
+    }
+
+    // Convert f32 to bits representation with the following pattern
+    // Bit |  31  |  30-23   |   22-0    |
+    //     | Sign | Exponent |  Fraction |
+    let scale_bits = scale.to_bits();
+
+    // Get actual value of the exponent
+    let current_exponent = scale_bits >> 23;
+
+    // Extract fractional part of the float with:
+    // - bits & 0x007fffff
+    // Replace exponent value to 127 (set actual value to 127-127=0)
+    // - bits | 0x3f800000
+    let bumped_multi = f32::from_bits(scale_bits & 0x007fffff | 0x3f800000);
+
+    // Multiply bump_mutli by 2^30 and round the result to consider it as a Q1_30
+    let int_multi = (bumped_multi * (1i32 << 30) as f32).round() as i32;
+
+    // Compute the actual value of the shift
+    let shift = 127 - current_exponent as isize;
+
+    Some((int_multi, shift))
 }
 
 #[inline]

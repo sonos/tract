@@ -13,7 +13,7 @@ pub enum ProtoFusedSpec {
     BinPerCol(AttrOrInput, BinOp),
     AddRowColProducts(AttrOrInput, AttrOrInput),
     AddUnicast(AttrOrInput),
-    QScale(usize, RoundingPolicy, i32),
+    QScale(isize, RoundingPolicy, i32),
     Store,
 }
 
