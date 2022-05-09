@@ -41,9 +41,9 @@ fn declutter_unary_add(
 }
 
 bin_to_super_type!(sub, Sub,
-                   declutter_unary: declutter_unary_sub, flip:flip_sub, linalg:Sub,
-                   q: [i8, u8, i32, i32] => sub_quant;
-                   [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() - b);
+    declutter_unary: declutter_unary_sub, flip:flip_sub, linalg:Sub,
+    q: [i8, u8, i32, i32] => sub_quant;
+    [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() - b);
 
 fn sub_quant<T>(c: &mut T, a: &T, b: &T, zp: i32, _: f32)
 where
@@ -146,37 +146,37 @@ out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
 );
 
 bin_to_super_type!(rem, Rem,
-                                                         eval_override: |a:Arc<Tensor>, b: Arc<Tensor>| -> TractResult<Tensor> {
-                                                             if
-                                                                 a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
-                                                                     let a = a.to_array_view::<TDim>()?;
-                                                                     let b = b.cast_to::<i32>()?;
-                                                                     let b = b.to_array_view::<i32>()?;
-                                                                     let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()]).context("no broadcast solution")?;
-                                                                     unsafe {
-                                                                         let mut c = Tensor::uninitialized_dt(DatumType::TDim, &c_shape)?;
-                                                                         let view = c.to_array_view_mut::<TDim>()?;
-                                                                         crate::ndarray::Zip::from(view).and_broadcast(a).and_broadcast(b).for_each(|c,a,b| *c = a.clone() % *b);
-                                                                         Ok(c)
-                                                                     }
-                                                                 } else {
-                                                                     Rem.generic_eval(a,b)
-                                                                 }
-                                                         },
-                                                         out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
-                                                             if c.datum_type() == TDim::datum_type() &&
-                                                                 a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
-                                                                     let a = a.to_array_view::<TDim>()?;
-                                                                     let b = b.cast_to::<i32>()?;
-                                                                     let b = b.to_array_view::<i32>()?;
-                                                                     let c = c.to_array_view_mut::<TDim>()?;
-                                                                     crate::ndarray::Zip::from(c).and_broadcast(a).and_broadcast(b).for_each(|c,a,b| *c = a.clone() % *b);
-                                                                     Ok(true)
-                                                                 } else {
-                                                                     Ok(false)
-                                                                 }
-                                                         },
-                                                         [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64] => |c, a, b| *c = a.clone() % b);
+                   eval_override: |a:Arc<Tensor>, b: Arc<Tensor>| -> TractResult<Tensor> {
+                       if
+                           a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
+                               let a = a.to_array_view::<TDim>()?;
+                               let b = b.cast_to::<i32>()?;
+                               let b = b.to_array_view::<i32>()?;
+                               let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()]).context("no broadcast solution")?;
+                               unsafe {
+                                   let mut c = Tensor::uninitialized_dt(DatumType::TDim, &c_shape)?;
+                                   let view = c.to_array_view_mut::<TDim>()?;
+                                   crate::ndarray::Zip::from(view).and_broadcast(a).and_broadcast(b).for_each(|c,a,b| *c = a.clone() % *b);
+                                   Ok(c)
+                               }
+                           } else {
+                               Rem.generic_eval(a,b)
+                           }
+                   },
+                   out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
+                       if c.datum_type() == TDim::datum_type() &&
+                           a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
+                               let a = a.to_array_view::<TDim>()?;
+                               let b = b.cast_to::<i32>()?;
+                               let b = b.to_array_view::<i32>()?;
+                               let c = c.to_array_view_mut::<TDim>()?;
+                               crate::ndarray::Zip::from(c).and_broadcast(a).and_broadcast(b).for_each(|c,a,b| *c = a.clone() % *b);
+                               Ok(true)
+                           } else {
+                               Ok(false)
+                           }
+                   },
+                   [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64] => |c, a, b| *c = a.clone() % b);
 
 bin_to_super_type!(min, Min, flip:commute, linalg:Min,
                    q: [i8, u8, i32] => |c, a, b, _, _| *c = if a < b { *a } else { *b };
@@ -485,7 +485,7 @@ element_wise!(round, Round, [f16, f32, f64] => |_, xs| {
 };
 q: [i8, u8, i32] => f32::round);
 
-element_wise!(q_scale, QScale {mult: i32, policy: RoundingPolicy, shift: usize},[i32] => |op, xs| {
+element_wise!(q_scale, QScale {mult: i32, policy: RoundingPolicy, shift: isize},[i32] => |op, xs| {
     xs.iter_mut().for_each(|x| *x = x.q_scale(op.mult, op.shift, op.policy));
     Ok(())
 });

@@ -43,7 +43,7 @@ pub enum FusedSpec<'t> {
     BinPerCol(&'t Tensor, BinOp),
     AddRowColProducts(&'t Tensor, &'t Tensor),
     AddUnicast(OutputStore),
-    QScale(usize, RoundingPolicy, i32),
+    QScale(isize, RoundingPolicy, i32),
     Store(OutputStore),
     AddMatMul { k: usize, a: PackedStore, b: InputStore },
 }
@@ -91,7 +91,7 @@ pub enum FusedKerSpec<TI: Copy> {
     PerColSub(*const TI),                       // jump_to:per_col_sub
     PerColSubF(*const TI),                      // jump_to:per_col_sub_flipped
 
-    QScale(usize, RoundingPolicy, i32),         // jump_to:q_scale
+    QScale(isize, RoundingPolicy, i32),         // jump_to:q_scale
     AddUnicast(OutputStoreKer),                 // jump_to:add_unicast
     AddRowColProducts(*const TI, *const TI),    // jump_to:add_row_col_products
     Store(OutputStoreKer),                      // jump_to:store
@@ -291,7 +291,7 @@ pub mod test {
                         let len = <$ker>::mr() * <$ker>::nr();
                         let mut v = vec!(0; len - 1);
                         v.push(1);
-                        QScaleProblem::<$ker, $tc, $ti>::new(v, 2^31, 1, RoundingPolicy::Away).run()
+                        QScaleProblem::<$ker, $tc, $ti>::new(v, 2^30, 1, RoundingPolicy::Away).run()
                     }
                 }
 
@@ -301,7 +301,7 @@ pub mod test {
                         let len = <$ker>::mr() * <$ker>::nr();
                         let mut v = vec!(0; len - 1);
                         v.push(4);
-                        QScaleProblem::<$ker, $tc, $ti>::new(v, 2^31, 3, RoundingPolicy::Odd).run()
+                        QScaleProblem::<$ker, $tc, $ti>::new(v, 2^29, 3, RoundingPolicy::Odd).run()
                     }
                 }
 
@@ -320,7 +320,7 @@ pub mod test {
                         let len = <$ker>::mr() * <$ker>::nr();
                         let mut v = vec!(0; len - 1);
                         v.push(2);
-                        QScaleProblem::<$ker, $tc, $ti>::new(v, 536870913, 0, RoundingPolicy::Zero).run()
+                        QScaleProblem::<$ker, $tc, $ti>::new(v, 2^28, 0, RoundingPolicy::Zero).run()
                     }
                 }
 
@@ -342,7 +342,7 @@ pub mod test {
                                 if $cond {
                                     let len = (<$ker>::mr() * <$ker>::nr()) as i64;
                                     let v = (0..len).map(|i| (i - len / 2) as $tc).collect();
-                                    QScaleProblem::<$ker, $tc, $ti>::new(v, 1<<30, 2, RoundingPolicy::$policy).run()
+                                    QScaleProblem::<$ker, $tc, $ti>::new(v, 1<<29, 2, RoundingPolicy::$policy).run()
                                 }
                             }
                         }
@@ -698,7 +698,7 @@ pub mod test {
     {
         pub c: Vec<TC>,
         pub mult: i32,
-        pub shift: usize,
+        pub shift: isize,
         pub policy: RoundingPolicy,
         pub boo: std::marker::PhantomData<(K, TC, TI)>,
     }
@@ -718,7 +718,7 @@ pub mod test {
             (
                 proptest::collection::vec((-20i64..20).prop_map(|i| i.as_()), len..=len),
                 (1 << 29)..(1 << 30),
-                0usize..8,
+                0isize..8,
                 proptest::prop_oneof![
                     Just(Zero),
                     Just(Away),
