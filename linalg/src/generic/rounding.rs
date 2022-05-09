@@ -14,7 +14,7 @@ impl ScaleShiftAndRound for i32 {
     fn q_scale(self, mult: i32, shift: isize, policy: RoundingPolicy) -> Self {
         use RoundingPolicy::*;
         let val = self as i64 * mult as i64;
-        let shift = shift + 30;
+        let shift = shift + 31;
         let half: i64 = 1 << (shift - 1);
         let nudge: i64 = match policy {
             Zero => -1,
@@ -34,132 +34,132 @@ mod test {
     use super::RoundingPolicy::*;
     use super::*;
 
-    static one_over_two_in_q1_30: i32 = 2i32.pow(29);
+    static ONE_OVER_TWO_IN_Q0_30: i32 = 2i32.pow(30);
 
     #[test]
     fn test_zero() {
-        assert_eq!(0i32.q_scale(one_over_two_in_q1_30, 0, Zero), 0);
-        assert_eq!(1i32.q_scale(one_over_two_in_q1_30, 0, Zero), 0);
-        assert_eq!(2i32.q_scale(one_over_two_in_q1_30, 0, Zero), 1);
-        assert_eq!(3i32.q_scale(one_over_two_in_q1_30, 0, Zero), 1);
-        assert_eq!((-1i32).q_scale(one_over_two_in_q1_30, 0, Zero), 0);
-        assert_eq!((-2i32).q_scale(one_over_two_in_q1_30, 0, Zero), -1);
-        assert_eq!((-3i32).q_scale(one_over_two_in_q1_30, 0, Zero), -1);
-        assert_eq!(2i32.q_scale(one_over_two_in_q1_30, 1, Zero), 0);
-        assert_eq!(3i32.q_scale(one_over_two_in_q1_30, 1, Zero), 1);
-        assert_eq!(4i32.q_scale(one_over_two_in_q1_30, 1, Zero), 1);
-        assert_eq!(5i32.q_scale(one_over_two_in_q1_30, 1, Zero), 1);
-        assert_eq!(6i32.q_scale(one_over_two_in_q1_30, 1, Zero), 1);
-        assert_eq!((-2i32).q_scale(one_over_two_in_q1_30, 1, Zero), 0);
-        assert_eq!((-3i32).q_scale(one_over_two_in_q1_30, 1, Zero), -1);
-        assert_eq!((-4i32).q_scale(one_over_two_in_q1_30, 1, Zero), -1);
-        assert_eq!((-5i32).q_scale(one_over_two_in_q1_30, 1, Zero), -1);
-        assert_eq!((-6i32).q_scale(one_over_two_in_q1_30, 1, Zero), -1);
+        assert_eq!(0i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Zero), 0);
+        assert_eq!(1i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Zero), 0);
+        assert_eq!(2i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Zero), 1);
+        assert_eq!(3i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Zero), 1);
+        assert_eq!((-1i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Zero), 0);
+        assert_eq!((-2i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Zero), -1);
+        assert_eq!((-3i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Zero), -1);
+        assert_eq!(2i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Zero), 0);
+        assert_eq!(3i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Zero), 1);
+        assert_eq!(4i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Zero), 1);
+        assert_eq!(5i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Zero), 1);
+        assert_eq!(6i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Zero), 1);
+        assert_eq!((-2i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Zero), 0);
+        assert_eq!((-3i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Zero), -1);
+        assert_eq!((-4i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Zero), -1);
+        assert_eq!((-5i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Zero), -1);
+        assert_eq!((-6i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Zero), -1);
     }
 
     #[test]
     fn test_away() {
-        assert_eq!(0i32.q_scale(one_over_two_in_q1_30, 0, Away), 0);
-        assert_eq!(1i32.q_scale(one_over_two_in_q1_30, 0, Away), 1);
-        assert_eq!(2i32.q_scale(one_over_two_in_q1_30, 0, Away), 1);
-        assert_eq!(3i32.q_scale(one_over_two_in_q1_30, 0, Away), 2);
-        assert_eq!((-1i32).q_scale(one_over_two_in_q1_30, 0, Away), -1);
-        assert_eq!((-2i32).q_scale(one_over_two_in_q1_30, 0, Away), -1);
-        assert_eq!((-3i32).q_scale(one_over_two_in_q1_30, 0, Away), -2);
-        assert_eq!(2i32.q_scale(one_over_two_in_q1_30, 1, Away), 1);
-        assert_eq!(3i32.q_scale(one_over_two_in_q1_30, 1, Away), 1);
-        assert_eq!(4i32.q_scale(one_over_two_in_q1_30, 1, Away), 1);
-        assert_eq!(5i32.q_scale(one_over_two_in_q1_30, 1, Away), 1);
-        assert_eq!(6i32.q_scale(one_over_two_in_q1_30, 1, Away), 2);
-        assert_eq!((-2i32).q_scale(one_over_two_in_q1_30, 1, Away), -1);
-        assert_eq!((-3i32).q_scale(one_over_two_in_q1_30, 1, Away), -1);
-        assert_eq!((-4i32).q_scale(one_over_two_in_q1_30, 1, Away), -1);
-        assert_eq!((-5i32).q_scale(one_over_two_in_q1_30, 1, Away), -1);
-        assert_eq!((-6i32).q_scale(one_over_two_in_q1_30, 1, Away), -2);
+        assert_eq!(0i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Away), 0);
+        assert_eq!(1i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Away), 1);
+        assert_eq!(2i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Away), 1);
+        assert_eq!(3i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Away), 2);
+        assert_eq!((-1i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Away), -1);
+        assert_eq!((-2i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Away), -1);
+        assert_eq!((-3i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Away), -2);
+        assert_eq!(2i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Away), 1);
+        assert_eq!(3i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Away), 1);
+        assert_eq!(4i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Away), 1);
+        assert_eq!(5i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Away), 1);
+        assert_eq!(6i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Away), 2);
+        assert_eq!((-2i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Away), -1);
+        assert_eq!((-3i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Away), -1);
+        assert_eq!((-4i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Away), -1);
+        assert_eq!((-5i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Away), -1);
+        assert_eq!((-6i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Away), -2);
     }
 
     #[test]
     fn test_plus_inf() {
-        assert_eq!(0i32.q_scale(one_over_two_in_q1_30, 0, PlusInf), 0);
-        assert_eq!(1i32.q_scale(one_over_two_in_q1_30, 0, PlusInf), 1);
-        assert_eq!(2i32.q_scale(one_over_two_in_q1_30, 0, PlusInf), 1);
-        assert_eq!(3i32.q_scale(one_over_two_in_q1_30, 0, PlusInf), 2);
-        assert_eq!((-1i32).q_scale(one_over_two_in_q1_30, 0, PlusInf), 0);
-        assert_eq!((-2i32).q_scale(one_over_two_in_q1_30, 0, PlusInf), -1);
-        assert_eq!((-3i32).q_scale(one_over_two_in_q1_30, 0, PlusInf), -1);
-        assert_eq!(2i32.q_scale(one_over_two_in_q1_30, 1, PlusInf), 1);
-        assert_eq!(3i32.q_scale(one_over_two_in_q1_30, 1, PlusInf), 1);
-        assert_eq!(4i32.q_scale(one_over_two_in_q1_30, 1, PlusInf), 1);
-        assert_eq!(5i32.q_scale(one_over_two_in_q1_30, 1, PlusInf), 1);
-        assert_eq!(6i32.q_scale(one_over_two_in_q1_30, 1, PlusInf), 2);
-        assert_eq!((-2i32).q_scale(one_over_two_in_q1_30, 1, PlusInf), 0);
-        assert_eq!((-3i32).q_scale(one_over_two_in_q1_30, 1, PlusInf), -1);
-        assert_eq!((-4i32).q_scale(one_over_two_in_q1_30, 1, PlusInf), -1);
-        assert_eq!((-5i32).q_scale(one_over_two_in_q1_30, 1, PlusInf), -1);
-        assert_eq!((-6i32).q_scale(one_over_two_in_q1_30, 1, PlusInf), -1);
+        assert_eq!(0i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, PlusInf), 0);
+        assert_eq!(1i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, PlusInf), 1);
+        assert_eq!(2i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, PlusInf), 1);
+        assert_eq!(3i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, PlusInf), 2);
+        assert_eq!((-1i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 0, PlusInf), 0);
+        assert_eq!((-2i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 0, PlusInf), -1);
+        assert_eq!((-3i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 0, PlusInf), -1);
+        assert_eq!(2i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 1, PlusInf), 1);
+        assert_eq!(3i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 1, PlusInf), 1);
+        assert_eq!(4i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 1, PlusInf), 1);
+        assert_eq!(5i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 1, PlusInf), 1);
+        assert_eq!(6i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 1, PlusInf), 2);
+        assert_eq!((-2i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 1, PlusInf), 0);
+        assert_eq!((-3i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 1, PlusInf), -1);
+        assert_eq!((-4i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 1, PlusInf), -1);
+        assert_eq!((-5i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 1, PlusInf), -1);
+        assert_eq!((-6i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 1, PlusInf), -1);
     }
 
     #[test]
     fn test_minus_inf() {
-        assert_eq!(0i32.q_scale(one_over_two_in_q1_30, 0, MinusInf), 0);
-        assert_eq!(1i32.q_scale(one_over_two_in_q1_30, 0, MinusInf), 0);
-        assert_eq!(2i32.q_scale(one_over_two_in_q1_30, 0, MinusInf), 1);
-        assert_eq!(3i32.q_scale(one_over_two_in_q1_30, 0, MinusInf), 1);
-        assert_eq!((-1i32).q_scale(one_over_two_in_q1_30, 0, MinusInf), -1);
-        assert_eq!((-2i32).q_scale(one_over_two_in_q1_30, 0, MinusInf), -1);
-        assert_eq!((-3i32).q_scale(one_over_two_in_q1_30, 0, MinusInf), -2);
-        assert_eq!(2i32.q_scale(one_over_two_in_q1_30, 1, MinusInf), 0);
-        assert_eq!(3i32.q_scale(one_over_two_in_q1_30, 1, MinusInf), 1);
-        assert_eq!(4i32.q_scale(one_over_two_in_q1_30, 1, MinusInf), 1);
-        assert_eq!(5i32.q_scale(one_over_two_in_q1_30, 1, MinusInf), 1);
-        assert_eq!(6i32.q_scale(one_over_two_in_q1_30, 1, MinusInf), 1);
-        assert_eq!((-2i32).q_scale(one_over_two_in_q1_30, 1, MinusInf), -1);
-        assert_eq!((-3i32).q_scale(one_over_two_in_q1_30, 1, MinusInf), -1);
-        assert_eq!((-4i32).q_scale(one_over_two_in_q1_30, 1, MinusInf), -1);
-        assert_eq!((-5i32).q_scale(one_over_two_in_q1_30, 1, MinusInf), -1);
-        assert_eq!((-6i32).q_scale(one_over_two_in_q1_30, 1, MinusInf), -2);
-        assert_eq!((-9i32).q_scale(one_over_two_in_q1_30, 5, MinusInf), 0);
+        assert_eq!(0i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, MinusInf), 0);
+        assert_eq!(1i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, MinusInf), 0);
+        assert_eq!(2i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, MinusInf), 1);
+        assert_eq!(3i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, MinusInf), 1);
+        assert_eq!((-1i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 0, MinusInf), -1);
+        assert_eq!((-2i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 0, MinusInf), -1);
+        assert_eq!((-3i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 0, MinusInf), -2);
+        assert_eq!(2i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 1, MinusInf), 0);
+        assert_eq!(3i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 1, MinusInf), 1);
+        assert_eq!(4i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 1, MinusInf), 1);
+        assert_eq!(5i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 1, MinusInf), 1);
+        assert_eq!(6i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 1, MinusInf), 1);
+        assert_eq!((-2i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 1, MinusInf), -1);
+        assert_eq!((-3i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 1, MinusInf), -1);
+        assert_eq!((-4i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 1, MinusInf), -1);
+        assert_eq!((-5i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 1, MinusInf), -1);
+        assert_eq!((-6i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 1, MinusInf), -2);
+        assert_eq!((-9i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 5, MinusInf), 0);
     }
 
     #[test]
     fn test_even() {
-        assert_eq!(0i32.q_scale(one_over_two_in_q1_30, 0, Even), 0);
-        assert_eq!(1i32.q_scale(one_over_two_in_q1_30, 0, Even), 0);
-        assert_eq!(2i32.q_scale(one_over_two_in_q1_30, 0, Even), 1);
-        assert_eq!(3i32.q_scale(one_over_two_in_q1_30, 0, Even), 2);
-        assert_eq!((-1i32).q_scale(one_over_two_in_q1_30, 0, Even), 0);
-        assert_eq!((-2i32).q_scale(one_over_two_in_q1_30, 0, Even), -1);
-        assert_eq!((-3i32).q_scale(one_over_two_in_q1_30, 0, Even), -2);
-        assert_eq!(2i32.q_scale(one_over_two_in_q1_30, 1, Even), 0);
-        assert_eq!(3i32.q_scale(one_over_two_in_q1_30, 1, Even), 1);
-        assert_eq!(4i32.q_scale(one_over_two_in_q1_30, 1, Even), 1);
-        assert_eq!(5i32.q_scale(one_over_two_in_q1_30, 1, Even), 1);
-        assert_eq!(6i32.q_scale(one_over_two_in_q1_30, 1, Even), 2);
-        assert_eq!((-2i32).q_scale(one_over_two_in_q1_30, 1, Even), 0);
-        assert_eq!((-3i32).q_scale(one_over_two_in_q1_30, 1, Even), -1);
-        assert_eq!((-4i32).q_scale(one_over_two_in_q1_30, 1, Even), -1);
-        assert_eq!((-5i32).q_scale(one_over_two_in_q1_30, 1, Even), -1);
-        assert_eq!((-6i32).q_scale(one_over_two_in_q1_30, 1, Even), -2);
+        assert_eq!(0i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Even), 0);
+        assert_eq!(1i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Even), 0);
+        assert_eq!(2i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Even), 1);
+        assert_eq!(3i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Even), 2);
+        assert_eq!((-1i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Even), 0);
+        assert_eq!((-2i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Even), -1);
+        assert_eq!((-3i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Even), -2);
+        assert_eq!(2i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Even), 0);
+        assert_eq!(3i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Even), 1);
+        assert_eq!(4i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Even), 1);
+        assert_eq!(5i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Even), 1);
+        assert_eq!(6i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Even), 2);
+        assert_eq!((-2i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Even), 0);
+        assert_eq!((-3i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Even), -1);
+        assert_eq!((-4i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Even), -1);
+        assert_eq!((-5i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Even), -1);
+        assert_eq!((-6i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Even), -2);
     }
 
     #[test]
     fn test_odd() {
-        assert_eq!(0i32.q_scale(one_over_two_in_q1_30, 0, Odd), 0);
-        assert_eq!(1i32.q_scale(one_over_two_in_q1_30, 0, Odd), 1);
-        assert_eq!(2i32.q_scale(one_over_two_in_q1_30, 0, Odd), 1);
-        assert_eq!(3i32.q_scale(one_over_two_in_q1_30, 0, Odd), 1);
-        assert_eq!((-1i32).q_scale(one_over_two_in_q1_30, 0, Odd), -1);
-        assert_eq!((-2i32).q_scale(one_over_two_in_q1_30, 0, Odd), -1);
-        assert_eq!((-3i32).q_scale(one_over_two_in_q1_30, 0, Odd), -1);
-        assert_eq!(2i32.q_scale(one_over_two_in_q1_30, 1, Odd), 1);
-        assert_eq!(3i32.q_scale(one_over_two_in_q1_30, 1, Odd), 1);
-        assert_eq!(4i32.q_scale(one_over_two_in_q1_30, 1, Odd), 1);
-        assert_eq!(5i32.q_scale(one_over_two_in_q1_30, 1, Odd), 1);
-        assert_eq!(6i32.q_scale(one_over_two_in_q1_30, 1, Odd), 1);
-        assert_eq!((-2i32).q_scale(one_over_two_in_q1_30, 1, Odd), -1);
-        assert_eq!((-3i32).q_scale(one_over_two_in_q1_30, 1, Odd), -1);
-        assert_eq!((-4i32).q_scale(one_over_two_in_q1_30, 1, Odd), -1);
-        assert_eq!((-5i32).q_scale(one_over_two_in_q1_30, 1, Odd), -1);
-        assert_eq!((-6i32).q_scale(one_over_two_in_q1_30, 1, Odd), -1);
+        assert_eq!(0i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Odd), 0);
+        assert_eq!(1i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Odd), 1);
+        assert_eq!(2i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Odd), 1);
+        assert_eq!(3i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Odd), 1);
+        assert_eq!((-1i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Odd), -1);
+        assert_eq!((-2i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Odd), -1);
+        assert_eq!((-3i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Odd), -1);
+        assert_eq!(2i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Odd), 1);
+        assert_eq!(3i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Odd), 1);
+        assert_eq!(4i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Odd), 1);
+        assert_eq!(5i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Odd), 1);
+        assert_eq!(6i32.q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Odd), 1);
+        assert_eq!((-2i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Odd), -1);
+        assert_eq!((-3i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Odd), -1);
+        assert_eq!((-4i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Odd), -1);
+        assert_eq!((-5i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Odd), -1);
+        assert_eq!((-6i32).q_scale(ONE_OVER_TWO_IN_Q0_30, 1, Odd), -1);
     }
 }
