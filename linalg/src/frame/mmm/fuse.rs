@@ -279,8 +279,8 @@ pub mod test {
                 fn return_q_scale_0() {
                     if $cond {
                         let len = <$ker>::mr() * <$ker>::nr();
-                        let mut v = vec!(0; len - 1);
-                        v.push(1);
+                        let mut v = vec!(0 as $tc; len - 1);
+                        v.push(1 as $tc);
                         QScaleProblem::<$ker, $tc, $ti>::new(v, 2^31, 1, RoundingPolicy::Zero).run()
                     }
                 }
@@ -289,8 +289,8 @@ pub mod test {
                 fn return_q_scale_1() {
                     if $cond {
                         let len = <$ker>::mr() * <$ker>::nr();
-                        let mut v = vec!(0; len - 1);
-                        v.push(1);
+                        let mut v = vec!(0 as $tc; len - 1);
+                        v.push(1 as $tc);
                         QScaleProblem::<$ker, $tc, $ti>::new(v, 2^31, 1, RoundingPolicy::Away).run()
                     }
                 }
@@ -299,8 +299,8 @@ pub mod test {
                 fn return_q_scale_2() {
                     if $cond {
                         let len = <$ker>::mr() * <$ker>::nr();
-                        let mut v = vec!(0; len - 1);
-                        v.push(4);
+                        let mut v = vec!(0 as $tc; len - 1);
+                        v.push(4 as $tc);
                         QScaleProblem::<$ker, $tc, $ti>::new(v, 2^30, 3, RoundingPolicy::Odd).run()
                     }
                 }
@@ -309,8 +309,8 @@ pub mod test {
                 fn return_q_scale_3() {
                     if $cond {
                         let len = <$ker>::mr() * <$ker>::nr();
-                        let mut v = vec!(0; len - 1);
-                        v.push(1);
+                        let mut v = vec!(0 as $tc; len - 1);
+                        v.push(1 as $tc);
                         QScaleProblem::<$ker, $tc, $ti>::new(v, 644245094, 0, RoundingPolicy::Zero).run()
                     }
                 }
@@ -318,8 +318,8 @@ pub mod test {
                 fn return_q_scale_4() {
                     if $cond {
                         let len = <$ker>::mr() * <$ker>::nr();
-                        let mut v = vec!(0; len - 1);
-                        v.push(2);
+                        let mut v = vec!(0 as $tc; len - 1);
+                        v.push(2 as $tc);
                         QScaleProblem::<$ker, $tc, $ti>::new(v, 2^29, 0, RoundingPolicy::Zero).run()
                     }
                 }
@@ -328,8 +328,8 @@ pub mod test {
                 fn return_q_scale_5() {
                     if $cond {
                         let len = <$ker>::mr() * <$ker>::nr();
-                        let mut v = vec!(0; len - 1);
-                        v.push(6);
+                        let mut v = vec!(0 as $tc; len - 1);
+                        v.push(6 as $tc);
                         QScaleProblem::<$ker, $tc, $ti>::new(v, 429496729, 0, RoundingPolicy::Even).run()
                     }
                 }

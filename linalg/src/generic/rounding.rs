@@ -6,7 +6,7 @@ pub trait ScaleShiftAndRound {
 
 impl ScaleShiftAndRound for f32 {
     fn q_scale(self, mult: i32, shift: isize, _policy: RoundingPolicy) -> Self {
-        self * mult as f32 * 2. * 2f32.powi(-(shift as i32))
+        self * mult as f32 * 2f32.powi(-(31 + shift as i32))
     }
 }
 
@@ -35,6 +35,17 @@ mod test {
     use super::*;
 
     static ONE_OVER_TWO_IN_Q0_30: i32 = 2i32.pow(30);
+
+    #[test]
+    fn test_f32() {
+        assert_eq!(0f32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Zero), 0.0);
+        assert_eq!(1f32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Zero), 0.5);
+        assert_eq!(2f32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Zero), 1.0);
+        assert_eq!(3f32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Zero), 1.5);
+        assert_eq!(-1f32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Zero), -0.5);
+        assert_eq!(-2f32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Zero), -1.0);
+        assert_eq!(-3f32.q_scale(ONE_OVER_TWO_IN_Q0_30, 0, Zero), -1.5);
+    }
 
     #[test]
     fn test_zero() {

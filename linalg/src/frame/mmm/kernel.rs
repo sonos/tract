@@ -36,6 +36,7 @@ macro_rules! test_mmm_kernel_f32 {
                 mmm_kernel_tests!($cond, $k, f32, f32, f32, f32);
                 mmm_frame_tests!($cond, $k, f32, f32, f32, f32);
                 mmm_kernel_fuse_tests!($cond, $k, f32, f32);
+                //qmmm_kernel_fuse_tests!($cond, $k, f32, f32, f32, f32);
             }
         }
     };
