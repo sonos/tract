@@ -291,7 +291,7 @@ pub mod test {
                         let len = <$ker>::mr() * <$ker>::nr();
                         let mut v = vec!(0; len - 1);
                         v.push(1);
-                        QScaleProblem::<$ker, $tc, $ti>::new(v, 2^30, 1, RoundingPolicy::Away).run()
+                        QScaleProblem::<$ker, $tc, $ti>::new(v, 2^31, 1, RoundingPolicy::Away).run()
                     }
                 }
 
@@ -301,7 +301,7 @@ pub mod test {
                         let len = <$ker>::mr() * <$ker>::nr();
                         let mut v = vec!(0; len - 1);
                         v.push(4);
-                        QScaleProblem::<$ker, $tc, $ti>::new(v, 2^29, 3, RoundingPolicy::Odd).run()
+                        QScaleProblem::<$ker, $tc, $ti>::new(v, 2^30, 3, RoundingPolicy::Odd).run()
                     }
                 }
 
@@ -311,7 +311,7 @@ pub mod test {
                         let len = <$ker>::mr() * <$ker>::nr();
                         let mut v = vec!(0; len - 1);
                         v.push(1);
-                        QScaleProblem::<$ker, $tc, $ti>::new(v, 536870913, 0, RoundingPolicy::Zero).run()
+                        QScaleProblem::<$ker, $tc, $ti>::new(v, 644245094, 0, RoundingPolicy::Zero).run()
                     }
                 }
                 #[test]
@@ -320,7 +320,7 @@ pub mod test {
                         let len = <$ker>::mr() * <$ker>::nr();
                         let mut v = vec!(0; len - 1);
                         v.push(2);
-                        QScaleProblem::<$ker, $tc, $ti>::new(v, 2^28, 0, RoundingPolicy::Zero).run()
+                        QScaleProblem::<$ker, $tc, $ti>::new(v, 2^29, 0, RoundingPolicy::Zero).run()
                     }
                 }
 
@@ -330,7 +330,7 @@ pub mod test {
                         let len = <$ker>::mr() * <$ker>::nr();
                         let mut v = vec!(0; len - 1);
                         v.push(6);
-                        QScaleProblem::<$ker, $tc, $ti>::new(v, 715827883, 0, RoundingPolicy::Even).run()
+                        QScaleProblem::<$ker, $tc, $ti>::new(v, 429496729, 0, RoundingPolicy::Even).run()
                     }
                 }
 
@@ -342,7 +342,7 @@ pub mod test {
                                 if $cond {
                                     let len = (<$ker>::mr() * <$ker>::nr()) as i64;
                                     let v = (0..len).map(|i| (i - len / 2) as $tc).collect();
-                                    QScaleProblem::<$ker, $tc, $ti>::new(v, 1<<29, 2, RoundingPolicy::$policy).run()
+                                    QScaleProblem::<$ker, $tc, $ti>::new(v, 1<<30, 2, RoundingPolicy::$policy).run()
                                 }
                             }
                         }

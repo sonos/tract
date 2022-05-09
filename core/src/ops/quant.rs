@@ -385,15 +385,17 @@ pub(crate) fn convert_scale_to_mult_shift(scale: f32) -> Option<(i32, isize)> {
 
     // Extract fractional part of the float with:
     // - bits & 0x007fffff
-    // Replace exponent value to 127 (set actual value to 127-127=0)
-    // - bits | 0x3f800000
-    let bumped_multi = f32::from_bits(scale_bits & 0x007fffff | 0x3f800000);
+    // Replace exponent value to 126 (set actual value to 126-127=-1)
+    // - bits | 0x3f0000000
+    // We devide by two because the fractional part is in [1.0, 2.0) and we want
+    // it to be in [0.5, 1.0) in order to be in Q0_31 instead of Q1_31
+    let bumped_multi = f32::from_bits(scale_bits & 0x007fffff | 0x3f000000);
 
-    // Multiply bump_mutli by 2^30 and round the result to consider it as a Q1_30
-    let int_multi = (bumped_multi * (1i32 << 30) as f32).round() as i32;
+    // Multiply bump_mutli by 2^31 and round the result to consider it as a Q0_31
+    let int_multi = (bumped_multi * (1u32 << 31) as f32).round() as i32;
 
-    // Compute the actual value of the shift
-    let shift = 127 - current_exponent as isize;
+    // Compute the actual value of the shift (we remove one as the fractional part is scale/2).
+    let shift = 127 - current_exponent as isize - 1;
 
     Some((int_multi, shift))
 }
