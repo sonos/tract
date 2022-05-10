@@ -4,14 +4,15 @@ use std::str::FromStr;
 use crate::model::ParsingContext;
 use crate::pb::*;
 use tract_hir::internal::*;
-use tract_hir::ops::unimpl;
 use tract_hir::prelude::tract_itertools::Itertools;
+use tract_hir::tract_ndarray::{Axis, Dimension};
+use tract_hir::tract_num_traits::{One, Zero};
 
 pub fn einsum(
     _ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let expr = dbg!(node.get_attr::<String>("equation")?).parse()?;
+    let expr = node.get_attr::<String>("equation")?.parse()?;
     Ok((Box::new(EinSum { expr }), vec![]))
 }
 
@@ -34,6 +35,7 @@ impl AxisSym {
         self.result = Some(axis)
     }
 
+    #[allow(dead_code)]
     fn input(mut self, input_id: usize, axis: usize) -> AxisSym {
         self.add_input(input_id, axis);
         self
@@ -123,7 +125,92 @@ impl Op for EinSum {
     }
 
     op_onnx!();
-    not_a_typed_op!();
+    op_as_typed_op!();
+}
+
+impl EinSum {
+    fn output_shape<D: DimLike>(&self, inputs: &[&[D]]) -> TVec<D> {
+        self.expr
+            .index
+            .iter()
+            .sorted_by_key(|axis| axis.result.unwrap())
+            .map(|axis| {
+                axis.inputs
+                    .iter()
+                    .enumerate()
+                    .find_map(|(input_id, positions)| {
+                        if positions.len() > 0 {
+                            Some(inputs[input_id][positions[0]].clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap()
+            })
+            .collect()
+    }
+
+    fn eval_t<T: Datum + Zero + One>(
+        &self,
+        inputs: TVec<Arc<Tensor>>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
+        let shapes: TVec<_> = inputs.iter().map(|t| t.shape()).collect();
+        let output_shape = self.output_shape(&shapes);
+        let inputs: TVec<tract_ndarray::ArrayViewD<T>> =
+            inputs.iter().map(|t| t.to_array_view::<T>()).collect::<TractResult<_>>()?;
+        let summing_shape: TVec<usize> = self
+            .expr
+            .sum
+            .iter()
+            .map(|axis| {
+                axis.inputs
+                    .iter()
+                    .enumerate()
+                    .find_map(|(input_id, positions)| {
+                        if positions.len() > 0 {
+                            Some(inputs[input_id].shape()[positions[0]])
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap()
+            })
+            .collect();
+        let output = tract_ndarray::ArrayD::<T>::from_shape_fn(&*output_shape, |coords| {
+            let coords = coords.as_array_view();
+            let mut views = inputs.clone();
+            for (axis, x) in
+                self.expr.index.iter().sorted_by_key(|axis| axis.result.unwrap()).zip(coords)
+            {
+                for (input_id, input_axis_positions) in axis.inputs.iter().enumerate() {
+                    for position in input_axis_positions {
+                        views[input_id]
+                            .slice_axis_inplace(tract_ndarray::Axis(*position), (*x..=*x).into());
+                    }
+                }
+            }
+            let mut sum: T = T::zero();
+            for sum_coords in tract_ndarray::indices(&*summing_shape) {
+                let mut views = views.clone();
+                let sum_coords = sum_coords.as_array_view();
+                for (axis, x) in self.expr.sum.iter().zip(&sum_coords) {
+                    for (input_id, input_axis_positions) in axis.inputs.iter().enumerate() {
+                        for position in input_axis_positions {
+                            views[input_id].slice_axis_inplace(Axis(*position), (*x..=*x).into())
+                        }
+                    }
+                }
+                let mut product = T::one();
+                for v in &views {
+                    debug_assert_eq!(v.len(), 1);
+                    product = product * v.iter().next().unwrap().clone();
+                }
+                sum = sum + product;
+            }
+            sum
+        });
+        Ok(tvec!(output.into_arc_tensor()))
+    }
 }
 
 impl EvalOp for EinSum {
@@ -132,8 +219,17 @@ impl EvalOp for EinSum {
     }
 
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        todo!();
+        dispatch_numbers!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }
+}
+
+impl TypedOp for EinSum {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        let shapes: TVec<&[TDim]> = inputs.iter().map(|t| &*t.shape).collect();
+        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, self.output_shape(&*shapes))))
+    }
+
+    as_op!();
 }
 
 impl InferenceRulesOp for EinSum {
@@ -148,7 +244,6 @@ impl InferenceRulesOp for EinSum {
         for i in inputs {
             s.equals(&i.datum_type, &outputs[0].datum_type)?;
         }
-        dbg!(self);
         for (input_id, input) in inputs.iter().enumerate() {
             let rank = self
                 .expr
@@ -175,6 +270,7 @@ impl InferenceRulesOp for EinSum {
         Ok(())
     }
 
+    to_typed!();
     as_op!();
 }
 
