@@ -7,31 +7,15 @@ use tract_hir::internal::*;
 use tract_hir::ops::unimpl;
 use tract_hir::prelude::tract_itertools::Itertools;
 
-// ij->ji => [{0, [[1]]}, {1, [[0]]}]
-// ij->i => [{0, [[0]]}, {, [[1]]}]
-// mk,bkn => bmn [{0, [,[0]]}, {, [[1],[1]]}, {1, [[0],]}, {2, [,[2]]}]
-
-/*
-struct A {
-axes: Vec<AxisSym>
+pub fn einsum(
+    _ctx: &ParsingContext,
+    node: &NodeProto,
+) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
+    let expr = dbg!(node.get_attr::<String>("equation")?).parse()?;
+    Ok((Box::new(EinSum { expr }), vec![]))
 }
-*/
 
-// ij->ji => [[1],[0]]
-// ij->i => [[0]]
-
-// Batched DNN: A=W=1,m,k X=B=b,k,n => mk,bkn -> bmn
-//
-// abij,abji -> ab
-
-/*
-struct Expr {
-index: TVec<TVec<usize>>,
-sum: TVec<TVec<TVec<usize>>>, // [axis_id][input_id][..]
-}
-*/
-
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Hash)]
 struct AxisSym {
     result: Option<usize>,
     inputs: TVec<TVec<usize>>,
@@ -63,19 +47,20 @@ impl AxisSym {
     }
 }
 
-pub fn einsum(
-    _ctx: &ParsingContext,
-    node: &NodeProto,
-) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let mut equation = node.get_attr::<String>("equation")?;
-    dbg!(equation);
-    unimplemented!();
-}
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 struct Expr {
     index: TVec<AxisSym>,
     sum: TVec<AxisSym>,
+}
+
+impl Expr {
+    fn iter_all_axes(&self) -> impl Iterator<Item = &AxisSym> {
+        self.index.iter().chain(self.sum.iter())
+    }
+
+    fn n_inputs(&self) -> usize {
+        self.iter_all_axes().map(|axis| axis.inputs.len()).max().unwrap()
+    }
 }
 
 impl FromIterator<AxisSym> for Expr {
@@ -121,7 +106,77 @@ impl FromStr for Expr {
     }
 }
 
-struct EinSum {}
+#[derive(Debug, Clone, Hash)]
+struct EinSum {
+    expr: Expr,
+}
+
+impl_dyn_hash!(EinSum);
+
+impl Op for EinSum {
+    fn name(&self) -> Cow<str> {
+        "EinSum".into()
+    }
+
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![format!("{:?}", self.expr)])
+    }
+
+    op_onnx!();
+    not_a_typed_op!();
+}
+
+impl EvalOp for EinSum {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        todo!();
+    }
+}
+
+impl InferenceRulesOp for EinSum {
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        s: &mut Solver<'r>,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
+    ) -> InferenceResult {
+        check_input_arity(inputs, self.expr.n_inputs())?;
+        check_output_arity(outputs, 1)?;
+        for i in inputs {
+            s.equals(&i.datum_type, &outputs[0].datum_type)?;
+        }
+        dbg!(self);
+        for (input_id, input) in inputs.iter().enumerate() {
+            let rank = self
+                .expr
+                .iter_all_axes()
+                .flat_map(|axis| axis.inputs.get(input_id).map(|v| &**v).unwrap_or(&[]).iter())
+                .max()
+                .unwrap();
+            s.equals(1 + *rank as i64, &input.rank)?;
+        }
+        let output_rank = self.expr.index.len();
+        s.equals(output_rank as i64, &outputs[0].rank)?;
+        for axis in self.expr.iter_all_axes() {
+            let mut axes = vec![];
+            if let Some(result) = axis.result {
+                axes.push(outputs[0].shape[result].bex())
+            }
+            for (input_id, input_axis_positions) in axis.inputs.iter().enumerate() {
+                for position in input_axis_positions {
+                    axes.push(inputs[input_id].shape[*position].bex());
+                }
+            }
+            s.equals_all(axes)?;
+        }
+        Ok(())
+    }
+
+    as_op!();
+}
 
 #[cfg(test)]
 mod test {
@@ -164,12 +219,8 @@ mod test {
 
     #[test]
     fn test_parse_inner_product_implicit() {
-        assert_eq!(
-            "i,i".parse::<Expr>().unwrap(),
-            "i,i->".parse::<Expr>().unwrap(),
-        )
+        assert_eq!("i,i".parse::<Expr>().unwrap(), "i,i->".parse::<Expr>().unwrap(),)
     }
-
 
     #[test]
     fn test_parse_batch_matmul() {
