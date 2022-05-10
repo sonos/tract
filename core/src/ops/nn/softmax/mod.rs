@@ -296,7 +296,7 @@ mod test {
     // Generate a random tensor with a quantized datum type
     fn qtensor<T: PrimInt + Datum + Arbitrary>(shape: Vec<usize>) -> BoxedStrategy<Tensor> {
         let len = shape.iter().product::<usize>();
-        let dt = q_datum_in::<T>();
+        let dt = q_datum::<T>((0.0001f32..0.1).boxed());
         (vec(any::<T>(), len..=len), dt)
             .prop_map(move |(vec, dt)| (ArrayD::from_shape_vec(shape.clone(), vec).unwrap(), dt))
             .prop_map(move |(array, dt)| {
@@ -308,27 +308,11 @@ mod test {
     }
 
     // Generate a random quantized datum type
-    fn q_datum_in<T: PrimInt + Datum>() -> BoxedStrategy<DatumType> {
+    fn q_datum<T: PrimInt + Datum>(range: BoxedStrategy<f32>) -> BoxedStrategy<DatumType> {
         let max_integer_bits = std::mem::size_of::<T>() * 8 - T::datum_type().is_signed() as usize;
         prop_oneof![
             (1usize..max_integer_bits).prop_map(|fixed_point| { 2f32.powi(-(fixed_point as i32)) }),
-            (0.0001f32..0.001)
-        ]
-        .prop_map(|scale| {
-            if T::datum_type().is_signed() {
-                DatumType::QI8(ZpScale { zero_point: 0, scale })
-            } else {
-                DatumType::QU8(ZpScale { zero_point: 0, scale })
-            }
-        })
-        .boxed()
-    }
-
-    fn q_datum_out<T: PrimInt + Datum>() -> BoxedStrategy<DatumType> {
-        let max_integer_bits = std::mem::size_of::<T>() * 8 - T::datum_type().is_signed() as usize;
-        prop_oneof![
-            (1usize..max_integer_bits).prop_map(|fixed_point| { 2f32.powi(-(fixed_point as i32)) }),
-            (0.008f32..0.01)
+            range
         ]
         .prop_map(|scale| {
             if T::datum_type().is_signed() {
@@ -382,11 +366,14 @@ mod test {
             (1usize..2, 1usize..2, 1usize..5, 1usize..5, 0usize..4)
                 .prop_flat_map(|(n, c, h, w, axis)| {
                     let shape_in: Vec<usize> =
-                        NCHW.from_n_c_hw(n, c, &[h, w]).unwrap().shape.iter().cloned().collect();
+                        NCHW.from_n_c_hw(n, c, &[h, w]).unwrap().shape.to_vec();
                     (
                         prop_oneof![qtensor::<i8>(shape_in.clone()), qtensor::<u8>(shape_in)],
                         Just(tvec![axis]),
-                        prop_oneof![q_datum_out::<u8>(), q_datum_out::<i8>()],
+                        prop_oneof![
+                            q_datum::<u8>((0.008f32..0.1).boxed()),
+                            q_datum::<i8>((0.008f32..0.1).boxed())
+                        ],
                     )
                 })
                 .prop_map(|(data, axes, output_dt)| SoftmaxProblem { data, axes, output_dt })
@@ -405,6 +392,8 @@ mod test {
         fn check(&self) -> Result<()> {
             let quantized = self.quantized();
             let reference = self.reference();
+            dbg!(&quantized);
+            dbg!(&reference);
             assert!(quantized
                 .iter()
                 .zip(reference.iter())
@@ -443,8 +432,14 @@ mod test {
         type Strategy = BoxedStrategy<InnerSoftmaxProblem>;
         fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
             (
-                prop_oneof![q_datum_in::<i8>(), q_datum_in::<u8>()],
-                prop_oneof![q_datum_out::<u8>(), q_datum_out::<i8>()],
+                prop_oneof![
+                    q_datum::<i8>((0.0001f32..0.01).boxed()),
+                    q_datum::<u8>((0.0001f32..0.01).boxed())
+                ],
+                prop_oneof![
+                    q_datum::<u8>((0.008f32..0.1).boxed()),
+                    q_datum::<i8>((0.008f32..0.1).boxed())
+                ],
                 vec(any::<i8>(), 1..10),
             )
                 .prop_map(|(in_qp, out_qp, data)| InnerSoftmaxProblem {
@@ -582,36 +577,44 @@ mod test {
         Ok(())
     }
 
-    //#[test]
-    //fn test_inner_softmax_not_pow_2_1() -> Result<()> {
-    //    let in_qp = ZpScale { zero_point: 0, scale: 0.7298456 };
-    //    let out_qp = ZpScale { zero_point: 0, scale: 0.03125 };
-    //    let data = vec![100i8, -28];
+    #[test]
+    fn test_inner_softmax_not_pow_2_1() -> Result<()> {
+        let in_qp = ZpScale { zero_point: 0, scale: 0.7298456 };
+        let out_qp = ZpScale { zero_point: 0, scale: 0.03125 };
+        let data = vec![100i8, -28];
 
-    //    let prob = InnerSoftmaxProblem { in_qp, out_qp, data};
-    //    prob.check()?;
-    //    Ok(())
-    //}
+        let prob = InnerSoftmaxProblem { in_qp, out_qp, data };
+        prob.check()?;
+        Ok(())
+    }
 
-    //#[test]
-    //fn test_inner_softmax_not_pow_2_2() -> Result<()> {
-    //    let in_qp = ZpScale { zero_point: 0, scale: 0.2123116 };
-    //    let out_qp = ZpScale { zero_point: 0, scale: 0.008 };
-    //    let data = vec![118i8, 108];
+    #[test]
+    #[ignore]
+    // Fails but the difference is quite low and the sum still give exactly one:
+    // quantized: 110(0.88), 15(0.12)
+    // expected: 112(0.896), 13(0.104)
+    fn test_inner_softmax_not_pow_2_2() -> Result<()> {
+        let in_qp = ZpScale { zero_point: 0, scale: 0.2123116 };
+        let out_qp = ZpScale { zero_point: 0, scale: 0.008 };
+        let data = vec![118i8, 108];
 
-    //    let prob = InnerSoftmaxProblem { in_qp, out_qp, data};
-    //    prob.check()?;
-    //    Ok(())
-    //}
+        let prob = InnerSoftmaxProblem { in_qp, out_qp, data };
+        prob.check()?;
+        Ok(())
+    }
 
-    //#[test]
-    //fn test_inner_softmax_not_pow_2_3() -> Result<()> {
-    //    let in_qp = ZpScale { zero_point: 0, scale: 0.33034274 };
-    //    let out_qp = ZpScale { zero_point: 0, scale: 0.015625 };
-    //    let data = vec![45i8, 43];
+    #[test]
+    #[ignore]
+    // Fails but the difference is quite low and the sum still give exactly one:
+    // quantized: 40(0.625), 24(0.375)
+    // expected: 42(0.65625), 22(0.34375)
+    fn test_inner_softmax_not_pow_2_3() -> Result<()> {
+        let in_qp = ZpScale { zero_point: 0, scale: 0.33034274 };
+        let out_qp = ZpScale { zero_point: 0, scale: 0.015625 };
+        let data = vec![45i8, 43];
 
-    //    let prob = InnerSoftmaxProblem { in_qp, out_qp, data};
-    //    prob.check()?;
-    //    Ok(())
-    //}
+        let prob = InnerSoftmaxProblem { in_qp, out_qp, data };
+        prob.check()?;
+        Ok(())
+    }
 }
