@@ -2,8 +2,9 @@ mod fixedpoint;
 pub mod math;
 
 use math::{
-    exp_on_negative_values, get_reciprocal, rescale, rounding_divide_by_pot,
-    saturating_rounding_doubling_high_mul,
+    convert_scale_to_mult_shift, exp_on_negative_values, get_reciprocal, rescale,
+    rounding_divide_by_pot, saturating_rounding_doubling_high_mul,
+    saturating_rounding_multiply_by_pot,
 };
 use num_traits::Float;
 use std::fmt::Debug;
@@ -136,11 +137,7 @@ impl Softmax {
                     view.collapse_axis(Axis(ix), it_coords[ix]);
                 }
             }
-
-            let max = *view.iter().max_by(|i, j| i.partial_cmp(j).unwrap()).unwrap();
-            view.mapv_inplace(|x| (x - max).exp());
-            let exp_sum = view.iter().map(|it| *it).sum();
-            view.mapv_inplace(|x| x / exp_sum);
+            softmax_inner(view);
         }
 
         Ok(tvec!(output.into_arc_tensor()))
@@ -157,9 +154,9 @@ impl Softmax {
 
         // All operations will be done in u8, we will cast the result appropriately afterward.
         let src_is_signed = input.as_ref().datum_type().is_signed();
-        let src_fixed_point = fixed_point(input.datum_type())?;
-        let dst_is_signed = self.output_dt.is_signed();
-        let dst_fixed_point = fixed_point(self.output_dt)?;
+        let out_is_signed = self.output_dt.is_signed();
+        let in_qp = input.as_ref().datum_type().qparams().unwrap(); // Checked as we are in the quant case
+        let out_qp = self.output_dt.qparams().unwrap(); // Checked as we are in the quant case
         let mut output = unsafe { input.into_tensor().into_array_unchecked::<u8>() };
 
         for it_coords in tract_ndarray::indices(&*iterating_shape) {
@@ -169,14 +166,7 @@ impl Softmax {
                     view.collapse_axis(Axis(ix), it_coords[ix]);
                 }
             }
-
-            softmax_quant_inner(
-                view,
-                src_is_signed,
-                src_fixed_point,
-                dst_is_signed,
-                dst_fixed_point,
-            );
+            softmax_quant_inner(view, src_is_signed, in_qp, out_is_signed, out_qp);
         }
 
         let mut output_tensor = output.into_tensor();
@@ -185,76 +175,95 @@ impl Softmax {
     }
 }
 
-fn fixed_point(dt: DatumType) -> TractResult<usize> {
-    let max_fixed_point = dt.size_of() * 8 - dt.is_signed() as usize;
-    match dt {
-        DatumType::QI8(_) | DatumType::QU8(_) => {
-            let (_, scale) = dt.zp_scale();
-            if (scale.log2() - scale.log2().round()).abs() <= 3. * f32::EPSILON {
-                let fixed_point = -scale.log2().round() as usize;
-
-                if fixed_point > max_fixed_point {
-                    bail!("Quantization scale require too much precision")
-                } else {
-                    Ok(fixed_point)
-                }
-            } else {
-                bail!("Softmax only support quantization parameter with zp=0 & scale = 1/2^n")
-            }
-        }
-        _ => bail!("Fixed point can only be extracted from quantized datum types"),
-    }
+fn softmax_inner<T: Float + Datum + std::iter::Sum, D: Dimension>(mut view: ArrayViewMut<T, D>) {
+    let max = *view.iter().max_by(|i, j| i.partial_cmp(j).unwrap()).unwrap();
+    view.mapv_inplace(|x| (x - max).exp());
+    let exp_sum = view.iter().map(|it| *it).sum();
+    view.mapv_inplace(|x| x / exp_sum);
 }
 
-// TODO: support arbitraty scale with QScale parameters
-// fn softmax_quant_inner<D: Dimension>(mut view: ArrayViewMut<i8, D>, is_signed: bool,  in_scale: QScale, out_scale: QScale)
 fn softmax_quant_inner<D: Dimension>(
     mut view: ArrayViewMut<u8, D>,
     src_is_signed: bool,
-    src_fixed_point: usize,
-    dst_is_signed: bool,
-    dst_fixed_point: usize,
+    in_qp: QParams,
+    out_is_signed: bool,
+    out_qp: QParams,
 ) {
+    let (_, in_scale) = in_qp.zp_scale();
+    let (scale_in_multiplier, scale_in_shift) = convert_scale_to_mult_shift(in_scale).unwrap();
+    let (_, out_scale) = out_qp.zp_scale();
+    let (scale_out_multiplier, scale_out_shift) = convert_scale_to_mult_shift(out_scale).unwrap();
+    let shift = 26 - scale_in_shift;
+
     // Compute the exponentials x - max
     let mut buffer = vec![0_i32; view.len()];
-    let shift = 26 - src_fixed_point;
-    if src_is_signed {
-        // We have to put the signed values in the unsigned range
-        let max = view.iter().map(|it| it.wrapping_add(128)).max().unwrap();
-        view.iter().zip(buffer.iter_mut()).for_each(|(x, exp)| {
-            *exp = exp_on_negative_values((x.wrapping_add(128) as i32 - max as i32) << shift)
-        });
-    } else {
-        let max = view.iter().max().unwrap();
-        view.iter().zip(buffer.iter_mut()).for_each(|(x, exp)| {
-            let exp_ = exp_on_negative_values((*x as i32 - *max as i32) << shift);
-            *exp = exp_;
-        });
-    }
 
-    // Compute sum of exp and 1/sum of exp
+    // Handle the case were we considered an i8 as an u8 and still get the right x - max.
+    let safe_u8 = if src_is_signed { |x: &u8| x.wrapping_add(128) } else { |x: &u8| *x };
+
+    let max = view.iter().map(|it| safe_u8(it)).max().unwrap();
+    view.iter().zip(buffer.iter_mut()).for_each(|(x, exp)| {
+        let input_diff = safe_u8(x) as i32 - max as i32;
+
+        // We scale the input to be in Q5_26
+        let scaled_input_diff = if scale_in_multiplier != 0 {
+            saturating_rounding_multiply_by_pot(
+                saturating_rounding_doubling_high_mul(input_diff, scale_in_multiplier),
+                shift as i32,
+            )
+        } else {
+            saturating_rounding_multiply_by_pot(input_diff, shift as i32)
+        };
+
+        // It expects an input from Q5_26 and returns an output in Q0_31
+        *exp = exp_on_negative_values(scaled_input_diff);
+    });
+
+    // Compute sum of exp
+    // The sum is stored as an Q12_19 that's why we need to recale from Q0_31 to Q12_19 before summing.
     let sum_of_exp = buffer.iter().map(|it| rescale(*it, 0, 12)).sum();
+
+    // Compute 1/sum_of_exp
+    // The result of this function is in Q0_31
     let (inv_sum_of_exp, num_bits_over_unit) = get_reciprocal(sum_of_exp, 12);
 
-    // Do the final computation
-    view.iter_mut().zip(buffer.iter()).for_each(|(it, exp)| {
-        let exponent = num_bits_over_unit + 31 - dst_fixed_point;
+    // Compute the exponent value needed to be in Q24_8 before the final rescaling
+    let exponent = num_bits_over_unit as isize + 31 - 8;
 
+    view.iter_mut().zip(buffer.iter()).for_each(|(it, exp)| {
+        // Compute the product of exp * 1/sum_of_exp and scale the result in Q24_8
         let unsat_output = rounding_divide_by_pot(
             saturating_rounding_doubling_high_mul(inv_sum_of_exp, *exp),
             exponent as i32,
         );
 
-        if dst_is_signed {
+        // Scale the final result in the output scale range
+        let unsat_scaled_output = {
+            if scale_out_multiplier != 0 {
+                let (inv_multiplier, num_bits) = get_reciprocal(scale_out_multiplier, 1);
+                rounding_divide_by_pot(
+                    saturating_rounding_doubling_high_mul(unsat_output, inv_multiplier),
+                    (8 - scale_out_shift - 1 - num_bits as isize) as i32,
+                )
+            } else {
+                rounding_divide_by_pot(unsat_output, (8 - scale_out_shift) as i32)
+            }
+        };
+
+        // Return the final result by clipping the computed value within its range
+        // and casting it to u8 in any case.
+        if out_is_signed {
             *it = unsafe {
                 std::mem::transmute(i32::max(
-                    i32::min(unsat_output, i8::max_value() as i32),
+                    i32::min(unsat_scaled_output, i8::max_value() as i32),
                     i8::min_value() as i32,
                 ) as i8)
             };
         } else {
-            *it = i32::max(i32::min(unsat_output, u8::max_value() as i32), u8::min_value() as i32)
-                as u8;
+            *it = i32::max(
+                i32::min(unsat_scaled_output, u8::max_value() as i32),
+                u8::min_value() as i32,
+            ) as u8;
         }
     });
 }
@@ -270,8 +279,8 @@ mod test {
     use tract_data::internal::QParams::ZpScale;
 
     fn assert_is_close(found: f32, expected: f32, in_dt: DatumType, out_dt: DatumType) {
-        let in_epsilon = 2_f32.powi(-(fixed_point(in_dt).unwrap() as i32));
-        let out_epsilon = 2_f32.powi(-(fixed_point(out_dt).unwrap() as i32));
+        let (_, in_epsilon) = in_dt.zp_scale();
+        let (_, out_epsilon) = out_dt.zp_scale();
         let epsilon = f32::max(in_epsilon, out_epsilon);
         let error = (found - expected).abs();
         assert!(
@@ -287,7 +296,7 @@ mod test {
     // Generate a random tensor with a quantized datum type
     fn qtensor<T: PrimInt + Datum + Arbitrary>(shape: Vec<usize>) -> BoxedStrategy<Tensor> {
         let len = shape.iter().product::<usize>();
-        let dt = q_datum::<T>();
+        let dt = q_datum_in::<T>();
         (vec(any::<T>(), len..=len), dt)
             .prop_map(move |(vec, dt)| (ArrayD::from_shape_vec(shape.clone(), vec).unwrap(), dt))
             .prop_map(move |(array, dt)| {
@@ -299,23 +308,36 @@ mod test {
     }
 
     // Generate a random quantized datum type
-    fn q_datum<T: PrimInt + Datum>() -> BoxedStrategy<DatumType> {
-        let max_fixed_point = T::datum_type().size_of() * 8 - T::datum_type().is_signed() as usize;
-        (1usize..(max_fixed_point + 1))
-            .prop_map(|fixed_point| {
-                if T::datum_type().is_signed() {
-                    DatumType::QI8(ZpScale {
-                        zero_point: 0,
-                        scale: 2_f32.powi(-(fixed_point as i32)),
-                    })
-                } else {
-                    DatumType::QU8(ZpScale {
-                        zero_point: 0,
-                        scale: 2_f32.powi(-(fixed_point as i32)),
-                    })
-                }
-            })
-            .boxed()
+    fn q_datum_in<T: PrimInt + Datum>() -> BoxedStrategy<DatumType> {
+        let max_integer_bits = std::mem::size_of::<T>() * 8 - T::datum_type().is_signed() as usize;
+        prop_oneof![
+            (1usize..max_integer_bits).prop_map(|fixed_point| { 2f32.powi(-(fixed_point as i32)) }),
+            (0.0001f32..0.001)
+        ]
+        .prop_map(|scale| {
+            if T::datum_type().is_signed() {
+                DatumType::QI8(ZpScale { zero_point: 0, scale })
+            } else {
+                DatumType::QU8(ZpScale { zero_point: 0, scale })
+            }
+        })
+        .boxed()
+    }
+
+    fn q_datum_out<T: PrimInt + Datum>() -> BoxedStrategy<DatumType> {
+        let max_integer_bits = std::mem::size_of::<T>() * 8 - T::datum_type().is_signed() as usize;
+        prop_oneof![
+            (1usize..max_integer_bits).prop_map(|fixed_point| { 2f32.powi(-(fixed_point as i32)) }),
+            (0.008f32..0.01)
+        ]
+        .prop_map(|scale| {
+            if T::datum_type().is_signed() {
+                DatumType::QI8(ZpScale { zero_point: 0, scale })
+            } else {
+                DatumType::QU8(ZpScale { zero_point: 0, scale })
+            }
+        })
+        .boxed()
     }
 
     #[derive(Debug)]
@@ -364,7 +386,7 @@ mod test {
                     (
                         prop_oneof![qtensor::<i8>(shape_in.clone()), qtensor::<u8>(shape_in)],
                         Just(tvec![axis]),
-                        prop_oneof![q_datum::<u8>(), q_datum::<i8>()],
+                        prop_oneof![q_datum_out::<u8>(), q_datum_out::<i8>()],
                     )
                 })
                 .prop_map(|(data, axes, output_dt)| SoftmaxProblem { data, axes, output_dt })
@@ -372,8 +394,78 @@ mod test {
         }
     }
 
+    #[derive(Debug)]
+    pub struct InnerSoftmaxProblem {
+        in_qp: QParams,
+        out_qp: QParams,
+        data: Vec<i8>,
+    }
+
+    impl InnerSoftmaxProblem {
+        fn check(&self) -> Result<()> {
+            let quantized = self.quantized();
+            let reference = self.reference();
+            assert!(quantized
+                .iter()
+                .zip(reference.iter())
+                .all(|(quantized, expected)| quantized.abs_diff(*expected) <= 1));
+            Ok(())
+        }
+
+        fn reference(&self) -> Vec<u8> {
+            let (in_zero_point, in_scale) = self.in_qp.zp_scale();
+            let (out_zero_point, out_scale) = self.out_qp.zp_scale();
+            let in_float =
+                self.data.iter().map(|it| (*it as f32 - in_zero_point as f32) * in_scale).collect();
+            let mut in_float_array = Array1::from_vec(in_float);
+            softmax_inner(in_float_array.view_mut());
+            let rescaled_output = in_float_array
+                .iter()
+                .map(|it| {
+                    ((*it / out_scale).round() as i32 + out_zero_point)
+                        .max(u8::MIN as i32)
+                        .min(u8::MAX as i32) as u8
+                })
+                .collect();
+            rescaled_output
+        }
+
+        fn quantized(&self) -> Vec<u8> {
+            let in_data: Vec<u8> = unsafe { std::mem::transmute(self.data.clone()) };
+            let mut in_array = Array1::from_vec(in_data);
+            softmax_quant_inner(in_array.view_mut(), true, self.in_qp, false, self.out_qp);
+            in_array.to_vec()
+        }
+    }
+
+    impl Arbitrary for InnerSoftmaxProblem {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<InnerSoftmaxProblem>;
+        fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+            (
+                prop_oneof![q_datum_in::<i8>(), q_datum_in::<u8>()],
+                prop_oneof![q_datum_out::<u8>(), q_datum_out::<i8>()],
+                vec(any::<i8>(), 1..10),
+            )
+                .prop_map(|(in_qp, out_qp, data)| InnerSoftmaxProblem {
+                    in_qp: in_qp.qparams().unwrap(),
+                    out_qp: out_qp.qparams().unwrap(),
+                    data,
+                })
+                .boxed()
+        }
+    }
+
     proptest::proptest! {
-        #![proptest_config(ProptestConfig::with_cases(100))]
+        #![proptest_config(ProptestConfig::with_cases(1000))]
+        #[test]
+        fn test_softmax_inner_prop(pb in any::<InnerSoftmaxProblem>()) {
+            pb.check().unwrap()
+        }
+    }
+
+    proptest::proptest! {
+        #![proptest_config(ProptestConfig::with_cases(1000))]
         #[test]
         fn test_softmax_prop(pb in any::<SoftmaxProblem>()) {
             pb.check().unwrap()
@@ -443,4 +535,83 @@ mod test {
         prob.check()?;
         Ok(())
     }
+
+    #[test]
+    fn test_softmax_2() -> Result<()> {
+        let input_dt = DatumType::QI8(ZpScale { zero_point: 0, scale: 0.0001 });
+        let output_dt = DatumType::QU8(ZpScale { zero_point: 0, scale: 0.008 });
+        let mut data = Tensor::from_shape(&[1, 1, 1, 2], &[115_i8, 115])?;
+        unsafe { data.set_datum_type(input_dt) };
+
+        let prob = SoftmaxProblem { data, axes: tvec![3], output_dt };
+        prob.check()?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_softmax_3() -> Result<()> {
+        let input_dt = DatumType::QU8(ZpScale { zero_point: 0, scale: 0.6220956 });
+        let output_dt = DatumType::QU8(ZpScale { zero_point: 0, scale: 0.5187921 });
+        let mut data = Tensor::from_shape(&[1, 1, 1, 2], &[13_u8, 218])?;
+        unsafe { data.set_datum_type(input_dt) };
+
+        let prob = SoftmaxProblem { data, axes: tvec![3], output_dt };
+        prob.check()?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_inner_softmax_1() -> Result<()> {
+        let in_qp = ZpScale { zero_point: 0, scale: 0.03125 };
+        let out_qp = ZpScale { zero_point: 0, scale: 0.5 };
+        let data = vec![0_i8, 1];
+
+        let prob = InnerSoftmaxProblem { in_qp, out_qp, data };
+        prob.check()?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_inner_softmax_2() -> Result<()> {
+        let in_qp = ZpScale { zero_point: 0, scale: 0.5 };
+        let out_qp = ZpScale { zero_point: 0, scale: 0.03125 };
+        let data = vec![100i8, -28];
+
+        let prob = InnerSoftmaxProblem { in_qp, out_qp, data };
+        prob.check()?;
+        Ok(())
+    }
+
+    //#[test]
+    //fn test_inner_softmax_not_pow_2_1() -> Result<()> {
+    //    let in_qp = ZpScale { zero_point: 0, scale: 0.7298456 };
+    //    let out_qp = ZpScale { zero_point: 0, scale: 0.03125 };
+    //    let data = vec![100i8, -28];
+
+    //    let prob = InnerSoftmaxProblem { in_qp, out_qp, data};
+    //    prob.check()?;
+    //    Ok(())
+    //}
+
+    //#[test]
+    //fn test_inner_softmax_not_pow_2_2() -> Result<()> {
+    //    let in_qp = ZpScale { zero_point: 0, scale: 0.2123116 };
+    //    let out_qp = ZpScale { zero_point: 0, scale: 0.008 };
+    //    let data = vec![118i8, 108];
+
+    //    let prob = InnerSoftmaxProblem { in_qp, out_qp, data};
+    //    prob.check()?;
+    //    Ok(())
+    //}
+
+    //#[test]
+    //fn test_inner_softmax_not_pow_2_3() -> Result<()> {
+    //    let in_qp = ZpScale { zero_point: 0, scale: 0.33034274 };
+    //    let out_qp = ZpScale { zero_point: 0, scale: 0.015625 };
+    //    let data = vec![45i8, 43];
+
+    //    let prob = InnerSoftmaxProblem { in_qp, out_qp, data};
+    //    prob.check()?;
+    //    Ok(())
+    //}
 }

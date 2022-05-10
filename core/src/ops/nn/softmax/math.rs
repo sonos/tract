@@ -1,6 +1,32 @@
 use super::fixedpoint::{Q0_31, Q1_30, Q2_29, Q5_26};
 use num_traits::PrimInt;
 
+// This function convert a scale (actually the inverse of an integer 1/D)
+// into an integer multiplier and a shift (the multiplier being 1/D in Q0_31).
+pub fn convert_scale_to_mult_shift(scale: f32) -> Option<(i32, isize)> {
+    if scale <= 0.0 {
+        return None;
+    }
+
+    let scale_bits = scale.to_bits();
+
+    // We extract the exponent value
+    let current_exponent = scale_bits >> 23;
+
+    // We extract the fractional part of the float
+    let fractional_part = scale_bits & 0x007fffff;
+
+    if fractional_part == 0 {
+        let shift = 127 - current_exponent as isize;
+        Some((0, shift))
+    } else {
+        let bumped_multi = f32::from_bits(fractional_part | 0x3f000000);
+        let int_multi = (bumped_multi * (1u32 << 31) as f32).round() as i32;
+        let shift = 127 - current_exponent as isize - 1;
+        Some((int_multi, shift))
+    }
+}
+
 // Get inverse of X with a result as Q0.31
 // Here we expect X to have at least fixed point = 1 and to be >= 1 -> required to have an output in Q0_31.
 // https://github.com/tensorflow/tensorflow/blob/8c6f391a2282684a25cbfec7687bd5d35261a209/tensorflow/lite/kernels/internal/common.h#L765
