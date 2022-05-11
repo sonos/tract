@@ -139,7 +139,8 @@ where
                     FusedKerSpec::QScale(shift, rp, mult) => {
                         for i in 0..4 {
                             for j in 0..4 {
-                                ab[i][j] = ab[i][j].q_scale(mult, shift, rp);
+                                ab[i][j] =
+                                    ab[i][j].q_scale(Scaler::from_fuse_params(shift, rp, mult));
                             }
                         }
                     }
@@ -283,7 +284,7 @@ where
                     ),
                     FusedKerSpec::QScale(shift, rp, mult) => {
                         for i in 0..4 {
-                            ab[i][0] = ab[i][0].q_scale(mult, shift, rp);
+                            ab[i][0] = ab[i][0].q_scale(Scaler::from_fuse_params(shift, rp, mult));
                         }
                     }
                     FusedKerSpec::AddMatMul { k, pa, pb, .. } => {
@@ -420,7 +421,8 @@ where
                     FusedKerSpec::QScale(shift, rp, mult) => {
                         for i in 0..3 {
                             for j in 0..2 {
-                                ab[i][j] = ab[i][j].q_scale(mult, shift, rp);
+                                ab[i][j] =
+                                    ab[i][j].q_scale(Scaler::from_fuse_params(shift, rp, mult));
                             }
                         }
                     }

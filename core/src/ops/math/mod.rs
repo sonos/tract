@@ -6,8 +6,7 @@ use num_traits::int::PrimInt;
 use num_traits::{Float, Zero};
 use tract_data::internal::ClampCast;
 pub use tract_data::prelude::round_ties_to_even;
-use tract_linalg::mmm::RoundingPolicy;
-use tract_linalg::ScaleShiftAndRound;
+use tract_linalg::{ScaleShiftAndRound, Scaler};
 use tract_num_traits::AsPrimitive;
 
 bin_to_super_type!(add, Add,
@@ -485,8 +484,8 @@ element_wise!(round, Round, [f16, f32, f64] => |_, xs| {
 };
 q: [i8, u8, i32] => f32::round);
 
-element_wise!(q_scale, QScale {mult: i32, policy: RoundingPolicy, shift: isize},[i32] => |op, xs| {
-    xs.iter_mut().for_each(|x| *x = x.q_scale(op.mult, op.shift, op.policy));
+element_wise!(q_scale, QScale{scaler: Scaler},[i32] => |op, xs| {
+    xs.iter_mut().for_each(|x| *x = x.q_scale(op.scaler));
     Ok(())
 });
 
