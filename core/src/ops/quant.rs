@@ -369,7 +369,7 @@ impl crate::ops::binary::BinMiniOp for Scale {
 
 #[inline]
 // This function convert a scale (actually a fraction of two integers Q/D)
-// into an integer multiplier and a shift (the multiplier being 1/D in Q1_30).
+// into an integer multiplier and a shift (the multiplier being 1/2D in Q0_31).
 pub(crate) fn convert_scale_to_mult_shift(scale: f32) -> Option<(i32, isize)> {
     if scale <= 0.0 {
         return None;
@@ -384,20 +384,23 @@ pub(crate) fn convert_scale_to_mult_shift(scale: f32) -> Option<(i32, isize)> {
     let current_exponent = scale_bits >> 23;
 
     // Extract fractional part of the float with:
-    // - bits & 0x007fffff
-    // Replace exponent value to 126 (set actual value to 126-127=-1)
-    // - bits | 0x3f0000000
-    // We devide by two because the fractional part is in [1.0, 2.0) and we want
-    // it to be in [0.5, 1.0) in order to be in Q0_31 instead of Q1_31
-    let bumped_multi = f32::from_bits(scale_bits & 0x007fffff | 0x3f000000);
+    // - 0x007fffff that represents the mask of the 23 lower bits (fractional part)
+    // - 0x800000 that represents the hidden bit (24) of the float representation
+    // Here the frac is encoded as a Q8_23.
+    let frac = (scale_bits & 0x007fffff) | 0x800000;
 
-    // Multiply bump_mutli by 2^31 and round the result to consider it as a Q0_31
-    let int_multi = (bumped_multi * (1u32 << 31) as f32).round() as i32;
+    // We rescale the result to be in Q0_31
+    // We should have shifted the result by 8 but the frac value is in [1.0, 2.0)
+    // so we cannot do that (we would need one bit for the integer).
+    // Instead we devide the frac by two to be in [0.5, 1.0) in Q0_31
+    // which lead to a shift of (8-1 = 7).
+    let half_frac = (frac << 7) as i32;
 
-    // Compute the actual value of the shift (we remove one as the fractional part is scale/2).
+    // Compute the actual value of the shift
+    // Here, we remove one as half_frac needs to be multiplied by 2.
     let shift = 127 - current_exponent as isize - 1;
 
-    Some((int_multi, shift))
+    Some((half_frac, shift))
 }
 
 #[inline]
