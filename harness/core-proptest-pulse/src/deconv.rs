@@ -97,7 +97,7 @@ impl Arbitrary for DeconvProblem {
 impl DeconvProblem {
     pub fn run(&self) -> TestCaseResult {
         let mut model = TypedModel::default();
-        let mut fact = TypedFact::shape::<f32, _>(self.input.shape());
+        let mut fact = f32::fact(self.input.shape());
         fact.shape.set(2, stream_dim());
         let input = model.add_source("a", fact).unwrap();
         let id = self.deconv.chain("deconv1", &mut model, input);
