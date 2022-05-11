@@ -36,7 +36,7 @@ anything specific about batch size.
 
 The shape definition, while a bit complex syntax-wise, just says "N,3,224,224".
 
-One other trick is... this network actually encodes the batch has N in two places in the
+One other trick is... this network actually encodes a batch size in two places in the
 protobuf file: on the input (which we just override with our N-based input fact) but also
 in its output. So we need to "erase" that output shape information:
 
