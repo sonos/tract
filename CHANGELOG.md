@@ -1,4 +1,5 @@
 # Unreleased
+* Softmax is now an operator in core, coming with a direct quantized implementation
 
 # 0.16.6 - 2022-05-03
 * Various changes around quantization support (qi32 appearance)
