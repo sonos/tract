@@ -276,15 +276,15 @@ pub mod test {
                 use proptest::prelude::*;
                 use super::super::$ker;
 
-                //#[test]
-                //fn return_q_scale_0() {
-                //    if $cond {
-                //        let len = <$ker>::mr() * <$ker>::nr();
-                //        let mut v = vec!(0 as $tc; len - 1);
-                //        v.push(1 as $tc);
-                //        QScaleProblem::<$ker, $tc, $ti>::new(v, Scaler::new(0.0, RoundingPolicy::Zero)).run()
-                //    }
-                //}
+                #[test]
+                fn return_q_scale_0() {
+                    if $cond {
+                        let len = <$ker>::mr() * <$ker>::nr();
+                        let mut v = vec!(0 as $tc; len - 1);
+                        v.push(1 as $tc);
+                        QScaleProblem::<$ker, $tc, $ti>::new(v, Scaler::new(0.0, RoundingPolicy::Zero)).run()
+                    }
+                }
 
                 #[test]
                 fn return_q_scale_1() {
