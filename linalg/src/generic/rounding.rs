@@ -46,6 +46,11 @@ impl Scaler {
     // This function convert a scale (actually a fraction of two integers Q/D)
     // into an integer multiplier and a shift (the multiplier being 1/2D in Q0_31).
     fn convert_scale_to_mult_shift(scale: f32) -> (Option<i32>, isize) {
+        // Zero is a special case to handle
+        if scale == 0.0 {
+            return (None, 0)
+        }
+
         // Convert f32 to bits representation with the following pattern
         // Bit |  31  |  30-23   |   22-0    |
         //     | Sign | Exponent |  Fraction |
