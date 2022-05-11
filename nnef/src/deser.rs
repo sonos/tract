@@ -582,9 +582,11 @@ impl CoerceFrom<Value> for i64 {
 }
 
 impl CoerceFrom<Value> for TDim {
-    fn coerce(_builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
+    fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         match from {
             Value::Dim(d) => Ok(d.clone()),
+            Value::Tensor(t) => Ok(t.to_scalar::<TDim>()?.clone()),
+            Value::Wire(_) => Ok(from.to::<Arc<Tensor>>(builder)?.to_scalar::<TDim>()?.clone()),
             _ => bail!("Can not build a TDim from {:?}", from),
         }
     }

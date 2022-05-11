@@ -11,14 +11,11 @@ pub fn source(
     op: &ops::source::TypedSource,
 ) -> TractResult<Option<Arc<RValue>>> {
     if op.fact.datum_type == DatumType::F32 {
-        Ok(Some(invocation(
-            "external",
-            &[],
-            &[("shape", ints(&*op.fact.shape.as_concrete().unwrap()))],
-        )))
-    } else {
-        Ok(None)
+        if let Some(shape) = op.fact.shape.as_concrete() {
+            return Ok(Some(invocation("external", &[], &[("shape", ints(shape))])));
+        }
     }
+    Ok(None)
 }
 
 pub fn konst(
