@@ -109,7 +109,7 @@ impl TypedOp for GatherNd {
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let shape = self.compute_shape(&inputs[0].shape.to_tvec(), &inputs[1].shape.to_tvec())?;
-        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &shape)))
+        Ok(tvec!(inputs[0].datum_type.fact(&shape)))
     }
 
     fn declutter(

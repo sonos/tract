@@ -510,7 +510,7 @@ impl TypedOp for AxisOp {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut shape = inputs[0].shape.clone();
         self.change_shape(&mut shape, false)?;
-        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, shape)))
+        Ok(tvec!(inputs[0].datum_type.fact(shape)))
     }
 
     fn invariants(
@@ -1076,8 +1076,7 @@ mod proptests {
     impl ComposeProblem {
         pub fn model(&self) -> TractResult<TypedModel> {
             let mut model = TypedModel::default();
-            let mut wire =
-                model.add_source("source", TypedFact::dt_shape(i64::datum_type(), &self.input))?;
+            let mut wire = model.add_source("source", i64::fact(&self.input))?;
             for (ix, op) in self.ops.iter().enumerate() {
                 wire = model.wire_node(format!("op_{}", ix), op.clone(), &[wire])?[0];
             }

@@ -59,7 +59,7 @@ impl PulsedFact {
     }
 
     pub fn to_pulse_fact(&self) -> TypedFact {
-        TypedFact::dt_shape(self.datum_type, self.shape.clone())
+        self.datum_type.fact(self.shape.clone())
     }
 
     pub fn streaming_shape(&self) -> Vec<TDim> {
@@ -112,12 +112,12 @@ impl Fact for PulsedFact {
 
 impl From<PulsedFact> for TypedFact {
     fn from(fact: PulsedFact) -> TypedFact {
-        TypedFact::dt_shape(fact.datum_type, fact.shape)
+        fact.datum_type.fact(fact.shape)
     }
 }
 
 impl<'a> From<&'a PulsedFact> for TypedFact {
     fn from(fact: &'a PulsedFact) -> TypedFact {
-        TypedFact::dt_shape(fact.datum_type, fact.shape.clone())
+        fact.datum_type.fact(fact.shape.clone())
     }
 }

@@ -306,8 +306,8 @@ impl TypedOp for DynamicQuantizeLinearU8 {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut quantized_fact = inputs[0].clone();
         quantized_fact.datum_type = u8::datum_type();
-        let scale_fact = TypedFact::dt_shape(f32::datum_type(), &[0; 0]);
-        let zero_fact = TypedFact::dt_shape(u8::datum_type(), &[0; 0]);
+        let scale_fact = f32::fact(&[0; 0]);
+        let zero_fact = u8::fact(&[0; 0]);
         Ok(tvec!(quantized_fact, scale_fact, zero_fact))
     }
 

@@ -542,7 +542,7 @@ impl ConvUnary {
         let wire = model.wire_node(
             format!("{}.matmatmul", name),
             LirMatMulUnary {
-                c_fact: TypedFact::dt_shape(c_datum_type, mmm_output_shape.clone()),
+                c_fact: c_datum_type.fact(mmm_output_shape.clone()),
                 micro_ops,
                 c_m_axis,
                 c_n_axis,
@@ -703,9 +703,7 @@ impl Op for ConvUnary {
         let mut info = self.pool_spec.info();
         info.push(format!(
             "Kernel {:?} (groups:{}), {:?}",
-            self.kernel_fmt,
-            self.group,
-            self.kernel
+            self.kernel_fmt, self.group, self.kernel
         ));
         if let Some(b) = &self.bias {
             info.push(format!("Bias: {:?}", b))
@@ -733,10 +731,7 @@ impl EvalOp for ConvUnary {
             .iter()
             .enumerate()
             .map(|(ix, v)| {
-                model.add_source(
-                    format!("source.{}", ix),
-                    TypedFact::dt_shape(v.datum_type(), v.shape()),
-                )
+                model.add_source(format!("source.{}", ix), v.datum_type().fact(v.shape()))
             })
             .collect::<TractResult<_>>()?;
         let new_op = self.kernel_offset_u8_as_i8(&mut wires, &mut model)?;

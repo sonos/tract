@@ -31,21 +31,33 @@ bin_to_bool!(greater_equal, GreaterEqual,
     codegen_unary: codegen_compare_to_zero,
     [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a >= b);
 
-fn codegen_compare_to_zero(op: &dyn BinMiniOp, model: &TypedModel, node: &TypedNode, a: &Arc<Tensor>) -> TractResult<Option<TypedModelPatch>> {
+fn codegen_compare_to_zero(
+    op: &dyn BinMiniOp,
+    model: &TypedModel,
+    node: &TypedNode,
+    a: &Arc<Tensor>,
+) -> TractResult<Option<TypedModelPatch>> {
     if let Some(a) = a.as_uniform() {
-        if (a.datum_type().is_signed() || a.datum_type().is_float()) && a == Tensor::zero_scalar_dt(a.datum_type())? {
+        if (a.datum_type().is_signed() || a.datum_type().is_float())
+            && a == Tensor::zero_scalar_dt(a.datum_type())?
+        {
             let op: Box<dyn ElementWiseMiniOp> = if op.is::<Less>() {
-                Box::new(GreaterThanZero{})
+                Box::new(GreaterThanZero {})
             } else if op.is::<LessEqual>() {
-                Box::new(GreaterEqualThanZero{})
+                Box::new(GreaterEqualThanZero {})
             } else if op.is::<Greater>() {
-                Box::new(LessThanZero{})
+                Box::new(LessThanZero {})
             } else if op.is::<GreaterEqual>() {
-                Box::new(LessEqualThanZero{})
+                Box::new(LessEqualThanZero {})
             } else {
                 unreachable!();
             };
-            return Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, ElementWiseOp(op))?));
+            return Ok(Some(TypedModelPatch::replace_single_op(
+                model,
+                node,
+                &node.inputs,
+                ElementWiseOp(op),
+            )?));
         }
     }
     Ok(None)
@@ -146,7 +158,7 @@ impl TypedOp for Iff {
             inputs[2].shape.to_tvec(),
         ])
         .unwrap();
-        Ok(tvec!(TypedFact::dt_shape(inputs[1].datum_type, shape)))
+        Ok(tvec!(inputs[1].datum_type.fact(shape)))
     }
 
     fn invariants(

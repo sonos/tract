@@ -137,7 +137,7 @@ impl TypedOp for QMatMulUnary {
             };
         }
 
-        Ok(tvec!(TypedFact::dt_shape(self.output_type, c_shape)))
+        Ok(tvec!(self.output_type.fact(c_shape)))
     }
 
     fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
@@ -682,13 +682,7 @@ mod test {
                 let mut inputs = tvec![];
                 inputs.push(
                     model
-                    .add_source(
-                        "b",
-                        TypedFact::dt_shape(
-                            <$b>::datum_type(),
-                            &[self.b.nrows(), self.b.ncols()],
-                            ),
-                            )
+                    .add_source("b", <$b>::datum_type().fact(&[self.b.nrows(), self.b.ncols()]))
                     .unwrap(),
                     );
                 let qparams = if self.dyn_qp {

@@ -280,7 +280,7 @@ impl TypedOp for Reduce {
         } else {
             inputs[0].datum_type
         };
-        Ok(tvec!(TypedFact::dt_shape(dt, shape)))
+        Ok(tvec!(dt.fact(shape)))
     }
 
     fn invariants(

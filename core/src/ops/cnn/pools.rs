@@ -68,7 +68,7 @@ impl PoolSpec {
 
     pub fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let oshape = self.output_shape(&inputs[0].shape)?;
-        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, oshape.shape)))
+        Ok(tvec!(inputs[0].datum_type.fact(oshape.shape)))
     }
 
     pub fn dispose_n_axis(&self) -> PoolSpec {

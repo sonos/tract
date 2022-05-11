@@ -415,8 +415,7 @@ impl DeconvSum {
 impl TypedOp for DeconvSum {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let shape = super::output_shape(&self.pool_spec, &*self.input_shape, &*self.adjustments)?;
-
-        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*shape)))
+        Ok(tvec!(inputs[0].datum_type.fact(&*shape)))
     }
 
     as_op!();

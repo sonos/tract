@@ -127,8 +127,7 @@ impl QConvProblem {
         setup_test_logger();
         assert_eq!(self.data.shape(), &*self.shape_in.shape);
         let mut model = TypedModel::default();
-        let wire = model
-            .add_source("input", TypedFact::dt_shape(i8::datum_type(), &self.shape_in.shape))?;
+        let wire = model.add_source("input", i8::fact(&self.shape_in.shape))?;
         let op = ConvUnary::new(
             PoolSpec::new(
                 self.shape_in.fmt,

@@ -153,8 +153,7 @@ impl TypedOp for TypedBinOp {
         if inputs[0].rank() != inputs[1].rank() {
             bail!("Typed ops require rank match. Invalid inputs for {}: {:?}", self.name(), inputs);
         }
-        Ok(tvec!(TypedFact::dt_shape(
-            self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?,
+        Ok(tvec!(self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?.fact(
             &*crate::broadcast::multi_broadcast(&[
                 &inputs[0].shape.to_tvec(),
                 &inputs[1].shape.to_tvec()
@@ -381,8 +380,7 @@ impl TypedOp for UnaryOp {
         if self.a.rank() != inputs[0].rank() {
             bail!("Rank mismatch: constant: {:?}, input: {:?}", self.a, inputs[0]);
         }
-        Ok(tvec!(TypedFact::dt_shape(
-            self.mini_op.result_datum_type(self.a.datum_type(), inputs[0].datum_type)?,
+        Ok(tvec!(self.mini_op.result_datum_type(self.a.datum_type(), inputs[0].datum_type)?.fact(
             &*crate::broadcast::multi_broadcast(&[
                 &*self.a.shape().iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
                 &*inputs[0].shape.to_tvec()

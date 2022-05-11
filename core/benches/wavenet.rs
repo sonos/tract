@@ -71,7 +71,7 @@ fn mmm(c: &mut Criterion) {
                     b_storage: unsafe { mmm.b_packed(F32.size_of(), 48) },
                 });
                 let op = LirMatMulUnary {
-                    c_fact: TypedFact::dt_shape(f32::datum_type(), &[8, 64]),
+                    c_fact: f32::fact([8, 64]),
                     micro_ops: tract_ndarray::arr0((
                         packed_a.into_arc_tensor(),
                         vec![ProtoFusedSpec::Store],

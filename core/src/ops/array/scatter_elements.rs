@@ -41,7 +41,7 @@ impl TypedOp for ScatterElements {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*inputs[0].shape.to_tvec())))
+        Ok(tvec!(inputs[0].datum_type.fact(inputs[0].shape.clone())))
     }
 }
 

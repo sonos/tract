@@ -76,7 +76,7 @@ impl TypedOp for TypedConcat {
             .cloned()
             .or_else(|| {
                 if let ConcatSlice::Const(t) = &self.slices[0] {
-                    Some(TypedFact::dt_shape(t.datum_type(), t.shape()))
+                    Some(t.datum_type().fact(t.shape()))
                 } else {
                     None
                 }

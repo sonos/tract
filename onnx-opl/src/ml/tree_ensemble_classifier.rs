@@ -52,10 +52,7 @@ impl EvalOp for TreeEnsembleClassifier {
 impl TypedOp for TreeEnsembleClassifier {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let n = &inputs[0].shape[0];
-        Ok(tvec!(TypedFact::dt_shape(
-            f32::datum_type(),
-            &[n.clone(), self.ensemble.n_classes().into()]
-        )))
+        Ok(tvec!(f32::fact(&[n.clone(), self.ensemble.n_classes().into()])))
     }
 
     as_op!();

@@ -66,6 +66,5 @@ fn external_load(
     if let Some(Some(qdt)) = invocation.dt_from_quant_file.get(0) {
         dt = *qdt;
     }
-    let fact = TypedFact::dt_shape(dt, &*shape);
-    Ok(tvec!(builder.model.add_source("", fact)?))
+    Ok(tvec!(builder.model.add_source("", dt.fact(&*shape))?))
 }

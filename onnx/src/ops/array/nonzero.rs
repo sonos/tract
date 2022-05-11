@@ -78,10 +78,7 @@ impl InferenceRulesOp for NonZero {
 
 impl TypedOp for NonZero {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(TypedFact::dt_shape(
-            i64::datum_type(),
-            &[inputs[0].rank().to_dim(), self.0.to_dim()]
-        )))
+        Ok(tvec!(i64::fact(&[inputs[0].rank().to_dim(), self.0.to_dim()])))
     }
 
     as_op!();

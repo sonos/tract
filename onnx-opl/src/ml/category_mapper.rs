@@ -74,7 +74,7 @@ impl TypedOp for DirectLookup {
                 self.fallback_value
             )
         }
-        Ok(tvec!(TypedFact::dt_shape(self.values.datum_type(), inputs[0].shape.iter())))
+        Ok(tvec!(self.values.datum_type().fact(inputs[0].shape.iter())))
     }
 
     fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
@@ -182,7 +182,7 @@ impl EvalOp for ReverseLookup {
 
 impl TypedOp for ReverseLookup {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(TypedFact::dt_shape(i32::datum_type(), inputs[0].shape.iter())))
+        Ok(tvec!(i32::fact(inputs[0].shape.iter())))
     }
 
     fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {

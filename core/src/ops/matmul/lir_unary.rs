@@ -244,7 +244,9 @@ fn eval(
                         .b_storage
                         .wrap(&TensorView::at_prefix_unchecked(&inputs[0], &*b_prefix))?,
                 });
-                f.extend(fused.iter().map(|f| f.resolve(inputs, prefix.slice(), &c_storage, c_store)));
+                f.extend(
+                    fused.iter().map(|f| f.resolve(inputs, prefix.slice(), &c_storage, c_store)),
+                );
                 op.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch, &f)?;
             }
         } else {
@@ -336,7 +338,7 @@ impl TypedOp for LirMatMulUnary {
                     )
                     .unwrap();
 
-                let c_fact = TypedFact::dt_shape(cast, self.c_fact.shape.clone());
+                let c_fact = cast.fact(self.c_fact.shape.clone());
                 let mut patch = TypedModelPatch::fuse_with_next(
                     model,
                     &node,

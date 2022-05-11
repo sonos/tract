@@ -117,8 +117,7 @@ impl ConvProblem {
         setup_test_logger();
         assert_eq!(self.data.shape(), &*self.shape_in.shape, "inconsistent shapes in test");
         let mut model = TypedModel::default();
-        let wire = model
-            .add_source("input", TypedFact::dt_shape(f32::datum_type(), &self.shape_in.shape))?;
+        let wire = model.add_source("input", f32::fact(&self.shape_in.shape))?;
         let co = match self.kernel_format {
             KernelFormat::OIHW => self.kernel.shape()[0],
             KernelFormat::HWIO => self.kernel.shape()[self.kernel.ndim() - 1] * self.group,
@@ -879,7 +878,6 @@ fn lazy_im2col_big_2() -> anyhow::Result<()> {
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
 }
-
 
 #[test]
 fn depthwise_0() -> anyhow::Result<()> {

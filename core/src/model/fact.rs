@@ -327,3 +327,43 @@ impl fmt::Debug for TypedFact {
         }
     }
 }
+
+pub trait DatumExt {
+    fn scalar_fact() -> TypedFact;
+    fn fact<S>(shape: S) -> TypedFact
+    where
+        S: Into<ShapeFact>;
+}
+
+impl<T: Datum> DatumExt for T {
+    fn scalar_fact() -> TypedFact {
+        TypedFact::shape::<Self, &[usize]>(&[])
+    }
+
+    fn fact<S>(shape: S) -> TypedFact
+    where
+        S: Into<ShapeFact>,
+    {
+        TypedFact::shape::<Self, _>(shape)
+    }
+}
+
+pub trait DatumTypeExt {
+    fn scalar_fact(&self) -> TypedFact;
+    fn fact<S>(&self, shape: S) -> TypedFact
+    where
+        S: Into<ShapeFact>;
+}
+
+impl DatumTypeExt for DatumType {
+    fn scalar_fact(&self) -> TypedFact {
+        TypedFact::dt_shape::<&[usize]>(*self, &[])
+    }
+
+    fn fact<S>(&self, shape: S) -> TypedFact
+    where
+        S: Into<ShapeFact>,
+    {
+        TypedFact::dt_shape(*self, shape)
+    }
+}

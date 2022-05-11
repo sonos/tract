@@ -256,7 +256,7 @@ impl TypedOp for DepthWise {
             self.input_shape.c(),
             self.bias.len()
         );
-        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &self.output_shape.shape)))
+        Ok(tvec!(inputs[0].datum_type.fact(&self.output_shape.shape)))
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
@@ -270,163 +270,162 @@ impl TypedOp for DepthWise {
     as_op!();
 }
 
-
 /* partial alternative impl that may be relevant when simd gets better */
 
-    /*
-    #[inline(never)]
-    unsafe fn process_zone_4_f32(
-        &self,
-        zone: &Zone,
-        c_stride_i: isize,
-        c_stride_o: isize,
-        k_stride_i: isize,
-        iptr: *const f32,
-        kptr: *const f32,
-        bias: *const f32,
-        optr: *mut f32,
-    ) {
-        use std::simd::*;
-        let mut visitor = ZoneScanner::new(zone, &self.patch);
-        let ioffset0 = zone.values_offsets[0].1;
-        let ioffset1 = zone.values_offsets[1].1;
-        let ioffset2 = zone.values_offsets[2].1;
-        let ioffset3 = zone.values_offsets[3].1;
-        for c in 0..*self.input_shape.c() as isize {
-            visitor.reset();
-            let kptr = kptr.offset(k_stride_i * c);
-            let iptr = iptr.offset(c_stride_i * c);
-            let optr = optr.offset(c_stride_o * c);
-            let k0 = *kptr.offset(zone.values_offsets[0].0 as isize);
-            let k1 = *kptr.offset(zone.values_offsets[1].0 as isize);
-            let k2 = *kptr.offset(zone.values_offsets[2].0 as isize);
-            let k3 = *kptr.offset(zone.values_offsets[3].0 as isize);
-            let k0 = f32x4::splat(k0);
-            let k1 = f32x4::splat(k1);
-            let k2 = f32x4::splat(k2);
-            let k3 = f32x4::splat(k3);
-            let bias = f32x4::splat(*bias.offset(c));
-            while !visitor.done {
-                let iptr = iptr.offset(visitor.input_center_offset);
-                let optr = optr.offset(visitor.output_offset);
-                let mut i  = 0;
-                while i + 4 <
-                for i in 0..visitor.inner_loop_len as isize {
-                    let iptr = iptr.offset(visitor.inner_loop_input_full_stride * i);
-                    let optr = optr.offset(visitor.inner_loop_output_stride * i);
-                    let i0 = *iptr.offset(ioffset0);
-                    let i1 = *iptr.offset(ioffset1);
-                    let i2 = *iptr.offset(ioffset2);
-                    let i3 = *iptr.offset(ioffset3);
-                    let i = f32x4::from_array([i0, i1, i2, i3]);
-                    let p = (i * k).reduce_sum();
-                    let sum = bias + p;
-                    *optr = sum
-                }
-                visitor.next_non_inner_axis()
+/*
+#[inline(never)]
+unsafe fn process_zone_4_f32(
+    &self,
+    zone: &Zone,
+    c_stride_i: isize,
+    c_stride_o: isize,
+    k_stride_i: isize,
+    iptr: *const f32,
+    kptr: *const f32,
+    bias: *const f32,
+    optr: *mut f32,
+) {
+    use std::simd::*;
+    let mut visitor = ZoneScanner::new(zone, &self.patch);
+    let ioffset0 = zone.values_offsets[0].1;
+    let ioffset1 = zone.values_offsets[1].1;
+    let ioffset2 = zone.values_offsets[2].1;
+    let ioffset3 = zone.values_offsets[3].1;
+    for c in 0..*self.input_shape.c() as isize {
+        visitor.reset();
+        let kptr = kptr.offset(k_stride_i * c);
+        let iptr = iptr.offset(c_stride_i * c);
+        let optr = optr.offset(c_stride_o * c);
+        let k0 = *kptr.offset(zone.values_offsets[0].0 as isize);
+        let k1 = *kptr.offset(zone.values_offsets[1].0 as isize);
+        let k2 = *kptr.offset(zone.values_offsets[2].0 as isize);
+        let k3 = *kptr.offset(zone.values_offsets[3].0 as isize);
+        let k0 = f32x4::splat(k0);
+        let k1 = f32x4::splat(k1);
+        let k2 = f32x4::splat(k2);
+        let k3 = f32x4::splat(k3);
+        let bias = f32x4::splat(*bias.offset(c));
+        while !visitor.done {
+            let iptr = iptr.offset(visitor.input_center_offset);
+            let optr = optr.offset(visitor.output_offset);
+            let mut i  = 0;
+            while i + 4 <
+            for i in 0..visitor.inner_loop_len as isize {
+                let iptr = iptr.offset(visitor.inner_loop_input_full_stride * i);
+                let optr = optr.offset(visitor.inner_loop_output_stride * i);
+                let i0 = *iptr.offset(ioffset0);
+                let i1 = *iptr.offset(ioffset1);
+                let i2 = *iptr.offset(ioffset2);
+                let i3 = *iptr.offset(ioffset3);
+                let i = f32x4::from_array([i0, i1, i2, i3]);
+                let p = (i * k).reduce_sum();
+                let sum = bias + p;
+                *optr = sum
             }
+            visitor.next_non_inner_axis()
         }
     }
-    */
+}
+*/
 
-    /*
-    #[inline(never)]
-    unsafe fn process_zone_4_f32(
-        &self,
-        zone: &Zone,
-        c_stride_i: isize,
-        c_stride_o: isize,
-        k_stride_i: isize,
-        iptr: *const f32,
-        kptr: *const f32,
-        bias: *const f32,
-        optr: *mut f32,
-    ) {
-        use std::simd::*;
-        let mut visitor = ZoneScanner::new(zone, &self.patch);
-        let ioffset0 = zone.values_offsets[0].1;
-        let ioffset1 = zone.values_offsets[1].1;
-        let ioffset2 = zone.values_offsets[2].1;
-        let ioffset3 = zone.values_offsets[3].1;
-        for c in 0..*self.input_shape.c() as isize {
-            visitor.reset();
-            let kptr = kptr.offset(k_stride_i * c);
-            let iptr = iptr.offset(c_stride_i * c);
-            let optr = optr.offset(c_stride_o * c);
-            let k0 = *kptr.offset(zone.values_offsets[0].0 as isize);
-            let k1 = *kptr.offset(zone.values_offsets[1].0 as isize);
-            let k2 = *kptr.offset(zone.values_offsets[2].0 as isize);
-            let k3 = *kptr.offset(zone.values_offsets[3].0 as isize);
-            let k = f32x4::from_array([k0, k1, k2, k3]);
-            let bias = *bias.offset(c);
-            while !visitor.done {
-                let iptr = iptr.offset(visitor.input_center_offset);
-                let optr = optr.offset(visitor.output_offset);
-                for i in 0..visitor.inner_loop_len as isize {
-                    let iptr = iptr.offset(visitor.inner_loop_input_full_stride * i);
-                    let optr = optr.offset(visitor.inner_loop_output_stride * i);
-                    let i0 = *iptr.offset(ioffset0);
-                    let i1 = *iptr.offset(ioffset1);
-                    let i2 = *iptr.offset(ioffset2);
-                    let i3 = *iptr.offset(ioffset3);
-                    let i = f32x4::from_array([i0, i1, i2, i3]);
-                    let p = (i * k).reduce_sum();
-                    let sum = bias + p;
-                    *optr = sum
-                }
-                visitor.next_non_inner_axis()
+/*
+#[inline(never)]
+unsafe fn process_zone_4_f32(
+    &self,
+    zone: &Zone,
+    c_stride_i: isize,
+    c_stride_o: isize,
+    k_stride_i: isize,
+    iptr: *const f32,
+    kptr: *const f32,
+    bias: *const f32,
+    optr: *mut f32,
+) {
+    use std::simd::*;
+    let mut visitor = ZoneScanner::new(zone, &self.patch);
+    let ioffset0 = zone.values_offsets[0].1;
+    let ioffset1 = zone.values_offsets[1].1;
+    let ioffset2 = zone.values_offsets[2].1;
+    let ioffset3 = zone.values_offsets[3].1;
+    for c in 0..*self.input_shape.c() as isize {
+        visitor.reset();
+        let kptr = kptr.offset(k_stride_i * c);
+        let iptr = iptr.offset(c_stride_i * c);
+        let optr = optr.offset(c_stride_o * c);
+        let k0 = *kptr.offset(zone.values_offsets[0].0 as isize);
+        let k1 = *kptr.offset(zone.values_offsets[1].0 as isize);
+        let k2 = *kptr.offset(zone.values_offsets[2].0 as isize);
+        let k3 = *kptr.offset(zone.values_offsets[3].0 as isize);
+        let k = f32x4::from_array([k0, k1, k2, k3]);
+        let bias = *bias.offset(c);
+        while !visitor.done {
+            let iptr = iptr.offset(visitor.input_center_offset);
+            let optr = optr.offset(visitor.output_offset);
+            for i in 0..visitor.inner_loop_len as isize {
+                let iptr = iptr.offset(visitor.inner_loop_input_full_stride * i);
+                let optr = optr.offset(visitor.inner_loop_output_stride * i);
+                let i0 = *iptr.offset(ioffset0);
+                let i1 = *iptr.offset(ioffset1);
+                let i2 = *iptr.offset(ioffset2);
+                let i3 = *iptr.offset(ioffset3);
+                let i = f32x4::from_array([i0, i1, i2, i3]);
+                let p = (i * k).reduce_sum();
+                let sum = bias + p;
+                *optr = sum
             }
+            visitor.next_non_inner_axis()
         }
     }
-    */
+}
+*/
 
-    /*
-    #[inline(never)]
-    unsafe fn process_zone_4<T: Datum + Copy + ndarray::LinalgScalar>(
-        &self,
-        zone: &Zone,
-        c_stride_i: isize,
-        c_stride_o: isize,
-        k_stride_i: isize,
-        iptr: *const T,
-        kptr: *const T,
-        bias: *const T,
-        optr: *mut T,
-    ) {
-        let mut visitor = ZoneScanner::new(zone, &self.patch);
-        let ioffset0 = zone.values_offsets[0].1;
-        let ioffset1 = zone.values_offsets[1].1;
-        let ioffset2 = zone.values_offsets[2].1;
-        let ioffset3 = zone.values_offsets[3].1;
-        for c in 0..*self.input_shape.c() as isize {
-            visitor.reset();
-            let kptr = kptr.offset(k_stride_i * c);
-            let iptr = iptr.offset(c_stride_i * c);
-            let optr = optr.offset(c_stride_o * c);
-            let k0 = *kptr.offset(zone.values_offsets[0].0 as isize);
-            let k1 = *kptr.offset(zone.values_offsets[1].0 as isize);
-            let k2 = *kptr.offset(zone.values_offsets[2].0 as isize);
-            let k3 = *kptr.offset(zone.values_offsets[3].0 as isize);
-            let bias = *bias.offset(c);
-            while !visitor.done {
-                let iptr = iptr.offset(visitor.input_center_offset);
-                let optr = optr.offset(visitor.output_offset);
-                for i in 0..visitor.inner_loop_len as isize {
-                    let iptr = iptr.offset(visitor.inner_loop_input_full_stride * i);
-                    let optr = optr.offset(visitor.inner_loop_output_stride * i);
-                    let i0 = *iptr.offset(ioffset0);
-                    let i1 = *iptr.offset(ioffset1);
-                    let i2 = *iptr.offset(ioffset2);
-                    let i3 = *iptr.offset(ioffset3);
-                    let p0 = i0 * k0;
-                    let p1 = i1 * k1;
-                    let p2 = i2 * k2;
-                    let p3 = i3 * k3;
-                    let sum = bias + p0 + p1 + p2 + p3;
-                    *optr = sum
-                }
-                visitor.next_non_inner_axis()
+/*
+#[inline(never)]
+unsafe fn process_zone_4<T: Datum + Copy + ndarray::LinalgScalar>(
+    &self,
+    zone: &Zone,
+    c_stride_i: isize,
+    c_stride_o: isize,
+    k_stride_i: isize,
+    iptr: *const T,
+    kptr: *const T,
+    bias: *const T,
+    optr: *mut T,
+) {
+    let mut visitor = ZoneScanner::new(zone, &self.patch);
+    let ioffset0 = zone.values_offsets[0].1;
+    let ioffset1 = zone.values_offsets[1].1;
+    let ioffset2 = zone.values_offsets[2].1;
+    let ioffset3 = zone.values_offsets[3].1;
+    for c in 0..*self.input_shape.c() as isize {
+        visitor.reset();
+        let kptr = kptr.offset(k_stride_i * c);
+        let iptr = iptr.offset(c_stride_i * c);
+        let optr = optr.offset(c_stride_o * c);
+        let k0 = *kptr.offset(zone.values_offsets[0].0 as isize);
+        let k1 = *kptr.offset(zone.values_offsets[1].0 as isize);
+        let k2 = *kptr.offset(zone.values_offsets[2].0 as isize);
+        let k3 = *kptr.offset(zone.values_offsets[3].0 as isize);
+        let bias = *bias.offset(c);
+        while !visitor.done {
+            let iptr = iptr.offset(visitor.input_center_offset);
+            let optr = optr.offset(visitor.output_offset);
+            for i in 0..visitor.inner_loop_len as isize {
+                let iptr = iptr.offset(visitor.inner_loop_input_full_stride * i);
+                let optr = optr.offset(visitor.inner_loop_output_stride * i);
+                let i0 = *iptr.offset(ioffset0);
+                let i1 = *iptr.offset(ioffset1);
+                let i2 = *iptr.offset(ioffset2);
+                let i3 = *iptr.offset(ioffset3);
+                let p0 = i0 * k0;
+                let p1 = i1 * k1;
+                let p2 = i2 * k2;
+                let p3 = i3 * k3;
+                let sum = bias + p0 + p1 + p2 + p3;
+                *optr = sum
             }
+            visitor.next_non_inner_axis()
         }
     }
-    */
+}
+*/

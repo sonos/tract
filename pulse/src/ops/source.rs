@@ -49,7 +49,7 @@ impl PulsedOp for PulsedSource {
     }
 
     fn to_typed(&self) -> Box<dyn TypedOp> {
-        Box::new(TypedSource::new(TypedFact::dt_shape(self.0.datum_type, self.0.shape.clone())))
+        Box::new(TypedSource::new(self.0.datum_type.fact(self.0.shape.clone())))
     }
 
     as_op!();

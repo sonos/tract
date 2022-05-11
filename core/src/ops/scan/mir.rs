@@ -220,7 +220,9 @@ impl Scan {
     ) -> TractResult<Option<TypedModelPatch>> {
         for (inner_input_id, input) in self.body.input_outlets()?.iter().enumerate() {
             let source_node = self.body.node(input.node);
-            if source_node.outputs[0].successors.len() == 0 && !self.body.output_outlets()?.contains(input) {
+            if source_node.outputs[0].successors.len() == 0
+                && !self.body.output_outlets()?.contains(input)
+            {
                 let mut new_inputs = node.inputs.clone();
                 let slot = match &self.input_mapping[inner_input_id] {
                     InputMapping::Full { slot } => Some(slot),
@@ -691,10 +693,10 @@ impl TypedOp for Scan {
                 let scanning_dim =
                     output.full_dim_hint.clone().unwrap_or(shape[output.axis].clone() * &iters);
                 shape.set(output.axis, scanning_dim);
-                outputs.push((slot, TypedFact::dt_shape(fact.datum_type, shape)));
+                outputs.push((slot, fact.datum_type.fact(shape)));
             }
             if let Some(slot) = output.last_value_slot {
-                outputs.push((slot, TypedFact::dt_shape(fact.datum_type, fact.shape.clone())));
+                outputs.push((slot, fact.datum_type.fact(fact.shape.clone())));
             }
         }
         outputs.sort_by_key(|a| a.0);
