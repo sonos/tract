@@ -177,6 +177,12 @@ impl<'a> From<&'a TypedFact> for InferenceFact {
     }
 }
 
+impl From<TypedFact> for InferenceFact {
+    fn from(t:TypedFact) -> InferenceFact {
+        InferenceFact::from(&t)
+    }
+}
+
 impl<'a> From<&'a Arc<Tensor>> for InferenceFact {
     fn from(t: &'a Arc<Tensor>) -> InferenceFact {
         InferenceFact::from(&TypedFact::from(t.clone()))

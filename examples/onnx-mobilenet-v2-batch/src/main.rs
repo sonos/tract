@@ -1,4 +1,5 @@
 use tract_onnx::prelude::*;
+use tract_onnx::tract_core::dims;
 
 fn main() -> TractResult<()> {
     let batch = Symbol::new('N');
@@ -6,13 +7,7 @@ fn main() -> TractResult<()> {
         // load the model
         .model_for_path("mobilenetv2-7.onnx")?
         // specify input type and shape
-        .with_input_fact(
-            0,
-            InferenceFact::dt_shape(
-                DatumType::F32,
-                &[batch.to_dim(), 3usize.into(), 224usize.into(), 224usize.into()],
-                ),
-                )?
+        .with_input_fact(0, f32::fact(dims!(batch, 3, 224, 224)).into())?
         // this model hardcodes a "1" as batch output shape, erase the output shape
         // to let tract perform inference and find "N"
         .with_output_fact(0, InferenceFact::default())?

@@ -42,7 +42,7 @@ impl DelayPlusPoolProblem {
     pub fn run(&self) -> TestCaseResult {
         let mut model = InferenceModel::default();
         let a = model
-            .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(1, S, 1)))
+            .add_source("a", f32::fact(dims!(1, tract_pulse::internal::stream_dim(), 1)).into())
             .unwrap();
         let crop =
             model.wire_node("crop", expand(array::Crop::new(1, self.delay, 0)), &[a]).unwrap();

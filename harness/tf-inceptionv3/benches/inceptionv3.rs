@@ -38,7 +38,7 @@ fn tf(bencher: &mut Criterion) {
 fn tract(bencher: &mut Criterion) {
     let mut tfd =
         tensorflow().model_for_path(tf_inceptionv3::inception_v3_2016_08_28_frozen()).unwrap();
-    tfd.set_input_fact(0, InferenceFact::dt_shape(DatumType::F32, &[1, 299, 299, 3])).unwrap();
+    tfd.set_input_fact(0, f32::fact(&[1, 299, 299, 3]).into()).unwrap();
     let tfd = tfd.into_optimized().unwrap();
     let input = tf_inceptionv3::load_image(hopper());
     let plan = SimplePlan::new(tfd).unwrap();

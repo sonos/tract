@@ -62,8 +62,8 @@ fn initialized_model() -> TractResult<TypedModel> {
     let TfModelAndExtensions(mut model, mut extensions) = tf.parse_graph(&graph)?;
     extensions.initializing_nodes = vec![model.node_id_by_name("initialize_state")?];
     model.set_input_names(&["input_node", "input_lengths"])?;
-    model.set_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), tvec!(1, 16, 19, 26)))?;
-    model.set_input_fact(1, InferenceFact::dt_shape(i32::datum_type(), tvec!(1)))?;
+    model.set_input_fact(0, f32::fact(&[1, 16, 19, 26]).into())?;
+    model.set_input_fact(1, i32::fact(&[1]).into())?;
     model.set_output_names(&["logits", "Assign_2", "Assign_3"])?;
 
     extensions.preproc(model)?.into_typed()

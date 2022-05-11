@@ -65,7 +65,7 @@ Everything happens in [src/main.rs](src/main.rs).
         // load the model
         .model_for_path("mobilenet_v2_1.4_224_frozen.pb")?
         // specify input type and shape
-        .with_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), tvec!(1, 224, 224, 3)))?
+        .with_input_fact(0, f32::fact(&[1, 224, 224, 3]).into())?
         // optimize the model
         .into_optimized()?
         // make the model runnable and fix its inputs and outputs
@@ -127,7 +127,7 @@ And it operates on single precision floats (aka `f32`).
 
 ```rust
     // ..
-        .with_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), tvec!(1, 224, 224, 3)))?
+        .with_input_fact(0, f32::fact(&[1, 224, 224, 3]).into())?
         .into_optimized()?
         .into_runnable()?;
 ```

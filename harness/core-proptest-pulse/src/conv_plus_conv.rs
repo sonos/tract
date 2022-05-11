@@ -77,9 +77,8 @@ impl Arbitrary for ConvPlusConvProblem {
 impl ConvPlusConvProblem {
     pub fn run(&self) -> TestCaseResult {
         let mut model = InferenceModel::default();
-        let input = model
-            .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(1, 1, S)))
-            .unwrap();
+        let s = tract_pulse::internal::stream_dim();
+        let input = model.add_source("a", f32::fact(dims!(1, 1, s)).into()).unwrap();
         let id = self.conv1.chain("conv1", &mut model, input);
         let _id = self.conv2.chain("conv2", &mut model, id);
         model.auto_outputs().unwrap();

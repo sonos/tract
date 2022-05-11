@@ -201,10 +201,7 @@ impl Framework<KaldiProtoModel, InferenceModel> for Kaldi {
         let s = tract_pulse::internal::stream_dim();
         model.add_source(
             proto_model.config_lines.input_name.clone(),
-            InferenceFact::dt_shape(
-                f32::datum_type(),
-                shapefactoid!(s, (proto_model.config_lines.input_dim)),
-            ),
+            f32::fact(dims!(s, proto_model.config_lines.input_dim)).into(),
         )?;
         let mut inputs_to_wire: BTreeMap<InletId, String> = Default::default();
         for (name, node) in &proto_model.config_lines.nodes {

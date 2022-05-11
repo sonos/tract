@@ -46,7 +46,7 @@ loads the model like:
 ```rust
 tract_onnx::onnx()
             .model_for_path("mobilenetv2-7.onnx")?
-            .with_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), tvec!(1, 3, 224, 224)))?
+            .with_input_fact(0, f32.fact(&[1, 3, 224, 224]).into())?
             .into_decluttered()?
 ```
 

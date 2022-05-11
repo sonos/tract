@@ -6,7 +6,7 @@ fn main() -> TractResult<()> {
         // load the model
         .model_for_path("resnet.onnx")?
         // specify input type and shape
-        .with_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), tvec!(1, 3, 224, 224)))?
+        .with_input_fact(0, f32::fact(&[1, 3, 224, 224]).into())?
         // optimize the model
         .into_optimized()?
         // make the model runnable and fix its inputs and outputs
