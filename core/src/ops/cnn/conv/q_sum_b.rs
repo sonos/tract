@@ -65,7 +65,7 @@ impl TypedOp for QSumB {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut shape: ShapeFact = inputs[0].shape.clone();
         shape.set(shape.rank() - 1, self.n.to_dim());
-        Ok(tvec!(TypedFact::shape::<i32, _>(shape)))
+        Ok(tvec!(i32::fact(shape)))
     }
 }
 

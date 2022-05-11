@@ -154,14 +154,14 @@ impl DeconvProblem {
             self.adjustments.clone(),
             self.group,
         );
-        let fact = TypedFact::shape::<f32, _>(self.input.shape());
+        let fact = f32::fact(self.input.shape());
         op.output_facts(&[&fact]).unwrap();
         op
     }
 
     fn model_eval(&self) -> ArrayD<f32> {
         let mut model = TypedModel::default();
-        let src = model.add_source("src", TypedFact::shape::<f32, _>(self.input.shape())).unwrap();
+        let src = model.add_source("src", f32::fact(self.input.shape())).unwrap();
         let output = model.wire_node("deconv", self.as_op(), &[src]).unwrap();
         model.set_output_outlets(&output).unwrap();
         let model = model.into_optimized().unwrap();
@@ -273,9 +273,15 @@ impl DeconvProblem {
 
     fn check(&self) {
         if self.optimized {
-            self.model_eval().into_tensor().close_enough(&self.reference().into_tensor(), true).unwrap()
+            self.model_eval()
+                .into_tensor()
+                .close_enough(&self.reference().into_tensor(), true)
+                .unwrap()
         } else {
-            self.op_eval().into_tensor().close_enough(&self.reference().into_tensor(), true).unwrap()
+            self.op_eval()
+                .into_tensor()
+                .close_enough(&self.reference().into_tensor(), true)
+                .unwrap()
         }
     }
 }
