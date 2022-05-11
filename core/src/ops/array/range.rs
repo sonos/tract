@@ -37,7 +37,7 @@ impl EvalOp for Range {
         &self,
         _session: &mut SessionState,
         _node_id: usize,
-        ) -> TractResult<Option<Box<dyn OpState>>> {
+    ) -> TractResult<Option<Box<dyn OpState>>> {
         if self.is_stateless() {
             Ok(None)
         } else {
@@ -52,7 +52,7 @@ impl OpState for Range {
         session: &mut SessionState,
         _op: &dyn Op,
         _inputs: TVec<Arc<Tensor>>,
-        ) -> TractResult<TVec<Arc<Tensor>>> {
+    ) -> TractResult<TVec<Arc<Tensor>>> {
         Ok(tvec!(self.make(Some(&session.resolved_symbols))?.into_arc_tensor()))
     }
 }
@@ -62,7 +62,7 @@ impl Range {
         start: &Tensor,
         step: &Tensor,
         len: usize,
-        ) -> TractResult<Tensor> {
+    ) -> TractResult<Tensor> {
         unsafe {
             let mut result = Tensor::uninitialized::<T>(&[len])?;
             let mut v = start.to_scalar::<T>()?.clone();
@@ -110,7 +110,7 @@ impl TypedOp for Range {
         } else {
             dispatch_numbers!(Self::len_for_numbers(self.start.datum_type())(self))?.into()
         };
-        Ok(tvec!(TypedFact::dt_shape(self.start.datum_type(), &[len])))
+        Ok(tvec!(self.start.datum_type().fact(&[len])))
     }
     as_op!();
 }

@@ -57,7 +57,7 @@ impl EvalOp for MatMatMulPack {
 
 impl TypedOp for MatMatMulPack {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &self.output_shape)))
+        Ok(tvec!(inputs[0].datum_type.fact(&self.output_shape)))
     }
 
     as_op!();

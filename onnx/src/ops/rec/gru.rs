@@ -267,10 +267,7 @@ impl GRU {
         let h_source = body
             .add_source(
                 "h_source",
-                TypedFact::dt_shape(
-                    x_fact.datum_type,
-                    &[1.to_dim(), b_size.clone(), h_size.clone()],
-                ),
+                x_fact.datum_type.fact(&[1.to_dim(), b_size.clone(), h_size.clone()]),
             )?
             .into();
 

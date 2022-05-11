@@ -61,7 +61,7 @@ impl TypedOp for MatMulUnary {
             self.c_trans,
         )?;
         let c_dt = output_type(inputs[0].datum_type);
-        Ok(tvec!(TypedFact::dt_shape(c_dt, c_shape)))
+        Ok(tvec!(c_dt.fact(c_shape)))
     }
 
     fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
@@ -233,7 +233,7 @@ impl MatMulUnary {
             wire = patch.wire_node(
                 format!("{}.matmatmul", &*node.name),
                 LirMatMulUnary {
-                    c_fact: TypedFact::dt_shape(c_dt, &c_shape),
+                    c_fact: c_dt.fact(&c_shape),
                     geometry: MatMulGeometry::Concrete(geometry),
                     micro_ops: packed_as,
                     c_m_axis: rank - 2 + self.c_trans as usize,

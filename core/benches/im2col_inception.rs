@@ -42,7 +42,7 @@ fn b(
     };
 
     let mut m = TypedModel::default();
-    let wire = m.add_source("", TypedFact::dt_shape(f32::datum_type(), &[1, h, w, ci])).unwrap();
+    let wire = m.add_source("", f32::fact(&[1, h, w, ci])).unwrap();
     unsafe {
         unary.wire_as_im2col_pair(&mut m, "", wire).unwrap();
     }

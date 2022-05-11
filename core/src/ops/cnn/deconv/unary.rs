@@ -144,7 +144,7 @@ impl Op for DeconvUnary {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec!(format!("{:?}", self.pool_spec)))
+        Ok(vec![format!("{:?}", self.pool_spec)])
     }
 
     op_core_mir!();
@@ -159,8 +159,7 @@ impl EvalOp for DeconvUnary {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         let mut model = TypedModel::default();
-        let source =
-            model.add_source("source", TypedFact::dt_shape(input.datum_type(), input.shape()))?;
+        let source = model.add_source("source", input.datum_type().fact(input.shape()))?;
         let output = self.wire_with_deconv_sum("adhoc", &mut model, source)?;
         model.set_output_outlets(&*output)?;
         let output =
@@ -184,7 +183,7 @@ impl TypedOp for DeconvUnary {
         }
         let x_fact = inputs[0];
         let output_shape = super::output_shape(&self.pool_spec, &*x_fact.shape, &self.adjustments)?;
-        Ok(tvec!(TypedFact::dt_shape(x_fact.datum_type, &output_shape)))
+        Ok(tvec!(x_fact.datum_type.fact(&output_shape)))
     }
 
     fn invariants(

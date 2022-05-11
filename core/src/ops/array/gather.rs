@@ -78,8 +78,7 @@ impl TypedOp for Gather {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(TypedFact::dt_shape(
-            inputs[0].datum_type,
+        Ok(tvec!(inputs[0].datum_type.fact(
             &*self
                 .compute_output_shape(&*inputs[0].shape.to_tvec(), &*inputs[1].shape.to_tvec())?
         )))

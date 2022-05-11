@@ -49,7 +49,7 @@ impl CoordTransformer {
             CoordTransformer::HalfPixel => (x_out as f32 + 0.5) * scale - 0.5,
             CoordTransformer::AlignCorners => {
                 (x_out as f32 * (len_in as f32 - 1.0)) / (len_out as f32 - 1.0)
-            },
+            }
             CoordTransformer::Asymmetric => (x_out as f32) / scale,
         }
     }
@@ -119,7 +119,9 @@ impl Resize {
         }
         bail!(
             "Neither shape not scale makes sense: input_shape: {:?}, scale: {:?}, sizes: {:?}",
-            input_shape, input_scale, input_sizes,
+            input_shape,
+            input_scale,
+            input_sizes,
         );
     }
 }
@@ -262,7 +264,7 @@ impl TypedOp for Resize {
             scales.and_then(|f| f.konst.as_deref()),
             sizes.and_then(|f| f.konst.as_deref()),
         )?;
-        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &output_shape)))
+        Ok(tvec!(inputs[0].datum_type.fact(&output_shape)))
     }
 
     fn declutter(

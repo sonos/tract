@@ -186,8 +186,7 @@ impl TypedOp for DequantizeLinearF32 {
                 // or else make a lookup table
                 if incoming_dt == DatumType::I8 || incoming_dt == DatumType::U8 {
                     let mut adhoc_model = TypedModel::default();
-                    let mut wire =
-                        adhoc_model.add_source("ad-hoc", TypedFact::dt_shape(dt, &[256]))?;
+                    let mut wire = adhoc_model.add_source("ad-hoc", dt.fact(&[256]))?;
                     let mut next = model.single_succ(dequant.id)?.unwrap();
                     let mut name = None;
                     // plug in dequant
@@ -407,7 +406,7 @@ pub mod scale {
             let input = tvec!(tensor2(&[[b]]));
             let mut model = TypedModel::default();
             let a = model.add_const("a", tensor2(&[[a]])).unwrap();
-            let b = model.add_source("b", TypedFact::dt_shape(i8::datum_type(), &[1, 1])).unwrap();
+            let b = model.add_source("b", i8::fact(&[1, 1])).unwrap();
             let bias = model.add_const("bias", tensor0(0i32)).unwrap();
             let mut qp = ops::matmul::MatMulQParams::noop_static(i8::datum_type());
             qp.c_scale = tensor0(scale).into();

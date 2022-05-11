@@ -26,12 +26,8 @@ impl Problem {
         Tensor::from(ndarray::ArrayD::<f32>::zeros(&*self.input.shape))
     }
 
-    pub fn image_fact(&self) -> TypedFact {
-        TypedFact::dt_shape(DatumType::F32, &*self.input.shape)
-    }
-
     pub fn image_type(&self) -> TypedFact {
-        TypedFact::dt_shape(f32::datum_type(), &*self.input.shape)
+        f32::fact(&*self.input.shape)
     }
 
     pub fn to_plan(&self, direct: bool) -> SimplePlan<TypedFact, Box<dyn TypedOp>, TypedModel> {
@@ -63,12 +59,7 @@ impl Problem {
         let input = model.add_source("input", self.image_type()).unwrap();
         let output = unsafe {
             if direct {
-                conv.wire_as_lazy_im2col(
-                    &mut model,
-                    "",
-                    input,
-                )
-                .unwrap()
+                conv.wire_as_lazy_im2col(&mut model, "", input).unwrap()
             } else {
                 conv.wire_as_im2col_pair(&mut model, "", input).unwrap()
             }

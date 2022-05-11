@@ -216,16 +216,14 @@ impl TypedOp for Im2Col {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let input_shape = self.pool_spec.data_format.shape(inputs[0].shape.to_tvec())?;
         let output_shape = self.pool_spec.output_shape(&inputs[0].shape)?;
-        Ok(tvec!(TypedFact::dt_shape(
-            inputs[0].datum_type,
-            Self::packed_shape(
-                &input_shape,
-                &output_shape,
-                self.group,
-                self.geometry.k(),
-                self.geometry.b_pack()
-            )?
-        )))
+        let shape = Self::packed_shape(
+            &input_shape,
+            &output_shape,
+            self.group,
+            self.geometry.k(),
+            self.geometry.b_pack(),
+        )?;
+        Ok(tvec!(inputs[0].datum_type.fact(shape)))
     }
 
     fn declutter(

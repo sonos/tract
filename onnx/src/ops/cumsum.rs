@@ -72,7 +72,7 @@ impl Expansion for CumSum {
             },
         ];
         let mut body = TypedModel::default();
-        let var_fact = TypedFact::dt_shape(data.datum_type, var_shape);
+        let var_fact = data.datum_type.fact(var_shape);
         let a = body.add_source("scan_input", var_fact.clone())?;
         let b = body.add_source("acc_input", var_fact)?;
         let sum = body.wire_node("add", tract_core::ops::math::add::bin_typed(), &[a, b])?[0];

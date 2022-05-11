@@ -72,7 +72,7 @@ impl OpState for MultiBroadcastToState {
 
 impl TypedOp for MultiBroadcastTo {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let mut fact = TypedFact::dt_shape(inputs[0].datum_type, self.shape.clone());
+        let mut fact = inputs[0].datum_type.fact(self.shape.clone());
         fact.uniform = inputs[0].uniform.clone();
         Ok(tvec!(fact))
     }

@@ -708,8 +708,7 @@ mod test {
     #[test]
     fn hashable() {
         let mut model = TypedModel::default();
-        let _s =
-            model.add_source("source", TypedFact::dt_shape(DatumType::F32, &[1, 2, 3])).unwrap();
+        let _s = model.add_source("source", f32::fact(&[1, 2, 3])).unwrap();
         let mut hasher = std::collections::hash_map::DefaultHasher::default();
         model.hash(&mut hasher);
     }

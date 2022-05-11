@@ -350,7 +350,7 @@ impl TypedOp for QMatMul {
             anyhow::ensure!(inputs[2].shape.iter().product::<TDim>() == 1.to_dim());
         };
 
-        Ok(tvec!(TypedFact::dt_shape(self.output_type, c_shape)))
+        Ok(tvec!(self.output_type.fact(c_shape)))
     }
 
     fn declutter(
@@ -987,7 +987,7 @@ mod test {
                             qp,
                             r,
                             t,
-                        );
+                            );
                     };
 
                     let r = self.reference();
@@ -1010,34 +1010,19 @@ mod test {
                     let mut inputs = tvec![];
                     inputs.push(
                         model
-                            .add_source(
-                                "a",
-                                TypedFact::dt_shape(
-                                    <$a>::datum_type(),
-                                    &[self.a.nrows(), self.a.ncols()],
-                                ),
-                            )
-                            .unwrap(),
-                    );
+                        .add_source("a", <$a>::fact( &[self.a.nrows(), self.a.ncols()]))
+                        .unwrap(),
+                        );
                     inputs.push(
                         model
-                            .add_source(
-                                "b",
-                                TypedFact::dt_shape(
-                                    <$b>::datum_type(),
-                                    &[self.b.nrows(), self.b.ncols()],
-                                ),
-                            )
-                            .unwrap(),
-                    );
+                        .add_source("b", <$b>::fact(&[self.b.nrows(), self.b.ncols()]))
+                        .unwrap(),
+                        );
                     inputs.push(
                         model
-                            .add_source(
-                                "bias",
-                                TypedFact::dt_shape(i32::datum_type(), self.bias.shape()),
-                            )
-                            .unwrap(),
-                    );
+                        .add_source("bias", i32::fact(self.bias.shape()))
+                        .unwrap(),
+                        );
                     let qparams = if qp {
                         inputs.push(model.add_source("a0", TypedFact::scalar::<$a>()).unwrap());
                         inputs
@@ -1064,7 +1049,7 @@ mod test {
                             "qmm",
                             QMatMul::new(false, false, false, <$c>::datum_type(), qparams),
                             &inputs,
-                        )
+                            )
                         .unwrap();
                     model.set_output_outlets(&result).unwrap();
 
@@ -1088,7 +1073,7 @@ mod test {
                         ]
                     };
                     let mut outputs = if opt { model.into_optimized().unwrap() } else { model }
-                        .into_runnable()
+                    .into_runnable()
                         .unwrap()
                         .run(inputs)
                         .unwrap();
@@ -1118,22 +1103,22 @@ mod test {
                                 scale(),
                                 scale(),
                                 scale(),
-                            )
+                                )
                         })
-                        .prop_map(|((m, k, n), a, b, a0, b0, c0, a_scale, b_scale, c_scale)| {
-                            $name {
-                                a: Array2::from_shape_vec((m, k), a).unwrap(),
-                                b: Array2::from_shape_vec((k, n), b).unwrap(),
-                                bias: tensor0(0i32),
-                                a0,
-                                b0,
-                                c0,
-                                a_scale,
-                                b_scale,
-                                c_scale,
-                            }
-                        })
-                        .boxed()
+                    .prop_map(|((m, k, n), a, b, a0, b0, c0, a_scale, b_scale, c_scale)| {
+                        $name {
+                            a: Array2::from_shape_vec((m, k), a).unwrap(),
+                            b: Array2::from_shape_vec((k, n), b).unwrap(),
+                            bias: tensor0(0i32),
+                            a0,
+                            b0,
+                            c0,
+                            a_scale,
+                            b_scale,
+                            c_scale,
+                        }
+                    })
+                    .boxed()
                 }
             }
         };
@@ -1279,13 +1264,13 @@ mod test {
     fn setup_qparams(inputs: [usize; 6]) -> ([OutletId; 9], MatMulQParams, TypedModel, OutletId) {
         let mut model = TypedModel::default();
         let ids = [
-            model.add_source("a", TypedFact::dt_shape(i8::datum_type(), &[2, 3])).unwrap(),
-            model.add_source("b", TypedFact::dt_shape(i8::datum_type(), &[3, 4])).unwrap(),
+            model.add_source("a", i8::fact(&[2, 3])).unwrap(),
+            model.add_source("b", i8::fact(&[3, 4])).unwrap(),
             model.add_const("bias", Tensor::zero_scalar::<i32>().unwrap()).unwrap(),
             model.add_const("a0", Tensor::zero_scalar::<i8>().unwrap()).unwrap(),
             model.add_const("a_scale", Tensor::zero_scalar::<f32>().unwrap()).unwrap(),
-            model.add_source("b0", TypedFact::dt_scalar(i8::datum_type())).unwrap(),
-            model.add_source("b_scale", TypedFact::dt_scalar(f32::datum_type())).unwrap(),
+            model.add_source("b0", i8::scalar_fact()).unwrap(),
+            model.add_source("b_scale", f32::scalar_fact()).unwrap(),
             model.add_const("c0", Tensor::zero_scalar::<i8>().unwrap()).unwrap(),
             model.add_const("c_scale", Tensor::zero_scalar::<f32>().unwrap()).unwrap(),
         ];

@@ -307,10 +307,7 @@ impl LSTM {
         let h_source = body
             .add_source(
                 "h_source",
-                TypedFact::dt_shape(
-                    x_fact.datum_type,
-                    &[b_size.clone(), 1.to_dim(), h_size.clone()],
-                ),
+                x_fact.datum_type.fact(&[b_size.clone(), 1.to_dim(), h_size.clone()]),
             )?
             .into();
 
@@ -336,10 +333,7 @@ impl LSTM {
         let c_source = body
             .add_source(
                 "c_source",
-                TypedFact::dt_shape(
-                    x_fact.datum_type,
-                    &[b_size.clone(), 1.to_dim(), h_size.clone()],
-                ),
+                x_fact.datum_type.fact(&[b_size.clone(), 1.to_dim(), h_size.clone()]),
             )?
             .into();
 

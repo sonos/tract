@@ -64,7 +64,7 @@ impl OpState for Cast {
 
 impl TypedOp for Cast {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(TypedFact::dt_shape(self.to, inputs[0].shape.clone())))
+        Ok(tvec!(self.to.fact(inputs[0].shape.clone())))
     }
 
     fn declutter(

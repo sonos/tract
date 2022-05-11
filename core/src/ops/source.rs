@@ -74,11 +74,7 @@ impl TypedOp for TypedSource {
         values: &SymbolValues,
     ) -> TractResult<TVec<OutletId>> {
         let shape: TVec<_> = self.fact.shape.iter().map(|d| d.eval(values)).collect();
-        target.wire_node(
-            &node.name,
-            Self { fact: TypedFact::dt_shape(self.fact.datum_type, &*shape) },
-            &[],
-        )
+        target.wire_node(&node.name, Self { fact: self.fact.datum_type.fact(&*shape) }, &[])
     }
 
     as_op!();

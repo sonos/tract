@@ -178,7 +178,7 @@ fn de_scan(
                 input_mapping.push(InputMapping::State {
                     initializer: StateInitializer::FromInput(outer_inputs.len()),
                 });
-                (*wire, TypedFact::dt_shape(fact.datum_type, fact.shape))
+                (*wire, fact.datum_type.fact(fact.shape))
             } else {
                 bail!("Unbound body input parameter {}", par.id);
             };

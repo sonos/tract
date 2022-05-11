@@ -170,9 +170,6 @@ impl TypedOp for Merge {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(
-            TypedFact::dt_shape(f32::datum_type(), inputs[0].shape.iter()),
-            TypedFact::dt_shape(i32::datum_type(), &[0; 0])
-        ))
+        Ok(tvec!(f32::fact(inputs[0].shape.iter()), i32::fact(&[0; 0])))
     }
 }
