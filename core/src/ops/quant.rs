@@ -4,6 +4,7 @@ use crate::ops::math::QScale;
 use num_traits::AsPrimitive;
 use tract_linalg::lut::Lut;
 use tract_linalg::mmm::RoundingPolicy;
+use tract_linalg::Scaler;
 
 use super::math::round_ties_to_even;
 
@@ -349,58 +350,15 @@ impl crate::ops::binary::BinMiniOp for Scale {
             return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?));
         } else if a.is_uniform() && node.outputs[0].fact.datum_type == DatumType::I32 {
             let factor = *a.to_scalar::<f32>()?;
-            if let Some((int_multi, shift)) = convert_scale_to_mult_shift(factor) {
-                let op = ElementWiseOp(Box::new(QScale {
-                    mult: int_multi,
-                    shift,
-                    policy: RoundingPolicy::Even,
-                }));
-                let patch = TypedModelPatch::replace_single_op(model, node, &*node.inputs, op)?;
+            let scaler = Scaler::new(factor, RoundingPolicy::Even);
 
-                return Ok(Some(patch));
-            } else {
-                return Ok(None);
-            }
+            let op = ElementWiseOp(Box::new(QScale { scaler }));
+            let patch = TypedModelPatch::replace_single_op(model, node, &*node.inputs, op)?;
+
+            return Ok(Some(patch));
         }
         Ok(None)
     }
-}
-
-
-#[inline]
-// This function convert a scale (actually a fraction of two integers Q/D)
-// into an integer multiplier and a shift (the multiplier being 1/2D in Q0_31).
-pub(crate) fn convert_scale_to_mult_shift(scale: f32) -> Option<(i32, isize)> {
-    if scale <= 0.0 {
-        return None;
-    }
-
-    // Convert f32 to bits representation with the following pattern
-    // Bit |  31  |  30-23   |   22-0    |
-    //     | Sign | Exponent |  Fraction |
-    let scale_bits = scale.to_bits();
-
-    // Get actual value of the exponent
-    let current_exponent = scale_bits >> 23;
-
-    // Extract fractional part of the float with:
-    // - 0x007fffff that represents the mask of the 23 lower bits (fractional part)
-    // - 0x800000 that represents the hidden bit (24) of the float representation
-    // Here the frac is encoded as a Q8_23.
-    let frac = (scale_bits & 0x007fffff) | 0x800000;
-
-    // We rescale the result to be in Q0_31
-    // We should have shifted the result by 8 but the frac value is in [1.0, 2.0)
-    // so we cannot do that (we would need one bit for the integer).
-    // Instead we devide the frac by two to be in [0.5, 1.0) in Q0_31
-    // which lead to a shift of (8-1 = 7).
-    let half_frac = (frac << 7) as i32;
-
-    // Compute the actual value of the shift
-    // Here, we remove one as half_frac needs to be multiplied by 2.
-    let shift = 127 - current_exponent as isize - 1;
-
-    Some((half_frac, shift))
 }
 
 #[inline]
