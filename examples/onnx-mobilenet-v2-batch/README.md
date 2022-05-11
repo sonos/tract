@@ -32,7 +32,7 @@ a "variable" `N` to be use in shape computation. It represent the batch size, it
 N from NCHW. We could actually use any letter or charater, tract does not really know
 anything specific about batch size.
 
-`&[batch.to_dim(), 3usize.into(), 224usize.into(), 224usize.into()]`.
+`f32::fact(dims!(batch, 3, 224, 224)).into()`.
 
 The shape definition, while a bit complex syntax-wise, just says "N,3,224,224".
 
