@@ -392,12 +392,17 @@ mod test {
         fn check(&self) -> Result<()> {
             let quantized = self.quantized();
             let reference = self.reference();
-            dbg!(&quantized);
-            dbg!(&reference);
             assert!(quantized
                 .iter()
                 .zip(reference.iter())
-                .all(|(quantized, expected)| quantized.abs_diff(*expected) <= 1));
+                .all(|(quantized, expected)| {
+                    let abs_diff = if *quantized > *expected {
+                        quantized - *expected
+                    } else {
+                        expected - *quantized
+                    };
+                    abs_diff <= 1
+                }));
             Ok(())
         }
 
