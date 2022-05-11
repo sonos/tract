@@ -21,13 +21,7 @@ We will use Grace Hopper portrait again, and a cat image.
     let batch = Symbol::new('N');
     let model = tract_onnx::onnx()
         .model_for_path("mobilenetv2-7.onnx")?
-        .with_input_fact(
-            0,
-            InferenceFact::dt_shape(
-                DatumType::F32,
-                &[batch.to_dim(), 3usize.into(), 224usize.into(), 224usize.into()],
-                ),
-                )?
+        .with_input_fact(0, f32::fact(dims!(batch, 3, 224, 224)).into())?
         .with_output_fact(0, InferenceFact::default())?
         .into_optimized()?
         .into_runnable()?;

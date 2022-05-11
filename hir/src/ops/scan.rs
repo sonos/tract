@@ -163,7 +163,7 @@ impl InferenceScan {
                 .0;
             match initializer {
                 StateInitializer::Value(v) => {
-                    let fact = InferenceFact::dt_shape_from_tensor(v);
+                    let fact = TypedFact::from(&**v).without_value().into();
                     if self.body.input_fact(inner_model_input_ix)? != &fact {
                         self.body.set_input_fact(inner_model_input_ix, fact.clone())?;
                         changed = true;

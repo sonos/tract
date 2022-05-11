@@ -515,7 +515,7 @@ impl Parameters {
                                 t.set_datum_type(dt);
                             }
                             if !ignore_input_shape {
-                                let fact = InferenceFact::dt_shape(dt, shape);
+                                let fact = InferenceFact::from(dt.fact(shape));
                                 raw_model.set_input_fact(ix, (&fact).try_into().unwrap())?;
                             }
                             values.push(t.into_arc_tensor());
@@ -581,7 +581,6 @@ impl Parameters {
         let pulse: Option<usize> =
             matches.value_of("pulse").map(|s| s.parse::<usize>()).transpose()?;
         #[cfg(feature = "pulse")]
-
         let stop_at = matches.value_of("pass").unwrap_or(if matches.is_present("optimize") {
             "optimize"
         } else {

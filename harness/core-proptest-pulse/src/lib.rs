@@ -123,9 +123,8 @@ proptest! {
         use tract_hir::ops::array::Slice;
         let full_len = input_len + begin + end;
         let mut model = InferenceModel::default();
-        let a = model
-            .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(S)))
-            .unwrap();
+        let s = tract_pulse::internal::stream_dim();
+        let a = model.add_source("a", f32::fact(&[s]).into()).unwrap();
         let slice = model.wire_node("slice", Slice::new(0, begin as usize, (input_len + begin) as usize), &[a]).unwrap();
         model.set_output_outlets(&slice).unwrap();
         let model = model.into_typed().unwrap();
@@ -138,9 +137,8 @@ proptest! {
     fn proptest_pad(pulse in 1i32..3, input_len in 0i32..10, begin in 0i32..3, end in 0i32..3) {
         use tract_hir::ops::array::{ Pad, PadMode };
         let mut model = InferenceModel::default();
-        let a = model
-            .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(S)))
-            .unwrap();
+        let s = tract_pulse::internal::stream_dim();
+        let a = model.add_source("a", f32::fact(&[s]).into()).unwrap();
         let pad = model.wire_node("pad",Pad::new(vec![(begin as _, end as _)],
             PadMode::Constant(Arc::new(Tensor::from(-1f32)))), &[a]).unwrap();
         model.set_output_outlets(&pad).unwrap();
@@ -162,9 +160,8 @@ fn test_simple_conv() {
 
     let mut model = InferenceModel::default();
     let ker = model.add_const("kernel", tensor3(&[[[0.5f32, 1.0, -0.1]]])).unwrap();
-    let a = model
-        .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(1, 1, S))) // NCT
-        .unwrap();
+    let s = tract_pulse::internal::stream_dim();
+    let a = model.add_source("a", f32::fact(dims!(1, 1, s)).into()).unwrap();
 
     model.wire_node("conv", expand(Conv::default()), &[a, ker]).unwrap();
     model.auto_outputs().unwrap();
@@ -177,10 +174,9 @@ fn test_simple_conv() {
 #[test]
 fn test_crop_after_1() {
     use tract_hir::ops::array::Slice;
+    let s = tract_pulse::internal::stream_dim();
     let mut model = InferenceModel::default();
-    let a = model
-        .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(S)))
-        .unwrap();
+    let a = model.add_source("a", f32::fact(&[s]).into()).unwrap();
     model.wire_node("slice", Slice::new(0, 0, 0), &[a]).unwrap();
     model.auto_outputs().unwrap();
     let model = model.into_typed().unwrap();
@@ -193,9 +189,8 @@ fn test_crop_after_1() {
 fn test_pad_after_1() {
     use tract_hir::ops::array::{Pad, PadMode};
     let mut model = InferenceModel::default();
-    let a = model
-        .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(S)))
-        .unwrap();
+    let s = tract_pulse::internal::stream_dim();
+    let a = model.add_source("a", f32::fact(&[s]).into()).unwrap();
     model
         .wire_node(
             "pad",
@@ -214,9 +209,8 @@ fn test_pad_after_1() {
 fn test_pad_before_1() {
     use tract_hir::ops::array::{Pad, PadMode};
     let mut model = InferenceModel::default();
-    let a = model
-        .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(S)))
-        .unwrap();
+    let s = tract_pulse::internal::stream_dim();
+    let a = model.add_source("a", f32::fact(&[s]).into()).unwrap();
     model
         .wire_node(
             "pad",
@@ -235,9 +229,8 @@ fn test_pad_before_1() {
 fn test_pad_before_2() {
     use tract_hir::ops::array::{Pad, PadMode};
     let mut model = InferenceModel::default();
-    let a = model
-        .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(S)))
-        .unwrap();
+    let s = tract_pulse::internal::stream_dim();
+    let a = model.add_source("a", f32::fact(&[s]).into()).unwrap();
     model
         .wire_node(
             "pad",

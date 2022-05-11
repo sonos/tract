@@ -42,7 +42,7 @@ pub fn handle(
 
     if let Some(facts) = &params.assertions.assert_output_facts {
         let outputs: Vec<InferenceFact> =
-            outputs.iter().map(|t| InferenceFact::dt_shape(t.datum_type(), t.shape())).collect();
+            outputs.iter().map(|t| t.datum_type().fact(t.shape()).into()).collect();
         crate::utils::check_inferred(&*outputs, &*facts)?;
     }
 

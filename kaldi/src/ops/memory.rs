@@ -129,13 +129,8 @@ fn incorporate_memory_ops_as_scans(
             let channel =
                 mem_node.outputs[0].fact.shape.dim(1).unwrap().concretize().unwrap().to_usize()?;
             let chunk = op.offset.abs();
-            let id = inner_model.add_source(
-                &*mem_node.name,
-                InferenceFact::dt_shape(
-                    f32::datum_type(),
-                    ShapeFactoid::from(&[(-op.offset) as usize, channel]),
-                ),
-            )?;
+            let id = inner_model
+                .add_source(&*mem_node.name, f32::fact(&[(-op.offset) as usize, channel]).into())?;
             node_id_old_to_new.insert(mem, id.node);
 
             let zeroes =

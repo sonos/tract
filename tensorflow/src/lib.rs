@@ -14,7 +14,7 @@
 //! let mut model = tf.model_for_path("tests/models/plus3.pb").unwrap();
 //!
 //! // set input input type and shape, then optimize the network.
-//! model.set_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), tvec!(3))).unwrap();
+//! model.set_input_fact(0, f32::fact(&[3]).into())).unwrap();
 //! let model = model.into_optimized().unwrap();
 //!
 //! // we build an execution plan. default input and output are inferred from

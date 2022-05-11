@@ -35,7 +35,7 @@ pub fn run_tract<S: AsRef<str>>(
     model.set_input_names(&inputs.iter().map(|pair| pair.0.as_ref()).collect::<Vec<&str>>())?;
     model.set_output_names(&[output])?;
     for (ix, (_, tf)) in inputs.iter().enumerate() {
-        model.set_input_fact(ix, InferenceFact::dt_shape(tf.datum_type(), tf.shape()))?;
+        model.set_input_fact(ix, tf.datum_type().fact(tf.shape()).into())?;
     }
     debug!("analysed");
     let inputs = inputs.iter().map(|pair| pair.1.clone()).collect();
@@ -100,7 +100,7 @@ pub fn infer<S: AsRef<str>>(
         .unwrap();
     model.set_output_names(&[output_str]).unwrap();
     for (ix, (_, tf)) in inputs.iter().enumerate() {
-        model.set_input_fact(ix, InferenceFact::dt_shape(tf.datum_type(), tf.shape())).unwrap();
+        model.set_input_fact(ix, tf.datum_type().fact(tf.shape()).into())?;
     }
     let plan = SimplePlan::new(&model).unwrap();
     let mut state = SimpleState::new(&plan).unwrap();

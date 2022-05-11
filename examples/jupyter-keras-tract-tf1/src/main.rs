@@ -6,7 +6,7 @@ fn main() -> TractResult<()> {
         // load the model
         .model_for_path("./my_model.pb")?
         // specify input type and shape
-        .with_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), tvec![10, 100]))?
+        .with_input_fact(0, f32::fact(&[10, 100]).into())?
         // optimize graph
         .into_optimized()?
         // make the model runnable and fix its inputs and outputs

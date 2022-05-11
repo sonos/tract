@@ -22,9 +22,9 @@ fn main() -> Result<()> {
 
     let model = tract_onnx::onnx()
         .model_for_path(Path::join(&model_dir, "model.onnx"))?
-        .with_input_fact(0, InferenceFact::dt_shape(i64::datum_type(), tvec!(1, length)))?
-        .with_input_fact(1, InferenceFact::dt_shape(i64::datum_type(), tvec!(1, length)))?
-        .with_input_fact(2, InferenceFact::dt_shape(i64::datum_type(), tvec!(1, length)))?
+        .with_input_fact(0, i64::fact(&[1, length]).into())?
+        .with_input_fact(1, i64::fact(&[1, length]).into())?
+        .with_input_fact(2, i64::fact(&[1, length]).into())?
         .into_optimized()?
         .into_runnable()?;
 

@@ -43,8 +43,7 @@ impl LstmProblem {
         let r_iofc = r_iofc.t().into_shape((1, 4 * s, s))?.to_owned();
         let b_iofc = b_iofc.into_shape((1, 8 * s))?;
 
-        let x =
-            model.add_source("x", InferenceFact::dt_shape(self.x.datum_type(), self.x.shape()))?;
+        let x = model.add_source("x", self.x.datum_type().fact(self.x.shape()).into())?;
         let mut op = tract_onnx::ops::rec::lstm::LSTM::default();
         op.optional_y_output = Some(0);
         op.optional_bias_input = Some(3);
@@ -64,8 +63,7 @@ impl LstmProblem {
     pub fn tf_model(&self) -> TractResult<TypedModel> {
         let mut model = InferenceModel::default();
 
-        let x =
-            model.add_source("x", InferenceFact::dt_shape(self.x.datum_type(), self.x.shape()))?;
+        let x = model.add_source("x", self.x.datum_type().fact(self.x.shape()).into())?;
         let memory_shape = tvec!(self.batch_size, self.cell_size);
         let h = model.wire_node(
             "h",

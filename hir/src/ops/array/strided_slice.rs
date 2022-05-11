@@ -573,7 +573,7 @@ mod tests {
     #[test]
     fn inference_3() {
         let op = strided_slice(5, 7, 0);
-        let input = InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, (s() - 2), 16));
+        let input = f32::fact(dims!(1, s() - 2, 16)).into();
         let begin = InferenceFact::from(tensor1(&[0i32, 2, 0]));
         let end = InferenceFact::from(tensor1(&[0i32, 0, 0]));
         let strides = InferenceFact::from(tensor1(&[1i32, 1, 1]));
@@ -583,29 +583,7 @@ mod tests {
             .infer_facts(tvec![&input, &begin, &end, &strides], tvec![&any], tvec!())
             .unwrap();
 
-        assert_eq!(
-            output_facts,
-            tvec![InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, (s() - 4), 16))]
-        );
-    }
-
-    #[test]
-    fn inference_4() {
-        let op = strided_slice(5, 7, 0);
-        let input = InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, (s() - 2), 16));
-        let begin = InferenceFact::from(tensor1(&[0i32, 2, 0]));
-        let end = InferenceFact::from(tensor1(&[0i32, 0, 0]));
-        let strides = InferenceFact::from(tensor1(&[1i32, 1, 1]));
-        let any = InferenceFact::default();
-
-        let (_, output_facts, _) = expand(op)
-            .infer_facts(tvec![&input, &begin, &end, &strides], tvec![&any], tvec!())
-            .unwrap();
-
-        assert_eq!(
-            output_facts,
-            tvec![InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, (s() - 4), 16))]
-        );
+        assert_eq!(output_facts, tvec![f32::fact(dims!(1, s() - 4, 16)).into()]);
     }
 
     #[test]
