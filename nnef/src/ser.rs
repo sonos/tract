@@ -22,6 +22,7 @@ pub struct IntoAst<'a> {
     pub framework: &'a Nnef,
     pub parent: Option<&'a IntoAst<'a>>,
     pub registries: Vec<String>,
+    pub symbols: Vec<Symbol>,
     pub prefix: Option<String>,
     pub model: &'a TypedModel,
     pub parameters: Vec<String>,
@@ -45,6 +46,7 @@ impl<'a> IntoAst<'a> {
         IntoAst {
             framework,
             registries: Default::default(),
+            symbols: Default::default(),
             prefix,
             model,
             parameters: Default::default(),
@@ -64,6 +66,13 @@ impl<'a> IntoAst<'a> {
         }
         if !self.registries.iter().any(|r| r == id) {
             self.registries.push(id.to_string());
+        }
+        Ok(())
+    }
+
+    pub fn ensure_symbol(&mut self, s: &Symbol) -> TractResult<()> {
+        if !self.symbols.contains(s) {
+            self.symbols.push(*s);
         }
         Ok(())
     }
@@ -164,7 +173,7 @@ impl<'a> IntoAst<'a> {
             .model
             .properties
             .iter()
-            .sorted_by_key(|(k,_v)| k.clone())
+            .sorted_by_key(|(k, _v)| k.clone())
             .map(|(k, v)| Ok(tuple_2(string(k), self.konst(k, v)?.as_ref().clone())))
             .collect::<TractResult<Vec<_>>>()?;
         properties.push(tuple_2(
@@ -187,6 +196,9 @@ impl<'a> IntoAst<'a> {
             if reg != "tract_nnef" {
                 extension.push(vec!["tract_registry".to_string(), reg]);
             }
+        }
+        for sym in self.symbols {
+            extension.push(vec!["tract_symbol".to_string(), sym.as_char().to_string()]);
         }
         let properties = FragmentDef {
             decl: FragmentDecl {

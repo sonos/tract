@@ -239,6 +239,12 @@ pub enum RValue {
     Invocation(Invocation),
 }
 
+impl RValue {
+    pub fn boxed(self) -> Box<RValue> {
+        Box::new(self)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Comprehension {
     pub loop_iters: Vec<(String, RValue)>,

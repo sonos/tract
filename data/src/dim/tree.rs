@@ -29,6 +29,10 @@ impl Symbol {
         table.push(c);
         Symbol(c, table.len() - 1)
     }
+
+    pub fn as_char(&self) -> char {
+        self.0
+    }
 }
 
 impl From<char> for Symbol {
