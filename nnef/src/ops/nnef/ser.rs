@@ -187,7 +187,7 @@ pub fn conv_or_deconv(
         perm.insert(1, pool_spec.rank() + 1);
         wire = invocation("transpose", &[wire], &[("axes", ints(&perm))]);
     }
-    wire = ast.force_assign(format!("{}_input", node.name), &wire);
+    wire = ast.force_variable(format!("{}_input", node.name), &wire);
 
     let mut inputs = tvec![wire];
     inputs.push(ast.konst_variable(format!("{}_weigths", node.name), &weights.into_arc_tensor())?);
@@ -204,7 +204,7 @@ pub fn conv_or_deconv(
     if let Some(qp) = QuantFormat::from_dt(node.outputs[0].fact.datum_type) {
         ast.quantization.insert(var_name.clone(), qp);
     }
-    wire = ast.force_assign(var_name, &wire);
+    wire = ast.force_variable(var_name, &wire);
 
     if data_format.c_is_last() {
         let mut perm: TVec<usize> = (0..pool_spec.rank() + 2).collect();
@@ -315,7 +315,7 @@ fn cnn_pool(
 ) -> TractResult<Option<Arc<RValue>>> {
     use tract_core::ops::cnn::PaddingSpec;
     let mut wire = ast.mapping[&node.inputs[0]].clone();
-    wire = ast.force_assign(format!("{}_input", node.name), &wire);
+    wire = ast.force_variable(format!("{}_input", node.name), &wire);
     let conv_fragment = cnn_pool_fragment(ast, pool_spec.data_format, pool_spec.rank(), op_name);
     let padding = match &pool_spec.padding {
         PaddingSpec::Explicit(bef, after, _) => array(
@@ -347,7 +347,7 @@ fn cnn_pool(
         params.push(normalize_arg);
     };
     wire = invocation(&conv_fragment, &[wire], &params);
-    wire = ast.force_assign(&node.name, &wire);
+    wire = ast.force_variable(&node.name, &wire);
     Ok(Some(wire))
 }
 
@@ -421,8 +421,8 @@ pub fn matmul(
     node: &TypedNode,
     op: &ops::matmul::MatMul,
 ) -> TractResult<Option<Arc<RValue>>> {
-    let a = ast.force_assign(format!("{}_a", node.name), &ast.mapping[&node.inputs[0]].clone());
-    let b = ast.force_assign(format!("{}_b", node.name), &ast.mapping[&node.inputs[1]].clone());
+    let a = ast.force_variable(format!("{}_a", node.name), &ast.mapping[&node.inputs[0]].clone());
+    let b = ast.force_variable(format!("{}_b", node.name), &ast.mapping[&node.inputs[1]].clone());
     let c = if op.c_trans {
         invocation(
             "matmul",
@@ -436,7 +436,7 @@ pub fn matmul(
             &[("transposeA", logical(op.a_trans)), ("transposeB", logical(op.b_trans))],
         )
     };
-    Ok(Some(ast.force_assign(&node.name, &c)))
+    Ok(Some(ast.force_variable(&node.name, &c)))
 }
 
 pub fn qmatmul(
@@ -447,8 +447,8 @@ pub fn qmatmul(
     if !node.outputs[0].fact.datum_type.is_quantized() {
         return Ok(None);
     }
-    let a = ast.force_assign(format!("{}_a", node.name), &ast.mapping[&node.inputs[0]].clone());
-    let b = ast.force_assign(format!("{}_b", node.name), &ast.mapping[&node.inputs[1]].clone());
+    let a = ast.force_variable(format!("{}_a", node.name), &ast.mapping[&node.inputs[0]].clone());
+    let b = ast.force_variable(format!("{}_b", node.name), &ast.mapping[&node.inputs[1]].clone());
     let c = if op.c_trans {
         invocation(
             "matmul",
@@ -462,7 +462,7 @@ pub fn qmatmul(
             &[("transposeA", logical(op.a_trans)), ("transposeB", logical(op.b_trans))],
         )
     };
-    Ok(Some(ast.force_assign(&node.name, &c)))
+    Ok(Some(ast.force_variable(&node.name, &c)))
 }
 
 pub fn matmul_unary(
@@ -471,7 +471,7 @@ pub fn matmul_unary(
     op: &ops::matmul::MatMulUnary,
 ) -> TractResult<Option<Arc<RValue>>> {
     let a = ast.konst(format!("{}_a", node.name), &op.a)?;
-    let b = ast.force_assign(format!("{}_b", node.name), &ast.mapping[&node.inputs[0]].clone());
+    let b = ast.force_variable(format!("{}_b", node.name), &ast.mapping[&node.inputs[0]].clone());
     let c = if op.c_trans {
         invocation(
             "matmul",
@@ -485,7 +485,7 @@ pub fn matmul_unary(
             &[("transposeA", logical(op.a_trans)), ("transposeB", logical(op.b_trans))],
         )
     };
-    Ok(Some(ast.force_assign(&node.name, &c)))
+    Ok(Some(ast.force_variable(&node.name, &c)))
 }
 
 pub fn select(

@@ -11,7 +11,7 @@ pub fn to_proto_model(framework: &Nnef, model: &TypedModel) -> TractResult<Proto
 pub fn to_fragment_def(
     parent: &IntoAst,
     model: &TypedModel,
-) -> TractResult<(FragmentDef, Vec<RequiredTensorParameter>)> {
+    ) -> TractResult<(FragmentDef, Vec<RequiredTensorParameter>)> {
     let mut into_ast = IntoAst::new(parent.framework, model);
     into_ast.parent = Some(parent);
     into_ast.translate()?;
@@ -114,7 +114,11 @@ impl<'a> IntoAst<'a> {
         }
         let outlets: Vec<OutletId> = self.model.output_outlets()?.to_vec();
         for (ix, o) in outlets.into_iter().enumerate() {
-            let rv = self.force_assign(format!("output_{}", ix), &self.mapping[&o].clone());
+            let rv = if let Some(label) = self.model.outlet_label(o) {
+                self.force_variable_and_name(label, &self.mapping[&o].clone())
+            } else {
+                self.force_variable(format!("output_{}", ix), &self.mapping[&o].clone())
+            };
             if let RValue::Identifier(name) = rv.as_ref() {
                 self.results.push(name.clone());
             } else {
@@ -147,25 +151,25 @@ impl<'a> IntoAst<'a> {
                 LValue::Identifier(id) => !parameters.contains(&id),
                 _ => true,
             })
-            .collect();
+        .collect();
         Ok((
-            FragmentDef {
-                decl: FragmentDecl {
-                    id,
-                    generic_decl: None,
-                    parameters: parameters
-                        .into_iter()
-                        .map(|s| TypeName::Scalar.tensor().named(s))
-                        .collect(),
-                    results: results
-                        .into_iter()
-                        .map(|s| Result_ { id: s, spec: TypeName::Scalar.tensor() })
-                        .collect(),
+                FragmentDef {
+                    decl: FragmentDecl {
+                        id,
+                        generic_decl: None,
+                        parameters: parameters
+                            .into_iter()
+                            .map(|s| TypeName::Scalar.tensor().named(s))
+                            .collect(),
+                            results: results
+                                .into_iter()
+                                .map(|s| Result_ { id: s, spec: TypeName::Scalar.tensor() })
+                                .collect(),
+                    },
+                    body: Some(body),
                 },
-                body: Some(body),
-            },
-            tensor_params,
-        ))
+                tensor_params,
+                ))
     }
 
     pub fn into_proto_model(mut self) -> TractResult<ProtoModel> {
@@ -177,11 +181,11 @@ impl<'a> IntoAst<'a> {
             .map(|(k, v)| Ok(tuple_2(string(k), self.konst(k, v)?.as_ref().clone())))
             .collect::<TractResult<Vec<_>>>()?;
         properties.push(tuple_2(
-            string("tract_nnef_format_version".to_string()),
-            self.konst("tract_nnef_format_version", &rctensor0("alpha1".to_string()))?
+                string("tract_nnef_format_version".to_string()),
+                self.konst("tract_nnef_format_version", &rctensor0("alpha1".to_string()))?
                 .as_ref()
                 .clone(),
-        ));
+                ));
         let properties: Assignment = assignment("properties", Arc::new(array(properties)));
         let IntoAst { prefix, mut fragments, body, tensors, parameters, results, .. } = self;
         let mut id = prefix
@@ -239,9 +243,9 @@ impl<'a> IntoAst<'a> {
                 if node.outputs.len() > 1 {
                     self.body.push(Assignment {
                         left: LValue::Tuple(
-                            names.iter().map(|n| LValue::Identifier(n.clone())).collect(),
-                        ),
-                        right: outputs.as_ref().clone(),
+                                  names.iter().map(|n| LValue::Identifier(n.clone())).collect(),
+                                  ),
+                                  right: outputs.as_ref().clone(),
                     });
                 } else {
                     self.assignment(&names[0], outputs);
@@ -269,7 +273,7 @@ impl<'a> IntoAst<'a> {
             bail!(
                 "Registry {} required, consider allowing it on the NNEF framework.",
                 required_registries[0]
-            );
+                );
         } else {
             bail!("One of the following registries is required: {:?}, consider allowing one on the NNEF framework.", required_registries);
         }
@@ -293,7 +297,7 @@ impl<'a> IntoAst<'a> {
         name.replace("/", "_").replace(".", "_").replace("-", "_").replace(":", "_").into()
     }
 
-    pub fn force_assign(&mut self, name: impl Into<String>, exp: &Arc<RValue>) -> Arc<RValue> {
+    pub fn force_variable(&mut self, name: impl Into<String>, exp: &Arc<RValue>) -> Arc<RValue> {
         if let RValue::Identifier(_) = exp.as_ref() {
             exp.clone()
         } else {
@@ -303,11 +307,27 @@ impl<'a> IntoAst<'a> {
         }
     }
 
+    pub fn force_variable_and_name(
+        &mut self,
+        name: impl Into<String>,
+        exp: &Arc<RValue>,
+        ) -> Arc<RValue> {
+        let name = name.into();
+        if let RValue::Identifier(id) = exp.as_ref() {
+            if &name == id {
+                return exp.clone();
+            }
+        }
+        let name = self.scoped_id(name);
+        self.assignment(name.clone(), exp.clone());
+        ident(name).into()
+    }
+
     pub fn konst(
         &mut self,
         name: impl Into<String>,
         tensor: &Arc<Tensor>,
-    ) -> TractResult<Arc<RValue>> {
+        ) -> TractResult<Arc<RValue>> {
         self.do_konst(name, tensor, false)
     }
 
@@ -315,7 +335,7 @@ impl<'a> IntoAst<'a> {
         &mut self,
         name: impl Into<String>,
         tensor: &Arc<Tensor>,
-    ) -> TractResult<Arc<RValue>> {
+        ) -> TractResult<Arc<RValue>> {
         self.do_konst(name, tensor, true)
     }
 
@@ -324,7 +344,7 @@ impl<'a> IntoAst<'a> {
         name: impl Into<String>,
         tensor: &Arc<Tensor>,
         force_variable: bool,
-    ) -> TractResult<Arc<RValue>> {
+        ) -> TractResult<Arc<RValue>> {
         if !force_variable && tensor.is_uniform() && tensor.len() > 0 {
             if tensor.datum_type() == String::datum_type() {
                 return Ok(string(tensor.to_scalar::<String>().unwrap()).into());
@@ -352,7 +372,7 @@ impl<'a> IntoAst<'a> {
                 ],
             })
             .into(),
-        );
+            );
         if let Some(qp) = QuantFormat::from_dt(tensor.datum_type()) {
             self.quantization.insert(id.clone(), qp);
         }

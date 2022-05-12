@@ -70,7 +70,7 @@ fn qconv_unary_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<A
     weights.set_shape(&*kernel_shape)?;
     let weigths =
         ast.konst_variable(format!("{}_weigths", node.name), &weights.into_arc_tensor())?;
-    wire = ast.force_assign(format!("{}_input", node.name), &wire);
+    wire = ast.force_variable(format!("{}_input", node.name), &wire);
 
     let mut inputs = tvec![wire, weigths];
     if let Some(bias) = op.bias.as_ref() {
