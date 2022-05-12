@@ -142,30 +142,7 @@ impl Mul<Scaler> for i32 {
 
     #[inline]
     fn mul(self, rhs: Scaler) -> Self::Output {
-        let (val, shift) = if let Some(multiplier) = rhs.mult {
-            (multiplier as i64 * self as i64, rhs.shift + 31)
-        } else {
-            (self as i64, rhs.shift)
-        };
-
-        // Round according to rounding policy
-        use RoundingPolicy::*;
-        if shift > 0 {
-            let half: i64 = 1 << (shift - 1);
-            let nudge: i64 = match rhs.policy {
-                Zero => -1,
-                MinusInf => -((val >= 0) as i64),
-                PlusInf => -((val <= 0) as i64),
-                Away => 0,
-                Even => ((val.abs() >> shift) & 0x1) - 1,
-                Odd => -((val.abs() >> shift) & 0x1),
-                _ => panic!(),
-            };
-
-            (val.signum() * ((val.abs() + half + nudge) >> shift)) as i32
-        } else {
-            (val << -shift) as i32
-        }
+        rhs * self
     }
 }
 
