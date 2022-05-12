@@ -256,9 +256,6 @@ i128_shuffle dd              0, 4
 {% endfor %}
     jmp    {{L}}non_linear_loop
 
-{{L}}q_shr:
-    jmp    {{L}}unsupported
-
 {{L}}q_scale:
     mov             r8, [ rdi + 16 ]        // policy
     vbroadcastss    ymm8, dword ptr [rdi + 24] // multi
@@ -278,21 +275,21 @@ i128_shuffle dd              0, 4
     vpsllq          ymm11, ymm9, xmm12      // ymm11 <- 1 << (shift + 31 - 1)
 
     cmp     r8, 1
-    je      {{L}}q_shift_right_rounding_zero
+    je      {{L}}q_scale_rounding_zero
     cmp     r8, 2
-    je      {{L}}q_shift_right_rounding_away
+    je      {{L}}q_scale_rounding_away
     cmp     r8, 3
-    je      {{L}}q_shift_right_rounding_minus_inf
+    je      {{L}}q_scale_rounding_minus_inf
     cmp     r8, 4
-    je      {{L}}q_shift_right_rounding_plus_inf
+    je      {{L}}q_scale_rounding_plus_inf
     cmp     r8, 5
-    je      {{L}}q_shift_right_rounding_even
+    je      {{L}}q_scale_rounding_even
     cmp     r8, 6
-    je      {{L}}q_shift_right_rounding_odd
+    je      {{L}}q_scale_rounding_odd
 
     jmp    {{L}}unsupported
 
-{{L}}q_shift_right_rounding_zero:           // signum * ( (abs + nudge) >> shift )
+{{L}}q_scale_rounding_zero:           // signum * ( (abs + nudge) >> shift )
 {% for i in (0..7) %}
     vpabsd      ymm14, ymm{{i}}
     vpsrldq     ymm15, ymm14, 4             // ymm15 <- a1, a2, a3, a4, a5, a6, a7, 0
@@ -315,7 +312,7 @@ i128_shuffle dd              0, 4
 
     jmp    {{L}}non_linear_loop
    
-{{L}}q_shift_right_rounding_away:           // signum * ( (abs + nudge) >> shift )
+{{L}}q_scale_rounding_away:           // signum * ( (abs + nudge) >> shift )
 {% for i in (0..7) %}
     vpabsd      ymm14, ymm{{i}}
     vpsrldq     ymm15, ymm14, 4             // ymm15 <- a1, a2, a3, a4, a5, a6, a7, 0
@@ -335,7 +332,7 @@ i128_shuffle dd              0, 4
 
     jmp    {{L}}non_linear_loop
 
-{{L}}q_shift_right_rounding_minus_inf:           // signum * ( (abs << 32 + 1<<30+shift) >> shift )
+{{L}}q_scale_rounding_minus_inf:           // signum * ( (abs << 32 + 1<<30+shift) >> shift )
 {% for i in (0..7) %}
     vpabsd      ymm14, ymm{{i}}             
     // sign extract for nudging in the right direction
@@ -370,7 +367,7 @@ i128_shuffle dd              0, 4
 
     jmp    {{L}}non_linear_loop
 
-{{L}}q_shift_right_rounding_plus_inf:           // signum * ( (abs << 32 + 1<<30+shift) >> shift )
+{{L}}q_scale_rounding_plus_inf:           // signum * ( (abs << 32 + 1<<30+shift) >> shift )
 
     vpbroadcastd ymm9, xmm9
 
@@ -409,7 +406,7 @@ i128_shuffle dd              0, 4
 
     jmp    {{L}}non_linear_loop
 
-{{L}}q_shift_right_rounding_even:           // signum * ( (abs + nudge) >> shift )
+{{L}}q_scale_rounding_even:           // signum * ( (abs + nudge) >> shift )
 {% for i in (0..7) %}
     vpabsd      ymm14, ymm{{i}}
     vpsrldq     ymm15, ymm14, 4             // ymm15 <- a1, a2, a3, a4, a5, a6, a7, 0
@@ -438,7 +435,7 @@ i128_shuffle dd              0, 4
 {% endfor %}
     jmp    {{L}}non_linear_loop
 
-{{L}}q_shift_right_rounding_odd:           // signum * ( (abs + nudge) >> shift )
+{{L}}q_scale_rounding_odd:           // signum * ( (abs + nudge) >> shift )
 {% for i in (0..7) %}
     vpabsd      ymm14, ymm{{i}}
     vpsrldq     ymm15, ymm14, 4             // ymm15 <- a1, a2, a3, a4, a5, a6, a7, 0
@@ -465,6 +462,101 @@ i128_shuffle dd              0, 4
 {% endfor %}
 
     jmp    {{L}}non_linear_loop
+
+{{L}}q_shr:
+    mov             r8, [ rdi + 16 ]        // policy
+
+    mov             eax, 1
+    movd            xmm9, eax
+    vpbroadcastd    ymm9, xmm9              // ymm9 <- 1u32 (8 times)
+
+    mov             eax, [ rdi + 8 ]        // xmm10 <- shift (8 times)
+    movd            xmm10, eax
+    vpbroadcastd    ymm10, xmm10
+
+    mov             ebx, 1
+    mov             ecx, eax
+    sub             ecx, 1                  // rcx <- shift -1
+    sal             ebx, ecx                // rbx <- (1 << (shift - 1))
+    movd            xmm11, ebx
+    vpbroadcastd    ymm11, xmm11            // ymm11 <- "half"
+
+    vpxor           ymm12, ymm12, ymm12     // ymm12 <- zeroes
+
+    cmp     r8, 1
+    je      {{L}}q_shr_rounding_zero
+    cmp     r8, 2
+    je      {{L}}q_shr_rounding_away
+    cmp     r8, 3
+    je      {{L}}q_shr_rounding_minus_inf
+    cmp     r8, 4
+    je      {{L}}q_shr_rounding_plus_inf
+    cmp     r8, 5
+    je      {{L}}q_shr_rounding_even
+    cmp     r8, 6
+    je      {{L}}q_shr_rounding_odd
+
+    jmp    {{L}}unsupported
+
+{{L}}q_shr_rounding_zero:
+{% for i in (0..7) %}
+    vpabsd      ymm14, ymm{{i}}
+    vpsubd      ymm14, ymm14, ymm9
+    vpaddd      ymm14, ymm14, ymm11
+    vpsrlvd     ymm14, ymm14, ymm10
+    vpsignd     ymm{{i}}, ymm14, ymm{{i}}
+{% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}q_shr_rounding_away:
+{% for i in (0..7) %}
+    vpabsd      ymm14, ymm{{i}}
+    vpaddd      ymm14, ymm14, ymm11
+    vpsrlvd     ymm14, ymm14, ymm10
+    vpsignd     ymm{{i}}, ymm14, ymm{{i}}
+{% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}q_shr_rounding_minus_inf:
+{% for i in (0..7) %}
+    vpsubd  ymm{{i}}, ymm{{i}}, ymm9
+    vpaddd  ymm{{i}}, ymm{{i}}, ymm11
+    vpsrlvd ymm{{i}}, ymm{{i}}, ymm10
+{% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}q_shr_rounding_plus_inf:
+{% for i in (0..7) %}
+    vpaddd  ymm{{i}}, ymm{{i}}, ymm11
+    vpsrlvd ymm{{i}}, ymm{{i}}, ymm10
+{% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}q_shr_rounding_even:
+{% for i in (0..7) %}
+    vpabsd      ymm14, ymm{{i}}
+    vpsrlvd ymm13, ymm14, ymm10
+    vpand   ymm13, ymm13, ymm9
+    vpsubd  ymm13, ymm13, ymm9          // nudge = ((abs >>l shift) & 0x01) - 1
+    vpaddd  ymm14, ymm14, ymm13         // add nudge
+    vpaddd  ymm14, ymm14, ymm11         // add half
+    vpsrlvd ymm14, ymm14, ymm10
+    vpsignd     ymm{{i}}, ymm14, ymm{{i}}
+{% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}q_shr_rounding_odd:
+{% for i in (0..7) %}
+    vpabsd      ymm14, ymm{{i}}
+    vpsrlvd ymm13, ymm14, ymm10
+    vpand   ymm13, ymm13, ymm9
+    vpsubd  ymm13, ymm12, ymm13          // nudge = - ((abs >>l shift) & 0x01)
+    vpaddd  ymm14, ymm14, ymm13         // add nudge
+    vpaddd  ymm14, ymm14, ymm11         // add half
+    vpsrlvd ymm14, ymm14, ymm10
+    vpsignd     ymm{{i}}, ymm14, ymm{{i}}
+{% endfor %}
+    jmp     {{L}}non_linear_loop
 
 {{L}}store:
     mov     r8,     [rdi + 8]           // c ptr
