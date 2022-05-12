@@ -16,21 +16,21 @@
     dup     v1.2d, v1.d[0]              // v1.2s <- -(shift + 32)
 
     cmp     x6, 1
-    beq     .q_shift_right_rounding_zero
+    beq     .q_scale_rounding_zero
     cmp     x6, 2
-    beq     .q_shift_right_rounding_away
+    beq     .q_scale_rounding_away
     cmp     x6, 3
-    beq     .q_shift_right_rounding_minus_inf
+    beq     .q_scale_rounding_minus_inf
     cmp     x6, 4
-    beq     .q_shift_right_rounding_plus_inf
+    beq     .q_scale_rounding_plus_inf
     cmp     x6, 5
-    beq     .q_shift_right_rounding_even
+    beq     .q_scale_rounding_even
     cmp     x6, 6
-    beq     .q_shift_right_rounding_odd
+    beq     .q_scale_rounding_odd
     
     b .unsupported
 
-.q_shift_right_rounding_zero:
+.q_scale_rounding_zero:
         // rust: signum * ((abs + nudge2) >> shift
         // asm: signum * (2*abs - 1) >>r (shift + 1)
 
@@ -54,7 +54,7 @@
    
     b .non_linear_loop
 
-.q_shift_right_rounding_away: // signum * (abs >> (shift-1) + 1 >> 1)
+.q_scale_rounding_away: // signum * (abs >> (shift-1) + 1 >> 1)
 
     {% for q in (16..31) %}
         cmlt        v0.4s, v{{q}}.4s, #0
@@ -73,7 +73,7 @@
    
     b .non_linear_loop
 
-.q_shift_right_rounding_minus_inf: // val >> shift
+.q_scale_rounding_minus_inf: // val >> shift
 
     {% for q in (16..31) %}
         sqdmull     v8.2d, v{{q}}.2s, v2.2s 
@@ -90,7 +90,7 @@
 
     b .non_linear_loop
 
-.q_shift_right_rounding_plus_inf: // (val >> shift-1)+1 >>1
+.q_scale_rounding_plus_inf: // (val >> shift-1)+1 >>1
 
     {% for q in (16..31) %}
         sqdmull     v8.2d, v{{q}}.2s, v2.2s 
@@ -104,7 +104,7 @@
    
     b .non_linear_loop
 
-.q_shift_right_rounding_even: // signum * ((abs >> shift-1) + (abs & 0x1) - 1 >> 1)
+.q_scale_rounding_even: // signum * ((abs >> shift-1) + (abs & 0x1) - 1 >> 1)
 
     {% for q in (16..31) %}
         cmlt        v0.4s, v{{q}}.4s, #0
@@ -134,7 +134,7 @@
    
     b .non_linear_loop
 
-.q_shift_right_rounding_odd: // signum * ((abs >> shift-1) - (abs & 0x1) >> 1)
+.q_scale_rounding_odd: // signum * ((abs >> shift-1) - (abs & 0x1) >> 1)
 
     {% for q in (16..31) %}
         cmlt        v0.4s, v{{q}}.4s, #0
@@ -160,4 +160,106 @@
         bit         v{{q}}.16b, v3.16b, v0.16b
     {% endfor %}
    
+    b .non_linear_loop
+
+.q_shr:
+    ldp     x5, x6, [x0, #8]            // x5: shift, x6: policy
+
+    mov     w3, #1                      
+    ins     v4.s[0], w3
+    dup     v4.4s, v4.s[0]              // v4.4d <- 1
+
+    neg     w5, w5                      // broadcast shift
+    ins     v1.s[0], w5                 
+    dup     v1.4s, v1.s[0]              // v1.4s <- -shift
+
+    cmp     x6, 1
+    beq     .q_shr_zero
+    cmp     x6, 2
+    beq     .q_shr_away
+    cmp     x6, 3
+    beq     .q_shr_minus_inf
+    cmp     x6, 4
+    beq     .q_shr_plus_inf
+    cmp     x6, 5
+    beq     .q_shr_even
+    cmp     x6, 6
+    beq     .q_shr_odd
+    
+    b .unsupported
+
+.q_shr_zero:
+    // asm: signum * (abs >>r shift)
+    {% for q in (16..31) %}
+        cmlt        v0.4s, v{{q}}.4s, #0
+        abs         v{{q}}.4s, v{{q}}.4s
+
+        sub         v{{q}}.4s, v{{q}}.4s, v4.4s
+        sqrshl      v{{q}}.4s, v{{q}}.4s, v1.4s
+              
+        neg         v3.4s, v{{q}}.4s
+        bit         v{{q}}.16b, v3.16b, v0.16b
+    {% endfor %}
+    b .non_linear_loop
+.q_shr_away:
+    {% for q in (16..31) %}
+        cmlt        v0.4s, v{{q}}.4s, #0
+        abs         v{{q}}.4s, v{{q}}.4s
+
+        sqrshl      v{{q}}.4s, v{{q}}.4s, v1.4s
+
+        neg         v3.4s, v{{q}}.4s
+        bit         v{{q}}.16b, v3.16b, v0.16b
+    {% endfor %}
+    b .non_linear_loop
+.q_shr_minus_inf:
+    {% for q in (16..31) %}
+        sqneg       v{{q}}.4s, v{{q}}.4s 
+        sqrshl      v{{q}}.4s, v{{q}}.4s, v1.4s
+        sqneg       v{{q}}.4s, v{{q}}.4s 
+    {% endfor %}
+    b .non_linear_loop
+.q_shr_plus_inf:
+    {% for q in (16..31) %}
+        sqrshl      v{{q}}.4s, v{{q}}.4s, v1.4s
+    {% endfor %}
+    b .non_linear_loop
+.q_shr_even:
+    // sqrshl is round(+inf), sqshl trauncates
+    // we look at parity of result by truncation: if it's odd, we have nothing more to do, we go towards +inf
+    // if it's even, we need to nudge towards 0 by adding -1
+    // => nudge = (abs >>l shift) & 0x1 - 1 (>>l is sqshl)
+    // => result is signum * (abs + nudge) >>r shift (with sqrshl)
+    {% for q in (16..31) %}
+        cmlt        v0.4s, v{{q}}.4s, #0
+        abs         v{{q}}.4s, v{{q}}.4s
+        
+        sqshl       v3.4s, v{{q}}.4s, v1.4s // trunc
+        and         v3.16b, v3.16b, v4.16b
+        sub         v3.4s, v3.4s, v4.4s
+        add         v{{q}}.4s, v{{q}}.4s, v3.4s
+
+        sqrshl      v{{q}}.4s, v{{q}}.4s, v1.4s
+
+        neg         v3.4s, v{{q}}.4s
+        bit         v{{q}}.16b, v3.16b, v0.16b
+    {% endfor %}
+    b .non_linear_loop
+.q_shr_odd:
+    // here: nudge is -((abs >>l shift) & 0x1)
+    {% for q in (16..31) %}
+        cmlt        v0.4s, v{{q}}.4s, #0
+        abs         v{{q}}.4s, v{{q}}.4s
+        
+        sqshl       v3.4s, v{{q}}.4s, v1.4s // trunc
+        and         v3.16b, v3.16b, v4.16b
+        neg         v3.4s, v3.4s
+        add         v{{q}}.4s, v{{q}}.4s, v3.4s
+
+        sqrshl      v{{q}}.4s, v{{q}}.4s, v1.4s
+
+        neg         v3.4s, v{{q}}.4s
+        bit         v{{q}}.16b, v3.16b, v0.16b
+    {% endfor %}
+    b .non_linear_loop
     b .non_linear_loop

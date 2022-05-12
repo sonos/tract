@@ -351,7 +351,7 @@ impl TypedOp for LirMatMulUnary {
 
         if let Some(op) = succ.op_as::<ops::element_wise::ElementWiseOp>().map(|ew| ew.0.as_ref()) {
             if let Some(op) = op.downcast_ref::<ops::math::QScale>() {
-                let (mult, policy, shift) = op.scaler.to_fuse_params();
+                let (mult, policy, shift) = op.scaler.as_fused_spec();
                 return self.fuse_op_with_broadcast(
                     model,
                     node,
