@@ -256,6 +256,9 @@ i128_shuffle dd              0, 4
 {% endfor %}
     jmp    {{L}}non_linear_loop
 
+{{L}}q_shr:
+    jmp    {{L}}unsupported
+
 {{L}}q_scale:
     mov             r8, [ rdi + 16 ]        // policy
     vbroadcastss    ymm8, dword ptr [rdi + 24] // multi
