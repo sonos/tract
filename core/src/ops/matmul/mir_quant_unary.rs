@@ -628,6 +628,24 @@ mod test {
         .check();
     }
 
+    #[test]
+    fn scale_big() {
+        QMatMulUnaryProblemI8I8I8 {
+            a: arr2(&[[0],[0]]),
+            b: arr2(&[[0, 0]]),
+            bias: tensor0(0i32),
+            a0: -1,
+            b0: 1,
+            c0: 0,
+            a_scale: 1.0,
+            b_scale: 0.2,
+            c_scale: 0.05,
+            opt: true,
+            dyn_qp: false,
+        }
+        .check();
+    }
+
     fn round_ties_to_right(x: f32) -> i32 {
         (x + 0.5).floor() as i32
     }

@@ -44,8 +44,8 @@ pub enum FusedSpec<'t> {
     AddRowColProducts(&'t Tensor, &'t Tensor),
     AddUnicast(OutputStore),
     QScale(isize, RoundingPolicy, i32),
-    RoundingShiftRight(isize, RoundingPolicy),
-    // ShiftLeft
+    RoundingShiftRight(usize, RoundingPolicy),
+    ShiftLeft(usize),
     Store(OutputStore),
     AddMatMul { k: usize, a: PackedStore, b: InputStore },
 }
@@ -94,7 +94,8 @@ pub enum FusedKerSpec<TI: Copy> {
     PerColSubF(*const TI),                      // jump_to:per_col_sub_flipped
 
     QScale(isize, RoundingPolicy, i32),         // jump_to:q_scale
-    RoundingShiftRight(isize, RoundingPolicy),  // jump_to:q_shr
+    RoundingShiftRight(usize, RoundingPolicy),  // jump_to:q_shr
+    ShiftLeft(usize),                           // jump_to:q_shl
     AddUnicast(OutputStoreKer),                 // jump_to:add_unicast
     AddRowColProducts(*const TI, *const TI),    // jump_to:add_row_col_products
     Store(OutputStoreKer),                      // jump_to:store
@@ -319,6 +320,24 @@ pub mod test {
                                     QScaleProblem::<$ker, $tc, $ti>::new(v, Scaler::new(1f32 / 5., RoundingPolicy::$policy)).run()
                                 }
                             }
+
+                            #[test]
+                            fn [<return_q_scale_bigpot_ $policy:lower>]() {
+                                if $cond {
+                                    let len = (<$ker>::mr() * <$ker>::nr()) as i64;
+                                    let v = (0..len).map(|i| (i - len / 2) as $tc).collect();
+                                    QScaleProblem::<$ker, $tc, $ti>::new(v, Scaler::new(4f32, RoundingPolicy::$policy)).run()
+                                }
+                            }
+
+                            #[test]
+                            fn [<return_q_scale_bignonpot_ $policy:lower>]() {
+                                if $cond {
+                                    let len = (<$ker>::mr() * <$ker>::nr()) as i64;
+                                    let v = (0..len).map(|i| (i - len / 2) as $tc).collect();
+                                    QScaleProblem::<$ker, $tc, $ti>::new(v, Scaler::new(14., RoundingPolicy::$policy)).run()
+                                }
+                            }
                         }
                     }
                 }
@@ -336,6 +355,13 @@ pub mod test {
                         if $cond {
                             pb.run()
                         }
+                    }
+                }
+
+                #[test]
+                fn return_c_scale_bigpot() {
+                    if $cond {
+                        test::return_c_scale_bigpot::<$ker, $tc, $ti>()
                     }
                 }
             }
@@ -662,6 +688,18 @@ pub mod test {
         fused_ops::<K, TC, TI, _>(&*v, &[FusedKerSpec::ScalarSubF(5.as_())], |_, _, c| c - five)
     }
 
+    pub fn return_c_scale_bigpot<K, TC, TI>()
+    where
+        K: MatMatMulKer<TI>,
+        TC: LADatum + AsPrimitive<TI>,
+        TI: LADatum + AsPrimitive<TC> + ScaleShiftAndRound,
+        isize: AsPrimitive<TC> + AsPrimitive<TI>,
+    {
+        let len = K::mr() * K::nr();
+        let v: Vec<TC> = (-(len as isize) / 2..).take(len).map(|f| f.as_()).collect();
+        fused_ops::<K, TC, TI, _>(&*v, &[FusedKerSpec::ShiftLeft(1)], |_, _, c| c.q_shl(1))
+    }
+
     #[derive(Debug, new)]
     pub struct QScaleProblem<K, TC, TI>
     where
@@ -689,7 +727,8 @@ pub mod test {
             let len = K::mr() * K::nr();
             (
                 proptest::collection::vec((-20i64..20).prop_map(|i| i.as_()), len..=len),
-                0.0001f32..0.1,
+                -5i32..5,
+                prop_oneof!(Just(1f32), 0f32..1f32),
                 proptest::prop_oneof![
                     Just(Zero),
                     Just(Away),
@@ -699,9 +738,9 @@ pub mod test {
                     Just(Even)
                 ],
             )
-                .prop_map(|(c, scale, policy)| QScaleProblem {
+                .prop_map(|(c, scale_pot, scale_mult, policy)| QScaleProblem {
                     c,
-                    scaler: Scaler::new(scale, policy),
+                    scaler: Scaler::new(scale_mult * 2f32.powi(scale_pot), policy),
                     boo: std::marker::PhantomData,
                 })
                 .boxed()
@@ -723,11 +762,18 @@ pub mod test {
                     &[FusedKerSpec::QScale(shift, policy, mult)],
                     |_, _, c| c.q_scale(self.scaler),
                 )
-            } else if let FusedSpec::RoundingShiftRight(shift, policy) = self.scaler.as_fused_spec() {
+            } else if let FusedSpec::RoundingShiftRight(shift, policy) = self.scaler.as_fused_spec()
+            {
                 fused_ops::<K, TC, TI, _>(
                     &*self.c,
                     &[FusedKerSpec::RoundingShiftRight(shift, policy)],
                     |_, _, c| c.q_shr(shift, policy),
+                )
+            } else if let FusedSpec::ShiftLeft(shift) = self.scaler.as_fused_spec() {
+                fused_ops::<K, TC, TI, _>(
+                    &*self.c,
+                    &[FusedKerSpec::ShiftLeft(shift)],
+                    |_, _, c| c.q_shl(shift),
                 )
             } else {
                 unreachable!()

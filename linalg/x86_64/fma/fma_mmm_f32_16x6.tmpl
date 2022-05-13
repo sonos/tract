@@ -222,10 +222,6 @@ fma_mmm_f32_16x6_{{suffix}} proc
 
     jmp     {{L}}non_linear_loop
 
-{{L}}q_scale:
-{{L}}q_shr:
-    jmp {{L}}unsupported
-
 {{L}}return:
     ldmxcsr     [rsp + 4]
     add         rsp, 8
