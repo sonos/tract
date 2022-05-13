@@ -1,13 +1,10 @@
 use crate::internal::*;
 use ndarray::*;
 
-use tract_linalg::{
-    mmm::{
-        BinOp, FusedSpec, InputStoreSpec, MatMatMul, OutputStore, OutputStoreSpec, RoundingPolicy,
-        ScratchSpace,
-    },
-    Scaler,
+use tract_linalg::mmm::{
+    BinOp, FusedSpec, InputStoreSpec, MatMatMul, OutputStore, OutputStoreSpec, ScratchSpace,
 };
+use tract_linalg::Scaler;
 
 #[derive(PartialEq, Clone, Hash, Debug)]
 pub enum ProtoFusedSpec {
