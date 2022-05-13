@@ -14,6 +14,7 @@ pub enum ProtoFusedSpec {
     AddRowColProducts(AttrOrInput, AttrOrInput),
     AddUnicast(AttrOrInput),
     QScale(isize, RoundingPolicy, i32),
+    RoundingShiftRight(isize, RoundingPolicy),
     Store,
 }
 
@@ -39,6 +40,9 @@ impl ProtoFusedSpec {
                 }
                 FusedSpec::AddUnicast(output_spec.wrap(&view))
             },
+            ProtoFusedSpec::RoundingShiftRight(shift, policy) => {
+                FusedSpec::RoundingShiftRight(*shift, *policy)
+            }
             ProtoFusedSpec::QScale(s, rp, m) => FusedSpec::QScale(*s, *rp, *m),
             ProtoFusedSpec::Store => FusedSpec::Store(output),
         }
@@ -351,13 +355,26 @@ impl TypedOp for LirMatMulUnary {
 
         if let Some(op) = succ.op_as::<ops::element_wise::ElementWiseOp>().map(|ew| ew.0.as_ref()) {
             if let Some(op) = op.downcast_ref::<ops::math::QScale>() {
-                let (mult, policy, shift) = op.scaler.as_fused_spec();
-                return self.fuse_op_with_broadcast(
-                    model,
-                    node,
-                    &[ProtoFusedSpec::QScale(shift, policy, mult)],
-                    &[],
-                );
+                let fused_spec = op.scaler.as_fused_spec();
+                match fused_spec {
+                    FusedSpec::QScale(shift, policy, mult) => {
+                        return self.fuse_op_with_broadcast(
+                            model,
+                            node,
+                            &[ProtoFusedSpec::QScale(shift, policy, mult)],
+                            &[],
+                        )
+                    }
+                    FusedSpec::RoundingShiftRight(shift, policy) => {
+                        return self.fuse_op_with_broadcast(
+                            model,
+                            node,
+                            &[ProtoFusedSpec::RoundingShiftRight(shift, policy)],
+                            &[],
+                        )
+                    }
+                    _ => unreachable!(),
+                }
             }
         } else if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
             let binop =
