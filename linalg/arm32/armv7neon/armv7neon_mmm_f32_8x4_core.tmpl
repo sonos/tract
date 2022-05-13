@@ -1,7 +1,7 @@
 // vim: ft=arm
 
 // C tile regs
-// 
+//
 //      q8[0]    q10[0]   q12[0]    q14[0]
 //      q8[1]    q10[1]   q12[1]    q14[1]
 //      q8[2]    q10[2]   q12[2]    q14[2]
@@ -37,7 +37,7 @@ armv7neon_mmm_f32_8x4_{{core}}_{{suffix}}:
     pld     [r5]
 
     .packed_packed:
-    pld     [r5]                           // packed B ptr       
+    pld     [r5]                           // packed B ptr
     .packed_packed_loop_1:
 
 {% if core == "cortexa7" %}
@@ -132,7 +132,10 @@ armv7neon_mmm_f32_8x4_{{core}}_{{suffix}}:
     b .non_linear_loop
 
 .q_scale:
-    b .unsupported
+    b   .unsupported
+
+.q_shr:
+    b   .unsupported
 
 .return:
     vpop        { q4-q7 }

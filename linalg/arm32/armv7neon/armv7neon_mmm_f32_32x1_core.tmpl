@@ -1,12 +1,12 @@
 // vim: ft=arm
 
 // C tile regs
-// 
-//      q8[0] 
-//      q8[1] 
-//      q8[2] 
-//      q8[3] 
-//    
+//
+//      q8[0]
+//      q8[1]
+//      q8[2]
+//      q8[3]
+//
 //      ....
 //
 //      q15[0]
@@ -172,6 +172,9 @@ armv7neon_mmm_f32_32x1_{{core}}_{{suffix}}:
     b .non_linear_loop
 
 .q_scale:
+    b   .unsupported
+
+.q_shr:
     b   .unsupported
 
 .store:
