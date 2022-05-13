@@ -131,12 +131,6 @@ armv7neon_mmm_f32_8x4_{{core}}_{{suffix}}:
     {% endfor %}
     b .non_linear_loop
 
-.q_scale:
-    b   .unsupported
-
-.q_shr:
-    b   .unsupported
-
 .return:
     vpop        { q4-q7 }
     pop         { r4-r12 }
