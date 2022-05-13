@@ -463,6 +463,16 @@ i128_shuffle dd              0, 4
 
     jmp    {{L}}non_linear_loop
 
+{{L}}q_shl:
+    mov             eax, [ rdi + 8 ]        // xmm10 <- -shift (8 times)
+    movd            xmm10, eax
+    vpbroadcastd    ymm10, xmm10
+
+{% for i in (0..7) %}
+    vpsllvd     ymm{{i}}, ymm{{i}}, ymm10
+{% endfor %}
+    jmp     {{L}}non_linear_loop
+
 {{L}}q_shr:
     mov             r8, [ rdi + 16 ]        // policy
 

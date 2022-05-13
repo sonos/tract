@@ -136,6 +136,13 @@ where
                         }
                     }
                     FusedKerSpec::AddUnicast(tile) => add_unicast::<TI, _>(&tile, &mut ab),
+                    FusedKerSpec::ShiftLeft(shift) => {
+                        for i in 0..4 {
+                            for j in 0..4 {
+                                ab[i][j] = ab[i][j].q_shl(shift);
+                            }
+                        }
+                    }
                     FusedKerSpec::RoundingShiftRight(shift, rp) => {
                         for i in 0..4 {
                             for j in 0..4 {
@@ -289,6 +296,11 @@ where
                             std::slice::from_raw_parts_mut(ab.as_ptr().offset(3) as _, 1),
                         ],
                     ),
+                    FusedKerSpec::ShiftLeft(shift) => {
+                        for i in 0..4 {
+                            ab[i][0] = ab[i][0].q_shl(shift);
+                        }
+                    }
                     FusedKerSpec::RoundingShiftRight(shift, rp) => {
                         for i in 0..4 {
                             ab[i][0] = ab[i][0].q_shr(shift, rp);
@@ -430,6 +442,13 @@ where
                         }
                     }
                     FusedKerSpec::AddUnicast(tile) => add_unicast::<TI, _>(&tile, &mut ab),
+                    FusedKerSpec::ShiftLeft(shift) => {
+                        for i in 0..3 {
+                            for j in 0..2 {
+                                ab[i][j] = ab[i][j].q_shl(shift);
+                            }
+                        }
+                    }
                     FusedKerSpec::RoundingShiftRight(shift, rp) => {
                         for i in 0..3 {
                             for j in 0..2 {

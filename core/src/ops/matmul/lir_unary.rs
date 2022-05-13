@@ -1,9 +1,12 @@
 use crate::internal::*;
 use ndarray::*;
 
-use tract_linalg::mmm::{
-    BinOp, FusedSpec, InputStoreSpec, MatMatMul, OutputStore, OutputStoreSpec, RoundingPolicy,
-    ScratchSpace,
+use tract_linalg::{
+    mmm::{
+        BinOp, FusedSpec, InputStoreSpec, MatMatMul, OutputStore, OutputStoreSpec, RoundingPolicy,
+        ScratchSpace,
+    },
+    Scaler,
 };
 
 #[derive(PartialEq, Clone, Hash, Debug)]
@@ -13,8 +16,7 @@ pub enum ProtoFusedSpec {
     BinPerCol(AttrOrInput, BinOp),
     AddRowColProducts(AttrOrInput, AttrOrInput),
     AddUnicast(AttrOrInput),
-    QScale(isize, RoundingPolicy, i32),
-    RoundingShiftRight(isize, RoundingPolicy),
+    Scaler(Scaler),
     Store,
 }
 
@@ -40,10 +42,7 @@ impl ProtoFusedSpec {
                 }
                 FusedSpec::AddUnicast(output_spec.wrap(&view))
             },
-            ProtoFusedSpec::RoundingShiftRight(shift, policy) => {
-                FusedSpec::RoundingShiftRight(*shift, *policy)
-            }
-            ProtoFusedSpec::QScale(s, rp, m) => FusedSpec::QScale(*s, *rp, *m),
+            ProtoFusedSpec::Scaler(scaler) => scaler.as_fused_spec(),
             ProtoFusedSpec::Store => FusedSpec::Store(output),
         }
     }
@@ -355,26 +354,12 @@ impl TypedOp for LirMatMulUnary {
 
         if let Some(op) = succ.op_as::<ops::element_wise::ElementWiseOp>().map(|ew| ew.0.as_ref()) {
             if let Some(op) = op.downcast_ref::<ops::math::QScale>() {
-                let fused_spec = op.scaler.as_fused_spec();
-                match fused_spec {
-                    FusedSpec::QScale(shift, policy, mult) => {
-                        return self.fuse_op_with_broadcast(
-                            model,
-                            node,
-                            &[ProtoFusedSpec::QScale(shift, policy, mult)],
-                            &[],
-                        )
-                    }
-                    FusedSpec::RoundingShiftRight(shift, policy) => {
-                        return self.fuse_op_with_broadcast(
-                            model,
-                            node,
-                            &[ProtoFusedSpec::RoundingShiftRight(shift, policy)],
-                            &[],
-                        )
-                    }
-                    _ => unreachable!(),
-                }
+                return self.fuse_op_with_broadcast(
+                    model,
+                    node,
+                    &[ProtoFusedSpec::Scaler(op.scaler)],
+                    &[],
+                );
             }
         } else if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
             let binop =

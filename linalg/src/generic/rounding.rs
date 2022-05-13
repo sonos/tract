@@ -2,7 +2,7 @@ use crate::frame::mmm::*;
 use std::hash::{Hash, Hasher};
 use std::ops::Mul;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Scaler {
     scale: f32,
     mult: Option<i32>,
@@ -28,8 +28,10 @@ impl Scaler {
     pub fn as_fused_spec(&self) -> FusedSpec {
         if let Some(multiplier) = self.mult {
             FusedSpec::QScale(self.shift, self.policy, multiplier)
+        } else if self.shift > 0 {
+            FusedSpec::RoundingShiftRight(self.shift as usize, self.policy)
         } else {
-            FusedSpec::RoundingShiftRight(self.shift, self.policy)
+            FusedSpec::ShiftLeft((- self.shift) as usize)
         }
     }
 
@@ -145,15 +147,19 @@ impl Mul<Scaler> for i32 {
 
 pub trait ScaleShiftAndRound {
     fn q_scale(self, scaler: Scaler) -> Self;
-    fn q_shr(self, shift: isize, rp: RoundingPolicy) -> Self;
+    fn q_shl(self, shift: usize) -> Self;
+    fn q_shr(self, shift: usize, rp: RoundingPolicy) -> Self;
 }
 
 impl ScaleShiftAndRound for f32 {
     fn q_scale(self, scaler: Scaler) -> Self {
         self * scaler
     }
-    fn q_shr(self, shift: isize, _rp: RoundingPolicy) -> Self {
-        self * 2f32.powi(-shift as i32)
+    fn q_shl(self, shift: usize) -> Self {
+        self * 2f32.powi(shift as i32)
+    }
+    fn q_shr(self, shift: usize, _rp: RoundingPolicy) -> Self {
+        self * 2f32.powi(-(shift as i32))
     }
 }
 
@@ -161,23 +167,22 @@ impl ScaleShiftAndRound for i32 {
     fn q_scale(self, scaler: Scaler) -> Self {
         self * scaler
     }
-    fn q_shr(self, shift: isize, rp: RoundingPolicy) -> Self {
+    fn q_shr(self, shift: usize, rp: RoundingPolicy) -> Self {
         use RoundingPolicy::*;
-        if shift > 0 {
-            let half: i32 = 1 << (shift - 1);
-            let nudge: i32 = match rp {
-                Zero => -1,
-                MinusInf => -((self >= 0) as i32),
-                PlusInf => -((self <= 0) as i32),
-                Away => 0,
-                Even => ((self.abs() >> shift) & 0x1) - 1,
-                Odd => -((self.abs() >> shift) & 0x1),
-                _ => panic!(),
-            };
-            (self.signum() * ((self.abs() + half + nudge) >> shift)) as i32
-        } else {
-            (self << -shift) as i32
-        }
+        let half: i32 = 1 << (shift - 1);
+        let nudge: i32 = match rp {
+            Zero => -1,
+            MinusInf => -((self >= 0) as i32),
+            PlusInf => -((self <= 0) as i32),
+            Away => 0,
+            Even => ((self.abs() >> shift) & 0x1) - 1,
+            Odd => -((self.abs() >> shift) & 0x1),
+            _ => panic!(),
+        };
+        (self.signum() * ((self.abs() + half + nudge) >> shift)) as i32
+    }
+    fn q_shl(self, shift: usize) -> Self {
+        (self << shift) as i32
     }
 }
 

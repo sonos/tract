@@ -78,6 +78,7 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                     BinOp::Sub => FKS::ScalarSub(*t.to_scalar_unchecked()),
                     BinOp::SubF => FKS::ScalarSubF(*t.to_scalar_unchecked()),
                 },
+                FS::ShiftLeft(s) => FKS::ShiftLeft(*s),
                 FS::RoundingShiftRight(s, rp) => FKS::RoundingShiftRight(*s, *rp),
                 FS::QScale(s, rp, m) => FKS::QScale(*s, *rp, *m),
                 FS::BinPerRow(_, _) => {
