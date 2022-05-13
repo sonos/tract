@@ -289,10 +289,8 @@ where
                     *o = replace_by;
                 }
             }
-            if let Some(label) = target.outlet_label(outlet).map(|s| s.to_string()) {
+            if let Some(label) = target.outlet_labels.remove(&outlet).map(|s| s.to_string()) {
                 target.set_outlet_label(replace_by, label)?;
-            } else if outlet.slot == 0 {
-                target.set_outlet_label(replace_by, target.node(outlet.node).name.clone())?;
             }
         }
         if target.outputs.len() > target.outputs.iter().sorted().dedup().count() {
