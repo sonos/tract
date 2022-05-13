@@ -176,7 +176,6 @@ impl ScaleShiftAndRound for i32 {
             };
             (self.signum() * ((self.abs() + half + nudge) >> shift)) as i32
         } else {
-            dbg!(self, shift);
             (self << -shift) as i32
         }
     }
