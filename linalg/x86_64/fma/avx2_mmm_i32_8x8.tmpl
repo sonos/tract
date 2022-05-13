@@ -172,13 +172,13 @@ avx2_mmm_i32_8x8_{{suffix}} proc
 // {% for i in (0..7) %}
 //     vpcmpeqd        ymm15, ymm15, ymm15
 //     vgatherdps      ymm12, [ r10 + ymm14 ], ymm15   // 0xxx 1xxx 2xxx 3xxx 4xxx 5xxx 6xxx 7xxx
-// 
+//
 //     // we need to go through vpmovsxbd, shuffling naively erases signs
 //     vpshufb         ymm12, ymm12, ymm10             // 0123 0123 0123 0123 4567 4567 4567 4567
-// 
+//
 //     vpermd          ymm12, ymm11, ymm12             // 0123 4567
 //     vpmovsxbd       ymm12, xmm12                    // sign extend
-// 
+//
 //     vpaddd          ymm{{i}},   ymm{{i}},   ymm12
 //     add             r10, rbx
 // {% endfor %}
@@ -311,7 +311,7 @@ i128_shuffle dd              0, 4
 {% endfor %}
 
     jmp    {{L}}non_linear_loop
-   
+
 {{L}}q_scale_rounding_away:           // signum * ( (abs + nudge) >> shift )
 {% for i in (0..7) %}
     vpabsd      ymm14, ymm{{i}}
@@ -334,7 +334,7 @@ i128_shuffle dd              0, 4
 
 {{L}}q_scale_rounding_minus_inf:           // signum * ( (abs << 32 + 1<<30+shift) >> shift )
 {% for i in (0..7) %}
-    vpabsd      ymm14, ymm{{i}}             
+    vpabsd      ymm14, ymm{{i}}
     // sign extract for nudging in the right direction
     vpxor       ymm13, ymm13, ymm13
     vpcmpgtd    ymm13, ymm{{i}}, ymm13      // ymm13 <- s0, s1, ..s8 (signums, as all ones or all zeros)
@@ -372,7 +372,7 @@ i128_shuffle dd              0, 4
     vpbroadcastd ymm9, xmm9
 
 {% for i in (0..7) %}
-    vpabsd      ymm14, ymm{{i}}             
+    vpabsd      ymm14, ymm{{i}}
     vpxor       ymm13, ymm13, ymm13
 
     // sign extract for nudging in the right direction
@@ -475,9 +475,9 @@ i128_shuffle dd              0, 4
     vpbroadcastd    ymm10, xmm10
 
     mov             ebx, 1
-    mov             ecx, eax
-    sub             ecx, 1                  // rcx <- shift -1
-    sal             ebx, ecx                // rbx <- (1 << (shift - 1))
+    mov             cl, al
+    sub             cl, 1                  // rcx <- shift -1
+    sal             ebx, cl                // rbx <- (1 << (shift - 1))
     movd            xmm11, ebx
     vpbroadcastd    ymm11, xmm11            // ymm11 <- "half"
 
