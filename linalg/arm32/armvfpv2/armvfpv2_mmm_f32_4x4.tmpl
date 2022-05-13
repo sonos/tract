@@ -467,7 +467,10 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
 
 
 .q_scale:
-    b .unsupported
+    b   .unsupported
+
+.q_shr:
+    b   .unsupported
 
 .return:
     vpop        { s16-s31 }
