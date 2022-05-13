@@ -7,3 +7,7 @@
 {% include "armv7neon_mmm_q_scalar.tmpliq" label:"scalar_sub", op:"vsub.f32", from:from, to:to%}
 {% include "armv7neon_mmm_q_scalar.tmpliq" label:"scalar_sub_flipped", op:"vsub.f32", from:from, to:to, flipped:true%}
 
+.q_shl:
+.q_shr:
+.q_scale:
+    b .unsupported
