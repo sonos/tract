@@ -513,7 +513,7 @@ i128_shuffle dd              0, 4
     vpabsd      ymm14, ymm{{i}}
     vpsubd      ymm14, ymm14, ymm9
     vpaddd      ymm14, ymm14, ymm11
-    vpsrlvd     ymm14, ymm14, ymm10
+    vpsravd     ymm14, ymm14, ymm10
     vpsignd     ymm{{i}}, ymm14, ymm{{i}}
 {% endfor %}
     jmp     {{L}}non_linear_loop
@@ -522,7 +522,7 @@ i128_shuffle dd              0, 4
 {% for i in (0..7) %}
     vpabsd      ymm14, ymm{{i}}
     vpaddd      ymm14, ymm14, ymm11
-    vpsrlvd     ymm14, ymm14, ymm10
+    vpsravd     ymm14, ymm14, ymm10
     vpsignd     ymm{{i}}, ymm14, ymm{{i}}
 {% endfor %}
     jmp     {{L}}non_linear_loop
@@ -531,26 +531,26 @@ i128_shuffle dd              0, 4
 {% for i in (0..7) %}
     vpsubd  ymm{{i}}, ymm{{i}}, ymm9
     vpaddd  ymm{{i}}, ymm{{i}}, ymm11
-    vpsrlvd ymm{{i}}, ymm{{i}}, ymm10
+    vpsravd ymm{{i}}, ymm{{i}}, ymm10
 {% endfor %}
     jmp     {{L}}non_linear_loop
 
 {{L}}q_shr_rounding_plus_inf:
 {% for i in (0..7) %}
     vpaddd  ymm{{i}}, ymm{{i}}, ymm11
-    vpsrlvd ymm{{i}}, ymm{{i}}, ymm10
+    vpsravd ymm{{i}}, ymm{{i}}, ymm10
 {% endfor %}
     jmp     {{L}}non_linear_loop
 
 {{L}}q_shr_rounding_even:
 {% for i in (0..7) %}
     vpabsd      ymm14, ymm{{i}}
-    vpsrlvd ymm13, ymm14, ymm10
+    vpsravd ymm13, ymm14, ymm10
     vpand   ymm13, ymm13, ymm9
     vpsubd  ymm13, ymm13, ymm9          // nudge = ((abs >>l shift) & 0x01) - 1
     vpaddd  ymm14, ymm14, ymm13         // add nudge
     vpaddd  ymm14, ymm14, ymm11         // add half
-    vpsrlvd ymm14, ymm14, ymm10
+    vpsravd ymm14, ymm14, ymm10
     vpsignd     ymm{{i}}, ymm14, ymm{{i}}
 {% endfor %}
     jmp     {{L}}non_linear_loop
@@ -558,12 +558,12 @@ i128_shuffle dd              0, 4
 {{L}}q_shr_rounding_odd:
 {% for i in (0..7) %}
     vpabsd      ymm14, ymm{{i}}
-    vpsrlvd ymm13, ymm14, ymm10
+    vpsravd ymm13, ymm14, ymm10
     vpand   ymm13, ymm13, ymm9
     vpsubd  ymm13, ymm12, ymm13          // nudge = - ((abs >>l shift) & 0x01)
     vpaddd  ymm14, ymm14, ymm13         // add nudge
     vpaddd  ymm14, ymm14, ymm11         // add half
-    vpsrlvd ymm14, ymm14, ymm10
+    vpsravd ymm14, ymm14, ymm10
     vpsignd     ymm{{i}}, ymm14, ymm{{i}}
 {% endfor %}
     jmp     {{L}}non_linear_loop
