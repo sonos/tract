@@ -162,6 +162,16 @@
 
     b .non_linear_loop
 
+.q_shl:
+    ldr     x5, [x0, #8]                // x5: shift
+    ins     v1.s[0], w5
+    dup     v1.4s, v1.s[0]              // v1.4s <- shift
+
+    {% for q in (16..31) %}
+        sqrshl      v{{q}}.4s, v{{q}}.4s, v1.4s
+    {% endfor %}
+    b .non_linear_loop
+
 .q_shr:
     ldp     x5, x6, [x0, #8]            // x5: shift, x6: policy
 
