@@ -1,0 +1,2 @@
+"input": zero_point_linear_quantize(zero_point = 128, scale = 0.0078125, bits = 8, signed = false, symmetric = false);
+"output": zero_point_linear_quantize(zero_point = 0, scale = 0.00390625, bits = 8, signed = false, symmetric = false);
