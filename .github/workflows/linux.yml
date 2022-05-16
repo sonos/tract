@@ -22,7 +22,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
-    - uses: ./.github/workflows/setup-cache.yml
+    - uses: ./.github/workflows/setup-cache
       with:
         rust: ${{matrix.rust}}
         key: native
