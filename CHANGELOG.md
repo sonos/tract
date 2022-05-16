@@ -1,5 +1,10 @@
 # Unreleased
+
+# 0.16.7 - 2022-05-16
 * Softmax is now an operator in core, coming with a direct quantized implementation
+* new TypedFact constructor API ( f32::fact(&[1, 4, 12]), f32::fact(shape!(Symbol::from('N'), 12)))
+* fixes and optimisation of re-quantization pipeline
+* fixes around symbols in NNEF/OPL
 
 # 0.16.6 - 2022-05-03
 * Various changes around quantization support (qi32 appearance)
