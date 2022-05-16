@@ -22,43 +22,10 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
-    - name: Get current date
-      id: date
-      run: echo "::set-output name=date::$(date +'%Y-%m-%d')"
-
-    - uses: actions/cache@v2
+    - uses: ./.github/workflows/setup-cache.yml
       with:
-        path: |
-          ~/.rustup
-          ~/.cargo/registry
-          ~/.cargo/git
-          ~/.cache/sccache
-        key: ${{ runner.os }}-tract-build-cache-${{matrix.rust}}-${{steps.date.outputs.date}}
-
-    - name: Install sccache
-      env:
-        LINK: https://github.com/mozilla/sccache/releases/download
-        SCCACHE_VERSION: v0.3.0
-      run: |
-        echo $HOME
-        if [ `uname` = "Linux" ]
-        then
-          SCCACHE_FILE=sccache-$SCCACHE_VERSION-x86_64-unknown-linux-musl
-        else
-          SCCACHE_FILE=sccache-$SCCACHE_VERSION-x86_64-apple-darwin
-        fi
-        mkdir -p $SCCACHE_DIR
-        mkdir -p $HOME/.local/bin
-        curl -L "$LINK/$SCCACHE_VERSION/$SCCACHE_FILE.tar.gz" | tar xz
-        mv -f $SCCACHE_FILE/sccache $HOME/.local/bin/sccache
-        chmod +x $HOME/.local/bin/sccache
-        echo "$HOME/.local/bin" >> $GITHUB_PATH
-        ls -l $HOME/.local/bin
-        find $HOME/.local/bin
-
-    - name: Start sccache server
-      run:
-        SCCACHE_ERROR_LOG=/tmp/sccache_log.txt SCCACHE_LOG=debug sccache --start-server || cat /tmp/sccache_log.txt 
+        rust: ${{matrix.rust}}
+        key: native
 
     - name: Native script
       run: .travis/regular-tests.sh
