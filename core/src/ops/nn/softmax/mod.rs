@@ -58,7 +58,7 @@ impl TypedOp for Softmax {
             );
         }
 
-        let fact = inputs[0].clone();
+        let fact = self.output_dt.fact(inputs[0].shape.clone());
         Ok(tvec!(fact))
     }
 
