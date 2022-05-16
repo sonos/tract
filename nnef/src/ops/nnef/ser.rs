@@ -6,15 +6,20 @@ use tract_core::ops::cnn::PoolSpec;
 use tract_core::ops::nn::DataFormat;
 
 pub fn source(
-    _ast: &mut IntoAst,
-    _node: &TypedNode,
+    ast: &mut IntoAst,
+    node: &TypedNode,
     op: &ops::source::TypedSource,
 ) -> TractResult<Option<Arc<RValue>>> {
-    if op.fact.datum_type == DatumType::F32 {
-        if let Some(shape) = op.fact.shape.as_concrete() {
+    if let Some(shape) = op.fact.shape.as_concrete() {
+        if op.fact.datum_type == DatumType::F32 {
+            return Ok(Some(invocation("external", &[], &[("shape", ints(shape))])));
+        } else if op.fact.datum_type.is_quantized() {
+            if let Some(qp) = QuantFormat::from_dt(node.outputs[0].fact.datum_type) {
+                ast.quantization.insert(node.name.clone(), qp);
+            }
             return Ok(Some(invocation("external", &[], &[("shape", ints(shape))])));
         }
-    }
+    };
     Ok(None)
 }
 

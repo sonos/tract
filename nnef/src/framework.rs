@@ -1,3 +1,5 @@
+use tract_core::tract_data::itertools::Itertools;
+
 use crate::ast::quant::write_quant_format;
 use crate::ast::{ProtoModel, QuantFormat};
 use crate::internal::*;
@@ -43,7 +45,8 @@ impl Nnef {
     }
 
     pub fn write_to_tar<W: std::io::Write>(&self, model: &TypedModel, w: W) -> TractResult<W> {
-        let proto_model = crate::ser::to_proto_model(&self, model).context("Translating model to proto_model")?;
+        let proto_model =
+            crate::ser::to_proto_model(&self, model).context("Translating model to proto_model")?;
         let mut ar = tar::Builder::new(w);
         let mut graph_data = vec![];
         crate::ast::dump::Dumper::new(&mut graph_data)
@@ -109,7 +112,7 @@ impl Nnef {
 
         if let Some(quantization) = proto_model.quantization {
             let mut graph_quant = std::fs::File::create(path.join("graph.quant"))?;
-            for (name, format) in quantization.into_iter() {
+            for (name, format) in quantization.into_iter().sorted_by_key(|(x, _)| x.clone()) {
                 write_quant_format(&mut graph_quant, name, format)?;
             }
         }
