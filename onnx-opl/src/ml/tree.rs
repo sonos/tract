@@ -546,6 +546,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_tree_ensemble() {
         let ensemble = generate_gbm_ensemble();
         let input = generate_gbm_input();
