@@ -6,6 +6,7 @@ use tract_nnef::internal::*;
 #[macro_use]
 mod macros;
 
+pub mod einsum;
 pub mod erf;
 pub mod is_inf;
 pub mod is_nan;
