@@ -98,6 +98,7 @@ fn main() -> tract_core::anyhow::Result<()> {
 
         .arg(arg!(--"input-node" [node] ... "Override input nodes names (auto-detects otherwise)."))
         .arg(arg!(--"output-node" [node] ... "Override output nodes name (auto-detects otherwise)."))
+        .arg(arg!(--"label-wires" "Propagate node labels to wires"))
 
         .arg(arg!(--"tf-initializer-output-node" [node] "Set an initializer node"))
 

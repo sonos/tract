@@ -248,7 +248,7 @@ fn render_node_prefixed(
                 model.outlet_fact_format(outlet),
                 White.bold().paint(successors.iter().map(|s| format!("{:?}", s)).join(" ")),
                 model_io.join(", "),
-                White.italic().paint(
+                Blue.bold().italic().paint(
                     tags.outlet_labels
                         .get(slot)
                         .map(|s| s.join(","))
