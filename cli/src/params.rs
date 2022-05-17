@@ -660,8 +660,15 @@ impl Parameters {
             stage!("tf-preproc", inference_model -> inference_model, |m:InferenceModel| Ok(ext.preproc(m)?));
         }
         stage!("incorporate", inference_model -> inference_model, |m:InferenceModel| { Ok(m.incorporate()?)});
-        stage!("type", inference_model -> typed_model, |m:InferenceModel| Ok(m.into_typed()?));
+        stage!("type", inference_model -> typed_model, |m:InferenceModel| m.into_typed());
         stage!("declutter", typed_model -> typed_model, |mut m:TypedModel| {
+            if matches.is_present("label-wires") {
+                for node in 0..m.nodes().len() {
+                    if m.outlet_label(node.into()).is_none() {
+                        m.set_outlet_label(node.into(), m.node(node).name.to_string())?;
+                    }
+                }
+            }
             let mut dec = tract_core::optim::Optimizer::declutter();
             if let Some(steps) = matches.value_of("declutter-step") {
                 dec = dec.stopping_at(steps.parse()?);
