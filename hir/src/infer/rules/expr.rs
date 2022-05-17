@@ -443,6 +443,12 @@ impl IntoExp<IntFactoid> for i64 {
     }
 }
 
+impl IntoExp<IntFactoid> for IntFactoid {
+    fn bex(self) -> Exp<IntFactoid> {
+        ConstantExp(self).bex()
+    }
+}
+
 impl<IE: IntoExp<IntFactoid>> Add<IE> for Exp<IntFactoid> {
     type Output = Exp<IntFactoid>;
     fn add(self, other: IE) -> Exp<IntFactoid> {
