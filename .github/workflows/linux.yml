@@ -20,11 +20,6 @@ jobs:
       SCCACHE_CACHE_SIZE: 2G
       SCCACHE_DIR: $PATH/.cache/sccache
 
-    uses: ./.github/workflows/setup-cache.yml
-      with:
-        rust: ${{matrix.rust}}
-        key: native
-
     steps:
     - uses: actions/checkout@v1
 
