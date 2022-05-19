@@ -28,6 +28,9 @@ jobs:
     steps:
     - uses: actions/checkout@v1
 
+    - name: "Setup sccache"
+      run: .travis/setup-sccache.sh
+
     - name: Native script
       run: .travis/regular-tests.sh
       env:
