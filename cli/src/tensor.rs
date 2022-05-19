@@ -1,3 +1,9 @@
+use nom::branch::alt;
+use nom::bytes::complete::tag;
+use nom::character::complete::digit1;
+use nom::combinator::{map, map_res, recognize};
+use nom::sequence::{delimited, preceded, separated_pair, tuple};
+use nom::IResult;
 use std::collections::HashSet;
 use std::fs;
 use std::io::Read;
@@ -9,6 +15,60 @@ use crate::{CliResult, Parameters};
 use tract_hir::internal::*;
 
 fn parse_dt(dt: &str) -> CliResult<DatumType> {
+    if dt.contains("q") {
+        parse_quant_dt(dt)
+    } else {
+        parse_non_quant_dt(dt)
+    }
+}
+
+fn parse_float(i: &str) -> IResult<&str, f32> {
+    map_res(recognize(tuple((digit1, tuple((tag("."), digit1))))), |f| FromStr::from_str(f))(i)
+}
+
+fn parse_int(i: &str) -> IResult<&str, i32> {
+    map_res(recognize(digit1), |f| FromStr::from_str(f))(i)
+}
+
+fn parse_min_max(i: &str) -> IResult<&str, QParams> {
+    map(separated_pair(parse_float, tag("-"), parse_float), |(min, max)| QParams::MinMax {
+        min,
+        max,
+    })(i)
+}
+
+fn parse_zp_scale(i: &str) -> IResult<&str, QParams> {
+    map(separated_pair(parse_int, tag("-"), parse_float), |(zero_point, scale)| QParams::ZpScale {
+        zero_point,
+        scale,
+    })(i)
+}
+
+// QParams are in the form of {(int|float)-float}
+// {int, float} -> QParams::ZpScale
+// {float, float} -> QParams::MinMax
+fn parse_qparams(i: &str) -> IResult<&str, QParams> {
+    delimited(tag("{"), alt((parse_zp_scale, parse_min_max)), tag("}"))(i)
+}
+
+// Quantized datum are in the form (qu8|qi8|qi32){(int|float)-float}
+fn parse_quant_dt(dt: &str) -> CliResult<DatumType> {
+    let res: IResult<&str, DatumType> = alt((
+        map(preceded(tag("qi32"), parse_qparams), |qp| -> DatumType {
+            DatumType::QI32(qp)
+        }),
+        map(preceded(tag("qi8"), parse_qparams), |qp| -> DatumType {
+            DatumType::QI8(qp)
+        }),
+        map(preceded(tag("qu8"), parse_qparams), |qp| -> DatumType {
+            DatumType::QU8(qp)
+        }),
+    ))(dt);
+
+    Ok(res.unwrap().1)
+}
+
+fn parse_non_quant_dt(dt: &str) -> CliResult<DatumType> {
     Ok(match dt.to_lowercase().as_ref() {
         "f16" => DatumType::F16,
         "f32" => DatumType::F32,
@@ -320,13 +380,14 @@ pub fn retrieve_or_make_inputs(
                 let output_delay = tract.properties()["pulse.delay"].as_slice::<i64>()?[0] as usize;
                 let last_frame = output_len + output_delay;
                 let needed_pulses = last_frame.divceil(output_pulse);
-                let mut values = vec!();
+                let mut values = vec![];
                 for ix in 0..needed_pulses {
-                    let mut t = Tensor::zero_dt(fact.datum_type, fact.shape.as_concrete().unwrap())?;
+                    let mut t =
+                        Tensor::zero_dt(fact.datum_type, fact.shape.as_concrete().unwrap())?;
                     let start = ix * input_pulse;
                     let end = (start + input_pulse).min(input_len);
                     if end > start {
-                        t.assign_slice(0..end-start, value, start..end, input_pulse_axis)?;
+                        t.assign_slice(0..end - start, value, start..end, input_pulse_axis)?;
                     }
                     values.push(t);
                 }
@@ -433,4 +494,64 @@ pub fn random(sizes: &[usize], datum_type: DatumType) -> Tensor {
         t.set_datum_type(datum_type);
     }
     t
+}
+
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_parse_quant_dt_u8() -> CliResult<()> {
+        let input = "qu8{128-0.25}";
+        let dt = parse_quant_dt(input)?;
+        let expected_dt = DatumType::QU8(QParams::ZpScale { zero_point: 128, scale: 0.25 });
+        assert_eq!(dt, expected_dt);
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_quant_dt_i8() -> CliResult<()> {
+        let input = "qi8{128-0.25}";
+        let dt = parse_quant_dt(input)?;
+        let expected_dt = DatumType::QI8(QParams::ZpScale { zero_point: 128, scale: 0.25 });
+        assert_eq!(dt, expected_dt);
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_quant_dt_i32() -> CliResult<()> {
+        let input = "qi32{128-0.25}";
+        let dt = parse_quant_dt(input)?;
+        let expected_dt = DatumType::QI32(QParams::ZpScale { zero_point: 128, scale: 0.25 });
+        assert_eq!(dt, expected_dt);
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_dt_f32() -> CliResult<()> {
+        let input = "f32";
+        let dt = parse_dt(input)?;
+        let expected_dt = DatumType::F32;
+        assert_eq!(dt, expected_dt);
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_dt_qi8() -> CliResult<()> {
+        let input = "qi8{128-0.25}";
+        let dt = parse_dt(input)?;
+        let expected_dt = DatumType::QI8(QParams::ZpScale { zero_point: 128, scale: 0.25 });
+        assert_eq!(dt, expected_dt);
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_quant_dt_min_max() -> CliResult<()> {
+        let input = "qi8{0.125-0.25}";
+        let dt = parse_dt(input)?;
+        let expected_dt = DatumType::QI8(QParams::MinMax { min: 0.125, max: 0.25 });
+        assert_eq!(dt, expected_dt);
+        Ok(())
+    }
 }
