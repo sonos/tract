@@ -1,5 +1,11 @@
 #!/bin/sh
 
+set -ex
+
+
+LINK=https://github.com/mozilla/sccache/releases/download
+SCCACHE_VERSION=v0.3.0
+
 echo $HOME
 if [ `uname` = "Linux" ]
 then
