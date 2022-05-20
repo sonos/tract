@@ -31,7 +31,7 @@ jobs:
           ~/.cargo/git
           ~/.cache/sccache
           target
-          .cache
+          .cached
         key: ${{ runner.os }}-main-${{matrix.rust}}-${{steps.date.outputs.date}}-d
 
     - name: "Setup sccache"

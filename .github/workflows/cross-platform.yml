@@ -24,10 +24,7 @@ jobs:
           - wasm32-unknown-unknown
 
     runs-on: ubuntu-20.04
-    env:
-      RUSTC_WRAPPER: sccache
-      SCCACHE_CACHE_SIZE: 2G
-      SCCACHE_DIR: $HOME/.cache/sccache
+
     steps:
     - uses: actions/checkout@v1
 
@@ -41,6 +38,8 @@ jobs:
           ~/.cargo/registry
           ~/.cargo/git
           ~/.cache/sccache
+          .cached
+          target
         key: ${{ runner.os }}-${{matrix.platform}}-${{steps.date.outputs.date}}
 
     - name: "Setup sccache"
@@ -65,10 +64,6 @@ jobs:
           - aarch64-apple-ios
 
     runs-on: macOS-latest
-    env:
-      RUSTC_WRAPPER: sccache
-      SCCACHE_CACHE_SIZE: 2G
-      SCCACHE_DIR: $HOME/.cache/sccache
 
     steps:
     - uses: actions/checkout@v1
@@ -83,6 +78,8 @@ jobs:
           ~/.cargo/registry
           ~/.cargo/git
           ~/.cache/sccache
+          .cached
+          target
         key: ${{ runner.os }}-${{matrix.platform}}-${{steps.date.outputs.date}}
 
     - name: "Setup sccache"
