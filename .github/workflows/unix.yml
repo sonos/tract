@@ -6,7 +6,7 @@ on:
     - cron:  '0 3 * * *'
 
 jobs:
-  native:
+  unix:
     strategy:
       matrix:
         os: [ ubuntu-latest, macOS-latest ]
@@ -33,7 +33,7 @@ jobs:
           ~/.cargo/registry
           ~/.cargo/git
           ~/.cache/sccache
-        key: ${{ runner.os }}-${{inputs.key}}-${{inputs.rust}}-${{steps.date.outputs.date}}
+        key: ${{ runner.os }}-main-${{matrix.rust}}-${{steps.date.outputs.date}}
 
     - name: "Setup sccache"
       run: .travis/setup-sccache.sh
