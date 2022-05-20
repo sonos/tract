@@ -65,6 +65,10 @@ jobs:
           - aarch64-apple-ios
 
     runs-on: macOS-latest
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_CACHE_SIZE: 2G
+      SCCACHE_DIR: $PATH/.cache/sccache
 
     steps:
     - uses: actions/checkout@v1
