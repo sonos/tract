@@ -41,6 +41,22 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
+    - name: Get current date
+      id: date
+      run: echo "::set-output name=date::$(date +'%Y-%m-%d')"
+    - uses: actions/cache@v2
+      with:
+        path: |
+          ~/.rustup
+          ~/.cargo/registry
+          ~/.cargo/git
+          ~/.cache/sccache
+          target
+          .cached
+        key: ${{ runner.os }}-full-regular-${{matrix.rust}}-${{steps.date.outputs.date}}-d
+
+    - name: "Setup sccache"
+      run: .travis/setup-sccache.sh
     - name: Full test 
       env:
         AWS_ACCESS_KEY_ID: ${{secrets.TRACT_CI_AWS_ACCESS_KEY_ID}}
@@ -50,6 +66,7 @@ jobs:
 
     - name: Stop sccache server
       run: sccache --stop-server || true
+
   onnx-tests:
     runs-on: ubuntu-latest
     strategy:
@@ -71,6 +88,8 @@ jobs:
           target
           .cached
         key: ${{ runner.os }}-full-onnx-${{matrix.opset}}-${{matrix.rust}}-${{steps.date.outputs.date}}-d
+    - name: "Setup sccache"
+      run: .travis/setup-sccache.sh
     - name: Full test
       run: .travis/onnx-tests.sh ${{ matrix.opset }}
 
@@ -94,6 +113,8 @@ jobs:
           target
           .cached
         key: ${{ runner.os }}-full-onnx-with-asserts-${{matrix.rust}}-${{steps.date.outputs.date}}-d
+    - name: "Setup sccache"
+      run: .travis/setup-sccache.sh
     - name: With assertions
       run: cargo -q test -q -p onnx-test-suite -- --skip real_
 
@@ -117,6 +138,8 @@ jobs:
           target
           .cached
         key: ${{ runner.os }}-full-core-paranoid-${{matrix.rust}}-${{steps.date.outputs.date}}-d
+    - name: "Setup sccache"
+      run: .travis/setup-sccache.sh
     - name: Core test with paraoid assertions
       run: cargo test -p tract-core --features paranoid_assertions
     - name: Stop sccache server
