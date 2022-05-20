@@ -25,7 +25,7 @@ jobs:
           ~/.cache/sccache
           target
           .cached
-        key: ${{ runner.os }}-full-regular-${{matrix.rust}}-${{steps.date.outputs.date}}-d
+        key: ${{ runner.os }}-full-regular-${{matrix.rust}}-${{steps.date.outputs.date}}-e
 
     - name: "Setup sccache"
       run: .travis/setup-sccache.sh
@@ -53,7 +53,7 @@ jobs:
           ~/.cache/sccache
           target
           .cached
-        key: ${{ runner.os }}-full-regular-${{matrix.rust}}-${{steps.date.outputs.date}}-d
+        key: ${{ runner.os }}-full-regular-${{matrix.rust}}-${{steps.date.outputs.date}}-e
 
     - name: "Setup sccache"
       run: .travis/setup-sccache.sh
@@ -87,7 +87,7 @@ jobs:
           ~/.cache/sccache
           target
           .cached
-        key: ${{ runner.os }}-full-onnx-${{matrix.opset}}-${{matrix.rust}}-${{steps.date.outputs.date}}-d
+        key: ${{ runner.os }}-full-onnx-${{matrix.opset}}-${{matrix.rust}}-${{steps.date.outputs.date}}-e
     - name: "Setup sccache"
       run: .travis/setup-sccache.sh
     - name: Full test
@@ -112,7 +112,7 @@ jobs:
           ~/.cache/sccache
           target
           .cached
-        key: ${{ runner.os }}-full-onnx-with-asserts-${{matrix.rust}}-${{steps.date.outputs.date}}-d
+        key: ${{ runner.os }}-full-onnx-with-asserts-${{matrix.rust}}-${{steps.date.outputs.date}}-e
     - name: "Setup sccache"
       run: .travis/setup-sccache.sh
     - name: With assertions
@@ -137,7 +137,7 @@ jobs:
           ~/.cache/sccache
           target
           .cached
-        key: ${{ runner.os }}-full-core-paranoid-${{matrix.rust}}-${{steps.date.outputs.date}}-d
+        key: ${{ runner.os }}-full-core-paranoid-${{matrix.rust}}-${{steps.date.outputs.date}}-e
     - name: "Setup sccache"
       run: .travis/setup-sccache.sh
     - name: Core test with paraoid assertions
