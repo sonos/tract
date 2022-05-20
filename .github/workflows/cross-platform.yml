@@ -24,8 +24,16 @@ jobs:
           - wasm32-unknown-unknown
 
     runs-on: ubuntu-20.04
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_CACHE_SIZE: 2G
+      SCCACHE_DIR: $PATH/.cache/sccache
     steps:
     - uses: actions/checkout@v1
+
+    - name: "Setup sccache"
+      run: .travis/setup-sccache.sh
+
     - name: Cross script
       env:
         PLATFORM: ${{matrix.platform}}
@@ -33,6 +41,9 @@ jobs:
         AWS_SECRET_ACCESS_KEY: ${{secrets.TRACT_CI_AWS_SECRET_ACCESS_KEY}}
         AWS_EC2_METADATA_DISABLED: true
       run: .travis/cross.sh
+
+    - name: Stop sccache server
+      run: sccache --stop-server || true
 
   ios:
     strategy:
@@ -45,7 +56,14 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
+
+    - name: "Setup sccache"
+      run: .travis/setup-sccache.sh
+
     - name: Cross script
       env:
         PLATFORM: ${{matrix.platform}}
       run: .travis/cross.sh
+
+    - name: Stop sccache server
+      run: sccache --stop-server || true
