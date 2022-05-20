@@ -16,9 +16,6 @@ jobs:
     env:
       RUST_VERSION: ${{matrix.rust}}
       RUST_BACKTRACE: full
-      RUSTC_WRAPPER: sccache
-      SCCACHE_CACHE_SIZE: 2G
-      SCCACHE_DIR: ${{env.HOME}}/.cache/sccache
 
     steps:
     - uses: actions/checkout@v1
@@ -33,7 +30,7 @@ jobs:
           ~/.cargo/registry
           ~/.cargo/git
           ~/.cache/sccache
-        key: ${{ runner.os }}-main-${{matrix.rust}}-${{steps.date.outputs.date}}-b
+        key: ${{ runner.os }}-main-${{matrix.rust}}-${{steps.date.outputs.date}}-c
 
     - name: "Setup sccache"
       run: .travis/setup-sccache.sh
