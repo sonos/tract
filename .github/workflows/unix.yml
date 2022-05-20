@@ -30,7 +30,9 @@ jobs:
           ~/.cargo/registry
           ~/.cargo/git
           ~/.cache/sccache
-        key: ${{ runner.os }}-main-${{matrix.rust}}-${{steps.date.outputs.date}}-c
+          target
+          .cache
+        key: ${{ runner.os }}-main-${{matrix.rust}}-${{steps.date.outputs.date}}-d
 
     - name: "Setup sccache"
       run: .travis/setup-sccache.sh
