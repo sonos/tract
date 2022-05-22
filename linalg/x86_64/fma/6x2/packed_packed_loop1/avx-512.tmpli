@@ -1,0 +1,27 @@
+    // 80x2 for a 16-tall kernel ends up being 10 accumulators.
+	// We allocate 0-9 for that.
+	// Since this is AVX-512 we can waste registers (we have 31)
+	// So we can load all weights for 10 registers 10-19
+	// And then we have inputs in 20-21
+
+    vmovaps         zmm10,  [rax]
+
+    vbroadcastss    zmm20,  dword ptr [rcx + 0]
+	vbroadcastss    zmm21,  dword ptr [rcx + 4]
+	vmovaps         zmm11,  [rax+64]
+	vmovaps         zmm12,  [rax+128]
+	vmovaps         zmm13,  [rax+192]
+
+	vmovaps         zmm14,  [rax+256]
+	vfmadd231ps     zmm0, zmm10, zmm20
+	vfmadd231ps     zmm1, zmm10, zmm21
+
+	vfmadd231ps     zmm2, zmm11, zmm20
+	vfmadd231ps     zmm3, zmm11, zmm21
+
+	vfmadd231ps     zmm4, zmm12, zmm20
+	vfmadd231ps     zmm5, zmm12, zmm21
+	vfmadd231ps     zmm6, zmm13, zmm20
+	vfmadd231ps     zmm7, zmm13, zmm21
+	vfmadd231ps     zmm8, zmm14, zmm20
+	vfmadd231ps     zmm9, zmm14, zmm21

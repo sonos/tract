@@ -85,3 +85,7 @@ harness = false
 bench = false
 name = "virtual_im2col"
 harness = false
+
+[[bench]]
+name = "x86_64"
+harness = false
