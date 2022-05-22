@@ -1,0 +1,46 @@
+    // Tile size: 4x1
+	// Accumulators: 0-7, 17-24
+	// Col regs: 8-15
+	// Row regs: 16, 17
+// .intel_syntax
+// .loop:
+
+
+	vbroadcastss    zmm16, dword ptr [rcx]
+    vmovaps         zmm8,  [rax + 0]
+	vmovaps         zmm9,  [rax + 64]
+    vmovaps         zmm10, [rax + 128]
+    vfmadd231ps     zmm0,  zmm8, zmm16
+	vmovaps         zmm11, [rax + 192]
+    vfmadd231ps     zmm1,  zmm9, zmm16
+	vbroadcastss    zmm17, dword ptr [rcx]
+    vfmadd231ps     zmm2,  zmm10, zmm16
+    vmovaps         zmm12, [rax + 256]
+    vfmadd231ps     zmm3,  zmm11, zmm16
+
+	vmovaps         zmm13, [rax + 256+64]
+    vmovaps         zmm14, [rax + 256+128]
+	vmovaps         zmm15, [rax + 256+192]
+    vfmadd231ps     zmm20, zmm12, zmm16
+    vfmadd231ps     zmm21, zmm13, zmm16
+    vfmadd231ps     zmm22, zmm14, zmm16
+    vfmadd231ps     zmm23, zmm15, zmm16
+
+
+    vmovaps         zmm8,  [rax + 512  + 0]
+	vmovaps         zmm9,  [rax + 512  + 64]
+    vmovaps         zmm10, [rax + 512  + 128]
+	vmovaps         zmm11, [rax + 512  + 192]
+    vfmadd231ps     zmm0,  zmm8, zmm17
+    vfmadd231ps     zmm1,  zmm9, zmm17
+    vfmadd231ps     zmm2,  zmm10, zmm17
+    vfmadd231ps     zmm3,  zmm11, zmm17
+
+    vmovaps         zmm12, [rax + 512  + 256]
+	vmovaps         zmm13, [rax + 512  + 256+64]
+    vmovaps         zmm14, [rax + 512  + 256+128]
+	vmovaps         zmm15, [rax + 512  + 256+192]
+    vfmadd231ps     zmm20, zmm12, zmm17
+    vfmadd231ps     zmm21, zmm13, zmm17
+    vfmadd231ps     zmm22, zmm14, zmm17
+    vfmadd231ps     zmm23, zmm15, zmm17

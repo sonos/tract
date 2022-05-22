@@ -109,7 +109,7 @@ fn main() {
                 _ => {
                     cc::Build::new()
                         .files(files)
-                        .flag("-mfma")
+                        .flag("-mavx512f")
                         .static_flag(true)
                         .compile("x86_64_fma");
                 }
@@ -136,8 +136,11 @@ fn main() {
                 .compile("armv7neon");
         }
         "aarch64" => {
-            let files =
-                preprocess_files("arm64/arm64simd", &[("core", vec!["a53", "a55", "gen"])], &suffix);
+            let files = preprocess_files(
+                "arm64/arm64simd",
+                &[("core", vec!["a53", "a55", "gen"])],
+                &suffix,
+            );
             cc::Build::new().files(files).static_flag(true).compile("arm64");
         }
         _ => {}
@@ -220,6 +223,7 @@ fn preprocess_file(
     let long = if msvc { "dd" } else { ".long" };
     let g = if os == "macos" || os == "ios" { "_" } else { "" };
     let mut globals = liquid::object!({
+        "avx512": "true",
         "msvc": msvc,
         "family": family,
         "os": os,
@@ -253,7 +257,12 @@ fn load_partials(p: &path::Path, msvc: bool) -> liquid::partials::InMemorySource
             continue;
         }
         let ext = f.path().extension().map(|s| s.to_string_lossy()).unwrap_or("".into());
-        let text = std::fs::read_to_string(f.path()).unwrap();
+        let text = std::fs::read_to_string(f.path())
+            .map_err(|e| {
+                println!("failed reading file {:?}", f.path());
+                e
+            })
+            .unwrap();
         let text = match ext.as_ref() {
             "tmpli" => Some(text.replace("{{", "{").replace("}}", "}")),
             "tmpliq" => Some(text),
@@ -261,7 +270,8 @@ fn load_partials(p: &path::Path, msvc: bool) -> liquid::partials::InMemorySource
         };
         if let Some(text) = text {
             let text = strip_comments(text, msvc);
-            let key = f.path().strip_prefix(p).unwrap().to_str().unwrap().to_owned().replace("\\", "/");
+            let key =
+                f.path().strip_prefix(p).unwrap().to_str().unwrap().to_owned().replace("\\", "/");
             println!("cargo:rerun-if-changed={}", f.path().to_string_lossy().replace("\\", "/"));
             mem.add(key, text);
         }

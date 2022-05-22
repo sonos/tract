@@ -1,0 +1,26 @@
+    vbroadcastss    ymm14,  dword ptr [rcx]
+
+
+    vmovaps         ymm12, [rax + 0]
+    vfmadd231ps     ymm0, ymm12, ymm14
+
+    vmovaps         ymm12, [rax + 32]
+    vfmadd231ps     ymm1, ymm12, ymm14
+
+    vmovaps         ymm12, [rax + 64]
+    vfmadd231ps     ymm2, ymm12, ymm14
+
+    vmovaps         ymm12, [rax + 96]
+    vfmadd231ps     ymm3, ymm12, ymm14
+
+    vmovaps         ymm12, [rax + 128]
+    vfmadd231ps     ymm4, ymm12, ymm14
+
+    vmovaps         ymm12, [rax + 160]
+    vfmadd231ps     ymm5, ymm12, ymm14
+
+    vmovaps         ymm12, [rax + 192]
+    vfmadd231ps     ymm6, ymm12, ymm14
+
+    vmovaps         ymm12, [rax + 224]
+    vfmadd231ps     ymm7, ymm12, ymm14
