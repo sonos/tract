@@ -103,7 +103,7 @@ case "$PLATFORM" in
             "aarch64-unknown-linux-gnu")
                 export ARCH=aarch64
                 export QEMU_ARCH=aarch64
-                export LIBC_ARCH=atm64
+                export LIBC_ARCH=arm64
                 export RUSTC_TRIPLE=$ARCH-unknown-linux-gnu
                 export DEBIAN_TRIPLE=$ARCH-linux-gnu
                 ;;
