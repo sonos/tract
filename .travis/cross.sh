@@ -109,8 +109,8 @@ case "$PLATFORM" in
                 ;;
             "armv6vfp-unknown-linux-gnueabihf")
                 export ARCH=armv6vfp
-                export LIBC_ARCH=arm
-                export QEMU_ARCH=armhf
+                export LIBC_ARCH=armhf
+                export QEMU_ARCH=arm
                 export QEMU_OPTS="-cpu cortex-a15"
                 export RUSTC_TRIPLE=arm-unknown-linux-gnueabihf
                 export DEBIAN_TRIPLE=arm-linux-gnueabihf
@@ -153,18 +153,20 @@ case "$PLATFORM" in
                 ;;
         esac
 
-        PACKAGES="$PACKAGES binutils-$DEBIAN_TRIPLE gcc-$DEBIAN_TRIPLE libc6-dev-$LIBC_ARCH-cross"
-
         mkdir -p $ROOT/target/$RUSTC_TRIPLE
         echo "[platforms.$PLATFORM]\nrustc_triple='$RUSTC_TRIPLE'" > .dinghy.toml
         if [ -n "$DEBIAN_TRIPLE" ]
         then
             echo "deb_multiarch='$DEBIAN_TRIPLE'" >> .dinghy.toml
         fi
+
         if [ -n "$CUSTOM_TC" ]
         then
             echo "toolchain='$CUSTOM_TC'" >> .dinghy.toml
+        else
+            PACKAGES="$PACKAGES binutils-$DEBIAN_TRIPLE gcc-$DEBIAN_TRIPLE libc6-dev-$LIBC_ARCH-cross"
         fi
+
         echo "[script_devices.qemu-$ARCH]\nplatform='$PLATFORM'\npath='$ROOT/target/$RUSTC_TRIPLE/qemu'" >> .dinghy.toml
 
         echo "#!/bin/sh\nexe=\$1\nshift\n/usr/bin/qemu-$QEMU_ARCH $QEMU_OPTS -L /usr/$DEBIAN_TRIPLE/ \$exe --test-threads 1 \"\$@\"" > $ROOT/target/$RUSTC_TRIPLE/qemu
