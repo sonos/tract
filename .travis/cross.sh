@@ -110,7 +110,7 @@ case "$PLATFORM" in
             "armv6vfp-unknown-linux-gnueabihf")
                 export ARCH=armv6vfp
                 export LIBC_ARCH=arm
-                export QEMU_ARCH=arm
+                export QEMU_ARCH=armhf
                 export QEMU_OPTS="-cpu cortex-a15"
                 export RUSTC_TRIPLE=arm-unknown-linux-gnueabihf
                 export DEBIAN_TRIPLE=arm-linux-gnueabihf
