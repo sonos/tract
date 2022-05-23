@@ -131,6 +131,7 @@ case "$PLATFORM" in
                 export QEMU_ARCH=aarch64
                 export LIBC_ARCH=arm64
                 export RUSTC_TRIPLE=$ARCH-unknown-linux-musl
+                export DEBIAN_TRIPLE=$ARCH-linux-gnu
                 export CUSTOM_TC=`pwd`/aarch64-linux-musl-cross
                 [ -d "$CUSTOM_TC" ] || curl -s http://musl.cc/aarch64-linux-musl-cross.tgz | tar zx
                 ;;
@@ -139,6 +140,7 @@ case "$PLATFORM" in
                 export QEMU_ARCH=arm
                 export LIBC_ARCH=armhf
                 export RUSTC_TRIPLE=armv7-unknown-linux-musleabihf
+                export DEBIAN_TRIPLE=arm-linux-gnueabihf
                 export CUSTOM_TC=`pwd`/armv7l-linux-musleabihf-cross
                 export TRACT_CPU_ARM32_NEON=true
                 export DINGHY_TEST_ARGS="--env TRACT_CPU_ARM32_NEON=true"
@@ -155,19 +157,18 @@ case "$PLATFORM" in
         echo "[platforms.$PLATFORM]\nrustc_triple='$RUSTC_TRIPLE'" > .dinghy.toml
         if [ -n "$DEBIAN_TRIPLE" ]
         then
+            PACKAGES="$PACKAGES binutils-$DEBIAN_TRIPLE gcc-$DEBIAN_TRIPLE libc6-dev-$LIBC_ARCH-cross"
             echo "deb_multiarch='$DEBIAN_TRIPLE'" >> .dinghy.toml
         fi
 
         if [ -n "$CUSTOM_TC" ]
         then
             echo "toolchain='$CUSTOM_TC'" >> .dinghy.toml
-        else
-            PACKAGES="$PACKAGES binutils-$DEBIAN_TRIPLE gcc-$DEBIAN_TRIPLE libc6-dev-$LIBC_ARCH-cross"
-            echo "[script_devices.qemu-$ARCH]\nplatform='$PLATFORM'\npath='$ROOT/target/$RUSTC_TRIPLE/qemu'" >> .dinghy.toml
-
-            echo "#!/bin/sh\nexe=\$1\nshift\n/usr/bin/qemu-$QEMU_ARCH $QEMU_OPTS -L /usr/$DEBIAN_TRIPLE/ \$exe --test-threads 1 \"\$@\"" > $ROOT/target/$RUSTC_TRIPLE/qemu
-            chmod +x $ROOT/target/$RUSTC_TRIPLE/qemu
         fi
+
+        echo "[script_devices.qemu-$ARCH]\nplatform='$PLATFORM'\npath='$ROOT/target/$RUSTC_TRIPLE/qemu'" >> .dinghy.toml
+        echo "#!/bin/sh\nexe=\$1\nshift\n/usr/bin/qemu-$QEMU_ARCH $QEMU_OPTS -L /usr/$DEBIAN_TRIPLE/ \$exe --test-threads 1 \"\$@\"" > $ROOT/target/$RUSTC_TRIPLE/qemu
+        chmod +x $ROOT/target/$RUSTC_TRIPLE/qemu
 
         DINGHY_TEST_ARGS="$DINGHY_TEST_ARGS --env PROPTEST_MAX_SHRINK_ITERS=100000000"
 
