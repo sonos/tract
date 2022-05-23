@@ -17,7 +17,7 @@ then
     if [ -z "$TRAVIS" -a -z "$GITHUB_WORKFLOW" ]
     then
         $SUDO apt-get -y upgrade
-        $SUDO apt-get install -y unzip wget curl python awscli build-essential
+        $SUDO apt-get install -y --no-install-recommends unzip wget curl python awscli build-essential
     fi
 else
     sysctl -n machdep.cpu.brand_string
@@ -165,9 +165,9 @@ case "$PLATFORM" in
 
         if [ -n "$DEBIAN_TRIPLE" ]
         then
-            $SUDO apt-get -y install binutils-$DEBIAN_TRIPLE gcc-$DEBIAN_TRIPLE 
+            $SUDO apt-get -y install --no-install-recommends binutils-$DEBIAN_TRIPLE gcc-$DEBIAN_TRIPLE 
         fi
-        $SUDO apt-get -y install qemu-system-arm qemu-user libssl-dev pkg-config
+        $SUDO apt-get -y install --no-install-recommends qemu-system-arm qemu-user libssl-dev pkg-config
         rustup target add $RUSTC_TRIPLE
         qemu-$QEMU_ARCH --version
         cargo dinghy --platform $PLATFORM test --profile opt-no-lto -p tract-linalg $DINGHY_TEST_ARGS -- --nocapture
