@@ -14,13 +14,16 @@ pub fn resize(
             "asymmetric" => CoordTransformer::Asymmetric,
             s => todo!("coordinate_transformation_mode: {}", s),
         };
-    let interpolator = match node.get_attr("mode")? {
+    let interpolator = match node.get_attr_opt("mode")?.unwrap_or("nearest") {
+        "nearest" => Interpolator::Nearest,
         "linear" => Interpolator::Linear,
         s => todo!("mode: {}", s),
     };
     let nearest = match node.get_attr_opt("nearest_mode")?.unwrap_or("round_prefer_floor") {
         "floor" => Nearest::Floor,
+        "ceil" => Nearest::Ceil,
         "round_prefer_floor" => Nearest::RoundPreferFloor,
+        "round_prefer_ceil" => Nearest::RoundPreferCeil,
         s => todo!("nearest_mode: {}", s),
     };
     let mut options = crate::model::optional_inputs(node).skip(2);
@@ -58,20 +61,41 @@ impl CoordTransformer {
 #[derive(Clone, Debug, Hash)]
 enum Interpolator {
     Linear,
+    Nearest,
 }
 
 impl Interpolator {
-    fn interpolate(&self, y_left: f32, y_right: f32, x_ratio: f32) -> f32 {
+    fn interpolate(&self, y_left: f32, y_right: f32, x_ratio: f32, nearest_mode: Nearest) -> f32 {
         match self {
             Interpolator::Linear => y_left * (1.0 - x_ratio) + y_right * x_ratio,
+            Interpolator::Nearest => match nearest_mode {
+                Nearest::Floor => y_left,
+                Nearest::Ceil => y_right,
+                Nearest::RoundPreferFloor => {
+                    if x_ratio <= 0.5 {
+                        y_left
+                    } else {
+                        y_right
+                    }
+                }
+                Nearest::RoundPreferCeil => {
+                    if x_ratio < 0.5 {
+                        y_left
+                    } else {
+                        y_right
+                    }
+                }
+            },
         }
     }
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Copy, Debug, Hash)]
 enum Nearest {
     Floor,
+    Ceil,
     RoundPreferFloor,
+    RoundPreferCeil,
 }
 
 #[derive(Clone, new, Debug, Hash)]
@@ -163,7 +187,7 @@ impl EvalOp for Resize {
                     co_i[axis] = x_right;
                     let y_right = data[&co_i];
                     let x_frac = x_in - x_left as f32;
-                    self.interpolator.interpolate(y_left, y_right, x_frac)
+                    self.interpolator.interpolate(y_left, y_right, x_frac, self.nearest)
                 })
             }
         }
