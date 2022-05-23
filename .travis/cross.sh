@@ -56,7 +56,7 @@ case "$PLATFORM" in
         export RUSTC_TRIPLE=arm-unknown-linux-gnueabihf
         rustup target add $RUSTC_TRIPLE
         echo "[platforms.$PLATFORM]\nrustc_triple='$RUSTC_TRIPLE'\ntoolchain='$TOOLCHAIN'" > $HOME/.dinghy.toml
-        cargo dinghy --platform $PLATFORM build --release -p tract -p example-tensorflow-mobilenet-v2
+        cargo dinghy --platform $PLATFORM build --profile opt-no-lto -p tract -p example-tensorflow-mobilenet-v2
         ;;
 
     "aarch64-linux-android"|"armv7-linux-androideabi"|"i686-linux-android"|"x86_64-linux-android")
@@ -170,9 +170,9 @@ case "$PLATFORM" in
         $SUDO apt-get -y install qemu-system-arm qemu-user libssl-dev pkg-config
         rustup target add $RUSTC_TRIPLE
         qemu-$QEMU_ARCH --version
-        cargo dinghy --platform $PLATFORM test --release -p tract-linalg $DINGHY_TEST_ARGS -- --nocapture
-        cargo dinghy --platform $PLATFORM test --release -p tract-core $DINGHY_TEST_ARGS
-        cargo dinghy --platform $PLATFORM build --release -p tract -p example-tensorflow-mobilenet-v2
+        cargo dinghy --platform $PLATFORM test --profile opt-no-lto -p tract-linalg $DINGHY_TEST_ARGS -- --nocapture
+        cargo dinghy --platform $PLATFORM test --profile opt-no-lto -p tract-core $DINGHY_TEST_ARGS
+        cargo dinghy --platform $PLATFORM build --profile opt-no-lto -p tract -p example-tensorflow-mobilenet-v2
         ;;
 
     "wasm32-unknown-unknown")
@@ -185,7 +185,7 @@ case "$PLATFORM" in
         ;;
 esac
 
-if [ -n "$AWS_ACCESS_KEY_ID" -a -e "target/$RUSTC_TRIPLE/release/tract" ]
+if [ -n "$AWS_ACCESS_KEY_ID" -a -e "target/$RUSTC_TRIPLE/opt-no-lto/tract" ]
 then
     export RUSTC_TRIPLE
     TASK_NAME=`.travis/make_bundle.sh`
