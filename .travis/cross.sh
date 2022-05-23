@@ -103,11 +103,13 @@ case "$PLATFORM" in
             "aarch64-unknown-linux-gnu")
                 export ARCH=aarch64
                 export QEMU_ARCH=aarch64
+                export LIBC_ARCH=aarch64
                 export RUSTC_TRIPLE=$ARCH-unknown-linux-gnu
                 export DEBIAN_TRIPLE=$ARCH-linux-gnu
                 ;;
             "armv6vfp-unknown-linux-gnueabihf")
                 export ARCH=armv6vfp
+                export LIBC_ARCH=arm
                 export QEMU_ARCH=arm
                 export QEMU_OPTS="-cpu cortex-a15"
                 export RUSTC_TRIPLE=arm-unknown-linux-gnueabihf
@@ -116,6 +118,7 @@ case "$PLATFORM" in
             "armv7-unknown-linux-gnueabihf")
                 export ARCH=armv7
                 export QEMU_ARCH=arm
+                export LIBC_ARCH=armhf
                 export QEMU_OPTS="-cpu cortex-a15"
                 export RUSTC_TRIPLE=armv7-unknown-linux-gnueabihf
                 export DEBIAN_TRIPLE=arm-linux-gnueabihf
@@ -126,14 +129,18 @@ case "$PLATFORM" in
             "aarch64-unknown-linux-musl")
                 export ARCH=aarch64
                 export QEMU_ARCH=aarch64
+                export LIBC_ARCH=aarch64
                 export RUSTC_TRIPLE=$ARCH-unknown-linux-musl
+                export DEBIAN_TRIPLE=$ARCH-linux-gnu
                 export CUSTOM_TC=`pwd`/aarch64-linux-musl-cross
                 [ -d "$CUSTOM_TC" ] || curl -s http://musl.cc/aarch64-linux-musl-cross.tgz | tar zx
                 ;;
             "armv7-unknown-linux-musl")
                 export ARCH=armv7
                 export QEMU_ARCH=arm
+                export LIBC_ARCH=armhf
                 export RUSTC_TRIPLE=armv7-unknown-linux-musleabihf
+                export DEBIAN_TRIPLE=armv7-unknown-linux-musleabihf
                 export CUSTOM_TC=`pwd`/armv7l-linux-musleabihf-cross
                 export TRACT_CPU_ARM32_NEON=true
                 export DINGHY_TEST_ARGS="--env TRACT_CPU_ARM32_NEON=true"
@@ -145,6 +152,8 @@ case "$PLATFORM" in
                 exit 1
                 ;;
         esac
+
+        PACKAGES="$PACKAGES binutils-$DEBIAN_TRIPLE gcc-$DEBIAN_TRIPLE libc6-dev-$LIBC_ARCH-cross"
 
         mkdir -p $ROOT/target/$RUSTC_TRIPLE
         echo "[platforms.$PLATFORM]\nrustc_triple='$RUSTC_TRIPLE'" > .dinghy.toml
@@ -163,11 +172,7 @@ case "$PLATFORM" in
 
         DINGHY_TEST_ARGS="$DINGHY_TEST_ARGS --env PROPTEST_MAX_SHRINK_ITERS=100000000"
 
-        if [ -n "$DEBIAN_TRIPLE" ]
-        then
-            $SUDO apt-get -y install --no-install-recommends binutils-$DEBIAN_TRIPLE gcc-$DEBIAN_TRIPLE 
-        fi
-        $SUDO apt-get -y install --no-install-recommends qemu-system-arm qemu-user libssl-dev pkg-config
+        $SUDO apt-get -y install --no-install-recommends qemu-system-arm qemu-user libssl-dev pkg-config $PACKAGES
         rustup target add $RUSTC_TRIPLE
         qemu-$QEMU_ARCH --version
         cargo dinghy --platform $PLATFORM test --profile opt-no-lto -p tract-linalg $DINGHY_TEST_ARGS -- --nocapture
