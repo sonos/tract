@@ -52,10 +52,10 @@ then
     exit 0
 fi
 
-cargo -q test -q --release -p core-proptest-pulse $ALL_FEATURES
-cargo -q test -q --release -p lstm-proptest-onnx-vs-tf $ALL_FEATURES
-cargo -q test -q --release -p nnef-inceptionv3 $ALL_FEATURES
-cargo -q test -q --release -p tf-inceptionv3 $ALL_FEATURES
-cargo -q test -q --release -p tf-mobilenet-v2 $ALL_FEATURES
-cargo -q test -q --release -p tf-moz-deepspeech $ALL_FEATURES
+cargo -q test -q --profile opt-no-lto -p core-proptest-pulse $ALL_FEATURES
+cargo -q test -q --profile opt-no-lto -p lstm-proptest-onnx-vs-tf $ALL_FEATURES
+cargo -q test -q --profile opt-no-lto -p nnef-inceptionv3 $ALL_FEATURES
+cargo -q test -q --profile opt-no-lto -p tf-inceptionv3 $ALL_FEATURES
+cargo -q test -q --profile opt-no-lto -p tf-mobilenet-v2 $ALL_FEATURES
+cargo -q test -q --profile opt-no-lto -p tf-moz-deepspeech $ALL_FEATURES
 
