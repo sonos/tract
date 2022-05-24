@@ -1,8 +1,9 @@
-use crate::pb::tensor_proto::DataType;
+use crate::{pb::tensor_proto::DataType, model::TensorPlusPath};
 use crate::pb::*;
 use prost::Message;
-use std::convert::{TryFrom, TryInto};
+use std::{convert::{TryFrom, TryInto}, path::PathBuf};
 use tract_hir::internal::*;
+use std::fs;
 
 impl TryFrom<DataType> for DatumType {
     type Error = TractError;
@@ -58,33 +59,67 @@ impl TryFrom<type_proto::Tensor> for InferenceFact {
     }
 }
 
-impl<'a> TryFrom<&'a TensorProto> for Tensor {
-    type Error = TractError;
-    fn try_from(t: &TensorProto) -> TractResult<Tensor> {
-        let dt = DataType::from_i32(t.data_type).unwrap().try_into()?;
+fn get_external_resources(t: &TensorProto, path: &str) -> TractResult<Vec<u8>>
+{
+    let mut tensor_data: Vec<u8> = Vec::new();
+    trace!("number of external file needed for this tensor: {}", t.external_data.len());
+    for external_data in t.external_data.iter() // according to the onnx format, it is possible to have multiple files for one tensor
+    {
+        let p = PathBuf::from(format!("{}/{}", path, external_data.value));
+        trace!("external file detected: {:?}", p);
+        #[cfg(not(target_arch = "wasm32"))]
+        let file = unsafe { mapr::Mmap::map(&fs::File::open(p)?)?};
+        #[cfg(target_arch = "wasm32")]
+        let file = fs::read(p)?;
+        tensor_data.extend_from_slice(&*file);
+        trace!("external file loaded");
+    }
+    Ok(tensor_data)
+}
+
+
+fn create_tensor(shape: Vec<usize>, dt: DatumType, data: &[u8]) -> TractResult<Tensor> {
+    unsafe {
+        match dt {
+            DatumType::U8 => Tensor::from_raw::<u8>(&*shape, &*data),
+            DatumType::U16 => Tensor::from_raw::<u16>(&*shape, &*data),
+            DatumType::U32 => Tensor::from_raw::<u32>(&*shape, &*data),
+            DatumType::U64 => Tensor::from_raw::<u64>(&*shape, &*data),
+            DatumType::I8 => Tensor::from_raw::<i8>(&*shape, &*data),
+            DatumType::I16 => Tensor::from_raw::<i16>(&*shape, &*data),
+            DatumType::I32 => Tensor::from_raw::<i32>(&*shape, &*data),
+            DatumType::I64 => Tensor::from_raw::<i64>(&*shape, &*data),
+            DatumType::F16 => Tensor::from_raw::<f16>(&*shape, &*data),
+            DatumType::F32 => Tensor::from_raw::<f32>(&*shape, &*data),
+            DatumType::F64 => Tensor::from_raw::<f64>(&*shape, &*data),
+            DatumType::Bool => Ok(Tensor::from_raw::<u8>(&*shape, &*data)?
+                .into_array::<u8>()?
+                .mapv(|x| x != 0)
+                .into()),
+            _ => unimplemented!("FIXME, raw tensor loading"),
+        }
+    }
+}
+
+fn common_tryfrom(t: &TensorProto, path: Option<&str>) -> TractResult<Tensor> {
+    let dt = DataType::from_i32(t.data_type).unwrap().try_into()?;
         let shape: Vec<usize> = t.dims.iter().map(|&i| i as usize).collect();
+        // detect if the tensor is rather in an external file than inside the onnx file directly
+        let is_external = t.data_location.is_some() && t.data_location == Some(1);
         if t.raw_data.len() > 0 {
-            unsafe {
-                match dt {
-                    DatumType::U8 => Tensor::from_raw::<u8>(&*shape, &*t.raw_data),
-                    DatumType::U16 => Tensor::from_raw::<u16>(&*shape, &*t.raw_data),
-                    DatumType::U32 => Tensor::from_raw::<u32>(&*shape, &*t.raw_data),
-                    DatumType::U64 => Tensor::from_raw::<u64>(&*shape, &*t.raw_data),
-                    DatumType::I8 => Tensor::from_raw::<i8>(&*shape, &*t.raw_data),
-                    DatumType::I16 => Tensor::from_raw::<i16>(&*shape, &*t.raw_data),
-                    DatumType::I32 => Tensor::from_raw::<i32>(&*shape, &*t.raw_data),
-                    DatumType::I64 => Tensor::from_raw::<i64>(&*shape, &*t.raw_data),
-                    DatumType::F16 => Tensor::from_raw::<f16>(&*shape, &*t.raw_data),
-                    DatumType::F32 => Tensor::from_raw::<f32>(&*shape, &*t.raw_data),
-                    DatumType::F64 => Tensor::from_raw::<f64>(&*shape, &*t.raw_data),
-                    DatumType::Bool => Ok(Tensor::from_raw::<u8>(&*shape, &*t.raw_data)?
-                        .into_array::<u8>()?
-                        .mapv(|x| x != 0)
-                        .into()),
-                    _ => unimplemented!("FIXME, raw tensor loading"),
-                }
+            create_tensor(shape, dt, &t.raw_data)
+        } 
+        else if is_external == true {
+            if let Some(model_path) = path {
+                // external files will be loaded and fed to the tensor if necessary
+                let external_data = get_external_resources(&t, model_path)?;
+                create_tensor(shape, dt, &external_data)
             }
-        } else {
+            else {
+                bail!("no model path was specified in the parsing context, yet external data was detected. aborting");
+            }
+        } 
+        else {
             use tract_ndarray::Array;
             let it = match dt {
                 DatumType::Bool => {
@@ -135,6 +170,20 @@ impl<'a> TryFrom<&'a TensorProto> for Tensor {
             };
             Ok(it)
         }
+}
+
+impl<'a> TryFrom<TensorPlusPath<'_>> for Tensor {
+    type Error = TractError;
+    fn try_from(st: TensorPlusPath) -> TractResult<Tensor> {
+        let t = st.tensor;
+        common_tryfrom(t, Some(st.model_path))
+    }
+}
+
+impl<'a> TryFrom<&'a TensorProto> for Tensor {
+    type Error = TractError;
+    fn try_from(t: &TensorProto) -> TractResult<Tensor> {
+        common_tryfrom(t, None)
     }
 }
 
