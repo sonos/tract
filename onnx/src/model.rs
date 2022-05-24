@@ -1,4 +1,5 @@
 use std::convert::TryInto;
+use std::path::PathBuf;
 use std::{fs, path};
 
 use std::collections::HashMap;
@@ -33,11 +34,18 @@ pub fn optional_outputs(pb: &pb::NodeProto) -> impl Iterator<Item = Option<usize
 }
 
 #[derive(Clone)]
+pub struct TensorPlusPath<'a> {
+    pub tensor: &'a pb::TensorProto,
+    pub model_path: &'a str,
+}
+
+#[derive(Clone)]
 pub struct ParsingContext<'a> {
     pub onnx_operator_set_version: i64,
     pub framework: &'a Onnx,
     pub model: &'a pb::ModelProto,
     pub parent_graphs: Vec<&'a pb::GraphProto>,
+    pub model_path: Option<&'a str>,
 }
 
 #[derive(Clone, Debug)]
@@ -54,11 +62,23 @@ impl<'a> ParsingContext<'a> {
         let mut model = InferenceModel::default();
         let mut unresolved_inputs = vec![];
         let mut closures_to_wire = vec![];
-        let mut initializers: HashMap<&str, Tensor> = graph
+        trace!("trying to initialize initializers hashmap...");
+        #[allow(unused_assignments)]
+        let mut initializers: HashMap<&str, Tensor> = HashMap::default();
+        if let Some(path) = self.model_path {
+            initializers = graph
             .initializer
             .iter()
-            .map(|init| Ok((&*init.name, init.try_into()?)))
+            .map(|init| { let tensor_struct: TensorPlusPath = TensorPlusPath { tensor: &init, model_path: path }; Ok((&*init.name, tensor_struct.try_into()?)) })
             .collect::<TractResult<_>>()?;
+        }
+        else {
+            initializers = graph
+            .initializer
+            .iter()
+            .map(|init| { Ok((&*init.name, init.try_into()?)) })
+            .collect::<TractResult<_>>()?;
+        }
         for (k, v) in initializers.iter() {
             trace!("Initializer: {} {:?}", k, v);
         }
@@ -201,7 +221,7 @@ pub struct Onnx {
 }
 
 impl Onnx {
-    pub fn parse(&self, proto: &pb::ModelProto) -> TractResult<ParseResult> {
+    pub fn parse(&self, proto: &pb::ModelProto, path: Option<&str>) -> TractResult<ParseResult> {
         let onnx_operator_set_version = proto
             .opset_import
             .iter()
@@ -223,7 +243,9 @@ impl Onnx {
             model: proto,
             parent_graphs: vec![],
             onnx_operator_set_version,
+            model_path: path,
         };
+        trace!("created ParsingContext");
         ctx.parse_graph(graph)
     }
 
@@ -233,6 +255,19 @@ impl Onnx {
 }
 
 impl Framework<pb::ModelProto, InferenceModel> for Onnx {
+
+    fn model_for_path(&self, p: impl AsRef<path::Path>) -> TractResult<InferenceModel> {
+        let mut path = PathBuf::new();
+        path.push(&p);
+        let dir = path.parent().unwrap().to_str();
+        let proto = self.proto_model_for_path(p)?;
+        let ParseResult { model, unresolved_inputs, .. } = self.parse(&proto, dir)?;
+        if unresolved_inputs.len() > 0 {
+            bail!("Could not resolve inputs at top-level: {:?}", unresolved_inputs)
+        }
+        Ok(model)
+    }
+
     fn proto_model_for_path(&self, p: impl AsRef<path::Path>) -> TractResult<pb::ModelProto> {
         #[cfg(not(target_arch = "wasm32"))]
         let map = unsafe { mapr::Mmap::map(&fs::File::open(p)?)? };
@@ -249,10 +284,15 @@ impl Framework<pb::ModelProto, InferenceModel> for Onnx {
     }
 
     fn model_for_proto_model(&self, proto: &pb::ModelProto) -> TractResult<InferenceModel> {
-        let ParseResult { model, unresolved_inputs, .. } = self.parse(proto)?;
+        let ParseResult { model, unresolved_inputs, .. } = self.parse(proto, None)?;
         if unresolved_inputs.len() > 0 {
             bail!("Could not resolve inputs at top-level: {:?}", unresolved_inputs)
         }
         Ok(model)
+    }
+
+    fn model_for_read(&self, r: &mut dyn std::io::Read) -> TractResult<InferenceModel> {
+        let proto_model = self.proto_model_for_read(r).context("Reading proto model")?;
+        self.model_for_proto_model(&proto_model).context("Translating proto model to model")
     }
 }

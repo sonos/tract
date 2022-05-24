@@ -224,7 +224,8 @@ impl Parameters {
                 info_usage("loaded framework (onnx)", probe);
                 let graph = onnx.proto_model_for_read(&mut *location.read()?)?;
                 info_usage("proto model loaded", probe);
-                let parsed = onnx.parse(&graph)?;
+                let path = &location.path().clone();
+                let parsed = onnx.parse(&graph, path.to_str())?;
                 if need_graph {
                     (
                         SomeGraphDef::Onnx(graph, parsed.clone()),
