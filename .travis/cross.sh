@@ -177,7 +177,9 @@ case "$PLATFORM" in
         qemu-$QEMU_ARCH --version
         cargo dinghy --platform $PLATFORM test --profile opt-no-lto -p tract-linalg $DINGHY_TEST_ARGS -- --nocapture
         cargo dinghy --platform $PLATFORM test --profile opt-no-lto -p tract-core $DINGHY_TEST_ARGS
-        cargo dinghy --platform $PLATFORM build --profile opt-no-lto -p tract -p example-tensorflow-mobilenet-v2
+
+        # keep lto for these two are they're going to devices.
+        cargo dinghy --platform $PLATFORM build --release -p tract -p example-tensorflow-mobilenet-v2
         ;;
 
     "wasm32-unknown-unknown")
