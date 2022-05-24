@@ -161,6 +161,7 @@ fma_mmm_f32_2x6_{{suffix}} proc
 
 	mov     eax,    0
 
+	
     {% for i in (0..3) %}
         pinsrd  xmm14, eax, {{i}}
         add     eax,    esi
@@ -171,6 +172,19 @@ fma_mmm_f32_2x6_{{suffix}} proc
     {% endfor %}
 
     vperm2f128      ymm14,  ymm14, ymm15,         32 // ymm14 <- xmm14::xmm15
+
+	{% if avx512 == "true" %}
+	{% for i in (0..3) %}
+        pinsrd  xmm14, eax, {{i}}
+        add     eax,    esi
+    {% endfor %}
+    {% for i in (0..3) %}
+        pinsrd  xmm15, eax, {{i}}
+        add     eax,    esi
+    {% endfor %}
+    vperm2f128      ymm14,  ymm14, ymm15,         32 // ymm14 <- xmm14::xmm15
+	{% endif %}
+
 
     lea             r8, [ r10 + rsi * 8 ]
 
@@ -184,7 +198,6 @@ fma_mmm_f32_2x6_{{suffix}} proc
     vaddps          {{register}}{{i | times:2 }},   {{register}}{{i | times:2}},   {{register}}12
     vaddps          {{register}}{{i | times:2 | plus: 1}}, {{register}}{{i | times:2 | plus:1 }},   {{register}}13
 {% endfor %}
-{% endif %}
 
     jmp    {{L}}non_linear_loop
 
