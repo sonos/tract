@@ -175,8 +175,7 @@ fn common_tryfrom(t: &TensorProto, path: Option<&str>) -> TractResult<Tensor> {
 impl<'a> TryFrom<TensorPlusPath<'_>> for Tensor {
     type Error = TractError;
     fn try_from(st: TensorPlusPath) -> TractResult<Tensor> {
-        let t = st.tensor;
-        common_tryfrom(t, Some(st.model_path))
+        common_tryfrom(st.tensor, Some(st.model_path))
     }
 }
 
