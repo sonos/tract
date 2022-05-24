@@ -30,6 +30,10 @@ members = [
     "harness/tf-moz-deepspeech",
 ]
 
+[profile.opt-no-lto]
+inherits="release"
+lto=false
+
 [profile.release]
 lto = true
 

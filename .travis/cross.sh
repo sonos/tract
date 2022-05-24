@@ -17,7 +17,7 @@ then
     if [ -z "$TRAVIS" -a -z "$GITHUB_WORKFLOW" ]
     then
         $SUDO apt-get -y upgrade
-        $SUDO apt-get install -y unzip wget curl python awscli build-essential
+        $SUDO apt-get install -y --no-install-recommends unzip wget curl python awscli build-essential
     fi
 else
     sysctl -n machdep.cpu.brand_string
@@ -56,7 +56,7 @@ case "$PLATFORM" in
         export RUSTC_TRIPLE=arm-unknown-linux-gnueabihf
         rustup target add $RUSTC_TRIPLE
         echo "[platforms.$PLATFORM]\nrustc_triple='$RUSTC_TRIPLE'\ntoolchain='$TOOLCHAIN'" > $HOME/.dinghy.toml
-        cargo dinghy --platform $PLATFORM build --release -p tract -p example-tensorflow-mobilenet-v2
+        cargo dinghy --platform $PLATFORM build --profile opt-no-lto -p tract -p example-tensorflow-mobilenet-v2
         ;;
 
     "aarch64-linux-android"|"armv7-linux-androideabi"|"i686-linux-android"|"x86_64-linux-android")
@@ -96,18 +96,20 @@ case "$PLATFORM" in
         cargo dinghy --platform auto-ios-aarch64 build -p tract-linalg
         ;;
 
-    "aarch64-unknown-linux-gnu" | "armv6vfp-unknown-linux-gnueabihf" | "armv7-unknown-linux-gnueabihf" | \
-    "aarch64-unknown-linux-musl" | "armv7-unknown-linux-musl" )
+        "aarch64-unknown-linux-gnu" | "armv6vfp-unknown-linux-gnueabihf" | "armv7-unknown-linux-gnueabihf" | \
+            "aarch64-unknown-linux-musl" | "armv7-unknown-linux-musl" )
 
         case "$PLATFORM" in
             "aarch64-unknown-linux-gnu")
                 export ARCH=aarch64
                 export QEMU_ARCH=aarch64
+                export LIBC_ARCH=arm64
                 export RUSTC_TRIPLE=$ARCH-unknown-linux-gnu
                 export DEBIAN_TRIPLE=$ARCH-linux-gnu
                 ;;
             "armv6vfp-unknown-linux-gnueabihf")
                 export ARCH=armv6vfp
+                export LIBC_ARCH=armhf
                 export QEMU_ARCH=arm
                 export QEMU_OPTS="-cpu cortex-a15"
                 export RUSTC_TRIPLE=arm-unknown-linux-gnueabihf
@@ -116,6 +118,7 @@ case "$PLATFORM" in
             "armv7-unknown-linux-gnueabihf")
                 export ARCH=armv7
                 export QEMU_ARCH=arm
+                export LIBC_ARCH=armhf
                 export QEMU_OPTS="-cpu cortex-a15"
                 export RUSTC_TRIPLE=armv7-unknown-linux-gnueabihf
                 export DEBIAN_TRIPLE=arm-linux-gnueabihf
@@ -126,14 +129,18 @@ case "$PLATFORM" in
             "aarch64-unknown-linux-musl")
                 export ARCH=aarch64
                 export QEMU_ARCH=aarch64
+                export LIBC_ARCH=arm64
                 export RUSTC_TRIPLE=$ARCH-unknown-linux-musl
+                export DEBIAN_TRIPLE=$ARCH-linux-gnu
                 export CUSTOM_TC=`pwd`/aarch64-linux-musl-cross
                 [ -d "$CUSTOM_TC" ] || curl -s http://musl.cc/aarch64-linux-musl-cross.tgz | tar zx
                 ;;
             "armv7-unknown-linux-musl")
                 export ARCH=armv7
                 export QEMU_ARCH=arm
+                export LIBC_ARCH=armhf
                 export RUSTC_TRIPLE=armv7-unknown-linux-musleabihf
+                export DEBIAN_TRIPLE=arm-linux-gnueabihf
                 export CUSTOM_TC=`pwd`/armv7l-linux-musleabihf-cross
                 export TRACT_CPU_ARM32_NEON=true
                 export DINGHY_TEST_ARGS="--env TRACT_CPU_ARM32_NEON=true"
@@ -150,28 +157,28 @@ case "$PLATFORM" in
         echo "[platforms.$PLATFORM]\nrustc_triple='$RUSTC_TRIPLE'" > .dinghy.toml
         if [ -n "$DEBIAN_TRIPLE" ]
         then
+            PACKAGES="$PACKAGES binutils-$DEBIAN_TRIPLE gcc-$DEBIAN_TRIPLE libc6-dev-$LIBC_ARCH-cross"
             echo "deb_multiarch='$DEBIAN_TRIPLE'" >> .dinghy.toml
         fi
+
         if [ -n "$CUSTOM_TC" ]
         then
             echo "toolchain='$CUSTOM_TC'" >> .dinghy.toml
         fi
-        echo "[script_devices.qemu-$ARCH]\nplatform='$PLATFORM'\npath='$ROOT/target/$RUSTC_TRIPLE/qemu'" >> .dinghy.toml
 
+        echo "[script_devices.qemu-$ARCH]\nplatform='$PLATFORM'\npath='$ROOT/target/$RUSTC_TRIPLE/qemu'" >> .dinghy.toml
         echo "#!/bin/sh\nexe=\$1\nshift\n/usr/bin/qemu-$QEMU_ARCH $QEMU_OPTS -L /usr/$DEBIAN_TRIPLE/ \$exe --test-threads 1 \"\$@\"" > $ROOT/target/$RUSTC_TRIPLE/qemu
         chmod +x $ROOT/target/$RUSTC_TRIPLE/qemu
 
         DINGHY_TEST_ARGS="$DINGHY_TEST_ARGS --env PROPTEST_MAX_SHRINK_ITERS=100000000"
 
-        if [ -n "$DEBIAN_TRIPLE" ]
-        then
-            $SUDO apt-get -y install binutils-$DEBIAN_TRIPLE gcc-$DEBIAN_TRIPLE 
-        fi
-        $SUDO apt-get -y install qemu-system-arm qemu-user libssl-dev pkg-config
+        $SUDO apt-get -y install --no-install-recommends qemu-system-arm qemu-user libssl-dev pkg-config $PACKAGES
         rustup target add $RUSTC_TRIPLE
         qemu-$QEMU_ARCH --version
-        cargo dinghy --platform $PLATFORM test --release -p tract-linalg $DINGHY_TEST_ARGS -- --nocapture
-        cargo dinghy --platform $PLATFORM test --release -p tract-core $DINGHY_TEST_ARGS
+        cargo dinghy --platform $PLATFORM test --profile opt-no-lto -p tract-linalg $DINGHY_TEST_ARGS -- --nocapture
+        cargo dinghy --platform $PLATFORM test --profile opt-no-lto -p tract-core $DINGHY_TEST_ARGS
+
+        # keep lto for these two are they're going to devices.
         cargo dinghy --platform $PLATFORM build --release -p tract -p example-tensorflow-mobilenet-v2
         ;;
 
@@ -185,7 +192,7 @@ case "$PLATFORM" in
         ;;
 esac
 
-if [ -n "$AWS_ACCESS_KEY_ID" -a -e "target/$RUSTC_TRIPLE/release/tract" ]
+if [ -n "$AWS_ACCESS_KEY_ID" -a -e "target/$RUSTC_TRIPLE/opt-no-lto/tract" ]
 then
     export RUSTC_TRIPLE
     TASK_NAME=`.travis/make_bundle.sh`

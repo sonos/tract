@@ -161,7 +161,7 @@ impl Tensor {
             if dt == DatumType::F32 {
                 tensor.as_slice_mut_unchecked::<f32>().iter_mut().for_each(|f| *f = std::f32::NAN)
             } else {
-                // safe, non copy types have been dealts with
+                // safe, non copy types have been dealt with
                 tensor.as_bytes_mut().iter_mut().for_each(|x| *x = (-1i8) as u8);
             }
         }
@@ -998,7 +998,7 @@ impl Tensor {
                     };
                 }
 
-                macro_rules! q_f {
+                macro_rules! q_via_f32 {
                     ($source:ty, $dest:ty, $round:expr) => {
                         if <$source>::datum_type().unquantized() == self.datum_type().unquantized()
                             && <$dest>::datum_type().unquantized() == dst_dt.unquantized()
@@ -1009,7 +1009,7 @@ impl Tensor {
                                 .for_each(|(&s, d)| {
                                     let s_float = (s as f32 - s_zp as f32) * s_scale as f32;
                                     let d_float = s_float as f32 / d_scale as f32 + d_zp as f32;
-                                    *d = $round(d_float).clamp_cast();
+                                    *d = $round(d_float);
                                 });
                             return Ok(Cow::Owned(result));
                         }
@@ -1053,20 +1053,20 @@ impl Tensor {
                     q8_to_q8!(u8);
                 }
 
-                q_f!(f32, i8, round_ties_to_even);
-                q_f!(f32, u8, round_ties_to_even);
-                q_f!(f32, i32, round_ties_to_even);
-                q_f!(i8, f32, |f| f);
-                q_f!(u8, f32, |f| f);
-                q_f!(i32, f32, |f| f);
+                q_via_f32!(f32, i8, |f| round_ties_to_even(f).clamp_cast());
+                q_via_f32!(f32, u8, |f| round_ties_to_even(f).clamp_cast());
+                q_via_f32!(f32, i32, |f| round_ties_to_even(f).clamp_cast());
+                q_via_f32!(i8, f32, |f| f);
+                q_via_f32!(u8, f32, |f| f);
+                q_via_f32!(i32, f32, |f| f);
 
                 if dst_dt.is_quantized() && self.datum_type().is_quantized() {
-                    q_f!(u8, i8, round_ties_to_even);
-                    q_f!(i8, u8, round_ties_to_even);
-                    q_f!(i32, u8, round_ties_to_even);
-                    q_f!(i32, i8, round_ties_to_even);
-                    q_f!(u8, i32, round_ties_to_even);
-                    q_f!(i8, i32, round_ties_to_even);
+                    q_via_f32!(u8, i8, |f| round_ties_to_even(f).clamp_cast());
+                    q_via_f32!(i8, u8, |f| round_ties_to_even(f).clamp_cast());
+                    q_via_f32!(i32, u8, |f| round_ties_to_even(f).clamp_cast());
+                    q_via_f32!(i32, i8, |f| round_ties_to_even(f).clamp_cast());
+                    q_via_f32!(u8, i32, |f| round_ties_to_even(f).clamp_cast());
+                    q_via_f32!(i8, i32, |f| round_ties_to_even(f).clamp_cast());
                 }
 
                 q_n!(i8, i32);

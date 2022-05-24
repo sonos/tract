@@ -37,4 +37,4 @@ opset=onnx_"${1:-1_9_0}"
 
 cd harness/onnx-test-suite
 cargo -q check -q --no-default-features --features $opset
-cargo -q test -q --no-default-features --release --features $opset
+cargo -q test -q --no-default-features --profile opt-no-lto --features $opset

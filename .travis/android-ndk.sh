@@ -10,7 +10,7 @@ sudo add-apt-repository ppa:linuxuprising/java
 sudo apt-get update
 echo debconf shared/accepted-oracle-license-v1-2 select true | debconf-set-selections
 echo debconf shared/accepted-oracle-license-v1-2 seen true | debconf-set-selections
-sudo apt-get install -y oracle-java11-installer ca-certificates-java python
+sudo apt-get install -y --no-install-recommends oracle-java11-installer ca-certificates-java python
 #    apt-get install -y software-properties-common
 #    add-apt-repository -y ppa:webupd8team/java
 #    apt-get update
