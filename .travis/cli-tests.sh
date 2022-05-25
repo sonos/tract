@@ -193,11 +193,12 @@ then
         ( cd `dirname $t` ; sh ./t.sh )
     done
     ) 2>&1 > $OUTPUT
+
+    echo
+    echo $WHITE • benches on full models $NC
+    echo
+
+    ./.travis/bundle-entrypoint.sh
 fi
 )
 
-echo
-echo $WHITE • benches models $NC
-echo
-
-./.travis/bundle-entrypoint.sh
