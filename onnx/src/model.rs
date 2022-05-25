@@ -259,7 +259,10 @@ impl Framework<pb::ModelProto, InferenceModel> for Onnx {
     fn model_for_path(&self, p: impl AsRef<path::Path>) -> TractResult<InferenceModel> {
         let mut path = PathBuf::new();
         path.push(&p);
-        let dir = path.parent().unwrap().to_str();
+        let mut dir: Option<&str> = None;
+        if let Some(dir_opt) = path.parent() {
+            dir = dir_opt.to_str();
+        }
         let proto = self.proto_model_for_path(p)?;
         let ParseResult { model, unresolved_inputs, .. } = self.parse(&proto, dir)?;
         if unresolved_inputs.len() > 0 {
