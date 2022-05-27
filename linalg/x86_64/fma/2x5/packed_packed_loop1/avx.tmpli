@@ -15,6 +15,9 @@
     vfmadd231ps     ymm2,   ymm14, ymm11
     vfmadd231ps     ymm3,   ymm15, ymm11
 
+	// Use register 11 as it's "middle" use, leading to a decent
+	// trade-off between required use next iteration and when it has
+	// to be used this iteration.
     vbroadcastss    ymm11,  dword ptr [rcx + 16]
 
     vfmadd231ps     ymm4,   ymm14, ymm12
