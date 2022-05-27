@@ -2,9 +2,6 @@
 	// Accumulators: 0-7, 17-24
 	// Col regs: 8-15
 	// Row regs: 16, 17
-// .intel_syntax
-// .loop:
-
 
 	vbroadcastss    zmm16, dword ptr [rcx]
     vmovaps         zmm8,  [rax + 0]

@@ -1,0 +1,24 @@
+   		vbroadcastss    ymm14, dword ptr [rcx + 0 * 4]
+        vfmadd231ps     ymm0, ymm12, ymm14
+    
+        vbroadcastss    ymm14, dword ptr [rcx + 1 * 4]
+        vfmadd231ps     ymm1, ymm12, ymm14
+    
+        vbroadcastss    ymm14, dword ptr [rcx + 2 * 4]
+        vfmadd231ps     ymm2, ymm12, ymm14
+    
+        vbroadcastss    ymm14, dword ptr [rcx + 3 * 4]
+        vfmadd231ps     ymm3, ymm12, ymm14
+    
+        vbroadcastss    ymm14, dword ptr [rcx + 4 * 4]
+        vfmadd231ps     ymm4, ymm12, ymm14
+    
+        vbroadcastss    ymm14, dword ptr [rcx + 5 * 4]
+        vfmadd231ps     ymm5, ymm12, ymm14
+    
+        vbroadcastss    ymm14, dword ptr [rcx + 6 * 4]
+        vfmadd231ps     ymm6, ymm12, ymm14
+    
+        vbroadcastss    ymm14, dword ptr [rcx + 7 * 4]
+        vfmadd231ps     ymm7, ymm12, ymm14
+    
