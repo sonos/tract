@@ -119,6 +119,23 @@ out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
 bin_to_super_type!(div, Div,
 cost: |dt| tvec!((Cost::Div(dt), 1)),
 declutter_bin: declutter_bin_div,
+eval_override: |a:Arc<Tensor>, b: Arc<Tensor>| -> TractResult<Tensor> {
+   if
+       a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
+           let a = a.to_array_view::<TDim>()?;
+           let b = b.cast_to::<i32>()?;
+           let b = b.to_array_view::<i32>()?;
+           let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()]).context("no broadcast solution")?;
+           unsafe {
+               let mut c = Tensor::uninitialized_dt(DatumType::TDim, &c_shape)?;
+               let view = c.to_array_view_mut::<TDim>()?;
+               crate::ndarray::Zip::from(view).and_broadcast(a).and_broadcast(b).for_each(|c,a,b| *c = a.clone() / *b);
+               Ok(c)
+           }
+       } else {
+           Div.generic_eval(a,b)
+       }
+},
 flip: flip_div,
 out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
     if c.datum_type() == TDim::datum_type() &&
