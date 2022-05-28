@@ -1,4 +1,5 @@
 # Unreleased
+* bump ONNX protobuf file and support external tensors format
 
 # 0.16.7 - 2022-05-16
 * Softmax is now an operator in core, coming with a direct quantized implementation
