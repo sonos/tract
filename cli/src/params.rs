@@ -650,7 +650,7 @@ impl Parameters {
 
         stage!("analyse", inference_model -> inference_model,
         |mut m:InferenceModel| -> TractResult<_> {
-            let result = m.analyse(matches.is_present("analyse-fail-fast"));
+            let result = m.analyse(!matches.is_present("analyse-fail-fast"));
             match result {
                 Ok(_) => Ok(m),
                 Err(e) => Err(ModelBuildingError(Box::new(m), e.into()).into())
