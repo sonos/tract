@@ -23,6 +23,5 @@ fn de_broadcast(
 fn ser_broadcast(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
     let op = node.op().downcast_ref::<ops::array::MultiBroadcastTo>().unwrap();
     let wire = ast.mapping[&node.inputs[0]].clone();
-    let shape = op.shape.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<usize>>>()?;
-    Ok(Some(invocation("tract_core_broadcast", &[wire], &[("shape", ints(&shape))])))
+    Ok(Some(invocation("tract_core_broadcast", &[wire], &[("shape", tdims(&op.shape))])))
 }
