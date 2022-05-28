@@ -396,6 +396,38 @@ pub fn ints(shape: &[usize]) -> RValue {
     RValue::Array(shape.iter().map(|s| RValue::Literal(Literal::Numeric(s.to_string()))).collect())
 }
 
+pub fn tdims(shape: &[TDim]) -> RValue {
+    RValue::Array(shape.iter().map(|s| tdim(s)).collect())
+}
+
+fn tdim(dim: &TDim) -> RValue {
+    match dim {
+        TDim::Val(x) => numeric(x),
+        TDim::Sym(s) => ident(format!("{}", s.as_char())),
+        TDim::Add(terms) => {
+            let terms = terms.iter().map(|x| tdim(x)).collect::<Vec<_>>();
+            terms
+                .into_iter()
+                .reduce(|x, y| RValue::Binary(x.boxed(), "+".to_string(), y.boxed()))
+                .unwrap()
+        }
+        TDim::Mul(terms) => {
+            let terms = terms.iter().map(|x| tdim(x)).collect::<Vec<_>>();
+            terms
+                .into_iter()
+                .reduce(|x, y| RValue::Binary(x.boxed(), "*".to_string(), y.boxed()))
+                .unwrap()
+        }
+        TDim::MulInt(x, y) => {
+            RValue::Binary(numeric(x).boxed(), "*".to_string(), tdim(y).boxed())
+        }
+        TDim::Div(x, y) => {
+            RValue::Binary(tdim(&x).boxed(), "/".to_string(), numeric(y).boxed())
+        }
+    }
+}
+
+
 pub fn string(s: impl Into<String>) -> RValue {
     RValue::Literal(Literal::String(s.into()))
 }
