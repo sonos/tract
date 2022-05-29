@@ -256,8 +256,19 @@ impl Fact for TypedFact {
     }
 
     fn matches(&self, t: &Tensor, symbols: Option<&SymbolValues>) -> TractResult<bool> {
-        let shape = self.shape.eval_to_usize(symbols.unwrap_or(&SymbolValues::default()))?;
-        Ok(self.datum_type == t.datum_type() && &**shape == t.shape())
+        if self.datum_type != t.datum_type() || self.shape.len() != t.rank() {
+            return Ok(false);
+        }
+        for i in 0..t.rank() {
+            if let Ok(dim) =
+                self.shape[i].eval(symbols.unwrap_or(&SymbolValues::default())).to_usize()
+            {
+                if dim != t.shape()[i] {
+                    return Ok(false);
+                }
+            }
+        }
+        Ok(true)
     }
 
     fn same_as(&self, other: &dyn Fact) -> bool {
