@@ -123,10 +123,14 @@ impl InferenceModelExt for InferenceModel {
                         .to_typed(source, node, target, mapping)
                         .with_context(|| format!("translating op {:?}", node.op))?;
                     for output in &outputs {
-                        target
-                            .outlet_fact(*output)?
-                            .consistent()
-                            .with_context(|| format!("Checking consistency after translating op {:?}", node.op))?;
+                        let fact = target.outlet_fact(*output)?;
+                        fact.consistent().with_context(|| {
+                            format!(
+                                "Checking oulet fact consistency for {:?}: {:?} after translating {:?}",
+                                output,
+                                fact, node.op,
+                            )
+                        })?;
                     }
                     Ok(outputs)
                 }
