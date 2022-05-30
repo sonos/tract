@@ -123,7 +123,7 @@ The `run` subcommand accepts an `--assert-output-bundle`. This time, the tensors
 matched with the model output names. `tract` will run over the input and check that its finding
 are the same to the expected output (with some leeway for rounding differences).
 
-[Example here](onnx/test_cases/qtanh_1) for a quantized tanh in onnx.
+[Example here](/onnx/test_cases/qtanh_1) for a quantized tanh in onnx.
 
 ```
 tract --input-bundle io.npz model.onnx -O run --assert-output-bundle io.npz
@@ -137,5 +137,5 @@ tract -v --input-bundle io.npz model.onnx -O run --assert-output-bundle io.npz
 
 The log displays "Checked output #0, ok." (among other information).
 
-[generate_io.py here](onnx/test_cases/transformer-mlm/generate_io.py) contains an example building a
+[generate_io.py here](/onnx/test_cases/transformer-mlm/generate_io.py) contains an example building a
 testcase for a BERT model from huggingface for inspiration.
