@@ -35,7 +35,27 @@ impl Expansion for EinSum {
         model: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        todo!()
+        let mut ellipsis_rank = 0;
+        for (input_id, input) in inputs.iter().enumerate() {
+            let actual_rank = model.outlet_fact(*input)?.rank();
+            if self
+                .expr
+                .iter_all_axes()
+                .any(|axis| axis.repr == '*' && axis.inputs[input_id].len() == 1)
+            {
+                let expr_rank = self
+                    .expr
+                    .iter_all_axes()
+                    .flat_map(|axis| &axis.inputs[input_id])
+                    .max()
+                    .unwrap()
+                    + 1;
+                ellipsis_rank = actual_rank - expr_rank + 1;
+                break;
+            }
+        }
+        let expr = resolve_ellipsis(&self.expr, ellipsis_rank)?;
+        model.wire_node(prefix, tract_onnx_opl::einsum::EinSum { expr }, inputs)
     }
 
     fn rules<'r, 'p: 'r, 's: 'r>(
@@ -49,7 +69,7 @@ impl Expansion for EinSum {
         for i in inputs {
             s.equals(&i.datum_type, &outputs[0].datum_type)?;
         }
-        let elipsis_rank = IntFactoid::default();
+        let ellipsis_rank = IntFactoid::default();
         for (input_id, input) in inputs.iter().enumerate() {
             let raw_rank =
                 self.expr.iter_all_axes().flat_map(|axis| &axis.inputs[input_id]).max().unwrap()
@@ -59,7 +79,7 @@ impl Expansion for EinSum {
                 .iter_all_axes()
                 .any(|axis| axis.repr == '*' && axis.inputs[input_id].len() == 1)
             {
-                elipsis_rank + raw_rank as i64 + (-1i64)
+                ellipsis_rank + raw_rank as i64 + (-1i64)
             } else {
                 GenericFactoid::Only(raw_rank as i64)
             };
@@ -67,7 +87,7 @@ impl Expansion for EinSum {
         }
         let raw_output_rank = self.expr.output_rank();
         let output_rank = if self.expr.index().iter().any(|axis| axis.repr == '*') {
-            elipsis_rank + raw_output_rank as i64 + (-1i64)
+            ellipsis_rank + raw_output_rank as i64 + (-1i64)
         } else {
             GenericFactoid::Only(raw_output_rank as i64)
         };
@@ -87,10 +107,10 @@ impl Expansion for EinSum {
                 s.equals_all(axes)?;
             }
         } else {
-            s.given(elipsis_rank, move |s, elipsis_rank| {
-                let output_elipsis_position =
+            s.given(ellipsis_rank, move |s, ellipsis_rank| {
+                let output_ellipsis_position =
                     self.expr.index().iter().position(|axis| axis.repr == '*');
-                let input_elipsis_positions: Vec<Option<usize>> = (0..self.expr.n_inputs())
+                let input_ellipsis_positions: Vec<Option<usize>> = (0..self.expr.n_inputs())
                     .map(|input_id| {
                         self.expr
                             .iter_all_axes()
@@ -103,9 +123,9 @@ impl Expansion for EinSum {
                     } else {
                         let mut axes = vec![];
                         if let Some(mut result) = axis.result {
-                            if let Some(pos) = output_elipsis_position {
+                            if let Some(pos) = output_ellipsis_position {
                                 if pos < result {
-                                    result = result + elipsis_rank as usize - 1;
+                                    result = result + ellipsis_rank as usize - 1;
                                 }
                             }
                             axes.push(outputs[0].shape[result].bex())
@@ -113,9 +133,9 @@ impl Expansion for EinSum {
                         for (input_id, input_axis_positions) in axis.inputs.iter().enumerate() {
                             for position in input_axis_positions {
                                 let mut position = *position;
-                                if let Some(elipsis_pos) = input_elipsis_positions[input_id] {
-                                    if elipsis_pos < position {
-                                        position = position + elipsis_rank as usize - 1;
+                                if let Some(ellipsis_pos) = input_ellipsis_positions[input_id] {
+                                    if ellipsis_pos < position {
+                                        position = position + ellipsis_rank as usize - 1;
                                     }
                                 }
                                 axes.push(inputs[input_id].shape[position].bex());
@@ -128,51 +148,44 @@ impl Expansion for EinSum {
             })?;
         }
 
-        /*
-        let output_elipsis_position = self.expr.index().iter().position(|axis| axis.repr == '*');
-        let input_elipsis_positions: Vec<Option<usize>> = (0..self.expr.n_inputs())
-            .map(|input_id| {
-                self.expr
-                    .iter_all_axes()
-                    .position(|axis| axis.repr == '*' && axis.inputs[input_id].len() == 1)
-            })
-            .collect();
-        for axis in self.expr.iter_all_axes() {
-            if axis.repr == '*' {
-                todo!()
-            } else {
-                let mut axes = vec![];
-                if let Some(mut result) = axis.result {
-                    if let Some(pos) = output_elipsis_position {
-                        if pos < result {
-                            s.given(elipsis_rank, move |s, elipsis_rank| {
-                                result = result + elipsis_rank as usize - 1;
-                                axes.push(outputs[0].shape[result].bex());
-                                Ok(())
-                            })?
-                        }
-                    }
-                    axes.push(outputs[0].shape[result].bex())
-                }
-                for (input_id, input_axis_positions) in axis.inputs.iter().enumerate() {
-                    for position in input_axis_positions {
-                        let mut position = *position;
-                        if let Some(elipsis_pos) = input_elipsis_positions[input_id] {
-                            if elipsis_pos < position {
-                                position = position + elipsis_rank as usize - 1;
-                            }
-                        }
-                        axes.push(inputs[input_id].shape[position].bex());
-                    }
-                }
-                s.equals_all(axes)?;
-            }
-            Ok(())
-        }*/
         Ok(())
     }
 }
 
-fn resolve_ellipsis(expr: &Expr, elipsis_rank: usize) -> Expr {
-    todo!()
+fn resolve_ellipsis(expr: &Expr, ellipsis_rank: usize) -> TractResult<Expr> {
+    let ellipsis_resolved: String = ('a'..)
+        .filter(|l| expr.iter_all_axes().all(|axis| *l != axis.repr))
+        .take(ellipsis_rank)
+        .collect();
+    // lol.
+    expr.to_string().replace("*", &ellipsis_resolved).parse().into()
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_resolve_ellipsis_0() {
+        assert_eq!(
+            resolve_ellipsis(&"*ii->*i".parse().unwrap(), 4).unwrap().to_string(),
+            "abcdii->abcdi"
+        )
+    }
+
+    #[test]
+    fn test_resolve_ellipsis_1() {
+        assert_eq!(
+            resolve_ellipsis(&"*mk,*kn->*mn".parse().unwrap(), 2).unwrap().to_string(),
+            "abmk,abkn->abmn"
+        )
+    }
+
+    #[test]
+    fn test_resolve_ellipsis_2() {
+        assert_eq!(
+            resolve_ellipsis(&"*ab,*bc->*ac".parse().unwrap(), 2).unwrap().to_string(),
+            "deab,debc->deac"
+        )
+    }
 }
