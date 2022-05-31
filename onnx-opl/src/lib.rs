@@ -39,5 +39,7 @@ fn onnx_opl_registry() -> Registry {
     registry.register_unit_element_wise("tract_onnx_is_nan", &is_nan::IsNan {});
     registry.register_dumper(TypeId::of::<lrn::Lrn>(), lrn::dump);
     registry.register_primitive("tract_onnx_lrn", &lrn::parameters(), lrn::load);
+    registry.register_dumper(TypeId::of::<einsum::EinSum>(), einsum::dump);
+    registry.register_primitive("tract_onnx_einsum", &einsum::parameters(), einsum::load);
     registry
 }

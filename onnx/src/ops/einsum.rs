@@ -1,9 +1,6 @@
 use crate::model::ParsingContext;
 use crate::pb::*;
-use tract_hir::infer::rules::expr::ConstantExp;
 use tract_hir::internal::*;
-
-// use tract_onnx_opl::einsum::EinSum;
 use tract_onnx_opl::einsum::Expr;
 
 pub fn einsum(
