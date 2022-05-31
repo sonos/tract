@@ -46,7 +46,7 @@ enum CoordTransformer {
 impl CoordTransformer {
     fn transform(&self, x_out: usize, scale: f32, len_in: usize, len_out: usize) -> f32 {
         match self {
-            CoordTransformer::HalfPixel => (x_out as f32 + 0.5) * scale - 0.5,
+            CoordTransformer::HalfPixel => (x_out as f32 + 0.5) / scale - 0.5,
             CoordTransformer::AlignCorners => {
                 (x_out as f32 * (len_in as f32 - 1.0)) / (len_out as f32 - 1.0)
             }
