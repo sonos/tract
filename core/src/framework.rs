@@ -8,9 +8,9 @@ use std::path::Path;
 ///
 /// The ProtoModel is the parsed representation of the imported model. It does
 /// not have to be Protobuf based.
-pub trait Framework<ProtoModel, Model>
+pub trait Framework<ProtoModel, Model> : Send + Sync
 where
-    ProtoModel: Debug,
+    ProtoModel: Debug
 {
     /// Parse a proto model from a reader.
     fn proto_model_for_read(&self, reader: &mut dyn Read) -> TractResult<ProtoModel>;

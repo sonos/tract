@@ -20,8 +20,13 @@ pub struct Registry {
     pub element_wise_ops: Vec<(String, TypeId, FromTract, Vec<ast::Parameter>, ToTract)>,
     pub binary_ops: Vec<(String, Box<dyn BinMiniOp>, Option<Box<dyn BinMiniOp>>)>,
     pub from_tract: HashMap<TypeId, FromTract>,
-    pub extensions:
-        Vec<Box<dyn Fn(&mut crate::deser::ModelBuilder, &[String]) -> TractResult<ControlFlow<(), ()>>>>,
+    pub extensions: Vec<
+        Box<
+            dyn Fn(&mut crate::deser::ModelBuilder, &[String]) -> TractResult<ControlFlow<(), ()>>
+                + Send
+                + Sync,
+        >,
+    >,
 }
 
 impl Registry {
