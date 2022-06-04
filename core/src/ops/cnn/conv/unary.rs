@@ -928,7 +928,7 @@ impl TypedOp for ConvUnary {
                 if hw_axes.contains(a)
                     && self.pool_spec.dilation(a - h_axis) == 1
                     && self.pool_spec.stride(a - h_axis) == 1
-                    && self.kernel.shape()[a - h_axis] == 1 =>
+                    && self.pool_spec.kernel_shape[a - h_axis] == 1 =>
             {
                 (Rm(a - h_axis), Rm(a - h_axis + kh_axis))
             }
