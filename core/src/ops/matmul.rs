@@ -15,42 +15,64 @@ pub use self::mir_quant::{MatMulQParams, QMatMul};
 pub use self::mir_unary::MatMulUnary;
 use self::pack::MatMatMulPack;
 
+#[derive(PartialEq, Clone, Debug, Copy, Hash)]
+pub struct MatMulAxes {
+    pub a_m: usize,
+    pub a_k: usize,
+    pub b_k: usize,
+    pub b_n: usize,
+    pub c_m: usize,
+    pub c_n: usize,
+}
+
+impl Default for MatMulAxes {
+    fn default() -> Self {
+        MatMulAxes { a_m: 0, a_k: 1, b_k: 0, b_n: 1, c_m: 0, c_n: 1 }
+    }
+}
+
 pub fn compute_shape<D: DimLike>(
     ashape: &[D],
     bshape: &[D],
-    a_trans: bool,
-    b_trans: bool,
-    c_trans: bool,
+    axes: MatMulAxes,
 ) -> TractResult<(D, D, D, TVec<D>)> {
-    let mut c_shape = crate::broadcast::multi_broadcast(&[
-        &ashape[..(ashape.len() - 2)],
-        &bshape[..(bshape.len() - 2)],
-    ])
-    .ok_or_else(|| format_err!("Could not broadcast"))?;
-    let (mut m, mut ka) = (ashape[ashape.len() - 2].clone(), ashape[ashape.len() - 1].clone());
-    let (mut kb, mut n) = (bshape[bshape.len() - 2].clone(), bshape[bshape.len() - 1].clone());
-    if a_trans {
-        std::mem::swap(&mut m, &mut ka);
-    }
-    if b_trans {
-        std::mem::swap(&mut kb, &mut n);
-    }
+    let a_shape_bc: TVec<D> = ashape
+        .iter()
+        .enumerate()
+        .filter_map(
+            |(ix, dim)| if ix != axes.a_m && ix != axes.a_k { Some(dim.clone()) } else { None },
+        )
+        .collect();
+    let b_shape_bc = bshape
+        .iter()
+        .enumerate()
+        .filter_map(
+            |(ix, dim)| if ix != axes.b_k && ix != axes.b_n { Some(dim.clone()) } else { None },
+        )
+        .collect();
+    let mut c_shape = crate::broadcast::multi_broadcast(&[a_shape_bc, b_shape_bc])
+        .ok_or_else(|| format_err!("Could not broadcast"))?;
+    let (m, ka) = (ashape[axes.a_m].clone(), ashape[axes.a_k].clone());
+    let (kb, n) = (bshape[axes.b_k].clone(), bshape[axes.b_n].clone());
     if ka != kb {
         bail!(
-            "Inconsistent matmul: a: {} b: {}, a_trans: {} b_trans: {} c_trans: {}",
+            "Inconsistent matmul: a: {} b: {}, axes: am:{} ak:{} bk:{} bn:{} cm:{} cn:{}",
             ashape.iter().join(","),
             bshape.iter().join(","),
-            a_trans,
-            b_trans,
-            c_trans
+            axes.a_m,
+            axes.a_k,
+            axes.b_k,
+            axes.b_n,
+            axes.c_m,
+            axes.c_n
         );
     }
-    if c_trans {
-        c_shape.push(n.clone());
-        c_shape.push(m.clone());
+    if axes.c_m < axes.c_n {
+        c_shape.insert(axes.c_m, m);
+        c_shape.insert(axes.c_n, n);
     } else {
-        c_shape.push(m.clone());
-        c_shape.push(n.clone());
+        c_shape.insert(axes.c_n, n);
+        c_shape.insert(axes.c_m, m);
     }
     Ok((m, ka, n, c_shape))
 }
@@ -63,16 +85,10 @@ pub fn output_type(input: DatumType) -> DatumType {
     }
 }
 
-pub(super) fn eval(
-    a: &Tensor,
-    b: &Tensor,
-    a_trans: bool,
-    b_trans: bool,
-    c_trans: bool,
-) -> TractResult<Tensor> {
+pub(super) fn eval(a: &Tensor, b: &Tensor, axes: MatMulAxes) -> TractResult<Tensor> {
     unsafe {
         let rank = a.rank();
-        let (m, k, n, c_shape) = compute_shape(a.shape(), b.shape(), a_trans, b_trans, c_trans)?;
+        let (m, k, n, c_shape) = compute_shape(a.shape(), b.shape(), axes)?;
         let dt = output_type(a.datum_type());
         let mm = tract_linalg::ops()
             .mmm(a.datum_type(), b.datum_type(), dt, Some(m), Some(k), Some(n))
@@ -84,14 +100,7 @@ pub(super) fn eval(
                     dt
                 )
             })?;
-        let c_storage = mm.c_from_data_and_strides(
-            dt.size_of(),
-            c_shape[rank - 1 - !c_trans as usize],
-            c_shape[rank - 1 - c_trans as usize],
-            if c_trans { 1 } else { c_shape[rank - 1] as isize },
-            if !c_trans { 1 } else { c_shape[rank - 1] as isize },
-        );
-
+        let c_storage = mm.c_view(axes.c_m, axes.c_n);
         let mut c = Tensor::uninitialized_dt(dt, &c_shape)?;
 
         let a_pack = mm.a_pack();
@@ -108,24 +117,56 @@ pub(super) fn eval(
             b_pack.alignment(),
         )?;
 
-        for prefix in tract_ndarray::indices(&c_shape[..rank - 2]).into_iter() {
-            let mut a_prefix = tvec!();
-            let mut b_prefix = tvec!();
+        // FIXME: what does it look with putting m and n in C at 1 instead of removing ?
+
+        let mut a_bc_shape: TVec<usize> = a.shape().into();
+        a_bc_shape.remove(axes.a_m.max(axes.a_k));
+        a_bc_shape.remove(axes.a_m.min(axes.a_k));
+
+        let mut b_bc_shape: TVec<usize> = b.shape().into();
+        b_bc_shape.remove(axes.b_n.max(axes.b_k));
+        b_bc_shape.remove(axes.b_n.min(axes.b_k));
+
+        let mut a_strides: TVec<isize> = a.strides().into();
+        a_strides.remove(axes.a_m.max(axes.a_k));
+        a_strides.remove(axes.a_m.min(axes.a_k));
+
+        let mut b_strides: TVec<isize> = b.strides().into();
+        b_strides.remove(axes.b_n.max(axes.b_k));
+        b_strides.remove(axes.b_n.min(axes.b_k));
+
+        let mut c_bc_shape = c_shape.clone();
+        c_bc_shape.remove(axes.c_m.max(axes.c_n));
+        c_bc_shape.remove(axes.c_m.min(axes.c_n));
+
+        let mut c_strides: TVec<isize> = c.strides().into();
+        c_strides.remove(axes.c_m.max(axes.c_n));
+        c_strides.remove(axes.c_m.min(axes.c_n));
+
+        for prefix in tract_ndarray::indices(&*c_bc_shape).into_iter() {
+            let mut a_offset = 0;
+            let mut b_offset = 0;
+            let mut c_offset = 0;
             for (axis, &dim) in prefix.slice().iter().enumerate() {
-                a_prefix.push(dim.min(a.shape()[axis] - 1));
-                b_prefix.push(dim.min(b.shape()[axis] - 1));
+                if a_bc_shape[axis] > 1 {
+                    a_offset += a_strides[axis] * dim as isize * dt.size_of() as isize;
+                }
+                if b_bc_shape[axis] > 1 {
+                    b_offset += b_strides[axis] * dim as isize * dt.size_of() as isize;
+                }
+                c_offset += c_strides[axis] * dim as isize * dt.size_of() as isize;
             }
             a_pack.pack(
                 packed_a.view_mut(),
-                &a.view_at_prefix(&a_prefix)?,
-                !a_trans as usize,
-                a_trans as usize,
+                TensorView::from_bytes(a, a_offset, a.shape(), a.strides()),
+                axes.a_k,
+                axes.a_m,
             );
             b_pack.pack(
                 packed_b.view_mut(),
-                &b.view_at_prefix(&b_prefix)?,
-                b_trans as usize,
-                !b_trans as usize,
+                TensorView::from_bytes(b, b_offset, b.shape(), b.strides()),
+                axes.b_k,
+                axes.b_n,
             );
             mm.run(
                 m,
@@ -136,7 +177,12 @@ pub(super) fn eval(
                         b: mm.b_packed(b.datum_type().size_of(), k).wrap(&packed_b.view())?,
                         k,
                     },
-                    FusedSpec::Store(c_storage.wrap(&c.view_at_prefix_mut(prefix.slice())?)),
+                    FusedSpec::Store(c_storage.wrap(&TensorView::from_bytes(
+                        &c,
+                        c_offset,
+                        c.shape(),
+                        c.strides(),
+                    ))),
                 ],
             )?;
         }
@@ -148,15 +194,12 @@ pub(super) fn cost<A: DimLike + Clone, B: DimLike + Clone>(
     a: &[A],
     b: &[B],
     dt: DatumType,
-    a_trans: bool,
-    b_trans: bool,
+    axes: MatMulAxes,
 ) -> TractResult<TVec<(Cost, TDim)>> {
     let (m, k, n, c_shape) = compute_shape(
         &a.iter().map(|d| d.clone().to_dim()).collect::<TVec<_>>(),
         &b.iter().map(|d| d.clone().to_dim()).collect::<TVec<_>>(),
-        a_trans,
-        b_trans,
-        false,
+        axes,
     )?;
     let mul = c_shape.iter().rev().skip(2).cloned().product();
     Ok(tvec!((Cost::FMA(dt), [mul, m.to_dim(), k.to_dim(), n.to_dim()].iter().product())))

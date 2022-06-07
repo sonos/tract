@@ -7,24 +7,25 @@ use crate::ops::matmul::*;
 /// TODO: codegen fails if A and B are variable inputs.
 #[derive(Debug, Clone, Default, Hash)]
 pub struct MatMul {
-    pub a_trans: bool,
-    pub b_trans: bool,
-    pub c_trans: bool,
+    pub axes: MatMulAxes,
 }
 
 impl_dyn_hash!(MatMul);
 
 impl MatMul {
     pub fn with_a_trans(self, a_trans: bool) -> MatMul {
-        MatMul { a_trans, ..self }
+        std::mem::swap(&mut self.axes.a_k, &mut self.axes.a_m);
+        self
     }
 
     pub fn with_b_trans(self, b_trans: bool) -> MatMul {
-        MatMul { b_trans, ..self }
+        std::mem::swap(&mut self.axes.b_k, &mut self.axes.b_n);
+        self
     }
 
     pub fn with_c_trans(self, c_trans: bool) -> MatMul {
-        MatMul { c_trans, ..self }
+        std::mem::swap(&mut self.axes.c_m, &mut self.axes.c_n);
+        self
     }
 }
 
@@ -46,8 +47,7 @@ impl EvalOp for MatMul {
         if &inputs[0].rank() != &inputs[1].rank() {
             bail!("Rank mismatch {:?} vs {:?}", inputs[0], inputs[1]);
         }
-        Ok(tvec!(eval(&inputs[0], &inputs[1], self.a_trans, self.b_trans, self.c_trans)?
-            .into_arc_tensor()))
+        Ok(tvec!(eval(&inputs[0], &inputs[1], self.axes)?.into_arc_tensor()))
     }
 }
 
@@ -60,13 +60,7 @@ impl TypedOp for MatMul {
                 inputs[1]
             );
         }
-        let (_m, _k, _n, c_shape) = compute_shape(
-            &inputs[0].shape,
-            &inputs[1].shape,
-            self.a_trans,
-            self.b_trans,
-            self.c_trans,
-        )?;
+        let (_m, _k, _n, c_shape) = compute_shape(&inputs[0].shape, &inputs[1].shape, self.axes)?;
         Ok(tvec!(output_type(inputs[0].datum_type).fact(c_shape)))
     }
 
@@ -75,59 +69,41 @@ impl TypedOp for MatMul {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        let a_fact = model.outlet_fact(node.inputs[0])?;
-        let b_fact = model.outlet_fact(node.inputs[1])?;
-        let konst_ix = if a_fact.konst.is_some() {
-            0
-        } else if b_fact.konst.is_some() {
-            1
-        } else {
-            return Ok(None);
-        };
-
-        let var_ix = 1 - konst_ix;
-        let flip = konst_ix == 1;
-        let t_konst = [self.a_trans, self.b_trans][konst_ix] ^ flip;
-        let t_var = [self.b_trans, self.a_trans][konst_ix] ^ flip;
-        let konst = model.outlet_fact(node.inputs[konst_ix])?.konst.clone().unwrap();
-        TypedModelPatch::replace_single_op(
-            model,
-            node,
-            &node.inputs[var_ix..][..1],
-            MatMulUnary::new(konst, t_konst, t_var, self.c_trans ^ flip),
-        )
-        .map(Some)
+        return Ok(None);
+        //         let a_fact = model.outlet_fact(node.inputs[0])?;
+        //         let b_fact = model.outlet_fact(node.inputs[1])?;
+        //         let konst_ix = if a_fact.konst.is_some() {
+        //             0
+        //         } else if b_fact.konst.is_some() {
+        //             1
+        //         } else {
+        //             return Ok(None);
+        //         };
+        //
+        //         let var_ix = 1 - konst_ix;
+        //         let flip = konst_ix == 1;
+        //         let t_konst = [self.a_trans, self.b_trans][konst_ix] ^ flip;
+        //         let t_var = [self.b_trans, self.a_trans][konst_ix] ^ flip;
+        //         let konst = model.outlet_fact(node.inputs[konst_ix])?.konst.clone().unwrap();
+        //         TypedModelPatch::replace_single_op(
+        //             model,
+        //             node,
+        //             &node.inputs[var_ix..][..1],
+        //             MatMulUnary::new(konst, t_konst, t_var, self.c_trans ^ flip),
+        //         )
+        //         .map(Some)
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        cost(
+        super::cost(
             &inputs[0].shape.to_tvec(),
             &inputs[1].shape.to_tvec(),
             inputs[0].datum_type,
-            self.a_trans,
-            self.b_trans,
+            self.axes,
         )
     }
 
     as_op!();
-}
-
-pub(super) fn cost<A: DimLike + Clone, B: DimLike + Clone>(
-    a: &[A],
-    b: &[B],
-    dt: DatumType,
-    a_trans: bool,
-    b_trans: bool,
-) -> TractResult<TVec<(Cost, TDim)>> {
-    let (m, k, n, c_shape) = compute_shape(
-        &a.iter().map(|d| d.clone().to_dim()).collect::<TVec<_>>(),
-        &b.iter().map(|d| d.clone().to_dim()).collect::<TVec<_>>(),
-        a_trans,
-        b_trans,
-        false,
-    )?;
-    let mul = c_shape.iter().rev().skip(2).cloned().product();
-    Ok(tvec!((Cost::FMA(dt), [mul, m.to_dim(), k.to_dim(), n.to_dim()].iter().product())))
 }
 
 #[cfg(test)]
@@ -172,7 +148,7 @@ mod test {
         let a = a.into_arc_tensor();
         wire = model.wire_node(
             "m",
-            MatMulUnary { a, a_trans: true, b_trans: true, c_trans: true },
+            MatMulUnary { a, axes: MatMulAxes { a_m: 1, a_k: 0, b_k: 1, b_n: 0, c_m: 1, c_n: 0 } },
             &wire,
         )?;
         let mut b = Tensor::zero::<f32>(&[1, 1, co])?;

@@ -231,9 +231,7 @@ impl MatMulQParams {
 
 #[derive(Debug, Clone, new, Hash)]
 pub struct QMatMul {
-    pub a_trans: bool,
-    pub b_trans: bool,
-    pub c_trans: bool,
+    pub axes: MatMulAxes,
     pub output_type: DatumType,
     pub params: MatMulQParams,
 }
@@ -242,15 +240,18 @@ impl_dyn_hash!(QMatMul);
 
 impl QMatMul {
     pub fn with_a_trans(self, a_trans: bool) -> QMatMul {
-        QMatMul { a_trans, ..self }
+        std::mem::swap(&mut self.axes.a_k, &mut self.axes.a_m);
+        self
     }
 
     pub fn with_b_trans(self, b_trans: bool) -> QMatMul {
-        QMatMul { b_trans, ..self }
+        std::mem::swap(&mut self.axes.b_k, &mut self.axes.b_n);
+        self
     }
 
     pub fn with_c_trans(self, c_trans: bool) -> QMatMul {
-        QMatMul { c_trans, ..self }
+        std::mem::swap(&mut self.axes.c_m, &mut self.axes.c_n);
+        self
     }
 }
 
@@ -295,17 +296,15 @@ impl EvalOp for QMatMul {
         let a = wire_offset_u8_as_i8(&mut model, "adhoc", a, "a", &mut params[0], "a0")?;
         let b = wire_offset_u8_as_i8(&mut model, "adhoc", b, "b", &mut params[2], "b0")?;
 
-        let new_op = MatMul { a_trans: self.a_trans, b_trans: self.b_trans, c_trans: self.c_trans };
+        let new_op = MatMul { axes: self.axes };
         let result = model.wire_node("adhoc.matmul", new_op, &[a, b])?[0];
         let result = wire_matmul_quant(
             &mut model,
             "adhoc",
             a,
-            self.a_trans,
             b,
-            self.b_trans,
             Some(bias),
-            self.c_trans,
+            self.axes,
             result,
             self.output_type,
             &params,
@@ -543,19 +542,15 @@ pub(crate) fn wire_matmul_quant(
     model: &mut TypedModel,
     name: &str,
     a: OutletId,
-    a_trans: bool,
     b: OutletId,
-    b_trans: bool,
     bias: Option<OutletId>,
-    c_trans: bool,
+    axes: MatMulAxes,
     mut result: OutletId,
     output_type: DatumType,
     params: &[OutletId],
 ) -> TractResult<OutletId> {
     let a_fact = model.outlet_fact(a)?.clone();
     let rank = a_fact.rank();
-    let m_axis = rank - 2 + c_trans as usize;
-    let n_axis = rank - 1 - c_trans as usize;
 
     if let Some(bias) = bias {
         result = wire_with_rank_broadcast(
@@ -566,7 +561,7 @@ pub(crate) fn wire_matmul_quant(
         )?[0];
     }
 
-    let k = model.outlet_fact(a)?.shape[rank - 2 + !a_trans as usize].clone();
+    let k = model.outlet_fact(a)?.shape[axes.a_k].clone();
 
     let abc_scale = combine_scales(model, name, params[1], params[3], params[5])?;
 
@@ -574,24 +569,22 @@ pub(crate) fn wire_matmul_quant(
         model.wire_node(format!("{}.a_as_i32", name), ops::cast::cast(i32::datum_type()), &[a])?[0];
     let b_i32 =
         model.wire_node(format!("{}.b_as_i32", name), ops::cast::cast(i32::datum_type()), &[b])?[0];
-    let a_k_axis = rank - 2 + !a_trans as usize;
     let sum_a = model.wire_node(
         format!("{}.sum_a", name),
-        ops::nn::Reduce::new(tvec!(a_k_axis), ops::nn::Reducer::Sum),
+        ops::nn::Reduce::new(tvec!(axes.a_k), ops::nn::Reducer::Sum),
         &[a_i32],
     )?[0];
     let sum_a =
-        model.wire_node(format!("{}.sum_a_reduced", name), AxisOp::Rm(a_k_axis), &[sum_a])?[0];
-    let b_k_axis = rank - 2 + b_trans as usize;
+        model.wire_node(format!("{}.sum_a_reduced", name), AxisOp::Rm(axes.a_k), &[sum_a])?[0];
     let sum_b = model.wire_node(
         format!("{}.sum_b", name),
-        ops::nn::Reduce::new(tvec!(b_k_axis), ops::nn::Reducer::Sum),
+        ops::nn::Reduce::new(tvec!(axes.b_k), ops::nn::Reducer::Sum),
         &[b_i32],
     )?[0];
     let sum_b =
-        model.wire_node(format!("{}.sum_b_reduced", name), AxisOp::Rm(b_k_axis), &[sum_b])?[0];
+        model.wire_node(format!("{}.sum_b_reduced", name), AxisOp::Rm(axes.b_k), &[sum_b])?[0];
     let result = compensate_zero_points(
-        model, name, result, k, params[0], params[2], sum_a, sum_b, m_axis, n_axis,
+        model, name, result, k, params[0], params[2], sum_a, sum_b, axes.c_m, axes.c_n,
     )?;
     requant(model, name, result, output_type, abc_scale, params[4])
 }

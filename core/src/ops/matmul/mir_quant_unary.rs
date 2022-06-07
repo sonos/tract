@@ -11,9 +11,7 @@ use mir_quant::QParamKind;
 pub struct QMatMulUnary {
     pub a: Arc<Tensor>,
     pub bias: Option<Arc<Tensor>>,
-    pub a_trans: bool,
-    pub b_trans: bool,
-    pub c_trans: bool,
+    pub axes: MatMulAxes,
     pub output_type: DatumType,
     pub params: MatMulQParams,
 }
@@ -22,15 +20,18 @@ impl_dyn_hash!(QMatMulUnary);
 
 impl QMatMulUnary {
     pub fn with_a_trans(self, a_trans: bool) -> QMatMulUnary {
-        QMatMulUnary { a_trans, ..self }
+        std::mem::swap(&mut self.axes.a_k, &mut self.axes.a_m);
+        self
     }
 
     pub fn with_b_trans(self, b_trans: bool) -> QMatMulUnary {
-        QMatMulUnary { b_trans, ..self }
+        std::mem::swap(&mut self.axes.b_k, &mut self.axes.b_n);
+        self
     }
 
     pub fn with_c_trans(self, c_trans: bool) -> QMatMulUnary {
-        QMatMulUnary { c_trans, ..self }
+        std::mem::swap(&mut self.axes.c_m, &mut self.axes.c_n);
+        self
     }
 }
 
@@ -79,12 +80,7 @@ impl EvalOp for QMatMulUnary {
         let a = wire_offset_u8_as_i8(&mut model, "adhoc", a, "a", &mut params[0], "a0")?;
         let b = wire_offset_u8_as_i8(&mut model, "adhoc", b, "b", &mut params[2], "b0")?;
 
-        let new_op = MatMulUnary {
-            a: t_a,
-            a_trans: self.a_trans,
-            b_trans: self.b_trans,
-            c_trans: self.c_trans,
-        };
+        let new_op = MatMulUnary { a: t_a, axes: self.axes };
         let result = model.wire_node("adhoc.matmul", new_op, &[b])?[0];
         let result = wire_matmul_quant(
             &mut model,
@@ -631,7 +627,7 @@ mod test {
     #[test]
     fn scale_big() {
         QMatMulUnaryProblemI8I8I8 {
-            a: arr2(&[[0],[0]]),
+            a: arr2(&[[0], [0]]),
             b: arr2(&[[0, 0]]),
             bias: tensor0(0i32),
             a0: -1,
@@ -674,7 +670,7 @@ mod test {
             impl $name {
                 fn check(&self) {
                     let _ = env_logger::Builder::from_env("TRACT_LOG").try_init();
-                let r = self.reference();
+                    let r = self.reference();
                     let t = self.tract();
                     assert!(
                         r.iter().zip(t.iter()).all(|(r, t)| r.max(t) - r.min(t) <= 1),
@@ -685,128 +681,128 @@ mod test {
                         t,
                         );
 
+                }
+
+                fn reference(&self) -> Array2<$c> {
+                    let a = self.a.map(|&x| (x as f32 - self.a0 as f32) * self.a_scale);
+                    let b = self.b.map(|&x| (x as f32 - self.b0 as f32) * self.b_scale);
+                    let c = a.dot(&b);
+                    let c = c.map(|&x| round_ties_to_right(x / self.c_scale) + self.c0 as i32);
+                    c.map(|&x| x.max(<$c>::MIN as i32).min(<$c>::MAX as i32) as $c)
+                }
+
+                fn tract(&self) -> Array2<$c> {
+                    let mut model = TypedModel::default();
+                    let mut inputs = tvec![];
+                    inputs.push(
+                        model
+                        .add_source("b", <$b>::datum_type().fact(&[self.b.nrows(), self.b.ncols()]))
+                        .unwrap(),
+                        );
+                    let qparams = if self.dyn_qp {
+                        inputs.push(model.add_source("a0", TypedFact::scalar::<$a>()).unwrap());
+                        inputs.push(model.add_source("a_scale", TypedFact::scalar::<f32>()).unwrap());
+                        inputs.push(model.add_source("b0", TypedFact::scalar::<$b>()).unwrap());
+                        inputs.push(model.add_source("b_scale", TypedFact::scalar::<f32>()).unwrap());
+                        inputs.push(model.add_source("c0", TypedFact::scalar::<$c>()).unwrap());
+                        inputs.push(model.add_source("c_scale", TypedFact::scalar::<f32>()).unwrap());
+                        MatMulQParams::all_dynamic(1)
+                    } else {
+                        MatMulQParams {
+                            a0: tensor0::<$a>(self.a0).into(),
+                            a_scale: tensor0::<f32>(self.a_scale).into(),
+                            b0: tensor0::<$b>(self.b0).into(),
+                            b_scale: tensor0::<f32>(self.b_scale).into(),
+                            c0: tensor0::<$c>(self.c0).into(),
+                            c_scale: tensor0::<f32>(self.c_scale).into(),
+                        }
+                    };
+                    let result = model
+                        .wire_node(
+                            "qmmu",
+                            QMatMulUnary::new(
+                                self.a.clone().into_arc_tensor(),
+                                Some(self.bias.clone().into_arc_tensor()),
+                                false,
+                                false,
+                                false,
+                                <$c>::datum_type(),
+                                qparams,
+                                ),
+                                &inputs,
+                                )
+                        .unwrap();
+                    model.set_output_outlets(&result).unwrap();
+
+                    let inputs = if self.dyn_qp {
+                        tvec![
+                            self.b.clone().into_tensor(),
+                            self.a0.into(),
+                            self.a_scale.into(),
+                            self.b0.into(),
+                            self.b_scale.into(),
+                            self.c0.into(),
+                            self.c_scale.into(),
+                        ]
+                    } else {
+                        tvec![self.b.clone().into_tensor()]
+                    };
+                    let model = if self.opt { model.into_optimized().unwrap() } else { model };
+                    let mut outputs = model
+                        .into_runnable()
+                        .unwrap()
+                        .run(inputs)
+                        .unwrap();
+                    outputs
+                        .remove(0)
+                        .into_tensor()
+                        .into_array::<$c>()
+                        .unwrap()
+                        .into_dimensionality()
+                        .unwrap()
+                }
             }
 
-            fn reference(&self) -> Array2<$c> {
-                let a = self.a.map(|&x| (x as f32 - self.a0 as f32) * self.a_scale);
-                let b = self.b.map(|&x| (x as f32 - self.b0 as f32) * self.b_scale);
-                let c = a.dot(&b);
-                let c = c.map(|&x| round_ties_to_right(x / self.c_scale) + self.c0 as i32);
-                c.map(|&x| x.max(<$c>::MIN as i32).min(<$c>::MAX as i32) as $c)
-            }
-
-            fn tract(&self) -> Array2<$c> {
-                let mut model = TypedModel::default();
-                let mut inputs = tvec![];
-                inputs.push(
-                    model
-                    .add_source("b", <$b>::datum_type().fact(&[self.b.nrows(), self.b.ncols()]))
-                    .unwrap(),
-                    );
-                let qparams = if self.dyn_qp {
-                    inputs.push(model.add_source("a0", TypedFact::scalar::<$a>()).unwrap());
-                    inputs.push(model.add_source("a_scale", TypedFact::scalar::<f32>()).unwrap());
-                    inputs.push(model.add_source("b0", TypedFact::scalar::<$b>()).unwrap());
-                    inputs.push(model.add_source("b_scale", TypedFact::scalar::<f32>()).unwrap());
-                    inputs.push(model.add_source("c0", TypedFact::scalar::<$c>()).unwrap());
-                    inputs.push(model.add_source("c_scale", TypedFact::scalar::<f32>()).unwrap());
-                    MatMulQParams::all_dynamic(1)
-                } else {
-                    MatMulQParams {
-                        a0: tensor0::<$a>(self.a0).into(),
-                        a_scale: tensor0::<f32>(self.a_scale).into(),
-                        b0: tensor0::<$b>(self.b0).into(),
-                        b_scale: tensor0::<f32>(self.b_scale).into(),
-                        c0: tensor0::<$c>(self.c0).into(),
-                        c_scale: tensor0::<f32>(self.c_scale).into(),
-                    }
-                };
-                let result = model
-                    .wire_node(
-                        "qmmu",
-                        QMatMulUnary::new(
-                            self.a.clone().into_arc_tensor(),
-                            Some(self.bias.clone().into_arc_tensor()),
-                            false,
-                            false,
-                            false,
-                            <$c>::datum_type(),
-                            qparams,
-                            ),
-                            &inputs,
-                            )
-                    .unwrap();
-                model.set_output_outlets(&result).unwrap();
-
-                let inputs = if self.dyn_qp {
-                    tvec![
-                        self.b.clone().into_tensor(),
-                        self.a0.into(),
-                        self.a_scale.into(),
-                        self.b0.into(),
-                        self.b_scale.into(),
-                        self.c0.into(),
-                        self.c_scale.into(),
-                    ]
-                } else {
-                    tvec![self.b.clone().into_tensor()]
-                };
-                let model = if self.opt { model.into_optimized().unwrap() } else { model };
-                let mut outputs = model
-                    .into_runnable()
-                    .unwrap()
-                    .run(inputs)
-                    .unwrap();
-                outputs
-                    .remove(0)
-                    .into_tensor()
-                    .into_array::<$c>()
-                    .unwrap()
-                    .into_dimensionality()
-                    .unwrap()
-            }
-        }
-
-        impl Arbitrary for $name {
-            type Parameters = ();
-            type Strategy = BoxedStrategy<$name>;
-            fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-                (1usize..=4, 1usize..=4, 1usize..=4)
-                    .prop_flat_map(|(m, k, n)| {
-                        (
-                            Just((m, k, n)),
-                            vec(any::<$a>(), m * k..=m * k),
-                            vec(any::<$b>(), k * n..=k * n),
-                            any::<$a>(),
-                            any::<$b>(),
-                            any::<$c>(),
-                            scale(),
-                            scale(),
-                            scale(),
-                            any::<bool>(),
-                            any::<bool>(),
-                            )
+            impl Arbitrary for $name {
+                type Parameters = ();
+                type Strategy = BoxedStrategy<$name>;
+                fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+                    (1usize..=4, 1usize..=4, 1usize..=4)
+                        .prop_flat_map(|(m, k, n)| {
+                            (
+                                Just((m, k, n)),
+                                vec(any::<$a>(), m * k..=m * k),
+                                vec(any::<$b>(), k * n..=k * n),
+                                any::<$a>(),
+                                any::<$b>(),
+                                any::<$c>(),
+                                scale(),
+                                scale(),
+                                scale(),
+                                any::<bool>(),
+                                any::<bool>(),
+                                )
+                        })
+                    .prop_map(|((m, k, n), a, b, a0, b0, c0, a_scale, b_scale, c_scale, opt, dyn_qp)| {
+                        $name {
+                            a: Array2::from_shape_vec((m, k), a).unwrap(),
+                            b: Array2::from_shape_vec((k, n), b).unwrap(),
+                            bias: tensor0(0i32),
+                            a0,
+                            b0,
+                            c0,
+                            a_scale,
+                            b_scale,
+                            c_scale,
+                            opt,
+                            dyn_qp
+                        }
                     })
-                .prop_map(|((m, k, n), a, b, a0, b0, c0, a_scale, b_scale, c_scale, opt, dyn_qp)| {
-                    $name {
-                        a: Array2::from_shape_vec((m, k), a).unwrap(),
-                        b: Array2::from_shape_vec((k, n), b).unwrap(),
-                        bias: tensor0(0i32),
-                        a0,
-                        b0,
-                        c0,
-                        a_scale,
-                        b_scale,
-                        c_scale,
-                        opt,
-                        dyn_qp
-                    }
-                })
-                .boxed()
+                    .boxed()
+                }
             }
-        }
-    };
-}
+        };
+    }
 
     impl_qmmup! { QMatMulUnaryProblemI8I8I8, i8, i8, i8 }
     impl_qmmup! { QMatMulUnaryProblemI8I8U8, i8, i8, u8 }

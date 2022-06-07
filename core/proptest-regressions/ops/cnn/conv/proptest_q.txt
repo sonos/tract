@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 11a7d52378ef8e73caf4e207cf7f6555786e112a938f78e60751e64671dc84ae # shrinks to pb = QConvProblem { optim: false, shape_in: CHW 2,1 (strides: 1,1), kernel_format: OIHW, co: 8, group: 1, data: [[0],  [0]], shape=[2, 1], strides=[1, 1], layout=CFcf (0xf), dynamic ndim=2, kernel: [[[0],   [0]],   [[0],   [0]],   [[0],   [0]],   [[0],   [29]],   [[90],   [116]],   [[71],   [-13]],   [[-63],   [-99]],   [[24],   [105]]], shape=[8, 2, 1], strides=[2, 1, 1], layout=Cc (0x5), dynamic ndim=3, bias: Some([91, 82, -98, -100, 79, -60, -53, -37], shape=[8], strides=[1], layout=CFcf (0xf), dynamic ndim=1), qp: MatMulQParams { a0: Attr(,I32 -10), a_scale: Attr(,F32 2), b0: Attr(,I32 2), b_scale: Attr(,F32 2), c0: Attr(,I32 -6), c_scale: Attr(,F32 0.125) } }
