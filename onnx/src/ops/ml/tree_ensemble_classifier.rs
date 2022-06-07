@@ -3,6 +3,7 @@ use crate::pb::NodeProto;
 use crate::pb_helpers::*;
 use std::iter;
 use tract_hir::internal::*;
+use tract_hir::ops::array::{Slice, TypedConcat};
 use tract_onnx_opl::ml::tree::*;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
@@ -20,8 +21,18 @@ fn tree_classifier(
     let post_transform =
         node.get_attr_opt("post_transform")?.map(parse_post_transform).transpose()?.unwrap_or(None);
 
+    // even numbers in leaves are categories id target of leaf contrib
+    let binary_result_layout = class_labels.len() < 3
+        && ensemble.data.leaves.as_slice::<u32>()?.iter().enumerate().all(|(ix, v)| ix % 2 == 1 || *v == 0);
+
     Ok((
-        expand(TreeEnsembleClassifier { ensemble, class_labels, base_class_score, post_transform }),
+        expand(TreeEnsembleClassifier {
+            ensemble,
+            class_labels,
+            base_class_score,
+            post_transform,
+            binary_result_layout,
+        }),
         vec![],
     ))
 }
@@ -224,6 +235,7 @@ pub struct TreeEnsembleClassifier {
     pub class_labels: Arc<Tensor>,
     pub base_class_score: Option<Arc<Tensor>>,
     pub post_transform: Option<PostTransform>,
+    pub binary_result_layout: bool,
 }
 
 impl_dyn_hash!(TreeEnsembleClassifier);
@@ -297,10 +309,28 @@ impl Expansion for TreeEnsembleClassifier {
                 )?;
             }
         }
+        let processed_scores = scores.clone();
+        if self.binary_result_layout {
+            scores = model.wire_node(
+                &format!("{}.binary_result_slice", prefix),
+                Slice::new(1, 0, 1),
+                &scores,
+            )?;
+            let complement = model.wire_node(
+                &format!("{}.binary_result_complement", prefix),
+                tract_core::ops::math::sub::unary(rctensor2(&[[1f32]])),
+                &scores,
+            )?;
+            scores = model.wire_node(
+                &format!("{}.binary_result", prefix),
+                TypedConcat::concat_vars(1, 2),
+                &[complement[0], scores[0]],
+            )?;
+        }
         let winners = model.wire_node(
             format!("{}.argmax", prefix),
             Reduce::new(tvec!(1), Reducer::ArgMax(false)),
-            &scores,
+            &processed_scores,
         )?;
         let reduced = model.wire_node(
             format!("{}.rm_axis", prefix),

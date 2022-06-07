@@ -73,7 +73,7 @@ impl Display for Cmp {
     }
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Debug, Clone, Hash)]
 pub struct TreeEnsembleData {
     // u32, [Ntrees], root row of each tree in nodes array (in rows)
     pub trees: Arc<Tensor>,
@@ -86,6 +86,32 @@ pub struct TreeEnsembleData {
     pub nodes: Arc<Tensor>,
     // categ,
     pub leaves: Arc<Tensor>,
+}
+
+impl Display for TreeEnsembleData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let tree = self.trees.as_slice::<u32>().unwrap();
+        for t in 0..tree.len() {
+            let last_node = tree.get(t + 1).cloned().unwrap_or(self.nodes.len() as u32 / 5);
+            writeln!(f, "Tree {}, nodes {:?}", t, tree[t]..last_node)?;
+            for n in tree[t]..last_node {
+                unsafe {
+                    let node = self.get_unchecked(n as _);
+                    if let TreeNode::Leaf(leaf) = node {
+                        for vote in leaf.start_id..leaf.end_id {
+                            let cat = self.leaves.as_slice::<u32>().unwrap()[vote*2];
+                            let contrib = self.leaves.as_slice::<u32>().unwrap()[vote*2 + 1];
+                            let contrib = f32::from_bits(contrib);
+                            writeln!(f, "{} categ:{} add:{}", n, cat, contrib)?;
+                        }
+                    } else {
+                        writeln!(f, "{} {:?}", n, self.get_unchecked(n as _))?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 impl TreeEnsembleData {
@@ -103,7 +129,7 @@ impl TreeEnsembleData {
         }
     }
 
-    unsafe fn get_leaves_unchecked<T>(&self, tree: usize, input: &ArrayView1<T>) -> LeafNode
+    unsafe fn get_leaf_unchecked<T>(&self, tree: usize, input: &ArrayView1<T>) -> LeafNode
     where
         T: AsPrimitive<f32>,
     {
@@ -130,7 +156,7 @@ impl TreeEnsembleData {
         A: AggregateFn,
         T: AsPrimitive<f32>,
     {
-        let leaf = self.get_leaves_unchecked(tree, input);
+        let leaf = self.get_leaf_unchecked(tree, input);
         for leaf in self
             .leaves
             .to_array_view_unchecked::<u32>()
@@ -344,7 +370,7 @@ impl TreeEnsemble {
     pub fn eval<'i, I, T>(&self, input: I) -> TractResult<ArrayD<f32>>
     where
         I: Into<ArrayViewD<'i, T>>, // TODO: accept generic dimensions, not just IxDyn
-        T: AsPrimitive<f32>,
+        T: Datum + AsPrimitive<f32>,
     {
         let input = input.into();
         if let Ok(input) = input.view().into_dimensionality::<Ix1>() {
