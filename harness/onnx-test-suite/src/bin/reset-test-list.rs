@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, Write};
 
 const SETS: &[&str] = &["node", "real", "simple", "pytorch-operator", "pytorch-converted"];
-const VERSIONS: &[&str] = &["1.4.1", "1.5.0", "1.6.0", "1.7.0", "1.8.1", "1.9.0"];
+const VERSIONS: &[&str] = &["1.4.1", "1.5.0", "1.6.0", "1.7.0", "1.8.1", "1.9.0", "1.10.1"];
 
 // const SETS: &[&str] = &["node"];
 // const VERSIONS: &[&str] = &["1.4.1"];
