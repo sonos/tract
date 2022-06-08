@@ -89,6 +89,14 @@ test_cast_FLOAT_to_DOUBLE
 test_cast_FLOAT_to_FLOAT16
 test_cast_FLOAT_to_STRING
 test_cast_STRING_to_FLOAT not-nnef
+test_castlike_DOUBLE_to_FLOAT16_expanded
+test_castlike_DOUBLE_to_FLOAT_expanded
+test_castlike_FLOAT16_to_DOUBLE_expanded
+test_castlike_FLOAT16_to_FLOAT_expanded
+test_castlike_FLOAT_to_DOUBLE_expanded
+test_castlike_FLOAT_to_FLOAT16_expanded
+test_castlike_FLOAT_to_STRING_expanded
+test_castlike_STRING_to_FLOAT_expanded not-nnef
 test_ceil
 test_ceil_example
 test_celu_expanded
@@ -136,6 +144,7 @@ test_convinteger_without_padding not-nnef not-typable
 test_convtranspose input:X
 test_convtranspose_1d input:X
 test_convtranspose_3d input:X
+test_convtranspose_autopad_same not-nnef not-typable
 test_convtranspose_dilations input:X
 test_convtranspose_kernel_shape input:X
 test_convtranspose_output_shape input:X
@@ -174,6 +183,11 @@ test_dynamicquantizelinear_max_adjusted_expanded  not-typable not-nnef
 test_dynamicquantizelinear_min_adjusted  not-nnef
 test_dynamicquantizelinear_min_adjusted_expanded  not-typable not-nnef
 test_edge_pad input:x
+test_einsum_batch_diagonal
+test_einsum_batch_matmul
+test_einsum_inner_prod
+test_einsum_sum
+test_einsum_transpose
 test_elu
 test_elu_default
 test_elu_example
@@ -184,9 +198,9 @@ test_exp
 test_exp_example
 test_expand_dim_changed input:data
 test_expand_dim_unchanged input:data
-test_eyelike_populate_off_main_diagonal not-nnef
-test_eyelike_with_dtype not-nnef
-test_eyelike_without_dtype not-nnef
+test_eyelike_populate_off_main_diagonal
+test_eyelike_with_dtype
+test_eyelike_without_dtype
 test_flatten_axis0
 test_flatten_axis1
 test_flatten_axis2
@@ -272,6 +286,7 @@ test_logsoftmax_default_axis_expanded
 test_logsoftmax_example_1
 test_logsoftmax_example_1_expanded
 test_logsoftmax_large_number
+test_logsoftmax_large_number_expanded
 test_logsoftmax_negative_axis
 test_logsoftmax_negative_axis_expanded
 test_lrn
@@ -371,6 +386,15 @@ test_nllloss_NCd1d2d3_none_no_weight_negative_ii_expanded input:input not-nnef
 test_nllloss_NCd1d2d3_sum_weight_high_ii_expanded
 test_nllloss_NCd1d2d3d4d5_mean_weight_expanded
 test_nllloss_NCd1d2d3d4d5_none_no_weight_expanded input:input
+test_nonmaxsuppression_center_point_box_format not-nnef
+test_nonmaxsuppression_flipped_coordinates not-nnef
+test_nonmaxsuppression_identical_boxes not-nnef
+test_nonmaxsuppression_limit_output_size not-nnef
+test_nonmaxsuppression_single_box not-nnef
+test_nonmaxsuppression_suppress_by_IOU not-nnef
+test_nonmaxsuppression_suppress_by_IOU_and_scores not-nnef
+test_nonmaxsuppression_two_batches not-nnef
+test_nonmaxsuppression_two_classes not-nnef
 test_nonzero_example not-nnef
 test_not_2d
 test_not_3d
@@ -408,6 +432,7 @@ test_qlinearmatmul_2D
 test_qlinearmatmul_3D                                                                
 test_quantizelinear                                                                 input:x not-nnef
 test_range_float_type_positive_delta not-nnef not-typable
+test_range_int32_type_negative_delta not-nnef not-typable
 test_reciprocal
 test_reciprocal_example
 test_reduce_l1_default_axes_keepdims_example
@@ -515,6 +540,8 @@ test_selu
 test_selu_default
 test_selu_example
 test_shape
+test_shape_clip_end
+test_shape_clip_start
 test_shape_example
 test_shrink_hard
 test_shrink_soft
@@ -548,6 +575,7 @@ test_softmax_default_axis_expanded
 test_softmax_example
 test_softmax_example_expanded
 test_softmax_large_number
+test_softmax_large_number_expanded
 test_softmax_negative_axis
 test_softmax_negative_axis_expanded
 test_softplus
