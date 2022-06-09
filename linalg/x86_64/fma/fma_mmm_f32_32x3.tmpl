@@ -1,10 +1,11 @@
 {% comment %}
 // vim: set syntax=asm :
-/* mmm 24 x 4:
+/* mmm 16 x 5:
 
-    ymm0 ymm3 ymm6 ymm10
-    ymm1 ymm4 ymm7 ymm11
-    ymm2 ymm5 ymm8 ymm12
+    ymm0 ymm4 ymm8
+    ymm1 ymm5 ymm9
+    ymm2 ymm6 ymm10
+    ymm3 ymm7 ymm11
 
 System V ABI:
     args: rdi, rsi, rdx, rcx, r8, r9
@@ -20,7 +21,7 @@ Windows ABI:
 */
 {% endcomment %}
 
-{% include "preamble.tmpliq" size:"24x4", suffix:suffix, G:G %}
+{% include "preamble.tmpliq" size:"32x3", suffix:suffix, G:G %}
 
 {{L}}clear:
     vzeroall
@@ -35,10 +36,10 @@ Windows ABI:
     jz      {{L}}non_linear_loop
 
 {{L}}main_loop_packed_packed:
-	{% include "3x4/packed_packed_loop1/avx.tmpli" %}
+	{% include "4x3/packed_packed_loop1/avx.tmpli" %}
 
-    add             rcx,    16
-    add             rax,    96
+    add             rcx,    12
+    add             rax,    128
     dec             rbx
     jnz             {{L}}main_loop_packed_packed
 
@@ -47,11 +48,10 @@ Windows ABI:
 // NON LINEAR / ADDC
 
 {% include "fma_mmm_f32_scalars.tmpliq" from:0, to:11 %}
-{% include "fma_mmm_f32_per_rows.tmpliq" mr:24, from:0, to:11 %}
-{% include "fma_mmm_f32_per_cols.tmpliq" mr:24, from:0, to:11 %}
+{% include "fma_mmm_f32_per_rows.tmpliq" mr:32, from:0, to:11 %}
+{% include "fma_mmm_f32_per_cols.tmpliq" mr:32, from:0, to:11 %}
 
 {{L}}add_unicast:
-
     mov     r8,    [rdi + 8]           // c ptr
     mov     rsi,    [rdi + 16]          // row stride
     mov     rbx,    [rdi + 24]          // col stride
@@ -62,15 +62,15 @@ Windows ABI:
     lea             r9,  [ r8 + rbx ]
 	lea             r10, [ r9 + rbx]
 	lea             r11, [ r10 + rbx ]
-	lea             r12, [ r11 + rbx ]
 
-{% for col in (0..3) %}
-	{% for row in (0..2) %}
+{% for col in (0..2) %}
+	{% for row in (0..3) %}
    		vmovups ymm12,  [ r{{col|plus:8}} ]
  		add r{{col|plus:8}}, 32
-		vaddps ymm{{col|times:3|plus:row}}, ymm{{col|times:3|plus:row}}, ymm12
+		vaddps ymm{{col|times:4|plus:row}}, ymm{{col|times:4|plus:row}}, ymm12
 	{% endfor %}
 {% endfor %}
+
     jmp    {{L}}non_linear_loop
 
 {{L}}unicast_generic:
@@ -87,34 +87,35 @@ Windows ABI:
 //	mov r12, [0]
     vperm2f128      ymm14,  ymm14, ymm15,         32 // ymm14 <- xmm14::xmm15
 
-    lea             r9, [ r8 + rsi * 8 ]
-    lea             r10, [ r9 + rsi * 8 ]
+    lea             r9,  [ r8 + rsi * 8 ]
+	lea             r10, [ r9 + rsi * 8 ]
+	lea             r11, [ r10 + rsi * 8 ]
 
-{% for col in (0..3) %}
-   {% for row in (0..2) %}
+{% for col in (0..2) %}
+   {% for row in (0..3) %}
       vpcmpeqd        ymm15,  ymm15, ymm15
    	  vgatherdps      ymm12,  [ r{{row|plus:8}} + ymm14 ], ymm15
  	  add r{{row|plus:8}}, rbx
-	  vaddps ymm{{col|times:3|plus:row}}, ymm{{col|times:3|plus:row}}, ymm12
+	  vaddps ymm{{col|times:4|plus:row}}, ymm{{col|times:4|plus:row}}, ymm12
    {% endfor %}
 {% endfor %}
 
     jmp    {{L}}non_linear_loop
 
+
 {{L}}add_row_col_products:
     mov             rax, [ rdi + 8 ]
     mov             rbx, [ rdi + 16 ]
 
-    vmovups         ymm12,  [rax]
-    vmovups         ymm13,  [rax + 32]
-    vmovups         ymm15,  [rax + 64]
+	vbroadcastss    ymm13, dword ptr [rbx]
+	vbroadcastss    ymm14, dword ptr [rbx + 4]
+	vbroadcastss    ymm15, dword ptr [rbx + 8]
 {% for i in (0..3) %}
-    vbroadcastss    ymm14, dword ptr [rbx + {{i|times:4}} ]
-    vfmadd231ps     ymm{{i|times:3}},   ymm12, ymm14
-    vfmadd231ps     ymm{{i|times:3|plus:1}}, ymm13, ymm14
-	vfmadd231ps     ymm{{i|times:3|plus:2}}, ymm15, ymm14
+    vmovups         ymm12,  [rax + {{i|times:32}}]
+    vfmadd231ps     ymm{{0|plus:i}}, ymm12, ymm13
+    vfmadd231ps     ymm{{4|plus:i}}, ymm12, ymm14
+	vfmadd231ps     ymm{{8|plus:i}}, ymm12, ymm15
 {% endfor %}
-
     jmp    {{L}}non_linear_loop
 
 {{L}}store:
@@ -122,36 +123,37 @@ Windows ABI:
     mov     rsi,    [rdi + 16]          // row stride
     mov     rbx,    [rdi + 24]          // col stride
 
-    lea     r9,     [ r8  +     rbx ]
-    lea     r10,    [ r8  + 2 * rbx ]
-    lea     r11,    [ r10 +     rbx ]
+    lea     r9,     [ r8 + rbx ]
+    lea     r10,    [ r8 + 2 * rbx ]
 
     cmp         rsi, 4
-    jne         .store_strides_generic
+    jne         {{L}}store_strides_generic
 
-	{% for col in (0..3) %}
-	   {% for row in (0..2) %}
-			vmovups ymmword ptr [r{{col|plus:8}}], ymm{{col|times:3|plus:row}}
+
+	{% for col in (0..2) %}
+		{% for row in (0..3) %}
+			vmovups ymmword ptr [r{{col|plus:8}}], ymm{{col|times:4|plus:row}}
 			add r{{col|plus:8}}, 32
 	   {% endfor %}
 	{% endfor %}
 
 	jmp     {{L}}non_linear_loop
 
-.store_strides_generic:
-	{% for col in (0..3) %}
-	   {% for row in (0..2) %}
+{{L}}store_strides_generic:
+
+	{% for col in (0..2) %}
+	   {% for row in (0..3) %}
 	   	   {% for i in (0..3) %}
-                vextractps  dword ptr [r{{col | plus: 8}}], xmm{{col | times:3 | plus:row}}, {{i}}
+                vextractps  dword ptr [r{{col | plus: 8}}], xmm{{col | times:4 | plus:row}}, {{i}}
                 add         r{{col | plus: 8}}, rsi
 		   {% endfor %}
-		   vperm2f128  ymm{{col | times:3 | plus:row}}, ymm{{col | times:3 | plus:row}}, ymm{{col | times:3 | plus:row}}, 1
+		   vperm2f128  ymm{{col | times:4 | plus:row}}, ymm{{col | times:4 | plus:row}}, ymm{{col | times:4 | plus:row}}, 1
 	   	   {% for i in (0..3) %}
-                vextractps  dword ptr [r{{col | plus: 8}}], xmm{{col | times:3|plus:row}}, {{i}}
+                vextractps  dword ptr [r{{col | plus: 8}}], xmm{{col | times:4|plus:row}}, {{i}}
                 add         r{{col | plus: 8}}, rsi
 		   {% endfor %}
 	   {% endfor %}
 	{% endfor %}
     jmp     {{L}}non_linear_loop
 
-{% include "postamble.tmpliq" size:"24x4", suffix:suffix, G:G, L:L %}
+{% include "postamble.tmpliq" size:"32x3", suffix:suffix, G:G, L:L %}

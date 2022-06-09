@@ -51,11 +51,11 @@ unsafe fn packed_packed_2x6(f: Option<&str>) {
 
 unsafe fn packed_packed_2x5(f: Option<&str>) {
     println!("-- 2x5 kernels");
-    kloop!(f, "2x5x1", (16 * 6), "2x5/packed_packed_loop1/avx.tmpli", 8);
-    kloop!(f, "2x5x2", (16 * 6 * 2), "2x5/packed_packed_loop1/avx-unroll.tmpli", 8);
+    kloop!(f, "2x5x1", (16 * 5), "2x5/packed_packed_loop1/avx.tmpli", 8);
+    kloop!(f, "2x5x2", (16 * 5 * 2), "2x5/packed_packed_loop1/avx-unroll.tmpli", 8);
     if std::is_x86_feature_detected!("avx512f") {
-        kloop!(f, "2x5x1", (32 * 6), "2x5/packed_packed_loop1/avx-512.tmpli", 16);
-        kloop!(f, "2x5x2", (32 * 6 * 2), "2x5/packed_packed_loop1/avx-512-unroll.tmpli", 16);
+        kloop!(f, "2x5x1", (32 * 5), "2x5/packed_packed_loop1/avx-512.tmpli", 16);
+        kloop!(f, "2x5x2", (32 * 5 * 2), "2x5/packed_packed_loop1/avx-512-unroll.tmpli", 16);
     }
     println!("");
 }
@@ -103,6 +103,7 @@ unsafe fn packed_packed_6x2(f: Option<&str>) {
 unsafe fn packed_packed_8x1(f: Option<&str>) {
     println!("-- 8x1 kernels");
     kloop!(f, "8x1x1", (64 * 1), "8x1/packed_packed_loop1/avx.tmpli", 8);
+    kloop!(f, "8x1x2", (64 * 1 * 2), "8x1/packed_packed_loop1/avx-unroll.tmpli", 8);
 
     if std::is_x86_feature_detected!("avx512f") {
         kloop!(f, "8x1x1", (128 * 1), "8x1/packed_packed_loop1/avx-512.tmpli", 16);
@@ -115,22 +116,18 @@ unsafe fn packed_packed_8x8(f: Option<&str>) {
     println!("-- 8x8 kernels");
     kloop!(f, "8x8x1", (64 * 1), "8x8/packed_packed_loop1/avx.tmpli", 8);
 
-    if std::is_x86_feature_detected!("avx512f") {
-        kloop!(f, "8x1x1", (128 * 1), "8x1/packed_packed_loop1/avx-512.tmpli", 16);
-        kloop!(f, "8x1x2", (128 * 1 * 2), "8x1/packed_packed_loop1/avx-512-unroll.tmpli", 16);
-    }
     println!("");
 }
 
 fn main() {
     let filter = std::env::args().skip(1).filter(|a| a != "--bench").next();
     unsafe {
-        packed_packed_8x8(filter.as_deref());
         packed_packed_2x6(filter.as_deref());
         packed_packed_2x5(filter.as_deref());
         packed_packed_3x4(filter.as_deref());
         packed_packed_4x3(filter.as_deref());
         packed_packed_5x2(filter.as_deref());
         packed_packed_8x1(filter.as_deref());
+        packed_packed_8x8(filter.as_deref());
     }
 }

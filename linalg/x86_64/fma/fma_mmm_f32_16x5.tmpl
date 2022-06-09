@@ -20,7 +20,7 @@ Windows ABI:
 {% endcomment %}
 
 {% include "preamble.tmpliq" size:"16x5", suffix:suffix, G:G %}
-    
+
 {{L}}clear:
     vzeroall
     jmp     {{L}}non_linear_loop
@@ -35,7 +35,7 @@ Windows ABI:
 
 {{L}}main_loop_packed_packed:
 	{% include "2x5/packed_packed_loop1/avx.tmpli" %}
-	
+
     add             rcx,    20
     add             rax,    64
     dec             rbx
@@ -100,27 +100,26 @@ Windows ABI:
     mov     r8,     [rdi + 8]           // c ptr
     mov     rsi,    [rdi + 16]          // row stride
     mov     rbx,    [rdi + 24]          // col stride
-	
+
     lea     r9,     [ r8 + rbx ]
     lea     r10,    [ r8 + 2 * rbx ]
     lea     r12,    [ r8 + 4 * rbx ]
     lea     r11,    [ r10 + rbx ]
-
-    cmp         rsi, 4
+    cmp         rbx, 64
     jne         .store_strides_generic
 
 	{% for row in (0..1) %}
 		{% for col in (0..4) %}
 			vmovups ymmword ptr [r{{col|plus:8}}], ymm{{col|times:2|plus:row}}
-			add r{{col|plus:8}}, rsi
+			add r{{col|plus:8}}, 32
 	   {% endfor %}
 	{% endfor %}
 
 	jmp     {{L}}non_linear_loop
-	
+
 .store_strides_generic:
     // tops of cols
-	
+
     {% for quarter in (0..3) %}
         {% if quarter != 0 %}
             // move next four rows at top (xmm0,2,..10)

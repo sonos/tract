@@ -5,10 +5,10 @@
 
 	// Load cols of A
     vmovaps         ymm12,  [rax]
-	vbroadcastss    ymm15,  dword ptr [rcx + 0]
-
-    vmovaps         ymm13,  [rax+32]
+	vmovaps         ymm13,  [rax+32]
     vmovaps         ymm14,  [rax+64]
+
+	vbroadcastss    ymm15,  dword ptr [rcx + 0]
 
 	vfmadd231ps     ymm0,   ymm12, ymm15
     vfmadd231ps     ymm1,   ymm13, ymm15
