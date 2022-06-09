@@ -22,23 +22,31 @@ pub fn plug(ops: &mut Ops) {
 
             match n {
                 1 => unreachable!("should've been mmv"),
-                2 | 3 | 4 => return mmm::fma_mmm_f32_24x4::mmm(),
+                2 => return mmm::fma_mmm_f32_40x2::mmm(),
+                3 => return mmm::fma_mmm_f32_32x3::mmm(),
+                4 => return mmm::fma_mmm_f32_24x4::mmm(),
                 5 => return mmm::fma_mmm_f32_16x5::mmm(),
                 6 => return mmm::fma_mmm_f32_16x6::mmm(),
                 8 => return mmm::fma_mmm_f32_8x8::mmm(),
                 _ => {}
             };
 
-            if n % 8 == 0 {
-                return mmm::fma_mmm_f32_8x8::mmm();
-            }
-
-            let opt_efficiency = 1.15; // as measured 16x5 achieves 15% better perf than all other kernels
+            let scaling_baseline = 60.0;
+            let kernel_normalized_perf = [
+                46.89 / scaling_baseline, // 8x8
+                56.13 / scaling_baseline, // 2x6
+                56.26 / scaling_baseline, // 2x5
+                56.23 / scaling_baseline, // 3x4
+                56.91 / scaling_baseline, // 4x3
+                56.49 / scaling_baseline, // 5x2
+            ];
             let efficiencies = [
-                ((n / 8 + 1) * 8) as f32 / n as f32,
-                ((n / 6 + 1) * 6) as f32 / (n as f32 * opt_efficiency),
-                ((n / 5 + 1) * 5) as f32 / n as f32,
-                ((n / 4 + 1) * 4) as f32 / n as f32,
+                ((n / 8 + 1) * 8) as f32 / n as f32 / kernel_normalized_perf[0],
+                ((n / 6 + 1) * 6) as f32 / n as f32 / kernel_normalized_perf[1],
+                ((n / 5 + 1) * 5) as f32 / n as f32 / kernel_normalized_perf[2],
+                ((n / 4 + 1) * 4) as f32 / n as f32 / kernel_normalized_perf[3],
+                ((n / 3 + 1) * 3) as f32 / n as f32 / kernel_normalized_perf[4],
+                ((n / 2 + 1) * 3) as f32 / n as f32 / kernel_normalized_perf[5],
             ];
 
             let best_idx =
@@ -55,11 +63,16 @@ pub fn plug(ops: &mut Ops) {
                 1 => return mmm::fma_mmm_f32_16x6::mmm(),
                 2 => return mmm::fma_mmm_f32_16x5::mmm(),
                 3 => return mmm::fma_mmm_f32_24x4::mmm(),
+                4 => return mmm::fma_mmm_f32_32x3::mmm(),
+                5 => return mmm::fma_mmm_f32_40x2::mmm(),
                 _ => unreachable!("not a valid index"),
             }
         });
         ops.mmm_f32_impls.push(mmm::fma_mmm_f32_16x6::mmm());
         ops.mmm_f32_impls.push(mmm::fma_mmm_f32_16x5::mmm());
+        ops.mmm_f32_impls.push(mmm::fma_mmm_f32_24x4::mmm());
+        ops.mmm_f32_impls.push(mmm::fma_mmm_f32_32x3::mmm());
+        ops.mmm_f32_impls.push(mmm::fma_mmm_f32_40x2::mmm());
         ops.mmm_f32_impls.push(mmm::fma_mmm_f32_8x8::mmm());
 
         ops.sigmoid_f32 = Box::new(|| Box::new(ElementWiseImpl::<sigmoid::SigmoidF32, f32>::new()));
