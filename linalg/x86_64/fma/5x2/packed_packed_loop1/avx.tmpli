@@ -4,25 +4,23 @@
 	// Row regs: ymm14-15
 
 	vmovaps         ymm10,  [rax]
+	vmovaps         ymm11,  [rax + 32]
+	vmovaps         ymm12,  [rax + 64]
+	vmovaps         ymm13,  [rax + 96]
 
     vbroadcastss    ymm14,  dword ptr [rcx + 0]
     vbroadcastss    ymm15,  dword ptr [rcx + 4]
-	vmovaps         ymm11,  [rax + 32]
 
     vfmadd231ps     ymm0,   ymm10, ymm14
     vfmadd231ps     ymm1,   ymm10, ymm15
 
-	vmovaps         ymm12,  [rax + 64]
-
     vfmadd231ps     ymm2,   ymm11, ymm14
     vfmadd231ps     ymm3,   ymm11, ymm15
 
-	vmovaps         ymm13,  [rax + 96]
+	vmovaps         ymm11,  [rax + 128]
 
     vfmadd231ps     ymm4,   ymm12, ymm14
     vfmadd231ps     ymm5,   ymm12, ymm15
-
-	vmovaps         ymm11,  [rax + 32]
 
 	vfmadd231ps     ymm6,   ymm13, ymm14
     vfmadd231ps     ymm7,   ymm13, ymm15
