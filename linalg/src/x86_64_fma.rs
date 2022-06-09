@@ -32,24 +32,34 @@ pub fn plug(ops: &mut Ops) {
 
             let scaling_baseline = 60.0;
             let kernel_normalized_perf = [
-                43.92 / scaling_baseline, // 8x8
-                54.47 / scaling_baseline, // 2x6
-                53.37 / scaling_baseline, // 2x5
-                57.86 / scaling_baseline, // 3x4
-                57.66 / scaling_baseline, // 4x3
-                53.93 / scaling_baseline, // 5x2
+                44.0 / scaling_baseline, // 8x8
+                54.0 / scaling_baseline, // 2x6
+                54.0 / scaling_baseline, // 2x5
+                54.0 / scaling_baseline, // 3x4
+                54.0 / scaling_baseline, // 4x3
+                54.0 / scaling_baseline, // 5x2
             ];
+
+            fn compute_efficiency(n: usize, kernel_width: usize, scale: f32) -> f32 {
+                let kernel_width = kernel_width as f32;
+                let n = n as f32;
+                let batch_count = (n / kernel_width).ceil();
+                let actual_count = batch_count * kernel_width;
+                let multi_batch_penalty = 1.0 - batch_count / 100.0;
+                n / actual_count * scale * multi_batch_penalty
+            }
+
             let efficiencies = [
-                n as f32 / ((n as f32 / 8.0).ceil() * 8.0) * kernel_normalized_perf[0],
-                n as f32 / ((n as f32 / 6.0).ceil() * 6.0) * kernel_normalized_perf[1],
-                n as f32 / ((n as f32 / 5.0).ceil() * 5.0) * kernel_normalized_perf[2],
-                n as f32 / ((n as f32 / 4.0).ceil() * 4.0) * kernel_normalized_perf[3],
-                n as f32 / ((n as f32 / 3.0).ceil() * 3.0) * kernel_normalized_perf[4],
-                n as f32 / ((n as f32 / 2.0).ceil() * 2.0) * kernel_normalized_perf[5],
+                compute_efficiency(n, 8, kernel_normalized_perf[0]),
+                compute_efficiency(n, 6, kernel_normalized_perf[1]),
+                compute_efficiency(n, 5, kernel_normalized_perf[2]),
+                compute_efficiency(n, 4, kernel_normalized_perf[3]),
+                compute_efficiency(n, 3, kernel_normalized_perf[4]),
+                compute_efficiency(n, 2, kernel_normalized_perf[5]),
             ];
 
             let best_idx = efficiencies.iter().copied().enumerate().fold((0, 0.0), |max, val| {
-                if max.1 < val.1 {
+                if val.1 > max.1 {
                     val
                 } else {
                     max
