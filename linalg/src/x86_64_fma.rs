@@ -14,7 +14,6 @@ pub fn plug(ops: &mut Ops) {
 
         ops.mmm_f32 = Box::new(|_, _, n| {
             if n.is_none() {
-                //                eprintln!("for nobatch [{:?}, {:?}, {:?}] choosing 6", m, k, n);
                 return mmm::fma_mmm_f32_16x6::mmm();
             }
 
@@ -33,30 +32,29 @@ pub fn plug(ops: &mut Ops) {
 
             let scaling_baseline = 60.0;
             let kernel_normalized_perf = [
-                46.89 / scaling_baseline, // 8x8
-                56.13 / scaling_baseline, // 2x6
-                56.26 / scaling_baseline, // 2x5
-                56.23 / scaling_baseline, // 3x4
-                56.91 / scaling_baseline, // 4x3
-                56.49 / scaling_baseline, // 5x2
+                43.92 / scaling_baseline, // 8x8
+                54.47 / scaling_baseline, // 2x6
+                53.37 / scaling_baseline, // 2x5
+                57.86 / scaling_baseline, // 3x4
+                57.66 / scaling_baseline, // 4x3
+                53.93 / scaling_baseline, // 5x2
             ];
             let efficiencies = [
-                ((n / 8 + 1) * 8) as f32 / n as f32 / kernel_normalized_perf[0],
-                ((n / 6 + 1) * 6) as f32 / n as f32 / kernel_normalized_perf[1],
-                ((n / 5 + 1) * 5) as f32 / n as f32 / kernel_normalized_perf[2],
-                ((n / 4 + 1) * 4) as f32 / n as f32 / kernel_normalized_perf[3],
-                ((n / 3 + 1) * 3) as f32 / n as f32 / kernel_normalized_perf[4],
-                ((n / 2 + 1) * 3) as f32 / n as f32 / kernel_normalized_perf[5],
+                n as f32 / ((n as f32 / 8.0).ceil() * 8.0) * kernel_normalized_perf[0],
+                n as f32 / ((n as f32 / 6.0).ceil() * 6.0) * kernel_normalized_perf[1],
+                n as f32 / ((n as f32 / 5.0).ceil() * 5.0) * kernel_normalized_perf[2],
+                n as f32 / ((n as f32 / 4.0).ceil() * 4.0) * kernel_normalized_perf[3],
+                n as f32 / ((n as f32 / 3.0).ceil() * 3.0) * kernel_normalized_perf[4],
+                n as f32 / ((n as f32 / 2.0).ceil() * 2.0) * kernel_normalized_perf[5],
             ];
 
-            let best_idx =
-                efficiencies.iter().copied().enumerate().fold((0, std::f32::MAX), |max, val| {
-                    if val.1 < max.1 {
-                        val
-                    } else {
-                        max
-                    }
-                });
+            let best_idx = efficiencies.iter().copied().enumerate().fold((0, 0.0), |max, val| {
+                if max.1 < val.1 {
+                    val
+                } else {
+                    max
+                }
+            });
 
             match best_idx.0 {
                 0 => return mmm::fma_mmm_f32_8x8::mmm(),

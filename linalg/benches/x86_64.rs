@@ -21,7 +21,7 @@ macro_rules! kloop {
             let time = b2!({
                 let mut p = F32;
                 let mut q = F32;
-                r32!(asm!(include_str!(concat!("../x86_64/fma/", $path)),
+                r128!(asm!(include_str!(concat!("../x86_64/fma/", $path)),
 						 inout("rax") p, inout("rcx") q,
 				out("zmm0") _, out("zmm1") _, out("zmm2") _, out("zmm3") _,
                 out("zmm4") _, out("zmm5") _, out("zmm6") _, out("zmm7") _,
@@ -30,7 +30,7 @@ macro_rules! kloop {
                 out("zmm20") _, out("zmm21") _, out("zmm22") _, out("zmm23") _,
                 out("zmm24") _, out("zmm25") _, out("zmm26") _, out("zmm27") _,
                 ));
-            }) / 32.;
+            }) / 128.;
 
 
             println!("{} {:3.0}% ({:>5.2 }/{:3 } cy) {:.2} GFLOP/s", full_label, ($n as f64 / $ww as f64) / time * 100. * *TICK, time / *TICK, $n as f64 / $ww as f64, $n as f64 / time / 1e9 );
