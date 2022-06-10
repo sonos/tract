@@ -1,65 +1,63 @@
-    // Tile size: 4x3
+	// Tile size: 4x3
 	// Accumulators: 0-11
-	// Col regs:
-	// Row regs: ymm10-15
-	// load column of 16 weights
-
+	// Col regs: 12, 16-18, 19, 23-25
+	// Row regs: 13-15, 20-22
 
 	// Load col of A
-    vmovaps         zmm12,  [rax]
+	vmovaps			zmm12,	[rax]
 
-    // Fill 3 cols of B
-    vbroadcastss    zmm13,  dword ptr [rcx + 0]
-    vbroadcastss    zmm14,  dword ptr [rcx + 4]
-    vbroadcastss    zmm15,  dword ptr [rcx + 8]
+	// Fill 3 cols of B
+	vbroadcastss	zmm13,	dword ptr [rcx + 0]
 
 	// Load rest cols of A
-    vmovaps         zmm16,  [rax+64]
-    vmovaps         zmm17,  [rax+128]
-    vmovaps         zmm18,  [rax+192]
+	vmovaps			zmm16,	[rax+64]
+	vmovaps			zmm17,	[rax+128]
+	vmovaps			zmm18,	[rax+192]
 
-    vfmadd231ps     zmm0,   zmm12, zmm13
-    vfmadd231ps     zmm1,   zmm12, zmm14
-    vfmadd231ps     zmm2,   zmm12, zmm15
+	vfmadd231ps		zmm0,	zmm12, zmm13
+	vfmadd231ps		zmm1,	zmm12, zmm14
+	vfmadd231ps		zmm2,	zmm12, zmm15
 
+	vbroadcastss	zmm14,	dword ptr [rcx + 4]
 
-	vfmadd231ps     zmm3,   zmm16, zmm13
-    vfmadd231ps     zmm4,   zmm16, zmm14
-    vfmadd231ps     zmm5,   zmm16, zmm15
+	vfmadd231ps		zmm3,	zmm16, zmm13
+	vfmadd231ps		zmm4,	zmm16, zmm14
+	vfmadd231ps		zmm5,	zmm16, zmm15
 
-	vfmadd231ps     zmm6,   zmm17, zmm13
-    vfmadd231ps     zmm7,   zmm17, zmm14
-    vfmadd231ps     zmm8,   zmm17, zmm15
+	vbroadcastss	zmm15,	dword ptr [rcx + 8]
 
-	vfmadd231ps     zmm9,   zmm18, zmm13
-    vfmadd231ps     zmm10,  zmm18, zmm14
-    vfmadd231ps     zmm11,  zmm18, zmm15
+	vfmadd231ps		zmm6,	zmm17, zmm13
+	vfmadd231ps		zmm7,	zmm17, zmm14
+	vfmadd231ps		zmm8,	zmm17, zmm15
 
+	vmovaps			zmm19,	[rax+256]
 
-	// Load col of A
-    vmovaps         zmm19,  [rax]
+	vfmadd231ps		zmm9,	zmm18, zmm13
+	vfmadd231ps		zmm10,	zmm18, zmm14
+	vfmadd231ps		zmm11,	zmm18, zmm15
 
-    // Fill 3 cols of B
-    vbroadcastss    zmm20,  dword ptr [rcx + 0]
-    vbroadcastss    zmm21,  dword ptr [rcx + 4]
-    vbroadcastss    zmm22,  dword ptr [rcx + 8]
+	vbroadcastss	zmm20,	dword ptr [rcx + 12]
+	vbroadcastss	zmm21,	dword ptr [rcx + 16]
+	vbroadcastss	zmm22,	dword ptr [rcx + 20]
 
-    vmovaps         zmm23,  [rax+64]
-    vmovaps         zmm24,  [rax+128]
-    vmovaps         zmm25,  [rax+192]
+	vmovaps			zmm23,	[rax+320]
 
-    vfmadd231ps     zmm0,   zmm19, zmm20
-    vfmadd231ps     zmm1,   zmm19, zmm21
-    vfmadd231ps     zmm2,   zmm19, zmm22
+	vfmadd231ps		zmm0,	zmm19, zmm20
+	vfmadd231ps		zmm1,	zmm19, zmm21
+	vfmadd231ps		zmm2,	zmm19, zmm22
 
-	vfmadd231ps     zmm3,   zmm23, zmm20
-    vfmadd231ps     zmm4,   zmm23, zmm21
-    vfmadd231ps     zmm5,   zmm23, zmm22
+	vmovaps			zmm24,	[rax+384]
 
-	vfmadd231ps     zmm6,   zmm24, zmm20
-    vfmadd231ps     zmm7,   zmm24, zmm21
-    vfmadd231ps     zmm8,   zmm24, zmm22
+	vfmadd231ps		zmm3,	zmm23, zmm20
+	vfmadd231ps		zmm4,	zmm23, zmm21
+	vfmadd231ps		zmm5,	zmm23, zmm22
 
-	vfmadd231ps     zmm9,   zmm25, zmm20
-    vfmadd231ps     zmm10,  zmm25, zmm21
-    vfmadd231ps     zmm11,  zmm25, zmm22
+	vmovaps			zmm25,	[rax+448]
+
+	vfmadd231ps		zmm6,	zmm24, zmm20
+	vfmadd231ps		zmm7,	zmm24, zmm21
+	vfmadd231ps		zmm8,	zmm24, zmm22
+
+	vfmadd231ps		zmm9,	zmm25, zmm20
+	vfmadd231ps		zmm10,	zmm25, zmm21
+	vfmadd231ps		zmm11,	zmm25, zmm22
