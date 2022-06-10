@@ -6,7 +6,7 @@
     ymm1 ymm6
     ymm2 ymm7
     ymm3 ymm8
-	ymm4 ymm9
+    ymm4 ymm9
 
 System V ABI:
     args: rdi, rsi, rdx, rcx, r8, r9
@@ -37,7 +37,7 @@ Windows ABI:
     jz      {{L}}non_linear_loop
 
 {{L}}main_loop_packed_packed:
-	{% include "5x2/packed_packed_loop1/avx.tmpli" %}
+    {% include "5x2/packed_packed_loop1/avx.tmpli" %}
 
     add             rcx,    8
     add             rax,    160
@@ -57,21 +57,21 @@ Windows ABI:
     mov     rsi,    [rdi + 16]          // row stride
     mov     rbx,    [rdi + 24]          // col stride
 
-	cmp rsi, 4
-	jne {{L}}unicast_generic
+    cmp rsi, 4
+    jne {{L}}unicast_generic
 
     lea             r9,  [ r8 + rbx ]
-	lea             r10, [ r9 + rbx]
-	lea             r11, [ r10 + rbx ]
-	lea             r12, [ r11 + rbx ]
+    lea             r10, [ r9 + rbx]
+    lea             r11, [ r10 + rbx ]
+    lea             r12, [ r11 + rbx ]
 
 
 {% for col in (0..1) %}
-	{% for row in (0..4) %}
-   		vmovups ymm12,  [ r{{col|plus:8}} ]
- 		add r{{col|plus:8}}, 32
-		vaddps ymm{{col|times:5|plus:row}}, ymm{{col|times:5|plus:row}}, ymm12
-	{% endfor %}
+    {% for row in (0..4) %}
+        vmovups ymm12,  [ r{{col|plus:8}} ]
+        add		r{{col|plus:8}}, 32
+        vaddps 	ymm{{col|times:5|plus:row}}, ymm{{col|times:5|plus:row}}, ymm12
+    {% endfor %}
 {% endfor %}
     jmp    {{L}}non_linear_loop
 
@@ -89,16 +89,16 @@ Windows ABI:
     vperm2f128      ymm14,  ymm14, ymm15,         32 // ymm14 <- xmm14::xmm15
 
     lea             r9,  [ r8 + rsi * 8]
-	lea             r10, [ r9 + rsi * 8]
-	lea             r11, [ r10 + rsi * 8]
-	lea             r12, [ r11 + rsi * 8]
+    lea             r10, [ r9 + rsi * 8]
+    lea             r11, [ r10 + rsi * 8]
+    lea             r12, [ r11 + rsi * 8]
 
 {% for col in (0..1) %}
    {% for row in (0..4) %}
-      vpcmpeqd        ymm15,  ymm15, ymm15
-   	  vgatherdps      ymm12,  [ r{{row|plus:8}} + ymm14 ], ymm15
- 	  add r{{row|plus:8}}, rbx
-	  vaddps ymm{{col|times:5|plus:row}}, ymm{{col|times:5|plus:row}}, ymm12
+      vpcmpeqd        ymm15, ymm15, ymm15
+      vgatherdps      ymm12, [ r{{row|plus:8}} + ymm14 ], ymm15
+      add 			  r{{row|plus:8}}, 	rbx
+      vaddps 		  ymm{{col|times:5|plus:row}}, ymm{{col|times:5|plus:row}}, ymm12
    {% endfor %}
 {% endfor %}
 
@@ -108,8 +108,8 @@ Windows ABI:
     mov             rax, [ rdi + 8 ]
     mov             rbx, [ rdi + 16 ]
 
-	vbroadcastss    ymm10, dword ptr [rbx]
-	vbroadcastss    ymm11, dword ptr [rbx + 4]
+    vbroadcastss    ymm10, dword ptr [rbx]
+    vbroadcastss    ymm11, dword ptr [rbx + 4]
 {% for i in (0..4) %}
     vmovups         ymm12,  [rax + {{i|times:32}}]
     vfmadd231ps     ymm{{0|plus:i}}, ymm12, ymm10
@@ -126,34 +126,34 @@ Windows ABI:
     lea     r9,     [ r8  +     rbx ]
     lea     r10,    [ r8  + 2 * rbx ]
     lea     r11,    [ r10 +     rbx ]
-	lea     r12,    [ r10 + 2 * rbx ]
+    lea     r12,    [ r10 + 2 * rbx ]
 
     cmp         rsi, 4
     jne         {{L}}store_strides_generic
 
-	{% for col in (0..1) %}
-	   {% for row in (0..4) %}
-			vmovups ymmword ptr [r{{col|plus:8}}], ymm{{col|times:5|plus:row}}
-			add r{{col|plus:8}}, 32
-	   {% endfor %}
-	{% endfor %}
+    {% for col in (0..1) %}
+       {% for row in (0..4) %}
+            vmovups ymmword ptr [r{{col|plus:8}}], ymm{{col|times:5|plus:row}}
+            add 	r{{col|plus:8}}, 32
+       {% endfor %}
+    {% endfor %}
 
-	jmp     {{L}}non_linear_loop
+    jmp     {{L}}non_linear_loop
 
 {{L}}store_strides_generic:
-	{% for col in (0..1) %}
-	   {% for row in (0..4) %}
-	   	   {% for i in (0..3) %}
+    {% for col in (0..1) %}
+       {% for row in (0..4) %}
+           {% for i in (0..3) %}
                 vextractps  dword ptr [r{{col | plus: 8}}], xmm{{col | times:5 | plus:row}}, {{i}}
                 add         r{{col | plus: 8}}, rsi
-		   {% endfor %}
-		   vperm2f128  ymm{{col | times:5 | plus:row}}, ymm{{col | times:5 | plus:row}}, ymm{{col | times:5 | plus:row}}, 1
-	   	   {% for i in (0..3) %}
+           {% endfor %}
+           vperm2f128  ymm{{col | times:5 | plus:row}}, ymm{{col | times:5 | plus:row}}, ymm{{col | times:5 | plus:row}}, 1
+           {% for i in (0..3) %}
                 vextractps  dword ptr [r{{col | plus: 8}}], xmm{{col | times:5|plus:row}}, {{i}}
                 add         r{{col | plus: 8}}, rsi
-		   {% endfor %}
-	   {% endfor %}
-	{% endfor %}
+           {% endfor %}
+       {% endfor %}
+    {% endfor %}
     jmp     {{L}}non_linear_loop
 
 {% include "postamble.tmpliq" size:"40x2", suffix:suffix, G:G, L:L %}

@@ -75,8 +75,8 @@ Windows ABI:
     vgatherdps      ymm12,  [ r10 + ymm14 ],      ymm15
     vpcmpeqd        ymm15,  ymm15, ymm15
     vgatherdps      ymm13,  [ r8  + ymm14 ],      ymm15
-    add     r10, rbx
-    add     r8, rbx
+    add     		r10, rbx
+    add     		r8, rbx
     vaddps          ymm{{i | times:2 }},   ymm{{i | times:2}},   ymm12
     vaddps          ymm{{i | times:2 | plus: 1}}, ymm{{i | times:2 | plus:1 }},   ymm13
 {% endfor %}
