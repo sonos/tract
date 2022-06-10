@@ -34,7 +34,7 @@ Windows ABI:
     jz      {{L}}non_linear_loop
 
 {{L}}main_loop_packed_packed:
-	{% include "2x5/packed_packed_loop1/avx.tmpli" %}
+    {% include "2x5/packed_packed_loop1/avx.tmpli" %}
 
     add             rcx,    20
     add             rax,    64
@@ -74,8 +74,8 @@ Windows ABI:
     vgatherdps      ymm12,  [ r10 + ymm14 ],      ymm15
     vpcmpeqd        ymm15,  ymm15, ymm15
     vgatherdps      ymm13,  [ r8  + ymm14 ],      ymm15
-    add     r10, rbx
-    add     r8, rbx
+    add             r10, rbx
+    add             r8, rbx
     vaddps          ymm{{i | times:2 }},   ymm{{i | times:2}},   ymm12
     vaddps          ymm{{i | times:2 | plus: 1}}, ymm{{i | times:2 | plus:1 }},   ymm13
 {% endfor %}
@@ -105,17 +105,17 @@ Windows ABI:
     lea     r10,    [ r8 + 2 * rbx ]
     lea     r12,    [ r8 + 4 * rbx ]
     lea     r11,    [ r10 + rbx ]
-    cmp         rbx, 64
-    jne         {{L}}store_strides_generic
+    cmp     rbx,    64
+    jne     {{L}}store_strides_generic
 
-	{% for row in (0..1) %}
-		{% for col in (0..4) %}
-			vmovups ymmword ptr [r{{col|plus:8}}], ymm{{col|times:2|plus:row}}
-			add r{{col|plus:8}}, 32
-	   {% endfor %}
-	{% endfor %}
+    {% for row in (0..1) %}
+        {% for col in (0..4) %}
+            vmovups ymmword ptr [r{{col|plus:8}}], ymm{{col|times:2|plus:row}}
+            add r{{col|plus:8}}, 32
+       {% endfor %}
+    {% endfor %}
 
-	jmp     {{L}}non_linear_loop
+    jmp     {{L}}non_linear_loop
 
 {{L}}store_strides_generic:
     // tops of cols
