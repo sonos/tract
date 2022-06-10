@@ -1,5 +1,6 @@
 # Unreleased
 * bump ONNX protobuf file and support external tensors format
+* new "skinny" kernels for avx2/fma f32 multiplication (positive impact on low, non 1 batch size for DNN-heavy loads)
 
 # 0.16.7 - 2022-05-16
 * Softmax is now an operator in core, coming with a direct quantized implementation
