@@ -79,6 +79,8 @@ case "$PLATFORM" in
                 ;;
         esac
 
+        export TARGET_AR=ar
+
         if [ -e /usr/local/lib/android/sdk/ndk-bundle ]
         then
             export ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk-bundle
