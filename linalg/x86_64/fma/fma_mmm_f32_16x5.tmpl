@@ -106,7 +106,7 @@ Windows ABI:
     lea     r12,    [ r8 + 4 * rbx ]
     lea     r11,    [ r10 + rbx ]
     cmp         rbx, 64
-    jne         .store_strides_generic
+    jne         {{L}}store_strides_generic
 
 	{% for row in (0..1) %}
 		{% for col in (0..4) %}
@@ -117,7 +117,7 @@ Windows ABI:
 
 	jmp     {{L}}non_linear_loop
 
-.store_strides_generic:
+{{L}}store_strides_generic:
     // tops of cols
 
     {% for quarter in (0..3) %}
