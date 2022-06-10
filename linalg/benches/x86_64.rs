@@ -63,6 +63,7 @@ unsafe fn packed_packed_2x5(f: Option<&str>) {
 unsafe fn packed_packed_3x4(f: Option<&str>) {
     println!("-- 3x4 kernels");
     kloop!(f, "3x4x1", (24 * 4), "3x4/packed_packed_loop1/avx.tmpli", 8);
+    kloop!(f, "3x4x2", (24 * 4 * 2), "3x4/packed_packed_loop1/avx-unroll.tmpli", 8);
     if std::is_x86_feature_detected!("avx512f") {
         kloop!(f, "3x4x1", (48 * 4), "3x4/packed_packed_loop1/avx-512.tmpli", 16);
         kloop!(f, "3x4x2", (48 * 4 * 2), "3x4/packed_packed_loop1/avx-512-unroll.tmpli", 16);
@@ -73,6 +74,7 @@ unsafe fn packed_packed_3x4(f: Option<&str>) {
 unsafe fn packed_packed_4x3(f: Option<&str>) {
     println!("-- 4x3 kernels");
     kloop!(f, "4x3x1", (32 * 3), "4x3/packed_packed_loop1/avx.tmpli", 8);
+    kloop!(f, "4x3x2", (32 * 3 * 2), "4x3/packed_packed_loop1/avx-unroll.tmpli", 8);
     if std::is_x86_feature_detected!("avx512f") {
         kloop!(f, "4x3x1", (64 * 3), "4x3/packed_packed_loop1/avx-512.tmpli", 16);
         kloop!(f, "4x3x2", (64 * 3 * 2), "4x3/packed_packed_loop1/avx-512-unroll.tmpli", 16);
@@ -83,6 +85,7 @@ unsafe fn packed_packed_4x3(f: Option<&str>) {
 unsafe fn packed_packed_5x2(f: Option<&str>) {
     println!("-- 5x2 kernels");
     kloop!(f, "5x2x1", (40 * 2), "5x2/packed_packed_loop1/avx.tmpli", 8);
+    kloop!(f, "5x2x1", (40 * 2 * 2), "5x2/packed_packed_loop1/avx-unroll.tmpli", 8);
     if std::is_x86_feature_detected!("avx512f") {
         kloop!(f, "5x2x1", (80 * 2), "5x2/packed_packed_loop1/avx-512.tmpli", 16);
         kloop!(f, "5x2x2", (80 * 2 * 2), "5x2/packed_packed_loop1/avx-512-unroll.tmpli", 16);
@@ -92,10 +95,10 @@ unsafe fn packed_packed_5x2(f: Option<&str>) {
 
 unsafe fn packed_packed_6x2(f: Option<&str>) {
     println!("-- 6x2 kernels");
-    kloop!(f, "5x2x1", (40 * 2), "5x2/packed_packed_loop1/avx.tmpli", 8);
+    kloop!(f, "6x2x1", (40 * 2), "6x2/packed_packed_loop1/avx.tmpli", 8);
     if std::is_x86_feature_detected!("avx512f") {
-        kloop!(f, "5x2x1", (80 * 2), "5x2/packed_packed_loop1/avx-512.tmpli", 16);
-        kloop!(f, "5x2x2", (80 * 2 * 2), "5x2/packed_packed_loop1/avx-512-unroll.tmpli", 16);
+        kloop!(f, "6x2x1", (80 * 2), "6x2/packed_packed_loop1/avx-512.tmpli", 16);
+        kloop!(f, "6x2x2", (80 * 2 * 2), "6x2/packed_packed_loop1/avx-512-unroll.tmpli", 16);
     }
     println!("");
 }
@@ -127,6 +130,7 @@ fn main() {
         packed_packed_3x4(filter.as_deref());
         packed_packed_4x3(filter.as_deref());
         packed_packed_5x2(filter.as_deref());
+        packed_packed_6x2(filter.as_deref());
         packed_packed_8x1(filter.as_deref());
         packed_packed_8x8(filter.as_deref());
     }

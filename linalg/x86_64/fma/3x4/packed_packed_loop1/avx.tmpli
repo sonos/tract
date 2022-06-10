@@ -3,7 +3,6 @@
 	// Col regs: ymm12-14
 	// Row regs: ymm15
 
-	// Load cols of A
     vmovaps         ymm12,  [rax]
 	vmovaps         ymm13,  [rax+32]
     vmovaps         ymm14,  [rax+64]

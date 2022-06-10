@@ -1,65 +1,65 @@
-    vbroadcastss    zmm14,  dword ptr [rcx]
-    vbroadcastss    zmm15,  dword ptr [rcx + 4]
+	vbroadcastss	zmm14,	dword ptr [rcx]
+	vbroadcastss	zmm15,	dword ptr [rcx + 4]
 
-    vmovaps         zmm12,  [rax]
-    vmovaps         zmm13,  [rax + 64]
+	vmovaps			zmm12,	[rax]
+	vmovaps			zmm13,	[rax + 64]
 
-    vfmadd231ps     zmm0,   zmm12, zmm14
-    vfmadd231ps     zmm1,   zmm13, zmm14
+	vfmadd231ps		zmm0,	zmm12, zmm14
+	vfmadd231ps		zmm1,	zmm13, zmm14
 
-    vbroadcastss    zmm14,  dword ptr [rcx + 8]
+	vbroadcastss	zmm14,	dword ptr [rcx + 8]
 
-    vfmadd231ps     zmm2,   zmm12, zmm15
-    vfmadd231ps     zmm3,   zmm13, zmm15
+	vfmadd231ps		zmm2,	zmm12, zmm15
+	vfmadd231ps		zmm3,	zmm13, zmm15
 
-    vbroadcastss    zmm15,  dword ptr [rcx + 12]
+	vbroadcastss	zmm15,	dword ptr [rcx + 12]
 
-    vfmadd231ps     zmm4,   zmm12, zmm14
-    vfmadd231ps     zmm5,   zmm13, zmm14
+	vfmadd231ps		zmm4,	zmm12, zmm14
+	vfmadd231ps		zmm5,	zmm13, zmm14
 
-    vbroadcastss    zmm14,  dword ptr [rcx + 16]
+	vbroadcastss	zmm14,	dword ptr [rcx + 16]
 
-    vfmadd231ps     zmm6,   zmm12, zmm15
-    vfmadd231ps     zmm7,   zmm13, zmm15
+	vfmadd231ps		zmm6,	zmm12, zmm15
+	vfmadd231ps		zmm7,	zmm13, zmm15
 
-    vbroadcastss    zmm15,  dword ptr [rcx + 20]
+	vbroadcastss	zmm15,	dword ptr [rcx + 20]
 
-    vfmadd231ps     zmm8,   zmm12, zmm14
-    vfmadd231ps     zmm9,   zmm13, zmm14
+	vfmadd231ps		zmm8,	zmm12, zmm14
+	vfmadd231ps		zmm9,	zmm13, zmm14
 
-    vbroadcastss    zmm14,  dword ptr [rcx+24]
-    vfmadd231ps     zmm10,   zmm12, zmm15
+	vbroadcastss	zmm14,	dword ptr [rcx+24]
+	vfmadd231ps		zmm10,	 zmm12, zmm15
 
-	vmovaps         zmm12,  [rax+128]
-    vfmadd231ps     zmm11,   zmm13, zmm15
+	vmovaps			zmm12,	[rax+128]
+	vfmadd231ps		zmm11,	 zmm13, zmm15
 
 
-    vbroadcastss    zmm15,  dword ptr [rcx + 24 + 4]
+	vbroadcastss	zmm15,	dword ptr [rcx + 24 + 4]
 
-    vmovaps         zmm13,  [rax + 192]
+	vmovaps			zmm13,	[rax + 192]
 
-    vfmadd231ps     zmm0,   zmm12, zmm14
-    vfmadd231ps     zmm1,   zmm13, zmm14
+	vfmadd231ps		zmm0,	zmm12, zmm14
+	vfmadd231ps		zmm1,	zmm13, zmm14
 
-    vbroadcastss    zmm14,  dword ptr [rcx + 24 + 8]
+	vbroadcastss	zmm14,	dword ptr [rcx + 24 + 8]
 
-    vfmadd231ps     zmm2,   zmm12, zmm15
-    vfmadd231ps     zmm3,   zmm13, zmm15
+	vfmadd231ps		zmm2,	zmm12, zmm15
+	vfmadd231ps		zmm3,	zmm13, zmm15
 
-    vbroadcastss    zmm15,  dword ptr [rcx + 24 + 12]
+	vbroadcastss	zmm15,	dword ptr [rcx + 24 + 12]
 
-    vfmadd231ps     zmm4,   zmm12, zmm14
-    vfmadd231ps     zmm5,   zmm13, zmm14
+	vfmadd231ps		zmm4,	zmm12, zmm14
+	vfmadd231ps		zmm5,	zmm13, zmm14
 
-    vbroadcastss    zmm14,  dword ptr [rcx + 24 + 16]
+	vbroadcastss	zmm14,	dword ptr [rcx + 24 + 16]
 
-    vfmadd231ps     zmm6,   zmm12, zmm15
-    vfmadd231ps     zmm7,   zmm13, zmm15
+	vfmadd231ps		zmm6,	zmm12, zmm15
+	vfmadd231ps		zmm7,	zmm13, zmm15
 
-    vbroadcastss    zmm15,  dword ptr [rcx + 24 + 20]
+	vbroadcastss	zmm15,	dword ptr [rcx + 24 + 20]
 
-    vfmadd231ps     zmm8,   zmm12, zmm14
-    vfmadd231ps     zmm9,   zmm13, zmm14
+	vfmadd231ps		zmm8,	zmm12, zmm14
+	vfmadd231ps		zmm9,	zmm13, zmm14
 
-    vfmadd231ps     zmm10,   zmm12, zmm15
-    vfmadd231ps     zmm11,   zmm13, zmm15
+	vfmadd231ps		zmm10,	 zmm12, zmm15
+	vfmadd231ps		zmm11,	 zmm13, zmm15
