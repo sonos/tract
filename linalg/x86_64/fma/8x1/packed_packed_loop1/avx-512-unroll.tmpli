@@ -1,43 +1,55 @@
-    // Tile size: 4x1
-	// Accumulators: 0-7, 17-24
-	// Col regs: 8-15
-	// Row regs: 16, 17
+	// Accumulators: 0-7
+	// Columns: 8-9
+	// Rows: 8-13
+	vbroadcastss	zmm24,	dword ptr [rcx]
+	vbroadcastss	zmm25,	dword ptr [rcx+4]
 
-	vbroadcastss    zmm16, dword ptr [rcx]
-    vmovaps         zmm8,  [rax + 0]
-	vmovaps         zmm9,  [rax + 64]
-    vmovaps         zmm10, [rax + 128]
-    vfmadd231ps     zmm0,  zmm8, zmm16
-	vmovaps         zmm11, [rax + 192]
-    vfmadd231ps     zmm1,  zmm9, zmm16
-	vbroadcastss    zmm17, dword ptr [rcx]
-    vfmadd231ps     zmm2,  zmm10, zmm16
-    vmovaps         zmm12, [rax + 256]
-    vfmadd231ps     zmm3,  zmm11, zmm16
+	vmovaps			zmm8, [rax + 0]
+	vmovaps			zmm9, [rax + 64]
 
-	vmovaps         zmm13, [rax + 256+64]
-    vmovaps         zmm14, [rax + 256+128]
-	vmovaps         zmm15, [rax + 256+192]
-    vfmadd231ps     zmm20, zmm12, zmm16
-    vfmadd231ps     zmm21, zmm13, zmm16
-    vfmadd231ps     zmm22, zmm14, zmm16
-    vfmadd231ps     zmm23, zmm15, zmm16
+	vmovaps			zmm10, [rax + 128]
+	vmovaps			zmm11, [rax + 192]
+
+	vfmadd231ps		zmm0, zmm8, zmm24
+	vfmadd231ps		zmm1, zmm9, zmm24
+
+	vmovaps			zmm12, [rax + 256]
+	vmovaps			zmm13, [rax + 320]
+
+	vfmadd231ps		zmm2, zmm10, zmm24
+	vfmadd231ps		zmm3, zmm11, zmm24
+
+	vmovaps			zmm14, [rax + 384]
+	vmovaps			zmm15, [rax + 448]
 
 
-    vmovaps         zmm8,  [rax + 512  + 0]
-	vmovaps         zmm9,  [rax + 512  + 64]
-    vmovaps         zmm10, [rax + 512  + 128]
-	vmovaps         zmm11, [rax + 512  + 192]
-    vfmadd231ps     zmm0,  zmm8, zmm17
-    vfmadd231ps     zmm1,  zmm9, zmm17
-    vfmadd231ps     zmm2,  zmm10, zmm17
-    vfmadd231ps     zmm3,  zmm11, zmm17
+	vfmadd231ps		zmm4, zmm12, zmm24
+	vfmadd231ps		zmm5, zmm13, zmm24
 
-    vmovaps         zmm12, [rax + 512  + 256]
-	vmovaps         zmm13, [rax + 512  + 256+64]
-    vmovaps         zmm14, [rax + 512  + 256+128]
-	vmovaps         zmm15, [rax + 512  + 256+192]
-    vfmadd231ps     zmm20, zmm12, zmm17
-    vfmadd231ps     zmm21, zmm13, zmm17
-    vfmadd231ps     zmm22, zmm14, zmm17
-    vfmadd231ps     zmm23, zmm15, zmm17
+	vmovaps			zmm16, [rax + 512]
+	vmovaps			zmm17, [rax + 576]
+
+	vfmadd231ps		zmm6, zmm14, zmm24
+	vfmadd231ps		zmm7, zmm15, zmm24
+
+	// STEP 2
+	vmovaps			zmm18, [rax + 640]
+	vmovaps			zmm19, [rax + 704]
+
+	vfmadd231ps		zmm0, zmm16, zmm25
+	vfmadd231ps		zmm1, zmm17, zmm25
+
+	vmovaps			zmm20, [rax + 768]
+	vmovaps			zmm21, [rax + 832]
+
+	vfmadd231ps		zmm2, zmm18, zmm25
+	vfmadd231ps		zmm3, zmm19, zmm25
+
+	vmovaps			zmm22, [rax + 896]
+	vmovaps			zmm23, [rax + 960]
+
+	vfmadd231ps		zmm4, zmm20, zmm25
+	vfmadd231ps		zmm5, zmm21, zmm25
+
+	vfmadd231ps		zmm6, zmm22, zmm25
+	vfmadd231ps		zmm7, zmm23, zmm25
