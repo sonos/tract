@@ -129,7 +129,7 @@ Windows ABI:
 	lea     r12,    [ r10 + 2 * rbx ]
 
     cmp         rsi, 4
-    jne         .store_strides_generic
+    jne         {{L}}store_strides_generic
 
 	{% for col in (0..1) %}
 	   {% for row in (0..4) %}
@@ -140,7 +140,7 @@ Windows ABI:
 
 	jmp     {{L}}non_linear_loop
 
-.store_strides_generic:
+{{L}}store_strides_generic:
 	{% for col in (0..1) %}
 	   {% for row in (0..4) %}
 	   	   {% for i in (0..3) %}
