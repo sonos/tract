@@ -1,4 +1,6 @@
 # Unreleased
+
+# 0.16.9 - 2022-06-10
 * bump ONNX protobuf file and support external tensors format
 * new "skinny" kernels for avx2/fma f32 multiplication (positive impact on low, non 1 batch size for DNN-heavy loads)
 
