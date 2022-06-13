@@ -3,7 +3,7 @@ version 1.0;
 fragment tract_core_properties(
 ) -> (properties: (string, tensor<scalar>)[])
 {
-  properties = [("tract_nnef_format_version", "alpha1")];
+  properties = [("tract_nnef_ser_version", "0.16.10-pre"), ("tract_nnef_format_version", "beta1")];
 }
 
 graph network( input ) -> ( output ) {

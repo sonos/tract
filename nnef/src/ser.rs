@@ -180,9 +180,16 @@ impl<'a> IntoAst<'a> {
             .sorted_by_key(|(k, _v)| k.clone())
             .map(|(k, v)| Ok(tuple_2(string(k), self.konst(k, v)?.as_ref().clone())))
             .collect::<TractResult<Vec<_>>>()?;
+        let version = env!("CARGO_PKG_VERSION");
+        properties.push(tuple_2(
+                string("tract_nnef_ser_version".to_string()),
+                self.konst("tract_nnef_ser_version", &rctensor0(version.to_string()))?
+                .as_ref()
+                .clone(),
+                ));
         properties.push(tuple_2(
                 string("tract_nnef_format_version".to_string()),
-                self.konst("tract_nnef_format_version", &rctensor0("alpha1".to_string()))?
+                self.konst("tract_nnef_format_version", &rctensor0("beta1".to_string()))?
                 .as_ref()
                 .clone(),
                 ));
