@@ -1,4 +1,5 @@
 # Unreleased
+* [Breaking] [ONNX-ML] TreeEnsembleClassifier with binary output (single class) now mimicks scikit-learn output layout.
 
 # 0.16.9 - 2022-06-10
 * bump ONNX protobuf file and support external tensors format
