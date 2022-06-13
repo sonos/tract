@@ -1,6 +1,6 @@
 [package]
 name = "tract-linalg"
-version = "0.16.10-pre"
+version = "0.17.0"
 license = "MIT/Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -22,7 +22,7 @@ lazy_static = "1.4.0"
 libc = "0.2.100"
 log = "0.4.14"
 num-traits = "0.2.14"
-tract-data = { path = "../data" }
+tract-data = "=0.17.0"
 paste = "1.0.5"
 scan_fmt = "0.2.6"
 
