@@ -114,7 +114,7 @@ fragment scan_body_1(
 fragment tract_core_properties(
 ) -> (properties: (string, tensor<scalar>)[])
 {
-  properties = [("pulse.delay", tract_core_cast(6, to = "i64")), ("pulse.input_axes", tract_core_cast(0, to = "i64")), ("pulse.output_axes", tract_core_cast(0, to = "i64")), ("tract_nnef_format_version", "alpha1")];
+  properties = [("pulse.delay", tract_core_cast(6, to = "i64")), ("pulse.input_axes", tract_core_cast(0, to = "i64")), ("pulse.output_axes", tract_core_cast(0, to = "i64")), ("tract_nnef_ser_version", "0.16.10-pre"), ("tract_nnef_format_version", "beta1")];
 }
 
 graph network( input ) -> ( output ) {
