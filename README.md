@@ -38,8 +38,7 @@ squeezenet, vgg19, zfnet512.
 
 The following operators are implemented and tested.
 
-Abs, Acos, Acosh, Add, And, ArgMax, ArgMin, Asin, Asinh, Atan, Atanh, AveragePool, BatchNormalization, BitShift, Cast, CategoryMapper, Ceil, Clip, Compress, Concat, Constant, ConstantLike, ConstantOfShape, Conv, ConvInteger, ConvTranspose, Cos, Cosh, CumSum, DepthToSpace, DequantizeLinear, Div, Dropout, DynamicQuantizeLinear, Elu, Equal, Erf, Exp, Expand, EyeLike, Flatten, Floor, GRU, Gather, GatherElements, GatherND, Gemm, GlobalAveragePool, GlobalLpPool, GlobalMaxPool, Greater, GreaterOrEqual, HardSigmoid, Hardmax, Identity, If, InstanceNormalization, IsInf, IsNaN, LRN, LSTM, LeakyRelu, Less, LessOrEqual, Log, LogSoftmax, MatMul, MatMulInteger, Max, MaxPool, Mean, Min, Mod, Mul, Neg, NonZero, Not, OneHot, Or, PRelu, Pad, ParametricSoftplus, Pow, QLinearConv, QLinearMatMul, QuantizeLinear, RNN, Range, Reciprocal, ReduceL1, ReduceL2, ReduceLogSum, ReduceLogSumExp, ReduceMax, ReduceMean, ReduceMin, ReduceProd, ReduceSum, ReduceSumSquare, Relu, Reshape, Resize, Round, Rsqrt, ScaledTanh, Scan, Scatter, ScatterElements, ScatterND, Selu, Shape, Shrink, Sigmoid, Sign, Sin, Sinh, Size, Slice, Softmax, Softplus, Softsign, SpaceToDepth, Split, Sqrt, Squeeze, Sub, Sum, Tan, Tanh, ThresholdedRelu, Tile, Transpose, TreeEnsembleClassifier, Unsqueeze, Where, Xor
-
+Abs, Acos, Acosh, Add, And, ArgMax, ArgMin, ArrayFeatureExtractor, Asin, Asinh, Atan, Atanh, AveragePool, BatchNormalization, BitShift, Cast, CategoryMapper, Ceil, Clip, Compress, Concat, Constant, ConstantLike, ConstantOfShape, Conv, ConvInteger, ConvTranspose, Cos, Cosh, CumSum, DepthToSpace, DequantizeLinear, Div, Dropout, DynamicQuantizeLinear, Einsum, Elu, Equal, Erf, Exp, Expand, EyeLike, Flatten, Floor, GRU, Gather, GatherElements, GatherND, Gemm, GlobalAveragePool, GlobalLpPool, GlobalMaxPool, Greater, GreaterOrEqual, HardSigmoid, Hardmax, Identity, If, InstanceNormalization, IsInf, IsNaN, LRN, LSTM, LeakyRelu, Less, LessOrEqual, Log, LogSoftmax, MatMul, MatMulInteger, Max, MaxPool, Mean, Min, Mod, Mul, Neg, NonZero, Not, OneHot, Or, PRelu, Pad, ParametricSoftplus, Pow, QLinearConv, QLinearMatMul, QuantizeLinear, RNN, Range, Reciprocal, ReduceL1, ReduceL2, ReduceLogSum, ReduceLogSumExp, ReduceMax, ReduceMean, ReduceMin, ReduceProd, ReduceSum, ReduceSumSquare, Relu, Reshape, Resize, Round, Rsqrt, ScaledTanh, Scan, Scatter, ScatterElements, ScatterND, Selu, Shape, Shrink, Sigmoid, Sign, Sin, Sinh, Size, Slice, Softmax, Softplus, Softsign, SpaceToDepth, Split, Sqrt, Squeeze, Sub, Sum, Tan, Tanh, ThresholdedRelu, Tile, Transpose, TreeEnsembleClassifier, Unsqueeze, Where, Xor
 
 We test these operators against Onnx 1.4.1 (operator set 9), Onnx 1.5.0
 (operator set 10), Onnx 1.6.0 (operator set 11), Onnx 1.7.0 (operator set
@@ -81,12 +80,41 @@ Tract supports NNEF:
 
 * tract_nnef can load and execute NNEF networks
 * tract supports most of the NNEF specification, the most notable exception
-    being the ROI operators and deconvolution
+    being the ROI operators
 * tract introduces tract-OPL, a series of NNEF extensions to support other
     operators (or extend some operators semantics) in order to represent the
     full range of tract-core neural network support: any network understood by
     tract should be serializable to tract-OPL. This is a work in progress.
 * tract command line can translate networks from TensorFlow or ONNX to NNEF/OPL.
+
+### tract-opl version compatibility
+
+A remainder: NNEF is not expressive enough to represent all ONNX. tract-OPL extends
+NNEF using proprietary to support what is missing. Notable extensions are pulse
+operators, recurring operators (as Scan) and symbolic extensions.
+
+There is no stricts check in place here, so... implementation is not bullet proof.
+* NNEF part aims at being very stable. It is strongly constrained with compatibility
+with NNEF specification.
+* tract-opl is a bit more in flux. Nevertheless we try to maintain the following
+golden rule:
+
+     `models serialized with tract 0.x.y should work with tract 0.x.z where z >= y`
+
+* in practise, breaking changes have been relatively rare so far. Most models are
+forward and retro compatible from when tract has acquired NNEF support.
+
+Notable breakage occured:
+* 0.16.3 (forward compatible) on Scan operator
+* 0.17.0 for binary decision tree classifier
+
+Starting with `0.17.0`, a model property is injected in tract-opl files (`tract_nnef_ser_version`)
+to tag which version of tract generated the file. As most models will remain compatible,
+tract will not do any version check. It is up to the application developper to do so.
+
+A softer version tag exists as `tract_nnef_format_version`. pre-0.17.0 version set it to
+`alpha1`, post-0.17.0 set it `beta1`. Don't put too much emphasis into the "alpha-ness" naming 
+of versions here.
 
 ## Example of supported networks
 
