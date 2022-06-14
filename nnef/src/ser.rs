@@ -407,7 +407,7 @@ pub fn tdims(shape: &[TDim]) -> RValue {
     RValue::Array(shape.iter().map(|s| tdim(s)).collect())
 }
 
-fn tdim(dim: &TDim) -> RValue {
+pub fn tdim(dim: &TDim) -> RValue {
     match dim {
         TDim::Val(x) => numeric(x),
         TDim::Sym(s) => ident(format!("{}", s.as_char())),
