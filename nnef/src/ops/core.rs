@@ -8,6 +8,7 @@ mod gather;
 mod one_hot;
 mod qconv;
 mod qmatmul;
+mod range;
 mod reduce;
 mod scan;
 mod scatter;
@@ -39,4 +40,5 @@ pub fn register(registry: &mut Registry) {
     scatter::register(registry);
     scan::register(registry);
     source::register(registry);
+    range::register(registry);
 }
