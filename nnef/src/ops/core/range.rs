@@ -9,29 +9,37 @@ pub fn register(registry: &mut Registry) {
 
 fn range_parameters() -> Vec<Parameter> {
     vec![
-        TypeName::Scalar.tensor().named("start"),
-        TypeName::Scalar.tensor().named("end"),
-        TypeName::Scalar.tensor().named("step"),
+        TypeName::Integer.named("start"),
+        TypeName::Integer.named("end"),
+        TypeName::Integer.named("step"),
     ]
 }
 
-fn range_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
+fn range_dump(_ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
     let op = node.op_as::<Range>().unwrap();
-    let mut inputs = tvec![];
 
-    inputs.push(ast.konst_variable(format!("{}_start", node.name), &Arc::new(op.start.clone()))?);
-    inputs.push(ast.konst_variable(format!("{}_end", node.name), &Arc::new(op.end.clone()))?);
-    inputs.push(ast.konst_variable(format!("{}_step", node.name), &Arc::new(op.step.clone()))?);
+    let start = op.start.to_scalar::<TDim>()?;
+    let end = op.end.to_scalar::<TDim>()?;
+    let step = op.step.to_scalar::<TDim>()?;
 
-    Ok(Some(invocation("tract_core_range", &inputs, &[])))
+    Ok(Some(invocation(
+        "tract_core_range",
+        &[],
+        &[("start", tdim(start)), ("end", tdim(end)), ("step", tdim(step))],
+    )))
 }
 
 fn range_load(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
 ) -> TractResult<TVec<OutletId>> {
-    let start: Arc<Tensor> = invocation.named_arg_as(builder, "start")?;
-    let end: Arc<Tensor> = invocation.named_arg_as(builder, "end")?;
-    let step: Arc<Tensor> = invocation.named_arg_as(builder, "step")?;
-    builder.wire(Range::new((*start).clone(), (*end).clone(), (*step).clone()), &[])
+    let start: TDim = invocation.named_arg_as(builder, "start")?;
+    let end: TDim = invocation.named_arg_as(builder, "end")?;
+    let step: TDim = invocation.named_arg_as(builder, "step")?;
+
+    let start: Tensor = start.into();
+    let end: Tensor = end.into();
+    let step: Tensor = step.into();
+
+    builder.wire(Range::new(start, end, step), &[])
 }
