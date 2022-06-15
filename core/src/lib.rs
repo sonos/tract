@@ -73,6 +73,7 @@ pub mod ops;
 pub mod broadcast;
 pub mod framework;
 mod hash;
+pub mod half;
 mod late_bind;
 pub mod model;
 pub mod optim;

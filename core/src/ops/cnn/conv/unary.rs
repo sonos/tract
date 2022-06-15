@@ -787,6 +787,13 @@ impl TypedOp for ConvUnary {
         let mut fact = self.pool_spec.output_facts(inputs)?.remove(0);
         if let Some((dt, _qp)) = self.q_params.as_ref() {
             fact.datum_type = *dt;
+        } else {
+            ensure!(
+                inputs[0].datum_type == self.kernel.datum_type(),
+                "Convolution input and weights must have the same type. (resp {:?} and {:?})",
+                inputs[0].datum_type,
+                self.kernel.datum_type(),
+            )
         }
         Ok(tvec!(fact))
     }
