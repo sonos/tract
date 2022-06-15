@@ -685,6 +685,12 @@ impl Parameters {
                 stage!("pulse-declutter", typed_model -> typed_model, |m:TypedModel| Ok(m.into_decluttered()?));
             }
         }
+        if matches.is_present("half-floats") {
+            stage!("half-float", typed_model -> typed_model, |m:TypedModel| {
+                use tract_core::model::translator::Translate;
+                tract_core::half::HalfTranslator.translate_model(&m)
+            });
+        }
         if nnef_cycle {
             stage!("nnef-cycle", typed_model -> typed_model, |m:TypedModel| {
                 let nnef = super::nnef(&matches);
