@@ -2,8 +2,6 @@ use crate::frame::mmm::*;
 use std::hash::{Hash, Hasher};
 use std::ops::Mul;
 use tract_data::prelude::f16;
-use num_traits::Float;
-use num_traits::AsPrimitive;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Scaler {
@@ -89,6 +87,15 @@ impl Scaler {
     }
 }
 
+impl Mul<f16> for Scaler {
+    type Output = f16;
+
+    #[inline]
+    fn mul(self, rhs: f16) -> Self::Output {
+        f16::from_f32(self.scale) * rhs
+    }
+}
+
 impl Mul<f32> for Scaler {
     type Output = f32;
 
@@ -103,9 +110,19 @@ impl Mul<Scaler> for f32 {
 
     #[inline]
     fn mul(self, rhs: Scaler) -> Self::Output {
-        rhs.scale * self
+        rhs * self
     }
 }
+
+impl Mul<Scaler> for f16 {
+    type Output = f16;
+
+    #[inline]
+    fn mul(self, rhs: Scaler) -> Self::Output {
+        rhs * self
+    }
+}
+
 
 impl Mul<i32> for Scaler {
     type Output = i32;
@@ -148,7 +165,6 @@ impl Mul<Scaler> for i32 {
     }
 }
 
-use crate::frame::mmm::*;
 pub trait ScaleShiftAndRound {
     fn q_scale(self, scaler: Scaler) -> Self;
     fn q_shl(self, shift: usize) -> Self;
@@ -168,10 +184,14 @@ impl ScaleShiftAndRound for f32 {
 }
 
 impl ScaleShiftAndRound for f16 {
-    fn q_scale(self, mult: i32, shift: usize, _policy: RoundingPolicy) -> Self {
-        let two:f16 = 2f32.as_();
-        let mult: f16 = mult.as_();
-        self * mult * two * two.powi(-(shift as i32))
+    fn q_scale(self, scaler: Scaler) -> Self {
+        self * scaler
+    }
+    fn q_shl(self, shift: usize) -> Self {
+        self * f16::from_f32(2f32.powi(shift as i32))
+    }
+    fn q_shr(self, shift: usize, _rp: RoundingPolicy) -> Self {
+        self * f16::from_f32(2f32.powi(-(shift as i32)))
     }
 }
 
