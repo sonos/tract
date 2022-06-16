@@ -20,19 +20,53 @@ pub fn handle(
     let cumulative = sub_matches.is_present("cumulative");
     let resilent = sub_matches.is_present("resilient");
     let allow_random_input: bool = matches.is_present("allow-random-input");
+    let allow_f32_to_f16 = matches.is_present("allow-f32-to-f16");
     if sub_matches.value_of("stage").is_some() {
         // --with is by pipeline and put in params
-        return handle_reference_stage(cumulative, params, &output_params, allow_random_input);
+        return handle_reference_stage(
+            cumulative,
+            params,
+            &output_params,
+            allow_random_input,
+            allow_f32_to_f16,
+        );
     } else if let Some(npz) = sub_matches.value_of("npz") {
-        return handle_npz(cumulative, npz, params, &output_params, allow_random_input);
+        return handle_npz(
+            cumulative,
+            npz,
+            params,
+            &output_params,
+            allow_random_input,
+            allow_f32_to_f16,
+        );
     } else if sub_matches.is_present("twice") {
-        return handle_twice(cumulative, params, &output_params, allow_random_input);
+        return handle_twice(
+            cumulative,
+            params,
+            &output_params,
+            allow_random_input,
+            allow_f32_to_f16,
+        );
     }
     if let Some(pbdir) = sub_matches.value_of("pbdir") {
-        return handle_pbdir(cumulative, pbdir, params, &output_params, allow_random_input);
+        return handle_pbdir(
+            cumulative,
+            pbdir,
+            params,
+            &output_params,
+            allow_random_input,
+            allow_f32_to_f16,
+        );
     }
     if sub_matches.is_present("tf") {
-        return handle_tensorflow(cumulative, resilent, params, &output_params, allow_random_input);
+        return handle_tensorflow(
+            cumulative,
+            resilent,
+            params,
+            &output_params,
+            allow_random_input,
+            allow_f32_to_f16,
+        );
     }
     bail!("No comparison target found")
 }
@@ -44,6 +78,7 @@ pub fn handle_tensorflow(
     _params: &mut Parameters,
     _output_params: &DisplayParams,
     _allow_random_input: bool,
+    _allow_f32_to_f16: bool,
 ) -> CliResult<()> {
     bail!("`tf` feature is required for this to work");
 }
@@ -55,6 +90,7 @@ pub fn handle_tensorflow(
     params: &mut Parameters,
     output_params: &DisplayParams,
     allow_random_input: bool,
+    allow_f32_to_f16: bool,
 ) -> CliResult<()> {
     let tract = &params.tract_model;
     let mut tf = params.tf_model.take().unwrap();
@@ -128,6 +164,7 @@ pub fn handle_npz(
     params: &Parameters,
     output_params: &DisplayParams,
     allow_random_input: bool,
+    allow_f32_to_f16: bool,
 ) -> CliResult<()> {
     use tensor::for_npz;
     let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(npz)?)?;
@@ -159,7 +196,8 @@ pub fn handle_npz(
         &values,
         &params,
         output_params,
-        allow_random_input
+        allow_random_input,
+        allow_f32_to_f16
     ))
 }
 
@@ -180,6 +218,7 @@ pub fn handle_pbdir(
     params: &Parameters,
     output_params: &DisplayParams,
     allow_random_input: bool,
+    allow_f32_to_f16: bool,
 ) -> CliResult<()> {
     let mut values: HashMap<String, Vec<CliResult<Arc<Tensor>>>> = HashMap::new();
     for entry in fs::read_dir(pbdir)? {
@@ -195,7 +234,8 @@ pub fn handle_pbdir(
         &values,
         &params,
         output_params,
-        allow_random_input
+        allow_random_input,
+        allow_f32_to_f16
     ))
 }
 
@@ -204,10 +244,18 @@ pub fn handle_twice(
     params: &Parameters,
     output_params: &DisplayParams,
     allow_random_input: bool,
+    allow_f32_to_f16: bool,
 ) -> CliResult<()> {
     let reference_model =
         params.tract_model.downcast_ref::<TypedModel>().context("Only work with a typed model")?;
-    handle_with_model(cumulative, params, output_params, &reference_model, allow_random_input)
+    handle_with_model(
+        cumulative,
+        params,
+        output_params,
+        &reference_model,
+        allow_random_input,
+        allow_f32_to_f16,
+    )
 }
 
 pub fn handle_reference_stage(
@@ -215,13 +263,21 @@ pub fn handle_reference_stage(
     params: &Parameters,
     output_params: &DisplayParams,
     allow_random_input: bool,
+    allow_f32_to_f16: bool,
 ) -> CliResult<()> {
     let reference_model =
         params.reference_model.as_ref().context("No reference model. need --with ?")?;
     let reference_model = reference_model
         .downcast_ref::<TypedModel>()
         .context("Only work with a typed reference model")?;
-    handle_with_model(cumulative, params, output_params, &reference_model, allow_random_input)
+    handle_with_model(
+        cumulative,
+        params,
+        output_params,
+        &reference_model,
+        allow_random_input,
+        allow_f32_to_f16,
+    )
 }
 
 pub fn handle_with_model(
@@ -230,12 +286,18 @@ pub fn handle_with_model(
     output_params: &DisplayParams,
     reference_model: &TypedModel,
     allow_random_input: bool,
+    allow_f32_to_f16: bool,
 ) -> CliResult<()> {
     let mut values: HashMap<String, Vec<CliResult<Arc<Tensor>>>> = HashMap::new();
 
     let plan = SimplePlan::new(reference_model)?;
     let mut state = SimpleState::new(plan)?;
-    for inputs in crate::tensor::retrieve_or_make_inputs(reference_model, params, allow_random_input)? {
+    for inputs in crate::tensor::retrieve_or_make_inputs(
+        reference_model,
+        params,
+        allow_random_input,
+        allow_f32_to_f16,
+    )? {
         state.run_plan_with_eval(inputs, |session, state, node, input| -> TractResult<_> {
             let result: TVec<Arc<Tensor>> = tract_core::plan::eval(session, state, node, input)?;
             if node.outputs.len() == 1 {
@@ -257,7 +319,8 @@ pub fn handle_with_model(
         &values,
         params,
         output_params,
-        allow_random_input
+        allow_random_input,
+        allow_f32_to_f16
     ))
 }
 
@@ -268,6 +331,7 @@ pub fn compare<F, O>(
     params: &Parameters,
     output_params: &DisplayParams,
     allow_random_input: bool,
+    allow_f32_to_f16: bool,
 ) -> CliResult<()>
 where
     F: Fact + Clone + for<'a> From<&'a Tensor> + Hash,
@@ -289,7 +353,11 @@ where
     }
     let all_values: HashMap<String, &Vec<CliResult<Arc<Tensor>>>> =
         all_values.iter().map(|(k, v)| (canonic(k), v)).collect();
-    for (turn, inputs) in tensor::retrieve_or_make_inputs(tract, params, allow_random_input)?.into_iter().enumerate() {
+    for (turn, inputs) in
+        tensor::retrieve_or_make_inputs(tract, params, allow_random_input, allow_f32_to_f16)?
+            .into_iter()
+            .enumerate()
+    {
         state.run_plan_with_eval(
             inputs,
             |session_state, state, node, input| -> TractResult<TVec<Arc<Tensor>>> {

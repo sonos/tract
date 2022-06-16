@@ -3,21 +3,30 @@ use crate::CliResult;
 use tract_hir::internal::*;
 
 /// Compares the outputs of a node in tract and tensorflow.
-pub fn check_outputs(got: &[Arc<Tensor>], expected: &[Option<Arc<Tensor>>]) -> CliResult<()> {
+pub fn check_outputs(
+    got: &[Arc<Tensor>],
+    expected: &[Option<Arc<Tensor>>],
+    allow_f32_to_f16: bool,
+) -> CliResult<()> {
     if got.len() != expected.len() {
         bail!("Number of output differ: got:{}, expected:{}", got.len(), expected.len())
     }
 
     for (ix, (got, exp)) in got.iter().zip(expected.iter()).enumerate() {
         if let Some(exp) = exp {
-            if exp.datum_type().unquantized() != got.datum_type().unquantized() {
+            if (allow_f32_to_f16
+                && exp.datum_type() == f32::datum_type()
+                && got.datum_type() == f16::datum_type())
+                || exp.datum_type().unquantized() == got.datum_type().unquantized()
+            {
+                let exp = exp.cast_to_dt(got.datum_type())?;
+                exp.close_enough(got, true).with_context(|| {
+                    format!("Checking output {} (expected {:?}, got {:?}", ix, exp, got)
+                })?;
+                info!("Checked output #{}, ok.", ix);
+            } else {
                 bail!("Checking output {} (expected {:?}, got {:?}", ix, exp, got)
             }
-            let exp = exp.cast_to_dt(got.datum_type())?;
-            exp.close_enough(got, true).with_context(|| {
-                format!("Checking output {} (expected {:?}, got {:?}", ix, exp, got)
-            })?;
-            info!("Checked output #{}, ok.", ix);
         }
     }
 
