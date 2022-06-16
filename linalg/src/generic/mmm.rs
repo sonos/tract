@@ -71,6 +71,7 @@ where
     #[inline(always)]
     fn name() -> &'static str {
         match TI::datum_type() {
+            DatumType::F16 => "generic_f16_4x4",
             DatumType::F32 => "generic_f32_4x4",
             DatumType::I32 => "generic_i32_4x4",
             _ => panic!(),
@@ -224,6 +225,7 @@ where
     #[inline(always)]
     fn name() -> &'static str {
         match TI::datum_type() {
+            DatumType::F16 => "generic_f16_4x1",
             DatumType::F32 => "generic_f32_4x1",
             DatumType::I32 => "generic_i32_4x1",
             _ => panic!(),
@@ -377,6 +379,7 @@ where
     #[inline(always)]
     fn name() -> &'static str {
         match TI::datum_type() {
+            DatumType::F16 => "generic_f16_3x2",
             DatumType::F32 => "generic_f32_3x2",
             DatumType::I32 => "generic_i32_3x2",
             _ => panic!(),

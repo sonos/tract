@@ -38,7 +38,8 @@ pub fn handle(
         }
     }
 
-    crate::utils::check_outputs(&*outputs, &params.assertions.assert_outputs)?;
+    let allow_f32_to_f16 = matches.is_present("allow-f32-to-f16");
+    crate::utils::check_outputs(&*outputs, &params.assertions.assert_outputs, allow_f32_to_f16)?;
 
     if let Some(facts) = &params.assertions.assert_output_facts {
         let outputs: Vec<InferenceFact> =
@@ -87,8 +88,9 @@ fn run_regular(
             }
         }
         let allow_random_input = matches.is_present("allow-random-input");
+        let allow_f32_to_f16 = matches.is_present("allow-f32-to-f16");
         let mut results = tvec!();
-        let inputs = crate::tensor::retrieve_or_make_inputs(tract, params, allow_random_input)?;
+        let inputs = crate::tensor::retrieve_or_make_inputs(tract, params, allow_random_input, allow_f32_to_f16)?;
         let multiturn = inputs.len() > 1;
         for (turn, inputs) in inputs.into_iter().enumerate() {
             results = state.run_plan_with_eval(inputs, |session_state, state, node, input| {

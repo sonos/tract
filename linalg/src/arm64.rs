@@ -132,5 +132,6 @@ pub fn plug(ops: &mut Ops) {
     }
     if *KIND == Kind::CortexA55 {
         ops.mmm_f16 = Box::new(|_, _, _| { arm64fp16_mmm_f16_16x8_a55::mmm() });
+        ops.mmv_f16 = Box::new(|_, _| { arm64fp16_mmm_f16_128x1_a55::mmm() });
     }
 }

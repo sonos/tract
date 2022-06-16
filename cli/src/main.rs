@@ -115,6 +115,7 @@ fn main() -> tract_core::anyhow::Result<()> {
         .arg(arg!(--"optimize-step" [STEP] "Stop optimizing process after application of patch number N"))
         .arg(arg!(--"extract-decluttered-sub" [SUB] "Zoom on a subgraph after decluttering by parent node name"))
         .arg(arg!(--"half-floats" "Convert the decluttered network from f32 to f16"))
+        .arg(arg!(--"allow-f32-to-f16" "Allow casting provided input and output data from f32 and f16"))
 
         .arg(arg!(--"nnef-cycle" "Perform NNEF dump and reload before optimizing"))
 

@@ -672,8 +672,8 @@ impl Tensor {
             anyhow::bail!("Shape mismatch {:?} != {:?}", self.shape(), other.shape())
         }
         if approx {
-            let atol = if self.datum_type() == f16::datum_type() { 1e-3 } else { 5e-4 };
-            let rtol = if self.datum_type() == f16::datum_type() { 1e-2 } else { 1e-4 };
+            let atol = if self.datum_type() == f16::datum_type() { 1e-2 } else { 5e-4 };
+            let rtol = if self.datum_type() == f16::datum_type() { 1e-1 } else { 1e-4 };
             let ma = self.cast_to::<f32>()?;
             let ma = ma.to_array_view::<f32>()?;
             let mb = other.cast_to::<f32>()?;
