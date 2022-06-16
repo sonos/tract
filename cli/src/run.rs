@@ -1,9 +1,36 @@
+use std::fs::File;
+
 use crate::CliResult;
 use crate::{Model, Parameters};
 use ansi_term::Color::*;
+use ndarray_npy::{NpzWriter};
 use tract_hir::internal::*;
 #[cfg(feature = "pulse")]
 use tract_pulse::internal::*;
+
+/// Add a tensor entry into a npz file.
+fn npz_add_tensor(npz: &mut NpzWriter<File>, name: String, tensor: &Arc<Tensor>) -> CliResult<()> {
+    match tensor.datum_type() {
+        DatumType::F16 => npz.add_array(name, &tensor.cast_to::<f32>()?.to_array_view::<f32>()?)?,
+        DatumType::Bool => npz.add_array(name, &tensor.to_array_view::<bool>()?)?,
+        DatumType::U8 => npz.add_array(name, &tensor.to_array_view::<u8>()?)?,
+        DatumType::U16 => npz.add_array(name, &tensor.to_array_view::<u16>()?)?,
+        DatumType::U32 => npz.add_array(name, &tensor.to_array_view::<u32>()?)?,
+        DatumType::U64 => npz.add_array(name, &tensor.to_array_view::<u64>()?)?,
+        DatumType::I8 => npz.add_array(name, &tensor.to_array_view::<i8>()?)?,
+        DatumType::I16 => npz.add_array(name, &tensor.to_array_view::<i16>()?)?,
+        DatumType::I32 => npz.add_array(name, &tensor.to_array_view::<i32>()?)?,
+        DatumType::I64 => npz.add_array(name, &tensor.to_array_view::<i64>()?)?,
+        DatumType::F32 => npz.add_array(name, &tensor.to_array_view::<f32>()?)?,
+        DatumType::F64 => npz.add_array(name, &tensor.to_array_view::<f64>()?)?,
+        DatumType::QI8(_) => npz.add_array(name, &tensor.to_array_view::<i8>()?)?,
+        DatumType::QU8(_) => npz.add_array(name, &tensor.to_array_view::<u8>()?)?,
+        DatumType::QI32(_) => npz.add_array(name, &tensor.to_array_view::<i32>()?)?,
+        _ => warn!("Not writing {}, {:?}, unsupported type", name, tensor),
+    }
+
+    Ok(())
+}
 
 pub fn handle(
     params: &Parameters,
@@ -25,6 +52,18 @@ pub fn handle(
     if dump {
         for (ix, output) in outputs.iter().enumerate() {
             println!("output #{}\n{}\n", ix, output.dump(true)?);
+        }
+    }
+
+    if let Some(file_path) = sub_matches.value_of("save-outputs") {
+        let file = std::fs::File::create(file_path).with_context(|| format!("Creating {}", file_path))?;
+        let mut npz = ndarray_npy::NpzWriter::new_compressed(file);
+
+        for (ix, output) in outputs.iter().enumerate() {
+            let name = params.tract_model.outlet_label(params.tract_model.output_outlets()[ix])
+                .map(|name| name.to_string())
+                .unwrap_or_else(|| format!("output_{}", ix));
+            npz_add_tensor(&mut npz, name, output)?;
         }
     }
 
@@ -127,26 +166,7 @@ fn run_regular(
                         if multiturn {
                             name = format!("turn_{}/{}", turn, name);
                         }
-                        match t.datum_type() {
-                            DatumType::F16 => {
-                                npz.add_array(name, &t.cast_to::<f32>()?.to_array_view::<f32>()?)?
-                            }
-                            DatumType::F32 => npz.add_array(name, &t.to_array_view::<f32>()?)?,
-                            DatumType::F64 => npz.add_array(name, &t.to_array_view::<f64>()?)?,
-                            DatumType::I32 => npz.add_array(name, &t.to_array_view::<i32>()?)?,
-                            DatumType::I8 => npz.add_array(name, &t.to_array_view::<i8>()?)?,
-                            DatumType::U8 => npz.add_array(name, &t.to_array_view::<u8>()?)?,
-                            DatumType::QI8(_) => unsafe {
-                                npz.add_array(name, &t.to_array_view_unchecked::<i8>())?
-                            },
-                            DatumType::QU8(_) => unsafe {
-                                npz.add_array(name, &t.to_array_view_unchecked::<u8>())?
-                            },
-                            DatumType::QI32(_) => unsafe {
-                                npz.add_array(name, &t.to_array_view_unchecked::<i32>())?
-                            },
-                            _ => warn!("Not writing {}, {:?}, unsupported type", name, t),
-                        }
+                        npz_add_tensor(npz, name, t)?;
                     }
                 }
                 if assert_sane_floats {
