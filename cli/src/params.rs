@@ -108,6 +108,9 @@ pub struct Parameters {
     pub assertions: Assertions,
 
     pub machine_friendly: bool,
+
+    pub allow_random_input: bool,
+    pub allow_float_casts: bool,
 }
 
 #[cfg(feature = "tf")]
@@ -851,6 +854,9 @@ impl Parameters {
             }
         }
 
+        let allow_random_input: bool = matches.is_present("allow-random-input");
+        let allow_float_casts = matches.is_present("allow-float-casts");
+
         Self::pipeline(
             matches,
             probe,
@@ -870,6 +876,8 @@ impl Parameters {
                 input_values,
                 assertions,
                 machine_friendly: matches.is_present("machine-friendly"),
+                allow_random_input,
+                allow_float_casts,
             }
         })
     }

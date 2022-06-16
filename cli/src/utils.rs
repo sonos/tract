@@ -6,7 +6,7 @@ use tract_hir::internal::*;
 pub fn check_outputs(
     got: &[Arc<Tensor>],
     expected: &[Option<Arc<Tensor>>],
-    allow_f32_to_f16: bool,
+    allow_float_casts: bool,
 ) -> CliResult<()> {
     if got.len() != expected.len() {
         bail!("Number of output differ: got:{}, expected:{}", got.len(), expected.len())
@@ -14,7 +14,7 @@ pub fn check_outputs(
 
     for (ix, (got, exp)) in got.iter().zip(expected.iter()).enumerate() {
         if let Some(exp) = exp {
-            if (allow_f32_to_f16
+            if (allow_float_casts
                 && exp.datum_type() == f32::datum_type()
                 && got.datum_type() == f16::datum_type())
                 || exp.datum_type().unquantized() == got.datum_type().unquantized()

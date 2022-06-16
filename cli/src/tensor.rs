@@ -290,8 +290,6 @@ fn warn_once(msg: String) {
 pub fn retrieve_or_make_inputs(
     tract: &dyn Model,
     params: &Parameters,
-    allow_random: bool,
-    allow_f32_to_f16: bool,
 ) -> CliResult<Vec<TVec<Tensor>>> {
     let mut tmp: TVec<Vec<Tensor>> = tvec![];
     for input in tract.input_outlets() {
@@ -301,7 +299,10 @@ pub fn retrieve_or_make_inputs(
             if fact.compatible_with(&TypedFact::from(value[0].clone())) {
                 info!("Using fixed input for input called {} ({} turn(s))", name, value.len());
                 tmp.push(value.iter().map(|t| t.clone().into_tensor()).collect())
-            } else if fact.datum_type == f16::datum_type() && value[0].datum_type() == f32::datum_type() && allow_f32_to_f16 {
+            } else if fact.datum_type == f16::datum_type()
+                && value[0].datum_type() == f32::datum_type()
+                && params.allow_float_casts
+            {
                 tmp.push(value.iter().map(|t| t.cast_to::<f16>().unwrap().into_owned()).collect())
             } else if value.len() == 1
                 && tract.properties().contains_key("pulse.delay")
@@ -323,13 +324,14 @@ pub fn retrieve_or_make_inputs(
                 let output_delay = tract.properties()["pulse.delay"].as_slice::<i64>()?[0] as usize;
                 let last_frame = output_len + output_delay;
                 let needed_pulses = last_frame.divceil(output_pulse);
-                let mut values = vec!();
+                let mut values = vec![];
                 for ix in 0..needed_pulses {
-                    let mut t = Tensor::zero_dt(fact.datum_type, fact.shape.as_concrete().unwrap())?;
+                    let mut t =
+                        Tensor::zero_dt(fact.datum_type, fact.shape.as_concrete().unwrap())?;
                     let start = ix * input_pulse;
                     let end = (start + input_pulse).min(input_len);
                     if end > start {
-                        t.assign_slice(0..end-start, value, start..end, input_pulse_axis)?;
+                        t.assign_slice(0..end - start, value, start..end, input_pulse_axis)?;
                     }
                     values.push(t);
                 }
@@ -338,7 +340,7 @@ pub fn retrieve_or_make_inputs(
             } else {
                 bail!("For input {}, can not reconcile model input fact {:?} with provided input {:?}", name, fact, value[0]);
             };
-        } else if allow_random {
+        } else if params.allow_random_input {
             let fact = tract.outlet_typedfact(*input)?;
             warn_once(format!("Using random input for input called {:?}: {:?}", name, fact));
             tmp.push(vec![crate::tensor::tensor_for_fact(&fact, None)?]);
