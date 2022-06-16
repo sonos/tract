@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use tract_nnef::{
     internal::*,
     tract_ndarray::{s, ArrayView1},
@@ -107,14 +109,8 @@ impl BoxRepr {
 
 #[derive(Debug, Clone, Hash)]
 pub struct NonMaxSuppression {
-    center_point_box: BoxRepr,
-    num_selected_indices_symbol: Symbol,
-}
-
-impl NonMaxSuppression {
-    pub fn new(center_point_box: BoxRepr) -> Self {
-        Self { center_point_box, num_selected_indices_symbol: Symbol::new('n') }
-    }
+    pub center_point_box: BoxRepr,
+    pub num_selected_indices_symbol: Symbol,
 }
 
 impl_dyn_hash!(NonMaxSuppression);
@@ -162,10 +158,6 @@ impl EvalOp for NonMaxSuppression {
         let boxes = boxes.to_array_view::<f32>()?;
         let scores = scores.to_array_view::<f32>()?;
 
-        if scores.iter().any(|el| el.is_nan()) {
-            bail!("scores must not be NaN");
-        }
-
         // items: (batch, class, index)
         let mut selected_global: TVec<(usize, usize, usize)> = tvec![];
 
@@ -182,8 +174,7 @@ impl EvalOp for NonMaxSuppression {
                         (0..num_dim).map(|i| (scores[[batch, class, i]], i)).collect()
                     };
 
-                // unwrap: cannot panic because of the NaN check before
-                candidates.sort_by(|(a, _), (b, _)| b.partial_cmp(a).unwrap());
+                candidates.sort_by(|(a, _), (b, _)| b.partial_cmp(a).unwrap_or(Ordering::Equal));
 
                 // items: (score, index)
                 let mut selected_in_class: TVec<(f32, usize)> = tvec![];
@@ -220,7 +211,7 @@ impl EvalOp for NonMaxSuppression {
 
 impl TypedOp for NonMaxSuppression {
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec![i64::fact([TDim::Sym(self.num_selected_indices_symbol), 3usize.to_dim()])])
+        Ok(tvec![i64::fact([self.num_selected_indices_symbol.to_dim(), 3usize.to_dim()])])
     }
 
     as_op!();
@@ -228,12 +219,12 @@ impl TypedOp for NonMaxSuppression {
 
 fn parameters() -> Vec<Parameter> {
     vec![
-        TypeName::Scalar.tensor().named("boxes"),
+        TypeName::Integer.tensor().named("boxes"),
         TypeName::Scalar.tensor().named("scores"),
-        TypeName::Integer.named("center_point_box").default(0),
         TypeName::Integer.named("max_output_boxes_per_class").default(0),
         TypeName::Scalar.named("iou_threshold").default(0.0),
         TypeName::Scalar.named("score_threshold"),
+        TypeName::Integer.named("center_point_box").default(0),
     ]
 }
 
@@ -276,7 +267,7 @@ fn load(
     let center_point_box =
         BoxRepr::from_i64(invocation.named_arg_as(builder, "center_point_box")?)?;
 
-    let op = NonMaxSuppression::new(center_point_box);
+    let op = NonMaxSuppression { center_point_box, num_selected_indices_symbol: Symbol::new('n') };
     if let Some(score_threshold) = score_threshold {
         builder
             .wire(op, &[boxes, scores, max_output_boxes_per_class, iou_threshold, score_threshold])

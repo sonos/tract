@@ -7,7 +7,8 @@ pub fn non_max_suppression(
     _ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let center_point_box = BoxRepr::from_i64( node.get_attr_opt("center_point_box")?.unwrap_or(0i64))?;
+    let center_point_box =
+        BoxRepr::from_i64(node.get_attr_opt("center_point_box")?.unwrap_or(0i64))?;
 
     let mut options = crate::model::optional_inputs(node).skip(2);
     Ok((
@@ -16,6 +17,7 @@ pub fn non_max_suppression(
             optional_iou_threshold_input: options.next().unwrap(),
             optional_score_threshold_input: options.next().unwrap(),
             center_point_box,
+            num_selected_indices_symbol: Symbol::new('n'),
         }),
         vec![],
     ))
@@ -27,6 +29,7 @@ struct NonMaxSuppression {
     optional_iou_threshold_input: Option<usize>,
     optional_score_threshold_input: Option<usize>,
     center_point_box: BoxRepr,
+    num_selected_indices_symbol: Symbol,
 }
 
 impl_dyn_hash!(NonMaxSuppression);
@@ -53,6 +56,7 @@ impl Expansion for NonMaxSuppression {
 
         // [out] selected_indices: shape=[num_selected_indices, 3], type=int64
         s.equals(&outputs[0].rank, 2)?;
+        s.equals(&outputs[0].shape[0], self.num_selected_indices_symbol.to_dim())?;
         s.equals(&outputs[0].shape[1], 3usize.to_dim())?;
         s.equals(&outputs[0].datum_type, i64::datum_type())?;
 
@@ -102,7 +106,10 @@ impl Expansion for NonMaxSuppression {
     ) -> TractResult<TVec<OutletId>> {
         model.wire_node(
             name,
-            tract_onnx_opl::non_max_suppression::NonMaxSuppression::new(self.center_point_box),
+            tract_onnx_opl::non_max_suppression::NonMaxSuppression {
+                center_point_box: self.center_point_box,
+                num_selected_indices_symbol: self.num_selected_indices_symbol,
+            },
             inputs,
         )
     }

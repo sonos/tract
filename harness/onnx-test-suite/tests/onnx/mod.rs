@@ -88,7 +88,16 @@ pub fn run_one<P: AsRef<path::Path>>(
     };
     let model_file = path.join("model.onnx");
     info!("Loading {:?}", model_file);
-    let onnx = onnx();
+    let mut onnx = onnx();
+
+    // hack: some tests (test_nonmaxsuppression_*) include the output shapes in the onnx model
+    // even though there should be no way of knowing them at optimization time. This breaks
+    // the solver.
+    if more.contains(&"onnx-ignore-output-shape") {
+        onnx = onnx.with_ignore_output_shapes(true);
+    }
+
+
     let nnef = tract_nnef::nnef().with_onnx();
     trace!("Proto Model:\n{:#?}", onnx.proto_model_for_path(&model_file));
     for d in fs::read_dir(&path)? {
