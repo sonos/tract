@@ -23,16 +23,7 @@ pub fn handle(
             .tract_model
             .downcast_ref::<TypedModel>()
             .context("Can only profile typed models")?;
-        let allow_random_input = matches.is_present("allow-random-input");
-        let allow_f32_tof16 = matches.is_present("allow-f32-to-f16");
-        crate::profile::profile(
-            model,
-            bench_limits,
-            &mut annotations,
-            params,
-            allow_random_input,
-            allow_f32_tof16,
-        )?;
+        crate::profile::profile(model, bench_limits, &mut annotations, params)?;
     }
 
     if let Some(asserts) = &params.assertions.assert_output_facts {

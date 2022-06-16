@@ -38,8 +38,8 @@ pub fn handle(
         }
     }
 
-    let allow_f32_to_f16 = matches.is_present("allow-f32-to-f16");
-    crate::utils::check_outputs(&*outputs, &params.assertions.assert_outputs, allow_f32_to_f16)?;
+    let allow_float_casts = matches.is_present("allow-float-casts");
+    crate::utils::check_outputs(&*outputs, &params.assertions.assert_outputs, allow_float_casts)?;
 
     if let Some(facts) = &params.assertions.assert_output_facts {
         let outputs: Vec<InferenceFact> =
@@ -62,7 +62,7 @@ pub fn handle(
 fn run_regular(
     tract: &dyn Model,
     params: &Parameters,
-    matches: &clap::ArgMatches,
+    _matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
 ) -> CliResult<TVec<Arc<Tensor>>> {
     let steps = sub_matches.is_present("steps");
@@ -87,10 +87,8 @@ fn run_regular(
                     state.session_state.resolved_symbols.with(sym, value);
             }
         }
-        let allow_random_input = matches.is_present("allow-random-input");
-        let allow_f32_to_f16 = matches.is_present("allow-f32-to-f16");
         let mut results = tvec!();
-        let inputs = crate::tensor::retrieve_or_make_inputs(tract, params, allow_random_input, allow_f32_to_f16)?;
+        let inputs = crate::tensor::retrieve_or_make_inputs(tract, params)?;
         let multiturn = inputs.len() > 1;
         for (turn, inputs) in inputs.into_iter().enumerate() {
             results = state.run_plan_with_eval(inputs, |session_state, state, node, input| {

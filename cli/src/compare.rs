@@ -13,60 +13,25 @@ use crate::*;
 
 pub fn handle(
     params: &mut Parameters,
-    matches: &clap::ArgMatches,
+    _matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
     output_params: DisplayParams,
 ) -> CliResult<()> {
     let cumulative = sub_matches.is_present("cumulative");
     let resilent = sub_matches.is_present("resilient");
-    let allow_random_input: bool = matches.is_present("allow-random-input");
-    let allow_f32_to_f16 = matches.is_present("allow-f32-to-f16");
     if sub_matches.value_of("stage").is_some() {
         // --with is by pipeline and put in params
-        return handle_reference_stage(
-            cumulative,
-            params,
-            &output_params,
-            allow_random_input,
-            allow_f32_to_f16,
-        );
+        return handle_reference_stage(cumulative, params, &output_params);
     } else if let Some(npz) = sub_matches.value_of("npz") {
-        return handle_npz(
-            cumulative,
-            npz,
-            params,
-            &output_params,
-            allow_random_input,
-            allow_f32_to_f16,
-        );
+        return handle_npz(cumulative, npz, params, &output_params);
     } else if sub_matches.is_present("twice") {
-        return handle_twice(
-            cumulative,
-            params,
-            &output_params,
-            allow_random_input,
-            allow_f32_to_f16,
-        );
+        return handle_twice(cumulative, params, &output_params);
     }
     if let Some(pbdir) = sub_matches.value_of("pbdir") {
-        return handle_pbdir(
-            cumulative,
-            pbdir,
-            params,
-            &output_params,
-            allow_random_input,
-            allow_f32_to_f16,
-        );
+        return handle_pbdir(cumulative, pbdir, params, &output_params);
     }
     if sub_matches.is_present("tf") {
-        return handle_tensorflow(
-            cumulative,
-            resilent,
-            params,
-            &output_params,
-            allow_random_input,
-            allow_f32_to_f16,
-        );
+        return handle_tensorflow(cumulative, resilent, params, &output_params);
     }
     bail!("No comparison target found")
 }
@@ -77,8 +42,6 @@ pub fn handle_tensorflow(
     _resilient: bool,
     _params: &mut Parameters,
     _output_params: &DisplayParams,
-    _allow_random_input: bool,
-    _allow_f32_to_f16: bool,
 ) -> CliResult<()> {
     bail!("`tf` feature is required for this to work");
 }
@@ -89,8 +52,6 @@ pub fn handle_tensorflow(
     resilient: bool,
     params: &mut Parameters,
     output_params: &DisplayParams,
-    allow_random_input: bool,
-    allow_f32_to_f16: bool,
 ) -> CliResult<()> {
     let tract = &params.tract_model;
     let mut tf = params.tf_model.take().unwrap();
@@ -163,8 +124,6 @@ pub fn handle_npz(
     npz: &str,
     params: &Parameters,
     output_params: &DisplayParams,
-    allow_random_input: bool,
-    allow_f32_to_f16: bool,
 ) -> CliResult<()> {
     use tensor::for_npz;
     let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(npz)?)?;
@@ -196,8 +155,6 @@ pub fn handle_npz(
         &values,
         &params,
         output_params,
-        allow_random_input,
-        allow_f32_to_f16
     ))
 }
 
@@ -217,8 +174,6 @@ pub fn handle_pbdir(
     pbdir: &str,
     params: &Parameters,
     output_params: &DisplayParams,
-    allow_random_input: bool,
-    allow_f32_to_f16: bool,
 ) -> CliResult<()> {
     let mut values: HashMap<String, Vec<CliResult<Arc<Tensor>>>> = HashMap::new();
     for entry in fs::read_dir(pbdir)? {
@@ -234,8 +189,6 @@ pub fn handle_pbdir(
         &values,
         &params,
         output_params,
-        allow_random_input,
-        allow_f32_to_f16
     ))
 }
 
@@ -243,41 +196,24 @@ pub fn handle_twice(
     cumulative: bool,
     params: &Parameters,
     output_params: &DisplayParams,
-    allow_random_input: bool,
-    allow_f32_to_f16: bool,
 ) -> CliResult<()> {
     let reference_model =
         params.tract_model.downcast_ref::<TypedModel>().context("Only work with a typed model")?;
-    handle_with_model(
-        cumulative,
-        params,
-        output_params,
-        &reference_model,
-        allow_random_input,
-        allow_f32_to_f16,
-    )
+    handle_with_model(cumulative, params, output_params, &reference_model)
 }
 
 pub fn handle_reference_stage(
     cumulative: bool,
     params: &Parameters,
     output_params: &DisplayParams,
-    allow_random_input: bool,
-    allow_f32_to_f16: bool,
 ) -> CliResult<()> {
+    debug!("Computing results for reference stage");
     let reference_model =
         params.reference_model.as_ref().context("No reference model. need --with ?")?;
     let reference_model = reference_model
         .downcast_ref::<TypedModel>()
         .context("Only work with a typed reference model")?;
-    handle_with_model(
-        cumulative,
-        params,
-        output_params,
-        &reference_model,
-        allow_random_input,
-        allow_f32_to_f16,
-    )
+    handle_with_model(cumulative, params, output_params, &reference_model)
 }
 
 pub fn handle_with_model(
@@ -285,19 +221,12 @@ pub fn handle_with_model(
     params: &Parameters,
     output_params: &DisplayParams,
     reference_model: &TypedModel,
-    allow_random_input: bool,
-    allow_f32_to_f16: bool,
 ) -> CliResult<()> {
     let mut values: HashMap<String, Vec<CliResult<Arc<Tensor>>>> = HashMap::new();
 
     let plan = SimplePlan::new(reference_model)?;
     let mut state = SimpleState::new(plan)?;
-    for inputs in crate::tensor::retrieve_or_make_inputs(
-        reference_model,
-        params,
-        allow_random_input,
-        allow_f32_to_f16,
-    )? {
+    for inputs in crate::tensor::retrieve_or_make_inputs(reference_model, params)? {
         state.run_plan_with_eval(inputs, |session, state, node, input| -> TractResult<_> {
             let result: TVec<Arc<Tensor>> = tract_core::plan::eval(session, state, node, input)?;
             if node.outputs.len() == 1 {
@@ -319,8 +248,6 @@ pub fn handle_with_model(
         &values,
         params,
         output_params,
-        allow_random_input,
-        allow_f32_to_f16
     ))
 }
 
@@ -330,14 +257,13 @@ pub fn compare<F, O>(
     all_values: &HashMap<String, Vec<CliResult<Arc<Tensor>>>>,
     params: &Parameters,
     output_params: &DisplayParams,
-    allow_random_input: bool,
-    allow_f32_to_f16: bool,
 ) -> CliResult<()>
 where
     F: Fact + Clone + for<'a> From<&'a Tensor> + Hash,
     O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone + Hash,
     Graph<F, O>: Model,
 {
+    debug!("Obtained reference data, starting test run");
     // Execute the model step-by-step on tract.
     let plan = SimplePlan::new(tract)?;
     let mut state = SimpleState::new(plan)?;
@@ -353,11 +279,8 @@ where
     }
     let all_values: HashMap<String, &Vec<CliResult<Arc<Tensor>>>> =
         all_values.iter().map(|(k, v)| (canonic(k), v)).collect();
-    for (turn, inputs) in
-        tensor::retrieve_or_make_inputs(tract, params, allow_random_input, allow_f32_to_f16)?
-            .into_iter()
-            .enumerate()
-    {
+    let model_inputs = tensor::retrieve_or_make_inputs(tract, params)?;
+    for (turn, inputs) in model_inputs.into_iter().enumerate() {
         state.run_plan_with_eval(
             inputs,
             |session_state, state, node, input| -> TractResult<TVec<Arc<Tensor>>> {
@@ -376,18 +299,18 @@ where
                             .and_then(get_value)
                             .or_else(|| get_value(&node.name))
                             .map(|t| {
-                                // big ugly, doing this for the npz case, where model is not
-                                // exploited at all, so quantization information is erased.
                                 let needed_type =
                                     node.outputs[ix].fact.to_typed_fact().unwrap().datum_type;
-                                if needed_type != t.datum_type()
-                                    && needed_type.unquantized() == t.datum_type().unquantized()
-                                {
+                                if needed_type == t.datum_type() {
+                                    t
+                                } else if needed_type.unquantized() == t.datum_type().unquantized() {
                                     let mut t = t.into_tensor();
                                     unsafe { t.set_datum_type(needed_type) };
                                     t.into_arc_tensor()
+                                } else if needed_type.is_float() && t.datum_type().is_float() {
+                                    t.cast_to_dt(needed_type).unwrap().into_owned().into_arc_tensor()
                                 } else {
-                                    t
+                                    panic!("Comparing incompatible types")
                                 }
                             })
                     })
@@ -405,7 +328,6 @@ where
                     failing.insert(node.id);
                 } else {
                     let obtained = tract_core::plan::eval(session_state, state, node, input);
-
                     match obtained {
                         Err(e) => {
                             error = Some(format!("{}: {}", Red.bold().paint("ERROR"), e));

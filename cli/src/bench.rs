@@ -4,7 +4,7 @@ use readings_probe::Probe;
 use std::time::{Duration, Instant};
 use tract_hir::internal::*;
 
-pub fn criterion(params: &Parameters, matches: &clap::ArgMatches) -> CliResult<()> {
+pub fn criterion(params: &Parameters, _matches: &clap::ArgMatches) -> CliResult<()> {
     let model =
         params.tract_model.downcast_ref::<TypedModel>().context("Can only bench TypedModel")?;
     let plan = SimplePlan::new(model)?;
@@ -12,22 +12,14 @@ pub fn criterion(params: &Parameters, matches: &clap::ArgMatches) -> CliResult<(
 
     let mut crit = criterion::Criterion::default();
     let mut group = crit.benchmark_group("net");
-    let allow_random_input = matches.is_present("allow-random-input");
-    let allow_f32_to_f16 = matches.is_present("allow-f32-to-f16");
-    let inputs = crate::tensor::retrieve_or_make_inputs(
-        model,
-        params,
-        allow_random_input,
-        allow_f32_to_f16,
-    )?
-    .remove(0);
+    let inputs = crate::tensor::retrieve_or_make_inputs(model, params)?.remove(0);
     group.bench_function("run", move |b| b.iter(|| state.run(inputs.clone())));
     Ok(())
 }
 
 pub fn handle(
     params: &Parameters,
-    matches: &clap::ArgMatches,
+    _matches: &clap::ArgMatches,
     limits: &BenchLimits,
     probe: Option<&Probe>,
 ) -> CliResult<()> {
@@ -39,15 +31,7 @@ pub fn handle(
     let progress = probe.and_then(|m| m.get_i64("progress"));
     info!("Starting bench itself");
     let mut iters = 0;
-    let allow_random_input = matches.is_present("allow-random-input");
-    let allow_f32_to_f16 = matches.is_present("allow-f32-to-f16");
-    let inputs = crate::tensor::retrieve_or_make_inputs(
-        model,
-        params,
-        allow_random_input,
-        allow_f32_to_f16,
-    )?
-    .remove(0);
+    let inputs = crate::tensor::retrieve_or_make_inputs(model, params)?.remove(0);
     let start = Instant::now();
     while iters < limits.max_iters && start.elapsed() < limits.max_time {
         if let Some(mon) = probe {
