@@ -183,6 +183,7 @@ fn main() -> tract_core::anyhow::Result<()> {
     let run = clap::Command::new("run")
         .long_about("Run the graph")
         .arg(Arg::new("dump").long("dump").help("Show output"))
+        .arg(Arg::new("save-outputs").long("save-outputs").takes_value(true).help("Save the outputs into a npz file"))
         .arg(Arg::new("steps").long("steps").help("Show all inputs and outputs"))
         .arg(
             Arg::new("set")
@@ -196,7 +197,7 @@ fn main() -> tract_core::anyhow::Result<()> {
             Arg::new("save-steps")
                 .long("save-steps")
                 .takes_value(true)
-                .help("Save intermediary values"),
+                .help("Save intermediary values as a npz file"),
         )
         .arg(
             Arg::new("assert-sane-floats")
