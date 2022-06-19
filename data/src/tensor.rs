@@ -157,7 +157,7 @@ impl Tensor {
         } as *mut u8;
         let mut tensor = Tensor { strides: tvec!(), layout, dt, shape: shape.into(), data, len: 0 };
         #[cfg(debug_assertions)]
-        {
+        if !data.is_null() {
             if dt == DatumType::F32 {
                 tensor.as_slice_mut_unchecked::<f32>().iter_mut().for_each(|f| *f = std::f32::NAN)
             } else {
@@ -603,14 +603,16 @@ impl Tensor {
             let dst_start = (stride * range.start) as isize;
             let src_start = (stride * src_range.start) as isize;
             let len = stride * range.len();
-            if self.data != src.data {
-                std::ptr::copy_nonoverlapping(
-                    src.data.offset(src_start),
-                    self.data.offset(dst_start),
-                    len,
-                );
-            } else {
-                std::ptr::copy(src.data.offset(src_start), self.data.offset(dst_start), len);
+            if len > 0 {
+                if self.data != src.data {
+                    std::ptr::copy_nonoverlapping(
+                        src.data.offset(src_start),
+                        self.data.offset(dst_start),
+                        len,
+                    );
+                } else {
+                    std::ptr::copy(src.data.offset(src_start), self.data.offset(dst_start), len);
+                }
             }
         } else {
             dispatch_datum!(assign_slice_t(self.datum_type())(self, range, src, src_range, axis));
@@ -776,7 +778,11 @@ impl Tensor {
 
     /// Access the data as a slice.
     pub unsafe fn as_slice_unchecked<D: Datum>(&self) -> &[D] {
-        std::slice::from_raw_parts::<D>(self.data as *const D, self.len())
+        if self.data.is_null() {
+            &[]
+        } else {
+            std::slice::from_raw_parts::<D>(self.data as *const D, self.len())
+        }
     }
 
     /// Access the data as a mutable slice.
@@ -813,11 +819,19 @@ impl Tensor {
     }
 
     pub unsafe fn as_bytes(&self) -> &[u8] {
-        std::slice::from_raw_parts(self.data, self.layout.size())
+        if self.data.is_null() {
+            &[]
+        } else {
+            std::slice::from_raw_parts(self.data, self.layout.size())
+        }
     }
 
     pub unsafe fn as_bytes_mut(&mut self) -> &mut [u8] {
-        std::slice::from_raw_parts_mut(self.data, self.layout.size())
+        if self.data.is_null() {
+            &mut []
+        } else {
+            std::slice::from_raw_parts_mut(self.data, self.layout.size())
+        }
     }
 
     unsafe fn is_uniform_t<T: Datum>(&self) -> bool {
@@ -1197,8 +1211,12 @@ impl Tensor {
         } else {
             unsafe {
                 let tensor = Tensor::uninitialized_dt(self.datum_type(), self.shape()).unwrap();
-                self.data
-                    .copy_to_nonoverlapping(tensor.data, self.len() * self.datum_type().size_of());
+                if self.len() > 0 {
+                    self.data.copy_to_nonoverlapping(
+                        tensor.data,
+                        self.len() * self.datum_type().size_of(),
+                    );
+                }
                 tensor
             }
         }
