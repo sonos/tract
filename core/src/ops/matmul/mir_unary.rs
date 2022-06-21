@@ -131,13 +131,21 @@ impl TypedOp for MatMulUnary {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        Ok(if let Some(patch) = self.declutter_precusor_is_concat(model, node)? {
-            Some(patch)
-        } else if let Some(patch) = self.declutter_successors_are_slices(model, node)? {
-            Some(patch)
-        } else {
-            None
-        })
+        Ok(
+            if let Some(patch) = self
+                .declutter_precusor_is_concat(model, node)
+                .context("declutter precursor is concat")?
+            {
+                Some(patch)
+            } else if let Some(patch) = self
+                .declutter_successors_are_slices(model, node)
+                .context("declutter succsessors are slice")?
+            {
+                Some(patch)
+            } else {
+                None
+            },
+        )
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
@@ -282,10 +290,7 @@ impl MatMulUnary {
                             patch.tap_model(model, concat_node.inputs[input - 1])?
                         }
                     };
-                    let mut a = self.a.slice(k_axis, offsets[ix], offsets[ix + 1])?;
-                    while a.rank() > 0 && a.shape()[0] == 1 {
-                        a.remove_axis(0)?;
-                    }
+                    let a = self.a.slice(k_axis, offsets[ix], offsets[ix + 1])?;
                     let wire = patch.wire_node(
                         format!("{}.k-{}-{}", node.name, offsets[ix], offsets[ix + 1]),
                         MatMulUnary { a: a.into_arc_tensor(), ..self.clone() },
