@@ -1,0 +1,23 @@
+// vim: set syntax=asm :
+
+{{L}}{{label}}:
+    mov             rax, [ rdi + 8 ]
+
+{% capture mr_over_16 %}{{ mr | divided_by: 16}}{%endcapture%}
+{% capture mr_over_16_min_1 %}{{ mr | divided_by: 16 | minus: 1}}{%endcapture%}
+
+{% for ix in (0..mr_over_16_min_1) %}
+    vmovups         zmm{{to | plus: 1 | plus: ix}},  [rax + {{ix | times: 64}}]
+{% endfor %}
+
+{% if flipped %}
+    {% for acc in (from..to) %}
+        {{op}} zmm{{acc}}, zmm{{acc}}, zmm{{ acc | modulo: mr_over_16 | plus: to | plus: 1 }}
+    {% endfor %}
+{% else %}
+    {% for acc in (from..to) %}
+        {{op}} zmm{{acc}}, zmm{{ acc | modulo: mr_over_16 | plus: to | plus: 1 }}, zmm{{acc}}
+    {% endfor %}
+{% endif %}
+
+    jmp {{L}}non_linear_loop

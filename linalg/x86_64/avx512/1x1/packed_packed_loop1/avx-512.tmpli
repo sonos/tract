@@ -1,0 +1,7 @@
+	vbroadcastss    zmm15,  dword ptr [rcx]
+
+    vmovaps     zmm8, [rax + 0]
+    vfmadd231ps     zmm0, zmm15, zmm8
+
+    add rcx, 4
+	add rax, 64

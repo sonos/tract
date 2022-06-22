@@ -37,6 +37,7 @@ half = "2"
 [dev-dependencies]
 criterion = "0.3.5"
 proptest = "1.0.0"
+core_affinity = "0.5.10"
 
 [[bench]]
 bench = false
@@ -89,4 +90,8 @@ harness = false
 
 [[bench]]
 name = "x86_64"
+harness = false
+
+[[bench]]
+name = "intel"
 harness = false

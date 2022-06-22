@@ -15,7 +15,8 @@ fn use_masm() -> bool {
 fn needs_pragma() -> bool {
     // This will add the following to the asm templates if true:
     // .cpu generic+fp+simd+fp16
-   !cc::Build::new().get_compiler().is_like_clang() && !cc::Build::new().get_compiler().is_like_gnu()
+    !cc::Build::new().get_compiler().is_like_clang()
+        && !cc::Build::new().get_compiler().is_like_gnu()
 }
 
 fn jump_table() -> Vec<String> {
@@ -39,8 +40,8 @@ fn main() {
 
     match arch.as_ref() {
         "x86_64" => {
-            let files = preprocess_files("x86_64/fma", &[], &suffix);
-
+            let mut files = preprocess_files("x86_64/fma", &[], &suffix);
+            files.extend(preprocess_files("x86_64/avx512", &[], &suffix));
             match os.as_ref() {
                 "windows" => {
                     if use_masm() {
@@ -238,6 +239,8 @@ fn preprocess_file(
     .to_owned();
     let long = if msvc { "dd" } else { ".long" };
     let g = if os == "macos" || os == "ios" { "_" } else { "" };
+    // note: use .align with bytes instead of p2align since they both use direct bytes.
+    let align = if msvc { "align" } else { ".align" };
     let mut globals = liquid::object!({
         "msvc": msvc,
         "needs_pragma": needs_pragma,
@@ -248,6 +251,7 @@ fn preprocess_file(
         "suffix": suffix,
         "long": long,
         "jump_table": jump_table(),
+        "align": align,
     });
     for (k, v) in variants {
         globals.insert(k.to_string().into(), liquid::model::Value::scalar(*v));
@@ -273,8 +277,9 @@ fn load_partials(p: &path::Path, msvc: bool) -> liquid::partials::InMemorySource
         if f.path().is_dir() {
             continue;
         }
-        let ext = f.path().extension().map(|s| s.to_string_lossy()).unwrap_or_else(|| "".into());
-        let text = std::fs::read_to_string(f.path()).unwrap();
+
+        let ext = f.path().extension().map(|s| s.to_string_lossy()).unwrap_or("".into());
+        let text = std::fs::read_to_string(f.path()).expect(&format!("file {:?}", f));
         let text = match ext.as_ref() {
             "tmpli" => Some(text.replace("{{", "{").replace("}}", "}")),
             "tmpliq" => Some(text),
@@ -285,6 +290,7 @@ fn load_partials(p: &path::Path, msvc: bool) -> liquid::partials::InMemorySource
             let key =
                 f.path().strip_prefix(p).unwrap().to_str().unwrap().to_owned().replace('\\', "/");
             println!("cargo:rerun-if-changed={}", f.path().to_string_lossy().replace('\\', "/"));
+
             mem.add(key, text);
         }
     }

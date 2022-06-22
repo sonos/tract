@@ -21,7 +21,7 @@ Windows ABI:
 */
 {% endcomment %}
 
-{% include "preamble.tmpliq" size:"32x3", suffix:suffix, G:G %}
+{% include "preamble.tmpliq" size:"32x3", suffix:suffix, G:G, arch:"fma" %}
 
 {{L}}clear:
     vzeroall
@@ -38,8 +38,6 @@ Windows ABI:
 {{L}}main_loop_packed_packed:
     {% include "4x3/packed_packed_loop1/avx.tmpli" %}
 
-    add             rcx,    12
-    add             rax,    128
     dec             rbx
     jnz             {{L}}main_loop_packed_packed
 
@@ -156,4 +154,4 @@ Windows ABI:
     {% endfor %}
     jmp     {{L}}non_linear_loop
 
-{% include "postamble.tmpliq" size:"32x3", suffix:suffix, G:G, L:L %}
+{% include "postamble.tmpliq" size:"32x3", suffix:suffix, G:G, L:L, arch:"fma" %}
