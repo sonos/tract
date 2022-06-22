@@ -2,7 +2,8 @@
 	// Accumulators: 0-7
 	// Col regs: 8-14
 	// Row regs: 15
-    vbroadcastss    ymm15,  dword ptr [rcx]
+
+	vbroadcastss    ymm15,  dword ptr [rcx]
 
     vmovaps         ymm8, [rax + 0]
 	vmovaps         ymm9, [rax + 32]
@@ -24,5 +25,9 @@
     vfmadd231ps     ymm4, ymm12, ymm15
     vfmadd231ps     ymm5, ymm13, ymm15
 
+
     vfmadd231ps     ymm6, ymm14, ymm15
     vfmadd231ps     ymm7, ymm11, ymm15
+
+    add rcx, 4
+	add rax, 256

@@ -100,9 +100,11 @@ pub fn run_bench<T, F: FnMut() -> T>(mut f: F) -> f64 {
     }
     measures
         .sort_by(|a, b| if a < b { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater });
+
     let q1 = measures[chunks / 4];
     let q3 = measures[chunks - chunks / 4];
     let iq = q3 - q1;
+
     measures.retain(|&x| x >= q1 - 3. * iq && x <= q3 + 3. * iq);
     measures.iter().copied().sum::<f64>() / measures.len() as f64
 }

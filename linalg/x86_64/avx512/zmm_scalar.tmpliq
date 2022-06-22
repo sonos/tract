@@ -1,0 +1,15 @@
+// vim: set syntax=asm :
+
+{{L}}{{label}}:
+    vbroadcastss    zmm12, dword ptr [rdi + 8]
+    {% if flipped %}
+        {% for reg in (from..to) %}
+            {{op}}          zmm{{reg}}, zmm{{reg}}, zmm12
+        {% endfor %}
+    {% else %}
+        {% for reg in (from..to) %}
+            {{op}}          zmm{{reg}}, zmm12, zmm{{reg}}
+        {% endfor %}
+    {% endif %}
+
+    jmp    {{L}}non_linear_loop

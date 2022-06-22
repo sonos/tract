@@ -1,14 +1,14 @@
 // vim: set syntax=asm :
 
 {{L}}{{label}}:
-    vbroadcastss    ymm12, dword ptr [rdi + 8]
+    vbroadcastss    {{arch|default:"ymm"}}12, dword ptr [rdi + 8]
     {% if flipped %}
         {% for reg in (from..to) %}
-            {{op}}          ymm{{reg}}, ymm{{reg}}, ymm12
+            {{op}}          {{arch|default:"ymm"}}{{reg}}, {{arch|default:"ymm"}}{{reg}}, {{arch|default:"ymm"}}12
         {% endfor %}
     {% else %}
         {% for reg in (from..to) %}
-            {{op}}          ymm{{reg}}, ymm12, ymm{{reg}}
+            {{op}}          {{arch|default:"ymm"}}{{reg}}, {{arch|default:"ymm"}}12, {{arch|default:"ymm"}}{{reg}}
         {% endfor %}
     {% endif %}
 

@@ -90,6 +90,7 @@ tensorflow = "0.17.0"
 tokenizers = "0.13"
 unicode-normalization = "0.1.19"
 walkdir = "2.3.2"
+core_affinity = "0.5.10"
 
 [profile.opt-no-lto]
 inherits="release"

@@ -22,31 +22,34 @@ Windows ABI:
 */
 {% endcomment %}
 
-{% include "preamble.tmpliq" size:"64x1", suffix:suffix, G:G %}
+{% include "preamble.tmpliq" size:"64x1", suffix:suffix, G:G, arch:"fma" %}
 
 {{L}}clear:
     vzeroall
     jmp     {{L}}non_linear_loop
 
 {{L}}add_mat_mul:
-    mov     rbx,    [rdi + 24]   // B
+    mov     rcx,    [rdi + 24]   // B
     mov     rax,    [rdi + 16]   // A
 
-    mov     rcx,    [rdi + 8]    // k
-    test    rcx,    rcx
+    mov     rbx,    [rdi + 8]    // k
+    test    rbx,    rbx
     jz      {{L}}non_linear_loop
 
+	test rbx, 1
+	jz {{L}}main_loop_packed_packed
+	{% include "8x1/packed_packed_loop1/avx.tmpli" %}
+
+    dec             rbx
+    jnz             {{L}}main_loop_packed_packed
+    jmp             {{L}}non_linear_loop
+
+
+{{align}} 16
 {{L}}main_loop_packed_packed:
-    vbroadcastss    ymm14,  dword ptr [rbx]
+	{% include "8x1/packed_packed_loop1/avx-unroll.tmpli" %}
 
-{% for i in (0..7) %}
-    vmovaps         ymm12, [rax + {{i | times: 32}}]
-    vfmadd231ps     ymm{{i}}, ymm12, ymm14
-{% endfor %}
-
-    add             rbx,    4
-    add             rax,    256
-    dec             rcx
+    sub             rbx, 2
     jnz             {{L}}main_loop_packed_packed
 
     jmp             {{L}}non_linear_loop
@@ -56,10 +59,21 @@ Windows ABI:
 {% include "fma_mmm_f32_per_cols.tmpliq" mr:64, from:0, to:7 %}
 
 {{L}}add_unicast:
-
     mov     r10,    [rdi + 8]           // c ptr
     mov     rsi,    [rdi + 16]          // row stride
 
+	cmp rsi, 4
+	jne {{L}}add_unicast_generic
+
+    {% for row in (0..7) %}
+        vaddps ymm{{row}}, ymm{{row}}, [ r10 + {{row|times:32}} ]
+    {% endfor %}
+    jmp    {{L}}non_linear_loop
+
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}add_unicast_generic:
     mov     eax,    0
 {% for i in (0..3) %}
     pinsrd  xmm14, eax, {{i}}
@@ -98,6 +112,17 @@ Windows ABI:
     mov     r8,     [rdi + 8]           // c ptr
     mov     rsi,    [rdi + 16]          // row stride
 
+	cmp rsi, 4
+	jne {{L}}store_generic
+
+	{% for row in (0..7) %}
+        vmovups [r8 + {{row|times:32}}], ymm{{row}}
+    {% endfor %}
+
+    jmp     {{L}}non_linear_loop
+
+{{L}}store_generic:
+
     {% for vec in (0..7) %}
         {% for half in (0..1) %}
             {% if half == 0 %}
@@ -115,4 +140,4 @@ Windows ABI:
     jmp    {{L}}non_linear_loop
 
 
-{% include "postamble.tmpliq" size:"64x1", suffix:suffix, G:G, L:L %}
+{% include "postamble.tmpliq" size:"64x1", suffix:suffix, G:G, L:L, arch:"fma" %}
