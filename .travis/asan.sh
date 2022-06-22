@@ -4,7 +4,12 @@ set -ex
 
 rustup toolchain add nightly
 export RUSTFLAGS=-Zsanitizer=address 
+export RUSTDOCFLAGS=$RUSTFLAGS
 export RUSTUP_TOOLCHAIN=nightly
+export RUST_VERSION=nightly
+export CARGO_EXTRA="-Zbuild-std --target x86_64-unknown-linux-gnu"
 
-( cd data; cargo test -q -Zbuild-std --target x86_64-unknown-linux-gnu )
-( cd linalg; cargo test -q -Zbuild-std --target x86_64-unknown-linux-gnu )
+./.travis/regular-tests.sh
+./.travis/onnx-tests.sh
+./.travis/cli-tests.sh
+

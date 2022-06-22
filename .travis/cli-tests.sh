@@ -40,7 +40,7 @@ echo
 echo $WHITE • build tract $NC
 echo
 
-cargo -q build -q -p tract --profile opt-no-lto
+cargo -q build -q -p tract $CARGO_EXTRA --profile opt-no-lto
 
 echo
 echo $WHITE • harness/nnef-test-cases $NC
