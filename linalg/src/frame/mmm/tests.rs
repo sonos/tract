@@ -79,6 +79,15 @@ macro_rules! mmm_frame_tests {
             }
 
             #[test]
+            fn late_packing_1() {
+                if $cond {
+                    let a = tensor2(&[[1f32, 2f32]]).cast_to::<$ta>().unwrap().into_owned();
+                    let b = tensor2(&[[0f32, 0., 0.], [0., 0., 1.]]).cast_to::<$tb>().unwrap().into_owned();
+                    test_mat_mat_mul_late::<$ker, $ta, $tb, $tc, $ti>(1, 2, 3, &a, &b).unwrap()
+                }
+            }
+
+            #[test]
             fn mat_vec_1() {
                 if $cond {
                     let a = tensor2(&[[0], [1]]).cast_to::<$ta>().unwrap().into_owned();
