@@ -9,7 +9,7 @@ edition = "2018"
 bytes = "1.0.1"
 fs2 = "0.4.3"
 log = "0.4.14"
-prost = "0.9.0"
+prost = "0.10.0"
 tract-core = { path = "../../core", features = [ "paranoid_assertions" ] }
 tract-nnef = { path = "../../nnef" }
 tract-onnx = { path = "../../onnx" }
