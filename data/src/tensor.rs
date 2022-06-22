@@ -344,10 +344,14 @@ impl Tensor {
         content: &[T],
         align: usize,
     ) -> anyhow::Result<Tensor> {
-        let bytes = std::slice::from_raw_parts(
-            content.as_ptr() as *const u8,
-            content.len() * T::datum_type().size_of(),
-        );
+        let bytes = if content.len() == 0 {
+            &[]
+        } else {
+            std::slice::from_raw_parts(
+                content.as_ptr() as *const u8,
+                content.len() * T::datum_type().size_of(),
+            )
+        };
         Self::from_raw_dt_align(T::datum_type(), &[content.len()], bytes, align)
     }
 
