@@ -20,7 +20,7 @@ Windows ABI:
 */
 {% endcomment %}
 
-{% include "preamble.tmpliq" size:"24x4", suffix:suffix, G:G %}
+{% include "preamble.tmpliq" size:"24x4", suffix:suffix, G:G, arch:"fma" %}
 
 {{L}}clear:
     vzeroall
@@ -34,6 +34,7 @@ Windows ABI:
     test    rbx,    rbx
     jz      {{L}}non_linear_loop
 
+// .p2align 5
 {{L}}main_loop_packed_packed:
     {% include "3x4/packed_packed_loop1/avx.tmpli" %}
 
@@ -154,4 +155,4 @@ Windows ABI:
     {% endfor %}
     jmp     {{L}}non_linear_loop
 
-{% include "postamble.tmpliq" size:"24x4", suffix:suffix, G:G, L:L %}
+{% include "postamble.tmpliq" size:"24x4", suffix:suffix, G:G, L:L, arch:"fma" %}

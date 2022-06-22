@@ -1,0 +1,21 @@
+
+	vbroadcastss    zmm16, [rcx]
+	vbroadcastss    zmm17,  dword ptr [rcx + 4]
+	vbroadcastss    zmm18,  dword ptr [rcx + 8]
+	vbroadcastss    zmm19,  dword ptr [rcx + 12]
+	vbroadcastss    zmm20,  dword ptr [rcx + 16]
+	vbroadcastss    zmm21,  dword ptr [rcx + 20]
+	vbroadcastss    zmm22,  dword ptr [rcx + 24]
+	vbroadcastss    zmm23,  dword ptr [rcx + 28]
+
+    vfmadd231ps     zmm0, zmm16, [rax + 0]
+    vfmadd231ps     zmm1, zmm17, [rax + 64]
+    vfmadd231ps     zmm2, zmm18, [rax + 128]
+    vfmadd231ps     zmm3, zmm19, [rax + 192]
+	vfmadd231ps     zmm4, zmm20, [rax + 256]
+    vfmadd231ps     zmm5, zmm21, [rax + 320]
+    vfmadd231ps     zmm6, zmm22, [rax + 384]
+    vfmadd231ps     zmm7, zmm23, [rax + 448]
+
+    add rcx, 64
+	add rax, 512

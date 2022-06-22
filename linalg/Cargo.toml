@@ -37,6 +37,7 @@ half.workspace = true
 criterion.workspace = true
 nu-ansi-term.workspace = true
 proptest.workspace = true
+core_affinity.workspace = true
 
 [features]
 # This feature is meant to accomodate very restrictive / legacy toolchains that do
@@ -93,4 +94,8 @@ harness = false
 [[bench]]
 bench = false
 name = "x86_64"
+harness = false
+
+[[bench]]
+name = "intel"
 harness = false
