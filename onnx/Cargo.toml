@@ -5,11 +5,11 @@ authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT/Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
 repository = "https://github.com/snipsco/tract"
-keywords = ["TensorFlow", "NeuralNetworks", "ONNX"]
-categories = ["science"]
+keywords = [ "TensorFlow", "NeuralNetworks", "ONNX" ]
+categories = [ "science" ]
 autobenches = false
 edition = "2018"
-exclude = ["test_cases"]
+exclude = [ "test_cases" ]
 
 [badges]
 maintenance = { status = "actively-developed" }
