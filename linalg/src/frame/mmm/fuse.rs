@@ -307,7 +307,6 @@ pub mod test {
                                 if $cond {
                                     let len = (<$ker>::mr() * <$ker>::nr()) as i64;
                                     let v = (0..len).map(|i| (i - len / 2) as $tc).collect();
-                                    eprintln!("{:?}", &v);
                                     QScaleProblem::<$ker, $tc, $ti>::new(v, Scaler::new(0.25f32, RoundingPolicy::$policy)).run()
                                 }
                             }
