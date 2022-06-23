@@ -118,6 +118,9 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
         }
         self.uspecs.push(FKS::Done);
         if offset > self.layout.size() || align > self.layout.align() {
+            if!self.buffer.is_null() {
+                std::alloc::dealloc(self.buffer as _, self.layout);
+            }
             self.layout = Layout::from_size_align_unchecked(offset, align);
             self.buffer = std::alloc::alloc(self.layout);
         }
