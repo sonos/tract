@@ -3,6 +3,8 @@
 set -ex
 
 rustup toolchain add nightly
+rustup component add rust-src --toolchain nightly-x86_64-unknown-linux-gnu
+
 export RUSTFLAGS=-Zsanitizer=address 
 export RUSTDOCFLAGS=$RUSTFLAGS
 export RUSTUP_TOOLCHAIN=nightly
