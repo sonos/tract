@@ -6,7 +6,10 @@ start=$(date +%s)
 
 ROOT=`pwd`
 
-if [ -x tract ]
+if [ -n "$TRACT_RUN" ]
+then
+    TRACT=$TRACT_RUN
+elif [ -x tract ]
 then
     TRACT=./tract
 else

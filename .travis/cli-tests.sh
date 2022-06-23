@@ -89,55 +89,55 @@ cd $CACHEDIR
 [ -d en_libri_real ] || tar zxf en_libri_real.tar.gz
 )
 
-./target/opt-no-lto/tract $CACHEDIR/squeezenet.onnx \
+$TRACT_RUN $CACHEDIR/squeezenet.onnx \
     --allow-random-input \
     run -q --assert-output-fact 1,1000,1,1,f32
 
-./target/opt-no-lto/tract \
+$TRACT_RUN \
     $CACHEDIR/inception_v3_2016_08_28_frozen.pb \
     --allow-random-input \
     -i 1,299,299,3,f32 \
     run -q --assert-output-fact 1,1001,f32
 
-./target/opt-no-lto/tract \
+$TRACT_RUN \
     $CACHEDIR/inception_v3_2016_08_28_frozen.pb \
     --allow-random-input \
     -i 1,299,299,3,f32 -O \
     run -q --assert-output-fact 1,1001,f32
 
-./target/opt-no-lto/tract $CACHEDIR/ARM-ML-KWS-CNN-M.pb \
+$TRACT_RUN $CACHEDIR/ARM-ML-KWS-CNN-M.pb \
     --allow-random-input \
     -O -i 49,10,f32 --partial \
     --input-node Mfcc run -q
 
-./target/opt-no-lto/tract $CACHEDIR/mdl-en-2019-Q3-librispeech.onnx \
+$TRACT_RUN $CACHEDIR/mdl-en-2019-Q3-librispeech.onnx \
     --allow-random-input \
     -O -i S,40,f32 --output-node output --pulse 24 \
     run -q
 
-./target/opt-no-lto/tract $CACHEDIR/mobilenet_v1_1.0_224_frozen.pb \
+$TRACT_RUN $CACHEDIR/mobilenet_v1_1.0_224_frozen.pb \
     --allow-random-input \
     -O -i 1,224,224,3,f32 \
     run -q --assert-output-fact 1,1001,f32
 
-./target/opt-no-lto/tract $CACHEDIR/mobilenet_v2_1.4_224_frozen.pb \
+$TRACT_RUN $CACHEDIR/mobilenet_v2_1.4_224_frozen.pb \
     --allow-random-input \
     -O -i 1,224,224,3,f32 \
     run -q --assert-output-fact 1,1001,f32
 
-./target/opt-no-lto/tract $CACHEDIR/GRU128KeywordSpotter-v2-10epochs.onnx \
+$TRACT_RUN $CACHEDIR/GRU128KeywordSpotter-v2-10epochs.onnx \
     --allow-random-input \
     -O run -q --assert-output-fact 1,3,f32
 
-./target/opt-no-lto/tract $CACHEDIR/hey_snips_v4_model17.pb \
+$TRACT_RUN $CACHEDIR/hey_snips_v4_model17.pb \
     -i S,20,f32 --pulse 8 dump --cost -q \
     --assert-cost "FMA(F32)=2060448,Div(F32)=24576,Buffer(F32)=2920,Params(F32)=222250"
 
-./target/opt-no-lto/tract $CACHEDIR/hey_snips_v4_model17.pb -i S,20,f32 \
+$TRACT_RUN $CACHEDIR/hey_snips_v4_model17.pb -i S,20,f32 \
     dump -q \
     --assert-op-count AddAxis 0
 
-./target/opt-no-lto/tract $CACHEDIR/en_libri_real/model.raw.txt \
+$TRACT_RUN $CACHEDIR/en_libri_real/model.raw.txt \
     -f kaldi --output-node output \
     --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
     --input-bundle $CACHEDIR/en_libri_real/io.npz \
@@ -145,7 +145,7 @@ cd $CACHEDIR
     run \
     --assert-output-bundle $CACHEDIR/en_libri_real/io.npz
 
-./target/opt-no-lto/tract $CACHEDIR/en_libri_real/model.raw \
+$TRACT_RUN $CACHEDIR/en_libri_real/model.raw \
     -f kaldi --output-node output \
     --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
     --input-bundle $CACHEDIR/en_libri_real/io.npz \
@@ -153,7 +153,7 @@ cd $CACHEDIR
     run \
     --assert-output-bundle $CACHEDIR/en_libri_real/io.npz
 
-./target/opt-no-lto/tract $CACHEDIR/en_libri_real/model.onnx \
+$TRACT_RUN $CACHEDIR/en_libri_real/model.onnx \
     --output-node output \
     --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
     --input-bundle $CACHEDIR/en_libri_real/io.npz \
@@ -161,7 +161,7 @@ cd $CACHEDIR
     run \
     --assert-output-bundle $CACHEDIR/en_libri_real/io.npz
 
-./target/opt-no-lto/tract $CACHEDIR/inceptionv1_quant.nnef.tar.gz \
+$TRACT_RUN $CACHEDIR/inceptionv1_quant.nnef.tar.gz \
     --nnef-tract-core \
     --input-bundle $CACHEDIR/inceptionv1_quant.io.npz \
     --allow-random-input \
