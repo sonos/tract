@@ -40,7 +40,9 @@ echo
 echo $WHITE • build tract $NC
 echo
 
-cargo -q build -q -p tract $CARGO_EXTRA --profile opt-no-lto
+TRACT_RUN=$(cargo build --message-format json -p tract $CARGO_EXTRA --profile opt-no-lto | jq -r 'select(.target.name == "tract").executable')
+echo TRACT_RUN=$TRACT_RUN
+export TRACT_RUN
 
 echo
 echo $WHITE • harness/nnef-test-cases $NC
@@ -49,20 +51,20 @@ echo
 for t in `find harness/nnef-test-cases -name runme.sh`
 do
     echo $WHITE$t$NC
-    (export TRACT_RUN=`pwd`/target/opt-no-lto/tract ; $t)
+    $t
 done
 
 echo
 echo $WHITE • kaldi/test_cases $NC
 echo
 
-( cd kaldi/test_cases ; TRACT_RUN=../../target/opt-no-lto/tract ./run_all.sh )
+( cd kaldi/test_cases ; ./run_all.sh )
 
 echo
 echo $WHITE • onnx/test_cases $NC
 echo
 
-( cd onnx/test_cases ; TRACT_RUN=../../target/opt-no-lto/tract ./run_all.sh )
+( cd onnx/test_cases ; ./run_all.sh )
 
 echo
 echo $WHITE • old integreation test cases $NC
@@ -168,7 +170,7 @@ cd $CACHEDIR
 
 for t in harness/pre-optimized-graphes/*
 do
-    (export TRACT_RUN=`pwd`/target/opt-no-lto/tract ; cd $t ; ./runme.sh)
+    ( cd $t ; ./runme.sh)
 done
 
 (
@@ -184,7 +186,6 @@ then
         set -x
         OUTPUT=/dev/stdout
     fi
-    export TRACT_RUN=`pwd`/target/opt-no-lto/tract
     (
     cd $CACHEDIR
     aws s3 sync s3://tract-ci-builds/model/private private
