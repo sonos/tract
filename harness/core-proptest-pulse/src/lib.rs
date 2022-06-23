@@ -42,9 +42,9 @@ fn proptest_regular_against_pulse(
     let outputs = runnable.run(tvec!(input_array.clone().into_tensor())).unwrap();
 
     debug!("Build pulsing model");
-    dbg!(&model);
+//    dbg!(&model);
     let pulsed = PulsedModel::new(&model, pulse).unwrap();
-    dbg!(&pulsed);
+//    dbg!(&pulsed);
     let output_fact = pulsed.output_fact(0).unwrap().clone();
 
     let output_stream_axis = output_fact.axis;
@@ -92,7 +92,7 @@ fn proptest_regular_against_pulse(
             &[got.view(), outputs.remove(0).to_array_view::<f32>().unwrap()],
         )
         .unwrap();
-        eprintln!("GOT: {}", got);
+//        eprintln!("GOT: {}", got);
         if let Some(output_len) = output_len {
             if got.shape()[output_stream_axis] >= output_len.max(0) as usize + delay {
                 break;

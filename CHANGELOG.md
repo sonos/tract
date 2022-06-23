@@ -1,4 +1,7 @@
 # Unreleased
+* Sanitiser=address in the CI. Fixed a couple of overflow/memleaks. (Nothing looked too awful.)
+
+# 0.17.0 - 2022-06-13
 * [Breaking] [ONNX-ML] TreeEnsembleClassifier with binary output (single class) now mimicks scikit-learn output layout.
 
 # 0.16.9 - 2022-06-10

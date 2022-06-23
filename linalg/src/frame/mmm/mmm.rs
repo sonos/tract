@@ -10,7 +10,7 @@ use tract_data::anyhow;
 use tract_data::internal::*;
 
 pub trait MatMatMul:
-    Debug + fmt::Display + dyn_clone::DynClone + Send + Sync + std::any::Any
+Debug + fmt::Display + dyn_clone::DynClone + Send + Sync + std::any::Any
 {
     fn kernel_name(&self) -> &'static str;
     fn mr(&self) -> usize;
@@ -34,9 +34,11 @@ pub trait MatMatMul:
     unsafe fn c_from_data_and_strides(
         &self,
         item_size: usize,
+        m: usize,
+        n: usize,
         row_stride: isize,
         col_stride: isize,
-    ) -> OutputStoreSpec;
+        ) -> OutputStoreSpec;
 
     unsafe fn run(&self, m: usize, n: usize, non_linear: &[FusedSpec]) -> anyhow::Result<()> {
         let mut scratch = self.allocate_scratch_space();
@@ -51,14 +53,14 @@ pub trait MatMatMul:
         n: usize,
         scratch: &mut dyn ScratchSpace,
         non_linear: &[FusedSpec],
-    ) -> anyhow::Result<()>;
+        ) -> anyhow::Result<()>;
 
     unsafe fn run_with_scratch_space_vec(
         &self,
         m: usize,
         scratch: &mut dyn ScratchSpace,
         non_linear: &[FusedSpec],
-    ) -> anyhow::Result<()>;
+        ) -> anyhow::Result<()>;
 
     unsafe fn run_with_scratch_space_col_outer(
         &self,
@@ -66,7 +68,7 @@ pub trait MatMatMul:
         n: usize,
         scratch: &mut dyn ScratchSpace,
         non_linear: &[FusedSpec],
-    ) -> anyhow::Result<()>;
+        ) -> anyhow::Result<()>;
 }
 
 dyn_clone::clone_trait_object!(MatMatMul);
@@ -86,30 +88,30 @@ impl std::hash::Hash for Box<dyn MatMatMul> {
 #[derive(Clone)]
 pub struct MatMatMulImpl<K, TI>
 where
-    TI: LADatum,
-    K: MatMatMulKer<TI> + 'static,
+TI: LADatum,
+K: MatMatMulKer<TI> + 'static,
 {
     phantom: PhantomData<(K, TI)>,
 }
 
 unsafe impl<K, TI> Send for MatMatMulImpl<K, TI>
 where
-    TI: LADatum,
-    K: MatMatMulKer<TI> + 'static,
+TI: LADatum,
+K: MatMatMulKer<TI> + 'static,
 {
 }
 
 unsafe impl<K, TI> Sync for MatMatMulImpl<K, TI>
 where
-    TI: LADatum,
-    K: MatMatMulKer<TI> + 'static,
+TI: LADatum,
+K: MatMatMulKer<TI> + 'static,
 {
 }
 
 impl<K, TI> fmt::Debug for MatMatMulImpl<K, TI>
 where
-    TI: LADatum,
-    K: MatMatMulKer<TI> + 'static,
+TI: LADatum,
+K: MatMatMulKer<TI> + 'static,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "MMM ({} {}x{})", K::name(), K::mr(), K::nr())
@@ -118,8 +120,8 @@ where
 
 impl<K, TI> MatMatMulImpl<K, TI>
 where
-    TI: LADatum,
-    K: MatMatMulKer<TI> + 'static,
+TI: LADatum,
+K: MatMatMulKer<TI> + 'static,
 {
     pub fn new() -> MatMatMulImpl<K, TI> {
         MatMatMulImpl { phantom: PhantomData }
@@ -128,8 +130,8 @@ where
 
 impl<K, TI> MatMatMul for MatMatMulImpl<K, TI>
 where
-    TI: LADatum,
-    K: MatMatMulKer<TI> + 'static,
+TI: LADatum,
+K: MatMatMulKer<TI> + 'static,
 {
     fn kernel_name(&self) -> &'static str {
         K::name()
@@ -179,14 +181,17 @@ where
     unsafe fn c_from_data_and_strides(
         &self,
         item_size: usize,
+        m: usize,
+        n: usize,
         row_stride: isize,
         col_stride: isize,
-    ) -> OutputStoreSpec {
+        ) -> OutputStoreSpec {
         OutputStoreSpec::Strides {
             row_byte_stride: row_stride * item_size as isize,
             col_byte_stride: col_stride * item_size as isize,
             mr: K::mr(),
             nr: K::nr(),
+            m, n,
         }
     }
 
@@ -203,7 +208,7 @@ where
         m: usize,
         scratch: &mut dyn ScratchSpace,
         non_linear: &[FusedSpec],
-    ) -> anyhow::Result<()> {
+        ) -> anyhow::Result<()> {
         let mr = K::mr();
         let scratch = scratch
             .downcast_mut::<ScratchSpaceFusedNonLinear<TI>>()
@@ -229,7 +234,7 @@ where
         n: usize,
         scratch: &mut dyn ScratchSpace,
         non_linear: &[FusedSpec],
-    ) -> anyhow::Result<()> {
+        ) -> anyhow::Result<()> {
         let mr = K::mr();
         let nr = K::nr();
         let scratch = scratch
@@ -272,7 +277,7 @@ where
         n: usize,
         scratch: &mut dyn ScratchSpace,
         non_linear: &[FusedSpec],
-    ) -> anyhow::Result<()> {
+        ) -> anyhow::Result<()> {
         let mr = K::mr();
         let nr = K::nr();
         if n == 1 && K::nr() == 1 {
@@ -320,8 +325,8 @@ where
 
 impl<K, TI> fmt::Display for MatMatMulImpl<K, TI>
 where
-    TI: LADatum,
-    K: MatMatMulKer<TI>,
+TI: LADatum,
+K: MatMatMulKer<TI>,
 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "({} {}x{})", K::name(), K::mr(), K::nr())

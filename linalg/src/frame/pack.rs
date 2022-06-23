@@ -47,7 +47,8 @@ impl Packer {
         } else if mn_stride == 1 {
             let size_of = T::datum_type().size_of();
             let rbytes = self.r * size_of;
-            let mn_range_bytes = mn_range.start * size_of..mn_range.end.min(mn) * size_of;
+            let mn_valid_end = mn_range.end.min(mn);
+            let mn_range_bytes = mn_range.start * size_of..mn_valid_end * size_of;
             let k_stride_bytes = k_stride * size_of as isize;
             let bb = b as *const u8;
             let pbb = pb as *mut u8;
@@ -60,24 +61,33 @@ impl Packer {
                 _ => {
                     let mut packer = self.write_with_k_outer(pb, k_range.len(), mn_range.len());
                     for k in k_range {
-                        for x in mn_range.clone() {
+                        for x in mn_range.start..mn_valid_end {
                             packer.write(*b.offset(x as isize + k_stride * k as isize))
+                        }
+                        for _x in mn_valid_end..mn_range.end {
+                            packer.write(T::default())
                         }
                     }
                 }
             }
         } else if k_stride == 1 {
             let mut packer = self.write_with_k_inner(pb, k_range.len(), mn);
-            for x in mn_range {
+            let mn_valid_end = mn_range.end.min(mn);
+            for x in mn_range.start..mn_valid_end {
                 for k in k_range.clone() {
                     packer.write(*b.offset(x as isize * mn_stride + k as isize))
                 }
             }
+            // just ignore invalid mn_range
         } else {
             let mut packer = self.write_with_k_outer(pb, k_range.len(), mn);
+            let mn_valid_end = mn_range.end.min(mn);
             for k in k_range {
-                for x in mn_range.clone() {
+                for x in mn_range.start..mn_valid_end {
                     packer.write(*b.offset(x as isize * mn_stride + k_stride * k as isize))
+                }
+                for _x in mn_valid_end..mn_range.end {
+                    packer.write(T::default())
                 }
             }
         }

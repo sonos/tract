@@ -344,10 +344,14 @@ impl Tensor {
         content: &[T],
         align: usize,
     ) -> anyhow::Result<Tensor> {
-        let bytes = std::slice::from_raw_parts(
-            content.as_ptr() as *const u8,
-            content.len() * T::datum_type().size_of(),
-        );
+        let bytes = if content.len() == 0 {
+            &[]
+        } else {
+            std::slice::from_raw_parts(
+                content.as_ptr() as *const u8,
+                content.len() * T::datum_type().size_of(),
+            )
+        };
         Self::from_raw_dt_align(T::datum_type(), &[content.len()], bytes, align)
     }
 
@@ -768,12 +772,22 @@ impl Tensor {
 
     /// Access the data as a slice.
     pub fn as_slice<D: Datum>(&self) -> anyhow::Result<&[D]> {
-        unsafe { Ok(std::slice::from_raw_parts::<D>(self.as_ptr()?, self.len())) }
+        let ptr:*const D = self.as_ptr()?;
+        if ptr.is_null() {
+            Ok(&[])
+        } else {
+            unsafe { Ok(std::slice::from_raw_parts::<D>(ptr, self.len())) }
+        }
     }
 
     /// Access the data as a mutable slice.
     pub fn as_slice_mut<D: Datum>(&mut self) -> anyhow::Result<&mut [D]> {
-        unsafe { Ok(std::slice::from_raw_parts_mut::<D>(self.as_ptr_mut()?, self.len())) }
+        let ptr:*mut D = self.as_ptr_mut()?;
+        if ptr.is_null() {
+            Ok(&mut [])
+        } else {
+            unsafe { Ok(std::slice::from_raw_parts_mut::<D>(ptr, self.len())) }
+        }
     }
 
     /// Access the data as a slice.
@@ -787,7 +801,11 @@ impl Tensor {
 
     /// Access the data as a mutable slice.
     pub unsafe fn as_slice_mut_unchecked<D: Datum>(&mut self) -> &mut [D] {
-        std::slice::from_raw_parts_mut::<D>(self.data as *mut D, self.len())
+        if self.data.is_null() {
+            &mut []
+        } else {
+            std::slice::from_raw_parts_mut::<D>(self.data as *mut D, self.len())
+        }
     }
 
     /// Access the data as a scalar.

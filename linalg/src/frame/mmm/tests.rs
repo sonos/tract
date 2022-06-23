@@ -79,6 +79,15 @@ macro_rules! mmm_frame_tests {
             }
 
             #[test]
+            fn late_packing_1() {
+                if $cond {
+                    let a = tensor2(&[[1f32, 2f32]]).cast_to::<$ta>().unwrap().into_owned();
+                    let b = tensor2(&[[0f32, 0., 0.], [0., 0., 1.]]).cast_to::<$tb>().unwrap().into_owned();
+                    test_mat_mat_mul_late::<$ker, $ta, $tb, $tc, $ti>(1, 2, 3, &a, &b).unwrap()
+                }
+            }
+
+            #[test]
             fn mat_vec_1() {
                 if $cond {
                     let a = tensor2(&[[0], [1]]).cast_to::<$ta>().unwrap().into_owned();
@@ -367,7 +376,7 @@ where
 
     let mut found = Tensor::zero::<TC>(&[m, n]).unwrap();
     let c_store = op
-        .c_from_data_and_strides(TC::datum_type().size_of(), n as isize, 1)
+        .c_from_data_and_strides(TC::datum_type().size_of(), m, n, n as isize, 1)
         .wrap(&mut found.view_mut());
     let mut spec: TVec<FusedSpec> = spec.into();
     spec.push(FusedSpec::Store(c_store));

@@ -120,6 +120,19 @@ pub mod test {
                     }
 
                     #[test]
+                    fn packed_packed_empty() {
+                        if $cond {
+                            let pb = PackedPackedProblem::<$ker, $ta, $tb, $tc, $ti>::new(
+                                0,
+                                vec!(<$ta>::zero(); 0),
+                                vec!(<$tb>::zero(); 0),
+                                false,
+                                false);
+                            assert_eq!(pb.run(), pb.reference())
+                        }
+                    }
+
+                    #[test]
                     fn packed_packed_bug_1() {
                         if $cond {
                             let pb = PackedPackedProblem::<$ker, $ta, $tb, $tc, $ti>::new(

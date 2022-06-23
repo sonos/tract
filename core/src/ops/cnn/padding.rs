@@ -167,6 +167,7 @@ impl PaddingSpec {
         aft: usize,
         ceil_mode: bool,
     ) -> ComputedPaddedDim<D> {
+        // output_spatial_shape[i] = ceil((input_spatial_shape[i] + pad_shape[i] - ((kernel_spatial_shape[i] - 1) * dilations[i] + 1)) / strides_spatial_shape[i] + 1)
         let kernel_field = (kernel - 1) * dilation + 1;
         let dividend = if let Ok(int) = input.to_usize() {
             D::from((int + bef + aft).saturating_sub(kernel_field))
@@ -295,6 +296,14 @@ mod tests {
         assert_eq!(
             PS::explicit(&28usize, 3usize, 1, 1, 2, 2, true),
             ComputedPaddedDim::new(28, 30, 2, 2)
+        );
+    }
+
+    #[test]
+    fn explicit_3() {
+        assert_eq!(
+            PS::explicit(&2usize, 1usize, 1, 2, 0, 0, true),
+            ComputedPaddedDim::new(2, 2, 0, 0)
         );
     }
 
