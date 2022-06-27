@@ -34,6 +34,7 @@ deny = [
 skip = [
     { name = "quick-error", version="<2" }, # cascading from flate
     { name = "itoa", version="<1" }, # cascading from flate criterion
+    { name = "half", version="1.8.2" }, # old versions pulled by serde_cbor and criterionin dev mode
 ]
 
 [sources]
