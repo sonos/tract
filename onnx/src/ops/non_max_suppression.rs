@@ -104,13 +104,48 @@ impl Expansion for NonMaxSuppression {
         model: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        model.wire_node(
-            name,
-            tract_onnx_opl::non_max_suppression::NonMaxSuppression {
-                center_point_box: self.center_point_box,
-                num_selected_indices_symbol: self.num_selected_indices_symbol,
-            },
-            inputs,
-        )
+        let max_output_boxes_per_class = self
+            .optional_max_output_boxes_per_class_input
+            .map(|index| Ok(inputs[index]))
+            .unwrap_or_else(|| {
+                model.add_const(format!("{}.max_output_boxes_per_class", name), tensor0(0i64))
+            })?;
+        let iou_threshold =
+            self.optional_iou_threshold_input.map(|index| Ok(inputs[index])).unwrap_or_else(
+                || model.add_const(format!("{}.iou_threshold", name), tensor0(0.0f32)),
+            )?;
+        // score_threshold is an optional input, but we cannot assing it a meaningful default value
+        let score_threshold = self.optional_score_threshold_input.map(|index| inputs[index]);
+
+        let op = tract_onnx_opl::non_max_suppression::NonMaxSuppression {
+            center_point_box: self.center_point_box,
+            num_selected_indices_symbol: self.num_selected_indices_symbol,
+            has_score_threshold: score_threshold.is_some(),
+        };
+
+        if let Some(score_threshold) = score_threshold {
+            model.wire_node(
+                name,
+                op,
+                &[
+                    inputs[0], // boxes
+                    inputs[1], // scores
+                    max_output_boxes_per_class,
+                    iou_threshold,
+                    score_threshold,
+                ],
+            )
+        } else {
+            model.wire_node(
+                name,
+                op,
+                &[
+                    inputs[0], // boxes
+                    inputs[1], // scores
+                    max_output_boxes_per_class,
+                    iou_threshold,
+                ],
+            )
+        }
     }
 }

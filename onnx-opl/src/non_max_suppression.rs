@@ -111,6 +111,7 @@ impl BoxRepr {
 pub struct NonMaxSuppression {
     pub center_point_box: BoxRepr,
     pub num_selected_indices_symbol: Symbol,
+    pub has_score_threshold: bool,
 }
 
 impl_dyn_hash!(NonMaxSuppression);
@@ -133,23 +134,24 @@ impl EvalOp for NonMaxSuppression {
     }
 
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let mut inputs = inputs.drain(..);
-        let boxes = inputs.next().ok_or(anyhow!("Expected at least 2 args"))?;
-        let scores = inputs.next().ok_or(anyhow!("Expected at least 2 args"))?;
-        let mut max_output_boxes_per_class =
-            inputs.next().map_or(Ok(0i64), |val| val.to_scalar::<i64>().copied())?;
-        let iou_threshold =
-            inputs.next().map_or(Ok(0f32), |val| val.to_scalar::<f32>().copied())?;
-        let score_threshold = inputs
-            .next()
+        let (boxes, scores, max_output_boxes_per_class, iou_threshold, score_threshold) =
+            if self.has_score_threshold {
+                let (t1, t2, t3, t4, t5) = args_5!(inputs);
+                (t1, t2, t3, t4, Some(t5))
+            } else {
+                let (t1, t2, t3, t4) = args_4!(inputs);
+                (t1, t2, t3, t4, None)
+            };
+
+        let mut max_output_boxes_per_class = *max_output_boxes_per_class.to_scalar::<i64>()?;
+        let iou_threshold = *iou_threshold.to_scalar::<f32>()?;
+        let score_threshold = score_threshold
             .map_or(Ok::<_, TractError>(None), |val| Ok(Some(*val.to_scalar::<f32>()?)))?;
 
         if max_output_boxes_per_class == 0 {
             max_output_boxes_per_class = i64::MAX;
         }
-        if !(0.0..=1.0).contains(&iou_threshold) {
-            bail!("iou_threshold must be between 0 and 1");
-        }
+        ensure!((0.0..=1.0).contains(&iou_threshold), "iou_threshold must be between 0 and 1");
 
         let num_batches = scores.shape()[0];
         let num_classes = scores.shape()[1];
@@ -267,7 +269,11 @@ fn load(
     let center_point_box =
         BoxRepr::from_i64(invocation.named_arg_as(builder, "center_point_box")?)?;
 
-    let op = NonMaxSuppression { center_point_box, num_selected_indices_symbol: Symbol::new('n') };
+    let op = NonMaxSuppression {
+        center_point_box,
+        num_selected_indices_symbol: Symbol::new('n'),
+        has_score_threshold: score_threshold.is_some(),
+    };
     if let Some(score_threshold) = score_threshold {
         builder
             .wire(op, &[boxes, scores, max_output_boxes_per_class, iou_threshold, score_threshold])
