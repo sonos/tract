@@ -156,6 +156,16 @@ fn run_regular(
                                     node
                                 );
                             }
+                        } else if let Ok(floats) = o.as_slice::<f16>() {
+                            if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
+                                eprintln!("{:?}", floats);
+                                tract_core::anyhow::bail!(
+                                    "Found {} in output {} of {}",
+                                    floats[pos],
+                                    ix,
+                                    node
+                                );
+                            }
                         }
                     }
                 }
