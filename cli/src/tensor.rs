@@ -310,13 +310,21 @@ pub fn retrieve_or_make_inputs(
                 && tract.output_outlets().len() == 1
             {
                 let value = &value[0];
-                let input_pulse_axis =
-                    tract.properties()["pulse.input_axes"].as_slice::<i64>()?[0] as usize;
+                let input_pulse_axis = tract
+                    .properties()
+                    .get("pulse.input_axes")
+                    .context("Expect pulse.input_axes property")?
+                    .cast_to::<i64>()?
+                    .as_slice::<i64>()?[0] as usize;
                 let input_pulse = fact.shape.get(input_pulse_axis).unwrap().to_usize().unwrap();
                 let input_len = value.shape()[input_pulse_axis];
 
-                let output_pulse_axis =
-                    tract.properties()["pulse.output_axes"].as_slice::<i64>()?[0] as usize;
+                let output_pulse_axis = tract
+                    .properties()
+                    .get("pulse.output_axes")
+                    .context("Expect pulse.output_axes property")?
+                    .cast_to::<i64>()?
+                    .as_slice::<i64>()?[0] as usize;
                 let output_fact = tract.outlet_typedfact(tract.output_outlets()[0])?;
                 let output_pulse =
                     output_fact.shape.get(output_pulse_axis).unwrap().to_usize().unwrap();
