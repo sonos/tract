@@ -123,6 +123,7 @@ impl EvalOp for Iff {
 
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (cond, t, f) = args_3!(inputs);
+        anyhow::ensure!(t.datum_type() == f.datum_type());
         let shape: TVec<usize> = multi_broadcast(&[cond.shape(), t.shape(), f.shape()])
             .ok_or_else(|| {
                 format_err!(
