@@ -5,6 +5,7 @@ use crate::model::*;
 use crate::ops;
 use crate::ops::matmul::mir_quant::wire_offset_u8_as_i8;
 use crate::ops::matmul::mir_quant::QParamKind;
+use crate::ops::matmul::MatMulAxes;
 
 use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
@@ -651,6 +652,8 @@ impl ConvUnary {
                 .map(|i| patch.tap_model(model, *i))
                 .collect::<TractResult<TVec<_>>>()?;
             inputs.insert(0, a);
+            let axes = MatMulAxes::default_for_rank(full_input_shape.len())
+                .transposing(a_trans, trans_data, trans_data);
             // in Q case, the bias has to be injected inside the QMatMul (as it
             // must be added before requantization)
             let wire = if let Some(q_params) = &self.q_params {
@@ -664,16 +667,10 @@ impl ConvUnary {
                 }
                 let bias = patch.add_const(format!("{}.bias", &node.name), bias)?;
                 inputs.insert(2, bias);
-                let op = QMatMul {
-                    a_trans,
-                    b_trans: trans_data,
-                    c_trans: trans_data,
-                    output_type: q_params.0,
-                    params: q_params.1.clone(),
-                };
+                let op = QMatMul { axes, output_type: q_params.0, params: q_params.1.clone() };
                 patch.wire_node(&*node.name, op, &inputs)?[0]
             } else {
-                let op = MatMul { a_trans, b_trans: trans_data, c_trans: trans_data };
+                let op = MatMul { axes };
                 let mut wire = patch.wire_node(format!("{}.matmul", node.name), op, &inputs)?[0];
                 if let Some(b) = self.bias.as_ref().filter(|_| self.q_params.is_none()) {
                     let mut bias_shape = tvec!(1; input_shape.rank());
@@ -1050,9 +1047,11 @@ impl TypedOp for ConvUnary {
                     &format!("{}.matmul", &node.name),
                     MatMulUnary::new(
                         kernel.into_arc_tensor(),
-                        self.kernel_fmt == KernelFormat::HWIO,
-                        input_c_is_last,
-                        input_c_is_last,
+                        MatMulAxes::default_for_rank(operating_rank).transposing(
+                            self.kernel_fmt == KernelFormat::HWIO,
+                            input_c_is_last,
+                            input_c_is_last,
+                        ),
                     ),
                     &[wire],
                 )?[0];

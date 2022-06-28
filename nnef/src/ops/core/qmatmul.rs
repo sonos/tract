@@ -6,8 +6,7 @@ use crate::internal::*;
 use crate::ser::*;
 use tract_core::ops::matmul::mir_quant::QParamKind;
 use tract_core::ops::matmul::mir_quant_unary::QMatMulUnary;
-use tract_core::ops::matmul::MatMulQParams;
-use tract_core::ops::matmul::QMatMul;
+use tract_core::ops::matmul::{MatMulAxes, MatMulQParams, QMatMul};
 use Datum;
 
 pub fn register(registry: &mut Registry) {
@@ -25,9 +24,7 @@ fn qmatmul_parameters() -> Vec<Parameter> {
         TypeName::Scalar.tensor().named("A"),
         TypeName::Scalar.tensor().named("B"),
         TypeName::Scalar.tensor().named("bias").default(0),
-        TypeName::Logical.spec().named("transposeA"),
-        TypeName::Logical.spec().named("transposeB"),
-        TypeName::Logical.spec().named("transposeB"),
+        TypeName::Integer.array().named("axes"),
         TypeName::Integer.spec().named("a0"),
         TypeName::Scalar.spec().named("a_scale"),
         TypeName::Integer.spec().named("b0"),
@@ -80,9 +77,7 @@ fn qmatmul_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<R
         ("A", (*a).clone()),
         ("B", (*b).clone()),
         ("bias", (*bias).clone()),
-        ("transposeA", logical(op.a_trans)),
-        ("transposeB", logical(op.b_trans)),
-        ("transposeC", logical(op.c_trans)),
+        ("axes", ints(&op.axes.to_array())),
         ("output_type", string(format!("{:?}", op.output_type))),
     ];
     macro_rules! push {
@@ -112,9 +107,7 @@ fn qmatmul_unary_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option
     let mut named_args = vec![
         ("A", (*a).clone()),
         ("B", (*b).clone()),
-        ("transposeA", logical(op.a_trans)),
-        ("transposeB", logical(op.b_trans)),
-        ("transposeC", logical(op.c_trans)),
+        ("axes", ints(&op.axes.to_array())),
         ("output_type", string(format!("{:?}", op.output_type))),
     ];
     macro_rules! push {
@@ -182,9 +175,6 @@ fn qmatmul_load(
     let a: OutletId = invocation.named_arg_as(builder, "A")?;
     let b: OutletId = invocation.named_arg_as(builder, "B")?;
     let bias: OutletId = invocation.named_arg_as(builder, "bias")?;
-    let a_trans: bool = invocation.named_arg_as(builder, "transposeA")?;
-    let b_trans: bool = invocation.named_arg_as(builder, "transposeB")?;
-    let c_trans: bool = invocation.named_arg_as(builder, "transposeC")?;
     let a0: Option<Value> = invocation.named_arg_as(builder, "a0").ok();
     let a_scale: Option<Value> = invocation.named_arg_as(builder, "a_scale").ok();
     let b0: Option<Value> = invocation.named_arg_as(builder, "b0").ok();
@@ -195,5 +185,7 @@ fn qmatmul_load(
         DatumType::from_str(&*invocation.named_arg_as::<String>(builder, "output_type")?)?;
     let mut inputs = vec![a, b, bias];
     let params = values_to_qparams(a0, a_scale, b0, b_scale, c0, c_scale, &mut inputs, builder)?;
-    builder.wire(QMatMul { a_trans, b_trans, c_trans, output_type, params }, &inputs)
+    let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
+    let axes = MatMulAxes::from_array(&axes)?;
+    builder.wire(QMatMul { axes, output_type, params }, &inputs)
 }

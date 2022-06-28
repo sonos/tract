@@ -19,6 +19,7 @@ pub struct QMatMulUnary {
 impl_dyn_hash!(QMatMulUnary);
 
 impl QMatMulUnary {
+    /*
     pub fn with_a_trans(self, a_trans: bool) -> QMatMulUnary {
         std::mem::swap(&mut self.axes.a_k, &mut self.axes.a_m);
         self
@@ -33,6 +34,7 @@ impl QMatMulUnary {
         std::mem::swap(&mut self.axes.c_m, &mut self.axes.c_n);
         self
     }
+    */
 }
 
 impl Op for QMatMulUnary {
@@ -86,11 +88,9 @@ impl EvalOp for QMatMulUnary {
             &mut model,
             "adhoc",
             a,
-            self.a_trans,
             b,
-            self.b_trans,
             bias,
-            self.c_trans,
+            self.axes,
             result,
             self.output_type,
             &params,
@@ -115,17 +115,15 @@ impl TypedOp for QMatMulUnary {
         let (_m, _k, _n, c_shape) = compute_shape(
             &self.a.shape().iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
             &inputs[0].shape,
-            self.a_trans,
-            self.b_trans,
-            self.c_trans,
+            self.axes,
         )?;
 
         if let Some(bias) = &self.bias {
             if bias.rank() == 2 {
-                let expected_bias_shape = if self.c_trans {
-                    [1, c_shape[c_shape.len() - 1].to_usize()?]
+                let expected_bias_shape = if self.axes.c_m > self.axes.c_n {
+                    [1, c_shape[self.axes.c_m].to_usize()?]
                 } else {
-                    [c_shape[c_shape.len() - 2].to_usize()?, 1]
+                    [c_shape[self.axes.c_m].to_usize()?, 1]
                 };
                 anyhow::ensure!(bias.shape() == expected_bias_shape);
             } else {
@@ -136,27 +134,29 @@ impl TypedOp for QMatMulUnary {
         Ok(tvec!(self.output_type.fact(c_shape)))
     }
 
+    /*
     fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
-        if self.params.iter().any(|qp| match &qp.1 {
-            &QParamKind::Attr(t) => t.rank() > 0,
-            &QParamKind::FromInput(ix) => inputs[*ix].rank() > 0,
-            &QParamKind::FromQType => false,
-        }) {
-            Ok(Invariants::none())
-        } else {
-            let mut invs = super::mir_unary::mir_unary_invariants(
-                &inputs[0],
-                &outputs[0],
-                &self.a,
-                self.b_trans,
-                self.c_trans,
-            )?;
-            for axis in &mut invs.axes {
-                axis.inputs.extend(std::iter::repeat(None).take(inputs.len() - 1));
-            }
-            Ok(invs)
-        }
+    if self.params.iter().any(|qp| match &qp.1 {
+    &QParamKind::Attr(t) => t.rank() > 0,
+    &QParamKind::FromInput(ix) => inputs[*ix].rank() > 0,
+    &QParamKind::FromQType => false,
+    }) {
+    Ok(Invariants::none())
+    } else {
+    let mut invs = super::mir_unary::mir_unary_invariants(
+    &inputs[0],
+    &outputs[0],
+    &self.a,
+    self.b_trans,
+    self.c_trans,
+    )?;
+    for axis in &mut invs.axes {
+    axis.inputs.extend(std::iter::repeat(None).take(inputs.len() - 1));
     }
+    Ok(invs)
+    }
+    }
+    */
 
     fn change_axes(
         &self,
@@ -176,8 +176,7 @@ impl TypedOp for QMatMulUnary {
                         }
                     }
                     let op = QMatMulUnary {
-                        b_trans: !self.b_trans,
-                        c_trans: !self.c_trans,
+                        axes: self.axes.transposing(false, true, true),
                         bias,
                         ..self.clone()
                     };
@@ -198,8 +197,7 @@ impl TypedOp for QMatMulUnary {
                 let mut a = self.a.clone().into_tensor();
                 a.insert_axis(*axis - 2)?;
                 let op = QMatMulUnary {
-                    b_trans: !self.b_trans,
-                    c_trans: !self.c_trans,
+                    axes: self.axes.transposing(false, true, true),
                     a: a.into_arc_tensor(),
                     ..self.clone()
                 };
@@ -229,12 +227,12 @@ impl TypedOp for QMatMulUnary {
     ) -> TractResult<Option<(OutletId, bool)>> {
         let b_fact = model.outlet_fact(node.inputs[0])?;
         let c_fact = &self.output_facts(&[b_fact])?[0];
-        if axis + self.c_trans as usize == c_fact.shape.rank() {
-            let a_split_axis = self.a.rank() - 1 - !self.a_trans as usize;
+        if axis == self.axes.c_m {
+            let a_split_axis = self.axes.a_m;
             let a = self.a.slice(a_split_axis, start, end)?.into_arc_tensor();
             let bias = if let Some(bias) = self.bias.as_ref().filter(|b| b.len() > 1) {
                 debug_assert_eq!(bias.rank(), 2);
-                let bias_axis = if self.c_trans { 1 } else { 0 };
+                let bias_axis = if self.axes.c_m > self.axes.c_n { 1 } else { 0 };
                 Some(bias.slice(bias_axis, start, end)?.into_arc_tensor())
             } else {
                 self.bias.clone()
@@ -263,8 +261,8 @@ impl TypedOp for QMatMulUnary {
         if let Some(concat) = model.nodes()[node.inputs[0].node].op().downcast_ref::<TypedConcat>()
         {
             let mut patch = TypedModelPatch::new("split over k-concatenated input");
-            let k_axis = self.a.rank() - 1 - self.a_trans as usize;
-            if concat.axis == input_fact.shape.rank() - 1 && self.b_trans {
+            let k_axis = self.axes.a_k;
+            if concat.axis == self.axes.b_k {
                 let mut input = 0;
                 let concat_node = model.node(node.inputs[0].node);
                 let offsets = concat
@@ -347,13 +345,7 @@ impl TypedOp for QMatMulUnary {
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        cost(
-            self.a.shape(),
-            &inputs[0].shape.to_tvec(),
-            inputs[0].datum_type,
-            self.a_trans,
-            self.b_trans,
-        )
+        cost(self.a.shape(), &inputs[0].shape.to_tvec(), inputs[0].datum_type, self.axes)
     }
 
     fn codegen(
@@ -405,22 +397,15 @@ impl TypedOp for QMatMulUnary {
         let a = wire_offset_u8_as_i8(&mut patch, &node.name, a, "a", &mut params[0], "a0")?;
         let b = wire_offset_u8_as_i8(&mut patch, &node.name, b, "b", &mut params[2], "b0")?;
 
-        let new_op = MatMulUnary {
-            a: t_a,
-            a_trans: self.a_trans,
-            b_trans: self.b_trans,
-            c_trans: self.c_trans,
-        };
+        let new_op = MatMulUnary { a: t_a, axes: self.axes };
         let result = patch.wire_node(format!("{}.matmul", &node.name), new_op, &[b])?[0];
         let result = wire_matmul_quant(
             &mut patch,
             &node.name,
             a,
-            self.a_trans,
             b,
-            self.b_trans,
             bias,
-            self.c_trans,
+            self.axes,
             result,
             self.output_type,
             &params,

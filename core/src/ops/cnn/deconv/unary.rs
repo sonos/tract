@@ -1,6 +1,7 @@
 use crate::internal::*;
 use crate::ops::cnn::KernelFormat;
 use crate::ops::cnn::PoolSpec;
+use crate::ops::matmul::MatMulAxes;
 
 // no-bias, no-group, f32
 
@@ -113,9 +114,8 @@ impl DeconvUnary {
             format!("{}.gemm", name),
             crate::ops::matmul::MatMulUnary::new(
                 kernel_as_g_ohw_i.into_arc_tensor(),
-                false,
-                trans_data,
-                false,
+                MatMulAxes::default_for_rank(self.kernel.rank())
+                    .transposing(false, trans_data, false),
             ),
             &input,
         )?;

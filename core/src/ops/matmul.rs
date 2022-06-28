@@ -27,7 +27,63 @@ pub struct MatMulAxes {
 
 impl Default for MatMulAxes {
     fn default() -> Self {
-        MatMulAxes { a_m: 0, a_k: 1, b_k: 0, b_n: 1, c_m: 0, c_n: 1 }
+        Self::default_for_rank(2)
+    }
+}
+
+impl MatMulAxes {
+    pub fn default_for_rank(rank: usize) -> Self {
+        Self::default_for_ranks(rank, rank, rank)
+    }
+
+    pub fn default_for_ranks(a: usize, b: usize, c: usize) -> Self {
+        MatMulAxes { a_m: a - 2, a_k: a - 1, b_k: b - 2, b_n: b - 1, c_m: c - 2, c_n: c - 1 }
+    }
+
+    pub fn transposing_a(self) -> Self {
+        MatMulAxes { a_m: self.a_k, a_k: self.a_m, ..self }
+    }
+
+    pub fn transposing_b(self) -> Self {
+        MatMulAxes { b_n: self.b_k, b_k: self.b_n, ..self }
+    }
+
+    pub fn transposing_c(self) -> Self {
+        MatMulAxes { c_n: self.c_m, c_m: self.c_n, ..self }
+    }
+
+    pub fn transposing(self, a: bool, b: bool, c: bool) -> Self {
+        let mut it = self;
+        if a {
+            it = it.transposing_a();
+        }
+        if b {
+            it = it.transposing_b();
+        }
+        if c {
+            it = it.transposing_c();
+        }
+        it
+    }
+
+    pub fn to_array(&self) -> [usize; 6] {
+        [self.a_m, self.a_k, self.b_k, self.b_n, self.c_m, self.c_n]
+    }
+
+    pub fn from_array(array: &[usize]) -> TractResult<Self> {
+        anyhow::ensure!(
+            array.len() == 6,
+            "MatMulAxes requires exactly six axis numbers, got {:?}",
+            array
+        );
+        Ok(MatMulAxes {
+            a_m: array[0],
+            a_k: array[1],
+            b_k: array[2],
+            b_n: array[3],
+            c_m: array[4],
+            c_n: array[5],
+        })
     }
 }
 
@@ -68,11 +124,11 @@ pub fn compute_shape<D: DimLike>(
         );
     }
     if axes.c_m < axes.c_n {
-        c_shape.insert(axes.c_m, m);
-        c_shape.insert(axes.c_n, n);
+        c_shape.insert(axes.c_m, m.clone());
+        c_shape.insert(axes.c_n, n.clone());
     } else {
-        c_shape.insert(axes.c_n, n);
-        c_shape.insert(axes.c_m, m);
+        c_shape.insert(axes.c_n, n.clone());
+        c_shape.insert(axes.c_m, m.clone());
     }
     Ok((m, ka, n, c_shape))
 }

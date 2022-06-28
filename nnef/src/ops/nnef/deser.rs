@@ -3,7 +3,7 @@ use tract_core::internal::*;
 use tract_core::ops::cnn::deconv::adjustments;
 use tract_core::ops::cnn::PaddingSpec;
 use tract_core::ops::cnn::PoolSpec;
-use tract_core::ops::matmul::MatMulQParams;
+use tract_core::ops::matmul::{MatMulAxes, MatMulQParams};
 use tract_core::ops::nn::DataFormat;
 use tract_itertools::izip;
 use tract_itertools::Itertools;
@@ -562,6 +562,10 @@ pub fn matmul(
     let b_trans = invocation.named_arg_as(builder, "transposeB")?;
     let a_dt = builder.model.outlet_fact(a)?.datum_type;
     let b_dt = builder.model.outlet_fact(b)?.datum_type;
+    let a_rank = builder.model.outlet_fact(a)?.rank();
+    let b_rank = builder.model.outlet_fact(b)?.rank();
+    let axes = MatMulAxes::default_for_ranks(a_rank, b_rank, a_rank.max(b_rank))
+        .transposing(a_trans, b_trans, false);
     if a_dt.is_quantized() || b_dt.is_quantized() {
         let accum_dt = DatumType::QI32(QParams::ZpScale {
             scale: a_dt.zp_scale().1 * b_dt.zp_scale().1,
@@ -575,17 +579,11 @@ pub fn matmul(
         builder.model.node(a.node);
 
         return builder.wire(
-            ops::matmul::QMatMul {
-                a_trans,
-                b_trans,
-                c_trans: false,
-                output_type: dt,
-                params: MatMulQParams::all_from_qtype(),
-            },
+            ops::matmul::QMatMul { axes, output_type: dt, params: MatMulQParams::all_from_qtype() },
             &[a, b, bias],
         );
     } else {
-        builder.wire(ops::matmul::MatMul { a_trans, b_trans, c_trans: false }, &[a, b])
+        builder.wire(ops::matmul::MatMul { axes }, &[a, b])
     }
 }
 

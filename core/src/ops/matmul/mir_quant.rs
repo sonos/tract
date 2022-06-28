@@ -239,6 +239,7 @@ pub struct QMatMul {
 impl_dyn_hash!(QMatMul);
 
 impl QMatMul {
+    /*
     pub fn with_a_trans(self, a_trans: bool) -> QMatMul {
         std::mem::swap(&mut self.axes.a_k, &mut self.axes.a_m);
         self
@@ -253,6 +254,7 @@ impl QMatMul {
         std::mem::swap(&mut self.axes.c_m, &mut self.axes.c_n);
         self
     }
+    */
 }
 
 impl Op for QMatMul {
@@ -330,20 +332,10 @@ impl TypedOp for QMatMul {
                 inputs[1]
             );
         }
-        let (_m, _k, _n, c_shape) = compute_shape(
-            &inputs[0].shape,
-            &inputs[1].shape,
-            self.a_trans,
-            self.b_trans,
-            self.c_trans,
-        )?;
+        let (_m, _k, _n, c_shape) = compute_shape(&inputs[0].shape, &inputs[1].shape, self.axes)?;
 
         if inputs[2].rank() == 2 {
-            let expected_bias_shape: [TDim; 2] = if self.c_trans {
-                [1.to_dim(), c_shape[c_shape.len() - 1].clone()]
-            } else {
-                [c_shape[c_shape.len() - 2].clone(), 1.to_dim()]
-            };
+            let expected_bias_shape: [TDim; 2] = [1.to_dim(), c_shape[self.axes.c_m].clone()];
             anyhow::ensure!(*inputs[2].shape == expected_bias_shape);
         } else {
             anyhow::ensure!(inputs[2].shape.iter().product::<TDim>() == 1.to_dim());
@@ -374,8 +366,6 @@ impl TypedOp for QMatMul {
         };
 
         let flip = konst_ix == 1;
-        let t_konst = [self.a_trans, self.b_trans][konst_ix] ^ flip;
-        let t_var = [self.b_trans, self.a_trans][konst_ix] ^ flip;
         let konst = model.outlet_fact(node.inputs[konst_ix])?.konst.as_ref().unwrap();
         let bias = model.outlet_fact(node.inputs[2])?.konst.clone().unwrap();
 
@@ -407,6 +397,19 @@ impl TypedOp for QMatMul {
             }
         };
 
+        let axes = if flip {
+            MatMulAxes {
+                a_m: self.axes.b_n,
+                a_k: self.axes.b_k,
+                b_n: self.axes.a_m,
+                b_k: self.axes.a_k,
+                c_m: self.axes.c_n,
+                c_n: self.axes.c_m,
+            }
+        } else {
+            self.axes.clone()
+        };
+
         TypedModelPatch::replace_single_op(
             model,
             node,
@@ -419,9 +422,7 @@ impl TypedOp for QMatMul {
                         .map(|b| b.cast_to_scalar::<f32>().unwrap() != 0.0)
                         .unwrap_or(true)
                 }),
-                t_konst,
-                t_var,
-                self.c_trans ^ flip,
+                axes,
                 self.output_type,
                 new_params,
             ),
@@ -434,8 +435,7 @@ impl TypedOp for QMatMul {
             &inputs[0].shape.to_tvec(),
             &inputs[1].shape.to_tvec(),
             inputs[0].datum_type,
-            self.a_trans,
-            self.b_trans,
+            self.axes,
         )
     }
 
@@ -476,17 +476,15 @@ impl TypedOp for QMatMul {
         let a = wire_offset_u8_as_i8(&mut patch, &node.name, a, "a", &mut params[0], "a0")?;
         let b = wire_offset_u8_as_i8(&mut patch, &node.name, b, "b", &mut params[2], "b0")?;
 
-        let new_op = MatMul { a_trans: self.a_trans, b_trans: self.b_trans, c_trans: self.c_trans };
+        let new_op = MatMul { axes: self.axes };
         let result = patch.wire_node(format!("{}.matmul", &node.name), new_op, &[a, b])?[0];
         let result = wire_matmul_quant(
             &mut patch,
             &node.name,
             a,
-            self.a_trans,
             b,
-            self.b_trans,
             Some(bias),
-            self.c_trans,
+            self.axes,
             result,
             self.output_type,
             &params,
