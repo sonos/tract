@@ -297,7 +297,7 @@ where
                         tract
                             .outlet_label((node.id, ix).into())
                             .and_then(get_value)
-                            .or_else(|| get_value(&node.name))
+                            .or_else(|| get_value(&node.name).filter(|_| ix == 0))
                             .map(|t| {
                                 let needed_type =
                                     node.outputs[ix].fact.to_typed_fact().unwrap().datum_type;
