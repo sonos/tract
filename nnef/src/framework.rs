@@ -219,7 +219,7 @@ fn read_stream<R: std::io::Read>(
         let id = path
             .to_str()
             .ok_or_else(|| format_err!("Badly encoded filename for tensor: {:?}", path))?;
-        let tensor = crate::tensors::read_tensor(reader)?;
+        let tensor = crate::tensors::read_tensor(reader).with_context(|| format!("{:?}", path))?;
         tensors.push((id.to_string(), tensor.into_arc_tensor()));
     } else if path.file_name().map(|n| n == "graph.quant").unwrap_or(false) {
         let mut t = String::new();
