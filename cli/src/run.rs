@@ -126,6 +126,7 @@ fn run_regular(
                             name = format!("turn_{}/{}", turn, name);
                         }
                         match t.datum_type() {
+                            DatumType::F16 => npz.add_array(name, &t.cast_to::<f32>()?.to_array_view::<f32>()?)?,
                             DatumType::F32 => npz.add_array(name, &t.to_array_view::<f32>()?)?,
                             DatumType::F64 => npz.add_array(name, &t.to_array_view::<f64>()?)?,
                             DatumType::I32 => npz.add_array(name, &t.to_array_view::<i32>()?)?,
