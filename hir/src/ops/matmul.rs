@@ -2,6 +2,7 @@ use crate::infer::*;
 use crate::internal::*;
 
 pub use tract_core::ops::matmul::MatMul;
+use tract_core::ops::matmul::MatMulAxes;
 
 #[derive(Debug, Clone, Default, Hash)]
 pub struct MatMulInference {
@@ -58,15 +59,12 @@ impl Expansion for MatMulInference {
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         let inputs = crate::ops::binary::wire_rank_broadcast(prefix, target, inputs)?;
-        target.wire_node(
-            prefix,
-            tract_core::ops::matmul::MatMul {
-                a_trans: self.a_trans,
-                b_trans: self.b_trans,
-                c_trans: self.c_trans,
-            },
-            &inputs,
-        )
+        let axes = MatMulAxes::default_for_rank(target.outlet_fact(inputs[0])?.rank()).transposing(
+            self.a_trans,
+            self.b_trans,
+            self.c_trans,
+        );
+        target.wire_node(prefix, tract_core::ops::matmul::MatMul { axes }, &inputs)
     }
 }
 

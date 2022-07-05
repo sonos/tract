@@ -2,6 +2,7 @@ use crate::model::ParsingContext;
 use crate::pb::*;
 use tract_hir::internal::*;
 use tract_hir::ops;
+use tract_hir::tract_core::ops::matmul::MatMulAxes;
 
 pub fn gemm(
     _ctx: &ParsingContext,
@@ -63,9 +64,10 @@ impl Expansion for Gemm {
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         let (a, b, mut c) = (inputs[0], inputs[1], inputs[2]);
+        let axes = MatMulAxes::default().transposing(self.trans_a, self.trans_b, false);
         let mut wire = model.wire_node(
             format!("{}.ab", name),
-            ops::matmul::MatMul::default().with_a_trans(self.trans_a).with_b_trans(self.trans_b),
+            ops::matmul::MatMul { axes },
             &[a, b].as_ref(),
         )?[0];
         if self.alpha != 1.0 {

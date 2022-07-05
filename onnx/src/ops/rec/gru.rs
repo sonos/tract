@@ -2,6 +2,7 @@ use crate::model::ParsingContext;
 use crate::pb::*;
 use tract_hir::internal::*;
 use tract_hir::ops;
+use tract_hir::tract_core::ops::matmul::MatMulAxes;
 
 pub fn gru(
     _ctx: &ParsingContext,
@@ -281,9 +282,11 @@ impl GRU {
         wire!(Wr = array::Slice::new(0, 1.to_dim() * h_size, 2.to_dim() * h_size), W);
         wire!(Wh = array::Slice::new(0, 2.to_dim() * h_size, 3.to_dim() * h_size), W);
 
+        let matmul_t = matmul::MatMul { axes: MatMulAxes::default().transposing_b() };
+
         // zt = f(Xt*(Wz^T) + Ht-1*(Rz^T) + Wbz + Rbz)
-        wire!(Xt_WzT = matmul::MatMul::default().with_b_trans(true), Xt, Wz);
-        wire!(Ht_1_RzT = matmul::MatMul::default().with_b_trans(true), Ht_1, Rz);
+        wire!(Xt_WzT = matmul_t.clone(), Xt, Wz);
+        wire!(Ht_1_RzT = matmul_t.clone(), Ht_1, Rz);
         wire!(zt0 = math::add::bin_typed(), Xt_WzT, Ht_1_RzT);
         let mut zt0 = zt0;
         if let Some(b) = b {
@@ -296,8 +299,8 @@ impl GRU {
         wire!(zt = self.f.clone(), zt0);
 
         // rt = f(Xt*(Wr^T) + Ht-1*(Rr^T) + Wbr + Rbr)
-        wire!(Xt_WrT = matmul::MatMul::default().with_b_trans(true), Xt, Wr);
-        wire!(Ht_1_RrT = matmul::MatMul::default().with_b_trans(true), Ht_1, Rr);
+        wire!(Xt_WrT = matmul_t.clone(), Xt, Wr);
+        wire!(Ht_1_RrT = matmul_t.clone(), Ht_1, Rr);
         wire!(rt0 = math::add::bin_typed(), Xt_WrT, Ht_1_RrT);
         let mut rt0 = rt0;
         if let Some(b) = b {
@@ -311,10 +314,10 @@ impl GRU {
 
         // ht = g(Xt*(Wh^T) + (rt (.) Ht-1)*(Rh^T) + Rbh + Wbh) # default, when linear_before_reset = 0
         // ht = g(Xt*(Wh^T) + (rt (.) (Ht-1*(Rh^T) + Rbh)) + Wbh) # when linear_before_reset != 0
-        wire!(Xt_WhT = matmul::MatMul::default().with_b_trans(true), Xt, Wh);
+        wire!(Xt_WhT = matmul_t.clone(), Xt, Wh);
         let rt_Ht_1_RhT_Rbh = if self.linear_before_reset {
             // rt (.) (Ht-1*(Rh^T) + Rbh)
-            wire!(Ht_1_RhT = matmul::MatMul::default().with_b_trans(true), Ht_1, Rh);
+            wire!(Ht_1_RhT = matmul_t.clone(), Ht_1, Rh);
             let Ht_1_RhT_Rbh = if let Some(b) = b {
                 wire!(Rbh = array::Slice::new(1, 5.to_dim() * h_size, 6.to_dim() * h_size), b);
                 wire!(Ht_1_RhT_Rbh = math::add::bin_typed(), Ht_1_RhT, Rbh);
@@ -327,7 +330,7 @@ impl GRU {
         } else {
             // (rt (.) Ht-1)*(Rh^T) + Rbh
             wire!(rt_Ht_1 = math::mul::bin_typed(), rt, Ht_1);
-            wire!(rt_Ht_1_RhT = matmul::MatMul::default().with_b_trans(true), rt_Ht_1, Rh);
+            wire!(rt_Ht_1_RhT = matmul_t.clone(), rt_Ht_1, Rh);
             if let Some(b) = b {
                 wire!(Rbh = array::Slice::new(1, 5.to_dim() * h_size, 6.to_dim() * h_size), b);
                 wire!(rt_Ht_1_RhT_Rbh = math::add::bin_typed(), rt_Ht_1_RhT, Rbh);

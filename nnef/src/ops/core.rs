@@ -5,6 +5,7 @@ mod broadcast;
 mod cast;
 mod downsample;
 mod gather;
+mod matmul;
 mod one_hot;
 mod qconv;
 mod qmatmul;
@@ -33,12 +34,13 @@ pub fn register(registry: &mut Registry) {
     cast::register(registry);
     downsample::register(registry);
     gather::register(registry);
+    matmul::register(registry);
     one_hot::register(registry);
     qconv::register(registry);
     qmatmul::register(registry);
     reduce::register(registry);
-    scatter::register(registry);
     scan::register(registry);
+    scatter::register(registry);
     source::register(registry);
     range::register(registry);
 }

@@ -1266,12 +1266,20 @@ impl Tensor {
         view::TensorView::at_prefix(self, prefix)
     }
 
+    pub fn view_offsetting(&self, coords: &[usize]) -> anyhow::Result<view::TensorView> {
+        view::TensorView::offsetting(self, coords)
+    }
+
     pub fn view_mut(&mut self) -> view::TensorView {
         unsafe { view::TensorView::at_prefix_unchecked(self, &[]) }
     }
 
     pub fn view_at_prefix_mut(&mut self, prefix: &[usize]) -> anyhow::Result<view::TensorView> {
         view::TensorView::at_prefix(self, prefix)
+    }
+
+    pub fn view_offsetting_mut(&mut self, coords: &[usize]) -> anyhow::Result<view::TensorView> {
+        view::TensorView::offsetting(self, coords)
     }
 
     /// Offsets the tensor as an i8 type if it's an u8 type, otherwise passes it unchanged.

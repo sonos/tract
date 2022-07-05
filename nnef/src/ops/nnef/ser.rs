@@ -465,7 +465,7 @@ pub fn matmul(
             )
         }
     } else {
-        todo!()
+        return Ok(None)
     };
     Ok(Some(ast.force_variable(&node.name, &c)))
 }
@@ -498,7 +498,7 @@ pub fn qmatmul(
             )
         }
     } else {
-        todo!()
+        return Ok(None)
     };
     Ok(Some(ast.force_variable(&node.name, &c)))
 }
@@ -528,7 +528,7 @@ pub fn matmul_unary(
             )
         }
     } else {
-        todo!()
+        return Ok(None)
     };
     Ok(Some(ast.force_variable(&node.name, &c)))
 }

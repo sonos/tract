@@ -62,6 +62,7 @@ impl Expansion for MatMulInteger {
     ) -> TractResult<TVec<OutletId>> {
         let a_and_b =
             tract_hir::ops::binary::wire_rank_broadcast(prefix, target, &[inputs[0], inputs[1]])?;
+        let rank = target.outlet_fact(a_and_b[0])?.rank();
         let a0 = if let Some(o) = self.optional_a_zero_point_input {
             (o + 1).into()
         } else {
@@ -82,7 +83,7 @@ impl Expansion for MatMulInteger {
             b_scale: tensor0(1f32).into(),
             c_scale: tensor0(1f32).into(),
         };
-        let op = QMatMul::new(false, false, false, i32::datum_type(), params);
+        let op = QMatMul::new(MatMulAxes::default_for_rank(rank), i32::datum_type(), params);
         let mut inputs: TVec<OutletId> = inputs.into();
         inputs[0] = a_and_b[0];
         inputs[1] = a_and_b[1];
@@ -141,10 +142,9 @@ impl Expansion for QLinearMatMul {
         target: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
+        let rank = target.outlet_fact(inputs[0])?.rank().max(target.outlet_fact(inputs[2])?.rank());
         let op = tract_core::ops::matmul::QMatMul::new(
-            false,
-            false,
-            false,
+            MatMulAxes::default_for_rank(rank),
             target.outlet_fact(inputs[7])?.datum_type,
             tract_core::ops::matmul::MatMulQParams::all_dynamic(3),
         );
