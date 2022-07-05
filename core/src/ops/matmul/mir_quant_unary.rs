@@ -18,25 +18,6 @@ pub struct QMatMulUnary {
 
 impl_dyn_hash!(QMatMulUnary);
 
-impl QMatMulUnary {
-    /*
-    pub fn with_a_trans(self, a_trans: bool) -> QMatMulUnary {
-        std::mem::swap(&mut self.axes.a_k, &mut self.axes.a_m);
-        self
-    }
-
-    pub fn with_b_trans(self, b_trans: bool) -> QMatMulUnary {
-        std::mem::swap(&mut self.axes.b_k, &mut self.axes.b_n);
-        self
-    }
-
-    pub fn with_c_trans(self, c_trans: bool) -> QMatMulUnary {
-        std::mem::swap(&mut self.axes.c_m, &mut self.axes.c_n);
-        self
-    }
-    */
-}
-
 impl Op for QMatMulUnary {
     fn name(&self) -> Cow<str> {
         "QMatMulUnary".into()
@@ -708,9 +689,7 @@ mod test {
                             QMatMulUnary::new(
                                 self.a.clone().into_arc_tensor(),
                                 Some(self.bias.clone().into_arc_tensor()),
-                                false,
-                                false,
-                                false,
+                                MatMulAxes::default(),
                                 <$c>::datum_type(),
                                 qparams,
                                 ),

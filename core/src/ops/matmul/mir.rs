@@ -12,25 +12,6 @@ pub struct MatMul {
 
 impl_dyn_hash!(MatMul);
 
-/*
-impl MatMul {
-    pub fn with_a_trans(self, a_trans: bool) -> MatMul {
-        std::mem::swap(&mut self.axes.a_k, &mut self.axes.a_m);
-        self
-    }
-
-    pub fn with_b_trans(self, b_trans: bool) -> MatMul {
-        std::mem::swap(&mut self.axes.b_k, &mut self.axes.b_n);
-        self
-    }
-
-    pub fn with_c_trans(self, c_trans: bool) -> MatMul {
-        std::mem::swap(&mut self.axes.c_m, &mut self.axes.c_n);
-        self
-    }
-}
-*/
-
 impl Op for MatMul {
     fn name(&self) -> Cow<str> {
         "MatMul".into()
@@ -133,7 +114,7 @@ mod test {
         let a = rctensor2(&[[0f32, 1.0, 2.0], [3.0, 4.0, 5.0]]);
         let b = rctensor2(&[[0f32], [1.0], [2.0]]);
         let c = rctensor2(&[[5f32], [14.0]]);
-        let op = MatMul::default().with_a_trans(true).with_b_trans(true).with_c_trans(true);
+        let op = MatMul { axes: MatMulAxes::default().transposing(true, true, true) };
         let c_found = op.eval(tvec!(b, a)).unwrap().pop().unwrap();
         c.close_enough(&c_found, true).unwrap();
     }
@@ -150,7 +131,7 @@ mod test {
         let a = a.into_arc_tensor();
         wire = model.wire_node(
             "m",
-            MatMulUnary { a, axes: MatMulAxes::default().transposing(true, true, true) },
+            MatMulUnary { a, axes: MatMulAxes::default_for_rank(3).transposing(true, true, true) },
             &wire,
         )?;
         let mut b = Tensor::zero::<f32>(&[1, 1, co])?;

@@ -46,16 +46,19 @@ impl EvalOp for MatMatMulPack {
             let mut bc_shape: TVec<usize> = b.shape().into();
             bc_shape[self.k_axis] = 1;
             bc_shape[self.mn_axis] = 1;
-            for prefix in indices(&*bc_shape) {
-                let offset = prefix
+            for coord in indices(&*bc_shape) {
+                let offset = coord
                     .as_array_view()
                     .iter()
                     .zip(b.strides())
                     .map(|(x, s)| *x as isize * s)
                     .sum::<isize>()
                     * b.datum_type().size_of() as isize;
+                let mut prefix:TVec<usize> = coord.slice().into();
+                prefix.remove(self.k_axis.max(self.mn_axis));
+                prefix.remove(self.k_axis.min(self.mn_axis));
                 self.packer.pack(
-                    &mut packed.view_at_prefix_mut(prefix.slice())?,
+                    &mut packed.view_at_prefix_mut(&prefix)?,
                     TensorView::from_bytes(&b, offset, b.shape(), b.strides()),
                     self.k_axis,
                     self.mn_axis,

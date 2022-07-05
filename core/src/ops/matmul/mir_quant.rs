@@ -1038,7 +1038,7 @@ mod test {
                     let result = model
                         .wire_node(
                             "qmm",
-                            QMatMul::new(false, false, false, <$c>::datum_type(), qparams),
+                            QMatMul::new(MatMulAxes::default(), <$c>::datum_type(), qparams),
                             &inputs,
                             )
                         .unwrap();
@@ -1280,9 +1280,7 @@ mod test {
             c_scale: QParamKind::FromInput(indices[5]),
         };
         let op = QMatMul {
-            a_trans: false,
-            b_trans: false,
-            c_trans: false,
+            axes: MatMulAxes::default(),
             output_type: i8::datum_type(),
             params: qparams.clone(),
         };

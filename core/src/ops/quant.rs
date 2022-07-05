@@ -386,6 +386,7 @@ pub mod scale {
         use crate::internal::*;
         use crate::ops;
         use crate::ops::math::round_ties_to_even;
+        use crate::ops::matmul::MatMulAxes;
         use proptest::prelude::*;
 
         fn test_scale(a: i8, b: i8, scale: f32) {
@@ -401,7 +402,7 @@ pub mod scale {
             let bias = model.add_const("bias", tensor0(0i32)).unwrap();
             let mut qp = ops::matmul::MatMulQParams::noop_static(i8::datum_type());
             qp.c_scale = tensor0(scale).into();
-            let op = ops::matmul::QMatMul::new(false, false, false, i8::datum_type(), qp);
+            let op = ops::matmul::QMatMul::new(MatMulAxes::default(), i8::datum_type(), qp);
             let output = model.wire_node("mmm", op, &[a, b, bias]).unwrap();
             model.set_output_outlets(&*output).unwrap();
 

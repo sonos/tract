@@ -270,14 +270,12 @@ fn eval(
 
 impl TypedOp for LirMatMulUnary {
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let c_prefix_len = self.c_fact.rank() - 2;
-        if self.micro_ops.ndim() != c_prefix_len {
-            bail!(
-                "Constant A table and c_prefix should have the same len. (resp {} and {})",
-                self.micro_ops.ndim(),
-                c_prefix_len
-            );
-        }
+        ensure!(
+            self.micro_ops.ndim() == self.c_fact.rank(),
+            "Constant A array rank and C rank should be the same. (resp {} and {})",
+            self.micro_ops.ndim(),
+            self.c_fact.rank()
+        );
         let mut fact = self.c_fact.clone();
         fact.shape = self.c_final_shape.clone();
         Ok(tvec!(fact))

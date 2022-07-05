@@ -230,6 +230,9 @@ impl MatMulUnary {
             )?[0];
             let b_storage = mmm.b_packed(b_dt.size_of(), k);
             let geometry = ConcreteMatMulGeometry { m, k, n, b_storage };
+            dbg!(self);
+            dbg!(&geometry);
+            dbg!(&packed_as);
             wire = patch.wire_node(
                 format!("{}.matmatmul", &*node.name),
                 LirMatMulUnary {
