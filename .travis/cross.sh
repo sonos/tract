@@ -178,8 +178,8 @@ case "$PLATFORM" in
         $SUDO apt-get -y install --no-install-recommends qemu-system-arm qemu-user libssl-dev pkg-config $PACKAGES
         rustup target add $RUSTC_TRIPLE
         qemu-$QEMU_ARCH --version
-        cargo dinghy --platform $PLATFORM test --profile opt-no-lto -p tract-linalg $DINGHY_TEST_ARGS -- --nocapture
-        cargo dinghy --platform $PLATFORM test --profile opt-no-lto -p tract-core $DINGHY_TEST_ARGS
+        cargo dinghy --platform $PLATFORM $DINGHY_TEST_ARGS test --profile opt-no-lto -p tract-linalg -- --nocapture
+        cargo dinghy --platform $PLATFORM $DINGHY_TEST_ARGS test --profile opt-no-lto -p tract-core
 
         # keep lto for these two are they're going to devices.
         cargo dinghy --platform $PLATFORM build --release -p tract -p example-tensorflow-mobilenet-v2
