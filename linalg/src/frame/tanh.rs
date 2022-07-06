@@ -47,10 +47,6 @@ pub mod test {
     }
 
     pub fn test_tanh<K: ElementWiseKer<f32>>(values: &[f32]) -> TestCaseResult {
-        let op = ElementWiseImpl::<K, f32>::new();
-        let mut found = values.to_vec();
-        op.run(&mut found).unwrap();
-        let expected = values.iter().map(|x| x.tanh()).collect::<Vec<_>>();
-        crate::check_close(&*found, &*expected)
+        crate::frame::element_wise::test::test_element_wise::<K, _, _>(values, |x| x.tanh())
     }
 }

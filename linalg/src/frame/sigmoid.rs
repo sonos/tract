@@ -48,13 +48,8 @@ pub mod test {
     }
 
     pub fn test_sigmoid<K: ElementWiseKer<f32>>(values: &[f32]) -> TestCaseResult {
-        let op = ElementWiseImpl::<K, f32>::new();
-        let mut found = values.to_vec();
-        while found.len() < K::nr() {
-            found.push(0f32);
-        }
-        op.run(&mut found).unwrap();
-        let expected = values.iter().map(|x| 1.0 / (1.0 + (-x).exp())).collect::<Vec<_>>();
-        crate::check_close(&found[..values.len()], &*expected)
+        crate::frame::element_wise::test::test_element_wise::<K, _, _>(values, |x| {
+            1.0 / (1.0 + (-x).exp())
+        })
     }
 }

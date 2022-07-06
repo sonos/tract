@@ -32,19 +32,11 @@ pub use self::frame::{element_wise, lut, mmm};
 use crate::frame::mmm::kernel::MatMatMulKer;
 use tract_data::prelude::*;
 
-type MMMImpl = 
-        Box<
-            dyn Fn(Option<usize>, Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul>
-                + Send
-                + Sync,
-        >;
+type MMMImpl = Box<
+    dyn Fn(Option<usize>, Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul> + Send + Sync,
+>;
 
-type MMVImpl = 
-        Box<
-            dyn Fn(Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul>
-                + Send
-                + Sync,
-        >;
+type MMVImpl = Box<dyn Fn(Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul> + Send + Sync>;
 
 pub struct Ops {
     mmm_f32_impls: Vec<Box<dyn MatMatMul>>,
@@ -162,8 +154,6 @@ pub trait LADatum:
 {
     #[cfg(test)]
     fn strat() -> proptest::prelude::BoxedStrategy<Self>;
-    #[cfg(test)]
-    fn close(&self, other: &Self) -> bool;
 }
 
 #[cfg(test)]
@@ -174,20 +164,12 @@ impl LADatum for f16 {
     fn strat() -> BoxedStrategy<Self> {
         f32::strat().prop_map(|f| f.as_()).boxed()
     }
-    #[cfg(test)]
-    fn close(&self, other: &Self) -> bool {
-        (*self - *other).abs() < 0.001.as_()
-    }
 }
 
 impl LADatum for f32 {
     #[cfg(test)]
     fn strat() -> BoxedStrategy<Self> {
         (-1000isize..1000).prop_map(|i| i as f32 / 1000.0).boxed()
-    }
-    #[cfg(test)]
-    fn close(&self, other: &Self) -> bool {
-        (self - other).abs() < 0.001
     }
 }
 
@@ -196,20 +178,12 @@ impl LADatum for u8 {
     fn strat() -> BoxedStrategy<Self> {
         any::<u8>().boxed()
     }
-    #[cfg(test)]
-    fn close(&self, other: &Self) -> bool {
-        self == other
-    }
 }
 
 impl LADatum for i8 {
     #[cfg(test)]
     fn strat() -> BoxedStrategy<Self> {
         any::<i8>().boxed()
-    }
-    #[cfg(test)]
-    fn close(&self, other: &Self) -> bool {
-        self == other
     }
 }
 
@@ -218,22 +192,4 @@ impl LADatum for i32 {
     fn strat() -> BoxedStrategy<Self> {
         any::<i32>().boxed()
     }
-    #[cfg(test)]
-    fn close(&self, other: &Self) -> bool {
-        self == other
-    }
-}
-
-#[cfg(test)]
-pub(crate) fn check_close<T: LADatum>(
-    found: &[T],
-    expected: &[T],
-) -> proptest::test_runner::TestCaseResult {
-    proptest::prop_assert!(
-        found.iter().zip(expected.iter()).all(|(a, b)| a.close(b)),
-        "found: {:?} expected: {:?}",
-        found,
-        expected
-    );
-    Ok(())
 }
