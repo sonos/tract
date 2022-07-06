@@ -108,3 +108,28 @@ where
     fn nr() -> usize;
     fn run(vec: &mut [T]);
 }
+
+#[cfg(test)]
+pub mod test {
+    use crate::{frame::element_wise::*, LADatum};
+    use proptest::test_runner::{TestCaseError, TestCaseResult};
+    use tract_data::internal::*;
+
+    pub fn test_element_wise<K: ElementWiseKer<T>, T:LADatum, F: Fn(T) -> T>(
+        values: &[T],
+        reference: F,
+    ) -> TestCaseResult {
+        let op = ElementWiseImpl::<K, T>::new();
+        let mut values = values.to_vec();
+        while values.len() < K::nr() {
+            values.push(T::zero());
+        }
+        let expected = values.iter().copied().map(reference).collect::<Vec<_>>();
+        let mut found = values;
+        op.run(&mut found).unwrap();
+        tensor1(&*expected)
+            .close_enough(&tensor1(&*found), true)
+            .map_err(|e| TestCaseError::fail(e.root_cause().to_string()))?;
+        Ok(())
+    }
+}
