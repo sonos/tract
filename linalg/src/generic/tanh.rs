@@ -1,22 +1,19 @@
 use crate::frame::element_wise::ElementWiseKer;
 
-/* (x (1. + x^2 (0.129499 + x^2 (0.00295387 + x^2 (9.57366*10^-6 + x^2 (-1.37187*10^-8 + 2.07234*10^-11 x^2))))))
- * ---------------------------------------------------------------------------------------------------------------
- *          (1. + x^2 (0.462832 + x^2 (0.0238983 + 0.000232702 x^2)))
- */
+const LOW: f32 = -8.9;
+const HIGH: f32 = 8.9;
 
-const LOW: f32 = -8.5;
-const HIGH: f32 = 8.5;
+const ALPHA_13: f32 = -8.488492677e-14;
+const ALPHA_11: f32 = 5.277853000e-11;
+const ALPHA_9: f32 = -2.022500419e-8;
+const ALPHA_7: f32 = 0.00001115424833;
+const ALPHA_5: f32 = 0.003103950131;
+const ALPHA_3: f32 = 0.1308400453;
+const ALPHA_1: f32 = 0.9999999934;
 
-const ALPHA_11: f32 = 2.07234e-11;
-const ALPHA_9: f32 = -1.37187e-8;
-const ALPHA_7: f32 = 9.57366e-6;
-const ALPHA_5: f32 = 0.00295387;
-const ALPHA_3: f32 = 0.129499;
-const ALPHA_1: f32 = 1.0;
-const BETA_6: f32 = 0.000232702;
-const BETA_4: f32 = 0.0238983;
-const BETA_2: f32 = 0.462832;
+const BETA_6: f32 = 0.0002546136580;
+const BETA_4: f32 = 0.02449515379;
+const BETA_2: f32 = 0.4641733162;
 const BETA_0: f32 = 1.0;
 
 pub fn stanh(x: f32) -> f32 {
@@ -24,7 +21,8 @@ pub fn stanh(x: f32) -> f32 {
 
     let x2 = x * x;
 
-    let p = ALPHA_11;
+    let p = ALPHA_13;
+    let p = x2 * p + ALPHA_11;
     let p = x2 * p + ALPHA_9;
     let p = x2 * p + ALPHA_7;
     let p = x2 * p + ALPHA_5;
@@ -71,4 +69,10 @@ impl ElementWiseKer<f32> for STanh4 {
 #[macro_use]
 pub mod test {
     tanh_frame_tests!(true, crate::generic::tanh::STanh4);
+}
+
+#[test]
+fn asymptots() {
+    assert_eq!(stanh(-100f32), -1f32);
+    assert_eq!(stanh(100f32), 1f32);
 }
