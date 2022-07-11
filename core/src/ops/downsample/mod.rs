@@ -131,7 +131,7 @@ fn pull_downsample_up(
                 let source = patch.tap_model(model, oo)?;
                 let mut op = down_op.clone();
                 op.axis = above_axis;
-                let ds = patch.wire_node(format!("{}-{}", prec.name, ix), op, [source].as_ref())?;
+                let ds = patch.wire_node(format!("{}.{}-{}", down_node.name, prec.name, ix), op, [source].as_ref())?;
                 inputs.push(ds[0]);
             }
             let other = patch.wire_node(&*prec.name, prec.op.clone(), &*inputs)?;
