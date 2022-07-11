@@ -45,7 +45,6 @@ then
      wget -q https://github.com/snipsco/dinghy/releases/download/$VERSION/cargo-dinghy-$NAME-$VERSION.tgz -O cargo-dinghy.tgz
      tar vzxf cargo-dinghy.tgz --strip-components 1
      mv cargo-dinghy $HOME/.cargo/bin
-    cargo install cargo-dinghy --rev 8a9ec62b3266429402684c0d92c2319b48c143fc --git https://github.com/sonos/dinghy
 else
     cargo install cargo-dinghy
 fi
