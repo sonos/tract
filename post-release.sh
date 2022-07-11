@@ -24,7 +24,7 @@ set_version() {
     for dep in `grep "^tract-" $FILE | cut -d " " -f 1`
     do
         short_dep=`echo $dep | sed "s/^tract-//"`
-        cargo add --manifest-path $FILE --path ../$short_dep tract-$short_dep
+        cargo add --manifest-path $FILE --path $short_dep tract-$short_dep
     done
 }
 
