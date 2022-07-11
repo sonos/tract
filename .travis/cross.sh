@@ -34,17 +34,17 @@ which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
 which cargo-dinghy || ( mkdir -p /tmp/cargo-dinghy
 if [ `arch` = x86_64 ]
 then
-    cd /tmp/cargo-dinghy
-    if [ `uname` = "Darwin" ]
-    then
-        NAME=macos
-    else
-        NAME=linux
-    fi
-    VERSION=0.4.68
-    wget -q https://github.com/snipsco/dinghy/releases/download/$VERSION/cargo-dinghy-$NAME-$VERSION.tgz -O cargo-dinghy.tgz
-    tar vzxf cargo-dinghy.tgz --strip-components 1
-    mv cargo-dinghy $HOME/.cargo/bin
+     cd /tmp/cargo-dinghy
+     if [ `uname` = "Darwin" ]
+     then
+         NAME=macos
+     else
+         NAME=linux
+     fi
+     VERSION=0.5.1
+     wget -q https://github.com/snipsco/dinghy/releases/download/$VERSION/cargo-dinghy-$NAME-$VERSION.tgz -O cargo-dinghy.tgz
+     tar vzxf cargo-dinghy.tgz --strip-components 1
+     mv cargo-dinghy $HOME/.cargo/bin
 else
     cargo install cargo-dinghy
 fi
@@ -178,8 +178,8 @@ case "$PLATFORM" in
         $SUDO apt-get -y install --no-install-recommends qemu-system-arm qemu-user libssl-dev pkg-config $PACKAGES
         rustup target add $RUSTC_TRIPLE
         qemu-$QEMU_ARCH --version
-        cargo dinghy --platform $PLATFORM test --profile opt-no-lto -p tract-linalg $DINGHY_TEST_ARGS -- --nocapture
-        cargo dinghy --platform $PLATFORM test --profile opt-no-lto -p tract-core $DINGHY_TEST_ARGS
+        cargo dinghy --platform $PLATFORM $DINGHY_TEST_ARGS test --profile opt-no-lto -p tract-linalg -- --nocapture
+        cargo dinghy --platform $PLATFORM $DINGHY_TEST_ARGS test --profile opt-no-lto -p tract-core
 
         # keep lto for these two are they're going to devices.
         cargo dinghy --platform $PLATFORM build --release -p tract -p example-tensorflow-mobilenet-v2
