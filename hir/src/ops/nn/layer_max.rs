@@ -143,34 +143,13 @@ impl Expansion for LayerSoftmax {
         target: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        use tract_core::ops::{math, nn};
         let input = inputs[0];
         let rank = target.outlet_fact(input)?.rank();
+        let dt = target.outlet_fact(input)?.datum_type;
         let axis = if self.axis < 0 { rank as isize + self.axis } else { self.axis } as usize;
         let reducing_axes =
             if self.coerce_to_2d { (axis..rank).collect::<TVec<usize>>() } else { tvec!(axis) };
-        let maxes = target.wire_node(
-            format!("{}.max", name),
-            nn::Reduce::new(reducing_axes.clone(), nn::Reducer::Max),
-            &[input],
-        )?[0];
-        let normed = target.wire_node(
-            format!("{}.normed", name),
-            math::sub::bin_typed(),
-            &[input, maxes],
-        )?[0];
-        let exp =
-            target.wire_node(format!("{}.exp", name), tract_core::ops::math::exp(), &[normed])?[0];
-        let sum = target.wire_node(
-            format!("{}.sum", name),
-            nn::Reduce::new(reducing_axes, nn::Reducer::Sum),
-            &[exp],
-        )?[0];
-        target.wire_node(
-            format!("{}.softmax", name),
-            tract_core::ops::math::div::bin_typed(),
-            &[exp, sum],
-        )
+        target.wire_node(name, tract_core::ops::nn::Softmax::new(reducing_axes, dt), inputs)
     }
 }
 
