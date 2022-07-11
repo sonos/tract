@@ -352,7 +352,8 @@ impl<'a> IntoAst<'a> {
         tensor: &Arc<Tensor>,
         force_variable: bool,
         ) -> TractResult<Arc<RValue>> {
-        if !force_variable && tensor.is_uniform() && tensor.len() > 0 {
+        let name = name.into();
+        if !force_variable && tensor.len() == 1 {
             if tensor.datum_type() == String::datum_type() {
                 return Ok(string(tensor.to_scalar::<String>().unwrap()).into());
             } else if tensor.datum_type() == DatumType::F32 {
@@ -365,7 +366,6 @@ impl<'a> IntoAst<'a> {
                 }
             };
         }
-        let name = name.into();
         self.tensors.push((name.clone(), tensor.clone()));
         let id = self.scoped_id(&name);
         self.assignment(
