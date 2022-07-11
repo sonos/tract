@@ -290,6 +290,7 @@ test_matmul_3d
 test_matmul_4d
 test_matmulinteger                                                               
 test_max_example
+test_max_float16
 test_max_float32
 test_max_float64
 test_max_int16
@@ -319,6 +320,7 @@ test_mean_example
 test_mean_one_input
 test_mean_two_inputs
 test_min_example
+test_min_float16
 test_min_float32
 test_min_float64
 test_min_int16
