@@ -1,4 +1,6 @@
 # Unreleased
+
+# 0.17.1 - 2022-07-11
 * Sanitiser=address in the CI. Fixed a couple of overflow/memleaks. (Nothing looked too awful.)
 * ONNX NonMaxSuppression
 
