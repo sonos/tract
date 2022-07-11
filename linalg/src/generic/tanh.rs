@@ -70,9 +70,3 @@ impl ElementWiseKer<f32> for STanh4 {
 pub mod test {
     tanh_frame_tests!(true, crate::generic::tanh::STanh4);
 }
-
-#[test]
-fn asymptots() {
-    assert_eq!(stanh(-100f32), -1f32);
-    assert_eq!(stanh(100f32), 1f32);
-}

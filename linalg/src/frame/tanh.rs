@@ -43,6 +43,17 @@ pub mod test {
                     crate::frame::tanh::test::test_tanh::<$ker>(&[0.0; 18]).unwrap();
                 }
             }
+
+            #[test]
+            fn tanh_asymptots() {
+                use crate::frame::element_wise::*;
+                use tract_data::internal::*;
+                if $cond {
+                    let mut input = [-100f32, 100f32];
+                    <$ker>::ew().run(&mut input).unwrap();
+                    tensor1(&input).close_enough(&tensor1(&[-1f32, 1.]), Approximation::Close).unwrap();
+                }
+            }
         };
     }
 

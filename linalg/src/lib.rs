@@ -16,6 +16,7 @@ include!(concat!(env!("OUT_DIR"), "/extern_kernel_macro.rs"));
 #[macro_use]
 pub mod frame;
 pub mod generic;
+use frame::element_wise::ElementWiseKer;
 use frame::MatMatMul;
 pub use generic::{ScaleShiftAndRound, Scaler};
 #[cfg(target_arch = "x86_64")]
@@ -99,12 +100,8 @@ pub fn generic() -> Ops {
         mmv_f16: Box::new(|_, _| generic::GenericMmm4x1::<f16, f16, f16>::mmm()),
         qmmm_i32: Box::new(|_, _, _| generic::GenericMmm4x4::<i8, i8, i32>::mmm()),
         qmmv_i32: Box::new(|_, _| generic::GenericMmm4x1::<i8, i8, i32>::mmm()),
-        sigmoid_f32: Box::new(|| {
-            Box::new(element_wise::ElementWiseImpl::<generic::SSigmoid4, f32>::new())
-        }),
-        tanh_f32: Box::new(|| {
-            Box::new(element_wise::ElementWiseImpl::<generic::STanh4, f32>::new())
-        }),
+        sigmoid_f32: Box::new(|| generic::SSigmoid4::ew()),
+        tanh_f32: Box::new(|| generic::STanh4::ew()),
         lut_u8: Box::new(|table: &[u8]| Box::new(lut::LutImpl::<generic::GenericLut8>::new(table))),
     }
 }

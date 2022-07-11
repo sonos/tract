@@ -3,6 +3,8 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use tract_data::anyhow;
 
+use crate::LADatum;
+
 struct TempBuffer {
     layout: Layout,
     buffer: *mut u8,
@@ -56,7 +58,7 @@ dyn_clone::clone_trait_object!(<T> ElementWise<T> where T: Copy);
 #[derive(Debug, Clone, new)]
 pub struct ElementWiseImpl<K, T>
 where
-    T: Copy + Debug + PartialEq + Send + Sync,
+    T: LADatum,
     K: ElementWiseKer<T> + Clone,
 {
     phantom: PhantomData<(K, T)>,
@@ -64,7 +66,7 @@ where
 
 impl<K, T> ElementWise<T> for ElementWiseImpl<K, T>
 where
-    T: crate::Datum + Copy + Debug + PartialEq + Send + Sync,
+    T: LADatum,
     K: ElementWiseKer<T> + Clone,
 {
     fn run(&self, vec: &mut [T]) -> anyhow::Result<()> {
@@ -98,15 +100,18 @@ where
     }
 }
 
-pub trait ElementWiseKer<T>: Send + Sync + Debug + dyn_clone::DynClone + Clone
+pub trait ElementWiseKer<T>: Send + Sync + Debug + dyn_clone::DynClone + Clone + 'static
 where
-    T: Copy + Debug + PartialEq + Send + Sync,
+    T: LADatum,
 {
     fn name() -> &'static str;
     fn alignment_bytes() -> usize;
     fn alignment_items() -> usize;
     fn nr() -> usize;
     fn run(vec: &mut [T]);
+    fn ew() -> Box<dyn ElementWise<T>> {
+        Box::new(ElementWiseImpl::<Self, T>::new())
+    }
 }
 
 #[cfg(test)]
@@ -115,7 +120,7 @@ pub mod test {
     use proptest::test_runner::{TestCaseError, TestCaseResult};
     use tract_data::internal::*;
 
-    pub fn test_element_wise<K: ElementWiseKer<T>, T:LADatum, F: Fn(T) -> T>(
+    pub fn test_element_wise<K: ElementWiseKer<T>, T: LADatum, F: Fn(T) -> T>(
         values: &[T],
         reference: F,
     ) -> TestCaseResult {
