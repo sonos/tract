@@ -1,8 +1,8 @@
 //! `Tensor`, tract main data object of interest.
 use crate::datum::{round_ties_to_even, scale_by, Blob, ClampCast, Datum, DatumType, QParams};
 use crate::dim::TDim;
-use half::f16;
 use crate::TVec;
+use half::f16;
 use itertools::Itertools;
 use ndarray::prelude::*;
 use num_complex::Complex;
@@ -18,6 +18,34 @@ use std::sync::Arc;
 
 pub mod litteral;
 pub mod view;
+
+#[derive(Copy, Clone, PartialEq, Debug)]
+pub enum Approximation {
+    Exact,
+    Close,
+    Approximate,
+}
+
+impl From<bool> for Approximation {
+    fn from(b: bool) -> Self {
+        if b {
+            Self::Approximate
+        } else {
+            Self::Exact
+        }
+    }
+}
+
+impl Approximation {
+    fn atol_and_rtol(&self, dt: &DatumType) -> (f64, f64) {
+        use Approximation::*;
+        match (self, dt) {
+            (Exact, _) => (0.0, 0.0),
+            (Close, _) => (1e-7, 1e-7),
+            (Approximate, _) => (1e-4, 5e-4),
+        }
+    }
+}
 
 /// Tensor is a concrete tensor in tract.
 pub struct Tensor {
@@ -667,35 +695,31 @@ impl Tensor {
     }
 
     /// Compare two tensors, allowing for rounding errors.
-    pub fn close_enough(&self, other: &Self, approx: bool) -> anyhow::Result<()> {
+    pub fn close_enough(
+        &self,
+        other: &Self,
+        approx: impl Into<Approximation> + std::fmt::Debug,
+    ) -> anyhow::Result<()> {
+        let approx = approx.into();
         if self.shape() != other.shape() {
             anyhow::bail!("Shape mismatch {:?} != {:?}", self.shape(), other.shape())
         }
-        if approx {
-            let atol = if self.datum_type() == f16::datum_type() { 1e-2 } else { 5e-4 };
-            let rtol = if self.datum_type() == f16::datum_type() { 1e-1 } else { 1e-4 };
-            let ma = self.cast_to::<f32>()?;
-            let ma = ma.to_array_view::<f32>()?;
-            let mb = other.cast_to::<f32>()?;
-            let mb = mb.to_array_view::<f32>()?;
-            ndarray::indices_of(&ma).into_iter().try_for_each(|indices| {
-                let a = ma[&indices];
-                let b = mb[&indices];
-                if !((a.is_nan() && b.is_nan())
-                    || (a.is_infinite() && b.is_infinite() && a.signum() == b.signum())
-                    || (a - b).abs() <= atol + rtol * b.abs())
-                {
-                    anyhow::bail!("Mismatch at {:?} {} != {}", indices.slice(), a, b)
-                }
-                Ok(())
-            })
-        } else {
-            if self.eq(other) {
-                Ok(())
-            } else {
-                anyhow::bail!("Mismatch")
+        let (atol, rtol) = approx.atol_and_rtol(&self.datum_type());
+        let ma = self.cast_to::<f32>()?;
+        let ma = ma.to_array_view::<f32>()?;
+        let mb = other.cast_to::<f32>()?;
+        let mb = mb.to_array_view::<f32>()?;
+        ndarray::indices_of(&ma).into_iter().try_for_each(|indices| {
+            let a = ma[&indices];
+            let b = mb[&indices];
+            if !((a.is_nan() && b.is_nan())
+                || (a.is_infinite() && b.is_infinite() && a.signum() == b.signum())
+                || (a - b).abs() <= atol as f32 + rtol as f32 * b.abs())
+            {
+                anyhow::bail!("Mismatch (wanted {:?}) at {:?} {} != {}", approx, indices.slice(), a, b)
             }
-        }
+            Ok(())
+        })
     }
 
     /// Transform the tensor into a `ndarray::Array`.
@@ -772,7 +796,7 @@ impl Tensor {
 
     /// Access the data as a slice.
     pub fn as_slice<D: Datum>(&self) -> anyhow::Result<&[D]> {
-        let ptr:*const D = self.as_ptr()?;
+        let ptr: *const D = self.as_ptr()?;
         if ptr.is_null() {
             Ok(&[])
         } else {
@@ -782,7 +806,7 @@ impl Tensor {
 
     /// Access the data as a mutable slice.
     pub fn as_slice_mut<D: Datum>(&mut self) -> anyhow::Result<&mut [D]> {
-        let ptr:*mut D = self.as_ptr_mut()?;
+        let ptr: *mut D = self.as_ptr_mut()?;
         if ptr.is_null() {
             Ok(&mut [])
         } else {
