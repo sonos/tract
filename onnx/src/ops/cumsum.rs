@@ -39,19 +39,23 @@ impl Expansion for CumSum {
         let axis =
             model.outlet_fact(inputs[1])?.konst.as_ref().context("Axis expected to be a const")?;
         let axis = axis.cast_to_scalar::<i64>()?;
-        let data = model.outlet_fact(inputs[0])?;
-        let axis = if axis < 0 { (axis + data.rank() as i64) as usize } else { axis as usize };
+        let data = model.outlet_fact(inputs[0])?.clone();
         let mut var_shape = data.shape.clone();
+        let axis = if axis < 0 { (axis + data.rank() as i64) as usize } else { axis as usize };
+        let zero = model.add_const(
+            format!("{}.zero", prefix),
+            Tensor::zero_dt(data.datum_type, &[])?.into_arc_tensor(),
+        )?;
         var_shape.set(axis, 1.to_dim());
-        let var_shape = var_shape.as_concrete().context("Expect shapes to be known")?;
+        let init = model.wire_node(
+            format!("{}.init", prefix),
+            tract_core::ops::array::MultiBroadcastTo::new(var_shape.clone().into()),
+            &[zero],
+        )?[0];
         let chunk = if self.reverse { -1 } else { 1 };
         let input_mapping = vec![
             scan::InputMapping::Scan { slot: 0, axis, chunk },
-            scan::InputMapping::State {
-                initializer: scan::StateInitializer::Value(
-                    Tensor::zero_dt(data.datum_type, var_shape)?.into_arc_tensor(),
-                ),
-            },
+            scan::InputMapping::State { initializer: scan::StateInitializer::FromInput(1) },
         ];
         let output_mapping = vec![
             scan::OutputMapping {
@@ -82,7 +86,7 @@ impl Expansion for CumSum {
             body.set_output_outlets(&[sum, sum])?;
         }
         let scan = scan::Scan::new(body, input_mapping, output_mapping, None, 0)?;
-        model.wire_node(prefix, scan, &inputs[0..1])
+        model.wire_node(prefix, scan, &[inputs[0], init])
     }
 
     fn rules<'r, 'p: 'r, 's: 'r>(
