@@ -9,7 +9,7 @@ fn use_masm() -> bool {
 }
 
 fn use_clang() -> bool {
-    var("TARGET").contains("-android") || var("TARGET").contains("-ios")
+    var("TARGET").contains("-android") || var("TARGET").contains("-ios") || var("TARGET").contains("-darwin")
 }
 
 fn jump_table() -> Vec<String> {
