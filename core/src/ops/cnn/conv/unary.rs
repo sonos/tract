@@ -95,8 +95,8 @@ impl ConvUnary {
             if self.pool_spec.data_format.has_n() {
                 packed_as.insert_axis_inplace(Axis(0));
             }
-            packed_as.insert_axis_inplace(Axis(packed_as.ndim() - 1));
-            packed_as.insert_axis_inplace(Axis(packed_as.ndim() - 1));
+            packed_as.insert_axis_inplace(Axis(packed_as.ndim()));
+            packed_as.insert_axis_inplace(Axis(packed_as.ndim()));
             Ok(packed_as)
         }
     }

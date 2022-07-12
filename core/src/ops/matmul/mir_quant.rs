@@ -335,7 +335,11 @@ impl TypedOp for QMatMul {
         let (_m, _k, _n, c_shape) = compute_shape(&inputs[0].shape, &inputs[1].shape, self.axes)?;
 
         if inputs[2].rank() == 2 {
-            let expected_bias_shape: [TDim; 2] = [1.to_dim(), c_shape[self.axes.c_m].clone()];
+            let expected_bias_shape = if self.axes.c_m > self.axes.c_n {
+                [1.to_dim(), c_shape[self.axes.c_m].clone()]
+            } else {
+                [c_shape[self.axes.c_m].clone(), 1.to_dim()]
+            };
             anyhow::ensure!(*inputs[2].shape == expected_bias_shape);
         } else {
             anyhow::ensure!(inputs[2].shape.iter().product::<TDim>() == 1.to_dim());

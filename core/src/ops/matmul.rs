@@ -145,19 +145,19 @@ pub(super) fn eval(a: &Tensor, b: &Tensor, axes: MatMulAxes) -> TractResult<Tens
     unsafe {
         let rank = a.rank();
         let (m, k, n, c_shape) = compute_shape(a.shape(), b.shape(), axes)?;
-        let dt = output_type(a.datum_type());
+        let c_dt = output_type(a.datum_type());
         let mm = tract_linalg::ops()
-            .mmm(a.datum_type(), b.datum_type(), dt, Some(m), Some(k), Some(n))
+            .mmm(a.datum_type(), b.datum_type(), c_dt, Some(m), Some(k), Some(n))
             .with_context(|| {
                 format!(
                     "No matrix multiplier for {:?}x{:?} to {:?}",
                     a.datum_type(),
                     b.datum_type(),
-                    dt
+                    c_dt
                 )
             })?;
         let c_storage = mm.c_view(axes.c_m, axes.c_n);
-        let mut c = Tensor::uninitialized_dt(dt, &c_shape)?;
+        let mut c = Tensor::uninitialized_dt(c_dt, &c_shape)?;
 
         let a_pack = mm.a_pack();
         let b_pack = mm.b_pack();
@@ -205,12 +205,12 @@ pub(super) fn eval(a: &Tensor, b: &Tensor, axes: MatMulAxes) -> TractResult<Tens
             let mut c_offset = 0;
             for (axis, &dim) in prefix.slice().iter().enumerate() {
                 if a_bc_shape[axis] > 1 {
-                    a_offset += a_strides[axis] * dim as isize * dt.size_of() as isize;
+                    a_offset += a_strides[axis] * dim as isize * a.datum_type().size_of() as isize;
                 }
                 if b_bc_shape[axis] > 1 {
-                    b_offset += b_strides[axis] * dim as isize * dt.size_of() as isize;
+                    b_offset += b_strides[axis] * dim as isize * b.datum_type().size_of() as isize;
                 }
-                c_offset += c_strides[axis] * dim as isize * dt.size_of() as isize;
+                c_offset += c_strides[axis] * dim as isize * c_dt.size_of() as isize;
             }
             a_pack.pack(
                 packed_a.view_mut(),
