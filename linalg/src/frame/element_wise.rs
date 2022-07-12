@@ -132,8 +132,8 @@ pub mod test {
         let expected = values.iter().copied().map(reference).collect::<Vec<_>>();
         let mut found = values;
         op.run(&mut found).unwrap();
-        tensor1(&*expected)
-            .close_enough(&tensor1(&*found), true)
+        tensor1(&*found)
+            .close_enough(&tensor1(&*expected), true)
             .map_err(|e| TestCaseError::fail(e.root_cause().to_string()))?;
         Ok(())
     }
