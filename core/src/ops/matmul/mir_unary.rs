@@ -54,67 +54,25 @@ impl TypedOp for MatMulUnary {
         Ok(tvec!(c_dt.fact(c_shape)))
     }
 
-    //     fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
-    //         mir_unary_invariants(&inputs[0], &outputs[0], self.axes)
-    //     }
+    fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
+        mir_unary_invariants(&inputs[0], &outputs[0], &self.a, self.axes)
+    }
+
+    // A: pqmk B:pqkn C:pqmn
 
     fn change_axes(
         &self,
         model: &TypedModel,
         node: &TypedNode,
-        _io: InOut,
+        io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
-        return Ok(None);
-        //         let b = &model.outlet_fact(node.inputs[0])?;
-        //         match change {
-        //             AxisOp::Move(from, to) => {
-        //                 if *from == b.rank() - 2 && *to == b.rank() - 1 {
-        //                     let op = MatMulUnary {
-        //                         b_trans: !self.b_trans,
-        //                         c_trans: !self.c_trans,
-        //                         ..self.clone()
-        //                     };
-        //                     Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
-        //                 } else {
-        //                     Ok(None)
-        //                 }
-        //             }
-        //             AxisOp::Add(axis) if *axis < b.rank() - 1 => {
-        //                 let mut a = self.a.clone().into_tensor();
-        //                 a.insert_axis(*axis)?;
-        //                 let op =
-        //                     Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
-        //                 Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
-        //             }
-        //             AxisOp::Add(axis) if b.shape[..*axis].iter().all(|d| *d == 1.to_dim()) => {
-        //                 let mut a = self.a.clone().into_tensor();
-        //                 a.insert_axis(0)?;
-        //                 let op =
-        //                     Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
-        //                 Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
-        //             }
-        //             // b is [.. 1, n], can add axis to the right and transpose
-        //             AxisOp::Add(axis) if *axis == b.rank() && b.shape[b.rank() - 2] == 1.to_dim() => {
-        //                 let mut a = self.a.clone().into_tensor();
-        //                 a.insert_axis(*axis - 2)?;
-        //                 let op = MatMulUnary {
-        //                     b_trans: !self.b_trans,
-        //                     c_trans: !self.c_trans,
-        //                     a: a.into_arc_tensor(),
-        //                     ..self.clone()
-        //                 };
-        //                 Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
-        //             }
-        //             AxisOp::Rm(axis) if b.rank() - axis > 2 => {
-        //                 let mut a = self.a.clone().into_tensor();
-        //                 a.remove_axis(*axis)?;
-        //                 let op =
-        //                     Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
-        //                 Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
-        //             }
-        //            _ => return Ok(None),
-        //        }
+        if let Some((a, axes, change)) = mir_unary_change_axes(model, node, io, change, &self.a)? {
+            let op = Self { axes, a: a.into_arc_tensor() };
+            Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), &change)))
+        } else {
+            Ok(None)
+        }
     }
 
     fn declutter(
@@ -414,31 +372,106 @@ impl MatMulUnary {
     }
 }
 
-// pub(super) fn mir_unary_invariants(
-//     input_fact: &TypedFact,
-//     output_fact: &TypedFact,
-//     a: &Tensor,
-//     axes: MatMulAxes,
-//     b_trans: bool,
-//     c_trans: bool,
-// ) -> TractResult<Invariants> {
-//     if input_fact.shape.rank() != output_fact.shape.rank() {
-//         return Ok(Invariants::none());
-//     }
-//     let mut broadcasted_a_shape: TVec<_> = a.shape().into();
-//     while broadcasted_a_shape.len() < input_fact.shape.rank() {
-//         broadcasted_a_shape.insert(0, 1);
-//     }
-//     let mut invars = broadcasted_a_shape[..broadcasted_a_shape.len() - 2]
-//         .into_iter()
-//         .enumerate()
-//         .map(|(axis, &period)| AxisInfo::simple(axis).with_period(period))
-//         .collect::<Vec<_>>();
-//     if b_trans && c_trans && input_fact.rank() >= 2 {
-//         invars.push(AxisInfo::simple(input_fact.shape.rank() - 2))
-//     }
-//     if !b_trans && !c_trans {
-//         invars.push(AxisInfo::simple(input_fact.shape.rank() - 1))
-//     };
-//     Ok(invars.into_iter().collect())
-// }
+pub(super) fn mir_unary_invariants(
+    input_fact: &TypedFact,
+    output_fact: &TypedFact,
+    a: &Tensor,
+    axes: MatMulAxes,
+) -> TractResult<Invariants> {
+    anyhow::ensure!(input_fact.shape.rank() == output_fact.shape.rank());
+    let axes = (0..input_fact.rank())
+        .filter(|ax| *ax != axes.b_k)
+        .zip((0..output_fact.rank()).filter(|ax| *ax != axes.c_m))
+        .map(|(b, c)| AxisInfo {
+            inputs: tvec!(Some(b)),
+            outputs: tvec!(Some(c)),
+            disposable: true,
+            period: 1,
+        })
+        .collect();
+    Ok(axes)
+}
+
+pub(super) fn mir_unary_change_axes(
+    model: &TypedModel,
+    node: &TypedNode,
+    io: InOut,
+    change: &AxisOp,
+    a: &Tensor,
+) -> TractResult<Option<(Tensor, MatMulAxes, AxisOp)>> {
+    let b = &model.outlet_fact(node.inputs[0])?;
+        /*
+                match (io, change) {
+                    /*
+                       (InOut::In(0), &AxisOp::Rm(axis))
+                       if axis != self.axes.b_k && axis != self.axes.b_n =>
+                       {
+                       let mut a = self.a.clone().into_tensor();
+                       a.remove_axis(axis)?;
+                       let op =
+                       Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
+                       Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
+                       }
+                       (InOut::Out(0), &AxisOp::Rm(axis))
+                       if axis != self.axes.c_m && axis != self.axes.c_n =>
+                       {
+                       let mut a = self.a.clone().into_tensor();
+                       a.remove_axis(axis)?;
+                       let op =
+                       Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
+                       Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
+                       }
+                       AxisOp::Move(from, to) => {
+                       if *from == b.rank() - 2 && *to == b.rank() - 1 {
+                       let op = MatMulUnary {
+                       b_trans: !self.b_trans,
+                       c_trans: !self.c_trans,
+                       ..self.clone()
+                       };
+                       Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
+                       } else {
+                       Ok(None)
+                       }
+                       }
+                       */
+                    /*
+                       AxisOp::Add(axis) if *axis < b.rank() - 1 => {
+                       let mut a = self.a.clone().into_tensor();
+                       a.insert_axis(*axis)?;
+                       let op =
+                       Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
+                       Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
+                       }
+                       AxisOp::Add(axis) if b.shape[..*axis].iter().all(|d| *d == 1.to_dim()) => {
+                       let mut a = self.a.clone().into_tensor();
+                       a.insert_axis(0)?;
+                       let op =
+                       Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
+                       Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
+                       }
+                    // b is [.. 1, n], can add axis to the right and transpose
+                    AxisOp::Add(axis) if *axis == b.rank() && b.shape[b.rank() - 2] == 1.to_dim() => {
+                    let mut a = self.a.clone().into_tensor();
+                    a.insert_axis(*axis - 2)?;
+                    let op = MatMulUnary {
+                    b_trans: !self.b_trans,
+                    c_trans: !self.c_trans,
+                    a: a.into_arc_tensor(),
+                    ..self.clone()
+                    };
+                    Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
+                    }
+                    AxisOp::Rm(axis) if b.rank() - axis > 2 => {
+                    let mut a = self.a.clone().into_tensor();
+                    a.remove_axis(*axis)?;
+                    let op =
+                    Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
+                    Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
+                    }
+                    */
+                    _ => return Ok(None),
+                }
+    }
+        */
+    Ok(None)
+}

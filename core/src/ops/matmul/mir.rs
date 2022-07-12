@@ -52,29 +52,40 @@ impl TypedOp for MatMul {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        return Ok(None);
-        //         let a_fact = model.outlet_fact(node.inputs[0])?;
-        //         let b_fact = model.outlet_fact(node.inputs[1])?;
-        //         let konst_ix = if a_fact.konst.is_some() {
-        //             0
-        //         } else if b_fact.konst.is_some() {
-        //             1
-        //         } else {
-        //             return Ok(None);
-        //         };
-        //
-        //         let var_ix = 1 - konst_ix;
-        //         let flip = konst_ix == 1;
-        //         let t_konst = [self.a_trans, self.b_trans][konst_ix] ^ flip;
-        //         let t_var = [self.b_trans, self.a_trans][konst_ix] ^ flip;
-        //         let konst = model.outlet_fact(node.inputs[konst_ix])?.konst.clone().unwrap();
-        //         TypedModelPatch::replace_single_op(
-        //             model,
-        //             node,
-        //             &node.inputs[var_ix..][..1],
-        //             MatMulUnary::new(konst, t_konst, t_var, self.c_trans ^ flip),
-        //         )
-        //         .map(Some)
+        let a_fact = model.outlet_fact(node.inputs[0])?;
+        let b_fact = model.outlet_fact(node.inputs[1])?;
+        let konst_ix = if a_fact.konst.is_some() {
+            0
+        } else if b_fact.konst.is_some() {
+            1
+        } else {
+            return Ok(None);
+        };
+
+        let var_ix = 1 - konst_ix;
+        let flip = konst_ix == 1;
+
+        let axes = if flip {
+            MatMulAxes {
+                a_m: self.axes.b_n,
+                a_k: self.axes.b_k,
+                b_n: self.axes.a_m,
+                b_k: self.axes.a_k,
+                c_m: self.axes.c_n,
+                c_n: self.axes.c_m,
+            }
+        } else {
+            self.axes.clone()
+        };
+
+        let konst = model.outlet_fact(node.inputs[konst_ix])?.konst.clone().unwrap();
+        TypedModelPatch::replace_single_op(
+            model,
+            node,
+            &node.inputs[var_ix..][..1],
+            MatMulUnary::new(konst, axes),
+        )
+        .map(Some)
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {

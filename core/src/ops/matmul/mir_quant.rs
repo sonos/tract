@@ -238,25 +238,6 @@ pub struct QMatMul {
 
 impl_dyn_hash!(QMatMul);
 
-impl QMatMul {
-    /*
-    pub fn with_a_trans(self, a_trans: bool) -> QMatMul {
-        std::mem::swap(&mut self.axes.a_k, &mut self.axes.a_m);
-        self
-    }
-
-    pub fn with_b_trans(self, b_trans: bool) -> QMatMul {
-        std::mem::swap(&mut self.axes.b_k, &mut self.axes.b_n);
-        self
-    }
-
-    pub fn with_c_trans(self, c_trans: bool) -> QMatMul {
-        std::mem::swap(&mut self.axes.c_m, &mut self.axes.c_n);
-        self
-    }
-    */
-}
-
 impl Op for QMatMul {
     fn name(&self) -> Cow<str> {
         "QMatMul".into()

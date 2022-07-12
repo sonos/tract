@@ -115,83 +115,42 @@ impl TypedOp for QMatMulUnary {
         Ok(tvec!(self.output_type.fact(c_shape)))
     }
 
-    /*
     fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
-    if self.params.iter().any(|qp| match &qp.1 {
-    &QParamKind::Attr(t) => t.rank() > 0,
-    &QParamKind::FromInput(ix) => inputs[*ix].rank() > 0,
-    &QParamKind::FromQType => false,
-    }) {
-    Ok(Invariants::none())
-    } else {
-    let mut invs = super::mir_unary::mir_unary_invariants(
-    &inputs[0],
-    &outputs[0],
-    &self.a,
-    self.b_trans,
-    self.c_trans,
-    )?;
-    for axis in &mut invs.axes {
-    axis.inputs.extend(std::iter::repeat(None).take(inputs.len() - 1));
+        // FIXME: why ?
+        if self.params.iter().any(|qp| match &qp.1 {
+            &QParamKind::Attr(t) => t.rank() > 0,
+            &QParamKind::FromInput(ix) => inputs[*ix].rank() > 0,
+            &QParamKind::FromQType => false,
+        }) {
+            Ok(Invariants::none())
+        } else {
+            let mut invs = super::mir_unary::mir_unary_invariants(
+                &inputs[0],
+                &outputs[0],
+                &self.a,
+                self.axes,
+            )?;
+            for axis in &mut invs.axes {
+                axis.inputs.extend(std::iter::repeat(None).take(inputs.len() - 1));
+            }
+            Ok(invs)
+        }
     }
-    Ok(invs)
-    }
-    }
-    */
 
     fn change_axes(
         &self,
         model: &TypedModel,
         node: &TypedNode,
-        _io: InOut,
+        io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
-        let b = &model.outlet_fact(node.inputs[0])?;
-        match change {
-            AxisOp::Move(from, to) => {
-                if *from == b.rank() - 2 && *to == b.rank() - 1 {
-                    let mut bias = self.bias.clone();
-                    if let Some(b) = &mut bias {
-                        if b.rank() == 2 {
-                            *b = b.clone().into_tensor().permute_axes(&[1, 0])?.into_arc_tensor();
-                        }
-                    }
-                    let op = QMatMulUnary {
-                        axes: self.axes.transposing(false, true, true),
-                        bias,
-                        ..self.clone()
-                    };
-                    Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
-                } else {
-                    Ok(None)
-                }
-            }
-            AxisOp::Add(axis) if *axis < b.rank() - 1 => {
-                let mut a = self.a.clone().into_tensor();
-                a.insert_axis(*axis)?;
-                let op =
-                    Some(Box::new(QMatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
-                Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
-            }
-            // b is [.. 1, n], can add axis to the right and transpose
-            AxisOp::Add(axis) if *axis == b.rank() && b.shape[b.rank() - 2] == 1.to_dim() => {
-                let mut a = self.a.clone().into_tensor();
-                a.insert_axis(*axis - 2)?;
-                let op = QMatMulUnary {
-                    axes: self.axes.transposing(false, true, true),
-                    a: a.into_arc_tensor(),
-                    ..self.clone()
-                };
-                Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
-            }
-            AxisOp::Rm(axis) if b.rank() - axis > 2 => {
-                let mut a = self.a.clone().into_tensor();
-                a.remove_axis(*axis)?;
-                let op =
-                    Some(Box::new(QMatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
-                Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
-            }
-            _ => return Ok(None),
+        if let Some((a, axes, change)) =
+            super::mir_unary::mir_unary_change_axes(model, node, io, change, &self.a)?
+        {
+            let op = Self { axes, a: a.into_arc_tensor(), ..self.clone() };
+            Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), &change)))
+        } else {
+            Ok(None)
         }
     }
 
