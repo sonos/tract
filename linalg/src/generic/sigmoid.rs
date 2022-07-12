@@ -1,23 +1,18 @@
 use crate::frame::element_wise::ElementWiseKer;
 
-/*
- * (x (0.25 + x^2 (0.00809368 + x^2 (0.0000461542 + x^2 (3.73971*10^-8 + x^2 (-1.33972*10^-11 + 5.05941*10^-15 x^2))))))
- * --------------------------------------------------------------------------------------------------------------------- + 0.5
- *              (1. + x^2 (0.115708 + x^2 (0.00149364 + 3.63597*10^-6 x^2)))
- */
+const LOW: f32 = -18.6;
+const HIGH: f32 = -LOW;
 
-const LOW: f32 = -17.0;
-const HIGH: f32 = 17.0;
-
-const ALPHA_11: f32 = 5.05941e-15;
-const ALPHA_9: f32 = -1.33972e-11;
-const ALPHA_7: f32 = 3.73971e-8;
-const ALPHA_5: f32 = 0.0000461542;
-const ALPHA_3: f32 = 0.00809368;
-const ALPHA_1: f32 = 0.25;
-const BETA_6: f32 = 3.63597e-6;
-const BETA_4: f32 = 0.00149364;
-const BETA_2: f32 = 0.115708;
+const ALPHA_13: f32 = -4.433153405e-18;
+const ALPHA_11: f32 = 1.169974371e-14;
+const ALPHA_9: f32 = -1.875289645e-11;
+const ALPHA_7: f32 = 4.257889523e-8;
+const ALPHA_5: f32 = 0.00004811817576;
+const ALPHA_3: f32 = 0.008163842030;
+const ALPHA_1: f32 = 0.2499999971;
+const BETA_6: f32 = 3.922935744e-6;
+const BETA_4: f32 = 0.001524872358;
+const BETA_2: f32 = 0.1159886749;
 const BETA_0: f32 = 1.0;
 
 pub fn ssigmoid(x: f32) -> f32 {
@@ -25,7 +20,8 @@ pub fn ssigmoid(x: f32) -> f32 {
 
     let x2 = x * x;
 
-    let p = ALPHA_11;
+    let p = ALPHA_13;
+    let p = x2 * p + ALPHA_11;
     let p = x2 * p + ALPHA_9;
     let p = x2 * p + ALPHA_7;
     let p = x2 * p + ALPHA_5;
