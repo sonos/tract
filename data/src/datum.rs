@@ -1,10 +1,11 @@
 //! `Tensor` is the main data container for tract
 use crate::dim::TDim;
-use half::f16;
 use crate::tensor::litteral::*;
 use crate::tensor::Tensor;
 use crate::TVec;
+use half::f16;
 use num_complex::Complex;
+use scan_fmt::scan_fmt;
 use std::hash::Hash;
 use std::{fmt, ops};
 
@@ -328,29 +329,37 @@ impl std::str::FromStr for DatumType {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "I8" | "i8" => Ok(DatumType::I8),
-            "I16" | "i16" => Ok(DatumType::I16),
-            "I32" | "i32" => Ok(DatumType::I32),
-            "I64" | "i64" => Ok(DatumType::I64),
-            "U8" | "u8" => Ok(DatumType::U8),
-            "U16" | "u16" => Ok(DatumType::U16),
-            "U32" | "u32" => Ok(DatumType::U32),
-            "U64" | "u64" => Ok(DatumType::U64),
-            "F16" | "f16" => Ok(DatumType::F16),
-            "F32" | "f32" => Ok(DatumType::F32),
-            "F64" | "f64" => Ok(DatumType::F64),
-            "Bool" | "bool" => Ok(DatumType::Bool),
-            "Blob" | "blob" => Ok(DatumType::Blob),
-            "String" | "string" => Ok(DatumType::String),
-            "TDim" | "tdim" => Ok(DatumType::TDim),
-            "ComplexI16" | "complexi16" => Ok(DatumType::ComplexI16),
-            "ComplexI32" | "complexi32" => Ok(DatumType::ComplexI32),
-            "ComplexI64" | "complexi64" => Ok(DatumType::ComplexI64),
-            "ComplexF16" | "complexf16" => Ok(DatumType::ComplexF16),
-            "ComplexF32" | "complexf32" => Ok(DatumType::ComplexF32),
-            "ComplexF64" | "complexf64" => Ok(DatumType::ComplexF64),
-            _ => anyhow::bail!("Unknown type {}", s),
+        if let Ok((z, s)) = scan_fmt!(s, "QU8(Z:{d} S:{f})", i32, f32) {
+            Ok(DatumType::QU8(QParams::ZpScale { zero_point: z, scale: s }))
+        } else if let Ok((z, s)) = scan_fmt!(s, "QI8(Z:{d} S:{f})", i32, f32) {
+            Ok(DatumType::QI8(QParams::ZpScale { zero_point: z, scale: s }))
+        } else if let Ok((z, s)) = scan_fmt!(s, "QI32(Z:{d} S:{f})", i32, f32) {
+            Ok(DatumType::QI32(QParams::ZpScale { zero_point: z, scale: s }))
+        } else {
+            match s {
+                "I8" | "i8" => Ok(DatumType::I8),
+                "I16" | "i16" => Ok(DatumType::I16),
+                "I32" | "i32" => Ok(DatumType::I32),
+                "I64" | "i64" => Ok(DatumType::I64),
+                "U8" | "u8" => Ok(DatumType::U8),
+                "U16" | "u16" => Ok(DatumType::U16),
+                "U32" | "u32" => Ok(DatumType::U32),
+                "U64" | "u64" => Ok(DatumType::U64),
+                "F16" | "f16" => Ok(DatumType::F16),
+                "F32" | "f32" => Ok(DatumType::F32),
+                "F64" | "f64" => Ok(DatumType::F64),
+                "Bool" | "bool" => Ok(DatumType::Bool),
+                "Blob" | "blob" => Ok(DatumType::Blob),
+                "String" | "string" => Ok(DatumType::String),
+                "TDim" | "tdim" => Ok(DatumType::TDim),
+                "ComplexI16" | "complexi16" => Ok(DatumType::ComplexI16),
+                "ComplexI32" | "complexi32" => Ok(DatumType::ComplexI32),
+                "ComplexI64" | "complexi64" => Ok(DatumType::ComplexI64),
+                "ComplexF16" | "complexf16" => Ok(DatumType::ComplexF16),
+                "ComplexF32" | "complexf32" => Ok(DatumType::ComplexF32),
+                "ComplexF64" | "complexf64" => Ok(DatumType::ComplexF64),
+                _ => anyhow::bail!("Unknown type {}", s),
+            }
         }
     }
 }
@@ -482,5 +491,13 @@ mod tests {
     fn test_cast_i64_to_bool() {
         let t_i64: Tensor = tensor1(&[0i64]);
         t_i64.cast_to::<bool>().unwrap();
+    }
+
+    #[test]
+    fn test_parse_qu8() {
+        assert_eq!(
+            "QU8(Z:128 S:0.01)".parse::<DatumType>().unwrap(),
+            DatumType::QU8(QParams::ZpScale { zero_point: 128, scale: 0.01 })
+        );
     }
 }
