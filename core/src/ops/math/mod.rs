@@ -257,9 +257,13 @@ fn declutter_unary_mul(
     node: &TypedNode,
     a: &Arc<Tensor>,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if let Some(patch) = declutter_as_shift(model, node, a, Box::new(FlippedShiftLeft))? {
+    if let Some(patch) =
+        declutter_as_shift(model, node, a, Box::new(FlippedShiftLeft)).context("declutte_as_shift")?
+    {
         Ok(Some(patch))
-    } else if let Some(patch) = declutter_unary_mul_magic_values(model, node, a)? {
+    } else if let Some(patch) = declutter_unary_mul_magic_values(model, node, a)
+        .context("declutter_unary_mul_magic_values")?
+    {
         Ok(Some(patch))
     } else {
         Ok(None)
@@ -272,11 +276,11 @@ fn declutter_unary_mul_magic_values(
     a: &Arc<Tensor>,
 ) -> TractResult<Option<TypedModelPatch>> {
     if a.is_uniform()
-        && a.cast_to_scalar::<f64>()? == 1.0
+        && a.cast_to_scalar::<f32>()? == 1.0
         && model.outlet_fact(node.inputs[0])? == &node.outputs[0].fact
     {
         return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?));
-    } else if a.is_uniform() && a.cast_to_scalar::<f64>()?.is_zero() {
+    } else if a.as_uniform() == Some(Tensor::zero_scalar_dt(a.datum_type())?) {
         let mut patch = TypedModelPatch::default();
         let fact = model.outlet_fact(node.inputs[0])?;
         let zero = Tensor::zero_dt(fact.datum_type, &[])?;
@@ -338,7 +342,12 @@ fn declutter_as_shift(
     mini_op: Box<dyn BinMiniOp>,
 ) -> TractResult<Option<TypedModelPatch>> {
     let input = model.node_input_facts(node.id)?[0];
-    if t.len() > 0 && t.datum_type().is_integer() && input.datum_type.is_integer() {
+    if t.len() > 0
+        && t.datum_type().is_integer()
+        && input.datum_type.is_integer()
+        && !t.datum_type().is_quantized()
+        && !input.datum_type.is_quantized()
+    {
         let arg = t.cast_to::<i64>()?;
         if arg.as_slice::<i64>()?.iter().all(|i| *i > 0 && i.count_ones() == 1) {
             let mut shift = arg.into_owned();
