@@ -41,6 +41,7 @@ pub fn has_fp16() -> bool {
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 enum Kind {
     Generic,
+    AppleM,
     CortexA53,
     CortexA55,
     CortexA72,
@@ -51,7 +52,7 @@ enum Kind {
 impl Kind {
     fn has_fp16(&self) -> bool {
         match self {
-            Kind::CortexA55 | Kind::CortexA75 => true,
+            Kind::CortexA55 | Kind::CortexA75 | Kind::AppleM => true,
             _ => false,
         }
     }
@@ -70,25 +71,31 @@ impl Kind {
                 Kind::CortexA73
             } else if kind.contains("a75") {
                 Kind::CortexA75
+            } else if kind.contains("applem") {
+                Kind::AppleM
             } else {
                 Kind::Generic
             }
         } else {
-            let part = if let Ok(part) = std::env::var("TRACT_CPU_AARCH64_OVERRIDE_CPU_PART") {
-                log::info!("CPU part forced with TRACT_CPU_AARCH64_OVERRIDE_CPU_PART: {}", part);
-                part
+            if cfg!(target_os = "macos") {
+                Kind::AppleM
             } else {
-                let part = max_cpuid().unwrap_or("0x00".to_string());
-                log::info!("CPU part auto detected: {}", part);
-                part
-            };
-            match &*part {
-                PART_A53 => Kind::CortexA53,
-                PART_A55 => Kind::CortexA55,
-                PART_A72 => Kind::CortexA72,
-                PART_A73 => Kind::CortexA73,
-                PART_A75 => Kind::CortexA75,
-                _ => Kind::Generic,
+                let part = if let Ok(part) = std::env::var("TRACT_CPU_AARCH64_OVERRIDE_CPU_PART") {
+                    log::info!("CPU part forced with TRACT_CPU_AARCH64_OVERRIDE_CPU_PART: {}", part);
+                    part
+                } else {
+                    let part = max_cpuid().unwrap_or("0x00".to_string());
+                    log::info!("CPU part auto detected: {}", part);
+                    part
+                };
+                match &*part {
+                    PART_A53 => Kind::CortexA53,
+                    PART_A55 => Kind::CortexA55,
+                    PART_A72 => Kind::CortexA72,
+                    PART_A73 => Kind::CortexA73,
+                    PART_A75 => Kind::CortexA75,
+                    _ => Kind::Generic,
+                }
             }
         };
         log::info!("CPU optimisation: {:?}", kind);
@@ -130,7 +137,7 @@ pub fn plug(ops: &mut Ops) {
     if let Some(model) = model {
         ops.mmm_f32 = Box::new(move |m, k, n| model.pick(&impls, m, k, n));
     }
-    if *KIND == Kind::CortexA55 {
+    if has_fp16() {
         ops.mmm_f16 = Box::new(|_, _, n| {
             use tract_data::internal::DimLike;
             if n.unwrap_or(1024).divceil(4) * 4 < n.unwrap_or(1024).divceil(8) * 8 {
