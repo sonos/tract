@@ -81,7 +81,10 @@ impl Kind {
                 Kind::AppleM
             } else {
                 let part = if let Ok(part) = std::env::var("TRACT_CPU_AARCH64_OVERRIDE_CPU_PART") {
-                    log::info!("CPU part forced with TRACT_CPU_AARCH64_OVERRIDE_CPU_PART: {}", part);
+                    log::info!(
+                        "CPU part forced with TRACT_CPU_AARCH64_OVERRIDE_CPU_PART: {}",
+                        part
+                    );
                     part
                 } else {
                     let part = max_cpuid().unwrap_or("0x00".to_string());
@@ -138,14 +141,26 @@ pub fn plug(ops: &mut Ops) {
         ops.mmm_f32 = Box::new(move |m, k, n| model.pick(&impls, m, k, n));
     }
     if has_fp16() {
-        ops.mmm_f16 = Box::new(|_, _, n| {
-            use tract_data::internal::DimLike;
-            if n.unwrap_or(1024).divceil(4) * 4 < n.unwrap_or(1024).divceil(8) * 8 {
-                arm64fp16_mmm_f16_32x4_a55::mmm()
-            } else {
-                arm64fp16_mmm_f16_16x8_a55::mmm()
-            }
-        });
-        ops.mmv_f16 = Box::new(|_, _| arm64fp16_mmm_f16_128x1_a55::mmm());
+        if *KIND == Kind::CortexA55 {
+            ops.mmm_f16 = Box::new(|_, _, n| {
+                use tract_data::internal::DimLike;
+                if n.unwrap_or(1024).divceil(4) * 4 < n.unwrap_or(1024).divceil(8) * 8 {
+                    arm64fp16_mmm_f16_32x4_a55::mmm()
+                } else {
+                    arm64fp16_mmm_f16_16x8_a55::mmm()
+                }
+            });
+            ops.mmv_f16 = Box::new(|_, _| arm64fp16_mmm_f16_128x1_a55::mmm());
+        } else {
+            ops.mmm_f16 = Box::new(|_, _, n| {
+                use tract_data::internal::DimLike;
+                if n.unwrap_or(1024).divceil(4) * 4 < n.unwrap_or(1024).divceil(8) * 8 {
+                    arm64fp16_mmm_f16_32x4_gen::mmm()
+                } else {
+                    arm64fp16_mmm_f16_16x8_gen::mmm()
+                }
+            });
+            ops.mmv_f16 = Box::new(|_, _| arm64fp16_mmm_f16_128x1_gen::mmm());
+        }
     }
 }
