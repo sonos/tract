@@ -71,25 +71,25 @@ armv7neon_sigmoid_f32_4n_{{suffix}}:
     vmla.f32    q10, q13, q7
     vmla.f32    q11, q14, q8
     vmla.f32    q12, q15, q9
+    vdup.32     q13, d3[1]
+    vdup.32     q14, d3[1]
+    vdup.32     q15, d3[1]
+    vmla.f32    q13, q7, q10
+    vmla.f32    q14, q8, q11
+    vmla.f32    q15, q9, q12
+    vdup.32     q10, d4[0]
+    vdup.32     q11, d4[0]
+    vdup.32     q12, d4[0]
+    vmla.f32    q10, q13, q7
+    vmla.f32    q11, q14, q8
+    vmla.f32    q12, q15, q9
     vmul.f32    q4, q4, q10          // q4 <- numerator
     vmul.f32    q5, q5, q11
     vmul.f32    q6, q6, q12
 
-    vdup.32     q10, d3[1]
-    vdup.32     q11, d3[1]
-    vdup.32     q12, d3[1]
-    vdup.32     q13, d4[0]
-    vdup.32     q14, d4[0]
-    vdup.32     q15, d4[0]
-    vmla.f32    q13, q7, q10
-    vmla.f32    q14, q8, q11
-    vmla.f32    q15, q9, q12
     vdup.32     q10, d4[1]
     vdup.32     q11, d4[1]
     vdup.32     q12, d4[1]
-    vmla.f32    q10, q13, q7
-    vmla.f32    q11, q14, q8
-    vmla.f32    q12, q15, q9
     vdup.32     q13, d5[0]
     vdup.32     q14, d5[0]
     vdup.32     q15, d5[0]
@@ -160,13 +160,13 @@ armv7neon_sigmoid_f32_4n_{{suffix}}:
     vmla.f32    q13, q7, q10
     vdup.32     q10, d3[0]
     vmla.f32    q10, q13, q7
+    vdup.32     q13, d3[1]
+    vmla.f32    q13, q7, q10
+    vdup.32     q10, d4[0]
+    vmla.f32    q10, q13, q7
     vmul.f32    q4, q4, q10          // q4 <- numerator
 
-    vdup.32     q10, d3[1]
-    vdup.32     q13, d4[0]
-    vmla.f32    q13, q7, q10
     vdup.32     q10, d4[1]
-    vmla.f32    q10, q13, q7
     vdup.32     q13, d5[0]
     vmla.f32    q13, q7, q10
     vdup.32     q10, d5[1]
@@ -193,17 +193,23 @@ armv7neon_sigmoid_f32_4n_{{suffix}}:
     bx          lr
 
 .coeffs_num:
-    .float -18.0                    // low          s0   d0   v0
-    .float 18.0                     // high         s1
-    .float 4.37031012579801e-11     // alpha_9      s2   d1
-    .float 1.15627324459942e-07     // alpha_7      s3
-    .float 6.08574864600143e-05     // alpha_5      s4   d2   v1
-    .float 8.51377133304701e-03     // alpha_3      s5
-    .float 2.48287947061529e-01     // alpha_1      s6   d3
-    .float 6.10247389755681e-13     // beta_10      s7 
-    .float 5.76102136993427e-09     // beta_8       s8   d4   v2
-    .float 6.29106785017040e-06     // beta_6       s9
-    .float 1.70198817374094e-03     // beta_4       s10  d5
-    .float 1.16817656904453e-01     // beta_2       s11
-    .float 9.93151921023180e-01     // beta_0       s12  d6   v3
-    .float 0.5                      //              s13
+    .float -18.6                    // low
+    .float 18.6                     // high
+    .float -4.433153405e-18         // alpha_13
+    .float 1.169974371e-14
+
+    .float -1.875289645e-11
+    .float 4.257889523e-8
+    .float 0.00004811817576
+    .float 0.008163842030
+
+    .float 0.2499999971
+    .float 3.922935744e-6           // beta_6
+    .float 0.001524872358
+    .float 0.1159886749
+
+    .float 1.0
+    .float 0.5                      //              
+    .float 0.0                      // padding
+    .float 0.0
+
