@@ -459,6 +459,20 @@ impl TDim {
             Div(a, _) => a.symbols(),
         }
     }
+
+    /// Check if a dim is 'compatible with' another, meaning that the current dim
+    /// is a "sub" dimension within or equal to the _other dim
+    pub fn compatible_with(&self, _other: &TDim) -> bool {
+        match (self, _other) {
+            // If we compare a concrete dim to symbol dim we are always
+            // true but the inverse do not hold since we consider in this
+            // implementation that _other should always hold maximal `genericity`
+            // due to `compatible_with` fn name sementics
+            (TDim::Val(_dim), TDim::Sym(_other_dim)) => true,
+            // for all other case equality is required
+            (dim, other_dim) => dim == other_dim,
+        }
+    }
 }
 
 pub(super) fn reduce_ratio(mut p: i64, mut q: i64) -> (i64, u64) {
