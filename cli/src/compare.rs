@@ -160,10 +160,10 @@ pub fn handle_npz(
 
 #[cfg(not(feature = "onnx"))]
 pub fn handle_pbdir(
-    cumulative: bool,
-    pbdir: &str,
-    params: &Parameters,
-    output_params: &DisplayParams,
+    _cumulative: bool,
+    _pbdir: &str,
+    _params: &Parameters,
+    _output_params: &DisplayParams,
 ) -> CliResult<()> {
     bail!("`onnx` feature is required for this to work");
 }
