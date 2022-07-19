@@ -99,8 +99,13 @@ case "$PLATFORM" in
         cargo dinghy --platform auto-ios-aarch64 build -p tract-linalg
         ;;
 
-        "aarch64-unknown-linux-gnu" | "armv6vfp-unknown-linux-gnueabihf" | "armv7-unknown-linux-gnueabihf" | \
-            "aarch64-unknown-linux-musl" | "armv7-unknown-linux-musl" )
+    "aarch64-apple-darwin")
+        rustup target add aarch64-apple-darwin
+        cargo build --target aarch64-apple-darwin
+        ;;
+
+    "aarch64-unknown-linux-gnu" | "armv6vfp-unknown-linux-gnueabihf" | "armv7-unknown-linux-gnueabihf" | \
+        "aarch64-unknown-linux-musl" | "armv7-unknown-linux-musl" )
 
         case "$PLATFORM" in
             "aarch64-unknown-linux-gnu")
