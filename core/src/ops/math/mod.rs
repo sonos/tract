@@ -106,7 +106,7 @@ out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
                 crate::ndarray::Zip::from(c)
                     .and_broadcast(a)
                     .and_broadcast(b)
-                    .for_each(|c,a,b| *c = scale_by((*a as i16 - zp as i16) * (*b as i16 - zp as i16) + zp as i16, scale).clamp_cast());
+                    .for_each(|c,a,b| *c = scale_by((*a as i32 - zp as i32) * (*b as i32 - zp as i32) + zp as i32, scale).clamp_cast());
                 Ok(true)
             }
             _ => Ok(false)
