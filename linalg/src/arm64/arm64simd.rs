@@ -33,3 +33,5 @@ MMMKernel!(f16, arm64fp16_mmm_f16_128x1_a55; 128, 1; 16, 16; 1, 1; no_prefetch, 
 tanh_impl!(f32, arm64simd_tanh_f32_4n, 4, 4, true);
 sigmoid_impl!(f32, arm64simd_sigmoid_f32_4n, 4, 4, true);
 
+tanh_impl!(f16, arm64fp16_tanh_f16_8n, 8, 8, true);
+
