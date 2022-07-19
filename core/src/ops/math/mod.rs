@@ -113,6 +113,7 @@ out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
         }
     }
 },
+q: [i8, u8, i32] => |c, a, b, _, _| *c = a.clone() * b;
 [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() * b
 );
 
