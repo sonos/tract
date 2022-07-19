@@ -40,6 +40,8 @@ impl Approximation {
     fn atol_and_rtol(&self, dt: &DatumType) -> (f64, f64) {
         use Approximation::*;
         match (self, dt) {
+            (Close, DatumType::F16) => (1e-3, 1e-3),
+            (Approximate, DatumType::F16) => (1e-3, 1e-3),
             (Exact, _) => (0.0, 0.0),
             (Close, _) => (1e-7, 1e-7),
             (Approximate, _) => (1e-4, 5e-4),
@@ -716,7 +718,14 @@ impl Tensor {
                 || (a.is_infinite() && b.is_infinite() && a.signum() == b.signum())
                 || (a - b).abs() <= atol as f32 + rtol as f32 * b.abs())
             {
-                anyhow::bail!("Mismatch (wanted {:?}) at {:?} {} != {}", approx, indices.slice(), a, b)
+                anyhow::bail!(
+                    "Mismatch (wanted {:?} for {:?}) at {:?} {} != {}",
+                    approx,
+                    self.datum_type(),
+                    indices.slice(),
+                    a,
+                    b
+                )
             }
             Ok(())
         })
