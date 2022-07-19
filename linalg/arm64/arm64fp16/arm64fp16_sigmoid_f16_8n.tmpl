@@ -5,7 +5,9 @@
 .text
 .align 4
 
+{% if clang == false %}
 .cpu generic+fp+simd+fp16
+{% endif %}
 .global {{G}}arm64fp16_sigmoid_f16_8n_{{suffix}}
 {{G}}arm64fp16_sigmoid_f16_8n_{{suffix}}:
 
