@@ -92,7 +92,7 @@ impl Reducer {
         &self,
         axes: &[usize],
         output_shape: &[usize],
-        input: &Tensor,
+        input_tensor: &Tensor,
         f: F,
         args: A,
     ) -> Tensor
@@ -103,7 +103,7 @@ impl Reducer {
         A: Copy,
     {
         use ndarray::*;
-        let input = input.to_array_view_unchecked::<T>();
+        let input = input_tensor.to_array_view_unchecked::<T>();
         let result = Array::from_shape_fn(output_shape, |coords| {
             let slice_spec: Vec<SliceInfoElem> = coords
                 .slice()
@@ -115,7 +115,9 @@ impl Reducer {
             let slice = input.slice(&slice_info);
             f(slice, args)
         });
-        result.into_tensor()
+        let mut output = result.into_tensor();
+       output.set_datum_type(input_tensor.datum_type());
+        output
     }
 
     // sum is a special citizen: enough activity that it gets "special"
