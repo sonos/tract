@@ -5,6 +5,45 @@ use tract_data::anyhow;
 
 use crate::LADatum;
 
+macro_rules! ew_impl {
+    ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr) => {
+        paste! {
+            mod [<sys_ $func>] {
+                #[allow(unused_imports)]
+                use tract_data::prelude::f16;
+                extern_kernel!(fn $func(ptr: *mut $ti, count: usize) -> ());
+            }
+
+            #[derive(Copy, Clone, Debug)]
+            #[allow(non_camel_case_types)]
+            pub struct $func;
+
+            impl ElementWiseKer<$ti> for $func {
+                #[inline(always)]
+                fn name() -> &'static str {
+                    stringify!($func)
+                }
+                #[inline(always)]
+                fn nr() -> usize {
+                    $nr
+                }
+                #[inline(always)]
+                fn alignment_items() -> usize {
+                    $alignment_items
+                }
+                #[inline(always)]
+                fn alignment_bytes() -> usize {
+                    $alignment_items * std::mem::size_of::<$ti>()
+                }
+                #[inline(never)]
+                fn run(buf: &mut [$ti]) {
+                    unsafe { [<sys_ $func>]::$func(buf.as_mut_ptr(), buf.len()) }
+                }
+            }
+        }
+    };
+}
+
 struct TempBuffer {
     layout: Layout,
     buffer: *mut u8,
@@ -43,7 +82,7 @@ impl Drop for TempBuffer {
 }
 
 std::thread_local! {
-    static TMP:  std::cell::RefCell<TempBuffer> = std::cell::RefCell::new(TempBuffer::default());
+    static TMP: std::cell::RefCell<TempBuffer> = std::cell::RefCell::new(TempBuffer::default());
 }
 
 pub trait ElementWise<T>: Send + Sync + Debug + dyn_clone::DynClone

@@ -8,7 +8,7 @@ pub use arm64simd::*;
 use crate::Ops;
 
 use crate::frame::mmm::kernel::MatMatMulKer;
-use crate::frame::ElementWiseImpl;
+use crate::frame::element_wise::ElementWiseKer;
 
 lazy_static::lazy_static! {
     static ref KIND: Kind = Kind::choose();
@@ -130,8 +130,8 @@ pub fn plug(ops: &mut Ops) {
         Kind::CortexA55 => Box::new(|_, _| arm64simd_mmm_f32_64x1_a55::mmm()),
         _ => Box::new(|_, _| arm64simd_mmm_f32_64x1_gen::mmm()),
     };
-    ops.sigmoid_f32 = Box::new(|| Box::new(ElementWiseImpl::<SigmoidF32x4n, f32>::new()));
-    ops.tanh_f32 = Box::new(|| Box::new(ElementWiseImpl::<TanhF32x4n, f32>::new()));
+    ops.sigmoid_f32 = Box::new(|| arm64simd_sigmoid_f32_4n::ew());
+    ops.tanh_f32 = Box::new(|| arm64simd_tanh_f32_4n::ew());
     let model = match *KIND {
         Kind::CortexA53 => Some(cortex_a53::model()),
         Kind::CortexA55 => Some(cortex_a55::model()),

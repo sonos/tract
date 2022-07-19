@@ -3,10 +3,11 @@ use crate::frame::mmm::kernel::MatMatMulKer;
 use crate::Ops;
 
 pub mod mmm;
-pub mod sigmoid;
-pub mod tanh;
 
 mod intel;
+
+tanh_impl!(f32, fma_tanh_f32, 8, 8, is_x86_feature_detected!("fma"));
+sigmoid_impl!(f32, fma_sigmoid_f32, 8, 8, is_x86_feature_detected!("fma"));
 
 pub fn plug(ops: &mut Ops) {
     if is_x86_feature_detected!("fma") {
@@ -83,8 +84,8 @@ pub fn plug(ops: &mut Ops) {
         ops.mmm_f32_impls.push(mmm::fma_mmm_f32_40x2::mmm());
         ops.mmm_f32_impls.push(mmm::fma_mmm_f32_8x8::mmm());
 
-        ops.sigmoid_f32 = Box::new(|| sigmoid::SigmoidF32::ew());
-        ops.tanh_f32 = Box::new(|| tanh::TanhF32::ew());
+        ops.sigmoid_f32 = Box::new(|| fma_sigmoid_f32::ew());
+        ops.tanh_f32 = Box::new(|| fma_tanh_f32::ew());
         log::info!("mmm_f32, sigmoid_f32, tanh_f32: x86_64/fma activated");
     }
     if is_x86_feature_detected!("avx2") {
