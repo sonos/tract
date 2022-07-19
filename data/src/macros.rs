@@ -174,6 +174,7 @@ macro_rules! dispatch_zerolike {
     ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => { {
         use $crate::prelude::DatumType;
         match $dt {
+            DatumType::TDim => $($path)::*::<TDim>($($args),*),
             DatumType::U8   => $($path)::*::<u8>($($args),*),
             DatumType::U16  => $($path)::*::<u16>($($args),*),
             DatumType::U32  => $($path)::*::<u32>($($args),*),
