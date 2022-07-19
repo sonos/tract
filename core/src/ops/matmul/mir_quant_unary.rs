@@ -145,7 +145,7 @@ impl TypedOp for QMatMulUnary {
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
         if let Some((a, axes, change)) =
-            super::mir_unary::mir_unary_change_axes(model, node, io, change, &self.a)?
+            super::mir_unary::mir_unary_change_axes(model, node, io, change, &self.axes, &self.a)?
         {
             let op = Self { axes, a: a.into_arc_tensor(), ..self.clone() };
             Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), &change)))
@@ -251,10 +251,7 @@ impl TypedOp for QMatMulUnary {
                             patch.tap_model(model, concat_node.inputs[input - 1])?
                         }
                     };
-                    let mut a = self.a.slice(k_axis, offsets[ix], offsets[ix + 1])?;
-                    while a.rank() > 0 && a.shape()[0] == 1 {
-                        a.remove_axis(0)?;
-                    }
+                    let a = self.a.slice(k_axis, offsets[ix], offsets[ix + 1])?;
                     let wire = patch.wire_node(
                         format!("{}.k-{}-{}", node.name, offsets[ix], offsets[ix + 1]),
                         Self {
@@ -265,7 +262,7 @@ impl TypedOp for QMatMulUnary {
                             ..self.clone()
                         },
                         &[wire],
-                    )?[0];
+                    ).context("wiring new matmulunary")?[0];
                     wires.push(wire)
                 }
                 let mut wire = wires[0];

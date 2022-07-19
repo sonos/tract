@@ -59,7 +59,6 @@ impl TypedOp for MatMulUnary {
     }
 
     // A: pqmk B:pqkn C:pqmn
-
     fn change_axes(
         &self,
         model: &TypedModel,
@@ -67,7 +66,9 @@ impl TypedOp for MatMulUnary {
         io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
-        if let Some((a, axes, change)) = mir_unary_change_axes(model, node, io, change, &self.a)? {
+        if let Some((a, axes, change)) =
+            mir_unary_change_axes(model, node, io, change, &self.axes, &self.a)?
+        {
             let op = Self { axes, a: a.into_arc_tensor() };
             Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), &change)))
         } else {
@@ -397,81 +398,116 @@ pub(super) fn mir_unary_change_axes(
     node: &TypedNode,
     io: InOut,
     change: &AxisOp,
-    a: &Tensor,
+    old_axes: &MatMulAxes,
+    old_a: &Tensor,
 ) -> TractResult<Option<(Tensor, MatMulAxes, AxisOp)>> {
-    let b = &model.outlet_fact(node.inputs[0])?;
-        /*
-                match (io, change) {
-                    /*
-                       (InOut::In(0), &AxisOp::Rm(axis))
-                       if axis != self.axes.b_k && axis != self.axes.b_n =>
-                       {
-                       let mut a = self.a.clone().into_tensor();
-                       a.remove_axis(axis)?;
-                       let op =
-                       Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
-                       Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
-                       }
-                       (InOut::Out(0), &AxisOp::Rm(axis))
-                       if axis != self.axes.c_m && axis != self.axes.c_n =>
-                       {
-                       let mut a = self.a.clone().into_tensor();
-                       a.remove_axis(axis)?;
-                       let op =
-                       Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
-                       Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
-                       }
-                       AxisOp::Move(from, to) => {
-                       if *from == b.rank() - 2 && *to == b.rank() - 1 {
-                       let op = MatMulUnary {
-                       b_trans: !self.b_trans,
-                       c_trans: !self.c_trans,
-                       ..self.clone()
-                       };
-                       Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
-                       } else {
-                       Ok(None)
-                       }
-                       }
-                       */
-                    /*
-                       AxisOp::Add(axis) if *axis < b.rank() - 1 => {
-                       let mut a = self.a.clone().into_tensor();
-                       a.insert_axis(*axis)?;
-                       let op =
-                       Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
-                       Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
-                       }
-                       AxisOp::Add(axis) if b.shape[..*axis].iter().all(|d| *d == 1.to_dim()) => {
-                       let mut a = self.a.clone().into_tensor();
-                       a.insert_axis(0)?;
-                       let op =
-                       Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
-                       Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
-                       }
-                    // b is [.. 1, n], can add axis to the right and transpose
-                    AxisOp::Add(axis) if *axis == b.rank() && b.shape[b.rank() - 2] == 1.to_dim() => {
-                    let mut a = self.a.clone().into_tensor();
-                    a.insert_axis(*axis - 2)?;
-                    let op = MatMulUnary {
-                    b_trans: !self.b_trans,
-                    c_trans: !self.c_trans,
-                    a: a.into_arc_tensor(),
-                    ..self.clone()
-                    };
-                    Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
-                    }
-                    AxisOp::Rm(axis) if b.rank() - axis > 2 => {
-                    let mut a = self.a.clone().into_tensor();
-                    a.remove_axis(*axis)?;
-                    let op =
-                    Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
-                    Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
-                    }
-                    */
-                    _ => return Ok(None),
-                }
+    let result = if io == InOut::In(0) {
+        old_axes.change_axis_from_b(change)
+    } else if io == InOut::Out(0) {
+        old_axes.change_axis_from_c(change)
+    } else {
+        unreachable!();
+    };
+    dbg!(old_axes, io, change, &result);
+    if let Ok((axes, a, b, c)) = result {
+        let mut new_a = old_a.clone();
+        a.change_tensor(&mut new_a, false)?;
+        Ok(Some((new_a, axes, if io == InOut::In(0) { c } else { b })))
+    } else {
+        Ok(None) // is it right ? or return error ?
     }
+    //let b = &model.outlet_fact(node.inputs[0])?;
+    /*
+    match (io) {
+        (InOut::In(0)) => {
+            if let Ok((axes, in_a, _in_b, in_c)) = old_axes.remove_b_axis(axis) {
+                let mut a = old_a.clone();
+                a.remove_axis(in_a)?;
+                Ok(Some((a, axes, AxisOp::Rm(in_c))))
+            } else {
+                Ok(None)
+            }
+        }
+        (InOut::Out(0), &AxisOp::Rm(axis)) => {
+            if let Ok((axes, in_a, in_b, _in_c)) = old_axes.remove_c_axis(axis) {
+                let mut a = old_a.clone();
+                a.remove_axis(in_a)?;
+                Ok(Some((a, axes, AxisOp::Rm(in_b))))
+            } else {
+                Ok(None)
+            }
+        }
+        _ => Ok(None),
+    }
+    */
+    /*
+        /*
+        (InOut::In(0), &AxisOp::Rm(axis))
+        if axis != self.axes.b_k && axis != self.axes.b_n =>
+        {
+        let mut a = self.a.clone().into_tensor();
+        a.remove_axis(axis)?;
+        let op =
+        Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
+        Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
+        }
+        (InOut::Out(0), &AxisOp::Rm(axis))
+        if axis != self.axes.c_m && axis != self.axes.c_n =>
+        {
+        let mut a = self.a.clone().into_tensor();
+        a.remove_axis(axis)?;
+        let op =
+        Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
+        Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
+        }
+        AxisOp::Move(from, to) => {
+        if *from == b.rank() - 2 && *to == b.rank() - 1 {
+        let op = MatMulUnary {
+        b_trans: !self.b_trans,
+        c_trans: !self.c_trans,
+        ..self.clone()
+        };
+        Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
+        } else {
+        Ok(None)
+        }
+        }
         */
-    Ok(None)
+        /*
+           AxisOp::Add(axis) if *axis < b.rank() - 1 => {
+           let mut a = self.a.clone().into_tensor();
+           a.insert_axis(*axis)?;
+           let op =
+           Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
+           Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
+           }
+           AxisOp::Add(axis) if b.shape[..*axis].iter().all(|d| *d == 1.to_dim()) => {
+           let mut a = self.a.clone().into_tensor();
+           a.insert_axis(0)?;
+           let op =
+           Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
+           Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
+           }
+        // b is [.. 1, n], can add axis to the right and transpose
+        AxisOp::Add(axis) if *axis == b.rank() && b.shape[b.rank() - 2] == 1.to_dim() => {
+        let mut a = self.a.clone().into_tensor();
+        a.insert_axis(*axis - 2)?;
+        let op = MatMulUnary {
+        b_trans: !self.b_trans,
+        c_trans: !self.c_trans,
+        a: a.into_arc_tensor(),
+        ..self.clone()
+        };
+        Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
+        }
+        AxisOp::Rm(axis) if b.rank() - axis > 2 => {
+        let mut a = self.a.clone().into_tensor();
+        a.remove_axis(*axis)?;
+        let op =
+        Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
+        Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
+        }
+        */
+    }
+    */
 }

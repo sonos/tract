@@ -66,6 +66,90 @@ impl MatMulAxes {
         it
     }
 
+    pub fn change_axis_from_b(
+        &self,
+        change: &AxisOp,
+    ) -> TractResult<(MatMulAxes, AxisOp, AxisOp, AxisOp)> {
+        match change {
+            AxisOp::Rm(ix) => {
+                ensure!(*ix != self.b_k && *ix != self.b_n);
+                let index_as_untouched_axis =
+                    ix - (self.b_k < *ix) as usize - (self.b_n < *ix) as usize;
+                self.remove_untouched_axis(index_as_untouched_axis)
+            }
+            AxisOp::Add(in_b) => {
+                if *in_b == self.b_n + 1 {
+                    self.insert_untouched_axis(self.a_m + 1, *in_b, self.c_n + 1)
+                } else if *in_b == self.b_k + 1 {
+                    self.insert_untouched_axis(self.a_k + 1, *in_b, self.c_m + 1)
+                } else {
+                    let ix = in_b - (self.b_k < *in_b) as usize - (self.b_n < *in_b) as usize;
+                    let in_a = ix + (ix > self.a_m) as usize + (ix > self.a_k) as usize;
+                    let in_c = ix + (ix > self.c_m) as usize + (ix > self.c_n) as usize;
+                    self.insert_untouched_axis(in_a, *in_b, in_c)
+                }
+            }
+            _ => bail!("Invalid change"),
+        }
+    }
+
+    pub fn change_axis_from_c(
+        &self,
+        change: &AxisOp,
+    ) -> TractResult<(MatMulAxes, AxisOp, AxisOp, AxisOp)> {
+        match change {
+            AxisOp::Rm(ix) => {
+                ensure!(*ix != self.c_m && *ix != self.c_n);
+                let index_as_untouched_axis =
+                    ix - (self.c_m < *ix) as usize - (self.c_n < *ix) as usize;
+                self.remove_untouched_axis(index_as_untouched_axis)
+            }
+            /*
+            AxisOp::Add(ix) => {
+                let index_as_untouched_axis =
+                    ix - (self.c_m < *ix) as usize - (self.c_n < *ix) as usize;
+                self.insert_untouched_axis(index_as_untouched_axis)
+            }
+            */
+            _ => bail!("Invalid change"),
+        }
+    }
+
+    fn remove_untouched_axis(
+        &self,
+        ix: usize,
+    ) -> TractResult<(MatMulAxes, AxisOp, AxisOp, AxisOp)> {
+        let axes = MatMulAxes {
+            a_m: self.a_m - (ix < self.a_m) as usize,
+            a_k: self.a_k - (ix < self.a_k) as usize,
+            b_k: self.b_k - (ix < self.b_k) as usize,
+            b_n: self.b_n - (ix < self.b_n) as usize,
+            c_m: self.c_m - (ix < self.c_m) as usize,
+            c_n: self.c_n - (ix < self.c_n) as usize,
+        };
+        let in_a = ix + (ix > self.a_m) as usize + (ix > self.a_k) as usize;
+        let in_b = ix + (ix > self.b_k) as usize + (ix > self.b_n) as usize;
+        let in_c = ix + (ix > self.c_m) as usize + (ix > self.c_n) as usize;
+        Ok((axes, AxisOp::Rm(in_a), AxisOp::Rm(in_b), AxisOp::Rm(in_c)))
+    }
+
+    fn insert_untouched_axis(
+        &self,
+        in_a: usize,
+        in_b: usize,
+        in_c: usize,
+    ) -> TractResult<(MatMulAxes, AxisOp, AxisOp, AxisOp)> {
+        let axes = MatMulAxes {
+            a_m: self.a_m + (in_a <= self.a_m) as usize,
+            a_k: self.a_k + (in_a <= self.a_k) as usize,
+            b_k: self.b_k + (in_b <= self.b_k) as usize,
+            b_n: self.b_n + (in_b <= self.b_n) as usize,
+            c_m: self.c_m + (in_c <= self.c_m) as usize,
+            c_n: self.c_n + (in_c <= self.c_n) as usize,
+        };
+        Ok((axes, AxisOp::Add(in_a), AxisOp::Add(in_b), AxisOp::Add(in_c)))
+    }
+
     pub fn to_array(&self) -> [usize; 6] {
         [self.a_m, self.a_k, self.b_k, self.b_n, self.c_m, self.c_n]
     }
