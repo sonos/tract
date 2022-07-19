@@ -130,8 +130,6 @@ pub fn plug(ops: &mut Ops) {
         Kind::CortexA55 => Box::new(|_, _| arm64simd_mmm_f32_64x1_a55::mmm()),
         _ => Box::new(|_, _| arm64simd_mmm_f32_64x1_gen::mmm()),
     };
-    ops.sigmoid_f32 = Box::new(|| arm64simd_sigmoid_f32_4n::ew());
-    ops.tanh_f32 = Box::new(|| arm64simd_tanh_f32_4n::ew());
     let model = match *KIND {
         Kind::CortexA53 => Some(cortex_a53::model()),
         Kind::CortexA55 => Some(cortex_a55::model()),
@@ -162,5 +160,11 @@ pub fn plug(ops: &mut Ops) {
             });
             ops.mmv_f16 = Box::new(|_, _| arm64fp16_mmm_f16_128x1_gen::mmm());
         }
+    }
+    ops.sigmoid_f32 = Box::new(|| arm64simd_sigmoid_f32_4n::ew());
+    ops.tanh_f32 = Box::new(|| arm64simd_tanh_f32_4n::ew());
+    if has_fp16() {
+        ops.tanh_f16 = Box::new(|| arm64fp16_tanh_f16_8n::ew());
+        ops.sigmoid_f16 = Box::new(|| arm64fp16_sigmoid_f16_8n::ew());
     }
 }

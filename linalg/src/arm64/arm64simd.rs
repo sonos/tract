@@ -34,4 +34,4 @@ tanh_impl!(f32, arm64simd_tanh_f32_4n, 4, 4, true);
 sigmoid_impl!(f32, arm64simd_sigmoid_f32_4n, 4, 4, true);
 
 tanh_impl!(f16, arm64fp16_tanh_f16_8n, 8, 8, true);
-
+sigmoid_impl!(f16, arm64fp16_sigmoid_f16_8n, 8, 8, true);
