@@ -87,6 +87,6 @@ impl ElementWiseKer<f32> for TanhF32x4n {
 
 #[cfg(test)]
 mod test_simd {
-    sigmoid_frame_tests!(true, crate::arm64::arm64simd::SigmoidF32x4n);
-    tanh_frame_tests!(true, crate::arm64::arm64simd::TanhF32x4n);
+    sigmoid_frame_tests!(true, f32, crate::arm64::arm64simd::SigmoidF32x4n);
+    tanh_frame_tests!(true, f32, crate::arm64::arm64simd::TanhF32x4n);
 }

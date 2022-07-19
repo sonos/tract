@@ -76,6 +76,6 @@ impl ElementWiseKer<f32> for TanhF32x4n {
 
 #[cfg(test)]
 mod test_neon_fn {
-    sigmoid_frame_tests!(crate::arm32::has_neon(), crate::arm32::armv7neon::SigmoidF32x4n);
-    tanh_frame_tests!(crate::arm32::has_neon(), crate::arm32::armv7neon::TanhF32x4n);
+    sigmoid_frame_tests!(crate::arm32::has_neon(), f32, crate::arm32::armv7neon::SigmoidF32x4n);
+    tanh_frame_tests!(crate::arm32::has_neon(), f32, crate::arm32::armv7neon::TanhF32x4n);
 }
