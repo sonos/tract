@@ -45,12 +45,6 @@ pub fn hsigmoid(x: f16) -> f16 {
      * (1. + 0.098734 x^2)
      */
 
-    /*
-     * (x (0.2498949005 + x^2 (0.004002219287 - 0.00001247019415 x^2)))
-     * /
-     * (1.000000000 + 0.09873398161 x^2)
-     */
-
     const LOW: f16 = f16::from_f32_const(-6.92);
     const HIGH: f16 = f16::from_f32_const(6.92);
 
@@ -72,8 +66,6 @@ pub fn hsigmoid(x: f16) -> f16 {
 
     let q = BETA_2;
     let q = x2 * q + BETA_0;
-
-    dbg!(x,p,q,p/q);
 
     p / q + f16::from_f32_const(0.5)
 }
