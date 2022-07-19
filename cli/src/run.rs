@@ -19,7 +19,7 @@ pub fn handle(
     };
 
     #[cfg(not(feature = "pulse"))]
-    let outputs = dispatch_model!(&*params.tract_model, |m| run_regular(m, &params, options))?;
+    let outputs = dispatch_model!(&*params.tract_model, |m| run_regular(m, &params, matches, &sub_matches))?;
 
     if dump {
         for (ix, output) in outputs.iter().enumerate() {

@@ -584,7 +584,6 @@ impl Parameters {
         #[cfg(feature = "pulse")]
         let pulse: Option<usize> =
             matches.value_of("pulse").map(|s| s.parse::<usize>()).transpose()?;
-        #[cfg(feature = "pulse")]
         let stop_at = matches.value_of("pass").unwrap_or(if matches.is_present("optimize") {
             "optimize"
         } else {
