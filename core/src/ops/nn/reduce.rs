@@ -57,8 +57,8 @@ impl Reducer {
             .map(|(ax, &d)| if axes.contains(&ax) { 1 } else { d })
             .collect();
         let (zp, scale) = input.datum_type().zp_scale();
-        Ok(unsafe {
-            match self {
+        unsafe {
+            let mut t = match self {
                 ArgMax(last) => {
                     r!(Self::reduce_t(dt)(self, axes, &output_shape, &input, argmax_t, *last))
                 }
@@ -84,8 +84,14 @@ impl Reducer {
                         ))
                     }
                 }
+            };
+            if input.datum_type().is_quantized()
+                && input.datum_type().unquantized() == t.datum_type().unquantized()
+            {
+                t.set_datum_type(input.datum_type());
             }
-        })
+            Ok(t)
+        }
     }
 
     unsafe fn reduce_t<T, TO, F, A>(
@@ -115,9 +121,7 @@ impl Reducer {
             let slice = input.slice(&slice_info);
             f(slice, args)
         });
-        let mut output = result.into_tensor();
-       output.set_datum_type(input_tensor.datum_type());
-        output
+        result.into_tensor()
     }
 
     // sum is a special citizen: enough activity that it gets "special"
