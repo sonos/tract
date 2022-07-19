@@ -561,8 +561,9 @@ element_wise!(sinh, Sinh, [f16, f32, f64] => |_, xs| {
 q: [i8, u8, i32] => f32::sinh);
 
 element_wise!(tanh, Tanh,
+ [f16] => |_, xs| { (tract_linalg::ops().tanh_f16)().run(xs) },
  [f32] => |_, xs| { (tract_linalg::ops().tanh_f32)().run(xs) },
- [f16, f64] => |_, xs| { xs.iter_mut().for_each(|x| *x = x.tanh()); Ok(()) };
+ [f64] => |_, xs| { xs.iter_mut().for_each(|x| *x = x.tanh()); Ok(()) };
  q: [i8, u8, i32] => f32::tanh;
  cost: |dt| {tvec!((Cost::FMA(dt), 11), (Cost::Div(dt), 1))}
 );

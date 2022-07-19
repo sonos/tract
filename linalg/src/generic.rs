@@ -8,5 +8,5 @@ pub use self::lut::GenericLut8;
 pub use self::mmm::GenericMmm4x1;
 pub use self::mmm::GenericMmm4x4;
 pub use self::rounding::{ScaleShiftAndRound, Scaler};
-pub use self::sigmoid::SSigmoid4;
-pub use self::tanh::STanh4;
+pub use self::sigmoid::{HSigmoid8, SSigmoid4};
+pub use self::tanh::{ HTanh8, STanh4};
