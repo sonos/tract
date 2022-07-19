@@ -53,7 +53,9 @@ pub struct Ops {
             + Sync,
     >,
     qmmv_i32: Box<dyn Fn(Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul> + Send + Sync>,
+    pub sigmoid_f16: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f16>> + Send + Sync>,
     pub sigmoid_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32>> + Send + Sync>,
+    pub tanh_f16: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f16>> + Send + Sync>,
     pub tanh_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32>> + Send + Sync>,
     pub lut_u8: Box<dyn Fn(&[u8]) -> Box<dyn lut::Lut> + Send + Sync>,
 }
@@ -100,7 +102,9 @@ pub fn generic() -> Ops {
         mmv_f16: Box::new(|_, _| generic::GenericMmm4x1::<f16, f16, f16>::mmm()),
         qmmm_i32: Box::new(|_, _, _| generic::GenericMmm4x4::<i8, i8, i32>::mmm()),
         qmmv_i32: Box::new(|_, _| generic::GenericMmm4x1::<i8, i8, i32>::mmm()),
+        sigmoid_f16: Box::new(|| generic::HSigmoid8::ew()),
         sigmoid_f32: Box::new(|| generic::SSigmoid4::ew()),
+        tanh_f16: Box::new(|| generic::HTanh8::ew()),
         tanh_f32: Box::new(|| generic::STanh4::ew()),
         lut_u8: Box::new(|table: &[u8]| Box::new(lut::LutImpl::<generic::GenericLut8>::new(table))),
     }
