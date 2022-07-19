@@ -102,6 +102,17 @@ impl ShapeFact {
         }
         Ok(())
     }
+
+    pub fn compatible_with(&self, _other: &ShapeFact) -> bool {
+        if self.rank() == _other.rank() {
+            self.dims
+                .iter()
+                .zip(_other.dims.iter())
+                .all(|(dim, other_dim)| dim.compatible_with(other_dim))
+        } else {
+            false
+        }
+    }
 }
 
 impl std::ops::Deref for ShapeFact {
@@ -128,6 +139,7 @@ pub trait Fact: std::fmt::Debug + Downcast + dyn_clone::DynClone + Send + Sync +
 
     fn same_as(&self, _other: &dyn Fact) -> bool;
 
+    /// Ensure that self is same type as another fact or a subtype
     fn compatible_with(&self, _other: &dyn Fact) -> bool;
 }
 
@@ -293,7 +305,7 @@ impl Fact for TypedFact {
             if cfg!(debug_assertions) {
                 other.consistent().unwrap()
             }
-            self.without_value().same_as(&other.without_value())
+            self.datum_type == other.datum_type && self.shape.compatible_with(&other.shape)
         } else {
             false
         }

@@ -296,7 +296,7 @@ pub fn retrieve_or_make_inputs(
         let name = tract.node_name(input.node);
         let fact = tract.outlet_typedfact(*input)?;
         if let Some(value) = params.input_values.get(name) {
-            if fact.compatible_with(&TypedFact::from(value[0].clone())) {
+            if TypedFact::from(value[0].clone()).compatible_with(&fact) {
                 info!("Using fixed input for input called {} ({} turn(s))", name, value.len());
                 tmp.push(value.iter().map(|t| t.clone().into_tensor()).collect())
             } else if fact.datum_type == f16::datum_type()

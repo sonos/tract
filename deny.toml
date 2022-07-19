@@ -35,7 +35,6 @@ skip = [
     { name = "quick-error", version="<2" }, # cascading from flate
     { name = "itoa", version="<1" }, # cascading from flate criterion
     { name = "half", version="1.8.2" }, # old versions pulled by serde_cbor and criterionin dev mode
-    { name = "cast", version="<0.3" }, # pulled by inconsistent dependency in criterion
 ]
 
 [sources]
@@ -47,7 +46,9 @@ allow-git = [
 allow = [
     "BSD-3-Clause",                   # https://tldrlegal.com/license/bsd-3-clause-license-(revised)
     "Apache-2.0",                     # https://tldrlegal.com/license/apache-license-2.0-(apache-2.0)
-    "MIT"                             # https://tldrlegal.com/license/mit-license
+    "MIT",                            # https://tldrlegal.com/license/mit-license
+    "Unicode-DFS-2016"                # https://spdx.org/licenses/Unicode-DFS-2016.html 
 ]
+
 clarify = [
 ]
