@@ -1,3 +1,16 @@
+macro_rules! tanh_impl {
+    ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr, $cond: expr) => {
+        ew_impl!($ti, $func, $nr, $alignment_items);
+        #[cfg(test)]
+        paste! {
+            mod [<test_ $func>] {
+                use super::*;
+                tanh_frame_tests!($cond, $ti, $func);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 #[macro_use]
 pub mod test {
@@ -69,7 +82,9 @@ pub mod test {
                         .map(|x| <f32 as num_traits::AsPrimitive<$t>>::as_(*x))
                         .collect();
                     <$ker>::ew().run(&mut input).unwrap();
-                    tensor1(&input).close_enough(&tensor1(&expected), Approximation::Close).unwrap();
+                    tensor1(&input)
+                        .close_enough(&tensor1(&expected), Approximation::Close)
+                        .unwrap();
                 }
             }
         };
@@ -77,7 +92,8 @@ pub mod test {
 
     pub fn test_tanh<K: ElementWiseKer<T>, T: LADatum + Float>(values: &[f32]) -> TestCaseResult
     where
-        f32: AsPrimitive<T>, T: AsPrimitive<f32>
+        f32: AsPrimitive<T>,
+        T: AsPrimitive<f32>,
     {
         let values: Vec<T> = values.iter().copied().map(|x| x.as_()).collect();
         crate::frame::element_wise::test::test_element_wise::<K, _, _>(&values, |x| x.tanh())

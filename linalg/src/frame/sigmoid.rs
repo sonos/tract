@@ -1,3 +1,16 @@
+macro_rules! sigmoid_impl {
+    ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr, $cond: expr) => {
+        ew_impl!($ti, $func, $nr, $alignment_items);
+        #[cfg(test)]
+        paste! {
+            mod [<test_ $func>] {
+                use super::*;
+                sigmoid_frame_tests!($cond, $ti, $func);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 #[macro_use]
 pub mod test {
