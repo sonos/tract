@@ -56,12 +56,13 @@ jobs:
     - name: Stop sccache server
       run: sccache --stop-server || true
 
-  ios:
+  apple:
     strategy:
       fail-fast: false
       matrix:
         platform:
           - aarch64-apple-ios
+          - aarch64-apple-darwin
 
     runs-on: macOS-latest
 
