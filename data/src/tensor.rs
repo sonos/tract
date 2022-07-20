@@ -41,7 +41,7 @@ impl Approximation {
         use Approximation::*;
         match (self, dt) {
             (Close, DatumType::F16) => (1e-3, 1e-3),
-            (Approximate, DatumType::F16) => (1e-3, 1e-3),
+            (Approximate, DatumType::F16) => (1e-3, 5e-3),
             (Exact, _) => (0.0, 0.0),
             (Close, _) => (1e-7, 1e-7),
             (Approximate, _) => (1e-4, 5e-4),
