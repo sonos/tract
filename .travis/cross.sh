@@ -140,6 +140,7 @@ case "$PLATFORM" in
                 export LIBC_ARCH=arm64
                 export RUSTC_TRIPLE=$ARCH-unknown-linux-musl
                 export DEBIAN_TRIPLE=$ARCH-linux-gnu
+                export TRACT_CPU_AARCH64_KIND=a55 # force A55 to test fp16 kernels
                 export CUSTOM_TC=`pwd`/aarch64-linux-musl-cross
                 [ -d "$CUSTOM_TC" ] || curl -s http://musl.cc/aarch64-linux-musl-cross.tgz | tar zx
                 ;;
