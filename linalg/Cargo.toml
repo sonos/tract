@@ -28,10 +28,12 @@ scan_fmt = "0.2.6"
 
 [build-dependencies]
 cc = "1.0.69"
-liquid = "0.24"
+liquid = "0.26"
+liquid-core = "0.26"
 unicode-normalization = "0.1.19"
 smallvec = "1.6.1"
 walkdir = "2.3.2"
+half = "2"
 
 [dev-dependencies]
 criterion = "0.3.5"

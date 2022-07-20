@@ -1,3 +1,7 @@
+use liquid_core::Runtime;
+use liquid_core::{Display_filter, Filter, FilterReflection, ParseFilter};
+use liquid_core::{Value, ValueView};
+
 use std::{env, ffi, fs, path};
 
 fn var(k: &str) -> String {
@@ -252,6 +256,7 @@ fn preprocess_file(
     let partials = load_partials(&template.as_ref().parent().unwrap(), msvc);
     if let Err(e) = liquid::ParserBuilder::with_stdlib()
         .partials(liquid::partials::LazyCompiler::new(partials))
+        .filter(F16)
         .build()
         .and_then(|p| p.parse(&*input))
         .and_then(|r| r.render_to(&mut fs::File::create(&output).unwrap(), &globals))
@@ -299,4 +304,29 @@ fn make_extern_kernel_decl_macro(out_dir: &path::Path, suffix: &str) {
     }"#
     .replace("_suffix", suffix);
     std::fs::write(out_dir.join("extern_kernel_macro.rs"), macro_decl).unwrap();
+}
+
+#[derive(Clone, ParseFilter, FilterReflection)]
+#[filter(
+    name = "float16",
+    description = "Write a float16 constant with the .float16 directive in gcc, or as short in clang",
+    parsed(F16Filter)
+)]
+pub struct F16;
+
+#[derive(Debug, Default, Display_filter)]
+#[name = "float16"]
+struct F16Filter;
+
+impl Filter for F16Filter {
+    fn evaluate(&self, input: &dyn ValueView, runtime: &dyn Runtime) -> liquid_core::Result<Value> {
+        let input:f32 = input.as_scalar().unwrap().to_float().unwrap() as f32;
+        if runtime.get(&["clang".into()])?.as_scalar().unwrap().to_bool().unwrap() {
+            let value = half::f16::from_f32(input);
+            let bits = value.to_bits();
+            Ok(format!(".short {bits}").to_value())
+        } else {
+            Ok(format!(".float16 {input}").to_value())
+        }
+    }
 }

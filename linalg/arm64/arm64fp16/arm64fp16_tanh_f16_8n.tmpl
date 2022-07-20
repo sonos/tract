@@ -111,11 +111,12 @@
     ret
 
 .coeffs_num:
-    .float16 -3.84                    // low
-    .float16 3.84
-    .float16 0.082654955              // alpha
-    .float16 0.99963124
-    .float16 0.0065383179             // beta
-    .float16 0.41401828   
-    .float16 1.0
-    .float16 0                        // padding
+    {{ -3.84 | float16 }}
+    {{ 3.84 | float16 }}
+    {{ 0.082654955 | float16 }}              // alpha
+    {{ 0.99963124 | float16 }}
+
+    {{ 0.0065383179 | float16 }}             // beta
+    {{ 0.41401828 | float16 }}   
+    {{ 1.0 | float16 }}
+    {{ 0 | float16 }}                        // padding
