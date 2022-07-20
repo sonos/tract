@@ -141,6 +141,8 @@ pub trait Fact: std::fmt::Debug + Downcast + dyn_clone::DynClone + Send + Sync +
 
     /// Ensure that self is same type as another fact or a subtype
     fn compatible_with(&self, _other: &dyn Fact) -> bool;
+
+    fn datum_type(&self) -> Option<DatumType>;
 }
 
 impl_downcast!(Fact);
@@ -309,6 +311,10 @@ impl Fact for TypedFact {
         } else {
             false
         }
+    }
+
+    fn datum_type(&self) -> Option<DatumType> {
+        Some(self.datum_type)
     }
 }
 

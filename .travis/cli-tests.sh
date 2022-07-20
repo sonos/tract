@@ -41,7 +41,7 @@ echo
 echo $WHITE • build tract $NC
 echo
 
-TRACT_RUN=$(cargo build --message-format json -p tract $CARGO_EXTRA --profile opt-no-lto | jq -r 'select(.target.name == "tract").executable')
+TRACT_RUN=$(cargo build --message-format json -p tract $CARGO_EXTRA --profile opt-no-lto | jq -r 'select(.target.name == "tract" and .executable).executable')
 echo TRACT_RUN=$TRACT_RUN
 export TRACT_RUN
 

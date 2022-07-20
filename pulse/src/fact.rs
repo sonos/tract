@@ -108,6 +108,10 @@ impl Fact for PulsedFact {
     fn compatible_with(&self, other: &dyn Fact) -> bool {
         self.same_as(other)
     }
+
+    fn datum_type(&self) -> Option<DatumType> {
+        Some(self.datum_type)
+    }
 }
 
 impl From<PulsedFact> for TypedFact {

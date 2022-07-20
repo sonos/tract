@@ -320,17 +320,17 @@ impl Parameters {
     }
 
     fn use_onnx_test_case_data_set<F, O, E>(
-        raw_model: &mut Graph<F, O>,
-        input_values: &mut HashMap<String, Vec<Arc<Tensor>>>,
+        raw_model: &Graph<F, O>,
         assertions: &mut Assertions,
         inputs_dir: &std::path::Path,
-    ) -> CliResult<()>
+    ) -> CliResult<Vec<(String, Vec<Arc<Tensor>>)>>
     where
         F: std::fmt::Debug + Clone + Hash + Fact + for<'a> TryFrom<&'a InferenceFact, Error = E>,
         O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + Hash,
         Graph<F, O>: SpecialOps<F, O>,
         E: std::fmt::Debug,
     {
+        let mut input_values: Vec<(String, Vec<Arc<Tensor>>)> = vec![];
         let files = inputs_dir
             .read_dir()?
             .map(|file| {
@@ -377,18 +377,11 @@ impl Parameters {
         let output_names = outputs.iter().map(|i| &*i.3).collect::<Vec<_>>();
         debug!("input_names from files: {:?}", input_names);
         debug!("output_names from files: {:?}", output_names);
-        if input_names.iter().all(|n| n.len() > 0) {
-            raw_model.set_input_names(input_names)?;
-        }
-        if output_names.iter().all(|n| n.len() > 0) {
-            raw_model.set_output_names(output_names)?;
-        }
         for (ix, _, filename, name, tensor) in inputs.into_iter() {
             debug!("Using {} as input {} ({}): {:?}", filename, ix, name, tensor);
             if let Some(v) = tensor.value.concretize() {
-                input_values.insert(name.to_string(), vec![v]);
+                input_values.push((name.to_string(), vec![v]));
             }
-            raw_model.set_input_fact(*ix, (&tensor.clone().without_value()).try_into().unwrap())?;
         }
         let outputs = outputs
             .into_iter()
@@ -398,11 +391,11 @@ impl Parameters {
             .map(|(_, _, _, _, tensor)| tensor.concretize())
             .collect();
         assertions.assert_outputs = outputs;
-        Ok(())
+        Ok(input_values)
     }
 
     fn inputs<F, O, E>(
-        raw_model: &mut Graph<F, O>,
+        raw_model: Option<&mut Graph<F, O>>,
         assertions: &mut Assertions,
         matches: &clap::ArgMatches,
         location: &ModelLocation,
@@ -423,38 +416,25 @@ impl Parameters {
         tract_core::ops::konst::Const: Into<O>,
         E: std::fmt::Debug,
     {
-        let mut input_values = HashMap::new();
+        let mut input_facts: Vec<(
+            Option<usize>,
+            Option<String>,
+            bool,
+            InferenceFact,
+            Option<Vec<Arc<Tensor>>>,
+        )> = vec![];
 
         if let Some(inputs) = matches.values_of("input") {
             for (ix, v) in inputs.enumerate() {
                 let (name, t) = tensor::for_string(v)?;
                 let fact = t.clone().without_value();
-                let fact: F = (&fact).try_into().unwrap();
-                let outlet = if let Some(name) = name.as_ref().filter(|s| s.len() > 0) {
-                    let node = raw_model.node_by_name(name)?;
-                    OutletId::new(node.id, 0)
-                } else {
-                    raw_model.input_outlets()?[ix]
-                };
-                if let Some(v) = t.value.concretize() {
-                    input_values.insert(
-                        raw_model.node(raw_model.inputs[ix].node).name.to_string(),
-                        vec![v],
-                    );
-                }
-                if !raw_model.inputs.contains(&outlet) {
-                    // shed edges from parents to us
-                    for input in raw_model.node(outlet.node).inputs.clone() {
-                        raw_model.node_mut(input.node).outputs[input.slot]
-                            .successors
-                            .retain(|s| s.node != outlet.node);
-                    }
-                    // clear our inputs and change ourselves to a source
-                    raw_model.node_mut(outlet.node).inputs.clear();
-                    raw_model.node_mut(outlet.node).op = raw_model.create_source(fact.clone())
-                }
-                info!("Input #{}: (named: {}) {:?}", ix, name.as_deref().unwrap_or(""), t);
-                raw_model.set_outlet_fact(outlet, fact)?;
+                input_facts.push((
+                    Some(ix),
+                    name.clone(),
+                    name.is_some(),
+                    fact,
+                    t.value.concretize().map(|t| vec![t]),
+                ));
             }
         }
 
@@ -463,112 +443,140 @@ impl Parameters {
                 let mut npz = ndarray_npy::NpzReader::new(
                     std::fs::File::open(input).with_context(|| format!("opening {:?}", input))?,
                 )?;
-                for name in npz.names()? {
-                    match tensor::for_npz(&mut npz, &*name) {
-                        Ok(t) => debug!("{} contains {}: {:?}", input, name, t),
-                        Err(r) => warn!("Could not read {} from {} ({})", name, input, r),
-                    }
-                }
-                let input_outlets = raw_model.input_outlets()?.to_vec();
-                let multiturn = npz.names()?.iter().any(|npy| npy.starts_with("turn_0/"));
-                let last_turn = if multiturn {
-                    npz.names()?
-                        .iter()
-                        .map(|name| {
-                            name.split('/')
-                                .nth(0)
-                                .unwrap()
-                                .split('_')
-                                .nth(1)
-                                .unwrap()
-                                .parse::<usize>()
-                                .unwrap()
-                        })
-                        .max()
-                        .unwrap()
-                } else {
-                    0
-                };
-                for (ix, input) in input_outlets.iter().enumerate() {
-                    let mut values = vec![];
-                    let name = raw_model.node(input.node).name.clone();
-                    for turn in 0..=last_turn {
-                        let filename = if multiturn {
-                            format!("turn_{}/{}", turn, name)
-                        } else {
-                            name.to_string()
-                        };
-                        let npy_name = format!("{}.npy", filename);
-                        if let Ok(mut t) = tensor::for_npz(&mut npz, &filename)
-                            .or_else(|_| tensor::for_npz(&mut npz, &npy_name))
+                let vectors = npz
+                    .names()?
+                    .iter()
+                    .map(|n| {
+                        if let Ok((turn, name)) =
+                            scan_fmt::scan_fmt!(n, "turn_{d}/{}.npy", usize, String)
                         {
-                            let shape = t.shape().to_vec();
-                            let dt = raw_model
-                                .input_fact(ix)
-                                .map(|f| f.to_typed_fact().map(|t| t.datum_type).ok())
-                                .ok()
-                                .flatten()
-                                .unwrap_or(t.datum_type());
-                            ensure!(
-                                dt.unquantized() == t.datum_type().unquantized(),
-                                "Input is {:?}, model expect {:?} which is incompatible",
-                                t.datum_type(),
-                                dt
-                            );
-                            unsafe {
-                                t.set_datum_type(dt);
-                            }
-                            if !ignore_input_shape {
-                                let fact = InferenceFact::from(dt.fact(shape));
-                                raw_model.set_input_fact(ix, (&fact).try_into().unwrap())?;
-                            }
-                            values.push(t.into_arc_tensor());
+                            Ok((name, turn, tensor::for_npz(&mut npz, &n)?))
+                        } else {
+                            let name = n.trim_end_matches(".npy").to_string();
+                            Ok((name, 0, tensor::for_npz(&mut npz, &n)?))
                         }
-                    }
-                    if values.len() > 0 {
-                        input_values.insert(name, values);
-                    }
+                    })
+                    .collect::<TractResult<Vec<_>>>()?;
+                for (name, vals) in
+                    vectors.into_iter().group_by(|triple| triple.0.clone()).into_iter()
+                {
+                    let vals: Vec<_> = vals
+                        .into_iter()
+                        .sorted_by_key(|(_, turn, _)| *turn)
+                        .map(|(name, _, tensor)| -> Arc<Tensor> {
+                            if let Some(dt_from_model) = raw_model
+                                .as_ref()
+                                .and_then(|model| model.node_by_name(name).ok())
+                                .and_then(|n| n.outputs[0].fact.datum_type())
+                            {
+                                if !tensor.datum_type().is_quantized()
+                                    && dt_from_model.is_quantized()
+                                    && tensor.datum_type().unquantized()
+                                        == dt_from_model.unquantized()
+                                {
+                                    let mut tensor = tensor.clone();
+                                    unsafe {
+                                        tensor.set_datum_type(dt_from_model);
+                                    }
+                                    tensor.into_arc_tensor()
+                                } else {
+                                    tensor.into_arc_tensor()
+                                }
+                            } else {
+                                tensor.into_arc_tensor()
+                            }
+                        })
+                        .collect();
+                    input_facts.push((
+                        None,
+                        Some(name),
+                        false,
+                        InferenceFact::from(&vals[0]).without_value(),
+                        Some(vals),
+                    ));
                 }
             }
         }
 
         if onnx_tc {
-            Self::use_onnx_test_case_data_set(
-                raw_model,
-                &mut input_values,
+            let data_set_name = matches.value_of("onnx-test-data-set").unwrap_or("test_data_set_0");
+            for (name, vals) in Self::use_onnx_test_case_data_set(
+                raw_model.as_ref().unwrap(),
                 assertions,
-                location.path().parent().unwrap().join("test_data_set_0").as_path(),
-            )?
-        }
-
-        if let Some(tc) = matches.value_of("onnx-test-data-set") {
-            Self::use_onnx_test_case_data_set(
-                raw_model,
-                &mut input_values,
-                assertions,
-                &std::path::Path::new(tc),
-            )?
-        }
-
-        let const_inputs = matches.values_of("const-input").map(|c| c.collect()).unwrap_or(vec![]);
-        for i in (0..raw_model.inputs.len()).rev() {
-            let input = raw_model.inputs[i];
-            let name = raw_model.node_name(input.node);
-            if const_inputs.contains(&raw_model.node_name(input.node)) {
-                if let Some(v) = input_values.remove(name) {
-                    raw_model.node_mut(input.node).op =
-                        tract_core::ops::konst::Const::new(v[0].clone()).into();
-                    raw_model.node_mut(input.node).outputs[0].fact =
-                        F::try_from(&InferenceFact::from(v[0].clone().into_tensor())).unwrap();
-                } else {
-                    bail!(
-                        "Don't have value for input {}, can't make it const",
-                        raw_model.node_name(input.node)
-                    );
-                }
-                raw_model.inputs.remove(i);
+                location.path().parent().unwrap().join(data_set_name).as_path(),
+            )? {
+                input_facts.push((
+                    None,
+                    Some(name),
+                    false,
+                    InferenceFact::from(&vals[0]).without_value(),
+                    Some(vals),
+                ));
             }
         }
+
+        let mut input_values: HashMap<String, Vec<Arc<Tensor>>> = input_facts
+            .iter()
+            .filter_map(|(_, name, _, _, data)| {
+                if let (Some(name), Some(data)) = (name, data) {
+                    Some((name.clone(), data.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if let Some(raw_model) = raw_model {
+            for (ix, name, force, fact, _) in &input_facts {
+                let f: F = fact.try_into().unwrap();
+                if *force && name.is_some() {
+                    let node_id = raw_model.node_id_by_name(name.as_ref().unwrap())?;
+                    for input in raw_model.node(node_id).inputs.clone() {
+                        raw_model.node_mut(input.node).outputs[input.slot]
+                            .successors
+                            .retain(|s| s.node != node_id);
+                    }
+                    raw_model.node_mut(node_id).inputs.clear();
+                    if !raw_model.input_outlets()?.contains(&node_id.into()) {
+                        raw_model.inputs.push(node_id.into())
+                    }
+                }
+                let source = if let Some(name) = name {
+                    raw_model.node_id_by_name(name).ok()
+                } else if let Some(ix) = ix {
+                    Some(raw_model.input_outlets()?[*ix].node)
+                } else {
+                    bail!("Source specification without index or name. Should not happen");
+                };
+                if let Some(source) = source {
+                    if raw_model.input_outlets()?.contains(&source.into()) {
+                        raw_model.node_mut(source).op = raw_model.create_source(f.clone());
+                        raw_model.set_outlet_fact(source.into(), f)?;
+                    }
+                }
+            }
+            let const_inputs =
+                matches.values_of("const-input").map(|c| c.collect()).unwrap_or(vec![]);
+            for i in (0..raw_model.inputs.len()).rev() {
+                let input = raw_model.inputs[i];
+                let name = raw_model.node_name(input.node);
+                if const_inputs.contains(&raw_model.node_name(input.node)) {
+                    if let Some(v) = input_values.remove(name) {
+                        raw_model.node_mut(input.node).op =
+                            tract_core::ops::konst::Const::new(v[0].clone()).into();
+                        raw_model.node_mut(input.node).outputs[0].fact =
+                            F::try_from(&InferenceFact::from(v[0].clone().into_tensor())).unwrap();
+                    } else {
+                        bail!(
+                            "Don't have value for input {}, can't make it const",
+                            raw_model.node_name(input.node)
+                        );
+                    }
+                    raw_model.inputs.remove(i);
+                }
+            }
+        }
+
         Ok(input_values)
     }
 
@@ -837,7 +845,7 @@ impl Parameters {
 
         let ignore_input_facts = raw_model.is::<TypedModel>();
         let input_values = dispatch_model_mut_no_pulse!(raw_model, |m| Self::inputs(
-            m,
+            Some(m),
             &mut assertions,
             matches,
             &filename,

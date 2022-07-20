@@ -143,6 +143,10 @@ impl Fact for InferenceFact {
             false
         }
     }
+
+    fn datum_type(&self) -> Option<DatumType> {
+        self.datum_type.concretize()
+    }
 }
 
 impl<'a> TryFrom<&'a InferenceFact> for TypedFact {
