@@ -319,14 +319,10 @@ pub struct F16;
 struct F16Filter;
 
 impl Filter for F16Filter {
-    fn evaluate(&self, input: &dyn ValueView, runtime: &dyn Runtime) -> liquid_core::Result<Value> {
+    fn evaluate(&self, input: &dyn ValueView, _runtime: &dyn Runtime) -> liquid_core::Result<Value> {
         let input:f32 = input.as_scalar().unwrap().to_float().unwrap() as f32;
-        if runtime.get(&["clang".into()])?.as_scalar().unwrap().to_bool().unwrap() {
-            let value = half::f16::from_f32(input);
-            let bits = value.to_bits();
-            Ok(format!(".short {bits}").to_value())
-        } else {
-            Ok(format!(".float16 {input}").to_value())
-        }
+        let value = half::f16::from_f32(input);
+        let bits = value.to_bits();
+        Ok(format!(".short {bits}").to_value())
     }
 }
