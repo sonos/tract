@@ -74,7 +74,7 @@ pub fn tile(
     op: &ops::array::Tile,
 ) -> TractResult<Option<Arc<RValue>>> {
     let wire = ast.mapping[&node.inputs[0]].clone();
-    Ok(Some(invocation("tile", &[wire], &[("repeats", ints(&op.multipliers))])))
+    Ok(Some(invocation("tile", &[wire], &[("repeats", tdims(&op.multipliers))])))
 }
 
 pub fn pad(
