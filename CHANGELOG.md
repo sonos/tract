@@ -1,5 +1,6 @@
 # Unreleased
 * [License] Allowing https://spdx.org/licenses/Unicode-DFS-2016.html (no tldr yet, but pretty similar to BSD-2)
+* [Breaking] CLI --json option reports costs as strings instead of numbers (in order to allow symbolic values).
 
 # 0.17.1 - 2022-07-11
 * Sanitiser=address in the CI. Fixed a couple of overflow/memleaks. (Nothing looked too awful.)
