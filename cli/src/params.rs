@@ -1,9 +1,7 @@
 use reqwest::Url;
-use std::any::Any;
 use std::io::Read;
 use std::path::PathBuf;
 use std::str::FromStr;
-use tract_core::anyhow::ensure;
 #[allow(unused_imports)]
 use tract_itertools::Itertools;
 
@@ -103,14 +101,44 @@ pub struct Parameters {
     #[allow(dead_code)]
     pub tf_model: (),
 
-    pub input_values: HashMap<String, Vec<Arc<Tensor>>>,
-
+    pub tensors_values: TensorsValues,
     pub assertions: Assertions,
 
     pub machine_friendly: bool,
-
     pub allow_random_input: bool,
     pub allow_float_casts: bool,
+}
+
+#[derive(Debug, Default)]
+pub struct TensorsValues(pub Vec<TensorValues>);
+
+impl TensorsValues {
+    pub fn by_name(&self, name: &str) -> Option<&TensorValues> {
+        self.0.iter().find(|t| t.name.as_deref() == Some(name))
+    }
+
+    pub fn by_input_ix(&self, ix: usize) -> Option<&TensorValues> {
+        self.0.iter().find(|t| t.input_index == Some(ix))
+    }
+
+    pub fn by_output_ix(&self, ix: usize) -> Option<&TensorValues> {
+        self.0.iter().find(|t| t.output_index == Some(ix))
+    }
+
+    pub fn add(&mut self, tv: TensorValues) {
+        if !self.0.contains(&tv) {
+            self.0.push(tv)
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct TensorValues {
+    pub input_index: Option<usize>,
+    pub output_index: Option<usize>,
+    pub name: Option<String>,
+    pub fact: InferenceFact,
+    pub values: Option<Vec<Arc<Tensor>>>,
 }
 
 #[cfg(feature = "tf")]
@@ -288,6 +316,9 @@ impl Parameters {
                 tract_core::ops::Downsample::new(0, period as _, 0),
                 &outputs[0..1],
             )?[0];
+            if let Some(label) = raw_model.outlet_label(outputs[0]) {
+                raw_model.set_outlet_label(id, label.to_string())?;
+            }
             outputs[0] = id;
             raw_model.set_output_outlets(&*outputs)?;
         }
@@ -319,265 +350,140 @@ impl Parameters {
         Ok(())
     }
 
-    fn use_onnx_test_case_data_set<F, O, E>(
-        raw_model: &Graph<F, O>,
-        assertions: &mut Assertions,
-        inputs_dir: &std::path::Path,
-    ) -> CliResult<Vec<(String, Vec<Arc<Tensor>>)>>
-    where
-        F: std::fmt::Debug + Clone + Hash + Fact + for<'a> TryFrom<&'a InferenceFact, Error = E>,
-        O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + Hash,
-        Graph<F, O>: SpecialOps<F, O>,
-        E: std::fmt::Debug,
-    {
-        let mut input_values: Vec<(String, Vec<Arc<Tensor>>)> = vec![];
-        let files = inputs_dir
-            .read_dir()?
-            .map(|file| {
-                let file = file?;
-                let filename = file
-                    .file_name()
-                    .into_string()
-                    .map_err(|s| format_err!("Can't convert OSString to String ({:?})", s))?;
-                let is_input = filename.starts_with("input_");
-                if is_input || filename.starts_with("output_") {
-                    let ix = filename
-                        .split("_")
-                        .nth(1)
-                        .unwrap()
-                        .split(".")
-                        .nth(0)
-                        .unwrap()
-                        .parse::<usize>()?;
-                    let (name, tensor) = tensor::for_data(file.path().to_str().unwrap())?;
-                    Ok(Some((
-                        ix,
-                        is_input,
-                        filename,
-                        name.unwrap_or_else(|| {
-                            let nodes = if is_input {
-                                raw_model.input_outlets().unwrap()
-                            } else {
-                                raw_model.output_outlets().unwrap()
-                            };
-                            raw_model.node(nodes[0].node).name.clone()
-                        }),
-                        tensor,
-                    )))
-                } else {
-                    Ok(None)
-                }
-            })
-            .collect::<CliResult<Vec<Option<_>>>>()?;
-        let files = files.into_iter().filter_map(|x| x).collect::<Vec<_>>();
-        let (inputs, outputs) = files.iter().partition::<Vec<_>, _>(|f| f.1);
-        let inputs = inputs.into_iter().sorted_by_key(|f| f.0).collect::<Vec<_>>();
-        let outputs = outputs.into_iter().sorted_by_key(|f| f.0).collect::<Vec<_>>();
-        let input_names = inputs.iter().map(|i| &*i.3).collect::<Vec<_>>();
-        let output_names = outputs.iter().map(|i| &*i.3).collect::<Vec<_>>();
-        debug!("input_names from files: {:?}", input_names);
-        debug!("output_names from files: {:?}", output_names);
-        for (ix, _, filename, name, tensor) in inputs.into_iter() {
-            debug!("Using {} as input {} ({}): {:?}", filename, ix, name, tensor);
-            if let Some(v) = tensor.value.concretize() {
-                input_values.push((name.to_string(), vec![v]));
+    fn use_onnx_test_case_data_set(inputs_dir: &std::path::Path) -> CliResult<Vec<TensorValues>> {
+        let mut result = vec![];
+        for file in inputs_dir.read_dir()? {
+            let file = file?;
+            let filename = file
+                .file_name()
+                .into_string()
+                .map_err(|s| format_err!("Can't convert OSString to String ({:?})", s))?;
+            let is_input = filename.starts_with("input_");
+            let is_output = filename.starts_with("output_");
+            if is_input || is_output {
+                let ix = filename
+                    .split("_")
+                    .nth(1)
+                    .unwrap()
+                    .split(".")
+                    .nth(0)
+                    .unwrap()
+                    .parse::<usize>()?;
+                let (name, tensor) = tensor::for_data(file.path().to_str().unwrap())?;
+                result.push(TensorValues {
+                    input_index: Some(ix).filter(|_| is_input),
+                    output_index: Some(ix).filter(|_| is_output),
+                    name,
+                    values: tensor.value.concretize().map(|t| vec![t]),
+                    fact: tensor.without_value(),
+                })
             }
         }
-        let outputs = outputs
-            .into_iter()
-            .inspect(|(ix, _, filename, name, tensor)| {
-                debug!("Using {} as output {} ({}): {:?}", filename, ix, name, tensor);
-            })
-            .map(|(_, _, _, _, tensor)| tensor.concretize())
-            .collect();
-        assertions.assert_outputs = outputs;
-        Ok(input_values)
+        Ok(result)
     }
 
-    fn inputs<F, O, E>(
-        raw_model: Option<&mut Graph<F, O>>,
-        assertions: &mut Assertions,
+    fn parse_npz(input: &str) -> TractResult<Vec<TensorValues>> {
+        let mut npz = ndarray_npy::NpzReader::new(
+            std::fs::File::open(input).with_context(|| format!("opening {:?}", input))?,
+        )?;
+        let vectors = npz
+            .names()?
+            .iter()
+            .map(|n| {
+                if let Ok((turn, name)) = scan_fmt::scan_fmt!(n, "turn_{d}/{}.npy", usize, String) {
+                    Ok((name, turn, tensor::for_npz(&mut npz, &n)?))
+                } else {
+                    let name = n.trim_end_matches(".npy").to_string();
+                    Ok((name, 0, tensor::for_npz(&mut npz, &n)?))
+                }
+            })
+            .collect::<TractResult<Vec<_>>>()?;
+        let mut result = vec![];
+        for (name, vals) in vectors.into_iter().group_by(|triple| triple.0.clone()).into_iter() {
+            let vals: Vec<_> = vals
+                .into_iter()
+                .sorted_by_key(|(_, turn, _)| *turn)
+                .map(|(_, _, tensor)| tensor.into_arc_tensor())
+                .collect();
+            result.push(TensorValues {
+                input_index: None,
+                output_index: None,
+                name: Some(name),
+                fact: InferenceFact::from(&vals[0]).without_value(),
+                values: Some(vals),
+            })
+        }
+        Ok(result)
+    }
+
+    fn parse_tensors(
         matches: &clap::ArgMatches,
         location: &ModelLocation,
         onnx_tc: bool,
-        ignore_input_shape: bool,
-    ) -> CliResult<HashMap<String, Vec<Arc<Tensor>>>>
-    where
-        F: std::fmt::Debug + Clone + Hash + Fact + for<'a> TryFrom<&'a InferenceFact, Error = E>,
-        O: std::fmt::Debug
-            + std::fmt::Display
-            + AsRef<dyn Op>
-            + AsMut<dyn Op>
-            + Clone
-            + Hash
-            + Send
-            + Sync,
-        Graph<F, O>: SpecialOps<F, O> + Send + Any,
-        tract_core::ops::konst::Const: Into<O>,
-        E: std::fmt::Debug,
-    {
-        let mut input_facts: Vec<(
-            Option<usize>,
-            Option<String>,
-            bool,
-            InferenceFact,
-            Option<Vec<Arc<Tensor>>>,
-        )> = vec![];
+    ) -> CliResult<TensorsValues> {
+        let mut result = TensorsValues::default();
 
         if let Some(inputs) = matches.values_of("input") {
             for (ix, v) in inputs.enumerate() {
-                let (name, t) = tensor::for_string(v)?;
-                let fact = t.clone().without_value();
-                input_facts.push((
-                    Some(ix),
-                    name.clone(),
-                    name.is_some(),
-                    fact,
-                    t.value.concretize().map(|t| vec![t]),
-                ));
+                let (name, fact) = tensor::for_string(v)?;
+                result.add(TensorValues {
+                    input_index: Some(ix),
+                    output_index: None,
+                    name,
+                    values: fact.value.concretize().map(|t| vec![t]),
+                    fact: fact.without_value(),
+                });
             }
         }
 
         if let Some(bundle) = matches.values_of("input-bundle") {
             for input in bundle {
-                let mut npz = ndarray_npy::NpzReader::new(
-                    std::fs::File::open(input).with_context(|| format!("opening {:?}", input))?,
-                )?;
-                let vectors = npz
-                    .names()?
-                    .iter()
-                    .map(|n| {
-                        if let Ok((turn, name)) =
-                            scan_fmt::scan_fmt!(n, "turn_{d}/{}.npy", usize, String)
-                        {
-                            Ok((name, turn, tensor::for_npz(&mut npz, &n)?))
-                        } else {
-                            let name = n.trim_end_matches(".npy").to_string();
-                            Ok((name, 0, tensor::for_npz(&mut npz, &n)?))
-                        }
-                    })
-                    .collect::<TractResult<Vec<_>>>()?;
-                for (name, vals) in
-                    vectors.into_iter().group_by(|triple| triple.0.clone()).into_iter()
-                {
-                    let vals: Vec<_> = vals
-                        .into_iter()
-                        .sorted_by_key(|(_, turn, _)| *turn)
-                        .map(|(name, _, tensor)| -> Arc<Tensor> {
-                            if let Some(dt_from_model) = raw_model
-                                .as_ref()
-                                .and_then(|model| model.node_by_name(name).ok())
-                                .and_then(|n| n.outputs[0].fact.datum_type())
-                            {
-                                if !tensor.datum_type().is_quantized()
-                                    && dt_from_model.is_quantized()
-                                    && tensor.datum_type().unquantized()
-                                        == dt_from_model.unquantized()
-                                {
-                                    let mut tensor = tensor.clone();
-                                    unsafe {
-                                        tensor.set_datum_type(dt_from_model);
-                                    }
-                                    tensor.into_arc_tensor()
-                                } else {
-                                    tensor.into_arc_tensor()
-                                }
-                            } else {
-                                tensor.into_arc_tensor()
-                            }
-                        })
-                        .collect();
-                    input_facts.push((
-                        None,
-                        Some(name),
-                        false,
-                        InferenceFact::from(&vals[0]).without_value(),
-                        Some(vals),
-                    ));
+                for tv in Self::parse_npz(input)? {
+                    result.add(tv);
+                }
+            }
+        }
+
+        if let Some((_, sub)) = matches.subcommand() {
+            if let Some(values) = sub.values_of("assert-output") {
+                for (ix, o) in values.enumerate() {
+                    let (name, fact) = tensor::for_string(o)?;
+                    info!(
+                        "Output assertion #{}: (named: {}) {:?}",
+                        ix,
+                        name.as_deref().unwrap_or(""),
+                        fact
+                    );
+                    result.add(TensorValues {
+                        input_index: None,
+                        output_index: Some(ix),
+                        name,
+                        values: fact.value.concretize().map(|t| vec![t]),
+                        fact: fact.without_value(),
+                    });
+                }
+            }
+
+            if let Some(bundles) = sub.values_of("assert-output-bundle") {
+                for bundle in bundles {
+                    for tv in Self::parse_npz(bundle)? {
+                        result.add(tv);
+                    }
                 }
             }
         }
 
         if onnx_tc {
             let data_set_name = matches.value_of("onnx-test-data-set").unwrap_or("test_data_set_0");
-            for (name, vals) in Self::use_onnx_test_case_data_set(
-                raw_model.as_ref().unwrap(),
-                assertions,
+
+            for tv in Self::use_onnx_test_case_data_set(
                 location.path().parent().unwrap().join(data_set_name).as_path(),
             )? {
-                input_facts.push((
-                    None,
-                    Some(name),
-                    false,
-                    InferenceFact::from(&vals[0]).without_value(),
-                    Some(vals),
-                ));
+                result.add(tv)
             }
         }
 
-        let mut input_values: HashMap<String, Vec<Arc<Tensor>>> = input_facts
-            .iter()
-            .filter_map(|(_, name, _, _, data)| {
-                if let (Some(name), Some(data)) = (name, data) {
-                    Some((name.clone(), data.clone()))
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        if let Some(raw_model) = raw_model {
-            for (ix, name, force, fact, _) in &input_facts {
-                let f: F = fact.try_into().unwrap();
-                if *force && name.is_some() {
-                    let node_id = raw_model.node_id_by_name(name.as_ref().unwrap())?;
-                    for input in raw_model.node(node_id).inputs.clone() {
-                        raw_model.node_mut(input.node).outputs[input.slot]
-                            .successors
-                            .retain(|s| s.node != node_id);
-                    }
-                    raw_model.node_mut(node_id).inputs.clear();
-                    if !raw_model.input_outlets()?.contains(&node_id.into()) {
-                        raw_model.inputs.push(node_id.into())
-                    }
-                }
-                let source = if let Some(name) = name {
-                    raw_model.node_id_by_name(name).ok()
-                } else if let Some(ix) = ix {
-                    Some(raw_model.input_outlets()?[*ix].node)
-                } else {
-                    bail!("Source specification without index or name. Should not happen");
-                };
-                if let Some(source) = source {
-                    if raw_model.input_outlets()?.contains(&source.into()) {
-                        raw_model.node_mut(source).op = raw_model.create_source(f.clone());
-                        raw_model.set_outlet_fact(source.into(), f)?;
-                    }
-                }
-            }
-            let const_inputs =
-                matches.values_of("const-input").map(|c| c.collect()).unwrap_or(vec![]);
-            for i in (0..raw_model.inputs.len()).rev() {
-                let input = raw_model.inputs[i];
-                let name = raw_model.node_name(input.node);
-                if const_inputs.contains(&raw_model.node_name(input.node)) {
-                    if let Some(v) = input_values.remove(name) {
-                        raw_model.node_mut(input.node).op =
-                            tract_core::ops::konst::Const::new(v[0].clone()).into();
-                        raw_model.node_mut(input.node).outputs[0].fact =
-                            F::try_from(&InferenceFact::from(v[0].clone().into_tensor())).unwrap();
-                    } else {
-                        bail!(
-                            "Don't have value for input {}, can't make it const",
-                            raw_model.node_name(input.node)
-                        );
-                    }
-                    raw_model.inputs.remove(i);
-                }
-            }
-        }
-
-        Ok(input_values)
+        Ok(result)
     }
 
     #[allow(unused_variables)]
@@ -619,45 +525,45 @@ impl Parameters {
         }
 
         macro_rules! stage {
-            ($name:expr, $from:ident -> $to:ident, $block:expr) => {
-                if let Some(from) = $from.take() {
-                    info!(concat!("Running '", $name, "'"));
-                    let mut last_model: Option<Box<dyn Model>> =
-                        if keep_last { Some(Box::new(from.as_ref().clone())) } else { None };
-                    let block: &dyn Fn(_) -> CliResult<_> = &$block;
-                    let owned_model =
-                        Arc::try_unwrap(from).unwrap_or_else(|from| from.as_ref().clone());
-                    match block(owned_model).context(concat!("Error at stage ", $name)) {
-                        Ok(it) => {
-                            $to = Some(Arc::new(it));
+        ($name:expr, $from:ident -> $to:ident, $block:expr) => {
+            if let Some(from) = $from.take() {
+                info!(concat!("Running '", $name, "'"));
+                let mut last_model: Option<Box<dyn Model>> =
+                    if keep_last { Some(Box::new(from.as_ref().clone())) } else { None };
+                let block: &dyn Fn(_) -> CliResult<_> = &$block;
+                let owned_model =
+                    Arc::try_unwrap(from).unwrap_or_else(|from| from.as_ref().clone());
+                match block(owned_model).context(concat!("Error at stage ", $name)) {
+                    Ok(it) => {
+                        $to = Some(Arc::new(it));
+                    }
+                    Err(e) => {
+                        if let Some(last_model) = last_model.take() {
+                            return Err(ModelBuildingError(last_model, e.into()))?;
+                        } else {
+                            return Err(e)?;
                         }
-                        Err(e) => {
-                            if let Some(last_model) = last_model.take() {
-                                return Err(ModelBuildingError(last_model, e.into()))?;
-                            } else {
-                                return Err(e)?;
-                            }
-                        }
-                    }
-                    info_usage(concat!("after ", $name), probe);
-                    if reference_stage.as_deref() == Some($name) {
-                        reference_model = Some($to.as_ref().unwrap().clone());
-                    }
-                    if stop_at == $name {
-                        return Ok((
-                                $to.take().expect("returnable model"),
-                                pulsed_model,
-                                reference_model,
-                                ));
-                    }
-                } else {
-                    debug!("Skip stage {}", $name);
-                    if stop_at == $name {
-                        bail!("Stage {} is skipped, it can not be used as stop with these input format or parameters.", $name);
                     }
                 }
-            };
-        }
+                info_usage(concat!("after ", $name), probe);
+                if reference_stage.as_deref() == Some($name) {
+                    reference_model = Some($to.as_ref().unwrap().clone());
+                }
+                if stop_at == $name {
+                    return Ok((
+                            $to.take().expect("returnable model"),
+                            pulsed_model,
+                            reference_model,
+                            ));
+                }
+            } else {
+                debug!("Skip stage {}", $name);
+                if stop_at == $name {
+                    bail!("Stage {} is skipped, it can not be used as stop with these input format or parameters.", $name);
+                }
+            }
+        };
+    }
 
         stage!("analyse", inference_model -> inference_model,
         |mut m:InferenceModel| -> TractResult<_> {
@@ -777,16 +683,6 @@ impl Parameters {
             graph = SomeGraphDef::NoGraphDef;
         }
 
-        if let Some(inputs) = matches.values_of("input") {
-            let names = inputs
-                .map(|t| Ok(tensor::for_string(t)?.0))
-                .collect::<CliResult<Vec<Option<String>>>>()?;
-            if names.iter().all(|s| s.is_some() && s.as_ref().unwrap().len() > 0) {
-                let names: Vec<&str> = names.iter().map(|s| &**s.as_ref().unwrap()).collect();
-                raw_model.set_input_names(&*names)?;
-            }
-        }
-
         if let Some(inputs) = matches.values_of("input-node") {
             let inputs: Vec<&str> = inputs.map(|s| s).collect();
             raw_model.set_input_names(&inputs)?;
@@ -796,6 +692,8 @@ impl Parameters {
             let outputs: Vec<&str> = outputs.map(|s| s).collect();
             raw_model.set_output_names(&outputs)?;
         };
+
+        let tensors_values = Self::parse_tensors(matches, &filename, onnx_tc)?;
 
         if let Some(override_facts) = matches.values_of("override-fact") {
             for fact in override_facts {
@@ -824,10 +722,8 @@ impl Parameters {
             })
             .collect();
 
-        let mut assertions = match matches.subcommand() {
-            Some(("dump" | "run", sm)) => {
-                Assertions::from_clap(&matches, &*output_names_and_labels)?
-            }
+        let assertions = match matches.subcommand() {
+            Some(("dump" | "run", sm)) => Assertions::from_clap(&sm)?,
             _ => Assertions::default(),
         };
 
@@ -843,15 +739,16 @@ impl Parameters {
             dispatch_model_mut_no_pulse!(raw_model, |m| Self::kaldi_context(m, left, right))?;
         }
 
-        let ignore_input_facts = raw_model.is::<TypedModel>();
-        let input_values = dispatch_model_mut_no_pulse!(raw_model, |m| Self::inputs(
-            Some(m),
-            &mut assertions,
-            matches,
-            &filename,
-            onnx_tc,
-            ignore_input_facts
-        ))?;
+        if let Some(infer) = raw_model.downcast_mut::<InferenceModel>() {
+            for (ix, node_id) in infer.inputs.iter().enumerate() {
+                let tv = tensors_values
+                    .by_name(&infer.node(node_id.node).name)
+                    .or_else(|| tensors_values.by_input_ix(ix));
+                if let Some(tv) = tv {
+                    infer.nodes[node_id.node].outputs[0].fact = tv.fact.clone();
+                }
+            }
+        }
 
         if matches.is_present("partial") {
             if let Some(m) = raw_model.downcast_ref::<InferenceModel>() {
@@ -880,7 +777,7 @@ impl Parameters {
                 tract_model,
                 reference_model,
                 tf_model,
-                input_values,
+                tensors_values,
                 assertions,
                 machine_friendly: matches.is_present("machine-friendly"),
                 allow_random_input,
@@ -951,83 +848,28 @@ pub fn display_params_from_clap(
 
 #[derive(Debug, Default)]
 pub struct Assertions {
-    pub assert_outputs: Vec<Option<Arc<Tensor>>>,
+    pub assert_outputs: bool,
     pub assert_output_facts: Option<Vec<InferenceFact>>,
     pub assert_op_count: Option<Vec<(String, usize)>>,
 }
 
 impl Assertions {
-    fn from_clap(
-        matches: &clap::ArgMatches,
-        output_names: &[Vec<String>],
-    ) -> CliResult<Assertions> {
-        if let Some(sub) = matches.subcommand().as_ref().map(|sub| &sub.1) {
-            let mut assert_outputs: Vec<Option<Arc<Tensor>>> = vec![None; output_names.len()];
-            if let Some(values) = sub.values_of("assert-output") {
-                for (ix, o) in values.enumerate() {
-                    let (name, fact) = tensor::for_string(o)?;
-                    info!(
-                        "Output assertion #{}: (named: {}) {:?}",
-                        ix,
-                        name.as_deref().unwrap_or(""),
-                        fact
-                    );
-                    let oix = if let Some(name) = name {
-                        output_names.iter().position(|names| names.contains(&name)).unwrap_or(ix)
-                    } else {
-                        ix
-                    };
-                    assert_outputs[oix] = fact.value.concretize();
-                }
-            }
-
-            if let Some(bundles) = sub.values_of("assert-output-bundle") {
-                for bundle in bundles {
-                    let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(bundle)?)?;
-                    for (ix, labels) in output_names.iter().enumerate() {
-                        for label in labels {
-                            if assert_outputs[ix].is_some() {
-                                continue;
-                            }
-                            let npy_name = format!("{}.npy", label);
-                            if let Ok(t) = tensor::for_npz(&mut npz, &npy_name) {
-                                assert_outputs[ix] = Some(t.into_arc_tensor())
-                            }
-                        }
-                    }
-                }
-            }
-
-            if sub.values_of("assert-output").is_some()
-                || sub.values_of("assert-output-bundle").is_some()
-            {
-                if assert_outputs.contains(&None) {
-                    bail!("Could not find assertions for all outputs: names and aliases are {:?}, found {:?}", output_names, assert_outputs);
-                }
-            }
-
-            let assert_output_facts: Option<Vec<InferenceFact>> = sub
-                .values_of("assert-output-fact")
-                .map(|vs| vs.map(|v| tensor::for_string(v).unwrap().1).collect());
-            let assert_op_count: Option<Vec<(String, usize)>> = sub
-                .values_of("assert-op-count")
-                .map(|vs| {
-                    vs.chunks(2)
-                        .into_iter()
-                        .map(|mut args| {
-                            Some((args.next()?.to_string(), args.next()?.parse().ok()?))
-                        })
-                        .collect()
-                })
-                .flatten();
-
-            Ok(Assertions { assert_outputs, assert_output_facts, assert_op_count })
-        } else {
-            Ok(Assertions {
-                assert_outputs: vec![None; output_names.len()],
-                assert_output_facts: None,
-                assert_op_count: None,
+    fn from_clap(sub: &clap::ArgMatches) -> CliResult<Assertions> {
+        let assert_outputs =
+            sub.is_present("assert-output") || sub.is_present("assert-output-bundle");
+        let assert_output_facts: Option<Vec<InferenceFact>> = sub
+            .values_of("assert-output-fact")
+            .map(|vs| vs.map(|v| tensor::for_string(v).unwrap().1).collect());
+        let assert_op_count: Option<Vec<(String, usize)>> = sub
+            .values_of("assert-op-count")
+            .map(|vs| {
+                vs.chunks(2)
+                    .into_iter()
+                    .map(|mut args| Some((args.next()?.to_string(), args.next()?.parse().ok()?)))
+                    .collect()
             })
-        }
+            .flatten();
+
+        Ok(Assertions { assert_outputs, assert_output_facts, assert_op_count })
     }
 }

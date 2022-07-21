@@ -295,7 +295,21 @@ pub fn retrieve_or_make_inputs(
     for input in tract.input_outlets() {
         let name = tract.node_name(input.node);
         let fact = tract.outlet_typedfact(*input)?;
-        if let Some(value) = params.input_values.get(name) {
+        if let Some(mut value) = params.tensors_values.by_name(name).and_then(|t| t.values.clone())
+        {
+            if !value[0].datum_type().is_quantized()
+                && fact.datum_type.is_quantized()
+                && value[0].datum_type() == fact.datum_type.unquantized()
+            {
+                value = value
+                    .iter()
+                    .map(|v| {
+                        let mut v = v.clone().into_tensor();
+                        unsafe { v.set_datum_type(fact.datum_type) };
+                        v.into_arc_tensor()
+                    })
+                    .collect();
+            }
             if TypedFact::from(value[0].clone()).compatible_with(&fact) {
                 info!("Using fixed input for input called {} ({} turn(s))", name, value.len());
                 tmp.push(value.iter().map(|t| t.clone().into_tensor()).collect())

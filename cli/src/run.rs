@@ -19,7 +19,8 @@ pub fn handle(
     };
 
     #[cfg(not(feature = "pulse"))]
-    let outputs = dispatch_model!(&*params.tract_model, |m| run_regular(m, &params, matches, &sub_matches))?;
+    let outputs =
+        dispatch_model!(&*params.tract_model, |m| run_regular(m, &params, matches, &sub_matches))?;
 
     if dump {
         for (ix, output) in outputs.iter().enumerate() {
@@ -38,8 +39,9 @@ pub fn handle(
         }
     }
 
-    let allow_float_casts = matches.is_present("allow-float-casts");
-    crate::utils::check_outputs(&*outputs, &params.assertions.assert_outputs, allow_float_casts)?;
+    if params.assertions.assert_outputs {
+        crate::utils::check_outputs(&*outputs, params)?;
+    }
 
     if let Some(facts) = &params.assertions.assert_output_facts {
         let outputs: Vec<InferenceFact> =
@@ -126,7 +128,9 @@ fn run_regular(
                             name = format!("turn_{}/{}", turn, name);
                         }
                         match t.datum_type() {
-                            DatumType::F16 => npz.add_array(name, &t.cast_to::<f32>()?.to_array_view::<f32>()?)?,
+                            DatumType::F16 => {
+                                npz.add_array(name, &t.cast_to::<f32>()?.to_array_view::<f32>()?)?
+                            }
                             DatumType::F32 => npz.add_array(name, &t.to_array_view::<f32>()?)?,
                             DatumType::F64 => npz.add_array(name, &t.to_array_view::<f64>()?)?,
                             DatumType::I32 => npz.add_array(name, &t.to_array_view::<i32>()?)?,
@@ -186,7 +190,7 @@ fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Arc<T
     //    println!("output_fact: {:?}", output_fact);
     let axis = input_fact.axis;
     let name = model.node_name(model.input_outlets()?[0].node);
-    let input: &Tensor = &params.input_values.get(name).unwrap()[0];
+    let input: &Tensor = &params.tensors_values.by_name(name).unwrap().values.as_ref().unwrap()[0];
     //    println!("input_shape: {:?}", input.shape());
     let input_dim = input.shape()[axis];
     //    println!("output_fact: {:?}", output_fact);

@@ -267,6 +267,7 @@ impl Framework<KaldiProtoModel, InferenceModel> for Kaldi {
                 tract_hir::ops::identity::Identity::default(),
                 tvec!(InferenceFact::default()),
             )?;
+            model.set_outlet_label(output.into(), o.output_alias.to_string())?;
             o.descriptor.wire(
                 InletId::new(output, 0),
                 "output",
