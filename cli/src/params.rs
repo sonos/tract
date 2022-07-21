@@ -13,6 +13,8 @@ use tract_pulse::internal::*;
 #[cfg(feature = "tf")]
 use tract_tensorflow::tfpb::tensorflow::GraphDef;
 
+use tract_nnef::ast::dump::Dumper;
+
 use crate::display_params::DisplayParams;
 use crate::CliResult;
 
@@ -121,9 +123,11 @@ impl TensorsValues {
         self.0.iter().find(|t| t.input_index == Some(ix))
     }
 
+    /*
     pub fn by_output_ix(&self, ix: usize) -> Option<&TensorValues> {
-        self.0.iter().find(|t| t.output_index == Some(ix))
+    self.0.iter().find(|t| t.output_index == Some(ix))
     }
+    */
 
     pub fn add(&mut self, tv: TensorValues) {
         if !self.0.contains(&tv) {
@@ -154,6 +158,10 @@ impl Parameters {
             (ModelLocation::Http(model.parse()?), false)
         } else if !path.exists() {
             bail!("model not found: {:?}", path)
+        } else if std::fs::metadata(&path)?.is_file()
+            && path.file_name().unwrap().to_string_lossy() == "graph.nnef"
+        {
+            (ModelLocation::Fs(path.parent().unwrap().to_owned()), false)
         } else if std::fs::metadata(&path)?.is_dir() && path.join("graph.nnef").exists() {
             (ModelLocation::Fs(path), false)
         } else if std::fs::metadata(&path)?.is_dir() && path.join("model.onnx").exists() {
@@ -168,6 +176,7 @@ impl Parameters {
         matches: &clap::ArgMatches,
         probe: Option<&Probe>,
         location: &ModelLocation,
+        tensors_values: &TensorsValues,
     ) -> CliResult<(SomeGraphDef, Box<dyn Model>, Option<TfExt>)> {
         let need_graph =
             matches.is_present("proto") || matches.subcommand_name() == Some("compare-pbdir");
@@ -207,7 +216,7 @@ impl Parameters {
             }
             "nnef" => {
                 let nnef = super::nnef(&matches);
-                let proto_model = if location.is_dir() {
+                let mut proto_model = if location.is_dir() {
                     if let ModelLocation::Fs(dir) = location {
                         nnef.proto_model_for_path(dir)?
                     } else {
@@ -225,26 +234,59 @@ impl Parameters {
                 } else {
                     nnef.proto_model_for_read(&mut *location.read()?)?
                 };
-                info_usage("proto model loaded", probe);
-                if need_graph {
-                    (
-                        SomeGraphDef::Nnef(proto_model.clone()),
-                        Box::new(
-                            nnef.translate(&proto_model)
-                                .map_err(|(g, e)| ModelBuildingError(Box::new(g), e.into()))?,
-                        ),
-                        Option::<TfExt>::None,
-                    )
-                } else {
-                    (
-                        SomeGraphDef::NoGraphDef,
-                        Box::new(
-                            nnef.translate(&proto_model)
-                                .map_err(|(g, e)| ModelBuildingError(Box::new(g), e.into()))?,
-                        ),
-                        Option::<TfExt>::None,
-                    )
+                let inputs: Vec<String> =
+                    proto_model.doc.graph_def.parameters.iter().map(|par| par.clone()).collect();
+                for (ix, name) in inputs.into_iter().enumerate() {
+                    use tract_nnef::ast::LValue;
+                    if let Some(over) =
+                        tensors_values.by_name(&name).or(tensors_values.by_input_ix(ix))
+                    {
+                        let assignment_id = proto_model
+                            .doc
+                            .graph_def
+                            .body
+                            .iter()
+                            .position(|a| a.left == LValue::Identifier(name.clone()))
+                            .context("Coulnt not find input assignement in nnef body")?;
+                        let mut formatted = vec![];
+                        let ass = &mut proto_model.doc.graph_def.body[assignment_id];
+                        let inv = if let RValue::Invocation(inv) = &mut ass.right {
+                            inv
+                        } else {
+                            unreachable!();
+                        };
+                        assert!(inv.id == "external");
+                        assert!(inv.arguments.len() == 1);
+                        assert!(inv.arguments[0].id.as_deref() == Some("shape"));
+                        Dumper::new(&mut formatted).rvalue(&inv.arguments[0].rvalue)?;
+                        let shape = over
+                            .fact
+                            .shape
+                            .concretize()
+                            .context("Can only use concrete shapes in override")?;
+                        info!(
+                            "Overriding model input shape named \"{}\". Replacing {} by {:?}.",
+                            name,
+                            String::from_utf8_lossy(&formatted),
+                            &over.fact.shape
+                        );
+                        inv.arguments[0].rvalue = tract_nnef::ser::tdims(&shape);
+                    }
                 }
+                info_usage("proto model loaded", probe);
+                let graph_def = if need_graph {
+                    SomeGraphDef::Nnef(proto_model.clone())
+                } else {
+                    SomeGraphDef::NoGraphDef
+                };
+                (
+                    graph_def,
+                    Box::new(
+                        nnef.translate(&proto_model)
+                            .map_err(|(g, e)| ModelBuildingError(Box::new(g), e.into()))?,
+                    ),
+                    Option::<TfExt>::None,
+                )
             }
             #[cfg(feature = "onnx")]
             "onnx" => {
@@ -525,45 +567,45 @@ impl Parameters {
         }
 
         macro_rules! stage {
-        ($name:expr, $from:ident -> $to:ident, $block:expr) => {
-            if let Some(from) = $from.take() {
-                info!(concat!("Running '", $name, "'"));
-                let mut last_model: Option<Box<dyn Model>> =
-                    if keep_last { Some(Box::new(from.as_ref().clone())) } else { None };
-                let block: &dyn Fn(_) -> CliResult<_> = &$block;
-                let owned_model =
-                    Arc::try_unwrap(from).unwrap_or_else(|from| from.as_ref().clone());
-                match block(owned_model).context(concat!("Error at stage ", $name)) {
-                    Ok(it) => {
-                        $to = Some(Arc::new(it));
-                    }
-                    Err(e) => {
-                        if let Some(last_model) = last_model.take() {
-                            return Err(ModelBuildingError(last_model, e.into()))?;
-                        } else {
-                            return Err(e)?;
+            ($name:expr, $from:ident -> $to:ident, $block:expr) => {
+                if let Some(from) = $from.take() {
+                    info!(concat!("Running '", $name, "'"));
+                    let mut last_model: Option<Box<dyn Model>> =
+                        if keep_last { Some(Box::new(from.as_ref().clone())) } else { None };
+                    let block: &dyn Fn(_) -> CliResult<_> = &$block;
+                    let owned_model =
+                        Arc::try_unwrap(from).unwrap_or_else(|from| from.as_ref().clone());
+                    match block(owned_model).context(concat!("Error at stage ", $name)) {
+                        Ok(it) => {
+                            $to = Some(Arc::new(it));
+                        }
+                        Err(e) => {
+                            if let Some(last_model) = last_model.take() {
+                                return Err(ModelBuildingError(last_model, e.into()))?;
+                            } else {
+                                return Err(e)?;
+                            }
                         }
                     }
+                    info_usage(concat!("after ", $name), probe);
+                    if reference_stage.as_deref() == Some($name) {
+                        reference_model = Some($to.as_ref().unwrap().clone());
+                    }
+                    if stop_at == $name {
+                        return Ok((
+                                $to.take().expect("returnable model"),
+                                pulsed_model,
+                                reference_model,
+                                ));
+                    }
+                } else {
+                    debug!("Skip stage {}", $name);
+                    if stop_at == $name {
+                        bail!("Stage {} is skipped, it can not be used as stop with these input format or parameters.", $name);
+                    }
                 }
-                info_usage(concat!("after ", $name), probe);
-                if reference_stage.as_deref() == Some($name) {
-                    reference_model = Some($to.as_ref().unwrap().clone());
-                }
-                if stop_at == $name {
-                    return Ok((
-                            $to.take().expect("returnable model"),
-                            pulsed_model,
-                            reference_model,
-                            ));
-                }
-            } else {
-                debug!("Skip stage {}", $name);
-                if stop_at == $name {
-                    bail!("Stage {} is skipped, it can not be used as stop with these input format or parameters.", $name);
-                }
-            }
-        };
-    }
+            };
+        }
 
         stage!("analyse", inference_model -> inference_model,
         |mut m:InferenceModel| -> TractResult<_> {
@@ -639,8 +681,9 @@ impl Parameters {
     /// Parses the command-line arguments.
     pub fn from_clap(matches: &clap::ArgMatches, probe: Option<&Probe>) -> CliResult<Parameters> {
         let (filename, onnx_tc) = Self::disco_model(matches)?;
+        let tensors_values = Self::parse_tensors(matches, &filename, onnx_tc)?;
         let (mut graph, mut raw_model, tf_model_extensions) =
-            Self::load_model(matches, probe, &filename)?;
+            Self::load_model(matches, probe, &filename, &tensors_values)?;
 
         info!("Model {:?} loaded", filename);
         info_usage("model loaded", probe);
@@ -692,8 +735,6 @@ impl Parameters {
             let outputs: Vec<&str> = outputs.map(|s| s).collect();
             raw_model.set_output_names(&outputs)?;
         };
-
-        let tensors_values = Self::parse_tensors(matches, &filename, onnx_tc)?;
 
         if let Some(override_facts) = matches.values_of("override-fact") {
             for fact in override_facts {

@@ -191,7 +191,7 @@ impl<'a> Dumper<'a> {
         Ok(())
     }
 
-    fn rvalue(&mut self, rv: &RValue) -> TractResult<()> {
+    pub fn rvalue(&mut self, rv: &RValue) -> TractResult<()> {
         match rv {
             RValue::Array(vals) => {
                 write!(self.w, "[")?;
