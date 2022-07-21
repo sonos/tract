@@ -141,7 +141,7 @@ pub struct TensorValues {
     pub input_index: Option<usize>,
     pub output_index: Option<usize>,
     pub name: Option<String>,
-    pub fact: InferenceFact,
+    pub fact: Option<InferenceFact>,
     pub values: Option<Vec<Arc<Tensor>>>,
 }
 
@@ -237,9 +237,12 @@ impl Parameters {
                 let inputs: Vec<String> =
                     proto_model.doc.graph_def.parameters.iter().map(|par| par.clone()).collect();
                 for (ix, name) in inputs.into_iter().enumerate() {
-                    use tract_nnef::ast::LValue;
-                    if let Some(over) =
-                        tensors_values.by_name(&name).or(tensors_values.by_input_ix(ix))
+                    #[allow(unused_imports)]
+                    use tract_nnef::ast::{LValue, RValue};
+                    if let Some(over) = tensors_values
+                        .by_name(&name)
+                        .or(tensors_values.by_input_ix(ix))
+                        .and_then(|tv| tv.fact.as_ref())
                     {
                         let assignment_id = proto_model
                             .doc
@@ -260,7 +263,6 @@ impl Parameters {
                         assert!(inv.arguments[0].id.as_deref() == Some("shape"));
                         Dumper::new(&mut formatted).rvalue(&inv.arguments[0].rvalue)?;
                         let shape = over
-                            .fact
                             .shape
                             .concretize()
                             .context("Can only use concrete shapes in override")?;
@@ -268,7 +270,7 @@ impl Parameters {
                             "Overriding model input shape named \"{}\". Replacing {} by {:?}.",
                             name,
                             String::from_utf8_lossy(&formatted),
-                            &over.fact.shape
+                            &shape
                         );
                         inv.arguments[0].rvalue = tract_nnef::ser::tdims(&shape);
                     }
@@ -417,7 +419,7 @@ impl Parameters {
                     output_index: Some(ix).filter(|_| is_output),
                     name,
                     values: tensor.value.concretize().map(|t| vec![t]),
-                    fact: tensor.without_value(),
+                    fact: None,
                 })
             }
         }
@@ -451,7 +453,7 @@ impl Parameters {
                 input_index: None,
                 output_index: None,
                 name: Some(name),
-                fact: InferenceFact::from(&vals[0]).without_value(),
+                fact: None,
                 values: Some(vals),
             })
         }
@@ -473,7 +475,7 @@ impl Parameters {
                     output_index: None,
                     name,
                     values: fact.value.concretize().map(|t| vec![t]),
-                    fact: fact.without_value(),
+                    fact: if fact.value.is_concrete() { None } else { Some(fact) },
                 });
             }
         }
@@ -501,7 +503,7 @@ impl Parameters {
                         output_index: Some(ix),
                         name,
                         values: fact.value.concretize().map(|t| vec![t]),
-                        fact: fact.without_value(),
+                        fact: None,
                     });
                 }
             }
@@ -786,7 +788,12 @@ impl Parameters {
                     .by_name(&infer.node(node_id.node).name)
                     .or_else(|| tensors_values.by_input_ix(ix));
                 if let Some(tv) = tv {
-                    infer.nodes[node_id.node].outputs[0].fact = tv.fact.clone();
+                    if let Some(fact) = &tv.fact {
+                        infer.nodes[node_id.node].outputs[0].fact = fact.clone();
+                    } else if let Some(values) = &tv.values {
+                        infer.nodes[node_id.node].outputs[0].fact =
+                            InferenceFact::from(&values[0]).without_value();
+                    }
                 }
             }
         }
