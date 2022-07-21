@@ -40,8 +40,7 @@ impl Expansion for Tile {
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         if let Some(ref mult) = target.outlet_fact(inputs[1])?.konst {
-            let mult: TVec<usize> =
-                mult.cast_to::<i64>()?.as_slice::<i64>()?.iter().map(|i| *i as usize).collect();
+            let mult: TVec<TDim> = mult.cast_to::<TDim>()?.as_slice::<TDim>()?.into();
             target.wire_node(prefix, tract_core::ops::array::Tile::new(mult), &inputs[0..1])
         } else {
             bail!("shape input is variable")
