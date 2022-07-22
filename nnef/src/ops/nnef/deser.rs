@@ -495,19 +495,13 @@ pub fn reduce(
         return Ok(wire);
     }
 
-    let fact = builder.model.outlet_fact(wire[0])?;
+    let fact = builder.model.outlet_fact(wire[0])?.clone();
     let input_shape = &builder.model.outlet_fact(input)?.shape;
     let cardinality: TDim = axes.iter().map(|ax| &input_shape[*ax]).product();
-    if let Ok(c) = cardinality.to_isize() {
-        if fact.datum_type.is_float() {
-            let cardinality = tensor0((c as f64).recip())
-                .cast_to_dt(fact.datum_type)?
-                .into_owned()
-                .broadcast_into_rank(input_shape.rank())?;
-            return builder.wire(ops::math::mul::unary(cardinality.into_arc_tensor()), &wire);
-        }
-    }
-    bail!("Normalization only works with float items and known dimensions");
+    let cardinality = builder.wire(ops::konst::Const::new(tensor0(cardinality).broadcast_into_rank(fact.rank())?.into_arc_tensor()), &[])?;
+    let cardinality = builder.wire(ops::cast::Cast::new(fact.datum_type), &cardinality)?;
+    dbg!(&cardinality);
+    return builder.wire(ops::math::div::bin_typed(), &[wire[0], cardinality[0]])
 }
 
 /*
