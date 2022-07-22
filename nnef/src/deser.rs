@@ -250,26 +250,6 @@ impl<'mb> ModelBuilder<'mb> {
                 }
             }
         }
-        if inputs.iter().all(|o| self.model.outlet_fact(*o).unwrap().konst.is_some()) {
-            if op.as_op().is_stateless() {
-                let inputs: TVec<Arc<Tensor>> = inputs
-                    .iter()
-                    .map(|o| self.model.outlet_fact(*o).unwrap().konst.clone().unwrap())
-                    .collect();
-                let outputs = op.eval(inputs)?;
-                let mut outlets = tvec!();
-                for (ix, o) in outputs.into_iter().enumerate() {
-                    outlets.push(
-                        self.model.wire_node(
-                            format!("{}-{}", name, ix),
-                            tract_core::ops::konst::Const::new(o),
-                            &[],
-                        )?[0],
-                    );
-                }
-                return Ok(outlets);
-            }
-        }
         self.model.wire_node(name, op, inputs).with_context(|| format!("inputs are {:?}", inputs))
     }
 }
