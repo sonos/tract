@@ -1,6 +1,6 @@
 [package]
 name = "tract-onnx"
-version = "0.17.3"
+version = "0.17.4-pre"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT/Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -22,9 +22,9 @@ log = "0.4.14"
 num-integer = "0.1.44"
 prost = "0.10.0"
 smallvec = "1.6.1"
-tract-hir = "=0.17.3"
-tract-nnef = "=0.17.3"
-tract-onnx-opl = { version = "=0.17.3" }
+tract-hir = { version = "0.17.4-pre", path = "../hir" }
+tract-nnef = { version = "0.17.4-pre", path = "../nnef" }
+tract-onnx-opl = { version = "0.17.4-pre", path = "../onnx-opl" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 mapr = "0.8.0"
