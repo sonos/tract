@@ -2,8 +2,7 @@
 
 set -ex
 
-which java || (
-sudo apt install -y default-jdk
+which java || sudo apt install -y default-jdk
 
 ANDROID_SDK=$HOME/cached/android-sdk
 if [ ! -d "$ANDROID_SDK" ]
