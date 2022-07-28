@@ -67,8 +67,7 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
             LocDependant { spec, uspec, loc, buffer: None }
         }
         // we're cheating here, storing offset as the buf pointer first
-        for ix in 0..specs.len() {
-            let spec = &specs[ix];
+        for (ix, spec) in specs.iter().enumerate() {
             let uspec = match spec {
                 FS::BinScalar(t, op) => match op {
                     BinOp::Min => FKS::ScalarMin(*t.to_scalar_unchecked()),
@@ -130,6 +129,7 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                 *b = self.buffer.offset(*b as _);
             }
             let spec = specs.get_unchecked(*spec);
+            #[allow(clippy::single_match)]
             match spec {
                 FS::AddMatMul { .. } => {
                     let scratch = *loc as *mut AddMatMulTemp;
@@ -218,7 +218,7 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                     let ptr = if have < K::mr() {
                         if have > 0 {
                             buf.get_unchecked_mut(..have).copy_from_slice(
-                                &v.as_slice_unchecked()
+                                v.as_slice_unchecked()
                                     .get_unchecked(down * K::mr()..)
                                     .get_unchecked(..have),
                             );
@@ -245,7 +245,7 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                     let ptr = if have < K::nr() {
                         if have > 0 {
                             buf.get_unchecked_mut(..have).copy_from_slice(
-                                &v.as_slice_unchecked()
+                                v.as_slice_unchecked()
                                     .get_unchecked(right * K::nr()..)
                                     .get_unchecked(..have),
                             );
@@ -271,7 +271,7 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                     let have = rows.len() - down * K::mr();
                     let row_ptr = if have < K::mr() {
                         r.get_unchecked_mut(..have).copy_from_slice(
-                            &rows
+                            rows
                                 .as_slice_unchecked()
                                 .get_unchecked(down * K::mr()..)
                                 .get_unchecked(..have),
@@ -284,13 +284,13 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                         rows.as_ptr_unchecked::<TI>().add(down * K::mr())
                     };
                     let c = std::slice::from_raw_parts_mut(
-                        (*loc as *mut TI).offset(K::mr() as isize),
+                        (*loc as *mut TI).add(K::mr()),
                         K::nr(),
                     );
                     let have = cols.len() - right * K::nr();
                     let col_ptr = if have < K::nr() {
                         c.get_unchecked_mut(..have).copy_from_slice(
-                            &cols
+                            cols
                                 .as_slice_unchecked()
                                 .get_unchecked(right * K::nr()..)
                                 .get_unchecked(..have),
@@ -375,7 +375,7 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
             let spec = specs.get_unchecked(*spec);
             let ker_spec = self.uspecs.get_unchecked(*uspec);
             if let (FusedSpec::Store(c_store), FusedKerSpec::Store(tmp)) = (spec, ker_spec) {
-                c_store.set_from_tile(down, right, m_remnant, n_remnant, &tmp)
+                c_store.set_from_tile(down, right, m_remnant, n_remnant, tmp)
             }
         }
     }

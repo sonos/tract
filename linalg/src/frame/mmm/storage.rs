@@ -35,7 +35,7 @@ pub struct OutputStore {
 
 impl OutputStoreSpec {
     #[inline]
-    pub unsafe fn wrap(self: &Self, tensor: &TensorView) -> OutputStore {
+    pub unsafe fn wrap(&self, tensor: &TensorView) -> OutputStore {
         let (mr, nr, row_byte_stride, col_byte_stride) =
             self.compute_strides(tensor);
         let (m, n) = match self {
@@ -132,10 +132,8 @@ impl OutputStore {
         tile: &OutputStoreKer,
         ) {
         let tile = tile.ptr as *mut T;
-        let dst = self.ptr.offset(
-            (self.panel_row_byte_stride as usize * down
-             + self.panel_col_byte_stride as usize * right) as isize,
-             );
+        let dst = self.ptr.add(self.panel_row_byte_stride as usize * down
+             + self.panel_col_byte_stride as usize * right);
         for y in 0..height as isize {
             for x in 0..width as isize {
                 let value = tile.offset(y + x * self.mr as isize);

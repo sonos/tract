@@ -1,7 +1,6 @@
+#![allow(clippy::missing_safety_doc)]
 #[macro_use]
 extern crate derive_new;
-#[macro_use]
-extern crate educe;
 extern crate lazy_static;
 extern crate libc;
 extern crate log;
@@ -47,12 +46,9 @@ pub struct Ops {
     mmm_f16: MMMImpl,
     mmv_f16: MMVImpl,
 
-    qmmm_i32: Box<
-        dyn Fn(Option<usize>, Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul>
-            + Send
-            + Sync,
-    >,
-    qmmv_i32: Box<dyn Fn(Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul> + Send + Sync>,
+    qmmm_i32: MMMImpl,
+    qmmv_i32: MMVImpl,
+
     pub sigmoid_f16: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f16>> + Send + Sync>,
     pub sigmoid_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32>> + Send + Sync>,
     pub tanh_f16: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f16>> + Send + Sync>,
@@ -119,7 +115,7 @@ pub fn best() -> Ops {
     arm32::plug(&mut ops);
     #[cfg(target_arch = "aarch64")]
     arm64::plug(&mut ops);
-    return ops;
+    ops
 }
 
 lazy_static::lazy_static! {

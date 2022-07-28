@@ -1,3 +1,4 @@
+#![allow(clippy::excessive_precision)]
 use crate::frame::element_wise::ElementWiseKer;
 use tract_data::internal::*;
 

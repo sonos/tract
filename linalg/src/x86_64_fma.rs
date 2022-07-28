@@ -68,12 +68,12 @@ pub fn plug(ops: &mut Ops) {
             });
 
             match best_idx.0 {
-                0 => return mmm::fma_mmm_f32_8x8::mmm(),
-                1 => return mmm::fma_mmm_f32_16x6::mmm(),
-                2 => return mmm::fma_mmm_f32_16x5::mmm(),
-                3 => return mmm::fma_mmm_f32_24x4::mmm(),
-                4 => return mmm::fma_mmm_f32_32x3::mmm(),
-                5 => return mmm::fma_mmm_f32_40x2::mmm(),
+                0 => mmm::fma_mmm_f32_8x8::mmm(),
+                1 => mmm::fma_mmm_f32_16x6::mmm(),
+                2 => mmm::fma_mmm_f32_16x5::mmm(),
+                3 => mmm::fma_mmm_f32_24x4::mmm(),
+                4 => mmm::fma_mmm_f32_32x3::mmm(),
+                5 => mmm::fma_mmm_f32_40x2::mmm(),
                 _ => unreachable!("not a valid index"),
             }
         });

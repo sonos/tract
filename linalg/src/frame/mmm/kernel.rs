@@ -22,7 +22,7 @@ where
     fn prefetch(ptr: *const u8, len: usize) {}
 
     fn mmm() -> Box<dyn MatMatMul> {
-        Box::new(MatMatMulImpl::<Self, TI>::new())
+        Box::new(MatMatMulImpl::<Self, TI>::default())
     }
 }
 
@@ -102,9 +102,9 @@ pub mod test {
                     #[allow(unused_imports)]
                     use tract_data::prelude::f16;
                     #[allow(unused_imports)]
-                    use crate::frame::mmm::kernel::test;
-                    use crate::frame::mmm::kernel::test::PackedPackedProblem;
-                    use crate::frame::mmm::MatMatMulKer;
+                    use $crate::frame::mmm::kernel::test;
+                    use $crate::frame::mmm::kernel::test::PackedPackedProblem;
+                    use $crate::frame::mmm::MatMatMulKer;
 
                     proptest::proptest! {
                         #[test]
