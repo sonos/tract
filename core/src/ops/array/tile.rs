@@ -88,7 +88,7 @@ impl TypedOp for Tile {
             .shape
             .iter()
             .zip(self.multipliers.iter())
-            .map(|(a, b)| a.clone() * b.clone())
+            .map(|(a, b)| a * b.clone())
             .collect::<TVec<_>>();
         Ok(tvec!(inputs[0].datum_type.fact(shape)))
     }

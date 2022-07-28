@@ -70,7 +70,7 @@ impl EvalOp for ScatterNd {
         }
         unsafe {
             Ok(tvec!(dispatch_datum_by_size!(Self::eval_t(data.datum_type())(
-                &self, data, &indices, updates
+                self, data, &indices, updates
             ))?))
         }
     }

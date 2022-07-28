@@ -73,6 +73,7 @@ impl DepthWise {
     }
 
     #[inline(never)]
+    #[allow(clippy::too_many_arguments)]
     unsafe fn process_zone<T: Datum + Copy + ndarray::LinalgScalar>(
         &self,
         zone: &Zone,
@@ -99,6 +100,7 @@ impl DepthWise {
     }
 
     #[inline(never)]
+    #[allow(clippy::too_many_arguments)]
     unsafe fn process_zone_4<T: Datum + Copy + ndarray::LinalgScalar>(
         &self,
         zone: &Zone,
@@ -120,10 +122,10 @@ impl DepthWise {
             let kptr = kptr.offset(k_stride_i * c);
             let iptr = iptr.offset(c_stride_i * c);
             let optr = optr.offset(c_stride_o * c);
-            let k0 = *kptr.offset(zone.values_offsets[0].0 as isize);
-            let k1 = *kptr.offset(zone.values_offsets[1].0 as isize);
-            let k2 = *kptr.offset(zone.values_offsets[2].0 as isize);
-            let k3 = *kptr.offset(zone.values_offsets[3].0 as isize);
+            let k0 = *kptr.add(zone.values_offsets[0].0);
+            let k1 = *kptr.add(zone.values_offsets[1].0);
+            let k2 = *kptr.add(zone.values_offsets[2].0);
+            let k3 = *kptr.add(zone.values_offsets[3].0);
             let bias = *bias.offset(c);
             while !visitor.done {
                 let iptr = iptr.offset(visitor.input_center_offset);
@@ -209,32 +211,32 @@ impl DepthWise {
         let mut iter = visitor.valid_offsets_ker_in();
         if iter.size_hint() == (4, Some(4)) {
             let (ix, v) = iter.next().unwrap();
-            let k0 = *kptr.offset(ix as isize);
+            let k0 = *kptr.add(ix);
             let i0 = *iptr.offset(v as isize);
             let (ix, v) = iter.next().unwrap();
-            let k1 = *kptr.offset(ix as isize);
+            let k1 = *kptr.add(ix);
             let i1 = *iptr.offset(v as isize);
             let (ix, v) = iter.next().unwrap();
-            let k2 = *kptr.offset(ix as isize);
+            let k2 = *kptr.add(ix);
             let i2 = *iptr.offset(v as isize);
             let (ix, v) = iter.next().unwrap();
-            let k3 = *kptr.offset(ix as isize);
+            let k3 = *kptr.add(ix);
             let i3 = *iptr.offset(v as isize);
             sum = sum + k0 * i0 + k1 * i1 + k2 * i2 + k3 * i3;
         } else if iter.size_hint() == (3, Some(3)) {
             let (ix, v) = iter.next().unwrap();
-            let k0 = *kptr.offset(ix as isize);
+            let k0 = *kptr.add(ix);
             let i0 = *iptr.offset(v as isize);
             let (ix, v) = iter.next().unwrap();
-            let k1 = *kptr.offset(ix as isize);
+            let k1 = *kptr.add(ix);
             let i1 = *iptr.offset(v as isize);
             let (ix, v) = iter.next().unwrap();
-            let k2 = *kptr.offset(ix as isize);
+            let k2 = *kptr.add(ix);
             let i2 = *iptr.offset(v as isize);
             sum = sum + k0 * i0 + k1 * i1 + k2 * i2;
         } else {
             for (ix, v) in iter {
-                let k = *kptr.offset(ix as isize);
+                let k = *kptr.add(ix);
                 let i = *iptr.offset(v as isize);
                 sum = sum + k * i;
             }

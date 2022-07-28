@@ -393,7 +393,7 @@ where
         Ok(unsafe {
             outlets
                 .iter()
-                .map(|o| &mut *(&self.nodes[o.node].outputs[o.slot].fact as *const F as *mut F))
+                .map(|o| std::mem::transmute(&self.nodes[o.node].outputs[o.slot].fact))
                 .collect()
         })
     }

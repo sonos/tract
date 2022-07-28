@@ -190,7 +190,7 @@ impl PaddingSpec {
         let kernel_field = (kernel - 1) * dilation + 1;
         let deconvoluted =
             (convoluted.clone() - 1) * stride + kernel_field - bef - aft + adjustment;
-        Ok(ComputedPaddedDim::new(deconvoluted.clone(), convoluted.clone(), bef.into(), aft.into()))
+        Ok(ComputedPaddedDim::new(deconvoluted, convoluted.clone(), bef.into(), aft.into()))
     }
 
     fn same<D: DimLike>(
@@ -223,18 +223,18 @@ impl PaddingSpec {
         adjustment: usize,
         upper: bool,
     ) -> TractResult<ComputedPaddedDim<D>> {
-        if (kernel - 1) * dilation <= stride - 1 {
+        if (kernel - 1) * dilation < stride {
             bail!("Invalid axis geometry for SAME padding: expect (kernel_len - 1) * dilation > stride - 1");
         }
         let kernel_field = (kernel - 1) * dilation + 1;
         let crop = kernel_field + adjustment - stride;
-        let lower_crop = crop.clone() / 2;
-        let higher_crop = crop - &lower_crop;
+        let lower_crop = crop / 2;
+        let higher_crop = crop - lower_crop;
         let (before, after) =
             if upper { (lower_crop, higher_crop) } else { (higher_crop, lower_crop) };
         let deconvoluted = (convoluted.clone() - 1) * stride + kernel_field - before - after;
         Ok(ComputedPaddedDim::new(
-            deconvoluted.clone(),
+            deconvoluted,
             convoluted.clone(),
             before.into(),
             after.into(),

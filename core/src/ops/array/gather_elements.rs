@@ -55,7 +55,7 @@ impl EvalOp for GatherElements {
         let indices = indices.to_array_view::<i64>()?;
         unsafe {
             Ok(tvec!(dispatch_datum_by_size!(Self::eval_t(data.datum_type())(
-                &self, data, &indices
+                self, data, &indices
             ))?))
         }
     }
