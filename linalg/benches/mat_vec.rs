@@ -7,7 +7,8 @@ use DatumType::F32;
 fn mat_vec_mul(c: &mut Criterion) {
     let mut group = c.benchmark_group("mat_vec_mul");
     unsafe {
-        for (m, k) in [(768usize, 256usize)].iter() {
+        {
+            let (m, k) = &(768usize, 256usize);
             group.throughput(Throughput::Elements((m * k) as u64));
             group.bench_with_input(
                 BenchmarkId::from_parameter(format!("{}x{}", m, k)),

@@ -34,7 +34,7 @@ fn main() {
     let os = var("CARGO_CFG_TARGET_OS");
     let out_dir = path::PathBuf::from(var("OUT_DIR"));
 
-    let suffix = env!("CARGO_PKG_VERSION").replace("-", "_").replace(".", "_");
+    let suffix = env!("CARGO_PKG_VERSION").replace('-', "_").replace('.', "_");
     make_extern_kernel_decl_macro(&out_dir, &suffix);
 
     match arch.as_ref() {
@@ -174,7 +174,7 @@ fn preprocess_files(
     let dir_entries = {
         let mut dir_entries: Vec<fs::DirEntry> =
             input.as_ref().read_dir().unwrap().map(|f| f.unwrap()).collect();
-        dir_entries.sort_by(|a, b| a.path().cmp(&b.path()));
+        dir_entries.sort_by_key(|a| a.path());
         dir_entries
     };
     for f in dir_entries {
@@ -252,7 +252,7 @@ fn preprocess_file(
     for (k, v) in variants {
         globals.insert(k.to_string().into(), liquid::model::Value::scalar(*v));
     }
-    let partials = load_partials(&template.as_ref().parent().unwrap(), msvc);
+    let partials = load_partials(template.as_ref().parent().unwrap(), msvc);
     if let Err(e) = liquid::ParserBuilder::with_stdlib()
         .partials(liquid::partials::LazyCompiler::new(partials))
         .filter(F16)
@@ -283,8 +283,8 @@ fn load_partials(p: &path::Path, msvc: bool) -> liquid::partials::InMemorySource
         if let Some(text) = text {
             let text = strip_comments(text, msvc);
             let key =
-                f.path().strip_prefix(p).unwrap().to_str().unwrap().to_owned().replace("\\", "/");
-            println!("cargo:rerun-if-changed={}", f.path().to_string_lossy().replace("\\", "/"));
+                f.path().strip_prefix(p).unwrap().to_str().unwrap().to_owned().replace('\\', "/");
+            println!("cargo:rerun-if-changed={}", f.path().to_string_lossy().replace('\\', "/"));
             mem.add(key, text);
         }
     }
