@@ -250,7 +250,7 @@ where
     usize: AsPrimitive<TI>,
 {
     assert_eq!(a.datum_type(), TA::datum_type());
-    let op = MatMatMulImpl::<K, TI>::new();
+    let op = MatMatMulImpl::<K, TI>::default();
     unsafe {
         let mut packed_a =
             Tensor::uninitialized_aligned::<TA>(&[op.a_pack().len(k, m)], op.a_pack().alignment())
@@ -299,7 +299,7 @@ where
     usize: AsPrimitive<TI>,
 {
     assert_eq!(a.datum_type(), TA::datum_type());
-    let op = MatMatMulImpl::<K, TI>::new();
+    let op = MatMatMulImpl::<K, TI>::default();
     unsafe {
         let mut packed_a =
             Tensor::uninitialized_aligned::<TA>(&[op.a_pack().len(k, m)], op.a_pack().alignment())
@@ -342,7 +342,7 @@ where
     usize: AsPrimitive<TI>,
 {
     unsafe {
-        let op = MatMatMulImpl::<K, TI>::new();
+        let op = MatMatMulImpl::<K, TI>::default();
         let mut packed_a =
             Tensor::uninitialized_aligned::<TA>(&[op.a_pack().len(k, m)], op.a_pack().alignment())
                 .unwrap();
@@ -387,7 +387,7 @@ where
     i32: AsPrimitive<TI>,
     usize: AsPrimitive<TI>,
 {
-    let op = MatMatMulImpl::<K, TI>::new();
+    let op = MatMatMulImpl::<K, TI>::default();
 
     let mut found = Tensor::zero::<TC>(&[m, n]).unwrap();
     let c_store = op
