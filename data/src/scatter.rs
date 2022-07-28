@@ -6,14 +6,14 @@ pub(crate) unsafe fn scatter_contig_data<T: Datum>(
     dst: *mut T,
     dst_len_and_strides: &[(usize, usize)],
 ) {
-    match &*dst_len_and_strides {
-        &[(len_a, stride_a)] => {
+    match *dst_len_and_strides {
+        [(len_a, stride_a)] => {
             for a in 0..len_a {
                 *dst.add(a * stride_a) = (*src).clone();
                 src = src.offset(1);
             }
         }
-        &[(len_a, stride_a), (len_b, stride_b)] => {
+        [(len_a, stride_a), (len_b, stride_b)] => {
             for a in 0..len_a {
                 for b in 0..len_b {
                     *dst.add(a * stride_a + b * stride_b) = (&*src).clone();
@@ -21,7 +21,7 @@ pub(crate) unsafe fn scatter_contig_data<T: Datum>(
                 }
             }
         }
-        &[(len_a, stride_a), (len_b, stride_b), (len_c, stride_c)] => {
+        [(len_a, stride_a), (len_b, stride_b), (len_c, stride_c)] => {
             for a in 0..len_a {
                 for b in 0..len_b {
                     for c in 0..len_c {
@@ -32,7 +32,7 @@ pub(crate) unsafe fn scatter_contig_data<T: Datum>(
                 }
             }
         }
-        &[(len_a, stride_a), (len_b, stride_b), (len_c, stride_c), (len_d, stride_d)] => {
+        [(len_a, stride_a), (len_b, stride_b), (len_c, stride_c), (len_d, stride_d)] => {
             for a in 0..len_a {
                 for b in 0..len_b {
                     for c in 0..len_c {
@@ -44,7 +44,7 @@ pub(crate) unsafe fn scatter_contig_data<T: Datum>(
                 }
             }
         }
-        &[(len_a, stride_a), (len_b, stride_b), (len_c, stride_c), (len_d, stride_d), (len_e, stride_e)] => {
+        [(len_a, stride_a), (len_b, stride_b), (len_c, stride_c), (len_d, stride_d), (len_e, stride_e)] => {
             for a in 0..len_a {
                 for b in 0..len_b {
                     for c in 0..len_c {

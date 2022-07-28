@@ -330,11 +330,7 @@ impl TDim {
                 } else if let Add(mut terms) = a {
                     if terms.iter().any(|t| {
                         if let MulInt(-1, s) = t {
-                            if let Sym(_) = &**s {
-                                true
-                            } else {
-                                false
-                            }
+                            matches!(&**s, Sym(_))
                         } else {
                             false
                         }
@@ -349,8 +345,7 @@ impl TDim {
                         )
                     } else if let Some(v) = terms
                         .iter()
-                        .filter_map(|t| if let Val(v) = t { Some(*v) } else { None })
-                        .next()
+                        .find_map(|t| if let Val(v) = t { Some(*v) } else { None })
                     {
                         let offset = if v >= q as i64 {
                             Some(v / q as i64)
@@ -639,6 +634,7 @@ impl<'a> ops::Add<&'a TDim> for TDim {
     }
 }
 
+#[allow(clippy::suspicious_op_assign_impl)]
 impl<'a> ops::SubAssign<&'a TDim> for TDim {
     fn sub_assign(&mut self, rhs: &'a TDim) {
         use std::ops::Neg;
@@ -651,8 +647,7 @@ where
     I: Into<TDim>,
 {
     fn sub_assign(&mut self, rhs: I) {
-        use std::ops::Neg;
-        *self += rhs.into().neg()
+        *self -= &rhs.into()
     }
 }
 

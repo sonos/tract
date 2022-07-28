@@ -1,4 +1,5 @@
 #![allow(clippy::len_zero)]
+#![allow(clippy::missing_safety_doc)]
 extern crate educe;
 #[macro_use]
 pub extern crate itertools;
