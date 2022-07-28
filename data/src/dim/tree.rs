@@ -143,7 +143,7 @@ impl TDim {
 
     pub fn eval(&self, values: &SymbolValues) -> TDim {
         match self {
-            Sym(sym) => values[*sym].map(|s| Val(s)).unwrap_or(Sym(*sym)),
+            Sym(sym) => values[*sym].map(Val).unwrap_or(Sym(*sym)),
             Val(v) => Val(*v),
             Add(terms) => terms.iter().fold(Val(0), |acc, it| -> TDim { acc + it.eval(values) }),
             Mul(terms) => terms.iter().fold(Val(1), |acc, it| -> TDim { acc * it.eval(values) }),
@@ -182,7 +182,7 @@ impl TDim {
                 let mut forms = vec![];
                 let sub_wiggle = terms.iter().map(|e| e.wiggle()).multi_cartesian_product();
                 for sub in sub_wiggle {
-                    for (ix, num, q) in sub.iter().enumerate().find_map(|(ix, t)| {
+                    if let Some((ix, num, q)) = sub.iter().enumerate().find_map(|(ix, t)| {
                         if let Div(a, q) = t {
                             Some((ix, a, q))
                         } else {
@@ -202,7 +202,7 @@ impl TDim {
                             .collect();
                         forms.push(Div(b!(Add(new_num)), *q))
                     }
-                    forms.push(Add(sub.into()));
+                    forms.push(Add(sub));
                 }
                 forms
             }
@@ -212,7 +212,7 @@ impl TDim {
                 for num in a.wiggle() {
                     if let Add(terms) = &num {
                         let (integer, non_integer): (Vec<_>, Vec<_>) =
-                            terms.into_iter().cloned().partition(|a| a.gcd() % q == 0);
+                            terms.iter().cloned().partition(|a| a.gcd() % q == 0);
                         let mut new_terms = integer.iter().map(|i| i.div(*q)).collect::<Vec<_>>();
                         if non_integer.len() > 0 {
                             new_terms.push(Div(b!(Add(non_integer)), *q));

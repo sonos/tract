@@ -11,8 +11,7 @@ use std::{fmt, ops};
 
 use num_traits::AsPrimitive;
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Educe)]
-#[educe(Hash)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
 pub struct Blob(pub Vec<u8>);
 
 impl ops::Deref for Blob {
@@ -35,7 +34,7 @@ impl std::str::FromStr for Blob {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, PartialOrd)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum QParams {
     MinMax { min: f32, max: f32 },
     ZpScale { zero_point: i32, scale: f32 },
@@ -49,6 +48,13 @@ impl Ord for QParams {
     }
 }
 
+impl PartialOrd for QParams {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+#[allow(clippy::derive_hash_xor_eq)]
 impl Hash for QParams {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match self {
@@ -162,7 +168,7 @@ impl DatumType {
             None => return None,
             Some(it) => *it.borrow(),
         };
-        while let Some(n) = iter.next() {
+        for n in iter {
             match current.common_super_type(*n.borrow()) {
                 None => return None,
                 Some(it) => current = it,
@@ -179,7 +185,7 @@ impl DatumType {
                 }
             }
         }
-        return None;
+        None
     }
 
     pub fn is_unsigned(&self) -> bool {
