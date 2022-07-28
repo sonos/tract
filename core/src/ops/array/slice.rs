@@ -93,7 +93,7 @@ fn eval_slice(
         let mut shape: TVec<_> = input.shape().into();
         shape[axis] = end - start;
         let mut tensor = Tensor::uninitialized_dt(input.datum_type(), &shape)?;
-        tensor.assign_slice_unchecked(.., &input, start..end, axis);
+        tensor.assign_slice_unchecked(.., input, start..end, axis);
         Ok(tvec!(tensor.into_arc_tensor()))
     }
 }
@@ -110,10 +110,8 @@ impl TypedOp for Slice {
         inputs: &[&TypedFact],
         _outputs: &[&TypedFact],
     ) -> TractResult<Invariants> {
-        let axes = (0..inputs[0].rank())
-            .filter(|&ax| self.axis != ax)
-            .map(|axis| AxisInfo::simple(axis))
-            .collect();
+        let axes =
+            (0..inputs[0].rank()).filter(|&ax| self.axis != ax).map(AxisInfo::simple).collect();
         Ok(axes)
     }
 
@@ -199,7 +197,7 @@ impl TypedOp for Slice {
                 .op()
                 .as_typed()
                 .unwrap()
-                .slice_output(model, &prec, patch, &suffix, node.inputs[0].slot, axis, start, end)?
+                .slice_output(model, prec, patch, &suffix, node.inputs[0].slot, axis, start, end)?
                 .map(|(w, no_slice_op)| {
                     Ok((
                         patch.wire_node(

@@ -239,11 +239,9 @@ where
         let mut all_inputs = HashMap::new(); // new_node_id_in_model -> [ patch_outlet_id ]
         let mut model_input_outlets = target.input_outlets()?.to_vec();
         for node in patch.nodes {
-            if <Graph<F, O>>::is_source(&node.op) {
-                if mapping.contains_key(&OutletId::new(node.id, 0)) {
-                    // this is a tap
-                    continue;
-                }
+            if <Graph<F, O>>::is_source(&node.op) && mapping.contains_key(&OutletId::new(node.id, 0)) {
+                // this is a tap
+                continue;
             }
             let Node { id: patch_node_id, name, inputs, op, outputs } = node;
             let n_outputs = outputs.len();

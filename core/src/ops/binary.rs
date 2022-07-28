@@ -288,7 +288,7 @@ impl TypedOp for TypedBinOp {
                 )?));
             }
         }
-        return Ok(None);
+        Ok(None)
     }
 
     fn codegen(
@@ -323,7 +323,7 @@ fn declutter_bin_to_unary(
     if let Some(a) = model.outlet_fact(node.inputs[0])?.konst.clone() {
         let op = UnaryOp::new(dyn_clone::clone_box(mini_op), a.into_arc_tensor());
         return Ok(Some(
-            TypedModelPatch::replace_single_op(&model, &node, &node.inputs[1..2], op)?
+            TypedModelPatch::replace_single_op(model, node, &node.inputs[1..2], op)?
                 .with_context("Left is const"),
         ));
     }
@@ -331,12 +331,12 @@ fn declutter_bin_to_unary(
         let b = b.into_arc_tensor();
         if let Some(op) = mini_op.unary_with_b_const(&b) {
             return Ok(Some(
-                TypedModelPatch::replace_single_op(&model, &node, &node.inputs[0..1], op)?
+                TypedModelPatch::replace_single_op(model, node, &node.inputs[0..1], op)?
                     .with_context("Right is const"),
             ));
         }
     }
-    return Ok(None);
+    Ok(None)
 }
 
 #[derive(Debug, Clone, new, Hash)]
@@ -425,7 +425,7 @@ impl TypedOp for UnaryOp {
         let prec = model.node(node.inputs[0].node);
         let wire = prec.op().as_typed().unwrap().slice_output(
             model,
-            &prec,
+            prec,
             patch,
             suffix,
             node.inputs[0].slot,
@@ -573,6 +573,7 @@ macro_rules! bin_to_super_type {
         #[derive(Debug, Clone, Hash)]
         pub struct $Op;
         tract_data::internal::impl_dyn_hash!($Op);
+        #[allow(clippy::redundant_closure_call)]
         impl $crate::ops::binary::BinMiniOp for $Op {
             fn name(&self) -> &'static str {
                 stringify!($Op)

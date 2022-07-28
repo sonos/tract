@@ -80,11 +80,11 @@ impl fmt::Debug for AxisInfo {
             "{}->{}",
             self.inputs
                 .iter()
-                .map(|i| i.map(|a| a.to_string()).unwrap_or("_".to_string()))
+                .map(|i| i.map(|a| a.to_string()).unwrap_or_else(|| "_".to_string()))
                 .join(","),
             self.outputs
                 .iter()
-                .map(|i| i.map(|a| a.to_string()).unwrap_or("_".to_string()))
+                .map(|i| i.map(|a| a.to_string()).unwrap_or_else(|| "_".to_string()))
                 .join(",")
         )?;
         if !self.disposable {
@@ -232,7 +232,7 @@ impl<'a, T> std::iter::Iterator for OutletMapKeysIter<'a, T> {
                 self.1.node += 1;
                 continue;
             }
-            let current = self.1.clone();
+            let current = self.1;
             self.1.slot += 1;
             if self.0.get(&current).is_some() {
                 return Some(current);
