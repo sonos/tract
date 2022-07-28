@@ -279,7 +279,7 @@ impl TDim {
                         }
                         Val(a) => (acc.0 * a, acc.1),
                         it => {
-                            (acc.0, acc.1.into_iter().chain(Some(it.clone()).into_iter()).collect())
+                            (acc.0, acc.1.into_iter().chain(Some(it).into_iter()).collect())
                         }
                     });
                 if rest.len() == 0 {
@@ -395,13 +395,13 @@ impl TDim {
         use self::TDim::*;
         use num_integer::Integer;
         match self {
-            Val(v) => v.abs() as u64,
+            Val(v) => v.unsigned_abs(),
             Sym(_) => 1,
             Add(terms) => {
                 let (head, tail) = terms.split_first().unwrap();
                 tail.iter().fold(head.gcd(), |a, b| a.gcd(&b.gcd()))
             }
-            MulInt(p, a) => a.gcd() * p.abs() as u64,
+            MulInt(p, a) => a.gcd() * p.unsigned_abs(),
             Mul(_) => 1,
             Div(a, q) => {
                 if a.gcd() % *q == 0 {
@@ -428,7 +428,7 @@ impl TDim {
                 if *p == d as i64 {
                     (**a).clone()
                 } else {
-                    let gcd = (p.abs() as u64).gcd(&d);
+                    let gcd = p.unsigned_abs().gcd(&d);
                     MulInt(p / gcd as i64, b!(a.div(d / gcd)))
                 }
             }
@@ -735,7 +735,7 @@ impl std::str::FromStr for TDim {
     type Err = anyhow::Error;
     fn from_str(s: &str) -> Result<TDim, Self::Err> {
         let first = s.chars().next().unwrap();
-        if first.is_digit(10) || first == '-' {
+        if first.is_ascii_digit() || first == '-' {
             Ok(s.parse::<i64>()?.into())
         } else if first.is_alphabetic() && s.len() == 1 {
             Ok(Symbol::from(first).into())
