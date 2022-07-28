@@ -1233,7 +1233,7 @@ impl Tensor {
             t.as_slice_mut_unchecked()
                 .iter_mut()
                 .zip(it.into_iter())
-                .for_each(|(t, a)| *t = a.clone());
+                .for_each(|(t, a)| *t = a);
             t
         }
     }
@@ -1288,7 +1288,7 @@ impl Tensor {
                 .into_owned()
                 .into_tensor())
         }
-        dispatch_datum!(slice_t(self.datum_type())(&self, axis, start, end))
+        dispatch_datum!(slice_t(self.datum_type())(self, axis, start, end))
     }
 
     pub fn view(&self) -> view::TensorView {
@@ -1364,7 +1364,7 @@ fn compute_natural_stride_to(strides: &mut TVec<isize>, shape: &[usize]) {
         _ => {
             strides.push(1);
             for dim in shape.as_ref().iter().skip(1).rev() {
-                let previous = strides.last().unwrap().clone();
+                let previous = *strides.last().unwrap();
                 strides.push(previous * *dim as isize)
             }
             strides.reverse();

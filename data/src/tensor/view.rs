@@ -62,7 +62,7 @@ impl<'a> TensorView<'a> {
     pub fn shape(&self) -> &[usize] {
         match &self.indexing {
             Indexing::Prefix(i) => &self.tensor.shape()[*i..],
-            Indexing::Custom { shape, .. } => &*shape,
+            Indexing::Custom { shape, .. } => *shape,
         }
     }
 
@@ -70,7 +70,7 @@ impl<'a> TensorView<'a> {
     pub fn strides(&self) -> &[isize] {
         match &self.indexing {
             Indexing::Prefix(i) => &self.tensor.strides()[*i..],
-            Indexing::Custom { strides, .. } => &*strides,
+            Indexing::Custom { strides, .. } => *strides,
         }
     }
 
