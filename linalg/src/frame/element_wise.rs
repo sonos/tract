@@ -109,17 +109,17 @@ where
     K: ElementWiseKer<T> + Clone,
 {
     fn run(&self, vec: &mut [T]) -> anyhow::Result<()> {
-        if vec.len() == 0 {
+        if vec.is_empty() {
             return Ok(());
         }
         unsafe {
             TMP.with(|buffer| {
                 let mut buffer = buffer.borrow_mut();
                 buffer.ensure(K::nr() * T::datum_type().size_of(), K::alignment_bytes());
-                let mut tmp = std::slice::from_raw_parts_mut(buffer.buffer as *mut T, K::nr());
+                let tmp = std::slice::from_raw_parts_mut(buffer.buffer as *mut T, K::nr());
                 let mut compute_via_temp_buffer = |slice: &mut [T]| {
                     tmp[..slice.len()].copy_from_slice(slice);
-                    K::run(&mut tmp);
+                    K::run(tmp);
                     slice.copy_from_slice(&tmp[..slice.len()])
                 };
                 let prefix_len = vec.as_ptr().align_offset(K::alignment_bytes()).min(vec.len());

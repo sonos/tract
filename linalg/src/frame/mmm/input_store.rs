@@ -142,7 +142,7 @@ impl InputStore {
                 buffer.unwrap()
             }
             InputStore::VirtualPacking { packer, input, k, .. } => {
-                input.input(&packer, buffer.unwrap() as _, 0..*k, packer.r * i..packer.r * (i + 1));
+                input.input(packer, buffer.unwrap() as _, 0..*k, packer.r * i..packer.r * (i + 1));
                 buffer.unwrap()
             }
         }

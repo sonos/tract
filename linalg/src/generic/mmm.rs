@@ -1,3 +1,4 @@
+#![allow(clippy::needless_range_loop)]
 use num_traits::AsPrimitive;
 use std::marker::PhantomData;
 use std::{fmt, ops};
@@ -45,7 +46,7 @@ macro_rules! per_row {
     ($ab: expr, $m: expr, $f: expr) => {
         for i in 0..$ab.len() {
             for j in 0..$ab[0].len() {
-                $ab[i][j] = $f(*$m.offset(i as isize), $ab[i][j])
+                $ab[i][j] = $f(*$m.add(i), $ab[i][j])
             }
         }
     };
@@ -55,7 +56,7 @@ macro_rules! per_col {
     ($ab: expr, $m: expr, $f: expr) => {
         for i in 0..$ab.len() {
             for j in 0..$ab[0].len() {
-                $ab[i][j] = $f(*$m.offset(j as isize), $ab[i][j])
+                $ab[i][j] = $f(*$m.add(j), $ab[i][j])
             }
         }
     };
@@ -132,7 +133,7 @@ where
                     FusedKerSpec::AddRowColProducts(rows, cols) => {
                         for i in 0..4 {
                             for j in 0..4 {
-                                ab[i][j] += *rows.offset(i as isize) * *cols.offset(j as isize);
+                                ab[i][j] += *rows.add(i) * *cols.add(j);
                             }
                         }
                     }
@@ -188,7 +189,7 @@ where
                 pnl = pnl.add(1);
             }
         }
-        return 0;
+        0
     }
 }
 
@@ -286,7 +287,7 @@ where
                     FusedKerSpec::AddRowColProducts(rows, cols) => {
                         let col = *cols;
                         for i in 0..4 {
-                            ab[i][0] += *rows.offset(i as isize) * col;
+                            ab[i][0] += *rows.add(i) * col;
                         }
                     }
                     FusedKerSpec::AddUnicast(tile) => add_unicast::<TI, _>(
@@ -318,7 +319,7 @@ where
                         let b = pb as *const TB;
                         for i in 0..k {
                             let a = std::slice::from_raw_parts(a.offset(4 * i as isize), 4);
-                            let b = *b.offset(i as isize);
+                            let b = *b.add(i);
                             ab[0][0] += a[0].as_() * b.as_();
                             ab[1][0] += a[1].as_() * b.as_();
                             ab[2][0] += a[2].as_() * b.as_();
@@ -338,7 +339,7 @@ where
                 pnl = pnl.add(1);
             }
         }
-        return 0;
+        0
     }
 }
 
@@ -541,7 +542,7 @@ where
                     .ptr
                     .offset(tile.row_byte_stride * i as isize + tile.col_byte_stride * j as isize)
                     as *const i8);
-                let acc: *mut i32 = ab[i].as_mut().as_mut_ptr().offset(j as isize) as *mut i32;
+                let acc: *mut i32 = ab[i].as_mut().as_mut_ptr().add(j) as *mut i32;
                 *acc += value as i32;
             }
         }

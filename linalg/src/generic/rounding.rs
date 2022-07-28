@@ -11,6 +11,7 @@ pub struct Scaler {
     policy: RoundingPolicy,
 }
 
+#[allow(clippy::derive_hash_xor_eq)]
 impl Hash for Scaler {
     fn hash<H>(&self, state: &mut H)
     where
@@ -32,7 +33,7 @@ impl Scaler {
         } else if self.shift > 0 {
             FusedSpec::RoundingShiftRight(self.shift as usize, self.policy)
         } else {
-            FusedSpec::ShiftLeft((- self.shift) as usize)
+            FusedSpec::ShiftLeft((-self.shift) as usize)
         }
     }
 
@@ -122,7 +123,6 @@ impl Mul<Scaler> for f16 {
         rhs * self
     }
 }
-
 
 impl Mul<i32> for Scaler {
     type Output = i32;

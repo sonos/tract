@@ -53,10 +53,10 @@ pub enum FusedSpec<'t> {
 impl<'t> FusedSpec<'t> {
     pub fn prefer_col_outer(&self) -> bool {
         if let FusedSpec::AddMatMul { b, .. } = self {
-            match &b {
-                &InputStore::Packed { .. } => false,
-                &InputStore::VirtualPacking { .. } => true,
-                &InputStore::LatePacking { .. } => true,
+            match b {
+                InputStore::Packed { .. } => false,
+                InputStore::VirtualPacking { .. } => true,
+                InputStore::LatePacking { .. } => true,
             }
         } else {
             false
@@ -133,8 +133,8 @@ pub mod test {
             mod fuse {
                 use super::super::$ker;
                 #[allow(unused_imports)]
-                use crate::frame::mmm::fuse::test;
-                use crate::frame::mmm::fuse::test::tile;
+                use $crate::frame::mmm::fuse::test;
+                use $crate::frame::mmm::fuse::test::tile;
                 #[allow(unused_imports)]
                 use tract_data::prelude::f16;
 
@@ -273,12 +273,12 @@ pub mod test {
     macro_rules! qmmm_kernel_fuse_tests {
         ($cond:expr, $ker:ident, $ta:ty, $tb:ty, $tc:ty, $ti: ty) => {
             mod fuseq {
-                use crate::frame::mmm::fuse::RoundingPolicy;
+                use $crate::frame::mmm::fuse::RoundingPolicy;
                 #[allow(unused_imports)]
-                use crate::frame::mmm::fuse::test;
-                use crate::frame::mmm::fuse::test::QScaleProblem;
-                use crate::frame::mmm::kernel::MatMatMulKer;
-                use crate::generic::Scaler;
+                use $crate::frame::mmm::fuse::test;
+                use $crate::frame::mmm::fuse::test::QScaleProblem;
+                use $crate::frame::mmm::kernel::MatMatMulKer;
+                use $crate::generic::Scaler;
                 use proptest::prelude::*;
                 use super::super::$ker;
 

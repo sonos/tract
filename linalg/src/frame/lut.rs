@@ -62,11 +62,11 @@ where
             let n = K::n();
             let aligned_len = remaining / n * n;
             if aligned_len > 0 {
-                K::run(buf.as_mut_ptr().offset(prefix as isize), aligned_len, table);
+                K::run(buf.as_mut_ptr().add(prefix), aligned_len, table);
             }
             let remaining = buf.len() - aligned_len - prefix;
             for i in 0..remaining {
-                let ptr = buf.as_mut_ptr().offset((i + prefix + aligned_len) as isize);
+                let ptr = buf.as_mut_ptr().add(i + prefix + aligned_len);
                 *ptr = *table.offset(*ptr as isize);
             }
         }
@@ -78,7 +78,7 @@ pub trait LutKer: Clone + fmt::Debug + Send + Sync {
     fn n() -> usize;
     fn input_alignment_bytes() -> usize;
     fn table_alignment_bytes() -> usize;
-    fn run(buf: *mut u8, len: usize, table: *const u8);
+    unsafe fn run(buf: *mut u8, len: usize, table: *const u8);
 }
 
 #[cfg(test)]

@@ -5,6 +5,7 @@ pub(crate) mod fuse;
 pub(crate) mod kernel;
 pub(crate) mod input_store;
 #[macro_use]
+#[allow(clippy::module_inception)]
 pub(crate) mod mmm;
 mod scratch;
 mod storage;
