@@ -171,7 +171,7 @@ impl<I: Into<TDim> + Clone> ToDim for I {
 
 impl<'a> ToDim for &'a TDim {
     fn to_dim(&self) -> TDim {
-        self.clone().clone()
+        (*self).clone()
     }
 }
 

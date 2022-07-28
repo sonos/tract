@@ -399,6 +399,7 @@ impl Tensor {
 
     /// Get the number of valeus in the tensor.
     #[inline]
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.len
     }
@@ -753,19 +754,19 @@ impl Tensor {
     }
 
     /// Transform the data as a `ndarray::Array`.
-    pub fn to_array_view<'a, D: Datum>(&'a self) -> anyhow::Result<ArrayViewD<'a, D>> {
+    pub fn to_array_view<D: Datum>(&self) -> anyhow::Result<ArrayViewD<D>> {
         self.check_for_access::<D>()?;
         unsafe { Ok(self.to_array_view_unchecked()) }
     }
 
     /// Transform the data as a mutable `ndarray::Array`.
-    pub fn to_array_view_mut<'a, D: Datum>(&'a mut self) -> anyhow::Result<ArrayViewMutD<'a, D>> {
+    pub fn to_array_view_mut<D: Datum>(&mut self) -> anyhow::Result<ArrayViewMutD<D>> {
         self.check_for_access::<D>()?;
         unsafe { Ok(self.to_array_view_mut_unchecked()) }
     }
 
     /// Transform the data as a `ndarray::Array`.
-    pub unsafe fn to_array_view_unchecked<'a, D: Datum>(&'a self) -> ArrayViewD<'a, D> {
+    pub unsafe fn to_array_view_unchecked<D: Datum>(&self) -> ArrayViewD<D> {
         if self.len() != 0 {
             ArrayViewD::from_shape_ptr(&*self.shape, self.data as *const D)
         } else {
@@ -774,7 +775,7 @@ impl Tensor {
     }
 
     /// Transform the data as a mutable `ndarray::Array`.
-    pub unsafe fn to_array_view_mut_unchecked<'a, D: Datum>(&'a mut self) -> ArrayViewMutD<'a, D> {
+    pub unsafe fn to_array_view_mut_unchecked<D: Datum>(&mut self) -> ArrayViewMutD<D> {
         if self.len() != 0 {
             ArrayViewMutD::from_shape_ptr(&*self.shape, self.data as *mut D)
         } else {
@@ -842,7 +843,7 @@ impl Tensor {
     }
 
     /// Access the data as a scalar.
-    pub fn to_scalar<'a, D: Datum>(&'a self) -> anyhow::Result<&D> {
+    pub fn to_scalar<D: Datum>(&self) -> anyhow::Result<&D> {
         self.check_for_access::<D>()?;
         if self.len() == 0 {
             anyhow::bail!("to_scalar called on empty tensor ({:?})", self)
@@ -851,12 +852,12 @@ impl Tensor {
     }
 
     /// Access the data as a scalar.
-    pub unsafe fn to_scalar_unchecked<'a, D: Datum>(&'a self) -> &D {
+    pub unsafe fn to_scalar_unchecked<D: Datum>(&self) -> &D {
         &*(self.data as *mut D)
     }
 
     /// Mutable access the data as a scalar.
-    pub fn to_scalar_mut<'a, D: Datum>(&'a self) -> anyhow::Result<&mut D> {
+    pub fn to_scalar_mut<D: Datum>(&mut self) -> anyhow::Result<&mut D> {
         self.check_for_access::<D>()?;
         if self.len() == 0 {
             anyhow::bail!("to_scalar_mut called on empty tensor ({:?})", self)
@@ -865,7 +866,7 @@ impl Tensor {
     }
 
     /// Mutable access the data as a scalar.
-    pub unsafe fn to_scalar_mut_unchecked<'a, D: Datum>(&'a self) -> &mut D {
+    pub unsafe fn to_scalar_mut_unchecked<D: Datum>(&mut self) -> &mut D {
         &mut *(self.data as *mut D)
     }
 
@@ -1230,10 +1231,7 @@ impl Tensor {
                 return t;
             }
             // finally use ndarray into_iter()
-            t.as_slice_mut_unchecked()
-                .iter_mut()
-                .zip(it.into_iter())
-                .for_each(|(t, a)| *t = a);
+            t.as_slice_mut_unchecked().iter_mut().zip(it.into_iter()).for_each(|(t, a)| *t = a);
             t
         }
     }
