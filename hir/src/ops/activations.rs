@@ -126,7 +126,6 @@ activation!(HardSigmoid, |op, name: &str, model: &mut TypedModel, inputs| {
     Ok(wire)
 });
 
-
 #[derive(Debug, Clone, new, Educe)]
 #[educe(Hash)]
 pub struct LeakyRelu(#[educe(Hash(method = "hash_f32"))] pub f32);
@@ -182,7 +181,7 @@ activation!(Selu, |op, name: &str, model: &mut TypedModel, inputs| {
     let alpha = broadcast_scalar(op.0, model, inputs)?;
     let minus_alpha = broadcast_scalar(-op.0, model, inputs)?;
     let gamma = broadcast_scalar(op.1, model, inputs)?;
-    let wire = model.wire_node(name.to_string() + ".exp", exp(), &inputs)?;
+    let wire = model.wire_node(name.to_string() + ".exp", exp(), inputs)?;
     let wire = model.wire_node(name.to_string() + ".mul_alpha", mul::unary(alpha), &wire)?;
     let wire = model.wire_node(name.to_string() + ".sub_alpha", add::unary(minus_alpha), &wire)?;
     let test = model.wire_node(
@@ -216,22 +215,22 @@ activation!(Shrink, |op, name: &str, model: &mut TypedModel, inputs| {
     let test_pos = model.wire_node(
         name.to_string() + ".test_pos",
         tract_core::ops::logic::less::unary(lambda),
-        &inputs,
+        inputs,
     )?;
     let pos = model.wire_node(
         name.to_string() + ".pos",
         tract_core::ops::math::add::unary(minus_bias),
-        &inputs,
+        inputs,
     )?;
     let test_neg = model.wire_node(
         name.to_string() + ".test_neg",
         tract_core::ops::logic::greater::unary(minus_lambda),
-        &inputs,
+        inputs,
     )?;
     let neg = model.wire_node(
         name.to_string() + ".neg",
         tract_core::ops::math::add::unary(bias),
-        &inputs,
+        inputs,
     )?;
     let wire = model.wire_node(
         name.to_string() + ".if_pos",
@@ -272,8 +271,8 @@ fn simple_unary_rules<'r, 'p: 'r, 's: 'r>(
     inputs: &'p [TensorProxy],
     outputs: &'p [TensorProxy],
 ) -> InferenceResult {
-    check_input_arity(&inputs, 1)?;
-    check_output_arity(&outputs, 1)?;
+    check_input_arity(inputs, 1)?;
+    check_output_arity(outputs, 1)?;
     s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
     s.equals(&inputs[0].shape, &outputs[0].shape)?;
     Ok(())

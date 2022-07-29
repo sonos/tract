@@ -10,8 +10,8 @@ impl InferenceRulesOp for Const {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 0)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 0)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&outputs[0].value, self.0.clone().bex())?;
         Ok(())
     }

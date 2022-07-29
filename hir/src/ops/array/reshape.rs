@@ -23,7 +23,7 @@ impl Expansion for Reshape {
         s.given_2(&inputs[0].shape, &inputs[1].value, move |s, ishape, shape| {
             let shape = shape.cast_to::<TDim>()?;
             let shape = shape.as_slice::<TDim>()?;
-            let oshape = compute_shape(&ishape, &shape)
+            let oshape = compute_shape(&ishape, shape)
                 .with_context(|| format!("Reshaping {:?} to {:?}", ishape, shape))?;
             s.equals(&outputs[0].shape, ShapeFactoid::from(oshape))
         })
@@ -64,7 +64,7 @@ fn compute_shape(input: &[TDim], shape_spec: &[TDim]) -> TractResult<TVec<TDim>>
                 if remaining_dim_input != TDim::one() {
                     bail!("Invalid remaining dim");
                 }
-                *slot = input_dims.peek().context("Invalid")?.clone().clone();
+                *slot = (*input_dims.peek().context("Invalid")?).clone();
             }
             loop {
                 let quotient = remaining_dim_input.maybe_div(slot);
@@ -74,7 +74,7 @@ fn compute_shape(input: &[TDim], shape_spec: &[TDim]) -> TractResult<TVec<TDim>>
                     break;
                 }
             }
-            remaining_dim_input = remaining_dim_input.maybe_div(&slot)?.0;
+            remaining_dim_input = remaining_dim_input.maybe_div(slot)?.0;
         }
         Ok(())
     }
@@ -101,12 +101,11 @@ pub fn to_axis_ops(input_orig: &[TDim], output_spec: &[TDim]) -> TractResult<TVe
     let mut stack: TVec<AxisOp> = tvec!();
     'top: loop {
         let current_input =
-            stack.iter().try_fold(TVec::from(input_orig), |shape, op| -> TractResult<_> {
-                let mut shape = shape.into();
+            stack.iter().try_fold(TVec::from(input_orig), |mut shape, op| -> TractResult<_> {
                 op.change_shape_array(&mut shape, false)?;
                 Ok(shape)
             })?;
-        if &current_input == &final_output {
+        if current_input == final_output {
             return Ok(stack);
         }
         if let Some(common) =
@@ -133,12 +132,10 @@ pub fn to_axis_ops(input_orig: &[TDim], output_spec: &[TDim]) -> TractResult<TVe
                 }
                 todo!()
             }
+        } else if final_output.len() > current_input.len() {
+            stack.push(AxisOp::Add(current_input.len()));
         } else {
-            if final_output.len() > current_input.len() {
-                stack.push(AxisOp::Add(current_input.len()));
-            } else {
-                stack.push(AxisOp::Rm(current_input.len() - 1));
-            }
+            stack.push(AxisOp::Rm(current_input.len() - 1));
         }
     }
 }

@@ -25,8 +25,8 @@ impl Expansion for Iff {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 3)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 3)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&inputs[0].datum_type, DatumType::Bool)?;
         s.given_2(&inputs[1].datum_type, &inputs[2].datum_type, move |s, a, b| {
             let dt = a.common_super_type(b).with_context(|| format!("No super type for {:?} and {:?}", a, b))?;

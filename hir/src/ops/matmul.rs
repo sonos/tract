@@ -39,8 +39,8 @@ impl Expansion for MatMulInference {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 2)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 2)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&inputs[0].datum_type, &inputs[1].datum_type)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.given_2(&inputs[0].shape, &inputs[1].shape, move |s, ashape, bshape| {
@@ -70,15 +70,14 @@ impl Expansion for MatMulInference {
     }
 }
 
+#[allow(clippy::type_complexity)]
 pub fn compute_shapes<D: DimLike>(
-    ashape_orig: TVec<D>,
-    bshape_orig: TVec<D>,
+    mut ashape: TVec<D>,
+    mut bshape: TVec<D>,
     a_trans: bool,
     b_trans: bool,
     c_trans: bool,
 ) -> TractResult<(TVec<D>, TVec<D>, TVec<D>, TVec<D>)> {
-    let mut ashape = ashape_orig.clone();
-    let mut bshape = bshape_orig.clone();
     let mut implicit_m = false;
     let mut implicit_n = false;
     if ashape.len() < 2 {
@@ -100,7 +99,7 @@ pub fn compute_shapes<D: DimLike>(
         &bshape[..(bshape.len() - 2)],
     ])
     .ok_or_else(|| format_err!("Could not broadcast"))?;
-    let mut c_bc_shape: TVec<D> = c_bc_shape_prefix.clone();
+    let mut c_bc_shape: TVec<D> = c_bc_shape_prefix;
     let (mut m, mut ka) = (ashape[ashape.len() - 2].clone(), ashape[ashape.len() - 1].clone());
     let (mut kb, mut n) = (bshape[bshape.len() - 2].clone(), bshape[bshape.len() - 1].clone());
     if a_trans {

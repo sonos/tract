@@ -93,7 +93,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
             let observed_outlets: Vec<OutletId> = {
                 let model = self.model.borrow();
                 let node = model.node(node);
-                node.op.observe_outlets(&model, &node)?
+                node.op.observe_outlets(model, node)?
             };
 
             let inferred = {
@@ -111,7 +111,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
                     let model = self.model.borrow();
                     let node = model.node(node);
                     node.op
-                        .observe_outlets(&model, &node)?
+                        .observe_outlets(model, node)?
                         .iter()
                         .map(|o| model.outlet_fact(*o).map(|f| (*o, f.clone())))
                         .collect::<TractResult<_>>()?
@@ -137,7 +137,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
                 let inferred_fact = &inferred.0[ix];
                 let old_fact = self.model.borrow().outlet_fact(outlet)?;
                 let unified = inferred_fact
-                    .unify(&old_fact)
+                    .unify(old_fact)
                     .with_context(|| format!("while unifying inputs of {}", node))?;
 
                 if &unified != old_fact {

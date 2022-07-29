@@ -1,3 +1,4 @@
+#![allow(clippy::len_zero)]
 #[macro_use]
 extern crate derive_new;
 #[macro_use]

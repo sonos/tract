@@ -20,8 +20,8 @@ impl Expansion for MultiBroadcastTo {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 2)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 2)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         s.equals(&inputs[1].rank, 1)?;
         s.given(&inputs[0].shape, move |s, shape| {

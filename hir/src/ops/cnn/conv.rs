@@ -139,7 +139,7 @@ impl Expansion for Conv {
         }
         s.equals(&inputs[0].rank, k_input.rank.bex() + (has_n as usize as i64 - 1))?;
         s.equals(&outputs[0].rank, &inputs[0].rank)?;
-        check_output_arity(&outputs, 1)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&inputs[0].datum_type, &k_input.datum_type)?;
         if let Some(dt) = self.override_output_datum_type {
             s.equals(&outputs[0].datum_type, dt)?;
@@ -195,8 +195,8 @@ impl Expansion for Conv {
         let input = model.outlet_fact(inputs[0])?.clone();
         let input_shape = self.data_format.shape(input.shape.iter().collect::<TVec<_>>())?;
         let channels_in = match self.kernel_fmt {
-            KernelFormat::OIHW => kernel.shape()[1].clone() * self.group.unwrap_or(1),
-            KernelFormat::HWIO => kernel.shape()[kernel.rank() - 2].clone(),
+            KernelFormat::OIHW => kernel.shape()[1] * self.group.unwrap_or(1),
+            KernelFormat::HWIO => kernel.shape()[kernel.rank() - 2],
         };
         if input_shape.c_dim() != &channels_in.to_dim() {
             bail!("Input has {} channels, kernel expects {}", input_shape.c_dim(), channels_in)
@@ -240,8 +240,8 @@ impl Expansion for Conv {
             let b0 = if let Some(o) = self.x_zero_point_input { o.into() } else { zero.clone() };
             let b_scale = if let Some(o) = self.x_scale_input { o.into() } else { one.clone() };
 
-            let c0 = if let Some(o) = self.y_zero_point_input { o.into() } else { zero.clone() };
-            let c_scale = if let Some(o) = self.y_scale_input { o.into() } else { one.clone() };
+            let c0 = if let Some(o) = self.y_zero_point_input { o.into() } else { zero };
+            let c_scale = if let Some(o) = self.y_scale_input { o.into() } else { one };
 
             let mut qp = MatMulQParams { a0, b0, c0, a_scale, b_scale, c_scale };
             qp.remove_input(self.k_input.unwrap_or(1));
@@ -255,7 +255,7 @@ impl Expansion for Conv {
         };
 
         let inputs = inputs
-            .into_iter()
+            .iter()
             .enumerate()
             .filter(|&(ix, _)| {
                 ix != self.k_input.unwrap_or(1) && self.bias_input.map(|b| ix != b).unwrap_or(true)
@@ -343,7 +343,7 @@ mod test {
         let k = rctensor4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]);
         let e = rctensor4(&[[[[1.0f32], [0.0]]]]);
         let res = op.eval(tvec!(i, k)).unwrap();
-        assert_eq!(res, tvec!(e.into()));
+        assert_eq!(res, tvec!(e));
     }
 
     #[test]

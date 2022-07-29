@@ -38,8 +38,8 @@ impl InferenceRulesOp for ConstantLike {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 1)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[0].rank, &outputs[0].rank)?;
         s.equals(&inputs[0].shape, &outputs[0].shape)?;
@@ -109,7 +109,7 @@ impl EvalOp for EyeLike {
 
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
-        let dt = self.dt.unwrap_or(input.datum_type());
+        let dt = self.dt.unwrap_or_else(|| input.datum_type());
         Ok(tvec!(dispatch_numbers!(Self::make(dt)(self, (input.shape()[0], input.shape()[1])))?))
     }
 }
@@ -121,8 +121,8 @@ impl InferenceRulesOp for EyeLike {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 1)?;
+        check_output_arity(outputs, 1)?;
         if let Some(dt) = self.dt {
             s.equals(&outputs[0].datum_type, dt)?;
         } else {

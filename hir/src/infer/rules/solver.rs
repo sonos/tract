@@ -23,14 +23,12 @@ impl Context {
     /// Returns the current value of the variable at the given path.
     pub fn get<T: Output>(&self, path: &Path) -> TractResult<T> {
         let value = get_path(self, &path[..])?;
-
-        Ok(T::from_wrapped(value)?)
+        T::from_wrapped(value)
     }
 
     /// Tries to set the value of the variable at the given path.
     pub fn set<T: Output>(&mut self, path: &Path, value: T) -> TractResult<()> {
         set_path(self, &path[..], T::into_wrapped(value))?;
-
         Ok(())
     }
 }
@@ -82,7 +80,7 @@ impl<'rules, T: Output + Factoid> Rule<'rules> for EqualsRule<T> {
         for item in &self.items {
             changed |= item.set(context, value.clone())?;
         }
-        return Ok((changed, vec![]));
+        Ok((changed, vec![]))
     }
 
     /// Returns the paths that the rule depends on.
@@ -91,7 +89,7 @@ impl<'rules, T: Output + Factoid> Rule<'rules> for EqualsRule<T> {
     }
 }
 
-impl<'rules, T: Output + Factoid> fmt::Debug for EqualsRule<T> {
+impl<T: Output + Factoid> fmt::Debug for EqualsRule<T> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(formatter, "{:?}", self.items[0])?;
         for item in &self.items[1..] {
@@ -660,7 +658,7 @@ mod tests {
     fn solver_wrong_size_1() {
         let (mut solver, inputs, _) = bootstrap();
         solver.equals(&inputs[0].rank, 2).unwrap();
-        solver.infer_facts((tvec![].into(), tvec![].into())).unwrap();
+        solver.infer_facts((tvec![], tvec![])).unwrap();
     }
 
     #[test]
@@ -668,8 +666,8 @@ mod tests {
         let (solver, _, _) = bootstrap();
         let any = InferenceFact::new();
 
-        let facts = solver.infer_facts((tvec![&any].into(), tvec![].into())).unwrap();
-        assert_eq!(facts, (tvec![InferenceFact::new()].into(), tvec![].into()));
+        let facts = solver.infer_facts((tvec![&any], tvec![])).unwrap();
+        assert_eq!(facts, (tvec![InferenceFact::new()], tvec![]));
     }
 
     #[test]
@@ -757,7 +755,7 @@ mod tests {
         let facts = solver.infer_facts((tvec![&any], tvec![&output])).unwrap();
         let expected = (
             tvec![InferenceFact { shape: shapefactoid![_, 2; ..], ..InferenceFact::new() }],
-            tvec![output.clone()],
+            tvec![output],
         );
 
         assert_eq!(facts, expected);

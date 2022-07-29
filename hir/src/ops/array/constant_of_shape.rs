@@ -21,8 +21,8 @@ impl Expansion for ConstantOfShape {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 1)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&outputs[0].datum_type, self.scalar.datum_type())?;
         s.equals(&inputs[0].rank, 1)?;
         s.equals(&inputs[0].shape[0], outputs[0].rank.bex().to_dim())?;

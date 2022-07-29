@@ -38,7 +38,7 @@ impl Expansion for RmDims {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_output_arity(&outputs, 1)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         s.equals(&outputs[0].rank, (&inputs[0].rank).bex() - self.axes.len() as i64)?;
         s.given(&inputs[0].rank, move |s, rank| {

@@ -48,7 +48,7 @@ impl Expansion for PermuteAxes {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_output_arity(&outputs, 1)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         s.equals(&outputs[0].rank, &inputs[0].rank)?;
         s.given(&inputs[0].shape, move |s, shape| {
