@@ -441,7 +441,7 @@ where
                     FusedKerSpec::AddRowColProducts(rows, cols) => {
                         for i in 0..3 {
                             for j in 0..2 {
-                                ab[i][j] += *rows.offset(i as isize) * *cols.offset(j as isize);
+                                ab[i][j] += *rows.add(i) * *cols.add(j);
                             }
                         }
                     }
@@ -487,7 +487,7 @@ where
                 pnl = pnl.add(1);
             }
         }
-        return 0;
+        0
     }
 }
 

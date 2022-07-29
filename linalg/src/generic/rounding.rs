@@ -232,9 +232,9 @@ mod test {
         assert_eq!(1f32.q_scale(Scaler::new(0.5, Zero)), 0.5);
         assert_eq!(2f32.q_scale(Scaler::new(0.5, Zero)), 1.0);
         assert_eq!(3f32.q_scale(Scaler::new(0.5, Zero)), 1.5);
-        assert_eq!(-1f32.q_scale(Scaler::new(0.5, Zero)), -0.5);
-        assert_eq!(-2f32.q_scale(Scaler::new(0.5, Zero)), -1.0);
-        assert_eq!(-3f32.q_scale(Scaler::new(0.5, Zero)), -1.5);
+        assert_eq!((-1f32).q_scale(Scaler::new(0.5, Zero)), -0.5);
+        assert_eq!((-2f32).q_scale(Scaler::new(0.5, Zero)), -1.0);
+        assert_eq!((-3f32).q_scale(Scaler::new(0.5, Zero)), -1.5);
     }
 
     #[test]

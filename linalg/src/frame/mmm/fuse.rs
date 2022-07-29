@@ -133,10 +133,10 @@ pub mod test {
             mod fuse {
                 use super::super::$ker;
                 #[allow(unused_imports)]
+                use tract_data::prelude::f16;
+                #[allow(unused_imports)]
                 use $crate::frame::mmm::fuse::test;
                 use $crate::frame::mmm::fuse::test::tile;
-                #[allow(unused_imports)]
-                use tract_data::prelude::f16;
 
                 #[test]
                 fn return_zeros() {
@@ -385,8 +385,8 @@ pub mod test {
         TC: LADatum,
         TI: LADatum + Bounded + PartialEq,
     {
-        let mut v = vec![TC::max_value(); K::mr() * K::nr()];
-        let c = mmm_stride_storage(&mut v, K::nr());
+        let v = vec![TC::max_value(); K::mr() * K::nr()];
+        let c = mmm_stride_storage(&v, K::nr());
         let non_linear = tvec![FusedKerSpec::Clear, FusedKerSpec::Store(c), FusedKerSpec::Done];
         let err = K::kernel(&non_linear);
         assert_eq!(err, 0);
@@ -402,8 +402,8 @@ pub mod test {
         E: Fn(usize, usize, TI) -> TI,
     {
         assert!(c.len() == K::mr() * K::nr());
-        let mut v = c.to_vec();
-        let c = mmm_stride_storage(&mut v, K::nr());
+        let v = c.to_vec();
+        let c = mmm_stride_storage(&v, K::nr());
         let mut ops = ops.to_vec();
         ops.insert(0, FusedKerSpec::AddUnicast(c));
         ops.insert(0, FusedKerSpec::Clear);
@@ -771,11 +771,9 @@ pub mod test {
                     |_, _, c| c.q_shr(shift, policy),
                 )
             } else if let FusedSpec::ShiftLeft(shift) = self.scaler.as_fused_spec() {
-                fused_ops::<K, TC, TI, _>(
-                    &*self.c,
-                    &[FusedKerSpec::ShiftLeft(shift)],
-                    |_, _, c| c.q_shl(shift),
-                )
+                fused_ops::<K, TC, TI, _>(&*self.c, &[FusedKerSpec::ShiftLeft(shift)], |_, _, c| {
+                    c.q_shl(shift)
+                })
             } else {
                 unreachable!()
             }

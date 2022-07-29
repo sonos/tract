@@ -19,27 +19,18 @@ impl std::hash::Hash for Box<dyn Lut> {
 }
 
 #[derive(Debug, Clone, Hash)]
-pub struct LutImpl<K>
-where
-    K: LutKer + Hash,
-{
+pub struct LutImpl<K: LutKer> {
     table: Tensor,
     _boo: PhantomData<K>,
 }
 
-impl<K> DynHash for LutImpl<K>
-where
-    K: LutKer + Hash,
-{
+impl<K: LutKer> DynHash for LutImpl<K> {
     fn dyn_hash(&self, state: &mut dyn std::hash::Hasher) {
         tract_data::hash::dyn_hash(self, state)
     }
 }
 
-impl<K> LutImpl<K>
-where
-    K: LutKer + Hash,
-{
+impl<K: LutKer> LutImpl<K> {
     pub fn new(table: &[u8]) -> LutImpl<K> {
         unsafe {
             LutImpl {
@@ -55,10 +46,7 @@ where
     }
 }
 
-impl<K> Lut for LutImpl<K>
-where
-    K: LutKer + Hash,
-{
+impl<K: LutKer> Lut for LutImpl<K> {
     fn table(&self) -> &[u8] {
         self.table.as_slice().unwrap()
     }
@@ -91,7 +79,7 @@ where
     }
 }
 
-pub trait LutKer: Clone + fmt::Debug + Send + Sync {
+pub trait LutKer: Clone + fmt::Debug + Send + Sync + Hash {
     fn name() -> &'static str;
     fn n() -> usize;
     fn input_alignment_bytes() -> usize;

@@ -11,16 +11,12 @@ use DatumType::F32;
 fn conv(c: &mut Criterion, dilation: usize, pulse: usize, ci: usize, co: usize) {
     c.bench_function(&format!("conv_d{}p{}ci{}co{}", dilation, pulse, ci, co), move |be| unsafe {
         let t = pulse + 2 * dilation;
-        let data_offsets: Vec<_> = (0..pulse).map(|x| x as isize).collect();
         let k = ci * 3;
-        let kernel_offsets: Vec<_> =
-            (0..ci).flat_map(|ici| (0..3).map(move |x| (ici * t * 3 + x * t) as isize)).collect();
-        let mm = tract_linalg::ops()
-            .mmm(F32, F32, F32, Some(co), Some(kernel_offsets.len()), Some(data_offsets.len()))
+        let mm =
+            tract_linalg::ops().mmm(F32, F32, F32, Some(co), Some(ci * 3), Some(pulse)).unwrap();
+        mm.c_from_data_and_strides(F32.size_of(), co, t, t as _, 1);
+        let a = Tensor::zero_aligned::<f32>(&[mm.a_pack().len(k, co)], mm.a_pack().alignment())
             .unwrap();
-        mm.c_from_data_and_strides(F32.size_of(), t as _, 1);
-        let a =
-            Tensor::zero_aligned::<f32>(&[mm.a_pack().len(k, co)], mm.a_pack().alignment()).unwrap();
         let input = Tensor::zero::<f32>(&[ci, t]).unwrap();
         let mut output = Tensor::zero::<f32>(&[co, t]).unwrap();
         be.iter(move || {
@@ -29,7 +25,7 @@ fn conv(c: &mut Criterion, dilation: usize, pulse: usize, ci: usize, co: usize) 
                 t,
                 &[
                     FusedSpec::AddMatMul {
-                        a: mm.a_packed(F32.size_of(), k).wrap(&mut a.view()),
+                        a: mm.a_packed(F32.size_of(), k).wrap(&a.view()),
                         b: mm.b_packed(F32.size_of(), k).wrap(&input.view()).unwrap(),
                         k,
                     },
