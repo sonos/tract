@@ -111,6 +111,7 @@ unsafe fn packed_packed_6x2(f: Option<&str>) {
     println!();
 }
 
+#[allow(clippy::identity_op)]
 unsafe fn packed_packed_8x1(f: Option<&str>) {
     println!("-- 8x1 kernels");
     kloop!(f, "8x1x1", (64 * 1), "8x1/packed_packed_loop1/avx.tmpli", 8);

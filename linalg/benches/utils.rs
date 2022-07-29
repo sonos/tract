@@ -31,6 +31,7 @@ pub fn ruin_cache() {
     let _a = (0..1000000).collect::<Vec<i32>>();
 }
 
+#[allow(clippy::too_many_arguments)]
 unsafe fn run(
     m: usize,
     k: usize,

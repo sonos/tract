@@ -275,7 +275,7 @@ where
                 for i in 0..k {
                     let a: TI = a.as_slice::<TA>().unwrap()[i + k * r].as_();
                     let b: TI = b.as_slice::<TB>().unwrap()[c + i * n].as_();
-                    v = v + a * b;
+                    v += a * b;
                 }
                 v.as_()
             },
@@ -319,7 +319,7 @@ where
                 for i in 0..k {
                     let a: TI = a.as_slice::<TA>().unwrap()[i + k * r].as_();
                     let b: TI = b.as_slice::<TB>().unwrap()[c + i * n].as_();
-                    v = v + a * b;
+                    v += a * b;
                 }
                 v.as_()
             },
@@ -365,7 +365,7 @@ where
                 for i in 0..k {
                     let a: TI = a.as_slice::<TA>().unwrap()[i + k * r].as_();
                     let b: TI = b.as_slice::<TB>().unwrap()[i].as_();
-                    inter = inter + a * b;
+                    inter += a * b;
                 }
                 inter.as_()
             },
@@ -392,7 +392,7 @@ where
     let mut found = Tensor::zero::<TC>(&[m, n]).unwrap();
     let c_store = op
         .c_from_data_and_strides(TC::datum_type().size_of(), m, n, n as isize, 1)
-        .wrap(&mut found.view_mut());
+        .wrap(&found.view_mut());
     let mut spec: TVec<FusedSpec> = spec.into();
     spec.push(FusedSpec::Store(c_store));
 

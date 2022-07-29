@@ -8,7 +8,7 @@ macro_rules! tanh_impl {
                 tanh_frame_tests!($cond, $ti, $func);
             }
         }
-    }
+    };
 }
 
 #[cfg(test)]
@@ -27,7 +27,7 @@ pub mod test {
                 #[test]
                 fn tanh(xs in proptest::collection::vec(-25f32..25.0, 0..100)) {
                     if $cond {
-                        crate::frame::tanh::test::test_tanh::<$ker, $t>(&*xs).unwrap()
+                        $crate::frame::tanh::test::test_tanh::<$ker, $t>(&*xs).unwrap()
                     }
                 }
             }
@@ -35,7 +35,7 @@ pub mod test {
             #[test]
             fn tanh_4_magic() {
                 if $cond {
-                    crate::frame::tanh::test::test_tanh::<$ker, $t>(&[0f32, -20.0, 20.0, 0.0])
+                    $crate::frame::tanh::test::test_tanh::<$ker, $t>(&[0f32, -20.0, 20.0, 0.0])
                         .unwrap()
                 }
             }
@@ -43,34 +43,34 @@ pub mod test {
             #[test]
             fn tanh_4zeros() {
                 if $cond {
-                    crate::frame::tanh::test::test_tanh::<$ker, $t>(&[0.0; 4]).unwrap();
+                    $crate::frame::tanh::test::test_tanh::<$ker, $t>(&[0.0; 4]).unwrap();
                 }
             }
 
             #[test]
             fn tanh_20_ones() {
                 if $cond {
-                    crate::frame::tanh::test::test_tanh::<$ker, $t>(&[1.0; 20]).unwrap();
+                    $crate::frame::tanh::test::test_tanh::<$ker, $t>(&[1.0; 20]).unwrap();
                 }
             }
 
             #[test]
             fn tanh_18_zeros() {
                 if $cond {
-                    crate::frame::tanh::test::test_tanh::<$ker, $t>(&[0.0; 18]).unwrap();
+                    $crate::frame::tanh::test::test_tanh::<$ker, $t>(&[0.0; 18]).unwrap();
                 }
             }
 
             #[test]
             fn tanh_foo() {
                 if $cond {
-                    crate::frame::tanh::test::test_tanh::<$ker, $t>(&[0.67503357]).unwrap();
+                    $crate::frame::tanh::test::test_tanh::<$ker, $t>(&[0.67503357]).unwrap();
                 }
             }
 
             #[test]
             fn tanh_asymptots() {
-                use crate::frame::element_wise::*;
+                use $crate::frame::element_wise::*;
                 use tract_data::internal::*;
                 if $cond {
                     let mut input: Vec<$t> = [-100f32, 100f32]

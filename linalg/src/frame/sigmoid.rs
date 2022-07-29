@@ -25,7 +25,7 @@ pub mod test {
                 #[test]
                 fn sigmoid(xs in proptest::collection::vec(-25f32..25.0, 0..100)) {
                     if $cond {
-                        crate::frame::sigmoid::test::test_sigmoid::<$ker, $t>(&*xs).unwrap()
+                        $crate::frame::sigmoid::test::test_sigmoid::<$ker, $t>(&*xs).unwrap()
                     }
                 }
             }
@@ -33,7 +33,7 @@ pub mod test {
             #[test]
             fn sigmoid_4_magic() {
                 if $cond {
-                    crate::frame::sigmoid::test::test_sigmoid::<$ker, $t>(&[0f32, -20.0, 20.0, 0.0])
+                    $crate::frame::sigmoid::test::test_sigmoid::<$ker, $t>(&[0f32, -20.0, 20.0, 0.0])
                         .unwrap()
                 }
             }
@@ -41,27 +41,27 @@ pub mod test {
             #[test]
             fn sigmoid_4zeros() {
                 if $cond {
-                    crate::frame::sigmoid::test::test_sigmoid::<$ker, $t>(&[0.0; 4]).unwrap();
+                    $crate::frame::sigmoid::test::test_sigmoid::<$ker, $t>(&[0.0; 4]).unwrap();
                 }
             }
 
             #[test]
             fn sigmoid_20_ones() {
                 if $cond {
-                    crate::frame::sigmoid::test::test_sigmoid::<$ker, $t>(&[1.0; 20]).unwrap();
+                    $crate::frame::sigmoid::test::test_sigmoid::<$ker, $t>(&[1.0; 20]).unwrap();
                 }
             }
 
             #[test]
             fn sigmoid_18_zeros() {
                 if $cond {
-                    crate::frame::sigmoid::test::test_sigmoid::<$ker, $t>(&[0.0; 18]).unwrap();
+                    $crate::frame::sigmoid::test::test_sigmoid::<$ker, $t>(&[0.0; 18]).unwrap();
                 }
             }
 
             #[test]
             fn sigmoid_asymptots() {
-                use crate::frame::element_wise::*;
+                use $crate::frame::element_wise::*;
                 use tract_data::internal::*;
                 if $cond {
                     let mut input: Vec<$t> = [-100f32, 100f32]

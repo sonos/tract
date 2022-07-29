@@ -94,104 +94,104 @@ pub mod test {
 
     #[macro_export]
     macro_rules! mmm_kernel_tests {
-            ($cond:expr, $ker:ident, $ta:ty, $tb:ty, $tc:ty, $ti: ty) => {
-                mod kernel {
-                    use super::super::$ker;
-                    use num_traits::Zero;
-                    use proptest::prelude::*;
-                    #[allow(unused_imports)]
-                    use tract_data::prelude::f16;
-                    #[allow(unused_imports)]
-                    use $crate::frame::mmm::kernel::test;
-                    use $crate::frame::mmm::kernel::test::PackedPackedProblem;
-                    use $crate::frame::mmm::MatMatMulKer;
+        ($cond:expr, $ker:ident, $ta:ty, $tb:ty, $tc:ty, $ti: ty) => {
+            mod kernel {
+                use super::super::$ker;
+                use num_traits::Zero;
+                use proptest::prelude::*;
+                #[allow(unused_imports)]
+                use tract_data::prelude::f16;
+                #[allow(unused_imports)]
+                use $crate::frame::mmm::kernel::test;
+                use $crate::frame::mmm::kernel::test::PackedPackedProblem;
+                use $crate::frame::mmm::MatMatMulKer;
 
-                    proptest::proptest! {
-                        #[test]
-                        fn packed_packed_prop(pb in any::<PackedPackedProblem<$ker, $ta, $tb, $tc, $ti>>()) {
-                            if $cond {
-                                prop_assert_eq!(pb.run(), pb.reference())
-                            }
-                        }
-                    }
-
+                proptest::proptest! {
                     #[test]
-                    fn packed_packed_1() {
+                    fn packed_packed_prop(pb in any::<PackedPackedProblem<$ker, $ta, $tb, $tc, $ti>>()) {
                         if $cond {
-                            test::packed_packed::<$ker, $ta, $tb, $tc, $ti>(1)
-                        }
-                    }
-
-                    #[test]
-                    fn packed_packed_2() {
-                        if $cond {
-                            test::packed_packed::<$ker, $ta, $tb, $tc, $ti>(2)
-                        }
-                    }
-
-                    #[test]
-                    fn packed_packed_13() {
-                        if $cond {
-                            test::packed_packed::<$ker, $ta, $tb, $tc, $ti>(13)
-                        }
-                    }
-
-                    #[test]
-                    fn packed_packed_empty() {
-                        if $cond {
-                            let pb = PackedPackedProblem::<$ker, $ta, $tb, $tc, $ti>::new(
-                                0,
-                                vec!(<$ta>::zero(); 0),
-                                vec!(<$tb>::zero(); 0),
-                                false,
-                                false);
-                            assert_eq!(pb.run(), pb.reference())
-                        }
-                    }
-
-                    #[test]
-                    fn packed_packed_bug_1() {
-                        if $cond {
-                            let pb = PackedPackedProblem::<$ker, $ta, $tb, $tc, $ti>::new(
-                                1,
-                                vec!(<$ta>::zero(); <$ker>::mr()),
-                                vec!(<$tb>::zero(); <$ker>::nr()),
-                                true,
-                                true);
-                            assert_eq!(pb.run(), pb.reference())
-                        }
-                    }
-
-                    #[test]
-                    fn packed_vec_k1() {
-                        if $cond {
-                            test::packed_vec::<$ker, $ta, $tb, $tc, $ti>(1)
-                        }
-                    }
-
-                    #[test]
-                    fn packed_vec_k2() {
-                        if $cond {
-                            test::packed_vec::<$ker, $ta, $tb, $tc, $ti>(2)
-                        }
-                    }
-
-                    #[test]
-                    fn packed_vec_k4() {
-                        if $cond {
-                            test::packed_vec::<$ker, $ta, $tb, $tc, $ti>(4)
-                        }
-                    }
-
-                    #[test]
-                    fn packed_vec_k13() {
-                        if $cond {
-                            test::packed_vec::<$ker, $ta, $tb, $tc, $ti>(13)
+                            prop_assert_eq!(pb.run(), pb.reference())
                         }
                     }
                 }
-            };
-        }
+
+                #[test]
+                fn packed_packed_1() {
+                    if $cond {
+                        test::packed_packed::<$ker, $ta, $tb, $tc, $ti>(1)
+                    }
+                }
+
+                #[test]
+                fn packed_packed_2() {
+                    if $cond {
+                        test::packed_packed::<$ker, $ta, $tb, $tc, $ti>(2)
+                    }
+                }
+
+                #[test]
+                fn packed_packed_13() {
+                    if $cond {
+                        test::packed_packed::<$ker, $ta, $tb, $tc, $ti>(13)
+                    }
+                }
+
+                #[test]
+                fn packed_packed_empty() {
+                    if $cond {
+                        let pb = PackedPackedProblem::<$ker, $ta, $tb, $tc, $ti>::new(
+                            0,
+                            vec!(<$ta>::zero(); 0),
+                            vec!(<$tb>::zero(); 0),
+                            false,
+                            false);
+                        assert_eq!(pb.run(), pb.reference())
+                    }
+                }
+
+                #[test]
+                fn packed_packed_bug_1() {
+                    if $cond {
+                        let pb = PackedPackedProblem::<$ker, $ta, $tb, $tc, $ti>::new(
+                            1,
+                            vec!(<$ta>::zero(); <$ker>::mr()),
+                            vec!(<$tb>::zero(); <$ker>::nr()),
+                            true,
+                            true);
+                        assert_eq!(pb.run(), pb.reference())
+                    }
+                }
+
+                #[test]
+                fn packed_vec_k1() {
+                    if $cond {
+                        test::packed_vec::<$ker, $ta, $tb, $tc, $ti>(1)
+                    }
+                }
+
+                #[test]
+                fn packed_vec_k2() {
+                    if $cond {
+                        test::packed_vec::<$ker, $ta, $tb, $tc, $ti>(2)
+                    }
+                }
+
+                #[test]
+                fn packed_vec_k4() {
+                    if $cond {
+                        test::packed_vec::<$ker, $ta, $tb, $tc, $ti>(4)
+                    }
+                }
+
+                #[test]
+                fn packed_vec_k13() {
+                    if $cond {
+                        test::packed_vec::<$ker, $ta, $tb, $tc, $ti>(13)
+                    }
+                }
+            }
+        };
+    }
 
     #[derive(Debug, new)]
     pub struct PackedPackedProblem<K, TA, TB, TC, TI>
@@ -264,7 +264,7 @@ pub mod test {
                         let a: TI = self.a[m + mr * k].as_();
                         let b: TI = self.b[n + nr * k].as_();
                         let offset = if self.trans_c { m + n * mr } else { n + m * nr };
-                        vi[offset] = vi[offset] + a * b;
+                        vi[offset] += a * b;
                     }
                 }
             }
