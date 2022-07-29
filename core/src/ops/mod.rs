@@ -192,6 +192,7 @@ pub trait TypedOp:
     }
 
     #[allow(unused_variables)]
+    #[allow(clippy::too_many_arguments)]
     fn slice_output(
         &self,
         model: &TypedModel,

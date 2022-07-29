@@ -49,9 +49,7 @@ impl EvalOp for QMatMulUnary {
     }
 
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        if &inputs[0].rank() != &self.a.rank() {
-            bail!("Rank mismatch {:?} vs {:?}", inputs[0], self.a);
-        }
+        ensure!(inputs[0].rank() == self.a.rank(), "Rank mismatch {:?} vs {:?}", inputs[0], self.a);
 
         let mut model = TypedModel::default();
         let t_a = self.a.offset_u8_as_i8();
@@ -141,16 +139,16 @@ impl TypedOp for QMatMulUnary {
     }
 
     fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
-        if self.params.iter().any(|qp| match &qp.1 {
-            &QParamKind::Attr(t) => t.rank() > 0,
-            &QParamKind::FromInput(ix) => inputs[*ix].rank() > 0,
-            &QParamKind::FromQType => false,
+        if self.params.iter().any(|qp| match qp.1 {
+            QParamKind::Attr(t) => t.rank() > 0,
+            QParamKind::FromInput(ix) => inputs[*ix].rank() > 0,
+            QParamKind::FromQType => false,
         }) {
             Ok(Invariants::none())
         } else {
             let mut invs = super::mir_unary::mir_unary_invariants(
-                &inputs[0],
-                &outputs[0],
+                inputs[0],
+                outputs[0],
                 &self.a,
                 self.b_trans,
                 self.c_trans,
@@ -216,7 +214,7 @@ impl TypedOp for QMatMulUnary {
                     Some(Box::new(QMatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
                 Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
             }
-            _ => return Ok(None),
+            _ => Ok(None),
         }
     }
 
@@ -253,7 +251,7 @@ impl TypedOp for QMatMulUnary {
                 true,
             )));
         }
-        return Ok(None);
+        Ok(None)
     }
 
     fn declutter(
@@ -631,7 +629,7 @@ mod test {
     #[test]
     fn scale_big() {
         QMatMulUnaryProblemI8I8I8 {
-            a: arr2(&[[0],[0]]),
+            a: arr2(&[[0], [0]]),
             b: arr2(&[[0, 0]]),
             bias: tensor0(0i32),
             a0: -1,

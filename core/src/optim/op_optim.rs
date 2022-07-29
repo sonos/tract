@@ -15,10 +15,14 @@ pub struct OpOptim(
 );
 
 impl OpOptim {
-    fn full_pass(&mut self, session: &mut OptimizerSession, new: &TypedModel) -> TractResult<Option<TypedModelPatch>> {
+    fn full_pass(
+        &mut self,
+        session: &mut OptimizerSession,
+        new: &TypedModel,
+    ) -> TractResult<Option<TypedModelPatch>> {
         for (ix, &id) in new.eval_order()?.iter().enumerate().skip(self.2) {
             let node = &new.nodes()[id];
-            let patch = (self.1)(node.op.as_ref(), session, &new, node)
+            let patch = (self.1)(node.op.as_ref(), session, new, node)
                 .with_context(|| format!("{:?} node {}", self, node))?;
             if let Some(mut p) = patch {
                 p.push_context(format!("{:?} {}", self, node));

@@ -1,3 +1,4 @@
+#![allow(clippy::clone_on_copy)]
 use super::binary::*;
 use crate::internal::*;
 use crate::ops::quant::scale_by;
@@ -280,7 +281,7 @@ fn declutter_unary_mul_magic_values(
         && a.cast_to_scalar::<f32>()? == 1.0
         && model.outlet_fact(node.inputs[0])? == &node.outputs[0].fact
     {
-        return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?));
+        Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
     } else if a.as_uniform() == Some(Tensor::zero_scalar_dt(a.datum_type())?) {
         let mut patch = TypedModelPatch::default();
         let fact = model.outlet_fact(node.inputs[0])?;
@@ -332,7 +333,7 @@ fn declutter_div_as_shift(
     if let Some(a) = &a.konst {
         declutter_as_shift(model, node, a, Box::new(FlippedShiftRight))
     } else {
-        return Ok(None);
+        Ok(None)
     }
 }
 

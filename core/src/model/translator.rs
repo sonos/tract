@@ -33,7 +33,7 @@ where
             let node = source.node(old_id);
             trace!("Translating {} {:?}", node, self);
             let outlets = self
-                .translate_node(&source, node, &mut target, &mapping)
+                .translate_node(source, node, &mut target, &mapping)
                 .with_context(|| format!("Translating node {} {:?}", node, self))?;
             for (ix, outlet) in outlets.into_iter().enumerate() {
                 mapping.insert(OutletId::new(node.id, ix), outlet);
@@ -48,14 +48,14 @@ where
                 let node = source.node(i.node);
                 trace!("Translate useless source {}", node);
                 let outlets = self
-                    .translate_node(&source, node, &mut target, &mapping)
+                    .translate_node(source, node, &mut target, &mapping)
                     .with_context(|| format!("Translating input {} {:?}", node, self))?;
                 mapping.insert(*i, outlets[0]);
             }
         }
         // maintaining order of i/o interface
-        target.inputs = source.input_outlets()?.iter().map(|i| mapping[&i]).collect();
-        target.outputs = source.output_outlets()?.iter().map(|o| mapping[&o]).collect();
+        target.inputs = source.input_outlets()?.iter().map(|i| mapping[i]).collect();
+        target.outputs = source.output_outlets()?.iter().map(|o| mapping[o]).collect();
         target.properties = source.properties.clone();
         Ok((target, mapping))
     }

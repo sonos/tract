@@ -53,7 +53,7 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                     let tensors =
                         input_facts.iter().map(|f| f.konst.clone().unwrap()).collect::<TVec<_>>();
                     if let Ok(outputs) = op.eval(tensors) {
-                        return Ok(outputs.into_iter().map(|t| TypedFact::from(t)).collect());
+                        return Ok(outputs.into_iter().map(TypedFact::from).collect());
                     }
                 }
                 op.output_facts(&*input_facts).context("in output_facts invocation")
@@ -170,7 +170,7 @@ impl TypedModel {
                 Ok(outlets)
             }
         }
-        values.translate_model(&self)
+        values.translate_model(self)
     }
 
     /// Translate the graph to locally optimized operators (LIR or MIR ops).

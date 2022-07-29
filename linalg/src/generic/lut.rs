@@ -1,6 +1,6 @@
 use crate::frame::lut::LutKer;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct GenericLut8;
 
 impl LutKer for GenericLut8 {

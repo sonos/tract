@@ -202,7 +202,7 @@ impl DeconvProblem {
                 .collect()
         };
         let output_shape_geo = if self.padding == PaddingSpec::Valid {
-            valid_output_shape_geo.clone()
+            valid_output_shape_geo
         } else {
             tract_itertools::izip!(input_shape.hw_dims(), &self.strides)
                 .map(|(i, s)| i * s)

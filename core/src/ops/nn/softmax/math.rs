@@ -200,6 +200,7 @@ pub fn rounding_divide_by_pot(x: i32, exponent: i32) -> i32 {
 }
 
 // https://github.com/google/gemmlowp/blob/13d57703abca3005d97b19df1f2db731607a7dc2/fixedpoint/fixedpoint.h#L385
+#[allow(clippy::comparison_chain)] // nah
 pub fn saturating_rounding_multiply_by_pot(x: i32, exponent: i32) -> i32 {
     if exponent == 0 {
         x

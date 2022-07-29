@@ -45,8 +45,8 @@ pub fn pull_downsample_over_scan(
 
     let inputs = inner_model.input_outlets()?.to_vec();
     for input in inputs {
-        let ref mut node = inner_model.node_mut(input.node);
-        let ref mut fact = node.outputs[0].fact;
+        let node = &mut inner_model.node_mut(input.node);
+        let fact = &mut node.outputs[0].fact;
         *fact = down_op.transform_fact(fact)?;
         node.op_as_mut::<crate::ops::source::TypedSource>().unwrap().fact = fact.clone();
         let downsamples = inner_model.node(input.node).outputs[0].successors.clone();
@@ -73,8 +73,8 @@ pub fn pull_downsample_over_scan(
                 if *chunk > 0 && *chunk as usize % down_op.stride as usize != 0 {
                     return Ok(None);
                 }
-                *chunk = (chunk.abs() as usize).divceil(down_op.stride as usize) as isize
-                    * chunk.signum()
+                *chunk =
+                    chunk.unsigned_abs().divceil(down_op.stride as usize) as isize * chunk.signum()
             }
             _ => (),
         }
@@ -83,8 +83,10 @@ pub fn pull_downsample_over_scan(
         if output.chunk as usize % down_op.stride as usize != 0 {
             return Ok(None);
         }
-        output.full_dim_hint.as_mut().map(|d| *d = down_op.transform_dim(d));
-        output.chunk = (output.chunk.abs() as usize).divceil(down_op.stride as usize) as isize
+        if let Some(d) = output.full_dim_hint.as_mut() {
+            *d = down_op.transform_dim(d)
+        }
+        output.chunk = output.chunk.unsigned_abs().divceil(down_op.stride as usize) as isize
             * output.chunk.signum()
     }
 

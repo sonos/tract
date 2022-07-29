@@ -138,7 +138,7 @@ impl<'o> OptimizerSession<'o> {
                 return Ok(());
             }
         }
-        while let Some(mut patch) = p.next(self, &model)? {
+        while let Some(mut patch) = p.next(self, model)? {
             patch.push_context(format!("{:?}/{}", p, i));
             patch.model.check_consistency().context("checking patch internal consistency")?;
             model

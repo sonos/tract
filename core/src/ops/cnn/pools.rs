@@ -59,8 +59,8 @@ impl PoolSpec {
         let computed = self.computed_padding(ishape.hw_dims());
         let spatial_dims = computed.into_iter().map(|d| d.convoluted).collect::<TVec<D>>();
         let oshape = self.data_format.from_n_c_hw(
-            ishape.n().cloned().unwrap_or(1.into()),
-            self.output_channel_override.map(|i| i.into()).unwrap_or(ishape.c().clone()),
+            ishape.n().cloned().unwrap_or_else(|| 1.into()),
+            self.output_channel_override.map(|i| i.into()).unwrap_or_else(|| ishape.c().clone()),
             spatial_dims,
         )?;
         Ok(oshape)
@@ -109,7 +109,7 @@ impl super::ResolveTo<ConcretePoolGeometry> for SymbolicPoolGeometry {
         let output_inner_stride = match self.pool_spec.data_format {
             DataFormat::NCHW | DataFormat::CHW => 1,
             DataFormat::NHWC | DataFormat::HWC => {
-                self.pool_spec.output_channel_override.clone().unwrap_or(*input_shape.c())
+                self.pool_spec.output_channel_override.unwrap_or(*input_shape.c())
             }
         };
         let mut spec = PatchSpec::for_full_shape(self.pool_spec.data_format, input_full_shape)?

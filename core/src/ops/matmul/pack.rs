@@ -3,8 +3,7 @@ use ndarray::*;
 
 use tract_linalg::frame::Packer;
 
-#[derive(Debug, Clone, PartialEq, Educe)]
-#[educe(Hash)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub struct MatMatMulPack {
     pub(crate) packer: Packer,
     pub(crate) trans: bool,

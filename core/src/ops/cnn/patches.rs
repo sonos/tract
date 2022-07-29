@@ -91,6 +91,7 @@ impl PatchSpec {
         let data_field: Vec<isize> = ::ndarray::indices(&*self.kernel_shape)
             .into_iter()
             .flat_map(|coords| {
+                #[allow(clippy::unnecessary_to_owned)] // I think this one is a clippy bug.
                 coords
                     .slice()
                     .to_vec()
@@ -112,7 +113,7 @@ impl PatchSpec {
 
         fn strides(shape: &[usize], inner: usize) -> TVec<isize> {
             let mut strides: TVec<isize> = tvec![inner as isize];
-            for dim in shape.into_iter().skip(1).rev() {
+            for dim in shape.iter().skip(1).rev() {
                 let previous = *strides.last().unwrap();
                 strides.push(*dim as isize * previous);
             }
@@ -316,7 +317,7 @@ impl Patch {
             }
             let valid = hint.unwrap_or_else(|| !self.padded || self.is_valid(coords));
             if valid {
-                PatchIterator::Fast(FastPatchIterator { patch: &self, center, item: 0 })
+                PatchIterator::Fast(FastPatchIterator { patch: self, center, item: 0 })
             } else {
                 let mut input_patch_center: TVec<_> = coords.into();
                 input_patch_center
@@ -437,7 +438,8 @@ impl<'p> ZoneScanner<'p> {
         self.output_offset = 0;
         self.input_center_offset = 0;
         for ix in 0..self.output_coords.len() {
-            *self.output_coords.get_unchecked_mut(ix) = self.zone.output_ranges.get_unchecked(ix).start;
+            *self.output_coords.get_unchecked_mut(ix) =
+                self.zone.output_ranges.get_unchecked(ix).start;
         }
         self.done = false;
         self.refresh_dependent()
@@ -581,7 +583,7 @@ impl<'p> Scanner<'p> {
                     self.input_center_offset += *self.input_coords.get_unchecked(i) as isize
                         * *self.patch.input_storage_strides.get_unchecked(i) as isize;
                 }
-                self.zone = &self.patch.zones.get_unchecked(self.zone_id);
+                self.zone = self.patch.zones.get_unchecked(self.zone_id);
             }
         }
     }
@@ -602,8 +604,8 @@ impl<'p> Iterator for PatchIterator<'p> {
     #[inline(always)]
     fn next(&mut self) -> Option<Option<isize>> {
         match self {
-            &mut PatchIterator::Fast(ref mut it) => it.next(),
-            &mut PatchIterator::Safe(ref mut it) => it.next(),
+            PatchIterator::Fast(ref mut it) => it.next(),
+            PatchIterator::Safe(ref mut it) => it.next(),
         }
     }
 }
@@ -647,12 +649,10 @@ impl<'p> Iterator for SafePatchIterator<'p> {
                 return None;
             }
             let input_shape = &self.patch.spec.input_shape;
-            let img_offset =
-                self.patch.data_field.as_ptr().offset((self.item * input_shape.len()) as isize);
+            let img_offset = self.patch.data_field.as_ptr().add(self.item * input_shape.len());
 
             for ix in 0..input_shape.len() {
-                let pos = *self.input_patch_center.get_unchecked(ix) as isize
-                    + *img_offset.offset(ix as isize);
+                let pos = *self.input_patch_center.get_unchecked(ix) as isize + *img_offset.add(ix);
                 if pos < 0 || pos as usize >= *input_shape.get_unchecked(ix) {
                     self.item += 1;
                     return Some(None);

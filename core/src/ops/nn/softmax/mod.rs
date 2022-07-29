@@ -67,8 +67,7 @@ impl TypedOp for Softmax {
         inputs: &[&TypedFact],
         _outputs: &[&TypedFact],
     ) -> TractResult<Invariants> {
-        let axes = (0..inputs[0].rank()).map(|axis| AxisInfo::simple(axis)).collect();
-        Ok(axes)
+        Ok((0..inputs[0].rank()).map(AxisInfo::simple).collect())
     }
 
     fn change_axes(
@@ -178,7 +177,7 @@ impl Softmax {
 fn softmax_inner<T: Float + Datum + std::iter::Sum, D: Dimension>(mut view: ArrayViewMut<T, D>) {
     let max = *view.iter().max_by(|i, j| i.partial_cmp(j).unwrap()).unwrap();
     view.mapv_inplace(|x| (x - max).exp());
-    let exp_sum = view.iter().map(|it| *it).sum();
+    let exp_sum = view.iter().copied().sum();
     view.mapv_inplace(|x| x / exp_sum);
 }
 
@@ -201,7 +200,7 @@ fn softmax_quant_inner<D: Dimension>(
     // Handle the case were we considered an i8 as an u8 and still get the right x - max.
     let safe_u8 = if src_is_signed { |x: &u8| x.wrapping_add(128) } else { |x: &u8| *x };
 
-    let max = view.iter().map(|it| safe_u8(it)).max().unwrap();
+    let max = view.iter().map(safe_u8).max().unwrap();
     view.iter().zip(buffer.iter_mut()).for_each(|(x, exp)| {
         let input_diff = safe_u8(x) as i32 - max as i32;
 
@@ -392,17 +391,14 @@ mod test {
         fn check(&self) -> Result<()> {
             let quantized = self.quantized();
             let reference = self.reference();
-            assert!(quantized
-                .iter()
-                .zip(reference.iter())
-                .all(|(quantized, expected)| {
-                    let abs_diff = if *quantized > *expected {
-                        quantized - *expected
-                    } else {
-                        expected - *quantized
-                    };
-                    abs_diff <= 1
-                }));
+            assert!(quantized.iter().zip(reference.iter()).all(|(quantized, expected)| {
+                let abs_diff = if *quantized > *expected {
+                    quantized - *expected
+                } else {
+                    expected - *quantized
+                };
+                abs_diff <= 1
+            }));
             Ok(())
         }
 
