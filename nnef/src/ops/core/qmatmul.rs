@@ -138,6 +138,7 @@ fn qmatmul_unary_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option
     Ok(Some(invocation("tract_core_qmatmul", &[], &*named_args)))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn values_to_qparams(
     a0: Option<Value>,
     a_scale: Option<Value>,

@@ -17,11 +17,13 @@ pub struct Nnef {
     pub registries: Vec<Registry>,
 }
 
-impl Nnef {
-    pub fn new() -> Nnef {
+impl Default for Nnef {
+    fn default() -> Nnef {
         Nnef { stdlib: stdlib(), registries: vec![crate::ops::tract_nnef()] }
     }
+}
 
+impl Nnef {
     pub fn with_registry(mut self, registry: Registry) -> Nnef {
         self.registries.push(registry);
         self
@@ -46,7 +48,7 @@ impl Nnef {
 
     pub fn write_to_tar<W: std::io::Write>(&self, model: &TypedModel, w: W) -> TractResult<W> {
         let proto_model =
-            crate::ser::to_proto_model(&self, model).context("Translating model to proto_model")?;
+            crate::ser::to_proto_model(self, model).context("Translating model to proto_model")?;
         let mut ar = tar::Builder::new(w);
         let mut graph_data = vec![];
         crate::ast::dump::Dumper::new(&mut graph_data)
@@ -105,7 +107,7 @@ impl Nnef {
         if path.exists() {
             bail!("{:?} already exists. Won't overwrite.", path);
         }
-        let proto_model = crate::ser::to_proto_model(&self, model)?;
+        let proto_model = crate::ser::to_proto_model(self, model)?;
         std::fs::create_dir_all(path)?;
         let mut graph_nnef = std::fs::File::create(path.join("graph.nnef"))?;
         crate::ast::dump::Dumper::new(&mut graph_nnef).document(&proto_model.doc)?;

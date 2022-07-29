@@ -75,9 +75,9 @@ impl<'mb> ModelBuilder<'mb> {
             .results
             .iter()
             .map(|s| {
-                Ok(vars
+                vars
                     .get(s)
-                    .with_context(|| format!("Could not find variable for output named `{}'", s))?)
+                    .with_context(|| format!("Could not find variable for output named `{}'", s))
             })
             .collect::<TractResult<TVec<&Value>>>()?;
 
@@ -173,7 +173,7 @@ impl<'mb> ModelBuilder<'mb> {
                     }
                 }
             }
-            self.model.node_mut(values[0].node).name = format!("{}", self.naming_scopes.join("."));
+            self.model.node_mut(values[0].node).name = self.naming_scopes.join(".").to_string();
             for (id, outlet) in identifiers.iter().zip(values.iter()) {
                 self.scopes.last_mut().unwrap().insert(id.to_string(), Value::Wire(*outlet));
             }
@@ -424,7 +424,7 @@ impl RValue {
                 ))
             }
             RValue::Literal(Literal::Numeric(f)) => {
-                if f.contains(".") || f.contains("e") {
+                if f.contains('.') || f.contains('e') {
                     f.parse::<f32>()
                         .map(Value::Scalar)
                         .with_context(|| format!("Can not parse {} as f32", f))

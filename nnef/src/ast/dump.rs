@@ -28,7 +28,7 @@ impl<'a> Dumper<'a> {
             writeln!(self.w, "extension {};", ext.join(" "))?;
         }
         if document.extension.len() > 0 {
-            writeln!(self.w, "")?;
+            writeln!(self.w)?;
         }
         self.fragments(&document.fragments)?;
         self.graph_def(&document.graph_def)?;
@@ -37,7 +37,7 @@ impl<'a> Dumper<'a> {
 
     pub fn fragments(&mut self, defs: &[FragmentDef]) -> TractResult<()> {
         for fragment_def in defs.iter().sorted_by_key(|frag| &frag.decl.id) {
-            self.fragment_def(&fragment_def)?
+            self.fragment_def(fragment_def)?
         }
         Ok(())
     }
@@ -100,11 +100,11 @@ impl<'a> Dumper<'a> {
 
     fn type_name(&mut self, name: &TypeName) -> TractResult<()> {
         let s = match name {
-            &TypeName::Integer => "integer",
-            &TypeName::Scalar => "scalar",
-            &TypeName::Logical => "logical",
-            &TypeName::String => "string",
-            &TypeName::Any => "?",
+            TypeName::Integer => "integer",
+            TypeName::Scalar => "scalar",
+            TypeName::Logical => "logical",
+            TypeName::String => "string",
+            TypeName::Any => "?",
         };
         write!(self.w, "{}", s)?;
         Ok(())
@@ -113,7 +113,7 @@ impl<'a> Dumper<'a> {
     fn type_spec(&mut self, spec: &TypeSpec) -> TractResult<()> {
         match spec {
             TypeSpec::Array(t) => {
-                self.type_spec(&t)?;
+                self.type_spec(t)?;
                 write!(self.w, "[]")?;
             }
             TypeSpec::Single(s) => self.type_name(s)?,
@@ -200,9 +200,9 @@ impl<'a> Dumper<'a> {
             }
             RValue::Binary(left, op, right) => {
                 write!(self.w, "(")?;
-                self.rvalue(&left)?;
+                self.rvalue(left)?;
                 write!(self.w, " {} ", op)?;
-                self.rvalue(&right)?;
+                self.rvalue(right)?;
                 write!(self.w, ")")?;
             }
             RValue::Comprehension(comp) => self.comprehension(comp)?,
@@ -214,7 +214,7 @@ impl<'a> Dumper<'a> {
                 write!(self.w, " else ")?;
                 self.rvalue(&ifte.otherwise)?;
             }
-            RValue::Invocation(inv) => self.invocation(&inv)?,
+            RValue::Invocation(inv) => self.invocation(inv)?,
             RValue::Literal(lit) => self.literal(lit)?,
             RValue::Subscript(left, s) => {
                 self.rvalue(left)?;

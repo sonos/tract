@@ -10,6 +10,12 @@ use tract_core::ops::binary::*;
 
 pub type ToTract = fn(&mut ModelBuilder, &ResolvedInvocation) -> TractResult<TVec<OutletId>>;
 pub type FromTract = fn(&mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>>;
+pub type BinOp = (String, Box<dyn BinMiniOp>, Option<Box<dyn BinMiniOp>>);
+pub type Extension = Box<
+    dyn Fn(&mut crate::deser::ModelBuilder, &[String]) -> TractResult<ControlFlow<(), ()>>
+        + Send
+        + Sync,
+>;
 
 pub struct Registry {
     pub id: String,
@@ -18,15 +24,9 @@ pub struct Registry {
     pub primitives: HashMap<String, (Vec<ast::Parameter>, ToTract)>,
     pub unit_element_wise_ops: Vec<(String, Box<dyn ElementWiseMiniOp>)>,
     pub element_wise_ops: Vec<(String, TypeId, FromTract, Vec<ast::Parameter>, ToTract)>,
-    pub binary_ops: Vec<(String, Box<dyn BinMiniOp>, Option<Box<dyn BinMiniOp>>)>,
+    pub binary_ops: Vec<BinOp>,
     pub from_tract: HashMap<TypeId, FromTract>,
-    pub extensions: Vec<
-        Box<
-            dyn Fn(&mut crate::deser::ModelBuilder, &[String]) -> TractResult<ControlFlow<(), ()>>
-                + Send
-                + Sync,
-        >,
-    >,
+    pub extensions: Vec<Extension>,
 }
 
 impl Registry {
@@ -107,11 +107,10 @@ impl Registry {
                     let a = ast.mapping[&node.inputs[0]].clone();
                     return Ok(Some(invocation(&*op.0, &[a], &[])));
                 }
-            } else {
-                if let Some(op) = self.element_wise_ops.iter().find(|ew| ew.1 == op.0.type_id()) {
-                    if let Some(result) = (op.2)(ast, node)? {
-                        return Ok(Some(result));
-                    }
+            } else if let Some(op) = self.element_wise_ops.iter().find(|ew| ew.1 == op.0.type_id())
+            {
+                if let Some(result) = (op.2)(ast, node)? {
+                    return Ok(Some(result));
                 }
             }
         } else if let Some(op) = node.op().downcast_ref::<ops::binary::TypedBinOp>() {
