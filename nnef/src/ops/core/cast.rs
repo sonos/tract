@@ -39,7 +39,7 @@ fn cast_load(
             dt
         }
     } else {
-        invocation_dt.ok_or(format_err!("No datum type for cast"))?
+        invocation_dt.context("No datum type for cast")?
     };
     builder.wire(Cast { to }, &[input])
 }

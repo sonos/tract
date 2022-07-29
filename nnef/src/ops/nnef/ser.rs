@@ -172,6 +172,7 @@ pub fn make_conv_named_args<'a>(
     Ok(named_args)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn conv_or_deconv(
     ast: &mut IntoAst,
     node: &TypedNode,
@@ -203,7 +204,7 @@ pub fn conv_or_deconv(
     let named_args = make_conv_named_args(node, pool_spec, group, deconv, adjustments)?;
 
     let name = if deconv { "deconv" } else { "conv" };
-    wire = invocation(name, &inputs, &&named_args);
+    wire = invocation(name, &inputs, &named_args);
     // need to force quantization storage as output code may miss it
     let var_name = format!("{}_{}", node.name, name);
     if let Some(qp) = QuantFormat::from_dt(node.outputs[0].fact.datum_type) {

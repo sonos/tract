@@ -72,8 +72,8 @@ fn ser_scan(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValu
             InputMapping::State { initializer } => {
                 let kname = format!("{}_state_init_{}", node.name, state.len());
                 let initializer = match &initializer {
-                    &StateInitializer::Value(v) => ast.konst_variable(kname, v)?,
-                    &StateInitializer::FromInput(slot) => ast.mapping[&node.inputs[*slot]].clone(),
+                    StateInitializer::Value(v) => ast.konst_variable(kname, v)?,
+                    StateInitializer::FromInput(slot) => ast.mapping[&node.inputs[*slot]].clone(),
                 }
                 .as_ref()
                 .clone();
@@ -194,9 +194,9 @@ fn de_scan(
         .results
         .iter()
         .map(|r| {
-            Ok(body.scopes.last().unwrap().get(&r.id).with_context(|| {
+            body.scopes.last().unwrap().get(&r.id).with_context(|| {
                 format!("Could not find variable for scan output named `{}'", r.id)
-            })?)
+            })
         })
         .collect::<TractResult<Vec<&Value>>>()?;
 

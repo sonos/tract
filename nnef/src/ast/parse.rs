@@ -7,7 +7,7 @@ use nom::{bytes::complete::*, character::complete::*, combinator::*, multi::*, s
 
 use crate::ast::*;
 
-pub(super) fn translate_error<'s, E: std::fmt::Debug>(e: E) -> TractError {
+pub(super) fn translate_error<E: std::fmt::Debug>(e: E) -> TractError {
     format_err!("Fail to parse NNEF document: {:?}", e)
 }
 
@@ -391,9 +391,9 @@ fn string_literal(i: &str) -> IResult<&str, String> {
             |v: Vec<char>| v.into_iter().collect(),
         )(i)
     }
-    map(alt((delimited(tag("'"), inner, tag("'")), delimited(tag("\""), inner, tag("\"")))), |s| {
-        s.into()
-    })(i)
+    map(alt((delimited(tag("'"), inner, tag("'")), delimited(tag("\""), inner, tag("\"")))), |s| s)(
+        i,
+    )
 }
 
 pub(super) fn logical_literal(i: &str) -> IResult<&str, bool> {

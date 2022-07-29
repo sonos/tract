@@ -11,7 +11,7 @@ pub fn to_proto_model(framework: &Nnef, model: &TypedModel) -> TractResult<Proto
 pub fn to_fragment_def(
     parent: &IntoAst,
     model: &TypedModel,
-    ) -> TractResult<(FragmentDef, Vec<RequiredTensorParameter>)> {
+) -> TractResult<(FragmentDef, Vec<RequiredTensorParameter>)> {
     let mut into_ast = IntoAst::new(parent.framework, model);
     into_ast.parent = Some(parent);
     into_ast.translate()?;
@@ -141,35 +141,35 @@ impl<'a> IntoAst<'a> {
         parameters.extend(tensor_params.iter().map(|rtp| rtp.parameter_id.clone()).sorted());
         let mut id = prefix
             .map(|p| p.trim_end_matches(&['-', '/', '.'][..]).replace(&['-', '/', '.'][..], "_"))
-            .unwrap_or("network".into());
+            .unwrap_or_else(|| "network".into());
         if id.len() > 0 && char::is_digit(id.chars().next().unwrap(), 10) {
             id = "_".to_string() + &id;
         }
         let body = body
             .into_iter()
             .filter(|assign| match &assign.left {
-                LValue::Identifier(id) => !parameters.contains(&id),
+                LValue::Identifier(id) => !parameters.contains(id),
                 _ => true,
             })
-        .collect();
+            .collect();
         Ok((
-                FragmentDef {
-                    decl: FragmentDecl {
-                        id,
-                        generic_decl: None,
-                        parameters: parameters
-                            .into_iter()
-                            .map(|s| TypeName::Scalar.tensor().named(s))
-                            .collect(),
-                            results: results
-                                .into_iter()
-                                .map(|s| Result_ { id: s, spec: TypeName::Scalar.tensor() })
-                                .collect(),
-                    },
-                    body: Some(body),
+            FragmentDef {
+                decl: FragmentDecl {
+                    id,
+                    generic_decl: None,
+                    parameters: parameters
+                        .into_iter()
+                        .map(|s| TypeName::Scalar.tensor().named(s))
+                        .collect(),
+                    results: results
+                        .into_iter()
+                        .map(|s| Result_ { id: s, spec: TypeName::Scalar.tensor() })
+                        .collect(),
                 },
-                tensor_params,
-                ))
+                body: Some(body),
+            },
+            tensor_params,
+        ))
     }
 
     pub fn into_proto_model(mut self) -> TractResult<ProtoModel> {
@@ -182,17 +182,15 @@ impl<'a> IntoAst<'a> {
             .collect::<TractResult<Vec<_>>>()?;
         let version = env!("CARGO_PKG_VERSION");
         properties.push(tuple_2(
-                string("tract_nnef_ser_version".to_string()),
-                self.konst("tract_nnef_ser_version", &rctensor0(version.to_string()))?
-                .as_ref()
-                .clone(),
-                ));
+            string("tract_nnef_ser_version".to_string()),
+            self.konst("tract_nnef_ser_version", &rctensor0(version.to_string()))?.as_ref().clone(),
+        ));
         properties.push(tuple_2(
-                string("tract_nnef_format_version".to_string()),
-                self.konst("tract_nnef_format_version", &rctensor0("beta1".to_string()))?
+            string("tract_nnef_format_version".to_string()),
+            self.konst("tract_nnef_format_version", &rctensor0("beta1".to_string()))?
                 .as_ref()
                 .clone(),
-                ));
+        ));
         let properties: Assignment = assignment("properties", Arc::new(array(properties)));
         let IntoAst { prefix, mut fragments, body, tensors, parameters, results, .. } = self;
         let mut id = prefix
@@ -250,9 +248,9 @@ impl<'a> IntoAst<'a> {
                 if node.outputs.len() > 1 {
                     self.body.push(Assignment {
                         left: LValue::Tuple(
-                                  names.iter().map(|n| LValue::Identifier(n.clone())).collect(),
-                                  ),
-                                  right: outputs.as_ref().clone(),
+                            names.iter().map(|n| LValue::Identifier(n.clone())).collect(),
+                        ),
+                        right: outputs.as_ref().clone(),
                     });
                 } else {
                     self.assignment(&names[0], outputs);
@@ -280,7 +278,7 @@ impl<'a> IntoAst<'a> {
             bail!(
                 "Registry {} required, consider allowing it on the NNEF framework.",
                 required_registries[0]
-                );
+            );
         } else {
             bail!("One of the following registries is required: {:?}, consider allowing one on the NNEF framework.", required_registries);
         }
@@ -301,7 +299,7 @@ impl<'a> IntoAst<'a> {
         if name.len() > 0 && !char::is_alphabetic(name.chars().next().unwrap()) {
             name = "_".to_string() + &name;
         }
-        name.replace("/", "_").replace(".", "_").replace("-", "_").replace(":", "_").into()
+        name.replace('/', "_").replace('.', "_").replace('-', "_").replace(':', "_")
     }
 
     pub fn force_variable(&mut self, name: impl Into<String>, exp: &Arc<RValue>) -> Arc<RValue> {
@@ -318,7 +316,7 @@ impl<'a> IntoAst<'a> {
         &mut self,
         name: impl Into<String>,
         exp: &Arc<RValue>,
-        ) -> Arc<RValue> {
+    ) -> Arc<RValue> {
         let name = name.into();
         if let RValue::Identifier(id) = exp.as_ref() {
             if &name == id {
@@ -334,7 +332,7 @@ impl<'a> IntoAst<'a> {
         &mut self,
         name: impl Into<String>,
         tensor: &Arc<Tensor>,
-        ) -> TractResult<Arc<RValue>> {
+    ) -> TractResult<Arc<RValue>> {
         self.do_konst(name, tensor, false)
     }
 
@@ -342,7 +340,7 @@ impl<'a> IntoAst<'a> {
         &mut self,
         name: impl Into<String>,
         tensor: &Arc<Tensor>,
-        ) -> TractResult<Arc<RValue>> {
+    ) -> TractResult<Arc<RValue>> {
         self.do_konst(name, tensor, true)
     }
 
@@ -351,7 +349,7 @@ impl<'a> IntoAst<'a> {
         name: impl Into<String>,
         tensor: &Arc<Tensor>,
         force_variable: bool,
-        ) -> TractResult<Arc<RValue>> {
+    ) -> TractResult<Arc<RValue>> {
         let name = name.into();
         if !force_variable && tensor.len() == 1 {
             if tensor.datum_type() == String::datum_type() {
@@ -379,7 +377,7 @@ impl<'a> IntoAst<'a> {
                 ],
             })
             .into(),
-            );
+        );
         if let Some(qp) = QuantFormat::from_dt(tensor.datum_type()) {
             self.quantization.insert(id.clone(), qp);
         }
@@ -404,7 +402,7 @@ pub fn ints(shape: &[usize]) -> RValue {
 }
 
 pub fn tdims(shape: &[TDim]) -> RValue {
-    RValue::Array(shape.iter().map(|s| tdim(s)).collect())
+    RValue::Array(shape.iter().map(tdim).collect())
 }
 
 pub fn tdim(dim: &TDim) -> RValue {
@@ -412,28 +410,23 @@ pub fn tdim(dim: &TDim) -> RValue {
         TDim::Val(x) => numeric(x),
         TDim::Sym(s) => ident(format!("{}", s.as_char())),
         TDim::Add(terms) => {
-            let terms = terms.iter().map(|x| tdim(x)).collect::<Vec<_>>();
+            let terms = terms.iter().map(tdim).collect::<Vec<_>>();
             terms
                 .into_iter()
                 .reduce(|x, y| RValue::Binary(x.boxed(), "+".to_string(), y.boxed()))
                 .unwrap()
         }
         TDim::Mul(terms) => {
-            let terms = terms.iter().map(|x| tdim(x)).collect::<Vec<_>>();
+            let terms = terms.iter().map(tdim).collect::<Vec<_>>();
             terms
                 .into_iter()
                 .reduce(|x, y| RValue::Binary(x.boxed(), "*".to_string(), y.boxed()))
                 .unwrap()
         }
-        TDim::MulInt(x, y) => {
-            RValue::Binary(numeric(x).boxed(), "*".to_string(), tdim(y).boxed())
-        }
-        TDim::Div(x, y) => {
-            RValue::Binary(tdim(&x).boxed(), "/".to_string(), numeric(y).boxed())
-        }
+        TDim::MulInt(x, y) => RValue::Binary(numeric(x).boxed(), "*".to_string(), tdim(y).boxed()),
+        TDim::Div(x, y) => RValue::Binary(tdim(x).boxed(), "/".to_string(), numeric(y).boxed()),
     }
 }
-
 
 pub fn string(s: impl Into<String>) -> RValue {
     RValue::Literal(Literal::String(s.into()))
@@ -452,7 +445,7 @@ pub fn ident(s: impl Into<String>) -> RValue {
 }
 
 pub fn array(items: impl AsRef<[RValue]>) -> RValue {
-    RValue::Array(items.as_ref().iter().cloned().collect())
+    RValue::Array(items.as_ref().to_vec())
 }
 
 pub fn tuple_2(a: RValue, b: RValue) -> RValue {
@@ -468,7 +461,7 @@ pub fn tuple_4(a: RValue, b: RValue, c: RValue, d: RValue) -> RValue {
 }
 
 pub fn numeric<D: std::fmt::Debug>(num: D) -> RValue {
-    RValue::Literal(Literal::Numeric(format!("{:?}", num))).into()
+    RValue::Literal(Literal::Numeric(format!("{:?}", num)))
 }
 
 pub fn named_arg(id: &str, rv: RValue) -> Argument {
