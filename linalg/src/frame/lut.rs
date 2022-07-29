@@ -1,26 +1,44 @@
 use std::fmt;
+use std::hash::Hash;
 use std::marker::PhantomData;
 use tract_data::internal::*;
 
-pub trait Lut: fmt::Debug + dyn_clone::DynClone + Send + Sync {
+pub trait Lut: fmt::Debug + dyn_clone::DynClone + Send + Sync + DynHash {
     fn table(&self) -> &[u8];
     fn run(&self, buf: &mut [u8]);
 }
 
 dyn_clone::clone_trait_object!(Lut);
 
-#[derive(Debug, Clone)]
+impl std::hash::Hash for Box<dyn Lut> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        use std::any::Any;
+        std::hash::Hash::hash(&self.type_id(), state);
+        self.dyn_hash(state)
+    }
+}
+
+#[derive(Debug, Clone, Hash)]
 pub struct LutImpl<K>
 where
-    K: LutKer,
+    K: LutKer + Hash,
 {
     table: Tensor,
     _boo: PhantomData<K>,
 }
 
+impl<K> DynHash for LutImpl<K>
+where
+    K: LutKer + Hash,
+{
+    fn dyn_hash(&self, state: &mut dyn std::hash::Hasher) {
+        tract_data::hash::dyn_hash(self, state)
+    }
+}
+
 impl<K> LutImpl<K>
 where
-    K: LutKer,
+    K: LutKer + Hash,
 {
     pub fn new(table: &[u8]) -> LutImpl<K> {
         unsafe {
@@ -39,7 +57,7 @@ where
 
 impl<K> Lut for LutImpl<K>
 where
-    K: LutKer,
+    K: LutKer + Hash,
 {
     fn table(&self) -> &[u8] {
         self.table.as_slice().unwrap()

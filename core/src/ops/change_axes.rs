@@ -1010,8 +1010,7 @@ mod proptests {
         type Parameters = TVec<usize>;
         type Strategy = BoxedStrategy<AxisOp>;
         fn arbitrary_with(shape: TVec<usize>) -> Self::Strategy {
-            let mut ops: BoxedStrategy<AxisOp> =
-                (0usize..shape.len() + 1).prop_map(|ax| Add(ax)).boxed();
+            let mut ops: BoxedStrategy<AxisOp> = (0usize..shape.len() + 1).prop_map(Add).boxed();
             if shape.len() > 1 {
                 ops = ops
                     .prop_union(
@@ -1019,8 +1018,7 @@ mod proptests {
                     )
                     .boxed()
             }
-            let rms =
-                (0..shape.len()).filter(|&ax| shape[ax] == 1).map(|ax| Rm(ax)).collect::<Vec<_>>();
+            let rms = (0..shape.len()).filter(|&ax| shape[ax] == 1).map(Rm).collect::<Vec<_>>();
             if rms.len() > 0 {
                 ops = ops
                     .prop_union((0..rms.len()).prop_map(move |rm| rms[rm].clone()).boxed())
@@ -1054,7 +1052,7 @@ mod proptests {
                 if len == 0 {
                     Just(tvec!()).boxed()
                 } else {
-                    AxisOp::arbitrary_with(shape.clone().into())
+                    AxisOp::arbitrary_with(shape.clone())
                         .prop_flat_map(move |op| {
                             let mut shape = shape.clone();
                             op.change_shape_array(&mut shape, false).unwrap();

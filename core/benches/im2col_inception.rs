@@ -11,6 +11,7 @@ use tract_core::ops::cnn::PaddingSpec::SameUpper as Same;
 use tract_core::ops::cnn::PaddingSpec::Valid;
 use tract_core::ops::{cnn, nn};
 
+#[allow(clippy::too_many_arguments)]
 fn b(
     c: &mut Criterion,
     name: &str,

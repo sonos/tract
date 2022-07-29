@@ -46,13 +46,12 @@ impl EvalOp for MatMulUnary {
 
 impl TypedOp for MatMulUnary {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        if inputs[0].rank() != self.a.rank() {
-            bail!(
-                "Inconsistent matmul between input {:?} and attribute {:?} (rank mismatch)",
-                inputs[0],
-                self.a
-            );
-        }
+        ensure!(
+            inputs[0].rank() == self.a.rank(),
+            "Inconsistent matmul between input {:?} and attribute {:?} (rank mismatch)",
+            inputs[0],
+            self.a
+        );
         let (_m, _k, _n, c_shape) = compute_shape(
             &self.a.shape().iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
             &inputs[0].shape,
@@ -65,7 +64,7 @@ impl TypedOp for MatMulUnary {
     }
 
     fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
-        mir_unary_invariants(&inputs[0], &outputs[0], &self.a, self.b_trans, self.c_trans)
+        mir_unary_invariants(inputs[0], outputs[0], &self.a, self.b_trans, self.c_trans)
     }
 
     fn change_axes(
@@ -122,7 +121,7 @@ impl TypedOp for MatMulUnary {
                     Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
                 Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
             }
-            _ => return Ok(None),
+            _ => Ok(None),
         }
     }
 
@@ -137,13 +136,9 @@ impl TypedOp for MatMulUnary {
                 .context("declutter precursor is concat")?
             {
                 Some(patch)
-            } else if let Some(patch) = self
-                .declutter_successors_are_slices(model, node)
-                .context("declutter succsessors are slice")?
-            {
-                Some(patch)
             } else {
-                None
+                self.declutter_successors_are_slices(model, node)
+                    .context("declutter succsessors are slice")?
             },
         )
     }
@@ -167,9 +162,10 @@ impl TypedOp for MatMulUnary {
     ) -> TractResult<Option<TypedModelPatch>> {
         let b = args_1!(model.node_input_facts(node.id)?);
         if let Some(b_shape) = b.shape.as_concrete() {
-            return Ok(Some(self.new_mat_mul_unary_finite(model, node, &b_shape, b.datum_type)?));
+            Ok(Some(self.new_mat_mul_unary_finite(model, node, b_shape, b.datum_type)?))
+        } else {
+            Ok(None)
         }
-        Ok(None)
     }
 
     as_op!();
@@ -188,7 +184,7 @@ impl MatMulUnary {
 
         let c_dt = output_type(self.a.datum_type());
         let (m, k, n, c_shape) =
-            compute_shape(&self.a.shape(), b_shape, self.a_trans, self.b_trans, self.c_trans)?;
+            compute_shape(self.a.shape(), b_shape, self.a_trans, self.b_trans, self.c_trans)?;
 
         let mmm = tract_linalg::ops()
             .mmm(self.a.datum_type(), b_dt, c_dt, Some(m), Some(k), Some(n))
@@ -433,7 +429,7 @@ pub(super) fn mir_unary_invariants(
         broadcasted_a_shape.insert(0, 1);
     }
     let mut invars = broadcasted_a_shape[..broadcasted_a_shape.len() - 2]
-        .into_iter()
+        .iter()
         .enumerate()
         .map(|(axis, &period)| AxisInfo::simple(axis).with_period(period))
         .collect::<Vec<_>>();

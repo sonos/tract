@@ -27,7 +27,7 @@ pub fn pull_downsample_over_slice(
     let op = ops::array::Slice::new(slice_op.axis, new_start.to_dim(), new_end.to_dim());
     let new_slice = patch.wire_node(&*slice_node.name, op, &*ds)?[0];
     patch.shunt_outside(model, OutletId::new(down_node.id, 0), new_slice)?;
-    return Ok(Some(patch));
+    Ok(Some(patch))
 }
 
 pub fn pull_downsample_over_axis_op(
@@ -45,7 +45,7 @@ pub fn pull_downsample_over_axis_op(
     let wire = patch.wire_node(&*down_node.name, new_down, [tap].as_ref())?;
     let wire = patch.wire_node(&*axis_node.name, axis_op.clone(), &*wire)?[0];
     patch.shunt_outside(model, OutletId::new(down_node.id, 0), wire)?;
-    return Ok(Some(patch));
+    Ok(Some(patch))
 }
 
 #[cfg(test)]

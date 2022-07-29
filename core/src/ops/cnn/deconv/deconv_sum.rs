@@ -46,12 +46,12 @@ impl EvalOp for DeconvSum {
         debug_assert_eq!(gemm.datum_type(), f32::datum_type());
         let input_shape =
             self.input_shape.iter().map(|i| i.to_usize().unwrap()).collect::<TVec<usize>>();
-        let input_shape = self.pool_spec.data_format.shape(input_shape.clone())?;
+        let input_shape = self.pool_spec.data_format.shape(input_shape)?;
         let output_shape =
             super::output_shape(&self.pool_spec, &input_shape.shape, &self.adjustments)?;
         let output_shape = self.pool_spec.data_format.shape(output_shape)?;
         let spatial_output_details = self.pool_spec.padding.compute_for_deconv(
-            &input_shape.hw_dims(),
+            input_shape.hw_dims(),
             &self.pool_spec.kernel_shape,
             &self.pool_spec.dilations(),
             &self.pool_spec.strides(),
@@ -65,9 +65,9 @@ impl EvalOp for DeconvSum {
                     let slice = tensor.as_ptr_mut::<f32>()?;
                     let stride = *output_shape.c_stride();
                     for ix in 0..b.len() {
-                        let v = *values.offset(ix as isize);
+                        let v = *values.add(ix);
                         for p in 0..stride {
-                            *slice.offset((stride * ix + p) as isize) = v;
+                            *slice.add(stride * ix + p) = v;
                         }
                     }
                     tensor
@@ -129,6 +129,14 @@ impl EvalOp for DeconvSum {
             )?,
         }
         Ok(tvec!(tensor.into_arc_tensor()))
+    }
+
+    fn state(
+        &self,
+        _session: &mut SessionState,
+        _node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        Ok(None)
     }
 }
 
@@ -205,9 +213,7 @@ impl DeconvSum {
         let ky_len = self.pool_spec.kernel_shape[1];
         unsafe {
             for n in 0..n {
-                let output = output
-                    .as_mut_ptr()
-                    .offset((n * *output_shape.n_stride().unwrap_or(&0)) as isize);
+                let output = output.as_mut_ptr().add(n * *output_shape.n_stride().unwrap_or(&0));
                 let temp = n_o_hkwk_hw.as_ptr().offset(n as isize * temp_n_stride);
                 for kx in 0..kx_len {
                     let temp = temp.offset((kx * ky_len) as isize * temp_k_stride);
@@ -245,6 +251,8 @@ impl DeconvSum {
     }
 
     #[inline(never)]
+    #[allow(clippy::erasing_op)]
+    #[allow(clippy::identity_op)]
     unsafe fn main_loop_2d_inner(
         output_c: usize,
         temp: *const f32,

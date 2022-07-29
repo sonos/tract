@@ -55,7 +55,7 @@ where
 {
     /// This contructor returns a plan that will compute all the model default outputs in one pass.
     pub fn new(model: M) -> TractResult<SimplePlan<F, O, M>> {
-        let outputs = model.borrow().output_outlets()?.iter().cloned().collect::<Vec<OutletId>>();
+        let outputs = model.borrow().output_outlets()?.to_vec();
         Self::new_for_outputs(model, &outputs)
     }
 
@@ -78,8 +78,8 @@ where
         let outputs_nodes = outputs.iter().map(|n| n.node).collect::<Vec<usize>>();
         let order = eval_order_for_nodes(model.borrow().nodes(), &inputs, &outputs_nodes, deps)?;
         let mut values_needed_until_step = vec![0; model.borrow().nodes().len()];
-        for step in 0..order.len() {
-            for i in &model.borrow().node(order[step]).inputs {
+        for (step, node) in order.iter().enumerate() {
+            for i in &model.borrow().node(*node).inputs {
                 values_needed_until_step[i.node] = step;
             }
         }
@@ -230,7 +230,7 @@ where
                     let prec = values[i.node].as_ref().ok_or_else(|| {
                         format_err!("Computing {}, precursor {} not done:", node, prec_node)
                     })?;
-                    inputs.push(prec[i.slot].clone().into())
+                    inputs.push(prec[i.slot].clone())
                 }
 
                 for flush in &plan.flush_lists[step] {
@@ -261,9 +261,8 @@ where
                     }
                 }
 
-                let vs =
-                    eval(session_state, states[node.id].as_mut().map(|s| &mut **s), node, inputs)
-                        .map_err(|e| e.into())?;
+                let vs = eval(session_state, states[node.id].as_deref_mut(), node, inputs)
+                    .map_err(|e| e.into())?;
 
                 if plan.has_unresolved_symbols {
                     for (o, v) in node.outputs.iter().zip(vs.iter()) {
@@ -425,6 +424,7 @@ where
 
     pub fn compute_recursively(&mut self, node: usize) -> TractResult<&[Arc<Tensor>]> {
         let values = {
+            #[allow(clippy::needless_collect)] // clippy bug ?
             let precs: Vec<usize> =
                 self.model().nodes()[node].inputs.iter().map(|i| i.node).collect();
             for i in precs.into_iter() {
@@ -436,7 +436,7 @@ where
             {
                 let node = &self.model().nodes()[node];
                 for i in &node.inputs {
-                    inputs.push(self.values[i.node].as_ref().unwrap()[i.slot].clone().into())
+                    inputs.push(self.values[i.node].as_ref().unwrap()[i.slot].clone())
                 }
             }
             let Self { ref mut states, ref mut session_state, ref plan, .. } = self;
@@ -468,7 +468,7 @@ where
     }
 
     pub fn plan(&self) -> &SimplePlan<F, O, M> {
-        &self.plan.borrow()
+        self.plan.borrow()
     }
 
     pub fn model(&self) -> &Graph<F, O> {

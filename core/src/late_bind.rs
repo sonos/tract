@@ -44,7 +44,7 @@ impl<S: ResolveTo<C>, C: Clone> GeometryBound<S, C> {
 
     pub fn optimize_if(self, param: Option<&S::Param>) -> TractResult<Self> {
         if let Some(param) = param {
-            self.into_concrete(&param)
+            self.into_concrete(param)
         } else {
             Ok(self)
         }

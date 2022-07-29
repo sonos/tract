@@ -10,7 +10,7 @@ pub struct PropConst;
 
 impl super::TypedPass for PropConst {
     fn reset(&mut self) -> TractResult<()> {
-        return Ok(());
+        Ok(())
     }
     fn next(
         &mut self,

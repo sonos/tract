@@ -55,7 +55,7 @@ impl SumPool {
             pool_spec: self.pool_spec.clone(),
             count_include_pad: self.count_include_pad,
             normalize: self.normalize,
-            geometry: self.pool_spec.compute_geo(&input_shape)?,
+            geometry: self.pool_spec.compute_geo(input_shape)?,
         })
     }
 }

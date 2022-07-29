@@ -33,7 +33,7 @@ impl ShapeFact {
     }
 
     /// Iterator over dimension of the shape.
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = TDim> + 'a {
+    pub fn iter(&self) -> impl Iterator<Item = TDim> + '_ {
         self.dims.iter().cloned()
     }
 
@@ -56,7 +56,7 @@ impl ShapeFact {
         } else {
             Ok(Cow::Owned(
                 self.iter()
-                    .map(|d| d.eval(&values).to_usize())
+                    .map(|d| d.eval(values).to_usize())
                     .collect::<TractResult<TVec<_>>>()?,
             ))
         }
@@ -69,7 +69,7 @@ impl ShapeFact {
         } else {
             Ok(Cow::Owned(
                 self.iter()
-                    .map(|d| d.eval(&values).to_isize())
+                    .map(|d| d.eval(values).to_isize())
                     .collect::<TractResult<TVec<_>>>()?,
             ))
         }
@@ -187,8 +187,8 @@ impl TypedFact {
     where
         T: Datum,
     {
-        let foo: &[usize] = &[];
-        Self::dt_shape(T::datum_type(), foo)
+        let void: &[usize] = &[];
+        Self::dt_shape(T::datum_type(), void)
     }
 
     pub fn shape<T, S>(shape: S) -> TypedFact
@@ -200,8 +200,8 @@ impl TypedFact {
     }
 
     pub fn dt_scalar(datum_type: DatumType) -> TypedFact {
-        let foo: &[usize] = &[];
-        TypedFact { datum_type, shape: ShapeFact::from(foo), konst: None, uniform: None }
+        let void: &[usize] = &[];
+        TypedFact { datum_type, shape: ShapeFact::from(void), konst: None, uniform: None }
     }
 
     pub fn dt_shape<S>(datum_type: DatumType, shape: S) -> TypedFact

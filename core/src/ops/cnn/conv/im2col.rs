@@ -8,8 +8,7 @@ use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolGeometry};
 use crate::ops::cnn::{GeometryBound, PoolSpec, ResolveTo};
 use crate::ops::nn::{BaseDataShape, DataFormat, DataShape};
 
-#[derive(Debug, Clone, PartialEq, Educe)]
-#[educe(Hash)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub struct Im2Col {
     pub pool_spec: PoolSpec,
     pub group: usize,
@@ -147,7 +146,7 @@ impl Im2Col {
             output_shape.push(group.into());
         }
         let n: D = conv_output_shape.hw_dims().iter().cloned().product();
-        output_shape.push(b_pack.len(k.into(), n).into());
+        output_shape.push(b_pack.len(k.into(), n));
         Ok(output_shape)
     }
 }
@@ -172,7 +171,7 @@ impl EvalOp for Im2Col {
     }
 
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let geometry = self.geometry.to_concrete(&inputs[0].shape())?;
+        let geometry = self.geometry.to_concrete(inputs[0].shape())?;
         unsafe {
             let mut input = inputs.remove(0).into_tensor();
             let pad_value = if inputs.len() > 0 { Some(inputs.remove(0)) } else { None };
@@ -296,16 +295,14 @@ impl Patcher {
             let mut mega_matrix = Tensor::uninitialized::<T>(&[geometry.k, geometry.n])?;
             let mut mega_matrix_view = mega_matrix.to_array_view_mut_unchecked::<T>();
             let ptr = input.as_ptr_unchecked::<T>();
-            let ptr = ptr.offset(
-                (geometry.input_shape_with_n.c_stride() * (g * geometry.ci_per_group)) as isize,
-            );
+            let ptr = ptr.add(geometry.input_shape_with_n.c_stride() * (g * geometry.ci_per_group));
             for (spatial, mut col) in ndarray::indices(&*geometry.pool.patch.output_shape)
                 .into_iter()
                 .zip(mega_matrix_view.axis_iter_mut(Axis(1)))
             {
                 let mut col = col.iter_mut();
                 for ci in 0..geometry.ci_per_group {
-                    let ptr = ptr.offset((geometry.input_shape_with_n.c_stride() * ci) as isize);
+                    let ptr = ptr.add(geometry.input_shape_with_n.c_stride() * ci);
                     for v in geometry.pool.patch.at(spatial.slice()) {
                         *col.next().expect("geometry error in conv") =
                             v.map(|o| *ptr.offset(o)).unwrap_or(pad_value);
@@ -332,9 +329,7 @@ impl Patcher {
             let mut writer =
                 geometry.b_pack.write_with_k_outer(pack.as_mut_ptr(), geometry.k, geometry.n);
             let iptr = input.as_ptr_unchecked::<T>();
-            let iptr = iptr.offset(
-                (g * geometry.ci_per_group * geometry.input_shape_with_n.c_stride()) as isize,
-            );
+            let iptr = iptr.add(g * geometry.ci_per_group * geometry.input_shape_with_n.c_stride());
             for ci in 0..geometry.ci_per_group {
                 let iptr = iptr.offset(ci as isize * c_stride);
                 for koffset in &geometry.pool.patch.standard_layout_data_field {
@@ -371,7 +366,7 @@ impl Patcher {
             let mut writer =
                 geometry.b_pack.write_with_k_outer(pack.as_mut_ptr(), geometry.k, geometry.n);
             let iptr = input.as_ptr_unchecked::<T>();
-            let iptr = iptr.offset((g * geometry.ci_per_group * shape.c_stride()) as isize);
+            let iptr = iptr.add(g * geometry.ci_per_group * shape.c_stride());
             let output_width = *geometry.pool.patch.output_shape.get_unchecked(1);
             for ci in 0..geometry.ci_per_group {
                 let iptr = iptr.offset(ci as isize * c_stride_ptr);
@@ -418,7 +413,7 @@ impl Patcher {
     }
 
     #[inline(never)]
-    unsafe fn padded_2d_invalid_x_loop<'i, 'p, T: Copy + Datum>(
+    unsafe fn padded_2d_invalid_x_loop<T: Copy + Datum>(
         count: usize,
         pad_value: T,
         writer: &mut tract_linalg::frame::pack::KOutWriter<T>,
@@ -429,7 +424,7 @@ impl Patcher {
     }
 
     #[inline(never)]
-    unsafe fn padded_2d_valid_x_loop<'i, 'p, T: Copy + Datum>(
+    unsafe fn padded_2d_valid_x_loop<T: Copy + Datum>(
         x_min: isize,
         x_max: isize,
         x_stride_ptr: isize,
@@ -459,7 +454,7 @@ impl Patcher {
             let mut writer =
                 geometry.b_pack.write_with_k_outer(pack.as_mut_ptr(), geometry.k, geometry.n);
             let iptr = input.as_ptr_unchecked::<T>();
-            let iptr = iptr.offset((g * geometry.ci_per_group * shape.c_stride()) as isize);
+            let iptr = iptr.add(g * geometry.ci_per_group * shape.c_stride());
             for ci in 0..geometry.ci_per_group {
                 let iptr = iptr.offset(ci as isize * c_stride_ptr);
                 for koffset in &geometry.pool.patch.standard_layout_data_field {

@@ -154,10 +154,9 @@ impl TypedOp for DequantizeLinearF32 {
             let q_params = if let Some(op) = quant.op_as::<ElementWiseOp>() {
                 if let Some(mop) = op.0.downcast_ref::<QuantizeLinearU8>() {
                     Some((mop.scale, mop.zero_point as i32, u8::datum_type()))
-                } else if let Some(mop) = op.0.downcast_ref::<QuantizeLinearI8>() {
-                    Some((mop.scale, mop.zero_point as i32, i8::datum_type()))
                 } else {
-                    None
+                    op.0.downcast_ref::<QuantizeLinearI8>()
+                        .map(|mop| (mop.scale, mop.zero_point as i32, i8::datum_type()))
                 }
             } else {
                 None
@@ -165,7 +164,7 @@ impl TypedOp for DequantizeLinearF32 {
             if let Some((scale, zero_point, dt)) = q_params {
                 // first, try Op::quantize() on all ops in the chain
                 let mut patch = TypedModelPatch::default();
-                let mut wire: OutletId = patch.tap_model(model, dequant.inputs[0])?.into();
+                let mut wire: OutletId = patch.tap_model(model, dequant.inputs[0])?;
                 let mut next = model.single_succ(dequant.id)?.unwrap();
                 loop {
                     if let Some(op) = next
@@ -197,7 +196,7 @@ impl TypedOp for DequantizeLinearF32 {
                         [wire].as_ref(),
                     )?[0];
                     while next.id != quant.id {
-                        name.get_or_insert_with(|| &*next.name);
+                        name.get_or_insert(&*next.name);
                         wire =
                             adhoc_model.wire_node(&*next.name, next.op.clone(), [wire].as_ref())?
                                 [0];
@@ -223,7 +222,8 @@ impl TypedOp for DequantizeLinearF32 {
                     };
                     let op = lookup_table((tract_linalg::ops().lut_u8)(table));
                     let mut patch = TypedModelPatch::default();
-                    let mut wire: OutletId = patch.tap_model(model, dequant.inputs[0])?.into();
+                    let mut wire: OutletId = patch.tap_model(model, dequant.inputs[0])?;
+
                     wire = patch.wire_node(name.unwrap_or(&*dequant.name), op, [wire].as_ref())?[0];
                     patch.shunt_outside(model, OutletId::new(quant.id, 0), wire)?;
                     return Ok(Some(patch));
@@ -248,7 +248,6 @@ impl TypedOp for DequantizeLinearF32 {
 
 element_wise_oop!(lookup_table,
  LookupTable {
-     #[educe(Hash(method="hash_lookup_table"))]
      table: Box<dyn Lut>
  },
  [i8] => i8 |op, xs, ys| {
@@ -265,10 +264,6 @@ element_wise_oop!(lookup_table,
      Ok(())
  }
 );
-
-fn hash_lookup_table<H: std::hash::Hasher>(lut: &Box<dyn Lut>, h: &mut H) {
-    Hash::hash_slice(lut.table(), h)
-}
 
 #[derive(Debug, Clone, Hash)]
 pub struct Scale;
@@ -408,13 +403,8 @@ pub mod scale {
             let plain = model.clone().into_runnable().unwrap().run(input.clone()).unwrap();
             assert_eq!(&plain[0], &expected);
 
-            let optim = model
-                .into_optimized()
-                .unwrap()
-                .into_runnable()
-                .unwrap()
-                .run(input.clone())
-                .unwrap();
+            let optim =
+                model.into_optimized().unwrap().into_runnable().unwrap().run(input).unwrap();
             assert_eq!(&optim[0], &expected);
         }
 
@@ -462,7 +452,7 @@ impl ElementWiseMiniOp for OffsetU8asI8 {
     }
     fn eval_out_of_place(&self, t: &Tensor) -> TractResult<Tensor> {
         let output_type = self.output_type(t.datum_type()).unwrap();
-        let mut dst = unsafe { Tensor::uninitialized_dt(output_type, &t.shape())? };
+        let mut dst = unsafe { Tensor::uninitialized_dt(output_type, t.shape())? };
         if t.datum_type().unquantized() == u8::datum_type() {
             t.as_slice::<u8>()?
                 .iter()

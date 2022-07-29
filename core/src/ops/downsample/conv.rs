@@ -33,5 +33,5 @@ pub fn fuse_downsample_into_conv(
     let tap = patch.tap_model(model, conv_node.inputs[0])?;
     let new_output = patch.wire_node(&*conv_node.name, new_conv, [tap].as_ref())?[0];
     patch.shunt_outside(model, OutletId::new(down_node.id, 0), new_output)?;
-    return Ok(Some(patch));
+    Ok(Some(patch))
 }
