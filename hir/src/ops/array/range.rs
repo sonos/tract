@@ -18,8 +18,8 @@ impl Expansion for Range {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 3)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 3)?;
+        check_output_arity(outputs, 1)?;
         s.given_3(
             &inputs[0].datum_type,
             &inputs[1].datum_type,

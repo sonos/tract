@@ -20,8 +20,8 @@ impl Expansion for GatherElements {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 2)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 2)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         s.equals(&inputs[0].rank, &inputs[1].rank)?;
         s.equals(&outputs[0].shape, &inputs[1].shape)?;

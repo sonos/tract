@@ -10,8 +10,8 @@ impl InferenceRulesOp for ElementWiseOp {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 1)?;
+        check_output_arity(outputs, 1)?;
         s.given(&inputs[0].datum_type, move |s, dt| {
             if let Some(dt) = self.0.output_type(dt) {
                 s.equals(&outputs[0].datum_type, dt)

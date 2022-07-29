@@ -10,8 +10,8 @@ impl InferenceRulesOp for SumPool {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 1)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         rules_for_shape(&self.pool_spec, s, inputs, outputs)
     }
@@ -27,7 +27,7 @@ impl InferenceRulesOp for MaxPool {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_output_arity(&outputs, 1 + self.with_index_outputs.is_some() as usize)?;
+        check_output_arity(outputs, 1 + self.with_index_outputs.is_some() as usize)?;
         s.equals(&outputs[0].rank, &inputs[0].rank)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         if let Some(idt) = self.with_index_outputs {
@@ -61,17 +61,17 @@ pub fn rules_for_shape<'r, 'p: 'r, 's: 'r>(
             pool_spec.dilations.as_ref().unwrap_or(&ones),
             pool_spec.strides.as_ref().unwrap_or(&ones),
         );
-        for o in 0..outputs.len() {
+        for o in outputs {
             for (ix, d) in computed.iter().enumerate() {
-                s.equals(&outputs[o].shape[ix + ishape.h_axis()], &d.convoluted)?;
+                s.equals(&o.shape[ix + ishape.h_axis()], &d.convoluted)?;
             }
             if ishape.n_axis().is_some() {
-                s.equals(&outputs[o].shape[ishape.n_axis().unwrap()], ishape.n_dim().unwrap())?;
+                s.equals(&o.shape[ishape.n_axis().unwrap()], ishape.n_dim().unwrap())?;
             }
             if let Some(c) = pool_spec.output_channel_override {
-                s.equals(&outputs[o].shape[ishape.c_axis()], c.to_dim())?;
+                s.equals(&o.shape[ishape.c_axis()], c.to_dim())?;
             } else {
-                s.equals(&outputs[o].shape[ishape.c_axis()], ishape.c_dim())?;
+                s.equals(&o.shape[ishape.c_axis()], ishape.c_dim())?;
             }
         }
         Ok(())

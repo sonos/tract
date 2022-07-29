@@ -57,13 +57,10 @@ impl InferenceFact {
 
     pub fn format_dt_shape(&self) -> String {
         if !self.shape.open && self.shape.dims.len() == 0 {
-            format!(
-                "{}",
-                self.datum_type
-                    .concretize()
-                    .map(|dt| format!("{:?}", dt))
-                    .unwrap_or("?".to_string())
-            )
+            self.datum_type
+                .concretize()
+                .map(|dt| format!("{:?}", dt))
+                .unwrap_or_else(|| "?".to_string())
         } else {
             format!(
                 "{:?},{}",
@@ -71,7 +68,7 @@ impl InferenceFact {
                 self.datum_type
                     .concretize()
                     .map(|dt| format!("{:?}", dt))
-                    .unwrap_or("?".to_string())
+                    .unwrap_or_else(|| "?".to_string())
             )
         }
     }
@@ -182,7 +179,7 @@ impl<'a> From<&'a TypedFact> for InferenceFact {
 }
 
 impl From<TypedFact> for InferenceFact {
-    fn from(t:TypedFact) -> InferenceFact {
+    fn from(t: TypedFact) -> InferenceFact {
         InferenceFact::from(&t)
     }
 }

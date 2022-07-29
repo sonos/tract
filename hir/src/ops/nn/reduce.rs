@@ -155,7 +155,7 @@ impl Reduce {
     }
 
     fn resolve_axis(axis: i64, rank: usize) -> TractResult<usize> {
-        if 0 <= axis && axis as usize <= rank - 1 {
+        if 0 <= axis && axis < rank as i64 {
             Ok(axis as usize)
         } else if -(rank as i64) <= axis && axis < 0 {
             Ok((axis + rank as i64) as usize)
@@ -189,8 +189,8 @@ impl Expansion for Reduce {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 1)?;
+        check_output_arity(outputs, 1)?;
         if let Reducer::ArgMax(_) | Reducer::ArgMin(_) = self.reducer {
             s.equals(&outputs[0].datum_type, DatumType::I64)?;
         } else {

@@ -13,7 +13,7 @@ impl_dyn_hash!(Concat);
 
 impl Concat {
     fn resolve_axis(&self, rank: i64) -> TractResult<usize> {
-        if 0 <= self.axis && self.axis <= rank - 1 {
+        if 0 <= self.axis && self.axis < rank {
             Ok(self.axis as usize)
         } else if -rank <= self.axis && self.axis < 0 {
             Ok((self.axis + rank) as usize)
@@ -36,7 +36,7 @@ impl Expansion for Concat {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_output_arity(&outputs, 1)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&outputs[0].rank, &inputs[0].rank)?;
         let n = inputs.len() as usize;
         s.equals_all((0..n).map(|i| (&inputs[i].rank).bex()).collect())?;

@@ -55,7 +55,7 @@ impl_dyn_hash!(Box<dyn Expansion>);
 
 impl Op for Box<dyn Expansion> {
     fn name(&self) -> Cow<str> {
-        self.as_ref().name().into()
+        self.as_ref().name()
     }
     fn op_families(&self) -> &'static [&'static str] {
         self.as_ref().op_families()
@@ -139,22 +139,22 @@ where
     expand(InferenceWrapper { typed_op: Box::new(op), rules: Arc::new(rules), outputs })
 }
 
+type RuleProducer = dyn for<'r, 'p, 's> Fn(
+        &'s dyn Op,
+        &mut Solver<'r>,
+        &'p [TensorProxy],
+        &'p [TensorProxy],
+    ) -> InferenceResult
+    + Send
+    + Sync
+    + 'static;
+
 #[derive(Clone, new, Educe)]
 #[educe(Hash)]
 pub struct InferenceWrapper {
     typed_op: Box<dyn TypedOp>,
     #[educe(Hash(ignore))]
-    rules: Arc<
-        dyn for<'r, 'p, 's> Fn(
-                &'s dyn Op,
-                &mut Solver<'r>,
-                &'p [TensorProxy],
-                &'p [TensorProxy],
-            ) -> InferenceResult
-            + Send
-            + Sync
-            + 'static,
-    >,
+    rules: Arc<RuleProducer>,
     outputs: usize,
 }
 

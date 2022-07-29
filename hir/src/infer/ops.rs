@@ -1,23 +1,12 @@
 use super::Factoid;
 use crate::infer::*;
 use std::fmt;
-use tract_core::downcast_rs::Downcast;
 use tract_data::UndeterminedSymbol;
 
 tract_core::dyn_clone::clone_trait_object!(InferenceOp);
 
 /// An operation with tensor type inference
-pub trait InferenceOp:
-    Op
-    + fmt::Debug
-    + tract_core::dyn_clone::DynClone
-    + Send
-    + Sync
-    + 'static
-    + Downcast
-    + EvalOp
-    + DynHash
-{
+pub trait InferenceOp: Op {
     /// Infers properties about the input and output tensors.
     ///
     /// The `inputs` and `outputs` arguments correspond to properties about
@@ -39,25 +28,22 @@ pub trait InferenceOp:
         let (infered_inputs, infered_outputs, observed) =
             self.infer_facts(inputs, outputs, observed).context("Infering facts")?;
 
-        if self.is_stateless() {
-            if infered_inputs.iter().all(|i| i.value.is_concrete()) {
-                let input_values = infered_inputs
-                    .iter()
-                    .map(|i| i.value.concretize().unwrap().clone().into())
-                    .collect(); // checked
-                match self.eval(input_values) {
-                    Ok(values) => {
-                        let output_values =
-                            values.into_iter().map(|t| t.into()).collect::<TVec<_>>();
-                        return Ok((infered_inputs, output_values, observed));
-                    }
-                    Err(e) if e.root_cause().downcast_ref::<UndeterminedSymbol>().is_some() => (),
-                    Err(e) => return Err(e).context("Eager eval during inference"),
+        if self.is_stateless() && infered_inputs.iter().all(|i| i.value.is_concrete()) {
+            let input_values = infered_inputs
+                .iter()
+                .map(|i| i.value.concretize().unwrap())
+                .collect(); // checked
+            match self.eval(input_values) {
+                Ok(values) => {
+                    let output_values = values.into_iter().map(|t| t.into()).collect::<TVec<_>>();
+                    return Ok((infered_inputs, output_values, observed));
                 }
+                Err(e) if e.root_cause().downcast_ref::<UndeterminedSymbol>().is_some() => (),
+                Err(e) => return Err(e).context("Eager eval during inference"),
             }
         }
 
-        return Ok((infered_inputs, infered_outputs, observed));
+        Ok((infered_inputs, infered_outputs, observed))
     }
 
     /// Allow an op to specify a supplementary list of outlets facts that

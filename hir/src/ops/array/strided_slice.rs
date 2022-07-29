@@ -58,13 +58,13 @@ impl StridedSlice {
             None
         } else {
             let begin = begin.cast_to::<TDim>()?;
-            begin.as_slice::<TDim>()?.iter().nth(ix).cloned()
+            begin.as_slice::<TDim>()?.get(ix).cloned()
         };
 
         let mut end: Option<TDim> = if self.ignore_end(ix) || ix >= end.len() {
             None
         } else if end.datum_type() == i64::datum_type() {
-            let end = *end.as_slice::<i64>()?.iter().nth(ix).unwrap();
+            let end = *end.as_slice::<i64>()?.get(ix).unwrap();
             if end == std::i64::MAX || end == std::i64::MIN || end == std::i64::MIN + 1 {
                 None
             } else {
@@ -72,7 +72,7 @@ impl StridedSlice {
             }
         } else {
             let end = end.cast_to::<TDim>()?;
-            end.as_slice::<TDim>()?.iter().nth(ix).cloned()
+            end.as_slice::<TDim>()?.get(ix).cloned()
         };
 
         let stride = strides.get(ix).cloned().unwrap_or(1);
@@ -84,7 +84,7 @@ impl StridedSlice {
             } else {
                 let symbols = bound.symbols();
                 if symbols.len() == 1 {
-                    let sym = symbols.into_iter().nth(0).unwrap();
+                    let sym = symbols.into_iter().next().unwrap();
                     let values = SymbolValues::default().with(sym, 100_000_000);
                     bound.eval(&values).to_isize().unwrap() < 0
                 } else {
@@ -104,8 +104,8 @@ impl StridedSlice {
 
         if self.must_shrink(ix) {
             return Ok(Dim {
-                begin: begin.clone().unwrap_or(0.to_dim()),
-                end: begin.unwrap_or(0.to_dim()) + 1,
+                begin: begin.clone().unwrap_or_else(|| 0.to_dim()),
+                end: begin.unwrap_or_else(|| 0.to_dim()) + 1,
                 stride: 1,
                 shrink: true,
             });
@@ -140,7 +140,7 @@ impl StridedSlice {
             if stride > 0 {
                 return Ok(Dim { begin: 0.to_dim(), end: 0.to_dim(), stride, shrink: false });
             } else {
-                end = -1.to_dim();
+                end = (-1).to_dim();
             }
         }
         if let (Ok(e), Ok(d)) = (end.to_isize(), dim.to_isize()) {
@@ -170,11 +170,11 @@ impl Expansion for StridedSlice {
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
         check_input_arity(
-            &inputs,
+            inputs,
             3 + self.optional_axes_input.is_some() as usize
                 + self.optional_steps_input.is_some() as usize,
         )?;
-        check_output_arity(&outputs, 1)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[1].rank, 1)?;
         s.equals(&inputs[2].rank, 1)?;
@@ -191,7 +191,7 @@ impl Expansion for StridedSlice {
                 let end = &params[1];
                 let strides = if let Some(i) = self.optional_steps_input {
                     let t = params[i - 1].cast_to::<i32>()?;
-                    t.as_slice::<i32>()?.iter().cloned().collect()
+                    t.as_slice::<i32>()?.to_vec()
                 } else {
                     vec![1; input_shape.len()]
                 };
@@ -260,7 +260,7 @@ impl Expansion for StridedSlice {
         for (ix, &axis) in axes.iter().enumerate() {
             if let (Some(begin), Some(end)) = (begin, end) {
                 let d = &input_shape[axis];
-                let preped = self.prepare_one_dim(ix, &d, &begin, &end, &strides)?;
+                let preped = self.prepare_one_dim(ix, d, begin, end, &strides)?;
                 let (left, right) = if preped.stride > 0 {
                     (preped.begin, preped.end)
                 } else {
@@ -484,7 +484,7 @@ mod tests {
         op.begin_mask = 1;
         assert_eq!(
             eval(op, tensor1(&[0, 1]), tensor1(&[1]), tensor1(&[1]), tensor1(&[1])),
-            Tensor::from(tensor1(&[0]))
+            tensor1(&[0])
         )
     }
 
@@ -598,7 +598,7 @@ mod tests {
                 &[-1]
             )
             .unwrap(),
-            Dim { begin: 3.to_dim(), end: -1.to_dim(), stride: -1, shrink: false }
+            Dim { begin: 3.to_dim(), end: (-1).to_dim(), stride: -1, shrink: false }
         );
     }
 
@@ -614,7 +614,7 @@ mod tests {
                 &[-1]
             )
             .unwrap(),
-            Dim { begin: 3.to_dim(), end: -1.to_dim(), stride: -1, shrink: false }
+            Dim { begin: 3.to_dim(), end: (-1).to_dim(), stride: -1, shrink: false }
         );
     }
 }

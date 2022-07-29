@@ -101,8 +101,12 @@ impl InferenceScan {
         outer_scan_axis: usize,
     ) -> TractResult<bool> {
         let mut changed = outer.datum_type.unify_with_mut(&mut inner.datum_type)?;
-        let rank =
-            outer.shape.rank().concretize().or(inner.shape.rank().concretize()).map(|r| r as usize);
+        let rank = outer
+            .shape
+            .rank()
+            .concretize()
+            .or_else(|| inner.shape.rank().concretize())
+            .map(|r| r as usize);
         if let Some(rank) = rank {
             if outer
                 .shape
@@ -118,11 +122,12 @@ impl InferenceScan {
             }
             for axis in 0..rank {
                 if axis != outer_scan_axis {
-                    let value = outer.shape.dim(axis).unwrap().concretize().or(inner
+                    let value = outer
                         .shape
                         .dim(axis)
                         .unwrap()
-                        .concretize());
+                        .concretize()
+                        .or_else(|| inner.shape.dim(axis).unwrap().concretize());
                     if let Some(value) = value {
                         if outer.shape.set_dim(axis, value.clone()) {
                             changed = true

@@ -11,8 +11,8 @@ impl InferenceRulesOp for ScatterNd {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 3)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 3)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         s.equals(&inputs[2].datum_type, &inputs[0].datum_type)?;
         s.equals(&outputs[0].shape, &inputs[0].shape)?;
