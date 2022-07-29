@@ -283,11 +283,13 @@ impl Scan {
                     .collect::<TractResult<Vec<_>>>()?;
                 let wires = patch.wire_node(&*node.name, op, &inputs)?;
                 for oix in 0..node.outputs.len() {
-                    patch.shunt_outside(
-                        model,
-                        OutletId::new(node.id, oix),
-                        wires[oix - (oix > ix) as usize],
-                    )?;
+                    if oix != ix {
+                        patch.shunt_outside(
+                            model,
+                            OutletId::new(node.id, oix),
+                            wires[oix - (oix > ix) as usize],
+                        )?;
+                    }
                 }
                 return Ok(Some(patch));
             }
