@@ -30,6 +30,20 @@ PATH=$PATH:$HOME/.cargo/bin
 
 which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
 
+ensure_musltc() {
+    tcid=`basename $1`
+    cd `dirname $1`
+    [ -f $tcid.tgz ] || wget https://musl.cc/$tcid.tgz
+    [ -d SHA512SUMS ] || wget https://musl.cc/SHA512SUMS
+    expected=`grep $tcid SHA512SUMS`
+    got=`sha512sum $tcid.tgz`
+    if [ "$expected" != "$got" ]
+    then
+        print "TC from musl.cc does not match SHA512"
+        exit 2
+    fi
+    tar xf $tcid.tgz
+}
 
 which cargo-dinghy || ( mkdir -p /tmp/cargo-dinghy
 if [ `arch` = x86_64 ]
@@ -142,8 +156,8 @@ case "$PLATFORM" in
                 export RUSTC_TRIPLE=$ARCH-unknown-linux-musl
                 export DEBIAN_TRIPLE=$ARCH-linux-gnu
                 export TRACT_CPU_AARCH64_KIND=a55
-                export CUSTOM_TC=`pwd`/aarch64-linux-musl-cross
-                [ -d "$CUSTOM_TC" ] || curl -s https://musl.cc/aarch64-linux-musl-cross.tgz | tar zx
+                export CUSTOM_TC=${TMPDIR-/tmp}/aarch64-linux-musl-cross
+                ensure_musltc $CUSTOM_TC
                 ;;
             "armv7-unknown-linux-musl")
                 export ARCH=armv7
@@ -151,11 +165,11 @@ case "$PLATFORM" in
                 export LIBC_ARCH=armhf
                 export RUSTC_TRIPLE=armv7-unknown-linux-musleabihf
                 export DEBIAN_TRIPLE=arm-linux-gnueabihf
-                export CUSTOM_TC=`pwd`/armv7l-linux-musleabihf-cross
                 export TRACT_CPU_ARM32_NEON=true
                 export DINGHY_TEST_ARGS="--env TRACT_CPU_ARM32_NEON=true"
-                [ -d "$CUSTOM_TC" ] || curl -s https://musl.cc/armv7l-linux-musleabihf-cross.tgz | tar zx
                 export TARGET_CFLAGS="-mfpu=neon"
+                export CUSTOM_TC=${TMPDIR-/tmp}/armv7l-linux-musleabihf-cross
+                ensure_musltc $CUSTOM_TC
                 ;;
             *)
                 echo "unsupported platform $PLATFORM"
