@@ -177,11 +177,29 @@ where
         self.run_plan_with_eval(inputs, self::eval)
     }
 
+    pub fn exec(&mut self) -> TractResult<TVec<Arc<Tensor>>> {
+        self.exec_plan_with_eval(self::eval)
+    }
+
     pub fn run_plan_with_eval<Eval, E>(
         &mut self,
         inputs: TVec<Tensor>,
-        mut eval: Eval,
+        eval: Eval,
     ) -> TractResult<TVec<Arc<Tensor>>>
+    where
+        Eval: for<'a, 'b, 'c> FnMut(
+            &'a mut SessionState,
+            Option<&'b mut (dyn OpState + 'static)>,
+            &'c Node<F, O>,
+            TVec<Arc<Tensor>>,
+        ) -> Result<TVec<Arc<Tensor>>, E>,
+        E: Into<anyhow::Error> + Send + Sync + 'static,
+    {
+        self.set_inputs(inputs)?;
+        self.exec_plan_with_eval(eval)
+    }
+
+    pub fn exec_plan_with_eval<Eval, E>(&mut self, mut eval: Eval) -> TractResult<TVec<Arc<Tensor>>>
     where
         Eval: for<'a, 'b, 'c> FnMut(
             &'a mut SessionState,
@@ -193,7 +211,6 @@ where
     {
         let mut result = tvec!();
         {
-            self.set_inputs(inputs)?;
             let &mut SimpleState {
                 ref plan,
                 ref mut session_state,
@@ -299,6 +316,12 @@ where
     }
 
     pub fn set_inputs(&mut self, inputs: TVec<Tensor>) -> TractResult<()> {
+        ensure!(
+            inputs.len() == self.model().inputs.len(),
+            "Wrong number of inputs for model. Expected {} got {}",
+            self.model().inputs.len(),
+            inputs.len()
+        );
         for (ix, t) in inputs.into_iter().enumerate() {
             self.set_input(ix, t)?
         }
