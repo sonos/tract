@@ -40,7 +40,7 @@ impl TfModelExtensions {
             let plan =
                 SimplePlan::new_for_outputs_and_deps(&original, &as_outlets, &self.control_inputs)?;
             let mut state = SimpleState::new(plan)?;
-            let _outputs = state.run(tvec!())?;
+            let _outputs = state.exec()?;
             let tensors = state.session_state.tensors;
             for node in &mut original.nodes {
                 if let Some(var) = node.op_as_mut::<crate::ops::vars::VariableV2>() {
