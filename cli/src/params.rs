@@ -258,9 +258,14 @@ impl Parameters {
                         } else {
                             unreachable!();
                         };
-                        assert!(inv.id == "external");
-                        assert!(inv.arguments.len() == 1);
-                        assert!(inv.arguments[0].id.as_deref() == Some("shape"));
+                        assert!(inv.id == "external" || inv.id == "tract_core_external", "invalid id: expected 'external' or 'tract_core_external' but found {:?}", inv.id);
+                        assert!(
+                            inv.arguments.len() <= 2,
+                            "expected 1 argument but found {:?} for inv.arguments={:?}",
+                            inv.arguments.len(),
+                            inv.arguments
+                        );
+                        assert_eq!(inv.arguments[0].id.as_deref(), Some("shape"));
                         Dumper::new(&mut formatted).rvalue(&inv.arguments[0].rvalue)?;
                         let shape = over
                             .shape
