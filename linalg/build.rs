@@ -13,7 +13,10 @@ fn use_masm() -> bool {
 }
 
 fn use_clang() -> bool {
-    var("TARGET").contains("-android") || var("TARGET").contains("-ios") || var("TARGET").contains("-darwin")
+    var("TARGET").contains("-android")
+        || var("TARGET").contains("-ios")
+        || var("TARGET").contains("-darwin")
+        || var("TARGET") == "aarch64-unknown-linux-gnu"
 }
 
 fn jump_table() -> Vec<String> {
@@ -27,7 +30,6 @@ fn jump_table() -> Vec<String> {
 }
 
 fn main() {
-
     let target = var("TARGET");
     let arch = var("CARGO_CFG_TARGET_ARCH");
     let os = var("CARGO_CFG_TARGET_OS");
@@ -319,8 +321,12 @@ pub struct F16;
 struct F16Filter;
 
 impl Filter for F16Filter {
-    fn evaluate(&self, input: &dyn ValueView, _runtime: &dyn Runtime) -> liquid_core::Result<Value> {
-        let input:f32 = input.as_scalar().unwrap().to_float().unwrap() as f32;
+    fn evaluate(
+        &self,
+        input: &dyn ValueView,
+        _runtime: &dyn Runtime,
+    ) -> liquid_core::Result<Value> {
+        let input: f32 = input.as_scalar().unwrap().to_float().unwrap() as f32;
         let value = half::f16::from_f32(input);
         let bits = value.to_bits();
         Ok(format!(".short {bits}").to_value())
