@@ -13,10 +13,11 @@ fn use_masm() -> bool {
 }
 
 fn use_clang() -> bool {
-    var("TARGET").contains("-android")
-        || var("TARGET").contains("-ios")
-        || var("TARGET").contains("-darwin")
-        || var("TARGET") == "aarch64-unknown-linux-gnu"
+    // This will fail to compile aarch64 with gcc thanks to the 
+    // asm templates adding:
+    // .cpu generic+fp+simd+fp16
+    // for non clang compilers
+   cc::Build::new().get_compiler().is_like_clang()
 }
 
 fn jump_table() -> Vec<String> {
@@ -156,9 +157,8 @@ fn main() {
             let files =
                 preprocess_files("arm64/arm64fp16", &[("core", vec!["a55", "gen"])], &suffix);
             let mut cc = cc::Build::new();
-            if use_clang() {
-                cc.flag("-mcpu=cortex-a55");
-            }
+            // Adds support for fp16 instruction extension if cpu supports it
+            cc.flag("-mcpu=native");
             cc.files(files).static_flag(true).compile("arm64fp16");
         }
         _ => {}
