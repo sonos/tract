@@ -14,8 +14,13 @@ fn use_masm() -> bool {
 
 fn use_clang() -> bool {
     let cc = cc::Build::new().get_compiler();
-    let output = std::process::Command::new(cc.path()).arg("--version").output().unwrap();
-    String::from_utf8_lossy(&output.stdout).lines().next().unwrap().contains("clang")
+    std::process::Command::new(cc.path())
+        .arg("--version")
+        .output()
+        .map(|output| {
+            String::from_utf8_lossy(&output.stdout).lines().next().unwrap().contains("clang")
+        })
+        .unwrap_or(false)
 }
 
 fn jump_table() -> Vec<String> {
