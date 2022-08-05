@@ -13,10 +13,9 @@ fn use_masm() -> bool {
 }
 
 fn needs_pragma() -> bool {
-    // This will add the following to the asm templates:
+    // This will add the following to the asm templates if true:
     // .cpu generic+fp+simd+fp16
-    // for non clang compilers
-   cc::Build::new().get_compiler().is_like_clang() || cc::Build::new().get_compiler().is_like_gnu()
+   !cc::Build::new().get_compiler().is_like_clang() && !cc::Build::new().get_compiler().is_like_gnu()
 }
 
 fn jump_table() -> Vec<String> {
