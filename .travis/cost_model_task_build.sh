@@ -24,7 +24,8 @@ esac
 rustup update
 rustup target add $RUST_TRIPLE
 
-curl -s https://musl.cc/${MUSL_TRIPLE}-cross.tgz | tar zx
+#curl -s https://musl.cc/${MUSL_TRIPLE}-cross.tgz | tar zx
+curl -s https://s3.amazonaws.com/tract-ci-builds/toolchains/${MUSL_TRIPLE}-cross.tgz | tar zx
 
 MUSL_BIN=`pwd`/${MUSL_TRIPLE}-cross/bin
 export PATH=$MUSL_BIN:$PATH

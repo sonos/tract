@@ -143,7 +143,8 @@ case "$PLATFORM" in
                 export DEBIAN_TRIPLE=$ARCH-linux-gnu
                 export TRACT_CPU_AARCH64_KIND=a55
                 export CUSTOM_TC=`pwd`/aarch64-linux-musl-cross
-                [ -d "$CUSTOM_TC" ] || curl -s http://musl.cc/aarch64-linux-musl-cross.tgz | tar zx
+#                [ -d "$CUSTOM_TC" ] || curl -s http://musl.cc/aarch64-linux-musl-cross.tgz | tar zx
+                [ -d "$CUSTOM_TC" ] || curl -s https://s3.amazonaws.com/tract-ci-builds/toolchains/aarch64-linux-musl-cross.tgz | tar zx
                 ;;
             "armv7-unknown-linux-musl")
                 export ARCH=armv7
@@ -154,7 +155,7 @@ case "$PLATFORM" in
                 export CUSTOM_TC=`pwd`/armv7l-linux-musleabihf-cross
                 export TRACT_CPU_ARM32_NEON=true
                 export DINGHY_TEST_ARGS="--env TRACT_CPU_ARM32_NEON=true"
-                [ -d "$CUSTOM_TC" ] || curl -s http://musl.cc/armv7l-linux-musleabihf-cross.tgz | tar zx
+                [ -d "$CUSTOM_TC" ] || curl -s https://s3.amazonaws.com/tract-ci-builds/toolchains/armv7l-linux-musleabihf-cross.tgz | tar zx
                 export TARGET_CFLAGS="-mfpu=neon"
                 ;;
             *)
