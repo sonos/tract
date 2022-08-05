@@ -12,12 +12,11 @@ fn use_masm() -> bool {
     env::var("CARGO_CFG_TARGET_ENV") == Ok("msvc".to_string()) && var("HOST").contains("-windows-")
 }
 
-fn use_clang() -> bool {
-    // This will fail to compile aarch64 with gcc thanks to the 
-    // asm templates adding:
+fn needs_pragma() -> bool {
+    // This will add the following to the asm templates:
     // .cpu generic+fp+simd+fp16
     // for non clang compilers
-   cc::Build::new().get_compiler().is_like_clang()
+   cc::Build::new().get_compiler().is_like_clang() || cc::Build::new().get_compiler().is_like_gnu()
 }
 
 fn jump_table() -> Vec<String> {
@@ -157,8 +156,7 @@ fn main() {
             let files =
                 preprocess_files("arm64/arm64fp16", &[("core", vec!["a55", "gen"])], &suffix);
             let mut cc = cc::Build::new();
-            // Adds support for fp16 instruction extension if cpu supports it
-            cc.flag("-mcpu=native");
+            cc.flag("-mcpu=cortex-a55");
             cc.files(files).static_flag(true).compile("arm64fp16");
         }
         _ => {}
@@ -227,7 +225,7 @@ fn preprocess_file(
     // We also check to see if we're on a windows host, if we aren't, we won't be
     // able to use the Microsoft assemblers,
     let msvc = use_masm();
-    let clang = use_clang();
+    let needs_pragma = needs_pragma();
     println!("cargo:rerun-if-changed={}", template.as_ref().to_string_lossy());
     let mut input = fs::read_to_string(&template).unwrap();
     input = strip_comments(input, msvc);
@@ -243,7 +241,7 @@ fn preprocess_file(
     let g = if os == "macos" || os == "ios" { "_" } else { "" };
     let mut globals = liquid::object!({
         "msvc": msvc,
-        "clang": clang,
+        "needs_pragma": needs_pragma,
         "family": family,
         "os": os,
         "L": l,
