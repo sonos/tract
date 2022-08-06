@@ -63,6 +63,8 @@ pub const STAGES: &'static [&'static str] = &[
     "pulse",
     "pulse-to-type",
     "pulse-declutter",
+    "set",
+    "set-declutter",
     "nnef-cycle",
     "nnef-cycle-declutter",
     "before-optimize",
@@ -117,6 +119,7 @@ fn main() -> tract_core::anyhow::Result<()> {
 
         .arg(arg!(--"half-floats" "Convert the decluttered network from f32 to f16"))
         .arg(arg!(--"allow-float-casts" "Allow casting between f16, f32 and f64 around model"))
+        .arg(arg!(--set [set] ... "Set a symbol to a concrete value after decluttering"))
 
         .arg(arg!(--"nnef-cycle" "Perform NNEF dump and reload before optimizing"))
 
@@ -191,7 +194,7 @@ fn main() -> tract_core::anyhow::Result<()> {
                 .takes_value(true)
                 .multiple_occurrences(true)
                 .number_of_values(1)
-                .help("Set a symbol value (--set S=12)"),
+                .help("Set a symbol value before running the model (--set S=12)"),
         )
         .arg(
             Arg::new("save-steps")
