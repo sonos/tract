@@ -67,8 +67,6 @@ impl Optimizer {
     }
 
     pub fn optimize(&self, model: &mut TypedModel) -> TractResult<()> {
-        model.check_consistency()?;
-        model.compact()?;
         self.session().optimize(model)
     }
 
@@ -86,6 +84,8 @@ pub struct OptimizerSession<'o> {
 
 impl<'o> OptimizerSession<'o> {
     pub fn optimize(&mut self, model: &mut TypedModel) -> TractResult<()> {
+        model.check_consistency().context("during optimizer preflight check")?;
+        model.compact().context("during optimizer preflight compaction")?;
         for i in 0.. {
             let old = self.counter;
             self.run_all_passes(i, model)?;
@@ -100,8 +100,12 @@ impl<'o> OptimizerSession<'o> {
     pub fn run_all_passes(&mut self, i: usize, model: &mut TypedModel) -> TractResult<()> {
         let mut passes = self.optimizer.passes.clone();
         for p in passes.iter_mut() {
-            self.run_one_pass_outer(i, p.as_mut(), model)?;
+            self.run_one_pass_outer(i, p.as_mut(), model)
+                .with_context(|| format!("running pass {:?}", p))?;
             model.compact()?;
+            model
+                .check_consistency()
+                .with_context(|| format!("consistency check after pass {:?}", p))?;
         }
         Ok(())
     }
@@ -136,8 +140,10 @@ impl<'o> OptimizerSession<'o> {
         }
         while let Some(mut patch) = p.next(self, &model)? {
             patch.push_context(format!("{:?}/{}", p, i));
-            patch.model.check_consistency()?;
-            model.check_consistency()?;
+            patch.model.check_consistency().context("checking patch internal consistency")?;
+            model
+                .check_consistency()
+                .context("Checking target model consistency before patching")?;
             if let Some(watchdog) = patch.dont_apply_twice.take() {
                 if self.seen.contains(&watchdog) {
                     debug!("Loop detected: {} seen before", watchdog);
@@ -148,6 +154,9 @@ impl<'o> OptimizerSession<'o> {
             }
             debug!("applying patch #{}: {}", self.counter, patch.context.iter().rev().join(" >> "),);
             patch.apply(model)?;
+            model
+                .check_consistency()
+                .context("Checking target model consistency after patchign")?;
             self.counter += 1;
             if let Some(steps) = self.optimizer.steps {
                 if self.counter >= steps {
