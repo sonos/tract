@@ -82,6 +82,7 @@ impl TypedOp for TypedConcat {
                 }
             })
             .unwrap();
+        fact = fact.without_value();
         for input in inputs {
             if input.rank() != fact.rank()
                 || input

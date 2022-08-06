@@ -163,7 +163,11 @@ impl TypedModel {
                 target: &mut TypedModel,
                 mapping: &HashMap<OutletId, OutletId>,
             ) -> TractResult<TVec<OutletId>> {
-                node.op.concretize_dims(source, node, target, mapping, self)
+                let outlets = node.op.concretize_dims(source, node, target, mapping, self)?;
+                for outlet in &outlets {
+                    target.outlet_fact(*outlet)?.consistent()?;
+                }
+                Ok(outlets)
             }
         }
         values.translate_model(&self)
