@@ -656,6 +656,22 @@ impl Parameters {
                 tract_core::half::HalfTranslator.translate_model(&m)
             });
         }
+        if let Some(set) = matches.values_of("set") {
+            let mut values = SymbolValues::default();
+            for set in set {
+                let (key, value) = set
+                    .split_once("=")
+                    .with_context(|| format!("--set must be in the X=value form, got {}", set))?;
+                let value: i64 = value
+                    .parse()
+                    .with_context(|| format!("value expected to be an integer, got {}", value))?;
+                values.set(Symbol::from(key.chars().next().unwrap()), value);
+            }
+            stage!("set", typed_model -> typed_model, |m: TypedModel| {
+                m.concretize_dims(&values)
+            });
+            stage!("set-declutter", typed_model -> typed_model, TypedModel::into_decluttered);
+        }
         if nnef_cycle {
             stage!("nnef-cycle", typed_model -> typed_model, |m:TypedModel| {
                 let nnef = super::nnef(&matches);

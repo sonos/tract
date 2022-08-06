@@ -1,6 +1,7 @@
 use itertools::Itertools;
 use num_traits::{AsPrimitive, PrimInt, Zero};
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::{fmt, ops};
 
 #[derive(Debug)]
@@ -53,13 +54,32 @@ impl From<char> for TDim {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub struct SymbolValues(Vec<Option<i64>>);
 
 impl SymbolValues {
     pub fn with(mut self, s: Symbol, v: i64) -> Self {
         self[s] = Some(v);
         self
+    }
+
+    pub fn set(&mut self, s: Symbol, v: i64) {
+        self[s] = Some(v);
+    }
+}
+
+impl Debug for SymbolValues {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let table = SYMBOL_TABLE.lock().unwrap();
+        write!(
+            f,
+            "{}",
+            self.0
+                .iter()
+                .enumerate()
+                .filter_map(|(ix, v)| v.map(|v| format!("{}={}", table[ix], v)))
+                .join(",")
+        )
     }
 }
 
