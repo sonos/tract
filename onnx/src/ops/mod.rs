@@ -24,6 +24,7 @@ mod quant;
 pub mod rec;
 mod resize;
 mod non_max_suppression;
+mod multinomial;
 mod s2d;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
@@ -33,6 +34,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Identity", |_, _| Ok((Box::new(ops::identity::Identity::default()), vec![])));
     reg.insert("Resize", resize::resize);
     reg.insert("NonMaxSuppression", non_max_suppression::non_max_suppression);
+    reg.insert("Multinomial", multinomial::multinomial);
     array::register_all_ops(reg);
     cumsum::register_all_ops(reg);
     d2s::register_all_ops(reg);
