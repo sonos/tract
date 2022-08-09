@@ -5,18 +5,23 @@ use tract_hir::internal::*;
 
 /// Compares the outputs of a node in tract and tensorflow.
 pub fn check_outputs(got: &[Arc<Tensor>], params: &Parameters) -> CliResult<()> {
+    // iter over all possible tract model outputs
     for (ix, output) in params.tract_model.output_outlets().iter().enumerate() {
-        let mut names = vec![params.tract_model.node_name(output.node)];
-        if let Some(label) = params.tract_model.outlet_label(*output) {
-            names.push(label);
-        }
-        let exp = names
-            .iter()
-            .find_map(|n| params.tensors_values.by_name(n))
-            .with_context(|| format!("Do not have reference value for output {:?}", names))?;
+        // get either name from outlet_label or from node_name
+        let name = if let Some(label) = params.tract_model.outlet_label(*output) {
+            label
+        } else {
+            params.tract_model.node_name(output.node)
+        };
+        // pick expected tensor values for this output
+        let exp = params
+            .tensors_values
+            .by_name(name)
+            .with_context(|| format!("Do not have reference value for output {:?}", name))?;
         let exp = &exp.values.as_ref().with_context(|| {
-            format!("Output {:?}: found reference info without value: {:?}", names, exp)
+            format!("Output {:?}: found reference info without value: {:?}", name, exp)
         })?[0];
+        // compare this to generated outputs from `got`
         let got = &got[ix];
         if (params.allow_float_casts
             && exp.datum_type() == f32::datum_type()
