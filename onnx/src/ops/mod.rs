@@ -24,7 +24,7 @@ mod quant;
 pub mod rec;
 mod resize;
 mod non_max_suppression;
-mod multinomial;
+pub mod multinomial;
 mod s2d;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {

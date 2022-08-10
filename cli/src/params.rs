@@ -305,7 +305,12 @@ impl Parameters {
                 let graph = onnx.proto_model_for_read(&mut *location.read()?)?;
                 info_usage("proto model loaded", probe);
                 let path = &location.path().clone();
-                let parsed = onnx.parse(&graph, path.to_str())?;
+                let mut parsed = onnx.parse(&graph, path.to_str())?;
+
+                if matches.is_present("determinize") {
+                    tract_onnx::Onnx::determinize(&mut parsed.model)?;
+                }
+
                 if need_graph {
                     (
                         SomeGraphDef::Onnx(graph, parsed.clone()),

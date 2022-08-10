@@ -17,3 +17,8 @@ maintenance = { status = "actively-developed" }
 tract-nnef = { version = "0.17.4-pre", path = "../nnef" }
 educe = "0.4.18"
 rand = { version = "0.8.4", features = ["small_rng"] }
+getrandom = "0.2"
+
+[features]
+default = []
+getrandom-js = ["getrandom/js"]

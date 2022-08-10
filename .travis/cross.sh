@@ -195,7 +195,7 @@ case "$PLATFORM" in
 
     "wasm32-unknown-unknown")
         rustup target add wasm32-unknown-unknown
-        cargo check --target wasm32-unknown-unknown -p tract-onnx -p tract-tensorflow
+        cargo check --target wasm32-unknown-unknown --features getrandom-js -p tract-onnx -p tract-tensorflow
         ;;
     *)
         echo "Don't know what to do for platform: $PLATFORM"

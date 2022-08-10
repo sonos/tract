@@ -67,17 +67,20 @@ impl<'a> ParsingContext<'a> {
         let mut initializers: HashMap<&str, Tensor> = HashMap::default();
         if let Some(path) = self.model_path {
             initializers = graph
-            .initializer
-            .iter()
-            .map(|init| { let tensor_struct: TensorPlusPath = TensorPlusPath { tensor: &init, model_path: path }; Ok((&*init.name, tensor_struct.try_into()?)) })
-            .collect::<TractResult<_>>()?;
-        }
-        else {
+                .initializer
+                .iter()
+                .map(|init| {
+                    let tensor_struct: TensorPlusPath =
+                        TensorPlusPath { tensor: &init, model_path: path };
+                    Ok((&*init.name, tensor_struct.try_into()?))
+                })
+                .collect::<TractResult<_>>()?;
+        } else {
             initializers = graph
-            .initializer
-            .iter()
-            .map(|init| { Ok((&*init.name, init.try_into()?)) })
-            .collect::<TractResult<_>>()?;
+                .initializer
+                .iter()
+                .map(|init| Ok((&*init.name, init.try_into()?)))
+                .collect::<TractResult<_>>()?;
         }
         for (k, v) in initializers.iter() {
             trace!("Initializer: {} {:?}", k, v);
@@ -252,10 +255,21 @@ impl Onnx {
     pub fn with_ignore_output_shapes(self, ignore: bool) -> Onnx {
         Self { ignore_output_shapes: ignore, ..self }
     }
+
+    pub fn determinize(model: &mut InferenceModel) -> TractResult<()> {
+        use crate::ops::multinomial::Multinomial;
+        for node in model.nodes_mut() {
+            if let Some(op) = node.op_as_mut::<Box<dyn Expansion>>() {
+                if let Some(op) = op.as_any_mut().downcast_mut::<Multinomial>() {
+                    op.seed.get_or_insert(1.0);
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Framework<pb::ModelProto, InferenceModel> for Onnx {
-
     fn model_for_path(&self, p: impl AsRef<path::Path>) -> TractResult<InferenceModel> {
         let mut path = PathBuf::new();
         path.push(&p);

@@ -31,3 +31,7 @@ mapr = "0.8.0"
 
 [build-dependencies]
 prost-build = "0.10.0"
+
+[features]
+default = []
+getrandom-js = ["tract-onnx-opl/getrandom-js"]

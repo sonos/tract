@@ -23,7 +23,7 @@ pub struct Multinomial {
     dtype: DatumType,
     sample_size: i32,
     #[educe(Hash(method = "hash_opt_f32"))]
-    seed: Option<f32>,
+    pub seed: Option<f32>,
 }
 
 impl_dyn_hash!(Multinomial);
