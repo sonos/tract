@@ -1,3 +1,5 @@
+use std::any::Any;
+
 use crate::internal::*;
 use tract_core::internal::*;
 
@@ -12,6 +14,7 @@ pub trait Expansion:
     + Sync
     + tract_core::downcast_rs::Downcast
     + tract_core::internal::DynHash
+    + Any
 {
     fn name(&self) -> Cow<str>;
     fn op_families(&self) -> &'static [&'static str];
