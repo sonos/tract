@@ -13,6 +13,7 @@ pub mod is_nan;
 pub mod lrn;
 pub mod ml;
 pub mod non_max_suppression;
+pub mod multinomial;
 
 pub trait WithOnnx {
     fn with_onnx(self) -> Self;
@@ -30,6 +31,7 @@ fn onnx_opl_registry() -> Registry {
     let mut registry: Registry = Registry::new("tract_onnx");
     ml::register(&mut registry);
     non_max_suppression::register(&mut registry);
+    multinomial::register(&mut registry);
     registry.register_unit_element_wise("tract_onnx_erf", &erf::Erf {});
     registry.register_element_wise(
         "tract_onnx_isinf",
