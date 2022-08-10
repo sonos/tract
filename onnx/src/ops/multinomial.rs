@@ -1,10 +1,6 @@
 use crate::model::ParsingContext;
 use crate::pb::*;
-use rand::distributions::Standard;
-use rand::prelude::Distribution;
 use tract_hir::internal::*;
-use tract_hir::tract_ndarray::s;
-use tract_hir::tract_num_traits::{AsPrimitive, Zero, Float};
 
 pub fn multinomial(
     _ctx: &ParsingContext,
@@ -16,99 +12,29 @@ pub fn multinomial(
         i => bail!("Unsupported datum type {} for ONNX Multinomial", i),
     };
     let sample_size = node.get_attr_opt("sample_size")?.unwrap_or(1);
-    let seed = node.get_attr_opt("seed")?.unwrap_or(0.0f32);
+    let seed = node.get_attr::<f32>("seed").ok();
 
-    Ok((Box::new(Multinomial { dtype, sample_size, seed }), vec![]))
+    Ok((expand(Multinomial { dtype, sample_size, seed }), vec![]))
 }
 
-/// https://github.com/onnx/onnx/blob/main/docs/Operators.md#Multinomial
-#[derive(Clone, new, Debug, Educe)]
+#[derive(Clone, Debug, Educe)]
 #[educe(Hash)]
-struct Multinomial {
+pub struct Multinomial {
     dtype: DatumType,
     sample_size: i32,
-    #[educe(Hash(method = "hash_f32"))]
-    seed: f32,
-}
-
-impl Multinomial {
-    fn eval_t0<T1>(&self, input: Arc<Tensor>) -> TractResult<Arc<Tensor>>
-    where
-        T1: Datum + std::ops::SubAssign + Float,
-        Standard: Distribution<T1>,
-    {
-        match self.dtype {
-            DatumType::I32 => self.eval_t::<T1, i32>(input),
-            DatumType::I64 => self.eval_t::<T1, i64>(input),
-            dt => bail!("Unsupported output datum type for Multinomial: {:?}", dt),
-        }
-    }
-    fn eval_t<T1, T2>(&self, input: Arc<Tensor>) -> TractResult<Arc<Tensor>>
-    where
-        T1: Datum + std::ops::SubAssign + Float,
-        Standard: Distribution<T1>,
-        T2: Datum + Zero + Copy,
-        usize: AsPrimitive<T2>,
-    {
-        let batch_size = input.shape()[0];
-        let class_size = input.shape()[1];
-        let out_shape: &[_] = &[batch_size, self.sample_size as usize];
-
-        let input = input.to_array_view::<T1>()?;
-
-        let output = tract_ndarray::ArrayD::from_shape_fn(out_shape, |co_o| -> T2 {
-            let batch = co_o[0];
-
-            let mut rand: T1 = rand::random();
-            let mut ret: T2 = usize::as_(class_size - 1);
-
-            for (i, prob) in input.slice(s![batch, ..]).iter().enumerate() {
-                let prob = prob.exp();
-                if rand < prob {
-                    ret = usize::as_(i);
-                    break;
-                }
-                rand -= prob;
-            }
-
-            ret
-        });
-
-        Ok(output.into_arc_tensor())
-    }
+    #[educe(Hash(method = "hash_opt_f32"))]
+    seed: Option<f32>,
 }
 
 impl_dyn_hash!(Multinomial);
 
-impl Op for Multinomial {
+impl Expansion for Multinomial {
     fn name(&self) -> Cow<str> {
         "Multinomial".into()
     }
 
     op_onnx!();
-    op_as_typed_op!();
-}
 
-impl EvalOp for Multinomial {
-    fn is_stateless(&self) -> bool {
-        true
-    }
-
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let input = args_1!(inputs);
-
-        let output = match input.datum_type() {
-            // DatumType::F16 => self.eval_t0::<f16>(input),
-            DatumType::F32 => self.eval_t0::<f32>(input),
-            DatumType::F64 => self.eval_t0::<f64>(input),
-            dt => bail!("Unsupported input datum type for Multinomial: {:?}", dt),
-        }?;
-
-        Ok(tvec![output])
-    }
-}
-
-impl InferenceRulesOp for Multinomial {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -130,29 +56,20 @@ impl InferenceRulesOp for Multinomial {
         Ok(())
     }
 
-    as_op!();
-    to_typed!();
-}
-
-impl TypedOp for Multinomial {
-    as_op!();
-
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let input_shape = if let Some(s) = inputs[0].shape.as_concrete() {
-            s
-        } else {
-            bail!("Only constant input shape are supported in Multinomial")
-        };
-
-        let batch_size = input_shape[0];
-        Ok(tvec!(self.dtype.fact(&[batch_size, self.sample_size as usize])))
-    }
-
-    fn declutter(
+    fn wire(
         &self,
-        _model: &TypedModel,
-        _node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        Ok(None)
+        name: &str,
+        model: &mut TypedModel,
+        inputs: &[OutletId],
+    ) -> TractResult<TVec<OutletId>> {
+        model.wire_node(
+            name,
+            tract_onnx_opl::multinomial::Multinomial {
+                dtype: self.dtype,
+                sample_size: self.sample_size,
+                seed: self.seed,
+            },
+            &[inputs[0]],
+        )
     }
 }
