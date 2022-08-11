@@ -498,7 +498,12 @@ pub fn reduce(
     let fact = builder.model.outlet_fact(wire[0])?.clone();
     let input_shape = &builder.model.outlet_fact(input)?.shape;
     let cardinality: TDim = axes.iter().map(|ax| &input_shape[*ax]).product();
-    let cardinality = builder.wire(ops::konst::Const::new(tensor0(cardinality).broadcast_into_rank(fact.rank())?.into_arc_tensor()), &[])?;
+    let cardinality = builder.wire(
+        ops::konst::Const::new(
+            tensor0(cardinality).broadcast_into_rank(fact.rank())?.into_arc_tensor(),
+        ),
+        &[],
+    )?;
     let cardinality = builder.wire(ops::cast::Cast::new(fact.datum_type), &cardinality)?;
     dbg!(&cardinality);
     builder.wire(ops::math::div::bin_typed(), &[wire[0], cardinality[0]])
