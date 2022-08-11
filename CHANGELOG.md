@@ -1,5 +1,10 @@
 # Unreleased
 
+# 0.17.4 - 2022-08-11
+* [cli] global --set (as a somehat cleaner --concretize successor) allow to set a symbol value after decluttering
+* [cli] run --save-outputs output.npz to save execution outputs
+* dozens of fixs and code cleanup (clippy-fication in progress)
+
 # 0.17.3 - 2022-07-25
 * [License] Allowing https://spdx.org/licenses/Unicode-DFS-2016.html (no tldr yet, but pretty similar to BSD-2)
 * [Breaking] CLI --json option reports costs as strings instead of numbers (in order to allow symbolic values).
