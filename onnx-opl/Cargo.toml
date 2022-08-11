@@ -1,6 +1,6 @@
 [package]
 name = "tract-onnx-opl"
-version = "0.17.4"
+version = "0.17.5-pre"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT/Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -14,7 +14,7 @@ edition = "2018"
 maintenance = { status = "actively-developed" }
 
 [dependencies]
-tract-nnef = { version = "=0.17.4" }
+tract-nnef = { version = "0.17.5-pre", path = "../nnef" }
 educe = "0.4.18"
 rand = { version = "0.8.4", features = ["small_rng"] }
 getrandom = "0.2"
