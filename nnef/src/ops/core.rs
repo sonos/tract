@@ -12,6 +12,7 @@ mod range;
 mod reduce;
 mod scan;
 mod scatter;
+mod shape_of;
 mod source;
 
 pub fn register(registry: &mut Registry) {
@@ -39,6 +40,7 @@ pub fn register(registry: &mut Registry) {
     reduce::register(registry);
     scatter::register(registry);
     scan::register(registry);
+    shape_of::register(registry);
     source::register(registry);
     range::register(registry);
 }
