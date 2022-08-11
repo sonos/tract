@@ -67,6 +67,7 @@ impl InferenceRulesOp for NonZero {
         s.equals(&outputs[0].datum_type, i64::datum_type())?;
         s.equals(&outputs[0].rank, 2)?;
         s.equals(&outputs[0].shape[0], inputs[0].rank.bex().to_dim())?;
+        s.equals(&outputs[0].shape[1], self.0.to_dim())?;
         Ok(())
     }
 

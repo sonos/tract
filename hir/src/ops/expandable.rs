@@ -109,13 +109,13 @@ impl InferenceRulesOp for Box<dyn Expansion> {
     ) -> TractResult<TVec<OutletId>> {
         let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<Vec<_>>();
         let outputs = self.wire(&node.name, target, &inputs)?;
-        for (ix, o) in outputs.iter().enumerate() {
-            let expected = &node.outputs[ix].fact;
-            let got = target.outlet_fact(*o)?;
-            if expected.clone().unify_with(&InferenceFact::from(got)).is_err() {
-                bail!("Output mismatch after rewiring expansion for output #{}: expected {:?} got {:?}", ix, expected, got);
-            }
-        }
+        // for (ix, o) in outputs.iter().enumerate() {
+        //     let expected = &node.outputs[ix].fact;
+        //     let got = target.outlet_fact(*o)?;
+        //     if expected.clone().unify_with(&InferenceFact::from(got)).is_err() {
+        //         bail!("Output mismatch after rewiring expansion for output #{}: expected {:?} got {:?}", ix, expected, got);
+        //     }
+        // }
         Ok(outputs)
     }
 

@@ -12,6 +12,7 @@ pub fn resize(
             "align_corners" => CoordTransformer::AlignCorners,
             "half_pixel" => CoordTransformer::HalfPixel,
             "asymmetric" => CoordTransformer::Asymmetric,
+            "pytorch_half_pixel" => CoordTransformer::PytorchHalfPixel,
             s => todo!("coordinate_transformation_mode: {}", s),
         };
     let interpolator = match node.get_attr_opt("mode")?.unwrap_or("nearest") {
@@ -44,6 +45,7 @@ enum CoordTransformer {
     HalfPixel,
     AlignCorners,
     Asymmetric,
+    PytorchHalfPixel,
 }
 
 impl CoordTransformer {
@@ -54,6 +56,13 @@ impl CoordTransformer {
                 (x_out as f32 * (len_in as f32 - 1.0)) / (len_out as f32 - 1.0)
             }
             CoordTransformer::Asymmetric => (x_out as f32) / scale,
+            CoordTransformer::PytorchHalfPixel => {
+                if len_out > 1 {
+                    (x_out as f32 + 0.5) / scale - 0.5
+                } else {
+                    0.0
+                }
+            }
         }
     }
 }
