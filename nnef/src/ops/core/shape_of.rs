@@ -1,5 +1,4 @@
 use crate::internal::*;
-use crate::ser::*;
 
 pub fn register(registry: &mut Registry) {
     // No serialization is done since: operation follow ONNX design:
