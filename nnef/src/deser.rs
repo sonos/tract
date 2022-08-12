@@ -75,8 +75,7 @@ impl<'mb> ModelBuilder<'mb> {
             .results
             .iter()
             .map(|s| {
-                vars
-                    .get(s)
+                vars.get(s)
                     .with_context(|| format!("Could not find variable for output named `{}'", s))
             })
             .collect::<TractResult<TVec<&Value>>>()?;
@@ -566,7 +565,9 @@ impl CoerceFrom<Value> for TDim {
         match from {
             Value::Dim(d) => Ok(d.clone()),
             Value::Tensor(t) => Ok(t.to_scalar::<TDim>()?.clone()),
-            Value::Wire(_) => Ok(from.to::<Arc<Tensor>>(builder)?.to_scalar::<TDim>()?.clone()),
+            Value::Wire(_) => {
+                Ok(from.to::<Arc<Tensor>>(builder)?.cast_to::<TDim>()?.to_scalar::<TDim>()?.clone())
+            }
             _ => bail!("Can not build a TDim from {:?}", from),
         }
     }
