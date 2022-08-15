@@ -13,15 +13,15 @@
 // {{to|minus:from|plus:1}} cols:{{cols}}
 
 {% for right in (0..cols_min_1) %}
-    vbroadcastss    {{arch|default:"ymm"}}{{tmp}}, dword ptr [ rax ]
+    vbroadcastss    ymm{{tmp}}, dword ptr [ rax ]
     add             rax, 4
 
     {% for down in (0..mr_over_8_min_1) %}
         {%capture acc%}{{mr_over_8|times:right|plus:from|plus:down}}{%endcapture%}
         {% if flipped %}
-            {{op}} {{arch|default:"ymm"}}{{acc}}, {{arch|default:"ymm"}}{{acc}}, {{arch|default:"ymm"}}{{tmp}}
+            {{op}} ymm{{acc}}, ymm{{acc}}, ymm{{tmp}}
         {% else %}
-            {{op}} {{arch|default:"ymm"}}{{acc}}, {{arch|default:"ymm"}}{{tmp}}, {{arch|default:"ymm"}}{{acc}}
+            {{op}} ymm{{acc}}, ymm{{tmp}}, ymm{{acc}}
         {% endif %}
     {% endfor %}
 {% endfor %}
