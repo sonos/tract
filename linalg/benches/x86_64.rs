@@ -18,12 +18,13 @@ macro_rules! kloop {
         let label = $path.split("/").last().unwrap().split_once(".").unwrap().0;
         let full_label = format!("{:8} {:40}", $geo, label);
 		let repeats = 32;
+		let ks = 256;
         if full_label.contains($filter.unwrap_or("")) {
             let time = b1!({
 
 				let mut p = F32;
 				let mut q = F32;
-				let mut k = 1024;
+				let mut k = ks;
 				let mut r = repeats;
 				asm!(
 					concat!(r#"
@@ -50,7 +51,7 @@ jnz 2b
             });
 
 			// We have k=1024 * 64 but some tests step twice per iteration
-			let iterations = (1024 * repeats / $u);
+			let iterations = (ks * repeats / $u);
 			// Those that step twice process twice as many elements per iteration
 			let elems_per_iteration = $n * $u;
 

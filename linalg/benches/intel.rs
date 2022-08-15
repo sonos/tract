@@ -61,8 +61,8 @@ fn bench_to_nanos<
                 a: kernel.a_packed(4, k).wrap(&a.view()),
                 b: kernel.b_packed(4, k).wrap(&b.view()).unwrap(),
             },
-            // FusedSpec::AddUnicast(kernel.c_view(1, 0).wrap(&c.view_mut())),
-            // FusedSpec::Store(kernel.c_view(1, 0).wrap(&c.view_mut())),
+            FusedSpec::AddUnicast(kernel.c_view(1, 0).wrap(&c.view_mut())),
+            FusedSpec::Store(kernel.c_view(1, 0).wrap(&c.view_mut())),
         ]
     };
 
@@ -83,7 +83,7 @@ fn bench_to_nanos<
 
 fn model<T: Datum + Copy + num_traits::Zero + tract_linalg::LADatum, K: MatMatMulKer<T>>(
 ) -> (f64, f64) {
-    let x = 17;
+    let x = 256;
     let zp = bench_to_nanos::<T, K>(10, x, K::nr(), x);
     let y = 0.0; // bench_to_nanos::<T, K>(1000, x, K::nr(), x);
     let slope = (y - zp) / x as f64;
@@ -110,10 +110,10 @@ fn main() {
     as_match_line::<f32, fma_mmm_f32_64x1>();
     as_match_line::<f32, avx512_mmm_f32_128x1>();
     as_match_line::<f32, avx512_mmm_f32_16x1>();
-    // as_match_line::<f32, fma_mmm_f32_40x2>();
-    // as_match_line::<f32, fma_mmm_f32_32x3>();
-    // as_match_line::<f32, fma_mmm_f32_24x4>();
-    // as_match_line::<f32, fma_mmm_f32_16x5>();
-    // as_match_line::<f32, fma_mmm_f32_16x6>();
-    // as_match_line::<f32, fma_mmm_f32_8x8>();
+    as_match_line::<f32, fma_mmm_f32_40x2>();
+    as_match_line::<f32, fma_mmm_f32_32x3>();
+    as_match_line::<f32, fma_mmm_f32_24x4>();
+    as_match_line::<f32, fma_mmm_f32_16x5>();
+    as_match_line::<f32, fma_mmm_f32_16x6>();
+    as_match_line::<f32, fma_mmm_f32_8x8>();
 }

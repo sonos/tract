@@ -36,23 +36,6 @@ Windows ABI:
     test    rbx,    rbx
     jz      {{L}}non_linear_loop
 
-	// test rbx, 1
-	// jz {{L}}main_loop_packed_packed
-
-	// {% include "8x1/packed_packed_loop1/avx-512.tmpli" %}
-
-    // sub             rbx, 1
-    // jz				{{L}}non_linear_loop
-
-// {{align}} 16
-// {{L}}main_loop_packed_packed:
-// 	{% include "8x1/packed_packed_loop1/unroll.tmpli" %}
-
-//     sub             rbx, 2
-//     jnz             {{L}}main_loop_packed_packed
-
-//     jmp             {{L}}non_linear_loop
-
 {{align}} 16
 {{L}}main_loop_packed_packed:
 	{% include "8x1/packed_packed_loop1/avx-512.tmpli" %}
@@ -62,47 +45,18 @@ Windows ABI:
 
     jmp             {{L}}non_linear_loop
 
-{% include "f32_scalars.tmpliq" from:0, to:7, arch:"zmm" %}
-{% include "f32_per_rows.tmpliq" mr:128, from:0, to:7, arch:"zmm" %}
-{% include "f32_per_cols.tmpliq" mr:128, from:0, to:7, arch:"zmm" %}
+{% include "f32_scalars.tmpliq" from:0, to:7 %}
+{% include "f32_per_rows.tmpliq" mr:128, from:0, to:7 %}
+{% include "f32_per_cols.tmpliq" mr:128, from:0, to:7 %}
 
 {{L}}add_unicast:
     mov     r10,    [rdi + 8]           // c ptr
     mov     rsi,    [rdi + 16]          // row stride
 
-	cmp rsi, 4
-	jne {{L}}add_unicast_generic
-
     {% for row in (0..7) %}
         vaddps zmm{{row}}, zmm{{row}}, [ r10 + {{row|times:64}} ]
     {% endfor %}
-    jmp    {{L}}non_linear_loop
 
-
-    jmp    {{L}}non_linear_loop
-
-{{L}}add_unicast_generic:
-    mov r8, [0]
-//     mov     eax,    0
-// {% for i in (0..3) %}
-//     pinsrd  xmm14, eax, {{i}}
-//     add     eax,    esi
-// {% endfor %}
-// {% for i in (0..3) %}
-//     pinsrd  xmm15, eax, {{i}}
-//     add     eax,    esi
-// {% endfor %}
-//
-//     vperm2f128      zmm14,  zmm14, zmm15,         32 // zmm14 <- xmm14::xmm15
-//
-// {% for i in (0..7) %}
-//     vpcmpeqd        zmm15,  zmm15, zmm15
-//     vgatherdps      zmm12,  [ r10 + zmm14 ], zmm15
-//
-//     vaddps          zmm{{i}},   zmm{{i}},   zmm12
-//     lea             r10, [ r10 + rsi * 8 ]
-// {% endfor %}
-//
     jmp    {{L}}non_linear_loop
 
 {{L}}add_row_col_products:
@@ -121,33 +75,21 @@ Windows ABI:
     mov     r8,     [rdi + 8]           // c ptr
     mov     rsi,    [rdi + 16]          // row stride
 
-	cmp rsi, 4
-	jne {{L}}store_generic
+	test r8, 63
+	jnz {{L}}store_unaligned
 
+	{% for row in (0..7) %}
+        vmovaps [r8 + {{row|times:64}}], zmm{{row}}
+    {% endfor %}
+
+    jmp     {{L}}non_linear_loop
+
+
+{{L}}store_unaligned:
 	{% for row in (0..7) %}
         vmovups [r8 + {{row|times:64}}], zmm{{row}}
     {% endfor %}
 
     jmp     {{L}}non_linear_loop
-
-{{L}}store_generic:
-    mov r8, [0]
-//
-//    {% for vec in (0..7) %}
-//        {% for half in (0..1) %}
-//            {% if half == 0 %}
-//                movaps xmm9, xmm{{vec}}
-//            {% else %}
-//                vperm2f128 zmm9, zmm{{vec}}, zmm{{vec}}, 1
-//            {% endif %}
-//            {% for row in (0..3) %}
-//                vextractps  dword ptr [r8], xmm9, {{row}}
-//                add         r8, rsi
-//            {% endfor %}
-//        {% endfor %}
-//    {% endfor %}
-//
-    jmp    {{L}}non_linear_loop
-
 
 {% include "postamble.tmpliq" size:"128x1", suffix:suffix, G:G, L:L, arch:"avx512" %}
