@@ -37,19 +37,19 @@ Windows ABI:
     test    rbx,    rbx
     jz      {{L}}non_linear_loop
 
-	test rbx, 16
+	cmp rbx, 8
 	jl {{L}}main_loop_packed_packed_tail
 
 {{align}} 16
 {{L}}main_loop_packed_packed:
-	{% include "1x1/packed_packed_loop1/unroll-16.tmpli" %}
+	{% include "1x1/packed_packed_loop1/unroll-4.tmpli" %}
 
-    sub             rbx, 16
-	cmp rbx, 15
-	jg              {{L}}main_loop_packed_packed
+    sub             rbx, 4
+	cmp rbx,        4
+	jge              {{L}}main_loop_packed_packed
 
-	{% for r in (1..15) %}
-	   vaddps ymm0, ymm0, ymm{{r}}
+	{% for r in (1..3) %}
+	   vaddps zmm0, zmm0, zmm{{r}}
 	{% endfor %}
 
     test    rbx, rbx
@@ -57,10 +57,10 @@ Windows ABI:
 
 {{align}} 16
 {{L}}main_loop_packed_packed_tail:
-	{% include "8x1/packed_packed_loop1/avx-512.tmpli" %}
+	{% include "1x1/packed_packed_loop1/avx-512.tmpli" %}
 
 	sub             rbx, 1
-    jz				{{L}}non_linear_loop
+    jnz				{{L}}main_loop_packed_packed_tail
 
     jmp      {{L}}non_linear_loop
 
@@ -75,11 +75,7 @@ Windows ABI:
 	cmp rsi, 4
 	jne {{L}}add_unicast_generic
 
-    {% for row in (0..0) %}
-        vaddps zmm{{row}}, zmm{{row}}, [ r10 + {{row|times:64}} ]
-    {% endfor %}
-    jmp    {{L}}non_linear_loop
-
+	vaddps zmm0, zmm0, [r10]
 
     jmp    {{L}}non_linear_loop
 
@@ -124,32 +120,18 @@ Windows ABI:
     mov     rsi,    [rdi + 16]          // row stride
 
 	cmp rsi, 4
-	jne {{L}}store_generic
+	jne {{L}}crash
 
-	{% for row in (0..0) %}
-        vmovups [r8 + {{row|times:64}}], zmm{{row}}
-    {% endfor %}
+	test r8, 63
+	jnz {{L}}store_unaligned
 
+    vmovaps [r8], zmm0
     jmp     {{L}}non_linear_loop
 
-{{L}}store_generic:
-    mov r8, [0]
-//
-//    {% for vec in (0..7) %}
-//        {% for half in (0..1) %}
-//            {% if half == 0 %}
-//                movaps xmm9, xmm{{vec}}
-//            {% else %}
-//                vperm2f128 zmm9, zmm{{vec}}, zmm{{vec}}, 1
-//            {% endif %}
-//            {% for row in (0..3) %}
-//                vextractps  dword ptr [r8], xmm9, {{row}}
-//                add         r8, rsi
-//            {% endfor %}
-//        {% endfor %}
-//    {% endfor %}
-//
-    jmp    {{L}}non_linear_loop
+{{L}}store_unaligned:
+	vmovups [r8], zmm0
+    jmp     {{L}}non_linear_loop
 
-
+{{L}}crash:
+	mov r10, [0]
 {% include "postamble.tmpliq" size:"16x1", suffix:suffix, G:G, L:L, arch:"avx512" %}
