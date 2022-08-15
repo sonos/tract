@@ -18,15 +18,15 @@ Windows ABI:
 {% if msvc %}
 
 _text segment
-fma_sigmoid_f32_{{suffix}} proc
+avx512_sigmoid_f32_{{suffix}} proc
 
 {% else %}
 
 .intel_syntax noprefix
 .text
 .p2align 5
-.globl {{G}}fma_sigmoid_f32_{{suffix}}
-{{G}}fma_sigmoid_f32_{{suffix}}:
+.globl {{G}}avx512_sigmoid_f32_{{suffix}}
+{{G}}avx512_sigmoid_f32_{{suffix}}:
 .cfi_startproc
 {% endif %}
 
@@ -68,7 +68,7 @@ fma_sigmoid_f32_{{suffix}} proc
 
 {% if family == "unix" %}
 // FIXME
-// .cfi_def_cfa_offset 64 
+// .cfi_def_cfa_offset 64
 {% endif %}
 
     stmxcsr     [rsp + 4]
@@ -283,37 +283,37 @@ fma_sigmoid_f32_{{suffix}} proc
 {{L}}coeffs_num_low:
     {{float}} -18.0                    // low
 {{L}}coeffs_num_high:
-    {{float}} 18.0                     // high         
+    {{float}} 18.0                     // high
 
 {{L}}coeffs_num_alpha_9:
-    {{float}} 4.37031012579801e-11     // alpha_9      
+    {{float}} 4.37031012579801e-11     // alpha_9
 {{L}}coeffs_num_alpha_7:
-    {{float}} 1.15627324459942e-07     // alpha_7      
+    {{float}} 1.15627324459942e-07     // alpha_7
 {{L}}coeffs_num_alpha_5:
-    {{float}} 6.08574864600143e-05     // alpha_5      
+    {{float}} 6.08574864600143e-05     // alpha_5
 {{L}}coeffs_num_alpha_3:
-    {{float}} 8.51377133304701e-03     // alpha_3      
+    {{float}} 8.51377133304701e-03     // alpha_3
 {{L}}coeffs_num_alpha_1:
-    {{float}} 2.48287947061529e-01     // alpha_1      
+    {{float}} 2.48287947061529e-01     // alpha_1
 
 {{L}}coeffs_num_beta_10:
     {{float}} 6.10247389755681e-13
 {{L}}coeffs_num_beta_8:
     {{float}} 5.76102136993427e-09
 {{L}}coeffs_num_beta_6:
-    {{float}} 6.29106785017040e-06     // beta_6       
+    {{float}} 6.29106785017040e-06     // beta_6
 {{L}}coeffs_num_beta_4:
-    {{float}} 1.70198817374094e-03     // beta_4       
+    {{float}} 1.70198817374094e-03     // beta_4
 {{L}}coeffs_num_beta_2:
-    {{float}} 1.16817656904453e-01     // beta_2       
+    {{float}} 1.16817656904453e-01     // beta_2
 {{L}}coeffs_num_beta_0:
-    {{float}} 9.93151921023180e-01     // beta_0       
+    {{float}} 9.93151921023180e-01     // beta_0
 
 {{L}}coeffs_num_half:
     {{float}} 0.5
 
 {% if msvc %}
-fma_sigmoid_f32_{{suffix}} endp
+avx512_sigmoid_f32_{{suffix}} endp
 _text ends
 end
 {% else %}

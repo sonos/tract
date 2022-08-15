@@ -1,20 +1,24 @@
-	vbroadcastss    zmm15,  dword ptr [rcx]
-    vmovaps     zmm8, [rax + 0]
-    vfmadd231ps     zmm0, zmm15, zmm8
+	// slow
+	vbroadcastss xmm16, [rcx]
+	vbroadcastss xmm17, [rcx + 4]
+	vbroadcastss xmm18, [rcx + 8]
+	vbroadcastss xmm19, [rcx + 12]
 
+	// fast
+	vmovups	   		xmm31, [rcx]
+	vbroadcastss 	zmm16, xmm31
+	valignd 		xmm17, xmm31, xmm31, 1
+	vbroadcastss 	zmm17, xmm17
+	valignd 		xmm18, xmm31, xmm31, 2
+	vbroadcastss 	zmm18, xmm18
+	valignd 		xmm19, xmm31, xmm31, 3
+	vbroadcastss 	zmm19, xmm19
 
-	vbroadcastss    zmm16,  dword ptr [rcx + 4]
-    vmovaps     zmm9, [rax + 64]
-    vfmadd231ps     zmm1, zmm16, zmm9
+	// commmon
+	vfmadd231ps		zmm0, zmm16, [rax + 0]
+	vfmadd231ps		zmm1, zmm17, [rax + 64]
+	vfmadd231ps		zmm2, zmm18, [rax + 128]
+	vfmadd231ps		zmm3, zmm19, [rax + 192]
 
-	vbroadcastss    zmm17,  dword ptr [rcx + 8]
-    vmovaps     zmm10, [rax + 128]
-    vfmadd231ps     zmm2, zmm17, zmm10
-
-
-	vbroadcastss    zmm18,  dword ptr [rcx + 12]
-    vmovaps     zmm11, [rax + 192]
-    vfmadd231ps     zmm3, zmm18, zmm11
-
-    add rcx, 16
+	add rcx, 16
 	add rax, 256
