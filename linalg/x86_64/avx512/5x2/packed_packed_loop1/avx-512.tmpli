@@ -1,0 +1,34 @@
+	// Tile size: 5x2
+	// Accumulators: 0-9
+	// Col regs: zmm10-13
+	// Row regs: zmm14-15
+
+	vmovaps			zmm10,	[rax]
+	vbroadcastss	zmm14,	dword ptr [rcx + 0]
+	vbroadcastss	zmm15,	dword ptr [rcx + 4]
+	vmovaps			zmm11,	[rax + 64]
+
+	// NB stepping column-wise
+	vfmadd231ps		zmm0,	zmm10, zmm14
+	vfmadd231ps		zmm5,	zmm10, zmm15
+
+	vmovaps			zmm12,	[rax + 128]
+
+	vfmadd231ps		zmm1,	zmm11, zmm14
+	vfmadd231ps		zmm6,	zmm11, zmm15
+
+	vmovaps			zmm13,	[rax + 192]
+
+	vfmadd231ps		zmm2,	zmm12, zmm14
+	vfmadd231ps		zmm7,	zmm12, zmm15
+
+	vmovaps			zmm11,	[rax + 256]
+
+	vfmadd231ps		zmm3,	zmm13, zmm14
+	vfmadd231ps		zmm8,	zmm13, zmm15
+
+	vfmadd231ps		zmm4,	zmm11, zmm14
+	vfmadd231ps		zmm9,	zmm11, zmm15
+
+	add rax, 320
+	add rcx, 8
