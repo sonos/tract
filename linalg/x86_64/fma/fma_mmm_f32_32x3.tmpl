@@ -21,7 +21,7 @@ Windows ABI:
 */
 {% endcomment %}
 
-{% include "preamble.tmpliq" size:"32x3", suffix:suffix, G:G, arch:"fma" %}
+{% include "preamble.tmpliq" size:"32x3", suffix:suffix, G:G %}
 
 {{L}}clear:
     vzeroall
@@ -154,4 +154,4 @@ Windows ABI:
     {% endfor %}
     jmp     {{L}}non_linear_loop
 
-{% include "postamble.tmpliq" size:"32x3", suffix:suffix, G:G, L:L, arch:"fma" %}
+{% include "postamble.tmpliq" size:"32x3", suffix:suffix, G:G, L:L %}
