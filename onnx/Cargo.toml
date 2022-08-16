@@ -20,7 +20,7 @@ derive-new = "0.5.9"
 educe = "0.4.18"
 log = "0.4.14"
 num-integer = "0.1.44"
-prost = "0.10.0"
+prost = "0.11.0"
 smallvec = "1.6.1"
 tract-hir = { version = "0.17.5-pre", path = "../hir" }
 tract-nnef = { version = "0.17.5-pre", path = "../nnef" }
@@ -30,7 +30,7 @@ tract-onnx-opl = { version = "0.17.5-pre", path = "../onnx-opl" }
 mapr = "0.8.0"
 
 [build-dependencies]
-prost-build = "0.10.0"
+prost-build = "0.11.1"
 
 [features]
 default = []
