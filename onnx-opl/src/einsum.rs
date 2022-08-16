@@ -363,6 +363,17 @@ mod test {
     fn test_parse_inner_product_implicit() {
         assert_eq!("i,i".parse::<Expr>().unwrap(), "i,i->".parse::<Expr>().unwrap(),)
     }
+    
+    #[test]
+    fn test_parse_inner_product2() {
+        assert_eq!(
+            dbg!("i,ij->j".parse::<Expr>().unwrap()),
+            Expr::from(tvec![
+                AxisSym::new('i').input(0, 0).input(1, 0),
+                AxisSym::new('j').result(0).input(1, 1)
+            ]),
+        )
+    }
 
     #[test]
     fn test_parse_batch_matmul() {
@@ -428,5 +439,16 @@ mod test {
     #[test]
     fn test_display_expr() {
         assert_eq!("pqrs,tuqvr->pstuv".parse::<Expr>().unwrap().to_string(), "pqrs,tuqvr->pstuv");
+    }
+    
+    #[test]
+    fn test_output_shape_inner_product2() {
+        let op = EinSum{
+            expr:"i,ij->j".parse::<Expr>().unwrap()
+        };
+        let i = Tensor::from_shape(&[10], &vec![1.; 10]).unwrap();
+        let j = Tensor::from_shape(&[5], &vec![2.; 5]).unwrap();
+        let shapes = TVec::from_vec(vec![i.shape(), j.shape()]);
+        dbg!(op.output_shape(&shapes));
     }
 }
