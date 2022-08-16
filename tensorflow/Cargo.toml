@@ -18,8 +18,8 @@ bytes = "1.0.1"
 derive-new = "0.5.9"
 educe = "0.4.18"
 log = "0.4.14"
-prost = "0.10.0"
-prost-types = "0.10.0"
+prost = "0.11.0"
+prost-types = "0.11.0"
 tensorflow = { version = "0.17.0", optional = true }
 tract-hir = { version = "0.17.5-pre", path = "../hir" }
 tract-pulse = { version = "0.17.5-pre", path = "../pulse" }
@@ -28,7 +28,9 @@ tract-pulse = { version = "0.17.5-pre", path = "../pulse" }
 mapr = "0.8.0"
 
 [build-dependencies]
-prost-build = "0.10.0"
+protobuf-src = "1.0.5+3.19.3"
+prost-build = "0.11.1"
+
 
 [features]
 conform = [ "tensorflow" ]
