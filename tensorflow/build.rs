@@ -1,6 +1,7 @@
 use std::{env, fs, path};
 
 fn main() -> std::io::Result<()> {
+    env::set_var("PROTOC", protobuf_src::protoc());
     let inputs: Vec<path::PathBuf> = {
         let mut inputs: Vec<path::PathBuf> = vec![];
 
