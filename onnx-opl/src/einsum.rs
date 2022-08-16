@@ -440,15 +440,14 @@ mod test {
     fn test_display_expr() {
         assert_eq!("pqrs,tuqvr->pstuv".parse::<Expr>().unwrap().to_string(), "pqrs,tuqvr->pstuv");
     }
-    
+
     #[test]
     fn test_output_shape_inner_product2() {
-        let op = EinSum{
-            expr:"i,ij->j".parse::<Expr>().unwrap()
-        };
-        let i = Tensor::from_shape(&[10], &vec![1.; 10]).unwrap();
-        let j = Tensor::from_shape(&[5], &vec![2.; 5]).unwrap();
-        let shapes = TVec::from_vec(vec![i.shape(), j.shape()]);
-        dbg!(op.output_shape(&shapes));
+        let op = EinSum { expr: "i,ij->j".parse::<Expr>().unwrap() };
+        let a = Tensor::from_shape(&[3], &vec![1.; 3]).unwrap();
+        let b = Tensor::from_shape(&[3, 4], &vec![2.; 3 * 4]).unwrap();
+        let in_shapes = TVec::from_vec(vec![a.shape(), b.shape()]);
+        let out_shape = tvec![4];
+        assert_eq!(op.output_shape(&in_shapes), out_shape);
     }
 }
