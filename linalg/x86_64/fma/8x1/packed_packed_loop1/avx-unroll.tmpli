@@ -42,7 +42,7 @@
     vfmadd231ps     ymm4, ymm14, ymm8
     vfmadd231ps     ymm5, ymm14, ymm9
     vfmadd231ps     ymm6, ymm14, ymm10
-    vfmadd231ps     ymm7, ymm14, ymm10
+    vfmadd231ps     ymm7, ymm14, ymm11
 
     add rcx, 8
 	add rax, 512
