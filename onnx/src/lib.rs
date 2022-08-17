@@ -15,7 +15,7 @@ pub mod model;
 pub mod ops;
 
 pub mod pb {
-    include!(concat!(env!("OUT_DIR"), "/prost/onnx.rs"));
+    include!("prost/onnx.rs");
 }
 
 pub mod pb_helpers;

@@ -10,6 +10,7 @@ categories = [ "science" ]
 autobenches = false
 edition = "2018"
 exclude = [ "test_cases" ]
+# build = "build-proto-rs"
 
 [badges]
 maintenance = { status = "actively-developed" }
@@ -29,9 +30,9 @@ tract-onnx-opl = { version = "0.17.5-pre", path = "../onnx-opl" }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 mapr = "0.8.0"
 
-[build-dependencies]
-protobuf-src = "1.0.5+3.19.3"
-prost-build = "0.11.1"
+# [build-dependencies]
+# protobuf-src = "1.0.5+3.19.3"
+# prost-build = "0.11.1"
 
 [features]
 default = []
