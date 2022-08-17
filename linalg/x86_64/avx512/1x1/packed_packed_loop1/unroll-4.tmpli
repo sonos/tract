@@ -1,8 +1,8 @@
 	// slow
-	vbroadcastss xmm16, [rcx]
-	vbroadcastss xmm17, [rcx + 4]
-	vbroadcastss xmm18, [rcx + 8]
-	vbroadcastss xmm19, [rcx + 12]
+	vbroadcastss xmm16, dword ptr [rcx]
+	vbroadcastss xmm17, dword ptr [rcx + 4]
+	vbroadcastss xmm18, dword ptr [rcx + 8]
+	vbroadcastss xmm19, dword ptr [rcx + 12]
 
 	// fast
 	vmovups	   		xmm31, [rcx]
