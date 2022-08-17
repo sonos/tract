@@ -42,7 +42,10 @@ then
     ALL_FEATURES=--all-features
 fi
 
-cargo -q test $CARGO_EXTRA -q -p tract-core -p tract-hir -p tract-onnx -p tract-linalg
+for c in data linalg core hir onnx pulse onnx-opl pulse-opl
+do
+    cargo -q test $CARGO_EXTRA -q -p tract-$c
+done
 # doc test are not finding libtensorflow.so
 cargo -q test $CARGO_EXTRA -q -p tract-tensorflow --lib $ALL_FEATURES
 
