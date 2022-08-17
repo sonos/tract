@@ -11,7 +11,7 @@ sigmoid_impl!(f32, fma_sigmoid_f32, 8, 8, is_x86_feature_detected!("fma"));
 
 pub fn plug(ops: &mut Ops) {
     if is_x86_feature_detected!("fma") {
-        ops.mmv_f32 = Box::new(|_, _| mmm::avx512_mmm_f32_16x1::mmm());
+        ops.mmv_f32 = Box::new(|_, _| mmm::fma_mmm_f32_64x1::mmm());
 
         ops.mmm_f32 = Box::new(|_, _, n| {
             if n.is_none() {
