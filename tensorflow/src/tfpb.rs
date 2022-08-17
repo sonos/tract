@@ -4,12 +4,12 @@ use std::fs;
 
 mod google {
     mod protobuf {
-        include!(concat!(env!("OUT_DIR"), "/prost/google.protobuf.rs"));
+        include!("prost/google.protobuf.rs");
     }
 }
 
 pub mod tensorflow {
-    include!(concat!(env!("OUT_DIR"), "/prost/tensorflow.rs"));
+    include!("prost/tensorflow.rs");
 }
 
 use self::tensorflow::attr_value::ListValue;

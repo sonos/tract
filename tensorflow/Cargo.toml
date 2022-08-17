@@ -9,6 +9,7 @@ keywords = [ "TensorFlow", "NeuralNetworks", "ONNX" ]
 categories = [ "science" ]
 autobenches = false
 edition = "2018"
+# build = "build-proto.rs"
 
 [badges]
 maintenance = { status = "actively-developed" }
@@ -27,10 +28,9 @@ tract-pulse = { version = "0.17.5-pre", path = "../pulse" }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 mapr = "0.8.0"
 
-[build-dependencies]
-protobuf-src = "1.0.5+3.19.3"
-prost-build = "0.11.1"
-
+# [build-dependencies]
+# protobuf-src = "1.0.5+3.19.3"
+# prost-build = "0.11.1"
 
 [features]
 conform = [ "tensorflow" ]
