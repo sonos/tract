@@ -1,5 +1,11 @@
 #!/bin/sh
 
+if [ -e /proc/cpuinfo ]
+then
+    grep "^flags" /proc/cpuinfo | head -1 | \
+        grep --color=always '\(s\?sse[0-9_]*\|fma\|avx512[^ ]*\)'
+fi
+
 set -ex
 
 which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
