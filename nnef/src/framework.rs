@@ -93,7 +93,7 @@ impl Nnef {
             header.set_mtime(now.as_secs());
             header.set_cksum();
 
-            ar.append_data(&mut header, &*filename, &mut &*data)?;
+            ar.append_data(&mut header, filename, &mut &*data)?;
         }
         Ok(ar.into_inner()?)
     }
@@ -208,7 +208,7 @@ fn read_stream<R: std::io::Read>(
 ) -> TractResult<()> {
     // ignore path with any component starting with "." (because OSX's tar is weird)
     #[cfg(target_family = "unix")]
-    if path.components().any(|name| name.as_os_str().as_bytes().get(0) == Some(&b'.')) {
+    if path.components().any(|name| name.as_os_str().as_bytes().first() == Some(&b'.')) {
         return Ok(());
     }
     if path.file_name().map(|n| n == "graph.nnef").unwrap_or(false) {

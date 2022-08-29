@@ -3,7 +3,7 @@ use crate::internal::*;
 use tract_core::ops::nn::Reduce as TReduce;
 use tract_core::ops::nn::Reducer as TReducer;
 
-#[derive(Clone, Copy, Debug, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum Reducer {
     ArgMax(bool), // take last
     ArgMin(bool),

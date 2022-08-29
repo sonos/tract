@@ -39,7 +39,7 @@ fn qparam(i: &str) -> IResult<&str, QuantFormat> {
     let (i, id) =
         nom::branch::alt((stag("linear_quantize"), stag("zero_point_linear_quantize")))(i)?;
     let (i, _) = stag("(")(i)?;
-    let (i, params, bits, signed) = match &*id {
+    let (i, params, bits, signed) = match id {
         "linear_quantize" => {
             let (i, (bits, max, min)) =
                 permutation((arg("bits", integer_numeric), arg("max", float), arg("min", float)))(

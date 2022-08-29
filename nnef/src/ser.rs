@@ -177,7 +177,7 @@ impl<'a> IntoAst<'a> {
             .model
             .properties
             .iter()
-            .sorted_by_key(|(k, _v)| k.clone())
+            .sorted_by_key(|(k, _v)| k.to_owned())
             .map(|(k, v)| Ok(tuple_2(string(k), self.konst(k, v)?.as_ref().clone())))
             .collect::<TractResult<Vec<_>>>()?;
         let version = env!("CARGO_PKG_VERSION");
@@ -195,7 +195,7 @@ impl<'a> IntoAst<'a> {
         let IntoAst { prefix, mut fragments, body, tensors, parameters, results, .. } = self;
         let mut id = prefix
             .map(|p| p.trim_end_matches(&['-', '/', '.'][..]).replace(&['-', '/', '.'][..], "_"))
-            .unwrap_or("network".into());
+            .unwrap_or_else(|| "network".into());
         if id.len() > 0 && char::is_digit(id.chars().next().unwrap(), 10) {
             id = "_".to_string() + &id;
         }
@@ -386,7 +386,7 @@ impl<'a> IntoAst<'a> {
 
     fn assignment(&mut self, name: impl Into<String>, right: Arc<RValue>) {
         let name = name.into();
-        if &*right == &ident(&name) {
+        if *right == ident(&name) {
             return;
         }
         self.body.push(assignment(&name, right))
@@ -409,20 +409,16 @@ pub fn tdim(dim: &TDim) -> RValue {
     match dim {
         TDim::Val(x) => numeric(x),
         TDim::Sym(s) => ident(format!("{}", s.as_char())),
-        TDim::Add(terms) => {
-            let terms = terms.iter().map(tdim).collect::<Vec<_>>();
-            terms
-                .into_iter()
-                .reduce(|x, y| RValue::Binary(x.boxed(), "+".to_string(), y.boxed()))
-                .unwrap()
-        }
-        TDim::Mul(terms) => {
-            let terms = terms.iter().map(tdim).collect::<Vec<_>>();
-            terms
-                .into_iter()
-                .reduce(|x, y| RValue::Binary(x.boxed(), "*".to_string(), y.boxed()))
-                .unwrap()
-        }
+        TDim::Add(terms) => terms
+            .iter()
+            .map(tdim)
+            .reduce(|x, y| RValue::Binary(x.boxed(), "+".to_string(), y.boxed()))
+            .unwrap(),
+        TDim::Mul(terms) => terms
+            .iter()
+            .map(tdim)
+            .reduce(|x, y| RValue::Binary(x.boxed(), "*".to_string(), y.boxed()))
+            .unwrap(),
         TDim::MulInt(x, y) => RValue::Binary(numeric(x).boxed(), "*".to_string(), tdim(y).boxed()),
         TDim::Div(x, y) => RValue::Binary(tdim(x).boxed(), "/".to_string(), numeric(y).boxed()),
     }
