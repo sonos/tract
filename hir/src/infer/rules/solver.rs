@@ -148,6 +148,7 @@ where
 ///     // Add more rules to `solver` here.
 /// );
 /// ```
+#[allow(clippy::type_complexity)]
 pub struct WithRule<'rules, T: Factoid> {
     pub item: Exp<T>,
     pub closure: Box<dyn Fn(&mut Solver<'rules>, T) -> InferenceResult + 'rules>,
@@ -199,6 +200,7 @@ impl<'s, T: Output + Factoid> fmt::Debug for WithRule<'s, T> {
 ///     // Add more rules to `solver` here.
 /// );
 /// ```
+#[allow(clippy::type_complexity)]
 pub struct GivenRule<'rules, T: Factoid> {
     pub item: Exp<T>,
     pub closure: Box<dyn Fn(&mut Solver<'rules>, T::Concrete) -> InferenceResult + 'rules>,
@@ -265,6 +267,7 @@ impl<'s, T: Output + Factoid> fmt::Debug for GivenRule<'s, T> {
 ///     // Add more rules to `solver` here.
 /// );
 /// ```
+#[allow(clippy::type_complexity)]
 pub struct GivenAllRule<'rules, T: Factoid> {
     pub items: Vec<Exp<T>>,
     pub closure: Box<dyn Fn(&mut Solver<'rules>, Vec<T::Concrete>) -> InferenceResult + 'rules>,

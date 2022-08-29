@@ -18,7 +18,7 @@ use crate::internal::*;
 /// graph. The analyser will first tag each edge with a fact, starting with the
 /// most general one and specializing it at each iteration. Eventually, it will
 /// reach a fixed point that - hopefully - holds enough information.
-#[derive(Clone, PartialEq, Default, Hash)]
+#[derive(Clone, PartialEq, Eq, Default, Hash)]
 pub struct InferenceFact {
     pub datum_type: TypeFactoid,
     pub shape: ShapeFactoid,
@@ -198,7 +198,7 @@ impl From<Arc<Tensor>> for InferenceFact {
 
 impl From<Tensor> for InferenceFact {
     fn from(t: Tensor) -> InferenceFact {
-        let mut fact = InferenceFact::dt_shape(t.datum_type(), &*t.shape());
+        let mut fact = InferenceFact::dt_shape(t.datum_type(), t.shape());
         fact.value = t.into_arc_tensor().into();
         fact
     }

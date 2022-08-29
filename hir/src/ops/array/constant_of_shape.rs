@@ -56,7 +56,7 @@ impl Expansion for ConstantOfShape {
             let shape = shape.as_slice::<TDim>()?;
             let scalar = target.add_const(format!("{}.scalar", prefix), self.scalar.clone())?;
             let op = tract_core::ops::array::MultiBroadcastTo::new(shape.into());
-            return target.wire_node(&*prefix, op, &[scalar]);
+            return target.wire_node(prefix, op, &[scalar]);
         }
         bail!("shape input is variable")
     }
