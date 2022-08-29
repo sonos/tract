@@ -11,10 +11,9 @@ use std::str;
 use std::convert::TryInto;
 
 pub trait TryCollect<T, E>: Iterator<Item = Result<T, E>> + Sized {
-    #[must_use]
-    fn try_collect<B: Default + Extend<T>>(mut self) -> Result<B, E> {
+    fn try_collect<B: Default + Extend<T>>(self) -> Result<B, E> {
         let mut out = B::default();
-        while let Some(item) = self.next() {
+        for item in self {
             out.extend(Some(item?));
         }
         Ok(out)

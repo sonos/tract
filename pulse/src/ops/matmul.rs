@@ -22,7 +22,7 @@ impl PulsedOp for MatMulUnary {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         let (_m, _k, _n, c_shape) = tract_core::ops::matmul::compute_shape(
-            &self.a.shape().into_iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
+            &self.a.shape().iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
             &inputs[0].shape,
             self.a_trans,
             self.b_trans,

@@ -72,8 +72,8 @@ impl Expansion for Pad11 {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 2 + self.constant_input.is_some() as usize)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 2 + self.constant_input.is_some() as usize)?;
+        check_output_arity(outputs, 1)?;
         if let Some(input) = self.constant_input {
             s.equals(&inputs[0].datum_type, &inputs[input].datum_type)?;
             s.equals(&inputs[input].rank, 0)?;

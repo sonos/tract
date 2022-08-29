@@ -70,8 +70,8 @@ impl InferenceRulesOp for Reduce {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 2)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 2)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         if self.keep_dims {
             s.equals(&inputs[0].rank, &outputs[0].rank)?;
@@ -108,11 +108,9 @@ impl InferenceRulesOp for Reduce {
                             s.equals(&outputs[0].shape[od], 1.to_dim())?;
                             od += 1;
                         }
-                    } else {
-                        if od < orank as usize {
-                            s.equals(&outputs[0].shape[od], &inputs[0].shape[id])?;
-                            od += 1;
-                        }
+                    } else if od < orank as usize {
+                        s.equals(&outputs[0].shape[od], &inputs[0].shape[id])?;
+                        od += 1;
                     }
                 }
                 Ok(())

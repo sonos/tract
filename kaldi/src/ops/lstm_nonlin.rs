@@ -34,8 +34,8 @@ impl Expansion for LstmNonlin {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 1)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&inputs[0].datum_type, f32::datum_type())?;
         s.equals(&outputs[0].datum_type, f32::datum_type())?;
         s.equals(&inputs[0].rank, 2)?;
@@ -59,24 +59,18 @@ impl Expansion for LstmNonlin {
             .peepholes_params
             .to_array_view::<f32>()?
             .into_dimensionality::<tract_ndarray::Ix2>()?;
-        let w_ic: OutletId = target
-            .add_const(
-                format!("{}.w_ic", prefix),
-                params.slice_axis(tract_ndarray::Axis(0), (0..1).into()).to_owned(),
-            )?
-            .into();
-        let w_fc: OutletId = target
-            .add_const(
-                format!("{}.w_fc", prefix),
-                params.slice_axis(tract_ndarray::Axis(0), (1..2).into()).to_owned(),
-            )?
-            .into();
-        let w_oc: OutletId = target
-            .add_const(
-                format!("{}.w_oc", prefix),
-                params.slice_axis(tract_ndarray::Axis(0), (2..3).into()).to_owned(),
-            )?
-            .into();
+        let w_ic: OutletId = target.add_const(
+            format!("{}.w_ic", prefix),
+            params.slice_axis(tract_ndarray::Axis(0), (0..1).into()).to_owned(),
+        )?;
+        let w_fc: OutletId = target.add_const(
+            format!("{}.w_fc", prefix),
+            params.slice_axis(tract_ndarray::Axis(0), (1..2).into()).to_owned(),
+        )?;
+        let w_oc: OutletId = target.add_const(
+            format!("{}.w_oc", prefix),
+            params.slice_axis(tract_ndarray::Axis(0), (2..3).into()).to_owned(),
+        )?;
 
         let cell_hidden_dim = params.shape()[1];
 

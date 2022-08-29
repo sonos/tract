@@ -165,6 +165,7 @@ impl EvalOp for Resize {
         )?;
         let mut data = inputs.remove(0).into_tensor().into_array::<f32>()?;
         for axis in 0..data.ndim() {
+            #[allow(clippy::comparison_chain)]
             if output_shape[axis] == data.shape()[axis] {
                 continue;
             } else if output_shape[axis] > data.shape()[axis] {
@@ -179,7 +180,7 @@ impl EvalOp for Resize {
                         data.shape()[axis],
                         new_shape[axis],
                     );
-                    let mut co_i = co_o.clone();
+                    let mut co_i = co_o;
                     let x_left = (x_in as usize).min(data.shape()[axis] - 1).max(0);
                     co_i[axis] = x_left;
                     let y_left = data[&co_i];
@@ -202,7 +203,7 @@ impl InferenceRulesOp for Resize {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_output_arity(&outputs, 1)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[0].rank, &outputs[0].rank)?;
         if inputs.len() == 3 && self.optional_scales_input == Some(2) {
@@ -284,7 +285,7 @@ impl TypedOp for Resize {
         let scales = self.optional_scales_input.and_then(|ix| inputs.get(ix));
         let sizes = self.optional_sizes_input.and_then(|ix| inputs.get(ix));
         let output_shape = self.compute_output_shape(
-            &*input_shape,
+            input_shape,
             scales.and_then(|f| f.konst.as_deref()),
             sizes.and_then(|f| f.konst.as_deref()),
         )?;

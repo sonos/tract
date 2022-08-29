@@ -33,8 +33,8 @@ impl Expansion for Pack {
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
         let axis = self.axis;
-        check_input_arity(&inputs, self.n)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, self.n)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&outputs[0].rank, inputs[0].rank.bex() + 1)?;
         s.equals_all((0..self.n).map(|i| inputs[i].rank.bex()).collect())?;
         s.given_all((0..self.n).map(move |i| &inputs[i].datum_type), move |s, dts| {

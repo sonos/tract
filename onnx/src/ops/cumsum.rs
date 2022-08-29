@@ -49,7 +49,7 @@ impl Expansion for CumSum {
         var_shape.set(axis, 1.to_dim());
         let init = model.wire_node(
             format!("{}.init", prefix),
-            tract_core::ops::array::MultiBroadcastTo::new(var_shape.clone().into()),
+            tract_core::ops::array::MultiBroadcastTo::new(var_shape.clone()),
             &[zero],
         )?[0];
         let chunk = if self.reverse { -1 } else { 1 };

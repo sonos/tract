@@ -50,8 +50,8 @@ impl Expansion for FakeQuantWithMinMaxVars {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 3)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 3)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&inputs[0].datum_type, &inputs[1].datum_type)?;
         s.equals(&inputs[0].datum_type, &inputs[2].datum_type)?;
         s.equals(&inputs[1].shape, shapefactoid!())?;
@@ -72,21 +72,21 @@ impl Expansion for FakeQuantWithMinMaxVars {
             target.outlet_fact(inputs[2])?.konst.as_ref(),
         ) {
             let rank = target.outlet_fact(inputs[0])?.rank();
-            let step = self.step(&min, &max)?;
+            let step = self.step(min, max)?;
             let min = *min.to_scalar::<f32>()?;
             let max = *max.to_scalar::<f32>()?;
             let min_adj = step * round_ties_to_even(min / step);
             let max_adj = max - min + min_adj;
             let wire = &inputs[0..1];
             let wire = target.wire_node(
-                format!("{}.clamp_min", &*prefix),
+                format!("{}.clamp_min", prefix),
                 ops::math::max::unary(
                     tensor0(min_adj).broadcast_into_rank(rank)?.into_arc_tensor(),
                 ),
-                &wire,
+                wire,
             )?;
             let wire = target.wire_node(
-                format!("{}.clamp_max", &*prefix),
+                format!("{}.clamp_max", prefix),
                 ops::math::min::unary(
                     tensor0(max_adj).broadcast_into_rank(rank)?.into_arc_tensor(),
                 ),
@@ -107,17 +107,17 @@ impl Expansion for FakeQuantWithMinMaxVars {
                 &wire,
             )?;
             let wire = target.wire_node(
-                format!("{}.round", &*prefix),
+                format!("{}.round", prefix),
                 ops::math::round_half_to_even(),
                 &wire,
             )?;
             let wire = target.wire_node(
-                format!("{}.mul-step", &*prefix),
+                format!("{}.mul-step", prefix),
                 ops::math::mul::unary(tensor0(step).broadcast_into_rank(rank)?.into_arc_tensor()),
                 &wire,
             )?;
             target.wire_node(
-                format!("{}.add-min", &*prefix),
+                format!("{}.add-min", prefix),
                 ops::math::add::unary(
                     tensor0(min_adj).broadcast_into_rank(rank)?.into_arc_tensor(),
                 ),

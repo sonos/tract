@@ -29,8 +29,8 @@ impl Expansion for ExpandDims {
         let dims = &inputs[1];
         let output = &outputs[0];
 
-        check_input_arity(&inputs, 2)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 2)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&dims.datum_type, DatumType::I32)?;
         s.equals(&data.datum_type, &output.datum_type)?;
         s.equals(data.rank.bex() + 1, &output.rank)?;

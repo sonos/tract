@@ -52,7 +52,7 @@ impl Cmp {
 impl TryFrom<u8> for Cmp {
     type Error = TractError;
     fn try_from(value: u8) -> Result<Self, Self::Error> {
-        if value >= 1 && value <= 5 {
+        if (1..=5).contains(&value) {
             unsafe { Ok(std::mem::transmute(value)) }
         } else {
             bail!("Invalid value for Cmp: {}", value);
@@ -99,8 +99,8 @@ impl Display for TreeEnsembleData {
                     let node = self.get_unchecked(n as _);
                     if let TreeNode::Leaf(leaf) = node {
                         for vote in leaf.start_id..leaf.end_id {
-                            let cat = self.leaves.as_slice::<u32>().unwrap()[vote*2];
-                            let contrib = self.leaves.as_slice::<u32>().unwrap()[vote*2 + 1];
+                            let cat = self.leaves.as_slice::<u32>().unwrap()[vote * 2];
+                            let contrib = self.leaves.as_slice::<u32>().unwrap()[vote * 2 + 1];
                             let contrib = f32::from_bits(contrib);
                             writeln!(f, "{} categ:{} add:{}", n, cat, contrib)?;
                         }
@@ -117,7 +117,7 @@ impl Display for TreeEnsembleData {
 impl TreeEnsembleData {
     unsafe fn get_unchecked(&self, node: usize) -> TreeNode {
         let row = &self.nodes.as_slice_unchecked::<u32>()[node * 5..][..5];
-        if let Some(cmp) = ((row[4] & 0xFF) as u8).try_into().ok() {
+        if let Ok(cmp) = ((row[4] & 0xFF) as u8).try_into() {
             let feature_id = row[0];
             let true_id = row[1];
             let false_id = row[2];
@@ -322,15 +322,16 @@ impl TreeEnsemble {
     }
 
     pub fn check_n_features(&self, n_features: usize) -> TractResult<()> {
-        Ok(ensure!(
+        ensure!(
             n_features > self.max_used_feature,
             "Invalid input shape: input has {} features, tree ensemble use feature #{}",
             n_features,
             self.max_used_feature
-        ))
+        );
+        Ok(())
     }
 
-    fn eval_2d<'i, A, T>(&self, input: &ArrayView2<T>) -> TractResult<Array2<f32>>
+    fn eval_2d<A, T>(&self, input: &ArrayView2<T>) -> TractResult<Array2<f32>>
     where
         A: AggregateFn,
         T: AsPrimitive<f32>,
@@ -352,7 +353,7 @@ impl TreeEnsemble {
         Ok(output)
     }
 
-    fn eval_1d<'i, A, T>(&self, input: &ArrayView1<T>) -> TractResult<Array1<f32>>
+    fn eval_1d<A, T>(&self, input: &ArrayView1<T>) -> TractResult<Array1<f32>>
     where
         A: AggregateFn,
         T: AsPrimitive<f32>,

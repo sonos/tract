@@ -41,27 +41,20 @@ pub(crate) fn sync_inputs(
     Ok(inputs)
 }
 
+register_all_mod!(array, cnn, downsample, matmul, qmatmul, scan, source);
 
-register_all_mod!(
-    array,
-    cnn,
-    downsample,
-    matmul,
-    qmatmul,
-    scan,
-    source
-);
+type PulsifierFn = fn(
+    &TypedModel,
+    &TypedNode,
+    &mut PulsedModel,
+    &HashMap<OutletId, OutletId>,
+    usize,
+) -> TractResult<Option<TVec<OutletId>>>;
 
 pub struct OpPulsifier {
     pub type_id: std::any::TypeId,
     pub name: &'static str,
-    pub func: fn(
-        &TypedModel,
-        &TypedNode,
-        &mut PulsedModel,
-        &HashMap<OutletId, OutletId>,
-        usize,
-    ) -> TractResult<Option<TVec<OutletId>>>,
+    pub func: PulsifierFn,
 }
 
 impl OpPulsifier {

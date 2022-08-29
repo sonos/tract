@@ -37,11 +37,11 @@ impl KaldiAttributeKind {
         }
     }
 
-    fn parse_float_value<'a>(i: &'a [u8]) -> IResult<&'a [u8], f32> {
+    fn parse_float_value(i: &[u8]) -> IResult<&[u8], f32> {
         alt((preceded(tag([4]), le_f32), map(preceded(tag([8]), le_f64), |f| f as f32)))(i)
     }
 
-    fn parse_float_vector<'a>(i: &'a [u8]) -> IResult<&'a [u8], Tensor> {
+    fn parse_float_vector(i: &[u8]) -> IResult<&[u8], Tensor> {
         let (i, len) = super::integer(true)(i)?;
         // FIXME pending merge of https://github.com/Geal/nom/pull/995
         if len == 0 {
@@ -51,7 +51,7 @@ impl KaldiAttributeKind {
         }
     }
 
-    fn parse_float_matrix<'a>(i: &'a [u8]) -> IResult<&'a [u8], Tensor> {
+    fn parse_float_matrix(i: &[u8]) -> IResult<&[u8], Tensor> {
         let (i, rows) = super::integer(true)(i)?;
         let (i, cols) = super::integer(true)(i)?;
         let len = (rows * cols) as usize;

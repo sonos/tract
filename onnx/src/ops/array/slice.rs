@@ -7,7 +7,7 @@ pub fn slice(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let v = ctx.onnx_operator_set_version;
-    if v >= 1 && v < 10 {
+    if (1..10).contains(&v) {
         slice1(ctx, node)
     } else {
         slice10(ctx, node)
@@ -46,8 +46,8 @@ impl Expansion for Slice1 {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> TractResult<()> {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 1)?;
+        check_output_arity(outputs, 1)?;
         if self.axes.is_none() {
             s.equals(&inputs[0].rank, self.starts.len() as i64)?;
             s.equals(&inputs[0].rank, self.ends.len() as i64)?;
@@ -58,21 +58,17 @@ impl Expansion for Slice1 {
             (0..shape.len()).try_for_each(move |axis| {
                 let d = &shape[axis];
                 let spec = if let Some(axes) = self.axes.as_ref() {
-                    if let Some(ix) = axes.iter().position(|&a| a == axis) {
-                        Some((self.starts[ix], self.ends[ix]))
-                    } else {
-                        None
-                    }
+                    axes.iter().position(|&a| a == axis).map(|ix| (self.starts[ix], self.ends[ix]))
                 } else {
-                    Some((self.starts[axis].into(), self.ends[axis].into()))
+                    Some((self.starts[axis], self.ends[axis]))
                 };
                 if let Some((mut b, mut e)) = spec {
                     if let Ok(d) = d.to_i64() {
                         if b > d {
-                            b = d.into();
+                            b = d;
                         }
                         if e > d {
-                            e = d.into();
+                            e = d;
                         }
                     }
                     let b = if b < 0 { d.bex() + TDim::from(b) } else { TDim::from(b).bex() };
@@ -111,7 +107,7 @@ impl Expansion for Slice1 {
                 bail!("Can't translate slice: axis={} dim={} b={} e={}", axis, dim, b, e)
             }
         }
-        target.rename_node(wire.node, &*prefix)?;
+        target.rename_node(wire.node, prefix)?;
         Ok(tvec!(wire))
     }
 }

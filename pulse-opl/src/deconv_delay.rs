@@ -4,7 +4,7 @@ use tract_ndarray::Axis;
 use tract_nnef::internal::*;
 use tract_num_traits::Zero;
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct DeconvDelay {
     pub axis: usize,
     pub overlap: usize,
@@ -55,7 +55,7 @@ impl TypedOp for DeconvDelay {
     as_op!();
 }
 
-#[derive(Debug, Clone, PartialEq, Hash, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct DeconvDelayState {
     valid_inputed: isize,
     buffer: Option<Tensor>,

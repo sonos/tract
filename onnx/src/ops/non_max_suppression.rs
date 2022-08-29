@@ -51,8 +51,8 @@ impl Expansion for NonMaxSuppression {
             + self.optional_max_output_boxes_per_class_input.is_some() as usize
             + self.optional_iou_threshold_input.is_some() as usize
             + self.optional_score_threshold_input.is_some() as usize;
-        check_input_arity(&inputs, input_count)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, input_count)?;
+        check_output_arity(outputs, 1)?;
 
         // [out] selected_indices: shape=[num_selected_indices, 3], type=int64
         s.equals(&outputs[0].rank, 2)?;

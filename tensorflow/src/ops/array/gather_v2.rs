@@ -24,8 +24,8 @@ impl Expansion for GatherV2 {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 3)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 3)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[1].datum_type, i32::datum_type())?;
         s.equals(&inputs[2].datum_type, i32::datum_type())?;
@@ -55,7 +55,7 @@ impl Expansion for GatherV2 {
             let axis = axis.cast_to_scalar::<i64>()?;
             let input_fact = target.outlet_fact(inputs[0])?;
             let op = tract_hir::ops::array::Gather::new(axis).to_type_op(input_fact.rank());
-            target.wire_node(&*prefix, op, &inputs[0..2])
+            target.wire_node(prefix, op, &inputs[0..2])
         } else {
             bail!("Need to know axis to type GatherV2")
         }

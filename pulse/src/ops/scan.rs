@@ -74,7 +74,7 @@ impl PulsedOp for Scan {
                 .collect();
             let fact = PulsedFact {
                 datum_type: output_body_fact.datum_type,
-                shape: shape.into(),
+                shape,
                 axis: output_mapping.axis,
                 dim: inputs[0].dim.clone(),
                 delay: inputs[0].delay,

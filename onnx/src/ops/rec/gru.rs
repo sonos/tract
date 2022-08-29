@@ -23,7 +23,7 @@ pub fn gru(
     Ok((expand(gru), vec![]))
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, Hash)]
 pub struct GRU {
     pub optional_bias_input: Option<usize>,
     pub optional_sequence_lens_input: Option<usize>,
@@ -73,10 +73,10 @@ impl Expansion for GRU {
             + self.optional_bias_input.is_some() as usize
             + self.optional_sequence_lens_input.is_some() as usize
             + self.optional_initial_h_input.is_some() as usize;
-        check_input_arity(&inputs, input_count)?;
+        check_input_arity(inputs, input_count)?;
         let output_count =
             self.optional_y_output.is_some() as usize + self.optional_y_h_output.is_some() as usize;
-        check_output_arity(&outputs, output_count)?;
+        check_output_arity(outputs, output_count)?;
         s.equals(&inputs[0].datum_type, &inputs[1].datum_type)?;
         s.equals(&inputs[0].datum_type, &inputs[2].datum_type)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
@@ -208,7 +208,7 @@ impl GRU {
         input_mapping.push(scan::InputMapping::Scan { slot: 0, axis: 0, chunk });
         let mut x_source_fact = x_fact.without_value();
         x_source_fact.shape.set(0, 1.to_dim());
-        let x_source = body.add_source("x_source", x_source_fact)?.into();
+        let x_source = body.add_source("x_source", x_source_fact)?;
         wire!(Xt = AxisOp::Rm(0), x_source);
 
         // W: onnx interface: [num_directions, 3*hidden_size, input_size]
@@ -217,7 +217,7 @@ impl GRU {
         target_wire!(w = AxisOp::Rm(0), w_dir);
         outer_inputs.push(w);
         input_mapping.push(scan::InputMapping::Full { slot: 1 });
-        let W = body.add_source("w", target.outlet_fact(w)?.clone())?.into();
+        let W = body.add_source("w", target.outlet_fact(w)?.clone())?;
 
         // R: onnx interface: [num_directions, 3*hidden_size, hidden_size]
         // scan interfaces: [3*hidden_size, hidden_size]
@@ -225,14 +225,14 @@ impl GRU {
         target_wire!(r = AxisOp::Rm(0), r_dir);
         outer_inputs.push(r);
         input_mapping.push(scan::InputMapping::Full { slot: 2 });
-        let R = body.add_source("r", target.outlet_fact(r)?.clone())?.into();
+        let R = body.add_source("r", target.outlet_fact(r)?.clone())?;
 
         // B: onnx interface: [num_directions, 6*hidden_size]
         let b = if let Some(slot) = self.optional_bias_input {
             target_wire!(b_dir = array::Slice::new(0, dir, dir + 1), inputs[slot]);
             outer_inputs.push(b_dir);
             input_mapping.push(scan::InputMapping::Full { slot });
-            let b = body.add_source("b", target.outlet_fact(b_dir)?.clone())?.into();
+            let b = body.add_source("b", target.outlet_fact(b_dir)?.clone())?;
             Some(b)
         } else {
             None
@@ -264,12 +264,10 @@ impl GRU {
             )
         };
         input_mapping.push(scan::InputMapping::State { initializer });
-        let h_source = body
-            .add_source(
-                "h_source",
-                x_fact.datum_type.fact(&[1.to_dim(), b_size.clone(), h_size.clone()]),
-            )?
-            .into();
+        let h_source = body.add_source(
+            "h_source",
+            x_fact.datum_type.fact(&[1.to_dim(), b_size.clone(), h_size.clone()]),
+        )?;
 
         wire!(Ht_1 = AxisOp::Rm(0), h_source);
 
@@ -346,7 +344,7 @@ impl GRU {
         wire!(ht = self.g.clone(), ht0);
 
         // Ht = (1 - zt) (.) ht + zt (.) Ht-1
-        let one: OutletId = body.add_const("one", tensor2(&[[1f32]]))?.into();
+        let one: OutletId = body.add_const("one", tensor2(&[[1f32]]))?;
         wire!(one_sub_zt = math::sub::bin_typed(), one, zt);
         wire!(one_sub_zt_ht = math::mul::bin_typed(), one_sub_zt, ht);
         wire!(zt_Ht_1 = math::mul::bin_typed(), zt, Ht_1);
@@ -381,7 +379,7 @@ impl GRU {
         };
 
         let scan_outputs = target.wire_node(
-            &*prefix,
+            prefix,
             ops::scan::Scan::new(
                 body,
                 input_mapping,

@@ -98,7 +98,7 @@ impl EvalOp for PulsedSameAxisConcat {
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         let symbols_in_dim = self.input_len.symbols().into_iter().collect();
-        return Ok(Some(Box::new(PulsedSameAxisConcatState { current_pos: 0, symbols_in_dim })));
+        Ok(Some(Box::new(PulsedSameAxisConcatState { current_pos: 0, symbols_in_dim })))
     }
 }
 
@@ -167,7 +167,7 @@ impl OpState for PulsedSameAxisConcatState {
             ))?;
         }
 
-        return Ok(tvec!(data.into_arc_tensor()));
+        Ok(tvec!(data.into_arc_tensor()))
     }
 }
 

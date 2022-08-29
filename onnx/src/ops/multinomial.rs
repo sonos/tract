@@ -41,8 +41,8 @@ impl Expansion for Multinomial {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_output_arity(&outputs, 1)?;
-        check_input_arity(&inputs, 1)?;
+        check_output_arity(outputs, 1)?;
+        check_input_arity(inputs, 1)?;
 
         // inputs[0]: tensor(float16), tensor(float), tensor(double) ; [batch_size, class_size]
         // outputs[0]: tensor(int32), tensor(int64) {depending on self.datum_type} ; [batch_size, sample_size]

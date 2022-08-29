@@ -40,8 +40,8 @@ impl Expansion for BlockLSTM {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 9)?;
-        check_input_arity(&outputs, 7)?;
+        check_input_arity(inputs, 9)?;
+        check_input_arity(outputs, 7)?;
 
         s.equals(&inputs[0].rank, 0)?; // seq_len_max
         s.equals(&inputs[0].datum_type, i64::datum_type())?;
@@ -60,8 +60,8 @@ impl Expansion for BlockLSTM {
         s.equals(&inputs[8].shape[0], 4 * inputs[1].shape[2].bex())?; // bias: [ 4*cell_size ]
 
         // i, cs, f, o, ci, co, h
-        for i in 0..7 {
-            s.equals(&inputs[1].datum_type, &outputs[i].datum_type)?;
+        for (i, output) in outputs.iter().take(7).enumerate() {
+            s.equals(&inputs[1].datum_type, &output.datum_type)?;
             s.equals(&outputs[i].shape, &inputs[1].shape)?;
         }
 
@@ -107,7 +107,7 @@ impl Expansion for BlockLSTM {
         input_mapping.push(scan::InputMapping::Scan { slot: 1, axis: 0, chunk: 1 });
         let mut x_source_fact = model.outlet_fact(inputs[1])?.clone();
         x_source_fact.shape.set(0, 1.to_dim());
-        let x_source = body.add_source("x_source", x_source_fact)?.into();
+        let x_source = body.add_source("x_source", x_source_fact)?;
         wire!(x = AxisOp::Rm(0), x_source);
 
         // CS: body input 1
@@ -174,7 +174,7 @@ impl Expansion for BlockLSTM {
         }
 
         let scan = scan::Scan::new(body, input_mapping, output_mapping, Some(0), 0)?;
-        model.wire_node(&*prefix, scan, &*outer_inputs)
+        model.wire_node(prefix, scan, &*outer_inputs)
     }
 }
 

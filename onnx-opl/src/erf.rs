@@ -9,6 +9,7 @@ tract_core::element_wise!(erf, Erf,
 );
 
 #[allow(non_upper_case_globals)]
+#[allow(clippy::excessive_precision)]
 fn erf_f32(x: f32) -> f32 {
     const a1: f32 = 0.0705230784;
     const a2: f32 = 0.0422820123;

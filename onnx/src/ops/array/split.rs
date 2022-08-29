@@ -36,7 +36,7 @@ impl Expansion for Split13 {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
         ) -> InferenceResult {
-        check_input_arity(&inputs, 2)?;
+        check_input_arity(inputs, 2)?;
         s.given_2(&inputs[0].shape, &inputs[1].value, move |s, shape, splits| {
             let splits = splits.cast_to::<TDim>()?;
             let splits = splits.as_slice::<TDim>()?;
@@ -57,7 +57,7 @@ impl Expansion for Split13 {
         if let Some(splits) = model.outlet_fact(inputs[1])?.konst.as_ref() {
             let axis = self.axis + if self.axis < 0 { model.outlet_fact(inputs[0])?.rank() as isize } else { 0 };
             let splits = splits.cast_to::<i64>()?;
-            let splits = splits.as_slice::<i64>()?.into_iter().map(|i| *i as usize).collect::<Vec<_>>();
+            let splits = splits.as_slice::<i64>()?.iter().map(|i| *i as usize).collect::<Vec<_>>();
             let op = tract_hir::ops::array::Split::new(axis, splits.len(), Some(splits));
             return op.wire(prefix, model, &inputs[0..1]);
         }
