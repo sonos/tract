@@ -19,7 +19,7 @@ use std::sync::Arc;
 pub mod litteral;
 pub mod view;
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Approximation {
     Exact,
     Close,

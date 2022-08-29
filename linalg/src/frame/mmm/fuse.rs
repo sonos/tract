@@ -4,7 +4,7 @@ use super::{InputStore, OutputStore, OutputStoreKer, PackedStore};
 use tract_data::internal::*;
 
 #[repr(usize)]
-#[derive(Copy, Clone, Debug, PartialEq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum RoundingPolicy {
     Native,
     Zero,
@@ -15,7 +15,7 @@ pub enum RoundingPolicy {
     Odd,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum BinOp {
     Min,
     Max,
@@ -66,7 +66,7 @@ impl<'t> FusedSpec<'t> {
 
 // Careful here, the jump_to comments are used by the build script.
 #[repr(C, usize)]
-#[derive(PartialEq, Copy, Clone, Debug)]
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
 #[rustfmt::skip]
 pub enum FusedKerSpec<TI: Copy> {
     Done,                                       // jump_to:done

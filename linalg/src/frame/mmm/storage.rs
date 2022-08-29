@@ -146,7 +146,7 @@ impl OutputStore {
 }
 
 #[repr(C)]
-#[derive(PartialEq, Copy, Clone, Debug)]
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub struct OutputStoreKer {
     pub ptr: *mut u8,
     pub row_byte_stride: isize,
