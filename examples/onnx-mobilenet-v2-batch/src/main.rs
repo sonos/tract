@@ -39,7 +39,7 @@ fn main() -> TractResult<()> {
         result[0].to_array_view::<f32>()?.into_dimensionality()?;
     for (ix, b) in best.outer_iter().enumerate() {
         // find the best category
-        let best = b.iter().enumerate().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap()).unwrap();
+        let best = b.iter().enumerate().max_by(|a, b| a.1.partial_cmp(b.1).unwrap()).unwrap();
         println!("batch index:{} best score {} for category {:?}", ix, best.1, best.0 + 2);
     }
     Ok(())

@@ -21,7 +21,7 @@ fn main() -> TractResult<()> {
 
     // find and display the max value with its index
     let best =
-        result[0].as_slice::<f32>()?.iter().zip(2..).max_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+        result[0].as_slice::<f32>()?.iter().zip(2..).max_by(|a, b| a.0.partial_cmp(b.0).unwrap());
     println!("result: {:?}", best);
     Ok(())
 }
