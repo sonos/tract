@@ -21,20 +21,20 @@ pub fn depth_to_space_mode(node: &NodeProto) -> TractResult<DepthToSpaceMode> {
         Some(mode) => node.check_value(
             "mode",
             match mode {
-                "DCR" => Ok(Some(DepthToSpaceMode::DCR)),
-                "CRD" => Ok(Some(DepthToSpaceMode::CRD)),
+                "DCR" => Ok(Some(DepthToSpaceMode::Dcr)),
+                "CRD" => Ok(Some(DepthToSpaceMode::Crd)),
                 _ => Err(mode),
             },
         )?,
     }
-    .unwrap_or(DepthToSpaceMode::DCR);
+    .unwrap_or(DepthToSpaceMode::Dcr);
     Ok(mode)
 }
 
 #[derive(Debug, Clone, Hash)]
 pub enum DepthToSpaceMode {
-    DCR,
-    CRD,
+    Dcr,
+    Crd,
 }
 
 #[derive(Debug, Clone, Hash)]
@@ -70,13 +70,13 @@ impl DepthToSpace {
         let oshape_to = tvec!(shape[2].clone() * self.blocksize, shape[3].clone() * self.blocksize);
 
         match self.mode {
-            DepthToSpaceMode::DCR => {
+            DepthToSpaceMode::Dcr => {
                 stack.push(AxisOp::Reshape(1, ishape_from, ishape_to));
                 stack.push(AxisOp::Move(2, 5));
                 stack.push(AxisOp::Move(1, 3));
                 stack.push(AxisOp::Reshape(2, oshape_from, oshape_to));
             }
-            DepthToSpaceMode::CRD => {
+            DepthToSpaceMode::Crd => {
                 ishape_to.reverse();
                 stack.push(AxisOp::Reshape(1, ishape_from, ishape_to));
                 stack.push(AxisOp::Move(3, 5));
@@ -102,8 +102,8 @@ impl Expansion for DepthToSpace {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 1)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&inputs[0].rank, 4)?;
         s.equals(&outputs[0].rank, 4)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;

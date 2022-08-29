@@ -15,8 +15,7 @@ pub(crate) mod lstm_nonlin;
 pub(crate) mod memory;
 mod renorm;
 
-pub const AFFINE: &'static [&'static str] =
-    &["FixedAffineComponent", "NaturalGradientAffineComponent"];
+pub const AFFINE: &[&str] = &["FixedAffineComponent", "NaturalGradientAffineComponent"];
 
 pub fn register_all_ops(reg: &mut KaldiOpRegister) {
     for affine in AFFINE {

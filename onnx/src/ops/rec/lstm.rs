@@ -24,7 +24,7 @@ pub fn lstm(
     Ok((expand(lstm), vec![]))
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, Hash)]
 pub struct LSTM {
     pub optional_bias_input: Option<usize>,
     pub optional_sequence_lens_input: Option<usize>,
@@ -82,11 +82,11 @@ impl Expansion for LSTM {
             + self.optional_initial_h_input.is_some() as usize
             + self.optional_initial_c_input.is_some() as usize
             + self.optional_p_input.is_some() as usize;
-        check_input_arity(&inputs, input_count)?;
+        check_input_arity(inputs, input_count)?;
         let output_count = self.optional_y_output.is_some() as usize
             + self.optional_y_h_output.is_some() as usize
             + self.optional_y_c_output.is_some() as usize;
-        check_output_arity(&outputs, output_count)?;
+        check_output_arity(outputs, output_count)?;
         s.equals(&inputs[0].datum_type, &inputs[1].datum_type)?;
         s.equals(&inputs[0].datum_type, &inputs[2].datum_type)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
@@ -247,7 +247,7 @@ impl LSTM {
         input_mapping.push(scan::InputMapping::Scan { slot: 0, axis: 1, chunk });
         let mut x_source_fact = target.outlet_fact(x_batch_first)?.without_value();
         x_source_fact.shape.set(1, 1.to_dim());
-        let x_source = body.add_source("x_source", x_source_fact)?.into();
+        let x_source = body.add_source("x_source", x_source_fact)?;
         wire!(Xt = AxisOp::Rm(1), x_source);
 
         // W: onnx interface: [num_directions, 4*hidden_size, input_size]
@@ -256,7 +256,7 @@ impl LSTM {
         target_wire!(w = AxisOp::Rm(0), w_dir);
         outer_inputs.push(w);
         input_mapping.push(scan::InputMapping::Full { slot: 1 });
-        let W = body.add_source("w", target.outlet_fact(w)?.clone())?.into();
+        let W = body.add_source("w", target.outlet_fact(w)?.clone())?;
 
         // R: onnx interface: [num_directions, 4*hidden_size, hidden_size]
         // scan interfaces: [4*hidden_size, hidden_size]
@@ -264,14 +264,14 @@ impl LSTM {
         target_wire!(r = AxisOp::Rm(0), r_dir);
         outer_inputs.push(r);
         input_mapping.push(scan::InputMapping::Full { slot: 2 });
-        let R = body.add_source("r", target.outlet_fact(r)?.clone())?.into();
+        let R = body.add_source("r", target.outlet_fact(r)?.clone())?;
 
         // B: onnx interface: [num_directions, 8*hidden_size]
         let b = if let Some(slot) = self.optional_bias_input {
             target_wire!(b = array::Slice::new(0, dir, dir + 1), inputs[slot]);
             outer_inputs.push(b);
             input_mapping.push(scan::InputMapping::Full { slot });
-            let b = body.add_source("b", target.outlet_fact(b)?.clone())?.into();
+            let b = body.add_source("b", target.outlet_fact(b)?.clone())?;
             Some(b)
         } else {
             None
@@ -308,8 +308,7 @@ impl LSTM {
             .add_source(
                 "h_source",
                 x_fact.datum_type.fact(&[b_size.clone(), 1.to_dim(), h_size.clone()]),
-            )?
-            .into();
+            )?;
 
         let initializer = if let Some(initial_c_input) = self.optional_initial_c_input {
             target_wire!(c_dir = array::Slice::new(0, dir, dir + 1), inputs[initial_c_input]);
@@ -334,15 +333,14 @@ impl LSTM {
             .add_source(
                 "c_source",
                 x_fact.datum_type.fact(&[b_size.clone(), 1.to_dim(), h_size.clone()]),
-            )?
-            .into();
+            )?;
 
         // P: onnx [num_directions, 3*hidde_size]
         let p = if let Some(slot) = self.optional_p_input {
             target_wire!(p = array::Slice::new(0, dir, dir + 1), inputs[slot]);
             outer_inputs.push(p);
             input_mapping.push(scan::InputMapping::Full { slot });
-            let p = body.add_source("p", target.outlet_fact(p)?.clone())?.into();
+            let p = body.add_source("p", target.outlet_fact(p)?.clone())?;
             Some(p)
         } else {
             None
@@ -486,7 +484,7 @@ impl LSTM {
         };
 
         let scan_outputs = target.wire_node(
-            &*prefix,
+            prefix,
             scan::Scan::new(
                 body,
                 input_mapping,

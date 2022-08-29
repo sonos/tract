@@ -155,7 +155,7 @@ fn resolve_ellipsis(expr: &Expr, ellipsis_rank: usize) -> TractResult<Expr> {
         .take(ellipsis_rank)
         .collect();
     // lol.
-    expr.to_string().replace("*", &ellipsis_resolved).parse().into()
+    expr.to_string().replace('*', &ellipsis_resolved).parse()
 }
 
 #[cfg(test)]

@@ -253,8 +253,8 @@ impl Expansion for TreeEnsembleClassifier {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 2)?;
+        check_input_arity(inputs, 1)?;
+        check_output_arity(outputs, 2)?;
 
         s.equals(&outputs[0].datum_type, self.class_labels.datum_type())?;
         s.equals(&outputs[1].datum_type, DatumType::F32)?;

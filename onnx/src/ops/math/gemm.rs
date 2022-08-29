@@ -40,11 +40,11 @@ impl Expansion for Gemm {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 3)?;
+        check_input_arity(inputs, 3)?;
         s.equals(&inputs[2].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[0].rank, 2)?;
         s.equals(&inputs[1].rank, 2)?;
-        check_output_arity(&outputs, 1)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&outputs[0].rank, 2)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[1].datum_type, &outputs[0].datum_type)?;
@@ -66,7 +66,7 @@ impl Expansion for Gemm {
         let mut wire = model.wire_node(
             format!("{}.ab", name),
             ops::matmul::MatMul::default().with_a_trans(self.trans_a).with_b_trans(self.trans_b),
-            &[a, b].as_ref(),
+            [a, b].as_ref(),
         )?[0];
         if self.alpha != 1.0 {
             let alpha = tensor0(self.alpha).broadcast_into_rank(model.outlet_fact(wire)?.rank())?;

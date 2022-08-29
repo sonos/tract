@@ -24,7 +24,7 @@ impl Expansion for ConcatV2 {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_output_arity(&outputs, 1)?;
+        check_output_arity(outputs, 1)?;
         let n = inputs.len() - 1;
         s.equals_all((0..n).map(|i| (&inputs[i].datum_type).bex()).collect())?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
@@ -53,8 +53,8 @@ impl Expansion for ConcatV2 {
             })?;
 
             let mut concat_dim = -1 * outputs[0].shape[axis].bex();
-            for i in 0..n {
-                concat_dim = concat_dim + inputs[i].shape[axis].bex();
+            for input in inputs.iter().take(n) {
+                concat_dim = concat_dim + input.shape[axis].bex();
             }
             s.equals_zero(concat_dim)
         })
@@ -68,7 +68,7 @@ impl Expansion for ConcatV2 {
     ) -> TractResult<TVec<OutletId>> {
         if let Some(ref axis) = model.outlet_fact(*inputs.last().unwrap())?.konst {
             let axis = *axis.to_scalar::<i32>()? as usize;
-            let inputs = inputs.into_iter().copied().rev().skip(1).rev().collect::<TVec<_>>();
+            let inputs = inputs.iter().copied().rev().skip(1).rev().collect::<TVec<_>>();
             model.wire_node(
                 prefix,
                 tract_hir::tract_core::ops::array::TypedConcat::concat_vars(axis, inputs.len()),

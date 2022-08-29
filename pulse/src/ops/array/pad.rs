@@ -16,7 +16,7 @@ fn pulsify(
     let mut input = mapping[&node.inputs[0]];
     let fact = target.outlet_fact(input)?.clone();
     if !op.pads.iter().enumerate().all(|(ax, &(a, b))| ax == fact.axis || (a == 0 && b == 0)) {
-        return Ok(None)
+        return Ok(None);
     }
     let (before, after) = op.pads[fact.axis];
     let pulse = fact.pulse();
@@ -148,7 +148,7 @@ impl PulsePadOpState {
                 PadMode::Constant(c) => unsafe {
                     dispatch_copy_by_size!(Self::fill_slice_constant(input.datum_type())(
                         &mut input,
-                        &c,
+                        c,
                         op.axis,
                         0..fill_up_to
                     ))

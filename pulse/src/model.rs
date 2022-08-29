@@ -4,6 +4,7 @@ use tract_core::model::translator::Translate;
 pub type PulsedModel = Graph<PulsedFact, Box<dyn PulsedOp>>;
 pub type PulsedNode = Node<PulsedFact, Box<dyn PulsedOp>>;
 
+#[allow(clippy::new_ret_no_self)]
 pub trait PulsedModelExt {
     fn new(source: &TypedModel, pulse: usize) -> TractResult<PulsedModel>;
 
@@ -39,7 +40,7 @@ impl PulsedModelExt for PulsedModel {
         );
         typed.properties.insert("pulse.delay".to_string(), delays.into_arc_tensor());
         let input_axes = tensor1(
-            &&self
+            &self
                 .output_outlets()?
                 .iter()
                 .map(|oo| Ok(self.outlet_fact(*oo)?.axis as _))
@@ -121,7 +122,7 @@ impl
             }
         }
         let (input_facts, output_facts) = source.node_facts(node.id)?;
-        if input_facts.len() >= 1 {
+        if input_facts.len() > 0 {
             let invariants = node.op.invariants(&input_facts, &output_facts)?;
             let pulse_input_fact = target.outlet_fact(mapping[&node.inputs[0]])?;
             let axis_info = invariants.track_input_axis(0, pulse_input_fact.axis);

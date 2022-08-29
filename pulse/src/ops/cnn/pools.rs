@@ -80,7 +80,7 @@ pub fn pulsed_output_facts(
     );
     let spatial_dims = computed.into_iter().map(|d| d.convoluted).collect::<TVec<TDim>>();
     let oshape = spec.data_format.from_n_c_hw(
-        ishape.n().cloned().unwrap_or(1.to_dim()),
+        ishape.n().cloned().unwrap_or_else(|| 1.to_dim()),
         spec.output_channel_override.map(|d| d.to_dim()).unwrap_or_else(|| ishape.c().clone()),
         spatial_dims,
     )?;
@@ -153,7 +153,7 @@ pub fn pulsify_pooled_input(
             axis: fact.axis,
             pulse,
             before,
-            after: computed_padding.pad_after.clone(),
+            after: computed_padding.pad_after,
             begin_input: fact.delay,
             end_input: fact.delay.to_dim() + &fact.dim,
             mode: PadMode::Constant(value),

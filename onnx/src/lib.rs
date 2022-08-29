@@ -1,3 +1,4 @@
+#![allow(clippy::len_zero)]
 #[allow(unused_imports)]
 #[macro_use]
 extern crate derive_new;
@@ -14,6 +15,7 @@ pub extern crate tract_hir;
 pub mod model;
 pub mod ops;
 
+#[allow(clippy::all)]
 pub mod pb {
     include!("prost/onnx.rs");
 }

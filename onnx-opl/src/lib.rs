@@ -1,3 +1,4 @@
+#![allow(clippy::len_zero)]
 #[macro_use]
 extern crate educe;
 

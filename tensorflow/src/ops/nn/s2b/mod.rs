@@ -93,7 +93,7 @@ fn batch_to_space<T: Copy + Datum + Zero>(
     permuted_axes.extend((1 + block_shape.len() * 2)..data.ndim());
     padded_shape.extend(&input_shape[1 + block_shape.len()..]);
     let data = data.permuted_axes(permuted_axes);
-    let data: Vec<T> = data.iter().map(|x| *x).collect();
+    let data: Vec<T> = data.iter().copied().collect();
     let data = tract_ndarray::ArrayD::from_shape_vec(padded_shape, data)?;
     let mut data = data;
     for (i, crop) in crops.outer_iter().enumerate() {

@@ -36,7 +36,7 @@ impl DirectLookup {
         let fallback_value = self.fallback_value.to_scalar::<T>()?;
         Ok(input
             .to_array_view::<i32>()?
-            .mapv(|ix| values.get(ix as usize).unwrap_or(&fallback_value).clone())
+            .mapv(|ix| values.get(ix as usize).unwrap_or(fallback_value).clone())
             .into_tensor())
     }
 }

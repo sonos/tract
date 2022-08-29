@@ -1,3 +1,4 @@
+#![allow(clippy::len_zero)]
 //! # Tract TensorFlow module
 //!
 //! Tiny, no-nonsense, self contained, portable inference.

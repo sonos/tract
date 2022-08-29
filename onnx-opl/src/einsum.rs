@@ -7,7 +7,7 @@ use tract_nnef::prelude::tract_itertools::Itertools;
 use tract_nnef::tract_ndarray::{Axis, Dimension};
 use tract_nnef::tract_num_traits::{One, Zero};
 
-#[derive(Debug, Clone, PartialEq, Default, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Hash)]
 pub struct AxisSym {
     pub result: Option<usize>,
     pub inputs: TVec<TVec<usize>>,
@@ -45,7 +45,7 @@ impl AxisSym {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Expr {
     index: TVec<AxisSym>,
     sum: TVec<AxisSym>,
@@ -106,10 +106,10 @@ impl FromStr for Expr {
     type Err = TractError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         assert!(!s.contains("..."));
-        let s = s.replace(" ", "");
+        let s = s.replace(' ', "");
         let (inputs, result) =
             if let Some((i, r)) = s.split_once("->") { (i, Some(r)) } else { (&*s, None) };
-        let inputs: TVec<&str> = inputs.split(",").collect();
+        let inputs: TVec<&str> = inputs.split(',').collect();
         let mut axes = HashMap::<char, AxisSym>::default();
         if let Some(result) = result {
             for (ix, axis) in result.chars().enumerate() {
@@ -118,7 +118,7 @@ impl FromStr for Expr {
         }
         for (input_ix, input) in inputs.iter().enumerate() {
             for (ix, axis) in input.chars().enumerate() {
-                axes.entry(axis).or_insert(AxisSym::new(axis)).add_input(input_ix, ix);
+                axes.entry(axis).or_insert_with(|| AxisSym::new(axis)).add_input(input_ix, ix);
             }
         }
         if result.is_none() {

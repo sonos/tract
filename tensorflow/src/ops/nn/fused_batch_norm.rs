@@ -36,8 +36,8 @@ impl Expansion for FusedBatchNorm {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 5)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 5)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&inputs[0].datum_type, f32::datum_type())?;
         s.equals(&inputs[1].datum_type, f32::datum_type())?;
         s.equals(&inputs[2].datum_type, f32::datum_type())?;

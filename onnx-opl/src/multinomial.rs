@@ -46,10 +46,9 @@ impl Multinomial {
         let batch_size = input.shape()[0];
         let class_size = input.shape()[1];
 
-        let mut rng = self.seed.map_or_else(
-            || SmallRng::from_entropy(),
-            |seed| SmallRng::seed_from_u64(seed.to_bits() as _),
-        );
+        let mut rng = self.seed.map_or_else(SmallRng::from_entropy, |seed| {
+            SmallRng::seed_from_u64(seed.to_bits() as _)
+        });
 
         // shape: [batch_size, class_size]
         let input = input.to_array_view::<T1>()?;

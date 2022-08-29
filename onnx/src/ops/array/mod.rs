@@ -25,7 +25,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Gather", gather);
     reg.insert("GatherElements", gather_elements);
     reg.insert("GatherND", gather_nd);
-    reg.insert("NonZero", |_, _| Ok((Box::new(nonzero::NonZero::non_zero()), vec![])));
+    reg.insert("NonZero", |_, _| Ok((Box::new(nonzero::non_zero()), vec![])));
     reg.insert("OneHot", one_hot::one_hot);
     reg.insert("Range", |_, _| Ok((expand(array::Range::default()), vec![])));
     reg.insert("Pad", pad::pad);
@@ -64,7 +64,7 @@ pub fn constant_like(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let value = node.get_attr_opt("value")?.unwrap_or(0.);
     if node.input.len() == 0 {
-        let dt = node.get_attr_opt("dtype")?.unwrap_or(f32::datum_type());
+        let dt = node.get_attr_opt("dtype")?.unwrap_or(DatumType::F32);
         let shape: Vec<usize> = node.get_attr_vec("shape")?;
         let tensor =
             tensor0(value).cast_to_dt(dt)?.broadcast_scalar_to_shape(&*shape)?.into_arc_tensor();
