@@ -32,11 +32,11 @@ pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<Tensor> {
     vec
 }
 
-#[derive(PartialEq, Copy, Clone, Debug)]
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum Mode {
     Plain,
     Optim,
-    NNEF,
+    Nnef,
 }
 
 pub fn run_one<P: AsRef<path::Path>>(
@@ -161,7 +161,7 @@ pub fn run_one<P: AsRef<path::Path>>(
                     trace!("Run analysed model:\n{:#?}", model);
                     run_model(model, inputs, &data_path)
                 }
-                NNEF => {
+                Nnef => {
                     let model = model.into_typed().unwrap();
                     info!("Declutter");
                     let optimized = model.into_decluttered().unwrap();
