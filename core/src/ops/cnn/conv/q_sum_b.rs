@@ -1,7 +1,7 @@
 use crate::internal::*;
 use tract_ndarray::prelude::*;
 
-#[derive(Debug, Clone, Hash, PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct QSumB {
     pub r: usize,
     pub n: TDim,
@@ -43,7 +43,7 @@ impl EvalOp for QSumB {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct QSumBState;
 
 impl OpState for QSumBState {

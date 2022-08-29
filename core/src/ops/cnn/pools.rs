@@ -5,7 +5,7 @@ use crate::ops::nn::{BaseDataShape, DataFormat, DataShape, SymDataShape};
 
 use super::padding::ComputedPaddedDim;
 
-#[derive(Debug, Clone, new, Default, Hash, PartialEq)]
+#[derive(Debug, Clone, new, Default, Hash, PartialEq, Eq)]
 pub struct PoolSpec {
     pub data_format: DataFormat,
     pub kernel_shape: TVec<usize>,
@@ -88,14 +88,14 @@ impl PoolSpec {
 
 pub type PoolGeometry = super::GeometryBound<SymbolicPoolGeometry, ConcretePoolGeometry>;
 
-#[derive(Debug, Clone, Hash, PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct SymbolicPoolGeometry {
     pub pool_spec: PoolSpec,
     pub input_shape: SymDataShape,
     pub output_shape: SymDataShape,
 }
 
-#[derive(Debug, Clone, Hash, PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct ConcretePoolGeometry {
     pub input_shape: DataShape,
     pub patch: Patch,

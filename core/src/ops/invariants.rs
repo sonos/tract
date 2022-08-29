@@ -65,7 +65,7 @@ impl std::iter::FromIterator<AxisInfo> for Invariants {
 }
 
 /// Translation invariance property.
-#[derive(Clone, Default, Eq, Hash, PartialEq)]
+#[derive(Clone, Default, Hash, PartialEq, Eq)]
 pub struct AxisInfo {
     pub inputs: TVec<Option<usize>>,
     pub outputs: TVec<Option<usize>>,

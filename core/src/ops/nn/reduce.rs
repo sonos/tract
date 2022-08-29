@@ -36,7 +36,7 @@ macro_rules! r {
     }
 }
 
-#[derive(Clone, Copy, Debug, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum Reducer {
     ArgMax(bool), // take last
     ArgMin(bool),

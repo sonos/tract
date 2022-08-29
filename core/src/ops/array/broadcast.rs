@@ -12,7 +12,7 @@ impl MultiBroadcastTo {
         unsafe {
             let view = input.to_array_view_unchecked::<T>();
             let mut output = view
-                .broadcast(&*shape)
+                .broadcast(shape)
                 .with_context(|| format!("Broadcasting {:?} to {:?}", view, shape))?
                 .into_owned()
                 .into_tensor();

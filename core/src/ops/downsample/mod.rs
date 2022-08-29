@@ -6,7 +6,7 @@ mod array;
 mod conv;
 mod scan;
 
-#[derive(Debug, Clone, new, Default, PartialEq, Hash)]
+#[derive(Debug, Clone, new, Default, PartialEq, Eq, Hash)]
 pub struct Downsample {
     pub axis: usize,
     pub stride: isize,

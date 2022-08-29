@@ -3,13 +3,13 @@ use crate::internal::*;
 use tract_itertools::Itertools;
 use std::ops::Range;
 
-#[derive(Clone, Debug, new, PartialEq)]
+#[derive(Clone, Debug, new, PartialEq, Eq)]
 pub struct Region {
     pub range: Range<usize>,
     pub mask: Option<TVec<bool>>,
 }
 
-#[derive(Clone, Debug, new, PartialEq)]
+#[derive(Clone, Debug, new, PartialEq, Eq)]
 pub struct PatchAxis {
     pub input_dim: usize,
     pub kernel_dim: usize,

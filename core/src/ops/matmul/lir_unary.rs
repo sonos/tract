@@ -6,7 +6,7 @@ use tract_linalg::mmm::{
 };
 use tract_linalg::Scaler;
 
-#[derive(PartialEq, Clone, Hash, Debug)]
+#[derive(PartialEq, Eq, Clone, Hash, Debug)]
 pub enum ProtoFusedSpec {
     BinScalar(AttrOrInput, BinOp),
     BinPerRow(AttrOrInput, BinOp),

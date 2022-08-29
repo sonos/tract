@@ -327,7 +327,7 @@ impl std::fmt::Display for Box<dyn TypedOp> {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum AttrOrInput {
     Attr(Arc<Tensor>),
     Input(usize),

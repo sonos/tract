@@ -1,7 +1,7 @@
 use crate::internal::*;
 use crate::num_traits::Zero;
 
-#[derive(Debug, Clone, Default, PartialEq, Hash)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
 pub struct Slice {
     pub axis: usize,
     pub start: TDim,

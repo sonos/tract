@@ -450,7 +450,7 @@ where
             .with_context(|| format!("Evaluating {:?}", node))?
         };
         self.values[node] = Some(values);
-        Ok(&*self.values[node].as_ref().unwrap())
+        Ok(self.values[node].as_ref().unwrap())
     }
 
     pub fn take_by_name(&mut self, name: &str) -> TractResult<TVec<Tensor>> {

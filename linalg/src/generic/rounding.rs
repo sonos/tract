@@ -11,6 +11,9 @@ pub struct Scaler {
     policy: RoundingPolicy,
 }
 
+impl Eq for Scaler {
+}
+
 #[allow(clippy::derive_hash_xor_eq)]
 impl Hash for Scaler {
     fn hash<H>(&self, state: &mut H)
