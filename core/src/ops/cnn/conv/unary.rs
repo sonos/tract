@@ -449,7 +449,7 @@ impl ConvUnary {
             input_shape = valid_pool_spec.data_format.shape(concrete_shape.into())?;
             geo = valid_pool_spec
                 .compute_geo(&b_fact.shape)?
-                .to_concrete(&*concrete_shape)?
+                .to_concrete(concrete_shape)?
                 .into_owned();
         }
         let c_dt = crate::ops::matmul::output_type(b_fact.datum_type);

@@ -2,7 +2,7 @@ use crate::internal::*;
 use ndarray::*;
 use std::convert::TryFrom;
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PadMode {
     Constant(Arc<Tensor>),
     Reflect,

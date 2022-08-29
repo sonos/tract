@@ -3,7 +3,7 @@ use crate::internal::*;
 use downcast_rs::Downcast;
 use std::fmt;
 
-#[derive(Clone, PartialEq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct ShapeFact {
     dims: TVec<TDim>,
     concrete: Option<TVec<usize>>,
@@ -168,7 +168,7 @@ impl AsRef<[TDim]> for ShapeFact {
 }
 
 /// Fully determined tensor information for TypedModel.
-#[derive(Clone, PartialEq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct TypedFact {
     /// tensor element type
     pub datum_type: DatumType,

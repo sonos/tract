@@ -2,7 +2,7 @@ use crate::internal::*;
 use std::fmt;
 use tract_itertools::Itertools;
 
-#[derive(Copy, Clone, Debug, PartialEq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum DataFormat {
     NCHW,
     NHWC,
@@ -82,7 +82,7 @@ impl DataFormat {
 pub type SymDataShape = BaseDataShape<TDim, TVec<TDim>>;
 pub type DataShape = BaseDataShape<usize, TVec<usize>>;
 
-#[derive(Clone, PartialEq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct BaseDataShape<D, S>
 where
     D: DimLike,

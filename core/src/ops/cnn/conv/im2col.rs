@@ -8,14 +8,14 @@ use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolGeometry};
 use crate::ops::cnn::{GeometryBound, PoolSpec, ResolveTo};
 use crate::ops::nn::{BaseDataShape, DataFormat, DataShape};
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Im2Col {
     pub pool_spec: PoolSpec,
     pub group: usize,
     geometry: GeometryBound<SymbolicGeometry, ConcreteGeometry>,
 }
 
-#[derive(Debug, Clone, Hash, PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct SymbolicGeometry {
     group: usize,
     pool_spec: PoolSpec,
@@ -24,7 +24,7 @@ struct SymbolicGeometry {
     k: usize,
 }
 
-#[derive(Debug, Clone, Hash, PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct ConcreteGeometry {
     pool: ConcretePoolGeometry,
     pub n: usize,
@@ -245,7 +245,7 @@ impl TypedOp for Im2Col {
     }
 }
 
-#[derive(Copy, Clone, Debug, Hash, PartialEq)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 enum Patcher {
     Generic,
     Valid1d,

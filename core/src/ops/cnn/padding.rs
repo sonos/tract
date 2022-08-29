@@ -1,6 +1,6 @@
 use crate::internal::*;
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PaddingSpec {
     Explicit(TVec<usize>, TVec<usize>, bool),
     Valid,
@@ -14,7 +14,7 @@ impl Default for PaddingSpec {
     }
 }
 
-#[derive(Debug, Clone, new, PartialEq)]
+#[derive(Debug, Clone, new, PartialEq, Eq)]
 pub struct ComputedPaddedDim<D: DimLike> {
     pub deconvoluted: D,
     pub convoluted: D,

@@ -1,7 +1,7 @@
 use crate::internal::*;
 use tract_ndarray::prelude::*;
 
-#[derive(Debug, PartialEq, Clone, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct OneHot {
     pub axis: usize,
     pub dim: usize,

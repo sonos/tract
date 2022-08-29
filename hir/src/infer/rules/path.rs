@@ -9,7 +9,7 @@ use self::super::expr::*;
 use self::super::solver::Context;
 
 /// A symbolic path for a value.
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct Path(TVec<isize>);
 
 impl From<TVec<isize>> for Path {

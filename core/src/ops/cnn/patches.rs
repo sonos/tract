@@ -10,7 +10,7 @@ use std::ops::Range;
 
 use tract_itertools::{izip, zip, Itertools};
 
-#[derive(Clone, PartialEq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct PatchSpec {
     pub input_shape: TVec<usize>,
     pub input_inner_stride: usize,
@@ -226,7 +226,7 @@ impl PatchSpec {
     }
 }
 
-#[derive(Clone, PartialEq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Patch {
     pub spec: PatchSpec,
     pub pad_before: TVec<usize>,
@@ -343,7 +343,7 @@ impl Patch {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Zone {
     pub valid: bool,
     pub input_zone_offset: isize,
@@ -369,7 +369,7 @@ impl Zone {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ZoneScanner<'p> {
     pub patch: &'p Patch,
     pub zone: &'p Zone,
@@ -485,7 +485,7 @@ impl<'p> ZoneScanner<'p> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Scanner<'p> {
     pub patch: &'p Patch,
     pub zone_id: usize,

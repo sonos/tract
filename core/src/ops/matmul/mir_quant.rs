@@ -8,7 +8,7 @@ use crate::ops::quant::offset_u8_as_i8_elementwise;
 
 use super::mir_quant_unary::QMatMulUnary;
 
-#[derive(Debug, Clone, Hash, PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum QParamKind {
     Attr(Arc<Tensor>),
     FromInput(usize),
@@ -79,7 +79,7 @@ impl From<AttrOrInput> for QParamKind {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct MatMulQParams {
     pub a0: QParamKind,
     pub a_scale: QParamKind,
@@ -531,12 +531,11 @@ pub(crate) fn wire_offset_u8_as_i8(
             }
             _ => (),
         }
-        let ret = Ok(model.wire_node(
+        Ok(model.wire_node(
             format!("{}.offset_{}_as_i8", model_name, matrix_name),
             ops::quant::offset_u8_as_i8(),
             &[matrix],
-        )?[0]);
-        ret
+        )?[0])
     } else {
         Ok(matrix)
     }

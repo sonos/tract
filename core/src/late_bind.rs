@@ -6,7 +6,7 @@ pub trait ResolveTo<Concrete> {
     fn resolve(&self, param: &Self::Param) -> TractResult<Concrete>;
 }
 
-#[derive(Debug, Clone, Hash, PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum GeometryBound<Symbolic, Concrete> {
     Symbolic(Symbolic),
     Concrete(Concrete),

@@ -50,6 +50,7 @@ impl Approximation {
 }
 
 /// Tensor is a concrete tensor in tract.
+#[derive(Eq)]
 pub struct Tensor {
     dt: DatumType,
     shape: TVec<usize>,
