@@ -26,7 +26,7 @@ pub fn load_labels() -> Vec<String> {
 }
 
 fn inception_v3_2016_08_28() -> path::PathBuf {
-    ::std::env::var("CACHEDIR").ok().unwrap_or("../../.cached".to_string()).into()
+    ::std::env::var("CACHEDIR").ok().unwrap_or_else(|| "../../.cached".to_string()).into()
 }
 
 pub fn inception_v3_tgz() -> path::PathBuf {
@@ -43,12 +43,11 @@ pub fn load_image<P: AsRef<path::Path>>(p: P) -> Tensor {
     let image = image::open(&p).unwrap().to_rgb8();
     let resized =
         image::imageops::resize(&image, 299, 299, ::image::imageops::FilterType::Triangle);
-    let image = tract_ndarray::Array4::from_shape_fn((1, 3, 299, 299), |(_, c, y, x)| {
+    tract_ndarray::Array4::from_shape_fn((1, 3, 299, 299), |(_, c, y, x)| {
         resized[(x as _, y as _)][c] as f32 / 255.0
     })
     .into_dyn()
-    .into();
-    image
+    .into()
 }
 
 #[cfg(test)]

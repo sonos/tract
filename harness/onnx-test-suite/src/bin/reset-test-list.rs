@@ -41,7 +41,7 @@ fn process_unexpected(set: &str, ver: &str, unexpected: HashMap<String, usize>) 
     eprintln!("## {} ##", file);
     let mut specs: HashMap<String, String> = HashMap::new();
     for line in std::fs::read_to_string(&file).unwrap().lines() {
-        let test = line.split_whitespace().nth(0).unwrap().to_string();
+        let test = line.split_whitespace().next().unwrap().to_string();
         let entry = specs.entry(test).or_default();
         if entry.len() < line.len() {
             *entry = line.to_string();
