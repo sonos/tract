@@ -64,16 +64,11 @@ impl DrawingState {
     }
 
     fn inputs_to_draw(&self, model: &dyn Model, node: usize) -> Vec<OutletId> {
-        model
-            .node_inputs(node)
-            .iter()
-            .cloned()
-//            .filter(|o| self.wires.iter().find(|w| w.outlet == *o).unwrap().color.is_some())
-            .collect()
+        model.node_inputs(node).to_vec()
     }
 
     fn passthrough_count(&self, node: usize) -> usize {
-        self.wires.iter().filter(|w| w.successors.iter().find(|i| i.node != node).is_some()).count()
+        self.wires.iter().filter(|w| w.successors.iter().any(|i| i.node != node)).count()
     }
 
     pub fn draw_node_vprefix(
@@ -103,7 +98,7 @@ impl DrawingState {
                 let little = wire.min(wanted);
                 let big = wire.max(wanted);
                 let moving = self.wires[little].clone();
-                let must_clone = moving.successors.iter().find(|i| i.node != node).is_some();
+                let must_clone = moving.successors.iter().any(|i| i.node != node);
                 let offset = self
                     .wires
                     .iter()
@@ -279,7 +274,7 @@ impl DrawingState {
                 if let Some(color) = self.wires[wanted_at].color {
                     write!(&mut s, "{}", color.paint(DOWN_RIGHT))?;
                     for w in is_at + 1..wanted_at {
-                        if let Some(_) = self.wires[w].color {
+                        if self.wires[w].color.is_some() {
                             write!(&mut s, "{}", color.paint(HORIZONTAL))?;
                         }
                     }

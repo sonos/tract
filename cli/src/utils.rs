@@ -29,7 +29,7 @@ pub fn check_outputs(got: &[Arc<Tensor>], params: &Parameters) -> CliResult<()> 
             || exp.datum_type().unquantized() == got.datum_type().unquantized()
         {
             let exp = exp.cast_to_dt(got.datum_type())?;
-            exp.close_enough(&got, true).with_context(|| {
+            exp.close_enough(got, true).with_context(|| {
                 format!("Checking output {} (expected {:?}, got {:?}", ix, exp, got)
             })?;
             info!("Checked output #{}, ok.", ix);

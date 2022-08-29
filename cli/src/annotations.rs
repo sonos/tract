@@ -64,14 +64,13 @@ impl<'a> std::ops::Add<&'a NodeTags> for &'a NodeTags {
             .into_iter()
             .map(|(cost, dims)| (*cost, dims.into_iter().fold(0.to_dim(), |acc, d| acc + &d.1)))
             .collect::<Vec<(Cost, TDim)>>();
-        let profile = self.profile.unwrap_or(Duration::default())
-            + other.profile.unwrap_or(Duration::default());
+        let profile = self.profile.unwrap_or_default() + other.profile.unwrap_or_default();
         let profile = if profile != Duration::default() { Some(profile) } else { None };
         let style = self.style.or(other.style);
         let labels = self.labels.iter().chain(other.labels.iter()).cloned().collect();
         let sections = self.sections.iter().chain(other.sections.iter()).cloned().collect();
-        let model_input = self.model_input.clone().or(other.model_input.clone());
-        let model_output = self.model_output.clone().or(other.model_output.clone());
+        let model_input = self.model_input.clone().or_else(|| other.model_input.clone());
+        let model_output = self.model_output.clone().or_else(|| other.model_output.clone());
         let outlet_labels = izip!(&self.outlet_labels, &other.outlet_labels)
             .map(|(s, o)| s.iter().chain(o.iter()).cloned().collect())
             .collect();
@@ -93,7 +92,7 @@ impl<'a> std::iter::Sum<&'a NodeTags> for NodeTags {
     where
         I: std::iter::Iterator<Item = &'a NodeTags>,
     {
-        iter.fold(EMPTY.clone(), |a, b| &a + b)
+        iter.fold(EMPTY, |a, b| &a + b)
     }
 }
 
@@ -187,17 +186,14 @@ impl Annotations {
         use tract_kaldi::model::NodeLine;
         let bold = Style::new().bold();
         for (name, proto_node) in &proto_model.config_lines.nodes {
-            if let Ok(node_id) = model.node_id_by_name(&*name) {
+            if let Ok(node_id) = model.node_id_by_name(name) {
                 let mut vs = vec![];
-                match proto_node {
-                    NodeLine::Component(compo) => {
-                        let comp = &proto_model.components[&compo.component];
-                        for (k, v) in &comp.attributes {
-                            let value = format!("{:?}", v);
-                            vs.push(format!("Attr {}: {:.240}", bold.paint(k), value));
-                        }
+                if let NodeLine::Component(compo) = proto_node {
+                    let comp = &proto_model.components[&compo.component];
+                    for (k, v) in &comp.attributes {
+                        let value = format!("{:?}", v);
+                        vs.push(format!("Attr {}: {:.240}", bold.paint(k), value));
                     }
-                    _ => (),
                 }
                 self.node_mut(node_id.into()).sections.push(vs)
             }
@@ -241,10 +237,10 @@ impl Annotations {
         let bold = Style::new().bold();
         for gnode in model_proto.graph.as_ref().unwrap().node.iter() {
             let mut node_name = &gnode.name;
-            if node_name == "" && gnode.output.len() > 0 {
+            if !node_name.is_empty() && gnode.output.len() > 0 {
                 node_name = &gnode.output[0];
             }
-            if let Ok(id) = model.node_id_by_name(&*node_name) {
+            if let Ok(id) = model.node_id_by_name(node_name) {
                 let mut v = vec![];
                 for a in gnode.attribute.iter() {
                     let value = if let Some(t) = &a.t {
@@ -286,7 +282,7 @@ impl Annotations {
                             annotations,
                             *sub,
                             &*prefix,
-                            multi.clone().unwrap_or(1.into()) * &multiplier,
+                            multi.clone().unwrap_or_else(|| 1.into()) * &multiplier,
                         )?;
                     }
                 }

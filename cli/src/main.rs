@@ -1,3 +1,4 @@
+#![allow(clippy::len_zero)]
 #[macro_use]
 extern crate log;
 #[macro_use]
@@ -54,7 +55,7 @@ fn info_usage(stage: &str, probe: Option<&Probe>) {
     }
 }
 
-pub const STAGES: &'static [&'static str] = &[
+pub const STAGES: &[&str] = &[
     "load",
     "analyse",
     "incorporate",
@@ -186,7 +187,12 @@ fn main() -> tract_core::anyhow::Result<()> {
     let run = clap::Command::new("run")
         .long_about("Run the graph")
         .arg(Arg::new("dump").long("dump").help("Show output"))
-        .arg(Arg::new("save-outputs").long("save-outputs").takes_value(true).help("Save the outputs into a npz file"))
+        .arg(
+            Arg::new("save-outputs")
+                .long("save-outputs")
+                .takes_value(true)
+                .help("Save the outputs into a npz file"),
+        )
         .arg(Arg::new("steps").long("steps").help("Show all inputs and outputs"))
         .arg(
             Arg::new("set")
@@ -240,8 +246,7 @@ fn main() -> tract_core::anyhow::Result<()> {
         ::std::env::set_var("TRACT_LOG", level);
     }
 
-    let env = env_logger::Env::default()
-        .filter_or("TRACT_LOG", "warn");
+    let env = env_logger::Env::default().filter_or("TRACT_LOG", "warn");
 
     env_logger::Builder::from_env(env).format_timestamp_nanos().init();
     info_usage("init", probe.as_ref());
@@ -255,6 +260,7 @@ fn main() -> tract_core::anyhow::Result<()> {
     Ok(())
 }
 
+#[allow(clippy::let_and_return)]
 fn dump_subcommand<'a>() -> clap::Command<'a> {
     use clap::*;
     let dump = clap::Command::new("dump")
@@ -429,7 +435,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
                 let annotations =
                     crate::annotations::Annotations::from_model(broken_model.as_ref())?;
                 let display_params = if let Some(("dump", sm)) = matches.subcommand() {
-                    display_params_from_clap(&matches, &sm)?
+                    display_params_from_clap(&matches, sm)?
                 } else {
                     crate::display_params::DisplayParams::default()
                 };
@@ -448,7 +454,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
     match matches.subcommand() {
         Some(("bench", m)) => {
             need_optimisations = true;
-            bench::handle(&params, &matches, &BenchLimits::from_clap(&m)?, probe)
+            bench::handle(&params, &matches, &BenchLimits::from_clap(m)?, probe)
         }
 
         Some(("criterion", _)) => {
@@ -457,7 +463,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
         }
 
         Some(("compare", m)) => {
-            compare::handle(&mut params, &matches, &m, display_params_from_clap(&matches, m)?)
+            compare::handle(&mut params, &matches, m, display_params_from_clap(&matches, m)?)
         }
 
         Some(("run", m)) => run::handle(&params, &matches, m),
@@ -481,13 +487,13 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
             let inner = m
                 .values_of("inner")
                 .map(|ss| ss.map(|s| s.to_string()).collect())
-                .unwrap_or(vec![]);
+                .unwrap_or_default();
             dump::handle(
                 &params,
                 &display_params_from_clap(&matches, m)?,
                 &matches,
                 m,
-                &BenchLimits::from_clap(&m)?,
+                &BenchLimits::from_clap(m)?,
                 inner,
             )
         }

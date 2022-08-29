@@ -133,7 +133,7 @@ pub fn handle_npz(
         if let Ok(value) = for_npz(&mut npz, &name) {
             if multiturn {
                 let name = name
-                    .split("/")
+                    .split('/')
                     .nth(1)
                     .with_context(|| {
                         format!(
@@ -153,7 +153,7 @@ pub fn handle_npz(
         cumulative,
         m,
         &values,
-        &params,
+        params,
         output_params,
     ))
 }
@@ -187,7 +187,7 @@ pub fn handle_pbdir(
         cumulative,
         m,
         &values,
-        &params,
+        params,
         output_params,
     ))
 }
@@ -199,7 +199,7 @@ pub fn handle_twice(
 ) -> CliResult<()> {
     let reference_model =
         params.tract_model.downcast_ref::<TypedModel>().context("Only work with a typed model")?;
-    handle_with_model(cumulative, params, output_params, &reference_model)
+    handle_with_model(cumulative, params, output_params, reference_model)
 }
 
 pub fn handle_reference_stage(
@@ -213,7 +213,7 @@ pub fn handle_reference_stage(
     let reference_model = reference_model
         .downcast_ref::<TypedModel>()
         .context("Only work with a typed reference model")?;
-    handle_with_model(cumulative, params, output_params, &reference_model)
+    handle_with_model(cumulative, params, output_params, reference_model)
 }
 
 pub fn handle_with_model(
@@ -275,7 +275,7 @@ where
     let mut unchecked = std::collections::HashSet::new();
     let mut ok = 0;
     fn canonic(s: &str) -> String {
-        s.replace(".", "_").replace("-", "_")
+        s.replace('.', "_").replace('-', "_")
     }
     let all_values: HashMap<String, &Vec<CliResult<Arc<Tensor>>>> =
         all_values.iter().map(|(k, v)| (canonic(k), v)).collect();
@@ -303,12 +303,16 @@ where
                                     node.outputs[ix].fact.to_typed_fact().unwrap().datum_type;
                                 if needed_type == t.datum_type() {
                                     t
-                                } else if needed_type.unquantized() == t.datum_type().unquantized() {
+                                } else if needed_type.unquantized() == t.datum_type().unquantized()
+                                {
                                     let mut t = t.into_tensor();
                                     unsafe { t.set_datum_type(needed_type) };
                                     t.into_arc_tensor()
                                 } else if needed_type.is_float() && t.datum_type().is_float() {
-                                    t.cast_to_dt(needed_type).unwrap().into_owned().into_arc_tensor()
+                                    t.cast_to_dt(needed_type)
+                                        .unwrap()
+                                        .into_owned()
+                                        .into_arc_tensor()
                                 } else {
                                     panic!("Comparing incompatible types")
                                 }
@@ -376,9 +380,9 @@ where
                     ok += 1;
                 }
                 let result = if cumulative { tested.or(reference) } else { reference.or(tested) };
-                Ok(result.with_context(|| {
+                result.with_context(|| {
                     format!("Failure to compute and no reference value for {}", node)
-                })?)
+                })
             },
         )?;
     }
@@ -395,10 +399,10 @@ where
     }
 
     if log_enabled!(Info) {
-        terminal::render(tract, &annotations, &output_params)?;
+        terminal::render(tract, &annotations, output_params)?;
     } else {
         for f in failing.iter().sorted() {
-            terminal::render_node(tract, *f, &annotations, &output_params)?;
+            terminal::render_node(tract, *f, &annotations, output_params)?;
         }
     }
 

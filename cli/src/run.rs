@@ -3,7 +3,7 @@ use std::fs::File;
 use crate::CliResult;
 use crate::{Model, Parameters};
 use ansi_term::Color::*;
-use ndarray_npy::{NpzWriter};
+use ndarray_npy::NpzWriter;
 use tract_hir::internal::*;
 #[cfg(feature = "pulse")]
 use tract_pulse::internal::*;
@@ -40,9 +40,9 @@ pub fn handle(
     let dump = sub_matches.is_present("dump");
     #[cfg(feature = "pulse")]
     let outputs = if let Some(pulse) = params.tract_model.downcast_ref::<PulsedModel>() {
-        run_pulse_t(pulse, &params)?
+        run_pulse_t(pulse, params)?
     } else {
-        dispatch_model!(&*params.tract_model, |m| run_regular(m, &params, matches, sub_matches))?
+        dispatch_model!(&*params.tract_model, |m| run_regular(m, params, matches, sub_matches))?
     };
 
     #[cfg(not(feature = "pulse"))]
@@ -56,11 +56,14 @@ pub fn handle(
     }
 
     if let Some(file_path) = sub_matches.value_of("save-outputs") {
-        let file = std::fs::File::create(file_path).with_context(|| format!("Creating {}", file_path))?;
+        let file =
+            std::fs::File::create(file_path).with_context(|| format!("Creating {}", file_path))?;
         let mut npz = ndarray_npy::NpzWriter::new_compressed(file);
 
         for (ix, output) in outputs.iter().enumerate() {
-            let name = params.tract_model.outlet_label(params.tract_model.output_outlets()[ix])
+            let name = params
+                .tract_model
+                .outlet_label(params.tract_model.output_outlets()[ix])
                 .map(|name| name.to_string())
                 .unwrap_or_else(|| format!("output_{}", ix));
             npz_add_tensor(&mut npz, name, output)?;
@@ -85,7 +88,7 @@ pub fn handle(
     if let Some(facts) = &params.assertions.assert_output_facts {
         let outputs: Vec<InferenceFact> =
             outputs.iter().map(|t| t.datum_type().fact(t.shape()).into()).collect();
-        crate::utils::check_inferred(&*outputs, &*facts)?;
+        crate::utils::check_inferred(&*outputs, facts)?;
     }
 
     if let Some(asserts) = &params.assertions.assert_op_count {
@@ -119,7 +122,7 @@ fn run_regular(
         let mut state = SimpleState::new(plan)?;
         if let Some(set) = sub_matches.values_of("set") {
             for set in set {
-                let mut tokens = set.split("=");
+                let mut tokens = set.split('=');
                 let sym = tokens.next().context("--set expect S=12 form")?;
                 let value = tokens.next().context("--set expect S=12 form")?;
                 let sym = Symbol::from(sym.chars().next().unwrap());

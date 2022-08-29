@@ -51,7 +51,7 @@ impl DisplayParams {
             }));
         }
         if let Some(node_name) = self.node_name.as_ref() {
-            return Ok(model.node_name(node_id).starts_with(&*node_name));
+            return Ok(model.node_name(node_id).starts_with(node_name));
         }
         if let Some(op_name) = self.op_name.as_ref() {
             return Ok(model.node_op(node_id).name().starts_with(op_name));
