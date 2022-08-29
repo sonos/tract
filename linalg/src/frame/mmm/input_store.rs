@@ -31,7 +31,7 @@ pub enum InputStoreSpec {
     VirtualPacking { packer: Packer, func: Box<dyn VirtualInputSpec>, k: usize },
 }
 
-#[derive(PartialEq, Clone, Copy, Debug, Hash)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash)]
 pub struct PackedStoreSpec {
     pub(crate) panel_bytes: usize,
 }

@@ -38,6 +38,7 @@ type MMMImpl = Box<
 
 type MMVImpl = Box<dyn Fn(Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul> + Send + Sync>;
 
+#[allow(clippy::type_complexity)]
 pub struct Ops {
     mmm_f32_impls: Vec<Box<dyn MatMatMul>>,
     mmm_f32: MMMImpl,
