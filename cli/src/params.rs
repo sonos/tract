@@ -35,9 +35,9 @@ enum ModelLocation {
 
 impl ModelLocation {
     fn path(&self) -> Cow<std::path::Path> {
-        match &self {
-            &ModelLocation::Fs(p) => p.into(),
-            &ModelLocation::Http(u) => std::path::Path::new(u.path()).into(),
+        match self {
+            ModelLocation::Fs(p) => p.into(),
+            ModelLocation::Http(u) => std::path::Path::new(u.path()).into(),
         }
     }
 
@@ -58,6 +58,7 @@ impl ModelLocation {
 }
 
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum SomeGraphDef {
     NoGraphDef,
     #[cfg(feature = "kaldi")]
@@ -136,7 +137,7 @@ impl TensorsValues {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct TensorValues {
     pub input_index: Option<usize>,
     pub output_index: Option<usize>,
@@ -215,7 +216,7 @@ impl Parameters {
                 }
             }
             "nnef" => {
-                let nnef = super::nnef(&matches);
+                let nnef = super::nnef(matches);
                 let mut proto_model = if location.is_dir() {
                     if let ModelLocation::Fs(dir) = location {
                         nnef.proto_model_for_path(dir)?
@@ -234,14 +235,12 @@ impl Parameters {
                 } else {
                     nnef.proto_model_for_read(&mut *location.read()?)?
                 };
-                let inputs: Vec<String> =
-                    proto_model.doc.graph_def.parameters.iter().map(|par| par.clone()).collect();
-                for (ix, name) in inputs.into_iter().enumerate() {
+                for (ix, name) in proto_model.doc.graph_def.parameters.iter().enumerate() {
                     #[allow(unused_imports)]
                     use tract_nnef::ast::{LValue, RValue};
                     if let Some(over) = tensors_values
-                        .by_name(&name)
-                        .or(tensors_values.by_input_ix(ix))
+                        .by_name(name)
+                        .or_else(|| tensors_values.by_input_ix(ix))
                         .and_then(|tv| tv.fact.as_ref())
                     {
                         let assignment_id = proto_model
@@ -339,7 +338,7 @@ impl Parameters {
                             .collect::<TractResult<Vec<usize>>>()
                     })
                     .transpose()?
-                    .unwrap_or(vec![]);
+                    .unwrap_or_default();
                 if need_graph {
                     (SomeGraphDef::Tf(graph), Box::new(model_and_ext.0), Some(model_and_ext.1))
                 } else {
@@ -398,7 +397,7 @@ impl Parameters {
                 op.clone(),
                 &[tap],
             )?[0];
-            patch.shunt_outside(&raw_model, *input, pad)?;
+            patch.shunt_outside(raw_model, *input, pad)?;
         }
         patch.apply(raw_model)?;
         Ok(())
@@ -416,11 +415,11 @@ impl Parameters {
             let is_output = filename.starts_with("output_");
             if is_input || is_output {
                 let ix = filename
-                    .split("_")
+                    .split('_')
                     .nth(1)
                     .unwrap()
-                    .split(".")
-                    .nth(0)
+                    .split('.')
+                    .next()
                     .unwrap()
                     .parse::<usize>()?;
                 let (name, tensor) = tensor::for_data(file.path().to_str().unwrap())?;
@@ -445,10 +444,10 @@ impl Parameters {
             .iter()
             .map(|n| {
                 if let Ok((turn, name)) = scan_fmt::scan_fmt!(n, "turn_{d}/{}.npy", usize, String) {
-                    Ok((name, turn, tensor::for_npz(&mut npz, &n)?))
+                    Ok((name, turn, tensor::for_npz(&mut npz, n)?))
                 } else {
                     let name = n.trim_end_matches(".npy").to_string();
-                    Ok((name, 0, tensor::for_npz(&mut npz, &n)?))
+                    Ok((name, 0, tensor::for_npz(&mut npz, n)?))
                 }
             })
             .collect::<TractResult<Vec<_>>>()?;
@@ -541,6 +540,7 @@ impl Parameters {
     }
 
     #[allow(unused_variables)]
+    #[allow(clippy::type_complexity)]
     fn pipeline(
         matches: &clap::ArgMatches,
         probe: Option<&readings_probe::Probe>,
@@ -628,9 +628,9 @@ impl Parameters {
             }});
         if let Some(ext) = tf_model_extensions {
             #[cfg(feature = "tf")]
-            stage!("tf-preproc", inference_model -> inference_model, |m:InferenceModel| Ok(ext.preproc(m)?));
+            stage!("tf-preproc", inference_model -> inference_model, |m:InferenceModel| ext.preproc(m));
         }
-        stage!("incorporate", inference_model -> inference_model, |m:InferenceModel| { Ok(m.incorporate()?)});
+        stage!("incorporate", inference_model -> inference_model, |m:InferenceModel| m.incorporate());
         stage!("type", inference_model -> typed_model, |m:InferenceModel| m.into_typed());
         stage!("declutter", typed_model -> typed_model, |mut m:TypedModel| {
             if matches.is_present("label-wires") {
@@ -650,9 +650,9 @@ impl Parameters {
         #[cfg(feature = "pulse")]
         {
             if let Some(pulse) = pulse {
-                stage!("pulse", typed_model -> pulsed_model, |m:TypedModel| Ok(PulsedModel::new(&m, pulse)?));
-                stage!("pulse-to-type", pulsed_model -> typed_model, |m:PulsedModel| Ok(m.into_typed()?));
-                stage!("pulse-declutter", typed_model -> typed_model, |m:TypedModel| Ok(m.into_decluttered()?));
+                stage!("pulse", typed_model -> pulsed_model, |m:TypedModel| PulsedModel::new(&m, pulse));
+                stage!("pulse-to-type", pulsed_model -> typed_model, |m:PulsedModel| m.into_typed());
+                stage!("pulse-declutter", typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
             }
         }
         if matches.is_present("half-floats") {
@@ -665,7 +665,7 @@ impl Parameters {
             let mut values = SymbolValues::default();
             for set in set {
                 let (key, value) = set
-                    .split_once("=")
+                    .split_once('=')
                     .with_context(|| format!("--set must be in the X=value form, got {}", set))?;
                 let value: i64 = value
                     .parse()
@@ -679,13 +679,13 @@ impl Parameters {
         }
         if nnef_cycle {
             stage!("nnef-cycle", typed_model -> typed_model, |m:TypedModel| {
-                let nnef = super::nnef(&matches);
+                let nnef = super::nnef(matches);
                 let mut vec = vec!();
                 nnef.write(&m, &mut vec).context("Serializing")?;
                 info!("Dumped, now reloading...");
-                Ok(nnef.model_for_read(&mut &*vec).context("Deserializing")?)
+                nnef.model_for_read(&mut &*vec).context("Deserializing")
             });
-            stage!("nnef-declutter", typed_model -> typed_model, |m:TypedModel| Ok(m.into_decluttered()?));
+            stage!("nnef-declutter", typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
         }
         if let Some(sub) = matches.value_of("extract-decluttered-sub") {
             stage!("extract", typed_model -> typed_model, |m:TypedModel| {
@@ -693,7 +693,7 @@ impl Parameters {
                 Ok(m.nested_models(node)[0].1.downcast_ref::<TypedModel>().unwrap().clone())
             });
         }
-        stage!("before-optimize", typed_model -> typed_model, |m:TypedModel| Ok(m));
+        stage!("before-optimize", typed_model -> typed_model, Ok);
         stage!("optimize", typed_model -> typed_model, |mut m:TypedModel| {
             let mut opt = tract_core::optim::Optimizer::codegen();
             if let Some(steps) = matches.value_of("optimize-step") {
@@ -706,6 +706,7 @@ impl Parameters {
     }
 
     #[allow(unused_variables)]
+    #[allow(clippy::let_unit_value)]
     /// Parses the command-line arguments.
     pub fn from_clap(matches: &clap::ArgMatches, probe: Option<&Probe>) -> CliResult<Parameters> {
         let (filename, onnx_tc) = Self::disco_model(matches)?;
@@ -755,12 +756,12 @@ impl Parameters {
         }
 
         if let Some(inputs) = matches.values_of("input-node") {
-            let inputs: Vec<&str> = inputs.map(|s| s).collect();
+            let inputs: Vec<&str> = inputs.collect();
             raw_model.set_input_names(&inputs)?;
         };
 
         if let Some(outputs) = matches.values_of("output-node") {
-            let outputs: Vec<&str> = outputs.map(|s| s).collect();
+            let outputs: Vec<&str> = outputs.collect();
             raw_model.set_output_names(&outputs)?;
         };
 
@@ -792,7 +793,7 @@ impl Parameters {
             .collect();
 
         let assertions = match matches.subcommand() {
-            Some(("dump" | "run", sm)) => Assertions::from_clap(&sm)?,
+            Some(("dump" | "run", sm)) => Assertions::from_clap(sm)?,
             _ => Assertions::default(),
         };
 
@@ -835,29 +836,24 @@ impl Parameters {
         let allow_random_input: bool = matches.is_present("allow-random-input");
         let allow_float_casts = matches.is_present("allow-float-casts");
 
-        Self::pipeline(
-            matches,
-            probe,
-            raw_model,
-            tf_model_extensions,
-            need_reference_model.as_deref(),
+        Self::pipeline(matches, probe, raw_model, tf_model_extensions, need_reference_model).map(
+            |(tract_model, pulsed_model, reference_model)| {
+                info!("Model ready");
+                info_usage("model ready", probe);
+                Parameters {
+                    graph,
+                    pulsed_model,
+                    tract_model,
+                    reference_model,
+                    tf_model,
+                    tensors_values,
+                    assertions,
+                    machine_friendly: matches.is_present("machine-friendly"),
+                    allow_random_input,
+                    allow_float_casts,
+                }
+            },
         )
-        .map(|(tract_model, pulsed_model, reference_model)| {
-            info!("Model ready");
-            info_usage("model ready", probe);
-            Parameters {
-                graph,
-                pulsed_model,
-                tract_model,
-                reference_model,
-                tf_model,
-                tensors_values,
-                assertions,
-                machine_friendly: matches.is_present("machine-friendly"),
-                allow_random_input,
-                allow_float_casts,
-            }
-        })
     }
 }
 
@@ -934,15 +930,13 @@ impl Assertions {
         let assert_output_facts: Option<Vec<InferenceFact>> = sub
             .values_of("assert-output-fact")
             .map(|vs| vs.map(|v| tensor::for_string(v).unwrap().1).collect());
-        let assert_op_count: Option<Vec<(String, usize)>> = sub
-            .values_of("assert-op-count")
-            .map(|vs| {
+        let assert_op_count: Option<Vec<(String, usize)>> =
+            sub.values_of("assert-op-count").and_then(|vs| {
                 vs.chunks(2)
                     .into_iter()
                     .map(|mut args| Some((args.next()?.to_string(), args.next()?.parse().ok()?)))
                     .collect()
-            })
-            .flatten();
+            });
 
         Ok(Assertions { assert_outputs, assert_output_facts, assert_op_count })
     }

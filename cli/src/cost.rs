@@ -2,9 +2,9 @@ use crate::CliResult;
 use tract_hir::internal::*;
 
 pub fn parse_costs(spec: &str) -> CliResult<Vec<(Cost, usize)>> {
-    spec.split(",")
+    spec.split(',')
         .map(|spec| {
-            let mut toks = spec.split("=");
+            let mut toks = spec.split('=');
             let name = toks.next().unwrap();
             let n = toks.next().unwrap().parse::<usize>().unwrap();
             let c = match name {

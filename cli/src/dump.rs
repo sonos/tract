@@ -32,7 +32,7 @@ pub fn handle(
             .iter()
             .map(|o| Ok(InferenceFact::from(&model.outlet_typedfact(*o)?)))
             .collect::<TractResult<Vec<InferenceFact>>>()?;
-        crate::utils::check_inferred(&*outputs_facts, &*asserts)?;
+        crate::utils::check_inferred(&*outputs_facts, asserts)?;
     }
     if let Some(asserts) = &params.assertions.assert_op_count {
         for (name, expected) in asserts {
@@ -44,7 +44,7 @@ pub fn handle(
     }
 
     if let Some(path) = sub_matches.value_of("nnef") {
-        let nnef = super::nnef(&matches);
+        let nnef = super::nnef(matches);
         if let Some(mut typed) = model.downcast_ref::<TypedModel>().cloned() {
             rename_outputs(&mut typed, sub_matches)?;
             let file = std::fs::File::create(path)?;
@@ -56,7 +56,7 @@ pub fn handle(
     }
 
     if let Some(path) = sub_matches.value_of("nnef-tar") {
-        let nnef = super::nnef(&matches);
+        let nnef = super::nnef(matches);
         if let Some(mut typed) = model.downcast_ref::<TypedModel>().cloned() {
             rename_outputs(&mut typed, sub_matches)?;
             let file = std::fs::File::create(path)?;
@@ -67,7 +67,7 @@ pub fn handle(
     }
 
     if let Some(path) = sub_matches.value_of("nnef-dir") {
-        let nnef = super::nnef(&matches);
+        let nnef = super::nnef(matches);
         if let Some(mut typed) = model.downcast_ref::<TypedModel>().cloned() {
             rename_outputs(&mut typed, sub_matches)?;
             if let Some(renamed) = sub_matches.values_of("nnef-override-output-name") {
@@ -87,7 +87,7 @@ pub fn handle(
     }
 
     if let Some(path) = sub_matches.value_of("nnef-graph") {
-        let nnef = super::nnef(&matches);
+        let nnef = super::nnef(matches);
         if let Some(mut typed) = model.downcast_ref::<TypedModel>().cloned() {
             rename_outputs(&mut typed, sub_matches)?;
             let proto = tract_nnef::ser::to_proto_model(&nnef, &typed)?;
@@ -105,7 +105,7 @@ pub fn handle(
     if options.cost {
         let total = annotations.tags.values().sum::<NodeTags>();
         let assert =
-            sub_matches.value_of("assert-cost").map(|a| crate::cost::parse_costs(a)).transpose()?;
+            sub_matches.value_of("assert-cost").map(crate::cost::parse_costs).transpose()?;
         if let Some(assert) = assert {
             let assert: HashMap<Cost, TDim> =
                 assert.iter().map(|(c, n)| (*c, n.to_dim())).collect();

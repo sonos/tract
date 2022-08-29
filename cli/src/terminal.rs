@@ -65,9 +65,9 @@ fn render_prefixed(
                 options,
             )?
         } else if let Some(ref mut ds) = drawing_state {
-            let _prefix = ds.draw_node_vprefix(model, node, &options)?;
-            let _body = ds.draw_node_body(model, node, &options)?;
-            let _suffix = ds.draw_node_vsuffix(model, node, &options)?;
+            let _prefix = ds.draw_node_vprefix(model, node, options)?;
+            let _body = ds.draw_node_body(model, node, options)?;
+            let _suffix = ds.draw_node_vsuffix(model, node, options)?;
         }
     }
     Ok(())
@@ -84,7 +84,7 @@ fn render_node_prefixed(
 ) -> CliResult<()> {
     let qid = NodeQId(scope.into(), node_id);
     let tags = annotations.tags.get(&qid).cloned().unwrap_or_default();
-    let name_color = tags.style.clone().unwrap_or(White.into());
+    let name_color = tags.style.unwrap_or_else(|| White.into());
     let node_name = model.node_name(node_id);
     let node_op_name = model.node_op(node_id).name();
     let profile_column_pad = format!("{:>1$}", "", options.profile as usize * 20);
@@ -92,7 +92,7 @@ fn render_node_prefixed(
     let flops_column_pad = format!("{:>1$}", "", (options.profile && options.cost) as usize * 20);
 
     if let Some(ref mut ds) = &mut drawing_state {
-        for l in ds.draw_node_vprefix(model, node_id, &options)? {
+        for l in ds.draw_node_vprefix(model, node_id, options)? {
             println!(
                 "{}{}{}{}{} ",
                 cost_column_pad, profile_column_pad, flops_column_pad, prefix, l
@@ -196,12 +196,10 @@ fn render_node_prefixed(
         White.bold().paint(format!("{}", node_id)),
         (if node_name == "UnimplementedOp" {
             Red.bold()
+        } else if options.expect_core && !model.node_op(node_id).op_families().contains(&"core") {
+            Yellow.bold()
         } else {
-            if options.expect_core && !model.node_op(node_id).op_families().contains(&"core") {
-                Yellow.bold()
-            } else {
-                Blue.bold()
-            }
+            Blue.bold()
         })
         .paint(node_op_name),
         name_color.italic().paint(node_name)
@@ -308,7 +306,7 @@ fn render_node_prefixed(
         if !same || model.output_outlets().iter().any(|o| o.node == node_id) {
             let style = drawing_state
                 .map(|s| s.wires.last().and_then(|w| w.color).unwrap_or(s.latest_node_color))
-                .unwrap_or(White.into());
+                .unwrap_or_else(|| White.into());
             for ix in 0..model.node_output_count(node_id) {
                 prefix!();
                 println!(
@@ -324,7 +322,7 @@ fn render_node_prefixed(
 
     while cost_column.as_mut().map(|cost| cost.peek().is_some()).unwrap_or(false) {
         prefix!();
-        println!("");
+        println!();
     }
     Ok(())
 }
@@ -351,10 +349,7 @@ pub fn render_summaries(
             .tags
             .iter()
             .map(|(k, v)| {
-                (
-                    k.model(model).unwrap().node_op(k.1).name(),
-                    v.profile.unwrap_or(Duration::default()),
-                )
+                (k.model(model).unwrap().node_op(k.1).name(), v.profile.unwrap_or_default())
             })
             .sorted_by_key(|a| a.0.to_string())
             .group_by(|(n, _)| n.clone())
@@ -382,8 +377,8 @@ pub fn render_summaries(
         println!("{}", White.bold().paint("By prefix"));
         fn prefixes_for(s: &str) -> impl Iterator<Item = String> + '_ {
             use tract_itertools::*;
-            let split = s.split(".").count();
-            (0..split).map(move |n| s.split(".").take(n).join("."))
+            let split = s.split('.').count();
+            (0..split).map(move |n| s.split('.').take(n).join("."))
         }
         let all_prefixes = annotations
             .tags
@@ -400,16 +395,10 @@ pub fn render_summaries(
                 .filter(|(k, _v)| k.model(model).unwrap().node_name(k.1).starts_with(prefix))
                 .map(|(_k, v)| v)
                 .sum::<NodeTags>();
-            if sum.profile.unwrap_or(Duration::default()).as_secs_f64()
-                / summary.entire.as_secs_f64()
-                < 0.01
-            {
+            if sum.profile.unwrap_or_default().as_secs_f64() / summary.entire.as_secs_f64() < 0.01 {
                 continue;
             }
-            print!(
-                "{}    ",
-                dur_avg_ratio(sum.profile.unwrap_or(Duration::default()), summary.sum)
-            );
+            print!("{}    ", dur_avg_ratio(sum.profile.unwrap_or_default(), summary.sum));
             for _ in prefix.chars().filter(|c| *c == '.') {
                 print!("   ");
             }
