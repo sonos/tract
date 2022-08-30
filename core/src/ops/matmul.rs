@@ -106,9 +106,9 @@ impl MatMulAxes {
             }
             /*
             AxisOp::Add(ix) => {
-                let index_as_untouched_axis =
-                    ix - (self.c_m < *ix) as usize - (self.c_n < *ix) as usize;
-                self.insert_untouched_axis(index_as_untouched_axis)
+            let index_as_untouched_axis =
+            ix - (self.c_m < *ix) as usize - (self.c_n < *ix) as usize;
+            self.insert_untouched_axis(index_as_untouched_axis)
             }
             */
             _ => bail!("Invalid change"),
@@ -343,4 +343,158 @@ pub(super) fn cost<A: DimLike + Clone, B: DimLike + Clone>(
     )?;
     let mul = c_shape.iter().rev().skip(2).cloned().product();
     Ok(tvec!((Cost::FMA(dt), [mul, m.to_dim(), k.to_dim(), n.to_dim()].iter().product())))
+}
+
+#[cfg(test)]
+mod change_axis_test {
+    use proptest::prelude::*;
+    use proptest::strategy::{BoxedStrategy, Strategy};
+
+    use super::*;
+
+    fn tensor(shape: &[usize]) -> BoxedStrategy<Tensor> {
+        let len = shape.iter().product::<usize>();
+        let shape = shape.to_vec();
+        proptest::collection::vec(any::<i8>().prop_map(|i| i as f32), len..=len)
+            .prop_map(move |vec| ArrayD::from_shape_vec(shape.clone(), vec).unwrap().into_tensor())
+            .boxed()
+    }
+
+    fn strat_for_b_axes(rank: usize) -> impl Strategy<Value = (usize, usize)> {
+        assert!(rank >= 2);
+        (0..rank)
+            .prop_flat_map(move |bn| (Just(bn), (0..rank - 1)))
+            .prop_map(|(bn, raw_bk)| (bn, raw_bk + (raw_bk >= bn) as usize))
+    }
+
+    #[derive(Clone, Debug)]
+    struct ChangeAxisMatmulProblem {
+        input: Tensor,
+        change: AxisOp,
+        matmul: MatMulUnary,
+    }
+
+    impl Arbitrary for ChangeAxisMatmulProblem {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<ChangeAxisMatmulProblem>;
+        fn arbitrary_with(_parameters: Self::Parameters) -> Self::Strategy {
+            proptest::collection::vec(1..10usize, 2..5)
+                .prop_flat_map(|shape_input| {
+                    (tensor(&shape_input), AxisOp::arbitrary_with(shape_input.into()))
+                })
+                .prop_flat_map(|(input, change)| {
+                    let mut matmul_input_shape: TVec<usize> = input.shape().into();
+                    change.change_shape_array(&mut matmul_input_shape, false).unwrap();
+                    (Just(input), Just(change), Just(matmul_input_shape))
+                })
+                .prop_filter("rank must be >= 2", |(_, _, matmul_input_shape)| {
+                    matmul_input_shape.len() >= 2
+                })
+                .prop_flat_map(|(input, change, matmul_input_shape)| {
+                    (
+                        Just(input),
+                        Just(change),
+                        Just(matmul_input_shape.clone()),
+                        strat_for_b_axes(matmul_input_shape.len()),
+                        1usize..=6,
+                    )
+                })
+                .prop_flat_map(|(input, change, matmul_input_shape, (b_k, b_n), m)| {
+                    let k = matmul_input_shape[b_k];
+                    (Just((input, change, matmul_input_shape, b_k, b_n)), tensor(&[m, k]))
+                })
+                .prop_map(|((input, change, matmul_input_shape, b_k, b_n), a)| {
+                    let mut axes = MatMulAxes::default_for_rank(matmul_input_shape.len());
+                    axes.b_n = b_n;
+                    axes.b_k = b_k;
+                    ChangeAxisMatmulProblem {
+                        input,
+                        change,
+                        matmul: MatMulUnary {
+                            a: a.broadcast_into_rank(matmul_input_shape.len())
+                                .unwrap()
+                                .into_arc_tensor(),
+                            axes,
+                        },
+                    }
+                })
+                .boxed()
+        }
+    }
+
+    impl ChangeAxisMatmulProblem {
+        fn model(&self) -> TypedModel {
+            let mut model = TypedModel::default();
+            let source = model.add_source("source", f32::fact(self.input.shape())).unwrap();
+            let changed = model.wire_node("change", self.change.clone(), &[source]).unwrap();
+            let output = model.wire_node("mm", self.matmul.clone(), &changed).unwrap();
+            model.set_output_outlets(&output).unwrap();
+            model
+        }
+        fn reference(&self) -> Tensor {
+            let model = self.model();
+            let mut outputs =
+                model.into_runnable().unwrap().run(tvec!(self.input.clone())).unwrap();
+            outputs.remove(0).into_tensor()
+        }
+
+        fn swapped(&self) -> Option<Tensor> {
+            let model = self.model();
+            self.matmul
+                .change_axes(&model, &model.nodes[2], InOut::In(0), &self.change.recip())
+                .unwrap()
+                .map(|changed_mm| {
+                    let mut model = TypedModel::default();
+                    let source = model.add_source("source", f32::fact(self.input.shape())).unwrap();
+                    let mul = model
+                        .wire_node(
+                            "mm",
+                            changed_mm
+                                .substitute_op
+                                .clone()
+                                .unwrap_or(Box::new(self.matmul.clone())),
+                            &[source],
+                        )
+                        .unwrap();
+                    let change_after = changed_mm
+                        .wire_changes
+                        .iter()
+                        .find(|(io, _change)| *io == InOut::Out(0))
+                        .map(|(_io, change)| change)
+                        .unwrap();
+                    let changed = model.wire_node("change", change_after.clone(), &mul).unwrap();
+                    model.set_output_outlets(&changed).unwrap();
+                    let mut outputs =
+                        model.into_runnable().unwrap().run(tvec!(self.input.clone())).unwrap();
+                    outputs.remove(0).into_tensor()
+                })
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn proptest_validity(pb in any::<ChangeAxisMatmulProblem>()) {
+            pb.reference();
+        }
+
+        #[test]
+        fn proptest_equals(pb in any::<ChangeAxisMatmulProblem>()) {
+            if let Some(swapped) = pb.swapped() {
+                prop_assert_eq!(swapped, pb.reference());
+            }
+        }
+    }
+
+    #[test]
+    fn rm0() {
+        let pb = ChangeAxisMatmulProblem {
+            input: Tensor::zero::<f32>(&[3,1,1]).unwrap(),
+            change: AxisOp::Rm(1),
+            matmul: MatMulUnary {
+                a: Tensor::zero::<f32>(&[1,3]).unwrap().into_arc_tensor(),
+                axes: MatMulAxes { a_m: 0, a_k: 1, b_k: 0, b_n: 1, c_m: 0, c_n: 1 }
+            }
+        };
+        assert_eq!(pb.swapped().unwrap(), pb.reference());
+    }
 }
