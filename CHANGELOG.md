@@ -1,5 +1,9 @@
 # Unreleased
 
+# 0.17.5 - 2022-09-05
+* clippy up all tract code
+* various fixes
+
 # 0.17.4 - 2022-08-11
 * [cli] global --set (as a somehat cleaner --concretize successor) allow to set a symbol value after decluttering
 * [cli] run --save-outputs output.npz to save execution outputs
