@@ -1,5 +1,6 @@
 
 #include <stddef.h>
+#include <stdio.h>
 
 void c_packed_tile_4x4(size_t m, size_t k, size_t n, float *a, float *b, float *c) {
     for(size_t row = 0 ; row < m / 4 ; row++) {

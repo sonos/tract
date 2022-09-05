@@ -12,7 +12,16 @@ use tract_data::internal::*;
 
 macro_rules! b {
     ($id:ident) => {
+        b!($id, None);
+    };
+    ($id:ident, $tile_constraint:expr) => {
         pub fn $id(crit: &mut BenchmarkGroup<WallTime>, m: usize, k: usize, n: usize) {
+            let constraint: Option<(usize, usize)> = $tile_constraint;
+            if let Some((mr, nr)) = constraint {
+                if m % mr != 0 || n % nr != 0 {
+                    return
+                }
+            }
             let a = vec![0f32; m * k];
             let b = vec![0f32; k * n];
             let mut c = vec![0f32; m * n];
@@ -20,6 +29,7 @@ macro_rules! b {
                 be.iter(|| matmul_bench::$id(m, k, n, &a, &b, &mut c))
             });
         }
+
     };
 }
 
@@ -34,8 +44,11 @@ b!(tile_8x8);
 b!(ctile_8x8);
 b!(cpacked_tile_8x8);
 b!(matrixmultiply);
+#[cfg(feature = "blas")]
 b!(cblas);
 b!(tract);
+#[cfg(feature = "opencl")]
+b!(opencl, Some((8, 8)));
 
 pub fn tract_blaslike(
     crit: &mut BenchmarkGroup<WallTime>,
@@ -101,14 +114,19 @@ fn matmul(c: &mut Criterion, m: usize, k: usize, n: usize) {
     ctile_8x8(&mut c, m, k, n);
     cpacked_tile_8x8(&mut c, m, k, n);
     matrixmultiply(&mut c, m, k, n);
+    #[cfg(feature = "blas")]
     cblas(&mut c, m, k, n);
     tract(&mut c, m, k, n);
     tract_blaslike(&mut c, m, k, n, f32::datum_type());
     tract_blaslike(&mut c, m, k, n, f16::datum_type());
+    #[cfg(feature = "opencl")]
+    opencl(&mut c, m, k, n);
     c.finish();
 }
 
 fn big(c: &mut Criterion) {
+    matmul(c, 128, 128, 128);
+    matmul(c, 256, 256, 256);
     matmul(c, 512, 512, 512);
 }
 

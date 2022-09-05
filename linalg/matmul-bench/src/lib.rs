@@ -6,6 +6,12 @@ extern crate blis_src;
 #[cfg(feature = "blis")]
 extern crate cblas;
 
+#[cfg(feature = "opencl")]
+mod opencl;
+
+use tract_data::internal::*;
+use tract_linalg::frame::mmm::FusedSpec;
+
 pub fn naive(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) {
     for row in 0..m {
         for col in 0..n {
@@ -380,8 +386,8 @@ pub fn matrixmultiply(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mu
 }
 
 #[allow(unused_variables, unused_mut)]
+#[cfg(feature = "blas")]
 pub fn cblas(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) {
-    #[cfg(feature = "blas")]
     unsafe {
         cblas::sgemm(
             cblas::Layout::RowMajor,
@@ -402,9 +408,13 @@ pub fn cblas(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) 
     }
 }
 
+#[allow(unused_variables, unused_mut)]
+#[cfg(feature = "opencl")]
+pub fn opencl(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) {
+    opencl::run(m, k, n, a, b, c)
+}
+
 pub fn tract(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) {
-    use tract_data::internal::*;
-    use tract_linalg::frame::mmm::FusedSpec;
     unsafe {
         let mmm = tract_linalg::ops()
             .mmm(DatumType::F32, DatumType::F32, DatumType::F32, Some(m), Some(k), Some(n))
@@ -450,4 +460,91 @@ pub fn tract(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) 
         .unwrap();
         c.copy_from_slice(tc.as_slice_unchecked())
     }
+}
+
+#[cfg(test)]
+mod test {
+    use tract_data::internal::DimLike;
+
+    fn pack_a(a: &[f32], m: usize, k: usize, r: usize) -> Vec<f32> {
+        let panels = m.divceil(r);
+        let mut pa = vec![0f32; m * k];
+        for p in 0..panels {
+            for ik in 0..k {
+                for ir in 0..r {
+                    let row = p * r + ir;
+                    let col = ik;
+                    let v = a[row * k + col];
+                    pa[p * k * r + ik * r + ir] = v;
+                }
+            }
+        }
+        pa
+    }
+
+    fn pack_b(b: &[f32], k: usize, n: usize, r: usize) -> Vec<f32> {
+        let panels = n.divceil(r);
+        let mut pb = vec![0f32; k * n];
+        for p in 0..panels {
+            for ik in 0..k {
+                for ir in 0..r {
+                    let row = ik;
+                    let col = p * r + ir;
+                    let v = b[row * n + col];
+                    pb[p * k * r + ik * r + ir] = v;
+                }
+            }
+        }
+        pb
+    }
+    macro_rules! t {
+        ($id:ident) => {
+            t!($id, None);
+        };
+        ($id:ident, $pack:expr) => {
+            paste::paste! {
+                #[test]
+                pub fn [<test_ $id>]() {
+                    let x = 8;
+                    let (m, k, n) = (x, x, x);
+                    let mut a:Vec<f32> = (0..).take(m*k).map(|x| x as f32).collect();
+                    let mut b:Vec<f32> = (0..).take(k*n).map(|x| x as f32).collect();
+                    let mut expected = vec![0f32; m * n];
+                    let mut found = vec![0f32; m * n];
+                    for i_m in 0..m {
+                        for i_n in 0..n {
+                            let mut sum = 0f32;
+                            for i_k in 0..k {
+                                sum += a[i_m * k + i_k] * b[i_k * n + i_n];
+                            }
+                            expected[i_m * n + i_n] = sum;
+                        }
+                    }
+                    if let Some(r) = $pack {
+                        a = pack_a(&*a, m, k, r);
+                        b = pack_b(&*b, k, n, r);
+                    }
+                    crate::$id(m, k, n, &a, &b, &mut found);
+                    assert_eq!(found, expected);
+                }
+            }
+        };
+    }
+
+    t!(naive);
+    t!(ctile_1x1);
+    t!(tile_2x2);
+    t!(ctile_2x2);
+    t!(tile_4x4);
+    t!(ctile_4x4);
+    t!(cpacked_tile_4x4, Some(4));
+    t!(tile_8x8);
+    t!(ctile_8x8);
+    t!(cpacked_tile_8x8, Some(8));
+    t!(matrixmultiply);
+    #[cfg(feature = "blas")]
+    t!(cblas);
+    t!(tract);
+    #[cfg(feature = "opencl")]
+    t!(opencl);
 }
