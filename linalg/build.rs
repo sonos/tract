@@ -12,6 +12,16 @@ fn use_masm() -> bool {
     env::var("CARGO_CFG_TARGET_ENV") == Ok("msvc".to_string()) && var("HOST").contains("-windows-")
 }
 
+<<<<<<< HEAD
+=======
+fn needs_pragma() -> bool {
+    // This will add the following to the asm templates if true:
+    // .cpu generic+fp+simd+fp16
+    !cc::Build::new().get_compiler().is_like_clang()
+        && !cc::Build::new().get_compiler().is_like_gnu()
+}
+
+>>>>>>> 842380649 (one more try at compiler flags mixup)
 fn jump_table() -> Vec<String> {
     println!("cargo:rerun-if-changed=src/frame/mmm/fuse.rs");
     std::fs::read_to_string("src/frame/mmm/fuse.rs")
