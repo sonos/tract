@@ -170,6 +170,7 @@ impl Gpu {
             .set_arg(&b_cl)
             .set_arg(&c_cl)
             .set_global_work_sizes(&[m / self.mr, n / self.nr])
+            .set_local_work_sizes(&[2, 2])
             .set_event_wait_list(&[write_a.get(), write_b.get()])
             .enqueue_nd_range(&self.queue)?;
 
