@@ -57,7 +57,7 @@ impl ModelLocation {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[allow(clippy::large_enum_variant)]
 pub enum SomeGraphDef {
     NoGraphDef,
@@ -89,6 +89,7 @@ impl std::error::Error for ModelBuildingError {
 type PulsedModel = ();
 
 /// Structure holding the parsed parameters.
+#[derive(Clone)]
 pub struct Parameters {
     pub graph: SomeGraphDef,
 
@@ -112,16 +113,22 @@ pub struct Parameters {
     pub allow_float_casts: bool,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct TensorsValues(pub Vec<TensorValues>);
 
 impl TensorsValues {
     pub fn by_name(&self, name: &str) -> Option<&TensorValues> {
         self.0.iter().find(|t| t.name.as_deref() == Some(name))
     }
+    pub fn by_name_mut(&mut self, name: &str) -> Option<&mut TensorValues> {
+        self.0.iter_mut().find(|t| t.name.as_deref() == Some(name))
+    }
 
     pub fn by_input_ix(&self, ix: usize) -> Option<&TensorValues> {
         self.0.iter().find(|t| t.input_index == Some(ix))
+    }
+    pub fn by_input_ix_mut(&mut self, ix: usize) -> Option<&mut TensorValues> {
+        self.0.iter_mut().find(|t| t.input_index == Some(ix))
     }
 
     /*
@@ -130,6 +137,23 @@ impl TensorsValues {
     }
     */
 
+    pub fn set_tensor_values(&mut self, other: &TensorsValues) -> CliResult<()> {
+        for other_tensor in other.0.iter() {
+            let mut tensor = other_tensor.input_index.and_then(|ix| self.by_input_ix_mut(ix));
+
+            if tensor.is_none() {
+                tensor = other_tensor.name.as_deref().and_then(|ix| self.by_name_mut(ix))
+            }
+
+            let tensor = tensor.with_context(|| anyhow!("Unmatched tensor values: {:?}", other_tensor))?;
+
+            if tensor.values.is_none() {
+                tensor.values = other_tensor.values.clone();
+            }
+        }
+        Ok(())
+    }
+
     pub fn add(&mut self, tv: TensorValues) {
         if !self.0.contains(&tv) {
             self.0.push(tv)
@@ -137,7 +161,7 @@ impl TensorsValues {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TensorValues {
     pub input_index: Option<usize>,
     pub output_index: Option<usize>,
@@ -428,14 +452,18 @@ impl Parameters {
                     output_index: Some(ix).filter(|_| is_output),
                     name,
                     values: tensor.value.concretize().map(|t| vec![t]),
-                    fact: None,
+                    fact: Some(tensor.without_value()),
                 })
             }
         }
         Ok(result)
     }
 
-    fn parse_npz(input: &str) -> TractResult<Vec<TensorValues>> {
+    pub fn parse_npz(
+        input: &str,
+        get_values: bool,
+        get_facts: bool,
+    ) -> TractResult<Vec<TensorValues>> {
         let mut npz = ndarray_npy::NpzReader::new(
             std::fs::File::open(input).with_context(|| format!("opening {:?}", input))?,
         )?;
@@ -462,8 +490,12 @@ impl Parameters {
                 input_index: None,
                 output_index: None,
                 name: Some(name),
-                fact: None,
-                values: Some(vals),
+                fact: if get_facts {
+                    Some(InferenceFact::from(&vals[0]).without_value())
+                } else {
+                    None
+                },
+                values: if get_values { Some(vals) } else { None },
             })
         }
         Ok(result)
@@ -484,14 +516,23 @@ impl Parameters {
                     output_index: None,
                     name,
                     values: fact.value.concretize().map(|t| vec![t]),
-                    fact: if fact.value.is_concrete() { None } else { Some(fact) },
+                    fact: Some(fact.without_value()),
                 });
             }
         }
 
         if let Some(bundle) = matches.values_of("input-bundle") {
+            warn!("Argument --input-bundle is deprecated and may be removed in a future release. Use --input-facts-from-bundle and/or --input-from-bundle instead.");
             for input in bundle {
-                for tv in Self::parse_npz(input)? {
+                for tv in Self::parse_npz(input, true, true)? {
+                    result.add(tv);
+                }
+            }
+        }
+
+        if let Some(bundle) = matches.values_of("input-facts-from-bundle") {
+            for input in bundle {
+                for tv in Self::parse_npz(input, false, true)? {
                     result.add(tv);
                 }
             }
@@ -512,14 +553,14 @@ impl Parameters {
                         output_index: Some(ix),
                         name,
                         values: fact.value.concretize().map(|t| vec![t]),
-                        fact: None,
+                        fact: Some(fact.without_value()),
                     });
                 }
             }
 
             if let Some(bundles) = sub.values_of("assert-output-bundle") {
                 for bundle in bundles {
-                    for tv in Self::parse_npz(bundle)? {
+                    for tv in Self::parse_npz(bundle, true, false)? {
                         result.add(tv);
                     }
                 }
@@ -817,9 +858,6 @@ impl Parameters {
                 if let Some(tv) = tv {
                     if let Some(fact) = &tv.fact {
                         infer.nodes[node_id.node].outputs[0].fact = fact.clone();
-                    } else if let Some(values) = &tv.values {
-                        infer.nodes[node_id.node].outputs[0].fact =
-                            InferenceFact::from(&values[0]).without_value();
                     }
                 }
             }
@@ -916,7 +954,7 @@ pub fn display_params_from_clap(
     })
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Assertions {
     pub assert_outputs: bool,
     pub assert_output_facts: Option<Vec<InferenceFact>>,
