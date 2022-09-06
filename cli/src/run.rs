@@ -1,6 +1,7 @@
 use std::fs::File;
 
 use crate::CliResult;
+use crate::params::TensorsValues;
 use crate::{Model, Parameters};
 use ansi_term::Color::*;
 use ndarray_npy::NpzWriter;
@@ -37,17 +38,26 @@ pub fn handle(
     matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
 ) -> CliResult<()> {
+    let mut params = params.clone();
+
+    if let Some(bundle) = sub_matches.values_of("input-from-bundle") {
+        for input in bundle {
+            let tensor_values = TensorsValues(Parameters::parse_npz(input, true, false)?);
+            params.tensors_values.set_tensor_values(&tensor_values)?;
+        }
+    }
+
     let dump = sub_matches.is_present("dump");
     #[cfg(feature = "pulse")]
     let outputs = if let Some(pulse) = params.tract_model.downcast_ref::<PulsedModel>() {
-        run_pulse_t(pulse, params)?
+        run_pulse_t(pulse, &params)?
     } else {
-        dispatch_model!(&*params.tract_model, |m| run_regular(m, params, matches, sub_matches))?
+        dispatch_model!(&*params.tract_model, |m| run_regular(m, &params, matches, sub_matches))?
     };
 
     #[cfg(not(feature = "pulse"))]
     let outputs =
-        dispatch_model!(&*params.tract_model, |m| run_regular(m, &params, matches, &sub_matches))?;
+        dispatch_model!(&*params.tract_model, |m| run_regular(m, &params, matches, sub_matches))?;
 
     if dump {
         for (ix, output) in outputs.iter().enumerate() {
@@ -82,7 +92,7 @@ pub fn handle(
     }
 
     if params.assertions.assert_outputs {
-        crate::utils::check_outputs(&*outputs, params)?;
+        crate::utils::check_outputs(&*outputs, &params)?;
     }
 
     if let Some(facts) = &params.assertions.assert_output_facts {

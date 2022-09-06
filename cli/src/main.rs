@@ -88,7 +88,8 @@ fn main() -> tract_core::anyhow::Result<()> {
                   "Set input shape and type (@file.pb or @file.npz:thing.npy or 3x4xi32)."))
 
         .arg(arg!(--"const-input" [const_input] ... "Treat input as a Const (by name), retaining its value."))
-        .arg(arg!(--"input-bundle" [input_bundle] "Path to an input container (.npz)"))
+        .arg(arg!(--"input-bundle" [input_bundle] "Path to an input container (.npz). This sets input facts and tensor values.").hide(true))
+        .arg(arg!(--"input-facts-from-bundle" [input_bundle] "Path to an input container (.npz). This only sets input facts."))
         .arg(arg!(--"allow-random-input" "WIll use random generated input"))
 
         .arg(arg!(--"kaldi-adjust-final-offset" [frames] "Adjust value of final offset in network (for reproducibility)"))
@@ -207,6 +208,12 @@ fn main() -> tract_core::anyhow::Result<()> {
                 .long("save-steps")
                 .takes_value(true)
                 .help("Save intermediary values as a npz file"),
+        )
+        .arg(
+            Arg::new("input-from-bundle")
+                .long("input-from-bundle")
+                .takes_value(true)
+                .help("Path to an input container (.npz). This sets tensor values."),
         )
         .arg(
             Arg::new("assert-sane-floats")

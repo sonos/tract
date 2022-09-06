@@ -115,24 +115,28 @@ but it's less susceptible to changes.
 `tract` command line can also be use to build test-case, either for non-regression insurance
 of debugging purposes.
 
-`--input-bundle` takes a `.npz` file, and tries to match its tensors with the input names in
-the network. This will also supersede the `-i` option: we will take the input shapes and tensor
+`--input-facts-from-bundle` takes a `.npz` file, and will set the input facts (dtype, shape) according to the tensors
+in the npz file. This is useful when your model does not have any input type information embedded within it.
+
+The `run` subcommand accepts an `--input-from-bundle` that also takes a `.npz` file, but it
+will not set any input fact, it will only take the tensor values.
+This will also supersede the `-i` option: we will take the input shapes and tensor
 from the input itself.
 
-The `run` subcommand accepts an `--assert-output-bundle`. This time, the tensors names are
+The `run` subcommand also accepts an `--assert-output-bundle`. This time, the tensors names are
 matched with the model output names. `tract` will run over the input and check that its finding
 are the same to the expected output (with some leeway for rounding differences).
 
 [Example here](/onnx/test_cases/qtanh_1) for a quantized tanh in onnx.
 
-```
-tract --input-bundle io.npz model.onnx -O run --assert-output-bundle io.npz
+```sh
+tract model.onnx -O run --input-from-bundle io.npz --assert-output-bundle io.npz
 ```
 
 If we want to make sure we actually check something, `-v` can help:
 
 ```
-tract -v --input-bundle io.npz model.onnx -O run --assert-output-bundle io.npz
+tract -v model.onnx -O run --input-from-bundle io.npz --assert-output-bundle io.npz
 ```
 
 The log displays "Checked output #0, ok." (among other information).
