@@ -7,7 +7,7 @@ extern crate blis_src;
 extern crate cblas;
 
 #[cfg(feature = "opencl")]
-mod opencl;
+pub mod opencl;
 
 use tract_data::internal::*;
 use tract_linalg::frame::mmm::FusedSpec;
@@ -408,12 +408,6 @@ pub fn cblas(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) 
     }
 }
 
-#[allow(unused_variables, unused_mut)]
-#[cfg(feature = "opencl")]
-pub fn opencl(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) {
-    opencl::run(m, k, n, a, b, c)
-}
-
 pub fn tract(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) {
     unsafe {
         let mmm = tract_linalg::ops()
@@ -464,9 +458,9 @@ pub fn tract(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) 
 
 #[cfg(test)]
 mod test {
-    use tract_data::internal::DimLike;
+    use super::*;
 
-    fn pack_a(a: &[f32], m: usize, k: usize, r: usize) -> Vec<f32> {
+    pub fn pack_a(a: &[f32], m: usize, k: usize, r: usize) -> Vec<f32> {
         let panels = m.divceil(r);
         let mut pa = vec![0f32; m * k];
         for p in 0..panels {
@@ -482,7 +476,7 @@ mod test {
         pa
     }
 
-    fn pack_b(b: &[f32], k: usize, n: usize, r: usize) -> Vec<f32> {
+    pub fn pack_b(b: &[f32], k: usize, n: usize, r: usize) -> Vec<f32> {
         let panels = n.divceil(r);
         let mut pb = vec![0f32; k * n];
         for p in 0..panels {
@@ -497,6 +491,8 @@ mod test {
         }
         pb
     }
+
+    #[macro_export]
     macro_rules! t {
         ($id:ident) => {
             t!($id, None);
@@ -521,10 +517,10 @@ mod test {
                         }
                     }
                     if let Some(r) = $pack {
-                        a = pack_a(&*a, m, k, r);
-                        b = pack_b(&*b, k, n, r);
+                        a = $crate::test::pack_a(&*a, m, k, r);
+                        b = $crate::test::pack_b(&*b, k, n, r);
                     }
-                    crate::$id(m, k, n, &a, &b, &mut found);
+                    $id(m, k, n, &a, &b, &mut found);
                     assert_eq!(found, expected);
                 }
             }
@@ -545,6 +541,4 @@ mod test {
     #[cfg(feature = "blas")]
     t!(cblas);
     t!(tract);
-    #[cfg(feature = "opencl")]
-    t!(opencl);
 }

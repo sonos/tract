@@ -1,4 +1,4 @@
-use std::{ptr::null_mut, sync::Mutex};
+use std::ptr::null_mut;
 
 use opencl3::{
     command_queue::{CommandQueue, CL_QUEUE_PROFILING_ENABLE},
@@ -12,7 +12,7 @@ use opencl3::{
     types::{cl_float, CL_NON_BLOCKING},
 };
 
-struct Gpu {
+pub struct Gpu {
     context: Context,
     queue: CommandQueue,
     kernel: Kernel,
@@ -30,9 +30,13 @@ impl Gpu {
         let device = Device::new(device);
         let context = Context::from_device(&device).expect("Context::from_device failed");
 
-        let queue =
-            CommandQueue::create(&context, context.default_device(), CL_QUEUE_PROFILING_ENABLE)
-                .expect("CommandQueue::create failed");
+        let queue = CommandQueue::create_with_properties(
+            &context,
+            context.default_device(),
+            CL_QUEUE_PROFILING_ENABLE,
+            0,
+        )
+        .expect("CommandQueue::create failed");
 
         let kernel_cl = r#"
     __kernel void gemm_0(const int M, const int K, const int N,
@@ -150,6 +154,7 @@ impl Gpu {
         a: &[f32],
         b: &[f32],
         c: &mut [f32],
+        local_sizes: Option<(usize, usize)>,
     ) -> Result<(), ClError> {
         let mut a_cl =
             Buffer::<cl_float>::create(&self.context, CL_MEM_READ_ONLY, m * k, null_mut())?;
@@ -162,17 +167,19 @@ impl Gpu {
         let write_a = self.queue.enqueue_write_buffer(&mut a_cl, CL_NON_BLOCKING, 0, a, &[])?;
         let write_b = self.queue.enqueue_write_buffer(&mut b_cl, CL_NON_BLOCKING, 0, b, &[])?;
 
-        let run = ExecuteKernel::new(&self.kernel)
-            .set_arg(&(m as i32))
+        let mut run = ExecuteKernel::new(&self.kernel);
+        run.set_arg(&(m as i32))
             .set_arg(&(k as i32))
             .set_arg(&(n as i32))
             .set_arg(&a_cl)
             .set_arg(&b_cl)
             .set_arg(&c_cl)
             .set_global_work_sizes(&[m / self.mr, n / self.nr])
-            .set_local_work_sizes(&[2, 2])
-            .set_event_wait_list(&[write_a.get(), write_b.get()])
-            .enqueue_nd_range(&self.queue)?;
+            .set_event_wait_list(&[write_a.get(), write_b.get()]);
+        if let Some((mr, nr)) = local_sizes {
+            run.set_local_work_sizes(&[mr, nr]);
+        }
+        let run = run.enqueue_nd_range(&self.queue).unwrap();
 
         let read_c =
             self.queue.enqueue_read_buffer(&mut c_cl, CL_NON_BLOCKING, 0, c, &[run.get()])?;
@@ -181,12 +188,44 @@ impl Gpu {
     }
 }
 
-lazy_static::lazy_static! {
-    static ref GPU: Mutex<std::collections::HashMap::<&'static str, Gpu>> = Default::default();
+#[allow(non_upper_case_globals)]
+mod kernels {
+    pub use super::*;
+    use std::sync::Mutex;
+
+    macro_rules! kernel {
+        ($id:ident, $mr: expr, $nr: expr) => {
+            lazy_static::lazy_static! {
+                pub static ref $id: Mutex<Gpu> = {
+                    Mutex::new(Gpu::create(stringify!($id), $mr, $nr))
+                };
+            }
+        };
+    }
+
+    kernel!(gemm_1, 4, 4);
 }
 
-pub fn run(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) {
-    let mut gpus = GPU.lock().unwrap();
-    let gpu = gpus.entry("gemm_1").or_insert_with(|| Gpu::create("gemm_1", 4, 4));
-    gpu.run(m, k, n, a, b, c).unwrap();
+pub fn opencl_gemm1(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) {
+    kernels::gemm_1.lock().unwrap().run(m, k, n, a, b, c, None).unwrap();
+}
+
+pub fn opencl_gemm_1_with_local_2x2(
+    m: usize,
+    k: usize,
+    n: usize,
+    a: &[f32],
+    b: &[f32],
+    c: &mut [f32],
+) {
+    kernels::gemm_1.lock().unwrap().run(m, k, n, a, b, c, Some((2, 2))).unwrap();
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::t;
+
+    t!(opencl_gemm1);
+    t!(opencl_gemm_1_with_local_2x2);
 }
