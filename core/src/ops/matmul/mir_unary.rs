@@ -45,11 +45,14 @@ impl TypedOp for MatMulUnary {
                 self.a
             );
         }
+        dbg!(self);
+        dbg!(inputs);
         let (_m, _k, _n, c_shape) = compute_shape(
             &self.a.shape().iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
             &inputs[0].shape,
             self.axes,
         )?;
+        dbg!(&c_shape);
         let c_dt = output_type(inputs[0].datum_type);
         Ok(tvec!(c_dt.fact(c_shape)))
     }
@@ -189,9 +192,11 @@ impl MatMulUnary {
             )?[0];
             let b_storage = mmm.b_packed(b_dt.size_of(), k);
             let geometry = ConcreteMatMulGeometry { m, k, n, b_storage };
+            /*
             dbg!(self);
             dbg!(&geometry);
             dbg!(&packed_as);
+            */
             wire = patch.wire_node(
                 format!("{}.matmatmul", &*node.name),
                 LirMatMulUnary {
@@ -408,7 +413,7 @@ pub(super) fn mir_unary_change_axes(
     } else {
         unreachable!();
     };
-    dbg!(old_axes, io, change, &result);
+    //dbg!(old_axes, io, change, &result);
     if let Ok((axes, a, b, c)) = result {
         let mut new_a = old_a.clone();
         a.change_tensor(&mut new_a, false)?;
