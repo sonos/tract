@@ -456,41 +456,41 @@ pub fn tract(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) 
     }
 }
 
+pub fn pack_a(a: &[f32], m: usize, k: usize, r: usize) -> Vec<f32> {
+    let panels = m.divceil(r);
+    let mut pa = vec![0f32; m * k];
+    for p in 0..panels {
+        for ik in 0..k {
+            for ir in 0..r {
+                let row = p * r + ir;
+                let col = ik;
+                let v = a[row * k + col];
+                pa[p * k * r + ik * r + ir] = v;
+            }
+        }
+    }
+    pa
+}
+
+pub fn pack_b(b: &[f32], k: usize, n: usize, r: usize) -> Vec<f32> {
+    let panels = n.divceil(r);
+    let mut pb = vec![0f32; k * n];
+    for p in 0..panels {
+        for ik in 0..k {
+            for ir in 0..r {
+                let row = ik;
+                let col = p * r + ir;
+                let v = b[row * n + col];
+                pb[p * k * r + ik * r + ir] = v;
+            }
+        }
+    }
+    pb
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
-
-    pub fn pack_a(a: &[f32], m: usize, k: usize, r: usize) -> Vec<f32> {
-        let panels = m.divceil(r);
-        let mut pa = vec![0f32; m * k];
-        for p in 0..panels {
-            for ik in 0..k {
-                for ir in 0..r {
-                    let row = p * r + ir;
-                    let col = ik;
-                    let v = a[row * k + col];
-                    pa[p * k * r + ik * r + ir] = v;
-                }
-            }
-        }
-        pa
-    }
-
-    pub fn pack_b(b: &[f32], k: usize, n: usize, r: usize) -> Vec<f32> {
-        let panels = n.divceil(r);
-        let mut pb = vec![0f32; k * n];
-        for p in 0..panels {
-            for ik in 0..k {
-                for ir in 0..r {
-                    let row = ik;
-                    let col = p * r + ir;
-                    let v = b[row * n + col];
-                    pb[p * k * r + ik * r + ir] = v;
-                }
-            }
-        }
-        pb
-    }
 
     #[macro_export]
     macro_rules! t {
@@ -517,10 +517,14 @@ mod test {
                         }
                     }
                     if let Some(r) = $pack {
-                        a = $crate::test::pack_a(&*a, m, k, r);
-                        b = $crate::test::pack_b(&*b, k, n, r);
+                        a = $crate::pack_a(&*a, m, k, r);
+                        b = $crate::pack_b(&*b, k, n, r);
                     }
                     $id(m, k, n, &a, &b, &mut found);
+                    for im in 0..m {
+                        eprint!("{}   |   ", found[im * n..][..n].iter().map(|x| format!("{:6}", x)).collect::<String>());
+                        eprintln!("{}", expected[im * n..][..n].iter().map(|x| format!("{:6}", x)).collect::<String>());
+                    }
                     assert_eq!(found, expected);
                 }
             }

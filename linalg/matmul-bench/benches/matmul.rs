@@ -104,6 +104,7 @@ fn matmul(crit: &mut Criterion, m: usize, k: usize, n: usize) {
     {
         b!(opencl_gemm1);
         b!(opencl_gemm_1_with_local_2x2, Some((2, 2)));
+        b!(opencl_gemm_2_pack, Some((4,4)));
     }
     tract_blaslike(&mut crit, m, k, n, f32::datum_type());
     tract_blaslike(&mut crit, m, k, n, f16::datum_type());

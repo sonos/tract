@@ -134,7 +134,61 @@ impl Gpu {
           C[m * N + n + M + 3] = acc13;
           C[m * N + n + 2 * M + 3] = acc23;
           C[m * N + n + 3 * M + 3] = acc33;
-      }"#;
+      }
+
+      // packed
+      __kernel void gemm_2(const int M, const int K, const int N,
+                            const __global float* A,
+                            const __global float* B,
+                            __global float* C) {
+
+          const int m = get_global_id(0);
+          const int n = get_global_id(1);
+
+          #pragma promote_to_registers
+          float4 acc[4];
+
+          for (int i=0; i<4; i++) {
+            acc[i].x = 0;
+            acc[i].y = 0;
+            acc[i].z = 0;
+            acc[i].w = 0;
+          }
+
+          const __global float *pa = &A[m*K*4];
+          const __global float *pb = &B[n*K*4];
+
+          for (int k=0; k<K; k++) {
+            #pragma promote_to_registers
+            float4 a = vload4(k, pa);
+            #pragma promote_to_registers
+            float4 b = vload4(k, pb);
+
+            // #define mac(a, b, c) c += a * b;
+            #define mac(a, b, c) c = mad(a, b, c);
+
+            #pragma unroll
+            for (int i = 0; i<4; i++) {
+              float va;
+              switch(i) {
+                case 0: va = a.x; break;
+                case 1: va = a.y; break;
+                case 2: va = a.z; break;
+                case 3: va = a.w; break;
+              }
+              mac(va, b.x, acc[i].x)
+              mac(va, b.y, acc[i].y)
+              mac(va, b.z, acc[i].z)
+              mac(va, b.w, acc[i].w)
+          }
+        }
+
+        for (int i = 0; i<4; i++) {
+          int offset = n + i * N / 4 + m * N;
+          vstore4(acc[i], offset, C);
+        }
+      }
+      "#;
 
         let program = Program::create_and_build_from_source(&context, kernel_cl, "").unwrap();
         let kernel = Kernel::create(&program, k).expect("Kernel::create failed");
@@ -143,6 +197,12 @@ impl Gpu {
 
         Gpu { context, queue, kernel, mr, nr }
     }
+}
+
+#[derive(Default)]
+struct Params {
+    packed: bool,
+    local_sizes: Option<(usize, usize)>,
 }
 
 impl Gpu {
@@ -154,18 +214,23 @@ impl Gpu {
         a: &[f32],
         b: &[f32],
         c: &mut [f32],
-        local_sizes: Option<(usize, usize)>,
+        params: Params,
     ) -> Result<(), ClError> {
         let mut a_cl =
             Buffer::<cl_float>::create(&self.context, CL_MEM_READ_ONLY, m * k, null_mut())?;
         let mut b_cl =
             Buffer::<cl_float>::create(&self.context, CL_MEM_READ_ONLY, k * n, null_mut())?;
 
+        let packed_a = crate::pack_a(a, m, k, self.mr);
+        let packed_b = crate::pack_b(b, k, n, self.nr);
+
+        let (pa, pb) = if params.packed { (&*packed_a, &*packed_b) } else { (a, b) };
+
         let mut c_cl =
             Buffer::<cl_float>::create(&self.context, CL_MEM_READ_WRITE, m * n, null_mut())?;
 
-        let write_a = self.queue.enqueue_write_buffer(&mut a_cl, CL_NON_BLOCKING, 0, a, &[])?;
-        let write_b = self.queue.enqueue_write_buffer(&mut b_cl, CL_NON_BLOCKING, 0, b, &[])?;
+        let write_a = self.queue.enqueue_write_buffer(&mut a_cl, CL_NON_BLOCKING, 0, pa, &[])?;
+        let write_b = self.queue.enqueue_write_buffer(&mut b_cl, CL_NON_BLOCKING, 0, pb, &[])?;
 
         let mut run = ExecuteKernel::new(&self.kernel);
         run.set_arg(&(m as i32))
@@ -176,7 +241,7 @@ impl Gpu {
             .set_arg(&c_cl)
             .set_global_work_sizes(&[m / self.mr, n / self.nr])
             .set_event_wait_list(&[write_a.get(), write_b.get()]);
-        if let Some((mr, nr)) = local_sizes {
+        if let Some((mr, nr)) = params.local_sizes {
             run.set_local_work_sizes(&[mr, nr]);
         }
         let run = run.enqueue_nd_range(&self.queue).unwrap();
@@ -204,10 +269,11 @@ mod kernels {
     }
 
     kernel!(gemm_1, 4, 4);
+    kernel!(gemm_2, 4, 4);
 }
 
 pub fn opencl_gemm1(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) {
-    kernels::gemm_1.lock().unwrap().run(m, k, n, a, b, c, None).unwrap();
+    kernels::gemm_1.lock().unwrap().run(m, k, n, a, b, c, Params::default()).unwrap();
 }
 
 pub fn opencl_gemm_1_with_local_2x2(
@@ -218,7 +284,19 @@ pub fn opencl_gemm_1_with_local_2x2(
     b: &[f32],
     c: &mut [f32],
 ) {
-    kernels::gemm_1.lock().unwrap().run(m, k, n, a, b, c, Some((2, 2))).unwrap();
+    kernels::gemm_1
+        .lock()
+        .unwrap()
+        .run(m, k, n, a, b, c, Params { local_sizes: Some((2, 2)), ..Params::default() })
+        .unwrap();
+}
+
+pub fn opencl_gemm_2_pack(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) {
+    kernels::gemm_2
+        .lock()
+        .unwrap()
+        .run(m, k, n, a, b, c, Params { packed: true, local_sizes: Some((2,2)), ..Params::default() })
+        .unwrap();
 }
 
 #[cfg(test)]
@@ -228,4 +306,5 @@ mod test {
 
     t!(opencl_gemm1);
     t!(opencl_gemm_1_with_local_2x2);
+    t!(opencl_gemm_2_pack);
 }
