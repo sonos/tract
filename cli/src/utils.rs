@@ -14,6 +14,8 @@ pub fn check_outputs(got: &[Arc<Tensor>], params: &Parameters) -> CliResult<()> 
             params.tract_model.node_name(output.node)
         };
         // pick expected tensor values for this output
+        println!("{:?}, ", params
+        .tensors_values);
         let exp = params
             .tensors_values
             .by_name(name)

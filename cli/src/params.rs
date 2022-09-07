@@ -137,29 +137,23 @@ impl TensorsValues {
     }
     */
 
-    pub fn set_tensor_values(&mut self, other: &TensorsValues) -> CliResult<()> {
-        for other_tensor in other.0.iter() {
-            let mut tensor = other_tensor.input_index.and_then(|ix| self.by_input_ix_mut(ix));
+    pub fn add(&mut self, other: TensorValues) {
+        let mut tensor = other.input_index.and_then(|ix| self.by_input_ix_mut(ix));
 
-            if tensor.is_none() {
-                tensor = other_tensor.name.as_deref().and_then(|ix| self.by_name_mut(ix))
+        if tensor.is_none() {
+            tensor = other.name.as_deref().and_then(|ix| self.by_name_mut(ix))
+        }
+
+        if let Some(tensor) = tensor {
+            if tensor.fact.is_none() {
+                tensor.fact = other.fact;
             }
-
-            if let Some(tensor) = tensor {
-                if tensor.values.is_none() {
-                    tensor.values = other_tensor.values.clone();
-                }
-            } else {
-                self.0.push(other_tensor.clone());
-            };
-        }
-        Ok(())
-    }
-
-    pub fn add(&mut self, tv: TensorValues) {
-        if !self.0.contains(&tv) {
-            self.0.push(tv)
-        }
+            if tensor.values.is_none() {
+                tensor.values = other.values;
+            }
+        } else {
+            self.0.push(other.clone());
+        };
     }
 }
 

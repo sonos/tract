@@ -295,16 +295,14 @@ pub struct RunParams {
 }
 
 impl RunParams {
-    pub fn from_subcommand(
-        params: &Parameters,
-        sub_matches: &clap::ArgMatches,
-    ) -> CliResult<Self> {
+    pub fn from_subcommand(params: &Parameters, sub_matches: &clap::ArgMatches) -> CliResult<Self> {
         let mut tv = params.tensors_values.clone();
 
         if let Some(bundle) = sub_matches.values_of("input-from-bundle") {
             for input in bundle {
-                let tensor_values = TensorsValues(Parameters::parse_npz(input, true, false)?);
-                tv.set_tensor_values(&tensor_values)?;
+                for tensor in Parameters::parse_npz(input, true, false)? {
+                    tv.add(tensor);
+                }
             }
         }
 
