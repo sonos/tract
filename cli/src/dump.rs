@@ -1,5 +1,6 @@
 use crate::annotations::*;
 use crate::display_params::*;
+use crate::tensor::RunParams;
 use crate::terminal;
 use crate::CliResult;
 use crate::{BenchLimits, Parameters};
@@ -19,11 +20,12 @@ pub fn handle(
         annotations.extract_costs(model)?;
     }
     if options.profile {
+        let run_params = RunParams::from_subcommand(params, sub_matches)?;
         let model = params
             .tract_model
             .downcast_ref::<TypedModel>()
             .context("Can only profile typed models")?;
-        crate::profile::profile(model, bench_limits, &mut annotations, params)?;
+        crate::profile::profile(model, bench_limits, &mut annotations, &run_params)?;
     }
 
     if let Some(asserts) = &params.assertions.assert_output_facts {

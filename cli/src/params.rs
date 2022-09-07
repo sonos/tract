@@ -145,11 +145,13 @@ impl TensorsValues {
                 tensor = other_tensor.name.as_deref().and_then(|ix| self.by_name_mut(ix))
             }
 
-            let tensor = tensor.with_context(|| anyhow!("Unmatched tensor values: {:?}", other_tensor))?;
-
-            if tensor.values.is_none() {
-                tensor.values = other_tensor.values.clone();
-            }
+            if let Some(tensor) = tensor {
+                if tensor.values.is_none() {
+                    tensor.values = other_tensor.values.clone();
+                }
+            } else {
+                self.0.push(other_tensor.clone());
+            };
         }
         Ok(())
     }
@@ -872,7 +874,13 @@ impl Parameters {
         }
 
         let allow_random_input: bool = matches.is_present("allow-random-input");
+        if allow_random_input {
+            warn!("Argument --allow-random-input as global argument is deprecated and may be removed in a future release. Please move this argument to the right of the subcommand.");
+        }
         let allow_float_casts = matches.is_present("allow-float-casts");
+        if allow_float_casts {
+            warn!("Argument --allow-float-casts as global argument is deprecated and may be removed in a future release. Please move this argument to the right of the subcommand.");
+        }
 
         Self::pipeline(matches, probe, raw_model, tf_model_extensions, need_reference_model).map(
             |(tract_model, pulsed_model, reference_model)| {

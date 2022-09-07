@@ -1,7 +1,7 @@
 use std::fs::File;
 
+use crate::tensor::RunParams;
 use crate::CliResult;
-use crate::params::TensorsValues;
 use crate::{Model, Parameters};
 use ansi_term::Color::*;
 use ndarray_npy::NpzWriter;
@@ -38,26 +38,19 @@ pub fn handle(
     matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
 ) -> CliResult<()> {
-    let mut params = params.clone();
-
-    if let Some(bundle) = sub_matches.values_of("input-from-bundle") {
-        for input in bundle {
-            let tensor_values = TensorsValues(Parameters::parse_npz(input, true, false)?);
-            params.tensors_values.set_tensor_values(&tensor_values)?;
-        }
-    }
+    let run_params = RunParams::from_subcommand(params, sub_matches)?;
 
     let dump = sub_matches.is_present("dump");
     #[cfg(feature = "pulse")]
     let outputs = if let Some(pulse) = params.tract_model.downcast_ref::<PulsedModel>() {
         run_pulse_t(pulse, &params)?
     } else {
-        dispatch_model!(&*params.tract_model, |m| run_regular(m, &params, matches, sub_matches))?
+        dispatch_model!(&*params.tract_model, |m| run_regular(m, &run_params, matches, sub_matches))?
     };
 
     #[cfg(not(feature = "pulse"))]
     let outputs =
-        dispatch_model!(&*params.tract_model, |m| run_regular(m, &params, matches, sub_matches))?;
+        dispatch_model!(&*params.tract_model, |m| run_regular(m, &run_params, matches, sub_matches))?;
 
     if dump {
         for (ix, output) in outputs.iter().enumerate() {
@@ -115,7 +108,7 @@ pub fn handle(
 
 fn run_regular(
     tract: &dyn Model,
-    params: &Parameters,
+    run_params: &RunParams,
     _matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
 ) -> CliResult<TVec<Arc<Tensor>>> {
@@ -142,7 +135,7 @@ fn run_regular(
             }
         }
         let mut results = tvec!();
-        let inputs = crate::tensor::retrieve_or_make_inputs(tract, params)?;
+        let inputs = crate::tensor::retrieve_or_make_inputs(tract, run_params)?;
         let multiturn = inputs.len() > 1;
         for (turn, inputs) in inputs.into_iter().enumerate() {
             results = state.run_plan_with_eval(inputs, |session_state, state, node, input| {

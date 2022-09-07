@@ -10,6 +10,7 @@ use tract_core::internal::*;
 
 use crate::display_params::DisplayParams;
 use crate::*;
+use crate::tensor::RunParams;
 
 pub fn handle(
     params: &mut Parameters,
@@ -17,21 +18,23 @@ pub fn handle(
     sub_matches: &clap::ArgMatches,
     output_params: DisplayParams,
 ) -> CliResult<()> {
+    let run_params = RunParams::from_subcommand(params, sub_matches)?;
+
     let cumulative = sub_matches.is_present("cumulative");
     let resilent = sub_matches.is_present("resilient");
     if sub_matches.value_of("stage").is_some() {
         // --with is by pipeline and put in params
-        return handle_reference_stage(cumulative, params, &output_params);
+        return handle_reference_stage(cumulative, params, &output_params, &run_params);
     } else if let Some(npz) = sub_matches.value_of("npz") {
-        return handle_npz(cumulative, npz, params, &output_params);
+        return handle_npz(cumulative, npz, params, &output_params, &run_params);
     } else if sub_matches.is_present("twice") {
-        return handle_twice(cumulative, params, &output_params);
+        return handle_twice(cumulative, params, &output_params, &run_params);
     }
     if let Some(pbdir) = sub_matches.value_of("pbdir") {
-        return handle_pbdir(cumulative, pbdir, params, &output_params);
+        return handle_pbdir(cumulative, pbdir, params, &output_params, &run_params);
     }
     if sub_matches.is_present("tf") {
-        return handle_tensorflow(cumulative, resilent, params, &output_params);
+        return handle_tensorflow(cumulative, resilent, params, &output_params, &run_params);
     }
     bail!("No comparison target found")
 }
@@ -42,6 +45,7 @@ pub fn handle_tensorflow(
     _resilient: bool,
     _params: &mut Parameters,
     _output_params: &DisplayParams,
+    _run_params: &RunParams,
 ) -> CliResult<()> {
     bail!("`tf` feature is required for this to work");
 }
@@ -52,6 +56,7 @@ pub fn handle_tensorflow(
     resilient: bool,
     params: &mut Parameters,
     output_params: &DisplayParams,
+    run_params: &RunParams,
 ) -> CliResult<()> {
     let tract = &params.tract_model;
     let mut tf = params.tf_model.take().unwrap();
@@ -116,6 +121,7 @@ pub fn handle_tensorflow(
         &all_values,
         &params,
         &output_params
+        run_params,
     ))
 }
 
@@ -124,6 +130,7 @@ pub fn handle_npz(
     npz: &str,
     params: &Parameters,
     output_params: &DisplayParams,
+    run_params: &RunParams,
 ) -> CliResult<()> {
     use tensor::for_npz;
     let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(npz)?)?;
@@ -155,6 +162,7 @@ pub fn handle_npz(
         &values,
         params,
         output_params,
+        run_params,
     ))
 }
 
@@ -164,6 +172,7 @@ pub fn handle_pbdir(
     _pbdir: &str,
     _params: &Parameters,
     _output_params: &DisplayParams,
+    _run_params: &RunParams,
 ) -> CliResult<()> {
     bail!("`onnx` feature is required for this to work");
 }
@@ -174,6 +183,7 @@ pub fn handle_pbdir(
     pbdir: &str,
     params: &Parameters,
     output_params: &DisplayParams,
+    run_params: &RunParams,
 ) -> CliResult<()> {
     let mut values: HashMap<String, Vec<CliResult<Arc<Tensor>>>> = HashMap::new();
     for entry in fs::read_dir(pbdir)? {
@@ -189,6 +199,7 @@ pub fn handle_pbdir(
         &values,
         params,
         output_params,
+        run_params,
     ))
 }
 
@@ -196,16 +207,18 @@ pub fn handle_twice(
     cumulative: bool,
     params: &Parameters,
     output_params: &DisplayParams,
+    run_params: &RunParams,
 ) -> CliResult<()> {
     let reference_model =
         params.tract_model.downcast_ref::<TypedModel>().context("Only work with a typed model")?;
-    handle_with_model(cumulative, params, output_params, reference_model)
+    handle_with_model(cumulative, params, output_params, reference_model, run_params)
 }
 
 pub fn handle_reference_stage(
     cumulative: bool,
     params: &Parameters,
     output_params: &DisplayParams,
+    run_params: &RunParams,
 ) -> CliResult<()> {
     debug!("Computing results for reference stage");
     let reference_model =
@@ -213,7 +226,7 @@ pub fn handle_reference_stage(
     let reference_model = reference_model
         .downcast_ref::<TypedModel>()
         .context("Only work with a typed reference model")?;
-    handle_with_model(cumulative, params, output_params, reference_model)
+    handle_with_model(cumulative, params, output_params, reference_model, run_params)
 }
 
 pub fn handle_with_model(
@@ -221,12 +234,13 @@ pub fn handle_with_model(
     params: &Parameters,
     output_params: &DisplayParams,
     reference_model: &TypedModel,
+    run_params: &RunParams,
 ) -> CliResult<()> {
     let mut values: HashMap<String, Vec<CliResult<Arc<Tensor>>>> = HashMap::new();
 
     let plan = SimplePlan::new(reference_model)?;
     let mut state = SimpleState::new(plan)?;
-    for inputs in crate::tensor::retrieve_or_make_inputs(reference_model, params)? {
+    for inputs in crate::tensor::retrieve_or_make_inputs(reference_model, run_params)? {
         state.run_plan_with_eval(inputs, |session, state, node, input| -> TractResult<_> {
             let result: TVec<Arc<Tensor>> = tract_core::plan::eval(session, state, node, input)?;
             if node.outputs.len() == 1 {
@@ -248,6 +262,7 @@ pub fn handle_with_model(
         &values,
         params,
         output_params,
+        run_params,
     ))
 }
 
@@ -257,6 +272,7 @@ pub fn compare<F, O>(
     all_values: &HashMap<String, Vec<CliResult<Arc<Tensor>>>>,
     params: &Parameters,
     output_params: &DisplayParams,
+    run_params: &RunParams,
 ) -> CliResult<()>
 where
     F: Fact + Clone + for<'a> From<&'a Tensor> + Hash,
@@ -279,7 +295,7 @@ where
     }
     let all_values: HashMap<String, &Vec<CliResult<Arc<Tensor>>>> =
         all_values.iter().map(|(k, v)| (canonic(k), v)).collect();
-    let model_inputs = tensor::retrieve_or_make_inputs(tract, params)?;
+    let model_inputs = tensor::retrieve_or_make_inputs(tract, run_params)?;
     for (turn, inputs) in model_inputs.into_iter().enumerate() {
         state.run_plan_with_eval(
             inputs,
