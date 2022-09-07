@@ -5,6 +5,7 @@ use std::str::FromStr;
 use std::sync::Mutex;
 
 use crate::model::Model;
+use crate::params::TensorsValues;
 use crate::{CliResult, Parameters};
 use tract_hir::internal::*;
 
@@ -287,9 +288,39 @@ fn warn_once(msg: String) {
     }
 }
 
+pub struct RunParams {
+    pub tensors_values: TensorsValues,
+    pub allow_random_input: bool,
+    pub allow_float_casts: bool,
+}
+
+impl RunParams {
+    pub fn from_subcommand(
+        params: &Parameters,
+        sub_matches: &clap::ArgMatches,
+    ) -> CliResult<Self> {
+        let mut tv = params.tensors_values.clone();
+
+        if let Some(bundle) = sub_matches.values_of("input-from-bundle") {
+            for input in bundle {
+                let tensor_values = TensorsValues(Parameters::parse_npz(input, true, false)?);
+                tv.set_tensor_values(&tensor_values)?;
+            }
+        }
+
+        // We also support the global arg variants for backward compatibility
+        let allow_random_input: bool =
+            params.allow_random_input || sub_matches.is_present("allow-random-input");
+        let allow_float_casts: bool =
+            params.allow_float_casts || sub_matches.is_present("allow-float-casts");
+
+        Ok(Self { tensors_values: tv, allow_random_input, allow_float_casts })
+    }
+}
+
 pub fn retrieve_or_make_inputs(
     tract: &dyn Model,
-    params: &Parameters,
+    params: &RunParams,
 ) -> CliResult<Vec<TVec<Tensor>>> {
     let mut tmp: TVec<Vec<Tensor>> = tvec![];
     for input in tract.input_outlets() {
@@ -413,8 +444,7 @@ pub fn tensor_for_fact(fact: &TypedFact, streaming_dim: Option<usize>) -> CliRes
         }
     }
     Ok(random(
-        fact
-            .shape
+        fact.shape
             .as_concrete()
             .with_context(|| format!("Expected concrete shape, found: {:?}", fact))?,
         fact.datum_type,

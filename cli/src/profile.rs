@@ -2,9 +2,9 @@ use tract_core::internal::*;
 
 use crate::annotations::*;
 use crate::model::Model;
+use crate::tensor::RunParams;
 use crate::BenchLimits;
 use crate::CliResult;
-use crate::Parameters;
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone)]
@@ -19,7 +19,7 @@ pub fn profile(
     model: &TypedModel,
     bench_limits: &BenchLimits,
     dg: &mut Annotations,
-    params: &Parameters,
+    run_params: &RunParams,
 ) -> CliResult<()> {
     info!("Running entire network");
     let plan = SimplePlan::new(model)?;
@@ -27,7 +27,7 @@ pub fn profile(
     let mut iters = 0usize;
     let start = Instant::now();
     while iters < bench_limits.max_iters && start.elapsed() < bench_limits.max_time {
-        let input = crate::tensor::retrieve_or_make_inputs(model, params)?;
+        let input = crate::tensor::retrieve_or_make_inputs(model, run_params)?;
         let _ =
             state.run_plan_with_eval(input[0].clone(), |session_state, state, node, input| {
                 let start = Instant::now();

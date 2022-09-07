@@ -1,10 +1,13 @@
 use crate::CliResult;
+use crate::tensor::RunParams;
 use crate::{terminal, BenchLimits, Parameters};
 use readings_probe::Probe;
 use std::time::{Duration, Instant};
 use tract_hir::internal::*;
 
-pub fn criterion(params: &Parameters, _matches: &clap::ArgMatches) -> CliResult<()> {
+pub fn criterion(params: &Parameters, _matches: &clap::ArgMatches, sub_matches: &clap::ArgMatches) -> CliResult<()> {
+    let run_params = RunParams::from_subcommand(params, sub_matches)?;
+
     let model =
         params.tract_model.downcast_ref::<TypedModel>().context("Can only bench TypedModel")?;
     let plan = SimplePlan::new(model)?;
@@ -12,7 +15,7 @@ pub fn criterion(params: &Parameters, _matches: &clap::ArgMatches) -> CliResult<
 
     let mut crit = criterion::Criterion::default();
     let mut group = crit.benchmark_group("net");
-    let inputs = crate::tensor::retrieve_or_make_inputs(model, params)?.remove(0);
+    let inputs = crate::tensor::retrieve_or_make_inputs(model, &run_params)?.remove(0);
     group.bench_function("run", move |b| b.iter(|| state.run(inputs.clone())));
     Ok(())
 }
@@ -20,9 +23,12 @@ pub fn criterion(params: &Parameters, _matches: &clap::ArgMatches) -> CliResult<
 pub fn handle(
     params: &Parameters,
     _matches: &clap::ArgMatches,
+    sub_matches: &clap::ArgMatches,
     limits: &BenchLimits,
     probe: Option<&Probe>,
 ) -> CliResult<()> {
+    let run_params = RunParams::from_subcommand(params, sub_matches)?;
+
     let model =
         params.tract_model.downcast_ref::<TypedModel>().context("Can only bench TypedModel")?;
     let plan = SimplePlan::new(model)?;
@@ -31,7 +37,7 @@ pub fn handle(
     let progress = probe.and_then(|m| m.get_i64("progress"));
     info!("Starting bench itself");
     let mut iters = 0;
-    let inputs = crate::tensor::retrieve_or_make_inputs(model, params)?.remove(0);
+    let inputs = crate::tensor::retrieve_or_make_inputs(model, &run_params)?.remove(0);
     let start = Instant::now();
     while iters < limits.max_iters && start.elapsed() < limits.max_time {
         if let Some(mon) = probe {
