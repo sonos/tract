@@ -5,4 +5,4 @@ set -x
 
 : ${TRACT_RUN:=cargo run -p tract $CARGO_OPTS --}
 
-$TRACT_RUN -O --allow-random-input . compare --stage declutter
+$TRACT_RUN -O . compare --allow-random-input --stage declutter
