@@ -30,13 +30,14 @@ do
         cmd="$TRACT_RUN \
             -f kaldi $tc/model.raw$suffix \
             --output-node output \
-            --input-bundle $tc/io.npz \
+            --input-facts-from-bundle $tc/io.npz \
             --kaldi-downsample $subsampling \
             --kaldi-left-context $left_context \
             --kaldi-right-context $right_context \
             --kaldi-adjust-final-offset $adjust_final_offset \
             $opti \
             run \
+            --input-from-bundle $tc/io.npz \
             --assert-output-bundle $tc/io.npz"
 
         # echo $cmd
