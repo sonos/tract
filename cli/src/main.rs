@@ -102,7 +102,7 @@ fn main() -> tract_core::anyhow::Result<()> {
         .arg(arg!(--"onnx-test-data-set" [data_set] "Use onnx-test data-set as input (expect test_data_set_N dir with input_X.pb, etc. inside)"))
         .arg(arg!(--"onnx-ignore-output-shapes" "Ignore output shapes from model (workaround for pytorch export bug with mask axes)"))
 
-        .arg(arg!(--"input-node" [node] ... "Oveide input nodes names (auto-detects otherwise)."))
+        .arg(arg!(--"input-node" [node] ... "Override input nodes names (auto-detects otherwise)."))
         .arg(arg!(--"output-node" [node] ... "Override output nodes name (auto-detects otherwise)."))
         .arg(arg!(--"label-wires" "Propagate node labels to wires"))
 
