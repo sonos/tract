@@ -214,6 +214,26 @@ impl ShapeFactoid {
         }
         Ok(self.dims.iter().map(|d| d.concretize().and_then(|d| d.to_usize().ok())).collect())
     }
+
+    pub fn matches(&self, t: &Tensor, symbols: Option<&SymbolValues>) -> TractResult<bool> {
+        let rank_compatible =
+            if self.is_open() { self.dims.len() <= t.rank() } else { self.dims.len() == t.rank() };
+        if !rank_compatible {
+            return Ok(false);
+        }
+
+        for i in 0..t.rank() {
+            let dim = self.dims.get(i).and_then(|el| el.concretize());
+            if let Some(dim) = dim.and_then(|dim| {
+                dim.eval(symbols.unwrap_or(&SymbolValues::default())).to_usize().ok()
+            }) {
+                if dim != t.shape()[i] {
+                    return Ok(false);
+                }
+            }
+        }
+        Ok(true)
+    }
 }
 
 impl Factoid for ShapeFactoid {
