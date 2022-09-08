@@ -155,7 +155,15 @@ fn main() {
             let files =
                 preprocess_files("arm64/arm64fp16", &[("core", vec!["a55", "gen"])], &suffix);
             let mut cc = cc::Build::new();
-            cc.flag("-mcpu=cortex-a55");
+            // depending on the compiler variant, we may need to try different flags. this is
+            // awful.
+            for flag in ["-march=cortex-a55", "-march=armv8.2-a"] {
+                let mut cc = cc::Build::new();
+                cc.flag(flag);
+                if cc.files(&files).static_flag(true).try_compile("arm64fp16").is_ok() {
+                    break
+                }
+            }
             cc.files(files).static_flag(true).compile("arm64fp16");
         }
         _ => {}
