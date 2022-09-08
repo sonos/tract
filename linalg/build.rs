@@ -15,7 +15,8 @@ fn use_masm() -> bool {
 fn needs_pragma() -> bool {
     // This will add the following to the asm templates if true:
     // .cpu generic+fp+simd+fp16
-   !cc::Build::new().get_compiler().is_like_clang() && !cc::Build::new().get_compiler().is_like_gnu()
+    !cc::Build::new().get_compiler().is_like_clang()
+        && !cc::Build::new().get_compiler().is_like_gnu()
 }
 
 fn jump_table() -> Vec<String> {
@@ -154,9 +155,16 @@ fn main() {
             cc::Build::new().files(files).static_flag(true).compile("arm64simd");
             let files =
                 preprocess_files("arm64/arm64fp16", &[("core", vec!["a55", "gen"])], &suffix);
-            let mut cc = cc::Build::new();
-            cc.flag("-mcpu=cortex-a55");
-            cc.files(files).static_flag(true).compile("arm64fp16");
+            // depending on the compiler variant, we may need to try different flags. this is
+            // awful.
+            let compile_arv82_asm = |flag| -> Result<(), cc::Error> {
+                let mut cc = cc::Build::new();
+                cc.flag(flag);
+                cc.files(&files).static_flag(true).try_compile("arm64fp16")
+            };
+            compile_arv82_asm("-march=armv8.2-a")
+                .or_else(|_| compile_arv82_asm("-mcpu=cortex-a55"))
+                .unwrap()
         }
         _ => {}
     }
