@@ -153,6 +153,7 @@ fn main() {
                 &suffix,
             );
             cc::Build::new().files(files).static_flag(true).compile("arm64simd");
+
             if std::env::var("CARGO_FEATURE_NO_FP16").is_err() {
                 let files =
                     preprocess_files("arm64/arm64fp16", &[("core", vec!["a55", "gen"])], &suffix);
