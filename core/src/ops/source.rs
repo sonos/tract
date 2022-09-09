@@ -10,7 +10,11 @@ impl OpState for SourceState {
         _op: &dyn Op,
         _inputs: TVec<Arc<Tensor>>,
     ) -> TractResult<TVec<Arc<Tensor>>> {
-        Ok(tvec!(session.inputs[&self.0].clone()))
+        Ok(tvec!(session
+            .inputs
+            .get(&self.0)
+            .with_context(|| format!("Input for node {} is missing", self.0))?
+            .clone()))
     }
 }
 
