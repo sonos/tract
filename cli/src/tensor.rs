@@ -10,64 +10,6 @@ use crate::{CliResult, Parameters};
 use tract_hir::internal::*;
 
 fn parse_dt(dt: &str) -> CliResult<DatumType> {
-//<<<<<<< Updated upstream
-//=======
-//    if dt.contains("q") {
-//        parse_quant_dt(dt)
-//    } else {
-//        parse_non_quant_dt(dt)
-//    }
-//}
-//
-//fn parse_float(i: &str) -> IResult<&str, f32> {
-//    map_res(recognize(tuple((digit1, tuple((tag("."), digit1))))), |f| FromStr::from_str(f))(i)
-//}
-//
-//fn parse_int(i: &str) -> IResult<&str, i32> {
-//    map_res(recognize(digit1), |f| FromStr::from_str(f))(i)
-//}
-//
-//fn parse_min_max(i: &str) -> IResult<&str, QParams> {
-//    map(separated_pair(preceded(tag("min"), parse_float), tag(";"), preceded(tag("max"),parse_float)), |(min, max)| QParams::MinMax {
-//        min,
-//        max,
-//    })(i)
-//}
-//
-//fn parse_zp_scale(i: &str) -> IResult<&str, QParams> {
-//    dbg!(i);
-//    map(separated_pair(preceded(tag("zp"), parse_int), tag(";"), preceded(tag("scale"), parse_float)), |(zero_point, scale)| QParams::ZpScale {
-//        zero_point,
-//        scale,
-//    })(i)
-//}
-//
-//// QParams are in the form of {(int|float)-float}
-//// {int, float} -> QParams::ZpScale
-//// {float, float} -> QParams::MinMax
-//fn parse_qparams(i: &str) -> IResult<&str, QParams> {
-//    delimited(tag("("), alt((parse_zp_scale, parse_min_max)), tag(")"))(i)
-//}
-//
-//// Quantized datum are in the form (qu8|qi8|qi32){(int|float)-float}
-//fn parse_quant_dt(dt: &str) -> CliResult<DatumType> {
-//    dbg!(dt);
-//    let res: IResult<&str, DatumType> = alt((
-//        map(preceded(tag("qi32"), parse_qparams), |qp| -> DatumType {
-//            DatumType::QI32(qp)
-//        }),
-//        map(preceded(tag("qi8"), parse_qparams), |qp| -> DatumType {
-//            DatumType::QI8(qp)
-//        }),
-//        map(preceded(tag("qu8"), parse_qparams), |qp| -> DatumType {
-//            DatumType::QU8(qp)
-//        }),
-//    ))(dt);
-//
-//    Ok(res.unwrap().1)
-//}
-//
-//fn parse_non_quant_dt(dt: &str) -> CliResult<DatumType> {
     Ok(match dt.to_lowercase().as_ref() {
         "f16" => DatumType::F16,
         "f32" => DatumType::F32,
