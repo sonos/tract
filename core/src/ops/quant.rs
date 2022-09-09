@@ -370,7 +370,14 @@ where
     f32: AsPrimitive<T>,
 {
     let b = b.as_();
-    (round_ties_to_even(b.abs() * a) * b.signum()).as_()
+    let scaler = Scaler::new(a, RoundingPolicy::Even);
+    let real_product = b * scaler;
+    if (real_product - real_product.round()).abs() == 0.5 {
+        dbg!("rounding ambiguity, scale is rounded to pow2");
+        round_ties_to_even(2f32.powi(a.log2().round() as i32) * b).as_()
+    } else {
+        round_ties_to_even(real_product).as_()
+    }
 }
 
 pub mod scale {
