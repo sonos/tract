@@ -193,6 +193,7 @@ fn main() {
                 false,
             );
             cc::Build::new().files(files).static_flag(true).compile("arm64simd");
+
             if std::env::var("CARGO_FEATURE_NO_FP16").is_err() {
                 let config =
                     ConfigForHalf::probe().expect("No configuration found for fp16 support");
