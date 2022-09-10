@@ -63,6 +63,7 @@ do
         cmd="$TRACT_RUN \
             $MODEL \
             --input-facts-from-bundle $tc/io.npz \
+            --onnx-ignore-output-shapes \
             $options \
             $opti \
             run \
