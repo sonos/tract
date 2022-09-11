@@ -1,6 +1,7 @@
 use crate::pb::*;
 use crate::{model::TensorPlusPath, pb::tensor_proto::DataType};
 use prost::Message;
+use std::collections::hash_map::Entry;
 use std::fs;
 use std::{
     convert::{TryFrom, TryInto},
@@ -30,36 +31,36 @@ impl TryFrom<DataType> for DatumType {
     }
 }
 
-impl<'a> TryFrom<&'a type_proto::Tensor> for InferenceFact {
-    type Error = TractError;
-    fn try_from(t: &'a type_proto::Tensor) -> TractResult<InferenceFact> {
-        let mut fact = InferenceFact::default();
-        fact = fact.with_datum_type(DataType::from_i32(t.elem_type).unwrap().try_into()?);
-        if let Some(shape) = &t.shape {
-            let shape: TVec<DimFact> = shape
-                .dim
-                .iter()
-                .map(|d| {
-                    let mut fact = DimFact::default();
-                    if let Some(tensor_shape_proto::dimension::Value::DimValue(v)) = d.value {
-                        if v > 0 {
-                            fact = DimFact::from(v.to_dim())
+pub fn translate_inference_fact<'a, 'b>(
+    t: &'a type_proto::Tensor,
+    symbol_map: &'b mut HashMap<&'a str, Symbol>,
+) -> TractResult<InferenceFact> {
+    let mut fact = InferenceFact::default();
+    fact = fact.with_datum_type(DataType::from_i32(t.elem_type).unwrap().try_into()?);
+    if let Some(shape) = &t.shape {
+        let shape: TVec<DimFact> = shape
+            .dim
+            .iter()
+            .map(|d| match &d.value {
+                Some(tensor_shape_proto::dimension::Value::DimValue(v)) if *v > 0 => {
+                    DimFact::from(v.to_dim())
+                }
+                Some(tensor_shape_proto::dimension::Value::DimParam(v)) => {
+                    let sym = match symbol_map.entry(&v) {
+                        Entry::Occupied(entry) => *entry.get(),
+                        Entry::Vacant(entry) => {
+                            *entry.insert(Symbol::new(v.chars().nth(0).unwrap_or('?')))
                         }
-                    }
-                    fact
-                })
-                .collect();
-            fact = fact.with_shape(ShapeFactoid::closed(shape));
-        }
-        Ok(fact)
-    }
-}
+                    };
 
-impl TryFrom<type_proto::Tensor> for InferenceFact {
-    type Error = TractError;
-    fn try_from(t: type_proto::Tensor) -> TractResult<InferenceFact> {
-        (&t).try_into()
+                    DimFact::from(sym.to_dim())
+                }
+                _ => DimFact::default(),
+            })
+            .collect();
+        fact = fact.with_shape(ShapeFactoid::closed(shape));
     }
+    Ok(fact)
 }
 
 fn get_external_resources(t: &TensorProto, path: &str) -> TractResult<Vec<u8>> {

@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use tract_hir::internal::*;
 
 use crate::pb;
+use crate::tensor::translate_inference_fact;
 use prost::Message;
 
 pub fn optional_inputs(pb: &pb::NodeProto) -> impl Iterator<Item = Option<usize>> + '_ {
@@ -63,6 +64,7 @@ impl<'a> ParsingContext<'a> {
         let mut unresolved_inputs = vec![];
         let mut closures_to_wire = vec![];
         trace!("trying to initialize initializers hashmap...");
+        let mut symbol_map: HashMap<&str, Symbol> = HashMap::default();
         #[allow(unused_assignments)]
         let mut initializers: HashMap<&str, Tensor> = HashMap::default();
         if let Some(path) = self.model_path {
@@ -94,7 +96,7 @@ impl<'a> ParsingContext<'a> {
                 let fact = input.r#type.as_ref().unwrap().value.as_ref().unwrap();
                 #[allow(irrefutable_let_patterns)]
                 let fact: InferenceFact = if let pb::type_proto::Value::TensorType(fact) = fact {
-                    fact.try_into()?
+                    translate_inference_fact(fact, &mut symbol_map)?
                 } else {
                     bail!("Can not parse tensor type");
                 };
@@ -178,7 +180,7 @@ impl<'a> ParsingContext<'a> {
             if !self.framework.ignore_output_shapes {
                 if let Some(f) = output.r#type.as_ref().and_then(|t| t.value.as_ref()) {
                     let pb::type_proto::Value::TensorType(f) = f;
-                    fact = f.try_into()?
+                    fact = translate_inference_fact(f, &mut symbol_map)?
                 };
             }
             let outlet = outlets_by_name[&*output.name];

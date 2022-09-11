@@ -121,8 +121,12 @@ impl Fact for InferenceFact {
         Ok(Cow::Owned(TypedFact::try_from(self)?))
     }
 
-    fn matches(&self, t: &Tensor, _symbols: Option<&SymbolValues>) -> TractResult<bool> {
-        Ok(self.unify(&InferenceFact::from(t)).is_ok())
+    fn matches(&self, t: &Tensor, symbols: Option<&SymbolValues>) -> TractResult<bool> {
+        let other = InferenceFact::from(t);
+
+        Ok(self.datum_type.unify(&other.datum_type).is_ok()
+            && self.value.unify(&other.value).is_ok()
+            && self.shape.matches(t, symbols).is_ok())
     }
 
     fn same_as(&self, other: &dyn Fact) -> bool {
