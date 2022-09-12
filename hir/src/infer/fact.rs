@@ -51,6 +51,10 @@ impl InferenceFact {
         InferenceFact { datum_type: dt.into(), ..self }
     }
 
+    pub fn without_datum_type(self) -> InferenceFact {
+        InferenceFact { datum_type: TypeFactoid::Any, ..self }
+    }
+
     pub fn with_shape<S: Into<ShapeFactoid>>(self, shape: S) -> InferenceFact {
         InferenceFact { shape: shape.into(), ..self }
     }
