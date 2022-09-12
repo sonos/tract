@@ -50,4 +50,3 @@ opt-level = 0 # work around never ending build on wondows
 debug = false
 # strip = "debuginfo" does not work on android and ios
 incremental = false
-
