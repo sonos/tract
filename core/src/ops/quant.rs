@@ -363,13 +363,12 @@ where
 {
     let b = b.as_();
     let scaler = Scaler::new(a, RoundingPolicy::Even);
-    let real_product = b * scaler;
-    if (real_product - real_product.round()).abs() == 0.5 {
-        dbg!("rounding ambiguity, scale is rounded to pow2");
-        round_ties_to_even(2f32.powi(a.log2().round() as i32) * b).as_()
-    } else {
-        round_ties_to_even(real_product).as_()
-    }
+    let new_product = scaler.mult.map(|it| (it >> 16) as f32 * 2f32.powi(-15)).unwrap_or(1.0)
+        * 2f32.powi(-scaler.shift as i32)
+        * b;
+    let real_product = b * a;
+    println!("real: {}, new: {}, a: {}, scale: {}", real_product, new_product, b, a);
+    round_ties_to_even(new_product).as_()
 }
 
 pub mod scale {
