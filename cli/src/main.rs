@@ -183,6 +183,7 @@ fn main() -> tract_core::anyhow::Result<()> {
     let bench = run_options(bench);
     let bench = output_options(bench);
     let bench = benchlimits_options(bench);
+    let bench = assertions_options(bench);
     app = app.subcommand(bench);
 
     let criterion = clap::Command::new("criterion")
