@@ -74,8 +74,32 @@ impl Expr {
         self.iter_all_axes().map(|axis| axis.inputs.len()).max().unwrap()
     }
 
+    pub fn axis_by_repr(&self, c: char) -> Option<&AxisSym> {
+        self.iter_all_axes().find(|axis| axis.repr == c)
+    }
+
+    pub fn axis_positions_in_input(&self, input: usize, c: char) -> Option<&[usize]> {
+        self.axis_by_repr(c).map(|axis| &*axis.inputs[input])
+    }
+
+    pub fn input_axis(&self, input: usize, position: usize) -> Option<&AxisSym> {
+        self.iter_all_axes().find(|axis| axis.inputs[input].contains(&position))
+    }
+
+    pub fn input_axes_count(&self, input: usize) -> usize {
+        self.iter_all_axes().map(|axis| axis.inputs[input].len()).sum()
+    }
+
+    pub fn input_axes(&self, input: usize) -> impl Iterator<Item = &AxisSym> {
+        (0..self.input_axes_count(input)).map(move |ix| self.input_axis(input, ix).unwrap())
+    }
+
     pub fn output_rank(&self) -> usize {
         self.index.len()
+    }
+
+    pub fn output_axes(&self) -> impl Iterator<Item = &AxisSym> {
+        self.index.iter()
     }
 
     pub fn canonicalize(&mut self) {
