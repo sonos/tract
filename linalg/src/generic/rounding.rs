@@ -6,13 +6,12 @@ use tract_data::prelude::f16;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Scaler {
     scale: f32,
-    mult: Option<i32>,
-    shift: isize,
+    pub mult: Option<i32>,
+    pub shift: isize,
     policy: RoundingPolicy,
 }
 
-impl Eq for Scaler {
-}
+impl Eq for Scaler {}
 
 #[allow(clippy::derive_hash_xor_eq)]
 impl Hash for Scaler {
