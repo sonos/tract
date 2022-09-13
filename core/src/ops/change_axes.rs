@@ -1241,8 +1241,8 @@ mod proptests {
     #[test]
     fn simplify_reshape() {
         macro_rules! d {
-                ($($dim: expr),*) =>  { tvec!($($dim.to_dim()),*) }
-            }
+            ($($dim: expr),*) =>  { tvec!($($dim.to_dim()),*) }
+        }
         assert_eq!(Reshape(3, d!(), d!()).simplify(), tvec!());
         assert_eq!(Reshape(3, d!(2, 3), d!(2, 3)).simplify(), tvec!());
         assert_eq!(Reshape(3, d!(1), d!()).simplify(), tvec!(Rm(3)));

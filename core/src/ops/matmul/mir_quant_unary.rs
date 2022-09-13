@@ -148,7 +148,9 @@ impl TypedOp for QMatMulUnary {
             super::mir_unary::mir_unary_change_axes(model, node, io, change, &self.axes, &self.a)?
         {
             let op = Self { axes, a: a.into_arc_tensor(), ..self.clone() };
-            Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), &change)))
+            let wire = if io == InOut::In(0) { InOut::Out(0) } else { InOut::In(0) };
+            let wire_changes = if let Some(c) = change { tvec!((wire, c)) } else { tvec!() };
+            Ok(Some(AxisChangeConsequence { substitute_op: Some(Box::new(op)), wire_changes }))
         } else {
             Ok(None)
         }
@@ -252,17 +254,19 @@ impl TypedOp for QMatMulUnary {
                         }
                     };
                     let a = self.a.slice(k_axis, offsets[ix], offsets[ix + 1])?;
-                    let wire = patch.wire_node(
-                        format!("{}.k-{}-{}", node.name, offsets[ix], offsets[ix + 1]),
-                        Self {
-                            a: a.into_arc_tensor(),
-                            output_type: DatumType::I32,
-                            bias: self.bias.clone().filter(|_| ix == 0),
-                            params: params_for_split.clone(),
-                            ..self.clone()
-                        },
-                        &[wire],
-                    ).context("wiring new matmulunary")?[0];
+                    let wire = patch
+                        .wire_node(
+                            format!("{}.k-{}-{}", node.name, offsets[ix], offsets[ix + 1]),
+                            Self {
+                                a: a.into_arc_tensor(),
+                                output_type: DatumType::I32,
+                                bias: self.bias.clone().filter(|_| ix == 0),
+                                params: params_for_split.clone(),
+                                ..self.clone()
+                            },
+                            &[wire],
+                        )
+                        .context("wiring new matmulunary")?[0];
                     wires.push(wire)
                 }
                 let mut wire = wires[0];

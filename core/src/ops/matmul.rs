@@ -69,56 +69,75 @@ impl MatMulAxes {
         it
     }
 
+    // return matching axis index in a and c
+    fn follow_axis_from_b(&self, in_b: usize) -> (usize, usize) {
+        let ix = in_b - (self.b_k < in_b) as usize - (self.b_n < in_b) as usize;
+        let in_a = ix + (ix > self.a_m) as usize + (ix > self.a_k) as usize;
+        let in_c = ix + (ix > self.c_m) as usize + (ix > self.c_n) as usize;
+        (in_a, in_c)
+    }
+
+    // return matching axis index in a and b
+    fn follow_axis_from_c(&self, in_c: usize) -> (usize, usize) {
+        let ix = in_c - (self.c_m < in_c) as usize - (self.c_n < in_c) as usize;
+        let in_a = ix + (ix > self.a_m) as usize + (ix > self.a_k) as usize;
+        let in_b = ix + (ix > self.b_k) as usize + (ix > self.b_n) as usize;
+        (in_a, in_b)
+    }
+
     pub fn change_axis_from_b(
         &self,
         change: &AxisOp,
-    ) -> TractResult<(MatMulAxes, AxisOp, AxisOp, AxisOp)> {
-        let r = match change {
+    ) -> TractResult<(MatMulAxes, Option<AxisOp>, Option<AxisOp>, Option<AxisOp>)> {
+        match change {
             AxisOp::Rm(in_b) => {
                 ensure!(*in_b != self.b_k && *in_b != self.b_n);
-                let ix = in_b - (self.b_k < *in_b) as usize - (self.b_n < *in_b) as usize;
-                let in_a = ix + (ix > self.a_m) as usize + (ix > self.a_k) as usize;
-                let in_c = ix + (ix > self.c_m) as usize + (ix > self.c_n) as usize;
+                let (in_a, in_c) = self.follow_axis_from_b(*in_b);
                 self.remove_untouched_axis(in_a, *in_b, in_c)
             }
             AxisOp::Add(in_b) => {
-                let ix = in_b - (self.b_k < *in_b) as usize - (self.b_n < *in_b) as usize;
-                let in_a = ix + (ix > self.a_m) as usize + (ix > self.a_k) as usize;
-                let in_c = ix + (ix > self.c_m) as usize + (ix > self.c_n) as usize;
+                let (in_a, in_c) = self.follow_axis_from_b(*in_b);
                 self.insert_untouched_axis(in_a, *in_b, in_c)
             }
             AxisOp::Reshape(in_b, before, after) => {
                 ensure!(self.b_n < *in_b || self.b_n >= *in_b + before.len());
                 ensure!(self.b_k < *in_b || self.b_k >= *in_b + before.len());
-                let ix = in_b - (self.b_k < *in_b) as usize - (self.b_n < *in_b) as usize;
-                let in_a = ix + (ix > self.a_m) as usize + (ix > self.a_k) as usize;
-                let in_c = ix + (ix > self.c_m) as usize + (ix > self.c_n) as usize;
+                let (in_a, in_c) = self.follow_axis_from_b(*in_b);
                 self.reshape_untouched_axes(in_a, *in_b, in_c, before, after)
             }
-            _ => bail!("Invalid change"),
-        };
-        dbg!(r)
+            AxisOp::Move(from, to) => {
+                let b_n = change.transform_axis(self.b_n).unwrap();
+                let b_k = change.transform_axis(self.b_k).unwrap();
+                Ok((MatMulAxes { b_n, b_k, ..*self }, None, Some(AxisOp::Move(*from, *to)), None))
+            }
+        }
     }
 
     pub fn change_axis_from_c(
         &self,
         change: &AxisOp,
-    ) -> TractResult<(MatMulAxes, AxisOp, AxisOp, AxisOp)> {
+    ) -> TractResult<(MatMulAxes, Option<AxisOp>, Option<AxisOp>, Option<AxisOp>)> {
         match change {
-            /*
-            AxisOp::Rm(ix) => {
-            ensure!(*ix != self.c_m && *ix != self.c_n);
-            let index_as_untouched_axis =
-            ix - (self.c_m < *ix) as usize - (self.c_n < *ix) as usize;
-            self.remove_untouched_axis(index_as_untouched_axis)
+            AxisOp::Rm(in_c) => {
+                ensure!(*in_c != self.c_m && *in_c != self.c_n);
+                let (in_a, in_b) = self.follow_axis_from_c(*in_c);
+                self.remove_untouched_axis(in_a, in_b, *in_c)
             }
-            AxisOp::Add(ix) => {
-            let index_as_untouched_axis =
-            ix - (self.c_m < *ix) as usize - (self.c_n < *ix) as usize;
-            self.insert_untouched_axis(index_as_untouched_axis)
+            AxisOp::Add(in_c) => {
+                let (in_a, in_b) = self.follow_axis_from_c(*in_c);
+                self.insert_untouched_axis(in_a, in_b, *in_c)
             }
-            */
-            _ => bail!("Invalid change"),
+            AxisOp::Reshape(in_c, before, after) => {
+                ensure!(self.c_n < *in_c || self.c_n >= *in_c + before.len());
+                ensure!(self.c_m < *in_c || self.c_m >= *in_c + before.len());
+                let (in_a, in_b) = self.follow_axis_from_c(*in_c);
+                self.reshape_untouched_axes(in_a, in_b, *in_c, before, after)
+            }
+            AxisOp::Move(from, to) => {
+                let c_m = change.transform_axis(self.c_m).unwrap();
+                let c_n = change.transform_axis(self.c_n).unwrap();
+                Ok((MatMulAxes { c_m, c_n, ..*self }, None, Some(AxisOp::Move(*from, *to)), None))
+            }
         }
     }
 
@@ -127,7 +146,7 @@ impl MatMulAxes {
         in_a: usize,
         in_b: usize,
         in_c: usize,
-    ) -> TractResult<(MatMulAxes, AxisOp, AxisOp, AxisOp)> {
+    ) -> TractResult<(MatMulAxes, Option<AxisOp>, Option<AxisOp>, Option<AxisOp>)> {
         let axes = MatMulAxes {
             a_m: self.a_m - (in_a < self.a_m) as usize,
             a_k: self.a_k - (in_a < self.a_k) as usize,
@@ -136,7 +155,7 @@ impl MatMulAxes {
             c_m: self.c_m - (in_c < self.c_m) as usize,
             c_n: self.c_n - (in_c < self.c_n) as usize,
         };
-        Ok((axes, AxisOp::Rm(in_a), AxisOp::Rm(in_b), AxisOp::Rm(in_c)))
+        Ok((axes, Some(AxisOp::Rm(in_a)), Some(AxisOp::Rm(in_b)), Some(AxisOp::Rm(in_c))))
     }
 
     fn insert_untouched_axis(
@@ -144,8 +163,7 @@ impl MatMulAxes {
         in_a: usize,
         in_b: usize,
         in_c: usize,
-    ) -> TractResult<(MatMulAxes, AxisOp, AxisOp, AxisOp)> {
-        dbg!(in_a, in_b, in_c);
+    ) -> TractResult<(MatMulAxes, Option<AxisOp>, Option<AxisOp>, Option<AxisOp>)> {
         let axes = MatMulAxes {
             a_m: self.a_m + (in_a <= self.a_m) as usize,
             a_k: self.a_k + (in_a <= self.a_k) as usize,
@@ -154,8 +172,7 @@ impl MatMulAxes {
             c_m: self.c_m + (in_c <= self.c_m) as usize,
             c_n: self.c_n + (in_c <= self.c_n) as usize,
         };
-        dbg!(axes);
-        Ok((axes, AxisOp::Add(in_a), AxisOp::Add(in_b), AxisOp::Add(in_c)))
+        Ok((axes, Some(AxisOp::Add(in_a)), Some(AxisOp::Add(in_b)), Some(AxisOp::Add(in_c))))
     }
 
     fn reshape_untouched_axes(
@@ -165,7 +182,7 @@ impl MatMulAxes {
         in_c: usize,
         before: &[TDim],
         after: &[TDim],
-    ) -> TractResult<(MatMulAxes, AxisOp, AxisOp, AxisOp)> {
+    ) -> TractResult<(MatMulAxes, Option<AxisOp>, Option<AxisOp>, Option<AxisOp>)> {
         let diff = after.len() as isize - before.len() as isize;
         let axes = MatMulAxes {
             a_m: (self.a_m as isize + ((in_a <= self.a_m) as usize as isize * diff)) as usize,
@@ -177,13 +194,13 @@ impl MatMulAxes {
         };
         Ok((
             axes,
-            AxisOp::Reshape(
+            Some(AxisOp::Reshape(
                 in_a,
                 std::iter::repeat_with(|| 1.to_dim()).take(before.len()).collect(),
                 std::iter::repeat_with(|| 1.to_dim()).take(after.len()).collect(),
-            ),
-            AxisOp::Reshape(in_b, before.into(), after.into()),
-            AxisOp::Reshape(in_c, before.into(), after.into()),
+            )),
+            Some(AxisOp::Reshape(in_b, before.into(), after.into())),
+            Some(AxisOp::Reshape(in_c, before.into(), after.into())),
         ))
     }
 
