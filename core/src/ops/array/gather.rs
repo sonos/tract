@@ -110,11 +110,16 @@ impl TypedOp for Gather {
                     },
                     &[wire],
                 )?[0];
-                wire = patch.wire_node(
-                    format!("{}.rm_axis", node.name),
-                    crate::ops::change_axes::AxisOp::Rm(self.axis),
-                    &[wire],
-                )?[0];
+                let original_rank = model.outlet_fact(node.id.into())?.shape.rank();
+                let new_rank = patch.model.outlet_fact(wire)?.shape.rank();
+
+                if new_rank == original_rank + 1 {
+                    wire = patch.wire_node(
+                        format!("{}.rm_axis", node.name),
+                        crate::ops::change_axes::AxisOp::Rm(self.axis),
+                        &[wire],
+                    )?[0];
+                }
                 patch.shunt_outside(model, node.id.into(), wire)?;
                 return Ok(Some(patch));
             }

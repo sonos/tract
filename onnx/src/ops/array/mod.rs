@@ -33,8 +33,8 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Scatter", scatter_elements);
     reg.insert("ScatterElements", scatter_elements);
     reg.insert("ScatterND", |_, _| Ok((Box::new(array::ScatterNd), vec![])));
-    reg.insert("Shape", |_, _| Ok((expand(array::Shape::new(DatumType::TDim)), vec![])));
-    reg.insert("Size", |_, _| Ok((expand(array::Size::new(DatumType::TDim)), vec![])));
+    reg.insert("Shape", |_, _| Ok((expand(array::Shape::new(DatumType::I64)), vec![])));
+    reg.insert("Size", |_, _| Ok((expand(array::Size::new(DatumType::I64)), vec![])));
     reg.insert("Slice", slice::slice);
     reg.insert("Split", split::split);
     reg.insert("Squeeze", squeeze::squeeze);

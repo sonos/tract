@@ -57,9 +57,9 @@ pub fn _if(
 #[derive(Debug, Clone, new, Hash)]
 struct If {
     then_body: InferenceModel,
-    then_input_mapping: Vec<usize>,
+    then_input_mapping: TVec<usize>,
     else_body: InferenceModel,
-    else_input_mapping: Vec<usize>,
+    else_input_mapping: TVec<usize>,
 }
 
 impl_dyn_hash!(If);
@@ -167,7 +167,6 @@ impl InferenceOp for If {
 
             Ok(body.output_outlets()?.iter().map(|o| inner_mapping[o]).collect())
         } else {
-
             target.wire_node(
                 &node.name,
                 IfMir {
@@ -184,12 +183,54 @@ impl InferenceOp for If {
     as_op!();
 }
 
+/// Returns the output fact that is the result of the If control flow.
+/// This could be thought of as the output fact of the Phi node of the Then and Else subgraphs,
+/// (but it's arguably not as fancy as that.)
+pub fn phi_result(then: &TypedFact, elze: &TypedFact) -> TractResult<TypedFact> {
+    if then.konst.is_some() && elze.konst.is_some() && then.konst == elze.konst {
+        return Ok(then.clone());
+    }
+
+    if then.datum_type != elze.datum_type {
+        bail!(
+            "If operator branches has incompatible datum types (then: {:?}; else: {:?})",
+            then.datum_type,
+            elze.datum_type
+        )
+    }
+
+    if then.shape.rank() != elze.shape.rank() {
+        bail!(
+            "If operator branches has incompatible ranks (then: {:?}; else: {:?})",
+            then.shape.rank(),
+            elze.shape.rank()
+        )
+    }
+
+    // [4, 'n', 18] . [4, 'k', 3] => [4, '?', '?']
+    let shape: TVec<_> = then
+        .shape
+        .iter()
+        .zip(elze.shape.iter())
+        .map(|(then_dim, else_dim)| {
+            let then_dim = then_dim.eval(&SymbolValues::default());
+            if then_dim == else_dim.eval(&SymbolValues::default()) {
+                then_dim
+            } else {
+                Symbol::new('h').to_dim()
+            }
+        })
+        .collect();
+
+    Ok(TypedFact::dt_shape(then.datum_type, shape))
+}
+
 #[derive(Debug, Clone, new, Hash)]
 struct IfMir {
     then_body: TypedModel,
-    then_input_mapping: Vec<usize>,
+    then_input_mapping: TVec<usize>,
     else_body: TypedModel,
-    else_input_mapping: Vec<usize>,
+    else_input_mapping: TVec<usize>,
 }
 
 impl_dyn_hash!(IfMir);
@@ -227,23 +268,17 @@ impl TypedOp for IfMir {
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let then_outputs =
             self.then_body.outputs.iter().copied().map(|outlet| self.then_body.outlet_fact(outlet));
-        // let else_outputs =
-        //     self.else_body.outputs.iter().copied().map(|outlet| self.else_body.outlet_fact(outlet));
+        let else_outputs =
+            self.else_body.outputs.iter().copied().map(|outlet| self.else_body.outlet_fact(outlet));
 
-        // then_outputs
-        //     .zip(else_outputs)
-        //     .map(|(tfact, efact)| {
-        //         let (tfact, _efact) = (tfact?.without_value(), efact?.without_value());
-        //         ensure!(
-        //             tfact.same_as(&efact),
-        //             "Then and Else body have different output types {:?} and {:?}",
-        //             tfact,
-        //             efact
-        //         );
-        //         Ok(tfact)
-        //     })
-        //     .collect()
+        let facts = then_outputs
+            .zip(else_outputs)
+            .map(|(tfact, efact)| {
+                let (tfact, efact) = (tfact?.without_value(), efact?.without_value());
+                phi_result(&tfact, &efact)
+            })
+            .collect();
 
-        then_outputs.map(|e| Ok(e?.without_value())).collect()
+        facts
     }
 }
