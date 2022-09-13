@@ -320,6 +320,9 @@ impl Parameters {
                 if matches.is_present("onnx-ignore-output-shapes") {
                     onnx = onnx.with_ignore_output_shapes(true);
                 }
+                if matches.is_present("onnx-ignore-output-types") {
+                    onnx = onnx.with_ignore_output_types(true);
+                }
                 info_usage("loaded framework (onnx)", probe);
                 let graph = onnx.proto_model_for_read(&mut *location.read()?)?;
                 info_usage("proto model loaded", probe);

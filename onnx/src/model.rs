@@ -183,6 +183,9 @@ impl<'a> ParsingContext<'a> {
                     fact = translate_inference_fact(f, &mut symbol_map)?
                 };
             }
+            if self.framework.ignore_output_types {
+                fact = fact.without_datum_type();
+            }
             let outlet = outlets_by_name[&*output.name];
             outputs.push(outlet);
             model.set_outlet_label(outlet, output.name.clone())?;
@@ -210,6 +213,7 @@ impl OnnxOpRegister {
 pub struct Onnx {
     pub op_register: OnnxOpRegister,
     pub ignore_output_shapes: bool,
+    pub ignore_output_types: bool,
 }
 
 impl Onnx {
@@ -241,6 +245,10 @@ impl Onnx {
 
     pub fn with_ignore_output_shapes(self, ignore: bool) -> Onnx {
         Self { ignore_output_shapes: ignore, ..self }
+    }
+
+    pub fn with_ignore_output_types(self, ignore: bool) -> Onnx {
+        Self { ignore_output_types: ignore, ..self }
     }
 
     pub fn determinize(model: &mut InferenceModel) -> TractResult<()> {

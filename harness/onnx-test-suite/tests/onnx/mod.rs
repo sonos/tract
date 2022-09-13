@@ -96,7 +96,10 @@ pub fn run_one<P: AsRef<path::Path>>(
     if more.contains(&"onnx-ignore-output-shape") {
         onnx = onnx.with_ignore_output_shapes(true);
     }
-
+    // in some other cases, we need to deal with a tdim vs i64 mismatch (test for Shape, and Size)
+    if more.contains(&"onnx-ignore-output-type") {
+        onnx = onnx.with_ignore_output_types(true);
+    }
 
     let nnef = tract_nnef::nnef().with_onnx();
     trace!("Proto Model:\n{:#?}", onnx.proto_model_for_path(&model_file));
