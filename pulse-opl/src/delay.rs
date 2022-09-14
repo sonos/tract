@@ -32,7 +32,14 @@ pub struct DelayState {
 }
 
 impl DelayState {
-    unsafe pub fn apply_delay_unchecked(&mut self, op: &Delay, input: &Tensor, output: &mut Tensor) {
+    /// Apply delay op on input and store the result in the output tensor
+    /// This method doesn't use allocation. 
+    ///
+    /// # Safety
+    ///
+    /// Input and Ouput tensors shape must be compatible with this operator, otherwise it could lead
+    /// to an undefined behaviour. 
+    pub unsafe fn apply_delay_unchecked(&mut self, op: &Delay, input: &Tensor, output: &mut Tensor) {
         let buffered = op.delay + op.overlap;
         let input_pulse = input.shape()[op.axis];
         let output_pulse = input_pulse + op.overlap;
