@@ -32,7 +32,7 @@ pub struct DelayState {
 }
 
 impl DelayState {
-    unsafe fn apply_delay_unchecked(&mut self, op: &Delay, input: &Tensor, output: &mut Tensor) {
+    unsafe pub fn apply_delay_unchecked(&mut self, op: &Delay, input: &Tensor, output: &mut Tensor) {
         let buffered = op.delay + op.overlap;
         let input_pulse = input.shape()[op.axis];
         let output_pulse = input_pulse + op.overlap;
