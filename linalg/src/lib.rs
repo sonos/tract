@@ -40,6 +40,9 @@ type MMVImpl = Box<dyn Fn(Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMu
 
 #[allow(clippy::type_complexity)]
 pub struct Ops {
+    mmm_f64: MMMImpl,
+    mmv_f64: MMVImpl,
+
     mmm_f32_impls: Vec<Box<dyn MatMatMul>>,
     mmm_f32: MMMImpl,
     mmv_f32: MMVImpl,
@@ -73,6 +76,9 @@ impl Ops {
     ) -> Option<Box<dyn mmm::MatMatMul>> {
         use DatumType::*;
         match (a.unquantized(), b.unquantized(), c.unquantized()) {
+            (F64, F64, F64) => {
+                Some(if n == Some(1) { (self.mmv_f64)(m, k) } else { (self.mmm_f64)(m, k, n) })
+            }
             (F32, F32, F32) => {
                 Some(if n == Some(1) { (self.mmv_f32)(m, k) } else { (self.mmm_f32)(m, k, n) })
             }
@@ -92,6 +98,8 @@ impl Ops {
 
 pub fn generic() -> Ops {
     Ops {
+        mmm_f64: Box::new(|_, _, _| generic::GenericMmm4x4::<f64, f64, f64>::mmm()),
+        mmv_f64: Box::new(|_, _| generic::GenericMmm4x1::<f64, f64, f64>::mmm()),
         mmm_f32_impls: vec![generic::GenericMmm4x4::<f32, f32, f32>::mmm()],
         mmm_f32: Box::new(|_, _, _| generic::GenericMmm4x4::<f32, f32, f32>::mmm()),
         mmv_f32: Box::new(|_, _| generic::GenericMmm4x1::<f32, f32, f32>::mmm()),
@@ -168,6 +176,13 @@ impl LADatum for f32 {
     #[cfg(test)]
     fn strat() -> BoxedStrategy<Self> {
         (-1000isize..1000).prop_map(|i| i as f32 / 1000.0).boxed()
+    }
+}
+
+impl LADatum for f64 {
+    #[cfg(test)]
+    fn strat() -> BoxedStrategy<Self> {
+        (-1000isize..1000).prop_map(|i| i as f64 / 1000.0).boxed()
     }
 }
 

@@ -109,6 +109,25 @@ impl Mul<f32> for Scaler {
     }
 }
 
+impl Mul<f64> for Scaler {
+    type Output = f64;
+
+    #[inline]
+    fn mul(self, rhs: f64) -> Self::Output {
+        self.scale as f64 * rhs
+    }
+}
+
+impl Mul<Scaler> for f16 {
+    type Output = f16;
+
+    #[inline]
+    fn mul(self, rhs: Scaler) -> Self::Output {
+        rhs * self
+    }
+}
+
+
 impl Mul<Scaler> for f32 {
     type Output = f32;
 
@@ -118,8 +137,8 @@ impl Mul<Scaler> for f32 {
     }
 }
 
-impl Mul<Scaler> for f16 {
-    type Output = f16;
+impl Mul<Scaler> for f64 {
+    type Output = f64;
 
     #[inline]
     fn mul(self, rhs: Scaler) -> Self::Output {
@@ -172,6 +191,18 @@ pub trait ScaleShiftAndRound {
     fn q_scale(self, scaler: Scaler) -> Self;
     fn q_shl(self, shift: usize) -> Self;
     fn q_shr(self, shift: usize, rp: RoundingPolicy) -> Self;
+}
+
+impl ScaleShiftAndRound for f64 {
+    fn q_scale(self, scaler: Scaler) -> Self {
+        self * scaler
+    }
+    fn q_shl(self, shift: usize) -> Self {
+        self * 2f64.powi(shift as i32)
+    }
+    fn q_shr(self, shift: usize, _rp: RoundingPolicy) -> Self {
+        self * 2f64.powi(-(shift as i32))
+    }
 }
 
 impl ScaleShiftAndRound for f32 {
