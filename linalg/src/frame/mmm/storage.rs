@@ -117,8 +117,10 @@ impl OutputStore {
             self.set_from_tile_t::<i8>(down, right, height, width, tile)
         } else if self.item_size() == 2 {
             self.set_from_tile_t::<i16>(down, right, height, width, tile)
-        } else {
+        } else if self.item_size() == 4 {
             self.set_from_tile_t::<i32>(down, right, height, width, tile)
+        } else {
+            self.set_from_tile_t::<i64>(down, right, height, width, tile)
         }
     }
 

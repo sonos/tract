@@ -58,6 +58,22 @@ macro_rules! test_mmm_kernel_f32 {
 }
 
 #[macro_export]
+macro_rules! test_mmm_kernel_f64 {
+    ($k: ident, $cond: expr) => {
+        paste! {
+            #[cfg(test)]
+            #[allow(non_snake_case)]
+            mod [<test_ $k>] {
+                mmm_kernel_tests!($cond, $k, f64, f64, f64, f64);
+                mmm_frame_tests!($cond, $k, f64, f64, f64, f64);
+                mmm_kernel_fuse_tests!($cond, $k, f64, f64);
+                //qmmm_kernel_fuse_tests!($cond, $k, f64, f64, f64, f64);
+            }
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! test_mmm_kernel_i32 {
     ($k: ident, $cond: expr) => {
         paste! {

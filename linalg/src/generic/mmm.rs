@@ -75,6 +75,7 @@ where
             DatumType::F16 => "generic_f16_4x4",
             DatumType::F32 => "generic_f32_4x4",
             DatumType::I32 => "generic_i32_4x4",
+            DatumType::F64 => "generic_f64_4x4",
             _ => panic!(),
         }
     }
@@ -229,6 +230,7 @@ where
             DatumType::F16 => "generic_f16_4x1",
             DatumType::F32 => "generic_f32_4x1",
             DatumType::I32 => "generic_i32_4x1",
+            DatumType::F64 => "generic_f64_4x1",
             _ => panic!(),
         }
     }
@@ -383,6 +385,7 @@ where
             DatumType::F16 => "generic_f16_3x2",
             DatumType::F32 => "generic_f32_3x2",
             DatumType::I32 => "generic_i32_3x2",
+            DatumType::F64 => "generic_f64_3x2",
             _ => panic!(),
         }
     }
@@ -494,7 +497,7 @@ where
 unsafe fn store_t<TC, TI, AB>(tile: &OutputStoreKer, ab: &[AB])
 where
     TC: Copy,
-    AB: AsRef<[TI]> + fmt::Debug,
+    AB: AsRef<[TI]> + fmt::Debug
 {
     for i in 0usize..ab.len() {
         for j in 0usize..ab[0].as_ref().len() {
@@ -516,6 +519,7 @@ where
         1 => store_t::<u8, _, _>(tile, ab),
         2 => store_t::<u16, _, _>(tile, ab),
         4 => store_t::<u32, _, _>(tile, ab),
+        8 => store_t::<f64, _, _>(tile, ab),
         _ => unimplemented!(),
     }
 }
@@ -560,12 +564,20 @@ pub type generic_f32_4x4 = GenericMmm4x4<f32, f32, f32>;
 test_mmm_kernel_f32!(generic_f32_4x4, true);
 
 #[allow(non_camel_case_types)]
+pub type generic_f64_4x4 = GenericMmm4x4<f64, f64, f64>;
+test_mmm_kernel_f64!(generic_f64_4x4, true);
+
+#[allow(non_camel_case_types)]
 pub type generic_i32_4x4 = GenericMmm4x4<i8, i8, i32>;
 test_mmm_kernel_i32!(generic_i32_4x4, true);
 
 #[allow(non_camel_case_types)]
 pub type generic_f32_4x1 = GenericMmm4x1<f32, f32, f32>;
 test_mmm_kernel_f32!(generic_f32_4x1, true);
+
+#[allow(non_camel_case_types)]
+pub type generic_f64_4x1 = GenericMmm4x1<f64, f64, f64>;
+test_mmm_kernel_f64!(generic_f64_4x1, true);
 
 #[allow(non_camel_case_types)]
 pub type generic_i32_4x1 = GenericMmm4x1<i8, i8, i32>;

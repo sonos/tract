@@ -92,7 +92,7 @@ fn resolve_ellipsis(expr: &Expr, ranks: &[usize]) -> TractResult<Expr> {
         .enumerate()
         .filter_map(|(ix, rank)| {
             if expr.axis_positions_in_input(ix, '*').is_some() {
-                Some(rank + 1 - expr.input_axes_count(ix))
+                Some(rank + 1 - expr.input_rank(ix))
             } else {
                 None
             }

@@ -4,7 +4,7 @@ use tract_nnef::tract_ndarray::{Axis, Dimension};
 use tract_nnef::tract_num_traits::{One, Zero};
 
 mod expr;
-use expr::Expr;
+pub use expr::Expr;
 mod to_matmul;
 
 #[derive(Debug, Clone, Hash)]
