@@ -288,7 +288,7 @@ impl From<i64> for Literal {
 
 impl From<f32> for Literal {
     fn from(f: f32) -> Literal {
-        Literal::Numeric(f.to_string())
+        Literal::Numeric(format!("{:?}", f))
     }
 }
 
