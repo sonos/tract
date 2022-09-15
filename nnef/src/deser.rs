@@ -552,9 +552,13 @@ impl CoerceFrom<Value> for OutletId {
 }
 
 impl CoerceFrom<Value> for i64 {
-    fn coerce(_builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
+    fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         match from {
             Value::Dim(d) => d.to_i64(),
+            Value::Tensor(t) => Ok(t.to_scalar::<i64>()?.clone()),
+            Value::Wire(_) => {
+                Ok(from.to::<Arc<Tensor>>(builder)?.cast_to::<i64>()?.to_scalar::<i64>()?.clone())
+            }
             _ => bail!("Can not build a i64 from {:?}", from),
         }
     }
@@ -606,9 +610,13 @@ impl CoerceFrom<Value> for isize {
 }
 
 impl CoerceFrom<Value> for f32 {
-    fn coerce(_builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
+    fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         match from {
             Value::Scalar(f) => Ok(*f),
+            Value::Tensor(t) => Ok(t.to_scalar::<f32>()?.clone()),
+            Value::Wire(_) => {
+                Ok(from.to::<Arc<Tensor>>(builder)?.cast_to::<f32>()?.to_scalar::<f32>()?.clone())
+            }
             _ => bail!("Can not build a f32 from {:?}", from),
         }
     }
