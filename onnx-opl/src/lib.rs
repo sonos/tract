@@ -1,6 +1,8 @@
 #![allow(clippy::len_zero)]
 #[macro_use]
 extern crate educe;
+#[macro_use]
+extern crate log;
 
 use tract_nnef::internal::*;
 
