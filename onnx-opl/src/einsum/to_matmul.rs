@@ -1,6 +1,8 @@
 use tract_nnef::internal::*;
 use tract_nnef::tract_core::ops::matmul::MatMul;
 
+use crate::einsum::EinSum;
+
 pub fn declutter(
     op: &super::EinSum,
     model: &TypedModel,
@@ -40,20 +42,42 @@ pub fn declutter(
         trace!("Not decluttering, n_axis");
         return Ok(None);
     }
-    /*
     // add broadcasting axes if required
     for axis in &op.expr.index {
         if axis == n_axis || axis == m_axis {
-            continue
+            continue;
         }
         if axis.inputs[0].len() == 0 {
-            eprintln!("missing axis on input 0: {:?}", axis);
             let mut new_expr = op.expr.clone();
             new_expr.insert_input_axis(axis.repr, 0, 0);
-            eprintln!("{}", new_expr);
+            let mut patch = TypedModelPatch::default();
+            let a = patch.tap_model(model, node.inputs[0])?;
+            let b = patch.tap_model(model, node.inputs[1])?;
+            let add = patch.wire_node(
+                format!("{}.add_bc_axis.a.{}", &node.name, a_rank),
+                AxisOp::Add(0),
+                &[a],
+            )?;
+            let sum = patch.wire_node(&node.name, EinSum::new(new_expr), &[add[0], b])?;
+            patch.shunt_outside(model, node.id.into(), sum[0])?;
+            return Ok(Some(patch))
+        }
+        if axis.inputs[1].len() == 0 {
+            let mut new_expr = op.expr.clone();
+            new_expr.insert_input_axis(axis.repr, 1, 0);
+            let mut patch = TypedModelPatch::default();
+            let a = patch.tap_model(model, node.inputs[0])?;
+            let b = patch.tap_model(model, node.inputs[1])?;
+            let add = patch.wire_node(
+                format!("{}.add_bc_axis.b.{}", &node.name, b_rank),
+                AxisOp::Add(0),
+                &[b],
+            )?;
+            let sum = patch.wire_node(&node.name, EinSum::new(new_expr), &[a, add[0]])?;
+            patch.shunt_outside(model, node.id.into(), sum[0])?;
+            return Ok(Some(patch))
         }
     }
-    */
     let op = MatMul {
         a_trans: k_axis.inputs[0][0] == a_rank - 2,
         b_trans: k_axis.inputs[1][0] == b_rank - 1,
@@ -143,7 +167,12 @@ mod test {
     }
 
     #[test]
-    fn broadcast_a() {
+    fn rank_broadcast_a() {
         EinSumProblem::new(t(&[2, 3]), t(&[5, 3, 4]), "mk,akn->anm").check()
+    }
+
+    #[test]
+    fn rank_broadcast_b() {
+        EinSumProblem::new(t(&[5, 2, 3]), t(&[3, 4]), "amk,kn->anm").check()
     }
 }
