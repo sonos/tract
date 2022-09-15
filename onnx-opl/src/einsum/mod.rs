@@ -28,6 +28,10 @@ impl Op for EinSum {
 }
 
 impl EinSum {
+    fn new(expr: Expr) -> EinSum {
+        EinSum { expr }
+    }
+
     fn output_shape<D: DimLike>(&self, inputs: &[&[D]]) -> TVec<D> {
         self.expr
             .index
