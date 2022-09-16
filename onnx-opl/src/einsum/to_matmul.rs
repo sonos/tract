@@ -1,6 +1,7 @@
 use tract_nnef::internal::*;
 use tract_nnef::tract_core::ops::matmul::MatMul;
 
+use crate::einsum::expr::AxisSym;
 use crate::einsum::EinSum;
 
 pub fn declutter(
@@ -10,13 +11,14 @@ pub fn declutter(
 ) -> TractResult<Option<TypedModelPatch>> {
     // 2 input, exactly one axis sum
     // FIXME: no projection (axis present more than once in one input)
-    if op.expr.n_inputs() != 2 || op.expr.sum.len() != 1 || op.expr.output_rank() < 2 {
+    if op.expr.n_inputs() != 2 || op.expr.sum.len() != 1 || op.expr.output_rank() < 1 {
         return Ok(None);
     }
     let k_axis = op.expr.sum[0].clone();
     assert!(k_axis.result.is_none());
     assert!(k_axis.inputs.iter().all(|pos| pos.len() == 1));
     let inputs = model.node_input_facts(node.id)?;
+    eprintln!("{}", op.expr);
     // summing axis is either last or last before last
     if k_axis.inputs[0][0] + 2 < inputs[0].rank() || k_axis.inputs[1][0] + 2 < inputs[1].rank() {
         trace!("Not decluttering, k_axis");
@@ -25,22 +27,75 @@ pub fn declutter(
     let a_rank = inputs[0].rank();
     let b_rank = inputs[1].rank();
     let c_rank = op.expr.output_rank();
+
+    let mut patch = TypedModelPatch::default();
+    let a = patch.tap_model(model, node.inputs[0])?;
+    let b = patch.tap_model(model, node.inputs[1])?;
+
+    // TODO: replace the >= c_rank - 2 criteria by max
     let m_axis = op
         .expr
-        .input_axis(0, if k_axis.inputs[0][0] == a_rank - 1 { a_rank - 2 } else { a_rank - 1 })
-        .unwrap();
+        .input_axes(0)
+        .find(|ax| ax.inputs[1].len() == 0 && ax.result.unwrap() >= c_rank.saturating_sub(2));
     let n_axis = op
         .expr
-        .input_axis(1, if k_axis.inputs[1][0] == b_rank - 1 { b_rank - 2 } else { b_rank - 1 })
-        .unwrap();
-    if m_axis.result != Some(c_rank - 2) && m_axis.result != Some(c_rank - 1) {
-        trace!("Not decluttering, m_axis");
-        return Ok(None);
+        .input_axes(1)
+        .find(|ax| ax.inputs[0].len() == 0 && ax.result.unwrap() >= c_rank.saturating_sub(2));
+
+    if m_axis.is_none() {
+        // FIXME remove me when matmul get smarter
+        if k_axis.inputs[0][0] == a_rank - 1 {
+            let repr = ('m'..).find(|c| op.expr.axis_by_repr(*c).is_none()).unwrap();
+            let mut new_expr = op.expr.clone();
+            new_expr.index.push(AxisSym {
+                repr,
+                inputs: tvec!(tvec!(a_rank), tvec!()),
+                result: Some(c_rank),
+            });
+            let add =
+                patch.wire_node(format!("{}.add_m_axis", &node.name), AxisOp::Add(a_rank), &[a])?;
+            let sum = patch.wire_node(
+                format!("{}.mm", &node.name),
+                EinSum::new(new_expr),
+                &[add[0], b],
+            )?;
+            let rm = patch.wire_node(&node.name, AxisOp::Rm(c_rank), &sum)?;
+            patch.shunt_outside(model, node.id.into(), rm[0])?;
+            return Ok(Some(patch));
+        } else {
+            // TODO: permute k to end
+            return Ok(None);
+        }
     }
-    if n_axis.result != Some(c_rank - 2) && n_axis.result != Some(c_rank - 1) {
-        trace!("Not decluttering, n_axis");
-        return Ok(None);
+    let m_axis = m_axis.unwrap();
+
+    if n_axis.is_none() {
+        // FIXME remove me when matmul get smarter
+        if k_axis.inputs[1][0] == b_rank - 1 {
+            let repr = ('n'..).find(|c| op.expr.axis_by_repr(*c).is_none()).unwrap();
+            let mut new_expr = op.expr.clone();
+            new_expr.index.push(AxisSym {
+                repr,
+                inputs: tvec!(tvec!(), tvec!(b_rank)),
+                result: Some(c_rank),
+            });
+            let add =
+                patch.wire_node(format!("{}.add_n_axis", &node.name), AxisOp::Add(b_rank), &[b])?;
+            let sum = patch.wire_node(
+                format!("{}.mm", &node.name),
+                EinSum::new(new_expr),
+                &[a, add[0]],
+            )?;
+            let rm = patch.wire_node(&node.name, AxisOp::Rm(c_rank), &sum)?;
+            patch.shunt_outside(model, node.id.into(), rm[0])?;
+            return Ok(Some(patch));
+        } else {
+            // TODO: permute k to end
+            return Ok(None);
+        }
     }
+    let n_axis = n_axis.unwrap();
+
     // add broadcasting axes if required
     for axis in &op.expr.index {
         if axis == n_axis || axis == m_axis {
@@ -49,9 +104,7 @@ pub fn declutter(
         if axis.inputs[0].len() == 0 {
             let mut new_expr = op.expr.clone();
             new_expr.insert_input_axis(axis.repr, 0, 0);
-            let mut patch = TypedModelPatch::default();
-            let a = patch.tap_model(model, node.inputs[0])?;
-            let b = patch.tap_model(model, node.inputs[1])?;
+            eprintln!("{}", &new_expr);
             let add = patch.wire_node(
                 format!("{}.add_bc_axis.a.{}", &node.name, a_rank),
                 AxisOp::Add(0),
@@ -59,14 +112,12 @@ pub fn declutter(
             )?;
             let sum = patch.wire_node(&node.name, EinSum::new(new_expr), &[add[0], b])?;
             patch.shunt_outside(model, node.id.into(), sum[0])?;
-            return Ok(Some(patch))
+            return Ok(Some(patch));
         }
         if axis.inputs[1].len() == 0 {
             let mut new_expr = op.expr.clone();
             new_expr.insert_input_axis(axis.repr, 1, 0);
-            let mut patch = TypedModelPatch::default();
-            let a = patch.tap_model(model, node.inputs[0])?;
-            let b = patch.tap_model(model, node.inputs[1])?;
+            eprintln!("{}", &new_expr);
             let add = patch.wire_node(
                 format!("{}.add_bc_axis.b.{}", &node.name, b_rank),
                 AxisOp::Add(0),
@@ -74,7 +125,7 @@ pub fn declutter(
             )?;
             let sum = patch.wire_node(&node.name, EinSum::new(new_expr), &[a, add[0]])?;
             patch.shunt_outside(model, node.id.into(), sum[0])?;
-            return Ok(Some(patch))
+            return Ok(Some(patch));
         }
     }
     let op = MatMul {
@@ -108,6 +159,7 @@ mod test {
             let b = model.add_source("b", TypedFact::from(&self.b).without_value()).unwrap();
             let c = model
                 .wire_node("c,", EinSum { expr: self.expr.parse().unwrap() }, &[a, b])
+                .context("wiring initial network")
                 .unwrap();
             model.set_output_outlets(&*c).unwrap();
             let expect = model
@@ -115,6 +167,7 @@ mod test {
                 .into_runnable()
                 .unwrap()
                 .run(tvec!(self.a.clone(), self.b.clone()))
+                .context("running original network")
                 .unwrap();
             let model = model.into_decluttered().unwrap();
             assert!(model.nodes.iter().all(|n| !n.op_is::<EinSum>()));
@@ -173,5 +226,20 @@ mod test {
     #[test]
     fn rank_broadcast_b() {
         EinSumProblem::new(t(&[5, 2, 3]), t(&[3, 4]), "amk,kn->anm").check()
+    }
+
+    #[test]
+    fn test_vmm() {
+        EinSumProblem::new(t(&[2]), t(&[2, 4]), "i,io->o").check()
+    }
+
+    #[test]
+    fn test_mvm() {
+        EinSumProblem::new(t(&[2, 4]), t(&[2]), "io,i->o").check()
+    }
+
+    #[test]
+    fn test_complex() {
+        EinSumProblem::new(t(&[1, 1, 2, 3]), t(&[2, 3, 4]), "abgi,gih->abgh").check()
     }
 }

@@ -1,4 +1,5 @@
 use crate::internal::*;
+use tract_itertools::Itertools;
 use ndarray::*;
 
 use tract_linalg::mmm::{
@@ -18,6 +19,19 @@ pub enum ProtoFusedSpec {
 }
 
 impl ProtoFusedSpec {
+    pub fn name(&self) -> String {
+        use ProtoFusedSpec::*;
+        match self {
+            BinScalar(_, op) => format!("scalar {:?}", op),
+            BinPerRow(_, op) => format!("row {:?}", op),
+            BinPerCol(_, op) => format!("col {:?}", op),
+            AddRowColProducts(_, _) => "add row*col product".to_string(),
+            AddUnicast(_) => "add to matrix".to_string(),
+            Scaler(s) => format!("scale by {}", 1f32 * *s),
+            Store => "Store".to_string(),
+        }
+    }
+
     pub fn resolve<'t>(
         &'t self,
         inputs: &'t [Arc<Tensor>],
@@ -117,7 +131,7 @@ impl Op for LirMatMulUnary {
         } else {
             infos.push(format!("Mult: {}", self.mmm));
         }
-        infos.push(format!("Ops: {:?}", self.micro_ops));
+        infos.push(format!("Ops: {:?}", self.micro_ops.iter().next().unwrap().1.iter().map(|o| o.name()).join(">")));
         Ok(infos)
     }
 
