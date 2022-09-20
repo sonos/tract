@@ -106,9 +106,29 @@ impl MatMulAxes {
                 self.reshape_untouched_axes(in_a, *in_b, in_c, before, after)
             }
             AxisOp::Move(from, to) => {
-                let b_n = change.transform_axis(self.b_n).unwrap();
-                let b_k = change.transform_axis(self.b_k).unwrap();
-                Ok((MatMulAxes { b_n, b_k, ..*self }, None, Some(AxisOp::Move(*from, *to)), None))
+                // only deal with spectific cases for now:
+                // movement inside prefix, unaffecting k and n -> propagate to c
+                if *from.max(to) < self.b_k.min(self.b_n) && *from.max(to) < self.c_n.min(self.c_m)
+                {
+                    Ok((
+                        self.clone(),
+                        None,
+                        Some(AxisOp::Move(*from, *to)),
+                        Some(AxisOp::Move(*from, *to)),
+                    ))
+                    // moving k or n to a different position : absorb it
+                } else if *from == self.b_k || *from == self.b_n {
+                    let b_n = change.transform_axis(self.b_n).unwrap();
+                    let b_k = change.transform_axis(self.b_k).unwrap();
+                    Ok((
+                        MatMulAxes { b_n, b_k, ..*self },
+                        None,
+                        Some(AxisOp::Move(*from, *to)),
+                        None,
+                    ))
+                } else {
+                    bail!("Unsupported move");
+                }
             }
         }
     }
@@ -134,9 +154,29 @@ impl MatMulAxes {
                 self.reshape_untouched_axes(in_a, in_b, *in_c, before, after)
             }
             AxisOp::Move(from, to) => {
-                let c_m = change.transform_axis(self.c_m).unwrap();
-                let c_n = change.transform_axis(self.c_n).unwrap();
-                Ok((MatMulAxes { c_m, c_n, ..*self }, None, None, Some(AxisOp::Move(*from, *to))))
+                // only deal with spectific cases for now:
+                // movement inside prefix, unaffecting m and n -> propagate to b
+                if *from.max(to) < self.b_k.min(self.b_n) && *from.max(to) < self.c_n.min(self.c_m)
+                {
+                    Ok((
+                        self.clone(),
+                        None,
+                        Some(AxisOp::Move(*from, *to)),
+                        Some(AxisOp::Move(*from, *to)),
+                    ))
+                    // moving m or n to a different position : absorb it
+                } else if *from == self.c_m || *from == self.c_n {
+                    let c_n = change.transform_axis(self.c_n).unwrap();
+                    let c_m = change.transform_axis(self.c_m).unwrap();
+                    Ok((
+                        MatMulAxes { c_n, c_m, ..*self },
+                        None,
+                        None,
+                        Some(AxisOp::Move(*from, *to)),
+                    ))
+                } else {
+                    bail!("Unsupported move");
+                }
             }
         }
     }
@@ -282,7 +322,6 @@ pub fn output_type(input: DatumType) -> DatumType {
 
 pub(super) fn eval(a: &Tensor, b: &Tensor, axes: MatMulAxes) -> TractResult<Tensor> {
     unsafe {
-        let rank = a.rank();
         let (m, k, n, c_shape) = compute_shape(a.shape(), b.shape(), axes)?;
         let c_dt = output_type(a.datum_type());
         let mm = tract_linalg::ops()
@@ -296,7 +335,7 @@ pub(super) fn eval(a: &Tensor, b: &Tensor, axes: MatMulAxes) -> TractResult<Tens
                 )
             })?;
         let c_storage = mm.c_view(axes.c_m, axes.c_n);
-        let mut c = Tensor::uninitialized_dt(c_dt, &c_shape)?;
+        let c = Tensor::uninitialized_dt(c_dt, &c_shape)?;
 
         let a_pack = mm.a_pack();
         let b_pack = mm.b_pack();

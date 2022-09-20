@@ -534,7 +534,6 @@ pub(crate) fn wire_matmul_quant(
     output_type: DatumType,
     params: &[OutletId],
 ) -> TractResult<OutletId> {
-    let a_fact = model.outlet_fact(a)?.clone();
     let b_fact = model.outlet_fact(b)?.clone();
     // TODO: assumed c_rank == b_rank (== a_rank)
 
@@ -544,7 +543,7 @@ pub(crate) fn wire_matmul_quant(
         // bias is vec, m is not right in C -> we must append in C axes to the right to align them
         let bias_rank = model.outlet_fact(bias)?.rank();
         if bias_rank == 1 && axes.c_m < b_fact.rank() - 1 {
-            for i in axes.c_m..b_fact.rank() - 1 {
+            for i in 0..(b_fact.rank() - axes.c_m - 1) {
                 bias = model.wire_node(
                     format!("{}.axis_rank_fix.{}", name, i),
                     AxisOp::Add(bias_rank + i),

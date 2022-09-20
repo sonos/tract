@@ -197,7 +197,6 @@ impl TypedOp for QMatMulUnary {
     ) -> TractResult<Option<TypedModelPatch>> {
         use crate::ops::array::concat::ConcatSlice;
         use crate::ops::array::TypedConcat;
-        let input_fact = model.outlet_fact(node.inputs[0])?;
         if let Some(concat) = model.nodes()[node.inputs[0].node].op().downcast_ref::<TypedConcat>()
         {
             let mut patch = TypedModelPatch::new("split over k-concatenated input");

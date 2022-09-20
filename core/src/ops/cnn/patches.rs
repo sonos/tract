@@ -8,7 +8,7 @@ use super::PatchAxis;
 use std::fmt::Debug;
 use std::ops::Range;
 
-use tract_itertools::{izip, zip, Itertools};
+use tract_itertools::{izip, Itertools};
 
 #[derive(Clone, PartialEq, Hash)]
 pub struct PatchSpec {
@@ -125,7 +125,7 @@ impl PatchSpec {
 
         let standard_layout_data_field: Vec<isize> = data_field
             .outer_iter()
-            .map(|coords| zip(coords, &input_storage_strides).map(|(a, b)| a * b).sum::<isize>())
+            .map(|coords| izip!(coords, &input_storage_strides).map(|(a, b)| a * b).sum::<isize>())
             .collect();
 
         // regions[axis][range+mask]
@@ -155,7 +155,7 @@ impl PatchSpec {
                 input_zone_offset: 0,
                 output_ranges: regions.iter().map(|reg| reg.range.clone()).collect(),
                 output_shape: regions.iter().map(|reg| reg.range.end - reg.range.start).collect(),
-                output_zone_offset: zip(&regions, &output_storage_strides)
+                output_zone_offset: izip!(&regions, &output_storage_strides)
                     .map(|(reg, &stride)| reg.range.start as isize * stride)
                     .sum::<isize>(),
                 valid: regions.iter().all(|reg| reg.mask.is_none()),
@@ -165,7 +165,7 @@ impl PatchSpec {
                     &standard_layout_data_field
                 )
                 .filter(|(_ix, coords, _offset)| {
-                    zip(coords.slice(), &regions)
+                    izip!(coords.slice(), &regions)
                         .all(|(&x, axis)| !axis.mask.as_ref().map(|mask| mask[x]).unwrap_or(false))
                 })
                 .map(|(ix, _coords, &window_offset)| (ix, window_offset))
@@ -202,7 +202,7 @@ impl PatchSpec {
         }
 
         let op_strides_times_input_storage_strides =
-            zip(&self.strides, &input_storage_strides).map(|(a, b)| (*a as isize * b)).collect();
+            izip!(&self.strides, &input_storage_strides).map(|(a, b)| (*a as isize * b)).collect();
 
         Patch {
             spec: self,
@@ -335,7 +335,7 @@ impl Patch {
 
     pub fn global_offset_for(&self, coords: &[usize], patch_index: usize) -> usize {
         assert_eq!(coords.len(), self.spec.kernel_shape.len());
-        let center = zip(coords, &self.op_strides_times_input_storage_strides)
+        let center = izip!(coords, &self.op_strides_times_input_storage_strides)
             .map(|(a, b)| *a as isize * *b)
             .sum::<isize>();
         (center + self.standard_layout_data_field[patch_index]) as usize
@@ -437,7 +437,8 @@ impl<'p> ZoneScanner<'p> {
         self.output_offset = 0;
         self.input_center_offset = 0;
         for ix in 0..self.output_coords.len() {
-            *self.output_coords.get_unchecked_mut(ix) = self.zone.output_ranges.get_unchecked(ix).start;
+            *self.output_coords.get_unchecked_mut(ix) =
+                self.zone.output_ranges.get_unchecked(ix).start;
         }
         self.done = false;
         self.refresh_dependent()

@@ -335,8 +335,16 @@ pub fn conv_or_deconv(
     let qparams = if quantized { Some((output_dt, MatMulQParams::all_from_qtype())) } else { None };
     let bias: Arc<Tensor> = invocation.named_arg_as(builder, "bias")?;
 
-    let bias: Option<Arc<Tensor>> =
-        if bias.is_uniform() && bias.cast_to_scalar::<f32>()? == 0.0 { None } else { Some(bias) };
+    let mut bias: Option<Tensor> = if bias.is_uniform() && bias.cast_to_scalar::<f32>()? == 0.0 {
+        None
+    } else {
+        Some(bias.into_tensor())
+    };
+    if let Some(bias) = bias.as_mut() {
+        if bias.rank() == 2 {
+            bias.remove_axis((bias.shape()[1] == 1) as usize)?;
+        }
+    }
 
     let op: Box<dyn TypedOp> = if deconv {
         let output_shape = invocation.named_arg_as::<TVec<usize>>(builder, "output_shape")?;
@@ -358,7 +366,7 @@ pub fn conv_or_deconv(
             pool_spec,
             KernelFormat::OIHW,
             kernel.into_arc_tensor(),
-            bias,
+            bias.map(Tensor::into_arc_tensor),
             adjustments,
             group,
         ))
@@ -368,7 +376,7 @@ pub fn conv_or_deconv(
             KernelFormat::OIHW,
             kernel.clone(),
             group,
-            bias,
+            bias.map(Tensor::into_arc_tensor),
             qparams,
         ))
     };
