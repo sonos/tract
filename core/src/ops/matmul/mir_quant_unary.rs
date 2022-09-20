@@ -10,7 +10,7 @@ use mir_quant::QParamKind;
 #[derive(Debug, Clone, new, Hash)]
 pub struct QMatMulUnary {
     pub a: Arc<Tensor>,
-    pub bias: Option<Arc<Tensor>>,
+    pub bias: Option<Arc<Tensor>>, // must be scalar OR rank 1
     pub axes: MatMulAxes,
     pub output_type: DatumType,
     pub params: MatMulQParams,
@@ -100,15 +100,16 @@ impl TypedOp for QMatMulUnary {
         )?;
 
         if let Some(bias) = &self.bias {
-            if bias.rank() == 2 {
-                let expected_bias_shape = if self.axes.c_m > self.axes.c_n {
-                    [1, c_shape[self.axes.c_m].to_usize()?]
-                } else {
-                    [c_shape[self.axes.c_m].to_usize()?, 1]
-                };
-                anyhow::ensure!(bias.shape() == expected_bias_shape);
-            } else {
-                anyhow::ensure!(bias.len() == 1);
+            if bias.rank() > 1 {
+                anyhow::bail!("Bias must be either scalar or vector (rank 0 or 1).");
+            } else if bias.rank() == 1 {
+                let expected_len = c_shape[self.axes.c_m].to_usize()?;
+                anyhow::ensure!(
+                    bias.len() == expected_len,
+                    "got: {:?} expected len: {:?}",
+                    bias,
+                    expected_len
+                );
             };
         }
 
@@ -168,14 +169,11 @@ impl TypedOp for QMatMulUnary {
         end: usize,
     ) -> TractResult<Option<(OutletId, bool)>> {
         let b_fact = model.outlet_fact(node.inputs[0])?;
-        let c_fact = &self.output_facts(&[b_fact])?[0];
         if axis == self.axes.c_m {
             let a_split_axis = self.axes.a_m;
             let a = self.a.slice(a_split_axis, start, end)?.into_arc_tensor();
-            let bias = if let Some(bias) = self.bias.as_ref().filter(|b| b.len() > 1) {
-                debug_assert_eq!(bias.rank(), 2);
-                let bias_axis = if self.axes.c_m > self.axes.c_n { 1 } else { 0 };
-                Some(bias.slice(bias_axis, start, end)?.into_arc_tensor())
+            let bias = if let Some(bias) = self.bias.as_ref().filter(|b| b.rank() == 1) {
+                Some(bias.slice(0, start, end)?.into_arc_tensor())
             } else {
                 self.bias.clone()
             };

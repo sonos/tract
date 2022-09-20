@@ -136,7 +136,7 @@ impl MatMulAxes {
             AxisOp::Move(from, to) => {
                 let c_m = change.transform_axis(self.c_m).unwrap();
                 let c_n = change.transform_axis(self.c_n).unwrap();
-                Ok((MatMulAxes { c_m, c_n, ..*self }, None, Some(AxisOp::Move(*from, *to)), None))
+                Ok((MatMulAxes { c_m, c_n, ..*self }, None, None, Some(AxisOp::Move(*from, *to))))
             }
         }
     }
@@ -246,7 +246,7 @@ pub fn compute_shape<D: DimLike>(
         .collect();
     let mut c_shape = crate::broadcast::multi_broadcast(&[a_shape_bc, b_shape_bc])
         .ok_or_else(|| format_err!("Could not broadcast"))?;
-    dbg!(&c_shape);
+    // dbg!(&c_shape);
     let (m, ka) = (ashape[axes.a_m].clone(), ashape[axes.a_k].clone());
     let (kb, n) = (bshape[axes.b_k].clone(), bshape[axes.b_n].clone());
     if ka != kb {

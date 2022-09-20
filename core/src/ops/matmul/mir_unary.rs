@@ -45,14 +45,16 @@ impl TypedOp for MatMulUnary {
                 self.a
             );
         }
+        /*
         dbg!(self);
         dbg!(inputs);
+        */
         let (_m, _k, _n, c_shape) = compute_shape(
             &self.a.shape().iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
             &inputs[0].shape,
             self.axes,
         )?;
-        dbg!(&c_shape);
+        //dbg!(&c_shape);
         let c_dt = output_type(inputs[0].datum_type);
         Ok(tvec!(c_dt.fact(c_shape)))
     }

@@ -662,11 +662,8 @@ impl ConvUnary {
                 let mut params = q_params.1.clone();
                 params.insert_input(0); // kernel as input
                 params.insert_input(2); // bias as input
-                let mut bias = self.bias.clone().unwrap_or(rctensor0(0i32));
-                if bias.len() > 1 {
-                    let shape = if trans_data { [1, bias.len()] } else { [bias.len(), 1] };
-                    bias = bias.into_tensor().into_shape(&shape)?.into_arc_tensor();
-                }
+                let bias = self.bias.clone().unwrap_or(rctensor0(0i32));
+                anyhow::ensure!(bias.rank() == 0 || bias.rank() == 1);
                 let bias = patch.add_const(format!("{}.bias", &node.name), bias)?;
                 inputs.insert(2, bias);
                 let op = QMatMul { axes, output_type: q_params.0, params: q_params.1.clone() };
@@ -675,6 +672,7 @@ impl ConvUnary {
                 let op = MatMul { axes };
                 let mut wire = patch.wire_node(format!("{}.matmul", node.name), op, &inputs)?[0];
                 if let Some(b) = self.bias.as_ref().filter(|_| self.q_params.is_none()) {
+                    anyhow::ensure!(b.rank() == 0 || b.rank() == 1);
                     let mut bias_shape = tvec!(1; input_shape.rank());
                     bias_shape[input_shape.c_axis()] = co;
                     let b = b.clone().into_tensor().into_shape(&bias_shape)?;
@@ -778,9 +776,11 @@ impl TypedOp for ConvUnary {
                 );
         }
         if let Some(bias) = &self.bias {
-            if bias.len() != self.output_channels() {
-                bail!("Bias should have one value per output channel, got:{:?}", bias);
-            }
+            ensure!(
+                bias.rank() == 0 || (bias.rank() == 1 && bias.len() == self.output_channels()),
+                "Bias should be scalar or a vector with one value per output channel, got:{:?}",
+                bias
+            );
         }
 
         let mut fact = self.pool_spec.output_facts(inputs)?.remove(0);

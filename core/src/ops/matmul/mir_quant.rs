@@ -315,15 +315,17 @@ impl TypedOp for QMatMul {
         }
         let (_m, _k, _n, c_shape) = compute_shape(&inputs[0].shape, &inputs[1].shape, self.axes)?;
 
-        if inputs[2].rank() == 2 {
-            let expected_bias_shape = if self.axes.c_m > self.axes.c_n {
-                [1.to_dim(), c_shape[self.axes.c_m].clone()]
-            } else {
-                [c_shape[self.axes.c_m].clone(), 1.to_dim()]
-            };
-            anyhow::ensure!(*inputs[2].shape == expected_bias_shape);
-        } else {
-            anyhow::ensure!(inputs[2].shape.iter().product::<TDim>() == 1.to_dim());
+        let bias = &inputs[2];
+        if bias.rank() > 1 {
+            anyhow::bail!("Bias must be either scalar or vector (rank 0 or 1).");
+        } else if bias.rank() == 1 {
+            let expected_len = &c_shape[self.axes.c_m];
+            anyhow::ensure!(
+                &bias.shape[0] == expected_len,
+                "got: {:?} expected len: {:?}",
+                bias,
+                expected_len
+            );
         };
 
         Ok(tvec!(self.output_type.fact(c_shape)))
@@ -533,9 +535,23 @@ pub(crate) fn wire_matmul_quant(
     params: &[OutletId],
 ) -> TractResult<OutletId> {
     let a_fact = model.outlet_fact(a)?.clone();
-    let rank = a_fact.rank();
+    let b_fact = model.outlet_fact(b)?.clone();
+    // TODO: assumed c_rank == b_rank (== a_rank)
 
-    if let Some(bias) = bias {
+    if let Some(mut bias) = bias {
+        // bias is scalar -> ok
+        // bias is vec, m is right in C -> broadcast will add left side axes to bias
+        // bias is vec, m is not right in C -> we must append in C axes to the right to align them
+        let bias_rank = model.outlet_fact(bias)?.rank();
+        if bias_rank == 1 && axes.c_m < b_fact.rank() - 1 {
+            for i in axes.c_m..b_fact.rank() - 1 {
+                bias = model.wire_node(
+                    format!("{}.axis_rank_fix.{}", name, i),
+                    AxisOp::Add(bias_rank + i),
+                    &[bias],
+                )?[0]
+            }
+        }
         result = wire_with_rank_broadcast(
             &format!("{}.add_bias", &name),
             model,
