@@ -90,4 +90,4 @@ then
     git push -f --tags
 fi
 
-cargo update
+# cargo update
