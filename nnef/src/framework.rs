@@ -211,7 +211,7 @@ fn read_stream<R: std::io::Read>(
     if path.components().any(|name| name.as_os_str().as_bytes().first() == Some(&b'.')) {
         return Ok(());
     }
-    if path.file_name().map(|n| n == "graph.nnef").unwrap_or(false) {
+    if path.to_str() == Some("graph.nnef") {
         let mut t = String::new();
         reader.read_to_string(&mut t)?;
         *text = Some(t);
