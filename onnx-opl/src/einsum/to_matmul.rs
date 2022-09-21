@@ -18,7 +18,7 @@ pub fn declutter(
     assert!(k_axis.result.is_none());
     assert!(k_axis.inputs.iter().all(|pos| pos.len() == 1));
     let inputs = model.node_input_facts(node.id)?;
-    eprintln!("{}", op.expr);
+//    eprintln!("{}", op.expr);
     // summing axis is either last or last before last
     if k_axis.inputs[0][0] + 2 < inputs[0].rank() || k_axis.inputs[1][0] + 2 < inputs[1].rank() {
         trace!("Not decluttering, k_axis");
@@ -104,7 +104,7 @@ pub fn declutter(
         if axis.inputs[0].len() == 0 {
             let mut new_expr = op.expr.clone();
             new_expr.insert_input_axis(axis.repr, 0, 0);
-            eprintln!("{}", &new_expr);
+            //eprintln!("{}", &new_expr);
             let add = patch.wire_node(
                 format!("{}.add_bc_axis.a.{}", &node.name, a_rank),
                 AxisOp::Add(0),
@@ -117,7 +117,7 @@ pub fn declutter(
         if axis.inputs[1].len() == 0 {
             let mut new_expr = op.expr.clone();
             new_expr.insert_input_axis(axis.repr, 1, 0);
-            eprintln!("{}", &new_expr);
+            //eprintln!("{}", &new_expr);
             let add = patch.wire_node(
                 format!("{}.add_bc_axis.b.{}", &node.name, b_rank),
                 AxisOp::Add(0),
