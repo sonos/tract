@@ -200,16 +200,18 @@ impl GRU {
             }
         }
 
-        // X: onnx interface: [seq_length, batch_size, input_size]
+        // move batch first
+        target_wire!(x_batch_first = AxisOp::Move(1, 0), inputs[0]);
+        // X: onnx interface: [batch_size, seq_length, input_size]
         // scan outer interface: idem
         // scann inner interface: [chunk=1, batch_size, input_size]
         // onnx inner interface: [batch_size, input_size]
-        outer_inputs.push(inputs[0]);
-        input_mapping.push(scan::InputMapping::Scan { slot: 0, axis: 0, chunk });
-        let mut x_source_fact = x_fact.without_value();
-        x_source_fact.shape.set(0, 1.to_dim());
+        outer_inputs.push(x_batch_first);
+        input_mapping.push(scan::InputMapping::Scan { slot: 0, axis: 1, chunk });
+        let mut x_source_fact = target.outlet_fact(x_batch_first)?.without_value();
+        x_source_fact.shape.set(1, 1.to_dim());
         let x_source = body.add_source("x_source", x_source_fact)?;
-        wire!(Xt = AxisOp::Rm(0), x_source);
+        wire!(Xt = AxisOp::Rm(1), x_source);
 
         // W: onnx interface: [num_directions, 3*hidden_size, input_size]
         // scan interfaces: [3*hidden_size, input_size]
@@ -243,21 +245,22 @@ impl GRU {
         }
 
         // initial h, optional: onnx: [num_directions, batch_size, hidden_size]
-        // scan outer: [chunk=1, batch_size, hidden_size]
-        // scan inner: [chunk=1, batch_size, hidden_size]
+        // scan outer: [batch_size, chunk=1, hidden_size]
+        // scan inner: [batch_size, chunk=1, hidden_size]
         // onnx inner: [batch_size, hidden_size]
         let initializer = if let Some(initial_h_input) = self.optional_initial_h_input {
             target_wire!(h_dir = array::Slice::new(0, dir, dir + 1), inputs[initial_h_input]);
             target_wire!(h = AxisOp::Rm(0), h_dir);
-            target_wire!(h_chunk = AxisOp::Add(0), h);
+            target_wire!(h_chunk_ = AxisOp::Add(0), h);
+            target_wire!(h_chunk = AxisOp::Move(1, 0), h_chunk_);
             outer_inputs.push(h_chunk);
             scan::StateInitializer::FromInput(initial_h_input)
         } else {
             scan::StateInitializer::Value(
                 tensor0(0.0f32)
                     .broadcast_scalar_to_shape(&[
-                        1,
                         b_size.to_usize().unwrap(),
+                        1,
                         h_size.to_usize().unwrap(),
                     ])?
                     .into_arc_tensor(),
@@ -266,10 +269,10 @@ impl GRU {
         input_mapping.push(scan::InputMapping::State { initializer });
         let h_source = body.add_source(
             "h_source",
-            x_fact.datum_type.fact(&[1.to_dim(), b_size.clone(), h_size.clone()]),
+            x_fact.datum_type.fact(&[b_size.clone(), 1.to_dim(), h_size.clone()]),
         )?;
 
-        wire!(Ht_1 = AxisOp::Rm(0), h_source);
+        wire!(Ht_1 = AxisOp::Rm(1), h_source);
 
         wire!(Rz = array::Slice::new(0, 0.to_dim() * h_size, 1.to_dim() * h_size), R);
         wire!(Rr = array::Slice::new(0, 1.to_dim() * h_size, 2.to_dim() * h_size), R);
@@ -366,12 +369,12 @@ impl GRU {
         wire!(Ht = math::add::bin_typed(), ht_zt_ht, zt_Ht_1);
         */
 
-        wire!(y_h = AxisOp::Add(0), Ht);
+        wire!(y_h = AxisOp::Add(1), Ht);
         body.set_output_outlets(&[y_h])?;
 
         let output_mapping = scan::OutputMapping {
             state: true,
-            axis: 0,
+            axis: 1,
             chunk,
             full_dim_hint: None,
             last_value_slot: self.optional_y_h_output,
@@ -392,11 +395,13 @@ impl GRU {
 
         let mut result = tvec!();
         if let Some(slot) = self.optional_y_output {
-            target_wire!(y = AxisOp::Add(1), scan_outputs[slot]);
+            target_wire!(y_batch_middle = AxisOp::Move(1, 0), scan_outputs[slot]);
+            target_wire!(y = AxisOp::Add(1), y_batch_middle);
             result.push(y);
         }
         if let Some(slot) = self.optional_y_h_output {
-            result.push(scan_outputs[slot]);
+            target_wire!(y_h_batch_middle = AxisOp::Move(1, 0), scan_outputs[slot]);
+            result.push(y_h_batch_middle);
         }
 
         Ok(result)
