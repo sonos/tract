@@ -6,7 +6,7 @@ use std::ops;
 mod tree;
 
 pub use self::tree::{Symbol, SymbolValues, TDim, UndeterminedSymbol};
-use crate::{ TractError, TractResult };
+use crate::{TractError, TractResult};
 
 /// A super-trait for value acting as tensor dimensions in tract.
 ///
@@ -87,11 +87,23 @@ impl DimLike for TDim {
                     (a * b, v)
                 }
                 TDim::Val(x) => (*x, vec![]),
+                TDim::Add(terms) => {
+                    let gcd =
+                        terms.iter().map(expand).map(|(n, _)| n).reduce(|a, b| a.gcd(&b)).unwrap();
+                    (
+                        gcd,
+                        vec![TDim::Add(terms.iter().map(|t| t.clone() / gcd).collect()).simplify()],
+                    )
+                }
                 it => (1, vec![it.clone()]),
             }
         }
         let (mut num_int, mut num) = expand(self);
-        let (mut denum_int, denum) = expand(other);
+        let (mut denum_int, mut denum) = expand(other);
+        if num == denum {
+            num = vec![];
+            denum = vec![];
+        }
         for it in denum {
             if let Some(pos) = num.iter().position(|n| n == &it) {
                 num.remove(pos);
@@ -218,5 +230,10 @@ mod tests {
             (256.to_dim() * 's' * 'b').maybe_div(&(1.to_dim() * 's' * 'b')).unwrap(),
             (256.into(), 1)
         );
+    }
+
+    #[test]
+    fn div_sym_sym_with_add() {
+        assert_eq!((s() * 80 - 160).maybe_div(&(s() - 2)).unwrap(), (80.into(), 1));
     }
 }
