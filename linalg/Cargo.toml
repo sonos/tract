@@ -38,6 +38,14 @@ half = "2"
 criterion = "0.3.5"
 proptest = "1.0.0"
 
+[features]
+# This feature is meant to accomodate very restrictive / legacy toolchains that do
+# have support for fp16 instructions, breaking tract compilation.
+# It is not meant to be used in other situations, where run-time detection is
+# preferred.
+no_fp16 = []
+default = []
+
 [[bench]]
 bench = false
 name = "arm64"
