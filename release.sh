@@ -89,5 +89,3 @@ then
     git tag -f v"$VERSION"
     git push -f --tags
 fi
-
-cargo update
