@@ -129,7 +129,7 @@ impl EvalOp for NonMaxSuppression {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (boxes, scores, max_output_boxes_per_class, iou_threshold, score_threshold) =
             if self.has_score_threshold {
                 let (t1, t2, t3, t4, t5) = args_5!(inputs);
@@ -203,7 +203,7 @@ impl EvalOp for NonMaxSuppression {
             .collect();
         let res = tract_ndarray::ArrayD::from_shape_vec(&*tvec![num_selected, 3], v)?;
 
-        Ok(tvec![res.into_arc_tensor()])
+        Ok(tvec![res.into_tvalue()])
     }
 }
 

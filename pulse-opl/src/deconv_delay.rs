@@ -30,7 +30,7 @@ impl EvalOp for DeconvDelay {
         false
     }
 
-    fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, _inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         unreachable!()
     }
 
@@ -65,8 +65,8 @@ impl OpState for DeconvDelayState {
         &mut self,
         session: &mut SessionState,
         op: &dyn Op,
-        inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         let op = op.downcast_ref::<DeconvDelay>().context("Wrong op")?;
         if self.buffer.is_none() {
             let mut buffer_size: TVec<usize> = inputs[0].shape().into();
@@ -76,7 +76,7 @@ impl OpState for DeconvDelayState {
         let mut input = inputs[0].clone().into_tensor();
         dispatch_numbers!(Self::eval_t(input.datum_type())(self, session, op, &mut input))?;
         let output = input.slice(op.axis, 0, input.shape()[op.axis] - op.overlap)?;
-        Ok(tvec!(output.into_arc_tensor()))
+        Ok(tvec!(output.into_tvalue()))
     }
 }
 

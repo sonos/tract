@@ -49,7 +49,7 @@ impl EvalOp for Slice {
         self.start.to_usize().is_ok() && self.end.to_usize().is_ok()
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let start = self.start.to_usize()?;
         let end = self.end.to_usize()?;
@@ -70,8 +70,8 @@ impl OpState for Slice {
         &mut self,
         session: &mut SessionState,
         _op: &dyn Op,
-        mut inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
+        mut inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let start = self.start.eval(&session.resolved_symbols).to_usize()?;
         let end = self.end.eval(&session.resolved_symbols).to_usize()?;
@@ -84,7 +84,7 @@ fn eval_slice(
     axis: usize,
     start: usize,
     end: usize,
-) -> TractResult<TVec<Arc<Tensor>>> {
+) -> TractResult<TVec<TValue>> {
     if end > input.shape()[axis] || start > end {
         bail!("Invalid range {}..{} for slicing {:?} on axis {}", start, end, input, axis);
     }
@@ -93,7 +93,7 @@ fn eval_slice(
         shape[axis] = end - start;
         let mut tensor = Tensor::uninitialized_dt(input.datum_type(), &shape)?;
         tensor.assign_slice_unchecked(.., input, start..end, axis);
-        Ok(tvec!(tensor.into_arc_tensor()))
+        Ok(tvec!(tensor.into_tvalue()))
     }
 }
 

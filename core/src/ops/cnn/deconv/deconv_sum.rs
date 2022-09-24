@@ -40,7 +40,7 @@ impl EvalOp for DeconvSum {
         self.input_shape.is_concrete()
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         self.eval_with_values(inputs, &SymbolValues::default())
     }
 
@@ -58,8 +58,8 @@ impl OpState for DeconvSum {
         &mut self,
         session: &mut SessionState,
         _op: &dyn Op,
-        inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         self.eval_with_values(inputs, &session.resolved_symbols)
     }
 }
@@ -67,9 +67,9 @@ impl OpState for DeconvSum {
 impl DeconvSum {
     fn eval_with_values(
         &self,
-        mut inputs: TVec<Arc<Tensor>>,
+        mut inputs: TVec<TValue>,
         values: &SymbolValues,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
+    ) -> TractResult<TVec<TValue>> {
         let gemm = args_1!(inputs).into_tensor();
         debug_assert_eq!(gemm.datum_type(), f32::datum_type());
         let input_shape = self.input_shape.eval_to_usize(values)?.into_owned();
@@ -155,7 +155,7 @@ impl DeconvSum {
                 &mut output.into_dimensionality().unwrap(),
             )?,
         }
-        Ok(tvec!(tensor.into_arc_tensor()))
+        Ok(tvec!(tensor.into_tvalue()))
     }
 
     pub fn main_loop_1d(

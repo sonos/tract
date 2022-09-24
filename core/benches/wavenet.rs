@@ -25,8 +25,8 @@ fn im2col(c: &mut Criterion) {
                     };
                     let len = 8 + 2 * *dil;
                     let input = tvec!(
-                        Tensor::zero_dt(f32::datum_type(), &[len, 16]).unwrap().into_arc_tensor(),
-                        pad.clone()
+                        Tensor::zero_dt(f32::datum_type(), &[len, 16]).unwrap().into_tvalue(),
+                        pad.clone().into_tvalue(),
                     );
                     let mmm = tract_linalg::ops()
                         .mmm(F32, F32, F32, Some(64), Some(48), Some(8))
@@ -41,9 +41,7 @@ fn im2col(c: &mut Criterion) {
                     .unwrap();
                     (input, op)
                 },
-                |(input, op)| {
-                    op.eval(input).unwrap();
-                },
+                |(input, op)| op.eval(input).unwrap(),
             )
         });
     }
@@ -63,7 +61,7 @@ fn mmm(c: &mut Criterion) {
                 .unwrap();
                 let input = tvec!(Tensor::zero_dt(f32::datum_type(), &[mmm.b_pack().len(48, 8)])
                     .unwrap()
-                    .into_arc_tensor());
+                    .into_tvalue());
                 let geometry = MatMulGeometry::Concrete(ConcreteMatMulGeometry {
                     k: 48,
                     m: 64,

@@ -15,7 +15,7 @@ pub fn fill(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Inferenc
 }
 
 impl Fill {
-    fn eval_t<T: Datum>(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval_t<T: Datum>(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (shape, value) = args_2!(inputs);
         let value = value.to_scalar::<T>()?;
         let shape = shape.cast_to::<i32>()?;
@@ -24,7 +24,7 @@ impl Fill {
             shape.iter().map(|i| *i as usize).collect::<Vec<usize>>(),
             |_| value.clone(),
         );
-        Ok(tvec![array.into_arc_tensor()])
+        Ok(tvec![array.into_tvalue()])
     }
 }
 
@@ -41,7 +41,7 @@ impl EvalOp for Fill {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         dispatch_datum!(Self::eval_t(self.dt)(self, inputs))
     }
 }
@@ -83,7 +83,7 @@ impl InferenceRulesOp for Fill {
         ) {
             let mut value = dispatch_datum!(Self::eval_t(value.datum_type())(
                 self,
-                tvec!(shape.clone(), value.clone())
+                tvec!(shape.clone().into_tvalue(), value.clone().into_tvalue())
             ))?;
             let id = target.add_const(&*node.name, value.remove(0))?;
             Ok(tvec!(id))

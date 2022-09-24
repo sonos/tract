@@ -23,8 +23,8 @@ impl Downsample {
         let down_len = self.transform_dim(&input_fact.shape[self.axis]);
         downed.shape.set(self.axis, down_len);
         if let Some(k) = downed.konst {
-            let mut outputs = self.eval(tvec!(k))?;
-            downed.konst = Some(outputs.remove(0));
+            let mut outputs = self.eval(tvec!(k.into_tvalue()))?;
+            downed.konst = Some(outputs.remove(0).0)
         }
         if cfg!(debug_assertions) {
             downed.consistent()?;
@@ -53,7 +53,7 @@ impl EvalOp for Downsample {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         unsafe {
             let t = if self.modulo > input.shape()[self.axis] {
@@ -78,7 +78,7 @@ impl EvalOp for Downsample {
                 }
                 dispatch_datum_by_size!(do_slice(input.datum_type())(&*input, self.axis, slice))
             };
-            Ok(tvec!(t.into_arc_tensor()))
+            Ok(tvec!(t.into_tvalue()))
         }
     }
 }
@@ -130,7 +130,11 @@ fn pull_downsample_up(
                 let source = patch.tap_model(model, oo)?;
                 let mut op = down_op.clone();
                 op.axis = above_axis;
-                let ds = patch.wire_node(format!("{}.{}-{}", down_node.name, prec.name, ix), op, [source].as_ref())?;
+                let ds = patch.wire_node(
+                    format!("{}.{}-{}", down_node.name, prec.name, ix),
+                    op,
+                    [source].as_ref(),
+                )?;
                 inputs.push(ds[0]);
             }
             let other = patch.wire_node(&prec.name, prec.op.clone(), &inputs)?;

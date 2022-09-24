@@ -74,7 +74,7 @@ mod tests {
             + Hash,
     {
         let input = load_image(grace_hopper());
-        let outputs = runnable.run(tvec![input])?;
+        let outputs = runnable.run(tvec![input.into()])?;
         let label_id = outputs[0]
             .as_slice::<f32>()?
             .iter()

@@ -92,16 +92,16 @@ impl EvalOp for ElementWiseOp {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         if let Some(_dt) = self.0.output_type(inputs[0].datum_type()) {
-            Ok(tvec!(self.0.eval_out_of_place(&inputs[0])?.into_arc_tensor()))
+            Ok(tvec!(self.0.eval_out_of_place(&inputs[0])?.into_tvalue()))
         } else {
-            if let Some(m) = Arc::get_mut(&mut inputs[0]) {
+            if let Some(m) = Arc::get_mut(&mut inputs[0].0) {
                 self.0.eval_in_place(m)?;
             } else {
-                let mut t = inputs.remove(0).into_tensor();
+                let mut t = inputs.remove(0).0.into_tensor();
                 self.0.eval_in_place(&mut t)?;
-                inputs.push(t.into_arc_tensor());
+                inputs.push(t.into_tvalue());
             }
             Ok(inputs)
         }

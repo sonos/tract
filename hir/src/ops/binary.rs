@@ -134,24 +134,24 @@ impl EvalOp for Nary {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let mut t = inputs[0].clone().into_tensor();
         for i in inputs[1..].iter() {
-            let mut i = i.clone();
+            let mut i = i.clone().into_tensor();
             let operating_datum_type =
                 self.0.operating_datum_type(t.datum_type(), i.datum_type())?;
             if i.datum_type() != operating_datum_type {
-                i = i.cast_to_dt(operating_datum_type)?.into_owned().into_arc_tensor();
+                i = i.cast_to_dt(operating_datum_type)?.into_owned();
             }
             if t.datum_type() != operating_datum_type {
                 t = t.cast_to_dt(operating_datum_type)?.into_owned();
             }
-            t = self.0.eval(t.into_arc_tensor(), i.into_arc_tensor())?;
+            t = self.0.eval(t.into_tvalue(), i.into_tvalue())?;
         }
         if self.1 {
             dispatch_numbers!(Self::normalize_t(t.datum_type())(&mut t, inputs.len()))?;
         }
-        Ok(tvec!(t.into_arc_tensor()))
+        Ok(tvec!(t.into_tvalue()))
     }
 }
 

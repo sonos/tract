@@ -77,15 +77,14 @@ impl EvalOp for If {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let cond = inputs[0].cast_to_scalar::<bool>()?;
         let (input_mapping, body) = if cond {
             (&self.then_input_mapping, &self.then_body)
         } else {
             (&self.else_input_mapping, &self.else_body)
         };
-        let inputs: TVec<Tensor> =
-            input_mapping.iter().map(|&ix| inputs[ix].clone().into_tensor()).collect();
+        let inputs: TVec<TValue> = input_mapping.iter().map(|&ix| inputs[ix].clone()).collect();
         body.clone().into_runnable()?.run(inputs)
     }
 }

@@ -31,13 +31,13 @@ impl EvalOp for QMatMulUnary {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         ensure!(inputs[0].rank() == self.a.rank(), "Rank mismatch {:?} vs {:?}", inputs[0], self.a);
 
         let mut model = TypedModel::default();
         let t_a = self.a.offset_u8_as_i8();
         let a = model.add_const("source_a", self.a.clone())?;
-        let b = model.add_const("source_b", inputs[0].clone())?;
+        let b = model.add_const("source_b", inputs[0].clone().into_arc_tensor())?;
         let bias = if let Some(bias) = self.bias.clone() {
             Some(model.add_const("source_bias", bias)?)
         } else {
@@ -46,7 +46,8 @@ impl EvalOp for QMatMulUnary {
 
         let mut input_outlets = tvec![a];
         for (i, t) in inputs.iter().enumerate().skip(1) {
-            input_outlets.push(model.add_const(format!("source_{}", i), t.clone())?)
+            input_outlets
+                .push(model.add_const(format!("source_{}", i), t.clone().into_arc_tensor())?)
         }
 
         let mut params = self.params.as_outlet_ids(
@@ -650,18 +651,18 @@ mod test {
                         .unwrap();
                     model.set_output_outlets(&result).unwrap();
 
-                    let inputs = if self.dyn_qp {
+                    let inputs:TVec<TValue> = if self.dyn_qp {
                         tvec![
-                            self.b.clone().into_tensor(),
-                            self.a0.into(),
-                            self.a_scale.into(),
-                            self.b0.into(),
-                            self.b_scale.into(),
-                            self.c0.into(),
-                            self.c_scale.into(),
+                            self.b.clone().into_tensor().into(),
+                            tensor0(self.a0).into(),
+                            tensor0(self.a_scale).into(),
+                            tensor0(self.b0).into(),
+                            tensor0(self.b_scale).into(),
+                            tensor0(self.c0).into(),
+                            tensor0(self.c_scale).into(),
                         ]
                     } else {
-                        tvec![self.b.clone().into_tensor()]
+                        tvec![self.b.clone().into_tensor().into()]
                     };
                     let model = if self.opt { model.into_optimized().unwrap() } else { model };
                     let mut outputs = model

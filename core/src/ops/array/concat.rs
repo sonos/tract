@@ -239,7 +239,7 @@ impl EvalOp for TypedConcat {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let mut mats: TVec<&Tensor> = tvec![];
         let mut input_idx = 0;
         for slice in &self.slices {
@@ -252,6 +252,6 @@ impl EvalOp for TypedConcat {
             }
         }
         let result = Tensor::stack_tensors(self.axis, &mats)?;
-        Ok(tvec![result.into_arc_tensor()])
+        Ok(tvec![result.into_tvalue()])
     }
 }

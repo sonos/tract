@@ -150,7 +150,7 @@ impl QConvProblem {
         } else {
             model = model.into_decluttered()?;
         }
-        let mut output = model.into_runnable()?.run(tvec![self.data.clone().into_tensor()])?;
+        let mut output = model.into_runnable()?.run(tvec![self.data.clone().into_tvalue()])?;
         output.remove(0).into_tensor().into_array::<i8>()
     }
 

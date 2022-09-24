@@ -64,7 +64,7 @@ pub struct TensorValues {
     pub output_index: Option<usize>,
     pub name: Option<String>,
     pub fact: Option<InferenceFact>,
-    pub values: Option<Vec<Arc<Tensor>>>,
+    pub values: Option<Vec<TValue>>,
     pub random_range: Option<Range<f32>>,
 }
 
@@ -205,7 +205,10 @@ fn tensor_for_text_data(symbol_table: &SymbolTable, filename: &str) -> TractResu
 }
 
 /// Parses the `data` command-line argument.
-pub fn for_data(symbol_table: &SymbolTable, filename: &str) -> TractResult<(Option<String>, InferenceFact)> {
+pub fn for_data(
+    symbol_table: &SymbolTable,
+    filename: &str,
+) -> TractResult<(Option<String>, InferenceFact)> {
     #[allow(unused_imports)]
     use std::convert::TryFrom;
     if filename.ends_with(".pb") {
@@ -270,7 +273,10 @@ pub fn for_npz(npz: &mut ndarray_npy::NpzReader<fs::File>, name: &str) -> TractR
     bail!("Can not extract tensor from {}", name);
 }
 
-pub fn for_string(symbol_table: &SymbolTable, value: &str) -> TractResult<(Option<String>, InferenceFact)> {
+pub fn for_string(
+    symbol_table: &SymbolTable,
+    value: &str,
+) -> TractResult<(Option<String>, InferenceFact)> {
     if let Some(stripped) = value.strip_prefix('@') {
         for_data(symbol_table, stripped)
     } else {
@@ -338,8 +344,8 @@ pub struct RunParams {
 pub fn retrieve_or_make_inputs(
     tract: &dyn Model,
     params: &RunParams,
-) -> TractResult<Vec<TVec<Tensor>>> {
-    let mut tmp: TVec<Vec<Tensor>> = tvec![];
+) -> TractResult<Vec<TVec<TValue>>> {
+    let mut tmp: TVec<Vec<TValue>> = tvec![];
     for (ix, input) in tract.input_outlets().iter().enumerate() {
         let name = tract.node_name(input.node);
         let fact = tract.outlet_typedfact(*input)?;
@@ -354,18 +360,20 @@ pub fn retrieve_or_make_inputs(
                     .map(|v| {
                         let mut v = v.clone().into_tensor();
                         unsafe { v.set_datum_type(fact.datum_type) };
-                        v.into_arc_tensor()
+                        v.into()
                     })
                     .collect();
             }
-            if TypedFact::from(value[0].clone()).compatible_with(&fact) {
+            if TypedFact::from(&**value[0]).compatible_with(&fact) {
                 info!("Using fixed input for input called {} ({} turn(s))", name, value.len());
-                tmp.push(value.iter().map(|t| t.clone().into_tensor()).collect())
+                tmp.push(value.iter().map(|t| t.clone().into_tensor().into()).collect())
             } else if fact.datum_type == f16::datum_type()
                 && value[0].datum_type() == f32::datum_type()
                 && params.allow_float_casts
             {
-                tmp.push(value.iter().map(|t| t.cast_to::<f16>().unwrap().into_owned()).collect())
+                tmp.push(
+                    value.iter().map(|t| t.cast_to::<f16>().unwrap().into_owned().into()).collect(),
+                )
             } else if value.len() == 1 && tract.properties().contains_key("pulse.delay") {
                 let value = &value[0];
                 let input_pulse_axis = tract
@@ -401,7 +409,7 @@ pub fn retrieve_or_make_inputs(
                     if end > start {
                         t.assign_slice(0..end - start, value, start..end, input_pulse_axis)?;
                     }
-                    values.push(t);
+                    values.push(t.into());
                 }
                 info!(
                     "Generated {} pulses of shape {:?} for input {}.",
@@ -418,7 +426,7 @@ pub fn retrieve_or_make_inputs(
                 .tensors_values
                 .by_name(name)
                 .or_else(|| params.tensors_values.by_input_ix(ix));
-            tmp.push(vec![crate::tensor::tensor_for_fact(&fact, None, tv)?]);
+            tmp.push(vec![crate::tensor::tensor_for_fact(&fact, None, tv)?.into()]);
         } else {
             bail!("Unmatched tensor {}. Fix the input or use \"--allow-random-input\" if this was intended", name);
         }
@@ -426,11 +434,11 @@ pub fn retrieve_or_make_inputs(
     Ok((0..tmp[0].len()).map(|turn| tmp.iter().map(|t| t[turn].clone()).collect()).collect())
 }
 
-fn make_inputs(values: &[impl std::borrow::Borrow<TypedFact>]) -> TractResult<TVec<Tensor>> {
-    values.iter().map(|v| tensor_for_fact(v.borrow(), None, None)).collect()
+fn make_inputs(values: &[impl std::borrow::Borrow<TypedFact>]) -> TractResult<TVec<TValue>> {
+    values.iter().map(|v| tensor_for_fact(v.borrow(), None, None).map(|t| t.into())).collect()
 }
 
-pub fn make_inputs_for_model(model: &dyn Model) -> TractResult<TVec<Tensor>> {
+pub fn make_inputs_for_model(model: &dyn Model) -> TractResult<TVec<TValue>> {
     make_inputs(
         &model
             .input_outlets()

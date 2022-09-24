@@ -408,7 +408,7 @@ impl Parameters {
                     input_index: Some(ix).filter(|_| is_input),
                     output_index: Some(ix).filter(|_| is_output),
                     name,
-                    values: tensor.value.concretize().map(|t| vec![t]),
+                    values: tensor.value.concretize().map(|t| vec![t.into_tensor().into()]),
                     fact: Some(tensor.without_value()),
                     random_range: None,
                 })
@@ -442,14 +442,14 @@ impl Parameters {
             let vals: Vec<_> = vals
                 .into_iter()
                 .sorted_by_key(|(_, turn, _)| *turn)
-                .map(|(_, _, tensor)| tensor.into_arc_tensor())
+                .map(|(_, _, tensor)| tensor.into_tvalue())
                 .collect();
             result.push(TensorValues {
                 input_index: None,
                 output_index: None,
                 name: Some(name),
                 fact: if get_facts {
-                    Some(InferenceFact::from(&vals[0]).without_value())
+                    Some(InferenceFact::from(&*vals[0]).without_value())
                 } else {
                     None
                 },
@@ -475,7 +475,7 @@ impl Parameters {
                     input_index: Some(ix),
                     output_index: None,
                     name,
-                    values: fact.value.concretize().map(|t| vec![t]),
+                    values: fact.value.concretize().map(|t| vec![t.into_tensor().into()]),
                     fact: Some(fact.without_value()),
                     random_range: None,
                 });
@@ -513,7 +513,7 @@ impl Parameters {
                         input_index: None,
                         output_index: Some(ix),
                         name,
-                        values: fact.value.concretize().map(|t| vec![t]),
+                        values: fact.value.concretize().map(|t| vec![t.into_tensor().into()]),
                         fact: Some(fact.without_value()),
                         random_range: None,
                     });

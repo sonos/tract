@@ -12,7 +12,7 @@ pub struct LstmProblem {
     pub length: usize,
     pub batch_size: usize,
     pub cell_size: usize,
-    pub x: Arc<Tensor>,
+    pub x: TValue,
     pub w_xh_icfo: Array2<f32>,
     pub b_icfo: Array1<f32>,
     pub h0: Array2<f32>,
@@ -176,20 +176,20 @@ impl LstmProblem {
         model.into_typed()
     }
 
-    pub fn onnx_run(&self) -> TractResult<Arc<Tensor>> {
+    pub fn onnx_run(&self) -> TractResult<TValue> {
         let model = self.onnx_model()?;
         let plan = SimplePlan::new(model)?;
         let mut state = SimpleState::new(plan)?;
         let y = state
-            .run(tvec!(self.x.clone().into_tensor()))?
+            .run(tvec!(self.x.clone().into_tvalue()))?
             .remove(0)
             .into_tensor()
             .into_array::<f32>()?;
         let y = y.into_shape((self.length, self.batch_size, self.cell_size)).unwrap();
-        Ok(y.into_arc_tensor())
+        Ok(y.into_tvalue())
     }
 
-    pub fn tf_run(&self) -> TractResult<Arc<Tensor>> {
+    pub fn tf_run(&self) -> TractResult<TValue> {
         let model = self.tf_model()?;
         let lstm_id = model.node_by_name("lstm")?.id;
         let memo_id = model.node_by_name("memo")?.id;
@@ -198,7 +198,7 @@ impl LstmProblem {
             &[OutletId::new(lstm_id, 6), OutletId::new(memo_id, 0)],
         )?;
         let mut state = SimpleState::new(plan_run)?;
-        let y = state.run(tvec!(self.x.clone().into_tensor()))?.remove(0);
+        let y = state.run(tvec!(self.x.clone().into_tvalue()))?.remove(0);
         Ok(y)
     }
 }
@@ -222,9 +222,8 @@ fn strat() -> BoxedStrategy<LstmProblem> {
             )
         })
         .prop_map(|((length, batch_size, cell_size), x, w_xh_icfo, b_icfo, h0, c0)| {
-            let x = Array3::from_shape_vec((length, batch_size, cell_size), x)
-                .unwrap()
-                .into_arc_tensor();
+            let x =
+                Array3::from_shape_vec((length, batch_size, cell_size), x).unwrap().into_tvalue();
             let w_xh_icfo =
                 Array2::from_shape_vec((cell_size * 2, cell_size * 4), w_xh_icfo).unwrap();
             let b_icfo = Array1::from_shape_vec(cell_size * 4, b_icfo).unwrap();
@@ -250,7 +249,7 @@ fn test_x() {
         length: 1,
         batch_size: 1,
         cell_size: 1,
-        x: rctensor3(&[[[-3f32]]]),
+        x: tensor3(&[[[-3f32]]]).into(),
         w_xh_icfo: arr2(&[[0.0f32, -1.0, 0.0, -6.0], [0.0, 0.0, 0.0, 0.0]]),
         b_icfo: arr1(&[0.0f32, 0.0, 0.0, 0.0]),
         h0: arr2(&[[0.0f32]]),
@@ -267,7 +266,7 @@ fn test_seq() {
         length: 2,
         batch_size: 1,
         cell_size: 1,
-        x: rctensor3(&[[[1f32]], [[2.0]]]),
+        x: tensor3(&[[[1f32]], [[2.0]]]).into(),
         w_xh_icfo: arr2(&[[0.0f32, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]]),
         b_icfo: arr1(&[0.0f32, 0.0, 0.0, 0.0]),
         h0: arr2(&[[0.0f32]]),
@@ -284,7 +283,7 @@ fn test_c0() {
         length: 1,
         batch_size: 1,
         cell_size: 1,
-        x: rctensor3(&[[[-0f32]]]),
+        x: tensor3(&[[[-0f32]]]).into(),
         w_xh_icfo: arr2(&[[0.0f32, -0.0, 0.0, -0.0], [0.0, 0.0, 0.0, 0.0]]),
         b_icfo: arr1(&[0.0f32, 0.0, 0.0, 0.0]),
         h0: arr2(&[[0.0f32]]),
@@ -301,8 +300,8 @@ fn test_b() {
         length: 1,
         batch_size: 1,
         cell_size: 2,
-        x: rctensor3(&[[[0f32, 0.0]]]),
-        w_xh_icfo: Array2::<f32>::zeros((4, 8)),
+        x: tensor3(&[[[0f32, 0.0]]]).into(),
+        w_xh_icfo: Array2::<f32>::zeros((4, 8)).into(),
         b_icfo: arr1(&[0.0f32, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]),
         h0: arr2(&[[0.0f32, 0.0]]),
         c0: arr2(&[[0.0f32, 0.0]]),
@@ -318,7 +317,7 @@ fn test_w() {
         length: 2,
         batch_size: 1,
         cell_size: 2,
-        x: rctensor3(&[[[2.0f32, 1.0]], [[0.0, -3.0]]]),
+        x: tensor3(&[[[2.0f32, 1.0]], [[0.0, -3.0]]]).into(),
         w_xh_icfo: arr2(&[
             [0f32, -2.0, 0.0, 0.0, -2.0, -2.0, -3.0, -3.0],
             [0.0, -3.0, 2.0, 0.0, -2.0, 2.0, 1.0, -3.0],

@@ -34,11 +34,7 @@ impl Gather {
         Ok(output_shape)
     }
 
-    unsafe fn eval_t<T: Datum>(
-        &self,
-        data: Arc<Tensor>,
-        indices: &Arc<Tensor>,
-    ) -> TractResult<Arc<Tensor>> {
+    unsafe fn eval_t<T: Datum>(&self, data: TValue, indices: &TValue) -> TractResult<TValue> {
         let data_view = data.to_array_view_unchecked::<T>();
         let indices = indices.cast_to::<i64>()?;
         if indices.shape().len() == 0 {
@@ -49,7 +45,7 @@ impl Gather {
             let mut tensor =
                 data_view.index_axis(Axis(self.axis), index as usize).to_owned().into_tensor();
             tensor.set_datum_type(data.datum_type());
-            return Ok(tensor.into_arc_tensor());
+            return Ok(tensor.into_tvalue());
         }
 
         let mut output = Tensor::uninitialized_dt(
@@ -70,7 +66,7 @@ impl Gather {
             anyhow::ensure!(index_value < data_view.shape()[self.axis]);
             to_update.assign(&data_view.index_axis(Axis(self.axis), index_value));
         }
-        Ok(output.into_arc_tensor())
+        Ok(output.into_tvalue())
     }
 }
 
@@ -127,7 +123,7 @@ impl EvalOp for Gather {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (data, indices) = args_2!(inputs);
         unsafe {
             Ok(tvec!(dispatch_datum_by_size!(Self::eval_t(data.datum_type())(
@@ -147,7 +143,8 @@ mod tests {
         let gatherer = Gather::new(0);
         for idx in 2..3 {
             let index = Tensor::from(arr0(idx as i64));
-            let outputs = gatherer.eval(tvec![data.clone().into(), index.into()]).unwrap();
+            let outputs =
+                gatherer.eval(tvec![data.clone().into_tvalue(), index.into_tvalue()]).unwrap();
             let output = &outputs[0];
             assert_eq!(output.shape().len(), 0);
             assert_eq!(*output.to_scalar::<i64>().unwrap(), idx + 1);
