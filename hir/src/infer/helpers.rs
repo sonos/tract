@@ -12,11 +12,11 @@ pub fn infer_forward_concrete(
         debug!("Can't infer value: some inputs are still unknown.");
         return Ok(None);
     }
-
+    let input_values = input_values.iter().map(|t| t.clone().into_tvalue()).collect();
     // If we know the value of all the inputs, we can deduce everything.
     if op.is_stateless() {
         let output_value = op.eval(input_values)?.pop().unwrap();
-        return Ok(Some(tvec![output_value.into()]));
+        return Ok(Some(tvec![output_value.into_arc_tensor().into()]));
     }
 
     Ok(None)

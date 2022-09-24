@@ -25,11 +25,11 @@ impl EvalOp for MatMul {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         if inputs[0].rank() != inputs[1].rank() {
             bail!("Rank mismatch {:?} vs {:?}", inputs[0], inputs[1]);
         }
-        Ok(tvec!(eval(&inputs[0], &inputs[1], self.axes)?.into_arc_tensor()))
+        Ok(tvec!(eval(&inputs[0], &inputs[1], self.axes)?.into()))
     }
 }
 
@@ -111,21 +111,22 @@ mod test {
         //
         // 0 1 2     5
         // 3 4 5    14
-        let a = rctensor2(&[[0f32, 1.0, 2.0], [3.0, 4.0, 5.0]]);
-        let b = rctensor2(&[[0f32], [1.0], [2.0]]);
-        let c = rctensor2(&[[5f32], [14.0]]);
+        let a = tensor2(&[[0f32, 1.0, 2.0], [3.0, 4.0, 5.0]]);
+        let b = tensor2(&[[0f32], [1.0], [2.0]]);
+        let c = tensor2(&[[5f32], [14.0]]);
         let op = MatMul::default();
-        let c_found = op.eval(tvec!(a, b)).unwrap().pop().unwrap();
+        let c_found = op.eval(tvec!(a.into(), b.into())).unwrap().pop().unwrap();
         c.close_enough(&c_found, true).unwrap();
     }
 
     #[test]
     fn bin_transpose() {
-        let a = rctensor2(&[[0f32, 1.0, 2.0], [3.0, 4.0, 5.0]]);
-        let b = rctensor2(&[[0f32], [1.0], [2.0]]);
-        let c = rctensor2(&[[5f32], [14.0]]);
+        let a = tensor2(&[[0f32, 1.0, 2.0], [3.0, 4.0, 5.0]]);
+        let b = tensor2(&[[0f32], [1.0], [2.0]]);
+        let c = tensor2(&[[5f32], [14.0]]);
         let op = MatMul { axes: MatMulAxes::default().transposing(true, true, true) };
-        let c_found = op.eval(tvec!(b, a)).unwrap().pop().unwrap();
+        let c_found = op.eval(tvec!(b.into(), a.into())).unwrap().pop().unwrap();
+
         c.close_enough(&c_found, true).unwrap();
     }
 
@@ -149,7 +150,7 @@ mod test {
         let b = b.into_arc_tensor();
         wire = model.wire_node("a", crate::ops::math::add::unary(b), &wire)?;
         model.set_output_outlets(&wire)?;
-        let input = Tensor::zero::<f32>(&input_shape)?;
+        let input = Tensor::zero::<f32>(&input_shape)?.into_tvalue();
         trace!("running mir");
         model.clone().into_runnable()?.run(tvec!(input.clone()))?;
         trace!("running optimized");

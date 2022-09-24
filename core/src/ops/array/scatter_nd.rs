@@ -17,10 +17,10 @@ impl Op for ScatterNd {
 impl ScatterNd {
     unsafe fn eval_t<T: Datum>(
         &self,
-        data: Arc<Tensor>,
+        data: TValue,
         indices: &ArrayViewD<i64>,
-        updates: Arc<Tensor>,
-    ) -> TractResult<Arc<Tensor>> {
+        updates: TValue,
+    ) -> TractResult<TValue> {
         let mut data = data.into_tensor().into_array_unchecked::<T>();
         let updates_view = updates.to_array_view_unchecked::<T>();
         for coords in tract_ndarray::indices(&indices.shape()[..indices.ndim() - 1]) {
@@ -39,7 +39,7 @@ impl ScatterNd {
         }
         let mut tensor = data.into_tensor();
         tensor.set_datum_type(updates.datum_type());
-        Ok(tensor.into_arc_tensor())
+        Ok(tensor.into_tvalue())
     }
 }
 
@@ -56,7 +56,7 @@ impl EvalOp for ScatterNd {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (data, indices, updates) = args_3!(inputs);
         let indices = indices.cast_to::<i64>()?;
         let indices = indices.to_array_view::<i64>()?;

@@ -66,19 +66,69 @@ impl Cost {
     }
 }
 
+#[derive(Clone, PartialEq)]
+pub struct TValue(pub Arc<Tensor>);
+
+impl From<Tensor> for TValue {
+    fn from(t: Tensor) -> Self {
+        t.into_tvalue()
+    }
+}
+
+impl IntoTensor for TValue {
+    fn into_tensor(self) -> Tensor {
+        self.0.into_tensor()
+    }
+}
+
+impl IntoArcTensor for TValue {
+    fn into_arc_tensor(self) -> Arc<Tensor> {
+        self.0
+    }
+}
+
+pub trait IntoTValue {
+    fn into_tvalue(self) -> TValue;
+}
+
+impl<T: IntoArcTensor> IntoTValue for T {
+    fn into_tvalue(self) -> TValue {
+        TValue(self.into_arc_tensor())
+    }
+}
+
+impl std::ops::Deref for TValue {
+    type Target = Arc<Tensor>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::borrow::Borrow<Tensor> for TValue {
+    fn borrow(&self) -> &Tensor {
+        &self.0
+    }
+}
+
+impl std::fmt::Debug for TValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 pub trait OpState: fmt::Debug + Send + dyn_clone::DynClone {
     fn eval(
         &mut self,
         session: &mut SessionState,
         op: &dyn Op,
-        inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>>;
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>>;
 }
 dyn_clone::clone_trait_object!(OpState);
 
 pub trait EvalOp {
     #[allow(unused_variables)]
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         bail!("stateless evaluation not implemented")
     }
 
@@ -331,7 +381,7 @@ pub enum AttrOrInput {
 }
 
 impl AttrOrInput {
-    fn tensor<'t>(&'t self, inputs: &'t [Arc<Tensor>]) -> &'t Arc<Tensor> {
+    fn tensor<'t>(&'t self, inputs: &'t [TValue]) -> &'t Tensor {
         match self {
             AttrOrInput::Attr(t) => t,
             AttrOrInput::Input(slot) => &inputs[*slot],

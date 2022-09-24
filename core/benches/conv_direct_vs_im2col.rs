@@ -71,7 +71,7 @@ impl Problem {
     pub fn bench(&self, b: &mut Bencher, direct: bool) {
         let image = self.image();
         let im2col_plan = self.to_plan(direct);
-        let args = tvec!(image);
+        let args = tvec!(image.into_tvalue());
         b.iter(|| im2col_plan.run(args.clone()).unwrap())
     }
 }
@@ -81,7 +81,7 @@ fn b(c: &mut Criterion, name: &str, pbs: Vec<(usize, Problem)>) {
     for (i, pb) in pbs {
         let image = pb.image();
         let direct_plan = pb.to_plan(false);
-        let args = tvec!(image.clone());
+        let args = tvec!(image.clone().into_tvalue());
         let output = direct_plan.run(args.clone()).unwrap();
         let len = output[0].len();
         let tp = Throughput::Elements(

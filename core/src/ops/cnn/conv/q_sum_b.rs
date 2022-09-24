@@ -28,7 +28,7 @@ impl EvalOp for QSumB {
         self.n.to_usize().is_ok()
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let n = self.n.to_usize()?;
         self.eval(inputs, n)
     }
@@ -50,8 +50,8 @@ impl OpState for QSumBState {
         &mut self,
         session: &mut SessionState,
         op: &dyn Op,
-        inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         let op = op.downcast_ref::<QSumB>().unwrap();
         let n = op.n.eval(&session.resolved_symbols).to_usize()?;
         op.eval(inputs, n)
@@ -69,7 +69,7 @@ impl TypedOp for QSumB {
 }
 
 impl QSumB {
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>, n: usize) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>, n: usize) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let mut shape: TVec<usize> = input.shape().into();
         shape[input.rank() - 1] = n;
@@ -79,7 +79,7 @@ impl QSumB {
             DatumType::U8 => self.eval_t::<u8>(&input, &mut output.view_mut(), n)?,
             dt => bail!("Unsupported input type in quantized operation ({:?})", dt),
         }
-        Ok(tvec!(output.into_arc_tensor()))
+        Ok(tvec!(output.into_tvalue()))
     }
 
     fn eval_t<T: Datum + tract_num_traits::AsPrimitive<i32>>(

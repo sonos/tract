@@ -86,7 +86,7 @@ struct State {
 #[derive(Clone, Debug)]
 struct MutableState {
     position: usize,
-    hidden_state: TVec<Tensor>,
+    hidden_state: TVec<TValue>,
     model_state: TypedSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>,
 }
 
@@ -153,16 +153,16 @@ impl OpState for State {
         &mut self,
         session: &mut SessionState,
         _op: &dyn Op,
-        inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         let State { op, ref mut mutable } = self;
         // initialize state at first pass
         if mutable.hidden_state.len() == 0 {
             for input in &op.input_mapping {
                 if let InputMapping::State { initializer } = input {
                     mutable.hidden_state.push(match initializer {
-                        StateInitializer::FromInput(slot) => (*inputs[*slot]).to_owned(),
-                        StateInitializer::Value(v) => (**v).to_owned(),
+                        StateInitializer::FromInput(slot) => inputs[*slot].clone(),
+                        StateInitializer::Value(v) => (**v).to_owned().into_tvalue(),
                     });
                 }
             }
@@ -209,7 +209,7 @@ impl OpState for State {
             }
             mutable.hidden_state.reverse();
 
-            let iter_inputs: TVec<Tensor> = op
+            let iter_inputs: TVec<TValue> = op
                 .input_mapping
                 .iter()
                 .map(|m| {
@@ -222,9 +222,9 @@ impl OpState for State {
                                 *axis,
                                 i,
                                 *chunk,
-                            )?)
+                            )?.into_tvalue())
                         }
-                        InputMapping::Full { slot } => Some(inputs[*slot].clone().into_tensor()),
+                        InputMapping::Full { slot } => Some(inputs[*slot].clone()),
                     })
                 })
                 .collect::<TractResult<Vec<_>>>()?
@@ -253,12 +253,12 @@ impl OpState for State {
                     }
                 }
                 if mapping.state {
-                    mutable.hidden_state.push(v.into_tensor());
+                    mutable.hidden_state.push(v);
                 }
             }
         }
 
-        Ok(outputs.into_iter().map(Arc::new).collect())
+        Ok(outputs.into_iter().map(|t| t.into_tvalue()).collect())
     }
 }
 

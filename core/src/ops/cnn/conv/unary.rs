@@ -766,7 +766,7 @@ impl EvalOp for ConvUnary {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let mut model = TypedModel::default();
 
         let mut wires: TVec<OutletId> = inputs
@@ -791,8 +791,7 @@ impl EvalOp for ConvUnary {
             }
         };
         model.set_output_outlets(&[wire])?;
-        let plan = SimplePlan::new(model)?;
-        plan.run(inputs.into_iter().map(|t| t.into_tensor()).collect())
+        model.into_runnable()?.run(inputs)
     }
 }
 
@@ -1220,8 +1219,9 @@ mod test {
             rctensor0(0i32),
             rctensor0(1.0f32),
         );
+        let input = input.into_iter().map(IntoTValue::into_tvalue).collect::<TVec<_>>();
         let output = op.eval(input).unwrap();
-        assert_eq!(&*output[0], &tensor4(&[[[[8i32, 12], [20, 24]]]]));
+        assert_eq!(&**output[0], &tensor4(&[[[[8i32, 12], [20, 24]]]]));
     }
 
     #[test]

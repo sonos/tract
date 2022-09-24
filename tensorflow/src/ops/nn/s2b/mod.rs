@@ -19,10 +19,10 @@ pub fn batch_to_space_nd(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box
 }
 
 fn space_to_batch<T: Copy + Datum + Zero>(
-    input: Arc<Tensor>,
+    input: TValue,
     block_shape: &ArrayView1<i32>,
     paddings: &ArrayView2<i32>,
-) -> TractResult<Arc<Tensor>> {
+) -> TractResult<TValue> {
     let mut data = input.into_tensor();
 
     for (ix, pad) in paddings.view().outer_iter().enumerate() {
@@ -62,14 +62,14 @@ fn space_to_batch<T: Copy + Datum + Zero>(
     let data = data.permute_axes(&permuted_axes)?;
     let data = data.into_shape(&final_shape)?;
 
-    Ok(data.into_arc_tensor())
+    Ok(data.into_tvalue())
 }
 
 fn batch_to_space<T: Copy + Datum + Zero>(
-    input: Arc<Tensor>,
+    input: TValue,
     block_shape: &ArrayView1<i32>,
     crops: &ArrayView2<i32>,
-) -> TractResult<Arc<Tensor>> {
+) -> TractResult<TValue> {
     let data = input.into_tensor().into_array()?;
     let input_shape = data.shape().to_vec();
     let crops: ArrayView2<i32> = crops.view().into_dimensionality()?;
@@ -103,7 +103,7 @@ fn batch_to_space<T: Copy + Datum + Zero>(
             data = data.slice_axis(Axis(i + 1), range.into()).map(|x| *x).to_owned();
         }
     }
-    Ok(data.into_arc_tensor())
+    Ok(data.into_tvalue())
 }
 
 #[cfg(test)]
@@ -118,12 +118,12 @@ mod tests {
         assert_eq!(
             SpaceToBatch::new(i32::datum_type())
                 .eval(tvec![
-                    rctensor4(&[[[[1i32], [2]], [[3], [4]]]]),
-                    rctensor1(&[2, 2]),
-                    rctensor2(&[[0, 0], [0, 0]]),
+                    tensor4(&[[[[1i32], [2]], [[3], [4]]]]).into(),
+                    tensor1(&[2, 2]).into(),
+                    tensor2(&[[0, 0], [0, 0]]).into(),
                 ])
                 .unwrap(),
-            tvec![rctensor4(&[[[[1i32]]], [[[2]]], [[[3]]], [[[4]]]])],
+            tvec![tensor4(&[[[[1i32]]], [[[2]]], [[[3]]], [[[4]]]]).into()],
         )
     }
 
@@ -132,12 +132,13 @@ mod tests {
         assert_eq!(
             SpaceToBatch::new(i32::datum_type())
                 .eval(tvec![
-                    rctensor4(&[[[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]]]),
-                    rctensor1(&[2, 2]),
-                    rctensor2(&[[0, 0], [0, 0]]),
+                    tensor4(&[[[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]]]).into(),
+                    tensor1(&[2, 2]).into(),
+                    tensor2(&[[0, 0], [0, 0]]).into(),
                 ])
                 .unwrap(),
-            tvec![rctensor4(&[[[[1i32, 2, 3]]], [[[4, 5, 6]]], [[[7, 8, 9]]], [[[10, 11, 12]]],]),],
+            tvec![tensor4(&[[[[1i32, 2, 3]]], [[[4, 5, 6]]], [[[7, 8, 9]]], [[[10, 11, 12]]],])
+                .into(),],
         )
     }
 
@@ -146,22 +147,24 @@ mod tests {
         assert_eq!(
             SpaceToBatch::new(i32::datum_type())
                 .eval(tvec![
-                    rctensor4(&[[
+                    tensor4(&[[
                         [[1], [2], [3], [4]],
                         [[5], [6], [7], [8]],
                         [[9], [10], [11], [12]],
                         [[13], [14], [15], [16]],
-                    ]]),
-                    rctensor1(&[2, 2]),
-                    rctensor2(&[[0, 0], [0, 0]]),
+                    ]])
+                    .into(),
+                    tensor1(&[2, 2]).into(),
+                    tensor2(&[[0, 0], [0, 0]]).into(),
                 ])
                 .unwrap(),
-            tvec![rctensor4(&[
+            tvec![tensor4(&[
                 [[[1], [3]], [[9], [11]]],
                 [[[2], [4]], [[10], [12]]],
                 [[[5], [7]], [[13], [15]]],
                 [[[6], [8]], [[14], [16]]],
-            ])],
+            ])
+            .into()],
         )
     }
 
@@ -170,15 +173,16 @@ mod tests {
         assert_eq!(
             SpaceToBatch::new(i32::datum_type())
                 .eval(tvec![
-                    rctensor4(&[
+                    tensor4(&[
                         [[[1], [2], [3], [4]], [[5], [6], [7], [8]]],
                         [[[9], [10], [11], [12]], [[13], [14], [15], [16]]],
-                    ]),
-                    rctensor1(&[2, 2]),
-                    rctensor2(&[[0, 0], [2, 0]]),
+                    ])
+                    .into(),
+                    tensor1(&[2, 2]).into(),
+                    tensor2(&[[0, 0], [2, 0]]).into(),
                 ])
                 .unwrap(),
-            tvec![rctensor4(&[
+            tvec![tensor4(&[
                 [[[0], [1], [3]]],
                 [[[0], [9], [11]]],
                 [[[0], [2], [4]]],
@@ -187,7 +191,8 @@ mod tests {
                 [[[0], [13], [15]]],
                 [[[0], [6], [8]]],
                 [[[0], [14], [16]]],
-            ]),],
+            ])
+            .into(),],
         )
     }
 
@@ -217,7 +222,10 @@ mod tests {
 
         let (_, outputs, _) =
             op.infer_facts(tvec!(&data, &block_shape, &paddings), tvec!(&any), tvec!()).unwrap();
-        assert_eq!(outputs[0], f32::fact(dims!(2, (s.to_dim() + s.to_dim() % 2 - 4) / 2, 16)).into());
+        assert_eq!(
+            outputs[0],
+            f32::fact(dims!(2, (s.to_dim() + s.to_dim() % 2 - 4) / 2, 16)).into()
+        );
     }
 
     #[test]
@@ -225,12 +233,12 @@ mod tests {
         assert_eq!(
             BatchToSpace::new(i32::datum_type())
                 .eval(tvec![
-                    rctensor4(&[[[[1]]], [[[2]]], [[[3]]], [[[4]]]]),
-                    rctensor1(&[2, 2]),
-                    rctensor2(&[[0, 0], [0, 0]]),
+                    tensor4(&[[[[1]]], [[[2]]], [[[3]]], [[[4]]]]).into(),
+                    tensor1(&[2, 2]).into(),
+                    tensor2(&[[0, 0], [0, 0]]).into(),
                 ])
                 .unwrap(),
-            tvec![rctensor4(&[[[[1], [2]], [[3], [4]]]])]
+            tvec![tensor4(&[[[[1], [2]], [[3], [4]]]]).into()]
         )
     }
 
@@ -239,12 +247,13 @@ mod tests {
         assert_eq!(
             BatchToSpace::new(i32::datum_type())
                 .eval(tvec![
-                    rctensor4(&[[[[1i32, 2, 3]]], [[[4, 5, 6]]], [[[7, 8, 9]]], [[[10, 11, 12]]],]),
-                    rctensor1(&[2, 2]),
-                    rctensor2(&[[0, 0], [0, 0]]),
+                    tensor4(&[[[[1i32, 2, 3]]], [[[4, 5, 6]]], [[[7, 8, 9]]], [[[10, 11, 12]]],])
+                        .into(),
+                    tensor1(&[2, 2]).into(),
+                    tensor2(&[[0, 0], [0, 0]]).into(),
                 ])
                 .unwrap(),
-            tvec![rctensor4(&[[[[1i32, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]]])]
+            tvec![tensor4(&[[[[1i32, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]]]).into()]
         )
     }
 
@@ -253,22 +262,24 @@ mod tests {
         assert_eq!(
             BatchToSpace::new(i32::datum_type())
                 .eval(tvec![
-                    rctensor4(&[
+                    tensor4(&[
                         [[[1i32], [3]], [[9], [11]]],
                         [[[2], [4]], [[10], [12]]],
                         [[[5], [7]], [[13], [15]]],
                         [[[6], [8]], [[14], [16]]],
-                    ]),
-                    rctensor1(&[2, 2]),
-                    rctensor2(&[[0, 0], [0, 0]]),
+                    ])
+                    .into(),
+                    tensor1(&[2, 2]).into(),
+                    tensor2(&[[0, 0], [0, 0]]).into(),
                 ])
                 .unwrap(),
-            tvec![rctensor4(&[[
+            tvec![tensor4(&[[
                 [[1i32], [2], [3], [4]],
                 [[5], [6], [7], [8]],
                 [[9], [10], [11], [12]],
                 [[13], [14], [15], [16]],
-            ]]),]
+            ]])
+            .into(),]
         )
     }
 
@@ -277,7 +288,7 @@ mod tests {
         assert_eq!(
             BatchToSpace::new(i32::datum_type())
                 .eval(tvec![
-                    rctensor4(&[
+                    tensor4(&[
                         [[[0i32], [1], [3]]],
                         [[[0], [9], [11]]],
                         [[[0], [2], [4]]],
@@ -286,15 +297,17 @@ mod tests {
                         [[[0], [13], [15]]],
                         [[[0], [6], [8]]],
                         [[[0], [14], [16]]],
-                    ]),
-                    rctensor1(&[2, 2]),
-                    rctensor2(&[[0, 0], [2, 0]]),
+                    ])
+                    .into(),
+                    tensor1(&[2, 2]).into(),
+                    tensor2(&[[0, 0], [2, 0]]).into(),
                 ])
                 .unwrap(),
-            tvec![rctensor4(&[
+            tvec![tensor4(&[
                 [[[1], [2], [3], [4]], [[5], [6], [7], [8]]],
                 [[[9], [10], [11], [12]], [[13], [14], [15], [16]]],
-            ]),]
+            ])
+            .into(),]
         )
     }
 }

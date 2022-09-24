@@ -153,15 +153,13 @@ impl EvalOp for DeconvUnary {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let mut model = TypedModel::default();
         let source = model.add_source("source", input.datum_type().fact(input.shape()))?;
         let output = self.wire_with_deconv_sum("adhoc", &mut model, source)?;
-        model.set_output_outlets(&output)?;
-        let output =
-            model.into_runnable()?.run(tvec!(input.into_tensor()))?.remove(0).into_arc_tensor();
-        Ok(tvec!(output))
+        model.set_output_outlets(&*output)?;
+        model.into_runnable()?.run(tvec!(input))
     }
 }
 

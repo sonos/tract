@@ -46,7 +46,7 @@ impl EvalOp for DynSlice {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         unsafe {
             let start =
                 if self.start_input { inputs[1].cast_to_scalar::<i64>()? as usize } else { 0 };
@@ -62,7 +62,7 @@ impl EvalOp for DynSlice {
             shape[self.axis] = end - start;
             let mut tensor = Tensor::uninitialized_dt(inputs[0].datum_type(), &shape)?;
             tensor.assign_slice_unchecked(.., &inputs[0], start..end, self.axis);
-            Ok(tvec!(tensor.into_arc_tensor()))
+            Ok(tvec!(tensor.into_tvalue()))
         }
     }
 }

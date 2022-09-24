@@ -47,7 +47,11 @@ mod test {
         };
         let source = model.add_source("source", fact1.clone()).unwrap();
         model
-            .wire_node("delay", Delay::new_typed(&(&fact1).into(), fact1.axis, delay, overlap), &[source])
+            .wire_node(
+                "delay",
+                Delay::new_typed(&(&fact1).into(), fact1.axis, delay, overlap),
+                &[source],
+            )
             .unwrap();
         model.auto_outputs().unwrap();
 
@@ -59,7 +63,7 @@ mod test {
             let expect: Vec<u8> = (pulse * i..(pulse * (i + 1) + overlap))
                 .map(|i| i.saturating_sub(delay + overlap) as u8)
                 .collect();
-            let output = state.run(tvec!(tensor1(&input))).unwrap();
+            let output = state.run(tvec!(tensor1(&input).into())).unwrap();
             let skip = (delay + overlap).saturating_sub(i * pulse).min(pulse + overlap);
             assert_eq!(&output[0].as_slice::<u8>().unwrap()[skip..], &expect[skip..]);
         }
@@ -103,7 +107,11 @@ mod test {
             .unwrap()[0];
         let fact_1 = model.outlet_fact(delay_1).unwrap().clone();
         let delay_2 = model
-            .wire_node("delay-1", Delay::new_typed(&(&fact_1).into(), fact_1.axis, 2, 0), &[delay_1])
+            .wire_node(
+                "delay-1",
+                Delay::new_typed(&(&fact_1).into(), fact_1.axis, 2, 0),
+                &[delay_1],
+            )
             .unwrap();
         model.set_output_outlets(&delay_2).unwrap();
 
@@ -115,7 +123,7 @@ mod test {
             let expect: Vec<u8> =
                 (pulse * i..(pulse * (i + 1))).map(|i| i.saturating_sub(4) as u8).collect();
             let skip = 4usize.saturating_sub(i * pulse).min(pulse);
-            let output = state.run(tvec!(tensor1(&input))).unwrap();
+            let output = state.run(tvec!(tensor1(&input).into())).unwrap();
             assert_eq!(&output[0].as_slice::<u8>().unwrap()[skip..], &expect[skip..]);
         }
     }

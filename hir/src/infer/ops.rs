@@ -31,11 +31,12 @@ pub trait InferenceOp: Op {
         if self.is_stateless() && infered_inputs.iter().all(|i| i.value.is_concrete()) {
             let input_values = infered_inputs
                 .iter()
-                .map(|i| i.value.concretize().unwrap())
+                .map(|i| i.value.concretize().unwrap().into_tvalue())
                 .collect(); // checked
             match self.eval(input_values) {
                 Ok(values) => {
-                    let output_values = values.into_iter().map(|t| t.into()).collect::<TVec<_>>();
+                    let output_values =
+                        values.into_iter().map(|t| t.into_tensor().into()).collect::<TVec<_>>();
                     return Ok((infered_inputs, output_values, observed));
                 }
                 Err(e) if e.root_cause().downcast_ref::<UndeterminedSymbol>().is_some() => (),

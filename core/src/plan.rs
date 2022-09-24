@@ -8,7 +8,7 @@ use crate::model::{Fact, Graph, OutletId};
 
 #[derive(Default)]
 pub struct SessionState {
-    pub inputs: HashMap<usize, Arc<Tensor>>,
+    pub inputs: HashMap<usize, TValue>,
     pub resolved_symbols: SymbolValues,
     pub tensors: HashMap<String, Tensor>,
     pub cached_mmm_scratch_space: Option<Box<dyn tract_linalg::mmm::ScratchSpace>>,
@@ -110,7 +110,7 @@ where
         })
     }
 
-    pub fn run(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Arc<Tensor>>> {
+    pub fn run(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let mut state = SimpleState::new(self)?;
         state.run(inputs)
     }
@@ -131,7 +131,7 @@ where
     plan: P,
     pub states: Vec<Option<Box<dyn OpState>>>,
     pub session_state: SessionState,
-    pub values: Vec<Option<TVec<Arc<Tensor>>>>,
+    pub values: Vec<Option<TVec<TValue>>>,
     _phantom: PhantomData<(M, F, O)>,
 }
 
@@ -173,40 +173,40 @@ where
         Ok(())
     }
 
-    pub fn run(&mut self, inputs: TVec<Tensor>) -> TractResult<TVec<Arc<Tensor>>> {
+    pub fn run(&mut self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         self.run_plan_with_eval(inputs, self::eval)
     }
 
-    pub fn exec(&mut self) -> TractResult<TVec<Arc<Tensor>>> {
+    pub fn exec(&mut self) -> TractResult<TVec<TValue>> {
         self.exec_plan_with_eval(self::eval)
     }
 
     pub fn run_plan_with_eval<Eval, E>(
         &mut self,
-        inputs: TVec<Tensor>,
+        inputs: TVec<TValue>,
         eval: Eval,
-    ) -> TractResult<TVec<Arc<Tensor>>>
+    ) -> TractResult<TVec<TValue>>
     where
         Eval: for<'a, 'b, 'c> FnMut(
             &'a mut SessionState,
             Option<&'b mut (dyn OpState + 'static)>,
             &'c Node<F, O>,
-            TVec<Arc<Tensor>>,
-        ) -> Result<TVec<Arc<Tensor>>, E>,
+            TVec<TValue>,
+        ) -> Result<TVec<TValue>, E>,
         E: Into<anyhow::Error> + Send + Sync + 'static,
     {
         self.set_inputs(inputs)?;
         self.exec_plan_with_eval(eval)
     }
 
-    pub fn exec_plan_with_eval<Eval, E>(&mut self, mut eval: Eval) -> TractResult<TVec<Arc<Tensor>>>
+    pub fn exec_plan_with_eval<Eval, E>(&mut self, mut eval: Eval) -> TractResult<TVec<TValue>>
     where
         Eval: for<'a, 'b, 'c> FnMut(
             &'a mut SessionState,
             Option<&'b mut (dyn OpState + 'static)>,
             &'c Node<F, O>,
-            TVec<Arc<Tensor>>,
-        ) -> Result<TVec<Arc<Tensor>>, E>,
+            TVec<TValue>,
+        ) -> Result<TVec<TValue>, E>,
         E: Into<anyhow::Error> + Send + Sync + 'static,
     {
         let mut result = tvec!();
@@ -223,7 +223,7 @@ where
             for (step, n) in plan.order.iter().enumerate() {
                 let node = model.node(*n);
                 trace!("Running step {}, node {}", step, node);
-                let mut inputs: TVec<Arc<Tensor>> = tvec![];
+                let mut inputs: TVec<TValue> = tvec![];
                 for i in &node.inputs {
                     trace!("  use input {:?}", i);
                     let prec_node = model.node(i.node);
@@ -314,7 +314,7 @@ where
         Ok(result)
     }
 
-    pub fn set_inputs(&mut self, inputs: TVec<Tensor>) -> TractResult<()> {
+    pub fn set_inputs(&mut self, inputs: TVec<TValue>) -> TractResult<()> {
         ensure!(
             inputs.len() == self.model().inputs.len(),
             "Wrong number of inputs for model. Expected {} got {}",
@@ -335,7 +335,7 @@ where
         }
     }
 
-    pub fn set_input(&mut self, input: usize, t: Tensor) -> TractResult<()> {
+    pub fn set_input(&mut self, input: usize, t: TValue) -> TractResult<()> {
         let outlet: OutletId = *self
             .model()
             .input_outlets()?
@@ -359,7 +359,7 @@ where
         Ok(())
     }
 
-    pub fn take_outputs(&mut self) -> TractResult<Vec<Arc<Tensor>>> {
+    pub fn take_outputs(&mut self) -> TractResult<Vec<TValue>> {
         let SimpleState { ref plan, ref mut values, .. } = self;
         let mut v = vec![];
         for o in plan.borrow().model().output_outlets()?.iter() {
@@ -374,27 +374,27 @@ where
         Ok(v)
     }
 
-    pub fn set_values(&mut self, id: usize, values: TVec<Tensor>) -> TractResult<()> {
-        self.values[id] = Some(values.into_iter().map(|t| t.into()).collect());
+    pub fn set_values(&mut self, id: usize, values: TVec<TValue>) -> TractResult<()> {
+        self.values[id] = Some(values);
         Ok(())
     }
 
-    pub fn set_value(&mut self, id: usize, value: Tensor) -> TractResult<()> {
+    pub fn set_value(&mut self, id: usize, value: TValue) -> TractResult<()> {
         self.set_values(id, tvec!(value))
     }
 
-    pub fn prepare_inputs(&self, node: usize) -> TractResult<TVec<Arc<Tensor>>> {
+    pub fn prepare_inputs(&self, node: usize) -> TractResult<TVec<TValue>> {
         let SimpleState { ref plan, ref values, .. } = self;
         let plan = plan.borrow();
         let nodes = plan.model().nodes();
         let node = &nodes[node];
-        let mut inputs: TVec<Arc<Tensor>> = tvec![];
+        let mut inputs: TVec<TValue> = tvec![];
         for i in &node.inputs {
             let prec_node = &nodes[i.node];
             let prec = values[i.node].as_ref().ok_or_else(|| {
                 format_err!("Computing {}, precursor {} not done.", node, prec_node)
             })?;
-            inputs.push(prec[i.slot].clone().into_tensor().into_arc_tensor())
+            inputs.push(prec[i.slot].clone())
         }
         Ok(inputs)
     }
@@ -407,7 +407,7 @@ where
     pub fn compute_one_with_inputs(
         &mut self,
         node: usize,
-        inputs: TVec<Arc<Tensor>>,
+        inputs: TVec<TValue>,
     ) -> TractResult<()> {
         let SimpleState { ref plan, ref mut session_state, ref mut values, .. } = self;
         let plan = plan.borrow();
@@ -422,7 +422,7 @@ where
         Ok(())
     }
 
-    pub fn compute_recursively(&mut self, node: usize) -> TractResult<&[Arc<Tensor>]> {
+    pub fn compute_recursively(&mut self, node: usize) -> TractResult<&[TValue]> {
         let values = {
             #[allow(clippy::needless_collect)] // clippy bug ?
             let precs: Vec<usize> =
@@ -432,7 +432,7 @@ where
                     let _ = self.compute_recursively(i)?;
                 }
             }
-            let mut inputs: TVec<Arc<Tensor>> = tvec![];
+            let mut inputs: TVec<TValue> = tvec![];
             {
                 let node = &self.model().nodes()[node];
                 for i in &node.inputs {
@@ -463,7 +463,7 @@ where
             .take()
             .ok_or_else(|| format_err!("Node is not computed"))?
             .into_iter()
-            .map(|v| Arc::try_unwrap(v).unwrap_or_else(|v| (*v).clone()))
+            .map(|v| Arc::try_unwrap(v.0).unwrap_or_else(|v| (*v).clone()))
             .collect())
     }
 
@@ -480,8 +480,8 @@ pub fn eval<F, O>(
     session_state: &mut SessionState,
     mut state: Option<&mut (dyn OpState + 'static)>,
     node: &Node<F, O>,
-    input: TVec<Arc<Tensor>>,
-) -> TractResult<TVec<Arc<Tensor>>>
+    input: TVec<TValue>,
+) -> TractResult<TVec<TValue>>
 where
     F: Fact + Hash + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,

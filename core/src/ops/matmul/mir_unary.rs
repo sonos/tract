@@ -29,9 +29,9 @@ impl EvalOp for MatMulUnary {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let t = eval(&self.a, &inputs[0], self.axes)?;
-        Ok(tvec!(t.into_arc_tensor()))
+        Ok(tvec!(t.into()))
     }
 }
 
@@ -385,7 +385,7 @@ pub(super) fn mir_unary_invariants(
     Ok(axes)
 }
 
-#[allow(clippy::type_repetition_in_bounds,clippy::type_complexity)]
+#[allow(clippy::type_repetition_in_bounds, clippy::type_complexity)]
 pub(super) fn mir_unary_change_axes(
     model: &TypedModel,
     node: &TypedNode,

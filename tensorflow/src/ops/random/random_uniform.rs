@@ -51,7 +51,7 @@ impl EvalOp for RandomUniform {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let shape: TVec<usize> =
             inputs[0].cast_to::<i64>()?.as_slice::<i64>()?.iter().map(|&x| x as usize).collect();
         match self.t {
@@ -135,7 +135,7 @@ impl EvalOp for TypedRandomUniform {
         true
     }
 
-    fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, _inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let shape = self.shape.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<_>>>()?;
         match self.t {
             DatumType::F32 => Ok(tvec!(make_f32(&shape, self.seed1, self.seed2)?)),
@@ -152,7 +152,7 @@ impl TypedOp for TypedRandomUniform {
     as_op!();
 }
 
-pub fn make_f32(shape: &[usize], seed1: u64, seed2: u64) -> TractResult<Arc<Tensor>> {
+pub fn make_f32(shape: &[usize], seed1: u64, seed2: u64) -> TractResult<TValue> {
     let mut rng = Philox4x32x10::weird_tf_constructor(seed1, seed2).u32_iter();
     unsafe {
         let mut tensor = Tensor::uninitialized::<f32>(shape)?;
@@ -162,7 +162,7 @@ pub fn make_f32(shape: &[usize], seed1: u64, seed2: u64) -> TractResult<Arc<Tens
             let f = exp << 23 | mantissa;
             *x = f32::from_bits(f) - 1.0
         });
-        Ok(tensor.into_arc_tensor())
+        Ok(tensor.into_tvalue())
     }
 }
 
@@ -176,7 +176,7 @@ pub struct RandomUniformInt {
 impl_dyn_hash!(RandomUniformInt);
 
 impl RandomUniformInt {
-    pub fn make_i32(&self, shape: &[usize], lo: i32, hi: i32) -> TractResult<Arc<Tensor>> {
+    pub fn make_i32(&self, shape: &[usize], lo: i32, hi: i32) -> TractResult<TValue> {
         let mut rng = Philox4x32x10::weird_tf_constructor(self.seed1, self.seed2).u32_iter();
         unsafe {
             let mut tensor = Tensor::uninitialized::<i32>(shape)?;
@@ -186,7 +186,7 @@ impl RandomUniformInt {
                 let hi = hi as u32;
                 *x = (lo + rng.next().unwrap() % (hi - lo)) as i32;
             });
-            Ok(tensor.into_arc_tensor())
+            Ok(tensor.into_tvalue())
         }
     }
 }
@@ -212,7 +212,7 @@ impl EvalOp for RandomUniformInt {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let shape: TVec<usize> =
             inputs[0].cast_to::<i64>()?.as_slice::<i64>()?.iter().map(|&x| x as usize).collect();
         match self.t {

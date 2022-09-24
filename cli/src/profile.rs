@@ -58,7 +58,14 @@ pub fn profile(
                         let inner_plan = SimplePlan::new(inner_model)?;
                         let mut state = SimpleState::new(inner_plan)?;
                         let _ = state.run_plan_with_eval(
+<<<<<<< HEAD
                             make_inputs_for_model(inner_model)?,
+=======
+                            crate::tensor::make_inputs_for_model(inner_model)?
+                                .iter()
+                                .map(|t| t.clone().into_tvalue())
+                                .collect(),
+>>>>>>> ef1567973 (first pass, eval())
                             |session_state, state, node, input| {
                                 let start = Instant::now();
                                 let r = tract_core::plan::eval(session_state, state, node, input);

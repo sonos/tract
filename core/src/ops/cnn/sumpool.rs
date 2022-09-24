@@ -34,7 +34,7 @@ impl EvalOp for SumPool {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let shape: TVec<TDim> = inputs[0].shape().iter().map(|d| d.to_dim()).collect();
         self.to_lir(&shape)?.eval(inputs)
     }
@@ -90,7 +90,7 @@ impl EvalOp for LirSumPool {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let geo = self.geometry.to_concrete(input.shape())?;
         let values = if input.datum_type().is_float() {
@@ -111,7 +111,7 @@ impl EvalOp for LirSumPool {
             values.cast_to_dt(input.datum_type())?.into_owned()
         };
 
-        Ok(tvec!(values.into_arc_tensor()))
+        Ok(tvec!(values.into_tvalue()))
     }
 }
 

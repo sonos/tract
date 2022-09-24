@@ -8,8 +8,8 @@ impl OpState for SourceState {
         &mut self,
         session: &mut SessionState,
         _op: &dyn Op,
-        _inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
+        _inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         Ok(tvec!(session
             .inputs
             .get(&self.0)

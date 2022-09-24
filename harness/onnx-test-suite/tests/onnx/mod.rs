@@ -190,6 +190,7 @@ where
     let plan = SimplePlan::new(&model).unwrap();
     let expected = load_half_dataset("output", data_path);
     trace!("Loaded output asserts: {:?}", expected);
+    let inputs = inputs.into_iter().map(|t| t.into_tvalue()).collect();
     let computed = plan.run(inputs).unwrap();
     if computed.len() != expected.len() {
         panic!(

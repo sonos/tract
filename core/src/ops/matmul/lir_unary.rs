@@ -34,7 +34,7 @@ impl ProtoFusedSpec {
 
     pub fn resolve<'t>(
         &'t self,
-        inputs: &'t [Arc<Tensor>],
+        inputs: &'t [TValue],
         prefix: &[usize],
         output: OutputStore,
     ) -> FusedSpec<'t> {
@@ -147,8 +147,8 @@ impl OpState for State {
         &mut self,
         session: &mut SessionState,
         op: &dyn Op,
-        inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         let op = op.downcast_ref::<LirMatMulUnary>().unwrap();
         let shape = op.c_fact.shape.eval_to_usize(&session.resolved_symbols)?;
         let final_shape = op.c_final_shape.eval_to_usize(&session.resolved_symbols)?;
@@ -192,7 +192,7 @@ impl EvalOp for LirMatMulUnary {
         Ok(Some(Box::new(State)))
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let geometry = self.geometry.to_concrete(&SymbolValues::default())?;
         let mut scratch = unsafe { self.mmm.allocate_scratch_space() };
         eval(
@@ -213,13 +213,12 @@ fn eval(
     op: &LirMatMulUnary,
     geometry: &ConcreteMatMulGeometry,
     scratch: &mut dyn ScratchSpace,
-    inputs: &[Arc<Tensor>],
+    inputs: &[TValue],
     c_shape: &[usize],
     c_m_axis: usize,
     c_n_axis: usize,
     c_final_shape: &[usize],
-) -> TractResult<TVec<Arc<Tensor>>> {
-    //    dbg!(op);
+) -> TractResult<TVec<TValue>> {
     unsafe {
         debug_assert!(op.micro_ops.len() > 0);
         let size_of_a = (*op.micro_ops.as_ptr()).0.datum_type().size_of();
@@ -273,7 +272,7 @@ fn eval(
             op.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch, &f)?;
         }
         c.set_shape_unchecked(c_final_shape);
-        Ok(tvec!(c.into_arc_tensor()))
+        Ok(tvec!(c.into_tvalue()))
     }
 }
 

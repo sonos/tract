@@ -42,7 +42,7 @@ fn proptest_regular_against_pulse(
     }
     let runnable = concrete.into_runnable().unwrap();
     // dbg!(&runnable);
-    let outputs = runnable.run(tvec!(input_array.clone().into_tensor())).unwrap();
+    let outputs = runnable.run(tvec!(input_array.clone().into_tvalue())).unwrap();
 
     debug!("Build pulsing model");
     // dbg!(&model);
@@ -89,7 +89,7 @@ fn proptest_regular_against_pulse(
                 .ok()
                 .map(|n| n.max(0) as usize);
         }
-        let mut outputs = state.run(tvec!(Tensor::from(chunk.to_owned()))).unwrap();
+        let mut outputs = state.run(tvec!(chunk.into_tensor().into_tvalue())).unwrap();
         got = concatenate(
             Axis(output_stream_axis),
             &[got.view(), outputs.remove(0).to_array_view::<f32>().unwrap()],

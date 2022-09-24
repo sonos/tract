@@ -67,7 +67,7 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> TractResult<()> {
                 .with_output_outlets(&[decl_outlet])?
                 .concretize_dims(&SymbolValues::default().with(&stream_symbol, stream_dim as _))?
                 .into_runnable()?
-                .run(tvec!(fixed_input.clone()))?
+                .run(tvec!(fixed_input.clone().into_tvalue()))?
                 .remove(output_slot);
             let fixed_output_len = fixed_result.shape()[output_axis];
 
@@ -96,7 +96,8 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> TractResult<()> {
                     state.session_state.resolved_symbols[&stream_symbol] = Some(stream_dim as _);
                 };
 
-                let output = state.run(tvec!(pulsed_input.into()))?.remove(output_slot);
+                let output =
+                    state.run(tvec!(pulsed_input.into_tensor().into()))?.remove(output_slot);
 
                 let output_offset = i * output_pulse;
                 let (f_o, p_o, count) = if output_offset + output_pulse <= delay {

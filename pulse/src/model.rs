@@ -159,7 +159,7 @@ impl EvalOp for PulseWrappingOp {
         self.0.is_stateless()
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         self.0.eval(inputs)
     }
 
