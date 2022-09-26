@@ -371,7 +371,9 @@ where
 {
     let b = b.as_();
     let scaler = Scaler::new(a, RoundingPolicy::Even);
-    let new_product = scaler.mult.map(|it| (it >> 16) as f32 * 2f32.powi(-15)).unwrap_or(1.0)
+
+    // This new product interprets the multiplier with 16bits precision
+    let new_product = scaler.mult.map(|it| (it >> 15) as f32 * 2f32.powi(-16)).unwrap_or(1.0)
         * 2f32.powi(-scaler.shift as i32)
         * b;
     round_ties_to_even(new_product).as_()
