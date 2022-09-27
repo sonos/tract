@@ -6,8 +6,6 @@ use tract_linalg::lut::Lut;
 use tract_linalg::mmm::RoundingPolicy;
 use tract_linalg::Scaler;
 
-use super::math::round_ties_to_even;
-
 pub fn quantize_linear_f32_u8(x: f32, scale: f32, zero_point: i32) -> u8 {
     (((x * scale).round() as i32) + zero_point as i32)
         .max(u8::min_value() as i32)
@@ -290,9 +288,9 @@ impl crate::ops::binary::BinMiniOp for Scale {
 
     fn eval_uniform_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
         let a = a.to_scalar::<f32>()?;
-        unsafe fn eval_in_place_t<T: Datum + AsPrimitive<f32>>(a: f32, b: &mut Tensor)
+        unsafe fn eval_in_place_t<T: Datum + AsPrimitive<i32>>(a: f32, b: &mut Tensor)
         where
-            f32: AsPrimitive<T>,
+            i32: AsPrimitive<T>,
         {
             b.as_slice_mut_unchecked::<T>().iter_mut().for_each(|x| *x = scale_by(*x, a));
         }
@@ -302,11 +300,11 @@ impl crate::ops::binary::BinMiniOp for Scale {
 
     fn eval_unicast_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
         let a = a.to_array_view::<f32>()?;
-        unsafe fn eval_in_place_t<T: Datum + AsPrimitive<f32>>(
+        unsafe fn eval_in_place_t<T: Datum + AsPrimitive<i32>>(
             a: &ndarray::ArrayViewD<f32>,
             b: &mut Tensor,
         ) where
-            f32: AsPrimitive<T>,
+            i32: AsPrimitive<T>,
         {
             let mut b = b.to_array_view_mut_unchecked::<T>();
             ndarray::Zip::from(&mut b).and_broadcast(a).for_each(|b, a| *b = scale_by(*b, *a))
@@ -317,12 +315,12 @@ impl crate::ops::binary::BinMiniOp for Scale {
 
     fn eval_out_of_place(&self, c: &mut Tensor, a: &Tensor, b: &Tensor) -> TractResult<()> {
         let a = a.to_array_view::<f32>()?;
-        unsafe fn eval_out_of_place_t<T: Datum + AsPrimitive<f32>>(
+        unsafe fn eval_out_of_place_t<T: Datum + AsPrimitive<i32>>(
             c: &mut Tensor,
             a: &ndarray::ArrayViewD<f32>,
             b: &Tensor,
         ) where
-            f32: AsPrimitive<T>,
+            i32: AsPrimitive<T>,
         {
             let b = b.to_array_view_unchecked::<T>();
             let mut c = c.to_array_view_mut_unchecked::<T>();
@@ -365,9 +363,9 @@ impl crate::ops::binary::BinMiniOp for Scale {
 }
 
 #[inline]
-pub(crate) fn scale_by<T: Datum + AsPrimitive<f32>>(b: T, a: f32) -> T
+pub(crate) fn scale_by<T: Datum + AsPrimitive<i32>>(b: T, a: f32) -> T
 where
-    f32: AsPrimitive<T>,
+    i32: AsPrimitive<T>,
 {
     let b = b.as_();
     let scaler = Scaler::new(a, RoundingPolicy::Even);
