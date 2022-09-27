@@ -43,7 +43,7 @@ pub enum FusedSpec<'t> {
     BinPerCol(&'t Tensor, BinOp),
     AddRowColProducts(&'t Tensor, &'t Tensor),
     AddUnicast(OutputStore),
-    QScale(isize, RoundingPolicy, i32),
+    QScale(isize, RoundingPolicy, i32), // TODO:Change this to u16 (u16 not working as expected in assembly)
     RoundingShiftRight(usize, RoundingPolicy),
     ShiftLeft(usize),
     Store(OutputStore),
