@@ -88,7 +88,7 @@ impl EvalOp for GatherNd {
 
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (data, indices) = args_2!(inputs);
-        let shape = self.compute_shape(&data.shape(), &indices.shape())?;
+        let shape = self.compute_shape(data.shape(), indices.shape())?;
         let indices = indices.cast_to::<i32>()?;
         let indices = indices.to_array_view::<i32>()?;
         unsafe {

@@ -31,7 +31,7 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> CliResult<()> {
     let annotations = crate::annotations::Annotations::from_model(&*params.tract_model)?
         .with_graph_def(&*params.tract_model, &params.graph)?;
 
-    let eval_order = ::tract_core::model::eval_order(&decl)?;
+    let eval_order = ::tract_core::model::eval_order(decl)?;
 
     for &decl_node in eval_order.iter() {
         let pulsed_node = match pulsed.node_by_name(&*decl.node(decl_node).name) {

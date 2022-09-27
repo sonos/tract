@@ -8,7 +8,7 @@ pub use arm64simd::*;
 use crate::Ops;
 
 use crate::frame::mmm::kernel::MatMatMulKer;
-use crate::frame::ElementWiseImpl;
+use crate::frame::element_wise::ElementWiseKer;
 
 lazy_static::lazy_static! {
     static ref KIND: Kind = Kind::choose();
@@ -41,6 +41,7 @@ pub fn has_fp16() -> bool {
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 enum Kind {
     Generic,
+    AppleM,
     CortexA53,
     CortexA55,
     CortexA72,
@@ -51,7 +52,7 @@ enum Kind {
 impl Kind {
     fn has_fp16(&self) -> bool {
         match self {
-            Kind::CortexA55 | Kind::CortexA75 => true,
+            Kind::CortexA55 | Kind::CortexA75 | Kind::AppleM => true,
             _ => false,
         }
     }
@@ -70,25 +71,34 @@ impl Kind {
                 Kind::CortexA73
             } else if kind.contains("a75") {
                 Kind::CortexA75
+            } else if kind.contains("applem") {
+                Kind::AppleM
             } else {
                 Kind::Generic
             }
         } else {
-            let part = if let Ok(part) = std::env::var("TRACT_CPU_AARCH64_OVERRIDE_CPU_PART") {
-                log::info!("CPU part forced with TRACT_CPU_AARCH64_OVERRIDE_CPU_PART: {}", part);
-                part
+            if cfg!(target_os = "macos") {
+                Kind::AppleM
             } else {
-                let part = max_cpuid().unwrap_or("0x00".to_string());
-                log::info!("CPU part auto detected: {}", part);
-                part
-            };
-            match &*part {
-                PART_A53 => Kind::CortexA53,
-                PART_A55 => Kind::CortexA55,
-                PART_A72 => Kind::CortexA72,
-                PART_A73 => Kind::CortexA73,
-                PART_A75 => Kind::CortexA75,
-                _ => Kind::Generic,
+                let part = if let Ok(part) = std::env::var("TRACT_CPU_AARCH64_OVERRIDE_CPU_PART") {
+                    log::info!(
+                        "CPU part forced with TRACT_CPU_AARCH64_OVERRIDE_CPU_PART: {}",
+                        part
+                    );
+                    part
+                } else {
+                    let part = max_cpuid().unwrap_or("0x00".to_string());
+                    log::info!("CPU part auto detected: {}", part);
+                    part
+                };
+                match &*part {
+                    PART_A53 => Kind::CortexA53,
+                    PART_A55 => Kind::CortexA55,
+                    PART_A72 => Kind::CortexA72,
+                    PART_A73 => Kind::CortexA73,
+                    PART_A75 => Kind::CortexA75,
+                    _ => Kind::Generic,
+                }
             }
         };
         log::info!("CPU optimisation: {:?}", kind);
@@ -120,8 +130,6 @@ pub fn plug(ops: &mut Ops) {
         Kind::CortexA55 => Box::new(|_, _| arm64simd_mmm_f32_64x1_a55::mmm()),
         _ => Box::new(|_, _| arm64simd_mmm_f32_64x1_gen::mmm()),
     };
-    ops.sigmoid_f32 = Box::new(|| Box::new(ElementWiseImpl::<SigmoidF32x4n, f32>::new()));
-    ops.tanh_f32 = Box::new(|| Box::new(ElementWiseImpl::<TanhF32x4n, f32>::new()));
     let model = match *KIND {
         Kind::CortexA53 => Some(cortex_a53::model()),
         Kind::CortexA55 => Some(cortex_a55::model()),
@@ -130,15 +138,33 @@ pub fn plug(ops: &mut Ops) {
     if let Some(model) = model {
         ops.mmm_f32 = Box::new(move |m, k, n| model.pick(&impls, m, k, n));
     }
-    if *KIND == Kind::CortexA55 {
-        ops.mmm_f16 = Box::new(|_, _, n| {
-            use tract_data::internal::DimLike;
-            if n.unwrap_or(1024).divceil(4) * 4 < n.unwrap_or(1024).divceil(8) * 8 {
-                arm64fp16_mmm_f16_32x4_a55::mmm()
-            } else {
-                arm64fp16_mmm_f16_16x8_a55::mmm()
-            }
-        });
-        ops.mmv_f16 = Box::new(|_, _| arm64fp16_mmm_f16_128x1_a55::mmm());
+    if has_fp16() {
+        if *KIND == Kind::CortexA55 {
+            ops.mmm_f16 = Box::new(|_, _, n| {
+                use tract_data::internal::DimLike;
+                if n.unwrap_or(1024).divceil(4) * 4 < n.unwrap_or(1024).divceil(8) * 8 {
+                    arm64fp16_mmm_f16_32x4_a55::mmm()
+                } else {
+                    arm64fp16_mmm_f16_16x8_a55::mmm()
+                }
+            });
+            ops.mmv_f16 = Box::new(|_, _| arm64fp16_mmm_f16_128x1_a55::mmm());
+        } else {
+            ops.mmm_f16 = Box::new(|_, _, n| {
+                use tract_data::internal::DimLike;
+                if n.unwrap_or(1024).divceil(4) * 4 < n.unwrap_or(1024).divceil(8) * 8 {
+                    arm64fp16_mmm_f16_32x4_gen::mmm()
+                } else {
+                    arm64fp16_mmm_f16_16x8_gen::mmm()
+                }
+            });
+            ops.mmv_f16 = Box::new(|_, _| arm64fp16_mmm_f16_128x1_gen::mmm());
+        }
+    }
+    ops.sigmoid_f32 = Box::new(|| arm64simd_sigmoid_f32_4n::ew());
+    ops.tanh_f32 = Box::new(|| arm64simd_tanh_f32_4n::ew());
+    if has_fp16() {
+        ops.tanh_f16 = Box::new(|| arm64fp16_tanh_f16_8n::ew());
+        ops.sigmoid_f16 = Box::new(|| arm64fp16_sigmoid_f16_8n::ew());
     }
 }

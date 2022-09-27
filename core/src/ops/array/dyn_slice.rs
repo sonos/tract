@@ -1,7 +1,7 @@
 use crate::internal::*;
 use crate::num_traits::Zero;
 
-#[derive(Debug, Clone, Default, PartialEq, Hash)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
 pub struct DynSlice {
     pub axis: usize,
     pub start_input: bool,
@@ -60,7 +60,7 @@ impl EvalOp for DynSlice {
                 inputs[0].shape()[self.axis]
             };
             if start >= end {
-                bail!("Invalid range {}-{}", start, end );
+                bail!("Invalid range {}-{}", start, end);
             }
             let mut shape: TVec<_> = inputs[0].shape().into();
             shape[self.axis] = end - start;
@@ -83,10 +83,8 @@ impl TypedOp for DynSlice {
         inputs: &[&TypedFact],
         _outputs: &[&TypedFact],
     ) -> TractResult<Invariants> {
-        let axes = (0..inputs[0].rank())
-            .filter(|&ax| self.axis != ax)
-            .map(|axis| AxisInfo::simple(axis))
-            .collect();
+        let axes =
+            (0..inputs[0].rank()).filter(|&ax| self.axis != ax).map(AxisInfo::simple).collect();
         Ok(axes)
     }
 
@@ -159,10 +157,16 @@ impl TypedOp for DynSlice {
                 .op()
                 .as_typed()
                 .unwrap()
-                .slice_output(model, &prec, patch, &suffix, node.inputs[0].slot, axis, start, end)?
+                .slice_output(model, prec, patch, &suffix, node.inputs[0].slot, axis, start, end)?
                 .map(|(w, no_slice_op)| {
-                    Ok((patch.wire_node(format!("{}.{}", node.name, &suffix), self.clone(), &[w])?
-                        [0], no_slice_op))
+                    Ok((
+                        patch.wire_node(
+                            format!("{}.{}", node.name, &suffix),
+                            self.clone(),
+                            &[w],
+                        )?[0],
+                        no_slice_op,
+                    ))
                 })
                 .transpose();
         }

@@ -62,10 +62,12 @@ do
         fi
         cmd="$TRACT_RUN \
             $MODEL \
-            --input-bundle $tc/io.npz \
+            --input-facts-from-bundle $tc/io.npz \
+            --onnx-ignore-output-shapes \
             $options \
             $opti \
             run \
+            --input-from-bundle $tc/io.npz \
             --assert-output-bundle $tc/io.npz"
 
         if $($cmd 2> /dev/null > /dev/null)

@@ -3,8 +3,7 @@ use std::marker::PhantomData;
 use std::ops::Range;
 use tract_data::internal::*;
 
-#[derive(Clone, Debug, Eq, PartialEq, Educe)]
-#[educe(Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Packer {
     pub r: usize,
     alignment: usize,
@@ -32,7 +31,8 @@ impl Packer {
         (k + self.end_padding_record) * self.r
     }
 
-    pub unsafe fn pack_t<'p, 'i, T: Datum + Copy>(
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn pack_t<T: Datum + Copy>(
         &self,
         pb: *mut T,
         b: *const T,
@@ -43,7 +43,7 @@ impl Packer {
         mn_range: Range<usize>,
     ) {
         if self.r == 1 && k_stride == 1 && mn == 1 {
-            pb.copy_from_nonoverlapping(b.offset(k_range.start as isize), k_range.len())
+            pb.copy_from_nonoverlapping(b.add(k_range.start), k_range.len())
         } else if mn_stride == 1 {
             let size_of = T::datum_type().size_of();
             let rbytes = self.r * size_of;
@@ -307,7 +307,7 @@ where
         unsafe {
             *self.ptr = t;
             self.remain_on_k -= 1;
-            self.ptr = self.ptr.offset(self.panel_width as isize);
+            self.ptr = self.ptr.add(self.panel_width);
             if self.remain_on_k == 0 {
                 self.remain_on_k = self.k;
                 self.remain_on_mn -= 1;
@@ -339,13 +339,13 @@ unsafe fn pack_mn_major<Chunk: Copy>(
     let full_panes = mn_range_bytes.len() / mnr;
     let partial_pane = mn_range_bytes.len() % mnr;
     for k in 0..k_range.len() {
-        let mut p_row = packed.offset((k * mnr) as isize);
+        let mut p_row = packed.add(k * mnr);
         let mut b_row =
             b.offset((k_range.start + k) as isize * k_stride_bytes + mn_range_bytes.start as isize);
         for _ in 0..full_panes {
             p_row.copy_from_nonoverlapping(b_row, mnr);
-            p_row = p_row.offset((k_range.len() * mnr) as isize);
-            b_row = b_row.offset(mnr as isize);
+            p_row = p_row.add(k_range.len() * mnr);
+            b_row = b_row.add(mnr);
         }
         if partial_pane > 0 {
             p_row.copy_from_nonoverlapping(b_row, partial_pane);

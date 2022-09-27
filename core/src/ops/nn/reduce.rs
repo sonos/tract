@@ -36,7 +36,7 @@ macro_rules! r {
     }
 }
 
-#[derive(Clone, Copy, Debug, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum Reducer {
     ArgMax(bool), // take last
     ArgMin(bool),
@@ -57,42 +57,48 @@ impl Reducer {
             .map(|(ax, &d)| if axes.contains(&ax) { 1 } else { d })
             .collect();
         let (zp, scale) = input.datum_type().zp_scale();
-        Ok(unsafe {
-            match self {
+        unsafe {
+            let mut t = match self {
                 ArgMax(last) => {
-                    r!(Self::reduce_t(dt)(self, axes, &output_shape, &input, argmax_t, *last))
+                    r!(Self::reduce_t(dt)(self, axes, &output_shape, input, argmax_t, *last))
                 }
                 ArgMin(last) => {
-                    r!(Self::reduce_t(dt)(self, axes, &output_shape, &input, argmin_t, *last))
+                    r!(Self::reduce_t(dt)(self, axes, &output_shape, input, argmin_t, *last))
                 }
-                Min => r!(Self::reduce_t(dt)(self, axes, &output_shape, &input, min_t, ())),
-                Max => r!(Self::reduce_t(dt)(self, axes, &output_shape, &input, max_t, ())),
+                Min => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, min_t, ())),
+                Max => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, max_t, ())),
                 Prod => {
-                    r!(Self::reduce_t(dt)(self, axes, &output_shape, &input, prod_t, ()); Self::reduce_t(self, axes, &output_shape, &input, q_prod_t, (zp, scale)))
+                    r!(Self::reduce_t(dt)(self, axes, &output_shape, input, prod_t, ()); Self::reduce_t(self, axes, &output_shape, input, q_prod_t, (zp, scale)))
                 }
                 Sum => {
                     if dt.is_float() {
-                        dispatch_floatlike!(Self::sum(dt)(self, axes, &input))
+                        dispatch_floatlike!(Self::sum(dt)(self, axes, input))
                     } else {
                         r!(Self::reduce_t(dt)(
                             self,
                             axes,
                             &output_shape,
-                            &input,
+                            input,
                             q_sum_t,
                             (zp, scale)
                         ))
                     }
                 }
+            };
+            if input.datum_type().is_quantized()
+                && input.datum_type().unquantized() == t.datum_type().unquantized()
+            {
+                t.set_datum_type(input.datum_type());
             }
-        })
+            Ok(t)
+        }
     }
 
     unsafe fn reduce_t<T, TO, F, A>(
         &self,
         axes: &[usize],
         output_shape: &[usize],
-        input: &Tensor,
+        input_tensor: &Tensor,
         f: F,
         args: A,
     ) -> Tensor
@@ -103,7 +109,7 @@ impl Reducer {
         A: Copy,
     {
         use ndarray::*;
-        let input = input.to_array_view_unchecked::<T>();
+        let input = input_tensor.to_array_view_unchecked::<T>();
         let result = Array::from_shape_fn(output_shape, |coords| {
             let slice_spec: Vec<SliceInfoElem> = coords
                 .slice()
@@ -156,18 +162,18 @@ impl Reducer {
                     let first: *const T = &current_input[coords];
                     let mut sum = T::zero();
                     for i in 0..reduced_dim {
-                        sum = sum + *(first.offset((i * input_stride) as isize));
+                        sum = sum + *(first.add(i * input_stride));
                     }
                     sum
                 })
             };
             output = Some(current_output);
         }
-        return output.unwrap().into_tensor();
+        output.unwrap().into_tensor()
     }
 }
 
-fn argmax_t<'a, T>(v: ArrayViewD<'a, T>, last: bool) -> i64
+fn argmax_t<T>(v: ArrayViewD<T>, last: bool) -> i64
 where
     T: Copy + Datum + num_traits::Bounded + ::std::cmp::PartialOrd,
 {
@@ -181,7 +187,7 @@ where
         .0 as i64
 }
 
-fn argmin_t<'a, T>(v: ArrayViewD<'a, T>, last: bool) -> i64
+fn argmin_t<T>(v: ArrayViewD<T>, last: bool) -> i64
 where
     T: Copy + Datum + num_traits::Bounded + ::std::cmp::PartialOrd,
 {
@@ -195,28 +201,28 @@ where
         .0 as i64
 }
 
-fn max_t<'a, T>(v: ArrayViewD<'a, T>, _: ()) -> T
+fn max_t<T>(v: ArrayViewD<T>, _: ()) -> T
 where
     T: Copy + Datum + num_traits::Bounded + ::std::cmp::PartialOrd,
 {
     v.fold(T::min_value(), |acc, &v| if acc > v { acc } else { v })
 }
 
-fn min_t<'a, T>(v: ArrayViewD<'a, T>, _: ()) -> T
+fn min_t<T>(v: ArrayViewD<T>, _: ()) -> T
 where
     T: Copy + Datum + num_traits::Bounded + ::std::cmp::PartialOrd,
 {
     v.fold(T::max_value(), |acc, &v| if acc < v { acc } else { v })
 }
 
-fn prod_t<'a, T>(v: ArrayViewD<'a, T>, _: ()) -> T
+fn prod_t<T>(v: ArrayViewD<T>, _: ()) -> T
 where
     T: Copy + Datum + num_traits::One,
 {
     v.fold(T::one(), |acc, &v| acc * v)
 }
 
-fn q_prod_t<'a, T>(v: ArrayViewD<'a, T>, zp_scale: (i32, f32)) -> T
+fn q_prod_t<T>(v: ArrayViewD<T>, zp_scale: (i32, f32)) -> T
 where
     T: Copy + num_traits::AsPrimitive<f32> + Bounded + Datum,
     f32: num_traits::AsPrimitive<T>,
@@ -227,7 +233,7 @@ where
         .clamp_cast()
 }
 
-fn q_sum_t<'a, T>(v: ArrayViewD<'a, T>, zp_scale: (i32, f32)) -> T
+fn q_sum_t<T>(v: ArrayViewD<T>, zp_scale: (i32, f32)) -> T
 where
     T: Copy + Bounded + num_traits::AsPrimitive<i32> + Datum,
     i32: num_traits::AsPrimitive<T>,
@@ -290,7 +296,7 @@ impl TypedOp for Reduce {
     ) -> TractResult<Invariants> {
         let axes = (0..inputs[0].rank())
             .filter(|axis| !self.axes.contains(axis))
-            .map(|axis| AxisInfo::simple(axis))
+            .map(AxisInfo::simple)
             .collect::<TVec<_>>();
         Ok(axes.into())
     }

@@ -32,26 +32,11 @@ impl Expansion for EinSum {
         model: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let mut ellipsis_rank = 0;
-        for (input_id, input) in inputs.iter().enumerate() {
-            let actual_rank = model.outlet_fact(*input)?.rank();
-            if self
-                .expr
-                .iter_all_axes()
-                .any(|axis| axis.repr == '*' && axis.inputs[input_id].len() == 1)
-            {
-                let expr_rank = self
-                    .expr
-                    .iter_all_axes()
-                    .flat_map(|axis| &axis.inputs[input_id])
-                    .max()
-                    .unwrap()
-                    + 1;
-                ellipsis_rank = actual_rank - expr_rank + 1;
-                break;
-            }
-        }
-        let expr = resolve_ellipsis(&self.expr, ellipsis_rank)?;
+        let ranks = inputs
+            .iter()
+            .map(|o| model.outlet_fact(*o).map(|f| f.rank()))
+            .collect::<TractResult<TVec<_>>>()?;
+        let expr = resolve_ellipsis(&self.expr, &*ranks)?;
         model.wire_node(prefix, tract_onnx_opl::einsum::EinSum { expr }, inputs)
     }
 
@@ -63,35 +48,25 @@ impl Expansion for EinSum {
     ) -> InferenceResult {
         check_input_arity(inputs, self.expr.n_inputs())?;
         check_output_arity(outputs, 1)?;
-        for i in inputs {
-            s.equals(&i.datum_type, &outputs[0].datum_type)?;
-        }
-        let ellipsis_rank = IntFactoid::default();
-        for (input_id, input) in inputs.iter().enumerate() {
-            let raw_rank =
-                self.expr.iter_all_axes().flat_map(|axis| &axis.inputs[input_id]).max().unwrap()
-                    + 1;
-            let rank = if self
-                .expr
-                .iter_all_axes()
-                .any(|axis| axis.repr == '*' && axis.inputs[input_id].len() == 1)
+        for (ix, input) in inputs.iter().enumerate() {
+            s.equals(&input.datum_type, &outputs[0].datum_type)?;
+            // if no elipsis in input spec then rank is known
+            // onnx specifies that all ellipsis usage must have the same rank, but this rule is
+            // broken by pytorch exporter which assumes numpy convention
+            if !self.expr.iter_all_axes().any(|axis| axis.repr == '*' && axis.inputs[ix].len() == 1)
             {
-                ellipsis_rank + raw_rank as i64 + (-1i64)
-            } else {
-                GenericFactoid::Only(raw_rank as i64)
-            };
-            s.equals(rank, &input.rank)?;
+                let rank =
+                    self.expr.iter_all_axes().map(|axis| axis.inputs[ix].len()).sum::<usize>();
+                s.equals(rank as i64, &input.rank)?;
+            }
         }
-        let raw_output_rank = self.expr.output_rank();
-        let output_rank = if self.expr.index().iter().any(|axis| axis.repr == '*') {
-            ellipsis_rank + raw_output_rank as i64 + (-1i64)
-        } else {
-            GenericFactoid::Only(raw_output_rank as i64)
-        };
-        s.equals(output_rank, &outputs[0].rank)?;
 
-        if !self.expr.iter_all_axes().any(|axis| axis.repr == '*') {
-            for axis in self.expr.iter_all_axes() {
+        let ranks: Vec<_> = inputs.iter().map(|i| &i.rank).collect();
+        s.given_all(ranks, move |s, ranks| {
+            let ranks = ranks.iter().map(|r| *r as usize).collect::<TVec<_>>();
+            let expr = resolve_ellipsis(&self.expr, &ranks)?;
+            s.equals(&outputs[0].rank, expr.output_rank() as i64)?;
+            for axis in expr.iter_all_axes() {
                 let mut axes = vec![];
                 if let Some(result) = axis.result {
                     axes.push(outputs[0].shape[result].bex())
@@ -103,59 +78,44 @@ impl Expansion for EinSum {
                 }
                 s.equals_all(axes)?;
             }
-        } else {
-            s.given(ellipsis_rank, move |s, ellipsis_rank| {
-                let output_ellipsis_position =
-                    self.expr.index().iter().position(|axis| axis.repr == '*');
-                let input_ellipsis_positions: Vec<Option<usize>> = (0..self.expr.n_inputs())
-                    .map(|input_id| {
-                        self.expr
-                            .iter_all_axes()
-                            .position(|axis| axis.repr == '*' && axis.inputs[input_id].len() == 1)
-                    })
-                    .collect();
-                for axis in self.expr.iter_all_axes() {
-                    if axis.repr == '*' {
-                        todo!()
-                    } else {
-                        let mut axes = vec![];
-                        if let Some(mut result) = axis.result {
-                            if let Some(pos) = output_ellipsis_position {
-                                if pos < result {
-                                    result = result + ellipsis_rank as usize - 1;
-                                }
-                            }
-                            axes.push(outputs[0].shape[result].bex())
-                        }
-                        for (input_id, input_axis_positions) in axis.inputs.iter().enumerate() {
-                            for position in input_axis_positions {
-                                let mut position = *position;
-                                if let Some(ellipsis_pos) = input_ellipsis_positions[input_id] {
-                                    if ellipsis_pos < position {
-                                        position = position + ellipsis_rank as usize - 1;
-                                    }
-                                }
-                                axes.push(inputs[input_id].shape[position].bex());
-                            }
-                        }
-                        s.equals_all(axes)?;
-                    }
-                }
-                Ok(())
-            })?;
-        }
-
-        Ok(())
+            Ok(())
+        })
     }
 }
 
-fn resolve_ellipsis(expr: &Expr, ellipsis_rank: usize) -> TractResult<Expr> {
-    let ellipsis_resolved: String = ('a'..)
-        .filter(|l| expr.iter_all_axes().all(|axis| *l != axis.repr))
-        .take(ellipsis_rank)
+fn resolve_ellipsis(expr: &Expr, ranks: &[usize]) -> TractResult<Expr> {
+    if expr.axis_by_repr('*').is_none() {
+        return Ok(expr.clone());
+    }
+    let elipsed_axes: TVec<usize> = ranks
+        .iter()
+        .enumerate()
+        .filter_map(|(ix, rank)| {
+            if expr.axis_positions_in_input(ix, '*').is_some() {
+                Some(rank + 1 - expr.input_rank(ix))
+            } else {
+                None
+            }
+        })
         .collect();
+    let max_axes = *elipsed_axes.iter().max().unwrap();
+    let axis_resolved: String = ('a'..)
+        .filter(|l| expr.iter_all_axes().all(|axis| *l != axis.repr))
+        .take(max_axes)
+        .collect();
+    //let mut resolved = expr.iter_all_axes().filter(|axis| axis.repr != '*').collect();
     // lol.
-    expr.to_string().replace("*", &ellipsis_resolved).parse().into()
+    let mut resolved = expr.to_string();
+    for axes in elipsed_axes {
+        resolved = resolved.replacen(
+            "*",
+            &axis_resolved.chars().skip(max_axes - axes).collect::<String>(),
+            1,
+        );
+    }
+    // replace in output
+    resolved = resolved.replacen("*", &axis_resolved, 1);
+    resolved.parse()
 }
 
 #[cfg(test)]
@@ -165,7 +125,7 @@ mod test {
     #[test]
     fn test_resolve_ellipsis_0() {
         assert_eq!(
-            resolve_ellipsis(&"*ii->*i".parse().unwrap(), 4).unwrap().to_string(),
+            resolve_ellipsis(&"*ii->*i".parse().unwrap(), &[6]).unwrap().to_string(),
             "abcdii->abcdi"
         )
     }
@@ -173,7 +133,7 @@ mod test {
     #[test]
     fn test_resolve_ellipsis_1() {
         assert_eq!(
-            resolve_ellipsis(&"*mk,*kn->*mn".parse().unwrap(), 2).unwrap().to_string(),
+            resolve_ellipsis(&"*mk,*kn->*mn".parse().unwrap(), &[4, 4]).unwrap().to_string(),
             "abmk,abkn->abmn"
         )
     }
@@ -181,8 +141,16 @@ mod test {
     #[test]
     fn test_resolve_ellipsis_2() {
         assert_eq!(
-            resolve_ellipsis(&"*ab,*bc->*ac".parse().unwrap(), 2).unwrap().to_string(),
+            resolve_ellipsis(&"*ab,*bc->*ac".parse().unwrap(), &[4, 4]).unwrap().to_string(),
             "deab,debc->deac"
         )
+    }
+
+    #[test]
+    fn test_resolve_numpy_ellipsis_1() -> TractResult<()> {
+        let expr: Expr = "*gi,*gih->*gh".parse()?;
+        let resolved = resolve_ellipsis(&expr, &[4, 3])?;
+        assert_eq!(resolved, "abgi,gih->abgh".parse().unwrap());
+        Ok(())
     }
 }

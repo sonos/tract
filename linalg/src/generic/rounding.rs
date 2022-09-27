@@ -11,6 +11,10 @@ pub struct Scaler {
     policy: RoundingPolicy,
 }
 
+impl Eq for Scaler {
+}
+
+#[allow(clippy::derive_hash_xor_eq)]
 impl Hash for Scaler {
     fn hash<H>(&self, state: &mut H)
     where
@@ -32,7 +36,7 @@ impl Scaler {
         } else if self.shift > 0 {
             FusedSpec::RoundingShiftRight(self.shift as usize, self.policy)
         } else {
-            FusedSpec::ShiftLeft((- self.shift) as usize)
+            FusedSpec::ShiftLeft((-self.shift) as usize)
         }
     }
 
@@ -105,12 +109,12 @@ impl Mul<f32> for Scaler {
     }
 }
 
-impl Mul<Scaler> for f32 {
-    type Output = f32;
+impl Mul<f64> for Scaler {
+    type Output = f64;
 
     #[inline]
-    fn mul(self, rhs: Scaler) -> Self::Output {
-        rhs * self
+    fn mul(self, rhs: f64) -> Self::Output {
+        self.scale as f64 * rhs
     }
 }
 
@@ -123,6 +127,24 @@ impl Mul<Scaler> for f16 {
     }
 }
 
+
+impl Mul<Scaler> for f32 {
+    type Output = f32;
+
+    #[inline]
+    fn mul(self, rhs: Scaler) -> Self::Output {
+        rhs * self
+    }
+}
+
+impl Mul<Scaler> for f64 {
+    type Output = f64;
+
+    #[inline]
+    fn mul(self, rhs: Scaler) -> Self::Output {
+        rhs * self
+    }
+}
 
 impl Mul<i32> for Scaler {
     type Output = i32;
@@ -169,6 +191,18 @@ pub trait ScaleShiftAndRound {
     fn q_scale(self, scaler: Scaler) -> Self;
     fn q_shl(self, shift: usize) -> Self;
     fn q_shr(self, shift: usize, rp: RoundingPolicy) -> Self;
+}
+
+impl ScaleShiftAndRound for f64 {
+    fn q_scale(self, scaler: Scaler) -> Self {
+        self * scaler
+    }
+    fn q_shl(self, shift: usize) -> Self {
+        self * 2f64.powi(shift as i32)
+    }
+    fn q_shr(self, shift: usize, _rp: RoundingPolicy) -> Self {
+        self * 2f64.powi(-(shift as i32))
+    }
 }
 
 impl ScaleShiftAndRound for f32 {
@@ -232,9 +266,9 @@ mod test {
         assert_eq!(1f32.q_scale(Scaler::new(0.5, Zero)), 0.5);
         assert_eq!(2f32.q_scale(Scaler::new(0.5, Zero)), 1.0);
         assert_eq!(3f32.q_scale(Scaler::new(0.5, Zero)), 1.5);
-        assert_eq!(-1f32.q_scale(Scaler::new(0.5, Zero)), -0.5);
-        assert_eq!(-2f32.q_scale(Scaler::new(0.5, Zero)), -1.0);
-        assert_eq!(-3f32.q_scale(Scaler::new(0.5, Zero)), -1.5);
+        assert_eq!((-1f32).q_scale(Scaler::new(0.5, Zero)), -0.5);
+        assert_eq!((-2f32).q_scale(Scaler::new(0.5, Zero)), -1.0);
+        assert_eq!((-3f32).q_scale(Scaler::new(0.5, Zero)), -1.5);
     }
 
     #[test]

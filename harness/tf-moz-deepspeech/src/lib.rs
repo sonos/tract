@@ -33,25 +33,25 @@ fn do_download() -> TractResult<()> {
 }
 
 fn parse_tensor<T: Datum + FromStr>(s: &str) -> TractResult<Tensor> {
-    let mut tokens = s.split(" ");
+    let mut tokens = s.split(' ');
     let _name = tokens.next().unwrap();
     let shape = tokens.next().unwrap();
     let shape = &shape[1..shape.len() - 1];
-    let shape: Vec<usize> = shape.split(",").map(|s| s.parse().unwrap()).collect();
+    let shape: Vec<usize> = shape.split(',').map(|s| s.parse().unwrap()).collect();
     Ok(tract_ndarray::Array1::from(tokens.filter_map(|s| s.parse::<T>().ok()).collect::<Vec<_>>())
         .into_shape(shape)?
         .into())
 }
 
 fn parse_scalar<T: Datum + FromStr>(s: &str) -> TractResult<Tensor> {
-    let mut tokens = s.split(" ");
+    let mut tokens = s.split(' ');
     let _name = tokens.next().unwrap();
     let value: T = tokens.next().unwrap().parse().map_err(|_| format_err!("parsing"))?;
     Ok(tensor0(value))
 }
 
 fn cachedir() -> path::PathBuf {
-    ::std::env::var("CACHEDIR").ok().unwrap_or("../../.cached".to_string()).into()
+    ::std::env::var("CACHEDIR").ok().unwrap_or_else(|| "../../.cached".to_string()).into()
 }
 
 fn initialized_model() -> TractResult<TypedModel> {

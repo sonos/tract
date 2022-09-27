@@ -27,7 +27,7 @@ impl EvalOp for MatMul {
     }
 
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        if &inputs[0].rank() != &inputs[1].rank() {
+        if inputs[0].rank() != inputs[1].rank() {
             bail!("Rank mismatch {:?} vs {:?}", inputs[0], inputs[1]);
         }
         Ok(tvec!(eval(&inputs[0], &inputs[1], self.axes)?.into_arc_tensor()))

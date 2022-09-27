@@ -1,29 +1,75 @@
+use std::fs::File;
+
+use crate::tensor::RunParams;
 use crate::CliResult;
 use crate::{Model, Parameters};
 use ansi_term::Color::*;
+use ndarray_npy::NpzWriter;
 use tract_hir::internal::*;
 #[cfg(feature = "pulse")]
 use tract_pulse::internal::*;
+
+/// Add a tensor entry into a npz file.
+fn npz_add_tensor(npz: &mut NpzWriter<File>, name: String, tensor: &Arc<Tensor>) -> CliResult<()> {
+    match tensor.datum_type() {
+        DatumType::F16 => npz.add_array(name, &tensor.cast_to::<f32>()?.to_array_view::<f32>()?)?,
+        DatumType::Bool => npz.add_array(name, &tensor.to_array_view::<bool>()?)?,
+        DatumType::U8 => npz.add_array(name, &tensor.to_array_view::<u8>()?)?,
+        DatumType::U16 => npz.add_array(name, &tensor.to_array_view::<u16>()?)?,
+        DatumType::U32 => npz.add_array(name, &tensor.to_array_view::<u32>()?)?,
+        DatumType::U64 => npz.add_array(name, &tensor.to_array_view::<u64>()?)?,
+        DatumType::I8 => npz.add_array(name, &tensor.to_array_view::<i8>()?)?,
+        DatumType::I16 => npz.add_array(name, &tensor.to_array_view::<i16>()?)?,
+        DatumType::I32 => npz.add_array(name, &tensor.to_array_view::<i32>()?)?,
+        DatumType::I64 => npz.add_array(name, &tensor.to_array_view::<i64>()?)?,
+        DatumType::F32 => npz.add_array(name, &tensor.to_array_view::<f32>()?)?,
+        DatumType::F64 => npz.add_array(name, &tensor.to_array_view::<f64>()?)?,
+        DatumType::QI8(_) => npz.add_array(name, &tensor.to_array_view::<i8>()?)?,
+        DatumType::QU8(_) => npz.add_array(name, &tensor.to_array_view::<u8>()?)?,
+        DatumType::QI32(_) => npz.add_array(name, &tensor.to_array_view::<i32>()?)?,
+        _ => warn!("Not writing {}, {:?}, unsupported type", name, tensor),
+    }
+
+    Ok(())
+}
 
 pub fn handle(
     params: &Parameters,
     matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
 ) -> CliResult<()> {
+    let run_params = RunParams::from_subcommand(params, sub_matches)?;
+
     let dump = sub_matches.is_present("dump");
     #[cfg(feature = "pulse")]
     let outputs = if let Some(pulse) = params.tract_model.downcast_ref::<PulsedModel>() {
         run_pulse_t(pulse, &params)?
     } else {
-        dispatch_model!(&*params.tract_model, |m| run_regular(m, &params, matches, sub_matches))?
+        dispatch_model!(&*params.tract_model, |m| run_regular(m, &run_params, matches, sub_matches))?
     };
 
     #[cfg(not(feature = "pulse"))]
-    let outputs = dispatch_model!(&*params.tract_model, |m| run_regular(m, &params, options))?;
+    let outputs =
+        dispatch_model!(&*params.tract_model, |m| run_regular(m, &run_params, matches, sub_matches))?;
 
     if dump {
         for (ix, output) in outputs.iter().enumerate() {
             println!("output #{}\n{}\n", ix, output.dump(true)?);
+        }
+    }
+
+    if let Some(file_path) = sub_matches.value_of("save-outputs") {
+        let file =
+            std::fs::File::create(file_path).with_context(|| format!("Creating {}", file_path))?;
+        let mut npz = ndarray_npy::NpzWriter::new_compressed(file);
+
+        for (ix, output) in outputs.iter().enumerate() {
+            let name = params
+                .tract_model
+                .outlet_label(params.tract_model.output_outlets()[ix])
+                .map(|name| name.to_string())
+                .unwrap_or_else(|| format!("output_{}", ix));
+            npz_add_tensor(&mut npz, name, output)?;
         }
     }
 
@@ -38,13 +84,14 @@ pub fn handle(
         }
     }
 
-    let allow_float_casts = matches.is_present("allow-float-casts");
-    crate::utils::check_outputs(&*outputs, &params.assertions.assert_outputs, allow_float_casts)?;
+    if params.assertions.assert_outputs {
+        crate::utils::check_outputs(&*outputs, &params)?;
+    }
 
     if let Some(facts) = &params.assertions.assert_output_facts {
         let outputs: Vec<InferenceFact> =
             outputs.iter().map(|t| t.datum_type().fact(t.shape()).into()).collect();
-        crate::utils::check_inferred(&*outputs, &*facts)?;
+        crate::utils::check_inferred(&*outputs, facts)?;
     }
 
     if let Some(asserts) = &params.assertions.assert_op_count {
@@ -61,7 +108,7 @@ pub fn handle(
 
 fn run_regular(
     tract: &dyn Model,
-    params: &Parameters,
+    run_params: &RunParams,
     _matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
 ) -> CliResult<TVec<Arc<Tensor>>> {
@@ -78,7 +125,7 @@ fn run_regular(
         let mut state = SimpleState::new(plan)?;
         if let Some(set) = sub_matches.values_of("set") {
             for set in set {
-                let mut tokens = set.split("=");
+                let mut tokens = set.split('=');
                 let sym = tokens.next().context("--set expect S=12 form")?;
                 let value = tokens.next().context("--set expect S=12 form")?;
                 let sym = Symbol::from(sym.chars().next().unwrap());
@@ -88,7 +135,7 @@ fn run_regular(
             }
         }
         let mut results = tvec!();
-        let inputs = crate::tensor::retrieve_or_make_inputs(tract, params)?;
+        let inputs = crate::tensor::retrieve_or_make_inputs(tract, run_params)?;
         let multiturn = inputs.len() > 1;
         for (turn, inputs) in inputs.into_iter().enumerate() {
             results = state.run_plan_with_eval(inputs, |session_state, state, node, input| {
@@ -125,24 +172,7 @@ fn run_regular(
                         if multiturn {
                             name = format!("turn_{}/{}", turn, name);
                         }
-                        match t.datum_type() {
-                            DatumType::F16 => npz.add_array(name, &t.cast_to::<f32>()?.to_array_view::<f32>()?)?,
-                            DatumType::F32 => npz.add_array(name, &t.to_array_view::<f32>()?)?,
-                            DatumType::F64 => npz.add_array(name, &t.to_array_view::<f64>()?)?,
-                            DatumType::I32 => npz.add_array(name, &t.to_array_view::<i32>()?)?,
-                            DatumType::I8 => npz.add_array(name, &t.to_array_view::<i8>()?)?,
-                            DatumType::U8 => npz.add_array(name, &t.to_array_view::<u8>()?)?,
-                            DatumType::QI8(_) => unsafe {
-                                npz.add_array(name, &t.to_array_view_unchecked::<i8>())?
-                            },
-                            DatumType::QU8(_) => unsafe {
-                                npz.add_array(name, &t.to_array_view_unchecked::<u8>())?
-                            },
-                            DatumType::QI32(_) => unsafe {
-                                npz.add_array(name, &t.to_array_view_unchecked::<i32>())?
-                            },
-                            _ => warn!("Not writing {}, {:?}, unsupported type", name, t),
-                        }
+                        npz_add_tensor(npz, name, t)?;
                     }
                 }
                 if assert_sane_floats {
@@ -186,7 +216,7 @@ fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Arc<T
     //    println!("output_fact: {:?}", output_fact);
     let axis = input_fact.axis;
     let name = model.node_name(model.input_outlets()?[0].node);
-    let input: &Tensor = &params.input_values.get(name).unwrap()[0];
+    let input: &Tensor = &params.tensors_values.by_name(name).unwrap().values.as_ref().unwrap()[0];
     //    println!("input_shape: {:?}", input.shape());
     let input_dim = input.shape()[axis];
     //    println!("output_fact: {:?}", output_fact);

@@ -82,8 +82,9 @@ impl Range {
             let start = self.start.to_scalar::<TDim>()?.eval(values).to_i64()?;
             let end = self.end.to_scalar::<TDim>()?.eval(values).to_i64()?;
             let step = self.step.to_scalar::<TDim>()?.eval(values).to_i64()?;
+            #[allow(clippy::cast_abs_to_unsigned)]
             let len = ((end - start).abs() as usize).divceil(step.abs() as usize);
-            return Self::make_t::<TDim>(&self.start, &self.step, len);
+            Self::make_t::<TDim>(&self.start, &self.step, len)
         } else {
             let len = dispatch_numbers!(Self::len_for_numbers(self.start.datum_type())(self))?;
             dispatch_numbers!(Self::make_t(self.start.datum_type())(&self.start, &self.step, len))

@@ -1,27 +1,36 @@
 use std::fmt;
+use std::hash::Hash;
 use std::marker::PhantomData;
 use tract_data::internal::*;
 
-pub trait Lut: fmt::Debug + dyn_clone::DynClone + Send + Sync {
+pub trait Lut: fmt::Debug + dyn_clone::DynClone + Send + Sync + DynHash {
     fn table(&self) -> &[u8];
     fn run(&self, buf: &mut [u8]);
 }
 
 dyn_clone::clone_trait_object!(Lut);
 
-#[derive(Debug, Clone)]
-pub struct LutImpl<K>
-where
-    K: LutKer,
-{
+impl std::hash::Hash for Box<dyn Lut> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        use std::any::Any;
+        std::hash::Hash::hash(&self.type_id(), state);
+        self.dyn_hash(state)
+    }
+}
+
+#[derive(Debug, Clone, Hash)]
+pub struct LutImpl<K: LutKer> {
     table: Tensor,
     _boo: PhantomData<K>,
 }
 
-impl<K> LutImpl<K>
-where
-    K: LutKer,
-{
+impl<K: LutKer> DynHash for LutImpl<K> {
+    fn dyn_hash(&self, state: &mut dyn std::hash::Hasher) {
+        tract_data::hash::dyn_hash(self, state)
+    }
+}
+
+impl<K: LutKer> LutImpl<K> {
     pub fn new(table: &[u8]) -> LutImpl<K> {
         unsafe {
             LutImpl {
@@ -37,10 +46,7 @@ where
     }
 }
 
-impl<K> Lut for LutImpl<K>
-where
-    K: LutKer,
-{
+impl<K: LutKer> Lut for LutImpl<K> {
     fn table(&self) -> &[u8] {
         self.table.as_slice().unwrap()
     }
@@ -62,23 +68,23 @@ where
             let n = K::n();
             let aligned_len = remaining / n * n;
             if aligned_len > 0 {
-                K::run(buf.as_mut_ptr().offset(prefix as isize), aligned_len, table);
+                K::run(buf.as_mut_ptr().add(prefix), aligned_len, table);
             }
             let remaining = buf.len() - aligned_len - prefix;
             for i in 0..remaining {
-                let ptr = buf.as_mut_ptr().offset((i + prefix + aligned_len) as isize);
+                let ptr = buf.as_mut_ptr().add(i + prefix + aligned_len);
                 *ptr = *table.offset(*ptr as isize);
             }
         }
     }
 }
 
-pub trait LutKer: Clone + fmt::Debug + Send + Sync {
+pub trait LutKer: Clone + fmt::Debug + Send + Sync + Hash {
     fn name() -> &'static str;
     fn n() -> usize;
     fn input_alignment_bytes() -> usize;
     fn table_alignment_bytes() -> usize;
-    fn run(buf: *mut u8, len: usize, table: *const u8);
+    unsafe fn run(buf: *mut u8, len: usize, table: *const u8);
 }
 
 #[cfg(test)]

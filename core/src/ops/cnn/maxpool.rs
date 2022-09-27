@@ -71,8 +71,8 @@ impl MaxPool {
     fn to_lir(&self, input_shape: &[TDim]) -> TractResult<LirMaxPool> {
         Ok(LirMaxPool {
             pool_spec: self.pool_spec.clone(),
-            with_index_outputs: self.with_index_outputs.clone(),
-            geometry: self.pool_spec.compute_geo(&input_shape)?,
+            with_index_outputs: self.with_index_outputs,
+            geometry: self.pool_spec.compute_geo(input_shape)?,
         })
     }
 }

@@ -2,7 +2,7 @@ use crate::internal::*;
 use ndarray::*;
 use std::convert::TryFrom;
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PadMode {
     Constant(Arc<Tensor>),
     Reflect,
@@ -23,15 +23,15 @@ pub struct Pad {
 impl_dyn_hash!(Pad);
 
 impl Pad {
-    fn eval_t<T>(&self, input: Arc<Tensor>) -> TractResult<Arc<Tensor>>
+    fn eval_t<T>(&self, input_tensor: Arc<Tensor>) -> TractResult<Arc<Tensor>>
     where
         T: Copy + Datum,
     {
-        let input = input.to_array_view::<T>()?;
+        let input = input_tensor.to_array_view::<T>()?;
         let output_shape: Vec<usize> =
             input.shape().iter().zip(self.pads.iter()).map(|(&d, &(a, b))| d + a + b).collect();
         let element = match &self.mode {
-            PadMode::Constant(f) => f.to_scalar::<T>()?.clone(),
+            PadMode::Constant(f) => *f.to_scalar::<T>()?,
             _ => T::default(),
         };
         let mut output = ArrayD::<T>::from_elem(output_shape, element);
@@ -80,6 +80,8 @@ impl Pad {
                 }
             }
         }
+        let mut output = output.into_tensor();
+        unsafe { output.set_datum_type(input_tensor.datum_type()) }
         Ok(output.into_arc_tensor())
     }
 }

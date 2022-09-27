@@ -20,15 +20,15 @@ impl Expansion for MultiBroadcastTo {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 2)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 2)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         s.equals(&inputs[1].rank, 1)?;
         s.given(&inputs[0].shape, move |s, shape| {
             s.given(&inputs[1].value, move |s, dims| {
                 let dims = dims.cast_to::<TDim>()?;
                 let dims =
-                    tract_core::broadcast::multi_broadcast(&[&*dims.as_slice::<TDim>()?, &*shape])
+                    tract_core::broadcast::multi_broadcast(&[dims.as_slice::<TDim>()?, &shape])
                         .with_context(|| format!("broadcasting {:?} to {:?}", shape, dims))?;
                 s.equals(&outputs[0].shape, ShapeFactoid::from(dims))
             })
@@ -45,7 +45,7 @@ impl Expansion for MultiBroadcastTo {
             let input_shape = model.outlet_fact(inputs[0])?.shape.to_tvec();
             let shape = shape.cast_to::<TDim>()?;
             let shape = shape.as_slice::<TDim>()?;
-            let dims = tract_core::broadcast::multi_broadcast(&[&*input_shape, &*shape])
+            let dims = tract_core::broadcast::multi_broadcast(&[&*input_shape, shape])
                 .context("incompatible shapes")?;
             let op = Typed::new(dims.into());
             model.wire_node(prefix, op, &[inputs[0]])

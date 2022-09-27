@@ -30,11 +30,7 @@ impl InputMapping {
     }
 
     pub fn invisible(&self) -> bool {
-        if let InputMapping::State { initializer: StateInitializer::Value(_) } = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, InputMapping::State { initializer: StateInitializer::Value(_) })
     }
 
     pub fn slot(&self) -> Option<usize> {

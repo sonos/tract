@@ -5,6 +5,7 @@ use std::str::FromStr;
 use std::sync::Mutex;
 
 use crate::model::Model;
+use crate::params::TensorsValues;
 use crate::{CliResult, Parameters};
 use tract_hir::internal::*;
 
@@ -32,7 +33,7 @@ pub fn parse_spec(size: &str) -> CliResult<InferenceFact> {
     if size.len() == 0 {
         return Ok(InferenceFact::default());
     }
-    if size.contains("x") && !size.contains(",") {
+    if size.contains('x') && !size.contains(',') {
         parse_x_spec(size)
     } else {
         parse_coma_spec(size)
@@ -40,7 +41,7 @@ pub fn parse_spec(size: &str) -> CliResult<InferenceFact> {
 }
 
 pub fn parse_coma_spec(size: &str) -> CliResult<InferenceFact> {
-    let splits = size.split(",").collect::<Vec<_>>();
+    let splits = size.split(',').collect::<Vec<_>>();
 
     if splits.len() < 1 {
         // Hide '{' in this error message from the formatting machinery in bail macro
@@ -79,7 +80,7 @@ pub fn parse_dim(i: &str) -> CliResult<TDim> {
     if i.len() == 0 {
         bail!("Can not parse empty string as Dim")
     }
-    let number_len = i.chars().take_while(|c| c.is_digit(10)).count();
+    let number_len = i.chars().take_while(|c| c.is_ascii_digit()).count();
     let symbol_len = i.len() - number_len;
     if symbol_len > 1 {
         bail!("Can not parse {} as Dim", i)
@@ -97,7 +98,7 @@ pub fn parse_x_spec(size: &str) -> CliResult<InferenceFact> {
     warn!(
         "Deprecated \"x\" syntax for shape : please use the comma as separator, x is now a symbol."
     );
-    let splits = size.split("x").collect::<Vec<_>>();
+    let splits = size.split('x').collect::<Vec<_>>();
 
     if splits.len() < 1 {
         // Hide '{' in this error message from the formatting machinery in bail macro
@@ -106,7 +107,7 @@ pub fn parse_x_spec(size: &str) -> CliResult<InferenceFact> {
     }
 
     let last = splits.last().unwrap();
-    let (datum_type, shape) = if last.ends_with("S") || last.parse::<i32>().is_ok() {
+    let (datum_type, shape) = if last.ends_with('S') || last.parse::<i32>().is_ok() {
         (None, &*splits)
     } else {
         let datum_type = parse_dt(splits.last().unwrap())?;
@@ -133,10 +134,10 @@ pub fn parse_x_spec(size: &str) -> CliResult<InferenceFact> {
     }
 }
 
-fn parse_values<'a, T: Datum + FromStr>(shape: &[usize], it: Vec<&'a str>) -> CliResult<Tensor> {
+fn parse_values<T: Datum + FromStr>(shape: &[usize], it: Vec<&str>) -> CliResult<Tensor> {
     let values = it
         .into_iter()
-        .map(|v| Ok(v.parse::<T>().map_err(|_| format_err!("Failed to parse {}", v))?))
+        .map(|v| v.parse::<T>().map_err(|_| format_err!("Failed to parse {}", v)))
         .collect::<CliResult<Vec<T>>>()?;
     Ok(tract_ndarray::Array::from_shape_vec(shape, values)?.into())
 }
@@ -182,7 +183,7 @@ pub fn for_data(filename: &str) -> CliResult<(Option<String>, InferenceFact)> {
             panic!("Loading tensor from protobuf requires onnx features");
         }
     } else if filename.contains(".npz:") {
-        let mut tokens = filename.split(":");
+        let mut tokens = filename.split(':');
         let (filename, inner) = (tokens.next().unwrap(), tokens.next().unwrap());
         let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(filename)?)?;
         Ok((None, for_npz(&mut npz, inner)?.into()))
@@ -229,19 +230,19 @@ pub fn for_npz(npz: &mut ndarray_npy::NpzReader<fs::File>, name: &str) -> CliRes
 }
 
 pub fn for_string(value: &str) -> CliResult<(Option<String>, InferenceFact)> {
-    if value.starts_with("@") {
-        for_data(&value[1..])
+    if let Some(stripped) = value.strip_prefix('@') {
+        for_data(stripped)
     } else {
-        let (name, value) = if value.contains(":") {
-            let mut splits = value.split(":");
+        let (name, value) = if value.contains(':') {
+            let mut splits = value.split(':');
             (Some(splits.next().unwrap().to_string()), splits.next().unwrap())
         } else {
             (None, value)
         };
-        if value.contains("=") {
-            let mut split = value.split("=");
+        if value.contains('=') {
+            let mut split = value.split('=');
             let spec = parse_spec(split.next().unwrap())?;
-            let value = split.next().unwrap().split(",");
+            let value = split.next().unwrap().split(',');
             let dt = spec
                 .datum_type
                 .concretize()
@@ -263,9 +264,9 @@ fn parse_dim_stream(s: &str) -> CliResult<TDim> {
     use tract_pulse::internal::stream_dim;
     if s == "S" {
         Ok(stream_dim())
-    } else if s.ends_with("S") {
-        let number: String = s.chars().take_while(|c| c.is_digit(10)).collect();
-        let number: i64 = number.parse::<i64>().map(|i| i.into())?;
+    } else if s.ends_with('S') {
+        let number: String = s.chars().take_while(|c| c.is_ascii_digit()).collect();
+        let number: i64 = number.parse::<i64>()?;
         Ok(stream_dim() * number)
     } else {
         Ok(s.parse::<i64>().map(|i| i.into())?)
@@ -287,15 +288,57 @@ fn warn_once(msg: String) {
     }
 }
 
+pub struct RunParams {
+    pub tensors_values: TensorsValues,
+    pub allow_random_input: bool,
+    pub allow_float_casts: bool,
+}
+
+impl RunParams {
+    pub fn from_subcommand(params: &Parameters, sub_matches: &clap::ArgMatches) -> CliResult<Self> {
+        let mut tv = params.tensors_values.clone();
+
+        if let Some(bundle) = sub_matches.values_of("input-from-bundle") {
+            for input in bundle {
+                for tensor in Parameters::parse_npz(input, true, false)? {
+                    tv.add(tensor);
+                }
+            }
+        }
+
+        // We also support the global arg variants for backward compatibility
+        let allow_random_input: bool =
+            params.allow_random_input || sub_matches.is_present("allow-random-input");
+        let allow_float_casts: bool =
+            params.allow_float_casts || sub_matches.is_present("allow-float-casts");
+
+        Ok(Self { tensors_values: tv, allow_random_input, allow_float_casts })
+    }
+}
+
 pub fn retrieve_or_make_inputs(
     tract: &dyn Model,
-    params: &Parameters,
+    params: &RunParams,
 ) -> CliResult<Vec<TVec<Tensor>>> {
     let mut tmp: TVec<Vec<Tensor>> = tvec![];
     for input in tract.input_outlets() {
         let name = tract.node_name(input.node);
         let fact = tract.outlet_typedfact(*input)?;
-        if let Some(value) = params.input_values.get(name) {
+        if let Some(mut value) = params.tensors_values.by_name(name).and_then(|t| t.values.clone())
+        {
+            if !value[0].datum_type().is_quantized()
+                && fact.datum_type.is_quantized()
+                && value[0].datum_type() == fact.datum_type.unquantized()
+            {
+                value = value
+                    .iter()
+                    .map(|v| {
+                        let mut v = v.clone().into_tensor();
+                        unsafe { v.set_datum_type(fact.datum_type) };
+                        v.into_arc_tensor()
+                    })
+                    .collect();
+            }
             if TypedFact::from(value[0].clone()).compatible_with(&fact) {
                 info!("Using fixed input for input called {} ({} turn(s))", name, value.len());
                 tmp.push(value.iter().map(|t| t.clone().into_tensor()).collect())
@@ -364,13 +407,13 @@ pub fn make_inputs(values: &[impl std::borrow::Borrow<TypedFact>]) -> CliResult<
 }
 
 pub fn make_inputs_for_model(model: &dyn Model) -> CliResult<TVec<Tensor>> {
-    Ok(make_inputs(
+    make_inputs(
         &*model
             .input_outlets()
             .iter()
             .map(|&t| model.outlet_typedfact(t))
             .collect::<TractResult<Vec<TypedFact>>>()?,
-    )?)
+    )
 }
 
 #[allow(unused_variables)]
@@ -399,8 +442,7 @@ pub fn tensor_for_fact(fact: &TypedFact, streaming_dim: Option<usize>) -> CliRes
         }
     }
     Ok(random(
-        &fact
-            .shape
+        fact.shape
             .as_concrete()
             .with_context(|| format!("Expected concrete shape, found: {:?}", fact))?,
         fact.datum_type,

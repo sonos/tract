@@ -17,11 +17,13 @@ pub struct Nnef {
     pub registries: Vec<Registry>,
 }
 
-impl Nnef {
-    pub fn new() -> Nnef {
+impl Default for Nnef {
+    fn default() -> Nnef {
         Nnef { stdlib: stdlib(), registries: vec![crate::ops::tract_nnef()] }
     }
+}
 
+impl Nnef {
     pub fn with_registry(mut self, registry: Registry) -> Nnef {
         self.registries.push(registry);
         self
@@ -46,7 +48,7 @@ impl Nnef {
 
     pub fn write_to_tar<W: std::io::Write>(&self, model: &TypedModel, w: W) -> TractResult<W> {
         let proto_model =
-            crate::ser::to_proto_model(&self, model).context("Translating model to proto_model")?;
+            crate::ser::to_proto_model(self, model).context("Translating model to proto_model")?;
         let mut ar = tar::Builder::new(w);
         let mut graph_data = vec![];
         crate::ast::dump::Dumper::new(&mut graph_data)
@@ -91,7 +93,7 @@ impl Nnef {
             header.set_mtime(now.as_secs());
             header.set_cksum();
 
-            ar.append_data(&mut header, &*filename, &mut &*data)?;
+            ar.append_data(&mut header, filename, &mut &*data)?;
         }
         Ok(ar.into_inner()?)
     }
@@ -105,7 +107,7 @@ impl Nnef {
         if path.exists() {
             bail!("{:?} already exists. Won't overwrite.", path);
         }
-        let proto_model = crate::ser::to_proto_model(&self, model)?;
+        let proto_model = crate::ser::to_proto_model(self, model)?;
         std::fs::create_dir_all(path)?;
         let mut graph_nnef = std::fs::File::create(path.join("graph.nnef"))?;
         crate::ast::dump::Dumper::new(&mut graph_nnef).document(&proto_model.doc)?;
@@ -206,10 +208,10 @@ fn read_stream<R: std::io::Read>(
 ) -> TractResult<()> {
     // ignore path with any component starting with "." (because OSX's tar is weird)
     #[cfg(target_family = "unix")]
-    if path.components().any(|name| name.as_os_str().as_bytes().get(0) == Some(&b'.')) {
+    if path.components().any(|name| name.as_os_str().as_bytes().first() == Some(&b'.')) {
         return Ok(());
     }
-    if path.file_name().map(|n| n == "graph.nnef").unwrap_or(false) {
+    if path.to_str() == Some("graph.nnef") {
         let mut t = String::new();
         reader.read_to_string(&mut t)?;
         *text = Some(t);

@@ -1,4 +1,5 @@
 use crate::internal::*;
+use tract_itertools::Itertools;
 use ndarray::*;
 
 use tract_linalg::mmm::{
@@ -6,7 +7,7 @@ use tract_linalg::mmm::{
 };
 use tract_linalg::Scaler;
 
-#[derive(PartialEq, Clone, Hash, Debug)]
+#[derive(PartialEq, Eq, Clone, Hash, Debug)]
 pub enum ProtoFusedSpec {
     BinScalar(AttrOrInput, BinOp),
     BinPerRow(AttrOrInput, BinOp),
@@ -18,6 +19,19 @@ pub enum ProtoFusedSpec {
 }
 
 impl ProtoFusedSpec {
+    pub fn name(&self) -> String {
+        use ProtoFusedSpec::*;
+        match self {
+            BinScalar(_, op) => format!("scalar {:?}", op),
+            BinPerRow(_, op) => format!("row {:?}", op),
+            BinPerCol(_, op) => format!("col {:?}", op),
+            AddRowColProducts(_, _) => "add row*col product".to_string(),
+            AddUnicast(_) => "add to matrix".to_string(),
+            Scaler(s) => format!("scale by {}", 1f32 * *s),
+            Store => "Store".to_string(),
+        }
+    }
+
     pub fn resolve<'t>(
         &'t self,
         inputs: &'t [Arc<Tensor>],
@@ -84,8 +98,7 @@ impl MatMulGeometry {
     }
 }
 
-#[derive(Clone, Educe, Debug)]
-#[educe(Hash)]
+#[derive(Clone, Debug, Hash)]
 pub struct LirMatMulUnary {
     pub c_fact: TypedFact,
     pub c_m_axis: usize,
@@ -93,13 +106,8 @@ pub struct LirMatMulUnary {
     pub micro_ops: ArrayD<(Arc<Tensor>, Vec<ProtoFusedSpec>)>,
     pub c_final_shape: ShapeFact,
     pub geometry: MatMulGeometry,
-    #[educe(Hash(method = "hash_mmm"))]
     pub mmm: Box<dyn MatMatMul>,
     pub reshape_post: Vec<AxisOp>,
-}
-
-fn hash_mmm<H: std::hash::Hasher>(mmm: &Box<dyn MatMatMul>, state: &mut H) {
-    mmm.type_id().hash(state)
 }
 
 impl DynHash for LirMatMulUnary {
@@ -123,7 +131,7 @@ impl Op for LirMatMulUnary {
         } else {
             infos.push(format!("Mult: {}", self.mmm));
         }
-        infos.push(format!("Ops: {:?}", self.micro_ops));
+        infos.push(format!("Ops: {:?}", self.micro_ops.iter().next().unwrap().1.iter().map(|o| o.name()).join(">")));
         Ok(infos)
     }
 
@@ -199,6 +207,7 @@ impl EvalOp for LirMatMulUnary {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn eval(
     op: &LirMatMulUnary,
     geometry: &ConcreteMatMulGeometry,
@@ -211,8 +220,8 @@ fn eval(
 ) -> TractResult<TVec<Arc<Tensor>>> {
     unsafe {
         debug_assert!(op.micro_ops.len() > 0);
-        let size_of_a = (&*op.micro_ops.as_ptr()).0.datum_type().size_of();
-        let mut c = Tensor::uninitialized_dt(op.c_fact.datum_type, &c_shape)?;
+        let size_of_a = (*op.micro_ops.as_ptr()).0.datum_type().size_of();
+        let mut c = Tensor::uninitialized_dt(op.c_fact.datum_type, c_shape)?;
         let c_storage = op.mmm.c_view(c_m_axis, c_n_axis);
         if op
             .c_fact
@@ -307,7 +316,7 @@ impl TypedOp for LirMatMulUnary {
                 reshape_post.push(op.clone());
                 let mut patch = TypedModelPatch::fuse_with_next(
                     model,
-                    &node,
+                    node,
                     Self {
                         c_final_shape: succ.outputs[0].fact.shape.clone(),
                         reshape_post,
@@ -323,7 +332,7 @@ impl TypedOp for LirMatMulUnary {
             if (cast.unquantized() == i8::datum_type() || cast.unquantized() == u8::datum_type())
                 && self.c_fact.datum_type == i32::datum_type()
             {
-                let at = self.micro_ops.iter().nth(0).unwrap().0.datum_type();
+                let at = self.micro_ops.iter().next().unwrap().0.datum_type();
                 let bt = model.outlet_fact(node.inputs[0])?.datum_type;
                 let mmm = tract_linalg::ops()
                     .mmm(
@@ -339,7 +348,7 @@ impl TypedOp for LirMatMulUnary {
                 let c_fact = cast.fact(self.c_fact.shape.clone());
                 let mut patch = TypedModelPatch::fuse_with_next(
                     model,
-                    &node,
+                    node,
                     Self { mmm, c_fact, ..self.clone() },
                 )?;
                 patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ, node));

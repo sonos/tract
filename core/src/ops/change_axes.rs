@@ -1,11 +1,12 @@
 use std::borrow::Borrow;
+use std::collections::hash_map::Entry;
 
 use crate::internal::*;
 use crate::model::{TypedModel, TypedNode};
 use crate::ops::identity::Identity;
 use tract_itertools::Itertools;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InOut {
     Out(usize),
     In(usize),
@@ -24,6 +25,8 @@ impl InOut {
 }
 
 #[derive(Clone, Debug, Hash)]
+#[allow(clippy::large_enum_variant)] // FIXME ?
+#[allow(clippy::derive_hash_xor_eq)] // FIXME. this one may be pretty bad. how about a.canonical() == b.canonical() ? need proper canonicalizeation of Reshape
 pub enum AxisOp {
     Add(usize),
     Rm(usize),
@@ -392,11 +395,7 @@ impl AxisOp {
         if self.is_noop() {
             return true;
         }
-        if let Move(_, _) = self {
-            false
-        } else {
-            true
-        }
+        !matches!(self, Move(_, _))
     }
 }
 
@@ -569,7 +568,7 @@ impl TypedOp for AxisOp {
     ) -> TractResult<Option<AxisChangeConsequence>> {
         let op = if let InOut::Out(0) = io {
             let more =
-                if let Some(more) = self.recip().change_axes(model, node, InOut::In(0), &change)? {
+                if let Some(more) = self.recip().change_axes(model, node, InOut::In(0), change)? {
                     more
                 } else {
                     return Ok(None);
@@ -630,8 +629,8 @@ impl TypedOp for AxisOp {
         let op = if let AxisOp::Reshape(axis, from, to) = self {
             AxisOp::Reshape(
                 *axis,
-                from.iter().map(|d| d.eval(&values)).collect(),
-                to.iter().map(|d| d.eval(&values)).collect(),
+                from.iter().map(|d| d.eval(values)).collect(),
+                to.iter().map(|d| d.eval(values)).collect(),
             )
         } else {
             self.clone()
@@ -640,6 +639,7 @@ impl TypedOp for AxisOp {
     }
 }
 
+#[allow(clippy::type_complexity)]
 pub fn change_axes(
     model: &TypedModel,
     change: &AxisChange,
@@ -700,8 +700,8 @@ pub fn change_axes(
                 }
                 for (wire, op) in wire_changes.into_iter() {
                     let outlet = wire.as_outlet(node);
-                    if !changed_wires.contains_key(&outlet) {
-                        changed_wires.insert(outlet, op.clone());
+                    if let Entry::Vacant(entry) = changed_wires.entry(outlet) {
+                        entry.insert(op.clone());
                         todo_changes.push((AxisChange { outlet, op }, Some(node_id)));
                     }
                 }
@@ -739,7 +739,7 @@ pub fn change_axes(
             }
         } else {
             for orig in &node.inputs {
-                if let Some(replacement) = replaced_wires.get(&orig) {
+                if let Some(replacement) = replaced_wires.get(orig) {
                     patch.shunt_outside(model, *orig, *replacement)?;
                 }
             }
@@ -754,12 +754,12 @@ pub fn change_axes(
     }
     let mut interface_change = tvec!();
     for (ix, input) in model.input_outlets()?.iter().enumerate() {
-        if let Some(change) = changed_wires.get(&input) {
+        if let Some(change) = changed_wires.get(input) {
             interface_change.push((InOut::In(ix), change.clone()));
         }
     }
     for (ix, output) in model.output_outlets()?.iter().enumerate() {
-        if let Some(change) = changed_wires.get(&output) {
+        if let Some(change) = changed_wires.get(output) {
             interface_change.push((InOut::Out(ix), change.clone()));
         }
     }
@@ -820,7 +820,7 @@ fn perm_to_atoms(input: &[usize]) -> TVec<(usize, usize)> {
             input.iter().map(|x| reached.iter().position(|y| y == x).unwrap()).collect();
         let cycles = perm_to_cycles(&remaining);
         for cycle in &cycles {
-            if let Some(rot) = is_rotation_cycle(&cycle) {
+            if let Some(rot) = is_rotation_cycle(cycle) {
                 changes.push(rot);
                 continue 'top;
             }
@@ -1010,8 +1010,7 @@ mod proptests {
         type Parameters = TVec<usize>;
         type Strategy = BoxedStrategy<AxisOp>;
         fn arbitrary_with(shape: TVec<usize>) -> Self::Strategy {
-            let mut ops: BoxedStrategy<AxisOp> =
-                (0usize..shape.len() + 1).prop_map(|ax| Add(ax)).boxed();
+            let mut ops: BoxedStrategy<AxisOp> = (0usize..shape.len() + 1).prop_map(Add).boxed();
             if shape.len() > 1 {
                 ops = ops
                     .prop_union(
@@ -1021,8 +1020,7 @@ mod proptests {
                     )
                     .boxed()
             }
-            let rms =
-                (0..shape.len()).filter(|&ax| shape[ax] == 1).map(|ax| Rm(ax)).collect::<Vec<_>>();
+            let rms = (0..shape.len()).filter(|&ax| shape[ax] == 1).map(Rm).collect::<Vec<_>>();
             if rms.len() > 0 {
                 ops = ops
                     .prop_union((0..rms.len()).prop_map(move |rm| rms[rm].clone()).boxed())
@@ -1056,7 +1054,7 @@ mod proptests {
                 if len == 0 {
                     Just(tvec!()).boxed()
                 } else {
-                    AxisOp::arbitrary_with(shape.clone().into())
+                    AxisOp::arbitrary_with(shape.clone())
                         .prop_flat_map(move |op| {
                             let mut shape = shape.clone();
                             op.change_shape_array(&mut shape, false).unwrap();

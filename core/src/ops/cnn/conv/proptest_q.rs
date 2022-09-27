@@ -54,7 +54,7 @@ impl QConvProblem {
     fn reference(&self) -> ArrayD<i8> {
         setup_test_logger();
         assert_eq!(self.data.shape(), &*self.shape_in.shape);
-        let n = *self.shape_in.n().clone().unwrap_or(&1);
+        let n = *self.shape_in.n().unwrap_or(&1);
         let ci_per_g = self.shape_in.c() / self.group;
         let co_per_g = self.co / self.group;
         let a0 = self.qp.a0.as_static().unwrap().cast_to_scalar::<i32>().unwrap();
@@ -137,7 +137,7 @@ impl QConvProblem {
                 None,
                 Some(self.co),
             ),
-            self.kernel_format.clone(),
+            self.kernel_format,
             self.kernel.clone().into_arc_tensor(),
             self.group,
             self.bias.clone().map(|a| a.into_arc_tensor()),
@@ -151,7 +151,7 @@ impl QConvProblem {
             model = model.into_decluttered()?;
         }
         let mut output = model.into_runnable()?.run(tvec![self.data.clone().into_tensor()])?;
-        Ok(output.remove(0).into_tensor().into_array::<i8>()?)
+        output.remove(0).into_tensor().into_array::<i8>()
     }
 
     fn check(&self) -> TestCaseResult {
@@ -172,7 +172,7 @@ impl Arbitrary for QConvProblem {
             1usize..=8,
             1usize..=8,
             1usize..=3,
-            (1usize..=3).prop_flat_map(|r| shapes(r)),
+            (1usize..=3).prop_flat_map(shapes),
             q_params(),
         )
             .prop_flat_map(

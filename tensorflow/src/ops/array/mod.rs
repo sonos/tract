@@ -22,9 +22,9 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("GatherV2", gather_v2::gather_v2);
     reg.insert("Pack", pack::pack);
     reg.insert("Pad", pad::pad);
-    reg.insert("Range", | _, _ | Ok(expand(tract_hir::ops::array::Range::default())));
+    reg.insert("Range", |_, _| Ok(expand(tract_hir::ops::array::Range::default())));
     reg.insert("Reshape", |_, _| Ok(expand(tract_hir::ops::array::Reshape::new())));
-    reg.insert("Shape", |_, _| Ok(expand(tract_hir::ops::array::Shape::new(DatumType::I32))));
+    reg.insert("Shape", |_, _| Ok(expand(tract_hir::ops::array::Shape::new(DatumType::TDim))));
     reg.insert("Slice", slice);
     reg.insert("Squeeze", squeeze::squeeze);
     reg.insert("StridedSlice", strided_slice);

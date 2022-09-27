@@ -102,7 +102,7 @@ impl MutableState {
         unsafe {
             let full_len = input.shape()[axis];
             let mut shape: TVec<usize> = input.shape().into();
-            shape[axis] = chunk_dim.abs() as usize;
+            shape[axis] = chunk_dim.unsigned_abs();
             let mut t = Tensor::uninitialized_dt(input.datum_type(), &shape)?;
             if chunk_dim < 0 {
                 let chunk_dim = (-chunk_dim) as usize;
@@ -173,13 +173,12 @@ impl OpState for State {
             let (outside_slot, axis, chunk) = op
                 .input_mapping
                 .iter()
-                .filter_map(|it| match it {
+                .find_map(|it| match it {
                     InputMapping::Scan { axis, slot, chunk } => Some((*slot, *axis, *chunk)),
                     _ => None,
                 })
-                .next()
                 .unwrap();
-            inputs[outside_slot].shape()[axis].divceil(chunk.abs() as usize)
+            inputs[outside_slot].shape()[axis].divceil(chunk.unsigned_abs())
         };
 
         let mut outputs = tvec!();
@@ -231,7 +230,7 @@ impl OpState for State {
                 })
                 .collect::<TractResult<Vec<_>>>()?
                 .into_iter()
-                .filter_map(|x| x)
+                .flatten()
                 .collect();
 
             trace!("iter_inputs #{}: {:?}", i, iter_inputs);
@@ -278,7 +277,7 @@ impl TypedOp for LirScan {
                     _ => None,
                 })
                 .unwrap();
-            inputs[outside_slot].shape[axis].clone().div_ceil(chunk.abs() as _)
+            inputs[outside_slot].shape[axis].clone().div_ceil(chunk.unsigned_abs() as _)
         };
         for (ix, output) in self.output_mapping.iter().enumerate() {
             let fact = self.plan.model().output_fact(ix)?;

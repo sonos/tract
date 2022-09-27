@@ -108,7 +108,7 @@ impl DeconvUnary {
         if self.pool_spec.data_format.has_n() {
             shape_g_ohw_i.insert(0, 1);
         }
-        let kernel_as_g_ohw_i = kernel_as_g_o_h_w_i.into_shape(&*&shape_g_ohw_i)?;
+        let kernel_as_g_ohw_i = kernel_as_g_o_h_w_i.into_shape(&shape_g_ohw_i)?;
         let trans_data = self.pool_spec.data_format.c_is_last();
         let axes = MatMulAxes::default_for_rank(kernel_as_g_ohw_i.rank())
             .transposing(false, trans_data, false);
@@ -122,7 +122,7 @@ impl DeconvUnary {
             format!("{}.deconv_sum", name),
             super::deconv_sum::DeconvSum::new(
                 self.pool_spec.clone(),
-                self.kernel_format.clone(),
+                self.kernel_format,
                 input_shape.to_tvec(),
                 self.adjustments.clone(),
                 self.bias.clone(),

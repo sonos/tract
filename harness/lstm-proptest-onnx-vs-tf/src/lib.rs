@@ -44,11 +44,13 @@ impl LstmProblem {
         let b_iofc = b_iofc.into_shape((1, 8 * s))?;
 
         let x = model.add_source("x", self.x.datum_type().fact(self.x.shape()).into())?;
-        let mut op = tract_onnx::ops::rec::lstm::LSTM::default();
-        op.optional_y_output = Some(0);
-        op.optional_bias_input = Some(3);
-        op.optional_initial_h_input = Some(4);
-        op.optional_initial_c_input = Some(5);
+        let op = tract_onnx::ops::rec::lstm::LSTM {
+            optional_y_output: Some(0),
+            optional_bias_input: Some(3),
+            optional_initial_h_input: Some(4),
+            optional_initial_c_input: Some(5),
+            ..Default::default()
+        };
         let w = model.add_const("w", w_iofc)?;
         let r = model.add_const("r", r_iofc)?;
         let b = model.add_const("b", b_iofc)?;
@@ -57,7 +59,7 @@ impl LstmProblem {
         let lstm = model.wire_node("lstm", expand(op), &[x, w, r, b, h0, c0]).unwrap();
         model.set_output_outlets(&lstm).unwrap();
         model.analyse(false)?;
-        Ok(model.into_typed()?)
+        model.into_typed()
     }
 
     pub fn tf_model(&self) -> TractResult<TypedModel> {
@@ -85,7 +87,7 @@ impl LstmProblem {
                 None,
                 "cs".into(),
                 "cs".into(),
-                memory_shape.clone(),
+                memory_shape,
                 f32::datum_type(),
                 None,
             ),
@@ -171,7 +173,7 @@ impl LstmProblem {
         let model = extensions.preproc(model)?;
 
         // println!("{:#?}", model);
-        Ok(model.into_typed()?)
+        model.into_typed()
     }
 
     pub fn onnx_run(&self) -> TractResult<Arc<Tensor>> {

@@ -93,8 +93,8 @@ impl InferenceRulesOp for Compress {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> TractResult<()> {
-        check_input_arity(&inputs, 2)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 2)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[1].datum_type, bool::datum_type())?;
         s.equals(&inputs[1].rank, 1)?;

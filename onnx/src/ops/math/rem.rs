@@ -79,7 +79,7 @@ impl Expansion for RemInt {
         )?;
         let b_is_pos = model.wire_node(
             name.to_string() + ".b_is_pos",
-            tract_hir::ops::logic::less::unary(zero.clone()),
+            tract_hir::ops::logic::less::unary(zero),
             &[wires[1]],
         )?;
         let rem_is_neg_b_is_pos = model.wire_node(

@@ -80,8 +80,8 @@ impl InferenceRulesOp for Pad {
         let input = &inputs[0];
         let padding = &inputs[1];
         let output = &outputs[0];
-        check_input_arity(&inputs, 2)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 2)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&output.datum_type, &input.datum_type)?;
         s.equals(&padding.datum_type, DatumType::TDim)?;
         s.equals(&input.rank, &output.rank)?;

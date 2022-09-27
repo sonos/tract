@@ -18,7 +18,7 @@ use crate::internal::*;
 /// graph. The analyser will first tag each edge with a fact, starting with the
 /// most general one and specializing it at each iteration. Eventually, it will
 /// reach a fixed point that - hopefully - holds enough information.
-#[derive(Clone, PartialEq, Default, Hash)]
+#[derive(Clone, PartialEq, Eq, Default, Hash)]
 pub struct InferenceFact {
     pub datum_type: TypeFactoid,
     pub shape: ShapeFactoid,
@@ -51,19 +51,20 @@ impl InferenceFact {
         InferenceFact { datum_type: dt.into(), ..self }
     }
 
+    pub fn without_datum_type(self) -> InferenceFact {
+        InferenceFact { datum_type: TypeFactoid::Any, ..self }
+    }
+
     pub fn with_shape<S: Into<ShapeFactoid>>(self, shape: S) -> InferenceFact {
         InferenceFact { shape: shape.into(), ..self }
     }
 
     pub fn format_dt_shape(&self) -> String {
         if !self.shape.open && self.shape.dims.len() == 0 {
-            format!(
-                "{}",
-                self.datum_type
-                    .concretize()
-                    .map(|dt| format!("{:?}", dt))
-                    .unwrap_or("?".to_string())
-            )
+            self.datum_type
+                .concretize()
+                .map(|dt| format!("{:?}", dt))
+                .unwrap_or_else(|| "?".to_string())
         } else {
             format!(
                 "{:?},{}",
@@ -71,7 +72,7 @@ impl InferenceFact {
                 self.datum_type
                     .concretize()
                     .map(|dt| format!("{:?}", dt))
-                    .unwrap_or("?".to_string())
+                    .unwrap_or_else(|| "?".to_string())
             )
         }
     }
@@ -124,8 +125,12 @@ impl Fact for InferenceFact {
         Ok(Cow::Owned(TypedFact::try_from(self)?))
     }
 
-    fn matches(&self, t: &Tensor, _symbols: Option<&SymbolValues>) -> TractResult<bool> {
-        Ok(self.unify(&InferenceFact::from(t)).is_ok())
+    fn matches(&self, t: &Tensor, symbols: Option<&SymbolValues>) -> TractResult<bool> {
+        let other = InferenceFact::from(t);
+
+        Ok(self.datum_type.unify(&other.datum_type).is_ok()
+            && self.value.unify(&other.value).is_ok()
+            && self.shape.matches(t, symbols).is_ok())
     }
 
     fn same_as(&self, other: &dyn Fact) -> bool {
@@ -142,6 +147,10 @@ impl Fact for InferenceFact {
         } else {
             false
         }
+    }
+
+    fn datum_type(&self) -> Option<DatumType> {
+        self.datum_type.concretize()
     }
 }
 
@@ -178,7 +187,7 @@ impl<'a> From<&'a TypedFact> for InferenceFact {
 }
 
 impl From<TypedFact> for InferenceFact {
-    fn from(t:TypedFact) -> InferenceFact {
+    fn from(t: TypedFact) -> InferenceFact {
         InferenceFact::from(&t)
     }
 }
@@ -197,7 +206,7 @@ impl From<Arc<Tensor>> for InferenceFact {
 
 impl From<Tensor> for InferenceFact {
     fn from(t: Tensor) -> InferenceFact {
-        let mut fact = InferenceFact::dt_shape(t.datum_type(), &*t.shape());
+        let mut fact = InferenceFact::dt_shape(t.datum_type(), t.shape());
         fact.value = t.into_arc_tensor().into();
         fact
     }

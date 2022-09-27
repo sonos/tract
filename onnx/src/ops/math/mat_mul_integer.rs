@@ -34,11 +34,11 @@ impl Expansion for MatMulInteger {
         outputs: &'p [TensorProxy],
     ) -> TractResult<()> {
         check_input_arity(
-            &inputs,
+            inputs,
             2 + self.optional_a_zero_point_input.is_some() as usize
                 + self.optional_b_zero_point_input.is_some() as usize,
         )?;
-        check_output_arity(&outputs, 1)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&outputs[0].datum_type, i32::datum_type())?;
         if let Some(a_zp) = self.optional_a_zero_point_input {
             s.equals(&inputs[a_zp].datum_type, &inputs[0].datum_type)?
@@ -117,8 +117,8 @@ impl Expansion for QLinearMatMul {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> TractResult<()> {
-        check_input_arity(&inputs, 8)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 8)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&inputs[0].datum_type, &inputs[2].datum_type)?;
         s.equals(&inputs[3].datum_type, &inputs[5].datum_type)?;
         s.equals(&inputs[1].datum_type, f32::datum_type())?;

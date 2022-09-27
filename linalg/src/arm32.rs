@@ -3,9 +3,9 @@ pub mod armv7neon;
 mod armvfpv2;
 mod cortex_a7;
 mod cortex_a9;
-use crate::frame::ElementWiseImpl;
 use armv7neon::*;
 
+use crate::frame::element_wise::ElementWiseKer;
 use crate::frame::mmm::kernel::MatMatMulKer;
 
 use crate::Ops;
@@ -80,9 +80,8 @@ pub fn plug(ops: &mut Ops) {
         };
         ops.qmmm_i32 = Box::new(|_, _, _| armv7neon::armv7neon_mmm_i32_8x4::mmm());
         ops.qmmv_i32 = Box::new(|_, _| armv7neon::armv7neon_mmm_i32_32x1::mmm());
-        ops.sigmoid_f32 =
-            Box::new(|| Box::new(ElementWiseImpl::<armv7neon::SigmoidF32x4n, f32>::new()));
-        ops.tanh_f32 = Box::new(|| Box::new(ElementWiseImpl::<armv7neon::TanhF32x4n, f32>::new()));
+        ops.sigmoid_f32 = Box::new(|| armv7neon_sigmoid_f32_4n::ew());
+        ops.tanh_f32 = Box::new(|| armv7neon_tanh_f32_4n::ew());
     } else {
         log::info!("armvfpv2 activated for smmm");
         ops.mmm_f32 = Box::new(|_, _, _| armvfpv2::armvfpv2_mmm_f32_4x4::mmm());

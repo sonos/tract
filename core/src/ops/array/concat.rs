@@ -10,7 +10,7 @@ pub enum ConcatSlice {
 impl ConcatSlice {
     pub fn as_const(&self) -> Option<&Tensor> {
         match self {
-            ConcatSlice::Const(c) => Some(&c),
+            ConcatSlice::Const(c) => Some(c),
             ConcatSlice::Var => None,
         }
     }
@@ -82,6 +82,7 @@ impl TypedOp for TypedConcat {
                 }
             })
             .unwrap();
+        fact = fact.without_value();
         for input in inputs {
             if input.rank() != fact.rank()
                 || input
@@ -180,7 +181,7 @@ impl TypedOp for TypedConcat {
                             let prec = model.node(node.inputs[input].node);
                             if let Some((wire, _)) = prec.op().as_typed().unwrap().slice_output(
                                 model,
-                                &prec,
+                                prec,
                                 patch,
                                 suffix,
                                 node.inputs[input].slot,

@@ -75,7 +75,7 @@ impl Expansion for ConvTranspose {
             ) {
                 let zeros = tvec!(0; x_shape.len() - 2);
                 let y_shape = if let Some(output_shape) = &self.output_shape {
-                    let mut y_shape = x_shape.clone();
+                    let mut y_shape = x_shape;
                     y_shape[1] = w_shape[1] * self.group;
                     for (ix, d) in output_shape.iter().enumerate() {
                         y_shape[ix + 2] = *d;
@@ -93,7 +93,7 @@ impl Expansion for ConvTranspose {
                     tract_core::ops::cnn::deconv::output_shape(
                         &pool_spec,
                         &x_shape,
-                        &self.adjustments.clone().unwrap_or(zeros.clone()),
+                        &self.adjustments.clone().unwrap_or(zeros),
                     )?
                 };
                 let y_shape = y_shape.iter().map(|x| x.to_dim()).collect::<TVec<TDim>>();
@@ -121,10 +121,16 @@ impl Expansion for ConvTranspose {
             // channels post deconv
             let mut axes: TVec<usize> = (0..k.rank()).collect();
             axes.swap(0, 1);
-            let kernel = k.clone().into_tensor().permute_axes(&axes)?;
+            let kernel = k.into_tensor().permute_axes(&axes)?;
 
             let bias = if self.have_bias {
-                Some(target.outlet_fact(inputs[2])?.konst.clone().context("bias must be a constant")?)
+                Some(
+                    target
+                        .outlet_fact(inputs[2])?
+                        .konst
+                        .clone()
+                        .context("bias must be a constant")?,
+                )
             } else {
                 None
             };
@@ -166,7 +172,7 @@ impl Expansion for ConvTranspose {
                     KernelFormat::OIHW,
                     kernel.into_arc_tensor(),
                     bias,
-                    self.adjustments.clone().unwrap_or(zeros.clone()),
+                    self.adjustments.clone().unwrap_or(zeros),
                     self.group,
                 )
             };

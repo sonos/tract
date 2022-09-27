@@ -32,7 +32,7 @@ impl EvalOp for PulsedSameAxisConcat {
         _session: &mut SessionState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
-        return Ok(Some(Box::new(PulsedSameAxisConcatState::default())));
+        Ok(Some(Box::new(PulsedSameAxisConcatState::default())))
     }
 }
 
@@ -87,7 +87,7 @@ impl OpState for PulsedSameAxisConcatState {
             }
         }
 
-        return Ok(tvec!(data.into_arc_tensor()));
+        Ok(tvec!(data.into_arc_tensor()))
     }
 }
 

@@ -38,8 +38,8 @@ impl InferenceRulesOp for Source {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 0)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 0)?;
+        check_output_arity(outputs, 1)?;
         Ok(())
     }
 

@@ -1,3 +1,4 @@
+#![allow(clippy::bool_comparison)]
 use ndarray::*;
 
 use crate::broadcast::multi_broadcast;

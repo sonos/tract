@@ -18,7 +18,7 @@ pub fn parse_config(s: &str) -> TractResult<ConfigLines> {
         if line.trim().is_empty() {
             continue;
         }
-        let line_kind = line.split(" ").next().unwrap();
+        let line_kind = line.split(' ').next().unwrap();
         match line_kind {
             "input-node" => {
                 input_node = Some(

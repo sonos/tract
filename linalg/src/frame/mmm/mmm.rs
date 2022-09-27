@@ -10,7 +10,7 @@ use tract_data::anyhow;
 use tract_data::internal::*;
 
 pub trait MatMatMul:
-Debug + fmt::Display + dyn_clone::DynClone + Send + Sync + std::any::Any
+    Debug + fmt::Display + dyn_clone::DynClone + Send + Sync + std::any::Any
 {
     fn kernel_name(&self) -> &'static str;
     fn mr(&self) -> usize;
@@ -38,7 +38,7 @@ Debug + fmt::Display + dyn_clone::DynClone + Send + Sync + std::any::Any
         n: usize,
         row_stride: isize,
         col_stride: isize,
-        ) -> OutputStoreSpec;
+    ) -> OutputStoreSpec;
 
     unsafe fn run(&self, m: usize, n: usize, non_linear: &[FusedSpec]) -> anyhow::Result<()> {
         let mut scratch = self.allocate_scratch_space();
@@ -53,14 +53,14 @@ Debug + fmt::Display + dyn_clone::DynClone + Send + Sync + std::any::Any
         n: usize,
         scratch: &mut dyn ScratchSpace,
         non_linear: &[FusedSpec],
-        ) -> anyhow::Result<()>;
+    ) -> anyhow::Result<()>;
 
     unsafe fn run_with_scratch_space_vec(
         &self,
         m: usize,
         scratch: &mut dyn ScratchSpace,
         non_linear: &[FusedSpec],
-        ) -> anyhow::Result<()>;
+    ) -> anyhow::Result<()>;
 
     unsafe fn run_with_scratch_space_col_outer(
         &self,
@@ -68,7 +68,7 @@ Debug + fmt::Display + dyn_clone::DynClone + Send + Sync + std::any::Any
         n: usize,
         scratch: &mut dyn ScratchSpace,
         non_linear: &[FusedSpec],
-        ) -> anyhow::Result<()>;
+    ) -> anyhow::Result<()>;
 }
 
 dyn_clone::clone_trait_object!(MatMatMul);
@@ -88,50 +88,50 @@ impl std::hash::Hash for Box<dyn MatMatMul> {
 #[derive(Clone)]
 pub struct MatMatMulImpl<K, TI>
 where
-TI: LADatum,
-K: MatMatMulKer<TI> + 'static,
+    TI: LADatum,
+    K: MatMatMulKer<TI> + 'static,
 {
     phantom: PhantomData<(K, TI)>,
 }
 
 unsafe impl<K, TI> Send for MatMatMulImpl<K, TI>
 where
-TI: LADatum,
-K: MatMatMulKer<TI> + 'static,
+    TI: LADatum,
+    K: MatMatMulKer<TI> + 'static,
 {
 }
 
 unsafe impl<K, TI> Sync for MatMatMulImpl<K, TI>
 where
-TI: LADatum,
-K: MatMatMulKer<TI> + 'static,
+    TI: LADatum,
+    K: MatMatMulKer<TI> + 'static,
 {
+}
+
+impl<K, TI> Default for MatMatMulImpl<K, TI>
+where
+    TI: LADatum,
+    K: MatMatMulKer<TI> + 'static,
+{
+    fn default() -> Self {
+        MatMatMulImpl { phantom: PhantomData }
+    }
 }
 
 impl<K, TI> fmt::Debug for MatMatMulImpl<K, TI>
 where
-TI: LADatum,
-K: MatMatMulKer<TI> + 'static,
+    TI: LADatum,
+    K: MatMatMulKer<TI> + 'static,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "MMM ({} {}x{})", K::name(), K::mr(), K::nr())
     }
 }
 
-impl<K, TI> MatMatMulImpl<K, TI>
-where
-TI: LADatum,
-K: MatMatMulKer<TI> + 'static,
-{
-    pub fn new() -> MatMatMulImpl<K, TI> {
-        MatMatMulImpl { phantom: PhantomData }
-    }
-}
-
 impl<K, TI> MatMatMul for MatMatMulImpl<K, TI>
 where
-TI: LADatum,
-K: MatMatMulKer<TI> + 'static,
+    TI: LADatum,
+    K: MatMatMulKer<TI> + 'static,
 {
     fn kernel_name(&self) -> &'static str {
         K::name()
@@ -185,13 +185,14 @@ K: MatMatMulKer<TI> + 'static,
         n: usize,
         row_stride: isize,
         col_stride: isize,
-        ) -> OutputStoreSpec {
+    ) -> OutputStoreSpec {
         OutputStoreSpec::Strides {
             row_byte_stride: row_stride * item_size as isize,
             col_byte_stride: col_stride * item_size as isize,
             mr: K::mr(),
             nr: K::nr(),
-            m, n,
+            m,
+            n,
         }
     }
 
@@ -208,22 +209,22 @@ K: MatMatMulKer<TI> + 'static,
         m: usize,
         scratch: &mut dyn ScratchSpace,
         non_linear: &[FusedSpec],
-        ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<()> {
         let mr = K::mr();
         let scratch = scratch
             .downcast_mut::<ScratchSpaceFusedNonLinear<TI>>()
             .context("Wrong scratch space type")?;
         scratch.prepare::<K>(non_linear);
         for ia in 0..m / mr {
-            scratch.for_valid_tile::<K>(&non_linear, ia, 0);
-            let err = K::kernel(&scratch.uspecs());
+            scratch.for_valid_tile::<K>(non_linear, ia, 0);
+            let err = K::kernel(scratch.uspecs());
             debug_assert_eq!(err, 0, "Kernel return error {}", err);
         }
         if m % mr != 0 {
-            scratch.for_border_tile::<K>(&non_linear, m / mr, 0);
-            let err = K::kernel(&scratch.uspecs());
+            scratch.for_border_tile::<K>(non_linear, m / mr, 0);
+            let err = K::kernel(scratch.uspecs());
             debug_assert_eq!(err, 0, "Kernel return error {}", err);
-            scratch.postprocess_tile::<K>(&non_linear, m / mr, 0, m % mr, 1);
+            scratch.postprocess_tile::<K>(non_linear, m / mr, 0, m % mr, 1);
         }
         Ok(())
     }
@@ -234,7 +235,7 @@ K: MatMatMulKer<TI> + 'static,
         n: usize,
         scratch: &mut dyn ScratchSpace,
         non_linear: &[FusedSpec],
-        ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<()> {
         let mr = K::mr();
         let nr = K::nr();
         let scratch = scratch
@@ -243,29 +244,29 @@ K: MatMatMulKer<TI> + 'static,
         scratch.prepare::<K>(non_linear);
         for ib in 0..n / nr {
             for ia in 0..m / mr {
-                scratch.for_valid_tile::<K>(&non_linear, ia, ib);
-                let err = K::kernel(&scratch.uspecs());
+                scratch.for_valid_tile::<K>(non_linear, ia, ib);
+                let err = K::kernel(scratch.uspecs());
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
             }
             if m % mr != 0 {
-                scratch.for_border_tile::<K>(&non_linear, m / mr, ib);
-                let err = K::kernel(&scratch.uspecs());
+                scratch.for_border_tile::<K>(non_linear, m / mr, ib);
+                let err = K::kernel(scratch.uspecs());
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                scratch.postprocess_tile::<K>(&non_linear, m / mr, ib, m % mr, nr);
+                scratch.postprocess_tile::<K>(non_linear, m / mr, ib, m % mr, nr);
             }
         }
         if n % nr != 0 {
             for ia in 0..m / mr {
-                scratch.for_border_tile::<K>(&non_linear, ia, n / nr);
-                let err = K::kernel(&scratch.uspecs());
+                scratch.for_border_tile::<K>(non_linear, ia, n / nr);
+                let err = K::kernel(scratch.uspecs());
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                scratch.postprocess_tile::<K>(&non_linear, ia, n / nr, mr, n % nr);
+                scratch.postprocess_tile::<K>(non_linear, ia, n / nr, mr, n % nr);
             }
             if m % mr != 0 {
-                scratch.for_border_tile::<K>(&non_linear, m / mr, n / nr);
-                let err = K::kernel(&scratch.uspecs());
+                scratch.for_border_tile::<K>(non_linear, m / mr, n / nr);
+                let err = K::kernel(scratch.uspecs());
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                scratch.postprocess_tile::<K>(&non_linear, m / mr, n / nr, m % mr, n % nr);
+                scratch.postprocess_tile::<K>(non_linear, m / mr, n / nr, m % mr, n % nr);
             }
         }
         Ok(())
@@ -277,14 +278,14 @@ K: MatMatMulKer<TI> + 'static,
         n: usize,
         scratch: &mut dyn ScratchSpace,
         non_linear: &[FusedSpec],
-        ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<()> {
         let mr = K::mr();
         let nr = K::nr();
         if n == 1 && K::nr() == 1 {
-            return self.run_with_scratch_space_vec(m, scratch, &non_linear);
+            return self.run_with_scratch_space_vec(m, scratch, non_linear);
         }
         if non_linear.iter().any(|f| f.prefer_col_outer()) {
-            return self.run_with_scratch_space_col_outer(m, n, scratch, &non_linear);
+            return self.run_with_scratch_space_col_outer(m, n, scratch, non_linear);
         }
         let scratch = scratch
             .downcast_mut::<ScratchSpaceFusedNonLinear<TI>>()
@@ -292,31 +293,31 @@ K: MatMatMulKer<TI> + 'static,
         scratch.prepare::<K>(non_linear);
         for ia in 0..m / mr {
             for ib in 0..n / nr {
-                scratch.for_valid_tile::<K>(&non_linear, ia, ib);
-                let err = K::kernel(&scratch.uspecs());
+                scratch.for_valid_tile::<K>(non_linear, ia, ib);
+                let err = K::kernel(scratch.uspecs());
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
             }
         }
         if m % mr != 0 {
             for ib in 0..n / nr {
-                scratch.for_border_tile::<K>(&non_linear, m / mr, ib);
-                let err = K::kernel(&scratch.uspecs());
+                scratch.for_border_tile::<K>(non_linear, m / mr, ib);
+                let err = K::kernel(scratch.uspecs());
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                scratch.postprocess_tile::<K>(&non_linear, m / mr, ib, m % mr, nr);
+                scratch.postprocess_tile::<K>(non_linear, m / mr, ib, m % mr, nr);
             }
         }
         if n % nr != 0 {
             for ia in 0..m / mr {
-                scratch.for_border_tile::<K>(&non_linear, ia, n / nr);
-                let err = K::kernel(&scratch.uspecs());
+                scratch.for_border_tile::<K>(non_linear, ia, n / nr);
+                let err = K::kernel(scratch.uspecs());
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                scratch.postprocess_tile::<K>(&non_linear, ia, n / nr, mr, n % nr);
+                scratch.postprocess_tile::<K>(non_linear, ia, n / nr, mr, n % nr);
             }
             if m % mr != 0 {
-                scratch.for_border_tile::<K>(&non_linear, m / mr, n / nr);
-                let err = K::kernel(&scratch.uspecs());
+                scratch.for_border_tile::<K>(non_linear, m / mr, n / nr);
+                let err = K::kernel(scratch.uspecs());
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                scratch.postprocess_tile::<K>(&non_linear, m / mr, n / nr, m % mr, n % nr);
+                scratch.postprocess_tile::<K>(non_linear, m / mr, n / nr, m % mr, n % nr);
             }
         }
         Ok(())
@@ -325,8 +326,8 @@ K: MatMatMulKer<TI> + 'static,
 
 impl<K, TI> fmt::Display for MatMatMulImpl<K, TI>
 where
-TI: LADatum,
-K: MatMatMulKer<TI>,
+    TI: LADatum,
+    K: MatMatMulKer<TI>,
 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "({} {}x{})", K::name(), K::mr(), K::nr())

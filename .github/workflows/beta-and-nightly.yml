@@ -64,6 +64,19 @@ jobs:
           rustc --version
           cargo check
 
+  cargo-clippy:
+    strategy:
+      fail-fast: false
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: Rustup update, install clippy
+      run: rustup update && rustup component add clippy
+    - name: Run cargo-clippy
+      run: cargo clippy
+
   cargo-deny:
     strategy:
       fail-fast: false

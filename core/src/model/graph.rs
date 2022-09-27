@@ -125,6 +125,7 @@ where
             prec.outputs[outlet.slot].successors.push(inlet);
         }
         let succ = &mut self.nodes[inlet.node];
+        #[allow(clippy::comparison_chain)]
         if inlet.slot == succ.inputs.len() {
             succ.inputs.push(outlet);
         } else if inlet.slot < succ.inputs.len() {
@@ -311,7 +312,7 @@ where
             .iter()
             .find(|n| n.name == name)
             .map(|n| n.id)
-            .ok_or_else(|| format_err!("No node found for name: \"{}\"", name).into())
+            .with_context(|| format!("No node found for name: \"{}\"", name))
     }
 
     /// Find a node by its name.
@@ -375,7 +376,7 @@ where
         outlets
             .get(outlet.slot)
             .map(|o| &o.fact)
-            .ok_or_else(|| format_err!("Invalid outlet reference: {:?}", outlet).into())
+            .with_context(|| format!("Invalid outlet reference: {:?}", outlet))
     }
 
     /// Get tensor information for a single outlet.
@@ -384,18 +385,18 @@ where
         outlets
             .get_mut(outlet.slot)
             .map(|o| &mut o.fact)
-            .ok_or_else(|| format_err!("Invalid outlet reference: {:?}", outlet).into())
+            .with_context(|| format!("Invalid outlet reference: {:?}", outlet))
     }
 
     /// Get multiple mutable tensor information for outlets.
     pub fn outlets_fact_mut(&mut self, outlets: &[OutletId]) -> TractResult<TVec<&mut F>> {
         assert!(outlets.iter().tuple_combinations().all(|(a, b)| a != b));
-        Ok(unsafe {
+        unsafe {
             outlets
                 .iter()
-                .map(|o| &mut *(&self.nodes[o.node].outputs[o.slot].fact as *const F as *mut F))
+                .map(|o| Ok((self.outlet_fact(*o)? as *const F as *mut F).as_mut().unwrap()))
                 .collect()
-        })
+        }
     }
 
     /// Set tensor information for a single outlet.
@@ -435,14 +436,14 @@ where
 
     /// Find outlet by label.
     pub fn find_outlet_label(&self, label: &str) -> Option<OutletId> {
-        self.outlet_labels.iter().find(|(_k, v)| &**v == label).map(|(k, _v)| *k)
+        self.outlet_labels.iter().find(|(_k, v)| **v == label).map(|(k, _v)| *k)
     }
 
     // misc
 
     /// Computes an evalutation order for the graph inputs and outputs
     pub fn eval_order(&self) -> TractResult<Vec<usize>> {
-        eval_order(&self)
+        eval_order(self)
     }
 
     #[cfg(not(all(debug_assertions, feature = "paranoid_assertions")))]
@@ -574,20 +575,26 @@ where
 {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
         for i in 0..self.nodes.len() {
-            let input_1 =
-                self.nodes[i].inputs.get(0).map(|o| format!("{:?}", o)).unwrap_or("".to_string());
-            let input_2 =
-                self.nodes[i].inputs.get(1).map(|o| format!("{:?}", o)).unwrap_or("".to_string());
+            let input_1 = self.nodes[i]
+                .inputs
+                .get(0)
+                .map(|o| format!("{:?}", o))
+                .unwrap_or_else(|| "".to_string());
+            let input_2 = self.nodes[i]
+                .inputs
+                .get(1)
+                .map(|o| format!("{:?}", o))
+                .unwrap_or_else(|| "".to_string());
             let output_1 = self
                 .outlet_successors(OutletId::new(i, 0))
                 .get(0)
                 .map(|o| format!("{:?}", o))
-                .unwrap_or("".to_string());
+                .unwrap_or_else(|| "".to_string());
             let output_2 = self
                 .outlet_successors(OutletId::new(i, 0))
                 .get(1)
                 .map(|o| format!("{:?}", o))
-                .unwrap_or("".to_string());
+                .unwrap_or_else(|| "".to_string());
             writeln!(
                 fmt,
                 "{:5} | {:8} {:8} -> {:8} {:8} | {:25} {:50} {:?} => {:?}",

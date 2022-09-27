@@ -149,7 +149,7 @@ impl ConvProblem {
                 Box::new(EagerIm2colSpec { full_kernel_shape: self.filters.shape().into() })
             };
             let b_store = mmm.b_virtual_input(im2col, k).wrap(&self.input.view()).unwrap();
-            let c_store = mmm.c_view(0, 1).wrap(&mut output.view());
+            let c_store = mmm.c_view(0, 1).wrap(&output.view());
             mmm.run(
                 m,
                 n,

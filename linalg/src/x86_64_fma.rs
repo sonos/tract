@@ -1,12 +1,13 @@
+use crate::frame::element_wise::ElementWiseKer;
 use crate::frame::mmm::kernel::MatMatMulKer;
-use crate::frame::ElementWiseImpl;
 use crate::Ops;
 
 pub mod mmm;
-pub mod sigmoid;
-pub mod tanh;
 
 mod intel;
+
+tanh_impl!(f32, fma_tanh_f32, 8, 8, is_x86_feature_detected!("fma"));
+sigmoid_impl!(f32, fma_sigmoid_f32, 8, 8, is_x86_feature_detected!("fma"));
 
 pub fn plug(ops: &mut Ops) {
     if is_x86_feature_detected!("fma") {
@@ -67,12 +68,12 @@ pub fn plug(ops: &mut Ops) {
             });
 
             match best_idx.0 {
-                0 => return mmm::fma_mmm_f32_8x8::mmm(),
-                1 => return mmm::fma_mmm_f32_16x6::mmm(),
-                2 => return mmm::fma_mmm_f32_16x5::mmm(),
-                3 => return mmm::fma_mmm_f32_24x4::mmm(),
-                4 => return mmm::fma_mmm_f32_32x3::mmm(),
-                5 => return mmm::fma_mmm_f32_40x2::mmm(),
+                0 => mmm::fma_mmm_f32_8x8::mmm(),
+                1 => mmm::fma_mmm_f32_16x6::mmm(),
+                2 => mmm::fma_mmm_f32_16x5::mmm(),
+                3 => mmm::fma_mmm_f32_24x4::mmm(),
+                4 => mmm::fma_mmm_f32_32x3::mmm(),
+                5 => mmm::fma_mmm_f32_40x2::mmm(),
                 _ => unreachable!("not a valid index"),
             }
         });
@@ -83,8 +84,8 @@ pub fn plug(ops: &mut Ops) {
         ops.mmm_f32_impls.push(mmm::fma_mmm_f32_40x2::mmm());
         ops.mmm_f32_impls.push(mmm::fma_mmm_f32_8x8::mmm());
 
-        ops.sigmoid_f32 = Box::new(|| Box::new(ElementWiseImpl::<sigmoid::SigmoidF32, f32>::new()));
-        ops.tanh_f32 = Box::new(|| Box::new(ElementWiseImpl::<tanh::TanhF32, f32>::new()));
+        ops.sigmoid_f32 = Box::new(|| fma_sigmoid_f32::ew());
+        ops.tanh_f32 = Box::new(|| fma_tanh_f32::ew());
         log::info!("mmm_f32, sigmoid_f32, tanh_f32: x86_64/fma activated");
     }
     if is_x86_feature_detected!("avx2") {

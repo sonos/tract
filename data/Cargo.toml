@@ -1,6 +1,6 @@
 [package]
 name = "tract-data"
-version = "0.17.3-pre"
+version = "0.18.1-pre"
 license = "MIT/Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -25,6 +25,7 @@ num-integer = "0.1.44"
 num-traits = "0.2.14"
 smallvec = "1.6.1"
 lazy_static = "1.4.0"
+scan_fmt = "0.2.6"
 
 [dev-dependencies]
 criterion = "0.3.5"

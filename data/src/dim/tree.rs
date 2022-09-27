@@ -1,6 +1,7 @@
 use itertools::Itertools;
 use num_traits::{AsPrimitive, PrimInt, Zero};
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::{fmt, ops};
 
 #[derive(Debug)]
@@ -53,13 +54,32 @@ impl From<char> for TDim {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub struct SymbolValues(Vec<Option<i64>>);
 
 impl SymbolValues {
     pub fn with(mut self, s: Symbol, v: i64) -> Self {
         self[s] = Some(v);
         self
+    }
+
+    pub fn set(&mut self, s: Symbol, v: i64) {
+        self[s] = Some(v);
+    }
+}
+
+impl Debug for SymbolValues {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let table = SYMBOL_TABLE.lock().unwrap();
+        write!(
+            f,
+            "{}",
+            self.0
+                .iter()
+                .enumerate()
+                .filter_map(|(ix, v)| v.map(|v| format!("{}={}", table[ix], v)))
+                .join(",")
+        )
     }
 }
 
@@ -123,7 +143,7 @@ impl TDim {
 
     pub fn eval(&self, values: &SymbolValues) -> TDim {
         match self {
-            Sym(sym) => values[*sym].map(|s| Val(s)).unwrap_or(Sym(*sym)),
+            Sym(sym) => values[*sym].map(Val).unwrap_or(Sym(*sym)),
             Val(v) => Val(*v),
             Add(terms) => terms.iter().fold(Val(0), |acc, it| -> TDim { acc + it.eval(values) }),
             Mul(terms) => terms.iter().fold(Val(1), |acc, it| -> TDim { acc * it.eval(values) }),
@@ -162,7 +182,7 @@ impl TDim {
                 let mut forms = vec![];
                 let sub_wiggle = terms.iter().map(|e| e.wiggle()).multi_cartesian_product();
                 for sub in sub_wiggle {
-                    for (ix, num, q) in sub.iter().enumerate().find_map(|(ix, t)| {
+                    if let Some((ix, num, q)) = sub.iter().enumerate().find_map(|(ix, t)| {
                         if let Div(a, q) = t {
                             Some((ix, a, q))
                         } else {
@@ -182,7 +202,7 @@ impl TDim {
                             .collect();
                         forms.push(Div(b!(Add(new_num)), *q))
                     }
-                    forms.push(Add(sub.into()));
+                    forms.push(Add(sub));
                 }
                 forms
             }
@@ -192,7 +212,7 @@ impl TDim {
                 for num in a.wiggle() {
                     if let Add(terms) = &num {
                         let (integer, non_integer): (Vec<_>, Vec<_>) =
-                            terms.into_iter().cloned().partition(|a| a.gcd() % q == 0);
+                            terms.iter().cloned().partition(|a| a.gcd() % q == 0);
                         let mut new_terms = integer.iter().map(|i| i.div(*q)).collect::<Vec<_>>();
                         if non_integer.len() > 0 {
                             new_terms.push(Div(b!(Add(non_integer)), *q));
@@ -259,7 +279,7 @@ impl TDim {
                         }
                         Val(a) => (acc.0 * a, acc.1),
                         it => {
-                            (acc.0, acc.1.into_iter().chain(Some(it.clone()).into_iter()).collect())
+                            (acc.0, acc.1.into_iter().chain(Some(it).into_iter()).collect())
                         }
                     });
                 if rest.len() == 0 {
@@ -310,11 +330,7 @@ impl TDim {
                 } else if let Add(mut terms) = a {
                     if terms.iter().any(|t| {
                         if let MulInt(-1, s) = t {
-                            if let Sym(_) = &**s {
-                                true
-                            } else {
-                                false
-                            }
+                            matches!(&**s, Sym(_))
                         } else {
                             false
                         }
@@ -329,8 +345,7 @@ impl TDim {
                         )
                     } else if let Some(v) = terms
                         .iter()
-                        .filter_map(|t| if let Val(v) = t { Some(*v) } else { None })
-                        .next()
+                        .find_map(|t| if let Val(v) = t { Some(*v) } else { None })
                     {
                         let offset = if v >= q as i64 {
                             Some(v / q as i64)
@@ -375,13 +390,13 @@ impl TDim {
         use self::TDim::*;
         use num_integer::Integer;
         match self {
-            Val(v) => v.abs() as u64,
+            Val(v) => v.unsigned_abs(),
             Sym(_) => 1,
             Add(terms) => {
                 let (head, tail) = terms.split_first().unwrap();
                 tail.iter().fold(head.gcd(), |a, b| a.gcd(&b.gcd()))
             }
-            MulInt(p, a) => a.gcd() * p.abs() as u64,
+            MulInt(p, a) => a.gcd() * p.unsigned_abs(),
             Mul(_) => 1,
             Div(a, q) => {
                 if a.gcd() % *q == 0 {
@@ -408,7 +423,7 @@ impl TDim {
                 if *p == d as i64 {
                     (**a).clone()
                 } else {
-                    let gcd = (p.abs() as u64).gcd(&d);
+                    let gcd = p.unsigned_abs().gcd(&d);
                     MulInt(p / gcd as i64, b!(a.div(d / gcd)))
                 }
             }
@@ -619,6 +634,7 @@ impl<'a> ops::Add<&'a TDim> for TDim {
     }
 }
 
+#[allow(clippy::suspicious_op_assign_impl)]
 impl<'a> ops::SubAssign<&'a TDim> for TDim {
     fn sub_assign(&mut self, rhs: &'a TDim) {
         use std::ops::Neg;
@@ -631,8 +647,7 @@ where
     I: Into<TDim>,
 {
     fn sub_assign(&mut self, rhs: I) {
-        use std::ops::Neg;
-        *self += rhs.into().neg()
+        *self -= &rhs.into()
     }
 }
 
@@ -715,7 +730,7 @@ impl std::str::FromStr for TDim {
     type Err = anyhow::Error;
     fn from_str(s: &str) -> Result<TDim, Self::Err> {
         let first = s.chars().next().unwrap();
-        if first.is_digit(10) || first == '-' {
+        if first.is_ascii_digit() || first == '-' {
             Ok(s.parse::<i64>()?.into())
         } else if first.is_alphabetic() && s.len() == 1 {
             Ok(Symbol::from(first).into())

@@ -77,6 +77,7 @@ pub fn read_tensor<R: std::io::Read>(mut reader: R) -> TractResult<Tensor> {
             for item in tensor.as_slice_mut_unchecked::<String>() {
                 let len: u32 = reader.read_u32::<LE>()?;
                 let mut bytes = Vec::with_capacity(len as usize);
+                #[allow(clippy::uninit_vec)]
                 bytes.set_len(len as usize);
                 reader.read_exact(&mut bytes)?;
                 *item = String::from_utf8(bytes)?;
@@ -122,7 +123,7 @@ pub fn write_tensor<W: std::io::Write>(w: &mut W, tensor: &Tensor) -> TractResul
             bail!("Don't know how to serialize {:?}", tensor.datum_type())
         };
         let header_buf: &[u8; 128] = std::mem::transmute(&header);
-        w.write_all(&*header_buf)?;
+        w.write_all(header_buf)?;
         if tensor.datum_type().is_copy() {
             w.write_all(tensor.as_bytes())?;
         } else if tensor.datum_type() == DatumType::String {

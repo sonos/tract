@@ -8,17 +8,13 @@ pub struct ParsingContext {
     pub node_output_arities: HashMap<String, usize>,
 }
 
+type OpBuilder = fn(&ParsingContext, node: &NodeDef) -> TractResult<Box<dyn InferenceOp>>;
+
 #[derive(Clone, Default)]
-pub struct TfOpRegister(
-    pub HashMap<String, fn(&ParsingContext, node: &NodeDef) -> TractResult<Box<dyn InferenceOp>>>,
-);
+pub struct TfOpRegister(pub HashMap<String, OpBuilder>);
 
 impl TfOpRegister {
-    pub fn insert(
-        &mut self,
-        s: &'static str,
-        builder: fn(&ParsingContext, node: &NodeDef) -> TractResult<Box<dyn InferenceOp>>,
-    ) {
+    pub fn insert(&mut self, s: &'static str, builder: OpBuilder) {
         self.0.insert(s.into(), builder);
     }
 }
@@ -40,7 +36,7 @@ impl TfModelExtensions {
             let plan =
                 SimplePlan::new_for_outputs_and_deps(&original, &as_outlets, &self.control_inputs)?;
             let mut state = SimpleState::new(plan)?;
-            let _outputs = state.run(tvec!())?;
+            let _outputs = state.exec()?;
             let tensors = state.session_state.tensors;
             for node in &mut original.nodes {
                 if let Some(var) = node.op_as_mut::<crate::ops::vars::VariableV2>() {
@@ -63,8 +59,8 @@ impl Tensorflow {
     // "src_output" is 0 the ":0" suffix can be omitted. Regular inputs may
     // optionally be followed by control inputs that have the format "^node".
     fn parse_input(i: &str) -> TractResult<(&str, usize)> {
-        let pair = if i.starts_with("^") {
-            (&i[1..], 0)
+        let pair = if let Some(stripped) = i.strip_prefix('^') {
+            (stripped, 0)
         } else {
             let splits: Vec<_> = i.splitn(2, ':').collect();
             (splits[0], if splits.len() > 1 { splits[1].parse::<usize>()? } else { 0 })
@@ -74,13 +70,12 @@ impl Tensorflow {
 
     pub fn determinize(model: &mut GraphDef) -> TractResult<()> {
         for pbnode in &mut model.node {
-            if pbnode.op == "RandomUniform" {
-                if pbnode.get_attr_int::<i64>("seed")? == 0
-                    && pbnode.get_attr_int::<i64>("seed2")? == 0
-                {
-                    pbnode.attr.insert("seed".to_string(), 1.into());
-                    pbnode.attr.insert("seed2".to_string(), 1.into());
-                }
+            if pbnode.op == "RandomUniform"
+                && pbnode.get_attr_int::<i64>("seed")? == 0
+                && pbnode.get_attr_int::<i64>("seed2")? == 0
+            {
+                pbnode.attr.insert("seed".to_string(), 1.into());
+                pbnode.attr.insert("seed2".to_string(), 1.into());
             }
         }
         Ok(())
@@ -188,7 +183,7 @@ impl Tensorflow {
             } else {
                 model.node_by_name(&pbnode.name)?.id
             };
-            for (ix, i) in pbnode.input.iter().filter(|n| !n.starts_with("^")).enumerate() {
+            for (ix, i) in pbnode.input.iter().filter(|n| !n.starts_with('^')).enumerate() {
                 let input = Self::parse_input(i)?;
                 let prec = model.node_by_name(input.0)?.id;
                 let outlet = OutletId::new(prec, input.1);
@@ -196,7 +191,7 @@ impl Tensorflow {
                 model.add_edge(outlet, inlet)?;
                 model.set_outlet_label(outlet, i.to_string())?;
             }
-            for i in pbnode.input.iter().filter(|n| n.starts_with("^")) {
+            for i in pbnode.input.iter().filter(|n| n.starts_with('^')) {
                 let input = Self::parse_input(i)?;
                 let prec = model.node_by_name(input.0)?.id;
                 control_inputs.push((model.node_id_by_name(&pbnode.name)?, prec));

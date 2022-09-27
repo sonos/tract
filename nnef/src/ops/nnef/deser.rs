@@ -92,7 +92,7 @@ pub fn reshape(
     let count = if count == -1 { input_shape.len() - start } else { count as usize };
     let shape: TVec<TDim> = invocation.named_arg_as(builder, "shape")?;
 
-    let mut replacement = shape.clone();
+    let mut replacement = shape;
     for i in 0..replacement.len() {
         if replacement[i] == 0.to_dim() {
             replacement[i] = input_shape[i + start].clone();
@@ -117,7 +117,7 @@ pub fn transpose(
     let wire = tvec!(invocation.named_arg_as(builder, "input")?);
     ops::change_axes::perm_to_ops(&axes)
         .into_iter()
-        .try_fold(wire, |wire, mov| Ok(builder.wire(mov, &wire)?))
+        .try_fold(wire, |wire, mov| builder.wire(mov, &wire))
 }
 
 // fragment concat<?>( values: tensor<?>[], axis: integer ) -> ( value: tensor<?> );
@@ -175,7 +175,7 @@ pub fn squeeze(
     let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
     let wire = tvec!(invocation.named_arg_as(builder, "input")?);
     axes.iter().sorted().rev().try_fold(wire, |wire, &axis| {
-        Ok(builder.wire(ops::change_axes::AxisOp::Rm(axis as usize), &wire)?)
+        builder.wire(ops::change_axes::AxisOp::Rm(axis as usize), &wire)
     })
 }
 
@@ -187,7 +187,7 @@ pub fn unsqueeze(
     let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
     let wire = tvec!(invocation.named_arg_as(builder, "input")?);
     axes.iter().sorted().try_fold(wire, |wire, &axis| {
-        Ok(builder.wire(ops::change_axes::AxisOp::Add(axis as usize), &wire)?)
+        builder.wire(ops::change_axes::AxisOp::Add(axis as usize), &wire)
     })
 }
 
@@ -196,9 +196,9 @@ pub fn tile(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
 ) -> TractResult<TVec<OutletId>> {
-    let multipliers: TVec<usize> = invocation.named_arg_as(builder, "repeats")?;
+    let multipliers: TVec<TDim> = invocation.named_arg_as(builder, "repeats")?;
     let wire = tvec!(invocation.named_arg_as(builder, "input")?);
-    Ok(builder.wire(ops::array::Tile { multipliers }, &wire)?)
+    builder.wire(ops::array::Tile { multipliers }, &wire)
 }
 
 // fragment pad( input: tensor<scalar>, padding: (integer, integer)[], border: string = 'constant', value: scalar = 0.0 ) -> ( output: tensor<scalar> );
@@ -354,7 +354,7 @@ pub fn conv_or_deconv(
                 .shape
                 .as_concrete()
                 .context("symbolic dimension not supported in deconv")?[2..];
-            adjustments(&pool_spec, &input_shape, &output_shape)?
+            adjustments(&pool_spec, input_shape, &output_shape)?
         } else {
             tvec!(0; pool_spec.rank())
         };
@@ -489,7 +489,7 @@ pub fn reduce(
 ) -> TractResult<TVec<OutletId>> {
     let input = invocation.named_arg_as(builder, "input")?;
     let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
-    let reducer_name = invocation.invocation.id.split("_").next().unwrap();
+    let reducer_name = invocation.invocation.id.split('_').next().unwrap();
     let reducer = match reducer_name {
         "sum" => ops::nn::Reducer::Sum,
         "min" => ops::nn::Reducer::Min,
@@ -503,19 +503,18 @@ pub fn reduce(
         return Ok(wire);
     }
 
-    let fact = builder.model.outlet_fact(wire[0])?;
+    let fact = builder.model.outlet_fact(wire[0])?.clone();
     let input_shape = &builder.model.outlet_fact(input)?.shape;
     let cardinality: TDim = axes.iter().map(|ax| &input_shape[*ax]).product();
-    if let Ok(c) = cardinality.to_isize() {
-        if fact.datum_type.is_float() {
-            let cardinality = tensor0((c as f64).recip())
-                .cast_to_dt(fact.datum_type)?
-                .into_owned()
-                .broadcast_into_rank(input_shape.rank())?;
-            return builder.wire(ops::math::mul::unary(cardinality.into_arc_tensor()), &wire);
-        }
-    }
-    bail!("Normalization only works with float items and known dimensions");
+    let cardinality = builder.wire(
+        ops::konst::Const::new(
+            tensor0(cardinality).broadcast_into_rank(fact.rank())?.into_arc_tensor(),
+        ),
+        &[],
+    )?;
+    let cardinality = builder.wire(ops::cast::Cast::new(fact.datum_type), &cardinality)?;
+    dbg!(&cardinality);
+    builder.wire(ops::math::div::bin_typed(), &[wire[0], cardinality[0]])
 }
 
 /*

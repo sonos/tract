@@ -12,12 +12,12 @@ pub fn scan(
     let graph: &GraphProto = node.get_attr("body")?;
     let ParseResult { mut model, unresolved_inputs, .. } = ctx.parse_graph(graph)?;
     let scan_input_axes =
-        node.get_attr_opt_vec("scan_input_axes")?.unwrap_or(vec![0; num_scan_inputs]);
+        node.get_attr_opt_vec("scan_input_axes")?.unwrap_or_else(|| vec![0; num_scan_inputs]);
     let closure_inputs = unresolved_inputs.len();
     let num_hidden_state = model.input_outlets()?.len() - closure_inputs - num_scan_inputs;
     let num_scan_outputs = model.output_outlets()?.len() - num_hidden_state;
     let scan_output_axes =
-        node.get_attr_opt_vec("scan_output_axes")?.unwrap_or(vec![0; num_scan_outputs]);
+        node.get_attr_opt_vec("scan_output_axes")?.unwrap_or_else(|| vec![0; num_scan_outputs]);
 
     let mut mapped_inputs = vec![];
     let mut mapped_outputs = vec![];

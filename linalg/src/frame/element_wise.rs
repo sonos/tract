@@ -3,6 +3,47 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use tract_data::anyhow;
 
+use crate::LADatum;
+
+macro_rules! ew_impl {
+    ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr) => {
+        paste! {
+            mod [<sys_ $func>] {
+                #[allow(unused_imports)]
+                use tract_data::prelude::f16;
+                extern_kernel!(fn $func(ptr: *mut $ti, count: usize) -> ());
+            }
+
+            #[derive(Copy, Clone, Debug)]
+            #[allow(non_camel_case_types)]
+            pub struct $func;
+
+            impl ElementWiseKer<$ti> for $func {
+                #[inline(always)]
+                fn name() -> &'static str {
+                    stringify!($func)
+                }
+                #[inline(always)]
+                fn nr() -> usize {
+                    $nr
+                }
+                #[inline(always)]
+                fn alignment_items() -> usize {
+                    $alignment_items
+                }
+                #[inline(always)]
+                fn alignment_bytes() -> usize {
+                    $alignment_items * std::mem::size_of::<$ti>()
+                }
+                #[inline(never)]
+                fn run(buf: &mut [$ti]) {
+                    unsafe { [<sys_ $func>]::$func(buf.as_mut_ptr(), buf.len()) }
+                }
+            }
+        }
+    };
+}
+
 struct TempBuffer {
     layout: Layout,
     buffer: *mut u8,
@@ -41,7 +82,7 @@ impl Drop for TempBuffer {
 }
 
 std::thread_local! {
-    static TMP:  std::cell::RefCell<TempBuffer> = std::cell::RefCell::new(TempBuffer::default());
+    static TMP: std::cell::RefCell<TempBuffer> = std::cell::RefCell::new(TempBuffer::default());
 }
 
 pub trait ElementWise<T>: Send + Sync + Debug + dyn_clone::DynClone
@@ -56,7 +97,7 @@ dyn_clone::clone_trait_object!(<T> ElementWise<T> where T: Copy);
 #[derive(Debug, Clone, new)]
 pub struct ElementWiseImpl<K, T>
 where
-    T: Copy + Debug + PartialEq + Send + Sync,
+    T: LADatum,
     K: ElementWiseKer<T> + Clone,
 {
     phantom: PhantomData<(K, T)>,
@@ -64,21 +105,21 @@ where
 
 impl<K, T> ElementWise<T> for ElementWiseImpl<K, T>
 where
-    T: crate::Datum + Copy + Debug + PartialEq + Send + Sync,
+    T: LADatum,
     K: ElementWiseKer<T> + Clone,
 {
     fn run(&self, vec: &mut [T]) -> anyhow::Result<()> {
-        if vec.len() == 0 {
+        if vec.is_empty() {
             return Ok(());
         }
         unsafe {
             TMP.with(|buffer| {
                 let mut buffer = buffer.borrow_mut();
                 buffer.ensure(K::nr() * T::datum_type().size_of(), K::alignment_bytes());
-                let mut tmp = std::slice::from_raw_parts_mut(buffer.buffer as *mut T, K::nr());
+                let tmp = std::slice::from_raw_parts_mut(buffer.buffer as *mut T, K::nr());
                 let mut compute_via_temp_buffer = |slice: &mut [T]| {
                     tmp[..slice.len()].copy_from_slice(slice);
-                    K::run(&mut tmp);
+                    K::run(tmp);
                     slice.copy_from_slice(&tmp[..slice.len()])
                 };
                 let prefix_len = vec.as_ptr().align_offset(K::alignment_bytes()).min(vec.len());
@@ -98,13 +139,41 @@ where
     }
 }
 
-pub trait ElementWiseKer<T>: Send + Sync + Debug + dyn_clone::DynClone + Clone
+pub trait ElementWiseKer<T>: Send + Sync + Debug + dyn_clone::DynClone + Clone + 'static
 where
-    T: Copy + Debug + PartialEq + Send + Sync,
+    T: LADatum,
 {
     fn name() -> &'static str;
     fn alignment_bytes() -> usize;
     fn alignment_items() -> usize;
     fn nr() -> usize;
     fn run(vec: &mut [T]);
+    fn ew() -> Box<dyn ElementWise<T>> {
+        Box::new(ElementWiseImpl::<Self, T>::new())
+    }
+}
+
+#[cfg(test)]
+pub mod test {
+    use crate::{frame::element_wise::*, LADatum};
+    use proptest::test_runner::{TestCaseError, TestCaseResult};
+    use tract_data::internal::*;
+
+    pub fn test_element_wise<K: ElementWiseKer<T>, T: LADatum, F: Fn(T) -> T>(
+        values: &[T],
+        reference: F,
+    ) -> TestCaseResult {
+        let op = ElementWiseImpl::<K, T>::new();
+        let mut values = values.to_vec();
+        while values.len() < K::nr() {
+            values.push(T::zero());
+        }
+        let expected = values.iter().copied().map(reference).collect::<Vec<_>>();
+        let mut found = values;
+        op.run(&mut found).unwrap();
+        tensor1(&*found)
+            .close_enough(&tensor1(&*expected), true)
+            .map_err(|e| TestCaseError::fail(e.root_cause().to_string()))?;
+        Ok(())
+    }
 }

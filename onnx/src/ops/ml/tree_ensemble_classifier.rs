@@ -245,6 +245,10 @@ impl Expansion for TreeEnsembleClassifier {
         "TreeEnsembleClassifier".into()
     }
 
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec!(format!("binary result layout kludge: {:?}", self.binary_result_layout)))
+    }
+
     op_onnx!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
@@ -253,8 +257,8 @@ impl Expansion for TreeEnsembleClassifier {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 2)?;
+        check_input_arity(inputs, 1)?;
+        check_output_arity(outputs, 2)?;
 
         s.equals(&outputs[0].datum_type, self.class_labels.datum_type())?;
         s.equals(&outputs[1].datum_type, DatumType::F32)?;
@@ -263,7 +267,11 @@ impl Expansion for TreeEnsembleClassifier {
         s.equals(&outputs[1].rank, 2)?;
         s.equals(&outputs[0].shape[0], &inputs[0].shape[0])?;
         s.equals(&outputs[1].shape[0], &inputs[0].shape[0])?;
-        s.equals(&outputs[1].shape[1], &self.class_labels.len().to_dim())?;
+        if self.binary_result_layout {
+            s.equals(&outputs[1].shape[1], 2.to_dim())?;
+        } else {
+            s.equals(&outputs[1].shape[1], &self.class_labels.len().to_dim())?;
+        }
 
         Ok(())
     }

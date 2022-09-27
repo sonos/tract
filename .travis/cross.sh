@@ -99,14 +99,20 @@ case "$PLATFORM" in
         cargo dinghy --platform auto-ios-aarch64 build -p tract-linalg
         ;;
 
-        "aarch64-unknown-linux-gnu" | "armv6vfp-unknown-linux-gnueabihf" | "armv7-unknown-linux-gnueabihf" | \
-            "aarch64-unknown-linux-musl" | "armv7-unknown-linux-musl" )
+    "aarch64-apple-darwin")
+        rustup target add aarch64-apple-darwin
+        cargo build --target aarch64-apple-darwin
+        ;;
+
+    "aarch64-unknown-linux-gnu" | "armv6vfp-unknown-linux-gnueabihf" | "armv7-unknown-linux-gnueabihf" | \
+        "aarch64-unknown-linux-musl" | "armv7-unknown-linux-musl" )
 
         case "$PLATFORM" in
             "aarch64-unknown-linux-gnu")
                 export ARCH=aarch64
                 export QEMU_ARCH=aarch64
                 export LIBC_ARCH=arm64
+                export TRACT_CPU_AARCH64_KIND=a55
                 export RUSTC_TRIPLE=$ARCH-unknown-linux-gnu
                 export DEBIAN_TRIPLE=$ARCH-linux-gnu
                 ;;
@@ -135,8 +141,10 @@ case "$PLATFORM" in
                 export LIBC_ARCH=arm64
                 export RUSTC_TRIPLE=$ARCH-unknown-linux-musl
                 export DEBIAN_TRIPLE=$ARCH-linux-gnu
+                export TRACT_CPU_AARCH64_KIND=a55
                 export CUSTOM_TC=`pwd`/aarch64-linux-musl-cross
-                [ -d "$CUSTOM_TC" ] || curl -s http://musl.cc/aarch64-linux-musl-cross.tgz | tar zx
+#                [ -d "$CUSTOM_TC" ] || curl -s http://musl.cc/aarch64-linux-musl-cross.tgz | tar zx
+                [ -d "$CUSTOM_TC" ] || curl -s https://s3.amazonaws.com/tract-ci-builds/toolchains/aarch64-linux-musl-cross.tgz | tar zx
                 ;;
             "armv7-unknown-linux-musl")
                 export ARCH=armv7
@@ -147,7 +155,7 @@ case "$PLATFORM" in
                 export CUSTOM_TC=`pwd`/armv7l-linux-musleabihf-cross
                 export TRACT_CPU_ARM32_NEON=true
                 export DINGHY_TEST_ARGS="--env TRACT_CPU_ARM32_NEON=true"
-                [ -d "$CUSTOM_TC" ] || curl -s http://musl.cc/armv7l-linux-musleabihf-cross.tgz | tar zx
+                [ -d "$CUSTOM_TC" ] || curl -s https://s3.amazonaws.com/tract-ci-builds/toolchains/armv7l-linux-musleabihf-cross.tgz | tar zx
                 export TARGET_CFLAGS="-mfpu=neon"
                 ;;
             *)
@@ -187,7 +195,7 @@ case "$PLATFORM" in
 
     "wasm32-unknown-unknown")
         rustup target add wasm32-unknown-unknown
-        cargo check --target wasm32-unknown-unknown -p tract-onnx -p tract-tensorflow
+        cargo check --target wasm32-unknown-unknown --features getrandom-js -p tract-onnx -p tract-tensorflow
         ;;
     *)
         echo "Don't know what to do for platform: $PLATFORM"

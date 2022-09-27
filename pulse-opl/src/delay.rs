@@ -32,6 +32,13 @@ pub struct DelayState {
 }
 
 impl DelayState {
+    /// Apply delay op on input and store the result in the output tensor
+    /// This method doesn't use allocation. 
+    ///
+    /// # Safety
+    ///
+    /// Input and Ouput tensors shape must be compatible with this operator, otherwise it could lead
+    /// to an undefined behaviour. 
     pub unsafe fn apply_delay_unchecked(&mut self, op: &Delay, input: &Tensor, output: &mut Tensor) {
         let buffered = op.delay + op.overlap;
         let input_pulse = input.shape()[op.axis];
@@ -40,14 +47,14 @@ impl DelayState {
         if op.delay < input_pulse {
             let from_input = input_pulse - op.delay;
             let from_buffer = output_pulse - from_input;
-            output.assign_slice_unchecked(..from_buffer, &buffer, ..from_buffer, op.axis);
-            output.assign_slice_unchecked(from_buffer.., &input, ..from_input, op.axis);
+            output.assign_slice_unchecked(..from_buffer, buffer, ..from_buffer, op.axis);
+            output.assign_slice_unchecked(from_buffer.., input, ..from_input, op.axis);
         } else {
-            output.assign_slice_unchecked(.., &buffer, ..output_pulse, op.axis);
+            output.assign_slice_unchecked(.., buffer, ..output_pulse, op.axis);
         };
         // maintain buffer
         if buffered < input_pulse {
-            buffer.assign_slice_unchecked(.., &input, (input_pulse - buffered).., op.axis);
+            buffer.assign_slice_unchecked(.., input, (input_pulse - buffered).., op.axis);
         } else {
             let stride = buffer.shape().iter().skip(op.axis + 1).product::<usize>()
                 * input.datum_type().size_of()
@@ -57,7 +64,7 @@ impl DelayState {
                 buffer.len() * input.datum_type().size_of(),
             )
             .rotate_left(stride);
-            buffer.assign_slice_unchecked((buffered - input_pulse).., &input, .., op.axis);
+            buffer.assign_slice_unchecked((buffered - input_pulse).., input, .., op.axis);
         }
 
     }
@@ -92,7 +99,7 @@ impl OpState for DelayState {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Delay {
     pub datum_type: DatumType,
     pub buffer_shape: TVec<TDim>,
@@ -110,7 +117,7 @@ impl Delay {
         delay: usize,
         overlap: usize,
     ) -> Delay {
-        let mut buffer_shape: TVec<TDim> = input_fact.shape.iter().map(|d| d.clone()).collect();
+        let mut buffer_shape: TVec<TDim> = input_fact.shape.to_tvec();
         buffer_shape[axis] = (delay + overlap).to_dim();
         Delay { datum_type: input_fact.datum_type, buffer_shape, axis, delay, overlap }
     }

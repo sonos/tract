@@ -1,7 +1,6 @@
+#![allow(clippy::missing_safety_doc)]
 #[macro_use]
 extern crate derive_new;
-#[macro_use]
-extern crate educe;
 extern crate lazy_static;
 extern crate libc;
 extern crate log;
@@ -16,6 +15,7 @@ include!(concat!(env!("OUT_DIR"), "/extern_kernel_macro.rs"));
 #[macro_use]
 pub mod frame;
 pub mod generic;
+use frame::element_wise::ElementWiseKer;
 use frame::MatMatMul;
 pub use generic::{ScaleShiftAndRound, Scaler};
 #[cfg(target_arch = "x86_64")]
@@ -32,21 +32,17 @@ pub use self::frame::{element_wise, lut, mmm};
 use crate::frame::mmm::kernel::MatMatMulKer;
 use tract_data::prelude::*;
 
-type MMMImpl = 
-        Box<
-            dyn Fn(Option<usize>, Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul>
-                + Send
-                + Sync,
-        >;
+type MMMImpl = Box<
+    dyn Fn(Option<usize>, Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul> + Send + Sync,
+>;
 
-type MMVImpl = 
-        Box<
-            dyn Fn(Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul>
-                + Send
-                + Sync,
-        >;
+type MMVImpl = Box<dyn Fn(Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul> + Send + Sync>;
 
+#[allow(clippy::type_complexity)]
 pub struct Ops {
+    mmm_f64: MMMImpl,
+    mmv_f64: MMVImpl,
+
     mmm_f32_impls: Vec<Box<dyn MatMatMul>>,
     mmm_f32: MMMImpl,
     mmv_f32: MMVImpl,
@@ -54,13 +50,12 @@ pub struct Ops {
     mmm_f16: MMMImpl,
     mmv_f16: MMVImpl,
 
-    qmmm_i32: Box<
-        dyn Fn(Option<usize>, Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul>
-            + Send
-            + Sync,
-    >,
-    qmmv_i32: Box<dyn Fn(Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul> + Send + Sync>,
+    qmmm_i32: MMMImpl,
+    qmmv_i32: MMVImpl,
+
+    pub sigmoid_f16: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f16>> + Send + Sync>,
     pub sigmoid_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32>> + Send + Sync>,
+    pub tanh_f16: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f16>> + Send + Sync>,
     pub tanh_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32>> + Send + Sync>,
     pub lut_u8: Box<dyn Fn(&[u8]) -> Box<dyn lut::Lut> + Send + Sync>,
 }
@@ -81,6 +76,9 @@ impl Ops {
     ) -> Option<Box<dyn mmm::MatMatMul>> {
         use DatumType::*;
         match (a.unquantized(), b.unquantized(), c.unquantized()) {
+            (F64, F64, F64) => {
+                Some(if n == Some(1) { (self.mmv_f64)(m, k) } else { (self.mmm_f64)(m, k, n) })
+            }
             (F32, F32, F32) => {
                 Some(if n == Some(1) { (self.mmv_f32)(m, k) } else { (self.mmm_f32)(m, k, n) })
             }
@@ -100,6 +98,8 @@ impl Ops {
 
 pub fn generic() -> Ops {
     Ops {
+        mmm_f64: Box::new(|_, _, _| generic::GenericMmm4x4::<f64, f64, f64>::mmm()),
+        mmv_f64: Box::new(|_, _| generic::GenericMmm4x1::<f64, f64, f64>::mmm()),
         mmm_f32_impls: vec![generic::GenericMmm4x4::<f32, f32, f32>::mmm()],
         mmm_f32: Box::new(|_, _, _| generic::GenericMmm4x4::<f32, f32, f32>::mmm()),
         mmv_f32: Box::new(|_, _| generic::GenericMmm4x1::<f32, f32, f32>::mmm()),
@@ -107,12 +107,10 @@ pub fn generic() -> Ops {
         mmv_f16: Box::new(|_, _| generic::GenericMmm4x1::<f16, f16, f16>::mmm()),
         qmmm_i32: Box::new(|_, _, _| generic::GenericMmm4x4::<i8, i8, i32>::mmm()),
         qmmv_i32: Box::new(|_, _| generic::GenericMmm4x1::<i8, i8, i32>::mmm()),
-        sigmoid_f32: Box::new(|| {
-            Box::new(element_wise::ElementWiseImpl::<generic::SSigmoid4, f32>::new())
-        }),
-        tanh_f32: Box::new(|| {
-            Box::new(element_wise::ElementWiseImpl::<generic::STanh4, f32>::new())
-        }),
+        sigmoid_f16: Box::new(|| generic::HSigmoid8::ew()),
+        sigmoid_f32: Box::new(|| generic::SSigmoid4::ew()),
+        tanh_f16: Box::new(|| generic::HTanh8::ew()),
+        tanh_f32: Box::new(|| generic::STanh4::ew()),
         lut_u8: Box::new(|table: &[u8]| Box::new(lut::LutImpl::<generic::GenericLut8>::new(table))),
     }
 }
@@ -126,7 +124,7 @@ pub fn best() -> Ops {
     arm32::plug(&mut ops);
     #[cfg(target_arch = "aarch64")]
     arm64::plug(&mut ops);
-    return ops;
+    ops
 }
 
 lazy_static::lazy_static! {
@@ -162,8 +160,6 @@ pub trait LADatum:
 {
     #[cfg(test)]
     fn strat() -> proptest::prelude::BoxedStrategy<Self>;
-    #[cfg(test)]
-    fn close(&self, other: &Self) -> bool;
 }
 
 #[cfg(test)]
@@ -174,10 +170,6 @@ impl LADatum for f16 {
     fn strat() -> BoxedStrategy<Self> {
         f32::strat().prop_map(|f| f.as_()).boxed()
     }
-    #[cfg(test)]
-    fn close(&self, other: &Self) -> bool {
-        (*self - *other).abs() < 0.001.as_()
-    }
 }
 
 impl LADatum for f32 {
@@ -185,9 +177,12 @@ impl LADatum for f32 {
     fn strat() -> BoxedStrategy<Self> {
         (-1000isize..1000).prop_map(|i| i as f32 / 1000.0).boxed()
     }
+}
+
+impl LADatum for f64 {
     #[cfg(test)]
-    fn close(&self, other: &Self) -> bool {
-        (self - other).abs() < 0.001
+    fn strat() -> BoxedStrategy<Self> {
+        (-1000isize..1000).prop_map(|i| i as f64 / 1000.0).boxed()
     }
 }
 
@@ -196,20 +191,12 @@ impl LADatum for u8 {
     fn strat() -> BoxedStrategy<Self> {
         any::<u8>().boxed()
     }
-    #[cfg(test)]
-    fn close(&self, other: &Self) -> bool {
-        self == other
-    }
 }
 
 impl LADatum for i8 {
     #[cfg(test)]
     fn strat() -> BoxedStrategy<Self> {
         any::<i8>().boxed()
-    }
-    #[cfg(test)]
-    fn close(&self, other: &Self) -> bool {
-        self == other
     }
 }
 
@@ -218,22 +205,4 @@ impl LADatum for i32 {
     fn strat() -> BoxedStrategy<Self> {
         any::<i32>().boxed()
     }
-    #[cfg(test)]
-    fn close(&self, other: &Self) -> bool {
-        self == other
-    }
-}
-
-#[cfg(test)]
-pub(crate) fn check_close<T: LADatum>(
-    found: &[T],
-    expected: &[T],
-) -> proptest::test_runner::TestCaseResult {
-    proptest::prop_assert!(
-        found.iter().zip(expected.iter()).all(|(a, b)| a.close(b)),
-        "found: {:?} expected: {:?}",
-        found,
-        expected
-    );
-    Ok(())
 }

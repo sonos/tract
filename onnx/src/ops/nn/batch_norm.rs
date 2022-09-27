@@ -52,8 +52,8 @@ impl Expansion for BatchNorm {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 5)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 5)?;
+        check_output_arity(outputs, 1)?;
         s.equals_all(wrap!(
             &outputs[0].datum_type,
             &inputs[0].datum_type,
@@ -96,7 +96,7 @@ impl Expansion for BatchNorm {
 
             let (mut slope, mut inter) =
                 dispatch_floatlike!(Self::to_slope_and_inter(x.datum_type)(
-                    self, c_dim, &scale, &beta, &mean, &var
+                    self, c_dim, scale, beta, mean, var
                 ))?;
 
             let mut const_shape = tvec!(1; x_shape.len());

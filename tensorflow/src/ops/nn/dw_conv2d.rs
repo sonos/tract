@@ -38,8 +38,8 @@ impl Expansion for DepthwiseConv2d {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 2)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 2)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&inputs[0].rank, 4)?;
         s.equals(&inputs[1].rank, 4)?;
         s.equals(&inputs[0].datum_type, &inputs[1].datum_type)?;

@@ -6,10 +6,8 @@ pub struct NonZero(Symbol);
 
 impl_dyn_hash!(NonZero);
 
-impl NonZero {
-    pub fn non_zero() -> NonZero {
-        NonZero(Symbol::new('x'))
-    }
+pub fn non_zero() -> NonZero {
+    NonZero(Symbol::new('x'))
 }
 
 impl NonZero {
@@ -19,12 +17,12 @@ impl NonZero {
         let mut output = Tensor::uninitialized::<i64>(&[input.rank(), count])?;
         let mut view_mut: tract_ndarray::ArrayViewMut2<i64> =
             output.to_array_view_mut_unchecked::<i64>().into_dimensionality().unwrap();
-        let mut i = 0;
-        for (coords, _) in view.indexed_iter().filter(|(_, value)| !value.is_zero()) {
+        for (i, (coords, _)) in
+            view.indexed_iter().filter(|(_, value)| !value.is_zero()).enumerate()
+        {
             view_mut
                 .index_axis_mut(tract_ndarray::Axis(1), i)
                 .assign(&coords.as_array_view().map(|d| *d as i64));
-            i += 1;
         }
         Ok(output)
     }
@@ -64,8 +62,8 @@ impl InferenceRulesOp for NonZero {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> TractResult<()> {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 1)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&outputs[0].datum_type, i64::datum_type())?;
         s.equals(&outputs[0].rank, 2)?;
         s.equals(&outputs[0].shape[0], inputs[0].rank.bex().to_dim())?;

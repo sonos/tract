@@ -1,4 +1,5 @@
-#[macro_use]
+#![allow(clippy::len_zero)]
+#![allow(clippy::missing_safety_doc)]
 extern crate educe;
 #[macro_use]
 pub extern crate itertools;
@@ -39,6 +40,7 @@ pub mod internal {
     pub use crate::impl_dyn_hash;
     pub use crate::prelude::*;
     pub use crate::tensor::view::TensorView;
+    pub use crate::tensor::Approximation;
     pub use anyhow::{bail, ensure};
     pub use ndarray as tract_ndarray;
     pub use num_integer;

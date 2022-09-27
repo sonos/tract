@@ -9,7 +9,7 @@ use self::super::expr::*;
 use self::super::solver::Context;
 
 /// A symbolic path for a value.
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct Path(TVec<isize>);
 
 impl From<TVec<isize>> for Path {
@@ -168,7 +168,7 @@ fn debug_tensorfacts_path(path: &[isize], formatter: &mut fmt::Formatter) -> fmt
 fn get_tensorfact_path(fact: &InferenceFact, path: &[isize]) -> TractResult<Wrapped> {
     match path {
         // Get the type of the InferenceFact.
-        [0] => Ok(fact.datum_type.clone().wrap()),
+        [0] => Ok(fact.datum_type.wrap()),
 
         // Get the rank of the InferenceFact.
         [1] => Ok(fact.shape.rank().wrap()),
@@ -299,7 +299,7 @@ fn get_shape_path(shape: &ShapeFactoid, path: &[isize]) -> TractResult<Wrapped> 
 fn get_value_path(value: &ValueFact, path: &[isize]) -> TractResult<Wrapped> {
     trace!("get_value_path path:{:?} value:{:?}", path, value);
     // Return the whole tensor.
-    if path == &[-1] || path == &[] {
+    if path == [-1] || path.is_empty() {
         return Ok(value.clone().wrap());
     }
 

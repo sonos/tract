@@ -1,6 +1,7 @@
 use std::{env, fs, path};
 
 fn main() -> std::io::Result<()> {
+    env::set_var("PROTOC", protobuf_src::protoc());
     let inputs: Vec<path::PathBuf> = {
         let mut inputs: Vec<path::PathBuf> = vec![];
 
@@ -14,7 +15,7 @@ fn main() -> std::io::Result<()> {
         inputs
     };
 
-    let gen = path::PathBuf::from(env::var("OUT_DIR").unwrap()).join("prost");
+    let gen = "src/prost";
     let _ = fs::create_dir_all(&gen);
     prost_build::Config::new()
         .out_dir(gen)

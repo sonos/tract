@@ -1,3 +1,7 @@
+use liquid_core::Runtime;
+use liquid_core::{Display_filter, Filter, FilterReflection, ParseFilter};
+use liquid_core::{Value, ValueView};
+
 use std::{env, ffi, fs, path};
 
 fn var(k: &str) -> String {
@@ -8,8 +12,11 @@ fn use_masm() -> bool {
     env::var("CARGO_CFG_TARGET_ENV") == Ok("msvc".to_string()) && var("HOST").contains("-windows-")
 }
 
-fn use_clang() -> bool {
-    var("TARGET").contains("-android") || var("TARGET").contains("-ios") || var("TARGET").contains("-darwin")
+fn needs_pragma() -> bool {
+    // This will add the following to the asm templates if true:
+    // .cpu generic+fp+simd+fp16
+    !cc::Build::new().get_compiler().is_like_clang()
+        && !cc::Build::new().get_compiler().is_like_gnu()
 }
 
 fn jump_table() -> Vec<String> {
@@ -23,13 +30,12 @@ fn jump_table() -> Vec<String> {
 }
 
 fn main() {
-
     let target = var("TARGET");
     let arch = var("CARGO_CFG_TARGET_ARCH");
     let os = var("CARGO_CFG_TARGET_OS");
     let out_dir = path::PathBuf::from(var("OUT_DIR"));
 
-    let suffix = env!("CARGO_PKG_VERSION").replace("-", "_").replace(".", "_");
+    let suffix = env!("CARGO_PKG_VERSION").replace('-', "_").replace('.', "_");
     make_extern_kernel_decl_macro(&out_dir, &suffix);
 
     match arch.as_ref() {
@@ -149,11 +155,16 @@ fn main() {
             cc::Build::new().files(files).static_flag(true).compile("arm64simd");
             let files =
                 preprocess_files("arm64/arm64fp16", &[("core", vec!["a55", "gen"])], &suffix);
-            let mut cc = cc::Build::new();
-            if use_clang() {
-                cc.flag("-mcpu=cortex-a55");
-            }
-            cc.files(files).static_flag(true).compile("arm64fp16");
+            // depending on the compiler variant, we may need to try different flags. this is
+            // awful.
+            let compile_arv82_asm = |flag| -> Result<(), cc::Error> {
+                let mut cc = cc::Build::new();
+                cc.flag(flag);
+                cc.files(&files).static_flag(true).try_compile("arm64fp16")
+            };
+            compile_arv82_asm("-march=armv8.2-a")
+                .or_else(|_| compile_arv82_asm("-mcpu=cortex-a55"))
+                .unwrap()
         }
         _ => {}
     }
@@ -171,7 +182,7 @@ fn preprocess_files(
     let dir_entries = {
         let mut dir_entries: Vec<fs::DirEntry> =
             input.as_ref().read_dir().unwrap().map(|f| f.unwrap()).collect();
-        dir_entries.sort_by(|a, b| a.path().cmp(&b.path()));
+        dir_entries.sort_by_key(|a| a.path());
         dir_entries
     };
     for f in dir_entries {
@@ -221,7 +232,7 @@ fn preprocess_file(
     // We also check to see if we're on a windows host, if we aren't, we won't be
     // able to use the Microsoft assemblers,
     let msvc = use_masm();
-    let clang = use_clang();
+    let needs_pragma = needs_pragma();
     println!("cargo:rerun-if-changed={}", template.as_ref().to_string_lossy());
     let mut input = fs::read_to_string(&template).unwrap();
     input = strip_comments(input, msvc);
@@ -237,7 +248,7 @@ fn preprocess_file(
     let g = if os == "macos" || os == "ios" { "_" } else { "" };
     let mut globals = liquid::object!({
         "msvc": msvc,
-        "clang": clang,
+        "needs_pragma": needs_pragma,
         "family": family,
         "os": os,
         "L": l,
@@ -249,9 +260,10 @@ fn preprocess_file(
     for (k, v) in variants {
         globals.insert(k.to_string().into(), liquid::model::Value::scalar(*v));
     }
-    let partials = load_partials(&template.as_ref().parent().unwrap(), msvc);
+    let partials = load_partials(template.as_ref().parent().unwrap(), msvc);
     if let Err(e) = liquid::ParserBuilder::with_stdlib()
         .partials(liquid::partials::LazyCompiler::new(partials))
+        .filter(F16)
         .build()
         .and_then(|p| p.parse(&*input))
         .and_then(|r| r.render_to(&mut fs::File::create(&output).unwrap(), &globals))
@@ -269,7 +281,7 @@ fn load_partials(p: &path::Path, msvc: bool) -> liquid::partials::InMemorySource
         if f.path().is_dir() {
             continue;
         }
-        let ext = f.path().extension().map(|s| s.to_string_lossy()).unwrap_or("".into());
+        let ext = f.path().extension().map(|s| s.to_string_lossy()).unwrap_or_else(|| "".into());
         let text = std::fs::read_to_string(f.path()).unwrap();
         let text = match ext.as_ref() {
             "tmpli" => Some(text.replace("{{", "{").replace("}}", "}")),
@@ -279,8 +291,8 @@ fn load_partials(p: &path::Path, msvc: bool) -> liquid::partials::InMemorySource
         if let Some(text) = text {
             let text = strip_comments(text, msvc);
             let key =
-                f.path().strip_prefix(p).unwrap().to_str().unwrap().to_owned().replace("\\", "/");
-            println!("cargo:rerun-if-changed={}", f.path().to_string_lossy().replace("\\", "/"));
+                f.path().strip_prefix(p).unwrap().to_str().unwrap().to_owned().replace('\\', "/");
+            println!("cargo:rerun-if-changed={}", f.path().to_string_lossy().replace('\\', "/"));
             mem.add(key, text);
         }
     }
@@ -299,4 +311,29 @@ fn make_extern_kernel_decl_macro(out_dir: &path::Path, suffix: &str) {
     }"#
     .replace("_suffix", suffix);
     std::fs::write(out_dir.join("extern_kernel_macro.rs"), macro_decl).unwrap();
+}
+
+#[derive(Clone, ParseFilter, FilterReflection)]
+#[filter(
+    name = "float16",
+    description = "Write a float16 constant with the .float16 directive in gcc, or as short in clang",
+    parsed(F16Filter)
+)]
+pub struct F16;
+
+#[derive(Debug, Default, Display_filter)]
+#[name = "float16"]
+struct F16Filter;
+
+impl Filter for F16Filter {
+    fn evaluate(
+        &self,
+        input: &dyn ValueView,
+        _runtime: &dyn Runtime,
+    ) -> liquid_core::Result<Value> {
+        let input: f32 = input.as_scalar().unwrap().to_float().unwrap() as f32;
+        let value = half::f16::from_f32(input);
+        let bits = value.to_bits();
+        Ok(format!(".short {bits}").to_value())
+    }
 }

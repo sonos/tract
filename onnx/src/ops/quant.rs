@@ -54,8 +54,8 @@ impl Expansion for QuantizeLinear {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> TractResult<()> {
-        check_input_arity(&inputs, 2 + self.optional_zero_point_input.is_some() as usize)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 2 + self.optional_zero_point_input.is_some() as usize)?;
+        check_output_arity(outputs, 1)?;
         //         s.equals(&inputs[1].rank, 0)?; broken in Onnx test suite
         s.equals(&inputs[1].datum_type, f32::datum_type())?;
         if self.optional_zero_point_input.is_some() {
@@ -121,8 +121,8 @@ impl Expansion for DequantizeLinear {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> TractResult<()> {
-        check_input_arity(&inputs, 2 + self.optional_zero_point_input.is_some() as usize)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 2 + self.optional_zero_point_input.is_some() as usize)?;
+        check_output_arity(outputs, 1)?;
         //         s.equals(&inputs[1].rank, 0)?; broken in Onnx test suite
         s.equals(&inputs[1].datum_type, f32::datum_type())?;
         s.equals(&outputs[0].datum_type, f32::datum_type())?;
@@ -180,7 +180,7 @@ impl Expansion for DynamicQuantizeLinear {
     op_onnx!();
 
     fn nboutputs(&self) -> TractResult<usize> {
-        return Ok(3);
+        Ok(3)
     }
 
     fn rules<'r, 'p: 'r, 's: 'r>(
@@ -189,8 +189,8 @@ impl Expansion for DynamicQuantizeLinear {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> TractResult<()> {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 3)?;
+        check_input_arity(inputs, 1)?;
+        check_output_arity(outputs, 3)?;
         s.equals(&inputs[0].datum_type, f32::datum_type())?;
         s.equals(&inputs[0].shape, &outputs[0].shape)?;
         s.equals(&outputs[0].datum_type, u8::datum_type())?;
@@ -223,7 +223,7 @@ fn dynamic_quantize_linear_u8(scale: f32, zero_point: u8, xs: &[f32], ys: &mut [
         .for_each(|(x, y)| *y = dynamic_quantize_linear_f32_u8(*x, scale, zero_point));
 }
 
-fn scale_and_zero_point<'a>(v: ArrayViewD<'a, f32>) -> (f32, u8) {
+fn scale_and_zero_point(v: ArrayViewD<f32>) -> (f32, u8) {
     // get the min and max of v and extend it to have zero included
     // in the interval [min, max]
     let (min, max) = v.fold((0., 0.), |(a_min, a_max), &v| {

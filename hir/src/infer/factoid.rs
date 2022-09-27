@@ -26,11 +26,11 @@ pub trait Factoid: fmt::Debug + Clone + PartialEq + Default + Hash {
     ///
     /// Returns true if it actually changed something.
     fn unify_with(&mut self, other: &Self) -> TractResult<bool> {
-        let new = self.unify(&other)?;
+        let new = self.unify(other)?;
         let mut changed = false;
         if &new != self {
             changed = true;
-            *self = new.clone();
+            *self = new;
         }
         Ok(changed)
     }
@@ -40,7 +40,7 @@ pub trait Factoid: fmt::Debug + Clone + PartialEq + Default + Hash {
     ///
     /// Returns true if it actually changed something.
     fn unify_with_mut(&mut self, other: &mut Self) -> TractResult<bool> {
-        let new = self.unify(&other)?;
+        let new = self.unify(other)?;
         let mut changed = false;
         if &new != self {
             changed = true;
@@ -78,7 +78,7 @@ pub trait Factoid: fmt::Debug + Clone + PartialEq + Default + Hash {
 
 /// Partial information about a value of type T.
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[derive(Clone, PartialEq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum GenericFactoid<T: fmt::Debug + Clone + PartialEq + Hash> {
     Only(T),
     Any,
@@ -153,7 +153,7 @@ pub type TypeFactoid = GenericFactoid<DatumType>;
 /// shape that starts with `[1, 2]` (e.g. `[1, 2, i]` or `[1, 2, i, j]`), while
 /// `shapefactoid![..]` matches any shape.
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[derive(Clone, PartialEq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct ShapeFactoid {
     pub(super) open: bool,
     pub(super) dims: TVec<GenericFactoid<TDim>>,
@@ -175,8 +175,11 @@ impl ShapeFactoid {
     }
 
     pub fn rank(&self) -> IntFactoid {
-        if self.open { GenericFactoid::Any } else { GenericFactoid::Only(self.dims.len() as i64) }
-            .into()
+        if self.open {
+            GenericFactoid::Any
+        } else {
+            GenericFactoid::Only(self.dims.len() as i64)
+        }
     }
 
     pub fn ensure_rank_at_least(&mut self, n: usize) -> bool {
@@ -198,7 +201,7 @@ impl ShapeFactoid {
             return false;
         }
         self.dims[i] = GenericFactoid::Only(d);
-        return true;
+        true
     }
 
     pub fn dims(&self) -> impl Iterator<Item = &DimFact> {
@@ -210,6 +213,26 @@ impl ShapeFactoid {
             return Ok(None);
         }
         Ok(self.dims.iter().map(|d| d.concretize().and_then(|d| d.to_usize().ok())).collect())
+    }
+
+    pub fn matches(&self, t: &Tensor, symbols: Option<&SymbolValues>) -> TractResult<bool> {
+        let rank_compatible =
+            if self.is_open() { self.dims.len() <= t.rank() } else { self.dims.len() == t.rank() };
+        if !rank_compatible {
+            return Ok(false);
+        }
+
+        for i in 0..t.rank() {
+            let dim = self.dims.get(i).and_then(|el| el.concretize());
+            if let Some(dim) = dim.and_then(|dim| {
+                dim.eval(symbols.unwrap_or(&SymbolValues::default())).to_usize().ok()
+            }) {
+                if dim != t.shape()[i] {
+                    return Ok(false);
+                }
+            }
+        }
+        Ok(true)
     }
 }
 
@@ -244,7 +267,7 @@ impl Factoid for ShapeFactoid {
         let dimensions: TVec<_> = xi
             .zip_longest(yi)
             .map(|r| match r {
-                Both(a, b) => a.unify(&b),
+                Both(a, b) => a.unify(b),
                 Left(d) if y.open => Ok(d.clone()),
                 Right(d) if x.open => Ok(d.clone()),
 
@@ -275,7 +298,7 @@ impl Default for ShapeFactoid {
 impl FromIterator<TDim> for ShapeFactoid {
     /// Converts an iterator over usize into a closed shape.
     fn from_iter<I: IntoIterator<Item = TDim>>(iter: I) -> ShapeFactoid {
-        ShapeFactoid::closed(iter.into_iter().map(|d| GenericFactoid::Only(d)).collect())
+        ShapeFactoid::closed(iter.into_iter().map(GenericFactoid::Only).collect())
     }
 }
 

@@ -51,8 +51,8 @@ pub fn rules<'r, 'p: 'r, 's: 'r, DT: Fn(DatumType, DatumType) -> TractResult<Dat
     outputs: &'p [TensorProxy],
     dt: DT,
 ) -> InferenceResult {
-    check_input_arity(&inputs, 2)?;
-    check_output_arity(&outputs, 1)?;
+    check_input_arity(inputs, 2)?;
+    check_output_arity(outputs, 1)?;
 
     s.with(&inputs[0].shape, move |s, a_shape| {
         s.with(&inputs[1].shape, move |s, b_shape| {
@@ -77,11 +77,10 @@ pub fn wire_cast(
     operating_datum_type: DatumType,
 ) -> TractResult<TVec<OutletId>> {
     let mut wires = tvec!();
-    for i in 0..inputs.len() {
-        let mut wire = inputs[i];
+    for (ix, mut wire) in inputs.iter().copied().enumerate() {
         if target.outlet_fact(wire)?.datum_type != operating_datum_type {
             wire = target.wire_node(
-                format!("{}.cast-{}", prefix, i),
+                format!("{}.cast-{}", prefix, ix),
                 mir::cast::cast(operating_datum_type),
                 &[wire],
             )?[0];
@@ -139,7 +138,7 @@ impl EvalOp for Nary {
 
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let mut t = inputs[0].clone().into_tensor();
-        for i in inputs[1..].into_iter() {
+        for i in inputs[1..].iter() {
             let mut i = i.clone();
             let operating_datum_type =
                 self.0.operating_datum_type(t.datum_type(), i.datum_type())?;
@@ -165,7 +164,7 @@ impl InferenceRulesOp for Nary {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_output_arity(&outputs, 1)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         let n = inputs.len();
         s.equals_all((0..n).map(|i| (&inputs[i].datum_type).bex()).collect())?;
@@ -202,7 +201,7 @@ impl InferenceRulesOp for Nary {
             wire = target.wire_node(
                 format!("{}.norm", node.name),
                 crate::ops::math::div::bin_typed(),
-                [wire, n.into()].as_ref(),
+                [wire, n].as_ref(),
             )?[0];
         }
         Ok(tvec!(wire))

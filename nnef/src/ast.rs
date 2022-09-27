@@ -18,7 +18,7 @@ impl ProtoModel {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum QuantFormat {
     Linear { params: QParams, bits: i8, signed: bool },
 }
@@ -50,7 +50,7 @@ impl QuantFormat {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Document {
     pub version: NumericLiteral,
     pub extension: Vec<Vec<String>>,
@@ -67,7 +67,7 @@ impl Document {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TypeSpec {
     Single(TypeName),
     Tensor(TypeName),
@@ -84,7 +84,7 @@ impl TypeSpec {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TypeName {
     Integer,
     Scalar,
@@ -108,7 +108,7 @@ impl TypeName {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GraphDef {
     pub id: String,
     pub parameters: Vec<String>,
@@ -116,7 +116,7 @@ pub struct GraphDef {
     pub body: Vec<Assignment>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FragmentDef {
     pub decl: FragmentDecl,
     pub body: Option<Vec<Assignment>>,
@@ -128,7 +128,7 @@ impl FragmentDef {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FragmentDecl {
     pub id: String,
     pub generic_decl: Option<Option<TypeName>>,
@@ -176,7 +176,7 @@ impl FragmentDecl {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Parameter {
     pub id: String,
     pub spec: TypeSpec,
@@ -193,39 +193,39 @@ pub fn param(s: impl Into<String>, spec: TypeSpec) -> Parameter {
     Parameter { id: s.into(), spec, lit: None }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Result_ {
     pub id: String,
     pub spec: TypeSpec,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Assignment {
     pub left: LValue,
     pub right: RValue,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LValue {
     Identifier(String),
     Array(Vec<LValue>),
     Tuple(Vec<LValue>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Invocation {
     pub id: String,
     pub generic_type_name: Option<TypeName>,
     pub arguments: Vec<Argument>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Argument {
     pub id: Option<String>,
     pub rvalue: RValue,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RValue {
     Identifier(String),
     Literal(Literal),
@@ -245,27 +245,27 @@ impl RValue {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Comprehension {
     pub loop_iters: Vec<(String, RValue)>,
     pub filter: Option<RValue>,
     pub yields: RValue,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Subscript {
     Single(RValue),
     Range(Option<RValue>, Option<RValue>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IfThenElse {
     pub cond: RValue,
     pub then: RValue,
     pub otherwise: RValue,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Literal {
     Numeric(NumericLiteral),
     String(StringLiteral),
@@ -288,7 +288,7 @@ impl From<i64> for Literal {
 
 impl From<f32> for Literal {
     fn from(f: f32) -> Literal {
-        Literal::Numeric(f.to_string())
+        Literal::Numeric(format!("{:?}", f))
     }
 }
 

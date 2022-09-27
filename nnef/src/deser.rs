@@ -75,9 +75,8 @@ impl<'mb> ModelBuilder<'mb> {
             .results
             .iter()
             .map(|s| {
-                Ok(vars
-                    .get(s)
-                    .with_context(|| format!("Could not find variable for output named `{}'", s))?)
+                vars.get(s)
+                    .with_context(|| format!("Could not find variable for output named `{}'", s))
             })
             .collect::<TractResult<TVec<&Value>>>()?;
 
@@ -173,7 +172,7 @@ impl<'mb> ModelBuilder<'mb> {
                     }
                 }
             }
-            self.model.node_mut(values[0].node).name = format!("{}", self.naming_scopes.join("."));
+            self.model.node_mut(values[0].node).name = self.naming_scopes.join(".").to_string();
             for (id, outlet) in identifiers.iter().zip(values.iter()) {
                 self.scopes.last_mut().unwrap().insert(id.to_string(), Value::Wire(*outlet));
             }
@@ -248,26 +247,6 @@ impl<'mb> ModelBuilder<'mb> {
                 if !self.model.nodes().iter().any(|n| n.name.starts_with(&name)) {
                     break;
                 }
-            }
-        }
-        if inputs.iter().all(|o| self.model.outlet_fact(*o).unwrap().konst.is_some()) {
-            if op.as_op().is_stateless() {
-                let inputs: TVec<Arc<Tensor>> = inputs
-                    .iter()
-                    .map(|o| self.model.outlet_fact(*o).unwrap().konst.clone().unwrap())
-                    .collect();
-                let outputs = op.eval(inputs)?;
-                let mut outlets = tvec!();
-                for (ix, o) in outputs.into_iter().enumerate() {
-                    outlets.push(
-                        self.model.wire_node(
-                            format!("{}-{}", name, ix),
-                            tract_core::ops::konst::Const::new(o),
-                            &[],
-                        )?[0],
-                    );
-                }
-                return Ok(outlets);
             }
         }
         self.model.wire_node(name, op, inputs).with_context(|| format!("inputs are {:?}", inputs))
@@ -444,7 +423,7 @@ impl RValue {
                 ))
             }
             RValue::Literal(Literal::Numeric(f)) => {
-                if f.contains(".") || f.contains("e") {
+                if f.contains('.') || f.contains('e') {
                     f.parse::<f32>()
                         .map(Value::Scalar)
                         .with_context(|| format!("Can not parse {} as f32", f))
@@ -573,9 +552,13 @@ impl CoerceFrom<Value> for OutletId {
 }
 
 impl CoerceFrom<Value> for i64 {
-    fn coerce(_builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
+    fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         match from {
             Value::Dim(d) => d.to_i64(),
+            Value::Tensor(t) => Ok(t.to_scalar::<i64>()?.clone()),
+            Value::Wire(_) => {
+                Ok(from.to::<Arc<Tensor>>(builder)?.cast_to::<i64>()?.to_scalar::<i64>()?.clone())
+            }
             _ => bail!("Can not build a i64 from {:?}", from),
         }
     }
@@ -586,7 +569,9 @@ impl CoerceFrom<Value> for TDim {
         match from {
             Value::Dim(d) => Ok(d.clone()),
             Value::Tensor(t) => Ok(t.to_scalar::<TDim>()?.clone()),
-            Value::Wire(_) => Ok(from.to::<Arc<Tensor>>(builder)?.to_scalar::<TDim>()?.clone()),
+            Value::Wire(_) => {
+                Ok(from.to::<Arc<Tensor>>(builder)?.cast_to::<TDim>()?.to_scalar::<TDim>()?.clone())
+            }
             _ => bail!("Can not build a TDim from {:?}", from),
         }
     }
@@ -625,9 +610,13 @@ impl CoerceFrom<Value> for isize {
 }
 
 impl CoerceFrom<Value> for f32 {
-    fn coerce(_builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
+    fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         match from {
             Value::Scalar(f) => Ok(*f),
+            Value::Tensor(t) => Ok(t.to_scalar::<f32>()?.clone()),
+            Value::Wire(_) => {
+                Ok(from.to::<Arc<Tensor>>(builder)?.cast_to::<f32>()?.to_scalar::<f32>()?.clone())
+            }
             _ => bail!("Can not build a f32 from {:?}", from),
         }
     }

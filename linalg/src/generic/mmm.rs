@@ -1,3 +1,4 @@
+#![allow(clippy::needless_range_loop)]
 use num_traits::AsPrimitive;
 use std::marker::PhantomData;
 use std::{fmt, ops};
@@ -45,7 +46,7 @@ macro_rules! per_row {
     ($ab: expr, $m: expr, $f: expr) => {
         for i in 0..$ab.len() {
             for j in 0..$ab[0].len() {
-                $ab[i][j] = $f(*$m.offset(i as isize), $ab[i][j])
+                $ab[i][j] = $f(*$m.add(i), $ab[i][j])
             }
         }
     };
@@ -55,7 +56,7 @@ macro_rules! per_col {
     ($ab: expr, $m: expr, $f: expr) => {
         for i in 0..$ab.len() {
             for j in 0..$ab[0].len() {
-                $ab[i][j] = $f(*$m.offset(j as isize), $ab[i][j])
+                $ab[i][j] = $f(*$m.add(j), $ab[i][j])
             }
         }
     };
@@ -74,6 +75,7 @@ where
             DatumType::F16 => "generic_f16_4x4",
             DatumType::F32 => "generic_f32_4x4",
             DatumType::I32 => "generic_i32_4x4",
+            DatumType::F64 => "generic_f64_4x4",
             _ => panic!(),
         }
     }
@@ -132,7 +134,7 @@ where
                     FusedKerSpec::AddRowColProducts(rows, cols) => {
                         for i in 0..4 {
                             for j in 0..4 {
-                                ab[i][j] += *rows.offset(i as isize) * *cols.offset(j as isize);
+                                ab[i][j] += *rows.add(i) * *cols.add(j);
                             }
                         }
                     }
@@ -188,7 +190,7 @@ where
                 pnl = pnl.add(1);
             }
         }
-        return 0;
+        0
     }
 }
 
@@ -228,6 +230,7 @@ where
             DatumType::F16 => "generic_f16_4x1",
             DatumType::F32 => "generic_f32_4x1",
             DatumType::I32 => "generic_i32_4x1",
+            DatumType::F64 => "generic_f64_4x1",
             _ => panic!(),
         }
     }
@@ -286,7 +289,7 @@ where
                     FusedKerSpec::AddRowColProducts(rows, cols) => {
                         let col = *cols;
                         for i in 0..4 {
-                            ab[i][0] += *rows.offset(i as isize) * col;
+                            ab[i][0] += *rows.add(i) * col;
                         }
                     }
                     FusedKerSpec::AddUnicast(tile) => add_unicast::<TI, _>(
@@ -318,7 +321,7 @@ where
                         let b = pb as *const TB;
                         for i in 0..k {
                             let a = std::slice::from_raw_parts(a.offset(4 * i as isize), 4);
-                            let b = *b.offset(i as isize);
+                            let b = *b.add(i);
                             ab[0][0] += a[0].as_() * b.as_();
                             ab[1][0] += a[1].as_() * b.as_();
                             ab[2][0] += a[2].as_() * b.as_();
@@ -338,7 +341,7 @@ where
                 pnl = pnl.add(1);
             }
         }
-        return 0;
+        0
     }
 }
 
@@ -382,6 +385,7 @@ where
             DatumType::F16 => "generic_f16_3x2",
             DatumType::F32 => "generic_f32_3x2",
             DatumType::I32 => "generic_i32_3x2",
+            DatumType::F64 => "generic_f64_3x2",
             _ => panic!(),
         }
     }
@@ -440,7 +444,7 @@ where
                     FusedKerSpec::AddRowColProducts(rows, cols) => {
                         for i in 0..3 {
                             for j in 0..2 {
-                                ab[i][j] += *rows.offset(i as isize) * *cols.offset(j as isize);
+                                ab[i][j] += *rows.add(i) * *cols.add(j);
                             }
                         }
                     }
@@ -486,14 +490,14 @@ where
                 pnl = pnl.add(1);
             }
         }
-        return 0;
+        0
     }
 }
 
 unsafe fn store_t<TC, TI, AB>(tile: &OutputStoreKer, ab: &[AB])
 where
     TC: Copy,
-    AB: AsRef<[TI]> + fmt::Debug,
+    AB: AsRef<[TI]> + fmt::Debug
 {
     for i in 0usize..ab.len() {
         for j in 0usize..ab[0].as_ref().len() {
@@ -515,6 +519,7 @@ where
         1 => store_t::<u8, _, _>(tile, ab),
         2 => store_t::<u16, _, _>(tile, ab),
         4 => store_t::<u32, _, _>(tile, ab),
+        8 => store_t::<f64, _, _>(tile, ab),
         _ => unimplemented!(),
     }
 }
@@ -541,7 +546,7 @@ where
                     .ptr
                     .offset(tile.row_byte_stride * i as isize + tile.col_byte_stride * j as isize)
                     as *const i8);
-                let acc: *mut i32 = ab[i].as_mut().as_mut_ptr().offset(j as isize) as *mut i32;
+                let acc: *mut i32 = ab[i].as_mut().as_mut_ptr().add(j) as *mut i32;
                 *acc += value as i32;
             }
         }
@@ -559,12 +564,20 @@ pub type generic_f32_4x4 = GenericMmm4x4<f32, f32, f32>;
 test_mmm_kernel_f32!(generic_f32_4x4, true);
 
 #[allow(non_camel_case_types)]
+pub type generic_f64_4x4 = GenericMmm4x4<f64, f64, f64>;
+test_mmm_kernel_f64!(generic_f64_4x4, true);
+
+#[allow(non_camel_case_types)]
 pub type generic_i32_4x4 = GenericMmm4x4<i8, i8, i32>;
 test_mmm_kernel_i32!(generic_i32_4x4, true);
 
 #[allow(non_camel_case_types)]
 pub type generic_f32_4x1 = GenericMmm4x1<f32, f32, f32>;
 test_mmm_kernel_f32!(generic_f32_4x1, true);
+
+#[allow(non_camel_case_types)]
+pub type generic_f64_4x1 = GenericMmm4x1<f64, f64, f64>;
+test_mmm_kernel_f64!(generic_f64_4x1, true);
 
 #[allow(non_camel_case_types)]
 pub type generic_i32_4x1 = GenericMmm4x1<i8, i8, i32>;

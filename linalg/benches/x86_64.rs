@@ -42,7 +42,7 @@ unsafe fn packed_packed_1x8(f: Option<&str>) {
     println!("-- 1x8 kernels");
     kloop!(f, "1x8x1", (8 * 8), "8x8/packed_packed_loop1/avx.tmpli", 8);
     kloop!(f, "1x8x2", (8 * 8 * 2), "8x8/packed_packed_loop1/avx-unroll.tmpli", 8);
-    println!("");
+    println!();
 }
 
 unsafe fn packed_packed_2x6(f: Option<&str>) {
@@ -53,7 +53,7 @@ unsafe fn packed_packed_2x6(f: Option<&str>) {
     //     kloop!(f, "2x6x1", (32 * 6), "2x6/packed_packed_loop1/avx-512.tmpli", 16);
     //     kloop!(f, "2x6x2", (32 * 6 * 2), "2x6/packed_packed_loop1/avx-512-unroll.tmpli", 16);
     // }
-    println!("");
+    println!();
 }
 
 unsafe fn packed_packed_2x5(f: Option<&str>) {
@@ -64,7 +64,7 @@ unsafe fn packed_packed_2x5(f: Option<&str>) {
     //     kloop!(f, "2x5x1", (32 * 5), "2x5/packed_packed_loop1/avx-512.tmpli", 16);
     //     kloop!(f, "2x5x2", (32 * 5 * 2), "2x5/packed_packed_loop1/avx-512-unroll.tmpli", 16);
     // }
-    println!("");
+    println!();
 }
 
 unsafe fn packed_packed_3x4(f: Option<&str>) {
@@ -75,7 +75,7 @@ unsafe fn packed_packed_3x4(f: Option<&str>) {
     //     kloop!(f, "3x4x1", (48 * 4), "3x4/packed_packed_loop1/avx-512.tmpli", 16);
     //     kloop!(f, "3x4x2", (48 * 4 * 2), "3x4/packed_packed_loop1/avx-512-unroll.tmpli", 16);
     // }
-    println!("");
+    println!();
 }
 
 unsafe fn packed_packed_4x3(f: Option<&str>) {
@@ -86,7 +86,7 @@ unsafe fn packed_packed_4x3(f: Option<&str>) {
     //     kloop!(f, "4x3x1", (64 * 3), "4x3/packed_packed_loop1/avx-512.tmpli", 16);
     //     kloop!(f, "4x3x2", (64 * 3 * 2), "4x3/packed_packed_loop1/avx-512-unroll.tmpli", 16);
     // }
-    println!("");
+    println!();
 }
 
 unsafe fn packed_packed_5x2(f: Option<&str>) {
@@ -97,7 +97,7 @@ unsafe fn packed_packed_5x2(f: Option<&str>) {
     //     kloop!(f, "5x2x1", (80 * 2), "5x2/packed_packed_loop1/avx-512.tmpli", 16);
     //     kloop!(f, "5x2x2", (80 * 2 * 2), "5x2/packed_packed_loop1/avx-512-unroll.tmpli", 16);
     // }
-    println!("");
+    println!();
 }
 
 unsafe fn packed_packed_6x2(f: Option<&str>) {
@@ -108,9 +108,10 @@ unsafe fn packed_packed_6x2(f: Option<&str>) {
     //     kloop!(f, "6x2x1", (80 * 2), "6x2/packed_packed_loop1/avx-512.tmpli", 16);
     //     kloop!(f, "6x2x2", (80 * 2 * 2), "6x2/packed_packed_loop1/avx-512-unroll.tmpli", 16);
     // }
-    println!("");
+    println!();
 }
 
+#[allow(clippy::identity_op)]
 unsafe fn packed_packed_8x1(f: Option<&str>) {
     println!("-- 8x1 kernels");
     kloop!(f, "8x1x1", (64 * 1), "8x1/packed_packed_loop1/avx.tmpli", 8);
@@ -119,11 +120,11 @@ unsafe fn packed_packed_8x1(f: Option<&str>) {
     //     kloop!(f, "8x1x1", (128 * 1), "8x1/packed_packed_loop1/avx-512.tmpli", 16);
     //     kloop!(f, "8x1x2", (128 * 1 * 2), "8x1/packed_packed_loop1/avx-512-unroll.tmpli", 16);
     // }
-    println!("");
+    println!();
 }
 
 fn main() {
-    let filter = std::env::args().skip(1).filter(|a| a != "--bench").next();
+    let filter = std::env::args().skip(1).find(|a| a != "--bench");
     unsafe {
         packed_packed_1x8(filter.as_deref());
         packed_packed_2x6(filter.as_deref());

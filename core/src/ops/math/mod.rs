@@ -1,3 +1,4 @@
+#![allow(clippy::clone_on_copy)]
 use super::binary::*;
 use crate::internal::*;
 use crate::ops::quant::scale_by;
@@ -106,13 +107,14 @@ out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
                 crate::ndarray::Zip::from(c)
                     .and_broadcast(a)
                     .and_broadcast(b)
-                    .for_each(|c,a,b| *c = scale_by((*a as i16 - zp as i16) * (*b as i16 - zp as i16) + zp as i16, scale).clamp_cast());
+                    .for_each(|c,a,b| *c = scale_by((*a as i32 - zp as i32) * (*b as i32 - zp as i32) + zp as i32, scale).clamp_cast());
                 Ok(true)
             }
             _ => Ok(false)
         }
     }
 },
+q: [i8, u8, i32] => |c, a, b, _, _| *c = a.clone() * b;
 [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() * b
 );
 
@@ -257,9 +259,13 @@ fn declutter_unary_mul(
     node: &TypedNode,
     a: &Arc<Tensor>,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if let Some(patch) = declutter_as_shift(model, node, a, Box::new(FlippedShiftLeft))? {
+    if let Some(patch) =
+        declutter_as_shift(model, node, a, Box::new(FlippedShiftLeft)).context("declutte_as_shift")?
+    {
         Ok(Some(patch))
-    } else if let Some(patch) = declutter_unary_mul_magic_values(model, node, a)? {
+    } else if let Some(patch) = declutter_unary_mul_magic_values(model, node, a)
+        .context("declutter_unary_mul_magic_values")?
+    {
         Ok(Some(patch))
     } else {
         Ok(None)
@@ -272,11 +278,11 @@ fn declutter_unary_mul_magic_values(
     a: &Arc<Tensor>,
 ) -> TractResult<Option<TypedModelPatch>> {
     if a.is_uniform()
-        && a.cast_to_scalar::<f64>()? == 1.0
+        && a.cast_to_scalar::<f32>()? == 1.0
         && model.outlet_fact(node.inputs[0])? == &node.outputs[0].fact
     {
-        return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?));
-    } else if a.is_uniform() && a.cast_to_scalar::<f64>()?.is_zero() {
+        Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
+    } else if a.as_uniform() == Some(Tensor::zero_scalar_dt(a.datum_type())?) {
         let mut patch = TypedModelPatch::default();
         let fact = model.outlet_fact(node.inputs[0])?;
         let zero = Tensor::zero_dt(fact.datum_type, &[])?;
@@ -327,7 +333,7 @@ fn declutter_div_as_shift(
     if let Some(a) = &a.konst {
         declutter_as_shift(model, node, a, Box::new(FlippedShiftRight))
     } else {
-        return Ok(None);
+        Ok(None)
     }
 }
 
@@ -338,7 +344,12 @@ fn declutter_as_shift(
     mini_op: Box<dyn BinMiniOp>,
 ) -> TractResult<Option<TypedModelPatch>> {
     let input = model.node_input_facts(node.id)?[0];
-    if t.len() > 0 && t.datum_type().is_integer() && input.datum_type.is_integer() {
+    if t.len() > 0
+        && t.datum_type().is_integer()
+        && input.datum_type.is_integer()
+        && !t.datum_type().is_quantized()
+        && !input.datum_type.is_quantized()
+    {
         let arg = t.cast_to::<i64>()?;
         if arg.as_slice::<i64>()?.iter().all(|i| *i > 0 && i.count_ones() == 1) {
             let mut shift = arg.into_owned();
@@ -561,8 +572,9 @@ element_wise!(sinh, Sinh, [f16, f32, f64] => |_, xs| {
 q: [i8, u8, i32] => f32::sinh);
 
 element_wise!(tanh, Tanh,
+ [f16] => |_, xs| { (tract_linalg::ops().tanh_f16)().run(xs) },
  [f32] => |_, xs| { (tract_linalg::ops().tanh_f32)().run(xs) },
- [f16, f64] => |_, xs| { xs.iter_mut().for_each(|x| *x = x.tanh()); Ok(()) };
+ [f64] => |_, xs| { xs.iter_mut().for_each(|x| *x = x.tanh()); Ok(()) };
  q: [i8, u8, i32] => f32::tanh;
  cost: |dt| {tvec!((Cost::FMA(dt), 11), (Cost::Div(dt), 1))}
 );

@@ -1,8 +1,6 @@
 use crate::frame::element_wise::*;
 use crate::frame::mmm::*;
 
-extern_kernel!(fn armv7neon_sigmoid_f32_4n(ptr: *mut f32, count: usize) -> ());
-extern_kernel!(fn armv7neon_tanh_f32_4n(ptr: *mut f32, count: usize) -> ());
 extern_kernel!(fn armv7neon_prefetch(start: *const u8, end: *const u8) -> ());
 
 #[inline(always)]
@@ -22,60 +20,6 @@ MMMKernel!(f32, armv7neon_mmm_f32_32x1_cortexa7; 32, 1; 4, 4; 0, 0; prefetch, cr
 MMMKernel!(f32, armv7neon_mmm_f32_32x1_cortexa9; 32, 1; 4, 4; 0, 0; prefetch, crate::arm32::has_neon());
 MMMKernel!(f32, armv7neon_mmm_f32_32x1_generic; 32, 1; 4, 4; 0, 0; prefetch, crate::arm32::has_neon());
 
-#[derive(Copy, Clone, Debug)]
-pub struct SigmoidF32x4n;
+sigmoid_impl!(f32, armv7neon_sigmoid_f32_4n, 4, 4, crate::arm32::has_neon());
+tanh_impl!(f32, armv7neon_tanh_f32_4n, 4, 4, crate::arm32::has_neon());
 
-impl ElementWiseKer<f32> for SigmoidF32x4n {
-    #[inline(always)]
-    fn name() -> &'static str {
-        "neon"
-    }
-    #[inline(always)]
-    fn nr() -> usize {
-        4
-    }
-    #[inline(always)]
-    fn alignment_items() -> usize {
-        4
-    }
-    #[inline(always)]
-    fn alignment_bytes() -> usize {
-        16
-    }
-    #[inline(never)]
-    fn run(buf: &mut [f32]) {
-        unsafe { armv7neon_sigmoid_f32_4n(buf.as_mut_ptr(), buf.len()) }
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct TanhF32x4n;
-
-impl ElementWiseKer<f32> for TanhF32x4n {
-    #[inline(always)]
-    fn name() -> &'static str {
-        "neon"
-    }
-    #[inline(always)]
-    fn nr() -> usize {
-        4
-    }
-    #[inline(always)]
-    fn alignment_items() -> usize {
-        4
-    }
-    #[inline(always)]
-    fn alignment_bytes() -> usize {
-        16
-    }
-    #[inline(never)]
-    fn run(buf: &mut [f32]) {
-        unsafe { armv7neon_tanh_f32_4n(buf.as_mut_ptr(), buf.len()) }
-    }
-}
-
-#[cfg(test)]
-mod test_neon_fn {
-    sigmoid_frame_tests!(crate::arm32::has_neon(), crate::arm32::armv7neon::SigmoidF32x4n);
-    tanh_frame_tests!(crate::arm32::has_neon(), crate::arm32::armv7neon::TanhF32x4n);
-}

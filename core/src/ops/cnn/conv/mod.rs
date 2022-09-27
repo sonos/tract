@@ -14,7 +14,7 @@ pub use self::im2col::Im2Col;
 pub(crate) use self::q_sum_b::QSumB;
 pub use self::unary::ConvUnary;
 
-#[derive(Debug, Copy, Clone, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum KernelFormat {
     OIHW,
     HWIO,

@@ -61,8 +61,8 @@ impl Expansion for OneHot {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 3)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 3)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&inputs[2].datum_type, &outputs[0].datum_type)?;
         s.equals(inputs[0].rank.bex() + 1, &outputs[0].rank)?;
         s.equals(&inputs[2].rank, 1)?;

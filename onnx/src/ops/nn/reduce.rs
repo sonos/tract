@@ -40,8 +40,8 @@ impl Expansion for ReduceSum13 {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 1 + self.have_axis_input as usize)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 1 + self.have_axis_input as usize)?;
+        check_output_arity(outputs, 1)?;
         if let tract_hir::ops::nn::Reducer::ArgMax(_) | tract_hir::ops::nn::Reducer::ArgMin(_) =
             self.reducer
         {

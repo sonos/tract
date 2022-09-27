@@ -2,14 +2,16 @@ use tract_hir::internal::*;
 
 use std::fs;
 
+#[allow(clippy::all)]
 mod google {
     mod protobuf {
-        include!(concat!(env!("OUT_DIR"), "/prost/google.protobuf.rs"));
+        include!("prost/google.protobuf.rs");
     }
 }
 
+#[allow(clippy::all)]
 pub mod tensorflow {
-    include!(concat!(env!("OUT_DIR"), "/prost/tensorflow.rs"));
+    include!("prost/tensorflow.rs");
 }
 
 use self::tensorflow::attr_value::ListValue;
@@ -71,24 +73,24 @@ impl NodeDef {
 
 impl NodeDef {
     pub fn get_attr_raw_str(&self, name: &str) -> TractResult<&[u8]> {
-        Ok(self.get_attr_opt_raw_str(name)?.with_context(|| {
+        self.get_attr_opt_raw_str(name)?.with_context(|| {
             format!("Node {} ({}) expected string attribute '{}'", self.name, self.op, name)
-        })?)
+        })
     }
 
     pub fn get_attr_opt_raw_str(&self, name: &str) -> TractResult<Option<&[u8]>> {
         if let Some(a) = self.attr.get(name) {
             if let Value::S(bytes) = a.value.as_ref().unwrap() {
-                return Ok(Some(&bytes));
+                return Ok(Some(bytes));
             }
         };
         Ok(None)
     }
 
     pub fn get_attr_str(&self, name: &str) -> TractResult<String> {
-        Ok(self.get_attr_opt_str(name)?.with_context(|| {
+        self.get_attr_opt_str(name)?.with_context(|| {
             format!("Node {} ({}) expected UTF-8 string attribute '{}'", self.name, self.op, name)
-        })?)
+        })
     }
 
     pub fn get_attr_opt_str(&self, name: &str) -> TractResult<Option<String>> {
@@ -107,9 +109,9 @@ impl NodeDef {
     }
 
     pub fn get_attr_bool(&self, name: &str) -> TractResult<bool> {
-        Ok(self.get_attr_opt_bool(name)?.with_context(|| {
+        self.get_attr_opt_bool(name)?.with_context(|| {
             format!("Node {} ({}) expected bool attribute '{}'", self.name, self.op, name)
-        })?)
+        })
     }
 
     pub fn get_attr_opt_bool(&self, name: &str) -> TractResult<Option<bool>> {
@@ -122,9 +124,9 @@ impl NodeDef {
     }
 
     pub fn get_attr_datum_type(&self, name: &str) -> TractResult<DatumType> {
-        Ok(self.get_attr_opt_datum_type(name)?.with_context(|| {
+        self.get_attr_opt_datum_type(name)?.with_context(|| {
             format!("Node {} ({}) expected datum_type attribute '{}'", self.name, self.op, name)
-        })?)
+        })
     }
 
     pub fn get_attr_opt_datum_type(&self, name: &str) -> TractResult<Option<DatumType>> {
@@ -137,9 +139,9 @@ impl NodeDef {
     }
 
     pub fn get_attr_shape(&self, name: &str) -> TractResult<TVec<isize>> {
-        Ok(self.get_attr_opt_shape(name)?.with_context(|| {
+        self.get_attr_opt_shape(name)?.with_context(|| {
             format!("Node {} ({}) expected shape attribute '{}'", self.name, self.op, name)
-        })?)
+        })
     }
 
     pub fn get_attr_opt_shape(&self, name: &str) -> TractResult<Option<TVec<isize>>> {
@@ -152,9 +154,9 @@ impl NodeDef {
     }
 
     pub fn get_attr_tensor(&self, name: &str) -> TractResult<Tensor> {
-        Ok(self.get_attr_opt_tensor(name)?.with_context(|| {
+        self.get_attr_opt_tensor(name)?.with_context(|| {
             format!("Node {} ({}) expected tensor attribute '{}'", self.name, self.op, name)
-        })?)
+        })
     }
 
     pub fn get_attr_opt_tensor(&self, name: &str) -> TractResult<Option<Tensor>> {
@@ -167,9 +169,9 @@ impl NodeDef {
     }
 
     pub fn get_attr_int<T: tract_num_traits::FromPrimitive>(&self, name: &str) -> TractResult<T> {
-        Ok(self.get_attr_opt_int(name)?.with_context(|| {
+        self.get_attr_opt_int(name)?.with_context(|| {
             format!("Node {} ({}) expected int attribute '{}'", self.name, self.op, name)
-        })?)
+        })
     }
 
     pub fn get_attr_opt_int<T: tract_num_traits::FromPrimitive>(
@@ -185,9 +187,9 @@ impl NodeDef {
     }
 
     pub fn get_attr_float<T: tract_num_traits::FromPrimitive>(&self, name: &str) -> TractResult<T> {
-        Ok(self.get_attr_opt_float(name)?.with_context(|| {
+        self.get_attr_opt_float(name)?.with_context(|| {
             format!("Node {} ({}) expected int attribute '{}'", self.name, self.op, name)
-        })?)
+        })
     }
 
     pub fn get_attr_opt_float<T: tract_num_traits::FromPrimitive>(
@@ -206,9 +208,9 @@ impl NodeDef {
         &self,
         name: &str,
     ) -> TractResult<Vec<T>> {
-        Ok(self.get_attr_opt_list_int(name)?.with_context(|| {
+        self.get_attr_opt_list_int(name)?.with_context(|| {
             format!("Node {} ({}) expected list<int> attribute '{}'", self.name, self.op, name)
-        })?)
+        })
     }
 
     pub fn get_attr_opt_list_int<T: tract_num_traits::FromPrimitive>(
@@ -273,13 +275,13 @@ impl From<Vec<i64>> for AttrValue {
 
 impl From<TensorProto> for AttrValue {
     fn from(t: TensorProto) -> AttrValue {
-        AttrValue { value: Some(Value::Tensor(t.into())) }
+        AttrValue { value: Some(Value::Tensor(t)) }
     }
 }
 
 impl From<TensorShapeProto> for AttrValue {
     fn from(t: TensorShapeProto) -> AttrValue {
-        AttrValue { value: Some(Value::Shape(t.into())) }
+        AttrValue { value: Some(Value::Shape(t)) }
     }
 }
 

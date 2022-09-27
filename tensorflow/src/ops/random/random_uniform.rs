@@ -69,8 +69,8 @@ impl InferenceRulesOp for RandomUniform {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 1)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&outputs[0].datum_type, self.t)?;
         s.equals(&inputs[0].rank, 1)?;
         s.equals(&inputs[0].shape[0], outputs[0].rank.bex().to_dim())?;
@@ -157,10 +157,10 @@ impl TypedOp for TypedRandomUniform {
 pub fn make_f32(shape: &[usize], seed1: u64, seed2: u64) -> TractResult<Arc<Tensor>> {
     let mut rng = Philox4x32x10::weird_tf_constructor(seed1, seed2).u32_iter();
     unsafe {
-        let mut tensor = Tensor::uninitialized::<f32>(&*shape)?;
+        let mut tensor = Tensor::uninitialized::<f32>(shape)?;
         tensor.as_slice_mut::<f32>()?.iter_mut().for_each(|x| {
             let mantissa = rng.next().unwrap() & 0x7fffff;
-            let exp = 127 as u32;
+            let exp = 127u32;
             let f = exp << 23 | mantissa;
             *x = f32::from_bits(f) - 1.0
         });
@@ -181,7 +181,7 @@ impl RandomUniformInt {
     pub fn make_i32(&self, shape: &[usize], lo: i32, hi: i32) -> TractResult<Arc<Tensor>> {
         let mut rng = Philox4x32x10::weird_tf_constructor(self.seed1, self.seed2).u32_iter();
         unsafe {
-            let mut tensor = Tensor::uninitialized::<i32>(&*shape)?;
+            let mut tensor = Tensor::uninitialized::<i32>(shape)?;
             tensor.as_slice_mut::<i32>()?.iter_mut().for_each(|x| {
                 // reproduce TF casts, with no conviction
                 let lo = lo as u32;
@@ -237,8 +237,8 @@ impl InferenceRulesOp for RandomUniformInt {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 3)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 3)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&outputs[0].datum_type, self.t)?;
         s.equals(&inputs[1].datum_type, self.t)?;
         s.equals(&inputs[2].datum_type, self.t)?;

@@ -91,12 +91,12 @@ pub fn run_bench<T, F: FnMut() -> T>(mut f: F) -> f64 {
     for _ in 0..warmup {
         black_box(f());
     }
-    for i in 0..chunks {
+    for m in &mut measures {
         let start = Instant::now();
         for _ in 0..chunk {
             black_box(f());
         }
-        measures[i] = start.elapsed().as_secs_f64() / chunk as f64
+        *m = start.elapsed().as_secs_f64() / chunk as f64
     }
     measures
         .sort_by(|a, b| if a < b { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater });

@@ -33,9 +33,7 @@ impl EvalOp for QMatMulUnary {
     }
 
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        if &inputs[0].rank() != &self.a.rank() {
-            bail!("Rank mismatch {:?} vs {:?}", inputs[0], self.a);
-        }
+        ensure!(inputs[0].rank() == self.a.rank(), "Rank mismatch {:?} vs {:?}", inputs[0], self.a);
 
         let mut model = TypedModel::default();
         let t_a = self.a.offset_u8_as_i8();
@@ -182,7 +180,7 @@ impl TypedOp for QMatMulUnary {
                 true,
             )));
         }
-        return Ok(None);
+        Ok(None)
     }
 
     fn declutter(

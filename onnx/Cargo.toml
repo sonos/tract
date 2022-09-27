@@ -1,6 +1,6 @@
 [package]
 name = "tract-onnx"
-version = "0.17.3-pre"
+version = "0.18.1-pre"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT/Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -10,6 +10,7 @@ categories = [ "science" ]
 autobenches = false
 edition = "2018"
 exclude = [ "test_cases" ]
+# build = "build-proto-rs"
 
 [badges]
 maintenance = { status = "actively-developed" }
@@ -20,14 +21,22 @@ derive-new = "0.5.9"
 educe = "0.4.18"
 log = "0.4.14"
 num-integer = "0.1.44"
-prost = "0.10.0"
+prost = "0.11.0"
 smallvec = "1.6.1"
-tract-hir = { version = "0.17.3-pre", path = "../hir" }
-tract-nnef = { version = "0.17.3-pre", path = "../nnef" }
-tract-onnx-opl = { version = "0.17.3-pre", path = "../onnx-opl" }
+tract-hir = { version = "0.18.1-pre", path = "../hir" }
+tract-nnef = { version = "0.18.1-pre", path = "../nnef" }
+tract-onnx-opl = { version = "0.18.1-pre", path = "../onnx-opl" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 mapr = "0.8.0"
 
-[build-dependencies]
-prost-build = "0.10.0"
+[dev-dependencies]
+env_logger = "0.9.0"
+
+# [build-dependencies]
+# protobuf-src = "1.0.5+3.19.3"
+# prost-build = "0.11.1"
+
+[features]
+default = []
+getrandom-js = ["tract-onnx-opl/getrandom-js"]

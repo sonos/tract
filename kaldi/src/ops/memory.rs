@@ -43,7 +43,7 @@ impl InferenceOp for Memory {
         observed: TVec<&InferenceFact>,
     ) -> TractResult<(TVec<InferenceFact>, TVec<InferenceFact>, TVec<InferenceFact>)> {
         let unified = outputs[0].unify(observed[0])?;
-        Ok((tvec!(), tvec!(unified.clone()), tvec!(unified.clone())))
+        Ok((tvec!(), tvec!(unified.clone()), tvec!(unified)))
     }
 
     fn observe_outlets(

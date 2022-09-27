@@ -62,11 +62,11 @@ impl<'a> CostModel<'a> {
     pub fn predict(&self, m: usize, k: usize, n: usize) -> &str {
         let mut x = self.features(m, k, n);
         self.normalize(&mut x);
-        let mut hidden = Self::dnn(&*x, &*self.w1, &*self.b1);
+        let mut hidden = Self::dnn(&*x, self.w1, self.b1);
         (crate::generic().tanh_f32)().run(&mut hidden).unwrap();
-        let output = Self::dnn(&*hidden, &*self.w2, &*self.b2);
+        let output = Self::dnn(&*hidden, self.w2, self.b2);
         let ix = output.iter().copied().position_max_by(order_f).unwrap();
-        &self.kernels[ix]
+        self.kernels[ix]
     }
 
     pub fn pick(

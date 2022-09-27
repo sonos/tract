@@ -191,7 +191,9 @@ fn run_task(task_name: &str) -> Result<()> {
                 GzEncoder::new(std::fs::File::open(&local_path)?, flate2::Compression::default());
             let mut content = vec![];
             gz.write_all(&mut content)?;
-            bucket.put_object_blocking(s3name.to_str().unwrap(), &content)?;
+            bucket
+                .put_object_blocking(s3name.to_str().unwrap(), &content)
+                .with_context(|| format!("uploading {}", s3name.to_str().unwrap()))?;
         } else {
             log::info!("Could not find {}", log);
         }
@@ -204,7 +206,8 @@ fn run_task(task_name: &str) -> Result<()> {
                 gr.prefix, config.platform, config.id, vars["TRAVIS_BRANCH_SANE"]
             )
             .replace("-", "_");
-            let mut socket = TcpStream::connect((gr.host.clone(), gr.port))?;
+            let mut socket = TcpStream::connect((gr.host.clone(), gr.port))
+                .with_context(|| format!("Opening socket to {:?}", gr))?;
             let ts = &vars["TIMESTAMP"];
             for line in std::fs::read_to_string(metrics_files)?.lines() {
                 let mut tokens = line.split_whitespace();
@@ -215,7 +218,8 @@ fn run_task(task_name: &str) -> Result<()> {
                     tokens.next().unwrap().replace("-", "_"),
                     tokens.next().unwrap(),
                     ts
-                )?;
+                )
+                .context("Writing to graphite socket")?;
             }
         }
     }
@@ -227,7 +231,9 @@ fn run_task(task_name: &str) -> Result<()> {
         let mut buf = vec![];
         let tgz = flate2::write::GzEncoder::new(&mut buf, flate2::Compression::default());
         tar::Builder::new(tgz).append_dir_all(tar_name, product_dir)?;
-        bucket.put_object_blocking(s3name.to_str().unwrap(), &buf)?;
+        bucket
+            .put_object_blocking(s3name.to_str().unwrap(), &buf)
+            .with_context(|| format!("uploading {}", s3name.to_str().unwrap()))?;
     }
     Ok(())
 }

@@ -48,8 +48,8 @@ impl InferenceRulesOp for LoopGate {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 1)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[0].shape, &outputs[0].shape)?;
         Ok(())
@@ -58,7 +58,7 @@ impl InferenceRulesOp for LoopGate {
     as_op!();
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum NextIterationRole {
     Source,
     Sink,
@@ -104,12 +104,12 @@ impl InferenceRulesOp for NextIteration {
     ) -> InferenceResult {
         match self.role {
             NextIterationRole::Source => {
-                check_input_arity(&inputs, 0)?;
-                check_output_arity(&outputs, 1)?;
+                check_input_arity(inputs, 0)?;
+                check_output_arity(outputs, 1)?;
             }
             NextIterationRole::Sink => {
-                check_input_arity(&inputs, 1)?;
-                check_output_arity(&outputs, 0)?;
+                check_input_arity(inputs, 1)?;
+                check_output_arity(outputs, 0)?;
             }
         }
         Ok(())

@@ -16,21 +16,21 @@ pub fn output_shape<D: DimLike>(
     let x_shape = pool_spec.data_format.shape(x_shape)?;
     let spatial_input_shape = x_shape.hw_dims();
     let spatial_output_details = pool_spec.padding.compute_for_deconv(
-        &spatial_input_shape,
+        spatial_input_shape,
         &pool_spec.kernel_shape,
         &pool_spec.dilations(),
         &pool_spec.strides(),
-        &adjustments,
+        adjustments,
     )?;
     let deconv_shape: TVec<D> =
         spatial_output_details.iter().map(|comp| comp.deconvoluted.clone()).collect();
     let co = pool_spec.output_channel_override.unwrap();
     let output_shape = pool_spec.data_format.from_n_c_hw(
-        x_shape.n().cloned().unwrap_or(1.into()),
+        x_shape.n().cloned().unwrap_or_else(|| 1.into()),
         co.into(),
         deconv_shape,
     )?;
-    Ok(output_shape.shape.into())
+    Ok(output_shape.shape)
 }
 
 pub fn adjustments(

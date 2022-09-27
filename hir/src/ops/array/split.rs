@@ -12,7 +12,7 @@ impl_dyn_hash!(Split);
 
 impl Split {
     fn split_dims<D: DimLike>(&self, input: &D) -> TractResult<TVec<D>> {
-        if let Some(ref split) = self.split.as_ref() {
+        if let Some(split) = self.split.as_ref() {
             Ok(split.iter().map(|&d| D::from(d)).collect())
         } else {
             Ok(tvec!(input.clone()/self.outputs;self. outputs))
@@ -33,8 +33,8 @@ impl Expansion for Split {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, self.outputs)?;
+        check_input_arity(inputs, 1)?;
+        check_output_arity(outputs, self.outputs)?;
         (0..self.outputs).try_for_each(|i| {
             s.equals(&inputs[0].datum_type, &outputs[i].datum_type)?;
             s.equals(&inputs[0].rank, &outputs[i].rank)

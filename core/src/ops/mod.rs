@@ -192,6 +192,7 @@ pub trait TypedOp:
     }
 
     #[allow(unused_variables)]
+    #[allow(clippy::too_many_arguments)]
     fn slice_output(
         &self,
         model: &TypedModel,
@@ -326,7 +327,7 @@ impl std::fmt::Display for Box<dyn TypedOp> {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum AttrOrInput {
     Attr(Arc<Tensor>),
     Input(usize),

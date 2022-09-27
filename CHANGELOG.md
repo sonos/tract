@@ -1,5 +1,23 @@
 # Unreleased
+
+# 0.18.0 - 2022-09-21
+* [ONNX Breaking] Several changes to move towards supporting ONNX symbolic dimensions (actual fixes, but they may break stuff that was working more or less by accident). It may be required to erase output shapes explicitely when input shape is overriden on models that were working before.
+* [CLI breaking] ONXN symbolic dimensions has some impact here too. --input-bundle is deprecated, is was overriden and ambiguous. Instead, there is a  --input-facts-from-bundle global option, and a --input-from-bundle option in the subcommands run, profile, dump. --allow-random-input is also moved to subcommands. We think all previously supported behaviours are still there. Please open issues if not.
+
+# 0.17.7 - 2022-09-05
+* clippy up all tract code
+* various fixes
+* 0.17.5 and 0.17.6 are misfired
+
+# 0.17.4 - 2022-08-11
+* [cli] global --set (as a somehat cleaner --concretize successor) allow to set a symbol value after decluttering
+* [cli] run --save-outputs output.npz to save execution outputs
+* dozens of fixs and code cleanup (clippy-fication in progress)
+
+# 0.17.3 - 2022-07-25
 * [License] Allowing https://spdx.org/licenses/Unicode-DFS-2016.html (no tldr yet, but pretty similar to BSD-2)
+* [Breaking] CLI --json option reports costs as strings instead of numbers (in order to allow symbolic values).
+* Sigmoid/Tanh f32 reimpl, plus new f16 impl.
 
 # 0.17.1 - 2022-07-11
 * Sanitiser=address in the CI. Fixed a couple of overflow/memleaks. (Nothing looked too awful.)

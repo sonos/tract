@@ -31,7 +31,7 @@ pub enum InputStoreSpec {
     VirtualPacking { packer: Packer, func: Box<dyn VirtualInputSpec>, k: usize },
 }
 
-#[derive(PartialEq, Clone, Copy, Debug, Hash)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash)]
 pub struct PackedStoreSpec {
     pub(crate) panel_bytes: usize,
 }
@@ -142,7 +142,7 @@ impl InputStore {
                 buffer.unwrap()
             }
             InputStore::VirtualPacking { packer, input, k, .. } => {
-                input.input(&packer, buffer.unwrap() as _, 0..*k, packer.r * i..packer.r * (i + 1));
+                input.input(packer, buffer.unwrap() as _, 0..*k, packer.r * i..packer.r * (i + 1));
                 buffer.unwrap()
             }
         }

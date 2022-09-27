@@ -67,7 +67,7 @@ pub struct ElementWiseOp(pub Box<dyn ElementWiseMiniOp>);
 
 impl Op for ElementWiseOp {
     fn name(&self) -> Cow<str> {
-        format!("{}", self.0.name()).into()
+        self.0.name().into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {

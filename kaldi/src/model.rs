@@ -72,7 +72,7 @@ impl GeneralDescriptor {
                 return Some((offsets.len(), dilation as usize));
             }
         }
-        return None;
+        None
     }
 
     fn wire<'a>(
@@ -84,12 +84,12 @@ impl GeneralDescriptor {
         adjust_final_offset: Option<isize>,
     ) -> TractResult<()> {
         use GeneralDescriptor::*;
-        match &self {
-            &Name(n) => {
+        match self {
+            Name(n) => {
                 deferred.insert(inlet, n.to_string());
                 return Ok(());
             }
-            &Append(appendees) => {
+            Append(appendees) => {
                 let name = format!("{}.Append", name);
                 let id = model.add_node(
                     &*name,
@@ -109,7 +109,7 @@ impl GeneralDescriptor {
                 }
                 return Ok(());
             }
-            &IfDefined(ref o) => {
+            IfDefined(ref o) => {
                 if let &Offset(ref n, ref o) = &**o {
                     if let Name(n) = &**n {
                         let name = format!("{}.memory", name);
@@ -123,7 +123,7 @@ impl GeneralDescriptor {
                     }
                 }
             }
-            &Offset(ref n, o) if *o > 0 => {
+            Offset(ref n, o) if *o > 0 => {
                 let name = format!("{}-Delay", name);
                 let crop = *o as isize + adjust_final_offset.unwrap_or(0);
                 if crop < 0 {
@@ -167,17 +167,13 @@ pub struct ParsingContext<'a> {
     pub proto_model: &'a KaldiProtoModel,
 }
 
+type OpBuilder = fn(&ParsingContext, node: &str) -> TractResult<Box<dyn InferenceOp>>;
+
 #[derive(Clone, Default)]
-pub struct KaldiOpRegister(
-    pub HashMap<String, fn(&ParsingContext, node: &str) -> TractResult<Box<dyn InferenceOp>>>,
-);
+pub struct KaldiOpRegister(pub HashMap<String, OpBuilder>);
 
 impl KaldiOpRegister {
-    pub fn insert(
-        &mut self,
-        s: &'static str,
-        builder: fn(&ParsingContext, node: &str) -> TractResult<Box<dyn InferenceOp>>,
-    ) {
+    pub fn insert(&mut self, s: &'static str, builder: OpBuilder) {
         self.0.insert(s.into(), builder);
     }
 }
@@ -224,7 +220,7 @@ impl Framework<KaldiProtoModel, InferenceModel> for Kaldi {
                             Some(builder) => (builder)(&ctx, name)?,
                             None => Box::new(tract_hir::ops::unimpl::UnimplementedOp::new(
                                 1,
-                                component.klass.to_string(),
+                                &component.klass,
                                 format!("{:?}", line),
                             )),
                         };
@@ -267,6 +263,7 @@ impl Framework<KaldiProtoModel, InferenceModel> for Kaldi {
                 tract_hir::ops::identity::Identity::default(),
                 tvec!(InferenceFact::default()),
             )?;
+            model.set_outlet_label(output.into(), o.output_alias.to_string())?;
             o.descriptor.wire(
                 InletId::new(output, 0),
                 "output",

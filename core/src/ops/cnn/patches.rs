@@ -10,7 +10,7 @@ use std::ops::Range;
 
 use tract_itertools::{izip, Itertools};
 
-#[derive(Clone, PartialEq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct PatchSpec {
     pub input_shape: TVec<usize>,
     pub input_inner_stride: usize,
@@ -91,6 +91,7 @@ impl PatchSpec {
         let data_field: Vec<isize> = ::ndarray::indices(&*self.kernel_shape)
             .into_iter()
             .flat_map(|coords| {
+                #[allow(clippy::unnecessary_to_owned)] // I think this one is a clippy bug.
                 coords
                     .slice()
                     .to_vec()
@@ -112,7 +113,7 @@ impl PatchSpec {
 
         fn strides(shape: &[usize], inner: usize) -> TVec<isize> {
             let mut strides: TVec<isize> = tvec![inner as isize];
-            for dim in shape.into_iter().skip(1).rev() {
+            for dim in shape.iter().skip(1).rev() {
                 let previous = *strides.last().unwrap();
                 strides.push(*dim as isize * previous);
             }
@@ -225,7 +226,7 @@ impl PatchSpec {
     }
 }
 
-#[derive(Clone, PartialEq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Patch {
     pub spec: PatchSpec,
     pub pad_before: TVec<usize>,
@@ -316,7 +317,7 @@ impl Patch {
             }
             let valid = hint.unwrap_or_else(|| !self.padded || self.is_valid(coords));
             if valid {
-                PatchIterator::Fast(FastPatchIterator { patch: &self, center, item: 0 })
+                PatchIterator::Fast(FastPatchIterator { patch: self, center, item: 0 })
             } else {
                 let mut input_patch_center: TVec<_> = coords.into();
                 input_patch_center
@@ -342,7 +343,7 @@ impl Patch {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Zone {
     pub valid: bool,
     pub input_zone_offset: isize,
@@ -368,7 +369,7 @@ impl Zone {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ZoneScanner<'p> {
     pub patch: &'p Patch,
     pub zone: &'p Zone,
@@ -484,7 +485,7 @@ impl<'p> ZoneScanner<'p> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Scanner<'p> {
     pub patch: &'p Patch,
     pub zone_id: usize,
@@ -582,7 +583,7 @@ impl<'p> Scanner<'p> {
                     self.input_center_offset += *self.input_coords.get_unchecked(i) as isize
                         * *self.patch.input_storage_strides.get_unchecked(i) as isize;
                 }
-                self.zone = &self.patch.zones.get_unchecked(self.zone_id);
+                self.zone = self.patch.zones.get_unchecked(self.zone_id);
             }
         }
     }
@@ -603,8 +604,8 @@ impl<'p> Iterator for PatchIterator<'p> {
     #[inline(always)]
     fn next(&mut self) -> Option<Option<isize>> {
         match self {
-            &mut PatchIterator::Fast(ref mut it) => it.next(),
-            &mut PatchIterator::Safe(ref mut it) => it.next(),
+            PatchIterator::Fast(ref mut it) => it.next(),
+            PatchIterator::Safe(ref mut it) => it.next(),
         }
     }
 }
@@ -648,12 +649,10 @@ impl<'p> Iterator for SafePatchIterator<'p> {
                 return None;
             }
             let input_shape = &self.patch.spec.input_shape;
-            let img_offset =
-                self.patch.data_field.as_ptr().offset((self.item * input_shape.len()) as isize);
+            let img_offset = self.patch.data_field.as_ptr().add(self.item * input_shape.len());
 
             for ix in 0..input_shape.len() {
-                let pos = *self.input_patch_center.get_unchecked(ix) as isize
-                    + *img_offset.offset(ix as isize);
+                let pos = *self.input_patch_center.get_unchecked(ix) as isize + *img_offset.add(ix);
                 if pos < 0 || pos as usize >= *input_shape.get_unchecked(ix) {
                     self.item += 1;
                     return Some(None);

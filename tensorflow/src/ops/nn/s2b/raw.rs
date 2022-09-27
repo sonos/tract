@@ -45,8 +45,8 @@ impl InferenceRulesOp for SpaceToBatch {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 3)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 3)?;
+        check_output_arity(outputs, 1)?;
         rules(s, self.datum_type, &outputs[0], &inputs[0], &inputs[1], &inputs[2])
     }
 
@@ -88,7 +88,7 @@ impl InferenceRulesOp for SpaceToBatch {
                     .iter()
                     .cloned()
                     .collect::<TVec<_>>(),
-                block_shape.clone().into_tensor().into_array::<i32>()?.into_dimensionality()?,
+                block_shape.into_tensor().into_array::<i32>()?.into_dimensionality()?,
                 paddings,
             );
             target.wire_node(&*node.name, op, [mapping[&node.inputs[0]]].as_ref())
@@ -142,8 +142,8 @@ impl InferenceRulesOp for BatchToSpace {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 3)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 3)?;
+        check_output_arity(outputs, 1)?;
         rules(s, self.datum_type, &inputs[0], &outputs[0], &inputs[1], &inputs[2])
     }
 
@@ -184,7 +184,7 @@ impl InferenceRulesOp for BatchToSpace {
                     .iter()
                     .cloned()
                     .collect::<TVec<_>>(),
-                block_shape.clone().into_tensor().into_array::<i32>()?.into_dimensionality()?,
+                block_shape.into_tensor().into_array::<i32>()?.into_dimensionality()?,
                 paddings,
             );
             target.wire_node(&*node.name, op, [mapping[&node.inputs[0]]].as_ref())

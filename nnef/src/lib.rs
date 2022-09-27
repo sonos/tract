@@ -1,3 +1,4 @@
+#![allow(clippy::len_zero)]
 #[macro_use]
 extern crate log;
 
@@ -33,5 +34,5 @@ pub mod internal {
 }
 
 pub fn nnef() -> framework::Nnef {
-    framework::Nnef::new()
+    framework::Nnef::default()
 }

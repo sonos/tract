@@ -32,11 +32,11 @@ pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<Tensor> {
     vec
 }
 
-#[derive(PartialEq, Copy, Clone, Debug)]
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum Mode {
     Plain,
     Optim,
-    NNEF,
+    Nnef,
 }
 
 pub fn run_one<P: AsRef<path::Path>>(
@@ -96,7 +96,10 @@ pub fn run_one<P: AsRef<path::Path>>(
     if more.contains(&"onnx-ignore-output-shape") {
         onnx = onnx.with_ignore_output_shapes(true);
     }
-
+    // in some other cases, we need to deal with a tdim vs i64 mismatch (test for Shape, and Size)
+    if more.contains(&"onnx-ignore-output-type") {
+        onnx = onnx.with_ignore_output_types(true);
+    }
 
     let nnef = tract_nnef::nnef().with_onnx();
     trace!("Proto Model:\n{:#?}", onnx.proto_model_for_path(&model_file));
@@ -161,7 +164,7 @@ pub fn run_one<P: AsRef<path::Path>>(
                     trace!("Run analysed model:\n{:#?}", model);
                     run_model(model, inputs, &data_path)
                 }
-                NNEF => {
+                Nnef => {
                     let model = model.into_typed().unwrap();
                     info!("Declutter");
                     let optimized = model.into_decluttered().unwrap();

@@ -63,8 +63,8 @@ impl Expansion for Affine {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
+        check_input_arity(inputs, 1)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&inputs[0].datum_type, self.linear_params.datum_type())?;
         s.equals(&outputs[0].datum_type, self.linear_params.datum_type())?;
         s.equals(&inputs[0].rank, 2)?;

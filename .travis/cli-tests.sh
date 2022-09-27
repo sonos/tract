@@ -41,7 +41,7 @@ echo
 echo $WHITE • build tract $NC
 echo
 
-TRACT_RUN=$(cargo build --message-format json -p tract $CARGO_EXTRA --profile opt-no-lto | jq -r 'select(.target.name == "tract").executable')
+TRACT_RUN=$(cargo build --message-format json -p tract $CARGO_EXTRA --profile opt-no-lto | jq -r 'select(.target.name == "tract" and .executable).executable')
 echo TRACT_RUN=$TRACT_RUN
 export TRACT_RUN
 
@@ -91,44 +91,51 @@ cd $CACHEDIR
 )
 
 $TRACT_RUN $CACHEDIR/squeezenet.onnx \
+    run -q \
     --allow-random-input \
-    run -q --assert-output-fact 1,1000,1,1,f32
+    --assert-output-fact 1,1000,1,1,f32
 
 $TRACT_RUN \
     $CACHEDIR/inception_v3_2016_08_28_frozen.pb \
-    --allow-random-input \
     -i 1,299,299,3,f32 \
-    run -q --assert-output-fact 1,1001,f32
+    run -q \
+    --allow-random-input \
+    --assert-output-fact 1,1001,f32
 
 $TRACT_RUN \
     $CACHEDIR/inception_v3_2016_08_28_frozen.pb \
-    --allow-random-input \
     -i 1,299,299,3,f32 -O \
-    run -q --assert-output-fact 1,1001,f32
+    run -q \
+    --allow-random-input \
+    --assert-output-fact 1,1001,f32
 
 $TRACT_RUN $CACHEDIR/ARM-ML-KWS-CNN-M.pb \
-    --allow-random-input \
     -O -i 49,10,f32 --partial \
-    --input-node Mfcc run -q
-
+    --input-node Mfcc \
+    run -q \
+    --allow-random-input
+    
 $TRACT_RUN $CACHEDIR/mdl-en-2019-Q3-librispeech.onnx \
-    --allow-random-input \
     -O -i S,40,f32 --output-node output --pulse 24 \
-    run -q
-
+    run -q \
+    --allow-random-input
+    
 $TRACT_RUN $CACHEDIR/mobilenet_v1_1.0_224_frozen.pb \
-    --allow-random-input \
     -O -i 1,224,224,3,f32 \
-    run -q --assert-output-fact 1,1001,f32
+    run -q \
+    --allow-random-input \
+    --assert-output-fact 1,1001,f32
 
 $TRACT_RUN $CACHEDIR/mobilenet_v2_1.4_224_frozen.pb \
-    --allow-random-input \
     -O -i 1,224,224,3,f32 \
-    run -q --assert-output-fact 1,1001,f32
+    run -q \
+    --allow-random-input \
+    --assert-output-fact 1,1001,f32
 
 $TRACT_RUN $CACHEDIR/GRU128KeywordSpotter-v2-10epochs.onnx \
+    -O run -q \
     --allow-random-input \
-    -O run -q --assert-output-fact 1,3,f32
+    --assert-output-fact 1,3,f32
 
 $TRACT_RUN $CACHEDIR/hey_snips_v4_model17.pb \
     -i S,20,f32 --pulse 8 dump --cost -q \
@@ -141,33 +148,37 @@ $TRACT_RUN $CACHEDIR/hey_snips_v4_model17.pb -i S,20,f32 \
 $TRACT_RUN $CACHEDIR/en_libri_real/model.raw.txt \
     -f kaldi --output-node output \
     --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
-    --input-bundle $CACHEDIR/en_libri_real/io.npz \
-    --allow-random-input \
+    --input-facts-from-bundle $CACHEDIR/en_libri_real/io.npz \
     run \
+    --input-from-bundle $CACHEDIR/en_libri_real/io.npz \
+    --allow-random-input \
     --assert-output-bundle $CACHEDIR/en_libri_real/io.npz
 
 $TRACT_RUN $CACHEDIR/en_libri_real/model.raw \
     -f kaldi --output-node output \
     --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
-    --input-bundle $CACHEDIR/en_libri_real/io.npz \
-    --allow-random-input \
+    --input-facts-from-bundle $CACHEDIR/en_libri_real/io.npz \
     run \
+    --input-from-bundle $CACHEDIR/en_libri_real/io.npz \
+    --allow-random-input \
     --assert-output-bundle $CACHEDIR/en_libri_real/io.npz
 
 $TRACT_RUN $CACHEDIR/en_libri_real/model.onnx \
     --output-node output \
     --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
-    --input-bundle $CACHEDIR/en_libri_real/io.npz \
-    --allow-random-input \
+    --input-facts-from-bundle $CACHEDIR/en_libri_real/io.npz \
     run \
+    --input-from-bundle $CACHEDIR/en_libri_real/io.npz \
+    --allow-random-input \
     --assert-output-bundle $CACHEDIR/en_libri_real/io.npz
 
 $TRACT_RUN $CACHEDIR/inceptionv1_quant.nnef.tar.gz \
     --nnef-tract-core \
-    --input-bundle $CACHEDIR/inceptionv1_quant.io.npz \
-    --allow-random-input \
+    --input-facts-from-bundle $CACHEDIR/inceptionv1_quant.io.npz \
     run \
-    --assert-output-bundle $CACHEDIR/inceptionv1_quant.io.npz \
+    --input-from-bundle $CACHEDIR/inceptionv1_quant.io.npz \
+    --allow-random-input \
+    --assert-output-bundle $CACHEDIR/inceptionv1_quant.io.npz
 
 for t in harness/pre-optimized-graphes/*
 do

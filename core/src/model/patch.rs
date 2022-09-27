@@ -175,7 +175,7 @@ where
         let new_op = new_op.into();
         let by = patch.add_node(&*node.name, new_op, tvec!(succ.outputs[0].fact.clone()))?;
         for (ix, i) in node.inputs.iter().enumerate() {
-            let o = patch.tap_model(&patched_model, *i)?;
+            let o = patch.tap_model(patched_model, *i)?;
             patch.add_edge(o, InletId::new(by, ix))?;
         }
         for ix in 0..node.outputs.len() {
@@ -239,11 +239,9 @@ where
         let mut all_inputs = HashMap::new(); // new_node_id_in_model -> [ patch_outlet_id ]
         let mut model_input_outlets = target.input_outlets()?.to_vec();
         for node in patch.nodes {
-            if <Graph<F, O>>::is_source(&node.op) {
-                if mapping.contains_key(&OutletId::new(node.id, 0)) {
-                    // this is a tap
-                    continue;
-                }
+            if <Graph<F, O>>::is_source(&node.op) && mapping.contains_key(&OutletId::new(node.id, 0)) {
+                // this is a tap
+                continue;
             }
             let Node { id: patch_node_id, name, inputs, op, outputs } = node;
             let n_outputs = outputs.len();
@@ -289,7 +287,7 @@ where
                     *o = replace_by;
                 }
             }
-            if let Some(label) = target.outlet_labels.remove(&outlet).map(|s| s.to_string()) {
+            if let Some(label) = target.outlet_labels.remove(&outlet) {
                 target.set_outlet_label(replace_by, label)?;
             }
         }

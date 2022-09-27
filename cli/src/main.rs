@@ -1,3 +1,4 @@
+#![allow(clippy::len_zero)]
 #[macro_use]
 extern crate log;
 #[macro_use]
@@ -54,7 +55,7 @@ fn info_usage(stage: &str, probe: Option<&Probe>) {
     }
 }
 
-pub const STAGES: &'static [&'static str] = &[
+pub const STAGES: &[&str] = &[
     "load",
     "analyse",
     "incorporate",
@@ -63,6 +64,8 @@ pub const STAGES: &'static [&'static str] = &[
     "pulse",
     "pulse-to-type",
     "pulse-declutter",
+    "set",
+    "set-declutter",
     "nnef-cycle",
     "nnef-cycle-declutter",
     "before-optimize",
@@ -84,9 +87,12 @@ fn main() -> tract_core::anyhow::Result<()> {
         .arg(Arg::new("input").long("input").short('i').multiple_occurrences(true).takes_value(true).long_help(
                   "Set input shape and type (@file.pb or @file.npz:thing.npy or 3x4xi32)."))
 
-        .arg(arg!(--"const-input" [const_input] ... "Treat input as a Const (by name), retaining its value."))
-        .arg(arg!(--"input-bundle" [input_bundle] "Path to an input container (.npz)"))
-        .arg(arg!(--"allow-random-input" "WIll use random generated input"))
+        // deprecated
+        .arg(arg!(--"input-bundle" [input_bundle] "Path to an input container (.npz). This sets input facts and tensor values.").hide(true))
+        // deprecated
+        .arg(arg!(--"allow-random-input" "Will use random generated input").hide(true))
+
+        .arg(arg!(--"input-facts-from-bundle" [input_bundle] "Path to an input container (.npz). This only sets input facts."))
 
         .arg(arg!(--"kaldi-adjust-final-offset" [frames] "Adjust value of final offset in network (for reproducibility)"))
         .arg(arg!(--"kaldi-downsample" [frames] "Add a subsampling to output on axis 0"))
@@ -95,6 +101,7 @@ fn main() -> tract_core::anyhow::Result<()> {
 
         .arg(arg!(--"onnx-test-data-set" [data_set] "Use onnx-test data-set as input (expect test_data_set_N dir with input_X.pb, etc. inside)"))
         .arg(arg!(--"onnx-ignore-output-shapes" "Ignore output shapes from model (workaround for pytorch export bug with mask axes)"))
+        .arg(arg!(--"onnx-ignore-output-types" "Ignore output shapes from types (workaround for tdim conflicting with integer types)"))
 
         .arg(arg!(--"input-node" [node] ... "Override input nodes names (auto-detects otherwise)."))
         .arg(arg!(--"output-node" [node] ... "Override output nodes name (auto-detects otherwise)."))
@@ -116,7 +123,10 @@ fn main() -> tract_core::anyhow::Result<()> {
         .arg(arg!(--"extract-decluttered-sub" [SUB] "Zoom on a subgraph after decluttering by parent node name"))
 
         .arg(arg!(--"half-floats" "Convert the decluttered network from f32 to f16"))
-        .arg(arg!(--"allow-float-casts" "Allow casting between f16, f32 and f64 around model"))
+        .arg(arg!(--set [set] ... "Set a symbol to a concrete value after decluttering"))
+
+        // deprecated
+        .arg(arg!(--"allow-float-casts" "Allow casting between f16, f32 and f64 around model").hide(true))
 
         .arg(arg!(--"nnef-cycle" "Perform NNEF dump and reload before optimizing"))
 
@@ -166,16 +176,20 @@ fn main() -> tract_core::anyhow::Result<()> {
                 .takes_value(false)
                 .help("Try nodes one per one to mitigate crashes"),
         );
+    let compare = run_options(compare);
     app = app.subcommand(output_options(compare));
 
     let bench =
         clap::Command::new("bench").long_about("Benchmarks tract on randomly generated input.");
+    let bench = run_options(bench);
     let bench = output_options(bench);
     let bench = benchlimits_options(bench);
+    let bench = assertions_options(bench);
     app = app.subcommand(bench);
 
     let criterion = clap::Command::new("criterion")
         .long_about("Benchmarks tract on randomly generated input using criterion.");
+    let criterion = run_options(criterion);
     app = app.subcommand(criterion);
 
     app = app.subcommand(dump_subcommand());
@@ -183,6 +197,12 @@ fn main() -> tract_core::anyhow::Result<()> {
     let run = clap::Command::new("run")
         .long_about("Run the graph")
         .arg(Arg::new("dump").long("dump").help("Show output"))
+        .arg(
+            Arg::new("save-outputs")
+                .long("save-outputs")
+                .takes_value(true)
+                .help("Save the outputs into a npz file"),
+        )
         .arg(Arg::new("steps").long("steps").help("Show all inputs and outputs"))
         .arg(
             Arg::new("set")
@@ -190,19 +210,20 @@ fn main() -> tract_core::anyhow::Result<()> {
                 .takes_value(true)
                 .multiple_occurrences(true)
                 .number_of_values(1)
-                .help("Set a symbol value (--set S=12)"),
+                .help("Set a symbol value before running the model (--set S=12)"),
         )
         .arg(
             Arg::new("save-steps")
                 .long("save-steps")
                 .takes_value(true)
-                .help("Save intermediary values"),
+                .help("Save intermediary values as a npz file"),
         )
         .arg(
             Arg::new("assert-sane-floats")
                 .long("assert-sane-floats")
                 .help("Check float for NaN and infinites at each step"),
         );
+    let run = run_options(run);
     let run = output_options(run);
     let run = assertions_options(run);
     app = app.subcommand(run);
@@ -236,8 +257,7 @@ fn main() -> tract_core::anyhow::Result<()> {
         ::std::env::set_var("TRACT_LOG", level);
     }
 
-    let env = env_logger::Env::default()
-        .filter_or("TRACT_LOG", "warn");
+    let env = env_logger::Env::default().filter_or("TRACT_LOG", "warn");
 
     env_logger::Builder::from_env(env).format_timestamp_nanos().init();
     info_usage("init", probe.as_ref());
@@ -251,6 +271,7 @@ fn main() -> tract_core::anyhow::Result<()> {
     Ok(())
 }
 
+#[allow(clippy::let_and_return)]
 fn dump_subcommand<'a>() -> clap::Command<'a> {
     use clap::*;
     let dump = clap::Command::new("dump")
@@ -300,6 +321,7 @@ fn dump_subcommand<'a>() -> clap::Command<'a> {
             .long("inner")
             .help("Navigate to a sub-model"),
             );
+    let dump = run_options(dump);
     let dump = output_options(dump);
     let dump = assertions_options(dump);
     let dump = benchlimits_options(dump);
@@ -352,6 +374,27 @@ fn benchlimits_options(command: clap::Command) -> clap::Command {
     command.args(&[
                      arg!(-n --"max-iters" [max_iters] "Sets the maximum number of iterations for each node [default: 100_000]."),
                      arg!(--"max-time" [max_time] "Sets the maximum execution time for each node (in ms) [default: 5000].") ])
+}
+
+fn run_options(command: clap::Command) -> clap::Command {
+    use clap::*;
+    command
+        .arg(
+            Arg::new("input-from-bundle")
+                .long("input-from-bundle")
+                .takes_value(true)
+                .help("Path to an input container (.npz). This sets tensor values."),
+        )
+        .arg(
+            Arg::new("allow-random-input")
+                .long("allow-random-input")
+                .help("Will use random generated input"),
+        )
+        .arg(
+            Arg::new("allow-float-casts")
+                .long("allow-float-casts")
+                .help("Allow casting between f16, f32 and f64 around model"),
+        )
 }
 
 fn output_options(command: clap::Command) -> clap::Command {
@@ -425,7 +468,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
                 let annotations =
                     crate::annotations::Annotations::from_model(broken_model.as_ref())?;
                 let display_params = if let Some(("dump", sm)) = matches.subcommand() {
-                    display_params_from_clap(&matches, &sm)?
+                    display_params_from_clap(&matches, sm)?
                 } else {
                     crate::display_params::DisplayParams::default()
                 };
@@ -444,16 +487,16 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
     match matches.subcommand() {
         Some(("bench", m)) => {
             need_optimisations = true;
-            bench::handle(&params, &matches, &BenchLimits::from_clap(&m)?, probe)
+            bench::handle(&params, &matches, m, &BenchLimits::from_clap(m)?, probe)
         }
 
-        Some(("criterion", _)) => {
+        Some(("criterion", m)) => {
             need_optimisations = true;
-            bench::criterion(&params, &matches)
+            bench::criterion(&params, &matches, m)
         }
 
         Some(("compare", m)) => {
-            compare::handle(&mut params, &matches, &m, display_params_from_clap(&matches, m)?)
+            compare::handle(&mut params, &matches, m, display_params_from_clap(&matches, m)?)
         }
 
         Some(("run", m)) => run::handle(&params, &matches, m),
@@ -477,13 +520,13 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
             let inner = m
                 .values_of("inner")
                 .map(|ss| ss.map(|s| s.to_string()).collect())
-                .unwrap_or(vec![]);
+                .unwrap_or_default();
             dump::handle(
                 &params,
                 &display_params_from_clap(&matches, m)?,
                 &matches,
                 m,
-                &BenchLimits::from_clap(&m)?,
+                &BenchLimits::from_clap(m)?,
                 inner,
             )
         }

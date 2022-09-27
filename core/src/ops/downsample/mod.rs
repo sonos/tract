@@ -6,7 +6,7 @@ mod array;
 mod conv;
 mod scan;
 
-#[derive(Debug, Clone, new, Default, PartialEq, Hash)]
+#[derive(Debug, Clone, new, Default, PartialEq, Eq, Hash)]
 pub struct Downsample {
     pub axis: usize,
     pub stride: isize,
@@ -15,13 +15,13 @@ pub struct Downsample {
 
 impl Downsample {
     pub(crate) fn transform_dim(&self, input_dim: &TDim) -> TDim {
-        (input_dim.clone() - self.modulo).div_ceil(self.stride.abs() as _)
+        (input_dim.clone() - self.modulo).div_ceil(self.stride.unsigned_abs() as u64)
     }
 
     pub(crate) fn transform_fact(&self, input_fact: &TypedFact) -> TractResult<TypedFact> {
         let mut downed = input_fact.clone();
         let down_len = self.transform_dim(&input_fact.shape[self.axis]);
-        downed.shape.set(self.axis, down_len.clone());
+        downed.shape.set(self.axis, down_len);
         if let Some(k) = downed.konst {
             let mut outputs = self.eval(tvec!(k))?;
             downed.konst = Some(outputs.remove(0));
@@ -88,7 +88,7 @@ impl TypedOp for Downsample {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut downed = inputs[0].clone();
         let down_len = self.transform_dim(&downed.shape[self.axis]);
-        downed.shape.set(self.axis, down_len.clone());
+        downed.shape.set(self.axis, down_len);
         Ok(tvec!(downed))
     }
 

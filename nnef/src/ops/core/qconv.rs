@@ -116,12 +116,12 @@ fn qconv_load(
         zero_point: *qparams
             .c0
             .as_static()
-            .ok_or(format_err!("The output quantization need to be static in convolution"))?
+            .context("The output quantization need to be static in convolution")?
             .to_scalar()?,
         scale: *qparams
             .c_scale
             .as_static()
-            .ok_or(format_err!("The output quantization need to be static in convolution"))?
+            .context("The output quantization need to be static in convolution")?
             .to_scalar()?,
     });
     let op: Box<dyn TypedOp> = Box::new(ConvUnary::new(

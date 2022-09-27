@@ -38,17 +38,12 @@ impl EvalOp for MatMulUnary {
 
 impl TypedOp for MatMulUnary {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        if inputs[0].rank() != self.a.rank() {
-            bail!(
-                "Inconsistent matmul between input {:?} and attribute {:?} (rank mismatch)",
-                inputs[0],
-                self.a
-            );
-        }
-        /*
-        dbg!(self);
-        dbg!(inputs);
-        */
+        ensure!(
+            inputs[0].rank() == self.a.rank(),
+            "Inconsistent matmul between input {:?} and attribute {:?} (rank mismatch)",
+            inputs[0],
+            self.a
+        );
         let (_m, _k, _n, c_shape) = compute_shape(
             &self.a.shape().iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
             &inputs[0].shape,
@@ -115,23 +110,7 @@ impl TypedOp for MatMulUnary {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        Ok(
-            if let Some(patch) = self
-                .declutter_precusor_is_concat(model, node)
-                .context("declutter precursor is concat")?
-            {
-                Some(patch)
-                /*
-                } else if let Some(patch) = self
-                .declutter_successors_are_slices(model, node)
-                .context("declutter succsessors are slice")?
-                {
-                Some(patch)
-                */
-            } else {
-                None
-            },
-        )
+        self.declutter_precusor_is_concat(model, node).context("declutter precursor is concat")
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
@@ -152,9 +131,10 @@ impl TypedOp for MatMulUnary {
     ) -> TractResult<Option<TypedModelPatch>> {
         let b = args_1!(model.node_input_facts(node.id)?);
         if let Some(b_shape) = b.shape.as_concrete() {
-            return Ok(Some(self.new_mat_mul_unary_finite(model, node, &b_shape, b.datum_type)?));
+            Ok(Some(self.new_mat_mul_unary_finite(model, node, b_shape, b.datum_type)?))
+        } else {
+            Ok(None)
         }
-        Ok(None)
     }
 
     as_op!();

@@ -1,8 +1,8 @@
 //! `Tensor`, tract main data object of interest.
 use crate::datum::{round_ties_to_even, scale_by, Blob, ClampCast, Datum, DatumType, QParams};
 use crate::dim::TDim;
-use half::f16;
 use crate::TVec;
+use half::f16;
 use itertools::Itertools;
 use ndarray::prelude::*;
 use num_complex::Complex;
@@ -19,7 +19,38 @@ use std::sync::Arc;
 pub mod litteral;
 pub mod view;
 
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Approximation {
+    Exact,
+    Close,
+    Approximate,
+}
+
+impl From<bool> for Approximation {
+    fn from(b: bool) -> Self {
+        if b {
+            Self::Approximate
+        } else {
+            Self::Exact
+        }
+    }
+}
+
+impl Approximation {
+    fn atol_and_rtol(&self, dt: &DatumType) -> (f64, f64) {
+        use Approximation::*;
+        match (self, dt) {
+            (Close, DatumType::F16) => (1e-3, 1e-3),
+            (Approximate, DatumType::F16) => (1e-3, 5e-3),
+            (Exact, _) => (0.0, 0.0),
+            (Close, _) => (1e-7, 1e-7),
+            (Approximate, _) => (1e-4, 5e-4),
+        }
+    }
+}
+
 /// Tensor is a concrete tensor in tract.
+#[derive(Eq)]
 pub struct Tensor {
     dt: DatumType,
     shape: TVec<usize>,
@@ -369,6 +400,7 @@ impl Tensor {
 
     /// Get the number of valeus in the tensor.
     #[inline]
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.len
     }
@@ -667,35 +699,38 @@ impl Tensor {
     }
 
     /// Compare two tensors, allowing for rounding errors.
-    pub fn close_enough(&self, other: &Self, approx: bool) -> anyhow::Result<()> {
+    pub fn close_enough(
+        &self,
+        other: &Self,
+        approx: impl Into<Approximation> + std::fmt::Debug,
+    ) -> anyhow::Result<()> {
+        let approx = approx.into();
         if self.shape() != other.shape() {
             anyhow::bail!("Shape mismatch {:?} != {:?}", self.shape(), other.shape())
         }
-        if approx {
-            let atol = if self.datum_type() == f16::datum_type() { 1e-2 } else { 5e-4 };
-            let rtol = if self.datum_type() == f16::datum_type() { 1e-1 } else { 1e-4 };
-            let ma = self.cast_to::<f32>()?;
-            let ma = ma.to_array_view::<f32>()?;
-            let mb = other.cast_to::<f32>()?;
-            let mb = mb.to_array_view::<f32>()?;
-            ndarray::indices_of(&ma).into_iter().try_for_each(|indices| {
-                let a = ma[&indices];
-                let b = mb[&indices];
-                if !((a.is_nan() && b.is_nan())
-                    || (a.is_infinite() && b.is_infinite() && a.signum() == b.signum())
-                    || (a - b).abs() <= atol + rtol * b.abs())
-                {
-                    anyhow::bail!("Mismatch at {:?} {} != {}", indices.slice(), a, b)
-                }
-                Ok(())
-            })
-        } else {
-            if self.eq(other) {
-                Ok(())
-            } else {
-                anyhow::bail!("Mismatch")
+        let (atol, rtol) = approx.atol_and_rtol(&self.datum_type());
+        let ma = self.cast_to::<f32>()?;
+        let ma = ma.to_array_view::<f32>()?;
+        let mb = other.cast_to::<f32>()?;
+        let mb = mb.to_array_view::<f32>()?;
+        ndarray::indices_of(&ma).into_iter().try_for_each(|indices| {
+            let a = ma[&indices];
+            let b = mb[&indices];
+            if !((a.is_nan() && b.is_nan())
+                || (a.is_infinite() && b.is_infinite() && a.signum() == b.signum())
+                || (a - b).abs() <= atol as f32 + rtol as f32 * b.abs())
+            {
+                anyhow::bail!(
+                    "Mismatch (wanted {:?} for {:?}) at {:?} {} != {}",
+                    approx,
+                    self.datum_type(),
+                    indices.slice(),
+                    a,
+                    b
+                )
             }
-        }
+            Ok(())
+        })
     }
 
     /// Transform the tensor into a `ndarray::Array`.
@@ -720,19 +755,19 @@ impl Tensor {
     }
 
     /// Transform the data as a `ndarray::Array`.
-    pub fn to_array_view<'a, D: Datum>(&'a self) -> anyhow::Result<ArrayViewD<'a, D>> {
+    pub fn to_array_view<D: Datum>(&self) -> anyhow::Result<ArrayViewD<D>> {
         self.check_for_access::<D>()?;
         unsafe { Ok(self.to_array_view_unchecked()) }
     }
 
     /// Transform the data as a mutable `ndarray::Array`.
-    pub fn to_array_view_mut<'a, D: Datum>(&'a mut self) -> anyhow::Result<ArrayViewMutD<'a, D>> {
+    pub fn to_array_view_mut<D: Datum>(&mut self) -> anyhow::Result<ArrayViewMutD<D>> {
         self.check_for_access::<D>()?;
         unsafe { Ok(self.to_array_view_mut_unchecked()) }
     }
 
     /// Transform the data as a `ndarray::Array`.
-    pub unsafe fn to_array_view_unchecked<'a, D: Datum>(&'a self) -> ArrayViewD<'a, D> {
+    pub unsafe fn to_array_view_unchecked<D: Datum>(&self) -> ArrayViewD<D> {
         if self.len() != 0 {
             ArrayViewD::from_shape_ptr(&*self.shape, self.data as *const D)
         } else {
@@ -741,7 +776,7 @@ impl Tensor {
     }
 
     /// Transform the data as a mutable `ndarray::Array`.
-    pub unsafe fn to_array_view_mut_unchecked<'a, D: Datum>(&'a mut self) -> ArrayViewMutD<'a, D> {
+    pub unsafe fn to_array_view_mut_unchecked<D: Datum>(&mut self) -> ArrayViewMutD<D> {
         if self.len() != 0 {
             ArrayViewMutD::from_shape_ptr(&*self.shape, self.data as *mut D)
         } else {
@@ -772,7 +807,7 @@ impl Tensor {
 
     /// Access the data as a slice.
     pub fn as_slice<D: Datum>(&self) -> anyhow::Result<&[D]> {
-        let ptr:*const D = self.as_ptr()?;
+        let ptr: *const D = self.as_ptr()?;
         if ptr.is_null() {
             Ok(&[])
         } else {
@@ -782,7 +817,7 @@ impl Tensor {
 
     /// Access the data as a mutable slice.
     pub fn as_slice_mut<D: Datum>(&mut self) -> anyhow::Result<&mut [D]> {
-        let ptr:*mut D = self.as_ptr_mut()?;
+        let ptr: *mut D = self.as_ptr_mut()?;
         if ptr.is_null() {
             Ok(&mut [])
         } else {
@@ -809,7 +844,7 @@ impl Tensor {
     }
 
     /// Access the data as a scalar.
-    pub fn to_scalar<'a, D: Datum>(&'a self) -> anyhow::Result<&D> {
+    pub fn to_scalar<D: Datum>(&self) -> anyhow::Result<&D> {
         self.check_for_access::<D>()?;
         if self.len() == 0 {
             anyhow::bail!("to_scalar called on empty tensor ({:?})", self)
@@ -818,12 +853,12 @@ impl Tensor {
     }
 
     /// Access the data as a scalar.
-    pub unsafe fn to_scalar_unchecked<'a, D: Datum>(&'a self) -> &D {
+    pub unsafe fn to_scalar_unchecked<D: Datum>(&self) -> &D {
         &*(self.data as *mut D)
     }
 
     /// Mutable access the data as a scalar.
-    pub fn to_scalar_mut<'a, D: Datum>(&'a self) -> anyhow::Result<&mut D> {
+    pub fn to_scalar_mut<D: Datum>(&mut self) -> anyhow::Result<&mut D> {
         self.check_for_access::<D>()?;
         if self.len() == 0 {
             anyhow::bail!("to_scalar_mut called on empty tensor ({:?})", self)
@@ -832,7 +867,7 @@ impl Tensor {
     }
 
     /// Mutable access the data as a scalar.
-    pub unsafe fn to_scalar_mut_unchecked<'a, D: Datum>(&'a self) -> &mut D {
+    pub unsafe fn to_scalar_mut_unchecked<D: Datum>(&mut self) -> &mut D {
         &mut *(self.data as *mut D)
     }
 
@@ -1197,10 +1232,7 @@ impl Tensor {
                 return t;
             }
             // finally use ndarray into_iter()
-            t.as_slice_mut_unchecked()
-                .iter_mut()
-                .zip(it.into_iter())
-                .for_each(|(t, a)| *t = a.clone());
+            t.as_slice_mut_unchecked().iter_mut().zip(it.into_iter()).for_each(|(t, a)| *t = a);
             t
         }
     }
@@ -1255,7 +1287,7 @@ impl Tensor {
                 .into_owned()
                 .into_tensor())
         }
-        dispatch_datum!(slice_t(self.datum_type())(&self, axis, start, end))
+        dispatch_datum!(slice_t(self.datum_type())(self, axis, start, end))
     }
 
     pub fn view(&self) -> view::TensorView {
@@ -1339,7 +1371,7 @@ fn compute_natural_stride_to(strides: &mut TVec<isize>, shape: &[usize]) {
         _ => {
             strides.push(1);
             for dim in shape.as_ref().iter().skip(1).rev() {
-                let previous = strides.last().unwrap().clone();
+                let previous = *strides.last().unwrap();
                 strides.push(previous * *dim as isize)
             }
             strides.reverse();

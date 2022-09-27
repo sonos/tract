@@ -29,7 +29,7 @@ impl Squeeze {
             }
             Ok(shape)
         } else {
-            Ok(input.into_iter().filter(|&d| d != &D::one()).cloned().collect())
+            Ok(input.iter().filter(|&d| d != &D::one()).cloned().collect())
         }
     }
 }
@@ -47,7 +47,7 @@ impl Expansion for Squeeze {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_output_arity(&outputs, 1)?;
+        check_output_arity(outputs, 1)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         if let Some(ref axes) = self.axes {
             s.equals(&outputs[0].rank, (&inputs[0].rank).bex() - axes.len() as i64)?;

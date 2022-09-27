@@ -1,7 +1,7 @@
 use crate::internal::*;
 use tract_ndarray::prelude::*;
 
-#[derive(Debug, PartialEq, Clone, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct OneHot {
     pub axis: usize,
     pub dim: usize,
@@ -57,7 +57,7 @@ impl EvalOp for OneHot {
         let mut shape: TVec<usize> = input.shape().into();
         shape.insert(self.axis, self.dim);
         unsafe {
-            let mut output = self.off.broadcast_scalar_to_shape(&mut shape)?;
+            let mut output = self.off.broadcast_scalar_to_shape(&shape)?;
             dispatch_datum_by_size!(Self::eval_t(self.off.datum_type())(
                 self,
                 &input,
@@ -65,6 +65,14 @@ impl EvalOp for OneHot {
             ))?;
             Ok(tvec!(output.into_arc_tensor()))
         }
+    }
+
+    fn state(
+        &self,
+        _session: &mut SessionState,
+        _node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        Ok(None)
     }
 }
 

@@ -77,9 +77,7 @@ pub trait Model:
             vec![lir.iteration_count(input)]
         } else if let Some(mir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::Scan>() {
             vec![mir.iteration_count(input)]
-        } else if let Some(_) =
-            self.node_op(id).downcast_ref::<tract_hir::ops::scan::InferenceScan>()
-        {
+        } else if self.node_op(id).downcast_ref::<tract_hir::ops::scan::InferenceScan>().is_some() {
             // if we have typefact, we hopefully have type ops
             unreachable!();
         } else {
@@ -144,7 +142,7 @@ where
     }
 
     fn eval_order(&self) -> TractResult<Vec<usize>> {
-        crate::model::eval_order(&self)
+        crate::model::eval_order(self)
     }
 
     fn eval_order_for_io(&self, inputs: &[usize], outputs: &[usize]) -> TractResult<Vec<usize>> {
@@ -156,7 +154,7 @@ where
     }
 
     fn set_input_names(&mut self, names: &[&str]) -> TractResult<()> {
-        self.set_input_names(names.into_iter())
+        self.set_input_names(names.iter())
     }
 
     fn set_output_names(&mut self, names: &[&str]) -> TractResult<()> {

@@ -31,7 +31,7 @@ impl StreamFact for ShapeFact {
     }
 }
 
-#[derive(Clone, PartialEq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct PulsedFact {
     pub datum_type: DatumType,
     pub shape: ShapeFact,
@@ -66,7 +66,7 @@ impl PulsedFact {
         self.shape
             .iter()
             .enumerate()
-            .map(|(ix, d)| if ix == self.axis { self.dim.clone() } else { d.clone() })
+            .map(|(ix, d)| if ix == self.axis { self.dim.clone() } else { d })
             .collect()
     }
 
@@ -107,6 +107,10 @@ impl Fact for PulsedFact {
 
     fn compatible_with(&self, other: &dyn Fact) -> bool {
         self.same_as(other)
+    }
+
+    fn datum_type(&self) -> Option<DatumType> {
+        Some(self.datum_type)
     }
 }
 

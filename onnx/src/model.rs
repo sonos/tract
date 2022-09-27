@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use tract_hir::internal::*;
 
 use crate::pb;
+use crate::tensor::translate_inference_fact;
 use prost::Message;
 
 pub fn optional_inputs(pb: &pb::NodeProto) -> impl Iterator<Item = Option<usize>> + '_ {
@@ -63,21 +64,24 @@ impl<'a> ParsingContext<'a> {
         let mut unresolved_inputs = vec![];
         let mut closures_to_wire = vec![];
         trace!("trying to initialize initializers hashmap...");
+        let mut symbol_map: HashMap<&str, Symbol> = HashMap::default();
         #[allow(unused_assignments)]
         let mut initializers: HashMap<&str, Tensor> = HashMap::default();
         if let Some(path) = self.model_path {
             initializers = graph
-            .initializer
-            .iter()
-            .map(|init| { let tensor_struct: TensorPlusPath = TensorPlusPath { tensor: &init, model_path: path }; Ok((&*init.name, tensor_struct.try_into()?)) })
-            .collect::<TractResult<_>>()?;
-        }
-        else {
+                .initializer
+                .iter()
+                .map(|tensor| {
+                    let tensor_struct: TensorPlusPath = TensorPlusPath { tensor, model_path: path };
+                    Ok((&*tensor.name, tensor_struct.try_into()?))
+                })
+                .collect::<TractResult<_>>()?;
+        } else {
             initializers = graph
-            .initializer
-            .iter()
-            .map(|init| { Ok((&*init.name, init.try_into()?)) })
-            .collect::<TractResult<_>>()?;
+                .initializer
+                .iter()
+                .map(|init| Ok((&*init.name, init.try_into()?)))
+                .collect::<TractResult<_>>()?;
         }
         for (k, v) in initializers.iter() {
             trace!("Initializer: {} {:?}", k, v);
@@ -92,7 +96,7 @@ impl<'a> ParsingContext<'a> {
                 let fact = input.r#type.as_ref().unwrap().value.as_ref().unwrap();
                 #[allow(irrefutable_let_patterns)]
                 let fact: InferenceFact = if let pb::type_proto::Value::TensorType(fact) = fact {
-                    fact.try_into()?
+                    translate_inference_fact(fact, &mut symbol_map)?
                 } else {
                     bail!("Can not parse tensor type");
                 };
@@ -110,9 +114,9 @@ impl<'a> ParsingContext<'a> {
         }
         let consts = model.nodes().len();
         for pbnode in graph.node.iter() {
-            let name = if pbnode.name != "" {
+            let name = if !pbnode.name.is_empty() {
                 pbnode.name.to_string()
-            } else if pbnode.output.len() > 0 && pbnode.output[0] != "" {
+            } else if pbnode.output.len() > 0 && !pbnode.output[0].is_empty() {
                 pbnode.output[0].to_owned()
             } else {
                 format!("{}-{}", model.nodes().len(), pbnode.op_type)
@@ -151,12 +155,12 @@ impl<'a> ParsingContext<'a> {
         }
         for (id, pbnode) in graph.node.iter().enumerate() {
             for (ix, input) in pbnode.input.iter().filter(|s| !s.is_empty()).enumerate() {
-                if !outlets_by_name.contains_key(&*input) {
+                if !outlets_by_name.contains_key(input) {
                     let id = model.add_source(input.clone(), InferenceFact::default())?;
                     unresolved_inputs.push(input.to_string());
                     outlets_by_name.insert(input.to_string(), id);
                 }
-                let outlet = outlets_by_name[&*input];
+                let outlet = outlets_by_name[input];
                 model.add_edge(outlet, InletId::new(id + consts, ix))?;
             }
         }
@@ -176,13 +180,16 @@ impl<'a> ParsingContext<'a> {
             if !self.framework.ignore_output_shapes {
                 if let Some(f) = output.r#type.as_ref().and_then(|t| t.value.as_ref()) {
                     let pb::type_proto::Value::TensorType(f) = f;
-                    fact = f.try_into()?
+                    fact = translate_inference_fact(f, &mut symbol_map)?
                 };
+            }
+            if self.framework.ignore_output_types {
+                fact = fact.without_datum_type();
             }
             let outlet = outlets_by_name[&*output.name];
             outputs.push(outlet);
             model.set_outlet_label(outlet, output.name.clone())?;
-            model.set_outlet_fact(outlet, fact.try_into()?)?;
+            model.set_outlet_fact(outlet, fact)?;
         }
         model.set_output_outlets(&outputs)?;
         let result = ParseResult { model, unresolved_inputs, outlets_by_name };
@@ -190,26 +197,14 @@ impl<'a> ParsingContext<'a> {
     }
 }
 
+type OpBuilder =
+    fn(&ParsingContext, node: &pb::NodeProto) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)>;
+
 #[derive(Clone, Default)]
-pub struct OnnxOpRegister(
-    pub  HashMap<
-        String,
-        fn(
-            &ParsingContext,
-            node: &pb::NodeProto,
-        ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)>,
-    >,
-);
+pub struct OnnxOpRegister(pub HashMap<String, OpBuilder>);
 
 impl OnnxOpRegister {
-    pub fn insert(
-        &mut self,
-        s: &'static str,
-        builder: fn(
-            &ParsingContext,
-            node: &pb::NodeProto,
-        ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)>,
-    ) {
+    pub fn insert(&mut self, s: &'static str, builder: OpBuilder) {
         self.0.insert(s.into(), builder);
     }
 }
@@ -218,6 +213,7 @@ impl OnnxOpRegister {
 pub struct Onnx {
     pub op_register: OnnxOpRegister,
     pub ignore_output_shapes: bool,
+    pub ignore_output_types: bool,
 }
 
 impl Onnx {
@@ -225,15 +221,13 @@ impl Onnx {
         let onnx_operator_set_version = proto
             .opset_import
             .iter()
-            .find(|import| import.domain == "" || import.domain == "ai.onnx")
+            .find(|import| import.domain.is_empty() || import.domain == "ai.onnx")
             .map(|op| op.version)
             .unwrap_or(0);
         let graph =
             proto.graph.as_ref().ok_or_else(|| anyhow!("model proto does not contain a graph"))?;
         debug!("ONNX operator set version: {:?}", onnx_operator_set_version);
-        if onnx_operator_set_version != 0
-            && (onnx_operator_set_version < 9 || onnx_operator_set_version > 14)
-        {
+        if onnx_operator_set_version != 0 && !(9..14).contains(&onnx_operator_set_version) {
             warn!("ONNX operator for your model is {}, tract is tested against \
                   operator set 9, 10, 11 and 12 only. Your model may still work so this is not a hard fail.",
                   onnx_operator_set_version);
@@ -252,10 +246,25 @@ impl Onnx {
     pub fn with_ignore_output_shapes(self, ignore: bool) -> Onnx {
         Self { ignore_output_shapes: ignore, ..self }
     }
+
+    pub fn with_ignore_output_types(self, ignore: bool) -> Onnx {
+        Self { ignore_output_types: ignore, ..self }
+    }
+
+    pub fn determinize(model: &mut InferenceModel) -> TractResult<()> {
+        use crate::ops::multinomial::Multinomial;
+        for node in model.nodes_mut() {
+            if let Some(op) = node.op_as_mut::<Box<dyn Expansion>>() {
+                if let Some(op) = op.as_any_mut().downcast_mut::<Multinomial>() {
+                    op.seed.get_or_insert(1.0);
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Framework<pb::ModelProto, InferenceModel> for Onnx {
-
     fn model_for_path(&self, p: impl AsRef<path::Path>) -> TractResult<InferenceModel> {
         let mut path = PathBuf::new();
         path.push(&p);

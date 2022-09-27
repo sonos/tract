@@ -73,13 +73,13 @@ impl ConvUnary {
             let mut packed_as = Array1::from(
                 (0..self.group)
                     .map(|g| {
-                        let mut packed = Tensor::uninitialized_aligned_dt(
+                        let packed = Tensor::uninitialized_aligned_dt(
                             kernel.datum_type(),
                             &[packer.len(k, m)],
                             packer.alignment(),
                         )?;
                         packer.pack(
-                            &mut TensorView::at_prefix(&mut packed, &[])?,
+                            &mut TensorView::at_prefix(&packed, &[])?,
                             &kernel.view_at_prefix(&[g])?,
                             1,
                             0,
@@ -115,7 +115,7 @@ impl ConvUnary {
                     .map(|(dt, qp)| -> TractResult<_> {
                         let a0 = match &qp.a0 {
                             QParamKind::Attr(_) | QParamKind::FromQType => {
-                                qp.a0.offset_u8_as_i8(&model, &[])?
+                                qp.a0.offset_u8_as_i8(model, &[])?
                             }
                             QParamKind::FromInput(i) => {
                                 match model.outlet_fact(inputs[*i])?.datum_type.unquantized() {
@@ -151,7 +151,7 @@ impl ConvUnary {
                     .transpose()?,
                 ..self.clone()
             };
-            return Ok(Some(new_op));
+            Ok(Some(new_op))
         } else {
             Ok(None)
         }
@@ -200,7 +200,7 @@ impl ConvUnary {
         let params = self.q_params.as_ref().unwrap().1.as_outlet_ids(
             model,
             name,
-            &wires,
+            wires,
             self.kernel.datum_type(),
             b_dt,
             c_dt,
@@ -275,7 +275,7 @@ impl ConvUnary {
             mmm_output_shape.clone().into(),
             m,
             k,
-            geometry.into(),
+            geometry,
             c_axis,
             h_axis,
         )?;
@@ -381,7 +381,7 @@ impl ConvUnary {
     ) -> TractResult<(TVec<D>, usize, usize)> {
         let geo_collapsed_out: D = output_shape.hw_dims().iter().cloned().product();
         let shape: BaseDataShape<D, TVec<D>> = output_shape.fmt.from_n_c_hw(
-            output_shape.n().cloned().unwrap_or(1.into()),
+            output_shape.n().cloned().unwrap_or_else(|| 1.into()),
             output_shape.c().clone(),
             tvec!(geo_collapsed_out),
         )?;
@@ -452,7 +452,7 @@ impl ConvUnary {
             input_shape = valid_pool_spec.data_format.shape(concrete_shape.into())?;
             geo = valid_pool_spec
                 .compute_geo(&b_fact.shape)?
-                .to_concrete(&*concrete_shape)?
+                .to_concrete(concrete_shape)?
                 .into_owned();
         }
         let c_dt = crate::ops::matmul::output_type(b_fact.datum_type);
@@ -496,6 +496,7 @@ impl ConvUnary {
         Ok(wire)
     }
 
+    #[allow(clippy::type_complexity)]
     fn compute_geo(
         &self,
         input_fact: &TypedFact,
@@ -519,6 +520,7 @@ impl ConvUnary {
         Ok((geo, m, k, n, mmm))
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn wire_lir_matmatmul(
         &self,
         model: &mut TypedModel,
@@ -549,9 +551,9 @@ impl ConvUnary {
                 micro_ops,
                 c_m_axis,
                 c_n_axis,
-                c_final_shape: mmm_output_shape.into(),
+                c_final_shape: mmm_output_shape,
                 reshape_post: vec![],
-                geometry: geometry.into(),
+                geometry,
                 mmm,
             },
             &[wire],
@@ -838,7 +840,7 @@ impl TypedOp for ConvUnary {
             }
         }
         for d in &[Self::declutter_stride_slice_to_downsample, Self::declutter_as_matmul] {
-            if let Some(p) = d(&self, model, node)? {
+            if let Some(p) = d(self, model, node)? {
                 return Ok(Some(p));
             }
         }
@@ -852,13 +854,21 @@ impl TypedOp for ConvUnary {
         let output_dims = self.pool_spec.padding.compute(
             shape.hw_dims(),
             kernel_spatial_shape,
-            &*self.pool_spec.dilations.clone().unwrap_or(tvec!(1; kernel_spatial_shape.len())),
-            &*self.pool_spec.strides.clone().unwrap_or(tvec!(1; kernel_spatial_shape.len())),
+            &*self
+                .pool_spec
+                .dilations
+                .clone()
+                .unwrap_or_else(|| tvec!(1; kernel_spatial_shape.len())),
+            &*self
+                .pool_spec
+                .strides
+                .clone()
+                .unwrap_or_else(|| tvec!(1; kernel_spatial_shape.len())),
         );
         let n_output_points: TDim =
             output_dims.iter().map(|d| d.convoluted.clone()).product::<TDim>();
         let n_output_channels = self.output_channels().to_dim();
-        let kernel_surface = kernel_spatial_shape.into_iter().product::<usize>().to_dim();
+        let kernel_surface = kernel_spatial_shape.iter().product::<usize>().to_dim();
         let one = 1.to_dim();
         Ok(tvec!(
             (
@@ -967,10 +977,10 @@ impl TypedOp for ConvUnary {
             bias: self.bias.clone(),
             q_params: self.q_params.clone(),
         };
-        return Ok(Some(AxisChangeConsequence {
+        Ok(Some(AxisChangeConsequence {
             substitute_op: Some(Box::new(new_op)),
             wire_changes: tvec!((InOut::In(0), change.clone()), (InOut::Out(0), change.clone())),
-        }));
+        }))
     }
 
     fn codegen(
@@ -1014,7 +1024,7 @@ impl TypedOp for ConvUnary {
                 )?;
                 patch.shunt_outside(model, node.id.into(), wire)?;
                 patch.obliterate(node.id)?;
-                return Ok(Some(patch.with_context("quantized-codegen")));
+                Ok(Some(patch.with_context("quantized-codegen")))
             } else if kernel_spatial_shape.iter().product::<usize>() == 1
                 && (0..spatial_rank)
                     .all(|i| self.pool_spec.stride(i) == 1 && self.pool_spec.dilation(i) == 1)
@@ -1043,7 +1053,7 @@ impl TypedOp for ConvUnary {
                     .kernel
                     .as_ref()
                     .clone()
-                    .into_shape(&kernel_shape)?
+                    .into_shape(kernel_shape)?
                     .broadcast_into_rank(operating_rank)?;
                 wire = patch.wire_node(
                     &format!("{}.matmul", &node.name),
@@ -1083,7 +1093,7 @@ impl TypedOp for ConvUnary {
                 )?[0];
                 patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                 patch.obliterate(node.id)?;
-                return Ok(Some(patch));
+                Ok(Some(patch))
             } else if input_fact
                 .shape
                 .as_concrete()
@@ -1101,15 +1111,15 @@ impl TypedOp for ConvUnary {
                 wire = self.wire_as_lazy_im2col(&mut patch, &*node.name, wire)?;
                 patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                 patch.obliterate(node.id)?;
-                return Ok(Some(patch));
+                Ok(Some(patch))
             } else if self.group != 1
                 && self.group == self.output_channels()
                 && self.group == self.input_channels()
                 && input_fact.shape.as_concrete().is_some()
             {
-                let op = dispatch_floatlike!(Self::to_depth_wise(dt)(self, &input_fact))
+                let op = dispatch_floatlike!(Self::to_depth_wise(dt)(self, input_fact))
                     .context("in to_depth_wise")?;
-                return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
+                Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?))
             } else {
                 let mut patch = TypedModelPatch::default();
                 let wire = patch.tap_model(model, node.inputs[0])?;
@@ -1118,7 +1128,7 @@ impl TypedOp for ConvUnary {
                     .context("in wire_as_im2col_pair")?;
                 patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                 patch.obliterate(node.id)?;
-                return Ok(Some(patch));
+                Ok(Some(patch))
             }
         }
     }

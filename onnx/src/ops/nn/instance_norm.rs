@@ -64,12 +64,9 @@ impl Expansion for InstanceNorm {
         )?;
         let sqr_diff =
             model.wire_node(format!("{}.sqr", name), tract_hir::ops::math::square(), &diff)?;
-        let vari = tract_hir::ops::nn::Reduce::new(
-            Some(axes.clone()),
-            true,
-            tract_hir::ops::nn::Reducer::Mean,
-        )
-        .wire(&format!("{}.variance", name), model, &sqr_diff)?[0];
+        let vari =
+            tract_hir::ops::nn::Reduce::new(Some(axes), true, tract_hir::ops::nn::Reducer::Mean)
+                .wire(&format!("{}.variance", name), model, &sqr_diff)?[0];
         let vari_sane = model.wire_node(
             format!("{}.epsilon", name),
             tract_hir::ops::math::add::unary(

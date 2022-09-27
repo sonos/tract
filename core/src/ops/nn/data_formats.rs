@@ -1,8 +1,8 @@
 use crate::internal::*;
-use tract_itertools::Itertools;
 use std::fmt;
+use tract_itertools::Itertools;
 
-#[derive(Copy, Clone, Debug, PartialEq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum DataFormat {
     NCHW,
     NHWC,
@@ -19,8 +19,8 @@ impl Default for DataFormat {
 impl DataFormat {
     pub fn dispose_n_axis(&self) -> DataFormat {
         match self {
-            &DataFormat::NCHW => DataFormat::CHW,
-            &DataFormat::NHWC => DataFormat::HWC,
+            DataFormat::NCHW => DataFormat::CHW,
+            DataFormat::NHWC => DataFormat::HWC,
             _ => panic!("Attempt at removing N axis on {:?}", self),
         }
     }
@@ -53,7 +53,7 @@ impl DataFormat {
         }
         me.extend(shape.as_ref().iter().cloned());
         if *self == DataFormat::NHWC || *self == DataFormat::HWC {
-            me.push(c.clone());
+            me.push(c);
         }
         self.shape(me)
     }
@@ -72,8 +72,8 @@ impl DataFormat {
 
     pub fn with_n(&self) -> DataFormat {
         match self {
-            &DataFormat::CHW => DataFormat::NCHW,
-            &DataFormat::HWC => DataFormat::NHWC,
+            DataFormat::CHW => DataFormat::NCHW,
+            DataFormat::HWC => DataFormat::NHWC,
             _ => *self,
         }
     }
@@ -82,7 +82,7 @@ impl DataFormat {
 pub type SymDataShape = BaseDataShape<TDim, TVec<TDim>>;
 pub type DataShape = BaseDataShape<usize, TVec<usize>>;
 
-#[derive(Clone, PartialEq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct BaseDataShape<D, S>
 where
     D: DimLike,
@@ -189,7 +189,7 @@ where
 
     #[inline]
     pub fn h_stride(&self) -> &D {
-        unsafe { &self.hw_strides().get_unchecked(0) }
+        unsafe { self.hw_strides().get_unchecked(0) }
     }
 
     #[inline]

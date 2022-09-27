@@ -27,7 +27,7 @@ impl ConvProblem {
     fn reference(&self) -> ArrayD<f32> {
         setup_test_logger();
         assert_eq!(self.data.shape(), &*self.shape_in.shape, "inconsistent shapes in test");
-        let n = *self.shape_in.n().clone().unwrap_or(&1);
+        let n = *self.shape_in.n().unwrap_or(&1);
         let ci_per_g = self.shape_in.c() / self.group;
         let co_per_g = match self.kernel_format {
             KernelFormat::OIHW => self.kernel.shape()[0] / self.group,
@@ -131,7 +131,7 @@ impl ConvProblem {
                 Some(self.strides.clone()),
                 Some(co),
             ),
-            self.kernel_format.clone(),
+            self.kernel_format,
             self.kernel.clone().into_arc_tensor(),
             self.group,
             self.bias.clone().map(|a| a.into_arc_tensor()),
@@ -141,7 +141,7 @@ impl ConvProblem {
         model.set_output_outlets(&[wire])?;
         let mut output =
             model.into_optimized()?.into_runnable()?.run(tvec![self.data.clone().into_tensor()])?;
-        Ok(output.remove(0).into_tensor().into_array::<f32>()?)
+        output.remove(0).into_tensor().into_array::<f32>()
     }
 }
 
@@ -157,7 +157,7 @@ impl Arbitrary for ConvProblem {
             1usize..=4,
             1usize..=4,
             1usize..=3,
-            (1usize..=3).prop_flat_map(|r| shapes(r)),
+            (1usize..=3).prop_flat_map(shapes),
         )
             .prop_flat_map(|(df, kf, pad, n, mut ci0, co0, group, (mut ker_shape, data_shape))| {
                 // FIXME in HWIO order, only regular and depthwise are supported

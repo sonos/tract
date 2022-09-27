@@ -8,7 +8,7 @@ use crate::ops::quant::offset_u8_as_i8_elementwise;
 
 use super::mir_quant_unary::QMatMulUnary;
 
-#[derive(Debug, Clone, Hash, PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum QParamKind {
     Attr(Arc<Tensor>),
     FromInput(usize),
@@ -43,7 +43,7 @@ impl QParamKind {
                 .outlet_fact(inputs[*i])?
                 .konst
                 .as_ref()
-                .ok_or(format_err!("Expected static quantization parameter"))?,
+                .context("Expected static quantization parameter")?,
             QParamKind::FromQType => return Ok(QParamKind::FromQType),
         };
         match tensor.datum_type().unquantized() {
@@ -79,7 +79,7 @@ impl From<AttrOrInput> for QParamKind {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct MatMulQParams {
     pub a0: QParamKind,
     pub a_scale: QParamKind,
@@ -253,9 +253,12 @@ impl EvalOp for QMatMul {
     }
 
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        if &inputs[0].rank() != &inputs[1].rank() {
-            bail!("Rank mismatch {:?} vs {:?}", inputs[0], inputs[1]);
-        }
+        ensure!(
+            inputs[0].rank() == inputs[1].rank(),
+            "Rank mismatch {:?} vs {:?}",
+            inputs[0],
+            inputs[1]
+        );
 
         let mut model = TypedModel::default();
         let a = model.add_const("source_a", inputs[0].clone())?;
@@ -512,17 +515,17 @@ pub(crate) fn wire_offset_u8_as_i8(
             }
             _ => (),
         }
-        let ret = Ok(model.wire_node(
+        Ok(model.wire_node(
             format!("{}.offset_{}_as_i8", model_name, matrix_name),
             ops::quant::offset_u8_as_i8(),
             &[matrix],
-        )?[0]);
-        ret
+        )?[0])
     } else {
         Ok(matrix)
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn wire_matmul_quant(
     model: &mut TypedModel,
     name: &str,
@@ -609,6 +612,7 @@ pub(crate) fn combine_scales(
     Ok(abc_scale)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn compensate_zero_points(
     model: &mut TypedModel,
     name: &str,
@@ -650,7 +654,7 @@ pub(crate) fn compensate_zero_points(
     let b0 =
         model.wire_node(format!("{}.cast_b0", name), ops::cast::cast(i32::datum_type()), &[b0])?[0];
 
-    let k = model.add_const(format!("{}.k", name), rctensor0(k.clone()))?;
+    let k = model.add_const(format!("{}.k", name), rctensor0(k))?;
     let k =
         model.wire_node(format!("{}.cast_k", name), ops::cast::cast(i32::datum_type()), &[k])?[0];
 

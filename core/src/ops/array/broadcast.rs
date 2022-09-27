@@ -12,7 +12,7 @@ impl MultiBroadcastTo {
         unsafe {
             let view = input.to_array_view_unchecked::<T>();
             let mut output = view
-                .broadcast(&*shape)
+                .broadcast(shape)
                 .with_context(|| format!("Broadcasting {:?} to {:?}", view, shape))?
                 .into_owned()
                 .into_tensor();
@@ -39,7 +39,7 @@ impl EvalOp for MultiBroadcastTo {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         let dims: Vec<usize> =
-            self.shape.iter().map(|d| Ok(d.to_usize()?)).collect::<TractResult<_>>()?;
+            self.shape.iter().map(|d| d.to_usize()).collect::<TractResult<_>>()?;
         dispatch_datum!(Self::eval_t(input.datum_type())(&*input, &*dims))
     }
 
@@ -87,7 +87,7 @@ impl TypedOp for MultiBroadcastTo {
     ) -> TractResult<TVec<OutletId>> {
         let input = mapping[&node.inputs[0]];
         let op =
-            Self { shape: self.shape.iter().map(|d| d.eval(&values)).collect::<TVec<_>>().into() };
+            Self { shape: self.shape.iter().map(|d| d.eval(values)).collect::<TVec<_>>().into() };
         target.wire_node(&node.name, op, &[input])
     }
 
