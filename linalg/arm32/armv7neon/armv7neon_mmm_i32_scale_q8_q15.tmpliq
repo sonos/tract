@@ -8,9 +8,9 @@
     vdup.s32    q1, r3                      // q1 <- ones
     vmovl.s32   q1, d2
 
-    add         r5, #32
+    add         r5, #17
     neg         r5, r5
-    vdup.s32    q2, r5                      // q2 <- -(shift + 32)
+    vdup.s32    q2, r5                      // q2 <- -(shift + 16 + 1)
     vmovl.s32   q2, d4
 
     cmp     r6, #1

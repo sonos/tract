@@ -10,10 +10,10 @@
     ins     v4.d[0], x3
     dup     v4.2d, v4.d[0]              // v4.2d <- 1
 
-    add     x5, x5, #32                 // add 32 to shift
+    add     x5, x5, #17                 // add 17 to shift
     neg     x5, x5                      // broadcast shift
     ins     v1.d[0], x5
-    dup     v1.2d, v1.d[0]              // v1.2s <- -(shift + 32)
+    dup     v1.2d, v1.d[0]              // v1.2s <- -(shift + 16 + 1)
 
     cmp     x6, 1
     beq     .q_scale_rounding_zero

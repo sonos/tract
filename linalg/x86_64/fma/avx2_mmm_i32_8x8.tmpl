@@ -264,15 +264,15 @@ i128_shuffle dd              0, 4
     movq            xmm9, rax
     vpbroadcastq    ymm9, xmm9              // ymm9 <- 1
 
-    mov             rax, [ rdi + 8 ]        // xmm10 <- shift + 31
-    add             rax, 31
+    mov             rax, [ rdi + 8 ]        // xmm10 <- shift + 16
+    add             rax, 16
     movq            xmm10, rax
     vpbroadcastq    ymm10, xmm10
 
     mov             rax, 1
     movq            xmm11, rax
-    vpsubq          ymm12, ymm10, ymm9      // shift+31 - 1
-    vpsllq          ymm11, ymm9, xmm12      // ymm11 <- 1 << (shift + 31 - 1)
+    vpsubq          ymm12, ymm10, ymm9      // shift+16 - 1
+    vpsllq          ymm11, ymm9, xmm12      // ymm11 <- 1 << (shift + 16 - 1)
 
     cmp     r8, 1
     je      {{L}}q_scale_rounding_zero

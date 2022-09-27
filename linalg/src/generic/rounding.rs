@@ -6,7 +6,7 @@ use tract_data::prelude::f16;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Scaler {
     scale: f32,
-    pub mult: Option<i32>,
+    pub mult: Option<u16>,
     pub shift: isize,
     policy: RoundingPolicy,
 }
@@ -31,7 +31,7 @@ impl Scaler {
 
     pub fn as_fused_spec(&self) -> FusedSpec {
         if let Some(multiplier) = self.mult {
-            FusedSpec::QScale(self.shift, self.policy, multiplier)
+            FusedSpec::QScale(self.shift, self.policy, multiplier as i32)
         } else if self.shift > 0 {
             FusedSpec::RoundingShiftRight(self.shift as usize, self.policy)
         } else {
@@ -41,14 +41,14 @@ impl Scaler {
 
     // FIXME: Only to avoid fused op breaking
     pub fn from_fuse_params(shift: isize, policy: RoundingPolicy, mult: i32) -> Self {
-        let scale = mult as f32 * 2f32.powi(-(31 + shift as i32));
-        Self { scale, mult: Some(mult), shift, policy }
+        let scale = mult as f32 * 2f32.powi(-(16 + shift as i32));
+        Self { scale, mult: Some(mult as u16), shift, policy }
     }
 
     #[inline]
     // This function convert a scale (actually a fraction of two integers Q/D)
-    // into an integer multiplier and a shift (the multiplier being 1/2D in Q0_31).
-    fn convert_scale_to_mult_shift(scale: f32) -> (Option<i32>, isize) {
+    // into an integer multiplier and a shift (the multiplier being 1/2D in Q0_16).
+    fn convert_scale_to_mult_shift(scale: f32) -> (Option<u16>, isize) {
         // Zero is a special case to handle
         if scale == 0.0 {
             return (None, 0);
@@ -82,10 +82,13 @@ impl Scaler {
             // which lead to a shift of (8-1 = 7).
             let half_frac = (frac << 7) as i32;
 
+            // Change healf_frac precision from i32 to u16
+            let half_frac_u16 = (half_frac >> 15) as u16;
+
             // Compute the actual value of the shift
             // Here, we remove one as half_frac needs to be multiplied by 2.
             let shift = 127 - current_exponent as isize - 1;
-            (Some(half_frac), shift)
+            (Some(half_frac_u16), shift)
         }
     }
 }
@@ -151,7 +154,7 @@ impl Mul<i32> for Scaler {
     #[inline]
     fn mul(self, rhs: i32) -> Self::Output {
         let (val, shift) = if let Some(multiplier) = self.mult {
-            (multiplier as i64 * rhs as i64, self.shift + 31)
+            (multiplier as i64 * rhs as i64, self.shift + 16)
         } else {
             (rhs as i64, self.shift)
         };

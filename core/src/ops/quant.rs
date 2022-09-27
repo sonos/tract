@@ -363,12 +363,7 @@ where
 {
     let b = b.as_();
     let scaler = Scaler::new(a, RoundingPolicy::Even);
-
-    // This new product interprets the multiplier with 16bits precision
-    let new_product = scaler.mult.map(|it| (it >> 15) as f32 * 2f32.powi(-16)).unwrap_or(1.0)
-        * 2f32.powi(-scaler.shift as i32)
-        * b;
-    round_ties_to_even(new_product).as_()
+    (b * scaler).as_()
 }
 
 pub mod scale {
