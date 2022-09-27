@@ -410,8 +410,9 @@ pub(super) fn mir_unary_change_axes(
     old_axes: &MatMulAxes,
     old_a: &Tensor,
 ) -> TractResult<Option<(Tensor, MatMulAxes, Option<AxisOp>)>> {
+    let b_fact = model.outlet_fact(node.inputs[0])?;
     let result = if io == InOut::In(0) {
-        old_axes.change_axis_from_b(change)
+        old_axes.change_axis_from_b(change, &b_fact.shape)
     } else if io == InOut::Out(0) {
         old_axes.change_axis_from_c(change)
     } else {

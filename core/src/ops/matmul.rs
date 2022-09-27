@@ -88,15 +88,38 @@ impl MatMulAxes {
     pub fn change_axis_from_b(
         &self,
         change: &AxisOp,
+        b_shape: &ShapeFact,
     ) -> TractResult<(MatMulAxes, Option<AxisOp>, Option<AxisOp>, Option<AxisOp>)> {
         match change {
             AxisOp::Rm(in_b) => {
+                // adhoc: remove a n_axis of size 1 (because we are a matvec, not a matmat)
+                // --> if there is another axis of dim n, use it as n
+                // FIXME: remove me if matmul becomes einsum
+                if b_shape[*in_b].is_one() && *in_b == self.b_n {
+                    if let Some((axis, _)) = b_shape
+                        .iter()
+                        .enumerate()
+                        .find(|(axis, dim)| *axis != self.b_n && *axis != self.b_k && dim.is_one())
+                    {
+                        let new_axes = Self { b_n: axis, ..*self };
+                        let (in_a, in_c) = new_axes.follow_axis_from_b(*in_b);
+                        return new_axes.remove_untouched_axis(in_a, *in_b, in_c);
+                    }
+                }
                 ensure!(*in_b != self.b_k && *in_b != self.b_n);
                 let (in_a, in_c) = self.follow_axis_from_b(*in_b);
                 self.remove_untouched_axis(in_a, *in_b, in_c)
             }
             AxisOp::Add(in_b) => {
-                let (in_a, in_c) = self.follow_axis_from_b(*in_b);
+                // adhoc to try to keep inner axis addition inner
+                // FIXME: remove me if matmul becomes einsum
+                let (in_a, in_c) = if *in_b == self.b_k + 1 {
+                    (0, self.c_m + 1)
+                } else if *in_b == self.b_n + 1 {
+                    (0, self.c_n + 1)
+                } else {
+                    self.follow_axis_from_b(*in_b)
+                };
                 self.insert_untouched_axis(in_a, *in_b, in_c)
             }
             AxisOp::Reshape(in_b, before, after) => {
