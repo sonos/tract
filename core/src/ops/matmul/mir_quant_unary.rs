@@ -168,7 +168,6 @@ impl TypedOp for QMatMulUnary {
         start: usize,
         end: usize,
     ) -> TractResult<Option<(OutletId, bool)>> {
-        let b_fact = model.outlet_fact(node.inputs[0])?;
         if axis == self.axes.c_m {
             let a_split_axis = self.axes.a_m;
             let a = self.a.slice(a_split_axis, start, end)?.into_arc_tensor();
