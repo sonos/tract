@@ -125,12 +125,8 @@ impl TypedOp for QMatMulUnary {
         }) {
             Ok(Invariants::none())
         } else {
-            let mut invs = super::mir_unary::mir_unary_invariants(
-                &inputs[0],
-                &outputs[0],
-                &self.a,
-                self.axes,
-            )?;
+            let mut invs =
+                super::mir_unary::mir_unary_invariants(&inputs[0], &outputs[0], self.axes)?;
             for axis in &mut invs.axes {
                 axis.inputs.extend(std::iter::repeat(None).take(inputs.len() - 1));
             }

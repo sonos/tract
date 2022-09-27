@@ -60,7 +60,7 @@ impl TypedOp for MatMulUnary {
     }
 
     fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
-        mir_unary_invariants(&inputs[0], &outputs[0], &self.a, self.axes)
+        mir_unary_invariants(&inputs[0], &outputs[0], self.axes)
     }
 
     // A: pqmk B:pqkn C:pqmn
@@ -307,7 +307,6 @@ impl MatMulUnary {
 pub(super) fn mir_unary_invariants(
     input_fact: &TypedFact,
     output_fact: &TypedFact,
-    a: &Tensor,
     axes: MatMulAxes,
 ) -> TractResult<Invariants> {
     anyhow::ensure!(input_fact.shape.rank() == output_fact.shape.rank());
@@ -334,9 +333,9 @@ pub(super) fn mir_unary_change_axes(
 ) -> TractResult<Option<(Tensor, MatMulAxes, Option<AxisOp>)>> {
     let b_fact = model.outlet_fact(node.inputs[0])?;
     let result = if io == InOut::In(0) {
-        old_axes.change_axis_from_b(change, &b_fact.shape)
+        old_axes.change_axis_from_b(change, b_fact.rank())
     } else if io == InOut::Out(0) {
-        old_axes.change_axis_from_c(change)
+        old_axes.change_axis_from_c(change, b_fact.rank())
     } else {
         unreachable!();
     };

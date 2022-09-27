@@ -88,18 +88,17 @@ impl MatMulAxes {
     pub fn change_axis_from_b(
         &self,
         change: &AxisOp,
-        b_shape: &ShapeFact,
+        bc_rank: usize,
     ) -> TractResult<(MatMulAxes, Option<AxisOp>, Option<AxisOp>, Option<AxisOp>)> {
         match change {
             AxisOp::Rm(in_b) => {
-                // adhoc: remove a n_axis of size 1 (because we are a matvec, not a matmat)
-                // --> if there is another axis of dim 1, use it as n
+                // adhoc: change n_axis as they do not matter
                 // FIXME: remove me if matmul becomes einsum
-                if b_shape[*in_b].is_one() && *in_b == self.b_n {
-                    if let Some((axis, _)) = b_shape
-                        .iter()
-                        .enumerate()
-                        .find(|(axis, dim)| *axis != self.b_n && *axis != self.b_k && dim.is_one())
+                if *in_b == self.b_n {
+                    if let Some(axis) = (0..bc_rank)
+                        .filter(|axis| *axis != self.b_n && *axis != self.b_k)
+                        .rev()
+                        .next()
                     {
                         let (_, new_c_n) = self.follow_axis_from_b(axis);
                         let new_axes = Self { b_n: axis, c_n: new_c_n, ..*self };
@@ -160,9 +159,24 @@ impl MatMulAxes {
     pub fn change_axis_from_c(
         &self,
         change: &AxisOp,
+        bc_rank: usize,
     ) -> TractResult<(MatMulAxes, Option<AxisOp>, Option<AxisOp>, Option<AxisOp>)> {
         match change {
             AxisOp::Rm(in_c) => {
+                // adhoc: change n_axis as they do not matter
+                // FIXME: remove me if matmul becomes einsum
+                if *in_c == self.c_n {
+                    if let Some(axis) = (0..bc_rank)
+                        .filter(|axis| *axis != self.c_n && *axis != self.c_m)
+                        .rev()
+                        .next()
+                    {
+                        let (_, new_b_n) = self.follow_axis_from_c(axis);
+                        let new_axes = Self { c_n: axis, b_n: new_b_n, ..*self };
+                        let (in_a, in_b) = new_axes.follow_axis_from_c(*in_c);
+                        return new_axes.remove_untouched_axis(in_a, in_b, *in_c);
+                    }
+                }
                 ensure!(*in_c != self.c_m && *in_c != self.c_n);
                 let (in_a, in_b) = self.follow_axis_from_c(*in_c);
                 self.remove_untouched_axis(in_a, in_b, *in_c)
