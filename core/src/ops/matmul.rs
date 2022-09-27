@@ -72,16 +72,16 @@ impl MatMulAxes {
     // return matching axis index in a and c
     fn follow_axis_from_b(&self, in_b: usize) -> (usize, usize) {
         let ix = in_b - (self.b_k < in_b) as usize - (self.b_n < in_b) as usize;
-        let in_a = ix + (ix > self.a_m) as usize + (ix > self.a_k) as usize;
-        let in_c = ix + (ix > self.c_m) as usize + (ix > self.c_n) as usize;
+        let in_a = (0..).filter(|&i| i != self.a_m && i != self.a_k).skip(ix).next().unwrap();
+        let in_c = (0..).filter(|&i| i != self.c_m && i != self.c_n).skip(ix).next().unwrap();
         (in_a, in_c)
     }
 
     // return matching axis index in a and b
     fn follow_axis_from_c(&self, in_c: usize) -> (usize, usize) {
         let ix = in_c - (self.c_m < in_c) as usize - (self.c_n < in_c) as usize;
-        let in_a = ix + (ix > self.a_m) as usize + (ix > self.a_k) as usize;
-        let in_b = ix + (ix > self.b_k) as usize + (ix > self.b_n) as usize;
+        let in_a = (0..).filter(|&i| i != self.a_m && i != self.a_k).skip(ix).next().unwrap();
+        let in_b = (0..).filter(|&i| i != self.b_k && i != self.b_n).skip(ix).next().unwrap();
         (in_a, in_b)
     }
 
@@ -93,7 +93,7 @@ impl MatMulAxes {
         match change {
             AxisOp::Rm(in_b) => {
                 // adhoc: remove a n_axis of size 1 (because we are a matvec, not a matmat)
-                // --> if there is another axis of dim n, use it as n
+                // --> if there is another axis of dim 1, use it as n
                 // FIXME: remove me if matmul becomes einsum
                 if b_shape[*in_b].is_one() && *in_b == self.b_n {
                     if let Some((axis, _)) = b_shape
@@ -101,7 +101,8 @@ impl MatMulAxes {
                         .enumerate()
                         .find(|(axis, dim)| *axis != self.b_n && *axis != self.b_k && dim.is_one())
                     {
-                        let new_axes = Self { b_n: axis, ..*self };
+                        let (_, new_c_n) = self.follow_axis_from_b(axis);
+                        let new_axes = Self { b_n: axis, c_n: new_c_n, ..*self };
                         let (in_a, in_c) = new_axes.follow_axis_from_b(*in_b);
                         return new_axes.remove_untouched_axis(in_a, *in_b, in_c);
                     }
