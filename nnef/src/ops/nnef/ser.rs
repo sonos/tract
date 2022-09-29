@@ -429,7 +429,7 @@ pub fn matmulaxes_as_transpositions(
     b_rank: usize,
 ) -> Option<(bool, bool, bool)> {
     fn check_one(axis_1: usize, axis_2: usize, rank: usize) -> bool {
-        axis_1.abs_diff(axis_2) == 1 && axis_1.max(axis_2) == rank - 1
+        (axis_1 as isize - axis_2 as isize).abs() == 1 && axis_1.max(axis_2) == rank - 1
     }
     if check_one(axes.a_k, axes.a_m, a_rank)
         && check_one(axes.b_k, axes.b_n, b_rank)
@@ -466,7 +466,7 @@ pub fn matmul(
             )
         }
     } else {
-        return Ok(None)
+        return Ok(None);
     };
     Ok(Some(ast.force_variable(&node.name, &c)))
 }
@@ -499,7 +499,7 @@ pub fn qmatmul(
             )
         }
     } else {
-        return Ok(None)
+        return Ok(None);
     };
     Ok(Some(ast.force_variable(&node.name, &c)))
 }
@@ -529,7 +529,7 @@ pub fn matmul_unary(
             )
         }
     } else {
-        return Ok(None)
+        return Ok(None);
     };
     Ok(Some(ast.force_variable(&node.name, &c)))
 }
