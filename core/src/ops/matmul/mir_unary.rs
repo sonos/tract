@@ -49,7 +49,6 @@ impl TypedOp for MatMulUnary {
             &inputs[0].shape,
             self.axes,
         )?;
-        //dbg!(&c_shape);
         let c_dt = output_type(inputs[0].datum_type);
         Ok(tvec!(c_dt.fact(c_shape)))
     }
@@ -58,7 +57,6 @@ impl TypedOp for MatMulUnary {
         mir_unary_invariants(&inputs[0], &outputs[0], self.axes)
     }
 
-    // A: pqmk B:pqkn C:pqmn
     fn change_axes(
         &self,
         model: &TypedModel,
@@ -66,12 +64,10 @@ impl TypedOp for MatMulUnary {
         io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
-        if let Some((a, axes, change)) =
+        if let Some((a, axes, wire_changes)) =
             mir_unary_change_axes(model, node, io, change, &self.axes, &self.a)?
         {
             let op = Self { axes, a: a.into_arc_tensor() };
-            let wire = if io == InOut::In(0) { InOut::Out(0) } else { InOut::In(0) };
-            let wire_changes = if let Some(c) = change { tvec!((wire, c)) } else { tvec!() };
             Ok(Some(AxisChangeConsequence { substitute_op: Some(Box::new(op)), wire_changes }))
         } else {
             Ok(None)
@@ -205,11 +201,6 @@ impl MatMulUnary {
             )?[0];
             let b_storage = mmm.b_packed(b_dt.size_of(), k);
             let geometry = ConcreteMatMulGeometry { m, k, n, b_storage };
-            /*
-            dbg!(self);
-            dbg!(&geometry);
-            dbg!(&packed_as);
-            */
             wire = patch.wire_node(
                 format!("{}.matmatmul", &*node.name),
                 LirMatMulUnary {
@@ -310,7 +301,7 @@ pub(super) fn mir_unary_change_axes(
     change: &AxisOp,
     old_axes: &MatMulAxes,
     old_a: &Tensor,
-) -> TractResult<Option<(Tensor, MatMulAxes, Option<AxisOp>)>> {
+) -> TractResult<Option<(Tensor, MatMulAxes, TVec<(InOut, AxisOp)>)>> {
     let b_fact = model.outlet_fact(node.inputs[0])?;
     let result = if io == InOut::In(0) {
         old_axes.change_axis_from_b(change, b_fact.rank())
@@ -319,13 +310,19 @@ pub(super) fn mir_unary_change_axes(
     } else {
         unreachable!();
     };
-    //dbg!(old_axes, io, change, &result);
     if let Ok((axes, change_a, change_b, change_c)) = result {
         let mut new_a = old_a.clone();
         if let Some(change_a) = change_a {
             change_a.change_tensor(&mut new_a, false)?;
         }
-        Ok(Some((new_a, axes, if io == InOut::In(0) { change_c } else { change_b })))
+        let mut wires = tvec!();
+        if let Some(change_b) = change_b {
+            wires.push((InOut::In(0), change_b));
+        }
+        if let Some(change_c) = change_c {
+            wires.push((InOut::Out(0), change_c));
+        }
+        Ok(Some((new_a, axes, wires)))
     } else {
         Ok(None) // is it right ? or return error ?
     }

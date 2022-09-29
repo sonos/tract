@@ -36,6 +36,14 @@ impl QParamKind {
         }
     }
 
+    pub fn shape<'tf>(&self, inputs: &'tf [&'tf TypedFact]) -> Cow<'tf, ShapeFact> {
+        match self {
+            QParamKind::Attr(t) => Cow::Owned(ShapeFact::from(t.shape())),
+            QParamKind::FromInput(ix) => Cow::Borrowed(&inputs[*ix].shape),
+            QParamKind::FromQType => Cow::Owned(ShapeFact::scalar()),
+        }
+    }
+
     pub fn offset_u8_as_i8(&self, model: &TypedModel, inputs: &[OutletId]) -> TractResult<Self> {
         let tensor = match self {
             QParamKind::Attr(t) => t,

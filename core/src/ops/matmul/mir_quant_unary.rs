@@ -115,10 +115,14 @@ impl TypedOp for QMatMulUnary {
     }
 
     fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
+        /*
+        dbg!(inputs);
+        dbg!(&self.params);
+        */
         // FIXME: why ?
         if self.params.iter().any(|qp| match &qp.1 {
-            &QParamKind::Attr(t) => t.rank() > 0,
-            &QParamKind::FromInput(ix) => inputs[*ix].rank() > 0,
+            &QParamKind::Attr(t) => t.len() > 1,
+            &QParamKind::FromInput(ix) => !inputs[*ix].shape.volume().is_one(),
             &QParamKind::FromQType => false,
         }) {
             Ok(Invariants::none())
@@ -139,12 +143,10 @@ impl TypedOp for QMatMulUnary {
         io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
-        if let Some((a, axes, change)) =
+        if let Some((a, axes, wire_changes)) =
             super::mir_unary::mir_unary_change_axes(model, node, io, change, &self.axes, &self.a)?
         {
             let op = Self { axes, a: a.into_arc_tensor(), ..self.clone() };
-            let wire = if io == InOut::In(0) { InOut::Out(0) } else { InOut::In(0) };
-            let wire_changes = if let Some(c) = change { tvec!((wire, c)) } else { tvec!() };
             Ok(Some(AxisChangeConsequence { substitute_op: Some(Box::new(op)), wire_changes }))
         } else {
             Ok(None)
