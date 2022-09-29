@@ -38,7 +38,7 @@ paranoid_assertions = []
 criterion = "0.3.5"
 env_logger = "0.9.0"
 lazy_static = "1.4.0"
-proptest = { path = "../../../github/proptest/proptest" }
+proptest = "1"
 approx = "0.5"
 
 [[bench]]
