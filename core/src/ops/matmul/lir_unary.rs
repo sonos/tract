@@ -1,6 +1,6 @@
 use crate::internal::*;
-use tract_itertools::Itertools;
 use ndarray::*;
+use tract_itertools::Itertools;
 
 use tract_linalg::mmm::{
     BinOp, FusedSpec, InputStoreSpec, MatMatMul, OutputStore, OutputStoreSpec, ScratchSpace,
@@ -13,7 +13,7 @@ pub enum ProtoFusedSpec {
     BinPerRow(AttrOrInput, BinOp),
     BinPerCol(AttrOrInput, BinOp),
     AddRowColProducts(AttrOrInput, AttrOrInput),
-    AddUnicast(AttrOrInput),
+    AddUnicast(OutputStoreSpec, AttrOrInput),
     Scaler(Scaler),
     Store,
 }
@@ -26,7 +26,7 @@ impl ProtoFusedSpec {
             BinPerRow(_, op) => format!("row {:?}", op),
             BinPerCol(_, op) => format!("col {:?}", op),
             AddRowColProducts(_, _) => "add row*col product".to_string(),
-            AddUnicast(_) => "add to matrix".to_string(),
+            AddUnicast(_, _) => "add to matrix".to_string(),
             Scaler(s) => format!("scale by {}", 1f32 * *s),
             Store => "Store".to_string(),
         }
@@ -36,7 +36,6 @@ impl ProtoFusedSpec {
         &'t self,
         inputs: &'t [Arc<Tensor>],
         prefix: &[usize],
-        output_spec: &'t OutputStoreSpec,
         output: OutputStore,
     ) -> FusedSpec<'t> {
         match self {
@@ -46,12 +45,12 @@ impl ProtoFusedSpec {
             ProtoFusedSpec::AddRowColProducts(row, col) => {
                 FusedSpec::AddRowColProducts(row.tensor(inputs), col.tensor(inputs))
             }
-            ProtoFusedSpec::AddUnicast(v) => unsafe {
+            ProtoFusedSpec::AddUnicast(store, v) => unsafe {
                 let mut view = v.tensor(inputs).view();
                 for (ix, &dim) in prefix.iter().enumerate() {
                     view.offset_axis_unchecked(ix, dim as isize);
                 }
-                FusedSpec::AddUnicast(output_spec.wrap(&view))
+                FusedSpec::AddUnicast(store.wrap(&view))
             },
             ProtoFusedSpec::Scaler(scaler) => scaler.as_fused_spec(),
             ProtoFusedSpec::Store => FusedSpec::Store(output),
@@ -131,7 +130,10 @@ impl Op for LirMatMulUnary {
         } else {
             infos.push(format!("Mult: {}", self.mmm));
         }
-        infos.push(format!("Ops: {:?}", self.micro_ops.iter().next().unwrap().1.iter().map(|o| o.name()).join(">")));
+        infos.push(format!(
+            "Ops: {:?}",
+            self.micro_ops.iter().next().unwrap().1.iter().map(|o| o.name()).join(">")
+        ));
         Ok(infos)
     }
 
@@ -253,9 +255,7 @@ fn eval(
                         .b_storage
                         .wrap(&TensorView::at_prefix_unchecked(&inputs[0], &*b_prefix))?,
                 });
-                f.extend(
-                    fused.iter().map(|f| f.resolve(inputs, prefix.slice(), &c_storage, c_store)),
-                );
+                f.extend(fused.iter().map(|f| f.resolve(inputs, prefix.slice(), c_store)));
                 op.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch, &f)?;
             }
         } else {
@@ -268,7 +268,7 @@ fn eval(
                 b: geometry.b_storage.wrap(&inputs[0].view())?,
             });
             for ix in 0..fused.len() {
-                f.push(fused.get_unchecked(ix).resolve(inputs, &[], &c_storage, c_store));
+                f.push(fused.get_unchecked(ix).resolve(inputs, &[], c_store));
             }
             op.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch, &f)?;
         }
@@ -385,21 +385,19 @@ impl TypedOp for LirMatMulUnary {
             let value = node.inputs.len().into();
             return self.fuse_binary(model, node, &other_fact.shape, value, binop, &[other_outlet]);
         } else if let Some(op) = succ.op_as::<ops::binary::MergeOpUnicast>() {
-            if self.c_n_axis == self.c_final_shape.rank() - 2
-                && self.c_m_axis == self.c_final_shape.rank() - 1
-                && self.micro_ops.len() == 1
-            {
+            if self.micro_ops.len() == 1 {
                 let other_slot = 1 - node.outputs[0].successors[0].slot;
                 let other_input = succ.inputs[other_slot];
 
-                if op.0.is::<ops::math::Add>() {
-                    return self.fuse_op_with_broadcast(
-                        model,
-                        node,
-                        &[ProtoFusedSpec::AddUnicast(node.inputs.len().into())],
-                        &[other_input],
-                    );
-                }
+                let other_storage = unsafe { self.mmm.c_view(self.c_m_axis, self.c_n_axis) };
+                return self.fuse_op_with_broadcast(
+                    model,
+                    node,
+                    &[ProtoFusedSpec::AddUnicast(other_storage, node.inputs.len().into())],
+                    &[other_input],
+                );
+            } else {
+                eprintln!("Don't fuse {:?}", op);
             }
         };
         Ok(None)
