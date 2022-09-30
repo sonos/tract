@@ -220,6 +220,7 @@ fn eval(
     c_n_axis: usize,
     c_final_shape: &[usize],
 ) -> TractResult<TVec<Arc<Tensor>>> {
+    //    dbg!(op);
     unsafe {
         debug_assert!(op.micro_ops.len() > 0);
         let size_of_a = (*op.micro_ops.as_ptr()).0.datum_type().size_of();
@@ -385,19 +386,19 @@ impl TypedOp for LirMatMulUnary {
             let value = node.inputs.len().into();
             return self.fuse_binary(model, node, &other_fact.shape, value, binop, &[other_outlet]);
         } else if let Some(op) = succ.op_as::<ops::binary::MergeOpUnicast>() {
-            if self.micro_ops.len() == 1 {
+            if self.micro_ops.len() == 1 && op.0.is::<ops::math::Add>() {
                 let other_slot = 1 - node.outputs[0].successors[0].slot;
                 let other_input = succ.inputs[other_slot];
 
-                let other_storage = unsafe { self.mmm.c_view(self.c_m_axis, self.c_n_axis) };
-                return self.fuse_op_with_broadcast(
-                    model,
-                    node,
-                    &[ProtoFusedSpec::AddUnicast(other_storage, node.inputs.len().into())],
-                    &[other_input],
-                );
-            } else {
-                eprintln!("Don't fuse {:?}", op);
+                if model.outlet_fact(other_input)?.shape == self.c_fact.shape {
+                    let other_storage = unsafe { self.mmm.c_view(self.c_m_axis, self.c_n_axis) };
+                    return self.fuse_op_with_broadcast(
+                        model,
+                        node,
+                        &[ProtoFusedSpec::AddUnicast(other_storage, node.inputs.len().into())],
+                        &[other_input],
+                    );
+                }
             }
         };
         Ok(None)

@@ -742,7 +742,6 @@ impl TypedOp for Scan {
                 }
             }
         }
-        dbg!(&suggestions);
         Ok(suggestions)
     }
 
