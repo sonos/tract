@@ -23,7 +23,7 @@ fn de_delay(
     let overlap = invocation.named_arg_as::<i64>(builder, "overlap")? as usize;
     let input_fact = builder.model.outlet_fact(wire)?;
     let op = Delay::new_typed(input_fact, axis, delay, overlap);
-    builder.wire_as_value(op, &[wire])
+    builder.wire(op, &[wire])
 }
 
 #[derive(Debug, Clone)]

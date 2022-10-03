@@ -38,5 +38,5 @@ fn de_downsample(
     let axis = invocation.named_arg_as(builder, "axis")?;
     let stride = invocation.named_arg_as::<i64>(builder, "stride")? as isize;
     let modulo = invocation.named_arg_as(builder, "modulo")?;
-    builder.wire_as_value(ops::Downsample { axis, stride, modulo }, &[wire])
+    builder.wire(ops::Downsample { axis, stride, modulo }, &[wire])
 }

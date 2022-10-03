@@ -40,5 +40,5 @@ pub fn load(
     let detect_positive = invocation.named_arg_as(builder, "detect_positive")?;
     let detect_negative = invocation.named_arg_as(builder, "detect_negative")?;
     let op = IsInf { detect_negative, detect_positive };
-    builder.wire_as_value(ElementWiseOp(Box::new(op)), &[input])
+    builder.wire(ElementWiseOp(Box::new(op)), &[input])
 }

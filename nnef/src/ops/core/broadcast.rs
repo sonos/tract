@@ -17,7 +17,7 @@ fn de_broadcast(
 ) -> TractResult<Value> {
     let wire = invocation.named_arg_as(builder, "input")?;
     let shape: TVec<TDim> = invocation.named_arg_as(builder, "shape")?;
-    builder.wire_as_value(ops::array::MultiBroadcastTo { shape: shape.into() }, &[wire])
+    builder.wire(ops::array::MultiBroadcastTo { shape: shape.into() }, &[wire])
 }
 
 fn ser_broadcast(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {

@@ -41,5 +41,5 @@ fn range_load(
     let end: Tensor = end.into();
     let step: Tensor = step.into();
 
-    builder.wire_as_value(Range::new(start, end, step), &[])
+    builder.wire(Range::new(start, end, step), &[])
 }

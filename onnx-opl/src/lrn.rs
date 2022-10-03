@@ -104,5 +104,5 @@ pub fn load(
     let bias = invocation.named_arg_as(builder, "bias")?;
     let size = invocation.named_arg_as(builder, "size")?;
     let op = Lrn { alpha, beta, bias, size };
-    builder.wire_as_value(op, &[input])
+    builder.wire(op, &[input])
 }

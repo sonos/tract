@@ -163,5 +163,5 @@ pub fn load(
     let expr = invocation.named_arg_as::<String>(builder, "expr")?.parse::<Expr>()?;
     let einsum = EinSum { expr };
     let inputs: TVec<OutletId> = invocation.named_arg_as(builder, "inputs")?;
-    builder.wire_as_value(einsum, &inputs)
+    builder.wire(einsum, &inputs)
 }

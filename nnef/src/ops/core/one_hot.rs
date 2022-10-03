@@ -42,5 +42,5 @@ pub fn one_hot_load(
     let off = invocation.named_arg_as(builder, "value_off")?;
     let on = invocation.named_arg_as(builder, "value_on")?;
     let op = OneHot { axis, dim, on, off };
-    builder.wire_as_value(op, &[input])
+    builder.wire(op, &[input])
 }
