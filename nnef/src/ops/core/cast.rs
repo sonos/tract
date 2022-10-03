@@ -24,7 +24,7 @@ fn cast_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RVal
 fn cast_load(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
     let invocation_dt = invocation.dt_from_quant_file.get(0).copied().flatten();
     let to = if let Ok(s) = invocation.named_arg_as::<String>(builder, "to") {
@@ -41,5 +41,5 @@ fn cast_load(
     } else {
         invocation_dt.context("No datum type for cast")?
     };
-    builder.wire(Cast { to }, &[input])
+    builder.wire_as_value(Cast { to }, &[input])
 }

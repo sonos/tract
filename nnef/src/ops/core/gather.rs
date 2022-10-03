@@ -23,11 +23,11 @@ pub fn register(registry: &mut Registry) {
                 pub fn de_gather(
                     builder: &mut ModelBuilder,
                     invocation: &ResolvedInvocation,
-                ) -> TractResult<TVec<OutletId>> {
+                ) -> TractResult<Value> {
                     let wire = invocation.named_arg_as(builder, "input")?;
                     let indices = invocation.named_arg_as(builder, "indices")?;
                     let value = invocation.named_arg_as(builder, stringify!($field_name))?;
-                    builder.wire((<$GatherOp>::new(value)), &[wire, indices])
+                    builder.wire_as_value((<$GatherOp>::new(value)), &[wire, indices])
                 }
             }
             registry.register_dumper(TypeId::of::<$GatherOp>(), $name::ser_gather);

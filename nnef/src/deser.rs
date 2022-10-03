@@ -251,6 +251,10 @@ impl<'mb> ModelBuilder<'mb> {
         }
         self.model.wire_node(name, op, inputs).with_context(|| format!("inputs are {:?}", inputs))
     }
+
+    pub fn wire_as_value(&mut self, op: impl Into<Box<dyn TypedOp>>, inputs: &[OutletId]) -> TractResult<Value> {
+        self.wire(op, inputs).map(Value::from)
+    }
 }
 
 #[derive(Clone)]
@@ -465,6 +469,12 @@ impl Value {
         T: CoerceFrom<Value>,
     {
         T::coerce(builder, self)
+    }
+}
+
+impl From<TVec<OutletId>> for Value {
+    fn from(outled_ids: TVec<OutletId>) -> Self {
+        Self::Tuple(outled_ids.into_iter().map(Self::Wire).collect())
     }
 }
 

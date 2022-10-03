@@ -179,7 +179,7 @@ pub fn values_to_qparams(
 fn qmatmul_load(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let a: OutletId = invocation.named_arg_as(builder, "A")?;
     let b: OutletId = invocation.named_arg_as(builder, "B")?;
     let bias: OutletId = invocation.named_arg_as(builder, "bias")?;
@@ -196,5 +196,5 @@ fn qmatmul_load(
         DatumType::from_str(&*invocation.named_arg_as::<String>(builder, "output_type")?)?;
     let mut inputs = vec![a, b, bias];
     let params = values_to_qparams(a0, a_scale, b0, b_scale, c0, c_scale, &mut inputs, builder)?;
-    builder.wire(QMatMul { a_trans, b_trans, c_trans, output_type, params }, &inputs)
+    builder.wire_as_value(QMatMul { a_trans, b_trans, c_trans, output_type, params }, &inputs)
 }

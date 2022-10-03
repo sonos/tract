@@ -32,7 +32,7 @@ fn range_dump(_ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RV
 fn range_load(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let start: TDim = invocation.named_arg_as(builder, "start")?;
     let end: TDim = invocation.named_arg_as(builder, "end")?;
     let step: TDim = invocation.named_arg_as(builder, "step")?;
@@ -41,5 +41,5 @@ fn range_load(
     let end: Tensor = end.into();
     let step: Tensor = step.into();
 
-    builder.wire(Range::new(start, end, step), &[])
+    builder.wire_as_value(Range::new(start, end, step), &[])
 }

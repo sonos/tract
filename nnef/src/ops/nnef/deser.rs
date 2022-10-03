@@ -1,3 +1,4 @@
+use crate::deser::Value;
 use crate::ast::*;
 use tract_core::internal::*;
 use tract_core::ops::cnn::deconv::adjustments;
@@ -16,7 +17,7 @@ use crate::deser::{ModelBuilder, ResolvedInvocation};
 pub fn external(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let type_name = invocation.invocation.generic_type_name.unwrap_or(TypeName::Scalar);
     let dt = if let Some(Some(dt)) = invocation.dt_from_quant_file.get(0) {
         *dt
@@ -30,14 +31,14 @@ pub fn external(
         todo!()
     };
     let shape: TVec<TDim> = invocation.named_arg_as(builder, "shape")?;
-    Ok(tvec!(builder.model.add_source("", dt.fact(&shape))?))
+    Ok(Value::Wire(builder.model.add_source("", dt.fact(&shape))?))
 }
 
 // fragment variable<? = scalar>( shape: integer[], label: string ) -> ( output: tensor<?> );
 pub fn variable(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let shape: TVec<usize> = invocation.named_arg_as(builder, "shape")?;
     let label: String = invocation.named_arg_as(builder, "label")?;
     let mut tensor = builder
@@ -76,7 +77,7 @@ pub fn variable(
             shape
         );
     }
-    builder.wire(tract_core::ops::konst::Const::new(tensor), &[])
+    builder.wire(tract_core::ops::konst::Const::new(tensor), &[]).map(Value::from)
 }
 
 // fragment reshape<?>( input: tensor<?>, shape: integer[], axis_start: integer = 0, axis_count: integer = -1 )
@@ -84,7 +85,7 @@ pub fn variable(
 pub fn reshape(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
     let input_shape = builder.model.outlet_fact(input)?.shape.to_tvec();
     let start: usize = invocation.named_arg_as(builder, "axis_start")?;
@@ -105,26 +106,27 @@ pub fn reshape(
     }
 
     let op = AxisOp::Reshape(start, input_shape[start..][..count].into(), replacement);
-    builder.wire(op, &[input])
+    builder.wire(op, &[input]).map(Value::from)
 }
 
 // fragment transpose<?>( input: tensor<?>, axes: integer[] ) -> ( output: tensor<?> );
 pub fn transpose(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
     let wire = tvec!(invocation.named_arg_as(builder, "input")?);
     ops::change_axes::perm_to_ops(&axes)
         .into_iter()
         .try_fold(wire, |wire, mov| builder.wire(mov, &wire))
+        .map(Value::from)
 }
 
 // fragment concat<?>( values: tensor<?>[], axis: integer ) -> ( value: tensor<?> );
 pub fn concat(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let axis: usize = invocation.named_arg_as(builder, "axis")?;
     let mut values: TVec<OutletId> = invocation.named_arg_as(builder, "values")?;
     if let Some(Some(dt)) = invocation.dt_from_quant_file.get(0) {
@@ -135,14 +137,14 @@ pub fn concat(
         }
     }
 
-    builder.wire(ops::array::TypedConcat::concat_vars(axis, values.len()), &values)
+    builder.wire(ops::array::TypedConcat::concat_vars(axis, values.len()), &values).map(Value::from)
 }
 
 // fragment slice<?>( input: tensor<?>, axes: integer[], begin: integer[], end: integer[] ) -> ( output: tensor<?> );
 pub fn slice(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let wire = tvec!(invocation.named_arg_as(builder, "input")?);
     let input_fact = builder.model.outlet_fact(wire[0])?.clone();
     let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
@@ -164,48 +166,48 @@ pub fn slice(
     });
     izip!(axes, begins, ends).try_fold(wire, |wire, (axis, start, end)| {
         builder.wire(tract_core::ops::array::Slice { axis, start, end }, &wire)
-    })
+    }).map(Value::from)
 }
 
 // fragment squeeze<?>( input: tensor<?>, axes: integer[] ) -> ( output: tensor<?> );
 pub fn squeeze(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
     let wire = tvec!(invocation.named_arg_as(builder, "input")?);
     axes.iter().sorted().rev().try_fold(wire, |wire, &axis| {
         builder.wire(ops::change_axes::AxisOp::Rm(axis as usize), &wire)
-    })
+    }).map(Value::from)
 }
 
 // fragment unsqueeze<?>( input: tensor<?>, axes: integer[] ) -> ( output: tensor<?> );
 pub fn unsqueeze(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
     let wire = tvec!(invocation.named_arg_as(builder, "input")?);
     axes.iter().sorted().try_fold(wire, |wire, &axis| {
         builder.wire(ops::change_axes::AxisOp::Add(axis as usize), &wire)
-    })
+    }).map(Value::from)
 }
 
 // fragment tile<?>( input: tensor<?>, repeats: integer[] ) -> ( output: tensor<?> );
 pub fn tile(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let multipliers: TVec<TDim> = invocation.named_arg_as(builder, "repeats")?;
     let wire = tvec!(invocation.named_arg_as(builder, "input")?);
-    builder.wire(ops::array::Tile { multipliers }, &wire)
+    builder.wire(ops::array::Tile { multipliers }, &wire).map(Value::from)
 }
 
 // fragment pad( input: tensor<scalar>, padding: (integer, integer)[], border: string = 'constant', value: scalar = 0.0 ) -> ( output: tensor<scalar> );
 pub fn pad(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     use tract_core::ops::array::{Pad, PadMode};
     let wire = tvec!(invocation.named_arg_as(builder, "input")?);
     let padding: TVec<TVec<usize>> = invocation.named_arg_as(builder, "padding")?;
@@ -218,7 +220,7 @@ pub fn pad(
         "reflect" => PadMode::Reflect,
         _ => bail!("unsupported padding mode {}", border),
     };
-    builder.wire(Pad { pads: padding, mode }, &wire)
+    builder.wire(Pad { pads: padding, mode }, &wire).map(Value::from)
 }
 
 /*
@@ -245,15 +247,15 @@ groups: integer = 1 )
 pub fn conv(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
-    conv_or_deconv(builder, invocation, false)
+) -> TractResult<Value> {
+    conv_or_deconv(builder, invocation, false).map(Value::from)
 }
 
 pub fn deconv(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
-    conv_or_deconv(builder, invocation, true)
+) -> TractResult<Value> {
+    conv_or_deconv(builder, invocation, true).map(Value::from)
 }
 
 pub fn read_conv_parameters(
@@ -308,7 +310,7 @@ pub fn conv_or_deconv(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
     deconv: bool,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     use ops::cnn::deconv::DeconvUnary;
     use ops::cnn::{ConvUnary, KernelFormat};
 
@@ -372,7 +374,7 @@ pub fn conv_or_deconv(
             qparams,
         ))
     };
-    builder.wire(op, &[input])
+    builder.wire(op, &[input]).map(Value::from)
 }
 
 fn pool_spec_for_pools(
@@ -420,7 +422,7 @@ fn pool_spec_for_pools(
 pub fn max_pool_with_index(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
     let size: TVec<usize> = invocation.named_arg_as(builder, "size")?;
     let input_fact = builder.model.outlet_fact(input)?;
@@ -436,7 +438,7 @@ pub fn max_pool_with_index(
     //FIXME : constant is not actually supported, but it should be the same in most cases
     let pool_spec = pool_spec_for_pools(builder, invocation, &size)?;
     let op = ops::cnn::MaxPool { pool_spec, with_index_outputs: Some(i64::datum_type()) };
-    builder.wire(op, &[input])
+    builder.wire(op, &[input]).map(Value::from)
 }
 
 /*
@@ -448,7 +450,7 @@ pub fn max_pool_with_index(
 pub fn sum_pool(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
     let size: TVec<usize> = invocation.named_arg_as(builder, "size")?;
     let input_fact = builder.model.outlet_fact(input)?;
@@ -467,7 +469,7 @@ pub fn sum_pool(
         count_include_pad: false,
         normalize: invocation.named_arg_as(builder, "normalize")?,
     };
-    builder.wire(op, &[input])
+    builder.wire(op, &[input]).map(Value::from)
 }
 
 /*
@@ -478,7 +480,7 @@ pub fn sum_pool(
 pub fn reduce(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
     let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
     let reducer_name = invocation.invocation.id.split('_').next().unwrap();
@@ -492,7 +494,7 @@ pub fn reduce(
     };
     let wire = builder.wire(ops::nn::Reduce::new(axes.clone(), reducer), &[input])?;
     if reducer_name != "sum" || !invocation.named_arg_as(builder, "normalize")? {
-        return Ok(wire);
+        return Ok(wire.into());
     }
 
     let fact = builder.model.outlet_fact(wire[0])?.clone();
@@ -506,7 +508,7 @@ pub fn reduce(
     )?;
     let cardinality = builder.wire(ops::cast::Cast::new(fact.datum_type), &cardinality)?;
     dbg!(&cardinality);
-    builder.wire(ops::math::div::bin_typed(), &[wire[0], cardinality[0]])
+    builder.wire(ops::math::div::bin_typed(), &[wire[0], cardinality[0]]).map(Value::from)
 }
 
 /*
@@ -554,7 +556,7 @@ pub fn linear(
 pub fn matmul(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let a: OutletId = invocation.named_arg_as(builder, "A")?;
     let b: OutletId = invocation.named_arg_as(builder, "B")?;
     let a_trans = invocation.named_arg_as(builder, "transposeA")?;
@@ -582,9 +584,9 @@ pub fn matmul(
                 params: MatMulQParams::all_from_qtype(),
             },
             &[a, b, bias],
-        )
+        ).map(Value::from)
     } else {
-        builder.wire(ops::matmul::MatMul { a_trans, b_trans, c_trans: false }, &[a, b])
+        builder.wire(ops::matmul::MatMul { a_trans, b_trans, c_trans: false }, &[a, b]).map(Value::from)
     }
 }
 
@@ -599,13 +601,13 @@ false_value: tensor<?> )        # the result when the condition is false
 pub fn select(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let cond = invocation.named_arg_as(builder, "condition")?;
     let true_value = invocation.named_arg_as(builder, "true_value")?;
     let false_value = invocation.named_arg_as(builder, "false_value")?;
     let inputs = crate::registry::multicast(builder, &[cond, true_value, false_value])?;
 
-    builder.wire(ops::logic::Iff {}, &inputs)
+    builder.wire(ops::logic::Iff {}, &inputs).map(Value::from)
 }
 
 /*
@@ -615,10 +617,10 @@ pub fn select(
 pub fn leaky_relu(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let x = invocation.named_arg_as(builder, "x")?;
     let alpha = invocation.named_arg_as(builder, "alpha")?;
-    builder.wire(ops::nn::leaky_relu(alpha), &[x])
+    builder.wire(ops::nn::leaky_relu(alpha), &[x]).map(Value::from)
 }
 
 /*
@@ -630,7 +632,7 @@ pub fn leaky_relu(
 pub fn stack(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let axis: usize = invocation.named_arg_as(builder, "axis")?;
     let mut values: TVec<OutletId> = invocation.named_arg_as(builder, "values")?;
     if let Some(Some(dt)) = invocation.dt_from_quant_file.get(0) {
@@ -646,7 +648,7 @@ pub fn stack(
         *value = builder.wire(ops::change_axes::AxisOp::Add(axis as usize), &[*value])?[0];
     }
 
-    builder.wire(ops::array::TypedConcat::concat_vars(axis, values.len()), &values)
+    builder.wire(ops::array::TypedConcat::concat_vars(axis, values.len()), &values).map(Value::from)
 }
 
 /*
@@ -657,7 +659,7 @@ pub fn stack(
 pub fn unstack(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let wire = tvec!(invocation.named_arg_as(builder, "value")?);
     let axis: usize = invocation.named_arg_as(builder, "axis")?;
 
@@ -674,7 +676,7 @@ pub fn unstack(
                 builder.wire(ops::change_axes::AxisOp::Rm(axis as usize), &sliced_wire)?;
             Ok(squeezed_wire[0])
         })
-        .collect()
+        .collect::<TractResult<TVec<_>>>().map(Value::from)
 }
 
 /*
@@ -689,7 +691,7 @@ pub fn unstack(
 pub fn softmax(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let x = invocation.named_arg_as(builder, "x")?;
     let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
 
@@ -697,5 +699,5 @@ pub fn softmax(
     let output_dt =
         invocation.dt_from_quant_file.get(0).cloned().flatten().unwrap_or(input_fact.datum_type);
 
-    builder.wire(ops::nn::Softmax { axes, output_dt }, &[x])
+    builder.wire(ops::nn::Softmax { axes, output_dt }, &[x]).map(Value::from)
 }

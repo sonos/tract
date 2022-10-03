@@ -8,7 +8,7 @@ use crate::deser::Value;
 use tract_core::dyn_clone::clone_box;
 use tract_core::ops::binary::*;
 
-pub type ToTract = fn(&mut ModelBuilder, &ResolvedInvocation) -> TractResult<TVec<OutletId>>;
+pub type ToTract = fn(&mut ModelBuilder, &ResolvedInvocation) -> TractResult<Value>;
 pub type FromTract = fn(&mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>>;
 pub type BinOp = (String, Box<dyn BinMiniOp>, Option<Box<dyn BinMiniOp>>);
 pub type Extension = Box<
@@ -162,9 +162,9 @@ impl Registry {
         if let Some(op) = self.primitives.get(&invocation.id) {
             let resolved =
                 ResolvedInvocation { invocation, default_params: &*op.0, dt_from_quant_file: dt };
-            let outlets = (op.1)(builder, &resolved)
+            let out_value = (op.1)(builder, &resolved)
                 .with_context(|| format!("Deserializing op `{}'", invocation.id))?;
-            return Ok(Some(Value::Tuple(outlets.into_iter().map(Value::Wire).collect())));
+            return Ok(Some(out_value));
         }
         if let Some(ew) = self.unit_element_wise_ops.iter().find(|ew| ew.0 == invocation.id) {
             let input =
@@ -184,10 +184,10 @@ impl Registry {
         if let Some(ew) = self.element_wise_ops.iter().find(|ew| ew.0 == invocation.id) {
             let resolved =
                 ResolvedInvocation { invocation, default_params: &ew.3, dt_from_quant_file: dt };
-            return Ok(Some(Value::Wire(
+            return Ok(Some(
                 (ew.4)(builder, &resolved)
-                    .with_context(|| format!("Deserializing op `{}'", invocation.id))?[0],
-            )));
+                    .with_context(|| format!("Deserializing op `{}'", invocation.id))?,
+            ));
         }
         if let Some(bin) = self.binary_ops.iter().find(|bin| bin.0 == invocation.id) {
             let mut a =

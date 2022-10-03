@@ -35,10 +35,10 @@ pub fn dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValu
 pub fn load(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
     let detect_positive = invocation.named_arg_as(builder, "detect_positive")?;
     let detect_negative = invocation.named_arg_as(builder, "detect_negative")?;
     let op = IsInf { detect_negative, detect_positive };
-    builder.wire(ElementWiseOp(Box::new(op)), &[input])
+    builder.wire_as_value(ElementWiseOp(Box::new(op)), &[input])
 }
