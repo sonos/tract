@@ -276,8 +276,8 @@ fn load(
     };
     if let Some(score_threshold) = score_threshold {
         builder
-            .wire_as_value(op, &[boxes, scores, max_output_boxes_per_class, iou_threshold, score_threshold])
+            .wire(op, &[boxes, scores, max_output_boxes_per_class, iou_threshold, score_threshold])
     } else {
-        builder.wire_as_value(op, &[boxes, scores, max_output_boxes_per_class, iou_threshold])
+        builder.wire(op, &[boxes, scores, max_output_boxes_per_class, iou_threshold])
     }
 }

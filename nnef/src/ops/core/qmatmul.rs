@@ -196,5 +196,5 @@ fn qmatmul_load(
         DatumType::from_str(&*invocation.named_arg_as::<String>(builder, "output_type")?)?;
     let mut inputs = vec![a, b, bias];
     let params = values_to_qparams(a0, a_scale, b0, b_scale, c0, c_scale, &mut inputs, builder)?;
-    builder.wire_as_value(QMatMul { a_trans, b_trans, c_trans, output_type, params }, &inputs)
+    builder.wire(QMatMul { a_trans, b_trans, c_trans, output_type, params }, &inputs)
 }

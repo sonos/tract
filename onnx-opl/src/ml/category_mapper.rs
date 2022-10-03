@@ -245,7 +245,7 @@ fn load_direct_lookup(
     let values: Arc<Tensor> = invocation.named_arg_as(builder, "values")?;
     let fallback_value = invocation.named_arg_as(builder, "fallback")?;
     let op = DirectLookup { fallback_value, values };
-    builder.wire_as_value(op, &[input])
+    builder.wire(op, &[input])
 }
 
 fn load_reverse_lookup(
@@ -256,5 +256,5 @@ fn load_reverse_lookup(
     let keys: isize = invocation.named_arg_as(builder, "keys")?;
     let fallback_value = invocation.named_arg_as(builder, "fallback")?;
     let op = ReverseLookup::new(fallback_value, keys as i32)?;
-    builder.wire_as_value(op, &[input])
+    builder.wire(op, &[input])
 }

@@ -43,7 +43,7 @@ fn de_scatter_nd(
     let wire = invocation.named_arg_as(builder, "input")?;
     let indices = invocation.named_arg_as(builder, "indices")?;
     let updates = invocation.named_arg_as(builder, "updates")?;
-    builder.wire_as_value(ScatterNd, &[wire, indices, updates])
+    builder.wire(ScatterNd, &[wire, indices, updates])
 }
 
 fn ser_scatter_elements(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
@@ -66,5 +66,5 @@ fn de_scatter_elements(
     let indices = invocation.named_arg_as(builder, "indices")?;
     let updates = invocation.named_arg_as(builder, "updates")?;
     let axis = invocation.named_arg_as(builder, "axis")?;
-    builder.wire_as_value(ScatterElements::new(axis), &[wire, indices, updates])
+    builder.wire(ScatterElements::new(axis), &[wire, indices, updates])
 }

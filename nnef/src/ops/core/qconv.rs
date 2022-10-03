@@ -133,5 +133,5 @@ fn qconv_load(
         Some((output_dt, qparams)),
     ));
 
-    builder.wire_as_value(op, &inputs)
+    builder.wire(op, &inputs)
 }

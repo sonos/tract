@@ -77,7 +77,7 @@ pub fn variable(
             shape
         );
     }
-    builder.wire(tract_core::ops::konst::Const::new(tensor), &[]).map(Value::from)
+    builder.wire(tract_core::ops::konst::Const::new(tensor), &[])
 }
 
 // fragment reshape<?>( input: tensor<?>, shape: integer[], axis_start: integer = 0, axis_count: integer = -1 )
@@ -106,7 +106,7 @@ pub fn reshape(
     }
 
     let op = AxisOp::Reshape(start, input_shape[start..][..count].into(), replacement);
-    builder.wire(op, &[input]).map(Value::from)
+    builder.wire(op, &[input])
 }
 
 // fragment transpose<?>( input: tensor<?>, axes: integer[] ) -> ( output: tensor<?> );
@@ -118,7 +118,7 @@ pub fn transpose(
     let wire = tvec!(invocation.named_arg_as(builder, "input")?);
     ops::change_axes::perm_to_ops(&axes)
         .into_iter()
-        .try_fold(wire, |wire, mov| builder.wire(mov, &wire))
+        .try_fold(wire, |wire, mov| builder.wire_as_outlets(mov, &wire))
         .map(Value::from)
 }
 
@@ -132,12 +132,12 @@ pub fn concat(
     if let Some(Some(dt)) = invocation.dt_from_quant_file.get(0) {
         for value in &mut values {
             if builder.model.node(value.node).outputs[value.slot].fact.datum_type != *dt {
-                *value = builder.wire(ops::cast::cast(*dt), &[*value])?[0];
+                *value = builder.wire_as_outlets(ops::cast::cast(*dt), &[*value])?[0];
             }
         }
     }
 
-    builder.wire(ops::array::TypedConcat::concat_vars(axis, values.len()), &values).map(Value::from)
+    builder.wire(ops::array::TypedConcat::concat_vars(axis, values.len()), &values)
 }
 
 // fragment slice<?>( input: tensor<?>, axes: integer[], begin: integer[], end: integer[] ) -> ( output: tensor<?> );
@@ -165,7 +165,7 @@ pub fn slice(
         }
     });
     izip!(axes, begins, ends).try_fold(wire, |wire, (axis, start, end)| {
-        builder.wire(tract_core::ops::array::Slice { axis, start, end }, &wire)
+        builder.wire_as_outlets(tract_core::ops::array::Slice { axis, start, end }, &wire)
     }).map(Value::from)
 }
 
@@ -177,7 +177,7 @@ pub fn squeeze(
     let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
     let wire = tvec!(invocation.named_arg_as(builder, "input")?);
     axes.iter().sorted().rev().try_fold(wire, |wire, &axis| {
-        builder.wire(ops::change_axes::AxisOp::Rm(axis as usize), &wire)
+        builder.wire_as_outlets(ops::change_axes::AxisOp::Rm(axis as usize), &wire)
     }).map(Value::from)
 }
 
@@ -189,7 +189,7 @@ pub fn unsqueeze(
     let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
     let wire = tvec!(invocation.named_arg_as(builder, "input")?);
     axes.iter().sorted().try_fold(wire, |wire, &axis| {
-        builder.wire(ops::change_axes::AxisOp::Add(axis as usize), &wire)
+        builder.wire_as_outlets(ops::change_axes::AxisOp::Add(axis as usize), &wire)
     }).map(Value::from)
 }
 
@@ -200,7 +200,7 @@ pub fn tile(
 ) -> TractResult<Value> {
     let multipliers: TVec<TDim> = invocation.named_arg_as(builder, "repeats")?;
     let wire = tvec!(invocation.named_arg_as(builder, "input")?);
-    builder.wire(ops::array::Tile { multipliers }, &wire).map(Value::from)
+    builder.wire(ops::array::Tile { multipliers }, &wire)
 }
 
 // fragment pad( input: tensor<scalar>, padding: (integer, integer)[], border: string = 'constant', value: scalar = 0.0 ) -> ( output: tensor<scalar> );
@@ -220,7 +220,7 @@ pub fn pad(
         "reflect" => PadMode::Reflect,
         _ => bail!("unsupported padding mode {}", border),
     };
-    builder.wire(Pad { pads: padding, mode }, &wire).map(Value::from)
+    builder.wire(Pad { pads: padding, mode }, &wire)
 }
 
 /*
@@ -248,14 +248,14 @@ pub fn conv(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
 ) -> TractResult<Value> {
-    conv_or_deconv(builder, invocation, false).map(Value::from)
+    conv_or_deconv(builder, invocation, false)
 }
 
 pub fn deconv(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
 ) -> TractResult<Value> {
-    conv_or_deconv(builder, invocation, true).map(Value::from)
+    conv_or_deconv(builder, invocation, true)
 }
 
 pub fn read_conv_parameters(
@@ -374,7 +374,7 @@ pub fn conv_or_deconv(
             qparams,
         ))
     };
-    builder.wire(op, &[input]).map(Value::from)
+    builder.wire(op, &[input])
 }
 
 fn pool_spec_for_pools(
@@ -438,7 +438,7 @@ pub fn max_pool_with_index(
     //FIXME : constant is not actually supported, but it should be the same in most cases
     let pool_spec = pool_spec_for_pools(builder, invocation, &size)?;
     let op = ops::cnn::MaxPool { pool_spec, with_index_outputs: Some(i64::datum_type()) };
-    builder.wire(op, &[input]).map(Value::from)
+    builder.wire(op, &[input])
 }
 
 /*
@@ -469,7 +469,7 @@ pub fn sum_pool(
         count_include_pad: false,
         normalize: invocation.named_arg_as(builder, "normalize")?,
     };
-    builder.wire(op, &[input]).map(Value::from)
+    builder.wire(op, &[input])
 }
 
 /*
@@ -492,7 +492,7 @@ pub fn reduce(
         "argmax" => ops::nn::Reducer::ArgMax(false),
         _ => bail!("unsupported reducer: {}", invocation.invocation.id),
     };
-    let wire = builder.wire(ops::nn::Reduce::new(axes.clone(), reducer), &[input])?;
+    let wire = builder.wire_as_outlets(ops::nn::Reduce::new(axes.clone(), reducer), &[input])?;
     if reducer_name != "sum" || !invocation.named_arg_as(builder, "normalize")? {
         return Ok(wire.into());
     }
@@ -500,15 +500,14 @@ pub fn reduce(
     let fact = builder.model.outlet_fact(wire[0])?.clone();
     let input_shape = &builder.model.outlet_fact(input)?.shape;
     let cardinality: TDim = axes.iter().map(|ax| &input_shape[*ax]).product();
-    let cardinality = builder.wire(
+    let cardinality = builder.wire_as_outlets(
         ops::konst::Const::new(
             tensor0(cardinality).broadcast_into_rank(fact.rank())?.into_arc_tensor(),
         ),
         &[],
     )?;
-    let cardinality = builder.wire(ops::cast::Cast::new(fact.datum_type), &cardinality)?;
-    dbg!(&cardinality);
-    builder.wire(ops::math::div::bin_typed(), &[wire[0], cardinality[0]]).map(Value::from)
+    let cardinality = builder.wire_as_outlets(ops::cast::Cast::new(fact.datum_type), &cardinality)?;
+    builder.wire(ops::math::div::bin_typed(), &[wire[0], cardinality[0]])
 }
 
 /*
@@ -584,9 +583,9 @@ pub fn matmul(
                 params: MatMulQParams::all_from_qtype(),
             },
             &[a, b, bias],
-        ).map(Value::from)
+        )
     } else {
-        builder.wire(ops::matmul::MatMul { a_trans, b_trans, c_trans: false }, &[a, b]).map(Value::from)
+        builder.wire(ops::matmul::MatMul { a_trans, b_trans, c_trans: false }, &[a, b])
     }
 }
 
@@ -607,7 +606,7 @@ pub fn select(
     let false_value = invocation.named_arg_as(builder, "false_value")?;
     let inputs = crate::registry::multicast(builder, &[cond, true_value, false_value])?;
 
-    builder.wire(ops::logic::Iff {}, &inputs).map(Value::from)
+    builder.wire(ops::logic::Iff {}, &inputs)
 }
 
 /*
@@ -620,7 +619,7 @@ pub fn leaky_relu(
 ) -> TractResult<Value> {
     let x = invocation.named_arg_as(builder, "x")?;
     let alpha = invocation.named_arg_as(builder, "alpha")?;
-    builder.wire(ops::nn::leaky_relu(alpha), &[x]).map(Value::from)
+    builder.wire(ops::nn::leaky_relu(alpha), &[x])
 }
 
 /*
@@ -638,17 +637,17 @@ pub fn stack(
     if let Some(Some(dt)) = invocation.dt_from_quant_file.get(0) {
         for value in &mut values {
             if builder.model.node(value.node).outputs[value.slot].fact.datum_type != *dt {
-                *value = builder.wire(ops::cast::cast(*dt), &[*value])?[0];
+                *value = builder.wire_as_outlets(ops::cast::cast(*dt), &[*value])?[0];
             }
         }
     }
 
     for value in &mut values {
         // add unsqueeze
-        *value = builder.wire(ops::change_axes::AxisOp::Add(axis as usize), &[*value])?[0];
+        *value = builder.wire_as_outlets(ops::change_axes::AxisOp::Add(axis as usize), &[*value])?[0];
     }
 
-    builder.wire(ops::array::TypedConcat::concat_vars(axis, values.len()), &values).map(Value::from)
+    builder.wire(ops::array::TypedConcat::concat_vars(axis, values.len()), &values)
 }
 
 /*
@@ -671,9 +670,9 @@ pub fn unstack(
             let start = start_int.to_dim();
             let end = (start_int + 1).to_dim();
             let sliced_wire =
-                builder.wire(tract_core::ops::array::Slice { axis, start, end }, &wire)?;
+                builder.wire_as_outlets(tract_core::ops::array::Slice { axis, start, end }, &wire)?;
             let squeezed_wire =
-                builder.wire(ops::change_axes::AxisOp::Rm(axis as usize), &sliced_wire)?;
+                builder.wire_as_outlets(ops::change_axes::AxisOp::Rm(axis as usize), &sliced_wire)?;
             Ok(squeezed_wire[0])
         })
         .collect::<TractResult<TVec<_>>>().map(Value::from)
@@ -699,5 +698,5 @@ pub fn softmax(
     let output_dt =
         invocation.dt_from_quant_file.get(0).cloned().flatten().unwrap_or(input_fact.datum_type);
 
-    builder.wire(ops::nn::Softmax { axes, output_dt }, &[x]).map(Value::from)
+    builder.wire(ops::nn::Softmax { axes, output_dt }, &[x])
 }

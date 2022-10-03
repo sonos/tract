@@ -184,5 +184,5 @@ fn load(
     let seed = invocation.named_arg_as(builder, "seed").ok();
 
     let op = Multinomial { dtype, sample_size, seed };
-    builder.wire_as_value(op, &[input])
+    builder.wire(op, &[input])
 }

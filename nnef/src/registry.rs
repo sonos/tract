@@ -170,13 +170,13 @@ impl Registry {
             let input =
                 invocation.arguments[0].rvalue.resolve(builder, &[])?.to::<OutletId>(builder)?;
             let outlet = builder
-                .wire(tract_core::ops::element_wise::ElementWiseOp(ew.1.clone()), &[input])?;
+                .wire_as_outlets(tract_core::ops::element_wise::ElementWiseOp(ew.1.clone()), &[input])?;
             if let Some(Some(assumed_out_dt)) = dt.get(0) {
                 let out_dt = builder.model.outlet_fact(outlet[0])?.datum_type;
                 if out_dt != *assumed_out_dt {
-                    return Ok(Some(Value::Wire(
-                        builder.wire(tract_core::ops::cast::cast(*assumed_out_dt), &outlet)?[0],
-                    )));
+                    return Ok(Some(
+                        builder.wire(tract_core::ops::cast::cast(*assumed_out_dt), &outlet)?
+                    ));
                 }
             }
             return Ok(Some(Value::Wire(outlet[0])));
@@ -201,17 +201,17 @@ impl Registry {
             // strict types
             if a_dt != b_dt {
                 if builder.model.node(a.node).op_is::<tract_core::ops::konst::Const>() {
-                    a = builder.wire(tract_core::ops::cast::cast(b_dt), &[a])?[0];
+                    a = builder.wire_as_outlets(tract_core::ops::cast::cast(b_dt), &[a])?[0];
                 } else {
-                    b = builder.wire(tract_core::ops::cast::cast(a_dt), &[b])?[0];
+                    b = builder.wire_as_outlets(tract_core::ops::cast::cast(a_dt), &[b])?[0];
                 };
             }
             let inputs = multicast(builder, &[a, b])?;
             let mut wire =
-                builder.wire(tract_core::ops::binary::TypedBinOp(bin.1.clone()), &inputs)?[0];
+                builder.wire_as_outlets(tract_core::ops::binary::TypedBinOp(bin.1.clone()), &inputs)?[0];
             if let Some(Some(out_dt)) = dt.get(0) {
                 if out_dt != &a_dt {
-                    wire = builder.wire(tract_core::ops::cast::cast(*out_dt), &[wire])?[0];
+                    wire = builder.wire_as_outlets(tract_core::ops::cast::cast(*out_dt), &[wire])?[0];
                 }
             }
             return Ok(Some(Value::Wire(wire)));
@@ -241,7 +241,7 @@ pub fn multicast(builder: &mut ModelBuilder, inputs: &[OutletId]) -> TractResult
     (inputs.iter())
         .zip(ranks.iter())
         .map(|(&i, &r)| {
-            (r..max_rank).try_fold(i, |w, n| Ok(builder.wire(AxisOp::Add(n), &[w])?[0]))
+            (r..max_rank).try_fold(i, |w, n| Ok(builder.wire_as_outlets(AxisOp::Add(n), &[w])?[0]))
         })
         .collect()
 }

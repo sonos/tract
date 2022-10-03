@@ -108,5 +108,5 @@ fn load(
     let data = TreeEnsembleData { trees, nodes, leaves };
     let ensemble = TreeEnsemble { data, n_classes, max_used_feature, aggregate_fn };
     let op = TreeEnsembleClassifier { ensemble };
-    builder.wire_as_value(op, &[input])
+    builder.wire(op, &[input])
 }

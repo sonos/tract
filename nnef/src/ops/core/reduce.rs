@@ -42,5 +42,5 @@ fn de_reduce(
     };
     let axes = invocation.named_arg_as(builder, "axes")?;
     let reduce = ops::nn::Reduce { axes, reducer };
-    builder.wire_as_value(reduce, &[wire])
+    builder.wire(reduce, &[wire])
 }
