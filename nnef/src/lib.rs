@@ -24,7 +24,7 @@ pub mod prelude {
 pub mod internal {
     pub use crate::ast::parse::parse_parameters;
     pub use crate::ast::{param, FragmentDecl, FragmentDef, Parameter, RValue, TypeName};
-    pub use crate::deser::{ModelBuilder, ResolvedInvocation};
+    pub use crate::deser::{ModelBuilder, ResolvedInvocation, Value};
     pub use crate::framework::Nnef;
     pub use crate::prelude::*;
     pub use crate::registry::*;

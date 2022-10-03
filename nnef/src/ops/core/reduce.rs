@@ -32,7 +32,7 @@ fn ser_reduce(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RVa
 fn de_reduce(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let wire = invocation.named_arg_as(builder, "input")?;
     let reducer = match &*invocation.invocation.id {
         "tract_core_argmin_reduce_last" => ops::nn::Reducer::ArgMin(true),
@@ -42,5 +42,5 @@ fn de_reduce(
     };
     let axes = invocation.named_arg_as(builder, "axes")?;
     let reduce = ops::nn::Reduce { axes, reducer };
-    builder.wire(reduce, &[wire])
+    builder.wire_as_value(reduce, &[wire])
 }

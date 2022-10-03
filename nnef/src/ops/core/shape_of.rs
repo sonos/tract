@@ -14,9 +14,9 @@ pub fn register(registry: &mut Registry) {
 fn de_shape_of(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
     let shape = tensor1(&builder.model.outlet_fact(input)?.shape.to_tvec());
     let wire = builder.model.add_const("shape", shape)?;
-    Ok(tvec!(wire))
+    Ok(Value::Wire(wire))
 }

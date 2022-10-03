@@ -14,10 +14,10 @@ pub fn register(registry: &mut Registry) {
 fn de_broadcast(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let wire = invocation.named_arg_as(builder, "input")?;
     let shape: TVec<TDim> = invocation.named_arg_as(builder, "shape")?;
-    builder.wire(ops::array::MultiBroadcastTo { shape: shape.into() }, &[wire])
+    builder.wire_as_value(ops::array::MultiBroadcastTo { shape: shape.into() }, &[wire])
 }
 
 fn ser_broadcast(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {

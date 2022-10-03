@@ -258,7 +258,7 @@ fn dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>>
 fn load(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let boxes = invocation.named_arg_as(builder, "boxes")?;
     let scores = invocation.named_arg_as(builder, "scores")?;
     let max_output_boxes_per_class =
@@ -276,8 +276,8 @@ fn load(
     };
     if let Some(score_threshold) = score_threshold {
         builder
-            .wire(op, &[boxes, scores, max_output_boxes_per_class, iou_threshold, score_threshold])
+            .wire_as_value(op, &[boxes, scores, max_output_boxes_per_class, iou_threshold, score_threshold])
     } else {
-        builder.wire(op, &[boxes, scores, max_output_boxes_per_class, iou_threshold])
+        builder.wire_as_value(op, &[boxes, scores, max_output_boxes_per_class, iou_threshold])
     }
 }

@@ -35,12 +35,12 @@ pub fn one_hot_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<A
 pub fn one_hot_load(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
     let axis = invocation.named_arg_as(builder, "axis")?;
     let dim = invocation.named_arg_as(builder, "dim")?;
     let off = invocation.named_arg_as(builder, "value_off")?;
     let on = invocation.named_arg_as(builder, "value_on")?;
     let op = OneHot { axis, dim, on, off };
-    builder.wire(op, &[input])
+    builder.wire_as_value(op, &[input])
 }

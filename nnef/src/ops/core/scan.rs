@@ -142,7 +142,7 @@ fn ser_scan(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValu
 fn de_scan(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let fragment_name: String = invocation.named_arg_as(builder, "body")?;
     let fragment = builder
         .proto_model
@@ -255,5 +255,5 @@ fn de_scan(
     }
     let skip: usize = invocation.named_arg_as(builder, "skip")?;
     let op = Scan::new(body.model, input_mapping, output_mapping, None, skip)?;
-    builder.wire(op, &*outer_inputs)
+    builder.wire_as_value(op, &*outer_inputs)
 }

@@ -84,7 +84,7 @@ fn qconv_unary_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<A
 fn qconv_load(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let input: OutletId = invocation.named_arg_as(builder, "input")?;
     let kernel: Arc<Tensor> = invocation.named_arg_as(builder, "filter")?;
 
@@ -133,5 +133,5 @@ fn qconv_load(
         Some((output_dt, qparams)),
     ));
 
-    builder.wire(op, &inputs)
+    builder.wire_as_value(op, &inputs)
 }

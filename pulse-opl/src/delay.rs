@@ -16,14 +16,14 @@ pub fn register(registry: &mut Registry) {
 fn de_delay(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let wire = invocation.named_arg_as(builder, "input")?;
     let axis = invocation.named_arg_as::<i64>(builder, "axis")? as usize;
     let delay = invocation.named_arg_as::<i64>(builder, "delay")? as usize;
     let overlap = invocation.named_arg_as::<i64>(builder, "overlap")? as usize;
     let input_fact = builder.model.outlet_fact(wire)?;
     let op = Delay::new_typed(input_fact, axis, delay, overlap);
-    builder.wire(op, &[wire])
+    builder.wire_as_value(op, &[wire])
 }
 
 #[derive(Debug, Clone)]
