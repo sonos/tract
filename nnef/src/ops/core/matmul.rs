@@ -40,7 +40,7 @@ pub fn matmul_unary_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Opt
 fn matmul_load(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let a: OutletId = invocation.named_arg_as(builder, "A")?;
     let b: OutletId = invocation.named_arg_as(builder, "B")?;
     let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;

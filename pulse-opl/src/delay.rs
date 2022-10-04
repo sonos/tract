@@ -178,7 +178,7 @@ impl TypedOp for Delay {
         &self,
         model: &TypedModel,
         node: &TypedNode,
-        io: InOut,
+        _io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
         if let Some(axis) = change.transform_axis(self.axis) {
