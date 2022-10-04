@@ -742,6 +742,13 @@ impl TypedOp for Scan {
                 }
             }
         }
+        for output in &self.output_mapping {
+            if let Some(slot) = output.full_slot {
+                if output.axis != 0 {
+                    suggestions.push((InOut::Out(slot), AxisOp::Move(output.axis, 0)))
+                }
+            }
+        }
         Ok(suggestions)
     }
 
