@@ -153,18 +153,20 @@ fn main() {
                 &suffix,
             );
             cc::Build::new().files(files).static_flag(true).compile("arm64simd");
-            let files =
-                preprocess_files("arm64/arm64fp16", &[("core", vec!["a55", "gen"])], &suffix);
-            // depending on the compiler variant, we may need to try different flags. this is
-            // awful.
-            let compile_arv82_asm = |flag| -> Result<(), cc::Error> {
-                let mut cc = cc::Build::new();
-                cc.flag(flag);
-                cc.files(&files).static_flag(true).try_compile("arm64fp16")
-            };
-            compile_arv82_asm("-march=armv8.2-a")
-                .or_else(|_| compile_arv82_asm("-mcpu=cortex-a55"))
-                .unwrap()
+            if std::env::var("CARGO_FEATURE_NO_FP16").is_err() {
+                let files =
+                    preprocess_files("arm64/arm64fp16", &[("core", vec!["a55", "gen"])], &suffix);
+                // depending on the compiler variant, we may need to try different flags. this is
+                // awful.
+                let compile_arv82_asm = |flag| -> Result<(), cc::Error> {
+                    let mut cc = cc::Build::new();
+                    cc.flag(flag);
+                    cc.files(&files).static_flag(true).try_compile("arm64fp16")
+                };
+                compile_arv82_asm("-march=armv8.2-a")
+                    .or_else(|_| compile_arv82_asm("-mcpu=cortex-a55"))
+                    .unwrap()
+            }
         }
         _ => {}
     }

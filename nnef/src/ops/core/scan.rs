@@ -142,7 +142,7 @@ fn ser_scan(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValu
 fn de_scan(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let fragment_name: String = invocation.named_arg_as(builder, "body")?;
     let fragment = builder
         .proto_model

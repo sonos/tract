@@ -16,7 +16,7 @@ pub fn register(registry: &mut Registry) {
 fn de_delay(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let wire = invocation.named_arg_as(builder, "input")?;
     let axis = invocation.named_arg_as::<i64>(builder, "axis")? as usize;
     let delay = invocation.named_arg_as::<i64>(builder, "delay")? as usize;

@@ -33,7 +33,7 @@ fn ser_downsample(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc
 fn de_downsample(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let wire = invocation.named_arg_as(builder, "input")?;
     let axis = invocation.named_arg_as(builder, "axis")?;
     let stride = invocation.named_arg_as::<i64>(builder, "stride")? as isize;

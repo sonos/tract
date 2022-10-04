@@ -71,10 +71,7 @@ fn get_external_resources(t: &TensorProto, path: &str) -> TractResult<Vec<u8>> {
     {
         let p = PathBuf::from(format!("{}/{}", path, external_data.value));
         trace!("external file detected: {:?}", p);
-        #[cfg(not(target_arch = "wasm32"))]
-        let file = unsafe { mapr::Mmap::map(&fs::File::open(p)?)? };
-        #[cfg(target_arch = "wasm32")]
-        let file = fs::read(p)?;
+        let file = unsafe { memmap2::Mmap::map(&fs::File::open(p)?)? };
         tensor_data.extend_from_slice(&*file);
         trace!("external file loaded");
     }

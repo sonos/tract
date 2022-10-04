@@ -234,7 +234,7 @@ impl<'mb> ModelBuilder<'mb> {
         ))
     }
 
-    pub fn wire(
+    pub fn wire_as_outlets(
         &mut self,
         op: impl Into<Box<dyn TypedOp>>,
         inputs: &[OutletId],
@@ -250,6 +250,10 @@ impl<'mb> ModelBuilder<'mb> {
             }
         }
         self.model.wire_node(name, op, inputs).with_context(|| format!("inputs are {:?}", inputs))
+    }
+
+    pub fn wire(&mut self, op: impl Into<Box<dyn TypedOp>>, inputs: &[OutletId]) -> TractResult<Value> {
+        self.wire_as_outlets(op, inputs).map(Value::from)
     }
 }
 
@@ -346,10 +350,7 @@ impl RValue {
                                 ));
                             }
                             if out_dt != *dt {
-                                outlet = Value::Wire(
-                                    builder.wire(tract_core::ops::cast::cast(*dt), &[outlet_id])?
-                                        [0],
-                                )
+                                outlet = builder.wire(tract_core::ops::cast::cast(*dt), &[outlet_id])?;
                             }
                         }
                     }
@@ -468,6 +469,12 @@ impl Value {
     }
 }
 
+impl From<TVec<OutletId>> for Value {
+    fn from(outled_ids: TVec<OutletId>) -> Self {
+        Self::Tuple(outled_ids.into_iter().map(Self::Wire).collect())
+    }
+}
+
 pub trait CoerceFrom<F> {
     fn coerce(builder: &mut ModelBuilder, from: &F) -> TractResult<Self>
     where
@@ -532,19 +539,19 @@ impl CoerceFrom<Value> for OutletId {
     fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         match from {
             Value::Tensor(t) => {
-                Ok(builder.wire(tract_core::ops::konst::Const::new(t.clone()), &[])?[0])
+                Ok(builder.wire_as_outlets(tract_core::ops::konst::Const::new(t.clone()), &[])?[0])
             }
             Value::Scalar(f) => {
-                Ok(builder.wire(tract_core::ops::konst::Const::new(rctensor0(*f)), &[])?[0])
+                Ok(builder.wire_as_outlets(tract_core::ops::konst::Const::new(rctensor0(*f)), &[])?[0])
             }
             Value::Dim(i) => {
-                Ok(builder.wire(tract_core::ops::konst::Const::new(rctensor0(i.clone())), &[])?[0])
+                Ok(builder.wire_as_outlets(tract_core::ops::konst::Const::new(rctensor0(i.clone())), &[])?[0])
             }
             Value::Wire(outlet) => Ok(*outlet),
             Value::Tuple(tuple) if tuple.len() == 1 => OutletId::coerce(builder, &tuple[0]),
             Value::Array(_) => {
                 let tensor = Arc::<Tensor>::coerce(builder, from)?;
-                Ok(builder.wire(tract_core::ops::konst::Const::new(tensor), &[])?[0])
+                Ok(builder.wire_as_outlets(tract_core::ops::konst::Const::new(tensor), &[])?[0])
             }
             _ => bail!("Can not build an outletid from {:?}", from),
         }

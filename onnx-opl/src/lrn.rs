@@ -97,7 +97,7 @@ pub fn dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValu
 pub fn load(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
     let alpha = invocation.named_arg_as(builder, "alpha")?;
     let beta = invocation.named_arg_as(builder, "beta")?;

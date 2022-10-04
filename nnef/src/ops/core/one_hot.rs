@@ -35,7 +35,7 @@ pub fn one_hot_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<A
 pub fn one_hot_load(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
     let axis = invocation.named_arg_as(builder, "axis")?;
     let dim = invocation.named_arg_as(builder, "dim")?;

@@ -32,11 +32,11 @@ fn external_parameters() -> Vec<Parameter> {
 fn external_load(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let shape: TVec<TDim> = invocation.named_arg_as(builder, "shape")?;
     let mut dt: DatumType = invocation.named_arg_as::<String>(builder, "datum_type")?.parse()?;
     if let Some(Some(qdt)) = invocation.dt_from_quant_file.get(0) {
         dt = *qdt;
     }
-    Ok(tvec!(builder.model.add_source("", dt.fact(&*shape))?))
+    Ok(Value::Wire(builder.model.add_source("", dt.fact(&*shape))?))
 }

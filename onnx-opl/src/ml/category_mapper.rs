@@ -240,7 +240,7 @@ fn dump_reverse_lookup(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Optio
 fn load_direct_lookup(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
     let values: Arc<Tensor> = invocation.named_arg_as(builder, "values")?;
     let fallback_value = invocation.named_arg_as(builder, "fallback")?;
@@ -251,7 +251,7 @@ fn load_direct_lookup(
 fn load_reverse_lookup(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
     let keys: isize = invocation.named_arg_as(builder, "keys")?;
     let fallback_value = invocation.named_arg_as(builder, "fallback")?;

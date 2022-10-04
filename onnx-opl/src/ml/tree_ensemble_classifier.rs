@@ -96,7 +96,7 @@ fn dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>>
 fn load(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
     let trees = invocation.named_arg_as(builder, "trees")?;
     let nodes = invocation.named_arg_as(builder, "nodes")?;

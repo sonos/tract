@@ -159,7 +159,7 @@ pub fn dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValu
 pub fn load(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let expr = invocation.named_arg_as::<String>(builder, "expr")?.parse::<Expr>()?;
     let einsum = EinSum { expr };
     let inputs: TVec<OutletId> = invocation.named_arg_as(builder, "inputs")?;

@@ -35,7 +35,7 @@ pub fn dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValu
 pub fn load(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
     let detect_positive = invocation.named_arg_as(builder, "detect_positive")?;
     let detect_negative = invocation.named_arg_as(builder, "detect_negative")?;

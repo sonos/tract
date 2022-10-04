@@ -258,7 +258,7 @@ fn dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>>
 fn load(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let boxes = invocation.named_arg_as(builder, "boxes")?;
     let scores = invocation.named_arg_as(builder, "scores")?;
     let max_output_boxes_per_class =

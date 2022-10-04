@@ -172,7 +172,7 @@ pub fn values_to_qparams(
 fn qmatmul_load(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let a: OutletId = invocation.named_arg_as(builder, "A")?;
     let b: OutletId = invocation.named_arg_as(builder, "B")?;
     let bias: OutletId = invocation.named_arg_as(builder, "bias")?;

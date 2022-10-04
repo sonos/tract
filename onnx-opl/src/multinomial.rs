@@ -173,7 +173,7 @@ fn dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>>
 fn load(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
     let dtype = match invocation.named_arg_as::<i64>(builder, "dtype")? {
         6 => DatumType::I32,

@@ -8,7 +8,7 @@ use crate::deser::Value;
 use tract_core::dyn_clone::clone_box;
 use tract_core::ops::binary::*;
 
-pub type ToTract = fn(&mut ModelBuilder, &ResolvedInvocation) -> TractResult<TVec<OutletId>>;
+pub type ToTract = fn(&mut ModelBuilder, &ResolvedInvocation) -> TractResult<Value>;
 pub type FromTract = fn(&mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>>;
 pub type BinOp = (String, Box<dyn BinMiniOp>, Option<Box<dyn BinMiniOp>>);
 pub type Extension = Box<
@@ -162,21 +162,21 @@ impl Registry {
         if let Some(op) = self.primitives.get(&invocation.id) {
             let resolved =
                 ResolvedInvocation { invocation, default_params: &*op.0, dt_from_quant_file: dt };
-            let outlets = (op.1)(builder, &resolved)
+            let out_value = (op.1)(builder, &resolved)
                 .with_context(|| format!("Deserializing op `{}'", invocation.id))?;
-            return Ok(Some(Value::Tuple(outlets.into_iter().map(Value::Wire).collect())));
+            return Ok(Some(out_value));
         }
         if let Some(ew) = self.unit_element_wise_ops.iter().find(|ew| ew.0 == invocation.id) {
             let input =
                 invocation.arguments[0].rvalue.resolve(builder, &[])?.to::<OutletId>(builder)?;
             let outlet = builder
-                .wire(tract_core::ops::element_wise::ElementWiseOp(ew.1.clone()), &[input])?;
+                .wire_as_outlets(tract_core::ops::element_wise::ElementWiseOp(ew.1.clone()), &[input])?;
             if let Some(Some(assumed_out_dt)) = dt.get(0) {
                 let out_dt = builder.model.outlet_fact(outlet[0])?.datum_type;
                 if out_dt != *assumed_out_dt {
-                    return Ok(Some(Value::Wire(
-                        builder.wire(tract_core::ops::cast::cast(*assumed_out_dt), &outlet)?[0],
-                    )));
+                    return Ok(Some(
+                        builder.wire(tract_core::ops::cast::cast(*assumed_out_dt), &outlet)?
+                    ));
                 }
             }
             return Ok(Some(Value::Wire(outlet[0])));
@@ -184,10 +184,10 @@ impl Registry {
         if let Some(ew) = self.element_wise_ops.iter().find(|ew| ew.0 == invocation.id) {
             let resolved =
                 ResolvedInvocation { invocation, default_params: &ew.3, dt_from_quant_file: dt };
-            return Ok(Some(Value::Wire(
+            return Ok(Some(
                 (ew.4)(builder, &resolved)
-                    .with_context(|| format!("Deserializing op `{}'", invocation.id))?[0],
-            )));
+                    .with_context(|| format!("Deserializing op `{}'", invocation.id))?,
+            ));
         }
         if let Some(bin) = self.binary_ops.iter().find(|bin| bin.0 == invocation.id) {
             let mut a =
@@ -201,17 +201,17 @@ impl Registry {
             // strict types
             if a_dt != b_dt {
                 if builder.model.node(a.node).op_is::<tract_core::ops::konst::Const>() {
-                    a = builder.wire(tract_core::ops::cast::cast(b_dt), &[a])?[0];
+                    a = builder.wire_as_outlets(tract_core::ops::cast::cast(b_dt), &[a])?[0];
                 } else {
-                    b = builder.wire(tract_core::ops::cast::cast(a_dt), &[b])?[0];
+                    b = builder.wire_as_outlets(tract_core::ops::cast::cast(a_dt), &[b])?[0];
                 };
             }
             let inputs = multicast(builder, &[a, b])?;
             let mut wire =
-                builder.wire(tract_core::ops::binary::TypedBinOp(bin.1.clone()), &inputs)?[0];
+                builder.wire_as_outlets(tract_core::ops::binary::TypedBinOp(bin.1.clone()), &inputs)?[0];
             if let Some(Some(out_dt)) = dt.get(0) {
                 if out_dt != &a_dt {
-                    wire = builder.wire(tract_core::ops::cast::cast(*out_dt), &[wire])?[0];
+                    wire = builder.wire_as_outlets(tract_core::ops::cast::cast(*out_dt), &[wire])?[0];
                 }
             }
             return Ok(Some(Value::Wire(wire)));
@@ -241,7 +241,7 @@ pub fn multicast(builder: &mut ModelBuilder, inputs: &[OutletId]) -> TractResult
     (inputs.iter())
         .zip(ranks.iter())
         .map(|(&i, &r)| {
-            (r..max_rank).try_fold(i, |w, n| Ok(builder.wire(AxisOp::Add(n), &[w])?[0]))
+            (r..max_rank).try_fold(i, |w, n| Ok(builder.wire_as_outlets(AxisOp::Add(n), &[w])?[0]))
         })
         .collect()
 }

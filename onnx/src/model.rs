@@ -281,10 +281,7 @@ impl Framework<pb::ModelProto, InferenceModel> for Onnx {
     }
 
     fn proto_model_for_path(&self, p: impl AsRef<path::Path>) -> TractResult<pb::ModelProto> {
-        #[cfg(not(target_arch = "wasm32"))]
-        let map = unsafe { mapr::Mmap::map(&fs::File::open(p)?)? };
-        #[cfg(target_arch = "wasm32")]
-        let map = fs::read(p)?;
+        let map = unsafe { memmap2::Mmap::map(&fs::File::open(p)?)? };
         Ok(crate::pb::ModelProto::decode(&*map)?)
     }
 

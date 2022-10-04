@@ -7,8 +7,8 @@ pub use arm64simd::*;
 
 use crate::Ops;
 
-use crate::frame::mmm::kernel::MatMatMulKer;
 use crate::frame::element_wise::ElementWiseKer;
+use crate::frame::mmm::kernel::MatMatMulKer;
 
 lazy_static::lazy_static! {
     static ref KIND: Kind = Kind::choose();
@@ -138,6 +138,11 @@ pub fn plug(ops: &mut Ops) {
     if let Some(model) = model {
         ops.mmm_f32 = Box::new(move |m, k, n| model.pick(&impls, m, k, n));
     }
+    #[cfg(feature = "no_fp16")]
+    if has_fp16() {
+        log::warn!("This is a build with fp16 disabled, while your platform CPU seems to support it.");
+    }
+    #[cfg(not(feature = "no_fp16"))]
     if has_fp16() {
         if *KIND == Kind::CortexA55 {
             ops.mmm_f16 = Box::new(|_, _, n| {
@@ -163,6 +168,7 @@ pub fn plug(ops: &mut Ops) {
     }
     ops.sigmoid_f32 = Box::new(|| arm64simd_sigmoid_f32_4n::ew());
     ops.tanh_f32 = Box::new(|| arm64simd_tanh_f32_4n::ew());
+    #[cfg(not(feature = "no_fp16"))]
     if has_fp16() {
         ops.tanh_f16 = Box::new(|| arm64fp16_tanh_f16_8n::ew());
         ops.sigmoid_f16 = Box::new(|| arm64fp16_sigmoid_f16_8n::ew());
