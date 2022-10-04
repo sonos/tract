@@ -337,7 +337,7 @@ impl crate::ops::binary::BinMiniOp for Scale {
 
     fn eval_in_a(&self, a: &mut Tensor, b: &Tensor) -> TractResult<()> {
         // a is f32 by construction (scaler). if we are here in mean c is also f32, so b is f32
-        let mut a = a.to_array_view_mut::<f32>()?;
+        let a = a.to_array_view_mut::<f32>()?;
         let b = b.to_array_view::<f32>()?;
         ndarray::Zip::from(a).and_broadcast(b).for_each(|a, b| *a = scale_by(*b, *a));
         Ok(())
