@@ -2,7 +2,6 @@
 #[macro_use]
 extern crate derive_new;
 extern crate lazy_static;
-extern crate libc;
 extern crate log;
 extern crate num_traits;
 #[macro_use]
