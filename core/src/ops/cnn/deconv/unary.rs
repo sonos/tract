@@ -196,8 +196,11 @@ impl TypedOp for DeconvUnary {
             invariants.axes.push(AxisInfo::simple(0))
         }
         for geo_axis in 0..self.pool_spec.kernel_shape.len() {
-            let kernel_len = self.pool_spec.kernel_shape[geo_axis];
-            if kernel_len == 1 {
+            if self.pool_spec.kernel_shape[geo_axis] == 1
+                && self.pool_spec.strides()[geo_axis] == 1
+                && self.pool_spec.padding.valid_dim(geo_axis, true)
+                && self.adjustments[geo_axis] == 0
+            {
                 invariants
                     .axes
                     .push(AxisInfo::simple(geo_axis + self.pool_spec.data_format.h_axis()))
