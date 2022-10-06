@@ -12,13 +12,6 @@ fn use_masm() -> bool {
     env::var("CARGO_CFG_TARGET_ENV") == Ok("msvc".to_string()) && var("HOST").contains("-windows-")
 }
 
-fn needs_pragma() -> bool {
-    // This will add the following to the asm templates if true:
-    // .cpu generic+fp+simd+fp16
-    !cc::Build::new().get_compiler().is_like_clang()
-        && !cc::Build::new().get_compiler().is_like_gnu()
-}
-
 fn jump_table() -> Vec<String> {
     println!("cargo:rerun-if-changed=src/frame/mmm/fuse.rs");
     std::fs::read_to_string("src/frame/mmm/fuse.rs")
@@ -27,6 +20,51 @@ fn jump_table() -> Vec<String> {
         .filter(|l| l.contains("// jump_to:"))
         .map(|l| l.split("jump_to:").nth(1).unwrap().to_owned())
         .collect()
+}
+
+#[derive(Clone, Debug)]
+struct ConfigForHalf {
+    extra_flags: Vec<String>,
+    needs_pragma: bool,
+}
+
+impl ConfigForHalf {
+    fn new(extra_flags: Vec<String>, needs_pragma: bool) -> ConfigForHalf {
+        ConfigForHalf { extra_flags, needs_pragma }
+    }
+
+    fn all() -> Vec<ConfigForHalf> {
+        let mut configs = vec![];
+        for extra_flags in
+            vec![vec![], vec!["-march=armv8.2-a".to_string()], vec!["-mcpu=cortex-a55".to_string()]]
+        {
+            for needs_pragma in [false, true] {
+                configs.push(ConfigForHalf::new(extra_flags.clone(), needs_pragma))
+            }
+        }
+        configs
+    }
+
+    fn cc(&self) -> cc::Build {
+        let mut cc = cc::Build::new();
+        for flag in &self.extra_flags {
+            cc.flag(&flag);
+        }
+        cc
+    }
+
+    fn works(&self) -> bool {
+        let filename = if self.needs_pragma {
+            "arm64/arm64fp16/dummy_fmla_pragma.S"
+        } else {
+            "arm64/arm64fp16/dummy_fmla_no_pragma.S"
+        };
+        self.cc().static_flag(true).file(filename).try_compile("dummy").is_ok()
+    }
+
+    pub fn probe() -> Option<ConfigForHalf> {
+        Self::all().iter().find(|c| c.works()).cloned()
+    }
 }
 
 fn main() {
@@ -40,7 +78,7 @@ fn main() {
 
     match arch.as_ref() {
         "x86_64" => {
-            let files = preprocess_files("x86_64/fma", &[], &suffix);
+            let files = preprocess_files("x86_64/fma", &[], &suffix, false);
 
             match os.as_ref() {
                 "windows" => {
@@ -127,7 +165,7 @@ fn main() {
             }
         }
         "arm" | "armv7" => {
-            let files = preprocess_files("arm32/armvfpv2", &[], &suffix);
+            let files = preprocess_files("arm32/armvfpv2", &[], &suffix, false);
             cc::Build::new()
                 .files(files)
                 .flag("-marm")
@@ -138,6 +176,7 @@ fn main() {
                 "arm32/armv7neon",
                 &[("core", vec!["cortexa7", "cortexa9", "generic"])],
                 &suffix,
+                false,
             );
             cc::Build::new()
                 .files(files)
@@ -151,21 +190,19 @@ fn main() {
                 "arm64/arm64simd",
                 &[("core", vec!["a53", "a55", "gen"])],
                 &suffix,
+                false,
             );
             cc::Build::new().files(files).static_flag(true).compile("arm64simd");
             if std::env::var("CARGO_FEATURE_NO_FP16").is_err() {
-                let files =
-                    preprocess_files("arm64/arm64fp16", &[("core", vec!["a55", "gen"])], &suffix);
-                // depending on the compiler variant, we may need to try different flags. this is
-                // awful.
-                let compile_arv82_asm = |flag| -> Result<(), cc::Error> {
-                    let mut cc = cc::Build::new();
-                    cc.flag(flag);
-                    cc.files(&files).static_flag(true).try_compile("arm64fp16")
-                };
-                compile_arv82_asm("-march=armv8.2-a")
-                    .or_else(|_| compile_arv82_asm("-mcpu=cortex-a55"))
-                    .unwrap()
+                let config =
+                    ConfigForHalf::probe().expect("No configuration found for fp16 support");
+                let files = preprocess_files(
+                    "arm64/arm64fp16",
+                    &[("core", vec!["a55", "gen"])],
+                    &suffix,
+                    config.needs_pragma,
+                );
+                config.cc().files(files).static_flag(true).compile("arm64fp16")
             }
         }
         _ => {}
@@ -178,6 +215,7 @@ fn preprocess_files(
     input: impl AsRef<path::Path>,
     variants: &[Variant],
     suffix: &str,
+    needs_pragma: bool,
 ) -> Vec<path::PathBuf> {
     let out_dir = path::PathBuf::from(var("OUT_DIR"));
     let mut files = vec![];
@@ -206,7 +244,7 @@ fn preprocess_files(
                 }
                 let mut file = out_dir.join(tmpl_file);
                 file.set_extension("S");
-                preprocess_file(f.path(), &file, &globals, suffix);
+                preprocess_file(f.path(), &file, &globals, suffix, needs_pragma);
                 files.push(file);
             }
         }
@@ -227,6 +265,7 @@ fn preprocess_file(
     output: impl AsRef<path::Path>,
     variants: &[(&'static str, &'static str)],
     suffix: &str,
+    needs_pragma: bool,
 ) {
     println!("cargo:rerun-if-changed={}", template.as_ref().to_string_lossy());
     let family = var("CARGO_CFG_TARGET_FAMILY");
@@ -234,7 +273,6 @@ fn preprocess_file(
     // We also check to see if we're on a windows host, if we aren't, we won't be
     // able to use the Microsoft assemblers,
     let msvc = use_masm();
-    let needs_pragma = needs_pragma();
     println!("cargo:rerun-if-changed={}", template.as_ref().to_string_lossy());
     let mut input = fs::read_to_string(&template).unwrap();
     input = strip_comments(input, msvc);
