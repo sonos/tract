@@ -4,8 +4,8 @@ use crate::ast::{Document, QuantFormat};
 use crate::internal::*;
 use tract_core::downcast_rs::{impl_downcast, DowncastSync};
 
-pub const NNEF_DOCUMENT_FILE: &'static str = "graph.nnef";
-pub const QUANT_FORMAT_FILE: &'static str = "graph.quant";
+pub const GRAPH_NNEF_FILENAME: &'static str = "graph.nnef";
+pub const GRAPH_QUANT_FILENAME: &'static str = "graph.quant";
 
 fn path_to_id(path: impl AsRef<Path>) -> TractResult<String> {
     let mut path = path.as_ref().to_path_buf();
@@ -43,11 +43,11 @@ pub trait ResourceLoader: Send + Sync {
 impl Resource for Document {}
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq, Hash)]
-pub struct NnefDocumentLoader;
+pub struct GraphNnefLoader;
 
-impl ResourceLoader for NnefDocumentLoader {
+impl ResourceLoader for GraphNnefLoader {
     fn name(&self) -> Cow<str> {
-        "NnefDocumentLoader".into()
+        "GraphNnefLoader".into()
     }
 
     fn try_load(
@@ -55,11 +55,11 @@ impl ResourceLoader for NnefDocumentLoader {
         path: &Path,
         reader: &mut dyn std::io::Read,
     ) -> TractResult<Option<(String, Arc<dyn Resource>)>> {
-        if path.to_str() == Some(NNEF_DOCUMENT_FILE) {
+        if path.to_str() == Some(GRAPH_NNEF_FILENAME) {
             let mut text = String::new();
             reader.read_to_string(&mut text)?;
             let document = crate::ast::parse::parse_document(&text)?;
-            Ok(Some((NNEF_DOCUMENT_FILE.to_string(), Arc::new(document))))
+            Ok(Some((GRAPH_NNEF_FILENAME.to_string(), Arc::new(document))))
         } else {
             Ok(None)
         }
@@ -69,11 +69,11 @@ impl ResourceLoader for NnefDocumentLoader {
 impl Resource for Tensor {}
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq, Hash)]
-pub struct NnefTensorLoader;
+pub struct DatLoader;
 
-impl ResourceLoader for NnefTensorLoader {
+impl ResourceLoader for DatLoader {
     fn name(&self) -> Cow<str> {
-        "NnefTensorLoader".into()
+        "DatLoader".into()
     }
 
     fn try_load(
@@ -94,11 +94,11 @@ impl ResourceLoader for NnefTensorLoader {
 impl Resource for HashMap<String, QuantFormat> {}
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq, Hash)]
-pub struct QuantFormatLoader;
+pub struct GraphQuantLoader;
 
-impl ResourceLoader for QuantFormatLoader {
+impl ResourceLoader for GraphQuantLoader {
     fn name(&self) -> Cow<str> {
-        "QuantFormatLoader".into()
+        "GraphQuantLoader".into()
     }
 
     fn try_load(
@@ -106,12 +106,12 @@ impl ResourceLoader for QuantFormatLoader {
         path: &Path,
         reader: &mut dyn std::io::Read,
     ) -> TractResult<Option<(String, Arc<dyn Resource>)>> {
-        if path.to_str() == Some(QUANT_FORMAT_FILE) {
+        if path.to_str() == Some(GRAPH_QUANT_FILENAME) {
             let mut t = String::new();
             reader.read_to_string(&mut t)?;
             let quant = crate::ast::quant::parse_quantization(&t)?;
             let quant: HashMap<String, QuantFormat> = quant.into_iter().collect();
-            Ok(Some((QUANT_FORMAT_FILE.to_string(), Arc::new(quant))))
+            Ok(Some((GRAPH_QUANT_FILENAME.to_string(), Arc::new(quant))))
         } else {
             Ok(None)
         }

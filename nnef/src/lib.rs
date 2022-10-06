@@ -30,7 +30,7 @@ pub mod internal {
     pub use crate::prelude::*;
     pub use crate::registry::*;
     pub use crate::resource::{
-        NnefDocumentLoader, NnefTensorLoader, QuantFormatLoader, Resource, ResourceLoader,
+        GraphNnefLoader, DatLoader, QuantFormatLoader, Resource, ResourceLoader,
     };
     pub use crate::ser::{invocation, logical, numeric, string, IntoAst};
     pub use std::any::TypeId;

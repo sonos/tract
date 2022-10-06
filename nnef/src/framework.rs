@@ -24,8 +24,8 @@ impl Default for Nnef {
             stdlib: stdlib(),
             registries: vec![crate::ops::tract_nnef()],
             resource_loaders: vec![
-                NnefDocumentLoader.into_boxed(),
-                NnefTensorLoader.into_boxed(),
+                GraphNnefLoader.into_boxed(),
+                DatLoader.into_boxed(),
                 QuantFormatLoader.into_boxed(),
             ],
         }
@@ -213,9 +213,9 @@ fn proto_model_from_resources(
 ) -> TractResult<ProtoModel> {
     // NNEF document extraction
     let doc = resources
-        .remove(crate::resource::NNEF_DOCUMENT_FILE)
+        .remove(crate::resource::GRAPH_NNEF_FILENAME)
         .with_context(|| {
-            anyhow!("Resource {} was not found in the model", crate::resource::NNEF_DOCUMENT_FILE)
+            anyhow!("Resource {} was not found in the model", crate::resource::GRAPH_NNEF_FILENAME)
         })?
         .downcast_arc::<Document>()
         .map_err(|_| anyhow!("Error while downcasting NNEF document resource"))?;
@@ -236,7 +236,7 @@ fn proto_model_from_resources(
     });
 
     // Quantization format resources extraction if present.
-    let quantization = resources.remove(crate::resource::QUANT_FORMAT_FILE)
+    let quantization = resources.remove(crate::resource::GRAPH_QUANT_FILENAME)
         .map(|q_r| {
             q_r
                 .downcast_arc::<HashMap<String, QuantFormat>>()
