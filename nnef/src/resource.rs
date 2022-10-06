@@ -34,6 +34,10 @@ pub trait ResourceLoader: Send + Sync {
         path: &Path,
         reader: &mut dyn std::io::Read,
     ) -> TractResult<Option<(String, Arc<dyn Resource>)>>;
+
+    fn into_boxed(self) -> Box<dyn ResourceLoader> where Self: Sized + 'static {
+        Box::new(self)
+    }
 }
 
 impl Resource for Document {}

@@ -23,7 +23,11 @@ impl Default for Nnef {
         Nnef {
             stdlib: stdlib(),
             registries: vec![crate::ops::tract_nnef()],
-            resource_loaders: vec![],
+            resource_loaders: vec![
+                NnefDocumentLoader.into_boxed(),
+                NnefTensorLoader.into_boxed(),
+                QuantFormatLoader.into_boxed(),
+            ],
         }
     }
 }
@@ -251,6 +255,11 @@ fn read_stream<R: std::io::Read>(
     reader: &mut R,
     resources: &mut HashMap<String, Arc<dyn Resource>>,
 ) -> TractResult<()> {
+    // ignore path with any component starting with "." (because OSX's tar is weird)
+    #[cfg(target_family = "unix")]
+    if path.components().any(|name| name.as_os_str().as_bytes().first() == Some(&b'.')) {
+        return Ok(());
+    }
     let mut last_loader_name;
     for loader in resource_loaders {
         last_loader_name = Some(loader.name());
