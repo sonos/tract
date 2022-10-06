@@ -1,5 +1,10 @@
 # Unreleased
 
+# 0.18.1 - 2022-10-06
+* prepare NNEF for further tract-opl extension (resource support)
+* more generic matmul
+* optimise some EinSum cases as matmul
+
 # 0.18.0 - 2022-09-21
 * [ONNX Breaking] Several changes to move towards supporting ONNX symbolic dimensions (actual fixes, but they may break stuff that was working more or less by accident). It may be required to erase output shapes explicitely when input shape is overriden on models that were working before.
 * [CLI breaking] ONXN symbolic dimensions has some impact here too. --input-bundle is deprecated, is was overriden and ambiguous. Instead, there is a  --input-facts-from-bundle global option, and a --input-from-bundle option in the subcommands run, profile, dump. --allow-random-input is also moved to subcommands. We think all previously supported behaviours are still there. Please open issues if not.
