@@ -1,5 +1,5 @@
 use tract_nnef::internal::*;
-use tract_nnef::tract_core::ops::matmul::MatMul;
+use tract_nnef::tract_core::ops::matmul::{MatMul, MatMulAxes};
 
 use crate::einsum::expr::AxisSym;
 use crate::einsum::EinSum;
@@ -18,7 +18,7 @@ pub fn declutter(
     assert!(k_axis.result.is_none());
     assert!(k_axis.inputs.iter().all(|pos| pos.len() == 1));
     let inputs = model.node_input_facts(node.id)?;
-//    eprintln!("{}", op.expr);
+    //    eprintln!("{}", op.expr);
     // summing axis is either last or last before last
     if k_axis.inputs[0][0] + 2 < inputs[0].rank() || k_axis.inputs[1][0] + 2 < inputs[1].rank() {
         trace!("Not decluttering, k_axis");
@@ -128,11 +128,13 @@ pub fn declutter(
             return Ok(Some(patch));
         }
     }
-    let op = MatMul {
-        a_trans: k_axis.inputs[0][0] == a_rank - 2,
-        b_trans: k_axis.inputs[1][0] == b_rank - 1,
-        c_trans: m_axis.result == Some(c_rank - 1),
-    };
+    // FIXME
+    let axes = MatMulAxes::default_for_ranks(a_rank, b_rank, c_rank).transposing(
+        k_axis.inputs[0][0] == a_rank - 2,
+        k_axis.inputs[1][0] == b_rank - 1,
+        m_axis.result == Some(c_rank - 1),
+    );
+    let op = MatMul { axes };
     Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, op)?))
 }
 

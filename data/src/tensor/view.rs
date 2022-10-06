@@ -31,6 +31,28 @@ impl<'a> TensorView<'a> {
         }
     }
 
+    pub fn offsetting(tensor: &'a Tensor, coords: &[usize]) -> anyhow::Result<TensorView<'a>> {
+        ensure!(
+            coords.len() == tensor.rank() && coords.iter().zip(tensor.shape()).all(|(p, d)| p < d),
+            "Invalid coords {:?} for shape {:?}",
+            coords,
+            tensor.shape()
+        );
+        unsafe { Ok(Self::offsetting_unchecked(tensor, coords)) }
+    }
+
+    pub unsafe fn offsetting_unchecked(tensor: &'a Tensor, coords: &[usize]) -> TensorView<'a> {
+        let offset_bytes =
+            coords.iter().zip(tensor.strides()).map(|(a, b)| *a as isize * b).sum::<isize>()
+                * tensor.datum_type().size_of() as isize;
+        TensorView {
+            tensor,
+            offset_bytes,
+            indexing: Indexing::Custom { shape: &tensor.shape, strides: &tensor.strides },
+            phantom: PhantomData,
+        }
+    }
+
     pub fn at_prefix(tensor: &'a Tensor, prefix: &[usize]) -> anyhow::Result<TensorView<'a>> {
         ensure!(
             prefix.len() <= tensor.rank() && prefix.iter().zip(tensor.shape()).all(|(p, d)| p < d),

@@ -36,6 +36,14 @@ impl QParamKind {
         }
     }
 
+    pub fn shape<'tf>(&self, inputs: &'tf [&'tf TypedFact]) -> Cow<'tf, ShapeFact> {
+        match self {
+            QParamKind::Attr(t) => Cow::Owned(ShapeFact::from(t.shape())),
+            QParamKind::FromInput(ix) => Cow::Borrowed(&inputs[*ix].shape),
+            QParamKind::FromQType => Cow::Owned(ShapeFact::scalar()),
+        }
+    }
+
     pub fn offset_u8_as_i8(&self, model: &TypedModel, inputs: &[OutletId]) -> TractResult<Self> {
         let tensor = match self {
             QParamKind::Attr(t) => t,
@@ -231,28 +239,12 @@ impl MatMulQParams {
 
 #[derive(Debug, Clone, new, Hash)]
 pub struct QMatMul {
-    pub a_trans: bool,
-    pub b_trans: bool,
-    pub c_trans: bool,
+    pub axes: MatMulAxes,
     pub output_type: DatumType,
     pub params: MatMulQParams,
 }
 
 impl_dyn_hash!(QMatMul);
-
-impl QMatMul {
-    pub fn with_a_trans(self, a_trans: bool) -> QMatMul {
-        QMatMul { a_trans, ..self }
-    }
-
-    pub fn with_b_trans(self, b_trans: bool) -> QMatMul {
-        QMatMul { b_trans, ..self }
-    }
-
-    pub fn with_c_trans(self, c_trans: bool) -> QMatMul {
-        QMatMul { c_trans, ..self }
-    }
-}
 
 impl Op for QMatMul {
     fn name(&self) -> Cow<str> {
@@ -298,17 +290,15 @@ impl EvalOp for QMatMul {
         let a = wire_offset_u8_as_i8(&mut model, "adhoc", a, "a", &mut params[0], "a0")?;
         let b = wire_offset_u8_as_i8(&mut model, "adhoc", b, "b", &mut params[2], "b0")?;
 
-        let new_op = MatMul { a_trans: self.a_trans, b_trans: self.b_trans, c_trans: self.c_trans };
+        let new_op = MatMul { axes: self.axes };
         let result = model.wire_node("adhoc.matmul", new_op, &[a, b])?[0];
         let result = wire_matmul_quant(
             &mut model,
             "adhoc",
             a,
-            self.a_trans,
             b,
-            self.b_trans,
             Some(bias),
-            self.c_trans,
+            self.axes,
             result,
             self.output_type,
             &params,
@@ -334,23 +324,19 @@ impl TypedOp for QMatMul {
                 inputs[1]
             );
         }
-        let (_m, _k, _n, c_shape) = compute_shape(
-            &inputs[0].shape,
-            &inputs[1].shape,
-            self.a_trans,
-            self.b_trans,
-            self.c_trans,
-        )?;
+        let (_m, _k, _n, c_shape) = compute_shape(&inputs[0].shape, &inputs[1].shape, self.axes)?;
 
-        if inputs[2].rank() == 2 {
-            let expected_bias_shape: [TDim; 2] = if self.c_trans {
-                [1.to_dim(), c_shape[c_shape.len() - 1].clone()]
-            } else {
-                [c_shape[c_shape.len() - 2].clone(), 1.to_dim()]
-            };
-            anyhow::ensure!(*inputs[2].shape == expected_bias_shape);
-        } else {
-            anyhow::ensure!(inputs[2].shape.iter().product::<TDim>() == 1.to_dim());
+        let bias = &inputs[2];
+        if bias.rank() > 1 {
+            anyhow::bail!("Bias must be either scalar or vector (rank 0 or 1).");
+        } else if bias.rank() == 1 {
+            let expected_len = &c_shape[self.axes.c_m];
+            anyhow::ensure!(
+                &bias.shape[0] == expected_len,
+                "got: {:?} expected len: {:?}",
+                bias,
+                expected_len
+            );
         };
 
         Ok(tvec!(self.output_type.fact(c_shape)))
@@ -378,8 +364,6 @@ impl TypedOp for QMatMul {
         };
 
         let flip = konst_ix == 1;
-        let t_konst = [self.a_trans, self.b_trans][konst_ix] ^ flip;
-        let t_var = [self.b_trans, self.a_trans][konst_ix] ^ flip;
         let konst = model.outlet_fact(node.inputs[konst_ix])?.konst.as_ref().unwrap();
         let bias = model.outlet_fact(node.inputs[2])?.konst.clone().unwrap();
 
@@ -411,6 +395,19 @@ impl TypedOp for QMatMul {
             }
         };
 
+        let axes = if flip {
+            MatMulAxes {
+                a_m: self.axes.b_n,
+                a_k: self.axes.b_k,
+                b_n: self.axes.a_m,
+                b_k: self.axes.a_k,
+                c_m: self.axes.c_n,
+                c_n: self.axes.c_m,
+            }
+        } else {
+            self.axes.clone()
+        };
+
         TypedModelPatch::replace_single_op(
             model,
             node,
@@ -423,9 +420,7 @@ impl TypedOp for QMatMul {
                         .map(|b| b.cast_to_scalar::<f32>().unwrap() != 0.0)
                         .unwrap_or(true)
                 }),
-                t_konst,
-                t_var,
-                self.c_trans ^ flip,
+                axes,
                 self.output_type,
                 new_params,
             ),
@@ -438,8 +433,7 @@ impl TypedOp for QMatMul {
             &inputs[0].shape.to_tvec(),
             &inputs[1].shape.to_tvec(),
             inputs[0].datum_type,
-            self.a_trans,
-            self.b_trans,
+            self.axes,
         )
     }
 
@@ -480,17 +474,15 @@ impl TypedOp for QMatMul {
         let a = wire_offset_u8_as_i8(&mut patch, &node.name, a, "a", &mut params[0], "a0")?;
         let b = wire_offset_u8_as_i8(&mut patch, &node.name, b, "b", &mut params[2], "b0")?;
 
-        let new_op = MatMul { a_trans: self.a_trans, b_trans: self.b_trans, c_trans: self.c_trans };
+        let new_op = MatMul { axes: self.axes };
         let result = patch.wire_node(format!("{}.matmul", &node.name), new_op, &[a, b])?[0];
         let result = wire_matmul_quant(
             &mut patch,
             &node.name,
             a,
-            self.a_trans,
             b,
-            self.b_trans,
             Some(bias),
-            self.c_trans,
+            self.axes,
             result,
             self.output_type,
             &params,
@@ -546,21 +538,30 @@ pub(crate) fn wire_matmul_quant(
     model: &mut TypedModel,
     name: &str,
     a: OutletId,
-    a_trans: bool,
     b: OutletId,
-    b_trans: bool,
     bias: Option<OutletId>,
-    c_trans: bool,
+    axes: MatMulAxes,
     mut result: OutletId,
     output_type: DatumType,
     params: &[OutletId],
 ) -> TractResult<OutletId> {
-    let a_fact = model.outlet_fact(a)?.clone();
-    let rank = a_fact.rank();
-    let m_axis = rank - 2 + c_trans as usize;
-    let n_axis = rank - 1 - c_trans as usize;
+    let b_fact = model.outlet_fact(b)?.clone();
+    // TODO: assumed c_rank == b_rank (== a_rank)
 
-    if let Some(bias) = bias {
+    if let Some(mut bias) = bias {
+        // bias is scalar -> ok
+        // bias is vec, m is right in C -> broadcast will add left side axes to bias
+        // bias is vec, m is not right in C -> we must append in C axes to the right to align them
+        let bias_rank = model.outlet_fact(bias)?.rank();
+        if bias_rank == 1 && axes.c_m < b_fact.rank() - 1 {
+            for i in 0..(b_fact.rank() - axes.c_m - 1) {
+                bias = model.wire_node(
+                    format!("{}.axis_rank_fix.{}", name, i),
+                    AxisOp::Add(bias_rank + i),
+                    &[bias],
+                )?[0]
+            }
+        }
         result = wire_with_rank_broadcast(
             &format!("{}.add_bias", &name),
             model,
@@ -569,7 +570,7 @@ pub(crate) fn wire_matmul_quant(
         )?[0];
     }
 
-    let k = model.outlet_fact(a)?.shape[rank - 2 + !a_trans as usize].clone();
+    let k = model.outlet_fact(a)?.shape[axes.a_k].clone();
 
     let abc_scale = combine_scales(model, name, params[1], params[3], params[5])?;
 
@@ -577,24 +578,22 @@ pub(crate) fn wire_matmul_quant(
         model.wire_node(format!("{}.a_as_i32", name), ops::cast::cast(i32::datum_type()), &[a])?[0];
     let b_i32 =
         model.wire_node(format!("{}.b_as_i32", name), ops::cast::cast(i32::datum_type()), &[b])?[0];
-    let a_k_axis = rank - 2 + !a_trans as usize;
     let sum_a = model.wire_node(
         format!("{}.sum_a", name),
-        ops::nn::Reduce::new(tvec!(a_k_axis), ops::nn::Reducer::Sum),
+        ops::nn::Reduce::new(tvec!(axes.a_k), ops::nn::Reducer::Sum),
         &[a_i32],
     )?[0];
     let sum_a =
-        model.wire_node(format!("{}.sum_a_reduced", name), AxisOp::Rm(a_k_axis), &[sum_a])?[0];
-    let b_k_axis = rank - 2 + b_trans as usize;
+        model.wire_node(format!("{}.sum_a_reduced", name), AxisOp::Rm(axes.a_k), &[sum_a])?[0];
     let sum_b = model.wire_node(
         format!("{}.sum_b", name),
-        ops::nn::Reduce::new(tvec!(b_k_axis), ops::nn::Reducer::Sum),
+        ops::nn::Reduce::new(tvec!(axes.b_k), ops::nn::Reducer::Sum),
         &[b_i32],
     )?[0];
     let sum_b =
-        model.wire_node(format!("{}.sum_b_reduced", name), AxisOp::Rm(b_k_axis), &[sum_b])?[0];
+        model.wire_node(format!("{}.sum_b_reduced", name), AxisOp::Rm(axes.b_k), &[sum_b])?[0];
     let result = compensate_zero_points(
-        model, name, result, k, params[0], params[2], sum_a, sum_b, m_axis, n_axis,
+        model, name, result, k, params[0], params[2], sum_a, sum_b, axes.c_m, axes.c_n,
     )?;
     requant(model, name, result, output_type, abc_scale, params[4])
 }
@@ -1051,7 +1050,7 @@ mod test {
                     let result = model
                         .wire_node(
                             "qmm",
-                            QMatMul::new(false, false, false, <$c>::datum_type(), qparams),
+                            QMatMul::new(MatMulAxes::default(), <$c>::datum_type(), qparams),
                             &inputs,
                             )
                         .unwrap();
@@ -1293,9 +1292,7 @@ mod test {
             c_scale: QParamKind::FromInput(indices[5]),
         };
         let op = QMatMul {
-            a_trans: false,
-            b_trans: false,
-            c_trans: false,
+            axes: MatMulAxes::default(),
             output_type: i8::datum_type(),
             params: qparams.clone(),
         };

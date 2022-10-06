@@ -1,6 +1,7 @@
 use crate::internal::*;
 use crate::ops::cnn::KernelFormat;
 use crate::ops::cnn::PoolSpec;
+use crate::ops::matmul::MatMulAxes;
 
 // no-bias, no-group, f32
 
@@ -109,14 +110,11 @@ impl DeconvUnary {
         }
         let kernel_as_g_ohw_i = kernel_as_g_o_h_w_i.into_shape(&shape_g_ohw_i)?;
         let trans_data = self.pool_spec.data_format.c_is_last();
+        let axes = MatMulAxes::default_for_rank(kernel_as_g_ohw_i.rank())
+            .transposing(false, trans_data, false);
         let gemm = target.wire_node(
             format!("{}.gemm", name),
-            crate::ops::matmul::MatMulUnary::new(
-                kernel_as_g_ohw_i.into_arc_tensor(),
-                false,
-                trans_data,
-                false,
-            ),
+            crate::ops::matmul::MatMulUnary::new(kernel_as_g_ohw_i.into_arc_tensor(), axes),
             &input,
         )?;
         // gemm must be (N_)CHkWk_HW

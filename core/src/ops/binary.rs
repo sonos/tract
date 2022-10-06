@@ -49,6 +49,7 @@ pub trait BinMiniOp:
     fn result_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType>;
     fn eval_unicast_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()>;
     fn eval_uniform_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()>;
+    fn eval_in_a(&self, a: &mut Tensor, b: &Tensor) -> TractResult<()>;
     fn eval_out_of_place(&self, c: &mut Tensor, a: &Tensor, b: &Tensor) -> TractResult<()>;
     fn generic_eval(&self, a: Arc<Tensor>, b: Arc<Tensor>) -> TractResult<Tensor> {
         let c_dt = self.result_datum_type(a.datum_type(), b.datum_type())?;
@@ -63,9 +64,15 @@ pub trait BinMiniOp:
         } else {
             let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])
                 .ok_or_else(|| format_err!("Can not compute resulting shape"))?;
-            let mut c = unsafe { Tensor::uninitialized_dt(c_dt, &*c_shape)? };
-            self.eval_out_of_place(&mut c, a.as_ref(), b.as_ref())?;
-            Ok(c)
+            if &*c_shape == a.shape() && c_dt == a.datum_type() {
+                let mut a = a.into_tensor();
+                self.eval_in_a(&mut a, &b)?;
+                Ok(a)
+            } else {
+                let mut c = unsafe { Tensor::uninitialized_dt(c_dt, &*c_shape)? };
+                self.eval_out_of_place(&mut c, a.as_ref(), b.as_ref())?;
+                Ok(c)
+            }
         }
     }
     fn eval(&self, a: Arc<Tensor>, b: Arc<Tensor>) -> TractResult<Tensor> {
@@ -686,6 +693,35 @@ macro_rules! bin_to_super_type {
                     bail!("{} does not support {:?} (out of place)", self.name(), c.datum_type());
             }
 
+            fn eval_in_a(&self, a: &mut Tensor, b: &Tensor) -> TractResult<()> {
+                // c and a are same type
+                $(
+                    $(if b.datum_type() == $typ::datum_type() {
+                        let cab: fn(&mut $typ, &$typ, &$typ) -> () = $cab;
+                        let b = b.to_array_view::<$typ>()?;
+                        let mut a = a.to_array_view_mut::<$typ>()?;
+                        $crate::ndarray::Zip::from(&mut a).and_broadcast(b).for_each(|a, b| cab(a, &a.clone(), b));
+                        return Ok(())
+                    })*
+                 )*
+                    /*
+                $(
+                    $(
+                        $(if a.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
+                            let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
+                            let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
+                            let mut a = a.to_array_view_mut::<$typ_dt>()?;
+                            let b = b.to_array_view::<$typ_dt>()?;
+                            $crate::ndarray::Zip::from(&mut a).and_broadcast(b).for_each(|a, b| cab(a, a, b, zp, scale));
+                            return Ok(())
+                        }
+                        )*
+                     )*
+                 )?
+                 */
+                bail!("{} does not support {:?} (out of place)", self.name(), a.datum_type());
+            }
+
             $(fn eval(&self, a: Arc<Tensor>, b: Arc<Tensor>) -> TractResult<Tensor> {
                 $eval_override(a, b)
             })?
@@ -827,14 +863,19 @@ macro_rules! bin_to_bool {
             fn eval_out_of_place(&self, c: &mut Tensor, a: &Tensor, b: &Tensor) -> TractResult<()> {
                 $(
                     $(if a.datum_type() == $typ::datum_type() {
+                        let cab: fn(&mut bool, &$typ, &$typ) -> () = $cab;
                         let a = a.to_array_view::<$typ>()?;
                         let b = b.to_array_view::<$typ>()?;
                         let mut c = c.to_array_view_mut::<bool>()?;
-                        ndarray::Zip::from(&mut c).and_broadcast(a).and_broadcast(b).for_each($cab);
+                        ndarray::Zip::from(&mut c).and_broadcast(a).and_broadcast(b).for_each(cab);
                         return Ok(())
                     }
                     )*
                  )*
+                    bail!("{} does not support {:?}", self.name(), a.datum_type());
+            }
+
+            fn eval_in_a(&self, a: &mut Tensor, _b: &Tensor) -> TractResult<()> {
                     bail!("{} does not support {:?}", self.name(), a.datum_type());
             }
 

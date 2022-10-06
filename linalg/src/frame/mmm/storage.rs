@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 use tract_data::internal::*;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum OutputStoreSpec {
     View {
         m_axis: usize,

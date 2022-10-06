@@ -2,6 +2,7 @@ use crate::model::ParsingContext;
 use crate::pb::*;
 use tract_hir::internal::*;
 use tract_hir::ops;
+use tract_hir::tract_core::ops::matmul::MatMulAxes;
 
 pub fn rnn(
     _ctx: &ParsingContext,
@@ -273,9 +274,11 @@ impl RNN {
             None
         };
 
+        let matmul_t = matmul::MatMul { axes: MatMulAxes::default().transposing_b() };
+
         // Ht = f(Xt*(Wi^T) + Ht-1*(Ri^T) + Wbi + Rbi)
-        wire!(Xt_WiT = matmul::MatMul::default().with_b_trans(true), Xt, W);
-        wire!(Ht_1_RiT = matmul::MatMul::default().with_b_trans(true), Ht_1, R);
+        wire!(Xt_WiT = matmul_t.clone(), Xt, W);
+        wire!(Ht_1_RiT = matmul_t.clone(), Ht_1, R);
 
         wire!(ht0 = math::add::bin_typed(), Xt_WiT, Ht_1_RiT);
         let mut ht0 = ht0;

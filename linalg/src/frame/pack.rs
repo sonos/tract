@@ -328,7 +328,7 @@ where
 }
 
 #[inline(never)]
-pub unsafe fn pack_mn_major<Chunk: Copy>(
+unsafe fn pack_mn_major<Chunk: Copy>(
     b: *const u8,
     packed: *mut u8,
     k_stride_bytes: isize,

@@ -733,6 +733,25 @@ impl TypedOp for Scan {
         Ok(Invariants::from(invariants))
     }
 
+    fn suggested_axis_changes(&self) -> TractResult<TVec<(InOut, AxisOp)>> {
+        let mut suggestions = tvec!();
+        for input in &self.input_mapping {
+            if let InputMapping::Scan { slot, axis, chunk: _ } = input {
+                if *axis != 0 {
+                    suggestions.push((InOut::In(*slot), AxisOp::Move(*axis, 0)))
+                }
+            }
+        }
+        for output in &self.output_mapping {
+            if let Some(slot) = output.full_slot {
+                if output.axis != 0 {
+                    suggestions.push((InOut::Out(slot), AxisOp::Move(output.axis, 0)))
+                }
+            }
+        }
+        Ok(suggestions)
+    }
+
     fn change_axes(
         &self,
         _model: &TypedModel,

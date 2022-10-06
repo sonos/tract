@@ -6,8 +6,6 @@ pub mod cnn;
 pub mod delay;
 pub mod downsample;
 pub mod dummy;
-pub mod matmul;
-pub mod qmatmul;
 pub mod scan;
 pub mod slice;
 pub mod source;
@@ -41,7 +39,7 @@ pub(crate) fn sync_inputs(
     Ok(inputs)
 }
 
-register_all_mod!(array, cnn, downsample, matmul, qmatmul, scan, source);
+register_all_mod!(array, cnn, downsample, scan, source);
 
 type PulsifierFn = fn(
     &TypedModel,

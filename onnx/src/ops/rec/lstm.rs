@@ -2,6 +2,7 @@ use crate::model::ParsingContext;
 use crate::pb::*;
 use tract_hir::internal::*;
 use tract_hir::ops;
+use tract_hir::tract_core::ops::matmul::MatMulAxes;
 
 pub fn lstm(
     _ctx: &ParsingContext,
@@ -392,9 +393,11 @@ impl LSTM {
             None
         };
 
+        let matmul_t = matmul::MatMul { axes: MatMulAxes::default().transposing_b() };
+
         // it = f(Xt*(Wi^T) + Ht-1*(Ri^T) + Pi (.) Ct-1 + Wbi + Rbi)
-        wire!(Xt_WiT = matmul::MatMul::default().with_b_trans(true), Xt, Wi);
-        wire!(Ht_1_RiT = matmul::MatMul::default().with_b_trans(true), Ht_1, Ri);
+        wire!(Xt_WiT = matmul_t.clone(), Xt, Wi);
+        wire!(Ht_1_RiT = matmul_t.clone(), Ht_1, Ri);
         wire!(it0 = math::add::bin_typed(), Xt_WiT, Ht_1_RiT);
         let mut it0 = it0;
         if let Some(biases) = biases {
@@ -409,8 +412,8 @@ impl LSTM {
         wire!(it = self.f.clone(), it0);
 
         // ft = f(Xt*(Wf^T) + Ht-1*(Rf^T) + Pf (.) Ct-1 + Wbf + Rbf)
-        wire!(Xt_WfT = matmul::MatMul::default().with_b_trans(true), Xt, Wf);
-        wire!(Ht_1_RfT = matmul::MatMul::default().with_b_trans(true), Ht_1, Rf);
+        wire!(Xt_WfT = matmul_t.clone(), Xt, Wf);
+        wire!(Ht_1_RfT = matmul_t.clone(), Ht_1, Rf);
         wire!(ft0 = math::add::bin_typed(), Xt_WfT, Ht_1_RfT);
         let mut ft0 = ft0;
         if let Some(biases) = biases {
@@ -425,8 +428,8 @@ impl LSTM {
         wire!(ft = self.f.clone(), ft0);
 
         // ct = g(Xt*(Wc^T) + Ht-1*(Rc^T) + Wbc + Rbc)
-        wire!(Xt_WcT = matmul::MatMul::default().with_b_trans(true), Xt, Wc);
-        wire!(Ht_1_RcT = matmul::MatMul::default().with_b_trans(true), Ht_1, Rc);
+        wire!(Xt_WcT = matmul_t.clone(), Xt, Wc);
+        wire!(Ht_1_RcT = matmul_t.clone(), Ht_1, Rc);
         wire!(ct0 = math::add::bin_typed(), Xt_WcT, Ht_1_RcT);
         let mut ct0 = ct0;
         if let Some(biases) = biases {
@@ -441,8 +444,8 @@ impl LSTM {
         wire!(Ct = math::add::bin_typed(), ft_Ct_1, it_ct);
 
         // ot = f(Xt*(Wo^T) + Ht-1*(Ro^T) + Po (.) Ct + Wbo + Rbo)
-        wire!(Xt_WoT = matmul::MatMul::default().with_b_trans(true), Xt, Wo);
-        wire!(Ht_1_RoT = matmul::MatMul::default().with_b_trans(true), Ht_1, Ro);
+        wire!(Xt_WoT = matmul_t.clone(), Xt, Wo);
+        wire!(Ht_1_RoT = matmul_t.clone(), Ht_1, Ro);
         wire!(ot0 = math::add::bin_typed(), Xt_WoT, Ht_1_RoT);
         let mut ot0 = ot0;
         if let Some(biases) = biases {

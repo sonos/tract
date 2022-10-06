@@ -4,7 +4,7 @@ use tract_core::internal::*;
 use tract_core::ops::cnn::deconv::adjustments;
 use tract_core::ops::cnn::PaddingSpec;
 use tract_core::ops::cnn::PoolSpec;
-use tract_core::ops::matmul::MatMulQParams;
+use tract_core::ops::matmul::{MatMulAxes, MatMulQParams};
 use tract_core::ops::nn::DataFormat;
 use tract_itertools::izip;
 use tract_itertools::Itertools;
@@ -337,8 +337,16 @@ pub fn conv_or_deconv(
     let qparams = if quantized { Some((output_dt, MatMulQParams::all_from_qtype())) } else { None };
     let bias: Arc<Tensor> = invocation.named_arg_as(builder, "bias")?;
 
-    let bias: Option<Arc<Tensor>> =
-        if bias.is_uniform() && bias.cast_to_scalar::<f32>()? == 0.0 { None } else { Some(bias) };
+    let mut bias: Option<Tensor> = if bias.is_uniform() && bias.cast_to_scalar::<f32>()? == 0.0 {
+        None
+    } else {
+        Some(bias.into_tensor())
+    };
+    if let Some(bias) = bias.as_mut() {
+        if bias.rank() == 2 {
+            bias.remove_axis((bias.shape()[1] == 1) as usize)?;
+        }
+    }
 
     let op: Box<dyn TypedOp> = if deconv {
         let output_shape = invocation.named_arg_as::<TVec<usize>>(builder, "output_shape")?;
@@ -360,7 +368,7 @@ pub fn conv_or_deconv(
             pool_spec,
             KernelFormat::OIHW,
             kernel.into_arc_tensor(),
-            bias,
+            bias.map(Tensor::into_arc_tensor),
             adjustments,
             group,
         ))
@@ -370,7 +378,7 @@ pub fn conv_or_deconv(
             KernelFormat::OIHW,
             kernel.clone(),
             group,
-            bias,
+            bias.map(Tensor::into_arc_tensor),
             qparams,
         ))
     };
@@ -562,6 +570,10 @@ pub fn matmul(
     let b_trans = invocation.named_arg_as(builder, "transposeB")?;
     let a_dt = builder.model.outlet_fact(a)?.datum_type;
     let b_dt = builder.model.outlet_fact(b)?.datum_type;
+    let a_rank = builder.model.outlet_fact(a)?.rank();
+    let b_rank = builder.model.outlet_fact(b)?.rank();
+    let axes = MatMulAxes::default_for_ranks(a_rank, b_rank, a_rank.max(b_rank))
+        .transposing(a_trans, b_trans, false);
     if a_dt.is_quantized() || b_dt.is_quantized() {
         let accum_dt = DatumType::QI32(QParams::ZpScale {
             scale: a_dt.zp_scale().1 * b_dt.zp_scale().1,
@@ -574,18 +586,12 @@ pub fn matmul(
         )?;
         builder.model.node(a.node);
 
-        builder.wire(
-            ops::matmul::QMatMul {
-                a_trans,
-                b_trans,
-                c_trans: false,
-                output_type: dt,
-                params: MatMulQParams::all_from_qtype(),
-            },
+        return builder.wire(
+            ops::matmul::QMatMul { axes, output_type: dt, params: MatMulQParams::all_from_qtype() },
             &[a, b, bias],
-        )
+        );
     } else {
-        builder.wire(ops::matmul::MatMul { a_trans, b_trans, c_trans: false }, &[a, b])
+        builder.wire(ops::matmul::MatMul { axes }, &[a, b])
     }
 }
 

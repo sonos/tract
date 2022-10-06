@@ -335,6 +335,14 @@ impl crate::ops::binary::BinMiniOp for Scale {
         Ok(())
     }
 
+    fn eval_in_a(&self, a: &mut Tensor, b: &Tensor) -> TractResult<()> {
+        // a is f32 by construction (scaler). if we are here in mean c is also f32, so b is f32
+        let a = a.to_array_view_mut::<f32>()?;
+        let b = b.to_array_view::<f32>()?;
+        ndarray::Zip::from(a).and_broadcast(b).for_each(|a, b| *a = scale_by(*b, *a));
+        Ok(())
+    }
+
     fn declutter_unary(
         &self,
         model: &TypedModel,
@@ -381,6 +389,7 @@ pub mod scale {
         use crate::internal::*;
         use crate::ops;
         use crate::ops::math::round_ties_to_even;
+        use crate::ops::matmul::MatMulAxes;
         use proptest::prelude::*;
 
         fn test_scale(a: i8, b: i8, scale: f32) {
@@ -396,7 +405,7 @@ pub mod scale {
             let bias = model.add_const("bias", tensor0(0i32)).unwrap();
             let mut qp = ops::matmul::MatMulQParams::noop_static(i8::datum_type());
             qp.c_scale = tensor0(scale).into();
-            let op = ops::matmul::QMatMul::new(false, false, false, i8::datum_type(), qp);
+            let op = ops::matmul::QMatMul::new(MatMulAxes::default(), i8::datum_type(), qp);
             let output = model.wire_node("mmm", op, &[a, b, bias]).unwrap();
             model.set_output_outlets(&*output).unwrap();
 
