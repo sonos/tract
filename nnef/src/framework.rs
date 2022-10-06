@@ -26,7 +26,7 @@ impl Default for Nnef {
             resource_loaders: vec![
                 GraphNnefLoader.into_boxed(),
                 DatLoader.into_boxed(),
-                QuantFormatLoader.into_boxed(),
+                GraphQuantLoader.into_boxed(),
             ],
         }
     }
@@ -268,7 +268,9 @@ fn read_stream<R: std::io::Read>(
     let mut last_loader_name;
     for loader in resource_loaders {
         last_loader_name = Some(loader.name());
-        if let Some((id, resource)) = loader.try_load(path, reader)? {
+        let loaded = loader.try_load(path, reader)
+            .with_context(|| anyhow!("Error while loading resource by {:?} at path {:?}", loader.name(), path))?;
+        if let Some((id, resource)) = loaded {
             ensure!(
                 !resources.contains_key(&id),
                 "Loader {:?} succeeded to load {:?} which has been already loaded by {:?}",

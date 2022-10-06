@@ -7,7 +7,7 @@ use tract_core::downcast_rs::{impl_downcast, DowncastSync};
 pub const GRAPH_NNEF_FILENAME: &'static str = "graph.nnef";
 pub const GRAPH_QUANT_FILENAME: &'static str = "graph.quant";
 
-fn path_to_id(path: impl AsRef<Path>) -> TractResult<String> {
+pub fn resource_path_to_id(path: impl AsRef<Path>) -> TractResult<String> {
     let mut path = path.as_ref().to_path_buf();
     path.set_extension("");
     path.to_str()
@@ -84,7 +84,7 @@ impl ResourceLoader for DatLoader {
         if path.extension().map(|e| e == "dat").unwrap_or(false) {
             let tensor = crate::tensors::read_tensor(reader)
                 .with_context(|| format!("Error while reading tensor {:?}", path))?;
-            Ok(Some((path_to_id(path)?, Arc::new(tensor))))
+            Ok(Some((resource_path_to_id(path)?, Arc::new(tensor))))
         } else {
             Ok(None)
         }
