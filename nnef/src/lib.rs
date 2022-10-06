@@ -7,6 +7,7 @@ pub mod deser;
 pub mod framework;
 pub mod ops;
 pub mod registry;
+pub mod resource;
 pub mod ser;
 pub mod tensors;
 
@@ -28,6 +29,9 @@ pub mod internal {
     pub use crate::framework::Nnef;
     pub use crate::prelude::*;
     pub use crate::registry::*;
+    pub use crate::resource::{
+        NnefDocumentLoader, NnefTensorLoader, QuantFormatLoader, Resource, ResourceLoader,
+    };
     pub use crate::ser::{invocation, logical, numeric, string, IntoAst};
     pub use std::any::TypeId;
     pub use tract_core::internal::*;

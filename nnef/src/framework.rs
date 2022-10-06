@@ -1,7 +1,7 @@
 use tract_core::tract_data::itertools::Itertools;
 
 use crate::ast::quant::write_quant_format;
-use crate::ast::{ProtoModel, QuantFormat};
+use crate::ast::{Document, ProtoModel, QuantFormat};
 use crate::internal::*;
 use std::io::Read;
 #[cfg(target_family = "unix")]
@@ -15,17 +15,27 @@ pub fn stdlib() -> Vec<FragmentDef> {
 pub struct Nnef {
     pub stdlib: Vec<FragmentDef>,
     pub registries: Vec<Registry>,
+    pub resource_loaders: Vec<Box<dyn ResourceLoader + 'static>>,
 }
 
 impl Default for Nnef {
     fn default() -> Nnef {
-        Nnef { stdlib: stdlib(), registries: vec![crate::ops::tract_nnef()] }
+        Nnef {
+            stdlib: stdlib(),
+            registries: vec![crate::ops::tract_nnef()],
+            resource_loaders: vec![],
+        }
     }
 }
 
 impl Nnef {
     pub fn with_registry(mut self, registry: Registry) -> Nnef {
         self.registries.push(registry);
+        self
+    }
+
+    pub fn with_resource_loader(mut self, loader: impl ResourceLoader + 'static) -> Nnef {
+        self.resource_loaders.push(Box::new(loader));
         self
     }
 
@@ -142,9 +152,8 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
             let mut f = std::fs::File::open(path)?;
             return self.proto_model_for_read(&mut f);
         }
-        let mut text: Option<String> = None;
-        let mut quantization = None;
-        let mut tensors: Vec<(String, Arc<Tensor>)> = Default::default();
+
+        let mut resources: HashMap<String, Arc<dyn Resource>> = Default::default();
         for entry in walkdir::WalkDir::new(path) {
             let entry =
                 entry.map_err(|e| format_err!("Can not walk directory {:?}: {:?}", path, e))?;
@@ -154,19 +163,14 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
                 .skip(path.components().count())
                 .collect::<std::path::PathBuf>();
             let mut stream = std::fs::File::open(entry.path())?;
-            read_stream(&subpath, &mut stream, &mut text, &mut tensors, &mut quantization)?;
+            read_stream(&self.resource_loaders, &subpath, &mut stream, &mut resources)?;
         }
-        let text = text.ok_or_else(|| format_err!("Model must contain graph.nnef at top level"))?;
-        let doc = crate::ast::parse::parse_document(&text)?;
-        let proto = ProtoModel { doc, tensors, quantization };
-        proto.validate()?;
-        Ok(proto)
+        proto_model_from_resources(resources)
     }
 
     fn proto_model_for_read(&self, reader: &mut dyn std::io::Read) -> TractResult<ProtoModel> {
-        let mut text: Option<String> = None;
-        let mut tensors: Vec<(String, Arc<Tensor>)> = Default::default();
-        let mut quantization = None;
+        let mut resources: HashMap<String, Arc<dyn Resource>> = Default::default();
+
         let mut buffer = vec![0u8; 2];
         reader.read_exact(&mut buffer)?;
         let header = std::io::Cursor::new(buffer.clone());
@@ -185,13 +189,9 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
         for entry in tar.entries()? {
             let mut entry = entry?;
             let path = entry.path()?.to_path_buf();
-            read_stream(&path, &mut entry, &mut text, &mut tensors, &mut quantization)?;
+            read_stream(&self.resource_loaders, &path, &mut entry, &mut resources)?;
         }
-        let text = text.ok_or_else(|| format_err!("Model must contain graph.nnef at top level"))?;
-        let doc = crate::ast::parse::parse_document(&text)?;
-        let proto = ProtoModel { doc, tensors, quantization };
-        proto.validate()?;
-        Ok(proto)
+        proto_model_from_resources(resources)
     }
 
     fn model_for_proto_model(&self, proto: &ProtoModel) -> TractResult<TypedModel> {
@@ -199,38 +199,71 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
     }
 }
 
+fn proto_model_from_resources(
+    mut resources: HashMap<String, Arc<dyn Resource>>,
+) -> TractResult<ProtoModel> {
+    // NNEF document extraction
+    let doc = resources
+        .remove(crate::resource::NNEF_DOCUMENT_FILE)
+        .with_context(|| {
+            anyhow!("Resource {} was not found in the model", crate::resource::NNEF_DOCUMENT_FILE)
+        })?
+        .downcast_arc::<Document>()
+        .map_err(|_| anyhow!("Error while downcasting NNEF document resource"))?;
+
+    let doc = Arc::try_unwrap(doc)
+        .map_err(|_| anyhow!("Error while extracting NNEF Document from shared reference. Only one reference to the document is expected"))?;
+
+    // Collect all resources that can be downcastable to Arc<Tensor>.
+    let tensors: HashMap<_, _> = resources
+        .iter()
+        .filter_map(|(key, resource)| {
+            Arc::clone(&resource).downcast_arc::<Tensor>().ok().map(|r| (key.to_string(), r))
+        })
+        .collect();
+    // Iterate over tensors keys to remove them from the global resources hash map.
+    tensors.keys().for_each(|k| {
+        resources.remove(k);
+    });
+
+    // Quantization format resources extraction if present.
+    let quantization = resources.remove(crate::resource::QUANT_FORMAT_FILE)
+        .map(|q_r| {
+            q_r
+                .downcast_arc::<HashMap<String, QuantFormat>>()
+                .map_err(|_| anyhow!("Error while downcasting quantization format resource"))
+        })
+        .transpose()?
+        .map(|quant| {
+            Arc::try_unwrap(quant)
+                .map_err(|_| anyhow!("Error while extracting quantization format resource from shared reference. Only one reference to it is expected"))
+        })
+        .transpose()?;
+
+    let proto = ProtoModel { doc, tensors, quantization, resources };
+    proto.validate()?;
+    Ok(proto)
+}
+
 fn read_stream<R: std::io::Read>(
-    path: &std::path::Path,
+    resource_loaders: &[Box<dyn ResourceLoader>],
+    path: &Path,
     reader: &mut R,
-    text: &mut Option<String>,
-    tensors: &mut Vec<(String, Arc<Tensor>)>,
-    quantization: &mut Option<HashMap<String, QuantFormat>>,
+    resources: &mut HashMap<String, Arc<dyn Resource>>,
 ) -> TractResult<()> {
-    // ignore path with any component starting with "." (because OSX's tar is weird)
-    #[cfg(target_family = "unix")]
-    if path.components().any(|name| name.as_os_str().as_bytes().first() == Some(&b'.')) {
-        return Ok(());
-    }
-    if path.to_str() == Some("graph.nnef") {
-        let mut t = String::new();
-        reader.read_to_string(&mut t)?;
-        *text = Some(t);
-    } else if path.extension().map(|e| e == "dat").unwrap_or(false) {
-        let mut path = path.to_path_buf();
-        path.set_extension("");
-        let id = path
-            .to_str()
-            .ok_or_else(|| format_err!("Badly encoded filename for tensor: {:?}", path))?;
-        let tensor = crate::tensors::read_tensor(reader).with_context(|| format!("{:?}", path))?;
-        tensors.push((id.to_string(), tensor.into_arc_tensor()));
-    } else if path.file_name().map(|n| n == "graph.quant").unwrap_or(false) {
-        let mut t = String::new();
-        reader.read_to_string(&mut t)?;
-        let quant = crate::ast::quant::parse_quantization(&t)?;
-        if quantization.is_none() {
-            *quantization = Some(quant.into_iter().collect())
-        } else {
-            bail!("Duplicate graph.quant file")
+    let mut last_loader_name;
+    for loader in resource_loaders {
+        last_loader_name = Some(loader.name());
+        if let Some((id, resource)) = loader.try_load(path, reader)? {
+            ensure!(
+                !resources.contains_key(&id),
+                "Loader {:?} succeeded to load {:?} which has been already loaded by {:?}",
+                loader.name(),
+                id,
+                last_loader_name
+            );
+            resources.insert(id, resource);
+            break;
         }
     }
     Ok(())

@@ -28,8 +28,9 @@ pub struct IntoAst<'a> {
     pub parameters: Vec<String>,
     pub results: Vec<String>,
     pub mapping: HashMap<OutletId, Arc<RValue>>,
-    pub tensors: Vec<(String, Arc<Tensor>)>,
+    pub tensors: HashMap<String, Arc<Tensor>>,
     pub quantization: HashMap<String, QuantFormat>,
+    pub resources: HashMap<String, Arc<dyn Resource>>,
     pub fragments: HashMap<String, FragmentDef>,
     pub body: Vec<Assignment>,
 }
@@ -54,6 +55,7 @@ impl<'a> IntoAst<'a> {
             mapping: Default::default(),
             tensors: Default::default(),
             quantization: Default::default(),
+            resources: Default::default(),
             fragments: Default::default(),
             body: Default::default(),
             parent: None,
@@ -230,7 +232,7 @@ impl<'a> IntoAst<'a> {
             graph_def: GraphDef { id, parameters, results, body },
         };
         let quantization = if self.quantization.len() > 0 { Some(self.quantization) } else { None };
-        Ok(ProtoModel { doc, tensors, quantization })
+        Ok(ProtoModel { doc, tensors, quantization, resources: self.resources })
     }
 
     fn node(&mut self, node: &TypedNode) -> TractResult<TVec<Arc<RValue>>> {
@@ -364,7 +366,7 @@ impl<'a> IntoAst<'a> {
                 }
             };
         }
-        self.tensors.push((name.clone(), tensor.clone()));
+        self.tensors.insert(name.clone(), tensor.clone());
         let id = self.scoped_id(&name);
         self.assignment(
             &id,

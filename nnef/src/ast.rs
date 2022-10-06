@@ -8,8 +8,9 @@ pub mod quant;
 #[derive(Clone, Debug)]
 pub struct ProtoModel {
     pub doc: Document,
-    pub tensors: Vec<(String, Arc<Tensor>)>,
+    pub tensors: HashMap<String, Arc<Tensor>>,
     pub quantization: Option<HashMap<String, QuantFormat>>,
+    pub resources: HashMap<String, Arc<dyn Resource>>,
 }
 
 impl ProtoModel {
