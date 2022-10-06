@@ -48,6 +48,11 @@ impl Nnef {
         self
     }
 
+    pub fn with_tract_resource(mut self) -> Self {
+        self.registries.push(crate::ops::tract_resource());
+        self
+    }
+
     pub fn translate(
         &self,
         proto_model: &ProtoModel,
