@@ -183,6 +183,7 @@ impl Gpu {
           }
         }
 
+        #pragma unroll
         for (int i = 0; i<4; i++) {
           int offset = n + i * N / 4 + m * N;
           vstore4(acc[i], offset, C);

@@ -23,7 +23,7 @@ pub fn tract_blaslike(
     use tract_linalg::frame::mmm::FusedSpec;
     let a = Tensor::zero_dt(dt, &[m, k]).unwrap();
     let b = Tensor::zero_dt(dt, &[k, n]).unwrap();
-    let mut c = Tensor::zero_dt(dt, &[m, n]).unwrap();
+    let mut c = Tensor::zero_dt(dt, &[n, m]).unwrap();
 
     unsafe {
         let mmm = tract_linalg::ops().mmm(dt, dt, dt, Some(m), Some(k), Some(n)).unwrap();
@@ -133,5 +133,11 @@ fn inception(c: &mut Criterion) {
     matmul(c, 64, 288, 21609);
 }
 
-criterion_group!(benches, big, wavenet, asr_15M, inception);
+fn dfnet2(c: &mut Criterion) {
+    matmul(c, 64, 64, 96);
+    matmul(c, 64, 64, 48);
+    matmul(c, 64, 384, 1);
+}
+
+criterion_group!(benches, big, wavenet, asr_15M, inception, dfnet2);
 criterion_main!(benches);
