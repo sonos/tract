@@ -7,9 +7,7 @@ use tract_ndarray::prelude::*;
 #[derive(Debug, Clone, new, Hash)]
 pub struct MatMulUnary {
     pub a: Arc<Tensor>,
-    pub a_trans: bool,
-    pub b_trans: bool,
-    pub c_trans: bool,
+    pub axes: MatMulAxes,
 }
 
 impl_dyn_hash!(MatMulUnary);
@@ -20,13 +18,7 @@ impl Op for MatMulUnary {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![
-            format!(
-                "a_trans:{:?} b_trans:{:?} c_trans:{:?}",
-                self.a_trans, self.b_trans, self.c_trans
-            ),
-            format!("A: {:?}", self.a),
-        ])
+        Ok(vec![format!("{:?}", self.axes), format!("A: {:?}", self.a)])
     }
 
     op_core_mir!();
@@ -39,7 +31,7 @@ impl EvalOp for MatMulUnary {
     }
 
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let t = eval(&self.a, &inputs[0], self.a_trans, self.b_trans, self.c_trans)?;
+        let t = eval(&self.a, &inputs[0], self.axes)?;
         Ok(tvec!(t.into_arc_tensor()))
     }
 }
@@ -55,73 +47,30 @@ impl TypedOp for MatMulUnary {
         let (_m, _k, _n, c_shape) = compute_shape(
             &self.a.shape().iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
             &inputs[0].shape,
-            self.a_trans,
-            self.b_trans,
-            self.c_trans,
+            self.axes,
         )?;
         let c_dt = output_type(inputs[0].datum_type);
         Ok(tvec!(c_dt.fact(c_shape)))
     }
 
     fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
-        mir_unary_invariants(inputs[0], outputs[0], &self.a, self.b_trans, self.c_trans)
+        mir_unary_invariants(&inputs[0], &outputs[0], self.axes)
     }
 
     fn change_axes(
         &self,
         model: &TypedModel,
         node: &TypedNode,
-        _io: InOut,
+        io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
-        let b = &model.outlet_fact(node.inputs[0])?;
-        match change {
-            AxisOp::Move(from, to) => {
-                if *from == b.rank() - 2 && *to == b.rank() - 1 {
-                    let op = MatMulUnary {
-                        b_trans: !self.b_trans,
-                        c_trans: !self.c_trans,
-                        ..self.clone()
-                    };
-                    Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
-                } else {
-                    Ok(None)
-                }
-            }
-            AxisOp::Add(axis) if *axis < b.rank() - 1 => {
-                let mut a = self.a.clone().into_tensor();
-                a.insert_axis(*axis)?;
-                let op =
-                    Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
-                Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
-            }
-            AxisOp::Add(axis) if b.shape[..*axis].iter().all(|d| *d == 1.to_dim()) => {
-                let mut a = self.a.clone().into_tensor();
-                a.insert_axis(0)?;
-                let op =
-                    Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
-                Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
-            }
-            // b is [.. 1, n], can add axis to the right and transpose
-            AxisOp::Add(axis) if *axis == b.rank() && b.shape[b.rank() - 2] == 1.to_dim() => {
-                let mut a = self.a.clone().into_tensor();
-                a.insert_axis(*axis - 2)?;
-                let op = MatMulUnary {
-                    b_trans: !self.b_trans,
-                    c_trans: !self.c_trans,
-                    a: a.into_arc_tensor(),
-                    ..self.clone()
-                };
-                Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
-            }
-            AxisOp::Rm(axis) if b.rank() - axis > 2 => {
-                let mut a = self.a.clone().into_tensor();
-                a.remove_axis(*axis)?;
-                let op =
-                    Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
-                Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
-            }
-            _ => Ok(None),
+        if let Some((a, axes, wire_changes)) =
+            mir_unary_change_axes(model, node, io, change, &self.axes, &self.a)?
+        {
+            let op = Self { axes, a: a.into_arc_tensor() };
+            Ok(Some(AxisChangeConsequence { substitute_op: Some(Box::new(op)), wire_changes }))
+        } else {
+            Ok(None)
         }
     }
 
@@ -130,26 +79,26 @@ impl TypedOp for MatMulUnary {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        Ok(
-            if let Some(patch) = self
-                .declutter_precusor_is_concat(model, node)
-                .context("declutter precursor is concat")?
-            {
-                Some(patch)
-            } else {
-                self.declutter_successors_are_slices(model, node)
-                    .context("declutter succsessors are slice")?
-            },
-        )
+        if let Some(patch) =
+            self.declutter_precusor_is_concat(model, node).context("declutter precursor is concat")?
+        {
+            return Ok(Some(patch));
+        }
+        if let Some(patch) = self
+            .declutter_successors_are_slices(model, node)
+            .context("declutter successor are slice")?
+        {
+            return Ok(Some(patch));
+        }
+        Ok(None)
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let mut cost = super::mir::cost(
+        let mut cost = super::cost(
             self.a.shape(),
             &inputs[0].shape.to_tvec(),
             self.a.datum_type(),
-            self.a_trans,
-            self.b_trans,
+            self.axes,
         )?;
         cost.push((Cost::Params(self.a.datum_type().unquantized()), self.a.len().to_dim()));
         Ok(cost)
@@ -183,8 +132,7 @@ impl MatMulUnary {
         let mut wire = patch.tap_model(model, node.inputs[0])?;
 
         let c_dt = output_type(self.a.datum_type());
-        let (m, k, n, c_shape) =
-            compute_shape(self.a.shape(), b_shape, self.a_trans, self.b_trans, self.c_trans)?;
+        let (m, k, n, c_shape) = compute_shape(&self.a.shape(), b_shape, self.axes)?;
 
         let mmm = tract_linalg::ops()
             .mmm(self.a.datum_type(), b_dt, c_dt, Some(m), Some(k), Some(n))
@@ -197,22 +145,31 @@ impl MatMulUnary {
                 )
             })?;
 
-        let packed_as =
-            Array::from_shape_fn(&self.a.shape()[0..self.a.rank() - 2], |a_prefix| unsafe {
-                let mut pa = Tensor::uninitialized_aligned_dt(
-                    self.a.datum_type(),
-                    &[mmm.a_pack().len(k, m)],
-                    mmm.a_pack().alignment(),
-                )
-                .unwrap();
-                mmm.a_pack().pack(
-                    &mut pa.view_mut(),
-                    &self.a.view_at_prefix(a_prefix.slice()).unwrap(),
-                    !self.a_trans as usize,
-                    self.a_trans as usize,
-                );
-                (pa.into_arc_tensor(), vec![ProtoFusedSpec::Store])
-            });
+        let mut a_iter_shape: TVec<usize> = self.a.shape().into();
+        a_iter_shape[self.axes.a_m] = 1;
+        a_iter_shape[self.axes.a_k] = 1;
+        let packed_as = Array::from_shape_fn(&*a_iter_shape, |a_prefix| unsafe {
+            let offset = a_prefix
+                .as_array_view()
+                .iter()
+                .zip(self.a.strides())
+                .map(|(x, s)| *x as isize * s)
+                .sum::<isize>()
+                * self.a.datum_type().size_of() as isize;
+            let mut pa = Tensor::uninitialized_aligned_dt(
+                self.a.datum_type(),
+                &[mmm.a_pack().len(k, m)],
+                mmm.a_pack().alignment(),
+            )
+            .unwrap();
+            mmm.a_pack().pack(
+                &mut pa.view_mut(),
+                TensorView::from_bytes(&self.a, offset, self.a.shape(), self.a.strides()),
+                self.axes.a_k,
+                self.axes.a_m,
+            );
+            (pa.into_arc_tensor(), vec![ProtoFusedSpec::Store])
+        });
         unsafe {
             let mut packed_b_shape: TVec<usize> = b_shape[..b_shape.len() - 2].into();
             packed_b_shape.push(mmm.b_pack().len(k, n));
@@ -220,19 +177,13 @@ impl MatMulUnary {
                 format!("{}.pack", &*node.name),
                 super::MatMatMulPack {
                     packer: mmm.b_pack(),
-                    trans: self.b_trans,
+                    k_axis: self.axes.b_k,
+                    mn_axis: self.axes.b_n,
                     output_shape: packed_b_shape,
                 },
                 &[wire],
             )?[0];
             let b_storage = mmm.b_packed(b_dt.size_of(), k);
-            let rank = c_shape.len();
-            let mut strides = natural_strides(&c_shape);
-            let mut overrided_shape = c_shape.clone();
-            if self.c_trans {
-                overrided_shape.swap(rank - 2, rank - 1);
-                strides.swap(rank - 2, rank - 1);
-            }
             let geometry = ConcreteMatMulGeometry { m, k, n, b_storage };
             wire = patch.wire_node(
                 format!("{}.matmatmul", &*node.name),
@@ -240,8 +191,8 @@ impl MatMulUnary {
                     c_fact: c_dt.fact(&c_shape),
                     geometry: MatMulGeometry::Concrete(geometry),
                     micro_ops: packed_as,
-                    c_m_axis: rank - 2 + self.c_trans as usize,
-                    c_n_axis: rank - 2 + !self.c_trans as usize,
+                    c_m_axis: self.axes.c_m,
+                    c_n_axis: self.axes.c_n,
                     c_final_shape: c_shape.into(),
                     reshape_post: vec![],
                     mmm,
@@ -261,12 +212,10 @@ impl MatMulUnary {
     ) -> TractResult<Option<TypedModelPatch>> {
         use crate::ops::array::concat::ConcatSlice;
         use crate::ops::array::TypedConcat;
-        let input_fact = model.outlet_fact(node.inputs[0])?;
         if let Some(concat) = model.nodes()[node.inputs[0].node].op().downcast_ref::<TypedConcat>()
         {
             let mut patch = TypedModelPatch::new("split over k-concatenated input");
-            let k_axis = self.a.rank() - 1 - self.a_trans as usize;
-            if concat.axis == input_fact.shape.rank() - 1 && self.b_trans {
+            if concat.axis == self.axes.b_k {
                 let mut input = 0;
                 let concat_node = model.node(node.inputs[0].node);
                 let offsets = concat
@@ -286,7 +235,7 @@ impl MatMulUnary {
                             patch.tap_model(model, concat_node.inputs[input - 1])?
                         }
                     };
-                    let a = self.a.slice(k_axis, offsets[ix], offsets[ix + 1])?;
+                    let a = self.a.slice(self.axes.a_k, offsets[ix], offsets[ix + 1])?;
                     let wire = patch.wire_node(
                         format!("{}.k-{}-{}", node.name, offsets[ix], offsets[ix + 1]),
                         MatMulUnary { a: a.into_arc_tensor(), ..self.clone() },
@@ -309,13 +258,14 @@ impl MatMulUnary {
         Ok(None)
     }
 
+    // FIXME: should this be the general case for slice_output mecanism ?
     fn declutter_successors_are_slices(
         &self,
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         use crate::ops::array::Slice;
-        let m_axis = node.outputs[0].fact.rank() - 2 + self.c_trans as usize;
+        let m_axis = self.axes.c_m;
         if let Some(slice) = node.outputs[0].successors.iter().find_map(|inlet| {
             if model
                 .node(inlet.node)
@@ -360,7 +310,7 @@ impl MatMulUnary {
 
             let mut done = 0;
             let mut splits = tvec!();
-            let a_m_axis = self.a.rank() - 2 + self.a_trans as usize;
+            let a_m_axis = self.axes.a_m;
             for &up in &boundaries {
                 let spliced_a = self.a.slice(a_m_axis, done, up)?;
                 let wire = patch.wire_node(
@@ -417,27 +367,52 @@ impl MatMulUnary {
 pub(super) fn mir_unary_invariants(
     input_fact: &TypedFact,
     output_fact: &TypedFact,
-    a: &Tensor,
-    b_trans: bool,
-    c_trans: bool,
+    axes: MatMulAxes,
 ) -> TractResult<Invariants> {
-    if input_fact.shape.rank() != output_fact.shape.rank() {
-        return Ok(Invariants::none());
-    }
-    let mut broadcasted_a_shape: TVec<_> = a.shape().into();
-    while broadcasted_a_shape.len() < input_fact.shape.rank() {
-        broadcasted_a_shape.insert(0, 1);
-    }
-    let mut invars = broadcasted_a_shape[..broadcasted_a_shape.len() - 2]
-        .iter()
-        .enumerate()
-        .map(|(axis, &period)| AxisInfo::simple(axis).with_period(period))
-        .collect::<Vec<_>>();
-    if b_trans && c_trans && input_fact.rank() >= 2 {
-        invars.push(AxisInfo::simple(input_fact.shape.rank() - 2))
-    }
-    if !b_trans && !c_trans {
-        invars.push(AxisInfo::simple(input_fact.shape.rank() - 1))
+    anyhow::ensure!(input_fact.shape.rank() == output_fact.shape.rank());
+    let axes = (0..input_fact.rank())
+        .filter(|ax| *ax != axes.b_k)
+        .zip((0..output_fact.rank()).filter(|ax| *ax != axes.c_m))
+        .map(|(b, c)| AxisInfo {
+            inputs: tvec!(Some(b)),
+            outputs: tvec!(Some(c)),
+            disposable: true,
+            period: 1,
+        })
+        .collect();
+    Ok(axes)
+}
+
+pub(super) fn mir_unary_change_axes(
+    model: &TypedModel,
+    node: &TypedNode,
+    io: InOut,
+    change: &AxisOp,
+    old_axes: &MatMulAxes,
+    old_a: &Tensor,
+) -> TractResult<Option<(Tensor, MatMulAxes, TVec<(InOut, AxisOp)>)>> {
+    let b_fact = model.outlet_fact(node.inputs[0])?;
+    let result = if io == InOut::In(0) {
+        old_axes.change_axis_from_b(change, b_fact.rank())
+    } else if io == InOut::Out(0) {
+        old_axes.change_axis_from_c(change, b_fact.rank())
+    } else {
+        unreachable!();
     };
-    Ok(invars.into_iter().collect())
+    if let Ok((axes, change_a, change_b, change_c)) = result {
+        let mut new_a = old_a.clone();
+        if let Some(change_a) = change_a {
+            change_a.change_tensor(&mut new_a, false)?;
+        }
+        let mut wires = tvec!();
+        if let Some(change_b) = change_b {
+            wires.push((InOut::In(0), change_b));
+        }
+        if let Some(change_c) = change_c {
+            wires.push((InOut::Out(0), change_c));
+        }
+        Ok(Some((new_a, axes, wires)))
+    } else {
+        Ok(None) // is it right ? or return error ?
+    }
 }

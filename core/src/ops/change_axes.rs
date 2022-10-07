@@ -57,7 +57,7 @@ impl PartialEq for AxisOp {
 }
 
 impl AxisOp {
-    fn canonical(&self) -> Cow<AxisOp> {
+    pub fn canonical(&self) -> Cow<AxisOp> {
         match self {
             Move(from, to) if *from == to + 1 => Cow::Owned(Move(*to, *from)),
             other => Cow::Borrowed(other),
@@ -680,29 +680,39 @@ pub fn change_axes(
                     return Ok(None);
                 }
                 let AxisChangeConsequence { substitute_op, wire_changes } = more.unwrap();
+                trace!("    Change {:?} enters {} from {:?}", c.op, node, io);
+                trace!("       propagates as {:?}", wire_changes);
                 if let Some(op) = substitute_op {
-                    trace!(
-                        "    Change {:?} enters {} from {:?} would replace {:?} by {:?}",
-                        c.op,
-                        node,
-                        io,
-                        node.op,
-                        op
-                    );
+                    trace!("       replace op by {:?}", op);
                     changed_ops.insert(node.id, op);
-                } else {
-                    trace!(
-                        "    Change {:?} enters {} from {:?} leaves it unchanged",
-                        c.op,
-                        node,
-                        io,
-                    );
                 }
                 for (wire, op) in wire_changes.into_iter() {
                     let outlet = wire.as_outlet(node);
-                    if let Entry::Vacant(entry) = changed_wires.entry(outlet) {
-                        entry.insert(op.clone());
-                        todo_changes.push((AxisChange { outlet, op }, Some(node_id)));
+                    match changed_wires.entry(outlet) {
+                        Entry::Vacant(entry) => {
+                            trace!("         {:?} {:?} change on {:?} is new", wire, op, outlet);
+                            entry.insert(op.clone());
+                            todo_changes.push((AxisChange { outlet, op }, Some(node_id)));
+                        }
+                        Entry::Occupied(previous) => {
+                            if *previous.get() == op {
+                                trace!(
+                                    "         {:?} {:?} change on {:?} already done",
+                                    wire,
+                                    op,
+                                    outlet
+                                );
+                            } else {
+                                trace!(
+                                    "         {:?} {:?} change on {:?} conflicting with {:?}. Blocked.",
+                                    wire,
+                                    op,
+                                    outlet,
+                                    previous
+                                );
+                                return Ok(None);
+                            }
+                        }
                     }
                 }
             }
@@ -1014,7 +1024,9 @@ mod proptests {
             if shape.len() > 1 {
                 ops = ops
                     .prop_union(
-                        (0..shape.len(), 0..shape.len()).prop_map(|(a, b)| Move(a, b)).boxed(),
+                        (0..shape.len(), 0..shape.len() - 1)
+                            .prop_map(|(a, b)| Move(a, b + (b >= a) as usize))
+                            .boxed(),
                     )
                     .boxed()
             }
@@ -1239,8 +1251,8 @@ mod proptests {
     #[test]
     fn simplify_reshape() {
         macro_rules! d {
-                ($($dim: expr),*) =>  { tvec!($($dim.to_dim()),*) }
-            }
+            ($($dim: expr),*) =>  { tvec!($($dim.to_dim()),*) }
+        }
         assert_eq!(Reshape(3, d!(), d!()).simplify(), tvec!());
         assert_eq!(Reshape(3, d!(2, 3), d!(2, 3)).simplify(), tvec!());
         assert_eq!(Reshape(3, d!(1), d!()).simplify(), tvec!(Rm(3)));

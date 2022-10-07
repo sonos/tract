@@ -8,7 +8,7 @@ register_all!(DeconvUnary: pulsify);
 
 fn pulsify(
     op: &DeconvUnary,
-    _source: &TypedModel,
+    source: &TypedModel,
     node: &TypedNode,
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
@@ -18,6 +18,14 @@ fn pulsify(
     let c_axis = op.pool_spec.data_format.shape(&fact.shape)?.c_axis();
     if c_axis == fact.axis {
         bail!("Pulsification on C axis is not supported");
+    }
+    if op
+        .invariants(&source.node_input_facts(node.id)?, &source.node_output_facts(node.id)?)?
+        .track_input_axis(0, fact.axis)
+        .is_some()
+    {
+        // general case for invariants will manage
+        return Ok(None);
     }
     let pulse = fact.pulse();
     let geo_axis = fact.axis - op.pool_spec.data_format.h_axis();
@@ -75,6 +83,7 @@ fn pulsify(
             wire = target.wire_node(format!("{}.padding.{}", node.name, geo_axis), op, &wire)?;
         }
     }
+
     Ok(Some(wire))
 }
 

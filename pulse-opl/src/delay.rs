@@ -33,13 +33,18 @@ pub struct DelayState {
 
 impl DelayState {
     /// Apply delay op on input and store the result in the output tensor
-    /// This method doesn't use allocation. 
+    /// This method doesn't use allocation.
     ///
     /// # Safety
     ///
     /// Input and Ouput tensors shape must be compatible with this operator, otherwise it could lead
-    /// to an undefined behaviour. 
-    pub unsafe fn apply_delay_unchecked(&mut self, op: &Delay, input: &Tensor, output: &mut Tensor) {
+    /// to an undefined behaviour.
+    pub unsafe fn apply_delay_unchecked(
+        &mut self,
+        op: &Delay,
+        input: &Tensor,
+        output: &mut Tensor,
+    ) {
         let buffered = op.delay + op.overlap;
         let input_pulse = input.shape()[op.axis];
         let output_pulse = input_pulse + op.overlap;
@@ -66,7 +71,6 @@ impl DelayState {
             .rotate_left(stride);
             buffer.assign_slice_unchecked((buffered - input_pulse).., input, .., op.axis);
         }
-
     }
 }
 
@@ -92,7 +96,7 @@ impl OpState for DelayState {
                 self.buffer = Some(Tensor::zero_dt(input.datum_type(), &shape)?)
             };
             let mut output = Tensor::uninitialized_dt(input.datum_type(), &*output_shape)?;
-            self.apply_delay_unchecked(op, &input, &mut output);            
+            self.apply_delay_unchecked(op, &input, &mut output);
             let output = output.into_arc_tensor();
             Ok(tvec!(output))
         }
@@ -111,12 +115,7 @@ pub struct Delay {
 impl_dyn_hash!(Delay);
 
 impl Delay {
-    pub fn new_typed(
-        input_fact: &TypedFact,
-        axis: usize,
-        delay: usize,
-        overlap: usize,
-    ) -> Delay {
+    pub fn new_typed(input_fact: &TypedFact, axis: usize, delay: usize, overlap: usize) -> Delay {
         let mut buffer_shape: TVec<TDim> = input_fact.shape.to_tvec();
         buffer_shape[axis] = (delay + overlap).to_dim();
         Delay { datum_type: input_fact.datum_type, buffer_shape, axis, delay, overlap }
@@ -165,5 +164,36 @@ impl TypedOp for Delay {
 
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         Ok(tvec!((Cost::Buffer(self.datum_type), self.buffer_shape.iter().product())))
+    }
+
+    fn suggested_axis_changes(&self) -> TractResult<TVec<(InOut, AxisOp)>> {
+        if self.axis != 0 {
+            Ok(tvec!((InOut::In(0), AxisOp::Move(self.axis, 0))))
+        } else {
+            Ok(tvec!())
+        }
+    }
+
+    fn change_axes(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        _io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        if let Some(axis) = change.transform_axis(self.axis) {
+            if axis != self.axis {
+                Ok(Some(AxisChangeConsequence::new(
+                    model,
+                    node,
+                    Some(Box::new(Self { axis, ..self.clone() }) as _),
+                    change,
+                )))
+            } else {
+                Ok(Some(AxisChangeConsequence::new(model, node, None, change)))
+            }
+        } else {
+            Ok(None)
+        }
     }
 }

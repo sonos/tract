@@ -5,6 +5,7 @@ use crate::model::*;
 use crate::ops;
 use crate::ops::matmul::mir_quant::wire_offset_u8_as_i8;
 use crate::ops::matmul::mir_quant::QParamKind;
+use crate::ops::matmul::MatMulAxes;
 
 use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
@@ -94,6 +95,8 @@ impl ConvUnary {
             if self.pool_spec.data_format.has_n() {
                 packed_as.insert_axis_inplace(Axis(0));
             }
+            packed_as.insert_axis_inplace(Axis(packed_as.ndim()));
+            packed_as.insert_axis_inplace(Axis(packed_as.ndim()));
             Ok(packed_as)
         }
     }
@@ -653,31 +656,25 @@ impl ConvUnary {
                 .map(|i| patch.tap_model(model, *i))
                 .collect::<TractResult<TVec<_>>>()?;
             inputs.insert(0, a);
+            let axes = MatMulAxes::default_for_rank(full_input_shape.len())
+                .transposing(a_trans, trans_data, trans_data);
             // in Q case, the bias has to be injected inside the QMatMul (as it
             // must be added before requantization)
             let wire = if let Some(q_params) = &self.q_params {
                 let mut params = q_params.1.clone();
                 params.insert_input(0); // kernel as input
                 params.insert_input(2); // bias as input
-                let mut bias = self.bias.clone().unwrap_or_else(|| rctensor0(0i32));
-                if bias.len() > 1 {
-                    let shape = if trans_data { [1, bias.len()] } else { [bias.len(), 1] };
-                    bias = bias.into_tensor().into_shape(&shape)?.into_arc_tensor();
-                }
+                let bias = self.bias.clone().unwrap_or(rctensor0(0i32));
+                anyhow::ensure!(bias.rank() == 0 || bias.rank() == 1);
                 let bias = patch.add_const(format!("{}.bias", &node.name), bias)?;
                 inputs.insert(2, bias);
-                let op = QMatMul {
-                    a_trans,
-                    b_trans: trans_data,
-                    c_trans: trans_data,
-                    output_type: q_params.0,
-                    params: q_params.1.clone(),
-                };
+                let op = QMatMul { axes, output_type: q_params.0, params: q_params.1.clone() };
                 patch.wire_node(&*node.name, op, &inputs)?[0]
             } else {
-                let op = MatMul { a_trans, b_trans: trans_data, c_trans: trans_data };
+                let op = MatMul { axes };
                 let mut wire = patch.wire_node(format!("{}.matmul", node.name), op, &inputs)?[0];
                 if let Some(b) = self.bias.as_ref().filter(|_| self.q_params.is_none()) {
+                    anyhow::ensure!(b.rank() == 0 || b.rank() == 1);
                     let mut bias_shape = tvec!(1; input_shape.rank());
                     bias_shape[input_shape.c_axis()] = co;
                     let b = b.clone().into_tensor().into_shape(&bias_shape)?;
@@ -781,9 +778,11 @@ impl TypedOp for ConvUnary {
                 );
         }
         if let Some(bias) = &self.bias {
-            if bias.len() != self.output_channels() {
-                bail!("Bias should have one value per output channel, got:{:?}", bias);
-            }
+            ensure!(
+                bias.rank() == 0 || (bias.rank() == 1 && bias.len() == self.output_channels()),
+                "Bias should be scalar or a vector with one value per output channel, got:{:?}",
+                bias
+            );
         }
 
         let mut fact = self.pool_spec.output_facts(inputs)?.remove(0);
@@ -1060,9 +1059,11 @@ impl TypedOp for ConvUnary {
                     &format!("{}.matmul", &node.name),
                     MatMulUnary::new(
                         kernel.into_arc_tensor(),
-                        self.kernel_fmt == KernelFormat::HWIO,
-                        input_c_is_last,
-                        input_c_is_last,
+                        MatMulAxes::default_for_rank(operating_rank).transposing(
+                            self.kernel_fmt == KernelFormat::HWIO,
+                            input_c_is_last,
+                            input_c_is_last,
+                        ),
                     ),
                     &[wire],
                 )?[0];

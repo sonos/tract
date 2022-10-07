@@ -55,9 +55,7 @@ impl ShapeFact {
             Ok(Cow::Borrowed(c))
         } else {
             Ok(Cow::Owned(
-                self.iter()
-                    .map(|d| d.eval(values).to_usize())
-                    .collect::<TractResult<TVec<_>>>()?,
+                self.iter().map(|d| d.eval(values).to_usize()).collect::<TractResult<TVec<_>>>()?,
             ))
         }
     }
@@ -68,9 +66,7 @@ impl ShapeFact {
             Ok(unsafe { std::mem::transmute(Cow::Borrowed(c)) })
         } else {
             Ok(Cow::Owned(
-                self.iter()
-                    .map(|d| d.eval(values).to_isize())
-                    .collect::<TractResult<TVec<_>>>()?,
+                self.iter().map(|d| d.eval(values).to_isize()).collect::<TractResult<TVec<_>>>()?,
             ))
         }
     }
@@ -112,6 +108,11 @@ impl ShapeFact {
         } else {
             false
         }
+    }
+
+    pub fn scalar() -> ShapeFact {
+        let void: &[usize] = &[];
+        Self::from(void)
     }
 }
 
@@ -187,8 +188,7 @@ impl TypedFact {
     where
         T: Datum,
     {
-        let void: &[usize] = &[];
-        Self::dt_shape(T::datum_type(), void)
+        Self::dt_scalar(T::datum_type())
     }
 
     pub fn shape<T, S>(shape: S) -> TypedFact
@@ -200,8 +200,7 @@ impl TypedFact {
     }
 
     pub fn dt_scalar(datum_type: DatumType) -> TypedFact {
-        let void: &[usize] = &[];
-        TypedFact { datum_type, shape: ShapeFact::from(void), konst: None, uniform: None }
+        TypedFact { datum_type, shape: ShapeFact::scalar(), konst: None, uniform: None }
     }
 
     pub fn dt_shape<S>(datum_type: DatumType, shape: S) -> TypedFact

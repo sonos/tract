@@ -301,6 +301,26 @@ fn batch_0() {
 }
 
 #[test]
+fn batch_1() {
+    let qp = MatMulQParams::noop_static(i8::datum_type());
+    let data = ArrayD::zeros(vec![2, 1, 1]);
+    let kernel = arr3(&[[[1]]]).into_dyn();
+    QConvProblem {
+        shape_in: NHWC.from_n_c_hw(2, 1, &[1]).unwrap(),
+        co: 1,
+        kernel_format: OIHW,
+        group: 1,
+        data,
+        kernel,
+        bias: None,
+        qp,
+        optim: false,
+    }
+    .check()
+    .unwrap();
+}
+
+#[test]
 fn a0_0() {
     QConvProblem {
         shape_in: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
@@ -386,7 +406,7 @@ fn scale_3() {
         group: 1,
         data: arr2(&[[0i8]]).into_dyn(),
         kernel: arr3(&[[[0i8]]]).into_dyn(),
-        bias: Some(arr2(&[[35i32]]).into_dyn()),
+        bias: Some(arr1(&[35i32]).into_dyn()),
         qp,
         optim: true,
     }
@@ -525,6 +545,66 @@ fn bias_3() {
         bias: Some(ArrayD::zeros([5].as_ref())),
         qp,
         optim: true,
+    }
+    .check()
+    .unwrap();
+}
+
+#[test]
+fn bias_in_chw() {
+    let qp = MatMulQParams::noop_static(i8::datum_type());
+    let data = ArrayD::zeros(vec![1, 1]);
+    let kernel = ArrayD::zeros(vec![2, 1, 1]);
+    QConvProblem {
+        shape_in: CHW.from_n_c_hw(1, 1, &[1]).unwrap(),
+        co: 2,
+        kernel_format: OIHW,
+        group: 1,
+        data,
+        kernel,
+        bias: Some(ArrayD::zeros([2].as_ref())),
+        qp,
+        optim: false,
+    }
+    .check()
+    .unwrap();
+}
+
+#[test]
+fn bias_with_batch() {
+    let qp = MatMulQParams::noop_static(i8::datum_type());
+    let data = ArrayD::zeros(vec![1, 1, 1]);
+    let kernel = ArrayD::zeros(vec![1, 1, 1]);
+    QConvProblem {
+        shape_in: NCHW.from_n_c_hw(1, 1, &[1]).unwrap(),
+        co: 1,
+        kernel_format: OIHW,
+        group: 1,
+        data,
+        kernel,
+        bias: Some(arr1(&[1]).into_dyn()),
+        qp,
+        optim: false,
+    }
+    .check()
+    .unwrap();
+}
+
+#[test]
+fn bias_vec_with_batch() {
+    let qp = MatMulQParams::noop_static(i8::datum_type());
+    let data = ArrayD::zeros(vec![1, 1, 1]);
+    let kernel = ArrayD::zeros(vec![2, 1, 1]);
+    QConvProblem {
+        shape_in: NCHW.from_n_c_hw(1, 1, &[1]).unwrap(),
+        co: 2,
+        kernel_format: OIHW,
+        group: 1,
+        data,
+        kernel,
+        bias: Some(arr1(&[0, 1]).into_dyn()),
+        qp,
+        optim: false,
     }
     .check()
     .unwrap();

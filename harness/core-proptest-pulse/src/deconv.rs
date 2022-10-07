@@ -254,3 +254,34 @@ fn adj_0() {
     };
     pb.run().unwrap()
 }
+
+#[test]
+fn deconv2d() {
+    let mut model = TypedModel::default();
+    let s = stream_symbol();
+    let a = model.add_source("a", f32::fact(dims!(1, 2, s, 8))).unwrap();
+    let mut kernel = Tensor::zero::<f32>(&[2, 2, 1, 3]).unwrap();
+    kernel.as_slice_mut::<f32>().unwrap().iter_mut().enumerate().for_each(|(ix, x)| *x = ix as f32);
+    let deconv = tract_core::ops::cnn::DeconvUnary {
+        pool_spec: PoolSpec {
+            data_format: tract_hir::ops::nn::DataFormat::NCHW,
+            kernel_shape: tvec!(1, 3),
+            padding: cnn::PaddingSpec::Explicit(tvec!(0, 1), tvec!(0, 1), false),
+            strides: Some(tvec!(1, 2)),
+            dilations: Some(tvec![1, 1]),
+            output_channel_override: Some(2),
+        },
+        kernel_format: tract_core::ops::cnn::KernelFormat::OIHW,
+        kernel: kernel.into_arc_tensor(),
+        bias: None,
+        adjustments: tvec!(0, 0),
+        group: 1,
+    };
+    let deconv = model.wire_node("deconv", deconv, &[a]).unwrap();
+    model.set_output_outlets(&deconv).unwrap();
+    model.declutter().unwrap();
+
+    let mut input = Tensor::zero::<f32>(&[1, 2, 5, 8]).unwrap();
+    input.as_slice_mut::<f32>().unwrap().iter_mut().enumerate().for_each(|(ix, x)| *x = ix as f32);
+    proptest_regular_against_pulse(model, 1, input.into_array().unwrap(), 2).unwrap()
+}
