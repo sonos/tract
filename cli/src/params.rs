@@ -171,7 +171,7 @@ impl TensorsValues {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Default)]
+#[derive(Debug, PartialEq, Clone, Default)]
 pub struct TensorValues {
     pub input_index: Option<usize>,
     pub output_index: Option<usize>,
