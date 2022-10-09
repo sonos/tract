@@ -113,5 +113,25 @@ impl TypedOp for Range {
         };
         Ok(tvec!(self.start.datum_type().fact(&[len])))
     }
+
+    fn concretize_dims(
+        &self,
+        _source: &TypedModel,
+        node: &TypedNode,
+        target: &mut TypedModel,
+        _mapping: &HashMap<OutletId, OutletId>,
+        values: &SymbolValues,
+    ) -> TractResult<TVec<OutletId>> {
+        let op = if self.start.datum_type() == TDim::datum_type() {
+            let start = self.start.to_scalar::<TDim>()?.eval(values).into();
+            let end = self.end.to_scalar::<TDim>()?.eval(values).into();
+            let step = self.step.to_scalar::<TDim>()?.eval(values).into();
+            Self { start, end, step }
+        } else {
+            self.clone()
+        };
+        target.wire_node(&node.name, op, &[])
+    }
+
     as_op!();
 }
