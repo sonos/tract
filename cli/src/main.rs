@@ -391,6 +391,13 @@ fn run_options(command: clap::Command) -> clap::Command {
                 .help("Will use random generated input"),
         )
         .arg(
+            Arg::new("random-range")
+                .long("random-range")
+                .multiple_occurrences(true)
+                .takes_value(true)
+                .help("Constraint random values to a given range (example: input=1.0..10.0)"),
+        )
+        .arg(
             Arg::new("allow-float-casts")
                 .long("allow-float-casts")
                 .help("Allow casting between f16, f32 and f64 around model"),

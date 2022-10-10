@@ -5,7 +5,7 @@ use std::str::FromStr;
 use std::sync::Mutex;
 
 use crate::model::Model;
-use crate::params::TensorsValues;
+use crate::params::{TensorValues, TensorsValues};
 use crate::{CliResult, Parameters};
 use tract_hir::internal::*;
 
@@ -321,7 +321,7 @@ pub fn retrieve_or_make_inputs(
     params: &RunParams,
 ) -> CliResult<Vec<TVec<Tensor>>> {
     let mut tmp: TVec<Vec<Tensor>> = tvec![];
-    for input in tract.input_outlets() {
+    for (ix, input) in tract.input_outlets().iter().enumerate() {
         let name = tract.node_name(input.node);
         let fact = tract.outlet_typedfact(*input)?;
         if let Some(mut value) = params.tensors_values.by_name(name).and_then(|t| t.values.clone())
@@ -394,7 +394,11 @@ pub fn retrieve_or_make_inputs(
         } else if params.allow_random_input {
             let fact = tract.outlet_typedfact(*input)?;
             warn_once(format!("Using random input for input called {:?}: {:?}", name, fact));
-            tmp.push(vec![crate::tensor::tensor_for_fact(&fact, None)?]);
+            let tv = params
+                .tensors_values
+                .by_name(name)
+                .or_else(|| params.tensors_values.by_input_ix(ix));
+            tmp.push(vec![crate::tensor::tensor_for_fact(&fact, None, tv)?]);
         } else {
             bail!("Unmatched tensor {}. Fix the input or use \"--allow-random-input\" if this was intended", name);
         }
@@ -402,8 +406,8 @@ pub fn retrieve_or_make_inputs(
     Ok((0..tmp[0].len()).map(|turn| tmp.iter().map(|t| t[turn].clone()).collect()).collect())
 }
 
-pub fn make_inputs(values: &[impl std::borrow::Borrow<TypedFact>]) -> CliResult<TVec<Tensor>> {
-    values.iter().map(|v| tensor_for_fact(v.borrow(), None)).collect()
+fn make_inputs(values: &[impl std::borrow::Borrow<TypedFact>]) -> CliResult<TVec<Tensor>> {
+    values.iter().map(|v| tensor_for_fact(v.borrow(), None, None)).collect()
 }
 
 pub fn make_inputs_for_model(model: &dyn Model) -> CliResult<TVec<Tensor>> {
@@ -417,7 +421,11 @@ pub fn make_inputs_for_model(model: &dyn Model) -> CliResult<TVec<Tensor>> {
 }
 
 #[allow(unused_variables)]
-pub fn tensor_for_fact(fact: &TypedFact, streaming_dim: Option<usize>) -> CliResult<Tensor> {
+pub fn tensor_for_fact(
+    fact: &TypedFact,
+    streaming_dim: Option<usize>,
+    tv: Option<&TensorValues>,
+) -> CliResult<Tensor> {
     if let Some(value) = &fact.konst {
         return Ok(value.clone().into_tensor());
     }
@@ -446,46 +454,20 @@ pub fn tensor_for_fact(fact: &TypedFact, streaming_dim: Option<usize>) -> CliRes
             .as_concrete()
             .with_context(|| format!("Expected concrete shape, found: {:?}", fact))?,
         fact.datum_type,
+        tv,
     ))
 }
 
 /// Generates a random tensor of a given size and type.
-pub fn random(sizes: &[usize], datum_type: DatumType) -> Tensor {
-    use std::iter::repeat_with;
-    fn make<D>(shape: &[usize]) -> Tensor
-    where
-        D: Datum,
-        rand::distributions::Standard: rand::distributions::Distribution<D>,
-    {
-        use rand::{Rng, SeedableRng};
-        let mut rng = rand::rngs::StdRng::seed_from_u64(21242);
-        let len = shape.iter().product();
-        tract_core::ndarray::ArrayD::from_shape_vec(
-            shape,
-            repeat_with(|| rng.gen::<D>()).take(len).collect(),
-        )
-        .unwrap()
-        .into()
-    }
-    use DatumType::*;
-    let mut t = match datum_type {
-        Bool => make::<bool>(sizes),
-        I8 => make::<i8>(sizes),
-        I16 => make::<i16>(sizes),
-        I32 => make::<i32>(sizes),
-        I64 => make::<i64>(sizes),
-        U8 => make::<u8>(sizes),
-        U16 => make::<u16>(sizes),
-        F16 => make::<f32>(sizes).cast_to::<f16>().unwrap().into_owned(),
-        F32 => make::<f32>(sizes),
-        F64 => make::<f64>(sizes),
-        QU8(_) => make::<u8>(sizes),
-        QI8(_) => make::<i8>(sizes),
-        QI32(_) => make::<i32>(sizes),
-        _ => panic!("Can generate random tensor for {:?}", datum_type),
+pub fn random(sizes: &[usize], datum_type: DatumType, tv: Option<&TensorValues>) -> Tensor {
+    use rand::{Rng, SeedableRng};
+    let mut rng = rand::rngs::StdRng::seed_from_u64(21242);
+    let mut tensor = Tensor::zero::<f32>(sizes).unwrap();
+    let slice = tensor.as_slice_mut::<f32>().unwrap();
+    if let Some(range) = tv.and_then(|tv| tv.random_range.as_ref()) {
+        slice.iter_mut().for_each(|x| *x = rng.gen_range(range.clone()))
+    } else {
+        slice.iter_mut().for_each(|x| *x = rng.gen())
     };
-    unsafe {
-        t.set_datum_type(datum_type);
-    }
-    t
+    tensor.cast_to_dt(datum_type).unwrap().into_owned()
 }

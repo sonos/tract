@@ -1,5 +1,7 @@
 use reqwest::Url;
+use scan_fmt::scan_fmt;
 use std::io::Read;
+use std::ops::Range;
 use std::path::PathBuf;
 use std::str::FromStr;
 #[allow(unused_imports)]
@@ -123,12 +125,24 @@ impl TensorsValues {
     pub fn by_name_mut(&mut self, name: &str) -> Option<&mut TensorValues> {
         self.0.iter_mut().find(|t| t.name.as_deref() == Some(name))
     }
+    pub fn by_name_mut_with_default(&mut self, name: &str) -> &mut TensorValues {
+        if self.by_name_mut(name).is_none() {
+            self.add(TensorValues { name: Some(name.to_string()), ..TensorValues::default() });
+        }
+        self.by_name_mut(name).unwrap()
+    }
 
     pub fn by_input_ix(&self, ix: usize) -> Option<&TensorValues> {
         self.0.iter().find(|t| t.input_index == Some(ix))
     }
     pub fn by_input_ix_mut(&mut self, ix: usize) -> Option<&mut TensorValues> {
         self.0.iter_mut().find(|t| t.input_index == Some(ix))
+    }
+    pub fn by_input_ix_mut_with_default(&mut self, ix: usize) -> &mut TensorValues {
+        if self.by_input_ix_mut(ix).is_none() {
+            self.add(TensorValues { input_index: Some(ix), ..TensorValues::default() });
+        }
+        self.by_input_ix_mut(ix).unwrap()
     }
 
     /*
@@ -157,13 +171,14 @@ impl TensorsValues {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Clone, Default)]
 pub struct TensorValues {
     pub input_index: Option<usize>,
     pub output_index: Option<usize>,
     pub name: Option<String>,
     pub fact: Option<InferenceFact>,
     pub values: Option<Vec<Arc<Tensor>>>,
+    pub random_range: Option<Range<f32>>,
 }
 
 #[cfg(feature = "tf")]
@@ -452,6 +467,7 @@ impl Parameters {
                     name,
                     values: tensor.value.concretize().map(|t| vec![t]),
                     fact: Some(tensor.without_value()),
+                    random_range: None,
                 })
             }
         }
@@ -495,6 +511,7 @@ impl Parameters {
                     None
                 },
                 values: if get_values { Some(vals) } else { None },
+                random_range: None,
             })
         }
         Ok(result)
@@ -516,6 +533,7 @@ impl Parameters {
                     name,
                     values: fact.value.concretize().map(|t| vec![t]),
                     fact: Some(fact.without_value()),
+                    random_range: None,
                 });
             }
         }
@@ -553,6 +571,7 @@ impl Parameters {
                         name,
                         values: fact.value.concretize().map(|t| vec![t]),
                         fact: Some(fact.without_value()),
+                        random_range: None,
                     });
                 }
             }
@@ -573,6 +592,28 @@ impl Parameters {
                 location.path().parent().unwrap().join(data_set_name).as_path(),
             )? {
                 result.add(tv)
+            }
+        }
+
+        if let Some((_, sub)) = matches.subcommand() {
+            if let Some(ranges) = sub.values_of("random-range") {
+                for (ix, spec) in ranges.enumerate() {
+                    let (name, from, to) = if let Ok((name, from, to)) =
+                        scan_fmt!(spec, "{}={f}..{f}", String, f32, f32)
+                    {
+                        (Some(name), from, to)
+                    } else if let Ok((from, to)) = scan_fmt!(spec, "{f}..{f}", f32, f32) {
+                        (None, from, to)
+                    } else {
+                        bail!("Can't parse random-range parameter {}", spec)
+                    };
+                    let tv = if let Some(name) = name {
+                        result.by_name_mut_with_default(&name)
+                    } else {
+                        result.by_input_ix_mut_with_default(ix)
+                    };
+                    tv.random_range = Some(from..to);
+                }
             }
         }
 
