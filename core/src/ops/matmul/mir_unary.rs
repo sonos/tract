@@ -78,8 +78,9 @@ impl TypedOp for MatMulUnary {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if let Some(patch) =
-            self.declutter_precusor_is_concat(model, node).context("declutter precursor is concat")?
+        if let Some(patch) = self
+            .declutter_precusor_is_concat(model, node)
+            .context("declutter precursor is concat")?
         {
             return Ok(Some(patch));
         }
@@ -110,7 +111,14 @@ impl TypedOp for MatMulUnary {
     ) -> TractResult<Option<TypedModelPatch>> {
         let b = args_1!(model.node_input_facts(node.id)?);
         if let Some(b_shape) = b.shape.as_concrete() {
-            Ok(Some(self.new_mat_mul_unary_finite(model, node, b_shape, b.datum_type)?))
+            Ok(Some(new_mat_mul_unary_finite(
+                model,
+                node,
+                &self.a,
+                b_shape,
+                b.datum_type,
+                &self.axes,
+            )?))
         } else {
             Ok(None)
         }
@@ -119,93 +127,89 @@ impl TypedOp for MatMulUnary {
     as_op!();
 }
 
-impl MatMulUnary {
-    fn new_mat_mul_unary_finite(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-        b_shape: &[usize],
-        b_dt: DatumType,
-    ) -> TractResult<TypedModelPatch> {
-        let mut patch = TypedModelPatch::default();
-        let mut wire = patch.tap_model(model, node.inputs[0])?;
+pub fn new_mat_mul_unary_finite(
+    model: &TypedModel,
+    node: &TypedNode,
+    a: &Arc<Tensor>,
+    b_shape: &[usize],
+    b_dt: DatumType,
+    axes: &MatMulAxes,
+) -> TractResult<TypedModelPatch> {
+    let mut patch = TypedModelPatch::default();
+    let mut wire = patch.tap_model(model, node.inputs[0])?;
 
-        let c_dt = output_type(self.a.datum_type());
-        let (m, k, n, c_shape) = compute_shape(&self.a.shape(), b_shape, self.axes)?;
+    let c_dt = output_type(a.datum_type());
+    let (m, k, n, c_shape) = compute_shape(&a.shape(), b_shape, *axes)?;
 
-        let mmm = tract_linalg::ops()
-            .mmm(self.a.datum_type(), b_dt, c_dt, Some(m), Some(k), Some(n))
-            .with_context(|| {
-                format!(
-                    "No matrix multiplier for {:?}x{:?} to {:?}",
-                    self.a.datum_type(),
-                    b_dt,
-                    c_dt
-                )
-            })?;
+    let mmm = tract_linalg::ops()
+        .mmm(a.datum_type(), b_dt, c_dt, Some(m), Some(k), Some(n))
+        .with_context(|| {
+            format!("No matrix multiplier for {:?}x{:?} to {:?}", a.datum_type(), b_dt, c_dt)
+        })?;
 
-        let mut a_iter_shape: TVec<usize> = self.a.shape().into();
-        a_iter_shape[self.axes.a_m] = 1;
-        a_iter_shape[self.axes.a_k] = 1;
-        let packed_as = Array::from_shape_fn(&*a_iter_shape, |a_prefix| unsafe {
-            let offset = a_prefix
-                .as_array_view()
-                .iter()
-                .zip(self.a.strides())
-                .map(|(x, s)| *x as isize * s)
-                .sum::<isize>()
-                * self.a.datum_type().size_of() as isize;
-            let mut pa = Tensor::uninitialized_aligned_dt(
-                self.a.datum_type(),
-                &[mmm.a_pack().len(k, m)],
-                mmm.a_pack().alignment(),
-            )
-            .unwrap();
-            mmm.a_pack().pack(
-                &mut pa.view_mut(),
-                TensorView::from_bytes(&self.a, offset, self.a.shape(), self.a.strides()),
-                self.axes.a_k,
-                self.axes.a_m,
-            );
-            (pa.into_arc_tensor(), vec![ProtoFusedSpec::Store])
-        });
-        unsafe {
-            let mut packed_b_shape: TVec<usize> = b_shape.into();
-            packed_b_shape.remove(self.axes.b_k.max(self.axes.b_n));
-            packed_b_shape.remove(self.axes.b_k.min(self.axes.b_n));
-            packed_b_shape.push(mmm.b_pack().len(k, n));
-            wire = patch.wire_node(
-                format!("{}.pack", &*node.name),
-                super::MatMatMulPack {
-                    packer: mmm.b_pack(),
-                    k_axis: self.axes.b_k,
-                    mn_axis: self.axes.b_n,
-                    output_shape: packed_b_shape,
-                },
-                &[wire],
-            )?[0];
-            let b_storage = mmm.b_packed(b_dt.size_of(), k);
-            let geometry = ConcreteMatMulGeometry { m, k, n, b_storage };
-            wire = patch.wire_node(
-                format!("{}.matmatmul", &*node.name),
-                LirMatMulUnary {
-                    c_fact: c_dt.fact(&c_shape),
-                    geometry: MatMulGeometry::Concrete(geometry),
-                    micro_ops: packed_as,
-                    c_m_axis: self.axes.c_m,
-                    c_n_axis: self.axes.c_n,
-                    c_final_shape: c_shape.into(),
-                    reshape_post: vec![],
-                    mmm,
-                },
-                &[wire],
-            )?[0];
-            patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
-            patch.obliterate(node.id)?;
-        }
-        Ok(patch)
+    let mut a_iter_shape: TVec<usize> = a.shape().into();
+    a_iter_shape[axes.a_m] = 1;
+    a_iter_shape[axes.a_k] = 1;
+    let packed_as = Array::from_shape_fn(&*a_iter_shape, |a_prefix| unsafe {
+        let offset = a_prefix
+            .as_array_view()
+            .iter()
+            .zip(a.strides())
+            .map(|(x, s)| *x as isize * s)
+            .sum::<isize>()
+            * a.datum_type().size_of() as isize;
+        let mut pa = Tensor::uninitialized_aligned_dt(
+            a.datum_type(),
+            &[mmm.a_pack().len(k, m)],
+            mmm.a_pack().alignment(),
+        )
+        .unwrap();
+        mmm.a_pack().pack(
+            &mut pa.view_mut(),
+            TensorView::from_bytes(&a, offset, a.shape(), a.strides()),
+            axes.a_k,
+            axes.a_m,
+        );
+        (pa.into_arc_tensor(), vec![ProtoFusedSpec::Store])
+    });
+    unsafe {
+        let mut packed_b_shape: TVec<usize> = b_shape.into();
+        packed_b_shape.remove(axes.b_k.max(axes.b_n));
+        packed_b_shape.remove(axes.b_k.min(axes.b_n));
+        packed_b_shape.push(mmm.b_pack().len(k, n));
+        wire = patch.wire_node(
+            format!("{}.pack", &*node.name),
+            super::MatMatMulPack {
+                packer: mmm.b_pack(),
+                k_axis: axes.b_k,
+                mn_axis: axes.b_n,
+                output_shape: packed_b_shape,
+            },
+            &[wire],
+        )?[0];
+        let b_storage = mmm.b_packed(b_dt.size_of(), k);
+        let geometry = ConcreteMatMulGeometry { m, k, n, b_storage };
+        wire = patch.wire_node(
+            format!("{}.matmatmul", &*node.name),
+            LirMatMulUnary {
+                c_fact: c_dt.fact(&c_shape),
+                geometry: MatMulGeometry::Concrete(geometry),
+                micro_ops: packed_as,
+                c_m_axis: axes.c_m,
+                c_n_axis: axes.c_n,
+                c_final_shape: c_shape.into(),
+                reshape_post: vec![],
+                mmm,
+            },
+            &[wire],
+        )?[0];
+        patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
+        patch.obliterate(node.id)?;
     }
+    Ok(patch)
+}
 
+impl MatMulUnary {
     fn declutter_precusor_is_concat(
         &self,
         model: &TypedModel,
@@ -404,7 +408,7 @@ pub(super) fn mir_unary_change_axes(
         let mut new_a = old_a.clone();
         if let Some(change_a) = change_a {
             if let Err(_) = change_a.change_tensor(&mut new_a, false) {
-                return Ok(None) // can not apply change to A (Rm on non-trivial axis ?)
+                return Ok(None); // can not apply change to A (Rm on non-trivial axis ?)
             }
         }
         let mut wires = tvec!();

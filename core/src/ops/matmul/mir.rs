@@ -46,7 +46,7 @@ impl TypedOp for MatMul {
         Ok(tvec!(output_type(inputs[0].datum_type).fact(c_shape)))
     }
 
-    fn declutter(
+    fn codegen(
         &self,
         model: &TypedModel,
         node: &TypedNode,
@@ -64,6 +64,15 @@ impl TypedOp for MatMul {
         let var_ix = 1 - konst_ix;
         let flip = konst_ix == 1;
 
+        let var_fact: &TypedFact = [a_fact, b_fact][var_ix];
+        let konst_fact = [a_fact, b_fact][konst_ix];
+
+        let b_shape = if let Some(var_shape) = var_fact.shape.as_concrete() {
+            var_shape
+        } else {
+            return Ok(None);
+        };
+
         let axes = if flip {
             MatMulAxes {
                 a_m: self.axes.b_n,
@@ -77,12 +86,14 @@ impl TypedOp for MatMul {
             self.axes.clone()
         };
 
-        let konst = model.outlet_fact(node.inputs[konst_ix])?.konst.clone().unwrap();
-        TypedModelPatch::replace_single_op(
+        let konst = konst_fact.konst.as_ref().unwrap();
+        crate::ops::matmul::mir_unary::new_mat_mul_unary_finite(
             model,
             node,
-            &node.inputs[var_ix..][..1],
-            MatMulUnary::new(konst, axes),
+            konst,
+            b_shape,
+            var_fact.datum_type,
+            &axes,
         )
         .map(Some)
     }
