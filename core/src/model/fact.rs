@@ -50,6 +50,15 @@ impl ShapeFact {
     }
 
     #[inline]
+    pub fn eval(&self, values: &SymbolValues) -> TractResult<Cow<ShapeFact>> {
+        if self.is_concrete() {
+            Ok(Cow::Borrowed(self))
+        } else {
+            Ok(Cow::Owned(self.iter().map(|d| d.eval(values)).collect::<ShapeFact>()))
+        }
+    }
+
+    #[inline]
     pub fn eval_to_usize(&self, values: &SymbolValues) -> TractResult<Cow<TVec<usize>>> {
         if let Some(c) = &self.concrete {
             Ok(Cow::Borrowed(c))

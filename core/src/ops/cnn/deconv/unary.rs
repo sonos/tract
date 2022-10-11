@@ -123,7 +123,7 @@ impl DeconvUnary {
             super::deconv_sum::DeconvSum::new(
                 self.pool_spec.clone(),
                 self.kernel_format,
-                input_shape.to_tvec(),
+                input_shape,
                 self.adjustments.clone(),
                 self.bias.clone(),
                 self.group,
