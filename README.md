@@ -18,7 +18,6 @@ or NNEF, optimize them and run data through them.
 ## Quick start
 
 * [MobileNet v2 with ONNX](examples/onnx-mobilenet-v2)
-* [MobileNet v2 with ONNX and batch](examples/onnx-mobilenet-v2-batch)
 * [BERT example with ONNX](examples/pytorch-albert-v2)
 * [MobileNet v2 with TensorFlow](examples/tensorflow-mobilenet-v2)
 * [From Keras and TensorFlow 1 in Jupyter to tract](examples/jupyter-keras-tract-tf1)

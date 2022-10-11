@@ -64,8 +64,6 @@ fn main() -> TractResult<()> {
     let model = tract_onnx::onnx()
         // load the model
         .model_for_path("mobilenetv2-7.onnx")?
-        // specify input type and shape
-        .with_input_fact(0, f32::fact(1, 3, 224, 224).into())?
         // optimize the model
         .into_optimized()?
         // make the model runnable and fix its inputs and outputs
@@ -108,25 +106,9 @@ model.
 ```rust
     let model = tract_onnx::onnx()
         .model_for_path("mobilenet_v2_1.4_224_frozen.pb")?
-    // ..
-```
-
-### Specifying input size and optimizing.
-
-Modelsa often do not specify explicitely the input dimensions,
-but a lot of optimization in `tract` depends on the knownledge of all tensors
-types and shapes in the network.
-
-Onnx variant of MobileNet assumes its input in in the NCHW convention: 
-[batch, channels, height, width]. The MobileNet variant we have picked works with a 224x224 square
-RGB (C=3) pictures. We will only process one image at a time (N=1).
-And it operates on single precision floats (aka `f32`).
-
-```rust
-    // ..
-        .with_input_fact(0, f32::fact(&[1, 3, 224, 224]).into())?
         .into_optimized()?
         .into_runnable()?;
+    // ..
 ```
 
 Now the model is ready to run, we have an execution plan, so let's prepare the
