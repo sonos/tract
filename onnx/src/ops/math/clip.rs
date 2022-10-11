@@ -1,6 +1,7 @@
 use crate::model::ParsingContext;
 use crate::pb::*;
 use tract_hir::internal::*;
+use tract_hir::ops::logic::wire_with_rank_broadcast;
 
 pub fn clip(
     ctx: &ParsingContext,
@@ -59,11 +60,9 @@ impl Expansion for Clip11 {
         check_output_arity(outputs, 1)?;
         if let Some(input) = self.input_min {
             s.equals(&inputs[0].datum_type, &inputs[input].datum_type)?;
-            s.equals(&inputs[input].rank, 0)?;
         }
         if let Some(input) = self.input_max {
             s.equals(&inputs[0].datum_type, &inputs[input].datum_type)?;
-            s.equals(&inputs[input].rank, 0)?;
         }
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[0].shape, &outputs[0].shape)?;
@@ -76,30 +75,21 @@ impl Expansion for Clip11 {
         model: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let rank = model.outlet_fact(inputs[0])?.rank();
         let mut wire = inputs[0];
         if let Some(min) = self.input_min {
-            let mut min = inputs[min];
-            for r in 0..rank {
-                min =
-                    model.wire_node(format!("{}.min.axis-{}", name, r), AxisOp::Add(r), &[min])?[0];
-            }
-            wire = model.wire_node(
-                format!("{}.min", name),
+            wire = wire_with_rank_broadcast(
+                &format!("{}.min", name),
+                model,
                 tract_hir::ops::math::max::bin_typed(),
-                &[wire, min],
+                &[wire, inputs[min]],
             )?[0];
         }
         if let Some(max) = self.input_max {
-            let mut max = inputs[max];
-            for r in 0..rank {
-                max =
-                    model.wire_node(format!("{}.max.axis-{}", name, r), AxisOp::Add(r), &[max])?[0];
-            }
-            wire = model.wire_node(
-                format!("{}.max", name),
+            wire = wire_with_rank_broadcast(
+                &format!("{}.max", name),
+                model,
                 tract_hir::ops::math::min::bin_typed(),
-                &[wire, max],
+                &[wire, inputs[max]],
             )?[0];
         }
         Ok(tvec!(wire))
