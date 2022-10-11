@@ -64,14 +64,7 @@ impl TypedOp for MatMul {
         let var_ix = 1 - konst_ix;
         let flip = konst_ix == 1;
 
-        let var_fact: &TypedFact = [a_fact, b_fact][var_ix];
         let konst_fact = [a_fact, b_fact][konst_ix];
-
-        let b_shape = if let Some(var_shape) = var_fact.shape.as_concrete() {
-            var_shape
-        } else {
-            return Ok(None);
-        };
 
         let axes = if flip {
             MatMulAxes {
@@ -87,15 +80,8 @@ impl TypedOp for MatMul {
         };
 
         let konst = konst_fact.konst.as_ref().unwrap();
-        crate::ops::matmul::mir_unary::new_mat_mul_unary_finite(
-            model,
-            node,
-            konst,
-            b_shape,
-            var_fact.datum_type,
-            &axes,
-        )
-        .map(Some)
+        crate::ops::matmul::mir_unary::new_mat_mul_unary_finite(model, node, konst, var_ix, &axes)
+            .map(Some)
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {

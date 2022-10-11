@@ -34,12 +34,14 @@ fn proptest_regular_against_pulse(
 
     let len = input_array.shape()[axis];
     let model = model.into_decluttered().unwrap();
+
     let symbols = SymbolValues::default().with(stream_symbol(), len as i64);
     let concrete = model.clone().concretize_dims(&symbols).unwrap();
     if concrete.nodes.iter().any(|n| n.outputs.iter().any(|o| o.fact.shape.volume().is_zero())) {
         return Err(TestCaseError::reject("too short input"));
     }
     let runnable = concrete.into_runnable().unwrap();
+
     // dbg!(&runnable);
     let outputs = runnable.run(tvec!(input_array.clone().into_tensor())).unwrap();
 
