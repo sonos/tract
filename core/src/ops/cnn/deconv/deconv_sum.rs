@@ -19,7 +19,7 @@ pub struct DeconvSum {
     pub pool_spec: PoolSpec,
     pub kernel_format: KernelFormat,
     /// shape of the deconvolution input
-    pub input_shape: TVec<TDim>,
+    pub input_shape: ShapeFact,
     pub adjustments: TVec<usize>,
     pub bias: Option<Arc<Tensor>>,
     pub group: usize,
@@ -38,14 +38,42 @@ impl Op for DeconvSum {
 
 impl EvalOp for DeconvSum {
     fn is_stateless(&self) -> bool {
-        true
+        self.input_shape.is_concrete()
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        self.eval_with_values(inputs, &SymbolValues::default())
+    }
+
+    fn state(
+        &self,
+        _session: &mut SessionState,
+        _node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        Ok(Some(Box::new(self.clone())))
+    }
+}
+
+impl OpState for DeconvSum {
+    fn eval(
+        &mut self,
+        session: &mut SessionState,
+        _op: &dyn Op,
+        inputs: TVec<Arc<Tensor>>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
+        self.eval_with_values(inputs, &session.resolved_symbols)
+    }
+}
+
+impl DeconvSum {
+    fn eval_with_values(
+        &self,
+        mut inputs: TVec<Arc<Tensor>>,
+        values: &SymbolValues,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
         let gemm = args_1!(inputs).into_tensor();
         debug_assert_eq!(gemm.datum_type(), f32::datum_type());
-        let input_shape =
-            self.input_shape.iter().map(|i| i.to_usize().unwrap()).collect::<TVec<usize>>();
+        let input_shape = self.input_shape.eval_to_usize(values)?.into_owned();
         let input_shape = self.pool_spec.data_format.shape(input_shape)?;
         let output_shape =
             super::output_shape(&self.pool_spec, &input_shape.shape, &self.adjustments)?;
@@ -131,16 +159,6 @@ impl EvalOp for DeconvSum {
         Ok(tvec!(tensor.into_arc_tensor()))
     }
 
-    fn state(
-        &self,
-        _session: &mut SessionState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(None)
-    }
-}
-
-impl DeconvSum {
     pub fn main_loop_1d(
         &self,
         input_shape: &DataShape,
@@ -424,6 +442,21 @@ impl TypedOp for DeconvSum {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let shape = super::output_shape(&self.pool_spec, &*self.input_shape, &*self.adjustments)?;
         Ok(tvec!(inputs[0].datum_type.fact(&*shape)))
+    }
+
+    fn concretize_dims(
+        &self,
+        _source: &TypedModel,
+        node: &TypedNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        values: &SymbolValues,
+    ) -> TractResult<TVec<OutletId>> {
+        target.wire_node(
+            &node.name,
+            Self { input_shape: self.input_shape.eval(values)?.into_owned(), ..self.clone() },
+            &[mapping[&node.inputs[0]]],
+        )
     }
 
     as_op!();
