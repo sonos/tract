@@ -24,7 +24,7 @@ pub fn check_outputs(got: &[Vec<Arc<Tensor>>], params: &Parameters) -> CliResult
             format!("Output {:?}: found reference info without value: {:?}", name, exp)
         })?[0]
             .clone();
-        let got: Arc<Tensor> = if got[ix].len() > 0 {
+        let got: Arc<Tensor> = if got[ix].len() > 1 {
             let props = params.tract_model.properties();
             let axis = props
                 .get("pulse.output_axes")
