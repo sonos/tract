@@ -4,7 +4,8 @@ use crate::CliResult;
 use tract_hir::internal::*;
 
 /// Compares the outputs of a node in tract and tensorflow.
-pub fn check_outputs(got: &[Arc<Tensor>], params: &Parameters) -> CliResult<()> {
+pub fn check_outputs(got: &[Vec<Arc<Tensor>>], params: &Parameters) -> CliResult<()> {
+    let mut error = None;
     // iter over all possible tract model outputs
     for (ix, output) in params.tract_model.output_outlets().iter().enumerate() {
         // get either name from outlet_label or from node_name
@@ -18,27 +19,49 @@ pub fn check_outputs(got: &[Arc<Tensor>], params: &Parameters) -> CliResult<()> 
             .tensors_values
             .by_name(name)
             .with_context(|| format!("Do not have reference value for output {:?}", name))?;
-        let exp = &exp.values.as_ref().with_context(|| {
+        debug!("Output {}, expects {:?}", ix, exp);
+        let mut exp: Arc<Tensor> = exp.values.as_ref().with_context(|| {
             format!("Output {:?}: found reference info without value: {:?}", name, exp)
-        })?[0];
-        // compare this to generated outputs from `got`
-        let got = &got[ix];
+        })?[0]
+            .clone();
+        let got: Arc<Tensor> = if got[ix].len() > 0 {
+            let props = params.tract_model.properties();
+            let axis = props
+                .get("pulse.output_axes")
+                .context("multiple turn without pulse.output_axes property")?
+                .as_slice::<i64>()?[ix] as usize;
+            let delay = props
+                .get("pulse.delay")
+                .context("multiple turn without pulse.delay properties")?
+                .as_slice::<i64>()?[ix] as usize;
+            let stacked = Tensor::stack_tensors(axis, &got[ix])?;
+            stacked.slice(axis, delay, delay + exp.shape()[axis])?.into_arc_tensor()
+        } else {
+            got[ix][0].clone()
+        };
         if (params.allow_float_casts
             && exp.datum_type() == f32::datum_type()
             && got.datum_type() == f16::datum_type())
             || exp.datum_type().unquantized() == got.datum_type().unquantized()
         {
-            let exp = exp.cast_to_dt(got.datum_type())?;
-            exp.close_enough(got, true).with_context(|| {
-                format!("Checking output {} (expected {:?}, got {:?}", ix, exp, got)
-            })?;
-            info!("Checked output #{}, ok.", ix);
+            exp = exp.cast_to_dt(got.datum_type())?.into_owned().into_arc_tensor();
+        }
+        if let Err(e) = exp.close_enough(&got, true).context(format!("Checking output {}", ix)) {
+            if error.is_some() {
+                error!("{:?}", e);
+            } else {
+                error = Some(e);
+            }
         } else {
-            bail!("Checking output {} (expected {:?}, got {:?}", ix, exp, got)
+            info!("Checked output #{}, ok.", ix);
         }
     }
 
-    Ok(())
+    if let Some(e) = error {
+        Err(e)
+    } else {
+        Ok(())
+    }
 }
 
 /// Compares the outputs of a node in tract and tensorflow.
