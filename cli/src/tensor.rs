@@ -347,21 +347,19 @@ pub fn retrieve_or_make_inputs(
                 && params.allow_float_casts
             {
                 tmp.push(value.iter().map(|t| t.cast_to::<f16>().unwrap().into_owned()).collect())
-            } else if value.len() == 1
-                && tract.properties().contains_key("pulse.delay")
-                && tract.input_outlets().len() == 1
-                && tract.output_outlets().len() == 1
-            {
+            } else if value.len() == 1 && tract.properties().contains_key("pulse.delay") {
                 let value = &value[0];
                 let input_pulse_axis = tract
                     .properties()
                     .get("pulse.input_axes")
                     .context("Expect pulse.input_axes property")?
                     .cast_to::<i64>()?
-                    .as_slice::<i64>()?[0] as usize;
+                    .as_slice::<i64>()?[ix] as usize;
                 let input_pulse = fact.shape.get(input_pulse_axis).unwrap().to_usize().unwrap();
                 let input_len = value.shape()[input_pulse_axis];
 
+                // how many pulses do we need to push full result out ?
+                // guess by looking at len and delay of the first output
                 let output_pulse_axis = tract
                     .properties()
                     .get("pulse.output_axes")
@@ -386,7 +384,7 @@ pub fn retrieve_or_make_inputs(
                     }
                     values.push(t);
                 }
-                info!("Generated {} pulse of input", needed_pulses);
+                info!("Generated {} pulses of shape {:?} for input {}.", needed_pulses, fact.shape, ix);
                 tmp.push(values);
             } else {
                 bail!("For input {}, can not reconcile model input fact {:?} with provided input {:?}", name, fact, value[0]);
