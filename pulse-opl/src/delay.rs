@@ -13,10 +13,7 @@ pub fn register(registry: &mut Registry) {
     );
 }
 
-fn de_delay(
-    builder: &mut ModelBuilder,
-    invocation: &ResolvedInvocation,
-) -> TractResult<Value> {
+fn de_delay(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let wire = invocation.named_arg_as(builder, "input")?;
     let axis = invocation.named_arg_as::<i64>(builder, "axis")? as usize;
     let delay = invocation.named_arg_as::<i64>(builder, "delay")? as usize;
@@ -93,9 +90,15 @@ impl OpState for DelayState {
             if self.buffer.is_none() {
                 let mut shape = input.shape().to_owned();
                 shape[op.axis] = buffered;
-                self.buffer = Some(Tensor::zero_dt(input.datum_type(), &shape)?)
+                self.buffer = Some(Tensor::zero_dt(input.datum_type(), &shape)?);
+                if cfg!(debug_assertions) && input.datum_type() == f32::datum_type() {
+                    self.buffer.as_mut().unwrap().fill_t::<f32>(f32::NAN)?;
+                }
             };
             let mut output = Tensor::uninitialized_dt(input.datum_type(), &*output_shape)?;
+            if cfg!(debug_assertions) && input.datum_type() == f32::datum_type() {
+                output.fill_t::<f32>(f32::NAN)?;
+            }
             self.apply_delay_unchecked(op, &input, &mut output);
             let output = output.into_arc_tensor();
             Ok(tvec!(output))

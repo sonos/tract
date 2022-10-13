@@ -265,7 +265,7 @@ impl Tensor {
         Tensor::zero_aligned_dt(dt, shape, 4)
     }
 
-    fn fill_t<T: Datum + Clone>(&mut self, value: T) -> anyhow::Result<()> {
+    pub fn fill_t<T: Datum + Clone>(&mut self, value: T) -> anyhow::Result<()> {
         self.as_slice_mut::<T>()?.iter_mut().for_each(|item| *item = value.clone());
         Ok(())
     }
