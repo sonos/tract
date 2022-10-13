@@ -8,7 +8,6 @@ pub fn register(registry: &mut Registry) {
             TypeName::Integer.named("axis"),
             TypeName::Integer.named("delay"),
             TypeName::Integer.named("overlap"),
-            TypeName::Scalar.named("init").default(0f32),
         ],
         de_delay,
     );
@@ -19,9 +18,8 @@ fn de_delay(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Trac
     let axis = invocation.named_arg_as::<i64>(builder, "axis")? as usize;
     let delay = invocation.named_arg_as::<i64>(builder, "delay")? as usize;
     let overlap = invocation.named_arg_as::<i64>(builder, "overlap")? as usize;
-    let init = invocation.named_arg_as::<Arc<Tensor>>(builder, "init")?;
     let input_fact = builder.model.outlet_fact(wire)?;
-    let op = Delay::new_typed(input_fact, axis, delay, overlap, init);
+    let op = Delay::new_typed(input_fact, axis, delay, overlap);
     builder.wire(op, &[wire])
 }
 
@@ -92,10 +90,15 @@ impl OpState for DelayState {
             if self.buffer.is_none() {
                 let mut shape = input.shape().to_owned();
                 shape[op.axis] = buffered;
-                self.buffer = Some(Tensor::uninitialized_dt(input.datum_type(), &shape)?);
-                self.buffer.as_mut().unwrap().fill(&op.init)?;
+                self.buffer = Some(Tensor::zero_dt(input.datum_type(), &shape)?);
+                if cfg!(debug_assertions) && input.datum_type() == f32::datum_type() {
+                    self.buffer.as_mut().unwrap().fill_t::<f32>(f32::NAN)?;
+                }
             };
             let mut output = Tensor::uninitialized_dt(input.datum_type(), &*output_shape)?;
+            if cfg!(debug_assertions) && input.datum_type() == f32::datum_type() {
+                output.fill_t::<f32>(f32::NAN)?;
+            }
             self.apply_delay_unchecked(op, &input, &mut output);
             let output = output.into_arc_tensor();
             Ok(tvec!(output))
@@ -106,7 +109,6 @@ impl OpState for DelayState {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Delay {
     pub datum_type: DatumType,
-    pub init: Arc<Tensor>,
     pub buffer_shape: TVec<TDim>,
     pub axis: usize,
     pub delay: usize,
@@ -116,16 +118,10 @@ pub struct Delay {
 impl_dyn_hash!(Delay);
 
 impl Delay {
-    pub fn new_typed(
-        input_fact: &TypedFact,
-        axis: usize,
-        delay: usize,
-        overlap: usize,
-        init: Arc<Tensor>,
-    ) -> Delay {
+    pub fn new_typed(input_fact: &TypedFact, axis: usize, delay: usize, overlap: usize) -> Delay {
         let mut buffer_shape: TVec<TDim> = input_fact.shape.to_tvec();
         buffer_shape[axis] = (delay + overlap).to_dim();
-        Delay { datum_type: input_fact.datum_type, buffer_shape, axis, delay, overlap, init }
+        Delay { datum_type: input_fact.datum_type, buffer_shape, axis, delay, overlap }
     }
 }
 
