@@ -53,7 +53,13 @@ fn pulsify_along_concat_axis(
     if fact.delay < before {
         input = target.wire_node(
             format!("{}.Delay", node.name),
-            Delay::new_typed(&(&fact).into(), fact.axis, before - fact.delay, 0),
+            Delay::new_typed(
+                &(&fact).into(),
+                fact.axis,
+                before - fact.delay,
+                0,
+                Tensor::zero_scalar_dt(fact.datum_type)?.into_arc_tensor(),
+            ),
             &[input],
         )?[0];
     }

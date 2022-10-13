@@ -242,7 +242,7 @@ impl Tensor {
     }
 
     pub fn clear<T: Datum + num_traits::Zero + Clone>(&mut self) -> anyhow::Result<()> {
-        self.fill_t(T::zero())
+        self.fill_t(&T::zero())
     }
 
     pub fn zero<T: Datum + num_traits::Zero>(shape: &[usize]) -> anyhow::Result<Tensor> {
@@ -265,7 +265,15 @@ impl Tensor {
         Tensor::zero_aligned_dt(dt, shape, 4)
     }
 
-    pub fn fill_t<T: Datum + Clone>(&mut self, value: T) -> anyhow::Result<()> {
+    pub fn fill(&mut self, value: &Tensor) -> anyhow::Result<()> {
+        fn f<T:Datum + Clone>(t: &mut Tensor, v: &Tensor) -> anyhow::Result<()> {
+            let v = v.to_scalar::<T>()?;
+            t.fill_t(v)
+        }
+        dispatch_datum!(f(self.dt)(self, value))
+    }
+
+    pub fn fill_t<T: Datum + Clone>(&mut self, value: &T) -> anyhow::Result<()> {
         self.as_slice_mut::<T>()?.iter_mut().for_each(|item| *item = value.clone());
         Ok(())
     }

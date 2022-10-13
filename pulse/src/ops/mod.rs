@@ -28,9 +28,10 @@ pub(crate) fn sync_inputs(
         if fact.delay < delay {
             let add_delay = delay - fact.delay;
             let delay_axis = fact.axis;
+            let zero = Tensor::zero_scalar_dt(fact.datum_type)?.into_arc_tensor();
             input = target.wire_node(
                 format!("{}.Delay", &*node.name),
-                Delay::new_typed(&fact.into(), delay_axis, add_delay, 0),
+                Delay::new_typed(&fact.into(), delay_axis, add_delay, 0, zero),
                 &[input],
             )?[0];
         }

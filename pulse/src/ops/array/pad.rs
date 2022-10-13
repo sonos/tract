@@ -1,5 +1,4 @@
 use crate::internal::*;
-use tract_core::ndarray::*;
 use tract_core::ops::array::{Pad, PadMode};
 use tract_pulse_opl::ops::{Delay, PulsePad};
 
@@ -39,7 +38,13 @@ fn pulsify(
     if extra_delay > 0 {
         input = target.wire_node(
             format!("{}.Delay", node.name),
-            Delay::new_typed(&(&fact).into(), fact.axis, extra_delay, 0),
+            Delay::new_typed(
+                &(&fact).into(),
+                fact.axis,
+                extra_delay,
+                0,
+                Tensor::zero_scalar_dt(fact.datum_type)?.into_arc_tensor(),
+            ),
             &[input],
         )?[0];
     }

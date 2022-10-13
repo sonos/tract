@@ -144,7 +144,13 @@ pub fn pulsify_pooled_input(
         if extra_delay > 0 {
             wire = target.wire_node(
                 format!("{}.delay-for-pad", node.name),
-                tract_pulse_opl::ops::Delay::new_typed(&(&fact).into(), fact.axis, extra_delay, 0),
+                tract_pulse_opl::ops::Delay::new_typed(
+                    &(&fact).into(),
+                    fact.axis,
+                    extra_delay,
+                    0,
+                    Tensor::zero_scalar_dt(fact.datum_type)?.into_arc_tensor(),
+                ),
                 &[wire],
             )?[0];
             fact = target.outlet_fact(wire)?.clone();
@@ -172,7 +178,13 @@ pub fn pulsify_pooled_input(
         let delay = align_to - overlap - fact.delay;
         wire = target.wire_node(
             format!("{}.delay", node.name),
-            tract_pulse_opl::ops::Delay::new_typed(&(&fact).into(), fact.axis, delay, overlap),
+            tract_pulse_opl::ops::Delay::new_typed(
+                &(&fact).into(),
+                fact.axis,
+                delay,
+                overlap,
+                Tensor::zero_scalar_dt(fact.datum_type)?.into_arc_tensor(),
+            ),
             &[wire],
         )?[0];
     }
