@@ -70,29 +70,63 @@ static GEMV1: &'static str =
           y[i] = sum;
         }";
 
-fn gemv1(c: &mut Criterion) {
+fn profile_gemv1() {
+    // let (m, n, iters) = (1024, 32, 10000);
+    let (m, n, iters) = (1024, 1024, 10000);
+    let ctx = context();
+    let a = Buffer::<cl_float>::create(&ctx, CL_MEM_READ_ONLY, m * n, null_mut()).unwrap();
+    let x = Buffer::<cl_float>::create(&ctx, CL_MEM_READ_ONLY, n, null_mut()).unwrap();
+    let y = Buffer::<cl_float>::create(&ctx, CL_MEM_READ_WRITE, m, null_mut()).unwrap();
+
+    let queue = queue(&ctx);
+    let program = Program::create_and_build_from_source(&ctx, GEMV1, "").unwrap();
+    let kernel = Kernel::create(&program, "gemv1").expect("Kernel::create failed");
+    let mut ns = 0;
+    for i in 0..iters {
+        let mut run = ExecuteKernel::new(&kernel);
+        let event = run
+            .set_arg(&a)
+            .set_arg(&x)
+            .set_arg(&y)
+            .set_arg(&(m as i32))
+            .set_arg(&(n as i32))
+            .set_global_work_sizes(&[m])
+            .set_local_work_sizes(&[16])
+            .enqueue_nd_range(&queue)
+            .unwrap();
+        event.wait().unwrap();
+        ns += event.profiling_command_end().unwrap() - event.profiling_command_start().unwrap();
+    }
+    let gigaflops = (m * n) as f32 / ns as f32 * iters as f32;
+    dbg!(gigaflops);
+}
+
+fn bench_gemv1(c: &mut Criterion) {
     let mut g = c.benchmark_group("gemv1");
     for loc in [1, 2, 4, 8, 16] {
         for m in [16, 32, 64, 128, 256, 1024] {
             for n in [16, 32, 64, 128, 256, 1024] {
                 g.bench_with_input(
                     BenchmarkId::new("square", format!("{}x{}by{}", m, n, loc)),
-                    &(m,n),
+                    &(m, n),
                     |b, &(m, n)| {
                         let ctx = context();
-                        let a = Buffer::<cl_float>::create(&ctx, CL_MEM_READ_ONLY, m * n, null_mut())
+                        let a =
+                            Buffer::<cl_float>::create(&ctx, CL_MEM_READ_ONLY, m * n, null_mut())
+                                .unwrap();
+                        let x = Buffer::<cl_float>::create(&ctx, CL_MEM_READ_ONLY, n, null_mut())
                             .unwrap();
-                        let x =
-                            Buffer::<cl_float>::create(&ctx, CL_MEM_READ_ONLY, n, null_mut()).unwrap();
-                        let y =
-                            Buffer::<cl_float>::create(&ctx, CL_MEM_READ_WRITE, m, null_mut()).unwrap();
+                        let y = Buffer::<cl_float>::create(&ctx, CL_MEM_READ_WRITE, m, null_mut())
+                            .unwrap();
 
                         let queue = queue(&ctx);
-                        let program = Program::create_and_build_from_source(&ctx, GEMV1, "").unwrap();
-                        let kernel = Kernel::create(&program, "gemv1").expect("Kernel::create failed");
+                        let program =
+                            Program::create_and_build_from_source(&ctx, GEMV1, "").unwrap();
+                        let kernel =
+                            Kernel::create(&program, "gemv1").expect("Kernel::create failed");
                         b.iter(|| {
                             let mut run = ExecuteKernel::new(&kernel);
-                            run.set_arg(&a)
+                            let event = run.set_arg(&a)
                                 .set_arg(&x)
                                 .set_arg(&y)
                                 .set_arg(&(m as i32))
@@ -101,7 +135,7 @@ fn gemv1(c: &mut Criterion) {
                                 .set_local_work_sizes(&[loc])
                                 .enqueue_nd_range(&queue)
                                 .unwrap();
-                            queue.finish().unwrap();
+                            event.wait().unwrap();
                         });
                     },
                 )
@@ -111,5 +145,11 @@ fn gemv1(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, empty, gemv1, write_buffer);
+criterion_group!(benches, empty, bench_gemv1, write_buffer);
 criterion_main!(benches);
+
+/*
+fn main() {
+    profile_gemv1()
+}
+*/
