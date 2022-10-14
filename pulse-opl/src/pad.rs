@@ -61,7 +61,7 @@ impl PulsePadOpState {
         let pulse = input.shape()[op.axis];
         let pulse_begin = self.current_pos;
         let pulse_end = self.current_pos + pulse;
-        self.current_pos += pulse;
+        self.current_pos += pulse - op.overlap;
         let end_input =
             op.end_input.eval(&session.resolved_symbols).to_usize().unwrap_or(std::usize::MAX);
         let after = op.after.eval(&session.resolved_symbols).to_usize().unwrap_or(std::usize::MAX);
@@ -153,6 +153,7 @@ pub struct PulsePad {
     pub begin_input: usize,
     pub end_input: TDim,
     pub mode: PadMode,
+    pub overlap: usize,
 }
 
 impl_dyn_hash!(PulsePad);

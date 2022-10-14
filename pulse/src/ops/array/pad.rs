@@ -49,6 +49,7 @@ fn pulsify(
         begin_input: fact.delay + extra_delay,
         end_input: fact.delay.to_dim() + extra_delay + fact.dim,
         mode: op.mode.clone(),
+        overlap: 0,
     };
     Ok(Some(target.wire_node(&*node.name, op, &[input])?))
 }
