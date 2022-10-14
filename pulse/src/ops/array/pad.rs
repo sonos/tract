@@ -1,5 +1,4 @@
 use crate::internal::*;
-use tract_core::ndarray::*;
 use tract_core::ops::array::{Pad, PadMode};
 use tract_pulse_opl::ops::{Delay, PulsePad};
 
