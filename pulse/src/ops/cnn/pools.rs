@@ -204,3 +204,42 @@ pub fn pulsify_pooled_input(
         Ok(Some((wire, spec.clone())))
     }
 }
+
+#[cfg(test)]
+mod test {
+    use tract_pulse_opl::tract_core::ops::cnn::{ConvUnary, PoolSpec};
+    use tract_pulse_opl::tract_nnef::internal::*;
+
+    use crate::internal::stream_dim;
+    use crate::model::{PulsedModel, PulsedModelExt};
+
+    #[test]
+    fn left_padded_conv_wo_delay() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let source = model.add_source("source", f32::fact(dims!(1, stream_dim())))?;
+        let conv = model.wire_node(
+            "conv",
+            ConvUnary {
+                pool_spec: PoolSpec {
+                    data_format: tract_core::ops::nn::DataFormat::CHW,
+                    dilations: None,
+                    strides: None,
+                    kernel_shape: tvec![2],
+                    padding: tract_core::ops::cnn::PaddingSpec::Explicit(tvec![1], tvec![0], false),
+                    output_channel_override: Some(1),
+                },
+                kernel_fmt: tract_core::ops::cnn::KernelFormat::OIHW,
+                kernel: rctensor3(&[[[1f32, 2f32]]]),
+                group: 1,
+                bias: None,
+                q_params: None,
+            },
+            &[source],
+        )?;
+        model.set_output_outlets(&conv)?;
+        let pulsed = PulsedModel::new(&model, 1)?;
+        let output_fact = pulsed.output_fact(0)?;
+        assert_eq!(output_fact.delay, 0);
+        Ok(())
+    }
+}
