@@ -3,6 +3,9 @@ use ndarray::*;
 use crate::internal::*;
 use crate::model::*;
 use crate::ops;
+use crate::ops::array::Pad;
+use crate::ops::array::PadMode;
+use crate::ops::cnn::PaddingSpec;
 use crate::ops::matmul::mir_quant::wire_offset_u8_as_i8;
 use crate::ops::matmul::mir_quant::QParamKind;
 use crate::ops::matmul::MatMulAxes;
@@ -691,6 +694,47 @@ impl ConvUnary {
         }
         Ok(None)
     }
+
+    fn declutter_precursor_padding(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if self.pool_spec.padding != PaddingSpec::Valid
+            && self.pool_spec.padding
+                != PaddingSpec::Explicit(
+                    tvec!(0; self.pool_spec.rank()),
+                    tvec!(0; self.pool_spec.rank()),
+                    false,
+                )
+        {
+            return Ok(None);
+        }
+        let prec = model.node(node.inputs[0].node);
+        let pad = if let Some(pad) = prec.op_as::<Pad>() { pad } else { return Ok(None) };
+        let value = if let PadMode::Constant(c) = &pad.mode {
+            c
+        } else {
+            return Ok(None);
+        };
+        let shape = self.pool_spec.data_format.shape(&model.outlet_fact(node.inputs[0])?.shape)?;
+        if value.cast_to_scalar::<i64>()? != 0
+            || (self.pool_spec.data_format.has_n() && pad.pads[0] != (0, 0))
+            || pad.pads[shape.c_axis()] != (0, 0)
+        {
+            return Ok(None);
+        }
+        let before = pad.pads[shape.hw_axes()].iter().map(|pair| pair.0).collect();
+        let after = pad.pads[shape.hw_axes()].iter().map(|pair| pair.1).collect();
+        let padding = PaddingSpec::Explicit(before, after, false);
+        let mut new = self.clone();
+        new.pool_spec.padding = padding;
+        let mut patch = TypedModelPatch::default();
+        let wire = patch.tap_model(model, prec.inputs[0])?;
+        let wire = patch.wire_node(&node.name, new, &[wire])?;
+        patch.shunt_outside(model, node.id.into(), wire[0])?;
+        Ok(Some(patch))
+    }
 }
 
 impl Op for ConvUnary {
@@ -843,6 +887,9 @@ impl TypedOp for ConvUnary {
             if let Some(p) = d(self, model, node)? {
                 return Ok(Some(p));
             }
+        }
+        if let Some(p) = self.declutter_precursor_padding(model, node)? {
+            return Ok(Some(p));
         }
         Ok(None)
     }
@@ -1144,6 +1191,7 @@ fn should_use_lazy(_input_shape: &DataShape, pool_spec: &PoolSpec, group: usize)
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::ops::array::Pad;
     use crate::ops::cnn::PaddingSpec;
     use DataFormat::*;
 
@@ -1175,5 +1223,47 @@ mod test {
         );
         let output = op.eval(input).unwrap();
         assert_eq!(&*output[0], &tensor4(&[[[[8i32, 12], [20, 24]]]]));
+    }
+
+    #[test]
+    fn valid_conv_absorbs_precursor_pad() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let wire = tvec!(model.add_source("source", f32::fact(dims!(1, 10)))?);
+        let wire = model.wire_node(
+            "pad",
+            Pad {
+                pads: vec![(0, 0), (1, 0)],
+                mode: ops::array::PadMode::Constant(rctensor0(0f32)),
+            },
+            &*wire,
+        )?;
+        let wire = model.wire_node(
+            "conv",
+            ConvUnary {
+                pool_spec: PoolSpec {
+                    data_format: crate::ops::nn::DataFormat::CHW,
+                    dilations: None,
+                    strides: None,
+                    kernel_shape: tvec![2],
+                    padding: crate::ops::cnn::PaddingSpec::Explicit(tvec![0], tvec![0], false),
+                    output_channel_override: Some(1),
+                },
+                kernel_fmt: crate::ops::cnn::KernelFormat::OIHW,
+                kernel: rctensor3(&[[[1f32, 2f32]]]),
+                group: 1,
+                bias: None,
+                q_params: None,
+            },
+            &*wire,
+        )?;
+        model.set_output_outlets(&*wire)?;
+        model.declutter()?;
+        assert_eq!(model.nodes().len(), 2); // source + conv
+        let cv = model.nodes()[1].op_as::<ConvUnary>().unwrap();
+        assert_eq!(
+            cv.pool_spec.padding,
+            crate::ops::cnn::PaddingSpec::Explicit(tvec![1], tvec![0], false)
+        ); // source + conv
+        Ok(())
     }
 }
