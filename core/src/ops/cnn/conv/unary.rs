@@ -1,4 +1,5 @@
 use ndarray::*;
+use tract_data::itertools::izip;
 
 use crate::internal::*;
 use crate::model::*;
@@ -701,12 +702,7 @@ impl ConvUnary {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         if self.pool_spec.padding != PaddingSpec::Valid
-            && self.pool_spec.padding
-                != PaddingSpec::Explicit(
-                    tvec!(0; self.pool_spec.rank()),
-                    tvec!(0; self.pool_spec.rank()),
-                    false,
-                )
+            && !matches!(self.pool_spec.padding, PaddingSpec::Explicit(_, _, _))
         {
             return Ok(None);
         }
@@ -724,8 +720,12 @@ impl ConvUnary {
         {
             return Ok(None);
         }
-        let before = pad.pads[shape.hw_axes()].iter().map(|pair| pair.0).collect();
-        let after = pad.pads[shape.hw_axes()].iter().map(|pair| pair.1).collect();
+        let mut before:TVec<usize> = pad.pads[shape.hw_axes()].iter().map(|pair| pair.0).collect();
+        let mut after:TVec<usize> = pad.pads[shape.hw_axes()].iter().map(|pair| pair.1).collect();
+        if let PaddingSpec::Explicit(bef, aft, false) = &self.pool_spec.padding {
+            izip!(&mut before, bef).for_each(|(pad, cv)| *pad += cv);
+            izip!(&mut after, aft).for_each(|(pad, cv)| *pad += cv);
+        }
         let padding = PaddingSpec::Explicit(before, after, false);
         let mut new = self.clone();
         new.pool_spec.padding = padding;
