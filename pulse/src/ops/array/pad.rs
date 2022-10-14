@@ -45,7 +45,6 @@ fn pulsify(
     }
     let op = PulsePad {
         axis: fact.axis,
-        pulse,
         before,
         after: after.into(),
         begin_input: fact.delay + extra_delay,

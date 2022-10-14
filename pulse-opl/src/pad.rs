@@ -58,16 +58,17 @@ impl PulsePadOpState {
         op: &PulsePad,
         mut input: Tensor,
     ) -> TractResult<Tensor> {
+        let pulse = input.shape()[op.axis];
         let pulse_begin = self.current_pos;
-        let pulse_end = self.current_pos + op.pulse;
-        self.current_pos += op.pulse;
+        let pulse_end = self.current_pos + pulse;
+        self.current_pos += pulse;
         let end_input =
             op.end_input.eval(&session.resolved_symbols).to_usize().unwrap_or(std::usize::MAX);
         let after = op.after.eval(&session.resolved_symbols).to_usize().unwrap_or(std::usize::MAX);
 
         if let PadMode::Edge = op.mode {
             if after != 0 && pulse_begin < end_input {
-                let latest_valid_frame = (end_input - pulse_begin).min(op.pulse) - 1;
+                let latest_valid_frame = (end_input - pulse_begin).min(pulse) - 1;
                 unsafe {
                     dispatch_copy_by_size!(Self::save_frame(input.datum_type())(
                         self,
@@ -90,7 +91,7 @@ impl PulsePadOpState {
         }
 
         if pulse_begin < op.begin_input {
-            let fill_up_to = (op.begin_input - pulse_begin).min(op.pulse);
+            let fill_up_to = (op.begin_input - pulse_begin).min(pulse);
             match &op.mode {
                 PadMode::Constant(c) => unsafe {
                     dispatch_copy_by_size!(Self::fill_slice_constant(input.datum_type())(
@@ -115,14 +116,14 @@ impl PulsePadOpState {
             }
         }
         if pulse_end > end_input && after > 0 {
-            let fill_from = op.pulse - (pulse_end - end_input).min(op.pulse);
+            let fill_from = pulse - (pulse_end - end_input).min(pulse);
             match &op.mode {
                 PadMode::Constant(c) => unsafe {
                     dispatch_copy_by_size!(Self::fill_slice_constant(input.datum_type())(
                         &mut input,
                         c,
                         op.axis,
-                        fill_from..op.pulse
+                        fill_from..pulse
                     ))
                 },
                 PadMode::Edge => {
@@ -132,7 +133,7 @@ impl PulsePadOpState {
                             &mut input,
                             op.axis,
                             last_frame,
-                            fill_from..op.pulse
+                            fill_from..pulse
                         ))
                     }
                 }
@@ -147,7 +148,6 @@ impl PulsePadOpState {
 #[derive(Debug, Clone, Default, Hash)]
 pub struct PulsePad {
     pub axis: usize,
-    pub pulse: usize,
     pub before: usize,
     pub after: TDim,
     pub begin_input: usize,

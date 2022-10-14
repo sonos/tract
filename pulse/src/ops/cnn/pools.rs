@@ -151,7 +151,6 @@ pub fn pulsify_pooled_input(
         }
         let op = tract_pulse_opl::ops::PulsePad {
             axis: fact.axis,
-            pulse,
             before,
             after: computed_padding.pad_after,
             begin_input: fact.delay,
@@ -214,6 +213,7 @@ mod test {
     use crate::model::{PulsedModel, PulsedModelExt};
 
     #[test]
+    #[ignore]
     fn left_padded_conv_wo_delay() -> TractResult<()> {
         let mut model = TypedModel::default();
         let source = model.add_source("source", f32::fact(dims!(1, stream_dim())))?;
