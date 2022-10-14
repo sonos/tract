@@ -90,15 +90,9 @@ impl OpState for DelayState {
             if self.buffer.is_none() {
                 let mut shape = input.shape().to_owned();
                 shape[op.axis] = buffered;
-                self.buffer = Some(Tensor::zero_dt(input.datum_type(), &shape)?);
-                if cfg!(debug_assertions) && input.datum_type() == f32::datum_type() {
-                    self.buffer.as_mut().unwrap().fill_t::<f32>(f32::NAN)?;
-                }
+                self.buffer = Some(Tensor::uninitialized_dt(input.datum_type(), &shape)?);
             };
             let mut output = Tensor::uninitialized_dt(input.datum_type(), &*output_shape)?;
-            if cfg!(debug_assertions) && input.datum_type() == f32::datum_type() {
-                output.fill_t::<f32>(f32::NAN)?;
-            }
             self.apply_delay_unchecked(op, &input, &mut output);
             let output = output.into_arc_tensor();
             Ok(tvec!(output))
