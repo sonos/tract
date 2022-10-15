@@ -106,29 +106,54 @@ pub fn pulsify_pooled_input(
     padding_value: Option<Tensor>,
 ) -> TractResult<Option<(OutletId, PoolSpec)>> {
     let mut wire = mapping[&node.inputs[0]];
-    let mut fact: PulsedFact = target.outlet_fact(wire)?.clone();
-    let input_shape = spec.data_format.shape(fact.shape.clone())?;
-    if Some(fact.axis) == input_shape.n_axis() {
+    let input_fact: PulsedFact = target.outlet_fact(wire)?.clone();
+    let input_shape = spec.data_format.shape(input_fact.shape.clone())?;
+    if Some(input_fact.axis) == input_shape.n_axis() {
         return Ok(None);
     }
-    if fact.axis == input_shape.c_axis() {
+    if input_fact.axis == input_shape.c_axis() {
         bail!("Can not pulsify cnn pooling ops along the input channel axis");
     }
 
-    let geo_axis = fact.axis - input_shape.h_axis();
+    let geo_axis = input_fact.axis - input_shape.h_axis();
     let stride = spec.strides.as_ref().and_then(|v| v.get(geo_axis).cloned()).unwrap_or(1);
-    let pulse = fact.pulse();
+    let pulse = input_fact.pulse();
     if pulse % stride != 0 {
         bail!("Pulsificaton requires pulse to be a stride multiple")
     }
 
+    let dilation = spec.dilations.as_ref().map(|d| d[geo_axis]).unwrap_or(1);
+    let kernel_len = (spec.kernel_shape[geo_axis] - 1) * dilation;
+    let overlap = (kernel_len + 1).saturating_sub(stride);
+    let misalignment = input_fact.delay % pulse;
+
     let computed_padding = spec.padding.compute_one(
         geo_axis,
-        &fact.dim,
+        &input_fact.dim,
         spec.kernel_shape[geo_axis],
         spec.dilation(geo_axis),
         spec.stride(geo_axis),
     );
+
+    let before = computed_padding.pad_before.to_usize()?;
+    // do we need strat delay to fit the padding ?
+    let extra_delay = before.saturating_sub(input_fact.delay + overlap);
+
+    if overlap > 0 || misalignment > 0 || extra_delay > 0 {
+        let align_to = (overlap + input_fact.delay).divceil(stride) * stride;
+        let delay = align_to - overlap - input_fact.delay;
+        wire = target.wire_node(
+            format!("{}.delay", node.name),
+            tract_pulse_opl::ops::Delay::new_typed(
+                &(&input_fact).into(),
+                input_fact.axis,
+                delay + extra_delay,
+                overlap,
+            ),
+            &[wire],
+        )?[0];
+    }
+
     let has_padding =
         !computed_padding.pad_before.is_zero() || !computed_padding.pad_after.is_zero();
 
@@ -139,42 +164,16 @@ pub fn pulsify_pooled_input(
         } else {
             bail!("No padding value for streaming pool operation");
         };
-        let before = computed_padding.pad_before.to_usize()?;
-        let extra_delay = before.saturating_sub(fact.delay);
-        if extra_delay > 0 {
-            wire = target.wire_node(
-                format!("{}.delay-for-pad", node.name),
-                tract_pulse_opl::ops::Delay::new_typed(&(&fact).into(), fact.axis, extra_delay, 0),
-                &[wire],
-            )?[0];
-            fact = target.outlet_fact(wire)?.clone();
-        }
         let op = tract_pulse_opl::ops::PulsePad {
-            axis: fact.axis,
-            pulse,
+            axis: input_fact.axis,
             before,
             after: computed_padding.pad_after,
-            begin_input: fact.delay,
-            end_input: fact.delay.to_dim() + &fact.dim,
+            begin_input: input_fact.delay,
+            end_input: input_fact.delay.to_dim() + &input_fact.dim,
             mode: PadMode::Constant(value),
+            overlap,
         };
         wire = target.wire_node(format!("{}.pad", node.name), op, &[wire])?[0];
-        fact = target.outlet_fact(wire)?.clone();
-    }
-
-    let dilation = spec.dilations.as_ref().map(|d| d[geo_axis]).unwrap_or(1);
-    let kernel_len = (spec.kernel_shape[geo_axis] - 1) * dilation;
-    let overlap = (kernel_len + 1).saturating_sub(stride);
-    let misalignment = fact.delay % pulse;
-
-    if overlap > 0 || misalignment > 0 {
-        let align_to = (overlap + fact.delay).divceil(stride) * stride;
-        let delay = align_to - overlap - fact.delay;
-        wire = target.wire_node(
-            format!("{}.delay", node.name),
-            tract_pulse_opl::ops::Delay::new_typed(&(&fact).into(), fact.axis, delay, overlap),
-            &[wire],
-        )?[0];
     }
 
     if has_padding {
@@ -202,5 +201,44 @@ pub fn pulsify_pooled_input(
         )))
     } else {
         Ok(Some((wire, spec.clone())))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tract_pulse_opl::tract_core::ops::cnn::{ConvUnary, PoolSpec};
+    use tract_pulse_opl::tract_nnef::internal::*;
+
+    use crate::internal::stream_dim;
+    use crate::model::{PulsedModel, PulsedModelExt};
+
+    #[test]
+    fn left_padded_conv_wo_delay() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let source = model.add_source("source", f32::fact(dims!(1, stream_dim())))?;
+        let conv = model.wire_node(
+            "conv",
+            ConvUnary {
+                pool_spec: PoolSpec {
+                    data_format: tract_core::ops::nn::DataFormat::CHW,
+                    dilations: None,
+                    strides: None,
+                    kernel_shape: tvec![2],
+                    padding: tract_core::ops::cnn::PaddingSpec::Explicit(tvec![1], tvec![0], false),
+                    output_channel_override: Some(1),
+                },
+                kernel_fmt: tract_core::ops::cnn::KernelFormat::OIHW,
+                kernel: rctensor3(&[[[1f32, 2f32]]]),
+                group: 1,
+                bias: None,
+                q_params: None,
+            },
+            &[source],
+        )?;
+        model.set_output_outlets(&conv)?;
+        let pulsed = PulsedModel::new(&model, 1)?;
+        let output_fact = pulsed.output_fact(0)?;
+        assert_eq!(output_fact.delay, 0);
+        Ok(())
     }
 }
