@@ -3,7 +3,6 @@ use proptest::test_runner::TestCaseResult;
 use tract_hir::internal::*;
 use tract_hir::ops::cnn::PaddingSpec;
 use tract_hir::ops::{array, cnn, nn};
-use tract_pulse_opl::ops::Delay;
 
 use super::*;
 

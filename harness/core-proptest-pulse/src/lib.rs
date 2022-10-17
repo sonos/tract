@@ -173,40 +173,6 @@ fn test_simple_conv() {
 }
 
 #[test]
-fn test_crop_after_1() {
-    use tract_hir::ops::array::Slice;
-    let s = tract_pulse::internal::stream_dim();
-    let mut model = InferenceModel::default();
-    let a = model.add_source("a", f32::fact(&[s]).into()).unwrap();
-    model.wire_node("slice", Slice::new(0, 0, 0), &[a]).unwrap();
-    model.auto_outputs().unwrap();
-    let model = model.into_typed().unwrap();
-
-    let input = arr1(&[1.0]);
-    proptest_regular_against_pulse(model, 1, input.into_dyn(), 0).unwrap();
-}
-
-#[test]
-fn test_pad_after_1() {
-    use tract_hir::ops::array::{Pad, PadMode};
-    let mut model = InferenceModel::default();
-    let s = tract_pulse::internal::stream_dim();
-    let a = model.add_source("a", f32::fact(&[s]).into()).unwrap();
-    model
-        .wire_node(
-            "pad",
-            Pad::new(vec![(0, 1)], PadMode::Constant(Arc::new(Tensor::from(-1f32)))),
-            &[a],
-        )
-        .unwrap();
-    model.auto_outputs().unwrap();
-    let model = model.into_typed().unwrap();
-
-    let input = arr1(&[]);
-    proptest_regular_against_pulse(model, 1, input.into_dyn(), 0).unwrap();
-}
-
-#[test]
 fn test_pad_before_1() {
     use tract_hir::ops::array::{Pad, PadMode};
     let mut model = InferenceModel::default();

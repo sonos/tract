@@ -103,13 +103,6 @@ impl ConvPlusConvProblem {
             2,
         )
     }
-
-    fn valid(&self) -> bool {
-        let model = Self::model(&self.convs).into_decluttered().unwrap();
-        let symbols = SymbolValues::default().with(stream_symbol(), self.input.shape()[2] as i64);
-        let concrete = model.clone().concretize_dims(&symbols).unwrap();
-        !concrete.nodes.iter().any(|n| n.outputs.iter().any(|o| o.fact.shape.volume().is_zero()))
-    }
 }
 
 proptest! {
