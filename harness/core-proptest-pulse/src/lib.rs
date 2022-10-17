@@ -8,6 +8,7 @@ use proptest::proptest;
 use proptest::test_runner::TestCaseResult;
 use proptest::*;
 use tract_hir::internal::*;
+use tract_hir::tract_num_traits::Zero;
 use tract_ndarray::*;
 use tract_pulse::internal::*;
 
@@ -32,19 +33,19 @@ fn proptest_regular_against_pulse(
 
     let len = input_array.shape()[axis];
     let model = model.into_decluttered().unwrap();
-    let runnable = model
-        .clone()
-        .concretize_dims(&SymbolValues::default().with(s, len as i64))
-        .unwrap()
-        .into_runnable()
-        .unwrap();
+    let symbols = SymbolValues::default().with(stream_symbol(), len as i64);
+    let concrete = model.clone().concretize_dims(&symbols).unwrap();
+    if concrete.nodes.iter().any(|n| n.outputs.iter().any(|o| o.fact.shape.volume().is_zero())) {
+        return Err(TestCaseError::reject("too short input"));
+    }
+    let runnable = concrete.into_runnable().unwrap();
     // dbg!(&runnable);
     let outputs = runnable.run(tvec!(input_array.clone().into_tensor())).unwrap();
 
     debug!("Build pulsing model");
-//    dbg!(&model);
+    // dbg!(&model);
     let pulsed = PulsedModel::new(&model, pulse).unwrap();
-//    dbg!(&pulsed);
+    // dbg!(&pulsed);
     let output_fact = pulsed.output_fact(0).unwrap().clone();
 
     let output_stream_axis = output_fact.axis;
@@ -92,7 +93,7 @@ fn proptest_regular_against_pulse(
             &[got.view(), outputs.remove(0).to_array_view::<f32>().unwrap()],
         )
         .unwrap();
-//        eprintln!("GOT: {}", got);
+        // eprintln!("GOT: {}", got);
         if let Some(output_len) = output_len {
             if got.shape()[output_stream_axis] >= output_len.max(0) as usize + delay {
                 break;
@@ -140,7 +141,7 @@ proptest! {
         let s = tract_pulse::internal::stream_dim();
         let a = model.add_source("a", f32::fact(&[s]).into()).unwrap();
         let pad = model.wire_node("pad",Pad::new(vec![(begin as _, end as _)],
-            PadMode::Constant(Arc::new(Tensor::from(-1f32)))), &[a]).unwrap();
+        PadMode::Constant(Arc::new(Tensor::from(-1f32)))), &[a]).unwrap();
         model.set_output_outlets(&pad).unwrap();
         let model = model.into_typed().unwrap();
 

@@ -1,7 +1,9 @@
 use proptest::proptest;
 use proptest::test_runner::TestCaseResult;
 use tract_hir::internal::*;
+use tract_hir::ops::cnn::PaddingSpec;
 use tract_hir::ops::{array, cnn, nn};
+use tract_pulse_opl::ops::Delay;
 
 use super::*;
 
@@ -12,6 +14,7 @@ struct DelayPlusPoolProblem {
     delay: usize,
     stride: usize,
     pool_window: usize,
+    padding: PaddingSpec,
 }
 
 impl Arbitrary for DelayPlusPoolProblem {
@@ -21,6 +24,10 @@ impl Arbitrary for DelayPlusPoolProblem {
     fn arbitrary_with(_: Self::Parameters) -> BoxedStrategy<Self> {
         (1usize..4, 1usize..4, 0usize..5, 1usize..4)
             .prop_flat_map(|(pool_window, factor, delay, stride)| {
+                let padding = pool_window - 1;
+                let explicit = (0..=padding).prop_map(move |right| {
+                    PaddingSpec::Explicit(tvec!(padding - right), tvec!(right), false)
+                });
                 let min_input = delay + pool_window;
                 (
                     Just(pool_window),
@@ -28,11 +35,12 @@ impl Arbitrary for DelayPlusPoolProblem {
                     Just(delay),
                     Just(stride),
                     vec(min_input..min_input + 10),
+                    prop_oneof![Just(PaddingSpec::Valid), explicit],
                 )
             })
-            .prop_map(|(pool_window, factor, delay, stride, input)| {
+            .prop_map(|(pool_window, factor, delay, stride, input, padding)| {
                 let pulse = factor * stride;
-                DelayPlusPoolProblem { input, pulse, delay, stride, pool_window }
+                DelayPlusPoolProblem { input, pulse, delay, stride, pool_window, padding }
             })
             .boxed()
     }
@@ -45,11 +53,11 @@ impl DelayPlusPoolProblem {
             .add_source("a", f32::fact(dims!(1, tract_pulse::internal::stream_dim(), 1)).into())
             .unwrap();
         let crop =
-            model.wire_node("crop", expand(array::Crop::new(1, self.delay, 0)), &[a]).unwrap();
+            model.wire_node("delay", expand(array::Crop::new(1, self.delay, 0)), &[a]).unwrap();
         let pool_spec = cnn::PoolSpec::new(
             nn::DataFormat::NHWC,
             tvec!(self.pool_window),
-            cnn::PaddingSpec::Valid,
+            self.padding.clone(),
             None,
             Some(tvec!(self.stride)),
             None,
@@ -75,6 +83,7 @@ fn test_basic() {
         delay: 0,
         stride: 1,
         pool_window: 2,
+        padding: PaddingSpec::Valid,
     }
     .run()
     .unwrap()
@@ -88,6 +97,7 @@ fn test_stride() {
         delay: 0,
         stride: 2,
         pool_window: 1,
+        padding: PaddingSpec::Valid,
     }
     .run()
     .unwrap()
@@ -95,29 +105,44 @@ fn test_stride() {
 
 #[test]
 fn test_misaligned_stride() {
-    DelayPlusPoolProblem { input: vec![0.0, 1.0], pulse: 2, delay: 1, stride: 2, pool_window: 1 }
-        .run()
-        .unwrap()
+    DelayPlusPoolProblem {
+        input: vec![0.0, 1.0],
+        pulse: 2,
+        delay: 1,
+        stride: 2,
+        pool_window: 1,
+        padding: PaddingSpec::Valid,
+    }
+    .run()
+    .unwrap()
 }
 
 #[test]
 fn test_overlap() {
-    DelayPlusPoolProblem { input: vec![0.0, 1.0], pulse: 1, delay: 0, stride: 1, pool_window: 2 }
-        .run()
-        .unwrap()
+    DelayPlusPoolProblem {
+        input: vec![0.0, 1.0],
+        pulse: 1,
+        delay: 0,
+        stride: 1,
+        pool_window: 2,
+        padding: PaddingSpec::Valid,
+    }
+    .run()
+    .unwrap()
 }
 
 #[test]
 fn test_overlap_realign() {
     DelayPlusPoolProblem {
-        input: vec![4.0, 0.0, 0.0, 0.0],
+        input: vec![f32::NAN, 2.0, 3.0, 4.0, 5.0, 6.0],
         pulse: 2,
         delay: 1,
         stride: 2,
         pool_window: 3,
+        padding: PaddingSpec::Valid,
     }
     .run()
-    .unwrap()
+    .unwrap();
 }
 
 #[test]
@@ -128,6 +153,7 @@ fn test_long_overlap_1() {
         delay: 0,
         stride: 1,
         pool_window: 3,
+        padding: PaddingSpec::Valid,
     }
     .run()
     .unwrap()
@@ -141,6 +167,7 @@ fn test_long_overlap_2() {
         delay: 2,
         stride: 1,
         pool_window: 2,
+        padding: PaddingSpec::Valid,
     }
     .run()
     .unwrap()
@@ -154,6 +181,35 @@ fn test_long_overlap_3() {
         delay: 0,
         stride: 2,
         pool_window: 3,
+        padding: PaddingSpec::Valid,
+    }
+    .run()
+    .unwrap()
+}
+
+#[test]
+fn test_pad_right() {
+    DelayPlusPoolProblem {
+        input: vec![0.0, 0.0],
+        pulse: 1,
+        delay: 0,
+        stride: 1,
+        pool_window: 2,
+        padding: PaddingSpec::Explicit(tvec!(0), tvec!(1), false),
+    }
+    .run()
+    .unwrap()
+}
+
+#[test]
+fn test_pad_right_2() {
+    DelayPlusPoolProblem {
+        input: vec![f32::NAN, 0.0, 1.0],
+        pulse: 2,
+        delay: 1,
+        stride: 2,
+        pool_window: 2,
+        padding: PaddingSpec::Explicit(tvec!(0), tvec!(1), false),
     }
     .run()
     .unwrap()
