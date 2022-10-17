@@ -1,7 +1,6 @@
 use crate::internal::*;
 use tract_core::num_traits::Zero;
 use tract_core::ops::cnn::{MaxPool, PaddingSpec, PoolSpec, SumPool};
-use tract_pulse_opl::tract_nnef::internal::num_integer::Integer;
 
 register_all!(MaxPool: pulsify_max_pool, SumPool: pulsify_sum_pool);
 
