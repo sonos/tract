@@ -59,20 +59,21 @@ fn write_buffer(c: &mut Criterion) {
 }
 
 static GEMV1: &'static str =
-    "__kernel void gemv1(__global const float * a,__global const float * x,
-                    __global float * y,int m,int n) {
+    "__kernel void gemv1(__global const float *a,__global const float *x,
+                    __global float *y, int m, int n) {
           float sum = 0.0f;
           int i = get_global_id(0); // row index
-          for (int k=0;k<n;k++)
-            {
-              sum += a[i + m*k] * x[k];
-            }
+          for (int k=0 ; k<n ; k++) {
+              // sum += a[i + m*k] * x[k];
+              sum += a[i*n + k] * x[k];
+          }
           y[i] = sum;
-        }";
+    }";
 
 fn profile_gemv1() {
     // let (m, n, iters) = (1024, 32, 10000);
-    let (m, n, iters) = (1024, 1024, 10000);
+    // let (m, n, iters) = (1024, 1024, 10000);
+    let (m, n, l, iters) = (16, 16, 2, 10000);
     let ctx = context();
     let a = Buffer::<cl_float>::create(&ctx, CL_MEM_READ_ONLY, m * n, null_mut()).unwrap();
     let x = Buffer::<cl_float>::create(&ctx, CL_MEM_READ_ONLY, n, null_mut()).unwrap();
@@ -91,7 +92,7 @@ fn profile_gemv1() {
             .set_arg(&(m as i32))
             .set_arg(&(n as i32))
             .set_global_work_sizes(&[m])
-            .set_local_work_sizes(&[16])
+            .set_local_work_sizes(&[2])
             .enqueue_nd_range(&queue)
             .unwrap();
         event.wait().unwrap();
@@ -126,7 +127,8 @@ fn bench_gemv1(c: &mut Criterion) {
                             Kernel::create(&program, "gemv1").expect("Kernel::create failed");
                         b.iter(|| {
                             let mut run = ExecuteKernel::new(&kernel);
-                            let event = run.set_arg(&a)
+                            let event = run
+                                .set_arg(&a)
                                 .set_arg(&x)
                                 .set_arg(&y)
                                 .set_arg(&(m as i32))
@@ -139,7 +141,7 @@ fn bench_gemv1(c: &mut Criterion) {
                         });
                     },
                 )
-                .throughput(Throughput::Elements((m * m) as _));
+                .throughput(Throughput::Elements((m * n) as _));
             }
         }
     }
