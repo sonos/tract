@@ -12,7 +12,7 @@ fn pulsify(
     _pulse: usize,
 ) -> TractResult<Option<TVec<OutletId>>> {
     let input = mapping[&node.inputs[0]];
-    let pulse = target.outlet_fact(input)?.pulse();
+    let pulse = target.outlet_fact(input)?.pulse().unwrap();
     let stride = if op.stride > 0 {
         op.stride as usize
     } else {
@@ -27,8 +27,9 @@ fn pulsify(
 impl PulsedOp for Downsample {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
+        let mut stream = fact.stream.unwrap();
         fact.shape.set(self.axis, fact.shape[self.axis].clone() / self.stride as usize);
-        fact.dim = fact.dim.div_ceil(self.stride as _);
+        stream.dim = stream.dim.div_ceil(self.stride as _);
         Ok(tvec!(fact))
     }
 

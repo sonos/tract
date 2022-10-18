@@ -15,20 +15,21 @@ fn pulsify(
     _pulse: usize,
 ) -> TractResult<Option<TVec<OutletId>>> {
     let fact = target.outlet_fact(mapping[&node.inputs[0]])?.clone();
+    let stream = fact.stream.unwrap();
     let c_axis = op.pool_spec.data_format.shape(&fact.shape)?.c_axis();
-    if c_axis == fact.axis {
+    if c_axis == stream.axis {
         bail!("Pulsification on C axis is not supported");
     }
     if op
         .invariants(&source.node_input_facts(node.id)?, &source.node_output_facts(node.id)?)?
-        .track_input_axis(0, fact.axis)
+        .track_input_axis(0, stream.axis)
         .is_some()
     {
         // general case for invariants will manage
         return Ok(None);
     }
-    let pulse = fact.pulse();
-    let geo_axis = fact.axis - op.pool_spec.data_format.h_axis();
+    let pulse = fact.pulse().unwrap();
+    let geo_axis = stream.axis - op.pool_spec.data_format.h_axis();
     let stride = op.pool_spec.stride(geo_axis);
     let mut pulse_op = op.clone();
     pulse_op.adjustments[geo_axis] = stride - 1;
@@ -36,8 +37,8 @@ fn pulsify(
     let deconv =
         target.wire_node(format!("{}.deconv", node.name), pulse_op, &[mapping[&node.inputs[0]]])?
             [0];
-    let overlap = overlap(fact.axis, op);
-    let deconv_input_dim = (fact.dim.clone() - 1) * stride + 1;
+    let overlap = overlap(stream.axis, op);
+    let deconv_input_dim = (stream.dim.clone() - 1) * stride + 1;
     let output_shape = tract_core::ops::cnn::deconv::output_shape(
         &op.pool_spec,
         &fact.streaming_shape(),
@@ -58,13 +59,13 @@ fn pulsify(
     let mut wire = target.wire_node(
         &node.name,
         DeconvDelay {
-            axis: fact.axis,
+            axis: stream.axis,
             overlap,
-            delay: paddings[geo_axis].pad_before.to_usize()? + fact.delay,
+            delay: paddings[geo_axis].pad_before.to_usize()? + stream.delay,
             deconv_input_dim,
             stride,
             pulse,
-            deconv_output_dim: output_shape[fact.axis].clone(),
+            deconv_output_dim: output_shape[stream.axis].clone(),
         },
         &[deconv],
     )?;
@@ -72,7 +73,7 @@ fn pulsify(
     for (geo_axis, padding) in paddings.iter().enumerate() {
         if !padding.pad_before.is_zero() || !padding.pad_after.is_zero() {
             let axis = geo_axis + shape.h_axis();
-            if axis == fact.axis {
+            if axis == stream.axis {
                 continue;
             };
             let op = crate::model::PulseWrappingOp(Box::new(tract_core::ops::array::Slice::new(
@@ -99,17 +100,18 @@ fn overlap(pulse_axis: usize, op: &DeconvUnary) -> usize {
 impl PulsedOp for DeconvUnary {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
-        let overlap = overlap(fact.axis, self);
-        let geo_axis = fact.axis - self.pool_spec.data_format.h_axis();
+        let mut stream = fact.stream.unwrap();
+        let overlap = overlap(stream.axis, self);
+        let geo_axis = stream.axis - self.pool_spec.data_format.h_axis();
         let stride = self.pool_spec.stride(geo_axis);
         let mut output_shape = tract_core::ops::cnn::deconv::output_shape(
             &self.pool_spec,
             &fact.streaming_shape(),
             &self.adjustments,
         )?;
-        fact.dim = output_shape[fact.axis].clone();
-        let pulse_len = fact.shape[fact.axis].clone() * stride;
-        output_shape[fact.axis] = pulse_len + overlap;
+        stream.dim = output_shape[stream.axis].clone();
+        let pulse_len = fact.shape[stream.axis].clone() * stride;
+        output_shape[stream.axis] = pulse_len + overlap;
         fact.shape = output_shape.into();
         if let Some(c) = self.pool_spec.output_channel_override {
             let c_axis = self.pool_spec.data_format.shape(&fact.shape)?.c_axis();
@@ -125,10 +127,11 @@ impl PulsedOp for DeconvUnary {
 impl PulsedOp for DeconvDelay {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
-        fact.dim = self.deconv_output_dim.clone();
-        let pulse_len = fact.shape[fact.axis].clone();
-        fact.shape.set(fact.axis, pulse_len - self.overlap);
-        fact.delay = self.delay;
+        let mut stream = fact.stream.unwrap();
+        stream.dim = self.deconv_output_dim.clone();
+        let pulse_len = fact.shape[stream.axis].clone();
+        fact.shape.set(stream.axis, pulse_len - self.overlap);
+        stream.delay = self.delay;
         Ok(tvec!(fact))
     }
 

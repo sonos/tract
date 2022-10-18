@@ -13,7 +13,8 @@ fn pulsify(
 ) -> TractResult<Option<TVec<OutletId>>> {
     let input = mapping[&node.inputs[0]];
     let fact = target.outlet_fact(input)?.clone();
-    if op.axis == fact.axis {
+    let stream = fact.stream.unwrap();
+    if op.axis == stream.axis {
         let skip = op.start.to_usize()?;
         let take = (op.end.clone() - &op.start).to_dim();
         let op = PulsedAxisSlice { axis: op.axis, skip, take };
@@ -57,8 +58,9 @@ impl EvalOp for PulsedAxisSlice {
 impl PulsedOp for PulsedAxisSlice {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
-        fact.delay += self.skip;
-        fact.dim = self.take.clone();
+        let stream = fact.stream.unwrap();
+        stream.delay += self.skip;
+        stream.dim = self.take.clone();
         Ok(tvec!(fact))
     }
 

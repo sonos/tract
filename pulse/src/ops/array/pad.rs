@@ -14,16 +14,17 @@ fn pulsify(
 ) -> TractResult<Option<TVec<OutletId>>> {
     let mut input = mapping[&node.inputs[0]];
     let fact = target.outlet_fact(input)?.clone();
-    if !op.pads.iter().enumerate().all(|(ax, &(a, b))| ax == fact.axis || (a == 0 && b == 0)) {
+    let stream = fact.stream.unwrap();
+    if !op.pads.iter().enumerate().all(|(ax, &(a, b))| ax == stream.axis || (a == 0 && b == 0)) {
         return Ok(None);
     }
-    let (before, after) = op.pads[fact.axis];
-    let pulse = fact.pulse();
-    let mut extra_delay = before.saturating_sub(fact.delay);
+    let (before, after) = op.pads[stream.axis];
+    let pulse = fact.pulse().unwrap();
+    let mut extra_delay = before.saturating_sub(stream.delay);
     match op.mode {
         PadMode::Constant(_) => (),
         PadMode::Edge if before < pulse => {
-            let start_offset = (fact.delay + extra_delay) % pulse;
+            let start_offset = (stream.delay + extra_delay) % pulse;
             if before > start_offset {
                 extra_delay += before - start_offset;
             }
@@ -38,16 +39,16 @@ fn pulsify(
     if extra_delay > 0 {
         input = target.wire_node(
             format!("{}.Delay", node.name),
-            Delay::new_typed(&(&fact).into(), fact.axis, extra_delay, 0),
+            Delay::new_typed(&(&fact).into(), stream.axis, extra_delay, 0),
             &[input],
         )?[0];
     }
     let op = PulsePad {
-        axis: fact.axis,
+        axis: stream.axis,
         before,
         after: after.into(),
-        begin_input: fact.delay + extra_delay,
-        end_input: fact.delay.to_dim() + extra_delay + fact.dim,
+        begin_input: stream.delay + extra_delay,
+        end_input: stream.delay.to_dim() + extra_delay + stream.dim,
         mode: op.mode.clone(),
         overlap: 0,
     };
@@ -57,8 +58,9 @@ fn pulsify(
 impl PulsedOp for PulsePad {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
-        fact.dim += self.before.to_dim() + &self.after;
-        fact.delay -= self.before;
+        let stream = fact.stream.unwrap();
+        stream.dim += self.before.to_dim() + &self.after;
+        stream.delay -= self.before;
         Ok(tvec!(fact))
     }
 

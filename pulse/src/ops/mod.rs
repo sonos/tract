@@ -6,7 +6,6 @@ pub mod cnn;
 pub mod delay;
 pub mod downsample;
 pub mod dummy;
-pub mod konst;
 pub mod scan;
 pub mod slice;
 pub mod source;
@@ -16,6 +15,8 @@ pub(crate) fn sync_inputs(
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
 ) -> TractResult<TVec<OutletId>> {
+    todo!();
+    /*
     let delay = node
         .inputs
         .iter()
@@ -38,9 +39,10 @@ pub(crate) fn sync_inputs(
         inputs.push(input);
     }
     Ok(inputs)
+    */
 }
 
-register_all_mod!(array, cnn, downsample, konst, scan, source);
+register_all_mod!(array, cnn, downsample, scan, source);
 
 type PulsifierFn = fn(
     &TypedModel,

@@ -1,8 +1,8 @@
 use crate::internal::*;
-use std::ops::Range;
-use tract_core::ndarray::*;
+//use std::ops::Range;
+//use tract_core::ndarray::*;
 use tract_core::ops::array::TypedConcat;
-use tract_pulse_opl::ops::Delay;
+//use tract_pulse_opl::ops::Delay;
 
 register_all!(TypedConcat: pulsify);
 
@@ -14,16 +14,20 @@ fn pulsify(
     mapping: &HashMap<OutletId, OutletId>,
     _pulse: usize,
 ) -> TractResult<Option<TVec<OutletId>>> {
-    let input = mapping[&node.inputs[0]];
-    let fact = target.outlet_fact(input)?;
+    let pulse_facts: TVec<&PulsedFact> =
+        node.inputs.iter().map(|i| target.outlet_fact(mapping[i]).unwrap()).collect();
+    let (stream_input_ix, pulse_fact) =
+        pulse_facts.iter().enumerate().filter(|(_ix, pf)| pf.stream.is_some()).next().unwrap();
 
-    if fact.axis == op.axis {
-        pulsify_along_concat_axis(op, source, node, target, mapping)
+    if pulse_fact.stream.unwrap().axis == op.axis {
+        todo!()
+//        pulsify_along_concat_axis(op, source, node, target, mapping)
     } else {
         Ok(None)
     }
 }
 
+/*
 fn pulsify_along_concat_axis(
     op: &TypedConcat,
     _source: &TypedModel,
@@ -246,3 +250,4 @@ fn range_in_range(needle: &Range<usize>, haystack: &Range<usize>) -> RangeInRang
         RangeInRange::Inside(needle.start - haystack.start)
     }
 }
+*/
