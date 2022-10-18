@@ -147,8 +147,7 @@ graph network( input ) -> ( output ) {
   tdnn2_renorm_scaled = mul(0.00390625, tdnn2_renorm_reduced_sum);
   tdnn2_renorm_output_recip = rsqrt(tdnn2_renorm_scaled);
   tdnn2_renorm_output = mul(tdnn2_relu_output_low, tdnn2_renorm_output_recip);
-  tdnn3_affine_output_delay = tract_pulse_delay(tdnn2_renorm_output, axis = 0, delay = 0, overlap = 0);
-  tdnn3_affine_output_input = transpose(unsqueeze(tdnn3_affine_output_delay, axes = [0]), axes = [0, 2, 1]);
+  tdnn3_affine_output_input = transpose(unsqueeze(tdnn2_renorm_output, axes = [0]), axes = [0, 2, 1]);
   tdnn3_affine_output_weigths = variable<scalar>(label = "tdnn3.affine.output_weigths", shape = [256, 256, 3]);
   tdnn3_affine_output_bias = variable<scalar>(label = "tdnn3.affine.output_bias", shape = [256]);
   tdnn3_affine_output_conv = conv(tdnn3_affine_output_input, tdnn3_affine_output_weigths, tdnn3_affine_output_bias, dilation = [1], stride = [3], border = "constant", groups = 1, padding = [(0, 0)]);

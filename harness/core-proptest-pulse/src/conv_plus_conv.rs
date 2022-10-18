@@ -1,7 +1,8 @@
 use proptest::proptest;
 use proptest::test_runner::TestCaseResult;
 use tract_hir::internal::*;
-use tract_hir::ops::cnn;
+use tract_hir::ops::cnn::*;
+use tract_hir::prelude::tract_itertools::Itertools;
 
 use super::*;
 
@@ -9,8 +10,8 @@ use super::*;
 struct ConvOp {
     stride: usize,
     dilation: usize,
-    ker: Array3<f32>,
-    padding: cnn::PaddingSpec,
+    ker: Tensor,
+    padding: PaddingSpec,
 }
 
 impl ConvOp {
@@ -29,18 +30,18 @@ impl Arbitrary for ConvOp {
     type Strategy = BoxedStrategy<Self>;
 
     fn arbitrary_with(_: Self::Parameters) -> BoxedStrategy<Self> {
-        (
-            1usize..3,
-            1usize..3,
-            vec(1usize..3),
-            // FIXME
-            //            prop_oneof![Just(cnn::PaddingSpec::Valid), Just(cnn::PaddingSpec::SameUpper)],
-            Just(cnn::PaddingSpec::Valid),
-        )
-            .prop_map(|(stride, dilation, ker, padding)| ConvOp {
+        (1usize..3, 1usize..3, 1usize..4)
+            .prop_flat_map(|(stride, dil, ker)| {
+                let padding = (ker - 1) * dil;
+                let explicit = (0..=padding).prop_map(move |right| {
+                    PaddingSpec::Explicit(tvec!(padding - right), tvec!(right), false)
+                });
+                (Just((stride, dil, ker)), prop_oneof![Just(PaddingSpec::Valid), explicit])
+            })
+            .prop_map(|((stride, dilation, ker), padding)| ConvOp {
                 stride,
                 dilation,
-                ker: Array3::from_shape_vec((1, 1, ker.len()), ker).unwrap(),
+                ker: t(ker),
                 padding,
             })
             .boxed()
@@ -49,10 +50,9 @@ impl Arbitrary for ConvOp {
 
 #[derive(Debug, Clone)]
 struct ConvPlusConvProblem {
-    input: Array3<f32>,
+    input: Tensor,
     pulse: usize,
-    conv1: ConvOp,
-    conv2: ConvOp,
+    convs: Vec<ConvOp>,
 }
 
 impl Arbitrary for ConvPlusConvProblem {
@@ -60,30 +60,48 @@ impl Arbitrary for ConvPlusConvProblem {
     type Strategy = BoxedStrategy<Self>;
 
     fn arbitrary_with(_: Self::Parameters) -> BoxedStrategy<Self> {
-        (ConvOp::arbitrary(), ConvOp::arbitrary(), 1usize..3)
-            .prop_flat_map(|(conv1, conv2, pulse_factor)| {
-                let pulse = conv1.stride * conv2.stride * pulse_factor;
-                let min_input = 4usize;
-                (Just(conv1), Just(conv2), Just(pulse), vec(min_input..3 * min_input))
+        (proptest::collection::vec(ConvOp::arbitrary(), 1..4), 1usize..4)
+            .prop_flat_map(|(convs, pulse_factor)| {
+                let pulse = convs.iter().map(|cv| cv.stride).product::<usize>() * pulse_factor;
+                let min_input = Self::min_input_size(&convs);
+                (Just(convs), Just(pulse), min_input..3 * min_input)
             })
-            .prop_map(|(conv1, conv2, pulse, input)| {
-                let input = Array3::from_shape_vec((1, 1, input.len()), input).unwrap(); // NCHW
-                ConvPlusConvProblem { input, pulse, conv1, conv2 }
-            })
+            .prop_map(|(convs, pulse, input)| ConvPlusConvProblem { input: t(input), pulse, convs })
             .boxed()
     }
 }
 
 impl ConvPlusConvProblem {
-    pub fn run(&self) -> TestCaseResult {
+    pub fn min_input_size(ops: &[ConvOp]) -> usize {
+        let model = Self::model(ops);
+        let dims: Vec<&TDim> = model.nodes.iter().map(|n| &n.outputs[0].fact.shape[2]).collect();
+        for s in 0usize.. {
+            let symbols = SymbolValues::default().with(stream_symbol(), s as _);
+            if dims.iter().all(|d| d.eval(&symbols).to_isize().unwrap() > 0) {
+                return s;
+            }
+        }
+        unreachable!();
+    }
+
+    pub fn model(ops: &[ConvOp]) -> TypedModel {
         let mut model = InferenceModel::default();
         let s = tract_pulse::internal::stream_dim();
-        let input = model.add_source("a", f32::fact(dims!(1, 1, s)).into()).unwrap();
-        let id = self.conv1.chain("conv1", &mut model, input);
-        let _id = self.conv2.chain("conv2", &mut model, id);
+        let mut wire = model.add_source("a", f32::fact(dims!(1, 1, s)).into()).unwrap();
+        for (ix, cv) in ops.iter().enumerate() {
+            wire = cv.chain(&format!("conv{}", ix), &mut model, wire);
+        }
         model.auto_outputs().unwrap();
-        let model = model.into_typed().unwrap();
-        proptest_regular_against_pulse(model, self.pulse as _, self.input.clone().into_dyn(), 2)
+        model.into_typed().unwrap()
+    }
+
+    pub fn run(&self) -> TestCaseResult {
+        proptest_regular_against_pulse(
+            Self::model(&self.convs),
+            self.pulse as _,
+            self.input.to_array_view::<f32>().unwrap().to_owned(),
+            2,
+        )
     }
 }
 
@@ -92,23 +110,29 @@ proptest! {
     fn proptest(pb in ConvPlusConvProblem::arbitrary()) { pb.run().unwrap() }
 }
 
+fn t(n: usize) -> Tensor {
+    tensor1(&*(0..n).map(|x| x as f32).collect_vec()).into_shape(&[1, 1, n]).unwrap()
+}
+
 #[test]
 fn prob_1() {
     let cpc = ConvPlusConvProblem {
-        input: Array3::from_shape_fn((1, 1, 7), |(_, _, x)| x as f32),
+        input: t(7),
         pulse: 1,
-        conv1: ConvOp {
-            stride: 1,
-            dilation: 1,
-            ker: arr3(&[[[1f32]]]),
-            padding: cnn::PaddingSpec::Valid,
-        },
-        conv2: ConvOp {
-            stride: 1,
-            dilation: 2,
-            ker: arr3(&[[[1f32, 2.0]]]),
-            padding: cnn::PaddingSpec::Valid,
-        },
+        convs: vec![
+            ConvOp {
+                stride: 1,
+                dilation: 1,
+                ker: tensor3(&[[[1f32]]]),
+                padding: PaddingSpec::Valid,
+            },
+            ConvOp {
+                stride: 1,
+                dilation: 2,
+                ker: tensor3(&[[[1f32, 2.0]]]),
+                padding: PaddingSpec::Valid,
+            },
+        ],
     };
     cpc.run().unwrap();
 }
@@ -116,20 +140,22 @@ fn prob_1() {
 #[test]
 fn prob_2() {
     let cpc = ConvPlusConvProblem {
-        input: Array3::from_shape_fn((1, 1, 10), |(_, _, x)| x as f32),
+        input: t(10),
         pulse: 2,
-        conv1: ConvOp {
-            stride: 2,
-            dilation: 1,
-            ker: arr3(&[[[0f32]]]),
-            padding: cnn::PaddingSpec::SameUpper,
-        },
-        conv2: ConvOp {
-            stride: 1,
-            dilation: 1,
-            ker: arr3(&[[[1f32]]]),
-            padding: cnn::PaddingSpec::Valid,
-        },
+        convs: vec![
+            ConvOp {
+                stride: 2,
+                dilation: 1,
+                ker: tensor3(&[[[0f32]]]),
+                padding: PaddingSpec::SameUpper,
+            },
+            ConvOp {
+                stride: 1,
+                dilation: 1,
+                ker: tensor3(&[[[1f32]]]),
+                padding: PaddingSpec::Valid,
+            },
+        ],
     };
     cpc.run().unwrap();
 }
@@ -137,20 +163,22 @@ fn prob_2() {
 #[test]
 fn prob_3() {
     let cpc = ConvPlusConvProblem {
-        input: Array3::from_shape_fn((1, 1, 10), |(_, _, x)| x as f32),
+        input: t(10),
         pulse: 1,
-        conv1: ConvOp {
-            stride: 1,
-            dilation: 1,
-            ker: arr3(&[[[0f32]]]),
-            padding: cnn::PaddingSpec::Valid,
-        },
-        conv2: ConvOp {
-            stride: 1,
-            dilation: 1,
-            ker: arr3(&[[[1f32, 0f32]]]),
-            padding: cnn::PaddingSpec::SameUpper,
-        },
+        convs: vec![
+            ConvOp {
+                stride: 1,
+                dilation: 1,
+                ker: tensor3(&[[[0f32]]]),
+                padding: PaddingSpec::Valid,
+            },
+            ConvOp {
+                stride: 1,
+                dilation: 1,
+                ker: tensor3(&[[[1f32, 0f32]]]),
+                padding: PaddingSpec::SameUpper,
+            },
+        ],
     };
     cpc.run().unwrap();
 }
@@ -159,62 +187,22 @@ fn prob_3() {
 #[ignore]
 fn prob_4() {
     let cpc = ConvPlusConvProblem {
-        input: Array3::from_shape_fn((1, 1, 4), |(_, _, x)| x as f32),
+        input: t(4),
         pulse: 2,
-        conv1: ConvOp {
-            stride: 1,
-            dilation: 1,
-            ker: arr3(&[[[0f32]]]),
-            padding: cnn::PaddingSpec::Valid,
-        },
-        conv2: ConvOp {
-            stride: 2,
-            dilation: 1,
-            ker: arr3(&[[[0f32, 0f32]]]),
-            padding: cnn::PaddingSpec::SameUpper,
-        },
-    };
-    cpc.run().unwrap();
-}
-
-#[test]
-fn prob_5() {
-    let cpc = ConvPlusConvProblem {
-        input: Array3::from_shape_fn((1, 1, 4), |(_, _, x)| x as f32),
-        pulse: 2,
-        conv1: ConvOp {
-            stride: 2,
-            dilation: 1,
-            ker: arr3(&[[[0f32]]]),
-            padding: cnn::PaddingSpec::Valid,
-        },
-        conv2: ConvOp {
-            stride: 1,
-            dilation: 2,
-            ker: arr3(&[[[0f32, 0f32]]]),
-            padding: cnn::PaddingSpec::Valid,
-        },
-    };
-    cpc.run().unwrap();
-}
-
-#[test]
-fn prob_6() {
-    let cpc = ConvPlusConvProblem {
-        input: Array3::from_shape_fn((1, 1, 4), |_| 0f32),
-        pulse: 2,
-        conv1: ConvOp {
-            stride: 2,
-            dilation: 2,
-            ker: arr3(&[[[0f32, 0.0]]]),
-            padding: cnn::PaddingSpec::Valid,
-        },
-        conv2: ConvOp {
-            stride: 1,
-            dilation: 2,
-            ker: arr3(&[[[0f32, 0f32]]]),
-            padding: cnn::PaddingSpec::Valid,
-        },
+        convs: vec![
+            ConvOp {
+                stride: 1,
+                dilation: 1,
+                ker: tensor3(&[[[0f32]]]),
+                padding: PaddingSpec::Valid,
+            },
+            ConvOp {
+                stride: 2,
+                dilation: 1,
+                ker: tensor3(&[[[0f32, 0f32]]]),
+                padding: PaddingSpec::SameUpper,
+            },
+        ],
     };
     cpc.run().unwrap();
 }
@@ -222,20 +210,71 @@ fn prob_6() {
 #[test]
 fn prob_7() {
     let cpc = ConvPlusConvProblem {
-        input: Array3::from_shape_fn((1, 1, 4), |_| 0f32),
+        input: t(4),
         pulse: 4,
-        conv1: ConvOp {
+        convs: vec![
+            ConvOp {
+                stride: 1,
+                dilation: 2,
+                ker: tensor3(&[[[0f32, 0.0]]]),
+                padding: PaddingSpec::Valid,
+            },
+            ConvOp {
+                stride: 2,
+                dilation: 1,
+                ker: tensor3(&[[[1f32]]]),
+                padding: PaddingSpec::Valid,
+            },
+        ],
+    };
+    cpc.run().unwrap();
+}
+
+#[test]
+fn same_upper() {
+    let cpc = ConvPlusConvProblem {
+        input: tensor3(&[[[0f32, 0., 0., 1.]]]),
+        pulse: 1,
+        convs: vec![ConvOp {
             stride: 1,
-            dilation: 2,
-            ker: arr3(&[[[0f32, 0.0]]]),
-            padding: cnn::PaddingSpec::Valid,
-        },
-        conv2: ConvOp {
+            dilation: 1,
+            ker: tensor3(&[[[1f32, 0.0]]]),
+            padding: PaddingSpec::SameUpper,
+        }],
+    };
+    cpc.run().unwrap();
+}
+
+#[test]
+fn stride() {
+    let cpc = ConvPlusConvProblem {
+        input: t(4),
+        pulse: 2,
+        convs: vec![ConvOp {
             stride: 2,
             dilation: 1,
-            ker: arr3(&[[[1f32]]]),
-            padding: cnn::PaddingSpec::Valid,
-        },
+            ker: t(2),
+            padding: PaddingSpec::Explicit(tvec!(1), tvec!(0), false),
+        }],
+    };
+    cpc.run().unwrap();
+}
+
+#[test]
+fn three() {
+    let cpc = ConvPlusConvProblem {
+        input: t(5),
+        pulse: 1,
+        convs: vec![
+            ConvOp { stride: 1, dilation: 2, ker: t(2), padding: PaddingSpec::Valid },
+            ConvOp { stride: 1, dilation: 1, ker: t(3), padding: PaddingSpec::Valid },
+            ConvOp {
+                stride: 1,
+                dilation: 1,
+                ker: t(2),
+                padding: PaddingSpec::Explicit(tvec!(1), tvec!(0), false),
+            },
+        ],
     };
     cpc.run().unwrap();
 }

@@ -187,16 +187,16 @@ impl Tensor {
             ptr
         } as *mut u8;
         let mut tensor = Tensor { strides: tvec!(), layout, dt, shape: shape.into(), data, len: 0 };
+        tensor.update_strides_and_len();
         #[cfg(debug_assertions)]
         if !data.is_null() {
             if dt == DatumType::F32 {
-                tensor.as_slice_mut_unchecked::<f32>().iter_mut().for_each(|f| *f = std::f32::NAN)
+                tensor.as_slice_mut_unchecked::<f32>().iter_mut().for_each(|f| *f = std::f32::NAN);
             } else {
                 // safe, non copy types have been dealt with
                 tensor.as_bytes_mut().iter_mut().for_each(|x| *x = (-1i8) as u8);
             }
         }
-        tensor.update_strides_and_len();
         Ok(tensor)
     }
 

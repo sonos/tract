@@ -125,7 +125,6 @@ pub fn pulsify_pooled_input(
     let dilation = spec.dilations.as_ref().map(|d| d[geo_axis]).unwrap_or(1);
     let kernel_len = (spec.kernel_shape[geo_axis] - 1) * dilation;
     let overlap = (kernel_len + 1).saturating_sub(stride);
-    let misalignment = input_fact.delay % pulse;
 
     let computed_padding = spec.padding.compute_one(
         geo_axis,
@@ -136,18 +135,21 @@ pub fn pulsify_pooled_input(
     );
 
     let before = computed_padding.pad_before.to_usize()?;
-    // do we need strat delay to fit the padding ?
-    let extra_delay = before.saturating_sub(input_fact.delay + overlap);
+    let early = input_fact.delay as isize + overlap as isize - before as isize;
+    let mut extra_delay = if early < 0 { (-early) as usize } else { 0 };
+    let delayed_input = input_fact.delay + overlap + extra_delay - before;
+    let misalignment = delayed_input % stride;
+    if misalignment > 0 {
+        extra_delay += stride - misalignment;
+    }
 
-    if overlap > 0 || misalignment > 0 || extra_delay > 0 {
-        let align_to = (overlap + input_fact.delay).divceil(stride) * stride;
-        let delay = align_to - overlap - input_fact.delay;
+    if overlap > 0 || extra_delay > 0 {
         wire = target.wire_node(
             format!("{}.delay", node.name),
             tract_pulse_opl::ops::Delay::new_typed(
                 &(&input_fact).into(),
                 input_fact.axis,
-                delay + extra_delay,
+                extra_delay,
                 overlap,
             ),
             &[wire],
@@ -168,12 +170,12 @@ pub fn pulsify_pooled_input(
             axis: input_fact.axis,
             before,
             after: computed_padding.pad_after,
-            begin_input: input_fact.delay,
-            end_input: input_fact.delay.to_dim() + &input_fact.dim,
+            begin_input: input_fact.delay + extra_delay + overlap,
+            end_input: input_fact.dim.clone() + input_fact.delay + extra_delay + overlap.to_dim(),
             mode: PadMode::Constant(value),
             overlap,
         };
-        wire = target.wire_node(format!("{}.pad", node.name), op, &[wire])?[0];
+        wire = target.wire_node(format!("{}.pulse-pad", node.name), op, &[wire])?[0];
     }
 
     if has_padding {
