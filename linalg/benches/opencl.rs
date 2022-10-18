@@ -1,6 +1,6 @@
 use std::ptr::null_mut;
 
-use criterion::*;
+use criterion::{measurement::Measurement, *};
 
 use opencl3::{
     command_queue::{CommandQueue, CL_QUEUE_PROFILING_ENABLE},
@@ -58,8 +58,7 @@ fn write_buffer(c: &mut Criterion) {
     }
 }
 
-static GEMV1: &'static str =
-    "__kernel void gemv1(__global const float *a,__global const float *x,
+static GEMV1: &'static str = "__kernel void gemv1(__global const float *a,__global const float *x,
                     __global float *y, int m, int n) {
           float sum = 0.0f;
           int i = get_global_id(0); // row index
@@ -102,46 +101,40 @@ fn profile_gemv1() {
     dbg!(gigaflops);
 }
 
+fn bench_gemv1_bench_one(c: &mut Criterion, name: &str, m: usize, n: usize, loc: usize) {
+    c.benchmark_group(format!("{}-{}x{}by{}", name, m, n, loc))
+        .throughput(Throughput::Elements((m * n) as _))
+        .bench_function("loop", |b| {
+            let ctx = context();
+            let a = Buffer::<cl_float>::create(&ctx, CL_MEM_READ_ONLY, m * n, null_mut()).unwrap();
+            let x = Buffer::<cl_float>::create(&ctx, CL_MEM_READ_ONLY, n, null_mut()).unwrap();
+            let y = Buffer::<cl_float>::create(&ctx, CL_MEM_READ_WRITE, m, null_mut()).unwrap();
+
+            let queue = queue(&ctx);
+            let program = Program::create_and_build_from_source(&ctx, GEMV1, "").unwrap();
+            let kernel = Kernel::create(&program, "gemv1").expect("Kernel::create failed");
+            b.iter(|| {
+                let mut run = ExecuteKernel::new(&kernel);
+                let event = run
+                    .set_arg(&a)
+                    .set_arg(&x)
+                    .set_arg(&y)
+                    .set_arg(&(m as i32))
+                    .set_arg(&(n as i32))
+                    .set_global_work_sizes(&[m])
+                    .set_local_work_sizes(&[loc])
+                    .enqueue_nd_range(&queue)
+                    .unwrap();
+                event.wait().unwrap();
+            });
+        });
+}
+
 fn bench_gemv1(c: &mut Criterion) {
-    let mut g = c.benchmark_group("gemv1");
     for loc in [1, 2, 4, 8, 16] {
         for m in [16, 32, 64, 128, 256, 1024] {
             for n in [16, 32, 64, 128, 256, 1024] {
-                g.bench_with_input(
-                    BenchmarkId::new("square", format!("{}x{}by{}", m, n, loc)),
-                    &(m, n),
-                    |b, &(m, n)| {
-                        let ctx = context();
-                        let a =
-                            Buffer::<cl_float>::create(&ctx, CL_MEM_READ_ONLY, m * n, null_mut())
-                                .unwrap();
-                        let x = Buffer::<cl_float>::create(&ctx, CL_MEM_READ_ONLY, n, null_mut())
-                            .unwrap();
-                        let y = Buffer::<cl_float>::create(&ctx, CL_MEM_READ_WRITE, m, null_mut())
-                            .unwrap();
-
-                        let queue = queue(&ctx);
-                        let program =
-                            Program::create_and_build_from_source(&ctx, GEMV1, "").unwrap();
-                        let kernel =
-                            Kernel::create(&program, "gemv1").expect("Kernel::create failed");
-                        b.iter(|| {
-                            let mut run = ExecuteKernel::new(&kernel);
-                            let event = run
-                                .set_arg(&a)
-                                .set_arg(&x)
-                                .set_arg(&y)
-                                .set_arg(&(m as i32))
-                                .set_arg(&(n as i32))
-                                .set_global_work_sizes(&[m])
-                                .set_local_work_sizes(&[loc])
-                                .enqueue_nd_range(&queue)
-                                .unwrap();
-                            event.wait().unwrap();
-                        });
-                    },
-                )
-                .throughput(Throughput::Elements((m * n) as _));
+                bench_gemv1_bench_one(c, "rect", m, n, loc)
             }
         }
     }
@@ -152,6 +145,6 @@ criterion_main!(benches);
 
 /*
 fn main() {
-    profile_gemv1()
+profile_gemv1()
 }
 */
