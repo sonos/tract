@@ -175,7 +175,7 @@ pub fn pulsify_pooled_input(
             mode: PadMode::Constant(value),
             overlap,
         };
-        wire = target.wire_node(format!("{}.pad", node.name), op, &[wire])?[0];
+        wire = target.wire_node(format!("{}.pulse-pad", node.name), op, &[wire])?[0];
     }
 
     if has_padding {
