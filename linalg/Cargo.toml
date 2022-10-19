@@ -103,3 +103,7 @@ harness = false
 [[bench]]
 name = "opencl"
 harness = false
+
+[[bench]]
+name = "opencl-gemv"
+harness = false
