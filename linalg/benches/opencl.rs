@@ -61,12 +61,11 @@ fn write_buffer(c: &mut Criterion) {
 static GEMV1: &'static str = "__kernel void gemv1(__global const float *a,__global const float *x,
                     __global float *y, int m, int n) {
           float sum = 0.0f;
-          int i = get_global_id(0); // row index
+          int row = get_global_id(0);
           for (int k=0 ; k<n ; k++) {
-              // sum += a[i + m*k] * x[k];
-              sum += a[i*n + k] * x[k];
+              sum += a[row*n + k] * x[k];
           }
-          y[i] = sum;
+          y[row] = sum;
     }";
 
 fn profile_gemv1() {
@@ -102,7 +101,7 @@ fn profile_gemv1() {
 }
 
 fn bench_gemv1_bench_one(c: &mut Criterion, name: &str, m: usize, n: usize, loc: usize) {
-    c.benchmark_group(format!("{}-{}x{}by{}", name, m, n, loc))
+    c.benchmark_group(format!("gemv1-{}-{}x{}by{}", name, m, n, loc))
         .throughput(Throughput::Elements((m * n) as _))
         .bench_function("loop", |b| {
             let ctx = context();
@@ -130,17 +129,80 @@ fn bench_gemv1_bench_one(c: &mut Criterion, name: &str, m: usize, n: usize, loc:
         });
 }
 
-fn bench_gemv1(c: &mut Criterion) {
+
+static GEMV2: &'static str = "
+#define ROW_DIM 0
+#define COL_DIM 1
+__kernel void gemv2(__global const float * a,
+                    __global const float * x,
+		    __global float * y,
+		    __local float * work,
+		    int m, int n)
+{
+  float sum = (float)0;
+  for (int k=get_global_id(COL_DIM);k<n;k+=get_global_size(COL_DIM)) {
+      sum += a[get_global_id(ROW_DIM)+m*k] * x[k];
+  }
+
+  int rows = get_local_size(ROW_DIM); // rows in group
+  int cols = get_local_size(COL_DIM); // initial cols in group
+  int ii = get_local_id(ROW_DIM); // local row index in group, 0<=ii<rows
+  int jj = get_local_id(COL_DIM); // block index in column, 0<=jj<cols
+  work[ii+rows*jj] = sum;
+  barrier(CLK_LOCAL_MEM_FENCE); // sync group
+
+  while ( cols > 1 ) {
+      cols >>= 1;
+      if (jj < cols) work[ii+rows*jj] += work[ii+rows*(jj+cols)];
+      barrier(CLK_LOCAL_MEM_FENCE); // sync group
+  }
+
+  if ( jj == 0 ) y[get_global_id(ROW_DIM)] = work[ii];
+}";
+
+fn bench_gemv2_bench_one(c: &mut Criterion, name: &str, m: usize, n: usize, loc: usize) {
+    let p = 4;
+    c.benchmark_group(format!("gemv2-{}-{}x{}by{}", name, m, n, loc))
+        .throughput(Throughput::Elements((m * n) as _))
+        .bench_function("loop", |b| {
+            let ctx = context();
+            let a = Buffer::<cl_float>::create(&ctx, CL_MEM_READ_ONLY, m * n, null_mut()).unwrap();
+            let x = Buffer::<cl_float>::create(&ctx, CL_MEM_READ_ONLY, n, null_mut()).unwrap();
+            let y = Buffer::<cl_float>::create(&ctx, CL_MEM_READ_WRITE, m, null_mut()).unwrap();
+
+            let queue = queue(&ctx);
+            let program = Program::create_and_build_from_source(&ctx, GEMV2, "").unwrap();
+            let kernel = Kernel::create(&program, "gemv2").expect("Kernel::create failed");
+            b.iter(|| {
+                let mut run = ExecuteKernel::new(&kernel);
+                let event = run
+                    .set_arg(&a)
+                    .set_arg(&x)
+                    .set_arg(&y)
+                    .set_arg_local_buffer(loc * p)
+                    .set_arg(&(m as i32))
+                    .set_arg(&(n as i32))
+                    .set_global_work_sizes(&[m, p])
+                    .set_local_work_sizes(&[loc, p])
+                    .enqueue_nd_range(&queue)
+                    .unwrap();
+                event.wait().unwrap();
+            });
+        });
+}
+
+fn gemv(c: &mut Criterion) {
     for loc in [1, 2, 4, 8, 16] {
         for m in [16, 32, 64, 128, 256, 1024] {
             for n in [16, 32, 64, 128, 256, 1024] {
-                bench_gemv1_bench_one(c, "rect", m, n, loc)
+                bench_gemv1_bench_one(c, "gemv1", m, n, loc);
+                bench_gemv2_bench_one(c, "gemv2", m, n, loc);
             }
         }
     }
 }
 
-criterion_group!(benches, empty, bench_gemv1, write_buffer);
+criterion_group!(benches, empty, gemv, write_buffer);
 criterion_main!(benches);
 
 /*
