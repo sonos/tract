@@ -41,14 +41,12 @@ fn kernel(c: &Context, q: &CommandQueue, g: usize, l: usize, body: &str) -> f64 
     let b = Buffer::<cl_float>::create(&c, CL_MEM_READ_WRITE, 8 * 1024 * 1024, null_mut()).unwrap();
     let kernel = Kernel::create(&program, "ker").expect("Kernel::create failed");
     b1!({
-        let mut run = ExecuteKernel::new(&kernel);
-        let event = run
-            .set_arg(&a)
-            .set_arg(&b)
-            .set_global_work_sizes(&[g])
-            .set_local_work_sizes(&[l])
-            .enqueue_nd_range(q)
-            .unwrap();
+        let mut task = ExecuteKernel::new(&kernel);
+        task.set_arg(&a).set_arg(&b).set_global_work_sizes(&[g]);
+        if l > 0 {
+            task.set_local_work_sizes(&[l]);
+        }
+        let event = task.enqueue_nd_range(q).unwrap();
         event.wait().unwrap();
     })
 }
@@ -58,8 +56,8 @@ fn main() {
     let q = queue(&c);
     let empty = b32!(empty(&q));
     println!("empty: {:10.3} µs", empty * 1e6);
-    let gs = [16, 128, 1024, 8192];
-    let ls = [1, 2, 4, 8, 16];
+    let gs = [16, 128, 512, 2048];
+    let ls = [0, 1, 2, 4, 8, 16];
     #[cfg_attr(rustfmt, rustfmt_skip)]
     let kernels = vec![
         ("noop", ""),
@@ -74,22 +72,31 @@ fn main() {
         */
         ("cp1k", "for (int i = 0; i < 1024; i++) { b[i] = a[i]; }"),
         ("cp1k@", "for (int i = 0; i < 1024; i++) { b[i * 1024 + get_global_id(0)] = a[i * 1024 + get_global_id(0)]; }"),
-        ("cp1k@t", "for (int i = 0; i < 1024; i++) { b[i + 1024 * get_global_id(0)] = a[i + 1024 * get_global_id(0)]; }"),
+//        ("cp1k@t", "for (int i = 0; i < 1024; i++) { b[i + 1024 * get_global_id(0)] = a[i + 1024 * get_global_id(0)]; }"),
+        ("cp1k@v", "for (int i = 0; i < 128; i++) { vstore4(vload4(0, &a[i * 4 * 128 + get_global_id(0)]), 0, &b[i * 4 * 128 + get_global_id(0)]); }"),
         // these ones are reading the same data again and again, hitting cache
+        /*
         ("sum1k", "float s = 0; for (int i = 0; i < 1024; i++) { s += a[i]; } b[0] = s;"),
         ("sum1kdb", "float s = 0; for (int i = 0; i < 1024; i++) { float v = a[i]; s += v + v; } b[0] = s;"),
         ("sum1ksq", "float s = 0; for (int i = 0; i < 1024; i++) { float v = a[i]; s += v * v; } b[0] = s;"),
+
+        ("pdt1k", "float s = 0; for (int i = 0; i < 1024; i++) { s *= a[i]; } b[0] = s;"),
+        ("pdt1k20", "float s = 0; for (int i = 0; i < 1024; i++) { for(int j = 0; j < 20; j++ ) { s *= a[i]; } } b[0] = s;"),
+        ("sum1k20", "float s = 0; for (int i = 0; i < 1024; i++) { for(int j = 0; j < 20; j++ ) { s += a[i]; } } b[0] = s;"),
+        */
         // ("sum1k@", "float s = 0; int offset = 1024 * get_global_id(0); for (int i = 0; i < 1024; i++) { s += a[offset + i]; } b[offset] = s;"),
         // should we worry about the optimiser and in-loop compute ? no.
-        ("sum128", "float s = 0; int row = get_global_id(0); for (int i = 0; i < 128; i++) { s += a[128 * row + i]; } b[row] = s;"),
+        ("sum128", "float s = 0; int row = get_global_id(0); for (int i = 0; i < 128; i++) { s += a[i * 128 + row]; } b[row] = s;"),
         /*
         ("sum128@1", "float s = 0; int offset = get_global_id(0) * 128; a += offset; for (int i = 0; i < 128; i++) { s += a[i]; } b[offset] = s;"),
         ("sum128@2", "float s = 0; int offset = get_global_id(0) * 128; for (int i = 0; i < 128; i++) { s += a[offset + i]; } b[offset] = s;"),
         ("sum128@3", "float s = 0; for (int i = 0; i < 128; i++) { s += a[128 * get_global_id(0) + i]; } b[get_global_id(0)] = s;"),
         */
         // what about row/col major storage ?
-        ("sum128t", "float s = 0; int row = get_global_id(0); for (int i = 0; i < 128; i++) { s += a[row + i * 128]; } b[row] = s;"),
+        ("sum128t", "float s = 0; int row = get_global_id(0); for (int i = 0; i < 128; i++) { s += a[i + 128 * row]; } b[row] = s;"),
 //        ("cp1M", "for (int i = 0; i < 1024 * 1024; i++) { b[i] = a[i]; }"),
+        ("sum128v", "float4 s = (float4)(0.0f, 0.0f, 0.0f, 0.0f); int row = get_global_id(0);
+                        for (int i = 0; i < 32; i++) { s = s + vload4(0, &a[i * 4 * 128 + row]); } b[row] = s.x + s.y + s.z + s.w;"),
     ];
     print!("{:8} {:8}   ", "", "");
     for (name, _) in &kernels {
