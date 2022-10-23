@@ -97,6 +97,7 @@ fn main() {
 //        ("cp1M", "for (int i = 0; i < 1024 * 1024; i++) { b[i] = a[i]; }"),
         ("sum128v", "float4 s = (float4)(0.0f, 0.0f, 0.0f, 0.0f); int row = get_global_id(0);
                         for (int i = 0; i < 32; i++) { s = s + vload4(0, &a[i * 4 * 128 + row]); } b[row] = s.x + s.y + s.z + s.w;"),
+        ("sum128", "float s = 0; int row = get_global_id(0); for (int i = 0; i < 128; i++) { s += a[i * 128 + row]; } b[row] = s;"),
     ];
     print!("{:8} {:8}   ", "", "");
     for (name, _) in &kernels {

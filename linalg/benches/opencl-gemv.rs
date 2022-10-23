@@ -6,6 +6,7 @@ use opencl3::{
     command_queue::{CommandQueue, CL_QUEUE_PROFILING_ENABLE},
     context::Context,
     device::{Device, CL_DEVICE_TYPE_GPU},
+    event::Event,
     kernel::{ExecuteKernel, Kernel},
     memory::{Buffer, CL_MEM_READ_ONLY, CL_MEM_READ_WRITE},
     platform::get_platforms,
@@ -62,8 +63,13 @@ static GEMV1: &'static str = "__kernel void gemv1(__global const float *a,__glob
                     __global float *y, int m, int n) {
           float sum = 0.0f;
           int row = get_global_id(0);
+          // a e
+          // b f
+          // c g
+          // d h
+          a += (row % 4) + (row / 4) * 4 * n;
           for (int k=0 ; k<n ; k++) {
-              sum += a[row*n + k] * x[k];
+              sum += a[k] * x[k];
           }
           y[row] = sum;
     }";
@@ -101,8 +107,9 @@ fn profile_gemv1() {
 }
 
 fn bench_gemv1_bench_one(c: &mut Criterion, name: &str, m: usize, n: usize, loc: usize) {
+    let loops = 100;
     c.benchmark_group(format!("gemv1-{}-{}x{}by{}", name, m, n, loc))
-        .throughput(Throughput::Elements((m * n) as _))
+        .throughput(Throughput::Elements((m * n * loops) as _))
         .bench_function("loop", |b| {
             let ctx = context();
             let a = Buffer::<cl_float>::create(&ctx, CL_MEM_READ_ONLY, m * n, null_mut()).unwrap();
@@ -113,31 +120,37 @@ fn bench_gemv1_bench_one(c: &mut Criterion, name: &str, m: usize, n: usize, loc:
             let program = Program::create_and_build_from_source(&ctx, GEMV1, "").unwrap();
             let kernel = Kernel::create(&program, "gemv1").expect("Kernel::create failed");
             b.iter(|| {
-                let mut run = ExecuteKernel::new(&kernel);
-                let event = run
-                    .set_arg(&a)
-                    .set_arg(&x)
-                    .set_arg(&y)
-                    .set_arg(&(m as i32))
-                    .set_arg(&(n as i32))
-                    .set_global_work_sizes(&[m])
-                    .set_local_work_sizes(&[loc])
-                    .enqueue_nd_range(&queue)
-                    .unwrap();
-                event.wait().unwrap();
+                let mut event: Option<Event> = None;
+                for i in 0..loops {
+                    let mut run = ExecuteKernel::new(&kernel);
+                    if let Some(e) = event {
+                        run.set_wait_event(&e);
+                    }
+                    event = Some(
+                        run.set_arg(&a)
+                            .set_arg(&x)
+                            .set_arg(&y)
+                            .set_arg(&(m as i32))
+                            .set_arg(&(n as i32))
+                            .set_global_work_sizes(&[m])
+                            .set_local_work_sizes(&[loc])
+                            .enqueue_nd_range(&queue)
+                            .unwrap(),
+                    );
+                }
+                event.unwrap().wait().unwrap();
             });
         });
 }
-
 
 static GEMV2: &'static str = "
 #define ROW_DIM 0
 #define COL_DIM 1
 __kernel void gemv2(__global const float * a,
                     __global const float * x,
-		    __global float * y,
-		    __local float * work,
-		    int m, int n)
+            __global float * y,
+            __local float * work,
+            int m, int n)
 {
   float sum = (float)0;
   for (int k=get_global_id(COL_DIM);k<n;k+=get_global_size(COL_DIM)) {
@@ -191,12 +204,74 @@ fn bench_gemv2_bench_one(c: &mut Criterion, name: &str, m: usize, n: usize, loc:
         });
 }
 
+static GEMV3: &'static str = "__kernel void gemv3(__global const float *a,__global const float *x,
+                    __global float *y, int m, int n) {
+          // A packed to load 16 values, a full cache line in one go
+          // a b c d     q r s t
+          // e f g h     u v...
+          // i j k l
+          // m n o p
+          // panel len is n*4. panel id is row / 4 -> n * row
+          float4 sum1 = (float4)(0.0f, 0.0f, 0.0f, 0.0f);
+          int row = get_global_id(0);
+          __global const float *pa = &a[4 * n * (row / 4) + 4 * row % 4];
+          for (int k=0 ; k<n/4 ; k++) {
+                float4 w = vload4(0, &pa[16 * k]);
+                float4 b = vload4(0, &x[4 * k]);
+                for (int l = 0; l < 10; l++) {
+                    sum1 = mad(w, b, sum1);
+                    sum1 = mad(w, b, sum1);
+                    sum1 = mad(w, b, sum1);
+                    sum1 = mad(w, b, sum1);
+                    sum1 = mad(w, b, sum1);
+                    sum1 = mad(w, b, sum1);
+                    sum1 = mad(w, b, sum1);
+                    sum1 = mad(w, b, sum1);
+                    sum1 = mad(w, b, sum1);
+                    sum1 = mad(w, b, sum1);
+                }
+          }
+          y[row] = sum1.x + sum1.y + sum1.z + sum1.w;
+    }";
+
+fn bench_gemv3_bench_one(c: &mut Criterion, name: &str, m: usize, n: usize, loc: usize) {
+    let loops = 100;
+    c.benchmark_group(format!("gemv3-{}-{}x{}by{}", name, m, n, loc))
+        .throughput(Throughput::Elements((m * n * loops * 100 * 2) as _))
+        .bench_function("loop", |b| {
+            let ctx = context();
+            let a = Buffer::<cl_float>::create(&ctx, CL_MEM_READ_ONLY, m * n, null_mut()).unwrap();
+            let x = Buffer::<cl_float>::create(&ctx, CL_MEM_READ_ONLY, n, null_mut()).unwrap();
+            let y = Buffer::<cl_float>::create(&ctx, CL_MEM_READ_WRITE, m, null_mut()).unwrap();
+
+            let q = queue(&ctx);
+            let program = Program::create_and_build_from_source(&ctx, GEMV3, "").unwrap();
+            let kernel = Kernel::create(&program, "gemv3").expect("Kernel::create failed");
+            b.iter(|| {
+                for i in 0..loops {
+                    let mut run = ExecuteKernel::new(&kernel);
+                    run.set_arg(&a)
+                        .set_arg(&x)
+                        .set_arg(&y)
+                        .set_arg(&(m as i32))
+                        .set_arg(&(n as i32))
+                        .set_global_work_sizes(&[m])
+                        .set_local_work_sizes(&[loc])
+                        .enqueue_nd_range(&q)
+                        .unwrap();
+                }
+                q.finish().unwrap();
+            });
+        });
+}
+
 fn gemv(c: &mut Criterion) {
     for loc in [1, 2, 4, 8, 16] {
         for m in [16, 32, 64, 128, 256, 1024] {
             for n in [16, 32, 64, 128, 256, 1024] {
                 bench_gemv1_bench_one(c, "gemv1", m, n, loc);
                 bench_gemv2_bench_one(c, "gemv2", m, n, loc);
+                bench_gemv3_bench_one(c, "gemv3", m, n, loc);
             }
         }
     }
