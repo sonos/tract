@@ -22,6 +22,7 @@ jobs:
           - i686-linux-android
           - x86_64-linux-android
           - wasm32-unknown-unknown
+          - wasm32-wasi
 
     runs-on: ubuntu-20.04
 

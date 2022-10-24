@@ -193,9 +193,9 @@ case "$PLATFORM" in
         cargo dinghy --platform $PLATFORM build --release -p tract -p example-tensorflow-mobilenet-v2
         ;;
 
-    "wasm32-unknown-unknown")
-        rustup target add wasm32-unknown-unknown
-        cargo check --target wasm32-unknown-unknown --features getrandom-js -p tract-onnx -p tract-tensorflow
+    wasm32-*)
+        rustup target add $PLATFORM
+        cargo check --target $PLATFORM --features getrandom-js -p tract-onnx -p tract-tensorflow
         ;;
     *)
         echo "Don't know what to do for platform: $PLATFORM"
