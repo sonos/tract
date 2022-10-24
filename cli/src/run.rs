@@ -5,6 +5,7 @@ use crate::CliResult;
 use crate::{Model, Parameters};
 use ansi_term::Color::*;
 use ndarray_npy::NpzWriter;
+use tract_core::tract_data::itertools::izip;
 use tract_hir::internal::*;
 #[cfg(feature = "pulse")]
 use tract_pulse::internal::*;
@@ -41,20 +42,18 @@ pub fn handle(
     let run_params = RunParams::from_subcommand(params, sub_matches)?;
 
     let dump = sub_matches.is_present("dump");
-    #[cfg(feature = "pulse")]
-    let outputs = if let Some(pulse) = params.tract_model.downcast_ref::<PulsedModel>() {
-        run_pulse_t(pulse, &params)?
-    } else {
-        dispatch_model!(&*params.tract_model, |m| run_regular(m, &run_params, matches, sub_matches))?
-    };
-
-    #[cfg(not(feature = "pulse"))]
-    let outputs =
-        dispatch_model!(&*params.tract_model, |m| run_regular(m, &run_params, matches, sub_matches))?;
+    let outputs = dispatch_model!(&*params.tract_model, |m| run_regular(
+        m,
+        &run_params,
+        matches,
+        sub_matches
+    ))?;
 
     if dump {
         for (ix, output) in outputs.iter().enumerate() {
-            println!("output #{}\n{}\n", ix, output.dump(true)?);
+            for (turn, output) in output.iter().enumerate() {
+                println!("output #{}, turn #{}\n{}\n", ix, turn, output.dump(true)?);
+            }
         }
     }
 
@@ -63,13 +62,20 @@ pub fn handle(
             std::fs::File::create(file_path).with_context(|| format!("Creating {}", file_path))?;
         let mut npz = ndarray_npy::NpzWriter::new_compressed(file);
 
-        for (ix, output) in outputs.iter().enumerate() {
+        for (ix, outputs) in outputs.iter().enumerate() {
             let name = params
                 .tract_model
                 .outlet_label(params.tract_model.output_outlets()[ix])
                 .map(|name| name.to_string())
                 .unwrap_or_else(|| format!("output_{}", ix));
-            npz_add_tensor(&mut npz, name, output)?;
+            if outputs.len() == 1 {
+                npz_add_tensor(&mut npz, name, &outputs[0])?;
+            } else {
+                for (turn, output) in outputs.iter().enumerate() {
+                    let name = format!("turn_{}/{}", turn, name);
+                    npz_add_tensor(&mut npz, name, output)?;
+                }
+            }
         }
     }
 
@@ -90,7 +96,7 @@ pub fn handle(
 
     if let Some(facts) = &params.assertions.assert_output_facts {
         let outputs: Vec<InferenceFact> =
-            outputs.iter().map(|t| t.datum_type().fact(t.shape()).into()).collect();
+            outputs.iter().map(|t| t[0].datum_type().fact(t[0].shape()).into()).collect();
         crate::utils::check_inferred(&*outputs, facts)?;
     }
 
@@ -111,7 +117,7 @@ fn run_regular(
     run_params: &RunParams,
     _matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
-) -> CliResult<TVec<Arc<Tensor>>> {
+) -> CliResult<TVec<Vec<Arc<Tensor>>>> {
     let steps = sub_matches.is_present("steps");
     let assert_sane_floats = sub_matches.is_present("assert-sane-floats");
     let mut npz = if let Some(npz) = sub_matches.value_of("save-steps") {
@@ -134,81 +140,85 @@ fn run_regular(
                     state.session_state.resolved_symbols.with(sym, value);
             }
         }
-        let mut results = tvec!();
         let inputs = crate::tensor::retrieve_or_make_inputs(tract, run_params)?;
+        let mut results = tvec!(vec!(); state.model().outputs.len());
         let multiturn = inputs.len() > 1;
         for (turn, inputs) in inputs.into_iter().enumerate() {
-            results = state.run_plan_with_eval(inputs, |session_state, state, node, input| {
-                if steps {
-                    for (ix, i) in input.iter().enumerate() {
-                        eprintln!(
-                            "{} {}{}{:?}",
-                            White.bold().paint(node.to_string()),
-                            ix,
-                            Blue.bold().paint("<< "),
-                            i
-                        );
-                    }
-                }
-                let r = tract_core::plan::eval(session_state, state, node, input)?;
-                if steps {
-                    for (ix, o) in r.iter().enumerate() {
-                        eprintln!(
-                            "{} {}{}{:?}",
-                            White.bold().paint(node.to_string()),
-                            ix,
-                            Yellow.bold().paint(">> "),
-                            o
-                        );
-                    }
-                }
-                if let Some(npz) = npz.as_mut() {
-                    for (ix, t) in r.iter().enumerate() {
-                        let mut name = if ix == 0 {
-                            node.name.to_string()
-                        } else {
-                            format!("{}:{}", node.name, ix)
-                        };
-                        if multiturn {
-                            name = format!("turn_{}/{}", turn, name);
-                        }
-                        npz_add_tensor(npz, name, t)?;
-                    }
-                }
-                if assert_sane_floats {
-                    for (ix, o) in r.iter().enumerate() {
-                        if let Ok(floats) = o.as_slice::<f32>() {
-                            if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
-                                eprintln!("{:?}", floats);
-                                tract_core::anyhow::bail!(
-                                    "Found {} in output {} of {}",
-                                    floats[pos],
-                                    ix,
-                                    node
-                                );
-                            }
-                        } else if let Ok(floats) = o.as_slice::<f16>() {
-                            if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
-                                eprintln!("{:?}", floats);
-                                tract_core::anyhow::bail!(
-                                    "Found {} in output {} of {}",
-                                    floats[pos],
-                                    ix,
-                                    node
-                                );
-                            }
+            let turn_results =
+                state.run_plan_with_eval(inputs, |session_state, state, node, input| {
+                    if steps {
+                        for (ix, i) in input.iter().enumerate() {
+                            eprintln!(
+                                "{} {}{}{:?}",
+                                White.bold().paint(node.to_string()),
+                                ix,
+                                Blue.bold().paint("<< "),
+                                i
+                            );
                         }
                     }
-                }
-                Ok(r)
-            })?;
+                    let r = tract_core::plan::eval(session_state, state, node, input)?;
+                    if steps {
+                        for (ix, o) in r.iter().enumerate() {
+                            eprintln!(
+                                "{} {}{}{:?}",
+                                White.bold().paint(node.to_string()),
+                                ix,
+                                Yellow.bold().paint(">> "),
+                                o
+                            );
+                        }
+                    }
+                    if let Some(npz) = npz.as_mut() {
+                        for (ix, t) in r.iter().enumerate() {
+                            let mut name = if ix == 0 {
+                                node.name.to_string()
+                            } else {
+                                format!("{}:{}", node.name, ix)
+                            };
+                            if multiturn {
+                                name = format!("turn_{}/{}", turn, name);
+                            }
+                            npz_add_tensor(npz, name, t)?;
+                        }
+                    }
+                    if assert_sane_floats {
+                        for (ix, o) in r.iter().enumerate() {
+                            if let Ok(floats) = o.as_slice::<f32>() {
+                                if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
+                                    eprintln!("{:?}", floats);
+                                    tract_core::anyhow::bail!(
+                                        "Found {} in output {} of {}",
+                                        floats[pos],
+                                        ix,
+                                        node
+                                    );
+                                }
+                            } else if let Ok(floats) = o.as_slice::<f16>() {
+                                if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
+                                    eprintln!("{:?}", floats);
+                                    tract_core::anyhow::bail!(
+                                        "Found {} in output {} of {}",
+                                        floats[pos],
+                                        ix,
+                                        node
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    Ok(r)
+                })?;
+            izip!(&mut results, turn_results).for_each(|(r, tr)| r.push(tr));
         }
         Ok(results)
     })
 }
 
+/*
 #[cfg(feature = "pulse")]
 fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Arc<Tensor>>> {
+    dbg!("PULSE");
     let input_fact = model.input_fact(0)?;
     let output_fact = model.output_fact(0)?;
 
@@ -265,3 +275,4 @@ fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Arc<T
         .slice_axis_inplace(tract_ndarray::Axis(output_fact.axis), (..output_dim as usize).into());
     Ok(tvec!(result.into_arc_tensor()))
 }
+*/

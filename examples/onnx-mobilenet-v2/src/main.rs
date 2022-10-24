@@ -4,8 +4,6 @@ fn main() -> TractResult<()> {
     let model = tract_onnx::onnx()
         // load the model
         .model_for_path("mobilenetv2-7.onnx")?
-        // specify input type and shape
-        .with_input_fact(0, f32::fact(&[1, 3, 224, 224]).into())?
         // optimize the model
         .into_optimized()?
         // make the model runnable and fix its inputs and outputs

@@ -1,5 +1,10 @@
 # Unreleased
 
+# 0.18.2 - 2022-10-18
+* [pulse] improve convolution (and others) pulsification to avoid some unecessary buffering delay
+* [cli] support multiple streaming inputs and outputs
+* [ONNX] more relaxed Clip operator rules
+
 # 0.18.1 - 2022-10-06
 * prepare NNEF for further tract-opl extension (resource support)
 * more generic matmul

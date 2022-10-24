@@ -41,7 +41,7 @@ impl PulsedModelExt for PulsedModel {
         typed.properties.insert("pulse.delay".to_string(), delays.into_arc_tensor());
         let input_axes = tensor1(
             &self
-                .output_outlets()?
+                .input_outlets()?
                 .iter()
                 .map(|oo| Ok(self.outlet_fact(*oo)?.axis as _))
                 .collect::<TractResult<TVec<i64>>>()?,

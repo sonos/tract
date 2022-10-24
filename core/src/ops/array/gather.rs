@@ -68,6 +68,7 @@ impl Gather {
             } else {
                 indices_value + data_view.shape()[self.axis] as i64
             } as usize;
+            anyhow::ensure!(index_value < data_view.shape()[self.axis]);
             to_update.assign(&data_view.index_axis(Axis(self.axis), index_value));
         }
         Ok(output.into_arc_tensor())
