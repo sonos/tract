@@ -68,6 +68,14 @@ impl MatMulAxes {
         }
         it
     }
+    
+    // return matching axis index in b and c
+    fn follow_axis_from_a(&self, in_a: usize) -> (usize, usize) {
+        let ix = in_a - (self.a_k < in_a) as usize - (self.a_m < in_a) as usize;
+        let in_b = (0..).filter(|&i| i != self.b_n && i != self.b_k).skip(ix).next().unwrap();
+        let in_c = (0..).filter(|&i| i != self.c_m && i != self.c_n).skip(ix).next().unwrap();
+        (in_b, in_c)
+    }
 
     // return matching axis index in a and c
     fn follow_axis_from_b(&self, in_b: usize) -> (usize, usize) {
@@ -85,6 +93,76 @@ impl MatMulAxes {
         (in_a, in_b)
     }
 
+    pub fn change_axis_from_a(
+        &self,
+        change: &AxisOp,
+        bc_rank: usize,
+    ) -> TractResult<(MatMulAxes, Option<AxisOp>, Option<AxisOp>, Option<AxisOp>)> {
+        match change {
+            AxisOp::Rm(in_a) => {
+                // adhoc: change n_axis as they do not matter
+                // FIXME: remove me if matmul becomes einsum
+                if *in_a == self.a_m {
+                    if let Some(axis) = (0..bc_rank)
+                        .filter(|axis| *axis != self.a_m && *axis != self.a_k)
+                        .rev()
+                        .next()
+                    {
+                        let (_, new_c_n) = self.follow_axis_from_a(axis);
+                        let new_axes = Self { a_m: axis, c_n: new_c_n, ..*self };
+                        let (in_b, in_c) = new_axes.follow_axis_from_a(*in_a);
+                        return new_axes.remove_untouched_axis(*in_a, in_b, in_c);
+                    }
+                }
+                ensure!(*in_a != self.a_k && *in_a != self.a_m);
+                let (in_b, in_c) = self.follow_axis_from_a(*in_a);
+                self.remove_untouched_axis(*in_a, in_b, in_c)
+            }
+            AxisOp::Add(in_a) => {
+                // adhoc to try to keep inner axis addition inner
+                // FIXME: remove me if matmul becomes einsum
+                let (in_b, in_c) = if *in_a == self.a_k + 1 {
+                    (0, self.c_n + 1)
+                } else if *in_a == self.a_m + 1 {
+                    (0, self.c_m + 1)
+                } else {
+                    self.follow_axis_from_a(*in_a)
+                };
+                self.insert_untouched_axis(*in_a, in_b, in_c)
+            }
+            AxisOp::Reshape(in_a, before, after) => {
+                ensure!(self.a_m < *in_a || self.a_m >= *in_a + before.len());
+                ensure!(self.a_k < *in_a || self.a_k >= *in_a + before.len());
+                let (in_b, in_c) = self.follow_axis_from_a(*in_a);
+                self.reshape_untouched_axes(*in_a, in_b, in_c, before, after)
+            }
+            AxisOp::Move(from, to) => {
+                // only deal with spectific cases for now:
+                // movement inside prefix, unaffecting k and n -> propagate to c
+                if *from.max(to) < self.a_k.min(self.a_m) && *from.max(to) < self.c_n.min(self.c_m)
+                {
+                    Ok((
+                        self.clone(),
+                        Some(AxisOp::Move(*from, *to)),
+                        None,
+                        Some(AxisOp::Move(*from, *to)),
+                    ))
+                    // moving k or n to a different position : absorb it
+                } else if *from == self.a_k || *from == self.a_m {
+                    let a_m = change.transform_axis(self.a_m).unwrap();
+                    let a_k = change.transform_axis(self.a_k).unwrap();
+                    Ok((
+                        MatMulAxes { a_k, a_m, ..*self },
+                        Some(AxisOp::Move(*from, *to)),
+                        None,
+                        None,
+                    ))
+                } else {
+                    bail!("Unsupported move");
+                }
+            }
+        }
+    }
     pub fn change_axis_from_b(
         &self,
         change: &AxisOp,

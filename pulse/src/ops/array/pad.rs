@@ -14,7 +14,7 @@ fn pulsify(
 ) -> TractResult<Option<TVec<OutletId>>> {
     let mut input = mapping[&node.inputs[0]];
     let fact = target.outlet_fact(input)?.clone();
-    let stream = fact.stream.unwrap();
+    let stream = fact.stream.as_ref().unwrap();
     if !op.pads.iter().enumerate().all(|(ax, &(a, b))| ax == stream.axis || (a == 0 && b == 0)) {
         return Ok(None);
     }
@@ -48,7 +48,7 @@ fn pulsify(
         before,
         after: after.into(),
         begin_input: stream.delay + extra_delay,
-        end_input: stream.delay.to_dim() + extra_delay + stream.dim,
+        end_input: stream.delay.to_dim() + extra_delay + &stream.dim,
         mode: op.mode.clone(),
         overlap: 0,
     };
@@ -58,7 +58,7 @@ fn pulsify(
 impl PulsedOp for PulsePad {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
-        let stream = fact.stream.unwrap();
+        let mut stream = fact.stream.as_mut().unwrap();
         stream.dim += self.before.to_dim() + &self.after;
         stream.delay -= self.before;
         Ok(tvec!(fact))

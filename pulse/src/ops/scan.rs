@@ -24,7 +24,7 @@ fn pulsify(
         if chunk < 0 {
             bail!("Can not pulsify a backward scan.")
         }
-        if input_fact.stream.context("scan on non-streamed input")?.axis != axis {
+        if input_fact.stream.as_ref().context("scan on non-streamed input")?.axis != axis {
             bail!("Scan pulsification limited to scanning axis");
         }
     }
@@ -32,7 +32,7 @@ fn pulsify(
     let pulse_inputs = node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>();
 
     let mut op = op.clone();
-    op.skip = target.outlet_fact(pulse_inputs[0])?.stream.unwrap().delay;
+    op.skip = target.outlet_fact(pulse_inputs[0])?.stream.as_ref().unwrap().delay;
     for mut om in op.output_mapping.iter_mut() {
         if om.full_slot.is_some() {
             om.full_dim_hint = None;
@@ -76,8 +76,8 @@ impl PulsedOp for Scan {
                 shape,
                 stream: Some(StreamInfo {
                     axis: output_mapping.axis,
-                    dim: inputs[0].stream.unwrap().dim.clone(),
-                    delay: inputs[0].stream.unwrap().delay,
+                    dim: inputs[0].stream.as_ref().unwrap().dim.clone(),
+                    delay: inputs[0].stream.as_ref().unwrap().delay,
                 }),
             };
             facts.push(fact);

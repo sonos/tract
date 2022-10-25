@@ -15,7 +15,8 @@ fn pulsify(
     _pulse: usize,
 ) -> TractResult<Option<TVec<OutletId>>> {
     let fact = target.outlet_fact(mapping[&node.inputs[0]])?.clone();
-    let stream = fact.stream.unwrap();
+    let pulse = fact.pulse().unwrap();
+    let stream = fact.stream.as_ref().unwrap();
     let c_axis = op.pool_spec.data_format.shape(&fact.shape)?.c_axis();
     if c_axis == stream.axis {
         bail!("Pulsification on C axis is not supported");
@@ -28,7 +29,6 @@ fn pulsify(
         // general case for invariants will manage
         return Ok(None);
     }
-    let pulse = fact.pulse().unwrap();
     let geo_axis = stream.axis - op.pool_spec.data_format.h_axis();
     let stride = op.pool_spec.stride(geo_axis);
     let mut pulse_op = op.clone();
@@ -100,13 +100,13 @@ fn overlap(pulse_axis: usize, op: &DeconvUnary) -> usize {
 impl PulsedOp for DeconvUnary {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
-        let mut stream = fact.stream.unwrap();
+        let mut stream = fact.stream.as_mut().unwrap();
         let overlap = overlap(stream.axis, self);
         let geo_axis = stream.axis - self.pool_spec.data_format.h_axis();
         let stride = self.pool_spec.stride(geo_axis);
         let mut output_shape = tract_core::ops::cnn::deconv::output_shape(
             &self.pool_spec,
-            &fact.streaming_shape(),
+            &inputs[0].streaming_shape(),
             &self.adjustments,
         )?;
         stream.dim = output_shape[stream.axis].clone();
@@ -127,7 +127,7 @@ impl PulsedOp for DeconvUnary {
 impl PulsedOp for DeconvDelay {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
-        let mut stream = fact.stream.unwrap();
+        let mut stream = fact.stream.as_mut().unwrap();
         stream.dim = self.deconv_output_dim.clone();
         let pulse_len = fact.shape[stream.axis].clone();
         fact.shape.set(stream.axis, pulse_len - self.overlap);

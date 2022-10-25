@@ -3,7 +3,7 @@ use tract_core::ops::source::*;
 
 register_all!(TypedSource: pulsify);
 
-fn pulsify(
+pub fn pulsify(
     _op: &TypedSource,
     _source: &TypedModel,
     node: &TypedNode,

@@ -15,31 +15,31 @@ pub(crate) fn sync_inputs(
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
 ) -> TractResult<TVec<OutletId>> {
-    todo!();
-    /*
-    let delay = node
-        .inputs
-        .iter()
-        .map(|input| target.outlet_fact(mapping[input]).unwrap().delay)
-        .max()
-        .unwrap();
+    let mut max_delay = 0;
+    for input in &node.inputs {
+        let fact = target.outlet_fact(mapping[&input])?;
+        if let Some(stream) = &fact.stream {
+            max_delay = max_delay.max(stream.delay);
+        }
+    }
     let mut inputs = tvec!();
     for input in &node.inputs {
         let mut input = mapping[input];
         let fact = target.outlet_fact(input)?.clone();
-        if fact.delay < delay {
-            let add_delay = delay - fact.delay;
-            let delay_axis = fact.axis;
-            input = target.wire_node(
-                format!("{}.Delay", &*node.name),
-                Delay::new_typed(&fact.into(), delay_axis, add_delay, 0),
-                &[input],
-            )?[0];
+        if let Some(stream) = &fact.stream {
+            if stream.delay < max_delay {
+                let add_delay = max_delay - stream.delay;
+                let delay_axis = stream.axis;
+                input = target.wire_node(
+                    format!("{}.Delay", &*node.name),
+                    Delay::new_typed(&fact.into(), delay_axis, add_delay, 0),
+                    &[input],
+                )?[0];
+            }
         }
         inputs.push(input);
     }
     Ok(inputs)
-    */
 }
 
 register_all_mod!(array, cnn, downsample, scan, source);

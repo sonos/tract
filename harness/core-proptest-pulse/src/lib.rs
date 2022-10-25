@@ -51,8 +51,9 @@ fn proptest_regular_against_pulse(
     // dbg!(&pulsed);
     let output_fact = pulsed.output_fact(0).unwrap().clone();
 
-    let output_stream_axis = output_fact.axis;
-    let delay = output_fact.delay;
+    let stream_info = output_fact.stream.as_ref().unwrap();
+    let output_stream_axis = stream_info.axis;
+    let delay = stream_info.delay;
     let mut initial_output_shape = output_fact.shape.clone();
     initial_output_shape.set(output_stream_axis, 0.to_dim());
     let initial_output_shape: TVec<usize> =
@@ -83,7 +84,7 @@ fn proptest_regular_against_pulse(
             )
             .unwrap();
             state.session_state.resolved_symbols[s] = Some(written as i64);
-            output_len = output_fact
+            output_len = stream_info
                 .dim
                 .eval(&state.session_state.resolved_symbols)
                 .to_isize()
@@ -107,7 +108,7 @@ fn proptest_regular_against_pulse(
     let pulsed_output = got
         .slice_axis(
             Axis(output_stream_axis),
-            (output_fact.delay..output_fact.delay + output_len.unwrap().max(0) as usize).into(),
+            (stream_info.delay..stream_info.delay + output_len.unwrap().max(0) as usize).into(),
         )
         .to_owned()
         .into_tensor();

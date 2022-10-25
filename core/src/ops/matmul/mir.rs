@@ -46,6 +46,25 @@ impl TypedOp for MatMul {
         Ok(tvec!(output_type(inputs[0].datum_type).fact(c_shape)))
     }
 
+    fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
+        mir_invariants(&inputs[0], &inputs[1], &outputs[0], self.axes)
+    }
+
+    fn change_axes(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        if let Some((axes, wire_changes)) = mir_change_axes(model, node, io, change, &self.axes)? {
+            let op = Self { axes };
+            Ok(Some(AxisChangeConsequence { substitute_op: Some(Box::new(op)), wire_changes }))
+        } else {
+            Ok(None)
+        }
+    }
+
     fn codegen(
         &self,
         model: &TypedModel,
@@ -94,6 +113,75 @@ impl TypedOp for MatMul {
     }
 
     as_op!();
+}
+
+fn mir_invariants(
+    _a: &TypedFact,
+    _b: &TypedFact,
+    c: &TypedFact,
+    axes: MatMulAxes,
+) -> TractResult<Invariants> {
+    Ok((0..c.rank())
+        .map(|c_axis| {
+            if c_axis == axes.c_m {
+                AxisInfo {
+                    inputs: tvec!(Some(axes.a_m), None),
+                    outputs: tvec!(Some(c_axis)),
+                    disposable: false,
+                    period: 1,
+                }
+            } else if c_axis == axes.c_n {
+                AxisInfo {
+                    inputs: tvec!(None, Some(axes.b_n)),
+                    outputs: tvec!(Some(c_axis)),
+                    disposable: false,
+                    period: 1,
+                }
+            } else {
+                let tracking = axes.follow_axis_from_c(c_axis);
+                AxisInfo {
+                    inputs: tvec!(Some(tracking.0), Some(tracking.1)),
+                    outputs: tvec!(Some(c_axis)),
+                    disposable: true,
+                    period: 1,
+                }
+            }
+        })
+        .collect())
+}
+
+pub(super) fn mir_change_axes(
+    model: &TypedModel,
+    node: &TypedNode,
+    io: InOut,
+    change: &AxisOp,
+    old_axes: &MatMulAxes,
+) -> TractResult<Option<(MatMulAxes, TVec<(InOut, AxisOp)>)>> {
+    let rank = model.outlet_fact(node.inputs[0])?.rank();
+    let result = if io == InOut::In(0) {
+        old_axes.change_axis_from_a(change, rank)
+    } else if io == InOut::In(1) {
+        old_axes.change_axis_from_b(change, rank)
+    } else if io == InOut::Out(0) {
+        old_axes.change_axis_from_c(change, rank)
+    } else {
+        unreachable!();
+    };
+    if let Ok((axes, change_a, change_b, change_c)) = result {
+        let mut wires = tvec!();
+        if let Some(change_a) = change_a {
+            wires.push((InOut::In(0), change_a));
+        }
+        if let Some(change_b) = change_b {
+            wires.push((InOut::In(1), change_b));
+        }
+        if let Some(change_c) = change_c {
+            wires.push((InOut::Out(0), change_c));
+        }
+        Ok(Some((axes, wires)))
+    } else {
+        Ok(None) // is it right ? or return error ?
+    }
 }
 
 #[cfg(test)]

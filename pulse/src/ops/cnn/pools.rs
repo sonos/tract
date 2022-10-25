@@ -85,7 +85,7 @@ pub fn pulsed_output_facts(
         spatial_dims,
     )?;
     let mut fact = inputs[0].clone();
-    let mut stream = fact.stream.unwrap();
+    let mut stream = fact.stream.as_mut().unwrap();
     let input_shape = spec.data_format.shape(&*fact.shape)?;
     let geo_axis = stream.axis - input_shape.h_axis();
     let dilation = spec.dilations.as_ref().map(|d| d[geo_axis]).unwrap_or(1);
@@ -108,7 +108,7 @@ pub fn pulsify_pooled_input(
 ) -> TractResult<Option<(OutletId, PoolSpec)>> {
     let mut wire = mapping[&node.inputs[0]];
     let input_fact: PulsedFact = target.outlet_fact(wire)?.clone();
-    let input_stream = input_fact.stream.unwrap();
+    let input_stream = input_fact.stream.as_ref().unwrap();
     let input_shape = spec.data_format.shape(input_fact.shape.clone())?;
     if Some(input_stream.axis) == input_shape.n_axis() {
         return Ok(None);

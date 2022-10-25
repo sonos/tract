@@ -8,7 +8,7 @@ register_all!(TypedConcat: pulsify);
 
 fn pulsify(
     op: &TypedConcat,
-    source: &TypedModel,
+    _source: &TypedModel,
     node: &TypedNode,
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
@@ -16,10 +16,10 @@ fn pulsify(
 ) -> TractResult<Option<TVec<OutletId>>> {
     let pulse_facts: TVec<&PulsedFact> =
         node.inputs.iter().map(|i| target.outlet_fact(mapping[i]).unwrap()).collect();
-    let (stream_input_ix, pulse_fact) =
+    let (_stream_input_ix, pulse_fact) =
         pulse_facts.iter().enumerate().filter(|(_ix, pf)| pf.stream.is_some()).next().unwrap();
 
-    if pulse_fact.stream.unwrap().axis == op.axis {
+    if pulse_fact.stream.as_ref().unwrap().axis == op.axis {
         todo!()
 //        pulsify_along_concat_axis(op, source, node, target, mapping)
     } else {

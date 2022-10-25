@@ -64,7 +64,7 @@ impl PulsedFact {
     }
 
     pub fn pulse(&self) -> Option<usize> {
-        if let Some(stream) = self.stream {
+        if let Some(stream) = &self.stream {
             Some(
                 self.shape[stream.axis]
                     .to_usize()
@@ -80,7 +80,7 @@ impl PulsedFact {
     }
 
     pub fn streaming_shape(&self) -> TVec<TDim> {
-        if let Some(stream) = self.stream {
+        if let Some(stream) = &self.stream {
             self.shape
                 .iter()
                 .enumerate()
@@ -101,7 +101,7 @@ impl PulsedFact {
 impl fmt::Debug for PulsedFact {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         use tract_itertools::Itertools;
-        if let Some(stream) = self.stream {
+        if let Some(stream) = &self.stream {
             write!(
                 fmt,
                 "{},{:?} [pulse axis:{} ∂:{} full dim:{}]",

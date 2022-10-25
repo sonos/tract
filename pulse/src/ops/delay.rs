@@ -22,7 +22,7 @@ fn ser_delay(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RVal
 impl PulsedOp for Delay {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
-        let mut stream = fact.stream.unwrap();
+        let mut stream = fact.stream.as_mut().unwrap();
         fact.shape.set(self.axis, fact.shape[self.axis].clone() + self.overlap);
         stream.delay += self.delay + self.overlap;
         Ok(tvec!(fact))
