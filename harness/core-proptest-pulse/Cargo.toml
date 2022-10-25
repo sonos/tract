@@ -8,6 +8,7 @@ edition = "2018"
 [dependencies]
 tract-pulse = { path = "../../pulse" }
 tract-hir = { path = "../../hir" }
+tract-onnx-opl = { path = "../../onnx-opl/" }
 
 [dev-dependencies]
 log = "0.4.14"

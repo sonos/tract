@@ -313,4 +313,31 @@ mod test {
     fn test_display_expr() {
         assert_eq!("pqrs,tuqvr->pstuv".parse::<Expr>().unwrap().to_string(), "pqrs,tuqvr->pstuv");
     }
+
+    #[test]
+    fn test_parse_pulsed_matmul() {
+        assert_eq!(
+            "sij,ijk->sik".parse::<Expr>().unwrap(),
+            Expr::from(tvec![
+                AxisSym::new('i').result(1).input(0, 1).input(1, 0),
+                AxisSym::new('k').result(2).input(1, 2),
+                AxisSym::new('s').result(0).input(0, 0),
+                AxisSym::new('j').input(0, 2).input(1, 1),
+            ])
+        )
+    }
+
+    #[test]
+    fn test_parse_pulsed_batch_matmul() {
+        assert_eq!(
+            "bsij,ijk->bsik".parse::<Expr>().unwrap(),
+            Expr::from(tvec![
+                AxisSym::new('b').result(0).input(0, 0),
+                AxisSym::new('i').result(2).input(0, 2).input(1, 0),
+                AxisSym::new('k').result(3).input(1, 2),
+                AxisSym::new('s').result(1).input(0, 1),
+                AxisSym::new('j').input(0, 3).input(1, 1),
+            ])
+        )
+    }
 }

@@ -402,7 +402,9 @@ pub(super) fn mir_unary_change_axes(
     if let Ok((axes, change_a, change_b, change_c)) = result {
         let mut new_a = old_a.clone();
         if let Some(change_a) = change_a {
-            change_a.change_tensor(&mut new_a, false)?;
+            if let Err(_) = change_a.change_tensor(&mut new_a, false) {
+                return Ok(None) // can not apply change to A (Rm on non-trivial axis ?)
+            }
         }
         let mut wires = tvec!();
         if let Some(change_b) = change_b {
