@@ -1,5 +1,5 @@
 version 1.0;
-extension tract_registry tract_core;
+
 graph check_bias_loading(input) -> (output)
 {
     input = external<scalar>(shape = [1, 1, 3]);
