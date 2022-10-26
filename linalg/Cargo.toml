@@ -21,6 +21,7 @@ lazy_static = "1.4.0"
 log = "0.4.14"
 num-traits = "0.2.14"
 tract-data = { version = "0.18.3-pre", path = "../data" }
+opencl3 = { version =  "0.8.1", optional = true }
 paste = "1.0.5"
 scan_fmt = "0.2.6"
 
@@ -44,6 +45,7 @@ proptest = "1.0.0"
 # preferred.
 no_fp16 = []
 default = []
+opencl = [ "opencl3" ]
 
 [[bench]]
 bench = false
@@ -96,4 +98,12 @@ harness = false
 
 [[bench]]
 name = "x86_64"
+harness = false
+
+[[bench]]
+name = "opencl"
+harness = false
+
+[[bench]]
+name = "opencl-gemv"
 harness = false

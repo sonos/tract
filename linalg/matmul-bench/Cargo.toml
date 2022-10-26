@@ -14,12 +14,17 @@ cblas = { version = "0.3", optional = true }
 accelerate-src = { version = "0.3", optional = true }
 blis-src = { version = "0.2", features = ["static"], optional = true }
 matrixmultiply = "*"
+opencl3 = { version =  "0.8.1", optional = true }
+lazy_static = "1.4.0"
+paste = "1.0.5"
+itertools = "0.10.3"
 
 [features]
-default = []
+default = [ ]
 blas = ["cblas"]
 blis = ["blis-src", "blas"]
 accelerate = ["accelerate-src", "blas"]
+opencl = [ "opencl3" ]
 
 [build-dependencies]
 cc = "1.0"
