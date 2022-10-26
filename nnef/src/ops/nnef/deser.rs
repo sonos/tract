@@ -34,20 +34,6 @@ pub fn external(
     Ok(Value::Wire(builder.model.add_source("", dt.fact(&shape))?))
 }
 
-//fragment constant<? = scalar>(
-//    shape: integer[],           # the shape of the tensor
-//    value: ?[] )                # the values to fill the tensor with
-//-> ( output: tensor<?> )
-pub fn constant(
-    builder: &mut ModelBuilder,
-    invocation: &ResolvedInvocation,
-) -> TractResult<Value> {
-    let shape: TVec<usize> = invocation.named_arg_as(builder, "shape")?;
-    let values: TVec<f32> = invocation.named_arg_as(builder, "value")?;
-    let tensor = Tensor::from_shape(shape.as_slice(), &values)?.into_arc_tensor();
-    builder.wire(tract_core::ops::konst::Const::new(tensor), &[])
-}
-
 // fragment variable<? = scalar>( shape: integer[], label: string ) -> ( output: tensor<?> );
 pub fn variable(
     builder: &mut ModelBuilder,

@@ -26,7 +26,6 @@ pub fn tract_nnef() -> Registry {
     primitive(&mut registry, "variable", deser::variable);
     dumper!(ops::konst::Const, ser::konst);
 
-    primitive(&mut registry, "constant", deser::constant);
     primitive(&mut registry, "reshape", deser::reshape);
     primitive(&mut registry, "transpose", deser::transpose);
 
