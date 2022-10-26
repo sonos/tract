@@ -22,5 +22,8 @@ flate2 = { version = "1.0.20", optional = true }
 tract-core = { version = "0.18.3-pre", path = "../core" }
 walkdir = "2.3.2"
 
+[dev-dependencies]
+serde_json = "1.0"
+
 [features]
 default = ["flate2"]

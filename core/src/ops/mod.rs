@@ -269,6 +269,7 @@ pub trait TypedOp:
 }
 
 impl_downcast!(Op);
+impl_downcast!(TypedOp);
 
 dyn_clone::clone_trait_object!(Op);
 dyn_clone::clone_trait_object!(TypedOp);

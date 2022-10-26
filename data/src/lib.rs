@@ -20,7 +20,7 @@ pub mod prelude {
     pub use crate::datum::{round_ties_to_even, Blob, Datum, DatumType, QParams};
     pub use crate::dim::{Symbol, SymbolValues, TDim, ToDim};
     pub use crate::tensor::litteral::*;
-    pub use crate::tensor::{natural_strides, IntoArcTensor, IntoTensor, Tensor};
+    pub use crate::tensor::{natural_strides, reinterpret_inner_dim_as_complex, IntoArcTensor, IntoTensor, Tensor};
     pub use crate::tvec;
     pub use crate::TVec;
     pub use crate::{

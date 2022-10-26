@@ -448,7 +448,7 @@ impl RValue {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Tensor(Arc<Tensor>),
     Wire(OutletId),

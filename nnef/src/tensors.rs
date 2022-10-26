@@ -62,6 +62,12 @@ pub fn read_tensor<R: std::io::Read>(mut reader: R) -> TractResult<Tensor> {
             (0, 4, 32) => DatumType::I32,
             (0, 4, 64) => DatumType::I64,
             (TRACT_ITEM_TYPE_VENDOR, 0x1000, 0xFFFF) => DatumType::String,
+            (TRACT_ITEM_TYPE_VENDOR, 0, 32) => DatumType::ComplexF16,
+            (TRACT_ITEM_TYPE_VENDOR, 0, 64) => DatumType::ComplexF32,
+            (TRACT_ITEM_TYPE_VENDOR, 0, 128) => DatumType::ComplexF64,
+            (TRACT_ITEM_TYPE_VENDOR, 4, 32) => DatumType::ComplexI16,
+            (TRACT_ITEM_TYPE_VENDOR, 4, 64) => DatumType::ComplexI32,
+            (TRACT_ITEM_TYPE_VENDOR, 4, 128) => DatumType::ComplexI64,
             _ => bail!(
                 "Unsupported type in tensor type:{} bits_per_item:{}",
                 header.item_type,
@@ -111,7 +117,13 @@ pub fn write_tensor<W: std::io::Write>(w: &mut W, tensor: &Tensor) -> TractResul
         header.bits_per_item = (tensor.datum_type().size_of() * 8) as u32;
         header.item_type = if tensor.datum_type().is_float() {
             0
+        } else if tensor.datum_type().is_complex_float() {
+            header.item_type_vendor = TRACT_ITEM_TYPE_VENDOR;
+            0
         } else if tensor.datum_type().is_signed() {
+            4
+        } else if tensor.datum_type().is_complex_signed() {
+            header.item_type_vendor = TRACT_ITEM_TYPE_VENDOR;
             4
         } else if tensor.datum_type().is_unsigned() {
             1
@@ -143,5 +155,57 @@ mod test {
     #[test]
     fn header_is_128_bytes() {
         assert_eq!(std::mem::size_of::<Header>(), 128);
+    }
+
+    #[test]
+    fn serde_tensor_complex_f32() -> TractResult<()> {
+        let t = tensor2(&[
+            [Complex::new(1.0f32, 2.0), Complex::new(2.0, 1.0), Complex::new(3.5, 2.4)],
+            [Complex::new(3.0, 4.5), Complex::new(3.0, 2.5), Complex::new(1.5, 2.5)]
+        ]);
+        let mut buffer = Vec::<u8>::new();
+        write_tensor(&mut buffer, &t)?;
+        let serde_tensor = read_tensor(buffer.as_slice())?;
+        assert_eq!(t, serde_tensor);
+        Ok(())
+    }
+
+    #[test]
+    fn serde_tensor_complex_f64() -> TractResult<()> {
+        let t = tensor2(&[
+            [Complex::new(1.0f64, 2.0), Complex::new(2.0, 1.0), Complex::new(3.5, 2.4)],
+            [Complex::new(3.0, 4.5), Complex::new(3.0, 2.5), Complex::new(1.5, 2.5)]
+        ]);
+        let mut buffer = Vec::<u8>::new();
+        write_tensor(&mut buffer, &t)?;
+        let serde_tensor = read_tensor(buffer.as_slice())?;
+        assert_eq!(t, serde_tensor);
+        Ok(())
+    }
+
+    #[test]
+    fn serde_tensor_complex_i32() -> TractResult<()> {
+        let t = tensor2(&[
+            [Complex::new(1i32, 2), Complex::new(2, 1), Complex::new(3, 2)],
+            [Complex::new(3, 4), Complex::new(3, 2), Complex::new(1, 2)]
+        ]);
+        let mut buffer = Vec::<u8>::new();
+        write_tensor(&mut buffer, &t)?;
+        let serde_tensor = read_tensor(buffer.as_slice())?;
+        assert_eq!(t, serde_tensor);
+        Ok(())
+    }
+
+    #[test]
+    fn serde_tensor_complex_i64() -> TractResult<()> {
+        let t = tensor2(&[
+            [Complex::new(1i64, 2), Complex::new(2, 1), Complex::new(3, 2)],
+            [Complex::new(3, 4), Complex::new(3, 2), Complex::new(1, 2)]
+        ]);
+        let mut buffer = Vec::<u8>::new();
+        write_tensor(&mut buffer, &t)?;
+        let serde_tensor = read_tensor(buffer.as_slice())?;
+        assert_eq!(t, serde_tensor);
+        Ok(())
     }
 }
