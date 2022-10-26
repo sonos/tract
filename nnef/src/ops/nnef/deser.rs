@@ -34,6 +34,20 @@ pub fn external(
     Ok(Value::Wire(builder.model.add_source("", dt.fact(&shape))?))
 }
 
+//fragment constant<? = scalar>(
+//    shape: integer[],           # the shape of the tensor
+//    value: ?[] )                # the values to fill the tensor with
+//-> ( output: tensor<?> )
+pub fn constant(
+    builder: &mut ModelBuilder,
+    invocation: &ResolvedInvocation,
+) -> TractResult<Value> {
+    let shape: TVec<usize> = invocation.named_arg_as(builder, "shape")?;
+    let values: TVec<f32> = invocation.named_arg_as(builder, "value")?;
+    let tensor = Tensor::from_shape(shape.as_slice(), &values)?.into_arc_tensor();
+    builder.wire(tract_core::ops::konst::Const::new(tensor), &[])
+}
+
 // fragment variable<? = scalar>( shape: integer[], label: string ) -> ( output: tensor<?> );
 pub fn variable(
     builder: &mut ModelBuilder,
@@ -337,16 +351,20 @@ pub fn conv_or_deconv(
     let qparams = if quantized { Some((output_dt, MatMulQParams::all_from_qtype())) } else { None };
     let bias: Arc<Tensor> = invocation.named_arg_as(builder, "bias")?;
 
-    let mut bias: Option<Tensor> = if bias.is_uniform() && bias.cast_to_scalar::<f32>()? == 0.0 {
+    // Remove or reshape bias for efficient processing
+    let bias: Option<Tensor> = if bias.is_uniform() && bias.cast_to_scalar::<f32>()? == 0.0 {
         None
     } else {
-        Some(bias.into_tensor())
-    };
-    if let Some(bias) = bias.as_mut() {
-        if bias.rank() == 2 {
-            bias.remove_axis((bias.shape()[1] == 1) as usize)?;
+        if bias.rank() > 1 {
+            let output_channels = kernel.shape()[0];
+            ensure!(output_channels == bias.len(), "Bias tensor should be scalar or have one value per output channel"); 
+            let mut reshaped_bias = bias.into_tensor();
+            reshaped_bias.set_shape(&[output_channels])?;
+            Some(reshaped_bias)
+        } else {
+            Some(bias.into_tensor())
         }
-    }
+    };
 
     let op: Box<dyn TypedOp> = if deconv {
         let output_shape = invocation.named_arg_as::<TVec<usize>>(builder, "output_shape")?;
