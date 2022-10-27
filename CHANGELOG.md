@@ -1,5 +1,10 @@
 # Unreleased
 
+# 0.18.3 - 2022-10-27
+* [NNEF] Introduce a "resource" extension for loading values from a separate source (as a config file)
+* Workaround for cpu detection failure on FreeBSD / arm64
+* Various bug fixes
+
 # 0.18.2 - 2022-10-18
 * [pulse] improve convolution (and others) pulsification to avoid some unecessary buffering delay
 * [cli] support multiple streaming inputs and outputs
