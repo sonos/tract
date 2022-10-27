@@ -86,10 +86,13 @@ impl Kind {
                         part
                     );
                     part
-                } else {
+                } else if cfg!(target_os = "linux") {
                     let part = max_cpuid().unwrap_or("0x00".to_string());
                     log::info!("CPU part auto detected: {}", part);
                     part
+                } else {
+                    log::info!("Unknown CPU part");
+                    "0x00".to_string()
                 };
                 match &*part {
                     PART_A53 => Kind::CortexA53,
