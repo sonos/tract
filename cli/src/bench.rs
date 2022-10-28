@@ -1,8 +1,9 @@
-use crate::{BenchLimits, Parameters};
+use crate::Parameters;
 use readings_probe::Probe;
 use std::time::{Duration, Instant};
 use tract_hir::internal::*;
 use tract_libcli::terminal;
+use tract_libcli::profile::BenchLimits;
 
 pub fn criterion(
     params: &Parameters,

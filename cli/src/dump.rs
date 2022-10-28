@@ -1,11 +1,12 @@
 use crate::params::SomeGraphDef;
 use crate::tensor::run_params_from_subcommand;
-use crate::{BenchLimits, Parameters};
+use crate::Parameters;
 use ansi_term::Style;
 use tract_hir::internal::*;
 use tract_libcli::annotations::*;
 use tract_libcli::display_params::*;
 use tract_libcli::model::Model;
+use tract_libcli::profile::BenchLimits;
 use tract_libcli::terminal;
 
 #[allow(unused_variables)]
@@ -125,7 +126,7 @@ pub fn handle(
             .tract_model
             .downcast_ref::<TypedModel>()
             .context("Can only profile typed models")?;
-        crate::profile::profile(model, bench_limits, &mut annotations, &run_params)?;
+        tract_libcli::profile::profile(model, bench_limits, &mut annotations, &run_params)?;
     }
 
     if let Some(asserts) = &params.assertions.assert_output_facts {

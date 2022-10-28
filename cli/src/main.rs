@@ -16,6 +16,7 @@ use tract_hir::internal::*;
 use tract_libcli::annotations::Annotations;
 use tract_libcli::display_params::DisplayParams;
 use tract_libcli::model::Model;
+use tract_libcli::profile::BenchLimits;
 
 use readings_probe::*;
 
@@ -26,7 +27,6 @@ mod dump;
 mod errors {}
 mod export;
 mod params;
-mod profile;
 mod run;
 #[cfg(feature = "pulse")]
 mod stream_check;
@@ -492,7 +492,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
     match matches.subcommand() {
         Some(("bench", m)) => {
             need_optimisations = true;
-            bench::handle(&params, &matches, m, &BenchLimits::from_clap(m)?, probe)
+            bench::handle(&params, &matches, m, &params::bench_limits_from_clap(m)?, probe)
         }
 
         Some(("criterion", m)) => {
@@ -516,7 +516,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             &DisplayParams::default(),
             &matches,
             &dump_subcommand().get_matches_from::<_, &'static str>([]),
-            &params::BenchLimits::default(),
+            &BenchLimits::default(),
             vec![],
         ),
 
@@ -531,7 +531,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
                 &display_params_from_clap(&matches, m)?,
                 &matches,
                 m,
-                &BenchLimits::from_clap(m)?,
+                &params::bench_limits_from_clap(m)?,
                 inner,
             )
         }
