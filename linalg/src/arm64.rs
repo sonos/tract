@@ -138,12 +138,22 @@ pub fn plug(ops: &mut Ops) {
         Kind::CortexA55 => Some(cortex_a55::model()),
         _ => None,
     };
-    if let Some(model) = model {
-        ops.mmm_f32 = Box::new(move |m, k, n| model.pick(&impls, m, k, n));
-    }
+    ops.mmm_f32 = if let Some(model) = model {
+        Box::new(move |m, k, n| model.pick(&impls, m, k, n))
+    } else {
+        Box::new(move |_, _, n| {
+            if n.unwrap_or(8) < 8 {
+                arm64simd_mmm_f32_16x4_gen::mmm()
+            } else {
+                arm64simd_mmm_f32_8x8_gen::mmm()
+            }
+        })
+    };
     #[cfg(feature = "no_fp16")]
     if has_fp16() {
-        log::warn!("This is a build with fp16 disabled, while your platform CPU seems to support it.");
+        log::warn!(
+            "This is a build with fp16 disabled, while your platform CPU seems to support it."
+        );
     }
     #[cfg(not(feature = "no_fp16"))]
     if has_fp16() {
