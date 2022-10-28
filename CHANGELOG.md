@@ -1,5 +1,7 @@
 # Unreleased
 
+* internal API breaking: no more op_families
+
 # 0.18.3 - 2022-10-27
 * [NNEF] Introduce a "resource" extension for loading values from a separate source (as a config file)
 * Workaround for cpu detection failure on FreeBSD / arm64
