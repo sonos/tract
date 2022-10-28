@@ -10,7 +10,6 @@ macro_rules! activation {
                 stringify!($op).into()
             }
 
-            op_hir!();
 
             fn rules<'r, 'p: 'r, 's: 'r>(
                 &'s self,

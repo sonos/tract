@@ -1,8 +1,5 @@
 use tract_nnef::internal::*;
 
-#[macro_use]
-mod macros;
-
 mod concat;
 mod deconv_delay;
 mod delay;

@@ -19,7 +19,6 @@ impl Expansion for Gather {
         "Gather".into()
     }
 
-    op_hir!();
 
     fn wire(
         &self,

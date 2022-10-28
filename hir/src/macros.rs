@@ -1,9 +1,4 @@
 #[macro_export]
-macro_rules! op_hir {
-    () => {};
-}
-
-#[macro_export]
 macro_rules! to_typed {
     () => {
         fn to_typed(

@@ -32,7 +32,6 @@ impl Expansion for BlockLSTM {
         "BlockLSTM".into()
     }
 
-    op_tf!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

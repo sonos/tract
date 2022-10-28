@@ -75,7 +75,6 @@ impl Op for VariableV2 {
         }
     }
 
-    op_tf!();
     op_as_typed_op!();
 }
 
@@ -142,7 +141,6 @@ impl Op for Assign {
         "Assign".into()
     }
 
-    op_tf!();
     op_as_typed_op!();
 }
 

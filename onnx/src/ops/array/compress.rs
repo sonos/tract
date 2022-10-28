@@ -52,7 +52,6 @@ impl Op for Compress {
         "Compress".into()
     }
 
-    op_onnx!();
     not_a_typed_op!();
 }
 

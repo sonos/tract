@@ -122,5 +122,4 @@ impl Expansion for ReduceSum13 {
         op.wire(prefix, model, &inputs[0..1])
     }
 
-    op_onnx!();
 }

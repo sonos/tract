@@ -17,7 +17,6 @@ impl Op for MatMul {
         "MatMul".into()
     }
 
-    op_core_mir!();
     op_as_typed_op!();
 }
 

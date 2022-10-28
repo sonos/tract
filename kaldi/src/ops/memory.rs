@@ -17,7 +17,6 @@ impl Op for Memory {
         "Memory".into()
     }
 
-    op_kaldi!();
     not_a_typed_op!();
 }
 

@@ -32,7 +32,6 @@ impl Op for DeconvSum {
         "DeconvSum".into()
     }
 
-    op_core!();
     op_as_typed_op!();
 }
 

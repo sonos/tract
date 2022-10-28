@@ -16,7 +16,6 @@ pub mod internal {
     pub use crate::fact::{stream_dim, stream_symbol, PulsedFact};
     pub use crate::model::{PulsedModel, PulsedModelExt};
     pub use crate::ops::{OpPulsifier, PulsedOp};
-    pub use tract_pulse_opl::op_pulse;
 }
 
 use std::ops::ControlFlow;

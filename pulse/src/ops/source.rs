@@ -25,7 +25,6 @@ impl Op for PulsedSource {
     fn name(&self) -> Cow<str> {
         "PulsedSource".into()
     }
-    op_pulse!();
     not_a_typed_op!();
 }
 

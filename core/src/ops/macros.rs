@@ -30,30 +30,6 @@ macro_rules! not_a_typed_op {
 }
 
 #[macro_export]
-macro_rules! op_core {
-    () => {
-    };
-}
-
-#[macro_export]
-macro_rules! op_core_mir {
-    () => {
-    };
-}
-
-#[macro_export]
-macro_rules! op_core_lir {
-    () => {
-    };
-}
-
-#[macro_export]
-macro_rules! op_core_lir_mir {
-    () => {
-    };
-}
-
-#[macro_export]
 macro_rules! args_1 {
     ($inputs:expr) => {{
         if $inputs.len() != 1 {

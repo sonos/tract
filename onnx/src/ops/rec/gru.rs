@@ -62,7 +62,6 @@ impl Expansion for GRU {
         Validation::Rounding
     }
 
-    op_onnx!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

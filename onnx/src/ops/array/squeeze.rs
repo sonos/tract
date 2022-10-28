@@ -59,5 +59,4 @@ impl Expansion for Squeeze13 {
         }
     }
 
-    op_onnx!();
 }

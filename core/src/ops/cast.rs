@@ -16,7 +16,6 @@ impl Op for Cast {
         "Cast".into()
     }
 
-    op_core!();
     op_as_typed_op!();
 }
 

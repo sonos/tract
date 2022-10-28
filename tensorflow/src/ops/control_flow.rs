@@ -27,7 +27,6 @@ impl Op for LoopGate {
         format!("{:?}", self.0).into()
     }
 
-    op_tf!();
     not_a_typed_op!();
 }
 
@@ -77,7 +76,6 @@ impl Op for NextIteration {
         format!("{:?}({})", self.role, self.name).into()
     }
 
-    op_tf!();
     not_a_typed_op!();
 }
 

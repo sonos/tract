@@ -26,7 +26,6 @@ impl Op for MatMatMulPack {
         other.downcast_ref::<Self>().map(|other| other == self).unwrap_or(false)
     }
 
-    op_core_lir!();
     op_as_typed_op!();
 }
 

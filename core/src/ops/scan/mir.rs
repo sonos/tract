@@ -648,7 +648,6 @@ impl Op for Scan {
         Validation::Rounding
     }
 
-    op_core_mir!();
     op_as_typed_op!();
 }
 

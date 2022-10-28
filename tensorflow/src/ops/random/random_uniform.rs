@@ -43,7 +43,6 @@ impl Op for RandomUniform {
         }
     }
 
-    op_tf!();
     not_a_typed_op!();
 }
 
@@ -128,7 +127,6 @@ impl Op for TypedRandomUniform {
         }
     }
 
-    op_tf!();
     op_as_typed_op!();
 }
 
@@ -206,7 +204,6 @@ impl Op for RandomUniformInt {
         }
     }
 
-    op_tf!();
     not_a_typed_op!();
 }
 

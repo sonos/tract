@@ -113,7 +113,6 @@ impl Op for Iff {
     fn name(&self) -> Cow<str> {
         "Iff".into()
     }
-    op_core_mir!();
     op_as_typed_op!();
 }
 

@@ -170,7 +170,6 @@ impl Op for PulsePad {
         )])
     }
 
-    op_pulse!();
     op_as_typed_op!();
 }
 

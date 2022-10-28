@@ -27,7 +27,6 @@ impl Op for MultiBroadcastTo {
         "MultiBroadcastTo".into()
     }
 
-    op_core_mir!();
     op_as_typed_op!();
 }
 

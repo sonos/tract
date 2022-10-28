@@ -17,7 +17,6 @@ impl Expansion for ExpandDims {
         "ExpandDims".into()
     }
 
-    op_tf!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

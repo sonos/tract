@@ -11,7 +11,6 @@ impl Op for ScatterNd {
         "ScatterNd".into()
     }
 
-    op_core_mir!();
     op_as_typed_op!();
 }
 

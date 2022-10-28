@@ -20,7 +20,6 @@ impl Op for MaxPool {
         Ok(self.pool_spec.info())
     }
 
-    op_core_mir!();
     op_as_typed_op!();
 }
 
@@ -95,7 +94,6 @@ impl Op for LirMaxPool {
         Ok(self.pool_spec.info())
     }
 
-    op_core_lir!();
     op_as_typed_op!();
 }
 

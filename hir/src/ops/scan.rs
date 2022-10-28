@@ -32,7 +32,6 @@ impl Op for InferenceScan {
         Ok(lines)
     }
 
-    op_hir!();
     not_a_typed_op!();
 }
 

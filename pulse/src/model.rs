@@ -151,7 +151,6 @@ impl Op for PulseWrappingOp {
         Some(self.0.as_ref())
     }
 
-    op_pulse!();
 }
 
 impl EvalOp for PulseWrappingOp {

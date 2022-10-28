@@ -160,7 +160,6 @@ impl Op for Im2Col {
         Ok(vec![format!("groups:{}", self.group)])
     }
 
-    op_core_lir!();
     impl_op_same_as!();
     op_as_typed_op!();
 }

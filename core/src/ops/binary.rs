@@ -139,7 +139,6 @@ impl Op for TypedBinOp {
         self.0.validation()
     }
 
-    op_core_mir!();
     op_as_typed_op!();
 }
 
@@ -367,7 +366,6 @@ impl Op for UnaryOp {
         self.mini_op.validation()
     }
 
-    op_core_lir_mir!();
     op_as_typed_op!();
 }
 
@@ -516,7 +514,6 @@ impl Op for MergeOpUnicast {
         format!("{}Unicast", self.0.name()).into()
     }
 
-    op_core_lir_mir!();
     op_as_typed_op!();
 }
 

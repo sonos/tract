@@ -21,7 +21,6 @@ impl Op for MatMulUnary {
         Ok(vec![format!("{:?}", self.axes), format!("A: {:?}", self.a)])
     }
 
-    op_core_mir!();
     op_as_typed_op!();
 }
 

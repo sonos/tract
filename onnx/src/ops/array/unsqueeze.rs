@@ -60,5 +60,4 @@ impl Expansion for Unsqueeze13 {
         }
     }
 
-    op_onnx!();
 }

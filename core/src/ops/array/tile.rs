@@ -32,7 +32,6 @@ impl Op for Tile {
         "Tile".into()
     }
 
-    op_core_mir!();
     op_as_typed_op!();
 }
 

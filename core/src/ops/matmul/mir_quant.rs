@@ -251,7 +251,6 @@ impl Op for QMatMul {
         "QMatMul".into()
     }
 
-    op_core_mir!();
     op_as_typed_op!();
 }
 

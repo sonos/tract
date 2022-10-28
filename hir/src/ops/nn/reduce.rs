@@ -181,7 +181,6 @@ impl Expansion for Reduce {
     fn info(&self) -> TractResult<Vec<String>> {
         Ok(vec![format!("axes: {:?} keep_dims: {}", self.axes, self.keep_dims)])
     }
-    op_hir!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

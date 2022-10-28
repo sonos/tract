@@ -3,11 +3,6 @@ use crate::pb::*;
 use tract_hir::internal::*;
 use tract_hir::ops;
 
-macro_rules! op_onnx {
-    () => {
-    };
-}
-
 mod array;
 mod cast;
 mod cumsum;

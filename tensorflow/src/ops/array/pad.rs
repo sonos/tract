@@ -54,7 +54,6 @@ impl Op for Pad {
         "Pad".into()
     }
 
-    op_tf!();
     not_a_typed_op!();
 }
 

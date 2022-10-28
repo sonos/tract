@@ -19,7 +19,6 @@ impl Op for QSumB {
         Ok(vec![format!("r:{}, n:{}, k:{}", self.r, self.n, self.k)])
     }
 
-    op_core_lir!();
     impl_op_same_as!();
     op_as_typed_op!();
 }

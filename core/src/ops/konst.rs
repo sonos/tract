@@ -10,7 +10,6 @@ impl Op for Const {
         "Const".into()
     }
 
-    op_core_mir!();
     op_as_typed_op!();
 }
 

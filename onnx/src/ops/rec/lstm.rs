@@ -65,7 +65,6 @@ impl Expansion for LSTM {
         "LSTM".into()
     }
 
-    op_onnx!();
 
     fn validation(&self) -> Validation {
         Validation::Rounding

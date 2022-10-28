@@ -308,7 +308,6 @@ impl Expansion for Prelu {
         "Prelu".into()
     }
 
-    op_onnx!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

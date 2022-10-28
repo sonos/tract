@@ -28,7 +28,6 @@ impl Op for Switch {
         "Switch".into()
     }
 
-    op_tf!();
     not_a_typed_op!();
 }
 
@@ -126,7 +125,6 @@ impl Op for Merge {
         "Merge".into()
     }
 
-    op_tf!();
     op_as_typed_op!();
 }
 
