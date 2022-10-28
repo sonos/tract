@@ -49,9 +49,9 @@ tract-tensorflow = { optional = true, version = "0.18.4-pre", path = "../tensorf
 
 [features]
 default = ["kaldi", "onnx", "tf", "pulse", "pulse-opl"]
-kaldi = [ "tract-kaldi" ]
-onnx = [ "tract-onnx" ]
+kaldi = [ "tract-kaldi", "tract-libcli/hir" ]
+onnx = [ "tract-onnx", "tract-libcli/hir" ]
 pulse-opl = [ "tract-pulse-opl" ]
 pulse = [ "tract-pulse", "tract-pulse-opl" ]
-tf = [ "tract-tensorflow" ]
+tf = [ "tract-tensorflow", "tract-libcli/hir" ]
 conform = [ "tract-tensorflow/conform"  ]

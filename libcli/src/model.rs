@@ -59,27 +59,24 @@ pub trait Model:
     /// Subnets of a node
     fn nested_models(&self, id: usize) -> Vec<(String, &dyn Model)> {
         if let Some(lir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::LirScan>() {
-            vec![("loop".into(), lir.plan.model())]
-        } else if let Some(mir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::Scan>() {
-            vec![("loop".into(), &mir.body)]
-        } else if let Some(hir) =
-            self.node_op(id).downcast_ref::<tract_hir::ops::scan::InferenceScan>()
-        {
-            vec![("loop".into(), &hir.body)]
-        } else {
-            vec![]
+            return vec![("loop".into(), lir.plan.model())];
         }
+        if let Some(mir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::Scan>() {
+            return vec![("loop".into(), &mir.body)];
+        }
+        #[cfg(feature = "hir")]
+        if let Some(hir) = self.node_op(id).downcast_ref::<tract_hir::ops::scan::InferenceScan>() {
+            return vec![("loop".into(), &hir.body)];
+        }
+        return vec![];
     }
 
     /// Subnets of a node
     fn nested_models_iters(&self, id: usize, input: &[&TypedFact]) -> Vec<Option<TDim>> {
         if let Some(lir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::LirScan>() {
-            vec![lir.iteration_count(input)]
+            return vec![lir.iteration_count(input)]
         } else if let Some(mir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::Scan>() {
-            vec![mir.iteration_count(input)]
-        } else if self.node_op(id).downcast_ref::<tract_hir::ops::scan::InferenceScan>().is_some() {
-            // if we have typefact, we hopefully have type ops
-            unreachable!();
+            return vec![mir.iteration_count(input)]
         } else {
             vec![]
         }

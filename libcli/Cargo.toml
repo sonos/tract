@@ -17,4 +17,7 @@ ansi_term = "0.12.1"
 box_drawing = "0.1.2"
 colorous = "1.0.5"
 tract-core = { version = "0.18.4-pre", path = "../core" }
-tract-hir = { version = "0.18.4-pre", path = "../hir" }
+tract-hir = { version = "0.18.4-pre", path = "../hir", optional = true }
+
+[features]
+hir = ["tract-hir"]
