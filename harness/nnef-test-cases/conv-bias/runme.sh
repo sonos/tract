@@ -7,4 +7,7 @@ set -x
 
 $TRACT_RUN . dump -q --nnef-graph found
 
-diff expected found
+version=`cargo metadata --format-version 1 | jq -r '.packages | map(select( (.name) == "tract-core") | .version) | .[] '`
+perl -pi -e "s/$version/0.18.3-pre/" found
+
+diff -u expected found
