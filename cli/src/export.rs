@@ -44,7 +44,7 @@ impl GraphPerfInfo {
                     .map(|(k, v)| (format!("{:?}", k), format!("{}", v)))
                     .collect(),
                 node_name: id.model(model).unwrap().node_name(id.1).to_string(),
-                op_name: id.model(model).unwrap().node_op(id.1).name().to_string(),
+                op_name: id.model(model).unwrap().node_op_name(id.1).to_string(),
                 secs_per_iter: node.profile.map(|s| s.as_secs_f64()),
             })
             .collect();

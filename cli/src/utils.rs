@@ -87,7 +87,7 @@ pub fn count_op(model: &dyn Model, name: &str) -> TractResult<usize> {
         .context("Cannot assert op count without an eval order")?
         .into_iter()
         .map(|i| {
-            if model.node_op(i).name() == name {
+            if model.node_op_name(i) == name {
                 1
             } else {
                 model.nested_models(i).into_iter().flat_map(|(_, m)| count_op(m, name)).sum()

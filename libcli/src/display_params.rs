@@ -52,14 +52,14 @@ impl DisplayParams {
             return Ok(model.node_name(node_id).starts_with(node_name));
         }
         if let Some(op_name) = self.op_name.as_ref() {
-            return Ok(model.node_op(node_id).name().starts_with(op_name));
+            return Ok(model.node_op_name(node_id).starts_with(op_name));
         }
         /*
         if let Some(successor) = self.successors {
         return Ok(model.node_inputs(node_id).iter().any(|i| i.node == successor));
         }
         */
-        Ok(model.node_op(node_id).name() != "Const" || self.konst)
+        Ok(!model.node_const(node_id) || self.konst)
     }
 
     pub fn should_draw(&self) -> bool {

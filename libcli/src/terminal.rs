@@ -85,7 +85,7 @@ fn render_node_prefixed(
     let tags = annotations.tags.get(&qid).cloned().unwrap_or_default();
     let name_color = tags.style.unwrap_or_else(|| White.into());
     let node_name = model.node_name(node_id);
-    let node_op_name = model.node_op(node_id).name();
+    let node_op_name = model.node_op_name(node_id);
     let profile_column_pad = format!("{:>1$}", "", options.profile as usize * 20);
     let cost_column_pad = format!("{:>1$}", "", options.cost as usize * 25);
     let flops_column_pad = format!("{:>1$}", "", (options.profile && options.cost) as usize * 20);
@@ -348,7 +348,7 @@ pub fn render_summaries(
             .tags
             .iter()
             .map(|(k, v)| {
-                (k.model(model).unwrap().node_op(k.1).name(), v.profile.unwrap_or_default())
+                (k.model(model).unwrap().node_op_name(k.1), v.profile.unwrap_or_default())
             })
             .sorted_by_key(|a| a.0.to_string())
             .group_by(|(n, _)| n.clone())

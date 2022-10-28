@@ -14,6 +14,12 @@ pub trait Model:
     /// Node op by id
     fn node_op(&self, id: usize) -> &dyn Op;
 
+    /// Node is const
+    fn node_const(&self, id: usize) -> bool;
+
+    /// Node op by id
+    fn node_op_name(&self, id: usize) -> Cow<str>;
+
     /// Node inputs by id
     fn node_inputs(&self, id: usize) -> &[OutletId];
 
@@ -74,9 +80,9 @@ pub trait Model:
     /// Subnets of a node
     fn nested_models_iters(&self, id: usize, input: &[&TypedFact]) -> Vec<Option<TDim>> {
         if let Some(lir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::LirScan>() {
-            return vec![lir.iteration_count(input)]
+            return vec![lir.iteration_count(input)];
         } else if let Some(mir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::Scan>() {
-            return vec![mir.iteration_count(input)]
+            return vec![mir.iteration_count(input)];
         } else {
             vec![]
         }
@@ -116,6 +122,14 @@ where
 
     fn node_name(&self, id: usize) -> &str {
         &*self.nodes[id].name
+    }
+
+    fn node_op_name(&self, id: usize) -> Cow<str> {
+        self.node(id).op().name()
+    }
+
+    fn node_const(&self, id: usize) -> bool {
+        self.node_op_name(id) == "Const"
     }
 
     fn node_inputs(&self, id: usize) -> &[OutletId] {

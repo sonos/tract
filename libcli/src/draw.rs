@@ -1,11 +1,10 @@
-use tract_core::internal::*;
-use tract_core::ops::konst::Const;
 use crate::display_params::DisplayParams;
 use crate::model::Model;
 use ansi_term::{Color, Style};
 use box_drawing::heavy::*;
 use std::fmt;
 use std::fmt::Write;
+use tract_core::internal::*;
 
 #[derive(Clone)]
 pub struct Wire {
@@ -172,7 +171,7 @@ impl DrawingState {
         }
         let inputs = self.inputs_to_draw(model, node);
         let passthrough_count = self.passthrough_count(node);
-        let display = opts.konst || !(model.node_op(node).is::<Const>());
+        let display = opts.konst || !model.node_const(node);
         if display {
             for wire in &self.wires[0..passthrough_count] {
                 if let Some(color) = wire.color {
@@ -251,7 +250,7 @@ impl DrawingState {
         for slot in 0..node_output_count {
             let outlet = OutletId::new(node, slot);
             let successors = model.outlet_successors(outlet).to_vec();
-            let color = if !opts.konst && model.node_op(node).is::<Const>() {
+            let color = if !opts.konst && model.node_const(node) {
                 None
             } else if slot == 0 && node_color.is_some() {
                 Some(self.latest_node_color)
