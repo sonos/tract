@@ -269,7 +269,6 @@ impl AxisOp {
         shape: &mut TVec<D>,
         broadcasting: bool,
     ) -> TractResult<()> {
-        use std::convert::TryInto;
         match self.canonical().as_ref() {
             Add(ix) => shape.insert(*ix, D::one()),
             Rm(ix) => {

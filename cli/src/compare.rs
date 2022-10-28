@@ -187,7 +187,6 @@ pub fn handle_pbdir(
 ) -> CliResult<()> {
     let mut values: HashMap<String, Vec<CliResult<Arc<Tensor>>>> = HashMap::new();
     for entry in fs::read_dir(pbdir)? {
-        use std::convert::TryInto;
         let entry = entry?;
         let file = fs::File::open(entry.path())?;
         let tensor = tract_onnx::tensor::proto_from_reader(file)?;
