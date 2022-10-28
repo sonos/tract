@@ -59,7 +59,7 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> TractResult<()> {
             let stream_dim = delay + 3 * input_pulse + input_pulse / 2;
 
             let fixed_input =
-                crate::tensor::tensor_for_fact(decl_input_fact, Some(stream_dim), None)?;
+                tract_libcli::tensor::tensor_for_fact(decl_input_fact, Some(stream_dim), None)?;
 
             let decl = (*decl).clone();
             let fixed_result = decl

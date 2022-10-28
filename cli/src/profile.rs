@@ -1,11 +1,10 @@
 use tract_core::internal::*;
 
+use crate::BenchLimits;
+use std::time::{Duration, Instant};
 use tract_libcli::annotations::*;
 use tract_libcli::model::Model;
-use crate::tensor::RunParams;
-use crate::BenchLimits;
-use crate::TractResult;
-use std::time::{Duration, Instant};
+use tract_libcli::tensor::RunParams;
 
 pub fn profile(
     model: &TypedModel,
@@ -19,7 +18,7 @@ pub fn profile(
     let mut iters = 0usize;
     let start = Instant::now();
     while iters < bench_limits.max_iters && start.elapsed() < bench_limits.max_time {
-        let input = crate::tensor::retrieve_or_make_inputs(model, run_params)?;
+        let input = tract_libcli::tensor::retrieve_or_make_inputs(model, run_params)?;
         let _ =
             state.run_plan_with_eval(input[0].clone(), |session_state, state, node, input| {
                 let start = Instant::now();
@@ -59,7 +58,7 @@ pub fn profile(
                         let inner_plan = SimplePlan::new(inner_model)?;
                         let mut state = SimpleState::new(inner_plan)?;
                         let _ = state.run_plan_with_eval(
-                            crate::tensor::make_inputs_for_model(inner_model)?,
+                            tract_libcli::tensor::make_inputs_for_model(inner_model)?,
                             |session_state, state, node, input| {
                                 let start = Instant::now();
                                 let r = tract_core::plan::eval(session_state, state, node, input);

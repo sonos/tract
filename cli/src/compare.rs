@@ -9,9 +9,9 @@ use log::Level::Info;
 use tract_core::internal::*;
 
 use crate::dump::annotate_with_graph_def;
-use crate::tensor::RunParams;
 use crate::*;
 use tract_libcli::display_params::DisplayParams;
+use tract_libcli::tensor::RunParams;
 
 pub fn handle(
     params: &mut Parameters,
@@ -19,7 +19,7 @@ pub fn handle(
     sub_matches: &clap::ArgMatches,
     output_params: DisplayParams,
 ) -> TractResult<()> {
-    let run_params = RunParams::from_subcommand(params, sub_matches)?;
+    let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
 
     let cumulative = sub_matches.is_present("cumulative");
     let resilent = sub_matches.is_present("resilient");
@@ -133,7 +133,7 @@ pub fn handle_npz(
     output_params: &DisplayParams,
     run_params: &RunParams,
 ) -> TractResult<()> {
-    use tensor::for_npz;
+    use tract_libcli::tensor::for_npz;
     let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(npz)?)?;
     let mut values: HashMap<String, Vec<TractResult<Arc<Tensor>>>> = HashMap::new();
     let multiturn = npz.names()?.iter().any(|n| n.starts_with("turn_0/"));
@@ -240,7 +240,7 @@ pub fn handle_with_model(
 
     let plan = SimplePlan::new(reference_model)?;
     let mut state = SimpleState::new(plan)?;
-    for inputs in crate::tensor::retrieve_or_make_inputs(reference_model, run_params)? {
+    for inputs in tract_libcli::tensor::retrieve_or_make_inputs(reference_model, run_params)? {
         state.run_plan_with_eval(inputs, |session, state, node, input| -> TractResult<_> {
             let result: TVec<Arc<Tensor>> = tract_core::plan::eval(session, state, node, input)?;
             if node.outputs.len() == 1 {
@@ -295,7 +295,7 @@ where
     }
     let all_values: HashMap<String, &Vec<TractResult<Arc<Tensor>>>> =
         all_values.iter().map(|(k, v)| (canonic(k), v)).collect();
-    let model_inputs = tensor::retrieve_or_make_inputs(tract, run_params)?;
+    let model_inputs = tract_libcli::tensor::retrieve_or_make_inputs(tract, run_params)?;
     for (turn, inputs) in model_inputs.into_iter().enumerate() {
         state.run_plan_with_eval(
             inputs,

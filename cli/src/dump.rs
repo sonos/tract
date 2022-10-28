@@ -1,5 +1,5 @@
 use crate::params::SomeGraphDef;
-use crate::tensor::RunParams;
+use crate::tensor::run_params_from_subcommand;
 use crate::{BenchLimits, Parameters};
 use ansi_term::Style;
 use tract_hir::internal::*;
@@ -120,7 +120,7 @@ pub fn handle(
         annotations.extract_costs(model)?;
     }
     if options.profile {
-        let run_params = RunParams::from_subcommand(params, sub_matches)?;
+        let run_params = run_params_from_subcommand(params, sub_matches)?;
         let model = params
             .tract_model
             .downcast_ref::<TypedModel>()

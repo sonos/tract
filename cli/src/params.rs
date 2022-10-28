@@ -1,7 +1,6 @@
 use reqwest::Url;
 use scan_fmt::scan_fmt;
 use std::io::Read;
-use std::ops::Range;
 use std::path::PathBuf;
 use std::str::FromStr;
 #[allow(unused_imports)]
@@ -21,10 +20,12 @@ use crate::TractResult;
 use tract_libcli::display_params;
 use tract_libcli::display_params::DisplayParams;
 use tract_libcli::model::Model;
+use tract_libcli::tensor;
+use tract_libcli::tensor::{TensorsValues, TensorValues};
 
 use readings_probe::*;
 
-use super::{info_usage, tensor};
+use super::info_usage;
 
 use std::convert::*;
 
@@ -114,72 +115,6 @@ pub struct Parameters {
     pub allow_float_casts: bool,
 }
 
-#[derive(Debug, Default, Clone)]
-pub struct TensorsValues(pub Vec<TensorValues>);
-
-impl TensorsValues {
-    pub fn by_name(&self, name: &str) -> Option<&TensorValues> {
-        self.0.iter().find(|t| t.name.as_deref() == Some(name))
-    }
-    pub fn by_name_mut(&mut self, name: &str) -> Option<&mut TensorValues> {
-        self.0.iter_mut().find(|t| t.name.as_deref() == Some(name))
-    }
-    pub fn by_name_mut_with_default(&mut self, name: &str) -> &mut TensorValues {
-        if self.by_name_mut(name).is_none() {
-            self.add(TensorValues { name: Some(name.to_string()), ..TensorValues::default() });
-        }
-        self.by_name_mut(name).unwrap()
-    }
-
-    pub fn by_input_ix(&self, ix: usize) -> Option<&TensorValues> {
-        self.0.iter().find(|t| t.input_index == Some(ix))
-    }
-    pub fn by_input_ix_mut(&mut self, ix: usize) -> Option<&mut TensorValues> {
-        self.0.iter_mut().find(|t| t.input_index == Some(ix))
-    }
-    pub fn by_input_ix_mut_with_default(&mut self, ix: usize) -> &mut TensorValues {
-        if self.by_input_ix_mut(ix).is_none() {
-            self.add(TensorValues { input_index: Some(ix), ..TensorValues::default() });
-        }
-        self.by_input_ix_mut(ix).unwrap()
-    }
-
-    /*
-    pub fn by_output_ix(&self, ix: usize) -> Option<&TensorValues> {
-    self.0.iter().find(|t| t.output_index == Some(ix))
-    }
-    */
-
-    pub fn add(&mut self, other: TensorValues) {
-        let mut tensor = other.input_index.and_then(|ix| self.by_input_ix_mut(ix));
-
-        if tensor.is_none() {
-            tensor = other.name.as_deref().and_then(|ix| self.by_name_mut(ix))
-        }
-
-        if let Some(tensor) = tensor {
-            if tensor.fact.is_none() {
-                tensor.fact = other.fact;
-            }
-            if tensor.values.is_none() {
-                tensor.values = other.values;
-            }
-        } else {
-            self.0.push(other.clone());
-        };
-    }
-}
-
-#[derive(Debug, PartialEq, Clone, Default)]
-pub struct TensorValues {
-    pub input_index: Option<usize>,
-    pub output_index: Option<usize>,
-    pub name: Option<String>,
-    pub fact: Option<InferenceFact>,
-    pub values: Option<Vec<Arc<Tensor>>>,
-    pub random_range: Option<Range<f32>>,
-}
-
 #[cfg(feature = "tf")]
 type TfExt = tract_tensorflow::model::TfModelExtensions;
 #[cfg(not(feature = "tf"))]
@@ -195,15 +130,15 @@ impl Parameters {
             bail!("model not found: {:?}", path)
         } else if std::fs::metadata(&path)?.is_file()
             && path.file_name().unwrap().to_string_lossy() == "graph.nnef"
-        {
-            (ModelLocation::Fs(path.parent().unwrap().to_owned()), false)
-        } else if std::fs::metadata(&path)?.is_dir() && path.join("graph.nnef").exists() {
-            (ModelLocation::Fs(path), false)
-        } else if std::fs::metadata(&path)?.is_dir() && path.join("model.onnx").exists() {
-            (ModelLocation::Fs(path.join("model.onnx")), true)
-        } else {
-            (ModelLocation::Fs(path), false)
-        };
+            {
+                (ModelLocation::Fs(path.parent().unwrap().to_owned()), false)
+            } else if std::fs::metadata(&path)?.is_dir() && path.join("graph.nnef").exists() {
+                (ModelLocation::Fs(path), false)
+            } else if std::fs::metadata(&path)?.is_dir() && path.join("model.onnx").exists() {
+                (ModelLocation::Fs(path.join("model.onnx")), true)
+            } else {
+                (ModelLocation::Fs(path), false)
+            };
         Ok((location, onnx_tc))
     }
 
@@ -212,7 +147,7 @@ impl Parameters {
         probe: Option<&Probe>,
         location: &ModelLocation,
         tensors_values: &TensorsValues,
-    ) -> TractResult<(SomeGraphDef, Box<dyn Model>, Option<TfExt>)> {
+        ) -> TractResult<(SomeGraphDef, Box<dyn Model>, Option<TfExt>)> {
         let need_graph =
             matches.is_present("proto") || matches.subcommand_name() == Some("compare-pbdir");
 
@@ -223,15 +158,15 @@ impl Parameters {
             {
                 "kaldi"
             } else if location.is_dir()
-                || location.path().to_string_lossy().ends_with(".tar")
-                || location.path().to_string_lossy().ends_with(".tar.gz")
-                || location.path().extension().map(|s| s == "tgz").unwrap_or(false)
+            || location.path().to_string_lossy().ends_with(".tar")
+            || location.path().to_string_lossy().ends_with(".tar.gz")
+            || location.path().extension().map(|s| s == "tgz").unwrap_or(false)
             {
                 "nnef"
             } else {
                 "tf"
             },
-        );
+            );
         let triplet: (SomeGraphDef, Box<dyn Model>, Option<TfExt>) = match format {
             #[cfg(feature = "kaldi")]
             "kaldi" => {
@@ -259,59 +194,59 @@ impl Parameters {
                     }
                 } else if location
                     .path()
-                    .extension()
-                    .map(|e| e.to_string_lossy().ends_with("gz"))
-                    .unwrap_or(false)
-                {
-                    nnef.proto_model_for_read(&mut flate2::read::GzDecoder::new(
-                        &mut *location.read()?,
-                    ))?
-                } else {
-                    nnef.proto_model_for_read(&mut *location.read()?)?
-                };
+                        .extension()
+                        .map(|e| e.to_string_lossy().ends_with("gz"))
+                        .unwrap_or(false)
+                        {
+                            nnef.proto_model_for_read(&mut flate2::read::GzDecoder::new(
+                                    &mut *location.read()?,
+                                    ))?
+                        } else {
+                            nnef.proto_model_for_read(&mut *location.read()?)?
+                        };
                 for (ix, name) in proto_model.doc.graph_def.parameters.iter().enumerate() {
                     #[allow(unused_imports)]
                     use tract_nnef::ast::{LValue, RValue};
                     if let Some(over) = tensors_values
                         .by_name(name)
-                        .or_else(|| tensors_values.by_input_ix(ix))
-                        .and_then(|tv| tv.fact.as_ref())
-                    {
-                        let assignment_id = proto_model
-                            .doc
-                            .graph_def
-                            .body
-                            .iter()
-                            .position(|a| a.left == LValue::Identifier(name.clone()))
-                            .context("Coulnt not find input assignement in nnef body")?;
-                        let mut formatted = vec![];
-                        let ass = &mut proto_model.doc.graph_def.body[assignment_id];
-                        let inv = if let RValue::Invocation(inv) = &mut ass.right {
-                            inv
-                        } else {
-                            unreachable!();
-                        };
-                        assert!(inv.id == "external" || inv.id == "tract_core_external", "invalid id: expected 'external' or 'tract_core_external' but found {:?}", inv.id);
-                        assert!(
-                            inv.arguments.len() <= 2,
-                            "expected 1 argument but found {:?} for inv.arguments={:?}",
-                            inv.arguments.len(),
-                            inv.arguments
-                        );
-                        assert_eq!(inv.arguments[0].id.as_deref(), Some("shape"));
-                        Dumper::new(&mut formatted).rvalue(&inv.arguments[0].rvalue)?;
-                        let shape = over
-                            .shape
-                            .concretize()
-                            .context("Can only use concrete shapes in override")?;
-                        info!(
-                            "Overriding model input shape named \"{}\". Replacing {} by {:?}.",
-                            name,
-                            String::from_utf8_lossy(&formatted),
-                            &shape
-                        );
-                        inv.arguments[0].rvalue = tract_nnef::ser::tdims(&shape);
-                    }
+                            .or_else(|| tensors_values.by_input_ix(ix))
+                            .and_then(|tv| tv.fact.as_ref())
+                            {
+                                let assignment_id = proto_model
+                                    .doc
+                                    .graph_def
+                                    .body
+                                    .iter()
+                                    .position(|a| a.left == LValue::Identifier(name.clone()))
+                                    .context("Coulnt not find input assignement in nnef body")?;
+                                let mut formatted = vec![];
+                                let ass = &mut proto_model.doc.graph_def.body[assignment_id];
+                                let inv = if let RValue::Invocation(inv) = &mut ass.right {
+                                    inv
+                                } else {
+                                    unreachable!();
+                                };
+                                assert!(inv.id == "external" || inv.id == "tract_core_external", "invalid id: expected 'external' or 'tract_core_external' but found {:?}", inv.id);
+                                assert!(
+                                    inv.arguments.len() <= 2,
+                                    "expected 1 argument but found {:?} for inv.arguments={:?}",
+                                    inv.arguments.len(),
+                                    inv.arguments
+                                    );
+                                assert_eq!(inv.arguments[0].id.as_deref(), Some("shape"));
+                                Dumper::new(&mut formatted).rvalue(&inv.arguments[0].rvalue)?;
+                                let shape = over
+                                    .shape
+                                    .concretize()
+                                    .context("Can only use concrete shapes in override")?;
+                                info!(
+                                    "Overriding model input shape named \"{}\". Replacing {} by {:?}.",
+                                    name,
+                                    String::from_utf8_lossy(&formatted),
+                                    &shape
+                                    );
+                                inv.arguments[0].rvalue = tract_nnef::ser::tdims(&shape);
+                            }
                 }
                 info_usage("proto model loaded", probe);
                 let graph_def = if need_graph {
@@ -323,10 +258,10 @@ impl Parameters {
                     graph_def,
                     Box::new(
                         nnef.translate(&proto_model)
-                            .map_err(|(g, e)| ModelBuildingError(Box::new(g), e.into()))?,
-                    ),
-                    Option::<TfExt>::None,
-                )
+                        .map_err(|(g, e)| ModelBuildingError(Box::new(g), e.into()))?,
+                        ),
+                        Option::<TfExt>::None,
+                        )
             }
             #[cfg(feature = "onnx")]
             "onnx" => {
@@ -352,7 +287,7 @@ impl Parameters {
                         SomeGraphDef::Onnx(graph, parsed.clone()),
                         Box::new(parsed.model),
                         Option::<TfExt>::None,
-                    )
+                        )
                 } else {
                     (SomeGraphDef::NoGraphDef, Box::new(parsed.model), Option::<TfExt>::None)
                 }
@@ -374,7 +309,7 @@ impl Parameters {
                             .map(|name| model_and_ext.0.node_id_by_name(name))
                             .collect::<TractResult<Vec<usize>>>()
                     })
-                    .transpose()?
+                .transpose()?
                     .unwrap_or_default();
                 if need_graph {
                     (SomeGraphDef::Tf(graph), Box::new(model_and_ext.0), Some(model_and_ext.1))
@@ -385,64 +320,64 @@ impl Parameters {
             _ => bail!(
                 "Format {} not supported. You may need to recompile tract with the right features.",
                 format
-            ),
+                ),
         };
         Ok(triplet)
     }
 
     fn kaldi_downsample<F, O>(raw_model: &mut Graph<F, O>, period: isize) -> TractResult<()>
-    where
-        F: std::fmt::Debug + Clone + Hash + Fact,
-        O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + Hash,
-        Graph<F, O>: SpecialOps<F, O>,
-        tract_core::ops::Downsample: Into<O>,
-    {
-        if period != 1 {
-            let mut outputs = raw_model.output_outlets()?.to_vec();
-            let output_name = raw_model.node(outputs[0].node).name.clone();
-            raw_model.node_mut(outputs[0].node).name = format!("{}-old", output_name);
-            let id = raw_model.wire_node(
-                output_name,
-                tract_core::ops::Downsample::new(0, period as _, 0),
-                &outputs[0..1],
-            )?[0];
-            if let Some(label) = raw_model.outlet_label(outputs[0]) {
-                raw_model.set_outlet_label(id, label.to_string())?;
+        where
+            F: std::fmt::Debug + Clone + Hash + Fact,
+            O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + Hash,
+            Graph<F, O>: SpecialOps<F, O>,
+            tract_core::ops::Downsample: Into<O>,
+            {
+                if period != 1 {
+                    let mut outputs = raw_model.output_outlets()?.to_vec();
+                    let output_name = raw_model.node(outputs[0].node).name.clone();
+                    raw_model.node_mut(outputs[0].node).name = format!("{}-old", output_name);
+                    let id = raw_model.wire_node(
+                        output_name,
+                        tract_core::ops::Downsample::new(0, period as _, 0),
+                        &outputs[0..1],
+                        )?[0];
+                    if let Some(label) = raw_model.outlet_label(outputs[0]) {
+                        raw_model.set_outlet_label(id, label.to_string())?;
+                    }
+                    outputs[0] = id;
+                    raw_model.set_output_outlets(&*outputs)?;
+                }
+                Ok(())
             }
-            outputs[0] = id;
-            raw_model.set_output_outlets(&*outputs)?;
-        }
-        Ok(())
-    }
 
     fn kaldi_context<F, O>(
         raw_model: &mut Graph<F, O>,
         left: usize,
         right: usize,
-    ) -> TractResult<()>
-    where
-        F: std::fmt::Debug + Clone + Hash + Fact,
-        O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + Hash,
-        Graph<F, O>: SpecialOps<F, O>,
-        tract_hir::ops::array::Pad: Into<O>,
-    {
-        let op = tract_core::ops::array::Pad::new(
-            vec![(left, right), (0, 0)],
-            tract_core::ops::array::PadMode::Edge,
-        );
-        let mut patch = ModelPatch::default();
-        for input in raw_model.input_outlets()? {
-            let tap = patch.tap_model(raw_model, *input)?;
-            let pad = patch.wire_node(
-                format!("{}-pad", raw_model.node(input.node).name),
-                op.clone(),
-                &[tap],
-            )?[0];
-            patch.shunt_outside(raw_model, *input, pad)?;
-        }
-        patch.apply(raw_model)?;
-        Ok(())
-    }
+        ) -> TractResult<()>
+        where
+            F: std::fmt::Debug + Clone + Hash + Fact,
+            O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + Hash,
+            Graph<F, O>: SpecialOps<F, O>,
+            tract_hir::ops::array::Pad: Into<O>,
+            {
+                let op = tract_core::ops::array::Pad::new(
+                    vec![(left, right), (0, 0)],
+                    tract_core::ops::array::PadMode::Edge,
+                    );
+                let mut patch = ModelPatch::default();
+                for input in raw_model.input_outlets()? {
+                    let tap = patch.tap_model(raw_model, *input)?;
+                    let pad = patch.wire_node(
+                        format!("{}-pad", raw_model.node(input.node).name),
+                        op.clone(),
+                        &[tap],
+                        )?[0];
+                    patch.shunt_outside(raw_model, *input, pad)?;
+                }
+                patch.apply(raw_model)?;
+                Ok(())
+            }
 
     fn use_onnx_test_case_data_set(inputs_dir: &std::path::Path) -> TractResult<Vec<TensorValues>> {
         let mut result = vec![];
@@ -481,10 +416,10 @@ impl Parameters {
         input: &str,
         get_values: bool,
         get_facts: bool,
-    ) -> TractResult<Vec<TensorValues>> {
+        ) -> TractResult<Vec<TensorValues>> {
         let mut npz = ndarray_npy::NpzReader::new(
             std::fs::File::open(input).with_context(|| format!("opening {:?}", input))?,
-        )?;
+            )?;
         let vectors = npz
             .names()?
             .iter()
@@ -496,7 +431,7 @@ impl Parameters {
                     Ok((name, 0, tensor::for_npz(&mut npz, n)?))
                 }
             })
-            .collect::<TractResult<Vec<_>>>()?;
+        .collect::<TractResult<Vec<_>>>()?;
         let mut result = vec![];
         for (name, vals) in vectors.into_iter().group_by(|triple| triple.0.clone()).into_iter() {
             let vals: Vec<_> = vals
@@ -524,7 +459,7 @@ impl Parameters {
         matches: &clap::ArgMatches,
         location: &ModelLocation,
         onnx_tc: bool,
-    ) -> TractResult<TensorsValues> {
+        ) -> TractResult<TensorsValues> {
         let mut result = TensorsValues::default();
 
         if let Some(inputs) = matches.values_of("input") {
@@ -567,7 +502,7 @@ impl Parameters {
                         ix,
                         name.as_deref().unwrap_or(""),
                         fact
-                    );
+                        );
                     result.add(TensorValues {
                         input_index: None,
                         output_index: Some(ix),
@@ -593,7 +528,7 @@ impl Parameters {
 
             for tv in Self::use_onnx_test_case_data_set(
                 location.path().parent().unwrap().join(data_set_name).as_path(),
-            )? {
+                )? {
                 result.add(tv)
             }
         }
@@ -603,13 +538,13 @@ impl Parameters {
                 for (ix, spec) in ranges.enumerate() {
                     let (name, from, to) = if let Ok((name, from, to)) =
                         scan_fmt!(spec, "{}={f}..{f}", String, f32, f32)
-                    {
-                        (Some(name), from, to)
-                    } else if let Ok((from, to)) = scan_fmt!(spec, "{f}..{f}", f32, f32) {
-                        (None, from, to)
-                    } else {
-                        bail!("Can't parse random-range parameter {}", spec)
-                    };
+                        {
+                            (Some(name), from, to)
+                        } else if let Ok((from, to)) = scan_fmt!(spec, "{f}..{f}", f32, f32) {
+                            (None, from, to)
+                        } else {
+                            bail!("Can't parse random-range parameter {}", spec)
+                        };
                     let tv = if let Some(name) = name {
                         result.by_name_mut_with_default(&name)
                     } else {
@@ -631,7 +566,7 @@ impl Parameters {
         raw_model: Box<dyn Model>,
         tf_model_extensions: Option<TfExt>,
         reference_stage: Option<&str>,
-    ) -> TractResult<(Arc<dyn Model>, Option<Arc<PulsedModel>>, Option<Arc<dyn Model>>)> {
+        ) -> TractResult<(Arc<dyn Model>, Option<Arc<PulsedModel>>, Option<Arc<dyn Model>>)> {
         let keep_last = matches.is_present("verbose");
         #[cfg(feature = "pulse")]
         let pulse: Option<usize> =
@@ -704,12 +639,12 @@ impl Parameters {
         }
 
         stage!("analyse", inference_model -> inference_model,
-        |mut m:InferenceModel| -> TractResult<_> {
-            let result = m.analyse(!matches.is_present("analyse-fail-fast"));
-            match result {
-                Ok(_) => Ok(m),
-                Err(e) => Err(ModelBuildingError(Box::new(m), e.into()).into())
-            }});
+               |mut m:InferenceModel| -> TractResult<_> {
+                   let result = m.analyse(!matches.is_present("analyse-fail-fast"));
+                   match result {
+                       Ok(_) => Ok(m),
+                       Err(e) => Err(ModelBuildingError(Box::new(m), e.into()).into())
+                   }});
         if let Some(ext) = tf_model_extensions {
             #[cfg(feature = "tf")]
             stage!("tf-preproc", inference_model -> inference_model, |m:InferenceModel| ext.preproc(m));
@@ -833,7 +768,7 @@ impl Parameters {
 
         let need_proto = matches.is_present("proto")
             || (matches.subcommand_matches("compare").map(|sc| sc.is_present("pbdir")))
-                .unwrap_or(false);
+            .unwrap_or(false);
 
         if !need_proto {
             graph = SomeGraphDef::NoGraphDef;
@@ -874,7 +809,7 @@ impl Parameters {
                 }
                 v
             })
-            .collect();
+        .collect();
 
         let assertions = match matches.subcommand() {
             Some(("dump" | "run", sm)) => Assertions::from_clap(sm)?,
@@ -887,11 +822,11 @@ impl Parameters {
 
         if matches.value_of("kaldi-left-context").is_some()
             || matches.value_of("kaldi-right-context").is_some()
-        {
-            let left = matches.value_of("kaldi-left-context").unwrap_or("0").parse()?;
-            let right = matches.value_of("kaldi-right-context").unwrap_or("0").parse()?;
-            dispatch_model_mut_no_pulse!(raw_model, |m| Self::kaldi_context(m, left, right))?;
-        }
+            {
+                let left = matches.value_of("kaldi-left-context").unwrap_or("0").parse()?;
+                let right = matches.value_of("kaldi-right-context").unwrap_or("0").parse()?;
+                dispatch_model_mut_no_pulse!(raw_model, |m| Self::kaldi_context(m, left, right))?;
+            }
 
         if let Some(infer) = raw_model.downcast_mut::<InferenceModel>() {
             for (ix, node_id) in infer.inputs.iter().enumerate() {
@@ -940,7 +875,7 @@ impl Parameters {
                     allow_float_casts,
                 }
             },
-        )
+            )
     }
 }
 
@@ -972,7 +907,7 @@ impl BenchLimits {
 pub fn display_params_from_clap(
     root_matches: &clap::ArgMatches,
     matches: &clap::ArgMatches,
-) -> TractResult<DisplayParams> {
+    ) -> TractResult<DisplayParams> {
     Ok(DisplayParams {
         konst: matches.is_present("const"),
         cost: matches.is_present("cost"),
@@ -990,16 +925,16 @@ pub fn display_params_from_clap(
         //        successors: matches.value_of("successors").map(|id| id.parse().unwrap()),
         expect_core: root_matches.value_of("pass").unwrap_or("declutter") == "declutter"
             && !root_matches.is_present("optimize"),
-        outlet_labels: matches.is_present("outlet-labels"),
-        io: if matches.is_present("io-long") {
-            display_params::Io::Long
-        } else if matches.is_present("io-none") {
-            display_params::Io::None
-        } else {
-            display_params::Io::Short
-        },
-        info: matches.is_present("info"),
-        json: matches.is_present("json"),
+            outlet_labels: matches.is_present("outlet-labels"),
+            io: if matches.is_present("io-long") {
+                display_params::Io::Long
+            } else if matches.is_present("io-none") {
+                display_params::Io::None
+            } else {
+                display_params::Io::Short
+            },
+            info: matches.is_present("info"),
+            json: matches.is_present("json"),
     })
 }
 
