@@ -1,7 +1,7 @@
 #!/bin/sh
 
 VERSION=$1
-CRATES="data linalg core nnef pulse-opl pulse hir tensorflow onnx-opl onnx kaldi cli"
+CRATES="data linalg core nnef pulse-opl pulse hir tensorflow onnx-opl onnx kaldi libcli cli"
 
 if [ `uname` = "Darwin" ]
 then
