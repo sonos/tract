@@ -17,7 +17,6 @@ pub trait Expansion:
     + Any
 {
     fn name(&self) -> Cow<str>;
-    fn op_families(&self) -> &'static [&'static str];
     fn validation(&self) -> Validation {
         Validation::Accurate
     }
@@ -60,15 +59,15 @@ impl Op for Box<dyn Expansion> {
     fn name(&self) -> Cow<str> {
         self.as_ref().name()
     }
-    fn op_families(&self) -> &'static [&'static str] {
-        self.as_ref().op_families()
-    }
+
     fn info(&self) -> TractResult<Vec<String>> {
         self.as_ref().info()
     }
+
     fn validation(&self) -> Validation {
         self.as_ref().validation()
     }
+
     not_a_typed_op!();
 }
 
@@ -170,10 +169,6 @@ impl std::fmt::Debug for InferenceWrapper {
 impl Expansion for InferenceWrapper {
     fn name(&self) -> Cow<str> {
         self.typed_op.name()
-    }
-
-    fn op_families(&self) -> &'static [&'static str] {
-        self.typed_op.op_families()
     }
 
     fn wire(

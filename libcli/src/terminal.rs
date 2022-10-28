@@ -195,8 +195,6 @@ fn render_node_prefixed(
         White.bold().paint(format!("{}", node_id)),
         (if node_name == "UnimplementedOp" {
             Red.bold()
-        } else if options.expect_core && !model.node_op(node_id).op_families().contains(&"core") {
-            Yellow.bold()
         } else {
             Blue.bold()
         })

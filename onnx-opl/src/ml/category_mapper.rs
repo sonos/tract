@@ -46,10 +46,6 @@ impl Op for DirectLookup {
         "DirectLookup".into()
     }
 
-    fn op_families(&self) -> &'static [&'static str] {
-        &["onnx-ml"]
-    }
-
     op_as_typed_op!();
 }
 
@@ -159,10 +155,6 @@ impl Hash for ReverseLookup {
 impl Op for ReverseLookup {
     fn name(&self) -> Cow<str> {
         "ReverseLookup".into()
-    }
-
-    fn op_families(&self) -> &'static [&'static str] {
-        &["onnx-ml"]
     }
 
     op_as_typed_op!();

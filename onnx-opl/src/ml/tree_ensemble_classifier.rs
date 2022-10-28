@@ -28,10 +28,6 @@ impl Op for TreeEnsembleClassifier {
         "TreeEnsembleClassifier".into()
     }
 
-    fn op_families(&self) -> &'static [&'static str] {
-        &["onnx-ml"]
-    }
-
     op_as_typed_op!();
 }
 

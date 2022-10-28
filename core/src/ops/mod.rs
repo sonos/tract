@@ -98,10 +98,6 @@ pub trait EvalOp {
 pub trait Op:
     fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + EvalOp + DynHash
 {
-    /// Vector of short strings defining what families the op belongs too.
-    /// tract-core defines "core", "mir", "lir".
-    fn op_families(&self) -> &'static [&'static str];
-
     fn name(&self) -> Cow<str>;
 
     /// The kind of accuracy check that should be performed on operation when
