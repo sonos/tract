@@ -8,16 +8,17 @@ use ansi_term::Color::*;
 use log::Level::Info;
 use tract_core::internal::*;
 
-use crate::display_params::DisplayParams;
-use crate::*;
+use crate::dump::annotate_with_graph_def;
 use crate::tensor::RunParams;
+use crate::*;
+use tract_libcli::display_params::DisplayParams;
 
 pub fn handle(
     params: &mut Parameters,
     _matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
     output_params: DisplayParams,
-) -> CliResult<()> {
+) -> TractResult<()> {
     let run_params = RunParams::from_subcommand(params, sub_matches)?;
 
     let cumulative = sub_matches.is_present("cumulative");
@@ -46,7 +47,7 @@ pub fn handle_tensorflow(
     _params: &mut Parameters,
     _output_params: &DisplayParams,
     _run_params: &RunParams,
-) -> CliResult<()> {
+) -> TractResult<()> {
     bail!("`tf` feature is required for this to work");
 }
 
@@ -57,7 +58,7 @@ pub fn handle_tensorflow(
     params: &mut Parameters,
     output_params: &DisplayParams,
     run_params: &RunParams,
-) -> CliResult<()> {
+) -> TractResult<()> {
     let tract = &params.tract_model;
     let mut tf = params.tf_model.take().unwrap();
     // First generate random values for the inputs.
@@ -94,7 +95,7 @@ pub fn handle_tensorflow(
         }
     }
 
-    let mut all_values: HashMap<String, Vec<CliResult<Arc<Tensor>>>> = HashMap::new();
+    let mut all_values: HashMap<String, Vec<TractResult<Arc<Tensor>>>> = HashMap::new();
     if resilient {
         for name in wanted_outputs {
             all_values.insert(
@@ -131,10 +132,10 @@ pub fn handle_npz(
     params: &Parameters,
     output_params: &DisplayParams,
     run_params: &RunParams,
-) -> CliResult<()> {
+) -> TractResult<()> {
     use tensor::for_npz;
     let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(npz)?)?;
-    let mut values: HashMap<String, Vec<CliResult<Arc<Tensor>>>> = HashMap::new();
+    let mut values: HashMap<String, Vec<TractResult<Arc<Tensor>>>> = HashMap::new();
     let multiturn = npz.names()?.iter().any(|n| n.starts_with("turn_0/"));
     for name in npz.names()? {
         if let Ok(value) = for_npz(&mut npz, &name) {
@@ -173,7 +174,7 @@ pub fn handle_pbdir(
     _params: &Parameters,
     _output_params: &DisplayParams,
     _run_params: &RunParams,
-) -> CliResult<()> {
+) -> TractResult<()> {
     bail!("`onnx` feature is required for this to work");
 }
 
@@ -184,8 +185,8 @@ pub fn handle_pbdir(
     params: &Parameters,
     output_params: &DisplayParams,
     run_params: &RunParams,
-) -> CliResult<()> {
-    let mut values: HashMap<String, Vec<CliResult<Arc<Tensor>>>> = HashMap::new();
+) -> TractResult<()> {
+    let mut values: HashMap<String, Vec<TractResult<Arc<Tensor>>>> = HashMap::new();
     for entry in fs::read_dir(pbdir)? {
         let entry = entry?;
         let file = fs::File::open(entry.path())?;
@@ -207,7 +208,7 @@ pub fn handle_twice(
     params: &Parameters,
     output_params: &DisplayParams,
     run_params: &RunParams,
-) -> CliResult<()> {
+) -> TractResult<()> {
     let reference_model =
         params.tract_model.downcast_ref::<TypedModel>().context("Only work with a typed model")?;
     handle_with_model(cumulative, params, output_params, reference_model, run_params)
@@ -218,7 +219,7 @@ pub fn handle_reference_stage(
     params: &Parameters,
     output_params: &DisplayParams,
     run_params: &RunParams,
-) -> CliResult<()> {
+) -> TractResult<()> {
     debug!("Computing results for reference stage");
     let reference_model =
         params.reference_model.as_ref().context("No reference model. need --with ?")?;
@@ -234,8 +235,8 @@ pub fn handle_with_model(
     output_params: &DisplayParams,
     reference_model: &TypedModel,
     run_params: &RunParams,
-) -> CliResult<()> {
-    let mut values: HashMap<String, Vec<CliResult<Arc<Tensor>>>> = HashMap::new();
+) -> TractResult<()> {
+    let mut values: HashMap<String, Vec<TractResult<Arc<Tensor>>>> = HashMap::new();
 
     let plan = SimplePlan::new(reference_model)?;
     let mut state = SimpleState::new(plan)?;
@@ -268,11 +269,11 @@ pub fn handle_with_model(
 pub fn compare<F, O>(
     cumulative: bool,
     tract: &Graph<F, O>,
-    all_values: &HashMap<String, Vec<CliResult<Arc<Tensor>>>>,
+    all_values: &HashMap<String, Vec<TractResult<Arc<Tensor>>>>,
     params: &Parameters,
     output_params: &DisplayParams,
     run_params: &RunParams,
-) -> CliResult<()>
+) -> TractResult<()>
 where
     F: Fact + Clone + for<'a> From<&'a Tensor> + Hash,
     O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone + Hash,
@@ -283,8 +284,8 @@ where
     let plan = SimplePlan::new(tract)?;
     let mut state = SimpleState::new(plan)?;
 
-    let mut annotations = crate::annotations::Annotations::from_model(tract as &dyn Model)?
-        .with_graph_def(tract, &params.graph)?;
+    let mut annotations = Annotations::from_model(tract as &dyn Model)?;
+    annotate_with_graph_def(&mut annotations, tract, &params.graph)?;
 
     let mut failing = std::collections::HashSet::new();
     let mut unchecked = std::collections::HashSet::new();
@@ -292,7 +293,7 @@ where
     fn canonic(s: &str) -> String {
         s.replace('.', "_").replace('-', "_")
     }
-    let all_values: HashMap<String, &Vec<CliResult<Arc<Tensor>>>> =
+    let all_values: HashMap<String, &Vec<TractResult<Arc<Tensor>>>> =
         all_values.iter().map(|(k, v)| (canonic(k), v)).collect();
     let model_inputs = tensor::retrieve_or_make_inputs(tract, run_params)?;
     for (turn, inputs) in model_inputs.into_iter().enumerate() {
@@ -414,10 +415,10 @@ where
     }
 
     if log_enabled!(Info) {
-        terminal::render(tract, &annotations, output_params)?;
+        tract_libcli::terminal::render(tract, &annotations, output_params)?;
     } else {
         for f in failing.iter().sorted() {
-            terminal::render_node(tract, *f, &annotations, output_params)?;
+            tract_libcli::terminal::render_node(tract, *f, &annotations, output_params)?;
         }
     }
 

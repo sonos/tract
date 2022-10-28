@@ -1,5 +1,5 @@
-use tract_hir::internal::*;
-use tract_hir::tract_core::{downcast_rs, dyn_clone};
+use tract_core::internal::*;
+use tract_core::{downcast_rs, dyn_clone};
 
 /// Common methods for all variants of model.
 pub trait Model:

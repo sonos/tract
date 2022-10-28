@@ -1,4 +1,3 @@
-use crate::{CliResult, SomeGraphDef};
 use ansi_term::Style;
 use std::collections::HashMap;
 #[allow(unused_imports)]
@@ -110,7 +109,7 @@ const EMPTY: NodeTags = NodeTags {
 #[derive(Debug, Clone, Default)]
 pub struct Annotations {
     pub tags: HashMap<NodeQId, NodeTags>,
-    pub profile_summary: Option<crate::profile::ProfileSummary>,
+    pub profile_summary: Option<ProfileSummary>,
 }
 
 impl Annotations {
@@ -118,7 +117,7 @@ impl Annotations {
         self.tags.entry(qid).or_default()
     }
 
-    pub fn from_model(model: &dyn Model) -> CliResult<Annotations> {
+    pub fn from_model(model: &dyn Model) -> TractResult<Annotations> {
         let mut annotations = Annotations::default();
         fn set_subio_labels(
             model: &dyn Model,
@@ -159,110 +158,13 @@ impl Annotations {
         Ok(annotations)
     }
 
-    #[allow(unused_variables)]
-    pub fn with_graph_def(
-        self,
-        model: &dyn Model,
-        graph_def: &SomeGraphDef,
-    ) -> CliResult<Annotations> {
-        match graph_def {
-            SomeGraphDef::NoGraphDef => Ok(self),
-            #[cfg(feature = "kaldi")]
-            SomeGraphDef::Kaldi(kaldi) => self.with_kaldi(model, kaldi),
-            SomeGraphDef::Nnef(_) => todo!(),
-            #[cfg(feature = "onnx")]
-            SomeGraphDef::Onnx(onnx, _) => self.with_onnx_model(model, onnx),
-            #[cfg(feature = "tf")]
-            SomeGraphDef::Tf(tf) => self.with_tf_graph_def(model, tf),
-        }
-    }
-
-    #[cfg(feature = "kaldi")]
-    pub fn with_kaldi(
-        mut self,
-        model: &dyn Model,
-        proto_model: &tract_kaldi::KaldiProtoModel,
-    ) -> CliResult<Annotations> {
-        use tract_kaldi::model::NodeLine;
-        let bold = Style::new().bold();
-        for (name, proto_node) in &proto_model.config_lines.nodes {
-            if let Ok(node_id) = model.node_id_by_name(name) {
-                let mut vs = vec![];
-                if let NodeLine::Component(compo) = proto_node {
-                    let comp = &proto_model.components[&compo.component];
-                    for (k, v) in &comp.attributes {
-                        let value = format!("{:?}", v);
-                        vs.push(format!("Attr {}: {:.240}", bold.paint(k), value));
-                    }
-                }
-                self.node_mut(node_id.into()).sections.push(vs)
-            }
-        }
-        Ok(self)
-    }
-
-    #[cfg(feature = "tf")]
-    pub fn with_tf_graph_def(
-        mut self,
-        model: &dyn Model,
-        graph_def: &GraphDef,
-    ) -> CliResult<Annotations> {
-        let bold = Style::new().bold();
-        for gnode in graph_def.node.iter() {
-            if let Ok(node_id) = model.node_id_by_name(&gnode.name) {
-                let mut v = vec![];
-                for a in gnode.attr.iter() {
-                    let value = if let Some(
-                        tract_tensorflow::tfpb::tensorflow::attr_value::Value::Tensor(r),
-                    ) = &a.1.value
-                    {
-                        format!("{:?}", r)
-                    } else {
-                        format!("{:?}", a.1)
-                    };
-                    v.push(format!("Attr {}: {:.240}", bold.paint(a.0), value));
-                }
-                self.node_mut(node_id.into()).sections.push(v);
-            }
-        }
-        Ok(self)
-    }
-
-    #[cfg(feature = "onnx")]
-    pub fn with_onnx_model(
-        mut self,
-        model: &dyn Model,
-        model_proto: &ModelProto,
-    ) -> CliResult<Annotations> {
-        let bold = Style::new().bold();
-        for gnode in model_proto.graph.as_ref().unwrap().node.iter() {
-            let mut node_name = &gnode.name;
-            if !node_name.is_empty() && gnode.output.len() > 0 {
-                node_name = &gnode.output[0];
-            }
-            if let Ok(id) = model.node_id_by_name(node_name) {
-                let mut v = vec![];
-                for a in gnode.attribute.iter() {
-                    let value = if let Some(t) = &a.t {
-                        format!("{:?}", Tensor::try_from(t)?)
-                    } else {
-                        format!("{:?}", a)
-                    };
-                    v.push(format!("Attr {}: {:.240}", bold.paint(&a.name), value));
-                }
-                self.node_mut(id.into()).sections.push(v);
-            }
-        }
-        Ok(self)
-    }
-
-    pub fn extract_costs(&mut self, model: &dyn Model) -> CliResult<()> {
+    pub fn extract_costs(&mut self, model: &dyn Model) -> TractResult<()> {
         fn extract_costs_rec(
             annotations: &mut Annotations,
             model: &dyn Model,
             prefix: &[(usize, String)],
             multiplier: TDim,
-        ) -> CliResult<()> {
+        ) -> TractResult<()> {
             if let Some(model) = model.downcast_ref::<TypedModel>() {
                 for node_id in 0..model.nodes().len() {
                     let inputs = model.node_input_facts(node_id)?;
@@ -291,4 +193,12 @@ impl Annotations {
         }
         extract_costs_rec(self, model, &[], 1.into())
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct ProfileSummary {
+    pub max: Duration,
+    pub sum: Duration,
+    pub entire: Duration,
+    pub iters: usize,
 }

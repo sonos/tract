@@ -4,7 +4,6 @@ use crate::annotations::*;
 use crate::display_params::*;
 use crate::draw::DrawingState;
 use crate::model::Model;
-use crate::CliResult;
 use ansi_term::ANSIString;
 use ansi_term::Color::*;
 #[allow(unused_imports)]
@@ -16,7 +15,7 @@ pub fn render(
     model: &dyn Model,
     annotations: &Annotations,
     options: &DisplayParams,
-) -> CliResult<()> {
+) -> TractResult<()> {
     if options.quiet {
         return Ok(());
     }
@@ -35,7 +34,7 @@ pub fn render_node(
     node_id: usize,
     annotations: &Annotations,
     options: &DisplayParams,
-) -> CliResult<()> {
+) -> TractResult<()> {
     render_node_prefixed(model, "", &[], node_id, None, annotations, options)
 }
 
@@ -45,7 +44,7 @@ fn render_prefixed(
     scope: &[(usize, String)],
     annotations: &Annotations,
     options: &DisplayParams,
-) -> CliResult<()> {
+) -> TractResult<()> {
     let mut drawing_state =
         if options.should_draw() { Some(DrawingState::default()) } else { None };
     let node_ids = if options.natural_order {
@@ -81,7 +80,7 @@ fn render_node_prefixed(
     mut drawing_state: Option<&mut DrawingState>,
     annotations: &Annotations,
     options: &DisplayParams,
-) -> CliResult<()> {
+) -> TractResult<()> {
     let qid = NodeQId(scope.into(), node_id);
     let tags = annotations.tags.get(&qid).cloned().unwrap_or_default();
     let name_color = tags.style.unwrap_or_else(|| White.into());
@@ -331,7 +330,7 @@ pub fn render_summaries(
     model: &dyn Model,
     annotations: &Annotations,
     options: &DisplayParams,
-) -> CliResult<()> {
+) -> TractResult<()> {
     let total = annotations.tags.values().sum::<NodeTags>();
 
     if options.cost {

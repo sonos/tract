@@ -1,11 +1,11 @@
+use tract_core::internal::*;
+use tract_core::ops::konst::Const;
 use crate::display_params::DisplayParams;
-use crate::{CliResult, Model};
+use crate::model::Model;
 use ansi_term::{Color, Style};
 use box_drawing::heavy::*;
 use std::fmt;
 use std::fmt::Write;
-use tract_core::model::{InletId, OutletId};
-use tract_core::ops::konst::Const;
 
 #[derive(Clone)]
 pub struct Wire {
@@ -76,7 +76,7 @@ impl DrawingState {
         model: &dyn Model,
         node: usize,
         _opts: &DisplayParams,
-    ) -> CliResult<Vec<String>> {
+    ) -> TractResult<Vec<String>> {
         let mut lines = vec![String::new()];
         macro_rules! p { ($($args: expr),*) => { write!(lines.last_mut().unwrap(), $($args),*)?;} }
         macro_rules! ln {
@@ -162,7 +162,7 @@ impl DrawingState {
         model: &dyn Model,
         node: usize,
         opts: &DisplayParams,
-    ) -> CliResult<Vec<String>> {
+    ) -> TractResult<Vec<String>> {
         let mut lines = vec![String::new()];
         macro_rules! p { ($($args: expr),*) => { write!(lines.last_mut().unwrap(), $($args),*)?;} }
         macro_rules! ln {
@@ -220,7 +220,7 @@ impl DrawingState {
         Ok(lines)
     }
 
-    pub fn draw_node_vfiller(&self, model: &dyn Model, node: usize) -> CliResult<String> {
+    pub fn draw_node_vfiller(&self, model: &dyn Model, node: usize) -> TractResult<String> {
         let mut s = String::new();
         for wire in &self.wires {
             if let Some(color) = wire.color {
@@ -238,7 +238,7 @@ impl DrawingState {
         model: &dyn Model,
         node: usize,
         opts: &DisplayParams,
-    ) -> CliResult<Vec<String>> {
+    ) -> TractResult<Vec<String>> {
         let mut lines = vec![];
         let passthrough_count = self.passthrough_count(node);
         let node_output_count = model.node_output_count(node);

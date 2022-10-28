@@ -1,7 +1,7 @@
 use std::fs::File;
 
 use crate::tensor::RunParams;
-use crate::CliResult;
+use crate::TractResult;
 use crate::{Model, Parameters};
 use ansi_term::Color::*;
 use ndarray_npy::NpzWriter;
@@ -11,7 +11,7 @@ use tract_hir::internal::*;
 use tract_pulse::internal::*;
 
 /// Add a tensor entry into a npz file.
-fn npz_add_tensor(npz: &mut NpzWriter<File>, name: String, tensor: &Arc<Tensor>) -> CliResult<()> {
+fn npz_add_tensor(npz: &mut NpzWriter<File>, name: String, tensor: &Arc<Tensor>) -> TractResult<()> {
     match tensor.datum_type() {
         DatumType::F16 => npz.add_array(name, &tensor.cast_to::<f32>()?.to_array_view::<f32>()?)?,
         DatumType::Bool => npz.add_array(name, &tensor.to_array_view::<bool>()?)?,
@@ -38,7 +38,7 @@ pub fn handle(
     params: &Parameters,
     matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
-) -> CliResult<()> {
+) -> TractResult<()> {
     let run_params = RunParams::from_subcommand(params, sub_matches)?;
 
     let dump = sub_matches.is_present("dump");
@@ -117,7 +117,7 @@ fn run_regular(
     run_params: &RunParams,
     _matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
-) -> CliResult<TVec<Vec<Arc<Tensor>>>> {
+) -> TractResult<TVec<Vec<Arc<Tensor>>>> {
     let steps = sub_matches.is_present("steps");
     let assert_sane_floats = sub_matches.is_present("assert-sane-floats");
     let mut npz = if let Some(npz) = sub_matches.value_of("save-steps") {
@@ -217,7 +217,7 @@ fn run_regular(
 
 /*
 #[cfg(feature = "pulse")]
-fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Arc<Tensor>>> {
+fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> TractResult<TVec<Arc<Tensor>>> {
     dbg!("PULSE");
     let input_fact = model.input_fact(0)?;
     let output_fact = model.output_fact(0)?;

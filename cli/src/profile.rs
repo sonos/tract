@@ -1,26 +1,18 @@
 use tract_core::internal::*;
 
-use crate::annotations::*;
-use crate::model::Model;
+use tract_libcli::annotations::*;
+use tract_libcli::model::Model;
 use crate::tensor::RunParams;
 use crate::BenchLimits;
-use crate::CliResult;
+use crate::TractResult;
 use std::time::{Duration, Instant};
-
-#[derive(Debug, Clone)]
-pub struct ProfileSummary {
-    pub max: Duration,
-    pub sum: Duration,
-    pub entire: Duration,
-    pub iters: usize,
-}
 
 pub fn profile(
     model: &TypedModel,
     bench_limits: &BenchLimits,
     dg: &mut Annotations,
     run_params: &RunParams,
-) -> CliResult<()> {
+) -> TractResult<()> {
     info!("Running entire network");
     let plan = SimplePlan::new(model)?;
     let mut state = SimpleState::new(&plan)?;

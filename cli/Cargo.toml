@@ -40,6 +40,7 @@ serde_derive = "1.0.127"
 tract-core = { version = "0.18.4-pre", path = "../core" }
 tract-hir = { version = "0.18.4-pre", path = "../hir" }
 tract-nnef = { version = "0.18.4-pre", path = "../nnef" }
+tract-libcli = { version = "0.18.4-pre", path = "../libcli" }
 tract-pulse-opl = { optional = true, version = "0.18.4-pre", path = "../pulse-opl" }
 tract-pulse = { optional = true, version = "0.18.4-pre", path = "../pulse" }
 tract-kaldi = { optional = true, version = "0.18.4-pre", path = "../kaldi" }

@@ -1,16 +1,19 @@
-use tract_itertools::Itertools;
 use tract_core::ndarray::{ArrayD, Axis};
+use tract_itertools::Itertools;
 
 use tract_core::model::OutletId;
 use tract_core::plan::SimpleState;
 
 use tract_pulse::internal::*;
 
-use crate::display_params::DisplayParams;
-use crate::terminal;
-use crate::{CliResult, Parameters};
+use tract_libcli::annotations::Annotations;
+use tract_libcli::display_params::DisplayParams;
 
-pub fn handle(params: &Parameters, options: &DisplayParams) -> CliResult<()> {
+use crate::dump::annotate_with_graph_def;
+use crate::{Parameters, TractResult};
+use tract_libcli::terminal;
+
+pub fn handle(params: &Parameters, options: &DisplayParams) -> TractResult<()> {
     let decl = params
         .reference_model
         .as_deref()
@@ -28,8 +31,8 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> CliResult<()> {
     let pulsed_input_fact = pulsed.input_fact(0)?;
     let input_pulse = pulsed_input_fact.pulse();
 
-    let annotations = crate::annotations::Annotations::from_model(&*params.tract_model)?
-        .with_graph_def(&*params.tract_model, &params.graph)?;
+    let mut annotations = Annotations::from_model(&*params.tract_model)?;
+    annotate_with_graph_def(&mut annotations, &*params.tract_model, &params.graph)?;
 
     let eval_order = ::tract_core::model::eval_order(decl)?;
 
@@ -55,7 +58,8 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> CliResult<()> {
 
             let stream_dim = delay + 3 * input_pulse + input_pulse / 2;
 
-            let fixed_input = crate::tensor::tensor_for_fact(decl_input_fact, Some(stream_dim), None)?;
+            let fixed_input =
+                crate::tensor::tensor_for_fact(decl_input_fact, Some(stream_dim), None)?;
 
             let decl = (*decl).clone();
             let fixed_result = decl

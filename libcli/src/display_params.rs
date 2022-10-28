@@ -1,6 +1,4 @@
-use crate::CliResult;
 use tract_core::prelude::*;
-
 use crate::model::Model;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,7 +40,7 @@ impl DisplayParams {
         model: &dyn Model,
         scope: &[(usize, String)],
         node_id: usize,
-    ) -> CliResult<bool> {
+    ) -> TractResult<bool> {
         if let Some(nodes) = self.node_ids.as_ref() {
             return Ok(nodes.iter().any(|n| {
                 n.len() == scope.len() + 1

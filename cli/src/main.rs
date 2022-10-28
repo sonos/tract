@@ -13,32 +13,27 @@ use tract_itertools::Itertools;
 use tract_core::internal::*;
 use tract_hir::internal::*;
 
-use crate::model::Model;
+use tract_libcli::annotations::Annotations;
+use tract_libcli::display_params::DisplayParams;
+use tract_libcli::model::Model;
 
 use readings_probe::*;
 
-mod annotations;
 mod bench;
 mod compare;
 mod cost;
-mod display_params;
-mod draw;
 mod dump;
 mod errors {}
 mod export;
-mod model;
 mod params;
 mod profile;
 mod run;
 #[cfg(feature = "pulse")]
 mod stream_check;
 mod tensor;
-mod terminal;
 mod utils;
 
 use params::*;
-
-type CliResult<T> = tract_core::anyhow::Result<T>;
 
 readings_probe::instrumented_allocator!();
 
@@ -443,7 +438,7 @@ fn output_options(command: clap::Command) -> clap::Command {
 }
 
 /// Handles the command-line input.
-fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
+fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
     if matches.is_present("list-ops") {
         #[cfg(feature = "onnx")]
         {
@@ -472,18 +467,21 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
             if let Some(params::ModelBuildingError(ref broken_model, _)) = e.downcast_ref() {
                 let mut broken_model: Box<dyn Model> =
                     tract_hir::tract_core::dyn_clone::clone(broken_model);
-                let annotations =
-                    crate::annotations::Annotations::from_model(broken_model.as_ref())?;
+                let annotations = Annotations::from_model(broken_model.as_ref())?;
                 let display_params = if let Some(("dump", sm)) = matches.subcommand() {
                     display_params_from_clap(&matches, sm)?
                 } else {
-                    crate::display_params::DisplayParams::default()
+                    DisplayParams::default()
                 };
 
                 if broken_model.output_outlets().len() == 0 {
                     broken_model.auto_outputs()?;
                 }
-                terminal::render(broken_model.as_ref(), &annotations, &display_params)?;
+                tract_libcli::terminal::render(
+                    broken_model.as_ref(),
+                    &annotations,
+                    &display_params,
+                )?;
             }
             Err(e)?
         }
@@ -515,7 +513,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
 
         None => dump::handle(
             &params,
-            &crate::display_params::DisplayParams::default(),
+            &DisplayParams::default(),
             &matches,
             &dump_subcommand().get_matches_from::<_, &'static str>([]),
             &params::BenchLimits::default(),

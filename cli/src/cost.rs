@@ -1,7 +1,7 @@
-use crate::CliResult;
+use crate::TractResult;
 use tract_hir::internal::*;
 
-pub fn parse_costs(spec: &str) -> CliResult<Vec<(Cost, usize)>> {
+pub fn parse_costs(spec: &str) -> TractResult<Vec<(Cost, usize)>> {
     spec.split(',')
         .map(|spec| {
             let mut toks = spec.split('=');

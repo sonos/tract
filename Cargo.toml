@@ -11,6 +11,7 @@ members = [
     "onnx-opl",
     "onnx",
     "kaldi",
+    "libcli",
     "cli",
     "examples/tensorflow-mobilenet-v2",
     "examples/jupyter-keras-tract-tf1",

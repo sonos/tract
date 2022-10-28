@@ -4,12 +4,12 @@ use std::io::Read;
 use std::str::FromStr;
 use std::sync::Mutex;
 
-use crate::model::Model;
+use tract_libcli::model::Model;
 use crate::params::{TensorValues, TensorsValues};
-use crate::{CliResult, Parameters};
+use crate::{TractResult, Parameters};
 use tract_hir::internal::*;
 
-fn parse_dt(dt: &str) -> CliResult<DatumType> {
+fn parse_dt(dt: &str) -> TractResult<DatumType> {
     Ok(match dt.to_lowercase().as_ref() {
         "f16" => DatumType::F16,
         "f32" => DatumType::F32,
@@ -29,7 +29,7 @@ fn parse_dt(dt: &str) -> CliResult<DatumType> {
     })
 }
 
-pub fn parse_spec(size: &str) -> CliResult<InferenceFact> {
+pub fn parse_spec(size: &str) -> TractResult<InferenceFact> {
     if size.len() == 0 {
         return Ok(InferenceFact::default());
     }
@@ -40,7 +40,7 @@ pub fn parse_spec(size: &str) -> CliResult<InferenceFact> {
     }
 }
 
-pub fn parse_coma_spec(size: &str) -> CliResult<InferenceFact> {
+pub fn parse_coma_spec(size: &str) -> TractResult<InferenceFact> {
     let splits = size.split(',').collect::<Vec<_>>();
 
     if splits.len() < 1 {
@@ -62,7 +62,7 @@ pub fn parse_coma_spec(size: &str) -> CliResult<InferenceFact> {
             .map(|&s| {
                 Ok(if s == "_" { GenericFactoid::Any } else { GenericFactoid::Only(parse_dim(s)?) })
             })
-            .collect::<CliResult<TVec<DimFact>>>()?,
+            .collect::<TractResult<TVec<DimFact>>>()?,
     );
 
     if let Some(dt) = datum_type {
@@ -72,7 +72,7 @@ pub fn parse_coma_spec(size: &str) -> CliResult<InferenceFact> {
     }
 }
 
-pub fn parse_dim(i: &str) -> CliResult<TDim> {
+pub fn parse_dim(i: &str) -> TractResult<TDim> {
     // ensure the magic S is pre-registered
     #[cfg(feature = "pulse")]
     let _ = tract_pulse::internal::stream_symbol();
@@ -94,7 +94,7 @@ pub fn parse_dim(i: &str) -> CliResult<TDim> {
     Ok(symbol.to_dim() * number)
 }
 
-pub fn parse_x_spec(size: &str) -> CliResult<InferenceFact> {
+pub fn parse_x_spec(size: &str) -> TractResult<InferenceFact> {
     warn!(
         "Deprecated \"x\" syntax for shape : please use the comma as separator, x is now a symbol."
     );
@@ -124,7 +124,7 @@ pub fn parse_x_spec(size: &str) -> CliResult<InferenceFact> {
                     GenericFactoid::Only(parse_dim_stream(s)?)
                 })
             })
-            .collect::<CliResult<TVec<DimFact>>>()?,
+            .collect::<TractResult<TVec<DimFact>>>()?,
     );
 
     if let Some(dt) = datum_type {
@@ -134,15 +134,15 @@ pub fn parse_x_spec(size: &str) -> CliResult<InferenceFact> {
     }
 }
 
-fn parse_values<T: Datum + FromStr>(shape: &[usize], it: Vec<&str>) -> CliResult<Tensor> {
+fn parse_values<T: Datum + FromStr>(shape: &[usize], it: Vec<&str>) -> TractResult<Tensor> {
     let values = it
         .into_iter()
         .map(|v| v.parse::<T>().map_err(|_| format_err!("Failed to parse {}", v)))
-        .collect::<CliResult<Vec<T>>>()?;
+        .collect::<TractResult<Vec<T>>>()?;
     Ok(tract_ndarray::Array::from_shape_vec(shape, values)?.into())
 }
 
-fn tensor_for_text_data(filename: &str) -> CliResult<Tensor> {
+fn tensor_for_text_data(filename: &str) -> TractResult<Tensor> {
     let mut file = fs::File::open(filename)
         .map_err(|e| format_err!("Reading tensor from {}, {:?}", filename, e))?;
     let mut data = String::new();
@@ -164,7 +164,7 @@ fn tensor_for_text_data(filename: &str) -> CliResult<Tensor> {
 }
 
 /// Parses the `data` command-line argument.
-pub fn for_data(filename: &str) -> CliResult<(Option<String>, InferenceFact)> {
+pub fn for_data(filename: &str) -> TractResult<(Option<String>, InferenceFact)> {
     #[allow(unused_imports)]
     use std::convert::TryFrom;
     if filename.ends_with(".pb") {
@@ -192,7 +192,7 @@ pub fn for_data(filename: &str) -> CliResult<(Option<String>, InferenceFact)> {
     }
 }
 
-pub fn for_npz(npz: &mut ndarray_npy::NpzReader<fs::File>, name: &str) -> CliResult<Tensor> {
+pub fn for_npz(npz: &mut ndarray_npy::NpzReader<fs::File>, name: &str) -> TractResult<Tensor> {
     if let Ok(t) = npz.by_name::<tract_ndarray::OwnedRepr<f32>, tract_ndarray::IxDyn>(name) {
         return Ok(t.into_tensor());
     }
@@ -229,7 +229,7 @@ pub fn for_npz(npz: &mut ndarray_npy::NpzReader<fs::File>, name: &str) -> CliRes
     bail!("Can not extract tensor from {}", name);
 }
 
-pub fn for_string(value: &str) -> CliResult<(Option<String>, InferenceFact)> {
+pub fn for_string(value: &str) -> TractResult<(Option<String>, InferenceFact)> {
     if let Some(stripped) = value.strip_prefix('@') {
         for_data(stripped)
     } else {
@@ -260,7 +260,7 @@ pub fn for_string(value: &str) -> CliResult<(Option<String>, InferenceFact)> {
 }
 
 #[cfg(feature = "pulse")]
-fn parse_dim_stream(s: &str) -> CliResult<TDim> {
+fn parse_dim_stream(s: &str) -> TractResult<TDim> {
     use tract_pulse::internal::stream_dim;
     if s == "S" {
         Ok(stream_dim())
@@ -274,7 +274,7 @@ fn parse_dim_stream(s: &str) -> CliResult<TDim> {
 }
 
 #[cfg(not(feature = "pulse"))]
-fn parse_dim_stream(s: &str) -> CliResult<TDim> {
+fn parse_dim_stream(s: &str) -> TractResult<TDim> {
     Ok(s.parse::<i64>().map(|i| i.into())?)
 }
 
@@ -295,7 +295,7 @@ pub struct RunParams {
 }
 
 impl RunParams {
-    pub fn from_subcommand(params: &Parameters, sub_matches: &clap::ArgMatches) -> CliResult<Self> {
+    pub fn from_subcommand(params: &Parameters, sub_matches: &clap::ArgMatches) -> TractResult<Self> {
         let mut tv = params.tensors_values.clone();
 
         if let Some(bundle) = sub_matches.values_of("input-from-bundle") {
@@ -319,7 +319,7 @@ impl RunParams {
 pub fn retrieve_or_make_inputs(
     tract: &dyn Model,
     params: &RunParams,
-) -> CliResult<Vec<TVec<Tensor>>> {
+) -> TractResult<Vec<TVec<Tensor>>> {
     let mut tmp: TVec<Vec<Tensor>> = tvec![];
     for (ix, input) in tract.input_outlets().iter().enumerate() {
         let name = tract.node_name(input.node);
@@ -404,11 +404,11 @@ pub fn retrieve_or_make_inputs(
     Ok((0..tmp[0].len()).map(|turn| tmp.iter().map(|t| t[turn].clone()).collect()).collect())
 }
 
-fn make_inputs(values: &[impl std::borrow::Borrow<TypedFact>]) -> CliResult<TVec<Tensor>> {
+fn make_inputs(values: &[impl std::borrow::Borrow<TypedFact>]) -> TractResult<TVec<Tensor>> {
     values.iter().map(|v| tensor_for_fact(v.borrow(), None, None)).collect()
 }
 
-pub fn make_inputs_for_model(model: &dyn Model) -> CliResult<TVec<Tensor>> {
+pub fn make_inputs_for_model(model: &dyn Model) -> TractResult<TVec<Tensor>> {
     make_inputs(
         &*model
             .input_outlets()
@@ -423,7 +423,7 @@ pub fn tensor_for_fact(
     fact: &TypedFact,
     streaming_dim: Option<usize>,
     tv: Option<&TensorValues>,
-) -> CliResult<Tensor> {
+) -> TractResult<Tensor> {
     if let Some(value) = &fact.konst {
         return Ok(value.clone().into_tensor());
     }

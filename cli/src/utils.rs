@@ -1,10 +1,9 @@
-use crate::model::Model;
 use crate::params::Parameters;
-use crate::CliResult;
 use tract_hir::internal::*;
+use tract_libcli::model::Model;
 
 /// Compares the outputs of a node in tract and tensorflow.
-pub fn check_outputs(got: &[Vec<Arc<Tensor>>], params: &Parameters) -> CliResult<()> {
+pub fn check_outputs(got: &[Vec<Arc<Tensor>>], params: &Parameters) -> TractResult<()> {
     let mut error = None;
     // iter over all possible tract model outputs
     for (ix, output) in params.tract_model.output_outlets().iter().enumerate() {
@@ -65,7 +64,7 @@ pub fn check_outputs(got: &[Vec<Arc<Tensor>>], params: &Parameters) -> CliResult
 }
 
 /// Compares the outputs of a node in tract and tensorflow.
-pub fn check_inferred(got: &[InferenceFact], expected: &[InferenceFact]) -> CliResult<()> {
+pub fn check_inferred(got: &[InferenceFact], expected: &[InferenceFact]) -> TractResult<()> {
     if got.len() != expected.len() {
         bail!("Number of output differ: got:{}, expected:{}", got.len(), expected.len())
     }
@@ -82,7 +81,7 @@ pub fn check_inferred(got: &[InferenceFact], expected: &[InferenceFact]) -> CliR
     Ok(())
 }
 
-pub fn count_op(model: &dyn Model, name: &str) -> CliResult<usize> {
+pub fn count_op(model: &dyn Model, name: &str) -> TractResult<usize> {
     Ok(model
         .eval_order()
         .context("Cannot assert op count without an eval order")?

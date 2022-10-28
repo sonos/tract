@@ -17,15 +17,14 @@ use tract_tensorflow::tfpb::tensorflow::GraphDef;
 
 use tract_nnef::ast::dump::Dumper;
 
-use crate::display_params::DisplayParams;
-use crate::CliResult;
+use crate::TractResult;
+use tract_libcli::display_params;
+use tract_libcli::display_params::DisplayParams;
+use tract_libcli::model::Model;
 
 use readings_probe::*;
 
-use super::display_params;
 use super::{info_usage, tensor};
-
-use super::model::Model;
 
 use std::convert::*;
 
@@ -187,7 +186,7 @@ type TfExt = tract_tensorflow::model::TfModelExtensions;
 type TfExt = ();
 
 impl Parameters {
-    fn disco_model(matches: &clap::ArgMatches) -> CliResult<(ModelLocation, bool)> {
+    fn disco_model(matches: &clap::ArgMatches) -> TractResult<(ModelLocation, bool)> {
         let model = matches.value_of("model").context("Model argument required")?;
         let path = std::path::PathBuf::from(model);
         let (location, onnx_tc) = if model.starts_with("http://") || model.starts_with("https://") {
@@ -213,7 +212,7 @@ impl Parameters {
         probe: Option<&Probe>,
         location: &ModelLocation,
         tensors_values: &TensorsValues,
-    ) -> CliResult<(SomeGraphDef, Box<dyn Model>, Option<TfExt>)> {
+    ) -> TractResult<(SomeGraphDef, Box<dyn Model>, Option<TfExt>)> {
         let need_graph =
             matches.is_present("proto") || matches.subcommand_name() == Some("compare-pbdir");
 
@@ -391,7 +390,7 @@ impl Parameters {
         Ok(triplet)
     }
 
-    fn kaldi_downsample<F, O>(raw_model: &mut Graph<F, O>, period: isize) -> CliResult<()>
+    fn kaldi_downsample<F, O>(raw_model: &mut Graph<F, O>, period: isize) -> TractResult<()>
     where
         F: std::fmt::Debug + Clone + Hash + Fact,
         O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + Hash,
@@ -416,7 +415,11 @@ impl Parameters {
         Ok(())
     }
 
-    fn kaldi_context<F, O>(raw_model: &mut Graph<F, O>, left: usize, right: usize) -> CliResult<()>
+    fn kaldi_context<F, O>(
+        raw_model: &mut Graph<F, O>,
+        left: usize,
+        right: usize,
+    ) -> TractResult<()>
     where
         F: std::fmt::Debug + Clone + Hash + Fact,
         O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + Hash,
@@ -441,7 +444,7 @@ impl Parameters {
         Ok(())
     }
 
-    fn use_onnx_test_case_data_set(inputs_dir: &std::path::Path) -> CliResult<Vec<TensorValues>> {
+    fn use_onnx_test_case_data_set(inputs_dir: &std::path::Path) -> TractResult<Vec<TensorValues>> {
         let mut result = vec![];
         for file in inputs_dir.read_dir()? {
             let file = file?;
@@ -521,7 +524,7 @@ impl Parameters {
         matches: &clap::ArgMatches,
         location: &ModelLocation,
         onnx_tc: bool,
-    ) -> CliResult<TensorsValues> {
+    ) -> TractResult<TensorsValues> {
         let mut result = TensorsValues::default();
 
         if let Some(inputs) = matches.values_of("input") {
@@ -628,7 +631,7 @@ impl Parameters {
         raw_model: Box<dyn Model>,
         tf_model_extensions: Option<TfExt>,
         reference_stage: Option<&str>,
-    ) -> CliResult<(Arc<dyn Model>, Option<Arc<PulsedModel>>, Option<Arc<dyn Model>>)> {
+    ) -> TractResult<(Arc<dyn Model>, Option<Arc<PulsedModel>>, Option<Arc<dyn Model>>)> {
         let keep_last = matches.is_present("verbose");
         #[cfg(feature = "pulse")]
         let pulse: Option<usize> =
@@ -665,7 +668,7 @@ impl Parameters {
                     info!(concat!("Running '", $name, "'"));
                     let mut last_model: Option<Box<dyn Model>> =
                         if keep_last { Some(Box::new(from.as_ref().clone())) } else { None };
-                    let block: &dyn Fn(_) -> CliResult<_> = &$block;
+                    let block: &dyn Fn(_) -> TractResult<_> = &$block;
                     let owned_model =
                         Arc::try_unwrap(from).unwrap_or_else(|from| from.as_ref().clone());
                     match block(owned_model).context(concat!("Error at stage ", $name)) {
@@ -789,7 +792,7 @@ impl Parameters {
     #[allow(unused_variables)]
     #[allow(clippy::let_unit_value)]
     /// Parses the command-line arguments.
-    pub fn from_clap(matches: &clap::ArgMatches, probe: Option<&Probe>) -> CliResult<Parameters> {
+    pub fn from_clap(matches: &clap::ArgMatches, probe: Option<&Probe>) -> TractResult<Parameters> {
         let (filename, onnx_tc) = Self::disco_model(matches)?;
         let tensors_values = Self::parse_tensors(matches, &filename, onnx_tc)?;
         let (mut graph, mut raw_model, tf_model_extensions) =
@@ -953,7 +956,7 @@ impl Default for BenchLimits {
 }
 
 impl BenchLimits {
-    pub fn from_clap(matches: &clap::ArgMatches) -> CliResult<BenchLimits> {
+    pub fn from_clap(matches: &clap::ArgMatches) -> TractResult<BenchLimits> {
         let max_iters =
             matches.value_of("max-iters").map(usize::from_str).transpose()?.unwrap_or(100_000);
         let max_time = matches
@@ -969,7 +972,7 @@ impl BenchLimits {
 pub fn display_params_from_clap(
     root_matches: &clap::ArgMatches,
     matches: &clap::ArgMatches,
-) -> CliResult<DisplayParams> {
+) -> TractResult<DisplayParams> {
     Ok(DisplayParams {
         konst: matches.is_present("const"),
         cost: matches.is_present("cost"),
@@ -1008,7 +1011,7 @@ pub struct Assertions {
 }
 
 impl Assertions {
-    fn from_clap(sub: &clap::ArgMatches) -> CliResult<Assertions> {
+    fn from_clap(sub: &clap::ArgMatches) -> TractResult<Assertions> {
         let assert_outputs =
             sub.is_present("assert-output") || sub.is_present("assert-output-bundle");
         let assert_output_facts: Option<Vec<InferenceFact>> = sub

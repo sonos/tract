@@ -1,11 +1,15 @@
-use crate::CliResult;
 use crate::tensor::RunParams;
-use crate::{terminal, BenchLimits, Parameters};
+use crate::{BenchLimits, Parameters};
 use readings_probe::Probe;
 use std::time::{Duration, Instant};
 use tract_hir::internal::*;
+use tract_libcli::terminal;
 
-pub fn criterion(params: &Parameters, _matches: &clap::ArgMatches, sub_matches: &clap::ArgMatches) -> CliResult<()> {
+pub fn criterion(
+    params: &Parameters,
+    _matches: &clap::ArgMatches,
+    sub_matches: &clap::ArgMatches,
+) -> TractResult<()> {
     let run_params = RunParams::from_subcommand(params, sub_matches)?;
 
     let model =
@@ -26,7 +30,7 @@ pub fn handle(
     sub_matches: &clap::ArgMatches,
     limits: &BenchLimits,
     probe: Option<&Probe>,
-) -> CliResult<()> {
+) -> TractResult<()> {
     let run_params = RunParams::from_subcommand(params, sub_matches)?;
 
     let model =
