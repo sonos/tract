@@ -167,7 +167,16 @@ impl InferenceRulesOp for Nary {
         check_output_arity(outputs, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         let n = inputs.len();
-        s.equals_all((0..n).map(|i| (&inputs[i].datum_type).bex()).collect())?;
+        s.given_all(
+            (0..n).map(|i| (&inputs[i].datum_type).bex()),
+            move |s, types: Vec<DatumType>| {
+                let mut dt = types[0];
+                for t in &types[1..] {
+                    dt = self.0.result_datum_type(dt, *t)?;
+                }
+                s.equals(&outputs[0].datum_type, dt)
+            },
+        )?;
         s.given_all(inputs.iter().map(|i| &i.shape), move |s, shapes: Vec<TVec<TDim>>| {
             let out = tract_core::broadcast::multi_broadcast(&*shapes)
                 .with_context(|| format!("Failed to broadcast {:?}", &shapes))?;
