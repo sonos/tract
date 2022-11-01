@@ -8,12 +8,12 @@ use crate::tfpb::tensorflow::NodeDef;
 mod reduce;
 
 pub fn register_all_ops(reg: &mut TfOpRegister) {
-    reg.insert("Abs", |_, _| Ok(Box::new(ops::math::abs())));
+    reg.insert("Abs", |_, _| Ok(ops::math::abs().into_hir()));
     reg.insert("Add", |_, _| Ok(ops::math::Add.into_hir()));
     reg.insert("AddN", add_n);
     reg.insert("AddV2", |_, _| Ok(ops::math::Add.into_hir()));
     reg.insert("BiasAdd", |_, _| Ok(ops::math::Add.into_hir()));
-    reg.insert("Ceil", |_, _| Ok(Box::new(ops::math::ceil())));
+    reg.insert("Ceil", |_, _| Ok(ops::math::ceil().into_hir()));
     reg.insert("Div", |_, _| Ok(ops::math::Div.into_hir()));
     reg.insert("FloorMod", |_, _| Ok(ops::math::Rem.into_hir()));
     reg.insert("MatMul", mat_mul);
@@ -25,14 +25,14 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Maximum", |_, _| Ok(ops::math::Max.into_hir()));
     reg.insert("Minimum", |_, _| Ok(ops::math::Min.into_hir()));
     reg.insert("Less", |_, _| Ok(ops::logic::Less.into_hir()));
-    reg.insert("Log", |_, _| Ok(Box::new(ops::math::ln())));
+    reg.insert("Log", |_, _| Ok(ops::math::ln().into_hir()));
     reg.insert("Mul", |_, _| Ok(ops::math::Mul.into_hir()));
     reg.insert("Pow", |_, _| Ok(ops::math::Pow.into_hir()));
-    reg.insert("Neg", |_, _| Ok(Box::new(ops::math::neg())));
+    reg.insert("Neg", |_, _| Ok(ops::math::neg().into_hir()));
     reg.insert("RealDiv", |_, _| Ok(ops::math::Div.into_hir()));
-    reg.insert("Rsqrt", |_, _| Ok(Box::new(ops::math::rsqrt())));
+    reg.insert("Rsqrt", |_, _| Ok(ops::math::rsqrt().into_hir()));
     reg.insert("Sub", |_, _| Ok(ops::math::Sub.into_hir()));
-    reg.insert("Tanh", |_, _| Ok(Box::new(ops::math::tanh())));
+    reg.insert("Tanh", |_, _| Ok(ops::math::tanh().into_hir()));
 }
 
 pub fn add_n(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {

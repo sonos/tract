@@ -90,11 +90,11 @@ pub fn wire_cast(
     Ok(wires)
 }
 
-pub trait IntoHir {
+pub trait BinIntoHir {
     fn into_hir(self) -> Box<dyn InferenceOp>;
 }
 
-impl<B: BinMiniOp> IntoHir for B {
+impl<B: BinMiniOp> BinIntoHir for B {
     fn into_hir(self) -> Box<dyn InferenceOp> {
         expand(InferenceBinOp(Box::new(self) as _))
     }
@@ -165,16 +165,15 @@ impl InferenceRulesOp for Nary {
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
         check_output_arity(outputs, 1)?;
-        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         let n = inputs.len();
         s.given_all(
             (0..n).map(|i| (&inputs[i].datum_type).bex()),
             move |s, types: Vec<DatumType>| {
-                let mut dt = types[0];
-                for t in &types[1..] {
-                    dt = self.0.result_datum_type(dt, *t)?;
-                }
-                s.equals(&outputs[0].datum_type, dt)
+                let dt = DatumType::super_type_for(&types)
+                    .with_context(|| format!("No super type for {:?}", types))?;
+                let dt = self.0.operating_datum_type(dt, dt)?;
+                let result = self.0.result_datum_type(dt, dt)?;
+                s.equals(&outputs[0].datum_type, result)
             },
         )?;
         s.given_all(inputs.iter().map(|i| &i.shape), move |s, shapes: Vec<TVec<TDim>>| {
@@ -192,6 +191,14 @@ impl InferenceRulesOp for Nary {
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<Vec<_>>();
+        let types = inputs
+            .iter()
+            .map(|i| Ok(target.outlet_fact(*i)?.datum_type))
+            .collect::<TractResult<Vec<_>>>()?;
+        let dt = DatumType::super_type_for(&types)
+            .with_context(|| format!("No super type for {:?}", types))?;
+        let operating = self.0.operating_datum_type(dt, dt)?;
+        let inputs = wire_cast(&node.name, target, &inputs, operating)?;
         let mut wire = inputs[0];
         for (ix, i) in inputs[1..].iter().enumerate() {
             let wires = wire_rank_broadcast(&format!("{}.{}", node.name, ix), target, &[wire, *i])?;

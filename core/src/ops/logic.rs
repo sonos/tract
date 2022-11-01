@@ -36,7 +36,7 @@ bin_to_bool!(greater_equal, GreaterEqual,
     operating_datum_type: operating_datum_type_for_cmp,
     [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a >= b);
 
-fn operating_datum_type_for_cmp(a: DatumType, b: DatumType) -> TractResult<DatumType> {
+pub fn operating_datum_type_for_cmp(a: DatumType, b: DatumType) -> TractResult<DatumType> {
     let dt = a
         .common_super_type(b)
         .with_context(|| format_err!("No super type for {:?} and {:?}", a, b))?;
