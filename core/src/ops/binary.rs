@@ -45,7 +45,10 @@ pub trait BinMiniOp:
     fn validation(&self) -> Validation {
         Validation::Accurate
     }
-    fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType>;
+    fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
+        a.common_super_type(b)
+            .ok_or_else(|| format_err!("No super type for {:?} and {:?}", a, b).into())
+    }
     fn result_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType>;
     fn eval_unicast_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()>;
     fn eval_uniform_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()>;
@@ -573,6 +576,7 @@ macro_rules! bin_to_super_type {
      $(eval_override: $eval_override: expr,)?
      $(flip: $flip:expr,)?
      $(linalg: $linalg:ident,)?
+     $(operating_datum_type: $operating_datum_type:expr,)?
      $(out_of_place: $out_of_place:expr,)?
      $(validation: $validation:expr,)?
      $(q: $([$($typ_dt:ident),*] => $cab_dt:expr),* ;)?
@@ -726,10 +730,6 @@ macro_rules! bin_to_super_type {
                 $eval_override(a, b)
             })?
 
-            fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
-                a.common_super_type(b).ok_or_else(|| format_err!("No super type for {:?} and {:?}", a, b))
-            }
-
             fn result_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
                 if a.unquantized() == b.unquantized() {
                     if a.is_quantized() || !b.is_quantized() {
@@ -791,6 +791,10 @@ macro_rules! bin_to_super_type {
                         Some(tract_linalg::mmm::BinOp::$linalg)
                     }
                  )?
+                $(
+                fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
+                    ($operating_datum_type)(a, b)
+                })?
         }
 
         pub mod $func {
@@ -810,6 +814,7 @@ macro_rules! bin_to_bool {
      $( codegen_unary: $codegen_unary:expr, )?
      $( declutter_unary: $declutter_unary:expr, )?
      $( flip: $flip:expr, )?
+     $( operating_datum_type: $operating_datum_type:expr, )?
      $( [$($typ:ident),*] => $cab:expr),*) => {
         #[derive(Debug, Clone, Hash)]
         pub struct $Op;
@@ -879,10 +884,6 @@ macro_rules! bin_to_bool {
                     bail!("{} does not support {:?}", self.name(), a.datum_type());
             }
 
-            fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
-                a.common_super_type(b).ok_or_else(|| format_err!("No super type for {:?} and {:?}", a, b).into())
-            }
-
             fn result_datum_type(&self, _a: DatumType, _b: DatumType) -> TractResult<DatumType> {
                 Ok(bool::datum_type())
             }
@@ -920,6 +921,12 @@ macro_rules! bin_to_bool {
                         ($cost)(dt)
                     }
                  )?
+
+                $(
+                fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
+                    ($operating_datum_type)(a, b)
+                })?
+
         }
 
         pub mod $func {
