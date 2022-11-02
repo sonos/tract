@@ -150,6 +150,7 @@ pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
     });
     izip!(axes, begins, ends)
         .try_fold(wire, |wire, (axis, start, end)| {
+            ensure!(end >= start); // no stride in this version, so no reversed slicing
             builder.wire_as_outlets(tract_core::ops::array::Slice { axis, start, end }, &wire)
         })
         .map(Value::from)
