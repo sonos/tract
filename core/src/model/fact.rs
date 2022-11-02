@@ -16,6 +16,7 @@ impl ShapeFact {
     }
 
     fn compute_concrete(&mut self) {
+        assert!(self.dims.iter().all(|d| d.to_isize().map(|d| d >= 0).unwrap_or(true)));
         self.concrete =
             self.dims.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<_>>>().ok()
     }
