@@ -29,7 +29,7 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> TractResult<()> {
 
     let decl_input_fact = decl.input_fact(0)?;
     let pulsed_input_fact = pulsed.input_fact(0)?;
-    let input_pulse = pulsed_input_fact.pulse();
+    let input_pulse = pulsed_input_fact.pulse().unwrap();
 
     let mut annotations = Annotations::from_model(&*params.tract_model)?;
     annotate_with_graph_def(&mut annotations, &*params.tract_model, &params.graph)?;
@@ -52,9 +52,10 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> TractResult<()> {
             let outlet = OutletId::new(node, output_slot);
 
             let pulsed_output_fact = pulsed.outlet_fact(pulsed_outlet)?;
-            let output_pulse = pulsed_output_fact.pulse();
-            let output_axis = pulsed_output_fact.axis;
-            let delay = pulsed_output_fact.delay;
+            let stream = pulsed_output_fact.stream.as_ref().unwrap();
+            let output_pulse = pulsed_output_fact.pulse().unwrap();
+            let output_axis = stream.axis;
+            let delay = stream.delay;
 
             let stream_dim = delay + 3 * input_pulse + input_pulse / 2;
 
@@ -83,12 +84,11 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> TractResult<()> {
                 let offset = i * input_pulse;
                 if offset < stream_dim {
                     let count = input_pulse.min(stream_dim - offset);
-                    pulsed_input
-                        .slice_axis_mut(Axis(pulsed_input_fact.axis), (0..count).into())
-                        .assign(&fixed_input.to_array_view::<f32>()?.slice_axis(
-                            Axis(pulsed_input_fact.axis),
-                            (offset..offset + count).into(),
-                        ));
+                    pulsed_input.slice_axis_mut(Axis(stream.axis), (0..count).into()).assign(
+                        &fixed_input
+                            .to_array_view::<f32>()?
+                            .slice_axis(Axis(stream.axis), (offset..offset + count).into()),
+                    );
                 };
                 if offset + input_pulse > stream_dim {
                     debug!("Set known_stream_len: {}", stream_dim);

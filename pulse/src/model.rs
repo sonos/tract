@@ -129,7 +129,9 @@ impl
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         if let Some(op) = node.op_as::<TypedSource>() {
-            return Ok(crate::ops::source::pulsify(op, source, node, target, mapping, self.0)?.unwrap())
+            return Ok(
+                crate::ops::source::pulsify(op, source, node, target, mapping, self.0)?.unwrap()
+            );
         }
 
         let pulse_facts: TVec<PulsedFact> =
@@ -205,7 +207,9 @@ impl EvalOp for PulseWrappingOp {
 
 impl PulsedOp for PulseWrappingOp {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
-        let (pulsing_input, stream) = if let Some((ix, fact)) = &inputs.iter().enumerate().find(|(_ix, f)| f.stream.is_some()) {
+        let (pulsing_input, stream) = if let Some((ix, fact)) =
+            &inputs.iter().enumerate().find(|(_ix, f)| f.stream.is_some())
+        {
             (*ix, fact.stream.as_ref().unwrap())
         } else {
             bail!("PulseWrappingOp used on non streaming input")
@@ -289,10 +293,7 @@ impl PulsedOp for NonPulsingWrappingOp {
         std::mem::forget(output_facts_ref);
         output_facts
             .into_iter()
-            .enumerate()
-            .map(|(ix, tf)| {
-                Ok(PulsedFact { shape: tf.shape, datum_type: tf.datum_type, stream: None })
-            })
+            .map(|tf| Ok(PulsedFact { shape: tf.shape, datum_type: tf.datum_type, stream: None }))
             .collect()
     }
 
