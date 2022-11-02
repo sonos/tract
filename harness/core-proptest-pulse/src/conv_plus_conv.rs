@@ -278,3 +278,17 @@ fn three() {
     };
     cpc.run().unwrap();
 }
+
+#[test]
+fn three_stride() {
+    let cpc = ConvPlusConvProblem {
+        input: t(4),
+        pulse: 2,
+        convs: vec![
+            ConvOp { stride: 1, dilation: 1, ker: t(2), padding: PaddingSpec::Valid },
+            ConvOp { stride: 1, dilation: 1, ker: t(1), padding: PaddingSpec::Valid },
+            ConvOp { stride: 2, dilation: 2, ker: t(1), padding: PaddingSpec::Valid },
+        ],
+    };
+    cpc.run().unwrap();
+}
