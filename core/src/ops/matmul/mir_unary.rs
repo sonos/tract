@@ -171,7 +171,9 @@ impl MatMulUnary {
             (pa.into_arc_tensor(), vec![ProtoFusedSpec::Store])
         });
         unsafe {
-            let mut packed_b_shape: TVec<usize> = b_shape[..b_shape.len() - 2].into();
+            let mut packed_b_shape: TVec<usize> = b_shape.into();
+            packed_b_shape.remove(self.axes.b_k.max(self.axes.b_n));
+            packed_b_shape.remove(self.axes.b_k.min(self.axes.b_n));
             packed_b_shape.push(mmm.b_pack().len(k, n));
             wire = patch.wire_node(
                 format!("{}.pack", &*node.name),
