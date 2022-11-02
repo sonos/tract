@@ -118,7 +118,7 @@ pub fn handle(
     let mut annotations = Annotations::from_model(model)?;
     annotate_with_graph_def(&mut annotations, model, &params.graph)?;
     if options.cost {
-        annotations.extract_costs(model)?;
+        extract_costs(&mut annotations, model)?;
     }
     if options.profile {
         let run_params = run_params_from_subcommand(params, sub_matches)?;
@@ -244,39 +244,37 @@ fn rename_outputs(typed: &mut TypedModel, sub_matches: &clap::ArgMatches) -> Tra
     Ok(())
 }
 
+pub fn extract_costs(annotations: &mut Annotations, model: &dyn Model) -> TractResult<()> {
+    fn extract_costs_rec(
+        annotations: &mut Annotations,
+        model: &dyn Model,
+        prefix: &[(usize, String)],
+        multiplier: TDim,
+    ) -> TractResult<()> {
+        if let Some(model) = model.downcast_ref::<TypedModel>() {
+            for node_id in 0..model.nodes().len() {
+                let inputs = model.node_input_facts(node_id)?;
+                let cost = model.node(node_id).op.cost(&*inputs)?;
+                annotations.node_mut(NodeQId(prefix.into(), node_id)).cost = cost
+                    .into_iter()
+                    .map(|(k, v)| (k, if k.is_compute() { v * &multiplier } else { v }))
+                    .collect();
 
-    pub fn extract_costs(&mut self, model: &dyn Model) -> TractResult<()> {
-        fn extract_costs_rec(
-            annotations: &mut Annotations,
-            model: &dyn Model,
-            prefix: &[(usize, String)],
-            multiplier: TDim,
-        ) -> TractResult<()> {
-            if let Some(model) = model.downcast_ref::<TypedModel>() {
-                for node_id in 0..model.nodes().len() {
-                    let inputs = model.node_input_facts(node_id)?;
-                    let cost = model.node(node_id).op.cost(&*inputs)?;
-                    annotations.node_mut(NodeQId(prefix.into(), node_id)).cost = cost
-                        .into_iter()
-                        .map(|(k, v)| (k, if k.is_compute() { v * &multiplier } else { v }))
-                        .collect();
-
-                    let nested_subs = model.nested_models(node_id);
-                    let nested_multis =
-                        (model as &dyn Model).nested_models_iters(node_id, &*inputs);
-                    for ((name, sub), multi) in nested_subs.iter().zip(nested_multis.iter()) {
-                        let mut prefix: TVec<_> = prefix.into();
-                        prefix.push((node_id, name.to_string()));
-                        extract_costs_rec(
-                            annotations,
-                            *sub,
-                            &*prefix,
-                            multi.clone().unwrap_or_else(|| 1.into()) * &multiplier,
-                        )?;
-                    }
+                let nested_subs = model.nested_models(node_id);
+                let nested_multis = (model as &dyn Model).nested_models_iters(node_id, &*inputs);
+                for ((name, sub), multi) in nested_subs.iter().zip(nested_multis.iter()) {
+                    let mut prefix: TVec<_> = prefix.into();
+                    prefix.push((node_id, name.to_string()));
+                    extract_costs_rec(
+                        annotations,
+                        *sub,
+                        &*prefix,
+                        multi.clone().unwrap_or_else(|| 1.into()) * &multiplier,
+                    )?;
                 }
             }
-            Ok(())
         }
-        extract_costs_rec(self, model, &[], 1.into())
+        Ok(())
     }
+    extract_costs_rec(annotations, model, &[], 1.into())
+}
