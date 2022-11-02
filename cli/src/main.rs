@@ -459,6 +459,9 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
         return Ok(());
     }
 
+    #[cfg(feature = "pulse")]
+    tract_pulse::internal::stream_symbol();
+
     let builder_result = Parameters::from_clap(&matches, probe);
     #[allow(unused_mut)]
     let mut params = match builder_result {
