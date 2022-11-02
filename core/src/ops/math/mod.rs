@@ -197,10 +197,12 @@ bin_to_super_type!(rem, Rem,
                    [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64] => |c, a, b| *c = a.clone() % b);
 
 bin_to_super_type!(min, Min, flip:commute, linalg:Min,
+                   operating_datum_type: super::logic::operating_datum_type_for_cmp,
                    q: [i8, u8, i32] => |c, a, b, _, _| *c = if a < b { *a } else { *b };
                    [f16, f32, f64] => |c,a,b| *c = a.min(*b),
                    [i8, i16, i32, i64, u8, u16, u32, u64] => |c, a, b| *c = *a.min(b));
 bin_to_super_type!(max, Max, flip:commute, linalg:Max,
+                   operating_datum_type: super::logic::operating_datum_type_for_cmp,
                    q: [i8, u8, i32] => |c, a, b, _, _| *c = if a < b { *b } else { *a };
                    [f16, f32, f64] => |c,a,b| *c = a.max(*b),
                    [i8, i16, i32, i64, u8, u16, u32, u64] => |c, a, b| *c = *a.max(b));
@@ -411,7 +413,9 @@ element_wise!(abs, Abs, [i8, i16, i32, i64, f16, f32, i32] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.abs());
     Ok(())
 };
-q: [i8, u8, i32, i32] => f32::abs);
+q: [i8, u8, i32, i32] => f32::abs;
+operating_datum_type: |dt| if dt == TDim::datum_type() { i64::datum_type() } else { dt }
+);
 
 element_wise!(exp, Exp, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.exp());

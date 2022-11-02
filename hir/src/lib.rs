@@ -17,27 +17,7 @@ pub extern crate tract_core;
 pub use tract_core::prelude::tract_ndarray;
 pub use tract_core::prelude::tract_num_traits;
 
-pub mod ops {
-    pub mod activations;
-    pub mod array;
-    pub mod binary;
-    pub mod cast;
-    pub mod cnn;
-    pub mod downsample;
-    pub mod dummy;
-    pub mod element_wise;
-    pub mod expandable;
-    pub mod identity;
-    pub mod konst;
-    pub mod logic;
-    pub use tract_core::ops::math;
-    pub mod matmul;
-    pub mod nn;
-    pub use tract_core::ops::quant;
-    pub mod scan;
-    pub mod source;
-    pub mod unimpl;
-}
+pub mod ops;
 
 pub mod prelude {
     pub use crate::infer::InferenceFact;
@@ -50,7 +30,8 @@ pub mod prelude {
 pub mod internal {
     pub use super::prelude::*;
     pub use crate::infer::*;
-    pub use crate::ops::binary::IntoHir;
+    pub use crate::ops::binary::BinIntoHir;
+    pub use crate::ops::element_wise::ElementWiseIntoHir;
     pub use crate::ops::expandable::{expand, inference_wrap, Expansion};
     pub use tract_core;
     pub use tract_core::internal::*;

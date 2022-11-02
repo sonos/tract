@@ -11,7 +11,7 @@ pub fn cast(
     if to == i64::datum_type() {
         to = TDim::datum_type();
     }
-    Ok((Box::new(ElementWiseOp(Box::new(Cast::new(to)))), vec![]))
+    Ok((ElementWiseOp(Box::new(Cast::new(to))).into_hir(), vec![]))
 }
 
 #[derive(Debug, Clone, new, Hash)]

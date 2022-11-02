@@ -2,12 +2,12 @@ use crate::model::OnnxOpRegister;
 use crate::model::ParseResult;
 use crate::model::ParsingContext;
 use crate::pb::NodeProto;
-use tract_hir::internal::*;
 use tract_core::ops;
+use tract_hir::internal::*;
 use tract_itertools::Itertools;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
-    reg.insert("Not", |_, _| Ok((Box::new(ops::logic::not()), vec![])));
+    reg.insert("Not", |_, _| Ok((ops::logic::not().into_hir(), vec![])));
     reg.insert("And", |_, _| Ok((ops::logic::And.into_hir(), vec![])));
     reg.insert("Or", |_, _| Ok((ops::logic::Or.into_hir(), vec![])));
     reg.insert("Xor", |_, _| Ok((ops::logic::Xor.into_hir(), vec![])));
