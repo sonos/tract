@@ -145,11 +145,11 @@ pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
         // use "<=", no "<" end[axis] = 0 means "up to the end" 
         // CAUTION: this notation is 1/ deprecated 2/ invalid with non trivial slicing
         if b <= 0 {
-            input_fact.shape[ix].clone() + b
+            input_fact.shape[axes[ix]].clone() + b
         } else {
             b.into()
         }
-    });
+    }).collect_vec();
     izip!(axes, begins, ends)
         .try_fold(wire, |wire, (axis, start, end)| {
             builder.wire_as_outlets(tract_core::ops::array::Slice { axis, start, end }, &wire)
