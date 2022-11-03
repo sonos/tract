@@ -44,8 +44,6 @@ impl Expansion for ElementWiseOp {
         s.equals(&inputs[0].shape, &outputs[0].shape)?;
         Ok(())
     }
-
-    op_hir!();
 }
 
 pub trait ElementWiseIntoHir {
