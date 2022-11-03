@@ -26,7 +26,6 @@ impl Op for SumPool {
         Validation::Rounding
     }
 
-    op_core_mir!();
     op_as_typed_op!();
 }
 
@@ -83,7 +82,6 @@ impl Op for LirSumPool {
         Validation::Rounding
     }
 
-    op_core_lir!();
     op_as_typed_op!();
 }
 

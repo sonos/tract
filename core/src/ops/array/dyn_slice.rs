@@ -33,7 +33,6 @@ impl Op for DynSlice {
         Ok(vec![format!("axis: {}", self.axis)])
     }
 
-    op_core_lir_mir!();
     op_as_typed_op!();
 
     fn same_as(&self, other: &dyn Op) -> bool {

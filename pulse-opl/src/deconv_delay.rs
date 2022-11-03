@@ -22,7 +22,6 @@ impl Op for DeconvDelay {
         "DeconvDelay".into()
     }
 
-    op_pulse!();
     op_as_typed_op!();
 }
 

@@ -44,7 +44,6 @@ impl Op for Downsample {
         Ok(vec![format!("axis:{} stride:{} modulo:{}", self.axis, self.stride, self.modulo)])
     }
 
-    op_core_mir!();
     impl_op_same_as!();
     op_as_typed_op!();
 }

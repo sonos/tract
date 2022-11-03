@@ -21,7 +21,6 @@ impl Op for Dropout {
         "Dropout".into()
     }
 
-    op_onnx!();
     op_as_typed_op!();
 }
 

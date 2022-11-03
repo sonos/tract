@@ -89,10 +89,6 @@ impl Op for Multinomial {
         "Multinomial".into()
     }
 
-    fn op_families(&self) -> &'static [&'static str] {
-        &["onnx"]
-    }
-
     op_as_typed_op!();
 }
 

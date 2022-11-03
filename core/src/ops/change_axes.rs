@@ -451,7 +451,6 @@ impl Op for AxisOp {
         }
     }
 
-    op_core_lir_mir!();
     op_as_typed_op!();
 }
 

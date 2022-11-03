@@ -46,7 +46,6 @@ impl Op for Lrn {
         "Lrn".into()
     }
 
-    op_onnx!();
     op_as_typed_op!();
 }
 

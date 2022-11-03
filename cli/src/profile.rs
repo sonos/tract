@@ -1,33 +1,24 @@
-use tract_core::internal::*;
-
-use crate::annotations::*;
-use crate::model::Model;
-use crate::tensor::RunParams;
-use crate::BenchLimits;
-use crate::CliResult;
 use std::time::{Duration, Instant};
-
-#[derive(Debug, Clone)]
-pub struct ProfileSummary {
-    pub max: Duration,
-    pub sum: Duration,
-    pub entire: Duration,
-    pub iters: usize,
-}
+use tract_core::internal::*;
+use tract_libcli::annotations::*;
+use tract_libcli::model::Model;
+use tract_libcli::profile::*;
+use tract_libcli::tensor::RunParams;
+use tract_libcli::tensor::{make_inputs_for_model, retrieve_or_make_inputs};
 
 pub fn profile(
     model: &TypedModel,
     bench_limits: &BenchLimits,
     dg: &mut Annotations,
     run_params: &RunParams,
-) -> CliResult<()> {
+) -> TractResult<()> {
     info!("Running entire network");
     let plan = SimplePlan::new(model)?;
     let mut state = SimpleState::new(&plan)?;
     let mut iters = 0usize;
     let start = Instant::now();
     while iters < bench_limits.max_iters && start.elapsed() < bench_limits.max_time {
-        let input = crate::tensor::retrieve_or_make_inputs(model, run_params)?;
+        let input = retrieve_or_make_inputs(model, run_params)?;
         let _ =
             state.run_plan_with_eval(input[0].clone(), |session_state, state, node, input| {
                 let start = Instant::now();
@@ -67,7 +58,7 @@ pub fn profile(
                         let inner_plan = SimplePlan::new(inner_model)?;
                         let mut state = SimpleState::new(inner_plan)?;
                         let _ = state.run_plan_with_eval(
-                            crate::tensor::make_inputs_for_model(inner_model)?,
+                            make_inputs_for_model(inner_model)?,
                             |session_state, state, node, input| {
                                 let start = Instant::now();
                                 let r = tract_core::plan::eval(session_state, state, node, input);

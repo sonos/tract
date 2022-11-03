@@ -145,7 +145,6 @@ impl Op for DeconvUnary {
         Ok(vec![format!("{:?}", self.pool_spec)])
     }
 
-    op_core_mir!();
     op_as_typed_op!();
 }
 

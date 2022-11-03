@@ -15,7 +15,6 @@ impl Expansion for LayerHardmax {
     fn name(&self) -> Cow<str> {
         "LayerHardmax".into()
     }
-    op_hir!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -91,7 +90,6 @@ impl Expansion for LayerLogSoftmax {
         "LayerLogSoftmax".into()
     }
 
-    op_hir!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -126,7 +124,6 @@ impl Expansion for LayerSoftmax {
     fn name(&self) -> Cow<str> {
         "LayerSoftmax".into()
     }
-    op_hir!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

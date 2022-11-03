@@ -18,7 +18,6 @@ impl Op for PulsedSameAxisConcat {
         "PulsedSameAxisConcat".into()
     }
 
-    op_pulse!();
     op_as_typed_op!();
 }
 

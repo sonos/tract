@@ -11,7 +11,6 @@ impl Expansion for ArrayFeatureExtractor {
         "ArrayFeatureExtractor".into()
     }
 
-    op_hir!();
 
     fn wire(
         &self,

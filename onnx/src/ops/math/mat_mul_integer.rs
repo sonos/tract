@@ -25,7 +25,6 @@ impl Expansion for MatMulInteger {
         "MatMulInteger".into()
     }
 
-    op_onnx!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -109,7 +108,6 @@ impl Expansion for QLinearMatMul {
         "QLinearMatMul".into()
     }
 
-    op_onnx!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

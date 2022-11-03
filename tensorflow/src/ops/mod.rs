@@ -4,14 +4,6 @@ use crate::model::ParsingContext;
 use crate::model::TfOpRegister;
 use crate::tfpb::tensorflow::NodeDef;
 
-macro_rules! op_tf {
-    () => {
-        fn op_families(&self) -> &'static [&'static str] {
-            &["tf"]
-        }
-    };
-}
-
 pub mod array;
 pub mod control_flow;
 pub mod logic;
@@ -65,7 +57,6 @@ impl Op for Noop {
         "Noop".into()
     }
 
-    op_tf!();
     op_as_typed_op!();
 }
 

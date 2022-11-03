@@ -32,7 +32,6 @@ impl Expansion for Transpose {
         "Transpose".into()
     }
 
-    op_tf!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

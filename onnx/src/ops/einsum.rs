@@ -24,7 +24,6 @@ impl Expansion for EinSum {
         "EinSum".into()
     }
 
-    op_onnx!();
 
     fn wire(
         &self,

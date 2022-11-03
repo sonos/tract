@@ -16,7 +16,6 @@ impl Expansion for GatherV2 {
         "GatherV2".into()
     }
 
-    op_tf!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

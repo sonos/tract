@@ -17,7 +17,6 @@ impl Expansion for Iff {
         "Iff".into()
     }
 
-    op_hir!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

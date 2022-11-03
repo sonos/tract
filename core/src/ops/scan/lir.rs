@@ -53,7 +53,6 @@ impl Op for LirScan {
         Ok(lines)
     }
 
-    op_core_lir!();
     op_as_typed_op!();
 }
 

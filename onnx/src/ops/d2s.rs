@@ -94,7 +94,6 @@ impl Expansion for DepthToSpace {
         "DepthToSpace".into()
     }
 
-    op_onnx!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

@@ -118,7 +118,6 @@ impl Expansion for Conv {
         Validation::Rounding
     }
 
-    op_hir!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

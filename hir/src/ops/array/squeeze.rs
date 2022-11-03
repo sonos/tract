@@ -39,7 +39,6 @@ impl Expansion for Squeeze {
         "Squeeze".into()
     }
 
-    op_hir!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

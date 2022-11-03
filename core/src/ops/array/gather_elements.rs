@@ -12,7 +12,6 @@ impl Op for GatherElements {
         "GatherElements".into()
     }
 
-    op_core_mir!();
     op_as_typed_op!();
 }
 

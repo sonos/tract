@@ -28,7 +28,6 @@ lazy_static = "1.4.0"
 log = "0.4.14"
 ndarray-npy = { version = "0.8.0", features = [ "compressed_npz" ] }
 py_literal = "0.4.0"
-rand = "0.8.4"
 readings-probe = "0.1.3"
 regex = "1.5.4"
 reqwest = { version = "0.11.4", features = [ "blocking", "rustls" ], default-features = false }
@@ -40,6 +39,7 @@ serde_derive = "1.0.127"
 tract-core = { version = "0.18.4-pre", path = "../core" }
 tract-hir = { version = "0.18.4-pre", path = "../hir" }
 tract-nnef = { version = "0.18.4-pre", path = "../nnef" }
+tract-libcli = { version = "0.18.4-pre", path = "../libcli" }
 tract-pulse-opl = { optional = true, version = "0.18.4-pre", path = "../pulse-opl" }
 tract-pulse = { optional = true, version = "0.18.4-pre", path = "../pulse" }
 tract-kaldi = { optional = true, version = "0.18.4-pre", path = "../kaldi" }
@@ -48,9 +48,9 @@ tract-tensorflow = { optional = true, version = "0.18.4-pre", path = "../tensorf
 
 [features]
 default = ["kaldi", "onnx", "tf", "pulse", "pulse-opl"]
-kaldi = [ "tract-kaldi" ]
-onnx = [ "tract-onnx" ]
+kaldi = [ "tract-kaldi", "tract-libcli/hir" ]
+onnx = [ "tract-onnx", "tract-libcli/hir" ]
 pulse-opl = [ "tract-pulse-opl" ]
 pulse = [ "tract-pulse", "tract-pulse-opl" ]
-tf = [ "tract-tensorflow" ]
+tf = [ "tract-tensorflow", "tract-libcli/hir" ]
 conform = [ "tract-tensorflow/conform"  ]

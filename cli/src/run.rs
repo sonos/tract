@@ -1,17 +1,21 @@
 use std::fs::File;
 
-use crate::tensor::RunParams;
-use crate::CliResult;
+use crate::TractResult;
 use crate::{Model, Parameters};
 use ansi_term::Color::*;
 use ndarray_npy::NpzWriter;
 use tract_core::tract_data::itertools::izip;
 use tract_hir::internal::*;
+use tract_libcli::tensor::RunParams;
 #[cfg(feature = "pulse")]
 use tract_pulse::internal::*;
 
 /// Add a tensor entry into a npz file.
-fn npz_add_tensor(npz: &mut NpzWriter<File>, name: String, tensor: &Arc<Tensor>) -> CliResult<()> {
+fn npz_add_tensor(
+    npz: &mut NpzWriter<File>,
+    name: String,
+    tensor: &Arc<Tensor>,
+) -> TractResult<()> {
     match tensor.datum_type() {
         DatumType::F16 => npz.add_array(name, &tensor.cast_to::<f32>()?.to_array_view::<f32>()?)?,
         DatumType::Bool => npz.add_array(name, &tensor.to_array_view::<bool>()?)?,
@@ -38,8 +42,8 @@ pub fn handle(
     params: &Parameters,
     matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
-) -> CliResult<()> {
-    let run_params = RunParams::from_subcommand(params, sub_matches)?;
+) -> TractResult<()> {
+    let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
 
     let dump = sub_matches.is_present("dump");
     let outputs = dispatch_model!(&*params.tract_model, |m| run_regular(
@@ -117,7 +121,7 @@ fn run_regular(
     run_params: &RunParams,
     _matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
-) -> CliResult<TVec<Vec<Arc<Tensor>>>> {
+) -> TractResult<TVec<Vec<Arc<Tensor>>>> {
     let steps = sub_matches.is_present("steps");
     let assert_sane_floats = sub_matches.is_present("assert-sane-floats");
     let mut npz = if let Some(npz) = sub_matches.value_of("save-steps") {
@@ -140,7 +144,7 @@ fn run_regular(
                     state.session_state.resolved_symbols.with(sym, value);
             }
         }
-        let inputs = crate::tensor::retrieve_or_make_inputs(tract, run_params)?;
+        let inputs = tract_libcli::tensor::retrieve_or_make_inputs(tract, run_params)?;
         let mut results = tvec!(vec!(); state.model().outputs.len());
         let multiturn = inputs.len() > 1;
         for (turn, inputs) in inputs.into_iter().enumerate() {
@@ -217,7 +221,7 @@ fn run_regular(
 
 /*
 #[cfg(feature = "pulse")]
-fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Arc<Tensor>>> {
+fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> TractResult<TVec<Arc<Tensor>>> {
     dbg!("PULSE");
     let input_fact = model.input_fact(0)?;
     let output_fact = model.output_fact(0)?;

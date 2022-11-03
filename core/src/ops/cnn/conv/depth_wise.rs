@@ -27,7 +27,6 @@ impl Op for DepthWise {
         Validation::Rounding
     }
 
-    op_core_lir!();
     op_as_typed_op!();
 }
 

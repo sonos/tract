@@ -121,10 +121,6 @@ impl Op for NonMaxSuppression {
         "NonMaxSuppression".into()
     }
 
-    fn op_families(&self) -> &'static [&'static str] {
-        &["onnx"]
-    }
-
     op_as_typed_op!();
 }
 

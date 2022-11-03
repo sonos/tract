@@ -131,7 +131,6 @@ impl Op for Delay {
         ])
     }
 
-    op_pulse!();
     impl_op_same_as!();
     op_as_typed_op!();
 }

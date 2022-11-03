@@ -15,7 +15,6 @@ impl Op for FiniteReshape {
         Ok(vec![format!("to shape: {}", self.shape.iter().join(","))])
     }
 
-    op_core_lir!();
     op_as_typed_op!();
 }
 

@@ -33,7 +33,6 @@ impl Op for Slice {
         Ok(vec![format!("axis: {}, {}..{}", self.axis, self.start, self.end)])
     }
 
-    op_core_lir_mir!();
     op_as_typed_op!();
 
     fn same_as(&self, other: &dyn Op) -> bool {

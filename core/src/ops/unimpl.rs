@@ -24,7 +24,6 @@ impl Op for UnimplementedOp {
         format!("Unimplemented({})", self.name).into()
     }
 
-    op_core!();
     not_a_typed_op!();
 }
 

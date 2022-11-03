@@ -137,7 +137,6 @@ impl Op for LirMatMulUnary {
         Ok(infos)
     }
 
-    op_core_lir!();
     op_as_typed_op!();
 }
 

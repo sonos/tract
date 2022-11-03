@@ -23,7 +23,6 @@ impl Op for QMatMulUnary {
         "QMatMulUnary".into()
     }
 
-    op_core_mir!();
     op_as_typed_op!();
 }
 

@@ -11,7 +11,6 @@ impl Expansion for Reshape {
         "Reshape".into()
     }
 
-    op_hir!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

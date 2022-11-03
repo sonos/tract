@@ -13,7 +13,6 @@ impl Op for SpaceToBatch {
         "SpaceToBatch".into()
     }
 
-    op_tf!();
     not_a_typed_op!();
 }
 
@@ -110,7 +109,6 @@ impl Op for BatchToSpace {
         "BatchToSpace".into()
     }
 
-    op_tf!();
     not_a_typed_op!();
 }
 

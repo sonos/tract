@@ -16,7 +16,6 @@ impl Op for Range {
         "Range".into()
     }
 
-    op_core!();
     op_as_typed_op!();
 }
 

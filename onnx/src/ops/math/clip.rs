@@ -45,7 +45,6 @@ impl Expansion for Clip11 {
         "Clip".into()
     }
 
-    op_onnx!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

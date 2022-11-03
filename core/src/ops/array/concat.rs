@@ -62,7 +62,6 @@ impl Op for TypedConcat {
         Ok(vec![format!("axis: {}", self.axis)])
     }
 
-    op_core_lir_mir!();
     op_as_typed_op!();
 }
 

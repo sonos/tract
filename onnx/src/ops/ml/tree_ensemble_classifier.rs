@@ -249,7 +249,6 @@ impl Expansion for TreeEnsembleClassifier {
         Ok(vec!(format!("binary result layout kludge: {:?}", self.binary_result_layout)))
     }
 
-    op_onnx!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

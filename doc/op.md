@@ -20,8 +20,6 @@ This trait contains the minimal metadata that all ops will share.
 pub trait Op:
     fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + EvalOp + DynHash
 {
-    fn op_families(&self) -> &'static [&'static str];
-
     fn name(&self) -> Cow<str>;
 
     fn validation(&self) -> Validation {
@@ -40,7 +38,7 @@ pub trait Op:
 }
 ```
 
-`name()`, `op_families()` and `info()` are mostly useful for debugging and
+`name()` and `info()` are mostly useful for debugging and
 auditing (the command line interface and error messages will use these entry
 points).
 

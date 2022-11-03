@@ -29,7 +29,6 @@ impl Op for TypedSource {
     fn name(&self) -> Cow<str> {
         "Source".into()
     }
-    op_core_lir_mir!();
     op_as_typed_op!();
 }
 

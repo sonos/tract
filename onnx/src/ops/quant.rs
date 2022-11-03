@@ -46,7 +46,6 @@ impl Expansion for QuantizeLinear {
         "QuantizeLinear".into()
     }
 
-    op_onnx!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -113,7 +112,6 @@ impl Expansion for DequantizeLinear {
         "DequantizeLinear".into()
     }
 
-    op_onnx!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -177,7 +175,6 @@ impl Expansion for DynamicQuantizeLinear {
         "DynamicQuantizeLinear".into()
     }
 
-    op_onnx!();
 
     fn nboutputs(&self) -> TractResult<usize> {
         Ok(3)
@@ -269,7 +266,6 @@ impl Op for DynamicQuantizeLinearU8 {
         Validation::Accurate
     }
 
-    op_onnx!();
     op_as_typed_op!();
 }
 

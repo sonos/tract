@@ -758,7 +758,6 @@ impl Op for ConvUnary {
         Validation::Rounding
     }
 
-    op_core_mir!();
     op_as_typed_op!();
 }
 

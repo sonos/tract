@@ -101,7 +101,6 @@ impl Op for DequantizeLinearF32 {
         Validation::Accurate
     }
 
-    op_core_mir!();
     op_as_typed_op!();
 }
 

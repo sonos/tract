@@ -29,7 +29,6 @@ impl Op for Softmax {
         Ok(vec![format!("Axis: {:?}", self.axes)])
     }
 
-    op_core_mir!();
     op_as_typed_op!();
 }
 

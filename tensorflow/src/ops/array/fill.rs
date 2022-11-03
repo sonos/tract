@@ -33,7 +33,6 @@ impl Op for Fill {
         "Fill".into()
     }
 
-    op_tf!();
     not_a_typed_op!();
 }
 

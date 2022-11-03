@@ -18,7 +18,6 @@ impl Expansion for InferenceBinOp {
         self.0.validation()
     }
 
-    op_hir!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -127,7 +126,6 @@ impl Op for Nary {
         self.0.validation()
     }
 
-    op_hir!();
     not_a_typed_op!();
 }
 

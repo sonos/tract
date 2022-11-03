@@ -26,7 +26,6 @@ impl Expansion for LstmNonlin {
         "LstmNonlin".into()
     }
 
-    op_kaldi!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

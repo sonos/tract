@@ -33,7 +33,6 @@ impl Op for NonZero {
         "NonZero".into()
     }
 
-    op_onnx!();
     op_as_typed_op!();
 }
 

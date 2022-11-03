@@ -16,7 +16,6 @@ impl Op for OneHot {
         "Onehot".into()
     }
 
-    op_core!();
     op_as_typed_op!();
 }
 

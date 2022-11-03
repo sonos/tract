@@ -13,7 +13,6 @@ impl Op for Source {
         "Source".into()
     }
 
-    op_hir!();
     not_a_typed_op!();
 }
 

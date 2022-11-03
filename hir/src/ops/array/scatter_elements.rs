@@ -13,7 +13,6 @@ impl Expansion for ScatterElements {
         "ScatterElements".into()
     }
 
-    op_hir!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

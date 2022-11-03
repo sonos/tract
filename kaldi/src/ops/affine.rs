@@ -55,7 +55,6 @@ impl Expansion for Affine {
         "Affine".into()
     }
 
-    op_kaldi!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

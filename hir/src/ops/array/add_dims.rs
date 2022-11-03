@@ -35,7 +35,6 @@ impl Expansion for AddDims {
         Ok(vec![format!("Axes: {:?}", self.axes)])
     }
 
-    op_hir!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

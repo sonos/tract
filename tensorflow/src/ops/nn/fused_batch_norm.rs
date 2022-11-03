@@ -27,7 +27,6 @@ impl Expansion for FusedBatchNorm {
         Validation::Rounding
     }
 
-    op_tf!();
 
     /// Registers the inference rules of the operator.
     fn rules<'r, 'p: 'r, 's: 'r>(

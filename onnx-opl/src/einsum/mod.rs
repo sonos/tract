@@ -23,7 +23,6 @@ impl Op for EinSum {
         Ok(vec![format!("{}", self.expr)])
     }
 
-    op_onnx!();
     op_as_typed_op!();
 }
 

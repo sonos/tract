@@ -46,7 +46,6 @@ impl Op for Reduce {
         format!("{:?}", self.reducer).into()
     }
 
-    op_tf!();
     not_a_typed_op!();
 }
 

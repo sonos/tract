@@ -36,7 +36,6 @@ impl Expansion for PermuteAxes {
         "PermuteAxes".into()
     }
 
-    op_hir!();
 
     fn info(&self) -> TractResult<Vec<String>> {
         Ok(vec![format!("{:?}", self.axes)])
