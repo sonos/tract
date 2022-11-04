@@ -138,10 +138,10 @@ fn run_regular(
                 let mut tokens = set.split('=');
                 let sym = tokens.next().context("--set expect S=12 form")?;
                 let value = tokens.next().context("--set expect S=12 form")?;
-                let sym = Symbol::from(sym.chars().next().unwrap());
+                let sym = state.model().symbol_table.get_or_intern(sym).to_owned();
                 let value: i64 = value.parse().context("Can not parse symbol value in set")?;
                 state.session_state.resolved_symbols =
-                    state.session_state.resolved_symbols.with(sym, value);
+                    state.session_state.resolved_symbols.with(&sym, value);
             }
         }
         let inputs = tract_libcli::tensor::retrieve_or_make_inputs(tract, run_params)?;

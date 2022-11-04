@@ -26,6 +26,7 @@ num-traits = "0.2.14"
 smallvec = "1.6.1"
 lazy_static = "1.4.0"
 scan_fmt = "0.2.6"
+string-interner = "0.14"
 
 [dev-dependencies]
 criterion = "0.3.5"

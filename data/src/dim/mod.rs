@@ -3,9 +3,11 @@ use num_traits::Zero;
 use std::fmt;
 use std::ops;
 
+mod sym;
 mod tree;
 
-pub use self::tree::{Symbol, SymbolValues, TDim, UndeterminedSymbol};
+pub use self::sym::{Symbol, SymbolTable, SymbolValues};
+pub use self::tree::{TDim, UndeterminedSymbol};
 use crate::{TractError, TractResult};
 
 /// A super-trait for value acting as tensor dimensions in tract.
@@ -192,11 +194,15 @@ mod tests {
     use super::*;
 
     lazy_static::lazy_static! {
-        static ref S: Symbol = crate::dim::Symbol::new('S');
+        static ref S: (SymbolTable, Symbol) = {
+            let table = SymbolTable::default();
+            let s = table.new_symbol("S");
+            (table, s)
+        };
     }
 
     pub fn s() -> TDim {
-        (*S).into()
+        (*S).1.clone().into()
     }
 
     #[test]
@@ -226,8 +232,10 @@ mod tests {
 
     #[test]
     fn div_sym_sym_complex() {
+        let s = s();
+        let b = S.0.get_or_intern("b");
         assert_eq!(
-            (256.to_dim() * 's' * 'b').maybe_div(&(1.to_dim() * 's' * 'b')).unwrap(),
+            (256.to_dim() * &s * &b).maybe_div(&(1.to_dim() * &s * &b)).unwrap(),
             (256.into(), 1)
         );
     }

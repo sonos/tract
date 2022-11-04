@@ -1,11 +1,12 @@
 use crate::internal::*;
 use crate::num_traits::Zero;
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, new)]
 pub struct DynSlice {
     pub axis: usize,
     pub start_input: bool,
     pub end_input: bool,
+    pub symbol: Symbol,
 }
 
 impl DynHash for DynSlice {
@@ -15,10 +16,6 @@ impl DynHash for DynSlice {
 }
 
 impl DynSlice {
-    pub fn new(axis: usize, start_input: bool, end_input: bool) -> DynSlice {
-        DynSlice { axis, start_input, end_input }
-    }
-
     pub fn suffix(&self) -> String {
         format!("axis{}", self.axis)
     }
@@ -73,7 +70,7 @@ impl EvalOp for DynSlice {
 impl TypedOp for DynSlice {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = inputs[0].clone();
-        fact.shape.set(self.axis, Symbol::new('l').into());
+        fact.shape.set(self.axis, self.symbol.clone().into());
         Ok(tvec!(fact))
     }
 

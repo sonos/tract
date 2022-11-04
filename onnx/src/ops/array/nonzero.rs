@@ -1,13 +1,20 @@
 use tract_hir::internal::*;
 use tract_ndarray::Dimension;
 
+use crate::model::ParsingContext;
+use crate::pb::NodeProto;
+
 #[derive(Debug, Clone, Hash)]
 pub struct NonZero(Symbol);
 
 impl_dyn_hash!(NonZero);
 
-pub fn non_zero() -> NonZero {
-    NonZero(Symbol::new('x'))
+pub fn non_zero(
+    ctx: &ParsingContext,
+    _node: &NodeProto,
+) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
+    let x = ctx.symbol_table.get_or_intern("x");
+    Ok((Box::new(NonZero(x)) as _, vec!()))
 }
 
 impl NonZero {

@@ -47,6 +47,7 @@ pub struct ParsingContext<'a> {
     pub model: &'a pb::ModelProto,
     pub parent_graphs: Vec<&'a pb::GraphProto>,
     pub model_path: Option<&'a str>,
+    pub symbol_table: SymbolTable,
 }
 
 #[derive(Clone, Debug)]
@@ -61,10 +62,10 @@ impl<'a> ParsingContext<'a> {
         let mut ctx = self.clone();
         ctx.parent_graphs.push(graph);
         let mut model = InferenceModel::default();
+        model.symbol_table = ctx.symbol_table.clone();
         let mut unresolved_inputs = vec![];
         let mut closures_to_wire = vec![];
         trace!("trying to initialize initializers hashmap...");
-        let mut symbol_map: HashMap<&str, Symbol> = HashMap::default();
         #[allow(unused_assignments)]
         let mut initializers: HashMap<&str, Tensor> = HashMap::default();
         if let Some(path) = self.model_path {
@@ -96,7 +97,7 @@ impl<'a> ParsingContext<'a> {
                 let fact = input.r#type.as_ref().unwrap().value.as_ref().unwrap();
                 #[allow(irrefutable_let_patterns)]
                 let fact: InferenceFact = if let pb::type_proto::Value::TensorType(fact) = fact {
-                    translate_inference_fact(fact, &mut symbol_map)?
+                    translate_inference_fact(&ctx, fact)?
                 } else {
                     bail!("Can not parse tensor type");
                 };
@@ -180,7 +181,7 @@ impl<'a> ParsingContext<'a> {
             if !self.framework.ignore_output_shapes {
                 if let Some(f) = output.r#type.as_ref().and_then(|t| t.value.as_ref()) {
                     let pb::type_proto::Value::TensorType(f) = f;
-                    fact = translate_inference_fact(f, &mut symbol_map)?
+                    fact = translate_inference_fact(&ctx, f)?
                 };
             }
             if self.framework.ignore_output_types {
@@ -218,6 +219,9 @@ pub struct Onnx {
 
 impl Onnx {
     pub fn parse(&self, proto: &pb::ModelProto, path: Option<&str>) -> TractResult<ParseResult> {
+        self.parse_with_symbols(proto, path, &SymbolTable::default())
+    }
+    pub fn parse_with_symbols(&self, proto: &pb::ModelProto, path: Option<&str>, symbol_table: &SymbolTable) -> TractResult<ParseResult> {
         let onnx_operator_set_version = proto
             .opset_import
             .iter()
@@ -238,6 +242,7 @@ impl Onnx {
             parent_graphs: vec![],
             onnx_operator_set_version,
             model_path: path,
+            symbol_table: symbol_table.clone(),
         };
         trace!("created ParsingContext");
         ctx.parse_graph(graph)
@@ -292,8 +297,12 @@ impl Framework<pb::ModelProto, InferenceModel> for Onnx {
         Ok(crate::pb::ModelProto::decode(b)?)
     }
 
-    fn model_for_proto_model(&self, proto: &pb::ModelProto) -> TractResult<InferenceModel> {
-        let ParseResult { model, unresolved_inputs, .. } = self.parse(proto, None)?;
+    fn model_for_proto_model_with_symbols(
+        &self,
+        proto: &pb::ModelProto,
+        symbols: &SymbolTable,
+    ) -> TractResult<InferenceModel> {
+        let ParseResult { model, unresolved_inputs, .. } = self.parse_with_symbols(proto, None, symbols)?;
         if unresolved_inputs.len() > 0 {
             bail!("Could not resolve inputs at top-level: {:?}", unresolved_inputs)
         }

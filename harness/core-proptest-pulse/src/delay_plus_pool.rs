@@ -48,8 +48,9 @@ impl Arbitrary for DelayPlusPoolProblem {
 impl DelayPlusPoolProblem {
     pub fn run(&self) -> TestCaseResult {
         let mut model = InferenceModel::default();
+        let s = model.symbol_table.get_or_intern("S");
         let a = model
-            .add_source("a", f32::fact(dims!(1, tract_pulse::internal::stream_dim(), 1)).into())
+            .add_source("a", f32::fact(dims!(1, s, 1)).into())
             .unwrap();
         let crop =
             model.wire_node("delay", expand(array::Crop::new(1, self.delay, 0)), &[a]).unwrap();

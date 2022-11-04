@@ -46,6 +46,7 @@ type PulsifierFn = fn(
     &TypedNode,
     &mut PulsedModel,
     &HashMap<OutletId, OutletId>,
+    &Symbol,
     usize,
 ) -> TractResult<Option<TVec<OutletId>>>;
 

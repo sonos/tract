@@ -13,7 +13,7 @@ pub mod internal {
 
     pub use downcast_rs::Downcast;
 
-    pub use crate::fact::{stream_dim, stream_symbol, PulsedFact};
+    pub use crate::fact::PulsedFact;
     pub use crate::model::{PulsedModel, PulsedModelExt};
     pub use crate::ops::{OpPulsifier, PulsedOp};
 }
@@ -44,11 +44,11 @@ fn tract_nnef_registry() -> Registry {
 }
 
 fn decl_stream_symbol(
-    proto_model: &mut ModelBuilder,
+    _proto_model: &mut ModelBuilder,
     args: &[String],
 ) -> TractResult<ControlFlow<(), ()>> {
     if args[0] == "tract_pulse_streaming_symbol" {
-        proto_model.symbols.push(crate::stream_symbol());
+        //        proto_model.symbols.push("S");
         Ok(ControlFlow::Break(()))
     } else {
         Ok(ControlFlow::Continue(()))
@@ -62,16 +62,15 @@ mod tests {
     #[test]
     fn test_source_must_stream() {
         let mut model = TypedModel::default();
+        let s = model.symbol_table.get_or_intern("S");
         let _a = model.add_source("a", f32::fact(&[1, 2, 3])).unwrap();
         model.auto_outputs().unwrap();
-        assert!(PulsedModel::new(&model, 4).is_err());
+        assert!(PulsedModel::new(&model, s.clone(), 4).is_err());
 
         let mut model = TypedModel::default();
-        let _a = model
-            .add_source("a", f32::fact([1.to_dim(), stream_dim(), 3.to_dim()].as_ref()))
-            .unwrap();
+        let _a = model.add_source("a", f32::fact(dims![1, s, 3].as_ref())).unwrap();
         model.auto_outputs().unwrap();
-        let pulse = PulsedModel::new(&model, 4).unwrap();
+        let pulse = PulsedModel::new(&model, s.clone(), 4).unwrap();
         assert_eq!(
             *pulse.outlet_fact(OutletId::new(0, 0)).unwrap().to_typed_fact().unwrap(),
             f32::fact(&[1usize, 4, 3])
@@ -81,12 +80,11 @@ mod tests {
     #[test]
     fn test_immediate() {
         let mut model = TypedModel::default();
-        let _a = model
-            .add_source("a", f32::fact([stream_dim(), 2.to_dim(), 3.to_dim()].as_ref()))
-            .unwrap();
+        let s = model.symbol_table.get_or_intern("S");
+        let _a = model.add_source("a", f32::fact(dims![s, 2, 3].as_ref())).unwrap();
         model.auto_outputs().unwrap();
 
-        let pulse = PulsedModel::new(&model, 4).unwrap();
+        let pulse = PulsedModel::new(&model, s.clone(), 4).unwrap();
 
         assert_eq!(*pulse.input_fact(0).unwrap().to_typed_fact().unwrap(), f32::fact([4, 2, 3]));
         assert_eq!(*pulse.output_fact(0).unwrap().to_typed_fact().unwrap(), f32::fact([4, 2, 3]));

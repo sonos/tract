@@ -329,7 +329,7 @@ where
 
     fn resolve(symbols: &mut SymbolValues, expected: &TDim, provided: i64) {
         match expected {
-            TDim::Sym(s) => symbols[*s] = Some(provided),
+            TDim::Sym(s) => symbols[s] = Some(provided),
             TDim::MulInt(x, expr) => Self::resolve(symbols, expr, provided / *x),
             _ => (),
         }

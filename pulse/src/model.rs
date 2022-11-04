@@ -6,10 +6,11 @@ pub type PulsedNode = Node<PulsedFact, Box<dyn PulsedOp>>;
 
 #[allow(clippy::new_ret_no_self)]
 pub trait PulsedModelExt {
-    fn new(source: &TypedModel, pulse: usize) -> TractResult<PulsedModel>;
+    fn new(source: &TypedModel, symbol: Symbol, pulse: usize) -> TractResult<PulsedModel>;
 
     fn new_with_mapping(
         source: &TypedModel,
+        symbol: Symbol,
         pulse: usize,
     ) -> TractResult<(PulsedModel, HashMap<OutletId, OutletId>)>;
 
@@ -17,16 +18,17 @@ pub trait PulsedModelExt {
 }
 
 impl PulsedModelExt for PulsedModel {
-    fn new(source: &TypedModel, pulse: usize) -> TractResult<PulsedModel> {
-        Ok(PulsedModel::new_with_mapping(source, pulse)?.0)
+    fn new(source: &TypedModel, symbol: Symbol, pulse: usize) -> TractResult<PulsedModel> {
+        Ok(PulsedModel::new_with_mapping(source, symbol, pulse)?.0)
     }
 
     fn new_with_mapping(
         source: &TypedModel,
+        symbol: Symbol,
         pulse: usize,
     ) -> TractResult<(PulsedModel, HashMap<OutletId, OutletId>)> {
         let pulsifiers = crate::ops::OpPulsifier::inventory();
-        Pulsifier(pulse, pulsifiers).translate_model_with_mappings(source)
+        Pulsifier(symbol, pulse, pulsifiers).translate_model_with_mappings(source)
     }
 
     fn into_typed(self) -> TractResult<TypedModel> {
@@ -93,7 +95,7 @@ impl SpecialOps<PulsedFact, Box<dyn PulsedOp>> for PulsedModel {
     }
 }
 
-struct Pulsifier(usize, HashMap<TypeId, crate::ops::OpPulsifier>);
+struct Pulsifier(Symbol, usize, HashMap<TypeId, crate::ops::OpPulsifier>);
 
 impl std::fmt::Debug for Pulsifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -116,8 +118,8 @@ impl
         target: &mut PulsedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        if let Some(pulsifier) = self.1.get(&node.op.type_id()) {
-            if let Some(pulsified) = (pulsifier.func)(source, node, target, mapping, self.0)? {
+        if let Some(pulsifier) = self.2.get(&node.op.type_id()) {
+            if let Some(pulsified) = (pulsifier.func)(source, node, target, mapping, &self.0, self.1)? {
                 return Ok(pulsified);
             }
         }
@@ -150,7 +152,6 @@ impl Op for PulseWrappingOp {
     fn as_typed(&self) -> Option<&dyn TypedOp> {
         Some(self.0.as_ref())
     }
-
 }
 
 impl EvalOp for PulseWrappingOp {

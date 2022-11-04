@@ -92,6 +92,8 @@ pub trait Model:
 
     fn properties(&self) -> &HashMap<String, Arc<Tensor>>;
 
+    fn get_or_intern_symbol(&self, name: &str) -> Symbol;
+
     fn rename_node(&mut self, id: usize, name: &str) -> TractResult<()>;
 }
 
@@ -206,5 +208,9 @@ where
 
     fn rename_node(&mut self, id: usize, name: &str) -> TractResult<()> {
         self.rename_node(id, name)
+    }
+
+    fn get_or_intern_symbol(&self, name: &str) -> Symbol {
+        self.symbol_table.get_or_intern(name)
     }
 }

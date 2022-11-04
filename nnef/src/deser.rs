@@ -14,11 +14,17 @@ pub struct ModelBuilder<'a> {
 }
 
 impl<'mb> ModelBuilder<'mb> {
-    pub fn new(framework: &'mb Nnef, proto_model: &'mb ProtoModel) -> ModelBuilder<'mb> {
+    pub fn new(
+        framework: &'mb Nnef,
+        proto_model: &'mb ProtoModel,
+        symbols: &SymbolTable,
+    ) -> ModelBuilder<'mb> {
+        let mut model = TypedModel::default();
+        model.symbol_table = symbols.clone();
         ModelBuilder {
             registries: vec!["tract_nnef".to_string()],
             framework,
-            model: TypedModel::default(),
+            model,
             naming_scopes: vec![],
             scopes: vec![],
             proto_model,
@@ -44,11 +50,7 @@ impl<'mb> ModelBuilder<'mb> {
                     if ext.len() != 2 {
                         bail!("tract_symbol expects symbol: example: \"extension tract_symbol S;\"")
                     }
-                    let symbol = &ext[1];
-                    if symbol.len() != 1 {
-                        bail!("tract symbol must be one single letter, found {}", symbol);
-                    }
-                    let symbol = Symbol::from(ext[1].chars().next().unwrap());
+                    let symbol = self.model.symbol_table.new_symbol(&ext[1]);
                     self.symbols.push(symbol);
                 }
                 _ => {
@@ -252,7 +254,11 @@ impl<'mb> ModelBuilder<'mb> {
         self.model.wire_node(name, op, inputs).with_context(|| format!("inputs are {:?}", inputs))
     }
 
-    pub fn wire(&mut self, op: impl Into<Box<dyn TypedOp>>, inputs: &[OutletId]) -> TractResult<Value> {
+    pub fn wire(
+        &mut self,
+        op: impl Into<Box<dyn TypedOp>>,
+        inputs: &[OutletId],
+    ) -> TractResult<Value> {
         self.wire_as_outlets(op, inputs).map(Value::from)
     }
 }
@@ -350,15 +356,14 @@ impl RValue {
                                 ));
                             }
                             if out_dt != *dt {
-                                outlet = builder.wire(tract_core::ops::cast::cast(*dt), &[outlet_id])?;
+                                outlet =
+                                    builder.wire(tract_core::ops::cast::cast(*dt), &[outlet_id])?;
                             }
                         }
                     }
                     Ok(outlet)
-                } else if id.len() == 1
-                    && builder.symbols.contains(&id.chars().next().unwrap().into())
-                {
-                    Ok(Value::Dim(id.chars().next().unwrap().into()))
+                } else if let Some(sym) = builder.model.symbol_table.get(id) {
+                    Ok(Value::Dim(sym.into()))
                 } else {
                     bail!("No value for name {}", id)
                 }
@@ -428,10 +433,12 @@ impl RValue {
                     f.parse::<f32>()
                         .map(Value::Scalar)
                         .with_context(|| format!("Can not parse {} as f32", f))
+                } else if let Ok(i) = f.parse::<i64>() {
+                    Ok(Value::Dim(i.into()))
+                } else if let Some(s) = builder.model.symbol_table.get(f) {
+                    Ok(Value::Dim(s.into()))
                 } else {
-                    f.parse::<TDim>()
-                        .map(Value::Dim)
-                        .with_context(|| format!("Can not parse {} as i64", f))
+                    bail!("Can not parse {}", f)
                 }
             }
             RValue::Literal(Literal::String(s)) => Ok(Value::String(s.clone())),
@@ -542,11 +549,12 @@ impl CoerceFrom<Value> for OutletId {
                 Ok(builder.wire_as_outlets(tract_core::ops::konst::Const::new(t.clone()), &[])?[0])
             }
             Value::Scalar(f) => {
-                Ok(builder.wire_as_outlets(tract_core::ops::konst::Const::new(rctensor0(*f)), &[])?[0])
+                Ok(builder
+                    .wire_as_outlets(tract_core::ops::konst::Const::new(rctensor0(*f)), &[])?[0])
             }
-            Value::Dim(i) => {
-                Ok(builder.wire_as_outlets(tract_core::ops::konst::Const::new(rctensor0(i.clone())), &[])?[0])
-            }
+            Value::Dim(i) => Ok(builder
+                .wire_as_outlets(tract_core::ops::konst::Const::new(rctensor0(i.clone())), &[])?
+                [0]),
             Value::Wire(outlet) => Ok(*outlet),
             Value::Tuple(tuple) if tuple.len() == 1 => OutletId::coerce(builder, &tuple[0]),
             Value::Array(_) => {

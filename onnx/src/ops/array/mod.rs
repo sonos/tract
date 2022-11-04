@@ -25,7 +25,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Gather", gather);
     reg.insert("GatherElements", gather_elements);
     reg.insert("GatherND", gather_nd);
-    reg.insert("NonZero", |_, _| Ok((Box::new(nonzero::non_zero()), vec![])));
+    reg.insert("NonZero", nonzero::non_zero);
     reg.insert("OneHot", one_hot::one_hot);
     reg.insert("Range", |_, _| Ok((expand(array::Range::default()), vec![])));
     reg.insert("Pad", pad::pad);
