@@ -148,7 +148,7 @@ impl Parameters {
         probe: Option<&Probe>,
         location: &ModelLocation,
         tensors_values: &TensorsValues,
-        symbol_table: &SymbolTable
+        symbol_table: &SymbolTable,
     ) -> TractResult<(SomeGraphDef, Box<dyn Model>, Option<TfExt>)> {
         let need_graph =
             matches.is_present("proto") || matches.subcommand_name() == Some("compare-pbdir");
@@ -575,9 +575,6 @@ impl Parameters {
         reference_stage: Option<&str>,
     ) -> TractResult<(Arc<dyn Model>, Option<Arc<PulsedModel>>, Option<Arc<dyn Model>>)> {
         let keep_last = matches.is_present("verbose");
-        #[cfg(feature = "pulse")]
-        let pulse: Option<usize> =
-            matches.value_of("pulse").map(|s| s.parse::<usize>()).transpose()?;
         let stop_at = matches.value_of("pass").unwrap_or(if matches.is_present("optimize") {
             "optimize"
         } else {
@@ -675,10 +672,18 @@ impl Parameters {
         });
         #[cfg(feature = "pulse")]
         {
-            if let Some(pulse) = pulse {
-                stage!("pulse", typed_model -> pulsed_model, |m:TypedModel| {
-                    let sym = m.symbol_table.get_or_intern("S");
-                    PulsedModel::new(&m, sym,  pulse)});
+            if let Some(spec) = matches.value_of("pulse") {
+                stage!("pulse", typed_model -> pulsed_model, |m:TypedModel| { 
+                    let (sym, pulse) = if let Ok((s,p)) = scan_fmt!(spec, "{}={}", String, usize) {
+                        (s, p)
+                    } else if let Ok(i) = spec.parse::<usize>() {
+                        ("S".to_owned(), i)
+                    } else {
+                        bail!("Can not parse pulse specification {}", spec)
+                    };
+                    let sym = m.symbol_table.get_or_intern(&*sym);
+                    PulsedModel::new(&m, sym, pulse) 
+                });
                 stage!("pulse-to-type", pulsed_model -> typed_model, |m:PulsedModel| m.into_typed());
                 stage!("pulse-declutter", typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
             }

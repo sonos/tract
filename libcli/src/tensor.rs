@@ -147,14 +147,11 @@ pub fn parse_dim(symbol_table: &SymbolTable, i: &str) -> TractResult<TDim> {
     }
     let number_len = i.chars().take_while(|c| c.is_ascii_digit()).count();
     let symbol_len = i.len() - number_len;
-    if symbol_len > 1 {
-        bail!("Can not parse {} as Dim", i)
-    }
     let number: i64 = if number_len > 0 { i[..number_len].parse()? } else { 1 };
     if symbol_len == 0 {
         return Ok(number.to_dim());
     }
-    let symbol = symbol_table.get_or_intern(i);
+    let symbol = symbol_table.get_or_intern(&i[number_len..]);
     Ok(symbol.to_dim() * number)
 }
 
