@@ -1,12 +1,10 @@
+use crate::model::{ParsingContext, TensorPlusPath};
+use crate::pb::tensor_proto::DataType;
 use crate::pb::*;
-use crate::{model::TensorPlusPath, pb::tensor_proto::DataType};
 use prost::Message;
-use std::collections::hash_map::Entry;
+use std::convert::{TryFrom, TryInto};
 use std::fs;
-use std::{
-    convert::{TryFrom, TryInto},
-    path::PathBuf,
-};
+use std::path::PathBuf;
 use tract_hir::internal::*;
 
 impl TryFrom<DataType> for DatumType {
@@ -32,8 +30,8 @@ impl TryFrom<DataType> for DatumType {
 }
 
 pub fn translate_inference_fact<'a, 'b>(
+    ctx: &ParsingContext,
     t: &'a type_proto::Tensor,
-    symbol_map: &'b mut HashMap<&'a str, Symbol>,
 ) -> TractResult<InferenceFact> {
     let mut fact = InferenceFact::default();
     fact = fact.with_datum_type(DataType::from_i32(t.elem_type).unwrap().try_into()?);
@@ -46,13 +44,7 @@ pub fn translate_inference_fact<'a, 'b>(
                     DimFact::from(v.to_dim())
                 }
                 Some(tensor_shape_proto::dimension::Value::DimParam(v)) => {
-                    let sym = match symbol_map.entry(&v) {
-                        Entry::Occupied(entry) => *entry.get(),
-                        Entry::Vacant(entry) => {
-                            *entry.insert(Symbol::new(v.chars().nth(0).unwrap_or('?')))
-                        }
-                    };
-
+                    let sym = ctx.symbol_table.get_or_intern(v);
                     DimFact::from(sym.to_dim())
                 }
                 _ => DimFact::default(),

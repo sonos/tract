@@ -995,7 +995,7 @@ impl Tensor {
             }
             let mut result = Self::uninitialized_dt(dst_dt, &self.shape)?;
             if self.dt == DatumType::String {
-                dispatch_datum!(Self::cast_from_string(dst_dt)(self, &mut result))?;
+                dispatch_numbers!(Self::cast_from_string(dst_dt)(self, &mut result))?;
                 return Ok(Cow::Owned(result));
             }
             if dst_dt == DatumType::String {

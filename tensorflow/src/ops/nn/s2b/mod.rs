@@ -207,16 +207,17 @@ mod tests {
 
     #[test]
     fn space_to_batch_nd_infer_2() {
-        use tract_pulse::internal::stream_dim as s;
+        let table = SymbolTable::default();
+        let s = table.get_or_intern("S");
         let mut op = SpaceToBatch::new(f32::datum_type());
-        let data = f32::fact(dims!(1, s() - 4, 16)).into();
+        let data = f32::fact(dims!(1, s.to_dim() - 4, 16)).into();
         let block_shape = InferenceFact::from(Tensor::from(arr1(&[2])));
-        let paddings = InferenceFact::from(Tensor::from(arr2(&[[0.to_dim(), (s() % 2)]])));
+        let paddings = InferenceFact::from(Tensor::from(arr2(&[[0.to_dim(), (s.to_dim() % 2)]])));
         let any = InferenceFact::default();
 
         let (_, outputs, _) =
             op.infer_facts(tvec!(&data, &block_shape, &paddings), tvec!(&any), tvec!()).unwrap();
-        assert_eq!(outputs[0], f32::fact(dims!(2, (s() + s() % 2 - 4) / 2, 16)).into());
+        assert_eq!(outputs[0], f32::fact(dims!(2, (s.to_dim() + s.to_dim() % 2 - 4) / 2, 16)).into());
     }
 
     #[test]

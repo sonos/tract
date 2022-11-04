@@ -16,7 +16,12 @@ where
     fn proto_model_for_read(&self, reader: &mut dyn Read) -> TractResult<ProtoModel>;
 
     /// Translate a proto model into a model.
-    fn model_for_proto_model(&self, proto: &ProtoModel) -> TractResult<Model>;
+    fn model_for_proto_model(&self, proto: &ProtoModel) -> TractResult<Model> {
+        self.model_for_proto_model_with_symbols(proto, &SymbolTable::default())
+    }
+
+    /// Translate a proto model into a model, with some symbols already listed.
+    fn model_for_proto_model_with_symbols(&self, proto: &ProtoModel, symbols: &SymbolTable) -> TractResult<Model>;
 
     /// Read a proto model from a filename.
     fn proto_model_for_path(&self, p: impl AsRef<Path>) -> TractResult<ProtoModel> {

@@ -74,7 +74,7 @@ impl<'a> IntoAst<'a> {
 
     pub fn ensure_symbol(&mut self, s: &Symbol) -> TractResult<()> {
         if !self.symbols.contains(s) {
-            self.symbols.push(*s);
+            self.symbols.push(s.clone());
         }
         Ok(())
     }
@@ -209,7 +209,7 @@ impl<'a> IntoAst<'a> {
             }
         }
         for sym in self.symbols {
-            extension.push(vec!["tract_symbol".to_string(), sym.as_char().to_string()]);
+            extension.push(vec!["tract_symbol".to_string(), sym.to_string()]);
         }
         let properties = FragmentDef {
             decl: FragmentDecl {
@@ -410,7 +410,7 @@ pub fn tdims(shape: &[TDim]) -> RValue {
 pub fn tdim(dim: &TDim) -> RValue {
     match dim {
         TDim::Val(x) => numeric(x),
-        TDim::Sym(s) => ident(format!("{}", s.as_char())),
+        TDim::Sym(s) => ident(s.to_string()),
         TDim::Add(terms) => terms
             .iter()
             .map(tdim)

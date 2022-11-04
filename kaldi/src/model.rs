@@ -191,10 +191,12 @@ impl Framework<KaldiProtoModel, InferenceModel> for Kaldi {
         parser::nnet3(&*v)
     }
 
-    fn model_for_proto_model(&self, proto_model: &KaldiProtoModel) -> TractResult<InferenceModel> {
+    fn model_for_proto_model_with_symbols(&self, proto_model: &KaldiProtoModel, symbols: &SymbolTable) -> TractResult<InferenceModel> {
         let ctx = ParsingContext { proto_model };
         let mut model = InferenceModel::default();
-        let s = tract_pulse::internal::stream_dim();
+        model.symbol_table = symbols.clone();
+
+        let s = model.symbol_table.get_or_intern("S");
         model.add_source(
             proto_model.config_lines.input_name.clone(),
             f32::fact(dims!(s, proto_model.config_lines.input_dim)).into(),

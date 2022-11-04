@@ -20,7 +20,9 @@ pub mod prelude {
     pub use crate::datum::{round_ties_to_even, Blob, Datum, DatumType, QParams};
     pub use crate::dim::{Symbol, SymbolValues, TDim, ToDim};
     pub use crate::tensor::litteral::*;
-    pub use crate::tensor::{natural_strides, reinterpret_inner_dim_as_complex, IntoArcTensor, IntoTensor, Tensor};
+    pub use crate::tensor::{
+        natural_strides, reinterpret_inner_dim_as_complex, IntoArcTensor, IntoTensor, Tensor,
+    };
     pub use crate::tvec;
     pub use crate::TVec;
     pub use crate::{
@@ -28,14 +30,14 @@ pub mod prelude {
         dispatch_floatlike, dispatch_hash, dispatch_numbers, dispatch_signed,
     };
     pub use crate::{TractError, TractResult};
-    pub use num_complex::Complex;
-    pub use itertools as tract_itertools;
     pub use half::f16;
+    pub use itertools as tract_itertools;
+    pub use num_complex::Complex;
 }
 
 pub mod internal {
     pub use crate::datum::ClampCast;
-    pub use crate::dim::{DimLike, TDim, ToDim};
+    pub use crate::dim::{DimLike, SymbolTable, TDim, ToDim};
     pub use crate::hash::{dyn_hash, DynHash};
     pub use crate::impl_dyn_hash;
     pub use crate::prelude::*;
@@ -44,8 +46,8 @@ pub mod internal {
     pub use anyhow::{bail, ensure};
     pub use ndarray as tract_ndarray;
     pub use num_integer;
-    pub use smallvec as tract_smallvec;
     pub use num_traits as tract_num_traits;
+    pub use smallvec as tract_smallvec;
 }
 
 pub use anyhow;

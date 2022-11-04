@@ -56,8 +56,9 @@ impl Nnef {
     pub fn translate(
         &self,
         proto_model: &ProtoModel,
+        symbols: &SymbolTable,
     ) -> Result<TypedModel, (TypedModel, TractError)> {
-        ModelBuilder::new(self, proto_model).into_typed_model()
+        ModelBuilder::new(self, proto_model, symbols).into_typed_model()
     }
 
     pub fn write(&self, model: &TypedModel, w: impl std::io::Write) -> TractResult<()> {
@@ -204,8 +205,8 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
         proto_model_from_resources(resources)
     }
 
-    fn model_for_proto_model(&self, proto: &ProtoModel) -> TractResult<TypedModel> {
-        self.translate(proto).map_err(|e| e.1)
+    fn model_for_proto_model_with_symbols(&self, proto: &ProtoModel, symbols: &SymbolTable) -> TractResult<TypedModel> {
+        self.translate(proto, symbols).map_err(|e| e.1)
     }
 }
 

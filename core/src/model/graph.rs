@@ -41,6 +41,8 @@ where
     /// model properties
     #[educe(Hash(method = "hash_properties"))]
     pub properties: HashMap<String, Arc<Tensor>>,
+    /// symbol table
+    pub symbol_table: SymbolTable,
 }
 
 fn hash_outlet_labels<H: std::hash::Hasher>(it: &HashMap<OutletId, String>, state: &mut H) {
@@ -73,6 +75,7 @@ where
             outputs: vec![],
             outlet_labels: HashMap::new(),
             properties: HashMap::new(),
+            symbol_table: Default::default(),
         }
     }
 }

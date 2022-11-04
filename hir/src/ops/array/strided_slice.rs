@@ -85,7 +85,7 @@ impl StridedSlice {
                 let symbols = bound.symbols();
                 if symbols.len() == 1 {
                     let sym = symbols.into_iter().next().unwrap();
-                    let values = SymbolValues::default().with(sym, 100_000_000);
+                    let values = SymbolValues::default().with(&sym, 100_000_000);
                     bound.eval(&values).to_isize().unwrap() < 0
                 } else {
                     false
@@ -160,7 +160,6 @@ impl Expansion for StridedSlice {
     fn name(&self) -> Cow<str> {
         "StridedSlice".into()
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -298,9 +297,10 @@ impl Expansion for StridedSlice {
                     AxisOp::Rm(0),
                     &right,
                 )?[0];
+                let sym = target.symbol_table.new_symbol("l");
                 wire = target.wire_node(
                     format!("{}.slice-axis-{}", prefix, axis),
-                    tract_core::ops::array::DynSlice::new(axis, true, true),
+                    tract_core::ops::array::DynSlice::new(axis, true, true, sym),
                     &[wire, left, right],
                 )?[0];
             }
@@ -329,10 +329,6 @@ mod tests {
     #![allow(non_snake_case)]
     use super::*;
     use tract_ndarray::{arr1, arr2, arr3};
-
-    fn s() -> TDim {
-        Symbol::from('S').into()
-    }
 
     pub fn strided_slice(begin_mask: i64, end_mask: i64, shrink_axis_mask: i64) -> StridedSlice {
         StridedSlice {
@@ -571,8 +567,10 @@ mod tests {
 
     #[test]
     fn inference_3() {
+        let table = SymbolTable::default();
+        let s = table.new_symbol("S").to_dim();
         let op = strided_slice(5, 7, 0);
-        let input = f32::fact(dims!(1, s() - 2, 16)).into();
+        let input = f32::fact(dims!(1, s.clone() - 2, 16)).into();
         let begin = InferenceFact::from(tensor1(&[0i32, 2, 0]));
         let end = InferenceFact::from(tensor1(&[0i32, 0, 0]));
         let strides = InferenceFact::from(tensor1(&[1i32, 1, 1]));
@@ -582,7 +580,7 @@ mod tests {
             .infer_facts(tvec![&input, &begin, &end, &strides], tvec![&any], tvec!())
             .unwrap();
 
-        assert_eq!(output_facts, tvec![f32::fact(dims!(1, s() - 4, 16)).into()]);
+        assert_eq!(output_facts, tvec![f32::fact(dims!(1, s - 4, 16)).into()]);
     }
 
     #[test]

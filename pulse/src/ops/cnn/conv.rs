@@ -10,6 +10,7 @@ fn pulsify(
     node: &TypedNode,
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
+    _symbol: &Symbol,
     _pulse: usize,
 ) -> TractResult<Option<TVec<OutletId>>> {
     fn zero<D: Datum>() -> Tensor {

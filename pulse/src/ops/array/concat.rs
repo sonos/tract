@@ -12,6 +12,7 @@ fn pulsify(
     node: &TypedNode,
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
+    _symbol: &Symbol,
     _pulse: usize,
 ) -> TractResult<Option<TVec<OutletId>>> {
     let input = mapping[&node.inputs[0]];
@@ -154,7 +155,7 @@ impl OpState for PulsedSameAxisConcatState {
             &op.pre_slice,
             pre_offset
         ))?;
-        if self.symbols_in_dim.iter().all(|s| session.resolved_symbols[*s].is_some()) {
+        if self.symbols_in_dim.iter().all(|s| session.resolved_symbols[s].is_some()) {
             let l = op.input_len.eval(&session.resolved_symbols).to_usize().unwrap();
             let post_offset = op.input_delay + l as usize;
             dispatch_datum!(overwrite_part_of_pulse(data.datum_type())(

@@ -6,7 +6,7 @@ use super::*;
 #[test]
 fn einsum_pulsedmm() {
     let mut model = TypedModel::default();
-    let s = stream_symbol();
+    let s = model.symbol_table.get_or_intern("S");
     let x = model.add_source("x", f32::fact(dims!(s, 8, 2))).unwrap();
     let w = model.add_const("w", Tensor::zero::<f32>(&[8, 2, 4]).unwrap()).unwrap();
 

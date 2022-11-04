@@ -1,9 +1,9 @@
-use std::sync::Mutex;
 use std::collections::HashSet;
 use std::fs;
 use std::io::Read;
 use std::ops::Range;
 use std::str::FromStr;
+use std::sync::Mutex;
 
 use crate::model::Model;
 use tract_hir::internal::*;
@@ -64,7 +64,6 @@ impl TensorsValues {
     }
 }
 
-
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct TensorValues {
     pub input_index: Option<usize>,
@@ -74,7 +73,6 @@ pub struct TensorValues {
     pub values: Option<Vec<Arc<Tensor>>>,
     pub random_range: Option<Range<f32>>,
 }
-
 
 fn parse_dt(dt: &str) -> TractResult<DatumType> {
     Ok(match dt.to_lowercase().as_ref() {
@@ -96,18 +94,18 @@ fn parse_dt(dt: &str) -> TractResult<DatumType> {
     })
 }
 
-pub fn parse_spec(size: &str) -> TractResult<InferenceFact> {
+pub fn parse_spec(symbol_table: &SymbolTable, size: &str) -> TractResult<InferenceFact> {
     if size.len() == 0 {
         return Ok(InferenceFact::default());
     }
     if size.contains('x') && !size.contains(',') {
         parse_x_spec(size)
     } else {
-        parse_coma_spec(size)
+        parse_coma_spec(symbol_table, size)
     }
 }
 
-pub fn parse_coma_spec(size: &str) -> TractResult<InferenceFact> {
+pub fn parse_coma_spec(symbol_table: &SymbolTable, size: &str) -> TractResult<InferenceFact> {
     let splits = size.split(',').collect::<Vec<_>>();
 
     if splits.len() < 1 {
@@ -127,7 +125,11 @@ pub fn parse_coma_spec(size: &str) -> TractResult<InferenceFact> {
         shape
             .iter()
             .map(|&s| {
-                Ok(if s == "_" { GenericFactoid::Any } else { GenericFactoid::Only(parse_dim(s)?) })
+                Ok(if s == "_" {
+                    GenericFactoid::Any
+                } else {
+                    GenericFactoid::Only(parse_dim(symbol_table, s)?)
+                })
             })
             .collect::<TractResult<TVec<DimFact>>>()?,
     );
@@ -139,11 +141,7 @@ pub fn parse_coma_spec(size: &str) -> TractResult<InferenceFact> {
     }
 }
 
-pub fn parse_dim(i: &str) -> TractResult<TDim> {
-    // ensure the magic S is pre-registered
-    #[cfg(feature = "pulse")]
-    let _ = tract_pulse::internal::stream_symbol();
-
+pub fn parse_dim(symbol_table: &SymbolTable, i: &str) -> TractResult<TDim> {
     if i.len() == 0 {
         bail!("Can not parse empty string as Dim")
     }
@@ -156,8 +154,7 @@ pub fn parse_dim(i: &str) -> TractResult<TDim> {
     if symbol_len == 0 {
         return Ok(number.to_dim());
     }
-    let symbol = i.chars().last().unwrap();
-    let symbol = Symbol::from(symbol);
+    let symbol = symbol_table.get_or_intern(i);
     Ok(symbol.to_dim() * number)
 }
 
@@ -209,14 +206,14 @@ fn parse_values<T: Datum + FromStr>(shape: &[usize], it: Vec<&str>) -> TractResu
     Ok(tract_ndarray::Array::from_shape_vec(shape, values)?.into())
 }
 
-fn tensor_for_text_data(filename: &str) -> TractResult<Tensor> {
+fn tensor_for_text_data(symbol_table: &SymbolTable, filename: &str) -> TractResult<Tensor> {
     let mut file = fs::File::open(filename)
         .map_err(|e| format_err!("Reading tensor from {}, {:?}", filename, e))?;
     let mut data = String::new();
     file.read_to_string(&mut data)?;
 
     let mut lines = data.lines();
-    let proto = parse_spec(lines.next().context("Empty data file")?)?;
+    let proto = parse_spec(symbol_table, lines.next().context("Empty data file")?)?;
     let shape = proto.shape.concretize().unwrap();
 
     let values = lines.flat_map(|l| l.split_whitespace()).collect::<Vec<&str>>();
@@ -227,11 +224,11 @@ fn tensor_for_text_data(filename: &str) -> TractResult<Tensor> {
     let missing = values.len() / product;
 
     let shape: Vec<_> = shape.iter().map(|d| d.to_usize().unwrap_or(missing)).collect();
-    dispatch_datum!(parse_values(proto.datum_type.concretize().unwrap())(&*shape, values))
+    dispatch_numbers!(parse_values(proto.datum_type.concretize().unwrap())(&*shape, values))
 }
 
 /// Parses the `data` command-line argument.
-pub fn for_data(filename: &str) -> TractResult<(Option<String>, InferenceFact)> {
+pub fn for_data(symbol_table: &SymbolTable, filename: &str) -> TractResult<(Option<String>, InferenceFact)> {
     #[allow(unused_imports)]
     use std::convert::TryFrom;
     if filename.ends_with(".pb") {
@@ -255,7 +252,7 @@ pub fn for_data(filename: &str) -> TractResult<(Option<String>, InferenceFact)> 
         let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(filename)?)?;
         Ok((None, for_npz(&mut npz, inner)?.into()))
     } else {
-        Ok((None, tensor_for_text_data(filename)?.into()))
+        Ok((None, tensor_for_text_data(symbol_table, filename)?.into()))
     }
 }
 
@@ -296,9 +293,9 @@ pub fn for_npz(npz: &mut ndarray_npy::NpzReader<fs::File>, name: &str) -> TractR
     bail!("Can not extract tensor from {}", name);
 }
 
-pub fn for_string(value: &str) -> TractResult<(Option<String>, InferenceFact)> {
+pub fn for_string(symbol_table: &SymbolTable, value: &str) -> TractResult<(Option<String>, InferenceFact)> {
     if let Some(stripped) = value.strip_prefix('@') {
-        for_data(stripped)
+        for_data(symbol_table, stripped)
     } else {
         let (name, value) = if value.contains(':') {
             let mut splits = value.split(':');
@@ -308,7 +305,7 @@ pub fn for_string(value: &str) -> TractResult<(Option<String>, InferenceFact)> {
         };
         if value.contains('=') {
             let mut split = value.split('=');
-            let spec = parse_spec(split.next().unwrap())?;
+            let spec = parse_spec(symbol_table, split.next().unwrap())?;
             let value = split.next().unwrap().split(',');
             let dt = spec
                 .datum_type
@@ -318,10 +315,10 @@ pub fn for_string(value: &str) -> TractResult<(Option<String>, InferenceFact)> {
                 .shape
                 .as_concrete_finite()?
                 .context("Must specify concrete shape when giving tensor value")?;
-            let tensor = dispatch_datum!(parse_values(dt)(&*shape, value.collect()))?;
+            let tensor = dispatch_numbers!(parse_values(dt)(&*shape, value.collect()))?;
             Ok((name, tensor.into()))
         } else {
-            Ok((name, parse_spec(value)?))
+            Ok((name, parse_spec(symbol_table, value)?))
         }
     }
 }
@@ -429,7 +426,10 @@ pub fn retrieve_or_make_inputs(
                     }
                     values.push(t);
                 }
-                info!("Generated {} pulses of shape {:?} for input {}.", needed_pulses, fact.shape, ix);
+                info!(
+                    "Generated {} pulses of shape {:?} for input {}.",
+                    needed_pulses, fact.shape, ix
+                );
                 tmp.push(values);
             } else {
                 bail!("For input {}, can not reconcile model input fact {:?} with provided input {:?}", name, fact, value[0]);

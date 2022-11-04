@@ -265,9 +265,10 @@ fn load(
     let center_point_box =
         BoxRepr::from_i64(invocation.named_arg_as(builder, "center_point_box")?)?;
 
+    let n = builder.model.symbol_table.get_or_intern("n");
     let op = NonMaxSuppression {
         center_point_box,
-        num_selected_indices_symbol: Symbol::new('n'),
+        num_selected_indices_symbol: n,
         has_score_threshold: score_threshold.is_some(),
     };
     if let Some(score_threshold) = score_threshold {

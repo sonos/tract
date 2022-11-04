@@ -1,27 +1,15 @@
 use crate::internal::*;
 
-lazy_static::lazy_static! {
-    static ref S: Symbol = Symbol::new('S');
-}
-
-pub fn stream_symbol() -> Symbol {
-    *S
-}
-
-pub fn stream_dim() -> TDim {
-    (*S).into()
-}
-
 pub trait StreamFact {
-    fn stream_info(&self) -> Option<(usize, &TDim)>;
+    fn stream_info(&self, stream_sym: &Symbol) -> Option<(usize, &TDim)>;
 }
 
 impl StreamFact for ShapeFact {
-    fn stream_info(&self) -> Option<(usize, &TDim)> {
+    fn stream_info(&self, stream_sym: &Symbol) -> Option<(usize, &TDim)> {
         let streaming_dims: TVec<(usize, &TDim)> = (&**self)
             .iter()
             .enumerate()
-            .filter(|(_ix, d)| d.symbols().contains(&stream_symbol()))
+            .filter(|(_ix, d)| d.symbols().contains(stream_sym))
             .collect();
         if streaming_dims.len() != 1 {
             None
@@ -43,11 +31,11 @@ pub struct PulsedFact {
 impl_dyn_hash!(PulsedFact);
 
 impl PulsedFact {
-    pub fn from_tensor_fact_pulse(tf: &TypedFact, pulse: usize) -> TractResult<PulsedFact> {
+    pub fn from_tensor_fact_pulse(tf: &TypedFact, symbol: &Symbol, pulse: usize) -> TractResult<PulsedFact> {
         let datum_type = tf.datum_type;
         let (axis, len) = tf
             .shape
-            .stream_info()
+            .stream_info(symbol)
             .ok_or_else(|| format_err!("Can not pulse a tensor with no streaming dim"))?;
         let mut shape: TVec<TDim> = tf.shape.iter().collect();
         shape[axis] = pulse.into();
