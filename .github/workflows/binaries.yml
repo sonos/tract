@@ -39,7 +39,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Extract version tag
         id: version
@@ -76,7 +76,7 @@ jobs:
           tar czf tract-${name}.tgz tract-${name}
 
       - name: Upload asset
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: tract-${{matrix.target}}-${{ steps.version.outputs.value }}.tgz
           name: ${{ steps.version.outputs.value }}
