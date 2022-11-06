@@ -342,8 +342,8 @@ impl Parameters {
                 tract_core::ops::Downsample::new(0, period as _, 0),
                 &outputs[0..1],
             )?[0];
-            if let Some(label) = raw_model.outlet_label(outputs[0]) {
-                raw_model.set_outlet_label(id, label.to_string())?;
+            if let Some(label) = raw_model.outlet_label(outputs[0]).map(|s| s.to_string()) {
+                raw_model.set_outlet_label(id, label)?;
             }
             outputs[0] = id;
             raw_model.set_output_outlets(&*outputs)?;
