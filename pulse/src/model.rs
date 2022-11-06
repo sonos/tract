@@ -261,8 +261,6 @@ impl Op for NonPulsingWrappingOp {
     fn as_typed(&self) -> Option<&dyn TypedOp> {
         Some(self.0.as_ref())
     }
-
-    op_pulse!();
 }
 
 impl EvalOp for NonPulsingWrappingOp {
