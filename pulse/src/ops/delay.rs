@@ -96,19 +96,18 @@ mod test {
         let fact_0 = PulsedFact {
             datum_type: u8::datum_type(),
             shape: (&[pulse]).into(),
-            axis: 0,
-            dim: stream_dim(),
-            delay: 0,
+            stream: Some(StreamInfo { axis: 0, dim: stream_dim(), delay: 0 }),
         };
+        let stream = fact_0.stream.as_ref().unwrap();
         let source = model.add_source("source", fact_0.clone()).unwrap();
         let delay_1 = model
-            .wire_node("delay-1", Delay::new_typed(&(&fact_0).into(), fact_0.axis, 2, 0), &[source])
+            .wire_node("delay-1", Delay::new_typed(&(&fact_0).into(), stream.axis, 2, 0), &[source])
             .unwrap()[0];
         let fact_1 = model.outlet_fact(delay_1).unwrap().clone();
         let delay_2 = model
             .wire_node(
                 "delay-1",
-                Delay::new_typed(&(&fact_1).into(), fact_1.axis, 2, 0),
+                Delay::new_typed(&(&fact_1).into(), stream.axis, 2, 0),
                 &[delay_1],
             )
             .unwrap();

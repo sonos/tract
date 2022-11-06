@@ -242,7 +242,7 @@ mod test {
         model.set_output_outlets(&conv)?;
         let pulsed = PulsedModel::new(&model, 1)?;
         let output_fact = pulsed.output_fact(0)?;
-        assert_eq!(output_fact.stream.unwrap().delay, 0);
+        assert_eq!(output_fact.stream.as_ref().unwrap().delay, 0);
         Ok(())
     }
 }
