@@ -42,6 +42,8 @@ then
     ALL_FEATURES=--all-features
 fi
 
+cargo check --all-targets
+
 cargo -q test $CARGO_EXTRA -q -p tract-core -p tract-hir -p tract-onnx -p tract-linalg
 # doc test are not finding libtensorflow.so
 cargo -q test $CARGO_EXTRA -q -p tract-tensorflow --lib $ALL_FEATURES
@@ -57,4 +59,3 @@ cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p nnef-inceptionv3 $ALL_FEAT
 cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p tf-inceptionv3 $ALL_FEATURES
 cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p tf-mobilenet-v2 $ALL_FEATURES
 cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p tf-moz-deepspeech $ALL_FEATURES
-
