@@ -3,11 +3,14 @@ use num_traits::Zero;
 use std::fmt;
 use std::ops;
 
+mod parse;
 mod sym;
 mod tree;
 
+pub use self::parse::parse_tdim;
 pub use self::sym::{Symbol, SymbolTable, SymbolValues};
 pub use self::tree::{TDim, UndeterminedSymbol};
+
 use crate::{TractError, TractResult};
 
 /// A super-trait for value acting as tensor dimensions in tract.
