@@ -76,12 +76,12 @@ impl Nnef {
         let now =
             std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap();
         let mut header = tar::Header::new_gnu();
-        header.set_path("graph.nnef")?;
+        header.set_path("graph.nnef").context("Setting graph.nnef path")?;
         header.set_size(graph_data.len() as u64);
         header.set_mode(0o644);
         header.set_mtime(now.as_secs());
         header.set_cksum();
-        ar.append(&header, &mut &*graph_data)?;
+        ar.append(&header, &mut &*graph_data).context("Appending graph.nnef")?;
 
         if let Some(quantization) = proto_model.quantization {
             let mut quant_data = vec![];
@@ -91,12 +91,12 @@ impl Nnef {
                     .context("Serializing graph.quant")?;
             }
 
-            header.set_path("graph.quant")?;
+            header.set_path("graph.quant").context("Setting graph.quant path")?;
             header.set_size(quant_data.len() as u64);
             header.set_mode(0o644);
             header.set_mtime(now.as_secs());
             header.set_cksum();
-            ar.append(&header, &mut &*quant_data)?;
+            ar.append(&header, &mut &*quant_data).context("Appending graph.quant")?;
         }
 
         for (label, t) in &proto_model.tensors {
@@ -112,9 +112,10 @@ impl Nnef {
             header.set_mtime(now.as_secs());
             header.set_cksum();
 
-            ar.append_data(&mut header, filename, &mut &*data)?;
+            ar.append_data(&mut header, filename, &mut &*data)
+                .with_context(|| format!("Appending tensor {:?}", filename))?;
         }
-        Ok(ar.into_inner()?)
+        Ok(ar.into_inner().context("Finalizing tar")?)
     }
 
     pub fn write_to_dir(
@@ -242,12 +243,12 @@ fn proto_model_from_resources(
                 .downcast_arc::<HashMap<String, QuantFormat>>()
                 .map_err(|_| anyhow!("Error while downcasting quantization format resource"))
         })
-        .transpose()?
+    .transpose()?
         .map(|quant| {
             Arc::try_unwrap(quant)
                 .map_err(|_| anyhow!("Error while extracting quantization format resource from shared reference. Only one reference to it is expected"))
         })
-        .transpose()?;
+    .transpose()?;
 
     let proto = ProtoModel { doc, tensors, quantization, resources };
     proto.validate()?;
@@ -268,8 +269,9 @@ fn read_stream<R: std::io::Read>(
     let mut last_loader_name;
     for loader in resource_loaders {
         last_loader_name = Some(loader.name());
-        let loaded = loader.try_load(path, reader)
-            .with_context(|| anyhow!("Error while loading resource by {:?} at path {:?}", loader.name(), path))?;
+        let loaded = loader.try_load(path, reader).with_context(|| {
+            anyhow!("Error while loading resource by {:?} at path {:?}", loader.name(), path)
+        })?;
         if let Some((id, resource)) = loaded {
             ensure!(
                 !resources.contains_key(&id),
