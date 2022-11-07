@@ -7,6 +7,7 @@ pub struct ModelBuilder<'a> {
     pub framework: &'a Nnef,
     pub registries: Vec<String>,
     pub model: TypedModel,
+    pub model_nodes_with_protected_name: HashSet<usize>,
     pub naming_scopes: Vec<String>,
     pub scopes: Vec<HashMap<String, Value>>,
     pub proto_model: &'a ProtoModel,
@@ -175,7 +176,9 @@ impl<'mb> ModelBuilder<'mb> {
                     }
                 }
             }
-            self.model.node_mut(values[0].node).name = self.naming_scopes.join(".").to_string();
+            if !self.model_nodes_with_protected_name.contains(values[0].node) {
+                self.model.node_mut(values[0].node).name = self.naming_scopes.join(".").to_string();
+            }
             for (id, outlet) in identifiers.iter().zip(values.iter()) {
                 self.scopes.last_mut().unwrap().insert(id.to_string(), Value::Wire(*outlet));
             }
