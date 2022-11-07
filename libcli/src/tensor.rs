@@ -38,12 +38,6 @@ impl TensorsValues {
         self.by_input_ix_mut(ix).unwrap()
     }
 
-    /*
-    pub fn by_output_ix(&self, ix: usize) -> Option<&TensorValues> {
-    self.0.iter().find(|t| t.output_index == Some(ix))
-    }
-    */
-
     pub fn add(&mut self, other: TensorValues) {
         let mut tensor = other.input_index.and_then(|ix| self.by_input_ix_mut(ix));
 
@@ -128,7 +122,7 @@ pub fn parse_coma_spec(symbol_table: &SymbolTable, size: &str) -> TractResult<In
                 Ok(if s == "_" {
                     GenericFactoid::Any
                 } else {
-                    GenericFactoid::Only(parse_dim(symbol_table, s)?)
+                    GenericFactoid::Only(parse_tdim(symbol_table, s)?)
                 })
             })
             .collect::<TractResult<TVec<DimFact>>>()?,
@@ -139,20 +133,6 @@ pub fn parse_coma_spec(symbol_table: &SymbolTable, size: &str) -> TractResult<In
     } else {
         Ok(InferenceFact::shape(shape))
     }
-}
-
-pub fn parse_dim(symbol_table: &SymbolTable, i: &str) -> TractResult<TDim> {
-    if i.len() == 0 {
-        bail!("Can not parse empty string as Dim")
-    }
-    let number_len = i.chars().take_while(|c| c.is_ascii_digit()).count();
-    let symbol_len = i.len() - number_len;
-    let number: i64 = if number_len > 0 { i[..number_len].parse()? } else { 1 };
-    if symbol_len == 0 {
-        return Ok(number.to_dim());
-    }
-    let symbol = symbol_table.get_or_intern(&i[number_len..]);
-    Ok(symbol.to_dim() * number)
 }
 
 pub fn parse_x_spec(size: &str) -> TractResult<InferenceFact> {

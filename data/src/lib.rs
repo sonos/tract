@@ -18,7 +18,7 @@ pub type TractResult<T> = anyhow::Result<T>;
 
 pub mod prelude {
     pub use crate::datum::{round_ties_to_even, Blob, Datum, DatumType, QParams};
-    pub use crate::dim::{Symbol, SymbolValues, TDim, ToDim};
+    pub use crate::dim::{Symbol, SymbolTable, SymbolValues, TDim, ToDim};
     pub use crate::tensor::litteral::*;
     pub use crate::tensor::{
         natural_strides, reinterpret_inner_dim_as_complex, IntoArcTensor, IntoTensor, Tensor,
@@ -37,7 +37,7 @@ pub mod prelude {
 
 pub mod internal {
     pub use crate::datum::ClampCast;
-    pub use crate::dim::{DimLike, SymbolTable, TDim, ToDim};
+    pub use crate::dim::{parse_tdim, DimLike};
     pub use crate::hash::{dyn_hash, DynHash};
     pub use crate::impl_dyn_hash;
     pub use crate::prelude::*;
