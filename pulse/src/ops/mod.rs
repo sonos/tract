@@ -47,7 +47,7 @@ type PulsifierFn = fn(
     &mut PulsedModel,
     &HashMap<OutletId, OutletId>,
     &Symbol,
-    usize,
+    &TDim,
 ) -> TractResult<Option<TVec<OutletId>>>;
 
 pub struct OpPulsifier {

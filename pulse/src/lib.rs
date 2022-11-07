@@ -65,12 +65,12 @@ mod tests {
         let s = model.symbol_table.get_or_intern("S");
         let _a = model.add_source("a", f32::fact(&[1, 2, 3])).unwrap();
         model.auto_outputs().unwrap();
-        assert!(PulsedModel::new(&model, s.clone(), 4).is_err());
+        assert!(PulsedModel::new(&model, s.clone(), &4.to_dim()).is_err());
 
         let mut model = TypedModel::default();
         let _a = model.add_source("a", f32::fact(dims![1, s, 3].as_ref())).unwrap();
         model.auto_outputs().unwrap();
-        let pulse = PulsedModel::new(&model, s.clone(), 4).unwrap();
+        let pulse = PulsedModel::new(&model, s.clone(), &4.to_dim()).unwrap();
         assert_eq!(
             *pulse.outlet_fact(OutletId::new(0, 0)).unwrap().to_typed_fact().unwrap(),
             f32::fact(&[1usize, 4, 3])
@@ -84,7 +84,7 @@ mod tests {
         let _a = model.add_source("a", f32::fact(dims![s, 2, 3].as_ref())).unwrap();
         model.auto_outputs().unwrap();
 
-        let pulse = PulsedModel::new(&model, s.clone(), 4).unwrap();
+        let pulse = PulsedModel::new(&model, s.clone(), &4.to_dim()).unwrap();
 
         assert_eq!(*pulse.input_fact(0).unwrap().to_typed_fact().unwrap(), f32::fact([4, 2, 3]));
         assert_eq!(*pulse.output_fact(0).unwrap().to_typed_fact().unwrap(), f32::fact([4, 2, 3]));

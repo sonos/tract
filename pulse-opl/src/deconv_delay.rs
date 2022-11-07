@@ -10,7 +10,7 @@ pub struct DeconvDelay {
     pub overlap: usize,
     pub delay: usize,
     pub stride: usize,
-    pub pulse: usize,
+    pub pulse: TDim,
     pub deconv_input_dim: TDim,
     pub deconv_output_dim: TDim,
 }
