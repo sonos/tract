@@ -1,4 +1,5 @@
 use std::ops::ControlFlow;
+use std::collections::HashSet;
 
 use crate::ast::*;
 use crate::internal::*;
@@ -26,6 +27,7 @@ impl<'mb> ModelBuilder<'mb> {
             registries: vec!["tract_nnef".to_string()],
             framework,
             model,
+            model_nodes_with_protected_name: HashSet::new(),
             naming_scopes: vec![],
             scopes: vec![],
             proto_model,
@@ -176,7 +178,7 @@ impl<'mb> ModelBuilder<'mb> {
                     }
                 }
             }
-            if !self.model_nodes_with_protected_name.contains(values[0].node) {
+            if !self.model_nodes_with_protected_name.contains(&values[0].node) {
                 self.model.node_mut(values[0].node).name = self.naming_scopes.join(".").to_string();
             }
             for (id, outlet) in identifiers.iter().zip(values.iter()) {
