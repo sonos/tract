@@ -29,7 +29,7 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> TractResult<()> {
 
     let decl_input_fact = decl.input_fact(0)?;
     let pulsed_input_fact = pulsed.input_fact(0)?;
-    let input_pulse = pulsed_input_fact.pulse();
+    let input_pulse = pulsed_input_fact.pulse().to_usize()?;
 
     let mut annotations = Annotations::from_model(&*params.tract_model)?;
     annotate_with_graph_def(&mut annotations, &*params.tract_model, &params.graph)?;
@@ -52,7 +52,7 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> TractResult<()> {
             let outlet = OutletId::new(node, output_slot);
 
             let pulsed_output_fact = pulsed.outlet_fact(pulsed_outlet)?;
-            let output_pulse = pulsed_output_fact.pulse();
+            let output_pulse = pulsed_output_fact.pulse().to_usize()?;
             let output_axis = pulsed_output_fact.axis;
             let delay = pulsed_output_fact.delay;
 

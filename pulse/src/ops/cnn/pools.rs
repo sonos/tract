@@ -11,7 +11,7 @@ fn pulsify_max_pool(
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
     _symbol: &Symbol,
-    _pulse: usize,
+    _pulse: &TDim,
 ) -> TractResult<Option<TVec<OutletId>>> {
     fn min_value<D: Datum + tract_core::num_traits::Bounded>() -> Tensor {
         tensor0(D::min_value())
@@ -34,7 +34,7 @@ fn pulsify_sum_pool(
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
     _symbol: &Symbol,
-    _pulse: usize,
+    _pulse: &TDim,
 ) -> TractResult<Option<TVec<OutletId>>> {
     if let Some((wire, pool_spec)) =
         pulsify_pooled_input(&op.pool_spec, source, node, target, mapping, None)?
@@ -120,8 +120,8 @@ pub fn pulsify_pooled_input(
     let geo_axis = input_fact.axis - input_shape.h_axis();
     let stride = spec.strides.as_ref().and_then(|v| v.get(geo_axis).cloned()).unwrap_or(1);
     let pulse = input_fact.pulse();
-    if pulse % stride != 0 {
-        bail!("Pulsificaton requires pulse to be a stride multiple")
+    if !(pulse.to_owned() % (stride as i64)).is_zero() {
+        bail!("Pulsification requires pulse ({}) to be a stride ({}) multiple", pulse, stride)
     }
 
     let dilation = spec.dilations.as_ref().map(|d| d[geo_axis]).unwrap_or(1);
@@ -241,7 +241,7 @@ mod test {
             &[source],
         )?;
         model.set_output_outlets(&conv)?;
-        let pulsed = PulsedModel::new(&model, stream_sym, 1)?;
+        let pulsed = PulsedModel::new(&model, stream_sym, &1.to_dim())?;
         let output_fact = pulsed.output_fact(0)?;
         assert_eq!(output_fact.delay, 0);
         Ok(())

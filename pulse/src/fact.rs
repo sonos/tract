@@ -31,19 +31,19 @@ pub struct PulsedFact {
 impl_dyn_hash!(PulsedFact);
 
 impl PulsedFact {
-    pub fn from_tensor_fact_pulse(tf: &TypedFact, symbol: &Symbol, pulse: usize) -> TractResult<PulsedFact> {
+    pub fn from_tensor_fact_pulse(tf: &TypedFact, symbol: &Symbol, pulse: &TDim) -> TractResult<PulsedFact> {
         let datum_type = tf.datum_type;
         let (axis, len) = tf
             .shape
             .stream_info(symbol)
             .ok_or_else(|| format_err!("Can not pulse a tensor with no streaming dim"))?;
         let mut shape: TVec<TDim> = tf.shape.iter().collect();
-        shape[axis] = pulse.into();
+        shape[axis] = pulse.clone().into();
         Ok(PulsedFact { datum_type, shape: shape.into(), axis, dim: len.clone(), delay: 0 })
     }
 
-    pub fn pulse(&self) -> usize {
-        self.shape[self.axis].to_usize().expect("Pulse should be an integer. This is a tract bug.")
+    pub fn pulse(&self) -> &TDim {
+        &self.shape[self.axis]
     }
 
     pub fn to_pulse_fact(&self) -> TypedFact {

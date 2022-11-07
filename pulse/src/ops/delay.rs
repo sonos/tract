@@ -40,7 +40,7 @@ mod test {
         let stream_dim = model.symbol_table.get_or_intern("S").to_dim();
         let fact1 = PulsedFact {
             datum_type: u8::datum_type(),
-            shape: (&[pulse]).into(),
+            shape: (&[pulse.to_owned()]).into(),
             axis: 0,
             dim: stream_dim,
             delay: 0,

@@ -11,7 +11,7 @@ fn pulsify(
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
     _symbol: &Symbol,
-    _pulse: usize,
+    _pulse: &TDim,
 ) -> TractResult<Option<TVec<OutletId>>> {
     fn zero<D: Datum>() -> Tensor {
         tensor0(D::default())
