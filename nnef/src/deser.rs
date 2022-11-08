@@ -1,5 +1,4 @@
 use std::ops::ControlFlow;
-use std::collections::HashSet;
 
 use crate::ast::*;
 use crate::internal::*;
@@ -8,7 +7,6 @@ pub struct ModelBuilder<'a> {
     pub framework: &'a Nnef,
     pub registries: Vec<String>,
     pub model: TypedModel,
-    pub model_nodes_with_protected_name: HashSet<usize>,
     pub naming_scopes: Vec<String>,
     pub scopes: Vec<HashMap<String, Value>>,
     pub proto_model: &'a ProtoModel,
@@ -27,7 +25,6 @@ impl<'mb> ModelBuilder<'mb> {
             registries: vec!["tract_nnef".to_string()],
             framework,
             model,
-            model_nodes_with_protected_name: HashSet::new(),
             naming_scopes: vec![],
             scopes: vec![],
             proto_model,
@@ -178,13 +175,17 @@ impl<'mb> ModelBuilder<'mb> {
                     }
                 }
             }
-            if !self.model_nodes_with_protected_name.contains(&values[0].node) {
-                self.model.node_mut(values[0].node).name = self.naming_scopes.join(".").to_string();
-            }
             for (id, outlet) in identifiers.iter().zip(values.iter()) {
                 self.scopes.last_mut().unwrap().insert(id.to_string(), Value::Wire(*outlet));
             }
             self.naming_scopes.pop();
+            for (value, identifier) in values.iter().zip(identifiers.iter()) {
+                if self.model.node_mut(value.node).name.is_empty() {
+                    self.naming_scopes.push(identifier.to_string());
+                    self.model.node_mut(value.node).name = self.generate_node_name();
+                    self.naming_scopes.pop();
+                }
+            }
         }
         Ok(())
     }
@@ -242,21 +243,26 @@ impl<'mb> ModelBuilder<'mb> {
         ))
     }
 
+    fn generate_node_name(&self) -> String {
+        let mut name = self.naming_scopes.join(".");
+        if self.model.nodes().iter().any(|n| n.name.starts_with(&name)) {
+            for i in 0.. {
+                name = format!("{}-{}", self.naming_scopes.join("."), i);
+                if !self.model.nodes().iter().any(|n| n.name.starts_with(&name)) {
+                    break;
+                }
+            }
+        }
+        name
+    } 
+
     pub fn wire_as_outlets(
         &mut self,
         op: impl Into<Box<dyn TypedOp>>,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         let op = op.into();
-        let mut name = format!("{}.{}", self.naming_scopes.join("."), op.as_op().name());
-        if self.model.nodes().iter().any(|n| n.name.starts_with(&name)) {
-            for i in 0.. {
-                name = format!("{}.{}-{}", self.naming_scopes.join("."), op.as_op().name(), i);
-                if !self.model.nodes().iter().any(|n| n.name.starts_with(&name)) {
-                    break;
-                }
-            }
-        }
+        let name = self.generate_node_name();
         self.model.wire_node(name, op, inputs).with_context(|| format!("inputs are {:?}", inputs))
     }
 
