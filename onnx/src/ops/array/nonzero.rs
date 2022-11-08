@@ -13,7 +13,7 @@ pub fn non_zero(
     ctx: &ParsingContext,
     _node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let x = ctx.symbol_table.get_or_intern("x");
+    let x = ctx.symbol_table.new_symbol("x");
     Ok((Box::new(NonZero(x)) as _, vec!()))
 }
 
@@ -82,7 +82,7 @@ impl InferenceRulesOp for NonZero {
 
 impl TypedOp for NonZero {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(i64::fact(&[inputs[0].rank().to_dim(), self.0.to_dim()])))
+        Ok(tvec!(i64::fact(dims![inputs[0].rank(), self.0])))
     }
 
     as_op!();
