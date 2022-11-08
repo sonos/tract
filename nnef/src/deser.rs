@@ -11,6 +11,7 @@ pub struct ModelBuilder<'a> {
     pub scopes: Vec<HashMap<String, Value>>,
     pub proto_model: &'a ProtoModel,
     pub symbols: Vec<Symbol>,
+    pub allow_new_symbol: bool,
 }
 
 impl<'mb> ModelBuilder<'mb> {
@@ -29,6 +30,7 @@ impl<'mb> ModelBuilder<'mb> {
             scopes: vec![],
             proto_model,
             symbols: vec![],
+            allow_new_symbol: false,
         }
     }
 
@@ -362,9 +364,11 @@ impl RValue {
                         }
                     }
                     Ok(outlet)
-                } else {
+                } else if builder.allow_new_symbol {
                     let sym = builder.model.symbol_table.sym(id);
                     Ok(Value::Dim(sym.into()))
+                } else {
+                    bail!("Can not resolve identifier {}. Not a known identifier, and symbol introduction is forbiddent out of \"external\" shape field", id);
                 }
             }
             RValue::Invocation(inv) => builder

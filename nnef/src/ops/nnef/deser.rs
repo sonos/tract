@@ -27,7 +27,9 @@ pub fn external(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
     } else {
         todo!()
     };
+    builder.allow_new_symbol = true;
     let shape: TVec<TDim> = invocation.named_arg_as(builder, "shape")?;
+    builder.allow_new_symbol = false;
     Ok(Value::Wire(builder.model.add_source("", dt.fact(&shape))?))
 }
 
