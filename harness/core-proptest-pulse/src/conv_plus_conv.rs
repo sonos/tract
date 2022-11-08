@@ -284,10 +284,10 @@ fn three_stride() {
     let cpc = ConvPlusConvProblem {
         input: t(4),
         pulse: 2,
-        convs: vec![
-            ConvOp { stride: 1, dilation: 1, ker: t(2), padding: PaddingSpec::Valid },
-            ConvOp { stride: 1, dilation: 1, ker: t(1), padding: PaddingSpec::Valid },
-            ConvOp { stride: 2, dilation: 2, ker: t(1), padding: PaddingSpec::Valid },
+        convs: vec![ // 0 1 2 3
+            ConvOp { stride: 1, dilation: 1, ker: t(2), padding: PaddingSpec::Valid }, // overlap=1, 1 2 3  -> ∂=1
+            ConvOp { stride: 1, dilation: 1, ker: t(1), padding: PaddingSpec::Valid }, // no delay, 0 0 0 -> ∂=1
+            ConvOp { stride: 2, dilation: 2, ker: t(1), padding: PaddingSpec::Valid }, // 0 0
         ],
     };
     cpc.run().unwrap();

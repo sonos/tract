@@ -597,7 +597,7 @@ impl ConvUnary {
         if let Some(axis) = (0..spatial_rank).find(|&ax| {
             self.pool_spec.padding.valid_dim(ax, self.pool_spec.stride(ax) == 1)
                 && self.pool_spec.stride(ax) > 1
-                && self.pool_spec.dilation(ax) % self.pool_spec.stride(ax) == 0
+                && (self.pool_spec.dilation(ax) % self.pool_spec.stride(ax) == 0)
         }) {
             let downsample_factor = self.pool_spec.stride(axis);
             let mut new_op = self.clone();
@@ -635,7 +635,6 @@ impl ConvUnary {
         if input_shape.hw_rank() == 1
             && self.group == 1
             && self.pool_spec.stride(0) == 1
-            && self.pool_spec.dilation(0) == 1
             && self.kernel.len() == self.input_channels() * self.output_channels()
         {
             let ci = self.input_channels();
@@ -720,8 +719,8 @@ impl ConvUnary {
         {
             return Ok(None);
         }
-        let mut before:TVec<usize> = pad.pads[shape.hw_axes()].iter().map(|pair| pair.0).collect();
-        let mut after:TVec<usize> = pad.pads[shape.hw_axes()].iter().map(|pair| pair.1).collect();
+        let mut before: TVec<usize> = pad.pads[shape.hw_axes()].iter().map(|pair| pair.0).collect();
+        let mut after: TVec<usize> = pad.pads[shape.hw_axes()].iter().map(|pair| pair.1).collect();
         if let PaddingSpec::Explicit(bef, aft, false) = &self.pool_spec.padding {
             izip!(&mut before, bef).for_each(|(pad, cv)| *pad += cv);
             izip!(&mut after, aft).for_each(|(pad, cv)| *pad += cv);

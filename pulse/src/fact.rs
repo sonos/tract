@@ -12,7 +12,7 @@ pub fn stream_dim() -> TDim {
     (*S).into()
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct StreamInfo {
     pub axis: usize,
     pub dim: TDim,

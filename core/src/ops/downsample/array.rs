@@ -15,6 +15,7 @@ pub fn pull_downsample_over_slice(
     if down_op.stride < 0 {
         return Ok(None);
     }
+    dbg!(slice_op);
     let modulo = (down_op.modulo + slice_op.start.to_usize()?) % down_op.stride as usize;
     let left = (down_op.modulo + slice_op.start.to_usize()?) / down_op.stride as usize;
     let mut patch = TypedModelPatch::default();
@@ -23,8 +24,8 @@ pub fn pull_downsample_over_slice(
     let new_down = Downsample::new(down_op.axis, down_op.stride, modulo);
     let ds = patch.wire_node(&*down_node.name, new_down, [tap].as_ref())?;
     let new_start = left;
-    let new_end = (final_len + left).to_usize()?;
-    let op = ops::array::Slice::new(slice_op.axis, new_start.to_dim(), new_end.to_dim());
+    let new_end =  final_len + left;
+    let op = ops::array::Slice::new(slice_op.axis, new_start.to_dim(), new_end);
     let new_slice = patch.wire_node(&*slice_node.name, op, &*ds)?[0];
     patch.shunt_outside(model, OutletId::new(down_node.id, 0), new_slice)?;
     Ok(Some(patch))
