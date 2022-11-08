@@ -362,10 +362,9 @@ impl RValue {
                         }
                     }
                     Ok(outlet)
-                } else if let Some(sym) = builder.model.symbol_table.get(id) {
-                    Ok(Value::Dim(sym.into()))
                 } else {
-                    bail!("No value for name {}", id)
+                    let sym = builder.model.symbol_table.sym(id);
+                    Ok(Value::Dim(sym.into()))
                 }
             }
             RValue::Invocation(inv) => builder
