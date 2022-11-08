@@ -1,6 +1,9 @@
 # Unreleased
 
-* internal API breaking: no more op_families
+* internal API breaking: no more op_families, libcli split away
+* Symbols can now be String instead of char. They are not shared globally anymore, but scoped in the Model instead.
+* [pulse] S symbol is no longer magic. The time dimension symbol must be provided at pulsification time.
+* [pulse] In most cases, we can now pulsify without an explicit pulse len (pulse len can be expression).
 
 # 0.18.3 - 2022-10-27
 * [NNEF] Introduce a "resource" extension for loading values from a separate source (as a config file)
