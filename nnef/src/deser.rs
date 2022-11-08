@@ -50,7 +50,7 @@ impl<'mb> ModelBuilder<'mb> {
                     if ext.len() != 2 {
                         bail!("tract_symbol expects symbol: example: \"extension tract_symbol S;\"")
                     }
-                    let symbol = self.model.symbol_table.new_symbol(&ext[1]);
+                    let symbol = self.model.symbol_table.new_with_prefix(&ext[1]);
                     self.symbols.push(symbol);
                 }
                 _ => {

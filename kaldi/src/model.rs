@@ -196,7 +196,7 @@ impl Framework<KaldiProtoModel, InferenceModel> for Kaldi {
         let mut model = InferenceModel::default();
         model.symbol_table = symbols.clone();
 
-        let s = model.symbol_table.get_or_intern("S");
+        let s = model.symbol_table.sym("S");
         model.add_source(
             proto_model.config_lines.input_name.clone(),
             f32::fact(dims!(s, proto_model.config_lines.input_dim)).into(),

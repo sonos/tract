@@ -647,7 +647,7 @@ mod tests {
     lazy_static::lazy_static! {
         static ref S: (SymbolTable, Symbol) = {
             let table = SymbolTable::default();
-            let s = table.new_symbol("S");
+            let s = table.new_with_prefix("S");
             (table, s)
         };
     }
@@ -734,7 +734,7 @@ mod tests {
 
     #[test]
     fn substitution() {
-        let x = S.0.get_or_intern("x");
+        let x = S.0.sym("x");
         let e: TDim = x.clone().into();
         assert_eq!(e.eval(&SymbolValues::default().with(&x, 2)).to_i64().unwrap(), 2);
         let e = e + 3;
@@ -757,7 +757,7 @@ mod tests {
     fn reduce_muls() {
         let e: TDim = Val(1) * s();
         assert_eq!(e, s());
-        let b = S.0.get_or_intern("b");
+        let b = S.0.sym("b");
         let e: TDim = s() * &b * 1;
         assert_eq!(e, s() * &b);
     }

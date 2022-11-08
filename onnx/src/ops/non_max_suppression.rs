@@ -17,7 +17,7 @@ pub fn non_max_suppression(
             optional_iou_threshold_input: options.next().unwrap(),
             optional_score_threshold_input: options.next().unwrap(),
             center_point_box,
-            num_selected_indices_symbol: ctx.symbol_table.new_symbol("x"),
+            num_selected_indices_symbol: ctx.symbol_table.new_with_prefix("x"),
         }),
         vec![],
     ))

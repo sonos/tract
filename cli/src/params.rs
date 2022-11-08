@@ -681,7 +681,7 @@ impl Parameters {
                     } else {
                         bail!("Can not parse pulse specification {}", spec)
                     };
-                    let sym = m.symbol_table.get_or_intern(&*sym);
+                    let sym = m.symbol_table.sym(&*sym);
                     PulsedModel::new(&m, sym, &pulse) 
                 });
                 stage!("pulse-to-type", pulsed_model -> typed_model, |m:PulsedModel| m.into_typed());

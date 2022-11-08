@@ -44,7 +44,7 @@ pub fn translate_inference_fact<'a, 'b>(
                     DimFact::from(v.to_dim())
                 }
                 Some(tensor_shape_proto::dimension::Value::DimParam(v)) => {
-                    let sym = ctx.symbol_table.get_or_intern(v);
+                    let sym = ctx.symbol_table.sym(v);
                     DimFact::from(sym.to_dim())
                 }
                 _ => DimFact::default(),

@@ -51,7 +51,7 @@ fn atom<'s, 'i>(symbol_table: &'s SymbolTable, i: &'i str) -> IResult<&'i str, T
 
 fn identifier<'i>(symbol_table: &SymbolTable, i: &'i str) -> IResult<&'i str, Symbol> {
     map(recognize(pair(alt((alpha1, tag("_"))), many0(alt((alphanumeric1, tag("_")))))), |s| {
-        symbol_table.get_or_intern(s)
+        symbol_table.sym(s)
     })(i)
 }
 
@@ -73,10 +73,10 @@ mod test {
     #[test]
     fn parse_sym() {
         let table = SymbolTable::default();
-        assert_eq!(parse_tdim(&table, "x").unwrap(), TDim::Sym(table.get_or_intern("x")));
+        assert_eq!(parse_tdim(&table, "x").unwrap(), TDim::Sym(table.sym("x")));
         assert_eq!(
             parse_tdim(&table, "-y").unwrap(),
-            TDim::MulInt(-1, Box::new(table.get_or_intern("y").into()))
+            TDim::MulInt(-1, Box::new(table.sym("y").into()))
         );
     }
 

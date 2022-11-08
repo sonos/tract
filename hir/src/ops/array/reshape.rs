@@ -176,15 +176,15 @@ mod tests {
     #[test]
     fn compute_bug_1() {
         let table = SymbolTable::default();
-        let s = table.new_symbol("S");
+        let s = table.new_with_prefix("S");
         assert_eq!(&*compute_shape(s![s, 1, 2, 128], s!(0, 0, -1)).unwrap(), s![s, 1, 256])
     }
 
     #[test]
     fn compute_bug_2() {
         let table = SymbolTable::default();
-        let b = table.new_symbol("B");
-        let s = table.new_symbol("S");
+        let b = table.new_with_prefix("B");
+        let s = table.new_with_prefix("S");
         assert_eq!(&*compute_shape(s![s, b, 2, 128], s!(0, 0, -1)).unwrap(), s![s, b, 256])
     }
 
