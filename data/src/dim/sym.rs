@@ -17,13 +17,13 @@ impl SymbolTable {
         }
     }
 
-    pub fn get_or_intern(&self, name: &str) -> Symbol {
+    pub fn sym(&self, name: &str) -> Symbol {
         let mut table = self.0.lock().unwrap();
         let sym = table.get_or_intern(name);
         Symbol(Arc::downgrade(&self.0), sym)
     }
 
-    pub fn new_symbol(&self, prefix: &str) -> Symbol {
+    pub fn new_with_prefix(&self, prefix: &str) -> Symbol {
         let mut table = self.0.lock().unwrap();
         let sym = if table.get(prefix).is_none() {
             table.get_or_intern(prefix)

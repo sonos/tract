@@ -48,7 +48,7 @@ fn decl_stream_symbol(
     args: &[String],
 ) -> TractResult<ControlFlow<(), ()>> {
     if args[0] == "tract_pulse_streaming_symbol" {
-        //        proto_model.symbols.push("S");
+        log::warn!("\"tract_pulse_streaming_symbol\" is deprecated. (\"S\" is no longer a magic symbol).");
         Ok(ControlFlow::Break(()))
     } else {
         Ok(ControlFlow::Continue(()))
@@ -62,7 +62,7 @@ mod tests {
     #[test]
     fn test_source_must_stream() {
         let mut model = TypedModel::default();
-        let s = model.symbol_table.get_or_intern("S");
+        let s = model.symbol_table.sym("S");
         let _a = model.add_source("a", f32::fact(&[1, 2, 3])).unwrap();
         model.auto_outputs().unwrap();
         assert!(PulsedModel::new(&model, s.clone(), &4.to_dim()).is_err());
@@ -80,7 +80,7 @@ mod tests {
     #[test]
     fn test_immediate() {
         let mut model = TypedModel::default();
-        let s = model.symbol_table.get_or_intern("S");
+        let s = model.symbol_table.sym("S");
         let _a = model.add_source("a", f32::fact(dims![s, 2, 3].as_ref())).unwrap();
         model.auto_outputs().unwrap();
 

@@ -208,7 +208,7 @@ mod tests {
     #[test]
     fn space_to_batch_nd_infer_2() {
         let table = SymbolTable::default();
-        let s = table.get_or_intern("S");
+        let s = table.sym("S");
         let mut op = SpaceToBatch::new(f32::datum_type());
         let data = f32::fact(dims!(1, s.to_dim() - 4, 16)).into();
         let block_shape = InferenceFact::from(Tensor::from(arr1(&[2])));

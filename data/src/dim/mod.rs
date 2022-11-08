@@ -199,7 +199,7 @@ mod tests {
     lazy_static::lazy_static! {
         static ref S: (SymbolTable, Symbol) = {
             let table = SymbolTable::default();
-            let s = table.new_symbol("S");
+            let s = table.new_with_prefix("S");
             (table, s)
         };
     }
@@ -236,7 +236,7 @@ mod tests {
     #[test]
     fn div_sym_sym_complex() {
         let s = s();
-        let b = S.0.get_or_intern("b");
+        let b = S.0.sym("b");
         assert_eq!(
             (256.to_dim() * &s * &b).maybe_div(&(1.to_dim() * &s * &b)).unwrap(),
             (256.into(), 1)

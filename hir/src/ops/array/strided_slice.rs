@@ -297,7 +297,7 @@ impl Expansion for StridedSlice {
                     AxisOp::Rm(0),
                     &right,
                 )?[0];
-                let sym = target.symbol_table.new_symbol("l");
+                let sym = target.symbol_table.new_with_prefix("l");
                 wire = target.wire_node(
                     format!("{}.slice-axis-{}", prefix, axis),
                     tract_core::ops::array::DynSlice::new(axis, true, true, sym),
@@ -568,7 +568,7 @@ mod tests {
     #[test]
     fn inference_3() {
         let table = SymbolTable::default();
-        let s = table.new_symbol("S").to_dim();
+        let s = table.new_with_prefix("S").to_dim();
         let op = strided_slice(5, 7, 0);
         let input = f32::fact(dims!(1, s.clone() - 2, 16)).into();
         let begin = InferenceFact::from(tensor1(&[0i32, 2, 0]));

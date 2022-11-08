@@ -48,7 +48,7 @@ impl Arbitrary for DelayPlusPoolProblem {
 impl DelayPlusPoolProblem {
     pub fn run(&self) -> TestCaseResult {
         let mut model = InferenceModel::default();
-        let s = model.symbol_table.get_or_intern("S");
+        let s = model.symbol_table.sym("S");
         let a = model
             .add_source("a", f32::fact(dims!(1, s, 1)).into())
             .unwrap();

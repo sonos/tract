@@ -16,4 +16,5 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 downcast-rs = "1.2.0"
 lazy_static = "1.4.0"
+log = "0.4.14"
 tract-pulse-opl = { version = "0.18.4-pre", path = "../pulse-opl" }

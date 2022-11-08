@@ -265,7 +265,7 @@ fn load(
     let center_point_box =
         BoxRepr::from_i64(invocation.named_arg_as(builder, "center_point_box")?)?;
 
-    let n = builder.model.symbol_table.get_or_intern("n");
+    let n = builder.model.symbol_table.sym("n");
     let op = NonMaxSuppression {
         center_point_box,
         num_selected_indices_symbol: n,
