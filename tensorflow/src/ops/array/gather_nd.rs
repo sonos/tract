@@ -38,7 +38,7 @@ mod tests {
         let g = GatherNd::new(0);
         let t = rctensor3(&[[[10, 20], [30, 40]], [[11, 21], [31, 41]]]);
         assert_eq!(
-            g.eval(tvec!(t.clone(), rctensor2(&[[1]]))).unwrap(),
+            g.eval(tvec!(t, rctensor2(&[[1]]))).unwrap(),
             tvec!(rctensor3(&[[[11, 21], [31, 41]]]))
         );
     }
@@ -48,7 +48,7 @@ mod tests {
         let g = GatherNd::new(0);
         let t = rctensor3(&[[[10, 20], [30, 40]], [[11, 21], [31, 41]]]);
         assert_eq!(
-            g.eval(tvec!(t.clone(), rctensor2(&[[0, 1], [1, 0]]))).unwrap(),
+            g.eval(tvec!(t, rctensor2(&[[0, 1], [1, 0]]))).unwrap(),
             tvec!(rctensor2(&[[30, 40], [11, 21]]))
         );
     }
@@ -58,7 +58,7 @@ mod tests {
         let g = GatherNd::new(0);
         let t = rctensor3(&[[[10, 20], [30, 40]], [[11, 21], [31, 41]]]);
         assert_eq!(
-            g.eval(tvec!(t.clone(), rctensor2(&[[0, 0, 1], [1, 0, 1]]))).unwrap(),
+            g.eval(tvec!(t, rctensor2(&[[0, 0, 1], [1, 0, 1]]))).unwrap(),
             tvec!(rctensor1(&[20, 21]))
         );
     }
@@ -68,7 +68,7 @@ mod tests {
         let g = GatherNd::new(1);
         let t = rctensor3(&[[[10, 20], [30, 40]], [[11, 21], [31, 41]]]);
         assert_eq!(
-            g.eval(tvec!(t.clone(), rctensor2(&[[1], [0]]))).unwrap(),
+            g.eval(tvec!(t, rctensor2(&[[1], [0]]))).unwrap(),
             tvec!(rctensor2(&[[30, 40], [11, 21]]))
         );
     }
@@ -78,7 +78,7 @@ mod tests {
         let g = GatherNd::new(1);
         let t = rctensor3(&[[[10, 20], [30, 40]], [[11, 21], [31, 41]]]);
         assert_eq!(
-            g.eval(tvec!(t.clone(), rctensor3(&[[[1]], [[0]]]))).unwrap(),
+            g.eval(tvec!(t, rctensor3(&[[[1]], [[0]]]))).unwrap(),
             tvec!(rctensor3(&[[[30, 40]], [[11, 21]]]))
         );
     }
@@ -88,7 +88,7 @@ mod tests {
         let g = GatherNd::new(1);
         let t = rctensor3(&[[[10, 20], [30, 40]], [[11, 21], [31, 41]]]);
         assert_eq!(
-            g.eval(tvec!(t.clone(), rctensor3(&[[[1, 0]], [[0, 1]]]))).unwrap(),
+            g.eval(tvec!(t, rctensor3(&[[[1, 0]], [[0, 1]]]))).unwrap(),
             tvec!(rctensor2(&[[30], [21]]))
         );
     }

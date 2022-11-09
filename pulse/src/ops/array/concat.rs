@@ -43,12 +43,12 @@ fn pulsify_along_concat_axis(
         .iter()
         .map(|s| s.as_const().unwrap().cast_to_dt(fact.datum_type))
         .collect::<TractResult<TVec<_>>>()?;
-    let pre = Tensor::stack_tensors(op.axis, &*pre_owned)?;
+    let pre = Tensor::stack_tensors(op.axis, &pre_owned)?;
     let post_owned = op.slices[var_index + 1..]
         .iter()
         .map(|s| s.as_const().unwrap().cast_to_dt(fact.datum_type))
         .collect::<TractResult<TVec<_>>>()?;
-    let post = Tensor::stack_tensors(op.axis, &*post_owned)?;
+    let post = Tensor::stack_tensors(op.axis, &post_owned)?;
 
     let before = pre.shape()[op.axis];
     if fact.delay < before {

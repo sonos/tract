@@ -326,6 +326,7 @@ impl TypedOp for QMatMul {
         let (_m, _k, _n, c_shape) = compute_shape(&inputs[0].shape, &inputs[1].shape, self.axes)?;
 
         let bias = &inputs[2];
+        #[allow(clippy::comparison_chain)]
         if bias.rank() > 1 {
             anyhow::bail!("Bias must be either scalar or vector (rank 0 or 1).");
         } else if bias.rank() == 1 {
@@ -404,7 +405,7 @@ impl TypedOp for QMatMul {
                 c_n: self.axes.c_m,
             }
         } else {
-            self.axes.clone()
+            self.axes
         };
 
         TypedModelPatch::replace_single_op(
@@ -463,7 +464,7 @@ impl TypedOp for QMatMul {
         }
         let mut params = self.params.as_outlet_ids(
             &mut patch,
-            &*node.name,
+            &node.name,
             &input_outlets,
             model.node_input_facts(node.id)?[0].datum_type,
             model.node_input_facts(node.id)?[1].datum_type,

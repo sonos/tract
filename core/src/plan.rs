@@ -342,7 +342,7 @@ where
             .get(input)
             .ok_or_else(|| format_err!("Invalid input id for model ({}).", input))?;
         let SimpleState { plan, session_state, .. } = self;
-        let plan = (&*plan).borrow();
+        let plan = (*plan).borrow();
         let model = plan.model.borrow();
         if let Ok(fact) = model.outlet_fact(outlet)?.to_typed_fact() {
             for (expected, provided) in fact.shape.iter().zip(t.shape()) {

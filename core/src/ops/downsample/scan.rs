@@ -28,7 +28,7 @@ pub fn pull_downsample_over_scan(
             )?[0])
         })
         .collect::<TractResult<Vec<_>>>()?;
-    inner_model.set_output_outlets(&*downsample_outputs)?;
+    inner_model.set_output_outlets(&downsample_outputs)?;
     let mut inner_model = inner_model.into_decluttered()?;
     inner_model.check_consistency()?;
 

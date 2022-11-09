@@ -291,7 +291,7 @@ where
     let mut unchecked = std::collections::HashSet::new();
     let mut ok = 0;
     fn canonic(s: &str) -> String {
-        s.replace('.', "_").replace('-', "_")
+        s.replace(['.', '-'], "_")
     }
     let all_values: HashMap<String, &Vec<TractResult<Arc<Tensor>>>> =
         all_values.iter().map(|(k, v)| (canonic(k), v)).collect();

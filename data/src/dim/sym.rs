@@ -1,6 +1,6 @@
+use itertools::Itertools;
 use std::fmt;
 use std::sync::{Arc, Mutex, Weak};
-use itertools::Itertools;
 use string_interner::StringInterner;
 use string_interner::Symbol as _;
 
@@ -10,11 +10,7 @@ pub struct SymbolTable(Arc<Mutex<StringInterner>>);
 impl SymbolTable {
     pub fn get(&self, name: &str) -> Option<Symbol> {
         let table = self.0.lock().unwrap();
-        if let Some(sym) = table.get(name) {
-            Some(Symbol(Arc::downgrade(&self.0), sym))
-        } else {
-            None
-        }
+        table.get(name).map(|sym| Symbol(Arc::downgrade(&self.0), sym))
     }
 
     pub fn sym(&self, name: &str) -> Symbol {

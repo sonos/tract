@@ -175,7 +175,7 @@ impl InferenceRulesOp for Nary {
             },
         )?;
         s.given_all(inputs.iter().map(|i| &i.shape), move |s, shapes: Vec<TVec<TDim>>| {
-            let out = tract_core::broadcast::multi_broadcast(&*shapes)
+            let out = tract_core::broadcast::multi_broadcast(&shapes)
                 .with_context(|| format!("Failed to broadcast {:?}", &shapes))?;
             s.equals(&outputs[0].shape, ShapeFactoid::from(out))
         })

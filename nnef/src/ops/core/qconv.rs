@@ -67,7 +67,7 @@ fn qconv_unary_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<A
     let mut kernel_shape = tvec!(co, ci / op.group);
     kernel_shape.extend(op.pool_spec.kernel_shape.iter().copied());
     let mut weights = op.kernel_as_group_o_ihw()?.into_tensor();
-    weights.set_shape(&*kernel_shape)?;
+    weights.set_shape(&kernel_shape)?;
     let weigths =
         ast.konst_variable(format!("{}_weigths", node.name), &weights.into_arc_tensor())?;
     wire = ast.force_variable(format!("{}_input", node.name), &wire);

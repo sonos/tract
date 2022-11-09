@@ -54,7 +54,7 @@ impl Gather {
 
         let mut output = Tensor::uninitialized_dt(
             data.datum_type(),
-            &*self.compute_output_shape(data.shape(), indices.shape())?,
+            &self.compute_output_shape(data.shape(), indices.shape())?,
         )?;
         let mut view = output.to_array_view_mut_unchecked::<T>();
         for (indices_coords, indices_value) in indices.to_array_view::<i64>()?.indexed_iter() {
@@ -79,8 +79,7 @@ impl TypedOp for Gather {
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(inputs[0].datum_type.fact(
-            &*self
-                .compute_output_shape(&*inputs[0].shape.to_tvec(), &*inputs[1].shape.to_tvec())?
+            &*self.compute_output_shape(&inputs[0].shape.to_tvec(), &inputs[1].shape.to_tvec())?
         )))
     }
 

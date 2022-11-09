@@ -47,7 +47,7 @@ impl InferenceRulesOp for ConstantLike {
                 let shape: Vec<usize> = shape.iter().map(|d| d.to_usize().unwrap()).collect();
                 let value = tensor0(self.value)
                     .cast_to_dt(dt)?
-                    .broadcast_scalar_to_shape(&*shape)?
+                    .broadcast_scalar_to_shape(&shape)?
                     .into_arc_tensor();
                 s.equals(&outputs[0].value, value)?;
             }

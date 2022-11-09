@@ -95,7 +95,7 @@ impl EvalOp for LirSumPool {
         let geo = self.geometry.to_concrete(input.shape())?;
         let values = if input.datum_type().is_float() {
             let mut values =
-                unsafe { Tensor::uninitialized_dt(input.datum_type(), &*geo.output_shape.shape)? };
+                unsafe { Tensor::uninitialized_dt(input.datum_type(), &geo.output_shape.shape)? };
             dispatch_floatlike!(Self::eval_t(input.datum_type())(
                 self,
                 &*input,
@@ -105,7 +105,7 @@ impl EvalOp for LirSumPool {
             values
         } else {
             let mut values =
-                unsafe { Tensor::uninitialized_dt(DatumType::F32, &*geo.output_shape.shape)? };
+                unsafe { Tensor::uninitialized_dt(DatumType::F32, &geo.output_shape.shape)? };
             let input_f32 = input.cast_to_dt(DatumType::F32)?;
             self.eval_t::<f32>(input_f32.as_ref(), values.as_ptr_mut()?, geo.as_ref())?;
             values.cast_to_dt(input.datum_type())?.into_owned()

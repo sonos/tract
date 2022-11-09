@@ -1,5 +1,6 @@
 #![allow(clippy::len_zero)]
 #![allow(clippy::missing_safety_doc)]
+#![allow(clippy::redundant_closure_call)]
 //! # Tract
 //!
 //! Tiny, no-nonsense, self contained, portable TensorFlow and ONNX inference.

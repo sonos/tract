@@ -53,7 +53,7 @@ impl TypedOp for MatMulUnary {
     }
 
     fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
-        mir_unary_invariants(&inputs[0], &outputs[0], self.axes)
+        mir_unary_invariants(inputs[0], outputs[0], self.axes)
     }
 
     fn change_axes(
@@ -78,8 +78,9 @@ impl TypedOp for MatMulUnary {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if let Some(patch) =
-            self.declutter_precusor_is_concat(model, node).context("declutter precursor is concat")?
+        if let Some(patch) = self
+            .declutter_precusor_is_concat(model, node)
+            .context("declutter precursor is concat")?
         {
             return Ok(Some(patch));
         }
@@ -131,7 +132,7 @@ impl MatMulUnary {
         let mut wire = patch.tap_model(model, node.inputs[0])?;
 
         let c_dt = output_type(self.a.datum_type());
-        let (m, k, n, c_shape) = compute_shape(&self.a.shape(), b_shape, self.axes)?;
+        let (m, k, n, c_shape) = compute_shape(self.a.shape(), b_shape, self.axes)?;
 
         let mmm = tract_linalg::ops()
             .mmm(self.a.datum_type(), b_dt, c_dt, Some(m), Some(k), Some(n))
@@ -325,7 +326,7 @@ impl MatMulUnary {
             let full = patch.wire_node(
                 format!("{}.concat-m.full", node.name),
                 crate::ops::array::TypedConcat::concat_vars(axis, splits.len()),
-                &*splits,
+                &splits,
             )?[0];
             patch.shunt_outside(model, node.id.into(), full)?;
             for (ix, succ) in node.outputs[0].successors.iter().enumerate() {
@@ -350,7 +351,7 @@ impl MatMulUnary {
                         patch.wire_node(
                             format!("{}.concat-m{}..{}..{}", node.name, ix, slice.start, slice.end),
                             crate::ops::array::TypedConcat::concat_vars(axis, slices.len()),
-                            &*slices,
+                            &slices,
                         )?[0]
                     } else {
                         slices[0]
@@ -384,6 +385,7 @@ pub(super) fn mir_unary_invariants(
     Ok(axes)
 }
 
+#[allow(clippy::type_repetition_in_bounds,clippy::type_complexity)]
 pub(super) fn mir_unary_change_axes(
     model: &TypedModel,
     node: &TypedNode,
@@ -403,8 +405,8 @@ pub(super) fn mir_unary_change_axes(
     if let Ok((axes, change_a, change_b, change_c)) = result {
         let new_a = if let Some(change_a) = change_a {
             let mut new_a = old_a.clone().into_tensor();
-            if let Err(_) = change_a.change_tensor(&mut new_a, false) {
-                return Ok(None) // can not apply change to A (Rm on non-trivial axis ?)
+            if change_a.change_tensor(&mut new_a, false).is_err() {
+                return Ok(None); // can not apply change to A (Rm on non-trivial axis ?)
             }
             new_a.into_arc_tensor()
         } else {

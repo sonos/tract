@@ -105,6 +105,6 @@ impl Expansion for Concat {
             }
         }
         let op = TypedConcat::new(axis, slices);
-        target.wire_node(prefix, op, &*kept_inputs)
+        target.wire_node(prefix, op, &kept_inputs)
     }
 }

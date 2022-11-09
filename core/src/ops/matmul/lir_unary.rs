@@ -111,7 +111,7 @@ pub struct LirMatMulUnary {
 
 impl DynHash for LirMatMulUnary {
     fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
-        dyn_hash(&self, hasher)
+        dyn_hash(self, hasher)
     }
 }
 
@@ -173,7 +173,7 @@ impl OpState for State {
                 &shape,
                 op.c_m_axis,
                 op.c_n_axis,
-                &*final_shape,
+                &final_shape,
             )
         }
     }
@@ -199,7 +199,7 @@ impl EvalOp for LirMatMulUnary {
             self,
             &geometry,
             scratch.as_mut(),
-            &*inputs,
+            &inputs,
             self.c_fact.shape.as_concrete().unwrap(),
             self.c_m_axis,
             self.c_n_axis,
@@ -253,7 +253,7 @@ fn eval(
                     a: op.mmm.a_packed(size_of_a, geometry.k).wrap(&pa.view()),
                     b: geometry
                         .b_storage
-                        .wrap(&TensorView::at_prefix_unchecked(&inputs[0], &*b_prefix))?,
+                        .wrap(&TensorView::at_prefix_unchecked(&inputs[0], &b_prefix))?,
                 });
                 f.extend(fused.iter().map(|f| f.resolve(inputs, prefix.slice(), c_store)));
                 op.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch, &f)?;

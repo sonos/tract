@@ -317,7 +317,7 @@ impl GRU {
         wire!(Xt_WhT = matmul_t.clone(), Xt, Wh);
         let rt_Ht_1_RhT_Rbh = if self.linear_before_reset {
             // rt (.) (Ht-1*(Rh^T) + Rbh)
-            wire!(Ht_1_RhT = matmul_t.clone(), Ht_1, Rh);
+            wire!(Ht_1_RhT = matmul_t, Ht_1, Rh);
             let Ht_1_RhT_Rbh = if let Some(b) = b {
                 wire!(Rbh = array::Slice::new(1, 5.to_dim() * h_size, 6.to_dim() * h_size), b);
                 wire!(Ht_1_RhT_Rbh = math::add::bin_typed(), Ht_1_RhT, Rbh);
@@ -330,7 +330,7 @@ impl GRU {
         } else {
             // (rt (.) Ht-1)*(Rh^T) + Rbh
             wire!(rt_Ht_1 = math::mul::bin_typed(), rt, Ht_1);
-            wire!(rt_Ht_1_RhT = matmul_t.clone(), rt_Ht_1, Rh);
+            wire!(rt_Ht_1_RhT = matmul_t, rt_Ht_1, Rh);
             if let Some(b) = b {
                 wire!(Rbh = array::Slice::new(1, 5.to_dim() * h_size, 6.to_dim() * h_size), b);
                 wire!(rt_Ht_1_RhT_Rbh = math::add::bin_typed(), rt_Ht_1_RhT, Rbh);

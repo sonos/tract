@@ -30,7 +30,7 @@ pub fn scalar(i: &[u8]) -> IResult<&[u8], Tensor> {
 
 pub fn vector(i: &[u8]) -> IResult<&[u8], Tensor> {
     map(delimited(spaced(tag("[")), separated_list0(space1, float), spaced(tag("]"))), |t| {
-        tensor1(&*t)
+        tensor1(&t)
     })(i)
 }
 

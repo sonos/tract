@@ -23,7 +23,7 @@ impl ResourceLoader for JsonLoader {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JsonResource(serde_json::Value);
 
 impl Resource for JsonResource {

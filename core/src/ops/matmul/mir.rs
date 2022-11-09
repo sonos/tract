@@ -74,7 +74,7 @@ impl TypedOp for MatMul {
                 c_n: self.axes.c_m,
             }
         } else {
-            self.axes.clone()
+            self.axes
         };
 
         let konst = model.outlet_fact(node.inputs[konst_ix])?.konst.clone().unwrap();

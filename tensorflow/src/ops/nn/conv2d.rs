@@ -150,7 +150,7 @@ mod tests {
         let got = &conv.eval(tvec![data, filter]).unwrap()[0];
         //println!("{:?}", got);
         //println!("{:?}", exp);
-        exp.close_enough(&got, true).unwrap()
+        exp.close_enough(got, true).unwrap()
     }
 
     #[test]
@@ -162,7 +162,7 @@ mod tests {
 
         let (_, output_facts, _) = op.infer_facts(tvec![&img, &ker], tvec![&any], tvec!()).unwrap();
 
-        assert_eq!(output_facts, tvec![f32::fact(&[1, 1, (7 - 3 + 1), 1]).into()]);
+        assert_eq!(output_facts, tvec![f32::fact([1, 1, (7 - 3 + 1), 1]).into()]);
     }
 
     #[test]
@@ -174,6 +174,6 @@ mod tests {
 
         let (_, output_facts, _) = op.infer_facts(tvec![&img, &ker], tvec![&any], tvec!()).unwrap();
 
-        assert_eq!(output_facts, tvec![f32::fact(&[1, 1, 1, 1]).into()]);
+        assert_eq!(output_facts, tvec![f32::fact([1, 1, 1, 1]).into()]);
     }
 }

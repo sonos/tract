@@ -158,7 +158,7 @@ impl EvalOp for DeconvUnary {
         let mut model = TypedModel::default();
         let source = model.add_source("source", input.datum_type().fact(input.shape()))?;
         let output = self.wire_with_deconv_sum("adhoc", &mut model, source)?;
-        model.set_output_outlets(&*output)?;
+        model.set_output_outlets(&output)?;
         let output =
             model.into_runnable()?.run(tvec!(input.into_tensor()))?.remove(0).into_arc_tensor();
         Ok(tvec!(output))
@@ -179,7 +179,7 @@ impl TypedOp for DeconvUnary {
             );
         }
         let x_fact = inputs[0];
-        let output_shape = super::output_shape(&self.pool_spec, &*x_fact.shape, &self.adjustments)?;
+        let output_shape = super::output_shape(&self.pool_spec, &x_fact.shape, &self.adjustments)?;
         Ok(tvec!(x_fact.datum_type.fact(&output_shape)))
     }
 

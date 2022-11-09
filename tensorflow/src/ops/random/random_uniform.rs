@@ -55,7 +55,7 @@ impl EvalOp for RandomUniform {
         let shape: TVec<usize> =
             inputs[0].cast_to::<i64>()?.as_slice::<i64>()?.iter().map(|&x| x as usize).collect();
         match self.t {
-            DatumType::F32 => Ok(tvec!(make_f32(&*shape, self.seed1, self.seed2)?)),
+            DatumType::F32 => Ok(tvec!(make_f32(&shape, self.seed1, self.seed2)?)),
             dt => bail!("RandomUniform not implemented for {:?}", dt),
         }
     }
@@ -138,7 +138,7 @@ impl EvalOp for TypedRandomUniform {
     fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let shape = self.shape.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<_>>>()?;
         match self.t {
-            DatumType::F32 => Ok(tvec!(make_f32(&*shape, self.seed1, self.seed2)?)),
+            DatumType::F32 => Ok(tvec!(make_f32(&shape, self.seed1, self.seed2)?)),
             dt => bail!("RandomUniform not implemented for {:?}", dt),
         }
     }
@@ -218,7 +218,7 @@ impl EvalOp for RandomUniformInt {
         match self.t {
             DatumType::I32 => Ok(tvec!(Self::make_i32(
                 self,
-                &*shape,
+                &shape,
                 *inputs[1].to_scalar::<i32>()?,
                 *inputs[2].to_scalar::<i32>()?
             )?)),

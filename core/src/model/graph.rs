@@ -347,12 +347,12 @@ where
 
     /// Access the nodes table.
     pub fn nodes(&self) -> &[Node<F, O>] {
-        &*self.nodes
+        &self.nodes
     }
 
     /// Access the nodes table.
     pub fn nodes_mut(&mut self) -> &mut [Node<F, O>] {
-        &mut *self.nodes
+        &mut self.nodes
     }
 
     /// Get input and output tensor information for a node.

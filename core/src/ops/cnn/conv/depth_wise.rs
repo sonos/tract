@@ -46,7 +46,7 @@ impl DepthWise {
         mut inputs: TVec<Arc<Tensor>>,
     ) -> TractResult<TVec<Arc<Tensor>>> {
         let img = args_1!(inputs);
-        let mut output = unsafe { Tensor::uninitialized::<T>(&*self.output_shape.shape)? };
+        let mut output = unsafe { Tensor::uninitialized::<T>(&self.output_shape.shape)? };
         let iptr = img.as_ptr::<T>()?;
         let optr = output.as_ptr_mut::<T>()?;
         let k_stride_i = self.kernel_chw.strides()[1];

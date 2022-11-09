@@ -61,10 +61,10 @@ fn initialized_model() -> TractResult<TypedModel> {
         tf.read_frozen_model(&mut std::fs::File::open(cachedir().join("deepspeech-0.4.1.pb"))?)?;
     let TfModelAndExtensions(mut model, mut extensions) = tf.parse_graph(&graph)?;
     extensions.initializing_nodes = vec![model.node_id_by_name("initialize_state")?];
-    model.set_input_names(&["input_node", "input_lengths"])?;
-    model.set_input_fact(0, f32::fact(&[1, 16, 19, 26]).into())?;
-    model.set_input_fact(1, i32::fact(&[1]).into())?;
-    model.set_output_names(&["logits", "Assign_2", "Assign_3"])?;
+    model.set_input_names(["input_node", "input_lengths"])?;
+    model.set_input_fact(0, f32::fact([1, 16, 19, 26]).into())?;
+    model.set_input_fact(1, i32::fact([1]).into())?;
+    model.set_output_names(["logits", "Assign_2", "Assign_3"])?;
 
     extensions.preproc(model)?.into_typed()
 }
@@ -92,7 +92,7 @@ fn deepspeech_raw() -> TractResult<()> {
     let mut cs = None;
     let mut logits = None;
 
-    for line in fs::read_to_string(cachedir().join("deepspeech-0.4.1-smoketest.txt"))?.split("\n") {
+    for line in fs::read_to_string(cachedir().join("deepspeech-0.4.1-smoketest.txt"))?.split('\n') {
         if line.starts_with("INPUT_NODE") {
             let tensor = parse_tensor::<f32>(line)?;
             inputs[0] = tensor;
@@ -149,7 +149,7 @@ fn deepspeech_run(opt: bool) -> TractResult<()> {
     let mut inputs = tvec!(tensor0(0), tensor0(1));
     let mut logits = None;
 
-    for line in fs::read_to_string(cachedir().join("deepspeech-0.4.1-smoketest.txt"))?.split("\n") {
+    for line in fs::read_to_string(cachedir().join("deepspeech-0.4.1-smoketest.txt"))?.split('\n') {
         if line.starts_with("INPUT_NODE") {
             let tensor = parse_tensor::<f32>(line)?;
             inputs[0] = tensor;

@@ -133,7 +133,7 @@ lazy_static::lazy_static! {
 }
 
 pub fn ops() -> &'static Ops {
-    &*OPS
+    &OPS
 }
 
 use num_traits::*;

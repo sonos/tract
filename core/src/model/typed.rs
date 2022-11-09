@@ -56,7 +56,7 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                         return Ok(outputs.into_iter().map(TypedFact::from).collect());
                     }
                 }
-                op.output_facts(&*input_facts).context("in output_facts invocation")
+                op.output_facts(&input_facts).context("in output_facts invocation")
             };
 
             let output_facts = output_facts()

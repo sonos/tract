@@ -192,7 +192,7 @@ impl OpState for State {
                     .and_then(|d| d.to_usize().ok())
                     .unwrap_or(shape[output.axis] * iters);
                 shape[output.axis] = scanning_dim;
-                let t = unsafe { Tensor::uninitialized_dt(fact.datum_type, &*shape)? };
+                let t = unsafe { Tensor::uninitialized_dt(fact.datum_type, &shape)? };
                 outputs.push((slot, t));
             }
             if let Some(slot) = output.last_value_slot {

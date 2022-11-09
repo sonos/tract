@@ -46,8 +46,7 @@ pub trait BinMiniOp:
         Validation::Accurate
     }
     fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
-        a.common_super_type(b)
-            .ok_or_else(|| format_err!("No super type for {:?} and {:?}", a, b).into())
+        a.common_super_type(b).with_context(|| format_err!("No super type for {:?} and {:?}", a, b))
     }
     fn result_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType>;
     fn eval_unicast_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()>;
@@ -72,7 +71,7 @@ pub trait BinMiniOp:
                 self.eval_in_a(&mut a, &b)?;
                 Ok(a)
             } else {
-                let mut c = unsafe { Tensor::uninitialized_dt(c_dt, &*c_shape)? };
+                let mut c = unsafe { Tensor::uninitialized_dt(c_dt, &c_shape)? };
                 self.eval_out_of_place(&mut c, a.as_ref(), b.as_ref())?;
                 Ok(c)
             }

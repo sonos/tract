@@ -194,7 +194,7 @@ mod tests {
     #[test]
     fn space_to_batch_nd_infer_1() {
         let mut op = SpaceToBatch::new(f32::datum_type());
-        let data = f32::fact(&[1, 4, 16]).into();
+        let data = f32::fact([1, 4, 16]).into();
         let block_shape = InferenceFact::from(Tensor::from(arr1(&[2])));
         let paddings = InferenceFact::from(Tensor::from(arr2(&[[0.to_dim(), 0.to_dim()]])));
         let any = InferenceFact::default();
@@ -202,7 +202,7 @@ mod tests {
         let (_, outputs, _) =
             op.infer_facts(tvec!(&data, &block_shape, &paddings), tvec!(&any), tvec!()).unwrap();
 
-        assert_eq!(outputs[0], f32::fact(&[2, 2, 16]).into())
+        assert_eq!(outputs[0], f32::fact([2, 2, 16]).into())
     }
 
     #[test]
@@ -268,8 +268,7 @@ mod tests {
                 [[5], [6], [7], [8]],
                 [[9], [10], [11], [12]],
                 [[13], [14], [15], [16]],
-            ]])
-            .into(),]
+            ]]),]
         )
     }
 
@@ -295,8 +294,7 @@ mod tests {
             tvec![rctensor4(&[
                 [[[1], [2], [3], [4]], [[5], [6], [7], [8]]],
                 [[[9], [10], [11], [12]], [[13], [14], [15], [16]]],
-            ])
-            .into(),]
+            ]),]
         )
     }
 }

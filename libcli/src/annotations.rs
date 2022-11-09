@@ -25,7 +25,7 @@ impl From<usize> for NodeQId {
 impl NodeQId {
     pub fn model<'a>(&self, model: &'a dyn Model) -> Option<&'a dyn Model> {
         fn scope<'a>(path: &[(usize, String)], model: &'a dyn Model) -> Option<&'a dyn Model> {
-            if path.len() == 0 {
+            if path.is_empty() {
                 Some(model)
             } else {
                 model
@@ -35,7 +35,7 @@ impl NodeQId {
                     .map(|(_, sub)| *sub)
             }
         }
-        scope(&*self.0, model)
+        scope(&self.0, model)
     }
 }
 
@@ -141,7 +141,7 @@ impl Annotations {
                 for (label, sub /*, ins, outs*/) in model.nested_models(n) {
                     let mut prefix: TVec<(usize, String)> = prefix.into();
                     prefix.push((n, label.to_string()));
-                    set_subio_labels(sub, &*prefix, annotations);
+                    set_subio_labels(sub, &prefix, annotations);
                     /*
                     ins.into_iter().enumerate().for_each(|(ix, i)| {
                     annotations.tags.entry(qid).or_default().model_input = Some(i);

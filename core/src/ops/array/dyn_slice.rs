@@ -11,7 +11,7 @@ pub struct DynSlice {
 
 impl DynHash for DynSlice {
     fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
-        dyn_hash(&self, hasher)
+        dyn_hash(self, hasher)
     }
 }
 

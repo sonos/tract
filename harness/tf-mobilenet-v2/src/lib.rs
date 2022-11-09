@@ -98,7 +98,7 @@ mod tests {
     fn declutter() -> TractResult<()> {
         let tfd = tract_tensorflow::tensorflow()
             .model_for_path(mobilenet_v2())?
-            .with_input_fact(0, f32::fact(&[1, 224, 224, 3]).into())?
+            .with_input_fact(0, f32::fact([1, 224, 224, 3]).into())?
             .into_typed()?
             .into_decluttered()?
             .into_runnable()?;
@@ -109,7 +109,7 @@ mod tests {
     fn optimized() -> TractResult<()> {
         let tfd = tract_tensorflow::tensorflow()
             .model_for_path(mobilenet_v2())?
-            .with_input_fact(0, f32::fact(&[1, 224, 224, 3]).into())?
+            .with_input_fact(0, f32::fact([1, 224, 224, 3]).into())?
             .into_optimized()?
             .into_runnable()?;
         run(tfd)

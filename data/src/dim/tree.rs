@@ -1,9 +1,9 @@
+use super::sym::*;
 use itertools::Itertools;
 use num_traits::{AsPrimitive, PrimInt, Zero};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::{fmt, ops};
-use super::sym::*;
 
 #[derive(Debug)]
 pub struct UndeterminedSymbol(TDim);
@@ -58,7 +58,7 @@ impl TDim {
 
     pub fn eval(&self, values: &SymbolValues) -> TDim {
         match self {
-            Sym(sym) => values[sym].map(Val).unwrap_or(Sym(sym.clone())),
+            Sym(sym) => values[sym].map(Val).unwrap_or_else(|| Sym(sym.clone())),
             Val(v) => Val(*v),
             Add(terms) => terms.iter().fold(Val(0), |acc, it| -> TDim { acc + it.eval(values) }),
             Mul(terms) => terms.iter().fold(Val(1), |acc, it| -> TDim { acc * it.eval(values) }),
@@ -653,7 +653,7 @@ mod tests {
     }
 
     fn s() -> TDim {
-        (*S).1.clone().into()
+        S.1.clone().into()
     }
 
     fn neg(a: &TDim) -> TDim {

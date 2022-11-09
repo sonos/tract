@@ -203,7 +203,7 @@ impl Expansion for Reduce {
             s.equals(&outputs[0].rank, 0)?;
         }
         s.given(&inputs[0].shape, move |s, shape| {
-            let out_shape = self.output_shape(&*shape);
+            let out_shape = self.output_shape(&shape);
             s.equals(&outputs[0].shape, out_shape)
         })
     }

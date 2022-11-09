@@ -165,7 +165,7 @@ impl LstmProblem {
 
         let init = model.wire_node("init", ::tract_tensorflow::ops::Noop::new(), &[a_h0, a_cs0])?;
 
-        model.set_output_names(&["lstm", "memo"])?;
+        model.set_output_names(["lstm", "memo"])?;
         let extensions = tract_tensorflow::model::TfModelExtensions {
             control_inputs: vec![],
             initializing_nodes: vec![init[0].node],
@@ -302,7 +302,7 @@ fn test_b() {
         batch_size: 1,
         cell_size: 2,
         x: rctensor3(&[[[0f32, 0.0]]]),
-        w_xh_icfo: Array2::<f32>::zeros((4, 8)).into(),
+        w_xh_icfo: Array2::<f32>::zeros((4, 8)),
         b_icfo: arr1(&[0.0f32, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]),
         h0: arr2(&[[0.0f32, 0.0]]),
         c0: arr2(&[[0.0f32, 0.0]]),

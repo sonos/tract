@@ -84,7 +84,7 @@ impl SpecialOps<PulsedFact, Box<dyn PulsedOp>> for PulsedModel {
         let output_facts = {
             let input_facts =
                 inputs.iter().map(|o| self.outlet_fact(*o)).collect::<TractResult<TVec<_>>>()?;
-            op.pulsed_output_facts(&*input_facts)?
+            op.pulsed_output_facts(&input_facts)?
         };
         let id = self.add_node(name, op, output_facts)?;
         inputs
@@ -178,7 +178,7 @@ impl PulsedOp for PulseWrappingOp {
         let input_facts =
             inputs.iter().map(|pf| pf.to_typed_fact()).collect::<TractResult<TVec<_>>>()?;
         let input_facts_ref = input_facts.iter().map(|f| f.as_ref()).collect::<TVec<_>>();
-        let output_facts = self.0.output_facts(&*input_facts_ref)?;
+        let output_facts = self.0.output_facts(&input_facts_ref)?;
         let output_facts_ref = output_facts.iter().collect::<TVec<_>>();
         let invariant = self.0.invariants(&input_facts_ref, &output_facts_ref)?;
         let axis_info = invariant

@@ -116,7 +116,7 @@ impl Nnef {
             ar.append_data(&mut header, filename, &mut &*data)
                 .with_context(|| format!("Appending tensor {:?}", filename))?;
         }
-        Ok(ar.into_inner().context("Finalizing tar")?)
+        ar.into_inner().context("Finalizing tar")
     }
 
     pub fn write_to_dir(
@@ -229,7 +229,7 @@ fn proto_model_from_resources(
     let tensors: HashMap<_, _> = resources
         .iter()
         .filter_map(|(key, resource)| {
-            Arc::clone(&resource).downcast_arc::<Tensor>().ok().map(|r| (key.to_string(), r))
+            Arc::clone(resource).downcast_arc::<Tensor>().ok().map(|r| (key.to_string(), r))
         })
         .collect();
     // Iterate over tensors keys to remove them from the global resources hash map.

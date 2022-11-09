@@ -26,7 +26,7 @@ fn ser_reduce(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RVa
         ops::nn::Reducer::Prod => "tract_core_product_reduce",
         _ => return Ok(None),
     };
-    Ok(Some(invocation(oper, &[wire], &[("axes", ints(&*op.axes))])))
+    Ok(Some(invocation(oper, &[wire], &[("axes", ints(&op.axes))])))
 }
 
 fn de_reduce(

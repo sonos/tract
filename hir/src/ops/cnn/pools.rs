@@ -57,7 +57,7 @@ pub fn rules_for_shape<'r, 'p: 'r, 's: 'r>(
         let ones = tvec![1; ishape.hw_rank()];
         let computed = pool_spec.padding.compute(
             ishape.hw_dims(),
-            &*pool_spec.kernel_shape,
+            &pool_spec.kernel_shape,
             pool_spec.dilations.as_ref().unwrap_or(&ones),
             pool_spec.strides.as_ref().unwrap_or(&ones),
         );

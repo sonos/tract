@@ -374,6 +374,7 @@ pub trait DatumExt {
 }
 
 impl<T: Datum> DatumExt for T {
+    #[allow(clippy::needless_borrow)]
     fn scalar_fact() -> TypedFact {
         TypedFact::shape::<Self, &[usize]>(&[])
     }
@@ -394,6 +395,7 @@ pub trait DatumTypeExt {
 }
 
 impl DatumTypeExt for DatumType {
+    #[allow(clippy::needless_borrow)]
     fn scalar_fact(&self) -> TypedFact {
         TypedFact::dt_shape::<&[usize]>(*self, &[])
     }

@@ -87,7 +87,7 @@ impl DeconvSum {
         let mut tensor = if let Some(b) = &self.bias {
             if output_shape.shape[0..output_shape.c_axis()].iter().all(|d| *d == 1) {
                 unsafe {
-                    let mut tensor = Tensor::uninitialized::<f32>(&*output_shape.shape)?;
+                    let mut tensor = Tensor::uninitialized::<f32>(&output_shape.shape)?;
                     let values = b.as_ptr::<f32>()?;
                     let slice = tensor.as_ptr_mut::<f32>()?;
                     let stride = *output_shape.c_stride();
@@ -100,7 +100,7 @@ impl DeconvSum {
                     tensor
                 }
             } else {
-                let mut tensor = Tensor::zero::<f32>(&*output_shape.shape)?;
+                let mut tensor = Tensor::zero::<f32>(&output_shape.shape)?;
                 let mut output = tensor.to_array_view_mut::<f32>()?;
                 let mut bias_shape = tvec!(1; output_shape.rank());
                 bias_shape[output_shape.c_axis()] = b.len();
@@ -109,7 +109,7 @@ impl DeconvSum {
                 tensor
             }
         } else {
-            Tensor::zero::<f32>(&*output_shape.shape)?
+            Tensor::zero::<f32>(&output_shape.shape)?
         };
         let mut output = tensor.to_array_view_mut::<f32>()?;
         let hw = *gemm.shape().last().unwrap();
@@ -439,7 +439,7 @@ impl DeconvSum {
 
 impl TypedOp for DeconvSum {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let shape = super::output_shape(&self.pool_spec, &*self.input_shape, &*self.adjustments)?;
+        let shape = super::output_shape(&self.pool_spec, &self.input_shape, &self.adjustments)?;
         Ok(tvec!(inputs[0].datum_type.fact(&*shape)))
     }
 

@@ -437,7 +437,7 @@ pub mod test {
         TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
-        fused_ops::<K, TC, TI, _>(&*v, &[], |_, _, c| c + 1.as_() - 1.as_())
+        fused_ops::<K, TC, TI, _>(v, &[], |_, _, c| c + 1.as_() - 1.as_())
     }
 
     pub fn return_c_plus_d<K, TC, TI>()
@@ -451,7 +451,7 @@ pub mod test {
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
         let d: Vec<TI> = (0..len).map(|f| ((3 * f) % 7).as_()).collect();
         fused_ops::<K, TC, TI, _>(
-            &*v,
+            &v,
             &[FusedKerSpec::AddUnicast(mmm_stride_storage(&d, K::nr()))],
             |row, col, c| c + d[row * K::nr() + col],
         );
@@ -467,7 +467,7 @@ pub mod test {
         let len = K::mr() * K::nr();
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
         let bias: Vec<TI> = (0..K::mr()).map(|f| f.as_()).collect();
-        fused_ops::<K, TC, TI, _>(&*v, &[FusedKerSpec::PerRowMin(bias.as_ptr())], |row, _, c| {
+        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::PerRowMin(bias.as_ptr())], |row, _, c| {
             if c < bias[row] {
                 c
             } else {
@@ -486,7 +486,7 @@ pub mod test {
         let len = K::mr() * K::nr();
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
         let bias: Vec<TI> = (0..K::mr()).map(|f| f.as_()).collect();
-        fused_ops::<K, TC, TI, _>(&*v, &[FusedKerSpec::PerRowMax(bias.as_ptr())], |row, _, c| {
+        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::PerRowMax(bias.as_ptr())], |row, _, c| {
             if c > bias[row] {
                 c
             } else {
@@ -505,7 +505,7 @@ pub mod test {
         let len = K::mr() * K::nr();
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
         let bias: Vec<TI> = (0..K::mr()).map(|f| f.as_()).collect();
-        fused_ops::<K, TC, TI, _>(&*v, &[FusedKerSpec::PerRowAdd(bias.as_ptr())], |row, _, c| {
+        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::PerRowAdd(bias.as_ptr())], |row, _, c| {
             c + bias[row]
         })
     }
@@ -520,7 +520,7 @@ pub mod test {
         let len = K::mr() * K::nr();
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
         let bias: Vec<TI> = (0..K::mr()).map(|f| f.as_()).collect();
-        fused_ops::<K, TC, TI, _>(&*v, &[FusedKerSpec::PerRowMul(bias.as_ptr())], |row, _, c| {
+        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::PerRowMul(bias.as_ptr())], |row, _, c| {
             c * bias[row]
         })
     }
@@ -535,7 +535,7 @@ pub mod test {
         let len = K::mr() * K::nr();
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
         let bias: Vec<TI> = (0..K::mr()).map(|f| f.as_()).collect();
-        fused_ops::<K, TC, TI, _>(&*v, &[FusedKerSpec::PerRowSub(bias.as_ptr())], |row, _, c| {
+        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::PerRowSub(bias.as_ptr())], |row, _, c| {
             bias[row] - c
         })
     }
@@ -550,7 +550,7 @@ pub mod test {
         let len = K::mr() * K::nr();
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
         let bias: Vec<TI> = (0..K::mr()).map(|f| f.as_()).collect();
-        fused_ops::<K, TC, TI, _>(&*v, &[FusedKerSpec::PerRowSubF(bias.as_ptr())], |row, _, c| {
+        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::PerRowSubF(bias.as_ptr())], |row, _, c| {
             c - bias[row]
         })
     }
@@ -565,7 +565,7 @@ pub mod test {
         let len = K::mr() * K::nr();
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
         let bias: Vec<TI> = (0..K::nr()).map(|f| f.as_()).collect();
-        fused_ops::<K, TC, TI, _>(&*v, &[FusedKerSpec::PerColAdd(bias.as_ptr())], |_, col, c| {
+        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::PerColAdd(bias.as_ptr())], |_, col, c| {
             c + bias[col]
         })
     }
@@ -580,7 +580,7 @@ pub mod test {
         let len = K::mr() * K::nr();
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
         let bias: Vec<TI> = (0..K::nr()).map(|f| f.as_()).collect();
-        fused_ops::<K, TC, TI, _>(&*v, &[FusedKerSpec::PerColMul(bias.as_ptr())], |_, col, c| {
+        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::PerColMul(bias.as_ptr())], |_, col, c| {
             c * bias[col]
         })
     }
@@ -597,7 +597,7 @@ pub mod test {
         let rows: Vec<TI> = (0..K::mr()).map(|f| f.as_()).collect();
         let cols: Vec<TI> = (0..K::nr()).map(|f| f.as_()).collect();
         fused_ops::<K, TC, TI, _>(
-            &*v,
+            &v,
             &[FusedKerSpec::AddRowColProducts(rows.as_ptr(), cols.as_ptr())],
             |row, col, c| c + cols[col] * rows[row],
         )
@@ -612,7 +612,7 @@ pub mod test {
     {
         let len = K::mr() * K::nr();
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-        fused_ops::<K, TC, TI, _>(&*v, &[FusedKerSpec::ScalarMin(5.as_())], |_, _, c| {
+        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::ScalarMin(5.as_())], |_, _, c| {
             if c > 5.as_() {
                 5.as_()
             } else {
@@ -630,7 +630,7 @@ pub mod test {
     {
         let len = K::mr() * K::nr();
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-        fused_ops::<K, TC, TI, _>(&*v, &[FusedKerSpec::ScalarMax(5.as_())], |_, _, c| {
+        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::ScalarMax(5.as_())], |_, _, c| {
             if c < 5.as_() {
                 5.as_()
             } else {
@@ -648,7 +648,7 @@ pub mod test {
     {
         let len = K::mr() * K::nr();
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-        fused_ops::<K, TC, TI, _>(&*v, &[FusedKerSpec::ScalarAdd(5.as_())], |_, _, c| c + 5.as_())
+        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::ScalarAdd(5.as_())], |_, _, c| c + 5.as_())
     }
 
     pub fn return_c_scalar_mul<K, TC, TI>()
@@ -660,7 +660,7 @@ pub mod test {
     {
         let len = K::mr() * K::nr();
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-        fused_ops::<K, TC, TI, _>(&*v, &[FusedKerSpec::ScalarMul(5.as_())], |_, _, c| c * 5.as_())
+        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::ScalarMul(5.as_())], |_, _, c| c * 5.as_())
     }
 
     pub fn return_c_scalar_sub<K, TC, TI>()
@@ -673,7 +673,7 @@ pub mod test {
         let len = K::mr() * K::nr();
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
         let five: TI = 5.as_();
-        fused_ops::<K, TC, TI, _>(&*v, &[FusedKerSpec::ScalarSub(5.as_())], |_, _, c| five - c)
+        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::ScalarSub(5.as_())], |_, _, c| five - c)
     }
 
     pub fn return_c_scalar_subf<K, TC, TI>()
@@ -686,7 +686,7 @@ pub mod test {
         let len = K::mr() * K::nr();
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
         let five: TI = 5.as_();
-        fused_ops::<K, TC, TI, _>(&*v, &[FusedKerSpec::ScalarSubF(5.as_())], |_, _, c| c - five)
+        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::ScalarSubF(5.as_())], |_, _, c| c - five)
     }
 
     pub fn return_c_scale_bigpot<K, TC, TI>()
@@ -698,7 +698,7 @@ pub mod test {
     {
         let len = K::mr() * K::nr();
         let v: Vec<TC> = (-(len as isize) / 2..).take(len).map(|f| f.as_()).collect();
-        fused_ops::<K, TC, TI, _>(&*v, &[FusedKerSpec::ShiftLeft(1)], |_, _, c| c.q_shl(1))
+        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::ShiftLeft(1)], |_, _, c| c.q_shl(1))
     }
 
     #[derive(Debug, new)]
@@ -759,19 +759,19 @@ pub mod test {
         pub fn run(&self) {
             if let FusedSpec::QScale(shift, policy, mult) = self.scaler.as_fused_spec() {
                 fused_ops::<K, TC, TI, _>(
-                    &*self.c,
+                    &self.c,
                     &[FusedKerSpec::QScale(shift, policy, mult)],
                     |_, _, c| c.q_scale(self.scaler),
                 )
             } else if let FusedSpec::RoundingShiftRight(shift, policy) = self.scaler.as_fused_spec()
             {
                 fused_ops::<K, TC, TI, _>(
-                    &*self.c,
+                    &self.c,
                     &[FusedKerSpec::RoundingShiftRight(shift, policy)],
                     |_, _, c| c.q_shr(shift, policy),
                 )
             } else if let FusedSpec::ShiftLeft(shift) = self.scaler.as_fused_spec() {
-                fused_ops::<K, TC, TI, _>(&*self.c, &[FusedKerSpec::ShiftLeft(shift)], |_, _, c| {
+                fused_ops::<K, TC, TI, _>(&self.c, &[FusedKerSpec::ShiftLeft(shift)], |_, _, c| {
                     c.q_shl(shift)
                 })
             } else {

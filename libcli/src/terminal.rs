@@ -20,7 +20,7 @@ pub fn render(
         return Ok(());
     }
     render_prefixed(model, "", &[], annotations, options)?;
-    if model.properties().len() > 0 {
+    if !model.properties().is_empty() {
         println!("{}", White.bold().paint("# Properties"));
     }
     for (k, v) in model.properties().iter().sorted_by_key(|(k, _)| k.to_string()) {
@@ -292,11 +292,11 @@ fn render_node_prefixed(
         let prefix = drawing_lines.next().unwrap();
         let mut scope: TVec<_> = scope.into();
         scope.push((node_id, label.to_string()));
-        render_prefixed(sub, &format!("{} [{}] ", prefix, label), &*scope, annotations, options)?
+        render_prefixed(sub, &format!("{} [{}] ", prefix, label), &scope, annotations, options)?
     }
 
     if let Io::Short = options.io {
-        let same = model.node_inputs(node_id).len() > 0
+        let same = !model.node_inputs(node_id).is_empty()
             && model.node_output_count(node_id) == 1
             && model.outlet_fact_format(node_id.into())
                 == model.outlet_fact_format(model.node_inputs(node_id)[0]);
@@ -381,7 +381,7 @@ pub fn render_summaries(
             .tags
             .keys()
             .flat_map(|id| prefixes_for(id.model(model).unwrap().node_name(id.1)))
-            .filter(|s| s.len() > 0)
+            .filter(|s| !s.is_empty())
             .sorted()
             .unique()
             .collect::<Vec<String>>();

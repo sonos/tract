@@ -29,7 +29,7 @@ impl EvalOp for FiniteReshape {
         let input = args_1!(inputs);
         let mut tensor = input.into_tensor();
         unsafe {
-            tensor.set_shape_unchecked(&*self.shape);
+            tensor.set_shape_unchecked(&self.shape);
         }
         Ok(tvec!(tensor.into_arc_tensor()))
     }

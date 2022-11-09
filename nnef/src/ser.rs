@@ -301,7 +301,7 @@ impl<'a> IntoAst<'a> {
         if name.len() > 0 && !char::is_alphabetic(name.chars().next().unwrap()) {
             name = "_".to_string() + &name;
         }
-        name.replace('/', "_").replace('.', "_").replace('-', "_").replace(':', "_")
+        name.replace(['/', '.', '-', ':'], "_")
     }
 
     pub fn force_variable(&mut self, name: impl Into<String>, exp: &Arc<RValue>) -> Arc<RValue> {
