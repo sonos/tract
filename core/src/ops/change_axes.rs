@@ -6,7 +6,7 @@ use crate::model::{TypedModel, TypedNode};
 use crate::ops::identity::Identity;
 use tract_itertools::Itertools;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum InOut {
     Out(usize),
     In(usize),
@@ -24,7 +24,7 @@ impl InOut {
     }
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, Eq)]
 #[allow(clippy::large_enum_variant)] // FIXME ?
 #[allow(clippy::derive_hash_xor_eq)] // FIXME. this one may be pretty bad. how about a.canonical() == b.canonical() ? need proper canonicalizeation of Reshape
 pub enum AxisOp {

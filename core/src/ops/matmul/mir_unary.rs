@@ -390,8 +390,8 @@ pub(super) fn mir_unary_change_axes(
     io: InOut,
     change: &AxisOp,
     old_axes: &MatMulAxes,
-    old_a: &Tensor,
-) -> TractResult<Option<(Tensor, MatMulAxes, TVec<(InOut, AxisOp)>)>> {
+    old_a: &Arc<Tensor>,
+) -> TractResult<Option<(Arc<Tensor>, MatMulAxes, TVec<(InOut, AxisOp)>)>> {
     let b_fact = model.outlet_fact(node.inputs[0])?;
     let result = if io == InOut::In(0) {
         old_axes.change_axis_from_b(change, b_fact.rank())
@@ -401,12 +401,15 @@ pub(super) fn mir_unary_change_axes(
         unreachable!();
     };
     if let Ok((axes, change_a, change_b, change_c)) = result {
-        let mut new_a = old_a.clone();
-        if let Some(change_a) = change_a {
+        let new_a = if let Some(change_a) = change_a {
+            let mut new_a = old_a.clone().into_tensor();
             if let Err(_) = change_a.change_tensor(&mut new_a, false) {
                 return Ok(None) // can not apply change to A (Rm on non-trivial axis ?)
             }
-        }
+            new_a.into_arc_tensor()
+        } else {
+            old_a.clone()
+        };
         let mut wires = tvec!();
         if let Some(change_b) = change_b {
             wires.push((InOut::In(0), change_b));
