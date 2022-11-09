@@ -3,11 +3,18 @@ use super::TypedPass;
 use crate::internal::*;
 use crate::model::*;
 use std::collections::HashSet;
+use std::fmt::Debug;
 
 use crate::ops::change_axes::*;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub struct ChangeAxes(HashSet<(usize, (InOut, AxisOp))>);
+
+impl Debug for ChangeAxes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ChangeAxes")
+    }
+}
 
 impl TypedPass for ChangeAxes {
     fn reset(&mut self) -> TractResult<()> {
