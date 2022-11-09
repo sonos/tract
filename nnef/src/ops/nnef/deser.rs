@@ -156,7 +156,8 @@ pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
             }
         })
         .collect_vec();
-    let strides: TVec<isize> = invocation.named_arg_as(builder, "stride")?;
+    let strides: TVec<isize> =
+        invocation.named_arg_as(builder, "stride").unwrap_or(ends.iter().map(|_| 1).collect());
     izip!(axes, begins, ends, strides)
         .try_fold(wire, |wire, (axis, start, end, stride)| {
             let mut w =
