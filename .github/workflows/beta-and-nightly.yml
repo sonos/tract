@@ -77,6 +77,8 @@ jobs:
       run: rustup update && rustup component add clippy
     - name: Run cargo-clippy
       run: cargo clippy
+      env:
+        RUSTFLAGS: "-D warnings"
 
   cargo-deny:
     strategy:
