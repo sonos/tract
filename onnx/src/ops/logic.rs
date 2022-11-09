@@ -57,9 +57,9 @@ pub fn _if(
 #[derive(Debug, Clone, new, Hash)]
 struct If {
     then_body: InferenceModel,
-    then_input_mapping: Vec<usize>,
+    then_input_mapping: TVec<usize>,
     else_body: InferenceModel,
-    else_input_mapping: Vec<usize>,
+    else_input_mapping: TVec<usize>,
 }
 
 impl_dyn_hash!(If);
@@ -163,10 +163,121 @@ impl InferenceOp for If {
                     inner_mapping.insert((node, slot_ix).into(), *outlet);
                 }
             }
-            return Ok(body.output_outlets()?.iter().map(|o| inner_mapping[o]).collect());
+
+            Ok(body.output_outlets()?.iter().map(|o| inner_mapping[o]).collect())
+        } else {
+            target.wire_node(
+                &node.name,
+                IfMir {
+                    then_body: self.then_body.clone().into_typed()?,
+                    then_input_mapping: self.then_input_mapping.clone(),
+                    else_body: self.else_body.clone().into_typed()?,
+                    else_input_mapping: self.else_input_mapping.clone(),
+                },
+                &node.inputs,
+            )
         }
-        bail!("Can only deal with constant conditions in If translation")
     }
 
     as_op!();
+}
+
+/// Returns the output fact that is the result of the If control flow.
+/// This could be thought of as the output fact of the Phi node of the Then and Else subgraphs,
+/// (but it's arguably not as fancy as that.)
+pub fn phi_result(then: &TypedFact, elze: &TypedFact) -> TractResult<TypedFact> {
+    if then.konst.is_some() && elze.konst.is_some() && then.konst == elze.konst {
+        return Ok(then.clone());
+    }
+
+    if then.datum_type != elze.datum_type {
+        bail!(
+            "If operator branches has incompatible datum types (then: {:?}; else: {:?})",
+            then.datum_type,
+            elze.datum_type
+        )
+    }
+
+    if then.shape.rank() != elze.shape.rank() {
+        bail!(
+            "If operator branches has incompatible ranks (then: {:?}; else: {:?})",
+            then.shape.rank(),
+            elze.shape.rank()
+        )
+    }
+
+    // [4, 'n', 18] . [4, 'k', 3] => [4, '?', '?']
+    let shape: TVec<_> = then
+        .shape
+        .iter()
+        .zip(elze.shape.iter())
+        .map(|(then_dim, else_dim)| {
+            let then_dim = then_dim.eval(&SymbolValues::default());
+            if then_dim == else_dim.eval(&SymbolValues::default()) {
+                then_dim
+            } else {
+                Symbol::new('h').to_dim()
+            }
+        })
+        .collect();
+
+    Ok(TypedFact::dt_shape(then.datum_type, shape))
+}
+
+#[derive(Debug, Clone, new, Hash)]
+struct IfMir {
+    then_body: TypedModel,
+    then_input_mapping: TVec<usize>,
+    else_body: TypedModel,
+    else_input_mapping: TVec<usize>,
+}
+
+impl_dyn_hash!(IfMir);
+
+impl Op for IfMir {
+    fn name(&self) -> Cow<str> {
+        "If".into()
+    }
+
+    op_onnx!();
+    op_as_typed_op!();
+}
+
+impl EvalOp for IfMir {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        let cond = inputs[0].cast_to_scalar::<bool>()?;
+        let (input_mapping, body) = if cond {
+            (&self.then_input_mapping, &self.then_body)
+        } else {
+            (&self.else_input_mapping, &self.else_body)
+        };
+        let inputs: TVec<Tensor> =
+            input_mapping.iter().map(|&ix| inputs[ix].clone().into_tensor()).collect();
+        body.clone().into_runnable()?.run(inputs)
+    }
+}
+
+impl TypedOp for IfMir {
+    as_op!();
+
+    fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        let then_outputs =
+            self.then_body.outputs.iter().copied().map(|outlet| self.then_body.outlet_fact(outlet));
+        let else_outputs =
+            self.else_body.outputs.iter().copied().map(|outlet| self.else_body.outlet_fact(outlet));
+
+        let facts = then_outputs
+            .zip(else_outputs)
+            .map(|(tfact, efact)| {
+                let (tfact, efact) = (tfact?.without_value(), efact?.without_value());
+                phi_result(&tfact, &efact)
+            })
+            .collect();
+
+        facts
+    }
 }

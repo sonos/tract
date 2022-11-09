@@ -256,8 +256,16 @@ impl Expansion for StridedSlice {
         let begin = params[0].as_ref();
         let end = params[1].as_ref();
         for (ix, &axis) in axes.iter().enumerate() {
-            if let (Some(begin), Some(end)) = (begin, end) {
-                let d = &input_shape[axis];
+
+            // note: if the input axis has symbols, we really cannot know how to slice statically
+            //  example: slice( 'h', (0..10) )
+            //  means that if h < 10 at runtime, the resulting axis is < 10
+            //  and if h > 10, resulting axis is always 10
+
+            let d = &input_shape[axis];
+            if let (Some(begin), Some(end), Ok(_)) = (begin, end, d.to_usize()) {
+                // this is the case where you can know the resulting axis statically
+
                 let preped = self.prepare_one_dim(ix, d, begin, end, &strides)?;
                 let (left, right) = if preped.stride > 0 {
                     (preped.begin, preped.end)
@@ -277,6 +285,8 @@ impl Expansion for StridedSlice {
                     )?[0];
                 }
             } else if strides[ix] == 1 {
+                // this is the case where we can't know the resulting axis statically
+
                 let left = target.wire_node(
                     format!("{}.slice-axis-{}-start", prefix, axis),
                     crate::ops::array::Slice::new(0, ix, ix + 1),

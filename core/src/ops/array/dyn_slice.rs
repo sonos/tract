@@ -47,23 +47,29 @@ impl EvalOp for DynSlice {
     }
 
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        unsafe {
-            let start =
-                if self.start_input { inputs[1].cast_to_scalar::<i64>()? as usize } else { 0 };
-            let end = if self.end_input {
-                inputs[1 + self.start_input as usize].cast_to_scalar::<i64>()? as usize
-            } else {
-                inputs[0].shape()[self.axis]
-            };
-            if start >= end {
-                bail!("Invalid range {}-{}", start, end);
-            }
-            let mut shape: TVec<_> = inputs[0].shape().into();
-            shape[self.axis] = end - start;
-            let mut tensor = Tensor::uninitialized_dt(inputs[0].datum_type(), &shape)?;
-            tensor.assign_slice_unchecked(.., &inputs[0], start..end, self.axis);
-            Ok(tvec!(tensor.into_arc_tensor()))
+        let start = if self.start_input { inputs[1].cast_to_scalar::<i64>()? as usize } else { 0 };
+        let end = if self.end_input {
+            inputs[1 + self.start_input as usize].cast_to_scalar::<i64>()? as usize
+        } else {
+            inputs[0].shape()[self.axis]
+        };
+
+        let actual_axis_len = inputs[0].shape()[self.axis];
+        let (src_start, src_end) = (start.min(actual_axis_len), end.min(actual_axis_len));
+
+        if start > end {
+            bail!("Invalid range {}-{}", start, end);
         }
+
+        let mut shape: TVec<_> = inputs[0].shape().into();
+        shape[self.axis] = src_end - src_start;
+
+        let tensor = unsafe {
+            let mut tensor = Tensor::uninitialized_dt(inputs[0].datum_type(), &shape)?;
+            tensor.assign_slice_unchecked(.., &inputs[0], src_start..src_end, self.axis);
+            tensor
+        };
+        Ok(tvec!(tensor.into_arc_tensor()))
     }
 }
 
@@ -113,6 +119,10 @@ impl TypedOp for DynSlice {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         let inputs = model.node_input_facts(node.id)?;
+        if inputs[0].shape[self.axis].to_usize().is_err() {
+            return Ok(None)
+        }
+
         let start =
             if self.start_input { inputs[1].konst.clone() } else { Some(rctensor0(TDim::zero())) };
         let end = if self.end_input {
