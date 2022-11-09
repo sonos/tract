@@ -44,7 +44,7 @@ impl Optimizer {
             Box::new(PropConst),
             Box::new(OpOptim("declutter", TypedOp::declutter_with_session, 0)),
             Box::new(PushSplitDown),
-            Box::new(ChangeAxes),
+            Box::new(ChangeAxes::default()),
         ])
     }
 
