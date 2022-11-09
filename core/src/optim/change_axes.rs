@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use crate::ops::change_axes::*;
 
 #[derive(Clone, Debug, Default)]
-pub struct ChangeAxes(HashSet<(InOut,AxisOp)>);
+pub struct ChangeAxes(HashSet<(usize, (InOut, AxisOp))>);
 
 impl TypedPass for ChangeAxes {
     fn reset(&mut self) -> TractResult<()> {
@@ -23,19 +23,16 @@ impl TypedPass for ChangeAxes {
         interfaces.extend(model.input_outlets()?.iter());
         for n in model.eval_order()? {
             for suggestion in model.node(n).op.suggested_axis_changes()? {
-                if self.0.contains(&suggestion) {
-                    continue
-                }
-                let outlet = suggestion.0.as_outlet(model.node(n));
-                let change = AxisChange { outlet, op: suggestion.1.clone() };
-                if let Some((patch, _)) = change_axes(model, &change, &interfaces, &[])
-                    .with_context(|| {
-                        format!("Making patch for {:?} from {}", change, model.node(n))
-                    })?
-                {
-                    return Ok(Some(patch));
-                } else {
-                    self.0.insert(suggestion);
+                if self.0.insert((n, suggestion.clone())) {
+                    let outlet = suggestion.0.as_outlet(model.node(n));
+                    let change = AxisChange { outlet, op: suggestion.1.clone() };
+                    if let Some((patch, _)) = change_axes(model, &change, &interfaces, &[])
+                        .with_context(|| {
+                            format!("Making patch for {:?} from {}", change, model.node(n))
+                        })?
+                    {
+                        return Ok(Some(patch));
+                    }
                 }
             }
         }
