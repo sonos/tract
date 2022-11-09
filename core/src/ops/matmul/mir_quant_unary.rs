@@ -96,6 +96,7 @@ impl TypedOp for QMatMulUnary {
             self.axes,
         )?;
 
+        #[allow(clippy::comparison_chain)]
         if let Some(bias) = &self.bias {
             if bias.rank() > 1 {
                 anyhow::bail!("Bias must be either scalar or vector (rank 0 or 1).");
@@ -119,15 +120,15 @@ impl TypedOp for QMatMulUnary {
         dbg!(&self.params);
         */
         // FIXME: why ?
-        if self.params.iter().any(|qp| match &qp.1 {
-            &QParamKind::Attr(t) => t.len() > 1,
-            &QParamKind::FromInput(ix) => !inputs[*ix].shape.volume().is_one(),
-            &QParamKind::FromQType => false,
+        if self.params.iter().any(|qp| match qp.1 {
+            QParamKind::Attr(t) => t.len() > 1,
+            QParamKind::FromInput(ix) => !inputs[*ix].shape.volume().is_one(),
+            QParamKind::FromQType => false,
         }) {
             Ok(Invariants::none())
         } else {
             let mut invs =
-                super::mir_unary::mir_unary_invariants(&inputs[0], &outputs[0], self.axes)?;
+                super::mir_unary::mir_unary_invariants(inputs[0], outputs[0], self.axes)?;
             for axis in &mut invs.axes {
                 axis.inputs.extend(std::iter::repeat(None).take(inputs.len() - 1));
             }
@@ -217,7 +218,7 @@ impl TypedOp for QMatMulUnary {
                     .collect::<TractResult<TVec<_>>>()?;
                 let params_outlets = self.params.as_outlet_ids(
                     &mut patch,
-                    &*node.name,
+                    &node.name,
                     &input_outlets,
                     self.a.datum_type(),
                     model.node_input_facts(node.id)?[0].datum_type,
@@ -319,7 +320,7 @@ impl TypedOp for QMatMulUnary {
         }
         let mut params = self.params.as_outlet_ids(
             &mut patch,
-            &*node.name,
+            &node.name,
             &input_outlets,
             self.a.datum_type(),
             model.node_input_facts(node.id)?[0].datum_type,

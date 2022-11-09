@@ -322,16 +322,14 @@ pub fn conv_or_deconv(
     // Remove or reshape bias for efficient processing
     let bias: Option<Tensor> = if bias.is_uniform() && bias.cast_to_scalar::<f32>()? == 0.0 {
         None
+    } else if bias.rank() > 1 {
+        let output_channels = kernel.shape()[0];
+        ensure!(output_channels == bias.len(), "Bias tensor should be scalar or have one value per output channel"); 
+        let mut reshaped_bias = bias.into_tensor();
+        reshaped_bias.set_shape(&[output_channels])?;
+        Some(reshaped_bias)
     } else {
-        if bias.rank() > 1 {
-            let output_channels = kernel.shape()[0];
-            ensure!(output_channels == bias.len(), "Bias tensor should be scalar or have one value per output channel"); 
-            let mut reshaped_bias = bias.into_tensor();
-            reshaped_bias.set_shape(&[output_channels])?;
-            Some(reshaped_bias)
-        } else {
-            Some(bias.into_tensor())
-        }
+        Some(bias.into_tensor())
     };
 
     let op: Box<dyn TypedOp> = if deconv {
@@ -564,10 +562,10 @@ pub fn matmul(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
         )?;
         builder.model.node(a.node);
 
-        return builder.wire(
+        builder.wire(
             ops::matmul::QMatMul { axes, output_type: dt, params: MatMulQParams::all_from_qtype() },
             &[a, b, bias],
-        );
+        )
     } else {
         builder.wire(ops::matmul::MatMul { axes }, &[a, b])
     }

@@ -168,6 +168,6 @@ impl TypedOp for Merge {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(f32::fact(inputs[0].shape.iter()), i32::fact(&[0; 0])))
+        Ok(tvec!(f32::fact(inputs[0].shape.iter()), i32::fact([0; 0])))
     }
 }

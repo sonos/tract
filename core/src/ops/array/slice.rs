@@ -10,7 +10,7 @@ pub struct Slice {
 
 impl DynHash for Slice {
     fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
-        dyn_hash(&self, hasher)
+        dyn_hash(self, hasher)
     }
 }
 

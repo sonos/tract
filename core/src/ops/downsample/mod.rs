@@ -59,7 +59,7 @@ impl EvalOp for Downsample {
             let t = if self.modulo > input.shape()[self.axis] {
                 let mut shape: TVec<usize> = input.shape().into();
                 shape[self.axis] = 0;
-                Tensor::uninitialized_dt(input.datum_type(), &*shape)?
+                Tensor::uninitialized_dt(input.datum_type(), &shape)?
             } else {
                 let slice = ndarray::Slice::new(self.modulo as isize, None, self.stride);
                 unsafe fn do_slice<T: Datum>(
@@ -133,7 +133,7 @@ fn pull_downsample_up(
                 let ds = patch.wire_node(format!("{}.{}-{}", down_node.name, prec.name, ix), op, [source].as_ref())?;
                 inputs.push(ds[0]);
             }
-            let other = patch.wire_node(&*prec.name, prec.op.clone(), &*inputs)?;
+            let other = patch.wire_node(&prec.name, prec.op.clone(), &inputs)?;
             patch.shunt_outside(model, OutletId::new(down_node.id, 0), other[0])?;
             return Ok(Some(patch));
         }

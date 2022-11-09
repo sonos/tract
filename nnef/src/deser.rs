@@ -20,8 +20,7 @@ impl<'mb> ModelBuilder<'mb> {
         proto_model: &'mb ProtoModel,
         symbols: &SymbolTable,
     ) -> ModelBuilder<'mb> {
-        let mut model = TypedModel::default();
-        model.symbol_table = symbols.clone();
+        let model = TypedModel { symbol_table: symbols.to_owned(), ..TypedModel::default() };
         ModelBuilder {
             registries: vec!["tract_nnef".to_string()],
             framework,
@@ -58,7 +57,7 @@ impl<'mb> ModelBuilder<'mb> {
                 _ => {
                     for reg in &self.framework.registries {
                         for reg_ext in &reg.extensions {
-                            match reg_ext(self, &**ext)? {
+                            match reg_ext(self, ext)? {
                                 ControlFlow::Continue(_) => (),
                                 ControlFlow::Break(_) => continue 'ext,
                             }
@@ -410,7 +409,7 @@ impl RValue {
             )),
             RValue::Tuple(array) => {
                 let dt_iter: Box<dyn Iterator<Item = &Option<DatumType>>> =
-                    if dt.len() == 0 || dt.len() == 1 && dt[0] == None {
+                    if dt.len() == 0 || dt.len() == 1 && dt[0].is_none() {
                         Box::new(std::iter::repeat(&None))
                     } else if dt.len() == array.len() {
                         Box::new(dt.iter())
@@ -573,9 +572,9 @@ impl CoerceFrom<Value> for i64 {
     fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         match from {
             Value::Dim(d) => d.to_i64(),
-            Value::Tensor(t) => Ok(t.to_scalar::<i64>()?.clone()),
+            Value::Tensor(t) => Ok(*t.to_scalar::<i64>()?),
             Value::Wire(_) => {
-                Ok(from.to::<Arc<Tensor>>(builder)?.cast_to::<i64>()?.to_scalar::<i64>()?.clone())
+                Ok(*from.to::<Arc<Tensor>>(builder)?.cast_to::<i64>()?.to_scalar::<i64>()?)
             }
             _ => bail!("Can not build a i64 from {:?}", from),
         }
@@ -631,9 +630,9 @@ impl CoerceFrom<Value> for f32 {
     fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         match from {
             Value::Scalar(f) => Ok(*f),
-            Value::Tensor(t) => Ok(t.to_scalar::<f32>()?.clone()),
+            Value::Tensor(t) => Ok(*t.to_scalar::<f32>()?),
             Value::Wire(_) => {
-                Ok(from.to::<Arc<Tensor>>(builder)?.cast_to::<f32>()?.to_scalar::<f32>()?.clone())
+                Ok(*from.to::<Arc<Tensor>>(builder)?.cast_to::<f32>()?.to_scalar::<f32>()?)
             }
             _ => bail!("Can not build a f32 from {:?}", from),
         }

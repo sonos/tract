@@ -95,13 +95,13 @@ pub fn handle(
     }
 
     if params.assertions.assert_outputs {
-        crate::utils::check_outputs(&*outputs, &params)?;
+        crate::utils::check_outputs(&outputs, params)?;
     }
 
     if let Some(facts) = &params.assertions.assert_output_facts {
         let outputs: Vec<InferenceFact> =
             outputs.iter().map(|t| t[0].datum_type().fact(t[0].shape()).into()).collect();
-        crate::utils::check_inferred(&*outputs, facts)?;
+        crate::utils::check_inferred(&outputs, facts)?;
     }
 
     if let Some(asserts) = &params.assertions.assert_op_count {

@@ -163,7 +163,7 @@ mod test {
                 .wire_node("c,", EinSum { expr: self.expr.parse().unwrap() }, &[a, b])
                 .context("wiring initial network")
                 .unwrap();
-            model.set_output_outlets(&*c).unwrap();
+            model.set_output_outlets(&c).unwrap();
             let expect = model
                 .clone()
                 .into_runnable()

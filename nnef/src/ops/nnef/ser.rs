@@ -175,7 +175,7 @@ pub fn make_conv_named_args<'a>(
             .iter()
             .map(|d| d.to_usize())
             .collect::<TractResult<TVec<_>>>()?;
-        named_args.push(("output_shape", ints(&*output_shape)));
+        named_args.push(("output_shape", ints(&output_shape)));
     };
     Ok(named_args)
 }
@@ -302,7 +302,7 @@ fn cnn_pool_fragment<'a>(
     wire = invocation(
         op_name,
         &[ident("nchw").into()],
-        &*fragment
+        &fragment
             .decl
             .parameters
             .iter()
@@ -398,7 +398,7 @@ pub fn axis_op(
             } else {
                 perm[*to..(from + 1)].rotate_right(1);
             }
-            invocation("transpose", &[wire], &[("axes", ints(&*perm))])
+            invocation("transpose", &[wire], &[("axes", ints(&perm))])
         }
         AxisOp::Reshape(start, from, to) => invocation(
             "reshape",
@@ -427,7 +427,7 @@ pub fn reduce(
         ops::nn::Reducer::Min => "min_reduce",
         _ => return Ok(None),
     };
-    Ok(Some(invocation(oper, &[wire], &[("axes", ints(&*op.axes))])))
+    Ok(Some(invocation(oper, &[wire], &[("axes", ints(&op.axes))])))
 }
 
 pub fn matmulaxes_as_transpositions(

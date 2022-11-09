@@ -89,7 +89,7 @@ fn parse_dt(dt: &str) -> TractResult<DatumType> {
 }
 
 pub fn parse_spec(symbol_table: &SymbolTable, size: &str) -> TractResult<InferenceFact> {
-    if size.len() == 0 {
+    if size.is_empty() {
         return Ok(InferenceFact::default());
     }
     if size.contains('x') && !size.contains(',') {
@@ -102,7 +102,7 @@ pub fn parse_spec(symbol_table: &SymbolTable, size: &str) -> TractResult<Inferen
 pub fn parse_coma_spec(symbol_table: &SymbolTable, size: &str) -> TractResult<InferenceFact> {
     let splits = size.split(',').collect::<Vec<_>>();
 
-    if splits.len() < 1 {
+    if splits.is_empty() {
         // Hide '{' in this error message from the formatting machinery in bail macro
         let msg = "The <size> argument should be formatted as {size},{...},{type}.";
         bail!(msg);
@@ -141,7 +141,7 @@ pub fn parse_x_spec(size: &str) -> TractResult<InferenceFact> {
     );
     let splits = size.split('x').collect::<Vec<_>>();
 
-    if splits.len() < 1 {
+    if splits.is_empty() {
         // Hide '{' in this error message from the formatting machinery in bail macro
         let msg = "The <size> argument should be formatted as {size},{...},{type}.";
         bail!(msg);
@@ -432,7 +432,7 @@ fn make_inputs(values: &[impl std::borrow::Borrow<TypedFact>]) -> TractResult<TV
 
 pub fn make_inputs_for_model(model: &dyn Model) -> TractResult<TVec<Tensor>> {
     make_inputs(
-        &*model
+        &model
             .input_outlets()
             .iter()
             .map(|&t| model.outlet_typedfact(t))

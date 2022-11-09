@@ -83,8 +83,8 @@ impl EvalOp for Box<dyn Expansion> {
             .enumerate()
             .map(|(ix, i)| adhoc.add_source(format!("adhoc-source-{}", ix), TypedFact::from(&**i)))
             .collect::<TractResult<TVec<OutletId>>>()?;
-        let wires = self.wire("adhoc", &mut adhoc, &*wires)?;
-        adhoc.set_output_outlets(&*wires)?;
+        let wires = self.wire("adhoc", &mut adhoc, &wires)?;
+        adhoc.set_output_outlets(&wires)?;
         SimplePlan::new(adhoc)?.run(inputs.into_iter().map(|t| t.into_tensor()).collect())
     }
 }

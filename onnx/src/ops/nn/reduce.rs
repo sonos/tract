@@ -66,7 +66,7 @@ impl Expansion for ReduceSum13 {
                     s.equals(inputs[0].rank.bex() - axes.len() as i64, &outputs[0].rank)?;
                 }
                 s.given(&inputs[0].shape, move |s, shape| {
-                    let out_shape = op.output_shape(&*shape);
+                    let out_shape = op.output_shape(&shape);
                     s.equals(&outputs[0].shape, out_shape)
                 })
             })
@@ -85,7 +85,7 @@ impl Expansion for ReduceSum13 {
                     s.equals(inputs[0].rank.bex() - axes.len() as i64, &outputs[0].rank)?;
                 }
                 s.given(&inputs[0].shape, move |s, shape| {
-                    let out_shape = op.output_shape(&*shape);
+                    let out_shape = op.output_shape(&shape);
                     s.equals(&outputs[0].shape, out_shape)
                 })
             })

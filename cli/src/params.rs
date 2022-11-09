@@ -347,7 +347,7 @@ impl Parameters {
                 raw_model.set_outlet_label(id, label)?;
             }
             outputs[0] = id;
-            raw_model.set_output_outlets(&*outputs)?;
+            raw_model.set_output_outlets(&outputs)?;
         }
         Ok(())
     }
@@ -676,12 +676,12 @@ impl Parameters {
                 stage!("pulse", typed_model -> pulsed_model, |m:TypedModel| { 
                     let (sym, pulse) = if let Ok((s,p)) = scan_fmt!(spec, "{}={}", String, String) {
                         (s, parse_tdim(&m.symbol_table, &p)?)
-                    } else if let Ok(i) = parse_tdim(&m.symbol_table, &spec) {
+                    } else if let Ok(i) = parse_tdim(&m.symbol_table, spec) {
                         ("S".to_owned(), i)
                     } else {
                         bail!("Can not parse pulse specification {}", spec)
                     };
-                    let sym = m.symbol_table.sym(&*sym);
+                    let sym = m.symbol_table.sym(&sym);
                     PulsedModel::new(&m, sym, &pulse) 
                 });
                 stage!("pulse-to-type", pulsed_model -> typed_model, |m:PulsedModel| m.into_typed());

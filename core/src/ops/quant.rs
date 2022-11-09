@@ -185,7 +185,7 @@ impl TypedOp for DequantizeLinearF32 {
                 // or else make a lookup table
                 if incoming_dt == DatumType::I8 || incoming_dt == DatumType::U8 {
                     let mut adhoc_model = TypedModel::default();
-                    let mut wire = adhoc_model.add_source("ad-hoc", dt.fact(&[256]))?;
+                    let mut wire = adhoc_model.add_source("ad-hoc", dt.fact([256]))?;
                     let mut next = model.single_succ(dequant.id)?.unwrap();
                     let mut name = None;
                     // plug in dequant
@@ -355,7 +355,7 @@ impl crate::ops::binary::BinMiniOp for Scale {
             let scaler = Scaler::new(factor, RoundingPolicy::Even);
 
             let op = ElementWiseOp(Box::new(QScale { scaler }));
-            let patch = TypedModelPatch::replace_single_op(model, node, &*node.inputs, op)?;
+            let patch = TypedModelPatch::replace_single_op(model, node, &node.inputs, op)?;
 
             return Ok(Some(patch));
         }

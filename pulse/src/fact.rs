@@ -6,7 +6,7 @@ pub trait StreamFact {
 
 impl StreamFact for ShapeFact {
     fn stream_info(&self, stream_sym: &Symbol) -> Option<(usize, &TDim)> {
-        let streaming_dims: TVec<(usize, &TDim)> = (&**self)
+        let streaming_dims: TVec<(usize, &TDim)> = (**self)
             .iter()
             .enumerate()
             .filter(|(_ix, d)| d.symbols().contains(stream_sym))
@@ -38,7 +38,7 @@ impl PulsedFact {
             .stream_info(symbol)
             .ok_or_else(|| format_err!("Can not pulse a tensor with no streaming dim"))?;
         let mut shape: TVec<TDim> = tf.shape.iter().collect();
-        shape[axis] = pulse.clone().into();
+        shape[axis] = pulse.clone();
         Ok(PulsedFact { datum_type, shape: shape.into(), axis, dim: len.clone(), delay: 0 })
     }
 

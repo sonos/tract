@@ -61,8 +61,8 @@ impl<'a> ParsingContext<'a> {
     pub fn parse_graph(&self, graph: &pb::GraphProto) -> TractResult<ParseResult> {
         let mut ctx = self.clone();
         ctx.parent_graphs.push(graph);
-        let mut model = InferenceModel::default();
-        model.symbol_table = ctx.symbol_table.clone();
+        let mut model =
+            InferenceModel { symbol_table: ctx.symbol_table.clone(), ..InferenceModel::default() };
         let mut unresolved_inputs = vec![];
         let mut closures_to_wire = vec![];
         trace!("trying to initialize initializers hashmap...");
@@ -116,7 +116,7 @@ impl<'a> ParsingContext<'a> {
         let consts = model.nodes().len();
         for pbnode in graph.node.iter() {
             let name = if !pbnode.name.is_empty() {
-                pbnode.name.to_string().replace("/", "_")
+                pbnode.name.to_string().replace('/', "_")
             } else if pbnode.output.len() > 0 && !pbnode.output[0].is_empty() {
                 pbnode.output[0].to_owned()
             } else {
@@ -221,7 +221,12 @@ impl Onnx {
     pub fn parse(&self, proto: &pb::ModelProto, path: Option<&str>) -> TractResult<ParseResult> {
         self.parse_with_symbols(proto, path, &SymbolTable::default())
     }
-    pub fn parse_with_symbols(&self, proto: &pb::ModelProto, path: Option<&str>, symbol_table: &SymbolTable) -> TractResult<ParseResult> {
+    pub fn parse_with_symbols(
+        &self,
+        proto: &pb::ModelProto,
+        path: Option<&str>,
+        symbol_table: &SymbolTable,
+    ) -> TractResult<ParseResult> {
         let onnx_operator_set_version = proto
             .opset_import
             .iter()
@@ -302,7 +307,8 @@ impl Framework<pb::ModelProto, InferenceModel> for Onnx {
         proto: &pb::ModelProto,
         symbols: &SymbolTable,
     ) -> TractResult<InferenceModel> {
-        let ParseResult { model, unresolved_inputs, .. } = self.parse_with_symbols(proto, None, symbols)?;
+        let ParseResult { model, unresolved_inputs, .. } =
+            self.parse_with_symbols(proto, None, symbols)?;
         if unresolved_inputs.len() > 0 {
             bail!("Could not resolve inputs at top-level: {:?}", unresolved_inputs)
         }

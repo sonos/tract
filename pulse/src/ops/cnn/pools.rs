@@ -76,7 +76,7 @@ pub fn pulsed_output_facts(
     let ishape = spec.data_format.shape(&inputs[0].shape)?;
     let computed = spec.padding.compute(
         ishape.hw_dims(),
-        &*spec.kernel_shape,
+        &spec.kernel_shape,
         &spec.dilations(),
         &spec.strides(),
     );

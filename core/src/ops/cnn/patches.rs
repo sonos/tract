@@ -79,10 +79,10 @@ impl PatchSpec {
 
     pub fn into_patch(self) -> Patch {
         let dims = self.padding.compute(
-            &*self.input_shape,
-            &*self.kernel_shape,
-            &*self.dilations,
-            &*self.strides,
+            &self.input_shape,
+            &self.kernel_shape,
+            &self.dilations,
+            &self.strides,
         );
         let output: TVec<usize> = dims.iter().map(|d| d.convoluted).collect();
         let pad_before: TVec<usize> = dims.iter().map(|d| d.pad_before).collect();
@@ -121,8 +121,8 @@ impl PatchSpec {
             strides
         }
 
-        let input_storage_strides = strides(&*self.input_shape, self.input_inner_stride);
-        let output_storage_strides = strides(&*output, self.output_inner_stride);
+        let input_storage_strides = strides(&self.input_shape, self.input_inner_stride);
+        let output_storage_strides = strides(&output, self.output_inner_stride);
 
         let standard_layout_data_field: Vec<isize> = data_field
             .outer_iter()

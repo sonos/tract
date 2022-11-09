@@ -38,7 +38,7 @@ impl Problem {
         let mut full_kernel_shape = self.kernel_geo.clone();
         full_kernel_shape.push(*self.input.c());
         full_kernel_shape.push(self.co);
-        let kernel = Tensor::zero::<f32>(&*full_kernel_shape).unwrap();
+        let kernel = Tensor::zero::<f32>(&full_kernel_shape).unwrap();
         let conv = cnn::ConvUnary {
             pool_spec: cnn::PoolSpec {
                 data_format: self.input.fmt,
@@ -100,7 +100,7 @@ fn size(c: &mut Criterion) {
             (
                 s,
                 Problem::new(
-                    HWC.from_n_c_hw(1, 32, &[s, s]).unwrap(),
+                    HWC.from_n_c_hw(1, 32, [s, s]).unwrap(),
                     tvec!(3, 3),
                     32,
                     tvec!(1, 1),
@@ -119,7 +119,7 @@ fn kernel_sq(c: &mut Criterion) {
             (
                 s,
                 Problem::new(
-                    HWC.from_n_c_hw(1, 32, &[64, 64]).unwrap(),
+                    HWC.from_n_c_hw(1, 32, [64, 64]).unwrap(),
                     tvec!(s, s),
                     32,
                     tvec!(1, 1),
@@ -138,7 +138,7 @@ fn kernel_1d(c: &mut Criterion) {
             (
                 s,
                 Problem::new(
-                    HWC.from_n_c_hw(1, 32, &[64]).unwrap(),
+                    HWC.from_n_c_hw(1, 32, [64]).unwrap(),
                     tvec!(s),
                     32,
                     tvec!(1),
@@ -158,7 +158,7 @@ fn hey_snips_ci(c: &mut Criterion) {
             (
                 s,
                 Problem::new(
-                    HWC.from_n_c_hw(1, s, &[8 + 2 * dil]).unwrap(),
+                    HWC.from_n_c_hw(1, s, [8 + 2 * dil]).unwrap(),
                     tvec!(10),
                     64,
                     tvec!(1),
@@ -177,7 +177,7 @@ fn co(c: &mut Criterion) {
             (
                 s,
                 Problem::new(
-                    HWC.from_n_c_hw(1, 32, &[64, 64]).unwrap(),
+                    HWC.from_n_c_hw(1, 32, [64, 64]).unwrap(),
                     tvec!(3, 3),
                     s,
                     tvec!(1, 1),
@@ -201,29 +201,29 @@ mod b {
         }
     }
 
-    b!(ARM_ML_KWS_CNN_M_0, NHWC.from_n_c_hw(1, 1,  &[49, 10]).unwrap(),   tvec!(10, 4), 64, tvec!(1, 1), tvec!(1, 1));
-    b!(ARM_ML_KWS_CNN_M_1, NHWC.from_n_c_hw(1, 64, &[40, 7]).unwrap(),    tvec!(10, 4), 48, tvec!(2, 1), tvec!(1, 1));
+    b!(ARM_ML_KWS_CNN_M_0, NHWC.from_n_c_hw(1, 1,  [49, 10]).unwrap(),   tvec!(10, 4), 64, tvec!(1, 1), tvec!(1, 1));
+    b!(ARM_ML_KWS_CNN_M_1, NHWC.from_n_c_hw(1, 64, [40, 7]).unwrap(),    tvec!(10, 4), 48, tvec!(2, 1), tvec!(1, 1));
 
     // Hey_Snips_v3
-    b!(Hey_Snips_v3_tdnn1_dil3, HWC.from_n_c_hw(1, 128, &[36]).unwrap(), tvec!(2),     128, tvec!(1),    tvec!(3));
-    b!(Hey_Snips_v3_tdnn1_dil6, HWC.from_n_c_hw(1, 128, &[33]).unwrap(), tvec!(2),     128, tvec!(1),    tvec!(6));
-    b!(Hey_Snips_v3_tdnn1_dil9, HWC.from_n_c_hw(1, 128, &[27]).unwrap(), tvec!(2),     128, tvec!(1),    tvec!(9));
-    b!(Hey_Snips_v3_tdnn1_dil12,HWC.from_n_c_hw(1, 128, &[18]).unwrap(), tvec!(2),     128, tvec!(1),    tvec!(12));
+    b!(Hey_Snips_v3_tdnn1_dil3, HWC.from_n_c_hw(1, 128, [36]).unwrap(), tvec!(2),     128, tvec!(1),    tvec!(3));
+    b!(Hey_Snips_v3_tdnn1_dil6, HWC.from_n_c_hw(1, 128, [33]).unwrap(), tvec!(2),     128, tvec!(1),    tvec!(6));
+    b!(Hey_Snips_v3_tdnn1_dil9, HWC.from_n_c_hw(1, 128, [27]).unwrap(), tvec!(2),     128, tvec!(1),    tvec!(9));
+    b!(Hey_Snips_v3_tdnn1_dil12,HWC.from_n_c_hw(1, 128, [18]).unwrap(), tvec!(2),     128, tvec!(1),    tvec!(12));
 
     // Hey_Snips_v4
-    b!(Hey_Snips_v4_dil1,  HWC.from_n_c_hw(1, 16, &[10]).unwrap(),       tvec!(3),     64, tvec!(1),    tvec!(1));
-    b!(Hey_Snips_v4_dil2,  HWC.from_n_c_hw(1, 16, &[12]).unwrap(),       tvec!(3),     64, tvec!(1),    tvec!(2));
-    b!(Hey_Snips_v4_dil4,  HWC.from_n_c_hw(1, 16, &[16]).unwrap(),       tvec!(3),     64, tvec!(1),    tvec!(4));
-    b!(Hey_Snips_v4_dil8,  HWC.from_n_c_hw(1, 16, &[24]).unwrap(),       tvec!(3),     64, tvec!(1),    tvec!(8));
+    b!(Hey_Snips_v4_dil1,  HWC.from_n_c_hw(1, 16, [10]).unwrap(),       tvec!(3),     64, tvec!(1),    tvec!(1));
+    b!(Hey_Snips_v4_dil2,  HWC.from_n_c_hw(1, 16, [12]).unwrap(),       tvec!(3),     64, tvec!(1),    tvec!(2));
+    b!(Hey_Snips_v4_dil4,  HWC.from_n_c_hw(1, 16, [16]).unwrap(),       tvec!(3),     64, tvec!(1),    tvec!(4));
+    b!(Hey_Snips_v4_dil8,  HWC.from_n_c_hw(1, 16, [24]).unwrap(),       tvec!(3),     64, tvec!(1),    tvec!(8));
 
     // inception (?)
-    b!(Conv2d_2a_3x3,      HWC.from_n_c_hw(1, 32, &[149, 149]).unwrap(), tvec!(3, 3),  32, tvec!(1, 1), tvec!(1, 1));
+    b!(Conv2d_2a_3x3,      HWC.from_n_c_hw(1, 32, [149, 149]).unwrap(), tvec!(3, 3),  32, tvec!(1, 1), tvec!(1, 1));
 
     // 2M acoustic model conv
-    b!(AM_2M_lda,          HWC.from_n_c_hw(1, 40, &[28]).unwrap(),       tvec!(5),    200, tvec!(1),    tvec!(1));
-    b!(AM_2M_tdnn2,        HWC.from_n_c_hw(1, 256, &[26]).unwrap(),      tvec!(3),    256, tvec!(1),    tvec!(1));
-    b!(AM_2M_tdnn3,        HWC.from_n_c_hw(1, 256, &[24]).unwrap(),      tvec!(3),    256, tvec!(3),    tvec!(1));
-    b!(AM_2M_tdnn4_5,      HWC.from_n_c_hw(1, 256, &[10]).unwrap(),      tvec!(3),    256, tvec!(1),    tvec!(1));
+    b!(AM_2M_lda,          HWC.from_n_c_hw(1, 40, [28]).unwrap(),       tvec!(5),    200, tvec!(1),    tvec!(1));
+    b!(AM_2M_tdnn2,        HWC.from_n_c_hw(1, 256, [26]).unwrap(),      tvec!(3),    256, tvec!(1),    tvec!(1));
+    b!(AM_2M_tdnn3,        HWC.from_n_c_hw(1, 256, [24]).unwrap(),      tvec!(3),    256, tvec!(3),    tvec!(1));
+    b!(AM_2M_tdnn4_5,      HWC.from_n_c_hw(1, 256, [10]).unwrap(),      tvec!(3),    256, tvec!(1),    tvec!(1));
 }
 
 criterion_group!(

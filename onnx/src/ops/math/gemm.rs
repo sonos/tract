@@ -67,7 +67,7 @@ impl Expansion for Gemm {
         let mut wire = model.wire_node(
             format!("{}.ab", name),
             ops::matmul::MatMul { axes },
-            &[a, b].as_ref(),
+            [a, b].as_ref(),
         )?[0];
         if self.alpha != 1.0 {
             let alpha = tensor0(self.alpha).broadcast_into_rank(model.outlet_fact(wire)?.rank())?;

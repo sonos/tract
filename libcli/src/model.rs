@@ -74,15 +74,15 @@ pub trait Model:
         if let Some(hir) = self.node_op(id).downcast_ref::<tract_hir::ops::scan::InferenceScan>() {
             return vec![("loop".into(), &hir.body)];
         }
-        return vec![];
+        vec![]
     }
 
     /// Subnets of a node
     fn nested_models_iters(&self, id: usize, input: &[&TypedFact]) -> Vec<Option<TDim>> {
         if let Some(lir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::LirScan>() {
-            return vec![lir.iteration_count(input)];
+            vec![lir.iteration_count(input)]
         } else if let Some(mir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::Scan>() {
-            return vec![mir.iteration_count(input)];
+            vec![mir.iteration_count(input)]
         } else {
             vec![]
         }
@@ -123,7 +123,7 @@ where
     }
 
     fn node_name(&self, id: usize) -> &str {
-        &*self.nodes[id].name
+        &self.nodes[id].name
     }
 
     fn node_op_name(&self, id: usize) -> Cow<str> {
@@ -135,7 +135,7 @@ where
     }
 
     fn node_inputs(&self, id: usize) -> &[OutletId] {
-        &*self.nodes[id].inputs
+        &self.nodes[id].inputs
     }
 
     fn node_output_count(&self, id: usize) -> usize {
@@ -163,7 +163,7 @@ where
     }
 
     fn input_outlets(&self) -> &[OutletId] {
-        &*self.inputs
+        &self.inputs
     }
 
     fn set_input_names(&mut self, names: &[&str]) -> TractResult<()> {
@@ -175,7 +175,7 @@ where
     }
 
     fn output_outlets(&self) -> &[OutletId] {
-        &*self.outputs
+        &self.outputs
     }
 
     fn node_op(&self, id: usize) -> &dyn Op {

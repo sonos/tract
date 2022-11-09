@@ -92,7 +92,7 @@ impl OpState for DelayState {
                 shape[op.axis] = buffered;
                 self.buffer = Some(Tensor::uninitialized_dt(input.datum_type(), &shape)?);
             };
-            let mut output = Tensor::uninitialized_dt(input.datum_type(), &*output_shape)?;
+            let mut output = Tensor::uninitialized_dt(input.datum_type(), &output_shape)?;
             self.apply_delay_unchecked(op, &input, &mut output);
             let output = output.into_arc_tensor();
             Ok(tvec!(output))

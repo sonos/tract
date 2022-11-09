@@ -29,7 +29,7 @@ impl TryFrom<DataType> for DatumType {
     }
 }
 
-pub fn translate_inference_fact<'a, 'b>(
+pub fn translate_inference_fact<'a>(
     ctx: &ParsingContext,
     t: &'a type_proto::Tensor,
 ) -> TractResult<InferenceFact> {
@@ -64,7 +64,7 @@ fn get_external_resources(t: &TensorProto, path: &str) -> TractResult<Vec<u8>> {
         let p = PathBuf::from(format!("{}/{}", path, external_data.value));
         trace!("external file detected: {:?}", p);
         let file = unsafe { memmap2::Mmap::map(&fs::File::open(p)?)? };
-        tensor_data.extend_from_slice(&*file);
+        tensor_data.extend_from_slice(&file);
         trace!("external file loaded");
     }
     Ok(tensor_data)
@@ -73,18 +73,18 @@ fn get_external_resources(t: &TensorProto, path: &str) -> TractResult<Vec<u8>> {
 fn create_tensor(shape: Vec<usize>, dt: DatumType, data: &[u8]) -> TractResult<Tensor> {
     unsafe {
         match dt {
-            DatumType::U8 => Tensor::from_raw::<u8>(&*shape, data),
-            DatumType::U16 => Tensor::from_raw::<u16>(&*shape, data),
-            DatumType::U32 => Tensor::from_raw::<u32>(&*shape, data),
-            DatumType::U64 => Tensor::from_raw::<u64>(&*shape, data),
-            DatumType::I8 => Tensor::from_raw::<i8>(&*shape, data),
-            DatumType::I16 => Tensor::from_raw::<i16>(&*shape, data),
-            DatumType::I32 => Tensor::from_raw::<i32>(&*shape, data),
-            DatumType::I64 => Tensor::from_raw::<i64>(&*shape, data),
-            DatumType::F16 => Tensor::from_raw::<f16>(&*shape, data),
-            DatumType::F32 => Tensor::from_raw::<f32>(&*shape, data),
-            DatumType::F64 => Tensor::from_raw::<f64>(&*shape, data),
-            DatumType::Bool => Ok(Tensor::from_raw::<u8>(&*shape, data)?
+            DatumType::U8 => Tensor::from_raw::<u8>(&shape, data),
+            DatumType::U16 => Tensor::from_raw::<u16>(&shape, data),
+            DatumType::U32 => Tensor::from_raw::<u32>(&shape, data),
+            DatumType::U64 => Tensor::from_raw::<u64>(&shape, data),
+            DatumType::I8 => Tensor::from_raw::<i8>(&shape, data),
+            DatumType::I16 => Tensor::from_raw::<i16>(&shape, data),
+            DatumType::I32 => Tensor::from_raw::<i32>(&shape, data),
+            DatumType::I64 => Tensor::from_raw::<i64>(&shape, data),
+            DatumType::F16 => Tensor::from_raw::<f16>(&shape, data),
+            DatumType::F32 => Tensor::from_raw::<f32>(&shape, data),
+            DatumType::F64 => Tensor::from_raw::<f64>(&shape, data),
+            DatumType::Bool => Ok(Tensor::from_raw::<u8>(&shape, data)?
                 .into_array::<u8>()?
                 .mapv(|x| x != 0)
                 .into()),

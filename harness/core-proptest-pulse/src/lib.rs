@@ -89,7 +89,7 @@ fn proptest_regular_against_pulse(
                 .ok()
                 .map(|n| n.max(0) as usize);
         }
-        let mut outputs = state.run(tvec!(Tensor::from(chunk.to_owned()).into())).unwrap();
+        let mut outputs = state.run(tvec!(Tensor::from(chunk.to_owned()))).unwrap();
         got = concatenate(
             Axis(output_stream_axis),
             &[got.view(), outputs.remove(0).to_array_view::<f32>().unwrap()],
@@ -112,7 +112,7 @@ fn proptest_regular_against_pulse(
         .into_tensor();
 
     prop_assert!(
-        &pulsed_output.close_enough(&*outputs[0], true).is_ok(),
+        &pulsed_output.close_enough(&outputs[0], true).is_ok(),
         "{:?} == {:?}",
         pulsed_output,
         outputs[0]

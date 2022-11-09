@@ -173,7 +173,7 @@ impl Expansion for Conv {
             if let Some(kshape) =
                 kshape.iter().map(|d| d.to_usize().ok()).collect::<Option<TVec<_>>>()
             {
-                let oshape = self.output_shape(&*ishape, &*kshape)?;
+                let oshape = self.output_shape(&ishape, &kshape)?;
                 s.equals(&outputs[0].shape, oshape)?;
             }
             Ok(())
@@ -275,41 +275,41 @@ mod test {
     #[test]
     fn test_infer_with_known_kshape() {
         let mut op = expand(Conv::default().strides(tvec![2, 2]).kernel_shape(tvec![3, 3]));
-        let ifact = f32::fact(&[1, 1, 7, 5]).into();
-        let kfact = f32::fact(&[1, 1, 3, 3]).into();
+        let ifact = f32::fact([1, 1, 7, 5]).into();
+        let kfact = f32::fact([1, 1, 3, 3]).into();
         let ofact = InferenceFact::default();
         let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
-        assert_eq!(facts.1, tvec!(f32::fact(&[1, 1, 3, 2]).into()));
+        assert_eq!(facts.1, tvec!(f32::fact([1, 1, 3, 2]).into()));
     }
 
     #[test]
     fn test_infer_channels() {
         let mut op = expand(Conv::default()); // NCHW - OIHW
-        let ifact = f32::fact(&[1, 2, 1, 1]).into();
-        let kfact = f32::fact(&[3, 2, 1, 1]).into();
+        let ifact = f32::fact([1, 2, 1, 1]).into();
+        let kfact = f32::fact([3, 2, 1, 1]).into();
         let ofact = InferenceFact::default();
         let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
-        assert_eq!(facts.1, tvec!(f32::fact(&[1, 3, 1, 1]).into()));
+        assert_eq!(facts.1, tvec!(f32::fact([1, 3, 1, 1]).into()));
     }
 
     #[test]
     fn test_infer_onnx_strides_no_padding() {
         let mut op = expand(Conv::default().strides(tvec![2, 2]));
-        let ifact = f32::fact(&[1, 1, 7, 5]).into();
-        let kfact = f32::fact(&[1, 1, 3, 3]).into();
+        let ifact = f32::fact([1, 1, 7, 5]).into();
+        let kfact = f32::fact([1, 1, 3, 3]).into();
         let ofact = InferenceFact::default();
         let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
-        assert_eq!(facts.1, tvec!(f32::fact(&[1, 1, 3, 2]).into()));
+        assert_eq!(facts.1, tvec!(f32::fact([1, 1, 3, 2]).into()));
     }
 
     #[test]
     fn test_infer_nhwc_1() {
         let mut op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
-        let ifact = f32::fact(&[1, 2, 2, 2]).into();
-        let kfact = f32::fact(&[2, 2, 2, 1]).into();
+        let ifact = f32::fact([1, 2, 2, 2]).into();
+        let kfact = f32::fact([2, 2, 2, 1]).into();
         let ofact = InferenceFact::default();
         let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
-        assert_eq!(facts.1, tvec!(f32::fact(&[1, 2, 2, 1]).into()));
+        assert_eq!(facts.1, tvec!(f32::fact([1, 2, 2, 1]).into()));
     }
 
     #[test]
@@ -327,11 +327,11 @@ mod test {
     fn test_infer_nhwc_2() {
         setup_test_logger();
         let mut op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
-        let ifact = f32::fact(&[1, 1, 2, 2]).into();
-        let kfact = f32::fact(&[2, 1, 2, 1]).into();
+        let ifact = f32::fact([1, 1, 2, 2]).into();
+        let kfact = f32::fact([2, 1, 2, 1]).into();
         let ofact = InferenceFact::default();
         let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
-        assert_eq!(facts.1, tvec!(f32::fact(&[1, 1, 2, 1]).into()));
+        assert_eq!(facts.1, tvec!(f32::fact([1, 1, 2, 1]).into()));
     }
 
     #[test]
@@ -368,11 +368,11 @@ mod test {
     #[test]
     fn test_infer_ntc_simple() {
         let mut op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
-        let ifact = f32::fact(&[1, 2, 1]).into();
-        let kfact = f32::fact(&[1, 1, 1]).into();
+        let ifact = f32::fact([1, 2, 1]).into();
+        let kfact = f32::fact([1, 1, 1]).into();
         let ofact = InferenceFact::default();
         let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
-        assert_eq!(facts.1, tvec!(f32::fact(&[1, 2, 1]).into()));
+        assert_eq!(facts.1, tvec!(f32::fact([1, 2, 1]).into()));
     }
 
     #[test]
@@ -386,11 +386,11 @@ mod test {
     #[test]
     fn test_infer_ntc_batch() {
         let mut op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
-        let ifact = f32::fact(&[2, 1, 1]).into();
-        let kfact = f32::fact(&[1, 1, 1]).into();
+        let ifact = f32::fact([2, 1, 1]).into();
+        let kfact = f32::fact([1, 1, 1]).into();
         let ofact = InferenceFact::default();
         let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
-        assert_eq!(facts.1, tvec!(f32::fact(&[2, 1, 1]).into()));
+        assert_eq!(facts.1, tvec!(f32::fact([2, 1, 1]).into()));
     }
 
     #[test]
@@ -404,11 +404,11 @@ mod test {
     #[test]
     fn test_infer_ntc_channel() {
         let mut op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
-        let ifact = f32::fact(&[1, 1, 2]).into();
-        let kfact = f32::fact(&[1, 2, 1]).into();
+        let ifact = f32::fact([1, 1, 2]).into();
+        let kfact = f32::fact([1, 2, 1]).into();
         let ofact = InferenceFact::default();
         let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
-        assert_eq!(facts.1, tvec!(f32::fact(&[1, 1, 1]).into()));
+        assert_eq!(facts.1, tvec!(f32::fact([1, 1, 1]).into()));
     }
 
     #[test]

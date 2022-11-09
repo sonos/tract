@@ -125,10 +125,10 @@ fn qmatmul_unary_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option
     push!(c_scale);
     if let Some(bias) = &op.bias {
         named_args
-            .push(("bias", (&*ast.konst_variable(format!("{}.bias", node.name), bias)?).clone()));
+            .push(("bias", (*ast.konst_variable(format!("{}.bias", node.name), bias)?).clone()));
     }
 
-    Ok(Some(invocation("tract_core_qmatmul", &[], &*named_args)))
+    Ok(Some(invocation("tract_core_qmatmul", &[], &named_args)))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -183,7 +183,7 @@ fn qmatmul_load(
     let c0: Option<Value> = invocation.named_arg_as(builder, "c0").ok();
     let c_scale: Option<Value> = invocation.named_arg_as(builder, "c_scale").ok();
     let output_type =
-        DatumType::from_str(&*invocation.named_arg_as::<String>(builder, "output_type")?)?;
+        DatumType::from_str(&invocation.named_arg_as::<String>(builder, "output_type")?)?;
     let mut inputs = vec![a, b, bias];
     let params = values_to_qparams(a0, a_scale, b0, b_scale, c0, c_scale, &mut inputs, builder)?;
     let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;

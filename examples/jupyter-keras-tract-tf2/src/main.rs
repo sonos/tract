@@ -6,7 +6,7 @@ fn main() -> TractResult<()> {
     // load the model
     .model_for_path("./example.onnx")?
     // specify input type and shape
-    .with_input_fact(0, f32::fact(&[10, 100]).into())?
+    .with_input_fact(0, f32::fact([10, 100]).into())?
     // optimize graph
     .into_optimized()?
     // make the model runnable and fix its inputs and outputs

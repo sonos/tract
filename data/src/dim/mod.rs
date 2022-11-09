@@ -205,7 +205,7 @@ mod tests {
     }
 
     pub fn s() -> TDim {
-        (*S).1.clone().into()
+        S.1.clone().into()
     }
 
     #[test]

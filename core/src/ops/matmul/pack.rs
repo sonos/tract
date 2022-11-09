@@ -13,7 +13,7 @@ pub struct MatMatMulPack {
 
 impl DynHash for MatMatMulPack {
     fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
-        dyn_hash(&self, hasher)
+        dyn_hash(self, hasher)
     }
 }
 
@@ -39,7 +39,7 @@ impl EvalOp for MatMatMulPack {
         let dt = b.datum_type();
         unsafe {
             let mut packed =
-                Tensor::uninitialized_aligned_dt(dt, &*self.output_shape, self.packer.alignment())
+                Tensor::uninitialized_aligned_dt(dt, &self.output_shape, self.packer.alignment())
                     .unwrap();
             let mut bc_shape: TVec<usize> = b.shape().into();
             bc_shape[self.k_axis] = 1;

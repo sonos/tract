@@ -487,7 +487,7 @@ impl Scan {
                 skip: self.skip,
                 seq_length_input_slot: self.seq_length_input_slot,
             };
-            let scan_outputs = outside_patch.wire_node(&*node.name, new_op, &*inputs)?;
+            let scan_outputs = outside_patch.wire_node(&node.name, new_op, &inputs)?;
             let output = mapping.full_slot.unwrap();
             let inputs =
                 full_values_slots.iter().map(|slot| scan_outputs[*slot]).collect::<TVec<_>>();
@@ -552,7 +552,7 @@ impl Scan {
                 &self.body,
                 &change,
                 if locked_interface { &interface } else { &[] },
-                &*self.body_bounds()?,
+                &self.body_bounds()?,
             )? {
             changes
         } else {

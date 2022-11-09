@@ -16,7 +16,7 @@ pub(crate) unsafe fn scatter_contig_data<T: Datum>(
         [(len_a, stride_a), (len_b, stride_b)] => {
             for a in 0..len_a {
                 for b in 0..len_b {
-                    *dst.add(a * stride_a + b * stride_b) = (&*src).clone();
+                    *dst.add(a * stride_a + b * stride_b) = (*src).clone();
                     src = src.offset(1);
                 }
             }
@@ -26,7 +26,7 @@ pub(crate) unsafe fn scatter_contig_data<T: Datum>(
                 for b in 0..len_b {
                     for c in 0..len_c {
                         *dst.add(a * stride_a + b * stride_b + c * stride_c) =
-                            (&*src).clone();
+                            (*src).clone();
                         src = src.offset(1);
                     }
                 }
@@ -37,7 +37,7 @@ pub(crate) unsafe fn scatter_contig_data<T: Datum>(
                 for b in 0..len_b {
                     for c in 0..len_c {
                         for d in 0..len_d {
-                            *dst.add(a * stride_a + b * stride_b + c * stride_c + d * stride_d) = (&*src).clone();
+                            *dst.add(a * stride_a + b * stride_b + c * stride_c + d * stride_d) = (*src).clone();
                             src = src.offset(1);
                         }
                     }
@@ -54,7 +54,7 @@ pub(crate) unsafe fn scatter_contig_data<T: Datum>(
                                         + b * stride_b
                                         + c * stride_c
                                         + d * stride_d
-                                        + e * stride_e) = (&*src).clone();
+                                        + e * stride_e) = (*src).clone();
                                 src = src.offset(1);
                             }
                         }
@@ -71,7 +71,7 @@ pub(crate) unsafe fn scatter_contig_data<T: Datum>(
                     .zip(dst_len_and_strides.iter())
                     .map(|(x, (_len, stride))| x * stride)
                     .sum::<usize>();
-                *dst.add(offset) = (&*src).clone();
+                *dst.add(offset) = (*src).clone();
                 src = src.offset(1);
             }
         }

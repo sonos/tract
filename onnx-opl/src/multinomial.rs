@@ -120,7 +120,7 @@ impl TypedOp for Multinomial {
         };
 
         let batch_size = input_shape[0];
-        Ok(tvec!(self.dtype.fact(&[batch_size, self.sample_size as usize])))
+        Ok(tvec!(self.dtype.fact([batch_size, self.sample_size as usize])))
     }
 
     as_op!();

@@ -559,14 +559,14 @@ impl TypedOp for AxisOp {
 
     fn change_axes(
         &self,
-        model: &TypedModel,
-        node: &TypedNode,
+        _model: &TypedModel,
+        _node: &TypedNode,
         io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
         let op = if let InOut::Out(0) = io {
             let more =
-                if let Some(more) = self.recip().change_axes(model, node, InOut::In(0), change)? {
+                if let Some(more) = self.recip().change_axes(_model, _node, InOut::In(0), change)? {
                     more
                 } else {
                     return Ok(None);

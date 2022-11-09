@@ -127,7 +127,7 @@ impl TypedOp for EinSum {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(inputs.iter().enumerate().all(|(ix, fact)| fact.rank() == self.expr.input_rank(ix)));
         let shapes: TVec<&[TDim]> = inputs.iter().map(|t| &*t.shape).collect();
-        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, self.output_shape(&*shapes))))
+        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, self.output_shape(&shapes))))
     }
 
     fn declutter(
