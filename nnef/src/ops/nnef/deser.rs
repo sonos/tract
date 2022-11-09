@@ -143,18 +143,31 @@ pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
         }
     });
     let ends: TVec<i64> = invocation.named_arg_as(builder, "end")?;
-    let ends = ends.into_iter().enumerate().map(|(ix, b)| -> TDim {
-        // use "<=", no "<" end[axis] = 0 means "up to the end" 
-        // CAUTION: this notation is 1/ deprecated 2/ invalid with non trivial slicing
-        if b <= 0 {
-            input_fact.shape[axes[ix]].clone() + b
-        } else {
-            b.into()
-        }
-    }).collect_vec();
-    izip!(axes, begins, ends)
-        .try_fold(wire, |wire, (axis, start, end)| {
-            builder.wire_as_outlets(tract_core::ops::array::Slice { axis, start, end }, &wire)
+    let ends = ends
+        .into_iter()
+        .enumerate()
+        .map(|(ix, b)| -> TDim {
+            // use "<=", no "<" end[axis] = 0 means "up to the end"
+            // CAUTION: this notation is 1/ deprecated 2/ invalid with non trivial slicing
+            if b <= 0 {
+                input_fact.shape[axes[ix]].clone() + b
+            } else {
+                b.into()
+            }
+        })
+        .collect_vec();
+    let strides: TVec<isize> = invocation.named_arg_as(builder, "stride")?;
+    izip!(axes, begins, ends, strides)
+        .try_fold(wire, |wire, (axis, start, end, stride)| {
+            let mut w =
+                builder.wire_as_outlets(tract_core::ops::array::Slice { axis, start, end }, &wire);
+            if stride != 1 {
+                w = builder.wire_as_outlets(
+                    tract_core::ops::downsample::Downsample::new(axis, stride, 0),
+                    &w?,
+                );
+            }
+            w
         })
         .map(Value::from)
 }
@@ -324,7 +337,10 @@ pub fn conv_or_deconv(
         None
     } else if bias.rank() > 1 {
         let output_channels = kernel.shape()[0];
-        ensure!(output_channels == bias.len(), "Bias tensor should be scalar or have one value per output channel"); 
+        ensure!(
+            output_channels == bias.len(),
+            "Bias tensor should be scalar or have one value per output channel"
+        );
         let mut reshaped_bias = bias.into_tensor();
         reshaped_bias.set_shape(&[output_channels])?;
         Some(reshaped_bias)
