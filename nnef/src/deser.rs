@@ -166,7 +166,7 @@ impl<'mb> ModelBuilder<'mb> {
                 if let Some(qparam) = qparam {
                     if qparam != self.model.outlet_fact(*value)?.datum_type {
                         self.model.node_mut(value.node).name =
-                            format!("{}.raw", self.naming_scopes.join("."));
+                            format!("{}.raw", self.naming_scopes.join("_"));
                         *value = self.model.wire_node(
                             "foo",
                             tract_core::ops::cast::cast(qparam),
@@ -244,10 +244,10 @@ impl<'mb> ModelBuilder<'mb> {
     }
 
     fn generate_node_name(&self) -> String {
-        let mut name = self.naming_scopes.join(".");
+        let mut name = self.naming_scopes.join("_");
         if self.model.nodes().iter().any(|n| n.name.starts_with(&name)) {
             for i in 0.. {
-                name = format!("{}-{}", self.naming_scopes.join("."), i);
+                name = format!("{}_{}", self.naming_scopes.join("_"), i);
                 if !self.model.nodes().iter().any(|n| n.name.starts_with(&name)) {
                     break;
                 }
