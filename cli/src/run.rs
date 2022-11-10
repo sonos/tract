@@ -217,12 +217,7 @@ fn run_regular(
 
 /*
 #[cfg(feature = "pulse")]
-<<<<<<< HEAD
-fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> TractResult<TVec<Arc<Tensor>>> {
-dbg!("PULSE");
-=======
 fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> TractResult<TVec<TValue>> {
->>>>>>> ef1567973 (first pass, eval())
 let input_fact = model.input_fact(0)?;
 let output_fact = model.output_fact(0)?;
 

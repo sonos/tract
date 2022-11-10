@@ -266,7 +266,7 @@ impl EvalOp for Reduce {
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        Ok(tvec!(self.reducer.reduce(&*self.axes, &inputs[0])?.into()))
+        Ok(tvec!(self.reducer.reduce(&self.axes, &inputs[0])?.into()))
     }
 }
 
