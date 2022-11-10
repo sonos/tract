@@ -67,23 +67,23 @@ impl Cost {
 }
 
 #[derive(Clone, PartialEq)]
-pub struct TValue(pub Arc<Tensor>);
+pub struct TValue(std::rc::Rc<Tensor>);
 
 impl From<Tensor> for TValue {
     fn from(t: Tensor) -> Self {
-        t.into_tvalue()
+        TValue(std::rc::Rc::new(t))
     }
 }
 
 impl IntoTensor for TValue {
     fn into_tensor(self) -> Tensor {
-        self.0.into_tensor()
+        std::rc::Rc::try_unwrap(self.0).unwrap_or_else(|t| (*t).clone())
     }
 }
 
 impl IntoArcTensor for TValue {
     fn into_arc_tensor(self) -> Arc<Tensor> {
-        self.0
+        Arc::new(self.into_tensor())
     }
 }
 
@@ -91,14 +91,14 @@ pub trait IntoTValue {
     fn into_tvalue(self) -> TValue;
 }
 
-impl<T: IntoArcTensor> IntoTValue for T {
+impl<T: IntoTensor> IntoTValue for T {
     fn into_tvalue(self) -> TValue {
-        TValue(self.into_arc_tensor())
+        self.into_tensor().into()
     }
 }
 
 impl std::ops::Deref for TValue {
-    type Target = Arc<Tensor>;
+    type Target = Tensor;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -116,7 +116,13 @@ impl std::fmt::Debug for TValue {
     }
 }
 
-pub trait OpState: fmt::Debug + Send + dyn_clone::DynClone {
+impl TValue {
+    pub fn is_exclusive(&self) -> bool {
+        std::rc::Rc::strong_count(&self.0) == 1
+    }
+}
+
+pub trait OpState: fmt::Debug + dyn_clone::DynClone {
     fn eval(
         &mut self,
         session: &mut SessionState,

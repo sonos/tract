@@ -1473,6 +1473,12 @@ impl<D: ::ndarray::Dimension, T: Datum> IntoArcTensor for Array<T, D> {
     }
 }
 
+impl IntoTensor for Tensor {
+    fn into_tensor(self) -> Tensor {
+        self
+    }
+}
+
 impl IntoTensor for Arc<Tensor> {
     fn into_tensor(self) -> Tensor {
         Arc::try_unwrap(self).unwrap_or_else(|t| (*t).clone())

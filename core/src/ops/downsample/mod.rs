@@ -24,7 +24,7 @@ impl Downsample {
         downed.shape.set(self.axis, down_len);
         if let Some(k) = downed.konst {
             let mut outputs = self.eval(tvec!(k.into_tvalue()))?;
-            downed.konst = Some(outputs.remove(0).0)
+            downed.konst = Some(outputs.remove(0).into_arc_tensor())
         }
         if cfg!(debug_assertions) {
             downed.consistent()?;

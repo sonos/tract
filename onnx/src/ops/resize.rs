@@ -159,8 +159,8 @@ impl EvalOp for Resize {
         let sizes = self.optional_sizes_input.and_then(|ix| inputs.get(ix));
         let output_shape = self.compute_output_shape(
             inputs[0].shape(),
-            scales.map(|t| &***t),
-            sizes.map(|t| &***t),
+            scales.map(|t| &**t),
+            sizes.map(|t| &**t),
         )?;
         let mut data = inputs.remove(0).into_tensor().into_array::<f32>()?;
         for axis in 0..data.ndim() {

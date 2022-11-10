@@ -56,11 +56,11 @@ pub trait BinMiniOp:
     fn generic_eval(&self, a: TValue, b: TValue) -> TractResult<Tensor> {
         let c_dt = self.result_datum_type(a.datum_type(), b.datum_type())?;
         if c_dt == b.datum_type() && a.len() == 1 {
-            let mut b = b.0.into_tensor();
+            let mut b = b.into_tensor();
             self.eval_uniform_in_place(&a, &mut b)?;
             Ok(b)
         } else if a.shape() == b.shape() && c_dt == b.datum_type() {
-            let mut b = b.0.into_tensor();
+            let mut b = b.into_tensor();
             self.eval_unicast_in_place(&a, &mut b)?;
             Ok(b)
         } else {
@@ -72,7 +72,7 @@ pub trait BinMiniOp:
                 Ok(a)
             } else {
                 let mut c = unsafe { Tensor::uninitialized_dt(c_dt, &c_shape)? };
-                self.eval_out_of_place(&mut c, a.as_ref(), b.as_ref())?;
+                self.eval_out_of_place(&mut c, &a, &b)?;
                 Ok(c)
             }
         }
@@ -526,8 +526,8 @@ impl EvalOp for MergeOpUnicast {
 
     fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a, b) = args_2!(inputs);
-        let mut b = b.0.into_tensor();
-        self.0.eval_unicast_in_place(a.as_ref(), &mut b)?;
+        let mut b = b.into_tensor();
+        self.0.eval_unicast_in_place(&a, &mut b)?;
         Ok(tvec!(b.into_tvalue()))
     }
 }
