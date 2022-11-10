@@ -166,7 +166,7 @@ impl<'mb> ModelBuilder<'mb> {
                 if let Some(qparam) = qparam {
                     if qparam != self.model.outlet_fact(*value)?.datum_type {
                         self.model.node_mut(value.node).name =
-                            format!("{}.raw", self.naming_scopes.join("_"));
+                            format!("{}_raw", self.naming_scopes.join("_"));
                         *value = self.model.wire_node(
                             "foo",
                             tract_core::ops::cast::cast(qparam),
