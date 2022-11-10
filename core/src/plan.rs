@@ -463,7 +463,7 @@ where
             .take()
             .ok_or_else(|| format_err!("Node is not computed"))?
             .into_iter()
-            .map(|v| Arc::try_unwrap(v.0).unwrap_or_else(|v| (*v).clone()))
+            .map(|v| v.into_tensor())
             .collect())
     }
 

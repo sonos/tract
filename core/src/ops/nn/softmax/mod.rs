@@ -151,9 +151,9 @@ impl Softmax {
         }
 
         // All operations will be done in u8, we will cast the result appropriately afterward.
-        let src_is_signed = input.as_ref().datum_type().is_signed();
+        let src_is_signed = input.datum_type().is_signed();
         let out_is_signed = self.output_dt.is_signed();
-        let in_qp = input.as_ref().datum_type().qparams().unwrap(); // Checked as we are in the quant case
+        let in_qp = input.datum_type().qparams().unwrap(); // Checked as we are in the quant case
         let out_qp = self.output_dt.qparams().unwrap(); // Checked as we are in the quant case
         let mut output = unsafe { input.into_tensor().into_array_unchecked::<u8>() };
 

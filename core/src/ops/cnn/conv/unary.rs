@@ -1221,7 +1221,7 @@ mod test {
         );
         let input = input.into_iter().map(IntoTValue::into_tvalue).collect::<TVec<_>>();
         let output = op.eval(input).unwrap();
-        assert_eq!(&**output[0], &tensor4(&[[[[8i32, 12], [20, 24]]]]));
+        assert_eq!(*output[0], tensor4(&[[[[8i32, 12], [20, 24]]]]));
     }
 
     #[test]

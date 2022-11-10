@@ -215,15 +215,10 @@ impl OpState for State {
                 .map(|m| {
                     Ok(match m {
                         InputMapping::State { .. } => Some(mutable.hidden_state.pop().unwrap()),
-                        InputMapping::Scan { slot, axis, chunk } => {
-                            Some(MutableState::slice_input(
-                                mutable,
-                                inputs[*slot].as_ref(),
-                                *axis,
-                                i,
-                                *chunk,
-                            )?.into_tvalue())
-                        }
+                        InputMapping::Scan { slot, axis, chunk } => Some(
+                            MutableState::slice_input(mutable, &inputs[*slot], *axis, i, *chunk)?
+                                .into_tvalue(),
+                        ),
                         InputMapping::Full { slot } => Some(inputs[*slot].clone()),
                     })
                 })
@@ -242,7 +237,7 @@ impl OpState for State {
                     mutable.assign_output(
                         &mut outputs[slot],
                         mapping.axis,
-                        v.as_ref(),
+                        &v,
                         i,
                         mapping.chunk < 0,
                     );

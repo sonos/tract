@@ -246,7 +246,7 @@ impl EvalOp for TypedConcat {
             match slice {
                 ConcatSlice::Const(c) => mats.push(c),
                 ConcatSlice::Var => {
-                    mats.push(inputs[input_idx].as_ref());
+                    mats.push(&inputs[input_idx]);
                     input_idx += 1
                 }
             }

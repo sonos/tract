@@ -55,7 +55,7 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                         .map(|f| f.konst.clone().unwrap().into_tvalue())
                         .collect::<TVec<_>>();
                     if let Ok(outputs) = op.eval(tensors) {
-                        return Ok(outputs.into_iter().map(|t| TypedFact::from(&**t)).collect());
+                        return Ok(outputs.into_iter().map(|t| TypedFact::from(&*t)).collect());
                     }
                 }
                 op.output_facts(&input_facts).context("in output_facts invocation")
