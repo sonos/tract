@@ -33,7 +33,7 @@ pub fn check_outputs(got: &[Vec<TValue>], params: &Parameters) -> TractResult<()
                 .get("pulse.delay")
                 .context("multiple turn without pulse.delay properties")?
                 .as_slice::<i64>()?[ix] as usize;
-            let stacked = Tensor::stack_tensors(axis, &*got[ix])?;
+            let stacked = Tensor::stack_tensors(axis, &got[ix])?;
             stacked.slice(axis, delay, delay + exp.shape()[axis])?.into()
         } else {
             got[ix][0].clone()

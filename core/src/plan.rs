@@ -355,7 +355,7 @@ where
             .outlet_fact(outlet)?
             .matches(&t, Some(&self.session_state.resolved_symbols))
             .with_context(|| format!("Setting input {}", input))?;
-        self.session_state.inputs.insert(outlet.node, t.into());
+        self.session_state.inputs.insert(outlet.node, t);
         Ok(())
     }
 
