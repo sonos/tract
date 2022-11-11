@@ -347,7 +347,18 @@ pub fn conv_or_deconv(
         reshaped_bias.set_shape(&[output_channels])?;
         Some(reshaped_bias)
     } else {
-        Some(bias.into_tensor())
+        if bias.rank() > 1 {
+            let output_channels = kernel.shape()[0];
+            ensure!(
+                output_channels == bias.len(),
+                "Bias tensor should be scalar or have one value per output channel"
+            );
+            let mut reshaped_bias = bias.into_tensor();
+            reshaped_bias.set_shape(&[output_channels])?;
+            Some(reshaped_bias)
+        } else {
+            Some(bias.into_tensor())
+        }
     };
 
     let op: Box<dyn TypedOp> = if deconv {
@@ -411,7 +422,13 @@ fn pool_spec_for_pools(
             before.push(p[0]);
             after.push(p[1]);
         }
-        PaddingSpec::Explicit(before, after, false)
+        let before_data_shape = DataFormat::NCHW.shape(before)?;
+        let after_data_shape = DataFormat::NCHW.shape(after)?;
+        PaddingSpec::Explicit(
+            before_data_shape.hw_dims().into(),
+            after_data_shape.hw_dims().into(),
+            false,
+        )
     };
     Ok(PoolSpec::new(
         DataFormat::NCHW,

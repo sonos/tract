@@ -233,12 +233,7 @@ impl PaddingSpec {
         let (before, after) =
             if upper { (lower_crop, higher_crop) } else { (higher_crop, lower_crop) };
         let deconvoluted = (convoluted.clone() - 1) * stride + kernel_field - before - after;
-        Ok(ComputedPaddedDim::new(
-            deconvoluted,
-            convoluted.clone(),
-            before.into(),
-            after.into(),
-        ))
+        Ok(ComputedPaddedDim::new(deconvoluted, convoluted.clone(), before.into(), after.into()))
     }
 }
 
