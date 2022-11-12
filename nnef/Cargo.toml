@@ -15,16 +15,16 @@ rust-version = "1.65"
 maintenance = { status = "actively-developed" }
 
 [dependencies]
-byteorder = "1.4.3"
-log = "0.4.14"
-nom = "7.0.0"
-tar = "0.4.37"
-flate2 = { version = "1.0.20", optional = true }
-tract-core = { version = "0.18.4-pre", path = "../core" }
-walkdir = "2.3.2"
+byteorder.workspace = true
+log.workspace = true
+nom.workspace = true
+tar.workspace = true
+flate2 = { workspace = true, optional = true }
+tract-core = { path = "../core" }
+walkdir.workspace = true
 
 [dev-dependencies]
-serde_json = "1.0"
+serde_json.workspace = true
 
 [features]
 default = ["flate2"]

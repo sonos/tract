@@ -14,6 +14,6 @@ edition = "2021"
 maintenance = { status = "actively-developed" }
 
 [dependencies]
-downcast-rs = "1.2.0"
-lazy_static = "1.4.0"
+downcast-rs.workspace = true
+lazy_static.workspace = true
 tract-nnef = { version = "0.18.4-pre", path = "../nnef" }

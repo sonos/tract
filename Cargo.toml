@@ -30,6 +30,61 @@ members = [
     "harness/tf-moz-deepspeech",
 ]
 
+[workspace.dependencies]
+ansi_term = "0.12.1"
+anyhow = "1.0.43"
+approx = "0.5"
+atty = "0.2.14"
+bit-set= "0.5.2"
+box_drawing = "0.1.2"
+byteorder = "1.4.3"
+bytes = "1.0.1"
+cc = "1.0.69"
+clap = { version = "~3.1", features = [ "cargo" ] }
+colorous = "1.0.5"
+criterion = "0.4"
+derive-new = "0.5.9"
+downcast-rs = "1.2.0"
+dyn-clone = "1.0.4"
+educe = "0.4.18"
+env_logger = "0.9.0"
+flate2 = "1.0.20"
+getrandom = "0.2"
+half = { version="2", features = [ "std", "num-traits" ] }
+itertools = "0.10.1"
+lazy_static = "1.4.0"
+liquid = "0.26"
+liquid-core = "0.26"
+log = "0.4.14"
+maplit = "1.0.2"
+memmap2 = "0.5"
+ndarray = "0.15.3"
+ndarray-npy = { version = "0.8.0", features = [ "compressed_npz" ] }
+nom = "7.0.0"
+num-complex = "0.4.0"
+num-integer = "0.1.44"
+num-traits = "0.2.14"
+paste = "1.0.5"
+proptest = "1.0.0"
+prost = "0.11.0"
+prost-types = "0.11.0"
+py_literal = "0.4.0"
+rand = { version = "0.8.4", features = ["small_rng"] }
+readings-probe = "0.1.3"
+regex = "1.5.4"
+reqwest = { version = "0.11.4", features = [ "blocking", "rustls" ], default-features = false }
+rustls = "0.20.4"
+smallvec = "1.6.1"
+scan_fmt = "0.2.6"
+serde = "1.0.127"
+serde_derive = "1.0.127"
+serde_json = "1.0"
+string-interner = "0.14"
+tar = "0.4.37"
+tensorflow = "0.17.0"
+unicode-normalization = "0.1.19"
+walkdir = "2.3.2"
+
 [profile.opt-no-lto]
 inherits="release"
 lto=false

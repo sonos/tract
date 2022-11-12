@@ -17,11 +17,11 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 bit-set= "0.5.2"
-derive-new = "0.5.9"
-educe = "0.4.18"
-lazy_static = "1.4.0"
-log = "0.4.14"
-maplit = "1.0.2"
-nom = "7.0.0"
+derive-new.workspace = true
+educe.workspace = true
+lazy_static.workspace = true
+log.workspace = true
+maplit.workspace = true
+nom.workspace = true
 tract-hir = { version = "0.18.4-pre", path = "../hir" }
 tract-pulse = { version = "0.18.4-pre", path = "../pulse" }
