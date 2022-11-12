@@ -174,7 +174,8 @@ impl Softmax {
 }
 
 fn softmax_inner<T: Float + Datum + std::iter::Sum, D: Dimension>(mut view: ArrayViewMut<T, D>) {
-    let max = *view.iter().max_by(|i, j| i.partial_cmp(j).unwrap()).unwrap();
+    let max =
+        *view.iter().max_by(|i, j| i.partial_cmp(j).unwrap_or(std::cmp::Ordering::Less)).unwrap();
     view.mapv_inplace(|x| (x - max).exp());
     let exp_sum = view.iter().copied().sum();
     view.mapv_inplace(|x| x / exp_sum);
