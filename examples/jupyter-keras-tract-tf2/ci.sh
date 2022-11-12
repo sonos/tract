@@ -1,6 +1,6 @@
 #!/bin/sh
 
-set -e
+set -ex
 
 sudo apt-get install -y libgl1-mesa-glx libegl1-mesa libxrandr2 libxrandr2 libxss1 libxcursor1 libxcomposite1 libasound2 libxi6 libxtst6
 
@@ -13,10 +13,12 @@ fi
 
 . $HOME/anaconda3/bin/activate
 echo $CONDA_EXE
-if [ -n -d $HOME/anaconda3/envs/tf_37 ]
+if [ ! -d $HOME/anaconda3/envs/tf_37 ]
 then
     conda env create -f environment.yml
 fi
 conda activate tf_37
+
+cd `dirname $0`
 jupyter nbconvert --to notebook --inplace --execute simple_model.ipynb
 cargo run
