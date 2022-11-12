@@ -7,13 +7,13 @@ sudo apt-get install -y libgl1-mesa-glx libegl1-mesa libxrandr2 libxrandr2 libxs
 if [ ! -d $HOME/anaconda3 ]
 then
     ANACONDA_SETUP=Anaconda3-2022.10-Linux-x86_64.sh
-    [ -e $ANACONDA_SETUP ] || wget https://repo.anaconda.com/archive/$ANACONDA_SETUP
+    [ -e $ANACONDA_SETUP ] || wget -q https://repo.anaconda.com/archive/$ANACONDA_SETUP
     bash $ANACONDA_SETUP -b
 fi
 
 . $HOME/anaconda3/bin/activate
 echo $CONDA_EXE
-if [ ! -d $HOME/anaconda3/envs/tf_37 ]
+if [ ! -d $HOME/anaconda3/envs/tf_37 ]
 then
     conda env create -f environment.yml
 fi
