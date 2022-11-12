@@ -9,6 +9,6 @@ edition = "2021"
 
 [dependencies]
 
-rand = "0.8.4"
+rand.workspace = true
 tract-core = { path="../../core" }
 tract-onnx = { path = "../../onnx" }
