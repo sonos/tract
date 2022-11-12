@@ -5,17 +5,17 @@ authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT/Apache-2.0"
 
 [dependencies]
-image = "0.24.1"
+image.workspace = true
 tract-tensorflow = { path = "../../tensorflow" }
 
 [features]
 conform = [ "tract-tensorflow/conform" ]
 
 [dev-dependencies]
-criterion = "0.3.5"
-dinghy-test = "0.4.62"
-env_logger = "0.9.0"
-log = "0.4.14"
+criterion.workspace = true
+dinghy-test.workspace = true
+env_logger.workspace = true
+log.workspace = true
 
 [[bench]]
 harness = false
