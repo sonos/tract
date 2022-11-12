@@ -98,6 +98,7 @@ jobs:
 
     - name: Stop sccache server
       run: sccache --stop-server || true
+
   onnx-with-asserts:
     runs-on: ubuntu-latest
 
@@ -120,7 +121,9 @@ jobs:
     - name: "Setup sccache"
       run: .travis/setup-sccache.sh
     - name: With assertions
-      run: cargo -q test -q -p onnx-test-suite -- --skip real_
+      run: |
+        rustup update
+        cargo -q test -q -p onnx-test-suite -- --skip real_
 
     - name: Stop sccache server
       run: sccache --stop-server || true
@@ -146,6 +149,8 @@ jobs:
     - name: "Setup sccache"
       run: .travis/setup-sccache.sh
     - name: Core test with paraoid assertions
-      run: cargo test -p tract-core --features paranoid_assertions
+      run: |
+        rustup update
+        cargo test -p tract-core --features paranoid_assertions
     - name: Stop sccache server
       run: sccache --stop-server || true
