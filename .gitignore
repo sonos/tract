@@ -13,3 +13,7 @@ metrics
 tract.out
 .gdb_history
 /issue-*
+/.dinghy.toml
+/.cargo
+proptest-regressions
+/tmp
