@@ -22,3 +22,9 @@ conda activate tf_37
 cd `dirname $0`
 jupyter nbconvert --to notebook --inplace --execute simple_model.ipynb
 cargo run
+cargo clean
+
+if [ -n "$CI" ]
+then
+    conda env remove -n tf_37
+fi

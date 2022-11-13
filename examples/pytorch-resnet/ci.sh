@@ -7,4 +7,5 @@ virtualenv venv
 pip install -q torch torchvision
 python export.py
 cargo run
+cargo clean
 rm -rf venv
