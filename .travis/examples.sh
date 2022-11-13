@@ -16,6 +16,7 @@ rustup default $RUST_VERSION
 
 for t in `find examples -name ci.sh`
 do
+    df -h
     ex=$(dirname $t)
     echo ::group:: $ex
     echo $WHITE $ex $NC
