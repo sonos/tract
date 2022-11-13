@@ -8,3 +8,4 @@ pip install -q torch transformers
 python export.py
 cargo run --release
 rm -rf venv
+cargo clean
