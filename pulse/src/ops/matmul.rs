@@ -9,7 +9,7 @@ fn pulsify(
     node: &TypedNode,
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
-    _pulse: usize,
+    _pulse: &TDim,
 ) -> TractResult<Option<TVec<OutletId>>> {
     let input = mapping[&node.inputs[0]];
     let fact = target.outlet_fact(input)?;

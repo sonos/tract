@@ -20,7 +20,6 @@ impl Op for MaxPool {
         Ok(self.pool_spec.info())
     }
 
-    op_core_mir!();
     op_as_typed_op!();
 }
 
@@ -29,7 +28,7 @@ impl EvalOp for MaxPool {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let shape: TVec<TDim> = inputs[0].shape().iter().map(|d| d.to_dim()).collect();
         self.to_lir(&shape)?.eval(inputs)
     }
@@ -95,7 +94,6 @@ impl Op for LirMaxPool {
         Ok(self.pool_spec.info())
     }
 
-    op_core_lir!();
     op_as_typed_op!();
 }
 
@@ -104,7 +102,7 @@ impl EvalOp for LirMaxPool {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let geo = self.geometry.to_concrete(input.shape())?;
         dispatch_numbers!(Self::eval_t(input.datum_type())(self, &*input, geo.as_ref()))
@@ -129,7 +127,7 @@ impl LirMaxPool {
         &self,
         input: &Tensor,
         geo: &ConcretePoolGeometry,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
+    ) -> TractResult<TVec<TValue>> {
         let input_dt = input.datum_type();
         let input: ArrayViewD<T> = input.to_array_view()?;
         let input_ptr = input.as_ptr();
@@ -174,11 +172,11 @@ impl LirMaxPool {
         }
         if let Some(dt) = self.with_index_outputs {
             Ok(tvec!(
-                values.into_arc_tensor(),
-                indices.unwrap().into_tensor().cast_to_dt(dt)?.into_owned().into_arc_tensor()
+                values.into_tvalue(),
+                indices.unwrap().into_tensor().cast_to_dt(dt)?.into_owned().into_tvalue()
             ))
         } else {
-            Ok(tvec!(values.into_arc_tensor()))
+            Ok(tvec!(values.into_tvalue()))
         }
     }
 }

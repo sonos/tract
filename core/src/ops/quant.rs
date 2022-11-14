@@ -99,7 +99,6 @@ impl Op for DequantizeLinearF32 {
         Validation::Accurate
     }
 
-    op_core_mir!();
     op_as_typed_op!();
 }
 
@@ -109,14 +108,14 @@ impl EvalOp for DequantizeLinearF32 {
     fn is_stateless(&self) -> bool {
         true
     }
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let output = match inputs[0].datum_type() {
             DatumType::I8 => self.eval_t::<i8>(&inputs[0])?,
             DatumType::I32 => self.eval_t::<i32>(&inputs[0])?,
             DatumType::U8 => self.eval_t::<u8>(&inputs[0])?,
             dt => bail!("Unsupported type {:?}", dt),
         };
-        Ok(tvec!(output.into_arc_tensor()))
+        Ok(tvec!(output.into_tvalue()))
     }
 }
 
@@ -184,7 +183,7 @@ impl TypedOp for DequantizeLinearF32 {
                 // or else make a lookup table
                 if incoming_dt == DatumType::I8 || incoming_dt == DatumType::U8 {
                     let mut adhoc_model = TypedModel::default();
-                    let mut wire = adhoc_model.add_source("ad-hoc", dt.fact(&[256]))?;
+                    let mut wire = adhoc_model.add_source("ad-hoc", dt.fact([256]))?;
                     let mut next = model.single_succ(dequant.id)?.unwrap();
                     let mut name = None;
                     // plug in dequant
@@ -212,7 +211,8 @@ impl TypedOp for DequantizeLinearF32 {
                         DatumType::U8 => tensor1(&input),
                         _ => unreachable!(),
                     };
-                    let output = SimplePlan::new(adhoc_model)?.run(tvec!(input))?.remove(0);
+                    let output =
+                        SimplePlan::new(adhoc_model)?.run(tvec!(input.into_tvalue()))?.remove(0);
                     let table: &[u8] = match dt {
                         DatumType::I8 => unsafe { std::mem::transmute(output.as_slice::<i8>()?) },
                         DatumType::U8 => output.as_slice::<u8>()?,
@@ -354,7 +354,7 @@ impl crate::ops::binary::BinMiniOp for Scale {
             let scaler = Scaler::new(factor, RoundingPolicy::Even);
 
             let op = ElementWiseOp(Box::new(QScale { scaler }));
-            let patch = TypedModelPatch::replace_single_op(model, node, &*node.inputs, op)?;
+            let patch = TypedModelPatch::replace_single_op(model, node, &node.inputs, op)?;
 
             return Ok(Some(patch));
         }
@@ -395,9 +395,9 @@ pub mod scale {
             let expected = (((a as i32) * (b as i32)) as f32) / scale;
             let expected = round_ties_to_even(expected.abs()) * expected.signum();
             let expected = (expected as i32).max(-128).min(127);
-            let expected = rctensor2(&[[expected as i8]]);
+            let expected = tensor2(&[[expected as i8]]);
 
-            let input = tvec!(tensor2(&[[b]]));
+            let input = tvec!(tensor2(&[[b]]).into_tvalue());
             let mut model = TypedModel::default();
             let a = model.add_const("a", tensor2(&[[a]])).unwrap();
             let b = model.add_source("b", i8::fact(&[1, 1])).unwrap();
@@ -409,11 +409,11 @@ pub mod scale {
             model.set_output_outlets(&*output).unwrap();
 
             let plain = model.clone().into_runnable().unwrap().run(input.clone()).unwrap();
-            assert_eq!(&plain[0], &expected);
+            assert_eq!(*plain[0], expected);
 
             let optim =
                 model.into_optimized().unwrap().into_runnable().unwrap().run(input).unwrap();
-            assert_eq!(&optim[0], &expected);
+            assert_eq!(*optim[0], expected);
         }
 
         proptest! {

@@ -46,10 +46,6 @@ impl Op for DirectLookup {
         "DirectLookup".into()
     }
 
-    fn op_families(&self) -> &'static [&'static str] {
-        &["onnx-ml"]
-    }
-
     op_as_typed_op!();
 }
 
@@ -58,10 +54,10 @@ impl EvalOp for DirectLookup {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let output = dispatch_hash!(Self::eval_t(self.values.datum_type())(self, &input))?;
-        Ok(tvec!(output.into_arc_tensor()))
+        Ok(tvec!(output.into_tvalue()))
     }
 }
 
@@ -161,10 +157,6 @@ impl Op for ReverseLookup {
         "ReverseLookup".into()
     }
 
-    fn op_families(&self) -> &'static [&'static str] {
-        &["onnx-ml"]
-    }
-
     op_as_typed_op!();
 }
 
@@ -173,10 +165,10 @@ impl EvalOp for ReverseLookup {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let output = dispatch_hash!(Self::eval_t(self.keys.datum_type())(self, &input))?;
-        Ok(tvec!(output.into_arc_tensor()))
+        Ok(tvec!(output.into_tvalue()))
     }
 }
 

@@ -10,7 +10,8 @@ fn pulsify_max_pool(
     node: &TypedNode,
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
-    _pulse: usize,
+    _symbol: &Symbol,
+    _pulse: &TDim,
 ) -> TractResult<Option<TVec<OutletId>>> {
     fn min_value<D: Datum + tract_core::num_traits::Bounded>() -> Tensor {
         tensor0(D::min_value())
@@ -32,7 +33,8 @@ fn pulsify_sum_pool(
     node: &TypedNode,
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
-    _pulse: usize,
+    _symbol: &Symbol,
+    _pulse: &TDim,
 ) -> TractResult<Option<TVec<OutletId>>> {
     if let Some((wire, pool_spec)) =
         pulsify_pooled_input(&op.pool_spec, source, node, target, mapping, None)?
@@ -74,7 +76,7 @@ pub fn pulsed_output_facts(
     let ishape = spec.data_format.shape(&inputs[0].shape)?;
     let computed = spec.padding.compute(
         ishape.hw_dims(),
-        &*spec.kernel_shape,
+        &spec.kernel_shape,
         &spec.dilations(),
         &spec.strides(),
     );
@@ -118,8 +120,8 @@ pub fn pulsify_pooled_input(
     let geo_axis = input_fact.axis - input_shape.h_axis();
     let stride = spec.strides.as_ref().and_then(|v| v.get(geo_axis).cloned()).unwrap_or(1);
     let pulse = input_fact.pulse();
-    if pulse % stride != 0 {
-        bail!("Pulsificaton requires pulse to be a stride multiple")
+    if !(pulse.to_owned() % (stride as i64)).is_zero() {
+        bail!("Pulsification requires pulse ({}) to be a stride ({}) multiple", pulse, stride)
     }
 
     let dilation = spec.dilations.as_ref().map(|d| d[geo_axis]).unwrap_or(1);
@@ -211,13 +213,14 @@ mod test {
     use tract_pulse_opl::tract_core::ops::cnn::{ConvUnary, PoolSpec};
     use tract_pulse_opl::tract_nnef::internal::*;
 
-    use crate::internal::stream_dim;
     use crate::model::{PulsedModel, PulsedModelExt};
 
     #[test]
     fn left_padded_conv_wo_delay() -> TractResult<()> {
         let mut model = TypedModel::default();
-        let source = model.add_source("source", f32::fact(dims!(1, stream_dim())))?;
+        let stream_sym = model.symbol_table.sym("S");
+        let stream_dim = stream_sym.to_dim();
+        let source = model.add_source("source", f32::fact(dims!(1, stream_dim)))?;
         let conv = model.wire_node(
             "conv",
             ConvUnary {
@@ -238,7 +241,7 @@ mod test {
             &[source],
         )?;
         model.set_output_outlets(&conv)?;
-        let pulsed = PulsedModel::new(&model, 1)?;
+        let pulsed = PulsedModel::new(&model, stream_sym, &1.to_dim())?;
         let output_fact = pulsed.output_fact(0)?;
         assert_eq!(output_fact.delay, 0);
         Ok(())

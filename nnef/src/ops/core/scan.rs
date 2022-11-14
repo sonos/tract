@@ -151,7 +151,7 @@ fn de_scan(
         .iter()
         .find(|n| n.decl.id == fragment_name)
         .ok_or_else(|| format_err!("Cound not find fragment `{}'", fragment_name))?;
-    let mut body = ModelBuilder::new(builder.framework, builder.proto_model);
+    let mut body = ModelBuilder::new(builder.framework, builder.proto_model, &builder.model.symbol_table);
     body.scopes.push(HashMap::new());
     let mut outer_inputs: TVec<OutletId> = tvec!();
     let mut input_mapping = vec![];
@@ -255,5 +255,5 @@ fn de_scan(
     }
     let skip: usize = invocation.named_arg_as(builder, "skip")?;
     let op = Scan::new(body.model, input_mapping, output_mapping, None, skip)?;
-    builder.wire(op, &*outer_inputs)
+    builder.wire(op, &outer_inputs)
 }

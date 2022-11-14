@@ -23,7 +23,6 @@ impl Expansion for OneHot {
         "OneHot".into()
     }
 
-    op_onnx!();
 
     fn wire(
         &self,

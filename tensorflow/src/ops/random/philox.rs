@@ -145,14 +145,14 @@ mod test {
     #[test]
     fn ffff() {
         let mut ph = Philox4x32x10::for_seeds(0xffffffff, 0xffffffff);
-        ph.skip_fast(0x_ffffffff_ffffffff_ffffffff_ffffffff);
+        ph.skip_fast(0xffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff);
         assert_eq!(ph.next_as_u32s(), [0x408f276d, 0x41c83b0e, 0xa20bc7c6, 0x6d5451fd]);
     }
 
     #[test]
     fn x243f6a88() {
         let mut ph = Philox4x32x10::for_seeds(0xa4093822, 0x299f31d0);
-        ph.skip_fast(0x_03707344_13198a2e_85a308d3_243f6a88);
+        ph.skip_fast(0x0370_7344_1319_8a2e_85a3_08d3_243f_6a88);
         assert_eq!(ph.next_as_u32s(), [0xd16cfe09, 0x94fdcceb, 0x5001e420, 0x24126ea1]);
     }
 }

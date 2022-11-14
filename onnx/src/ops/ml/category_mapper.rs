@@ -21,10 +21,6 @@ impl Expansion for CategoryMapper {
         "CategoryMapper".into()
     }
 
-    fn op_families(&self) -> &'static [&'static str] {
-        &["onnx-ml"]
-    }
-
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,

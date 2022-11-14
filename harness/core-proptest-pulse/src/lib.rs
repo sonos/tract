@@ -15,8 +15,8 @@ use tract_pulse::internal::*;
 mod conv_plus_conv;
 mod deconv;
 mod delay_plus_pool;
-mod pad_plus_conv;
 mod einsum;
+mod pad_plus_conv;
 
 #[allow(dead_code)]
 fn setup_test_logger() {
@@ -30,22 +30,23 @@ fn proptest_regular_against_pulse(
     axis: usize,
 ) -> TestCaseResult {
     setup_test_logger();
-    let s = stream_symbol();
 
     let len = input_array.shape()[axis];
+    //dbg!(&model);
     let model = model.into_decluttered().unwrap();
-    let symbols = SymbolValues::default().with(stream_symbol(), len as i64);
+    let s = model.symbol_table.sym("S");
+    let symbols = SymbolValues::default().with(&s, len as i64);
     let concrete = model.clone().concretize_dims(&symbols).unwrap();
     if concrete.nodes.iter().any(|n| n.outputs.iter().any(|o| o.fact.shape.volume().is_zero())) {
         return Err(TestCaseError::reject("too short input"));
     }
     let runnable = concrete.into_runnable().unwrap();
     // dbg!(&runnable);
-    let outputs = runnable.run(tvec!(input_array.clone().into_tensor())).unwrap();
+    let outputs = runnable.run(tvec!(input_array.clone().into_tvalue())).unwrap();
 
     debug!("Build pulsing model");
     // dbg!(&model);
-    let pulsed = PulsedModel::new(&model, pulse).unwrap();
+    let pulsed = PulsedModel::new(&model, s.clone(), &pulse.to_dim()).unwrap();
     // dbg!(&pulsed);
     let output_fact = pulsed.output_fact(0).unwrap().clone();
 
@@ -80,7 +81,7 @@ fn proptest_regular_against_pulse(
                 &[chunk.view(), ArrayD::from_elem(filler_shape, std::f32::NAN).view()],
             )
             .unwrap();
-            state.session_state.resolved_symbols[s] = Some(written as i64);
+            state.session_state.resolved_symbols[&s] = Some(written as i64);
             output_len = output_fact
                 .dim
                 .eval(&state.session_state.resolved_symbols)
@@ -88,7 +89,7 @@ fn proptest_regular_against_pulse(
                 .ok()
                 .map(|n| n.max(0) as usize);
         }
-        let mut outputs = state.run(tvec!(Tensor::from(chunk.to_owned()).into())).unwrap();
+        let mut outputs = state.run(tvec!(chunk.into_tensor().into_tvalue())).unwrap();
         got = concatenate(
             Axis(output_stream_axis),
             &[got.view(), outputs.remove(0).to_array_view::<f32>().unwrap()],
@@ -111,7 +112,7 @@ fn proptest_regular_against_pulse(
         .into_tensor();
 
     prop_assert!(
-        &pulsed_output.close_enough(&*outputs[0], true).is_ok(),
+        &pulsed_output.close_enough(&outputs[0], true).is_ok(),
         "{:?} == {:?}",
         pulsed_output,
         outputs[0]
@@ -125,7 +126,7 @@ proptest! {
         use tract_hir::ops::array::Slice;
         let full_len = input_len + begin + end;
         let mut model = InferenceModel::default();
-        let s = tract_pulse::internal::stream_dim();
+        let s = model.symbol_table.sym("S");
         let a = model.add_source("a", f32::fact(&[s]).into()).unwrap();
         let slice = model.wire_node("slice", Slice::new(0, begin as usize, (input_len + begin) as usize), &[a]).unwrap();
         model.set_output_outlets(&slice).unwrap();
@@ -139,7 +140,7 @@ proptest! {
     fn proptest_pad(pulse in 1i32..3, input_len in 0i32..10, begin in 0i32..3, end in 0i32..3) {
         use tract_hir::ops::array::{ Pad, PadMode };
         let mut model = InferenceModel::default();
-        let s = tract_pulse::internal::stream_dim();
+        let s = model.symbol_table.sym("S");
         let a = model.add_source("a", f32::fact(&[s]).into()).unwrap();
         let pad = model.wire_node("pad",Pad::new(vec![(begin as _, end as _)],
         PadMode::Constant(Arc::new(Tensor::from(-1f32)))), &[a]).unwrap();
@@ -162,7 +163,7 @@ fn test_simple_conv() {
 
     let mut model = InferenceModel::default();
     let ker = model.add_const("kernel", tensor3(&[[[0.5f32, 1.0, -0.1]]])).unwrap();
-    let s = tract_pulse::internal::stream_dim();
+    let s = model.symbol_table.sym("S");
     let a = model.add_source("a", f32::fact(dims!(1, 1, s)).into()).unwrap();
 
     model.wire_node("conv", expand(Conv::default()), &[a, ker]).unwrap();
@@ -177,7 +178,7 @@ fn test_simple_conv() {
 fn test_pad_before_1() {
     use tract_hir::ops::array::{Pad, PadMode};
     let mut model = InferenceModel::default();
-    let s = tract_pulse::internal::stream_dim();
+    let s = model.symbol_table.sym("S");
     let a = model.add_source("a", f32::fact(&[s]).into()).unwrap();
     model
         .wire_node(
@@ -197,7 +198,7 @@ fn test_pad_before_1() {
 fn test_pad_before_2() {
     use tract_hir::ops::array::{Pad, PadMode};
     let mut model = InferenceModel::default();
-    let s = tract_pulse::internal::stream_dim();
+    let s = model.symbol_table.sym("S");
     let a = model.add_source("a", f32::fact(&[s]).into()).unwrap();
     model
         .wire_node(

@@ -13,7 +13,7 @@ pub struct MatMatMulPack {
 
 impl DynHash for MatMatMulPack {
     fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
-        dyn_hash(&self, hasher)
+        dyn_hash(self, hasher)
     }
 }
 
@@ -26,7 +26,6 @@ impl Op for MatMatMulPack {
         other.downcast_ref::<Self>().map(|other| other == self).unwrap_or(false)
     }
 
-    op_core_lir!();
     op_as_typed_op!();
 }
 
@@ -35,12 +34,12 @@ impl EvalOp for MatMatMulPack {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let b = args_1!(inputs);
         let dt = b.datum_type();
         unsafe {
             let mut packed =
-                Tensor::uninitialized_aligned_dt(dt, &*self.output_shape, self.packer.alignment())
+                Tensor::uninitialized_aligned_dt(dt, &self.output_shape, self.packer.alignment())
                     .unwrap();
             let mut bc_shape: TVec<usize> = b.shape().into();
             bc_shape[self.k_axis] = 1;
@@ -63,7 +62,7 @@ impl EvalOp for MatMatMulPack {
                     self.mn_axis,
                 )
             }
-            Ok(tvec!(packed.into_arc_tensor()))
+            Ok(tvec!(packed.into_tvalue()))
         }
     }
 }

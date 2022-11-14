@@ -4,7 +4,7 @@ use tract_hir::internal::*;
 use tract_onnx_opl::non_max_suppression::BoxRepr;
 
 pub fn non_max_suppression(
-    _ctx: &ParsingContext,
+    ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let center_point_box =
@@ -17,7 +17,7 @@ pub fn non_max_suppression(
             optional_iou_threshold_input: options.next().unwrap(),
             optional_score_threshold_input: options.next().unwrap(),
             center_point_box,
-            num_selected_indices_symbol: Symbol::new('n'),
+            num_selected_indices_symbol: ctx.symbol_table.new_with_prefix("x"),
         }),
         vec![],
     ))
@@ -38,8 +38,6 @@ impl Expansion for NonMaxSuppression {
     fn name(&self) -> Cow<str> {
         "NonMaxSuppression".into()
     }
-
-    op_onnx!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -119,7 +117,7 @@ impl Expansion for NonMaxSuppression {
 
         let op = tract_onnx_opl::non_max_suppression::NonMaxSuppression {
             center_point_box: self.center_point_box,
-            num_selected_indices_symbol: self.num_selected_indices_symbol,
+            num_selected_indices_symbol: self.num_selected_indices_symbol.clone(),
             has_score_threshold: score_threshold.is_some(),
         };
 

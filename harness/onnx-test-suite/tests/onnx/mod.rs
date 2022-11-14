@@ -52,7 +52,7 @@ pub fn run_one<P: AsRef<path::Path>>(
         use fs2::FileExt;
         let url = fs::read_to_string(test_path.join("data.json"))
             .unwrap()
-            .split("\"")
+            .split('\"')
             .find(|s| s.starts_with("https://"))
             .unwrap()
             .to_string();
@@ -113,7 +113,7 @@ pub fn run_one<P: AsRef<path::Path>>(
             let mut inputs = load_half_dataset("input", &data_path);
             for setup in more {
                 if setup.starts_with("input:") {
-                    let input = setup.split(":").nth(1).unwrap();
+                    let input = setup.split(':').nth(1).unwrap();
                     let mut actual_input = None;
                     let input_outlets = model.input_outlets().unwrap().to_vec();
                     for (ix, outlet) in input_outlets.iter().enumerate() {
@@ -151,7 +151,7 @@ pub fn run_one<P: AsRef<path::Path>>(
             match mode {
                 Optim => {
                     info!("Check full inference");
-                    if model.missing_type_shape().unwrap().len() != 0 {
+                    if !model.missing_type_shape().unwrap().is_empty() {
                         panic!("Incomplete inference {:?}", model.missing_type_shape());
                     }
                     info!("Into type");
@@ -190,6 +190,7 @@ where
     let plan = SimplePlan::new(&model).unwrap();
     let expected = load_half_dataset("output", data_path);
     trace!("Loaded output asserts: {:?}", expected);
+    let inputs = inputs.into_iter().map(|t| t.into_tvalue()).collect();
     let computed = plan.run(inputs).unwrap();
     if computed.len() != expected.len() {
         panic!(

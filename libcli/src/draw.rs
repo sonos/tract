@@ -1,11 +1,10 @@
 use crate::display_params::DisplayParams;
-use crate::{CliResult, Model};
+use crate::model::Model;
 use ansi_term::{Color, Style};
 use box_drawing::heavy::*;
 use std::fmt;
 use std::fmt::Write;
-use tract_core::model::{InletId, OutletId};
-use tract_core::ops::konst::Const;
+use tract_core::internal::*;
 
 #[derive(Clone)]
 pub struct Wire {
@@ -76,7 +75,7 @@ impl DrawingState {
         model: &dyn Model,
         node: usize,
         _opts: &DisplayParams,
-    ) -> CliResult<Vec<String>> {
+    ) -> TractResult<Vec<String>> {
         let mut lines = vec![String::new()];
         macro_rules! p { ($($args: expr),*) => { write!(lines.last_mut().unwrap(), $($args),*)?;} }
         macro_rules! ln {
@@ -162,7 +161,7 @@ impl DrawingState {
         model: &dyn Model,
         node: usize,
         opts: &DisplayParams,
-    ) -> CliResult<Vec<String>> {
+    ) -> TractResult<Vec<String>> {
         let mut lines = vec![String::new()];
         macro_rules! p { ($($args: expr),*) => { write!(lines.last_mut().unwrap(), $($args),*)?;} }
         macro_rules! ln {
@@ -172,7 +171,7 @@ impl DrawingState {
         }
         let inputs = self.inputs_to_draw(model, node);
         let passthrough_count = self.passthrough_count(node);
-        let display = opts.konst || !(model.node_op(node).is::<Const>());
+        let display = opts.konst || !model.node_const(node);
         if display {
             for wire in &self.wires[0..passthrough_count] {
                 if let Some(color) = wire.color {
@@ -182,7 +181,7 @@ impl DrawingState {
         }
         let node_output_count = model.node_output_count(node);
         if display {
-            self.latest_node_color = if inputs.len() > 0 {
+            self.latest_node_color = if !inputs.is_empty() {
                 let wire0 = &self.wires[passthrough_count];
                 if wire0.color.is_some() && !wire0.should_change_color {
                     wire0.color.unwrap()
@@ -220,7 +219,7 @@ impl DrawingState {
         Ok(lines)
     }
 
-    pub fn draw_node_vfiller(&self, model: &dyn Model, node: usize) -> CliResult<String> {
+    pub fn draw_node_vfiller(&self, model: &dyn Model, node: usize) -> TractResult<String> {
         let mut s = String::new();
         for wire in &self.wires {
             if let Some(color) = wire.color {
@@ -238,7 +237,7 @@ impl DrawingState {
         model: &dyn Model,
         node: usize,
         opts: &DisplayParams,
-    ) -> CliResult<Vec<String>> {
+    ) -> TractResult<Vec<String>> {
         let mut lines = vec![];
         let passthrough_count = self.passthrough_count(node);
         let node_output_count = model.node_output_count(node);
@@ -251,7 +250,7 @@ impl DrawingState {
         for slot in 0..node_output_count {
             let outlet = OutletId::new(node, slot);
             let successors = model.outlet_successors(outlet).to_vec();
-            let color = if !opts.konst && model.node_op(node).is::<Const>() {
+            let color = if !opts.konst && model.node_const(node) {
                 None
             } else if slot == 0 && node_color.is_some() {
                 Some(self.latest_node_color)
@@ -261,7 +260,7 @@ impl DrawingState {
             self.wires.push(Wire { outlet, color, successors, should_change_color: false });
         }
         let wires_before = self.wires.clone();
-        self.wires.retain(|w| w.successors.len() > 0);
+        self.wires.retain(|w| !w.successors.is_empty());
         for (wanted_at, w) in self.wires.iter().enumerate() {
             let is_at = wires_before.iter().position(|w2| w.outlet == w2.outlet).unwrap();
             if wanted_at < is_at {

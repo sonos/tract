@@ -28,10 +28,6 @@ impl Op for TreeEnsembleClassifier {
         "TreeEnsembleClassifier".into()
     }
 
-    fn op_families(&self) -> &'static [&'static str] {
-        &["onnx-ml"]
-    }
-
     op_as_typed_op!();
 }
 
@@ -40,12 +36,12 @@ impl EvalOp for TreeEnsembleClassifier {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let input = input.cast_to::<f32>()?;
         let input = input.to_array_view::<f32>()?;
         let scores = self.ensemble.eval(input)?;
-        Ok(tvec!(scores.into_arc_tensor()))
+        Ok(tvec!(scores.into_tvalue()))
     }
 }
 

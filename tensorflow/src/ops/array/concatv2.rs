@@ -16,7 +16,6 @@ impl Expansion for ConcatV2 {
         "ConcatV2".into()
     }
 
-    op_tf!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

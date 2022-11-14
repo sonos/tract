@@ -118,7 +118,6 @@ impl Expansion for Conv {
         Validation::Rounding
     }
 
-    op_hir!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -174,7 +173,7 @@ impl Expansion for Conv {
             if let Some(kshape) =
                 kshape.iter().map(|d| d.to_usize().ok()).collect::<Option<TVec<_>>>()
             {
-                let oshape = self.output_shape(&*ishape, &*kshape)?;
+                let oshape = self.output_shape(&ishape, &kshape)?;
                 s.equals(&outputs[0].shape, oshape)?;
             }
             Ok(())
@@ -276,41 +275,41 @@ mod test {
     #[test]
     fn test_infer_with_known_kshape() {
         let mut op = expand(Conv::default().strides(tvec![2, 2]).kernel_shape(tvec![3, 3]));
-        let ifact = f32::fact(&[1, 1, 7, 5]).into();
-        let kfact = f32::fact(&[1, 1, 3, 3]).into();
+        let ifact = f32::fact([1, 1, 7, 5]).into();
+        let kfact = f32::fact([1, 1, 3, 3]).into();
         let ofact = InferenceFact::default();
         let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
-        assert_eq!(facts.1, tvec!(f32::fact(&[1, 1, 3, 2]).into()));
+        assert_eq!(facts.1, tvec!(f32::fact([1, 1, 3, 2]).into()));
     }
 
     #[test]
     fn test_infer_channels() {
         let mut op = expand(Conv::default()); // NCHW - OIHW
-        let ifact = f32::fact(&[1, 2, 1, 1]).into();
-        let kfact = f32::fact(&[3, 2, 1, 1]).into();
+        let ifact = f32::fact([1, 2, 1, 1]).into();
+        let kfact = f32::fact([3, 2, 1, 1]).into();
         let ofact = InferenceFact::default();
         let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
-        assert_eq!(facts.1, tvec!(f32::fact(&[1, 3, 1, 1]).into()));
+        assert_eq!(facts.1, tvec!(f32::fact([1, 3, 1, 1]).into()));
     }
 
     #[test]
     fn test_infer_onnx_strides_no_padding() {
         let mut op = expand(Conv::default().strides(tvec![2, 2]));
-        let ifact = f32::fact(&[1, 1, 7, 5]).into();
-        let kfact = f32::fact(&[1, 1, 3, 3]).into();
+        let ifact = f32::fact([1, 1, 7, 5]).into();
+        let kfact = f32::fact([1, 1, 3, 3]).into();
         let ofact = InferenceFact::default();
         let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
-        assert_eq!(facts.1, tvec!(f32::fact(&[1, 1, 3, 2]).into()));
+        assert_eq!(facts.1, tvec!(f32::fact([1, 1, 3, 2]).into()));
     }
 
     #[test]
     fn test_infer_nhwc_1() {
         let mut op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
-        let ifact = f32::fact(&[1, 2, 2, 2]).into();
-        let kfact = f32::fact(&[2, 2, 2, 1]).into();
+        let ifact = f32::fact([1, 2, 2, 2]).into();
+        let kfact = f32::fact([2, 2, 2, 1]).into();
         let ofact = InferenceFact::default();
         let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
-        assert_eq!(facts.1, tvec!(f32::fact(&[1, 2, 2, 1]).into()));
+        assert_eq!(facts.1, tvec!(f32::fact([1, 2, 2, 1]).into()));
     }
 
     #[test]
@@ -318,8 +317,8 @@ mod test {
         setup_test_logger();
         let op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
         let res = op.eval(tvec!(
-            Tensor::zero::<f32>(&[1, 2, 2, 2]).unwrap().into_arc_tensor(),
-            Tensor::zero::<f32>(&[2, 2, 2, 1]).unwrap().into_arc_tensor(),
+            Tensor::zero::<f32>(&[1, 2, 2, 2]).unwrap().into_tvalue(),
+            Tensor::zero::<f32>(&[2, 2, 2, 1]).unwrap().into_tvalue(),
         ))?;
         Tensor::zero::<f32>(&[1, 2, 2, 1]).unwrap().close_enough(&res[0], false)
     }
@@ -328,32 +327,32 @@ mod test {
     fn test_infer_nhwc_2() {
         setup_test_logger();
         let mut op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
-        let ifact = f32::fact(&[1, 1, 2, 2]).into();
-        let kfact = f32::fact(&[2, 1, 2, 1]).into();
+        let ifact = f32::fact([1, 1, 2, 2]).into();
+        let kfact = f32::fact([2, 1, 2, 1]).into();
         let ofact = InferenceFact::default();
         let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
-        assert_eq!(facts.1, tvec!(f32::fact(&[1, 1, 2, 1]).into()));
+        assert_eq!(facts.1, tvec!(f32::fact([1, 1, 2, 1]).into()));
     }
 
     #[test]
     fn test_eval_nhwc_2() {
         setup_test_logger();
         let op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
-        let i = rctensor4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]);
-        let k = rctensor4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]);
-        let e = rctensor4(&[[[[1.0f32], [0.0]]]]);
-        let res = op.eval(tvec!(i, k)).unwrap();
-        assert_eq!(res, tvec!(e));
+        let i = tensor4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]);
+        let k = tensor4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]);
+        let e = tensor4(&[[[[1.0f32], [0.0]]]]);
+        let res = op.eval(tvec!(i.into(), k.into())).unwrap();
+        assert_eq!(res, tvec!(e.into()));
     }
 
     #[test]
     fn test_eval_nhwc_3() {
         setup_test_logger();
         let op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
-        let i = rctensor4(&[[[[0.0f32, 1.0], [2.0, 3.0]], [[10.0, 11.0], [12.0, 13.0]]]]);
-        let k = rctensor4(&[[[[1.0f32, 0.0], [0.0, 1.0]]]]);
-        let res = op.eval(tvec!(i.clone(), k)).unwrap();
-        assert_eq!(res, tvec!(i));
+        let i = tensor4(&[[[[0.0f32, 1.0], [2.0, 3.0]], [[10.0, 11.0], [12.0, 13.0]]]]);
+        let k = tensor4(&[[[[1.0f32, 0.0], [0.0, 1.0]]]]);
+        let res = op.eval(tvec!(i.clone().into(), k.into())).unwrap();
+        assert_eq!(res, tvec!(i.into()));
     }
 
     #[test]
@@ -361,63 +360,71 @@ mod test {
         setup_test_logger();
         let op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
         let result = op
-            .eval(tvec!(rctensor4(&[[[[2.0f32]]], [[[0.0f32]]]]), rctensor4(&[[[[1.0f32]]]])))
+            .eval(tvec!(
+                tensor4(&[[[[2.0f32]]], [[[0.0f32]]]]).into(),
+                tensor4(&[[[[1.0f32]]]]).into()
+            ))
             .unwrap();
-        assert_eq!(result, tvec!(rctensor4(&[[[[2.0f32]]], [[[0.0f32]]]])));
+        assert_eq!(result, tvec!(tensor4(&[[[[2.0f32]]], [[[0.0f32]]]]).into()));
     }
 
     #[test]
     fn test_infer_ntc_simple() {
         let mut op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
-        let ifact = f32::fact(&[1, 2, 1]).into();
-        let kfact = f32::fact(&[1, 1, 1]).into();
+        let ifact = f32::fact([1, 2, 1]).into();
+        let kfact = f32::fact([1, 1, 1]).into();
         let ofact = InferenceFact::default();
         let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
-        assert_eq!(facts.1, tvec!(f32::fact(&[1, 2, 1]).into()));
+        assert_eq!(facts.1, tvec!(f32::fact([1, 2, 1]).into()));
     }
 
     #[test]
     fn test_eval_ntc_simple() {
         let op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
-        let result =
-            op.eval(tvec!(rctensor3(&[[[2.0f32], [0.0f32]]]), rctensor3(&[[[1.0f32]]]))).unwrap();
-        assert_eq!(result, tvec!(rctensor3(&[[[2.0f32], [0.0f32]]])));
+        let result = op
+            .eval(tvec!(tensor3(&[[[2.0f32], [0.0f32]]]).into(), tensor3(&[[[1.0f32]]]).into()))
+            .unwrap();
+        assert_eq!(result, tvec!(tensor3(&[[[2.0f32], [0.0f32]]]).into()));
     }
 
     #[test]
     fn test_infer_ntc_batch() {
         let mut op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
-        let ifact = f32::fact(&[2, 1, 1]).into();
-        let kfact = f32::fact(&[1, 1, 1]).into();
+        let ifact = f32::fact([2, 1, 1]).into();
+        let kfact = f32::fact([1, 1, 1]).into();
         let ofact = InferenceFact::default();
         let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
-        assert_eq!(facts.1, tvec!(f32::fact(&[2, 1, 1]).into()));
+        assert_eq!(facts.1, tvec!(f32::fact([2, 1, 1]).into()));
     }
 
     #[test]
     fn test_eval_ntc_batch() {
         let op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
-        let result =
-            op.eval(tvec!(rctensor3(&[[[2.0f32]], [[0.0f32]]]), rctensor3(&[[[1.0f32]]]))).unwrap();
-        assert_eq!(result, tvec!(rctensor3(&[[[2.0f32]], [[0.0f32]]])));
+        let result = op
+            .eval(tvec!(tensor3(&[[[2.0f32]], [[0.0f32]]]).into(), tensor3(&[[[1.0f32]]]).into()))
+            .unwrap();
+        assert_eq!(result, tvec!(tensor3(&[[[2.0f32]], [[0.0f32]]]).into()));
     }
 
     #[test]
     fn test_infer_ntc_channel() {
         let mut op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
-        let ifact = f32::fact(&[1, 1, 2]).into();
-        let kfact = f32::fact(&[1, 2, 1]).into();
+        let ifact = f32::fact([1, 1, 2]).into();
+        let kfact = f32::fact([1, 2, 1]).into();
         let ofact = InferenceFact::default();
         let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
-        assert_eq!(facts.1, tvec!(f32::fact(&[1, 1, 1]).into()));
+        assert_eq!(facts.1, tvec!(f32::fact([1, 1, 1]).into()));
     }
 
     #[test]
     fn test_eval_ntc_channel() {
         let op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
         let result = op
-            .eval(tvec!(rctensor3(&[[[2.0f32, 0.0f32]]]), rctensor3(&[[[1.0f32], [0.0f32]]])))
+            .eval(tvec!(
+                tensor3(&[[[2.0f32, 0.0f32]]]).into(),
+                tensor3(&[[[1.0f32], [0.0f32]]]).into()
+            ))
             .unwrap();
-        assert_eq!(result, tvec!(rctensor3(&[[[2.0f32]]])));
+        assert_eq!(result, tvec!(tensor3(&[[[2.0f32]]]).into()));
     }
 }

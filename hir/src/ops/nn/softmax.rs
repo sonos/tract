@@ -15,7 +15,6 @@ impl Expansion for Softmax {
     fn info(&self) -> TractResult<Vec<String>> {
         Ok(vec![format!("axis: {:?}", self.axis)])
     }
-    op_hir!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

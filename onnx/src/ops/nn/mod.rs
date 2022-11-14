@@ -66,7 +66,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Shrink", shrink);
     reg.insert("ThresholdedRelu", thresholded_relu);
     reg.insert("Selu", selu);
-    reg.insert("Sigmoid", |_, _| Ok((Box::new(ops::nn::sigmoid()), vec![])));
+    reg.insert("Sigmoid", |_, _| Ok((ops::nn::sigmoid().into_hir(), vec![])));
     reg.insert("Softmax", layer_soft_max);
     reg.insert("Softplus", |_, _| Ok((expand(ops::activations::Softplus), vec![])));
     reg.insert("Softsign", |_, _| Ok((expand(ops::activations::Softsign), vec![])));
@@ -308,7 +308,6 @@ impl Expansion for Prelu {
         "Prelu".into()
     }
 
-    op_onnx!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

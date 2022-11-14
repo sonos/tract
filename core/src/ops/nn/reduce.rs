@@ -257,7 +257,6 @@ impl Op for Reduce {
     fn info(&self) -> TractResult<Vec<String>> {
         Ok(vec![format!("axes: {:?}", self.axes)])
     }
-    op_core_mir!();
     op_as_typed_op!();
 }
 
@@ -266,8 +265,8 @@ impl EvalOp for Reduce {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        Ok(tvec!(self.reducer.reduce(&*self.axes, inputs[0].as_ref())?.into_arc_tensor()))
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        Ok(tvec!(self.reducer.reduce(&self.axes, &inputs[0])?.into()))
     }
 }
 

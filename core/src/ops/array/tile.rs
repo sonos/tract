@@ -9,7 +9,7 @@ pub struct Tile {
 impl_dyn_hash!(Tile);
 
 impl Tile {
-    fn eval_t<T: Datum>(data: &Arc<Tensor>, multipliers: &[usize]) -> TractResult<Arc<Tensor>> {
+    fn eval_t<T: Datum>(data: &TValue, multipliers: &[usize]) -> TractResult<TValue> {
         let view = unsafe { data.to_array_view_unchecked::<T>() };
         let output_shape: TVec<usize> =
             view.shape().iter().zip(multipliers.iter()).map(|(&d, &m)| d * m as usize).collect();
@@ -23,7 +23,7 @@ impl Tile {
             output.set_datum_type(data.datum_type());
         }
 
-        Ok(output.into_arc_tensor())
+        Ok(output.into_tvalue())
     }
 }
 
@@ -32,7 +32,6 @@ impl Op for Tile {
         "Tile".into()
     }
 
-    op_core_mir!();
     op_as_typed_op!();
 }
 
@@ -41,7 +40,7 @@ impl EvalOp for Tile {
         self.multipliers.iter().all(|m| m.to_usize().is_ok())
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let multipliers: TVec<usize> =
             self.multipliers.iter().map(|m| m.to_usize()).collect::<TractResult<_>>()?;
         let result = dispatch_datum_by_size!(Self::eval_t(inputs[0].datum_type())(
@@ -65,8 +64,8 @@ impl OpState for Tile {
         &mut self,
         session: &mut SessionState,
         _op: &dyn Op,
-        inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         let multipliers: TVec<usize> = self
             .multipliers
             .iter()

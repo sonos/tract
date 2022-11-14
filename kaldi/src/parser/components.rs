@@ -47,7 +47,7 @@ impl KaldiAttributeKind {
         if len == 0 {
             Ok((i, tensor1(&[0.0f32])))
         } else {
-            map(many_m_n(len as usize, len as usize, le_f32), |data| tensor1(&*data))(i)
+            map(many_m_n(len as usize, len as usize, le_f32), |data| tensor1(&data))(i)
         }
     }
 

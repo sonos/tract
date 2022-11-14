@@ -4,7 +4,6 @@ use crate::annotations::*;
 use crate::display_params::*;
 use crate::draw::DrawingState;
 use crate::model::Model;
-use crate::CliResult;
 use ansi_term::ANSIString;
 use ansi_term::Color::*;
 #[allow(unused_imports)]
@@ -16,12 +15,12 @@ pub fn render(
     model: &dyn Model,
     annotations: &Annotations,
     options: &DisplayParams,
-) -> CliResult<()> {
+) -> TractResult<()> {
     if options.quiet {
         return Ok(());
     }
     render_prefixed(model, "", &[], annotations, options)?;
-    if model.properties().len() > 0 {
+    if !model.properties().is_empty() {
         println!("{}", White.bold().paint("# Properties"));
     }
     for (k, v) in model.properties().iter().sorted_by_key(|(k, _)| k.to_string()) {
@@ -35,7 +34,7 @@ pub fn render_node(
     node_id: usize,
     annotations: &Annotations,
     options: &DisplayParams,
-) -> CliResult<()> {
+) -> TractResult<()> {
     render_node_prefixed(model, "", &[], node_id, None, annotations, options)
 }
 
@@ -45,7 +44,7 @@ fn render_prefixed(
     scope: &[(usize, String)],
     annotations: &Annotations,
     options: &DisplayParams,
-) -> CliResult<()> {
+) -> TractResult<()> {
     let mut drawing_state =
         if options.should_draw() { Some(DrawingState::default()) } else { None };
     let node_ids = if options.natural_order {
@@ -81,12 +80,12 @@ fn render_node_prefixed(
     mut drawing_state: Option<&mut DrawingState>,
     annotations: &Annotations,
     options: &DisplayParams,
-) -> CliResult<()> {
+) -> TractResult<()> {
     let qid = NodeQId(scope.into(), node_id);
     let tags = annotations.tags.get(&qid).cloned().unwrap_or_default();
     let name_color = tags.style.unwrap_or_else(|| White.into());
     let node_name = model.node_name(node_id);
-    let node_op_name = model.node_op(node_id).name();
+    let node_op_name = model.node_op_name(node_id);
     let profile_column_pad = format!("{:>1$}", "", options.profile as usize * 20);
     let cost_column_pad = format!("{:>1$}", "", options.cost as usize * 25);
     let flops_column_pad = format!("{:>1$}", "", (options.profile && options.cost) as usize * 20);
@@ -196,8 +195,6 @@ fn render_node_prefixed(
         White.bold().paint(format!("{}", node_id)),
         (if node_name == "UnimplementedOp" {
             Red.bold()
-        } else if options.expect_core && !model.node_op(node_id).op_families().contains(&"core") {
-            Yellow.bold()
         } else {
             Blue.bold()
         })
@@ -295,11 +292,11 @@ fn render_node_prefixed(
         let prefix = drawing_lines.next().unwrap();
         let mut scope: TVec<_> = scope.into();
         scope.push((node_id, label.to_string()));
-        render_prefixed(sub, &format!("{} [{}] ", prefix, label), &*scope, annotations, options)?
+        render_prefixed(sub, &format!("{} [{}] ", prefix, label), &scope, annotations, options)?
     }
 
     if let Io::Short = options.io {
-        let same = model.node_inputs(node_id).len() > 0
+        let same = !model.node_inputs(node_id).is_empty()
             && model.node_output_count(node_id) == 1
             && model.outlet_fact_format(node_id.into())
                 == model.outlet_fact_format(model.node_inputs(node_id)[0]);
@@ -331,7 +328,7 @@ pub fn render_summaries(
     model: &dyn Model,
     annotations: &Annotations,
     options: &DisplayParams,
-) -> CliResult<()> {
+) -> TractResult<()> {
     let total = annotations.tags.values().sum::<NodeTags>();
 
     if options.cost {
@@ -349,7 +346,7 @@ pub fn render_summaries(
             .tags
             .iter()
             .map(|(k, v)| {
-                (k.model(model).unwrap().node_op(k.1).name(), v.profile.unwrap_or_default())
+                (k.model(model).unwrap().node_op_name(k.1), v.profile.unwrap_or_default())
             })
             .sorted_by_key(|a| a.0.to_string())
             .group_by(|(n, _)| n.clone())
@@ -384,7 +381,7 @@ pub fn render_summaries(
             .tags
             .keys()
             .flat_map(|id| prefixes_for(id.model(model).unwrap().node_name(id.1)))
-            .filter(|s| s.len() > 0)
+            .filter(|s| !s.is_empty())
             .sorted()
             .unique()
             .collect::<Vec<String>>();

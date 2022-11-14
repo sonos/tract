@@ -29,10 +29,11 @@ macro_rules! register_all {
                            node: &TypedNode,
                            target: &mut PulsedModel,
                            mapping: &HashMap<OutletId, OutletId>,
-                           pulse: usize|
+                           symbol: &Symbol,
+                           pulse: &TDim|
                      -> TractResult<Option<TVec<OutletId>>> {
                         let op = node.op_as::<$op>().unwrap();
-                        ($func)(op, source, node, target, mapping, pulse)
+                        ($func)(op, source, node, target, mapping, symbol, pulse)
                     },
                     name: stringify!($op)
                 }

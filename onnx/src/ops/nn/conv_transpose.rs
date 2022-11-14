@@ -50,7 +50,6 @@ impl Expansion for ConvTranspose {
         "ConvTranspose".into()
     }
 
-    op_onnx!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -148,7 +147,7 @@ impl Expansion for ConvTranspose {
                 let adjustments = adjustments(
                     &pool_spec,
                     &x_shape.as_concrete().context("expects concrete dim for deconv")?[2..],
-                    &**output_shape,
+                    output_shape,
                 )?;
                 tract_core::ops::cnn::DeconvUnary::new(
                     pool_spec,

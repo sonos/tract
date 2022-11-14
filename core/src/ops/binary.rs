@@ -45,13 +45,15 @@ pub trait BinMiniOp:
     fn validation(&self) -> Validation {
         Validation::Accurate
     }
-    fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType>;
+    fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
+        a.common_super_type(b).with_context(|| format_err!("No super type for {:?} and {:?}", a, b))
+    }
     fn result_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType>;
     fn eval_unicast_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()>;
     fn eval_uniform_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()>;
     fn eval_in_a(&self, a: &mut Tensor, b: &Tensor) -> TractResult<()>;
     fn eval_out_of_place(&self, c: &mut Tensor, a: &Tensor, b: &Tensor) -> TractResult<()>;
-    fn generic_eval(&self, a: Arc<Tensor>, b: Arc<Tensor>) -> TractResult<Tensor> {
+    fn generic_eval(&self, a: TValue, b: TValue) -> TractResult<Tensor> {
         let c_dt = self.result_datum_type(a.datum_type(), b.datum_type())?;
         if c_dt == b.datum_type() && a.len() == 1 {
             let mut b = b.into_tensor();
@@ -69,13 +71,13 @@ pub trait BinMiniOp:
                 self.eval_in_a(&mut a, &b)?;
                 Ok(a)
             } else {
-                let mut c = unsafe { Tensor::uninitialized_dt(c_dt, &*c_shape)? };
-                self.eval_out_of_place(&mut c, a.as_ref(), b.as_ref())?;
+                let mut c = unsafe { Tensor::uninitialized_dt(c_dt, &c_shape)? };
+                self.eval_out_of_place(&mut c, &a, &b)?;
                 Ok(c)
             }
         }
     }
-    fn eval(&self, a: Arc<Tensor>, b: Arc<Tensor>) -> TractResult<Tensor> {
+    fn eval(&self, a: TValue, b: TValue) -> TractResult<Tensor> {
         self.generic_eval(a, b)
     }
     #[allow(unused_variables)]
@@ -139,7 +141,6 @@ impl Op for TypedBinOp {
         self.0.validation()
     }
 
-    op_core_mir!();
     op_as_typed_op!();
 }
 
@@ -148,10 +149,10 @@ impl EvalOp for TypedBinOp {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a, b) = args_2!(inputs);
         debug_assert_eq!(a.rank(), b.rank());
-        Ok(tvec!(self.0.eval(a, b)?.into_arc_tensor()))
+        Ok(tvec!(self.0.eval(a, b)?.into_tvalue()))
     }
 }
 
@@ -367,7 +368,6 @@ impl Op for UnaryOp {
         self.mini_op.validation()
     }
 
-    op_core_lir_mir!();
     op_as_typed_op!();
 }
 
@@ -376,9 +376,9 @@ impl EvalOp for UnaryOp {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         debug_assert_eq!(self.a.rank(), inputs[0].rank());
-        Ok(tvec!(self.mini_op.eval(self.a.clone(), inputs.remove(0))?.into_arc_tensor()))
+        Ok(tvec!(self.mini_op.eval(self.a.clone().into_tvalue(), inputs.remove(0))?.into_tvalue()))
     }
 }
 
@@ -516,7 +516,6 @@ impl Op for MergeOpUnicast {
         format!("{}Unicast", self.0.name()).into()
     }
 
-    op_core_lir_mir!();
     op_as_typed_op!();
 }
 
@@ -525,11 +524,11 @@ impl EvalOp for MergeOpUnicast {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a, b) = args_2!(inputs);
         let mut b = b.into_tensor();
-        self.0.eval_unicast_in_place(a.as_ref(), &mut b)?;
-        Ok(tvec!(b.into_arc_tensor()))
+        self.0.eval_unicast_in_place(&a, &mut b)?;
+        Ok(tvec!(b.into_tvalue()))
     }
 }
 
@@ -573,6 +572,7 @@ macro_rules! bin_to_super_type {
      $(eval_override: $eval_override: expr,)?
      $(flip: $flip:expr,)?
      $(linalg: $linalg:ident,)?
+     $(operating_datum_type: $operating_datum_type:expr,)?
      $(out_of_place: $out_of_place:expr,)?
      $(validation: $validation:expr,)?
      $(q: $([$($typ_dt:ident),*] => $cab_dt:expr),* ;)?
@@ -722,13 +722,9 @@ macro_rules! bin_to_super_type {
                 bail!("{} does not support {:?} (out of place)", self.name(), a.datum_type());
             }
 
-            $(fn eval(&self, a: Arc<Tensor>, b: Arc<Tensor>) -> TractResult<Tensor> {
+            $(fn eval(&self, a: TValue, b: TValue) -> TractResult<Tensor> {
                 $eval_override(a, b)
             })?
-
-            fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
-                a.common_super_type(b).ok_or_else(|| format_err!("No super type for {:?} and {:?}", a, b))
-            }
 
             fn result_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
                 if a.unquantized() == b.unquantized() {
@@ -791,6 +787,10 @@ macro_rules! bin_to_super_type {
                         Some(tract_linalg::mmm::BinOp::$linalg)
                     }
                  )?
+                $(
+                fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
+                    ($operating_datum_type)(a, b)
+                })?
         }
 
         pub mod $func {
@@ -810,6 +810,7 @@ macro_rules! bin_to_bool {
      $( codegen_unary: $codegen_unary:expr, )?
      $( declutter_unary: $declutter_unary:expr, )?
      $( flip: $flip:expr, )?
+     $( operating_datum_type: $operating_datum_type:expr, )?
      $( [$($typ:ident),*] => $cab:expr),*) => {
         #[derive(Debug, Clone, Hash)]
         pub struct $Op;
@@ -879,10 +880,6 @@ macro_rules! bin_to_bool {
                     bail!("{} does not support {:?}", self.name(), a.datum_type());
             }
 
-            fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
-                a.common_super_type(b).ok_or_else(|| format_err!("No super type for {:?} and {:?}", a, b).into())
-            }
-
             fn result_datum_type(&self, _a: DatumType, _b: DatumType) -> TractResult<DatumType> {
                 Ok(bool::datum_type())
             }
@@ -920,6 +917,12 @@ macro_rules! bin_to_bool {
                         ($cost)(dt)
                     }
                  )?
+
+                $(
+                fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
+                    ($operating_datum_type)(a, b)
+                })?
+
         }
 
         pub mod $func {

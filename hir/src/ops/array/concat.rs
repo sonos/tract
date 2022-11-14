@@ -28,7 +28,6 @@ impl Expansion for Concat {
         "InferenceConcat".into()
     }
 
-    op_hir!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -106,6 +105,6 @@ impl Expansion for Concat {
             }
         }
         let op = TypedConcat::new(axis, slices);
-        target.wire_node(prefix, op, &*kept_inputs)
+        target.wire_node(prefix, op, &kept_inputs)
     }
 }

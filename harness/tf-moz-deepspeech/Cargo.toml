@@ -2,12 +2,12 @@
 name = "tf-moz-deepspeech"
 version = "0.1.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
-edition = "2018"
+edition = "2021"
 license = "MIT/Apache-2.0"
 
 [dependencies]
-log = "0.4.14"
+log.workspace = true
 tract-tensorflow = { path = "../../tensorflow" }
 
 [dev-dependencies]
-env_logger = "0.9.0"
+env_logger.workspace = true

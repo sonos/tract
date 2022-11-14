@@ -15,7 +15,6 @@ impl Op for FiniteReshape {
         Ok(vec![format!("to shape: {}", self.shape.iter().join(","))])
     }
 
-    op_core_lir!();
     op_as_typed_op!();
 }
 
@@ -26,13 +25,13 @@ impl EvalOp for FiniteReshape {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let mut tensor = input.into_tensor();
         unsafe {
-            tensor.set_shape_unchecked(&*self.shape);
+            tensor.set_shape_unchecked(&self.shape);
         }
-        Ok(tvec!(tensor.into_arc_tensor()))
+        Ok(tvec!(tensor.into_tvalue()))
     }
 }
 

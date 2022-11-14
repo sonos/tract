@@ -52,7 +52,6 @@ impl Op for Compress {
         "Compress".into()
     }
 
-    op_onnx!();
     not_a_typed_op!();
 }
 
@@ -61,7 +60,7 @@ impl EvalOp for Compress {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input, conds) = args_2!(inputs);
         let conds = conds.as_slice()?;
         let compressed_dim = conds.iter().filter(|c| **c).count();
@@ -74,14 +73,14 @@ impl EvalOp for Compress {
             (tvec!(compressed_dim), None)
         };
         unsafe {
-            let mut output = Tensor::uninitialized_dt(input.datum_type(), &*shape)?;
+            let mut output = Tensor::uninitialized_dt(input.datum_type(), &shape)?;
             dispatch_datum_by_size!(Self::eval_t(input.datum_type())(
                 axis,
                 &input,
                 conds,
                 &mut output
             ));
-            Ok(tvec!(output.into_arc_tensor()))
+            Ok(tvec!(output.into_tvalue()))
         }
     }
 }

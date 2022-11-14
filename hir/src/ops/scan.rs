@@ -32,7 +32,6 @@ impl Op for InferenceScan {
         Ok(lines)
     }
 
-    op_hir!();
     not_a_typed_op!();
 }
 
@@ -185,12 +184,12 @@ impl InferenceScan {
                     ])?;
                     facts.push(&mut inputs[*outer_input_ix]);
                     if Factoid::unify_all(
-                        &mut *facts.iter_mut().map(|f| &mut f.datum_type).collect::<TVec<_>>(),
+                        &mut facts.iter_mut().map(|f| &mut f.datum_type).collect::<TVec<_>>(),
                     )? {
                         changed = true;
                     }
                     if Factoid::unify_all(
-                        &mut *facts.iter_mut().map(|f| &mut f.shape).collect::<TVec<_>>(),
+                        &mut facts.iter_mut().map(|f| &mut f.shape).collect::<TVec<_>>(),
                     )? {
                         changed = true;
                     }
@@ -324,7 +323,7 @@ impl InferenceOp for InferenceScan {
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         let inputs = node.inputs.iter().map(|m| mapping[m]).collect::<TVec<_>>();
-        target.wire_node(&*node.name, self.to_mir_scan()? as Box<dyn TypedOp>, &*inputs)
+        target.wire_node(&*node.name, self.to_mir_scan()? as Box<dyn TypedOp>, &inputs)
     }
 
     fn nboutputs(&self) -> TractResult<usize> {

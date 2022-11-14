@@ -24,7 +24,6 @@ impl Expansion for RemInt {
         "Remint".into()
     }
 
-    op_onnx!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

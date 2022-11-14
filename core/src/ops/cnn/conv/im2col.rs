@@ -160,7 +160,6 @@ impl Op for Im2Col {
         Ok(vec![format!("groups:{}", self.group)])
     }
 
-    op_core_lir!();
     impl_op_same_as!();
     op_as_typed_op!();
 }
@@ -170,11 +169,11 @@ impl EvalOp for Im2Col {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let geometry = self.geometry.to_concrete(inputs[0].shape())?;
         unsafe {
             let mut input = inputs.remove(0).into_tensor();
-            let pad_value = if inputs.len() > 0 { Some(inputs.remove(0)) } else { None };
+            let pad_value: Option<&Tensor> = if inputs.len() > 0 { Some(&inputs[0]) } else { None };
             let mut output = Tensor::uninitialized_aligned_dt(
                 input.datum_type(),
                 &geometry.packing_shape,
@@ -198,13 +197,13 @@ impl EvalOp for Im2Col {
                             &input,
                             &mut packed,
                             g,
-                            pad_value.as_deref()
+                            pad_value
                         ))?
                     }
                 }
             }
             output.set_shape_unchecked(&geometry.packed_shape);
-            Ok(tvec!(output.into()))
+            Ok(tvec!(output.into_tvalue()))
         }
     }
 }

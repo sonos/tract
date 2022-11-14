@@ -8,8 +8,8 @@ impl OpState for SourceState {
         &mut self,
         session: &mut SessionState,
         _op: &dyn Op,
-        _inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
+        _inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         Ok(tvec!(session
             .inputs
             .get(&self.0)
@@ -29,7 +29,6 @@ impl Op for TypedSource {
     fn name(&self) -> Cow<str> {
         "Source".into()
     }
-    op_core_lir_mir!();
     op_as_typed_op!();
 }
 

@@ -1,16 +1,19 @@
-use tract_itertools::Itertools;
 use tract_core::ndarray::{ArrayD, Axis};
+use tract_itertools::Itertools;
 
 use tract_core::model::OutletId;
 use tract_core::plan::SimpleState;
 
 use tract_pulse::internal::*;
 
-use crate::display_params::DisplayParams;
-use crate::terminal;
-use crate::{CliResult, Parameters};
+use tract_libcli::annotations::Annotations;
+use tract_libcli::display_params::DisplayParams;
 
-pub fn handle(params: &Parameters, options: &DisplayParams) -> CliResult<()> {
+use crate::dump::annotate_with_graph_def;
+use crate::{Parameters, TractResult};
+use tract_libcli::terminal;
+
+pub fn handle(params: &Parameters, options: &DisplayParams) -> TractResult<()> {
     let decl = params
         .reference_model
         .as_deref()
@@ -26,10 +29,10 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> CliResult<()> {
 
     let decl_input_fact = decl.input_fact(0)?;
     let pulsed_input_fact = pulsed.input_fact(0)?;
-    let input_pulse = pulsed_input_fact.pulse();
+    let input_pulse = pulsed_input_fact.pulse().to_usize()?;
 
-    let annotations = crate::annotations::Annotations::from_model(&*params.tract_model)?
-        .with_graph_def(&*params.tract_model, &params.graph)?;
+    let mut annotations = Annotations::from_model(&*params.tract_model)?;
+    annotate_with_graph_def(&mut annotations, &*params.tract_model, &params.graph)?;
 
     let eval_order = ::tract_core::model::eval_order(decl)?;
 
@@ -49,20 +52,22 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> CliResult<()> {
             let outlet = OutletId::new(node, output_slot);
 
             let pulsed_output_fact = pulsed.outlet_fact(pulsed_outlet)?;
-            let output_pulse = pulsed_output_fact.pulse();
+            let output_pulse = pulsed_output_fact.pulse().to_usize()?;
             let output_axis = pulsed_output_fact.axis;
             let delay = pulsed_output_fact.delay;
 
             let stream_dim = delay + 3 * input_pulse + input_pulse / 2;
+            let stream_symbol = model.symbol_table.sym("S");
 
-            let fixed_input = crate::tensor::tensor_for_fact(decl_input_fact, Some(stream_dim), None)?;
+            let fixed_input =
+                tract_libcli::tensor::tensor_for_fact(decl_input_fact, Some(stream_dim), None)?;
 
             let decl = (*decl).clone();
             let fixed_result = decl
                 .with_output_outlets(&[decl_outlet])?
-                .concretize_dims(&SymbolValues::default().with(stream_symbol(), stream_dim as _))?
+                .concretize_dims(&SymbolValues::default().with(&stream_symbol, stream_dim as _))?
                 .into_runnable()?
-                .run(tvec!(fixed_input.clone()))?
+                .run(tvec!(fixed_input.clone().into_tvalue()))?
                 .remove(output_slot);
             let fixed_output_len = fixed_result.shape()[output_axis];
 
@@ -88,10 +93,11 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> CliResult<()> {
                 };
                 if offset + input_pulse > stream_dim {
                     debug!("Set known_stream_len: {}", stream_dim);
-                    state.session_state.resolved_symbols[stream_symbol()] = Some(stream_dim as _);
+                    state.session_state.resolved_symbols[&stream_symbol] = Some(stream_dim as _);
                 };
 
-                let output = state.run(tvec!(pulsed_input.into()))?.remove(output_slot);
+                let output =
+                    state.run(tvec!(pulsed_input.into_tensor().into()))?.remove(output_slot);
 
                 let output_offset = i * output_pulse;
                 let (f_o, p_o, count) = if output_offset + output_pulse <= delay {

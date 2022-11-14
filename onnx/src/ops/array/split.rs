@@ -68,5 +68,4 @@ impl Expansion for Split13 {
         Ok(self.outputs)
     }
 
-    op_onnx!();
 }

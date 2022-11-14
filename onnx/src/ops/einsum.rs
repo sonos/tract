@@ -24,7 +24,6 @@ impl Expansion for EinSum {
         "EinSum".into()
     }
 
-    op_onnx!();
 
     fn wire(
         &self,
@@ -36,7 +35,7 @@ impl Expansion for EinSum {
             .iter()
             .map(|o| model.outlet_fact(*o).map(|f| f.rank()))
             .collect::<TractResult<TVec<_>>>()?;
-        let expr = resolve_ellipsis(&self.expr, &*ranks)?;
+        let expr = resolve_ellipsis(&self.expr, &ranks)?;
         model.wire_node(prefix, tract_onnx_opl::einsum::EinSum { expr }, inputs)
     }
 
@@ -108,13 +107,13 @@ fn resolve_ellipsis(expr: &Expr, ranks: &[usize]) -> TractResult<Expr> {
     let mut resolved = expr.to_string();
     for axes in elipsed_axes {
         resolved = resolved.replacen(
-            "*",
+            '*',
             &axis_resolved.chars().skip(max_axes - axes).collect::<String>(),
             1,
         );
     }
     // replace in output
-    resolved = resolved.replacen("*", &axis_resolved, 1);
+    resolved = resolved.replacen('*', &axis_resolved, 1);
     resolved.parse()
 }
 

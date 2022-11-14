@@ -76,7 +76,7 @@ impl ConvPlusConvProblem {
         let model = Self::model(ops);
         let dims: Vec<&TDim> = model.nodes.iter().map(|n| &n.outputs[0].fact.shape[2]).collect();
         for s in 0usize.. {
-            let symbols = SymbolValues::default().with(stream_symbol(), s as _);
+            let symbols = SymbolValues::default().with(&model.symbol_table.get("S").unwrap(), s as _);
             if dims.iter().all(|d| d.eval(&symbols).to_isize().unwrap() > 0) {
                 return s;
             }
@@ -86,7 +86,7 @@ impl ConvPlusConvProblem {
 
     pub fn model(ops: &[ConvOp]) -> TypedModel {
         let mut model = InferenceModel::default();
-        let s = tract_pulse::internal::stream_dim();
+        let s = model.symbol_table.sym("S");
         let mut wire = model.add_source("a", f32::fact(dims!(1, 1, s)).into()).unwrap();
         for (ix, cv) in ops.iter().enumerate() {
             wire = cv.chain(&format!("conv{}", ix), &mut model, wire);
@@ -111,7 +111,7 @@ proptest! {
 }
 
 fn t(n: usize) -> Tensor {
-    tensor1(&*(0..n).map(|x| x as f32).collect_vec()).into_shape(&[1, 1, n]).unwrap()
+    tensor1(&(0..n).map(|x| x as f32).collect_vec()).into_shape(&[1, 1, n]).unwrap()
 }
 
 #[test]

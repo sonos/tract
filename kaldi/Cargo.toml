@@ -1,6 +1,6 @@
 [package]
 name = "tract-kaldi"
-version = "0.18.3-pre"
+version = "0.18.4-pre"
 authors = [
     "Mathieu Poumeyrol <kali@zoy.org>",
     "Theodore Bluche <theodore.bluche@snips.ai>"
@@ -10,18 +10,18 @@ description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
 repository = "https://github.com/snipsco/tract"
 keywords = [ "TensorFlow", "NeuralNetworks", "ONNX" ]
 categories = [ "science" ]
-edition = "2018"
+edition = "2021"
 
 [badges]
 maintenance = { status = "actively-developed" }
 
 [dependencies]
 bit-set= "0.5.2"
-derive-new = "0.5.9"
-educe = "0.4.18"
-lazy_static = "1.4.0"
-log = "0.4.14"
-maplit = "1.0.2"
-nom = "7.0.0"
-tract-hir = { version = "0.18.3-pre", path = "../hir" }
-tract-pulse = { version = "0.18.3-pre", path = "../pulse" }
+derive-new.workspace = true
+educe.workspace = true
+lazy_static.workspace = true
+log.workspace = true
+maplit.workspace = true
+nom.workspace = true
+tract-hir = { version = "0.18.4-pre", path = "../hir" }
+tract-pulse = { version = "0.18.4-pre", path = "../pulse" }

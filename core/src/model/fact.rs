@@ -16,6 +16,7 @@ impl ShapeFact {
     }
 
     fn compute_concrete(&mut self) {
+        assert!(self.dims.iter().all(|d| d.to_isize().map(|d| d >= 0).unwrap_or(true)));
         self.concrete =
             self.dims.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<_>>>().ok()
     }
@@ -373,6 +374,7 @@ pub trait DatumExt {
 }
 
 impl<T: Datum> DatumExt for T {
+    #[allow(clippy::needless_borrow)]
     fn scalar_fact() -> TypedFact {
         TypedFact::shape::<Self, &[usize]>(&[])
     }
@@ -393,6 +395,7 @@ pub trait DatumTypeExt {
 }
 
 impl DatumTypeExt for DatumType {
+    #[allow(clippy::needless_borrow)]
     fn scalar_fact(&self) -> TypedFact {
         TypedFact::dt_shape::<&[usize]>(*self, &[])
     }

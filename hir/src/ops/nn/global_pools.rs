@@ -10,7 +10,6 @@ impl Expansion for GlobalAvgPool {
         "GlobalAvgPool".into()
     }
 
-    op_hir!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -57,7 +56,6 @@ impl Expansion for GlobalLpPool {
     fn name(&self) -> Cow<str> {
         format!("GlobalL{}Pool", self.0).into()
     }
-    op_hir!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -142,7 +140,6 @@ impl Expansion for GlobalMaxPool {
         "GlobalMaxPool".into()
     }
 
-    op_hir!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

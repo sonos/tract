@@ -39,11 +39,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Extract version tag
         id: version
-        run: echo ::set-output name=value::$(echo ${{ github.ref }} | cut -f 3 -d / | tr -d 'v' )
+        run: echo name=$(echo ${{ github.ref }} | cut -f 3 -d / | tr -d 'v' ) >> $GITHUB_OUTPUT
 
       - name: Build tract
         run: |
@@ -76,7 +76,7 @@ jobs:
           tar czf tract-${name}.tgz tract-${name}
 
       - name: Upload asset
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: tract-${{matrix.target}}-${{ steps.version.outputs.value }}.tgz
           name: ${{ steps.version.outputs.value }}

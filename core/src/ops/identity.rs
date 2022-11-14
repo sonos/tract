@@ -8,7 +8,6 @@ impl Op for Identity {
         "Identity".into()
     }
 
-    op_core_mir!();
     op_as_typed_op!();
 }
 
@@ -20,7 +19,7 @@ impl EvalOp for Identity {
     }
 
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         Ok(inputs)
     }
 }

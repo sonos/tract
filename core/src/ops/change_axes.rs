@@ -6,7 +6,7 @@ use crate::model::{TypedModel, TypedNode};
 use crate::ops::identity::Identity;
 use tract_itertools::Itertools;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum InOut {
     Out(usize),
     In(usize),
@@ -24,7 +24,7 @@ impl InOut {
     }
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, Eq)]
 #[allow(clippy::large_enum_variant)] // FIXME ?
 #[allow(clippy::derive_hash_xor_eq)] // FIXME. this one may be pretty bad. how about a.canonical() == b.canonical() ? need proper canonicalizeation of Reshape
 pub enum AxisOp {
@@ -269,7 +269,6 @@ impl AxisOp {
         shape: &mut TVec<D>,
         broadcasting: bool,
     ) -> TractResult<()> {
-        use std::convert::TryInto;
         match self.canonical().as_ref() {
             Add(ix) => shape.insert(*ix, D::one()),
             Rm(ix) => {
@@ -452,7 +451,6 @@ impl Op for AxisOp {
         }
     }
 
-    op_core_lir_mir!();
     op_as_typed_op!();
 }
 
@@ -469,10 +467,10 @@ impl EvalOp for AxisOp {
         }
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let mut input = args_1!(inputs).into_tensor();
         self.change_tensor(&mut input, false)?;
-        Ok(tvec!(input.into_arc_tensor()))
+        Ok(tvec!(input.into_tvalue()))
     }
 
     fn state(
@@ -489,8 +487,8 @@ impl OpState for ReshapeState {
         &mut self,
         session: &mut SessionState,
         op: &dyn Op,
-        inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         let op = op.downcast_ref::<AxisOp>().unwrap();
         match op {
             AxisOp::Reshape(skip, from, to) => {
@@ -561,14 +559,14 @@ impl TypedOp for AxisOp {
 
     fn change_axes(
         &self,
-        model: &TypedModel,
-        node: &TypedNode,
+        _model: &TypedModel,
+        _node: &TypedNode,
         io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
         let op = if let InOut::Out(0) = io {
             let more =
-                if let Some(more) = self.recip().change_axes(model, node, InOut::In(0), change)? {
+                if let Some(more) = self.recip().change_axes(_model, _node, InOut::In(0), change)? {
                     more
                 } else {
                     return Ok(None);
@@ -1108,9 +1106,9 @@ mod proptests {
             crate::setup_test_logger();
             let input = self.input()?;
             let model = self.model()?;
-            let raw = model.into_runnable()?.run(tvec!(input.clone()))?;
+            let raw = model.into_runnable()?.run(tvec!(input.clone().into_tvalue()))?;
             let optimized = self.model()?.into_decluttered()?;
-            let opt = optimized.into_runnable()?.run(tvec!(input))?;
+            let opt = optimized.into_runnable()?.run(tvec!(input.into_tvalue()))?;
             opt[0].close_enough(&raw[0], false)
         }
     }

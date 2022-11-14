@@ -1,11 +1,11 @@
 use reqwest::Url;
 use scan_fmt::scan_fmt;
 use std::io::Read;
-use std::ops::Range;
 use std::path::PathBuf;
 use std::str::FromStr;
 #[allow(unused_imports)]
 use tract_itertools::Itertools;
+use tract_libcli::profile::BenchLimits;
 
 use tract_core::internal::*;
 use tract_core::model::TypedModel;
@@ -17,15 +17,16 @@ use tract_tensorflow::tfpb::tensorflow::GraphDef;
 
 use tract_nnef::ast::dump::Dumper;
 
-use crate::display_params::DisplayParams;
-use crate::CliResult;
+use crate::TractResult;
+use tract_libcli::display_params;
+use tract_libcli::display_params::DisplayParams;
+use tract_libcli::model::Model;
+use tract_libcli::tensor;
+use tract_libcli::tensor::{TensorValues, TensorsValues};
 
 use readings_probe::*;
 
-use super::display_params;
-use super::{info_usage, tensor};
-
-use super::model::Model;
+use super::info_usage;
 
 use std::convert::*;
 
@@ -115,79 +116,13 @@ pub struct Parameters {
     pub allow_float_casts: bool,
 }
 
-#[derive(Debug, Default, Clone)]
-pub struct TensorsValues(pub Vec<TensorValues>);
-
-impl TensorsValues {
-    pub fn by_name(&self, name: &str) -> Option<&TensorValues> {
-        self.0.iter().find(|t| t.name.as_deref() == Some(name))
-    }
-    pub fn by_name_mut(&mut self, name: &str) -> Option<&mut TensorValues> {
-        self.0.iter_mut().find(|t| t.name.as_deref() == Some(name))
-    }
-    pub fn by_name_mut_with_default(&mut self, name: &str) -> &mut TensorValues {
-        if self.by_name_mut(name).is_none() {
-            self.add(TensorValues { name: Some(name.to_string()), ..TensorValues::default() });
-        }
-        self.by_name_mut(name).unwrap()
-    }
-
-    pub fn by_input_ix(&self, ix: usize) -> Option<&TensorValues> {
-        self.0.iter().find(|t| t.input_index == Some(ix))
-    }
-    pub fn by_input_ix_mut(&mut self, ix: usize) -> Option<&mut TensorValues> {
-        self.0.iter_mut().find(|t| t.input_index == Some(ix))
-    }
-    pub fn by_input_ix_mut_with_default(&mut self, ix: usize) -> &mut TensorValues {
-        if self.by_input_ix_mut(ix).is_none() {
-            self.add(TensorValues { input_index: Some(ix), ..TensorValues::default() });
-        }
-        self.by_input_ix_mut(ix).unwrap()
-    }
-
-    /*
-    pub fn by_output_ix(&self, ix: usize) -> Option<&TensorValues> {
-    self.0.iter().find(|t| t.output_index == Some(ix))
-    }
-    */
-
-    pub fn add(&mut self, other: TensorValues) {
-        let mut tensor = other.input_index.and_then(|ix| self.by_input_ix_mut(ix));
-
-        if tensor.is_none() {
-            tensor = other.name.as_deref().and_then(|ix| self.by_name_mut(ix))
-        }
-
-        if let Some(tensor) = tensor {
-            if tensor.fact.is_none() {
-                tensor.fact = other.fact;
-            }
-            if tensor.values.is_none() {
-                tensor.values = other.values;
-            }
-        } else {
-            self.0.push(other.clone());
-        };
-    }
-}
-
-#[derive(Debug, PartialEq, Clone, Default)]
-pub struct TensorValues {
-    pub input_index: Option<usize>,
-    pub output_index: Option<usize>,
-    pub name: Option<String>,
-    pub fact: Option<InferenceFact>,
-    pub values: Option<Vec<Arc<Tensor>>>,
-    pub random_range: Option<Range<f32>>,
-}
-
 #[cfg(feature = "tf")]
 type TfExt = tract_tensorflow::model::TfModelExtensions;
 #[cfg(not(feature = "tf"))]
 type TfExt = ();
 
 impl Parameters {
-    fn disco_model(matches: &clap::ArgMatches) -> CliResult<(ModelLocation, bool)> {
+    fn disco_model(matches: &clap::ArgMatches) -> TractResult<(ModelLocation, bool)> {
         let model = matches.value_of("model").context("Model argument required")?;
         let path = std::path::PathBuf::from(model);
         let (location, onnx_tc) = if model.starts_with("http://") || model.starts_with("https://") {
@@ -213,7 +148,8 @@ impl Parameters {
         probe: Option<&Probe>,
         location: &ModelLocation,
         tensors_values: &TensorsValues,
-    ) -> CliResult<(SomeGraphDef, Box<dyn Model>, Option<TfExt>)> {
+        symbol_table: &SymbolTable,
+    ) -> TractResult<(SomeGraphDef, Box<dyn Model>, Option<TfExt>)> {
         let need_graph =
             matches.is_present("proto") || matches.subcommand_name() == Some("compare-pbdir");
 
@@ -243,7 +179,7 @@ impl Parameters {
                 if let Some(i) = matches.value_of("kaldi-adjust-final-offset") {
                     graph.adjust_final_offset = i.parse()?;
                 }
-                let parsed = kaldi.model_for_proto_model(&graph)?;
+                let parsed = kaldi.model_for_proto_model_with_symbols(&graph, symbol_table)?;
                 if need_graph {
                     (SomeGraphDef::Kaldi(graph), Box::new(parsed), Option::<TfExt>::None)
                 } else {
@@ -323,7 +259,7 @@ impl Parameters {
                 (
                     graph_def,
                     Box::new(
-                        nnef.translate(&proto_model)
+                        nnef.translate(&proto_model, symbol_table)
                             .map_err(|(g, e)| ModelBuildingError(Box::new(g), e.into()))?,
                     ),
                     Option::<TfExt>::None,
@@ -342,7 +278,7 @@ impl Parameters {
                 let graph = onnx.proto_model_for_read(&mut *location.read()?)?;
                 info_usage("proto model loaded", probe);
                 let path = &location.path().clone();
-                let mut parsed = onnx.parse(&graph, path.to_str())?;
+                let mut parsed = onnx.parse_with_symbols(&graph, path.to_str(), symbol_table)?;
 
                 if matches.is_present("determinize") {
                     tract_onnx::Onnx::determinize(&mut parsed.model)?;
@@ -367,7 +303,7 @@ impl Parameters {
                 if matches.is_present("determinize") {
                     tract_tensorflow::Tensorflow::determinize(&mut graph)?;
                 }
-                let mut model_and_ext = tf.parse_graph(&graph)?;
+                let mut model_and_ext = tf.parse_graph_with_symbols(&graph, symbol_table)?;
                 model_and_ext.1.initializing_nodes = matches
                     .values_of("tf-initializer-output-node")
                     .map(|values| {
@@ -391,7 +327,7 @@ impl Parameters {
         Ok(triplet)
     }
 
-    fn kaldi_downsample<F, O>(raw_model: &mut Graph<F, O>, period: isize) -> CliResult<()>
+    fn kaldi_downsample<F, O>(raw_model: &mut Graph<F, O>, period: isize) -> TractResult<()>
     where
         F: std::fmt::Debug + Clone + Hash + Fact,
         O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + Hash,
@@ -407,16 +343,20 @@ impl Parameters {
                 tract_core::ops::Downsample::new(0, period as _, 0),
                 &outputs[0..1],
             )?[0];
-            if let Some(label) = raw_model.outlet_label(outputs[0]) {
-                raw_model.set_outlet_label(id, label.to_string())?;
+            if let Some(label) = raw_model.outlet_label(outputs[0]).map(|s| s.to_string()) {
+                raw_model.set_outlet_label(id, label)?;
             }
             outputs[0] = id;
-            raw_model.set_output_outlets(&*outputs)?;
+            raw_model.set_output_outlets(&outputs)?;
         }
         Ok(())
     }
 
-    fn kaldi_context<F, O>(raw_model: &mut Graph<F, O>, left: usize, right: usize) -> CliResult<()>
+    fn kaldi_context<F, O>(
+        raw_model: &mut Graph<F, O>,
+        left: usize,
+        right: usize,
+    ) -> TractResult<()>
     where
         F: std::fmt::Debug + Clone + Hash + Fact,
         O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + Hash,
@@ -441,7 +381,10 @@ impl Parameters {
         Ok(())
     }
 
-    fn use_onnx_test_case_data_set(inputs_dir: &std::path::Path) -> CliResult<Vec<TensorValues>> {
+    fn use_onnx_test_case_data_set(
+        symbol_table: &SymbolTable,
+        inputs_dir: &std::path::Path,
+    ) -> TractResult<Vec<TensorValues>> {
         let mut result = vec![];
         for file in inputs_dir.read_dir()? {
             let file = file?;
@@ -460,12 +403,12 @@ impl Parameters {
                     .next()
                     .unwrap()
                     .parse::<usize>()?;
-                let (name, tensor) = tensor::for_data(file.path().to_str().unwrap())?;
+                let (name, tensor) = tensor::for_data(symbol_table, file.path().to_str().unwrap())?;
                 result.push(TensorValues {
                     input_index: Some(ix).filter(|_| is_input),
                     output_index: Some(ix).filter(|_| is_output),
                     name,
-                    values: tensor.value.concretize().map(|t| vec![t]),
+                    values: tensor.value.concretize().map(|t| vec![t.into_tensor().into()]),
                     fact: Some(tensor.without_value()),
                     random_range: None,
                 })
@@ -499,14 +442,14 @@ impl Parameters {
             let vals: Vec<_> = vals
                 .into_iter()
                 .sorted_by_key(|(_, turn, _)| *turn)
-                .map(|(_, _, tensor)| tensor.into_arc_tensor())
+                .map(|(_, _, tensor)| tensor.into_tvalue())
                 .collect();
             result.push(TensorValues {
                 input_index: None,
                 output_index: None,
                 name: Some(name),
                 fact: if get_facts {
-                    Some(InferenceFact::from(&vals[0]).without_value())
+                    Some(InferenceFact::from(&*vals[0]).without_value())
                 } else {
                     None
                 },
@@ -521,17 +464,18 @@ impl Parameters {
         matches: &clap::ArgMatches,
         location: &ModelLocation,
         onnx_tc: bool,
-    ) -> CliResult<TensorsValues> {
+        symbol_table: &SymbolTable,
+    ) -> TractResult<TensorsValues> {
         let mut result = TensorsValues::default();
 
         if let Some(inputs) = matches.values_of("input") {
             for (ix, v) in inputs.enumerate() {
-                let (name, fact) = tensor::for_string(v)?;
+                let (name, fact) = tensor::for_string(symbol_table, v)?;
                 result.add(TensorValues {
                     input_index: Some(ix),
                     output_index: None,
                     name,
-                    values: fact.value.concretize().map(|t| vec![t]),
+                    values: fact.value.concretize().map(|t| vec![t.into_tensor().into()]),
                     fact: Some(fact.without_value()),
                     random_range: None,
                 });
@@ -558,7 +502,7 @@ impl Parameters {
         if let Some((_, sub)) = matches.subcommand() {
             if let Some(values) = sub.values_of("assert-output") {
                 for (ix, o) in values.enumerate() {
-                    let (name, fact) = tensor::for_string(o)?;
+                    let (name, fact) = tensor::for_string(symbol_table, o)?;
                     info!(
                         "Output assertion #{}: (named: {}) {:?}",
                         ix,
@@ -569,7 +513,7 @@ impl Parameters {
                         input_index: None,
                         output_index: Some(ix),
                         name,
-                        values: fact.value.concretize().map(|t| vec![t]),
+                        values: fact.value.concretize().map(|t| vec![t.into_tensor().into()]),
                         fact: Some(fact.without_value()),
                         random_range: None,
                     });
@@ -589,6 +533,7 @@ impl Parameters {
             let data_set_name = matches.value_of("onnx-test-data-set").unwrap_or("test_data_set_0");
 
             for tv in Self::use_onnx_test_case_data_set(
+                symbol_table,
                 location.path().parent().unwrap().join(data_set_name).as_path(),
             )? {
                 result.add(tv)
@@ -628,11 +573,8 @@ impl Parameters {
         raw_model: Box<dyn Model>,
         tf_model_extensions: Option<TfExt>,
         reference_stage: Option<&str>,
-    ) -> CliResult<(Arc<dyn Model>, Option<Arc<PulsedModel>>, Option<Arc<dyn Model>>)> {
+    ) -> TractResult<(Arc<dyn Model>, Option<Arc<PulsedModel>>, Option<Arc<dyn Model>>)> {
         let keep_last = matches.is_present("verbose");
-        #[cfg(feature = "pulse")]
-        let pulse: Option<usize> =
-            matches.value_of("pulse").map(|s| s.parse::<usize>()).transpose()?;
         let stop_at = matches.value_of("pass").unwrap_or(if matches.is_present("optimize") {
             "optimize"
         } else {
@@ -665,7 +607,7 @@ impl Parameters {
                     info!(concat!("Running '", $name, "'"));
                     let mut last_model: Option<Box<dyn Model>> =
                         if keep_last { Some(Box::new(from.as_ref().clone())) } else { None };
-                    let block: &dyn Fn(_) -> CliResult<_> = &$block;
+                    let block: &dyn Fn(_) -> TractResult<_> = &$block;
                     let owned_model =
                         Arc::try_unwrap(from).unwrap_or_else(|from| from.as_ref().clone());
                     match block(owned_model).context(concat!("Error at stage ", $name)) {
@@ -730,8 +672,18 @@ impl Parameters {
         });
         #[cfg(feature = "pulse")]
         {
-            if let Some(pulse) = pulse {
-                stage!("pulse", typed_model -> pulsed_model, |m:TypedModel| PulsedModel::new(&m, pulse));
+            if let Some(spec) = matches.value_of("pulse") {
+                stage!("pulse", typed_model -> pulsed_model, |m:TypedModel| { 
+                    let (sym, pulse) = if let Ok((s,p)) = scan_fmt!(spec, "{}={}", String, String) {
+                        (s, parse_tdim(&m.symbol_table, &p)?)
+                    } else if let Ok(i) = parse_tdim(&m.symbol_table, spec) {
+                        ("S".to_owned(), i)
+                    } else {
+                        bail!("Can not parse pulse specification {}", spec)
+                    };
+                    let sym = m.symbol_table.sym(&sym);
+                    PulsedModel::new(&m, sym, &pulse) 
+                });
                 stage!("pulse-to-type", pulsed_model -> typed_model, |m:PulsedModel| m.into_typed());
                 stage!("pulse-declutter", typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
             }
@@ -751,7 +703,8 @@ impl Parameters {
                 let value: i64 = value
                     .parse()
                     .with_context(|| format!("value expected to be an integer, got {}", value))?;
-                values.set(Symbol::from(key.chars().next().unwrap()), value);
+                let key = typed_model.as_ref().unwrap().get_or_intern_symbol(key);
+                values.set(&key, value);
             }
             stage!("set", typed_model -> typed_model, |m: TypedModel| {
                 m.concretize_dims(&values)
@@ -789,11 +742,12 @@ impl Parameters {
     #[allow(unused_variables)]
     #[allow(clippy::let_unit_value)]
     /// Parses the command-line arguments.
-    pub fn from_clap(matches: &clap::ArgMatches, probe: Option<&Probe>) -> CliResult<Parameters> {
+    pub fn from_clap(matches: &clap::ArgMatches, probe: Option<&Probe>) -> TractResult<Parameters> {
+        let symbol_table = SymbolTable::default();
         let (filename, onnx_tc) = Self::disco_model(matches)?;
-        let tensors_values = Self::parse_tensors(matches, &filename, onnx_tc)?;
+        let tensors_values = Self::parse_tensors(matches, &filename, onnx_tc, &symbol_table)?;
         let (mut graph, mut raw_model, tf_model_extensions) =
-            Self::load_model(matches, probe, &filename, &tensors_values)?;
+            Self::load_model(matches, probe, &filename, &tensors_values, &symbol_table)?;
 
         info!("Model {:?} loaded", filename);
         info_usage("model loaded", probe);
@@ -848,7 +802,7 @@ impl Parameters {
 
         if let Some(override_facts) = matches.values_of("override-fact") {
             for fact in override_facts {
-                let (name, fact) = tensor::for_string(fact)?;
+                let (name, fact) = tensor::for_string(&symbol_table, fact)?;
                 let node = raw_model.node_id_by_name(&name.unwrap())?;
                 if let Some(inf) = raw_model.downcast_mut::<InferenceModel>() {
                     inf.set_outlet_fact(OutletId::new(node, 0), fact)?;
@@ -874,7 +828,7 @@ impl Parameters {
             .collect();
 
         let assertions = match matches.subcommand() {
-            Some(("dump" | "run", sm)) => Assertions::from_clap(sm)?,
+            Some(("dump" | "run", sm)) => Assertions::from_clap(sm, &symbol_table)?,
             _ => Assertions::default(),
         };
 
@@ -941,35 +895,22 @@ impl Parameters {
     }
 }
 
-pub struct BenchLimits {
-    pub max_iters: usize,
-    pub max_time: std::time::Duration,
-}
-
-impl Default for BenchLimits {
-    fn default() -> Self {
-        BenchLimits { max_iters: 100_000, max_time: std::time::Duration::from_secs(5) }
-    }
-}
-
-impl BenchLimits {
-    pub fn from_clap(matches: &clap::ArgMatches) -> CliResult<BenchLimits> {
-        let max_iters =
-            matches.value_of("max-iters").map(usize::from_str).transpose()?.unwrap_or(100_000);
-        let max_time = matches
-            .value_of("max-time")
-            .map(u64::from_str)
-            .transpose()?
-            .map(std::time::Duration::from_millis)
-            .unwrap_or(std::time::Duration::from_secs(5));
-        Ok(BenchLimits { max_iters, max_time })
-    }
+pub fn bench_limits_from_clap(matches: &clap::ArgMatches) -> TractResult<BenchLimits> {
+    let max_iters =
+        matches.value_of("max-iters").map(usize::from_str).transpose()?.unwrap_or(100_000);
+    let max_time = matches
+        .value_of("max-time")
+        .map(u64::from_str)
+        .transpose()?
+        .map(std::time::Duration::from_millis)
+        .unwrap_or(std::time::Duration::from_secs(5));
+    Ok(BenchLimits { max_iters, max_time })
 }
 
 pub fn display_params_from_clap(
     root_matches: &clap::ArgMatches,
     matches: &clap::ArgMatches,
-) -> CliResult<DisplayParams> {
+) -> TractResult<DisplayParams> {
     Ok(DisplayParams {
         konst: matches.is_present("const"),
         cost: matches.is_present("cost"),
@@ -1008,12 +949,12 @@ pub struct Assertions {
 }
 
 impl Assertions {
-    fn from_clap(sub: &clap::ArgMatches) -> CliResult<Assertions> {
+    fn from_clap(sub: &clap::ArgMatches, symbol_table: &SymbolTable) -> TractResult<Assertions> {
         let assert_outputs =
             sub.is_present("assert-output") || sub.is_present("assert-output-bundle");
         let assert_output_facts: Option<Vec<InferenceFact>> = sub
             .values_of("assert-output-fact")
-            .map(|vs| vs.map(|v| tensor::for_string(v).unwrap().1).collect());
+            .map(|vs| vs.map(|v| tensor::for_string(symbol_table, v).unwrap().1).collect());
         let assert_op_count: Option<Vec<(String, usize)>> =
             sub.values_of("assert-op-count").and_then(|vs| {
                 vs.chunks(2)

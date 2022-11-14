@@ -23,7 +23,6 @@ impl Op for EinSum {
         Ok(vec![format!("{}", self.expr)])
     }
 
-    op_onnx!();
     op_as_typed_op!();
 }
 
@@ -52,8 +51,8 @@ impl EinSum {
 
     fn eval_t<T: Datum + Zero + One>(
         &self,
-        inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         let shapes: TVec<_> = inputs.iter().map(|t| t.shape()).collect();
         let output_shape = self.output_shape(&shapes);
         let inputs: TVec<tract_ndarray::ArrayViewD<T>> =
@@ -110,7 +109,7 @@ impl EinSum {
             }
             sum
         });
-        Ok(tvec!(output.into_arc_tensor()))
+        Ok(tvec!(output.into_tvalue()))
     }
 }
 
@@ -119,7 +118,7 @@ impl EvalOp for EinSum {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         dispatch_numbers!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }
 }
@@ -128,7 +127,7 @@ impl TypedOp for EinSum {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(inputs.iter().enumerate().all(|(ix, fact)| fact.rank() == self.expr.input_rank(ix)));
         let shapes: TVec<&[TDim]> = inputs.iter().map(|t| &*t.shape).collect();
-        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, self.output_shape(&*shapes))))
+        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, self.output_shape(&shapes))))
     }
 
     fn declutter(

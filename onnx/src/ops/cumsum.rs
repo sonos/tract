@@ -103,5 +103,4 @@ impl Expansion for CumSum {
         Ok(())
     }
 
-    op_onnx!();
 }

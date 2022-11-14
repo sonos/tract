@@ -29,7 +29,6 @@ impl Op for Softmax {
         Ok(vec![format!("Axis: {:?}", self.axes)])
     }
 
-    op_core_mir!();
     op_as_typed_op!();
 }
 
@@ -99,7 +98,7 @@ impl EvalOp for Softmax {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let dt = input.datum_type();
 
@@ -115,7 +114,7 @@ impl EvalOp for Softmax {
 }
 
 impl Softmax {
-    fn eval_t<T>(&self, input: Arc<Tensor>) -> TractResult<TVec<Arc<Tensor>>>
+    fn eval_t<T>(&self, input: TValue) -> TractResult<TVec<TValue>>
     where
         T: Float + Datum + std::iter::Sum,
     {
@@ -139,10 +138,10 @@ impl Softmax {
             softmax_inner(view);
         }
 
-        Ok(tvec!(output.into_arc_tensor()))
+        Ok(tvec!(output.into_tvalue()))
     }
 
-    fn eval_quant_t(&self, input: Arc<Tensor>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval_quant_t(&self, input: TValue) -> TractResult<TVec<TValue>> {
         let mut iterating_shape: TVec<usize> = input.shape().into();
 
         for i in 0..iterating_shape.len() {
@@ -152,9 +151,9 @@ impl Softmax {
         }
 
         // All operations will be done in u8, we will cast the result appropriately afterward.
-        let src_is_signed = input.as_ref().datum_type().is_signed();
+        let src_is_signed = input.datum_type().is_signed();
         let out_is_signed = self.output_dt.is_signed();
-        let in_qp = input.as_ref().datum_type().qparams().unwrap(); // Checked as we are in the quant case
+        let in_qp = input.datum_type().qparams().unwrap(); // Checked as we are in the quant case
         let out_qp = self.output_dt.qparams().unwrap(); // Checked as we are in the quant case
         let mut output = unsafe { input.into_tensor().into_array_unchecked::<u8>() };
 
@@ -170,12 +169,13 @@ impl Softmax {
 
         let mut output_tensor = output.into_tensor();
         unsafe { output_tensor.set_datum_type(self.output_dt) };
-        Ok(tvec!(Arc::new(output_tensor)))
+        Ok(tvec!(output_tensor.into_tvalue()))
     }
 }
 
 fn softmax_inner<T: Float + Datum + std::iter::Sum, D: Dimension>(mut view: ArrayViewMut<T, D>) {
-    let max = *view.iter().max_by(|i, j| i.partial_cmp(j).unwrap()).unwrap();
+    let max =
+        *view.iter().max_by(|i, j| i.partial_cmp(j).unwrap_or(std::cmp::Ordering::Less)).unwrap();
     view.mapv_inplace(|x| (x - max).exp());
     let exp_sum = view.iter().copied().sum();
     view.mapv_inplace(|x| x / exp_sum);
@@ -332,7 +332,7 @@ mod test {
 
     impl SoftmaxProblem {
         fn check(&self) -> Result<()> {
-            let inputs = tvec!(self.data.clone().into_arc_tensor());
+            let inputs = tvec!(self.data.clone().into_tvalue());
             let softmax = Softmax { axes: self.axes.clone(), output_dt: self.output_dt };
 
             // Compute quantized output
@@ -342,7 +342,7 @@ mod test {
 
             // Compute reference output
             let input_float = self.data.cast_to::<f32>()?;
-            let inputs_float = tvec!(input_float.into_owned().into_arc_tensor());
+            let inputs_float = tvec!(input_float.into_owned().into_tvalue());
             let softmax_float = Softmax { axes: self.axes.clone(), output_dt: DatumType::F32 };
             let mut reference_float = softmax_float.eval(inputs_float)?;
             let reference_array = args_1!(reference_float);

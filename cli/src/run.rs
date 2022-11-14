@@ -1,17 +1,17 @@
 use std::fs::File;
 
-use crate::tensor::RunParams;
-use crate::CliResult;
+use crate::TractResult;
 use crate::{Model, Parameters};
 use ansi_term::Color::*;
 use ndarray_npy::NpzWriter;
 use tract_core::tract_data::itertools::izip;
 use tract_hir::internal::*;
+use tract_libcli::tensor::RunParams;
 #[cfg(feature = "pulse")]
 use tract_pulse::internal::*;
 
 /// Add a tensor entry into a npz file.
-fn npz_add_tensor(npz: &mut NpzWriter<File>, name: String, tensor: &Arc<Tensor>) -> CliResult<()> {
+fn npz_add_tensor(npz: &mut NpzWriter<File>, name: String, tensor: &Tensor) -> TractResult<()> {
     match tensor.datum_type() {
         DatumType::F16 => npz.add_array(name, &tensor.cast_to::<f32>()?.to_array_view::<f32>()?)?,
         DatumType::Bool => npz.add_array(name, &tensor.to_array_view::<bool>()?)?,
@@ -38,8 +38,8 @@ pub fn handle(
     params: &Parameters,
     matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
-) -> CliResult<()> {
-    let run_params = RunParams::from_subcommand(params, sub_matches)?;
+) -> TractResult<()> {
+    let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
 
     let dump = sub_matches.is_present("dump");
     let outputs = dispatch_model!(&*params.tract_model, |m| run_regular(
@@ -91,13 +91,13 @@ pub fn handle(
     }
 
     if params.assertions.assert_outputs {
-        crate::utils::check_outputs(&*outputs, &params)?;
+        crate::utils::check_outputs(&outputs, params)?;
     }
 
     if let Some(facts) = &params.assertions.assert_output_facts {
         let outputs: Vec<InferenceFact> =
             outputs.iter().map(|t| t[0].datum_type().fact(t[0].shape()).into()).collect();
-        crate::utils::check_inferred(&*outputs, facts)?;
+        crate::utils::check_inferred(&outputs, facts)?;
     }
 
     if let Some(asserts) = &params.assertions.assert_op_count {
@@ -117,7 +117,7 @@ fn run_regular(
     run_params: &RunParams,
     _matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
-) -> CliResult<TVec<Vec<Arc<Tensor>>>> {
+) -> TractResult<TVec<Vec<TValue>>> {
     let steps = sub_matches.is_present("steps");
     let assert_sane_floats = sub_matches.is_present("assert-sane-floats");
     let mut npz = if let Some(npz) = sub_matches.value_of("save-steps") {
@@ -134,13 +134,13 @@ fn run_regular(
                 let mut tokens = set.split('=');
                 let sym = tokens.next().context("--set expect S=12 form")?;
                 let value = tokens.next().context("--set expect S=12 form")?;
-                let sym = Symbol::from(sym.chars().next().unwrap());
+                let sym = state.model().symbol_table.sym(sym).to_owned();
                 let value: i64 = value.parse().context("Can not parse symbol value in set")?;
                 state.session_state.resolved_symbols =
-                    state.session_state.resolved_symbols.with(sym, value);
+                    state.session_state.resolved_symbols.with(&sym, value);
             }
         }
-        let inputs = crate::tensor::retrieve_or_make_inputs(tract, run_params)?;
+        let inputs = tract_libcli::tensor::retrieve_or_make_inputs(tract, run_params)?;
         let mut results = tvec!(vec!(); state.model().outputs.len());
         let multiturn = inputs.len() > 1;
         for (turn, inputs) in inputs.into_iter().enumerate() {
@@ -217,62 +217,61 @@ fn run_regular(
 
 /*
 #[cfg(feature = "pulse")]
-fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Arc<Tensor>>> {
-    dbg!("PULSE");
-    let input_fact = model.input_fact(0)?;
-    let output_fact = model.output_fact(0)?;
+fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> TractResult<TVec<TValue>> {
+let input_fact = model.input_fact(0)?;
+let output_fact = model.output_fact(0)?;
 
-    let output_pulse = output_fact.pulse();
-    //    println!("output_fact: {:?}", output_fact);
-    let axis = input_fact.axis;
-    let name = model.node_name(model.input_outlets()?[0].node);
-    let input: &Tensor = &params.tensors_values.by_name(name).unwrap().values.as_ref().unwrap()[0];
-    //    println!("input_shape: {:?}", input.shape());
-    let input_dim = input.shape()[axis];
-    //    println!("output_fact: {:?}", output_fact);
-    let output_dim = output_fact
-        .dim
-        .eval(&SymbolValues::default().with(stream_symbol(), input_dim as i64))
-        .to_usize()?;
-    let mut output_shape = output_fact.shape.to_vec();
-    output_shape[output_fact.axis] =
-        (output_dim as usize + output_fact.delay + 4 * output_fact.pulse()).to_dim();
-    let output_shape: TVec<usize> = output_shape.iter().map(|d| d.to_usize().unwrap()).collect();
-    let plan = SimplePlan::new(model)?;
-    let mut state = ::tract_core::plan::SimpleState::new(&plan)?;
-    //    println!("output_shape: {:?}", output_shape);
-    let pulse = input_fact.pulse();
-    let mut result = tract_ndarray::ArrayD::<f32>::default(&*output_shape);
-    let input = input.to_array_view::<f32>()?;
-    for ix in 0..input_dim.divceil(pulse) {
-        let chunk =
-            input.slice_axis(tract_ndarray::Axis(axis), (ix * pulse..(ix + 1) * pulse).into());
-        let input = if chunk.shape()[input_fact.axis] < pulse {
-            let mut chunk_shape = chunk.shape().to_vec();
-            chunk_shape[input_fact.axis] = pulse;
-            let mut padded_chunk = tract_ndarray::ArrayD::<f32>::default(chunk_shape);
-            padded_chunk
-                .slice_axis_mut(
-                    tract_ndarray::Axis(input_fact.axis),
-                    (..chunk.shape()[input_fact.axis]).into(),
-                )
-                .assign(&chunk);
-            padded_chunk
-        } else {
-            chunk.to_owned()
-        };
-        let outputs = state.run(tvec!(input.into()))?;
-        let result_chunk = outputs[0].to_array_view::<f32>()?;
-        result
-            .slice_axis_mut(
-                tract_ndarray::Axis(output_fact.axis),
-                ((output_pulse * ix)..(output_pulse * (ix + 1))).into(),
-            )
-            .assign(&result_chunk);
-    }
-    result.slice_axis_inplace(tract_ndarray::Axis(output_fact.axis), (output_fact.delay..).into());
-    result
-        .slice_axis_inplace(tract_ndarray::Axis(output_fact.axis), (..output_dim as usize).into());
-    Ok(tvec!(result.into_arc_tensor()))
+let output_pulse = output_fact.pulse();
+//    println!("output_fact: {:?}", output_fact);
+let axis = input_fact.axis;
+let name = model.node_name(model.input_outlets()?[0].node);
+let input: &Tensor = &params.tensors_values.by_name(name).unwrap().values.as_ref().unwrap()[0];
+//    println!("input_shape: {:?}", input.shape());
+let input_dim = input.shape()[axis];
+//    println!("output_fact: {:?}", output_fact);
+let output_dim = output_fact
+.dim
+.eval(&SymbolValues::default().with(stream_symbol(), input_dim as i64))
+.to_usize()?;
+let mut output_shape = output_fact.shape.to_vec();
+output_shape[output_fact.axis] =
+(output_dim as usize + output_fact.delay + 4 * output_fact.pulse()).to_dim();
+let output_shape: TVec<usize> = output_shape.iter().map(|d| d.to_usize().unwrap()).collect();
+let plan = SimplePlan::new(model)?;
+let mut state = ::tract_core::plan::SimpleState::new(&plan)?;
+//    println!("output_shape: {:?}", output_shape);
+let pulse = input_fact.pulse();
+let mut result = tract_ndarray::ArrayD::<f32>::default(&*output_shape);
+let input = input.to_array_view::<f32>()?;
+for ix in 0..input_dim.divceil(pulse) {
+let chunk =
+input.slice_axis(tract_ndarray::Axis(axis), (ix * pulse..(ix + 1) * pulse).into());
+let input = if chunk.shape()[input_fact.axis] < pulse {
+let mut chunk_shape = chunk.shape().to_vec();
+chunk_shape[input_fact.axis] = pulse;
+let mut padded_chunk = tract_ndarray::ArrayD::<f32>::default(chunk_shape);
+padded_chunk
+.slice_axis_mut(
+tract_ndarray::Axis(input_fact.axis),
+(..chunk.shape()[input_fact.axis]).into(),
+)
+.assign(&chunk);
+padded_chunk
+} else {
+chunk.to_owned()
+};
+let outputs = state.run(tvec!(input.into_tensor().into()))?;
+let result_chunk = outputs[0].to_array_view::<f32>()?;
+result
+.slice_axis_mut(
+tract_ndarray::Axis(output_fact.axis),
+((output_pulse * ix)..(output_pulse * (ix + 1))).into(),
+)
+.assign(&result_chunk);
+}
+result.slice_axis_inplace(tract_ndarray::Axis(output_fact.axis), (output_fact.delay..).into());
+result
+.slice_axis_inplace(tract_ndarray::Axis(output_fact.axis), (..output_dim as usize).into());
+Ok(tvec!(result.into_tvalue()))
 }
 */

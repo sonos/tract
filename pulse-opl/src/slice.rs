@@ -18,7 +18,6 @@ impl Op for PulsedAxisSlice {
         Ok(vec![format!("axis:{}, skip:{} take:{}", self.axis, self.skip, self.take)])
     }
 
-    op_pulse!();
     not_a_typed_op!();
 }
 
@@ -35,7 +34,7 @@ impl EvalOp for PulsedAxisSlice {
         false
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         Ok(inputs)
     }
 }

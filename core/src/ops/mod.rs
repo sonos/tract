@@ -66,19 +66,19 @@ impl Cost {
     }
 }
 
-pub trait OpState: fmt::Debug + Send + dyn_clone::DynClone {
+pub trait OpState: fmt::Debug + dyn_clone::DynClone {
     fn eval(
         &mut self,
         session: &mut SessionState,
         op: &dyn Op,
-        inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>>;
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>>;
 }
 dyn_clone::clone_trait_object!(OpState);
 
 pub trait EvalOp {
     #[allow(unused_variables)]
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         bail!("stateless evaluation not implemented")
     }
 
@@ -98,10 +98,6 @@ pub trait EvalOp {
 pub trait Op:
     fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + EvalOp + DynHash
 {
-    /// Vector of short strings defining what families the op belongs too.
-    /// tract-core defines "core", "mir", "lir".
-    fn op_families(&self) -> &'static [&'static str];
-
     fn name(&self) -> Cow<str>;
 
     /// The kind of accuracy check that should be performed on operation when
@@ -269,6 +265,7 @@ pub trait TypedOp:
 }
 
 impl_downcast!(Op);
+impl_downcast!(TypedOp);
 
 dyn_clone::clone_trait_object!(Op);
 dyn_clone::clone_trait_object!(TypedOp);
@@ -334,7 +331,7 @@ pub enum AttrOrInput {
 }
 
 impl AttrOrInput {
-    fn tensor<'t>(&'t self, inputs: &'t [Arc<Tensor>]) -> &'t Arc<Tensor> {
+    fn tensor<'t>(&'t self, inputs: &'t [TValue]) -> &'t Tensor {
         match self {
             AttrOrInput::Attr(t) => t,
             AttrOrInput::Input(slot) => &inputs[*slot],

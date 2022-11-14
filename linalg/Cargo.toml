@@ -1,6 +1,6 @@
 [package]
 name = "tract-linalg"
-version = "0.18.3-pre"
+version = "0.18.4-pre"
 license = "MIT/Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -8,34 +8,34 @@ repository = "https://github.com/snipsco/tract"
 keywords = ["TensorFlow", "NeuralNetworks"]
 categories = ["science"]
 autobenches = false
-edition = "2018"
+edition = "2021"
 
 [badges]
 maintenance = { status = "actively-developed" }
 
 [dependencies]
-derive-new = "0.5.9"
-downcast-rs = "1.2.0"
-dyn-clone = "1.0.4"
-lazy_static = "1.4.0"
-log = "0.4.14"
-num-traits = "0.2.14"
-tract-data = { version = "0.18.3-pre", path = "../data" }
-paste = "1.0.5"
-scan_fmt = "0.2.6"
+derive-new.workspace = true
+downcast-rs.workspace = true
+dyn-clone.workspace = true
+lazy_static.workspace = true
+log.workspace = true
+num-traits.workspace = true
+tract-data = { version = "0.18.4-pre", path = "../data" }
+paste.workspace = true
+scan_fmt.workspace = true
 
 [build-dependencies]
-cc = "1.0.69"
-liquid = "0.26"
-liquid-core = "0.26"
-unicode-normalization = "0.1.19"
-smallvec = "1.6.1"
-walkdir = "2.3.2"
-half = "2"
+cc.workspace = true
+liquid.workspace = true
+liquid-core.workspace = true
+unicode-normalization.workspace = true
+smallvec.workspace = true
+walkdir.workspace = true
+half.workspace = true
 
 [dev-dependencies]
-criterion = "0.3.5"
-proptest = "1.0.0"
+criterion.workspace = true
+proptest.workspace = true
 
 [features]
 # This feature is meant to accomodate very restrictive / legacy toolchains that do

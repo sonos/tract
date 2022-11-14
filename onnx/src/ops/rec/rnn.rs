@@ -58,7 +58,6 @@ impl Expansion for RNN {
         Validation::Rounding
     }
 
-    op_onnx!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -278,7 +277,7 @@ impl RNN {
 
         // Ht = f(Xt*(Wi^T) + Ht-1*(Ri^T) + Wbi + Rbi)
         wire!(Xt_WiT = matmul_t.clone(), Xt, W);
-        wire!(Ht_1_RiT = matmul_t.clone(), Ht_1, R);
+        wire!(Ht_1_RiT = matmul_t, Ht_1, R);
 
         wire!(ht0 = math::add::bin_typed(), Xt_WiT, Ht_1_RiT);
         let mut ht0 = ht0;

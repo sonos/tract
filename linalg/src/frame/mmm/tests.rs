@@ -431,7 +431,7 @@ where
     fused_ops::<K, TA, TB, TC, TI, _>(
         m,
         n,
-        &[FusedSpec::BinPerRow(&tensor1(&*bias), BinOp::Add)],
+        &[FusedSpec::BinPerRow(&tensor1(&bias), BinOp::Add)],
         |r, _| bias[r].as_(),
     )
 }
@@ -454,7 +454,7 @@ where
         n,
         &[
             FusedSpec::BinScalar(&tensor0(1i32.as_()), BinOp::Add),
-            FusedSpec::BinPerRow(&tensor1(&*bias), BinOp::Mul),
+            FusedSpec::BinPerRow(&tensor1(&bias), BinOp::Mul),
         ],
         |r, _| bias[r].as_(),
     )
@@ -476,7 +476,7 @@ where
     fused_ops::<K, TA, TB, TC, TI, _>(
         m,
         n,
-        &[FusedSpec::BinPerCol(&tensor1(&*bias), BinOp::Add)],
+        &[FusedSpec::BinPerCol(&tensor1(&bias), BinOp::Add)],
         |_, c| bias[c].as_(),
     )
 }
@@ -499,7 +499,7 @@ where
         n,
         &[
             FusedSpec::BinScalar(&tensor0(1i32.as_()), BinOp::Add),
-            FusedSpec::BinPerCol(&tensor1(&*bias), BinOp::Mul),
+            FusedSpec::BinPerCol(&tensor1(&bias), BinOp::Mul),
         ],
         |_, c| bias[c].as_(),
     )
@@ -518,7 +518,7 @@ where
     usize: AsPrimitive<TI>,
 {
     let d = (0..m * n).map(|i| i.as_()).collect::<Vec<TI>>();
-    let d = tensor1(&*d).into_shape(&[m, n]).unwrap();
+    let d = tensor1(&d).into_shape(&[m, n]).unwrap();
     let store_spec = OutputStoreSpec::View { m_axis: 0, n_axis: 1, mr: K::mr(), nr: K::nr() };
     fused_ops::<K, TA, TB, TC, TI, _>(
         m,

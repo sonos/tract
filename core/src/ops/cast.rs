@@ -16,7 +16,6 @@ impl Op for Cast {
         "Cast".into()
     }
 
-    op_core!();
     op_as_typed_op!();
 }
 
@@ -25,8 +24,8 @@ impl EvalOp for Cast {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        Ok(tvec!(inputs[0].cast_to_dt(self.to)?.into_owned().into_arc_tensor()))
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        Ok(tvec!(inputs[0].cast_to_dt(self.to)?.into_owned().into_tvalue()))
     }
 
     fn state(
@@ -43,8 +42,8 @@ impl OpState for Cast {
         &mut self,
         session: &mut SessionState,
         _op: &dyn Op,
-        inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         if inputs[0].datum_type() == TDim::datum_type() {
             unsafe {
                 let mut tmp = Tensor::uninitialized_dt(i64::datum_type(), inputs[0].shape())?;
@@ -54,7 +53,7 @@ impl OpState for Cast {
                 ) {
                     *i = dim.eval(&session.resolved_symbols).to_i64()?
                 }
-                Ok(tvec!(tmp.cast_to_dt(self.to)?.into_owned().into_arc_tensor()))
+                Ok(tvec!(tmp.cast_to_dt(self.to)?.into_owned().into_tvalue()))
             }
         } else {
             <Cast as EvalOp>::eval(self, inputs)

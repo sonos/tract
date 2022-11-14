@@ -9,7 +9,8 @@ fn pulsify(
     node: &TypedNode,
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
-    _pulse: usize,
+    _symbol: &Symbol,
+    _pulse: &TDim,
 ) -> TractResult<Option<TVec<OutletId>>> {
     let input = mapping[&node.inputs[0]];
     let fact = target.outlet_fact(input)?.clone();
@@ -41,7 +42,6 @@ impl Op for PulsedAxisSlice {
         Ok(vec![format!("axis:{}, skip:{} take:{}", self.axis, self.skip, self.take)])
     }
 
-    op_pulse!();
     not_a_typed_op!();
 }
 
@@ -50,7 +50,7 @@ impl EvalOp for PulsedAxisSlice {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         Ok(inputs)
     }
 }

@@ -1,6 +1,7 @@
 use crate::ast::QuantFormat;
 use crate::internal::*;
 use crate::ser::*;
+use tract_core::num_traits::Zero;
 use tract_core::ops;
 use tract_core::ops::cnn::PoolSpec;
 use tract_core::ops::matmul::MatMulAxes;
@@ -60,13 +61,19 @@ pub fn slice(
     op: &ops::array::Slice,
 ) -> TractResult<Option<Arc<RValue>>> {
     let wire = ast.mapping[&node.inputs[0]].clone();
-    let start = op.start.to_usize()?;
-    let end = op.end.to_usize()?;
-    Ok(Some(invocation(
+    // end = 0 means "to the end" in early nnef specs.
+    // the case begin = 0, end = 0: tract says "empty tensor", but nnef says "noop"
+    // so serialize as begin = 0, end = -dim
+    let end = if op.end.is_zero() && op.start == op.end {
+        -ast.model.node_input_facts(node.id)?[0].shape[op.axis].clone()
+    } else {
+        op.end.clone()
+    };
+    dbg!(Ok(Some(invocation(
         "slice",
         &[wire],
-        &[("axes", ints(&[op.axis])), ("begin", ints(&[start])), ("end", ints(&[end]))],
-    )))
+        &[("axes", ints(&[op.axis])), ("begin", tdims(&[op.start.clone()])), ("end", tdims(&[end]))],
+    ))))
 }
 
 pub fn tile(
@@ -168,7 +175,7 @@ pub fn make_conv_named_args<'a>(
             .iter()
             .map(|d| d.to_usize())
             .collect::<TractResult<TVec<_>>>()?;
-        named_args.push(("output_shape", ints(&*output_shape)));
+        named_args.push(("output_shape", ints(&output_shape)));
     };
     Ok(named_args)
 }
@@ -295,7 +302,7 @@ fn cnn_pool_fragment<'a>(
     wire = invocation(
         op_name,
         &[ident("nchw").into()],
-        &*fragment
+        &fragment
             .decl
             .parameters
             .iter()
@@ -391,7 +398,7 @@ pub fn axis_op(
             } else {
                 perm[*to..(from + 1)].rotate_right(1);
             }
-            invocation("transpose", &[wire], &[("axes", ints(&*perm))])
+            invocation("transpose", &[wire], &[("axes", ints(&perm))])
         }
         AxisOp::Reshape(start, from, to) => invocation(
             "reshape",
@@ -420,7 +427,7 @@ pub fn reduce(
         ops::nn::Reducer::Min => "min_reduce",
         _ => return Ok(None),
     };
-    Ok(Some(invocation(oper, &[wire], &[("axes", ints(&*op.axes))])))
+    Ok(Some(invocation(oper, &[wire], &[("axes", ints(&op.axes))])))
 }
 
 pub fn matmulaxes_as_transpositions(

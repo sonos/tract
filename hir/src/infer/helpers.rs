@@ -12,11 +12,11 @@ pub fn infer_forward_concrete(
         debug!("Can't infer value: some inputs are still unknown.");
         return Ok(None);
     }
-
+    let input_values = input_values.iter().map(|t| t.clone().into_tvalue()).collect();
     // If we know the value of all the inputs, we can deduce everything.
     if op.is_stateless() {
         let output_value = op.eval(input_values)?.pop().unwrap();
-        return Ok(Some(tvec![output_value.into()]));
+        return Ok(Some(tvec![output_value.into_arc_tensor().into()]));
     }
 
     Ok(None)
@@ -64,10 +64,10 @@ pub fn infer_shape_broadcasting(shapes: &[&ShapeFactoid]) -> TractResult<Option<
         if unknown > 1 {
             debug!("Can't infer shape (broadcasting): there are multiple unknown values at same index.");
             return Ok(None);
-        } else if unknown == 1 && previous != None {
+        } else if unknown == 1 && previous.is_some() {
             debug!("Can't infer shape (broadcasting): there are both unknown and known values at same index.");
             return Ok(None);
-        } else if unknown == 1 && previous == None {
+        } else if unknown == 1 && previous.is_none() {
             output_shape.push(GenericFactoid::Any);
         } else if let Some(previous) = previous {
             output_shape.push(GenericFactoid::Only(previous.clone()));

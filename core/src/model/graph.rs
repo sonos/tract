@@ -41,6 +41,8 @@ where
     /// model properties
     #[educe(Hash(method = "hash_properties"))]
     pub properties: HashMap<String, Arc<Tensor>>,
+    /// symbol table
+    pub symbol_table: SymbolTable,
 }
 
 fn hash_outlet_labels<H: std::hash::Hasher>(it: &HashMap<OutletId, String>, state: &mut H) {
@@ -73,6 +75,7 @@ where
             outputs: vec![],
             outlet_labels: HashMap::new(),
             properties: HashMap::new(),
+            symbol_table: Default::default(),
         }
     }
 }
@@ -344,12 +347,12 @@ where
 
     /// Access the nodes table.
     pub fn nodes(&self) -> &[Node<F, O>] {
-        &*self.nodes
+        &self.nodes
     }
 
     /// Access the nodes table.
     pub fn nodes_mut(&mut self) -> &mut [Node<F, O>] {
-        &mut *self.nodes
+        &mut self.nodes
     }
 
     /// Get input and output tensor information for a node.

@@ -1,13 +1,20 @@
 use tract_hir::internal::*;
 use tract_ndarray::Dimension;
 
+use crate::model::ParsingContext;
+use crate::pb::NodeProto;
+
 #[derive(Debug, Clone, Hash)]
 pub struct NonZero(Symbol);
 
 impl_dyn_hash!(NonZero);
 
-pub fn non_zero() -> NonZero {
-    NonZero(Symbol::new('x'))
+pub fn non_zero(
+    ctx: &ParsingContext,
+    _node: &NodeProto,
+) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
+    let x = ctx.symbol_table.new_with_prefix("x");
+    Ok((Box::new(NonZero(x)) as _, vec!()))
 }
 
 impl NonZero {
@@ -33,7 +40,6 @@ impl Op for NonZero {
         "NonZero".into()
     }
 
-    op_onnx!();
     op_as_typed_op!();
 }
 
@@ -42,15 +48,15 @@ impl EvalOp for NonZero {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         unsafe {
             let input = args_1!(inputs);
             let output = if input.datum_type() == bool::datum_type() {
-                Self::eval_t::<u8>(input.as_ref())?
+                Self::eval_t::<u8>(&input)?
             } else {
-                dispatch_numbers!(Self::eval_t(input.datum_type())(input.as_ref()))?
+                dispatch_numbers!(Self::eval_t(input.datum_type())(&input))?
             };
-            Ok(tvec!(output.into_arc_tensor()))
+            Ok(tvec!(output.into_tvalue()))
         }
     }
 }
@@ -76,7 +82,7 @@ impl InferenceRulesOp for NonZero {
 
 impl TypedOp for NonZero {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(i64::fact(&[inputs[0].rank().to_dim(), self.0.to_dim()])))
+        Ok(tvec!(i64::fact(dims![inputs[0].rank(), self.0])))
     }
 
     as_op!();

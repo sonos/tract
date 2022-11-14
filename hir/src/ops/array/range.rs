@@ -10,7 +10,6 @@ impl Expansion for Range {
         "Range".into()
     }
 
-    op_hir!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -27,7 +26,7 @@ impl Expansion for Range {
             move |s, dt0, dt1, dt2| {
                 let dt =
                     DatumType::super_type_for([dt0, dt1, dt2]).context("No supertype found")?;
-                s.equals(&dt, &outputs[0].datum_type)
+                s.equals(dt, &outputs[0].datum_type)
             },
         )?;
         s.equals(&inputs[0].rank, 0)?;
@@ -70,7 +69,7 @@ impl Expansion for Range {
             .context("Range needs fixed inputs")?
             .into_tensor();
         let dt =
-            DatumType::super_type_for(&[start.datum_type(), end.datum_type(), step.datum_type()])
+            DatumType::super_type_for([start.datum_type(), end.datum_type(), step.datum_type()])
                 .context("No supertype found for range inputs")?;
         let start = start.cast_to_dt(dt)?.into_owned();
         let end = end.cast_to_dt(dt)?.into_owned();

@@ -19,7 +19,6 @@ impl Expansion for Gather {
         "Gather".into()
     }
 
-    op_hir!();
 
     fn wire(
         &self,
@@ -44,7 +43,7 @@ impl Expansion for Gather {
         s.given_2(&inputs[0].shape, &inputs[1].shape, move |s, input_shape, indices_shape| {
             let rank = input_shape.len();
             let output_shape =
-                self.to_type_op(rank).compute_output_shape(&*input_shape, &*indices_shape)?;
+                self.to_type_op(rank).compute_output_shape(&input_shape, &indices_shape)?;
             s.equals(&outputs[0].shape, output_shape)?;
             Ok(())
         })?;

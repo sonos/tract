@@ -10,7 +10,6 @@ impl Expansion for Tile {
         "Tile".into()
     }
 
-    op_hir!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

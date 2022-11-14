@@ -11,12 +11,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v3
 
     - name: Get current date
       id: date
-      run: echo "::set-output name=date::$(date +'%Y-%m-%d')"
-    - uses: actions/cache@v2
+      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+    - uses: actions/cache@v3
       with:
         path: |
           ~/.rustup
@@ -40,11 +41,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v3
     - name: Get current date
       id: date
-      run: echo "::set-output name=date::$(date +'%Y-%m-%d')"
-    - uses: actions/cache@v2
+      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+    - uses: actions/cache@v3
       with:
         path: |
           ~/.rustup
@@ -74,11 +76,12 @@ jobs:
         opset: [1_4_1, 1_5_0, 1_6_0, 1_7_0, 1_8_1, 1_9_0, 1_10_1]
 
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v3
     - name: Get current date
       id: date
-      run: echo "::set-output name=date::$(date +'%Y-%m-%d')"
-    - uses: actions/cache@v2
+      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+    - uses: actions/cache@v3
       with:
         path: |
           ~/.rustup
@@ -95,15 +98,17 @@ jobs:
 
     - name: Stop sccache server
       run: sccache --stop-server || true
+
   onnx-with-asserts:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v3
     - name: Get current date
       id: date
-      run: echo "::set-output name=date::$(date +'%Y-%m-%d')"
-    - uses: actions/cache@v2
+      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+    - uses: actions/cache@v3
       with:
         path: |
           ~/.rustup
@@ -116,7 +121,9 @@ jobs:
     - name: "Setup sccache"
       run: .travis/setup-sccache.sh
     - name: With assertions
-      run: cargo -q test -q -p onnx-test-suite -- --skip real_
+      run: |
+        rustup update
+        cargo -q test -q -p onnx-test-suite -- --skip real_
 
     - name: Stop sccache server
       run: sccache --stop-server || true
@@ -124,11 +131,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v3
     - name: Get current date
       id: date
-      run: echo "::set-output name=date::$(date +'%Y-%m-%d')"
-    - uses: actions/cache@v2
+      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+    - uses: actions/cache@v3
       with:
         path: |
           ~/.rustup
@@ -141,6 +149,8 @@ jobs:
     - name: "Setup sccache"
       run: .travis/setup-sccache.sh
     - name: Core test with paraoid assertions
-      run: cargo test -p tract-core --features paranoid_assertions
+      run: |
+        rustup update
+        cargo test -p tract-core --features paranoid_assertions
     - name: Stop sccache server
       run: sccache --stop-server || true

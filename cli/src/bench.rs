@@ -1,12 +1,16 @@
-use crate::CliResult;
-use crate::tensor::RunParams;
-use crate::{terminal, BenchLimits, Parameters};
+use crate::Parameters;
 use readings_probe::Probe;
 use std::time::{Duration, Instant};
 use tract_hir::internal::*;
+use tract_libcli::terminal;
+use tract_libcli::profile::BenchLimits;
 
-pub fn criterion(params: &Parameters, _matches: &clap::ArgMatches, sub_matches: &clap::ArgMatches) -> CliResult<()> {
-    let run_params = RunParams::from_subcommand(params, sub_matches)?;
+pub fn criterion(
+    params: &Parameters,
+    _matches: &clap::ArgMatches,
+    sub_matches: &clap::ArgMatches,
+) -> TractResult<()> {
+    let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
 
     let model =
         params.tract_model.downcast_ref::<TypedModel>().context("Can only bench TypedModel")?;
@@ -15,7 +19,7 @@ pub fn criterion(params: &Parameters, _matches: &clap::ArgMatches, sub_matches: 
 
     let mut crit = criterion::Criterion::default();
     let mut group = crit.benchmark_group("net");
-    let inputs = crate::tensor::retrieve_or_make_inputs(model, &run_params)?.remove(0);
+    let inputs = tract_libcli::tensor::retrieve_or_make_inputs(model, &run_params)?.remove(0);
     group.bench_function("run", move |b| b.iter(|| state.run(inputs.clone())));
     Ok(())
 }
@@ -26,8 +30,8 @@ pub fn handle(
     sub_matches: &clap::ArgMatches,
     limits: &BenchLimits,
     probe: Option<&Probe>,
-) -> CliResult<()> {
-    let run_params = RunParams::from_subcommand(params, sub_matches)?;
+) -> TractResult<()> {
+    let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
 
     let model =
         params.tract_model.downcast_ref::<TypedModel>().context("Can only bench TypedModel")?;
@@ -37,7 +41,7 @@ pub fn handle(
     let progress = probe.and_then(|m| m.get_i64("progress"));
     info!("Starting bench itself");
     let mut iters = 0;
-    let inputs = crate::tensor::retrieve_or_make_inputs(model, &run_params)?.remove(0);
+    let inputs = tract_libcli::tensor::retrieve_or_make_inputs(model, &run_params)?.remove(0);
     let start = Instant::now();
     while iters < limits.max_iters && start.elapsed() < limits.max_time {
         if let Some(mon) = probe {

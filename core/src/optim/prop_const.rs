@@ -23,15 +23,18 @@ impl super::TypedPass for PropConst {
                 && !model.node(node).op_is::<Const>()
                 && !model.node(node).op_is::<TypedSource>()
             {
-                if let Some(inputs) =
-                    model.node_input_facts(node)?.iter().map(|f| f.konst.clone()).collect()
+                if let Some(inputs) = model
+                    .node_input_facts(node)?
+                    .iter()
+                    .map(|f| f.konst.clone().map(|t| t.into_tvalue()))
+                    .collect()
                 {
                     match model.node(node).op.eval(inputs) {
                         Ok(res) => {
                             for (ix, output) in res.into_iter().enumerate() {
                                 let wire = patch.add_const(
                                     format!("{}.{}", model.node(node).name, ix),
-                                    output,
+                                    output.into_arc_tensor(),
                                 )?;
                                 patch.shunt_outside(model, (node, ix).into(), wire)?;
                             }

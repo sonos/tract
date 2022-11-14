@@ -24,7 +24,6 @@ impl Expansion for Pack {
         "Pack".into()
     }
 
-    op_tf!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -89,7 +88,7 @@ impl Expansion for Pack {
         model.wire_node(
             prefix,
             tract_hir::ops::array::TypedConcat::concat_vars(self.axis as usize, inputs.len()),
-            &*inputs,
+            &inputs,
         )
     }
 }

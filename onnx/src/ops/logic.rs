@@ -2,12 +2,12 @@ use crate::model::OnnxOpRegister;
 use crate::model::ParseResult;
 use crate::model::ParsingContext;
 use crate::pb::NodeProto;
-use tract_hir::internal::*;
 use tract_core::ops;
+use tract_hir::internal::*;
 use tract_itertools::Itertools;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
-    reg.insert("Not", |_, _| Ok((Box::new(ops::logic::not()), vec![])));
+    reg.insert("Not", |_, _| Ok((ops::logic::not().into_hir(), vec![])));
     reg.insert("And", |_, _| Ok((ops::logic::And.into_hir(), vec![])));
     reg.insert("Or", |_, _| Ok((ops::logic::Or.into_hir(), vec![])));
     reg.insert("Xor", |_, _| Ok((ops::logic::Xor.into_hir(), vec![])));
@@ -69,7 +69,6 @@ impl Op for If {
         "If".into()
     }
 
-    op_onnx!();
     not_a_typed_op!();
 }
 
@@ -78,15 +77,14 @@ impl EvalOp for If {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let cond = inputs[0].cast_to_scalar::<bool>()?;
         let (input_mapping, body) = if cond {
             (&self.then_input_mapping, &self.then_body)
         } else {
             (&self.else_input_mapping, &self.else_body)
         };
-        let inputs: TVec<Tensor> =
-            input_mapping.iter().map(|&ix| inputs[ix].clone().into_tensor()).collect();
+        let inputs: TVec<TValue> = input_mapping.iter().map(|&ix| inputs[ix].clone()).collect();
         body.clone().into_runnable()?.run(inputs)
     }
 }

@@ -48,7 +48,7 @@ impl ConfigForHalf {
     fn cc(&self) -> cc::Build {
         let mut cc = cc::Build::new();
         for flag in &self.extra_flags {
-            cc.flag(&flag);
+            cc.flag(flag);
         }
         cc
     }
@@ -83,7 +83,7 @@ fn main() {
             match os.as_ref() {
                 "windows" => {
                     if use_masm() {
-                        let mut lib_exe = cc::windows_registry::find(&*target, "lib.exe")
+                        let mut lib_exe = cc::windows_registry::find(&target, "lib.exe")
                             .expect("Could not find lib.exe");
                         lib_exe.arg(format!(
                             "/out:{}",
@@ -92,7 +92,7 @@ fn main() {
                         for f in files {
                             let mut obj = f.clone();
                             obj.set_extension("o");
-                            let mut ml_exe = cc::windows_registry::find(&*target, "ml64.exe")
+                            let mut ml_exe = cc::windows_registry::find(&target, "ml64.exe")
                                 .expect("Could not find ml64.exe");
                             if !ml_exe
                                 .arg("/Fo")
@@ -137,13 +137,13 @@ fn main() {
                         std::fs::remove_file(lib).unwrap();
                     }
                     let mut lib = std::process::Command::new("xcrun");
-                    lib.args(&["ar", "-rv"]).arg(out_dir.join("libx86_64_fma.a"));
+                    lib.args(["ar", "-rv"]).arg(out_dir.join("libx86_64_fma.a"));
                     for f in files {
                         let mut obj = f.clone();
                         obj.set_extension("o");
                         assert!(std::process::Command::new("cc")
-                            .args(&["-arch", "x86_64"])
-                            .args(&["-c", "-o"])
+                            .args(["-arch", "x86_64"])
+                            .args(["-c", "-o"])
                             .arg(&obj)
                             .arg(&f)
                             .status()
@@ -306,7 +306,7 @@ fn preprocess_file(
         .partials(liquid::partials::LazyCompiler::new(partials))
         .filter(F16)
         .build()
-        .and_then(|p| p.parse(&*input))
+        .and_then(|p| p.parse(&input))
         .and_then(|r| r.render_to(&mut fs::File::create(&output).unwrap(), &globals))
     {
         eprintln!("Processing {}", template.as_ref().to_string_lossy());

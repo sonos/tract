@@ -13,7 +13,6 @@ impl Op for Source {
         "Source".into()
     }
 
-    op_hir!();
     not_a_typed_op!();
 }
 
@@ -52,7 +51,6 @@ impl InferenceRulesOp for Source {
         target: &mut TypedModel,
         _mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        use std::convert::TryFrom;
         if let Ok(fact) = TypedFact::try_from(&node.outputs[0].fact) {
             target.wire_node(&*node.name, TypedSource::new(fact), &[])
         } else {

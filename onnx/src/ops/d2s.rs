@@ -94,7 +94,6 @@ impl Expansion for DepthToSpace {
         "DepthToSpace".into()
     }
 
-    op_onnx!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -108,7 +107,7 @@ impl Expansion for DepthToSpace {
         s.equals(&outputs[0].rank, 4)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         s.given(&inputs[0].shape, move |s, ishape| {
-            let oshape = self.compute_shape(&*ishape);
+            let oshape = self.compute_shape(&ishape);
             s.equals(&outputs[0].shape, ShapeFactoid::from(oshape))
         })
     }

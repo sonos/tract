@@ -222,9 +222,9 @@ fn parse_nodes_data(node: &NodeProto, is_classifier: bool) -> TractResult<TreeEn
             nodes.extend(row.iter());
         };
     }
-    let trees = rctensor1(&*trees);
-    let nodes = tensor1(&*nodes).into_shape(&[nodes.len() / 5, 5])?.into_arc_tensor();
-    let leaves = tensor1(&*leaves).into_shape(&[leaves.len() / 2, 2])?.into_arc_tensor();
+    let trees = rctensor1(&trees);
+    let nodes = tensor1(&nodes).into_shape(&[nodes.len() / 5, 5])?.into_arc_tensor();
+    let leaves = tensor1(&leaves).into_shape(&[leaves.len() / 2, 2])?.into_arc_tensor();
     let data = TreeEnsembleData { trees, nodes, leaves };
     TreeEnsemble::build(data, max_used_features, n_classes, aggregate_fn)
 }
@@ -249,7 +249,6 @@ impl Expansion for TreeEnsembleClassifier {
         Ok(vec!(format!("binary result layout kludge: {:?}", self.binary_result_layout)))
     }
 
-    op_onnx!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

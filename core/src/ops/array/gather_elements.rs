@@ -12,16 +12,15 @@ impl Op for GatherElements {
         "GatherElements".into()
     }
 
-    op_core_mir!();
     op_as_typed_op!();
 }
 
 impl GatherElements {
     unsafe fn eval_t<T: Datum>(
         &self,
-        data: Arc<Tensor>,
+        data: TValue,
         indices: &ArrayViewD<i64>,
-    ) -> TractResult<Arc<Tensor>> {
+    ) -> TractResult<TValue> {
         let data_view = data.to_array_view_unchecked::<T>();
         let output = ArrayD::<T>::from_shape_fn(indices.shape(), |mut coords| {
             let index = indices[&coords];
@@ -32,7 +31,7 @@ impl GatherElements {
         });
         let mut tensor = output.into_tensor();
         tensor.set_datum_type(data.datum_type());
-        Ok(tensor.into_arc_tensor())
+        Ok(tensor.into_tvalue())
     }
 }
 
@@ -49,7 +48,7 @@ impl EvalOp for GatherElements {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (data, indices) = args_2!(inputs);
         let indices = indices.cast_to::<i64>()?;
         let indices = indices.to_array_view::<i64>()?;

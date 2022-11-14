@@ -1,5 +1,6 @@
 #![allow(clippy::len_zero)]
 #![allow(clippy::missing_safety_doc)]
+#![allow(clippy::redundant_closure_call)]
 //! # Tract
 //!
 //! Tiny, no-nonsense, self contained, portable TensorFlow and ONNX inference.
@@ -30,12 +31,12 @@
 //!
 //! // run the computation.
 //! let input = tensor1(&[1.0f32, 2.5, 5.0]);
-//! let mut outputs = plan.run(tvec![input]).unwrap();
+//! let mut outputs = plan.run(tvec![input.into()]).unwrap();
 //!
 //! // take the first and only output tensor
 //! let mut tensor = outputs.pop().unwrap();
 //!
-//! assert_eq!(tensor, rctensor1(&[4.0f32, 5.5, 8.0]));
+//! assert_eq!(tensor, tensor1(&[4.0f32, 5.5, 8.0]).into());
 //! # }
 //! ```
 //!
@@ -74,12 +75,13 @@ pub mod ops;
 
 pub mod broadcast;
 pub mod framework;
-mod hash;
 pub mod half;
+mod hash;
 mod late_bind;
 pub mod model;
 pub mod optim;
 pub mod plan;
+pub mod value;
 
 pub use dyn_clone;
 
@@ -87,6 +89,7 @@ pub use dyn_clone;
 pub mod prelude {
     pub use crate::framework::Framework;
     pub use crate::model::*;
+    pub use crate::value::{IntoTValue, TValue};
     pub use crate::plan::{SimplePlan, SimpleState};
     pub use std::sync::Arc;
     pub use tract_data::prelude::*;
@@ -111,6 +114,7 @@ pub mod internal {
     pub use crate::plan::SessionState;
     pub use crate::prelude::*;
     pub use anyhow::{anyhow, bail, ensure, format_err, Context as TractErrorContext};
+    pub use dims;
     pub use downcast_rs as tract_downcast_rs;
     pub use std::borrow::Cow;
     pub use std::collections::HashMap;
@@ -121,7 +125,6 @@ pub mod internal {
         dispatch_copy, dispatch_datum, dispatch_datum_by_size, dispatch_floatlike, dispatch_numbers,
     };
     pub use tvec;
-    pub use dims;
     pub use {args_1, args_2, args_3, args_4, args_5, args_6, args_7, args_8};
     pub use {as_op, impl_op_same_as, not_a_typed_op, op_as_typed_op};
     pub use {bin_to_super_type, element_wise, element_wise_oop};

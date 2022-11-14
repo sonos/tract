@@ -28,8 +28,9 @@ pub struct IntoAst<'a> {
     pub parameters: Vec<String>,
     pub results: Vec<String>,
     pub mapping: HashMap<OutletId, Arc<RValue>>,
-    pub tensors: Vec<(String, Arc<Tensor>)>,
+    pub tensors: HashMap<String, Arc<Tensor>>,
     pub quantization: HashMap<String, QuantFormat>,
+    pub resources: HashMap<String, Arc<dyn Resource>>,
     pub fragments: HashMap<String, FragmentDef>,
     pub body: Vec<Assignment>,
 }
@@ -54,6 +55,7 @@ impl<'a> IntoAst<'a> {
             mapping: Default::default(),
             tensors: Default::default(),
             quantization: Default::default(),
+            resources: Default::default(),
             fragments: Default::default(),
             body: Default::default(),
             parent: None,
@@ -72,7 +74,7 @@ impl<'a> IntoAst<'a> {
 
     pub fn ensure_symbol(&mut self, s: &Symbol) -> TractResult<()> {
         if !self.symbols.contains(s) {
-            self.symbols.push(*s);
+            self.symbols.push(s.clone());
         }
         Ok(())
     }
@@ -207,7 +209,7 @@ impl<'a> IntoAst<'a> {
             }
         }
         for sym in self.symbols {
-            extension.push(vec!["tract_symbol".to_string(), sym.as_char().to_string()]);
+            extension.push(vec!["tract_symbol".to_string(), sym.to_string()]);
         }
         let properties = FragmentDef {
             decl: FragmentDecl {
@@ -230,7 +232,7 @@ impl<'a> IntoAst<'a> {
             graph_def: GraphDef { id, parameters, results, body },
         };
         let quantization = if self.quantization.len() > 0 { Some(self.quantization) } else { None };
-        Ok(ProtoModel { doc, tensors, quantization })
+        Ok(ProtoModel { doc, tensors, quantization, resources: self.resources })
     }
 
     fn node(&mut self, node: &TypedNode) -> TractResult<TVec<Arc<RValue>>> {
@@ -299,7 +301,7 @@ impl<'a> IntoAst<'a> {
         if name.len() > 0 && !char::is_alphabetic(name.chars().next().unwrap()) {
             name = "_".to_string() + &name;
         }
-        name.replace('/', "_").replace('.', "_").replace('-', "_").replace(':', "_")
+        name.replace(['/', '.', '-', ':'], "_")
     }
 
     pub fn force_variable(&mut self, name: impl Into<String>, exp: &Arc<RValue>) -> Arc<RValue> {
@@ -364,7 +366,7 @@ impl<'a> IntoAst<'a> {
                 }
             };
         }
-        self.tensors.push((name.clone(), tensor.clone()));
+        self.tensors.insert(name.clone(), tensor.clone());
         let id = self.scoped_id(&name);
         self.assignment(
             &id,
@@ -408,7 +410,7 @@ pub fn tdims(shape: &[TDim]) -> RValue {
 pub fn tdim(dim: &TDim) -> RValue {
     match dim {
         TDim::Val(x) => numeric(x),
-        TDim::Sym(s) => ident(format!("{}", s.as_char())),
+        TDim::Sym(s) => ident(s.to_string()),
         TDim::Add(terms) => terms
             .iter()
             .map(tdim)

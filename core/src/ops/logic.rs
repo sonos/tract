@@ -21,16 +21,31 @@ bin_to_bool!(not_equals, NotEquals, flip: commute,
 
 bin_to_bool!(less, Less, 
     codegen_unary: codegen_compare_to_zero,
+    operating_datum_type: operating_datum_type_for_cmp,
     [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a < b);
 bin_to_bool!(less_equal, LessEqual,
     codegen_unary: codegen_compare_to_zero,
+    operating_datum_type: operating_datum_type_for_cmp,
     [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a <= b);
 bin_to_bool!(greater, Greater,
     codegen_unary: codegen_compare_to_zero,
+    operating_datum_type: operating_datum_type_for_cmp,
     [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a > b);
 bin_to_bool!(greater_equal, GreaterEqual,
     codegen_unary: codegen_compare_to_zero,
+    operating_datum_type: operating_datum_type_for_cmp,
     [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a >= b);
+
+pub fn operating_datum_type_for_cmp(a: DatumType, b: DatumType) -> TractResult<DatumType> {
+    let dt = a
+        .common_super_type(b)
+        .with_context(|| format_err!("No super type for {:?} and {:?}", a, b))?;
+    if dt == DatumType::TDim {
+        Ok(DatumType::I64)
+    } else {
+        Ok(dt)
+    }
+}
 
 fn codegen_compare_to_zero(
     op: &dyn BinMiniOp,
@@ -113,7 +128,6 @@ impl Op for Iff {
     fn name(&self) -> Cow<str> {
         "Iff".into()
     }
-    op_core_mir!();
     op_as_typed_op!();
 }
 
@@ -122,7 +136,7 @@ impl EvalOp for Iff {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (cond, t, f) = args_3!(inputs);
         anyhow::ensure!(t.datum_type() == f.datum_type());
         let shape: TVec<usize> = multi_broadcast(&[cond.shape(), t.shape(), f.shape()])
@@ -135,10 +149,10 @@ impl EvalOp for Iff {
                 )
             })?;
         unsafe {
-            let mut result = Tensor::uninitialized_dt(t.datum_type(), &*shape)?;
+            let mut result = Tensor::uninitialized_dt(t.datum_type(), &shape)?;
             let cond = cond.to_array_view::<bool>()?;
             dispatch_datum_by_size!(Self::eval_t(t.datum_type())(&cond, &mut result, &t, &f));
-            Ok(tvec!(result.into_arc_tensor()))
+            Ok(tvec!(result.into_tvalue()))
         }
     }
 }

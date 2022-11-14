@@ -10,7 +10,7 @@ jobs:
     strategy:
       matrix:
         os: [ ubuntu-latest, macOS-latest ]
-        rust: [ 1.59.0 ]
+        rust: [ 1.65.0 ]
 
     runs-on: ${{matrix.os}}
     env:
@@ -18,12 +18,13 @@ jobs:
       RUST_BACKTRACE: full
 
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v3
 
     - name: Get current date
       id: date
-      run: echo "::set-output name=date::$(date +'%Y-%m-%d')"
-    - uses: actions/cache@v2
+      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+    - uses: actions/cache@v3
       with:
         path: |
           ~/.rustup

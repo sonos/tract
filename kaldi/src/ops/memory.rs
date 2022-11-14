@@ -17,7 +17,6 @@ impl Op for Memory {
         "Memory".into()
     }
 
-    op_kaldi!();
     not_a_typed_op!();
 }
 
@@ -130,7 +129,7 @@ fn incorporate_memory_ops_as_scans(
                 mem_node.outputs[0].fact.shape.dim(1).unwrap().concretize().unwrap().to_usize()?;
             let chunk = op.offset.abs();
             let id = inner_model
-                .add_source(&*mem_node.name, f32::fact(&[(-op.offset) as usize, channel]).into())?;
+                .add_source(&*mem_node.name, f32::fact([(-op.offset) as usize, channel]).into())?;
             node_id_old_to_new.insert(mem, id.node);
 
             let zeroes =
@@ -260,7 +259,7 @@ pub fn time_loop_nodes_for_memory(
     } else {
         bail!("Should only be called for a memory name")
     };
-    let observed_node_id = model.node_by_name(&memory_name)?.id;
+    let observed_node_id = model.node_by_name(memory_name)?.id;
     let mut time_loop = all_successors(model, memory_node_id)?;
     let precursors = all_precursors(model, observed_node_id)?;
     time_loop.intersect_with(&precursors);

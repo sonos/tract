@@ -22,7 +22,6 @@ impl Expansion for Flatten {
         "Flatten".into()
     }
 
-    op_hir!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -32,7 +31,7 @@ impl Expansion for Flatten {
     ) -> InferenceResult {
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         s.given(&inputs[0].shape, move |s, shape| {
-            let [shape_0, shape_1] = self.compute_shape(&*shape)?;
+            let [shape_0, shape_1] = self.compute_shape(&shape)?;
             s.equals(&outputs[0].shape, ShapeFactoid::from(vec![shape_0, shape_1]))
         })
     }

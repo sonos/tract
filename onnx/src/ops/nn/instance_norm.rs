@@ -24,8 +24,6 @@ impl Expansion for InstanceNorm {
         "InstanceNorm".into()
     }
 
-    op_onnx!();
-
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -49,7 +47,8 @@ impl Expansion for InstanceNorm {
         model: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let rank = model.outlet_fact(inputs[0])?.rank();
+        let input_fact = model.outlet_fact(inputs[0])?.clone();
+        let rank = input_fact.rank();
         let axes: Vec<_> = (0..rank as i64).filter(|&axis| axis != 1).collect();
         let mean = tract_hir::ops::nn::Reduce::new(
             Some(axes.clone()),
@@ -70,7 +69,11 @@ impl Expansion for InstanceNorm {
         let vari_sane = model.wire_node(
             format!("{}.epsilon", name),
             tract_hir::ops::math::add::unary(
-                tensor0(self.epsilon).broadcast_into_rank(rank)?.into_arc_tensor(),
+                tensor0(self.epsilon)
+                    .cast_to_dt(input_fact.datum_type)?
+                    .into_owned()
+                    .broadcast_into_rank(rank)?
+                    .into_arc_tensor(),
             ),
             &[vari],
         )?;

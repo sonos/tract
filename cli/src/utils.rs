@@ -1,10 +1,9 @@
-use crate::model::Model;
 use crate::params::Parameters;
-use crate::CliResult;
 use tract_hir::internal::*;
+use tract_libcli::model::Model;
 
 /// Compares the outputs of a node in tract and tensorflow.
-pub fn check_outputs(got: &[Vec<Arc<Tensor>>], params: &Parameters) -> CliResult<()> {
+pub fn check_outputs(got: &[Vec<TValue>], params: &Parameters) -> TractResult<()> {
     let mut error = None;
     // iter over all possible tract model outputs
     for (ix, output) in params.tract_model.output_outlets().iter().enumerate() {
@@ -20,11 +19,11 @@ pub fn check_outputs(got: &[Vec<Arc<Tensor>>], params: &Parameters) -> CliResult
             .by_name(name)
             .with_context(|| format!("Do not have reference value for output {:?}", name))?;
         debug!("Output {}, expects {:?}", ix, exp);
-        let mut exp: Arc<Tensor> = exp.values.as_ref().with_context(|| {
+        let mut exp: TValue = exp.values.as_ref().with_context(|| {
             format!("Output {:?}: found reference info without value: {:?}", name, exp)
         })?[0]
             .clone();
-        let got: Arc<Tensor> = if got[ix].len() > 1 {
+        let got: TValue = if got[ix].len() > 1 {
             let props = params.tract_model.properties();
             let axis = props
                 .get("pulse.output_axes")
@@ -35,7 +34,7 @@ pub fn check_outputs(got: &[Vec<Arc<Tensor>>], params: &Parameters) -> CliResult
                 .context("multiple turn without pulse.delay properties")?
                 .as_slice::<i64>()?[ix] as usize;
             let stacked = Tensor::stack_tensors(axis, &got[ix])?;
-            stacked.slice(axis, delay, delay + exp.shape()[axis])?.into_arc_tensor()
+            stacked.slice(axis, delay, delay + exp.shape()[axis])?.into()
         } else {
             got[ix][0].clone()
         };
@@ -44,7 +43,7 @@ pub fn check_outputs(got: &[Vec<Arc<Tensor>>], params: &Parameters) -> CliResult
             && got.datum_type() == f16::datum_type())
             || exp.datum_type().unquantized() == got.datum_type().unquantized()
         {
-            exp = exp.cast_to_dt(got.datum_type())?.into_owned().into_arc_tensor();
+            exp = exp.cast_to_dt(got.datum_type())?.into_owned().into_tvalue();
         }
         if let Err(e) = exp.close_enough(&got, true).context(format!("Checking output {}", ix)) {
             if error.is_some() {
@@ -65,7 +64,7 @@ pub fn check_outputs(got: &[Vec<Arc<Tensor>>], params: &Parameters) -> CliResult
 }
 
 /// Compares the outputs of a node in tract and tensorflow.
-pub fn check_inferred(got: &[InferenceFact], expected: &[InferenceFact]) -> CliResult<()> {
+pub fn check_inferred(got: &[InferenceFact], expected: &[InferenceFact]) -> TractResult<()> {
     if got.len() != expected.len() {
         bail!("Number of output differ: got:{}, expected:{}", got.len(), expected.len())
     }
@@ -82,13 +81,13 @@ pub fn check_inferred(got: &[InferenceFact], expected: &[InferenceFact]) -> CliR
     Ok(())
 }
 
-pub fn count_op(model: &dyn Model, name: &str) -> CliResult<usize> {
+pub fn count_op(model: &dyn Model, name: &str) -> TractResult<usize> {
     Ok(model
         .eval_order()
         .context("Cannot assert op count without an eval order")?
         .into_iter()
         .map(|i| {
-            if model.node_op(i).name() == name {
+            if model.node_op_name(i) == name {
                 1
             } else {
                 model.nested_models(i).into_iter().flat_map(|(_, m)| count_op(m, name)).sum()

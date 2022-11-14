@@ -668,7 +668,7 @@ impl ConvUnary {
                 let mut params = q_params.1.clone();
                 params.insert_input(0); // kernel as input
                 params.insert_input(2); // bias as input
-                let bias = self.bias.clone().unwrap_or(rctensor0(0i32));
+                let bias = self.bias.clone().unwrap_or_else(|| rctensor0(0i32));
                 anyhow::ensure!(bias.rank() == 0 || bias.rank() == 1);
                 let bias = patch.add_const(format!("{}.bias", &node.name), bias)?;
                 inputs.insert(2, bias);
@@ -720,8 +720,8 @@ impl ConvUnary {
         {
             return Ok(None);
         }
-        let mut before:TVec<usize> = pad.pads[shape.hw_axes()].iter().map(|pair| pair.0).collect();
-        let mut after:TVec<usize> = pad.pads[shape.hw_axes()].iter().map(|pair| pair.1).collect();
+        let mut before: TVec<usize> = pad.pads[shape.hw_axes()].iter().map(|pair| pair.0).collect();
+        let mut after: TVec<usize> = pad.pads[shape.hw_axes()].iter().map(|pair| pair.1).collect();
         if let PaddingSpec::Explicit(bef, aft, false) = &self.pool_spec.padding {
             izip!(&mut before, bef).for_each(|(pad, cv)| *pad += cv);
             izip!(&mut after, aft).for_each(|(pad, cv)| *pad += cv);
@@ -758,7 +758,6 @@ impl Op for ConvUnary {
         Validation::Rounding
     }
 
-    op_core_mir!();
     op_as_typed_op!();
 }
 
@@ -767,7 +766,7 @@ impl EvalOp for ConvUnary {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let mut model = TypedModel::default();
 
         let mut wires: TVec<OutletId> = inputs
@@ -785,15 +784,14 @@ impl EvalOp for ConvUnary {
                     &mut model,
                     "im2col-adhoc",
                     inputs[0].datum_type(),
-                    &*wires,
+                    &wires,
                 )?
             } else {
                 self.wire_as_im2col_pair(&mut model, "im2col-adhoc", wires[0])?
             }
         };
         model.set_output_outlets(&[wire])?;
-        let plan = SimplePlan::new(model)?;
-        plan.run(inputs.into_iter().map(|t| t.into_tensor()).collect())
+        model.into_runnable()?.run(inputs)
     }
 }
 
@@ -901,12 +899,12 @@ impl TypedOp for ConvUnary {
         let output_dims = self.pool_spec.padding.compute(
             shape.hw_dims(),
             kernel_spatial_shape,
-            &*self
+            &self
                 .pool_spec
                 .dilations
                 .clone()
                 .unwrap_or_else(|| tvec!(1; kernel_spatial_shape.len())),
-            &*self
+            &self
                 .pool_spec
                 .strides
                 .clone()
@@ -1155,7 +1153,7 @@ impl TypedOp for ConvUnary {
             {
                 let mut patch = TypedModelPatch::new("wire_as_lazy_im2col");
                 let mut wire = patch.tap_model(model, node.inputs[0])?;
-                wire = self.wire_as_lazy_im2col(&mut patch, &*node.name, wire)?;
+                wire = self.wire_as_lazy_im2col(&mut patch, &node.name, wire)?;
                 patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                 patch.obliterate(node.id)?;
                 Ok(Some(patch))
@@ -1171,7 +1169,7 @@ impl TypedOp for ConvUnary {
                 let mut patch = TypedModelPatch::default();
                 let wire = patch.tap_model(model, node.inputs[0])?;
                 let wire = self
-                    .wire_as_im2col_pair(&mut patch, &*node.name, wire)
+                    .wire_as_im2col_pair(&mut patch, &node.name, wire)
                     .context("in wire_as_im2col_pair")?;
                 patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                 patch.obliterate(node.id)?;
@@ -1221,8 +1219,9 @@ mod test {
             rctensor0(0i32),
             rctensor0(1.0f32),
         );
+        let input = input.into_iter().map(IntoTValue::into_tvalue).collect::<TVec<_>>();
         let output = op.eval(input).unwrap();
-        assert_eq!(&*output[0], &tensor4(&[[[[8i32, 12], [20, 24]]]]));
+        assert_eq!(*output[0], tensor4(&[[[[8i32, 12], [20, 24]]]]));
     }
 
     #[test]

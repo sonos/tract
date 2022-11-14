@@ -12,7 +12,8 @@ fn pulsify(
     node: &TypedNode,
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
-    _pulse: usize,
+    _symbol: &Symbol,
+    _pulse: &TDim,
 ) -> TractResult<Option<TVec<OutletId>>> {
     let fact = target.outlet_fact(mapping[&node.inputs[0]])?.clone();
     let c_axis = op.pool_spec.data_format.shape(&fact.shape)?.c_axis();
@@ -63,7 +64,7 @@ fn pulsify(
             delay: paddings[geo_axis].pad_before.to_usize()? + fact.delay,
             deconv_input_dim,
             stride,
-            pulse,
+            pulse: pulse.to_owned(),
             deconv_output_dim: output_shape[fact.axis].clone(),
         },
         &[deconv],

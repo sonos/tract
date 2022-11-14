@@ -163,18 +163,21 @@ mod test {
                 .wire_node("c,", EinSum { expr: self.expr.parse().unwrap() }, &[a, b])
                 .context("wiring initial network")
                 .unwrap();
-            model.set_output_outlets(&*c).unwrap();
+            model.set_output_outlets(&c).unwrap();
             let expect = model
                 .clone()
                 .into_runnable()
                 .unwrap()
-                .run(tvec!(self.a.clone(), self.b.clone()))
+                .run(tvec!(self.a.clone().into(), self.b.clone().into()))
                 .context("running original network")
                 .unwrap();
             let model = model.into_decluttered().unwrap();
             assert!(model.nodes.iter().all(|n| !n.op_is::<EinSum>()));
-            let found =
-                model.into_runnable().unwrap().run(tvec!(self.a.clone(), self.b.clone())).unwrap();
+            let found = model
+                .into_runnable()
+                .unwrap()
+                .run(tvec!(self.a.clone().into(), self.b.clone().into()))
+                .unwrap();
             assert_eq!(found, expect);
         }
     }

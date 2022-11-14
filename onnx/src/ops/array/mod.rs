@@ -25,7 +25,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Gather", gather);
     reg.insert("GatherElements", gather_elements);
     reg.insert("GatherND", gather_nd);
-    reg.insert("NonZero", |_, _| Ok((Box::new(nonzero::non_zero()), vec![])));
+    reg.insert("NonZero", nonzero::non_zero);
     reg.insert("OneHot", one_hot::one_hot);
     reg.insert("Range", |_, _| Ok((expand(array::Range::default()), vec![])));
     reg.insert("Pad", pad::pad);
@@ -67,7 +67,7 @@ pub fn constant_like(
         let dt = node.get_attr_opt("dtype")?.unwrap_or(DatumType::F32);
         let shape: Vec<usize> = node.get_attr_vec("shape")?;
         let tensor =
-            tensor0(value).cast_to_dt(dt)?.broadcast_scalar_to_shape(&*shape)?.into_arc_tensor();
+            tensor0(value).cast_to_dt(dt)?.broadcast_scalar_to_shape(&shape)?.into_arc_tensor();
         Ok((Box::new(tract_hir::ops::konst::Const::new(tensor)), vec![]))
     } else {
         Ok((Box::new(array::ConstantLike::new(value)), vec![]))

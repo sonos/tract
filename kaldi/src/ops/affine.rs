@@ -55,7 +55,6 @@ impl Expansion for Affine {
         "Affine".into()
     }
 
-    op_kaldi!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -72,7 +71,7 @@ impl Expansion for Affine {
         s.equals(&outputs[0].shape[1], &self.linear_params.shape()[2].to_dim())?;
         s.equals(&inputs[0].shape[1], &self.linear_params.shape()[1].to_dim())?;
         s.given(&inputs[0].shape, move |s, ishape| {
-            let oshape = self.as_conv().output_shape(&*ishape, self.linear_params.shape())?;
+            let oshape = self.as_conv().output_shape(&ishape, self.linear_params.shape())?;
             s.equals(&outputs[0].shape[0], &oshape[0])
         })?;
         Ok(())

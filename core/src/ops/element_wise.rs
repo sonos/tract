@@ -29,6 +29,10 @@ pub trait ElementWiseMiniOp:
         tvec!()
     }
     #[allow(unused_variables)]
+    fn operating_datum_type(&self, dt: DatumType) -> DatumType {
+        dt
+    }
+    #[allow(unused_variables)]
     fn declutter(
         &self,
         model: &TypedModel,
@@ -78,7 +82,6 @@ impl Op for ElementWiseOp {
         self.0.validation()
     }
 
-    op_core_lir_mir!();
     op_as_typed_op!();
 }
 
@@ -89,18 +92,13 @@ impl EvalOp for ElementWiseOp {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         if let Some(_dt) = self.0.output_type(inputs[0].datum_type()) {
-            Ok(tvec!(self.0.eval_out_of_place(&inputs[0])?.into_arc_tensor()))
+            Ok(tvec!(self.0.eval_out_of_place(&inputs[0])?.into_tvalue()))
         } else {
-            if let Some(m) = Arc::get_mut(&mut inputs[0]) {
-                self.0.eval_in_place(m)?;
-            } else {
-                let mut t = inputs.remove(0).into_tensor();
-                self.0.eval_in_place(&mut t)?;
-                inputs.push(t.into_arc_tensor());
-            }
-            Ok(inputs)
+            let mut m = inputs.remove(0).into_tensor();
+            self.0.eval_in_place(&mut m)?;
+            Ok(tvec!(m.into()))
         }
     }
 }
@@ -108,7 +106,8 @@ impl EvalOp for ElementWiseOp {
 impl TypedOp for ElementWiseOp {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = inputs[0].clone().without_value();
-        if let Some(dt) = self.0.output_type(fact.datum_type) {
+        let dt = self.0.operating_datum_type(fact.datum_type);
+        if let Some(dt) = self.0.output_type(dt) {
             fact.datum_type = dt;
         }
         Ok(tvec!(fact))
@@ -171,6 +170,7 @@ macro_rules! element_wise {
         $(; q: $( [$($typ_dt:ident),*] => $f_f32:expr),*)?
         $(; cost: $cost:expr )?
         $(; declutter: $declutter:expr )?
+        $(; operating_datum_type: $operating_datum_type:expr )?
         $(; prefix: $prefix:expr )?
         $(; quantize: $quantize:expr )?
         $(; validation: $validation:expr )?
@@ -247,6 +247,11 @@ macro_rules! element_wise {
                 $validation
             }
             )?
+            $(
+            fn operating_datum_type(&self, dt: DatumType) -> DatumType {
+                ($operating_datum_type)(dt)
+            }
+            )?
         }
         pub fn $func($( $($var: $var_typ),* )?) -> $crate::ops::element_wise::ElementWiseOp {
             $crate::ops::element_wise::ElementWiseOp(Box::new($Op { $( $($var),* )? } ))
@@ -260,6 +265,7 @@ macro_rules! element_wise_oop {
         $( [$($typ:ident),*] => $typ_dst:ident $f:expr ),*
         $(; cost: $cost:expr )?
         $(; info: $info:expr )?
+        $(; operating_datum_type: $operating_datum_type:expr )?
         $(; prefix: $prefix:expr )?
         $(; quantize: $quantize:expr )?
         $(; validation: $validation:expr )?
@@ -320,6 +326,11 @@ macro_rules! element_wise_oop {
             $(
             fn validation(&self) -> Validation {
                 $validation
+            }
+            )?
+            $(
+            fn operating_datum_type(&self, dt: DatumType) -> DatumType {
+                ($operating_datum_type)(dt)
             }
             )?
         }

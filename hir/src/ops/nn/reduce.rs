@@ -181,7 +181,6 @@ impl Expansion for Reduce {
     fn info(&self) -> TractResult<Vec<String>> {
         Ok(vec![format!("axes: {:?} keep_dims: {}", self.axes, self.keep_dims)])
     }
-    op_hir!();
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -204,7 +203,7 @@ impl Expansion for Reduce {
             s.equals(&outputs[0].rank, 0)?;
         }
         s.given(&inputs[0].shape, move |s, shape| {
-            let out_shape = self.output_shape(&*shape);
+            let out_shape = self.output_shape(&shape);
             s.equals(&outputs[0].shape, out_shape)
         })
     }

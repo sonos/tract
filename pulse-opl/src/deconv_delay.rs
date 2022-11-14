@@ -10,7 +10,7 @@ pub struct DeconvDelay {
     pub overlap: usize,
     pub delay: usize,
     pub stride: usize,
-    pub pulse: usize,
+    pub pulse: TDim,
     pub deconv_input_dim: TDim,
     pub deconv_output_dim: TDim,
 }
@@ -22,7 +22,6 @@ impl Op for DeconvDelay {
         "DeconvDelay".into()
     }
 
-    op_pulse!();
     op_as_typed_op!();
 }
 
@@ -31,7 +30,7 @@ impl EvalOp for DeconvDelay {
         false
     }
 
-    fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, _inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         unreachable!()
     }
 
@@ -66,18 +65,18 @@ impl OpState for DeconvDelayState {
         &mut self,
         session: &mut SessionState,
         op: &dyn Op,
-        inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         let op = op.downcast_ref::<DeconvDelay>().context("Wrong op")?;
         if self.buffer.is_none() {
             let mut buffer_size: TVec<usize> = inputs[0].shape().into();
             buffer_size[op.axis] = op.overlap; //+ (op.stride - 1) * (op.pulse - 1);
-            self.buffer = Some(Tensor::zero_dt(inputs[0].datum_type(), &*buffer_size)?);
+            self.buffer = Some(Tensor::zero_dt(inputs[0].datum_type(), &buffer_size)?);
         }
         let mut input = inputs[0].clone().into_tensor();
         dispatch_numbers!(Self::eval_t(input.datum_type())(self, session, op, &mut input))?;
         let output = input.slice(op.axis, 0, input.shape()[op.axis] - op.overlap)?;
-        Ok(tvec!(output.into_arc_tensor()))
+        Ok(tvec!(output.into_tvalue()))
     }
 }
 

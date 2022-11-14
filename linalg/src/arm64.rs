@@ -34,8 +34,9 @@ fn max_cpuid() -> std::io::Result<String> {
     Ok(max.unwrap_or("").to_string())
 }
 
+#[inline]
 pub fn has_fp16() -> bool {
-    KIND.has_fp16()
+    cfg!(feature_cpu="fp16")
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
@@ -50,13 +51,6 @@ enum Kind {
 }
 
 impl Kind {
-    fn has_fp16(&self) -> bool {
-        match self {
-            Kind::CortexA55 | Kind::CortexA75 | Kind::AppleM => true,
-            _ => false,
-        }
-    }
-
     fn choose() -> Kind {
         let kind = if let Ok(kind) = std::env::var("TRACT_CPU_AARCH64_KIND") {
             log::info!("CPU kind forced with TRACT_CPU_AARCH64_KIND: {}", kind);
@@ -86,10 +80,13 @@ impl Kind {
                         part
                     );
                     part
-                } else {
+                } else if cfg!(target_os = "linux") {
                     let part = max_cpuid().unwrap_or("0x00".to_string());
                     log::info!("CPU part auto detected: {}", part);
                     part
+                } else {
+                    log::info!("Unknown CPU part");
+                    "0x00".to_string()
                 };
                 match &*part {
                     PART_A53 => Kind::CortexA53,
@@ -135,12 +132,22 @@ pub fn plug(ops: &mut Ops) {
         Kind::CortexA55 => Some(cortex_a55::model()),
         _ => None,
     };
-    if let Some(model) = model {
-        ops.mmm_f32 = Box::new(move |m, k, n| model.pick(&impls, m, k, n));
-    }
+    ops.mmm_f32 = if let Some(model) = model {
+        Box::new(move |m, k, n| model.pick(&impls, m, k, n))
+    } else {
+        Box::new(move |_, _, n| {
+            if n.unwrap_or(8) < 8 {
+                arm64simd_mmm_f32_16x4_gen::mmm()
+            } else {
+                arm64simd_mmm_f32_8x8_gen::mmm()
+            }
+        })
+    };
     #[cfg(feature = "no_fp16")]
     if has_fp16() {
-        log::warn!("This is a build with fp16 disabled, while your platform CPU seems to support it.");
+        log::warn!(
+            "This is a build with fp16 disabled, while your platform CPU seems to support it."
+        );
     }
     #[cfg(not(feature = "no_fp16"))]
     if has_fp16() {

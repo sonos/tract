@@ -8,7 +8,6 @@ impl Op for Dummy {
         "Dummy".into()
     }
 
-    op_core_mir!();
     op_as_typed_op!();
 }
 
@@ -19,7 +18,7 @@ impl EvalOp for Dummy {
         false
     }
 
-    fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, _inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         bail!("eval() called on a Dummy op. This is a bug.")
     }
 }

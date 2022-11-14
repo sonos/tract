@@ -1,15 +1,6 @@
 use crate::model::KaldiOpRegister;
 use tract_hir::internal::*;
 
-#[macro_export]
-macro_rules! op_kaldi {
-    () => {
-        fn op_families(&self) -> &'static [&'static str] {
-            &["core"]
-        }
-    };
-}
-
 pub(crate) mod affine;
 pub(crate) mod lstm_nonlin;
 pub(crate) mod memory;

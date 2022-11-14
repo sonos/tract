@@ -25,7 +25,7 @@ pub fn pull_downsample_over_slice(
     let new_start = left;
     let new_end = (final_len + left).to_usize()?;
     let op = ops::array::Slice::new(slice_op.axis, new_start.to_dim(), new_end.to_dim());
-    let new_slice = patch.wire_node(&*slice_node.name, op, &*ds)?[0];
+    let new_slice = patch.wire_node(&*slice_node.name, op, &ds)?[0];
     patch.shunt_outside(model, OutletId::new(down_node.id, 0), new_slice)?;
     Ok(Some(patch))
 }
@@ -43,7 +43,7 @@ pub fn pull_downsample_over_axis_op(
     new_down.axis =
         axis_op.recip().transform_axis(down_op.axis).ok_or_else(|| format_err!("Invalid axis"))?;
     let wire = patch.wire_node(&*down_node.name, new_down, [tap].as_ref())?;
-    let wire = patch.wire_node(&*axis_node.name, axis_op.clone(), &*wire)?[0];
+    let wire = patch.wire_node(&*axis_node.name, axis_op.clone(), &wire)?[0];
     patch.shunt_outside(model, OutletId::new(down_node.id, 0), wire)?;
     Ok(Some(patch))
 }
@@ -93,7 +93,7 @@ mod tests {
         trace!("{:#?}", model);
         prop_assert!(model.node(model.output_outlets().unwrap()[0].node).op_is::<Downsample>());
         let input = tensor1(&(0i32..len as _).collect::<Vec<_>>());
-        let expected = SimplePlan::new(&model).unwrap().run(tvec!(input.clone())).unwrap();
+        let expected = SimplePlan::new(&model).unwrap().run(tvec!(input.clone().into())).unwrap();
 
         info!("Decluttering");
         model.declutter().unwrap();
@@ -103,7 +103,7 @@ mod tests {
             model.node(order[1]).op_is::<Downsample>()
                 || !model.nodes().iter().any(|n| n.op_is::<Downsample>())
         );
-        let found = SimplePlan::new(&model).unwrap().run(tvec!(input)).unwrap();
+        let found = SimplePlan::new(&model).unwrap().run(tvec!(input.into())).unwrap();
         prop_assert_eq!(found, expected);
         Ok(())
     }

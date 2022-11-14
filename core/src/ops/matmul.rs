@@ -18,7 +18,7 @@ pub use self::mir_quant::{MatMulQParams, QMatMul};
 pub use self::mir_unary::MatMulUnary;
 use self::pack::MatMatMulPack;
 
-#[derive(PartialEq, Clone, Debug, Copy, Hash)]
+#[derive(PartialEq, Eq, Clone, Debug, Copy, Hash)]
 pub struct MatMulAxes {
     pub a_m: usize,
     pub a_k: usize,
@@ -72,19 +72,20 @@ impl MatMulAxes {
     // return matching axis index in a and c
     fn follow_axis_from_b(&self, in_b: usize) -> (usize, usize) {
         let ix = in_b - (self.b_k < in_b) as usize - (self.b_n < in_b) as usize;
-        let in_a = (0..).filter(|&i| i != self.a_m && i != self.a_k).skip(ix).next().unwrap();
-        let in_c = (0..).filter(|&i| i != self.c_m && i != self.c_n).skip(ix).next().unwrap();
+        let in_a = (0..).filter(|&i| i != self.a_m && i != self.a_k).nth(ix).unwrap();
+        let in_c = (0..).filter(|&i| i != self.c_m && i != self.c_n).nth(ix).unwrap();
         (in_a, in_c)
     }
 
     // return matching axis index in a and b
     fn follow_axis_from_c(&self, in_c: usize) -> (usize, usize) {
         let ix = in_c - (self.c_m < in_c) as usize - (self.c_n < in_c) as usize;
-        let in_a = (0..).filter(|&i| i != self.a_m && i != self.a_k).skip(ix).next().unwrap();
-        let in_b = (0..).filter(|&i| i != self.b_k && i != self.b_n).skip(ix).next().unwrap();
+        let in_a = (0..).filter(|&i| i != self.a_m && i != self.a_k).nth(ix).unwrap();
+        let in_b = (0..).filter(|&i| i != self.b_k && i != self.b_n).nth(ix).unwrap();
         (in_a, in_b)
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn change_axis_from_b(
         &self,
         change: &AxisOp,
@@ -134,7 +135,7 @@ impl MatMulAxes {
                 if *from.max(to) < self.b_k.min(self.b_n) && *from.max(to) < self.c_n.min(self.c_m)
                 {
                     Ok((
-                        self.clone(),
+                        *self,
                         None,
                         Some(AxisOp::Move(*from, *to)),
                         Some(AxisOp::Move(*from, *to)),
@@ -156,6 +157,7 @@ impl MatMulAxes {
         }
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn change_axis_from_c(
         &self,
         change: &AxisOp,
@@ -197,7 +199,7 @@ impl MatMulAxes {
                 if *from.max(to) < self.b_k.min(self.b_n) && *from.max(to) < self.c_n.min(self.c_m)
                 {
                     Ok((
-                        self.clone(),
+                        *self,
                         None,
                         Some(AxisOp::Move(*from, *to)),
                         Some(AxisOp::Move(*from, *to)),
@@ -219,6 +221,7 @@ impl MatMulAxes {
         }
     }
 
+    #[allow(clippy::type_complexity)]
     fn remove_untouched_axis(
         &self,
         in_a: usize,
@@ -236,6 +239,7 @@ impl MatMulAxes {
         Ok((axes, Some(AxisOp::Rm(in_a)), Some(AxisOp::Rm(in_b)), Some(AxisOp::Rm(in_c))))
     }
 
+    #[allow(clippy::type_complexity)]
     fn insert_untouched_axis(
         &self,
         in_a: usize,
@@ -253,6 +257,7 @@ impl MatMulAxes {
         Ok((axes, Some(AxisOp::Add(in_a)), Some(AxisOp::Add(in_b)), Some(AxisOp::Add(in_c))))
     }
 
+    #[allow(clippy::type_complexity)]
     fn reshape_untouched_axes(
         &self,
         in_a: usize,
@@ -407,7 +412,7 @@ pub(super) fn eval(a: &Tensor, b: &Tensor, axes: MatMulAxes) -> TractResult<Tens
         b_strides.remove(axes.b_n.max(axes.b_k));
         b_strides.remove(axes.b_n.min(axes.b_k));
 
-        let mut c_bc_shape = c_shape.clone();
+        let mut c_bc_shape = c_shape;
         c_bc_shape.remove(axes.c_m.max(axes.c_n));
         c_bc_shape.remove(axes.c_m.min(axes.c_n));
 

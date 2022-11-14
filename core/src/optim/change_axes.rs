@@ -2,14 +2,23 @@ use super::OptimizerSession;
 use super::TypedPass;
 use crate::internal::*;
 use crate::model::*;
+use std::collections::HashSet;
+use std::fmt::Debug;
 
 use crate::ops::change_axes::*;
 
-#[derive(Clone, Debug)]
-pub struct ChangeAxes;
+#[derive(Clone, Default)]
+pub struct ChangeAxes(HashSet<(usize, (InOut, AxisOp))>);
+
+impl Debug for ChangeAxes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ChangeAxes")
+    }
+}
 
 impl TypedPass for ChangeAxes {
     fn reset(&mut self) -> TractResult<()> {
+        self.0.clear();
         Ok(())
     }
     fn next(
@@ -21,14 +30,16 @@ impl TypedPass for ChangeAxes {
         interfaces.extend(model.input_outlets()?.iter());
         for n in model.eval_order()? {
             for suggestion in model.node(n).op.suggested_axis_changes()? {
-                let outlet = suggestion.0.as_outlet(model.node(n));
-                let change = AxisChange { outlet, op: suggestion.1 };
-                if let Some((patch, _)) = change_axes(model, &change, &interfaces, &[])
-                    .with_context(|| {
-                        format!("Making patch for {:?} from {}", change, model.node(n))
-                    })?
-                {
-                    return Ok(Some(patch));
+                if self.0.insert((n, suggestion.clone())) {
+                    let outlet = suggestion.0.as_outlet(model.node(n));
+                    let change = AxisChange { outlet, op: suggestion.1.clone() };
+                    if let Some((patch, _)) = change_axes(model, &change, &interfaces, &[])
+                        .with_context(|| {
+                            format!("Making patch for {:?} from {}", change, model.node(n))
+                        })?
+                    {
+                        return Ok(Some(patch));
+                    }
                 }
             }
         }

@@ -28,7 +28,7 @@ pub fn pull_downsample_over_scan(
             )?[0])
         })
         .collect::<TractResult<Vec<_>>>()?;
-    inner_model.set_output_outlets(&*downsample_outputs)?;
+    inner_model.set_output_outlets(&downsample_outputs)?;
     let mut inner_model = inner_model.into_decluttered()?;
     inner_model.check_consistency()?;
 
@@ -65,8 +65,8 @@ pub fn pull_downsample_over_scan(
         match input {
             InputMapping::State { ref mut initializer } => {
                 if let StateInitializer::Value(ref v) = initializer {
-                    let new_v = down_op.eval(tvec!(v.clone()))?;
-                    *initializer = StateInitializer::Value(new_v[0].clone())
+                    let mut new_v = down_op.eval(tvec!(v.clone().into_tvalue()))?;
+                    *initializer = StateInitializer::Value(new_v.remove(0).into_arc_tensor());
                 }
             }
             InputMapping::Scan { ref mut chunk, .. } => {

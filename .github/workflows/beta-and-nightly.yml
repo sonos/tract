@@ -15,12 +15,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v3
 
     - name: Get current date
       id: date
-      run: echo "::set-output name=date::$(date +'%Y-%m-%d')"
-    - uses: actions/cache@v2
+      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+    - uses: actions/cache@v3
       with:
         path: |
           ~/.rustup
@@ -47,13 +48,13 @@ jobs:
   warnings:
     strategy:
       matrix:
-        rust: [ 1.59.0, beta ]
+        rust: [ 1.65.0, beta ]
       fail-fast: false
 
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v3
     - name: Rustup update
       run: rustup update
     - name: cargo check, -D warnings
@@ -71,11 +72,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v3
     - name: Rustup update, install clippy
       run: rustup update && rustup component add clippy
     - name: Run cargo-clippy
       run: cargo clippy
+      env:
+        RUSTFLAGS: "-D warnings"
 
   cargo-deny:
     strategy:
@@ -84,7 +87,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v3
     - name: Rustup update
       run: rustup update
     - name: Install cargo-deny
