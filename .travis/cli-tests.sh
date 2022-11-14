@@ -49,13 +49,11 @@ echo
 echo $WHITE • harness/nnef-test-cases $NC
 echo
 
-export CARGO_OPTS="--no-default-features"
 for t in `find harness/nnef-test-cases -name runme.sh`
 do
     echo $WHITE$t$NC
     $t
 done
-unset CARGO_OPTS
 
 echo
 echo $WHITE • kaldi/test_cases $NC
