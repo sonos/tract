@@ -1,6 +1,6 @@
 use anyhow::Context;
 use dlpackrs::ffi::DLTensor;
-use dlpackrs::DataType;
+use dlpackrs::{DataType, Device};
 use std::cell::RefCell;
 use std::ffi::{c_char, CStr, CString};
 use std::sync::Arc;
@@ -174,23 +174,11 @@ pub extern "C" fn tract_runnable_release(runnable: *mut *mut TractRunnable) -> T
         if runnable.is_null() || (*runnable).is_null() {
             anyhow::bail!("Trying to destroy a null Runnable");
         }
-        let _ = Box::from_raw(runnable);
+        let _ = Box::from_raw(*runnable);
         *runnable = std::ptr::null_mut();
         Ok(())
     })
 }
-
-/*
-#[no_mangle]
-pub extern "C" fn tract_foo(tensor: *mut dlpackrs::ffi::DLTensor) -> TRACT_RESULT {
-    unsafe {
-        let dlt = dlpackrs::Tensor::from_raw(tensor);
-        let arr = RawArrayView::from_shape_ptr(dlt.shape().unwrap(), dlt.data() as *mut f32);
-        dbg!(arr.deref_into_view().into_owned().into_tensor());
-    }
-    TRACT_RESULT::TRACT_RESULT_OK
-}
-*/
 
 // STATE
 /// cbindgen:ignore
@@ -204,9 +192,6 @@ pub struct TractState(NativeState);
 fn copy_tensor_to_tract(tensor: *mut dlpackrs::ffi::DLTensor) -> TractResult<Tensor> {
     unsafe {
         let dlt = dlpackrs::Tensor::from_raw(tensor);
-        dbg!(&dlt);
-        dbg!(&dlt.dtype());
-        dbg!(DataType::f32());
         assert!(dlt.dtype() == DataType::f32());
         assert!(dlt.strides().is_none());
         let arr = RawArrayView::from_shape_ptr(dlt.shape().unwrap(), dlt.data() as *mut f32);
@@ -238,7 +223,57 @@ pub extern "C" fn tract_state_exec(state: *mut TractState) -> TRACT_RESULT {
             anyhow::bail!("Trying to exec a null State");
         }
         let state = state.as_mut().unwrap();
-        let _ = state.0.exec()?;
+        state.0.exec()?;
+        Ok(())
+    })
+}
+
+thread_local! {
+    pub(crate) static SHAPE_ARRAY: RefCell<TVec<i64>> = RefCell::new(tvec!());
+}
+
+/// Borrow an output tensor from the state.
+///
+/// The borrowed data may become invalid when any function on tract API is called in the thread.
+#[no_mangle]
+pub extern "C" fn tract_state_output(
+    state: *mut TractState,
+    output_id: usize,
+    tensor: *mut DLTensor,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        if state.is_null() {
+            anyhow::bail!("Trying to exec a null State");
+        }
+        let state = state.as_mut().unwrap();
+        let value = state.0.output(output_id)?;
+        let value = SHAPE_ARRAY.with(|shape| -> TractResult<dlpackrs::Tensor> {
+            shape.borrow_mut().clear();
+            shape.borrow_mut().extend(value.shape().iter().map(|i| *i as i64));
+            let dlt = dlpackrs::Tensor::new(
+                value.as_ptr::<f32>()? as _,
+                Device::cpu(0),
+                value.rank() as i32,
+                DataType::f32(),
+                shape.borrow_mut().as_mut_ptr(),
+                std::ptr::null_mut(),
+                0,
+            );
+            Ok(dlt)
+        })?;
+        *tensor = value.into_inner();
+        Ok(())
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn tract_state_reset_turn(state: *mut TractState) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        if state.is_null() {
+            anyhow::bail!("Trying to reset turn on a null State");
+        }
+        let state = state.as_mut().unwrap();
+        state.0.reset_turn()?;
         Ok(())
     })
 }
