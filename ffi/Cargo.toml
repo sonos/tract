@@ -18,5 +18,6 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 anyhow.workspace = true
+dlpackrs.workspace = true
 tract-data = { path = "../data" }
 tract-nnef = { path = "../nnef" }
