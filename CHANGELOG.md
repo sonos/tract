@@ -4,6 +4,7 @@
 * Symbols can now be String instead of char. They are not shared globally anymore, but scoped in the Model instead.
 * [pulse] S symbol is no longer magic. The time dimension symbol must be provided at pulsification time.
 * [pulse] In most cases, we can now pulsify without an explicit pulse len (pulse len can be expression).
+* [cli] deprecated "x" syntax for shape is removed
 
 # 0.18.3 - 2022-10-27
 * [NNEF] Introduce a "resource" extension for loading values from a separate source (as a config file)
