@@ -432,8 +432,8 @@ fn pool_spec_for_pools(
         DataFormat::NCHW,
         shape_hw,
         padding,
-        if dilation_hw.iter().all(|it| *it == 1) { Some(dilation_hw) } else { None },
-        if stride_hw.iter().all(|it| *it == 1) { Some(stride_hw) } else { None },
+        if dilation_hw.iter().all(|it| *it == 1) || dilation_hw.len() == 0 { None } else { Some(dilation_hw) },
+        if stride_hw.iter().all(|it| *it == 1) || stride_hw.len() == 0 { None } else { Some(stride_hw) },
         None,
     ))
 }
