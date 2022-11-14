@@ -1,7 +1,10 @@
 use anyhow::Context;
+use dlpackrs::ffi::DLTensor;
+use dlpackrs::DataType;
 use std::cell::RefCell;
 use std::ffi::{c_char, CStr, CString};
 use std::sync::Arc;
+use tract_nnef::tract_ndarray::RawArrayView;
 
 use tract_nnef::internal as native;
 use tract_nnef::tract_core::prelude::*;
@@ -158,27 +161,32 @@ pub extern "C" fn tract_runnable_spawn_state(
         if runnable.is_null() {
             anyhow::bail!("Trying to convert null model")
         }
-        let s = native::TypedSimpleState::new((*runnable).0.clone())?;
+        let runnable = runnable.as_ref().unwrap();
+        let s = native::TypedSimpleState::new(runnable.0.clone())?;
         *state = Box::into_raw(Box::new(TractState(s)));
         Ok(())
     })
 }
 
 #[no_mangle]
-pub extern "C" fn tract_runnable_release(model: *mut *mut TractRunnable) -> TRACT_RESULT {
+pub extern "C" fn tract_runnable_release(runnable: *mut *mut TractRunnable) -> TRACT_RESULT {
     wrap(|| unsafe {
-        if model.is_null() || (*model).is_null() {
+        if runnable.is_null() || (*runnable).is_null() {
             anyhow::bail!("Trying to destroy a null Runnable");
         }
-        let _ = Box::from_raw(model);
+        let _ = Box::from_raw(runnable);
+        *runnable = std::ptr::null_mut();
         Ok(())
     })
 }
 
 /*
 #[no_mangle]
-pub extern "C" fn tract_foo(model: *mut TractRunnable) -> TRACT_RESULT {
+pub extern "C" fn tract_foo(tensor: *mut dlpackrs::ffi::DLTensor) -> TRACT_RESULT {
     unsafe {
+        let dlt = dlpackrs::Tensor::from_raw(tensor);
+        let arr = RawArrayView::from_shape_ptr(dlt.shape().unwrap(), dlt.data() as *mut f32);
+        dbg!(arr.deref_into_view().into_owned().into_tensor());
     }
     TRACT_RESULT::TRACT_RESULT_OK
 }
@@ -191,3 +199,58 @@ type NativeState = native::TypedSimpleState<
     Arc<native::TypedRunnableModel<native::TypedModel>>,
 >;
 pub struct TractState(NativeState);
+
+/// cbindgen:ignore
+fn copy_tensor_to_tract(tensor: *mut dlpackrs::ffi::DLTensor) -> TractResult<Tensor> {
+    unsafe {
+        let dlt = dlpackrs::Tensor::from_raw(tensor);
+        dbg!(&dlt);
+        dbg!(&dlt.dtype());
+        dbg!(DataType::f32());
+        assert!(dlt.dtype() == DataType::f32());
+        assert!(dlt.strides().is_none());
+        let arr = RawArrayView::from_shape_ptr(dlt.shape().unwrap(), dlt.data() as *mut f32);
+        Ok(arr.deref_into_view().into_owned().into_tensor())
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn tract_state_set_input(
+    state: *mut TractState,
+    input_id: usize,
+    tensor: *mut DLTensor,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        if state.is_null() {
+            anyhow::bail!("Trying to set input on a null State");
+        }
+        let state = state.as_mut().unwrap();
+        let tensor = copy_tensor_to_tract(tensor)?;
+        state.0.set_input(input_id, tensor.into_tvalue())?;
+        Ok(())
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn tract_state_exec(state: *mut TractState) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        if state.is_null() {
+            anyhow::bail!("Trying to exec a null State");
+        }
+        let state = state.as_mut().unwrap();
+        let _ = state.0.exec()?;
+        Ok(())
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn tract_state_destroy(state: *mut *mut TractState) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        if state.is_null() || (*state).is_null() {
+            anyhow::bail!("Trying to destroy a null State");
+        }
+        let _ = Box::from_raw(*state);
+        *state = std::ptr::null_mut();
+        Ok(())
+    })
+}
