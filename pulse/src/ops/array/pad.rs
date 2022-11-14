@@ -10,7 +10,8 @@ fn pulsify(
     node: &TypedNode,
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
-    _pulse: usize,
+    _symbol: &Symbol,
+    _pulse: &TDim,
 ) -> TractResult<Option<TVec<OutletId>>> {
     let mut input = mapping[&node.inputs[0]];
     let fact = target.outlet_fact(input)?.clone();
@@ -23,17 +24,25 @@ fn pulsify(
     let mut extra_delay = before.saturating_sub(stream.delay);
     match op.mode {
         PadMode::Constant(_) => (),
-        PadMode::Edge if before < pulse => {
-            let start_offset = (stream.delay + extra_delay) % pulse;
-            if before > start_offset {
-                extra_delay += before - start_offset;
+        PadMode::Edge => {
+            let pulse = if let Ok(pulse) = pulse.to_usize() {
+                pulse
+            } else {
+                bail!("Edge padding can only by pulsified with concrete integer values")
+            };
+            if before < pulse {
+                let start_offset = (stream.delay + extra_delay) % pulse;
+                if before > start_offset {
+                    extra_delay += before - start_offset;
+                }
+            } else {
+                bail!(
+                    "Edge padding mode needs pulse strictly bigger than left padding (pulse={} padding={})",
+                    pulse,
+                    before
+                    )
             }
         }
-        PadMode::Edge => bail!(
-            "Edge padding mode needs pulse strictly bigger than left padding (pulse={} padding={})",
-            pulse,
-            before
-        ),
         PadMode::Reflect => bail!("Reflect padding mode pulsing is not supported"),
     };
     if extra_delay > 0 {

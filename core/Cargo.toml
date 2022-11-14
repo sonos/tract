@@ -9,24 +9,25 @@ keywords = [ "TensorFlow", "NeuralNetworks" ]
 categories = [ "science" ]
 autobenches = false
 edition = "2021"
+rust-version = "1.65"
 
 [badges]
 maintenance = { status = "actively-developed" }
 
 [dependencies]
-bit-set= "0.5.2"
-derive-new = "0.5.9"
-downcast-rs = "1.2.0"
-educe = "0.4.18"
-anyhow = "1.0.43"
-lazy_static = "1.4.0"
-log = "0.4.14"
-maplit = "1.0.2"
-ndarray = "0.15.3"
-num-integer = "0.1.44"
-num-traits = "0.2.14"
-dyn-clone = "1.0.4"
-smallvec = "1.6.1"
+anyhow.workspace = true
+bit-set.workspace = true
+derive-new.workspace = true
+downcast-rs.workspace = true
+educe.workspace = true
+lazy_static.workspace = true
+log.workspace = true
+maplit.workspace = true
+ndarray.workspace = true
+num-integer.workspace = true
+num-traits.workspace = true
+dyn-clone.workspace = true
+smallvec.workspace = true
 tract-data = { version = "0.18.4-pre", path = "../data" }
 tract-linalg = { version = "0.18.4-pre", path = "../linalg" }
 
@@ -35,11 +36,11 @@ default = [ ]
 paranoid_assertions = []
 
 [dev-dependencies]
-criterion = "0.3.5"
-env_logger = "0.9.0"
-lazy_static = "1.4.0"
-proptest = "1"
-approx = "0.5"
+criterion.workspace = true
+env_logger.workspace = true
+lazy_static.workspace = true
+proptest.workspace = true
+approx.workspace = true
 
 [[bench]]
 name = "conv_direct_vs_im2col"

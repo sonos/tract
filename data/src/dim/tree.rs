@@ -1,3 +1,4 @@
+use super::sym::*;
 use itertools::Itertools;
 use num_traits::{AsPrimitive, PrimInt, Zero};
 use std::collections::HashMap;
@@ -17,92 +18,6 @@ impl std::error::Error for UndeterminedSymbol {}
 
 macro_rules! b( ($e:expr) => { Box::new($e) } );
 
-lazy_static::lazy_static! {
-    static ref SYMBOL_TABLE: std::sync::Mutex<Vec<char>> = std::sync::Mutex::new(Vec::new());
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Debug)]
-pub struct Symbol(char, usize);
-
-impl Symbol {
-    pub fn new(c: char) -> Symbol {
-        let mut table = SYMBOL_TABLE.lock().unwrap();
-        table.push(c);
-        Symbol(c, table.len() - 1)
-    }
-
-    pub fn as_char(&self) -> char {
-        self.0
-    }
-}
-
-impl From<char> for Symbol {
-    fn from(c: char) -> Symbol {
-        let mut table = SYMBOL_TABLE.lock().unwrap();
-        if let Some(pos) = table.iter().position(|s| *s == c) {
-            Symbol(c, pos)
-        } else {
-            table.push(c);
-            Symbol(c, table.len() - 1)
-        }
-    }
-}
-
-impl From<char> for TDim {
-    fn from(c: char) -> TDim {
-        Symbol::from(c).into()
-    }
-}
-
-#[derive(Clone, Default)]
-pub struct SymbolValues(Vec<Option<i64>>);
-
-impl SymbolValues {
-    pub fn with(mut self, s: Symbol, v: i64) -> Self {
-        self[s] = Some(v);
-        self
-    }
-
-    pub fn set(&mut self, s: Symbol, v: i64) {
-        self[s] = Some(v);
-    }
-}
-
-impl Debug for SymbolValues {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let table = SYMBOL_TABLE.lock().unwrap();
-        write!(
-            f,
-            "{}",
-            self.0
-                .iter()
-                .enumerate()
-                .filter_map(|(ix, v)| v.map(|v| format!("{}={}", table[ix], v)))
-                .join(",")
-        )
-    }
-}
-
-impl std::ops::Index<Symbol> for SymbolValues {
-    type Output = Option<i64>;
-    fn index(&self, index: Symbol) -> &Self::Output {
-        if index.1 < self.0.len() {
-            &self.0[index.1]
-        } else {
-            &None
-        }
-    }
-}
-
-impl std::ops::IndexMut<Symbol> for SymbolValues {
-    fn index_mut(&mut self, index: Symbol) -> &mut Self::Output {
-        if index.1 >= self.0.len() {
-            self.0.resize_with(index.1 + 1, Default::default)
-        }
-        &mut self.0[index.1]
-    }
-}
-
 #[derive(Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Debug)]
 pub enum TDim {
     Sym(Symbol),
@@ -118,7 +33,7 @@ use TDim::*;
 impl fmt::Display for TDim {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match &self {
-            Sym(sym) => write!(fmt, "{}", sym.0),
+            Sym(sym) => write!(fmt, "{}", sym),
             Val(it) => write!(fmt, "{}", it),
             Add(it) => write!(fmt, "{}", it.iter().map(|x| format!("{}", x)).join("+")),
             Mul(it) => write!(fmt, "{}", it.iter().map(|x| format!("{}", x)).join("*")),
@@ -143,7 +58,7 @@ impl TDim {
 
     pub fn eval(&self, values: &SymbolValues) -> TDim {
         match self {
-            Sym(sym) => values[*sym].map(Val).unwrap_or(Sym(*sym)),
+            Sym(sym) => values[sym].map(Val).unwrap_or_else(|| Sym(sym.clone())),
             Val(v) => Val(*v),
             Add(terms) => terms.iter().fold(Val(0), |acc, it| -> TDim { acc + it.eval(values) }),
             Mul(terms) => terms.iter().fold(Val(1), |acc, it| -> TDim { acc * it.eval(values) }),
@@ -278,9 +193,7 @@ impl TDim {
                             (acc.0 * a, acc.1.into_iter().chain(Some(p.as_ref().clone())).collect())
                         }
                         Val(a) => (acc.0 * a, acc.1),
-                        it => {
-                            (acc.0, acc.1.into_iter().chain(Some(it).into_iter()).collect())
-                        }
+                        it => (acc.0, acc.1.into_iter().chain(Some(it).into_iter()).collect()),
                     });
                 if rest.len() == 0 {
                     Val(ints)
@@ -343,9 +256,8 @@ impl TDim {
                                 q
                             )),
                         )
-                    } else if let Some(v) = terms
-                        .iter()
-                        .find_map(|t| if let Val(v) = t { Some(*v) } else { None })
+                    } else if let Some(v) =
+                        terms.iter().find_map(|t| if let Val(v) = t { Some(*v) } else { None })
                     {
                         let offset = if v >= q as i64 {
                             Some(v / q as i64)
@@ -435,11 +347,11 @@ impl TDim {
         TDim::Div(Box::new(Add(vec![self, Val(rhs as i64 - 1)])), rhs).reduce()
     }
 
-    pub fn slope(&self, sym: Symbol) -> (i64, u64) {
-        fn slope_rec(d: &TDim, sym: Symbol) -> (i64, i64) {
+    pub fn slope(&self, sym: &Symbol) -> (i64, u64) {
+        fn slope_rec(d: &TDim, sym: &Symbol) -> (i64, i64) {
             match d {
                 Val(_) => (0, 1),
-                Sym(s) => ((sym == *s) as i64, 1),
+                Sym(s) => ((sym == s) as i64, 1),
                 Add(terms) => terms
                     .iter()
                     .map(|d| slope_rec(d, sym))
@@ -465,7 +377,7 @@ impl TDim {
     pub fn symbols(&self) -> std::collections::HashSet<Symbol> {
         match self {
             Val(_) => maplit::hashset!(),
-            Sym(s) => maplit::hashset!(*s),
+            Sym(s) => maplit::hashset!(s.clone()),
             Add(terms) | Mul(terms) => terms.iter().fold(maplit::hashset!(), |mut set, v| {
                 set.extend(v.symbols().into_iter());
                 set
@@ -588,7 +500,7 @@ impl From<Symbol> for TDim {
 
 impl<'a> From<&'a Symbol> for TDim {
     fn from(it: &'a Symbol) -> Self {
-        TDim::Sym(*it)
+        TDim::Sym(it.clone())
     }
 }
 
@@ -726,20 +638,6 @@ impl<I: AsPrimitive<u64> + PrimInt> ops::Rem<I> for TDim {
     }
 }
 
-impl std::str::FromStr for TDim {
-    type Err = anyhow::Error;
-    fn from_str(s: &str) -> Result<TDim, Self::Err> {
-        let first = s.chars().next().unwrap();
-        if first.is_ascii_digit() || first == '-' {
-            Ok(s.parse::<i64>()?.into())
-        } else if first.is_alphabetic() && s.len() == 1 {
-            Ok(Symbol::from(first).into())
-        } else {
-            anyhow::bail!("Can't parse {} as TDim", s)
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -747,11 +645,15 @@ mod tests {
     macro_rules! b( ($e:expr) => { Box::new($e) } );
 
     lazy_static::lazy_static! {
-        static ref S: Symbol = crate::dim::Symbol::new('S');
+        static ref S: (SymbolTable, Symbol) = {
+            let table = SymbolTable::default();
+            let s = table.new_with_prefix("S");
+            (table, s)
+        };
     }
 
     fn s() -> TDim {
-        (*S).into()
+        S.1.clone().into()
     }
 
     fn neg(a: &TDim) -> TDim {
@@ -832,11 +734,11 @@ mod tests {
 
     #[test]
     fn substitution() {
-        let x = Symbol::new('x');
-        let e: TDim = x.into();
-        assert_eq!(e.eval(&SymbolValues::default().with(x, 2)).to_i64().unwrap(), 2);
+        let x = S.0.sym("x");
+        let e: TDim = x.clone().into();
+        assert_eq!(e.eval(&SymbolValues::default().with(&x, 2)).to_i64().unwrap(), 2);
         let e = e + 3;
-        assert_eq!(e.eval(&SymbolValues::default().with(x, 2)).to_i64().unwrap(), 5);
+        assert_eq!(e.eval(&SymbolValues::default().with(&x, 2)).to_i64().unwrap(), 5);
     }
 
     #[test]
@@ -855,8 +757,9 @@ mod tests {
     fn reduce_muls() {
         let e: TDim = Val(1) * s();
         assert_eq!(e, s());
-        let e: TDim = s() * 'b' * 1;
-        assert_eq!(e, s() * 'b');
+        let b = S.0.sym("b");
+        let e: TDim = s() * &b * 1;
+        assert_eq!(e, s() * &b);
     }
 
     #[test]

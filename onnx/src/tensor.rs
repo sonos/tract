@@ -1,12 +1,10 @@
+use crate::model::{ParsingContext, TensorPlusPath};
+use crate::pb::tensor_proto::DataType;
 use crate::pb::*;
-use crate::{model::TensorPlusPath, pb::tensor_proto::DataType};
 use prost::Message;
-use std::collections::hash_map::Entry;
+use std::convert::{TryFrom, TryInto};
 use std::fs;
-use std::{
-    convert::{TryFrom, TryInto},
-    path::PathBuf,
-};
+use std::path::PathBuf;
 use tract_hir::internal::*;
 
 impl TryFrom<DataType> for DatumType {
@@ -31,9 +29,9 @@ impl TryFrom<DataType> for DatumType {
     }
 }
 
-pub fn translate_inference_fact<'a, 'b>(
+pub fn translate_inference_fact<'a>(
+    ctx: &ParsingContext,
     t: &'a type_proto::Tensor,
-    symbol_map: &'b mut HashMap<&'a str, Symbol>,
 ) -> TractResult<InferenceFact> {
     let mut fact = InferenceFact::default();
     fact = fact.with_datum_type(DataType::from_i32(t.elem_type).unwrap().try_into()?);
@@ -46,13 +44,7 @@ pub fn translate_inference_fact<'a, 'b>(
                     DimFact::from(v.to_dim())
                 }
                 Some(tensor_shape_proto::dimension::Value::DimParam(v)) => {
-                    let sym = match symbol_map.entry(&v) {
-                        Entry::Occupied(entry) => *entry.get(),
-                        Entry::Vacant(entry) => {
-                            *entry.insert(Symbol::new(v.chars().nth(0).unwrap_or('?')))
-                        }
-                    };
-
+                    let sym = ctx.symbol_table.sym(v);
                     DimFact::from(sym.to_dim())
                 }
                 _ => DimFact::default(),
@@ -72,7 +64,7 @@ fn get_external_resources(t: &TensorProto, path: &str) -> TractResult<Vec<u8>> {
         let p = PathBuf::from(format!("{}/{}", path, external_data.value));
         trace!("external file detected: {:?}", p);
         let file = unsafe { memmap2::Mmap::map(&fs::File::open(p)?)? };
-        tensor_data.extend_from_slice(&*file);
+        tensor_data.extend_from_slice(&file);
         trace!("external file loaded");
     }
     Ok(tensor_data)
@@ -81,18 +73,18 @@ fn get_external_resources(t: &TensorProto, path: &str) -> TractResult<Vec<u8>> {
 fn create_tensor(shape: Vec<usize>, dt: DatumType, data: &[u8]) -> TractResult<Tensor> {
     unsafe {
         match dt {
-            DatumType::U8 => Tensor::from_raw::<u8>(&*shape, data),
-            DatumType::U16 => Tensor::from_raw::<u16>(&*shape, data),
-            DatumType::U32 => Tensor::from_raw::<u32>(&*shape, data),
-            DatumType::U64 => Tensor::from_raw::<u64>(&*shape, data),
-            DatumType::I8 => Tensor::from_raw::<i8>(&*shape, data),
-            DatumType::I16 => Tensor::from_raw::<i16>(&*shape, data),
-            DatumType::I32 => Tensor::from_raw::<i32>(&*shape, data),
-            DatumType::I64 => Tensor::from_raw::<i64>(&*shape, data),
-            DatumType::F16 => Tensor::from_raw::<f16>(&*shape, data),
-            DatumType::F32 => Tensor::from_raw::<f32>(&*shape, data),
-            DatumType::F64 => Tensor::from_raw::<f64>(&*shape, data),
-            DatumType::Bool => Ok(Tensor::from_raw::<u8>(&*shape, data)?
+            DatumType::U8 => Tensor::from_raw::<u8>(&shape, data),
+            DatumType::U16 => Tensor::from_raw::<u16>(&shape, data),
+            DatumType::U32 => Tensor::from_raw::<u32>(&shape, data),
+            DatumType::U64 => Tensor::from_raw::<u64>(&shape, data),
+            DatumType::I8 => Tensor::from_raw::<i8>(&shape, data),
+            DatumType::I16 => Tensor::from_raw::<i16>(&shape, data),
+            DatumType::I32 => Tensor::from_raw::<i32>(&shape, data),
+            DatumType::I64 => Tensor::from_raw::<i64>(&shape, data),
+            DatumType::F16 => Tensor::from_raw::<f16>(&shape, data),
+            DatumType::F32 => Tensor::from_raw::<f32>(&shape, data),
+            DatumType::F64 => Tensor::from_raw::<f64>(&shape, data),
+            DatumType::Bool => Ok(Tensor::from_raw::<u8>(&shape, data)?
                 .into_array::<u8>()?
                 .mapv(|x| x != 0)
                 .into()),

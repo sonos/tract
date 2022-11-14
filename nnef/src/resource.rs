@@ -4,8 +4,8 @@ use crate::ast::{Document, QuantFormat};
 use crate::internal::*;
 use tract_core::downcast_rs::{impl_downcast, DowncastSync};
 
-pub const GRAPH_NNEF_FILENAME: &'static str = "graph.nnef";
-pub const GRAPH_QUANT_FILENAME: &'static str = "graph.quant";
+pub const GRAPH_NNEF_FILENAME: &str = "graph.nnef";
+pub const GRAPH_QUANT_FILENAME: &str = "graph.quant";
 
 pub fn resource_path_to_id(path: impl AsRef<Path>) -> TractResult<String> {
     let mut path = path.as_ref().to_path_buf();

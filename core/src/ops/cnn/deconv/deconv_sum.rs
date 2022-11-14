@@ -40,7 +40,7 @@ impl EvalOp for DeconvSum {
         self.input_shape.is_concrete()
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         self.eval_with_values(inputs, &SymbolValues::default())
     }
 
@@ -58,8 +58,8 @@ impl OpState for DeconvSum {
         &mut self,
         session: &mut SessionState,
         _op: &dyn Op,
-        inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         self.eval_with_values(inputs, &session.resolved_symbols)
     }
 }
@@ -67,9 +67,9 @@ impl OpState for DeconvSum {
 impl DeconvSum {
     fn eval_with_values(
         &self,
-        mut inputs: TVec<Arc<Tensor>>,
+        mut inputs: TVec<TValue>,
         values: &SymbolValues,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
+    ) -> TractResult<TVec<TValue>> {
         let gemm = args_1!(inputs).into_tensor();
         debug_assert_eq!(gemm.datum_type(), f32::datum_type());
         let input_shape = self.input_shape.eval_to_usize(values)?.into_owned();
@@ -87,7 +87,7 @@ impl DeconvSum {
         let mut tensor = if let Some(b) = &self.bias {
             if output_shape.shape[0..output_shape.c_axis()].iter().all(|d| *d == 1) {
                 unsafe {
-                    let mut tensor = Tensor::uninitialized::<f32>(&*output_shape.shape)?;
+                    let mut tensor = Tensor::uninitialized::<f32>(&output_shape.shape)?;
                     let values = b.as_ptr::<f32>()?;
                     let slice = tensor.as_ptr_mut::<f32>()?;
                     let stride = *output_shape.c_stride();
@@ -100,7 +100,7 @@ impl DeconvSum {
                     tensor
                 }
             } else {
-                let mut tensor = Tensor::zero::<f32>(&*output_shape.shape)?;
+                let mut tensor = Tensor::zero::<f32>(&output_shape.shape)?;
                 let mut output = tensor.to_array_view_mut::<f32>()?;
                 let mut bias_shape = tvec!(1; output_shape.rank());
                 bias_shape[output_shape.c_axis()] = b.len();
@@ -109,7 +109,7 @@ impl DeconvSum {
                 tensor
             }
         } else {
-            Tensor::zero::<f32>(&*output_shape.shape)?
+            Tensor::zero::<f32>(&output_shape.shape)?
         };
         let mut output = tensor.to_array_view_mut::<f32>()?;
         let hw = *gemm.shape().last().unwrap();
@@ -155,7 +155,7 @@ impl DeconvSum {
                 &mut output.into_dimensionality().unwrap(),
             )?,
         }
-        Ok(tvec!(tensor.into_arc_tensor()))
+        Ok(tvec!(tensor.into_tvalue()))
     }
 
     pub fn main_loop_1d(
@@ -439,7 +439,7 @@ impl DeconvSum {
 
 impl TypedOp for DeconvSum {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let shape = super::output_shape(&self.pool_spec, &*self.input_shape, &*self.adjustments)?;
+        let shape = super::output_shape(&self.pool_spec, &self.input_shape, &self.adjustments)?;
         Ok(tvec!(inputs[0].datum_type.fact(&*shape)))
     }
 

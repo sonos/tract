@@ -166,13 +166,13 @@ impl DeconvProblem {
         model.set_output_outlets(&output).unwrap();
         let model = model.into_optimized().unwrap();
         let mut outputs =
-            model.into_runnable().unwrap().run(tvec!(self.input.clone().into_tensor())).unwrap();
+            model.into_runnable().unwrap().run(tvec!(self.input.clone().into_tvalue())).unwrap();
         outputs.remove(0).into_tensor().into_array().unwrap().into_dimensionality().unwrap()
     }
 
     fn op_eval(&self) -> ArrayD<f32> {
         let op = self.as_op();
-        let mut outputs = op.eval(tvec!(self.input.clone().into_arc_tensor())).unwrap();
+        let mut outputs = op.eval(tvec!(self.input.clone().into_tvalue())).unwrap();
         outputs.remove(0).into_tensor().into_array().unwrap().into_dimensionality().unwrap()
     }
 

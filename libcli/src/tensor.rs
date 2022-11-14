@@ -1,9 +1,9 @@
-use std::sync::Mutex;
 use std::collections::HashSet;
 use std::fs;
 use std::io::Read;
 use std::ops::Range;
 use std::str::FromStr;
+use std::sync::Mutex;
 
 use crate::model::Model;
 use tract_hir::internal::*;
@@ -38,12 +38,6 @@ impl TensorsValues {
         self.by_input_ix_mut(ix).unwrap()
     }
 
-    /*
-    pub fn by_output_ix(&self, ix: usize) -> Option<&TensorValues> {
-    self.0.iter().find(|t| t.output_index == Some(ix))
-    }
-    */
-
     pub fn add(&mut self, other: TensorValues) {
         let mut tensor = other.input_index.and_then(|ix| self.by_input_ix_mut(ix));
 
@@ -64,17 +58,15 @@ impl TensorsValues {
     }
 }
 
-
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct TensorValues {
     pub input_index: Option<usize>,
     pub output_index: Option<usize>,
     pub name: Option<String>,
     pub fact: Option<InferenceFact>,
-    pub values: Option<Vec<Arc<Tensor>>>,
+    pub values: Option<Vec<TValue>>,
     pub random_range: Option<Range<f32>>,
 }
-
 
 fn parse_dt(dt: &str) -> TractResult<DatumType> {
     Ok(match dt.to_lowercase().as_ref() {
@@ -96,21 +88,21 @@ fn parse_dt(dt: &str) -> TractResult<DatumType> {
     })
 }
 
-pub fn parse_spec(size: &str) -> TractResult<InferenceFact> {
-    if size.len() == 0 {
+pub fn parse_spec(symbol_table: &SymbolTable, size: &str) -> TractResult<InferenceFact> {
+    if size.is_empty() {
         return Ok(InferenceFact::default());
     }
     if size.contains('x') && !size.contains(',') {
         parse_x_spec(size)
     } else {
-        parse_coma_spec(size)
+        parse_coma_spec(symbol_table, size)
     }
 }
 
-pub fn parse_coma_spec(size: &str) -> TractResult<InferenceFact> {
+pub fn parse_coma_spec(symbol_table: &SymbolTable, size: &str) -> TractResult<InferenceFact> {
     let splits = size.split(',').collect::<Vec<_>>();
 
-    if splits.len() < 1 {
+    if splits.is_empty() {
         // Hide '{' in this error message from the formatting machinery in bail macro
         let msg = "The <size> argument should be formatted as {size},{...},{type}.";
         bail!(msg);
@@ -127,7 +119,11 @@ pub fn parse_coma_spec(size: &str) -> TractResult<InferenceFact> {
         shape
             .iter()
             .map(|&s| {
-                Ok(if s == "_" { GenericFactoid::Any } else { GenericFactoid::Only(parse_dim(s)?) })
+                Ok(if s == "_" {
+                    GenericFactoid::Any
+                } else {
+                    GenericFactoid::Only(parse_tdim(symbol_table, s)?)
+                })
             })
             .collect::<TractResult<TVec<DimFact>>>()?,
     );
@@ -139,35 +135,13 @@ pub fn parse_coma_spec(size: &str) -> TractResult<InferenceFact> {
     }
 }
 
-pub fn parse_dim(i: &str) -> TractResult<TDim> {
-    // ensure the magic S is pre-registered
-    #[cfg(feature = "pulse")]
-    let _ = tract_pulse::internal::stream_symbol();
-
-    if i.len() == 0 {
-        bail!("Can not parse empty string as Dim")
-    }
-    let number_len = i.chars().take_while(|c| c.is_ascii_digit()).count();
-    let symbol_len = i.len() - number_len;
-    if symbol_len > 1 {
-        bail!("Can not parse {} as Dim", i)
-    }
-    let number: i64 = if number_len > 0 { i[..number_len].parse()? } else { 1 };
-    if symbol_len == 0 {
-        return Ok(number.to_dim());
-    }
-    let symbol = i.chars().last().unwrap();
-    let symbol = Symbol::from(symbol);
-    Ok(symbol.to_dim() * number)
-}
-
 pub fn parse_x_spec(size: &str) -> TractResult<InferenceFact> {
     warn!(
         "Deprecated \"x\" syntax for shape : please use the comma as separator, x is now a symbol."
     );
     let splits = size.split('x').collect::<Vec<_>>();
 
-    if splits.len() < 1 {
+    if splits.is_empty() {
         // Hide '{' in this error message from the formatting machinery in bail macro
         let msg = "The <size> argument should be formatted as {size},{...},{type}.";
         bail!(msg);
@@ -209,14 +183,14 @@ fn parse_values<T: Datum + FromStr>(shape: &[usize], it: Vec<&str>) -> TractResu
     Ok(tract_ndarray::Array::from_shape_vec(shape, values)?.into())
 }
 
-fn tensor_for_text_data(filename: &str) -> TractResult<Tensor> {
+fn tensor_for_text_data(symbol_table: &SymbolTable, filename: &str) -> TractResult<Tensor> {
     let mut file = fs::File::open(filename)
         .map_err(|e| format_err!("Reading tensor from {}, {:?}", filename, e))?;
     let mut data = String::new();
     file.read_to_string(&mut data)?;
 
     let mut lines = data.lines();
-    let proto = parse_spec(lines.next().context("Empty data file")?)?;
+    let proto = parse_spec(symbol_table, lines.next().context("Empty data file")?)?;
     let shape = proto.shape.concretize().unwrap();
 
     let values = lines.flat_map(|l| l.split_whitespace()).collect::<Vec<&str>>();
@@ -227,11 +201,14 @@ fn tensor_for_text_data(filename: &str) -> TractResult<Tensor> {
     let missing = values.len() / product;
 
     let shape: Vec<_> = shape.iter().map(|d| d.to_usize().unwrap_or(missing)).collect();
-    dispatch_datum!(parse_values(proto.datum_type.concretize().unwrap())(&*shape, values))
+    dispatch_numbers!(parse_values(proto.datum_type.concretize().unwrap())(&*shape, values))
 }
 
 /// Parses the `data` command-line argument.
-pub fn for_data(filename: &str) -> TractResult<(Option<String>, InferenceFact)> {
+pub fn for_data(
+    symbol_table: &SymbolTable,
+    filename: &str,
+) -> TractResult<(Option<String>, InferenceFact)> {
     #[allow(unused_imports)]
     use std::convert::TryFrom;
     if filename.ends_with(".pb") {
@@ -255,7 +232,7 @@ pub fn for_data(filename: &str) -> TractResult<(Option<String>, InferenceFact)> 
         let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(filename)?)?;
         Ok((None, for_npz(&mut npz, inner)?.into()))
     } else {
-        Ok((None, tensor_for_text_data(filename)?.into()))
+        Ok((None, tensor_for_text_data(symbol_table, filename)?.into()))
     }
 }
 
@@ -296,9 +273,12 @@ pub fn for_npz(npz: &mut ndarray_npy::NpzReader<fs::File>, name: &str) -> TractR
     bail!("Can not extract tensor from {}", name);
 }
 
-pub fn for_string(value: &str) -> TractResult<(Option<String>, InferenceFact)> {
+pub fn for_string(
+    symbol_table: &SymbolTable,
+    value: &str,
+) -> TractResult<(Option<String>, InferenceFact)> {
     if let Some(stripped) = value.strip_prefix('@') {
-        for_data(stripped)
+        for_data(symbol_table, stripped)
     } else {
         let (name, value) = if value.contains(':') {
             let mut splits = value.split(':');
@@ -308,7 +288,7 @@ pub fn for_string(value: &str) -> TractResult<(Option<String>, InferenceFact)> {
         };
         if value.contains('=') {
             let mut split = value.split('=');
-            let spec = parse_spec(split.next().unwrap())?;
+            let spec = parse_spec(symbol_table, split.next().unwrap())?;
             let value = split.next().unwrap().split(',');
             let dt = spec
                 .datum_type
@@ -318,10 +298,10 @@ pub fn for_string(value: &str) -> TractResult<(Option<String>, InferenceFact)> {
                 .shape
                 .as_concrete_finite()?
                 .context("Must specify concrete shape when giving tensor value")?;
-            let tensor = dispatch_datum!(parse_values(dt)(&*shape, value.collect()))?;
+            let tensor = dispatch_numbers!(parse_values(dt)(&*shape, value.collect()))?;
             Ok((name, tensor.into()))
         } else {
-            Ok((name, parse_spec(value)?))
+            Ok((name, parse_spec(symbol_table, value)?))
         }
     }
 }
@@ -364,8 +344,8 @@ pub struct RunParams {
 pub fn retrieve_or_make_inputs(
     tract: &dyn Model,
     params: &RunParams,
-) -> TractResult<Vec<TVec<Tensor>>> {
-    let mut tmp: TVec<Vec<Tensor>> = tvec![];
+) -> TractResult<Vec<TVec<TValue>>> {
+    let mut tmp: TVec<Vec<TValue>> = tvec![];
     for (ix, input) in tract.input_outlets().iter().enumerate() {
         let name = tract.node_name(input.node);
         let fact = tract.outlet_typedfact(*input)?;
@@ -380,18 +360,20 @@ pub fn retrieve_or_make_inputs(
                     .map(|v| {
                         let mut v = v.clone().into_tensor();
                         unsafe { v.set_datum_type(fact.datum_type) };
-                        v.into_arc_tensor()
+                        v.into()
                     })
                     .collect();
             }
-            if TypedFact::from(value[0].clone()).compatible_with(&fact) {
+            if TypedFact::from(&*value[0]).compatible_with(&fact) {
                 info!("Using fixed input for input called {} ({} turn(s))", name, value.len());
-                tmp.push(value.iter().map(|t| t.clone().into_tensor()).collect())
+                tmp.push(value.iter().map(|t| t.clone().into_tensor().into()).collect())
             } else if fact.datum_type == f16::datum_type()
                 && value[0].datum_type() == f32::datum_type()
                 && params.allow_float_casts
             {
-                tmp.push(value.iter().map(|t| t.cast_to::<f16>().unwrap().into_owned()).collect())
+                tmp.push(
+                    value.iter().map(|t| t.cast_to::<f16>().unwrap().into_owned().into()).collect(),
+                )
             } else if value.len() == 1 && tract.properties().contains_key("pulse.delay") {
                 let value = &value[0];
                 let input_pulse_axis = tract
@@ -427,9 +409,12 @@ pub fn retrieve_or_make_inputs(
                     if end > start {
                         t.assign_slice(0..end - start, value, start..end, input_pulse_axis)?;
                     }
-                    values.push(t);
+                    values.push(t.into());
                 }
-                info!("Generated {} pulses of shape {:?} for input {}.", needed_pulses, fact.shape, ix);
+                info!(
+                    "Generated {} pulses of shape {:?} for input {}.",
+                    needed_pulses, fact.shape, ix
+                );
                 tmp.push(values);
             } else {
                 bail!("For input {}, can not reconcile model input fact {:?} with provided input {:?}", name, fact, value[0]);
@@ -441,7 +426,7 @@ pub fn retrieve_or_make_inputs(
                 .tensors_values
                 .by_name(name)
                 .or_else(|| params.tensors_values.by_input_ix(ix));
-            tmp.push(vec![crate::tensor::tensor_for_fact(&fact, None, tv)?]);
+            tmp.push(vec![crate::tensor::tensor_for_fact(&fact, None, tv)?.into()]);
         } else {
             bail!("Unmatched tensor {}. Fix the input or use \"--allow-random-input\" if this was intended", name);
         }
@@ -449,13 +434,13 @@ pub fn retrieve_or_make_inputs(
     Ok((0..tmp[0].len()).map(|turn| tmp.iter().map(|t| t[turn].clone()).collect()).collect())
 }
 
-fn make_inputs(values: &[impl std::borrow::Borrow<TypedFact>]) -> TractResult<TVec<Tensor>> {
-    values.iter().map(|v| tensor_for_fact(v.borrow(), None, None)).collect()
+fn make_inputs(values: &[impl std::borrow::Borrow<TypedFact>]) -> TractResult<TVec<TValue>> {
+    values.iter().map(|v| tensor_for_fact(v.borrow(), None, None).map(|t| t.into())).collect()
 }
 
-pub fn make_inputs_for_model(model: &dyn Model) -> TractResult<TVec<Tensor>> {
+pub fn make_inputs_for_model(model: &dyn Model) -> TractResult<TVec<TValue>> {
     make_inputs(
-        &*model
+        &model
             .input_outlets()
             .iter()
             .map(|&t| model.outlet_typedfact(t))

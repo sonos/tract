@@ -95,7 +95,7 @@ pub fn handle_tensorflow(
         }
     }
 
-    let mut all_values: HashMap<String, Vec<TractResult<Arc<Tensor>>>> = HashMap::new();
+    let mut all_values: HashMap<String, Vec<TractResult<TValue>>> = HashMap::new();
     if resilient {
         for name in wanted_outputs {
             all_values.insert(
@@ -117,12 +117,12 @@ pub fn handle_tensorflow(
         all_values.insert(name.to_string(), vec![Ok(generated[ix].clone().into_arc_tensor())]);
     }
     dispatch_model_no_pulse!(params.tract_model, |m| compare(
-        cumulative,
-        m,
-        &all_values,
-        &params,
-        &output_params
-        run_params,
+    cumulative,
+    m,
+    &all_values,
+    &params,
+    &output_params
+    run_params,
     ))
 }
 
@@ -135,7 +135,7 @@ pub fn handle_npz(
 ) -> TractResult<()> {
     use tract_libcli::tensor::for_npz;
     let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(npz)?)?;
-    let mut values: HashMap<String, Vec<TractResult<Arc<Tensor>>>> = HashMap::new();
+    let mut values: HashMap<String, Vec<TractResult<TValue>>> = HashMap::new();
     let multiturn = npz.names()?.iter().any(|n| n.starts_with("turn_0/"));
     for name in npz.names()? {
         if let Ok(value) = for_npz(&mut npz, &name) {
@@ -150,7 +150,7 @@ pub fn handle_npz(
                         )
                     })?
                     .trim_end_matches(".npy");
-                values.entry(name.to_string()).or_default().push(Ok(value.into_arc_tensor()));
+                values.entry(name.to_string()).or_default().push(Ok(value.into_tvalue()));
             } else {
                 let name = name.trim_end_matches(".npy");
                 values.insert(name.to_string(), vec![Ok(value.into())]);
@@ -186,12 +186,14 @@ pub fn handle_pbdir(
     output_params: &DisplayParams,
     run_params: &RunParams,
 ) -> TractResult<()> {
-    let mut values: HashMap<String, Vec<TractResult<Arc<Tensor>>>> = HashMap::new();
+    let mut values: HashMap<String, Vec<TractResult<TValue>>> = HashMap::new();
     for entry in fs::read_dir(pbdir)? {
         let entry = entry?;
         let file = fs::File::open(entry.path())?;
         let tensor = tract_onnx::tensor::proto_from_reader(file)?;
-        values.insert(tensor.name.to_string(), vec![Ok(Arc::new(tensor.try_into()?))]);
+        let name = tensor.name.to_string();
+        let value: Tensor = tensor.try_into()?;
+        values.insert(name, vec![Ok(value.into())]);
     }
     dispatch_model_no_pulse!(params.tract_model, |m| compare(
         cumulative,
@@ -236,13 +238,13 @@ pub fn handle_with_model(
     reference_model: &TypedModel,
     run_params: &RunParams,
 ) -> TractResult<()> {
-    let mut values: HashMap<String, Vec<TractResult<Arc<Tensor>>>> = HashMap::new();
+    let mut values: HashMap<String, Vec<TractResult<TValue>>> = HashMap::new();
 
     let plan = SimplePlan::new(reference_model)?;
     let mut state = SimpleState::new(plan)?;
     for inputs in tract_libcli::tensor::retrieve_or_make_inputs(reference_model, run_params)? {
         state.run_plan_with_eval(inputs, |session, state, node, input| -> TractResult<_> {
-            let result: TVec<Arc<Tensor>> = tract_core::plan::eval(session, state, node, input)?;
+            let result = tract_core::plan::eval(session, state, node, input)?;
             if node.outputs.len() == 1 {
                 values.entry(node.name.clone()).or_default().push(Ok(result[0].clone()));
             }
@@ -269,7 +271,7 @@ pub fn handle_with_model(
 pub fn compare<F, O>(
     cumulative: bool,
     tract: &Graph<F, O>,
-    all_values: &HashMap<String, Vec<TractResult<Arc<Tensor>>>>,
+    all_values: &HashMap<String, Vec<TractResult<TValue>>>,
     params: &Parameters,
     output_params: &DisplayParams,
     run_params: &RunParams,
@@ -291,17 +293,17 @@ where
     let mut unchecked = std::collections::HashSet::new();
     let mut ok = 0;
     fn canonic(s: &str) -> String {
-        s.replace('.', "_").replace('-', "_")
+        s.replace(['.', '-'], "_")
     }
-    let all_values: HashMap<String, &Vec<TractResult<Arc<Tensor>>>> =
+    let all_values: HashMap<String, &Vec<TractResult<TValue>>> =
         all_values.iter().map(|(k, v)| (canonic(k), v)).collect();
     let model_inputs = tract_libcli::tensor::retrieve_or_make_inputs(tract, run_params)?;
     for (turn, inputs) in model_inputs.into_iter().enumerate() {
         state.run_plan_with_eval(
             inputs,
-            |session_state, state, node, input| -> TractResult<TVec<Arc<Tensor>>> {
+            |session_state, state, node, input| -> TractResult<TVec<TValue>> {
                 let mut tags = annotations.node_mut(node.id.into());
-                let reference: Option<TVec<Arc<Tensor>>> = (0..node.outputs.len())
+                let reference: Option<TVec<TValue>> = (0..node.outputs.len())
                     .map(|ix| {
                         let get_value = |label: &str| {
                             all_values
@@ -323,12 +325,9 @@ where
                                 {
                                     let mut t = t.into_tensor();
                                     unsafe { t.set_datum_type(needed_type) };
-                                    t.into_arc_tensor()
+                                    t.into_tvalue()
                                 } else if needed_type.is_float() && t.datum_type().is_float() {
-                                    t.cast_to_dt(needed_type)
-                                        .unwrap()
-                                        .into_owned()
-                                        .into_arc_tensor()
+                                    t.cast_to_dt(needed_type).unwrap().into_owned().into_tvalue()
                                 } else {
                                     panic!("Comparing incompatible types")
                                 }

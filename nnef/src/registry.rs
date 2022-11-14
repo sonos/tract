@@ -105,7 +105,7 @@ impl Registry {
                     .find(|ew| ew.1.as_ref().type_id() == op.0.type_id())
                 {
                     let a = ast.mapping[&node.inputs[0]].clone();
-                    return Ok(Some(invocation(&*op.0, &[a], &[])));
+                    return Ok(Some(invocation(&op.0, &[a], &[])));
                 }
             } else if let Some(op) = self.element_wise_ops.iter().find(|ew| ew.1 == op.0.type_id())
             {
@@ -119,7 +119,7 @@ impl Registry {
             {
                 let a = ast.mapping[&node.inputs[0]].clone();
                 let b = ast.mapping[&node.inputs[1]].clone();
-                return Ok(Some(invocation(&*op.0, &[a, b], &[])));
+                return Ok(Some(invocation(&op.0, &[a, b], &[])));
             } else if let Some(op) = self
                 .binary_ops
                 .iter()
@@ -127,7 +127,7 @@ impl Registry {
             {
                 let a = ast.mapping[&node.inputs[0]].clone();
                 let b = ast.mapping[&node.inputs[1]].clone();
-                return Ok(Some(invocation(&*op.0, &[b, a], &[])));
+                return Ok(Some(invocation(&op.0, &[b, a], &[])));
             }
         } else if let Some(unary) = node.op().downcast_ref::<ops::binary::UnaryOp>() {
             if let Some(o) =
@@ -135,7 +135,7 @@ impl Registry {
             {
                 let a = ast.konst(format!("{}-a", node.name), &unary.a)?;
                 let b = ast.mapping[&node.inputs[0]].clone();
-                return Ok(Some(invocation(&*o.0, &[a, b], &[])));
+                return Ok(Some(invocation(&o.0, &[a, b], &[])));
             } else if let Some(o) = self
                 .binary_ops
                 .iter()
@@ -143,7 +143,7 @@ impl Registry {
             {
                 let a = ast.konst(format!("{}-a", node.name), &unary.a)?;
                 let b = ast.mapping[&node.inputs[0]].clone();
-                return Ok(Some(invocation(&*o.0, &[b, a], &[])));
+                return Ok(Some(invocation(&o.0, &[b, a], &[])));
             }
         } else if let Some(op) = self.from_tract.get(&node.op().type_id()) {
             if let Some(result) = op(ast, node)? {
@@ -161,7 +161,7 @@ impl Registry {
     ) -> TractResult<Option<Value>> {
         if let Some(op) = self.primitives.get(&invocation.id) {
             let resolved =
-                ResolvedInvocation { invocation, default_params: &*op.0, dt_from_quant_file: dt };
+                ResolvedInvocation { invocation, default_params: &op.0, dt_from_quant_file: dt };
             let out_value = (op.1)(builder, &resolved)
                 .with_context(|| format!("Deserializing op `{}'", invocation.id))?;
             return Ok(Some(out_value));

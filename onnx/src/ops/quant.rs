@@ -275,7 +275,7 @@ impl EvalOp for DynamicQuantizeLinearU8 {
     fn is_stateless(&self) -> bool {
         true
     }
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = &inputs[0];
         let a_input = input.to_array_view::<f32>()?;
         let (scale, zero_point) = scale_and_zero_point(a_input);
@@ -290,9 +290,9 @@ impl EvalOp for DynamicQuantizeLinearU8 {
             dst.as_slice_mut::<u8>()?,
         );
 
-        let quantized_tensor = dst.into_arc_tensor();
-        let scale_tensor = rctensor0(scale);
-        let zero_point_tensor = rctensor0(zero_point);
+        let quantized_tensor = dst.into_tvalue();
+        let scale_tensor = tensor0(scale).into();
+        let zero_point_tensor = tensor0(zero_point).into();
 
         Ok(tvec!(quantized_tensor, scale_tensor, zero_point_tensor))
     }
@@ -302,8 +302,8 @@ impl TypedOp for DynamicQuantizeLinearU8 {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut quantized_fact = inputs[0].clone();
         quantized_fact.datum_type = u8::datum_type();
-        let scale_fact = f32::fact(&[0; 0]);
-        let zero_fact = u8::fact(&[0; 0]);
+        let scale_fact = f32::fact([0; 0]);
+        let zero_fact = u8::fact([0; 0]);
         Ok(tvec!(quantized_fact, scale_fact, zero_fact))
     }
 
@@ -320,9 +320,9 @@ mod tests {
     #[test]
     fn test_scale_and_zero_point() {
         let data: [(&[f32], f32, u8); 3] = [
-            (&[0., 2., -3., -2.5, 1.34, 0.5], 0.0196078438, 153),
-            (&[-1., -2.1, -1.3, -2.5, -3.34, -4.], 0.0156862754, 255),
-            (&[1., 2.1, 1.3, 2.5, 3.34, 4., 1.5, 2.6, 3.9, 4., 3., 2.345], 0.0156862754, 0),
+            (&[0., 2., -3., -2.5, 1.34, 0.5], 0.019_607_844, 153),
+            (&[-1., -2.1, -1.3, -2.5, -3.34, -4.], 0.015_686_275, 255),
+            (&[1., 2.1, 1.3, 2.5, 3.34, 4., 1.5, 2.6, 3.9, 4., 3., 2.345], 0.015_686_275, 0),
         ];
 
         let epsilon = 0.00000001;
@@ -351,7 +351,7 @@ mod tests {
             let (scale, zero_point) = scale_and_zero_point(v.view());
 
             // same shape of v but with u8 type, values will be overwritten
-            let mut quantized = v.mapv(|_| 0 as u8);
+            let mut quantized = v.mapv(|_| 0_u8);
             dynamic_quantize_linear_u8(
                 scale,
                 zero_point,

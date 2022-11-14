@@ -31,9 +31,9 @@ impl EvalOp for MatMulUnary {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let t = eval(&self.a, &inputs[0], self.axes)?;
-        Ok(tvec!(t.into_arc_tensor()))
+        Ok(tvec!(t.into()))
     }
 }
 
@@ -55,7 +55,7 @@ impl TypedOp for MatMulUnary {
     }
 
     fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
-        mir_unary_invariants(&inputs[0], &outputs[0], self.axes)
+        mir_unary_invariants(inputs[0], outputs[0], self.axes)
     }
 
     fn change_axes(
@@ -127,7 +127,6 @@ pub fn new_mat_mul_unary_finite(
     let mut patch = TypedModelPatch::default();
     let mut wire = patch.tap_model(model, node.inputs[input])?;
     let b = model.outlet_fact(node.inputs[input])?;
-
     let c_dt = output_type(a.datum_type());
     let a_shape = ShapeFact::from(a.shape());
     let (m, k, n, c_shape) = compute_shape(&a_shape, &*b.shape, *axes)?;
@@ -343,7 +342,7 @@ impl MatMulUnary {
             let full = patch.wire_node(
                 format!("{}.concat-m.full", node.name),
                 crate::ops::array::TypedConcat::concat_vars(axis, splits.len()),
-                &*splits,
+                &splits,
             )?[0];
             patch.shunt_outside(model, node.id.into(), full)?;
             for (ix, succ) in node.outputs[0].successors.iter().enumerate() {
@@ -368,7 +367,7 @@ impl MatMulUnary {
                         patch.wire_node(
                             format!("{}.concat-m{}..{}..{}", node.name, ix, slice.start, slice.end),
                             crate::ops::array::TypedConcat::concat_vars(axis, slices.len()),
-                            &*slices,
+                            &slices,
                         )?[0]
                     } else {
                         slices[0]
@@ -402,14 +401,15 @@ pub(super) fn mir_unary_invariants(
     Ok(axes)
 }
 
+#[allow(clippy::type_repetition_in_bounds, clippy::type_complexity)]
 pub(super) fn mir_unary_change_axes(
     model: &TypedModel,
     node: &TypedNode,
     io: InOut,
     change: &AxisOp,
     old_axes: &MatMulAxes,
-    old_a: &Tensor,
-) -> TractResult<Option<(Tensor, MatMulAxes, TVec<(InOut, AxisOp)>)>> {
+    old_a: &Arc<Tensor>,
+) -> TractResult<Option<(Arc<Tensor>, MatMulAxes, TVec<(InOut, AxisOp)>)>> {
     let b_fact = model.outlet_fact(node.inputs[0])?;
     let result = if io == InOut::In(0) {
         old_axes.change_axis_from_b(change, b_fact.rank())
@@ -419,12 +419,15 @@ pub(super) fn mir_unary_change_axes(
         unreachable!();
     };
     if let Ok((axes, change_a, change_b, change_c)) = result {
-        let mut new_a = old_a.clone();
-        if let Some(change_a) = change_a {
-            if let Err(_) = change_a.change_tensor(&mut new_a, false) {
+        let new_a = if let Some(change_a) = change_a {
+            let mut new_a = old_a.clone().into_tensor();
+            if change_a.change_tensor(&mut new_a, false).is_err() {
                 return Ok(None); // can not apply change to A (Rm on non-trivial axis ?)
             }
-        }
+            new_a.into_arc_tensor()
+        } else {
+            old_a.clone()
+        };
         let mut wires = tvec!();
         if let Some(change_b) = change_b {
             wires.push((InOut::In(0), change_b));

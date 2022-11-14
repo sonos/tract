@@ -101,7 +101,7 @@ impl GeneralDescriptor {
                     let name = format!("{}-{}", name, ix);
                     appendee.wire(
                         InletId::new(id, ix),
-                        &*name,
+                        &name,
                         model,
                         deferred,
                         adjust_final_offset,
@@ -135,7 +135,7 @@ impl GeneralDescriptor {
                     tvec!(InferenceFact::default()),
                 )?;
                 model.add_edge(OutletId::new(id, 0), inlet)?;
-                n.wire(InletId::new(id, 0), &*name, model, deferred, adjust_final_offset)?;
+                n.wire(InletId::new(id, 0), &name, model, deferred, adjust_final_offset)?;
                 return Ok(());
             }
             _ => (),
@@ -188,13 +188,19 @@ impl Framework<KaldiProtoModel, InferenceModel> for Kaldi {
         use crate::parser;
         let mut v = vec![];
         r.read_to_end(&mut v)?;
-        parser::nnet3(&*v)
+        parser::nnet3(&v)
     }
 
-    fn model_for_proto_model(&self, proto_model: &KaldiProtoModel) -> TractResult<InferenceModel> {
+    fn model_for_proto_model_with_symbols(
+        &self,
+        proto_model: &KaldiProtoModel,
+        symbols: &SymbolTable,
+    ) -> TractResult<InferenceModel> {
         let ctx = ParsingContext { proto_model };
-        let mut model = InferenceModel::default();
-        let s = tract_pulse::internal::stream_dim();
+        let mut model =
+            InferenceModel { symbol_table: symbols.to_owned(), ..InferenceModel::default() };
+
+        let s = model.symbol_table.sym("S");
         model.add_source(
             proto_model.config_lines.input_name.clone(),
             f32::fact(dims!(s, proto_model.config_lines.input_dim)).into(),
@@ -277,7 +283,7 @@ impl Framework<KaldiProtoModel, InferenceModel> for Kaldi {
             let src = OutletId::new(model.node_by_name(&*name)?.id, 0);
             model.add_edge(src, inlet)?;
         }
-        model.set_output_outlets(&*outputs)?;
+        model.set_output_outlets(&outputs)?;
         Ok(model)
     }
 }

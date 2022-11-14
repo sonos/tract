@@ -93,7 +93,7 @@ impl ChangeAxisMatmulProblem {
 
     fn reference(&self) -> Tensor {
         let model = self.model();
-        let mut outputs = model.into_runnable().unwrap().run(tvec!(self.input.clone())).unwrap();
+        let mut outputs = model.into_runnable().unwrap().run(tvec!(self.input.clone().into())).unwrap();
         outputs.remove(0).into_tensor()
     }
 
@@ -130,7 +130,7 @@ impl ChangeAxisMatmulProblem {
                 }
                 model.set_output_outlets(&wire).unwrap();
                 let mut outputs =
-                    model.into_runnable().unwrap().run(tvec!(self.input.clone())).unwrap();
+                    model.into_runnable().unwrap().run(tvec!(self.input.clone().into())).unwrap();
                 outputs.remove(0).into_tensor()
             })
     }

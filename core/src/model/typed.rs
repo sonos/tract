@@ -50,13 +50,15 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                     .map(|o| self.outlet_fact(*o))
                     .collect::<TractResult<TVec<_>>>()?;
                 if input_facts.iter().all(|f| f.konst.is_some()) && op.is_stateless() {
-                    let tensors =
-                        input_facts.iter().map(|f| f.konst.clone().unwrap()).collect::<TVec<_>>();
+                    let tensors = input_facts
+                        .iter()
+                        .map(|f| f.konst.clone().unwrap().into_tvalue())
+                        .collect::<TVec<_>>();
                     if let Ok(outputs) = op.eval(tensors) {
-                        return Ok(outputs.into_iter().map(TypedFact::from).collect());
+                        return Ok(outputs.into_iter().map(|t| TypedFact::from(&*t)).collect());
                     }
                 }
-                op.output_facts(&*input_facts).context("in output_facts invocation")
+                op.output_facts(&input_facts).context("in output_facts invocation")
             };
 
             let output_facts = output_facts()

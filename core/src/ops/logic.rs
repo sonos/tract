@@ -136,7 +136,7 @@ impl EvalOp for Iff {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (cond, t, f) = args_3!(inputs);
         anyhow::ensure!(t.datum_type() == f.datum_type());
         let shape: TVec<usize> = multi_broadcast(&[cond.shape(), t.shape(), f.shape()])
@@ -149,10 +149,10 @@ impl EvalOp for Iff {
                 )
             })?;
         unsafe {
-            let mut result = Tensor::uninitialized_dt(t.datum_type(), &*shape)?;
+            let mut result = Tensor::uninitialized_dt(t.datum_type(), &shape)?;
             let cond = cond.to_array_view::<bool>()?;
             dispatch_datum_by_size!(Self::eval_t(t.datum_type())(&cond, &mut result, &t, &f));
-            Ok(tvec!(result.into_arc_tensor()))
+            Ok(tvec!(result.into_tvalue()))
         }
     }
 }

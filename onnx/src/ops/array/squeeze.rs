@@ -38,7 +38,7 @@ impl Expansion for Squeeze13 {
             let axes =
                 axes.cast_to::<i64>()?.as_slice::<i64>()?.iter().map(|i| *i as isize).collect();
             let op = tract_hir::ops::array::Squeeze::new(Some(axes));
-            let out_shape = op.output_shape(&*shape)?;
+            let out_shape = op.output_shape(&shape)?;
             s.equals(&outputs[0].shape, out_shape)
         })
     }

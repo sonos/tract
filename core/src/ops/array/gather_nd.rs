@@ -85,20 +85,20 @@ impl EvalOp for GatherNd {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (data, indices) = args_2!(inputs);
         let shape = self.compute_shape(data.shape(), indices.shape())?;
         let indices = indices.cast_to::<i32>()?;
         let indices = indices.to_array_view::<i32>()?;
         unsafe {
-            let mut output = Tensor::uninitialized_dt(data.datum_type(), &*shape)?;
+            let mut output = Tensor::uninitialized_dt(data.datum_type(), &shape)?;
             dispatch_datum_by_size!(Self::eval_t(data.datum_type())(
                 self,
                 &mut output,
                 &data,
                 &indices
             ));
-            Ok(tvec!(output.into_arc_tensor()))
+            Ok(tvec!(output.into_tvalue()))
         }
     }
 }

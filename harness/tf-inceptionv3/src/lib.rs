@@ -45,7 +45,7 @@ pub fn imagenet_slim_labels() -> path::PathBuf {
     inception_v3_2016_08_28().join("imagenet_slim_labels.txt")
 }
 
-pub fn load_image<P: AsRef<path::Path>>(p: P) -> Tensor {
+pub fn load_image<P: AsRef<path::Path>>(p: P) -> TValue {
     let image = image::open(&p).unwrap().to_rgb8();
     let resized =
         image::imageops::resize(&image, 299, 299, ::image::imageops::FilterType::Triangle);
@@ -53,7 +53,7 @@ pub fn load_image<P: AsRef<path::Path>>(p: P) -> Tensor {
         resized[(x as _, y as _)][c] as f32 / 255.0
     })
     .into_dyn()
-    .into()
+    .into_tvalue()
 }
 
 #[cfg(test)]

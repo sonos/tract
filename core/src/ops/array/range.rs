@@ -27,9 +27,9 @@ impl EvalOp for Range {
                 && self.step.to_scalar::<TDim>().unwrap().to_i64().is_ok())
     }
 
-    fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, _inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let tensor = self.make(None)?;
-        Ok(tvec!(tensor.into_arc_tensor()))
+        Ok(tvec!(tensor.into_tvalue()))
     }
 
     fn state(
@@ -50,9 +50,9 @@ impl OpState for Range {
         &mut self,
         session: &mut SessionState,
         _op: &dyn Op,
-        _inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
-        Ok(tvec!(self.make(Some(&session.resolved_symbols))?.into_arc_tensor()))
+        _inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        Ok(tvec!(self.make(Some(&session.resolved_symbols))?.into_tvalue()))
     }
 }
 

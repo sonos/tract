@@ -8,27 +8,29 @@ pub type PulsedNode = Node<PulsedFact, Box<dyn PulsedOp>>;
 
 #[allow(clippy::new_ret_no_self)]
 pub trait PulsedModelExt {
-    fn new(source: &TypedModel, pulse: usize) -> TractResult<PulsedModel>;
+    fn new(source: &TypedModel, symbol: Symbol, pulse: &TDim) -> TractResult<PulsedModel>;
 
     fn new_with_mapping(
         source: &TypedModel,
-        pulse: usize,
+        symbol: Symbol,
+        pulse: &TDim,
     ) -> TractResult<(PulsedModel, HashMap<OutletId, OutletId>)>;
 
     fn into_typed(self) -> TractResult<TypedModel>;
 }
 
 impl PulsedModelExt for PulsedModel {
-    fn new(source: &TypedModel, pulse: usize) -> TractResult<PulsedModel> {
-        Ok(PulsedModel::new_with_mapping(source, pulse)?.0)
+    fn new(source: &TypedModel, symbol: Symbol, pulse: &TDim) -> TractResult<PulsedModel> {
+        Ok(PulsedModel::new_with_mapping(source, symbol, pulse)?.0)
     }
 
     fn new_with_mapping(
         source: &TypedModel,
-        pulse: usize,
+        symbol: Symbol,
+        pulse: &TDim,
     ) -> TractResult<(PulsedModel, HashMap<OutletId, OutletId>)> {
         let pulsifiers = crate::ops::OpPulsifier::inventory();
-        Pulsifier(pulse, pulsifiers).translate_model_with_mappings(source)
+        Pulsifier(symbol, pulse.to_owned(), pulsifiers).translate_model_with_mappings(source)
     }
 
     fn into_typed(self) -> TractResult<TypedModel> {
@@ -94,7 +96,7 @@ impl SpecialOps<PulsedFact, Box<dyn PulsedOp>> for PulsedModel {
         let output_facts = {
             let input_facts =
                 inputs.iter().map(|o| self.outlet_fact(*o)).collect::<TractResult<TVec<_>>>()?;
-            op.pulsed_output_facts(&*input_facts)?
+            op.pulsed_output_facts(&input_facts)?
         };
         let id = self.add_node(name, op, output_facts)?;
         inputs
@@ -105,7 +107,7 @@ impl SpecialOps<PulsedFact, Box<dyn PulsedOp>> for PulsedModel {
     }
 }
 
-struct Pulsifier(usize, HashMap<TypeId, crate::ops::OpPulsifier>);
+struct Pulsifier(Symbol, TDim, HashMap<TypeId, crate::ops::OpPulsifier>);
 
 impl std::fmt::Debug for Pulsifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -129,9 +131,17 @@ impl
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         if let Some(op) = node.op_as::<TypedSource>() {
-            return Ok(
-                crate::ops::source::pulsify(op, source, node, target, mapping, self.0)?.unwrap()
-            );
+            return Ok(crate::ops::source::pulsify(
+                op, source, node, target, mapping, &self.0, &self.1,
+            )?
+            .unwrap());
+        }
+        if let Some(pulsifier) = self.2.get(&node.op.type_id()) {
+            if let Some(pulsified) =
+                (pulsifier.func)(source, node, target, mapping, &self.0, &self.1)?
+            {
+                return Ok(pulsified);
+            }
         }
 
         let pulse_facts: TVec<PulsedFact> =
@@ -145,22 +155,10 @@ impl
         let (stream_input_ix, pulse_fact) =
             pulse_facts.iter().enumerate().filter(|(_ix, pf)| pf.stream.is_some()).next().unwrap();
 
-        dbg!(&pulse_facts);
-
-        if let Some(pulsifier) = self.1.get(&node.op.type_id()) {
-            if let Some(pulsified) = (pulsifier.func)(source, node, target, mapping, self.0)? {
-                return Ok(pulsified);
-            }
-        }
-
-        dbg!("generic pulsification for node", node);
-
         let (input_facts, output_facts) = source.node_facts(node.id)?;
         let invariants = node.op.invariants(&input_facts, &output_facts)?;
-        dbg!(&invariants);
         let axis_info =
             invariants.track_input_axis(stream_input_ix, pulse_fact.stream.as_ref().unwrap().axis);
-        dbg!(&axis_info);
         if axis_info.is_some() {
             let pulse_op = PulseWrappingOp(node.op.clone());
             let inputs = sync_inputs(node, target, mapping)?;
@@ -184,7 +182,6 @@ impl Op for PulseWrappingOp {
     fn as_typed(&self) -> Option<&dyn TypedOp> {
         Some(self.0.as_ref())
     }
-
 }
 
 impl EvalOp for PulseWrappingOp {
@@ -192,7 +189,7 @@ impl EvalOp for PulseWrappingOp {
         self.0.is_stateless()
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         self.0.eval(inputs)
     }
 
@@ -217,7 +214,7 @@ impl PulsedOp for PulseWrappingOp {
         let input_facts =
             inputs.iter().map(|pf| pf.to_typed_fact()).collect::<TractResult<TVec<_>>>()?;
         let input_facts_ref = input_facts.iter().map(|f| f.as_ref()).collect::<TVec<_>>();
-        let output_facts = self.0.output_facts(&*input_facts_ref)?;
+        let output_facts = self.0.output_facts(&input_facts_ref)?;
         let output_facts_ref = output_facts.iter().collect::<TVec<_>>();
         let invariant = self.0.invariants(&input_facts_ref, &output_facts_ref)?;
         let axis_info = invariant
@@ -268,7 +265,7 @@ impl EvalOp for NonPulsingWrappingOp {
         self.0.is_stateless()
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         self.0.eval(inputs)
     }
 

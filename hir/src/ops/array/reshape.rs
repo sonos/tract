@@ -11,7 +11,6 @@ impl Expansion for Reshape {
         "Reshape".into()
     }
 
-
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -144,12 +143,8 @@ mod tests {
     use super::*;
     use AxisOp::*;
 
-    fn stream() -> TDim {
-        Symbol::from('S').into()
-    }
-
     macro_rules! s {
-        ($($a:expr),*) => {&[ $($a.into()),* ]}
+        ($($a:expr),*) => {&[ $($a.clone().into()),* ]}
     }
 
     macro_rules! r {
@@ -180,15 +175,17 @@ mod tests {
 
     #[test]
     fn compute_bug_1() {
-        assert_eq!(
-            &*compute_shape(s![stream(), 1, 2, 128], s!(0, 0, -1)).unwrap(),
-            s![stream(), 1, 256]
-        )
+        let table = SymbolTable::default();
+        let s = table.new_with_prefix("S");
+        assert_eq!(&*compute_shape(s![s, 1, 2, 128], s!(0, 0, -1)).unwrap(), s![s, 1, 256])
     }
 
     #[test]
     fn compute_bug_2() {
-        assert_eq!(&*compute_shape(s!['s', 'b', 2, 128], s!(0, 0, -1)).unwrap(), s!['s', 'b', 256])
+        let table = SymbolTable::default();
+        let b = table.new_with_prefix("B");
+        let s = table.new_with_prefix("S");
+        assert_eq!(&*compute_shape(s![s, b, 2, 128], s!(0, 0, -1)).unwrap(), s![s, b, 256])
     }
 
     #[test]

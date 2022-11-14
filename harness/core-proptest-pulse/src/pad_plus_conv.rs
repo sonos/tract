@@ -65,8 +65,9 @@ impl PadPlusConvProblem {
     pub fn run(&self) -> TestCaseResult {
         use tract_hir::ops::cnn::*;
         let mut model = InferenceModel::default();
+        let s = model.symbol_table.sym("S");
         let mut wire = model
-            .add_source("a", f32::fact(dims!(1, 1, tract_pulse::internal::stream_dim())).into())
+            .add_source("a", f32::fact(dims!(1, 1, s)).into())
             .unwrap();
         if self.pad_before > 0 || self.pad_after > 0 {
             wire = model

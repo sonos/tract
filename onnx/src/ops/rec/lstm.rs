@@ -444,7 +444,7 @@ impl LSTM {
 
         // ot = f(Xt*(Wo^T) + Ht-1*(Ro^T) + Po (.) Ct + Wbo + Rbo)
         wire!(Xt_WoT = matmul_t.clone(), Xt, Wo);
-        wire!(Ht_1_RoT = matmul_t.clone(), Ht_1, Ro);
+        wire!(Ht_1_RoT = matmul_t, Ht_1, Ro);
         wire!(ot0 = math::add::bin_typed(), Xt_WoT, Ht_1_RoT);
         let mut ot0 = ot0;
         if let Some(biases) = biases {

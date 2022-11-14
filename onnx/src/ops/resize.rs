@@ -154,7 +154,7 @@ impl EvalOp for Resize {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let scales = self.optional_scales_input.and_then(|ix| inputs.get(ix));
         let sizes = self.optional_sizes_input.and_then(|ix| inputs.get(ix));
         let output_shape = self.compute_output_shape(
@@ -191,7 +191,7 @@ impl EvalOp for Resize {
                 })
             }
         }
-        Ok(tvec!(data.into_arc_tensor()))
+        Ok(tvec!(data.into_tvalue()))
     }
 }
 

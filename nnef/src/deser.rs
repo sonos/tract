@@ -11,18 +11,25 @@ pub struct ModelBuilder<'a> {
     pub scopes: Vec<HashMap<String, Value>>,
     pub proto_model: &'a ProtoModel,
     pub symbols: Vec<Symbol>,
+    pub allow_new_symbol: bool,
 }
 
 impl<'mb> ModelBuilder<'mb> {
-    pub fn new(framework: &'mb Nnef, proto_model: &'mb ProtoModel) -> ModelBuilder<'mb> {
+    pub fn new(
+        framework: &'mb Nnef,
+        proto_model: &'mb ProtoModel,
+        symbols: &SymbolTable,
+    ) -> ModelBuilder<'mb> {
+        let model = TypedModel { symbol_table: symbols.to_owned(), ..TypedModel::default() };
         ModelBuilder {
             registries: vec!["tract_nnef".to_string()],
             framework,
-            model: TypedModel::default(),
+            model,
             naming_scopes: vec![],
             scopes: vec![],
             proto_model,
             symbols: vec![],
+            allow_new_symbol: false,
         }
     }
 
@@ -44,17 +51,13 @@ impl<'mb> ModelBuilder<'mb> {
                     if ext.len() != 2 {
                         bail!("tract_symbol expects symbol: example: \"extension tract_symbol S;\"")
                     }
-                    let symbol = &ext[1];
-                    if symbol.len() != 1 {
-                        bail!("tract symbol must be one single letter, found {}", symbol);
-                    }
-                    let symbol = Symbol::from(ext[1].chars().next().unwrap());
+                    let symbol = self.model.symbol_table.new_with_prefix(&ext[1]);
                     self.symbols.push(symbol);
                 }
                 _ => {
                     for reg in &self.framework.registries {
                         for reg_ext in &reg.extensions {
-                            match reg_ext(self, &**ext)? {
+                            match reg_ext(self, ext)? {
                                 ControlFlow::Continue(_) => (),
                                 ControlFlow::Break(_) => continue 'ext,
                             }
@@ -163,7 +166,7 @@ impl<'mb> ModelBuilder<'mb> {
                 if let Some(qparam) = qparam {
                     if qparam != self.model.outlet_fact(*value)?.datum_type {
                         self.model.node_mut(value.node).name =
-                            format!("{}.raw", self.naming_scopes.join("."));
+                            format!("{}_raw", self.naming_scopes.join("_"));
                         *value = self.model.wire_node(
                             "foo",
                             tract_core::ops::cast::cast(qparam),
@@ -172,11 +175,17 @@ impl<'mb> ModelBuilder<'mb> {
                     }
                 }
             }
-            self.model.node_mut(values[0].node).name = self.naming_scopes.join(".").to_string();
             for (id, outlet) in identifiers.iter().zip(values.iter()) {
                 self.scopes.last_mut().unwrap().insert(id.to_string(), Value::Wire(*outlet));
             }
             self.naming_scopes.pop();
+            for (value, identifier) in values.iter().zip(identifiers.iter()) {
+                if self.model.node_mut(value.node).name.is_empty() {
+                    self.naming_scopes.push(identifier.to_string());
+                    self.model.node_mut(value.node).name = self.generate_node_name();
+                    self.naming_scopes.pop();
+                }
+            }
         }
         Ok(())
     }
@@ -234,25 +243,34 @@ impl<'mb> ModelBuilder<'mb> {
         ))
     }
 
+    fn generate_node_name(&self) -> String {
+        let mut name = self.naming_scopes.join("_");
+        if self.model.nodes().iter().any(|n| n.name.starts_with(&name)) {
+            for i in 0.. {
+                name = format!("{}_{}", self.naming_scopes.join("_"), i);
+                if !self.model.nodes().iter().any(|n| n.name.starts_with(&name)) {
+                    break;
+                }
+            }
+        }
+        name
+    } 
+
     pub fn wire_as_outlets(
         &mut self,
         op: impl Into<Box<dyn TypedOp>>,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         let op = op.into();
-        let mut name = format!("{}.{}", self.naming_scopes.join("."), op.as_op().name());
-        if self.model.nodes().iter().any(|n| n.name.starts_with(&name)) {
-            for i in 0.. {
-                name = format!("{}.{}-{}", self.naming_scopes.join("."), op.as_op().name(), i);
-                if !self.model.nodes().iter().any(|n| n.name.starts_with(&name)) {
-                    break;
-                }
-            }
-        }
+        let name = self.generate_node_name();
         self.model.wire_node(name, op, inputs).with_context(|| format!("inputs are {:?}", inputs))
     }
 
-    pub fn wire(&mut self, op: impl Into<Box<dyn TypedOp>>, inputs: &[OutletId]) -> TractResult<Value> {
+    pub fn wire(
+        &mut self,
+        op: impl Into<Box<dyn TypedOp>>,
+        inputs: &[OutletId],
+    ) -> TractResult<Value> {
         self.wire_as_outlets(op, inputs).map(Value::from)
     }
 }
@@ -350,17 +368,17 @@ impl RValue {
                                 ));
                             }
                             if out_dt != *dt {
-                                outlet = builder.wire(tract_core::ops::cast::cast(*dt), &[outlet_id])?;
+                                outlet =
+                                    builder.wire(tract_core::ops::cast::cast(*dt), &[outlet_id])?;
                             }
                         }
                     }
                     Ok(outlet)
-                } else if id.len() == 1
-                    && builder.symbols.contains(&id.chars().next().unwrap().into())
-                {
-                    Ok(Value::Dim(id.chars().next().unwrap().into()))
+                } else if builder.allow_new_symbol {
+                    let sym = builder.model.symbol_table.sym(id);
+                    Ok(Value::Dim(sym.into()))
                 } else {
-                    bail!("No value for name {}", id)
+                    bail!("Can not resolve identifier {}. Not a known identifier, and symbol introduction is forbiddent out of \"external\" shape field", id);
                 }
             }
             RValue::Invocation(inv) => builder
@@ -402,7 +420,7 @@ impl RValue {
             )),
             RValue::Tuple(array) => {
                 let dt_iter: Box<dyn Iterator<Item = &Option<DatumType>>> =
-                    if dt.len() == 0 || dt.len() == 1 && dt[0] == None {
+                    if dt.len() == 0 || dt.len() == 1 && dt[0].is_none() {
                         Box::new(std::iter::repeat(&None))
                     } else if dt.len() == array.len() {
                         Box::new(dt.iter())
@@ -428,10 +446,12 @@ impl RValue {
                     f.parse::<f32>()
                         .map(Value::Scalar)
                         .with_context(|| format!("Can not parse {} as f32", f))
+                } else if let Ok(i) = f.parse::<i64>() {
+                    Ok(Value::Dim(i.into()))
+                } else if let Some(s) = builder.model.symbol_table.get(f) {
+                    Ok(Value::Dim(s.into()))
                 } else {
-                    f.parse::<TDim>()
-                        .map(Value::Dim)
-                        .with_context(|| format!("Can not parse {} as i64", f))
+                    bail!("Can not parse {}", f)
                 }
             }
             RValue::Literal(Literal::String(s)) => Ok(Value::String(s.clone())),
@@ -542,11 +562,12 @@ impl CoerceFrom<Value> for OutletId {
                 Ok(builder.wire_as_outlets(tract_core::ops::konst::Const::new(t.clone()), &[])?[0])
             }
             Value::Scalar(f) => {
-                Ok(builder.wire_as_outlets(tract_core::ops::konst::Const::new(rctensor0(*f)), &[])?[0])
+                Ok(builder
+                    .wire_as_outlets(tract_core::ops::konst::Const::new(rctensor0(*f)), &[])?[0])
             }
-            Value::Dim(i) => {
-                Ok(builder.wire_as_outlets(tract_core::ops::konst::Const::new(rctensor0(i.clone())), &[])?[0])
-            }
+            Value::Dim(i) => Ok(builder
+                .wire_as_outlets(tract_core::ops::konst::Const::new(rctensor0(i.clone())), &[])?
+                [0]),
             Value::Wire(outlet) => Ok(*outlet),
             Value::Tuple(tuple) if tuple.len() == 1 => OutletId::coerce(builder, &tuple[0]),
             Value::Array(_) => {
@@ -562,9 +583,9 @@ impl CoerceFrom<Value> for i64 {
     fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         match from {
             Value::Dim(d) => d.to_i64(),
-            Value::Tensor(t) => Ok(t.to_scalar::<i64>()?.clone()),
+            Value::Tensor(t) => Ok(*t.to_scalar::<i64>()?),
             Value::Wire(_) => {
-                Ok(from.to::<Arc<Tensor>>(builder)?.cast_to::<i64>()?.to_scalar::<i64>()?.clone())
+                Ok(*from.to::<Arc<Tensor>>(builder)?.cast_to::<i64>()?.to_scalar::<i64>()?)
             }
             _ => bail!("Can not build a i64 from {:?}", from),
         }
@@ -620,9 +641,9 @@ impl CoerceFrom<Value> for f32 {
     fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         match from {
             Value::Scalar(f) => Ok(*f),
-            Value::Tensor(t) => Ok(t.to_scalar::<f32>()?.clone()),
+            Value::Tensor(t) => Ok(*t.to_scalar::<f32>()?),
             Value::Wire(_) => {
-                Ok(from.to::<Arc<Tensor>>(builder)?.cast_to::<f32>()?.to_scalar::<f32>()?.clone())
+                Ok(*from.to::<Arc<Tensor>>(builder)?.cast_to::<f32>()?.to_scalar::<f32>()?)
             }
             _ => bail!("Can not build a f32 from {:?}", from),
         }

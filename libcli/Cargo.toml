@@ -13,14 +13,14 @@ edition = "2021"
 maintenance = { status = "actively-developed" }
 
 [dependencies]
-ansi_term = "0.12.1"
-box_drawing = "0.1.2"
-colorous = "1.0.5"
-lazy_static = "1.4.0"
-log = "0.4.14"
-ndarray-npy = { version = "0.8.0", features = [ "compressed_npz" ] }
-py_literal = "0.4.0"
-rand = "0.8.4"
+ansi_term.workspace = true
+box_drawing.workspace = true
+colorous.workspace = true
+lazy_static.workspace = true
+log.workspace = true
+ndarray-npy.workspace = true
+py_literal.workspace = true
+rand.workspace = true
 tract-core = { version = "0.18.4-pre", path = "../core" }
 # tract-hir = { version = "0.18.4-pre", path = "../hir", optional = true }
 tract-hir = { version = "0.18.4-pre", path = "../hir" }

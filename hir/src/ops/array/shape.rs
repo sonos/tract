@@ -25,7 +25,7 @@ impl Expansion for Shape {
         s.equals(&outputs[0].shape[0], inputs[0].rank.bex().to_dim())?;
         s.equals(&outputs[0].datum_type, self.dt.bex())?;
         s.given(&inputs[0].shape, move |s, shape| {
-            let shape = tensor1(&*shape);
+            let shape = tensor1(&shape);
             if let Ok(shape) = shape.cast_to_dt(self.dt) {
                 s.equals(&outputs[0].value, shape.into_owned().into_arc_tensor())?;
             }

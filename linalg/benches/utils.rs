@@ -85,7 +85,7 @@ pub fn mat_mat_with_mm(
             k,
             n,
             be,
-            &*mm,
+            mm,
             mm.a_packed(dt.size_of(), k).wrap(&pa.view()),
             mm.b_packed(dt.size_of(), k).wrap(&pb.view()).unwrap(),
             cold,

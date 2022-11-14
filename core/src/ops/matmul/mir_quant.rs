@@ -259,7 +259,7 @@ impl EvalOp for QMatMul {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         ensure!(
             inputs[0].rank() == inputs[1].rank(),
             "Rank mismatch {:?} vs {:?}",
@@ -268,13 +268,14 @@ impl EvalOp for QMatMul {
         );
 
         let mut model = TypedModel::default();
-        let a = model.add_const("source_a", inputs[0].clone())?;
-        let b = model.add_const("source_b", inputs[1].clone())?;
-        let bias = model.add_const("source_bias", inputs[2].clone())?;
+        let a = model.add_const("source_a", inputs[0].clone().into_arc_tensor())?;
+        let b = model.add_const("source_b", inputs[1].clone().into_arc_tensor())?;
+        let bias = model.add_const("source_bias", inputs[2].clone().into_arc_tensor())?;
 
         let mut input_outlets = tvec![a, b, bias];
         for (i, t) in inputs.iter().enumerate().skip(3) {
-            input_outlets.push(model.add_const(format!("source_{}", i), t.clone())?)
+            input_outlets
+                .push(model.add_const(format!("source_{}", i), t.clone().into_arc_tensor())?)
         }
 
         let mut params = self.params.as_outlet_ids(
@@ -326,6 +327,7 @@ impl TypedOp for QMatMul {
         let (_m, _k, _n, c_shape) = compute_shape(&inputs[0].shape, &inputs[1].shape, self.axes)?;
 
         let bias = &inputs[2];
+        #[allow(clippy::comparison_chain)]
         if bias.rank() > 1 {
             anyhow::bail!("Bias must be either scalar or vector (rank 0 or 1).");
         } else if bias.rank() == 1 {
@@ -404,7 +406,7 @@ impl TypedOp for QMatMul {
                 c_n: self.axes.c_m,
             }
         } else {
-            self.axes.clone()
+            self.axes
         };
 
         TypedModelPatch::replace_single_op(
@@ -463,7 +465,7 @@ impl TypedOp for QMatMul {
         }
         let mut params = self.params.as_outlet_ids(
             &mut patch,
-            &*node.name,
+            &node.name,
             &input_outlets,
             model.node_input_facts(node.id)?[0].datum_type,
             model.node_input_facts(node.id)?[1].datum_type,
@@ -1074,6 +1076,7 @@ mod test {
                             self.bias.clone(),
                         ]
                     };
+                    let inputs = inputs.into_iter().map(|t| t.into_tvalue()).collect();
                     let mut outputs = if opt { model.into_optimized().unwrap() } else { model }
                     .into_runnable()
                         .unwrap()

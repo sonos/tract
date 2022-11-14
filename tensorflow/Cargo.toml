@@ -9,20 +9,21 @@ keywords = [ "TensorFlow", "NeuralNetworks", "ONNX" ]
 categories = [ "science" ]
 autobenches = false
 edition = "2021"
+rust-version = "1.65"
 # build = "build-proto.rs"
 
 [badges]
 maintenance = { status = "actively-developed" }
 
 [dependencies]
-bytes = "1.0.1"
-derive-new = "0.5.9"
-educe = "0.4.18"
-log = "0.4.14"
-memmap2 = "0.5"
-prost = "0.11.0"
-prost-types = "0.11.0"
-tensorflow = { version = "0.17.0", optional = true }
+bytes.workspace = true
+derive-new.workspace = true
+educe.workspace = true
+log.workspace = true
+memmap2.workspace = true
+prost.workspace = true
+prost-types.workspace = true
+tensorflow = { workspace = true, optional = true }
 tract-hir = { version = "0.18.4-pre", path = "../hir" }
 tract-pulse = { version = "0.18.4-pre", path = "../pulse" }
 
@@ -34,10 +35,10 @@ tract-pulse = { version = "0.18.4-pre", path = "../pulse" }
 conform = [ "tensorflow" ]
 
 [dev-dependencies]
-criterion = "0.3.5"
-env_logger = "0.9.0"
-proptest = "1.0.0"
-rand = "0.8.4"
+criterion.workspace = true
+env_logger.workspace = true
+proptest.workspace = true
+rand.workspace = true
 
 # [[bench]]
 # name = "conv"

@@ -108,9 +108,17 @@ impl Tensorflow {
     }
 
     pub fn parse_graph(&self, graph: &GraphDef) -> TractResult<TfModelAndExtensions> {
+        self.parse_graph_with_symbols(graph, &SymbolTable::default())
+    }
+    pub fn parse_graph_with_symbols(
+        &self,
+        graph: &GraphDef,
+        symbols: &SymbolTable,
+    ) -> TractResult<TfModelAndExtensions> {
         use crate::ops::control_flow as cf;
 
-        let mut model = InferenceModel::default();
+        let mut model =
+            InferenceModel { symbol_table: symbols.to_owned(), ..InferenceModel::default() };
         let mut inputs = tvec!();
         let mut context = ParsingContext::default();
         let mut control_inputs = vec![];
@@ -218,7 +226,7 @@ impl Tensorflow {
                 }
             }
         }
-        model.set_input_outlets(&*inputs)?;
+        model.set_input_outlets(&inputs)?;
         model.auto_outputs()?;
         let extensions = TfModelExtensions { control_inputs, initializing_nodes: vec![] };
         Ok(TfModelAndExtensions(model, extensions))
@@ -238,7 +246,11 @@ impl Framework<GraphDef, InferenceModel> for Tensorflow {
         self.read_frozen_model(r)
     }
 
-    fn model_for_proto_model(&self, graph: &GraphDef) -> TractResult<InferenceModel> {
-        Ok(self.parse_graph(graph)?.0)
+    fn model_for_proto_model_with_symbols(
+        &self,
+        graph: &GraphDef,
+        symbols: &SymbolTable,
+    ) -> TractResult<InferenceModel> {
+        Ok(self.parse_graph_with_symbols(graph, symbols)?.0)
     }
 }

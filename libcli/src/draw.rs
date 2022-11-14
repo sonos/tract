@@ -181,7 +181,7 @@ impl DrawingState {
         }
         let node_output_count = model.node_output_count(node);
         if display {
-            self.latest_node_color = if inputs.len() > 0 {
+            self.latest_node_color = if !inputs.is_empty() {
                 let wire0 = &self.wires[passthrough_count];
                 if wire0.color.is_some() && !wire0.should_change_color {
                     wire0.color.unwrap()
@@ -260,7 +260,7 @@ impl DrawingState {
             self.wires.push(Wire { outlet, color, successors, should_change_color: false });
         }
         let wires_before = self.wires.clone();
-        self.wires.retain(|w| w.successors.len() > 0);
+        self.wires.retain(|w| !w.successors.is_empty());
         for (wanted_at, w) in self.wires.iter().enumerate() {
             let is_at = wires_before.iter().position(|w2| w.outlet == w2.outlet).unwrap();
             if wanted_at < is_at {

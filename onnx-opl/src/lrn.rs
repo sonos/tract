@@ -16,7 +16,7 @@ pub struct Lrn {
 impl_dyn_hash!(Lrn);
 
 impl Lrn {
-    fn eval_t<T>(&self, input: Arc<Tensor>) -> TractResult<TVec<Arc<Tensor>>>
+    fn eval_t<T>(&self, input: TValue) -> TractResult<TVec<TValue>>
     where
         T: Datum + tract_num_traits::Float + ::std::iter::Sum,
     {
@@ -37,7 +37,7 @@ impl Lrn {
                 + T::from(self.alpha).unwrap() / T::from(self.size).unwrap() * square_sum)
                 .powf(T::from(self.beta).unwrap())
         });
-        Ok(tvec!(output.into_arc_tensor()))
+        Ok(tvec!(output.into_tvalue()))
     }
 }
 
@@ -54,7 +54,7 @@ impl EvalOp for Lrn {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
     }

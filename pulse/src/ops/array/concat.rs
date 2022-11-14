@@ -12,7 +12,8 @@ fn pulsify(
     node: &TypedNode,
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
-    _pulse: usize,
+    _symbol: &Symbol,
+    _pulse: &TDim,
 ) -> TractResult<Option<TVec<OutletId>>> {
     let pulse_facts: TVec<&PulsedFact> =
         node.inputs.iter().map(|i| target.outlet_fact(mapping[i]).unwrap()).collect();
@@ -46,12 +47,12 @@ fn pulsify_along_concat_axis(
         .iter()
         .map(|s| s.as_const().unwrap().cast_to_dt(fact.datum_type))
         .collect::<TractResult<TVec<_>>>()?;
-    let pre = Tensor::stack_tensors(op.axis, &*pre_owned)?;
+    let pre = Tensor::stack_tensors(op.axis, &pre_owned)?;
     let post_owned = op.slices[var_index + 1..]
         .iter()
         .map(|s| s.as_const().unwrap().cast_to_dt(fact.datum_type))
         .collect::<TractResult<TVec<_>>>()?;
-    let post = Tensor::stack_tensors(op.axis, &*post_owned)?;
+    let post = Tensor::stack_tensors(op.axis, &post_owned)?;
 
     let before = pre.shape()[op.axis];
     if fact.delay < before {
@@ -138,8 +139,8 @@ impl OpState for PulsedSameAxisConcatState {
         &mut self,
         session: &mut SessionState,
         op: &dyn Op,
-        mut inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
+        mut inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         let op = op
             .downcast_ref::<PulsedSameAxisConcat>()
             .ok_or_else(|| format_err!("Wrong Op type"))?;
@@ -158,7 +159,7 @@ impl OpState for PulsedSameAxisConcatState {
             &op.pre_slice,
             pre_offset
         ))?;
-        if self.symbols_in_dim.iter().all(|s| session.resolved_symbols[*s].is_some()) {
+        if self.symbols_in_dim.iter().all(|s| session.resolved_symbols[s].is_some()) {
             let l = op.input_len.eval(&session.resolved_symbols).to_usize().unwrap();
             let post_offset = op.input_delay + l as usize;
             dispatch_datum!(overwrite_part_of_pulse(data.datum_type())(
@@ -170,7 +171,7 @@ impl OpState for PulsedSameAxisConcatState {
             ))?;
         }
 
-        Ok(tvec!(data.into_arc_tensor()))
+        Ok(tvec!(data.into_tvalue()))
     }
 }
 

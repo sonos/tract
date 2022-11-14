@@ -23,8 +23,8 @@ impl Downsample {
         let down_len = self.transform_dim(&input_fact.shape[self.axis]);
         downed.shape.set(self.axis, down_len);
         if let Some(k) = downed.konst {
-            let mut outputs = self.eval(tvec!(k))?;
-            downed.konst = Some(outputs.remove(0));
+            let mut outputs = self.eval(tvec!(k.into_tvalue()))?;
+            downed.konst = Some(outputs.remove(0).into_arc_tensor())
         }
         if cfg!(debug_assertions) {
             downed.consistent()?;
@@ -53,13 +53,13 @@ impl EvalOp for Downsample {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         unsafe {
             let t = if self.modulo > input.shape()[self.axis] {
                 let mut shape: TVec<usize> = input.shape().into();
                 shape[self.axis] = 0;
-                Tensor::uninitialized_dt(input.datum_type(), &*shape)?
+                Tensor::uninitialized_dt(input.datum_type(), &shape)?
             } else {
                 let slice = ndarray::Slice::new(self.modulo as isize, None, self.stride);
                 unsafe fn do_slice<T: Datum>(
@@ -78,7 +78,7 @@ impl EvalOp for Downsample {
                 }
                 dispatch_datum_by_size!(do_slice(input.datum_type())(&*input, self.axis, slice))
             };
-            Ok(tvec!(t.into_arc_tensor()))
+            Ok(tvec!(t.into_tvalue()))
         }
     }
 }
@@ -138,7 +138,7 @@ fn pull_downsample_up(
                 )?;
                 inputs.push(ds[0]);
             }
-            let other = patch.wire_node(&*prec.name, prec.op.clone(), &*inputs)?;
+            let other = patch.wire_node(&prec.name, prec.op.clone(), &inputs)?;
             patch.shunt_outside(model, OutletId::new(down_node.id, 0), other[0])?;
             return Ok(Some(patch));
         }

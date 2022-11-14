@@ -173,7 +173,7 @@ impl Expansion for BlockLSTM {
         }
 
         let scan = scan::Scan::new(body, input_mapping, output_mapping, Some(0), 0)?;
-        model.wire_node(prefix, scan, &*outer_inputs)
+        model.wire_node(prefix, scan, &outer_inputs)
     }
 }
 

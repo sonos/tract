@@ -11,19 +11,21 @@ autobenches = false
 edition = "2021"
 exclude = [ "test_cases" ]
 # build = "build-proto-rs"
+rust-version = "1.65"
+
 
 [badges]
 maintenance = { status = "actively-developed" }
 
 [dependencies]
-bytes = "1.0.1"
-derive-new = "0.5.9"
-educe = "0.4.18"
-log = "0.4.14"
-memmap2 = "0.5"
-num-integer = "0.1.44"
-prost = "0.11.0"
-smallvec = "1.6.1"
+bytes.workspace = true
+derive-new.workspace = true
+educe.workspace = true
+log.workspace = true
+memmap2.workspace = true
+num-integer.workspace = true
+prost.workspace = true
+smallvec.workspace = true
 tract-hir = { version = "0.18.4-pre", path = "../hir" }
 tract-nnef = { version = "0.18.4-pre", path = "../nnef" }
 tract-onnx-opl = { version = "0.18.4-pre", path = "../onnx-opl" }

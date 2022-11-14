@@ -8,7 +8,7 @@ pub struct MultiBroadcastTo {
 impl_dyn_hash!(MultiBroadcastTo);
 
 impl MultiBroadcastTo {
-    pub fn eval_t<T: Datum>(input: &Tensor, shape: &[usize]) -> TractResult<TVec<Arc<Tensor>>> {
+    pub fn eval_t<T: Datum>(input: &Tensor, shape: &[usize]) -> TractResult<TVec<TValue>> {
         unsafe {
             let view = input.to_array_view_unchecked::<T>();
             let mut output = view
@@ -17,7 +17,7 @@ impl MultiBroadcastTo {
                 .into_owned()
                 .into_tensor();
             output.set_datum_type(input.datum_type());
-            Ok(tvec![output.into_arc_tensor()])
+            Ok(tvec![output.into_tvalue()])
         }
     }
 }
@@ -35,7 +35,7 @@ impl EvalOp for MultiBroadcastTo {
         self.shape.is_concrete()
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let dims: Vec<usize> =
             self.shape.iter().map(|d| d.to_usize()).collect::<TractResult<_>>()?;
@@ -59,8 +59,8 @@ impl OpState for MultiBroadcastToState {
         &mut self,
         session: &mut SessionState,
         op: &dyn Op,
-        inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         let op = op.downcast_ref::<MultiBroadcastTo>().context("Wrong op")?;
         let shape = op.shape.eval_to_usize(&session.resolved_symbols)?;
         dispatch_datum_by_size!(MultiBroadcastTo::eval_t(inputs[0].datum_type())(

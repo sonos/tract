@@ -40,10 +40,11 @@ mod test {
 
     fn test_pulse_delay_over(pulse: usize, delay: usize, overlap: usize) {
         let mut model = PulsedModel::default();
+        let stream_dim = model.symbol_table.sym("S").to_dim();
         let fact1 = PulsedFact {
             datum_type: u8::datum_type(),
             shape: (&[pulse]).into(),
-            stream: Some(StreamInfo { axis: 0, dim: stream_dim(), delay: 0 }),
+            stream: Some(StreamInfo { axis: 0, dim: stream_dim, delay: 0 }),
         };
         let source = model.add_source("source", fact1.clone()).unwrap();
         model
@@ -63,7 +64,7 @@ mod test {
             let expect: Vec<u8> = (pulse * i..(pulse * (i + 1) + overlap))
                 .map(|i| i.saturating_sub(delay + overlap) as u8)
                 .collect();
-            let output = state.run(tvec!(tensor1(&input))).unwrap();
+            let output = state.run(tvec!(tensor1(&input).into())).unwrap();
             let skip = (delay + overlap).saturating_sub(i * pulse).min(pulse + overlap);
             assert_eq!(&output[0].as_slice::<u8>().unwrap()[skip..], &expect[skip..]);
         }
@@ -93,10 +94,11 @@ mod test {
     fn test_two_delays() {
         let pulse = 4usize;
         let mut model = PulsedModel::default();
+        let stream_dim = model.symbol_table.sym("S").to_dim();
         let fact_0 = PulsedFact {
             datum_type: u8::datum_type(),
             shape: (&[pulse]).into(),
-            stream: Some(StreamInfo { axis: 0, dim: stream_dim(), delay: 0 }),
+            stream: Some(StreamInfo { axis: 0, dim: stream_dim, delay: 0 }),
         };
         let stream = fact_0.stream.as_ref().unwrap();
         let source = model.add_source("source", fact_0.clone()).unwrap();
@@ -121,7 +123,7 @@ mod test {
             let expect: Vec<u8> =
                 (pulse * i..(pulse * (i + 1))).map(|i| i.saturating_sub(4) as u8).collect();
             let skip = 4usize.saturating_sub(i * pulse).min(pulse);
-            let output = state.run(tvec!(tensor1(&input))).unwrap();
+            let output = state.run(tvec!(tensor1(&input).into())).unwrap();
             assert_eq!(&output[0].as_slice::<u8>().unwrap()[skip..], &expect[skip..]);
         }
     }

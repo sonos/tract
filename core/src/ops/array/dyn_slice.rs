@@ -1,24 +1,21 @@
 use crate::internal::*;
 use crate::num_traits::Zero;
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, new)]
 pub struct DynSlice {
     pub axis: usize,
     pub start_input: bool,
     pub end_input: bool,
+    pub symbol: Symbol,
 }
 
 impl DynHash for DynSlice {
     fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
-        dyn_hash(&self, hasher)
+        dyn_hash(self, hasher)
     }
 }
 
 impl DynSlice {
-    pub fn new(axis: usize, start_input: bool, end_input: bool) -> DynSlice {
-        DynSlice { axis, start_input, end_input }
-    }
-
     pub fn suffix(&self) -> String {
         format!("axis{}", self.axis)
     }
@@ -49,7 +46,7 @@ impl EvalOp for DynSlice {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         unsafe {
             let start =
                 if self.start_input { inputs[1].cast_to_scalar::<i64>()? as usize } else { 0 };
@@ -65,7 +62,7 @@ impl EvalOp for DynSlice {
             shape[self.axis] = end - start;
             let mut tensor = Tensor::uninitialized_dt(inputs[0].datum_type(), &shape)?;
             tensor.assign_slice_unchecked(.., &inputs[0], start..end, self.axis);
-            Ok(tvec!(tensor.into_arc_tensor()))
+            Ok(tvec!(tensor.into_tvalue()))
         }
     }
 }
@@ -73,7 +70,7 @@ impl EvalOp for DynSlice {
 impl TypedOp for DynSlice {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = inputs[0].clone();
-        fact.shape.set(self.axis, Symbol::new('l').into());
+        fact.shape.set(self.axis, self.symbol.clone().into());
         Ok(tvec!(fact))
     }
 

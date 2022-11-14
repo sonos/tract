@@ -88,7 +88,7 @@ impl Expansion for Pack {
         model.wire_node(
             prefix,
             tract_hir::ops::array::TypedConcat::concat_vars(self.axis as usize, inputs.len()),
-            &*inputs,
+            &inputs,
         )
     }
 }

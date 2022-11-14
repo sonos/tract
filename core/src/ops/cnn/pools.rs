@@ -51,7 +51,7 @@ impl PoolSpec {
     }
 
     pub fn computed_padding<D: DimLike>(&self, input_hw: &[D]) -> TVec<ComputedPaddedDim<D>> {
-        self.padding.compute(input_hw, &*self.kernel_shape, &self.dilations(), &self.strides())
+        self.padding.compute(input_hw, &self.kernel_shape, &self.dilations(), &self.strides())
     }
 
     pub fn output_shape<D: DimLike>(&self, input: &[D]) -> TractResult<BaseDataShape<D, TVec<D>>> {

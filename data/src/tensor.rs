@@ -995,7 +995,7 @@ impl Tensor {
             }
             let mut result = Self::uninitialized_dt(dst_dt, &self.shape)?;
             if self.dt == DatumType::String {
-                dispatch_datum!(Self::cast_from_string(dst_dt)(self, &mut result))?;
+                dispatch_numbers!(Self::cast_from_string(dst_dt)(self, &mut result))?;
                 return Ok(Cow::Owned(result));
             }
             if dst_dt == DatumType::String {
@@ -1470,6 +1470,12 @@ impl<D: ::ndarray::Dimension, T: Datum> IntoTensor for Array<T, D> {
 impl<D: ::ndarray::Dimension, T: Datum> IntoArcTensor for Array<T, D> {
     fn into_arc_tensor(self) -> Arc<Tensor> {
         Arc::new(Tensor::from(self))
+    }
+}
+
+impl IntoTensor for Tensor {
+    fn into_tensor(self) -> Tensor {
+        self
     }
 }
 

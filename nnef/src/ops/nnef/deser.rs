@@ -27,7 +27,9 @@ pub fn external(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
     } else {
         todo!()
     };
+    builder.allow_new_symbol = true;
     let shape: TVec<TDim> = invocation.named_arg_as(builder, "shape")?;
+    builder.allow_new_symbol = false;
     Ok(Value::Wire(builder.model.add_source("", dt.fact(&shape))?))
 }
 
@@ -141,18 +143,33 @@ pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
         }
     });
     let ends: TVec<i64> = invocation.named_arg_as(builder, "end")?;
-    let ends = ends.into_iter().enumerate().map(|(ix, b)| -> TDim {
-        // use "<=", no "<" end[axis] = 0 means "up to the end" 
-        // CAUTION: this notation is 1/ deprecated 2/ invalid with non trivial slicing
-        if b <= 0 {
-            input_fact.shape[axes[ix]].clone() + b
-        } else {
-            b.into()
-        }
-    }).collect_vec();
-    izip!(axes, begins, ends)
-        .try_fold(wire, |wire, (axis, start, end)| {
-            builder.wire_as_outlets(tract_core::ops::array::Slice { axis, start, end }, &wire)
+    let ends = ends
+        .into_iter()
+        .enumerate()
+        .map(|(ix, b)| -> TDim {
+            // use "<=", no "<" end[axis] = 0 means "up to the end"
+            // CAUTION: this notation is 1/ deprecated 2/ invalid with non trivial slicing
+            if b <= 0 {
+                input_fact.shape[axes[ix]].clone() + b
+            } else {
+                b.into()
+            }
+        })
+        .collect_vec();
+    let strides: TVec<isize> = invocation
+        .named_arg_as(builder, "stride")
+        .unwrap_or_else(|_| ends.iter().map(|_| 1).collect());
+    izip!(axes, begins, ends, strides)
+        .try_fold(wire, |wire, (axis, start, end, stride)| {
+            let mut w =
+                builder.wire_as_outlets(tract_core::ops::array::Slice { axis, start, end }, &wire);
+            if stride != 1 {
+                w = builder.wire_as_outlets(
+                    tract_core::ops::downsample::Downsample::new(axis, stride, 0),
+                    &w?,
+                );
+            }
+            w
         })
         .map(Value::from)
 }
@@ -320,16 +337,17 @@ pub fn conv_or_deconv(
     // Remove or reshape bias for efficient processing
     let bias: Option<Tensor> = if bias.is_uniform() && bias.cast_to_scalar::<f32>()? == 0.0 {
         None
+    } else if bias.rank() > 1 {
+        let output_channels = kernel.shape()[0];
+        ensure!(
+            output_channels == bias.len(),
+            "Bias tensor should be scalar or have one value per output channel"
+        );
+        let mut reshaped_bias = bias.into_tensor();
+        reshaped_bias.set_shape(&[output_channels])?;
+        Some(reshaped_bias)
     } else {
-        if bias.rank() > 1 {
-            let output_channels = kernel.shape()[0];
-            ensure!(output_channels == bias.len(), "Bias tensor should be scalar or have one value per output channel"); 
-            let mut reshaped_bias = bias.into_tensor();
-            reshaped_bias.set_shape(&[output_channels])?;
-            Some(reshaped_bias)
-        } else {
-            Some(bias.into_tensor())
-        }
+        Some(bias.into_tensor())
     };
 
     let op: Box<dyn TypedOp> = if deconv {
@@ -562,10 +580,10 @@ pub fn matmul(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
         )?;
         builder.model.node(a.node);
 
-        return builder.wire(
+        builder.wire(
             ops::matmul::QMatMul { axes, output_type: dt, params: MatMulQParams::all_from_qtype() },
             &[a, b, bias],
-        );
+        )
     } else {
         builder.wire(ops::matmul::MatMul { axes }, &[a, b])
     }

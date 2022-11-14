@@ -10,7 +10,7 @@ jobs:
     strategy:
       matrix:
         os: [ ubuntu-latest, macOS-latest ]
-        rust: [ 1.59.0 ]
+        rust: [ 1.65.0 ]
 
     runs-on: ${{matrix.os}}
     env:

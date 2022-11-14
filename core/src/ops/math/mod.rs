@@ -121,7 +121,7 @@ q: [i8, u8, i32] => |c, a, b, _, _| *c = a.clone() * b;
 bin_to_super_type!(div, Div,
 cost: |dt| tvec!((Cost::Div(dt), 1)),
 declutter_bin: declutter_bin_div,
-eval_override: |a:Arc<Tensor>, b: Arc<Tensor>| -> TractResult<Tensor> {
+eval_override: |a:TValue, b: TValue| -> TractResult<Tensor> {
    if
        a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
            let a = a.to_array_view::<TDim>()?;
@@ -164,7 +164,7 @@ out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
 );
 
 bin_to_super_type!(rem, Rem,
-                   eval_override: |a:Arc<Tensor>, b: Arc<Tensor>| -> TractResult<Tensor> {
+                   eval_override: |a:TValue, b: TValue| -> TractResult<Tensor> {
                        if
                            a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
                                let a = a.to_array_view::<TDim>()?;
@@ -261,8 +261,8 @@ fn declutter_unary_mul(
     node: &TypedNode,
     a: &Arc<Tensor>,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if let Some(patch) =
-        declutter_as_shift(model, node, a, Box::new(FlippedShiftLeft)).context("declutte_as_shift")?
+    if let Some(patch) = declutter_as_shift(model, node, a, Box::new(FlippedShiftLeft))
+        .context("declutte_as_shift")?
     {
         Ok(Some(patch))
     } else if let Some(patch) = declutter_unary_mul_magic_values(model, node, a)
@@ -636,11 +636,12 @@ mod tests {
         let x = model.add_source("a", i32::fact(&[2usize, 2]))?;
         let y = model.wire_node("c", mul::unary(rctensor2(&[[4]])), [x].as_ref())?[0];
         model.set_output_outlets(&[y])?;
-        let result = SimplePlan::new(&model)?.run(tvec!(tensor2(&[[1, 2], [3, 4]])))?;
-        assert_eq!(result[0], rctensor2(&[[4, 8], [12, 16]]));
+        let result = SimplePlan::new(&model)?.run(tvec!(tensor2(&[[1, 2], [3, 4]]).into()))?;
+        assert_eq!(*result[0], tensor2(&[[4, 8], [12, 16]]));
         let decluttered = model.into_decluttered()?;
-        let result = SimplePlan::new(&decluttered)?.run(tvec!(tensor2(&[[1, 2], [3, 4]])))?;
-        assert_eq!(result[0], rctensor2(&[[4, 8], [12, 16]]));
+        let result =
+            SimplePlan::new(&decluttered)?.run(tvec!(tensor2(&[[1, 2], [3, 4]]).into()))?;
+        assert_eq!(*result[0], tensor2(&[[4, 8], [12, 16]]));
         let op = decluttered.node(1).op().downcast_ref::<UnaryOp>().unwrap();
         assert!(op.mini_op.downcast_ref::<FlippedShiftLeft>().is_some());
         Ok(())
@@ -653,11 +654,12 @@ mod tests {
         let s = model.add_const("shift", tensor2(&[[4]]))?;
         let y = model.wire_node("c", div::bin_typed(), [x, s].as_ref())?[0];
         model.set_output_outlets(&[y])?;
-        let result = SimplePlan::new(&model)?.run(tvec!(tensor2(&[[16, 32], [64, 68]])))?;
-        assert_eq!(result[0], rctensor2(&[[4, 8], [16, 17]]));
+        let result = SimplePlan::new(&model)?.run(tvec!(tensor2(&[[16, 32], [64, 68]]).into()))?;
+        assert_eq!(*result[0], tensor2(&[[4, 8], [16, 17]]));
         let decluttered = model.into_decluttered()?;
-        let result = SimplePlan::new(&decluttered)?.run(tvec!(tensor2(&[[16, 32], [64, 68]])))?;
-        assert_eq!(result[0], rctensor2(&[[4, 8], [16, 17]]));
+        let result =
+            SimplePlan::new(&decluttered)?.run(tvec!(tensor2(&[[16, 32], [64, 68]]).into()))?;
+        assert_eq!(*result[0], tensor2(&[[4, 8], [16, 17]]));
         let op = decluttered.node(1).op().downcast_ref::<UnaryOp>().unwrap();
         assert!(op.mini_op.downcast_ref::<FlippedShiftRight>().is_some());
         Ok(())

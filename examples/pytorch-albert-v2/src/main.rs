@@ -22,9 +22,6 @@ fn main() -> Result<()> {
 
     let model = tract_onnx::onnx()
         .model_for_path(Path::join(&model_dir, "model.onnx"))?
-        .with_input_fact(0, i64::fact(&[1, length]).into())?
-        .with_input_fact(1, i64::fact(&[1, length]).into())?
-        .with_input_fact(2, i64::fact(&[1, length]).into())?
         .into_optimized()?
         .into_runnable()?;
 
@@ -44,7 +41,8 @@ fn main() -> Result<()> {
     )?
     .into();
 
-    let outputs = model.run(tvec!(input_ids, attention_mask, token_type_ids))?;
+    let outputs =
+        model.run(tvec!(input_ids.into(), attention_mask.into(), token_type_ids.into()))?;
     let logits = outputs[0].to_array_view::<f32>()?;
     let logits = logits.slice(s![0, mask_pos, ..]);
     let word_id = logits.iter().zip(0..).max_by(|a, b| a.0.partial_cmp(b.0).unwrap()).unwrap().1;

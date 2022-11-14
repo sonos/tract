@@ -53,8 +53,8 @@ impl OpState for PulsedSameAxisConcatState {
         &mut self,
         session: &mut SessionState,
         op: &dyn Op,
-        mut inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
+        mut inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         let op = op
             .downcast_ref::<PulsedSameAxisConcat>()
             .ok_or_else(|| format_err!("Wrong Op type"))?;
@@ -86,7 +86,7 @@ impl OpState for PulsedSameAxisConcatState {
             }
         }
 
-        Ok(tvec!(data.into_arc_tensor()))
+        Ok(tvec!(data.into_tvalue()))
     }
 }
 

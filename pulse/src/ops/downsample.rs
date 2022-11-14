@@ -1,6 +1,7 @@
 use crate::internal::*;
 use tract_core::ops::Downsample;
 use tract_pulse_opl::ops::PulsedAxisSlice;
+use tract_pulse_opl::tract_nnef::tract_num_traits::Zero;
 
 register_all!(Downsample: pulsify);
 
@@ -10,7 +11,8 @@ fn pulsify(
     node: &TypedNode,
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
-    _pulse: usize,
+    _symbol: &Symbol,
+    _pulse: &TDim,
 ) -> TractResult<Option<TVec<OutletId>>> {
     let input = mapping[&node.inputs[0]];
     let fact = target.outlet_fact(input)?.clone();
@@ -24,8 +26,8 @@ fn pulsify(
             bail!("Negative strides are not causal, can not pulsify.")
         };
         let pulse = fact.pulse().unwrap();
-        if pulse % stride != 0 {
-            bail!("Pulsificaton requires pulse to be a stride multiple")
+        if !(pulse.clone() % stride).is_zero() {
+            bail!("Pulsification requires pulse ({}) to be a stride ({}) multiple", pulse, stride)
         }
         let mut op = op.clone();
         let modulo = op.modulo + stream.delay;
@@ -53,12 +55,9 @@ impl PulsedOp for Downsample {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         let mut stream = fact.stream.as_mut().unwrap();
-        dbg!(&self);
-        dbg!(&stream);
         fact.shape.set(self.axis, fact.shape[self.axis].clone() / self.stride as usize);
         stream.dim = (inputs[0].stream.as_ref().unwrap().dim.clone() - self.modulo)
             .div_ceil(self.stride as _);
-        dbg!(&stream.dim);
         Ok(tvec!(fact))
     }
 

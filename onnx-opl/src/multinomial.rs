@@ -25,7 +25,7 @@ pub struct Multinomial {
 impl_dyn_hash!(Multinomial);
 
 impl Multinomial {
-    fn eval_t0<T1>(&self, input: Arc<Tensor>) -> TractResult<Arc<Tensor>>
+    fn eval_t0<T1>(&self, input: TValue) -> TractResult<TValue>
     where
         T1: Datum + std::ops::SubAssign + Float + std::iter::Sum,
         Standard: Distribution<T1>,
@@ -36,7 +36,7 @@ impl Multinomial {
             dt => bail!("Unsupported output datum type for Multinomial: {:?}", dt),
         }
     }
-    fn eval_t<T1, T2>(&self, input: Arc<Tensor>) -> TractResult<Arc<Tensor>>
+    fn eval_t<T1, T2>(&self, input: TValue) -> TractResult<TValue>
     where
         T1: Datum + std::ops::SubAssign + Float + std::iter::Sum,
         Standard: Distribution<T1>,
@@ -80,7 +80,7 @@ impl Multinomial {
             ret
         });
 
-        Ok(output.into_arc_tensor())
+        Ok(output.into_tvalue())
     }
 }
 
@@ -97,7 +97,7 @@ impl EvalOp for Multinomial {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
 
         let output = match input.datum_type() {
@@ -120,7 +120,7 @@ impl TypedOp for Multinomial {
         };
 
         let batch_size = input_shape[0];
-        Ok(tvec!(self.dtype.fact(&[batch_size, self.sample_size as usize])))
+        Ok(tvec!(self.dtype.fact([batch_size, self.sample_size as usize])))
     }
 
     as_op!();
