@@ -15,7 +15,7 @@ fi
 echo $CONDA_EXE
 if [ ! -d $HOME/anaconda3/envs/tf_37 ]
 then
-    conda env create -f environment.yml
+    conda env create -q -f environment.yml
 fi
 conda activate tf_37
 
@@ -26,5 +26,6 @@ cargo clean
 
 if [ -n "$CI" ]
 then
+    conda deactivate
     conda env remove -n tf_37
 fi
