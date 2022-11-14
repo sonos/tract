@@ -155,12 +155,12 @@ where
     }
 
     /// Reset wires state.
-    pub fn reset_wires(&mut self) -> TractResult<()> {
+    pub fn reset_turn(&mut self) -> TractResult<()> {
         self.values.iter_mut().for_each(|s| *s = None);
         Ok(())
     }
 
-    /// Reset wires state.
+    /// Reset op inner state.
     pub fn reset_op_states(&mut self) -> TractResult<()> {
         let &mut SimpleState { ref plan, ref mut session_state, ref mut states, .. } = self;
         *states = plan
@@ -177,7 +177,7 @@ where
         self.run_plan_with_eval(inputs, self::eval)
     }
 
-    pub fn exec(&mut self) -> TractResult<TVec<TValue>> {
+    pub fn exec(&mut self) -> TractResult<()> {
         self.exec_plan_with_eval(self::eval)
     }
 
@@ -196,10 +196,13 @@ where
         E: Into<anyhow::Error> + Send + Sync + 'static,
     {
         self.set_inputs(inputs)?;
-        self.exec_plan_with_eval(eval)
+        self.exec_plan_with_eval(eval)?;
+        let outputs = self.take_outputs()?;
+        self.reset_turn()?;
+        Ok(outputs)
     }
 
-    pub fn exec_plan_with_eval<Eval, E>(&mut self, mut eval: Eval) -> TractResult<TVec<TValue>>
+    pub fn exec_plan_with_eval<Eval, E>(&mut self, mut eval: Eval) -> TractResult<()>
     where
         Eval: for<'a, 'b, 'c> FnMut(
             &'a mut SessionState,
@@ -209,7 +212,6 @@ where
         ) -> Result<TVec<TValue>, E>,
         E: Into<anyhow::Error> + Send + Sync + 'static,
     {
-        let mut result = tvec!();
         {
             let &mut SimpleState {
                 ref plan,
@@ -305,13 +307,8 @@ where
 
                 values[node.id] = Some(vs);
             }
-            for output in &plan.outputs {
-                trace!("Extracting value {:?} ({})", output, model.node(output.node));
-                result.push(values[output.node].as_ref().unwrap()[output.slot].clone())
-            }
         }
-        self.reset_wires()?;
-        Ok(result)
+        Ok(())
     }
 
     pub fn set_inputs(&mut self, inputs: TVec<TValue>) -> TractResult<()> {
@@ -359,9 +356,28 @@ where
         Ok(())
     }
 
-    pub fn take_outputs(&mut self) -> TractResult<Vec<TValue>> {
+    pub fn output(&self, id: usize) -> TractResult<&TValue> {
+        let outlet = self.model().output_outlets()?.get(id).with_context(|| {
+            format!(
+                "Required output {}, only have {}",
+                id,
+                self.model().output_outlets().unwrap().len()
+            )
+        })?;
+        let value: &TValue = self
+            .values
+            .get(outlet.node)
+            .context("node id for output beyond node values array")?
+            .as_ref()
+            .context("node is not an output")?
+            .get(outlet.slot)
+            .context("slot id too high")?;
+        Ok(value)
+    }
+
+    pub fn take_outputs(&mut self) -> TractResult<TVec<TValue>> {
         let SimpleState { ref plan, ref mut values, .. } = self;
-        let mut v = vec![];
+        let mut v = tvec![];
         for o in plan.borrow().model().output_outlets()?.iter() {
             let vs = values[o.node].as_mut().ok_or_else(|| {
                 format_err!(
