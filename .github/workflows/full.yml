@@ -69,6 +69,39 @@ jobs:
     - name: Stop sccache server
       run: sccache --stop-server || true
 
+  examples:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Get current date
+      id: date
+      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+    - uses: actions/cache@v3
+      with:
+        path: |
+          ~/.rustup
+          ~/.cargo/registry
+          ~/.cargo/git
+          ~/.cache/sccache
+          target
+          .cached
+        key: ${{ runner.os }}-full-regular-${{steps.date.outputs.date}}-e
+
+    - name: "Setup sccache"
+      run: .travis/setup-sccache.sh
+
+    - name: example tests
+      env:
+        AWS_ACCESS_KEY_ID: ${{secrets.TRACT_CI_AWS_ACCESS_KEY_ID}}
+        AWS_SECRET_ACCESS_KEY: ${{secrets.TRACT_CI_AWS_SECRET_ACCESS_KEY}}
+        AWS_EC2_METADATA_DISABLED: true
+      run: .travis/examples.sh
+
+    - name: Stop sccache server
+      run: sccache --stop-server || true
+
   onnx-tests:
     runs-on: ubuntu-latest
     strategy:

@@ -34,6 +34,7 @@ dependencies:
   - jsonschema=3.2.0=py37_0
   - jupyter_client=5.3.4=py37_0
   - jupyter_core=4.6.1=py37_0
+  - keras=2.10.0=py37_0
   - keras-applications=1.0.8=py_0
   - keras-preprocessing=1.1.0=py_1
   - ld_impl_linux-64=2.33.1=h53a641e_7
