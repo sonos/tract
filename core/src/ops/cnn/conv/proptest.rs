@@ -826,6 +826,22 @@ fn strides_2d_same_2() -> anyhow::Result<()> {
 }
 
 #[test]
+fn strides_two_axes() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, &[1, 1])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data: tract_ndarray::arr3(&[[[0.0]]]).into_dyn(),
+        kernel: arr4(&[[[[0.0]]]]).into_dyn(),
+        bias: None,
+        pad: PaddingSpec::Valid,
+        strides: tvec!(2, 2),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
 fn lazy_im2col_0() -> anyhow::Result<()> {
     let pb = ConvProblem {
         shape_in: DataFormat::CHW.from_n_c_hw(1, 1, &[2])?,

@@ -29,21 +29,19 @@ fn pulsify(
         if !(pulse.clone() % stride).is_zero() {
             bail!("Pulsification requires pulse ({}) to be a stride ({}) multiple", pulse, stride)
         }
-        let mut op = op.clone();
-        let modulo = op.modulo + stream.delay;
-        op.modulo = modulo % stride;
-        let mut wire = target.wire_node(format!("{}.downsample", node.name), op, &[input])?;
-        if modulo / stride > 1 {
-            wire = target.wire_node(
-                format!("{}.skip", node.name),
-                PulsedAxisSlice {
-                    axis: stream.axis,
-                    skip: modulo / stride,
-                    take: (stream.dim.to_owned() - modulo).divceil(stride),
-                },
-                &[input],
-            )?;
-        }
+        let mut wire = tvec!(input);
+        let first_offset = stream.delay + op.modulo;
+        let new_op = Downsample { modulo: first_offset % stride, axis: op.axis, stride: op.stride };
+        wire = target.wire_node(format!("{}.downsample", node.name), new_op, &wire)?;
+        wire = target.wire_node(
+            &node.name,
+            PulsedAxisSlice {
+                axis: stream.axis,
+                skip: first_offset / stride,
+                take: (stream.dim.to_owned() - &op.modulo).divceil(stride),
+            },
+            &wire,
+        )?;
         target.rename_node(wire[0].node, &node.name)?;
         Ok(Some(wire))
     } else {
@@ -56,8 +54,8 @@ impl PulsedOp for Downsample {
         let mut fact = inputs[0].clone();
         let mut stream = fact.stream.as_mut().unwrap();
         fact.shape.set(self.axis, fact.shape[self.axis].clone() / self.stride as usize);
-        stream.dim = (inputs[0].stream.as_ref().unwrap().dim.clone() - self.modulo)
-            .div_ceil(self.stride as _);
+        stream.dim = (stream.dim.clone() + stream.delay).divceil(self.stride as _);
+        stream.delay = 0;
         Ok(tvec!(fact))
     }
 

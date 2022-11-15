@@ -84,3 +84,23 @@ fn test_delay() {
     DelayPlusDownsampleProblem { input: 3, pulse: 2, delay: 1, stride: 2, modulo: 0 }.run().unwrap()
 }
 
+#[test]
+fn test_from_convs() {
+    DelayPlusDownsampleProblem { input: 5, pulse: 2, delay: 1, stride: 2, modulo: 0 }.run().unwrap();
+}
+
+#[test]
+fn test_delayed_stride() {
+    DelayPlusDownsampleProblem { input: 9, pulse: 2, delay: 1, stride: 2, modulo: 0 }.run().unwrap()
+}
+
+#[test]
+fn test_big_delay() {
+    DelayPlusDownsampleProblem { input: 6, pulse: 1, delay: 4, stride: 1, modulo: 0 }.run().unwrap()
+}
+
+#[test]
+fn test_huge_delay() {
+    DelayPlusDownsampleProblem { input: 4, pulse: 2, delay: 1, stride: 2, modulo: 0 }.run().unwrap()
+}
+

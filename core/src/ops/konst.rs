@@ -29,4 +29,8 @@ impl TypedOp for Const {
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(self.0.as_ref().into()))
     }
+
+    fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        Ok(tvec!((Cost::Params(f32::datum_type()), self.0.len().into())))
+    }
 }

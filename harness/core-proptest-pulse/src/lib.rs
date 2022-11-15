@@ -33,8 +33,8 @@ fn proptest_regular_against_pulse(
     setup_test_logger();
 
     let len = input_array.shape()[axis];
-    //dbg!(&model);
     let model = model.into_decluttered().unwrap();
+    // dbg!(&model);
     let s = model.symbol_table.sym("S");
     let symbols = SymbolValues::default().with(&s, len as i64);
 
@@ -46,7 +46,7 @@ fn proptest_regular_against_pulse(
 
     // dbg!(&runnable);
     let outputs = runnable.run(tvec!(input_array.clone().into_tvalue())).unwrap();
-
+    // dbg!(&outputs);
     debug!("Build pulsing model");
     // dbg!(&model);
     let pulsed = PulsedModel::new(&model, s.clone(), &pulse.to_dim()).unwrap();
@@ -54,6 +54,7 @@ fn proptest_regular_against_pulse(
     let output_fact = pulsed.output_fact(0).unwrap().clone();
 
     let stream_info = output_fact.stream.as_ref().unwrap();
+    prop_assert!(stream_info.dim.eval(&symbols) == outputs[0].shape()[stream_info.axis].to_dim());
     let output_stream_axis = stream_info.axis;
     let delay = stream_info.delay;
     let mut initial_output_shape = output_fact.shape.clone();

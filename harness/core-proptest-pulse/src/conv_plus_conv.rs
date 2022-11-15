@@ -286,8 +286,11 @@ fn three_stride() {
         pulse: 2,
         convs: vec![ // 0 1 2 3
             ConvOp { stride: 1, dilation: 1, ker: t(2), padding: PaddingSpec::Valid }, // overlap=1, 1 2 3  -> ∂=1
+            // pulse: x 1 | 2 3
             ConvOp { stride: 1, dilation: 1, ker: t(1), padding: PaddingSpec::Valid }, // no delay, 0 0 0 -> ∂=1
+            // pulse: x 0 | 0 0
             ConvOp { stride: 2, dilation: 2, ker: t(1), padding: PaddingSpec::Valid }, // 0 0
+            // pulse 0 | 0
         ],
     };
     cpc.run().unwrap();
