@@ -39,11 +39,14 @@ impl TypedOp for Const {
     ) -> TractResult<Option<AxisChangeConsequence>> {
         anyhow::ensure!(io == InOut::Out(0));
         let mut new_tensor = self.0.clone().into_tensor();
-        change.change_tensor(&mut new_tensor, false)?;
-        Ok(Some(AxisChangeConsequence {
-            substitute_op: Some(Box::new(Const(new_tensor.into_arc_tensor()))),
-            wire_changes: tvec!((io, change.clone())),
-        }))
+        if change.change_tensor(&mut new_tensor, false).is_ok() {
+            Ok(Some(AxisChangeConsequence {
+                substitute_op: Some(Box::new(Const(new_tensor.into_arc_tensor()))),
+                wire_changes: tvec!((io, change.clone())),
+            }))
+        } else {
+            Ok(None)
+        }
     }
 
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
