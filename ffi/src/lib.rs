@@ -24,6 +24,8 @@ pub enum TRACT_RESULT {
 
 thread_local! {
     pub(crate) static LAST_ERROR: RefCell<Option<CString>> = RefCell::new(None);
+    pub(crate) static SHAPE_ARRAY: RefCell<TVec<i64>> = RefCell::new(tvec!());
+    pub(crate) static OUTPUTS: RefCell<TVec<TValue>> = RefCell::new(tvec!());
 }
 
 fn wrap<F: FnOnce() -> anyhow::Result<()>>(func: F) -> TRACT_RESULT {
@@ -169,6 +171,44 @@ pub extern "C" fn tract_runnable_spawn_state(
 }
 
 #[no_mangle]
+pub extern "C" fn tract_runnable_run(
+    runnable: *mut TractRunnable,
+    input_len: usize,
+    inputs: *mut DLTensor,
+    output_len: usize,
+    outputs: *mut DLTensor,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        if runnable.is_null() {
+            anyhow::bail!("Trying to convert null model")
+        }
+        if inputs.is_null() {
+            anyhow::bail!("Null pointer input")
+        }
+        if outputs.is_null() {
+            anyhow::bail!("Null pointer output")
+        }
+        let runnable = runnable.as_ref().unwrap();
+        let values = (0..input_len)
+            .map(|ix| Ok(copy_tensor_to_tract(inputs.add(ix))?.into_tvalue()))
+            .collect::<TractResult<TVec<TValue>>>()?;
+        let values = runnable.0.run(values)?;
+        if values.len() != output_len {
+            anyhow::bail!(
+                "Wrong output number. output_len says {}, model returned {} outputs",
+                output_len,
+                values.len()
+            )
+        }
+        OUTPUTS.with(|store| {
+            let mut store = store.borrow_mut();
+            *store = values;
+            observe_tensors(&store, outputs)
+        })
+    })
+}
+
+#[no_mangle]
 pub extern "C" fn tract_runnable_release(runnable: *mut *mut TractRunnable) -> TRACT_RESULT {
     wrap(|| unsafe {
         if runnable.is_null() || (*runnable).is_null() {
@@ -187,17 +227,6 @@ type NativeState = native::TypedSimpleState<
     Arc<native::TypedRunnableModel<native::TypedModel>>,
 >;
 pub struct TractState(NativeState);
-
-/// cbindgen:ignore
-fn copy_tensor_to_tract(tensor: *mut dlpackrs::ffi::DLTensor) -> TractResult<Tensor> {
-    unsafe {
-        let dlt = dlpackrs::Tensor::from_raw(tensor);
-        assert!(dlt.dtype() == DataType::f32());
-        assert!(dlt.strides().is_none());
-        let arr = RawArrayView::from_shape_ptr(dlt.shape().unwrap(), dlt.data() as *mut f32);
-        Ok(arr.deref_into_view().into_owned().into_tensor())
-    }
-}
 
 #[no_mangle]
 pub extern "C" fn tract_state_set_input(
@@ -228,10 +257,6 @@ pub extern "C" fn tract_state_exec(state: *mut TractState) -> TRACT_RESULT {
     })
 }
 
-thread_local! {
-    pub(crate) static SHAPE_ARRAY: RefCell<TVec<i64>> = RefCell::new(tvec!());
-}
-
 /// Borrow an output tensor from the state.
 ///
 /// The borrowed data may become invalid when any function on tract API is called in the thread.
@@ -247,21 +272,7 @@ pub extern "C" fn tract_state_output(
         }
         let state = state.as_mut().unwrap();
         let value = state.0.output(output_id)?;
-        let value = SHAPE_ARRAY.with(|shape| -> TractResult<dlpackrs::Tensor> {
-            shape.borrow_mut().clear();
-            shape.borrow_mut().extend(value.shape().iter().map(|i| *i as i64));
-            let dlt = dlpackrs::Tensor::new(
-                value.as_ptr::<f32>()? as _,
-                Device::cpu(0),
-                value.rank() as i32,
-                DataType::f32(),
-                shape.borrow_mut().as_mut_ptr(),
-                std::ptr::null_mut(),
-                0,
-            );
-            Ok(dlt)
-        })?;
-        *tensor = value.into_inner();
+        observe_tensors(&[value.to_owned()], tensor)?;
         Ok(())
     })
 }
@@ -286,6 +297,57 @@ pub extern "C" fn tract_state_destroy(state: *mut *mut TractState) -> TRACT_RESU
         }
         let _ = Box::from_raw(*state);
         *state = std::ptr::null_mut();
+        Ok(())
+    })
+}
+
+// MISC
+
+/// This ffi binding uses a couple of thread local variables to adapt tensors and DLTensor
+/// semantics, specifically in the case of `tract_state_output` or `tract_runnable_run`. These
+/// variables will stay in memory until one of the functions is called again, and the return
+/// DLTensors will stay valid accordingly.
+///
+/// If memory is a concern and the DLTensor no longer needed, `tract_clear_dltensor_helpers`
+/// can be called to free the thread local storage.
+#[no_mangle]
+pub extern "C" fn tract_clear_dltensor_storage() {
+    SHAPE_ARRAY.with(|s| s.replace(tvec!()));
+    OUTPUTS.with(|s| s.replace(tvec!()));
+}
+
+
+// HELPERS
+
+/// cbindgen:ignore
+fn copy_tensor_to_tract(tensor: *mut dlpackrs::ffi::DLTensor) -> TractResult<Tensor> {
+    unsafe {
+        let dlt = dlpackrs::Tensor::from_raw(tensor);
+        assert!(dlt.dtype() == DataType::f32());
+        assert!(dlt.strides().is_none());
+        let arr = RawArrayView::from_shape_ptr(dlt.shape().unwrap(), dlt.data() as *mut f32);
+        Ok(arr.deref_into_view().into_owned().into_tensor())
+    }
+}
+
+/// dbinget ignore
+unsafe fn observe_tensors(values: &[TValue], ffi: *mut DLTensor) -> TractResult<()> {
+    SHAPE_ARRAY.with(|shape| {
+        let mut shape = shape.borrow_mut();
+        shape.clear();
+        for (ix, value) in values.iter().enumerate() {
+            let dlt = dlpackrs::Tensor::new(
+                value.as_ptr::<f32>()? as _,
+                Device::cpu(0),
+                value.rank() as i32,
+                DataType::f32(),
+                shape.as_mut_ptr().add(shape.len()),
+                std::ptr::null_mut(),
+                0,
+            );
+            shape.extend(value.shape().iter().map(|i| *i as i64));
+            *(ffi.add(ix)) = dlt.into_inner();
+        }
         Ok(())
     })
 }
