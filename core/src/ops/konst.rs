@@ -30,6 +30,22 @@ impl TypedOp for Const {
         Ok(tvec!(self.0.as_ref().into()))
     }
 
+    fn change_axes(
+        &self,
+        _model: &TypedModel,
+        _node: &TypedNode,
+        io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        anyhow::ensure!(io == InOut::Out(0));
+        let mut new_tensor = self.0.clone().into_tensor();
+        change.change_tensor(&mut new_tensor, false)?;
+        Ok(Some(AxisChangeConsequence {
+            substitute_op: Some(Box::new(Const(new_tensor.into_arc_tensor()))),
+            wire_changes: tvec!((io, change.clone())),
+        }))
+    }
+
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         Ok(tvec!((Cost::Params(f32::datum_type()), self.0.len().into())))
     }

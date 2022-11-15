@@ -17,6 +17,10 @@ impl Op for MatMul {
         "MatMul".into()
     }
 
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec!(format!("{:?}", self.axes)))
+    }
+
     op_as_typed_op!();
 }
 

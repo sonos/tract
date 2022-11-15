@@ -72,8 +72,8 @@ impl MatMulAxes {
     // return matching axis index in b and c
     fn follow_axis_from_a(&self, in_a: usize) -> (usize, usize) {
         let ix = in_a - (self.a_k < in_a) as usize - (self.a_m < in_a) as usize;
-        let in_b = (0..).filter(|&i| i != self.b_n && i != self.b_k).skip(ix).next().unwrap();
-        let in_c = (0..).filter(|&i| i != self.c_m && i != self.c_n).skip(ix).next().unwrap();
+        let in_b = (0..).filter(|&i| i != self.b_n && i != self.b_k).nth(ix).unwrap();
+        let in_c = (0..).filter(|&i| i != self.c_m && i != self.c_n).nth(ix).unwrap();
         (in_b, in_c)
     }
 
@@ -109,8 +109,8 @@ impl MatMulAxes {
                         .rev()
                         .next()
                     {
-                        let (_, new_c_n) = self.follow_axis_from_a(axis);
-                        let new_axes = Self { a_m: axis, c_n: new_c_n, ..*self };
+                        let (_, new_c_m) = self.follow_axis_from_a(axis);
+                        let new_axes = Self { a_m: axis, c_m: new_c_m, ..*self };
                         let (in_b, in_c) = new_axes.follow_axis_from_a(*in_a);
                         return new_axes.remove_untouched_axis(*in_a, in_b, in_c);
                     }
