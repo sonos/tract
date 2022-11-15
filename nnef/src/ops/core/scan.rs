@@ -97,6 +97,7 @@ fn ser_scan(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValu
         }
     }
     for tensor in body_tensors.iter().sorted_by_key(|t| &t.label) {
+        dbg!(&tensor.label);
         let t = ast.konst_variable(&tensor.label, &tensor.value)?;
         full.push(tuple_2(string(&tensor.parameter_id), t.as_ref().clone()));
     }
@@ -153,6 +154,7 @@ fn de_scan(
         .ok_or_else(|| format_err!("Cound not find fragment `{}'", fragment_name))?;
     let mut body = ModelBuilder::new(builder.framework, builder.proto_model, &builder.model.symbol_table);
     body.scopes.push(HashMap::new());
+    body.naming_scopes = builder.naming_scopes.clone();
     let mut outer_inputs: TVec<OutletId> = tvec!();
     let mut input_mapping = vec![];
     let scan: TVec<(String, OutletId, usize, isize)> = invocation.named_arg_as(builder, "scan")?;
