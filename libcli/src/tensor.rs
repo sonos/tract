@@ -262,25 +262,6 @@ pub fn for_string(
     }
 }
 
-#[cfg(feature = "pulse")]
-fn parse_dim_stream(s: &str) -> TractResult<TDim> {
-    use tract_pulse::internal::stream_dim;
-    if s == "S" {
-        Ok(stream_dim())
-    } else if s.ends_with('S') {
-        let number: String = s.chars().take_while(|c| c.is_ascii_digit()).collect();
-        let number: i64 = number.parse::<i64>()?;
-        Ok(stream_dim() * number)
-    } else {
-        Ok(s.parse::<i64>().map(|i| i.into())?)
-    }
-}
-
-#[cfg(not(feature = "pulse"))]
-fn parse_dim_stream(s: &str) -> TractResult<TDim> {
-    Ok(s.parse::<i64>().map(|i| i.into())?)
-}
-
 lazy_static::lazy_static! {
     static ref WARNING_ONCE: Mutex<HashSet<String>> = Mutex::new(HashSet::new());
 }
