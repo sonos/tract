@@ -105,7 +105,7 @@ fn proptest_regular_against_pulse(
                 break;
             }
         }
-        eprintln!("");
+        eprintln!();
     }
 
     let pulsed_output = got

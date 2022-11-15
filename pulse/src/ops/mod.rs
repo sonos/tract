@@ -17,7 +17,7 @@ pub(crate) fn sync_inputs(
 ) -> TractResult<TVec<OutletId>> {
     let mut max_delay = 0;
     for input in &node.inputs {
-        let fact = target.outlet_fact(mapping[&input])?;
+        let fact = target.outlet_fact(mapping[input])?;
         if let Some(stream) = &fact.stream {
             max_delay = max_delay.max(stream.delay);
         }

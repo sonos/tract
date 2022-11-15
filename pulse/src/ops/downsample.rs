@@ -38,7 +38,7 @@ fn pulsify(
             PulsedAxisSlice {
                 axis: stream.axis,
                 skip: first_offset / stride,
-                take: (stream.dim.to_owned() - &op.modulo).divceil(stride),
+                take: (stream.dim.to_owned() - op.modulo).divceil(stride),
             },
             &wire,
         )?;

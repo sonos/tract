@@ -27,7 +27,7 @@ pub fn pull_downsample_over_slice(
 
     let new_end = final_len + left;
     let op = ops::array::Slice::new(slice_op.axis, new_start.to_dim(), new_end);
-    let new_slice = patch.wire_node(&*slice_node.name, op, &*ds)?[0];
+    let new_slice = patch.wire_node(&*slice_node.name, op, &ds)?[0];
 
     patch.shunt_outside(model, OutletId::new(down_node.id, 0), new_slice)?;
     Ok(Some(patch))
@@ -79,7 +79,7 @@ mod tests {
         let _ = env_logger::Builder::from_env("TRACT_LOG").try_init();
         let mut model = {
             let mut model = TypedModel::default();
-            let input = model.add_source("input", i32::fact(&[len])).unwrap();
+            let input = model.add_source("input", i32::fact([len])).unwrap();
             let crop = model
                 .wire_node(
                     "crop",

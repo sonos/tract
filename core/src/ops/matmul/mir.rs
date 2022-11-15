@@ -51,7 +51,7 @@ impl TypedOp for MatMul {
     }
 
     fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
-        mir_invariants(&inputs[0], &inputs[1], &outputs[0], self.axes)
+        mir_invariants(inputs[0], inputs[1], outputs[0], self.axes)
     }
 
     fn change_axes(
@@ -154,6 +154,7 @@ fn mir_invariants(
         .collect())
 }
 
+#[allow(clippy::type_complexity)]
 pub(super) fn mir_change_axes(
     model: &TypedModel,
     node: &TypedNode,

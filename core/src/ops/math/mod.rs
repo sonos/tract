@@ -633,7 +633,7 @@ mod tests {
     #[test]
     fn mul_as_shift() -> TractResult<()> {
         let mut model = TypedModel::default();
-        let x = model.add_source("a", i32::fact(&[2usize, 2]))?;
+        let x = model.add_source("a", i32::fact([2usize, 2]))?;
         let y = model.wire_node("c", mul::unary(rctensor2(&[[4]])), [x].as_ref())?[0];
         model.set_output_outlets(&[y])?;
         let result = SimplePlan::new(&model)?.run(tvec!(tensor2(&[[1, 2], [3, 4]]).into()))?;
@@ -650,7 +650,7 @@ mod tests {
     #[test]
     fn div_as_shift() -> TractResult<()> {
         let mut model = TypedModel::default();
-        let x = model.add_source("a", i32::fact(&[2usize, 2]))?;
+        let x = model.add_source("a", i32::fact([2usize, 2]))?;
         let s = model.add_const("shift", tensor2(&[[4]]))?;
         let y = model.wire_node("c", div::bin_typed(), [x, s].as_ref())?[0];
         model.set_output_outlets(&[y])?;

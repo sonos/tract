@@ -129,7 +129,7 @@ pub fn new_mat_mul_unary_finite(
     let b = model.outlet_fact(node.inputs[input])?;
     let c_dt = output_type(a.datum_type());
     let a_shape = ShapeFact::from(a.shape());
-    let (m, k, n, c_shape) = compute_shape(&a_shape, &*b.shape, *axes)?;
+    let (m, k, n, c_shape) = compute_shape(&a_shape, &b.shape, *axes)?;
     let concrete_m = m.to_usize().unwrap();
     let concrete_k = k.to_usize().unwrap();
 
@@ -170,7 +170,7 @@ pub fn new_mat_mul_unary_finite(
         .unwrap();
         mmm.a_pack().pack(
             &mut pa.view_mut(),
-            TensorView::from_bytes(&a, offset, a.shape(), a.strides()),
+            TensorView::from_bytes(a, offset, a.shape(), a.strides()),
             axes.a_k,
             axes.a_m,
         );

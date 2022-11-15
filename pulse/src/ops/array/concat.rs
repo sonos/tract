@@ -18,7 +18,7 @@ fn pulsify(
     let pulse_facts: TVec<&PulsedFact> =
         node.inputs.iter().map(|i| target.outlet_fact(mapping[i]).unwrap()).collect();
     let (_stream_input_ix, pulse_fact) =
-        pulse_facts.iter().enumerate().filter(|(_ix, pf)| pf.stream.is_some()).next().unwrap();
+        pulse_facts.iter().enumerate().find(|(_ix, pf)| pf.stream.is_some()).unwrap();
 
     if pulse_fact.stream.as_ref().unwrap().axis == op.axis {
         todo!()

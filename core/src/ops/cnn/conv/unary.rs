@@ -1230,7 +1230,7 @@ mod test {
                 pads: vec![(0, 0), (1, 0)],
                 mode: ops::array::PadMode::Constant(rctensor0(0f32)),
             },
-            &*wire,
+            &wire,
         )?;
         let wire = model.wire_node(
             "conv",
@@ -1249,9 +1249,9 @@ mod test {
                 bias: None,
                 q_params: None,
             },
-            &*wire,
+            &wire,
         )?;
-        model.set_output_outlets(&*wire)?;
+        model.set_output_outlets(&wire)?;
         model.declutter()?;
         assert_eq!(model.nodes().len(), 2); // source + conv
         let cv = model.nodes()[1].op_as::<ConvUnary>().unwrap();

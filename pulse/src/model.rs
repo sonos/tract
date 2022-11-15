@@ -153,7 +153,7 @@ impl
         }
 
         let (stream_input_ix, pulse_fact) =
-            pulse_facts.iter().enumerate().filter(|(_ix, pf)| pf.stream.is_some()).next().unwrap();
+            pulse_facts.iter().enumerate().find(|(_ix, pf)| pf.stream.is_some()).unwrap();
 
         let (input_facts, output_facts) = source.node_facts(node.id)?;
         let invariants = node.op.invariants(&input_facts, &output_facts)?;
@@ -283,7 +283,7 @@ impl PulsedOp for NonPulsingWrappingOp {
         let input_facts =
             inputs.iter().map(|pf| pf.to_typed_fact()).collect::<TractResult<TVec<_>>>()?;
         let input_facts_ref = input_facts.iter().map(|f| f.as_ref()).collect::<TVec<_>>();
-        let output_facts = self.0.output_facts(&*input_facts_ref)?;
+        let output_facts = self.0.output_facts(&input_facts_ref)?;
         let output_facts_ref = output_facts.iter().collect::<TVec<_>>();
         std::mem::forget(output_facts_ref);
         output_facts

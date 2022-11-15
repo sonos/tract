@@ -143,7 +143,7 @@ impl MatMulAxes {
                 if *from.max(to) < self.a_k.min(self.a_m) && *from.max(to) < self.c_n.min(self.c_m)
                 {
                     Ok((
-                        self.clone(),
+                        *self,
                         Some(AxisOp::Move(*from, *to)),
                         None,
                         Some(AxisOp::Move(*from, *to)),
