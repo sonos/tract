@@ -4,13 +4,20 @@
 #include "dlpack.h"
 #include "tract.h"
 
-void dump_tensor(DLTensor *tensor) {
+int tensor_len(DLTensor* tensor) {
     int len = 1;
     for(int i = 0; i < tensor->ndim; i++) {
         len *= tensor->shape[i];
+    }
+    return len;
+}
+
+void dump_tensor(DLTensor *tensor) {
+    for(int i = 0; i < tensor->ndim; i++) {
         fprintf(stdout, "%d ", tensor->shape[i]);
     }
     fprintf(stdout, "= ");
+    int len = tensor_len(tensor);
     for(int i = 0; i < len; i++) {
         fprintf(stdout, "%f ", ((float*)(tensor->data))[i]);
     }
@@ -50,20 +57,37 @@ int main() {
     assert(runnable);
     assert(!model);
 
+    float *image = malloc(3*224*224*sizeof(float));
+    FILE *fd = fopen("grace_hopper_3_224_224.f32.raw", "rb");
+    assert(fread(image, sizeof(float), 3*224*224, fd) == 3*224*224);
+    fclose(fd);
+
     // input def and output decl
-    float data[6] = { 1.0, 2.0, 3.0, 4.0, 5.0, 6.0 };
-    int64_t shape[3] = { 2, 1, 3 };
+    int64_t shape[4] = { 1, 3, 224, 224 };
     DLDataType f32 = { .code = kDLFloat, .bits = 32, .lanes = 1 };
     DLTensor input = {
-        .data = data, .device = kDLCPU, .ndim = 3, .dtype = f32, .shape = shape, .strides = NULL, .byte_offset = 0
+        .data = image, .device = kDLCPU, .ndim = 4, .dtype = f32, .shape = shape, .strides = NULL, .byte_offset = 0
     };
     DLTensor output;
     memset(&output, 0, sizeof(DLTensor));
 
     // simple stateless run...
     check(tract_runnable_run(runnable, 1, &input, 1, &output));
-    dump_tensor(&output);
 
+    float max = ((float *)output.data)[0];
+    int argmax = 0;
+    int len = tensor_len(&output);
+    for(int i = 0; i < len ; i++) {
+        float val = ((float*)output.data)[i];
+        if(val > max) {
+            max = val;
+            argmax = i;
+        }
+    }
+    printf("Max is %f for category %d\n", max, argmax);
+
+    /*
+    dump_tensor(&output);
     // or spawn a state to run the model
     TractState *state = NULL;
     check(tract_runnable_spawn_state(runnable, &state));
@@ -82,5 +106,6 @@ int main() {
 
     // done with out state
     check(tract_state_destroy(&state));
+    */
 }
 
