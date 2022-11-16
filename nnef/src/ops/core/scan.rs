@@ -97,7 +97,6 @@ fn ser_scan(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValu
         }
     }
     for tensor in body_tensors.iter().sorted_by_key(|t| &t.label) {
-        dbg!(&tensor.label);
         let t = ast.konst_variable(&tensor.label, &tensor.value)?;
         full.push(tuple_2(string(&tensor.parameter_id), t.as_ref().clone()));
     }
