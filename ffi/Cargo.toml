@@ -11,6 +11,7 @@ autobenches = false
 edition = "2018"
 
 [lib]
+name = "tract"
 crate-type = ["cdylib"]
 
 [badges]
