@@ -185,13 +185,17 @@ pub extern "C" fn tract_runnable_run(
         if inputs.is_null() {
             anyhow::bail!("Null pointer input")
         }
+        /*
         if outputs.is_null() {
             anyhow::bail!("Null pointer output")
         }
+        */
         let runnable = runnable.as_ref().unwrap();
         let values = (0..input_len)
             .map(|ix| Ok(copy_tensor_to_tract(inputs.add(ix))?.into_tvalue()))
             .collect::<TractResult<TVec<TValue>>>()?;
+        dbg!(values);
+        anyhow::bail!("foo");
         let values = runnable.0.run(values)?;
         if values.len() != output_len {
             anyhow::bail!(
