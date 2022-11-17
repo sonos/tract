@@ -1,0 +1,2 @@
+language = "C"
+after_includes = "typedef struct DLTensor DLTensor;"
