@@ -1,28 +1,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
-#include "dlpack.h"
 #include "tract.h"
-
-int tensor_len(DLTensor* tensor) {
-    int len = 1;
-    for(int i = 0; i < tensor->ndim; i++) {
-        len *= tensor->shape[i];
-    }
-    return len;
-}
-
-void dump_tensor(DLTensor *tensor) {
-    for(int i = 0; i < tensor->ndim; i++) {
-        fprintf(stdout, "%d ", tensor->shape[i]);
-    }
-    fprintf(stdout, "= ");
-    int len = tensor_len(tensor);
-    for(int i = 0; i < len; i++) {
-        fprintf(stdout, "%f ", ((float*)(tensor->data))[i]);
-    }
-    fprintf(stdout, "\n");
-}
 
 #define check(call) {                                                             \
     TRACT_RESULT result = call;                                                 \
@@ -62,50 +41,49 @@ int main() {
     assert(fread(image, sizeof(float), 3*224*224, fd) == 3*224*224);
     fclose(fd);
 
-    // input def and output decl
-    int64_t shape[4] = { 1, 3, 224, 224 };
-    DLDataType f32 = { .code = kDLFloat, .bits = 32, .lanes = 1 };
-    DLTensor input = {
-        .data = image, .device = kDLCPU, .ndim = 4, .dtype = f32, .shape = shape, .strides = NULL, .byte_offset = 0
-    };
-    DLTensor output;
-    memset(&output, 0, sizeof(DLTensor));
+    TractValue* input = NULL;
+    size_t shape[] = {1, 3, 224, 224 };
+    check(tract_value_create(TRACT_DATUM_TYPE_F32, 4, shape, image, &input));
+    free(image);
+
+    TractValue* output = NULL;
 
     // simple stateless run...
     check(tract_runnable_run(runnable, 1, &input, 1, &output));
 
-    float max = ((float *)output.data)[0];
+    const float *data = NULL;
+    check(tract_value_inspect(output, NULL, NULL, NULL, (const void**) &data));
+    float max = data[0];
     int argmax = 0;
-    int len = tensor_len(&output);
-    for(int i = 0; i < len ; i++) {
-        float val = ((float*)output.data)[i];
+    for(int i = 0; i < 1000 ; i++) {
+        float val = data[i];
         if(val > max) {
             max = val;
             argmax = i;
         }
     }
     printf("Max is %f for category %d\n", max, argmax);
+    check(tract_value_destroy(&output));
 
-    /*
-    dump_tensor(&output);
     // or spawn a state to run the model
     TractState *state = NULL;
     check(tract_runnable_spawn_state(runnable, &state));
     assert(state);
 
-    // runnable is refcounted by the spawned states, so we can release ours.
+    // runnable is refcounted by the spawned states, so we can release it now.
     check(tract_runnable_release(&runnable));
     assert(!runnable);
 
-    memset(&output, 0, sizeof(DLTensor));
-    check(tract_state_set_input(state, 0, &input));
+    check(tract_state_set_input(state, 0, input));
     check(tract_state_exec(state));
     check(tract_state_output(state, 0, &output));
 
-    dump_tensor(&output);
+    check(tract_value_inspect(output, NULL, NULL, NULL, (const void**) &data));
+    assert(data[argmax] == max);
+    check(tract_value_destroy(&output));
 
-    // done with out state
+    // done with out state and input
     check(tract_state_destroy(&state));
-    */
+    check(tract_value_destroy(&input));
 }
 

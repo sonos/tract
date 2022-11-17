@@ -2,7 +2,7 @@ run: mobilenet mobilenet_v2_1.0.onnx.nnef.tgz
 	LD_LIBRARY_PATH=. ./mobilenet
 
 clean:
-	rm -f mobilenet libtract.so tract.h dlpack.h mobilenet_v2_1.0.onnx.nnef.tgz
+	rm -f mobilenet libtract.so tract.h dlpack.h
 
 mobilenet: tract.h dlpack.h libtract.so mobilenet.c
 	cc mobilenet.c -o mobilenet -L. -ltract
