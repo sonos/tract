@@ -8,7 +8,7 @@ repository = "https://github.com/snipsco/tract"
 keywords = [ "TensorFlow", "NeuralNetworks" ]
 categories = [ "science" ]
 autobenches = false
-edition = "2018"
+edition = "2021"
 
 [lib]
 name = "tract"
@@ -19,6 +19,5 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 anyhow.workspace = true
-dlpackrs.workspace = true
 tract-data = { path = "../data" }
 tract-nnef = { path = "../nnef" }

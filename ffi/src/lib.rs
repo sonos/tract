@@ -1,10 +1,8 @@
 use anyhow::Context;
-use dlpackrs::ffi::DLTensor;
-use dlpackrs::{DataType, Device};
 use std::cell::RefCell;
-use std::ffi::{c_char, CStr, CString};
+use std::convert::TryFrom;
+use std::ffi::{c_char, c_void, CStr, CString};
 use std::sync::Arc;
-use tract_nnef::tract_ndarray::RawArrayView;
 
 use tract_nnef::internal as native;
 use tract_nnef::tract_core::prelude::*;
@@ -22,10 +20,88 @@ pub enum TRACT_RESULT {
     TRACT_RESULT_KO = 1,
 }
 
+#[repr(C)]
+#[allow(non_camel_case_types)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+pub enum TractDatumType {
+    TRACT_DATUM_TYPE_BOOL,
+    TRACT_DATUM_TYPE_U8,
+    TRACT_DATUM_TYPE_U16,
+    TRACT_DATUM_TYPE_U32,
+    TRACT_DATUM_TYPE_U64,
+    TRACT_DATUM_TYPE_I8,
+    TRACT_DATUM_TYPE_I16,
+    TRACT_DATUM_TYPE_I32,
+    TRACT_DATUM_TYPE_I64,
+    TRACT_DATUM_TYPE_F16,
+    TRACT_DATUM_TYPE_F32,
+    TRACT_DATUM_TYPE_F64,
+    TRACT_DATUM_TYPE_COMPLEX_I16,
+    TRACT_DATUM_TYPE_COMPLEX_I32,
+    TRACT_DATUM_TYPE_COMPLEX_I64,
+    TRACT_DATUM_TYPE_COMPLEX_F16,
+    TRACT_DATUM_TYPE_COMPLEX_F32,
+    TRACT_DATUM_TYPE_COMPLEX_F64,
+}
+
+impl From<TractDatumType> for DatumType {
+    fn from(it: TractDatumType) -> Self {
+        use DatumType::*;
+        use TractDatumType::*;
+        match it {
+            TRACT_DATUM_TYPE_BOOL => Bool,
+            TRACT_DATUM_TYPE_U8 => U8,
+            TRACT_DATUM_TYPE_U16 => U16,
+            TRACT_DATUM_TYPE_U32 => U32,
+            TRACT_DATUM_TYPE_U64 => U64,
+            TRACT_DATUM_TYPE_I8 => I8,
+            TRACT_DATUM_TYPE_I16 => I16,
+            TRACT_DATUM_TYPE_I32 => I32,
+            TRACT_DATUM_TYPE_I64 => I64,
+            TRACT_DATUM_TYPE_F16 => F16,
+            TRACT_DATUM_TYPE_F32 => F32,
+            TRACT_DATUM_TYPE_F64 => F64,
+            TRACT_DATUM_TYPE_COMPLEX_I16 => ComplexI16,
+            TRACT_DATUM_TYPE_COMPLEX_I32 => ComplexI32,
+            TRACT_DATUM_TYPE_COMPLEX_I64 => ComplexI64,
+            TRACT_DATUM_TYPE_COMPLEX_F16 => ComplexF16,
+            TRACT_DATUM_TYPE_COMPLEX_F32 => ComplexF32,
+            TRACT_DATUM_TYPE_COMPLEX_F64 => ComplexF64,
+        }
+    }
+}
+
+impl TryFrom<DatumType> for TractDatumType {
+    type Error = TractError;
+    fn try_from(it: DatumType) -> TractResult<Self> {
+        use DatumType::*;
+        use TractDatumType::*;
+        match it {
+            Bool => Ok(TRACT_DATUM_TYPE_BOOL),
+            U8 => Ok(TRACT_DATUM_TYPE_U8),
+            U16 => Ok(TRACT_DATUM_TYPE_U16),
+            U32 => Ok(TRACT_DATUM_TYPE_U32),
+            U64 => Ok(TRACT_DATUM_TYPE_U64),
+            I8 => Ok(TRACT_DATUM_TYPE_I8),
+            I16 => Ok(TRACT_DATUM_TYPE_I16),
+            I32 => Ok(TRACT_DATUM_TYPE_I32),
+            I64 => Ok(TRACT_DATUM_TYPE_I64),
+            F16 => Ok(TRACT_DATUM_TYPE_F16),
+            F32 => Ok(TRACT_DATUM_TYPE_F32),
+            F64 => Ok(TRACT_DATUM_TYPE_F64),
+            ComplexI16 => Ok(TRACT_DATUM_TYPE_COMPLEX_I16),
+            ComplexI32 => Ok(TRACT_DATUM_TYPE_COMPLEX_I32),
+            ComplexI64 => Ok(TRACT_DATUM_TYPE_COMPLEX_I64),
+            ComplexF16 => Ok(TRACT_DATUM_TYPE_COMPLEX_F16),
+            ComplexF32 => Ok(TRACT_DATUM_TYPE_COMPLEX_F32),
+            ComplexF64 => Ok(TRACT_DATUM_TYPE_COMPLEX_F64),
+            _ => anyhow::bail!("tract C bindings do not support {:?} type", it),
+        }
+    }
+}
+
 thread_local! {
     pub(crate) static LAST_ERROR: RefCell<Option<CString>> = RefCell::new(None);
-    pub(crate) static SHAPE_ARRAY: RefCell<TVec<i64>> = RefCell::new(tvec!());
-    pub(crate) static OUTPUTS: RefCell<TVec<TValue>> = RefCell::new(tvec!());
 }
 
 fn wrap<F: FnOnce() -> anyhow::Result<()>>(func: F) -> TRACT_RESULT {
@@ -143,6 +219,7 @@ pub extern "C" fn tract_model_destroy(model: *mut *mut TractModel) -> TRACT_RESU
             anyhow::bail!("Trying to destroy a null Model");
         }
         let _ = Box::from_raw(*model);
+        *model = std::ptr::null_mut();
         Ok(())
     })
 }
@@ -173,43 +250,59 @@ pub extern "C" fn tract_runnable_spawn_state(
 #[no_mangle]
 pub extern "C" fn tract_runnable_run(
     runnable: *mut TractRunnable,
-    input_len: usize,
-    inputs: *mut DLTensor,
-    output_len: usize,
-    outputs: *mut DLTensor,
+    inputs: *mut *mut TractValue,
+    outputs: *mut *mut TractValue,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         if runnable.is_null() {
             anyhow::bail!("Trying to convert null model")
         }
-        if inputs.is_null() {
-            anyhow::bail!("Null pointer input")
-        }
-        /*
-        if outputs.is_null() {
-            anyhow::bail!("Null pointer output")
-        }
-        */
         let runnable = runnable.as_ref().unwrap();
-        let values = (0..input_len)
-            .map(|ix| Ok(copy_tensor_to_tract(inputs.add(ix))?.into_tvalue()))
-            .collect::<TractResult<TVec<TValue>>>()?;
-        dbg!(values);
-        anyhow::bail!("foo");
-        let values = runnable.0.run(values)?;
-        if values.len() != output_len {
-            anyhow::bail!(
-                "Wrong output number. output_len says {}, model returned {} outputs",
-                output_len,
-                values.len()
-            )
-        }
-        OUTPUTS.with(|store| {
-            let mut store = store.borrow_mut();
-            *store = values;
-            observe_tensors(&store, outputs)
-        })
+        let mut s = native::TypedSimpleState::new(runnable.0.clone())?;
+        state_run(&mut s, inputs, outputs)
     })
+}
+
+#[no_mangle]
+pub extern "C" fn tract_runnable_nbio(
+    runnable: *mut TractRunnable,
+    inputs: *mut usize,
+    outputs: *mut usize,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        if runnable.is_null() {
+            anyhow::bail!("Trying to convert null model")
+        }
+        let runnable = runnable.as_ref().unwrap();
+        if !inputs.is_null() {
+            *inputs = runnable.0.model().inputs.len();
+        }
+        if !outputs.is_null() {
+            *outputs = runnable.0.model().outputs.len();
+        }
+        Ok(())
+    })
+}
+
+unsafe fn state_run(
+    state: &mut NativeState,
+    inputs: *mut *mut TractValue,
+    outputs: *mut *mut TractValue,
+) -> TractResult<()> {
+    if inputs.is_null() {
+        anyhow::bail!("Null pointer input")
+    }
+    if outputs.is_null() {
+        anyhow::bail!("Null pointer output")
+    }
+    let input_len = state.model().inputs.len();
+    let values =
+        std::slice::from_raw_parts(inputs, input_len).iter().map(|tv| (**tv).0.clone()).collect();
+    let values = state.run(values)?;
+    for (i, value) in values.into_iter().enumerate() {
+        *(outputs.add(i)) = Box::into_raw(Box::new(TractValue(value)))
+    }
+    Ok(())
 }
 
 #[no_mangle]
@@ -224,6 +317,73 @@ pub extern "C" fn tract_runnable_release(runnable: *mut *mut TractRunnable) -> T
     })
 }
 
+// VALUE
+pub struct TractValue(TValue);
+
+/// This call copies the data into tract space. All the pointers only need to be alive for the
+/// duration of the call.
+#[no_mangle]
+pub extern "C" fn tract_value_create(
+    datum_type: TractDatumType,
+    rank: usize,
+    shape: *const usize,
+    data: *mut c_void,
+    value: *mut *mut TractValue,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        let dt: DatumType = datum_type.into();
+        let shape = std::slice::from_raw_parts(shape, rank);
+        let len = shape.iter().product::<usize>();
+        let content = std::slice::from_raw_parts(data as *const u8, len * dt.size_of());
+        let it = Tensor::from_raw_dt(dt, shape, content)?;
+        *value = Box::into_raw(Box::new(TractValue(it.into_tvalue())));
+        Ok(())
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn tract_value_destroy(value: *mut *mut TractValue) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        if value.is_null() || (*value).is_null() {
+            anyhow::bail!("Trying to destroy a null Value");
+        }
+        let _ = Box::from_raw(*value);
+        *value = std::ptr::null_mut();
+        Ok(())
+    })
+}
+
+/// Inspect part of a value. Except `value`, all argument pointers can be null if only some specific bits
+/// are required.
+#[no_mangle]
+pub extern "C" fn tract_value_inspect(
+    value: *mut TractValue,
+    datum_type: *mut TractDatumType,
+    rank: *mut usize,
+    shape: *mut *const usize,
+    data: *mut *const c_void,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        if value.is_null() {
+            anyhow::bail!("Trying to inspect a null Value");
+        }
+        let value: &TValue = &(*value).0;
+        if !datum_type.is_null() {
+            *datum_type = value.datum_type().try_into()?;
+        }
+        if !rank.is_null() {
+            *rank = value.rank();
+        }
+        if !shape.is_null() {
+            *shape = value.shape().as_ptr();
+        }
+        if !data.is_null() {
+            *data = value.as_ptr_unchecked::<u8>() as _;
+        }
+        Ok(())
+    })
+}
+
 // STATE
 /// cbindgen:ignore
 type NativeState = native::TypedSimpleState<
@@ -233,18 +393,36 @@ type NativeState = native::TypedSimpleState<
 pub struct TractState(NativeState);
 
 #[no_mangle]
+pub extern "C" fn tract_state_run(
+    state: *mut TractState,
+    inputs: *mut *mut TractValue,
+    outputs: *mut *mut TractValue,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        if state.is_null() {
+            anyhow::bail!("Trying to run a null State");
+        }
+        let s = state.as_mut().unwrap();
+        state_run(&mut s.0, inputs, outputs)
+    })
+}
+
+#[no_mangle]
 pub extern "C" fn tract_state_set_input(
     state: *mut TractState,
     input_id: usize,
-    tensor: *mut DLTensor,
+    value: *mut TractValue,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         if state.is_null() {
             anyhow::bail!("Trying to set input on a null State");
         }
+        if value.is_null() {
+            anyhow::bail!("Trying to set input to a null value");
+        }
         let state = state.as_mut().unwrap();
-        let tensor = copy_tensor_to_tract(tensor)?;
-        state.0.set_input(input_id, tensor.into_tvalue())?;
+        let value = value.as_ref().unwrap();
+        state.0.set_input(input_id, value.0.clone())?;
         Ok(())
     })
 }
@@ -261,14 +439,12 @@ pub extern "C" fn tract_state_exec(state: *mut TractState) -> TRACT_RESULT {
     })
 }
 
-/// Borrow an output tensor from the state.
-///
-/// The borrowed data may become invalid when any function on tract API is called in the thread.
+/// Get an output tensor from the state.
 #[no_mangle]
 pub extern "C" fn tract_state_output(
     state: *mut TractState,
     output_id: usize,
-    tensor: *mut DLTensor,
+    tensor: *mut *mut TractValue,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         if state.is_null() {
@@ -276,7 +452,7 @@ pub extern "C" fn tract_state_output(
         }
         let state = state.as_mut().unwrap();
         let value = state.0.output(output_id)?;
-        observe_tensors(&[value.to_owned()], tensor)?;
+        *tensor = Box::into_raw(Box::new(TractValue(value.clone())));
         Ok(())
     })
 }
@@ -307,51 +483,4 @@ pub extern "C" fn tract_state_destroy(state: *mut *mut TractState) -> TRACT_RESU
 
 // MISC
 
-/// This ffi binding uses a couple of thread local variables to adapt tensors and DLTensor
-/// semantics, specifically in the case of `tract_state_output` or `tract_runnable_run`. These
-/// variables will stay in memory until one of the functions is called again, and the return
-/// DLTensors will stay valid accordingly.
-///
-/// If memory is a concern and the DLTensor no longer needed, `tract_clear_dltensor_helpers`
-/// can be called to free the thread local storage.
-#[no_mangle]
-pub extern "C" fn tract_clear_dltensor_storage() {
-    SHAPE_ARRAY.with(|s| s.replace(tvec!()));
-    OUTPUTS.with(|s| s.replace(tvec!()));
-}
-
-
 // HELPERS
-
-/// cbindgen:ignore
-fn copy_tensor_to_tract(tensor: *mut dlpackrs::ffi::DLTensor) -> TractResult<Tensor> {
-    unsafe {
-        let dlt = dlpackrs::Tensor::from_raw(tensor);
-        assert!(dlt.dtype() == DataType::f32());
-        assert!(dlt.strides().is_none());
-        let arr = RawArrayView::from_shape_ptr(dlt.shape().unwrap(), dlt.data() as *mut f32);
-        Ok(arr.deref_into_view().into_owned().into_tensor())
-    }
-}
-
-/// dbinget ignore
-unsafe fn observe_tensors(values: &[TValue], ffi: *mut DLTensor) -> TractResult<()> {
-    SHAPE_ARRAY.with(|shape| {
-        let mut shape = shape.borrow_mut();
-        shape.clear();
-        for (ix, value) in values.iter().enumerate() {
-            let dlt = dlpackrs::Tensor::new(
-                value.as_ptr::<f32>()? as _,
-                Device::cpu(0),
-                value.rank() as i32,
-                DataType::f32(),
-                shape.as_mut_ptr().add(shape.len()),
-                std::ptr::null_mut(),
-                0,
-            );
-            shape.extend(value.shape().iter().map(|i| *i as i64));
-            *(ffi.add(ix)) = dlt.into_inner();
-        }
-        Ok(())
-    })
-}
