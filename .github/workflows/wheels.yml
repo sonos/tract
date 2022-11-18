@@ -1,6 +1,9 @@
-name: Build
+name: Python wheels
 
-on: [push, pull_request]
+on:
+  pull_request:
+  schedule:
+    - cron:  '0 3 * * *'
 
 jobs:
   build_wheels:
@@ -19,6 +22,6 @@ jobs:
         with:
           package-dir: ffi/py
 
-      - uses: actions/upload-artifact@v3
-        with:
-          path: ./wheelhouse/*.whl
+            #       - uses: actions/upload-artifact@v3
+            #         with:
+            #           path: ./wheelhouse/*.whl
