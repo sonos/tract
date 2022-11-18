@@ -14,3 +14,8 @@ cargo --version || (curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minim
 rustup toolchain add stable
 rustup default stable)
 """
+before-test = """
+wget https://sfo2.digitaloceanspaces.com/nnef-public/mobilenet_v2_1.0.onnx.nnef.tgz
+cp {package}/grace_hopper_1x3x224x244.npy .
+"""
+test-command = "python {package}/mobilenet_nnef.py"
