@@ -30,6 +30,9 @@ class TractError(Exception):
 def nnef():
     return Nnef()
 
+def onnx():
+    return Onnx()
+
 def check(err):
     if err != 0:
         raise TractError(str(lib.tract_get_last_error()))
@@ -47,6 +50,36 @@ class Nnef:
         model = c_void_p()
         path = path.encode("utf-8")
         check(lib.tract_nnef_model_for_path(self.ptr, path, byref(model)))
+        return Model(model)
+
+class Onnx:
+    def __init__(self):
+        ptr = c_void_p()
+        check(lib.tract_onnx_create(byref(ptr)))
+        self.ptr = ptr
+
+    def __del__(self):
+        check(lib.tract_onnx_destroy(byref(self.ptr)))
+
+    def model_for_path(self, path):
+        model = c_void_p()
+        path = path.encode("utf-8")
+        check(lib.tract_onnx_model_for_path(self.ptr, path, byref(model)))
+        return InferenceModel(model)
+
+class InferenceModel:
+    def __init__(self, ptr):
+        self.ptr = ptr
+
+    def __del__(self):
+        if self.ptr:
+            check(lib.tract_inference_model_destroy(byref(self.ptr)))
+
+    def into_optimized(self):
+        if self.ptr == None:
+            raise TractError("invalid inference model (maybe already consumed ?)")
+        model = c_void_p()
+        check(lib.tract_inference_model_into_optimized(byref(self.ptr), byref(model)))
         return Model(model)
 
 class Model:

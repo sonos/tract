@@ -1,4 +1,15 @@
-[project]
-name = "tract"
-dependencies = ["numpy"]
-version = "0.18.3-pre"
+[build-system]
+requires = [
+    "setuptools>=62.1<63",
+    "setuptools_rust>=1.3<1.4",
+    "wheel>=0.34<0.35",
+]
+
+[tool.cibuildwheel]
+environment = "PATH=$PATH:$HOME/.cargo/bin"
+before-build = """
+curl https://sh.rustup.rs -sSf | sh -s -- -y
+. $HOME/.cargo/env
+rustup toolchain add stable
+rustup default stable
+"""
