@@ -6,10 +6,11 @@ requires = [
 ]
 
 [tool.cibuildwheel]
+skip = "*-musllinux_i686"
 environment = "PATH=$PATH:$HOME/.cargo/bin"
 before-build = """
-curl https://sh.rustup.rs -sSf | sh -s -- -y
+cargo --version || (curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
 . $HOME/.cargo/env
 rustup toolchain add stable
-rustup default stable
+rustup default stable)
 """
