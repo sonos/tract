@@ -24,24 +24,24 @@ pub enum TRACT_RESULT {
 #[allow(non_camel_case_types)]
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum TractDatumType {
-    TRACT_DATUM_TYPE_BOOL,
-    TRACT_DATUM_TYPE_U8,
-    TRACT_DATUM_TYPE_U16,
-    TRACT_DATUM_TYPE_U32,
-    TRACT_DATUM_TYPE_U64,
-    TRACT_DATUM_TYPE_I8,
-    TRACT_DATUM_TYPE_I16,
-    TRACT_DATUM_TYPE_I32,
-    TRACT_DATUM_TYPE_I64,
-    TRACT_DATUM_TYPE_F16,
-    TRACT_DATUM_TYPE_F32,
-    TRACT_DATUM_TYPE_F64,
-    TRACT_DATUM_TYPE_COMPLEX_I16,
-    TRACT_DATUM_TYPE_COMPLEX_I32,
-    TRACT_DATUM_TYPE_COMPLEX_I64,
-    TRACT_DATUM_TYPE_COMPLEX_F16,
-    TRACT_DATUM_TYPE_COMPLEX_F32,
-    TRACT_DATUM_TYPE_COMPLEX_F64,
+    TRACT_DATUM_TYPE_BOOL = 0x01,
+    TRACT_DATUM_TYPE_U8 = 0x11,
+    TRACT_DATUM_TYPE_U16 = 0x12,
+    TRACT_DATUM_TYPE_U32 = 0x13,
+    TRACT_DATUM_TYPE_U64 = 0x14,
+    TRACT_DATUM_TYPE_I8 = 0x21,
+    TRACT_DATUM_TYPE_I16 = 0x22,
+    TRACT_DATUM_TYPE_I32 = 0x23,
+    TRACT_DATUM_TYPE_I64 = 0x24,
+    TRACT_DATUM_TYPE_F16 = 0x32,
+    TRACT_DATUM_TYPE_F32 = 0x33,
+    TRACT_DATUM_TYPE_F64 = 0x34,
+    TRACT_DATUM_TYPE_COMPLEX_I16 = 0x42,
+    TRACT_DATUM_TYPE_COMPLEX_I32 = 0x43,
+    TRACT_DATUM_TYPE_COMPLEX_I64 = 0x44,
+    TRACT_DATUM_TYPE_COMPLEX_F16 = 0x52,
+    TRACT_DATUM_TYPE_COMPLEX_F32 = 0x53,
+    TRACT_DATUM_TYPE_COMPLEX_F64 = 0x54,
 }
 
 impl From<TractDatumType> for DatumType {
@@ -134,6 +134,14 @@ fn wrap<F: FnOnce() -> anyhow::Result<()>>(func: F) -> TRACT_RESULT {
 #[no_mangle]
 pub extern "C" fn tract_get_last_error() -> *const std::ffi::c_char {
     LAST_ERROR.with(|msg| msg.borrow().as_ref().map(|s| s.as_ptr()).unwrap_or(std::ptr::null()))
+}
+
+#[no_mangle]
+pub extern "C" fn tract_version() -> *const std::ffi::c_char {
+    unsafe {
+        CStr::from_bytes_with_nul_unchecked(concat!(env!("CARGO_PKG_VERSION"), "\0").as_bytes())
+            .as_ptr()
+    }
 }
 
 // NNEF

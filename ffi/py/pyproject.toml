@@ -1,0 +1,4 @@
+[project]
+name = "tract"
+dependencies = ["numpy"]
+version = "0.18.3-pre"
