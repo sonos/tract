@@ -19,5 +19,6 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 anyhow.workspace = true
-tract-data = { path = "../data" }
 tract-nnef = { path = "../nnef" }
+tract-onnx = { path = "../onnx" }
+tract-tensorflow = { path = "../tensorflow" }

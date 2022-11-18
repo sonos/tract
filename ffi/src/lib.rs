@@ -7,6 +7,9 @@ use std::sync::Arc;
 use tract_nnef::internal as native;
 use tract_nnef::tract_core::prelude::*;
 
+use tract_onnx::prelude as onnx;
+use tract_onnx::prelude::InferenceModelExt;
+
 /// Used as a return type of functions that can encounter errors.
 /// If the function encountered an error, you can retrieve it using the `tract_get_last_error`
 /// function
@@ -145,7 +148,6 @@ pub extern "C" fn tract_version() -> *const std::ffi::c_char {
 }
 
 // NNEF
-
 pub struct TractNnef(native::Nnef);
 
 #[no_mangle]
@@ -185,6 +187,79 @@ pub extern "C" fn tract_nnef_model_for_path(
     })
 }
 
+// ONNX
+pub struct TractOnnx(tract_onnx::Onnx);
+
+#[no_mangle]
+pub extern "C" fn tract_onnx_create(ptr: *mut *mut TractOnnx) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        *ptr = Box::into_raw(Box::new(TractOnnx(onnx::onnx())));
+        Ok(())
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn tract_onnx_destroy(ptr: *mut *mut TractOnnx) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        if ptr.is_null() || (*ptr).is_null() {
+            anyhow::bail!("Trying to destroy a null Onnx object");
+        }
+        let _ = Box::from_raw(*ptr);
+        *ptr = std::ptr::null_mut();
+        Ok(())
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn tract_onnx_model_for_path(
+    onnx: &TractOnnx,
+    path: *const c_char,
+    model: *mut *mut TractInferenceModel,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        *model = std::ptr::null_mut();
+        let path = CStr::from_ptr(path).to_str()?;
+        let m = Box::new(TractInferenceModel(
+            onnx.0.model_for_path(path).with_context(|| format!("opening file {:?}", path))?,
+        ));
+        *model = Box::into_raw(m);
+        Ok(())
+    })
+}
+
+// INFERENCE MODEL
+pub struct TractInferenceModel(onnx::InferenceModel);
+
+#[no_mangle]
+pub extern "C" fn tract_inference_model_into_optimized(
+    model: *mut *mut TractInferenceModel,
+    runnable: *mut *mut TractModel,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        if model.is_null() {
+            anyhow::bail!("Trying to convert null inference model")
+        }
+        let m = Box::from_raw(*model);
+        *model = std::ptr::null_mut();
+        let model = m.0.into_optimized()?;
+        *runnable = Box::into_raw(Box::new(TractModel(model))) as _;
+        Ok(())
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn tract_inference_model_destroy(
+    model: *mut *mut TractInferenceModel,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        if model.is_null() || (*model).is_null() {
+            anyhow::bail!("Trying to destroy a null InferenceModel");
+        }
+        let _ = Box::from_raw(*model);
+        *model = std::ptr::null_mut();
+        Ok(())
+    })
+}
 // TYPED MODEL
 
 pub struct TractModel(TypedModel);
