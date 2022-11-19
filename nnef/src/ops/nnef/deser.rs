@@ -387,11 +387,11 @@ pub fn conv_or_deconv(
     builder.wire(op, &[input])
 }
 
-fn get_spatial_dims(shape: &[usize]) -> TractResult<TVec<usize>> {
-    if shape.len() == 4 {
+fn get_spatial_shape(shape: &[usize]) -> TractResult<TVec<usize>> {
+    if shape.len() == 5 {
+        Ok(DataFormat::NCDHW.shape(shape)?.spatial_dims().into())
+    } else if shape.len() == 4 || shape.len() == 3 {
         Ok(DataFormat::NCHW.shape(shape)?.spatial_dims().into())
-    } else if shape.len() == 3 {
-        Ok(DataFormat::CHW.shape(shape)?.spatial_dims().into())
     } else {
         Ok(shape.into())
     }
@@ -402,18 +402,18 @@ fn pool_spec_for_pools(
     invocation: &ResolvedInvocation,
     shape: &[usize],
 ) -> TractResult<ops::cnn::PoolSpec> {
-    let shape_hw = get_spatial_dims(&shape)?;
+    let spatial_shape = get_spatial_shape(&shape)?;
     let dilation: TVec<usize> = invocation.named_arg_as(builder, "dilation")?;
     if dilation.len() > 0 && (dilation.len() != shape.len() || dilation[0] != 1 || dilation[1] != 1)
     {
         bail!("dilation should be like [1, 1, ... ]. Got dilation {:?}.", dilation);
     }
-    let dilation_hw = get_spatial_dims(&dilation)?;
+    let spatial_dilation = get_spatial_shape(&dilation)?;
     let stride: TVec<usize> = invocation.named_arg_as(builder, "stride")?;
     if stride.len() > 0 && (stride.len() != shape.len() || stride[0] != 1 || stride[1] != 1) {
         bail!("stride should be like [1, 1, ... ]. Got stride {:?}.", stride);
     }
-    let stride_hw = get_spatial_dims(&stride)?;
+    let spatial_stride = get_spatial_shape(&stride)?;
     let padding: TVec<TVec<usize>> = invocation.named_arg_as(builder, "padding")?;
     let padding = if padding.len() == 0 {
         PaddingSpec::SameUpper
@@ -424,16 +424,16 @@ fn pool_spec_for_pools(
             before.push(p[0]);
             after.push(p[1]);
         }
-        let before_hw = get_spatial_dims(&before)?;
-        let after_hw = get_spatial_dims(&after)?;
-        PaddingSpec::Explicit(before_hw, after_hw, false)
+        let spatial_pool_bef = get_spatial_shape(&before)?;
+        let spatial_pool_aft = get_spatial_shape(&after)?;
+        PaddingSpec::Explicit(spatial_pool_bef, spatial_pool_aft, false)
     };
     Ok(PoolSpec::new(
         DataFormat::NCHW,
-        shape_hw,
+        spatial_shape,
         padding,
-        if dilation_hw.iter().all(|it| *it == 1) || dilation_hw.len() == 0 { None } else { Some(dilation_hw) },
-        if stride_hw.iter().all(|it| *it == 1) || stride_hw.len() == 0 { None } else { Some(stride_hw) },
+        if spatial_dilation.iter().all(|it| *it == 1) || spatial_dilation.len() == 0 { None } else { Some(spatial_dilation) },
+        if spatial_stride.iter().all(|it| *it == 1) || spatial_stride.len() == 0 { None } else { Some(spatial_stride) },
         None,
     ))
 }

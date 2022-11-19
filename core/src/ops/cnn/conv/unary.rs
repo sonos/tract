@@ -957,14 +957,22 @@ impl TypedOp for ConvUnary {
         }
         // format swap: chw <-> hwc
         let (new_format, axis_move) = match self.pool_spec.data_format {
+            DataFormat::NCDHW => {
+                (DataFormat::NDHWC, AxisOp::Move(shape.c_axis(), full_input_shape.len() - 1))
+            }
             DataFormat::NCHW => {
                 (DataFormat::NHWC, AxisOp::Move(shape.c_axis(), full_input_shape.len() - 1))
             }
             DataFormat::CHW => {
                 (DataFormat::HWC, AxisOp::Move(shape.c_axis(), full_input_shape.len() - 1))
             }
+            DataFormat::CDHW => {
+                (DataFormat::HWC, AxisOp::Move(shape.c_axis(), full_input_shape.len() - 1))
+            }
             DataFormat::NHWC => (DataFormat::NCHW, AxisOp::Move(shape.c_axis(), 1)),
+            DataFormat::NDHWC => (DataFormat::NCHW, AxisOp::Move(shape.c_axis(), 1)),
             DataFormat::HWC => (DataFormat::CHW, AxisOp::Move(shape.c_axis(), 0)),
+            DataFormat::DHWC => (DataFormat::CHW, AxisOp::Move(shape.c_axis(), 0)),
         };
         if *change == axis_move {
             let mut new_op = self.clone();
