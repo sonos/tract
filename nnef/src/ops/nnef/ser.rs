@@ -1,3 +1,4 @@
+use crate::ast;
 use crate::ast::QuantFormat;
 use crate::internal::*;
 use crate::ser::*;
@@ -327,17 +328,17 @@ fn cnn_pool(
     wire = ast.force_variable(format!("{}_input", node.name), &wire);
     let conv_fragment = cnn_pool_fragment(ast, pool_spec.data_format, pool_spec.rank(), op_name);
     let padding = match &pool_spec.padding {
-        PaddingSpec::Explicit(bef, after, _) => array(
-            &bef.iter()
+        PaddingSpec::Explicit(bef, after, _) => Some(
+            bef.iter()
                 .zip(after.iter())
                 .map(|(a, b)| tuple_2(numeric(a), numeric(b)))
                 .collect::<Vec<_>>(),
         ),
-        PaddingSpec::SameUpper => array(&[]),
+        PaddingSpec::SameUpper => None,
         PaddingSpec::SameLower => bail!("Unsupported padding scheme"),
-        PaddingSpec::Valid => array(
-            (0..pool_spec.rank()).map(|_| tuple_2(numeric(0), numeric(0))).collect::<Vec<_>>(),
-        ),
+        PaddingSpec::Valid => {
+            Some((0..pool_spec.rank()).map(|_| tuple_2(numeric(0), numeric(0))).collect::<Vec<_>>())
+        }
     };
     let mut size = tvec!(1, 1);
     size.extend(pool_spec.kernel_shape.iter().cloned());
@@ -345,6 +346,14 @@ fn cnn_pool(
     strides.extend(pool_spec.strides().iter().cloned());
     let mut dilations = tvec!(1, 1);
     dilations.extend(pool_spec.dilations().iter().cloned());
+    let padding = if let Some(pad) = padding {
+        let mut full_padding =
+            vec![tuple_2(numeric(0), numeric(0)), tuple_2(numeric(0), numeric(0))];
+        full_padding.extend(pad.iter().cloned());
+        array(full_padding)
+    } else {
+        array(&[])
+    };
     let mut params = tvec!(
         ("size", ints(&size)),
         ("dilation", ints(&dilations)),
