@@ -402,7 +402,7 @@ fn pool_spec_for_pools(
     invocation: &ResolvedInvocation,
     shape: &[usize],
 ) -> TractResult<ops::cnn::PoolSpec> {
-    let spatial_shape = get_spatial_shape(&shape)?;
+    let spatial_shape = get_spatial_shape(shape)?;
     let dilation: TVec<usize> = invocation.named_arg_as(builder, "dilation")?;
     if dilation.len() > 0 && (dilation.len() != shape.len() || dilation[0] != 1 || dilation[1] != 1)
     {
