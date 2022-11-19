@@ -14,4 +14,4 @@ cargo --version || (curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minim
 rustup toolchain add stable
 rustup default stable)
 """
-test-command = "python {package}/mobilenet_nnef.py"
+test-command = 'python -c "import tract"'

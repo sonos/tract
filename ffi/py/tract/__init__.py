@@ -1,7 +1,10 @@
 import numpy
 from ctypes import *
+from pathlib import Path
 
-lib = CDLL("tract/tract.cpython-39-x86_64-linux-gnu.so")
+dylib_path = list(Path(__file__).parent.glob("*.so"))[0]
+lib = cdll.LoadLibrary(str(dylib_path))
+
 lib.tract_version.restype = c_char_p
 lib.tract_get_last_error.restype = c_char_p
 
