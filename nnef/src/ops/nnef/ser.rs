@@ -1,4 +1,3 @@
-use crate::ast;
 use crate::ast::QuantFormat;
 use crate::internal::*;
 use crate::ser::*;
