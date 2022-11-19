@@ -75,7 +75,7 @@ pub fn pulsed_output_facts(
 ) -> TractResult<TVec<PulsedFact>> {
     let ishape = spec.data_format.shape(&inputs[0].shape)?;
     let computed = spec.padding.compute(
-        ishape.hw_dims(),
+        ishape.spatial_dims(),
         &spec.kernel_shape,
         &spec.dilations(),
         &spec.strides(),
@@ -188,14 +188,14 @@ pub fn pulsify_pooled_input(
     if has_padding {
         let mut bef = tvec!();
         let mut aft = tvec!();
-        for ix in 0..input_shape.hw_rank() {
+        for ix in 0..input_shape.spatial_rank() {
             if ix == geo_axis {
                 bef.push(0);
                 aft.push(0);
             } else {
                 let c = spec.padding.compute_one(
                     ix,
-                    &input_shape.hw_dims()[ix],
+                    &input_shape.spatial_dims()[ix],
                     spec.kernel_shape[ix],
                     spec.dilations()[ix],
                     spec.strides()[ix],

@@ -387,11 +387,11 @@ pub fn conv_or_deconv(
     builder.wire(op, &[input])
 }
 
-fn get_hw_dims(shape: &[usize]) -> TractResult<TVec<usize>> {
+fn get_spatial_dims(shape: &[usize]) -> TractResult<TVec<usize>> {
     if shape.len() == 4 {
-        Ok(DataFormat::NCHW.shape(shape)?.hw_dims().into())
+        Ok(DataFormat::NCHW.shape(shape)?.spatial_dims().into())
     } else if shape.len() == 3 {
-        Ok(DataFormat::CHW.shape(shape)?.hw_dims().into())
+        Ok(DataFormat::CHW.shape(shape)?.spatial_dims().into())
     } else {
         Ok(shape.into())
     }
@@ -402,18 +402,18 @@ fn pool_spec_for_pools(
     invocation: &ResolvedInvocation,
     shape: &[usize],
 ) -> TractResult<ops::cnn::PoolSpec> {
-    let shape_hw = get_hw_dims(&shape)?;
+    let shape_hw = get_spatial_dims(&shape)?;
     let dilation: TVec<usize> = invocation.named_arg_as(builder, "dilation")?;
     if dilation.len() > 0 && (dilation.len() != shape.len() || dilation[0] != 1 || dilation[1] != 1)
     {
         bail!("dilation should be like [1, 1, ... ]. Got dilation {:?}.", dilation);
     }
-    let dilation_hw = get_hw_dims(&dilation)?;
+    let dilation_hw = get_spatial_dims(&dilation)?;
     let stride: TVec<usize> = invocation.named_arg_as(builder, "stride")?;
     if stride.len() > 0 && (stride.len() != shape.len() || stride[0] != 1 || stride[1] != 1) {
         bail!("stride should be like [1, 1, ... ]. Got stride {:?}.", stride);
     }
-    let stride_hw = get_hw_dims(&stride)?;
+    let stride_hw = get_spatial_dims(&stride)?;
     let padding: TVec<TVec<usize>> = invocation.named_arg_as(builder, "padding")?;
     let padding = if padding.len() == 0 {
         PaddingSpec::SameUpper
@@ -424,8 +424,8 @@ fn pool_spec_for_pools(
             before.push(p[0]);
             after.push(p[1]);
         }
-        let before_hw = get_hw_dims(&before)?;
-        let after_hw = get_hw_dims(&after)?;
+        let before_hw = get_spatial_dims(&before)?;
+        let after_hw = get_spatial_dims(&after)?;
         PaddingSpec::Explicit(before_hw, after_hw, false)
     };
     Ok(PoolSpec::new(

@@ -56,7 +56,7 @@ impl PoolSpec {
 
     pub fn output_shape<D: DimLike>(&self, input: &[D]) -> TractResult<BaseDataShape<D, TVec<D>>> {
         let ishape: BaseDataShape<D, TVec<D>> = self.data_format.shape(input.into())?;
-        let computed = self.computed_padding(ishape.hw_dims());
+        let computed = self.computed_padding(ishape.spatial_dims());
         let spatial_dims = computed.into_iter().map(|d| d.convoluted).collect::<TVec<D>>();
         let oshape = self.data_format.from_n_c_hw(
             ishape.n().cloned().unwrap_or_else(|| 1.into()),

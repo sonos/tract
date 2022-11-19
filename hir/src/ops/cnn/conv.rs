@@ -88,11 +88,11 @@ impl Conv {
         );
         let mut result: TVec<D> = ishape.into();
         let ishape = self.data_format.shape(ishape)?;
-        let spatial_rank = ishape.hw_rank();
+        let spatial_rank = ishape.spatial_rank();
         let ones = tvec![1; spatial_rank];
         let kernel_spatial_shape = &kshape[self.kernel_fmt.h_axis()..][..spatial_rank];
         let computed = self.padding.compute(
-            ishape.hw_dims(),
+            ishape.spatial_dims(),
             kernel_spatial_shape,
             self.dilations.as_ref().unwrap_or(&ones),
             self.strides.as_ref().unwrap_or(&ones),

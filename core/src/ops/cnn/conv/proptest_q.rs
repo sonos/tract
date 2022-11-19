@@ -48,7 +48,7 @@ struct QConvProblem {
 
 impl QConvProblem {
     fn geo_ker(&self) -> &[usize] {
-        &self.kernel.shape()[self.kernel_format.h_axis()..][..self.shape_in.hw_rank()]
+        &self.kernel.shape()[self.kernel_format.h_axis()..][..self.shape_in.spatial_rank()]
     }
 
     fn reference(&self) -> ArrayD<i8> {
@@ -63,7 +63,7 @@ impl QConvProblem {
         let scale = self.qp.c_scale.as_static().unwrap().cast_to_scalar::<f32>().unwrap()
             / self.qp.a_scale.as_static().unwrap().cast_to_scalar::<f32>().unwrap()
             / self.qp.b_scale.as_static().unwrap().cast_to_scalar::<f32>().unwrap();
-        let shape_out: TVec<usize> = izip!(self.shape_in.hw_dims(), self.geo_ker())
+        let shape_out: TVec<usize> = izip!(self.shape_in.spatial_dims(), self.geo_ker())
             .map(|(i, k)| (*i + 1).saturating_sub(*k))
             .collect();
         let shape_out = self
@@ -74,7 +74,7 @@ impl QConvProblem {
         let mut temp = ArrayD::<i32>::zeros(&*shape_out.shape);
         for n in 0..n {
             for g in 0..self.group {
-                for geo_out in tract_ndarray::indices(shape_out.hw_dims()) {
+                for geo_out in tract_ndarray::indices(shape_out.spatial_dims()) {
                     let mut output_coords: TVec<usize> = geo_out.slice().into();
                     if self.shape_in.fmt.has_n() {
                         output_coords.insert(0, n);

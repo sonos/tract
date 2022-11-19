@@ -66,17 +66,17 @@ impl ResolveTo<ConcreteGeometry> for SymbolicGeometry {
             Patcher::Generic
         };
         let ci_per_group = pool.input_shape.c_dim() / self.group;
-        let n = pool.output_shape.hw_dims().iter().product();
+        let n = pool.output_shape.spatial_dims().iter().product();
         let input_shape_with_n = match self.pool_spec.data_format {
             DataFormat::HWC => DataFormat::NHWC.from_n_c_hw(
                 1,
                 *pool.input_shape.c(),
-                pool.input_shape.hw_dims(),
+                pool.input_shape.spatial_dims(),
             )?,
             DataFormat::CHW => DataFormat::NCHW.from_n_c_hw(
                 1,
                 *pool.input_shape.c(),
-                pool.input_shape.hw_dims(),
+                pool.input_shape.spatial_dims(),
             )?,
             _ => pool.input_shape.clone(),
         };
@@ -145,7 +145,7 @@ impl Im2Col {
         if group != 1 {
             output_shape.push(group.into());
         }
-        let n: D = conv_output_shape.hw_dims().iter().cloned().product();
+        let n: D = conv_output_shape.spatial_dims().iter().cloned().product();
         output_shape.push(b_pack.len(k.into(), n));
         Ok(output_shape)
     }
@@ -359,8 +359,8 @@ impl Patcher {
             let y_stride_ptr = y_stride * *shape.h_stride() as isize;
             let x_stride_ptr = x_stride * *shape.w_stride() as isize;
             let c_stride_ptr = *shape.c_stride() as isize;
-            let input_heigth = shape.hw_dims()[0] as isize;
-            let input_width = shape.hw_dims()[1] as isize;
+            let input_heigth = shape.spatial_dims()[0] as isize;
+            let input_width = shape.spatial_dims()[1] as isize;
             let kernel_len = geometry.pool.patch.standard_layout_data_field.len();
             let mut writer =
                 geometry.b_pack.write_with_k_outer(pack.as_mut_ptr(), geometry.k, geometry.n);

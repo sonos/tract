@@ -30,7 +30,6 @@ impl Expansion for DepthwiseConv2d {
         "DepthwiseConv2dNative".into()
     }
 
-
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -50,10 +49,10 @@ impl Expansion for DepthwiseConv2d {
             s.equals(&outputs[0].shape[img.n_axis().unwrap()], img.n_dim().unwrap())?;
             if let Ok(ker) = ker.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<_>>>() {
                 let output_shape = self.padding.compute(
-                    img.hw_dims(),
+                    img.spatial_dims(),
                     &ker[0..2],
-                    &self.dilations[img.hw_axes()],
-                    &self.strides[img.hw_axes()],
+                    &self.dilations[img.spatial_axes()],
+                    &self.strides[img.spatial_axes()],
                 );
                 let in_channels = ker[2].to_usize()?;
                 let multiplier = ker[3].to_usize()?;
@@ -84,8 +83,8 @@ impl Expansion for DepthwiseConv2d {
         let mut conv = Conv::default()
             .hwio()
             .group(kernel_shape[2])
-            .dilations(self.dilations[shape.hw_axes()].into())
-            .strides(self.strides[shape.hw_axes()].into())
+            .dilations(self.dilations[shape.spatial_axes()].into())
+            .strides(self.strides[shape.spatial_axes()].into())
             .padding(self.padding.clone());
         if self.data_format == DataFormat::NHWC {
             conv = conv.nhwc()

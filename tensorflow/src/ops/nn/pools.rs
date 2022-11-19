@@ -12,10 +12,10 @@ pub fn avgpool(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Infer
     Ok(Box::new(SumPool::new(
         PoolSpec::new(
             data_format,
-            kshape.hw_dims().into(),
+            kshape.spatial_dims().into(),
             padding,
             None,
-            Some(strides[kshape.hw_axes()].into()),
+            Some(strides[kshape.spatial_axes()].into()),
             None,
         ),
         false,
@@ -32,10 +32,10 @@ pub fn maxpool(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Infer
     Ok(Box::new(MaxPool::new(
         PoolSpec::new(
             data_format,
-            kshape.hw_dims().into(),
+            kshape.spatial_dims().into(),
             padding,
             None,
-            Some(strides[kshape.hw_axes()].into()),
+            Some(strides[kshape.spatial_axes()].into()),
             None,
         ),
         None,

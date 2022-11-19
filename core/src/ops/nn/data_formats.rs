@@ -120,7 +120,7 @@ where
     }
 
     #[inline]
-    pub fn hw_rank(&self) -> usize {
+    pub fn spatial_rank(&self) -> usize {
         self.rank() - 1 - self.n_axis().is_some() as usize
     }
 
@@ -153,8 +153,8 @@ where
     }
 
     #[inline]
-    pub fn hw_axes(&self) -> ::std::ops::Range<usize> {
-        self.h_axis()..self.h_axis() + self.hw_rank()
+    pub fn spatial_axes(&self) -> ::std::ops::Range<usize> {
+        self.h_axis()..self.h_axis() + self.spatial_rank()
     }
 
     #[inline]
@@ -168,8 +168,8 @@ where
     }
 
     #[inline]
-    pub fn hw_dims(&self) -> &[D] {
-        unsafe { self.shape.as_ref().get_unchecked(self.hw_axes()) }
+    pub fn spatial_dims(&self) -> &[D] {
+        unsafe { self.shape.as_ref().get_unchecked(self.spatial_axes()) }
     }
 
     #[inline]
@@ -189,17 +189,17 @@ where
 
     #[inline]
     pub fn h_stride(&self) -> &D {
-        unsafe { self.hw_strides().get_unchecked(0) }
+        unsafe { self.spatial_strides().get_unchecked(0) }
     }
 
     #[inline]
-    pub fn hw_strides(&self) -> &[D] {
-        unsafe { self.strides.get_unchecked(self.hw_axes()) }
+    pub fn spatial_strides(&self) -> &[D] {
+        unsafe { self.strides.get_unchecked(self.spatial_axes()) }
     }
 
     #[inline]
     pub fn w_stride(&self) -> &D {
-        unsafe { self.hw_strides().get_unchecked(self.hw_rank() - 1) }
+        unsafe { self.spatial_strides().get_unchecked(self.spatial_rank() - 1) }
     }
 
     #[inline]
