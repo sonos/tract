@@ -31,9 +31,9 @@ impl Problem {
     }
 
     pub fn to_plan(&self, direct: bool) -> SimplePlan<TypedFact, Box<dyn TypedOp>, TypedModel> {
-        assert_eq!(self.input.hw_rank(), self.kernel_geo.len());
-        assert_eq!(self.input.hw_rank(), self.dil.len());
-        assert_eq!(self.input.hw_rank(), self.strides.len());
+        assert_eq!(self.input.spatial_rank(), self.kernel_geo.len());
+        assert_eq!(self.input.spatial_rank(), self.dil.len());
+        assert_eq!(self.input.spatial_rank(), self.strides.len());
 
         let mut full_kernel_shape = self.kernel_geo.clone();
         full_kernel_shape.push(*self.input.c());

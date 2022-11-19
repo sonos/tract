@@ -186,7 +186,7 @@ impl DeconvProblem {
         let n = if self.data_format.has_n() { self.input.shape()[0] } else { 1 };
         let kernel_hwdims = self.kernel_format.spatial_shape(self.kernel.shape());
         let valid_output_shape_geo: TVec<usize> = tract_itertools::izip!(
-            input_shape.hw_dims(),
+            input_shape.spatial_dims(),
             kernel_hwdims,
             self.strides.iter(),
             self.dilations.iter()
@@ -196,7 +196,7 @@ impl DeconvProblem {
         let paddings: TVec<(usize, usize)> = if self.padding == PaddingSpec::Valid {
             tvec![(0, 0); valid_output_shape_geo.len()]
         } else {
-            tract_itertools::izip!(input_shape.hw_dims(), &valid_output_shape_geo, &self.strides)
+            tract_itertools::izip!(input_shape.spatial_dims(), &valid_output_shape_geo, &self.strides)
                 .map(|(i, o, s)| o - i * s)
                 .map(|total| (total / 2, total - total / 2))
                 .collect()
@@ -204,7 +204,7 @@ impl DeconvProblem {
         let output_shape_geo = if self.padding == PaddingSpec::Valid {
             valid_output_shape_geo
         } else {
-            tract_itertools::izip!(input_shape.hw_dims(), &self.strides)
+            tract_itertools::izip!(input_shape.spatial_dims(), &self.strides)
                 .map(|(i, s)| i * s)
                 .collect()
         };
@@ -222,7 +222,7 @@ impl DeconvProblem {
             for g in 0..self.group {
                 for co in 0..co_per_group {
                     for ci in 0..ci_per_group {
-                        for hwi in indices(input_shape.hw_dims()) {
+                        for hwi in indices(input_shape.spatial_dims()) {
                             for hwk in indices(kernel_hwdims) {
                                 let hwo: TVec<isize> = tract_itertools::izip!(
                                     hwi.slice().iter(),

@@ -61,14 +61,14 @@ impl KernelFormat {
     ) -> TractResult<Arc<Tensor>> {
         let final_shape = [group, output_channels / group, kernel.len() / output_channels];
         trace!("kernel shape (group, output, rest) = {:?}", final_shape);
-        let hw_rank = kernel.rank() - 2;
+        let spatial_rank = kernel.rank() - 2;
         match self {
             KernelFormat::HWIO => {
                 // HWGIO
-                let tensor = kernel.clone().split_axis(hw_rank, input_channels / group)?;
+                let tensor = kernel.clone().split_axis(spatial_rank, input_channels / group)?;
                 // GOIHW
-                let mut permutation: Vec<usize> = vec![hw_rank + 1, hw_rank + 2, hw_rank];
-                permutation.extend(0..hw_rank);
+                let mut permutation: Vec<usize> = vec![spatial_rank + 1, spatial_rank + 2, spatial_rank];
+                permutation.extend(0..spatial_rank);
                 let tensor =
                     tensor.permute_axes(&permutation)?.into_shape(&final_shape)?.into_arc_tensor();
                 Ok(tensor)
