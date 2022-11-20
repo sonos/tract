@@ -14,7 +14,7 @@ pub fn output_shape<D: DimLike>(
     adjustments: &[usize],
 ) -> TractResult<TVec<D>> {
     let x_shape = pool_spec.data_format.shape(x_shape)?;
-    let spatial_input_shape = x_shape.spatial_dims();
+    let spatial_input_shape = x_shape.hw_dims();
     let spatial_output_details = pool_spec.padding.compute_for_deconv(
         spatial_input_shape,
         &pool_spec.kernel_shape,

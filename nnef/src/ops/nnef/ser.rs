@@ -175,7 +175,7 @@ pub fn make_conv_named_args<'a>(
     ];
     if deconv && adjustments.unwrap().iter().any(|a| *a != 0) {
         let output_shape = output_shape
-            .spatial_dims()
+            .hw_dims()
             .iter()
             .map(|d| d.to_usize())
             .collect::<TractResult<TVec<_>>>()?;
