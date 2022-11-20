@@ -424,8 +424,8 @@ fn pool_spec_for_pools(
             before.push(p[0]);
             after.push(p[1]);
         }
-        let spatial_pool_bef = get_spatial_shape(&before)?;
-        let spatial_pool_aft = get_spatial_shape(&after)?;
+        let spatial_pool_bef = if before.len() == shape.len() { get_spatial_shape(&before)? } else { before };
+        let spatial_pool_aft = if after.len() == shape.len() { get_spatial_shape(&after)? } else { after };
         PaddingSpec::Explicit(spatial_pool_bef, spatial_pool_aft, false)
     };
     Ok(PoolSpec::new(
