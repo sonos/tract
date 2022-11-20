@@ -51,7 +51,7 @@ fn pulsify(
     };
     let shape = op.pool_spec.data_format.shape(fact.streaming_shape())?;
     let paddings = op.pool_spec.padding.compute_for_deconv(
-        shape.spatial_dims(),
+        shape.hw_dims(),
         kernel_spatial_shape,
         &op.pool_spec.dilations(),
         &op.pool_spec.strides(),

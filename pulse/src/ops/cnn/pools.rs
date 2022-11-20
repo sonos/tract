@@ -75,16 +75,16 @@ pub fn pulsed_output_facts(
 ) -> TractResult<TVec<PulsedFact>> {
     let ishape = spec.data_format.shape(&inputs[0].shape)?;
     let computed = spec.padding.compute(
-        ishape.spatial_dims(),
+        ishape.hw_dims(),
         &spec.kernel_shape,
         &spec.dilations(),
         &spec.strides(),
     );
-    let spatial_dims = computed.into_iter().map(|d| d.convoluted).collect::<TVec<TDim>>();
+    let hw_dims = computed.into_iter().map(|d| d.convoluted).collect::<TVec<TDim>>();
     let oshape = spec.data_format.from_n_c_hw(
         ishape.n().cloned().unwrap_or_else(|| 1.to_dim()),
         spec.output_channel_override.map(|d| d.to_dim()).unwrap_or_else(|| ishape.c().clone()),
-        spatial_dims,
+        hw_dims,
     )?;
     let mut fact = inputs[0].clone();
     let mut stream = fact.stream.as_mut().unwrap();
@@ -188,14 +188,14 @@ pub fn pulsify_pooled_input(
     if has_padding {
         let mut bef = tvec!();
         let mut aft = tvec!();
-        for ix in 0..input_shape.spatial_rank() {
+        for ix in 0..input_shape.hw_rank() {
             if ix == geo_axis {
                 bef.push(0);
                 aft.push(0);
             } else {
                 let c = spec.padding.compute_one(
                     ix,
-                    &input_shape.spatial_dims()[ix],
+                    &input_shape.hw_dims()[ix],
                     spec.kernel_shape[ix],
                     spec.dilations()[ix],
                     spec.strides()[ix],

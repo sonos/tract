@@ -25,7 +25,7 @@ pub fn fuse_downsample_into_conv(
     }
     let mut new_conv = conv_op.clone();
     if new_conv.pool_spec.strides.is_none() {
-        new_conv.pool_spec.strides = Some(tvec!(1; input_shape.spatial_rank()));
+        new_conv.pool_spec.strides = Some(tvec!(1; input_shape.hw_rank()));
     }
     new_conv.pool_spec.strides.as_mut().unwrap()[geo_axis] *= down_op.stride as usize;
 

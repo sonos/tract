@@ -21,7 +21,7 @@ struct ConvProblem {
 
 impl ConvProblem {
     fn geo_ker(&self) -> &[usize] {
-        &self.kernel.shape()[self.kernel_format.h_axis()..][..self.shape_in.spatial_rank()]
+        &self.kernel.shape()[self.kernel_format.h_axis()..][..self.shape_in.hw_rank()]
     }
 
     fn reference(&self) -> ArrayD<f32> {
@@ -34,14 +34,14 @@ impl ConvProblem {
             KernelFormat::HWIO => self.kernel.shape()[self.kernel.ndim() - 1],
         };
         let (shape_out, left_pads): (TVec<_>, TVec<_>) = if self.pad == PaddingSpec::Valid {
-            izip!(self.shape_in.spatial_dims(), self.geo_ker(), &self.strides)
+            izip!(self.shape_in.hw_dims(), self.geo_ker(), &self.strides)
                 .map(|(i, k, s)| {
                     let out = (*i + 1).saturating_sub(*k).divceil(*s);
                     (out, 0)
                 })
                 .unzip()
         } else {
-            izip!(self.shape_in.spatial_dims(), self.geo_ker(), &self.strides)
+            izip!(self.shape_in.hw_dims(), self.geo_ker(), &self.strides)
                 .map(|(input, k, stride)| {
                     let out = input.divceil(*stride);
                     let pad = ((out - 1) * stride + k).saturating_sub(*input);
@@ -57,7 +57,7 @@ impl ConvProblem {
         let mut out = ArrayD::zeros(&*shape_out.shape);
         for n in 0..n {
             for g in 0..self.group {
-                for geo_out in tract_ndarray::indices(shape_out.spatial_dims()) {
+                for geo_out in tract_ndarray::indices(shape_out.hw_dims()) {
                     let mut output_coords: TVec<usize> = geo_out.slice().into();
                     if self.shape_in.fmt.has_n() {
                         output_coords.insert(0, n);
@@ -70,7 +70,7 @@ impl ConvProblem {
                                     *out as isize * *stride as isize + *ker as isize - *pad as isize
                                 })
                                 .collect();
-                        if izip!(&input_coords, self.shape_in.spatial_dims())
+                        if izip!(&input_coords, self.shape_in.hw_dims())
                             .any(|(c, i)| *c < 0 || *c >= *i as isize)
                         {
                             continue;
@@ -176,7 +176,7 @@ impl Arbitrary for ConvProblem {
                         ker_shape.insert(0, co0 * group)
                     }
                 };
-                let strides = vec(1usize..=3, shape_in.spatial_rank()..=shape_in.spatial_rank());
+                let strides = vec(1usize..=3, shape_in.hw_rank()..=shape_in.hw_rank());
                 let kernel = tensor(ker_shape);
                 let bias = proptest::option::of(tensor(vec![co0 * group]));
                 (Just((kf, pad, shape_in, group)), data_in, kernel, bias, strides)

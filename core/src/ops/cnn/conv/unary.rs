@@ -391,7 +391,7 @@ impl ConvUnary {
         &self,
         output_shape: &BaseDataShape<D, TVec<D>>,
     ) -> TractResult<(TVec<D>, usize, usize)> {
-        let geo_collapsed_out: D = output_shape.spatial_dims().iter().cloned().product();
+        let geo_collapsed_out: D = output_shape.hw_dims().iter().cloned().product();
         let shape: BaseDataShape<D, TVec<D>> = output_shape.fmt.from_n_c_hw(
             output_shape.n().cloned().unwrap_or_else(|| 1.into()),
             output_shape.c().clone(),
@@ -420,13 +420,13 @@ impl ConvUnary {
         wire: OutletId,
         output_shape: &BaseDataShape<D, TVec<D>>,
     ) -> TractResult<OutletId> {
-        let geo_collapsed_out: D = output_shape.spatial_dims().iter().cloned().product();
+        let geo_collapsed_out: D = output_shape.hw_dims().iter().cloned().product();
         let wire = model.wire_node(
             name,
             AxisOp::Reshape(
                 output_shape.h_axis(),
                 tvec!(geo_collapsed_out.to_dim()),
-                output_shape.spatial_dims().iter().map(|d| d.to_dim()).collect(),
+                output_shape.hw_dims().iter().map(|d| d.to_dim()).collect(),
             ),
             &[wire],
         )?;
@@ -444,7 +444,7 @@ impl ConvUnary {
         let input_shape = b_fact.shape.as_concrete().unwrap().to_vec();
         let mut geo = geo.to_concrete(&input_shape)?.into_owned();
         let mut input_shape: DataShape = self.pool_spec.data_format.shape(input_shape.into())?;
-        let padding = self.pool_spec.computed_padding(input_shape.spatial_dims());
+        let padding = self.pool_spec.computed_padding(input_shape.hw_dims());
         if padding.iter().any(|axis| axis.pad_before != 0 || axis.pad_after != 0) {
             let mut pads = vec![(0, 0); b_fact.rank()];
             for (ix, ax) in padding.iter().enumerate() {
@@ -523,7 +523,7 @@ impl ConvUnary {
         let m = self.output_channels() / self.group;
         let k = self.kernel.len() / self.output_channels();
         let n: TDim =
-            self.pool_spec.output_shape(&input_fact.shape)?.spatial_dims().iter().cloned().product();
+            self.pool_spec.output_shape(&input_fact.shape)?.hw_dims().iter().cloned().product();
 
         let mmm = tract_linalg::ops()
             .mmm(a_dt, b_dt, c_dt, Some(m), Some(k), n.to_usize().ok())
@@ -641,7 +641,7 @@ impl ConvUnary {
         let input_fact = model.outlet_fact(node.inputs[0])?;
         let full_input_shape = input_fact.shape.to_tvec();
         let input_shape = self.pool_spec.data_format.shape(&full_input_shape)?;
-        if input_shape.spatial_rank() == 1
+        if input_shape.hw_rank() == 1
             && self.group == 1
             && self.pool_spec.stride(0) == 1
             && self.kernel.len() == self.input_channels() * self.output_channels()
@@ -730,10 +730,8 @@ impl ConvUnary {
         {
             return Ok(None);
         }
-        let mut before: TVec<usize> =
-            pad.pads[shape.spatial_axes()].iter().map(|pair| pair.0).collect();
-        let mut after: TVec<usize> =
-            pad.pads[shape.spatial_axes()].iter().map(|pair| pair.1).collect();
+        let mut before: TVec<usize> = pad.pads[shape.hw_axes()].iter().map(|pair| pair.0).collect();
+        let mut after: TVec<usize> = pad.pads[shape.hw_axes()].iter().map(|pair| pair.1).collect();
         if let PaddingSpec::Explicit(bef, aft, false) = &self.pool_spec.padding {
             izip!(&mut before, bef).for_each(|(pad, cv)| *pad += cv);
             izip!(&mut after, aft).for_each(|(pad, cv)| *pad += cv);
@@ -867,7 +865,7 @@ impl TypedOp for ConvUnary {
             axes.push(info);
         }
         let kernel_spatial_shape =
-            &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.spatial_rank()];
+            &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
         let h_axis = shape.h_axis();
         for (ix, &dim) in kernel_spatial_shape.iter().enumerate() {
             if dim == 1 && self.pool_spec.stride(ix) == 1 {
@@ -907,9 +905,9 @@ impl TypedOp for ConvUnary {
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         let shape = self.pool_spec.data_format.shape(inputs[0].shape.to_tvec())?;
         let kernel_spatial_shape =
-            &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.spatial_rank()];
+            &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
         let output_dims = self.pool_spec.padding.compute(
-            shape.spatial_dims(),
+            shape.hw_dims(),
             kernel_spatial_shape,
             &self
                 .pool_spec
@@ -998,19 +996,19 @@ impl TypedOp for ConvUnary {
         // geo axis manips
         use AxisOp::*;
         let h_axis = shape.h_axis();
-        let spatial_axes = shape.spatial_axes();
+        let hw_axes = shape.hw_axes();
         let kh_axis = if self.kernel_fmt == KernelFormat::OIHW { 2 } else { 0 };
         let (geo_adjusted, kernel_adjusted) = match change {
             Rm(a)
-                if spatial_axes.contains(a)
+                if hw_axes.contains(a)
                     && self.pool_spec.dilation(a - h_axis) == 1
                     && self.pool_spec.stride(a - h_axis) == 1
                     && self.pool_spec.kernel_shape[a - h_axis] == 1 =>
             {
                 (Rm(a - h_axis), Rm(a - h_axis + kh_axis))
             }
-            Add(a) if spatial_axes.contains(a) => (Add(a - h_axis), Add(a - h_axis + kh_axis)),
-            Move(f, t) if spatial_axes.contains(f) && spatial_axes.contains(t) => {
+            Add(a) if hw_axes.contains(a) => (Add(a - h_axis), Add(a - h_axis + kh_axis)),
+            Move(f, t) if hw_axes.contains(f) && hw_axes.contains(t) => {
                 (Move(f - h_axis, t - h_axis), Move(f - h_axis + kh_axis, t - h_axis + kh_axis))
             }
             _ => return Ok(None),
@@ -1066,7 +1064,7 @@ impl TypedOp for ConvUnary {
         let full_input_shape = model.outlet_fact(node.inputs[0])?.shape.to_tvec();
         let input_fact = model.outlet_fact(node.inputs[0])?;
         let input_shape = self.pool_spec.data_format.shape(&full_input_shape)?;
-        let spatial_rank = input_shape.spatial_rank();
+        let spatial_rank = input_shape.hw_rank();
         let kernel_spatial_shape = &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];
         unsafe {
             let dt = input_fact.datum_type;
@@ -1095,12 +1093,12 @@ impl TypedOp for ConvUnary {
                 let mut patch = TypedModelPatch::default();
                 let mut wire = patch.tap_model(model, node.inputs[0])?;
                 let input_c_is_last = input_shape.c_axis() == input_shape.rank() - 1;
-                let geo_dim: TDim = input_shape.spatial_dims().iter().product();
+                let geo_dim: TDim = input_shape.hw_dims().iter().product();
                 wire = patch.wire_node(
                     format!("{}.reshape_input", &*node.name),
                     AxisOp::Reshape(
                         input_shape.h_axis(),
-                        input_shape.spatial_dims().into(),
+                        input_shape.hw_dims().into(),
                         tvec!(geo_dim.clone()),
                     ),
                     &[wire],
@@ -1149,7 +1147,7 @@ impl TypedOp for ConvUnary {
                     AxisOp::Reshape(
                         input_shape.h_axis(),
                         tvec!(geo_dim),
-                        input_shape.spatial_dims().into(),
+                        input_shape.hw_dims().into(),
                     ),
                     &[wire],
                 )?[0];

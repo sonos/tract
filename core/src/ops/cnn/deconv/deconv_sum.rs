@@ -78,7 +78,7 @@ impl DeconvSum {
             super::output_shape(&self.pool_spec, &input_shape.shape, &self.adjustments)?;
         let output_shape = self.pool_spec.data_format.shape(output_shape)?;
         let spatial_output_details = self.pool_spec.padding.compute_for_deconv(
-            input_shape.spatial_dims(),
+            input_shape.hw_dims(),
             &self.pool_spec.kernel_shape,
             &self.pool_spec.dilations(),
             &self.pool_spec.strides(),
@@ -125,7 +125,7 @@ impl DeconvSum {
         if !self.pool_spec.data_format.has_n() {
             output = output.insert_axis(Axis(0));
         }
-        match input_shape.spatial_rank() {
+        match input_shape.hw_rank() {
             1 => self.main_loop_1d(
                 &input_shape,
                 &output_shape,
@@ -168,8 +168,8 @@ impl DeconvSum {
     ) -> TractResult<()> {
         let n = *output_shape.n().unwrap_or(&1);
         let kernel_len = self.pool_spec.kernel_shape[0];
-        let geo_input_len = input_shape.spatial_dims()[0];
-        let geo_output_len = output_shape.spatial_dims()[0];
+        let geo_input_len = input_shape.hw_dims()[0];
+        let geo_output_len = output_shape.hw_dims()[0];
         let x_stride = self.pool_spec.strides().as_ref()[0];
         let x_dil = self.pool_spec.dilations().as_ref()[0];
         let x_pad = spatial_output_details[0].pad_before as isize;
@@ -216,16 +216,16 @@ impl DeconvSum {
         let y_pad = spatial_output_details[1].pad_before as isize;
         let output_c = *output_shape.c();
         let output_c_stride = *output_shape.c_stride() as isize;
-        let output_x_stride = output_shape.spatial_strides()[0] as isize;
-        let output_y_stride = output_shape.spatial_strides()[1] as isize;
+        let output_x_stride = output_shape.hw_strides()[0] as isize;
+        let output_y_stride = output_shape.hw_strides()[1] as isize;
         let temp_n_stride = n_o_hkwk_hw.strides()[0];
         let temp_o_stride = n_o_hkwk_hw.strides()[1];
         let temp_k_stride = n_o_hkwk_hw.strides()[2];
         let temp_i_stride = n_o_hkwk_hw.strides()[3];
-        let ox_len = output_shape.spatial_dims()[0];
-        let oy_len = output_shape.spatial_dims()[1];
-        let ix_len = input_shape.spatial_dims()[0];
-        let iy_len = input_shape.spatial_dims()[1];
+        let ox_len = output_shape.hw_dims()[0];
+        let oy_len = output_shape.hw_dims()[1];
+        let ix_len = input_shape.hw_dims()[0];
+        let iy_len = input_shape.hw_dims()[1];
         let kx_len = self.pool_spec.kernel_shape[0];
         let ky_len = self.pool_spec.kernel_shape[1];
         unsafe {
@@ -338,9 +338,9 @@ impl DeconvSum {
             self.pool_spec.kernel_shape[2],
         ];
         let geo_input_shape: [usize; 3] =
-            [input_shape.spatial_dims()[0], input_shape.spatial_dims()[1], input_shape.spatial_dims()[2]];
+            [input_shape.hw_dims()[0], input_shape.hw_dims()[1], input_shape.hw_dims()[2]];
         let geo_output_shape: [usize; 3] =
-            [output_shape.spatial_dims()[0], output_shape.spatial_dims()[1], output_shape.spatial_dims()[2]];
+            [output_shape.hw_dims()[0], output_shape.hw_dims()[1], output_shape.hw_dims()[2]];
         let x_stride = self.pool_spec.strides().as_ref()[0];
         let y_stride = self.pool_spec.strides().as_ref()[1];
         let z_stride = self.pool_spec.strides().as_ref()[2];
@@ -402,7 +402,7 @@ impl DeconvSum {
                     tract_ndarray::indices(&*self.pool_spec.kernel_shape).into_iter().enumerate()
                 {
                     for (gix, gcoords) in
-                        tract_ndarray::indices(input_shape.spatial_dims()).into_iter().enumerate()
+                        tract_ndarray::indices(input_shape.hw_dims()).into_iter().enumerate()
                     {
                         // h' = stride * hg + dil * hk
                         let ocoord: TVec<isize> = tract_itertools::izip!(
@@ -418,7 +418,7 @@ impl DeconvSum {
                         .collect();
                         if ocoord
                             .iter()
-                            .zip(output_shape.spatial_dims().iter())
+                            .zip(output_shape.hw_dims().iter())
                             .all(|(x, dim)| *x >= 0 && (*x as usize) < *dim)
                         {
                             let ocoord = ocoord.iter().map(|x| *x as usize).collect::<TVec<_>>();

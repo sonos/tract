@@ -45,7 +45,7 @@ impl PatchSpec {
     }
 
     pub fn for_data_shape(data_shape: DataShape) -> PatchSpec {
-        let input_shape: TVec<usize> = data_shape.spatial_dims().into();
+        let input_shape: TVec<usize> = data_shape.hw_dims().into();
         PatchSpec {
             kernel_shape: tvec!(1; input_shape.len()),
             input_inner_stride: *data_shape.w_stride(),
@@ -814,7 +814,7 @@ pub mod test {
             let input_shape = self.input_shape();
             let output_shape = self.output_shape();
             let mut output = Tensor::zero::<f32>(&output_shape.shape).unwrap();
-            for geo_out in tract_ndarray::indices(output_shape.spatial_dims()) {
+            for geo_out in tract_ndarray::indices(output_shape.hw_dims()) {
                 for geo_ker in tract_ndarray::indices(&*self.patch.spec.kernel_shape) {
                     let geo_in: TVec<isize> = izip!(
                         geo_out.slice(),
@@ -825,7 +825,7 @@ pub mod test {
                     )
                     .map(|(o, k, s, d, p)| (o * s + k * d) as isize - *p as isize)
                     .collect();
-                    if izip!(&geo_in, input_shape.spatial_dims())
+                    if izip!(&geo_in, input_shape.hw_dims())
                         .any(|(g, i)| *g >= *i as isize || *g < 0)
                     {
                         continue;
@@ -901,7 +901,7 @@ pub mod test {
                 unsafe {
                     assert_eq!(
                         inside_valid,
-                        self.patch.is_valid(&coords.slice()[self.input_shape().spatial_axes()]),
+                        self.patch.is_valid(&coords.slice()[self.input_shape().hw_axes()]),
                         "coords {:?}, valid_zone: {:?} inside_valid: {:?}",
                         coords.slice(),
                         valid_zone,
