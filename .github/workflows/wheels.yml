@@ -25,7 +25,3 @@ jobs:
         uses: pypa/cibuildwheel@v2.11.2
         with:
           package-dir: ffi/py
-
-            #       - uses: actions/upload-artifact@v3
-            #         with:
-            #           path: ./wheelhouse/*.whl

@@ -6,13 +6,14 @@ requires = [
 ]
 
 [tool.cibuildwheel]
-skip = "*-musllinux_i686"
 environment = "PATH=$PATH:$HOME/.cargo/bin"
-# required on linux as we need to configure the docker envs
-before-build-linux = """
+test-command = 'python -c "import tract"'
+
+[tool.cibuildwheel.linux]
+skip = "*-musllinux_i686"
+before-build = """
 cargo --version || (curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
 . $HOME/.cargo/env
 rustup toolchain add stable
 rustup default stable)
 """
-test-command = 'python -c "import tract"'
