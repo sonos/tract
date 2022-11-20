@@ -80,11 +80,11 @@ pub fn pulsed_output_facts(
         &spec.dilations(),
         &spec.strides(),
     );
-    let hw_dims = computed.into_iter().map(|d| d.convoluted).collect::<TVec<TDim>>();
+    let spatial_dims = computed.into_iter().map(|d| d.convoluted).collect::<TVec<TDim>>();
     let oshape = spec.data_format.from_n_c_hw(
         ishape.n().cloned().unwrap_or_else(|| 1.to_dim()),
         spec.output_channel_override.map(|d| d.to_dim()).unwrap_or_else(|| ishape.c().clone()),
-        hw_dims,
+        spatial_dims,
     )?;
     let mut fact = inputs[0].clone();
     let input_shape = spec.data_format.shape(&*fact.shape)?;
