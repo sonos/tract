@@ -197,7 +197,7 @@ where
     {
         self.set_inputs(inputs)?;
         self.exec_plan_with_eval(eval)?;
-        let outputs = self.take_outputs()?;
+        let outputs = self.outputs()?;
         self.reset_turn()?;
         Ok(outputs)
     }
@@ -375,10 +375,10 @@ where
         Ok(value)
     }
 
-    pub fn take_outputs(&mut self) -> TractResult<TVec<TValue>> {
+    pub fn outputs(&mut self) -> TractResult<TVec<TValue>> {
         let SimpleState { ref plan, ref mut values, .. } = self;
         let mut v = tvec![];
-        for o in plan.borrow().model().output_outlets()?.iter() {
+        for o in plan.borrow().outputs.iter() {
             let vs = values[o.node].as_mut().ok_or_else(|| {
                 format_err!(
                     "Outputs of {:?} are not computed",
