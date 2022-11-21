@@ -1,18 +1,17 @@
 from setuptools import setup
 from setuptools_rust import Binding, RustExtension
+import toml
+import re
 
-VERSION="0.18.3.dev"
-
-# readme = None
-# with open("../../README.md") as f:
-#     readme = f.read()
+version = toml.load("../Cargo.toml")["package"]["version"]
+version = re.sub("\-.*", ".dev", version)
 
 setup(
         name="tract",
         author="Mathieu Poumeyrol, Sonos, and tract contributors",
         author_email="mathieu@poumeyrol.fr",
         keywords="onnx tensorflow nnef runtime neural network",
-        version=VERSION,
+        version=version,
         description="Python bindings for tract, a neural network inferance engine",
         project_urls={
             "Documentation": "https://github.com/sonos/tract",
