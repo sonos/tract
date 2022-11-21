@@ -2,6 +2,9 @@ import numpy
 from ctypes import *
 from pathlib import Path
 
+class TractError(Exception):
+    pass
+
 if len(list(Path(__file__).parent.glob("*.so"))) > 0:
     dylib_path = list(Path(__file__).parent.glob("*.so"))[0]
 elif len(list(Path(__file__).parent.glob("*.dll"))) > 0:
@@ -32,9 +35,6 @@ TRACT_DATUM_TYPE_COMPLEX_I64 = 0x44
 TRACT_DATUM_TYPE_COMPLEX_F16 = 0x52
 TRACT_DATUM_TYPE_COMPLEX_F32 = 0x53
 TRACT_DATUM_TYPE_COMPLEX_F64 = 0x54
-
-class TractError(Exception):
-    pass
 
 def version():
     return str(lib.tract_version(), "utf-8")
