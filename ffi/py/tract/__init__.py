@@ -2,7 +2,13 @@ import numpy
 from ctypes import *
 from pathlib import Path
 
-dylib_path = list(Path(__file__).parent.glob("*.so"))[0]
+if len(list(Path(__file__).parent.glob("*.so"))) > 0:
+    dylib_path = list(Path(__file__).parent.glob("*.so"))[0]
+elif len(list(Path(__file__).parent.glob("*.dll"))) > 0:
+    dylib_path = list(Path(__file__).parent.glob("*.dll"))[0]
+else:
+    raise TractError("Can not find dynamic library")
+
 lib = cdll.LoadLibrary(str(dylib_path))
 
 lib.tract_version.restype = c_char_p
