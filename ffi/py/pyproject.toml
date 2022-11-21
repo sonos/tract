@@ -8,7 +8,7 @@ requires = [
 
 [tool.cibuildwheel]
 environment = "PATH=$PATH:$HOME/.cargo/bin"
-# test-command = 'python -c "import tract"'
+test-command = 'python -c "import tract"'
 
 [tool.cibuildwheel.linux]
 skip = "*-musllinux_i686"

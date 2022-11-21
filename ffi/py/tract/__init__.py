@@ -7,8 +7,8 @@ class TractError(Exception):
 
 if len(list(Path(__file__).parent.glob("*.so"))) > 0:
     dylib_path = list(Path(__file__).parent.glob("*.so"))[0]
-elif len(list(Path(__file__).parent.glob("*.dll"))) > 0:
-    dylib_path = list(Path(__file__).parent.glob("*.dll"))[0]
+elif len(list(Path(__file__).parent.glob("*.pyd"))) > 0:
+    dylib_path = list(Path(__file__).parent.glob("*.pyd"))[0]
 else:
     raise TractError("Can not find dynamic library")
 
