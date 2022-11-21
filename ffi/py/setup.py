@@ -6,19 +6,23 @@ import re
 version = toml.load("../Cargo.toml")["package"]["version"]
 version = re.sub("\-.*", ".dev", version)
 
+with open('../../README.md', 'r') as file:
+    readme = file.read()
+
+
 setup(
         name="tract",
         author="Mathieu Poumeyrol, Sonos, and tract contributors",
         author_email="mathieu@poumeyrol.fr",
         keywords="onnx tensorflow nnef runtime neural network",
         version=version,
-        description="Python bindings for tract, a neural network inferance engine",
+        description="Python bindings for tract, a neural network inference engine",
         project_urls={
             "Documentation": "https://github.com/sonos/tract",
             "Source": "https://github.com/Garvys/rustfs ",
         },
         license="Apache License, Version 2.0 OR MIT",
-#        long_description=readme,
+        long_description=readme,
         long_description_content_type="text/markdown",
         options={"bdist_wheel": {"universal": True}},
         classifiers=[
