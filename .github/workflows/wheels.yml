@@ -25,3 +25,10 @@ jobs:
         uses: pypa/cibuildwheel@v2.11.2
         with:
           package-dir: ffi/py
+
+      - name: Publish a Python distribution to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI }}
+          repository_url: https://test.pypi.org
+          packages_dir: wheelhouse/
