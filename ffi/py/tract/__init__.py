@@ -36,6 +36,9 @@ TRACT_DATUM_TYPE_COMPLEX_F64 = 0x54
 class TractError(Exception):
     pass
 
+def version():
+    return str(lib.tract_version(), "utf-8")
+
 def nnef():
     return Nnef()
 
@@ -44,7 +47,7 @@ def onnx():
 
 def check(err):
     if err != 0:
-        raise TractError(str(lib.tract_get_last_error()))
+        raise TractError(str(lib.tract_get_last_error(), "utf-8"))
 
 class Nnef:
     def __init__(self):
