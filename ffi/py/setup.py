@@ -33,7 +33,7 @@ setup(
             "Topic :: Scientific/Engineering :: Mathematics",
             "Topic :: Scientific/Engineering :: Artificial Intelligence",
             "License :: OSI Approved :: Apache Software License",
-            "License :: OSI Approved :: MIT",
+            "License :: OSI Approved :: MIT License"
             ],
         rust_extensions=[RustExtension("tract.tract", binding=Binding.NoBinding, path="../Cargo.toml")],
         packages=["tract"],
