@@ -24,3 +24,4 @@ skip = "*-win32"
 
 [tool.cibuildwheel.macos]
 archs = "x86_64 universal2 arm64"
+before-build = "rustup target add aarch64-apple-darwin"
