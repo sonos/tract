@@ -49,6 +49,10 @@ impl TypedOp for Const {
         }
     }
 
+    fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
+        Invariants::new_element_wise(inputs, outputs)
+    }
+
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         Ok(tvec!((Cost::Params(f32::datum_type()), self.0.len().into())))
     }

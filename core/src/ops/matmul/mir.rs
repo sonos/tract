@@ -1,4 +1,5 @@
 use crate::internal::*;
+use crate::ops::array::Slice;
 use crate::ops::matmul::*;
 
 /// The binary op. It will declutter to MatMulUnary if either A or B is constant.
@@ -18,7 +19,7 @@ impl Op for MatMul {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec!(format!("{:?}", self.axes)))
+        Ok(vec![format!("{:?}", self.axes)])
     }
 
     op_as_typed_op!();
@@ -64,6 +65,78 @@ impl TypedOp for MatMul {
         if let Some((axes, wire_changes)) = mir_change_axes(model, node, io, change, &self.axes)? {
             let op = Self { axes };
             Ok(Some(AxisChangeConsequence { substitute_op: Some(Box::new(op)), wire_changes }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if let Some(boundaries) =
+            crate::ops::matmul::mir_unary::should_slice_output(model, node, self.axes.c_m)?
+        {
+            let mut patch = TypedModelPatch::new("split over m-concatenated output");
+            let a = patch.tap_model(model, node.inputs[0])?;
+            let b = patch.tap_model(model, node.inputs[1])?;
+            let mut start = 0;
+            let mut splits = tvec!();
+            for end in &boundaries {
+                let wire = patch.wire_node(
+                    format!("{}.split-a-over-m.{}..{}.slice", &node.name, start, end),
+                    Slice { axis: self.axes.a_m, start: start.to_dim(), end: end.to_dim() },
+                    &[a],
+                )?;
+                let wire = patch.wire_node(
+                    format!("{}.split-a-over-m.{}..{}.mm", &node.name, start, end),
+                    self.clone(),
+                    &[wire[0], b],
+                )?;
+                splits.push(wire[0]);
+                start = *end;
+            }
+            crate::ops::matmul::mir_unary::rewire_sliced_outputs(
+                model,
+                node,
+                self.axes.c_m,
+                &mut patch,
+                &boundaries,
+                &splits,
+            )?;
+            Ok(Some(patch))
+        } else if let Some(boundaries) =
+            crate::ops::matmul::mir_unary::should_slice_output(model, node, self.axes.c_n)?
+        {
+            let mut patch = TypedModelPatch::new("split over n-concatenated output");
+            let a = patch.tap_model(model, node.inputs[0])?;
+            let b = patch.tap_model(model, node.inputs[1])?;
+            let mut start = 0;
+            let mut splits = tvec!();
+            for end in &boundaries {
+                let wire = patch.wire_node(
+                    format!("{}.split-b-over-n.{}..{}.slice", &node.name, start, end),
+                    Slice { axis: self.axes.b_n, start: start.to_dim(), end: end.to_dim() },
+                    &[b],
+                )?;
+                let wire = patch.wire_node(
+                    format!("{}.split-b-over-n.{}..{}.mm", &node.name, start, end),
+                    self.clone(),
+                    &[a, wire[0]],
+                )?;
+                splits.push(wire[0]);
+                start = *end;
+            }
+            crate::ops::matmul::mir_unary::rewire_sliced_outputs(
+                model,
+                node,
+                self.axes.c_n,
+                &mut patch,
+                &boundaries,
+                &splits,
+            )?;
+            Ok(Some(patch))
         } else {
             Ok(None)
         }

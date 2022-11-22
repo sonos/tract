@@ -421,6 +421,9 @@ impl Scan {
                 continue;
             }
             let emitter_outlet = self.body.output_outlets()?[model_ix];
+            if emitter_outlet.slot != 0 {
+                continue;
+            }
             let emitter_node = self.body.node(emitter_outlet.node);
             if emitter_node.outputs[emitter_outlet.slot].successors.len() > 0
                 || mapping.state
@@ -431,49 +434,53 @@ impl Scan {
             }
             let (input_facts, output_facts) = self.body.node_facts(emitter_node.id)?;
             let invariants = emitter_node.op.invariants(&input_facts, &output_facts)?;
-            let axis_before = if let Some(a) = invariants.unary_track_axis_up(mapping.axis, false) {
-                a
-            } else {
+            let Some(axis_tracking) = invariants.track_output_axis(emitter_outlet.slot, mapping.axis)
+            else {
                 continue;
             };
-
             let mut fixed_body = self.body.clone();
             let mut output_mapping = self.output_mapping.clone();
 
-            let mut full_values_slots = vec![];
-            let mut last_values_slots = vec![];
+            // will contain full outer slot id for each emiter_node inputs that must be accumulated
+            // (broadcasted constant will have a None)
+            let mut full_values_slots: Vec<Option<usize>> = vec![];
             let mut current_output_number = node.outputs.len();
-            for input in &emitter_node.inputs {
-                if let Some(position) = fixed_body.outputs.iter().position(|o| o == input) {
-                    let mut mapping = &mut output_mapping[position];
-                    if mapping.last_value_slot.is_none() {
-                        mapping.last_value_slot = Some(current_output_number);
+            for (ix, input) in emitter_node.inputs.iter().enumerate() {
+                let fact = self.body.outlet_fact(*input)?;
+                if fact.konst.is_some() {
+                    full_values_slots.push(None)
+                } else if fact.shape[axis_tracking.inputs[ix].unwrap()]
+                    == emitter_node.outputs[emitter_outlet.slot].fact.shape[mapping.axis]
+                {
+                    if let Some(position) = fixed_body.outputs.iter().position(|o| o == input) {
+                        // this input wire is already (partially ?) mapped, make sure full is mapped
+                        let mut mapping = &mut output_mapping[position];
+                        if mapping.full_slot.is_none() {
+                            mapping.axis = axis_tracking.inputs[ix].unwrap();
+                            mapping.full_slot = Some(current_output_number);
+                            current_output_number += 1;
+                        }
+                        full_values_slots.push(Some(mapping.full_slot.unwrap()));
+                    } else {
+                        // not mapped yet, expose the full outside
+                        fixed_body.outputs.push(*input);
+                        let full_slot = Some(current_output_number);
                         current_output_number += 1;
+                        output_mapping.push(OutputMapping {
+                            axis: axis_tracking.inputs[ix].unwrap(),
+                            full_slot,
+                            last_value_slot: None,
+                            ..mapping.clone()
+                        });
+                        full_values_slots.push(Some(full_slot.unwrap()));
                     }
-                    if mapping.full_slot.is_none() {
-                        mapping.axis = axis_before;
-                        mapping.full_slot = Some(current_output_number);
-                        current_output_number += 1;
-                    }
-                    full_values_slots.push(mapping.full_slot.unwrap());
-                    last_values_slots.push(mapping.last_value_slot.unwrap());
                 } else {
-                    fixed_body.outputs.push(*input);
-                    let full_slot = Some(current_output_number);
-                    let last_value_slot = Some(current_output_number + 1);
-                    current_output_number += 2;
-                    output_mapping.push(OutputMapping {
-                        axis: axis_before,
-                        full_slot,
-                        last_value_slot,
-                        ..mapping.clone()
-                    });
-                    full_values_slots.push(full_slot.unwrap());
-                    last_values_slots.push(last_value_slot.unwrap());
+                    return Ok(None);
                 }
             }
 
-            let mut outside_patch = TypedModelPatch::default();
+            let mut outside_patch =
+                TypedModelPatch::new(format!("pull {} out of {}", emitter_node, node));
             let inputs = node
                 .inputs
                 .iter()
@@ -489,8 +496,21 @@ impl Scan {
             };
             let scan_outputs = outside_patch.wire_node(&node.name, new_op, &inputs)?;
             let output = mapping.full_slot.unwrap();
-            let inputs =
-                full_values_slots.iter().map(|slot| scan_outputs[*slot]).collect::<TVec<_>>();
+            let inputs = full_values_slots
+                .iter()
+                .enumerate()
+                .map(|(ix, slot)| {
+                    if let Some(s) = slot {
+                        scan_outputs[*s]
+                    } else {
+                        let prec = &self.body.nodes[emitter_node.inputs[ix].node];
+                        assert!(prec.outputs[emitter_node.inputs[ix].slot].fact.konst.is_some());
+                        let konst =
+                            prec.outputs[emitter_node.inputs[ix].slot].fact.konst.clone().unwrap();
+                        outside_patch.add_const(format!("{}.extracted", prec.name), konst).unwrap()
+                    }
+                })
+                .collect::<TVec<_>>();
             let wire =
                 outside_patch.wire_node(&*emitter_node.name, emitter_node.op.clone(), &inputs)?[0];
             outside_patch.shunt_outside(model, OutletId::new(node.id, output), wire)?;

@@ -3,6 +3,7 @@ use super::lir_unary::{
 };
 use super::*;
 use crate::internal::*;
+use crate::ops::array::Slice;
 use tract_ndarray::prelude::*;
 
 /// The pseudo Unary matrix multiplier. A is constant, B is the input
@@ -282,47 +283,8 @@ impl MatMulUnary {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        use crate::ops::array::Slice;
         let m_axis = self.axes.c_m;
-        if let Some(slice) = node.outputs[0].successors.iter().find_map(|inlet| {
-            if model
-                .node(inlet.node)
-                .op_as::<Slice>()
-                .filter(|slice| slice.axis == m_axis)
-                .is_some()
-            {
-                Some(inlet.node)
-            } else {
-                None
-            }
-        }) {
-            let slice_op = model.node(slice).op_as::<Slice>().unwrap();
-            let axis = slice_op.axis;
-            let mut boundaries = tvec!();
-            for succ in &node.outputs[0].successors {
-                if let Some(slice) = model.node(succ.node).op_as::<Slice>() {
-                    if slice.axis == axis {
-                        boundaries.push(slice.start.clone());
-                        boundaries.push(slice.end.clone());
-                    }
-                }
-            }
-            let mut boundaries: TVec<usize> = if let Ok(boundaries) =
-                boundaries.iter().map(|x| x.to_usize()).collect::<TractResult<TVec<_>>>()
-            {
-                boundaries
-            } else {
-                return Ok(None);
-            };
-            let end = if let Ok(x) = node.outputs[0].fact.shape[axis].to_usize() {
-                x
-            } else {
-                return Ok(None);
-            };
-            boundaries.push(end);
-            boundaries.retain(|x| *x > 0);
-            boundaries.sort();
-            boundaries.dedup();
+        if let Some(boundaries) = should_slice_output(model, node, m_axis)? {
             let mut patch = TypedModelPatch::new("split over m-concatenated output");
             let input = patch.tap_model(model, node.inputs[0])?;
 
@@ -339,47 +301,98 @@ impl MatMulUnary {
                 splits.push(wire[0]);
                 done = up;
             }
-            let full = patch.wire_node(
-                format!("{}.concat-m.full", node.name),
-                crate::ops::array::TypedConcat::concat_vars(axis, splits.len()),
-                &splits,
-            )?[0];
-            patch.shunt_outside(model, node.id.into(), full)?;
-            for (ix, succ) in node.outputs[0].successors.iter().enumerate() {
-                if let Some(slice) =
-                    model.node(succ.node).op_as::<Slice>().filter(|slice| slice.axis == axis)
-                {
-                    // example: boundaries: 2, 3, wanted: 0..2 -> [0]
-                    let slices: TVec<OutletId> = boundaries
-                        .iter()
-                        .zip(splits.iter())
-                        .filter_map(|(up, split)| {
-                            if *up > slice.start.to_usize().unwrap()
-                                && *up <= slice.end.to_usize().unwrap()
-                            {
-                                Some(*split)
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
-                    let wire = if slices.len() > 1 {
-                        patch.wire_node(
-                            format!("{}.concat-m{}..{}..{}", node.name, ix, slice.start, slice.end),
-                            crate::ops::array::TypedConcat::concat_vars(axis, slices.len()),
-                            &slices,
-                        )?[0]
-                    } else {
-                        slices[0]
-                    };
-                    patch.shunt_outside(model, succ.node.into(), wire)?;
-                }
-            }
+            rewire_sliced_outputs(model, node, m_axis, &mut patch, &boundaries, &splits)?;
             Ok(Some(patch))
         } else {
             Ok(None)
         }
     }
+}
+
+pub fn should_slice_output(
+    model: &TypedModel,
+    node: &TypedNode,
+    axis: usize,
+) -> TractResult<Option<TVec<usize>>> {
+    let Some(slice) = node.outputs[0].successors.iter().find_map(|inlet| {
+           model.node(inlet.node).op_as::<Slice>().filter(|slice| slice.axis == axis).map(|_| inlet.node)
+        }) else {
+            return Ok(None)
+        };
+    let slice_op = model.node(slice).op_as::<Slice>().unwrap();
+    let axis = slice_op.axis;
+    let mut boundaries = tvec!();
+    for succ in &node.outputs[0].successors {
+        if let Some(slice) = model.node(succ.node).op_as::<Slice>() {
+            if slice.axis == axis {
+                boundaries.push(slice.start.clone());
+                boundaries.push(slice.end.clone());
+            }
+        }
+    }
+    let mut boundaries: TVec<usize> = if let Ok(boundaries) =
+        boundaries.iter().map(|x| x.to_usize()).collect::<TractResult<TVec<_>>>()
+    {
+        boundaries
+    } else {
+        return Ok(None);
+    };
+    let end = if let Ok(x) = node.outputs[0].fact.shape[axis].to_usize() {
+        x
+    } else {
+        return Ok(None);
+    };
+    boundaries.push(end);
+    boundaries.retain(|x| *x > 0);
+    boundaries.sort();
+    boundaries.dedup();
+    Ok(Some(boundaries))
+}
+
+pub fn rewire_sliced_outputs(
+    model: &TypedModel,
+    node: &TypedNode,
+    axis: usize,
+    patch: &mut TypedModelPatch,
+    boundaries: &[usize],
+    splits: &[OutletId],
+) -> TractResult<()> {
+    let full = patch.wire_node(
+        format!("{}.concat-m.full", node.name),
+        crate::ops::array::TypedConcat::concat_vars(axis, splits.len()),
+        &splits,
+    )?[0];
+    patch.shunt_outside(model, node.id.into(), full)?;
+    for (ix, succ) in node.outputs[0].successors.iter().enumerate() {
+        if let Some(slice) =
+            model.node(succ.node).op_as::<Slice>().filter(|slice| slice.axis == axis)
+        {
+            // example: boundaries: 2, 3, wanted: 0..2 -> [0]
+            let slices: TVec<OutletId> = boundaries
+                .iter()
+                .zip(splits.iter())
+                .filter_map(|(up, split)| {
+                    if *up > slice.start.to_usize().unwrap() && *up <= slice.end.to_usize().unwrap()
+                    {
+                        Some(*split)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            let wire = if slices.len() > 1 {
+                patch.wire_node(
+                    format!("{}.concat-m{}..{}..{}", node.name, ix, slice.start, slice.end),
+                    crate::ops::array::TypedConcat::concat_vars(axis, slices.len()),
+                    &slices,
+                )?[0]
+            } else {
+                slices[0]
+            };
+            patch.shunt_outside(model, succ.node.into(), wire)?;
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn mir_unary_invariants(
