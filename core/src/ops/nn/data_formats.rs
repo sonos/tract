@@ -4,12 +4,8 @@ use tract_itertools::Itertools;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum DataFormat {
-    NCDHW,
-    NDHWC,
     NCHW,
     NHWC,
-    CDHW,
-    DHWC,
     CHW,
     HWC,
 }
@@ -23,8 +19,6 @@ impl Default for DataFormat {
 impl DataFormat {
     pub fn dispose_n_axis(&self) -> DataFormat {
         match self {
-            DataFormat::NCDHW => DataFormat::CDHW,
-            DataFormat::NDHWC => DataFormat::DHWC,
             DataFormat::NCHW => DataFormat::CHW,
             DataFormat::NHWC => DataFormat::HWC,
             _ => panic!("Attempt at removing N axis on {:?}", self),
@@ -65,11 +59,11 @@ impl DataFormat {
     }
 
     pub fn has_n(&self) -> bool {
-        *self == DataFormat::NHWC || *self == DataFormat::NCHW || *self == DataFormat::NCDHW || *self == DataFormat::NDHWC
+        *self == DataFormat::NHWC || *self == DataFormat::NCHW
     }
 
     pub fn c_is_last(&self) -> bool {
-        *self == DataFormat::NHWC || *self == DataFormat::HWC || *self == DataFormat::NDHWC || *self == DataFormat::DHWC
+        *self == DataFormat::NHWC || *self == DataFormat::HWC
     }
 
     pub fn h_axis(&self) -> usize {
@@ -79,9 +73,7 @@ impl DataFormat {
     pub fn with_n(&self) -> DataFormat {
         match self {
             DataFormat::CHW => DataFormat::NCHW,
-            DataFormat::CDHW => DataFormat::NCDHW,
             DataFormat::HWC => DataFormat::NHWC,
-            DataFormat::DHWC => DataFormat::NDHWC,
             _ => *self,
         }
     }
@@ -135,17 +127,17 @@ where
     #[inline]
     pub fn n_axis(&self) -> Option<usize> {
         match self.fmt {
-            DataFormat::NHWC | DataFormat::NCHW | DataFormat::NCDHW | DataFormat::NDHWC => Some(0),
-            DataFormat::HWC | DataFormat::CHW | DataFormat::DHWC | DataFormat::CDHW => None,
+            DataFormat::NHWC | DataFormat::NCHW => Some(0),
+            DataFormat::HWC | DataFormat::CHW => None,
         }
     }
 
     #[inline]
     pub fn c_axis(&self) -> usize {
         match self.fmt {
-            DataFormat::NHWC | DataFormat::NDHWC | DataFormat::HWC | DataFormat::DHWC  => self.shape.as_ref().len() - 1,
-            DataFormat::NCHW | DataFormat::NCDHW => 1,
-            DataFormat::CHW | DataFormat::CDHW => 0,
+            DataFormat::NHWC | DataFormat::HWC => self.shape.as_ref().len() - 1,
+            DataFormat::NCHW => 1,
+            DataFormat::CHW => 0,
         }
     }
 
@@ -153,9 +145,8 @@ where
     pub fn h_axis(&self) -> usize {
         match self.fmt {
             DataFormat::HWC => 0,
-            DataFormat::NHWC | DataFormat::CHW | DataFormat::DHWC => 1,
-            DataFormat::NDHWC | DataFormat::NCHW | DataFormat::CDHW => 2,
-            DataFormat::NCDHW => 2,
+            DataFormat::NHWC | DataFormat::CHW => 1,
+            DataFormat::NCHW => 2,
         }
     }
 

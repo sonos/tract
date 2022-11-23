@@ -107,8 +107,8 @@ impl super::ResolveTo<ConcretePoolGeometry> for SymbolicPoolGeometry {
     fn resolve(&self, input_full_shape: &[usize]) -> TractResult<ConcretePoolGeometry> {
         let input_shape = self.pool_spec.data_format.shape(input_full_shape.into())?;
         let output_inner_stride = match self.pool_spec.data_format {
-            DataFormat::NCHW | DataFormat::NCDHW | DataFormat::CHW | DataFormat::CDHW => 1,
-            DataFormat::NHWC | DataFormat::HWC | DataFormat::NDHWC | DataFormat::DHWC => {
+            DataFormat::NCHW | DataFormat::CHW => 1,
+            DataFormat::NHWC | DataFormat::HWC => {
                 self.pool_spec.output_channel_override.unwrap_or(*input_shape.c())
             }
         };

@@ -388,9 +388,7 @@ pub fn conv_or_deconv(
 }
 
 fn get_spatial_shape(shape: &[usize]) -> TractResult<TVec<usize>> {
-    if shape.len() == 5 {
-        Ok(DataFormat::NCDHW.shape(shape)?.hw_dims().into())
-    } else if shape.len() == 4 || shape.len() == 3 {
+    if shape.len() > 2 {
         Ok(DataFormat::NCHW.shape(shape)?.hw_dims().into())
     } else {
         Ok(shape.into())
