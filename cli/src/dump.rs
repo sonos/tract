@@ -130,6 +130,22 @@ pub fn handle(
         tract_libcli::profile::profile(model, bench_limits, &mut annotations, &run_params)?;
     }
 
+    if sub_matches.is_present("axes") || sub_matches.is_present("axes-names") {
+        let mut hints = HashMap::default();
+        if let Some(params) = sub_matches.values_of("axes-names") {
+            for param in params {
+                let (node, names) = if let Some((node, axes)) = param.split_once("=") {
+                    (model.node_id_by_name(node)?, axes)
+                } else {
+                    (model.input_outlets()[0].node, param)
+                };
+                let names:TVec<String> = names.split(",").map(|s| s.to_string()).collect();
+                hints.insert(OutletId::new(node, 0), names);
+            }
+        }
+        annotations.track_axes(model, &hints)?;
+    }
+
     if let Some(asserts) = &params.assertions.assert_output_facts {
         let outputs_facts: Vec<InferenceFact> = model
             .output_outlets()

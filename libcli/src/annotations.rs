@@ -49,6 +49,7 @@ pub struct NodeTags {
     pub model_input: Option<String>,
     pub model_output: Option<String>,
     pub outlet_labels: Vec<Vec<String>>,
+    pub outlet_axes: Vec<Vec<String>>,
 }
 
 impl<'a> std::ops::Add<&'a NodeTags> for &'a NodeTags {
@@ -73,6 +74,9 @@ impl<'a> std::ops::Add<&'a NodeTags> for &'a NodeTags {
         let outlet_labels = izip!(&self.outlet_labels, &other.outlet_labels)
             .map(|(s, o)| s.iter().chain(o.iter()).cloned().collect())
             .collect();
+        let outlet_axes = izip!(&self.outlet_axes, &other.outlet_axes)
+            .map(|(s, o)| s.iter().chain(o.iter()).cloned().collect())
+            .collect();
         NodeTags {
             cost,
             profile,
@@ -82,6 +86,7 @@ impl<'a> std::ops::Add<&'a NodeTags> for &'a NodeTags {
             model_input,
             model_output,
             outlet_labels,
+            outlet_axes,
         }
     }
 }
@@ -104,6 +109,7 @@ const EMPTY: NodeTags = NodeTags {
     model_output: None,
     model_input: None,
     outlet_labels: Vec::new(),
+    outlet_axes: Vec::new(),
 };
 
 #[derive(Debug, Clone, Default)]
@@ -115,6 +121,36 @@ pub struct Annotations {
 impl Annotations {
     pub fn node_mut(&mut self, qid: NodeQId) -> &mut NodeTags {
         self.tags.entry(qid).or_default()
+    }
+
+    pub fn track_axes(
+        &mut self,
+        model: &dyn Model,
+        hints: &HashMap<OutletId, TVec<String>>,
+    ) -> TractResult<()> {
+        let Some(model) = model.downcast_ref::<TypedModel>() else { return Ok(()) };
+        let tracking = tract_core::ops::invariants::full_axis_tracking(model)?;
+        for (ix, axis) in tracking.iter().enumerate() {
+            let name = axis
+                .creators
+                .iter()
+                .find_map(|cre| hints.get(cre).and_then(|hints| hints.get(axis.outlets[cre])))
+                .cloned()
+                .unwrap_or_else(|| format!("ax{}", ix));
+            for outlet in axis.outlets.keys() {
+                let axis = axis.outlets[&outlet];
+                let qid = NodeQId(tvec!(), outlet.node);
+                let tags = self.tags.entry(qid).or_default();
+                while tags.outlet_axes.len() <= outlet.slot {
+                    tags.outlet_axes.push(vec![]);
+                }
+                while tags.outlet_axes[outlet.slot].len() <= axis {
+                    tags.outlet_axes[outlet.slot].push(Default::default());
+                }
+                tags.outlet_axes[outlet.slot][axis] = name.clone();
+            }
+        }
+        Ok(())
     }
 
     pub fn from_model(model: &dyn Model) -> TractResult<Annotations> {

@@ -197,7 +197,7 @@ impl<T> OutletMap<T> {
         None
     }
 
-    fn get(&self, outlet: &OutletId) -> Option<&T> {
+    pub fn get(&self, outlet: &OutletId) -> Option<&T> {
         if let Some(node) = self.0.get(outlet.node) {
             if let Some(slot) = node.get(outlet.slot) {
                 return slot.as_ref();
@@ -206,7 +206,7 @@ impl<T> OutletMap<T> {
         None
     }
 
-    fn keys(&self) -> OutletMapKeysIter<T> {
+    pub fn keys(&self) -> OutletMapKeysIter<T> {
         OutletMapKeysIter(self, (0, 0).into())
     }
 }
@@ -218,7 +218,7 @@ impl<'a, T: Clone> std::ops::Index<&'a OutletId> for OutletMap<T> {
     }
 }
 
-struct OutletMapKeysIter<'a, T>(&'a OutletMap<T>, OutletId);
+pub struct OutletMapKeysIter<'a, T>(&'a OutletMap<T>, OutletId);
 
 impl<'a, T> std::iter::Iterator for OutletMapKeysIter<'a, T> {
     type Item = OutletId;
