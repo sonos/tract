@@ -49,7 +49,7 @@ int main() {
     TractValue* output = NULL;
 
     // simple stateless run...
-    check(tract_runnable_run(runnable, 1, &input, 1, &output));
+    check(tract_runnable_run(runnable, &input, &output));
 
     const float *data = NULL;
     check(tract_value_inspect(output, NULL, NULL, NULL, (const void**) &data));
