@@ -134,12 +134,12 @@ pub fn handle(
         let mut hints = HashMap::default();
         if let Some(params) = sub_matches.values_of("axes-names") {
             for param in params {
-                let (node, names) = if let Some((node, axes)) = param.split_once("=") {
+                let (node, names) = if let Some((node, axes)) = param.split_once('=') {
                     (model.node_id_by_name(node)?, axes)
                 } else {
                     (model.input_outlets()[0].node, param)
                 };
-                let names:TVec<String> = names.split(",").map(|s| s.to_string()).collect();
+                let names:TVec<String> = names.split(',').map(|s| s.to_string()).collect();
                 hints.insert(OutletId::new(node, 0), names);
             }
         }
