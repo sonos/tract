@@ -1,7 +1,7 @@
-use tract_nnef::internal::*;
-use tract_nnef::prelude::tract_itertools::Itertools;
-use tract_nnef::tract_ndarray::{Axis, Dimension};
-use tract_nnef::tract_num_traits::{One, Zero};
+use crate::internal::*;
+use tract_data::itertools::Itertools;
+use tract_ndarray::{Axis, Dimension};
+use tract_num_traits::{One, Zero};
 
 mod expr;
 pub use expr::Expr;
@@ -49,10 +49,7 @@ impl EinSum {
             .collect()
     }
 
-    fn eval_t<T: Datum + Zero + One>(
-        &self,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+    fn eval_t<T: Datum + Zero + One>(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let shapes: TVec<_> = inputs.iter().map(|t| t.shape()).collect();
         let output_shape = self.output_shape(&shapes);
         let inputs: TVec<tract_ndarray::ArrayViewD<T>> =
@@ -125,7 +122,10 @@ impl EvalOp for EinSum {
 
 impl TypedOp for EinSum {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        ensure!(inputs.iter().enumerate().all(|(ix, fact)| fact.rank() == self.expr.input_rank(ix)));
+        ensure!(inputs
+            .iter()
+            .enumerate()
+            .all(|(ix, fact)| fact.rank() == self.expr.input_rank(ix)));
         let shapes: TVec<&[TDim]> = inputs.iter().map(|t| &*t.shape).collect();
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, self.output_shape(&shapes))))
     }
@@ -139,28 +139,4 @@ impl TypedOp for EinSum {
     }
 
     as_op!();
-}
-
-pub fn parameters() -> Vec<Parameter> {
-    vec![TypeName::Scalar.tensor().array().named("inputs"), TypeName::String.named("expr")]
-}
-
-pub fn dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
-    let einsum = node.op_as::<EinSum>().unwrap();
-    let inputs = node.inputs.iter().map(|i| (*ast.mapping[i]).clone()).collect();
-    Ok(Some(invocation(
-        "tract_onnx_einsum",
-        &[Arc::new(RValue::Array(inputs))],
-        &[("expr", string(einsum.expr.to_string()))],
-    )))
-}
-
-pub fn load(
-    builder: &mut ModelBuilder,
-    invocation: &ResolvedInvocation,
-) -> TractResult<Value> {
-    let expr = invocation.named_arg_as::<String>(builder, "expr")?.parse::<Expr>()?;
-    let einsum = EinSum { expr };
-    let inputs: TVec<OutletId> = invocation.named_arg_as(builder, "inputs")?;
-    builder.wire(einsum, &inputs)
 }

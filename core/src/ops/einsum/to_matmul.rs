@@ -1,8 +1,7 @@
-use tract_nnef::internal::*;
-use tract_nnef::tract_core::ops::matmul::{MatMul, MatMulAxes};
-
-use crate::einsum::expr::AxisSym;
-use crate::einsum::EinSum;
+use crate::internal::*;
+use crate::ops::matmul::{MatMul, MatMulAxes};
+use super::expr::AxisSym;
+use super::EinSum;
 
 pub fn declutter(
     op: &super::EinSum,

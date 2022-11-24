@@ -6,6 +6,7 @@ mod cast;
 #[cfg(feature = "complex")]
 mod complex;
 mod downsample;
+mod einsum;
 mod fft;
 mod gather;
 mod matmul;
@@ -38,6 +39,7 @@ pub fn register(registry: &mut Registry) {
     complex::register(registry);
     downsample::register(registry);
     fft::register(registry);
+    einsum::register(registry);
     gather::register(registry);
     matmul::register(registry);
     one_hot::register(registry);

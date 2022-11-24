@@ -2,8 +2,8 @@ use std::fmt::Display;
 use std::iter::FromIterator;
 use std::str::FromStr;
 
-use tract_nnef::internal::*;
-use tract_nnef::prelude::tract_itertools::Itertools;
+use crate::internal::*;
+use crate::prelude::tract_itertools::Itertools;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Hash)]
 pub struct AxisSym {
