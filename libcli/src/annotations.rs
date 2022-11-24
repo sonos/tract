@@ -167,7 +167,7 @@ impl Annotations {
             }
             Ok(())
         }
-        sub(self, &[], "", model, &hints)
+        sub(self, &[], "", model, hints)
     }
 
     pub fn from_model(model: &dyn Model) -> TractResult<Annotations> {
