@@ -20,6 +20,7 @@ pub mod change_axes;
 pub mod cnn;
 pub mod downsample;
 pub mod dummy;
+pub mod einsum;
 pub mod fft;
 pub mod identity;
 pub mod konst;

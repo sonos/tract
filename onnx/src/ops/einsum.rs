@@ -1,7 +1,7 @@
 use crate::model::ParsingContext;
 use crate::pb::*;
+use tract_core::ops::einsum::Expr;
 use tract_hir::internal::*;
-use tract_onnx_opl::einsum::Expr;
 
 pub fn einsum(
     _ctx: &ParsingContext,
@@ -24,7 +24,6 @@ impl Expansion for EinSum {
         "EinSum".into()
     }
 
-
     fn wire(
         &self,
         prefix: &str,
@@ -36,7 +35,7 @@ impl Expansion for EinSum {
             .map(|o| model.outlet_fact(*o).map(|f| f.rank()))
             .collect::<TractResult<TVec<_>>>()?;
         let expr = resolve_ellipsis(&self.expr, &ranks)?;
-        model.wire_node(prefix, tract_onnx_opl::einsum::EinSum { expr }, inputs)
+        model.wire_node(prefix, tract_core::ops::einsum::EinSum { expr }, inputs)
     }
 
     fn rules<'r, 'p: 'r, 's: 'r>(
