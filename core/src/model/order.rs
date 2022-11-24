@@ -18,8 +18,8 @@ where
 /// Find a working evaluation order for a list of nodes.
 pub fn eval_order_for_nodes<F, O>(
     nodes: &[Node<F, O>],
-    inputs: &[usize],
-    targets: &[usize],
+    model_inputs: &[usize],
+    model_outputs: &[usize],
     more_dependencies: &[(usize, usize)],
 ) -> TractResult<Vec<usize>>
 where
@@ -28,31 +28,36 @@ where
 {
     let mut done = bit_set::BitSet::with_capacity(nodes.len());
     let mut order: Vec<usize> = vec![];
-    for &target in targets {
-        if done.contains(target) {
+    for &model_target in model_outputs {
+        if done.contains(model_target) {
             continue;
         }
-        let mut current_stack: Vec<(usize, usize)> = vec![(target, 0)];
+        let mut current_stack: Vec<(usize, usize)> = vec![(model_target, 0)];
         let mut pending = bit_set::BitSet::with_capacity(nodes.len());
         while let Some((current_node, current_input)) = current_stack.pop() {
             let deps_from_inputs = nodes[current_node].inputs.len();
             let all_deps_count =
                 deps_from_inputs + more_dependencies.iter().filter(|a| a.0 == current_node).count();
-            if inputs.contains(&current_node) || current_input == all_deps_count {
+            if model_inputs.contains(&current_node) || current_input == all_deps_count {
                 order.push(current_node);
                 done.insert(current_node);
                 pending.remove(current_node);
             } else {
-                let precursor = if current_input < deps_from_inputs {
-                    nodes[current_node].inputs[current_input].node
-                } else {
-                    more_dependencies
-                        .iter()
-                        .filter(|a| a.0 == current_node)
-                        .nth(current_input - deps_from_inputs)
-                        .unwrap()
-                        .1
-                };
+                let precursor: usize = nodes[current_node]
+                    .inputs
+                    .iter()
+                    .filter(|n| nodes[n.node].inputs.len() > 0)
+                    .map(|n| n.node)
+                    .chain(more_dependencies.iter().filter(|a| a.0 == current_node).map(|n| n.1))
+                    .chain(
+                        nodes[current_node]
+                            .inputs
+                            .iter()
+                            .filter(|n| nodes[n.node].inputs.len() == 0)
+                            .map(|n| n.node),
+                    )
+                    .nth(current_input)
+                    .unwrap();
                 if done.contains(precursor) {
                     current_stack.push((current_node, current_input + 1));
                 } else if pending.contains(precursor) {
@@ -83,7 +88,7 @@ mod tests {
     #[test]
     fn simple() {
         let mut model = TypedModel::default();
-        let a = model.add_source("a", f32::fact(&[1])).unwrap();
+        let a = model.add_source("a", f32::fact([1])).unwrap();
         let b = model.add_const("b", tensor1(&[12.0f32])).unwrap();
         let add = model.wire_node("add", math::add::bin_typed(), &[a, b]).unwrap()[0];
         model.auto_outputs().unwrap();
@@ -93,7 +98,7 @@ mod tests {
     #[test]
     fn diamond() {
         let mut model = TypedModel::default();
-        let a = model.add_source("a", f32::fact(&[1])).unwrap();
+        let a = model.add_source("a", f32::fact([1])).unwrap();
         let add = model.wire_node("add", math::add::bin_typed(), &[a, a]).unwrap()[0];
         model.auto_outputs().unwrap();
         assert_eq!(model.eval_order().unwrap(), vec!(a.node, add.node));
@@ -102,7 +107,7 @@ mod tests {
     #[test]
     fn dodge_loop() {
         let mut model = TypedModel::default();
-        let a = model.add_source("a", f32::fact(&[1])).unwrap();
+        let a = model.add_source("a", f32::fact([1])).unwrap();
         let add = model.wire_node("add", math::add::bin_typed(), &[a, a]).unwrap()[0];
         let neg = model.wire_node("neg", math::add::bin_typed(), &[add, a]).unwrap()[0];
         model.add_edge(neg, InletId::new(add.node, 1)).unwrap();

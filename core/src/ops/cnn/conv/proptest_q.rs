@@ -218,7 +218,7 @@ proptest::proptest! {
 #[test]
 fn trivial_0() {
     QConvProblem {
-        shape_in: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
+        shape_in: HWC.from_n_c_hw(1, 1, [1]).unwrap(),
         co: 1,
         kernel_format: OIHW,
         group: 1,
@@ -235,7 +235,7 @@ fn trivial_0() {
 #[test]
 fn trivial_1() {
     QConvProblem {
-        shape_in: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
+        shape_in: HWC.from_n_c_hw(1, 1, [1]).unwrap(),
         co: 1,
         kernel_format: OIHW,
         group: 1,
@@ -252,7 +252,7 @@ fn trivial_1() {
 #[test]
 fn trivial_2() {
     QConvProblem {
-        shape_in: HWC.from_n_c_hw(1, 1, &[2]).unwrap(),
+        shape_in: HWC.from_n_c_hw(1, 1, [2]).unwrap(),
         co: 1,
         kernel_format: OIHW,
         group: 1,
@@ -269,7 +269,7 @@ fn trivial_2() {
 #[test]
 fn shape_0() {
     QConvProblem {
-        shape_in: HWC.from_n_c_hw(1, 1, &[1, 2]).unwrap(),
+        shape_in: HWC.from_n_c_hw(1, 1, [1, 2]).unwrap(),
         co: 1,
         kernel_format: OIHW,
         group: 1,
@@ -286,7 +286,7 @@ fn shape_0() {
 #[test]
 fn batch_0() {
     QConvProblem {
-        shape_in: NHWC.from_n_c_hw(3, 1, &[2]).unwrap(),
+        shape_in: NHWC.from_n_c_hw(3, 1, [2]).unwrap(),
         co: 1,
         kernel_format: OIHW,
         group: 1,
@@ -306,7 +306,7 @@ fn batch_1() {
     let data = ArrayD::zeros(vec![2, 1, 1]);
     let kernel = arr3(&[[[1]]]).into_dyn();
     QConvProblem {
-        shape_in: NHWC.from_n_c_hw(2, 1, &[1]).unwrap(),
+        shape_in: NHWC.from_n_c_hw(2, 1, [1]).unwrap(),
         co: 1,
         kernel_format: OIHW,
         group: 1,
@@ -323,7 +323,7 @@ fn batch_1() {
 #[test]
 fn a0_0() {
     QConvProblem {
-        shape_in: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
+        shape_in: HWC.from_n_c_hw(1, 1, [1]).unwrap(),
         co: 1,
         kernel_format: OIHW,
         group: 1,
@@ -342,7 +342,7 @@ fn scale_0() {
     let mut qp = MatMulQParams::noop_static(i8::datum_type());
     qp.c_scale = tensor0(9.274534f32).into();
     QConvProblem {
-        shape_in: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
+        shape_in: HWC.from_n_c_hw(1, 1, [1]).unwrap(),
         co: 1,
         kernel_format: OIHW,
         group: 1,
@@ -361,7 +361,7 @@ fn scale_1() {
     let mut qp = MatMulQParams::noop_static(i8::datum_type());
     qp.c_scale = tensor0(1.1400417f32).into();
     QConvProblem {
-        shape_in: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
+        shape_in: HWC.from_n_c_hw(1, 1, [1]).unwrap(),
         co: 1,
         kernel_format: OIHW,
         group: 1,
@@ -380,7 +380,7 @@ fn scale_2() {
     let mut qp = MatMulQParams::noop_static(i8::datum_type());
     qp.b_scale = tensor0(0.5f32).into();
     QConvProblem {
-        shape_in: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
+        shape_in: HWC.from_n_c_hw(1, 1, [1]).unwrap(),
         co: 1,
         kernel_format: OIHW,
         group: 1,
@@ -400,7 +400,7 @@ fn scale_3() {
     qp.b_scale = tensor0(0.5f32).into();
     qp.c_scale = tensor0(2f32).into();
     QConvProblem {
-        shape_in: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
+        shape_in: HWC.from_n_c_hw(1, 1, [1]).unwrap(),
         co: 1,
         kernel_format: OIHW,
         group: 1,
@@ -417,7 +417,7 @@ fn scale_3() {
 #[test]
 fn group_0() {
     QConvProblem {
-        shape_in: HWC.from_n_c_hw(1, 2, &[1]).unwrap(),
+        shape_in: HWC.from_n_c_hw(1, 2, [1]).unwrap(),
         co: 2,
         kernel_format: OIHW,
         group: 2,
@@ -436,7 +436,7 @@ fn group_1() {
     let mut qp = MatMulQParams::noop_static(i8::datum_type());
     qp.b0 = tensor0(1i32).into();
     QConvProblem {
-        shape_in: NCHW.from_n_c_hw(1, 2, &[1]).unwrap(),
+        shape_in: NCHW.from_n_c_hw(1, 2, [1]).unwrap(),
         co: 2,
         kernel_format: OIHW,
         group: 2,
@@ -455,7 +455,7 @@ fn group_2() {
     let mut qp = MatMulQParams::noop_static(i8::datum_type());
     qp.b0 = tensor0(1i32).into();
     QConvProblem {
-        shape_in: HWC.from_n_c_hw(1, 2, &[1]).unwrap(),
+        shape_in: HWC.from_n_c_hw(1, 2, [1]).unwrap(),
         co: 2,
         kernel_format: OIHW,
         group: 2,
@@ -474,7 +474,7 @@ fn rounding_on_arm() {
     let mut qp = MatMulQParams::noop_static(i8::datum_type());
     qp.c_scale = tensor0(1.3759452f32).into();
     QConvProblem {
-        shape_in: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
+        shape_in: HWC.from_n_c_hw(1, 1, [1]).unwrap(),
         co: 2,
         kernel_format: OIHW,
         group: 1,
@@ -494,7 +494,7 @@ fn bias_1() {
     let data = ArrayD::zeros(vec![1, 1, 1, 1]);
     let kernel = ArrayD::zeros(vec![2, 1, 1, 1]);
     QConvProblem {
-        shape_in: NHWC.from_n_c_hw(1, 1, &[1, 1]).unwrap(),
+        shape_in: NHWC.from_n_c_hw(1, 1, [1, 1]).unwrap(),
         co: 2,
         kernel_format: OIHW,
         group: 1,
@@ -514,7 +514,7 @@ fn bias_2() {
     let data = ArrayD::zeros(vec![1, 1]);
     let kernel = ArrayD::zeros(vec![2, 1, 1]);
     QConvProblem {
-        shape_in: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
+        shape_in: HWC.from_n_c_hw(1, 1, [1]).unwrap(),
         co: 2,
         kernel_format: OIHW,
         group: 1,
@@ -536,7 +536,7 @@ fn bias_3() {
     let mut kernel = ArrayD::zeros(vec![5, 1, 2]);
     *kernel.as_slice_mut().unwrap().last_mut().unwrap() = -1;
     QConvProblem {
-        shape_in: HWC.from_n_c_hw(1, 1, &[2]).unwrap(),
+        shape_in: HWC.from_n_c_hw(1, 1, [2]).unwrap(),
         co: 5,
         kernel_format: OIHW,
         group: 1,
@@ -556,7 +556,7 @@ fn bias_in_chw() {
     let data = ArrayD::zeros(vec![1, 1]);
     let kernel = ArrayD::zeros(vec![2, 1, 1]);
     QConvProblem {
-        shape_in: CHW.from_n_c_hw(1, 1, &[1]).unwrap(),
+        shape_in: CHW.from_n_c_hw(1, 1, [1]).unwrap(),
         co: 2,
         kernel_format: OIHW,
         group: 1,
@@ -576,7 +576,7 @@ fn bias_with_batch() {
     let data = ArrayD::zeros(vec![1, 1, 1]);
     let kernel = ArrayD::zeros(vec![1, 1, 1]);
     QConvProblem {
-        shape_in: NCHW.from_n_c_hw(1, 1, &[1]).unwrap(),
+        shape_in: NCHW.from_n_c_hw(1, 1, [1]).unwrap(),
         co: 1,
         kernel_format: OIHW,
         group: 1,
@@ -596,7 +596,7 @@ fn bias_vec_with_batch() {
     let data = ArrayD::zeros(vec![1, 1, 1]);
     let kernel = ArrayD::zeros(vec![2, 1, 1]);
     QConvProblem {
-        shape_in: NCHW.from_n_c_hw(1, 1, &[1]).unwrap(),
+        shape_in: NCHW.from_n_c_hw(1, 1, [1]).unwrap(),
         co: 2,
         kernel_format: OIHW,
         group: 1,

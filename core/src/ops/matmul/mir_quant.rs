@@ -1269,8 +1269,8 @@ mod test {
     fn setup_qparams(inputs: [usize; 6]) -> ([OutletId; 9], MatMulQParams, TypedModel, OutletId) {
         let mut model = TypedModel::default();
         let ids = [
-            model.add_source("a", i8::fact(&[2, 3])).unwrap(),
-            model.add_source("b", i8::fact(&[3, 4])).unwrap(),
+            model.add_source("a", i8::fact([2, 3])).unwrap(),
+            model.add_source("b", i8::fact([3, 4])).unwrap(),
             model.add_const("bias", Tensor::zero_scalar::<i32>().unwrap()).unwrap(),
             model.add_const("a0", Tensor::zero_scalar::<i8>().unwrap()).unwrap(),
             model.add_const("a_scale", Tensor::zero_scalar::<f32>().unwrap()).unwrap(),

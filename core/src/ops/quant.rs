@@ -401,13 +401,13 @@ pub mod scale {
             let input = tvec!(tensor2(&[[b]]).into_tvalue());
             let mut model = TypedModel::default();
             let a = model.add_const("a", tensor2(&[[a]])).unwrap();
-            let b = model.add_source("b", i8::fact(&[1, 1])).unwrap();
+            let b = model.add_source("b", i8::fact([1, 1])).unwrap();
             let bias = model.add_const("bias", tensor0(0i32)).unwrap();
             let mut qp = ops::matmul::MatMulQParams::noop_static(i8::datum_type());
             qp.c_scale = tensor0(scale).into();
             let op = ops::matmul::QMatMul::new(MatMulAxes::default(), i8::datum_type(), qp);
             let output = model.wire_node("mmm", op, &[a, b, bias]).unwrap();
-            model.set_output_outlets(&*output).unwrap();
+            model.set_output_outlets(&output).unwrap();
 
             let plain = model.clone().into_runnable().unwrap().run(input.clone()).unwrap();
             assert_eq!(*plain[0], expected);

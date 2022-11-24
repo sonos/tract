@@ -181,7 +181,6 @@ impl MatMulUnary {
                     packer: mmm.b_pack(),
                     k_axis: self.axes.b_k,
                     mn_axis: self.axes.b_n,
-                    output_shape: packed_b_shape,
                 },
                 &[wire],
             )?[0];

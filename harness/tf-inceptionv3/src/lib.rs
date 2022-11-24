@@ -90,7 +90,7 @@ mod tests {
             .unwrap()
             .iter()
             .enumerate()
-            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(0u32.cmp(&1)))
+            .max_by(|a, b| a.1.total_cmp(b.1))
             .unwrap()
             .0;
         let label = &labels[label_id];

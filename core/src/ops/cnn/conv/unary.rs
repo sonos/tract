@@ -595,9 +595,10 @@ impl ConvUnary {
         let input_fact = model.outlet_fact(node.inputs[0])?;
         let spatial_rank = self.kernel.rank() - 2;
         if let Some(axis) = (0..spatial_rank).find(|&ax| {
-            self.pool_spec.padding.valid_dim(ax, self.pool_spec.stride(ax) == 1)
-                && self.pool_spec.stride(ax) > 1
-                && self.pool_spec.dilation(ax) % self.pool_spec.stride(ax) == 0
+            self.pool_spec.stride(ax) > 1
+                && (self.pool_spec.kernel_shape[ax] == 1
+                    || (self.pool_spec.padding.valid_dim(ax, self.pool_spec.stride(ax) == 1)
+                        && self.pool_spec.dilation(ax) % self.pool_spec.stride(ax) == 0))
         }) {
             let downsample_factor = self.pool_spec.stride(axis);
             let mut new_op = self.clone();
@@ -612,7 +613,7 @@ impl ConvUnary {
                 .data_format
                 .shape(input_fact.shape.iter().collect::<TVec<TDim>>())?;
             let down = patch.wire_node(
-                format!("{}.downsample", node.name),
+                format!("{}.downsample.{}", node.name, axis),
                 crate::ops::Downsample::new(axis + shape.h_axis(), downsample_factor as isize, 0),
                 &[tap],
             )?;
@@ -635,7 +636,6 @@ impl ConvUnary {
         if input_shape.hw_rank() == 1
             && self.group == 1
             && self.pool_spec.stride(0) == 1
-            && self.pool_spec.dilation(0) == 1
             && self.kernel.len() == self.input_channels() * self.output_channels()
         {
             let ci = self.input_channels();
@@ -904,11 +904,7 @@ impl TypedOp for ConvUnary {
                 .dilations
                 .clone()
                 .unwrap_or_else(|| tvec!(1; kernel_spatial_shape.len())),
-            &self
-                .pool_spec
-                .strides
-                .clone()
-                .unwrap_or_else(|| tvec!(1; kernel_spatial_shape.len())),
+            &self.pool_spec.strides.clone().unwrap_or_else(|| tvec!(1; kernel_spatial_shape.len())),
         );
         let n_output_points: TDim =
             output_dims.iter().map(|d| d.convoluted.clone()).product::<TDim>();
@@ -1234,7 +1230,7 @@ mod test {
                 pads: vec![(0, 0), (1, 0)],
                 mode: ops::array::PadMode::Constant(rctensor0(0f32)),
             },
-            &*wire,
+            &wire,
         )?;
         let wire = model.wire_node(
             "conv",
@@ -1253,9 +1249,9 @@ mod test {
                 bias: None,
                 q_params: None,
             },
-            &*wire,
+            &wire,
         )?;
-        model.set_output_outlets(&*wire)?;
+        model.set_output_outlets(&wire)?;
         model.declutter()?;
         assert_eq!(model.nodes().len(), 2); // source + conv
         let cv = model.nodes()[1].op_as::<ConvUnary>().unwrap();

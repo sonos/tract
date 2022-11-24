@@ -242,7 +242,7 @@ proptest::proptest! {
 #[test]
 fn trivial_0() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, &[1, 1])?,
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [1, 1])?,
         kernel_format: KernelFormat::OIHW,
         group: 1,
         data: ndarray::arr3(&[[[0.0f32]]]).into_dyn(),
@@ -258,7 +258,7 @@ fn trivial_0() -> anyhow::Result<()> {
 #[test]
 fn trivial_1() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::NHWC.from_n_c_hw(1, 1, &[1])?,
+        shape_in: DataFormat::NHWC.from_n_c_hw(1, 1, [1])?,
         kernel_format: KernelFormat::OIHW,
         group: 1,
         data: ndarray::arr3(&[[[1.0f32]]]).into_dyn(),
@@ -274,7 +274,7 @@ fn trivial_1() -> anyhow::Result<()> {
 #[test]
 fn trivial_2() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::NHWC.from_n_c_hw(1, 1, &[2])?,
+        shape_in: DataFormat::NHWC.from_n_c_hw(1, 1, [2])?,
         kernel_format: KernelFormat::OIHW,
         group: 1,
         data: ndarray::arr3(&[[[1.0f32], [0.0]]]).into_dyn(),
@@ -290,7 +290,7 @@ fn trivial_2() -> anyhow::Result<()> {
 #[test]
 fn trivial_3() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::NHWC.from_n_c_hw(1, 2, &[1])?,
+        shape_in: DataFormat::NHWC.from_n_c_hw(1, 2, [1])?,
         kernel_format: KernelFormat::OIHW,
         group: 1,
         data: ndarray::arr3(&[[[0.0f32, 1.0]]]).into_dyn(),
@@ -306,7 +306,7 @@ fn trivial_3() -> anyhow::Result<()> {
 #[test]
 fn nchw_0() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::NCHW.from_n_c_hw(1, 1, &[2])?,
+        shape_in: DataFormat::NCHW.from_n_c_hw(1, 1, [2])?,
         kernel_format: KernelFormat::OIHW,
         group: 1,
         data: ndarray::arr3(&[[[0f32, 1.0]]]).into_dyn(),
@@ -322,7 +322,7 @@ fn nchw_0() -> anyhow::Result<()> {
 #[test]
 fn group_1() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::HWC.from_n_c_hw(1, 2, &[1])?,
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 2, [1])?,
         kernel_format: KernelFormat::OIHW,
         group: 2,
         data: ndarray::arr2(&[[0.0f32, 1.0]]).into_dyn(),
@@ -355,7 +355,7 @@ Ok(())
 #[test]
 fn group_3() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::HWC.from_n_c_hw(1, 2, &[1])?,
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 2, [1])?,
         kernel_format: KernelFormat::OIHW,
         group: 2,
         data: ndarray::arr2(&[[0.0f32, 1.0]]).into_dyn(),
@@ -371,7 +371,7 @@ fn group_3() -> anyhow::Result<()> {
 #[test]
 fn group_4() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::HWC.from_n_c_hw(1, 2, &[1])?,
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 2, [1])?,
         kernel_format: KernelFormat::OIHW,
         group: 2,
         data: ndarray::arr2(&[[0.0f32, 1.0]]).into_dyn(),
@@ -387,7 +387,7 @@ fn group_4() -> anyhow::Result<()> {
 #[test]
 fn group_5() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::HWC.from_n_c_hw(1, 2, &[1, 1])?,
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 2, [1, 1])?,
         kernel_format: KernelFormat::OIHW,
         group: 2,
         data: ndarray::arr3(&[[[0.0f32, 1.0]]]).into_dyn(),
@@ -406,7 +406,7 @@ fn group_5() -> anyhow::Result<()> {
 #[test]
 fn group_6() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::NHWC.from_n_c_hw(1, 2, &[1])?,
+        shape_in: DataFormat::NHWC.from_n_c_hw(1, 2, [1])?,
         kernel_format: KernelFormat::OIHW,
         group: 2,
         data: ndarray::arr3(&[[[0.0f32, 1.0]]]).into_dyn(),
@@ -425,7 +425,7 @@ fn group_6() -> anyhow::Result<()> {
 #[test]
 fn group_7() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::NCHW.from_n_c_hw(1, 2, &[2])?,
+        shape_in: DataFormat::NCHW.from_n_c_hw(1, 2, [2])?,
         kernel_format: KernelFormat::OIHW,
         group: 2,
         data: ndarray::arr3(&[[[0.0f32, 0.0], [0.0, 1.0]]]).into_dyn(),
@@ -444,7 +444,7 @@ fn group_7() -> anyhow::Result<()> {
 #[test]
 fn group_8() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::HWC.from_n_c_hw(1, 4, &[1])?,
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 4, [1])?,
         kernel_format: KernelFormat::OIHW,
         group: 2,
         data: ndarray::arr2(&[[0.0f32, 0.0, 0.0, 1.0]]).into_dyn(),
@@ -463,7 +463,7 @@ fn group_8() -> anyhow::Result<()> {
 #[test]
 fn group_9() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::HWC.from_n_c_hw(1, 2, &[2])?,
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 2, [2])?,
         kernel_format: KernelFormat::OIHW,
         group: 2,
         data: ndarray::arr2(&[[0.0f32, 0.0], [0.0, 1.0]]).into_dyn(),
@@ -482,7 +482,7 @@ fn group_9() -> anyhow::Result<()> {
 #[test]
 fn group_10() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::CHW.from_n_c_hw(1, 2, &[2, 1, 4])?,
+        shape_in: DataFormat::CHW.from_n_c_hw(1, 2, [2, 1, 4])?,
         kernel_format: KernelFormat::OIHW,
         group: 2,
         data: ndarray::ArrayD::<f32>::zeros(vec![2, 2, 1, 4]),
@@ -498,7 +498,7 @@ fn group_10() -> anyhow::Result<()> {
 #[test]
 fn group_11() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::HWC.from_n_c_hw(1, 2, &[1])?,
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 2, [1])?,
         kernel_format: KernelFormat::OIHW,
         group: 2,
         data: tract_ndarray::arr2(&[[0.0, 1.0]]).into_dyn(),
@@ -524,7 +524,7 @@ fn group_11() -> anyhow::Result<()> {
 #[test]
 fn group_12() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::HWC.from_n_c_hw(1, 2, &[1])?,
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 2, [1])?,
         kernel_format: KernelFormat::HWIO,
         group: 2,
         data: tract_ndarray::arr2(&[[0.0, 0.0]]).into_dyn(),
@@ -540,7 +540,7 @@ fn group_12() -> anyhow::Result<()> {
 #[test]
 fn group_13() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::HWC.from_n_c_hw(1, 2, &[1])?,
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 2, [1])?,
         kernel_format: KernelFormat::HWIO,
         group: 2,
         data: tract_ndarray::arr2(&[[0.0, 1.0]]).into_dyn(),
@@ -556,7 +556,7 @@ fn group_13() -> anyhow::Result<()> {
 #[test]
 fn group_bias_0() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::NHWC.from_n_c_hw(1, 2, &[1])?,
+        shape_in: DataFormat::NHWC.from_n_c_hw(1, 2, [1])?,
         kernel_format: KernelFormat::OIHW,
         group: 2,
         data: ndarray::ArrayD::<f32>::zeros(vec![1, 1, 2]),
@@ -572,7 +572,7 @@ fn group_bias_0() -> anyhow::Result<()> {
 #[test]
 fn bias_0() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, &[2])?,
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [2])?,
         kernel_format: KernelFormat::OIHW,
         group: 1,
         data: ndarray::ArrayD::<f32>::zeros(vec![2, 1]),
@@ -588,7 +588,7 @@ fn bias_0() -> anyhow::Result<()> {
 #[test]
 fn bias_chw_0() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::CHW.from_n_c_hw(1, 1, &[3])?,
+        shape_in: DataFormat::CHW.from_n_c_hw(1, 1, [3])?,
         kernel_format: KernelFormat::OIHW,
         group: 1,
         data: ndarray::arr2(&[[0f32, 0., 0.]]).into_dyn(),
@@ -604,7 +604,7 @@ fn bias_chw_0() -> anyhow::Result<()> {
 #[test]
 fn batch_0() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::NHWC.from_n_c_hw(2, 1, &[2])?,
+        shape_in: DataFormat::NHWC.from_n_c_hw(2, 1, [2])?,
         kernel_format: KernelFormat::OIHW,
         group: 1,
         data: ndarray::ArrayD::<f32>::zeros(vec![2, 2, 1]),
@@ -620,7 +620,7 @@ fn batch_0() -> anyhow::Result<()> {
 #[test]
 fn bias_3d_1() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::CHW.from_n_c_hw(1, 1, &[1, 1, 2])?,
+        shape_in: DataFormat::CHW.from_n_c_hw(1, 1, [1, 1, 2])?,
         kernel_format: KernelFormat::OIHW,
         group: 1,
         data: ndarray::ArrayD::<f32>::zeros(vec![1, 1, 1, 2]),
@@ -636,7 +636,7 @@ fn bias_3d_1() -> anyhow::Result<()> {
 #[test]
 fn batch_3d() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::NCHW.from_n_c_hw(1, 1, &[2, 2, 1])?,
+        shape_in: DataFormat::NCHW.from_n_c_hw(1, 1, [2, 2, 1])?,
         kernel_format: KernelFormat::OIHW,
         group: 1,
         data: ndarray::ArrayD::<f32>::zeros(vec![1, 1, 2, 2, 1]),
@@ -652,7 +652,7 @@ fn batch_3d() -> anyhow::Result<()> {
 #[test]
 fn same_0() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, &[1])?,
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [1])?,
         kernel_format: KernelFormat::OIHW,
         group: 1,
         data: ndarray::ArrayD::<f32>::zeros(vec![1, 1]),
@@ -668,7 +668,7 @@ fn same_0() -> anyhow::Result<()> {
 #[test]
 fn same_1() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, &[2])?,
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [2])?,
         kernel_format: KernelFormat::OIHW,
         group: 1,
         data: tract_ndarray::arr2(&[[0.0], [1.0]]).into_dyn(),
@@ -684,7 +684,7 @@ fn same_1() -> anyhow::Result<()> {
 #[test]
 fn same_2() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, &[2, 2])?,
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [2, 2])?,
         kernel_format: KernelFormat::OIHW,
         group: 1,
         data: tract_ndarray::arr3(&[[[0.0], [0.0]], [[0.0], [1.0]]]).into_dyn(),
@@ -700,7 +700,7 @@ fn same_2() -> anyhow::Result<()> {
 #[test]
 fn same_2d_0() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, &[1, 3])?,
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [1, 3])?,
         kernel_format: KernelFormat::OIHW,
         group: 1,
         data: tract_ndarray::arr3(&[[[0.0], [0.0], [1.0]]]).into_dyn(),
@@ -716,7 +716,7 @@ fn same_2d_0() -> anyhow::Result<()> {
 #[test]
 fn same_2d_1() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, &[2, 2])?,
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [2, 2])?,
         kernel_format: KernelFormat::OIHW,
         group: 1,
         data: tract_ndarray::arr3(&[[[0.0], [0.0]], [[1.0], [0.0]]]).into_dyn(),
@@ -732,7 +732,7 @@ fn same_2d_1() -> anyhow::Result<()> {
 #[test]
 fn strides_0() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, &[2])?,
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [2])?,
         kernel_format: KernelFormat::OIHW,
         group: 1,
         data: tract_ndarray::arr2(&[[0.0], [0.0]]).into_dyn(),
@@ -748,7 +748,7 @@ fn strides_0() -> anyhow::Result<()> {
 #[test]
 fn strides_1() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, &[3])?,
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [3])?,
         kernel_format: KernelFormat::OIHW,
         group: 1,
         data: tract_ndarray::arr2(&[[0.0], [0.0], [1.0]]).into_dyn(),
@@ -764,7 +764,7 @@ fn strides_1() -> anyhow::Result<()> {
 #[test]
 fn strides_2() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, &[3])?,
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [3])?,
         kernel_format: KernelFormat::OIHW,
         group: 1,
         data: tract_ndarray::arr2(&[[0.0], [0.0], [1.0]]).into_dyn(),
@@ -780,7 +780,7 @@ fn strides_2() -> anyhow::Result<()> {
 #[test]
 fn strides_2d_same_0() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, &[1, 3])?,
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [1, 3])?,
         kernel_format: KernelFormat::OIHW,
         group: 1,
         data: tract_ndarray::arr3(&[[[0.0], [0.0], [1.0]]]).into_dyn(),
@@ -796,7 +796,7 @@ fn strides_2d_same_0() -> anyhow::Result<()> {
 #[test]
 fn strides_2d_same_1() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, &[2, 3])?,
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [2, 3])?,
         kernel_format: KernelFormat::OIHW,
         group: 1,
         data: ndarray::ArrayD::<f32>::zeros(vec![2, 3, 1]),
@@ -812,7 +812,7 @@ fn strides_2d_same_1() -> anyhow::Result<()> {
 #[test]
 fn strides_2d_same_2() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, &[2, 3])?,
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [2, 3])?,
         kernel_format: KernelFormat::OIHW,
         group: 1,
         data: tract_ndarray::arr3(&[[[0.0], [0.0], [1.0]], [[0.0], [0.0], [0.0]]]).into_dyn(),
@@ -826,9 +826,25 @@ fn strides_2d_same_2() -> anyhow::Result<()> {
 }
 
 #[test]
+fn strides_two_axes() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [1, 1])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data: tract_ndarray::arr3(&[[[0.0]]]).into_dyn(),
+        kernel: arr4(&[[[[0.0]]]]).into_dyn(),
+        bias: None,
+        pad: PaddingSpec::Valid,
+        strides: tvec!(2, 2),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
 fn lazy_im2col_0() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::CHW.from_n_c_hw(1, 1, &[2])?,
+        shape_in: DataFormat::CHW.from_n_c_hw(1, 1, [2])?,
         kernel_format: KernelFormat::OIHW,
         group: 1,
         data: tract_ndarray::arr2(&[[0.0, 0.0]]).into_dyn(),
@@ -847,7 +863,7 @@ fn lazy_im2col_big() -> anyhow::Result<()> {
     let len = kernel.len();
     kernel.as_slice_mut().unwrap()[len - 1] = 1.0;
     let pb = ConvProblem {
-        shape_in: DataFormat::CHW.from_n_c_hw(1, 4, &[2, 5, 4])?,
+        shape_in: DataFormat::CHW.from_n_c_hw(1, 4, [2, 5, 4])?,
         kernel_format: KernelFormat::OIHW,
         group: 1,
         data: tract_ndarray::ArrayD::<f32>::zeros(vec![4, 2, 5, 4]),
@@ -866,7 +882,7 @@ fn lazy_im2col_big_2() -> anyhow::Result<()> {
     let len = kernel.len();
     kernel.as_slice_mut().unwrap()[len - 1] = 1.0;
     let pb = ConvProblem {
-        shape_in: DataFormat::NHWC.from_n_c_hw(1, 4, &[2, 5, 4])?,
+        shape_in: DataFormat::NHWC.from_n_c_hw(1, 4, [2, 5, 4])?,
         kernel_format: KernelFormat::OIHW,
         group: 1,
         data: tract_ndarray::ArrayD::<f32>::zeros(vec![1, 2, 5, 4, 4]),
@@ -887,7 +903,7 @@ fn depthwise_0() -> anyhow::Result<()> {
     let mut data = tract_ndarray::ArrayD::<f32>::zeros(vec![2, 2, 2]);
     *data.as_slice_mut().unwrap().last_mut().unwrap() = 1.0;
     let pb = ConvProblem {
-        shape_in: DataFormat::HWC.from_n_c_hw(1, 2, &[2, 2])?,
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 2, [2, 2])?,
         kernel_format: KernelFormat::HWIO,
         group: 2,
         data,

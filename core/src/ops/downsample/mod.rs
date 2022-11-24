@@ -100,6 +100,7 @@ impl TypedOp for Downsample {
             return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?));
         }
         pull_downsample_up(model, node)
+            .with_context(|| format!("Pulling {} over {}", node, model.node(node.inputs[0].node)))
     }
 
     as_op!();
