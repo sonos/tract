@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::time::Duration;
 use tract_core::internal::*;
+use tract_core::ops::scan::Scan;
 use tract_itertools::izip;
 use tract_itertools::Itertools;
 #[cfg(feature = "onnx")]
@@ -129,28 +130,44 @@ impl Annotations {
         hints: &HashMap<OutletId, TVec<String>>,
     ) -> TractResult<()> {
         let Some(model) = model.downcast_ref::<TypedModel>() else { return Ok(()) };
-        let tracking = tract_core::ops::invariants::full_axis_tracking(model)?;
-        for (ix, axis) in tracking.iter().enumerate() {
-            let name = axis
-                .creators
-                .iter()
-                .find_map(|cre| hints.get(cre).and_then(|hints| hints.get(axis.outlets[cre])))
-                .cloned()
-                .unwrap_or_else(|| format!("ax{}", ix));
-            for outlet in axis.outlets.keys() {
-                let axis = axis.outlets[&outlet];
-                let qid = NodeQId(tvec!(), outlet.node);
-                let tags = self.tags.entry(qid).or_default();
-                while tags.outlet_axes.len() <= outlet.slot {
-                    tags.outlet_axes.push(vec![]);
+        fn sub(
+            annotations: &mut Annotations,
+            prefix: &[(usize, String)],
+            name_prefix: &str,
+            model: &TypedModel,
+            hints: &HashMap<OutletId, TVec<String>>,
+        ) -> TractResult<()> {
+            let tracking = tract_core::ops::invariants::full_axis_tracking(model)?;
+            for (ix, axis) in tracking.iter().enumerate() {
+                let name = axis
+                    .creators
+                    .iter()
+                    .find_map(|cre| hints.get(cre).and_then(|hints| hints.get(axis.outlets[cre])))
+                    .cloned()
+                    .unwrap_or_else(|| format!("{}x{}", name_prefix, ix));
+                for outlet in axis.outlets.keys() {
+                    let axis = axis.outlets[&outlet];
+                    let qid = NodeQId(prefix.into(), outlet.node);
+                    let tags = annotations.tags.entry(qid).or_default();
+                    while tags.outlet_axes.len() <= outlet.slot {
+                        tags.outlet_axes.push(vec![]);
+                    }
+                    while tags.outlet_axes[outlet.slot].len() <= axis {
+                        tags.outlet_axes[outlet.slot].push(Default::default());
+                    }
+                    tags.outlet_axes[outlet.slot][axis] = name.clone();
                 }
-                while tags.outlet_axes[outlet.slot].len() <= axis {
-                    tags.outlet_axes[outlet.slot].push(Default::default());
-                }
-                tags.outlet_axes[outlet.slot][axis] = name.clone();
             }
+            for node in &model.nodes {
+                if let Some(scan) = node.op_as::<Scan>() {
+                    let mut prefix: TVec<_> = prefix.into();
+                    prefix.push((node.id, "loop".to_string()));
+                    sub(annotations, &prefix, &format!("{}loop_", name_prefix), &scan.body, &Default::default())?;
+                }
+            }
+            Ok(())
         }
-        Ok(())
+        sub(self, &[], "", model, &hints)
     }
 
     pub fn from_model(model: &dyn Model) -> TractResult<Annotations> {
