@@ -1,8 +1,12 @@
-use crate::internal::*;
 use std::ops::Range;
-use tract_core::ndarray::*;
+
+use crate::internal::*;
+//use std::ops::Range;
+//use tract_core::ndarray::*;
 use tract_core::ops::array::TypedConcat;
 use tract_pulse_opl::ops::Delay;
+use tract_pulse_opl::tract_nnef::tract_ndarray::Axis;
+//use tract_pulse_opl::ops::Delay;
 
 register_all!(TypedConcat: pulsify);
 
@@ -15,10 +19,12 @@ fn pulsify(
     _symbol: &Symbol,
     _pulse: &TDim,
 ) -> TractResult<Option<TVec<OutletId>>> {
-    let input = mapping[&node.inputs[0]];
-    let fact = target.outlet_fact(input)?;
+    let pulse_facts: TVec<PulsedFact> =
+        node.inputs.iter().map(|i| target.outlet_fact(mapping[i]).unwrap().clone()).collect();
+    let (_stream_input_ix, pulse_fact) =
+        pulse_facts.iter().enumerate().find(|(_ix, pf)| pf.stream.is_some()).unwrap();
 
-    if fact.axis == op.axis {
+    if pulse_fact.stream.as_ref().unwrap().axis == op.axis {
         pulsify_along_concat_axis(op, source, node, target, mapping)
     } else {
         Ok(None)
@@ -37,7 +43,8 @@ fn pulsify_along_concat_axis(
     }
     let mut input = mapping[&node.inputs[0]];
     let fact = target.outlet_fact(input)?.clone();
-    assert_eq!(fact.axis, op.axis);
+    let stream = fact.stream.as_ref().unwrap();
+    assert_eq!(stream.axis, op.axis);
     let var_index = op.slices.iter().position(|s| s.is_var()).unwrap();
     let pre_owned = op.slices[0..var_index]
         .iter()
@@ -51,10 +58,10 @@ fn pulsify_along_concat_axis(
     let post = Tensor::stack_tensors(op.axis, &post_owned)?;
 
     let before = pre.shape()[op.axis];
-    if fact.delay < before {
+    if stream.delay < before {
         input = target.wire_node(
             format!("{}.Delay", node.name),
-            Delay::new_typed(&(&fact).into(), fact.axis, before - fact.delay, 0),
+            Delay::new_typed(&(&fact).into(), stream.axis, before - stream.delay, 0),
             &[input],
         )?[0];
     }
@@ -62,8 +69,8 @@ fn pulsify_along_concat_axis(
         axis: op.axis,
         pre_slice: pre,
         post_slice: post,
-        input_delay: fact.delay.saturating_sub(before),
-        input_len: fact.dim.clone(),
+        input_delay: stream.delay.saturating_sub(before),
+        input_len: stream.dim.clone(),
     };
     Ok(Some(target.wire_node(&*node.name, main_op, &[input])?))
 }
@@ -113,10 +120,11 @@ impl TypedOp for PulsedSameAxisConcat {
 impl PulsedOp for PulsedSameAxisConcat {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
+        let stream = fact.stream.as_mut().unwrap();
         let before = self.pre_slice.shape()[self.axis];
         let after = self.post_slice.shape()[self.axis];
-        fact.dim += (before + after).to_dim();
-        fact.delay -= before;
+        stream.dim += (before + after).to_dim();
+        stream.delay -= before;
         Ok(tvec!(fact))
     }
 

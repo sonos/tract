@@ -14,6 +14,7 @@ use tract_pulse::internal::*;
 
 mod conv_plus_conv;
 mod deconv;
+mod delay_plus_downsample;
 mod delay_plus_pool;
 mod einsum;
 mod pad_plus_conv;
@@ -32,26 +33,30 @@ fn proptest_regular_against_pulse(
     setup_test_logger();
 
     let len = input_array.shape()[axis];
-    //dbg!(&model);
     let model = model.into_decluttered().unwrap();
+    // dbg!(&model);
     let s = model.symbol_table.sym("S");
     let symbols = SymbolValues::default().with(&s, len as i64);
+
     let concrete = model.clone().concretize_dims(&symbols).unwrap();
     if concrete.nodes.iter().any(|n| n.outputs.iter().any(|o| o.fact.shape.volume().is_zero())) {
         return Err(TestCaseError::reject("too short input"));
     }
     let runnable = concrete.into_runnable().unwrap();
+
     // dbg!(&runnable);
     let outputs = runnable.run(tvec!(input_array.clone().into_tvalue())).unwrap();
-
+    // dbg!(&outputs);
     debug!("Build pulsing model");
     // dbg!(&model);
     let pulsed = PulsedModel::new(&model, s.clone(), &pulse.to_dim()).unwrap();
     // dbg!(&pulsed);
     let output_fact = pulsed.output_fact(0).unwrap().clone();
 
-    let output_stream_axis = output_fact.axis;
-    let delay = output_fact.delay;
+    let stream_info = output_fact.stream.as_ref().unwrap();
+    prop_assert!(stream_info.dim.eval(&symbols) == outputs[0].shape()[stream_info.axis].to_dim());
+    let output_stream_axis = stream_info.axis;
+    let delay = stream_info.delay;
     let mut initial_output_shape = output_fact.shape.clone();
     initial_output_shape.set(output_stream_axis, 0.to_dim());
     let initial_output_shape: TVec<usize> =
@@ -63,7 +68,6 @@ fn proptest_regular_against_pulse(
     let mut got: ArrayD<f32> = ArrayD::zeros(&*initial_output_shape);
     let mut output_len = None;
 
-    //dbg!(model);
     debug!("Run pulsing model");
     //dbg!(pulsed_plan.model());
     let mut written = 0;
@@ -82,7 +86,7 @@ fn proptest_regular_against_pulse(
             )
             .unwrap();
             state.session_state.resolved_symbols[&s] = Some(written as i64);
-            output_len = output_fact
+            output_len = stream_info
                 .dim
                 .eval(&state.session_state.resolved_symbols)
                 .to_isize()
@@ -95,18 +99,19 @@ fn proptest_regular_against_pulse(
             &[got.view(), outputs.remove(0).to_array_view::<f32>().unwrap()],
         )
         .unwrap();
-        // eprintln!("GOT: {}", got);
+        eprintln!("GOT: {}", got);
         if let Some(output_len) = output_len {
             if got.shape()[output_stream_axis] >= output_len.max(0) as usize + delay {
                 break;
             }
         }
+        eprintln!();
     }
 
     let pulsed_output = got
         .slice_axis(
             Axis(output_stream_axis),
-            (output_fact.delay..output_fact.delay + output_len.unwrap().max(0) as usize).into(),
+            (stream_info.delay..stream_info.delay + output_len.unwrap().max(0) as usize).into(),
         )
         .to_owned()
         .into_tensor();
