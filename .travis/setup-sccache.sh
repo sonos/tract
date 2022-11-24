@@ -5,10 +5,13 @@ set -ex
 export SCCACHE_DIR=$HOME/.cache/sccache
 export SCCACHE_CACHE_SIZE=2G
 
-echo "SCCACHE_DIR=$HOME/.cache/sccache" >> $GITHUB_ENV
-echo "SCCACHE_CACHE_SIZE=2G" >> $GITHUB_ENV
-echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
-echo "$HOME/.local/bin" >> $GITHUB_PATH
+if [ -n "$GITHUB_ENV" ]
+then
+    echo "SCCACHE_DIR=$HOME/.cache/sccache" >> $GITHUB_ENV
+    echo "SCCACHE_CACHE_SIZE=2G" >> $GITHUB_ENV
+    echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
+    echo "$HOME/.local/bin" >> $GITHUB_PATH
+fi
 
 LINK=https://github.com/mozilla/sccache/releases/download
 SCCACHE_VERSION=v0.3.0

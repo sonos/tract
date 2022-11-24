@@ -14,6 +14,7 @@ tract.out
 .gdb_history
 /issue-*
 /.dinghy.toml
-/.cargo
+.cargo
 proptest-regressions
 /tmp
+wheelhouse
