@@ -1,12 +1,8 @@
 use std::ops::Range;
 
 use crate::internal::*;
-//use std::ops::Range;
-//use tract_core::ndarray::*;
 use tract_core::ops::array::TypedConcat;
 use tract_pulse_opl::ops::Delay;
-use tract_pulse_opl::tract_nnef::tract_ndarray::Axis;
-//use tract_pulse_opl::ops::Delay;
 
 register_all!(TypedConcat: pulsify);
 
@@ -156,30 +152,18 @@ impl OpState for PulsedSameAxisConcatState {
 
         let pre_length = op.pre_slice.shape()[op.axis];
         let pre_offset = op.input_delay - pre_length;
-        dispatch_datum!(overwrite_part_of_pulse(data.datum_type())(
-            op.axis,
-            &mut data,
-            current_pos,
-            &op.pre_slice,
-            pre_offset
-        ))?;
+        overwrite_part_of_pulse(op.axis, &mut data, current_pos, &op.pre_slice, pre_offset)?;
         if self.symbols_in_dim.iter().all(|s| session.resolved_symbols[s].is_some()) {
             let l = op.input_len.eval(&session.resolved_symbols).to_usize().unwrap();
             let post_offset = op.input_delay + l as usize;
-            dispatch_datum!(overwrite_part_of_pulse(data.datum_type())(
-                op.axis,
-                &mut data,
-                current_pos,
-                &op.post_slice,
-                post_offset
-            ))?;
+            overwrite_part_of_pulse(op.axis, &mut data, current_pos, &op.post_slice, post_offset)?;
         }
 
         Ok(tvec!(data.into_tvalue()))
     }
 }
 
-pub fn overwrite_part_of_pulse<T: Datum>(
+pub fn overwrite_part_of_pulse(
     axis: usize,
     pulse_data: &mut Tensor,
     current_pos: usize,
@@ -190,33 +174,34 @@ pub fn overwrite_part_of_pulse<T: Datum>(
     let const_length = const_data.shape()[axis];
     let const_range = const_offset..const_offset + const_length;
     let pulse_range = current_pos..current_pos + pulse;
-    let axis = Axis(axis);
-    let mut pulse_data = pulse_data.to_array_view_mut::<T>()?;
-    let const_data = const_data.to_array_view::<T>()?;
 
     match range_in_range(&pulse_range, &const_range) {
         RangeInRange::Before(_) | RangeInRange::After(_) => (),
         RangeInRange::Begin(offset) => {
             // ----[<----->HHH]HH----
-            pulse_data
-                .slice_axis_mut(axis, (offset..pulse).into())
-                .assign(&const_data.slice_axis(axis, (0..pulse - offset).into()));
+            pulse_data.assign_slice(offset..pulse, const_data, 0..pulse - offset, axis)?;
         }
         RangeInRange::Contain(offset) => {
             // ----[<----->HHHHHHH-]---
-            pulse_data
-                .slice_axis_mut(axis, (offset..offset + const_length).into())
-                .assign(&const_data);
+            pulse_data.assign_slice(
+                offset..offset + const_length,
+                const_data,
+                0..const_length,
+                axis,
+            )?;
         }
         RangeInRange::Inside(offset) => {
             // ----------<H>[HH]HH----
-            pulse_data.assign(&const_data.slice_axis(axis, (offset..offset + pulse).into()));
+            pulse_data.assign_slice(0..pulse, const_data, offset..offset + pulse, axis)?;
         }
         RangeInRange::End(offset) => {
             // --------<HHH>[HHHH-]---
-            pulse_data
-                .slice_axis_mut(axis, (0..const_length - offset).into())
-                .assign(&const_data.slice_axis(axis, (offset..const_length).into()));
+            pulse_data.assign_slice(
+                0..const_length - offset,
+                const_data,
+                offset..const_length,
+                axis,
+            )?;
         }
     }
     Ok(())
