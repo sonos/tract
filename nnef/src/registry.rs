@@ -38,6 +38,7 @@ impl PrimitiveDef {
 
 pub struct Registry {
     pub id: String,
+    pub docstrings: Option<Vec<String>>,
     pub aliases: Vec<String>,
     pub fragments: HashMap<String, FragmentDef>,
     pub primitives: HashMap<String, PrimitiveDef>,
@@ -52,6 +53,7 @@ impl Registry {
     pub fn new(id: impl Into<String>) -> Registry {
         Registry {
             id: id.into(),
+            docstrings: None,
             aliases: Default::default(),
             primitives: Default::default(),
             fragments: Default::default(),
@@ -61,6 +63,12 @@ impl Registry {
             binary_ops: Default::default(),
             extensions: Default::default(),
         }
+    }
+
+    pub fn with_doc(mut self, docstring: impl Into<String>) -> Registry {
+        self.docstrings.get_or_insert_with(|| vec![])
+            .push(docstring.into());
+        self
     }
 
     pub fn register_dumper(&mut self, id: TypeId, func: FromTract) {
