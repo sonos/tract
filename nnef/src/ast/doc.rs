@@ -13,16 +13,18 @@ impl<'a> DocDumper<'a> {
     }
 
     pub fn registry(&mut self, registry: &Registry) -> TractResult<()> {
+        // Write registry docstrings.
         for d in registry.docstrings.iter().flatten() {
             writeln!(self.w, "# {}", d)?;
         }
         writeln!(self.w, "")?;
-        // Generate unit op 
+        // Generate and write unit element wise op.
         for unit_el_wise_op in registry.unit_element_wise_ops.iter() {
             writeln!(self.w, "fragment {}( x: tensor<scalar> ) -> (y: tensor<scalar>);", unit_el_wise_op.0)?;
         }
         writeln!(self.w, "")?;
 
+        // Generate and write element wise op.
         for el_wise_op in registry.element_wise_ops.iter() {
             let fragment_decl = FragmentDecl {
                 id: el_wise_op.0.to_string(),
@@ -32,7 +34,7 @@ impl<'a> DocDumper<'a> {
             };
             Dumper::new(self.w).fragment_decl(&fragment_decl)?;
         }
-        // Generate Primitive declarations
+        // Generate and write Primitive declarations.
         for primitive in registry.primitives.values().sorted_by_key(|v| &v.decl.id) {
             primitive.doc.iter().flatten()
                 .try_for_each(|d| writeln!(self.w, "# {}", d))?;
@@ -41,7 +43,7 @@ impl<'a> DocDumper<'a> {
             writeln!(self.w, ";\n")?;
         }
 
-        // Generate fragment declarations
+        // Generate and write fragment declarations.
         Dumper::new(self.w)
             .fragments(registry.fragments.values().cloned().collect::<Vec<_>>().as_slice())?;
 
