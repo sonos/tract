@@ -16,7 +16,8 @@ pub fn register(registry: &mut Registry) {
     );
     registry
         .register_dumper(TypeId::of::<tract_core::ops::matmul::mir_quant::QMatMul>(), qmatmul_dump);
-    registry.register_primitive("tract_core_qmatmul", &qmatmul_parameters(), qmatmul_load);
+    registry.register_primitive("tract_core_qmatmul", &qmatmul_parameters(), qmatmul_load)
+        .with_result("output", TypeName::Scalar.tensor());
 }
 
 fn qmatmul_parameters() -> Vec<Parameter> {

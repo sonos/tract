@@ -10,7 +10,8 @@ pub fn register(registry: &mut Registry) {
         matmul_unary_dump,
     );
     registry.register_dumper(TypeId::of::<tract_core::ops::matmul::mir::MatMul>(), matmul_dump);
-    registry.register_primitive("tract_core_matmul", &matmul_parameters(), matmul_load);
+    registry.register_primitive("tract_core_matmul", &matmul_parameters(), matmul_load)
+        .with_result("output", TypeName::Scalar.tensor());
 }
 
 fn matmul_parameters() -> Vec<Parameter> {

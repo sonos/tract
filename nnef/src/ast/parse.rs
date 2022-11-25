@@ -110,7 +110,7 @@ fn parameter(i: &str) -> IResult<&str, Parameter> {
             separated_pair(identifier, stag(":"), type_spec),
             opt(preceded(stag("="), literal_expr)),
         ),
-        |((id, spec), lit)| Parameter { id, spec, lit },
+        |((id, spec), lit)| Parameter { id, spec, lit, doc: None },
     )(i)
 }
 
@@ -440,7 +440,7 @@ mod test {
     }
 
     fn param(s: impl Into<std::string::String>, t: TypeSpec) -> Parameter {
-        Parameter { id: s.into(), spec: t, lit: None }
+        Parameter { id: s.into(), spec: t, lit: None, doc: None }
     }
 
     fn result(s: impl Into<std::string::String>, t: TypeSpec) -> Result_ {

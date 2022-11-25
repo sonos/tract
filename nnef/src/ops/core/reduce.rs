@@ -13,7 +13,7 @@ pub fn register(registry: &mut Registry) {
             red,
             &[TypeName::Scalar.tensor().named("input"), TypeName::Integer.array().named("axes")],
             de_reduce,
-        );
+        ).with_result("output", TypeName::Scalar.tensor());
     }
 }
 

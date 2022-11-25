@@ -10,7 +10,8 @@ use tract_core::ops::cnn::KernelFormat;
 
 pub fn register(registry: &mut Registry) {
     registry.register_dumper(TypeId::of::<tract_core::ops::cnn::ConvUnary>(), qconv_unary_dump);
-    registry.register_primitive("tract_core_qconv", &qconv_parameters(), qconv_load);
+    registry.register_primitive("tract_core_qconv", &qconv_parameters(), qconv_load)
+        .with_result("output", TypeName::Scalar.tensor());
 }
 
 fn qconv_parameters() -> Vec<Parameter> {

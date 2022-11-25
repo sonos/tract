@@ -24,6 +24,7 @@ tract-core = { path = "../core" }
 walkdir.workspace = true
 
 [dev-dependencies]
+temp-dir = "0.1.11"
 serde_json.workspace = true
 
 [features]
