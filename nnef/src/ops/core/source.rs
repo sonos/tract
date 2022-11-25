@@ -4,8 +4,12 @@ use tract_core::ops::source::TypedSource;
 
 pub fn register(registry: &mut Registry) {
     registry.register_dumper(TypeId::of::<TypedSource>(), external_dump);
-    registry.register_primitive("tract_core_external", &external_parameters(), external_load)
-        .with_result("output", TypeName::Scalar.tensor());
+    registry.register_primitive(
+        "tract_core_external", 
+        &external_parameters(),
+        &[("output", TypeName::Any.tensor())],
+        external_load
+    );
 }
 
 fn external_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {

@@ -4,8 +4,12 @@ use tract_core::ops::cast::Cast;
 
 pub fn register(registry: &mut Registry) {
     registry.register_dumper(TypeId::of::<tract_core::ops::cast::Cast>(), cast_dump);
-    registry.register_primitive("tract_core_cast", &cast_parameters(), cast_load)
-            .with_result("output", TypeName::Scalar.tensor());
+    registry.register_primitive(
+        "tract_core_cast", 
+        &cast_parameters(), 
+        &[("output", TypeName::Scalar.tensor())],
+        cast_load,
+    );
 }
 
 fn cast_parameters() -> Vec<Parameter> {

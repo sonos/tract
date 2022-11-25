@@ -8,7 +8,12 @@ use tract_nnef::tract_ndarray::s;
 use tract_nnef::tract_num_traits::{AsPrimitive, Float, Zero};
 
 pub fn register(registry: &mut Registry) {
-    registry.register_primitive("tract_onnx_multinomial", &parameters(), load);
+    registry.register_primitive(
+        "tract_onnx_multinomial", 
+        &parameters(),
+        &[("output", TypeName::Scalar.tensor())], 
+        load
+    );
     registry.register_dumper(TypeId::of::<Multinomial>(), dump);
 }
 

@@ -4,8 +4,12 @@ use tract_core::ops::array::OneHot;
 
 pub fn register(registry: &mut Registry) {
     registry.register_dumper(TypeId::of::<OneHot>(), one_hot_dump);
-    registry.register_primitive("tract_core_one_hot", &one_hot_parameters(), one_hot_load)
-        .with_result("output", TypeName::Scalar.tensor());
+    registry.register_primitive(
+        "tract_core_one_hot", 
+        &one_hot_parameters(),
+        &[("output", TypeName::Scalar.tensor())],
+         one_hot_load
+    );
 }
 
 pub fn one_hot_parameters() -> Vec<Parameter> {

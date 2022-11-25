@@ -12,8 +12,9 @@ pub fn register(registry: &mut Registry) {
             TypeName::Integer.named("stride"),
             TypeName::Integer.named("modulo").default(0),
         ],
+        &[("output", TypeName::Scalar.tensor())],
         de_downsample,
-    ).with_result("output", TypeName::Scalar.tensor());
+    );
 }
 
 fn ser_downsample(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {

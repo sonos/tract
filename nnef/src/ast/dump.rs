@@ -82,10 +82,8 @@ impl<'a> Dumper<'a> {
 
     fn parameter_list(&mut self, parameters: &[Parameter]) -> TractResult<()> {
         write!(self.w, "(")?;
+        let num_parameters = parameters.len();
         for (ix, param) in parameters.iter().enumerate() {
-            if ix > 0 {
-                write!(self.w, ",")?;
-            }
             write!(self.w, "\n    ")?;
             write!(self.w, "{}: ", param.id)?;
             self.type_spec(&param.spec)?;
@@ -93,6 +91,13 @@ impl<'a> Dumper<'a> {
                 write!(self.w, " = ")?;
                 self.literal(lit)?;
             }
+            if ix < num_parameters - 1 {
+                write!(self.w, ",")?;
+            }
+            if let Some(doc) = &param.doc {
+                write!(self.w, " # {}", doc)?;
+            }
+
         }
         write!(self.w, "\n)")?;
         Ok(())
