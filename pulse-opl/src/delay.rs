@@ -9,6 +9,7 @@ pub fn register(registry: &mut Registry) {
             TypeName::Integer.named("delay"),
             TypeName::Integer.named("overlap"),
         ],
+        &[("output", TypeName::Scalar.tensor())],
         de_delay,
     );
 }

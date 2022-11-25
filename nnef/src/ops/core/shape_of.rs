@@ -7,8 +7,9 @@ pub fn register(registry: &mut Registry) {
     registry.register_primitive(
         "tract_core_shape_of",
         &[TypeName::Scalar.tensor().named("input")],
+        &[("output", TypeName::Integer.tensor())],
         de_shape_of,
-    ).with_result("output", TypeName::Integer.tensor());
+    );
 }
 
 fn de_shape_of(

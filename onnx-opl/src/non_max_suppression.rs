@@ -6,7 +6,12 @@ use tract_nnef::{
 };
 
 pub fn register(registry: &mut Registry) {
-    registry.register_primitive("tract_onnx_non_max_suppression", &parameters(), load);
+    registry.register_primitive(
+        "tract_onnx_non_max_suppression", 
+        &parameters(),
+        &[("output", TypeName::Integer.tensor())], 
+        load
+    );
     registry.register_dumper(TypeId::of::<NonMaxSuppression>(), dump);
 }
 

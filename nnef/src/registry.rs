@@ -34,11 +34,6 @@ impl PrimitiveDef {
             .push(docstring.into());
         self
     }
-
-    pub fn with_result(&mut self, id: impl Into<String>, spec: ast::TypeSpec) -> &mut Self {
-        self.decl.results.push(ast::Result_ { id: id.into(), spec });
-        self
-    }
 }
 
 pub struct Registry {
@@ -72,12 +67,16 @@ impl Registry {
         self.from_tract.insert(id, func);
     }
 
-    pub fn register_primitive(&mut self, id: &str, params: &[ast::Parameter], func: ToTract) -> &mut PrimitiveDef {
+    pub fn register_primitive(&mut self, 
+            id: &str, 
+            params: &[ast::Parameter],
+            results: &[impl Into<ast::Result_> + Clone], 
+            func: ToTract) -> &mut PrimitiveDef {
         let decl = FragmentDecl {
             id: id.to_string(),
             generic_decl: None,
             parameters: params.to_vec(),
-            results: vec![],
+            results: results.to_vec().into_iter().map(|it| it.into()).collect(),
         };
         self.primitives.insert(
             id.to_string(),

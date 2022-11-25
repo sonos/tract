@@ -18,7 +18,7 @@ pub fn tract_nnef() -> Registry {
     let mut primitive = |registry: &mut Registry, id: &str, func: ToTract| {
         let pos = stdlib.iter().position(|f| f.decl.id == id).unwrap();
         let decl = stdlib.remove(pos).decl;
-        registry.register_primitive(id, &decl.parameters, func);
+        registry.register_primitive(id, &decl.parameters, &decl.results, func);
     };
 
     primitive(&mut registry, "external", deser::external);

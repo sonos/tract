@@ -12,8 +12,9 @@ pub fn register(registry: &mut Registry) {
         registry.register_primitive(
             red,
             &[TypeName::Scalar.tensor().named("input"), TypeName::Integer.array().named("axes")],
+            &[("output", TypeName::Scalar.tensor())],
             de_reduce,
-        ).with_result("output", TypeName::Scalar.tensor());
+        );
     }
 }
 

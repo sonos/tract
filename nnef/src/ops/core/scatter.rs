@@ -14,8 +14,9 @@ pub fn register(registry: &mut Registry) {
             TypeName::Scalar.tensor().named("updates"),
             TypeName::Integer.named("axis"),
         ],
+        &[("output", TypeName::Scalar.tensor())],
         de_scatter_elements,
-    ).with_result("output", TypeName::Scalar.tensor());
+    );
 
     registry.register_dumper(TypeId::of::<ScatterNd>(), ser_scatter_nd);
     registry.register_primitive(
@@ -25,8 +26,9 @@ pub fn register(registry: &mut Registry) {
             TypeName::Scalar.tensor().named("indices"),
             TypeName::Scalar.tensor().named("updates"),
         ],
+        &[("output", TypeName::Scalar.tensor())],
         de_scatter_nd,
-    ).with_result("output", TypeName::Scalar.tensor());
+    );
 }
 
 fn ser_scatter_nd(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {

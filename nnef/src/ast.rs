@@ -207,6 +207,15 @@ pub struct Result_ {
     pub spec: TypeSpec,
 }
 
+impl<S: Into<String>> From<(S, TypeSpec)> for Result_ {
+    fn from(v: (S, TypeSpec)) -> Result_ {
+        Result_ {
+            id: v.0.into(),
+            spec: v.1
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Assignment {
     pub left: LValue,
