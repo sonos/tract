@@ -8,7 +8,8 @@ pub fn register(registry: &mut Registry) {
             TypeName::String.named("key"),
         ],
         resource_get,
-    );
+    ).with_result("output", TypeName::Any.tensor())
+     .with_doc("Access embedded resource by key");
 }
 
 fn resource_get(

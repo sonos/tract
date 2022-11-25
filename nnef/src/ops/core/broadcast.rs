@@ -8,7 +8,7 @@ pub fn register(registry: &mut Registry) {
         "tract_core_broadcast",
         &[TypeName::Scalar.tensor().named("input"), TypeName::Integer.array().named("shape")],
         de_broadcast,
-    );
+    ).with_result("output", TypeName::Scalar.tensor());
 }
 
 fn de_broadcast(

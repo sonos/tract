@@ -82,7 +82,7 @@ impl TypeSpec {
         TypeSpec::Array(Box::new(self))
     }
     pub fn named(self, s: impl Into<String>) -> Parameter {
-        Parameter { id: s.into(), spec: self, lit: None }
+        Parameter { id: s.into(), spec: self, lit: None, doc: None }
     }
 }
 
@@ -183,16 +183,22 @@ pub struct Parameter {
     pub id: String,
     pub spec: TypeSpec,
     pub lit: Option<Literal>,
+    pub doc: Option<String>,
 }
 
 impl Parameter {
     pub fn default(self, lit: impl Into<Literal>) -> Parameter {
         Parameter { lit: Some(lit.into()), ..self }
     }
+
+    pub fn doc(mut self, s: impl Into<String>) -> Parameter {
+        self.doc =  Some(s.into());
+        self
+    }
 }
 
 pub fn param(s: impl Into<String>, spec: TypeSpec) -> Parameter {
-    Parameter { id: s.into(), spec, lit: None }
+    Parameter { id: s.into(), spec, lit: None, doc: None }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

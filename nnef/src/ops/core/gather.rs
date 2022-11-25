@@ -39,7 +39,7 @@ pub fn register(registry: &mut Registry) {
                     TypeName::Integer.named(stringify!($field_name)),
                 ],
                 $name::de_gather,
-            );
+            ).with_result("output", TypeName::Scalar.tensor());
         };
     }
 

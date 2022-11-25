@@ -17,8 +17,13 @@ impl<'a> DocDumper<'a> {
         Dumper::new(self.w)
             .fragments(registry.fragments.values().cloned().collect::<Vec<_>>().as_slice())?;
 
+        // Generate Primitive declarations
         for primitive in registry.primitives.values().sorted_by_key(|v| &v.decl.id) {
+            primitive.doc.iter().flatten()
+                .try_for_each(|d| writeln!(self.w, "# {}", d))?;
+            
             Dumper::new(self.w).fragment_decl(&primitive.decl)?;
+            writeln!(self.w, ";\n")?;
         }
         Ok(())
     }
@@ -37,10 +42,13 @@ impl<'a> DocDumper<'a> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use temp_dir::TempDir;
 
     #[test]
     fn doc_example() -> TractResult<()> {
+        let d = TempDir::new()?;
         let nnef = crate::nnef().with_tract_core().with_tract_resource();
+        DocDumper::to_directory(d.path(), &nnef)?;
         DocDumper::to_directory(".", &nnef)?;
         Ok(())
     }

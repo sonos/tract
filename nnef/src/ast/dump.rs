@@ -76,7 +76,7 @@ impl<'a> Dumper<'a> {
             write!(self.w, "{}: ", res.id)?;
             self.type_spec(&res.spec)?;
         }
-        writeln!(self.w, ")")?;
+        write!(self.w, ")")?;
         Ok(())
     }
 

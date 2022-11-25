@@ -28,6 +28,17 @@ impl PrimitiveDef {
     pub fn validate(&self) -> TractResult<()> {
         self.decl.validate().with_context(|| format!("Invalid primitive `{}'", self.decl.id))
     }
+
+    pub fn with_doc(&mut self, docstring: impl Into<String>) -> &mut Self {
+        self.doc.get_or_insert_with(|| vec![])
+            .push(docstring.into());
+        self
+    }
+
+    pub fn with_result(&mut self, id: impl Into<String>, spec: ast::TypeSpec) -> &mut Self {
+        self.decl.results.push(ast::Result_ { id: id.into(), spec });
+        self
+    }
 }
 
 pub struct Registry {
@@ -61,7 +72,7 @@ impl Registry {
         self.from_tract.insert(id, func);
     }
 
-    pub fn register_primitive(&mut self, id: &str, params: &[ast::Parameter], func: ToTract) {
+    pub fn register_primitive(&mut self, id: &str, params: &[ast::Parameter], func: ToTract) -> &mut PrimitiveDef {
         let decl = FragmentDecl {
             id: id.to_string(),
             generic_decl: None,
@@ -76,6 +87,7 @@ impl Registry {
                 to_tract: func,
             }
         );
+        self.primitives.get_mut(id).expect("Unexpected empty entry in primitives hashmap")
     }
 
     pub fn register_fragment(&mut self, def: FragmentDef) {
