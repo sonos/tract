@@ -6,38 +6,38 @@ use crate::internal::*;
 use crate::prelude::tract_itertools::Itertools;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Hash)]
-pub struct AxisSym {
+pub struct Axis {
     pub result: Option<usize>,
     pub inputs: TVec<TVec<usize>>,
     pub repr: char,
 }
 
-impl AxisSym {
-    fn new(repr: char) -> AxisSym {
-        AxisSym { repr, result: None, inputs: tvec!() }
+impl Axis {
+    pub fn new(repr: char) -> Axis {
+        Axis { repr, result: None, inputs: tvec!() }
     }
 
-    fn result(self, axis: usize) -> AxisSym {
-        AxisSym { result: Some(axis), ..self }
+    pub fn result(self, axis: usize) -> Axis {
+        Axis { result: Some(axis), ..self }
     }
 
-    fn set_result(&mut self, axis: usize) {
+    pub fn set_result(&mut self, axis: usize) {
         self.result = Some(axis)
     }
 
     #[allow(dead_code)]
-    fn input(mut self, input_id: usize, axis: usize) -> AxisSym {
+    pub fn input(mut self, input_id: usize, axis: usize) -> Axis {
         self.add_input(input_id, axis);
         self
     }
 
-    fn ensure_inputs_count(&mut self, inputs: usize) {
+    pub fn ensure_inputs_count(&mut self, inputs: usize) {
         if self.inputs.len() < inputs {
             self.inputs.resize(inputs, tvec!())
         }
     }
 
-    fn add_input(&mut self, input_id: usize, axis: usize) {
+    pub fn add_input(&mut self, input_id: usize, axis: usize) {
         self.ensure_inputs_count(input_id + 1);
         self.inputs[input_id].push(axis);
     }
@@ -45,34 +45,38 @@ impl AxisSym {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Expr {
-    pub index: TVec<AxisSym>,
-    pub sum: TVec<AxisSym>,
+    pub index: TVec<Axis>,
+    pub sum: TVec<Axis>,
 }
 
 impl Expr {
-    pub fn new(index: TVec<AxisSym>, sum: TVec<AxisSym>) -> Expr {
+    pub fn new(index: TVec<Axis>, sum: TVec<Axis>) -> Expr {
         let mut e = Expr { index, sum };
         e.canonicalize();
         e
     }
 
-    pub fn index(&self) -> &[AxisSym] {
+    pub fn index(&self) -> &[Axis] {
         &self.index
     }
 
-    pub fn sum(&self) -> &[AxisSym] {
+    pub fn sum(&self) -> &[Axis] {
         &self.sum
     }
 
-    pub fn iter_all_axes(&self) -> impl Iterator<Item = &AxisSym> {
+    pub fn iter_all_axes(&self) -> impl Iterator<Item = &Axis> {
         self.index.iter().chain(self.sum.iter())
+    }
+
+    pub fn iter_all_axes_mut(&mut self) -> impl Iterator<Item = &mut Axis> {
+        self.index.iter_mut().chain(self.sum.iter_mut())
     }
 
     pub fn n_inputs(&self) -> usize {
         self.iter_all_axes().map(|axis| axis.inputs.len()).max().unwrap()
     }
 
-    pub fn axis_by_repr(&self, c: char) -> Option<&AxisSym> {
+    pub fn axis_by_repr(&self, c: char) -> Option<&Axis> {
         self.iter_all_axes().find(|axis| axis.repr == c)
     }
 
@@ -80,15 +84,19 @@ impl Expr {
         self.axis_by_repr(c).map(|axis| &*axis.inputs[input])
     }
 
-    pub fn input_axis(&self, input: usize, position: usize) -> Option<&AxisSym> {
+    pub fn input_axis(&self, input: usize, position: usize) -> Option<&Axis> {
         self.iter_all_axes().find(|axis| axis.inputs[input].contains(&position))
+    }
+
+    pub fn input_axis_mut(&mut self, input: usize, position: usize) -> Option<&mut Axis> {
+        self.iter_all_axes_mut().find(|axis| axis.inputs[input].contains(&position))
     }
 
     pub fn input_rank(&self, input: usize) -> usize {
         self.iter_all_axes().map(|axis| axis.inputs[input].len()).sum()
     }
 
-    pub fn input_axes(&self, input: usize) -> impl Iterator<Item = &AxisSym> {
+    pub fn input_axes(&self, input: usize) -> impl Iterator<Item = &Axis> {
         (0..self.input_rank(input)).map(move |ix| self.input_axis(input, ix).unwrap())
     }
 
@@ -96,7 +104,7 @@ impl Expr {
         self.index.len()
     }
 
-    pub fn output_axes(&self) -> impl Iterator<Item = &AxisSym> {
+    pub fn output_axes(&self) -> impl Iterator<Item = &Axis> {
         self.index.iter()
     }
 
@@ -107,7 +115,9 @@ impl Expr {
         self.sum.iter_mut().for_each(|ax| {
             ax.inputs[input].iter_mut().for_each(|pos| *pos += (*pos >= position) as usize)
         });
-        self.index.iter_mut().chain(self.sum.iter_mut()).find(|x| x.repr == axis).unwrap().inputs[input].push(position)
+        self.index.iter_mut().chain(self.sum.iter_mut()).find(|x| x.repr == axis).unwrap().inputs
+            [input]
+            .push(position)
     }
 
     pub fn canonicalize(&mut self) {
@@ -118,17 +128,87 @@ impl Expr {
         for axis in &mut self.sum {
             axis.ensure_inputs_count(n_inputs);
         }
+        self.index.retain(|axis| axis.inputs.iter().any(|i| i.len() > 0) || axis.result.is_some())
+    }
+
+    pub fn available_label(&self) -> char {
+        ('a'..).find(|c| self.iter_all_axes().all(|axis| axis.repr != *c)).unwrap()
+    }
+
+    pub fn check(&self) -> TractResult<()> {
+        for i in 0..self.n_inputs() {
+            let rank = self.input_rank(i);
+            for axis in 0..rank {
+                let claims: TVec<_> =
+                    self.iter_all_axes().filter(|a| a.inputs[i].contains(&axis)).collect();
+                if claims.len() != 1 {
+                    bail!(
+                        "Axis {} for input {} is claimed {} times: {:?}",
+                        axis,
+                        i,
+                        claims.len(),
+                        claims
+                    )
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn from_strs(inputs: &[impl AsRef<str>], result: Option<&str>) -> Expr {
+        let mut axes = HashMap::<char, Axis>::default();
+        if let Some(result) = result {
+            for (ix, axis) in result.chars().enumerate() {
+                axes.insert(axis, Axis::new(axis).result(ix));
+            }
+        }
+        for (input_ix, input) in inputs.iter().enumerate() {
+            for (ix, axis) in input.as_ref().chars().enumerate() {
+                axes.entry(axis).or_insert_with(|| Axis::new(axis)).add_input(input_ix, ix);
+            }
+        }
+        if result.is_none() {
+            axes.iter_mut()
+                .sorted_by_key(|(k, _)| *k)
+                .filter(|(_, v)| v.inputs.iter().map(|input| input.len()).sum::<usize>() == 1)
+                .enumerate()
+                .for_each(|(ix, (_, v))| v.set_result(ix))
+        }
+        axes.into_iter().sorted_by_key(|(k, _)| *k).map(|(_, v)| v).collect::<Expr>()
+    }
+
+    pub fn to_strs(&self) -> (TVec<String>, String) {
+        let mut inputs = tvec![];
+        for input in 0..self.n_inputs() {
+            let s = self
+                .iter_all_axes()
+                .flat_map(|axis| {
+                    axis.inputs[input].iter().map(move |position| (position, axis.repr))
+                })
+                .sorted()
+                .map(|(_, r)| r)
+                .collect();
+            inputs.push(s);
+        }
+        let r = self
+            .index
+            .iter()
+            .flat_map(|axis| axis.result.iter().map(move |position| (position, axis.repr)))
+            .sorted()
+            .map(|(_, r)| r)
+            .collect();
+        (inputs, r)
     }
 }
 
-impl FromIterator<AxisSym> for Expr {
-    fn from_iter<T: IntoIterator<Item = AxisSym>>(iter: T) -> Self {
+impl FromIterator<Axis> for Expr {
+    fn from_iter<T: IntoIterator<Item = Axis>>(iter: T) -> Self {
         let (index, sum) = iter.into_iter().partition(|ax| ax.result.is_some());
         Expr::new(index, sum)
     }
 }
 
-impl<I: IntoIterator<Item = AxisSym>> From<I> for Expr {
+impl<I: IntoIterator<Item = Axis>> From<I> for Expr {
     fn from(it: I) -> Self {
         it.into_iter().collect()
     }
@@ -142,56 +222,14 @@ impl FromStr for Expr {
         let (inputs, result) =
             if let Some((i, r)) = s.split_once("->") { (i, Some(r)) } else { (&*s, None) };
         let inputs: TVec<&str> = inputs.split(',').collect();
-        let mut axes = HashMap::<char, AxisSym>::default();
-        if let Some(result) = result {
-            for (ix, axis) in result.chars().enumerate() {
-                axes.insert(axis, AxisSym::new(axis).result(ix));
-            }
-        }
-        for (input_ix, input) in inputs.iter().enumerate() {
-            for (ix, axis) in input.chars().enumerate() {
-                axes.entry(axis).or_insert_with(|| AxisSym::new(axis)).add_input(input_ix, ix);
-            }
-        }
-        if result.is_none() {
-            axes.iter_mut()
-                .sorted_by_key(|(k, _)| *k)
-                .filter(|(_, v)| v.inputs.iter().map(|input| input.len()).sum::<usize>() == 1)
-                .enumerate()
-                .for_each(|(ix, (_, v))| v.set_result(ix))
-        }
-        Ok(axes.into_iter().sorted_by_key(|(k, _)| *k).map(|(_, v)| v).collect::<Expr>())
+        Ok(Expr::from_strs(&inputs, result))
     }
 }
 
 impl Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for input in 0..self.n_inputs() {
-            if input > 0 {
-                write!(f, ",")?;
-            }
-            for axis in self
-                .iter_all_axes()
-                .flat_map(|axis| {
-                    axis.inputs[input].iter().map(move |position| (position, axis.repr))
-                })
-                .sorted()
-                .map(|(_, r)| r)
-            {
-                write!(f, "{axis}")?;
-            }
-        }
-        write!(f, "->")?;
-        for axis in self
-            .index
-            .iter()
-            .flat_map(|axis| axis.result.iter().map(move |position| (position, axis.repr)))
-            .sorted()
-            .map(|(_, r)| r)
-        {
-            write!(f, "{axis}")?;
-        }
-        Ok(())
+        let (inputs, result) = self.to_strs();
+        write!(f, "{}->{}", inputs.iter().join(","), result)
     }
 }
 
@@ -203,13 +241,13 @@ mod test {
     fn test_expr_builder() {
         assert_eq!(
             Expr::from(tvec![
-                AxisSym::new('a').result(0).input(0, 1),
-                AxisSym::new('b').result(1).input(0, 0)
+                Axis::new('a').result(0).input(0, 1),
+                Axis::new('b').result(1).input(0, 0)
             ]),
             Expr {
                 index: tvec!(
-                    AxisSym::new('a').result(0).input(0, 1),
-                    AxisSym::new('b').result(1).input(0, 0)
+                    Axis::new('a').result(0).input(0, 1),
+                    Axis::new('b').result(1).input(0, 0)
                 ),
                 sum: tvec!(),
             }
@@ -221,8 +259,8 @@ mod test {
         assert_eq!(
             "ij->ji".parse::<Expr>().unwrap(),
             Expr::from(tvec![
-                AxisSym::new('i').result(1).input(0, 0),
-                AxisSym::new('j').result(0).input(0, 1)
+                Axis::new('i').result(1).input(0, 0),
+                Axis::new('j').result(0).input(0, 1)
             ]),
         )
     }
@@ -231,7 +269,7 @@ mod test {
     fn test_parse_diag() {
         assert_eq!(
             "ii->i".parse::<Expr>().unwrap(),
-            Expr::from(tvec![AxisSym::new('i').result(0).input(0, 0).input(0, 1)]),
+            Expr::from(tvec![Axis::new('i').result(0).input(0, 0).input(0, 1)]),
         )
     }
 
@@ -239,7 +277,7 @@ mod test {
     fn test_parse_adamar_product_explicit() {
         assert_eq!(
             "i,i->i".parse::<Expr>().unwrap(),
-            Expr::from(tvec![AxisSym::new('i').result(0).input(0, 0).input(1, 0)]),
+            Expr::from(tvec![Axis::new('i').result(0).input(0, 0).input(1, 0)]),
         )
     }
 
@@ -253,10 +291,10 @@ mod test {
         assert_eq!(
             "bij , bjk -> bik ".parse::<Expr>().unwrap(),
             Expr::from(tvec![
-                AxisSym::new('b').result(0).input(0, 0).input(1, 0),
-                AxisSym::new('i').result(1).input(0, 1),
-                AxisSym::new('j').input(0, 2).input(1, 1),
-                AxisSym::new('k').result(2).input(1, 2)
+                Axis::new('b').result(0).input(0, 0).input(1, 0),
+                Axis::new('i').result(1).input(0, 1),
+                Axis::new('j').input(0, 2).input(1, 1),
+                Axis::new('k').result(2).input(1, 2)
             ])
         )
     }
@@ -266,8 +304,8 @@ mod test {
         assert_eq!(
             "i,j->ij".parse::<Expr>().unwrap(),
             Expr::from(tvec![
-                AxisSym::new('i').result(0).input(0, 0),
-                AxisSym::new('j').result(1).input(1, 0)
+                Axis::new('i').result(0).input(0, 0),
+                Axis::new('j').result(1).input(1, 0)
             ]),
         )
     }
@@ -277,10 +315,10 @@ mod test {
         assert_eq!(
             "ik,jkl,il->ij".parse::<Expr>().unwrap(),
             Expr::from(tvec![
-                AxisSym::new('i').result(0).input(0, 0).input(2, 0),
-                AxisSym::new('j').result(1).input(1, 0),
-                AxisSym::new('k').input(0, 1).input(1, 1),
-                AxisSym::new('l').input(1, 2).input(2, 1)
+                Axis::new('i').result(0).input(0, 0).input(2, 0),
+                Axis::new('j').result(1).input(1, 0),
+                Axis::new('k').input(0, 1).input(1, 1),
+                Axis::new('l').input(1, 2).input(2, 1)
             ]),
         )
     }
@@ -290,13 +328,13 @@ mod test {
         assert_eq!(
             "pqrs,tuqvr->pstuv".parse::<Expr>().unwrap(),
             Expr::from(tvec![
-                AxisSym::new('p').result(0).input(0, 0),
-                AxisSym::new('q').input(0, 1).input(1, 2),
-                AxisSym::new('r').input(0, 2).input(1, 4),
-                AxisSym::new('s').result(1).input(0, 3),
-                AxisSym::new('t').result(2).input(1, 0),
-                AxisSym::new('u').result(3).input(1, 1),
-                AxisSym::new('v').result(4).input(1, 3),
+                Axis::new('p').result(0).input(0, 0),
+                Axis::new('q').input(0, 1).input(1, 2),
+                Axis::new('r').input(0, 2).input(1, 4),
+                Axis::new('s').result(1).input(0, 3),
+                Axis::new('t').result(2).input(1, 0),
+                Axis::new('u').result(3).input(1, 1),
+                Axis::new('v').result(4).input(1, 3),
             ]),
         )
     }
@@ -319,10 +357,10 @@ mod test {
         assert_eq!(
             "sij,ijk->sik".parse::<Expr>().unwrap(),
             Expr::from(tvec![
-                AxisSym::new('i').result(1).input(0, 1).input(1, 0),
-                AxisSym::new('k').result(2).input(1, 2),
-                AxisSym::new('s').result(0).input(0, 0),
-                AxisSym::new('j').input(0, 2).input(1, 1),
+                Axis::new('i').result(1).input(0, 1).input(1, 0),
+                Axis::new('k').result(2).input(1, 2),
+                Axis::new('s').result(0).input(0, 0),
+                Axis::new('j').input(0, 2).input(1, 1),
             ])
         )
     }
@@ -332,11 +370,11 @@ mod test {
         assert_eq!(
             "bsij,ijk->bsik".parse::<Expr>().unwrap(),
             Expr::from(tvec![
-                AxisSym::new('b').result(0).input(0, 0),
-                AxisSym::new('i').result(2).input(0, 2).input(1, 0),
-                AxisSym::new('k').result(3).input(1, 2),
-                AxisSym::new('s').result(1).input(0, 1),
-                AxisSym::new('j').input(0, 3).input(1, 1),
+                Axis::new('b').result(0).input(0, 0),
+                Axis::new('i').result(2).input(0, 2).input(1, 0),
+                Axis::new('k').result(3).input(1, 2),
+                Axis::new('s').result(1).input(0, 1),
+                Axis::new('j').input(0, 3).input(1, 1),
             ])
         )
     }

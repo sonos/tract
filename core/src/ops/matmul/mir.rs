@@ -1,4 +1,7 @@
+use tract_data::itertools::izip;
+
 use crate::internal::*;
+use crate::ops::einsum::{Axis, EinSum, Expr};
 use crate::ops::matmul::*;
 
 /// The binary op. It will declutter to MatMulUnary if either A or B is constant.
@@ -53,38 +56,24 @@ impl TypedOp for MatMul {
     ) -> TractResult<Option<TypedModelPatch>> {
         let a_fact = model.outlet_fact(node.inputs[0])?;
         let b_fact = model.outlet_fact(node.inputs[1])?;
-        let konst_ix = if a_fact.konst.is_some() {
-            0
-        } else if b_fact.konst.is_some() {
-            1
-        } else {
-            return Ok(None);
-        };
 
-        let var_ix = 1 - konst_ix;
-        let flip = konst_ix == 1;
+        assert!(a_fact.rank() == b_fact.rank());
 
-        let axes = if flip {
-            MatMulAxes {
-                a_m: self.axes.b_n,
-                a_k: self.axes.b_k,
-                b_n: self.axes.a_m,
-                b_k: self.axes.a_k,
-                c_m: self.axes.c_n,
-                c_n: self.axes.c_m,
-            }
-        } else {
-            self.axes
-        };
-
-        let konst = model.outlet_fact(node.inputs[konst_ix])?.konst.clone().unwrap();
-        TypedModelPatch::replace_single_op(
-            model,
-            node,
-            &node.inputs[var_ix..][..1],
-            MatMulUnary::new(konst, axes),
-        )
-        .map(Some)
+        let k_axis = Axis::new('k').input(0, self.axes.a_k).input(1, self.axes.b_k);
+        let m_axis = Axis::new('m').input(0, self.axes.a_m).result(self.axes.c_m);
+        let n_axis = Axis::new('n').input(1, self.axes.b_n).result(self.axes.c_n);
+        let rank = a_fact.rank();
+        fn remaining(rank: usize, skip1: usize, skip2: usize) -> impl Iterator<Item = usize> {
+            (0..rank).filter(move |&i| i != skip1 && i != skip2)
+        }
+        let remain_a = remaining(rank, self.axes.a_k, self.axes.a_m);
+        let remain_b = remaining(rank, self.axes.b_k, self.axes.b_n);
+        let remain_c = remaining(rank, self.axes.c_m, self.axes.c_n);
+        let alphabet = ('a'..).filter(|&c| c != 'k' && c != 'm' && c != 'n');
+        let extra_axes = izip!(alphabet, remain_a, remain_b, remain_c)
+            .map(|(letter, a, b, c)| Axis::new(letter).input(0, a).input(1, b).result(c));
+        let expr: Expr = extra_axes.chain([k_axis, m_axis, n_axis].into_iter()).collect();
+        TypedModelPatch::replace_single_op(model, node, &node.inputs, EinSum::new(expr)).map(Some)
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {

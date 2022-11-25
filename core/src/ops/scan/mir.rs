@@ -766,7 +766,7 @@ impl TypedOp for Scan {
         io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
-        trace!("Entering node {}", node);
+        trace!("Propagating through {}: {:?} {:?}", node, io, change);
         let body_leading_outlet = match io {
             InOut::In(ix) => {
                 if let Some(input) = self.input_mapping.iter().position(|im| im.slot() == Some(ix))
@@ -789,7 +789,9 @@ impl TypedOp for Scan {
             }
         };
         let axis_change = AxisChange { outlet: body_leading_outlet, op: change.clone() };
-        let result = self.try_body_axes_change(axis_change, false)?;
+        let result = self
+            .try_body_axes_change(axis_change, false)
+            .with_context(|| format!("Attemping to run change through scan body"))?;
         if result.is_some() {
             trace!("{} accepted axis change", node);
         } else {

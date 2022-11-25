@@ -1,10 +1,10 @@
 use crate::internal::*;
-use tract_data::itertools::Itertools;
-use tract_ndarray::{Axis, Dimension};
-use tract_num_traits::{One, Zero};
 
+mod eval;
 mod expr;
+pub use expr::Axis;
 pub use expr::Expr;
+use tract_data::itertools::Itertools;
 mod to_matmul;
 
 #[derive(Debug, Clone, Hash)]
@@ -27,86 +27,8 @@ impl Op for EinSum {
 }
 
 impl EinSum {
-    fn new(expr: Expr) -> EinSum {
+    pub fn new(expr: Expr) -> EinSum {
         EinSum { expr }
-    }
-
-    fn output_shape<D: DimLike>(&self, inputs: &[&[D]]) -> TVec<D> {
-        self.expr
-            .index
-            .iter()
-            .sorted_by_key(|axis| axis.result.unwrap())
-            .map(|axis| {
-                axis.inputs
-                    .iter()
-                    .enumerate()
-                    .flat_map(|(input_id, positions)| {
-                        positions.iter().map(move |p| inputs[input_id][*p].clone())
-                    })
-                    .find(|x| x != &1.into())
-                    .unwrap_or_else(|| 1.into())
-            })
-            .collect()
-    }
-
-    fn eval_t<T: Datum + Zero + One>(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let shapes: TVec<_> = inputs.iter().map(|t| t.shape()).collect();
-        let output_shape = self.output_shape(&shapes);
-        let inputs: TVec<tract_ndarray::ArrayViewD<T>> =
-            inputs.iter().map(|t| t.to_array_view::<T>()).collect::<TractResult<_>>()?;
-        let summing_shape: TVec<usize> = self
-            .expr
-            .sum
-            .iter()
-            .map(|axis| {
-                axis.inputs
-                    .iter()
-                    .enumerate()
-                    .find_map(|(input_id, positions)| {
-                        if positions.len() > 0 {
-                            Some(inputs[input_id].shape()[positions[0]])
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap()
-            })
-            .collect();
-        let output = tract_ndarray::ArrayD::<T>::from_shape_fn(&*output_shape, |coords| {
-            let coords = coords.as_array_view();
-            let mut views = inputs.clone();
-            for (axis, x) in
-                self.expr.index.iter().sorted_by_key(|axis| axis.result.unwrap()).zip(coords)
-            {
-                for (input_id, input_axis_positions) in axis.inputs.iter().enumerate() {
-                    for position in input_axis_positions {
-                        let x = if views[input_id].shape()[*position] == 1 { 0 } else { *x };
-                        views[input_id]
-                            .slice_axis_inplace(tract_ndarray::Axis(*position), (x..=x).into());
-                    }
-                }
-            }
-            let mut sum: T = T::zero();
-            for sum_coords in tract_ndarray::indices(&*summing_shape) {
-                let mut views = views.clone();
-                let sum_coords = sum_coords.as_array_view();
-                for (axis, x) in self.expr.sum.iter().zip(&sum_coords) {
-                    for (input_id, input_axis_positions) in axis.inputs.iter().enumerate() {
-                        for position in input_axis_positions {
-                            views[input_id].slice_axis_inplace(Axis(*position), (*x..=*x).into())
-                        }
-                    }
-                }
-                let mut product = T::one();
-                for v in &views {
-                    debug_assert_eq!(v.len(), 1);
-                    product = product * v.iter().next().unwrap().clone();
-                }
-                sum = sum + product;
-            }
-            sum
-        });
-        Ok(tvec!(output.into_tvalue()))
     }
 }
 
@@ -116,7 +38,7 @@ impl EvalOp for EinSum {
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        dispatch_numbers!(Self::eval_t(inputs[0].datum_type())(self, inputs))
+        dispatch_numbers!(eval::eval_t(inputs[0].datum_type())(&self.expr, inputs))
     }
 }
 
@@ -127,16 +49,76 @@ impl TypedOp for EinSum {
             .enumerate()
             .all(|(ix, fact)| fact.rank() == self.expr.input_rank(ix)));
         let shapes: TVec<&[TDim]> = inputs.iter().map(|t| &*t.shape).collect();
-        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, self.output_shape(&shapes))))
+        Ok(tvec!(TypedFact::dt_shape(
+            inputs[0].datum_type,
+            eval::output_shape(&self.expr, &shapes)
+        )))
     }
 
-    fn declutter(
+    fn invariants(
+        &self,
+        inputs: &[&TypedFact],
+        _outputs: &[&TypedFact],
+    ) -> TractResult<Invariants> {
+        let inv = self
+            .expr
+            .iter_all_axes()
+            .filter_map(|axis| {
+                // if axis is used twice, don't even dare do anything
+                if axis.inputs.iter().any(|input| input.len() > 1) {
+                    None
+                } else {
+                    let i = (0..inputs.len()).map(|i| axis.inputs[i].get(0).cloned()).collect();
+                    let o = axis.result;
+                    Some(AxisInfo { inputs: i, outputs: tvec!(o), period: 1, disposable: true })
+                }
+            })
+            .collect();
+        Ok(inv)
+    }
+
+    #[allow(unused_variables)]
+    fn change_axes(
         &self,
         model: &TypedModel,
         node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        to_matmul::declutter(self, model, node)
+        io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        let (mut inputs, mut result) = self.expr.to_strs();
+        let interface: &mut String = match io {
+            InOut::In(i) => &mut inputs[i],
+            InOut::Out(o) => &mut result,
+        };
+        let mut axes: Vec<char> = interface.chars().collect();
+        match change {
+            AxisOp::Rm(rm) => {
+                axes.remove(*rm);
+            }
+            AxisOp::Add(add) => axes.insert(*add, self.expr.available_label()),
+            AxisOp::Move(from, to) => {
+                let c = axes.remove(*from);
+                axes.insert(*to, c);
+            }
+            _ => return Ok(None),
+        };
+        *interface = axes.into_iter().collect();
+        let expr = Expr::from_strs(&inputs, Some(&result));
+        return Ok(Some(AxisChangeConsequence {
+            substitute_op: Some(Box::new(EinSum::new(expr))),
+            wire_changes: tvec!((io, change.clone())),
+        }));
     }
+
+    /*
+    fn declutter(
+    &self,
+    model: &TypedModel,
+    node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+    to_matmul::declutter(self, model, node)
+    }
+    */
 
     as_op!();
 }

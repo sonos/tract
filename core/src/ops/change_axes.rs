@@ -398,7 +398,7 @@ impl AxisOp {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct AxisChange {
     pub outlet: OutletId,
     pub op: AxisOp,

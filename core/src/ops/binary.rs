@@ -157,9 +157,18 @@ impl TypedOp for TypedBinOp {
         &self,
         model: &TypedModel,
         node: &TypedNode,
-        _io: InOut,
+        io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
+        if let AxisOp::Rm(rm) = change {
+            let (inputs, outputs) = model.node_facts(node.id)?;
+            if !inputs[0].shape[*rm].is_one()
+                || !inputs[0].shape[*rm].is_one()
+                || !outputs[0].shape[*rm].is_one()
+            {
+                return Ok(None);
+            }
+        }
         Ok(Some(AxisChangeConsequence::new(model, node, None, change)))
     }
 
@@ -177,7 +186,7 @@ impl TypedOp for TypedBinOp {
                 inputs: tvec!(Some(axis), Some(axis)),
                 outputs: tvec!(Some(axis)),
                 period: 1,
-                disposable: true,
+                disposable: a.shape[axis].is_one() && b.shape[axis].is_one(),
             })
             .collect())
     }
