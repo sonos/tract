@@ -46,7 +46,7 @@ pub fn register(registry: &mut Registry) {
                     .default(-1),
             TypeName::Integer.spec().named("skip").default(0), // needed for pulse
         ],
-        &Vec::<ast::Result_>::new(),
+        &[("outputs", TypeName::Scalar.tensor().array())],
         de_scan,
     );
 }
