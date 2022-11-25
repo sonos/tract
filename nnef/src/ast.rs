@@ -2,9 +2,9 @@ use crate::internal::*;
 use tract_itertools::Itertools;
 
 pub mod dump;
+pub mod dump_doc;
 pub mod parse;
 pub mod quant;
-pub mod doc;
 
 #[derive(Clone, Debug)]
 pub struct ProtoModel {
