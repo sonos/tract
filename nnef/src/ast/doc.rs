@@ -49,7 +49,6 @@ mod test {
         let d = TempDir::new()?;
         let nnef = crate::nnef().with_tract_core().with_tract_resource();
         DocDumper::to_directory(d.path(), &nnef)?;
-        DocDumper::to_directory(".", &nnef)?;
         Ok(())
     }
 }
