@@ -18,13 +18,13 @@ pub type Extension = Box<
 >;
 
 #[derive(Clone)]
-pub struct PrimitiveDef {
+pub struct PrimitiveDecl {
     pub decl: FragmentDecl,
     pub docstrings: Option<Vec<String>>,
     pub to_tract: ToTract,
 }
 
-impl PrimitiveDef {
+impl PrimitiveDecl {
     pub fn validate(&self) -> TractResult<()> {
         self.decl.validate().with_context(|| format!("Invalid primitive `{}'", self.decl.id))
     }
@@ -41,7 +41,7 @@ pub struct Registry {
     pub docstrings: Option<Vec<String>>,
     pub aliases: Vec<String>,
     pub fragments: HashMap<String, FragmentDef>,
-    pub primitives: HashMap<String, PrimitiveDef>,
+    pub primitives: HashMap<String, PrimitiveDecl>,
     pub unit_element_wise_ops: Vec<(String, Box<dyn ElementWiseMiniOp>)>,
     pub element_wise_ops: Vec<(String, TypeId, FromTract, Vec<ast::Parameter>, ToTract)>,
     pub binary_ops: Vec<BinOp>,
@@ -79,7 +79,7 @@ impl Registry {
             id: &str, 
             params: &[ast::Parameter],
             results: &[impl Into<ast::Result_> + Clone], 
-            func: ToTract) -> &mut PrimitiveDef {
+            func: ToTract) -> &mut PrimitiveDecl {
         let decl = FragmentDecl {
             id: id.to_string(),
             generic_decl: None,
@@ -88,7 +88,7 @@ impl Registry {
         };
         self.primitives.insert(
             id.to_string(),
-            PrimitiveDef {
+            PrimitiveDecl {
                 decl,
                 docstrings: None,
                 to_tract: func,
