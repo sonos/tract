@@ -17,11 +17,23 @@ pub type Extension = Box<
         + Sync,
 >;
 
+#[derive(Clone)]
+pub struct PrimitiveDef {
+    pub decl: FragmentDecl,
+    pub to_tract: ToTract,
+}
+
+impl PrimitiveDef {
+    pub fn validate(&self) -> TractResult<()> {
+        self.decl.validate().with_context(|| format!("Invalid primitive `{}'", self.decl.id))
+    }
+}
+
 pub struct Registry {
     pub id: String,
     pub aliases: Vec<String>,
     pub fragments: HashMap<String, FragmentDef>,
-    pub primitives: HashMap<String, (Vec<ast::Parameter>, ToTract)>,
+    pub primitives: HashMap<String, PrimitiveDef>,
     pub unit_element_wise_ops: Vec<(String, Box<dyn ElementWiseMiniOp>)>,
     pub element_wise_ops: Vec<(String, TypeId, FromTract, Vec<ast::Parameter>, ToTract)>,
     pub binary_ops: Vec<BinOp>,
@@ -161,8 +173,8 @@ impl Registry {
     ) -> TractResult<Option<Value>> {
         if let Some(op) = self.primitives.get(&invocation.id) {
             let resolved =
-                ResolvedInvocation { invocation, default_params: &op.0, dt_from_quant_file: dt };
-            let out_value = (op.1)(builder, &resolved)
+                ResolvedInvocation { invocation, default_params: &op.decl.parameters, dt_from_quant_file: dt };
+            let out_value = (op.to_tract)(builder, &resolved)
                 .with_context(|| format!("Deserializing op `{}'", invocation.id))?;
             return Ok(Some(out_value));
         }
