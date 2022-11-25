@@ -8,7 +8,7 @@ use std::fmt::Debug;
 use crate::ops::change_axes::*;
 
 #[derive(Clone, Default)]
-pub struct ChangeAxes(HashSet<(usize, (InOut, AxisOp))>);
+pub struct ChangeAxes(HashSet<crate::ops::change_axes::AxisChange>);
 
 impl Debug for ChangeAxes {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -30,15 +30,32 @@ impl TypedPass for ChangeAxes {
         interfaces.extend(model.input_outlets()?.iter());
         for n in model.eval_order()? {
             for suggestion in model.node(n).op.suggested_axis_changes()? {
-                if self.0.insert((n, suggestion.clone())) {
-                    let outlet = suggestion.0.as_outlet(model.node(n));
-                    let change = AxisChange { outlet, op: suggestion.1.clone() };
+                let outlet = suggestion.0.as_outlet(model.node(n));
+                let change = AxisChange { outlet, op: suggestion.1 };
+                if self.0.insert(change.clone()) {
                     if let Some((patch, _)) = change_axes(model, &change, &interfaces, &[])
                         .with_context(|| {
                             format!("Making patch for {:?} from {}", change, model.node(n))
                         })?
                     {
                         return Ok(Some(patch));
+                    }
+                }
+            }
+            for (slot, fact) in model.node(n).outputs.iter().enumerate() {
+                for (ix, dim) in fact.fact.shape.iter().enumerate() {
+                    if dim.is_one() {
+                        let change =
+                            AxisChange { outlet: OutletId::new(n, slot), op: AxisOp::Rm(ix) };
+                        if self.0.insert(change.clone()) {
+                            if let Some((patch, _)) = change_axes(model, &change, &interfaces, &[])
+                                .with_context(|| {
+                                    format!("Making patch for {:?} from {}", change, model.node(n))
+                                })?
+                            {
+                                return Ok(Some(patch));
+                            }
+                        }
                     }
                 }
             }

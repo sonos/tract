@@ -1,7 +1,7 @@
-use crate::internal::*;
-use crate::ops::matmul::{MatMul, MatMulAxes};
-use super::expr::AxisSym;
 use super::EinSum;
+use crate::internal::*;
+use crate::ops::einsum::Axis;
+use crate::ops::matmul::{MatMul, MatMulAxes};
 
 pub fn declutter(
     op: &super::EinSum,
@@ -46,11 +46,7 @@ pub fn declutter(
         if k_axis.inputs[0][0] == a_rank - 1 {
             let repr = ('m'..).find(|c| op.expr.axis_by_repr(*c).is_none()).unwrap();
             let mut new_expr = op.expr.clone();
-            new_expr.index.push(AxisSym {
-                repr,
-                inputs: tvec!(tvec!(a_rank), tvec!()),
-                result: Some(c_rank),
-            });
+            new_expr.index.push(Axis::new(repr).input(0, a_rank).result(c_rank));
             let add =
                 patch.wire_node(format!("{}.add_m_axis", &node.name), AxisOp::Add(a_rank), &[a])?;
             let sum = patch.wire_node(
@@ -73,11 +69,7 @@ pub fn declutter(
         if k_axis.inputs[1][0] == b_rank - 1 {
             let repr = ('n'..).find(|c| op.expr.axis_by_repr(*c).is_none()).unwrap();
             let mut new_expr = op.expr.clone();
-            new_expr.index.push(AxisSym {
-                repr,
-                inputs: tvec!(tvec!(), tvec!(b_rank)),
-                result: Some(c_rank),
-            });
+            new_expr.index.push(Axis::new(repr).input(1, b_rank).result(c_rank));
             let add =
                 patch.wire_node(format!("{}.add_n_axis", &node.name), AxisOp::Add(b_rank), &[b])?;
             let sum = patch.wire_node(
