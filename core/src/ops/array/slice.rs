@@ -147,6 +147,7 @@ impl TypedOp for Slice {
         {
             return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?.with_context("noop")));
         }
+        return Ok(None);
         let (start, end) = if let (Ok(s), Ok(e)) = (self.start.to_usize(), self.end.to_usize()) {
             (s, e)
         } else {

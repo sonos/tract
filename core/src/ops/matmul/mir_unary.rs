@@ -85,13 +85,32 @@ impl TypedOp for MatMulUnary {
         {
             return Ok(Some(patch));
         }
+        /*
         if let Some(patch) = self
             .declutter_successors_are_slices(model, node)
             .context("declutter successor are slice")?
         {
             return Ok(Some(patch));
         }
+        */
         Ok(None)
+    }
+
+    fn slice(
+        &self,
+        patch: &mut TypedModelPatch,
+        prefix: &str,
+        inputs: &[OutletId],
+        output_axis: usize,
+        start: usize,
+        end: usize,
+    ) -> TractResult<Option<TVec<OutletId>>> {
+        if output_axis == self.axes.c_m {
+            let a = self.a.slice(self.axes.a_m, start, end)?.into_arc_tensor();
+            patch.wire_node(prefix, Self { a, ..self.clone() }, inputs).map(Some)
+        } else {
+            patch.wire_node(prefix, self.clone(), inputs).map(Some)
+        }
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
@@ -248,6 +267,7 @@ impl MatMulUnary {
         Ok(None)
     }
 
+    /*
     // FIXME: should this be the general case for slice_output mecanism ?
     fn declutter_successors_are_slices(
         &self,
@@ -352,6 +372,7 @@ impl MatMulUnary {
             Ok(None)
         }
     }
+    */
 }
 
 pub(super) fn mir_unary_invariants(

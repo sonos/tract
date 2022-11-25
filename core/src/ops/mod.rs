@@ -189,6 +189,20 @@ pub trait TypedOp:
 
     #[allow(unused_variables)]
     #[allow(clippy::too_many_arguments)]
+    fn slice(
+        &self,
+        patch: &mut TypedModelPatch,
+        prefix: &str,
+        inputs: &[OutletId],
+        output_axis: usize,
+        start: usize,
+        end: usize,
+    ) -> TractResult<Option<TVec<OutletId>>> {
+        Ok(None)
+    }
+
+    #[allow(unused_variables)]
+    #[allow(clippy::too_many_arguments)]
     fn slice_output(
         &self,
         model: &TypedModel,
