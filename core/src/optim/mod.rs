@@ -7,10 +7,12 @@ pub mod change_axes;
 mod op_optim;
 mod prop_const;
 mod push_split_down;
+mod slice;
 
 use self::change_axes::ChangeAxes;
 use self::prop_const::PropConst;
 use self::push_split_down::PushSplitDown;
+use self::slice::PushSliceUp;
 use op_optim::OpOptim;
 
 pub trait TypedPass: Debug + Send + Sync + dyn_clone::DynClone {
@@ -43,6 +45,7 @@ impl Optimizer {
         Optimizer::passes(vec![
             Box::new(PropConst),
             Box::new(OpOptim("declutter", TypedOp::declutter_with_session, 0)),
+            Box::new(PushSliceUp),
             Box::new(PushSplitDown),
             Box::new(ChangeAxes::default()),
         ])

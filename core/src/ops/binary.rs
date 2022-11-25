@@ -201,6 +201,18 @@ impl TypedOp for TypedBinOp {
             .collect())
     }
 
+    fn slice(
+        &self,
+        patch: &mut TypedModelPatch,
+        prefix: &str,
+        inputs: &[OutletId],
+        _output_axis: usize,
+        _start: usize,
+        _end: usize,
+    ) -> TractResult<Option<TVec<OutletId>>> {
+        Ok(Some(patch.wire_node(prefix, self.clone(), inputs)?))
+    }
+
     fn slice_output(
         &self,
         model: &TypedModel,
@@ -472,21 +484,21 @@ macro_rules! bin_to_super_type {
                     })*
                  )*
                     /*
-                $(
-                    $(
-                        $(if a.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
-                            let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
-                            let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
-                            let mut a = a.to_array_view_mut::<$typ_dt>()?;
-                            let b = b.to_array_view::<$typ_dt>()?;
-                            $crate::ndarray::Zip::from(&mut a).and_broadcast(b).for_each(|a, b| cab(a, a, b, zp, scale));
-                            return Ok(())
-                        }
-                        )*
-                     )*
-                 )?
-                 */
-                bail!("{} does not support {:?} (out of place)", self.name(), a.datum_type());
+                       $(
+                       $(
+                       $(if a.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
+                       let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
+                       let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
+                       let mut a = a.to_array_view_mut::<$typ_dt>()?;
+                       let b = b.to_array_view::<$typ_dt>()?;
+                       $crate::ndarray::Zip::from(&mut a).and_broadcast(b).for_each(|a, b| cab(a, a, b, zp, scale));
+                       return Ok(())
+                       }
+                       )*
+                       )*
+                       )?
+                       */
+                    bail!("{} does not support {:?} (out of place)", self.name(), a.datum_type());
             }
 
             $(fn eval(&self, a: TValue, b: TValue) -> TractResult<Tensor> {
@@ -540,9 +552,9 @@ macro_rules! bin_to_super_type {
                     }
                  )?
                 $(
-                fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
-                    ($operating_datum_type)(a, b)
-                })?
+                    fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
+                        ($operating_datum_type)(a, b)
+                    })?
         }
 
         pub fn $func() -> $crate::ops::binary::TypedBinOp {
@@ -623,7 +635,7 @@ macro_rules! bin_to_bool {
             }
 
             fn eval_in_a(&self, a: &mut Tensor, _b: &Tensor) -> TractResult<()> {
-                    bail!("{} does not support {:?}", self.name(), a.datum_type());
+                bail!("{} does not support {:?}", self.name(), a.datum_type());
             }
 
             fn result_datum_type(&self, _a: DatumType, _b: DatumType) -> TractResult<DatumType> {
@@ -658,9 +670,9 @@ macro_rules! bin_to_bool {
                  )?
 
                 $(
-                fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
-                    ($operating_datum_type)(a, b)
-                })?
+                    fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
+                        ($operating_datum_type)(a, b)
+                    })?
 
         }
 
