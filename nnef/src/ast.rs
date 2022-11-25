@@ -4,6 +4,7 @@ use tract_itertools::Itertools;
 pub mod dump;
 pub mod parse;
 pub mod quant;
+pub mod doc;
 
 #[derive(Clone, Debug)]
 pub struct ProtoModel {
@@ -132,6 +133,7 @@ impl FragmentDef {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FragmentDecl {
     pub id: String,
+    pub doc: Option<Vec<String>>,
     pub generic_decl: Option<Option<TypeName>>,
     pub parameters: Vec<Parameter>,
     pub results: Vec<Result_>,

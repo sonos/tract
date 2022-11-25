@@ -159,6 +159,7 @@ impl<'a> IntoAst<'a> {
                 decl: FragmentDecl {
                     id,
                     generic_decl: None,
+                    doc: None,
                     parameters: parameters
                         .into_iter()
                         .map(|s| TypeName::Scalar.tensor().named(s))
@@ -215,6 +216,7 @@ impl<'a> IntoAst<'a> {
             decl: FragmentDecl {
                 id: "tract_core_properties".to_string(),
                 generic_decl: None,
+                doc: None,
                 parameters: vec![],
                 results: vec![Result_ {
                     id: "properties".to_string(),
