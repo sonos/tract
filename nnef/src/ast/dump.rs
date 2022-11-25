@@ -56,7 +56,7 @@ impl<'a> Dumper<'a> {
         Ok(())
     }
 
-    fn fragment_decl(&mut self, decl: &FragmentDecl) -> TractResult<()> {
+    pub(crate) fn fragment_decl(&mut self, decl: &FragmentDecl) -> TractResult<()> {
         write!(self.w, "fragment {}", decl.id)?;
         if let Some(generic_decl) = &decl.generic_decl {
             if let Some(name) = generic_decl {

@@ -133,7 +133,6 @@ impl FragmentDef {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FragmentDecl {
     pub id: String,
-    pub doc: Option<Vec<String>>,
     pub generic_decl: Option<Option<TypeName>>,
     pub parameters: Vec<Parameter>,
     pub results: Vec<Result_>,
