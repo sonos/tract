@@ -36,14 +36,14 @@ impl<'a> DocDumper<'a> {
         }
         // Generate and write Primitive declarations.
         for primitive in registry.primitives.values().sorted_by_key(|v| &v.decl.id) {
-            primitive.doc.iter().flatten()
+            primitive.docstrings.iter().flatten()
                 .try_for_each(|d| writeln!(self.w, "# {}", d))?;
             
             Dumper::new(self.w).fragment_decl(&primitive.decl)?;
             writeln!(self.w, ";\n")?;
         }
 
-        // Generate and write fragment declarations.
+        // Generate and write fragment declarations
         Dumper::new(self.w)
             .fragments(registry.fragments.values().cloned().collect::<Vec<_>>().as_slice())?;
 
