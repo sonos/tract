@@ -20,6 +20,7 @@ pub type Extension = Box<
 #[derive(Clone)]
 pub struct PrimitiveDef {
     pub decl: FragmentDecl,
+    pub doc: Option<Vec<String>>,
     pub to_tract: ToTract,
 }
 
@@ -60,8 +61,21 @@ impl Registry {
         self.from_tract.insert(id, func);
     }
 
-    pub fn register_primitive(&mut self, id: &str, decl: &[ast::Parameter], func: ToTract) {
-        self.primitives.insert(id.to_string(), (decl.to_vec(), func));
+    pub fn register_primitive(&mut self, id: &str, params: &[ast::Parameter], func: ToTract) {
+        let decl = FragmentDecl {
+            id: id.to_string(),
+            generic_decl: None,
+            parameters: params.to_vec(),
+            results: vec![],
+        };
+        self.primitives.insert(
+            id.to_string(),
+            PrimitiveDef {
+                decl,
+                doc: None,
+                to_tract: func,
+            }
+        );
     }
 
     pub fn register_fragment(&mut self, def: FragmentDef) {

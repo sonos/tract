@@ -17,15 +17,8 @@ impl<'a> DocDumper<'a> {
         Dumper::new(self.w)
             .fragments(registry.fragments.values().cloned().collect::<Vec<_>>().as_slice())?;
 
-        for primitive in registry.primitives.iter() {
-            let fragment = FragmentDef {
-                decl: FragmentDecl {
-                    id: primitive.0.clone(),
-                generic_decl: None,
-                parameters: primitive.1.0.clone(),
-                results: vec![], // we need to expose the results.
-            }, body: None};
-            Dumper::new(self.w).fragment_def(&fragment)?;
+        for primitive in registry.primitives.values().sorted_by_key(|v| &v.decl.id) {
+            Dumper::new(self.w).fragment_decl(&primitive.decl)?;
         }
         Ok(())
     }
