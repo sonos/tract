@@ -7,8 +7,6 @@ use tract_core::internal::*;
 use tract_core::ops::scan::Scan;
 use tract_itertools::izip;
 use tract_itertools::Itertools;
-#[cfg(feature = "onnx")]
-use tract_onnx::pb::ModelProto;
 #[cfg(feature = "tf")]
 use tract_tensorflow::tfpb::tensorflow::GraphDef;
 

@@ -3,6 +3,7 @@ use scan_fmt::scan_fmt;
 use std::io::Read;
 use std::path::PathBuf;
 use std::str::FromStr;
+use tract_core::ops::konst::Const;
 #[allow(unused_imports)]
 use tract_itertools::Itertools;
 use tract_libcli::profile::BenchLimits;
@@ -673,7 +674,7 @@ impl Parameters {
         #[cfg(feature = "pulse")]
         {
             if let Some(spec) = matches.value_of("pulse") {
-                stage!("pulse", typed_model -> pulsed_model, |m:TypedModel| { 
+                stage!("pulse", typed_model -> pulsed_model, |m:TypedModel| {
                     let (sym, pulse) = if let Ok((s,p)) = scan_fmt!(spec, "{}={}", String, String) {
                         (s, parse_tdim(&m.symbol_table, &p)?)
                     } else if let Ok(i) = parse_tdim(&m.symbol_table, spec) {
@@ -682,7 +683,7 @@ impl Parameters {
                         bail!("Can not parse pulse specification {}", spec)
                     };
                     let sym = m.symbol_table.sym(&sym);
-                    PulsedModel::new(&m, sym, &pulse) 
+                    PulsedModel::new(&m, sym, &pulse)
                 });
                 stage!("pulse-to-type", pulsed_model -> typed_model, |m:PulsedModel| m.into_typed());
                 stage!("pulse-declutter", typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
@@ -811,6 +812,27 @@ impl Parameters {
                 }
             }
         };
+
+        if let Some(consts) = matches.values_of("constantize") {
+            for konst in consts {
+                if let Some(value) =
+                    tensors_values.by_name(konst).and_then(|tv| tv.values.as_ref()).and_then(|v| v.get(0))
+                {
+                    let value = value.clone().into_arc_tensor();
+                    let id = raw_model.node_id_by_name(konst)?;
+                    info!("Commuting {} into a const of {:?}", raw_model.node_display(id), value);
+                    let op = Box::new(Const::new(value.clone().into_arc_tensor()));
+                    if let Some(inf) = raw_model.downcast_mut::<InferenceModel>() {
+                        inf.inputs.retain(|i| i.node != id);
+                        inf.nodes[id].op = op;
+                    } else if let Some(typ) = raw_model.downcast_mut::<TypedModel>() {
+                        typ.inputs.retain(|i| i.node != id);
+                        typ.nodes[id].op = op;
+                        typ.nodes[id].outputs[0].fact = TypedFact::from(value.clone());
+                    }
+                }
+            }
+        }
 
         let output_names_and_labels: Vec<Vec<String>> = raw_model
             .output_outlets()
