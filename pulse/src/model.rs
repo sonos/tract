@@ -136,6 +136,7 @@ impl
             )?
             .unwrap());
         }
+
         if let Some(pulsifier) = self.2.get(&node.op.type_id()) {
             if let Some(pulsified) =
                 (pulsifier.func)(source, node, target, mapping, &self.0, &self.1)?

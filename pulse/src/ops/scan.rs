@@ -47,17 +47,18 @@ impl PulsedOp for Scan {
         let output_count = self
             .output_mapping
             .iter()
-            .map(|om| om.scan.map(|s| s.axis).unwrap_or(0).max(om.last_value_slot.unwrap_or(0)))
+            .map(|om| om.scan.map(|s| s.slot).unwrap_or(0).max(om.last_value_slot.unwrap_or(0)))
             .max()
-            .context("no output?")?;
+            .context("no output?")?
+            + 1;
 
         let mut facts = tvec!();
-        for output_slot in 0..=output_count {
+        for output_slot in 0..output_count {
             let (output_body_ix, output_mapping) = self
                 .output_mapping
                 .iter()
                 .enumerate()
-                .find(|(_ix, om)| om.scan.map(|s| s.axis) == Some(output_slot))
+                .find(|(_ix, om)| om.scan.map(|s| s.slot) == Some(output_slot))
                 .context("Scan pulse only supports full outputs")?;
             let output_body_fact = self.body.output_fact(output_body_ix)?;
             let shape: ShapeFact = output_body_fact
