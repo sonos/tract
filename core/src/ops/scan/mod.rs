@@ -70,7 +70,7 @@ impl fmt::Debug for InputMapping {
     }
 }
 
-#[derive(Clone, new, Hash)]
+#[derive(Clone, new, Hash, Default)]
 pub struct OutputMapping<F: Clone> {
     pub scan: Option<ScanInfo>,
     pub full_dim_hint: Option<F>,
