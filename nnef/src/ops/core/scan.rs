@@ -230,13 +230,6 @@ fn de_scan(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
     let mut output_mapping = vec![];
     for output_name in fragment.decl.results.iter().map(|o| &*o.id) {
         output_mapping.push(OutputMapping {
-            /*
-            chunk: outputs
-                .iter()
-                .find(|om| om.0 == output_name && om.1 == "full")
-                .map(|om| om.3)
-                .unwrap_or(1),
-                */
             full_dim_hint: None,
             scan: outputs
                 .iter()
@@ -248,14 +241,6 @@ fn de_scan(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
                 .enumerate()
                 .find(|(_, om)| om.0 == output_name && om.1 == "last")
                 .map(|(ix, _om)| ix),
-            /*
-            axis: outputs
-                .iter()
-                .enumerate()
-                .find(|(_, om)| om.0 == output_name && om.1 == "full")
-                .map(|(_ix, om)| om.2)
-                .unwrap_or(0),
-                */
             state: state.iter().any(|state| state.2 == output_name),
         });
     }
