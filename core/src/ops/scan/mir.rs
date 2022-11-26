@@ -139,7 +139,7 @@ impl Scan {
             .iter()
             .map(|m| OutputMapping {
                 scan: m.scan.map(|info| ScanInfo {
-                    axis: info.axis - (info.axis > discarded) as usize,
+                    slot: info.slot - (info.slot > discarded) as usize,
                     ..info.clone()
                 }),
                 last_value_slot: m.last_value_slot.map(|n| n - (n > discarded) as usize),
@@ -237,7 +237,7 @@ impl Scan {
                     .output_mapping
                     .iter()
                     .map(|m| OutputMapping {
-                        scan: m.scan.filter(|info| info.axis != ix),
+                        scan: m.scan.filter(|info| info.slot != ix),
                         last_value_slot: m.last_value_slot.filter(|s| *s != ix),
                         full_dim_hint: m.full_dim_hint.clone(),
                         state: m.state,
