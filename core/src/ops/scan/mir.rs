@@ -24,42 +24,12 @@ impl Scan {
             model = model.into_optimized()?;
         }
         let plan = SimplePlan::new(model)?;
-        let input_mapping = self
-            .input_mapping
-            .iter()
-            .map(|im| {
-                Ok(match im {
-                    InputMapping::Scan { axis, slot, chunk } => {
-                        InputMapping::Scan { axis: *axis, slot: *slot, chunk: *chunk }
-                    }
-                    InputMapping::Full { slot } => InputMapping::Full { slot: *slot },
-                    InputMapping::State { initializer } => {
-                        InputMapping::State { initializer: initializer.clone() }
-                    }
-                })
-            })
-            .collect::<TractResult<_>>()?;
-
-        let output_mapping = self
-            .output_mapping
-            .iter()
-            .map(|im| {
-                Ok(OutputMapping {
-                    state: im.state,
-                    axis: im.axis,
-                    full_slot: im.full_slot,
-                    full_dim_hint: im.full_dim_hint.clone(),
-                    last_value_slot: im.last_value_slot,
-                    chunk: im.chunk,
-                })
-            })
-            .collect::<TractResult<_>>()?;
 
         Ok(LirScan::new(Arc::new(LirScanOpParams::new(
             self.skip,
             Arc::new(plan),
-            input_mapping,
-            output_mapping,
+            self.input_mapping.clone(),
+            self.output_mapping.clone(),
         ))))
     }
 
@@ -144,9 +114,10 @@ impl Scan {
                 &InputMapping::Full { slot } => {
                     InputMapping::Full { slot: slot - (slot > discarded) as usize }
                 }
-                &InputMapping::Scan { slot, axis, chunk } => {
-                    InputMapping::Scan { slot: slot - (slot > discarded) as usize, axis, chunk }
-                }
+                &InputMapping::Scan(info) => InputMapping::Scan(ScanInfo {
+                    slot: info.slot - (info.slot > discarded) as usize,
+                    ..info.clone()
+                }),
                 InputMapping::State { initializer } => {
                     let initializer = match initializer {
                         StateInitializer::FromInput(n) => {
@@ -167,12 +138,13 @@ impl Scan {
         mappings
             .iter()
             .map(|m| OutputMapping {
-                full_slot: m.full_slot.map(|n| n - (n > discarded) as usize),
+                scan: m.scan.map(|info| ScanInfo {
+                    axis: info.axis - (info.axis > discarded) as usize,
+                    ..info.clone()
+                }),
                 last_value_slot: m.last_value_slot.map(|n| n - (n > discarded) as usize),
                 full_dim_hint: m.full_dim_hint.clone(),
-                chunk: m.chunk,
                 state: m.state,
-                axis: m.axis,
             })
             .collect()
     }
@@ -214,21 +186,21 @@ impl Scan {
             {
                 let mut new_inputs = node.inputs.clone();
                 let slot = match &self.input_mapping[inner_input_id] {
-                    InputMapping::Full { slot } => Some(slot),
-                    InputMapping::Scan { slot, .. } => Some(slot),
+                    InputMapping::Full { slot } => Some(*slot),
+                    InputMapping::Scan(info) => Some(info.slot),
                     InputMapping::State { initializer } => match initializer {
-                        StateInitializer::FromInput(n) => Some(n),
+                        StateInitializer::FromInput(n) => Some(*n),
                         _ => None,
                     },
                 };
                 let mut new_mappings: Vec<_> = self.input_mapping.clone();
                 new_mappings.remove(inner_input_id);
                 if let Some(slot) = slot {
-                    new_mappings = Self::remove_outer_input_from_mappings(&new_mappings, *slot);
+                    new_mappings = Self::remove_outer_input_from_mappings(&new_mappings, slot);
                 }
                 let mut model_inputs = self.body.input_outlets()?.to_vec();
                 if let Some(slot) = slot {
-                    new_inputs.remove(*slot);
+                    new_inputs.remove(slot);
                 }
                 model_inputs.remove(inner_input_id);
                 let mut body = self.body.clone();
@@ -265,12 +237,10 @@ impl Scan {
                     .output_mapping
                     .iter()
                     .map(|m| OutputMapping {
-                        full_slot: m.full_slot.filter(|s| *s != ix),
+                        scan: m.scan.filter(|info| info.axis != ix),
                         last_value_slot: m.last_value_slot.filter(|s| *s != ix),
                         full_dim_hint: m.full_dim_hint.clone(),
-                        chunk: m.chunk,
                         state: m.state,
-                        axis: m.axis,
                     })
                     .collect::<Vec<_>>();
                 let mut op = self.clone();
@@ -304,7 +274,7 @@ impl Scan {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         for (ix, om) in self.output_mapping.iter().enumerate() {
-            if om.last_value_slot.is_none() && om.full_slot.is_none() && !om.state {
+            if om.last_value_slot.is_none() && om.scan.is_none() && !om.state {
                 let mut new_op = self.clone();
                 new_op.output_mapping.remove(ix);
                 new_op.body.outputs.remove(ix);
@@ -327,7 +297,7 @@ impl Scan {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         for (model_input, input) in self.input_mapping.iter().enumerate() {
-            if let Some((slot, axis, chunk)) = input.as_scan() {
+            if let Some(info) = input.as_scan() {
                 let scan_source = self.body.input_outlets()?[model_input];
                 let scan_source_node = self.body.node(scan_source.node);
                 for successor in &scan_source_node.outputs[0].successors {
@@ -337,14 +307,14 @@ impl Scan {
                     }
                     let (input_facts, output_facts) = self.body.node_facts(successor_node.id)?;
                     let invariants = successor_node.op.invariants(&input_facts, &output_facts)?;
-                    if let Some(axis_after) = invariants.unary_track_axis_down(axis, false) {
+                    if let Some(axis_after) = invariants.unary_track_axis_down(info.axis, false) {
                         let mut outside_patch = TypedModelPatch::default();
                         let mut patch_inputs = node
                             .inputs
                             .iter()
                             .map(|&i| outside_patch.tap_model(model, i))
                             .collect::<TractResult<TVec<_>>>()?;
-                        let input = patch_inputs[slot];
+                        let input = patch_inputs[info.slot];
                         let new_input_wire = outside_patch.wire_node(
                             format!("{}.extracted.{}", node.name, successor_node.name),
                             successor_node.op.clone(),
@@ -353,7 +323,7 @@ impl Scan {
                         patch_inputs.push(new_input_wire);
                         let new_input_outer_fact = outside_patch.outlet_fact(new_input_wire)?;
                         let mut new_input_inner_fact = new_input_outer_fact.clone();
-                        new_input_inner_fact.shape.set(axis_after, chunk.abs().to_dim());
+                        new_input_inner_fact.shape.set(axis_after, info.chunk.abs().to_dim());
 
                         let mut new_body = self.body.clone();
                         let new_source_wire = new_body.add_source(
@@ -373,11 +343,11 @@ impl Scan {
                         inner_patch.apply(&mut new_body)?;
 
                         let mut input_mapping = self.input_mapping.clone();
-                        input_mapping.push(InputMapping::Scan {
+                        input_mapping.push(InputMapping::Scan(ScanInfo {
                             axis: axis_after,
-                            chunk,
+                            chunk: info.chunk,
                             slot: node.inputs.len(),
-                        });
+                        }));
 
                         let new_op = Self {
                             input_mapping,
@@ -409,101 +379,100 @@ impl Scan {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         for (model_ix, mapping) in self.output_mapping.iter().enumerate() {
-            let mut is_used = false;
-            for slot in [mapping.full_slot, mapping.last_value_slot].iter().flatten() {
-                if node.outputs[*slot].successors.len() > 0
-                    || model.outputs.contains(&(node.id, *slot).into())
+            if let Some(info) = mapping.scan {
+                let emitter_outlet = self.body.output_outlets()?[model_ix];
+                let emitter_node = self.body.node(emitter_outlet.node);
+                if emitter_node.outputs[emitter_outlet.slot].successors.len() > 0
+                    || mapping.state
+                    || mapping.scan.map(|i| i.chunk > 1).unwrap_or(true)
                 {
-                    is_used = true;
+                    // continue if both last_value and full values are exported
+                    continue;
                 }
-            }
-            if !is_used {
-                continue;
-            }
-            let emitter_outlet = self.body.output_outlets()?[model_ix];
-            let emitter_node = self.body.node(emitter_outlet.node);
-            if emitter_node.outputs[emitter_outlet.slot].successors.len() > 0
-                || mapping.state
-                || mapping.chunk > 1
-            {
-                // continue if both last_value and full values are exported
-                continue;
-            }
-            let (input_facts, output_facts) = self.body.node_facts(emitter_node.id)?;
-            let invariants = emitter_node.op.invariants(&input_facts, &output_facts)?;
-            let axis_before = if let Some(a) = invariants.unary_track_axis_up(mapping.axis, false) {
-                a
-            } else {
-                continue;
-            };
+                let (input_facts, output_facts) = self.body.node_facts(emitter_node.id)?;
+                let invariants = emitter_node.op.invariants(&input_facts, &output_facts)?;
+                let Some(axis_before) = invariants.unary_track_axis_up(info.axis, false)
+                    else {
+                        continue;
+                    };
 
-            let mut fixed_body = self.body.clone();
-            let mut output_mapping = self.output_mapping.clone();
+                let mut fixed_body = self.body.clone();
+                let mut output_mapping = self.output_mapping.clone();
 
-            let mut full_values_slots = vec![];
-            let mut last_values_slots = vec![];
-            let mut current_output_number = node.outputs.len();
-            for input in &emitter_node.inputs {
-                if let Some(position) = fixed_body.outputs.iter().position(|o| o == input) {
-                    let mut mapping = &mut output_mapping[position];
-                    if mapping.last_value_slot.is_none() {
-                        mapping.last_value_slot = Some(current_output_number);
-                        current_output_number += 1;
+                let mut full_values_slots = vec![];
+                let mut last_values_slots = vec![];
+                let mut current_output_number = node.outputs.len();
+                for input in &emitter_node.inputs {
+                    if let Some(position) = fixed_body.outputs.iter().position(|o| o == input) {
+                        let mut mapping = &mut output_mapping[position];
+                        if mapping.last_value_slot.is_none() {
+                            mapping.last_value_slot = Some(current_output_number);
+                            current_output_number += 1;
+                        }
+                        if mapping.scan.is_none() {
+                            mapping.scan = Some(ScanInfo {
+                                slot: current_output_number,
+                                axis: axis_before,
+                                chunk: info.chunk,
+                            });
+                            current_output_number += 1;
+                        }
+                        full_values_slots.push(mapping.scan.unwrap().slot);
+                        last_values_slots.push(mapping.last_value_slot.unwrap());
+                    } else {
+                        fixed_body.outputs.push(*input);
+                        let full_slot = current_output_number;
+                        let last_value_slot = Some(current_output_number + 1);
+                        current_output_number += 2;
+                        output_mapping.push(OutputMapping {
+                            scan: Some(ScanInfo {
+                                slot: current_output_number,
+                                axis: axis_before,
+                                chunk: info.chunk,
+                            }),
+                            last_value_slot,
+                            ..mapping.clone()
+                        });
+                        full_values_slots.push(full_slot);
+                        last_values_slots.push(last_value_slot.unwrap());
                     }
-                    if mapping.full_slot.is_none() {
-                        mapping.axis = axis_before;
-                        mapping.full_slot = Some(current_output_number);
-                        current_output_number += 1;
-                    }
-                    full_values_slots.push(mapping.full_slot.unwrap());
-                    last_values_slots.push(mapping.last_value_slot.unwrap());
-                } else {
-                    fixed_body.outputs.push(*input);
-                    let full_slot = Some(current_output_number);
-                    let last_value_slot = Some(current_output_number + 1);
-                    current_output_number += 2;
-                    output_mapping.push(OutputMapping {
-                        axis: axis_before,
-                        full_slot,
-                        last_value_slot,
-                        ..mapping.clone()
-                    });
-                    full_values_slots.push(full_slot.unwrap());
-                    last_values_slots.push(last_value_slot.unwrap());
                 }
-            }
 
-            let mut outside_patch = TypedModelPatch::default();
-            let inputs = node
-                .inputs
-                .iter()
-                .map(|&i| outside_patch.tap_model(model, i))
-                .collect::<TractResult<TVec<_>>>()?;
-            let new_op = Self {
-                input_mapping: self.input_mapping.clone(),
-                output_mapping,
-                decluttered: false,
-                body: fixed_body,
-                skip: self.skip,
-                seq_length_input_slot: self.seq_length_input_slot,
-            };
-            let scan_outputs = outside_patch.wire_node(&node.name, new_op, &inputs)?;
-            let output = mapping.full_slot.unwrap();
-            let inputs =
-                full_values_slots.iter().map(|slot| scan_outputs[*slot]).collect::<TVec<_>>();
-            let wire =
-                outside_patch.wire_node(&*emitter_node.name, emitter_node.op.clone(), &inputs)?[0];
-            outside_patch.shunt_outside(model, OutletId::new(node.id, output), wire)?;
-            for output_slot in 0..node.outputs.len() {
-                if output_slot != output {
-                    outside_patch.shunt_outside(
-                        model,
-                        OutletId::new(node.id, output_slot),
-                        OutletId::new(scan_outputs[0].node, output_slot),
-                    )?;
+                let mut outside_patch = TypedModelPatch::default();
+                let inputs = node
+                    .inputs
+                    .iter()
+                    .map(|&i| outside_patch.tap_model(model, i))
+                    .collect::<TractResult<TVec<_>>>()?;
+                let new_op = Self {
+                    input_mapping: self.input_mapping.clone(),
+                    output_mapping,
+                    decluttered: false,
+                    body: fixed_body,
+                    skip: self.skip,
+                    seq_length_input_slot: self.seq_length_input_slot,
+                };
+                let scan_outputs = outside_patch.wire_node(&node.name, new_op, &inputs)?;
+                let output = mapping.scan.unwrap();
+                let inputs =
+                    full_values_slots.iter().map(|slot| scan_outputs[*slot]).collect::<TVec<_>>();
+                let wire = outside_patch.wire_node(
+                    &*emitter_node.name,
+                    emitter_node.op.clone(),
+                    &inputs,
+                )?[0];
+                outside_patch.shunt_outside(model, OutletId::new(node.id, output.slot), wire)?;
+                for output_slot in 0..node.outputs.len() {
+                    if output_slot != output.slot {
+                        outside_patch.shunt_outside(
+                            model,
+                            OutletId::new(node.id, output_slot),
+                            OutletId::new(scan_outputs[0].node, output_slot),
+                        )?;
+                    }
                 }
+                return Ok(Some(outside_patch));
             }
-            return Ok(Some(outside_patch));
         }
         Ok(None)
     }
@@ -574,9 +543,9 @@ impl Scan {
                 }
                 match &*m {
                     InputMapping::Full { .. } => (),
-                    &InputMapping::Scan { axis, chunk, slot } => {
-                        if let Some(axis) = change.transform_axis(axis) {
-                            *m = InputMapping::Scan { axis, slot, chunk };
+                    &InputMapping::Scan(info) => {
+                        if let Some(axis) = change.transform_axis(info.axis) {
+                            *m = InputMapping::Scan(ScanInfo { axis, ..info });
                         } else {
                             return Ok(None);
                         };
@@ -601,18 +570,17 @@ impl Scan {
                 .find(|(iface, _change)| iface == &InOut::Out(ix))
                 .map(|pair| pair.1.clone())
             {
-                if let Some(slot) = m.full_slot {
-                    wire_changes.push((InOut::Out(slot), change.clone()));
-                }
-                if let Some(slot) = m.last_value_slot {
-                    wire_changes.push((InOut::Out(slot), change.clone()));
-                }
-                if !m.state {
-                    if let Some(new_axis) = change.transform_axis(m.axis) {
-                        m.axis = new_axis;
+                if let Some(old) = m.scan {
+                    let mut scan = old;
+                    if let Some(new_axis) = change.transform_axis(old.axis) {
+                        scan.axis = new_axis;
                     } else {
                         return Ok(None);
                     }
+                    wire_changes.push((InOut::Out(scan.slot), change.clone()));
+                }
+                if let Some(slot) = m.last_value_slot {
+                    wire_changes.push((InOut::Out(slot), change.clone()));
                 }
             };
         }
@@ -670,18 +638,17 @@ impl TypedOp for Scan {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut outputs = tvec!();
         let iters = {
-            let (outside_slot, axis, chunk) =
-                self.input_mapping.iter().flat_map(|it| it.as_scan()).next().unwrap();
-            inputs[outside_slot].shape[axis].clone().div_ceil(chunk.unsigned_abs() as u64)
+            let info = self.input_mapping.iter().flat_map(|it| it.as_scan()).next().unwrap();
+            inputs[info.slot].shape[info.axis].clone().div_ceil(info.chunk.unsigned_abs() as u64)
         };
         for (ix, output) in self.output_mapping.iter().enumerate() {
             let fact = self.body.output_fact(ix)?;
-            if let Some(slot) = output.full_slot {
+            if let Some(info) = output.scan {
                 let mut shape = fact.shape.clone();
                 let scanning_dim =
-                    output.full_dim_hint.clone().unwrap_or(shape[output.axis].clone() * &iters);
-                shape.set(output.axis, scanning_dim);
-                outputs.push((slot, fact.datum_type.fact(shape)));
+                    output.full_dim_hint.clone().unwrap_or(shape[info.axis].clone() * &iters);
+                shape.set(info.axis, scanning_dim);
+                outputs.push((info.slot, fact.datum_type.fact(shape)));
             }
             if let Some(slot) = output.last_value_slot {
                 outputs.push((slot, fact.datum_type.fact(fact.shape.clone())));
@@ -711,8 +678,8 @@ impl TypedOp for Scan {
             }
             for (ix, output_mapping) in self.output_mapping.iter().enumerate() {
                 let mut slots = vec![];
-                if let Some(slot) = output_mapping.full_slot {
-                    slots.push(slot);
+                if let Some(scan) = output_mapping.scan {
+                    slots.push(scan.slot);
                 }
                 if let Some(slot) = output_mapping.last_value_slot {
                     slots.push(slot);
@@ -735,16 +702,16 @@ impl TypedOp for Scan {
     fn suggested_axis_changes(&self) -> TractResult<TVec<(InOut, AxisOp)>> {
         let mut suggestions = tvec!();
         for input in &self.input_mapping {
-            if let InputMapping::Scan { slot, axis, chunk: _ } = input {
-                if *axis != 0 {
-                    suggestions.push((InOut::In(*slot), AxisOp::Move(*axis, 0)))
+            if let InputMapping::Scan(info) = input {
+                if info.axis != 0 {
+                    suggestions.push((InOut::In(info.slot), AxisOp::Move(info.axis, 0)))
                 }
             }
         }
         for output in &self.output_mapping {
-            if let Some(slot) = output.full_slot {
-                if output.axis != 0 {
-                    suggestions.push((InOut::Out(slot), AxisOp::Move(output.axis, 0)))
+            if let Some(scan) = output.scan {
+                if scan.axis != 0 {
+                    suggestions.push((InOut::Out(scan.slot), AxisOp::Move(scan.axis, 0)))
                 }
             }
         }
@@ -773,7 +740,9 @@ impl TypedOp for Scan {
                 let output = self
                     .output_mapping
                     .iter()
-                    .position(|im| im.full_slot == Some(ix) || im.last_value_slot == Some(ix))
+                    .position(|im| {
+                        im.scan.map(|i| i.axis) == Some(ix) || im.last_value_slot == Some(ix)
+                    })
                     .unwrap();
                 self.body.output_outlets()?[output]
             }

@@ -3,6 +3,7 @@ use crate::pb::*;
 use tract_hir::internal::*;
 use tract_hir::ops;
 use tract_hir::tract_core::ops::matmul::MatMulAxes;
+use tract_hir::tract_core::ops::scan::ScanInfo;
 
 pub fn rnn(
     _ctx: &ParsingContext,
@@ -57,7 +58,6 @@ impl Expansion for RNN {
     fn validation(&self) -> Validation {
         Validation::Rounding
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -198,7 +198,7 @@ impl RNN {
         // scann inner interface: [chunk=1, batch_size, input_size]
         // onnx inner interface: [batch_size, input_size]
         outer_inputs.push(inputs[0]);
-        input_mapping.push(scan::InputMapping::Scan { slot: 0, axis: 0, chunk });
+        input_mapping.push(scan::InputMapping::Scan(ScanInfo { slot: 0, axis: 0, chunk }));
         let mut x_source_fact = x_fact.without_value();
         x_source_fact.shape.set(0, 1.to_dim());
         let x_source = body.add_source("x_source", x_source_fact)?;
@@ -256,11 +256,10 @@ impl RNN {
             )
         };
         input_mapping.push(scan::InputMapping::State { initializer });
-        let h_source = body
-            .add_source(
-                "h_source",
-                x_fact.datum_type.fact(&[1.to_dim(), b_size.clone(), h_size.clone()]),
-            )?;
+        let h_source = body.add_source(
+            "h_source",
+            x_fact.datum_type.fact(&[1.to_dim(), b_size.clone(), h_size.clone()]),
+        )?;
 
         wire!(Ht_1 = AxisOp::Rm(0), h_source);
 
@@ -292,11 +291,9 @@ impl RNN {
 
         let output_mapping = scan::OutputMapping {
             state: true,
-            axis: 0,
-            chunk,
             full_dim_hint: None,
             last_value_slot: self.optional_y_h_output,
-            full_slot: self.optional_y_output,
+            scan: self.optional_y_output.map(|slot| ScanInfo { axis: 0, chunk, slot }),
         };
 
         let scan_outputs = target.wire_node(

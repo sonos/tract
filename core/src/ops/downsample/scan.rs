@@ -69,25 +69,27 @@ pub fn pull_downsample_over_scan(
                     *initializer = StateInitializer::Value(new_v.remove(0).into_arc_tensor());
                 }
             }
-            InputMapping::Scan { ref mut chunk, .. } => {
-                if *chunk > 0 && *chunk as usize % down_op.stride as usize != 0 {
+            InputMapping::Scan(info) => {
+                if info.chunk > 0 && info.chunk as usize % down_op.stride as usize != 0 {
                     return Ok(None);
                 }
-                *chunk =
-                    chunk.unsigned_abs().divceil(down_op.stride as usize) as isize * chunk.signum()
+                info.chunk = info.chunk.unsigned_abs().divceil(down_op.stride as usize) as isize
+                    * info.chunk.signum()
             }
             _ => (),
         }
     }
     for output in &mut new_scan.output_mapping {
-        if output.chunk as usize % down_op.stride as usize != 0 {
-            return Ok(None);
-        }
         if let Some(d) = output.full_dim_hint.as_mut() {
             *d = down_op.transform_dim(d)
         }
-        output.chunk = output.chunk.unsigned_abs().divceil(down_op.stride as usize) as isize
-            * output.chunk.signum()
+        if let Some(info) = &mut output.scan {
+            if info.chunk as usize % down_op.stride as usize != 0 {
+                return Ok(None);
+            }
+            info.chunk = info.chunk.unsigned_abs().divceil(down_op.stride as usize) as isize
+                * info.chunk.signum()
+        }
     }
 
     let mut patch = TypedModelPatch::default();

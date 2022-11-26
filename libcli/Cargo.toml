@@ -29,4 +29,4 @@ tract-onnx = { version = "0.18.4-pre", path = "../onnx", optional = true }
 [features]
 # hir = ["tract-hir"]
 hir = []
-onnx = ["tract-onnx"]
+onnx = [ "tract-onnx" ]

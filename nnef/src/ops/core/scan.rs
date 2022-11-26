@@ -61,12 +61,12 @@ fn ser_scan(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValu
     for (ix, input) in op.input_mapping.iter().enumerate() {
         let name = string(body.decl.parameters[ix].id.to_string());
         match input {
-            InputMapping::Scan { slot, axis, chunk } => {
+            InputMapping::Scan(info) => {
                 scan.push(tuple_4(
                     name,
-                    ast.mapping[&node.inputs[*slot]].as_ref().clone(),
-                    numeric(axis),
-                    numeric(chunk),
+                    ast.mapping[&node.inputs[info.slot]].as_ref().clone(),
+                    numeric(info.axis),
+                    numeric(info.chunk),
                 ));
             }
             InputMapping::State { initializer } => {
@@ -101,23 +101,26 @@ fn ser_scan(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValu
         full.push(tuple_2(string(&tensor.parameter_id), t.as_ref().clone()));
     }
     for slot in 0..node.outputs.len() {
-        if let Some((r_ix, om)) =
-            op.output_mapping.iter().enumerate().find(|(_ix, om)| om.full_slot == Some(slot))
+        if let Some((r_ix, om)) = op
+            .output_mapping
+            .iter()
+            .enumerate()
+            .find(|(_ix, om)| om.scan.map(|s| s.slot) == Some(slot))
         {
             outputs.push(tuple_4(
                 string(body.decl.results[r_ix].id.clone()),
                 string("full"),
-                numeric(om.axis),
-                numeric(om.chunk),
+                numeric(om.scan.unwrap().axis),
+                numeric(om.scan.unwrap().chunk),
             ));
-        } else if let Some((r_ix, om)) =
+        } else if let Some((r_ix, _om)) =
             op.output_mapping.iter().enumerate().find(|(_ix, om)| om.last_value_slot == Some(slot))
         {
             outputs.push(tuple_4(
                 string(body.decl.results[r_ix].id.clone()),
                 string("last"),
-                numeric(om.axis),
-                numeric(om.chunk),
+                numeric(0),
+                numeric(1),
             ));
         } else {
             bail!("output {} is unbound", slot);
@@ -139,10 +142,7 @@ fn ser_scan(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValu
     Ok(Some(invoke))
 }
 
-fn de_scan(
-    builder: &mut ModelBuilder,
-    invocation: &ResolvedInvocation,
-) -> TractResult<Value> {
+fn de_scan(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let fragment_name: String = invocation.named_arg_as(builder, "body")?;
     let fragment = builder
         .proto_model
@@ -151,7 +151,8 @@ fn de_scan(
         .iter()
         .find(|n| n.decl.id == fragment_name)
         .ok_or_else(|| format_err!("Cound not find fragment `{}'", fragment_name))?;
-    let mut body = ModelBuilder::new(builder.framework, builder.proto_model, &builder.model.symbol_table);
+    let mut body =
+        ModelBuilder::new(builder.framework, builder.proto_model, &builder.model.symbol_table);
     body.scopes.push(HashMap::new());
     body.naming_scopes = builder.naming_scopes.clone();
     let mut outer_inputs: TVec<OutletId> = tvec!();
@@ -162,11 +163,11 @@ fn de_scan(
     for par in &fragment.decl.parameters {
         let (outer_input_wire, inner_fact) =
             if let Some((_, wire, axis, chunk)) = scan.iter().find(|s| s.0 == par.id) {
-                input_mapping.push(InputMapping::Scan {
+                input_mapping.push(InputMapping::Scan(ScanInfo {
                     slot: outer_inputs.len(),
                     axis: *axis,
                     chunk: *chunk,
-                });
+                }));
                 let mut fact = builder.model.outlet_fact(*wire)?.clone();
                 fact.shape.set(*axis, chunk.abs().to_dim());
                 (*wire, fact)
@@ -229,28 +230,32 @@ fn de_scan(
     let mut output_mapping = vec![];
     for output_name in fragment.decl.results.iter().map(|o| &*o.id) {
         output_mapping.push(OutputMapping {
+            /*
             chunk: outputs
                 .iter()
                 .find(|om| om.0 == output_name && om.1 == "full")
                 .map(|om| om.3)
                 .unwrap_or(1),
+                */
             full_dim_hint: None,
-            full_slot: outputs
+            scan: outputs
                 .iter()
                 .enumerate()
                 .find(|(_, om)| om.0 == output_name && om.1 == "full")
-                .map(|(ix, _om)| ix),
+                .map(|(ix, om)| ScanInfo { slot: ix, axis: om.2, chunk: om.3 }),
             last_value_slot: outputs
                 .iter()
                 .enumerate()
                 .find(|(_, om)| om.0 == output_name && om.1 == "last")
                 .map(|(ix, _om)| ix),
+            /*
             axis: outputs
                 .iter()
                 .enumerate()
                 .find(|(_, om)| om.0 == output_name && om.1 == "full")
                 .map(|(_ix, om)| om.2)
                 .unwrap_or(0),
+                */
             state: state.iter().any(|state| state.2 == output_name),
         });
     }

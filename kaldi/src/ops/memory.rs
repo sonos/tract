@@ -1,4 +1,5 @@
 use bit_set::BitSet;
+use tract_hir::tract_core::ops::scan::ScanInfo;
 use std::collections::BTreeMap;
 use tract_itertools::Itertools;
 
@@ -29,7 +30,7 @@ impl EvalOp for Memory {
         &self,
         _session: &mut SessionState,
         _id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
+        ) -> TractResult<Option<Box<dyn OpState>>> {
         unimplemented!()
     }
 }
@@ -40,7 +41,7 @@ impl InferenceOp for Memory {
         _inputs: TVec<&InferenceFact>,
         outputs: TVec<&InferenceFact>,
         observed: TVec<&InferenceFact>,
-    ) -> TractResult<(TVec<InferenceFact>, TVec<InferenceFact>, TVec<InferenceFact>)> {
+        ) -> TractResult<(TVec<InferenceFact>, TVec<InferenceFact>, TVec<InferenceFact>)> {
         let unified = outputs[0].unify(observed[0])?;
         Ok((tvec!(), tvec!(unified.clone()), tvec!(unified)))
     }
@@ -49,7 +50,7 @@ impl InferenceOp for Memory {
         &self,
         model: &InferenceModel,
         _node: &InferenceNode,
-    ) -> TractResult<Vec<OutletId>> {
+        ) -> TractResult<Vec<OutletId>> {
         Ok(vec![OutletId::new(model.node_by_name(&self.name)?.id, 0)])
     }
 
@@ -57,7 +58,7 @@ impl InferenceOp for Memory {
         &self,
         model: &InferenceModel,
         node: &InferenceNode,
-    ) -> TractResult<Option<InferenceModelPatch>> {
+        ) -> TractResult<Option<InferenceModelPatch>> {
         Ok(Some(incorporate_memory_ops_as_scans(model, node)?))
     }
 
@@ -67,7 +68,7 @@ impl InferenceOp for Memory {
 fn incorporate_memory_ops_as_scans(
     model: &InferenceModel,
     _: &InferenceNode,
-) -> TractResult<InferenceModelPatch> {
+    ) -> TractResult<InferenceModelPatch> {
     let memory_node_ids: Vec<usize> =
         model.nodes().iter().filter(|n| n.op_is::<Memory>()).map(|n| n.id).collect();
 
@@ -113,10 +114,10 @@ fn incorporate_memory_ops_as_scans(
                     .enumerate()
                     .map(move |(ix, outlet_fact)| (OutletId::new(node_id, ix), outlet_fact))
             })
-            .filter(|(_, outlet_fact)| {
-                outlet_fact.successors.iter().any(|inlet| !time_loop.contains(inlet.node))
-            })
-            .map(|(id, _fact)| id)
+        .filter(|(_, outlet_fact)| {
+            outlet_fact.successors.iter().any(|inlet| !time_loop.contains(inlet.node))
+        })
+        .map(|(id, _fact)| id)
             .collect();
         let mut inner_model = InferenceModel::default();
         let mut mapped_inputs = vec![];
@@ -127,7 +128,6 @@ fn incorporate_memory_ops_as_scans(
             let op = mem_node.op_as::<Memory>().unwrap();
             let channel =
                 mem_node.outputs[0].fact.shape.dim(1).unwrap().concretize().unwrap().to_usize()?;
-            let chunk = op.offset.abs();
             let id = inner_model
                 .add_source(&*mem_node.name, f32::fact([(-op.offset) as usize, channel]).into())?;
             node_id_old_to_new.insert(mem, id.node);
@@ -139,10 +139,8 @@ fn incorporate_memory_ops_as_scans(
             });
             mapped_outputs.push(tract_hir::ops::scan::OutputMapping {
                 state: true,
-                axis: 0,
-                chunk,
                 full_dim_hint: None,
-                full_slot: None,
+                scan: None,
                 last_value_slot: None,
             });
         }
@@ -153,7 +151,7 @@ fn incorporate_memory_ops_as_scans(
             let new_id = inner_model.add_source(
                 format!("{}-scan", old_node.name),
                 InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(_, channel)),
-            )?;
+                )?;
             node_id_old_to_new.insert(scan_input.node, new_id.node);
         }
 
@@ -166,7 +164,7 @@ fn incorporate_memory_ops_as_scans(
                 &*node.name,
                 node.op.clone(),
                 (0..node.outputs.len()).map(|_| InferenceFact::default()).collect(),
-            )?;
+                )?;
             node_id_old_to_new.insert(node.id, new_id);
         }
         for node in time_loop.iter() {
@@ -175,7 +173,7 @@ fn incorporate_memory_ops_as_scans(
                 inner_model.add_edge(
                     OutletId::new(node_id_old_to_new[&input.node], input.slot),
                     InletId::new(node_id_old_to_new[&node.id], ix),
-                )?;
+                    )?;
             }
         }
         let mut inner_outputs: Vec<OutletId> = coupled_mem_ops
@@ -185,7 +183,7 @@ fn incorporate_memory_ops_as_scans(
                 let observed_id = model.node_by_name(&op.name)?.id;
                 Ok(OutletId::new(node_id_old_to_new[&observed_id], 0))
             })
-            .collect::<TractResult<_>>()?;
+        .collect::<TractResult<_>>()?;
 
         for output in &scan_outputs {
             inner_outputs.push(OutletId::new(node_id_old_to_new[&output.node], output.slot));
@@ -199,16 +197,14 @@ fn incorporate_memory_ops_as_scans(
             let old_node = model.node(scan_input.node);
             let fact = inner_model.input_fact(coupled_mem_ops.len() + ix)?;
             let chunk = fact.shape.dim(0).unwrap().concretize().unwrap().to_isize()?;
-            mapped_inputs.push(tract_hir::ops::scan::InputMapping::Scan {
+            mapped_inputs.push(tract_hir::ops::scan::InputMapping::Scan(ScanInfo {
                 axis: 0,
                 chunk,
                 slot: ix,
-            });
+            }));
             mapped_outputs.push(tract_hir::ops::scan::OutputMapping {
                 state: false,
-                axis: 0,
-                chunk,
-                full_slot: Some(ix),
+                scan: Some(ScanInfo { slot: ix, axis: 0, chunk}),
                 last_value_slot: None,
                 full_dim_hint: old_node.outputs[0].fact.shape.dim(0).unwrap().concretize(),
             });
@@ -222,7 +218,7 @@ fn incorporate_memory_ops_as_scans(
             None,
             false,
             GenericFactoid::default(),
-        );
+            );
 
         let mut output_facts = tvec!();
 
@@ -253,7 +249,7 @@ fn incorporate_memory_ops_as_scans(
 pub fn time_loop_nodes_for_memory(
     model: &InferenceModel,
     memory_node_id: usize,
-) -> TractResult<BitSet> {
+    ) -> TractResult<BitSet> {
     let memory_name = if let Some(mem) = &model.node(memory_node_id).op_as::<Memory>() {
         &*mem.name
     } else {

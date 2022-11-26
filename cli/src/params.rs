@@ -753,6 +753,9 @@ impl Parameters {
         info!("Model {:?} loaded", filename);
         info_usage("model loaded", probe);
 
+        if let Some(consts) = matches.values_of("constantize") {
+        }
+
         let (need_tensorflow_model, need_reference_model) = match matches.subcommand() {
             Some(("compare", sm)) => {
                 if let Some(with) = sm.value_of("stage") {

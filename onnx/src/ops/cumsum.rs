@@ -1,4 +1,5 @@
 use tract_hir::internal::*;
+use tract_hir::tract_core::ops::scan::ScanInfo;
 
 use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::*;
@@ -54,22 +55,18 @@ impl Expansion for CumSum {
         )?[0];
         let chunk = if self.reverse { -1 } else { 1 };
         let input_mapping = vec![
-            scan::InputMapping::Scan { slot: 0, axis, chunk },
+            scan::InputMapping::Scan(ScanInfo { slot: 0, axis, chunk }),
             scan::InputMapping::State { initializer: scan::StateInitializer::FromInput(1) },
         ];
         let output_mapping = vec![
             scan::OutputMapping {
-                full_slot: Some(0),
-                axis,
-                chunk,
+                scan: Some(ScanInfo { slot: 0, axis, chunk }),
                 full_dim_hint: None,
                 last_value_slot: None,
                 state: false,
             },
             scan::OutputMapping {
-                full_slot: None,
-                axis,
-                chunk,
+                scan: None,
                 full_dim_hint: None,
                 last_value_slot: None,
                 state: true,
@@ -102,5 +99,4 @@ impl Expansion for CumSum {
         s.equals(&inputs[1].rank, 0)?;
         Ok(())
     }
-
 }
