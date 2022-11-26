@@ -116,7 +116,7 @@ impl Scan {
                 }
                 &InputMapping::Scan(info) => InputMapping::Scan(ScanInfo {
                     slot: info.slot - (info.slot > discarded) as usize,
-                    ..info.clone()
+                    ..info
                 }),
                 InputMapping::State { initializer } => {
                     let initializer = match initializer {
@@ -140,7 +140,7 @@ impl Scan {
             .map(|m| OutputMapping {
                 scan: m.scan.map(|info| ScanInfo {
                     slot: info.slot - (info.slot > discarded) as usize,
-                    ..info.clone()
+                    ..info
                 }),
                 last_value_slot: m.last_value_slot.map(|n| n - (n > discarded) as usize),
                 full_dim_hint: m.full_dim_hint.clone(),
