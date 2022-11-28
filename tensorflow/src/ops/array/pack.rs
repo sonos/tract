@@ -1,4 +1,5 @@
 use tract_hir::internal::*;
+use tract_hir::ops::array::TypedConcat;
 use tract_hir::ops::binary::wire_cast;
 
 use crate::model::ParsingContext;
@@ -23,7 +24,6 @@ impl Expansion for Pack {
     fn name(&self) -> Cow<str> {
         "Pack".into()
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -85,10 +85,6 @@ impl Expansion for Pack {
                 )?[0])
             })
             .collect::<TractResult<TVec<OutletId>>>()?;
-        model.wire_node(
-            prefix,
-            tract_hir::ops::array::TypedConcat::concat_vars(self.axis as usize, inputs.len()),
-            &inputs,
-        )
+        model.wire_node(prefix, TypedConcat::new(self.axis as usize), &inputs)
     }
 }

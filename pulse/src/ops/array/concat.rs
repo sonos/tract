@@ -29,35 +29,44 @@ fn pulsify(
 
 fn pulsify_along_concat_axis(
     op: &TypedConcat,
-    _source: &TypedModel,
+    source: &TypedModel,
     node: &TypedNode,
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
 ) -> TractResult<Option<TVec<OutletId>>> {
-    if node.inputs.len() > 1 {
-        bail!("Concat can not pulse more than on input on concat axis")
+    let axis = op.axis;
+    let source_facts: TVec<TypedFact> =
+        node.inputs.iter().map(|i| source.outlet_fact(*i).unwrap().clone()).collect();
+    if !source_facts.iter().all(|f| f.konst.is_some() || f.shape[axis].to_usize().is_err()) {
+        bail!("Concat over pulse axis expect constant input and one stream input")
     }
-    let mut input = mapping[&node.inputs[0]];
-    let fact = target.outlet_fact(input)?.clone();
-    let stream = fact.stream.as_ref().unwrap();
-    assert_eq!(stream.axis, op.axis);
-    let var_index = op.slices.iter().position(|s| s.is_var()).unwrap();
-    let pre_owned = op.slices[0..var_index]
-        .iter()
-        .map(|s| s.as_const().unwrap().cast_to_dt(fact.datum_type))
-        .collect::<TractResult<TVec<_>>>()?;
+    let pulse_facts: TVec<PulsedFact> =
+        node.inputs.iter().map(|i| target.outlet_fact(mapping[i]).unwrap().clone()).collect();
+    let (stream_input_ix, pulse_fact) =
+        pulse_facts.iter().enumerate().find(|(_ix, pf)| pf.stream.is_some()).unwrap();
+    let stream = pulse_fact.stream.as_ref().unwrap();
+
+    let pre_owned =
+        source_facts.iter().take(stream_input_ix).map(|s| s.konst.clone().unwrap()).collect::<TVec<_>>();
     let pre = Tensor::stack_tensors(op.axis, &pre_owned)?;
-    let post_owned = op.slices[var_index + 1..]
+    let post_owned = source_facts
         .iter()
-        .map(|s| s.as_const().unwrap().cast_to_dt(fact.datum_type))
-        .collect::<TractResult<TVec<_>>>()?;
+        .skip(stream_input_ix + 1)
+        .map(|s| s.konst.clone().unwrap())
+        .collect::<TVec<_>>();
     let post = Tensor::stack_tensors(op.axis, &post_owned)?;
 
+    let mut input = mapping[&node.inputs[stream_input_ix]];
     let before = pre.shape()[op.axis];
     if stream.delay < before {
         input = target.wire_node(
             format!("{}.Delay", node.name),
-            Delay::new_typed(&(&fact).into(), stream.axis, before - stream.delay, 0),
+            Delay::new_typed(
+                source.outlet_fact(node.inputs[stream_input_ix])?,
+                stream.axis,
+                before - stream.delay,
+                0,
+            ),
             &[input],
         )?[0];
     }

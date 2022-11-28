@@ -127,7 +127,7 @@ impl Expansion for BlockLSTM {
             .push(scan::InputMapping::State { initializer: scan::StateInitializer::FromInput(3) });
         wire!(h_prev = AxisOp::Rm(0), h_source);
 
-        wire!(xh = array::TypedConcat::concat_vars(1, 2), x, h_prev);
+        wire!(xh = array::TypedConcat::new(1), x, h_prev);
 
         let w = body.add_const(format!("{}-w", prefix), w)?;
         wire!(i_ci_f_o_1 = matmul::mir::MatMul::default(), xh, w);

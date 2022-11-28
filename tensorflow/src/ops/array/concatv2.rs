@@ -1,6 +1,7 @@
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
 use tract_hir::internal::*;
+use tract_hir::ops::array::TypedConcat;
 
 pub fn build(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     Ok(expand(ConcatV2))
@@ -15,7 +16,6 @@ impl Expansion for ConcatV2 {
     fn name(&self) -> Cow<str> {
         "ConcatV2".into()
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -68,11 +68,7 @@ impl Expansion for ConcatV2 {
         if let Some(ref axis) = model.outlet_fact(*inputs.last().unwrap())?.konst {
             let axis = *axis.to_scalar::<i32>()? as usize;
             let inputs = inputs.iter().copied().rev().skip(1).rev().collect::<TVec<_>>();
-            model.wire_node(
-                prefix,
-                tract_hir::tract_core::ops::array::TypedConcat::concat_vars(axis, inputs.len()),
-                &inputs,
-            )
+            model.wire_node(prefix, TypedConcat::new(axis), &inputs)
         } else {
             bail!("Except axis to be a constant")
         }
