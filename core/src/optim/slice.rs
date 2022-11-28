@@ -12,7 +12,7 @@ impl super::TypedPass for PushSliceUp {
 
     fn next(
         &mut self,
-        session: &mut OptimizerSession,
+        _session: &mut OptimizerSession,
         model: &TypedModel,
     ) -> TractResult<Option<TypedModelPatch>> {
         for n in model.eval_order()? {
