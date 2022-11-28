@@ -142,12 +142,13 @@ impl TypedOp for Slice {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        let prec = model.node(node.inputs[0].node);
         if self.start.is_zero() && (self.end == model.outlet_fact(node.inputs[0])?.shape[self.axis])
         {
             return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?.with_context("noop")));
         }
         return Ok(None);
+        /*
+        let prec = model.node(node.inputs[0].node);
         let (start, end) = if let (Ok(s), Ok(e)) = (self.start.to_usize(), self.end.to_usize()) {
             (s, e)
         } else {
@@ -177,6 +178,7 @@ impl TypedOp for Slice {
             return Ok(Some(patch));
         }
         Ok(None)
+            */
     }
 
     fn slice_output(
