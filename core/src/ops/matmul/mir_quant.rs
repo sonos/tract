@@ -506,7 +506,8 @@ pub(crate) fn wire_offset_u8_as_i8(
     zero_point: &mut OutletId,
     zero_point_name: &str,
 ) -> TractResult<OutletId> {
-    if let DatumType::U8 = model.outlet_fact(matrix)?.datum_type.unquantized() {
+    let fact = model.outlet_fact(matrix)?;
+    if let DatumType::U8 = fact.datum_type.unquantized() {
         match model.outlet_fact(*zero_point)?.datum_type.unquantized() {
             DatumType::U8 => {
                 *zero_point = model.wire_node(
@@ -516,10 +517,16 @@ pub(crate) fn wire_offset_u8_as_i8(
                 )?[0];
             }
             DatumType::I32 => {
+                let cst = model.add_const(format!(
+                    "{}.offset_{}_as_i8.min",
+                    model_name,
+                    zero_point_name),
+                    tensor0(-128i32).broadcast_into_rank(fact.rank())?.into_arc_tensor(),
+                )?;
                 *zero_point = model.wire_node(
                     format!("{}.offset_{}_as_i8", model_name, zero_point_name),
-                    ops::math::add::unary(rctensor0(-128i32)),
-                    &[*zero_point],
+                    ops::math::add::bin_typed(),
+                    &[*zero_point, cst],
                 )?[0];
             }
             _ => (),
@@ -767,6 +774,7 @@ pub(crate) fn clamp_and_cast_to(
         .into_owned()
         .broadcast_into_rank(rank)?
         .into_arc_tensor();
+    let inf = model.add_const(format!("{}.min.const", name), inf)?;
     let sup = dt
         .unquantized()
         .max_value()
@@ -774,8 +782,11 @@ pub(crate) fn clamp_and_cast_to(
         .into_owned()
         .broadcast_into_rank(rank)?
         .into_arc_tensor();
-    let wire = model.wire_node(format!("{}.min", name), ops::math::min::unary(sup), &[wire])?;
-    let wire = model.wire_node(format!("{}.max", name), ops::math::max::unary(inf), &wire)?;
+    let sup = model.add_const(format!("{}.max.const", name), sup)?;
+    let wire =
+        model.wire_node(format!("{}.min", name), ops::math::min::bin_typed(), &[wire, sup])?;
+    let wire =
+        model.wire_node(format!("{}.max", name), ops::math::max::bin_typed(), &[wire[0], inf])?;
     let wire = model.wire_node(format!("{}.cast", name), ops::cast::cast(dt), &wire)?;
     Ok(wire[0])
 }

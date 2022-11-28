@@ -364,6 +364,7 @@ impl TypedOp for LirMatMulUnary {
                     &[],
                 );
             }
+            /* TODO
         } else if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
             let binop =
                 if let Some(op) = op.mini_op.as_linalg_binop() { op } else { return Ok(None) };
@@ -372,6 +373,7 @@ impl TypedOp for LirMatMulUnary {
                 return Ok(None);
             }
             return self.fuse_binary(model, node, &shape, op.a.clone().into(), binop, &[]);
+            */
         } else if let Some(op) = succ.op_as::<ops::binary::TypedBinOp>() {
             let mut binop =
                 if let Some(op) = op.0.as_linalg_binop() { op } else { return Ok(None) };

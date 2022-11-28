@@ -135,14 +135,22 @@ impl ConvUnary {
                                         )?[0];
                                     }
                                     DatumType::I32 => {
+                                        let cst = model.add_const(
+                                            format!(
+                                                "{}.offset_{}_as_i8.cst",
+                                                &model.node(inputs[*i].node).name,
+                                                "a0"
+                                            ),
+                                            rctensor0(-128i32),
+                                        )?;
                                         inputs[*i] = model.wire_node(
                                             format!(
                                                 "{}.offset_{}_as_i8",
                                                 model.node(inputs[*i].node).name,
                                                 "a0"
                                             ),
-                                            ops::math::add::unary(rctensor0(-128i32)),
-                                            &[inputs[*i]],
+                                            ops::math::add::bin_typed(),
+                                            &[inputs[*i], cst],
                                         )?[0];
                                     }
                                     _ => (),
@@ -682,10 +690,12 @@ impl ConvUnary {
                     let mut bias_shape = tvec!(1; input_shape.rank());
                     bias_shape[input_shape.c_axis()] = co;
                     let b = b.clone().into_tensor().into_shape(&bias_shape)?;
+                    let b =
+                        patch.add_const(format!("{}.bias.cst", node.name), b.into_arc_tensor())?;
                     wire = patch.wire_node(
                         format!("{}.bias", node.name),
-                        crate::ops::math::add::unary(b.into_arc_tensor()),
-                        &[wire],
+                        crate::ops::math::add::bin_typed(),
+                        &[wire, b],
                     )?[0];
                 }
                 wire
@@ -1117,10 +1127,11 @@ impl TypedOp for ConvUnary {
                         .into_shape(&bias_shape)?
                         .broadcast_into_rank(operating_rank)?
                         .into_arc_tensor();
+                    let bias = patch.add_const(format!("{}.bias.cst", node.name), bias)?;
                     wire = patch.wire_node(
                         format!("{}.bias", node.name),
-                        crate::ops::math::add::unary(bias),
-                        &[wire],
+                        crate::ops::math::add::bin_typed(),
+                        &[wire, bias],
                     )?[0];
                 }
                 wire = patch.wire_node(

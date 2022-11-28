@@ -1,7 +1,7 @@
 use std::fmt::{Debug, Display};
 use std::ops::{Deref, DerefMut};
 
-use tract_data::itertools::Itertools;
+use tract_data::itertools::{izip, Itertools};
 
 use crate::internal::*;
 use crate::model::*;
@@ -193,9 +193,31 @@ where
         patched_model: &Graph<F, O>,
         node: &Node<F, O>,
     ) -> TractResult<ModelPatch<F, O>> {
+        Self::rewire(patched_model, &node.inputs, &[node.id.into()], &|_p, xs| Ok(xs.into()))
+    }
+
+    pub fn rewire(
+        patched_model: &Graph<F, O>,
+        from: &[OutletId],
+        to: &[OutletId],
+        wiring: &dyn Fn(&mut Self, &[OutletId]) -> TractResult<TVec<OutletId>>,
+    ) -> TractResult<ModelPatch<F, O>> {
         let mut patch = ModelPatch::default();
-        let tap = patch.tap_model(patched_model, node.inputs[0])?;
-        patch.shunt_outside(patched_model, OutletId::new(node.id, 0), tap)?;
+        let taps = from
+            .iter()
+            .map(|f| patch.tap_model(patched_model, *f))
+            .collect::<TractResult<TVec<_>>>()?;
+        let news = wiring(&mut patch, &taps)?;
+        if news.len() != to.len() {
+            bail!(
+                "Wrong number of outputs for rewiring, expected {}, function returned {}",
+                to.len(),
+                news.len()
+            );
+        }
+        for (new, &old) in izip!(news, to) {
+            patch.shunt_outside(patched_model, old, new)?;
+        }
         Ok(patch)
     }
 
@@ -239,7 +261,9 @@ where
         let mut all_inputs = HashMap::new(); // new_node_id_in_model -> [ patch_outlet_id ]
         let mut model_input_outlets = target.input_outlets()?.to_vec();
         for node in patch.nodes {
-            if <Graph<F, O>>::is_source(&node.op) && mapping.contains_key(&OutletId::new(node.id, 0)) {
+            if <Graph<F, O>>::is_source(&node.op)
+                && mapping.contains_key(&OutletId::new(node.id, 0))
+            {
                 // this is a tap
                 continue;
             }
