@@ -17,12 +17,12 @@ impl<'a> DocDumper<'a> {
         for d in registry.docstrings.iter().flatten() {
             writeln!(self.w, "# {}", d)?;
         }
-        writeln!(self.w, "")?;
+        writeln!(self.w)?;
         // Generate and write unit element wise op.
         for unit_el_wise_op in registry.unit_element_wise_ops.iter() {
             writeln!(self.w, "fragment {}( x: tensor<scalar> ) -> (y: tensor<scalar>);", unit_el_wise_op.0)?;
         }
-        writeln!(self.w, "")?;
+        writeln!(self.w)?;
 
         // Generate and write element wise op.
         for el_wise_op in registry.element_wise_ops.iter() {
