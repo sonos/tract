@@ -3,6 +3,7 @@ use crate::pb::*;
 use tract_hir::internal::*;
 use tract_hir::ops;
 use tract_hir::tract_core::ops::matmul::MatMulAxes;
+use tract_hir::tract_core::ops::scan::ScanInfo;
 
 pub fn lstm(
     _ctx: &ParsingContext,
@@ -64,7 +65,6 @@ impl Expansion for LSTM {
     fn name(&self) -> Cow<str> {
         "LSTM".into()
     }
-
 
     fn validation(&self) -> Validation {
         Validation::Rounding
@@ -244,7 +244,7 @@ impl LSTM {
         // scann inner interface: [batch_size, chunk=1, input_size]
         // onnx inner interface: [batch_size, input_size]
         outer_inputs.push(x_batch_first);
-        input_mapping.push(scan::InputMapping::Scan { slot: 0, axis: 1, chunk });
+        input_mapping.push(scan::InputMapping::Scan(ScanInfo { slot: 0, axis: 1, chunk }));
         let mut x_source_fact = target.outlet_fact(x_batch_first)?.without_value();
         x_source_fact.shape.set(1, 1.to_dim());
         let x_source = body.add_source("x_source", x_source_fact)?;
@@ -304,11 +304,10 @@ impl LSTM {
             )
         };
         input_mapping.push(scan::InputMapping::State { initializer });
-        let h_source = body
-            .add_source(
-                "h_source",
-                x_fact.datum_type.fact(&[b_size.clone(), 1.to_dim(), h_size.clone()]),
-            )?;
+        let h_source = body.add_source(
+            "h_source",
+            x_fact.datum_type.fact(&[b_size.clone(), 1.to_dim(), h_size.clone()]),
+        )?;
 
         let initializer = if let Some(initial_c_input) = self.optional_initial_c_input {
             target_wire!(c_dir = array::Slice::new(0, dir, dir + 1), inputs[initial_c_input]);
@@ -329,11 +328,10 @@ impl LSTM {
             )
         };
         input_mapping.push(scan::InputMapping::State { initializer });
-        let c_source = body
-            .add_source(
-                "c_source",
-                x_fact.datum_type.fact(&[b_size.clone(), 1.to_dim(), h_size.clone()]),
-            )?;
+        let c_source = body.add_source(
+            "c_source",
+            x_fact.datum_type.fact(&[b_size.clone(), 1.to_dim(), h_size.clone()]),
+        )?;
 
         // P: onnx [num_directions, 3*hidde_size]
         let p = if let Some(slot) = self.optional_p_input {
@@ -470,19 +468,15 @@ impl LSTM {
 
         let h_mapping = scan::OutputMapping {
             state: true,
-            axis: 1,
-            chunk,
             full_dim_hint: None,
             last_value_slot: self.optional_y_h_output,
-            full_slot: self.optional_y_output,
+            scan: self.optional_y_output.map(|slot| ScanInfo { slot, axis: 1, chunk }),
         };
         let c_mapping = scan::OutputMapping {
             state: true,
-            axis: 1,
-            chunk,
             full_dim_hint: None,
             last_value_slot: self.optional_y_c_output,
-            full_slot: None,
+            scan: None,
         };
 
         let scan_outputs = target.wire_node(
