@@ -30,7 +30,7 @@ impl PrimitiveDecl {
     }
 
     pub fn with_doc(&mut self, docstring: impl Into<String>) -> &mut Self {
-        self.docstrings.get_or_insert_with(|| vec![])
+        self.docstrings.get_or_insert_with(Vec::new)
             .push(docstring.into());
         self
     }
@@ -66,7 +66,7 @@ impl Registry {
     }
 
     pub fn with_doc(mut self, docstring: impl Into<String>) -> Registry {
-        self.docstrings.get_or_insert_with(|| vec![])
+        self.docstrings.get_or_insert_with(Vec::new)
             .push(docstring.into());
         self
     }
@@ -84,7 +84,7 @@ impl Registry {
             id: id.to_string(),
             generic_decl: None,
             parameters: params.to_vec(),
-            results: results.to_vec().into_iter().map(|it| it.into()).collect(),
+            results: results.iter().cloned().map(|it| it.into()).collect(),
         };
         self.primitives.insert(
             id.to_string(),
