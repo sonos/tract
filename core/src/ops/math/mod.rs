@@ -11,8 +11,8 @@ use tract_linalg::{ScaleShiftAndRound, Scaler};
 use tract_num_traits::AsPrimitive;
 
 bin_to_super_type!(add, Add,
-                   declutter_unary: declutter_unary_add,
-                   flip:commute,
+//                   declutter_unary: declutter_unary_add,
+//                   flip:commute,
                    linalg: Add,
                    validation: Validation::Rounding,
                    q: [i8, u8, i32, i32] => add_quant;
@@ -41,7 +41,9 @@ fn declutter_unary_add(
 }
 
 bin_to_super_type!(sub, Sub,
-    declutter_unary: declutter_unary_sub, flip:flip_sub, linalg:Sub,
+//    declutter_unary: declutter_unary_sub,
+    //flip:flip_sub,
+    linalg:Sub,
     q: [i8, u8, i32, i32] => sub_quant;
     [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() - b);
 
@@ -52,6 +54,7 @@ where
 {
     *c = (a.as_() - b.as_() + zp as i16).clamp_cast()
 }
+/*
 fn declutter_unary_sub(
     _op: &Sub,
     model: &TypedModel,
@@ -70,11 +73,12 @@ fn declutter_unary_sub(
         Ok(None)
     }
 }
+*/
 
 bin_to_super_type!(mul, Mul,
 cost: |dt| tvec!((Cost::FMA(dt), 1)),
-declutter_unary: declutter_unary_mul,
-flip: commute,
+//declutter_unary: declutter_unary_mul,
+//flip: commute,
 linalg: Mul,
 out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
     if c.datum_type() == TDim::datum_type() &&
@@ -120,7 +124,7 @@ q: [i8, u8, i32] => |c, a, b, _, _| *c = a.clone() * b;
 
 bin_to_super_type!(div, Div,
 cost: |dt| tvec!((Cost::Div(dt), 1)),
-declutter_bin: declutter_bin_div,
+//declutter_bin: declutter_bin_div,
 eval_override: |a:TValue, b: TValue| -> TractResult<Tensor> {
    if
        a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
@@ -138,7 +142,7 @@ eval_override: |a:TValue, b: TValue| -> TractResult<Tensor> {
            Div.generic_eval(a,b)
        }
 },
-flip: flip_div,
+//flip: flip_div,
 out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
     if c.datum_type() == TDim::datum_type() &&
         a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
@@ -196,23 +200,23 @@ bin_to_super_type!(rem, Rem,
                    },
                    [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64] => |c, a, b| *c = a.clone() % b);
 
-bin_to_super_type!(min, Min, flip:commute, linalg:Min,
+bin_to_super_type!(min, Min, /* flip:commute, */ linalg:Min,
                    operating_datum_type: super::logic::operating_datum_type_for_cmp,
                    q: [i8, u8, i32] => |c, a, b, _, _| *c = if a < b { *a } else { *b };
                    [f16, f32, f64] => |c,a,b| *c = a.min(*b),
                    [i8, i16, i32, i64, u8, u16, u32, u64] => |c, a, b| *c = *a.min(b));
-bin_to_super_type!(max, Max, flip:commute, linalg:Max,
+bin_to_super_type!(max, Max, /* flip:commute, */ linalg:Max,
                    operating_datum_type: super::logic::operating_datum_type_for_cmp,
                    q: [i8, u8, i32] => |c, a, b, _, _| *c = if a < b { *b } else { *a };
                    [f16, f32, f64] => |c,a,b| *c = a.max(*b),
                    [i8, i16, i32, i64, u8, u16, u32, u64] => |c, a, b| *c = *a.max(b));
 
 bin_to_super_type!(pow, Pow,
-                   flip: flip_pow,
+//                   flip: flip_pow,
                    [f32, f64] => |c,a,b| *c = a.powf(*b),
                    [i32, i64] => |c,a,b| *c = a.pow(*b as u32));
 bin_to_super_type!(flipped_pow, FlippedPow,
-                   declutter_unary: declutter_unary_flipped_pow,
+//                   declutter_unary: declutter_unary_flipped_pow,
                    [f32, f64] => |c,a,b| *c = b.powf(*a),
                    [i32, i64] => |c,a,b| *c = b.pow(*a as u32));
 
@@ -225,6 +229,7 @@ bin_to_super_type!(flipped_shift_left, FlippedShiftLeft,
 bin_to_super_type!(flipped_shift_right, FlippedShiftRight,
                    [i8, i16, i32, i64, u8, u16, u32, u64] => |c, a, b| *c = *b >> *a);
 
+/*
 fn flip_sub(_op: &dyn BinMiniOp, t: &Arc<Tensor>) -> Option<UnaryOp> {
     let mut t = t.clone().into_tensor();
     fn negate<T: Datum + std::ops::Neg<Output = T>>(t: &mut Tensor) {
@@ -254,7 +259,9 @@ fn flip_div(_op: &dyn BinMiniOp, t: &Arc<Tensor>) -> Option<UnaryOp> {
 fn flip_pow(_op: &dyn BinMiniOp, t: &Arc<Tensor>) -> Option<UnaryOp> {
     Some(UnaryOp::new(Box::new(FlippedPow), t.clone()))
 }
+*/
 
+/*
 fn declutter_unary_mul(
     _op: &Mul,
     model: &TypedModel,
@@ -359,10 +366,9 @@ fn declutter_as_shift(
                 .as_slice_mut::<i64>()?
                 .iter_mut()
                 .for_each(|i| *i = (63 - i.abs().leading_zeros()) as _);
-            return Ok(Some(TypedModelPatch::replace_single_op(
+            return Ok(Some(TypedModelPatch::rewire(
                 model,
-                node,
-                &node.inputs[0..=0],
+                &node.inputs,
                 UnaryOp {
                     a: shift.cast_to_dt(input.datum_type)?.into_owned().into_arc_tensor(),
                     mini_op,
@@ -408,6 +414,7 @@ fn declutter_unary_flipped_pow(
     }
     Ok(None)
 }
+*/
 
 element_wise!(abs, Abs, [i8, i16, i32, i64, f16, f32, i32] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.abs());
@@ -633,8 +640,9 @@ mod tests {
     #[test]
     fn mul_as_shift() -> TractResult<()> {
         let mut model = TypedModel::default();
-        let x = model.add_source("a", i32::fact([2usize, 2]))?;
-        let y = model.wire_node("c", mul::unary(rctensor2(&[[4]])), [x].as_ref())?[0];
+        let x = model.add_source("x", i32::fact([2usize, 2]))?;
+        let a = model.add_const("a", tensor0(4i32).broadcast_into_rank(2)?.into_arc_tensor())?;
+        let y = model.wire_node("y", mul::bin_typed(), &[x, a])?[0];
         model.set_output_outlets(&[y])?;
         let result = SimplePlan::new(&model)?.run(tvec!(tensor2(&[[1, 2], [3, 4]]).into()))?;
         assert_eq!(*result[0], tensor2(&[[4, 8], [12, 16]]));
@@ -642,8 +650,12 @@ mod tests {
         let result =
             SimplePlan::new(&decluttered)?.run(tvec!(tensor2(&[[1, 2], [3, 4]]).into()))?;
         assert_eq!(*result[0], tensor2(&[[4, 8], [12, 16]]));
-        let op = decluttered.node(1).op().downcast_ref::<UnaryOp>().unwrap();
-        assert!(op.mini_op.downcast_ref::<FlippedShiftLeft>().is_some());
+        let op = decluttered
+            .node(decluttered.output_outlets()?[0].node)
+            .op()
+            .downcast_ref::<TypedBinOp>()
+            .unwrap();
+        assert!(op.0.downcast_ref::<FlippedShiftLeft>().is_some());
         Ok(())
     }
 
@@ -660,8 +672,12 @@ mod tests {
         let result =
             SimplePlan::new(&decluttered)?.run(tvec!(tensor2(&[[16, 32], [64, 68]]).into()))?;
         assert_eq!(*result[0], tensor2(&[[4, 8], [16, 17]]));
-        let op = decluttered.node(1).op().downcast_ref::<UnaryOp>().unwrap();
-        assert!(op.mini_op.downcast_ref::<FlippedShiftRight>().is_some());
+        let op = decluttered
+            .node(decluttered.output_outlets()?[0].node)
+            .op()
+            .downcast_ref::<TypedBinOp>()
+            .unwrap();
+        assert!(op.0.downcast_ref::<FlippedShiftRight>().is_some());
         Ok(())
     }
 }

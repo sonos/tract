@@ -380,9 +380,11 @@ pub mod scale {
     pub fn bin_typed() -> TypedBinOp {
         TypedBinOp(Box::new(super::Scale))
     }
+    /*
     pub fn unary(t: Arc<Tensor>) -> UnaryOp {
         UnaryOp::new(Box::new(super::Scale), t)
     }
+    */
 
     #[cfg(test)]
     mod test {

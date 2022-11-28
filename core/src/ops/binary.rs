@@ -80,10 +80,12 @@ pub trait BinMiniOp:
     fn eval(&self, a: TValue, b: TValue) -> TractResult<Tensor> {
         self.generic_eval(a, b)
     }
+    /*
     #[allow(unused_variables)]
     fn unary_with_b_const(&self, b: &Arc<Tensor>) -> Option<UnaryOp> {
         None
     }
+    */
     #[allow(unused_variables)]
     fn declutter_bin(
         &self,
@@ -268,6 +270,7 @@ impl TypedOp for TypedBinOp {
         if let Some(patch) = self.0.declutter_bin(model, node)? {
             return Ok(Some(patch));
         }
+        /*
         if let Some(unary) = declutter_bin_to_unary(model, node, self.0.as_ref())? {
             return Ok(Some(unary));
         }
@@ -296,6 +299,7 @@ impl TypedOp for TypedBinOp {
                 )?));
             }
         }
+        */
         Ok(None)
     }
 
@@ -323,6 +327,7 @@ impl TypedOp for TypedBinOp {
     as_op!();
 }
 
+/*
 fn declutter_bin_to_unary(
     model: &TypedModel,
     node: &TypedNode,
@@ -346,7 +351,9 @@ fn declutter_bin_to_unary(
     }
     Ok(None)
 }
+*/
 
+/*
 #[derive(Debug, Clone, new, Hash)]
 pub struct UnaryOp {
     pub mini_op: Box<dyn BinMiniOp>,
@@ -506,6 +513,7 @@ impl TypedOp for UnaryOp {
 
     as_op!();
 }
+*/
 
 #[derive(Debug, Clone, Hash)]
 pub struct MergeOpUnicast(pub Box<dyn BinMiniOp>);
@@ -553,9 +561,11 @@ impl TypedOp for MergeOpUnicast {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
+        /*
         if let Some(p) = declutter_bin_to_unary(model, node, self.0.as_ref())? {
             return Ok(Some(p));
         }
+        */
         self.0.declutter_bin(model, node)
     }
 
@@ -566,11 +576,17 @@ impl TypedOp for MergeOpUnicast {
 macro_rules! bin_to_super_type {
     ($func:ident, $Op:ident,
      $(cost: $cost:expr,)?
+     /*
      $(codegen_unary: $codegen_unary:expr,)?
+     */
      $(declutter_bin: $declutter_bin:expr,)?
+     /*
      $(declutter_unary: $declutter_unary:expr,)?
+     */
      $(eval_override: $eval_override: expr,)?
+     /*
      $(flip: $flip:expr,)?
+     */
      $(linalg: $linalg:ident,)?
      $(operating_datum_type: $operating_datum_type:expr,)?
      $(out_of_place: $out_of_place:expr,)?
@@ -738,11 +754,13 @@ macro_rules! bin_to_super_type {
                 self.operating_datum_type(a, b)
             }
 
+            /*
             $(
                 fn unary_with_b_const(&self, b: &Arc<Tensor>) -> Option<$crate::ops::binary::UnaryOp> {
                     ($flip)(self, b)
                 }
              )?
+             */
                 $(
                     fn declutter_bin(
                         &self,
@@ -752,6 +770,7 @@ macro_rules! bin_to_super_type {
                         ($declutter_bin)(self, model, node)
                     }
                  )?
+                    /*
                 $(
                     fn codegen_unary(
                         &self,
@@ -772,6 +791,7 @@ macro_rules! bin_to_super_type {
                         ($declutter_unary)(self, model, node, a)
                     }
                  )?
+                 */
                 $(
                     fn cost_per_element(&self, dt: DatumType) -> TVec<(Cost, usize)> {
                         ($cost)(dt)
@@ -797,9 +817,11 @@ macro_rules! bin_to_super_type {
             pub fn bin_typed() -> $crate::ops::binary::TypedBinOp {
                 $crate::ops::binary::TypedBinOp(Box::new(super::$Op))
             }
+            /*
             pub fn unary(t: std::sync::Arc<$crate::prelude::Tensor>) -> $crate::ops::binary::UnaryOp {
                 $crate::ops::binary::UnaryOp::new(Box::new(super::$Op), t)
             }
+            */
         }
     };
 }
@@ -807,9 +829,11 @@ macro_rules! bin_to_super_type {
 macro_rules! bin_to_bool {
     ($func:ident, $Op:ident,
      $( cost: $cost:expr, )?
+     /*
      $( codegen_unary: $codegen_unary:expr, )?
      $( declutter_unary: $declutter_unary:expr, )?
      $( flip: $flip:expr, )?
+     */
      $( operating_datum_type: $operating_datum_type:expr, )?
      $( [$($typ:ident),*] => $cab:expr),*) => {
         #[derive(Debug, Clone, Hash)]
@@ -883,7 +907,7 @@ macro_rules! bin_to_bool {
             fn result_datum_type(&self, _a: DatumType, _b: DatumType) -> TractResult<DatumType> {
                 Ok(bool::datum_type())
             }
-
+/*
             $(
                 fn codegen_unary(
                     &self,
@@ -906,12 +930,14 @@ macro_rules! bin_to_bool {
                         ($declutter_unary)(self, model, node, a)
                     }
                  )?
-
+                 */
+/*
                 $(
                     fn unary_with_b_const(&self, b: &Arc<Tensor>) -> Option<$crate::ops::binary::UnaryOp> {
                         ($flip)(self, b)
                     }
                  )?
+                 */
                 $(
                     fn cost_per_element(&self, dt: DatumType) -> TVec<(Cost, usize)> {
                         ($cost)(dt)
@@ -929,14 +955,18 @@ macro_rules! bin_to_bool {
             pub fn bin_typed() -> $crate::ops::binary::TypedBinOp {
                 $crate::ops::binary::TypedBinOp(Box::new(super::$Op))
             }
+            /*
             pub fn unary(t: std::sync::Arc<$crate::prelude::Tensor>) -> $crate::ops::binary::UnaryOp {
                 $crate::ops::binary::UnaryOp::new(Box::new(super::$Op), t)
             }
+            */
         }
     };
 }
 
+/*
 #[inline]
 pub fn commute(op: &dyn BinMiniOp, t: &Arc<Tensor>) -> Option<UnaryOp> {
     Some(UnaryOp::new(dyn_clone::clone_box(op), t.clone()))
 }
+*/
