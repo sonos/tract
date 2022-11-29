@@ -756,6 +756,24 @@ mod test {
     }
 
     #[test]
+    fn test_qmmup_i8_i8_u8_2() {
+        QMatMulUnaryProblemI8I8U8 {
+            a: arr2(&[[8], [8]]),
+            b: arr2(&[[0, 0, 0]]),
+            bias: tensor0(0),
+            a0: 0,
+            b0: 0,
+            c0: 0,
+            a_scale: 1.0,
+            b_scale: 1.0,
+            c_scale: 1.0,
+            opt: true,
+            dyn_qp: true,
+        }
+        .check()
+    }
+
+    #[test]
     fn test_qmmup_i8_u8_i8() {
         QMatMulUnaryProblemI8U8I8 {
             a: arr2(&[[76, 76, 76], [127, -127, 102]]),

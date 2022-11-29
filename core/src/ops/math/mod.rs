@@ -231,7 +231,7 @@ fn declutter_mul(
     model: &TypedModel,
     node: &TypedNode,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if let Some(p) = declutter_neutral(model, node, 1, true)? {
+    if let Some(p) = declutter_neutral(model, node, 1, true).context("decluttering neutral")? {
         return Ok(Some(p));
     }
     if let Some(uniform) = crate::ops::binary::one_input_is_uniform(model, node)? {
@@ -267,7 +267,7 @@ fn declutter_mul(
                 model,
                 &[uniform.var],
                 &[node.id.into()],
-                &|patch, inputs| {
+                &|patch, taps| {
                     let shift = patch.add_const(
                         format!("{}.shift", node.name),
                         tensor0(shift)
@@ -275,7 +275,7 @@ fn declutter_mul(
                             .into_owned()
                             .broadcast_into_rank(var_fact.rank())?,
                     )?;
-                    patch.wire_node(&node.name, shift_left(), &[inputs[0], shift])
+                    patch.wire_node(&node.name, shift_left(), &[taps[0], shift])
                 },
             )?));
         }
