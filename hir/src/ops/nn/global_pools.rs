@@ -10,7 +10,6 @@ impl Expansion for GlobalAvgPool {
         "GlobalAvgPool".into()
     }
 
-
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         solver: &mut Solver<'r>,
@@ -34,17 +33,14 @@ impl Expansion for GlobalAvgPool {
             tract_core::ops::nn::Reduce::new(axes, tract_core::ops::nn::Reducer::Sum),
             &[input],
         )?;
-        let div =
-            tensor0((input_fact.shape.iter().skip(2).product::<TDim>().to_i64()? as f64).recip())
-                .cast_to_dt(input_fact.datum_type)?
-                .into_owned()
-                .broadcast_into_rank(input_fact.rank())?;
+        let div = tensor0(input_fact.shape.iter().skip(2).product::<TDim>().to_i64()? as f64)
+            .cast_to_dt(input_fact.datum_type)?
+            .into_owned()
+            .broadcast_into_rank(input_fact.rank())?;
 
-        target.wire_node(
-            name.to_string() + ".norm",
-            tract_core::ops::math::mul::unary(div.into_arc_tensor()),
-            &wire,
-        )
+        let div = target.add_const(name.to_string() + ".div", div)?;
+
+        target.wire_node(name.to_string() + ".norm", tract_core::ops::math::div(), &[wire[0], div])
     }
 }
 
@@ -88,10 +84,11 @@ impl Expansion for GlobalLpPool {
                 .into_owned()
                 .broadcast_into_rank(input_fact.rank())?
                 .into_arc_tensor();
+            let pow = target.add_const(name.to_string() + ".pow.cst", pow)?;
             wire = target.wire_node(
                 name.to_string() + ".pow",
-                tract_core::ops::math::flipped_pow::unary(pow),
-                &wire,
+                tract_core::ops::math::pow(),
+                &[wire[0], pow],
             )?;
         }
         wire = target.wire_node(
@@ -99,15 +96,15 @@ impl Expansion for GlobalLpPool {
             tract_core::ops::nn::Reduce::new(axes, tract_core::ops::nn::Reducer::Sum),
             &wire,
         )?;
-        let div =
-            tensor0((input_fact.shape.iter().skip(2).product::<TDim>().to_i64()? as f64).recip())
-                .cast_to_dt(input_fact.datum_type)?
-                .into_owned()
-                .broadcast_into_rank(input_fact.rank())?;
+        let div = tensor0(input_fact.shape.iter().skip(2).product::<TDim>().to_i64()? as f64)
+            .cast_to_dt(input_fact.datum_type)?
+            .into_owned()
+            .broadcast_into_rank(input_fact.rank())?;
+        let div = target.add_const(name.to_string() + ".div", div)?;
         wire = target.wire_node(
             name.to_string() + ".norm",
-            tract_core::ops::math::mul::unary(div.into_arc_tensor()),
-            &wire,
+            tract_core::ops::math::div(),
+            &[wire[0], div],
         )?;
         if self.0 == 2 {
             wire = target.wire_node(
@@ -121,10 +118,11 @@ impl Expansion for GlobalLpPool {
                 .into_owned()
                 .broadcast_into_rank(input_fact.rank())?
                 .into_arc_tensor();
+            let anti_pow = target.add_const(name.to_string() + ".anti_pow", anti_pow)?;
             wire = target.wire_node(
                 name.to_string() + ".antipow",
-                tract_core::ops::math::flipped_pow::unary(anti_pow),
-                &wire,
+                tract_core::ops::math::pow(),
+                &[wire[0], anti_pow],
             )?;
         }
         Ok(wire)
@@ -139,7 +137,6 @@ impl Expansion for GlobalMaxPool {
     fn name(&self) -> Cow<str> {
         "GlobalMaxPool".into()
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

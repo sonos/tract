@@ -90,7 +90,7 @@ mod tests {
         let mut model = TypedModel::default();
         let a = model.add_source("a", f32::fact([1])).unwrap();
         let b = model.add_const("b", tensor1(&[12.0f32])).unwrap();
-        let add = model.wire_node("add", math::add::bin_typed(), &[a, b]).unwrap()[0];
+        let add = model.wire_node("add", math::add(), &[a, b]).unwrap()[0];
         model.auto_outputs().unwrap();
         assert_eq!(model.eval_order().unwrap(), vec!(a.node, b.node, add.node));
     }
@@ -99,7 +99,7 @@ mod tests {
     fn diamond() {
         let mut model = TypedModel::default();
         let a = model.add_source("a", f32::fact([1])).unwrap();
-        let add = model.wire_node("add", math::add::bin_typed(), &[a, a]).unwrap()[0];
+        let add = model.wire_node("add", math::add(), &[a, a]).unwrap()[0];
         model.auto_outputs().unwrap();
         assert_eq!(model.eval_order().unwrap(), vec!(a.node, add.node));
     }
@@ -108,8 +108,8 @@ mod tests {
     fn dodge_loop() {
         let mut model = TypedModel::default();
         let a = model.add_source("a", f32::fact([1])).unwrap();
-        let add = model.wire_node("add", math::add::bin_typed(), &[a, a]).unwrap()[0];
-        let neg = model.wire_node("neg", math::add::bin_typed(), &[add, a]).unwrap()[0];
+        let add = model.wire_node("add", math::add(), &[a, a]).unwrap()[0];
+        let neg = model.wire_node("neg", math::add(), &[add, a]).unwrap()[0];
         model.add_edge(neg, InletId::new(add.node, 1)).unwrap();
         model.set_output_outlets(&[neg]).unwrap();
         let (rx, tx) = std::sync::mpsc::channel();

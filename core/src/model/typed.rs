@@ -44,11 +44,12 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
         let name = name.into();
 
         {
-            let output_facts = || {
+            let output_facts = || -> TractResult<TVec<TypedFact>> {
                 let input_facts = inputs
                     .iter()
                     .map(|o| self.outlet_fact(*o))
                     .collect::<TractResult<TVec<_>>>()?;
+                let facts = op.output_facts(&input_facts).context("in output_facts invocation")?;
                 if input_facts.iter().all(|f| f.konst.is_some()) && op.is_stateless() {
                     let tensors = input_facts
                         .iter()
@@ -58,7 +59,7 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                         return Ok(outputs.into_iter().map(|t| TypedFact::from(&*t)).collect());
                     }
                 }
-                op.output_facts(&input_facts).context("in output_facts invocation")
+                Ok(facts)
             };
 
             let output_facts = output_facts()

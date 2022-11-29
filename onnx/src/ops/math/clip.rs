@@ -79,7 +79,7 @@ impl Expansion for Clip11 {
             wire = wire_with_rank_broadcast(
                 &format!("{}.min", name),
                 model,
-                tract_hir::ops::math::max::bin_typed(),
+                tract_hir::ops::math::max(),
                 &[wire, inputs[min]],
             )?[0];
         }
@@ -87,7 +87,7 @@ impl Expansion for Clip11 {
             wire = wire_with_rank_broadcast(
                 &format!("{}.max", name),
                 model,
-                tract_hir::ops::math::min::bin_typed(),
+                tract_hir::ops::math::min(),
                 &[wire, inputs[max]],
             )?[0];
         }

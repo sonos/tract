@@ -32,7 +32,7 @@ tract-data = { version = "0.18.4-pre", path = "../data" }
 tract-linalg = { version = "0.18.4-pre", path = "../linalg" }
 
 [features]
-default = [ ]
+default = [ "paranoid_assertions" ]
 paranoid_assertions = []
 
 [dev-dependencies]

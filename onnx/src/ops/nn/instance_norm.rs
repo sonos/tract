@@ -58,7 +58,7 @@ impl Expansion for InstanceNorm {
         .wire(&format!("{}.mean", name), model, &inputs[0..1])?[0];
         let diff = model.wire_node(
             format!("{}.diff", name),
-            tract_hir::ops::math::sub::bin_typed(),
+            tract_hir::ops::math::sub(),
             &[inputs[0], mean],
         )?;
         let sqr_diff =
@@ -66,16 +66,18 @@ impl Expansion for InstanceNorm {
         let vari =
             tract_hir::ops::nn::Reduce::new(Some(axes), true, tract_hir::ops::nn::Reducer::Mean)
                 .wire(&format!("{}.variance", name), model, &sqr_diff)?[0];
+        let epsilon = model.add_const(
+            format!("{}.epsilon.cst", name),
+            tensor0(self.epsilon)
+                .cast_to_dt(input_fact.datum_type)?
+                .into_owned()
+                .broadcast_into_rank(rank)?
+                .into_arc_tensor(),
+        )?;
         let vari_sane = model.wire_node(
             format!("{}.epsilon", name),
-            tract_hir::ops::math::add::unary(
-                tensor0(self.epsilon)
-                    .cast_to_dt(input_fact.datum_type)?
-                    .into_owned()
-                    .broadcast_into_rank(rank)?
-                    .into_arc_tensor(),
-            ),
-            &[vari],
+            tract_hir::ops::math::add(),
+            &[vari, epsilon],
         )?;
         let div = model.wire_node(
             format!("{}.rsqrt", name),
@@ -84,7 +86,7 @@ impl Expansion for InstanceNorm {
         )?;
         let divised = model.wire_node(
             format!("{}.div", name),
-            tract_hir::ops::math::mul::bin_typed(),
+            tract_hir::ops::math::mul(),
             &[diff[0], div[0]],
         )?;
         let mut scale =
@@ -98,7 +100,7 @@ impl Expansion for InstanceNorm {
         }
         let scaled = model.wire_node(
             format!("{}.scaled", name),
-            tract_hir::ops::math::mul::bin_typed(),
+            tract_hir::ops::math::mul(),
             &[divised[0], scale[0]],
         )?;
         let mut bias =
@@ -107,6 +109,6 @@ impl Expansion for InstanceNorm {
             bias =
                 model.wire_node(format!("{}.add-bias-axis-{}", name, i), AxisOp::Add(2), &bias)?;
         }
-        model.wire_node(name, tract_hir::ops::math::add::bin_typed(), &[scaled[0], bias[0]])
+        model.wire_node(name, tract_hir::ops::math::add(), &[scaled[0], bias[0]])
     }
 }

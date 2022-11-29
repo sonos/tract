@@ -6,6 +6,7 @@ use tract_linalg::lut::Lut;
 use tract_linalg::mmm::RoundingPolicy;
 use tract_linalg::Scaler;
 
+use super::binary::TypedBinOp;
 use super::math::round_ties_to_even;
 
 pub fn quantize_linear_f32_u8(x: f32, scale: f32, zero_point: i32) -> u8 {
@@ -343,22 +344,30 @@ impl crate::ops::binary::BinMiniOp for Scale {
         Ok(())
     }
 
-    fn declutter_unary(
+    fn declutter(
         &self,
         model: &TypedModel,
         node: &TypedNode,
-        a: &Arc<Tensor>,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if a.is_uniform() && *a.to_scalar::<f32>()? == 1. {
-            return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?));
-        } else if a.is_uniform() && node.outputs[0].fact.datum_type == DatumType::I32 {
-            let factor = *a.to_scalar::<f32>()?;
-            let scaler = Scaler::new(factor, RoundingPolicy::Even);
+        let a = &*model.outlet_fact(node.inputs[0])?;
+        if let Some(a) = &a.uniform {
+            if *a.to_scalar::<f32>()? == 1. {
+                return Ok(Some(TypedModelPatch::rewire(
+                    model,
+                    &node.inputs[1..2],
+                    &[node.id.into()],
+                    &|_p, x| Ok(x.into()),
+                )?));
+            } else if node.outputs[0].fact.datum_type == DatumType::I32 {
+                let factor = *a.to_scalar::<f32>()?;
+                let scaler = Scaler::new(factor, RoundingPolicy::Even);
 
-            let op = ElementWiseOp(Box::new(QScale { scaler }));
-            let patch = TypedModelPatch::replace_single_op(model, node, &node.inputs, op)?;
+                let op = ElementWiseOp(Box::new(QScale { scaler }));
+                let patch =
+                    TypedModelPatch::replace_single_op(model, node, &node.inputs[1..2], op)?;
 
-            return Ok(Some(patch));
+                return Ok(Some(patch));
+            }
         }
         Ok(None)
     }
@@ -373,69 +382,8 @@ where
     (round_ties_to_even(b.abs() * a) * b.signum()).as_()
 }
 
-pub mod scale {
-    use crate::internal::*;
-    use crate::ops::binary::*;
-
-    pub fn bin_typed() -> TypedBinOp {
-        TypedBinOp(Box::new(super::Scale))
-    }
-    /*
-    pub fn unary(t: Arc<Tensor>) -> UnaryOp {
-        UnaryOp::new(Box::new(super::Scale), t)
-    }
-    */
-
-    #[cfg(test)]
-    mod test {
-        use crate::internal::*;
-        use crate::ops;
-        use crate::ops::math::round_ties_to_even;
-        use crate::ops::matmul::MatMulAxes;
-        use proptest::prelude::*;
-
-        fn test_scale(a: i8, b: i8, scale: f32) {
-            let expected = (((a as i32) * (b as i32)) as f32) / scale;
-            let expected = round_ties_to_even(expected.abs()) * expected.signum();
-            let expected = (expected as i32).max(-128).min(127);
-            let expected = tensor2(&[[expected as i8]]);
-
-            let input = tvec!(tensor2(&[[b]]).into_tvalue());
-            let mut model = TypedModel::default();
-            let a = model.add_const("a", tensor2(&[[a]])).unwrap();
-            let b = model.add_source("b", i8::fact([1, 1])).unwrap();
-            let bias = model.add_const("bias", tensor0(0i32)).unwrap();
-            let mut qp = ops::matmul::MatMulQParams::noop_static(i8::datum_type());
-            qp.c_scale = tensor0(scale).into();
-            let op = ops::matmul::QMatMul::new(MatMulAxes::default(), i8::datum_type(), qp);
-            let output = model.wire_node("mmm", op, &[a, b, bias]).unwrap();
-            model.set_output_outlets(&output).unwrap();
-
-            let plain = model.clone().into_runnable().unwrap().run(input.clone()).unwrap();
-            assert_eq!(*plain[0], expected);
-
-            let optim =
-                model.into_optimized().unwrap().into_runnable().unwrap().run(input).unwrap();
-            assert_eq!(*optim[0], expected);
-        }
-
-        proptest! {
-            #[test]
-            fn prop(a in any::<i8>(), b in any::<i8>(), scale in 0.00001f32..1000.) {
-                test_scale(a, b, scale);
-            }
-        }
-
-        #[test]
-        fn t1() {
-            test_scale(-117, 15, 37.753822);
-        }
-
-        #[test]
-        fn t2() {
-            test_scale(-4, -60, 475.21674);
-        }
-    }
+pub fn scale() -> TypedBinOp {
+    TypedBinOp(Box::new(Scale))
 }
 
 /// Offsets u8 integers as i8 integers.
@@ -477,4 +425,54 @@ impl ElementWiseMiniOp for OffsetU8asI8 {
 }
 pub fn offset_u8_as_i8() -> ElementWiseOp {
     ElementWiseOp(Box::new(OffsetU8asI8 {}))
+}
+
+#[cfg(test)]
+pub mod scale {
+    use crate::internal::*;
+    use crate::ops;
+    use crate::ops::math::round_ties_to_even;
+    use crate::ops::matmul::MatMulAxes;
+    use proptest::prelude::*;
+
+    fn test_scale(a: i8, b: i8, scale: f32) {
+        let expected = (((a as i32) * (b as i32)) as f32) / scale;
+        let expected = round_ties_to_even(expected.abs()) * expected.signum();
+        let expected = (expected as i32).max(-128).min(127);
+        let expected = tensor2(&[[expected as i8]]);
+
+        let input = tvec!(tensor2(&[[b]]).into_tvalue());
+        let mut model = TypedModel::default();
+        let a = model.add_const("a", tensor2(&[[a]])).unwrap();
+        let b = model.add_source("b", i8::fact([1, 1])).unwrap();
+        let bias = model.add_const("bias", tensor0(0i32)).unwrap();
+        let mut qp = ops::matmul::MatMulQParams::noop_static(i8::datum_type());
+        qp.c_scale = tensor0(scale).into();
+        let op = ops::matmul::QMatMul::new(MatMulAxes::default(), i8::datum_type(), qp);
+        let output = model.wire_node("mmm", op, &[a, b, bias]).unwrap();
+        model.set_output_outlets(&output).unwrap();
+
+        let plain = model.clone().into_runnable().unwrap().run(input.clone()).unwrap();
+        assert_eq!(*plain[0], expected);
+
+        let optim = model.into_optimized().unwrap().into_runnable().unwrap().run(input).unwrap();
+        assert_eq!(*optim[0], expected);
+    }
+
+    proptest! {
+        #[test]
+        fn prop(a in any::<i8>(), b in any::<i8>(), scale in 0.00001f32..1000.) {
+            test_scale(a, b, scale);
+        }
+    }
+
+    #[test]
+    fn t1() {
+        test_scale(-117, 15, 37.753822);
+    }
+
+    #[test]
+    fn t2() {
+        test_scale(-4, -60, 475.21674);
+    }
 }

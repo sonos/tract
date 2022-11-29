@@ -296,12 +296,12 @@ impl Expansion for TreeEnsembleClassifier {
             inputs,
         )?;
         if let Some(base_class_score) = self.base_class_score.as_deref() {
+            let base = base_class_score.clone().broadcast_into_rank(2)?.into_arc_tensor();
+            let base = model.add_const(prefix.to_string() + ".base", base)?;
             scores = model.wire_node(
                 format!("{}.base_class_score", prefix),
-                tract_core::ops::math::add::unary(
-                    base_class_score.clone().broadcast_into_rank(2)?.into_arc_tensor(),
-                ),
-                &scores,
+                tract_core::ops::math::add(),
+                &[scores[0], base],
             )?;
         }
         match self.post_transform {
@@ -328,10 +328,11 @@ impl Expansion for TreeEnsembleClassifier {
                 Slice::new(1, 0, 1),
                 &scores,
             )?;
+            let one = model.add_const(prefix.to_string() + ".one", rctensor2(&[[1f32]]))?;
             let complement = model.wire_node(
                 &format!("{}.binary_result_complement", prefix),
-                tract_core::ops::math::sub::unary(rctensor2(&[[1f32]])),
-                &scores,
+                tract_core::ops::math::sub(),
+                &[one, scores[0]],
             )?;
             scores = model.wire_node(
                 &format!("{}.binary_result", prefix),

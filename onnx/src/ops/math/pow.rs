@@ -58,14 +58,14 @@ impl Expansion for Pow {
             wires = tract_hir::ops::binary::wire_cast(name, model, &wires, F64)?;
             wires = model.wire_node(
                 format!("{}.pow", name),
-                tract_hir::ops::math::pow::bin_typed(),
+                tract_hir::ops::math::pow(),
                 &wires,
             )?;
             model.wire_node(name, tract_hir::ops::cast::cast(dta), &wires)
         } else {
             let dt = dta.common_super_type(dtb).unwrap();
             wires = tract_hir::ops::binary::wire_cast(name, model, &wires, dt)?;
-            model.wire_node(name, tract_hir::ops::math::pow::bin_typed(), &wires)
+            model.wire_node(name, tract_hir::ops::math::pow(), &wires)
         }
     }
 }

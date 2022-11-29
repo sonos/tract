@@ -100,11 +100,7 @@ impl Reducer {
                     tract_core::ops::cast::cast(fact.datum_type),
                     &[size],
                 )?[0];
-                wire = target.wire_node(
-                    name.to_string() + ".norm",
-                    math::div::bin_typed(),
-                    &[wire, size],
-                )?[0];
+                wire = target.wire_node(name.to_string() + ".norm", math::div(), &[wire, size])?[0];
             }
         };
         Ok(wire)

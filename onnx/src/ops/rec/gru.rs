@@ -287,13 +287,13 @@ impl GRU {
         // zt = f(Xt*(Wz^T) + Ht-1*(Rz^T) + Wbz + Rbz)
         wire!(Xt_WzT = matmul_t.clone(), Xt, Wz);
         wire!(Ht_1_RzT = matmul_t.clone(), Ht_1, Rz);
-        wire!(zt0 = math::add::bin_typed(), Xt_WzT, Ht_1_RzT);
+        wire!(zt0 = math::add(), Xt_WzT, Ht_1_RzT);
         let mut zt0 = zt0;
         if let Some(b) = b {
             wire!(Wbz = array::Slice::new(1, 0.to_dim() * h_size, 1.to_dim() * h_size), b);
             wire!(Rbz = array::Slice::new(1, 3.to_dim() * h_size, 4.to_dim() * h_size), b);
-            wire!(Wbz_Rbz = math::add::bin_typed(), Wbz, Rbz);
-            wire!(zt0_biased = math::add::bin_typed(), zt0, Wbz_Rbz);
+            wire!(Wbz_Rbz = math::add(), Wbz, Rbz);
+            wire!(zt0_biased = math::add(), zt0, Wbz_Rbz);
             zt0 = zt0_biased
         };
         wire!(zt = self.f.clone(), zt0);
@@ -301,13 +301,13 @@ impl GRU {
         // rt = f(Xt*(Wr^T) + Ht-1*(Rr^T) + Wbr + Rbr)
         wire!(Xt_WrT = matmul_t.clone(), Xt, Wr);
         wire!(Ht_1_RrT = matmul_t.clone(), Ht_1, Rr);
-        wire!(rt0 = math::add::bin_typed(), Xt_WrT, Ht_1_RrT);
+        wire!(rt0 = math::add(), Xt_WrT, Ht_1_RrT);
         let mut rt0 = rt0;
         if let Some(b) = b {
             wire!(Wbr = array::Slice::new(1, 1.to_dim() * h_size, 2.to_dim() * h_size), b);
             wire!(Rbr = array::Slice::new(1, 4.to_dim() * h_size, 5.to_dim() * h_size), b);
-            wire!(Wbr_Rbr = math::add::bin_typed(), Wbr, Rbr);
-            wire!(rt0_biased = math::add::bin_typed(), rt0, Wbr_Rbr);
+            wire!(Wbr_Rbr = math::add(), Wbr, Rbr);
+            wire!(rt0_biased = math::add(), rt0, Wbr_Rbr);
             rt0 = rt0_biased
         };
         wire!(rt = self.f.clone(), rt0);
@@ -320,55 +320,55 @@ impl GRU {
             wire!(Ht_1_RhT = matmul_t, Ht_1, Rh);
             let Ht_1_RhT_Rbh = if let Some(b) = b {
                 wire!(Rbh = array::Slice::new(1, 5.to_dim() * h_size, 6.to_dim() * h_size), b);
-                wire!(Ht_1_RhT_Rbh = math::add::bin_typed(), Ht_1_RhT, Rbh);
+                wire!(Ht_1_RhT_Rbh = math::add(), Ht_1_RhT, Rbh);
                 Ht_1_RhT_Rbh
             } else {
                 Ht_1_RhT
             };
-            wire!(rt_Ht_1_RhT_Rbh = math::mul::bin_typed(), rt, Ht_1_RhT_Rbh);
+            wire!(rt_Ht_1_RhT_Rbh = math::mul(), rt, Ht_1_RhT_Rbh);
             rt_Ht_1_RhT_Rbh
         } else {
             // (rt (.) Ht-1)*(Rh^T) + Rbh
-            wire!(rt_Ht_1 = math::mul::bin_typed(), rt, Ht_1);
+            wire!(rt_Ht_1 = math::mul(), rt, Ht_1);
             wire!(rt_Ht_1_RhT = matmul_t, rt_Ht_1, Rh);
             if let Some(b) = b {
                 wire!(Rbh = array::Slice::new(1, 5.to_dim() * h_size, 6.to_dim() * h_size), b);
-                wire!(rt_Ht_1_RhT_Rbh = math::add::bin_typed(), rt_Ht_1_RhT, Rbh);
+                wire!(rt_Ht_1_RhT_Rbh = math::add(), rt_Ht_1_RhT, Rbh);
                 rt_Ht_1_RhT_Rbh
             } else {
                 rt_Ht_1_RhT
             }
         };
-        wire!(ht0 = math::add::bin_typed(), Xt_WhT, rt_Ht_1_RhT_Rbh);
+        wire!(ht0 = math::add(), Xt_WhT, rt_Ht_1_RhT_Rbh);
         let mut ht0 = ht0;
         if let Some(b) = b {
             wire!(Wbh = array::Slice::new(1, 2.to_dim() * h_size, 3.to_dim() * h_size), b);
-            wire!(ht0_biased = math::add::bin_typed(), ht0, Wbh);
+            wire!(ht0_biased = math::add(), ht0, Wbh);
             ht0 = ht0_biased
         }
         wire!(ht = self.g.clone(), ht0);
 
         // Ht = (1 - zt) (.) ht + zt (.) Ht-1
         let one: OutletId = body.add_const("one", tensor2(&[[1f32]]))?;
-        wire!(one_sub_zt = math::sub::bin_typed(), one, zt);
-        wire!(one_sub_zt_ht = math::mul::bin_typed(), one_sub_zt, ht);
-        wire!(zt_Ht_1 = math::mul::bin_typed(), zt, Ht_1);
-        wire!(Ht = math::add::bin_typed(), one_sub_zt_ht, zt_Ht_1);
+        wire!(one_sub_zt = math::sub(), one, zt);
+        wire!(one_sub_zt_ht = math::mul(), one_sub_zt, ht);
+        wire!(zt_Ht_1 = math::mul(), zt, Ht_1);
+        wire!(Ht = math::add(), one_sub_zt_ht, zt_Ht_1);
 
         /*
         // Ht = ht + (- (zt (.) ht) + zt (.) Ht-1)
-        wire!(zt_ht = math::mul::bin_typed(), zt, ht);
-        wire!(zt_Ht_1 = math::mul::bin_typed(), zt, Ht_1);
-        wire!(zt_Ht_1_sub_zt_ht = math::sub::bin_typed(), zt_Ht_1, zt_ht);
-        wire!(Ht = math::add::bin_typed(), ht, zt_Ht_1_sub_zt_ht);
+        wire!(zt_ht = math::mul(), zt, ht);
+        wire!(zt_Ht_1 = math::mul(), zt, Ht_1);
+        wire!(zt_Ht_1_sub_zt_ht = math::sub(), zt_Ht_1, zt_ht);
+        wire!(Ht = math::add(), ht, zt_Ht_1_sub_zt_ht);
         */
 
         // Ht = ht - (zt (.) ht) + zt (.) Ht-1)
         /*
-        wire!(zt_ht = math::mul::bin_typed(), zt, ht);
-        wire!(zt_Ht_1 = math::mul::bin_typed(), zt, Ht_1);
-        wire!(ht_zt_ht = math::sub::bin_typed(), ht, zt_ht);
-        wire!(Ht = math::add::bin_typed(), ht_zt_ht, zt_Ht_1);
+        wire!(zt_ht = math::mul(), zt, ht);
+        wire!(zt_Ht_1 = math::mul(), zt, Ht_1);
+        wire!(ht_zt_ht = math::sub(), ht, zt_ht);
+        wire!(Ht = math::add(), ht_zt_ht, zt_Ht_1);
         */
 
         wire!(y_h = AxisOp::Add(1), Ht);

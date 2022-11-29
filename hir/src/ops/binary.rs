@@ -18,7 +18,6 @@ impl Expansion for InferenceBinOp {
         self.0.validation()
     }
 
-
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -214,8 +213,8 @@ impl InferenceRulesOp for Nary {
             let n = target.add_const(format!("{}.n", node.name), n.into_arc_tensor())?;
             wire = target.wire_node(
                 format!("{}.norm", node.name),
-                crate::ops::math::div::bin_typed(),
-                [wire, n].as_ref(),
+                crate::ops::math::div(),
+                &[wire, n],
             )?[0];
         }
         Ok(tvec!(wire))

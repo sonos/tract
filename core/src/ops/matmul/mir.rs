@@ -149,7 +149,7 @@ mod test {
         b.as_slice_mut::<f32>().unwrap()[0] = 1.0;
         let b = b.into_arc_tensor();
         let b = model.add_const("b", b)?;
-        wire = model.wire_node("a", crate::ops::math::add::bin_typed(), &[wire[0], b])?;
+        wire = model.wire_node("a", crate::ops::math::add(), &[wire[0], b])?;
         model.set_output_outlets(&wire)?;
         let input = Tensor::zero::<f32>(&input_shape)?.into_tvalue();
         trace!("running mir");

@@ -10,7 +10,6 @@ macro_rules! activation {
                 stringify!($op).into()
             }
 
-
             fn rules<'r, 'p: 'r, 's: 'r>(
                 &'s self,
                 s: &mut Solver<'r>,
@@ -38,6 +37,13 @@ macro_rules! activation {
     };
 }
 
+macro_rules! cst {
+    ($model: expr, $inputs: expr, $name: expr, $id:ident, $value: expr) => {
+        let $id = broadcast_scalar($value, $model, $inputs)?;
+        let $id = $model.add_const($name.to_string() + "." + stringify!($id), $id)?;
+    };
+}
+
 #[derive(Debug, Clone, new, Educe)]
 #[educe(Hash)]
 pub struct Clip(
@@ -49,11 +55,13 @@ activation!(Clip, |op, name: &str, model: &mut TypedModel, inputs| {
     let mut wire: TVec<OutletId> = inputs.into();
     if let Some(low) = op.0 {
         let low = broadcast_scalar(low, model, inputs)?;
-        wire = model.wire_node(name.to_string() + ".low", max::unary(low), &wire)?;
+        let low = model.add_const(name.to_string() + ".low.cst", low)?;
+        wire = model.wire_node(name.to_string() + ".low", max(), &[wire[0], low])?;
     }
     if let Some(high) = op.1 {
         let high = broadcast_scalar(high, model, inputs)?;
-        wire = model.wire_node(name.to_string() + ".high", min::unary(high), &wire)?;
+        let high = model.add_const(name.to_string() + ".high.cst", high)?;
+        wire = model.wire_node(name.to_string() + ".high", min(), &[wire[0], high])?;
     }
     Ok(wire)
 });
@@ -62,9 +70,9 @@ activation!(Clip, |op, name: &str, model: &mut TypedModel, inputs| {
 pub struct Softplus;
 
 activation!(Softplus, |_op, name: &str, model: &mut TypedModel, inputs| {
-    let one = broadcast_scalar(1.0, model, inputs)?;
+    cst!(model, inputs, name, one, 1.0);
     let wire = model.wire_node(name.to_string() + ".exp", exp(), inputs)?;
-    let wire = model.wire_node(name.to_string() + ".plus_one", add::unary(one), &wire)?;
+    let wire = model.wire_node(name.to_string() + ".plus_one", add(), &[wire[0], one])?;
     let wire = model.wire_node(name.to_string() + ".ln", ln(), &wire)?;
     Ok(wire)
 });
@@ -73,11 +81,10 @@ activation!(Softplus, |_op, name: &str, model: &mut TypedModel, inputs| {
 pub struct Softsign;
 
 activation!(Softsign, |_op, name: &str, model: &mut TypedModel, inputs| {
-    let one = broadcast_scalar(1.0, model, inputs)?;
+    cst!(model, inputs, name, one, 1.0);
     let x_abs = model.wire_node(name.to_string() + ".abs", abs(), inputs)?;
-    let denum = model.wire_node(name.to_string() + ".plus_one", add::unary(one), &x_abs)?;
-    let wire =
-        model.wire_node(name.to_string() + ".div", div::bin_typed(), &[inputs[0], denum[0]])?;
+    let denum = model.wire_node(name.to_string() + ".plus_one", add(), &[x_abs[0], one])?;
+    let wire = model.wire_node(name.to_string() + ".div", div(), &[inputs[0], denum[0]])?;
     Ok(wire)
 });
 
@@ -86,17 +93,16 @@ activation!(Softsign, |_op, name: &str, model: &mut TypedModel, inputs| {
 pub struct Elu(#[educe(Hash(method = "hash_f32"))] pub f32);
 
 activation!(Elu, |op, name: &str, model: &mut TypedModel, inputs| {
-    let zero = broadcast_scalar(0.0, model, inputs)?;
-    let minus_one = broadcast_scalar(-1.0, model, inputs)?;
-    let alpha = broadcast_scalar(op.0, model, inputs)?;
+    cst!(model, inputs, name, zero, 0.0);
+    cst!(model, inputs, name, one, 1.0);
+    cst!(model, inputs, name, alpha, op.0);
     let x_exp = model.wire_node(name.to_string() + ".exp", exp(), inputs)?;
-    let minus_one =
-        model.wire_node(name.to_string() + ".minus_one", add::unary(minus_one), &x_exp)?;
-    let neg = model.wire_node(name.to_string() + ".mul_alpha", mul::unary(alpha), &minus_one)?;
+    let minus_one = model.wire_node(name.to_string() + ".minus_one", sub(), &[x_exp[0], one])?;
+    let neg = model.wire_node(name.to_string() + ".mul_alpha", mul(), &[alpha, minus_one[0]])?;
     let test = model.wire_node(
         name.to_string() + ".test",
-        tract_core::ops::logic::less::unary(zero),
-        &[inputs[0]],
+        tract_core::ops::logic::less(),
+        &[zero, inputs[0]],
     )?;
     let wire = model.wire_node(
         name.to_string() + ".iff",
@@ -114,14 +120,14 @@ pub struct HardSigmoid(
 );
 
 activation!(HardSigmoid, |op, name: &str, model: &mut TypedModel, inputs| {
-    let alpha = broadcast_scalar(op.0, model, inputs)?;
-    let beta = broadcast_scalar(op.1, model, inputs)?;
-    let one = broadcast_scalar(1.0, model, inputs)?;
-    let zero = broadcast_scalar(0.0, model, inputs)?;
-    let wire = model.wire_node(name.to_string() + ".mul_alpha", mul::unary(alpha), inputs)?;
-    let wire = model.wire_node(name.to_string() + ".add_beta", add::unary(beta), &wire)?;
-    let wire = model.wire_node(name.to_string() + ".sat-one", min::unary(one), &wire)?;
-    let wire = model.wire_node(name.to_string() + ".sat-zero", max::unary(zero), &wire)?;
+    cst!(model, inputs, name, zero, 0.0);
+    cst!(model, inputs, name, one, 1.0);
+    cst!(model, inputs, name, alpha, op.0);
+    cst!(model, inputs, name, beta, op.1);
+    let wire = model.wire_node(name.to_string() + ".mul_alpha", mul(), &[alpha, inputs[0]])?;
+    let wire = model.wire_node(name.to_string() + ".add_beta", add(), &[beta, wire[0]])?;
+    let wire = model.wire_node(name.to_string() + ".sat-one", min(), &[one, wire[0]])?;
+    let wire = model.wire_node(name.to_string() + ".sat-zero", max(), &[zero, wire[0]])?;
     Ok(wire)
 });
 
@@ -141,14 +147,14 @@ pub struct ParametricSoftplus(
 );
 
 activation!(ParametricSoftplus, |op, name: &str, model: &mut TypedModel, inputs| {
-    let alpha = broadcast_scalar(op.0, model, inputs)?;
-    let beta = broadcast_scalar(op.1, model, inputs)?;
-    let one = broadcast_scalar(1.0, model, inputs)?;
-    let wire = model.wire_node(name.to_string() + ".mul_beta", mul::unary(beta), inputs)?;
+    cst!(model, inputs, name, one, 1.0);
+    cst!(model, inputs, name, alpha, op.0);
+    cst!(model, inputs, name, beta, op.1);
+    let wire = model.wire_node(name.to_string() + ".mul_beta", mul(), &[beta, inputs[0]])?;
     let wire = model.wire_node(name.to_string() + ".exp", exp(), &wire)?;
-    let wire = model.wire_node(name.to_string() + ".plus_one", add::unary(one), &wire)?;
+    let wire = model.wire_node(name.to_string() + ".plus_one", add(), &[one, wire[0]])?;
     let wire = model.wire_node(name.to_string() + ".ln", ln(), &wire)?;
-    let wire = model.wire_node(name.to_string() + ".mul_alpha", mul::unary(alpha), &wire)?;
+    let wire = model.wire_node(name.to_string() + ".mul_alpha", mul(), &[alpha, wire[0]])?;
     Ok(wire)
 });
 
@@ -160,11 +166,11 @@ pub struct ScaledTanh(
 );
 
 activation!(ScaledTanh, |op, name: &str, model: &mut TypedModel, inputs| {
-    let alpha = broadcast_scalar(op.0, model, inputs)?;
-    let beta = broadcast_scalar(op.1, model, inputs)?;
-    let wire = model.wire_node(name.to_string() + ".mul_beta", mul::unary(beta), inputs)?;
+    cst!(model, inputs, name, alpha, op.0);
+    cst!(model, inputs, name, beta, op.1);
+    let wire = model.wire_node(name.to_string() + ".mul_beta", mul(), &[beta, inputs[0]])?;
     let wire = model.wire_node(name.to_string() + ".tanh", tanh(), &wire)?;
-    let wire = model.wire_node(name.to_string() + ".mul_alpha", mul::unary(alpha), &wire)?;
+    let wire = model.wire_node(name.to_string() + ".mul_alpha", mul(), &[alpha, wire[0]])?;
     Ok(wire)
 });
 
@@ -176,24 +182,23 @@ pub struct Selu(
 );
 
 activation!(Selu, |op, name: &str, model: &mut TypedModel, inputs| {
-    let zero = broadcast_scalar(0.0, model, inputs)?;
-    let alpha = broadcast_scalar(op.0, model, inputs)?;
-    let minus_alpha = broadcast_scalar(-op.0, model, inputs)?;
-    let gamma = broadcast_scalar(op.1, model, inputs)?;
+    cst!(model, inputs, name, zero, 0.0);
+    cst!(model, inputs, name, alpha, op.0);
+    cst!(model, inputs, name, gamma, op.1);
     let wire = model.wire_node(name.to_string() + ".exp", exp(), inputs)?;
-    let wire = model.wire_node(name.to_string() + ".mul_alpha", mul::unary(alpha), &wire)?;
-    let wire = model.wire_node(name.to_string() + ".sub_alpha", add::unary(minus_alpha), &wire)?;
+    let wire = model.wire_node(name.to_string() + ".mul_alpha", mul(), &[wire[0], alpha])?;
+    let wire = model.wire_node(name.to_string() + ".sub_alpha", sub(), &[wire[0], alpha])?;
     let test = model.wire_node(
         name.to_string() + ".test",
-        tract_core::ops::logic::less::unary(zero),
-        &[inputs[0]],
+        tract_core::ops::logic::less(),
+        &[zero, inputs[0]],
     )?;
     let wire = model.wire_node(
         name.to_string() + ".iff",
         tract_core::ops::logic::Iff,
         &[test[0], inputs[0], wire[0]],
     )?;
-    let wire = model.wire_node(name.to_string() + ".mul_gamma", mul::unary(gamma), &wire)?;
+    let wire = model.wire_node(name.to_string() + ".mul_gamma", mul(), &[gamma, wire[0]])?;
     Ok(wire)
 });
 
@@ -205,31 +210,30 @@ pub struct Shrink(
 );
 
 activation!(Shrink, |op, name: &str, model: &mut TypedModel, inputs| {
-    let bias = broadcast_scalar(op.0, model, inputs)?;
-    let lambda = broadcast_scalar(op.1, model, inputs)?;
-    let minus_bias = broadcast_scalar(-op.0, model, inputs)?;
-    let minus_lambda = broadcast_scalar(-op.1, model, inputs)?;
-    let zero =
-        model.add_const(name.to_string() + ".zero", broadcast_scalar(0.0, model, inputs)?)?;
+    cst!(model, inputs, name, bias, op.0);
+    cst!(model, inputs, name, lambda, op.1);
+    cst!(model, inputs, name, minus_lambda, -op.1);
+    let zero = broadcast_scalar(0.0, model, inputs)?;
+    let zero = model.add_const(name.to_string() + ".zero", zero)?;
     let test_pos = model.wire_node(
         name.to_string() + ".test_pos",
-        tract_core::ops::logic::less::unary(lambda),
-        inputs,
+        tract_core::ops::logic::less(),
+        &[lambda, inputs[0]],
     )?;
     let pos = model.wire_node(
         name.to_string() + ".pos",
-        tract_core::ops::math::add::unary(minus_bias),
-        inputs,
+        tract_core::ops::math::sub(),
+        &[inputs[0], bias],
     )?;
     let test_neg = model.wire_node(
         name.to_string() + ".test_neg",
-        tract_core::ops::logic::greater::unary(minus_lambda),
-        inputs,
+        tract_core::ops::logic::greater(),
+        &[minus_lambda, inputs[0]],
     )?;
     let neg = model.wire_node(
         name.to_string() + ".neg",
-        tract_core::ops::math::add::unary(bias),
-        inputs,
+        tract_core::ops::math::add(),
+        &[bias, inputs[0]],
     )?;
     let wire = model.wire_node(
         name.to_string() + ".if_pos",
@@ -249,13 +253,12 @@ activation!(Shrink, |op, name: &str, model: &mut TypedModel, inputs| {
 pub struct ThresholdRelu(#[educe(Hash(method = "hash_f32"))] pub f32);
 
 activation!(ThresholdRelu, |op, name: &str, model: &mut TypedModel, inputs| {
-    let zero =
-        model.add_const(name.to_string() + ".zero", broadcast_scalar(0.0, model, inputs)?)?;
-    let alpha = broadcast_scalar(op.0, model, inputs)?;
+    cst!(model, inputs, name, zero, 0.0);
+    cst!(model, inputs, name, alpha, op.0);
     let test = model.wire_node(
         name.to_string() + ".test",
-        tract_core::ops::logic::less::unary(alpha),
-        &[inputs[0]],
+        tract_core::ops::logic::less(),
+        &[alpha, inputs[0]],
     )?;
     let wire = model.wire_node(
         name.to_string() + ".iff",

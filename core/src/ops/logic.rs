@@ -7,13 +7,12 @@ use crate::internal::*;
 use super::binary::BinMiniOp;
 use super::element_wise::ElementWiseOp;
 
-bin_to_super_type!(and, And, /* flip: commute, */
+bin_to_super_type!(and, And,
                    [bool, u8, u16, u32, u64, i8, i16, i32, i64] => |c, &a, &b| *c = (a as i64 != 0 && b as i64 != 0) as _);
-bin_to_super_type!(or, Or, /* flip: commute, */
+bin_to_super_type!(or, Or,
                    [bool, u8, u16, u32, u64, i8, i16, i32, i64] => |c, &a, &b| *c = (a as i64 != 0 || b as i64 != 0) as _);
 bin_to_super_type!(xor, Xor, /*flip: commute, */ [bool] => |c, &a, &b| *c = a ^ b);
 bin_to_bool!(equals, Equals, 
-             //flip: commute,
  [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, TDim] => |c, a, b | *c = a == b
 );
 bin_to_bool!(not_equals, NotEquals, /* flip: commute, */
