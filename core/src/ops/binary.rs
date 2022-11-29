@@ -689,10 +689,10 @@ pub(crate) fn one_input_is_uniform(
         } else {
             return Ok(None);
         };
-        let var_fact = [a, b][!(uni.left_is_uniform) as usize];
-        let uni_fact = [a, b][uni.left_is_uniform as usize];
-        if izip!(var_fact.shape.iter(), uni_fact.shape.iter()).any(|(v, u)| !u.is_one() && u != v) {
-            return Ok(None);
+        let var_fact = [a, b][uni.left_is_uniform as usize];
+        let uni_fact = [a, b][!uni.left_is_uniform as usize];
+        if izip!(var_fact.shape.iter(), uni_fact.shape.iter()).all(|(v, u)| u.is_one() || u == v) {
+            return Ok(Some(uni))
         }
     }
     Ok(None)
