@@ -349,7 +349,7 @@ impl crate::ops::binary::BinMiniOp for Scale {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        let a = &*model.outlet_fact(node.inputs[0])?;
+        let a = model.outlet_fact(node.inputs[0])?;
         if let Some(a) = &a.uniform {
             if *a.to_scalar::<f32>()? == 1. {
                 return Ok(Some(TypedModelPatch::rewire(

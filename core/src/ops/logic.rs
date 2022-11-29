@@ -1,4 +1,5 @@
 #![allow(clippy::bool_comparison)]
+
 use ndarray::*;
 
 use crate::broadcast::multi_broadcast;
@@ -12,29 +13,29 @@ bin_to_super_type!(and, And,
 bin_to_super_type!(or, Or,
                    [bool, u8, u16, u32, u64, i8, i16, i32, i64] => |c, &a, &b| *c = (a as i64 != 0 || b as i64 != 0) as _);
 bin_to_super_type!(xor, Xor, /*flip: commute, */ [bool] => |c, &a, &b| *c = a ^ b);
-bin_to_bool!(equals, Equals, 
- [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, TDim] => |c, a, b | *c = a == b
-);
+bin_to_bool!(equals, Equals,
+             [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, TDim] => |c, a, b | *c = a == b
+            );
 bin_to_bool!(not_equals, NotEquals, /* flip: commute, */
- [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, TDim] => |c, a, b | *c = a != b
-);
+             [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, TDim] => |c, a, b | *c = a != b
+            );
 
-bin_to_bool!(less, Less, 
-//    codegen_unary: codegen_compare_to_zero,
-    operating_datum_type: operating_datum_type_for_cmp,
-    [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a < b);
+bin_to_bool!(less, Less,
+             codegen: codegen_compare_to_zero,
+             operating_datum_type: operating_datum_type_for_cmp,
+             [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a < b);
 bin_to_bool!(less_equal, LessEqual,
-//    codegen_unary: codegen_compare_to_zero,
-    operating_datum_type: operating_datum_type_for_cmp,
-    [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a <= b);
+             codegen: codegen_compare_to_zero,
+             operating_datum_type: operating_datum_type_for_cmp,
+             [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a <= b);
 bin_to_bool!(greater, Greater,
-//    codegen_unary: codegen_compare_to_zero,
-    operating_datum_type: operating_datum_type_for_cmp,
-    [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a > b);
+             codegen: codegen_compare_to_zero,
+             operating_datum_type: operating_datum_type_for_cmp,
+             [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a > b);
 bin_to_bool!(greater_equal, GreaterEqual,
-//    codegen_unary: codegen_compare_to_zero,
-    operating_datum_type: operating_datum_type_for_cmp,
-    [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a >= b);
+             codegen: codegen_compare_to_zero,
+             operating_datum_type: operating_datum_type_for_cmp,
+             [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a >= b);
 
 pub fn operating_datum_type_for_cmp(a: DatumType, b: DatumType) -> TractResult<DatumType> {
     let dt = a
@@ -51,29 +52,32 @@ fn codegen_compare_to_zero(
     op: &dyn BinMiniOp,
     model: &TypedModel,
     node: &TypedNode,
-    a: &Arc<Tensor>,
-) -> TractResult<Option<TypedModelPatch>> {
-    if let Some(a) = a.as_uniform() {
-        if (a.datum_type().is_signed() || a.datum_type().is_float())
-            && a == Tensor::zero_scalar_dt(a.datum_type())?
-        {
-            let op: Box<dyn ElementWiseMiniOp> = if op.is::<Less>() {
-                Box::new(GreaterThanZero {})
-            } else if op.is::<LessEqual>() {
-                Box::new(GreaterEqualThanZero {})
-            } else if op.is::<Greater>() {
-                Box::new(LessThanZero {})
-            } else if op.is::<GreaterEqual>() {
-                Box::new(LessEqualThanZero {})
-            } else {
+    ) -> TractResult<Option<TypedModelPatch>> {
+    let facts = model.node_input_facts(node.id)?;
+    if let Some(uniform) = crate::ops::binary::one_input_is_uniform(model, node)? {
+        let dt = facts[0].datum_type;
+        if (dt.is_signed() || dt.is_float()) && *uniform.uni == Tensor::zero_scalar_dt(dt)? {
+            let reversed = uniform.left_is_uniform;
+            let mapped = || -> Box<dyn ElementWiseMiniOp> {
+                macro_rules! m {
+                    ($bin: ty, $same: expr, $other: expr) => {
+                        if op.is::<$bin>() {
+                            return if reversed {Box::new($other) } else {Box::new($same)}
+                        };
+                    }
+                }
+                m!(Less, LessThanZero {}, GreaterEqualThanZero {});
+                m!(LessEqual, LessEqualThanZero {}, GreaterThanZero {});
+                m!(Greater, GreaterThanZero {}, LessEqualThanZero {});
+                m!(GreaterEqual, GreaterEqualThanZero {}, LessThanZero {});
                 unreachable!();
             };
             return Ok(Some(TypedModelPatch::replace_single_op(
-                model,
-                node,
-                &node.inputs,
-                ElementWiseOp(op),
-            )?));
+                        model,
+                        node,
+                        &[uniform.var],
+                        ElementWiseOp(mapped()),
+                        )?));
         }
     }
     Ok(None)
@@ -115,7 +119,7 @@ impl Iff {
         out: &mut Tensor,
         t: &Tensor,
         f: &Tensor,
-    ) {
+        ) {
         Zip::from(out.to_array_view_mut_unchecked::<T>())
             .and_broadcast(cond)
             .and_broadcast(t.to_array_view_unchecked::<T>())
@@ -146,7 +150,7 @@ impl EvalOp for Iff {
                     cond.shape(),
                     t.shape(),
                     f.shape()
-                )
+                    )
             })?;
         unsafe {
             let mut result = Tensor::uninitialized_dt(t.datum_type(), &shape)?;
@@ -169,11 +173,11 @@ impl TypedOp for Iff {
             bail!("Inconsistent ranks, {:?}", inputs);
         }
         let shape = multi_broadcast(&[
-            inputs[0].shape.to_tvec(),
-            inputs[1].shape.to_tvec(),
-            inputs[2].shape.to_tvec(),
+                                    inputs[0].shape.to_tvec(),
+                                    inputs[1].shape.to_tvec(),
+                                    inputs[2].shape.to_tvec(),
         ])
-        .unwrap();
+            .unwrap();
         Ok(tvec!(inputs[1].datum_type.fact(shape)))
     }
 
@@ -181,20 +185,20 @@ impl TypedOp for Iff {
         &self,
         inputs: &[&TypedFact],
         _outputs: &[&TypedFact],
-    ) -> TractResult<Invariants> {
+        ) -> TractResult<Invariants> {
         let a = &inputs[0];
         let b = &inputs[1];
         let c = &inputs[2];
         assert!(a.rank() == b.rank() && b.rank() == c.rank());
         let rank = a.rank();
         Ok((0..rank)
-            .into_iter()
-            .map(|axis| AxisInfo {
-                inputs: tvec!(Some(axis), Some(axis), Some(axis)),
-                outputs: tvec!(Some(axis)),
-                period: 1,
-                disposable: true,
-            })
-            .collect())
+           .into_iter()
+           .map(|axis| AxisInfo {
+               inputs: tvec!(Some(axis), Some(axis), Some(axis)),
+               outputs: tvec!(Some(axis)),
+               period: 1,
+               disposable: true,
+           })
+           .collect())
     }
 }
