@@ -512,7 +512,7 @@ pub fn reduce(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     )?;
     let cardinality =
         builder.wire_as_outlets(ops::cast::Cast::new(fact.datum_type), &cardinality)?;
-    builder.wire(ops::math::div::bin_typed(), &[wire[0], cardinality[0]])
+    builder.wire(ops::math::div(), &[wire[0], cardinality[0]])
 }
 
 /*

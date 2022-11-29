@@ -308,7 +308,6 @@ impl Expansion for Prelu {
         "Prelu".into()
     }
 
-
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -338,19 +337,16 @@ impl Expansion for Prelu {
                 &[b],
             )?[0];
         }
-        let mut zero = tensor0(0.0).cast_to_dt(model.outlet_fact(a)?.datum_type)?.into_owned();
-        while zero.rank() < rank {
-            zero.insert_axis(0)?;
-        }
-        let ab = model.wire_node(
-            format!("{}.mul", name),
-            tract_hir::ops::math::mul::bin_typed(),
-            &[a, b],
-        )?[0];
+        let zero = tensor0(0.0)
+            .cast_to_dt(model.outlet_fact(a)?.datum_type)?
+            .into_owned()
+            .broadcast_into_rank(rank)?;
+        let ab = model.wire_node(format!("{}.mul", name), tract_hir::ops::math::mul(), &[a, b])?[0];
+        let zero = model.add_const(name.to_string() + ".zero", zero)?;
         let test = model.wire_node(
             name.to_string() + ".test",
-            tract_hir::ops::logic::greater::unary(zero.into_arc_tensor()),
-            &[a],
+            tract_hir::ops::logic::greater(),
+            &[zero, a],
         )?;
         model.wire_node(name.to_string() + ".iff", tract_core::ops::logic::Iff, &[test[0], ab, a])
     }

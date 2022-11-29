@@ -10,7 +10,7 @@ use tract_core::ops::binary::*;
 
 pub type ToTract = fn(&mut ModelBuilder, &ResolvedInvocation) -> TractResult<Value>;
 pub type FromTract = fn(&mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>>;
-pub type BinOp = (String, Box<dyn BinMiniOp>, Option<Box<dyn BinMiniOp>>);
+pub type BinOp = (String, Box<dyn BinMiniOp>);
 pub type Extension = Box<
     dyn Fn(&mut crate::deser::ModelBuilder, &[String]) -> TractResult<ControlFlow<(), ()>>
         + Send
@@ -122,16 +122,7 @@ impl Registry {
     }
 
     pub fn register_binary(&mut self, id: impl Into<String>, op: &dyn BinMiniOp) {
-        self.binary_ops.push((id.into(), clone_box(op), None));
-    }
-
-    pub fn register_binary_with_flipped(
-        &mut self,
-        id: impl Into<String>,
-        op: &dyn BinMiniOp,
-        flipped: &dyn BinMiniOp,
-    ) {
-        self.binary_ops.push((id.into(), clone_box(op), Some(clone_box(flipped))));
+        self.binary_ops.push((id.into(), clone_box(op)));
     }
 
     pub fn serialize(
@@ -165,30 +156,6 @@ impl Registry {
                 let a = ast.mapping[&node.inputs[0]].clone();
                 let b = ast.mapping[&node.inputs[1]].clone();
                 return Ok(Some(invocation(&op.0, &[a, b], &[])));
-            } else if let Some(op) = self
-                .binary_ops
-                .iter()
-                .find(|ew| ew.2.as_ref().map(|op| op.type_id()) == Some(op.0.type_id()))
-            {
-                let a = ast.mapping[&node.inputs[0]].clone();
-                let b = ast.mapping[&node.inputs[1]].clone();
-                return Ok(Some(invocation(&op.0, &[b, a], &[])));
-            }
-        } else if let Some(unary) = node.op().downcast_ref::<ops::binary::UnaryOp>() {
-            if let Some(o) =
-                self.binary_ops.iter().find(|bo| bo.1.as_ref().type_id() == unary.mini_op.type_id())
-            {
-                let a = ast.konst(format!("{}-a", node.name), &unary.a)?;
-                let b = ast.mapping[&node.inputs[0]].clone();
-                return Ok(Some(invocation(&o.0, &[a, b], &[])));
-            } else if let Some(o) = self
-                .binary_ops
-                .iter()
-                .find(|bo| bo.2.as_ref().map(|op| op.type_id()) == Some(unary.mini_op.type_id()))
-            {
-                let a = ast.konst(format!("{}-a", node.name), &unary.a)?;
-                let b = ast.mapping[&node.inputs[0]].clone();
-                return Ok(Some(invocation(&o.0, &[b, a], &[])));
             }
         } else if let Some(op) = self.from_tract.get(&node.op().type_id()) {
             if let Some(result) = op(ast, node)? {

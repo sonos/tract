@@ -80,14 +80,8 @@ pub trait BinMiniOp:
     fn eval(&self, a: TValue, b: TValue) -> TractResult<Tensor> {
         self.generic_eval(a, b)
     }
-    /*
     #[allow(unused_variables)]
-    fn unary_with_b_const(&self, b: &Arc<Tensor>) -> Option<UnaryOp> {
-        None
-    }
-    */
-    #[allow(unused_variables)]
-    fn declutter_bin(
+    fn declutter(
         &self,
         model: &TypedModel,
         node: &TypedNode,
@@ -95,16 +89,7 @@ pub trait BinMiniOp:
         Ok(None)
     }
     #[allow(unused_variables)]
-    fn declutter_unary(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-        a: &Arc<Tensor>,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        Ok(None)
-    }
-    #[allow(unused_variables)]
-    fn codegen_unary(
+    fn codegen(
         &self,
         model: &TypedModel,
         node: &TypedNode,
@@ -267,40 +252,7 @@ impl TypedOp for TypedBinOp {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if let Some(patch) = self.0.declutter_bin(model, node)? {
-            return Ok(Some(patch));
-        }
-        /*
-        if let Some(unary) = declutter_bin_to_unary(model, node, self.0.as_ref())? {
-            return Ok(Some(unary));
-        }
-        let fact_a = model.outlet_fact(node.inputs[0])?;
-        if fact_a.konst.is_none() && fact_a.uniform.is_some() {
-            let a =
-                fact_a.uniform.clone().unwrap().into_tensor().broadcast_into_rank(fact_a.rank())?;
-            let op = UnaryOp::new(self.0.clone(), a.into_arc_tensor());
-            return Ok(Some(TypedModelPatch::replace_single_op(
-                model,
-                node,
-                &node.inputs[1..2],
-                op,
-            )?));
-        }
-        let fact_b = model.outlet_fact(node.inputs[1])?;
-        if fact_b.konst.is_none() && fact_b.uniform.is_some() {
-            let b =
-                fact_b.uniform.clone().unwrap().into_tensor().broadcast_into_rank(fact_b.rank())?;
-            if let Some(op) = self.0.unary_with_b_const(&b.into_arc_tensor()) {
-                return Ok(Some(TypedModelPatch::replace_single_op(
-                    model,
-                    node,
-                    &node.inputs[0..1],
-                    op,
-                )?));
-            }
-        }
-        */
-        Ok(None)
+        self.0.declutter(model, node)
     }
 
     fn codegen(
@@ -326,194 +278,6 @@ impl TypedOp for TypedBinOp {
 
     as_op!();
 }
-
-/*
-fn declutter_bin_to_unary(
-    model: &TypedModel,
-    node: &TypedNode,
-    mini_op: &dyn BinMiniOp,
-) -> TractResult<Option<TypedModelPatch>> {
-    if let Some(a) = model.outlet_fact(node.inputs[0])?.konst.clone() {
-        let op = UnaryOp::new(dyn_clone::clone_box(mini_op), a.into_arc_tensor());
-        return Ok(Some(
-            TypedModelPatch::replace_single_op(model, node, &node.inputs[1..2], op)?
-                .with_context("Left is const"),
-        ));
-    }
-    if let Some(b) = model.outlet_fact(node.inputs[1])?.konst.clone() {
-        let b = b.into_arc_tensor();
-        if let Some(op) = mini_op.unary_with_b_const(&b) {
-            return Ok(Some(
-                TypedModelPatch::replace_single_op(model, node, &node.inputs[0..1], op)?
-                    .with_context("Right is const"),
-            ));
-        }
-    }
-    Ok(None)
-}
-*/
-
-/*
-#[derive(Debug, Clone, new, Hash)]
-pub struct UnaryOp {
-    pub mini_op: Box<dyn BinMiniOp>,
-    pub a: Arc<Tensor>,
-}
-
-impl_dyn_hash!(UnaryOp);
-
-impl Op for UnaryOp {
-    fn name(&self) -> Cow<str> {
-        format!("{}Unary", self.mini_op.name()).into()
-    }
-
-    fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("a: {:?}", self.a)])
-    }
-
-    fn validation(&self) -> Validation {
-        self.mini_op.validation()
-    }
-
-    op_as_typed_op!();
-}
-
-impl EvalOp for UnaryOp {
-    fn is_stateless(&self) -> bool {
-        true
-    }
-
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        debug_assert_eq!(self.a.rank(), inputs[0].rank());
-        Ok(tvec!(self.mini_op.eval(self.a.clone().into_tvalue(), inputs.remove(0))?.into_tvalue()))
-    }
-}
-
-impl TypedOp for UnaryOp {
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        if self.a.rank() != inputs[0].rank() {
-            bail!("Rank mismatch: constant: {:?}, input: {:?}", self.a, inputs[0]);
-        }
-        Ok(tvec!(self.mini_op.result_datum_type(self.a.datum_type(), inputs[0].datum_type)?.fact(
-            &*crate::broadcast::multi_broadcast(&[
-                &*self.a.shape().iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
-                &*inputs[0].shape.to_tvec()
-            ])
-            .ok_or_else(|| format_err!(
-                "Failed to broadcast {:?} and {:?}",
-                self.a.shape(),
-                inputs[0].shape
-            ))?
-        )))
-    }
-
-    fn invariants(
-        &self,
-        inputs: &[&TypedFact],
-        _outputs: &[&TypedFact],
-    ) -> TractResult<Invariants> {
-        let b = &inputs[0];
-        debug_assert_eq!(self.a.rank(), b.rank());
-        Ok(self
-            .a
-            .shape()
-            .iter()
-            .enumerate()
-            .map(|(ix, d)| AxisInfo::simple(ix).with_period(*d))
-            .collect())
-    }
-
-    fn slice_output(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-        patch: &mut TypedModelPatch,
-        suffix: &str,
-        _output_slot: usize,
-        axis: usize,
-        start: usize,
-        end: usize,
-    ) -> TractResult<Option<(OutletId, bool)>> {
-        let b = model.outlet_fact(node.inputs[0])?;
-        debug_assert_eq!(self.a.rank(), b.rank());
-        let prec = model.node(node.inputs[0].node);
-        let wire = prec.op().as_typed().unwrap().slice_output(
-            model,
-            prec,
-            patch,
-            suffix,
-            node.inputs[0].slot,
-            axis,
-            start,
-            end,
-        )?;
-        let wire = if let Some(w) = wire { w.0 } else { return Ok(None) };
-        let a = if self.a.shape()[axis] != 1 {
-            self.a.slice(axis, start, end)?.into_arc_tensor()
-        } else {
-            self.a.clone()
-        };
-        Ok(Some((
-            patch.wire_node(
-                format!("{}.{}", node.name, suffix),
-                UnaryOp::new(self.mini_op.clone(), a),
-                &[wire],
-            )?[0],
-            true,
-        )))
-    }
-
-    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let count: TDim = self.output_facts(inputs)?[0].shape.iter().product();
-        let mut cost: TVec<_> = self
-            .mini_op
-            .cost_per_element(inputs[0].datum_type)
-            .into_iter()
-            .map(|(c, n)| (c, count.clone() * n))
-            .collect();
-        cost.push((Cost::Params(self.a.datum_type().unquantized()), self.a.len().into()));
-        Ok(cost)
-    }
-
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        self.mini_op.declutter_unary(model, node, &self.a).with_context(|| {
-            format!("In specific declutter_unary for bin mini op {}", self.mini_op.name())
-        })
-    }
-
-    fn codegen(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        self.mini_op.codegen_unary(model, node, &self.a).with_context(|| {
-            format!("In specific codegen_unary for bin mini op {}", self.mini_op.name())
-        })
-    }
-
-    fn change_axes(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-        _io: InOut,
-        change: &AxisOp,
-    ) -> TractResult<Option<AxisChangeConsequence>> {
-        let mut a = self.a.clone().into_tensor();
-        if change.change_tensor(&mut a, true).is_ok() {
-            let op = Some(Box::new(UnaryOp::new(self.mini_op.clone(), a.into_arc_tensor())) as _);
-            Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
-        } else {
-            Ok(None)
-        }
-    }
-
-    as_op!();
-}
-*/
 
 #[derive(Debug, Clone, Hash)]
 pub struct MergeOpUnicast(pub Box<dyn BinMiniOp>);
@@ -561,12 +325,7 @@ impl TypedOp for MergeOpUnicast {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        /*
-        if let Some(p) = declutter_bin_to_unary(model, node, self.0.as_ref())? {
-            return Ok(Some(p));
-        }
-        */
-        self.0.declutter_bin(model, node)
+        self.0.declutter(model, node)
     }
 
     as_op!();
@@ -575,18 +334,10 @@ impl TypedOp for MergeOpUnicast {
 #[macro_export]
 macro_rules! bin_to_super_type {
     ($func:ident, $Op:ident,
+     $(codegen: $codegen:expr,)?
      $(cost: $cost:expr,)?
-     /*
-     $(codegen_unary: $codegen_unary:expr,)?
-     */
-     $(declutter_bin: $declutter_bin:expr,)?
-     /*
-     $(declutter_unary: $declutter_unary:expr,)?
-     */
+     $(declutter: $declutter:expr,)?
      $(eval_override: $eval_override: expr,)?
-     /*
-     $(flip: $flip:expr,)?
-     */
      $(linalg: $linalg:ident,)?
      $(operating_datum_type: $operating_datum_type:expr,)?
      $(out_of_place: $out_of_place:expr,)?
@@ -754,44 +505,25 @@ macro_rules! bin_to_super_type {
                 self.operating_datum_type(a, b)
             }
 
-            /*
-            $(
-                fn unary_with_b_const(&self, b: &Arc<Tensor>) -> Option<$crate::ops::binary::UnaryOp> {
-                    ($flip)(self, b)
-                }
-             )?
-             */
                 $(
-                    fn declutter_bin(
+                    fn declutter(
                         &self,
                         model: &TypedModel,
                         node: &TypedNode,
                         ) -> TractResult<Option<TypedModelPatch>> {
-                        ($declutter_bin)(self, model, node)
+                        ($declutter)(self, model, node)
                     }
                  )?
-                    /*
                 $(
-                    fn codegen_unary(
+                    fn codegen(
                         &self,
                         model: &TypedModel,
                         node: &TypedNode,
                         a: &Arc<Tensor>,
                         ) -> TractResult<Option<TypedModelPatch>> {
-                        ($codegen_unary)(self, model, node, a)
+                        ($codegen)(self, model, node, a)
                     }
                  )?
-                $(
-                    fn declutter_unary(
-                        &self,
-                        model: &TypedModel,
-                        node: &TypedNode,
-                        a: &Arc<Tensor>,
-                        ) -> TractResult<Option<TypedModelPatch>> {
-                        ($declutter_unary)(self, model, node, a)
-                    }
-                 )?
-                 */
                 $(
                     fn cost_per_element(&self, dt: DatumType) -> TVec<(Cost, usize)> {
                         ($cost)(dt)
@@ -813,27 +545,17 @@ macro_rules! bin_to_super_type {
                 })?
         }
 
-        pub mod $func {
-            pub fn bin_typed() -> $crate::ops::binary::TypedBinOp {
-                $crate::ops::binary::TypedBinOp(Box::new(super::$Op))
-            }
-            /*
-            pub fn unary(t: std::sync::Arc<$crate::prelude::Tensor>) -> $crate::ops::binary::UnaryOp {
-                $crate::ops::binary::UnaryOp::new(Box::new(super::$Op), t)
-            }
-            */
+        pub fn $func() -> $crate::ops::binary::TypedBinOp {
+            $crate::ops::binary::TypedBinOp(Box::new($Op))
         }
     };
 }
 
 macro_rules! bin_to_bool {
     ($func:ident, $Op:ident,
+     $( codegen: $codegen:expr, )?
      $( cost: $cost:expr, )?
-     /*
-     $( codegen_unary: $codegen_unary:expr, )?
-     $( declutter_unary: $declutter_unary:expr, )?
-     $( flip: $flip:expr, )?
-     */
+     $( declutter: $declutter:expr, )?
      $( operating_datum_type: $operating_datum_type:expr, )?
      $( [$($typ:ident),*] => $cab:expr),*) => {
         #[derive(Debug, Clone, Hash)]
@@ -907,37 +629,30 @@ macro_rules! bin_to_bool {
             fn result_datum_type(&self, _a: DatumType, _b: DatumType) -> TractResult<DatumType> {
                 Ok(bool::datum_type())
             }
-/*
+
             $(
-                fn codegen_unary(
+                fn codegen(
                     &self,
                     model: &TypedModel,
                     node: &TypedNode,
                     a: &Arc<Tensor>,
                     ) -> TractResult<Option<TypedModelPatch>> {
-                    ($codegen_unary)(self, model, node, a)
+                    ($codegen)(self, model, node, a)
                 }
              )?
 
 
                 $(
-                    fn declutter_unary(
+                    fn declutter(
                         &self,
                         model: &TypedModel,
                         node: &TypedNode,
                         a: &Arc<Tensor>,
                         ) -> TractResult<Option<TypedModelPatch>> {
-                        ($declutter_unary)(self, model, node, a)
+                        ($declutter)(self, model, node, a)
                     }
                  )?
-                 */
-/*
-                $(
-                    fn unary_with_b_const(&self, b: &Arc<Tensor>) -> Option<$crate::ops::binary::UnaryOp> {
-                        ($flip)(self, b)
-                    }
-                 )?
-                 */
+
                 $(
                     fn cost_per_element(&self, dt: DatumType) -> TVec<(Cost, usize)> {
                         ($cost)(dt)
@@ -951,22 +666,8 @@ macro_rules! bin_to_bool {
 
         }
 
-        pub mod $func {
-            pub fn bin_typed() -> $crate::ops::binary::TypedBinOp {
-                $crate::ops::binary::TypedBinOp(Box::new(super::$Op))
-            }
-            /*
-            pub fn unary(t: std::sync::Arc<$crate::prelude::Tensor>) -> $crate::ops::binary::UnaryOp {
-                $crate::ops::binary::UnaryOp::new(Box::new(super::$Op), t)
-            }
-            */
+        pub fn $func() -> $crate::ops::binary::TypedBinOp {
+            $crate::ops::binary::TypedBinOp(Box::new($Op))
         }
     };
 }
-
-/*
-#[inline]
-pub fn commute(op: &dyn BinMiniOp, t: &Arc<Tensor>) -> Option<UnaryOp> {
-    Some(UnaryOp::new(dyn_clone::clone_box(op), t.clone()))
-}
-*/

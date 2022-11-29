@@ -44,7 +44,6 @@ impl Expansion for BatchNorm {
         "BatchNorm".into()
     }
 
-
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -104,16 +103,14 @@ impl Expansion for BatchNorm {
             slope.set_shape(&const_shape)?;
             inter.set_shape(&const_shape)?;
 
+            let slope = target.add_const(prefix.to_string() + ".slope", slope)?;
+            let inter = target.add_const(prefix.to_string() + ".inter", inter)?;
             let wire = target.wire_node(
                 format!("{}.mul", prefix),
-                tract_hir::ops::math::mul::unary(slope.into_arc_tensor()),
-                &[inputs[0]],
+                tract_hir::ops::math::mul(),
+                &[slope, inputs[0]],
             )?;
-            return target.wire_node(
-                prefix,
-                tract_hir::ops::math::add::unary(inter.into_arc_tensor()),
-                &wire,
-            );
+            return target.wire_node(prefix, tract_hir::ops::math::add(), &[inter, wire[0]]);
         }
         bail!("Params are not const")
     }

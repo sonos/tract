@@ -79,7 +79,7 @@ impl Expansion for CumSum {
         let var_fact = data.datum_type.fact(var_shape);
         let x = body.add_source("scan_input", var_fact.clone())?;
         let acc = body.add_source("acc_input", var_fact)?;
-        let sum = body.wire_node("add", tract_core::ops::math::add::bin_typed(), &[x, acc])?[0];
+        let sum = body.wire_node("add", tract_core::ops::math::add(), &[x, acc])?[0];
         body.set_output_outlets(&[sum, acc])?;
         let scan = scan::Scan::new(body, input_mapping, output_mapping, None, 0)?;
         let wires = model.wire_node(prefix, scan, &[inputs[0], init])?;

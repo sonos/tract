@@ -33,7 +33,6 @@ impl Expansion for Gemm {
         "Gemm".into()
     }
 
-
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -71,10 +70,11 @@ impl Expansion for Gemm {
         )?[0];
         if self.alpha != 1.0 {
             let alpha = tensor0(self.alpha).broadcast_into_rank(model.outlet_fact(wire)?.rank())?;
+            let alpha = model.add_const(name.to_string() + ".alpha_ab.cst", alpha)?;
             wire = model.wire_node(
-                format!("{}.alpha_ab", self.alpha),
-                ops::math::mul::unary(alpha.into_arc_tensor()),
-                &[wire],
+                name.to_string() + ".alpha_ab",
+                ops::math::mul(),
+                &[alpha, wire],
             )?[0];
         }
         if self.beta != 0.0f32 {
@@ -86,12 +86,10 @@ impl Expansion for Gemm {
                 )?[0];
             }
             let beta = tensor0(self.beta).broadcast_into_rank(model.outlet_fact(wire)?.rank())?;
-            let beta_c = model.wire_node(
-                format!("{}.beta_c", name),
-                ops::math::mul::unary(beta.into_arc_tensor()),
-                &[c],
-            )?[0];
-            wire = model.wire_node(name, ops::math::add::bin_typed(), &[wire, beta_c])?[0];
+            let beta = model.add_const(name.to_string() + ".beta_c.cst", beta)?;
+            let beta_c =
+                model.wire_node(name.to_string() + ".beta_c", ops::math::mul(), &[beta, c])?[0];
+            wire = model.wire_node(name, ops::math::add(), &[wire, beta_c])?[0];
         }
         Ok(tvec!(wire))
     }

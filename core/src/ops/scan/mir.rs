@@ -308,7 +308,10 @@ impl Scan {
                     let (input_facts, output_facts) = self.body.node_facts(successor_node.id)?;
                     let invariants = successor_node.op.invariants(&input_facts, &output_facts)?;
                     if let Some(axis_after) = invariants.unary_track_axis_down(info.axis, false) {
-                        let mut outside_patch = TypedModelPatch::default();
+                        let mut outside_patch = TypedModelPatch::new(format!(
+                            "Outer patch for input extraction of {}",
+                            successor_node
+                        ));
                         let mut patch_inputs = node
                             .inputs
                             .iter()
@@ -330,7 +333,10 @@ impl Scan {
                             format!("{}.extracted.{}", node.name, successor_node.name),
                             new_input_inner_fact,
                         )?;
-                        let mut inner_patch = TypedModelPatch::default();
+                        let mut inner_patch = TypedModelPatch::new(format!(
+                            "Inner body patch for extraction of {}",
+                            successor_node
+                        ));
                         let new_source_wire_in_patch =
                             inner_patch.tap_model(&new_body, new_source_wire)?;
                         inner_patch
@@ -372,6 +378,26 @@ impl Scan {
         Ok(None)
     }
 
+    fn declutter_pull_constant_outputs(
+        &self,
+        _session: &mut OptimizerSession,
+        model: &TypedModel,
+        node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+        for (model_output_ix, mapping) in self.output_mapping.iter().enumerate() {
+            if let Some(slot) = mapping.last_value_slot {
+                if let Some(k) = self.body.output_fact(model_output_ix)?.konst.clone() {
+                    let inner_node = self.body.output_outlets()?[model_output_ix].node;
+                    let inner_node = self.body.node(inner_node);
+                    let mut patch = TypedModelPatch::new(format!("Extract const node {}", inner_node));
+                    let cst = patch.add_const(format!("{}.{}", &node.name, &inner_node.name), k)?;
+                    patch.shunt_outside(model, OutletId::new(node.id, slot), cst)?;
+                    return Ok(Some(patch));
+                }
+            }
+        }
+        Ok(None)
+    }
+
     fn declutter_pull_batcheable_output(
         &self,
         _session: &mut OptimizerSession,
@@ -396,31 +422,41 @@ impl Scan {
                     continue;
                 };
 
-                let mut fixed_body = self.body.clone();
-                let mut output_mapping = self.output_mapping.clone();
-
-                let mut current_scan_outputs = node.outputs.len();
+                let mut new_body = self.body.clone();
+                let mut new_output_mapping = self.output_mapping.clone();
+                let mut new_scan_outputs = node.outputs.len();
                 let mut outer_slots = vec![];
-                for input in &emitter_node.inputs {
-                    if fixed_body.outputs.iter().all(|o| o != input) {
-                        output_mapping.push(OutputMapping::default());
-                        fixed_body.outputs.push(*input);
-                    }
-                    let body_output_id =
-                        fixed_body.outputs.iter().position(|o| o == input).unwrap();
-                    let mut mapping = &mut output_mapping[body_output_id];
-                    if mapping.scan.is_none() {
-                        mapping.scan = Some(ScanInfo {
-                            slot: current_scan_outputs,
-                            axis: axis_before,
-                            chunk: info.chunk,
-                        });
-                        current_scan_outputs += 1;
-                    }
-                    outer_slots.push(mapping.scan.unwrap().slot);
-                }
 
-                let mut outside_patch = TypedModelPatch::default();
+                for input in &emitter_node.inputs {
+                    if new_body.outputs.iter().all(|o| o != input) {
+                        new_output_mapping.push(OutputMapping::default());
+                        new_body.outputs.push(*input);
+                    }
+                    let body_output_id = new_body.outputs.iter().position(|o| o == input).unwrap();
+                    let mut mapping = &mut new_output_mapping[body_output_id];
+                    let outer_slot = if new_body.outlet_fact(*input)?.konst.is_some() {
+                        if mapping.last_value_slot.is_none() {
+                            mapping.last_value_slot = Some(new_scan_outputs);
+                        }
+                        new_scan_outputs += 1;
+                        mapping.last_value_slot.unwrap()
+                    } else {
+                        if mapping.scan.is_none() {
+                            mapping.scan = Some(ScanInfo {
+                                slot: new_scan_outputs,
+                                axis: axis_before,
+                                chunk: info.chunk,
+                            });
+                            new_scan_outputs += 1;
+                        }
+                        mapping.scan.unwrap().slot
+                    };
+                    outer_slots.push(outer_slot);
+                }
+                let mut outside_patch = TypedModelPatch::new(format!(
+                    "Outside patch for output extraction of {}",
+                    emitter_node
+                ));
                 let inputs = node
                     .inputs
                     .iter()
@@ -428,9 +464,9 @@ impl Scan {
                     .collect::<TractResult<TVec<_>>>()?;
                 let new_op = Self {
                     input_mapping: self.input_mapping.clone(),
-                    output_mapping,
+                    output_mapping: new_output_mapping,
                     decluttered: false,
-                    body: fixed_body,
+                    body: new_body,
                     skip: self.skip,
                     seq_length_input_slot: self.seq_length_input_slot,
                 };
@@ -763,6 +799,7 @@ impl TypedOp for Scan {
         pass!(declutter_discard_empty_output_mapping_with_body_output);
         pass!(declutter_body);
         pass!(declutter_body_axes);
+        pass!(declutter_pull_constant_outputs);
         pass!(declutter_pull_batcheable_input);
         pass!(declutter_pull_batcheable_output);
         Ok(None)

@@ -50,8 +50,8 @@ impl Expansion for LstmNonlin {
         target: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        use math::add::bin_typed as add;
-        use math::mul::bin_typed as mul;
+        use math::add;
+        use math::mul;
         use tract_hir::ops::{array, math, nn};
 
         let params = self

@@ -149,7 +149,7 @@ impl ConvUnary {
                                                 model.node(inputs[*i].node).name,
                                                 "a0"
                                             ),
-                                            ops::math::add::bin_typed(),
+                                            ops::math::add(),
                                             &[inputs[*i], cst],
                                         )?[0];
                                     }
@@ -694,7 +694,7 @@ impl ConvUnary {
                         patch.add_const(format!("{}.bias.cst", node.name), b.into_arc_tensor())?;
                     wire = patch.wire_node(
                         format!("{}.bias", node.name),
-                        crate::ops::math::add::bin_typed(),
+                        crate::ops::math::add(),
                         &[wire, b],
                     )?[0];
                 }
@@ -1130,7 +1130,7 @@ impl TypedOp for ConvUnary {
                     let bias = patch.add_const(format!("{}.bias.cst", node.name), bias)?;
                     wire = patch.wire_node(
                         format!("{}.bias", node.name),
-                        crate::ops::math::add::bin_typed(),
+                        crate::ops::math::add(),
                         &[wire, bias],
                     )?[0];
                 }

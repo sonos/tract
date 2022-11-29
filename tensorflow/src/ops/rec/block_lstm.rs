@@ -130,14 +130,16 @@ impl Expansion for BlockLSTM {
         wire!(xh = array::TypedConcat::new(1), x, h_prev);
 
         let w = body.add_const(format!("{}-w", prefix), w)?;
+        let b = body.add_const(format!("{}-b", prefix), b)?;
         wire!(i_ci_f_o_1 = matmul::mir::MatMul::default(), xh, w);
-        wire!(i_ci_f_o = math::add::unary(b.into_arc_tensor()), i_ci_f_o_1);
+        wire!(i_ci_f_o = math::add(), b, i_ci_f_o_1);
 
         wire!(i_1 = array::Slice::new(1, 0, cell_size), i_ci_f_o);
         wire!(i = nn::sigmoid(), i_1);
 
         wire!(f_1 = array::Slice::new(1, 2 * cell_size, 3 * cell_size), i_ci_f_o);
-        wire!(f_2 = math::add::unary(rctensor2(&[[self.forget_bias]])), f_1);
+        let bias = body.add_const(format!("{}-bias", prefix), rctensor2(&[[self.forget_bias]]))?;
+        wire!(f_2 = math::add(), f_1, bias);
         wire!(f = nn::sigmoid(), f_2);
 
         wire!(ci_1 = array::Slice::new(1, cell_size, 2 * cell_size), i_ci_f_o);
@@ -146,12 +148,12 @@ impl Expansion for BlockLSTM {
         wire!(o_1 = array::Slice::new(1, 3 * cell_size, 4 * cell_size), i_ci_f_o);
         wire!(o = nn::sigmoid(), o_1);
 
-        wire!(ci_i = math::mul::bin_typed(), ci, i);
-        wire!(cs_1 = math::mul::bin_typed(), cs_prev, f);
-        wire!(cs = math::add::bin_typed(), cs_1, ci_i);
+        wire!(ci_i = math::mul(), ci, i);
+        wire!(cs_1 = math::mul(), cs_prev, f);
+        wire!(cs = math::add(), cs_1, ci_i);
 
         wire!(co = math::tanh(), cs);
-        wire!(h = math::mul::bin_typed(), co, o);
+        wire!(h = math::mul(), co, o);
 
         wire!(i_ = AxisOp::Add(0), i);
         wire!(cs_ = AxisOp::Add(0), cs);

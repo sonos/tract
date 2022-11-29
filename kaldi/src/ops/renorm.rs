@@ -26,7 +26,6 @@ impl Expansion for Renorm {
         "Renorm".into()
     }
 
-
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -60,10 +59,11 @@ impl Expansion for Renorm {
         let sqrt =
             model.wire_node(prefix.to_string() + ".sqrt", tract_hir::ops::math::sqrt(), &sum)?;
         let epsilon = tensor0(std::f32::EPSILON).broadcast_into_rank(2)?.into_arc_tensor();
+        let epsilon = model.add_const(prefix.to_string() + ".epsilon", epsilon)?;
         let epsilon = model.wire_node(
-            prefix.to_string() + ".epsilon",
-            tract_hir::ops::math::max::unary(epsilon),
-            &sqrt,
+            prefix.to_string() + ".max.epsilon",
+            tract_hir::ops::math::max(),
+            &[sqrt[0], epsilon],
         )?;
         let recip = model.wire_node(
             prefix.to_string() + ".recip",
@@ -72,11 +72,12 @@ impl Expansion for Renorm {
         )?;
         let rms_sqrt_d = self.target_rms * (input.shape[1].to_isize()? as f32).sqrt();
         let rms_sqrt_d = tensor0(rms_sqrt_d).broadcast_into_rank(2)?.into_arc_tensor();
+        let rms_sqrt_d = model.add_const(prefix.to_string() + "rms_sqrt_d", rms_sqrt_d)?;
         let mul = model.wire_node(
             prefix.to_string() + ".mul",
-            tract_hir::ops::math::mul::unary(rms_sqrt_d),
-            &recip,
+            tract_hir::ops::math::mul(),
+            &[rms_sqrt_d, recip[0]],
         )?;
-        model.wire_node(prefix, tract_hir::ops::math::mul::bin_typed(), &[inputs[0], mul[0]])
+        model.wire_node(prefix, tract_hir::ops::math::mul(), &[inputs[0], mul[0]])
     }
 }

@@ -266,7 +266,7 @@ impl RNN {
         let bias = if let Some(b) = b {
             wire!(Wbi = array::Slice::new(1, 0.to_dim() * h_size, 1.to_dim() * h_size), b);
             wire!(Rbi = array::Slice::new(1, 1.to_dim() * h_size, 2.to_dim() * h_size), b);
-            wire!(bi = math::add::bin_typed(), Wbi, Rbi);
+            wire!(bi = math::add(), Wbi, Rbi);
             Some(bi)
         } else {
             None
@@ -278,10 +278,10 @@ impl RNN {
         wire!(Xt_WiT = matmul_t.clone(), Xt, W);
         wire!(Ht_1_RiT = matmul_t, Ht_1, R);
 
-        wire!(ht0 = math::add::bin_typed(), Xt_WiT, Ht_1_RiT);
+        wire!(ht0 = math::add(), Xt_WiT, Ht_1_RiT);
         let mut ht0 = ht0;
         if let Some(bias) = bias {
-            wire!(ht_bias = math::add::bin_typed(), ht0, bias);
+            wire!(ht_bias = math::add(), ht0, bias);
             ht0 = ht_bias;
         }
         wire!(Ht = self.fore.clone(), ht0);

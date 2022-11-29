@@ -80,15 +80,17 @@ impl Expansion for FusedBatchNorm {
             let shape = tvec!(1, 1, 1, scale.len());
             let slope = tensor1(&slope).into_shape(&shape)?;
             let inter = tensor1(&inter).into_shape(&shape)?;
+            let slope = target.add_const(prefix.to_string() + ".slope", slope)?;
+            let inter = target.add_const(prefix.to_string() + ".inter", inter)?;
             let wire = target.wire_node(
                 format!("{}.mul", prefix),
-                tract_hir::ops::math::mul::unary(slope.into_arc_tensor()),
-                &[inputs[0]],
+                tract_hir::ops::math::mul(),
+                &[inputs[0], slope],
             )?;
             return target.wire_node(
                 format!("{}.add", prefix),
-                tract_hir::ops::math::add::unary(inter.into_arc_tensor()),
-                &wire,
+                tract_hir::ops::math::add(),
+                &[wire[0], inter],
             );
         };
         bail!("Batch norm parameters expected to be known")

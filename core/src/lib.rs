@@ -19,7 +19,7 @@
 //! let input = model.add_source("input", input_fact).unwrap();
 //! let three = model.add_const("three".to_string(), tensor1(&[3f32])).unwrap();
 //! let add = model.wire_node("add".to_string(),
-//!     tract_core::ops::math::add::bin_typed(),
+//!     tract_core::ops::math::add(),
 //!     [input, three].as_ref()
 //!     ).unwrap();
 //!

@@ -181,7 +181,7 @@ impl LstmProblem {
         let plan = SimplePlan::new(model)?;
         let mut state = SimpleState::new(plan)?;
         let y = state
-            .run(tvec!(self.x.clone().into_tvalue()))?
+            .run(tvec!(self.x.clone()))?
             .remove(0)
             .into_tensor()
             .into_array::<f32>()?;
@@ -198,7 +198,7 @@ impl LstmProblem {
             &[OutletId::new(lstm_id, 6), OutletId::new(memo_id, 0)],
         )?;
         let mut state = SimpleState::new(plan_run)?;
-        let y = state.run(tvec!(self.x.clone().into_tvalue()))?.remove(0);
+        let y = state.run(tvec!(self.x.clone()))?.remove(0);
         Ok(y)
     }
 }
