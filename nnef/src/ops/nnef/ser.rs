@@ -38,19 +38,10 @@ pub fn concat(
     node: &TypedNode,
     op: &ops::array::TypedConcat,
 ) -> TractResult<Option<Arc<RValue>>> {
-    let mut inputs = node.inputs.iter();
-    let wires = op
-        .slices
+    let wires = node
+        .inputs
         .iter()
-        .enumerate()
-        .map(|(ix, s)| match s {
-            ops::array::ConcatSlice::Var => {
-                Ok(ast.mapping[inputs.next().unwrap()].as_ref().clone())
-            }
-            ops::array::ConcatSlice::Const(t) => {
-                Ok(ast.konst(format!("{}.const-{}", node.name, ix), t)?.as_ref().clone())
-            }
-        })
+        .map(|i| Ok(ast.mapping[i].as_ref().clone()))
         .collect::<TractResult<TVec<RValue>>>()?;
     Ok(Some(invocation("concat", &[array(&wires).into()], &[("axis", numeric(op.axis))])))
 }
@@ -72,7 +63,11 @@ pub fn slice(
     dbg!(Ok(Some(invocation(
         "slice",
         &[wire],
-        &[("axes", ints(&[op.axis])), ("begin", tdims(&[op.start.clone()])), ("end", tdims(&[end]))],
+        &[
+            ("axes", ints(&[op.axis])),
+            ("begin", tdims(&[op.start.clone()])),
+            ("end", tdims(&[end]))
+        ],
     ))))
 }
 

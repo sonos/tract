@@ -172,21 +172,21 @@ impl Expansion for LSTM {
             if let Some(ix) = self.optional_y_output {
                 outputs[ix] = target.wire_node(
                     format!("{}.merge_y_output", prefix),
-                    TypedConcat::concat_vars(1, 2),
+                    TypedConcat::new(1),
                     &[fore[ix], back[ix]],
                 )?[0];
             }
             if let Some(ix) = self.optional_y_h_output {
                 outputs[ix] = target.wire_node(
                     format!("{}.merge_y_h_output", prefix),
-                    TypedConcat::concat_vars(0, 2),
+                    TypedConcat::new(0),
                     &[fore[ix], back[ix]],
                 )?[0];
             }
             if let Some(ix) = self.optional_y_c_output {
                 outputs[ix] = target.wire_node(
                     format!("{}.merge_y_c_output", prefix),
-                    TypedConcat::concat_vars(0, 2),
+                    TypedConcat::new(0),
                     &[fore[ix], back[ix]],
                 )?[0];
             }

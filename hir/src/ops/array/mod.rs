@@ -27,7 +27,7 @@ mod tile;
 pub use add_dims::AddDims;
 pub use array_feature_extractor::ArrayFeatureExtractor;
 pub use broadcast::MultiBroadcastTo;
-pub use concat::{Concat, ConcatSlice, TypedConcat};
+pub use concat::{Concat, TypedConcat};
 pub use constant_like::{ConstantLike, EyeLike};
 pub use constant_of_shape::ConstantOfShape;
 pub use crop::Crop;

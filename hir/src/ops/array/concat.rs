@@ -1,7 +1,8 @@
 use crate::infer::*;
 use crate::internal::*;
+use crate::ops::binary::wire_cast;
 
-pub use tract_core::ops::array::{ConcatSlice, TypedConcat};
+pub use tract_core::ops::array::TypedConcat;
 
 /// Concat: high level concat op
 #[derive(Debug, Clone, new, Hash)]
@@ -27,7 +28,6 @@ impl Expansion for Concat {
     fn name(&self) -> Cow<str> {
         "InferenceConcat".into()
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -84,27 +84,8 @@ impl Expansion for Concat {
 
         let axis = self.resolve_axis(facts[0].shape.rank() as i64)?;
 
-        let mut slices: TVec<ConcatSlice> = tvec![];
-        let mut kept_inputs: TVec<OutletId> = tvec![];
-        for (ix, (fact, outlet)) in facts.iter().zip(inputs.iter()).enumerate() {
-            match &fact.konst {
-                Some(c_input) => {
-                    slices.push(ConcatSlice::Const(
-                        c_input.cast_to_dt(super_type)?.into_owned().into_arc_tensor(),
-                    ));
-                }
-                None => {
-                    let casted = target.wire_node(
-                        format!("{}.cast-{}", prefix, ix),
-                        crate::ops::cast::cast(super_type),
-                        &[*outlet],
-                    )?[0];
-                    kept_inputs.push(casted);
-                    slices.push(ConcatSlice::Var)
-                }
-            }
-        }
-        let op = TypedConcat::new(axis, slices);
-        target.wire_node(prefix, op, &kept_inputs)
+        let inputs = wire_cast(prefix, target, inputs, super_type)?;
+        let op = TypedConcat::new(axis);
+        target.wire_node(prefix, op, &inputs)
     }
 }
