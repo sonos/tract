@@ -12,14 +12,14 @@ pub enum TValue {
 
 impl std::fmt::Debug for TValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        (&**self).fmt(f)
+        (**self).fmt(f)
     }
 }
 
 impl TValue {
     pub fn is_exclusive(&self) -> bool {
         match self {
-            Var(it) => Rc::strong_count(&it) == 1,
+            Var(it) => Rc::strong_count(it) == 1,
             Const(_) => false,
         }
     }
@@ -39,15 +39,15 @@ impl std::ops::Deref for TValue {
     type Target = Tensor;
     fn deref(&self) -> &Self::Target {
         match self {
-            Const(it) => &**it,
-            Var(it) => &**it,
+            Const(it) => it,
+            Var(it) => it,
         }
     }
 }
 
 impl std::borrow::Borrow<Tensor> for TValue {
     fn borrow(&self) -> &Tensor {
-        &*self
+        self
     }
 }
 
@@ -64,7 +64,7 @@ impl IntoArcTensor for TValue {
     fn into_arc_tensor(self) -> Arc<Tensor> {
         match self {
             Var(ref _it) => self.into_tensor().into_arc_tensor(),
-            Const(t) => t.clone(),
+            Const(t) => t,
         }
     }
 }

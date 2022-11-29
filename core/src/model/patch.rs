@@ -196,6 +196,7 @@ where
         Self::rewire(patched_model, &node.inputs, &[node.id.into()], &|_p, xs| Ok(xs.into()))
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn rewire(
         patched_model: &Graph<F, O>,
         from: &[OutletId],

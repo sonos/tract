@@ -184,58 +184,30 @@ bin_to_super_type!(shift_left, ShiftLeft,
 bin_to_super_type!(shift_right, ShiftRight,
                    [i8, i16, i32, i64, u8, u16, u32, u64] => |c, a, b| *c = *a >> *b);
 
-struct OneUniformInput {
-    uni: Arc<Tensor>,
-    var: OutletId,
-    left_is_uniform: bool,
-}
-
-fn one_input_is_uniform(
-    model: &TypedModel,
-    node: &TypedNode,
-) -> TractResult<Option<OneUniformInput>> {
-    if let &[a, b] = &*model.node_input_facts(node.id)? {
-        if let Some(a) = &a.uniform {
-            return Ok(Some(OneUniformInput {
-                uni: a.clone(),
-                var: node.inputs[1],
-                left_is_uniform: true,
-            }));
-        } else if let Some(b) = &b.uniform {
-            return Ok(Some(OneUniformInput {
-                uni: b.clone(),
-                var: node.inputs[0],
-                left_is_uniform: false,
-            }));
-        }
-    }
-    return Ok(None);
-}
-
 fn declutter_neutral(
     model: &TypedModel,
     node: &TypedNode,
     value: i64,
     also_left: bool,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if let Some(uniform) = one_input_is_uniform(model, node)? {
+    if let Some(uniform) = crate::ops::binary::one_input_is_uniform(model, node)? {
         let integer = uniform.uni.cast_to_scalar::<i64>()?;
         if tensor0(integer)
             .cast_to_dt(uniform.uni.datum_type())?
             .close_enough(&uniform.uni, false)
             .is_ok()
+            && integer == value
+            && (also_left || !uniform.left_is_uniform)
         {
-            if integer == value && (also_left || !uniform.left_is_uniform) {
-                return Ok(Some(TypedModelPatch::rewire(
-                    model,
-                    &[uniform.var],
-                    &[node.id.into()],
-                    &|_, inputs| Ok(inputs.into()),
-                )?));
-            }
+            return Ok(Some(TypedModelPatch::rewire(
+                model,
+                &[uniform.var],
+                &[node.id.into()],
+                &|_, inputs| Ok(inputs.into()),
+            )?));
         }
     }
-    return Ok(None);
+    Ok(None)
 }
 
 fn declutter_add(
@@ -262,7 +234,7 @@ fn declutter_mul(
     if let Some(p) = declutter_neutral(model, node, 1, true)? {
         return Ok(Some(p));
     }
-    if let Some(uniform) = one_input_is_uniform(model, node)? {
+    if let Some(uniform) = crate::ops::binary::one_input_is_uniform(model, node)? {
         let var_fact = model.outlet_fact(uniform.var)?;
         if uniform.uni.cast_to_scalar::<f64>()? == 0.0 {
             let shapes =
@@ -287,28 +259,28 @@ fn declutter_mul(
             .cast_to_dt(uniform.uni.datum_type())?
             .close_enough(&uniform.uni, false)
             .is_ok()
+            && dt.is_integer()
+            && uniform.uni.cast_to_scalar::<i64>()?.count_ones() == 1
         {
-            if dt.is_integer() && uniform.uni.cast_to_scalar::<i64>()?.count_ones() == 1 {
-                let shift = integer.trailing_zeros();
-                return Ok(Some(TypedModelPatch::rewire(
-                    model,
-                    &[uniform.var],
-                    &[node.id.into()],
-                    &|patch, inputs| {
-                        let shift = patch.add_const(
-                            format!("{}.shift", node.name),
-                            tensor0(shift)
-                                .cast_to_dt(dt)?
-                                .into_owned()
-                                .broadcast_into_rank(var_fact.rank())?,
-                        )?;
-                        patch.wire_node(&node.name, shift_left(), &[inputs[0], shift])
-                    },
-                )?));
-            }
+            let shift = integer.trailing_zeros();
+            return Ok(Some(TypedModelPatch::rewire(
+                model,
+                &[uniform.var],
+                &[node.id.into()],
+                &|patch, inputs| {
+                    let shift = patch.add_const(
+                        format!("{}.shift", node.name),
+                        tensor0(shift)
+                            .cast_to_dt(dt)?
+                            .into_owned()
+                            .broadcast_into_rank(var_fact.rank())?,
+                    )?;
+                    patch.wire_node(&node.name, shift_left(), &[inputs[0], shift])
+                },
+            )?));
         }
     }
-    return Ok(None);
+    Ok(None)
 }
 
 fn declutter_div(
@@ -319,7 +291,7 @@ fn declutter_div(
     if let Some(p) = declutter_neutral(model, node, 1, false)? {
         return Ok(Some(p));
     }
-    if let Some(uniform) = one_input_is_uniform(model, node)? {
+    if let Some(uniform) = crate::ops::binary::one_input_is_uniform(model, node)? {
         let var_fact = model.outlet_fact(uniform.var)?;
         let dt = uniform.uni.datum_type();
         let integer = uniform.uni.cast_to_scalar::<i64>()?;
@@ -327,28 +299,26 @@ fn declutter_div(
             .cast_to_dt(uniform.uni.datum_type())?
             .close_enough(&uniform.uni, false)
             .is_ok()
+            && dt.is_integer()
+            && !uniform.left_is_uniform
+            && uniform.uni.cast_to_scalar::<i64>()?.count_ones() == 1
         {
-            if dt.is_integer()
-                && !uniform.left_is_uniform
-                && uniform.uni.cast_to_scalar::<i64>()?.count_ones() == 1
-            {
-                let shift = integer.trailing_zeros();
-                return Ok(Some(TypedModelPatch::rewire(
-                    model,
-                    &[uniform.var],
-                    &[node.id.into()],
-                    &|patch, inputs| {
-                        let shift = patch.add_const(
-                            format!("{}.shift", node.name),
-                            tensor0(shift)
-                                .cast_to_dt(dt)?
-                                .into_owned()
-                                .broadcast_into_rank(var_fact.rank())?,
-                        )?;
-                        patch.wire_node(&node.name, shift_right(), &[inputs[0], shift])
-                    },
-                )?));
-            }
+            let shift = integer.trailing_zeros();
+            return Ok(Some(TypedModelPatch::rewire(
+                model,
+                &[uniform.var],
+                &[node.id.into()],
+                &|patch, inputs| {
+                    let shift = patch.add_const(
+                        format!("{}.shift", node.name),
+                        tensor0(shift)
+                            .cast_to_dt(dt)?
+                            .into_owned()
+                            .broadcast_into_rank(var_fact.rank())?,
+                    )?;
+                    patch.wire_node(&node.name, shift_right(), &[inputs[0], shift])
+                },
+            )?));
         }
     } else if model.outlet_fact(node.inputs[0])?.datum_type.is_float() {
         return Ok(Some(TypedModelPatch::rewire(
@@ -362,7 +332,7 @@ fn declutter_div(
             },
         )?));
     }
-    return Ok(None);
+    Ok(None)
 }
 
 fn declutter_pow(

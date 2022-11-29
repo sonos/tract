@@ -93,7 +93,6 @@ pub trait BinMiniOp:
         &self,
         model: &TypedModel,
         node: &TypedNode,
-        a: &Arc<Tensor>,
     ) -> TractResult<Option<TypedModelPatch>> {
         Ok(None)
     }
@@ -635,9 +634,8 @@ macro_rules! bin_to_bool {
                     &self,
                     model: &TypedModel,
                     node: &TypedNode,
-                    a: &Arc<Tensor>,
                     ) -> TractResult<Option<TypedModelPatch>> {
-                    ($codegen)(self, model, node, a)
+                    ($codegen)(self, model, node)
                 }
              )?
 
@@ -647,9 +645,8 @@ macro_rules! bin_to_bool {
                         &self,
                         model: &TypedModel,
                         node: &TypedNode,
-                        a: &Arc<Tensor>,
                         ) -> TractResult<Option<TypedModelPatch>> {
-                        ($declutter)(self, model, node, a)
+                        ($declutter)(self, model, node)
                     }
                  )?
 
@@ -670,4 +667,32 @@ macro_rules! bin_to_bool {
             $crate::ops::binary::TypedBinOp(Box::new($Op))
         }
     };
+}
+
+pub(crate) struct OneUniformInput {
+    pub uni: Arc<Tensor>,
+    pub var: OutletId,
+    pub left_is_uniform: bool,
+}
+
+pub(crate) fn one_input_is_uniform(
+    model: &TypedModel,
+    node: &TypedNode,
+) -> TractResult<Option<OneUniformInput>> {
+    if let &[a, b] = &*model.node_input_facts(node.id)? {
+        if let Some(a) = &a.uniform {
+            return Ok(Some(OneUniformInput {
+                uni: a.clone(),
+                var: node.inputs[1],
+                left_is_uniform: true,
+            }));
+        } else if let Some(b) = &b.uniform {
+            return Ok(Some(OneUniformInput {
+                uni: b.clone(),
+                var: node.inputs[0],
+                left_is_uniform: false,
+            }));
+        }
+    }
+    Ok(None)
 }
