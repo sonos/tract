@@ -1,3 +1,4 @@
+use crate::fact::StreamInfo;
 use crate::internal::*;
 use tract_core::ops::scan::{InputMapping, Scan};
 
@@ -15,16 +16,16 @@ fn pulsify(
     for input_id in 0..node.inputs.len() {
         let input = mapping[&node.inputs[input_id]];
         let input_fact = target.outlet_fact(input)?;
-        let (_slot, axis, chunk) = op
+        let info = op
             .input_mapping
             .iter()
             .filter_map(InputMapping::as_scan)
-            .find(|mapping| mapping.0 == input_id)
+            .find(|mapping| mapping.slot == input_id)
             .unwrap();
-        if chunk < 0 {
+        if info.chunk < 0 {
             bail!("Can not pulsify a backward scan.")
         }
-        if input_fact.axis != axis {
+        if input_fact.stream.as_ref().context("scan on non-streamed input")?.axis != info.axis {
             bail!("Scan pulsification limited to scanning axis");
         }
     }
@@ -32,9 +33,9 @@ fn pulsify(
     let pulse_inputs = node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>();
 
     let mut op = op.clone();
-    op.skip = target.outlet_fact(pulse_inputs[0])?.delay;
+    op.skip = target.outlet_fact(pulse_inputs[0])?.stream.as_ref().unwrap().delay;
     for mut om in op.output_mapping.iter_mut() {
-        if om.full_slot.is_some() {
+        if om.scan.is_some() {
             om.full_dim_hint = None;
         }
     }
@@ -46,39 +47,40 @@ impl PulsedOp for Scan {
         let output_count = self
             .output_mapping
             .iter()
-            .map(|om| om.full_slot.unwrap_or(0).max(om.last_value_slot.unwrap_or(0)))
+            .map(|om| om.scan.map(|s| s.slot).unwrap_or(0).max(om.last_value_slot.unwrap_or(0)))
             .max()
-            .context("no output?")?;
+            .context("no output?")?
+            + 1;
 
         let mut facts = tvec!();
-        for output_slot in 0..=output_count {
+        for output_slot in 0..output_count {
             let (output_body_ix, output_mapping) = self
                 .output_mapping
                 .iter()
                 .enumerate()
-                .find(|(_ix, om)| om.full_slot == Some(output_slot))
+                .find(|(_ix, om)| om.scan.map(|s| s.slot) == Some(output_slot))
                 .context("Scan pulse only supports full outputs")?;
             let output_body_fact = self.body.output_fact(output_body_ix)?;
             let shape: ShapeFact = output_body_fact
                 .shape
                 .iter()
                 .enumerate()
-                .map(
-                    |(axis, d)| {
-                        if axis == output_mapping.axis {
-                            inputs[0].pulse().to_dim()
-                        } else {
-                            d
-                        }
-                    },
-                )
+                .map(|(axis, d)| {
+                    if axis == output_mapping.scan.unwrap().axis {
+                        inputs[0].pulse().unwrap().to_dim()
+                    } else {
+                        d
+                    }
+                })
                 .collect();
             let fact = PulsedFact {
                 datum_type: output_body_fact.datum_type,
                 shape,
-                axis: output_mapping.axis,
-                dim: inputs[0].dim.clone(),
-                delay: inputs[0].delay,
+                stream: Some(StreamInfo {
+                    axis: output_mapping.scan.unwrap().axis,
+                    dim: inputs[0].stream.as_ref().unwrap().dim.clone(),
+                    delay: inputs[0].stream.as_ref().unwrap().delay,
+                }),
             };
             facts.push(fact);
         }

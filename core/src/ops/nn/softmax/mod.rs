@@ -365,7 +365,7 @@ mod test {
             (1usize..2, 1usize..2, 1usize..5, 1usize..5, 0usize..4)
                 .prop_flat_map(|(n, c, h, w, axis)| {
                     let shape_in: Vec<usize> =
-                        NCHW.from_n_c_hw(n, c, &[h, w]).unwrap().shape.to_vec();
+                        NCHW.from_n_c_hw(n, c, [h, w]).unwrap().shape.to_vec();
                     (
                         prop_oneof![qtensor::<i8>(shape_in.clone()), qtensor::<u8>(shape_in)],
                         Just(tvec![axis]),

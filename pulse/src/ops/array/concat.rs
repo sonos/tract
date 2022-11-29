@@ -1,6 +1,6 @@
-use crate::internal::*;
 use std::ops::Range;
-use tract_core::ndarray::*;
+
+use crate::internal::*;
 use tract_core::ops::array::TypedConcat;
 use tract_pulse_opl::ops::Delay;
 
@@ -15,10 +15,12 @@ fn pulsify(
     _symbol: &Symbol,
     _pulse: &TDim,
 ) -> TractResult<Option<TVec<OutletId>>> {
-    let input = mapping[&node.inputs[0]];
-    let fact = target.outlet_fact(input)?;
+    let pulse_facts: TVec<PulsedFact> =
+        node.inputs.iter().map(|i| target.outlet_fact(mapping[i]).unwrap().clone()).collect();
+    let (_stream_input_ix, pulse_fact) =
+        pulse_facts.iter().enumerate().find(|(_ix, pf)| pf.stream.is_some()).unwrap();
 
-    if fact.axis == op.axis {
+    if pulse_fact.stream.as_ref().unwrap().axis == op.axis {
         pulsify_along_concat_axis(op, source, node, target, mapping)
     } else {
         Ok(None)
@@ -27,34 +29,44 @@ fn pulsify(
 
 fn pulsify_along_concat_axis(
     op: &TypedConcat,
-    _source: &TypedModel,
+    source: &TypedModel,
     node: &TypedNode,
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
 ) -> TractResult<Option<TVec<OutletId>>> {
-    if node.inputs.len() > 1 {
-        bail!("Concat can not pulse more than on input on concat axis")
+    let axis = op.axis;
+    let source_facts: TVec<TypedFact> =
+        node.inputs.iter().map(|i| source.outlet_fact(*i).unwrap().clone()).collect();
+    if !source_facts.iter().all(|f| f.konst.is_some() || f.shape[axis].to_usize().is_err()) {
+        bail!("Concat over pulse axis expect constant input and one stream input")
     }
-    let mut input = mapping[&node.inputs[0]];
-    let fact = target.outlet_fact(input)?.clone();
-    assert_eq!(fact.axis, op.axis);
-    let var_index = op.slices.iter().position(|s| s.is_var()).unwrap();
-    let pre_owned = op.slices[0..var_index]
-        .iter()
-        .map(|s| s.as_const().unwrap().cast_to_dt(fact.datum_type))
-        .collect::<TractResult<TVec<_>>>()?;
+    let pulse_facts: TVec<PulsedFact> =
+        node.inputs.iter().map(|i| target.outlet_fact(mapping[i]).unwrap().clone()).collect();
+    let (stream_input_ix, pulse_fact) =
+        pulse_facts.iter().enumerate().find(|(_ix, pf)| pf.stream.is_some()).unwrap();
+    let stream = pulse_fact.stream.as_ref().unwrap();
+
+    let pre_owned =
+        source_facts.iter().take(stream_input_ix).map(|s| s.konst.clone().unwrap()).collect::<TVec<_>>();
     let pre = Tensor::stack_tensors(op.axis, &pre_owned)?;
-    let post_owned = op.slices[var_index + 1..]
+    let post_owned = source_facts
         .iter()
-        .map(|s| s.as_const().unwrap().cast_to_dt(fact.datum_type))
-        .collect::<TractResult<TVec<_>>>()?;
+        .skip(stream_input_ix + 1)
+        .map(|s| s.konst.clone().unwrap())
+        .collect::<TVec<_>>();
     let post = Tensor::stack_tensors(op.axis, &post_owned)?;
 
+    let mut input = mapping[&node.inputs[stream_input_ix]];
     let before = pre.shape()[op.axis];
-    if fact.delay < before {
+    if stream.delay < before {
         input = target.wire_node(
             format!("{}.Delay", node.name),
-            Delay::new_typed(&(&fact).into(), fact.axis, before - fact.delay, 0),
+            Delay::new_typed(
+                source.outlet_fact(node.inputs[stream_input_ix])?,
+                stream.axis,
+                before - stream.delay,
+                0,
+            ),
             &[input],
         )?[0];
     }
@@ -62,8 +74,8 @@ fn pulsify_along_concat_axis(
         axis: op.axis,
         pre_slice: pre,
         post_slice: post,
-        input_delay: fact.delay.saturating_sub(before),
-        input_len: fact.dim.clone(),
+        input_delay: stream.delay.saturating_sub(before),
+        input_len: stream.dim.clone(),
     };
     Ok(Some(target.wire_node(&*node.name, main_op, &[input])?))
 }
@@ -113,10 +125,11 @@ impl TypedOp for PulsedSameAxisConcat {
 impl PulsedOp for PulsedSameAxisConcat {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
+        let stream = fact.stream.as_mut().unwrap();
         let before = self.pre_slice.shape()[self.axis];
         let after = self.post_slice.shape()[self.axis];
-        fact.dim += (before + after).to_dim();
-        fact.delay -= before;
+        stream.dim += (before + after).to_dim();
+        stream.delay -= before;
         Ok(tvec!(fact))
     }
 
@@ -148,30 +161,18 @@ impl OpState for PulsedSameAxisConcatState {
 
         let pre_length = op.pre_slice.shape()[op.axis];
         let pre_offset = op.input_delay - pre_length;
-        dispatch_datum!(overwrite_part_of_pulse(data.datum_type())(
-            op.axis,
-            &mut data,
-            current_pos,
-            &op.pre_slice,
-            pre_offset
-        ))?;
+        overwrite_part_of_pulse(op.axis, &mut data, current_pos, &op.pre_slice, pre_offset)?;
         if self.symbols_in_dim.iter().all(|s| session.resolved_symbols[s].is_some()) {
             let l = op.input_len.eval(&session.resolved_symbols).to_usize().unwrap();
             let post_offset = op.input_delay + l as usize;
-            dispatch_datum!(overwrite_part_of_pulse(data.datum_type())(
-                op.axis,
-                &mut data,
-                current_pos,
-                &op.post_slice,
-                post_offset
-            ))?;
+            overwrite_part_of_pulse(op.axis, &mut data, current_pos, &op.post_slice, post_offset)?;
         }
 
         Ok(tvec!(data.into_tvalue()))
     }
 }
 
-pub fn overwrite_part_of_pulse<T: Datum>(
+pub fn overwrite_part_of_pulse(
     axis: usize,
     pulse_data: &mut Tensor,
     current_pos: usize,
@@ -182,33 +183,34 @@ pub fn overwrite_part_of_pulse<T: Datum>(
     let const_length = const_data.shape()[axis];
     let const_range = const_offset..const_offset + const_length;
     let pulse_range = current_pos..current_pos + pulse;
-    let axis = Axis(axis);
-    let mut pulse_data = pulse_data.to_array_view_mut::<T>()?;
-    let const_data = const_data.to_array_view::<T>()?;
 
     match range_in_range(&pulse_range, &const_range) {
         RangeInRange::Before(_) | RangeInRange::After(_) => (),
         RangeInRange::Begin(offset) => {
             // ----[<----->HHH]HH----
-            pulse_data
-                .slice_axis_mut(axis, (offset..pulse).into())
-                .assign(&const_data.slice_axis(axis, (0..pulse - offset).into()));
+            pulse_data.assign_slice(offset..pulse, const_data, 0..pulse - offset, axis)?;
         }
         RangeInRange::Contain(offset) => {
             // ----[<----->HHHHHHH-]---
-            pulse_data
-                .slice_axis_mut(axis, (offset..offset + const_length).into())
-                .assign(&const_data);
+            pulse_data.assign_slice(
+                offset..offset + const_length,
+                const_data,
+                0..const_length,
+                axis,
+            )?;
         }
         RangeInRange::Inside(offset) => {
             // ----------<H>[HH]HH----
-            pulse_data.assign(&const_data.slice_axis(axis, (offset..offset + pulse).into()));
+            pulse_data.assign_slice(0..pulse, const_data, offset..offset + pulse, axis)?;
         }
         RangeInRange::End(offset) => {
             // --------<HHH>[HHHH-]---
-            pulse_data
-                .slice_axis_mut(axis, (0..const_length - offset).into())
-                .assign(&const_data.slice_axis(axis, (offset..const_length).into()));
+            pulse_data.assign_slice(
+                0..const_length - offset,
+                const_data,
+                offset..const_length,
+                axis,
+            )?;
         }
     }
     Ok(())

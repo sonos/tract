@@ -1,6 +1,7 @@
 use super::lir_unary::{ConcreteMatMulGeometry, LirMatMulUnary, MatMulGeometry, ProtoFusedSpec};
 use super::*;
 use crate::internal::*;
+use crate::ops::array::TypedConcat;
 use tract_ndarray::prelude::*;
 
 /// The pseudo Unary matrix multiplier. A is constant, B is the input
@@ -181,7 +182,6 @@ impl MatMulUnary {
                     packer: mmm.b_pack(),
                     k_axis: self.axes.b_k,
                     mn_axis: self.axes.b_n,
-                    output_shape: packed_b_shape,
                 },
                 &[wire],
             )?[0];
@@ -212,13 +212,10 @@ impl MatMulUnary {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        use crate::ops::array::concat::ConcatSlice;
-        use crate::ops::array::TypedConcat;
         if let Some(concat) = model.nodes()[node.inputs[0].node].op().downcast_ref::<TypedConcat>()
         {
             let mut patch = TypedModelPatch::new("split over k-concatenated input");
             if concat.axis == self.axes.b_k {
-                let mut input = 0;
                 let concat_node = model.node(node.inputs[0].node);
                 let offsets = concat
                     .offsets(&model.node_input_facts(concat_node.id)?)?
@@ -226,17 +223,8 @@ impl MatMulUnary {
                     .map(|x| x.to_usize())
                     .collect::<TractResult<Vec<usize>>>()?;
                 let mut wires = vec![];
-                for (ix, slice) in concat.slices.iter().enumerate() {
-                    let wire = match slice {
-                        ConcatSlice::Const(t) => patch.add_const(
-                            format!("{}.const-{}", node.name, ix),
-                            t.clone().into_arc_tensor(),
-                        )?,
-                        ConcatSlice::Var => {
-                            input += 1;
-                            patch.tap_model(model, concat_node.inputs[input - 1])?
-                        }
-                    };
+                for (ix, input) in concat_node.inputs.iter().enumerate() {
+                    let wire = patch.tap_model(model, *input)?;
                     let a = self.a.slice(self.axes.a_k, offsets[ix], offsets[ix + 1])?;
                     let wire = patch.wire_node(
                         format!("{}.k-{}-{}", node.name, offsets[ix], offsets[ix + 1]),
@@ -325,7 +313,7 @@ impl MatMulUnary {
             }
             let full = patch.wire_node(
                 format!("{}.concat-m.full", node.name),
-                crate::ops::array::TypedConcat::concat_vars(axis, splits.len()),
+                TypedConcat::new(axis),
                 &splits,
             )?[0];
             patch.shunt_outside(model, node.id.into(), full)?;
@@ -350,7 +338,7 @@ impl MatMulUnary {
                     let wire = if slices.len() > 1 {
                         patch.wire_node(
                             format!("{}.concat-m{}..{}..{}", node.name, ix, slice.start, slice.end),
-                            crate::ops::array::TypedConcat::concat_vars(axis, slices.len()),
+                            TypedConcat::new(axis),
                             &slices,
                         )?[0]
                     } else {

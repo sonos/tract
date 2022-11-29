@@ -23,7 +23,13 @@ fn tree_classifier(
 
     // even numbers in leaves are categories id target of leaf contrib
     let binary_result_layout = class_labels.len() < 3
-        && ensemble.data.leaves.as_slice::<u32>()?.iter().enumerate().all(|(ix, v)| ix % 2 == 1 || *v == 0);
+        && ensemble
+            .data
+            .leaves
+            .as_slice::<u32>()?
+            .iter()
+            .enumerate()
+            .all(|(ix, v)| ix % 2 == 1 || *v == 0);
 
     Ok((
         expand(TreeEnsembleClassifier {
@@ -246,9 +252,8 @@ impl Expansion for TreeEnsembleClassifier {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec!(format!("binary result layout kludge: {:?}", self.binary_result_layout)))
+        Ok(vec![format!("binary result layout kludge: {:?}", self.binary_result_layout)])
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -330,7 +335,7 @@ impl Expansion for TreeEnsembleClassifier {
             )?;
             scores = model.wire_node(
                 &format!("{}.binary_result", prefix),
-                TypedConcat::concat_vars(1, 2),
+                TypedConcat::new(1),
                 &[complement[0], scores[0]],
             )?;
         }

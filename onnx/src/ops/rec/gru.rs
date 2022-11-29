@@ -3,6 +3,7 @@ use crate::pb::*;
 use tract_hir::internal::*;
 use tract_hir::ops;
 use tract_hir::tract_core::ops::matmul::MatMulAxes;
+use tract_hir::tract_core::ops::scan::ScanInfo;
 
 pub fn gru(
     _ctx: &ParsingContext,
@@ -61,7 +62,6 @@ impl Expansion for GRU {
     fn validation(&self) -> Validation {
         Validation::Rounding
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -140,14 +140,14 @@ impl Expansion for GRU {
             if let Some(ix) = self.optional_y_output {
                 outputs[ix] = target.wire_node(
                     format!("{}.merge_y_output", prefix),
-                    TypedConcat::concat_vars(1, 2),
+                    TypedConcat::new(1),
                     &[fore[ix], back[ix]],
                 )?[0];
             }
             if let Some(ix) = self.optional_y_h_output {
                 outputs[ix] = target.wire_node(
                     format!("{}.merge_y_h_output", prefix),
-                    TypedConcat::concat_vars(0, 2),
+                    TypedConcat::new(0),
                     &[fore[ix], back[ix]],
                 )?[0];
             }
@@ -207,7 +207,7 @@ impl GRU {
         // scann inner interface: [chunk=1, batch_size, input_size]
         // onnx inner interface: [batch_size, input_size]
         outer_inputs.push(x_batch_first);
-        input_mapping.push(scan::InputMapping::Scan { slot: 0, axis: 1, chunk });
+        input_mapping.push(scan::InputMapping::Scan(ScanInfo { slot: 0, axis: 1, chunk }));
         let mut x_source_fact = target.outlet_fact(x_batch_first)?.without_value();
         x_source_fact.shape.set(1, 1.to_dim());
         let x_source = body.add_source("x_source", x_source_fact)?;
@@ -376,11 +376,9 @@ impl GRU {
 
         let output_mapping = scan::OutputMapping {
             state: true,
-            axis: 1,
-            chunk,
             full_dim_hint: None,
             last_value_slot: self.optional_y_h_output,
-            full_slot: self.optional_y_output,
+            scan: self.optional_y_output.map(|slot| ScanInfo { slot, axis: 1, chunk }),
         };
 
         let scan_outputs = target.wire_node(

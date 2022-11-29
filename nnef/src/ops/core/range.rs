@@ -4,7 +4,12 @@ use tract_core::ops::array::Range;
 
 pub fn register(registry: &mut Registry) {
     registry.register_dumper(TypeId::of::<Range>(), range_dump);
-    registry.register_primitive("tract_core_range", &range_parameters(), range_load);
+    registry.register_primitive(
+        "tract_core_range", 
+        &range_parameters(),
+        &[("output", TypeName::Scalar.tensor())], 
+        range_load
+    );
 }
 
 fn range_parameters() -> Vec<Parameter> {

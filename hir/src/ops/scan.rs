@@ -2,6 +2,7 @@ use crate::infer::*;
 use crate::internal::*;
 
 pub use tract_core::ops::scan::Scan;
+use tract_core::ops::scan::ScanInfo;
 pub use tract_core::ops::scan::{InputMapping, OutputMapping, StateInitializer};
 
 #[derive(Debug, Clone, new, Default, Hash)]
@@ -58,11 +59,10 @@ impl InferenceScan {
             .enumerate()
             .map(|(ix, im)| {
                 Ok(match im {
-                    InputMapping::Scan { axis, slot, chunk: _ } => InputMapping::Scan {
-                        axis: *axis,
-                        slot: *slot,
-                        chunk: typed_model.input_fact(ix)?.shape[*axis].to_isize()?,
-                    },
+                    InputMapping::Scan(info) => InputMapping::Scan(ScanInfo {
+                        chunk: typed_model.input_fact(ix)?.shape[info.axis].to_isize()?,
+                        ..*info
+                    }),
                     InputMapping::Full { slot } => InputMapping::Full { slot: *slot },
                     InputMapping::State { initializer } => {
                         InputMapping::State { initializer: initializer.clone() }
@@ -75,13 +75,19 @@ impl InferenceScan {
             .iter()
             .enumerate()
             .map(|(ix, im)| {
+                let scan = if let Some(scan) = im.scan {
+                    Some(ScanInfo {
+                        chunk: typed_model.input_fact(ix)?.shape[scan.axis].to_isize()?,
+                        ..scan
+                    })
+                } else {
+                    None
+                };
                 Ok(OutputMapping {
                     state: im.state,
-                    axis: im.axis,
-                    full_slot: im.full_slot,
+                    scan,
                     full_dim_hint: im.full_dim_hint.clone(),
                     last_value_slot: im.last_value_slot,
-                    chunk: typed_model.input_fact(ix)?.shape[im.axis].to_isize()?,
                 })
             })
             .collect::<TractResult<_>>()?;
@@ -204,49 +210,50 @@ impl InferenceScan {
                         changed = true;
                     }
                 }
-                InputMapping::Scan { slot, axis, .. } => {
-                    let incoming = &mut inputs[*slot];
+                InputMapping::Scan(scan) => {
+                    let incoming = &mut inputs[scan.slot];
                     let inner = self.body.input_fact_mut(ix)?;
-                    if Self::unify_scanning_tensor_fact(incoming, inner, *axis)? {
+                    if Self::unify_scanning_tensor_fact(incoming, inner, scan.axis)? {
                         changed = true;
                     };
                     if self.clean_scan_counts {
-                        if incoming.shape.ensure_rank_at_least(*axis) {
+                        if incoming.shape.ensure_rank_at_least(scan.axis) {
                             changed = true;
                         }
                         let value =
-                            self.iter_count_fact.unify(&incoming.shape.dim(*axis).unwrap())?;
+                            self.iter_count_fact.unify(&incoming.shape.dim(scan.axis).unwrap())?;
                         if self.iter_count_fact != value {
                             changed = true;
                             self.iter_count_fact = value.clone();
                         }
-                        if incoming.shape.dim(*axis).unwrap() != value {
+                        if incoming.shape.dim(scan.axis).unwrap() != value {
                             changed = true;
-                            incoming.shape.set_dim(*axis, value.concretize().unwrap());
+                            incoming.shape.set_dim(scan.axis, value.concretize().unwrap());
                         }
                     }
                 }
             }
         }
         for (ix, i) in self.output_mapping.iter().enumerate() {
-            if let Some(slot) = i.full_slot {
-                let outgoing = &mut outputs[slot];
+            if let Some(scan) = i.scan {
+                let outgoing = &mut outputs[scan.slot];
                 let inner = self.body.output_fact_mut(ix)?;
-                if Self::unify_scanning_tensor_fact(outgoing, inner, i.axis)? {
+                if Self::unify_scanning_tensor_fact(outgoing, inner, scan.axis)? {
                     changed = true
                 }
                 if self.clean_scan_counts {
-                    if outgoing.shape.ensure_rank_at_least(i.axis) {
+                    if outgoing.shape.ensure_rank_at_least(scan.axis) {
                         changed = true;
                     }
-                    let value = self.iter_count_fact.unify(&outgoing.shape.dim(i.axis).unwrap())?;
+                    let value =
+                        self.iter_count_fact.unify(&outgoing.shape.dim(scan.axis).unwrap())?;
                     if self.iter_count_fact != value {
                         changed = true;
                         self.iter_count_fact = value.clone();
                     }
-                    if outgoing.shape.dim(i.axis).unwrap() != value {
+                    if outgoing.shape.dim(scan.axis).unwrap() != value {
                         changed = true;
-                        outgoing.shape.set_dim(i.axis, value.concretize().unwrap());
+                        outgoing.shape.set_dim(scan.axis, value.concretize().unwrap());
                     }
                 }
             }

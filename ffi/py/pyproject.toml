@@ -1,0 +1,47 @@
+[build-system]
+requires = [
+    "setuptools>=62.1<63",
+    "setuptools_rust>=1.3<1.4",
+    "wheel>=0.34<0.35",
+    "toml>=0.10<0.11"
+]
+
+[tool.cibuildwheel]
+environment = "PATH=$PATH:$HOME/.cargo/bin"
+test-command = """
+python -c "import tract"
+"""
+
+[tool.cibuildwheel.linux]
+skip = "*-musllinux_i686"
+before-build = """
+cargo --version || (curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
+. $HOME/.cargo/env
+rustup toolchain add stable
+rustup default stable)
+[ -e $HOME/.local/bin/sccache ] || ./.travis/setup-sccache.sh ]
+"""
+environment = """
+PATH=$HOME/.local/bin:$HOME/.cargo/bin:$PATH
+SCCACHE_DIR=$HOME/.cache/sccache
+SCCACHE_CACHE_SIZE=2G
+"""
+test-command = """
+python -c "import tract"
+$HOME/.local/bin/sccache --show-stats
+"""
+
+[tool.cibuildwheel.macos]
+archs = "x86_64 universal2 arm64"
+before-build = """
+rustup target add aarch64-apple-darwin
+[ -e $HOME/.local/bin/sccache ] || ./.travis/setup-sccache.sh ]
+"""
+test-command = """
+python -c "import tract"
+$HOME/.local/bin/sccache --show-stats
+"""
+
+[tool.cibuildwheel.windows]
+skip = "*-win32"
+

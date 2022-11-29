@@ -12,6 +12,7 @@ pub fn register(registry: &mut Registry) {
             TypeName::Integer.named("stride"),
             TypeName::Integer.named("modulo").default(0),
         ],
+        &[("output", TypeName::Scalar.tensor())],
         de_downsample,
     );
 }

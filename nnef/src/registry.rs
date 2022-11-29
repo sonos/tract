@@ -17,11 +17,31 @@ pub type Extension = Box<
         + Sync,
 >;
 
+#[derive(Clone)]
+pub struct PrimitiveDecl {
+    pub decl: FragmentDecl,
+    pub docstrings: Option<Vec<String>>,
+    pub to_tract: ToTract,
+}
+
+impl PrimitiveDecl {
+    pub fn validate(&self) -> TractResult<()> {
+        self.decl.validate().with_context(|| format!("Invalid primitive `{}'", self.decl.id))
+    }
+
+    pub fn with_doc(&mut self, docstring: impl Into<String>) -> &mut Self {
+        self.docstrings.get_or_insert_with(Vec::new)
+            .push(docstring.into());
+        self
+    }
+}
+
 pub struct Registry {
     pub id: String,
+    pub docstrings: Option<Vec<String>>,
     pub aliases: Vec<String>,
     pub fragments: HashMap<String, FragmentDef>,
-    pub primitives: HashMap<String, (Vec<ast::Parameter>, ToTract)>,
+    pub primitives: HashMap<String, PrimitiveDecl>,
     pub unit_element_wise_ops: Vec<(String, Box<dyn ElementWiseMiniOp>)>,
     pub element_wise_ops: Vec<(String, TypeId, FromTract, Vec<ast::Parameter>, ToTract)>,
     pub binary_ops: Vec<BinOp>,
@@ -33,6 +53,7 @@ impl Registry {
     pub fn new(id: impl Into<String>) -> Registry {
         Registry {
             id: id.into(),
+            docstrings: None,
             aliases: Default::default(),
             primitives: Default::default(),
             fragments: Default::default(),
@@ -44,12 +65,36 @@ impl Registry {
         }
     }
 
+    pub fn with_doc(mut self, docstring: impl Into<String>) -> Registry {
+        self.docstrings.get_or_insert_with(Vec::new)
+            .push(docstring.into());
+        self
+    }
+
     pub fn register_dumper(&mut self, id: TypeId, func: FromTract) {
         self.from_tract.insert(id, func);
     }
 
-    pub fn register_primitive(&mut self, id: &str, decl: &[ast::Parameter], func: ToTract) {
-        self.primitives.insert(id.to_string(), (decl.to_vec(), func));
+    pub fn register_primitive(&mut self, 
+            id: &str, 
+            params: &[ast::Parameter],
+            results: &[impl Into<ast::Result_> + Clone], 
+            func: ToTract) -> &mut PrimitiveDecl {
+        let decl = FragmentDecl {
+            id: id.to_string(),
+            generic_decl: None,
+            parameters: params.to_vec(),
+            results: results.iter().cloned().map(|it| it.into()).collect(),
+        };
+        self.primitives.insert(
+            id.to_string(),
+            PrimitiveDecl {
+                decl,
+                docstrings: None,
+                to_tract: func,
+            }
+        );
+        self.primitives.get_mut(id).expect("Unexpected empty entry in primitives hashmap")
     }
 
     pub fn register_fragment(&mut self, def: FragmentDef) {
@@ -161,8 +206,8 @@ impl Registry {
     ) -> TractResult<Option<Value>> {
         if let Some(op) = self.primitives.get(&invocation.id) {
             let resolved =
-                ResolvedInvocation { invocation, default_params: &op.0, dt_from_quant_file: dt };
-            let out_value = (op.1)(builder, &resolved)
+                ResolvedInvocation { invocation, default_params: &op.decl.parameters, dt_from_quant_file: dt };
+            let out_value = (op.to_tract)(builder, &resolved)
                 .with_context(|| format!("Deserializing op `{}'", invocation.id))?;
             return Ok(Some(out_value));
         }

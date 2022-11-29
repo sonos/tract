@@ -1,5 +1,6 @@
 use crate::model::{ParseResult, ParsingContext};
 use crate::pb::*;
+use crate::tract_core::ops::scan::ScanInfo;
 use tract_hir::internal::*;
 
 use tract_hir::ops;
@@ -28,9 +29,7 @@ pub fn scan(
         mapped_outputs.push(ops::scan::OutputMapping {
             state: true,
             last_value_slot: Some(ix),
-            full_slot: None,
-            axis: 0,
-            chunk: 1,
+            scan: None,
             full_dim_hint: None,
         });
     }
@@ -47,11 +46,11 @@ pub fn scan(
         )?
         .apply(&mut model)?;
         model.set_outlet_fact(outlet, InferenceFact::default())?;
-        mapped_inputs.push(ops::scan::InputMapping::Scan {
+        mapped_inputs.push(ops::scan::InputMapping::Scan(ScanInfo {
             axis: *ax as usize,
             slot: ix + num_hidden_state,
             chunk: 1,
-        });
+        }));
     }
 
     for (ix, _input) in unresolved_inputs.iter().enumerate() {
@@ -73,9 +72,7 @@ pub fn scan(
         .apply(&mut model)?;
         mapped_outputs.push(ops::scan::OutputMapping {
             state: false,
-            axis: *ax as usize,
-            full_slot: Some(ix + num_hidden_state),
-            chunk: 1,
+            scan: Some(ScanInfo { axis: *ax as usize, slot: ix + num_hidden_state, chunk: 1 }),
             full_dim_hint: None,
             last_value_slot: None,
         });

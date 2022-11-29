@@ -2,7 +2,12 @@ pub use super::tree::{Aggregate, Cmp, TreeEnsemble, TreeEnsembleData};
 use tract_nnef::internal::*;
 
 pub fn register(registry: &mut Registry) {
-    registry.register_primitive("tract_onnx_ml_tree_ensemble_classifier", &parameters(), load);
+    registry.register_primitive(
+        "tract_onnx_ml_tree_ensemble_classifier", 
+        &parameters(),
+        &[("output", TypeName::Scalar.tensor())], 
+        load
+    );
     registry.register_dumper(TypeId::of::<TreeEnsembleClassifier>(), dump);
 }
 

@@ -81,6 +81,8 @@ fn main() -> tract_core::anyhow::Result<()> {
                   "Hint the model format ('kaldi', 'onnx', 'nnef' or 'tf') instead of guess from extension."))
         .arg(Arg::new("input").long("input").short('i').multiple_occurrences(true).takes_value(true).long_help(
                   "Set input shape and type (@file.pb or @file.npz:thing.npy or 3x4xi32)."))
+        .arg(Arg::new("constantize").long("constantize").multiple_occurrences(true).takes_value(true).long_help(
+                  "Transorm an input into a Constant"))
 
         // deprecated
         .arg(arg!(--"input-bundle" [input_bundle] "Path to an input container (.npz). This sets input facts and tensor values.").hide(true))
@@ -270,7 +272,20 @@ fn main() -> tract_core::anyhow::Result<()> {
 fn dump_subcommand<'a>() -> clap::Command<'a> {
     use clap::*;
     let dump = clap::Command::new("dump")
-        .long_about("Dumps the Tensorflow graph in human readable form.")
+        .long_about("Dumps the graph in human readable form.")
+        .arg(
+            Arg::new("axes")
+            .long("axes")
+            .help("Compute and display axis tracking")
+            )
+        .arg(
+            Arg::new("axes-names")
+            .takes_value(true)
+            .number_of_values(1)
+            .multiple_occurrences(true)
+            .long("axes-names")
+            .help("Gave meaningful names to axes: [node_name=]axis0,axis1,..,axisN (apply to first input if no node_name is provided)")
+            )
         .arg(
             Arg::new("assert-cost")
             .takes_value(true)

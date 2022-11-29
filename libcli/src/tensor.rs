@@ -92,11 +92,7 @@ pub fn parse_spec(symbol_table: &SymbolTable, size: &str) -> TractResult<Inferen
     if size.is_empty() {
         return Ok(InferenceFact::default());
     }
-    if size.contains('x') && !size.contains(',') {
-        parse_x_spec(size)
-    } else {
-        parse_coma_spec(symbol_table, size)
-    }
+    parse_coma_spec(symbol_table, size)
 }
 
 pub fn parse_coma_spec(symbol_table: &SymbolTable, size: &str) -> TractResult<InferenceFact> {
@@ -123,46 +119,6 @@ pub fn parse_coma_spec(symbol_table: &SymbolTable, size: &str) -> TractResult<In
                     GenericFactoid::Any
                 } else {
                     GenericFactoid::Only(parse_tdim(symbol_table, s)?)
-                })
-            })
-            .collect::<TractResult<TVec<DimFact>>>()?,
-    );
-
-    if let Some(dt) = datum_type {
-        Ok(InferenceFact::dt_shape(dt, shape))
-    } else {
-        Ok(InferenceFact::shape(shape))
-    }
-}
-
-pub fn parse_x_spec(size: &str) -> TractResult<InferenceFact> {
-    warn!(
-        "Deprecated \"x\" syntax for shape : please use the comma as separator, x is now a symbol."
-    );
-    let splits = size.split('x').collect::<Vec<_>>();
-
-    if splits.is_empty() {
-        // Hide '{' in this error message from the formatting machinery in bail macro
-        let msg = "The <size> argument should be formatted as {size},{...},{type}.";
-        bail!(msg);
-    }
-
-    let last = splits.last().unwrap();
-    let (datum_type, shape) = if last.ends_with('S') || last.parse::<i32>().is_ok() {
-        (None, &*splits)
-    } else {
-        let datum_type = parse_dt(splits.last().unwrap())?;
-        (Some(datum_type), &splits[0..splits.len() - 1])
-    };
-
-    let shape = ShapeFactoid::closed(
-        shape
-            .iter()
-            .map(|&s| {
-                Ok(if s == "_" {
-                    GenericFactoid::Any
-                } else {
-                    GenericFactoid::Only(parse_dim_stream(s)?)
                 })
             })
             .collect::<TractResult<TVec<DimFact>>>()?,
@@ -304,25 +260,6 @@ pub fn for_string(
             Ok((name, parse_spec(symbol_table, value)?))
         }
     }
-}
-
-#[cfg(feature = "pulse")]
-fn parse_dim_stream(s: &str) -> TractResult<TDim> {
-    use tract_pulse::internal::stream_dim;
-    if s == "S" {
-        Ok(stream_dim())
-    } else if s.ends_with('S') {
-        let number: String = s.chars().take_while(|c| c.is_ascii_digit()).collect();
-        let number: i64 = number.parse::<i64>()?;
-        Ok(stream_dim() * number)
-    } else {
-        Ok(s.parse::<i64>().map(|i| i.into())?)
-    }
-}
-
-#[cfg(not(feature = "pulse"))]
-fn parse_dim_stream(s: &str) -> TractResult<TDim> {
-    Ok(s.parse::<i64>().map(|i| i.into())?)
 }
 
 lazy_static::lazy_static! {

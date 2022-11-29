@@ -14,6 +14,7 @@ pub fn register(registry: &mut Registry) {
             TypeName::Scalar.tensor().named("updates"),
             TypeName::Integer.named("axis"),
         ],
+        &[("output", TypeName::Scalar.tensor())],
         de_scatter_elements,
     );
 
@@ -25,6 +26,7 @@ pub fn register(registry: &mut Registry) {
             TypeName::Scalar.tensor().named("indices"),
             TypeName::Scalar.tensor().named("updates"),
         ],
+        &[("output", TypeName::Scalar.tensor())],
         de_scatter_nd,
     );
 }

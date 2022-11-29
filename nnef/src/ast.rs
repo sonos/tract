@@ -2,6 +2,7 @@ use crate::internal::*;
 use tract_itertools::Itertools;
 
 pub mod dump;
+pub mod dump_doc;
 pub mod parse;
 pub mod quant;
 
@@ -81,7 +82,7 @@ impl TypeSpec {
         TypeSpec::Array(Box::new(self))
     }
     pub fn named(self, s: impl Into<String>) -> Parameter {
-        Parameter { id: s.into(), spec: self, lit: None }
+        Parameter { id: s.into(), spec: self, lit: None, doc: None }
     }
 }
 
@@ -182,22 +183,37 @@ pub struct Parameter {
     pub id: String,
     pub spec: TypeSpec,
     pub lit: Option<Literal>,
+    pub doc: Option<String>,
 }
 
 impl Parameter {
     pub fn default(self, lit: impl Into<Literal>) -> Parameter {
         Parameter { lit: Some(lit.into()), ..self }
     }
+
+    pub fn doc(mut self, s: impl Into<String>) -> Parameter {
+        self.doc =  Some(s.into());
+        self
+    }
 }
 
 pub fn param(s: impl Into<String>, spec: TypeSpec) -> Parameter {
-    Parameter { id: s.into(), spec, lit: None }
+    Parameter { id: s.into(), spec, lit: None, doc: None }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Result_ {
     pub id: String,
     pub spec: TypeSpec,
+}
+
+impl<S: Into<String>> From<(S, TypeSpec)> for Result_ {
+    fn from(v: (S, TypeSpec)) -> Result_ {
+        Result_ {
+            id: v.0.into(),
+            spec: v.1
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -6,7 +6,6 @@ use tract_linalg::frame::Packer;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MatMatMulPack {
     pub(crate) packer: Packer,
-    pub(crate) output_shape: TVec<usize>,
     pub(crate) k_axis: usize,
     pub(crate) mn_axis: usize,
 }
@@ -38,8 +37,9 @@ impl EvalOp for MatMatMulPack {
         let b = args_1!(inputs);
         let dt = b.datum_type();
         unsafe {
+            let output_shape = self.output_shape(b.shape());
             let mut packed =
-                Tensor::uninitialized_aligned_dt(dt, &self.output_shape, self.packer.alignment())
+                Tensor::uninitialized_aligned_dt(dt, &output_shape, self.packer.alignment())
                     .unwrap();
             let mut bc_shape: TVec<usize> = b.shape().into();
             bc_shape[self.k_axis] = 1;
@@ -52,7 +52,7 @@ impl EvalOp for MatMatMulPack {
                     .map(|(x, s)| *x as isize * s)
                     .sum::<isize>()
                     * b.datum_type().size_of() as isize;
-                let mut prefix:TVec<usize> = coord.slice().into();
+                let mut prefix: TVec<usize> = coord.slice().into();
                 prefix.remove(self.k_axis.max(self.mn_axis));
                 prefix.remove(self.k_axis.min(self.mn_axis));
                 self.packer.pack(
@@ -69,8 +69,18 @@ impl EvalOp for MatMatMulPack {
 
 impl TypedOp for MatMatMulPack {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(inputs[0].datum_type.fact(&self.output_shape)))
+        Ok(tvec!(inputs[0].datum_type.fact(self.output_shape(&inputs[0].shape))))
     }
 
     as_op!();
+}
+
+impl MatMatMulPack {
+    fn output_shape<D: DimLike>(&self, input: &[D]) -> TVec<D> {
+        let mut packed_shape: TVec<D> = input.into();
+        packed_shape.remove(self.mn_axis.max(self.k_axis));
+        packed_shape.remove(self.mn_axis.min(self.k_axis));
+        packed_shape.push(self.packer.len(input[self.k_axis].clone(), input[self.mn_axis].clone()));
+        packed_shape
+    }
 }

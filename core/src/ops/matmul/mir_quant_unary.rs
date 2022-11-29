@@ -191,14 +191,12 @@ impl TypedOp for QMatMulUnary {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        use crate::ops::array::concat::ConcatSlice;
         use crate::ops::array::TypedConcat;
         if let Some(concat) = model.nodes()[node.inputs[0].node].op().downcast_ref::<TypedConcat>()
         {
             let mut patch = TypedModelPatch::new("split over k-concatenated input");
             let k_axis = self.axes.a_k;
             if concat.axis == self.axes.b_k {
-                let mut input = 0;
                 let concat_node = model.node(node.inputs[0].node);
                 let offsets = concat
                     .offsets(&model.node_input_facts(concat_node.id)?)?
@@ -235,17 +233,8 @@ impl TypedOp for QMatMulUnary {
                 )?;
                 let c0 = params_outlets[4];
 
-                for (ix, slice) in concat.slices.iter().enumerate() {
-                    let wire = match slice {
-                        ConcatSlice::Const(t) => patch.add_const(
-                            format!("{}.const-{}", node.name, ix),
-                            t.clone().into_arc_tensor(),
-                        )?,
-                        ConcatSlice::Var => {
-                            input += 1;
-                            patch.tap_model(model, concat_node.inputs[input - 1])?
-                        }
-                    };
+                for (ix, input) in concat_node.inputs.iter().enumerate() {
+                    let wire = patch.tap_model(model, *input)?;
                     let a = self.a.slice(k_axis, offsets[ix], offsets[ix + 1])?;
                     let wire = patch
                         .wire_node(

@@ -117,7 +117,7 @@ impl Expansion for LstmNonlin {
         wire!(tanh_c_t = math::tanh(), c_t);
         wire!(m_t = mul(), o_t, tanh_c_t);
 
-        wire!(output = array::TypedConcat::concat_vars(1, 2), c_t, m_t);
+        wire!(output = array::TypedConcat::new(1), c_t, m_t);
 
         Ok(tvec!(output))
     }

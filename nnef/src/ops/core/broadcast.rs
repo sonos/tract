@@ -7,6 +7,7 @@ pub fn register(registry: &mut Registry) {
     registry.register_primitive(
         "tract_core_broadcast",
         &[TypeName::Scalar.tensor().named("input"), TypeName::Integer.array().named("shape")],
+        &[("output", TypeName::Scalar.tensor())],
         de_broadcast,
     );
 }

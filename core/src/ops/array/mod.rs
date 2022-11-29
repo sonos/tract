@@ -15,7 +15,7 @@ mod slice;
 mod tile;
 
 pub use self::broadcast::MultiBroadcastTo;
-pub use self::concat::{ConcatSlice, TypedConcat};
+pub use self::concat::TypedConcat;
 pub use self::dyn_slice::DynSlice;
 pub use self::gather::Gather;
 pub use self::gather_elements::GatherElements;

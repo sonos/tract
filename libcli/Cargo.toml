@@ -24,7 +24,9 @@ rand.workspace = true
 tract-core = { version = "0.18.4-pre", path = "../core" }
 # tract-hir = { version = "0.18.4-pre", path = "../hir", optional = true }
 tract-hir = { version = "0.18.4-pre", path = "../hir" }
+tract-onnx = { version = "0.18.4-pre", path = "../onnx", optional = true }
 
 [features]
 # hir = ["tract-hir"]
 hir = []
+onnx = [ "tract-onnx" ]

@@ -193,12 +193,7 @@ fn render_node_prefixed(
     println!(
         "{} {} {}",
         White.bold().paint(format!("{}", node_id)),
-        (if node_name == "UnimplementedOp" {
-            Red.bold()
-        } else {
-            Blue.bold()
-        })
-        .paint(node_op_name),
+        (if node_name == "UnimplementedOp" { Red.bold() } else { Blue.bold() }).paint(node_op_name),
         name_color.italic().paint(node_name)
     );
     for label in tags.labels.iter() {
@@ -236,10 +231,16 @@ fn render_node_prefixed(
             }
             let successors = model.outlet_successors(outlet);
             prefix!();
+            let mut axes =
+                tags.outlet_axes.get(slot).map(|s| s.join(",")).unwrap_or_else(|| "".to_string());
+            if !axes.is_empty() {
+                axes.push(' ')
+            }
             println!(
-                "  {} output fact #{}: {} {} {} {}",
+                "  {} output fact #{}: {}{} {} {} {}",
                 star,
                 slot,
+                Green.bold().italic().paint(axes),
                 model.outlet_fact_format(outlet),
                 White.bold().paint(successors.iter().map(|s| format!("{:?}", s)).join(" ")),
                 model_io.join(", "),

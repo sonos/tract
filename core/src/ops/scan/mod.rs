@@ -7,11 +7,18 @@ mod mir;
 pub use lir::LirScan;
 pub use mir::Scan;
 
+#[derive(Clone, new, Hash, Eq, PartialEq, Copy)]
+pub struct ScanInfo {
+    pub slot: usize,
+    pub axis: usize,
+    pub chunk: isize,
+}
+
 #[derive(Clone, new, Hash)]
 pub enum InputMapping {
     Full { slot: usize },
     State { initializer: StateInitializer },
-    Scan { slot: usize, axis: usize, chunk: isize },
+    Scan(ScanInfo),
 }
 
 impl InputMapping {
@@ -22,9 +29,9 @@ impl InputMapping {
         }
     }
 
-    pub fn as_scan(&self) -> Option<(usize, usize, isize)> {
+    pub fn as_scan(&self) -> Option<&ScanInfo> {
         match self {
-            InputMapping::Scan { slot, axis, chunk } => Some((*slot, *axis, *chunk)),
+            InputMapping::Scan(s) => Some(s),
             _ => None,
         }
     }
@@ -36,7 +43,7 @@ impl InputMapping {
     pub fn slot(&self) -> Option<usize> {
         match self {
             InputMapping::Full { slot } => Some(*slot),
-            InputMapping::Scan { slot, .. } => Some(*slot),
+            InputMapping::Scan(info) => Some(info.slot),
             InputMapping::State { initializer } => match initializer {
                 StateInitializer::FromInput(slot) => Some(*slot),
                 _ => None,
@@ -52,18 +59,20 @@ impl fmt::Debug for InputMapping {
             InputMapping::State { initializer } => {
                 write!(fmt, "State initialized by {:?}", initializer)
             }
-            InputMapping::Scan { slot, axis, chunk } => {
-                write!(fmt, "Scan inlet {}, axis: {}, chunk: {:?}.", slot, axis, chunk)
+            InputMapping::Scan(info) => {
+                write!(
+                    fmt,
+                    "Scan inlet {}, axis: {}, chunk: {:?}.",
+                    info.slot, info.axis, info.chunk
+                )
             }
         }
     }
 }
 
-#[derive(Clone, new, Hash)]
+#[derive(Clone, new, Hash, Default)]
 pub struct OutputMapping<F: Clone> {
-    pub full_slot: Option<usize>,
-    pub axis: usize,
-    pub chunk: isize,
+    pub scan: Option<ScanInfo>,
     pub full_dim_hint: Option<F>,
     pub last_value_slot: Option<usize>,
     pub state: bool,
@@ -71,7 +80,7 @@ pub struct OutputMapping<F: Clone> {
 
 impl<F: Clone> OutputMapping<F> {
     pub fn invisible(&self) -> bool {
-        self.full_slot.is_none() && self.last_value_slot.is_none()
+        self.scan.is_none() && self.last_value_slot.is_none()
     }
 }
 
@@ -92,13 +101,12 @@ impl<F: Clone + fmt::Display> fmt::Debug for OutputMapping<F> {
         if let Some(last_value_slot) = self.last_value_slot {
             write!(fmt, "Last value to outlet {}. ", last_value_slot)?;
         }
-        if let Some(full_slot) = self.full_slot {
-            write!(fmt, "Full value to outlet {}. ", full_slot)?;
+        if let Some(info) = self.scan {
+            write!(fmt, "Full value to outlet {} (axis: {}). ", info.slot, info.axis)?;
         }
         if let Some(full_dim_hint) = &self.full_dim_hint {
             write!(fmt, "Full len {}. ", full_dim_hint)?;
         }
-        write!(fmt, "Axis:{} ", self.axis)?;
         Ok(())
     }
 }

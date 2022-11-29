@@ -126,7 +126,7 @@ pub fn concat(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
         }
     }
 
-    builder.wire(ops::array::TypedConcat::concat_vars(axis, values.len()), &values)
+    builder.wire(ops::array::TypedConcat::new(axis), &values)
 }
 
 // fragment slice<?>( input: tensor<?>, axes: integer[], begin: integer[], end: integer[] ) -> ( output: tensor<?> );
@@ -642,7 +642,7 @@ pub fn stack(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
             builder.wire_as_outlets(ops::change_axes::AxisOp::Add(axis as usize), &[*value])?[0];
     }
 
-    builder.wire(ops::array::TypedConcat::concat_vars(axis, values.len()), &values)
+    builder.wire(ops::array::TypedConcat::new(axis), &values)
 }
 
 /*

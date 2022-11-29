@@ -1,4 +1,5 @@
 use tract_hir::internal::*;
+use tract_hir::tract_core::ops::scan::ScanInfo;
 
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
@@ -31,7 +32,6 @@ impl Expansion for BlockLSTM {
     fn name(&self) -> Cow<str> {
         "BlockLSTM".into()
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -103,7 +103,7 @@ impl Expansion for BlockLSTM {
 
         // X: body input 0: X, new outside input 0 (was 1)
         outer_inputs.push(inputs[1]);
-        input_mapping.push(scan::InputMapping::Scan { slot: 1, axis: 0, chunk: 1 });
+        input_mapping.push(scan::InputMapping::Scan(ScanInfo { slot: 1, axis: 0, chunk: 1 }));
         let mut x_source_fact = model.outlet_fact(inputs[1])?.clone();
         x_source_fact.shape.set(0, 1.to_dim());
         let x_source = body.add_source("x_source", x_source_fact)?;
@@ -127,7 +127,7 @@ impl Expansion for BlockLSTM {
             .push(scan::InputMapping::State { initializer: scan::StateInitializer::FromInput(3) });
         wire!(h_prev = AxisOp::Rm(0), h_source);
 
-        wire!(xh = array::TypedConcat::concat_vars(1, 2), x, h_prev);
+        wire!(xh = array::TypedConcat::new(1), x, h_prev);
 
         let w = body.add_const(format!("{}-w", prefix), w)?;
         wire!(i_ci_f_o_1 = matmul::mir::MatMul::default(), xh, w);
@@ -164,11 +164,9 @@ impl Expansion for BlockLSTM {
         for ix in 0..7 {
             output_mapping.push(scan::OutputMapping::<TDim> {
                 state: ix == 1 || ix == 6,
-                axis: 0,
-                chunk: 1,
                 full_dim_hint: None,
                 last_value_slot: None,
-                full_slot: Some(ix),
+                scan: Some(ScanInfo { axis: 0, slot: ix, chunk: 1 }),
             })
         }
 
@@ -180,62 +178,62 @@ impl Expansion for BlockLSTM {
 /*
 // TODO: rewrite this logic as a tf.Assign declutter ?
 impl BlockLSTM {
-    fn inline_var_assign(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-        input_id: usize,
-        output_id: usize,
-        patch: &mut TypedModelPatch,
-    ) -> TractResult<Option<Arc<Tensor>>> {
-        let var_2 = model.node(node.inputs[input_id].node);
-        let var_2_op = if let Some(op) = var_2.op_as::<crate::ops::vars::VariableV2>() {
-            op
-        } else {
-            return Ok(None);
-        };
-        if var_2.outputs[0].successors.len() != 2 {
-            return Ok(None);
-        }
-        let assign = if let Some(assign_node) = var_2.outputs[0]
-            .successors
-            .iter()
-            .map(|s| model.node(s.node))
-            .filter(|s| s.op_is::<crate::ops::vars::Assign>())
-            .next()
-        {
-            assign_node
-        } else {
-            return Ok(None);
-        };
-        let rm_axis_node = model.node(assign.inputs[1].node);
-        let rm_axis_op = if let Some(op) = rm_axis_node.op_as::<tract_hir::internal::AxisOp>() {
-            op
-        } else {
-            return Ok(None);
-        };
-        if rm_axis_op != &tract_hir::internal::AxisOp::Rm(0) {
-            return Ok(None);
-        }
-        let slice_node = model.node(rm_axis_node.inputs[0].node);
-        let slice_op = if let Some(op) = slice_node.op_as::<tract_hir::ops::array::Slice<usize>>() {
-            op
-        } else {
-            return Ok(None);
-        };
-        if slice_node.inputs[0] != (node.id, output_id).into() {
-            return Ok(None);
-        }
-        let lstm_output_fact = model.outlet_fact(slice_node.inputs[0])?;
-        if slice_op.axis != 0
-            || slice_op.end != slice_op.start + 1
-            || slice_op.end.to_dim() != lstm_output_fact.shape.dim(0)
-        {
-            return Ok(None);
-        }
-        let tap = patch.tap_model(model, rm_axis_node.id.into())?;
-        patch.shunt_outside(model, assign.id.into(), tap)?;
-        Ok(var_2_op.initializer.clone())
-    }
+fn inline_var_assign(
+&self,
+model: &TypedModel,
+node: &TypedNode,
+input_id: usize,
+output_id: usize,
+patch: &mut TypedModelPatch,
+) -> TractResult<Option<Arc<Tensor>>> {
+let var_2 = model.node(node.inputs[input_id].node);
+let var_2_op = if let Some(op) = var_2.op_as::<crate::ops::vars::VariableV2>() {
+op
+} else {
+return Ok(None);
+};
+if var_2.outputs[0].successors.len() != 2 {
+return Ok(None);
+}
+let assign = if let Some(assign_node) = var_2.outputs[0]
+.successors
+.iter()
+.map(|s| model.node(s.node))
+.filter(|s| s.op_is::<crate::ops::vars::Assign>())
+.next()
+{
+assign_node
+} else {
+return Ok(None);
+};
+let rm_axis_node = model.node(assign.inputs[1].node);
+let rm_axis_op = if let Some(op) = rm_axis_node.op_as::<tract_hir::internal::AxisOp>() {
+op
+} else {
+return Ok(None);
+};
+if rm_axis_op != &tract_hir::internal::AxisOp::Rm(0) {
+return Ok(None);
+}
+let slice_node = model.node(rm_axis_node.inputs[0].node);
+let slice_op = if let Some(op) = slice_node.op_as::<tract_hir::ops::array::Slice<usize>>() {
+op
+} else {
+return Ok(None);
+};
+if slice_node.inputs[0] != (node.id, output_id).into() {
+return Ok(None);
+}
+let lstm_output_fact = model.outlet_fact(slice_node.inputs[0])?;
+if slice_op.axis != 0
+|| slice_op.end != slice_op.start + 1
+|| slice_op.end.to_dim() != lstm_output_fact.shape.dim(0)
+{
+return Ok(None);
+}
+let tap = patch.tap_model(model, rm_axis_node.id.into())?;
+patch.shunt_outside(model, assign.id.into(), tap)?;
+Ok(var_2_op.initializer.clone())
+}
 }
 */

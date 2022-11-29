@@ -38,6 +38,7 @@ pub fn register(registry: &mut Registry) {
                     TypeName::Scalar.tensor().named("indices"),
                     TypeName::Integer.named(stringify!($field_name)),
                 ],
+                &[("output", TypeName::Scalar.tensor())],
                 $name::de_gather,
             );
         };

@@ -7,11 +7,13 @@ pub fn register(registry: &mut Registry) {
     registry.register_primitive(
         "tract_onnx_ml_direct_lookup",
         &parameters_direct_lookup(),
+        &[("output", TypeName::Scalar.tensor())],
         load_direct_lookup,
     );
     registry.register_primitive(
         "tract_onnx_ml_reverse_lookup",
         &parameters_reverse_lookup(),
+        &[("output", TypeName::Scalar.tensor())],
         load_reverse_lookup,
     );
     registry.register_dumper(TypeId::of::<DirectLookup>(), dump_direct_lookup);

@@ -87,13 +87,14 @@ pub fn pulsed_output_facts(
         spatial_dims,
     )?;
     let mut fact = inputs[0].clone();
+    let mut stream = fact.stream.as_mut().unwrap();
     let input_shape = spec.data_format.shape(&*fact.shape)?;
-    let geo_axis = fact.axis - input_shape.h_axis();
+    let geo_axis = stream.axis - input_shape.h_axis();
     let dilation = spec.dilations.as_ref().map(|d| d[geo_axis]).unwrap_or(1);
     let kernel_len = (spec.kernel_shape[geo_axis] - 1) * dilation;
     let stride = spec.strides.as_ref().and_then(|v| v.get(geo_axis).cloned()).unwrap_or(1);
-    fact.delay /= stride;
-    fact.dim = (fact.dim.clone() - kernel_len.to_dim()).div_ceil(stride as _);
+    stream.delay /= stride;
+    stream.dim = (stream.dim.clone() - kernel_len.to_dim()).div_ceil(stride as _);
     fact.shape = oshape.shape.into();
     fact.datum_type = output_dt;
     Ok(tvec!(fact))
@@ -109,17 +110,18 @@ pub fn pulsify_pooled_input(
 ) -> TractResult<Option<(OutletId, PoolSpec)>> {
     let mut wire = mapping[&node.inputs[0]];
     let input_fact: PulsedFact = target.outlet_fact(wire)?.clone();
+    let input_stream = input_fact.stream.as_ref().unwrap();
     let input_shape = spec.data_format.shape(input_fact.shape.clone())?;
-    if Some(input_fact.axis) == input_shape.n_axis() {
+    if Some(input_stream.axis) == input_shape.n_axis() {
         return Ok(None);
     }
-    if input_fact.axis == input_shape.c_axis() {
+    if input_stream.axis == input_shape.c_axis() {
         bail!("Can not pulsify cnn pooling ops along the input channel axis");
     }
 
-    let geo_axis = input_fact.axis - input_shape.h_axis();
+    let geo_axis = input_stream.axis - input_shape.h_axis();
     let stride = spec.strides.as_ref().and_then(|v| v.get(geo_axis).cloned()).unwrap_or(1);
-    let pulse = input_fact.pulse();
+    let pulse = input_fact.pulse().unwrap();
     if !(pulse.to_owned() % (stride as i64)).is_zero() {
         bail!("Pulsification requires pulse ({}) to be a stride ({}) multiple", pulse, stride)
     }
@@ -130,16 +132,16 @@ pub fn pulsify_pooled_input(
 
     let computed_padding = spec.padding.compute_one(
         geo_axis,
-        &input_fact.dim,
+        &input_stream.dim,
         spec.kernel_shape[geo_axis],
         spec.dilation(geo_axis),
         spec.stride(geo_axis),
     );
 
     let before = computed_padding.pad_before.to_usize()?;
-    let early = input_fact.delay as isize + overlap as isize - before as isize;
+    let early = input_stream.delay as isize + overlap as isize - before as isize;
     let mut extra_delay = if early < 0 { (-early) as usize } else { 0 };
-    let delayed_input = input_fact.delay + overlap + extra_delay - before;
+    let delayed_input = input_stream.delay + overlap + extra_delay - before;
     let misalignment = delayed_input % stride;
     if misalignment > 0 {
         extra_delay += stride - misalignment;
@@ -150,7 +152,7 @@ pub fn pulsify_pooled_input(
             format!("{}.delay", node.name),
             tract_pulse_opl::ops::Delay::new_typed(
                 &(&input_fact).into(),
-                input_fact.axis,
+                input_stream.axis,
                 extra_delay,
                 overlap,
             ),
@@ -169,11 +171,14 @@ pub fn pulsify_pooled_input(
             bail!("No padding value for streaming pool operation");
         };
         let op = tract_pulse_opl::ops::PulsePad {
-            axis: input_fact.axis,
+            axis: input_stream.axis,
             before,
             after: computed_padding.pad_after,
-            begin_input: input_fact.delay + extra_delay + overlap,
-            end_input: input_fact.dim.clone() + input_fact.delay + extra_delay + overlap.to_dim(),
+            begin_input: input_stream.delay + extra_delay + overlap,
+            end_input: input_stream.dim.clone()
+                + input_stream.delay
+                + extra_delay
+                + overlap.to_dim(),
             mode: PadMode::Constant(value),
             overlap,
         };
@@ -243,7 +248,7 @@ mod test {
         model.set_output_outlets(&conv)?;
         let pulsed = PulsedModel::new(&model, stream_sym, &1.to_dim())?;
         let output_fact = pulsed.output_fact(0)?;
-        assert_eq!(output_fact.delay, 0);
+        assert_eq!(output_fact.stream.as_ref().unwrap().delay, 0);
         Ok(())
     }
 }

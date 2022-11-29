@@ -1,5 +1,6 @@
 use bit_set::BitSet;
 use std::collections::BTreeMap;
+use tract_hir::tract_core::ops::scan::ScanInfo;
 use tract_itertools::Itertools;
 
 use tract_hir::internal::*;
@@ -127,7 +128,6 @@ fn incorporate_memory_ops_as_scans(
             let op = mem_node.op_as::<Memory>().unwrap();
             let channel =
                 mem_node.outputs[0].fact.shape.dim(1).unwrap().concretize().unwrap().to_usize()?;
-            let chunk = op.offset.abs();
             let id = inner_model
                 .add_source(&*mem_node.name, f32::fact([(-op.offset) as usize, channel]).into())?;
             node_id_old_to_new.insert(mem, id.node);
@@ -139,10 +139,8 @@ fn incorporate_memory_ops_as_scans(
             });
             mapped_outputs.push(tract_hir::ops::scan::OutputMapping {
                 state: true,
-                axis: 0,
-                chunk,
                 full_dim_hint: None,
-                full_slot: None,
+                scan: None,
                 last_value_slot: None,
             });
         }
@@ -199,16 +197,14 @@ fn incorporate_memory_ops_as_scans(
             let old_node = model.node(scan_input.node);
             let fact = inner_model.input_fact(coupled_mem_ops.len() + ix)?;
             let chunk = fact.shape.dim(0).unwrap().concretize().unwrap().to_isize()?;
-            mapped_inputs.push(tract_hir::ops::scan::InputMapping::Scan {
+            mapped_inputs.push(tract_hir::ops::scan::InputMapping::Scan(ScanInfo {
                 axis: 0,
                 chunk,
                 slot: ix,
-            });
+            }));
             mapped_outputs.push(tract_hir::ops::scan::OutputMapping {
                 state: false,
-                axis: 0,
-                chunk,
-                full_slot: Some(ix),
+                scan: Some(ScanInfo { slot: ix, axis: 0, chunk }),
                 last_value_slot: None,
                 full_dim_hint: old_node.outputs[0].fact.shape.dim(0).unwrap().concretize(),
             });

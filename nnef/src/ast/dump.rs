@@ -42,10 +42,10 @@ impl<'a> Dumper<'a> {
         Ok(())
     }
 
-    fn fragment_def(&mut self, def: &FragmentDef) -> TractResult<()> {
+    pub fn fragment_def(&mut self, def: &FragmentDef) -> TractResult<()> {
         self.fragment_decl(&def.decl)?;
         if let Some(body) = &def.body {
-            writeln!(self.w, "{{")?;
+            writeln!(self.w, "\n{{")?;
             for assignment in body {
                 self.assignment(assignment)?;
             }
@@ -56,7 +56,7 @@ impl<'a> Dumper<'a> {
         Ok(())
     }
 
-    fn fragment_decl(&mut self, decl: &FragmentDecl) -> TractResult<()> {
+    pub(crate) fn fragment_decl(&mut self, decl: &FragmentDecl) -> TractResult<()> {
         write!(self.w, "fragment {}", decl.id)?;
         if let Some(generic_decl) = &decl.generic_decl {
             if let Some(name) = generic_decl {
@@ -76,16 +76,14 @@ impl<'a> Dumper<'a> {
             write!(self.w, "{}: ", res.id)?;
             self.type_spec(&res.spec)?;
         }
-        writeln!(self.w, ")")?;
+        write!(self.w, ")")?;
         Ok(())
     }
 
     fn parameter_list(&mut self, parameters: &[Parameter]) -> TractResult<()> {
         write!(self.w, "(")?;
+        let num_parameters = parameters.len();
         for (ix, param) in parameters.iter().enumerate() {
-            if ix > 0 {
-                write!(self.w, ",")?;
-            }
             write!(self.w, "\n    ")?;
             write!(self.w, "{}: ", param.id)?;
             self.type_spec(&param.spec)?;
@@ -93,6 +91,13 @@ impl<'a> Dumper<'a> {
                 write!(self.w, " = ")?;
                 self.literal(lit)?;
             }
+            if ix < num_parameters - 1 {
+                write!(self.w, ",")?;
+            }
+            if let Some(doc) = &param.doc {
+                write!(self.w, " # {}", doc)?;
+            }
+
         }
         write!(self.w, "\n)")?;
         Ok(())

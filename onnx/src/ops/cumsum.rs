@@ -1,4 +1,5 @@
 use tract_hir::internal::*;
+use tract_hir::tract_core::ops::scan::ScanInfo;
 
 use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::*;
@@ -54,39 +55,36 @@ impl Expansion for CumSum {
         )?[0];
         let chunk = if self.reverse { -1 } else { 1 };
         let input_mapping = vec![
-            scan::InputMapping::Scan { slot: 0, axis, chunk },
+            scan::InputMapping::Scan(ScanInfo { slot: 0, axis, chunk }),
             scan::InputMapping::State { initializer: scan::StateInitializer::FromInput(1) },
         ];
+        // outputs will be
+        // acc + x (!exclusive)
+        // acc input (exclusive)
         let output_mapping = vec![
             scan::OutputMapping {
-                full_slot: Some(0),
-                axis,
-                chunk,
-                full_dim_hint: None,
-                last_value_slot: None,
-                state: false,
-            },
-            scan::OutputMapping {
-                full_slot: None,
-                axis,
-                chunk,
+                scan: Some(ScanInfo { slot: 0, axis, chunk }),
                 full_dim_hint: None,
                 last_value_slot: None,
                 state: true,
             },
+            scan::OutputMapping {
+                scan: Some(ScanInfo { slot: 1, axis, chunk }),
+                full_dim_hint: None,
+                last_value_slot: None,
+                state: false,
+            },
         ];
         let mut body = TypedModel::default();
         let var_fact = data.datum_type.fact(var_shape);
-        let a = body.add_source("scan_input", var_fact.clone())?;
-        let b = body.add_source("acc_input", var_fact)?;
-        let sum = body.wire_node("add", tract_core::ops::math::add::bin_typed(), &[a, b])?[0];
-        if self.exclusive {
-            body.set_output_outlets(&[b, sum])?;
-        } else {
-            body.set_output_outlets(&[sum, sum])?;
-        }
+        let x = body.add_source("scan_input", var_fact.clone())?;
+        let acc = body.add_source("acc_input", var_fact)?;
+        let sum = body.wire_node("add", tract_core::ops::math::add::bin_typed(), &[x, acc])?[0];
+        body.set_output_outlets(&[sum, acc])?;
         let scan = scan::Scan::new(body, input_mapping, output_mapping, None, 0)?;
-        model.wire_node(prefix, scan, &[inputs[0], init])
+        let wires = model.wire_node(prefix, scan, &[inputs[0], init])?;
+        let output = wires[self.exclusive as usize];
+        Ok(tvec![output])
     }
 
     fn rules<'r, 'p: 'r, 's: 'r>(
@@ -102,5 +100,4 @@ impl Expansion for CumSum {
         s.equals(&inputs[1].rank, 0)?;
         Ok(())
     }
-
 }

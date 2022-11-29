@@ -4,11 +4,12 @@ pub fn register(registry: &mut Registry) {
     registry.register_primitive(
         "tract_resource_get",
         &[
-            TypeName::String.named("label"),
-            TypeName::String.named("key"),
+            TypeName::String.named("label").doc("Resource label to access"),
+            TypeName::String.named("key").doc("Key path in resource"),
         ],
+        &[("output", TypeName::Any.tensor())],
         resource_get,
-    );
+    ).with_doc("Access embedded resource by key");
 }
 
 fn resource_get(

@@ -772,7 +772,7 @@ pub mod test {
                     )
                 })
                 .prop_flat_map(|(p, h, w)| {
-                    let input_shape = p.0.from_n_c_hw(1, p.2, &[h, w]).unwrap();
+                    let input_shape = p.0.from_n_c_hw(1, p.2, [h, w]).unwrap();
                     let input = tensor(&input_shape.shape);
                     (Just(p), input)
                 })
@@ -845,7 +845,7 @@ pub mod test {
         fn check_visitor(&self) {
             let input_shape = self.input_shape();
             let output_shape = self.output_shape();
-            let mut output = Tensor::zero::<f32>(&*output_shape.shape).unwrap();
+            let mut output = Tensor::zero::<f32>(&output_shape.shape).unwrap();
             self.patch.visit_output(|visitor| {
                 for (_k, offset_in) in visitor.valid_offsets_ker_in() {
                     for c in 0..*output_shape.c() {
@@ -862,7 +862,7 @@ pub mod test {
         fn check_zone_visitor(&self) {
             let input_shape = self.input_shape();
             let output_shape = self.output_shape();
-            let mut output = Tensor::zero::<f32>(&*output_shape.shape).unwrap();
+            let mut output = Tensor::zero::<f32>(&output_shape.shape).unwrap();
             for zone in &self.patch.zones {
                 zone.visit_output(&self.patch, |visitor| {
                     for (_k, offset_in) in visitor.valid_offsets_ker_in() {
@@ -944,7 +944,7 @@ pub mod test {
 
     #[test]
     fn test_visitor_1() {
-        let input_shape = NCHW.from_n_c_hw(1, 1, &[2, 2]).unwrap();
+        let input_shape = NCHW.from_n_c_hw(1, 1, [2, 2]).unwrap();
         let input = Tensor::zero::<f32>(&input_shape.shape).unwrap();
         let patch = PatchSpec::for_data_shape(input_shape.clone())
             .with_kernel_shape(tvec![2, 1])
@@ -956,9 +956,9 @@ pub mod test {
 
     #[test]
     fn test_visitor_2() {
-        let input_shape = NCHW.from_n_c_hw(1, 2, &[1, 1]).unwrap();
+        let input_shape = NCHW.from_n_c_hw(1, 2, [1, 1]).unwrap();
         let input = tensor4(&[[[[0.]], [[1f32]]]]);
-        assert_eq!(&*input.shape(), &*input_shape.shape);
+        assert_eq!(input.shape(), &*input_shape.shape);
         let patch =
             PatchSpec::for_data_shape(input_shape.clone()).with_output_inner_stride(2).into_patch();
         Problem { patch, input, data_format: input_shape.fmt }.check_visitor();
@@ -966,9 +966,9 @@ pub mod test {
 
     #[test]
     fn test_visitor_3() {
-        let input_shape = NHWC.from_n_c_hw(1, 2, &[2, 1]).unwrap();
+        let input_shape = NHWC.from_n_c_hw(1, 2, [2, 1]).unwrap();
         let input = tensor4(&[[[[0., 0.]], [[1., 0f32]]]]);
-        assert_eq!(&*input.shape(), &*input_shape.shape);
+        assert_eq!(input.shape(), &*input_shape.shape);
         let patch =
             PatchSpec::for_data_shape(input_shape.clone()).with_output_inner_stride(2).into_patch();
         Problem { patch, input, data_format: input_shape.fmt }.check_visitor();
@@ -976,9 +976,9 @@ pub mod test {
 
     #[test]
     fn test_visitor_4() {
-        let input_shape = NCHW.from_n_c_hw(1, 1, &[1, 2]).unwrap();
+        let input_shape = NCHW.from_n_c_hw(1, 1, [1, 2]).unwrap();
         let input = tensor4(&[[[[0., 1f32]]]]);
-        assert_eq!(&*input.shape(), &*input_shape.shape);
+        assert_eq!(input.shape(), &*input_shape.shape);
         let patch = PatchSpec::for_data_shape(input_shape.clone())
             .with_kernel_shape(tvec!(1, 2))
             .with_output_inner_stride(1)
@@ -989,18 +989,18 @@ pub mod test {
 
     #[test]
     fn test_zone_visitor_1() {
-        let input_shape = NCHW.from_n_c_hw(1, 1, &[2, 1]).unwrap();
+        let input_shape = NCHW.from_n_c_hw(1, 1, [2, 1]).unwrap();
         let input = tensor4(&[[[[0.], [1f32]]]]);
-        assert_eq!(&*input.shape(), &*input_shape.shape);
+        assert_eq!(input.shape(), &*input_shape.shape);
         let patch = PatchSpec::for_data_shape(input_shape.clone()).into_patch();
         Problem { patch, input, data_format: input_shape.fmt }.check_zone_visitor();
     }
 
     #[test]
     fn test_zone_visitor_2() {
-        let input_shape = NCHW.from_n_c_hw(1, 1, &[1, 2]).unwrap();
+        let input_shape = NCHW.from_n_c_hw(1, 1, [1, 2]).unwrap();
         let input = tensor4(&[[[[0., 1f32]]]]);
-        assert_eq!(&*input.shape(), &*input_shape.shape);
+        assert_eq!(input.shape(), &*input_shape.shape);
         let patch = PatchSpec::for_data_shape(input_shape.clone()).into_patch();
         Problem { patch, input, data_format: input_shape.fmt }.check_zone_visitor();
     }

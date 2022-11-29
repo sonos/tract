@@ -1094,7 +1094,7 @@ mod proptests {
 
         fn input(&self) -> TractResult<Tensor> {
             unsafe {
-                let mut t = Tensor::uninitialized::<i64>(&*self.input)?;
+                let mut t = Tensor::uninitialized::<i64>(&self.input)?;
                 for i in 0..t.len() {
                     t.as_slice_mut().unwrap()[i] = i as i64;
                 }
