@@ -11,10 +11,10 @@ fragment tract_core_properties(
 
 graph wavenet_2( input_node ) -> ( post_proc_2_1x1_conv_conv1d_convolution_Conv2D_matmul ) {
   input_node = external(shape = [8, 20]);
-  input_batch_normalisation_batchnorm_mul_a = variable<scalar>(label = "wavenet_2/input_batch_normalisation/batchnorm/mul-a", shape = [1, 20]);
-  input_batch_normalisation_batchnorm_mul = mul(input_batch_normalisation_batchnorm_mul_a, input_node);
-  input_batch_normalisation_batchnorm_add_1_a = variable<scalar>(label = "wavenet_2/input_batch_normalisation/batchnorm/add_1-a", shape = [1, 20]);
-  input_batch_normalisation_batchnorm_add_1 = add(input_batch_normalisation_batchnorm_add_1_a, input_batch_normalisation_batchnorm_mul);
+  input_batch_normalisation_batchnorm_mul_fix_rank_1_2_0 = variable<scalar>(label = "wavenet_2/input_batch_normalisation/batchnorm/mul.fix-rank-1-2.0", shape = [1, 20]);
+  input_batch_normalisation_batchnorm_mul = mul(input_node, input_batch_normalisation_batchnorm_mul_fix_rank_1_2_0);
+  input_batch_normalisation_batchnorm_add_1_fix_rank_1_2_0 = variable<scalar>(label = "wavenet_2/input_batch_normalisation/batchnorm/add_1.fix-rank-1-2.0", shape = [1, 20]);
+  input_batch_normalisation_batchnorm_add_1 = add(input_batch_normalisation_batchnorm_mul, input_batch_normalisation_batchnorm_add_1_fix_rank_1_2_0);
   pre_conv_conv1d_convolution_Conv2D_delay = tract_pulse_delay(input_batch_normalisation_batchnorm_add_1, axis = 0, delay = 0, overlap = 2);
   pre_conv_conv1d_convolution_Conv2D_input = transpose(unsqueeze(pre_conv_conv1d_convolution_Conv2D_delay, axes = [0]), axes = [0, 2, 1]);
   pre_conv_conv1d_convolution_Conv2D_weigths = variable<scalar>(label = "wavenet_2/pre_conv-conv1d/convolution/Conv2D_weigths", shape = [16, 20, 3]);
@@ -448,10 +448,12 @@ graph wavenet_2( input_node ) -> ( post_proc_2_1x1_conv_conv1d_convolution_Conv2
   dilation_layer_23_dilation_rate_8_1x1_conv_skip_conv1d_convolution_Conv2D_matmul_a = variable<scalar>(label = "wavenet_2/dilation_layer_23-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.matmul_a", shape = [64, 32]);
   dilation_layer_23_dilation_rate_8_1x1_conv_skip_conv1d_convolution_Conv2D_matmul = matmul(mul_23, dilation_layer_23_dilation_rate_8_1x1_conv_skip_conv1d_convolution_Conv2D_matmul_a, transposeA = false, transposeB = false);
   AddN_22 = add(AddN_21, dilation_layer_23_dilation_rate_8_1x1_conv_skip_conv1d_convolution_Conv2D_matmul);
-  Relu_low = max(0.0, AddN_22);
+  Relu_low_cst = 0.0;
+  Relu_low = max(AddN_22, Relu_low_cst);
   post_proc_1_1x1_conv_conv1d_convolution_Conv2D_matmul_a = variable<scalar>(label = "wavenet_2/post_proc_1-1x1_conv-conv1d/convolution/Conv2D.matmul_a", shape = [32, 32]);
   post_proc_1_1x1_conv_conv1d_convolution_Conv2D_matmul = matmul(Relu_low, post_proc_1_1x1_conv_conv1d_convolution_Conv2D_matmul_a, transposeA = false, transposeB = false);
-  post_proc_1_1x1_conv_conv1d_Relu_low = max(0.0, post_proc_1_1x1_conv_conv1d_convolution_Conv2D_matmul);
+  post_proc_1_1x1_conv_conv1d_Relu_low_cst = 0.0;
+  post_proc_1_1x1_conv_conv1d_Relu_low = max(post_proc_1_1x1_conv_conv1d_convolution_Conv2D_matmul, post_proc_1_1x1_conv_conv1d_Relu_low_cst);
   post_proc_2_1x1_conv_conv1d_convolution_Conv2D_matmul_a = variable<scalar>(label = "wavenet_2/post_proc_2-1x1_conv-conv1d/convolution/Conv2D.matmul_a", shape = [32, 2]);
   post_proc_2_1x1_conv_conv1d_convolution_Conv2D_matmul = matmul(post_proc_1_1x1_conv_conv1d_Relu_low, post_proc_2_1x1_conv_conv1d_convolution_Conv2D_matmul_a, transposeA = false, transposeB = false);
 }
