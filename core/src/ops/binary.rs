@@ -1,6 +1,7 @@
 use crate::internal::*;
 use crate::ops::invariants::*;
 use downcast_rs::Downcast;
+use tract_data::itertools::izip;
 use std::fmt;
 
 pub fn wire_rank_broadcast(
@@ -669,6 +670,7 @@ macro_rules! bin_to_bool {
     };
 }
 
+#[derive(Debug)]
 pub(crate) struct OneUniformInput {
     pub uni: Arc<Tensor>,
     pub var: OutletId,
@@ -680,19 +682,19 @@ pub(crate) fn one_input_is_uniform(
     node: &TypedNode,
 ) -> TractResult<Option<OneUniformInput>> {
     if let &[a, b] = &*model.node_input_facts(node.id)? {
-        if let Some(a) = &a.uniform {
-            return Ok(Some(OneUniformInput {
-                uni: a.clone(),
-                var: node.inputs[1],
-                left_is_uniform: true,
-            }));
+        let uni = if let Some(a) = &a.uniform {
+            OneUniformInput { uni: a.clone(), var: node.inputs[1], left_is_uniform: true }
         } else if let Some(b) = &b.uniform {
-            return Ok(Some(OneUniformInput {
-                uni: b.clone(),
-                var: node.inputs[0],
-                left_is_uniform: false,
-            }));
+            OneUniformInput { uni: b.clone(), var: node.inputs[0], left_is_uniform: false }
+        } else {
+            return Ok(None);
+        };
+        let var_fact = [a, b][!(uni.left_is_uniform) as usize];
+        let uni_fact = [a, b][uni.left_is_uniform as usize];
+        if izip!(var_fact.shape.iter(), uni_fact.shape.iter()).any(|(v, u)| !u.is_one() && u != v) {
+            return Ok(None);
         }
     }
     Ok(None)
 }
+
