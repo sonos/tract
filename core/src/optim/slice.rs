@@ -23,7 +23,7 @@ impl super::TypedPass for PushSliceUp {
             let node = model.node(n);
             let invariants = node.op.invariants(&ifacts, &ofacts)?;
             'axis: for axis in 0..ofacts[0].rank() {
-                if let Some(boundaries) = should_slice_output(model, &node, axis)? {
+                if let Some(boundaries) = should_slice_output(model, node, axis)? {
                     let mut splits = tvec!();
                     let mut patch = TypedModelPatch::new("push slice up");
                     let inputs = node
@@ -128,7 +128,7 @@ pub fn rewire_sliced_outputs(
     let full = patch.wire_node(
         format!("{}.concat-{}", node.name, axis),
         crate::ops::array::TypedConcat::new(axis),
-        &splits,
+        splits,
     )?[0];
     patch.shunt_outside(model, node.id.into(), full)?;
     for (ix, succ) in node.outputs[0].successors.iter().enumerate() {
