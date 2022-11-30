@@ -2,7 +2,6 @@ use tract_data::UndeterminedSymbol;
 
 use crate::internal::*;
 use crate::ops::konst::Const;
-use crate::ops::source::TypedSource;
 use crate::optim::OptimizerSession;
 
 #[derive(Clone, Debug)]
@@ -18,50 +17,34 @@ impl super::TypedPass for PropConst {
         model: &TypedModel,
     ) -> TractResult<Option<TypedModelPatch>> {
         let mut patch = TypedModelPatch::default();
-        for node in model.eval_order()? {
-            if model.node(node).op.is_stateless()
-                && !model.node(node).op_is::<Const>()
-                && !model.node(node).op_is::<TypedSource>()
-            {
+        for n in model.eval_order()? {
+            let node = model.node(n);
+            if node.op.is_stateless() && node.outputs.iter().any(|of| of.fact.konst.is_none()) {
                 if let Some(inputs) = model
-                    .node_input_facts(node)?
+                    .node_input_facts(n)?
                     .iter()
                     .map(|f| f.konst.clone().map(|t| t.into_tvalue()))
                     .collect()
                 {
-                    match model.node(node).op.eval(inputs) {
+                    match node.op.eval(inputs) {
                         Ok(res) => {
                             for (ix, output) in res.into_iter().enumerate() {
-                                let wire = patch.add_const(
-                                    format!("{}.{}", model.node(node).name, ix),
-                                    output.into_arc_tensor(),
-                                )?;
-                                patch.shunt_outside(model, (node, ix).into(), wire)?;
+                                let mut name = node.name.clone();
+                                if ix > 0 {
+                                    name = format!("{}.{}", name, ix);
+                                }
+                                let wire = patch.add_const(name, output.into_arc_tensor())?;
+                                patch.shunt_outside(model, (n, ix).into(), wire)?;
                             }
-                            return Ok(Some(patch));
                         }
                         Err(e) => {
                             if !e.root_cause().is::<UndeterminedSymbol>() {
                                 Err(e).with_context(|| {
-                                    format!("Eager eval {} during optimisation", model.node(node))
+                                    format!("Eager eval {} during optimisation", model.node(n))
                                 })?;
                             }
                         }
                     }
-                }
-            }
-        }
-        for node in model.eval_order()? {
-            trace!("Cleanup inputs for {}", model.node(node));
-            for i in 0..model.node(node).inputs.len() {
-                if let Some(k) = model.node_input_facts(node)?[i].konst.clone() {
-                    let outlet = model.node(node).inputs[i];
-                    let knode = model.node(outlet.node);
-                    if knode.op_is::<Const>() {
-                        continue;
-                    }
-                    let k = patch.add_const(knode.name.to_string() + ".konst", k)?;
-                    patch.shunt_outside(model, outlet, k)?;
                 }
             }
         }
