@@ -116,15 +116,18 @@ fn pull_downsample_up(
         let (input_facts, output_facts) = model.node_facts(prec.id)?;
         let invariants = prec.op.invariants(&input_facts, &output_facts)?;
         debug!("Consider pull {:?} over {:?} (invariants: {:?})", down_op, prec, invariants);
-        if let Some(crop_op) = prec.op_as::<ops::array::Slice>() {
-            return array::pull_downsample_over_slice(model, prec, crop_op, down_node, down_op);
+        if let Some(slice_op) = prec.op_as::<ops::array::Slice>() {
+            if let Some(p) = array::pull_downsample_over_slice(model, prec, slice_op, down_node, down_op)? {
+                return Ok(Some(p))
+            }
         } else if let Some(other_op) = prec.op_as::<AxisOp>() {
             return array::pull_downsample_over_axis_op(model, prec, other_op, down_node, down_op);
         } else if let Some(conv_op) = prec.op_as::<ops::cnn::conv::ConvUnary>() {
             return conv::fuse_downsample_into_conv(model, prec, conv_op, down_node, down_op);
         } else if let Some(other_op) = prec.op_as::<ops::scan::Scan>() {
             return scan::pull_downsample_over_scan(model, prec, other_op, down_node, down_op);
-        } else if let Some(above_axis) = invariants.unary_track_axis_up(down_op.axis, false) {
+        }
+        if let Some(above_axis) = invariants.unary_track_axis_up(down_op.axis, false) {
             let mut patch = TypedModelPatch::default();
             let mut inputs = vec![];
             for (ix, &oo) in prec.inputs.iter().enumerate() {

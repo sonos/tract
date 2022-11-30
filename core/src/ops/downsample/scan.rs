@@ -13,51 +13,53 @@ pub fn pull_downsample_over_scan(
     if down_op.stride < 0 {
         return Ok(None);
     }
-    let mut inner_model = scan_op.body.clone();
-    inner_model.check_consistency()?;
 
-    let outputs = inner_model.output_outlets()?.to_owned();
+    // introduce downsample at end of body
+    let mut downsampled_body = scan_op.body.clone();
+    downsampled_body.check_consistency()?;
+    let outputs = downsampled_body.output_outlets()?.to_owned();
     let downsample_outputs = outputs
         .into_iter()
         .enumerate()
         .map(|(ix, oo)| {
-            Ok(inner_model.wire_node(
+            Ok(downsampled_body.wire_node(
                 format!("{}-{}", &down_node.name, ix),
                 down_op.clone(),
                 &[oo],
             )?[0])
         })
         .collect::<TractResult<Vec<_>>>()?;
-    inner_model.set_output_outlets(&downsample_outputs)?;
-    let mut inner_model = inner_model.into_decluttered()?;
-    inner_model.check_consistency()?;
+    downsampled_body.set_output_outlets(&downsample_outputs)?;
+    downsampled_body.declutter()?;
+    downsampled_body.check_consistency()?;
 
-    for input in inner_model.input_outlets()? {
-        let input = inner_model.node(input.node);
+    // check if downsample ops introduced at end have swimmed up to scan inputs during declutter
+    for input in downsampled_body.input_outlets()? {
+        let input = downsampled_body.node(input.node);
         if input.outputs[0]
             .successors
             .iter()
-            .any(|succ| !inner_model.node(succ.node).op().same_as(down_op))
+            .any(|succ| !downsampled_body.node(succ.node).op().same_as(down_op))
         {
             return Ok(None);
         }
     }
 
-    let inputs = inner_model.input_outlets()?.to_vec();
+    let inputs = downsampled_body.input_outlets()?.to_vec();
     for input in inputs {
-        let node = &mut inner_model.node_mut(input.node);
+        let node = &mut downsampled_body.node_mut(input.node);
         let fact = &mut node.outputs[0].fact;
         *fact = down_op.transform_fact(fact)?;
         node.op_as_mut::<crate::ops::source::TypedSource>().unwrap().fact = fact.clone();
-        let downsamples = inner_model.node(input.node).outputs[0].successors.clone();
+        let downsamples = downsampled_body.node(input.node).outputs[0].successors.clone();
         for ds in downsamples {
-            TypedModelPatch::shunt_one_op(&inner_model as _, inner_model.node(ds.node))?
-                .apply(&mut inner_model)?;
+            TypedModelPatch::shunt_one_op(&downsampled_body as _, downsampled_body.node(ds.node))?
+                .apply(&mut downsampled_body)?;
         }
     }
 
-    inner_model.check_consistency()?;
-    let inner_model = inner_model.into_decluttered()?;
+    downsampled_body.check_consistency()?;
+    let inner_model = downsampled_body.into_decluttered()?;
 
     let mut new_scan = scan_op.clone();
     new_scan.body = inner_model;
