@@ -291,46 +291,46 @@ fn declutter_div(
     if let Some(p) = declutter_neutral(model, node, 1, false)? {
         return Ok(Some(p));
     }
-    if let Some(uniform) = crate::ops::binary::one_input_is_uniform(model, node)? {
-        let var_fact = model.outlet_fact(uniform.var)?;
-        let dt = uniform.uni.datum_type();
-        let integer = uniform.uni.cast_to_scalar::<i64>()?;
-        if tensor0(integer)
-            .cast_to_dt(uniform.uni.datum_type())?
-            .close_enough(&uniform.uni, false)
-            .is_ok()
-            && dt.is_integer()
-            && !uniform.left_is_uniform
-            && uniform.uni.cast_to_scalar::<i64>()?.count_ones() == 1
-        {
-            let shift = integer.trailing_zeros();
-            return Ok(Some(TypedModelPatch::rewire(
-                model,
-                &[uniform.var],
-                &[node.id.into()],
-                &|patch, inputs| {
-                    let shift = patch.add_const(
-                        format!("{}.shift", node.name),
-                        tensor0(shift)
-                            .cast_to_dt(dt)?
-                            .into_owned()
-                            .broadcast_into_rank(var_fact.rank())?,
-                    )?;
-                    patch.wire_node(&node.name, shift_right(), &[inputs[0], shift])
-                },
-            )?));
+    if let &[p, q] = &*model.node_input_facts(node.id)? {
+        if let Some(q) = &q.uniform {
+            let dt = q.datum_type();
+            if let Ok(integer) = q.cast_to_scalar::<i64>() {
+                if tensor0(integer).cast_to_dt(dt)?.close_enough(&q, false).is_ok()
+                    && dt.is_integer()
+                    && q.cast_to_scalar::<i64>()?.count_ones() == 1
+                {
+                    let shift = integer.trailing_zeros();
+                    return Ok(Some(TypedModelPatch::rewire(
+                        model,
+                        &[node.inputs[0]],
+                        &[node.id.into()],
+                        &|patch, taps| {
+                            let shift = patch.add_const(
+                                format!("{}.shift", node.name),
+                                tensor0(shift)
+                                    .cast_to_dt(dt)?
+                                    .into_owned()
+                                    .broadcast_into_rank(p.rank())?,
+                            )?;
+                            patch.wire_node(&node.name, shift_right(), &[taps[0], shift])
+                        },
+                    )?));
+                }
+            }
+            if dt.is_float() {
+                return Ok(Some(TypedModelPatch::rewire(
+                    model,
+                    &node.inputs,
+                    &[node.id.into()],
+                    &|patch, taps| {
+                        let q =
+                            patch.wire_node(format!("{}-recip", node.name), recip(), &[taps[1]])?
+                                [0];
+                        patch.wire_node(&node.name, mul(), &[taps[0], q])
+                    },
+                )?));
+            }
         }
-    } else if model.outlet_fact(node.inputs[0])?.datum_type.is_float() {
-        return Ok(Some(TypedModelPatch::rewire(
-            model,
-            &node.inputs,
-            &[node.id.into()],
-            &|patch, inputs| {
-                let denum =
-                    patch.wire_node(format!("{}-recip", node.name), recip(), &[inputs[1]])?[0];
-                patch.wire_node(&node.name, mul(), &[inputs[0], denum])
-            },
-        )?));
     }
     Ok(None)
 }
