@@ -79,12 +79,7 @@ impl OpState for Slice {
     }
 }
 
-fn eval_slice(
-    input: &Tensor,
-    axis: usize,
-    start: usize,
-    end: usize,
-) -> TractResult<TVec<TValue>> {
+fn eval_slice(input: &Tensor, axis: usize, start: usize, end: usize) -> TractResult<TVec<TValue>> {
     if end > input.shape()[axis] || start > end {
         bail!("Invalid range {}..{} for slicing {:?} on axis {}", start, end, input, axis);
     }
@@ -144,41 +139,10 @@ impl TypedOp for Slice {
     ) -> TractResult<Option<TypedModelPatch>> {
         if self.start.is_zero() && (self.end == model.outlet_fact(node.inputs[0])?.shape[self.axis])
         {
-            return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?.with_context("noop")));
-        }
-        return Ok(None);
-        /*
-        let prec = model.node(node.inputs[0].node);
-        let (start, end) = if let (Ok(s), Ok(e)) = (self.start.to_usize(), self.end.to_usize()) {
-            (s, e)
+            Ok(Some(TypedModelPatch::shunt_one_op(model, node)?.with_context("noop")))
         } else {
-            return Ok(None);
-        };
-        let mut patch = TypedModelPatch::default();
-        if let Some((wire, no_slice_op)) = prec.op().as_typed().unwrap().slice_output(
-            model,
-            prec,
-            &mut patch,
-            &self.suffix(&node.name),
-            node.inputs[0].slot,
-            self.axis,
-            start,
-            end,
-        )? {
-            /*
-            dbg!(node);
-            dbg!(prec);
-            dbg!(&patch);
-            dbg!(no_slice_op);
-            */
-            if !no_slice_op {
-                return Ok(None);
-            }
-            patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
-            return Ok(Some(patch));
+            Ok(None)
         }
-        Ok(None)
-            */
     }
 
     fn slice_output(
