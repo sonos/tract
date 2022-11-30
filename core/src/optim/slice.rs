@@ -127,7 +127,7 @@ pub fn rewire_sliced_outputs(
 ) -> TractResult<()> {
     let full = patch.wire_node(
         format!("{}.concat-{}", node.name, axis),
-        crate::ops::array::TypedConcat::concat_vars(axis, splits.len()),
+        crate::ops::array::TypedConcat::new(axis),
         &splits,
     )?[0];
     patch.shunt_outside(model, node.id.into(), full)?;
@@ -151,7 +151,7 @@ pub fn rewire_sliced_outputs(
             let wire = if slices.len() > 1 {
                 patch.wire_node(
                     format!("{}.concat-m{}..{}..{}", node.name, ix, slice.start, slice.end),
-                    crate::ops::array::TypedConcat::concat_vars(axis, slices.len()),
+                    crate::ops::array::TypedConcat::new(axis),
                     &slices,
                 )?[0]
             } else {
