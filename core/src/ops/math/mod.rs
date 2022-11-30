@@ -295,7 +295,7 @@ fn declutter_div(
         if let Some(q) = &q.uniform {
             let dt = q.datum_type();
             if let Ok(integer) = q.cast_to_scalar::<i64>() {
-                if tensor0(integer).cast_to_dt(dt)?.close_enough(&q, false).is_ok()
+                if tensor0(integer).cast_to_dt(dt)?.close_enough(q, false).is_ok()
                     && dt.is_integer()
                     && q.cast_to_scalar::<i64>()?.count_ones() == 1
                 {

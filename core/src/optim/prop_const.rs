@@ -1,7 +1,6 @@
 use tract_data::UndeterminedSymbol;
 
 use crate::internal::*;
-use crate::ops::konst::Const;
 use crate::optim::OptimizerSession;
 
 #[derive(Clone, Debug)]
