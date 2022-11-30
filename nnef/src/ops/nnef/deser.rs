@@ -1,6 +1,5 @@
 use crate::ast::*;
 use crate::deser::Value;
-use tract_core::internal::tract_smallvec::SmallVec;
 use tract_core::internal::*;
 use tract_core::ops::cnn::deconv::adjustments;
 use tract_core::ops::cnn::PaddingSpec;
@@ -399,12 +398,20 @@ fn pool_spec_for_pools(
     {
         bail!("dilation should be like [1, 1, ... ]. Got dilation {:?}.", dilation);
     }
-    let spatial_dilation: SmallVec<_> = DataFormat::NCHW.shape(&dilation)?.hw_dims().into();
+    let spatial_dilation = if dilation.iter().all(|it| *it == 1) || dilation.len() == 0 {
+        None
+    } else {
+        Some(DataFormat::NCHW.shape(&dilation)?.hw_dims().into())
+    };
     let stride: TVec<usize> = invocation.named_arg_as(builder, "stride")?;
     if stride.len() > 0 && (stride.len() != shape.len() || stride[0] != 1 || stride[1] != 1) {
         bail!("stride should be like [1, 1, ... ]. Got stride {:?}.", stride);
     }
-    let spatial_stride: SmallVec<_> = DataFormat::NCHW.shape(&stride)?.hw_dims().into();
+    let spatial_stride = if stride.len() == 0 || stride.iter().all(|it| *it == 1) {
+        None
+    } else {
+        Some(DataFormat::NCHW.shape(&stride)?.hw_dims().into())
+    };
     let padding: TVec<TVec<usize>> = invocation.named_arg_as(builder, "padding")?;
     if padding.len() > 0 && (padding.len() != padding.len()) {
         bail!("padding should have the same rank as the input. Got padding {:?}.", padding);
@@ -426,16 +433,8 @@ fn pool_spec_for_pools(
         DataFormat::NCHW,
         spatial_shape,
         padding,
-        if spatial_dilation.iter().all(|it| *it == 1) || spatial_dilation.len() == 0 {
-            None
-        } else {
-            Some(spatial_dilation)
-        },
-        if spatial_stride.iter().all(|it| *it == 1) || spatial_stride.len() == 0 {
-            None
-        } else {
-            Some(spatial_stride)
-        },
+        spatial_dilation,
+        spatial_stride,
         None,
     ))
 }
