@@ -11,10 +11,10 @@ fragment tract_core_properties(
 
 graph wavenet_2( input_node ) -> ( post_proc_2_1x1_conv_conv1d_convolution_Conv2D_matmul ) {
   input_node = external(shape = [8, 20]);
-  input_batch_normalisation_batchnorm_mul_fix_rank_1_2_0 = variable<scalar>(label = "wavenet_2/input_batch_normalisation/batchnorm/mul.fix-rank-1-2.0", shape = [1, 20]);
-  input_batch_normalisation_batchnorm_mul = mul(input_node, input_batch_normalisation_batchnorm_mul_fix_rank_1_2_0);
-  input_batch_normalisation_batchnorm_add_1_fix_rank_1_2_0 = variable<scalar>(label = "wavenet_2/input_batch_normalisation/batchnorm/add_1.fix-rank-1-2.0", shape = [1, 20]);
-  input_batch_normalisation_batchnorm_add_1 = add(input_batch_normalisation_batchnorm_mul, input_batch_normalisation_batchnorm_add_1_fix_rank_1_2_0);
+  input_batch_normalisation_batchnorm_Rsqrt_0 = variable<scalar>(label = "wavenet_2/input_batch_normalisation/batchnorm/Rsqrt.0", shape = [1, 20]);
+  input_batch_normalisation_batchnorm_mul = mul(input_node, input_batch_normalisation_batchnorm_Rsqrt_0);
+  input_batch_normalisation_batchnorm_mul_1_0 = variable<scalar>(label = "wavenet_2/input_batch_normalisation/batchnorm/mul_1.0", shape = [1, 20]);
+  input_batch_normalisation_batchnorm_add_1 = add(input_batch_normalisation_batchnorm_mul, input_batch_normalisation_batchnorm_mul_1_0);
   pre_conv_conv1d_convolution_Conv2D_delay = tract_pulse_delay(input_batch_normalisation_batchnorm_add_1, axis = 0, delay = 0, overlap = 2);
   pre_conv_conv1d_convolution_Conv2D_input = transpose(unsqueeze(pre_conv_conv1d_convolution_Conv2D_delay, axes = [0]), axes = [0, 2, 1]);
   pre_conv_conv1d_convolution_Conv2D_weigths = variable<scalar>(label = "wavenet_2/pre_conv-conv1d/convolution/Conv2D_weigths", shape = [16, 20, 3]);
