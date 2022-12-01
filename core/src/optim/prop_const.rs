@@ -1,6 +1,7 @@
 use tract_data::UndeterminedSymbol;
 
 use crate::internal::*;
+use crate::ops::konst::Const;
 use crate::optim::OptimizerSession;
 
 #[derive(Clone, Debug)]
@@ -18,7 +19,7 @@ impl super::TypedPass for PropConst {
         let mut patch = TypedModelPatch::default();
         for n in model.eval_order()? {
             let node = model.node(n);
-            if node.op.is_stateless() && node.outputs.iter().any(|of| of.fact.konst.is_none()) {
+            if node.op.is_stateless() && !node.op_is::<Const>() {
                 if let Some(inputs) = model
                     .node_input_facts(n)?
                     .iter()
