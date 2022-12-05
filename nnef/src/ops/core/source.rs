@@ -38,7 +38,9 @@ fn external_load(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
 ) -> TractResult<Value> {
+    builder.allow_new_symbol = true;
     let shape: TVec<TDim> = invocation.named_arg_as(builder, "shape")?;
+    builder.allow_new_symbol = false;
     let mut dt: DatumType = invocation.named_arg_as::<String>(builder, "datum_type")?.parse()?;
     if let Some(Some(qdt)) = invocation.dt_from_quant_file.get(0) {
         dt = *qdt;
