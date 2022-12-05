@@ -21,14 +21,15 @@ pub fn output_shape<D: DimLike>(expr: &Expr, inputs: &[&[D]]) -> TVec<D> {
         .collect()
 }
 
-pub fn eval_t<T: Datum + Zero + One>(
+pub fn eval_t<Acc: Datum + Zero + One>(
     expr: &Expr,
     inputs: TVec<TValue>,
 ) -> TractResult<TVec<TValue>> {
     let shapes: TVec<_> = inputs.iter().map(|t| t.shape()).collect();
     let output_shape = output_shape(expr, &shapes);
-    let inputs: TVec<tract_ndarray::ArrayViewD<T>> =
-        inputs.iter().map(|t| t.to_array_view::<T>()).collect::<TractResult<_>>()?;
+    let inputs:TVec<Cow<Tensor>> = inputs.iter().map(|t| t.cast_to::<Acc>()).collect::<TractResult<_>>()?;
+    let inputs: TVec<tract_ndarray::ArrayViewD<Acc>> =
+        inputs.iter().map(|t| t.to_array_view::<Acc>()).collect::<TractResult<_>>()?;
     let summing_shape: TVec<usize> = expr
         .sum
         .iter()
@@ -46,7 +47,7 @@ pub fn eval_t<T: Datum + Zero + One>(
                 .unwrap()
         })
         .collect();
-    let output = tract_ndarray::ArrayD::<T>::from_shape_fn(&*output_shape, |coords| {
+    let output = tract_ndarray::ArrayD::<Acc>::from_shape_fn(&*output_shape, |coords| {
         let coords = coords.as_array_view();
         let mut views = inputs.clone();
         for (axis, x) in expr.index.iter().sorted_by_key(|axis| axis.result.unwrap()).zip(coords) {
@@ -58,7 +59,7 @@ pub fn eval_t<T: Datum + Zero + One>(
                 }
             }
         }
-        let mut sum: T = T::zero();
+        let mut sum: Acc = Acc::zero();
         for sum_coords in tract_ndarray::indices(&*summing_shape) {
             let mut views = views.clone();
             let sum_coords = sum_coords.as_array_view();
@@ -69,7 +70,7 @@ pub fn eval_t<T: Datum + Zero + One>(
                     }
                 }
             }
-            let mut product = T::one();
+            let mut product = Acc::one();
             for v in &views {
                 debug_assert_eq!(v.len(), 1);
                 product = product * v.iter().next().unwrap().clone();

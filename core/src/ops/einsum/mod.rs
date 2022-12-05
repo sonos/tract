@@ -4,12 +4,12 @@ mod eval;
 mod expr;
 pub use expr::Axis;
 pub use expr::Expr;
-use tract_data::itertools::Itertools;
 mod to_matmul;
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, new)]
 pub struct EinSum {
     pub expr: Expr,
+    pub operating_dt: DatumType,
 }
 
 
@@ -26,19 +26,13 @@ impl Op for EinSum {
     op_as_typed_op!();
 }
 
-impl EinSum {
-    pub fn new(expr: Expr) -> EinSum {
-        EinSum { expr }
-    }
-}
-
 impl EvalOp for EinSum {
     fn is_stateless(&self) -> bool {
         true
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        dispatch_numbers!(eval::eval_t(inputs[0].datum_type())(&self.expr, inputs))
+        dispatch_numbers!(eval::eval_t(self.operating_dt)(&self.expr, inputs))
     }
 }
 
@@ -50,7 +44,7 @@ impl TypedOp for EinSum {
             .all(|(ix, fact)| fact.rank() == self.expr.input_rank(ix)));
         let shapes: TVec<&[TDim]> = inputs.iter().map(|t| &*t.shape).collect();
         Ok(tvec!(TypedFact::dt_shape(
-            inputs[0].datum_type,
+            self.operating_dt,
             eval::output_shape(&self.expr, &shapes)
         )))
     }
@@ -105,7 +99,7 @@ impl TypedOp for EinSum {
         *interface = axes.into_iter().collect();
         let expr = Expr::from_strs(&inputs, Some(&result));
         return Ok(Some(AxisChangeConsequence {
-            substitute_op: Some(Box::new(EinSum::new(expr))),
+            substitute_op: Some(Box::new(EinSum::new(expr, self.operating_dt))),
             wire_changes: tvec!((io, change.clone())),
         }));
     }

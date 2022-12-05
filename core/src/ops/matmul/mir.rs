@@ -5,9 +5,6 @@ use crate::ops::einsum::{Axis, EinSum, Expr};
 use crate::ops::matmul::*;
 
 /// The binary op. It will declutter to MatMulUnary if either A or B is constant.
-///
-/// TODO: implemnent TypedOp fully to play nice with optimizer.
-/// TODO: codegen fails if A and B are variable inputs.
 #[derive(Debug, Clone, Default, Hash)]
 pub struct MatMul {
     pub axes: MatMulAxes,
@@ -73,7 +70,7 @@ impl TypedOp for MatMul {
         let extra_axes = izip!(alphabet, remain_a, remain_b, remain_c)
             .map(|(letter, a, b, c)| Axis::new(letter).input(0, a).input(1, b).result(c));
         let expr: Expr = extra_axes.chain([k_axis, m_axis, n_axis].into_iter()).collect();
-        TypedModelPatch::replace_single_op(model, node, &node.inputs, EinSum::new(expr)).map(Some)
+        TypedModelPatch::replace_single_op(model, node, &node.inputs, EinSum::new(expr, output_type(a_fact.datum_type))).map(Some)
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {

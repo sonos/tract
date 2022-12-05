@@ -35,7 +35,8 @@ impl Expansion for EinSum {
             .map(|o| model.outlet_fact(*o).map(|f| f.rank()))
             .collect::<TractResult<TVec<_>>>()?;
         let expr = resolve_ellipsis(&self.expr, &ranks)?;
-        model.wire_node(prefix, tract_core::ops::einsum::EinSum { expr }, inputs)
+        let operating_dt = model.outlet_fact(inputs[0])?.datum_type;
+        model.wire_node(prefix, tract_core::ops::einsum::EinSum { expr, operating_dt }, inputs)
     }
 
     fn rules<'r, 'p: 'r, 's: 'r>(
