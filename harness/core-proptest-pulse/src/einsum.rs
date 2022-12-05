@@ -11,7 +11,7 @@ fn einsum_pulsedmm() {
     let w = model.add_const("w", Tensor::zero::<f32>(&[8, 2, 4]).unwrap()).unwrap();
 
     let expr = "sij,ijk->sik".parse::<Expr>().unwrap();
-    let einsum = EinSum { expr };
+    let einsum = EinSum { expr, operating_dt: f32::datum_type() };
 
     let einsum = model.wire_node("einsum", einsum, &[x, w]).unwrap();
     model.set_output_outlets(&einsum).unwrap();
