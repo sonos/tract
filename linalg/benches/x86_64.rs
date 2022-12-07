@@ -86,10 +86,10 @@ unsafe fn packed_packed_2x6(f: Option<&str>) {
     println!("-- 2x6 kernels");
     kloop!(f, "2x6x1", (16 * 6), "2x6/packed_packed_loop1/original.tmpli", 8);
     kloop!(f, "2x6x2", (16 * 6), "2x6/packed_packed_loop1/original-unroll.tmpli", 8, 2);
-    // if std::is_x86_feature_detected!("avx512f") {
-    //     kloop!(f, "2x6x1", (32 * 6), "2x6/packed_packed_loop1/avx-512.tmpli", 16);
-    //     kloop!(f, "2x6x2", (32 * 6 * 2), "2x6/packed_packed_loop1/avx-512-unroll.tmpli", 16);
-    // }
+    if std::is_x86_feature_detected!("avx512f") {
+        kloop!(f, "2x6x1", (32 * 6), "../avx512/2x6/packed_packed_loop1/avx-512.tmpli", 16);
+        kloop!(f, "2x6x2", (32 * 6 * 2), "../avx512/2x6/packed_packed_loop1/avx-512-unroll.tmpli", 16);
+    }
     println!();
 }
 
@@ -97,10 +97,10 @@ unsafe fn packed_packed_2x5(f: Option<&str>) {
     println!("-- 2x5 kernels");
     kloop!(f, "2x5x1", (16 * 5), "2x5/packed_packed_loop1/avx.tmpli", 8);
     kloop!(f, "2x5x2", (16 * 5), "2x5/packed_packed_loop1/avx-unroll.tmpli", 8, 2);
-    // if std::is_x86_feature_detected!("avx512f") {
-    //     kloop!(f, "2x5x1", (32 * 5), "2x5/packed_packed_loop1/avx-512.tmpli", 16);
-    //     kloop!(f, "2x5x2", (32 * 5 * 2), "2x5/packed_packed_loop1/avx-512-unroll.tmpli", 16);
-    // }
+    if std::is_x86_feature_detected!("avx512f") {
+        kloop!(f, "2x5x1", (32 * 5), "../avx512/2x5/packed_packed_loop1/avx-512.tmpli", 16);
+        kloop!(f, "2x5x2", (32 * 5 * 2), "../avx512/2x5/packed_packed_loop1/avx-512-unroll.tmpli", 16);
+    }
     println!();
 }
 
@@ -108,10 +108,10 @@ unsafe fn packed_packed_3x4(f: Option<&str>) {
     println!("-- 3x4 kernels");
     kloop!(f, "3x4x1", (24 * 4), "3x4/packed_packed_loop1/avx.tmpli", 8);
     kloop!(f, "3x4x2", (24 * 4), "3x4/packed_packed_loop1/avx-unroll.tmpli", 8, 2);
-    // if std::is_x86_feature_detected!("avx512f") {
-    //     kloop!(f, "3x4x1", (48 * 4), "3x4/packed_packed_loop1/avx-512.tmpli", 16);
-    //     kloop!(f, "3x4x2", (48 * 4 * 2), "3x4/packed_packed_loop1/avx-512-unroll.tmpli", 16);
-    // }
+    if std::is_x86_feature_detected!("avx512f") {
+        kloop!(f, "3x4x1", (48 * 4), "../avx512/3x4/packed_packed_loop1/avx-512.tmpli", 16);
+        kloop!(f, "3x4x2", (48 * 4 * 2), "../avx512/3x4/packed_packed_loop1/avx-512-unroll.tmpli", 16);
+    }
     println!();
 }
 
@@ -119,10 +119,10 @@ unsafe fn packed_packed_4x3(f: Option<&str>) {
     println!("-- 4x3 kernels");
     kloop!(f, "4x3x1", (32 * 3), "4x3/packed_packed_loop1/avx.tmpli", 8);
     kloop!(f, "4x3x2", (32 * 3), "4x3/packed_packed_loop1/avx-unroll.tmpli", 8, 2);
-    // if std::is_x86_feature_detected!("avx512f") {
-    //     kloop!(f, "4x3x1", (64 * 3), "4x3/packed_packed_loop1/avx-512.tmpli", 16);
-    //     kloop!(f, "4x3x2", (64 * 3 * 2), "4x3/packed_packed_loop1/avx-512-unroll.tmpli", 16);
-    // }
+    if std::is_x86_feature_detected!("avx512f") {
+        kloop!(f, "4x3x1", (64 * 3), "../avx512/4x3/packed_packed_loop1/avx-512.tmpli", 16);
+        kloop!(f, "4x3x2", (64 * 3 * 2), "../avx512/4x3/packed_packed_loop1/avx-512-unroll.tmpli", 16);
+    }
     println!();
 }
 
@@ -130,10 +130,10 @@ unsafe fn packed_packed_5x2(f: Option<&str>) {
     println!("-- 5x2 kernels");
     kloop!(f, "5x2x1", (40 * 2), "5x2/packed_packed_loop1/avx.tmpli", 8);
     kloop!(f, "5x2x1", (40 * 2), "5x2/packed_packed_loop1/avx-unroll.tmpli", 8, 2);
-    // if std::is_x86_feature_detected!("avx512f") {
-    //     kloop!(f, "5x2x1", (80 * 2), "5x2/packed_packed_loop1/avx-512.tmpli", 16);
-    //     kloop!(f, "5x2x2", (80 * 2 * 2), "5x2/packed_packed_loop1/avx-512-unroll.tmpli", 16);
-    // }
+    if std::is_x86_feature_detected!("avx512f") {
+        kloop!(f, "5x2x1", (80 * 2), "../avx512/5x2/packed_packed_loop1/avx-512.tmpli", 16);
+        kloop!(f, "5x2x2", (80 * 2 * 2), "../avx512/5x2/packed_packed_loop1/avx-512-unroll.tmpli", 16);
+    }
     println!();
 }
 
@@ -141,10 +141,10 @@ unsafe fn packed_packed_6x2(f: Option<&str>) {
     println!("-- 6x2 kernels");
     kloop!(f, "6x2x1", (48 * 2), "6x2/packed_packed_loop1/avx.tmpli", 8);
     kloop!(f, "6x2x2", (48 * 2), "6x2/packed_packed_loop1/avx-unroll.tmpli", 8, 2);
-    // if std::is_x86_feature_detected!("avx512f") {
-    //     kloop!(f, "6x2x1", (80 * 2), "6x2/packed_packed_loop1/avx-512.tmpli", 16);
-    //     kloop!(f, "6x2x2", (80 * 2 * 2), "6x2/packed_packed_loop1/avx-512-unroll.tmpli", 16);
-    // }
+    if std::is_x86_feature_detected!("avx512f") {
+        kloop!(f, "6x2x1", (80 * 2), "../avx512/6x2/packed_packed_loop1/avx-512.tmpli", 16);
+        kloop!(f, "6x2x2", (80 * 2 * 2), "../avx512/6x2/packed_packed_loop1/avx-512-unroll.tmpli", 16);
+    }
     println!();
 }
 
@@ -153,8 +153,8 @@ unsafe fn packed_packed_8x1(f: Option<&str>) {
     kloop!(f, "8x1x1", (64 * 1), "8x1/packed_packed_loop1/avx.tmpli", 8);
     kloop!(f, "8x1x2", (64 * 1), "8x1/packed_packed_loop1/avx-unroll.tmpli", 8, 2);
     if std::is_x86_feature_detected!("avx512f") {
-        kloop!(f, "8x1x1", (128 * 1), "8x1/packed_packed_loop1/avx-512.tmpli", 16, 1, "avx512");
-        kloop!(f, "8x1x2", (128 * 1), "8x1/packed_packed_loop1/unroll.tmpli", 16, 2, "avx512");
+        kloop!(f, "8x1x1", (128 * 1), "../avx512/8x1/packed_packed_loop1/avx-512.tmpli", 16, 1, "avx512");
+        kloop!(f, "8x1x2", (128 * 1), "../avx512/8x1/packed_packed_loop1/avx-512-unroll.tmpli", 16, 2, "avx512");
     }
     println!("");
 }
@@ -163,20 +163,20 @@ unsafe fn packed_packed_6x1(f: Option<&str>) {
     println!("-- 6x1 kernels");
     kloop!(f, "6x1x1", (48 * 1), "6x1/packed_packed_loop1/avx.tmpli", 8);
     kloop!(f, "6x1x2", (48 * 1), "6x1/packed_packed_loop1/avx-unroll.tmpli", 8, 2);
-    // if std::is_x86_feature_detected!("avx512f") {
-    //     kloop!(f, "6x1x1", (128 * 1), "6x1/packed_packed_loop1/avx-512.tmpli", 16);
-    //     kloop!(f, "6x1x2", (128 * 1 * 2), "6x1/packed_packed_loop1/avx-512-unroll.tmpli", 16);
-    // }
+    if std::is_x86_feature_detected!("avx512f") {
+        kloop!(f, "6x1x1", (128 * 1), "../avx512/6x1/packed_packed_loop1/avx-512.tmpli", 16);
+        kloop!(f, "6x1x2", (128 * 1 * 2), "../avx512/6x1/packed_packed_loop1/avx-512-unroll.tmpli", 16);
+    }
     println!("");
 }
 
 unsafe fn packed_packed_1x1(f: Option<&str>) {
     if std::is_x86_feature_detected!("avx512f") {
-        kloop!(f, "1x1x1", (16 * 1), "1x1/packed_packed_loop1/avx-512.tmpli", 16, 1, "avx512");
-        kloop!(f, "1x1x2", (16 * 1), "1x1/packed_packed_loop1/unroll.tmpli", 16, 2, "avx512");
-        kloop!(f, "1x1x4", (16 * 1), "1x1/packed_packed_loop1/unroll-4.tmpli", 16, 4, "avx512");
-        kloop!(f, "1x1x8", (16 * 1), "1x1/packed_packed_loop1/unroll-8.tmpli", 16, 8, "avx512");
-        kloop!(f, "1x1x16", (16 * 1), "1x1/packed_packed_loop1/unroll-16.tmpli", 16, 16, "avx512");
+        kloop!(f, "1x1x1", (16 * 1), "../avx512/1x1/packed_packed_loop1/avx-512.tmpli", 16, 1, "avx512");
+        kloop!(f, "1x1x2", (16 * 1), "../avx512/1x1/packed_packed_loop1/unroll.tmpli", 16, 2, "avx512");
+        kloop!(f, "1x1x4", (16 * 1), "../avx512/1x1/packed_packed_loop1/unroll-4.tmpli", 16, 4, "avx512");
+        kloop!(f, "1x1x8", (16 * 1), "../avx512/1x1/packed_packed_loop1/unroll-8.tmpli", 16, 8, "avx512");
+        kloop!(f, "1x1x16", (16 * 1), "../avx512/1x1/packed_packed_loop1/unroll-16.tmpli", 16, 16, "avx512");
     }
     println!("");
 }
