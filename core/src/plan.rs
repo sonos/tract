@@ -346,12 +346,16 @@ where
                 Self::resolve(&mut session_state.resolved_symbols, &expected, *provided as i64)
             }
         }
-        self.plan
-            .borrow()
-            .model()
-            .outlet_fact(outlet)?
-            .matches(&t, Some(&self.session_state.resolved_symbols))
-            .with_context(|| format!("Setting input {}", input))?;
+        let fact = self.plan.borrow().model().outlet_fact(outlet)?;
+        ensure!(
+            fact.matches(&t, Some(&self.session_state.resolved_symbols))
+                .with_context(|| format!("Setting input {}", input))?,
+            "Input at index {} has incorrect dtype or shape (got shape {:?} and dtype {:?}, expected to match fact {:?})",
+            input,
+            t.shape(),
+            t.datum_type(),
+            fact
+        );
         self.session_state.inputs.insert(outlet.node, t);
         Ok(())
     }
