@@ -31,5 +31,5 @@
 	vfmadd231ps		zmm10,	 zmm13, zmm15
 	vfmadd231ps		zmm11,	 zmm14, zmm15
 
-	add rax 192,
+	add rax, 192
 	add rcx, 16
