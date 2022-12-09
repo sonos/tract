@@ -71,6 +71,7 @@ Windows ABI:
     mov     rbx,    [rdi + 24]          // col stride
 
     mov     eax,    0
+
 {% for i in (0..3) %}
     pinsrd  xmm14, eax, {{i}}
     add     eax,    esi
@@ -79,14 +80,24 @@ Windows ABI:
     pinsrd  xmm15, eax, {{i}}
     add     eax,    esi
 {% endfor %}
+{% for i in (0..3) %}
+    pinsrd  xmm12, eax, {{i}}
+    add     eax,    esi
+{% endfor %}
+{% for i in (0..3) %}
+    pinsrd  xmm13, eax, {{i}}
+    add     eax,    esi
+{% endfor %}
 
     vperm2f128      ymm14,  ymm14, ymm15,         32 // ymm14 <- xmm14::xmm15
+    vperm2f128      ymm13,  ymm12, ymm13,         32 // ymm12 <- xmm12::xmm13
+    vinsertf32x8    zmm14, zmm14, ymm13, 1
 
 {% for i in (0..7) %}
-    vpcmpeqd        ymm15,  ymm15, ymm15
-    vgatherdps      ymm12,  [ r10 + ymm14 ],      ymm15
+    kxnorw k1,k1,k1
+    vgatherdps      zmm12{k1},  [ r10 + zmm14 ]
     add     r10, rbx
-    vaddps          ymm{{i}},   ymm{{i}},   ymm12
+    vaddps          zmm{{i}},   zmm{{i}},   zmm12
 {% endfor %}
 
     jmp    {{L}}non_linear_loop
