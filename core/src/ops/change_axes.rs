@@ -671,6 +671,10 @@ pub fn change_axes(
                 if Some(node_id) == emitter {
                     continue;
                 }
+                // Revisiting a node we already changed is a big no.
+                if changed_ops.contains_key(&node_id) {
+                    return Ok(None)
+                }
                 let node = model.node(node_id);
                 let more = node
                     .op
