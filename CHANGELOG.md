@@ -1,5 +1,9 @@
 # Unreleased
 
+# 0.18.5 - 2022-12-12
+* make some attributes public
+* minor bugfixs
+
 # 0.18.3 - 2022-10-27
 * [NNEF] Introduce a "resource" extension for loading values from a separate source (as a config file)
 * Workaround for cpu detection failure on FreeBSD / arm64
