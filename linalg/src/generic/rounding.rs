@@ -5,10 +5,10 @@ use tract_data::prelude::f16;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Scaler {
-    scale: f32,
-    mult: Option<i32>,
-    shift: isize,
-    policy: RoundingPolicy,
+    pub scale: f32,
+    pub mult: Option<i32>,
+    pub shift: isize,
+    pub policy: RoundingPolicy,
 }
 
 impl Eq for Scaler {
