@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use crate::internal::*;
 
 mod eval;
@@ -6,13 +8,19 @@ pub use expr::Axis;
 pub use expr::Expr;
 mod to_matmul;
 
-#[derive(Debug, Clone, Hash, new)]
+#[derive(Clone, Hash, new)]
 pub struct EinSum {
     pub expr: Expr,
     pub operating_dt: DatumType,
 }
 
 
+
+impl Debug for EinSum {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "EinSum {} ({:?})", self.expr, self.operating_dt)
+    }
+}
 
 impl Op for EinSum {
     fn name(&self) -> Cow<str> {
@@ -43,10 +51,7 @@ impl TypedOp for EinSum {
             .enumerate()
             .all(|(ix, fact)| fact.rank() == self.expr.input_rank(ix)));
         let shapes: TVec<&[TDim]> = inputs.iter().map(|t| &*t.shape).collect();
-        Ok(tvec!(TypedFact::dt_shape(
-            self.operating_dt,
-            eval::output_shape(&self.expr, &shapes)
-        )))
+        Ok(tvec!(TypedFact::dt_shape(self.operating_dt, eval::output_shape(&self.expr, &shapes))))
     }
 
     fn invariants(
@@ -69,6 +74,42 @@ impl TypedOp for EinSum {
             })
             .collect();
         Ok(inv)
+    }
+
+    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        let shapes: TVec<&[TDim]> = inputs.iter().map(|t| &*t.shape).collect();
+        let oshape = eval::output_shape(&self.expr, &shapes);
+        let ks = self
+            .expr
+            .sum
+            .iter()
+            .map(|axis| {
+                axis.inputs
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(ix, axes)| {
+                        axes.iter()
+                            .map(|axis| shapes[ix][*axis].clone())
+                            .collect::<TVec<_>>()
+                            .into_iter()
+                    })
+                    .max()
+                    .unwrap()
+            })
+            .product::<TDim>();
+        Ok(tvec!((Cost::FMA(self.operating_dt), oshape.iter().product::<TDim>() * ks)))
+    }
+
+    fn slice(
+        &self,
+        patch: &mut TypedModelPatch,
+        prefix: &str,
+        inputs: &[OutletId],
+        _output_axis: usize,
+        _start: usize,
+        _end: usize,
+    ) -> TractResult<Option<TVec<OutletId>>> {
+        patch.wire_node(prefix, self.clone(), inputs).map(Some)
     }
 
     #[allow(unused_variables)]

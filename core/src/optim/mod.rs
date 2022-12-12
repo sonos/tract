@@ -169,8 +169,7 @@ impl<'o> OptimizerSession<'o> {
             patch.apply(model)?;
             model
                 .check_consistency()
-                .context("Checking target model consistency after patchign")?;
-
+                .context("Checking target model consistency after patching")?;
             self.counter += 1;
             if let Some(steps) = self.optimizer.steps {
                 if self.counter >= steps {

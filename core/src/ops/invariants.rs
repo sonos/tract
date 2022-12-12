@@ -254,7 +254,7 @@ impl AxisTracking {
         model: &TypedModel,
         outlet: OutletId,
         axis: usize,
-    ) -> TractResult<AxisTracking> {
+    ) -> TractResult<Option<AxisTracking>> {
         let mut mapped_outlets = OutletMap::default();
         let mut todo = OutletMap::default();
         let mut disposable = true;
@@ -309,7 +309,7 @@ impl AxisTracking {
             for (outlet, axis) in new_outlets {
                 if let Some(prev) = mapped_outlets.get(&outlet) {
                     if *prev != axis {
-                        bail!("Inconsistent network");
+                        return Ok(None);
                     }
                 } else {
                     mapped_outlets.insert(outlet, axis);
@@ -317,7 +317,7 @@ impl AxisTracking {
                 }
             }
         }
-        Ok(AxisTracking { creators, destructors, outlets: mapped_outlets, disposable })
+        Ok(Some(AxisTracking { creators, destructors, outlets: mapped_outlets, disposable }))
     }
 }
 
@@ -331,7 +331,9 @@ pub fn full_axis_tracking(model: &TypedModel) -> TractResult<Vec<AxisTracking>> 
                 if axes.iter().any(|tracking| tracking.outlets.get(&outlet) == Some(&axis)) {
                     continue 'axis;
                 }
-                axes.push(AxisTracking::for_outlet_and_axis(model, outlet, axis)?);
+                if let Some(tracker) = AxisTracking::for_outlet_and_axis(model, outlet, axis)? {
+                    axes.push(tracker);
+                }
             }
         }
     }

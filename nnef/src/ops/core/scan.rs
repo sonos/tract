@@ -157,6 +157,7 @@ fn de_scan(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
         ModelBuilder::new(builder.framework, builder.proto_model, &builder.model.symbol_table);
     body.scopes.push(HashMap::new());
     body.naming_scopes = builder.naming_scopes.clone();
+    body.registries = builder.registries.clone();
     let mut outer_inputs: TVec<OutletId> = tvec!();
     let mut input_mapping = vec![];
     let scan: TVec<(String, OutletId, usize, isize)> = invocation.named_arg_as(builder, "scan")?;
