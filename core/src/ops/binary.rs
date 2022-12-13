@@ -213,52 +213,6 @@ impl TypedOp for TypedBinOp {
         Ok(Some(patch.wire_node(prefix, self.clone(), inputs)?))
     }
 
-    fn slice_output(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-        patch: &mut TypedModelPatch,
-        suffix: &str,
-        _output_slot: usize,
-        axis: usize,
-        start: usize,
-        end: usize,
-    ) -> TractResult<Option<(OutletId, bool)>> {
-        let a_input = node.inputs[0];
-        let b_input = node.inputs[1];
-        let a = model.outlet_fact(a_input)?;
-        let b = model.outlet_fact(b_input)?;
-        if a.shape == b.shape {
-            let a_prec_node = model.node(a_input.node);
-            let b_prec_node = model.node(b_input.node);
-            let a_sliced = a_prec_node.op.slice_output(
-                model,
-                a_prec_node,
-                patch,
-                suffix,
-                a_input.slot,
-                axis,
-                start,
-                end,
-            )?;
-            let b_sliced = b_prec_node.op.slice_output(
-                model,
-                b_prec_node,
-                patch,
-                suffix,
-                b_input.slot,
-                axis,
-                start,
-                end,
-            )?;
-            if let (Some((a, _)), Some((b, _))) = (a_sliced, b_sliced) {
-                let name = format!("{}-slice-{}-{}..{}", node.name, axis, start, end);
-                return Ok(Some((patch.wire_node(&*name, self.clone(), &[a, b])?[0], true)));
-            }
-        }
-        Ok(None)
-    }
-
     fn declutter(
         &self,
         model: &TypedModel,
