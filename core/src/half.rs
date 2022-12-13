@@ -2,7 +2,7 @@ use crate::internal::translator::Translate;
 use crate::internal::*;
 use crate::ops::binary::UnaryOp;
 use crate::ops::array::{Pad, PadMode};
-use crate::ops::cnn::ConvUnary;
+use crate::ops::cnn::{ConvUnary, DeconvUnary};
 use crate::ops::matmul::MatMulUnary;
 use crate::ops::scan::{InputMapping, Scan, StateInitializer};
 use crate::ops::source::TypedSource;
@@ -22,6 +22,12 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Hal
             Box::new(TypedSource::new(fact_f32_to_f16(&source.fact)))
         } else if let Some(op) = node.op_as::<ConvUnary>() {
             Box::new(ConvUnary {
+                kernel: tensor_f32_to_f16(&op.kernel),
+                bias: op.bias.as_ref().map(tensor_f32_to_f16),
+                ..op.clone()
+            })
+        } else if let Some(op) = node.op_as::<DeconvUnary>() {
+            Box::new(DeconvUnary {
                 kernel: tensor_f32_to_f16(&op.kernel),
                 bias: op.bias.as_ref().map(tensor_f32_to_f16),
                 ..op.clone()
