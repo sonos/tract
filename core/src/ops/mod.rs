@@ -201,34 +201,6 @@ pub trait TypedOp:
         Ok(None)
     }
 
-    #[allow(unused_variables)]
-    #[allow(clippy::too_many_arguments)]
-    fn slice_output(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-        patch: &mut TypedModelPatch,
-        slice_suffix: &str,
-        output_slot: usize,
-        axis: usize,
-        start: usize,
-        end: usize,
-    ) -> TractResult<Option<(OutletId, bool)>> {
-        let outlet = OutletId::new(node.id, output_slot);
-        let output = model.outlet_fact(outlet)?;
-        if start == 0 && Some(end) == output.shape[axis].to_usize().ok() {
-            Ok(Some((patch.tap_model(model, outlet)?, true)))
-        } else {
-            let wire = patch.tap_model(model, outlet)?;
-            let wire = patch.wire_node(
-                &format!("{}-{}.{}", node.name, output_slot, slice_suffix),
-                crate::ops::array::Slice { start: start.to_dim(), axis, end: end.to_dim() },
-                &[wire],
-            )?[0];
-            Ok(Some((wire, false)))
-        }
-    }
-
     /// Transforms the op in an equivalent one, operating on dt (i8 or u8).
     ///
     /// Returns None if the op can not be translated.

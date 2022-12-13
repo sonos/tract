@@ -135,39 +135,5 @@ impl TypedOp for DynSlice {
         Ok(None)
     }
 
-    fn slice_output(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-        patch: &mut TypedModelPatch,
-        suffix: &str,
-        _output_slot: usize,
-        axis: usize,
-        start: usize,
-        end: usize,
-    ) -> TractResult<Option<(OutletId, bool)>> {
-        let prec = model.node(node.inputs[0].node);
-        if axis != self.axis {
-            let suffix = suffix.to_string() + "." + &self.suffix();
-            return prec
-                .op()
-                .as_typed()
-                .unwrap()
-                .slice_output(model, prec, patch, &suffix, node.inputs[0].slot, axis, start, end)?
-                .map(|(w, no_slice_op)| {
-                    Ok((
-                        patch.wire_node(
-                            format!("{}.{}", node.name, &suffix),
-                            self.clone(),
-                            &[w],
-                        )?[0],
-                        no_slice_op,
-                    ))
-                })
-                .transpose();
-        }
-        Ok(None)
-    }
-
     as_op!();
 }

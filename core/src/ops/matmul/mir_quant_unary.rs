@@ -154,38 +154,6 @@ impl TypedOp for QMatMulUnary {
         }
     }
 
-    fn slice_output(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-        patch: &mut TypedModelPatch,
-        suffix: &str,
-        _output_slot: usize,
-        axis: usize,
-        start: usize,
-        end: usize,
-    ) -> TractResult<Option<(OutletId, bool)>> {
-        if axis == self.axes.c_m {
-            let a_split_axis = self.axes.a_m;
-            let a = self.a.slice(a_split_axis, start, end)?.into_arc_tensor();
-            let bias = if let Some(bias) = self.bias.as_ref().filter(|b| b.rank() == 1) {
-                Some(bias.slice(0, start, end)?.into_arc_tensor())
-            } else {
-                self.bias.clone()
-            };
-            let wire = patch.tap_model(model, node.inputs[0])?;
-            return Ok(Some((
-                patch.wire_node(
-                    format!("{}.{}", node.name, suffix),
-                    Self { a, bias, ..self.clone() },
-                    &[wire],
-                )?[0],
-                true,
-            )));
-        }
-        Ok(None)
-    }
-
     fn declutter(
         &self,
         model: &TypedModel,

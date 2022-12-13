@@ -1,5 +1,3 @@
-use tract_data::itertools::Itertools;
-
 use crate::internal::*;
 
 #[derive(new, Debug, Clone, Hash)]
@@ -75,46 +73,6 @@ impl TypedOp for TypedConcat {
         Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
     }
 
-    fn slice_output(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-        patch: &mut TypedModelPatch,
-        suffix: &str,
-        _output_slot: usize,
-        axis: usize,
-        start: usize,
-        end: usize,
-    ) -> TractResult<Option<(OutletId, bool)>> {
-        let inputs = model.node_input_facts(node.id)?;
-        if self.axis == axis {
-            let Ok(offsets) = self
-                .offsets(&inputs)?
-                .iter()
-                .map(|x| x.to_usize())
-                .collect::<TractResult<Vec<usize>>>() else { return Ok(None) };
-            for (ix, (&slice_start, &slice_end)) in offsets.iter().tuple_windows().enumerate() {
-                if start >= slice_start && end <= slice_end {
-                    let prec = model.node(node.inputs[ix].node);
-                    if let Some((wire, _)) = prec.op().as_typed().unwrap().slice_output(
-                        model,
-                        prec,
-                        patch,
-                        suffix,
-                        node.inputs[ix].slot,
-                        axis,
-                        start - slice_start,
-                        end - slice_start,
-                    )? {
-                        return Ok(Some((wire, true)));
-                    } else {
-                        return Ok(None);
-                    };
-                }
-            }
-        }
-        Ok(None)
-    }
 }
 
 impl EvalOp for TypedConcat {
