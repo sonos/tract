@@ -1,6 +1,7 @@
 use crate::internal::translator::Translate;
 use crate::internal::*;
 use crate::ops::binary::UnaryOp;
+use crate::ops::array::{Pad, PadMode};
 use crate::ops::cnn::ConvUnary;
 use crate::ops::matmul::MatMulUnary;
 use crate::ops::scan::{InputMapping, Scan, StateInitializer};
@@ -31,6 +32,15 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Hal
             let mut new = op.clone();
             new.a = tensor_f32_to_f16(&op.a);
             Box::new(new)
+        } else if let Some(op) = node.op_as::<Pad>() {
+            if let PadMode::Constant(t) = &op.mode {
+                Box::new(Pad {
+                    mode: PadMode::Constant(tensor_f32_to_f16(t)),
+                    ..op.clone()
+                })
+            } else {
+                Box::new(op.clone())
+            }
         } else if let Some(op) = node.op_as::<Scan>() {
             let mut new = op.clone();
             new.body = HalfTranslator.translate_model(&op.body)?;
