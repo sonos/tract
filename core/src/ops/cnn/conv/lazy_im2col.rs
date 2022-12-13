@@ -25,7 +25,6 @@ impl LazyIm2colSpec {
 
 impl VirtualInputSpec for LazyIm2colSpec {
     fn wrap(&self, view: &TensorView) -> Box<dyn VirtualInput> {
-        assert_eq!(view.datum_type(), f32::datum_type());
         dispatch_copy!(Self::wrap_t(view.datum_type())(self, view))
     }
 }
