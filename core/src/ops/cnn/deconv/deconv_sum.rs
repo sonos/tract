@@ -1,8 +1,11 @@
+use std::ops::AddAssign;
+
 use crate::internal::*;
 use crate::ops::cnn::padding::ComputedPaddedDim;
 use crate::ops::cnn::{KernelFormat, PoolSpec};
 use crate::ops::nn::DataShape;
 use tract_ndarray::prelude::*;
+use tract_num_traits::Float;
 
 /*
 (N) (G) C   H   W
@@ -41,7 +44,11 @@ impl EvalOp for DeconvSum {
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        self.eval_with_values(inputs, &SymbolValues::default())
+        dispatch_floatlike!(Self::eval_with_values(inputs[0].datum_type())(
+            self,
+            inputs,
+            &SymbolValues::default()
+        ))
     }
 
     fn state(
@@ -60,18 +67,22 @@ impl OpState for DeconvSum {
         _op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        self.eval_with_values(inputs, &session.resolved_symbols)
+        dispatch_floatlike!(Self::eval_with_values(inputs[0].datum_type())(
+            self,
+            inputs,
+            &session.resolved_symbols
+        ))
     }
 }
 
 impl DeconvSum {
-    fn eval_with_values(
+    fn eval_with_values<T: Datum + Float + Copy + AddAssign<T>>(
         &self,
         mut inputs: TVec<TValue>,
         values: &SymbolValues,
     ) -> TractResult<TVec<TValue>> {
         let gemm = args_1!(inputs).into_tensor();
-        debug_assert_eq!(gemm.datum_type(), f32::datum_type());
+        debug_assert_eq!(gemm.datum_type(), T::datum_type());
         let input_shape = self.input_shape.eval_to_usize(values)?.into_owned();
         let input_shape = self.pool_spec.data_format.shape(input_shape)?;
         let output_shape =
@@ -87,9 +98,9 @@ impl DeconvSum {
         let mut tensor = if let Some(b) = &self.bias {
             if output_shape.shape[0..output_shape.c_axis()].iter().all(|d| *d == 1) {
                 unsafe {
-                    let mut tensor = Tensor::uninitialized::<f32>(&output_shape.shape)?;
-                    let values = b.as_ptr::<f32>()?;
-                    let slice = tensor.as_ptr_mut::<f32>()?;
+                    let mut tensor = Tensor::uninitialized::<T>(&output_shape.shape)?;
+                    let values = b.as_ptr::<T>()?;
+                    let slice = tensor.as_ptr_mut::<T>()?;
                     let stride = *output_shape.c_stride();
                     for ix in 0..b.len() {
                         let v = *values.add(ix);
@@ -100,18 +111,18 @@ impl DeconvSum {
                     tensor
                 }
             } else {
-                let mut tensor = Tensor::zero::<f32>(&output_shape.shape)?;
-                let mut output = tensor.to_array_view_mut::<f32>()?;
+                let mut tensor = Tensor::zero::<T>(&output_shape.shape)?;
+                let mut output = tensor.to_array_view_mut::<T>()?;
                 let mut bias_shape = tvec!(1; output_shape.rank());
                 bias_shape[output_shape.c_axis()] = b.len();
                 let b = b.clone().into_tensor().into_shape(&bias_shape)?;
-                output += &b.to_array_view::<f32>()?;
+                output += &b.to_array_view::<T>()?;
                 tensor
             }
         } else {
-            Tensor::zero::<f32>(&output_shape.shape)?
+            Tensor::zero::<T>(&output_shape.shape)?
         };
-        let mut output = tensor.to_array_view_mut::<f32>()?;
+        let mut output = tensor.to_array_view_mut::<T>()?;
         let hw = *gemm.shape().last().unwrap();
         let n = *output_shape.n().unwrap_or(&1);
         let n_o_hkwk_hw = gemm.into_shape(&[
@@ -120,8 +131,7 @@ impl DeconvSum {
             self.pool_spec.kernel_shape.iter().product(),
             hw,
         ])?;
-        let n_o_hkwk_hw: ArrayView4<f32> =
-            n_o_hkwk_hw.to_array_view::<f32>()?.into_dimensionality()?;
+        let n_o_hkwk_hw: ArrayView4<T> = n_o_hkwk_hw.to_array_view::<T>()?.into_dimensionality()?;
         if !self.pool_spec.data_format.has_n() {
             output = output.insert_axis(Axis(0));
         }
@@ -158,13 +168,13 @@ impl DeconvSum {
         Ok(tvec!(tensor.into_tvalue()))
     }
 
-    pub fn main_loop_1d(
+    pub fn main_loop_1d<T: Datum + Float + AddAssign>(
         &self,
         input_shape: &DataShape,
         output_shape: &DataShape,
         spatial_output_details: &[ComputedPaddedDim<usize>],
-        n_o_hkwk_hw: &ArrayView4<f32>,
-        output: &mut ArrayViewMut3<f32>,
+        n_o_hkwk_hw: &ArrayView4<T>,
+        output: &mut ArrayViewMut3<T>,
     ) -> TractResult<()> {
         let n = *output_shape.n().unwrap_or(&1);
         let kernel_len = self.pool_spec.kernel_shape[0];
@@ -199,13 +209,13 @@ impl DeconvSum {
         Ok(())
     }
 
-    pub fn main_loop_2d(
+    pub fn main_loop_2d<T: Datum + Float + AddAssign>(
         &self,
         input_shape: &DataShape,
         output_shape: &DataShape,
         spatial_output_details: &[ComputedPaddedDim<usize>],
-        n_o_hkwk_hw: &ArrayView4<f32>,
-        output: &mut ArrayViewMut4<f32>,
+        n_o_hkwk_hw: &ArrayView4<T>,
+        output: &mut ArrayViewMut4<T>,
     ) -> TractResult<()> {
         let n = *output_shape.n().unwrap_or(&1);
         let x_stride = self.pool_spec.strides().as_ref()[0];
@@ -270,11 +280,11 @@ impl DeconvSum {
     #[inline(never)]
     #[allow(clippy::erasing_op)]
     #[allow(clippy::identity_op)]
-    unsafe fn main_loop_2d_inner(
+    unsafe fn main_loop_2d_inner<T: Datum + Float + AddAssign>(
         output_c: usize,
-        temp: *const f32,
+        temp: *const T,
         temp_o_stride: isize,
-        output: *mut f32,
+        output: *mut T,
         output_c_stride: isize,
     ) {
         let mut c = 0;
@@ -323,13 +333,13 @@ impl DeconvSum {
         }
     }
 
-    pub fn main_loop_3d(
+    pub fn main_loop_3d<T: Datum + Float + AddAssign>(
         &self,
         input_shape: &DataShape,
         output_shape: &DataShape,
         spatial_output_details: &[ComputedPaddedDim<usize>],
-        n_o_hkwk_hw: &ArrayView4<f32>,
-        output: &mut ArrayViewMut5<f32>,
+        n_o_hkwk_hw: &ArrayView4<T>,
+        output: &mut ArrayViewMut5<T>,
     ) -> TractResult<()> {
         let n = *output_shape.n().unwrap_or(&1);
         let kernel_shape: [usize; 3] = [
@@ -387,13 +397,13 @@ impl DeconvSum {
         }
         Ok(())
     }
-    pub fn main_loop(
+    pub fn main_loop<T: Datum + Float + AddAssign>(
         &self,
         input_shape: &DataShape,
         output_shape: &DataShape,
         spatial_output_details: &[ComputedPaddedDim<usize>],
-        n_o_hkwk_hw: &ArrayView4<f32>,
-        output: &mut ArrayViewMutD<f32>,
+        n_o_hkwk_hw: &ArrayView4<T>,
+        output: &mut ArrayViewMutD<T>,
     ) -> TractResult<()> {
         let n = *output_shape.n().unwrap_or(&1);
         for n in 0..n {
