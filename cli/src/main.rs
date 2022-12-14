@@ -120,7 +120,8 @@ fn main() -> tract_core::anyhow::Result<()> {
         .arg(arg!(--"extract-decluttered-sub" [SUB] "Zoom on a subgraph after decluttering by parent node name"))
 
         .arg(arg!(--"half-floats" "Convert the decluttered network from f32 to f16"))
-        .arg(arg!(--set [set] ... "Set a symbol to a concrete value after decluttering"))
+        .arg(Arg::new("set").long("set").multiple_occurrences(true).takes_value(true)
+         .long_help("Set a symbol to a concrete value after decluttering"))
 
         // deprecated
         .arg(arg!(--"allow-float-casts" "Allow casting between f16, f32 and f64 around model").hide(true))
