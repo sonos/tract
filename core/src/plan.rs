@@ -5,6 +5,7 @@ use std::marker::PhantomData;
 use crate::internal::*;
 use crate::model::order::eval_order_for_nodes;
 use crate::model::{Fact, Graph, OutletId};
+use crate::ops::FrozenOpState;
 
 #[derive(Default)]
 pub struct SessionState {
@@ -349,13 +350,13 @@ where
         let fact = self.plan.borrow().model().outlet_fact(outlet)?;
         ensure!(
             fact.matches(&t, Some(&self.session_state.resolved_symbols))
-                .with_context(|| format!("Setting input {}", input))?,
+            .with_context(|| format!("Setting input {}", input))?,
             "Input at index {} has incorrect dtype or shape (got shape {:?} and dtype {:?}, expected to match fact {:?})",
             input,
             t.shape(),
             t.datum_type(),
             fact
-        );
+            );
         self.session_state.inputs.insert(outlet.node, t);
         Ok(())
     }
@@ -494,6 +495,27 @@ where
     pub fn model(&self) -> &Graph<F, O> {
         self.plan().model()
     }
+
+    pub fn freeze(&self) -> FrozenSimpleState<F, O, M, P> {
+        FrozenSimpleState {
+            plan: self.plan.clone(),
+            inputs: self
+                .session_state
+                .inputs
+                .iter()
+                .map(|(ix, t)| (*ix, t.clone().into_tensor()))
+                .collect(),
+            resolved_symbols: self.session_state.resolved_symbols.clone(),
+            tensors: self.session_state.tensors.clone(),
+            states: self.states.iter().map(|s| s.as_ref().map(|s| s.freeze())).collect(),
+            values: self
+                .values
+                .iter()
+                .map(|t| t.as_ref().map(|t| t.iter().map(|t| t.clone().into_tensor()).collect()))
+                .collect(),
+            _phantom: PhantomData,
+        }
+    }
 }
 
 pub fn eval<F, O>(
@@ -512,4 +534,80 @@ where
     }
     .with_context(|| format!("Evaluating {}", node));
     r
+}
+
+#[derive(Clone, Debug)]
+pub struct FrozenSimpleState<F, O, M, P>
+where
+    F: Fact + Hash + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
+    M: Borrow<Graph<F, O>> + Hash,
+    P: Borrow<SimplePlan<F, O, M>> + Clone,
+{
+    plan: P,
+    pub inputs: HashMap<usize, Tensor>,
+    pub resolved_symbols: SymbolValues,
+    pub tensors: HashMap<String, Tensor>,
+    pub states: Vec<Option<Box<dyn FrozenOpState>>>,
+    pub values: Vec<Option<TVec<Tensor>>>,
+    _phantom: PhantomData<(M, F, O)>,
+}
+
+impl<F, O, M, P> FrozenSimpleState<F, O, M, P>
+where
+    F: Fact + Hash + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
+    M: Borrow<Graph<F, O>> + Hash,
+    P: Borrow<SimplePlan<F, O, M>> + Clone,
+{
+    pub fn unfreeze(&self) -> SimpleState<F, O, M, P> {
+        SimpleState {
+            plan: self.plan.clone(),
+            session_state: SessionState {
+                inputs: self.inputs.iter().map(|(ix, t)| (*ix, t.clone().into_tvalue())).collect(),
+                resolved_symbols: self.resolved_symbols.clone(),
+                tensors: self.tensors.clone(),
+                cached_mmm_scratch_space: None,
+            },
+            states: self.states.iter().map(|s| s.as_ref().map(|s| s.unfreeze())).collect(),
+            values: self
+                .values
+                .iter()
+                .map(|t| t.as_ref().map(|t| t.iter().map(|t| t.clone().into_tvalue()).collect()))
+                .collect(),
+            _phantom: PhantomData,
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    fn is_send<T: Send>() {}
+    fn is_sync<T: Sync>() {}
+
+    #[test]
+    fn type_model_is_sync() {
+        is_sync::<TypedModel>();
+    }
+
+    #[test]
+    fn type_model_is_send() {
+        is_send::<TypedModel>();
+    }
+
+    #[test]
+    fn type_plan_is_send() {
+        is_send::<TypedSimplePlan<TypedModel>>();
+    }
+
+    #[test]
+    fn type_plan_is_sync() {
+        is_sync::<TypedSimplePlan<TypedModel>>();
+    }
+
+    #[test]
+    fn frozen_type_state_is_send() {
+        is_send::<TypedFrozenSimpleState<TypedModel, TypedSimplePlan<TypedModel>>>();
+    }
 }

@@ -1,6 +1,7 @@
 use tract_core::ndarray::*;
 use tract_core::ops::array::PadMode;
 use tract_nnef::internal::*;
+use tract_nnef::tract_core::ops::OpStateFreeze;
 
 #[derive(Debug, Clone, Default, Hash)]
 struct PulsePadOpState {
@@ -193,4 +194,28 @@ impl TypedOp for PulsePad {
     }
 
     as_op!();
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+struct FrozenPulsePadOpState {
+    current_pos: usize,
+    last_valid_frame: Option<Arc<Tensor>>,
+}
+
+impl OpStateFreeze for PulsePadOpState {
+    fn freeze(&self) -> Box<dyn FrozenOpState> {
+        Box::new(FrozenPulsePadOpState {
+            current_pos: self.current_pos,
+            last_valid_frame: self.last_valid_frame.as_ref().map(|t| t.clone().into_arc_tensor()),
+        })
+    }
+}
+
+impl FrozenOpState for FrozenPulsePadOpState {
+    fn unfreeze(&self) -> Box<dyn OpState> {
+        Box::new(PulsePadOpState {
+            current_pos: self.current_pos,
+            last_valid_frame: self.last_valid_frame.as_ref().map(|t| t.clone().into_tensor()),
+        })
+    }
 }

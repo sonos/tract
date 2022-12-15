@@ -65,6 +65,7 @@ impl EvalOp for Slice {
     }
 }
 
+trivial_op_state_freeeze!(Slice);
 impl OpState for Slice {
     fn eval(
         &mut self,

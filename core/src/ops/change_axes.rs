@@ -458,6 +458,7 @@ impl_dyn_hash!(AxisOp);
 
 #[derive(Debug, Clone)]
 struct ReshapeState;
+trivial_op_state_freeeze!(ReshapeState);
 
 impl EvalOp for AxisOp {
     fn is_stateless(&self) -> bool {

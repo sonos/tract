@@ -66,7 +66,18 @@ impl Cost {
     }
 }
 
-pub trait OpState: fmt::Debug + dyn_clone::DynClone {
+
+pub trait FrozenOpState: fmt::Debug + dyn_clone::DynClone + Send + 'static {
+    fn unfreeze(&self) -> Box<dyn OpState>;
+}
+
+pub trait OpStateFreeze {
+    fn freeze(&self) -> Box<dyn FrozenOpState>;
+}
+
+dyn_clone::clone_trait_object!(FrozenOpState);
+
+pub trait OpState: fmt::Debug + dyn_clone::DynClone + OpStateFreeze {
     fn eval(
         &mut self,
         session: &mut SessionState,

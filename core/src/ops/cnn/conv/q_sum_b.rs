@@ -44,6 +44,7 @@ impl EvalOp for QSumB {
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct QSumBState;
+trivial_op_state_freeeze!(QSumBState);
 
 impl OpState for QSumBState {
     fn eval(

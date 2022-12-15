@@ -2,6 +2,7 @@ use std::ops::AddAssign;
 
 use tract_ndarray::Axis;
 use tract_nnef::internal::*;
+use tract_nnef::tract_core::ops::OpStateFreeze;
 use tract_num_traits::Zero;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -108,5 +109,29 @@ impl DeconvDelayState {
         buffer.assign(&input.slice_axis(Axis(op.axis), (output_pulse..).into()));
 
         Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+struct FrozenDeconvDelayState {
+    valid_inputed: isize,
+    buffer: Option<Arc<Tensor>>,
+}
+
+impl OpStateFreeze for DeconvDelayState {
+    fn freeze(&self) -> Box<dyn FrozenOpState> {
+        Box::new(FrozenDeconvDelayState {
+            valid_inputed: self.valid_inputed,
+            buffer: self.buffer.as_ref().map(|t| t.clone().into_arc_tensor()),
+        })
+    }
+}
+
+impl FrozenOpState for FrozenDeconvDelayState {
+    fn unfreeze(&self) -> Box<dyn OpState> {
+        Box::new(DeconvDelayState {
+            valid_inputed: self.valid_inputed,
+            buffer: self.buffer.as_ref().map(|t| t.clone().into_tensor()),
+        })
     }
 }

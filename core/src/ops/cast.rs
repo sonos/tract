@@ -61,6 +61,7 @@ impl OpState for Cast {
     }
 }
 
+trivial_op_state_freeeze!(Cast);
 impl TypedOp for Cast {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(self.to.fact(inputs[0].shape.clone())))

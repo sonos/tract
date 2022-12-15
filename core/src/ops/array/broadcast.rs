@@ -53,6 +53,7 @@ impl EvalOp for MultiBroadcastTo {
 
 #[derive(Clone, Debug)]
 struct MultiBroadcastToState;
+trivial_op_state_freeeze!(MultiBroadcastToState);
 
 impl OpState for MultiBroadcastToState {
     fn eval(
@@ -92,3 +93,4 @@ impl TypedOp for MultiBroadcastTo {
 
     as_op!();
 }
+

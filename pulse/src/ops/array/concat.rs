@@ -3,6 +3,7 @@ use std::ops::Range;
 use crate::internal::*;
 use tract_core::ops::array::TypedConcat;
 use tract_pulse_opl::ops::Delay;
+use tract_pulse_opl::tract_core::trivial_op_state_freeeze;
 
 register_all!(TypedConcat: pulsify);
 
@@ -142,6 +143,7 @@ pub struct PulsedSameAxisConcatState {
     current_pos: usize,
     symbols_in_dim: Vec<Symbol>,
 }
+trivial_op_state_freeeze!(PulsedSameAxisConcatState);
 
 impl OpState for PulsedSameAxisConcatState {
     fn eval(
