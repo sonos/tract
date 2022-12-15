@@ -3,7 +3,7 @@ use crate::model::*;
 use crate::ops;
 use crate::ops::invariants;
 use crate::optim::OptimizerSession;
-use crate::plan::{SimplePlan, SimpleState};
+use crate::plan::{SimplePlan, SimpleState, FrozenSimpleState};
 
 /// A model with completely determined types and shapes.
 pub type TypedModel = Graph<TypedFact, Box<dyn TypedOp>>;
@@ -17,6 +17,8 @@ pub type TypedSimplePlan<M> = SimplePlan<TypedFact, Box<dyn TypedOp>, M>;
 pub type TypedRunnableModel<M> = RunnableModel<TypedFact, Box<dyn TypedOp>, M>;
 /// An execution state for TypedModel.
 pub type TypedSimpleState<M, P> = SimpleState<TypedFact, Box<dyn TypedOp>, M, P>;
+/// An execution state for TypedModel, frozen (and Send).
+pub type TypedFrozenSimpleState<M, P> = FrozenSimpleState<TypedFact, Box<dyn TypedOp>, M, P>;
 
 /// A runnable model with fixed inputs and outputs.
 pub type RunnableModel<F, O, M> = SimplePlan<F, O, M>;

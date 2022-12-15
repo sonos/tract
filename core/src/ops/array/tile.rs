@@ -59,6 +59,7 @@ impl EvalOp for Tile {
     }
 }
 
+trivial_op_state_freeeze!(Tile);
 impl OpState for Tile {
     fn eval(
         &mut self,

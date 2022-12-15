@@ -55,6 +55,7 @@ impl OpState for Range {
         Ok(tvec!(self.make(Some(&session.resolved_symbols))?.into_tvalue()))
     }
 }
+trivial_op_state_freeeze!(Range);
 
 impl Range {
     fn make_t<T: Datum + for<'a> std::ops::Add<&'a T, Output = T>>(

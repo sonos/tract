@@ -1,3 +1,5 @@
+use crate::ops::OpStateFreeze;
+
 use super::*;
 use tract_data::internal::*;
 
@@ -66,11 +68,9 @@ impl EvalOp for LirScan {
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(State {
-            mutable: MutableState {
-                position: 0,
-                hidden_state: tvec!(),
-                model_state: TypedSimpleState::new(Arc::clone(&self.plan))?,
-            },
+            position: 0,
+            hidden_state: tvec!(),
+            model_state: TypedSimpleState::new(Arc::clone(&self.plan))?,
             op: Arc::clone(&self.0),
         })))
     }
@@ -79,19 +79,43 @@ impl EvalOp for LirScan {
 #[derive(Clone, Debug)]
 struct State {
     op: Arc<LirScanOpParams>,
-    mutable: MutableState,
-}
-
-#[derive(Clone, Debug)]
-struct MutableState {
     position: usize,
     hidden_state: TVec<TValue>,
     model_state: TypedSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>,
 }
 
-impl MutableState {
+#[derive(Debug, Clone)]
+struct FrozenState {
+    op: Arc<LirScanOpParams>,
+    position: usize,
+    hidden_state: TVec<Tensor>,
+    model_state: TypedFrozenSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>,
+}
+
+impl OpStateFreeze for State {
+    fn freeze(&self) -> Box<dyn FrozenOpState> {
+        Box::new(FrozenState {
+            op: self.op.clone(),
+            position: self.position,
+            hidden_state: self.hidden_state.iter().map(|t| t.clone().into_tensor()).collect(),
+            model_state: self.model_state.freeze(),
+        })
+    }
+}
+
+impl FrozenOpState for FrozenState {
+    fn unfreeze(&self) -> Box<dyn OpState> {
+        Box::new(State {
+            op: self.op.clone(),
+            position: self.position,
+            hidden_state: self.hidden_state.iter().map(|t| t.clone().into_tvalue()).collect(),
+            model_state: self.model_state.unfreeze(),
+        })
+    }
+}
+
+impl State {
     pub(super) fn slice_input(
-        &self,
         input: &Tensor,
         axis: usize,
         chunk_ix: usize,
@@ -127,7 +151,6 @@ impl MutableState {
     }
 
     pub(super) fn assign_output(
-        &self,
         output: &mut Tensor,
         axis: usize,
         element_value: &Tensor,
@@ -154,12 +177,12 @@ impl OpState for State {
         _op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let State { op, ref mut mutable } = self;
+        let State { op, ref mut hidden_state, ref mut position, ref mut model_state } = self;
         // initialize state at first pass
-        if mutable.hidden_state.len() == 0 {
+        if hidden_state.len() == 0 {
             for input in &op.input_mapping {
                 if let InputMapping::State { initializer } = input {
-                    mutable.hidden_state.push(match initializer {
+                    hidden_state.push(match initializer {
                         StateInitializer::FromInput(slot) => inputs[*slot].clone(),
                         StateInitializer::Value(v) => (**v).to_owned().into_tvalue(),
                     });
@@ -202,27 +225,21 @@ impl OpState for State {
         let mut outputs: TVec<Tensor> = outputs.into_iter().map(|(_slot, v)| v).collect();
 
         for i in 0..iters {
-            mutable.position += 1;
-            if mutable.position <= op.skip {
+            *position += 1;
+            if *position <= op.skip {
                 continue;
             }
-            mutable.hidden_state.reverse();
+            hidden_state.reverse();
 
             let iter_inputs: TVec<TValue> = op
                 .input_mapping
                 .iter()
                 .map(|m| {
                     Ok(match m {
-                        InputMapping::State { .. } => Some(mutable.hidden_state.pop().unwrap()),
+                        InputMapping::State { .. } => Some(hidden_state.pop().unwrap()),
                         InputMapping::Scan(info) => Some(
-                            MutableState::slice_input(
-                                mutable,
-                                &inputs[info.slot],
-                                info.axis,
-                                i,
-                                info.chunk,
-                            )?
-                            .into_tvalue(),
+                            Self::slice_input(&inputs[info.slot], info.axis, i, info.chunk)?
+                                .into_tvalue(),
                         ),
                         InputMapping::Full { slot } => Some(inputs[*slot].clone()),
                     })
@@ -234,18 +251,12 @@ impl OpState for State {
 
             trace!("iter_inputs #{}: {:?}", i, iter_inputs);
             let iter_outputs =
-                mutable.model_state.run(iter_inputs).with_context(|| "Evaluating inner body")?;
+                model_state.run(iter_inputs).with_context(|| "Evaluating inner body")?;
             trace!("iter_outputs #{}: {:?}", i, iter_outputs);
 
             for (v, mapping) in iter_outputs.into_iter().zip(&op.output_mapping) {
                 if let Some(info) = mapping.scan {
-                    mutable.assign_output(
-                        &mut outputs[info.slot],
-                        info.axis,
-                        &v,
-                        i,
-                        info.chunk < 0,
-                    );
+                    Self::assign_output(&mut outputs[info.slot], info.axis, &v, i, info.chunk < 0);
                 }
                 if i == iters - 1 {
                     if let Some(slot) = mapping.last_value_slot {
@@ -253,7 +264,7 @@ impl OpState for State {
                     }
                 }
                 if mapping.state {
-                    mutable.hidden_state.push(v);
+                    hidden_state.push(v);
                 }
             }
         }

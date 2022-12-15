@@ -74,6 +74,7 @@ impl OpState for DeconvSum {
         ))
     }
 }
+trivial_op_state_freeeze!(DeconvSum);
 
 impl DeconvSum {
     fn eval_with_values<T: Datum + Float + Copy + AddAssign<T>>(

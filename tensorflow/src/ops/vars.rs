@@ -1,4 +1,5 @@
 use tract_hir::internal::*;
+use tract_hir::tract_core::trivial_op_state_freeeze;
 
 use crate::model::{ParsingContext, TfOpRegister};
 use crate::tfpb::tensorflow::NodeDef;
@@ -32,6 +33,7 @@ fn variable_v2(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn Inf
 
 #[derive(Clone, Debug, new)]
 struct VariableV2State;
+trivial_op_state_freeeze!(VariableV2State);
 
 impl OpState for VariableV2State {
     fn eval(
@@ -128,6 +130,7 @@ impl TypedOp for VariableV2 {
 // eval-ed() in Stateless context
 #[derive(Clone, Debug, new)]
 struct AssignState;
+trivial_op_state_freeeze!(AssignState);
 
 #[derive(Clone, Debug, new, Default, Hash)]
 pub struct Assign {
