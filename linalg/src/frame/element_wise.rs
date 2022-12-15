@@ -66,6 +66,7 @@ impl TempBuffer {
                 }
                 self.layout = Layout::from_size_align_unchecked(size, alignment);
                 self.buffer = std::alloc::alloc(self.layout);
+                assert!(!self.buffer.is_null());
             }
         }
     }

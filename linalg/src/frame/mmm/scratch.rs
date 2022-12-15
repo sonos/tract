@@ -62,7 +62,7 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
         self.uspecs.reserve(specs.len() + 2);
         self.uspecs.push(FusedKerSpec::Clear);
         let mut offset = 0;
-        let mut align = 1;
+        let mut align = std::mem::size_of::<*const ()>();
         fn ld(spec: usize, uspec: usize, loc: *const u8) -> LocDependant {
             LocDependant { spec, uspec, loc, buffer: None }
         }
@@ -122,6 +122,7 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
             }
             self.layout = Layout::from_size_align_unchecked(offset, align);
             self.buffer = std::alloc::alloc(self.layout);
+            assert!(!self.buffer.is_null());
         }
         for LocDependant { loc, buffer, spec, .. } in &mut self.loc_dependant {
             *loc = self.buffer.offset(*loc as _);
