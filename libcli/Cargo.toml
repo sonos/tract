@@ -1,6 +1,6 @@
 [package]
 name = "tract-libcli"
-version = "0.19.0-alpha.8"
+version = "0.19.0-pre"
 license = "MIT/Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -22,8 +22,8 @@ ndarray-npy.workspace = true
 py_literal.workspace = true
 rand.workspace = true
 # tract-hir = { version = "0.18.4-pre", path = "../hir", optional = true }
-tract-hir = { version = "0.19.0-alpha.8", path = "../hir" }
-tract-onnx = { version = "0.19.0-alpha.8", path = "../onnx", optional = true }
+tract-hir = { version = "0.19.0-pre", path = "../hir" }
+tract-onnx = { version = "0.19.0-pre", path = "../onnx", optional = true }
 
 [dependencies.tract-core ]
 version = "0.19.0-alpha.8"
