@@ -37,7 +37,7 @@ function retry {
 
 CRATE=$1
 VERSION=$2
-CRATES="data linalg core nnef pulse-opl pulse hir tensorflow onnx-opl onnx kaldi libcli cli ffi"
+CRATES="data linalg core nnef pulse-opl pulse hir tensorflow onnx-opl onnx kaldi libcli ffi cli"
 
 if [ `uname` = "Darwin" ]
 then
@@ -69,10 +69,10 @@ set_version() {
     FILE=$1
     VERSION=$2
     $SED -i.back "0,/^version/s/^version *= *\".*\"/version = \"$2\"/" $FILE
-    for dep in `grep "^tract-" $FILE | cut -d " " -f 1`
-    do
-        cargo add --manifest-path $FILE $dep@=$VERSION
-    done
+#    for dep in `grep "^tract-" $FILE | cut -d " " -f 1`
+#    do
+#        cargo add --manifest-path $FILE $dep@=$VERSION
+#    done
 }
 
 for crate in $CRATES
@@ -83,11 +83,18 @@ done
 set_version $CRATE/Cargo.toml $VERSION
 (cd $CRATE ; cargo publish --allow-dirty)
 
+for manifest in `find . -name Cargo.toml`
+do
+    if grep "^tract-$CRATE" $manifest
+    then
+        toml set $manifest "dependencies.tract-$CRATE.version" $VERSION > $manifest.tmp
+        mv $manifest.tmp $manifest
+    fi
+done
+
 if [ "$CRATE" = "cli" ]
 then
     git commit -m "release $VERSION" .
     git tag -f v"$VERSION"
     git push -f --tags
 fi
-
-# cargo update
