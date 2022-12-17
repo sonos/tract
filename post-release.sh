@@ -22,11 +22,13 @@ set_version() {
     VERSION=$2
     toml set $FILE "package.version" $VERSION > $FILE.tmp
     mv $FILE.tmp $FILE
-    for dep in `grep "^tract-" $FILE | cut -d " " -f 1`
+    for dep in $CRATES
     do
-        short_dep=`echo $dep | sed "s/^tract-//"`
-        toml set $FILE "dependencies.tract-$short_dep.version" $VERSION > $FILE.tmp
-        mv $FILE.tmp $FILE
+        if toml get $FILE dependencies.tract-$dep
+        then
+            toml set $FILE "dependencies.tract-$short_dep.version" $VERSION > $FILE.tmp
+            mv $FILE.tmp $FILE
+        fi
     done
 }
 

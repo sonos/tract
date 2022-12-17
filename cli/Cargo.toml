@@ -45,6 +45,9 @@ tract-kaldi = { optional = true, version = "0.19.0-pre", path = "../kaldi" }
 tract-onnx = { optional = true, version = "0.19.0-pre", path = "../onnx" }
 tract-tensorflow = { optional = true, version = "0.19.0-pre", path = "../tensorflow" }
 
+[dependencies.tract-]
+version = "0.19.0-pre"
+
 [features]
 default = ["kaldi", "onnx", "tf", "pulse", "pulse-opl"]
 kaldi = [ "tract-kaldi", "tract-libcli/hir" ]

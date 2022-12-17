@@ -22,6 +22,9 @@ getrandom.workspace = true
 [dependencies.tract-nnef ]
 version = "0.19.0-alpha.8"
 
+[dependencies.tract-]
+version = "0.19.0-pre"
+
 [dev-dependencies]
 env_logger.workspace = true
 
