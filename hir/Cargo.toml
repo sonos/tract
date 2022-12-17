@@ -18,11 +18,7 @@ derive-new.workspace = true
 educe.workspace = true
 log.workspace = true
 
-[dependencies.tract-core ]
-version = "0.19.0-alpha.8"
-
-[dependencies.tract-]
-version = "0.19.0-pre"
+tract-core = { version = "0.19.0-pre", path = "../core" }
 
 [dev-dependencies]
 env_logger.workspace = true

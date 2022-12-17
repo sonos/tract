@@ -21,15 +21,9 @@ log.workspace = true
 ndarray-npy.workspace = true
 py_literal.workspace = true
 rand.workspace = true
-# tract-hir = { version = "0.18.4-pre", path = "../hir", optional = true }
+tract-core = { version = "0.19.0-pre", path = "../core" }
 tract-hir = { version = "0.19.0-pre", path = "../hir" }
 tract-onnx = { version = "0.19.0-pre", path = "../onnx", optional = true }
-
-[dependencies.tract-core ]
-version = "0.19.0-alpha.8"
-
-[dependencies.tract-]
-version = "0.19.0-pre"
 
 [features]
 # hir = ["tract-hir"]

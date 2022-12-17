@@ -16,27 +16,22 @@ then
     exit 1
 fi
 
-# set_version cargo-dinghy/Cargo.toml 0.3.0
-set_version() {
-    FILE=$1
-    VERSION=$2
-    toml set $FILE "package.version" $VERSION > $FILE.tmp
-    mv $FILE.tmp $FILE
+for member in $(grep '^ *"' Cargo.toml | tr -d '",')
+do
+    f=$member/Cargo.toml
+    back=$(echo $member | sed 's/[^\/]\+/../g')
+    toml set $f package.version $VERSION > $f.tmp
+    mv $f.tmp $f
     for dep in $CRATES
     do
-        if toml get $FILE dependencies.tract-$dep
+        if toml get $f dependencies.tract-$dep.version > /dev/null
         then
-            toml set $FILE "dependencies.tract-$short_dep.version" $VERSION > $FILE.tmp
-            mv $FILE.tmp $FILE
+            toml set $f dependencies.tract-$dep.version $VERSION > $f.tmp
+            mv $f.tmp $f
+            toml set $f dependencies.tract-$dep.path $back/$dep > $f.tmp
+            mv $f.tmp $f
         fi
     done
-}
-
-set -ex
-
-for c in $CRATES
-do
-    set_version $c/Cargo.toml $VERSION
 done
 
 git commit . -m "post-release $VERSION"

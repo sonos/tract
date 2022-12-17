@@ -25,12 +25,7 @@ prost.workspace = true
 prost-types.workspace = true
 tensorflow = { workspace = true, optional = true }
 tract-hir = { version = "0.19.0-pre", path = "../hir" }
-
-[dependencies.tract-pulse ]
-version = "0.19.0-alpha.8"
-
-[dependencies.tract-]
-version = "0.19.0-pre"
+tract-pulse = { version = "0.19.0-pre", path = "../pulse" }
 
 # [build-dependencies]
 # protobuf-src = "1.0.5+3.19.3"

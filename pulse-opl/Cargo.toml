@@ -16,9 +16,4 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 downcast-rs.workspace = true
 lazy_static.workspace = true
-
-[dependencies.tract-nnef ]
-version = "0.19.0-alpha.8"
-
-[dependencies.tract-]
-version = "0.19.0-pre"
+tract-nnef = { version = "0.19.0-pre", path = "../nnef" }

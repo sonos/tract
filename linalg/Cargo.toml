@@ -22,12 +22,7 @@ log.workspace = true
 num-traits.workspace = true
 paste.workspace = true
 scan_fmt.workspace = true
-
-[dependencies.tract-data ]
-version = "0.19.0-alpha.8"
-
-[dependencies.tract-]
-version = "0.19.0-pre"
+tract-data = { version = "0.19.0-pre", path = "../data" }
 
 [build-dependencies]
 cc.workspace = true

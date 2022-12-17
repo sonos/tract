@@ -28,15 +28,8 @@ num-integer.workspace = true
 num-traits.workspace = true
 dyn-clone.workspace = true
 smallvec.workspace = true
-
-[dependencies.tract-linalg ]
-version = "0.19.0-alpha.8"
-
-[dependencies.tract-data ]
-version = "0.19.0-alpha.8"
-
-[dependencies.tract-]
-version = "0.19.0-pre"
+tract-linalg = { version = "0.19.0-pre", path = "../linalg" }
+tract-data = { version = "0.19.0-pre", path = "../data" }
 
 [features]
 default = [ "paranoid_assertions" ]

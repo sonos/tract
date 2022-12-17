@@ -1,6 +1,6 @@
 [package]
 name = "pytorch-albert-v2"
-version = "0.1.0"
+version = "0.19.0-pre"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -8,4 +8,4 @@ edition = "2021"
 [dependencies]
 ndarray.workspace = true
 tokenizers.workspace = true
-tract-onnx = { path = "../../onnx" , version = "0.19.0-alpha.8" }
+tract-onnx = { path = "../../onnx", version = "0.19.0-pre" }
