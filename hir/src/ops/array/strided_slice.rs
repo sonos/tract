@@ -25,7 +25,7 @@ struct Dim {
 impl Dim {
     fn soft_len(&self) -> TractResult<TDim> {
         if let Ok(len) = (self.end.clone() - &self.begin).to_isize() {
-            Ok((((self.stride.abs() as i32 - 1) + len.abs() as i32) / self.stride.abs()).to_dim())
+            Ok((((self.stride.abs() - 1) + len.abs() as i32) / self.stride.abs()).to_dim())
         } else if self.stride == 1 {
             Ok(self.end.clone() - &self.begin)
         } else {

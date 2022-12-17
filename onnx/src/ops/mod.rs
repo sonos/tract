@@ -1,7 +1,7 @@
 use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::*;
 use tract_hir::internal::*;
-use tract_hir::ops;
+
 
 mod array;
 mod cast;
@@ -23,7 +23,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Cast", cast::cast);
     reg.insert("Constant", konst);
     reg.insert("Einsum", einsum::einsum);
-    reg.insert("Identity", |_, _| Ok((Box::new(ops::identity::Identity::default()), vec![])));
+    reg.insert("Identity", |_, _| Ok((Box::<tract_hir::ops::identity::Identity>::default(), vec![])));
     reg.insert("Resize", resize::resize);
     reg.insert("NonMaxSuppression", non_max_suppression::non_max_suppression);
     reg.insert("Multinomial", multinomial::multinomial);

@@ -46,7 +46,6 @@ impl Expansion for QuantizeLinear {
         "QuantizeLinear".into()
     }
 
-
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -112,7 +111,6 @@ impl Expansion for DequantizeLinear {
         "DequantizeLinear".into()
     }
 
-
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -159,7 +157,7 @@ impl Expansion for DequantizeLinear {
         } else if zero_point.datum_type() == i8::datum_type() {
             Box::new(DequantizeLinearF32::new(scale, zero_point.as_slice::<i8>()?[0] as i32))
         } else {
-            Box::new(DequantizeLinearF32::new(scale, zero_point.as_slice::<i32>()?[0] as i32))
+            Box::new(DequantizeLinearF32::new(scale, zero_point.as_slice::<i32>()?[0]))
         };
         target.wire_node(prefix, op, &[inputs[0]])
     }
@@ -174,7 +172,6 @@ impl Expansion for DynamicQuantizeLinear {
     fn name(&self) -> Cow<str> {
         "DynamicQuantizeLinear".into()
     }
-
 
     fn nboutputs(&self) -> TractResult<usize> {
         Ok(3)
@@ -210,8 +207,7 @@ impl Expansion for DynamicQuantizeLinear {
 
 fn dynamic_quantize_linear_f32_u8(x: f32, scale: f32, zero_point: u8) -> u8 {
     (((x / scale).round() as i32) + zero_point as i32)
-        .max(u8::min_value() as i32)
-        .min(u8::max_value() as i32) as u8
+        .clamp(u8::min_value() as i32, u8::max_value() as i32) as u8
 }
 
 fn dynamic_quantize_linear_u8(scale: f32, zero_point: u8, xs: &[f32], ys: &mut [u8]) {

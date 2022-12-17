@@ -18,7 +18,7 @@ pub fn ssigmoid(x: f32) -> f32 {
     const BETA_2: f32 = 0.1159886749;
     const BETA_0: f32 = 1.0;
 
-    let x = x.max(LOW).min(HIGH);
+    let x = x.clamp(LOW, HIGH);
 
     let x2 = x * x;
 
@@ -56,7 +56,7 @@ pub fn hsigmoid(x: f16) -> f16 {
     const BETA_2: f16 = f16::from_f32_const(0.098734);
     const BETA_0: f16 = f16::from_f32_const(1.0);
 
-    let x = x.max(LOW).min(HIGH);
+    let x = x.clamp(LOW, HIGH);
 
     let x2 = x * x;
 

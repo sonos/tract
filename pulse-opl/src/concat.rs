@@ -32,7 +32,7 @@ impl EvalOp for PulsedSameAxisConcat {
         _session: &mut SessionState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(PulsedSameAxisConcatState::default())))
+        Ok(Some(Box::<PulsedSameAxisConcatState>::default()))
     }
 }
 
@@ -77,7 +77,7 @@ impl OpState for PulsedSameAxisConcatState {
                 pre_offset
             ));
             if let Ok(l) = op.input_len.eval(&session.resolved_symbols).to_usize() {
-                let post_offset = op.input_delay + l as usize;
+                let post_offset = op.input_delay + l;
                 dispatch_datum_by_size!(overwrite_part_of_pulse(data.datum_type())(
                     op.axis,
                     &mut data,

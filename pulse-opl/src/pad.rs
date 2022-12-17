@@ -184,7 +184,7 @@ impl EvalOp for PulsePad {
         _session: &mut SessionState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(PulsePadOpState::default())))
+        Ok(Some(Box::<PulsePadOpState>::default()))
     }
 }
 

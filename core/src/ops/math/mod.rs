@@ -1,4 +1,5 @@
 #![allow(clippy::clone_on_copy)]
+#![allow(clippy::unnecessary_cast)]
 
 use super::array::MultiBroadcastTo;
 use crate::internal::*;

@@ -53,7 +53,7 @@ impl Expansion for ReduceSum13 {
             s.given_2(&inputs[0].rank, &inputs[1].value, move |s, rank, axes| {
                 let mut axes = axes.cast_to::<i64>()?.as_slice::<i64>()?.to_vec();
                 if axes.len() == 0 && !self.noop_with_empty_axes {
-                    axes = (0..rank as i64).collect()
+                    axes = (0..rank).collect()
                 };
                 let op = tract_hir::ops::nn::Reduce::new(
                     Some(axes.clone()),
@@ -73,7 +73,7 @@ impl Expansion for ReduceSum13 {
         } else {
             s.given(&inputs[0].rank, move |s, rank| {
                 let axes =
-                    if self.noop_with_empty_axes { vec![] } else { (0..rank as i64).collect() };
+                    if self.noop_with_empty_axes { vec![] } else { (0..rank).collect() };
                 let op = tract_hir::ops::nn::Reduce::new(
                     Some(axes.clone()),
                     self.keep_dims,

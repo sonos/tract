@@ -16,7 +16,7 @@ impl GatherNd {
     ) -> TractResult<TVec<D>> {
         let mut shape: TVec<D> = indices_shape.into();
         let n = shape.pop().unwrap().to_usize()?;
-        shape.extend(data_shape[n + self.batch_dims as usize..].iter().cloned());
+        shape.extend(data_shape[n + self.batch_dims..].iter().cloned());
         Ok(shape)
     }
 
@@ -26,7 +26,7 @@ impl GatherNd {
         data: &Tensor,
         indices: &ArrayViewD<i32>,
     ) {
-        let batch_dims = self.batch_dims as usize;
+        let batch_dims = self.batch_dims;
         assert_eq!(output.shape()[..batch_dims], data.shape()[..batch_dims]);
         assert_eq!(output.shape()[..batch_dims], indices.shape()[..batch_dims]);
         let batch_size = data.shape().iter().take(batch_dims).product();

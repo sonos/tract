@@ -47,7 +47,7 @@ impl GraphDef {
     }
     pub fn save_to<P: AsRef<::std::path::Path>>(self, p: P) -> TractResult<()> {
         let buf = self.write_to_bytes()?;
-        fs::write(p, &buf)?;
+        fs::write(p, buf)?;
         Ok(())
     }
 }

@@ -115,13 +115,13 @@ impl InferenceScan {
         if let Some(rank) = rank {
             if outer
                 .shape
-                .unify_with(&ShapeFactoid::closed(tvec!(GenericFactoid::Any; rank as usize)))?
+                .unify_with(&ShapeFactoid::closed(tvec!(GenericFactoid::Any; rank)))?
             {
                 changed = true;
             }
             if inner
                 .shape
-                .unify_with(&ShapeFactoid::closed(tvec!(GenericFactoid::Any; rank as usize)))?
+                .unify_with(&ShapeFactoid::closed(tvec!(GenericFactoid::Any; rank)))?
             {
                 changed = true;
             }

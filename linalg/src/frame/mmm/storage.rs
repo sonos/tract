@@ -36,13 +36,12 @@ pub struct OutputStore {
 impl OutputStoreSpec {
     #[inline]
     pub unsafe fn wrap(&self, tensor: &TensorView) -> OutputStore {
-        let (mr, nr, row_byte_stride, col_byte_stride) =
-            self.compute_strides(tensor);
+        let (mr, nr, row_byte_stride, col_byte_stride) = self.compute_strides(tensor);
         let (m, n) = match self {
-            OutputStoreSpec::View { m_axis, n_axis, .. } =>
-                (                tensor.shape()[*m_axis],
-                tensor.shape()[*n_axis]),
-                OutputStoreSpec::Strides { m,n,.. } => (*m, *n)
+            OutputStoreSpec::View { m_axis, n_axis, .. } => {
+                (tensor.shape()[*m_axis], tensor.shape()[*n_axis])
+            }
+            OutputStoreSpec::Strides { m, n, .. } => (*m, *n),
         };
         OutputStore {
             ptr: tensor.as_ptr_unchecked::<u8>() as _,
@@ -53,16 +52,13 @@ impl OutputStoreSpec {
             item_size: tensor.datum_type().size_of(),
             mr,
             item_count: tensor.len(),
-            m
-                ,n
+            m,
+            n,
         }
     }
 
     #[inline]
-    unsafe fn compute_strides(
-        &self,
-        tensor: &TensorView,
-        ) -> (usize, usize, isize, isize) {
+    unsafe fn compute_strides(&self, tensor: &TensorView) -> (usize, usize, isize, isize) {
         let size_of = tensor.datum_type().size_of() as isize;
         match self {
             OutputStoreSpec::View { m_axis, n_axis, mr, nr, .. } => {
@@ -73,13 +69,9 @@ impl OutputStoreSpec {
                 let col_byte_stride = col_item_stride * size_of;
                 (*mr, *nr, row_byte_stride, col_byte_stride)
             }
-            OutputStoreSpec::Strides {
-                row_byte_stride,
-                col_byte_stride,
-                mr,
-                nr,
-                ..
-            } => (*mr, *nr, *row_byte_stride, *col_byte_stride),
+            OutputStoreSpec::Strides { row_byte_stride, col_byte_stride, mr, nr, .. } => {
+                (*mr, *nr, *row_byte_stride, *col_byte_stride)
+            }
         }
     }
 }
@@ -93,9 +85,9 @@ impl OutputStore {
                 .ptr
                 .offset(self.panel_row_byte_stride * down + self.panel_col_byte_stride * right)
                 as *mut _,
-                row_byte_stride: self.row_byte_stride,
-                col_byte_stride: self.col_byte_stride,
-                item_size: self.item_size,
+            row_byte_stride: self.row_byte_stride,
+            col_byte_stride: self.col_byte_stride,
+            item_size: self.item_size,
         }
     }
 
@@ -112,7 +104,7 @@ impl OutputStore {
         height: usize,
         width: usize,
         tile: &OutputStoreKer,
-        ) {
+    ) {
         if self.item_size() == 1 {
             self.set_from_tile_t::<i8>(down, right, height, width, tile)
         } else if self.item_size() == 2 {
@@ -132,15 +124,16 @@ impl OutputStore {
         height: usize,
         width: usize,
         tile: &OutputStoreKer,
-        ) {
+    ) {
         let tile = tile.ptr as *mut T;
-        let dst = self.ptr.add(self.panel_row_byte_stride as usize * down
-             + self.panel_col_byte_stride as usize * right);
+        let dst = self.ptr.add(
+            self.panel_row_byte_stride as usize * down
+                + self.panel_col_byte_stride as usize * right,
+        );
         for y in 0..height as isize {
             for x in 0..width as isize {
                 let value = tile.offset(y + x * self.mr as isize);
-                let dst =
-                    dst.offset((y * self.row_byte_stride + x * self.col_byte_stride) as isize);
+                let dst = dst.offset(y * self.row_byte_stride + x * self.col_byte_stride);
                 *(dst as *mut T) = *value;
             }
         }

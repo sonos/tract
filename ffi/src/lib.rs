@@ -1,3 +1,5 @@
+#![allow(clippy::missing_safety_doc)]
+
 use anyhow::Context;
 use std::cell::RefCell;
 use std::convert::TryFrom;
@@ -151,7 +153,7 @@ pub extern "C" fn tract_version() -> *const std::ffi::c_char {
 pub struct TractNnef(native::Nnef);
 
 #[no_mangle]
-pub extern "C" fn tract_nnef_create(nnef: *mut *mut TractNnef) -> TRACT_RESULT {
+pub unsafe extern "C" fn tract_nnef_create(nnef: *mut *mut TractNnef) -> TRACT_RESULT {
     wrap(|| unsafe {
         *nnef = Box::into_raw(Box::new(TractNnef(tract_nnef::nnef())));
         Ok(())
@@ -159,7 +161,7 @@ pub extern "C" fn tract_nnef_create(nnef: *mut *mut TractNnef) -> TRACT_RESULT {
 }
 
 #[no_mangle]
-pub extern "C" fn tract_nnef_destroy(nnef: *mut *mut TractNnef) -> TRACT_RESULT {
+pub unsafe extern "C" fn tract_nnef_destroy(nnef: *mut *mut TractNnef) -> TRACT_RESULT {
     wrap(|| unsafe {
         if nnef.is_null() || (*nnef).is_null() {
             anyhow::bail!("Trying to destroy a null Nnef object");
@@ -171,7 +173,7 @@ pub extern "C" fn tract_nnef_destroy(nnef: *mut *mut TractNnef) -> TRACT_RESULT 
 }
 
 #[no_mangle]
-pub extern "C" fn tract_nnef_model_for_path(
+pub unsafe extern "C" fn tract_nnef_model_for_path(
     nnef: &TractNnef,
     path: *const c_char,
     model: *mut *mut TractModel,
@@ -191,7 +193,7 @@ pub extern "C" fn tract_nnef_model_for_path(
 pub struct TractOnnx(tract_onnx::Onnx);
 
 #[no_mangle]
-pub extern "C" fn tract_onnx_create(ptr: *mut *mut TractOnnx) -> TRACT_RESULT {
+pub unsafe extern "C" fn tract_onnx_create(ptr: *mut *mut TractOnnx) -> TRACT_RESULT {
     wrap(|| unsafe {
         *ptr = Box::into_raw(Box::new(TractOnnx(onnx::onnx())));
         Ok(())
@@ -199,7 +201,7 @@ pub extern "C" fn tract_onnx_create(ptr: *mut *mut TractOnnx) -> TRACT_RESULT {
 }
 
 #[no_mangle]
-pub extern "C" fn tract_onnx_destroy(ptr: *mut *mut TractOnnx) -> TRACT_RESULT {
+pub unsafe extern "C" fn tract_onnx_destroy(ptr: *mut *mut TractOnnx) -> TRACT_RESULT {
     wrap(|| unsafe {
         if ptr.is_null() || (*ptr).is_null() {
             anyhow::bail!("Trying to destroy a null Onnx object");
@@ -211,7 +213,7 @@ pub extern "C" fn tract_onnx_destroy(ptr: *mut *mut TractOnnx) -> TRACT_RESULT {
 }
 
 #[no_mangle]
-pub extern "C" fn tract_onnx_model_for_path(
+pub unsafe extern "C" fn tract_onnx_model_for_path(
     onnx: &TractOnnx,
     path: *const c_char,
     model: *mut *mut TractInferenceModel,
@@ -231,7 +233,7 @@ pub extern "C" fn tract_onnx_model_for_path(
 pub struct TractInferenceModel(onnx::InferenceModel);
 
 #[no_mangle]
-pub extern "C" fn tract_inference_model_into_optimized(
+pub unsafe extern "C" fn tract_inference_model_into_optimized(
     model: *mut *mut TractInferenceModel,
     runnable: *mut *mut TractModel,
 ) -> TRACT_RESULT {
@@ -248,7 +250,7 @@ pub extern "C" fn tract_inference_model_into_optimized(
 }
 
 #[no_mangle]
-pub extern "C" fn tract_inference_model_destroy(
+pub unsafe extern "C" fn tract_inference_model_destroy(
     model: *mut *mut TractInferenceModel,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
@@ -265,7 +267,7 @@ pub extern "C" fn tract_inference_model_destroy(
 pub struct TractModel(TypedModel);
 
 #[no_mangle]
-pub extern "C" fn tract_model_optimize(model: *mut TractModel) -> TRACT_RESULT {
+pub unsafe extern "C" fn tract_model_optimize(model: *mut TractModel) -> TRACT_RESULT {
     wrap(|| unsafe {
         if let Some(model) = model.as_mut() {
             model.0.optimize()
@@ -279,7 +281,7 @@ pub extern "C" fn tract_model_optimize(model: *mut TractModel) -> TRACT_RESULT {
 ///
 /// This function transfers ownership of the model argument to the runnable model.
 #[no_mangle]
-pub extern "C" fn tract_model_into_runnable(
+pub unsafe extern "C" fn tract_model_into_runnable(
     model: *mut *mut TractModel,
     runnable: *mut *mut TractRunnable,
 ) -> TRACT_RESULT {
@@ -296,7 +298,7 @@ pub extern "C" fn tract_model_into_runnable(
 }
 
 #[no_mangle]
-pub extern "C" fn tract_model_destroy(model: *mut *mut TractModel) -> TRACT_RESULT {
+pub unsafe extern "C" fn tract_model_destroy(model: *mut *mut TractModel) -> TRACT_RESULT {
     wrap(|| unsafe {
         if model.is_null() || (*model).is_null() {
             anyhow::bail!("Trying to destroy a null Model");
@@ -311,7 +313,7 @@ pub extern "C" fn tract_model_destroy(model: *mut *mut TractModel) -> TRACT_RESU
 pub struct TractRunnable(Arc<native::TypedRunnableModel<native::TypedModel>>);
 
 #[no_mangle]
-pub extern "C" fn tract_runnable_spawn_state(
+pub unsafe extern "C" fn tract_runnable_spawn_state(
     runnable: *mut TractRunnable,
     state: *mut *mut TractState,
 ) -> TRACT_RESULT {
@@ -331,7 +333,7 @@ pub extern "C" fn tract_runnable_spawn_state(
 }
 
 #[no_mangle]
-pub extern "C" fn tract_runnable_run(
+pub unsafe extern "C" fn tract_runnable_run(
     runnable: *mut TractRunnable,
     inputs: *mut *mut TractValue,
     outputs: *mut *mut TractValue,
@@ -347,7 +349,7 @@ pub extern "C" fn tract_runnable_run(
 }
 
 #[no_mangle]
-pub extern "C" fn tract_runnable_nbio(
+pub unsafe extern "C" fn tract_runnable_nbio(
     runnable: *mut TractRunnable,
     inputs: *mut usize,
     outputs: *mut usize,
@@ -389,7 +391,7 @@ unsafe fn state_run(
 }
 
 #[no_mangle]
-pub extern "C" fn tract_runnable_release(runnable: *mut *mut TractRunnable) -> TRACT_RESULT {
+pub unsafe extern "C" fn tract_runnable_release(runnable: *mut *mut TractRunnable) -> TRACT_RESULT {
     wrap(|| unsafe {
         if runnable.is_null() || (*runnable).is_null() {
             anyhow::bail!("Trying to destroy a null Runnable");
@@ -406,7 +408,7 @@ pub struct TractValue(TValue);
 /// This call copies the data into tract space. All the pointers only need to be alive for the
 /// duration of the call.
 #[no_mangle]
-pub extern "C" fn tract_value_create(
+pub unsafe extern "C" fn tract_value_create(
     datum_type: TractDatumType,
     rank: usize,
     shape: *const usize,
@@ -425,7 +427,7 @@ pub extern "C" fn tract_value_create(
 }
 
 #[no_mangle]
-pub extern "C" fn tract_value_destroy(value: *mut *mut TractValue) -> TRACT_RESULT {
+pub unsafe extern "C" fn tract_value_destroy(value: *mut *mut TractValue) -> TRACT_RESULT {
     wrap(|| unsafe {
         if value.is_null() || (*value).is_null() {
             anyhow::bail!("Trying to destroy a null Value");
@@ -439,7 +441,7 @@ pub extern "C" fn tract_value_destroy(value: *mut *mut TractValue) -> TRACT_RESU
 /// Inspect part of a value. Except `value`, all argument pointers can be null if only some specific bits
 /// are required.
 #[no_mangle]
-pub extern "C" fn tract_value_inspect(
+pub unsafe extern "C" fn tract_value_inspect(
     value: *mut TractValue,
     datum_type: *mut TractDatumType,
     rank: *mut usize,
@@ -476,7 +478,7 @@ type NativeState = native::TypedSimpleState<
 pub struct TractState(NativeState);
 
 #[no_mangle]
-pub extern "C" fn tract_state_run(
+pub unsafe extern "C" fn tract_state_run(
     state: *mut TractState,
     inputs: *mut *mut TractValue,
     outputs: *mut *mut TractValue,
@@ -491,7 +493,7 @@ pub extern "C" fn tract_state_run(
 }
 
 #[no_mangle]
-pub extern "C" fn tract_state_set_input(
+pub unsafe extern "C" fn tract_state_set_input(
     state: *mut TractState,
     input_id: usize,
     value: *mut TractValue,
@@ -511,7 +513,7 @@ pub extern "C" fn tract_state_set_input(
 }
 
 #[no_mangle]
-pub extern "C" fn tract_state_exec(state: *mut TractState) -> TRACT_RESULT {
+pub unsafe extern "C" fn tract_state_exec(state: *mut TractState) -> TRACT_RESULT {
     wrap(|| unsafe {
         if state.is_null() {
             anyhow::bail!("Trying to exec a null State");
@@ -524,7 +526,7 @@ pub extern "C" fn tract_state_exec(state: *mut TractState) -> TRACT_RESULT {
 
 /// Get an output tensor from the state.
 #[no_mangle]
-pub extern "C" fn tract_state_output(
+pub unsafe extern "C" fn tract_state_output(
     state: *mut TractState,
     output_id: usize,
     tensor: *mut *mut TractValue,
@@ -541,7 +543,7 @@ pub extern "C" fn tract_state_output(
 }
 
 #[no_mangle]
-pub extern "C" fn tract_state_reset_turn(state: *mut TractState) -> TRACT_RESULT {
+pub unsafe extern "C" fn tract_state_reset_turn(state: *mut TractState) -> TRACT_RESULT {
     wrap(|| unsafe {
         if state.is_null() {
             anyhow::bail!("Trying to reset turn on a null State");
@@ -553,7 +555,7 @@ pub extern "C" fn tract_state_reset_turn(state: *mut TractState) -> TRACT_RESULT
 }
 
 #[no_mangle]
-pub extern "C" fn tract_state_destroy(state: *mut *mut TractState) -> TRACT_RESULT {
+pub unsafe extern "C" fn tract_state_destroy(state: *mut *mut TractState) -> TRACT_RESULT {
     wrap(|| unsafe {
         if state.is_null() || (*state).is_null() {
             anyhow::bail!("Trying to destroy a null State");

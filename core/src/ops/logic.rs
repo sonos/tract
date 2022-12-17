@@ -1,4 +1,5 @@
 #![allow(clippy::bool_comparison)]
+#![allow(clippy::unnecessary_cast)]
 
 use ndarray::*;
 

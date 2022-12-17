@@ -182,7 +182,7 @@ pub fn squeeze(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> T
         .sorted()
         .rev()
         .try_fold(wire, |wire, &axis| {
-            builder.wire_as_outlets(ops::change_axes::AxisOp::Rm(axis as usize), &wire)
+            builder.wire_as_outlets(ops::change_axes::AxisOp::Rm(axis), &wire)
         })
         .map(Value::from)
 }
@@ -197,7 +197,7 @@ pub fn unsqueeze(
     axes.iter()
         .sorted()
         .try_fold(wire, |wire, &axis| {
-            builder.wire_as_outlets(ops::change_axes::AxisOp::Add(axis as usize), &wire)
+            builder.wire_as_outlets(ops::change_axes::AxisOp::Add(axis), &wire)
         })
         .map(Value::from)
 }
@@ -655,7 +655,7 @@ pub fn stack(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
     for value in &mut values {
         // add unsqueeze
         *value =
-            builder.wire_as_outlets(ops::change_axes::AxisOp::Add(axis as usize), &[*value])?[0];
+            builder.wire_as_outlets(ops::change_axes::AxisOp::Add(axis), &[*value])?[0];
     }
 
     builder.wire(ops::array::TypedConcat::new(axis), &values)
@@ -680,7 +680,7 @@ pub fn unstack(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> T
             let sliced_wire = builder
                 .wire_as_outlets(tract_core::ops::array::Slice { axis, start, end }, &wire)?;
             let squeezed_wire = builder
-                .wire_as_outlets(ops::change_axes::AxisOp::Rm(axis as usize), &sliced_wire)?;
+                .wire_as_outlets(ops::change_axes::AxisOp::Rm(axis), &sliced_wire)?;
             Ok(squeezed_wire[0])
         })
         .collect::<TractResult<TVec<_>>>()

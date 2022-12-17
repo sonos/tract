@@ -43,7 +43,7 @@ fn tract(bencher: &mut Criterion) {
     let input = tf_inceptionv3::load_image(hopper());
     let plan = SimplePlan::new(tfd).unwrap();
     bencher.bench_function("tract", move |b| {
-        b.iter(|| plan.run(tvec![input.clone().into()]).unwrap())
+        b.iter(|| plan.run(tvec![input.clone()]).unwrap())
     });
 }
 

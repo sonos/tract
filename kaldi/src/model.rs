@@ -125,7 +125,7 @@ impl GeneralDescriptor {
             }
             Offset(ref n, o) if *o > 0 => {
                 let name = format!("{}-Delay", name);
-                let crop = *o as isize + adjust_final_offset.unwrap_or(0);
+                let crop = *o + adjust_final_offset.unwrap_or(0);
                 if crop < 0 {
                     bail!("Invalid offset adjustment (network as {}, adjustment is {}", o, crop)
                 }
@@ -245,11 +245,8 @@ impl Framework<KaldiProtoModel, InferenceModel> for Kaldi {
                     }
                 }
                 NodeLine::DimRange(line) => {
-                    let op = tract_hir::ops::array::Slice::new(
-                        1,
-                        line.offset as usize,
-                        (line.offset + line.dim) as usize,
-                    );
+                    let op =
+                        tract_hir::ops::array::Slice::new(1, line.offset, line.offset + line.dim);
                     let id =
                         model.add_node(name.to_string(), op, tvec!(InferenceFact::default()))?;
                     line.input.wire(

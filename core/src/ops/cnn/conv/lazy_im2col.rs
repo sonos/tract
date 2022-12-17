@@ -241,7 +241,7 @@ impl<T: Datum + Copy> VirtualInput for LazyIm2col<T> {
             self.write(
                 &mut writer,
                 k_range.start as isize..k_range.end as isize,
-                mn_range.start as isize..n_range.end as isize,
+                mn_range.start as isize..n_range.end,
             )
         } else {
             let mut writer =
@@ -249,7 +249,7 @@ impl<T: Datum + Copy> VirtualInput for LazyIm2col<T> {
             self.write(
                 &mut writer,
                 k_range.start as isize..k_range.end as isize,
-                mn_range.start as isize..n_range.end as isize,
+                mn_range.start as isize..n_range.end,
             )
         }
     }

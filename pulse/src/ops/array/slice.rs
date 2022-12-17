@@ -66,7 +66,7 @@ impl PulsedOp for PulsedAxisSlice {
     }
 
     fn to_typed(&self) -> Box<dyn TypedOp> {
-        Box::new(tract_core::ops::identity::Identity::default())
+        Box::<tract_pulse_opl::tract_core::ops::identity::Identity>::default()
     }
 
     as_op!();

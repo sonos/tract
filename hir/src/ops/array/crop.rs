@@ -51,7 +51,7 @@ impl Expansion for Crop {
         target.wire_node(
             prefix,
             crate::ops::array::Slice::new(
-                self.axis as usize,
+                self.axis,
                 self.start.to_dim(),
                 len - self.end.to_dim(),
             ),

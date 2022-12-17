@@ -98,7 +98,7 @@ fn batch_to_space<T: Copy + Datum + Zero>(
     let mut data = data;
     for (i, crop) in crops.outer_iter().enumerate() {
         if crop[0] != 0 || crop[1] != 0 {
-            let end = data.shape()[1 + i] as usize;
+            let end = data.shape()[1 + i];
             let range = (crop[0] as usize)..(end - crop[1] as usize);
             data = data.slice_axis(Axis(i + 1), range.into()).map(|x| *x).to_owned();
         }

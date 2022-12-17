@@ -180,7 +180,7 @@ impl EvalOp for Resize {
                         new_shape[axis],
                     );
                     let mut co_i = co_o;
-                    let x_left = (x_in as usize).min(data.shape()[axis] - 1).max(0);
+                    let x_left = (x_in as usize).clamp(0, data.shape()[axis] - 1);
                     co_i[axis] = x_left;
                     let y_left = data[&co_i];
                     let x_right = (x_left + 1).min(data.shape()[axis] - 1);

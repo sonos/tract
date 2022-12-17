@@ -180,9 +180,9 @@ impl PatchSpec {
         let mut invalid_output_zones = tvec!();
         for ix in 0..self.input_shape.len() {
             let min_max = data_field_min_max[ix];
-            let min = (-min_max.0 as usize).divceil(self.strides[ix]) as usize;
-            let max = (self.input_shape[ix].saturating_sub(min_max.1 as usize))
-                .divceil(self.strides[ix]) as usize;
+            let min = (-min_max.0 as usize).divceil(self.strides[ix]);
+            let max =
+                (self.input_shape[ix].saturating_sub(min_max.1 as usize)).divceil(self.strides[ix]);
             if min != 0 {
                 let mut invalid = valid_output_zone.clone();
                 invalid.push(0..min);
@@ -323,7 +323,7 @@ impl Patch {
                 input_patch_center
                     .iter_mut()
                     .zip(self.spec.strides.iter())
-                    .for_each(|(a, &b)| *a *= b as usize);
+                    .for_each(|(a, &b)| *a *= b);
                 PatchIterator::Safe(SafePatchIterator {
                     patch: self,
                     item: 0,
@@ -578,10 +578,10 @@ impl<'p> Scanner<'p> {
                 self.zone_id = 0;
                 self.input_center_offset = 0;
                 for i in 0..rank {
-                    self.zone_id += *self.zone_coords.get_unchecked(i) as usize
+                    self.zone_id += *self.zone_coords.get_unchecked(i)
                         * *self.patch.zone_strides.get_unchecked(i) as usize;
                     self.input_center_offset += *self.input_coords.get_unchecked(i) as isize
-                        * *self.patch.input_storage_strides.get_unchecked(i) as isize;
+                        * *self.patch.input_storage_strides.get_unchecked(i);
                 }
                 self.zone = self.patch.zones.get_unchecked(self.zone_id);
             }
