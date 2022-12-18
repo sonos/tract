@@ -19,13 +19,13 @@ fi
 for f in `find * -mindepth 1 -a -name Cargo.toml`
 do
     back=$(echo $(dirname $f) | sed 's/[^\/]\+/../g')
-    tomato set package.version $VERSION $f
+    tomato set package.version $VERSION $f > /dev/null
     for dep in $CRATES
     do
         if tomato get dependencies.tract-$dep.version $f | grep -F . > /dev/null
         then
-            tomato set dependencies.tract-$dep.version "=$VERSION" $f
-            tomato set dependencies.tract-$dep.path $back/$dep $f
+            tomato set dependencies.tract-$dep.version "=$VERSION" $f > /dev/null
+            tomato set dependencies.tract-$dep.path $back/$dep $f > /dev/null
         fi
     done
 done
