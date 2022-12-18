@@ -18,4 +18,5 @@ downcast-rs.workspace = true
 lazy_static.workspace = true
 log.workspace = true
 tract-pulse-opl = { version = "0.19.0-pre", path = "../pulse-opl" }
+tract-pulse = { version = "0.19.0-pre" , path = "../pulse" }
 

@@ -9,6 +9,7 @@ keywords = [ "TensorFlow", "NeuralNetworks" ]
 categories = [ "science" ]
 autobenches = false
 edition = "2021"
+include = [ "Cargo.toml", "src/**/*.rs", "LICENSE*" ]
 
 [lib]
 name = "tract"

@@ -79,7 +79,7 @@ set_version() {
 set_version $CRATE/Cargo.toml $VERSION
 (cd $CRATE ; cargo publish --allow-dirty)
 
-for manifest in `find * -name Cargo.toml -a -mindepth 1`
+for manifest in `find * -mindepth 1 -a -name Cargo.toml`
 do
     if grep "^tract-$CRATE" $manifest
     then
