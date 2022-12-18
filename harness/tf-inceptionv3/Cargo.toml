@@ -6,7 +6,7 @@ license = "MIT/Apache-2.0"
 
 [dependencies]
 image.workspace = true
-tract-tensorflow = { path = "../../tensorflow", version = "=0.19.0-alpha.18" }
+tract-tensorflow = { path = "../../tensorflow", version = "=0.19.0-pre" }
 
 [features]
 conform = [ "tract-tensorflow/conform" ]

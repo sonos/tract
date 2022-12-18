@@ -1,6 +1,6 @@
 [package]
 name = "tract-ffi"
-version = "0.19.0-alpha.18"
+version = "0.19.0-pre"
 license = "MIT/Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -20,7 +20,7 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 anyhow.workspace = true
-tract-data = { path = "../data", version = "=0.19.0-alpha.18" }
-tract-nnef = { path = "../nnef", version = "=0.19.0-alpha.18" }
-tract-onnx = { path = "../onnx", version = "=0.19.0-alpha.18" }
-tract-tensorflow = { path = "../tensorflow", version = "=0.19.0-alpha.18" }
+tract-data = { path = "../data", version = "=0.19.0-pre" }
+tract-nnef = { path = "../nnef", version = "=0.19.0-pre" }
+tract-onnx = { path = "../onnx", version = "=0.19.0-pre" }
+tract-tensorflow = { path = "../tensorflow", version = "=0.19.0-pre" }
