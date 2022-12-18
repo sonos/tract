@@ -22,7 +22,7 @@ do
     tomato set package.version $VERSION $f
     for dep in $CRATES
     do
-        if tomato get dependencies.tract-$dep.version $f | grep -F .
+        if tomato get dependencies.tract-$dep.version $f | grep -F . > /dev/null
         then
             tomato set dependencies.tract-$dep.version "=$VERSION" $f
             tomato set dependencies.tract-$dep.path $back/$dep $f
