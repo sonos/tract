@@ -24,7 +24,7 @@ do
     do
         if tomato get dependencies.tract-$dep.version $f | grep -F .
         then
-            tomato set dependencies.tract-$dep.version $VERSION $f
+            tomato set dependencies.tract-$dep.version "=$VERSION" $f
             tomato set dependencies.tract-$dep.path $back/$dep $f
         fi
     done

@@ -81,9 +81,9 @@ set_version $CRATE/Cargo.toml $VERSION
 
 for manifest in `find * -mindepth 1 -a -name Cargo.toml`
 do
-    if grep "^tract-$CRATE" $manifest
+    if tomato get dependencies.tract-$CRATE.version $manifest | grep -F .
     then
-        tomato set "dependencies.tract-$CRATE.version" $VERSION $manifest
+        tomato set "dependencies.tract-$CRATE.version" "=$VERSION" $manifest
     fi
 done
 
