@@ -211,32 +211,32 @@ impl DepthWise {
         if iter.size_hint() == (4, Some(4)) {
             let (ix, v) = iter.next().unwrap();
             let k0 = *kptr.add(ix);
-            let i0 = *iptr.offset(v as isize);
+            let i0 = *iptr.offset(v);
             let (ix, v) = iter.next().unwrap();
             let k1 = *kptr.add(ix);
-            let i1 = *iptr.offset(v as isize);
+            let i1 = *iptr.offset(v);
             let (ix, v) = iter.next().unwrap();
             let k2 = *kptr.add(ix);
-            let i2 = *iptr.offset(v as isize);
+            let i2 = *iptr.offset(v);
             let (ix, v) = iter.next().unwrap();
             let k3 = *kptr.add(ix);
-            let i3 = *iptr.offset(v as isize);
+            let i3 = *iptr.offset(v);
             sum = sum + k0 * i0 + k1 * i1 + k2 * i2 + k3 * i3;
         } else if iter.size_hint() == (3, Some(3)) {
             let (ix, v) = iter.next().unwrap();
             let k0 = *kptr.add(ix);
-            let i0 = *iptr.offset(v as isize);
+            let i0 = *iptr.offset(v);
             let (ix, v) = iter.next().unwrap();
             let k1 = *kptr.add(ix);
-            let i1 = *iptr.offset(v as isize);
+            let i1 = *iptr.offset(v);
             let (ix, v) = iter.next().unwrap();
             let k2 = *kptr.add(ix);
-            let i2 = *iptr.offset(v as isize);
+            let i2 = *iptr.offset(v);
             sum = sum + k0 * i0 + k1 * i1 + k2 * i2;
         } else {
             for (ix, v) in iter {
                 let k = *kptr.add(ix);
-                let i = *iptr.offset(v as isize);
+                let i = *iptr.offset(v);
                 sum = sum + k * i;
             }
         }

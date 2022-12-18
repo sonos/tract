@@ -22,7 +22,7 @@ where
     fn prefetch(ptr: *const u8, len: usize) {}
 
     fn mmm() -> Box<dyn MatMatMul> {
-        Box::new(MatMatMulImpl::<Self, TI>::default())
+        Box::<MatMatMulImpl<Self, TI>>::default()
     }
 }
 

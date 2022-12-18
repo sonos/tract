@@ -11,8 +11,7 @@ pub struct Scaler {
     pub policy: RoundingPolicy,
 }
 
-impl Eq for Scaler {
-}
+impl Eq for Scaler {}
 
 #[allow(clippy::derive_hash_xor_eq)]
 impl Hash for Scaler {
@@ -126,7 +125,6 @@ impl Mul<Scaler> for f16 {
         rhs * self
     }
 }
-
 
 impl Mul<Scaler> for f32 {
     type Output = f32;
@@ -245,10 +243,10 @@ impl ScaleShiftAndRound for i32 {
             Odd => -((self.abs() >> shift) & 0x1),
             _ => panic!(),
         };
-        (self.signum() * ((self.abs() + half + nudge) >> shift)) as i32
+        self.signum() * ((self.abs() + half + nudge) >> shift)
     }
     fn q_shl(self, shift: usize) -> Self {
-        (self << shift) as i32
+        self << shift
     }
 }
 

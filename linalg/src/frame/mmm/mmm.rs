@@ -197,7 +197,7 @@ where
     }
 
     unsafe fn allocate_scratch_space(&self) -> Box<dyn ScratchSpace> {
-        Box::new(ScratchSpaceFusedNonLinear::<TI>::default())
+        Box::<ScratchSpaceFusedNonLinear<TI>>::default()
     }
 
     unsafe fn can_use_scratch_space(&self, scratch: &dyn ScratchSpace) -> bool {

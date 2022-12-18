@@ -10,7 +10,7 @@ pub struct Pad;
 impl_dyn_hash!(Pad);
 
 pub fn pad(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
-    Ok(Box::new(Pad))
+    Ok(Box::<Pad>::default())
 }
 
 impl Pad {
@@ -36,7 +36,7 @@ impl Pad {
         let result = Array::from_shape_fn(shape, |index| {
             for i in 0..input.ndim() {
                 if index[i] < paddings[(i, 0)] as usize
-                    || index[i] - paddings[(i, 0)] as usize >= input.shape()[i] as usize
+                    || index[i] - paddings[(i, 0)] as usize >= input.shape()[i]
                 {
                     return T::default();
                 } else {

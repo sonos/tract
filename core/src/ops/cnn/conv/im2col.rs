@@ -332,7 +332,7 @@ impl Patcher {
             for ci in 0..geometry.ci_per_group {
                 let iptr = iptr.offset(ci as isize * c_stride);
                 for koffset in &geometry.pool.patch.standard_layout_data_field {
-                    let iptr = iptr.offset(*koffset as isize);
+                    let iptr = iptr.offset(*koffset);
                     for x in 0..*geometry.pool.patch.output_shape.get_unchecked(0) {
                         writer.write(*iptr.offset(x as isize * x_stride));
                     }
@@ -431,7 +431,7 @@ impl Patcher {
         writer: &mut tract_linalg::frame::pack::KOutWriter<T>,
     ) {
         for x in x_min..x_max {
-            writer.write(*iptr.offset(x as isize * x_stride_ptr));
+            writer.write(*iptr.offset(x * x_stride_ptr));
         }
     }
 
@@ -457,7 +457,7 @@ impl Patcher {
             for ci in 0..geometry.ci_per_group {
                 let iptr = iptr.offset(ci as isize * c_stride_ptr);
                 for koffset in &geometry.pool.patch.standard_layout_data_field {
-                    let iptr = iptr.offset(*koffset as isize);
+                    let iptr = iptr.offset(*koffset);
                     for y in 0..*geometry.pool.patch.output_shape.get_unchecked(0) {
                         let iptr = iptr.offset(y as isize * y_stride_ptr);
                         for x in 0..*geometry.pool.patch.output_shape.get_unchecked(1) {

@@ -261,7 +261,7 @@ impl DeconvSum {
                                     continue;
                                 }
                                 let temp = temp.offset(iy as isize * temp_i_stride);
-                                let output = output.offset(oy * output_y_stride as isize);
+                                let output = output.offset(oy * output_y_stride);
                                 Self::main_loop_2d_inner(
                                     output_c,
                                     temp,

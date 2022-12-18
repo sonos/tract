@@ -12,7 +12,7 @@ impl Tile {
     fn eval_t<T: Datum>(data: &TValue, multipliers: &[usize]) -> TractResult<TValue> {
         let view = unsafe { data.to_array_view_unchecked::<T>() };
         let output_shape: TVec<usize> =
-            view.shape().iter().zip(multipliers.iter()).map(|(&d, &m)| d * m as usize).collect();
+            view.shape().iter().zip(multipliers.iter()).map(|(&d, &m)| d * m).collect();
         let output = ndarray::ArrayD::from_shape_fn(&*output_shape, |coords| {
             let coords: TVec<usize> =
                 coords.slice().iter().zip(data.shape().iter()).map(|(&x, &d)| x % d).collect();

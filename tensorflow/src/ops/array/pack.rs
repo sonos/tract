@@ -85,6 +85,6 @@ impl Expansion for Pack {
                 )?[0])
             })
             .collect::<TractResult<TVec<OutletId>>>()?;
-        model.wire_node(prefix, TypedConcat::new(self.axis as usize), &inputs)
+        model.wire_node(prefix, TypedConcat::new(self.axis), &inputs)
     }
 }

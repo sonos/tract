@@ -67,11 +67,9 @@ impl InferenceRulesOp for SpaceToBatch {
             let mut paddings = tvec![];
             for p in paddings_view.outer_iter() {
                 let pad = match (p[0].to_usize(), p[1].to_usize()) {
-                    (Ok(bef), Ok(aft)) => {
-                        super::unary::PaddingStrat::FixedFixed(bef as usize, aft as usize)
-                    }
-                    (_, Ok(aft)) => super::unary::PaddingStrat::FlexFixed(aft as usize),
-                    (Ok(bef), _) => super::unary::PaddingStrat::FixedFlex(bef as usize),
+                    (Ok(bef), Ok(aft)) => super::unary::PaddingStrat::FixedFixed(bef, aft),
+                    (_, Ok(aft)) => super::unary::PaddingStrat::FlexFixed(aft),
+                    (Ok(bef), _) => super::unary::PaddingStrat::FixedFlex(bef),
                     _ => bail!("Failed to unarize SpaceToBatch because of padding"),
                 };
                 paddings.push(pad);
@@ -162,11 +160,9 @@ impl InferenceRulesOp for BatchToSpace {
                 .outer_iter()
                 .map(|p| {
                     Ok(match (p[0].to_usize(), p[1].to_usize()) {
-                        (Ok(bef), Ok(aft)) => {
-                            super::unary::PaddingStrat::FixedFixed(bef as usize, aft as usize)
-                        }
-                        (_, Ok(aft)) => super::unary::PaddingStrat::FlexFixed(aft as usize),
-                        (Ok(bef), _) => super::unary::PaddingStrat::FixedFlex(bef as usize),
+                        (Ok(bef), Ok(aft)) => super::unary::PaddingStrat::FixedFixed(bef, aft),
+                        (_, Ok(aft)) => super::unary::PaddingStrat::FlexFixed(aft),
+                        (Ok(bef), _) => super::unary::PaddingStrat::FixedFlex(bef),
                         _ => bail!("Failed to unarize SpaceToBatch because of padding"),
                     })
                 })

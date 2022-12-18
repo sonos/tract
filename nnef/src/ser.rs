@@ -228,7 +228,7 @@ impl<'a> IntoAst<'a> {
         let doc = Document {
             version: "1.0".into(),
             extension,
-            fragments: fragments.into_iter().map(|(_, v)| v).collect(),
+            fragments: fragments.into_values().collect(),
             graph_def: GraphDef { id, parameters, results, body },
         };
         let quantization = if self.quantization.len() > 0 { Some(self.quantization) } else { None };

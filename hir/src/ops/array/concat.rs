@@ -37,7 +37,7 @@ impl Expansion for Concat {
     ) -> InferenceResult {
         check_output_arity(outputs, 1)?;
         s.equals(&outputs[0].rank, &inputs[0].rank)?;
-        let n = inputs.len() as usize;
+        let n = inputs.len();
         s.equals_all((0..n).map(|i| (&inputs[i].rank).bex()).collect())?;
         s.given_all((0..n).map(|i| (&inputs[i].datum_type).bex()), move |s, dts| {
             let super_type: DatumType = DatumType::super_type_for(&dts)
@@ -45,7 +45,7 @@ impl Expansion for Concat {
             s.equals(&outputs[0].datum_type, super_type)
         })?;
         s.given(&inputs[0].rank, move |s, rank| {
-            let axis = self.resolve_axis(rank as i64)?;
+            let axis = self.resolve_axis(rank)?;
             s.equals(
                 rules::expr::SumExp::new((0..n).map(|i| (&inputs[i].shape[axis]).bex()).collect()),
                 &outputs[0].shape[axis],

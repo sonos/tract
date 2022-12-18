@@ -5,7 +5,7 @@ use crate::model::{ParsingContext, TfOpRegister};
 use crate::tfpb::tensorflow::NodeDef;
 
 pub fn register_all_ops(reg: &mut TfOpRegister) {
-    reg.insert("Assign", |_, _| Ok(Box::new(Assign::default())));
+    reg.insert("Assign", |_, _| Ok(Box::<Assign>::default()));
     reg.insert("VariableV2", variable_v2);
 }
 

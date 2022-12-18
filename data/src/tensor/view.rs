@@ -202,7 +202,7 @@ impl<'a> TensorView<'a> {
         self.strides()
             .iter()
             .zip(coords.as_ref())
-            .map(|(s, c)| *s as isize * *c as isize)
+            .map(|(s, c)| *s * *c as isize)
             .sum::<isize>()
     }
 
