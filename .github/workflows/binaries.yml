@@ -76,7 +76,7 @@ jobs:
           tar czf tract-${name}.tgz tract-${name}
 
       - name: Upload asset
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v1
         with:
           files: tract-${{matrix.target}}-${{ steps.version.outputs.value }}.tgz
           name: ${{ steps.version.outputs.value }}
