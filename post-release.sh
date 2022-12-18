@@ -16,10 +16,9 @@ then
     exit 1
 fi
 
-for member in $(grep '^ *"' Cargo.toml | tr -d '",')
+for f in `find * -mindepth 1 -a -name Cargo.toml`
 do
-    f=$member/Cargo.toml
-    back=$(echo $member | sed 's/[^\/]\+/../g')
+    back=$(echo $(dirname $f) | sed 's/[^\/]\+/../g')
     tomato set package.version $VERSION $f
     for dep in $CRATES
     do
