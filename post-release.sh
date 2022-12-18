@@ -20,16 +20,13 @@ for member in $(grep '^ *"' Cargo.toml | tr -d '",')
 do
     f=$member/Cargo.toml
     back=$(echo $member | sed 's/[^\/]\+/../g')
-    toml set $f package.version $VERSION > $f.tmp
-    mv $f.tmp $f
+    tomato set package.version $VERSION $f
     for dep in $CRATES
     do
-        if toml get $f dependencies.tract-$dep.version > /dev/null
+        if tomato get dependencies.tract-$dep.version $f | grep -F .
         then
-            toml set $f dependencies.tract-$dep.version $VERSION > $f.tmp
-            mv $f.tmp $f
-            toml set $f dependencies.tract-$dep.path $back/$dep > $f.tmp
-            mv $f.tmp $f
+            tomato set dependencies.tract-$dep.version $VERSION $f
+            tomato set dependencies.tract-$dep.path $back/$dep $f
         fi
     done
 done
