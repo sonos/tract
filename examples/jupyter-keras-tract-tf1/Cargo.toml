@@ -9,5 +9,5 @@ edition = "2021"
 
 [dependencies]
 rand.workspace = true
-tract-core = { path = "../../core", version = "=0.19.0-alpha.19" }
-tract-tensorflow = { path = "../../tensorflow", version = "=0.19.0-alpha.19" }
+tract-core = { path = "../../core", version = "=0.19.0-pre" }
+tract-tensorflow = { path = "../../tensorflow", version = "=0.19.0-pre" }

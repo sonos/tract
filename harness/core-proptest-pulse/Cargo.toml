@@ -6,10 +6,10 @@ license = "MIT/Apache-2.0"
 edition = "2021"
 
 [dependencies]
-tract-hir = { path = "../../hir", version = "=0.19.0-alpha.19" }
-tract-pulse = { path = "../../pulse", version = "=0.19.0-alpha.19" }
-tract-onnx = { path = "../../onnx", version = "=0.19.0-alpha.19" }
-tract-onnx-opl = { path = "../../onnx-opl", version = "=0.19.0-alpha.19" }
+tract-hir = { path = "../../hir", version = "=0.19.0-pre" }
+tract-pulse = { path = "../../pulse", version = "=0.19.0-pre" }
+tract-onnx = { path = "../../onnx", version = "=0.19.0-pre" }
+tract-onnx-opl = { path = "../../onnx-opl", version = "=0.19.0-pre" }
 
 [dev-dependencies]
 log.workspace = true
