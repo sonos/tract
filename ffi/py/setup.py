@@ -4,6 +4,7 @@ import toml
 import re
 
 version = toml.load("../Cargo.toml")["package"]["version"]
+version = re.sub("\-alpha\.", "a", version)
 version = re.sub("\-.*", ".dev", version)
 
 with open('../../README.md', 'r') as file:
