@@ -80,32 +80,36 @@ pub fn tile(
     Ok(Some(invocation("tile", &[wire], &[("repeats", tdims(&op.multipliers))])))
 }
 
+pub fn pad_mode(mode: &ops::array::PadMode, dt: DatumType) -> TractResult<(&str, Option<RValue>)> {
+    use ops::array::PadMode;
+    Ok(match &mode {
+        PadMode::Constant(c) => (
+            "constant",
+            Some(if dt.is_float() {
+                numeric(c.cast_to_scalar::<f32>()?)
+            } else {
+                numeric(c.cast_to_scalar::<i64>()?)
+            }),
+        ),
+        PadMode::Reflect => ("reflect", None),
+        PadMode::Edge => ("replicated", None),
+    })
+}
+
 pub fn pad(
     ast: &mut IntoAst,
     node: &TypedNode,
     op: &ops::array::Pad,
 ) -> TractResult<Option<Arc<RValue>>> {
-    use ops::array::PadMode;
     let wire = ast.mapping[&node.inputs[0]].clone();
     let dt = ast.model.outlet_fact(node.inputs[0])?.datum_type;
     let padding = array(&op.pads.iter().map(|pair| ints(&[pair.0, pair.1])).collect::<TVec<_>>());
     let mut params = tvec!(("padding", padding));
-    let border = match &op.mode {
-        PadMode::Constant(c) => {
-            params.push((
-                "value",
-                if dt.is_float() {
-                    numeric(c.cast_to_scalar::<f32>()?)
-                } else {
-                    numeric(c.cast_to_scalar::<i64>()?)
-                },
-            ));
-            "constant"
-        }
-        PadMode::Reflect => "reflect",
-        PadMode::Edge => "replicated",
-    };
+    let (border, value) = pad_mode(&op.mode, dt)?;
     params.push(("border", string(border)));
+    if let Some(value) = value {
+        params.push(("value", value));
+    }
     Ok(Some(invocation("pad", &[wire], &params)))
 }
 

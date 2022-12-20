@@ -1,7 +1,66 @@
 use tract_core::ndarray::*;
 use tract_core::ops::array::PadMode;
 use tract_nnef::internal::*;
+use tract_nnef::ser::tdim;
 use tract_nnef::tract_core::ops::OpStateFreeze;
+
+pub fn register(registry: &mut Registry) {
+    registry.register_primitive(
+        "tract_pulse_pulse_pad",
+        &[
+            TypeName::Scalar.tensor().named("input"),
+            TypeName::Integer.named("axis"),
+            TypeName::Integer.named("before"),
+            TypeName::Integer.named("after"),
+            TypeName::Integer.named("begin_input"),
+            TypeName::Integer.named("end_input"),
+            TypeName::String.named("border"),
+            TypeName::Scalar.named("value"),
+            TypeName::Integer.named("overlap"),
+        ],
+        &[("output", TypeName::Scalar.tensor())],
+        deser,
+    );
+    registry.register_dumper(TypeId::of::<PulsePad>(), ser)
+}
+
+fn ser(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
+    let op = node.op_as::<PulsePad>().unwrap();
+    let wire = ast.mapping[&node.inputs[0]].clone();
+    let dt = ast.model.outlet_fact(node.inputs[0])?.datum_type;
+    let (border, value) = tract_nnef::ops::nnef::ser::pad_mode(&op.mode, dt)?;
+    let mut params = vec![
+        ("axis", numeric(op.axis)),
+        ("before", numeric(op.before)),
+        ("begin_input", numeric(op.begin_input)),
+        ("overlap", numeric(&op.overlap)),
+        ("after", tdim(&op.after)),
+        ("end_input", tdim(&op.end_input)),
+    ];
+    params.push(("border", string(border)));
+    if let Some(value) = value {
+        params.push(("value", value));
+    }
+    Ok(Some(invocation("tract_pulse_pulse_pad", &[wire], &params)))
+}
+
+fn deser(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
+    let wire = invocation.named_arg_as(builder, "input")?;
+    let axis = invocation.named_arg_as(builder, "axis")?;
+    let before = invocation.named_arg_as(builder, "before")?;
+    let begin_input = invocation.named_arg_as(builder, "begin_input")?;
+    let overlap = invocation.named_arg_as(builder, "overlap")?;
+    let border = invocation.named_arg_as::<String>(builder, "border")?;
+    let value: Tensor = tensor0(invocation.named_arg_as::<f32>(builder, "value")?);
+    builder.allow_new_symbol = true;
+    let after = invocation.named_arg_as(builder, "after")?;
+    let end_input = invocation.named_arg_as(builder, "end_input")?;
+    builder.allow_new_symbol = false;
+
+    let mode = tract_nnef::ops::nnef::deser::pad_mode(&border, value)?;
+    let op = PulsePad { axis, before, after, begin_input, end_input, mode, overlap };
+    builder.wire(op, &[wire])
+}
 
 #[derive(Debug, Clone, Default, Hash)]
 struct PulsePadOpState {
