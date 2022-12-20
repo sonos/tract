@@ -211,7 +211,7 @@ pub fn tile(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Trac
 }
 
 pub fn pad_mode(border: &str, value: Tensor) -> TractResult<tract_core::ops::array::PadMode> {
-    Ok(match &*border {
+    Ok(match border {
         "constant" => PadMode::Constant(value.into_arc_tensor()),
         "replicated" => PadMode::Edge,
         "reflect" => PadMode::Reflect,
