@@ -33,7 +33,7 @@ fn ser(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> 
         ("axis", numeric(op.axis)),
         ("before", numeric(op.before)),
         ("begin_input", numeric(op.begin_input)),
-        ("overlap", numeric(&op.overlap)),
+        ("overlap", numeric(op.overlap)),
         ("after", tdim(&op.after)),
         ("end_input", tdim(&op.end_input)),
     ];
