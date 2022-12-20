@@ -37,5 +37,6 @@ pub fn tract_nnef_registry() -> Registry {
     let mut reg = Registry::new("tract_pulse");
     reg.aliases.push("pulse".to_string());
     delay::register(&mut reg);
+    pad::register(&mut reg);
     reg
 }

@@ -1,6 +1,7 @@
 use crate::ast::*;
 use crate::deser::Value;
 use tract_core::internal::*;
+use tract_core::ops::array::PadMode;
 use tract_core::ops::cnn::deconv::adjustments;
 use tract_core::ops::cnn::PaddingSpec;
 use tract_core::ops::cnn::PoolSpec;
@@ -209,20 +210,24 @@ pub fn tile(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Trac
     builder.wire(ops::array::Tile { multipliers }, &wire)
 }
 
+pub fn pad_mode(border: &str, value: Tensor) -> TractResult<tract_core::ops::array::PadMode> {
+    Ok(match &*border {
+        "constant" => PadMode::Constant(value.into_arc_tensor()),
+        "replicated" => PadMode::Edge,
+        "reflect" => PadMode::Reflect,
+        _ => bail!("unsupported padding mode {}", border),
+    })
+}
+
 // fragment pad( input: tensor<scalar>, padding: (integer, integer)[], border: string = 'constant', value: scalar = 0.0 ) -> ( output: tensor<scalar> );
 pub fn pad(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
-    use tract_core::ops::array::{Pad, PadMode};
+    use tract_core::ops::array::Pad;
     let wire = tvec!(invocation.named_arg_as(builder, "input")?);
     let padding: TVec<TVec<usize>> = invocation.named_arg_as(builder, "padding")?;
     let padding: Vec<(usize, usize)> = padding.iter().map(|a| (a[0], a[1])).collect();
     let value: Tensor = tensor0(invocation.named_arg_as::<f32>(builder, "value")?);
     let border: String = invocation.named_arg_as(builder, "border")?;
-    let mode = match &*border {
-        "constant" => PadMode::Constant(value.into_arc_tensor()),
-        "replicated" => PadMode::Edge,
-        "reflect" => PadMode::Reflect,
-        _ => bail!("unsupported padding mode {}", border),
-    };
+    let mode = pad_mode(&border, value)?;
     builder.wire(Pad { pads: padding, mode }, &wire)
 }
 
@@ -654,8 +659,7 @@ pub fn stack(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
 
     for value in &mut values {
         // add unsqueeze
-        *value =
-            builder.wire_as_outlets(ops::change_axes::AxisOp::Add(axis), &[*value])?[0];
+        *value = builder.wire_as_outlets(ops::change_axes::AxisOp::Add(axis), &[*value])?[0];
     }
 
     builder.wire(ops::array::TypedConcat::new(axis), &values)
@@ -679,8 +683,8 @@ pub fn unstack(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> T
             let end = (start_int + 1).to_dim();
             let sliced_wire = builder
                 .wire_as_outlets(tract_core::ops::array::Slice { axis, start, end }, &wire)?;
-            let squeezed_wire = builder
-                .wire_as_outlets(ops::change_axes::AxisOp::Rm(axis), &sliced_wire)?;
+            let squeezed_wire =
+                builder.wire_as_outlets(ops::change_axes::AxisOp::Rm(axis), &sliced_wire)?;
             Ok(squeezed_wire[0])
         })
         .collect::<TractResult<TVec<_>>>()

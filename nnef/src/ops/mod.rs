@@ -1,7 +1,7 @@
 use crate::internal::*;
 
 pub(super) mod core;
-pub(super) mod nnef;
+pub mod nnef;
 pub(super) mod resource;
 
 pub use nnef::tract_nnef;
