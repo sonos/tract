@@ -206,42 +206,9 @@ impl DepthWise {
         c: isize,
         visitor: &ZoneScanner,
     ) {
-        let mut sum = *bias.offset(c);
-        let mut iter = visitor.valid_offsets_ker_in();
-        if iter.size_hint() == (4, Some(4)) {
-            let (ix, v) = iter.next().unwrap();
-            let k0 = *kptr.add(ix);
-            let i0 = *iptr.offset(v);
-            let (ix, v) = iter.next().unwrap();
-            let k1 = *kptr.add(ix);
-            let i1 = *iptr.offset(v);
-            let (ix, v) = iter.next().unwrap();
-            let k2 = *kptr.add(ix);
-            let i2 = *iptr.offset(v);
-            let (ix, v) = iter.next().unwrap();
-            let k3 = *kptr.add(ix);
-            let i3 = *iptr.offset(v);
-            sum = sum + k0 * i0 + k1 * i1 + k2 * i2 + k3 * i3;
-        } else if iter.size_hint() == (3, Some(3)) {
-            let (ix, v) = iter.next().unwrap();
-            let k0 = *kptr.add(ix);
-            let i0 = *iptr.offset(v);
-            let (ix, v) = iter.next().unwrap();
-            let k1 = *kptr.add(ix);
-            let i1 = *iptr.offset(v);
-            let (ix, v) = iter.next().unwrap();
-            let k2 = *kptr.add(ix);
-            let i2 = *iptr.offset(v);
-            sum = sum + k0 * i0 + k1 * i1 + k2 * i2;
-        } else {
-            for (ix, v) in iter {
-                let k = *kptr.add(ix);
-                let i = *iptr.offset(v);
-                sum = sum + k * i;
-            }
-        }
         let optr = optr.offset(visitor.output_offset);
-        *optr = sum;
+        *optr = *bias.offset(c);
+        tract_linalg::generic::dot::dotprod(optr, iptr, kptr, &visitor.zone.values_offsets, visitor.input_center_offset);
     }
 }
 

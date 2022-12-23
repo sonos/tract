@@ -1,3 +1,4 @@
+pub mod dot;
 pub mod lut;
 pub mod mmm;
 pub mod rounding;
