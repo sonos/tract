@@ -208,7 +208,11 @@ impl DepthWise {
     ) {
         let optr = optr.offset(visitor.output_offset);
         *optr = *bias.offset(c);
-        tract_linalg::generic::dot::dotprod(optr, iptr, kptr, &visitor.zone.values_offsets, visitor.input_center_offset);
+        
+        match T::datum_type() {
+            DatumType::F16 => { (tract_linalg::ops().dot_offsets_f16)()(optr as *mut f16, iptr as *const f16, kptr as *const f16, &visitor.zone.values_offsets, visitor.input_center_offset); }
+            _ => { tract_linalg::generic::dot::dotprod(optr, iptr, kptr, &visitor.zone.values_offsets, visitor.input_center_offset); }
+        }
     }
 }
 

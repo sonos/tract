@@ -78,6 +78,15 @@ fn main() {
     let suffix = env!("CARGO_PKG_VERSION").replace('-', "_").replace('.', "_");
     make_extern_kernel_decl_macro(&out_dir, &suffix);
 
+    // Build provided C files, allowing clang/llvm to handle platform specifics
+    // This is useful for situations that Rust doesn't support well (i.e. _Float16)
+    let f16cfiles = ["c/dot_f16.c"];
+    cc::Build::new()
+        .files(f16cfiles)
+        .flag("-fvectorize")
+        .static_flag(true)
+        .compile("f16c");
+
     match arch.as_ref() {
         "x86_64" => {
             let files = preprocess_files("x86_64/fma", &[], &suffix, false);
