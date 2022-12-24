@@ -83,7 +83,6 @@ fn main() {
     let f16cfiles = ["c/dot_f16.c"];
     cc::Build::new()
         .files(f16cfiles)
-        .flag("-fvectorize")
         .static_flag(true)
         .compile("f16c");
 
