@@ -103,7 +103,24 @@ fn plug_avx512f(ops: &mut Ops) {
         }
     });
     log::info!("mmmv_f32: x86_64/avx512f activated");
+
+    ops.mmm_f32 = Box::new(|_,_,n| {
+        if n.is_none() {
+            return mmm::avx512_mmm_f32_16x8::mmm();
+        }
+
+        let n = n.unwrap();
+
+        if n <= 8 {
+            mmm::avx512_mmm_f32_16x8::mmm()
+        }
+        else {
+            mmm::avx512_mmm_f32_16x12::mmm()
+        }
+    });
+    log::info!("mmm_f32: x86_64/avx512f activated");
 }
+
 
 pub fn plug(ops: &mut Ops) {
     if is_x86_feature_detected!("avx2") {
