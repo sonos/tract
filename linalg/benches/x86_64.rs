@@ -75,6 +75,14 @@ jnz 2b
 	};
 }
 
+unsafe fn packed_packed_1x12(f: Option<&str>) {
+    println!("-- 1x12 kernels");
+    if std::is_x86_feature_detected!("avx512f") {
+        kloop!(f, "1x12x1", (16 * 12), "../avx512/1x12/packed_packed_loop1/avx-512.tmpli", 16);
+    }
+    println!("");
+}
+
 unsafe fn packed_packed_1x8(f: Option<&str>) {
     println!("-- 1x8 kernels");
     kloop!(f, "1x8x1", (8 * 8), "8x8/packed_packed_loop1/avx.tmpli", 8);
@@ -192,6 +200,7 @@ fn main() {
     let filter = std::env::args().skip(1).find(|a| a != "--bench");
     unsafe {
         packed_packed_1x1(filter.as_deref());
+        packed_packed_1x12(filter.as_deref());
         packed_packed_1x8(filter.as_deref());
         packed_packed_2x6(filter.as_deref());
         packed_packed_2x5(filter.as_deref());
