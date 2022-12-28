@@ -91,6 +91,19 @@ impl TypedOp for MultiBroadcastTo {
         target.wire_node(&node.name, op, &[input])
     }
 
+    fn declutter(
+            &self,
+            model: &TypedModel,
+            node: &TypedNode,
+        ) -> TractResult<Option<TypedModelPatch>> {
+        let input_fact = model.outlet_fact(node.inputs[0])?;
+        if input_fact.shape == self.shape {
+            Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
+        } else {
+            Ok(None)
+        }
+    }
+
     as_op!();
 }
 

@@ -55,11 +55,23 @@ fn dump(_ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>
     match &op.dist {
         Dist::Uniform { low, high } => {
             named.push(("dist", string("uniform")));
-            named.push(("parameters", array(&[numeric(low), numeric(high)])));
+            named.push((
+                "parameters",
+                array(&[
+                    numeric(low.cast_to_scalar::<f32>()?),
+                    numeric(high.cast_to_scalar::<f32>()?),
+                ]),
+            ));
         }
         Dist::Normal { mean, dev } => {
             named.push(("dist", string("uniform")));
-            named.push(("parameters", array(&[numeric(mean), numeric(dev)])));
+            named.push((
+                "parameters",
+                array(&[
+                    numeric(mean.cast_to_scalar::<f32>()?),
+                    numeric(dev.cast_to_scalar::<f32>()?),
+                ]),
+            ));
         }
     }
     Ok(Some(invocation("tract_onnx_random", &[], &named)))

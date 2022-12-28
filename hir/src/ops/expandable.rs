@@ -42,6 +42,10 @@ pub trait Expansion:
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult;
+
+    fn is_stateless(&self) -> bool {
+        true
+    }
 }
 
 tract_core::dyn_clone::clone_trait_object!(Expansion);
@@ -73,7 +77,7 @@ impl Op for Box<dyn Expansion> {
 
 impl EvalOp for Box<dyn Expansion> {
     fn is_stateless(&self) -> bool {
-        true
+        self.as_ref().is_stateless()
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
