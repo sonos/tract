@@ -33,7 +33,7 @@ fi
 
 export CACHEDIR
 
-opset=onnx_"${1:-1_9_0}"
+opset=onnx_"${1:-1_13_0}"
 
 cd harness/onnx-test-suite
 cargo -q test $CARGO_EXTRA -q --no-default-features --profile opt-no-lto --features $opset
