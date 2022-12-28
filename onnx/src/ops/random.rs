@@ -20,13 +20,13 @@ pub fn random(
 
     let dist = if node.name.starts_with("RandomNormal") {
         Dist::Normal {
-            mean: tensor0(node.get_attr::<f32>("mean").unwrap_or(0.0)),
-            dev: tensor0(node.get_attr::<f32>("scale").unwrap_or(1.0)),
+            mean: rctensor0(node.get_attr::<f32>("mean").unwrap_or(0.0)),
+            dev: rctensor0(node.get_attr::<f32>("scale").unwrap_or(1.0)),
         }
     } else {
         Dist::Uniform {
-            low: tensor0(node.get_attr::<f32>("low").unwrap_or(0.0)),
-            high: tensor0(node.get_attr::<f32>("high").unwrap_or(1.0)),
+            low: rctensor0(node.get_attr::<f32>("low").unwrap_or(0.0)),
+            high: rctensor0(node.get_attr::<f32>("high").unwrap_or(1.0)),
         }
     };
 

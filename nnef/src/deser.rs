@@ -254,7 +254,7 @@ impl<'mb> ModelBuilder<'mb> {
             }
         }
         name
-    } 
+    }
 
     pub fn wire_as_outlets(
         &mut self,
@@ -321,6 +321,21 @@ impl<'a> ResolvedInvocation<'a> {
             }
         }
         None
+    }
+
+    pub fn get_named_arg_as<T>(
+        &self,
+        builder: &mut ModelBuilder,
+        name: &str,
+    ) -> TractResult<Option<T>>
+    where
+        T: CoerceFrom<Value>,
+    {
+        let Some(rv) = self.get_named_arg(name) else { return Ok(None) };
+        let v = rv
+            .resolve(builder, &[])
+            .with_context(|| format!("Resolving argument `{}' ({:?})", name, rv))?;
+        v.to::<T>(builder).with_context(|| format!("Converting argument `{}' from {:?}", name, v)).map(Some)
     }
 }
 
@@ -579,13 +594,26 @@ impl CoerceFrom<Value> for OutletId {
     }
 }
 
+impl CoerceFrom<Value> for u64 {
+    fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
+        match from {
+            Value::Dim(d) => Ok(d.to_i64()? as u64),
+            Value::Tensor(t) => Ok(t.cast_to_scalar::<u64>()?),
+            Value::Wire(_) => {
+                Ok(from.to::<Arc<Tensor>>(builder)?.cast_to_scalar::<u64>()?)
+            }
+            _ => bail!("Can not build a u64 from {:?}", from),
+        }
+    }
+}
+
 impl CoerceFrom<Value> for i64 {
     fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         match from {
             Value::Dim(d) => d.to_i64(),
             Value::Tensor(t) => Ok(*t.to_scalar::<i64>()?),
             Value::Wire(_) => {
-                Ok(*from.to::<Arc<Tensor>>(builder)?.cast_to::<i64>()?.to_scalar::<i64>()?)
+                Ok(from.to::<Arc<Tensor>>(builder)?.cast_to_scalar::<i64>()?)
             }
             _ => bail!("Can not build a i64 from {:?}", from),
         }
