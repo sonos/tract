@@ -55,6 +55,14 @@ impl Expansion for Random {
         "Random".into()
     }
 
+    fn validation(&self) -> Validation {
+        Validation::Random
+    }
+
+    fn is_stateless(&self) -> bool {
+        false
+    }
+
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -101,6 +109,14 @@ impl_dyn_hash!(RandomLike);
 impl Expansion for RandomLike {
     fn name(&self) -> Cow<str> {
         "RandomLike".into()
+    }
+
+    fn validation(&self) -> Validation {
+        Validation::Random
+    }
+
+    fn is_stateless(&self) -> bool {
+        false
     }
 
     fn rules<'r, 'p: 'r, 's: 'r>(
