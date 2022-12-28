@@ -1,12 +1,14 @@
-use crate::ops::OnnxOpRegister;
 use crate::model::ParsingContext;
+use crate::ops::OnnxOpRegister;
 use crate::pb::*;
 use tract_hir::internal::*;
 use tract_onnx_opl::random::Dist;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("RandomUniform", random);
+    reg.insert("RandomUniformLike", random);
     reg.insert("RandomNormal", random);
+    reg.insert("RandomNormalLike", random);
 }
 
 pub fn random(
@@ -29,8 +31,7 @@ pub fn random(
     };
 
     if node.name.ends_with("Like") {
-        todo!();
-        // Ok((expand(Random { dt, dist, shape }), vec![]))
+        Ok((expand(RandomLike { dt, dist, seed }), vec![]))
     } else {
         let shape = node.get_attr_slice::<i64>("shape")?.iter().map(|i| i.to_dim()).collect();
         Ok((expand(Random { dt: dt.unwrap_or(f32::datum_type()), dist, shape, seed }), vec![]))
@@ -79,6 +80,62 @@ impl Expansion for Random {
             tract_onnx_opl::random::Random {
                 dist: self.dist.clone(),
                 fact: self.dt.fact(&self.shape),
+                seed: self.seed.map(|f| f.to_bits() as u64),
+            },
+            &[],
+        )
+    }
+}
+
+#[derive(Debug, Clone, Educe)]
+#[educe(Hash)]
+struct RandomLike {
+    dt: Option<DatumType>,
+    dist: Dist,
+    #[educe(Hash(method = "hash_opt_f32"))]
+    seed: Option<f32>,
+}
+
+impl_dyn_hash!(RandomLike);
+
+impl Expansion for RandomLike {
+    fn name(&self) -> Cow<str> {
+        "RandomLike".into()
+    }
+
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        s: &mut Solver<'r>,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
+    ) -> InferenceResult {
+        check_input_arity(inputs, 1)?;
+        check_output_arity(outputs, 1)?;
+
+        s.equals(&outputs[0].shape, &inputs[0].shape)?;
+        if let Some(dt) = self.dt {
+            s.equals(&outputs[0].datum_type, dt)?;
+        } else {
+            s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
+        }
+        Ok(())
+    }
+
+    fn wire(
+        &self,
+        prefix: &str,
+        model: &mut TypedModel,
+        inputs: &[OutletId],
+    ) -> TractResult<TVec<OutletId>> {
+        let mut fact = model.outlet_fact(inputs[0])?.without_value();
+        if let Some(dt) = self.dt {
+            fact.datum_type = dt;
+        }
+        model.wire_node(
+            prefix,
+            tract_onnx_opl::random::Random {
+                dist: self.dist.clone(),
+                fact,
                 seed: self.seed.map(|f| f.to_bits() as u64),
             },
             &[],
