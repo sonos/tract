@@ -21,8 +21,11 @@ onnx_1_6_0 = []
 onnx_1_7_0 = []
 onnx_1_8_1 = []
 onnx_1_9_0 = []
-onnx_1_10_1 = []
-default = [ "onnx_1_10_1" ]
+onnx_1_10_2 = []
+onnx_1_11_0 = []
+onnx_1_12_0 = []
+onnx_1_13_0 = []
+default = [ "onnx_1_13_0" ]
 
 [dev-dependencies]
 env_logger.workspace = true
