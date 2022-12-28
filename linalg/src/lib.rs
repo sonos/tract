@@ -56,6 +56,7 @@ pub struct Ops {
     pub sigmoid_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32>> + Send + Sync>,
     pub tanh_f16: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f16>> + Send + Sync>,
     pub tanh_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32>> + Send + Sync>,
+    pub erf_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32>> + Send + Sync>,
     pub lut_u8: Box<dyn Fn(&[u8]) -> Box<dyn lut::Lut> + Send + Sync>,
 }
 
@@ -110,6 +111,7 @@ pub fn generic() -> Ops {
         sigmoid_f32: Box::new(|| generic::SSigmoid4::ew()),
         tanh_f16: Box::new(|| generic::HTanh8::ew()),
         tanh_f32: Box::new(|| generic::STanh4::ew()),
+        erf_f32: Box::new(|| generic::SErf4::ew()),
         lut_u8: Box::new(|table: &[u8]| Box::new(lut::LutImpl::<generic::GenericLut8>::new(table))),
     }
 }
