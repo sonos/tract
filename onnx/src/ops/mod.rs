@@ -11,12 +11,13 @@ mod einsum;
 mod logic;
 mod math;
 mod ml;
+pub mod multinomial;
 mod nn;
+mod non_max_suppression;
 mod quant;
+mod random;
 pub mod rec;
 mod resize;
-mod non_max_suppression;
-pub mod multinomial;
 mod s2d;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
@@ -35,6 +36,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     ml::register_all_ops(reg);
     nn::register_all_ops(reg);
     quant::register_all_ops(reg);
+    random::register_all_ops(reg);
     rec::register_all_ops(reg);
     s2d::register_all_ops(reg);
 }

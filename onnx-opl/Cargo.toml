@@ -17,6 +17,7 @@ maintenance = { status = "actively-developed" }
 educe.workspace = true
 log.workspace = true
 rand.workspace = true
+rand_distr.workspace = true
 getrandom.workspace = true
 tract-nnef = { version = "=0.19.0-pre", path = "../nnef" }
 
