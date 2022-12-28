@@ -118,10 +118,7 @@ impl EvalOp for Random {
         _session: &mut SessionState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
-        let rng = self
-            .seed
-            .map(|s| SmallRng::seed_from_u64(s))
-            .unwrap_or_else(|| SmallRng::from_entropy());
+        let rng = self.seed.map(SmallRng::seed_from_u64).unwrap_or_else(SmallRng::from_entropy);
         Ok(Some(Box::new(RandomState(rng))))
     }
 }
