@@ -5,24 +5,70 @@ use rand::SeedableRng;
 use rand_distr::num_traits::Float;
 use rand_distr::StandardNormal;
 use tract_nnef::internal::*;
+use tract_nnef::ser::{array, tdims};
 use tract_nnef::tract_core::trivial_op_state_freeeze;
 
 pub fn register(registry: &mut Registry) {
-    /*
     registry.register_primitive(
-    "tract_onnx_multinomial",
-    &parameters(),
-    &[("output", TypeName::Scalar.tensor())],
-    load
+        "tract_onnx_random",
+        &[
+            TypeName::String.named("datum_type"),
+            TypeName::Integer.array().named("shape"),
+            TypeName::String.named("dist"),
+            TypeName::Scalar.array().named("parameters"),
+            TypeName::Integer.named("seed"),
+        ],
+        &[("output", TypeName::Scalar.tensor())],
+        load,
     );
-    registry.register_dumper(TypeId::of::<Multinomial>(), dump);
-    */
+    registry.register_dumper(TypeId::of::<Random>(), dump);
+}
+
+fn load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
+    let dt: DatumType = invocation.named_arg_as::<String>(builder, "datum_type")?.parse()?;
+    let shape: TVec<TDim> = invocation.named_arg_as(builder, "shape")?;
+    let fact = dt.fact(&shape);
+    let dist: String = invocation.named_arg_as(builder, "dist")?;
+    let parameters: TVec<Arc<Tensor>> = invocation.named_arg_as(builder, "parameters")?;
+    let [p1, p2] = &*parameters else {
+        bail!("Random expect two parameters")
+    };
+    let dist = match &*dist {
+        "normal" => Dist::Normal { mean: p1.clone(), dev: p2.clone() },
+        "uniform" => Dist::Uniform { low: p1.clone(), high: p2.clone() },
+        _ => bail!("Unexpected distribution {}", dist),
+    };
+    let seed = invocation.get_named_arg_as(builder, "seed")?;
+    let op = Random { fact, dist, seed };
+    builder.wire(op, &[])
+}
+
+fn dump(_ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
+    let op = node.op_as::<Random>().context("wrong op")?;
+    let mut named = vec![
+        ("datum_type", string(format!("{:?}", op.fact.datum_type))),
+        ("shape", tdims(&op.fact.shape)),
+    ];
+    if let Some(seed) = op.seed {
+        named.push(("seed", numeric(seed)));
+    }
+    match &op.dist {
+        Dist::Uniform { low, high } => {
+            named.push(("dist", string("uniform")));
+            named.push(("parameters", array(&[numeric(low), numeric(high)])));
+        }
+        Dist::Normal { mean, dev } => {
+            named.push(("dist", string("uniform")));
+            named.push(("parameters", array(&[numeric(mean), numeric(dev)])));
+        }
+    }
+    Ok(Some(invocation("tract_onnx_random", &[], &named)))
 }
 
 #[derive(Debug, Clone, Hash)]
 pub enum Dist {
-    Uniform { low: Tensor, high: Tensor },
-    Normal { mean: Tensor, dev: Tensor },
+    Uniform { low: Arc<Tensor>, high: Arc<Tensor> },
+    Normal { mean: Arc<Tensor>, dev: Arc<Tensor> },
 }
 
 #[derive(Debug, Clone, Hash)]
