@@ -34,7 +34,7 @@ pub fn random(
         Ok((expand(RandomLike { dt, dist, seed }), vec![]))
     } else {
         let shape = node.get_attr_slice::<i64>("shape")?.iter().map(|i| i.to_dim()).collect();
-        Ok((expand(Random { dt: dt.unwrap_or(f32::datum_type()), dist, shape, seed }), vec![]))
+        Ok((expand(Random { dt: dt.unwrap_or(DatumType::F32), dist, shape, seed }), vec![]))
     }
 }
 
