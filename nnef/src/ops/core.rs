@@ -18,6 +18,7 @@ mod source;
 
 pub fn register(registry: &mut Registry) {
     registry.register_unit_element_wise("tract_core_round_even", &ops::math::RoundHalfToEven {});
+    registry.register_unit_element_wise("tract_core_erf", &ops::math::Erf {});
 
     registry.register_binary("tract_core_xor", &ops::logic::Xor {});
 

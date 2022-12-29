@@ -547,6 +547,11 @@ element_wise!(tanh, Tanh,
  cost: |dt| {tvec!((Cost::FMA(dt), 11), (Cost::Div(dt), 1))}
 );
 
+element_wise!(erf, Erf,
+ [f32] => |_, xs| { (tract_linalg::ops().erf_f32)().run(xs) };
+ cost: |dt| {tvec!((Cost::FMA(dt), 11), (Cost::Div(dt), 1))}
+);
+
 element_wise!(acosh, Acosh, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.acosh());
     Ok(())

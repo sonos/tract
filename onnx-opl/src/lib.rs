@@ -7,7 +7,6 @@ extern crate log;
 use tract_nnef::internal::*;
 
 pub mod einsum;
-pub mod erf;
 pub mod is_inf;
 pub mod is_nan;
 pub mod lrn;
@@ -34,7 +33,6 @@ fn onnx_opl_registry() -> Registry {
     non_max_suppression::register(&mut registry);
     multinomial::register(&mut registry);
     random::register(&mut registry);
-    registry.register_unit_element_wise("tract_onnx_erf", &erf::Erf {});
     registry.register_element_wise(
         "tract_onnx_isinf",
         TypeId::of::<is_inf::IsInf>(),
