@@ -236,9 +236,9 @@ impl Onnx {
         let graph =
             proto.graph.as_ref().ok_or_else(|| anyhow!("model proto does not contain a graph"))?;
         debug!("ONNX operator set version: {:?}", onnx_operator_set_version);
-        if onnx_operator_set_version != 0 && !(9..14).contains(&onnx_operator_set_version) {
-            warn!("ONNX operator for your model is {}, tract is tested against \
-                  operator set 9, 10, 11 and 12 only. Your model may still work so this is not a hard fail.",
+        if onnx_operator_set_version != 0 && !(9..19).contains(&onnx_operator_set_version) {
+            warn!("ONNX operator for your model is {}, tract is only tested against \
+                  operator set 9 to 18 (included). Your model may still work so this is not a hard fail.",
                   onnx_operator_set_version);
         }
         let ctx = ParsingContext {
