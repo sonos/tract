@@ -45,7 +45,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Asinh", |_, _| Ok((ops::math::asinh().into_hir(), vec![])));
     reg.insert("Atanh", |_, _| Ok((ops::math::atanh().into_hir(), vec![])));
 
-    reg.insert("Erf", |_, _| Ok((tract_onnx_opl::erf::erf().into_hir(), vec![])));
+    reg.insert("Erf", |_, _| Ok((ops::math::erf().into_hir(), vec![])));
     reg.insert("Exp", |_, _| Ok((ops::math::exp().into_hir(), vec![])));
     reg.insert("Log", |_, _| Ok((ops::math::ln().into_hir(), vec![])));
     reg.insert("Sqrt", |_, _| Ok((ops::math::sqrt().into_hir(), vec![])));
