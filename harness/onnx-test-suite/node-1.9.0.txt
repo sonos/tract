@@ -146,14 +146,14 @@ test_cos
 test_cos_example
 test_cosh
 test_cosh_example
-test_cumsum_1d not-nnef input:x
+test_cumsum_1d input:x
 test_cumsum_1d_exclusive not-nnef input:x
-test_cumsum_1d_reverse not-nnef input:x
+test_cumsum_1d_reverse input:x
 test_cumsum_1d_reverse_exclusive not-nnef input:x
 test_cumsum_2d not-nnef input:x
-test_cumsum_2d_axis_0 not-nnef input:x
-test_cumsum_2d_axis_1 not-nnef input:x
-test_cumsum_2d_negative_axis not-nnef input:x
+test_cumsum_2d_axis_0 input:x
+test_cumsum_2d_axis_1 input:x
+test_cumsum_2d_negative_axis input:x
 test_depthtospace_crd_mode
 test_depthtospace_crd_mode_example
 test_depthtospace_dcr_mode
