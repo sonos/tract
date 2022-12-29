@@ -7,11 +7,17 @@ pub(crate) fn reduce(
     node: &NodeProto,
     reducer: tract_hir::ops::nn::Reducer,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    if ctx.onnx_operator_set_version >= 13 && "ReduceSum" == node.op_type {
+    // this is crazy. sum changed semantics at opset 13, other reducers switched at 18!
+    if (ctx.onnx_operator_set_version >= 13 && "ReduceSum" == node.op_type)
+        || ctx.onnx_operator_set_version >= 18
+    {
         let have_axis_input = node.input.len() == 2;
         let keep_dims = node.get_attr_opt("keepdims")?.unwrap_or(1i64) == 1;
         let noop_with_empty_axes = node.get_attr_opt("noop_with_empty_axes")?.unwrap_or(0i64) == 1;
-        Ok((expand(ReduceSum13 { have_axis_input, keep_dims, noop_with_empty_axes, reducer }), vec![]))
+        Ok((
+            expand(ReduceSum13 { have_axis_input, keep_dims, noop_with_empty_axes, reducer }),
+            vec![],
+        ))
     } else {
         let axes = node.get_attr_opt_vec("axes")?;
         let keep_dims = node.get_attr_opt("keepdims")?.unwrap_or(1i64) == 1;
@@ -72,8 +78,7 @@ impl Expansion for ReduceSum13 {
             })
         } else {
             s.given(&inputs[0].rank, move |s, rank| {
-                let axes =
-                    if self.noop_with_empty_axes { vec![] } else { (0..rank).collect() };
+                let axes = if self.noop_with_empty_axes { vec![] } else { (0..rank).collect() };
                 let op = tract_hir::ops::nn::Reduce::new(
                     Some(axes.clone()),
                     self.keep_dims,
@@ -121,5 +126,4 @@ impl Expansion for ReduceSum13 {
         let op = tract_hir::ops::nn::Reduce::new(Some(axes), self.keep_dims, self.reducer);
         op.wire(prefix, model, &inputs[0..1])
     }
-
 }
