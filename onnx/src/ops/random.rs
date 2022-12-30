@@ -18,7 +18,7 @@ pub fn random(
     let dt: Option<DatumType> = node.get_attr_opt("dtype")?;
     let seed = node.get_attr_opt::<f32>("seed")?;
 
-    let dist = if node.name.starts_with("RandomNormal") {
+    let dist = if node.op_type.starts_with("RandomNormal") {
         Dist::Normal {
             mean: rctensor0(node.get_attr::<f32>("mean").unwrap_or(0.0)),
             dev: rctensor0(node.get_attr::<f32>("scale").unwrap_or(1.0)),
