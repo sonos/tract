@@ -64,7 +64,7 @@ fn dump(_ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>
             ));
         }
         Dist::Normal { mean, dev } => {
-            named.push(("dist", string("uniform")));
+            named.push(("dist", string("normal")));
             named.push((
                 "parameters",
                 array(&[
