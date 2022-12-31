@@ -1,7 +1,13 @@
+use std::ops::Mul;
+
 use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::NodeProto;
+use rustfft::num_traits::{Float, FromPrimitive};
+use rustfft::{FftDirection, FftNum};
 use tract_hir::internal::*;
 use tract_hir::ops::array::Pad;
+use tract_hir::ops::cast::cast;
+use tract_hir::ops::math::div;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("DFT", dft)
@@ -77,7 +83,7 @@ impl Expansion for OnnxDft {
         model: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let fact = model.outlet_fact(inputs[0])?;
+        let fact = model.outlet_fact(inputs[0])?.clone();
         let mut wire: TVec<OutletId> = inputs.into();
         if fact.shape.last() == Some(&1.to_dim()) {
             let mut pads = vec![(0, 0); fact.rank() - 1];
@@ -98,11 +104,21 @@ impl Expansion for OnnxDft {
             Fft { axis: self.axis, inverse: self.inverse },
             &wire,
         )?;
-        model.wire_node(
+        wire = model.wire_node(
             format!("{}.to_pair", prefix),
             tract_core::ops::math::ComplexToInnerDim,
             &wire,
-        )
+        )?;
+        if self.inverse {
+            let len = model.add_const(
+                format!("{}.len", prefix),
+                tensor0(fact.shape[self.axis].clone()).broadcast_into_rank(fact.rank())?,
+            )?;
+            let casted =
+                model.wire_node(format!("{}.cast", prefix), cast(fact.datum_type), &[len])?;
+            wire = model.wire_node(format!("{}.norm", prefix), div(), &[wire[0], casted[0]])?;
+        }
+        Ok(wire)
     }
 }
 
@@ -113,6 +129,39 @@ struct Fft {
 }
 
 impl_dyn_hash!(Fft);
+
+impl Fft {
+    fn eval_t<T: Datum + FftNum + FromPrimitive + Float>(
+        &self,
+        tensor: &mut Tensor,
+    ) -> TractResult<()>
+    where
+        Complex<T>: Datum + Mul<Complex<T>, Output = Complex<T>>,
+    {
+        let mut iterator_shape: TVec<usize> = tensor.shape().into();
+        iterator_shape[self.axis] = 1;
+        let len = tensor.shape()[self.axis];
+        let direction = if self.inverse { FftDirection::Inverse } else { FftDirection::Forward };
+        let fft = rustfft::FftPlanner::new().plan_fft(len, direction);
+        let mut array = tensor.to_array_view_mut::<Complex<T>>()?;
+        let mut v = Vec::with_capacity(len);
+        for coords in tract_ndarray::indices(&*iterator_shape) {
+            v.clear();
+            let mut slice = array.slice_each_axis_mut(|ax| {
+                if ax.axis.index() == self.axis {
+                    (..).into()
+                } else {
+                    let c = coords[ax.axis.index()] as isize;
+                    (c..=c).into()
+                }
+            });
+            v.extend(slice.iter().copied());
+            fft.process(&mut *v);
+            slice.iter_mut().zip(v.iter()).for_each(|(s, v)| *s = *v);
+        }
+        Ok(())
+    }
+}
 
 impl Op for Fft {
     fn name(&self) -> Cow<str> {
@@ -132,28 +181,13 @@ impl EvalOp for Fft {
     }
 
     fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let tensor = args_1!(inputs).into_tensor();
-        let mut iterator_shape: TVec<usize> = tensor.shape().into();
-        iterator_shape[self.axis] = 1;
-        let len = tensor.shape()[self.axis];
-        let fft = rustfft::FftPlanner::new().plan_fft_forward(len);
-        let mut v = Vec::with_capacity(len);
-        let mut array = tensor.into_array::<Complex<f32>>()?;
-        for coords in tract_ndarray::indices(&*iterator_shape) {
-            v.clear();
-            let mut slice = array.slice_each_axis_mut(|ax| {
-                if ax.axis.index() == self.axis {
-                    (..).into()
-                } else {
-                    let c = coords[ax.axis.index()] as isize;
-                    (c..=c).into()
-                }
-            });
-            v.extend(slice.iter().copied());
-            fft.process(&mut *v);
-            slice.iter_mut().zip(v.iter()).for_each(|(s, v)| *s = *v);
+        let mut tensor = args_1!(inputs).into_tensor();
+        match tensor.datum_type() {
+            DatumType::ComplexF32 => self.eval_t::<f32>(&mut tensor)?,
+            DatumType::ComplexF64 => self.eval_t::<f64>(&mut tensor)?,
+            _ => bail!("FFT not implemented for type {:?}", tensor.datum_type()),
         }
-        Ok(tvec!(array.into_tensor().into_tvalue()))
+        Ok(tvec!(tensor.into_tvalue()))
     }
 }
 
