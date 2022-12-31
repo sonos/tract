@@ -3,6 +3,7 @@ use tract_core::ops;
 
 mod broadcast;
 mod cast;
+mod complex;
 mod downsample;
 mod gather;
 mod matmul;
@@ -26,6 +27,7 @@ pub fn register(registry: &mut Registry) {
     registry.register_binary("tract_shr", &ops::math::ShiftRight);
     broadcast::register(registry);
     cast::register(registry);
+    complex::register(registry);
     downsample::register(registry);
     gather::register(registry);
     matmul::register(registry);
