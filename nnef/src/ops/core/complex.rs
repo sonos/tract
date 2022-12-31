@@ -20,7 +20,6 @@ pub fn register(registry: &mut Registry) {
 }
 
 fn ser_ctid(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
-    let op = node.op().downcast_ref::<ops::math::ComplexToInnerDim>().unwrap();
     let wire = ast.mapping[&node.inputs[0]].clone();
     Ok(Some(invocation("tract_core_complex_to_inner_dim", &[wire], &[])))
 }
@@ -31,7 +30,6 @@ fn de_ctid(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
 }
 
 fn ser_idtc(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
-    let op = node.op().downcast_ref::<ops::math::InnerDimToComplex>().unwrap();
     let wire = ast.mapping[&node.inputs[0]].clone();
     Ok(Some(invocation("tract_core_inner_dim_to_complex", &[wire], &[])))
 }

@@ -8,6 +8,7 @@ mod cast;
 mod cumsum;
 mod d2s;
 mod einsum;
+mod fft;
 mod logic;
 mod math;
 mod ml;
@@ -31,6 +32,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     array::register_all_ops(reg);
     cumsum::register_all_ops(reg);
     d2s::register_all_ops(reg);
+    fft::register_all_ops(reg);
     logic::register_all_ops(reg);
     math::register_all_ops(reg);
     ml::register_all_ops(reg);
