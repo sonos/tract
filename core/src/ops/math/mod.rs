@@ -12,6 +12,9 @@ pub use tract_data::prelude::round_ties_to_even;
 use tract_linalg::{ScaleShiftAndRound, Scaler};
 use tract_num_traits::AsPrimitive;
 
+mod complex;
+pub use complex::{InnerDimToComplex, ComplexToInnerDim};
+
 bin_to_super_type!(add, Add,
                    declutter: declutter_add,
                    linalg: Add,
