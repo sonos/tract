@@ -21,7 +21,8 @@ pub mod prelude {
     pub use crate::dim::{Symbol, SymbolTable, SymbolValues, TDim, ToDim};
     pub use crate::tensor::litteral::*;
     pub use crate::tensor::{
-        natural_strides, reinterpret_inner_dim_as_complex, IntoArcTensor, IntoTensor, Tensor,
+        natural_strides, reinterpret_complex_as_inner_dim, reinterpret_inner_dim_as_complex,
+        IntoArcTensor, IntoTensor, Tensor,
     };
     pub use crate::tvec;
     pub use crate::TVec;
