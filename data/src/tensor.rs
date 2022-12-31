@@ -1364,6 +1364,15 @@ pub fn reinterpret_inner_dim_as_complex(mut t: Tensor) -> anyhow::Result<Tensor>
     }
 }
 
+pub fn reinterpret_complex_as_inner_dim(mut t: Tensor) -> anyhow::Result<Tensor> {
+    unsafe {
+        t.shape.push(2);
+        t.set_datum_type(t.datum_type().decomplexify()?);
+        t.update_strides_and_len();
+        Ok(t)
+    }
+}
+
 pub fn natural_strides(shape: &[usize]) -> TVec<isize> {
     let mut strides = tvec!();
     compute_natural_stride_to(&mut strides, shape);
