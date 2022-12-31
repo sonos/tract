@@ -218,6 +218,30 @@ impl DatumType {
         matches!(self, DatumType::ComplexI16 | DatumType::ComplexI32 | DatumType::ComplexI64)
     }
 
+    pub fn complexify(&self) -> anyhow::Result<DatumType> {
+        match *self {
+            DatumType::I16 => Ok(DatumType::ComplexI16),
+            DatumType::I32 => Ok(DatumType::ComplexI32),
+            DatumType::I64 => Ok(DatumType::ComplexI64),
+            DatumType::F16 => Ok(DatumType::ComplexF16),
+            DatumType::F32 => Ok(DatumType::ComplexF32),
+            DatumType::F64 => Ok(DatumType::ComplexF64),
+            _ => anyhow::bail!("No complex datum type formed on {:?}", self),
+        }
+    }
+
+    pub fn decomplexify(&self) -> anyhow::Result<DatumType> {
+        match *self {
+            DatumType::ComplexI16 => Ok(DatumType::I16),
+            DatumType::ComplexI32 => Ok(DatumType::I32),
+            DatumType::ComplexI64 => Ok(DatumType::I64),
+            DatumType::ComplexF16 => Ok(DatumType::F16),
+            DatumType::ComplexF32 => Ok(DatumType::F32),
+            DatumType::ComplexF64 => Ok(DatumType::F64),
+            _ => anyhow::bail!("{:?} is not a complex type", self),
+        }
+    }
+
     pub fn is_copy(&self) -> bool {
         *self == DatumType::Bool
             || self.is_unsigned()
