@@ -26,6 +26,7 @@ impl EvalOp for InnerDimToComplex {
 }
 
 impl TypedOp for InnerDimToComplex {
+    #[allow(clippy::into_iter_on_ref)]
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = inputs[0].without_value();
         if fact.shape.last() != Some(&2.to_dim()) {

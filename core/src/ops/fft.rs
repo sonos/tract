@@ -37,7 +37,7 @@ impl Fft {
                 }
             });
             v.extend(slice.iter().copied());
-            fft.process(&mut *v);
+            fft.process(&mut v);
             slice.iter_mut().zip(v.iter()).for_each(|(s, v)| *s = *v);
         }
         Ok(())

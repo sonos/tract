@@ -1,3 +1,4 @@
+#![allow(clippy::excessive_precision)]
 mod arm64simd;
 pub mod cortex_a53;
 mod cortex_a55;
@@ -27,7 +28,7 @@ const PART_A75: &str = "0xd0a";
 fn max_cpuid() -> std::io::Result<String> {
     let cpu_info = std::fs::read_to_string("/proc/cpuinfo")?;
     let max = cpu_info
-        .split("\n")
+        .lines()
         .filter(|line| line.starts_with("CPU part"))
         .map(|line| line.split_whitespace().last().unwrap_or(""))
         .max();
@@ -36,7 +37,7 @@ fn max_cpuid() -> std::io::Result<String> {
 
 #[inline]
 pub fn has_fp16() -> bool {
-    cfg!(feature_cpu="fp16")
+    cfg!(feature_cpu = "fp16")
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
@@ -70,32 +71,27 @@ impl Kind {
             } else {
                 Kind::Generic
             }
+        } else if cfg!(target_os = "macos") {
+            Kind::AppleM
         } else {
-            if cfg!(target_os = "macos") {
-                Kind::AppleM
+            let part = if let Ok(part) = std::env::var("TRACT_CPU_AARCH64_OVERRIDE_CPU_PART") {
+                log::info!("CPU part forced with TRACT_CPU_AARCH64_OVERRIDE_CPU_PART: {}", part);
+                part
+            } else if cfg!(target_os = "linux") {
+                let part = max_cpuid().unwrap_or_else(|_| "0x00".to_string());
+                log::info!("CPU part auto detected: {}", part);
+                part
             } else {
-                let part = if let Ok(part) = std::env::var("TRACT_CPU_AARCH64_OVERRIDE_CPU_PART") {
-                    log::info!(
-                        "CPU part forced with TRACT_CPU_AARCH64_OVERRIDE_CPU_PART: {}",
-                        part
-                    );
-                    part
-                } else if cfg!(target_os = "linux") {
-                    let part = max_cpuid().unwrap_or("0x00".to_string());
-                    log::info!("CPU part auto detected: {}", part);
-                    part
-                } else {
-                    log::info!("Unknown CPU part");
-                    "0x00".to_string()
-                };
-                match &*part {
-                    PART_A53 => Kind::CortexA53,
-                    PART_A55 => Kind::CortexA55,
-                    PART_A72 => Kind::CortexA72,
-                    PART_A73 => Kind::CortexA73,
-                    PART_A75 => Kind::CortexA75,
-                    _ => Kind::Generic,
-                }
+                log::info!("Unknown CPU part");
+                "0x00".to_string()
+            };
+            match &*part {
+                PART_A53 => Kind::CortexA53,
+                PART_A55 => Kind::CortexA55,
+                PART_A72 => Kind::CortexA72,
+                PART_A73 => Kind::CortexA73,
+                PART_A75 => Kind::CortexA75,
+                _ => Kind::Generic,
             }
         };
         log::info!("CPU optimisation: {:?}", kind);
