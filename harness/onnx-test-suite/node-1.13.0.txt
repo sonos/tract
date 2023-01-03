@@ -182,9 +182,9 @@ test_depthtospace_crd_mode_example
 test_depthtospace_dcr_mode
 test_depthtospace_example
 test_dequantizelinear                                                               input:x not-nnef
-test_dft not-nnef
-test_dft_axis not-nnef
-test_dft_inverse not-nnef
+test_dft
+test_dft_axis
+test_dft_inverse
 test_div
 test_div_bcast
 test_div_example
