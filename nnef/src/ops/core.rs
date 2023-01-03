@@ -5,6 +5,7 @@ mod broadcast;
 mod cast;
 mod complex;
 mod downsample;
+mod fft;
 mod gather;
 mod matmul;
 mod one_hot;
@@ -29,6 +30,7 @@ pub fn register(registry: &mut Registry) {
     cast::register(registry);
     complex::register(registry);
     downsample::register(registry);
+    fft::register(registry);
     gather::register(registry);
     matmul::register(registry);
     one_hot::register(registry);
