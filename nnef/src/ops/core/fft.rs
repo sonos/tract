@@ -1,31 +1,44 @@
 use crate::internal::*;
-use tract_core::ops::fft::Fft;
+use tract_core::ops::fft::{Fft, Stft};
 
 pub fn register(registry: &mut Registry) {
-    registry.register_dumper(TypeId::of::<Fft>(), dump);
+    registry.register_dumper(TypeId::of::<Fft>(), ser_fft);
     registry.register_primitive(
-        "tract_onnx_fft",
+        "tract_core_fft",
         &[
             TypeName::Scalar.tensor().named("input"),
             TypeName::Integer.named("axis"),
             TypeName::Logical.named("inverse"),
         ],
         &[("output", TypeName::Scalar.tensor())],
-        load,
+        de_fft,
+    );
+    registry.register_dumper(TypeId::of::<Stft>(), ser_stft);
+    registry.register_primitive(
+        "tract_core_stft",
+        &[
+            TypeName::Scalar.tensor().named("input"),
+            TypeName::Integer.named("axis"),
+            TypeName::Integer.named("frame"),
+            TypeName::Integer.named("stride"),
+            TypeName::Scalar.tensor().named("window").default(false),
+        ],
+        &[("output", TypeName::Scalar.tensor())],
+        de_stft,
     );
 }
 
-fn dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
+fn ser_fft(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
     let input = ast.mapping[&node.inputs[0]].clone();
     let op = node.op_as::<Fft>().context("wrong op")?;
     Ok(Some(invocation(
-        "tract_onnx_fft",
+        "tract_core_fft",
         &[input],
         &[("axis", numeric(op.axis)), ("inverse", logical(op.inverse))],
     )))
 }
 
-fn load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
+fn de_fft(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
     let axis: usize = invocation.named_arg_as(builder, "axis")?;
     let inverse: bool = invocation.named_arg_as(builder, "inverse")?;
@@ -33,3 +46,27 @@ fn load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractRes
     builder.wire(op, &[input])
 }
 
+fn ser_stft(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
+    let input = ast.mapping[&node.inputs[0]].clone();
+    let op = node.op_as::<Stft>().context("wrong op")?;
+    let mut named: TVec<(_, RValue)> = tvec![
+        ("axis", numeric(op.axis)),
+        ("frame", numeric(op.frame)),
+        ("stride", numeric(op.stride)),
+    ];
+    if let Some(w) = &op.window {
+        let w = ast.konst(format!("{}_window", node.name), w)?;
+        named.push(("window", (*w).clone()));
+    }
+    Ok(Some(invocation("tract_core_stft", &[input], &named)))
+}
+
+fn de_stft(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
+    let input = invocation.named_arg_as(builder, "input")?;
+    let axis: usize = invocation.named_arg_as(builder, "axis")?;
+    let frame: usize = invocation.named_arg_as(builder, "frame")?;
+    let stride: usize = invocation.named_arg_as(builder, "stride")?;
+    let window = invocation.named_arg_as::<Arc<Tensor>>(builder, "window").ok();
+    let op = Stft { axis, frame, stride, window };
+    builder.wire(op, &[input])
+}

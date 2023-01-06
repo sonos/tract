@@ -511,6 +511,12 @@ impl Mul<Exp<DimFact>> for i64 {
     }
 }
 
+impl IntoExp<DimFact> for GenericFactoid<TDim> {
+    fn bex(self) -> Exp<GenericFactoid<TDim>> {
+        ConstantExp(self).bex()
+    }
+}
+
 // Cast to dim
 
 pub trait ToDimExp {
