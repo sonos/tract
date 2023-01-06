@@ -195,9 +195,10 @@ impl EvalOp for Stft {
 
 impl TypedOp for Stft {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        if !inputs[0].datum_type.is_complex() {
+            bail!("Fft operators expect input in complex form");
+        }
         let mut shape = inputs[0].shape.to_tvec();
-        shape.pop();
-        shape.push(2.to_dim());
         let frames = (inputs[0].shape[self.axis].clone() - self.frame) / self.stride + 1;
         shape[self.axis] = frames;
         shape.insert(self.axis + 1, self.frame.to_dim());
