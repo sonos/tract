@@ -1,14 +1,16 @@
 use std::ops::ControlFlow;
 
+use tract_core::tract_data::itertools::Itertools;
+
 use crate::ast::*;
 use crate::internal::*;
 
 pub struct ModelBuilder<'a> {
     pub framework: &'a Nnef,
-    pub registries: Vec<String>,
+    pub registries: Vec<Identifier>,
     pub model: TypedModel,
-    pub naming_scopes: Vec<String>,
-    pub scopes: Vec<HashMap<String, Value>>,
+    pub naming_scopes: Vec<Identifier>,
+    pub scopes: Vec<HashMap<Identifier, Value>>,
     pub proto_model: &'a ProtoModel,
     pub symbols: Vec<Symbol>,
     pub allow_new_symbol: bool,
@@ -22,7 +24,7 @@ impl<'mb> ModelBuilder<'mb> {
     ) -> ModelBuilder<'mb> {
         let model = TypedModel { symbol_table: symbols.to_owned(), ..TypedModel::default() };
         ModelBuilder {
-            registries: vec!["tract_nnef".to_string()],
+            registries: vec!["tract_nnef".into()],
             framework,
             model,
             naming_scopes: vec![],
@@ -35,23 +37,23 @@ impl<'mb> ModelBuilder<'mb> {
 
     fn translate(&mut self) -> TractResult<()> {
         'ext: for ext in &self.proto_model.doc.extension {
-            match &*ext[0] {
+            match &*ext[0].0 {
                 "tract_registry" => {
                     if self.framework.registries.iter().any(|reg| reg.id == ext[1]) {
-                        self.registries.push(ext[1].to_string())
+                        self.registries.push(ext[1].clone())
                     } else if let Some(reg) =
                         self.framework.registries.iter().find(|reg| reg.aliases.contains(&ext[1]))
                     {
                         self.registries.push(reg.id.clone())
                     } else {
-                        bail!("Registry not found {}", &ext[1])
+                        bail!("Registry not found {:?}", &ext[1])
                     }
                 }
                 "tract_symbol" => {
                     if ext.len() != 2 {
                         bail!("tract_symbol expects symbol: example: \"extension tract_symbol S;\"")
                     }
-                    let symbol = self.model.symbol_table.new_with_prefix(&ext[1]);
+                    let symbol = self.model.symbol_table.new_with_prefix(&ext[1].0);
                     self.symbols.push(symbol);
                 }
                 _ => {
@@ -63,7 +65,7 @@ impl<'mb> ModelBuilder<'mb> {
                             }
                         }
                     }
-                    warn!("Ignore unknown extension {}", ext.join(" "));
+                    warn!("Ignore unknown extension {}", ext.iter().map(|i| &i.0).join(" "));
                 }
             };
         }
@@ -79,7 +81,7 @@ impl<'mb> ModelBuilder<'mb> {
             .iter()
             .map(|s| {
                 vars.get(s)
-                    .with_context(|| format!("Could not find variable for output named `{}'", s))
+                    .with_context(|| format!("Could not find variable for output named {:?}", s))
             })
             .collect::<TractResult<TVec<&Value>>>()?;
 
@@ -92,7 +94,7 @@ impl<'mb> ModelBuilder<'mb> {
         self.parse_properties().context("Parsing properties")?;
 
         for (ix, name) in self.proto_model.doc.graph_def.results.iter().enumerate() {
-            self.model.set_outlet_label(outputs[ix], name.to_string())?;
+            self.model.set_outlet_label(outputs[ix], name.0.to_string())?;
         }
 
         Ok(())
@@ -111,7 +113,7 @@ impl<'mb> ModelBuilder<'mb> {
             .doc
             .fragments
             .iter()
-            .find(|f| f.decl.id == "tract_core_properties")
+            .find(|f| &f.decl.id.0 == "tract_core_properties")
             .and_then(|f| f.body.as_ref())
             .and_then(|body| body.get(0))
         {
@@ -135,14 +137,17 @@ impl<'mb> ModelBuilder<'mb> {
                         .and_then(|qm| qm.get(*s).map(|q| q.datum_type()))
                 })
                 .collect::<Vec<_>>();
-            self.naming_scopes.push(identifiers[0].to_string());
+            self.naming_scopes.push(identifiers[0].clone());
             let mut values = if identifiers.len() == 1 {
                 let value: OutletId = assignment
                     .right
                     .resolve(self, &datum_types)
                     .and_then(|v| v.to(self))
                     .with_context(|| {
-                        format!("Plugging in assignement for {:?}", identifiers.join(", "))
+                        format!(
+                            "Plugging in assignement for {:?}",
+                            identifiers.iter().map(|i| &i.0).join(", ")
+                        )
                     })?;
                 tvec!(value)
             } else {
@@ -151,12 +156,15 @@ impl<'mb> ModelBuilder<'mb> {
                     .resolve(self, &datum_types)
                     .and_then(|v| v.to(self))
                     .with_context(|| {
-                        format!("Plugging in assignement for {:?}", identifiers.join(", "))
+                        format!(
+                            "Plugging in assignement for {:?}",
+                            identifiers.iter().map(|i| &i.0).join(", ")
+                        )
                     })?;
                 if values.len() != identifiers.len() {
                     bail!(
                         "Assignement for {} received {} value(s).",
-                        identifiers.join(","),
+                        identifiers.iter().map(|i| &i.0).join(","),
                         values.len()
                     )
                 }
@@ -166,7 +174,7 @@ impl<'mb> ModelBuilder<'mb> {
                 if let Some(qparam) = qparam {
                     if qparam != self.model.outlet_fact(*value)?.datum_type {
                         self.model.node_mut(value.node).name =
-                            format!("{}_raw", self.naming_scopes.join("_"));
+                            format!("{}_raw", self.naming_scopes.iter().map(|i| &i.0).join("_"));
                         *value = self.model.wire_node(
                             "foo",
                             tract_core::ops::cast::cast(qparam),
@@ -176,12 +184,12 @@ impl<'mb> ModelBuilder<'mb> {
                 }
             }
             for (id, outlet) in identifiers.iter().zip(values.iter()) {
-                self.scopes.last_mut().unwrap().insert(id.to_string(), Value::Wire(*outlet));
+                self.scopes.last_mut().unwrap().insert((*id).clone(), Value::Wire(*outlet));
             }
             self.naming_scopes.pop();
-            for (value, identifier) in values.iter().zip(identifiers.iter()) {
+            for (value, identifier) in values.iter().zip(identifiers.into_iter()) {
                 if self.model.node_mut(value.node).name.is_empty() {
-                    self.naming_scopes.push(identifier.to_string());
+                    self.naming_scopes.push(identifier.clone());
                     self.model.node_mut(value.node).name = self.generate_node_name();
                     self.naming_scopes.pop();
                 }
@@ -213,13 +221,13 @@ impl<'mb> ModelBuilder<'mb> {
             if self.registries.contains(&registry.id) {
                 if let Some(outputs) = registry
                     .deserialize(self, invocation, dt)
-                    .with_context(|| format!("Interrogating registry {}", registry.id))?
+                    .with_context(|| format!("Interrogating registry {:?}", registry.id))?
                 {
                     return Ok(outputs);
                 }
             }
         }
-        bail!("No definition for operator `{}'", invocation.id);
+        bail!("No definition for operator {:?}", invocation.id);
     }
 
     pub fn wire_fragment_invocation(
@@ -230,11 +238,10 @@ impl<'mb> ModelBuilder<'mb> {
     ) -> TractResult<Value> {
         let mut inner_scope = HashMap::new();
         for par in invocation.default_params.iter() {
-            inner_scope
-                .insert(par.id.to_string(), invocation.named_arg_as::<Value>(self, &par.id)?);
+            inner_scope.insert(par.id.clone(), invocation.named_arg_as::<Value>(self, &par.id.0)?);
         }
         self.scopes.push(inner_scope);
-        self.naming_scopes.push(invocation.invocation.id.to_string());
+        self.naming_scopes.push(invocation.invocation.id.clone());
         self.wire_body(body)?;
         self.naming_scopes.pop();
         let inner_scope = self.scopes.pop().unwrap();
@@ -244,12 +251,12 @@ impl<'mb> ModelBuilder<'mb> {
     }
 
     fn generate_node_name(&self) -> String {
-        let mut name = self.naming_scopes.join("_");
+        let name = self.naming_scopes.iter().map(|n| &n.0).join("_");
         if self.model.nodes().iter().any(|n| n.name.starts_with(&name)) {
             for i in 0.. {
-                name = format!("{}_{}", self.naming_scopes.join("_"), i);
-                if !self.model.nodes().iter().any(|n| n.name.starts_with(&name)) {
-                    break;
+                let candidate = format!("{}_{}", name, i);
+                if !self.model.nodes().iter().any(|n| n.name.starts_with(&candidate)) {
+                    return candidate;
                 }
             }
         }
@@ -300,14 +307,17 @@ impl<'a> ResolvedInvocation<'a> {
 
     pub fn get_named_arg(&self, name: &str) -> Option<Cow<RValue>> {
         // first look explicit name in invocation arguments
-        if let Some(arg) =
-            self.invocation.arguments.iter().find(|arg| arg.id.as_deref() == Some(name))
+        if let Some(arg) = self
+            .invocation
+            .arguments
+            .iter()
+            .find(|arg| arg.id.as_ref().map(|i| &*i.0) == Some(name))
         {
             return Some(Cow::Borrowed(&arg.rvalue));
         }
         // then use fragment prototype:
         if let Some((ix, param)) =
-            self.default_params.iter().enumerate().find(|(_ix, param)| param.id == name)
+            self.default_params.iter().enumerate().find(|(_ix, param)| &*param.id.0 == name)
         {
             // check that all previous (and our) arguments are positional (todo:
             // valid args when building augmented_invocation)
@@ -335,22 +345,24 @@ impl<'a> ResolvedInvocation<'a> {
         let v = rv
             .resolve(builder, &[])
             .with_context(|| format!("Resolving argument `{}' ({:?})", name, rv))?;
-        v.to::<T>(builder).with_context(|| format!("Converting argument `{}' from {:?}", name, v)).map(Some)
+        v.to::<T>(builder)
+            .with_context(|| format!("Converting argument `{}' from {:?}", name, v))
+            .map(Some)
     }
 }
 
 impl<'mb> ModelBuilder<'mb> {}
 
 impl LValue {
-    fn to_identifier(&self) -> TractResult<&str> {
+    fn to_identifier(&self) -> TractResult<&Identifier> {
         match self {
-            LValue::Identifier(id) => Ok(&**id),
+            LValue::Identifier(id) => Ok(id),
             _ => bail!("Expected an identifier, found a tuple: {:?}", self),
         }
     }
 
     #[allow(dead_code)]
-    fn to_identifiers(&self) -> TractResult<TVec<&str>> {
+    fn to_identifiers(&self) -> TractResult<TVec<&Identifier>> {
         match self {
             LValue::Identifier(_) => Ok(tvec!(self.to_identifier()?)),
             LValue::Tuple(ids) => ids.iter().map(|id| id.to_identifier()).collect(),
@@ -390,15 +402,15 @@ impl RValue {
                     }
                     Ok(outlet)
                 } else if builder.allow_new_symbol {
-                    let sym = builder.model.symbol_table.sym(id);
+                    let sym = builder.model.symbol_table.sym(&id.0);
                     Ok(Value::Dim(sym.into()))
                 } else {
-                    bail!("Can not resolve identifier {}. Not a known identifier, and symbol introduction is forbiddent out of \"external\" shape field", id);
+                    bail!("Can not resolve {:?}. Not a known identifier, and symbol introduction is forbiddent out of \"external\" shape field", id);
                 }
             }
             RValue::Invocation(inv) => builder
                 .wire_invocation(inv, dt)
-                .with_context(|| format!("Resolving invocation {}", inv.id)),
+                .with_context(|| format!("Resolving invocation {:?}", inv.id)),
             RValue::Binary(left, op, right) => {
                 let op = match &**op {
                     "+" => "add",
@@ -415,7 +427,7 @@ impl RValue {
                     op => bail!("Unknown binary operator: {}", op),
                 };
                 let inv = Invocation {
-                    id: op.to_string(),
+                    id: op.into(),
                     generic_type_name: None,
                     arguments: vec![
                         Argument { id: None, rvalue: left.as_ref().clone() },
@@ -424,7 +436,7 @@ impl RValue {
                 };
                 builder
                     .wire_invocation(&inv, dt)
-                    .with_context(|| format!("Resolving invocation {}", inv.id))
+                    .with_context(|| format!("Resolving invocation {:?}", &inv.id))
             }
             RValue::Array(array) => Ok(Value::Array(
                 array
@@ -599,9 +611,7 @@ impl CoerceFrom<Value> for u64 {
         match from {
             Value::Dim(d) => Ok(d.to_i64()? as u64),
             Value::Tensor(t) => Ok(t.cast_to_scalar::<u64>()?),
-            Value::Wire(_) => {
-                Ok(from.to::<Arc<Tensor>>(builder)?.cast_to_scalar::<u64>()?)
-            }
+            Value::Wire(_) => Ok(from.to::<Arc<Tensor>>(builder)?.cast_to_scalar::<u64>()?),
             _ => bail!("Can not build a u64 from {:?}", from),
         }
     }
@@ -612,9 +622,7 @@ impl CoerceFrom<Value> for i64 {
         match from {
             Value::Dim(d) => d.to_i64(),
             Value::Tensor(t) => Ok(*t.to_scalar::<i64>()?),
-            Value::Wire(_) => {
-                Ok(from.to::<Arc<Tensor>>(builder)?.cast_to_scalar::<i64>()?)
-            }
+            Value::Wire(_) => Ok(from.to::<Arc<Tensor>>(builder)?.cast_to_scalar::<i64>()?),
             _ => bail!("Can not build a i64 from {:?}", from),
         }
     }

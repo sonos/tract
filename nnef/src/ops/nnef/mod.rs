@@ -1,4 +1,5 @@
-use crate::{internal::*, ops::tract_core};
+use crate::internal::*;
+use crate::ops::tract_core;
 
 pub mod deser;
 pub mod ser;
@@ -16,7 +17,7 @@ pub fn tract_nnef() -> Registry {
     let mut stdlib = crate::framework::stdlib();
 
     let mut primitive = |registry: &mut Registry, id: &str, func: ToTract| {
-        let pos = stdlib.iter().position(|f| f.decl.id == id).unwrap();
+        let pos = stdlib.iter().position(|f| f.decl.id.0 == id).unwrap();
         let decl = stdlib.remove(pos).decl;
         registry.register_primitive(id, &decl.parameters, &decl.results, func);
     };

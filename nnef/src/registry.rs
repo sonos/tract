@@ -1,5 +1,6 @@
 use std::ops::ControlFlow;
 
+use crate::ast::Identifier;
 use crate::internal::*;
 
 use crate::ast;
@@ -10,9 +11,9 @@ use tract_core::ops::binary::*;
 
 pub type ToTract = fn(&mut ModelBuilder, &ResolvedInvocation) -> TractResult<Value>;
 pub type FromTract = fn(&mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>>;
-pub type BinOp = (String, Box<dyn BinMiniOp>);
+pub type BinOp = (Identifier, Box<dyn BinMiniOp>);
 pub type Extension = Box<
-    dyn Fn(&mut crate::deser::ModelBuilder, &[String]) -> TractResult<ControlFlow<(), ()>>
+    dyn Fn(&mut crate::deser::ModelBuilder, &[Identifier]) -> TractResult<ControlFlow<(), ()>>
         + Send
         + Sync,
 >;
@@ -26,33 +27,32 @@ pub struct PrimitiveDecl {
 
 impl PrimitiveDecl {
     pub fn validate(&self) -> TractResult<()> {
-        self.decl.validate().with_context(|| format!("Invalid primitive `{}'", self.decl.id))
+        self.decl.validate().with_context(|| format!("Invalid primitive `{}'", self.decl.id.0))
     }
 
     pub fn with_doc(&mut self, docstring: impl Into<String>) -> &mut Self {
-        self.docstrings.get_or_insert_with(Vec::new)
-            .push(docstring.into());
+        self.docstrings.get_or_insert_with(Vec::new).push(docstring.into());
         self
     }
 }
 
 pub struct Registry {
-    pub id: String,
+    pub id: Identifier,
     pub docstrings: Option<Vec<String>>,
-    pub aliases: Vec<String>,
-    pub fragments: HashMap<String, FragmentDef>,
-    pub primitives: HashMap<String, PrimitiveDecl>,
-    pub unit_element_wise_ops: Vec<(String, Box<dyn ElementWiseMiniOp>)>,
-    pub element_wise_ops: Vec<(String, TypeId, FromTract, Vec<ast::Parameter>, ToTract)>,
+    pub aliases: Vec<Identifier>,
+    pub fragments: HashMap<Identifier, FragmentDef>,
+    pub primitives: HashMap<Identifier, PrimitiveDecl>,
+    pub unit_element_wise_ops: Vec<(Identifier, Box<dyn ElementWiseMiniOp>)>,
+    pub element_wise_ops: Vec<(Identifier, TypeId, FromTract, Vec<ast::Parameter>, ToTract)>,
     pub binary_ops: Vec<BinOp>,
     pub from_tract: HashMap<TypeId, FromTract>,
     pub extensions: Vec<Extension>,
 }
 
 impl Registry {
-    pub fn new(id: impl Into<String>) -> Registry {
+    pub fn new(id: impl AsRef<str>) -> Registry {
         Registry {
-            id: id.into(),
+            id: id.as_ref().into(),
             docstrings: None,
             aliases: Default::default(),
             primitives: Default::default(),
@@ -66,8 +66,7 @@ impl Registry {
     }
 
     pub fn with_doc(mut self, docstring: impl Into<String>) -> Registry {
-        self.docstrings.get_or_insert_with(Vec::new)
-            .push(docstring.into());
+        self.docstrings.get_or_insert_with(Vec::new).push(docstring.into());
         self
     }
 
@@ -75,54 +74,51 @@ impl Registry {
         self.from_tract.insert(id, func);
     }
 
-    pub fn register_primitive(&mut self, 
-            id: &str, 
-            params: &[ast::Parameter],
-            results: &[impl Into<ast::Result_> + Clone], 
-            func: ToTract) -> &mut PrimitiveDecl {
+    pub fn register_primitive(
+        &mut self,
+        id: impl AsRef<str>,
+        params: &[ast::Parameter],
+        results: &[impl Into<ast::Result_> + Clone],
+        func: ToTract,
+    ) -> &mut PrimitiveDecl {
+        let id:Identifier = id.as_ref().into();
         let decl = FragmentDecl {
-            id: id.to_string(),
+            id: id.clone(),
             generic_decl: None,
             parameters: params.to_vec(),
             results: results.iter().cloned().map(|it| it.into()).collect(),
         };
-        self.primitives.insert(
-            id.to_string(),
-            PrimitiveDecl {
-                decl,
-                docstrings: None,
-                to_tract: func,
-            }
-        );
-        self.primitives.get_mut(id).expect("Unexpected empty entry in primitives hashmap")
+        self.primitives
+            .insert(id.clone(), PrimitiveDecl { decl, docstrings: None, to_tract: func });
+        self.primitives.get_mut(&id).expect("Unexpected empty entry in primitives hashmap")
     }
 
     pub fn register_fragment(&mut self, def: FragmentDef) {
-        self.fragments.insert(def.decl.id.to_string(), def);
+        self.fragments.insert(def.decl.id.clone(), def);
     }
 
     pub fn register_unit_element_wise(
         &mut self,
-        id: impl Into<String>,
+        id: impl AsRef<str>,
         ew: &dyn ElementWiseMiniOp,
     ) {
         assert!(std::mem::size_of_val(ew) == 0);
-        self.unit_element_wise_ops.push((id.into(), clone_box(ew)));
+        self.unit_element_wise_ops.push((id.as_ref().into(), clone_box(ew)));
     }
 
     pub fn register_element_wise(
         &mut self,
-        id: impl Into<String>,
+        id: impl AsRef<str>,
         type_id: TypeId,
         dumper: FromTract,
         parameters: Vec<ast::Parameter>,
         loader: ToTract,
     ) {
-        self.element_wise_ops.push((id.into(), type_id, dumper, parameters, loader));
+        self.element_wise_ops.push((id.as_ref().into(), type_id, dumper, parameters, loader));
     }
 
-    pub fn register_binary(&mut self, id: impl Into<String>, op: &dyn BinMiniOp) {
-        self.binary_ops.push((id.into(), clone_box(op)));
+    pub fn register_binary(&mut self, id: impl AsRef<str>, op: &dyn BinMiniOp) {
+        self.binary_ops.push((id.as_ref().into(), clone_box(op)));
     }
 
     pub fn serialize(
@@ -172,22 +168,27 @@ impl Registry {
         dt: &[Option<DatumType>],
     ) -> TractResult<Option<Value>> {
         if let Some(op) = self.primitives.get(&invocation.id) {
-            let resolved =
-                ResolvedInvocation { invocation, default_params: &op.decl.parameters, dt_from_quant_file: dt };
+            let resolved = ResolvedInvocation {
+                invocation,
+                default_params: &op.decl.parameters,
+                dt_from_quant_file: dt,
+            };
             let out_value = (op.to_tract)(builder, &resolved)
-                .with_context(|| format!("Deserializing op `{}'", invocation.id))?;
+                .with_context(|| format!("Deserializing op `{}'", invocation.id.0))?;
             return Ok(Some(out_value));
         }
         if let Some(ew) = self.unit_element_wise_ops.iter().find(|ew| ew.0 == invocation.id) {
             let input =
                 invocation.arguments[0].rvalue.resolve(builder, &[])?.to::<OutletId>(builder)?;
-            let outlet = builder
-                .wire_as_outlets(tract_core::ops::element_wise::ElementWiseOp(ew.1.clone()), &[input])?;
+            let outlet = builder.wire_as_outlets(
+                tract_core::ops::element_wise::ElementWiseOp(ew.1.clone()),
+                &[input],
+            )?;
             if let Some(Some(assumed_out_dt)) = dt.get(0) {
                 let out_dt = builder.model.outlet_fact(outlet[0])?.datum_type;
                 if out_dt != *assumed_out_dt {
                     return Ok(Some(
-                        builder.wire(tract_core::ops::cast::cast(*assumed_out_dt), &outlet)?
+                        builder.wire(tract_core::ops::cast::cast(*assumed_out_dt), &outlet)?,
                     ));
                 }
             }
@@ -198,7 +199,7 @@ impl Registry {
                 ResolvedInvocation { invocation, default_params: &ew.3, dt_from_quant_file: dt };
             return Ok(Some(
                 (ew.4)(builder, &resolved)
-                    .with_context(|| format!("Deserializing op `{}'", invocation.id))?,
+                    .with_context(|| format!("Deserializing op `{}'", invocation.id.0))?,
             ));
         }
         if let Some(bin) = self.binary_ops.iter().find(|bin| bin.0 == invocation.id) {
@@ -219,11 +220,12 @@ impl Registry {
                 };
             }
             let inputs = multicast(builder, &[a, b])?;
-            let mut wire =
-                builder.wire_as_outlets(tract_core::ops::binary::TypedBinOp(bin.1.clone()), &inputs)?[0];
+            let mut wire = builder
+                .wire_as_outlets(tract_core::ops::binary::TypedBinOp(bin.1.clone()), &inputs)?[0];
             if let Some(Some(out_dt)) = dt.get(0) {
                 if out_dt != &a_dt {
-                    wire = builder.wire_as_outlets(tract_core::ops::cast::cast(*out_dt), &[wire])?[0];
+                    wire =
+                        builder.wire_as_outlets(tract_core::ops::cast::cast(*out_dt), &[wire])?[0];
                 }
             }
             return Ok(Some(Value::Wire(wire)));

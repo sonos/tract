@@ -35,7 +35,7 @@ fn de_reduce(
     invocation: &ResolvedInvocation,
 ) -> TractResult<Value> {
     let wire = invocation.named_arg_as(builder, "input")?;
-    let reducer = match &*invocation.invocation.id {
+    let reducer = match &*invocation.invocation.id.0 {
         "tract_core_argmin_reduce_last" => ops::nn::Reducer::ArgMin(true),
         "tract_core_argmax_reduce_last" => ops::nn::Reducer::ArgMax(true),
         "tract_core_product_reduce" => ops::nn::Reducer::Prod,

@@ -37,7 +37,7 @@ pub fn external(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
 // fragment variable<? = scalar>( shape: integer[], label: string ) -> ( output: tensor<?> );
 pub fn variable(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let shape: TVec<usize> = invocation.named_arg_as(builder, "shape")?;
-    let label: String = invocation.named_arg_as(builder, "label")?;
+    let label = Identifier(invocation.named_arg_as(builder, "label")?);
     let mut tensor = Arc::clone(
         builder
             .proto_model
@@ -49,7 +49,7 @@ pub fn variable(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
         if dt.size_of() != tensor.datum_type().size_of() {
             bail!(
                 "Mismatched tensor type for tensor {}: expected {:?}, got {:?}",
-                label,
+                label.0,
                 *dt,
                 tensor.datum_type()
             );
@@ -57,7 +57,7 @@ pub fn variable(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
         if *dt != tensor.datum_type() {
             trace!(
                 "Casting tensor {} from {:?} to {:?} when deserializing",
-                label,
+                label.0,
                 tensor.datum_type(),
                 *dt
             );
@@ -508,14 +508,14 @@ pub fn sum_pool(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
 pub fn reduce(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
     let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
-    let reducer_name = invocation.invocation.id.split('_').next().unwrap();
+    let reducer_name = invocation.invocation.id.0.split('_').next().unwrap();
     let reducer = match reducer_name {
         "sum" => ops::nn::Reducer::Sum,
         "min" => ops::nn::Reducer::Min,
         "max" => ops::nn::Reducer::Max,
         "argmin" => ops::nn::Reducer::ArgMin(false),
         "argmax" => ops::nn::Reducer::ArgMax(false),
-        _ => bail!("unsupported reducer: {}", invocation.invocation.id),
+        _ => bail!("unsupported reducer: {}", invocation.invocation.id.0),
     };
     let wire = builder.wire_as_outlets(ops::nn::Reduce::new(axes.clone(), reducer), &[input])?;
     if reducer_name != "sum" || !invocation.named_arg_as(builder, "normalize")? {
@@ -596,7 +596,7 @@ pub fn matmul(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
         });
         let dt = invocation.dt_from_quant_file.get(0).cloned().flatten().unwrap_or(accum_dt);
         let bias = builder.model.add_const(
-            format!("{}.bias", invocation.invocation.id),
+            format!("{}.bias", invocation.invocation.id.0),
             Tensor::zero_dt(accum_dt, &[1])?,
         )?;
         builder.model.node(a.node);

@@ -25,7 +25,7 @@ impl<'a> Dumper<'a> {
     pub fn document(&mut self, document: &Document) -> TractResult<()> {
         writeln!(self.w, "version {};\n", document.version)?;
         for ext in document.extension.iter().sorted() {
-            writeln!(self.w, "extension {};", ext.join(" "))?;
+            writeln!(self.w, "extension {};", ext.iter().map(|i| i.escaped()).join(" "))?;
         }
         if document.extension.len() > 0 {
             writeln!(self.w)?;
@@ -57,7 +57,7 @@ impl<'a> Dumper<'a> {
     }
 
     pub(crate) fn fragment_decl(&mut self, decl: &FragmentDecl) -> TractResult<()> {
-        write!(self.w, "fragment {}", decl.id)?;
+        write!(self.w, "fragment {}", decl.id.escaped())?;
         if let Some(generic_decl) = &decl.generic_decl {
             if let Some(name) = generic_decl {
                 write!(self.w, "<?=")?;
@@ -73,7 +73,7 @@ impl<'a> Dumper<'a> {
             if ix > 0 {
                 write!(self.w, ", ")?;
             }
-            write!(self.w, "{}: ", res.id)?;
+            write!(self.w, "{}: ", res.id.escaped())?;
             self.type_spec(&res.spec)?;
         }
         write!(self.w, ")")?;
@@ -85,7 +85,7 @@ impl<'a> Dumper<'a> {
         let num_parameters = parameters.len();
         for (ix, param) in parameters.iter().enumerate() {
             write!(self.w, "\n    ")?;
-            write!(self.w, "{}: ", param.id)?;
+            write!(self.w, "{}: ", param.id.escaped())?;
             self.type_spec(&param.spec)?;
             if let Some(lit) = &param.lit {
                 write!(self.w, " = ")?;
@@ -159,9 +159,9 @@ impl<'a> Dumper<'a> {
         writeln!(
             self.w,
             "graph {}( {} ) -> ( {} ) {{",
-            def.id,
-            def.parameters.join(", "),
-            def.results.join(", ")
+            def.id.escaped(),
+            def.parameters.iter().map(Identifier::escaped).join(", "),
+            def.results.iter().map(Identifier::escaped).join(", ")
         )?;
         for assignment in &def.body {
             self.assignment(assignment)?;
@@ -181,7 +181,7 @@ impl<'a> Dumper<'a> {
 
     fn lvalue(&mut self, left: &LValue) -> TractResult<()> {
         match left {
-            LValue::Identifier(s) => write!(self.w, "{}", s)?,
+            LValue::Identifier(s) => write!(self.w, "{}", s.escaped())?,
             LValue::Tuple(s) => {
                 write!(self.w, "( ")?;
                 comma_loop!(self, lvalue, s);
@@ -211,7 +211,7 @@ impl<'a> Dumper<'a> {
                 write!(self.w, ")")?;
             }
             RValue::Comprehension(comp) => self.comprehension(comp)?,
-            RValue::Identifier(id) => write!(self.w, "{}", id)?,
+            RValue::Identifier(id) => write!(self.w, "{}", id.escaped())?,
             RValue::IfThenElse(ifte) => {
                 self.rvalue(&ifte.then)?;
                 write!(self.w, " if ")?;
@@ -252,7 +252,7 @@ impl<'a> Dumper<'a> {
     }
 
     fn invocation(&mut self, inv: &Invocation) -> TractResult<()> {
-        write!(self.w, "{}", inv.id)?;
+        write!(self.w, "{}", inv.id.escaped())?;
         if let Some(tn) = &inv.generic_type_name {
             write!(self.w, "<")?;
             self.type_name(tn)?;
@@ -264,7 +264,7 @@ impl<'a> Dumper<'a> {
                 write!(self.w, ", ")?;
             }
             if let Some(n) = &arg.id {
-                write!(self.w, "{} = ", n)?;
+                write!(self.w, "{} = ", n.escaped())?;
             }
             self.rvalue(&arg.rvalue)?;
         }
@@ -275,7 +275,7 @@ impl<'a> Dumper<'a> {
     fn comprehension(&mut self, comp: &Comprehension) -> TractResult<()> {
         write!(self.w, "[ for")?;
         for iter in &comp.loop_iters {
-            write!(self.w, "{} in ", &iter.0)?;
+            write!(self.w, "{} in ", &iter.0.escaped())?;
             self.rvalue(&iter.1)?;
         }
         if let Some(filter) = &comp.filter {

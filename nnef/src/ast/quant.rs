@@ -14,12 +14,12 @@ use crate::ast::*;
 use super::parse::{identifier, logical_literal, stag, translate_error};
 
 #[inline(never)]
-pub fn parse_quantization(doc: &str) -> TractResult<Vec<(String, QuantFormat)>> {
+pub fn parse_quantization(doc: &str) -> TractResult<Vec<(Identifier, QuantFormat)>> {
     all_consuming(many0(quantization))(doc).map(|pair| pair.1).map_err(translate_error)
 }
 
 // <quantization> ::= "<identifier>": <qparam>
-fn quantization(i: &str) -> IResult<&str, (String, QuantFormat)> {
+fn quantization(i: &str) -> IResult<&str, (Identifier, QuantFormat)> {
     let (i, _) = stag("")(i)?;
     let (i, _) = tag("\"")(i)?;
     let (i, id) = identifier(i)?;
@@ -80,16 +80,16 @@ where
 
 pub(crate) fn write_quant_format(
     w: &mut impl std::io::Write,
-    name: String,
+    name: &Identifier,
     format: QuantFormat,
 ) -> TractResult<()> {
     match format {
         QuantFormat::Linear {
             params: QParams::ZpScale {zero_point, scale}, bits, signed
-        } => writeln!(w, "\"{}\": zero_point_linear_quantize(zero_point = {}, scale = {:.9}, bits = {}, signed = {}, symmetric = {});", name, zero_point, scale, bits, signed, zero_point == 0)?,
+        } => writeln!(w, "\"{:?}\": zero_point_linear_quantize(zero_point = {}, scale = {:.9}, bits = {}, signed = {}, symmetric = {});", name.0, zero_point, scale, bits, signed, zero_point == 0)?,
         QuantFormat::Linear {
             params: QParams::MinMax {min, max}, bits, signed: _
-        } => writeln!(w, "\"{}\": linear_quantize(max = {:.9}, min = {:.9}, bits = {});", name, max, min, bits)?,
+        } => writeln!(w, "{:?}: linear_quantize(max = {:.9}, min = {:.9}, bits = {});", name.0, max, min, bits)?, // FIXME we lazily use rust debug escaping form here
     }
     Ok(())
 }
@@ -133,7 +133,7 @@ mod test {
         assert_eq!(
             p(quantization, r#""tensor_name": linear_quantize(min = 0.5, max = 123.8, bits = 8);"#),
             (
-                "tensor_name".to_string(),
+                "tensor_name".into(),
                 QuantFormat::Linear {
                     params: QParams::MinMax { min: 0.5, max: 123.8 },
                     bits: 8,
@@ -155,7 +155,7 @@ mod test {
             ),
             vec![
                 (
-                    "tensor_name1".to_string(),
+                    Identifier("tensor_name1".to_string()),
                     QuantFormat::Linear {
                         params: QParams::MinMax { min: 0.5, max: 123.8 },
                         bits: 8,
@@ -163,7 +163,7 @@ mod test {
                     }
                 ),
                 (
-                    "tensor_name2".to_string(),
+                    Identifier("tensor_name2".to_string()),
                     QuantFormat::Linear {
                         params: QParams::MinMax { max: 0.52, min: 123.82 },
                         bits: 82,
@@ -171,7 +171,7 @@ mod test {
                     }
                 ),
                 (
-                    "tensor_name3".to_string(),
+                    Identifier("tensor_name3".to_string()),
                     QuantFormat::Linear {
                         params: QParams::ZpScale { zero_point: 52, scale: 123.83 },
                         bits: 83,
