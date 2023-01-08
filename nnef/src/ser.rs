@@ -142,7 +142,7 @@ impl<'a> IntoAst<'a> {
         let IntoAst { prefix, body, mut parameters, results, .. } = self;
         parameters.extend(tensor_params.iter().map(|rtp| rtp.parameter_id.clone()).sorted());
         let mut id = prefix
-            .map(|p| p.trim_end_matches(&['-', '/', '.'][..]).replace(&['-', '/', '.'][..], "_"))
+            .map(|p| p.trim_end_matches(&['-', '/', '.']).replace(&['-', '/', '.'], "_"))
             .unwrap_or_else(|| "network".into());
         if id.len() > 0 && char::is_digit(id.chars().next().unwrap(), 10) {
             id = "_".to_string() + &id;
@@ -196,7 +196,7 @@ impl<'a> IntoAst<'a> {
         let properties: Assignment = assignment("properties", Arc::new(array(properties)));
         let IntoAst { prefix, mut fragments, body, tensors, parameters, results, .. } = self;
         let mut id = prefix
-            .map(|p| p.trim_end_matches(&['-', '/', '.'][..]).replace(&['-', '/', '.'][..], "_"))
+            .map(|p| p.trim_end_matches(&['-', '/', '.']).replace(&['-', '/', '.'], "_"))
             .unwrap_or_else(|| "network".into());
         if id.len() > 0 && char::is_digit(id.chars().next().unwrap(), 10) {
             id = "_".to_string() + &id;
@@ -246,6 +246,7 @@ impl<'a> IntoAst<'a> {
                 let scoped = self.scoped_id(&node.name);
                 let names: Vec<String> = (0..node.outputs.len())
                     .map(|ix| if ix > 0 { format!("{}_{}", scoped, ix) } else { scoped.clone() })
+                    .map(Self::sanitize)
                     .collect();
                 if node.outputs.len() > 1 {
                     self.body.push(Assignment {
