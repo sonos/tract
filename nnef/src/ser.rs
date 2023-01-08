@@ -142,7 +142,7 @@ impl<'a> IntoAst<'a> {
         let IntoAst { prefix, body, mut parameters, results, .. } = self;
         parameters.extend(tensor_params.iter().map(|rtp| rtp.parameter_id.clone()).sorted());
         let mut id = prefix
-            .map(|p| p.trim_end_matches(&['-', '/', '.']).replace(&['-', '/', '.'], "_"))
+            .map(|p| p.trim_end_matches(&['-', '/', '.']).replace(['-', '/', '.'], "_"))
             .unwrap_or_else(|| "network".into());
         if id.len() > 0 && char::is_digit(id.chars().next().unwrap(), 10) {
             id = "_".to_string() + &id;
@@ -196,7 +196,7 @@ impl<'a> IntoAst<'a> {
         let properties: Assignment = assignment("properties", Arc::new(array(properties)));
         let IntoAst { prefix, mut fragments, body, tensors, parameters, results, .. } = self;
         let mut id = prefix
-            .map(|p| p.trim_end_matches(&['-', '/', '.']).replace(&['-', '/', '.'], "_"))
+            .map(|p| p.trim_end_matches(&['-', '/', '.']).replace(['-', '/', '.'], "_"))
             .unwrap_or_else(|| "network".into());
         if id.len() > 0 && char::is_digit(id.chars().next().unwrap(), 10) {
             id = "_".to_string() + &id;
