@@ -299,7 +299,10 @@ impl<'a> IntoAst<'a> {
 
     pub fn sanitize(name: impl Into<String>) -> String {
         let mut name = name.into();
-        if name.len() > 0 && !char::is_alphabetic(name.chars().next().unwrap()) {
+        if name.len() > 0
+            && !char::is_alphabetic(name.chars().next().unwrap())
+            && !name.starts_with('_')
+        {
             name = "_".to_string() + &name;
         }
         name.replace(['/', '.', '-', ':', ',', ';'], "_")
