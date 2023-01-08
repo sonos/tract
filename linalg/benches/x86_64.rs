@@ -87,6 +87,9 @@ unsafe fn packed_packed_1x8(f: Option<&str>) {
     println!("-- 1x8 kernels");
     kloop!(f, "1x8x1", (8 * 8), "8x8/packed_packed_loop1/avx.tmpli", 8);
     kloop!(f, "1x8x2", (8 * 8), "8x8/packed_packed_loop1/avx-unroll.tmpli", 8, 2);
+    if std::is_x86_feature_detected!("avx512f") {
+        kloop!(f, "1x8x1", (16 * 8), "../avx512/8x8/packed_packed_loop1/avx-512.tmpli", 16);
+    }
     println!("");
 }
 
