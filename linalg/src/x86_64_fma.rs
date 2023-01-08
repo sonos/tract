@@ -102,7 +102,6 @@ fn plug_avx512f(ops: &mut Ops) {
             mmm::avx512_mmm_f32_128x1::mmm()
         }
     });
-    log::info!("mmmv_f32: x86_64/avx512f activated");
 
     ops.mmm_f32 = Box::new(|_,_,n| {
         if n.is_none() {
@@ -118,7 +117,7 @@ fn plug_avx512f(ops: &mut Ops) {
             mmm::avx512_mmm_f32_16x12::mmm()
         }
     });
-    log::info!("mmm_f32: x86_64/avx512f activated");
+    log::info!("mmm_f32, mmv_f32: x86_64/avx512f activated");
 }
 
 
