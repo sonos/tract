@@ -60,7 +60,7 @@ pub fn slice(
     } else {
         op.end.clone()
     };
-    dbg!(Ok(Some(invocation(
+    Ok(Some(invocation(
         "slice",
         &[wire],
         &[
@@ -68,7 +68,7 @@ pub fn slice(
             ("begin", tdims(&[op.start.clone()])),
             ("end", tdims(&[end]))
         ],
-    ))))
+    )))
 }
 
 pub fn tile(
