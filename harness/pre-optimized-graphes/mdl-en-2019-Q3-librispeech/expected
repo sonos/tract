@@ -6,109 +6,109 @@ extension tract_registry tract_pulse;
 fragment scan_body_0(
     c: tensor<scalar>,
     r: tensor<scalar>,
-    c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_over_1_0__256: tensor<scalar>,
-    c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_over_1_512__768: tensor<scalar>,
-    c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_over_1_256__512: tensor<scalar>,
-    c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_over_1_768__1024: tensor<scalar>,
-    four_parts_W_k_256_384_split_over_1_0__256_a: tensor<scalar>,
-    four_parts_W_k_256_384_split_over_1_256__512_a: tensor<scalar>,
-    four_parts_W_k_256_384_split_over_1_512__768_a: tensor<scalar>,
-    four_parts_W_k_256_384_split_over_1_768__1024_a: tensor<scalar>,
-    four_parts_split_1_over_1_0__256_slice: tensor<scalar>,
-    four_parts_split_1_over_1_256__512_slice: tensor<scalar>,
-    four_parts_split_1_over_1_512__768_slice: tensor<scalar>,
-    four_parts_split_1_over_1_768__1024_slice: tensor<scalar>,
-    h_new_W_split_over_1_0__128_a: tensor<scalar>,
-    h_new_split_1_over_1_0__128_slice: tensor<scalar>,
-    peephole0_mul_fix_rank_0_1: tensor<scalar>,
-    peephole1_mul_fix_rank_0_1: tensor<scalar>,
-    peephole2_mul_fix_rank_0_1: tensor<scalar>
+    i"c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.0..256": tensor<scalar>,
+    i"c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.512..768": tensor<scalar>,
+    i"c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.256..512": tensor<scalar>,
+    i"c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.768..1024": tensor<scalar>,
+    i"four_parts.W.k-256-384.split-over-1.0..256_a": tensor<scalar>,
+    i"four_parts.W.k-256-384.split-over-1.256..512_a": tensor<scalar>,
+    i"four_parts.W.k-256-384.split-over-1.512..768_a": tensor<scalar>,
+    i"four_parts.W.k-256-384.split-over-1.768..1024_a": tensor<scalar>,
+    i"four_parts.split-1-over-1.0..256.slice": tensor<scalar>,
+    i"four_parts.split-1-over-1.256..512.slice": tensor<scalar>,
+    i"four_parts.split-1-over-1.512..768.slice": tensor<scalar>,
+    i"four_parts.split-1-over-1.768..1024.slice": tensor<scalar>,
+    i"h_new.W.split-over-1.0..128_a": tensor<scalar>,
+    i"h_new.split-1-over-1.0..128.slice": tensor<scalar>,
+    i"peephole0.mul.fix-rank-0-1": tensor<scalar>,
+    i"peephole1.mul.fix-rank-0-1": tensor<scalar>,
+    i"peephole2.mul.fix-rank-0-1": tensor<scalar>
 ) -> (c_new: tensor<scalar>, r_new: tensor<scalar>, m: tensor<scalar>)
 {
-  peephole0_mul = mul(peephole0_mul_fix_rank_0_1, c);
-  four_parts_W_k_256_384_split_over_1_0__256 = matmul(r, four_parts_W_k_256_384_split_over_1_0__256_a, transposeA = false, transposeB = false);
-  four_parts_W_k_add_0_split_over_1_0__256 = add(c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_over_1_0__256, four_parts_W_k_256_384_split_over_1_0__256);
-  four_parts_split_over_1_0__256 = add(four_parts_W_k_add_0_split_over_1_0__256, four_parts_split_1_over_1_0__256_slice);
-  peephole0_output = add(peephole0_mul, four_parts_split_over_1_0__256);
-  peephole0_output_nolin = sigmoid(peephole0_output);
-  four_parts_W_k_256_384_split_over_1_512__768 = matmul(r, four_parts_W_k_256_384_split_over_1_512__768_a, transposeA = false, transposeB = false);
-  four_parts_W_k_add_0_split_over_1_512__768 = add(c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_over_1_512__768, four_parts_W_k_256_384_split_over_1_512__768);
-  four_parts_split_over_1_512__768 = add(four_parts_W_k_add_0_split_over_1_512__768, four_parts_split_1_over_1_512__768_slice);
-  four_parts_j_nolin = tanh(four_parts_split_over_1_512__768);
-  c_update = mul(peephole0_output_nolin, four_parts_j_nolin);
-  peephole1_mul = mul(peephole1_mul_fix_rank_0_1, c);
-  four_parts_W_k_256_384_split_over_1_256__512 = matmul(r, four_parts_W_k_256_384_split_over_1_256__512_a, transposeA = false, transposeB = false);
-  four_parts_W_k_add_0_split_over_1_256__512 = add(c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_over_1_256__512, four_parts_W_k_256_384_split_over_1_256__512);
-  four_parts_split_over_1_256__512 = add(four_parts_W_k_add_0_split_over_1_256__512, four_parts_split_1_over_1_256__512_slice);
-  peephole1_output = add(peephole1_mul, four_parts_split_over_1_256__512);
-  peephole1_output_nolin = sigmoid(peephole1_output);
-  c_prop = mul(peephole1_output_nolin, c);
+  i"peephole0.mul" = mul(i"peephole0.mul.fix-rank-0-1", c);
+  i"four_parts.W.k-256-384.split-over-1.0..256" = matmul(r, i"four_parts.W.k-256-384.split-over-1.0..256_a", transposeA = false, transposeB = false);
+  i"four_parts.W.k-add-0.split-over-1.0..256" = add(i"c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.0..256", i"four_parts.W.k-256-384.split-over-1.0..256");
+  i"four_parts.split-over-1.0..256" = add(i"four_parts.W.k-add-0.split-over-1.0..256", i"four_parts.split-1-over-1.0..256.slice");
+  i"peephole0.output" = add(i"peephole0.mul", i"four_parts.split-over-1.0..256");
+  i"peephole0.output.nolin" = sigmoid(i"peephole0.output");
+  i"four_parts.W.k-256-384.split-over-1.512..768" = matmul(r, i"four_parts.W.k-256-384.split-over-1.512..768_a", transposeA = false, transposeB = false);
+  i"four_parts.W.k-add-0.split-over-1.512..768" = add(i"c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.512..768", i"four_parts.W.k-256-384.split-over-1.512..768");
+  i"four_parts.split-over-1.512..768" = add(i"four_parts.W.k-add-0.split-over-1.512..768", i"four_parts.split-1-over-1.512..768.slice");
+  i"four_parts.j.nolin" = tanh(i"four_parts.split-over-1.512..768");
+  c_update = mul(i"peephole0.output.nolin", i"four_parts.j.nolin");
+  i"peephole1.mul" = mul(i"peephole1.mul.fix-rank-0-1", c);
+  i"four_parts.W.k-256-384.split-over-1.256..512" = matmul(r, i"four_parts.W.k-256-384.split-over-1.256..512_a", transposeA = false, transposeB = false);
+  i"four_parts.W.k-add-0.split-over-1.256..512" = add(i"c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.256..512", i"four_parts.W.k-256-384.split-over-1.256..512");
+  i"four_parts.split-over-1.256..512" = add(i"four_parts.W.k-add-0.split-over-1.256..512", i"four_parts.split-1-over-1.256..512.slice");
+  i"peephole1.output" = add(i"peephole1.mul", i"four_parts.split-over-1.256..512");
+  i"peephole1.output.nolin" = sigmoid(i"peephole1.output");
+  c_prop = mul(i"peephole1.output.nolin", c);
   c_new = add(c_update, c_prop);
   tanh_c = tanh(c_new);
-  peephole2_mul = mul(peephole2_mul_fix_rank_0_1, c_new);
-  four_parts_W_k_256_384_split_over_1_768__1024 = matmul(r, four_parts_W_k_256_384_split_over_1_768__1024_a, transposeA = false, transposeB = false);
-  four_parts_W_k_add_0_split_over_1_768__1024 = add(c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_over_1_768__1024, four_parts_W_k_256_384_split_over_1_768__1024);
-  four_parts_split_over_1_768__1024 = add(four_parts_W_k_add_0_split_over_1_768__1024, four_parts_split_1_over_1_768__1024_slice);
-  peephole2_output = add(peephole2_mul, four_parts_split_over_1_768__1024);
-  peephole2_output_nolin = sigmoid(peephole2_output);
-  m = mul(tanh_c, peephole2_output_nolin);
-  h_new_W_split_over_1_0__128 = matmul(m, h_new_W_split_over_1_0__128_a, transposeA = false, transposeB = false);
-  h_new_split_over_1_0__128 = add(h_new_W_split_over_1_0__128, h_new_split_1_over_1_0__128_slice);
-  r_new = h_new_split_over_1_0__128;
+  i"peephole2.mul" = mul(i"peephole2.mul.fix-rank-0-1", c_new);
+  i"four_parts.W.k-256-384.split-over-1.768..1024" = matmul(r, i"four_parts.W.k-256-384.split-over-1.768..1024_a", transposeA = false, transposeB = false);
+  i"four_parts.W.k-add-0.split-over-1.768..1024" = add(i"c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.768..1024", i"four_parts.W.k-256-384.split-over-1.768..1024");
+  i"four_parts.split-over-1.768..1024" = add(i"four_parts.W.k-add-0.split-over-1.768..1024", i"four_parts.split-1-over-1.768..1024.slice");
+  i"peephole2.output" = add(i"peephole2.mul", i"four_parts.split-over-1.768..1024");
+  i"peephole2.output.nolin" = sigmoid(i"peephole2.output");
+  m = mul(tanh_c, i"peephole2.output.nolin");
+  i"h_new.W.split-over-1.0..128" = matmul(m, i"h_new.W.split-over-1.0..128_a", transposeA = false, transposeB = false);
+  i"h_new.split-over-1.0..128" = add(i"h_new.W.split-over-1.0..128", i"h_new.split-1-over-1.0..128.slice");
+  r_new = i"h_new.split-over-1.0..128";
 }
 
 fragment scan_body_1(
     c: tensor<scalar>,
     r: tensor<scalar>,
-    c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_over_1_0__256: tensor<scalar>,
-    c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_over_1_512__768: tensor<scalar>,
-    c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_over_1_256__512: tensor<scalar>,
-    c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_over_1_768__1024: tensor<scalar>,
-    four_parts_W_k_256_384_split_over_1_0__256_a: tensor<scalar>,
-    four_parts_W_k_256_384_split_over_1_256__512_a: tensor<scalar>,
-    four_parts_W_k_256_384_split_over_1_512__768_a: tensor<scalar>,
-    four_parts_W_k_256_384_split_over_1_768__1024_a: tensor<scalar>,
-    four_parts_split_1_over_1_0__256_slice: tensor<scalar>,
-    four_parts_split_1_over_1_256__512_slice: tensor<scalar>,
-    four_parts_split_1_over_1_512__768_slice: tensor<scalar>,
-    four_parts_split_1_over_1_768__1024_slice: tensor<scalar>,
-    h_new_W_split_over_1_0__128_a: tensor<scalar>,
-    h_new_split_1_over_1_0__128_slice: tensor<scalar>,
-    peephole0_mul_fix_rank_0_1: tensor<scalar>,
-    peephole1_mul_fix_rank_0_1: tensor<scalar>,
-    peephole2_mul_fix_rank_0_1: tensor<scalar>
+    i"c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.0..256": tensor<scalar>,
+    i"c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.512..768": tensor<scalar>,
+    i"c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.256..512": tensor<scalar>,
+    i"c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.768..1024": tensor<scalar>,
+    i"four_parts.W.k-256-384.split-over-1.0..256_a": tensor<scalar>,
+    i"four_parts.W.k-256-384.split-over-1.256..512_a": tensor<scalar>,
+    i"four_parts.W.k-256-384.split-over-1.512..768_a": tensor<scalar>,
+    i"four_parts.W.k-256-384.split-over-1.768..1024_a": tensor<scalar>,
+    i"four_parts.split-1-over-1.0..256.slice": tensor<scalar>,
+    i"four_parts.split-1-over-1.256..512.slice": tensor<scalar>,
+    i"four_parts.split-1-over-1.512..768.slice": tensor<scalar>,
+    i"four_parts.split-1-over-1.768..1024.slice": tensor<scalar>,
+    i"h_new.W.split-over-1.0..128_a": tensor<scalar>,
+    i"h_new.split-1-over-1.0..128.slice": tensor<scalar>,
+    i"peephole0.mul.fix-rank-0-1": tensor<scalar>,
+    i"peephole1.mul.fix-rank-0-1": tensor<scalar>,
+    i"peephole2.mul.fix-rank-0-1": tensor<scalar>
 ) -> (c_new: tensor<scalar>, r_new: tensor<scalar>, m: tensor<scalar>)
 {
-  peephole0_mul = mul(peephole0_mul_fix_rank_0_1, c);
-  four_parts_W_k_256_384_split_over_1_0__256 = matmul(r, four_parts_W_k_256_384_split_over_1_0__256_a, transposeA = false, transposeB = false);
-  four_parts_W_k_add_0_split_over_1_0__256 = add(c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_over_1_0__256, four_parts_W_k_256_384_split_over_1_0__256);
-  four_parts_split_over_1_0__256 = add(four_parts_W_k_add_0_split_over_1_0__256, four_parts_split_1_over_1_0__256_slice);
-  peephole0_output = add(peephole0_mul, four_parts_split_over_1_0__256);
-  peephole0_output_nolin = sigmoid(peephole0_output);
-  four_parts_W_k_256_384_split_over_1_512__768 = matmul(r, four_parts_W_k_256_384_split_over_1_512__768_a, transposeA = false, transposeB = false);
-  four_parts_W_k_add_0_split_over_1_512__768 = add(c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_over_1_512__768, four_parts_W_k_256_384_split_over_1_512__768);
-  four_parts_split_over_1_512__768 = add(four_parts_W_k_add_0_split_over_1_512__768, four_parts_split_1_over_1_512__768_slice);
-  four_parts_j_nolin = tanh(four_parts_split_over_1_512__768);
-  c_update = mul(peephole0_output_nolin, four_parts_j_nolin);
-  peephole1_mul = mul(peephole1_mul_fix_rank_0_1, c);
-  four_parts_W_k_256_384_split_over_1_256__512 = matmul(r, four_parts_W_k_256_384_split_over_1_256__512_a, transposeA = false, transposeB = false);
-  four_parts_W_k_add_0_split_over_1_256__512 = add(c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_over_1_256__512, four_parts_W_k_256_384_split_over_1_256__512);
-  four_parts_split_over_1_256__512 = add(four_parts_W_k_add_0_split_over_1_256__512, four_parts_split_1_over_1_256__512_slice);
-  peephole1_output = add(peephole1_mul, four_parts_split_over_1_256__512);
-  peephole1_output_nolin = sigmoid(peephole1_output);
-  c_prop = mul(peephole1_output_nolin, c);
+  i"peephole0.mul" = mul(i"peephole0.mul.fix-rank-0-1", c);
+  i"four_parts.W.k-256-384.split-over-1.0..256" = matmul(r, i"four_parts.W.k-256-384.split-over-1.0..256_a", transposeA = false, transposeB = false);
+  i"four_parts.W.k-add-0.split-over-1.0..256" = add(i"c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.0..256", i"four_parts.W.k-256-384.split-over-1.0..256");
+  i"four_parts.split-over-1.0..256" = add(i"four_parts.W.k-add-0.split-over-1.0..256", i"four_parts.split-1-over-1.0..256.slice");
+  i"peephole0.output" = add(i"peephole0.mul", i"four_parts.split-over-1.0..256");
+  i"peephole0.output.nolin" = sigmoid(i"peephole0.output");
+  i"four_parts.W.k-256-384.split-over-1.512..768" = matmul(r, i"four_parts.W.k-256-384.split-over-1.512..768_a", transposeA = false, transposeB = false);
+  i"four_parts.W.k-add-0.split-over-1.512..768" = add(i"c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.512..768", i"four_parts.W.k-256-384.split-over-1.512..768");
+  i"four_parts.split-over-1.512..768" = add(i"four_parts.W.k-add-0.split-over-1.512..768", i"four_parts.split-1-over-1.512..768.slice");
+  i"four_parts.j.nolin" = tanh(i"four_parts.split-over-1.512..768");
+  c_update = mul(i"peephole0.output.nolin", i"four_parts.j.nolin");
+  i"peephole1.mul" = mul(i"peephole1.mul.fix-rank-0-1", c);
+  i"four_parts.W.k-256-384.split-over-1.256..512" = matmul(r, i"four_parts.W.k-256-384.split-over-1.256..512_a", transposeA = false, transposeB = false);
+  i"four_parts.W.k-add-0.split-over-1.256..512" = add(i"c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.256..512", i"four_parts.W.k-256-384.split-over-1.256..512");
+  i"four_parts.split-over-1.256..512" = add(i"four_parts.W.k-add-0.split-over-1.256..512", i"four_parts.split-1-over-1.256..512.slice");
+  i"peephole1.output" = add(i"peephole1.mul", i"four_parts.split-over-1.256..512");
+  i"peephole1.output.nolin" = sigmoid(i"peephole1.output");
+  c_prop = mul(i"peephole1.output.nolin", c);
   c_new = add(c_update, c_prop);
   tanh_c = tanh(c_new);
-  peephole2_mul = mul(peephole2_mul_fix_rank_0_1, c_new);
-  four_parts_W_k_256_384_split_over_1_768__1024 = matmul(r, four_parts_W_k_256_384_split_over_1_768__1024_a, transposeA = false, transposeB = false);
-  four_parts_W_k_add_0_split_over_1_768__1024 = add(c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_over_1_768__1024, four_parts_W_k_256_384_split_over_1_768__1024);
-  four_parts_split_over_1_768__1024 = add(four_parts_W_k_add_0_split_over_1_768__1024, four_parts_split_1_over_1_768__1024_slice);
-  peephole2_output = add(peephole2_mul, four_parts_split_over_1_768__1024);
-  peephole2_output_nolin = sigmoid(peephole2_output);
-  m = mul(tanh_c, peephole2_output_nolin);
-  h_new_W_split_over_1_0__128 = matmul(m, h_new_W_split_over_1_0__128_a, transposeA = false, transposeB = false);
-  h_new_split_over_1_0__128 = add(h_new_W_split_over_1_0__128, h_new_split_1_over_1_0__128_slice);
-  r_new = h_new_split_over_1_0__128;
+  i"peephole2.mul" = mul(i"peephole2.mul.fix-rank-0-1", c_new);
+  i"four_parts.W.k-256-384.split-over-1.768..1024" = matmul(r, i"four_parts.W.k-256-384.split-over-1.768..1024_a", transposeA = false, transposeB = false);
+  i"four_parts.W.k-add-0.split-over-1.768..1024" = add(i"c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.768..1024", i"four_parts.W.k-256-384.split-over-1.768..1024");
+  i"four_parts.split-over-1.768..1024" = add(i"four_parts.W.k-add-0.split-over-1.768..1024", i"four_parts.split-1-over-1.768..1024.slice");
+  i"peephole2.output" = add(i"peephole2.mul", i"four_parts.split-over-1.768..1024");
+  i"peephole2.output.nolin" = sigmoid(i"peephole2.output");
+  m = mul(tanh_c, i"peephole2.output.nolin");
+  i"h_new.W.split-over-1.0..128" = matmul(m, i"h_new.W.split-over-1.0..128_a", transposeA = false, transposeB = false);
+  i"h_new.split-over-1.0..128" = add(i"h_new.W.split-over-1.0..128", i"h_new.split-1-over-1.0..128.slice");
+  r_new = i"h_new.split-over-1.0..128";
 }
 
 fragment tract_core_properties(
@@ -119,142 +119,142 @@ fragment tract_core_properties(
 
 graph network( input ) -> ( output ) {
   input = external(shape = [24, 40]);
-  lda_output_delay = tract_pulse_delay(input, axis = 0, delay = 0, overlap = 4);
-  lda_output_input = transpose(unsqueeze(lda_output_delay, axes = [0]), axes = [0, 2, 1]);
-  lda_output_weigths = variable<scalar>(label = "lda.output_weigths", shape = [200, 40, 5]);
-  lda_output_bias = variable<scalar>(label = "lda.output_bias", shape = [200]);
-  lda_output_conv = conv(lda_output_input, lda_output_weigths, lda_output_bias, dilation = [1], stride = [1], border = "constant", groups = 1, padding = [(0, 0)]);
-  lda_output = squeeze(transpose(lda_output_conv, axes = [0, 2, 1]), axes = [0]);
-  tdnn1_affine_output_matmul_a = variable<scalar>(label = "tdnn1.affine.output.matmul_a", shape = [256, 200]);
-  tdnn1_affine_output_matmul = matmul(lda_output, tdnn1_affine_output_matmul_a, transposeA = false, transposeB = true);
-  tdnn1_affine_output_bias_cst = variable<scalar>(label = "tdnn1.affine.output.bias.cst", shape = [1, 256]);
-  tdnn1_affine_output_bias = add(tdnn1_affine_output_matmul, tdnn1_affine_output_bias_cst);
-  tdnn1_relu_output_low_cst = 0.0;
-  tdnn1_relu_output_low = max(tdnn1_affine_output_bias, tdnn1_relu_output_low_cst);
-  tdnn1_renorm_reduced_sq = square(tdnn1_relu_output_low);
-  tdnn1_renorm_reduced_sum = sum_reduce(tdnn1_renorm_reduced_sq, axes = [1]);
-  tdnn1_renorm_scaled_recip = 0.00390625;
-  tdnn1_renorm_scaled = mul(tdnn1_renorm_reduced_sum, tdnn1_renorm_scaled_recip);
-  tdnn1_renorm_norm = sqrt(tdnn1_renorm_scaled);
-  tdnn1_renorm_output = div(tdnn1_relu_output_low, tdnn1_renorm_norm);
-  tdnn2_affine_output_delay = tract_pulse_delay(tdnn1_renorm_output, axis = 0, delay = 0, overlap = 2);
-  tdnn2_affine_output_input = transpose(unsqueeze(tdnn2_affine_output_delay, axes = [0]), axes = [0, 2, 1]);
-  tdnn2_affine_output_weigths = variable<scalar>(label = "tdnn2.affine.output_weigths", shape = [256, 256, 3]);
-  tdnn2_affine_output_bias = variable<scalar>(label = "tdnn2.affine.output_bias", shape = [256]);
-  tdnn2_affine_output_conv = conv(tdnn2_affine_output_input, tdnn2_affine_output_weigths, tdnn2_affine_output_bias, dilation = [1], stride = [1], border = "constant", groups = 1, padding = [(0, 0)]);
-  tdnn2_affine_output = squeeze(transpose(tdnn2_affine_output_conv, axes = [0, 2, 1]), axes = [0]);
-  tdnn2_relu_output_low_cst = 0.0;
-  tdnn2_relu_output_low = max(tdnn2_affine_output, tdnn2_relu_output_low_cst);
-  tdnn2_renorm_reduced_sq = square(tdnn2_relu_output_low);
-  tdnn2_renorm_reduced_sum = sum_reduce(tdnn2_renorm_reduced_sq, axes = [1]);
-  tdnn2_renorm_scaled_recip = 0.00390625;
-  tdnn2_renorm_scaled = mul(tdnn2_renorm_reduced_sum, tdnn2_renorm_scaled_recip);
-  tdnn2_renorm_norm = sqrt(tdnn2_renorm_scaled);
-  tdnn2_renorm_output = div(tdnn2_relu_output_low, tdnn2_renorm_norm);
-  tdnn3_affine_output_input = transpose(unsqueeze(tdnn2_renorm_output, axes = [0]), axes = [0, 2, 1]);
-  tdnn3_affine_output_weigths = variable<scalar>(label = "tdnn3.affine.output_weigths", shape = [256, 256, 3]);
-  tdnn3_affine_output_bias = variable<scalar>(label = "tdnn3.affine.output_bias", shape = [256]);
-  tdnn3_affine_output_conv = conv(tdnn3_affine_output_input, tdnn3_affine_output_weigths, tdnn3_affine_output_bias, dilation = [1], stride = [3], border = "constant", groups = 1, padding = [(0, 0)]);
-  tdnn3_affine_output = squeeze(transpose(tdnn3_affine_output_conv, axes = [0, 2, 1]), axes = [0]);
-  tdnn3_relu_output_low_cst = 0.0;
-  tdnn3_relu_output_low = max(tdnn3_affine_output, tdnn3_relu_output_low_cst);
-  tdnn3_renorm_reduced_sq = square(tdnn3_relu_output_low);
-  tdnn3_renorm_reduced_sum = sum_reduce(tdnn3_renorm_reduced_sq, axes = [1]);
-  tdnn3_renorm_scaled_recip = 0.00390625;
-  tdnn3_renorm_scaled = mul(tdnn3_renorm_reduced_sum, tdnn3_renorm_scaled_recip);
-  tdnn3_renorm_norm = sqrt(tdnn3_renorm_scaled);
-  tdnn3_renorm_output = div(tdnn3_relu_output_low, tdnn3_renorm_norm);
-  fastlstm1_c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_over_1_0__256_a = variable<scalar>(label = "fastlstm1.c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.0..256_a", shape = [256, 256]);
-  fastlstm1_c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_over_1_0__256 = matmul(tdnn3_renorm_output, fastlstm1_c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_over_1_0__256_a, transposeA = false, transposeB = false);
-  fastlstm1_c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_over_1_512__768_a = variable<scalar>(label = "fastlstm1.c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.512..768_a", shape = [256, 256]);
-  fastlstm1_c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_over_1_512__768 = matmul(tdnn3_renorm_output, fastlstm1_c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_over_1_512__768_a, transposeA = false, transposeB = false);
-  fastlstm1_c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_over_1_256__512_a = variable<scalar>(label = "fastlstm1.c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.256..512_a", shape = [256, 256]);
-  fastlstm1_c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_over_1_256__512 = matmul(tdnn3_renorm_output, fastlstm1_c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_over_1_256__512_a, transposeA = false, transposeB = false);
-  fastlstm1_c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_over_1_768__1024_a = variable<scalar>(label = "fastlstm1.c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.768..1024_a", shape = [256, 256]);
-  fastlstm1_c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_over_1_768__1024 = matmul(tdnn3_renorm_output, fastlstm1_c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_over_1_768__1024_a, transposeA = false, transposeB = false);
-  fastlstm1_c_final_state_init_0 = variable<scalar>(label = "fastlstm1.c_final_state_init_0", shape = [1, 256]);
-  fastlstm1_c_final_state_init_1 = variable<scalar>(label = "fastlstm1.c_final_state_init_1", shape = [1, 128]);
-  fastlstm1_four_parts_W_k_256_384_split_over_1_0__256_a = variable<scalar>(label = "fastlstm1.four_parts.W.k-256-384.split-over-1.0..256_a", shape = [128, 256]);
-  fastlstm1_four_parts_W_k_256_384_split_over_1_256__512_a = variable<scalar>(label = "fastlstm1.four_parts.W.k-256-384.split-over-1.256..512_a", shape = [128, 256]);
-  fastlstm1_four_parts_W_k_256_384_split_over_1_512__768_a = variable<scalar>(label = "fastlstm1.four_parts.W.k-256-384.split-over-1.512..768_a", shape = [128, 256]);
-  fastlstm1_four_parts_W_k_256_384_split_over_1_768__1024_a = variable<scalar>(label = "fastlstm1.four_parts.W.k-256-384.split-over-1.768..1024_a", shape = [128, 256]);
-  fastlstm1_four_parts_split_1_over_1_0__256_slice = variable<scalar>(label = "fastlstm1.four_parts.split-1-over-1.0..256.slice", shape = [1, 256]);
-  fastlstm1_four_parts_split_1_over_1_256__512_slice = variable<scalar>(label = "fastlstm1.four_parts.split-1-over-1.256..512.slice", shape = [1, 256]);
-  fastlstm1_four_parts_split_1_over_1_512__768_slice = variable<scalar>(label = "fastlstm1.four_parts.split-1-over-1.512..768.slice", shape = [1, 256]);
-  fastlstm1_four_parts_split_1_over_1_768__1024_slice = variable<scalar>(label = "fastlstm1.four_parts.split-1-over-1.768..1024.slice", shape = [1, 256]);
-  fastlstm1_h_new_W_split_over_1_0__128_a = variable<scalar>(label = "fastlstm1.h_new.W.split-over-1.0..128_a", shape = [256, 128]);
-  fastlstm1_h_new_split_1_over_1_0__128_slice = variable<scalar>(label = "fastlstm1.h_new.split-1-over-1.0..128.slice", shape = [1, 128]);
-  fastlstm1_peephole0_mul_fix_rank_0_1 = variable<scalar>(label = "fastlstm1.peephole0.mul.fix-rank-0-1", shape = [1, 256]);
-  fastlstm1_peephole1_mul_fix_rank_0_1 = variable<scalar>(label = "fastlstm1.peephole1.mul.fix-rank-0-1", shape = [1, 256]);
-  fastlstm1_peephole2_mul_fix_rank_0_1 = variable<scalar>(label = "fastlstm1.peephole2.mul.fix-rank-0-1", shape = [1, 256]);
-  ( fastlstm1_c_final, fastlstm1_c_final_1 ) = tract_core_scan(body = "scan_body_0", scan = [("c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_over_1_0__256", fastlstm1_c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_over_1_0__256, 0, 1), ("c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_over_1_512__768", fastlstm1_c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_over_1_512__768, 0, 1), ("c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_over_1_256__512", fastlstm1_c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_over_1_256__512, 0, 1), ("c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_over_1_768__1024", fastlstm1_c_final_extracted_fastlstm1_four_parts_W_k_0_256_split_over_1_768__1024, 0, 1)], full = [("four_parts_W_k_256_384_split_over_1_0__256_a", fastlstm1_four_parts_W_k_256_384_split_over_1_0__256_a), ("four_parts_W_k_256_384_split_over_1_256__512_a", fastlstm1_four_parts_W_k_256_384_split_over_1_256__512_a), ("four_parts_W_k_256_384_split_over_1_512__768_a", fastlstm1_four_parts_W_k_256_384_split_over_1_512__768_a), ("four_parts_W_k_256_384_split_over_1_768__1024_a", fastlstm1_four_parts_W_k_256_384_split_over_1_768__1024_a), ("four_parts_split_1_over_1_0__256_slice", fastlstm1_four_parts_split_1_over_1_0__256_slice), ("four_parts_split_1_over_1_256__512_slice", fastlstm1_four_parts_split_1_over_1_256__512_slice), ("four_parts_split_1_over_1_512__768_slice", fastlstm1_four_parts_split_1_over_1_512__768_slice), ("four_parts_split_1_over_1_768__1024_slice", fastlstm1_four_parts_split_1_over_1_768__1024_slice), ("h_new_W_split_over_1_0__128_a", fastlstm1_h_new_W_split_over_1_0__128_a), ("h_new_split_1_over_1_0__128_slice", fastlstm1_h_new_split_1_over_1_0__128_slice), ("peephole0_mul_fix_rank_0_1", fastlstm1_peephole0_mul_fix_rank_0_1), ("peephole1_mul_fix_rank_0_1", fastlstm1_peephole1_mul_fix_rank_0_1), ("peephole2_mul_fix_rank_0_1", fastlstm1_peephole2_mul_fix_rank_0_1)], state = [("c", fastlstm1_c_final_state_init_0, "c_new"), ("r", fastlstm1_c_final_state_init_1, "r_new")], output = [("r_new", "full", 0, 1), ("m", "full", 0, 1)], skip = 2);
-  fastlstm1_h_new_W_split_over_1_128__256_a = variable<scalar>(label = "fastlstm1.h_new.W.split-over-1.128..256_a", shape = [256, 128]);
-  fastlstm1_h_new_W_split_over_1_128__256 = matmul(fastlstm1_c_final_1, fastlstm1_h_new_W_split_over_1_128__256_a, transposeA = false, transposeB = false);
-  fastlstm1_c_final_fastlstm1_h_new_split_1_over_1_128__256_slice = variable<scalar>(label = "fastlstm1.c_final.fastlstm1.h_new.split-1-over-1.128..256.slice", shape = [1, 128]);
-  fastlstm1_h_new_split_over_1_128__256 = add(fastlstm1_h_new_W_split_over_1_128__256, fastlstm1_c_final_fastlstm1_h_new_split_1_over_1_128__256_slice);
-  fastlstm1_h_new_concat_1 = concat([fastlstm1_c_final, fastlstm1_h_new_split_over_1_128__256], axis = 1);
-  tdnn4_affine_output_delay = tract_pulse_delay(fastlstm1_h_new_concat_1, axis = 0, delay = 0, overlap = 2);
-  tdnn4_affine_output_input = transpose(unsqueeze(tdnn4_affine_output_delay, axes = [0]), axes = [0, 2, 1]);
-  tdnn4_affine_output_weigths = variable<scalar>(label = "tdnn4.affine.output_weigths", shape = [256, 256, 3]);
-  tdnn4_affine_output_bias = variable<scalar>(label = "tdnn4.affine.output_bias", shape = [256]);
-  tdnn4_affine_output_conv = conv(tdnn4_affine_output_input, tdnn4_affine_output_weigths, tdnn4_affine_output_bias, dilation = [1], stride = [1], border = "constant", groups = 1, padding = [(0, 0)]);
-  tdnn4_affine_output = squeeze(transpose(tdnn4_affine_output_conv, axes = [0, 2, 1]), axes = [0]);
-  tdnn4_relu_output_low_cst = 0.0;
-  tdnn4_relu_output_low = max(tdnn4_affine_output, tdnn4_relu_output_low_cst);
-  tdnn4_renorm_reduced_sq = square(tdnn4_relu_output_low);
-  tdnn4_renorm_reduced_sum = sum_reduce(tdnn4_renorm_reduced_sq, axes = [1]);
-  tdnn4_renorm_scaled_recip = 0.00390625;
-  tdnn4_renorm_scaled = mul(tdnn4_renorm_reduced_sum, tdnn4_renorm_scaled_recip);
-  tdnn4_renorm_norm = sqrt(tdnn4_renorm_scaled);
-  tdnn4_renorm_output = div(tdnn4_relu_output_low, tdnn4_renorm_norm);
-  tdnn5_affine_output_delay = tract_pulse_delay(tdnn4_renorm_output, axis = 0, delay = 0, overlap = 2);
-  tdnn5_affine_output_input = transpose(unsqueeze(tdnn5_affine_output_delay, axes = [0]), axes = [0, 2, 1]);
-  tdnn5_affine_output_weigths = variable<scalar>(label = "tdnn5.affine.output_weigths", shape = [256, 256, 3]);
-  tdnn5_affine_output_bias = variable<scalar>(label = "tdnn5.affine.output_bias", shape = [256]);
-  tdnn5_affine_output_conv = conv(tdnn5_affine_output_input, tdnn5_affine_output_weigths, tdnn5_affine_output_bias, dilation = [1], stride = [1], border = "constant", groups = 1, padding = [(0, 0)]);
-  tdnn5_affine_output = squeeze(transpose(tdnn5_affine_output_conv, axes = [0, 2, 1]), axes = [0]);
-  tdnn5_relu_output_low_cst = 0.0;
-  tdnn5_relu_output_low = max(tdnn5_affine_output, tdnn5_relu_output_low_cst);
-  tdnn5_renorm_reduced_sq = square(tdnn5_relu_output_low);
-  tdnn5_renorm_reduced_sum = sum_reduce(tdnn5_renorm_reduced_sq, axes = [1]);
-  tdnn5_renorm_scaled_recip = 0.00390625;
-  tdnn5_renorm_scaled = mul(tdnn5_renorm_reduced_sum, tdnn5_renorm_scaled_recip);
-  tdnn5_renorm_norm = sqrt(tdnn5_renorm_scaled);
-  tdnn5_renorm_output = div(tdnn5_relu_output_low, tdnn5_renorm_norm);
-  fastlstm2_c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_over_1_0__256_a = variable<scalar>(label = "fastlstm2.c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.0..256_a", shape = [256, 256]);
-  fastlstm2_c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_over_1_0__256 = matmul(tdnn5_renorm_output, fastlstm2_c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_over_1_0__256_a, transposeA = false, transposeB = false);
-  fastlstm2_c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_over_1_512__768_a = variable<scalar>(label = "fastlstm2.c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.512..768_a", shape = [256, 256]);
-  fastlstm2_c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_over_1_512__768 = matmul(tdnn5_renorm_output, fastlstm2_c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_over_1_512__768_a, transposeA = false, transposeB = false);
-  fastlstm2_c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_over_1_256__512_a = variable<scalar>(label = "fastlstm2.c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.256..512_a", shape = [256, 256]);
-  fastlstm2_c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_over_1_256__512 = matmul(tdnn5_renorm_output, fastlstm2_c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_over_1_256__512_a, transposeA = false, transposeB = false);
-  fastlstm2_c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_over_1_768__1024_a = variable<scalar>(label = "fastlstm2.c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.768..1024_a", shape = [256, 256]);
-  fastlstm2_c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_over_1_768__1024 = matmul(tdnn5_renorm_output, fastlstm2_c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_over_1_768__1024_a, transposeA = false, transposeB = false);
-  fastlstm2_c_final_state_init_0 = variable<scalar>(label = "fastlstm2.c_final_state_init_0", shape = [1, 256]);
-  fastlstm2_c_final_state_init_1 = variable<scalar>(label = "fastlstm2.c_final_state_init_1", shape = [1, 128]);
-  fastlstm2_four_parts_W_k_256_384_split_over_1_0__256_a = variable<scalar>(label = "fastlstm2.four_parts.W.k-256-384.split-over-1.0..256_a", shape = [128, 256]);
-  fastlstm2_four_parts_W_k_256_384_split_over_1_256__512_a = variable<scalar>(label = "fastlstm2.four_parts.W.k-256-384.split-over-1.256..512_a", shape = [128, 256]);
-  fastlstm2_four_parts_W_k_256_384_split_over_1_512__768_a = variable<scalar>(label = "fastlstm2.four_parts.W.k-256-384.split-over-1.512..768_a", shape = [128, 256]);
-  fastlstm2_four_parts_W_k_256_384_split_over_1_768__1024_a = variable<scalar>(label = "fastlstm2.four_parts.W.k-256-384.split-over-1.768..1024_a", shape = [128, 256]);
-  fastlstm2_four_parts_split_1_over_1_0__256_slice = variable<scalar>(label = "fastlstm2.four_parts.split-1-over-1.0..256.slice", shape = [1, 256]);
-  fastlstm2_four_parts_split_1_over_1_256__512_slice = variable<scalar>(label = "fastlstm2.four_parts.split-1-over-1.256..512.slice", shape = [1, 256]);
-  fastlstm2_four_parts_split_1_over_1_512__768_slice = variable<scalar>(label = "fastlstm2.four_parts.split-1-over-1.512..768.slice", shape = [1, 256]);
-  fastlstm2_four_parts_split_1_over_1_768__1024_slice = variable<scalar>(label = "fastlstm2.four_parts.split-1-over-1.768..1024.slice", shape = [1, 256]);
-  fastlstm2_h_new_W_split_over_1_0__128_a = variable<scalar>(label = "fastlstm2.h_new.W.split-over-1.0..128_a", shape = [256, 128]);
-  fastlstm2_h_new_split_1_over_1_0__128_slice = variable<scalar>(label = "fastlstm2.h_new.split-1-over-1.0..128.slice", shape = [1, 128]);
-  fastlstm2_peephole0_mul_fix_rank_0_1 = variable<scalar>(label = "fastlstm2.peephole0.mul.fix-rank-0-1", shape = [1, 256]);
-  fastlstm2_peephole1_mul_fix_rank_0_1 = variable<scalar>(label = "fastlstm2.peephole1.mul.fix-rank-0-1", shape = [1, 256]);
-  fastlstm2_peephole2_mul_fix_rank_0_1 = variable<scalar>(label = "fastlstm2.peephole2.mul.fix-rank-0-1", shape = [1, 256]);
-  ( fastlstm2_c_final, fastlstm2_c_final_1 ) = tract_core_scan(body = "scan_body_1", scan = [("c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_over_1_0__256", fastlstm2_c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_over_1_0__256, 0, 1), ("c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_over_1_512__768", fastlstm2_c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_over_1_512__768, 0, 1), ("c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_over_1_256__512", fastlstm2_c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_over_1_256__512, 0, 1), ("c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_over_1_768__1024", fastlstm2_c_final_extracted_fastlstm2_four_parts_W_k_0_256_split_over_1_768__1024, 0, 1)], full = [("four_parts_W_k_256_384_split_over_1_0__256_a", fastlstm2_four_parts_W_k_256_384_split_over_1_0__256_a), ("four_parts_W_k_256_384_split_over_1_256__512_a", fastlstm2_four_parts_W_k_256_384_split_over_1_256__512_a), ("four_parts_W_k_256_384_split_over_1_512__768_a", fastlstm2_four_parts_W_k_256_384_split_over_1_512__768_a), ("four_parts_W_k_256_384_split_over_1_768__1024_a", fastlstm2_four_parts_W_k_256_384_split_over_1_768__1024_a), ("four_parts_split_1_over_1_0__256_slice", fastlstm2_four_parts_split_1_over_1_0__256_slice), ("four_parts_split_1_over_1_256__512_slice", fastlstm2_four_parts_split_1_over_1_256__512_slice), ("four_parts_split_1_over_1_512__768_slice", fastlstm2_four_parts_split_1_over_1_512__768_slice), ("four_parts_split_1_over_1_768__1024_slice", fastlstm2_four_parts_split_1_over_1_768__1024_slice), ("h_new_W_split_over_1_0__128_a", fastlstm2_h_new_W_split_over_1_0__128_a), ("h_new_split_1_over_1_0__128_slice", fastlstm2_h_new_split_1_over_1_0__128_slice), ("peephole0_mul_fix_rank_0_1", fastlstm2_peephole0_mul_fix_rank_0_1), ("peephole1_mul_fix_rank_0_1", fastlstm2_peephole1_mul_fix_rank_0_1), ("peephole2_mul_fix_rank_0_1", fastlstm2_peephole2_mul_fix_rank_0_1)], state = [("c", fastlstm2_c_final_state_init_0, "c_new"), ("r", fastlstm2_c_final_state_init_1, "r_new")], output = [("r_new", "full", 0, 1), ("m", "full", 0, 1)], skip = 6);
-  output_affine_output_W_k_0_128_a = variable<scalar>(label = "output.affine.output.W.k-0-128_a", shape = [1690, 128]);
-  output_affine_output_W_k_0_128 = matmul(fastlstm2_c_final, output_affine_output_W_k_0_128_a, transposeA = false, transposeB = true);
-  fastlstm2_h_new_W_split_over_1_128__256_a = variable<scalar>(label = "fastlstm2.h_new.W.split-over-1.128..256_a", shape = [256, 128]);
-  fastlstm2_h_new_W_split_over_1_128__256 = matmul(fastlstm2_h_new_W_split_over_1_128__256_a, fastlstm2_c_final_1, transposeA = true, transposeB = true);
-  fastlstm2_c_final_fastlstm2_h_new_split_1_over_1_128__256_slice = variable<scalar>(label = "fastlstm2.c_final.fastlstm2.h_new.split-1-over-1.128..256.slice", shape = [128, 1]);
-  fastlstm2_h_new_split_over_1_128__256 = add(fastlstm2_h_new_W_split_over_1_128__256, fastlstm2_c_final_fastlstm2_h_new_split_1_over_1_128__256_slice);
-  output_affine_output_W_k_128_256_a = variable<scalar>(label = "output.affine.output.W.k-128-256_a", shape = [1690, 128]);
-  output_affine_output_W_k_128_256 = matmul(fastlstm2_h_new_split_over_1_128__256, output_affine_output_W_k_128_256_a, transposeA = true, transposeB = true);
-  output_affine_output_W_k_add_0 = add(output_affine_output_W_k_0_128, output_affine_output_W_k_128_256);
-  output_affine_bias_0 = variable<scalar>(label = "output.affine.bias.0", shape = [1, 1690]);
-  output_affine_output = add(output_affine_output_W_k_add_0, output_affine_bias_0);
-  output = output_affine_output;
+  i"lda.output.delay" = tract_pulse_delay(input, axis = 0, delay = 0, overlap = 4);
+  i"lda.output_input" = transpose(unsqueeze(i"lda.output.delay", axes = [0]), axes = [0, 2, 1]);
+  i"lda.output_weigths" = variable<scalar>(label = "lda.output_weigths", shape = [200, 40, 5]);
+  i"lda.output_bias" = variable<scalar>(label = "lda.output_bias", shape = [200]);
+  i"lda.output_conv" = conv(i"lda.output_input", i"lda.output_weigths", i"lda.output_bias", dilation = [1], stride = [1], border = "constant", groups = 1, padding = [(0, 0)]);
+  i"lda.output" = squeeze(transpose(i"lda.output_conv", axes = [0, 2, 1]), axes = [0]);
+  i"tdnn1.affine.output.matmul_a" = variable<scalar>(label = "tdnn1.affine.output.matmul_a", shape = [256, 200]);
+  i"tdnn1.affine.output.matmul" = matmul(i"lda.output", i"tdnn1.affine.output.matmul_a", transposeA = false, transposeB = true);
+  i"tdnn1.affine.output.bias.cst" = variable<scalar>(label = "tdnn1.affine.output.bias.cst", shape = [1, 256]);
+  i"tdnn1.affine.output.bias" = add(i"tdnn1.affine.output.matmul", i"tdnn1.affine.output.bias.cst");
+  i"tdnn1.relu.output.low.cst" = 0.0;
+  i"tdnn1.relu.output.low" = max(i"tdnn1.affine.output.bias", i"tdnn1.relu.output.low.cst");
+  i"tdnn1.renorm.reduced.sq" = square(i"tdnn1.relu.output.low");
+  i"tdnn1.renorm.reduced.sum" = sum_reduce(i"tdnn1.renorm.reduced.sq", axes = [1]);
+  i"tdnn1.renorm.scaled-recip" = 0.00390625;
+  i"tdnn1.renorm.scaled" = mul(i"tdnn1.renorm.reduced.sum", i"tdnn1.renorm.scaled-recip");
+  i"tdnn1.renorm.norm" = sqrt(i"tdnn1.renorm.scaled");
+  i"tdnn1.renorm.output" = div(i"tdnn1.relu.output.low", i"tdnn1.renorm.norm");
+  i"tdnn2.affine.output.delay" = tract_pulse_delay(i"tdnn1.renorm.output", axis = 0, delay = 0, overlap = 2);
+  i"tdnn2.affine.output_input" = transpose(unsqueeze(i"tdnn2.affine.output.delay", axes = [0]), axes = [0, 2, 1]);
+  i"tdnn2.affine.output_weigths" = variable<scalar>(label = "tdnn2.affine.output_weigths", shape = [256, 256, 3]);
+  i"tdnn2.affine.output_bias" = variable<scalar>(label = "tdnn2.affine.output_bias", shape = [256]);
+  i"tdnn2.affine.output_conv" = conv(i"tdnn2.affine.output_input", i"tdnn2.affine.output_weigths", i"tdnn2.affine.output_bias", dilation = [1], stride = [1], border = "constant", groups = 1, padding = [(0, 0)]);
+  i"tdnn2.affine.output" = squeeze(transpose(i"tdnn2.affine.output_conv", axes = [0, 2, 1]), axes = [0]);
+  i"tdnn2.relu.output.low.cst" = 0.0;
+  i"tdnn2.relu.output.low" = max(i"tdnn2.affine.output", i"tdnn2.relu.output.low.cst");
+  i"tdnn2.renorm.reduced.sq" = square(i"tdnn2.relu.output.low");
+  i"tdnn2.renorm.reduced.sum" = sum_reduce(i"tdnn2.renorm.reduced.sq", axes = [1]);
+  i"tdnn2.renorm.scaled-recip" = 0.00390625;
+  i"tdnn2.renorm.scaled" = mul(i"tdnn2.renorm.reduced.sum", i"tdnn2.renorm.scaled-recip");
+  i"tdnn2.renorm.norm" = sqrt(i"tdnn2.renorm.scaled");
+  i"tdnn2.renorm.output" = div(i"tdnn2.relu.output.low", i"tdnn2.renorm.norm");
+  i"tdnn3.affine.output_input" = transpose(unsqueeze(i"tdnn2.renorm.output", axes = [0]), axes = [0, 2, 1]);
+  i"tdnn3.affine.output_weigths" = variable<scalar>(label = "tdnn3.affine.output_weigths", shape = [256, 256, 3]);
+  i"tdnn3.affine.output_bias" = variable<scalar>(label = "tdnn3.affine.output_bias", shape = [256]);
+  i"tdnn3.affine.output_conv" = conv(i"tdnn3.affine.output_input", i"tdnn3.affine.output_weigths", i"tdnn3.affine.output_bias", dilation = [1], stride = [3], border = "constant", groups = 1, padding = [(0, 0)]);
+  i"tdnn3.affine.output" = squeeze(transpose(i"tdnn3.affine.output_conv", axes = [0, 2, 1]), axes = [0]);
+  i"tdnn3.relu.output.low.cst" = 0.0;
+  i"tdnn3.relu.output.low" = max(i"tdnn3.affine.output", i"tdnn3.relu.output.low.cst");
+  i"tdnn3.renorm.reduced.sq" = square(i"tdnn3.relu.output.low");
+  i"tdnn3.renorm.reduced.sum" = sum_reduce(i"tdnn3.renorm.reduced.sq", axes = [1]);
+  i"tdnn3.renorm.scaled-recip" = 0.00390625;
+  i"tdnn3.renorm.scaled" = mul(i"tdnn3.renorm.reduced.sum", i"tdnn3.renorm.scaled-recip");
+  i"tdnn3.renorm.norm" = sqrt(i"tdnn3.renorm.scaled");
+  i"tdnn3.renorm.output" = div(i"tdnn3.relu.output.low", i"tdnn3.renorm.norm");
+  i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.0..256_a" = variable<scalar>(label = "fastlstm1.c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.0..256_a", shape = [256, 256]);
+  i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.0..256" = matmul(i"tdnn3.renorm.output", i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.0..256_a", transposeA = false, transposeB = false);
+  i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.512..768_a" = variable<scalar>(label = "fastlstm1.c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.512..768_a", shape = [256, 256]);
+  i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.512..768" = matmul(i"tdnn3.renorm.output", i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.512..768_a", transposeA = false, transposeB = false);
+  i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.256..512_a" = variable<scalar>(label = "fastlstm1.c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.256..512_a", shape = [256, 256]);
+  i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.256..512" = matmul(i"tdnn3.renorm.output", i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.256..512_a", transposeA = false, transposeB = false);
+  i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.768..1024_a" = variable<scalar>(label = "fastlstm1.c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.768..1024_a", shape = [256, 256]);
+  i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.768..1024" = matmul(i"tdnn3.renorm.output", i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.768..1024_a", transposeA = false, transposeB = false);
+  i"fastlstm1.c_final_state_init_0" = variable<scalar>(label = "fastlstm1.c_final_state_init_0", shape = [1, 256]);
+  i"fastlstm1.c_final_state_init_1" = variable<scalar>(label = "fastlstm1.c_final_state_init_1", shape = [1, 128]);
+  i"fastlstm1.four_parts.W.k-256-384.split-over-1.0..256_a" = variable<scalar>(label = "fastlstm1.four_parts.W.k-256-384.split-over-1.0..256_a", shape = [128, 256]);
+  i"fastlstm1.four_parts.W.k-256-384.split-over-1.256..512_a" = variable<scalar>(label = "fastlstm1.four_parts.W.k-256-384.split-over-1.256..512_a", shape = [128, 256]);
+  i"fastlstm1.four_parts.W.k-256-384.split-over-1.512..768_a" = variable<scalar>(label = "fastlstm1.four_parts.W.k-256-384.split-over-1.512..768_a", shape = [128, 256]);
+  i"fastlstm1.four_parts.W.k-256-384.split-over-1.768..1024_a" = variable<scalar>(label = "fastlstm1.four_parts.W.k-256-384.split-over-1.768..1024_a", shape = [128, 256]);
+  i"fastlstm1.four_parts.split-1-over-1.0..256.slice" = variable<scalar>(label = "fastlstm1.four_parts.split-1-over-1.0..256.slice", shape = [1, 256]);
+  i"fastlstm1.four_parts.split-1-over-1.256..512.slice" = variable<scalar>(label = "fastlstm1.four_parts.split-1-over-1.256..512.slice", shape = [1, 256]);
+  i"fastlstm1.four_parts.split-1-over-1.512..768.slice" = variable<scalar>(label = "fastlstm1.four_parts.split-1-over-1.512..768.slice", shape = [1, 256]);
+  i"fastlstm1.four_parts.split-1-over-1.768..1024.slice" = variable<scalar>(label = "fastlstm1.four_parts.split-1-over-1.768..1024.slice", shape = [1, 256]);
+  i"fastlstm1.h_new.W.split-over-1.0..128_a" = variable<scalar>(label = "fastlstm1.h_new.W.split-over-1.0..128_a", shape = [256, 128]);
+  i"fastlstm1.h_new.split-1-over-1.0..128.slice" = variable<scalar>(label = "fastlstm1.h_new.split-1-over-1.0..128.slice", shape = [1, 128]);
+  i"fastlstm1.peephole0.mul.fix-rank-0-1" = variable<scalar>(label = "fastlstm1.peephole0.mul.fix-rank-0-1", shape = [1, 256]);
+  i"fastlstm1.peephole1.mul.fix-rank-0-1" = variable<scalar>(label = "fastlstm1.peephole1.mul.fix-rank-0-1", shape = [1, 256]);
+  i"fastlstm1.peephole2.mul.fix-rank-0-1" = variable<scalar>(label = "fastlstm1.peephole2.mul.fix-rank-0-1", shape = [1, 256]);
+  ( i"fastlstm1.c_final", i"fastlstm1.c_final_1" ) = tract_core_scan(body = "scan_body_0", scan = [("c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.0..256", i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.0..256", 0, 1), ("c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.512..768", i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.512..768", 0, 1), ("c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.256..512", i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.256..512", 0, 1), ("c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.768..1024", i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.k-0-256.split-over-1.768..1024", 0, 1)], full = [("four_parts.W.k-256-384.split-over-1.0..256_a", i"fastlstm1.four_parts.W.k-256-384.split-over-1.0..256_a"), ("four_parts.W.k-256-384.split-over-1.256..512_a", i"fastlstm1.four_parts.W.k-256-384.split-over-1.256..512_a"), ("four_parts.W.k-256-384.split-over-1.512..768_a", i"fastlstm1.four_parts.W.k-256-384.split-over-1.512..768_a"), ("four_parts.W.k-256-384.split-over-1.768..1024_a", i"fastlstm1.four_parts.W.k-256-384.split-over-1.768..1024_a"), ("four_parts.split-1-over-1.0..256.slice", i"fastlstm1.four_parts.split-1-over-1.0..256.slice"), ("four_parts.split-1-over-1.256..512.slice", i"fastlstm1.four_parts.split-1-over-1.256..512.slice"), ("four_parts.split-1-over-1.512..768.slice", i"fastlstm1.four_parts.split-1-over-1.512..768.slice"), ("four_parts.split-1-over-1.768..1024.slice", i"fastlstm1.four_parts.split-1-over-1.768..1024.slice"), ("h_new.W.split-over-1.0..128_a", i"fastlstm1.h_new.W.split-over-1.0..128_a"), ("h_new.split-1-over-1.0..128.slice", i"fastlstm1.h_new.split-1-over-1.0..128.slice"), ("peephole0.mul.fix-rank-0-1", i"fastlstm1.peephole0.mul.fix-rank-0-1"), ("peephole1.mul.fix-rank-0-1", i"fastlstm1.peephole1.mul.fix-rank-0-1"), ("peephole2.mul.fix-rank-0-1", i"fastlstm1.peephole2.mul.fix-rank-0-1")], state = [("c", i"fastlstm1.c_final_state_init_0", "c_new"), ("r", i"fastlstm1.c_final_state_init_1", "r_new")], output = [("r_new", "full", 0, 1), ("m", "full", 0, 1)], skip = 2);
+  i"fastlstm1.h_new.W.split-over-1.128..256_a" = variable<scalar>(label = "fastlstm1.h_new.W.split-over-1.128..256_a", shape = [256, 128]);
+  i"fastlstm1.h_new.W.split-over-1.128..256" = matmul(i"fastlstm1.c_final_1", i"fastlstm1.h_new.W.split-over-1.128..256_a", transposeA = false, transposeB = false);
+  i"fastlstm1.c_final.fastlstm1.h_new.split-1-over-1.128..256.slice" = variable<scalar>(label = "fastlstm1.c_final.fastlstm1.h_new.split-1-over-1.128..256.slice", shape = [1, 128]);
+  i"fastlstm1.h_new.split-over-1.128..256" = add(i"fastlstm1.h_new.W.split-over-1.128..256", i"fastlstm1.c_final.fastlstm1.h_new.split-1-over-1.128..256.slice");
+  i"fastlstm1.h_new.concat-1" = concat([i"fastlstm1.c_final", i"fastlstm1.h_new.split-over-1.128..256"], axis = 1);
+  i"tdnn4.affine.output.delay" = tract_pulse_delay(i"fastlstm1.h_new.concat-1", axis = 0, delay = 0, overlap = 2);
+  i"tdnn4.affine.output_input" = transpose(unsqueeze(i"tdnn4.affine.output.delay", axes = [0]), axes = [0, 2, 1]);
+  i"tdnn4.affine.output_weigths" = variable<scalar>(label = "tdnn4.affine.output_weigths", shape = [256, 256, 3]);
+  i"tdnn4.affine.output_bias" = variable<scalar>(label = "tdnn4.affine.output_bias", shape = [256]);
+  i"tdnn4.affine.output_conv" = conv(i"tdnn4.affine.output_input", i"tdnn4.affine.output_weigths", i"tdnn4.affine.output_bias", dilation = [1], stride = [1], border = "constant", groups = 1, padding = [(0, 0)]);
+  i"tdnn4.affine.output" = squeeze(transpose(i"tdnn4.affine.output_conv", axes = [0, 2, 1]), axes = [0]);
+  i"tdnn4.relu.output.low.cst" = 0.0;
+  i"tdnn4.relu.output.low" = max(i"tdnn4.affine.output", i"tdnn4.relu.output.low.cst");
+  i"tdnn4.renorm.reduced.sq" = square(i"tdnn4.relu.output.low");
+  i"tdnn4.renorm.reduced.sum" = sum_reduce(i"tdnn4.renorm.reduced.sq", axes = [1]);
+  i"tdnn4.renorm.scaled-recip" = 0.00390625;
+  i"tdnn4.renorm.scaled" = mul(i"tdnn4.renorm.reduced.sum", i"tdnn4.renorm.scaled-recip");
+  i"tdnn4.renorm.norm" = sqrt(i"tdnn4.renorm.scaled");
+  i"tdnn4.renorm.output" = div(i"tdnn4.relu.output.low", i"tdnn4.renorm.norm");
+  i"tdnn5.affine.output.delay" = tract_pulse_delay(i"tdnn4.renorm.output", axis = 0, delay = 0, overlap = 2);
+  i"tdnn5.affine.output_input" = transpose(unsqueeze(i"tdnn5.affine.output.delay", axes = [0]), axes = [0, 2, 1]);
+  i"tdnn5.affine.output_weigths" = variable<scalar>(label = "tdnn5.affine.output_weigths", shape = [256, 256, 3]);
+  i"tdnn5.affine.output_bias" = variable<scalar>(label = "tdnn5.affine.output_bias", shape = [256]);
+  i"tdnn5.affine.output_conv" = conv(i"tdnn5.affine.output_input", i"tdnn5.affine.output_weigths", i"tdnn5.affine.output_bias", dilation = [1], stride = [1], border = "constant", groups = 1, padding = [(0, 0)]);
+  i"tdnn5.affine.output" = squeeze(transpose(i"tdnn5.affine.output_conv", axes = [0, 2, 1]), axes = [0]);
+  i"tdnn5.relu.output.low.cst" = 0.0;
+  i"tdnn5.relu.output.low" = max(i"tdnn5.affine.output", i"tdnn5.relu.output.low.cst");
+  i"tdnn5.renorm.reduced.sq" = square(i"tdnn5.relu.output.low");
+  i"tdnn5.renorm.reduced.sum" = sum_reduce(i"tdnn5.renorm.reduced.sq", axes = [1]);
+  i"tdnn5.renorm.scaled-recip" = 0.00390625;
+  i"tdnn5.renorm.scaled" = mul(i"tdnn5.renorm.reduced.sum", i"tdnn5.renorm.scaled-recip");
+  i"tdnn5.renorm.norm" = sqrt(i"tdnn5.renorm.scaled");
+  i"tdnn5.renorm.output" = div(i"tdnn5.relu.output.low", i"tdnn5.renorm.norm");
+  i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.0..256_a" = variable<scalar>(label = "fastlstm2.c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.0..256_a", shape = [256, 256]);
+  i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.0..256" = matmul(i"tdnn5.renorm.output", i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.0..256_a", transposeA = false, transposeB = false);
+  i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.512..768_a" = variable<scalar>(label = "fastlstm2.c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.512..768_a", shape = [256, 256]);
+  i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.512..768" = matmul(i"tdnn5.renorm.output", i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.512..768_a", transposeA = false, transposeB = false);
+  i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.256..512_a" = variable<scalar>(label = "fastlstm2.c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.256..512_a", shape = [256, 256]);
+  i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.256..512" = matmul(i"tdnn5.renorm.output", i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.256..512_a", transposeA = false, transposeB = false);
+  i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.768..1024_a" = variable<scalar>(label = "fastlstm2.c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.768..1024_a", shape = [256, 256]);
+  i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.768..1024" = matmul(i"tdnn5.renorm.output", i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.768..1024_a", transposeA = false, transposeB = false);
+  i"fastlstm2.c_final_state_init_0" = variable<scalar>(label = "fastlstm2.c_final_state_init_0", shape = [1, 256]);
+  i"fastlstm2.c_final_state_init_1" = variable<scalar>(label = "fastlstm2.c_final_state_init_1", shape = [1, 128]);
+  i"fastlstm2.four_parts.W.k-256-384.split-over-1.0..256_a" = variable<scalar>(label = "fastlstm2.four_parts.W.k-256-384.split-over-1.0..256_a", shape = [128, 256]);
+  i"fastlstm2.four_parts.W.k-256-384.split-over-1.256..512_a" = variable<scalar>(label = "fastlstm2.four_parts.W.k-256-384.split-over-1.256..512_a", shape = [128, 256]);
+  i"fastlstm2.four_parts.W.k-256-384.split-over-1.512..768_a" = variable<scalar>(label = "fastlstm2.four_parts.W.k-256-384.split-over-1.512..768_a", shape = [128, 256]);
+  i"fastlstm2.four_parts.W.k-256-384.split-over-1.768..1024_a" = variable<scalar>(label = "fastlstm2.four_parts.W.k-256-384.split-over-1.768..1024_a", shape = [128, 256]);
+  i"fastlstm2.four_parts.split-1-over-1.0..256.slice" = variable<scalar>(label = "fastlstm2.four_parts.split-1-over-1.0..256.slice", shape = [1, 256]);
+  i"fastlstm2.four_parts.split-1-over-1.256..512.slice" = variable<scalar>(label = "fastlstm2.four_parts.split-1-over-1.256..512.slice", shape = [1, 256]);
+  i"fastlstm2.four_parts.split-1-over-1.512..768.slice" = variable<scalar>(label = "fastlstm2.four_parts.split-1-over-1.512..768.slice", shape = [1, 256]);
+  i"fastlstm2.four_parts.split-1-over-1.768..1024.slice" = variable<scalar>(label = "fastlstm2.four_parts.split-1-over-1.768..1024.slice", shape = [1, 256]);
+  i"fastlstm2.h_new.W.split-over-1.0..128_a" = variable<scalar>(label = "fastlstm2.h_new.W.split-over-1.0..128_a", shape = [256, 128]);
+  i"fastlstm2.h_new.split-1-over-1.0..128.slice" = variable<scalar>(label = "fastlstm2.h_new.split-1-over-1.0..128.slice", shape = [1, 128]);
+  i"fastlstm2.peephole0.mul.fix-rank-0-1" = variable<scalar>(label = "fastlstm2.peephole0.mul.fix-rank-0-1", shape = [1, 256]);
+  i"fastlstm2.peephole1.mul.fix-rank-0-1" = variable<scalar>(label = "fastlstm2.peephole1.mul.fix-rank-0-1", shape = [1, 256]);
+  i"fastlstm2.peephole2.mul.fix-rank-0-1" = variable<scalar>(label = "fastlstm2.peephole2.mul.fix-rank-0-1", shape = [1, 256]);
+  ( i"fastlstm2.c_final", i"fastlstm2.c_final_1" ) = tract_core_scan(body = "scan_body_1", scan = [("c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.0..256", i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.0..256", 0, 1), ("c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.512..768", i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.512..768", 0, 1), ("c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.256..512", i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.256..512", 0, 1), ("c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.768..1024", i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.k-0-256.split-over-1.768..1024", 0, 1)], full = [("four_parts.W.k-256-384.split-over-1.0..256_a", i"fastlstm2.four_parts.W.k-256-384.split-over-1.0..256_a"), ("four_parts.W.k-256-384.split-over-1.256..512_a", i"fastlstm2.four_parts.W.k-256-384.split-over-1.256..512_a"), ("four_parts.W.k-256-384.split-over-1.512..768_a", i"fastlstm2.four_parts.W.k-256-384.split-over-1.512..768_a"), ("four_parts.W.k-256-384.split-over-1.768..1024_a", i"fastlstm2.four_parts.W.k-256-384.split-over-1.768..1024_a"), ("four_parts.split-1-over-1.0..256.slice", i"fastlstm2.four_parts.split-1-over-1.0..256.slice"), ("four_parts.split-1-over-1.256..512.slice", i"fastlstm2.four_parts.split-1-over-1.256..512.slice"), ("four_parts.split-1-over-1.512..768.slice", i"fastlstm2.four_parts.split-1-over-1.512..768.slice"), ("four_parts.split-1-over-1.768..1024.slice", i"fastlstm2.four_parts.split-1-over-1.768..1024.slice"), ("h_new.W.split-over-1.0..128_a", i"fastlstm2.h_new.W.split-over-1.0..128_a"), ("h_new.split-1-over-1.0..128.slice", i"fastlstm2.h_new.split-1-over-1.0..128.slice"), ("peephole0.mul.fix-rank-0-1", i"fastlstm2.peephole0.mul.fix-rank-0-1"), ("peephole1.mul.fix-rank-0-1", i"fastlstm2.peephole1.mul.fix-rank-0-1"), ("peephole2.mul.fix-rank-0-1", i"fastlstm2.peephole2.mul.fix-rank-0-1")], state = [("c", i"fastlstm2.c_final_state_init_0", "c_new"), ("r", i"fastlstm2.c_final_state_init_1", "r_new")], output = [("r_new", "full", 0, 1), ("m", "full", 0, 1)], skip = 6);
+  i"output.affine.output.W.k-0-128_a" = variable<scalar>(label = "output.affine.output.W.k-0-128_a", shape = [1690, 128]);
+  i"output.affine.output.W.k-0-128" = matmul(i"fastlstm2.c_final", i"output.affine.output.W.k-0-128_a", transposeA = false, transposeB = true);
+  i"fastlstm2.h_new.W.split-over-1.128..256_a" = variable<scalar>(label = "fastlstm2.h_new.W.split-over-1.128..256_a", shape = [256, 128]);
+  i"fastlstm2.h_new.W.split-over-1.128..256" = matmul(i"fastlstm2.h_new.W.split-over-1.128..256_a", i"fastlstm2.c_final_1", transposeA = true, transposeB = true);
+  i"fastlstm2.c_final.fastlstm2.h_new.split-1-over-1.128..256.slice" = variable<scalar>(label = "fastlstm2.c_final.fastlstm2.h_new.split-1-over-1.128..256.slice", shape = [128, 1]);
+  i"fastlstm2.h_new.split-over-1.128..256" = add(i"fastlstm2.h_new.W.split-over-1.128..256", i"fastlstm2.c_final.fastlstm2.h_new.split-1-over-1.128..256.slice");
+  i"output.affine.output.W.k-128-256_a" = variable<scalar>(label = "output.affine.output.W.k-128-256_a", shape = [1690, 128]);
+  i"output.affine.output.W.k-128-256" = matmul(i"fastlstm2.h_new.split-over-1.128..256", i"output.affine.output.W.k-128-256_a", transposeA = true, transposeB = true);
+  i"output.affine.output.W.k-add-0" = add(i"output.affine.output.W.k-0-128", i"output.affine.output.W.k-128-256");
+  i"output.affine.bias.0" = variable<scalar>(label = "output.affine.bias.0", shape = [1, 1690]);
+  i"output.affine.output" = add(i"output.affine.output.W.k-add-0", i"output.affine.bias.0");
+  output = i"output.affine.output";
 }
