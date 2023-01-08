@@ -869,7 +869,7 @@ impl TypedOp for ConvUnary {
         let h_axis = shape.h_axis();
         for (ix, &dim) in kernel_spatial_shape.iter().enumerate() {
             if dim == 1 && self.pool_spec.stride(ix) == 1 {
-                let mut info = AxisInfo::simple(ix + h_axis).disposable(true);
+                let mut info = AxisInfo::simple(ix + h_axis).disposable(kernel_spatial_shape.len() > 1);
                 info.inputs.extend(std::iter::repeat(None).take(inputs.len() - 1));
                 axes.push(info)
             }
@@ -993,6 +993,7 @@ impl TypedOp for ConvUnary {
         let (geo_adjusted, kernel_adjusted) = match change {
             Rm(a)
                 if hw_axes.contains(a)
+                    && hw_axes.len() > 1
                     && self.pool_spec.dilation(a - h_axis) == 1
                     && self.pool_spec.stride(a - h_axis) == 1
                     && self.pool_spec.kernel_shape[a - h_axis] == 1 =>
