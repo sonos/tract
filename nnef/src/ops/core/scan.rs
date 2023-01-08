@@ -1,4 +1,5 @@
 use crate::ast;
+use crate::ast::Identifier;
 use crate::deser::Value;
 use crate::internal::*;
 use crate::ser::*;
@@ -54,13 +55,13 @@ pub fn register(registry: &mut Registry) {
 fn ser_scan(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
     let op = node.op().downcast_ref::<Scan>().unwrap();
     let (mut body, body_tensors) = crate::ser::to_fragment_def(ast, &op.body)?;
-    body.decl.id = format!("scan_body_{}", ast.fragments.len());
+    body.decl.id = Identifier(format!("scan_body_{}", ast.fragments.len()));
     let mut scan = vec![];
     let mut state = vec![];
     let mut full = vec![];
     let mut outputs = vec![];
     for (ix, input) in op.input_mapping.iter().enumerate() {
-        let name = string(body.decl.parameters[ix].id.to_string());
+        let name = string(&body.decl.parameters[ix].id.0);
         match input {
             InputMapping::Scan(info) => {
                 scan.push(tuple_4(
@@ -150,7 +151,7 @@ fn de_scan(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
         .doc
         .fragments
         .iter()
-        .find(|n| n.decl.id == fragment_name)
+        .find(|n| n.decl.id.0 == fragment_name)
         .ok_or_else(|| format_err!("Cound not find fragment `{}'", fragment_name))?;
     let mut body =
         ModelBuilder::new(builder.framework, builder.proto_model, &builder.model.symbol_table);
@@ -163,7 +164,7 @@ fn de_scan(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
     let state: TVec<(String, OutletId, String)> = invocation.named_arg_as(builder, "state")?;
     for par in &fragment.decl.parameters {
         let (outer_input_wire, inner_fact) =
-            if let Some((_, wire, axis, chunk)) = scan.iter().find(|s| s.0 == par.id) {
+            if let Some((_, wire, axis, chunk)) = scan.iter().find(|s| s.0 == par.id.0) {
                 input_mapping.push(InputMapping::Scan(ScanInfo {
                     slot: outer_inputs.len(),
                     axis: *axis,
@@ -172,23 +173,23 @@ fn de_scan(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
                 let mut fact = builder.model.outlet_fact(*wire)?.clone();
                 fact.shape.set(*axis, chunk.abs().to_dim());
                 (*wire, fact)
-            } else if let Some((_, wire)) = full.iter().find(|s| s.0 == par.id) {
+            } else if let Some((_, wire)) = full.iter().find(|s| s.0 == par.id.0) {
                 input_mapping.push(InputMapping::Full { slot: outer_inputs.len() });
                 let fact = builder.model.outlet_fact(*wire)?.clone();
                 (*wire, fact)
-            } else if let Some((_, wire, _out)) = state.iter().find(|s| s.0 == par.id) {
+            } else if let Some((_, wire, _out)) = state.iter().find(|s| s.0 == par.id.0) {
                 let fact = builder.model.outlet_fact(*wire)?.clone();
                 input_mapping.push(InputMapping::State {
                     initializer: StateInitializer::FromInput(outer_inputs.len()),
                 });
                 (*wire, fact.datum_type.fact(fact.shape))
             } else {
-                bail!("Unbound body input parameter {}", par.id);
+                bail!("Unbound body input parameter {}", par.id.0);
             };
         outer_inputs.push(outer_input_wire);
         body.scopes.last_mut().unwrap().insert(
             par.id.clone(),
-            Value::Wire(body.model.add_source(par.id.to_string(), inner_fact)?),
+            Value::Wire(body.model.add_source(par.id.0.to_string(), inner_fact)?),
         );
     }
     body.wire_body(fragment.body.as_deref().unwrap())?;
@@ -198,7 +199,7 @@ fn de_scan(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
         .iter()
         .map(|r| {
             body.scopes.last().unwrap().get(&r.id).with_context(|| {
-                format!("Could not find variable for scan output named `{}'", r.id)
+                format!("Could not find variable for scan output named `{}'", r.id.0)
             })
         })
         .collect::<TractResult<Vec<&Value>>>()?;
@@ -229,7 +230,7 @@ fn de_scan(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
         }
     }
     let mut output_mapping = vec![];
-    for output_name in fragment.decl.results.iter().map(|o| &*o.id) {
+    for output_name in fragment.decl.results.iter().map(|o| &*o.id.0) {
         output_mapping.push(OutputMapping {
             full_dim_hint: None,
             scan: outputs

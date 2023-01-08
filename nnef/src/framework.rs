@@ -1,7 +1,7 @@
 use tract_core::tract_data::itertools::Itertools;
 
 use crate::ast::quant::write_quant_format;
-use crate::ast::{Document, ProtoModel, QuantFormat};
+use crate::ast::{Document, Identifier, ProtoModel, QuantFormat};
 use crate::internal::*;
 use std::io::Read;
 #[cfg(target_family = "unix")]
@@ -88,7 +88,7 @@ impl Nnef {
             let mut quant_data = vec![];
 
             for (name, format) in quantization.into_iter() {
-                write_quant_format(&mut quant_data, name, format)
+                write_quant_format(&mut quant_data, &name, format)
                     .context("Serializing graph.quant")?;
             }
 
@@ -101,7 +101,7 @@ impl Nnef {
         }
 
         for (label, t) in &proto_model.tensors {
-            let label = label.to_string() + ".dat";
+            let label = label.0.to_string() + ".dat";
             let filename = std::path::Path::new(&label);
             let mut data = vec![];
             crate::tensors::write_tensor(&mut data, t)
@@ -136,12 +136,12 @@ impl Nnef {
         if let Some(quantization) = proto_model.quantization {
             let mut graph_quant = std::fs::File::create(path.join("graph.quant"))?;
             for (name, format) in quantization.into_iter().sorted_by_key(|(x, _)| x.clone()) {
-                write_quant_format(&mut graph_quant, name, format)?;
+                write_quant_format(&mut graph_quant, &name, format)?;
             }
         }
 
         for (label, t) in &proto_model.tensors {
-            let label = label.to_string() + ".dat";
+            let label = label.0.to_string() + ".dat";
             std::fs::create_dir_all(path.join(&label).parent().unwrap())?;
             let filename = path.join(label);
             let mut file = std::fs::File::create(filename)?;
@@ -205,7 +205,11 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
         proto_model_from_resources(resources)
     }
 
-    fn model_for_proto_model_with_symbols(&self, proto: &ProtoModel, symbols: &SymbolTable) -> TractResult<TypedModel> {
+    fn model_for_proto_model_with_symbols(
+        &self,
+        proto: &ProtoModel,
+        symbols: &SymbolTable,
+    ) -> TractResult<TypedModel> {
         self.translate(proto, symbols).map_err(|e| e.1)
     }
 }
@@ -229,27 +233,29 @@ fn proto_model_from_resources(
     let tensors: HashMap<_, _> = resources
         .iter()
         .filter_map(|(key, resource)| {
-            Arc::clone(resource).downcast_arc::<Tensor>().ok().map(|r| (key.to_string(), r))
+            Arc::clone(resource)
+                .downcast_arc::<Tensor>()
+                .ok()
+                .map(|r| (Identifier::from(&**key), r))
         })
         .collect();
     // Iterate over tensors keys to remove them from the global resources hash map.
     tensors.keys().for_each(|k| {
-        resources.remove(k);
+        resources.remove(&*k.0);
     });
 
     // Quantization format resources extraction if present.
-    let quantization = resources.remove(crate::resource::GRAPH_QUANT_FILENAME)
-        .map(|q_r| {
-            q_r
-                .downcast_arc::<HashMap<String, QuantFormat>>()
-                .map_err(|_| anyhow!("Error while downcasting quantization format resource"))
-        })
-    .transpose()?
-        .map(|quant| {
-            Arc::try_unwrap(quant)
-                .map_err(|_| anyhow!("Error while extracting quantization format resource from shared reference. Only one reference to it is expected"))
-        })
-    .transpose()?;
+    let quantization = if let Some(q_r) = resources.remove(crate::resource::GRAPH_QUANT_FILENAME) {
+        let Ok(q_r) = q_r
+            .downcast_arc::<HashMap<String, QuantFormat>>() else {
+            bail!("Error while downcasting quantization format resource")
+            };
+        let Ok(q_r) = Arc::try_unwrap(q_r) else {
+            bail!("Error while extracting quantization format resource from shared reference. Only one reference to it is expected")};
+        Some(q_r.into_iter().map(|(k, v)| (Identifier(k), v)).collect())
+    } else {
+        None
+    };
 
     let proto = ProtoModel { doc, tensors, quantization, resources };
     proto.validate()?;

@@ -9,8 +9,8 @@ pub mod quant;
 #[derive(Clone, Debug)]
 pub struct ProtoModel {
     pub doc: Document,
-    pub tensors: HashMap<String, Arc<Tensor>>,
-    pub quantization: Option<HashMap<String, QuantFormat>>,
+    pub tensors: HashMap<Identifier, Arc<Tensor>>,
+    pub quantization: Option<HashMap<Identifier, QuantFormat>>,
     pub resources: HashMap<String, Arc<dyn Resource>>,
 }
 
@@ -55,7 +55,7 @@ impl QuantFormat {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Document {
     pub version: NumericLiteral,
-    pub extension: Vec<Vec<String>>,
+    pub extension: Vec<Vec<Identifier>>,
     pub fragments: Vec<FragmentDef>,
     pub graph_def: GraphDef,
 }
@@ -81,8 +81,8 @@ impl TypeSpec {
     pub fn array(self) -> TypeSpec {
         TypeSpec::Array(Box::new(self))
     }
-    pub fn named(self, s: impl Into<String>) -> Parameter {
-        Parameter { id: s.into(), spec: self, lit: None, doc: None }
+    pub fn named(self, s: impl AsRef<str>) -> Parameter {
+        Parameter { id: s.as_ref().into(), spec: self, lit: None, doc: None }
     }
 }
 
@@ -105,16 +105,16 @@ impl TypeName {
     pub fn array(self) -> TypeSpec {
         self.spec().array()
     }
-    pub fn named(self, s: impl Into<String>) -> Parameter {
+    pub fn named(self, s: impl AsRef<str>) -> Parameter {
         self.spec().named(s)
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GraphDef {
-    pub id: String,
-    pub parameters: Vec<String>,
-    pub results: Vec<String>,
+    pub id: Identifier,
+    pub parameters: Vec<Identifier>,
+    pub results: Vec<Identifier>,
     pub body: Vec<Assignment>,
 }
 
@@ -126,13 +126,13 @@ pub struct FragmentDef {
 
 impl FragmentDef {
     pub fn validate(&self) -> TractResult<()> {
-        self.decl.validate().with_context(|| format!("Invalid fragment `{}'", self.decl.id))
+        self.decl.validate().with_context(|| format!("Invalid fragment {:?}", self.decl.id))
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FragmentDecl {
-    pub id: String,
+    pub id: Identifier,
     pub generic_decl: Option<Option<TypeName>>,
     pub parameters: Vec<Parameter>,
     pub results: Vec<Result_>,
@@ -143,36 +143,36 @@ impl FragmentDecl {
         if let Some(dup) = self
             .parameters
             .iter()
-            .map(|p| &*p.id)
+            .map(|p| &p.id)
             .sorted()
             .group_by(|x| x.to_owned())
             .into_iter()
             .find_map(|(key, values)| if values.count() > 1 { Some(key) } else { None })
         {
-            bail!("Duplicate parameter name found `{}'", dup);
+            bail!("Duplicate parameter name found {:?}", dup);
         }
         if let Some(dup) = self
             .results
             .iter()
-            .map(|p| &*p.id)
+            .map(|p| &p.id)
             .sorted()
             .group_by(|x| x.to_owned())
             .into_iter()
             .find_map(|(key, values)| if values.count() > 1 { Some(key) } else { None })
         {
-            bail!("Duplicate result name found `{}'", dup);
+            bail!("Duplicate result name found {:?}", dup);
         }
         if let Some(dup) = self
             .parameters
             .iter()
-            .map(|p| &*p.id)
-            .chain(self.results.iter().map(|p| &*p.id))
+            .map(|p| &p.id)
+            .chain(self.results.iter().map(|p| &p.id))
             .sorted()
             .group_by(|x| x.to_owned())
             .into_iter()
             .find_map(|(key, values)| if values.count() > 1 { Some(key) } else { None })
         {
-            bail!("Same name used as parameter and result `{}'", dup);
+            bail!("Same name used as parameter and result {:?}", dup);
         }
         Ok(())
     }
@@ -180,7 +180,7 @@ impl FragmentDecl {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Parameter {
-    pub id: String,
+    pub id: Identifier,
     pub spec: TypeSpec,
     pub lit: Option<Literal>,
     pub doc: Option<String>,
@@ -192,27 +192,53 @@ impl Parameter {
     }
 
     pub fn doc(mut self, s: impl Into<String>) -> Parameter {
-        self.doc =  Some(s.into());
+        self.doc = Some(s.into());
         self
     }
 }
 
-pub fn param(s: impl Into<String>, spec: TypeSpec) -> Parameter {
-    Parameter { id: s.into(), spec, lit: None, doc: None }
+pub fn param(s: impl AsRef<str>, spec: TypeSpec) -> Parameter {
+    Parameter { id: s.as_ref().into(), spec, lit: None, doc: None }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Result_ {
-    pub id: String,
+    pub id: Identifier,
     pub spec: TypeSpec,
 }
 
 impl<S: Into<String>> From<(S, TypeSpec)> for Result_ {
     fn from(v: (S, TypeSpec)) -> Result_ {
-        Result_ {
-            id: v.0.into(),
-            spec: v.1
+        Result_ { id: Identifier(v.0.into()), spec: v.1 }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default, Ord, PartialOrd, Hash)]
+pub struct Identifier(pub String);
+
+impl<'s> From<&'s str> for Identifier {
+    fn from(value: &str) -> Self {
+        Identifier(value.to_string())
+    }
+}
+
+impl AsRef<str> for Identifier {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Identifier {
+    fn escaped(&self) -> Cow<str> {
+        if self.0.len() > 0 {
+            let first = self.0.chars().next().unwrap();
+            if (first.is_alphabetic() || first == '_')
+                && self.0.chars().all(|c| c.is_alphanumeric() || c == '_')
+            {
+                return Cow::Borrowed(&self.0);
+            }
         }
+        Cow::Owned(format!("i\"{}\"", self.0.replace('\\', "\\\\").replace('\"', "\\\"")))
     }
 }
 
@@ -224,27 +250,27 @@ pub struct Assignment {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LValue {
-    Identifier(String),
+    Identifier(Identifier),
     Array(Vec<LValue>),
     Tuple(Vec<LValue>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Invocation {
-    pub id: String,
+    pub id: Identifier,
     pub generic_type_name: Option<TypeName>,
     pub arguments: Vec<Argument>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Argument {
-    pub id: Option<String>,
+    pub id: Option<Identifier>,
     pub rvalue: RValue,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RValue {
-    Identifier(String),
+    Identifier(Identifier),
     Literal(Literal),
     Binary(Box<RValue>, String, Box<RValue>),
     Unary(String, Box<RValue>),
@@ -264,7 +290,7 @@ impl RValue {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Comprehension {
-    pub loop_iters: Vec<(String, RValue)>,
+    pub loop_iters: Vec<(Identifier, RValue)>,
     pub filter: Option<RValue>,
     pub yields: RValue,
 }

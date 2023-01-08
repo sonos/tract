@@ -20,14 +20,14 @@ impl<'a> DocDumper<'a> {
         writeln!(self.w)?;
         // Generate and write unit element wise op.
         for unit_el_wise_op in registry.unit_element_wise_ops.iter() {
-            writeln!(self.w, "fragment {}( x: tensor<scalar> ) -> (y: tensor<scalar>);", unit_el_wise_op.0)?;
+            writeln!(self.w, "fragment {}( x: tensor<scalar> ) -> (y: tensor<scalar>);", unit_el_wise_op.0.escaped())?;
         }
         writeln!(self.w)?;
 
         // Generate and write element wise op.
         for el_wise_op in registry.element_wise_ops.iter() {
             let fragment_decl = FragmentDecl {
-                id: el_wise_op.0.to_string(),
+                id: el_wise_op.0.clone(),
                 generic_decl: None,
                 parameters: el_wise_op.3.clone(),
                 results: vec![Result_ { id: "output".into(), spec: TypeName::Any.tensor() }]
@@ -58,7 +58,7 @@ impl<'a> DocDumper<'a> {
 
     pub fn to_directory(path: impl AsRef<Path>, nnef: &Nnef) -> TractResult<()> {
         for registry in nnef.registries.iter() {
-            let registry_file = path.as_ref().join(format!("{}.nnef", registry.id));
+            let registry_file = path.as_ref().join(format!("{}.nnef", registry.id.0));
             let mut file = std::fs::File::create(&registry_file)
                 .with_context(|| anyhow!("Error while creating file at path: {:?}", registry_file))?;
             DocDumper::new(&mut file).registry(registry)?;

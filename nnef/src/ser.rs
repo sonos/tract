@@ -21,23 +21,23 @@ pub fn to_fragment_def(
 pub struct IntoAst<'a> {
     pub framework: &'a Nnef,
     pub parent: Option<&'a IntoAst<'a>>,
-    pub registries: Vec<String>,
+    pub registries: Vec<Identifier>,
     pub symbols: Vec<Symbol>,
-    pub prefix: Option<String>,
+    pub prefix: Option<Identifier>,
     pub model: &'a TypedModel,
-    pub parameters: Vec<String>,
-    pub results: Vec<String>,
+    pub parameters: Vec<Identifier>,
+    pub results: Vec<Identifier>,
     pub mapping: HashMap<OutletId, Arc<RValue>>,
-    pub tensors: HashMap<String, Arc<Tensor>>,
-    pub quantization: HashMap<String, QuantFormat>,
+    pub tensors: HashMap<Identifier, Arc<Tensor>>,
+    pub quantization: HashMap<Identifier, QuantFormat>,
     pub resources: HashMap<String, Arc<dyn Resource>>,
-    pub fragments: HashMap<String, FragmentDef>,
+    pub fragments: HashMap<Identifier, FragmentDef>,
     pub body: Vec<Assignment>,
 }
 
 pub struct RequiredTensorParameter {
-    pub parameter_id: String,
-    pub label: String,
+    pub parameter_id: Identifier,
+    pub label: Identifier,
     pub value: Arc<Tensor>,
 }
 
@@ -62,12 +62,12 @@ impl<'a> IntoAst<'a> {
         }
     }
 
-    fn ensure_registry(&mut self, id: &str) -> TractResult<()> {
-        if !self.framework.registries.iter().any(|r| r.id == id) {
-            bail!("Registry {} required, consider allowing it on the NNEF framework.", id);
+    fn ensure_registry(&mut self, id: &Identifier) -> TractResult<()> {
+        if !self.framework.registries.iter().any(|r| &r.id == id) {
+            bail!("Registry {} required, consider allowing it on the NNEF framework.", id.0);
         }
         if !self.registries.iter().any(|r| r == id) {
-            self.registries.push(id.to_string());
+            self.registries.push(id.clone());
         }
         Ok(())
     }
@@ -79,7 +79,7 @@ impl<'a> IntoAst<'a> {
         Ok(())
     }
 
-    fn extract_prefix(model: &TypedModel) -> Option<String> {
+    fn extract_prefix(model: &TypedModel) -> Option<Identifier> {
         let names = model
             .nodes()
             .iter()
@@ -87,14 +87,14 @@ impl<'a> IntoAst<'a> {
             .map(|n| &n.name)
             .collect::<Vec<_>>();
         if names.len() > 2 {
-            Some(names[1..].iter().fold(names[0].to_string(), |prefix, name| {
+            Some(Identifier(names[1..].iter().fold(names[0].to_string(), |prefix, name| {
                 (prefix.chars())
                     .zip(name.chars())
                     .take_while(|(a, b)| a == b)
                     .map(|(a, _)| a)
                     .collect()
-            }))
-            .filter(|p| p.len() > 0)
+            })))
+            .filter(|p| p.0.len() > 0)
         } else {
             None
         }
@@ -141,12 +141,9 @@ impl<'a> IntoAst<'a> {
         }
         let IntoAst { prefix, body, mut parameters, results, .. } = self;
         parameters.extend(tensor_params.iter().map(|rtp| rtp.parameter_id.clone()).sorted());
-        let mut id = prefix
-            .map(|p| p.trim_end_matches(&['-', '/', '.']).replace(['-', '/', '.'], "_"))
+        let id = prefix
+            .map(|p| p.0.trim_end_matches(&['-', '/', '.']).to_string())
             .unwrap_or_else(|| "network".into());
-        if id.len() > 0 && char::is_digit(id.chars().next().unwrap(), 10) {
-            id = "_".to_string() + &id;
-        }
         let body = body
             .into_iter()
             .filter(|assign| match &assign.left {
@@ -157,7 +154,7 @@ impl<'a> IntoAst<'a> {
         Ok((
             FragmentDef {
                 decl: FragmentDecl {
-                    id,
+                    id: Identifier(id),
                     generic_decl: None,
                     parameters: parameters
                         .into_iter()
@@ -184,40 +181,37 @@ impl<'a> IntoAst<'a> {
             .collect::<TractResult<Vec<_>>>()?;
         let version = env!("CARGO_PKG_VERSION");
         properties.push(tuple_2(
-            string("tract_nnef_ser_version".to_string()),
+            string("tract_nnef_ser_version"),
             self.konst("tract_nnef_ser_version", &rctensor0(version.to_string()))?.as_ref().clone(),
         ));
         properties.push(tuple_2(
-            string("tract_nnef_format_version".to_string()),
+            string("tract_nnef_format_version"),
             self.konst("tract_nnef_format_version", &rctensor0("beta1".to_string()))?
                 .as_ref()
                 .clone(),
         ));
         let properties: Assignment = assignment("properties", Arc::new(array(properties)));
         let IntoAst { prefix, mut fragments, body, tensors, parameters, results, .. } = self;
-        let mut id = prefix
-            .map(|p| p.trim_end_matches(&['-', '/', '.']).replace(['-', '/', '.'], "_"))
+        let id = prefix
+            .map(|p| p.0.trim_end_matches(&['-', '/', '.']).to_owned())
             .unwrap_or_else(|| "network".into());
-        if id.len() > 0 && char::is_digit(id.chars().next().unwrap(), 10) {
-            id = "_".to_string() + &id;
-        }
         let mut extension = vec![];
         self.registries.sort();
         for reg in self.registries {
-            if reg != "tract_nnef" {
-                extension.push(vec!["tract_registry".to_string(), reg]);
+            if reg.0 != "tract_nnef" {
+                extension.push(vec!["tract_registry".into(), reg]);
             }
         }
         for sym in self.symbols {
-            extension.push(vec!["tract_symbol".to_string(), sym.to_string()]);
+            extension.push(vec!["tract_symbol".into(), Identifier(sym.to_string())]);
         }
         let properties = FragmentDef {
             decl: FragmentDecl {
-                id: "tract_core_properties".to_string(),
+                id: Identifier("tract_core_properties".to_string()),
                 generic_decl: None,
                 parameters: vec![],
                 results: vec![Result_ {
-                    id: "properties".to_string(),
+                    id: Identifier("properties".to_string()),
                     spec: TypeSpec::Tuple(vec![TypeName::String.spec(), TypeName::Scalar.tensor()])
                         .array(),
                 }],
@@ -229,7 +223,7 @@ impl<'a> IntoAst<'a> {
             version: "1.0".into(),
             extension,
             fragments: fragments.into_values().collect(),
-            graph_def: GraphDef { id, parameters, results, body },
+            graph_def: GraphDef { id: Identifier(id), parameters, results, body },
         };
         let quantization = if self.quantization.len() > 0 { Some(self.quantization) } else { None };
         Ok(ProtoModel { doc, tensors, quantization, resources: self.resources })
@@ -244,9 +238,14 @@ impl<'a> IntoAst<'a> {
                     continue;
                 };
                 let scoped = self.scoped_id(&node.name);
-                let names: Vec<String> = (0..node.outputs.len())
-                    .map(|ix| if ix > 0 { format!("{}_{}", scoped, ix) } else { scoped.clone() })
-                    .map(Self::sanitize)
+                let names: Vec<_> = (0..node.outputs.len())
+                    .map(|ix| {
+                        if ix > 0 {
+                            Identifier(format!("{}_{}", scoped.0, ix))
+                        } else {
+                            scoped.clone()
+                        }
+                    })
                     .collect();
                 if node.outputs.len() > 1 {
                     self.body.push(Assignment {
@@ -256,12 +255,12 @@ impl<'a> IntoAst<'a> {
                         right: outputs.as_ref().clone(),
                     });
                 } else {
-                    self.assignment(&names[0], outputs);
+                    self.assignment(names[0].clone(), outputs);
                 };
 
                 for (outlet, name) in node.outputs.iter().zip(names.iter()) {
                     if let Some(qf) = QuantFormat::from_dt(outlet.fact.datum_type) {
-                        self.quantization.insert(name.to_string(), qf);
+                        self.quantization.insert(name.clone(), qf);
                     }
                 }
 
@@ -280,23 +279,24 @@ impl<'a> IntoAst<'a> {
         } else if required_registries.len() == 1 {
             bail!(
                 "Registry {} required, consider allowing it on the NNEF framework.",
-                required_registries[0]
+                required_registries[0].0
             );
         } else {
             bail!("One of the following registries is required: {:?}, consider allowing one on the NNEF framework.", required_registries);
         }
     }
 
-    pub fn scoped_id(&self, name: impl Into<String>) -> String {
-        let mut name = name.into();
+    pub fn scoped_id(&self, name: impl AsRef<str>) -> Identifier {
+        let mut name = name.as_ref().to_string();
         if let Some(p) = &self.prefix {
-            if name.starts_with(p) && &*name != p {
-                name = name.chars().skip(p.len()).collect()
+            if name.starts_with(&*p.0) && *name != *p.0 {
+                name = name.chars().skip(p.0.len()).collect()
             }
         }
-        Self::sanitize(name)
+        Identifier(name)
     }
 
+    /*
     pub fn sanitize(name: impl Into<String>) -> String {
         let mut name = name.into();
         if name.len() > 0
@@ -307,8 +307,9 @@ impl<'a> IntoAst<'a> {
         }
         name.replace(['/', '.', '-', ':', ',', ';'], "_")
     }
+    */
 
-    pub fn force_variable(&mut self, name: impl Into<String>, exp: &Arc<RValue>) -> Arc<RValue> {
+    pub fn force_variable(&mut self, name: impl AsRef<str>, exp: &Arc<RValue>) -> Arc<RValue> {
         if let RValue::Identifier(_) = exp.as_ref() {
             exp.clone()
         } else {
@@ -325,7 +326,7 @@ impl<'a> IntoAst<'a> {
     ) -> Arc<RValue> {
         let name = name.into();
         if let RValue::Identifier(id) = exp.as_ref() {
-            if &name == id {
+            if name == id.0 {
                 return exp.clone();
             }
         }
@@ -336,7 +337,7 @@ impl<'a> IntoAst<'a> {
 
     pub fn konst(
         &mut self,
-        name: impl Into<String>,
+        name: impl AsRef<str>,
         tensor: &Arc<Tensor>,
     ) -> TractResult<Arc<RValue>> {
         self.do_konst(name, tensor, false)
@@ -344,7 +345,7 @@ impl<'a> IntoAst<'a> {
 
     pub fn konst_variable(
         &mut self,
-        name: impl Into<String>,
+        name: impl AsRef<str>,
         tensor: &Arc<Tensor>,
     ) -> TractResult<Arc<RValue>> {
         self.do_konst(name, tensor, true)
@@ -352,17 +353,17 @@ impl<'a> IntoAst<'a> {
 
     fn do_konst(
         &mut self,
-        name: impl Into<String>,
+        name: impl AsRef<str>,
         tensor: &Arc<Tensor>,
         force_variable: bool,
     ) -> TractResult<Arc<RValue>> {
-        let name = name.into();
+        let name: Identifier = name.as_ref().into();
         if !force_variable && tensor.len() == 1 {
             if tensor.datum_type() == String::datum_type() {
                 return Ok(string(tensor.to_scalar::<String>().unwrap()).into());
             } else if tensor.datum_type() == DatumType::F32 {
                 return Ok(numeric(tensor.cast_to_scalar::<f32>().unwrap()).into());
-            } else if self.ensure_registry("tract_core").is_ok() {
+            } else if self.ensure_registry(&"tract_core".into()).is_ok() {
                 if let Ok(value) = tensor.cast_to_scalar::<i64>() {
                     let to = string(format!("{:?}", tensor.datum_type()).to_lowercase());
                     let value = numeric(value);
@@ -373,12 +374,12 @@ impl<'a> IntoAst<'a> {
         self.tensors.insert(name.clone(), tensor.clone());
         let id = self.scoped_id(&name);
         self.assignment(
-            &id,
+            id.clone(),
             RValue::Invocation(Invocation {
-                id: "variable".to_string(),
+                id: "variable".into(),
                 generic_type_name: Some(TypeName::Scalar),
                 arguments: vec![
-                    named_arg("label", string(&name)),
+                    named_arg("label", string(name.0)),
                     named_arg("shape", ints(tensor.shape())),
                 ],
             })
@@ -390,17 +391,17 @@ impl<'a> IntoAst<'a> {
         Ok(ident(id).into())
     }
 
-    fn assignment(&mut self, name: impl Into<String>, right: Arc<RValue>) {
-        let name = name.into();
-        if *right == ident(&name) {
+    fn assignment(&mut self, name: impl AsRef<str>, right: Arc<RValue>) {
+        let name = name.as_ref();
+        if *right == ident(name) {
             return;
         }
-        self.body.push(assignment(&name, right))
+        self.body.push(assignment(name, right))
     }
 }
 
-pub fn assignment(name: impl Into<String>, right: Arc<RValue>) -> Assignment {
-    Assignment { left: LValue::Identifier(name.into()), right: right.as_ref().to_owned() }
+pub fn assignment(name: impl AsRef<str>, right: Arc<RValue>) -> Assignment {
+    Assignment { left: LValue::Identifier(name.as_ref().into()), right: right.as_ref().to_owned() }
 }
 
 pub fn ints(shape: &[usize]) -> RValue {
@@ -430,20 +431,20 @@ pub fn tdim(dim: &TDim) -> RValue {
     }
 }
 
-pub fn string(s: impl Into<String>) -> RValue {
-    RValue::Literal(Literal::String(s.into()))
+pub fn string(s: impl AsRef<str>) -> RValue {
+    RValue::Literal(Literal::String(s.as_ref().into()))
 }
 
 pub fn logical(b: bool) -> RValue {
     RValue::Literal(Literal::Logical(b))
 }
 
-pub fn lident(s: impl Into<String>) -> LValue {
-    LValue::Identifier(s.into())
+pub fn lident(s: impl AsRef<str>) -> LValue {
+    LValue::Identifier(s.as_ref().into())
 }
 
-pub fn ident(s: impl Into<String>) -> RValue {
-    RValue::Identifier(s.into())
+pub fn ident(s: impl AsRef<str>) -> RValue {
+    RValue::Identifier(s.as_ref().into())
 }
 
 pub fn array(items: impl AsRef<[RValue]>) -> RValue {
@@ -470,11 +471,16 @@ pub fn named_arg(id: &str, rv: RValue) -> Argument {
     Argument { id: Some(id.into()), rvalue: rv }
 }
 
-pub fn invocation(id: &str, positional: &[Arc<RValue>], named: &[(&str, RValue)]) -> Arc<RValue> {
+pub fn invocation(
+    id: impl AsRef<str>,
+    positional: &[Arc<RValue>],
+    named: &[(&str, RValue)],
+) -> Arc<RValue> {
     let arguments = positional
         .iter()
         .map(|rv| Argument { id: None, rvalue: rv.as_ref().clone() })
         .chain(named.iter().map(|(n, v)| named_arg(n, v.clone())))
         .collect();
-    RValue::Invocation(Invocation { id: id.to_owned(), generic_type_name: None, arguments }).into()
+    RValue::Invocation(Invocation { id: id.as_ref().into(), generic_type_name: None, arguments })
+        .into()
 }

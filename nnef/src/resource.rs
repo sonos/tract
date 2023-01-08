@@ -35,7 +35,10 @@ pub trait ResourceLoader: Send + Sync {
         reader: &mut dyn std::io::Read,
     ) -> TractResult<Option<(String, Arc<dyn Resource>)>>;
 
-    fn into_boxed(self) -> Box<dyn ResourceLoader> where Self: Sized + 'static {
+    fn into_boxed(self) -> Box<dyn ResourceLoader>
+    where
+        Self: Sized + 'static,
+    {
         Box::new(self)
     }
 }
@@ -110,7 +113,8 @@ impl ResourceLoader for GraphQuantLoader {
             let mut t = String::new();
             reader.read_to_string(&mut t)?;
             let quant = crate::ast::quant::parse_quantization(&t)?;
-            let quant: HashMap<String, QuantFormat> = quant.into_iter().collect();
+            let quant: HashMap<String, QuantFormat> =
+                quant.into_iter().map(|(k, v)| (k.0, v)).collect();
             Ok(Some((GRAPH_QUANT_FILENAME.to_string(), Arc::new(quant))))
         } else {
             Ok(None)

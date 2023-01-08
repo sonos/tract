@@ -55,7 +55,7 @@ fn version(i: &str) -> IResult<&str, NumericLiteral> {
 }
 
 // <extension> ::= "extension" <identifier>+ ";"
-fn extension(i: &str) -> IResult<&str, Vec<String>> {
+fn extension(i: &str) -> IResult<&str, Vec<Identifier>> {
     delimited(stag("extension"), many1(spaced(identifier)), stag(";"))(i)
 }
 
@@ -344,7 +344,7 @@ fn comprehension_expr(i: &str) -> IResult<&str, Comprehension> {
 
 // <loop-iter> ::= <identifier> "in" <rvalue-expr>
 // <loop-iter-list> ::= <loop-iter> ("," <loop-iter>)*
-fn loop_iters(i: &str) -> IResult<&str, Vec<(String, RValue)>> {
+fn loop_iters(i: &str) -> IResult<&str, Vec<(Identifier, RValue)>> {
     separated_list0(stag(","), separated_pair(identifier, stag("in"), rvalue))(i)
 }
 
@@ -352,11 +352,19 @@ fn loop_iters(i: &str) -> IResult<&str, Vec<(String, RValue)>> {
 
 // identifier: identifiers must consist of the following ASCII characters: _, [a-z], [A-Z], [0-9].
 // The identifier must not start with a digit.
-pub(super) fn identifier(i: &str) -> IResult<&str, String> {
+pub(super) fn identifier(i: &str) -> IResult<&str, Identifier> {
+    alt((escaped_identifier, direct_identifier))(i)
+}
+
+pub(super) fn direct_identifier(i: &str) -> IResult<&str, Identifier> {
     map(
         recognize(pair(alt((alpha1, tag("_"))), many0(alt((alphanumeric1, tag("_")))))),
-        String::from,
+        Identifier::from,
     )(i)
+}
+
+pub(super) fn escaped_identifier(i: &str) -> IResult<&str, Identifier> {
+    map(preceded(tag("i"), string_literal), Identifier)(i)
 }
 
 // <literal> ::= <numeric-literal> | <string-literal> | <logical-literal>
@@ -440,11 +448,11 @@ mod test {
     }
 
     fn param(s: impl Into<std::string::String>, t: TypeSpec) -> Parameter {
-        Parameter { id: s.into(), spec: t, lit: None, doc: None }
+        Parameter { id: Identifier(s.into()), spec: t, lit: None, doc: None }
     }
 
     fn result(s: impl Into<std::string::String>, t: TypeSpec) -> Result_ {
-        Result_ { id: s.into(), spec: t }
+        Result_ { id: Identifier(s.into()), spec: t }
     }
 
     #[test]
@@ -650,9 +658,18 @@ mod test {
         assert!(spaced(identifier)("foo").is_ok());
         assert!(spaced(identifier)(" foo ").is_ok());
         assert!(many1(spaced(identifier))(" foo bar ").is_ok());
-        assert_eq!(many1(spaced(identifier))(" foo bar\n").unwrap().1, &["foo", "bar"]);
-        assert_eq!(many1(spaced(identifier))(" foo # bar\n").unwrap().1, &["foo"]);
-        assert_eq!(many1(spaced(identifier))(" foo # bar\nbaz").unwrap().1, &["foo", "baz"]);
+        assert_eq!(
+            many1(spaced(identifier))(" foo bar\n").unwrap().1,
+            &[Identifier("foo".to_string()), Identifier("bar".to_string())]
+        );
+        assert_eq!(
+            many1(spaced(identifier))(" foo # bar\n").unwrap().1,
+            &[Identifier("foo".to_string())]
+        );
+        assert_eq!(
+            many1(spaced(identifier))(" foo # bar\nbaz").unwrap().1,
+            &[Identifier("foo".to_string()), Identifier("baz".to_string())]
+        );
     }
 
     #[test]

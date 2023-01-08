@@ -24,13 +24,15 @@ pub mod prelude {
 
 pub mod internal {
     pub use crate::ast::parse::parse_parameters;
-    pub use crate::ast::{param, FragmentDecl, FragmentDef, Parameter, RValue, TypeName};
+    pub use crate::ast::{
+        param, FragmentDecl, FragmentDef, Identifier, Parameter, RValue, TypeName,
+    };
     pub use crate::deser::{ModelBuilder, ResolvedInvocation, Value};
     pub use crate::framework::Nnef;
     pub use crate::prelude::*;
     pub use crate::registry::*;
     pub use crate::resource::{
-        GraphNnefLoader, DatLoader, GraphQuantLoader, Resource, ResourceLoader,
+        DatLoader, GraphNnefLoader, GraphQuantLoader, Resource, ResourceLoader,
     };
     pub use crate::ser::{invocation, logical, numeric, string, IntoAst};
     pub use std::any::TypeId;

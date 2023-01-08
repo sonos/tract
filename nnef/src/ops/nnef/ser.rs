@@ -1,3 +1,4 @@
+use crate::ast::Identifier;
 use crate::ast::QuantFormat;
 use crate::internal::*;
 use crate::ser::*;
@@ -17,7 +18,7 @@ pub fn source(
             return Ok(Some(invocation("external", &[], &[("shape", ints(shape))])));
         } else if op.fact.datum_type.is_quantized() {
             if let Some(qp) = QuantFormat::from_dt(node.outputs[0].fact.datum_type) {
-                ast.quantization.insert(node.name.clone(), qp);
+                ast.quantization.insert(Identifier(node.name.to_string()), qp);
             }
             return Ok(Some(invocation("external", &[], &[("shape", ints(shape))])));
         }
@@ -213,7 +214,7 @@ pub fn conv_or_deconv(
     let name = if deconv { "deconv" } else { "conv" };
     wire = invocation(name, &inputs, &named_args);
     // need to force quantization storage as output code may miss it
-    let var_name = format!("{}_{}", node.name, name);
+    let var_name = Identifier(format!("{}_{}", node.name, name));
     if let Some(qp) = QuantFormat::from_dt(node.outputs[0].fact.datum_type) {
         ast.quantization.insert(var_name.clone(), qp);
     }
@@ -281,17 +282,18 @@ fn cnn_pool_fragment<'a>(
     data_format: DataFormat,
     geo_rank: usize,
     op_name: &str,
-) -> String {
+) -> Identifier {
     if data_format == DataFormat::NCHW {
         return op_name.into();
     }
-    let fragment_name = format!("tract_sum_pool_{:?}_{}D", data_format, geo_rank).to_lowercase();
+    let fragment_name =
+        Identifier(format!("tract_sum_pool_{:?}_{}D", data_format, geo_rank).to_lowercase());
     if ast.fragments.contains_key(&fragment_name) {
         return fragment_name;
     }
 
     let mut body = vec![];
-    let mut fragment = ast.framework.stdlib.iter().find(|f| f.decl.id == op_name).unwrap().clone();
+    let mut fragment = ast.framework.stdlib.iter().find(|f| f.decl.id.0 == op_name).unwrap().clone();
     fragment.decl.id = fragment_name.clone();
 
     let mut wire = ident("input").into();
@@ -306,7 +308,7 @@ fn cnn_pool_fragment<'a>(
             .parameters
             .iter()
             .skip(1)
-            .map(|f| (&*f.id, ident(&f.id)))
+            .map(|f| (&*f.id.0, ident(&f.id)))
             .collect::<Vec<_>>(),
     );
     body.push(assignment("sum_pool", wire));
@@ -367,7 +369,7 @@ fn cnn_pool(
     if let Some(normalize_arg) = normalize_arg {
         params.push(normalize_arg);
     };
-    wire = invocation(&conv_fragment, &[wire], &params);
+    wire = invocation(conv_fragment, &[wire], &params);
     wire = ast.force_variable(&node.name, &wire);
     Ok(Some(wire))
 }

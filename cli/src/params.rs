@@ -211,7 +211,7 @@ impl Parameters {
                     #[allow(unused_imports)]
                     use tract_nnef::ast::{LValue, RValue};
                     if let Some(over) = tensors_values
-                        .by_name(name)
+                        .by_name(&name.0)
                         .or_else(|| tensors_values.by_input_ix(ix))
                         .and_then(|tv| tv.fact.as_ref())
                     {
@@ -229,14 +229,14 @@ impl Parameters {
                         } else {
                             unreachable!();
                         };
-                        assert!(inv.id == "external" || inv.id == "tract_core_external", "invalid id: expected 'external' or 'tract_core_external' but found {:?}", inv.id);
+                        assert!(inv.id.0 == "external" || inv.id.0 == "tract_core_external", "invalid id: expected 'external' or 'tract_core_external' but found {:?}", inv.id);
                         assert!(
                             inv.arguments.len() <= 2,
                             "expected 1 argument but found {:?} for inv.arguments={:?}",
                             inv.arguments.len(),
                             inv.arguments
                         );
-                        assert_eq!(inv.arguments[0].id.as_deref(), Some("shape"));
+                        assert_eq!(inv.arguments[0].id.as_ref().map(|i| &*i.0), Some("shape"));
                         Dumper::new(&mut formatted).rvalue(&inv.arguments[0].rvalue)?;
                         let shape = over
                             .shape
@@ -244,7 +244,7 @@ impl Parameters {
                             .context("Can only use concrete shapes in override")?;
                         info!(
                             "Overriding model input shape named \"{}\". Replacing {} by {:?}.",
-                            name,
+                            name.0,
                             String::from_utf8_lossy(&formatted),
                             &shape
                         );
