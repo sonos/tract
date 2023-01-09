@@ -113,12 +113,14 @@ pub fn run_one<P: AsRef<path::Path>>(
             let mut inputs = load_half_dataset("input", &data_path);
             for setup in more {
                 if setup.starts_with("input:") {
-                    let input = setup.split(':').nth(1).unwrap();
-                    let mut actual_input = None;
+                    let input = setup.split(':').nth(1).unwrap_or("");
+                    let mut actual_inputs = vec![];
+                    let mut actual_input_values = tvec![];
                     let input_outlets = model.input_outlets().unwrap().to_vec();
                     for (ix, outlet) in input_outlets.iter().enumerate() {
                         if model.node(outlet.node).name == input {
-                            actual_input = Some((outlet, inputs[ix].clone()));
+                            actual_inputs.push(*outlet);
+                            actual_input_values.push(inputs[ix].clone());
                         } else {
                             model.node_mut(outlet.node).op =
                                 Box::new(tract_hir::ops::konst::Const::new(
@@ -126,20 +128,8 @@ pub fn run_one<P: AsRef<path::Path>>(
                                 ));
                         }
                     }
-                    let (outlet, value) = actual_input.unwrap_or_else(|| {
-                        panic!(
-                            "specified input: {}, input names: {:?}",
-                            setup,
-                            model
-                                .input_outlets()
-                                .unwrap()
-                                .iter()
-                                .map(|n| &model.node(n.node).name)
-                                .collect::<Vec<_>>()
-                        )
-                    });
-                    model.set_input_outlets(&[*outlet]).unwrap();
-                    inputs = tvec!(value);
+                    model.set_input_outlets(&actual_inputs).unwrap();
+                    inputs = actual_input_values;
                 }
             }
             info!("Analyse");
