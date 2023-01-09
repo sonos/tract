@@ -23,6 +23,10 @@ pub fn register(registry: &mut Registry) {
     registry.register_unit_element_wise("tract_core_erf", &ops::math::Erf {});
 
     registry.register_binary("tract_core_xor", &ops::logic::Xor {});
+    registry.register_binary("tract_core_bitand", &ops::logic::BitAnd {});
+    registry.register_binary("tract_core_bitor", &ops::logic::BitOr {});
+    registry.register_binary("tract_core_bitxor", &ops::logic::BitXor {});
+    registry.register_unit_element_wise("tract_core_bitnot", &ops::logic::BitNot {});
 
     registry.register_binary("tract_shl", &ops::math::ShiftLeft);
     registry.register_binary("tract_shr", &ops::math::ShiftRight);
