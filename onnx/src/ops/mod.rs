@@ -21,7 +21,6 @@ mod resize;
 mod s2d;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
-    reg.insert("Cast", cast::cast);
     reg.insert("Constant", konst);
     reg.insert("Einsum", einsum::einsum);
     reg.insert("Identity", |_, _| {
@@ -31,6 +30,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("NonMaxSuppression", non_max_suppression::non_max_suppression);
     reg.insert("Multinomial", multinomial::multinomial);
     array::register_all_ops(reg);
+    cast::register_all_ops(reg);
     cumsum::register_all_ops(reg);
     d2s::register_all_ops(reg);
     fft::register_all_ops(reg);
