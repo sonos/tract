@@ -2,6 +2,7 @@ mod compress;
 mod nonzero;
 mod one_hot;
 mod pad;
+mod shape;
 mod slice;
 mod split;
 mod squeeze;
@@ -33,7 +34,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Scatter", scatter_elements);
     reg.insert("ScatterElements", scatter_elements);
     reg.insert("ScatterND", |_, _| Ok((Box::new(array::ScatterNd), vec![])));
-    reg.insert("Shape", |_, _| Ok((expand(array::Shape::new(DatumType::TDim)), vec![])));
+    reg.insert("Shape", shape::shape);
     reg.insert("Size", |_, _| Ok((expand(array::Size::new(DatumType::TDim)), vec![])));
     reg.insert("Slice", slice::slice);
     reg.insert("Split", split::split);
