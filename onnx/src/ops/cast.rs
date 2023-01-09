@@ -1,9 +1,14 @@
-use crate::model::ParsingContext;
+use crate::model::{ParsingContext, OnnxOpRegister};
 use crate::pb::*;
 use tract_hir::internal::*;
 use tract_hir::tract_core::ops::element_wise::*;
 
-pub fn cast(
+pub fn register_all_ops(reg: &mut OnnxOpRegister) {
+    reg.insert("Cast", cast);
+    reg.insert("CastLike", cast_like);
+}
+
+fn cast(
     _ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
@@ -68,5 +73,47 @@ impl ElementWiseMiniOp for Cast {
                 tract_hir::ops::cast::cast(self.to),
             )?))
         }
+    }
+}
+
+fn cast_like(
+    _ctx: &ParsingContext,
+    _node: &NodeProto,
+) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
+    Ok((expand(CastLike), vec![]))
+}
+
+#[derive(Debug, Clone, new, Hash)]
+pub struct CastLike;
+
+impl_dyn_hash!(CastLike);
+
+impl Expansion for CastLike {
+    fn name(&self) -> Cow<str> {
+        "CastLike".into()
+    }
+
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        s: &mut Solver<'r>,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
+    ) -> InferenceResult {
+        check_input_arity(inputs, 2)?;
+        check_output_arity(outputs, 1)?;
+        s.equals(&outputs[0].datum_type, &inputs[1].datum_type)?;
+        s.equals(&outputs[0].rank, &inputs[0].rank)?;
+        s.equals(&outputs[0].shape, &inputs[0].shape)?;
+        Ok(())
+    }
+
+    fn wire(
+        &self,
+        prefix: &str,
+        model: &mut TypedModel,
+        inputs: &[OutletId],
+    ) -> TractResult<TVec<OutletId>> {
+        let dt = model.outlet_fact(inputs[1])?.datum_type;
+        model.wire_node(prefix, tract_core::ops::cast::cast(dt), &[inputs[0]])
     }
 }
