@@ -2,7 +2,6 @@ use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::*;
 use tract_hir::internal::*;
 
-
 mod array;
 mod cast;
 mod cumsum;
@@ -25,7 +24,9 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Cast", cast::cast);
     reg.insert("Constant", konst);
     reg.insert("Einsum", einsum::einsum);
-    reg.insert("Identity", |_, _| Ok((Box::<tract_hir::ops::identity::Identity>::default(), vec![])));
+    reg.insert("Identity", |_, _| {
+        Ok((Box::<tract_hir::ops::identity::Identity>::default(), vec![]))
+    });
     reg.insert("Resize", resize::resize);
     reg.insert("NonMaxSuppression", non_max_suppression::non_max_suppression);
     reg.insert("Multinomial", multinomial::multinomial);
@@ -47,6 +48,14 @@ fn konst(
     _ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let v = node.get_attr::<Tensor>("value")?;
-    Ok((Box::new(tract_hir::ops::konst::Const(v.into())), vec![]))
+    let value = if let Some(v) = node.get_attr_opt::<Tensor>("value")? {
+        v
+    } else if let Some(i) = node.get_attr_opt::<i64>("value_int")? {
+        tensor0(i)
+    } else if let Some(v) = node.get_attr_opt::<f32>("value_float")? {
+        tensor0(v)
+    } else {
+        bail!("Could not extract value out of Constant node")
+    };
+    Ok((Box::new(tract_hir::ops::konst::Const(value.into_arc_tensor())), vec![]))
 }

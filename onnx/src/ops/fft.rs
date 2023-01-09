@@ -9,9 +9,12 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("DFT", dft);
     reg.insert("STFT", stft);
     reg.insert("MelWeightMatrix", mel_weight_matrix);
+    reg.insert("BlackmanWindow", window);
+    reg.insert("HammingWindow", window);
+    reg.insert("HannWindow", window);
 }
 
-pub fn dft(
+fn dft(
     _ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
@@ -24,7 +27,7 @@ pub fn dft(
     Ok((expand(Dft { axis, inverse, onesided, has_length_input: node.input.len() == 2 }), vec![]))
 }
 
-pub fn stft(
+fn stft(
     _ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
@@ -40,12 +43,27 @@ pub fn stft(
     ))
 }
 
-pub fn mel_weight_matrix(
+fn mel_weight_matrix(
     _ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let datum_type = node.get_attr_opt("output_datatype")?.unwrap_or(DatumType::F32);
     Ok((expand(MelWeightMatrix { datum_type }), vec![]))
+}
+
+fn window(
+    _ctx: &ParsingContext,
+    node: &NodeProto,
+) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
+    let datum_type = node.get_attr_opt("output_datatype")?.unwrap_or(DatumType::F32);
+    let periodic = node.get_attr_opt("periodic")?.unwrap_or(1i64) == 1i64;
+    let window = match &*node.op_type {
+        "BlackmanWindow" => StftWindowType::Blackman,
+        "HammingWindow" => StftWindowType::Hamming,
+        "HannWindow" => StftWindowType::Hann,
+        _ => unreachable!(),
+    };
+    Ok((expand(StftWindow { datum_type, periodic, window }), vec![]))
 }
 
 #[derive(Clone, Debug, Hash)]
@@ -331,15 +349,15 @@ impl Expansion for MelWeightMatrix {
             Some(sample_rate),
             Some(lower_edge_hertz),
             Some(upper_edge_hertz),
-        ) = (
-            model.outlet_fact(inputs[0])?.konst.as_ref(),
-            model.outlet_fact(inputs[1])?.konst.as_ref(),
-            model.outlet_fact(inputs[2])?.konst.as_ref(),
-            model.outlet_fact(inputs[3])?.konst.as_ref(),
-            model.outlet_fact(inputs[4])?.konst.as_ref(),
-        ) else {
-            bail!("Expect all inputs to be constants")
-        };
+            ) = (
+                model.outlet_fact(inputs[0])?.konst.as_ref(),
+                model.outlet_fact(inputs[1])?.konst.as_ref(),
+                model.outlet_fact(inputs[2])?.konst.as_ref(),
+                model.outlet_fact(inputs[3])?.konst.as_ref(),
+                model.outlet_fact(inputs[4])?.konst.as_ref(),
+                ) else {
+                bail!("Expect all inputs to be constants")
+            };
         let num_mel_bins = num_mel_bins.cast_to_scalar::<i64>()? as usize;
         let dft_length = dft_length.cast_to_scalar::<i64>()? as usize;
         let sample_rate = sample_rate.cast_to_scalar::<i64>()? as usize;
@@ -379,15 +397,88 @@ impl Expansion for MelWeightMatrix {
                 }
             }
         }
-        let wire = model.add_const(prefix, output)?;
+        let wire = model.add_const(prefix, output.cast_to_dt(self.datum_type)?.into_owned())?;
         Ok(tvec!(wire))
     }
 }
 
-/*
-    num_mel_bins: Tensor,
-    dft_length: Tensor,
-    sample_rate: Tensor,
-    lower_edge_herts: Tensor,
-    upper_edge_herts: Tensor,
-*/
+#[derive(Copy, Clone, Debug, Hash)]
+enum StftWindowType {
+    Blackman,
+    Hamming,
+    Hann,
+}
+
+impl StftWindowType {
+    fn generate(&self, size: usize, periodic: bool) -> TractResult<Tensor> {
+        use std::f32::consts::PI;
+        let divisor = ((size - 1 + periodic as usize) as f32).recip();
+        let mut output = Tensor::zero::<f32>(&[size])?;
+        match self {
+            Self::Blackman => {
+                output.as_slice_mut::<f32>()?.iter_mut().enumerate().for_each(|(ix, y)| {
+                    *y = 0.42 - 0.5 * (2. * PI * ix as f32 * divisor).cos()
+                        + 0.08 * (4. * PI * ix as f32 * divisor).cos()
+                })
+            }
+            Self::Hamming => {
+                output.as_slice_mut::<f32>()?.iter_mut().enumerate().for_each(|(ix, y)| {
+                    *y = (25. / 46.) - (21. / 46.) * (2. * PI * ix as f32 * divisor).cos()
+                })
+            }
+            Self::Hann => output
+                .as_slice_mut::<f32>()?
+                .iter_mut()
+                .enumerate()
+                .for_each(|(ix, y)| *y = 0.5 - 0.5 * (2. * PI * ix as f32 * divisor).cos()),
+        }
+        Ok(output)
+    }
+}
+
+#[derive(Clone, Debug, Hash)]
+pub struct StftWindow {
+    datum_type: DatumType,
+    periodic: bool,
+    window: StftWindowType,
+}
+
+impl_dyn_hash!(StftWindow);
+
+impl Expansion for StftWindow {
+    fn name(&self) -> Cow<str> {
+        format!("StftWindow<{:?}>", self.window).into()
+    }
+
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        s: &mut Solver<'r>,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
+    ) -> InferenceResult {
+        check_input_arity(inputs, 1)?;
+        check_output_arity(outputs, 1)?;
+        s.equals(&inputs[0].rank, 0)?;
+        s.equals(&outputs[0].datum_type, self.datum_type)?;
+        s.equals(&outputs[0].rank, 1)?;
+        s.given(&inputs[0].value[0], |s, length| s.equals(&outputs[0].shape[0], length.to_dim()))
+    }
+
+    fn wire(
+        &self,
+        prefix: &str,
+        model: &mut TypedModel,
+        inputs: &[OutletId],
+    ) -> TractResult<TVec<OutletId>> {
+        let len = model
+            .outlet_fact(inputs[0])?
+            .konst
+            .as_ref()
+            .context("Expect constant input size")?
+            .cast_to_scalar::<i64>()? as usize;
+        let window =
+            self.window.generate(len, self.periodic)?.cast_to_dt(self.datum_type)?.into_owned();
+        let wire = model.add_const(prefix, window)?;
+        Ok(tvec!(wire))
+    }
+}
