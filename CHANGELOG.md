@@ -7,6 +7,7 @@
 * [cli] deprecated "x" syntax for shape is removed
 * [nnef/opl] new syntax for escaping identifiers: i"some arbitrary string"
 * [ONNX] Signal processing operators (DTF, STFT, MelWeightMatrix, BlackmanWindow, HammingWindow, HannWindow)
+* [ONNX] bitwise operations
 
 # 0.18.3 - 2022-10-27
 * [NNEF] Introduce a "resource" extension for loading values from a separate source (as a config file)
