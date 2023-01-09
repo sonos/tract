@@ -8,6 +8,7 @@ use tract_hir::ops::math::div;
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("DFT", dft);
     reg.insert("STFT", stft);
+    reg.insert("MelWeightMatrix", mel_weight_matrix);
 }
 
 pub fn dft(
@@ -37,6 +38,14 @@ pub fn stft(
         }),
         vec![],
     ))
+}
+
+pub fn mel_weight_matrix(
+    _ctx: &ParsingContext,
+    node: &NodeProto,
+) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
+    let datum_type = node.get_attr_opt("output_datatype")?.unwrap_or(DatumType::F32);
+    Ok((expand(MelWeightMatrix { datum_type }), vec![]))
 }
 
 #[derive(Clone, Debug, Hash)]
@@ -160,7 +169,6 @@ impl Expansion for Stft {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        dbg!(self);
         check_input_arity(
             inputs,
             2 + self.optional_window_input.is_some() as usize
@@ -190,7 +198,6 @@ impl Expansion for Stft {
             s.equals(inputs[l].value[0].bex().to_dim(), &inputs[w].shape[0])?;
         }
         if let Some(frame_len) = frame_len {
-        dbg!(&frame_len);
             s.given_3(
                 &inputs[0].shape[1],
                 frame_len,
@@ -277,3 +284,110 @@ impl Expansion for Stft {
         Ok(wire)
     }
 }
+
+#[derive(Clone, Debug, Hash)]
+pub struct MelWeightMatrix {
+    datum_type: DatumType,
+}
+
+impl_dyn_hash!(MelWeightMatrix);
+
+impl Expansion for MelWeightMatrix {
+    fn name(&self) -> Cow<str> {
+        "MelWeightMatrix".into()
+    }
+
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        s: &mut Solver<'r>,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
+    ) -> InferenceResult {
+        check_input_arity(inputs, 5)?;
+        check_output_arity(outputs, 1)?;
+        for i in 0..5 {
+            s.equals(&inputs[i].rank, 0)?;
+        }
+        s.equals(&outputs[0].datum_type, self.datum_type)?;
+        s.equals(&outputs[0].rank, 2)?;
+        s.given(&inputs[1].value[0], |s, dft_length| {
+            s.equals(&outputs[0].shape[0], (dft_length / 2 + 1).to_dim())
+        })?;
+        s.given(&inputs[0].value[0], |s, num_mel_bins| {
+            s.equals(&outputs[0].shape[1], num_mel_bins.to_dim())
+        })?;
+        Ok(())
+    }
+
+    fn wire(
+        &self,
+        prefix: &str,
+        model: &mut TypedModel,
+        inputs: &[OutletId],
+    ) -> TractResult<TVec<OutletId>> {
+        let (
+            Some(num_mel_bins),
+            Some(dft_length),
+            Some(sample_rate),
+            Some(lower_edge_hertz),
+            Some(upper_edge_hertz),
+        ) = (
+            model.outlet_fact(inputs[0])?.konst.as_ref(),
+            model.outlet_fact(inputs[1])?.konst.as_ref(),
+            model.outlet_fact(inputs[2])?.konst.as_ref(),
+            model.outlet_fact(inputs[3])?.konst.as_ref(),
+            model.outlet_fact(inputs[4])?.konst.as_ref(),
+        ) else {
+            bail!("Expect all inputs to be constants")
+        };
+        let num_mel_bins = num_mel_bins.cast_to_scalar::<i64>()? as usize;
+        let dft_length = dft_length.cast_to_scalar::<i64>()? as usize;
+        let sample_rate = sample_rate.cast_to_scalar::<i64>()? as usize;
+        let lower_edge_hertz = lower_edge_hertz.cast_to_scalar::<f32>()?;
+        let upper_edge_hertz = upper_edge_hertz.cast_to_scalar::<f32>()?;
+
+        let num_spectrogram_bins = dft_length / 2 + 1;
+        let low_frequency_mel = 2595. * (1. + lower_edge_hertz / 700.).log10();
+        let high_frequency_mel = 2595. * (1. + upper_edge_hertz / 700.).log10();
+        let mel_step = (high_frequency_mel - low_frequency_mel) / (num_mel_bins + 2) as f32;
+
+        let frequency_bins: Vec<usize> = (0..num_mel_bins + 2)
+            .map(|ix| {
+                let freq = ix as f32 * mel_step + low_frequency_mel;
+                let freq = 700. * (10f32.powf(freq / 2596.) - 1.);
+                let freq = ((dft_length + 1) as f32 * freq) / sample_rate as f32;
+                freq as usize
+            })
+            .collect();
+
+        let mut output = Tensor::zero::<f32>(&[num_spectrogram_bins, num_mel_bins])?;
+        let mut view = output.to_array_view_mut::<f32>()?.into_dimensionality()?;
+        for i in 0..num_mel_bins {
+            let lower = frequency_bins[i];
+            let center = frequency_bins[i + 1];
+            let higher = frequency_bins[i + 2];
+            if center == lower {
+                view[(center, i)] = 1.;
+            } else {
+                for j in lower..center + 1 {
+                    view[(j, i)] = (j - lower) as f32 / (center - lower) as f32;
+                }
+            }
+            if higher > center {
+                for j in center..higher {
+                    view[(j, i)] = (higher - j) as f32 / (higher - center) as f32;
+                }
+            }
+        }
+        let wire = model.add_const(prefix, output)?;
+        Ok(tvec!(wire))
+    }
+}
+
+/*
+    num_mel_bins: Tensor,
+    dft_length: Tensor,
+    sample_rate: Tensor,
+    lower_edge_herts: Tensor,
+    upper_edge_herts: Tensor,
+*/

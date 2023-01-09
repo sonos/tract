@@ -350,6 +350,7 @@ test_maxpool_with_argmax_2d_precomputed_pads not-nnef
 test_mean_example
 test_mean_one_input
 test_mean_two_inputs
+test_melweightmatrix input:
 test_min_example
 test_min_float16
 test_min_float32
