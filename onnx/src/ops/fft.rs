@@ -323,8 +323,8 @@ impl Expansion for MelWeightMatrix {
     ) -> InferenceResult {
         check_input_arity(inputs, 5)?;
         check_output_arity(outputs, 1)?;
-        for i in 0..5 {
-            s.equals(&inputs[i].rank, 0)?;
+        for input in inputs {
+            s.equals(&input.rank, 0)?;
         }
         s.equals(&outputs[0].datum_type, self.datum_type)?;
         s.equals(&outputs[0].rank, 2)?;
