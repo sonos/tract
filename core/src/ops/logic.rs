@@ -9,6 +9,7 @@ use crate::internal::*;
 use super::binary::BinMiniOp;
 use super::element_wise::ElementWiseOp;
 
+
 bin_to_super_type!(and, And,
                    [bool, u8, u16, u32, u64, i8, i16, i32, i64] => |c, &a, &b| *c = (a as i64 != 0 && b as i64 != 0) as _);
 bin_to_super_type!(or, Or,
@@ -203,3 +204,15 @@ impl TypedOp for Iff {
            .collect())
     }
 }
+
+bin_to_super_type!(bitand, BitAnd,
+                   [bool, u8, u16, u32, u64, i8, i16, i32, i64] => |c, &a, &b| *c = a & b);
+bin_to_super_type!(bitor, BitOr,
+                   [bool, u8, u16, u32, u64, i8, i16, i32, i64] => |c, &a, &b| *c = a | b);
+bin_to_super_type!(bitxor, BitXor,
+                   [bool, u8, u16, u32, u64, i8, i16, i32, i64] => |c, &a, &b| *c = a ^ b);
+
+element_wise!(bitnot, BitNot, [bool, u8, u16, u32, u64, i8, i16, i32, i64] => |_, xs| {
+    xs.iter_mut().for_each(|x| *x = !*x);
+    Ok(())
+});
