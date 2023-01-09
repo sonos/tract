@@ -5,6 +5,7 @@
 * [pulse] S symbol is no longer magic. The time dimension symbol must be provided at pulsification time.
 * [pulse] In most cases, we can now pulsify without an explicit pulse len (pulse len can be expression).
 * [cli] deprecated "x" syntax for shape is removed
+* [nnef/opl] new syntax for escaping identifiers: i"some arbitrary string"
 
 # 0.18.3 - 2022-10-27
 * [NNEF] Introduce a "resource" extension for loading values from a separate source (as a config file)
