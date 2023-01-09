@@ -59,7 +59,6 @@ pub struct ParseResult {
 
 impl<'a> ParsingContext<'a> {
     pub fn parse_graph(&self, graph: &pb::GraphProto) -> TractResult<ParseResult> {
-        dbg!(graph);
         let mut ctx = self.clone();
         ctx.parent_graphs.push(graph);
         let mut model =
