@@ -54,7 +54,6 @@ impl Expansion for Shape {
         check_output_arity(outputs, 1)?;
         s.equals(&outputs[0].rank, 1)?;
         s.equals(&outputs[0].datum_type, TDim::datum_type())?;
-        dbg!(self);
         s.given(&inputs[0].shape, |s, shape| {
             let rank = shape.len() as i64;
             let range = self.resolve(rank);
