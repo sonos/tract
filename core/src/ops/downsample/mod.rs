@@ -2,6 +2,8 @@ use crate::internal::*;
 use crate::ops;
 use ndarray::prelude::*;
 
+use super::identity::Identity;
+
 mod array;
 mod conv;
 mod scan;
@@ -97,7 +99,7 @@ impl TypedOp for Downsample {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         if self.stride == 1 {
-            return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?));
+            return Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, Identity)?));
         }
         pull_downsample_up(model, node)
             .with_context(|| format!("Pulling {} over {}", node, model.node(node.inputs[0].node)))

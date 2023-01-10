@@ -18,6 +18,10 @@ impl super::TypedPass for PushSplitDown {
                     if patch.obliterate.contains(&b.node) {
                         continue;
                     }
+                    // dont merge outputs.
+                    if model.outputs.contains(&a.node.into()) && model.outputs.contains(&b.node.into()) {
+                        continue;
+                    }
                     let a = model.node(a.node);
                     let b = model.node(b.node);
                     if a.same_as(b) {

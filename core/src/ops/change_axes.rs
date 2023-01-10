@@ -537,20 +537,21 @@ impl TypedOp for AxisOp {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         if self.is_noop() {
-            Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
-        } else {
-            let simplified = self.simplify();
-            if simplified.len() != 1 || &simplified[0] != self {
-                let mut patch = TypedModelPatch::default();
-                let mut wire = patch.tap_model(model, node.inputs[0])?;
-                for (ix, op) in simplified.into_iter().enumerate() {
-                    wire = patch.wire_node(format!("{}.{}", node.name, ix), op, &[wire])?[0];
-                }
-                patch.shunt_outside(model, node.id.into(), wire)?;
-                Ok(Some(patch))
-            } else {
-                Ok(None)
+            if let Some(p) = TypedModelPatch::shunt_one_op(model, node)? {
+                return Ok(Some(p));
             }
+        }
+        let simplified = self.simplify();
+        if simplified.len() != 1 || &simplified[0] != self {
+            let mut patch = TypedModelPatch::default();
+            let mut wire = patch.tap_model(model, node.inputs[0])?;
+            for (ix, op) in simplified.into_iter().enumerate() {
+                wire = patch.wire_node(format!("{}.{}", node.name, ix), op, &[wire])?[0];
+            }
+            patch.shunt_outside(model, node.id.into(), wire)?;
+            Ok(Some(patch))
+        } else {
+            Ok(None)
         }
     }
 
@@ -566,12 +567,13 @@ impl TypedOp for AxisOp {
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
         let op = if let InOut::Out(0) = io {
-            let more =
-                if let Some(more) = self.recip().change_axes(_model, _node, InOut::In(0), change)? {
-                    more
-                } else {
-                    return Ok(None);
-                };
+            let more = if let Some(more) =
+                self.recip().change_axes(_model, _node, InOut::In(0), change)?
+            {
+                more
+            } else {
+                return Ok(None);
+            };
             AxisChangeConsequence {
                 substitute_op: more.substitute_op.map(|op| {
                     if let Some(op) = op.as_op().downcast_ref::<AxisOp>() {

@@ -34,11 +34,11 @@ impl TypedOp for Identity {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
+        TypedModelPatch::shunt_one_op(model, node)
     }
 
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
-        Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
+        TypedModelPatch::shunt_one_op(model, node)
     }
 
     as_op!();

@@ -15,7 +15,11 @@ impl Split {
         if let Some(split) = self.split.as_ref() {
             Ok(split.iter().map(|&d| D::from(d)).collect())
         } else {
-            Ok(tvec!(input.clone()/self.outputs;self. outputs))
+            let bigs = input.clone().divceil(self.outputs);
+            let last = input.clone() - (bigs.clone() * (self.outputs - 1));
+            let mut splits = tvec!(bigs ; self.outputs - 1);
+            splits.push(last);
+            Ok(splits)
         }
     }
 }
@@ -24,7 +28,6 @@ impl Expansion for Split {
     fn name(&self) -> Cow<str> {
         "Split".into()
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -67,11 +70,11 @@ impl Expansion for Split {
         let mut current = 0.to_dim();
         let axis =
             if self.axis < 0 { self.axis + input.rank() as isize } else { self.axis } as usize;
-        for len in self.split_dims(&input.shape[axis])? {
+        for (ix, len) in self.split_dims(&input.shape[axis])?.into_iter().enumerate() {
             let end = current.clone() + len;
             outputs.push(
                 target.wire_node(
-                    format!("{}.axis_{}_{}..{}", prefix, axis, current, end),
+                    format!("{}.axis{}_slice{}_{}..{}", prefix, axis, ix, current, end),
                     crate::ops::array::Slice::new(axis, current, end.clone()),
                     inputs,
                 )?[0],

@@ -192,8 +192,12 @@ where
     pub fn shunt_one_op(
         patched_model: &Graph<F, O>,
         node: &Node<F, O>,
-    ) -> TractResult<ModelPatch<F, O>> {
-        Self::rewire(patched_model, &node.inputs, &[node.id.into()], &|_p, xs| Ok(xs.into()))
+    ) -> TractResult<Option<ModelPatch<F, O>>> {
+        if patched_model.outputs.contains(&node.id.into()) && patched_model.outputs.contains(&node.inputs[0]) {
+            Ok(None)
+        } else {
+            Self::rewire(patched_model, &node.inputs, &[node.id.into()], &|_p, xs| Ok(xs.into())).map(Some)
+        }
     }
 
     #[allow(clippy::type_complexity)]

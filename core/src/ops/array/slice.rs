@@ -140,7 +140,7 @@ impl TypedOp for Slice {
     ) -> TractResult<Option<TypedModelPatch>> {
         if self.start.is_zero() && (self.end == model.outlet_fact(node.inputs[0])?.shape[self.axis])
         {
-            Ok(Some(TypedModelPatch::shunt_one_op(model, node)?.with_context("noop")))
+            TypedModelPatch::shunt_one_op(model, node)
         } else {
             Ok(None)
         }
