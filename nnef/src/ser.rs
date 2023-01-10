@@ -373,12 +373,12 @@ impl<'a> IntoAst<'a> {
         let name: Identifier = name.as_ref().into();
         if !force_variable && tensor.len() <= 8 {
             if tensor.datum_type() == String::datum_type() {
-                return Ok(Self::dump_rec_tensor(&tensor.to_array_view::<String>()?, |f| string(&f) ).into());
+                return Ok(Self::dump_rec_tensor(&tensor.to_array_view::<String>()?, |f| string(f) ).into());
             } else if tensor.datum_type() == DatumType::F32 {
-                return Ok(Self::dump_rec_tensor(&tensor.to_array_view::<f32>()?, |f| numeric(&f) ).into());
+                return Ok(Self::dump_rec_tensor(&tensor.to_array_view::<f32>()?, |f| numeric(f) ).into());
             } else if self.ensure_registry(&"tract_core".into()).is_ok() {
                 if let Ok(value) = tensor.cast_to::<i64>() {
-                    let value = Self::dump_rec_tensor(&value.to_array_view::<i64>().unwrap(), |i| numeric(&i));
+                    let value = Self::dump_rec_tensor(&value.to_array_view::<i64>().unwrap(), |i| numeric(i));
                     let to = string(format!("{:?}", tensor.datum_type()).to_lowercase());
                     return Ok(invocation("tract_core_cast", &[value.into()], &[("to", to)]));
                 }
