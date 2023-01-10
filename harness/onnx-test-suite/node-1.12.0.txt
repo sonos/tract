@@ -589,9 +589,9 @@ test_selu_example
 test_shape onnx-ignore-output-type
 test_shape_clip_end onnx-ignore-output-type
 test_shape_clip_start onnx-ignore-output-type
-test_shape_example onnx-ignore-output-type
 test_shape_end_1 onnx-ignore-output-type
 test_shape_end_negative_1 onnx-ignore-output-type
+test_shape_example onnx-ignore-output-type
 test_shape_start_1 onnx-ignore-output-type
 test_shape_start_1_end_2 onnx-ignore-output-type
 test_shape_start_1_end_negative_1 onnx-ignore-output-type

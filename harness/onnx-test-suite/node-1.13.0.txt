@@ -219,7 +219,10 @@ test_einsum_sum
 test_einsum_transpose
 test_elu
 test_elu_default
+test_elu_default_expanded_ver18
 test_elu_example
+test_elu_example_expanded_ver18
+test_elu_expanded_ver18
 test_equal
 test_equal_bcast
 test_erf
@@ -292,7 +295,10 @@ test_hardmax_negative_axis
 test_hardmax_one_hot
 test_hardsigmoid
 test_hardsigmoid_default
+test_hardsigmoid_default_expanded_ver18
 test_hardsigmoid_example
+test_hardsigmoid_example_expanded_ver18
+test_hardsigmoid_expanded_ver18
 test_hardswish_expanded
 test_identity
 test_if not-nnef not-typable
@@ -341,7 +347,10 @@ test_layer_normalization_default_axis_expanded
 test_layer_normalization_default_axis_expanded_ver18
 test_leakyrelu
 test_leakyrelu_default
+test_leakyrelu_default_expanded
 test_leakyrelu_example
+test_leakyrelu_example_expanded
+test_leakyrelu_expanded
 test_less
 test_less_bcast
 test_less_equal
@@ -666,7 +675,10 @@ test_scatter_without_axis
 test_scatternd
 test_selu
 test_selu_default
+test_selu_default_expanded_ver18
 test_selu_example
+test_selu_example_expanded_ver18
+test_selu_expanded_ver18
 test_shape onnx-ignore-output-type
 test_shape_clip_end onnx-ignore-output-type
 test_shape_clip_start onnx-ignore-output-type
@@ -678,7 +690,9 @@ test_shape_start_1_end_2 onnx-ignore-output-type
 test_shape_start_1_end_negative_1 onnx-ignore-output-type
 test_shape_start_negative_1 onnx-ignore-output-type
 test_shrink_hard
+test_shrink_hard_expanded_ver18
 test_shrink_soft
+test_shrink_soft_expanded_ver18
 test_sigmoid
 test_sigmoid_example
 test_sign
@@ -768,7 +782,10 @@ test_tanh
 test_tanh_example
 test_thresholdedrelu
 test_thresholdedrelu_default
+test_thresholdedrelu_default_expanded_ver18
 test_thresholdedrelu_example
+test_thresholdedrelu_example_expanded_ver18
+test_thresholdedrelu_expanded_ver18
 test_tile input:x
 test_tile_precomputed input:x
 test_transpose_all_permutations_0
