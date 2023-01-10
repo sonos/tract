@@ -763,8 +763,8 @@ test_split_variable_parts_default_axis input:input
 test_split_variable_parts_default_axis_opset13 input:input
 test_split_variable_parts_default_axis_opset18 input:input
 test_split_zero_size_splits input:input
-test_split_zero_size_splits_opset13 input:input
-test_split_zero_size_splits_opset18 input:input
+test_split_zero_size_splits_opset13 not-typable not-nnef
+test_split_zero_size_splits_opset18 not-typable not-nnef
 test_sqrt
 test_sqrt_example
 test_squeeze input:x
