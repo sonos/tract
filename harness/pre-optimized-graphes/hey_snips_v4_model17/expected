@@ -6,7 +6,7 @@ extension tract_registry tract_pulse;
 fragment tract_core_properties(
 ) -> (properties: (string, tensor<scalar>)[])
 {
-  properties = [("pulse.delay", tract_core_cast(182, to = "i64")), ("pulse.input_axes", tract_core_cast(0, to = "i64")), ("pulse.output_axes", tract_core_cast(0, to = "i64")), ("tract_nnef_ser_version", "0.16.10-pre"), ("tract_nnef_format_version", "beta1")];
+  properties = [("pulse.delay", tract_core_cast([182], to = "i64")), ("pulse.input_axes", tract_core_cast([0], to = "i64")), ("pulse.output_axes", tract_core_cast([0], to = "i64")), ("tract_nnef_ser_version", "0.16.10-pre"), ("tract_nnef_format_version", "beta1")];
 }
 
 graph wavenet_2( input_node ) -> ( i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D.matmul" ) {
@@ -448,11 +448,11 @@ graph wavenet_2( input_node ) -> ( i"post_proc_2-1x1_conv-conv1d/convolution/Con
   i"dilation_layer_23-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.matmul_a" = variable<scalar>(label = "wavenet_2/dilation_layer_23-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.matmul_a", shape = [64, 32]);
   i"dilation_layer_23-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.matmul" = matmul(mul_23, i"dilation_layer_23-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.matmul_a", transposeA = false, transposeB = false);
   i"AddN.22" = add(i"AddN.21", i"dilation_layer_23-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.matmul");
-  i"Relu.low.cst" = 0.0;
+  i"Relu.low.cst" = [[0.0]];
   i"Relu.low" = max(i"AddN.22", i"Relu.low.cst");
   i"post_proc_1-1x1_conv-conv1d/convolution/Conv2D.matmul_a" = variable<scalar>(label = "wavenet_2/post_proc_1-1x1_conv-conv1d/convolution/Conv2D.matmul_a", shape = [32, 32]);
   i"post_proc_1-1x1_conv-conv1d/convolution/Conv2D.matmul" = matmul(i"Relu.low", i"post_proc_1-1x1_conv-conv1d/convolution/Conv2D.matmul_a", transposeA = false, transposeB = false);
-  i"post_proc_1-1x1_conv-conv1d/Relu.low.cst" = 0.0;
+  i"post_proc_1-1x1_conv-conv1d/Relu.low.cst" = [[0.0]];
   i"post_proc_1-1x1_conv-conv1d/Relu.low" = max(i"post_proc_1-1x1_conv-conv1d/convolution/Conv2D.matmul", i"post_proc_1-1x1_conv-conv1d/Relu.low.cst");
   i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D.matmul_a" = variable<scalar>(label = "wavenet_2/post_proc_2-1x1_conv-conv1d/convolution/Conv2D.matmul_a", shape = [32, 2]);
   i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D.matmul" = matmul(i"post_proc_1-1x1_conv-conv1d/Relu.low", i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D.matmul_a", transposeA = false, transposeB = false);
