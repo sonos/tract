@@ -1,5 +1,7 @@
 use crate::ast::*;
 use crate::internal::*;
+use tract_core::ndarray::ArrayViewD;
+use tract_core::ndarray::Axis;
 use tract_itertools::Itertools;
 
 pub fn to_proto_model(framework: &Nnef, model: &TypedModel) -> TractResult<ProtoModel> {
@@ -351,6 +353,17 @@ impl<'a> IntoAst<'a> {
         self.do_konst(name, tensor, true)
     }
 
+    fn dump_rec_tensor<T: Datum>(t: &ArrayViewD<T>, el: impl for<'t> Fn(&'t T) -> RValue + Copy) -> RValue {
+        if t.ndim() == 0 {
+            el(&t.as_slice().unwrap()[0])
+        } else {
+            let values:TVec<RValue> = (0..t.shape()[0]).map(|i|
+                Self::dump_rec_tensor(&t.index_axis(Axis(0), i), el)
+            ).collect();
+            array(values)
+        }
+    }
+
     fn do_konst(
         &mut self,
         name: impl AsRef<str>,
@@ -358,15 +371,15 @@ impl<'a> IntoAst<'a> {
         force_variable: bool,
     ) -> TractResult<Arc<RValue>> {
         let name: Identifier = name.as_ref().into();
-        if !force_variable && tensor.len() == 1 && tensor.rank() == 0 {
+        if !force_variable && tensor.len() <= 8 {
             if tensor.datum_type() == String::datum_type() {
-                return Ok(string(tensor.to_scalar::<String>().unwrap()).into());
+                return Ok(Self::dump_rec_tensor(&tensor.to_array_view::<String>()?, |f| string(&f) ).into());
             } else if tensor.datum_type() == DatumType::F32 {
-                return Ok(numeric(tensor.cast_to_scalar::<f32>().unwrap()).into());
+                return Ok(Self::dump_rec_tensor(&tensor.to_array_view::<f32>()?, |f| numeric(&f) ).into());
             } else if self.ensure_registry(&"tract_core".into()).is_ok() {
-                if let Ok(value) = tensor.cast_to_scalar::<i64>() {
+                if let Ok(value) = tensor.cast_to::<i64>() {
+                    let value = Self::dump_rec_tensor(&value.to_array_view::<i64>().unwrap(), |i| numeric(&i));
                     let to = string(format!("{:?}", tensor.datum_type()).to_lowercase());
-                    let value = numeric(value);
                     return Ok(invocation("tract_core_cast", &[value.into()], &[("to", to)]));
                 }
             };

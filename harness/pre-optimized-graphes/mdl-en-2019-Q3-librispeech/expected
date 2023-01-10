@@ -114,7 +114,7 @@ fragment scan_body_1(
 fragment tract_core_properties(
 ) -> (properties: (string, tensor<scalar>)[])
 {
-  properties = [("pulse.delay", tract_core_cast(6, to = "i64")), ("pulse.input_axes", tract_core_cast(0, to = "i64")), ("pulse.output_axes", tract_core_cast(0, to = "i64")), ("tract_nnef_ser_version", "0.16.10-pre"), ("tract_nnef_format_version", "beta1")];
+  properties = [("pulse.delay", tract_core_cast([6], to = "i64")), ("pulse.input_axes", tract_core_cast([0], to = "i64")), ("pulse.output_axes", tract_core_cast([0], to = "i64")), ("tract_nnef_ser_version", "0.16.10-pre"), ("tract_nnef_format_version", "beta1")];
 }
 
 graph network( input ) -> ( output ) {
@@ -129,11 +129,11 @@ graph network( input ) -> ( output ) {
   i"tdnn1.affine.output.matmul" = matmul(i"lda.output", i"tdnn1.affine.output.matmul_a", transposeA = false, transposeB = true);
   i"tdnn1.affine.output.bias.cst" = variable<scalar>(label = "tdnn1.affine.output.bias.cst", shape = [1, 256]);
   i"tdnn1.affine.output.bias" = add(i"tdnn1.affine.output.matmul", i"tdnn1.affine.output.bias.cst");
-  i"tdnn1.relu.output.low.cst" = 0.0;
+  i"tdnn1.relu.output.low.cst" = [[0.0]];
   i"tdnn1.relu.output.low" = max(i"tdnn1.affine.output.bias", i"tdnn1.relu.output.low.cst");
   i"tdnn1.renorm.reduced.sq" = square(i"tdnn1.relu.output.low");
   i"tdnn1.renorm.reduced.sum" = sum_reduce(i"tdnn1.renorm.reduced.sq", axes = [1]);
-  i"tdnn1.renorm.scaled-recip" = 0.00390625;
+  i"tdnn1.renorm.scaled-recip" = [[0.00390625]];
   i"tdnn1.renorm.scaled" = mul(i"tdnn1.renorm.reduced.sum", i"tdnn1.renorm.scaled-recip");
   i"tdnn1.renorm.norm" = sqrt(i"tdnn1.renorm.scaled");
   i"tdnn1.renorm.output" = div(i"tdnn1.relu.output.low", i"tdnn1.renorm.norm");
@@ -143,11 +143,11 @@ graph network( input ) -> ( output ) {
   i"tdnn2.affine.output_bias" = variable<scalar>(label = "tdnn2.affine.output_bias", shape = [256]);
   i"tdnn2.affine.output_conv" = conv(i"tdnn2.affine.output_input", i"tdnn2.affine.output_weigths", i"tdnn2.affine.output_bias", dilation = [1], stride = [1], border = "constant", groups = 1, padding = [(0, 0)]);
   i"tdnn2.affine.output" = squeeze(transpose(i"tdnn2.affine.output_conv", axes = [0, 2, 1]), axes = [0]);
-  i"tdnn2.relu.output.low.cst" = 0.0;
+  i"tdnn2.relu.output.low.cst" = [[0.0]];
   i"tdnn2.relu.output.low" = max(i"tdnn2.affine.output", i"tdnn2.relu.output.low.cst");
   i"tdnn2.renorm.reduced.sq" = square(i"tdnn2.relu.output.low");
   i"tdnn2.renorm.reduced.sum" = sum_reduce(i"tdnn2.renorm.reduced.sq", axes = [1]);
-  i"tdnn2.renorm.scaled-recip" = 0.00390625;
+  i"tdnn2.renorm.scaled-recip" = [[0.00390625]];
   i"tdnn2.renorm.scaled" = mul(i"tdnn2.renorm.reduced.sum", i"tdnn2.renorm.scaled-recip");
   i"tdnn2.renorm.norm" = sqrt(i"tdnn2.renorm.scaled");
   i"tdnn2.renorm.output" = div(i"tdnn2.relu.output.low", i"tdnn2.renorm.norm");
@@ -156,11 +156,11 @@ graph network( input ) -> ( output ) {
   i"tdnn3.affine.output_bias" = variable<scalar>(label = "tdnn3.affine.output_bias", shape = [256]);
   i"tdnn3.affine.output_conv" = conv(i"tdnn3.affine.output_input", i"tdnn3.affine.output_weigths", i"tdnn3.affine.output_bias", dilation = [1], stride = [3], border = "constant", groups = 1, padding = [(0, 0)]);
   i"tdnn3.affine.output" = squeeze(transpose(i"tdnn3.affine.output_conv", axes = [0, 2, 1]), axes = [0]);
-  i"tdnn3.relu.output.low.cst" = 0.0;
+  i"tdnn3.relu.output.low.cst" = [[0.0]];
   i"tdnn3.relu.output.low" = max(i"tdnn3.affine.output", i"tdnn3.relu.output.low.cst");
   i"tdnn3.renorm.reduced.sq" = square(i"tdnn3.relu.output.low");
   i"tdnn3.renorm.reduced.sum" = sum_reduce(i"tdnn3.renorm.reduced.sq", axes = [1]);
-  i"tdnn3.renorm.scaled-recip" = 0.00390625;
+  i"tdnn3.renorm.scaled-recip" = [[0.00390625]];
   i"tdnn3.renorm.scaled" = mul(i"tdnn3.renorm.reduced.sum", i"tdnn3.renorm.scaled-recip");
   i"tdnn3.renorm.norm" = sqrt(i"tdnn3.renorm.scaled");
   i"tdnn3.renorm.output" = div(i"tdnn3.relu.output.low", i"tdnn3.renorm.norm");
@@ -199,11 +199,11 @@ graph network( input ) -> ( output ) {
   i"tdnn4.affine.output_bias" = variable<scalar>(label = "tdnn4.affine.output_bias", shape = [256]);
   i"tdnn4.affine.output_conv" = conv(i"tdnn4.affine.output_input", i"tdnn4.affine.output_weigths", i"tdnn4.affine.output_bias", dilation = [1], stride = [1], border = "constant", groups = 1, padding = [(0, 0)]);
   i"tdnn4.affine.output" = squeeze(transpose(i"tdnn4.affine.output_conv", axes = [0, 2, 1]), axes = [0]);
-  i"tdnn4.relu.output.low.cst" = 0.0;
+  i"tdnn4.relu.output.low.cst" = [[0.0]];
   i"tdnn4.relu.output.low" = max(i"tdnn4.affine.output", i"tdnn4.relu.output.low.cst");
   i"tdnn4.renorm.reduced.sq" = square(i"tdnn4.relu.output.low");
   i"tdnn4.renorm.reduced.sum" = sum_reduce(i"tdnn4.renorm.reduced.sq", axes = [1]);
-  i"tdnn4.renorm.scaled-recip" = 0.00390625;
+  i"tdnn4.renorm.scaled-recip" = [[0.00390625]];
   i"tdnn4.renorm.scaled" = mul(i"tdnn4.renorm.reduced.sum", i"tdnn4.renorm.scaled-recip");
   i"tdnn4.renorm.norm" = sqrt(i"tdnn4.renorm.scaled");
   i"tdnn4.renorm.output" = div(i"tdnn4.relu.output.low", i"tdnn4.renorm.norm");
@@ -213,11 +213,11 @@ graph network( input ) -> ( output ) {
   i"tdnn5.affine.output_bias" = variable<scalar>(label = "tdnn5.affine.output_bias", shape = [256]);
   i"tdnn5.affine.output_conv" = conv(i"tdnn5.affine.output_input", i"tdnn5.affine.output_weigths", i"tdnn5.affine.output_bias", dilation = [1], stride = [1], border = "constant", groups = 1, padding = [(0, 0)]);
   i"tdnn5.affine.output" = squeeze(transpose(i"tdnn5.affine.output_conv", axes = [0, 2, 1]), axes = [0]);
-  i"tdnn5.relu.output.low.cst" = 0.0;
+  i"tdnn5.relu.output.low.cst" = [[0.0]];
   i"tdnn5.relu.output.low" = max(i"tdnn5.affine.output", i"tdnn5.relu.output.low.cst");
   i"tdnn5.renorm.reduced.sq" = square(i"tdnn5.relu.output.low");
   i"tdnn5.renorm.reduced.sum" = sum_reduce(i"tdnn5.renorm.reduced.sq", axes = [1]);
-  i"tdnn5.renorm.scaled-recip" = 0.00390625;
+  i"tdnn5.renorm.scaled-recip" = [[0.00390625]];
   i"tdnn5.renorm.scaled" = mul(i"tdnn5.renorm.reduced.sum", i"tdnn5.renorm.scaled-recip");
   i"tdnn5.renorm.norm" = sqrt(i"tdnn5.renorm.scaled");
   i"tdnn5.renorm.output" = div(i"tdnn5.relu.output.low", i"tdnn5.renorm.norm");
