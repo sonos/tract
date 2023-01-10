@@ -38,8 +38,8 @@ pub fn register(registry: &mut Registry) {
     #[cfg(feature = "complex")]
     complex::register(registry);
     downsample::register(registry);
-    fft::register(registry);
     einsum::register(registry);
+    fft::register(registry);
     gather::register(registry);
     matmul::register(registry);
     one_hot::register(registry);
