@@ -358,7 +358,7 @@ impl<'a> IntoAst<'a> {
         force_variable: bool,
     ) -> TractResult<Arc<RValue>> {
         let name: Identifier = name.as_ref().into();
-        if !force_variable && tensor.len() == 1 {
+        if !force_variable && tensor.len() == 1 && tensor.rank() == 0 {
             if tensor.datum_type() == String::datum_type() {
                 return Ok(string(tensor.to_scalar::<String>().unwrap()).into());
             } else if tensor.datum_type() == DatumType::F32 {
