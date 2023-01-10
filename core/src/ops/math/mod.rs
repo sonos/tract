@@ -196,7 +196,7 @@ fn declutter_neutral(
 ) -> TractResult<Option<TypedModelPatch>> {
     if let Some(uniform) = crate::ops::binary::one_input_is_uniform(model, node)? {
         // casting to i64 uni quantized type need to be avoided
-        if (&uniform.uni).datum_type().is_quantized() {
+        if uniform.uni.datum_type().is_quantized() {
             return Ok(None);
         }
         let integer = uniform.uni.cast_to_scalar::<i64>()?;
