@@ -116,7 +116,13 @@ impl TypedOp for QMatMulUnary {
     }
 
     fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
+        return Ok(Invariants::none()) // TODO qmatmul decluttered as einsum
+        /*
+        dbg!(inputs);
+        dbg!(&self.params);
+        */
         // FIXME: why ?
+        /*
         if self.params.iter().any(|qp| match qp.1 {
             QParamKind::Attr(t) => t.len() > 1,
             QParamKind::FromInput(ix) => !inputs[*ix].shape.volume().is_one(),
@@ -131,6 +137,7 @@ impl TypedOp for QMatMulUnary {
             }
             Ok(invs)
         }
+        */
     }
 
     fn change_axes(
@@ -140,6 +147,8 @@ impl TypedOp for QMatMulUnary {
         io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
+        return Ok(None) // TODO: figure out how to deal with qmatmul->einsum
+            /*
         if let Some((a, axes, wire_changes)) =
             super::mir_unary::mir_unary_change_axes(model, node, io, change, &self.axes, &self.a)?
         {
@@ -148,6 +157,7 @@ impl TypedOp for QMatMulUnary {
         } else {
             Ok(None)
         }
+        */
     }
 
     fn declutter(
