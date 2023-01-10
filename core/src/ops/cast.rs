@@ -73,7 +73,7 @@ impl TypedOp for Cast {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         if model.outlet_fact(node.inputs[0])?.datum_type == self.to {
-            Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
+            TypedModelPatch::shunt_one_op(model, node)
         } else {
             Ok(None)
         }

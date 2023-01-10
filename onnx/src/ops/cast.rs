@@ -1,6 +1,7 @@
 use crate::model::{ParsingContext, OnnxOpRegister};
 use crate::pb::*;
 use tract_hir::internal::*;
+use tract_hir::ops::identity::Identity;
 use tract_hir::tract_core::ops::element_wise::*;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
@@ -62,7 +63,7 @@ impl ElementWiseMiniOp for Cast {
     ) -> TractResult<Option<TypedModelPatch>> {
         let from = model.outlet_fact(node.inputs[0])?.datum_type;
         if from == self.to {
-            Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
+            Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, Identity)?))
         } else if from == String::datum_type() && self.to == f32::datum_type() {
             Ok(None)
         } else {

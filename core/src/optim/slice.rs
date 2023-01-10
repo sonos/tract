@@ -114,7 +114,11 @@ pub fn should_slice_output(
     boundaries.retain(|x| *x > 0);
     boundaries.sort();
     boundaries.dedup();
-    Ok(Some(boundaries))
+    if boundaries.len() == 0 { // happens when input is of size 0. don't care.
+        Ok(None)
+    } else {
+        Ok(Some(boundaries))
+    }
 }
 
 pub fn rewire_sliced_outputs(

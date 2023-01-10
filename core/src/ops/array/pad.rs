@@ -173,7 +173,7 @@ impl TypedOp for Pad {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         if self.pads.iter().all(|p| p.0 == 0 && p.1 == 0) {
-            Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
+            TypedModelPatch::shunt_one_op(model, node)
         } else {
             Ok(None)
         }

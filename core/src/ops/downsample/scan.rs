@@ -1,6 +1,7 @@
 use super::Downsample;
 use crate::internal::*;
 use crate::ops;
+use crate::ops::identity::Identity;
 use crate::ops::scan::*;
 
 pub fn pull_downsample_over_scan(
@@ -53,8 +54,13 @@ pub fn pull_downsample_over_scan(
         node.op_as_mut::<crate::ops::source::TypedSource>().unwrap().fact = fact.clone();
         let downsamples = downsampled_body.node(input.node).outputs[0].successors.clone();
         for ds in downsamples {
-            TypedModelPatch::shunt_one_op(&downsampled_body as _, downsampled_body.node(ds.node))?
-                .apply(&mut downsampled_body)?;
+            TypedModelPatch::replace_single_op(
+                &downsampled_body,
+                downsampled_body.node(ds.node),
+                &downsampled_body.node(ds.node).inputs,
+                Identity,
+            )?
+            .apply(&mut downsampled_body)?;
         }
     }
 
