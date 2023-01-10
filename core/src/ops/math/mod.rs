@@ -13,7 +13,7 @@ use tract_linalg::{ScaleShiftAndRound, Scaler};
 use tract_num_traits::AsPrimitive;
 
 mod complex;
-pub use complex::{InnerDimToComplex, ComplexToInnerDim};
+pub use complex::{ComplexToInnerDim, InnerDimToComplex};
 
 bin_to_super_type!(add, Add,
                    declutter: declutter_add,
@@ -195,6 +195,10 @@ fn declutter_neutral(
     also_left: bool,
 ) -> TractResult<Option<TypedModelPatch>> {
     if let Some(uniform) = crate::ops::binary::one_input_is_uniform(model, node)? {
+        // casting to i64 uni quantized type need to be avoided
+        if (&uniform.uni).datum_type().is_quantized() {
+            return Ok(None);
+        }
         let integer = uniform.uni.cast_to_scalar::<i64>()?;
         if tensor0(integer)
             .cast_to_dt(uniform.uni.datum_type())?
