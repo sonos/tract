@@ -649,16 +649,15 @@ pub fn change_axes(
 ) -> TractResult<Option<(TypedModelPatch, TVec<(InOut, AxisOp)>)>> {
     trace!("Considering change {:?}", change);
     let mut todo_changes = vec![(change.clone(), None)];
-    let mut changed_wires = HashMap::new();
-    changed_wires.insert(change.outlet, change.op.clone());
+    let mut changed_wires: HashMap<TVec<OutletId>, AxisOp> = HashMap::new();
+    let bound_outlets = |o: OutletId| -> TVec<OutletId> {
+        bounds.iter().find(|b| b.contains(&o)).cloned().unwrap_or_else(|| tvec!(o))
+    };
+    changed_wires.insert(bound_outlets(change.outlet), change.op.clone());
     let mut changed_ops: HashMap<usize, Box<dyn TypedOp>> = HashMap::new();
     while let Some((c, emitter)) = todo_changes.pop() {
-        let outlets = if let Some(group) = bounds.iter().find(|b| b.contains(&c.outlet)) {
-            group.clone()
-        } else {
-            tvec![c.outlet]
-        };
-        for outlet in outlets {
+        let outlet_group = bound_outlets(c.outlet);
+        for &outlet in &outlet_group {
             if locked.contains(&outlet) {
                 trace!("  Change {:?} blocked by locked interface {:?}", change, outlet);
                 return Ok(None);
@@ -671,13 +670,17 @@ pub fn change_axes(
                 if Some(node_id) == emitter {
                     continue;
                 }
-                // Revisiting a node we already changed is a big no.
-                if changed_ops.contains_key(&node_id) {
-                    return Ok(None)
-                }
                 let node = model.node(node_id);
-                let more = node
-                    .op
+                let op = if let Some(op) = changed_ops.get(&node_id) {
+                    trace!("  Change {:?} revisiting {}", change, model.node(node_id));
+                    /*
+                    return Ok(None)
+                    */
+                    op
+                } else {
+                    &node.op
+                };
+                let more = op
                     .change_axes(model, node, io, &c.op)
                     .with_context(|| format!("Propagating {change:?} to node {node}"))?;
                 if more.is_none() {
@@ -692,12 +695,12 @@ pub fn change_axes(
                     changed_ops.insert(node.id, op);
                 }
                 for (wire, op) in wire_changes.into_iter() {
-                    let outlet = wire.as_outlet(node);
-                    match changed_wires.entry(outlet) {
+                    let outlet_group = bound_outlets(wire.as_outlet(node));
+                    match changed_wires.entry(outlet_group.clone()) {
                         Entry::Vacant(entry) => {
-                            trace!("         {:?} {:?} change on {:?} is new", wire, op, outlet);
+                            trace!("         {:?} {:?} change on {:?} is new", wire, op, outlet_group);
                             entry.insert(op.clone());
-                            todo_changes.push((AxisChange { outlet, op }, Some(node_id)));
+                            todo_changes.push((AxisChange { outlet: outlet_group[0], op }, Some(node_id)));
                         }
                         Entry::Occupied(previous) => {
                             if *previous.get() == op {
@@ -705,16 +708,16 @@ pub fn change_axes(
                                     "         {:?} {:?} change on {:?} already done",
                                     wire,
                                     op,
-                                    outlet
+                                    outlet_group
                                 );
                             } else {
                                 trace!(
                                     "         {:?} {:?} change on {:?} conflicting with {:?}. Blocked.",
                                     wire,
                                     op,
-                                    outlet,
+                                    outlet_group,
                                     previous
-                                );
+                                    );
                                 return Ok(None);
                             }
                         }
@@ -728,7 +731,7 @@ pub fn change_axes(
     let mut replaced_wires: HashMap<OutletId, OutletId> = HashMap::default();
     let nodes_to_replace = changed_wires
         .keys()
-        .map(|o| o.node)
+        .flat_map(|outlets| outlets.iter().map(|o| o.node))
         .chain(changed_ops.keys().copied())
         .collect::<std::collections::HashSet<usize>>();
     for node_id in model.eval_order()? {
@@ -769,12 +772,12 @@ pub fn change_axes(
     }
     let mut interface_change = tvec!();
     for (ix, input) in model.input_outlets()?.iter().enumerate() {
-        if let Some(change) = changed_wires.get(input) {
+        if let Some(change) = changed_wires.get(&bound_outlets(*input)) {
             interface_change.push((InOut::In(ix), change.clone()));
         }
     }
     for (ix, output) in model.output_outlets()?.iter().enumerate() {
-        if let Some(change) = changed_wires.get(output) {
+        if let Some(change) = changed_wires.get(&bound_outlets(*output)) {
             interface_change.push((InOut::Out(ix), change.clone()));
         }
     }
