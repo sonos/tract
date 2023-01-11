@@ -1,13 +1,14 @@
-# Unreleased
-
-* internal API breaking: no more op_families, libcli split away
+# 0.19.0 - 2023-01-11
+* [BREAKING] TValue are now used in run() instead of the previous mix of Tensor and Arc<Tensor>
+* internal API breaking changes: no more op_families, libcli split away. State is no longer Send (but can be "frozen" to a Send counterpart).
 * Symbols can now be String instead of char. They are not shared globally anymore, but scoped in the Model instead.
 * [pulse] S symbol is no longer magic. The time dimension symbol must be provided at pulsification time.
 * [pulse] In most cases, we can now pulsify without an explicit pulse len (pulse len can be expression).
 * [cli] deprecated "x" syntax for shape is removed
-* [nnef/opl] new syntax for escaping identifiers: i"some arbitrary string"
+* [nnef/opl] new i"..." syntax for escaping identifiers: i"some arbitrary string". Allow serialization of any ONNX model with any kind of string as node names.
 * [ONNX] Signal processing operators (DTF, STFT, MelWeightMatrix, BlackmanWindow, HammingWindow, HannWindow)
 * [ONNX] bitwise operations
+* [ONNX] Compatibility target raised to operator set 18
 
 # 0.18.3 - 2022-10-27
 * [NNEF] Introduce a "resource" extension for loading values from a separate source (as a config file)

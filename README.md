@@ -12,8 +12,7 @@ _This project used to be called tfdeploy, or Tensorflow-deploy-rust._
 
 ## What ?
 
-`tract` is a Neural Network inference toolkit. It can read Tensorflow 1, ONNX
-or NNEF, optimize them and run data through them.
+`tract` is a Neural Network inference toolkit. It can read ONNX or NNEF, optimize them and run them.
 
 ## Quick start
 
@@ -30,39 +29,32 @@ There is also [some technical documentation](doc/) and [blog](https://tech-blog.
 
 ### ONNX
 
-As of today (October 2020), `tract` passes successfully about 85% of ONNX backends
-tests. All "real life" integration tests in Onnx test suite are passing: 
+As of today, `tract` passes successfully about 85% of ONNX backends
+tests. All "real life" integration tests in ONNX test suite are passing: 
 bvlc_alexnet, densenet121, inception_v1, inception_v2, resnet50, shufflenet,
 squeezenet, vgg19, zfnet512.
 
+Notable missing parts are operators dealing with Tensor Sequences and Optional Tensors : tract /really/ wants to flow Tensors and nothing else.
+This is structural. Changing it would be pretty difficult, and it's unclear whether it can be done without impairing performance or maintanability.
+We are not convinced these features have shown their interest in the wild yet, so we prefer to leave them aside.
+
+Other dark corners are specific operators likes "Resize" which fit perfectly in the framework, but need a complex internal logic that is far
+from our core business. In these cases, we are happy to accept contributions, and to help. 
+
 The following operators are implemented and tested.
 
-Abs, Acos, Acosh, Add, And, ArgMax, ArgMin, ArrayFeatureExtractor, Asin, Asinh, Atan, Atanh, AveragePool, BatchNormalization, BitShift, Cast, CategoryMapper, Ceil, Clip, Compress, Concat, Constant, ConstantLike, ConstantOfShape, Conv, ConvInteger, ConvTranspose, Cos, Cosh, CumSum, DepthToSpace, DequantizeLinear, Div, Dropout, DynamicQuantizeLinear, Einsum, Elu, Equal, Erf, Exp, Expand, EyeLike, Flatten, Floor, GRU, Gather, GatherElements, GatherND, Gemm, GlobalAveragePool, GlobalLpPool, GlobalMaxPool, Greater, GreaterOrEqual, HardSigmoid, Hardmax, Identity, If, InstanceNormalization, IsInf, IsNaN, LRN, LSTM, LeakyRelu, Less, LessOrEqual, Log, LogSoftmax, MatMul, MatMulInteger, Max, MaxPool, Mean, Min, Mod, Mul, Neg, NonZero, Not, OneHot, Or, PRelu, Pad, ParametricSoftplus, Pow, QLinearConv, QLinearMatMul, QuantizeLinear, RNN, Range, Reciprocal, ReduceL1, ReduceL2, ReduceLogSum, ReduceLogSumExp, ReduceMax, ReduceMean, ReduceMin, ReduceProd, ReduceSum, ReduceSumSquare, Relu, Reshape, Resize, Round, Rsqrt, ScaledTanh, Scan, Scatter, ScatterElements, ScatterND, Selu, Shape, Shrink, Sigmoid, Sign, Sin, Sinh, Size, Slice, Softmax, Softplus, Softsign, SpaceToDepth, Split, Sqrt, Squeeze, Sub, Sum, Tan, Tanh, ThresholdedRelu, Tile, Transpose, TreeEnsembleClassifier, Unsqueeze, Where, Xor
+Abs, Acos, Acosh, Add, And, ArgMax, ArgMin, ArrayFeatureExtractor, Asin, Asinh, Atan, Atanh, AveragePool, BatchNormalization, BitShift, BitwiseAnd, BitwiseNot, BitwiseOr, BitwiseXor, BlackmanWindow, Cast, CastLike, CategoryMapper, Ceil, Clip, Compress, Concat, Constant, ConstantLike, ConstantOfShape, Conv, ConvInteger, ConvTranspose, Cos, Cosh, CumSum, DFT, DepthToSpace, DequantizeLinear, Div, Dropout, DynamicQuantizeLinear, Einsum, Elu, Equal, Erf, Exp, Expand, EyeLike, Flatten, Floor, GRU, Gather, GatherElements, GatherND, Gemm, GlobalAveragePool, GlobalLpPool, GlobalMaxPool, Greater, GreaterOrEqual, HammingWindow, HannWindow, HardSigmoid, Hardmax, Identity, If, InstanceNormalization, IsInf, IsNaN, LRN, LSTM, LeakyRelu, Less, LessOrEqual, Log, LogSoftmax, MatMul, MatMulInteger, Max, MaxPool, Mean, MelWeightMatrix, Min, Mod, Mul, Multinomial, Neg, NonMaxSuppression, NonZero, Not, OneHot, Or, PRelu, Pad, ParametricSoftplus, Pow, QLinearConv, QLinearMatMul, QuantizeLinear, RNN, RandomNormal, RandomNormalLike, RandomUniform, RandomUniformLike, Range, Reciprocal, ReduceL1, ReduceL2, ReduceLogSum, ReduceLogSumExp, ReduceMax, ReduceMean, ReduceMin, ReduceProd, ReduceSum, ReduceSumSquare, Relu, Reshape, Resize, Round, Rsqrt, STFT, ScaledTanh, Scan, Scatter, ScatterElements, ScatterND, Selu, Shape, Shrink, Sigmoid, Sign, Sin, Sinh, Size, Slice, Softmax, Softplus, Softsign, SpaceToDepth, Split, Sqrt, Squeeze, Sub, Sum, Tan, Tanh, ThresholdedRelu, Tile, Transpose, TreeEnsembleClassifier, Unsqueeze, Where, Xor
 
-We test these operators against Onnx 1.4.1 (operator set 9), Onnx 1.5.0
-(operator set 10), Onnx 1.6.0 (operator set 11), Onnx 1.7.0 (operator set
-12), Onnx 1.8.1 (operator set 13), Onnx 1.9.0 (operator set 14), and Onnx
-1.10.1 (operator set 15).
-Many networks in operator set 8 are also working.
+We test these operators against from ONNX 1.4.1 (operator set 9), up to ONNX 1.13.0 (operator set 18).
 
-### TensorFlow 1.x
-
-Even if `tract` is very far from supporting any arbitrary model, it can run
-Google Inception v3 and Snips wake word models. Missing operators are relatively 
-easy to add. The lack of easy to reuse test suite, and the wide diversity of 
-operators in Tensorflow make it difficult to target a full support.
-
-The following operators are implemented and tested:
-
-Abs, Add, AddN, AddV2, Assign, AvgPool, BatchToSpaceND, BiasAdd, BlockLSTM, Cast, Ceil, ConcatV2, Const, Conv2D, DepthwiseConv2dNative, Div, Enter, Equal, Exit, ExpandDims, FakeQuantWithMinMaxVars, Fill, FloorMod, FusedBatchNorm, GatherNd, GatherV2, Greater, GreaterEqual, Identity, Less, LessEqual, Log, LogicalAnd, LogicalOr, LoopCond, MatMul, Max, MaxPool, Maximum, Mean, Merge, Min, Minimum, Mul, Neg, NoOp, Pack, Pad, Placeholder, Pow, Prod, RandomUniform, RandomUniformInt, Range, RealDiv, Relu, Relu6, Reshape, Rsqrt, Shape, Sigmoid, Slice, Softmax, SpaceToBatchND, Squeeze, StridedSlice, Sub, Sum, Switch, Tanh, Tile, Transpose, VariableV2
-
-Additionally, the complexity of TensorFlow 2 make it very unlikely that a direct
-support will ever exist in tract. Many TensorFlow 2 nets can be
-converted to ONNX and loaded in tract.
+We are using ONNX test suite, but it does not cover everything.
+We also deliberately ignore some tests, or restricting their scope depending on what we feel is realistic.
+Sometimes these decisions are just wrong, and sometimes they become wrong as time goes by and the fields moves in unexpected directions.
+So if you are puzzled by an ONNX model that does not work in tract, we are happy to take a look.
 
 ### NNEF
 
-Long story short, TensorFlow and Onnx formats are good for designing and
+Long story short, TensorFlow and ONNX formats are good for designing and
 training networks. They need to move fast to follow the research field, tend to
 integrate new features and operators greedily. They also exhibit a high level
 of expressivity to facilitate network design.
@@ -114,6 +106,21 @@ tract will not do any version check. It is up to the application developper to d
 A softer version tag exists as `tract_nnef_format_version`. pre-0.17.0 version set it to
 `alpha1`, post-0.17.0 set it `beta1`. Don't put too much emphasis into the "alpha-ness" naming 
 of versions here.
+
+### Note: support for TensorFlow 1.x
+
+Even if `tract` is very far from supporting any arbitrary model, it can run
+Google Inception v3 and Snips wake word models. Missing operators are relatively 
+easy to add. The lack of easy to reuse test suite, and the wide diversity of 
+operators in Tensorflow make it difficult to target a full support.
+
+The following operators are implemented and tested:
+
+Abs, Add, AddN, AddV2, Assign, AvgPool, BatchToSpaceND, BiasAdd, BlockLSTM, Cast, Ceil, ConcatV2, Const, Conv2D, DepthwiseConv2dNative, Div, Enter, Equal, Exit, ExpandDims, FakeQuantWithMinMaxVars, Fill, FloorMod, FusedBatchNorm, GatherNd, GatherV2, Greater, GreaterEqual, Identity, Less, LessEqual, Log, LogicalAnd, LogicalOr, LoopCond, MatMul, Max, MaxPool, Maximum, Mean, Merge, Min, Minimum, Mul, Neg, NoOp, Pack, Pad, Placeholder, Pow, Prod, RandomUniform, RandomUniformInt, Range, RealDiv, Relu, Relu6, Reshape, Rsqrt, Shape, Sigmoid, Slice, Softmax, SpaceToBatchND, Squeeze, StridedSlice, Sub, Sum, Switch, Tanh, Tile, Transpose, VariableV2
+
+Additionally, the complexity of TensorFlow 2 make it very unlikely that a direct
+support will ever exist in tract. But many TensorFlow 2 models can be
+converted to ONNX and then loaded in tract.
 
 ## Example of supported networks
 
