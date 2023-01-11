@@ -3,10 +3,7 @@
 
 /* mmm 16 x 8
 
-    zmm0
-    zmm1
-    ...
-    zmm8
+    zmm0 zmm1 ... zmm8
 
 System V ABI:
     args: rdi, rsi, rdx, rcx, r8, r9
@@ -129,7 +126,6 @@ Windows ABI:
     lea     r15,    [ r13 + 2 * rbx ]
     
     {% for quarter in (0..3) %}
-        // move next four rows at top (xmm0,2,..10)
         {% for r in (0..7) %}
             vextractf32x4 xmm{{r | plus: 8}}, zmm{{r}}, {{quarter}}
         {% endfor %}
