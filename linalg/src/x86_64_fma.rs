@@ -104,10 +104,13 @@ fn plug_avx512f(ops: &mut Ops) {
     });
 
     ops.mmm_f32 = Box::new(|_,_,n| {
+        
         if n.is_none() {
-            return mmm::avx512_mmm_f32_16x8::mmm();
+            return mmm::avx512_mmm_f32_32x6::mmm();
         }
-
+        
+        return mmm::avx512_mmm_f32_32x6::mmm();
+        
         let n = n.unwrap();
 
         if n <= 8 {
