@@ -74,9 +74,7 @@ int main() {
     check(tract_runnable_release(&runnable));
     assert(!runnable);
 
-    check(tract_state_set_input(state, 0, input));
-    check(tract_state_exec(state));
-    check(tract_state_output(state, 0, &output));
+    check(tract_state_run(state, &input, &output));
 
     check(tract_value_inspect(output, NULL, NULL, NULL, (const void**) &data));
     assert(data[argmax] == max);

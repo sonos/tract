@@ -128,7 +128,7 @@ fn wrap<F: FnOnce() -> anyhow::Result<()>>(func: F) -> TRACT_RESULT {
     }
 }
 
-/// Used to retrieve the last error that happened in this thread. A function encountered an error if
+/// Retrieve the last error that happened in this thread. A function encountered an error if
 /// its return type is of type `TRACT_RESULT` and it returned `TRACT_RESULT_KO`.
 ///
 /// # Return value
@@ -152,6 +152,10 @@ pub extern "C" fn tract_version() -> *const std::ffi::c_char {
 // NNEF
 pub struct TractNnef(native::Nnef);
 
+/// Creates an instance of an NNEF framework and parser that can be used to load models.
+///
+/// The returned object should be destroyed with `tract_nnef_destroy` once the model
+/// has been loaded.
 #[no_mangle]
 pub unsafe extern "C" fn tract_nnef_create(nnef: *mut *mut TractNnef) -> TRACT_RESULT {
     wrap(|| unsafe {
@@ -160,6 +164,7 @@ pub unsafe extern "C" fn tract_nnef_create(nnef: *mut *mut TractNnef) -> TRACT_R
     })
 }
 
+/// Destroy the NNEF parser. It is safe to detroy the NNEF parser once the model had been loaded.
 #[no_mangle]
 pub unsafe extern "C" fn tract_nnef_destroy(nnef: *mut *mut TractNnef) -> TRACT_RESULT {
     wrap(|| unsafe {
@@ -172,6 +177,10 @@ pub unsafe extern "C" fn tract_nnef_destroy(nnef: *mut *mut TractNnef) -> TRACT_
     })
 }
 
+/// Parse and load an NNEF model as a tract TypedModel.
+///
+/// `path` is a null-terminated utf-8 string pointer. It can be an archive (tar or tar.gz file) or a
+/// directory.
 #[no_mangle]
 pub unsafe extern "C" fn tract_nnef_model_for_path(
     nnef: &TractNnef,
@@ -192,6 +201,10 @@ pub unsafe extern "C" fn tract_nnef_model_for_path(
 // ONNX
 pub struct TractOnnx(tract_onnx::Onnx);
 
+/// Creates an instance of an ONNX framework and parser that can be used to load models.
+///
+/// The returned object should be destroyed with `tract_nnef_destroy` once the model
+/// has been loaded.
 #[no_mangle]
 pub unsafe extern "C" fn tract_onnx_create(ptr: *mut *mut TractOnnx) -> TRACT_RESULT {
     wrap(|| unsafe {
@@ -200,6 +213,7 @@ pub unsafe extern "C" fn tract_onnx_create(ptr: *mut *mut TractOnnx) -> TRACT_RE
     })
 }
 
+/// Destroy the NNEF parser. It is safe to detroy the NNEF parser once the model had been loaded.
 #[no_mangle]
 pub unsafe extern "C" fn tract_onnx_destroy(ptr: *mut *mut TractOnnx) -> TRACT_RESULT {
     wrap(|| unsafe {
@@ -212,6 +226,9 @@ pub unsafe extern "C" fn tract_onnx_destroy(ptr: *mut *mut TractOnnx) -> TRACT_R
     })
 }
 
+/// Parse and load an ONNX model as a tract InferenceModel.
+///
+/// `path` is a null-terminated utf-8 string pointer. It must point to a `.onnx` model file.
 #[no_mangle]
 pub unsafe extern "C" fn tract_onnx_model_for_path(
     onnx: &TractOnnx,
@@ -232,10 +249,16 @@ pub unsafe extern "C" fn tract_onnx_model_for_path(
 // INFERENCE MODEL
 pub struct TractInferenceModel(onnx::InferenceModel);
 
+/// Convenience function to obtain an optimized TypedModel from an InferenceModel.
+///
+/// This function takes ownership of the InferenceModel `model` whether it succeeds
+/// or not. `tract_inference_model_destroy` must not be used on `model`.
+///
+/// On the other hand, caller will be owning the newly created `optimized` model.
 #[no_mangle]
 pub unsafe extern "C" fn tract_inference_model_into_optimized(
     model: *mut *mut TractInferenceModel,
-    runnable: *mut *mut TractModel,
+    optimized: *mut *mut TractModel,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         if model.is_null() {
@@ -244,11 +267,12 @@ pub unsafe extern "C" fn tract_inference_model_into_optimized(
         let m = Box::from_raw(*model);
         *model = std::ptr::null_mut();
         let model = m.0.into_optimized()?;
-        *runnable = Box::into_raw(Box::new(TractModel(model))) as _;
+        *optimized = Box::into_raw(Box::new(TractModel(model))) as _;
         Ok(())
     })
 }
 
+/// Destroy an InferenceModel.
 #[no_mangle]
 pub unsafe extern "C" fn tract_inference_model_destroy(
     model: *mut *mut TractInferenceModel,
@@ -266,6 +290,7 @@ pub unsafe extern "C" fn tract_inference_model_destroy(
 
 pub struct TractModel(TypedModel);
 
+/// Optimize a TypedModel in-place.
 #[no_mangle]
 pub unsafe extern "C" fn tract_model_optimize(model: *mut TractModel) -> TRACT_RESULT {
     wrap(|| unsafe {
@@ -279,7 +304,9 @@ pub unsafe extern "C" fn tract_model_optimize(model: *mut TractModel) -> TRACT_R
 
 /// Convert a TypedModel into a TypedRunnableModel.
 ///
-/// This function transfers ownership of the model argument to the runnable model.
+/// This function transfers ownership of the `model` argument to the newly-created `runnable` model.
+///
+/// Runnable are reference counted. When done, it should be released with `tract_runnable_release`.
 #[no_mangle]
 pub unsafe extern "C" fn tract_model_into_runnable(
     model: *mut *mut TractModel,
@@ -297,6 +324,7 @@ pub unsafe extern "C" fn tract_model_into_runnable(
     })
 }
 
+/// Destroy a TypedModel.
 #[no_mangle]
 pub unsafe extern "C" fn tract_model_destroy(model: *mut *mut TractModel) -> TRACT_RESULT {
     wrap(|| unsafe {
@@ -312,6 +340,14 @@ pub unsafe extern "C" fn tract_model_destroy(model: *mut *mut TractModel) -> TRA
 // RUNNABLE MODEL
 pub struct TractRunnable(Arc<native::TypedRunnableModel<native::TypedModel>>);
 
+/// Spawn a session state from a runnable model.
+///
+/// This function does not take ownership of the `runnable` object, it can be used again to spawn
+/// other state instances. The runnable object is internally reference counted, it will be
+/// kept alive as long as any associated `State` exists (or as long as the `runnable` is not
+/// explicitely release with `tract_runnable_release`).
+///
+/// `state` is a newly-created object. It should ultimately be detroyed with `tract_state_destroy`.
 #[no_mangle]
 pub unsafe extern "C" fn tract_runnable_spawn_state(
     runnable: *mut TractRunnable,
@@ -332,6 +368,14 @@ pub unsafe extern "C" fn tract_runnable_spawn_state(
     })
 }
 
+/// Convenience function to run a stateless model.
+///
+/// `inputs` is a pointer to an pre-existing array of input TractValue. Its length *must* be equal
+/// to the number of inputs of the models. The function does not take ownership of the input
+/// values.
+/// `outputs` is a pointer to a pre-existing array of TractValue pointers that will be overwritten
+/// with pointers to outputs values. These values are under the responsiblity of the caller, it
+/// will have to release them with `tract_value_destroy`.
 #[no_mangle]
 pub unsafe extern "C" fn tract_runnable_run(
     runnable: *mut TractRunnable,
@@ -348,6 +392,9 @@ pub unsafe extern "C" fn tract_runnable_run(
     })
 }
 
+/// Query a runnable model input and output counts.
+///
+/// It can be called with null as `inputs` or `outputs` if only one count is required.
 #[no_mangle]
 pub unsafe extern "C" fn tract_runnable_nbio(
     runnable: *mut TractRunnable,
@@ -405,8 +452,13 @@ pub unsafe extern "C" fn tract_runnable_release(runnable: *mut *mut TractRunnabl
 // VALUE
 pub struct TractValue(TValue);
 
+
+/// Create a TractValue (aka tensor) from caller data and metadata.
+///
 /// This call copies the data into tract space. All the pointers only need to be alive for the
 /// duration of the call.
+///
+/// rank is the number of dimensions of the :ne
 #[no_mangle]
 pub unsafe extern "C" fn tract_value_create(
     datum_type: TractDatumType,
@@ -426,6 +478,7 @@ pub unsafe extern "C" fn tract_value_create(
     })
 }
 
+/// Destroy a value.
 #[no_mangle]
 pub unsafe extern "C" fn tract_value_destroy(value: *mut *mut TractValue) -> TRACT_RESULT {
     wrap(|| unsafe {
@@ -477,6 +530,14 @@ type NativeState = native::TypedSimpleState<
 >;
 pub struct TractState(NativeState);
 
+/// Convenience function running a pass of a statefull model.
+///
+/// `inputs` is a pointer to an pre-existing array of input TractValue. Its length *must* be equal
+/// to the number of inputs of the models. The function does not take ownership of the input
+/// values.
+/// `outputs` is a pointer to a pre-existing array of TractValue pointers that will be overwritten
+/// with pointers to outputs values. These values are under the responsiblity of the caller, it
+/// will have to release them with `tract_value_destroy`.
 #[no_mangle]
 pub unsafe extern "C" fn tract_state_run(
     state: *mut TractState,
@@ -492,6 +553,7 @@ pub unsafe extern "C" fn tract_state_run(
     })
 }
 
+/*
 #[no_mangle]
 pub unsafe extern "C" fn tract_state_set_input(
     state: *mut TractState,
@@ -553,6 +615,7 @@ pub unsafe extern "C" fn tract_state_reset_turn(state: *mut TractState) -> TRACT
         Ok(())
     })
 }
+*/
 
 #[no_mangle]
 pub unsafe extern "C" fn tract_state_destroy(state: *mut *mut TractState) -> TRACT_RESULT {
