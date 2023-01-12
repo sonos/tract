@@ -160,6 +160,7 @@ jobs:
 
     - name: Stop sccache server
       run: sccache --stop-server || true
+
   core-paranoid:
     runs-on: ubuntu-latest
 
@@ -181,9 +182,39 @@ jobs:
         key: ${{ runner.os }}-full-core-paranoid-${{steps.date.outputs.date}}-e
     - name: "Setup sccache"
       run: .travis/setup-sccache.sh
-    - name: Core test with paraoid assertions
+    - name: Core test with paranoid assertions
       run: |
         rustup update
         cargo test -p tract-core --features paranoid_assertions
+    - name: Stop sccache server
+      run: sccache --stop-server || true
+
+  python:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Get current date
+      id: date
+      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+    - uses: actions/cache@v3
+      with:
+        path: |
+          ~/.rustup
+          ~/.cargo/registry
+          ~/.cargo/git
+          ~/.cache/sccache
+          target
+          .cached
+        key: ${{ runner.os }}-full-core-paranoid-${{steps.date.outputs.date}}-e
+    - name: "Setup sccache"
+      run: .travis/setup-sccache.sh
+
+    - name: Pytest bindings
+      run: |
+        cd ffi/py
+        pip install .[test]
+        pytest .
     - name: Stop sccache server
       run: sccache --stop-server || true

@@ -20,7 +20,7 @@ setup(
         description="Python bindings for tract, a neural network inference engine",
         project_urls={
             "Documentation": "https://github.com/sonos/tract",
-            "Source": "https://github.com/Garvys/rustfs ",
+            "Source": "https://github.com/sonos/tract ",
         },
         license="Apache License, Version 2.0 OR MIT",
         long_description=readme,
@@ -44,5 +44,6 @@ setup(
         zip_safe=False,
         python_requires=">=3.7",
         install_requires=[ "numpy" ],
+        extras_requires={ "test": ["pytest"] },
 )
 
