@@ -1,0 +1,4 @@
+__pycache__
+*.so
+*.egg-info
+*.onnx
