@@ -214,7 +214,7 @@ jobs:
     - name: Pytest bindings
       run: |
         cd ffi/py
-        pip install setuptools
+        pip install setuptools setuptools_rust toml
         pip install .[test]
         pytest .
     - name: Stop sccache server
