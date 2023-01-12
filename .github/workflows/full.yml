@@ -214,6 +214,8 @@ jobs:
     - name: Pytest bindings
       run: |
         cd ffi/py
+        virtualenv venv
+        . venv/bin/activate
         pip install -r requirements.txt
         python setup.py install
         pip install pytest
