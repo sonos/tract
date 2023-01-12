@@ -1,6 +1,7 @@
 import numpy
 from ctypes import *
 from pathlib import Path
+from typing import Union
 
 class TractError(Exception):
     pass
@@ -40,22 +41,22 @@ def dt_numpy_to_tract(dt):
     if dt.kind == 'b':
         return TRACT_DATUM_TYPE_BOOL
     if dt.kind == 'u':
-        return 0x1 + dt.item_size
+        return 0x10 + dt.itemsize
     if dt.kind == 'i':
-        return 0x2 + dt.item_size
+        return 0x20 + dt.itemsize
     if dt.kind == 'f':
-        return 0x3 + dt.item_size
+        return 0x30 + dt.itemsize
     if dt.kind == 'c':
-        return 0x5 + dt.item_size / 2
+        return 0x50 + dt.itemsize / 2
     raise TractError("Unsupported Numpy dtype: " + dt)
 
-def version():
+def version() -> str:
     return str(lib.tract_version(), "utf-8")
 
-def nnef():
+def nnef() -> "Nnef":
     return Nnef()
 
-def onnx():
+def onnx() -> "Onnx":
     return Onnx()
 
 def check(err):
@@ -71,9 +72,9 @@ class Nnef:
     def __del__(self):
         check(lib.tract_nnef_destroy(byref(self.ptr)))
 
-    def model_for_path(self, path):
+    def model_for_path(self, path: Union[str, Path]) -> "Model":
         model = c_void_p()
-        path = path.encode("utf-8")
+        path = str(path).encode("utf-8")
         check(lib.tract_nnef_model_for_path(self.ptr, path, byref(model)))
         return Model(model)
 
@@ -86,9 +87,9 @@ class Onnx:
     def __del__(self):
         check(lib.tract_onnx_destroy(byref(self.ptr)))
 
-    def model_for_path(self, path):
+    def model_for_path(self, path: Union[str, Path]) -> "InferenceModel":
         model = c_void_p()
-        path = path.encode("utf-8")
+        path = str(path).encode("utf-8")
         check(lib.tract_onnx_model_for_path(self.ptr, path, byref(model)))
         return InferenceModel(model)
 
@@ -100,7 +101,7 @@ class InferenceModel:
         if self.ptr:
             check(lib.tract_inference_model_destroy(byref(self.ptr)))
 
-    def into_optimized(self):
+    def into_optimized(self) -> "Model":
         if self.ptr == None:
             raise TractError("invalid inference model (maybe already consumed ?)")
         model = c_void_p()
@@ -115,12 +116,12 @@ class Model:
         if self.ptr:
             check(lib.tract_model_destroy(byref(self.ptr)))
 
-    def optimize(self):
+    def optimize(self) -> None:
         if self.ptr == None:
             raise TractError("invalid model (maybe already consumed ?)")
         check(lib.tract_model_optimize(self.ptr))
 
-    def into_runnable(self):
+    def into_runnable(self) -> "Runnable":
         if self.ptr == None:
             raise TractError("invalid model (maybe already consumed ?)")
         runnable = c_void_p()
@@ -139,10 +140,18 @@ class Runnable:
     def __del__(self):
         check(lib.tract_runnable_release(byref(self.ptr)))
 
-    def run(self, inputs):
+    def run(self, inputs: list[Union["Value", numpy.ndarray]]) -> list["Value"]:
+        input_values = []
+        for v in inputs:
+            if isinstance(v, Value):
+                input_values.append(v)
+            elif isinstance(v, numpy.ndarray):
+                input_values.append(Value.from_numpy(v))
+            else:
+                raise TractError(f"Inputs must be of type tract.Value or numpy.Array, got {v}")
         input_ptrs = (c_void_p * self.inputs)()
         output_ptrs = (c_void_p * self.outputs)()
-        for ix, v in enumerate(inputs):
+        for ix, v in enumerate(input_values):
             input_ptrs[ix] = v.ptr
         check(lib.tract_runnable_run(self.ptr, input_ptrs, output_ptrs))
         result = []
@@ -158,7 +167,7 @@ class Value:
         if self.ptr:
             check(lib.tract_value_destroy(byref(self.ptr)))
 
-    def from_numpy(array):
+    def from_numpy(array: numpy.ndarray) -> "Value":
         array = numpy.ascontiguousarray(array)
 
         data = array.__array_interface__['data'][0]
@@ -172,7 +181,7 @@ class Value:
         check(lib.tract_value_create(dt, c_size_t(array.ndim), shape, data, byref(ptr)))
         return Value(ptr)
 
-    def to_numpy(self):
+    def to_numpy(self) -> numpy.array:
         if not self.ptr:
             raise TractError("invalid value (already consumed)")
         rank = c_size_t();
@@ -185,7 +194,7 @@ class Value:
         array = numpy.ctypeslib.as_array(data, shape).copy()
         return array
 
-    def into_numpy(self):
+    def into_numpy(self) -> numpy.array:
         result = self.to_numpy()
         check(lib.tract_value_destroy(byref(self.ptr)))
         return result
