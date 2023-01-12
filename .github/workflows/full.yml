@@ -215,7 +215,7 @@ jobs:
       run: |
         cd ffi/py
         pip install -r requirements.txt
-        python setup.py 
+        python setup.py install
         pip install pytest
         pytest .
     - name: Stop sccache server
