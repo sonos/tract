@@ -213,6 +213,7 @@ jobs:
 
     - name: Pytest bindings
       run: |
+        sudo apt-get install -y python3-virtualenv
         cd ffi/py
         virtualenv venv
         . venv/bin/activate
