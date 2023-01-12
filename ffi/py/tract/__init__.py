@@ -121,6 +121,10 @@ class Model:
             raise TractError("invalid model (maybe already consumed ?)")
         check(lib.tract_model_optimize(self.ptr))
 
+    def into_optimized(self) -> "Model":
+        self.optimize()
+        return self
+
     def into_runnable(self) -> "Runnable":
         if self.ptr == None:
             raise TractError("invalid model (maybe already consumed ?)")
