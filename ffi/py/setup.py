@@ -20,7 +20,7 @@ setup(
         description="Python bindings for tract, a neural network inference engine",
         project_urls={
             "Documentation": "https://github.com/sonos/tract",
-            "Source": "https://github.com/sonos/tract ",
+            "Source": "https://github.com/sonos/tract",
         },
         license="Apache License, Version 2.0 OR MIT",
         long_description=readme,
