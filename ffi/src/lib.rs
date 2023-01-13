@@ -263,6 +263,22 @@ pub unsafe extern "C" fn tract_onnx_model_for_path(
 pub struct TractInferenceModel(onnx::InferenceModel);
 
 #[no_mangle]
+pub unsafe extern "C" fn tract_inference_model_input_fact(
+    model: *const TractInferenceModel,
+    input_id: usize,
+    fact: *mut *mut TractInferenceFact
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        if model.is_null() {
+            anyhow::bail!("Trying to alter a null inference model")
+        }
+        let f = (*model).0.input_fact(input_id)?;
+        *fact = Box::into_raw(Box::new(TractInferenceFact(f.clone())));
+        Ok(())
+    })
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn tract_inference_model_set_input_fact(
     model: *mut TractInferenceModel,
     input_id: usize,

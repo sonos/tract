@@ -46,13 +46,8 @@ def test_nnef():
 
 def test_inference_fact():
     model = tract.onnx().model_for_path("./mobilenetv2-7.onnx")
+    assert str(model.input_fact(0)) == "1,3,224,224,F32"
     model.set_input_fact(0, "B,3,224,224,f32")
     model.set_output_fact(0, None)
     model.analyse()
     assert str(model.output_fact(0)) == "B,1000,F32"
-
-#    img = numpy.load("grace_hopper_1x3x224x244.npy")
-#
-#    result = model.run([img])
-#    confidences = result[0].to_numpy()
-#    assert numpy.argmax(confidences) == 652

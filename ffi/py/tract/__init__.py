@@ -108,6 +108,13 @@ class InferenceModel:
         check(lib.tract_inference_model_into_optimized(byref(self.ptr), byref(model)))
         return Model(model)
 
+    def input_fact(self, input_id: int) -> "InferenceFact":
+        if self.ptr == None:
+            raise TractError("invalid inference model (maybe already consumed ?)")
+        fact = c_void_p()
+        check(lib.tract_inference_model_input_fact(self.ptr, input_id, byref(fact)))
+        return InferenceFact(fact)
+
     def set_input_fact(self, input_id: int, fact: Union["InferenceFact", str, None]) -> None:
         if self.ptr == None:
             raise TractError("invalid inference model (maybe already consumed ?)")
