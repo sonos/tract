@@ -141,11 +141,24 @@ pub extern "C" fn tract_get_last_error() -> *const std::ffi::c_char {
     LAST_ERROR.with(|msg| msg.borrow().as_ref().map(|s| s.as_ptr()).unwrap_or(std::ptr::null()))
 }
 
+/// Returns a pointer to a static buffer containing a null-terminated version string.
+///
+/// The returned pointer must not be freed.
 #[no_mangle]
 pub extern "C" fn tract_version() -> *const std::ffi::c_char {
     unsafe {
         CStr::from_bytes_with_nul_unchecked(concat!(env!("CARGO_PKG_VERSION"), "\0").as_bytes())
             .as_ptr()
+    }
+}
+
+/// Frees a string allocated by libtract.
+#[no_mangle]
+pub extern "C" fn tract_free_cstring(ptr: *mut std::ffi::c_char) {
+    unsafe {
+        if !ptr.is_null() {
+            let _ = CString::from_raw(ptr);
+        }
     }
 }
 
@@ -266,6 +279,22 @@ pub unsafe extern "C" fn tract_inference_model_set_input_fact(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn tract_inference_model_output_fact(
+    model: *const TractInferenceModel,
+    output_id: usize,
+    fact: *mut *mut TractInferenceFact
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        if model.is_null() {
+            anyhow::bail!("Trying to alter a null inference model")
+        }
+        let f = (*model).0.output_fact(output_id)?;
+        *fact = Box::into_raw(Box::new(TractInferenceFact(f.clone())));
+        Ok(())
+    })
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn tract_inference_model_set_output_fact(
     model: *mut TractInferenceModel,
     output_id: usize,
@@ -277,6 +306,19 @@ pub unsafe extern "C" fn tract_inference_model_set_output_fact(
         }
         let f = fact.as_ref().map(|f| &f.0).cloned().unwrap_or_default();
         (*model).0.set_output_fact(output_id, f)?;
+        Ok(())
+    })
+}
+
+/// Analyse an InferencedModel in-place.
+#[no_mangle]
+pub unsafe extern "C" fn tract_inference_model_analyse(model: *mut TractInferenceModel, obstinate: bool) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        if let Some(model) = model.as_mut() {
+            let _ = model.0.analyse(obstinate)?;
+        } else {
+            anyhow::bail!("Trying to optimise null model")
+        }
         Ok(())
     })
 }
@@ -678,6 +720,21 @@ pub unsafe extern "C" fn tract_inference_fact_parse(
         let model = model.as_ref().unwrap();
         let f = tract_libcli::tensor::parse_spec(&model.0.symbol_table, spec)?;
         *fact = Box::into_raw(Box::new(TractInferenceFact(f)));
+        Ok(())
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tract_inference_fact_dump(
+    fact: *const TractInferenceFact,
+    spec: *mut *mut c_char,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        if fact.is_null() {
+            anyhow::bail!("Trying to dump a null inference fact");
+        }
+        *spec = CString::new(format!("{:?}", (*fact).0))?.into_raw();
+        //*spec = "foobar\0".as_ptr() as _;
         Ok(())
     })
 }

@@ -15,6 +15,9 @@ def setup_module(module):
             "mobilenet_v2_1.0.onnx.nnef.tgz"
         )
 
+def test_version():
+    tract.version()
+
 def test_onnx():
     model = (
         tract.onnx()
@@ -40,3 +43,16 @@ def test_nnef():
     result = model.run([img])
     confidences = result[0].to_numpy()
     assert numpy.argmax(confidences) == 652
+
+def test_inference_fact():
+    model = tract.onnx().model_for_path("./mobilenetv2-7.onnx")
+    model.set_input_fact(0, "B,3,224,224,f32")
+    model.set_output_fact(0, None)
+    model.analyse()
+    assert str(model.output_fact(0)) == "B,1000,F32"
+
+#    img = numpy.load("grace_hopper_1x3x224x244.npy")
+#
+#    result = model.run([img])
+#    confidences = result[0].to_numpy()
+#    assert numpy.argmax(confidences) == 652

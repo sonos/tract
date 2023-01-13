@@ -118,6 +118,13 @@ class InferenceModel:
         else:
             check(lib.tract_inference_model_set_input_fact(self.ptr, input_id, fact.ptr))
 
+    def output_fact(self, output_id: int) -> "InferenceFact":
+        if self.ptr == None:
+            raise TractError("invalid inference model (maybe already consumed ?)")
+        fact = c_void_p()
+        check(lib.tract_inference_model_output_fact(self.ptr, output_id, byref(fact)))
+        return InferenceFact(fact)
+
     def set_output_fact(self, output_id: int, fact: Union["InferenceFact", str, None]) -> None:
         if self.ptr == None:
             raise TractError("invalid inference model (maybe already consumed ?)")
@@ -133,6 +140,11 @@ class InferenceModel:
         fact = c_void_p();
         check(lib.tract_inference_fact_parse(self.ptr, spec, byref(fact)))
         return InferenceFact(fact)
+
+    def analyse(self) -> None:
+        if self.ptr == None:
+            raise TractError("invalid inference model (maybe already consumed ?)")
+        check(lib.tract_inference_model_analyse(self.ptr, False))
 
 class Model:
     def __init__(self, ptr):
@@ -236,3 +248,16 @@ class InferenceFact:
     def __del__(self):
         if self.ptr:
             check(lib.tract_inference_fact_destroy(byref(self.ptr)))
+
+    def __str__(self):
+        return self.dump()
+
+    def dump(self):
+        if not self.ptr:
+            raise TractError("invalid fact (already consumed)")
+        cstring = c_char_p();
+        check(lib.tract_inference_fact_dump(self.ptr, byref(cstring)))
+        result = str(cstring.value, "utf-8")
+        lib.tract_free_cstring(cstring)
+        return result
+
