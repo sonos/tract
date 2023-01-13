@@ -154,7 +154,7 @@ pub extern "C" fn tract_version() -> *const std::ffi::c_char {
 
 /// Frees a string allocated by libtract.
 #[no_mangle]
-pub extern "C" fn tract_free_cstring(ptr: *mut std::ffi::c_char) {
+pub unsafe extern "C" fn tract_free_cstring(ptr: *mut std::ffi::c_char) {
     unsafe {
         if !ptr.is_null() {
             let _ = CString::from_raw(ptr);
