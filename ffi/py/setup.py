@@ -44,6 +44,6 @@ setup(
         zip_safe=False,
         python_requires=">=3.7",
         install_requires=[ "numpy" ],
-        extras_requires={ "test": ["pytest"] },
+        extras_require={ "test": ["pytest"] },
 )
 
