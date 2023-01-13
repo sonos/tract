@@ -5,12 +5,13 @@ use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::sync::Arc;
+use tract_libcli::model::Model;
 
 use tract_nnef::internal as native;
 use tract_nnef::tract_core::prelude::*;
 
-use tract_onnx::prelude::{self as onnx, InferenceFact};
 use tract_onnx::prelude::InferenceModelExt;
+use tract_onnx::prelude::{self as onnx, InferenceFact};
 
 /// Used as a return type of functions that can encounter errors.
 /// If the function encountered an error, you can retrieve it using the `tract_get_last_error`
@@ -262,11 +263,80 @@ pub unsafe extern "C" fn tract_onnx_model_for_path(
 // INFERENCE MODEL
 pub struct TractInferenceModel(onnx::InferenceModel);
 
+/// Query an InferenceModel input and output counts.
+///
+/// It can be called with null as `inputs` or `outputs` if only one count is required.
+#[no_mangle]
+pub unsafe extern "C" fn tract_inference_model_nbio(
+    model: *const TractInferenceModel,
+    inputs: *mut usize,
+    outputs: *mut usize,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        if model.is_null() {
+            anyhow::bail!("Trying to inspect a null model")
+        }
+        nbio(&(*model).0, inputs, outputs);
+        Ok(())
+    })
+}
+
+/// Query the name of a model input.
+///
+/// The returned name must be freed by the caller using tract_free_cstring.
+#[no_mangle]
+pub unsafe extern "C" fn tract_inference_model_input_name(
+    model: *const TractInferenceModel,
+    input: usize,
+    name: *mut *mut c_char,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        *name = std::ptr::null_mut();
+        if model.is_null() {
+            anyhow::bail!("Trying to inspect a null model")
+        }
+        let m = &(*model).0;
+        let outlet = m.input_outlets()?[input];
+        *name = CString::new(&*m.nodes[outlet.node].name)?.into_raw();
+        Ok(())
+    })
+}
+
+/// Query the name of a model output.
+///
+/// The returned name must be freed by the caller using tract_free_cstring.
+#[no_mangle]
+pub unsafe extern "C" fn tract_inference_model_output_name(
+    model: *const TractInferenceModel,
+    output: usize,
+    name: *mut *mut c_char,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        *name = std::ptr::null_mut();
+        if model.is_null() {
+            anyhow::bail!("Trying to inspect a null model")
+        }
+        let m = &(*model).0;
+        let outlet = m.output_outlets()?[output];
+        *name = CString::new(&*m.nodes[outlet.node].name)?.into_raw();
+        Ok(())
+    })
+}
+
+unsafe fn nbio(model: &impl Model, inputs: *mut usize, outputs: *mut usize) {
+    if !inputs.is_null() {
+        *inputs = model.input_outlets().len()
+    }
+    if !outputs.is_null() {
+        *outputs = model.output_outlets().len()
+    }
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn tract_inference_model_input_fact(
     model: *const TractInferenceModel,
     input_id: usize,
-    fact: *mut *mut TractInferenceFact
+    fact: *mut *mut TractInferenceFact,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         if model.is_null() {
@@ -282,7 +352,7 @@ pub unsafe extern "C" fn tract_inference_model_input_fact(
 pub unsafe extern "C" fn tract_inference_model_set_input_fact(
     model: *mut TractInferenceModel,
     input_id: usize,
-    fact: *const TractInferenceFact
+    fact: *const TractInferenceFact,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         if model.is_null() {
@@ -298,7 +368,7 @@ pub unsafe extern "C" fn tract_inference_model_set_input_fact(
 pub unsafe extern "C" fn tract_inference_model_output_fact(
     model: *const TractInferenceModel,
     output_id: usize,
-    fact: *mut *mut TractInferenceFact
+    fact: *mut *mut TractInferenceFact,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         if model.is_null() {
@@ -314,7 +384,7 @@ pub unsafe extern "C" fn tract_inference_model_output_fact(
 pub unsafe extern "C" fn tract_inference_model_set_output_fact(
     model: *mut TractInferenceModel,
     output_id: usize,
-    fact: *const TractInferenceFact
+    fact: *const TractInferenceFact,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         if model.is_null() {
@@ -328,7 +398,10 @@ pub unsafe extern "C" fn tract_inference_model_set_output_fact(
 
 /// Analyse an InferencedModel in-place.
 #[no_mangle]
-pub unsafe extern "C" fn tract_inference_model_analyse(model: *mut TractInferenceModel, obstinate: bool) -> TRACT_RESULT {
+pub unsafe extern "C" fn tract_inference_model_analyse(
+    model: *mut TractInferenceModel,
+    obstinate: bool,
+) -> TRACT_RESULT {
     wrap(|| unsafe {
         if let Some(model) = model.as_mut() {
             let _ = model.0.analyse(obstinate)?;
@@ -487,7 +560,7 @@ pub unsafe extern "C" fn tract_runnable_run(
 /// It can be called with null as `inputs` or `outputs` if only one count is required.
 #[no_mangle]
 pub unsafe extern "C" fn tract_runnable_nbio(
-    runnable: *mut TractRunnable,
+    runnable: *const TractRunnable,
     inputs: *mut usize,
     outputs: *mut usize,
 ) -> TRACT_RESULT {
@@ -495,13 +568,7 @@ pub unsafe extern "C" fn tract_runnable_nbio(
         if runnable.is_null() {
             anyhow::bail!("Trying to convert null model")
         }
-        let runnable = runnable.as_ref().unwrap();
-        if !inputs.is_null() {
-            *inputs = runnable.0.model().inputs.len();
-        }
-        if !outputs.is_null() {
-            *outputs = runnable.0.model().outputs.len();
-        }
+        nbio((*runnable).0.model(), inputs, outputs);
         Ok(())
     })
 }
@@ -619,7 +686,7 @@ type NativeState = native::TypedSimpleState<
 >;
 pub struct TractState(NativeState);
 
-/// Convenience function running a pass of a statefull model.
+/// Run a turn on a model state
 ///
 /// `inputs` is a pointer to an pre-existing array of input TractValue. Its length *must* be equal
 /// to the number of inputs of the models. The function does not take ownership of the input
@@ -756,7 +823,9 @@ pub unsafe extern "C" fn tract_inference_fact_dump(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn tract_inference_fact_destroy(fact: *mut *mut TractInferenceFact) -> TRACT_RESULT {
+pub unsafe extern "C" fn tract_inference_fact_destroy(
+    fact: *mut *mut TractInferenceFact,
+) -> TRACT_RESULT {
     wrap(|| unsafe {
         if fact.is_null() || (*fact).is_null() {
             anyhow::bail!("Trying to destroy a null InferenceFact");
@@ -766,7 +835,6 @@ pub unsafe extern "C" fn tract_inference_fact_destroy(fact: *mut *mut TractInfer
         Ok(())
     })
 }
-
 
 // MISC
 

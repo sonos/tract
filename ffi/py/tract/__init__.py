@@ -17,6 +17,7 @@ lib = cdll.LoadLibrary(str(dylib_path))
 
 lib.tract_version.restype = c_char_p
 lib.tract_get_last_error.restype = c_char_p
+lib.tract_free_cstring.restype = None
 
 TRACT_DATUM_TYPE_BOOL = 0x01
 TRACT_DATUM_TYPE_U8 = 0x11
@@ -108,6 +109,29 @@ class InferenceModel:
         check(lib.tract_inference_model_into_optimized(byref(self.ptr), byref(model)))
         return Model(model)
 
+    def input_count(self) -> int:
+        if self.ptr == None:
+            raise TractError("invalid inference model (maybe already consumed ?)")
+        i = c_size_t()
+        check(lib.tract_inference_model_nbio(self.ptr, byref(i), None))
+        return i.value
+
+    def output_count(self) -> int:
+        if self.ptr == None:
+            raise TractError("invalid inference model (maybe already consumed ?)")
+        i = c_size_t()
+        check(lib.tract_inference_model_nbio(self.ptr, None, byref(i)))
+        return i.value
+
+    def input_name(self, input_id: int) -> str:
+        if self.ptr == None:
+            raise TractError("invalid inference model (maybe already consumed ?)")
+        cstring = c_char_p()
+        check(lib.tract_inference_model_input_name(self.ptr, input_id, byref(cstring)))
+        result = str(cstring.value, "utf-8")
+        lib.tract_free_cstring(cstring)
+        return result
+
     def input_fact(self, input_id: int) -> "InferenceFact":
         if self.ptr == None:
             raise TractError("invalid inference model (maybe already consumed ?)")
@@ -124,6 +148,15 @@ class InferenceModel:
             check(lib.tract_inference_model_set_input_fact(self.ptr, input_id, None))
         else:
             check(lib.tract_inference_model_set_input_fact(self.ptr, input_id, fact.ptr))
+
+    def output_name(self, output_id: int) -> str:
+        if self.ptr == None:
+            raise TractError("invalid inference model (maybe already consumed ?)")
+        cstring = c_char_p()
+        check(lib.tract_inference_model_output_name(self.ptr, output_id, byref(cstring)))
+        result = str(cstring.value, "utf-8")
+        lib.tract_free_cstring(cstring)
+        return result
 
     def output_fact(self, output_id: int) -> "InferenceFact":
         if self.ptr == None:
