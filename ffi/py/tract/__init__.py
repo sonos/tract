@@ -108,6 +108,32 @@ class InferenceModel:
         check(lib.tract_inference_model_into_optimized(byref(self.ptr), byref(model)))
         return Model(model)
 
+    def set_input_fact(self, input_id: int, fact: Union["InferenceFact", str, None]) -> None:
+        if self.ptr == None:
+            raise TractError("invalid inference model (maybe already consumed ?)")
+        if isinstance(fact, str):
+            fact = self.fact(fact)
+        if fact == None:
+            check(lib.tract_inference_model_set_input_fact(self.ptr, input_id, None))
+        else:
+            check(lib.tract_inference_model_set_input_fact(self.ptr, input_id, fact.ptr))
+
+    def set_output_fact(self, output_id: int, fact: Union["InferenceFact", str, None]) -> None:
+        if self.ptr == None:
+            raise TractError("invalid inference model (maybe already consumed ?)")
+        if isinstance(fact, str):
+            fact = self.fact(fact)
+        if fact == None:
+            check(lib.tract_inference_model_set_output_fact(self.ptr, output_id, None))
+        else:
+            check(lib.tract_inference_model_set_output_fact(self.ptr, output_id, fact.ptr))
+
+    def fact(self, spec:str) -> "InferenceFact":
+        spec = str(spec).encode("utf-8")
+        fact = c_void_p();
+        check(lib.tract_inference_fact_parse(self.ptr, spec, byref(fact)))
+        return InferenceFact(fact)
+
 class Model:
     def __init__(self, ptr):
         self.ptr = ptr
@@ -203,3 +229,10 @@ class Value:
         check(lib.tract_value_destroy(byref(self.ptr)))
         return result
 
+class InferenceFact:
+    def __init__(self, ptr):
+        self.ptr = ptr
+
+    def __del__(self):
+        if self.ptr:
+            check(lib.tract_inference_fact_destroy(byref(self.ptr)))
