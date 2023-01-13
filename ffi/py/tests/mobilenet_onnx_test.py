@@ -44,8 +44,12 @@ def test_nnef():
     confidences = result[0].to_numpy()
     assert numpy.argmax(confidences) == 652
 
-def test_inference_fact():
+def test_inference_model():
     model = tract.onnx().model_for_path("./mobilenetv2-7.onnx")
+    assert model.input_count() == 1
+    assert model.output_count() == 1
+    assert model.input_name(0) == "data"
+    assert model.output_name(0) == "mobilenetv20_output_flatten0_reshape0"
     assert str(model.input_fact(0)) == "1,3,224,224,F32"
     model.set_input_fact(0, "B,3,224,224,f32")
     model.set_output_fact(0, None)
