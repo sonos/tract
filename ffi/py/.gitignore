@@ -3,3 +3,5 @@ __pycache__
 *.egg-info
 *.onnx
 build
+mobilenet_v2_1.0.onnx.nnef.tgz
+

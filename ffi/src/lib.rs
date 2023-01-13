@@ -9,7 +9,7 @@ use std::sync::Arc;
 use tract_nnef::internal as native;
 use tract_nnef::tract_core::prelude::*;
 
-use tract_onnx::prelude as onnx;
+use tract_onnx::prelude::{self as onnx, InferenceFact};
 use tract_onnx::prelude::InferenceModelExt;
 
 /// Used as a return type of functions that can encounter errors.
@@ -249,6 +249,38 @@ pub unsafe extern "C" fn tract_onnx_model_for_path(
 // INFERENCE MODEL
 pub struct TractInferenceModel(onnx::InferenceModel);
 
+#[no_mangle]
+pub unsafe extern "C" fn tract_inference_model_set_input_fact(
+    model: *mut TractInferenceModel,
+    input_id: usize,
+    fact: *const TractInferenceFact
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        if model.is_null() {
+            anyhow::bail!("Trying to alter a null inference model")
+        }
+        let f = fact.as_ref().map(|f| &f.0).cloned().unwrap_or_default();
+        (*model).0.set_input_fact(input_id, f)?;
+        Ok(())
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tract_inference_model_set_output_fact(
+    model: *mut TractInferenceModel,
+    output_id: usize,
+    fact: *const TractInferenceFact
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        if model.is_null() {
+            anyhow::bail!("Trying to alter a null inference model")
+        }
+        let f = fact.as_ref().map(|f| &f.0).cloned().unwrap_or_default();
+        (*model).0.set_output_fact(output_id, f)?;
+        Ok(())
+    })
+}
+
 /// Convenience function to obtain an optimized TypedModel from an InferenceModel.
 ///
 /// This function takes ownership of the InferenceModel `model` whether it succeeds
@@ -452,7 +484,6 @@ pub unsafe extern "C" fn tract_runnable_release(runnable: *mut *mut TractRunnabl
 // VALUE
 pub struct TractValue(TValue);
 
-
 /// Create a TractValue (aka tensor) from caller data and metadata.
 ///
 /// This call copies the data into tract space. All the pointers only need to be alive for the
@@ -628,6 +659,41 @@ pub unsafe extern "C" fn tract_state_destroy(state: *mut *mut TractState) -> TRA
         Ok(())
     })
 }
+
+// INFERENCE FACT
+
+pub struct TractInferenceFact(InferenceFact);
+
+#[no_mangle]
+pub unsafe extern "C" fn tract_inference_fact_parse(
+    model: *mut TractInferenceModel,
+    spec: *const c_char,
+    fact: *mut *mut TractInferenceFact,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        if model.is_null() {
+            anyhow::bail!("Trying to build an inference fact for a null model");
+        }
+        let spec = CStr::from_ptr(spec).to_str()?;
+        let model = model.as_ref().unwrap();
+        let f = tract_libcli::tensor::parse_spec(&model.0.symbol_table, spec)?;
+        *fact = Box::into_raw(Box::new(TractInferenceFact(f)));
+        Ok(())
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tract_inference_fact_destroy(fact: *mut *mut TractInferenceFact) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        if fact.is_null() || (*fact).is_null() {
+            anyhow::bail!("Trying to destroy a null InferenceFact");
+        }
+        let _ = Box::from_raw(*fact);
+        *fact = std::ptr::null_mut();
+        Ok(())
+    })
+}
+
 
 // MISC
 
