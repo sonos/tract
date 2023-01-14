@@ -6,6 +6,9 @@ use liquid_core::{Value, ValueView};
 
 use std::{env, ffi, fs, path};
 
+#[path = "arm64/apple_amx/instructions.rs"]
+mod apple_amx_instructions;
+
 fn var(k: &str) -> String {
     env::var(k).unwrap()
 }
@@ -160,6 +163,11 @@ fn main() {
                 false,
             );
             cc::Build::new().files(files).static_flag(true).compile("arm64simd");
+            if os == "macos" {
+                // aarch64 darwin => M1
+                let files = preprocess_files("arm64/apple_amx", &[], &suffix, false);
+                cc::Build::new().files(files).static_flag(true).compile("appleamx");
+            }
             if std::env::var("CARGO_FEATURE_NO_FP16").is_err() {
                 let config =
                     ConfigForHalf::probe().expect("No configuration found for fp16 support");
@@ -237,6 +245,7 @@ fn preprocess_file(
     println!("cargo:rerun-if-changed={}", template.as_ref().to_string_lossy());
     let family = var("CARGO_CFG_TARGET_FAMILY");
     let os = var("CARGO_CFG_TARGET_OS");
+    let arch = var("CARGO_CFG_TARGET_ARCH");
     // We also check to see if we're on a windows host, if we aren't, we won't be
     // able to use the Microsoft assemblers,
     let msvc = use_masm();
@@ -268,9 +277,14 @@ fn preprocess_file(
         globals.insert(k.to_string().into(), liquid::model::Value::scalar(*v));
     }
     let partials = load_partials(template.as_ref().parent().unwrap(), msvc);
-    if let Err(e) = liquid::ParserBuilder::with_stdlib()
+    let mut parser = liquid::ParserBuilder::with_stdlib()
         .partials(liquid::partials::LazyCompiler::new(partials))
-        .filter(F16)
+        .filter(F16);
+    if os == "macos" && arch == "aarch64" {
+        parser = apple_amx_instructions::register(parser);
+        globals.extend(apple_amx_instructions::globals());
+    }
+    if let Err(e) = parser
         .build()
         .and_then(|p| p.parse(&input))
         .and_then(|r| r.render_to(&mut fs::File::create(&output).unwrap(), &globals))

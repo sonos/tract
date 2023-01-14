@@ -1,5 +1,6 @@
 #![allow(clippy::excessive_precision)]
 mod arm64simd;
+mod apple_amx;
 pub mod cortex_a53;
 mod cortex_a55;
 //mod cortex_a72;
