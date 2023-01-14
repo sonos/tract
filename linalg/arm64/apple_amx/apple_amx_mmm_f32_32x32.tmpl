@@ -1,0 +1,130 @@
+// vim: ft=arm
+.text
+.align 4
+
+/*
+Z: 32x32
+z0[0]      z2[0]       z62[0]
+z0[1]
+...
+z0[15]
+z1[0]
+...
+z1[15]                  z63[15]
+*/
+    
+
+.global {{G}}apple_amx_mmm_f32_32x32_{{suffix}}
+{{G}}apple_amx_mmm_f32_32x32_{{suffix}}:
+
+{{ AMX_SET }}
+{% include "dispatcher.tmpliq" %}
+
+.clear:
+    eor x1, x1, x1
+    {% amx fma32 x1 %}
+    b .non_linear_loop
+
+.per_col_add:
+.per_col_max:
+.per_col_min:
+.per_col_mul:
+.per_col_sub:
+.per_col_sub_flipped:
+.per_row_add:
+.per_row_max:
+.per_row_min:
+.per_row_mul:
+.per_row_sub:
+.per_row_sub_flipped:
+.q_scale:
+.q_shl:
+.q_shr:
+.scalar_max:
+.scalar_min:
+.scalar_mul:
+.scalar_sub:
+.scalar_sub_flipped:
+.add_mat_mul:
+    b .unsupported
+.scalar_add:
+    b .unsupported
+.add_unicast:
+    ldp         x5, x6, [x0, #8]            // c base ptr, rsc
+    ldp         x7, x8, [x0, #24]           // csc, item_size
+    
+    mov x1, sp
+    lsr x1, x1, #7
+    lsl x1, x1, #7
+    sub x1, x1, 128
+    add x8, x1, 64
+
+    mov x3, 0
+    .loop_load:
+        mov x4, x5
+        {% for neon in (0..3) %}
+            {% for lane in (0..3) %}
+                ld1 { v{{neon}}.s }[{{lane}}], [x4], x6
+            {% endfor %}
+        {% endfor %}
+        st1 { v0.4s, v1.4s, v2.4s, v3.4s }, [x1]
+        {% for neon in (0..3) %}
+            {% for lane in (0..3) %}
+                ld1 { v{{neon}}.s }[{{lane}}], [x4], x6
+            {% endfor %}
+        {% endfor %}
+        st1 { v0.4s, v1.4s, v2.4s, v3.4s }, [x8]
+        lsl x2, x3, 57
+        orr x2, x2, {{ 1|lsl:62 }}
+        orr x2, x2, x1
+        {% amx ldz x2 %}
+        add x5, x5, x7
+    add x3, x3, 1
+    cmp x3, 32
+    bne .loop_load
+
+    b .non_linear_loop
+
+.add_row_col_products:
+    b .unsupported
+.store:
+    ldp         x5, x6, [x0, #8]            // c base ptr, rsc
+    ldp         x7, x8, [x0, #24]           // csc, item_size
+    
+    mov x1, sp
+    lsr x1, x1, #7
+    lsl x1, x1, #7
+    sub x1, x1, 128
+    add x8, x1, 64
+
+    mov x3, 0
+    .loop_store:
+        lsl x2, x3, 57
+        orr x2, x2, {{ 1|lsl:62 }}
+        orr x2, x2, x1
+        {% amx stz x2 %}
+        ld1 { v0.4s, v1.4s, v2.4s, v3.4s }, [x1]
+        mov x4, x5
+        {% for neon in (0..3) %}
+            {% for lane in (0..3) %}
+                st1 { v{{neon}}.s }[{{lane}}], [x4], x6
+            {% endfor %}
+        {% endfor %}
+        ld1 { v0.4s, v1.4s, v2.4s, v3.4s }, [x8]
+        {% for neon in (0..3) %}
+            {% for lane in (0..3) %}
+                st1 { v{{neon}}.s }[{{lane}}], [x4], x6
+            {% endfor %}
+        {% endfor %}
+        add x5, x5, x7
+    add x3, x3, 1
+    cmp x3, 32
+    bne .loop_store
+    
+
+
+    b .non_linear_loop
+
+.return:
+{{ AMX_CLR }}
+ret
