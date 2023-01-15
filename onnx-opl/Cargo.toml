@@ -19,7 +19,6 @@ getrandom.workspace = true
 log.workspace = true
 rand.workspace = true
 rand_distr.workspace = true
-rustfft.workspace = true
 tract-nnef = { version = "=0.19.1-pre", path = "../nnef" }
 
 [dev-dependencies]
