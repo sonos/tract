@@ -1,6 +1,6 @@
 use crate::internal::*;
-use rustfft::num_traits::{Float, FromPrimitive};
-use rustfft::{FftDirection, FftNum};
+use easyfft::prelude::*;
+use easyfft::FftNum;
 use std::ops::Mul;
 use tract_ndarray::Axis;
 
@@ -13,18 +13,13 @@ pub struct Fft {
 impl_dyn_hash!(Fft);
 
 impl Fft {
-    fn eval_t<T: Datum + FftNum + FromPrimitive + Float>(
-        &self,
-        tensor: &mut Tensor,
-    ) -> TractResult<()>
+    fn eval_t<T: Datum + FftNum>(&self, tensor: &mut Tensor) -> TractResult<()>
     where
         Complex<T>: Datum + Mul<Complex<T>, Output = Complex<T>>,
     {
         let mut iterator_shape: TVec<usize> = tensor.shape().into();
         iterator_shape[self.axis] = 1;
         let len = tensor.shape()[self.axis];
-        let direction = if self.inverse { FftDirection::Inverse } else { FftDirection::Forward };
-        let fft = rustfft::FftPlanner::new().plan_fft(len, direction);
         let mut array = tensor.to_array_view_mut::<Complex<T>>()?;
         let mut v = Vec::with_capacity(len);
         for coords in tract_ndarray::indices(&*iterator_shape) {
@@ -38,7 +33,11 @@ impl Fft {
                 }
             });
             v.extend(slice.iter().copied());
-            fft.process(&mut v);
+            if self.inverse {
+                v.ifft_mut();
+            } else {
+                v.fft_mut();
+            }
             slice.iter_mut().zip(v.iter()).for_each(|(s, v)| *s = *v);
         }
         Ok(())
@@ -95,10 +94,7 @@ pub struct Stft {
 impl_dyn_hash!(Stft);
 
 impl Stft {
-    fn eval_t<T: Datum + FftNum + FromPrimitive + Float>(
-        &self,
-        input: &Tensor,
-    ) -> TractResult<Tensor>
+    fn eval_t<T: Datum + FftNum>(&self, input: &Tensor) -> TractResult<Tensor>
     where
         Complex<T>: Datum + Mul<Complex<T>, Output = Complex<T>>,
     {
@@ -109,7 +105,6 @@ impl Stft {
         output_shape.insert(self.axis, frames);
         output_shape[self.axis + 1] = self.frame;
         let mut output = unsafe { Tensor::uninitialized::<Complex<T>>(&output_shape)? };
-        let fft = rustfft::FftPlanner::new().plan_fft_forward(self.frame);
         let input = input.to_array_view::<Complex<T>>()?;
         let mut oview = output.to_array_view_mut::<Complex<T>>()?;
         let mut v = Vec::with_capacity(self.frame);
@@ -157,7 +152,7 @@ impl Stft {
                 if let Some(window) = window_cplx {
                     v.iter_mut().zip(window.iter()).for_each(|(v, w)| *v = *v * *w);
                 }
-                fft.process(&mut v);
+                v.fft_mut();
                 oslice
                     .index_axis_mut(Axis(self.axis), f)
                     .iter_mut()
