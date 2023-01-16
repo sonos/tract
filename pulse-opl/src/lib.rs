@@ -22,13 +22,17 @@ pub mod ops {
 }
 
 pub trait WithPulse {
+    fn enable_pulse(&mut self);
     fn with_pulse(self) -> Self;
 }
 
 impl WithPulse for tract_nnef::framework::Nnef {
-    fn with_pulse(mut self) -> Self {
-        self = self.with_tract_core();
+    fn enable_pulse(&mut self) {
+        self.enable_tract_core();
         self.registries.push(tract_nnef_registry());
+    }
+    fn with_pulse(mut self) -> Self {
+        self.enable_pulse();
         self
     }
 }
