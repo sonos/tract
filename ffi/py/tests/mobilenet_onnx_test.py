@@ -55,3 +55,14 @@ def test_inference_model():
     model.set_output_fact(0, None)
     model.analyse()
     assert str(model.output_fact(0)) == "B,1000,F32"
+    typed = model.into_typed()
+
+def test_typed_model():
+    model = tract.nnef().model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")
+    assert model.input_count() == 1
+    assert model.output_count() == 1
+    assert model.input_name(0) == "data"
+    assert model.output_name(0) == "mobilenetv20_output_flatten0_reshape0"
+    assert str(model.input_fact(0)) == "1,3,224,224,F32"
+    assert str(model.output_fact(0)) == "1,1000,F32"
+    model.declutter()
