@@ -17,12 +17,16 @@ pub mod random;
 
 pub trait WithOnnx {
     fn with_onnx(self) -> Self;
+    fn enable_onnx(&mut self);
 }
 
 impl WithOnnx for tract_nnef::framework::Nnef {
-    fn with_onnx(mut self) -> Self {
-        self = self.with_tract_core();
+    fn enable_onnx(&mut self) {
+        self.enable_tract_core();
         self.registries.push(onnx_opl_registry());
+    }
+    fn with_onnx(mut self) -> Self {
+        self.enable_onnx();
         self
     }
 }

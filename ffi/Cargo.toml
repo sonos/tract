@@ -23,5 +23,6 @@ anyhow.workspace = true
 tract-data = { path = "../data", version = "=0.19.1-pre" }
 tract-nnef = { path = "../nnef", version = "=0.19.1-pre" }
 tract-onnx = { path = "../onnx", version = "=0.19.1-pre" }
+tract-pulse = { path = "../pulse", version = "=0.19.1-pre" }
 tract-tensorflow = { path = "../tensorflow", version = "=0.19.1-pre" }
 tract-libcli = { path = "../libcli", version = "=0.19.1-pre" }

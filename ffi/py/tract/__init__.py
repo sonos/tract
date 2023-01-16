@@ -79,6 +79,18 @@ class Nnef:
         check(lib.tract_nnef_model_for_path(self.ptr, path, byref(model)))
         return Model(model)
 
+    def with_tract_core(self) -> "Nnef":
+        check(lib.tract_nnef_enable_tract_core(self.ptr))
+        return self
+
+    def with_onnx(self) -> "Nnef":
+        check(lib.tract_nnef_enable_onnx(self.ptr))
+        return self
+
+    def with_pulse(self) -> "Nnef":
+        check(lib.tract_nnef_enable_pulse(self.ptr))
+        return self
+
 class Onnx:
     def __init__(self):
         ptr = c_void_p()
@@ -187,7 +199,7 @@ class InferenceModel:
         self.__valid()
         check(lib.tract_inference_model_analyse(self.ptr, False))
 
-    def into_analyseed(self) -> "InferenceModel":
+    def into_analysed(self) -> "InferenceModel":
         self.analyse()
         return self
 

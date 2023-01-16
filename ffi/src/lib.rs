@@ -199,6 +199,35 @@ pub unsafe extern "C" fn tract_nnef_create(nnef: *mut *mut TractNnef) -> TRACT_R
     })
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn tract_nnef_enable_tract_core(nnef: *mut TractNnef) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(nnef);
+        (*nnef).0.enable_tract_core();
+        Ok(())
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tract_nnef_enable_onnx(nnef: *mut TractNnef) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(nnef);
+        use tract_onnx::WithOnnx;
+        (*nnef).0.enable_onnx();
+        Ok(())
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tract_nnef_enable_pulse(nnef: *mut TractNnef) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(nnef);
+        use tract_pulse::WithPulse;
+        (*nnef).0.enable_pulse();
+        Ok(())
+    })
+}
+
 /// Destroy the NNEF parser. It is safe to detroy the NNEF parser once the model had been loaded.
 #[no_mangle]
 pub unsafe extern "C" fn tract_nnef_destroy(nnef: *mut *mut TractNnef) -> TRACT_RESULT {

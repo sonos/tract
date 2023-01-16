@@ -31,6 +31,9 @@ def test_onnx():
     confidences = result[0].to_numpy()
     assert numpy.argmax(confidences) == 652
 
+def test_nnef_register():
+    tract.nnef().with_tract_core().with_onnx().with_pulse()
+
 def test_nnef():
     model = (
         tract.nnef()
