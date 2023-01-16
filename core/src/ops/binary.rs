@@ -436,23 +436,22 @@ macro_rules! bin_to_super_type {
                         $crate::ndarray::Zip::from(&mut a).and_broadcast(b).for_each(|a, b| cab(a, &a.clone(), b));
                         return Ok(())
                     })*
-                 )*
-                    /*
-                       $(
-                       $(
-                       $(if a.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
-                       let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
-                       let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
-                       let mut a = a.to_array_view_mut::<$typ_dt>()?;
-                       let b = b.to_array_view::<$typ_dt>()?;
-                       $crate::ndarray::Zip::from(&mut a).and_broadcast(b).for_each(|a, b| cab(a, a, b, zp, scale));
-                       return Ok(())
-                       }
-                       )*
-                       )*
-                       )?
-                       */
-                    bail!("{} does not support {:?} (out of place)", self.name(), a.datum_type());
+                )*
+                $(
+                    $(
+                        $(if a.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
+                            let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
+                            let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
+                            let mut a = a.to_array_view_mut::<$typ_dt>()?;
+                            let b = b.to_array_view::<$typ_dt>()?;
+                            $crate::ndarray::Zip::from(&mut a).and_broadcast(b).for_each(|a, b| {
+                                cab(a, &(a.clone()), b, zp, scale)
+                            });
+                            return Ok(())
+                        })*
+                    )*
+                )?
+                bail!("{} does not support {:?} (eval in a)", self.name(), a.datum_type());
             }
 
             $(fn eval(&self, a: TValue, b: TValue) -> TractResult<Tensor> {
