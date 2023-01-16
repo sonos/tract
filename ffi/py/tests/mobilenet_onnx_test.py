@@ -69,3 +69,15 @@ def test_typed_model():
     assert str(model.input_fact(0)) == "1,3,224,224,F32"
     assert str(model.output_fact(0)) == "1,1000,F32"
     model.declutter()
+
+def test_concretize():
+    model = tract.onnx().model_for_path("./mobilenetv2-7.onnx")
+    model.set_input_fact(0, "B,3,224,224,f32")
+    model.set_output_fact(0, None)
+    model.analyse()
+    typed = model.into_typed().into_decluttered()
+    assert str(typed.input_fact(0)) == "B,3,224,224,F32"
+    assert str(typed.output_fact(0)) == "B,1000,F32"
+    typed.concretize_symbols({ "B": 1 })
+    assert str(typed.input_fact(0)) == "1,3,224,224,F32"
+    assert str(typed.output_fact(0)) == "1,1000,F32"

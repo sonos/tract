@@ -589,6 +589,29 @@ pub unsafe extern "C" fn tract_model_output_fact(
     })
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn tract_model_concretize_symbols(
+    model: *mut TractModel,
+    nb_symbols: usize,
+    symbols: *const *const i8,
+    values: *const i64,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(model, symbols, values);
+        let mut table = SymbolValues::default();
+        let model = &mut (*model).0;
+        for i in 0..nb_symbols {
+            let name = CStr::from_ptr(*symbols.add(i))
+                .to_str()
+                .with_context(|| format!("failed to parse symbol name for {}th symbol (not utf8)", i))?;
+            table = table.with(&model.symbol_table.sym(name), *values.add(i));
+        }
+        let mut new = model.concretize_dims(&table)?;
+        std::mem::swap(model, &mut new);
+        Ok(())
+    })
+}
+
 /// Declutter a TypedModel in-place.
 #[no_mangle]
 pub unsafe extern "C" fn tract_model_declutter(model: *mut TractModel) -> TRACT_RESULT {
@@ -822,7 +845,9 @@ pub unsafe extern "C" fn tract_fact_parse(
     wrap(|| unsafe {
         check_not_null!(model, spec, fact);
         let spec = CStr::from_ptr(spec).to_str()?;
-        let f = tract_libcli::tensor::parse_spec(&(*model).0.symbol_table, spec)?.to_typed_fact()?.into_owned();
+        let f = tract_libcli::tensor::parse_spec(&(*model).0.symbol_table, spec)?
+            .to_typed_fact()?
+            .into_owned();
         *fact = Box::into_raw(Box::new(TractFact(f)));
         Ok(())
     })
@@ -844,9 +869,7 @@ pub unsafe extern "C" fn tract_fact_dump(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn tract_fact_destroy(
-    fact: *mut *mut TractFact,
-) -> TRACT_RESULT {
+pub unsafe extern "C" fn tract_fact_destroy(fact: *mut *mut TractFact) -> TRACT_RESULT {
     release!(fact)
 }
 
