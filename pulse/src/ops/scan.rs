@@ -21,7 +21,7 @@ fn pulsify(
             .iter()
             .filter_map(InputMapping::as_scan)
             .find(|mapping| mapping.slot == input_id)
-            .unwrap();
+            .context("Scan with constant input: this is unexpected. Is the network decluttered ?")?;
         if info.chunk < 0 {
             bail!("Can not pulsify a backward scan.")
         }

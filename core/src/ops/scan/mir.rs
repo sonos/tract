@@ -1,3 +1,4 @@
+use crate::ops::konst::Const;
 use crate::optim::OptimizerSession;
 
 use super::lir::{LirScan, LirScanOpParams};
@@ -147,6 +148,33 @@ impl Scan {
                 state: m.state,
             })
             .collect()
+    }
+
+    fn declutter_const_input(
+        &self,
+        _session: &mut OptimizerSession,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let inputs = model.node_input_facts(node.id)?;
+        for (body_input_id, mapping) in self.input_mapping.iter().enumerate() {
+            if let InputMapping::Full { slot: outer_input_slot } = mapping {
+                if let Some(konst) = inputs[*outer_input_slot].konst.as_ref() {
+                    let mut op = self.clone();
+                    let src = op.body.inputs[body_input_id];
+                    op.body.inputs.remove(body_input_id);
+                    op.body.nodes[src.node].inputs.clear();
+                    op.body.nodes[src.node].op = Box::new(Const::new(konst.clone()));
+                    op.input_mapping.remove(body_input_id);
+                    op.input_mapping =
+                        Self::remove_outer_input_from_mappings(&op.input_mapping, *outer_input_slot);
+                    let mut inputs = node.inputs.clone();
+                    inputs.remove(*outer_input_slot);
+                    return Ok(Some(TypedModelPatch::replace_single_op(model, node, &inputs, op)?));
+                }
+            }
+        }
+        Ok(None)
     }
 
     fn declutter_const_initializer(
@@ -794,6 +822,7 @@ impl TypedOp for Scan {
             };
         }
         pass!(declutter_const_initializer);
+        pass!(declutter_const_input);
         pass!(declutter_discard_unused_input_mapping);
         pass!(declutter_discard_useless_outer_output);
         pass!(declutter_discard_empty_output_mapping_with_body_output);
