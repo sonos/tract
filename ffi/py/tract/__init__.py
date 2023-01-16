@@ -1,7 +1,7 @@
 import numpy
 from ctypes import *
 from pathlib import Path
-from typing import Union
+from typing import Dict, Union
 
 class TractError(Exception):
     pass
@@ -254,6 +254,18 @@ class Model:
         fact = c_void_p()
         check(lib.tract_model_output_fact(self.ptr, input_id, byref(fact)))
         return Fact(fact)
+
+    def concretize_symbols(self, values: Dict[str, int]) -> None:
+        self.__valid()
+        nb = len(values)
+        names_str = []
+        names = (c_char_p * nb)()
+        values_list = (c_int64 * nb)()
+        for ix, (k, v) in enumerate(values.items()):
+            names_str.append(str(k).encode("utf-8"))
+            names[ix] = names_str[ix]
+            values_list[ix] = v
+        check(lib.tract_model_concretize_symbols(self.ptr, c_size_t(nb), names, values_list))
 
     def declutter(self) -> None:
         self.__valid()
