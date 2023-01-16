@@ -437,6 +437,28 @@ pub unsafe extern "C" fn tract_inference_model_into_optimized(
     })
 }
 
+/// Transform a fully analysed InferenceModel to a TypedModel.
+///
+/// This function takes ownership of the InferenceModel `model` whether it succeeds
+/// or not. `tract_inference_model_destroy` must not be used on `model`.
+///
+/// On the other hand, caller will be owning the newly created `optimized` model.
+#[no_mangle]
+pub unsafe extern "C" fn tract_inference_model_into_typed(
+    model: *mut *mut TractInferenceModel,
+    typed: *mut *mut TractModel,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(model, *model, typed);
+        *typed = std::ptr::null_mut();
+        let m = Box::from_raw(*model);
+        *model = std::ptr::null_mut();
+        let result = m.0.into_typed()?;
+        *typed = Box::into_raw(Box::new(TractModel(result))) as _;
+        Ok(())
+    })
+}
+
 /// Destroy an InferenceModel.
 #[no_mangle]
 pub unsafe extern "C" fn tract_inference_model_destroy(
@@ -447,6 +469,105 @@ pub unsafe extern "C" fn tract_inference_model_destroy(
 // TYPED MODEL
 
 pub struct TractModel(TypedModel);
+
+/// Query an Model input and output counts.
+///
+/// It can be called with null as `inputs` or `outputs` if only one count is required.
+#[no_mangle]
+pub unsafe extern "C" fn tract_model_nbio(
+    model: *const TractModel,
+    inputs: *mut usize,
+    outputs: *mut usize,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(model);
+        let model = &(*model).0;
+        if !inputs.is_null() {
+            *inputs = model.input_outlets()?.len()
+        }
+        if !outputs.is_null() {
+            *outputs = model.output_outlets()?.len()
+        }
+        Ok(())
+    })
+}
+
+/// Query the name of a model input.
+///
+/// The returned name must be freed by the caller using tract_free_cstring.
+#[no_mangle]
+pub unsafe extern "C" fn tract_model_input_name(
+    model: *const TractModel,
+    input: usize,
+    name: *mut *mut c_char,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(model, name);
+        *name = std::ptr::null_mut();
+        let m = &(*model).0;
+        let outlet = m.input_outlets()?[input];
+        *name = CString::new(&*m.nodes[outlet.node].name)?.into_raw();
+        Ok(())
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tract_model_input_fact(
+    model: *const TractModel,
+    input_id: usize,
+    fact: *mut *mut TractFact,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(model, fact);
+        *fact = std::ptr::null_mut();
+        let f = (*model).0.input_fact(input_id)?;
+        *fact = Box::into_raw(Box::new(TractFact(f.clone())));
+        Ok(())
+    })
+}
+
+/// Query the name of a model output.
+///
+/// The returned name must be freed by the caller using tract_free_cstring.
+#[no_mangle]
+pub unsafe extern "C" fn tract_model_output_name(
+    model: *const TractModel,
+    output: usize,
+    name: *mut *mut c_char,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(model, name);
+        *name = std::ptr::null_mut();
+        let m = &(*model).0;
+        let outlet = m.output_outlets()?[output];
+        *name = CString::new(&*m.nodes[outlet.node].name)?.into_raw();
+        Ok(())
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tract_model_output_fact(
+    model: *const TractModel,
+    input_id: usize,
+    fact: *mut *mut TractFact,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(model, fact);
+        *fact = std::ptr::null_mut();
+        let f = (*model).0.output_fact(input_id)?;
+        *fact = Box::into_raw(Box::new(TractFact(f.clone())));
+        Ok(())
+    })
+}
+
+/// Declutter a TypedModel in-place.
+#[no_mangle]
+pub unsafe extern "C" fn tract_model_declutter(model: *mut TractModel) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(model);
+        (*model).0.declutter()
+    })
+}
 
 /// Optimize a TypedModel in-place.
 #[no_mangle]
@@ -657,8 +778,50 @@ pub unsafe extern "C" fn tract_state_destroy(state: *mut *mut TractState) -> TRA
     release!(state)
 }
 
-// INFERENCE FACT
+// FACT
+pub struct TractFact(TypedFact);
 
+/// Parse a fact specification string into an Fact.
+///
+/// The returned fact must be free with `tract_fact_destroy`.
+#[no_mangle]
+pub unsafe extern "C" fn tract_fact_parse(
+    model: *mut TractModel,
+    spec: *const c_char,
+    fact: *mut *mut TractFact,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(model, spec, fact);
+        let spec = CStr::from_ptr(spec).to_str()?;
+        let f = tract_libcli::tensor::parse_spec(&(*model).0.symbol_table, spec)?.to_typed_fact()?.into_owned();
+        *fact = Box::into_raw(Box::new(TractFact(f)));
+        Ok(())
+    })
+}
+
+/// Write a fact as its specification string.
+///
+/// The returned string must be freed by the caller using tract_free_cstring.
+#[no_mangle]
+pub unsafe extern "C" fn tract_fact_dump(
+    fact: *const TractFact,
+    spec: *mut *mut c_char,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(fact, spec);
+        *spec = CString::new(format!("{:?}", (*fact).0))?.into_raw();
+        Ok(())
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tract_fact_destroy(
+    fact: *mut *mut TractFact,
+) -> TRACT_RESULT {
+    release!(fact)
+}
+
+// INFERENCE FACT
 pub struct TractInferenceFact(InferenceFact);
 
 /// Parse a fact specification string into an InferenceFact.
