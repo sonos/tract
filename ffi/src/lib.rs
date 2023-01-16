@@ -5,7 +5,6 @@ use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::sync::Arc;
-use tract_libcli::model::Model;
 
 use tract_nnef::internal as native;
 use tract_nnef::tract_core::prelude::*;
@@ -163,6 +162,27 @@ pub unsafe extern "C" fn tract_free_cstring(ptr: *mut std::ffi::c_char) {
     }
 }
 
+macro_rules! check_not_null {
+    ($($ptr:expr),*) => {
+        $(
+            if $ptr.is_null() {
+                anyhow::bail!(concat!("Unexpected null pointer ", stringify!($ptr)));
+            }
+        )*
+    }
+}
+
+macro_rules! release {
+    ($ptr:expr) => {
+        wrap(|| unsafe {
+            check_not_null!($ptr, *$ptr);
+            let _ = Box::from_raw(*$ptr);
+            *$ptr = std::ptr::null_mut();
+            Ok(())
+        })
+    };
+}
+
 // NNEF
 pub struct TractNnef(native::Nnef);
 
@@ -173,6 +193,7 @@ pub struct TractNnef(native::Nnef);
 #[no_mangle]
 pub unsafe extern "C" fn tract_nnef_create(nnef: *mut *mut TractNnef) -> TRACT_RESULT {
     wrap(|| unsafe {
+        check_not_null!(nnef);
         *nnef = Box::into_raw(Box::new(TractNnef(tract_nnef::nnef())));
         Ok(())
     })
@@ -181,14 +202,7 @@ pub unsafe extern "C" fn tract_nnef_create(nnef: *mut *mut TractNnef) -> TRACT_R
 /// Destroy the NNEF parser. It is safe to detroy the NNEF parser once the model had been loaded.
 #[no_mangle]
 pub unsafe extern "C" fn tract_nnef_destroy(nnef: *mut *mut TractNnef) -> TRACT_RESULT {
-    wrap(|| unsafe {
-        if nnef.is_null() || (*nnef).is_null() {
-            anyhow::bail!("Trying to destroy a null Nnef object");
-        }
-        let _ = Box::from_raw(*nnef);
-        *nnef = std::ptr::null_mut();
-        Ok(())
-    })
+    release!(nnef)
 }
 
 /// Parse and load an NNEF model as a tract TypedModel.
@@ -197,15 +211,16 @@ pub unsafe extern "C" fn tract_nnef_destroy(nnef: *mut *mut TractNnef) -> TRACT_
 /// directory.
 #[no_mangle]
 pub unsafe extern "C" fn tract_nnef_model_for_path(
-    nnef: &TractNnef,
+    nnef: *const TractNnef,
     path: *const c_char,
     model: *mut *mut TractModel,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
+        check_not_null!(nnef, model, path);
         *model = std::ptr::null_mut();
         let path = CStr::from_ptr(path).to_str()?;
         let m = Box::new(TractModel(
-            nnef.0.model_for_path(path).with_context(|| format!("opening file {:?}", path))?,
+            (*nnef).0.model_for_path(path).with_context(|| format!("opening file {:?}", path))?,
         ));
         *model = Box::into_raw(m);
         Ok(())
@@ -220,24 +235,18 @@ pub struct TractOnnx(tract_onnx::Onnx);
 /// The returned object should be destroyed with `tract_nnef_destroy` once the model
 /// has been loaded.
 #[no_mangle]
-pub unsafe extern "C" fn tract_onnx_create(ptr: *mut *mut TractOnnx) -> TRACT_RESULT {
+pub unsafe extern "C" fn tract_onnx_create(onnx: *mut *mut TractOnnx) -> TRACT_RESULT {
     wrap(|| unsafe {
-        *ptr = Box::into_raw(Box::new(TractOnnx(onnx::onnx())));
+        check_not_null!(onnx);
+        *onnx = Box::into_raw(Box::new(TractOnnx(onnx::onnx())));
         Ok(())
     })
 }
 
 /// Destroy the NNEF parser. It is safe to detroy the NNEF parser once the model had been loaded.
 #[no_mangle]
-pub unsafe extern "C" fn tract_onnx_destroy(ptr: *mut *mut TractOnnx) -> TRACT_RESULT {
-    wrap(|| unsafe {
-        if ptr.is_null() || (*ptr).is_null() {
-            anyhow::bail!("Trying to destroy a null Onnx object");
-        }
-        let _ = Box::from_raw(*ptr);
-        *ptr = std::ptr::null_mut();
-        Ok(())
-    })
+pub unsafe extern "C" fn tract_onnx_destroy(onnx: *mut *mut TractOnnx) -> TRACT_RESULT {
+    release!(onnx)
 }
 
 /// Parse and load an ONNX model as a tract InferenceModel.
@@ -245,15 +254,16 @@ pub unsafe extern "C" fn tract_onnx_destroy(ptr: *mut *mut TractOnnx) -> TRACT_R
 /// `path` is a null-terminated utf-8 string pointer. It must point to a `.onnx` model file.
 #[no_mangle]
 pub unsafe extern "C" fn tract_onnx_model_for_path(
-    onnx: &TractOnnx,
+    onnx: *const TractOnnx,
     path: *const c_char,
     model: *mut *mut TractInferenceModel,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
+        check_not_null!(onnx, path, model);
         *model = std::ptr::null_mut();
         let path = CStr::from_ptr(path).to_str()?;
         let m = Box::new(TractInferenceModel(
-            onnx.0.model_for_path(path).with_context(|| format!("opening file {:?}", path))?,
+            (*onnx).0.model_for_path(path).with_context(|| format!("opening file {:?}", path))?,
         ));
         *model = Box::into_raw(m);
         Ok(())
@@ -273,10 +283,14 @@ pub unsafe extern "C" fn tract_inference_model_nbio(
     outputs: *mut usize,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
-        if model.is_null() {
-            anyhow::bail!("Trying to inspect a null model")
+        check_not_null!(model);
+        let model = &(*model).0;
+        if !inputs.is_null() {
+            *inputs = model.input_outlets()?.len()
         }
-        nbio(&(*model).0, inputs, outputs);
+        if !outputs.is_null() {
+            *outputs = model.output_outlets()?.len()
+        }
         Ok(())
     })
 }
@@ -291,10 +305,8 @@ pub unsafe extern "C" fn tract_inference_model_input_name(
     name: *mut *mut c_char,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
+        check_not_null!(model, name);
         *name = std::ptr::null_mut();
-        if model.is_null() {
-            anyhow::bail!("Trying to inspect a null model")
-        }
         let m = &(*model).0;
         let outlet = m.input_outlets()?[input];
         *name = CString::new(&*m.nodes[outlet.node].name)?.into_raw();
@@ -312,24 +324,13 @@ pub unsafe extern "C" fn tract_inference_model_output_name(
     name: *mut *mut c_char,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
+        check_not_null!(model, name);
         *name = std::ptr::null_mut();
-        if model.is_null() {
-            anyhow::bail!("Trying to inspect a null model")
-        }
         let m = &(*model).0;
         let outlet = m.output_outlets()?[output];
         *name = CString::new(&*m.nodes[outlet.node].name)?.into_raw();
         Ok(())
     })
-}
-
-unsafe fn nbio(model: &impl Model, inputs: *mut usize, outputs: *mut usize) {
-    if !inputs.is_null() {
-        *inputs = model.input_outlets().len()
-    }
-    if !outputs.is_null() {
-        *outputs = model.output_outlets().len()
-    }
 }
 
 #[no_mangle]
@@ -339,15 +340,18 @@ pub unsafe extern "C" fn tract_inference_model_input_fact(
     fact: *mut *mut TractInferenceFact,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
-        if model.is_null() {
-            anyhow::bail!("Trying to alter a null inference model")
-        }
+        check_not_null!(model, fact);
+        *fact = std::ptr::null_mut();
         let f = (*model).0.input_fact(input_id)?;
         *fact = Box::into_raw(Box::new(TractInferenceFact(f.clone())));
         Ok(())
     })
 }
 
+/// Set an input fact of an InferenceModel.
+///
+/// The `fact` argument is only borrowed by this function, it still must be destroyed.
+/// `fact` can be set to NULL to erase the current output fact of the model.
 #[no_mangle]
 pub unsafe extern "C" fn tract_inference_model_set_input_fact(
     model: *mut TractInferenceModel,
@@ -355,15 +359,16 @@ pub unsafe extern "C" fn tract_inference_model_set_input_fact(
     fact: *const TractInferenceFact,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
-        if model.is_null() {
-            anyhow::bail!("Trying to alter a null inference model")
-        }
+        check_not_null!(model);
         let f = fact.as_ref().map(|f| &f.0).cloned().unwrap_or_default();
         (*model).0.set_input_fact(input_id, f)?;
         Ok(())
     })
 }
 
+/// Query an output fact for an InferenceModel.
+///
+/// The return model must be freed using `tract_inference_fact_destroy`.
 #[no_mangle]
 pub unsafe extern "C" fn tract_inference_model_output_fact(
     model: *const TractInferenceModel,
@@ -371,15 +376,18 @@ pub unsafe extern "C" fn tract_inference_model_output_fact(
     fact: *mut *mut TractInferenceFact,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
-        if model.is_null() {
-            anyhow::bail!("Trying to alter a null inference model")
-        }
+        check_not_null!(model, fact);
+        *fact = std::ptr::null_mut();
         let f = (*model).0.output_fact(output_id)?;
         *fact = Box::into_raw(Box::new(TractInferenceFact(f.clone())));
         Ok(())
     })
 }
 
+/// Set an output fact of an InferenceModel.
+///
+/// The `fact` argument is only borrowed by this function, it still must be destroyed.
+/// `fact` can be set to NULL to erase the current output fact of the model.
 #[no_mangle]
 pub unsafe extern "C" fn tract_inference_model_set_output_fact(
     model: *mut TractInferenceModel,
@@ -387,9 +395,7 @@ pub unsafe extern "C" fn tract_inference_model_set_output_fact(
     fact: *const TractInferenceFact,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
-        if model.is_null() {
-            anyhow::bail!("Trying to alter a null inference model")
-        }
+        check_not_null!(model);
         let f = fact.as_ref().map(|f| &f.0).cloned().unwrap_or_default();
         (*model).0.set_output_fact(output_id, f)?;
         Ok(())
@@ -403,11 +409,8 @@ pub unsafe extern "C" fn tract_inference_model_analyse(
     obstinate: bool,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
-        if let Some(model) = model.as_mut() {
-            let _ = model.0.analyse(obstinate)?;
-        } else {
-            anyhow::bail!("Trying to optimise null model")
-        }
+        check_not_null!(model);
+        (*model).0.analyse(obstinate)?;
         Ok(())
     })
 }
@@ -424,13 +427,12 @@ pub unsafe extern "C" fn tract_inference_model_into_optimized(
     optimized: *mut *mut TractModel,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
-        if model.is_null() {
-            anyhow::bail!("Trying to convert null inference model")
-        }
+        check_not_null!(model, *model, optimized);
+        *optimized = std::ptr::null_mut();
         let m = Box::from_raw(*model);
         *model = std::ptr::null_mut();
-        let model = m.0.into_optimized()?;
-        *optimized = Box::into_raw(Box::new(TractModel(model))) as _;
+        let result = m.0.into_optimized()?;
+        *optimized = Box::into_raw(Box::new(TractModel(result))) as _;
         Ok(())
     })
 }
@@ -440,14 +442,7 @@ pub unsafe extern "C" fn tract_inference_model_into_optimized(
 pub unsafe extern "C" fn tract_inference_model_destroy(
     model: *mut *mut TractInferenceModel,
 ) -> TRACT_RESULT {
-    wrap(|| unsafe {
-        if model.is_null() || (*model).is_null() {
-            anyhow::bail!("Trying to destroy a null InferenceModel");
-        }
-        let _ = Box::from_raw(*model);
-        *model = std::ptr::null_mut();
-        Ok(())
-    })
+    release!(model)
 }
 // TYPED MODEL
 
@@ -457,11 +452,8 @@ pub struct TractModel(TypedModel);
 #[no_mangle]
 pub unsafe extern "C" fn tract_model_optimize(model: *mut TractModel) -> TRACT_RESULT {
     wrap(|| unsafe {
-        if let Some(model) = model.as_mut() {
-            model.0.optimize()
-        } else {
-            anyhow::bail!("Trying to optimise null model")
-        }
+        check_not_null!(model);
+        (*model).0.optimize()
     })
 }
 
@@ -476,9 +468,8 @@ pub unsafe extern "C" fn tract_model_into_runnable(
     runnable: *mut *mut TractRunnable,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
-        if model.is_null() {
-            anyhow::bail!("Trying to convert null model")
-        }
+        check_not_null!(model, runnable);
+        *runnable = std::ptr::null_mut();
         let m = Box::from_raw(*model);
         *model = std::ptr::null_mut();
         let runnable_model = m.0.into_runnable()?;
@@ -490,14 +481,7 @@ pub unsafe extern "C" fn tract_model_into_runnable(
 /// Destroy a TypedModel.
 #[no_mangle]
 pub unsafe extern "C" fn tract_model_destroy(model: *mut *mut TractModel) -> TRACT_RESULT {
-    wrap(|| unsafe {
-        if model.is_null() || (*model).is_null() {
-            anyhow::bail!("Trying to destroy a null Model");
-        }
-        let _ = Box::from_raw(*model);
-        *model = std::ptr::null_mut();
-        Ok(())
-    })
+    release!(model)
 }
 
 // RUNNABLE MODEL
@@ -517,15 +501,9 @@ pub unsafe extern "C" fn tract_runnable_spawn_state(
     state: *mut *mut TractState,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
-        if state.is_null() {
-            anyhow::bail!("Null pointer for expected state return")
-        }
+        check_not_null!(runnable, state);
         *state = std::ptr::null_mut();
-        if runnable.is_null() {
-            anyhow::bail!("Trying to convert null model")
-        }
-        let runnable = runnable.as_ref().unwrap();
-        let s = native::TypedSimpleState::new(runnable.0.clone())?;
+        let s = native::TypedSimpleState::new((*runnable).0.clone())?;
         *state = Box::into_raw(Box::new(TractState(s)));
         Ok(())
     })
@@ -546,11 +524,8 @@ pub unsafe extern "C" fn tract_runnable_run(
     outputs: *mut *mut TractValue,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
-        if runnable.is_null() {
-            anyhow::bail!("Trying to convert null model")
-        }
-        let runnable = runnable.as_ref().unwrap();
-        let mut s = native::TypedSimpleState::new(runnable.0.clone())?;
+        check_not_null!(runnable);
+        let mut s = native::TypedSimpleState::new((*runnable).0.clone())?;
         state_run(&mut s, inputs, outputs)
     })
 }
@@ -565,45 +540,21 @@ pub unsafe extern "C" fn tract_runnable_nbio(
     outputs: *mut usize,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
-        if runnable.is_null() {
-            anyhow::bail!("Trying to convert null model")
+        check_not_null!(runnable);
+        let model = (*runnable).0.model();
+        if !inputs.is_null() {
+            *inputs = model.input_outlets()?.len()
         }
-        nbio((*runnable).0.model(), inputs, outputs);
+        if !outputs.is_null() {
+            *outputs = model.output_outlets()?.len()
+        }
         Ok(())
     })
-}
-
-unsafe fn state_run(
-    state: &mut NativeState,
-    inputs: *mut *mut TractValue,
-    outputs: *mut *mut TractValue,
-) -> TractResult<()> {
-    if inputs.is_null() {
-        anyhow::bail!("Null pointer input")
-    }
-    if outputs.is_null() {
-        anyhow::bail!("Null pointer output")
-    }
-    let input_len = state.model().inputs.len();
-    let values =
-        std::slice::from_raw_parts(inputs, input_len).iter().map(|tv| (**tv).0.clone()).collect();
-    let values = state.run(values)?;
-    for (i, value) in values.into_iter().enumerate() {
-        *(outputs.add(i)) = Box::into_raw(Box::new(TractValue(value)))
-    }
-    Ok(())
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn tract_runnable_release(runnable: *mut *mut TractRunnable) -> TRACT_RESULT {
-    wrap(|| unsafe {
-        if runnable.is_null() || (*runnable).is_null() {
-            anyhow::bail!("Trying to destroy a null Runnable");
-        }
-        let _ = Box::from_raw(*runnable);
-        *runnable = std::ptr::null_mut();
-        Ok(())
-    })
+    release!(runnable)
 }
 
 // VALUE
@@ -614,7 +565,9 @@ pub struct TractValue(TValue);
 /// This call copies the data into tract space. All the pointers only need to be alive for the
 /// duration of the call.
 ///
-/// rank is the number of dimensions of the :ne
+/// rank is the number of dimensions of the tensor (i.e. the length of the shape vector).
+///
+/// The returned value must be destroyed by `tract_value_destroy`.
 #[no_mangle]
 pub unsafe extern "C" fn tract_value_create(
     datum_type: TractDatumType,
@@ -624,6 +577,8 @@ pub unsafe extern "C" fn tract_value_create(
     value: *mut *mut TractValue,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
+        check_not_null!(value);
+        *value = std::ptr::null_mut();
         let dt: DatumType = datum_type.into();
         let shape = std::slice::from_raw_parts(shape, rank);
         let len = shape.iter().product::<usize>();
@@ -637,14 +592,7 @@ pub unsafe extern "C" fn tract_value_create(
 /// Destroy a value.
 #[no_mangle]
 pub unsafe extern "C" fn tract_value_destroy(value: *mut *mut TractValue) -> TRACT_RESULT {
-    wrap(|| unsafe {
-        if value.is_null() || (*value).is_null() {
-            anyhow::bail!("Trying to destroy a null Value");
-        }
-        let _ = Box::from_raw(*value);
-        *value = std::ptr::null_mut();
-        Ok(())
-    })
+    release!(value)
 }
 
 /// Inspect part of a value. Except `value`, all argument pointers can be null if only some specific bits
@@ -658,9 +606,7 @@ pub unsafe extern "C" fn tract_value_inspect(
     data: *mut *const c_void,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
-        if value.is_null() {
-            anyhow::bail!("Trying to inspect a null Value");
-        }
+        check_not_null!(value);
         let value: &TValue = &(*value).0;
         if !datum_type.is_null() {
             *datum_type = value.datum_type().try_into()?;
@@ -701,94 +647,23 @@ pub unsafe extern "C" fn tract_state_run(
     outputs: *mut *mut TractValue,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
-        if state.is_null() {
-            anyhow::bail!("Trying to run a null State");
-        }
-        let s = state.as_mut().unwrap();
-        state_run(&mut s.0, inputs, outputs)
+        check_not_null!(state, inputs, outputs);
+        state_run(&mut (*state).0, inputs, outputs)
     })
 }
-
-/*
-#[no_mangle]
-pub unsafe extern "C" fn tract_state_set_input(
-    state: *mut TractState,
-    input_id: usize,
-    value: *mut TractValue,
-) -> TRACT_RESULT {
-    wrap(|| unsafe {
-        if state.is_null() {
-            anyhow::bail!("Trying to set input on a null State");
-        }
-        if value.is_null() {
-            anyhow::bail!("Trying to set input to a null value");
-        }
-        let state = state.as_mut().unwrap();
-        let value = value.as_ref().unwrap();
-        state.0.set_input(input_id, value.0.clone())?;
-        Ok(())
-    })
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn tract_state_exec(state: *mut TractState) -> TRACT_RESULT {
-    wrap(|| unsafe {
-        if state.is_null() {
-            anyhow::bail!("Trying to exec a null State");
-        }
-        let state = state.as_mut().unwrap();
-        state.0.exec()?;
-        Ok(())
-    })
-}
-
-/// Get an output tensor from the state.
-#[no_mangle]
-pub unsafe extern "C" fn tract_state_output(
-    state: *mut TractState,
-    output_id: usize,
-    tensor: *mut *mut TractValue,
-) -> TRACT_RESULT {
-    wrap(|| unsafe {
-        if state.is_null() {
-            anyhow::bail!("Trying to exec a null State");
-        }
-        let state = state.as_mut().unwrap();
-        let value = state.0.output(output_id)?;
-        *tensor = Box::into_raw(Box::new(TractValue(value.clone())));
-        Ok(())
-    })
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn tract_state_reset_turn(state: *mut TractState) -> TRACT_RESULT {
-    wrap(|| unsafe {
-        if state.is_null() {
-            anyhow::bail!("Trying to reset turn on a null State");
-        }
-        let state = state.as_mut().unwrap();
-        state.0.reset_turn()?;
-        Ok(())
-    })
-}
-*/
 
 #[no_mangle]
 pub unsafe extern "C" fn tract_state_destroy(state: *mut *mut TractState) -> TRACT_RESULT {
-    wrap(|| unsafe {
-        if state.is_null() || (*state).is_null() {
-            anyhow::bail!("Trying to destroy a null State");
-        }
-        let _ = Box::from_raw(*state);
-        *state = std::ptr::null_mut();
-        Ok(())
-    })
+    release!(state)
 }
 
 // INFERENCE FACT
 
 pub struct TractInferenceFact(InferenceFact);
 
+/// Parse a fact specification string into an InferenceFact.
+///
+/// The returned fact must be free with `tract_inference_fact_destroy`.
 #[no_mangle]
 pub unsafe extern "C" fn tract_inference_fact_parse(
     model: *mut TractInferenceModel,
@@ -796,28 +671,25 @@ pub unsafe extern "C" fn tract_inference_fact_parse(
     fact: *mut *mut TractInferenceFact,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
-        if model.is_null() {
-            anyhow::bail!("Trying to build an inference fact for a null model");
-        }
+        check_not_null!(model, spec, fact);
         let spec = CStr::from_ptr(spec).to_str()?;
-        let model = model.as_ref().unwrap();
-        let f = tract_libcli::tensor::parse_spec(&model.0.symbol_table, spec)?;
+        let f = tract_libcli::tensor::parse_spec(&(*model).0.symbol_table, spec)?;
         *fact = Box::into_raw(Box::new(TractInferenceFact(f)));
         Ok(())
     })
 }
 
+/// Write an inference fact as its specification string.
+///
+/// The returned string must be freed by the caller using tract_free_cstring.
 #[no_mangle]
 pub unsafe extern "C" fn tract_inference_fact_dump(
     fact: *const TractInferenceFact,
     spec: *mut *mut c_char,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
-        if fact.is_null() {
-            anyhow::bail!("Trying to dump a null inference fact");
-        }
+        check_not_null!(fact, spec);
         *spec = CString::new(format!("{:?}", (*fact).0))?.into_raw();
-        //*spec = "foobar\0".as_ptr() as _;
         Ok(())
     })
 }
@@ -826,16 +698,24 @@ pub unsafe extern "C" fn tract_inference_fact_dump(
 pub unsafe extern "C" fn tract_inference_fact_destroy(
     fact: *mut *mut TractInferenceFact,
 ) -> TRACT_RESULT {
-    wrap(|| unsafe {
-        if fact.is_null() || (*fact).is_null() {
-            anyhow::bail!("Trying to destroy a null InferenceFact");
-        }
-        let _ = Box::from_raw(*fact);
-        *fact = std::ptr::null_mut();
-        Ok(())
-    })
+    release!(fact)
 }
 
 // MISC
 
 // HELPERS
+
+unsafe fn state_run(
+    state: &mut NativeState,
+    inputs: *mut *mut TractValue,
+    outputs: *mut *mut TractValue,
+) -> TractResult<()> {
+    let input_len = state.model().inputs.len();
+    let values =
+        std::slice::from_raw_parts(inputs, input_len).iter().map(|tv| (**tv).0.clone()).collect();
+    let values = state.run(values)?;
+    for (i, value) in values.into_iter().enumerate() {
+        *(outputs.add(i)) = Box::into_raw(Box::new(TractValue(value)))
+    }
+    Ok(())
+}
