@@ -441,17 +441,20 @@ impl Scan {
                 }
                 let (input_facts, output_facts) = self.body.node_facts(emitter_node.id)?;
                 let invariants = emitter_node.op.invariants(&input_facts, &output_facts)?;
-                let Some(axis_before) = invariants.unary_track_axis_up(info.axis, false)
+                let Some(axis_tracking) = invariants.track_output_axis(emitter_outlet.slot, info.axis)
                 else {
                     continue;
                 };
+                if axis_tracking.inputs.iter().any(|axis| axis.is_none()) {
+                    continue;
+                }
 
                 let mut new_body = self.body.clone();
                 let mut new_output_mapping = self.output_mapping.clone();
                 let mut new_scan_outputs = node.outputs.len();
                 let mut outer_slots = vec![];
 
-                for input in &emitter_node.inputs {
+                for (input_slot, input) in emitter_node.inputs.iter().enumerate() {
                     if new_body.outputs.iter().all(|o| o != input) {
                         new_output_mapping.push(OutputMapping::default());
                         new_body.outputs.push(*input);
@@ -468,7 +471,7 @@ impl Scan {
                         if mapping.scan.is_none() {
                             mapping.scan = Some(ScanInfo {
                                 slot: new_scan_outputs,
-                                axis: axis_before,
+                                axis: axis_tracking.inputs[input_slot].unwrap(),
                                 chunk: info.chunk,
                             });
                             new_scan_outputs += 1;
