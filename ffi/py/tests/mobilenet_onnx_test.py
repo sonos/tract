@@ -81,3 +81,20 @@ def test_concretize():
     typed.concretize_symbols({ "B": 1 })
     assert str(typed.input_fact(0)) == "1,3,224,224,F32"
     assert str(typed.output_fact(0)) == "1,1000,F32"
+
+def test_pulse():
+    model = tract.onnx().model_for_path("./mobilenetv2-7.onnx")
+    model.set_input_fact(0, "B,3,224,224,f32")
+    model.set_output_fact(0, None)
+    model.analyse()
+    typed = model.into_typed().into_decluttered()
+    assert str(typed.input_fact(0)) == "B,3,224,224,F32"
+    assert str(typed.output_fact(0)) == "B,1000,F32"
+    typed.pulse("B",  5)
+    assert str(typed.input_fact(0)) == "5,3,224,224,F32"
+    assert str(typed.output_fact(0)) == "5,1000,F32"
+    properties = typed.property_keys()
+    properties.sort()
+    assert properties == ["pulse.delay", "pulse.input_axes", "pulse.output_axes"]
+#    assert typed.property("pulse.delay") == [0]
+
