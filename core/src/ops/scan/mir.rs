@@ -1,3 +1,4 @@
+use crate::ops::einsum::EinSum;
 use crate::ops::konst::Const;
 use crate::optim::OptimizerSession;
 
@@ -164,8 +165,10 @@ impl Scan {
                     op.body.nodes[src.node].inputs.clear();
                     op.body.nodes[src.node].op = Box::new(Const::new(konst.clone()));
                     op.input_mapping.remove(body_input_id);
-                    op.input_mapping =
-                        Self::remove_outer_input_from_mappings(&op.input_mapping, *outer_input_slot);
+                    op.input_mapping = Self::remove_outer_input_from_mappings(
+                        &op.input_mapping,
+                        *outer_input_slot,
+                    );
                     let mut inputs = node.inputs.clone();
                     inputs.remove(*outer_input_slot);
                     return Ok(Some(TypedModelPatch::replace_single_op(model, node, &inputs, op)?));
@@ -406,7 +409,8 @@ impl Scan {
         &self,
         _session: &mut OptimizerSession,
         model: &TypedModel,
-        node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
         for (model_output_ix, mapping) in self.output_mapping.iter().enumerate() {
             if let Some(slot) = mapping.last_value_slot {
                 if let Some(k) = self.body.output_fact(model_output_ix)?.konst.clone() {
@@ -431,16 +435,32 @@ impl Scan {
         for (model_ix, mapping) in self.output_mapping.iter().enumerate() {
             if let Some(info) = mapping.scan {
                 let emitter_outlet = self.body.output_outlets()?[model_ix];
-                let emitter_node = self.body.node(emitter_outlet.node);
-                if emitter_node.outputs[emitter_outlet.slot].successors.len() > 0
+                if self.body.node(emitter_outlet.node).outputs[emitter_outlet.slot].successors.len()
+                    > 0
                     || mapping.state
                     || mapping.scan.map(|i| i.chunk > 1).unwrap_or(true)
                 {
                     // continue if both last_value and full values are exported
                     continue;
                 }
-                let (input_facts, output_facts) = self.body.node_facts(emitter_node.id)?;
-                let invariants = emitter_node.op.invariants(&input_facts, &output_facts)?;
+                let mut new_body = self.body.clone();
+                if let Some(einsum) = new_body.node(emitter_outlet.node).op_as::<EinSum>() {
+                    if let Some(patch) = einsum.propagate_axis(
+                        &new_body,
+                        new_body.node(emitter_outlet.node),
+                        InOut::Out(0),
+                        info.axis,
+                    )? {
+                        dbg!(&patch);
+                        patch.apply(&mut new_body)?;
+                        dbg!(new_body.to_string());
+                    }
+                }
+                let emitter_outlet = new_body.output_outlets()?[model_ix];
+                let invariants = {
+                    let (input_facts, output_facts) = new_body.node_facts(emitter_outlet.node)?;
+                    new_body.node(emitter_outlet.node).op.invariants(&input_facts, &output_facts)?
+                };
                 let Some(axis_tracking) = invariants.track_output_axis(emitter_outlet.slot, info.axis)
                 else {
                     continue;
@@ -448,13 +468,13 @@ impl Scan {
                 if axis_tracking.inputs.iter().any(|axis| axis.is_none()) {
                     continue;
                 }
-
-                let mut new_body = self.body.clone();
                 let mut new_output_mapping = self.output_mapping.clone();
                 let mut new_scan_outputs = node.outputs.len();
                 let mut outer_slots = vec![];
 
-                for (input_slot, input) in emitter_node.inputs.iter().enumerate() {
+                for (input_slot, input) in
+                    new_body.node(emitter_outlet.node).inputs.clone().iter().enumerate()
+                {
                     if new_body.outputs.iter().all(|o| o != input) {
                         new_output_mapping.push(OutputMapping::default());
                         new_body.outputs.push(*input);
@@ -481,7 +501,8 @@ impl Scan {
                     outer_slots.push(outer_slot);
                 }
                 let mut outside_patch = TypedModelPatch::new(format!(
-                    "Outside patch for output extraction of {emitter_node}"
+                    "Outside patch for output extraction of {}",
+                    new_body.node(emitter_outlet.node)
                 ));
                 let inputs = node
                     .inputs
@@ -492,7 +513,7 @@ impl Scan {
                     input_mapping: self.input_mapping.clone(),
                     output_mapping: new_output_mapping,
                     decluttered: false,
-                    body: new_body,
+                    body: new_body.clone(), // FIXME maybe remove clone
                     skip: self.skip,
                     seq_length_input_slot: self.seq_length_input_slot,
                 };
@@ -501,8 +522,8 @@ impl Scan {
                 let inputs =
                     outer_slots.iter().map(|slot| scan_outputs[*slot]).collect::<TVec<_>>();
                 let wire = outside_patch.wire_node(
-                    &*emitter_node.name,
-                    emitter_node.op.clone(),
+                    &new_body.node(emitter_outlet.node).name,
+                    new_body.node(emitter_outlet.node).op.clone(),
                     &inputs,
                 )?[0];
                 outside_patch.shunt_outside(model, OutletId::new(node.id, output.slot), wire)?;
