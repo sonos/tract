@@ -309,7 +309,7 @@ class Model:
     def property(self, name: str) -> "Value":
         self.__valid()
         value = c_void_p()
-        check(lib.tract_model_property(self.ptr, str(name).encode("utf-8")))
+        check(lib.tract_model_property(self.ptr, str(name).encode("utf-8"), byref(value)))
         return Value(value)
 
 class Runnable:
