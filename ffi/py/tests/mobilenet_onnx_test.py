@@ -96,5 +96,5 @@ def test_pulse():
     properties = typed.property_keys()
     properties.sort()
     assert properties == ["pulse.delay", "pulse.input_axes", "pulse.output_axes"]
-#    assert typed.property("pulse.delay") == [0]
+    assert typed.property("pulse.delay").to_numpy() == [0]
 
