@@ -719,7 +719,7 @@ pub unsafe extern "C" fn tract_model_property(
     value: *mut *mut TractValue,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
-        check_not_null!(model, name);
+        check_not_null!(model, name, value);
         let name = CStr::from_ptr(name)
             .to_str()
             .context("failed to parse property name (not utf8)")?
