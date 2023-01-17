@@ -1,7 +1,7 @@
 import numpy
 from ctypes import *
 from pathlib import Path
-from typing import Dict, Union
+from typing import Dict, List, Union
 
 class TractError(Exception):
     pass
@@ -267,6 +267,10 @@ class Model:
             values_list[ix] = v
         check(lib.tract_model_concretize_symbols(self.ptr, c_size_t(nb), names, values_list))
 
+    def pulse(self, symbol: str, pulse: Union[str, int]) -> None:
+        self.__valid()
+        check(lib.tract_model_pulse_simple(byref(self.ptr), symbol.encode("utf-8"), str(pulse).encode("utf-8")))
+
     def declutter(self) -> None:
         self.__valid()
         check(lib.tract_model_declutter(self.ptr))
@@ -288,6 +292,25 @@ class Model:
         runnable = c_void_p()
         check(lib.tract_model_into_runnable(byref(self.ptr), byref(runnable)))
         return Runnable(runnable)
+
+    def property_keys(self) -> List[str]:
+        self.__valid()
+        count = c_size_t()
+        check(lib.tract_model_property_count(self.ptr, byref(count)))
+        count = count.value
+        cstrings = (POINTER(c_char) * count)()
+        check(lib.tract_model_property_names(self.ptr, cstrings))
+        names = []
+        for i in range(0, count):
+            names.append(str(cast(cstrings[i], c_char_p).value, "utf-8"))
+            lib.tract_free_cstring(cstrings[i])
+        return names
+
+    def property(self, name: str) -> "Value":
+        self.__valid()
+        value = c_void_p()
+        check(lib.tract_model_property(self.ptr, str(name).encode("utf-8")))
+        return Value(value)
 
 class Runnable:
     def __init__(self, ptr):

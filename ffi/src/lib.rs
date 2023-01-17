@@ -5,6 +5,8 @@ use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::sync::Arc;
+use tract_data::internal::parse_tdim;
+use tract_pulse::model::{PulsedModel, PulsedModelExt};
 
 use tract_nnef::internal as native;
 use tract_nnef::tract_core::prelude::*;
@@ -168,7 +170,7 @@ macro_rules! check_not_null {
             if $ptr.is_null() {
                 anyhow::bail!(concat!("Unexpected null pointer ", stringify!($ptr)));
             }
-        )*
+         )*
     }
 }
 
@@ -350,7 +352,7 @@ pub unsafe extern "C" fn tract_inference_model_input_name(
 pub unsafe extern "C" fn tract_inference_model_output_name(
     model: *const TractInferenceModel,
     output: usize,
-    name: *mut *mut c_char,
+    name: *mut *mut i8,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(model, name);
@@ -601,13 +603,39 @@ pub unsafe extern "C" fn tract_model_concretize_symbols(
         let mut table = SymbolValues::default();
         let model = &mut (*model).0;
         for i in 0..nb_symbols {
-            let name = CStr::from_ptr(*symbols.add(i))
-                .to_str()
-                .with_context(|| format!("failed to parse symbol name for {}th symbol (not utf8)", i))?;
+            let name = CStr::from_ptr(*symbols.add(i)).to_str().with_context(|| {
+                format!("failed to parse symbol name for {}th symbol (not utf8)", i)
+            })?;
             table = table.with(&model.symbol_table.sym(name), *values.add(i));
         }
         let mut new = model.concretize_dims(&table)?;
         std::mem::swap(model, &mut new);
+        Ok(())
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tract_model_pulse_simple(
+    model: *mut *mut TractModel,
+    stream_symbol: *const i8,
+    pulse_expr: *const i8,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(model, *model, stream_symbol, pulse_expr);
+        let model = &mut (**model).0;
+        let stream_sym = model.symbol_table.sym(
+            CStr::from_ptr(stream_symbol)
+                .to_str()
+                .with_context(|| format!("failed to parse stream symbol name (not utf8)"))?,
+        );
+        let pulse_dim = parse_tdim(
+            &model.symbol_table,
+            CStr::from_ptr(pulse_expr)
+                .to_str()
+                .with_context(|| format!("failed to parse stream symbol name (not utf8)"))?,
+        )?;
+        let mut pulsed = PulsedModel::new(&model, stream_sym, &pulse_dim)?.into_typed()?;
+        std::mem::swap(model, &mut pulsed);
         Ok(())
     })
 }
@@ -647,6 +675,57 @@ pub unsafe extern "C" fn tract_model_into_runnable(
         *model = std::ptr::null_mut();
         let runnable_model = m.0.into_runnable()?;
         *runnable = Box::into_raw(Box::new(TractRunnable(Arc::new(runnable_model)))) as _;
+        Ok(())
+    })
+}
+
+/// Query the number of properties in a model.
+#[no_mangle]
+pub unsafe extern "C" fn tract_model_property_count(
+    model: *const TractModel,
+    count: *mut usize,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(model, count);
+        *count = (*model).0.properties.len();
+        Ok(())
+    })
+}
+
+/// Query the properties names of a model.
+///
+/// The "names" array should be big enough to fit `tract_model_property_count` string pointers.
+///
+/// Each name will have to be freed using `tract_free_cstring`.
+#[no_mangle]
+pub unsafe extern "C" fn tract_model_property_names(
+    model: *const TractModel,
+    names: *mut *mut i8,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(model, names);
+        for (ix, name) in (*model).0.properties.keys().enumerate() {
+            *names.add(ix) = CString::new(&**name)?.into_raw();
+        }
+        Ok(())
+    })
+}
+
+/// Query a property value in a model.
+#[no_mangle]
+pub unsafe extern "C" fn tract_model_property(
+    model: *const TractModel,
+    name: *const i8,
+    value: *mut *mut TractValue,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(model, name);
+        let name = CStr::from_ptr(name)
+            .to_str()
+            .context("failed to parse property name (not utf8)")?
+            .to_owned();
+        let v = (*model).0.properties.get(&name).context("Property not found")?;
+        *value = Box::into_raw(Box::new(TractValue(v.clone().into_tvalue())));
         Ok(())
     })
 }
@@ -909,6 +988,7 @@ pub unsafe extern "C" fn tract_inference_fact_dump(
     })
 }
 
+/// Destroy a fact.
 #[no_mangle]
 pub unsafe extern "C" fn tract_inference_fact_destroy(
     fact: *mut *mut TractInferenceFact,
