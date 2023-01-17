@@ -1,6 +1,7 @@
 use std::fmt::Debug;
 
 use crate::internal::*;
+use crate::optim::change_axes::ChangeAxes;
 
 mod eval;
 mod expr;
@@ -15,6 +16,47 @@ pub struct EinSum {
 }
 
 
+
+impl EinSum {
+    #[allow(unused_variables)]
+    pub(crate) fn propagate_axis(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        io: InOut,
+        axis: usize,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let mut new_expr = self.expr.clone();
+        let mut new_axis = match io {
+            InOut::In(slot) => new_expr.input_axis_mut(slot, axis).unwrap().clone(),
+            InOut::Out(_) => new_expr.output_axis_mut(axis).unwrap().clone(),
+        };
+        let mut patch = TypedModelPatch::new(format!("Propagate axis {}", new_axis.repr));
+        let mut taps = tvec!();
+        for (ix, input) in node.inputs.iter().enumerate() {
+            let mut tap = patch.tap_model(model, *input)?;
+            if new_axis.inputs[ix].len() > 1 {
+                return Ok(None) // FIXME maybe
+            } else if new_axis.inputs[ix].is_empty() {
+                let insert_at = new_expr.input_rank(ix);
+                tap = patch.wire_node(format!("{}.prop_axis.{}.input_{}", &node.name, new_axis.repr, ix), AxisOp::Add(insert_at), &[tap])?[0];
+                new_axis.inputs[ix].push(insert_at);
+            }
+            taps.push(tap);
+        }
+        let must_rm_axis:Option<usize> = if  new_axis.result.is_none() {
+            let insert_at = new_expr.output_rank();
+            new_axis.result = Some(insert_at);
+            Some(insert_at)
+        } else { None };
+        let mut wire = patch.wire_node(&node.name, Self { expr: new_expr, ..self.clone() }, &taps)?;
+        if let Some(position) = must_rm_axis {
+            wire = patch.wire_node(format!("{}.prop_axis.{}.output", &node.name, new_axis.repr), AxisOp::Rm(position), &wire)?;
+        }
+        patch.shunt_outside(model, node.id.into(), wire[0])?;
+        Ok(Some(patch))
+    }
+}
 
 impl Debug for EinSum {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

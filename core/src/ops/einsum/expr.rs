@@ -108,6 +108,14 @@ impl Expr {
         self.index.iter()
     }
 
+    pub fn output_axis(&self, position: usize) -> Option<&Axis> {
+        self.iter_all_axes().find(|axis| axis.result == Some(position))
+    }
+
+    pub fn output_axis_mut(&mut self, position: usize) -> Option<&mut Axis> {
+        self.iter_all_axes_mut().find(|axis| axis.result == Some(position))
+    }
+
     pub fn insert_input_axis(&mut self, axis: char, input: usize, position: usize) {
         self.index.iter_mut().for_each(|ax| {
             ax.inputs[input].iter_mut().for_each(|pos| *pos += (*pos >= position) as usize)
