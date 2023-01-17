@@ -445,12 +445,15 @@ impl Scan {
                 }
                 let mut new_body = self.body.clone();
                 if let Some(einsum) = new_body.node(emitter_outlet.node).op_as::<EinSum>() {
-                    if let Some(patch) = einsum.propagate_axis(
-                        &new_body,
-                        new_body.node(emitter_outlet.node),
-                        InOut::Out(0),
-                        info.axis,
-                    )? {
+                    if let Some(patch) = einsum
+                        .propagate_axis(
+                            &new_body,
+                            new_body.node(emitter_outlet.node),
+                            InOut::Out(0),
+                            info.axis,
+                        )
+                        .context("building axis propagating patch")?
+                    {
                         dbg!(&patch);
                         patch.apply(&mut new_body)?;
                         dbg!(new_body.to_string());

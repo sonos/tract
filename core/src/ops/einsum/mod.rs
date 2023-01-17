@@ -26,11 +26,11 @@ impl EinSum {
         io: InOut,
         axis: usize,
     ) -> TractResult<Option<TypedModelPatch>> {
-        let mut new_expr = self.expr.clone();
         let mut new_axis = match io {
-            InOut::In(slot) => new_expr.input_axis_mut(slot, axis).unwrap().clone(),
-            InOut::Out(_) => new_expr.output_axis_mut(axis).unwrap().clone(),
+            InOut::In(slot) => self.expr.input_axis(slot, axis).unwrap().clone(),
+            InOut::Out(_) => self.expr.output_axis(axis).unwrap().clone(),
         };
+        let repr = new_axis.repr;
         let mut patch = TypedModelPatch::new(format!("Propagate axis {}", new_axis.repr));
         let mut taps = tvec!();
         for (ix, input) in node.inputs.iter().enumerate() {
@@ -38,20 +38,22 @@ impl EinSum {
             if new_axis.inputs[ix].len() > 1 {
                 return Ok(None) // FIXME maybe
             } else if new_axis.inputs[ix].is_empty() {
-                let insert_at = new_expr.input_rank(ix);
+                let insert_at = self.expr.input_rank(ix);
                 tap = patch.wire_node(format!("{}.prop_axis.{}.input_{}", &node.name, new_axis.repr, ix), AxisOp::Add(insert_at), &[tap])?[0];
                 new_axis.inputs[ix].push(insert_at);
             }
             taps.push(tap);
         }
         let must_rm_axis:Option<usize> = if  new_axis.result.is_none() {
-            let insert_at = new_expr.output_rank();
+            let insert_at = self.expr.output_rank();
             new_axis.result = Some(insert_at);
             Some(insert_at)
         } else { None };
+        let mut new_expr = self.expr.clone();
+        *new_expr.iter_all_axes_mut().find(|ax| ax.repr == repr).unwrap() =  new_axis;
         let mut wire = patch.wire_node(&node.name, Self { expr: new_expr, ..self.clone() }, &taps)?;
         if let Some(position) = must_rm_axis {
-            wire = patch.wire_node(format!("{}.prop_axis.{}.output", &node.name, new_axis.repr), AxisOp::Rm(position), &wire)?;
+            wire = patch.wire_node(format!("{}.prop_axis.{}.output", &node.name, repr), AxisOp::Rm(position), &wire)?;
         }
         patch.shunt_outside(model, node.id.into(), wire[0])?;
         Ok(Some(patch))
