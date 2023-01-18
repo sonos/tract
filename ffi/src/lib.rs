@@ -272,7 +272,7 @@ pub unsafe extern "C" fn tract_nnef_write_model_to_tar(
     wrap(|| unsafe {
         check_not_null!(nnef, model, path);
         let path = CStr::from_ptr(path).to_str()?;
-        let f = std::fs::File::create(path)?;
+        let f = std::fs::File::create(path).with_context(|| format!("creating file {:?}", path))?;
         (*nnef).0.write_to_tar(&(*model).0, f)?;
         Ok(())
     })
@@ -290,7 +290,7 @@ pub unsafe extern "C" fn tract_nnef_write_model_to_tar_gz(
     wrap(|| unsafe {
         check_not_null!(nnef, model, path);
         let path = CStr::from_ptr(path).to_str()?;
-        let f = std::fs::File::create(path)?;
+        let f = std::fs::File::create(path).with_context(|| format!("creating file {:?}", path))?;
         let f = flate2::write::GzEncoder::new(f, flate2::Compression::default());
         (*nnef).0.write_to_tar(&(*model).0, f)?;
         Ok(())
@@ -311,7 +311,10 @@ pub unsafe extern "C" fn tract_nnef_write_model_to_dir(
     wrap(|| unsafe {
         check_not_null!(nnef, model, path);
         let path = CStr::from_ptr(path).to_str()?;
-        (*nnef).0.write_to_dir(&(*model).0, path)?;
+        (*nnef)
+            .0
+            .write_to_dir(&(*model).0, path)
+            .with_context(|| format!("writing model to dir {:?}", path))?;
         Ok(())
     })
 }
