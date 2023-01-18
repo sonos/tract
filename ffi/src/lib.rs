@@ -258,6 +258,64 @@ pub unsafe extern "C" fn tract_nnef_model_for_path(
     })
 }
 
+/// Dump a TypedModel as a NNEF tar file.
+///
+/// `path` is a null-terminated utf-8 string pointer to the `.tar` file to be created.
+///
+/// This function creates a plain, non-compressed, archive.
+#[no_mangle]
+pub unsafe extern "C" fn tract_nnef_write_model_to_tar(
+    nnef: *const TractNnef,
+    path: *const c_char,
+    model: *const TractModel,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(nnef, model, path);
+        let path = CStr::from_ptr(path).to_str()?;
+        let f = std::fs::File::create(path)?;
+        (*nnef).0.write_to_tar(&(*model).0, f)?;
+        Ok(())
+    })
+}
+
+/// Dump a TypedModel as a NNEF .tar.gz file.
+///
+/// `path` is a null-terminated utf-8 string pointer to the `.tar.gz` file to be created.
+#[no_mangle]
+pub unsafe extern "C" fn tract_nnef_write_model_to_tar_gz(
+    nnef: *const TractNnef,
+    path: *const c_char,
+    model: *const TractModel,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(nnef, model, path);
+        let path = CStr::from_ptr(path).to_str()?;
+        let f = std::fs::File::create(path)?;
+        let f = flate2::write::GzEncoder::new(f, flate2::Compression::default());
+        (*nnef).0.write_to_tar(&(*model).0, f)?;
+        Ok(())
+    })
+}
+
+/// Dump a TypedModel as a NNEF directory.
+///
+/// `path` is a null-terminated utf-8 string pointer to the directory to be created.
+///
+/// This function creates a plain, non-compressed, archive.
+#[no_mangle]
+pub unsafe extern "C" fn tract_nnef_write_model_to_dir(
+    nnef: *const TractNnef,
+    path: *const c_char,
+    model: *const TractModel,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(nnef, model, path);
+        let path = CStr::from_ptr(path).to_str()?;
+        (*nnef).0.write_to_dir(&(*model).0, path)?;
+        Ok(())
+    })
+}
+
 // ONNX
 pub struct TractOnnx(tract_onnx::Onnx);
 
@@ -626,15 +684,15 @@ pub unsafe extern "C" fn tract_model_pulse_simple(
         let stream_sym = model.symbol_table.sym(
             CStr::from_ptr(stream_symbol)
                 .to_str()
-                .with_context(|| format!("failed to parse stream symbol name (not utf8)"))?,
+                .context("failed to parse stream symbol name (not utf8)")?,
         );
         let pulse_dim = parse_tdim(
             &model.symbol_table,
             CStr::from_ptr(pulse_expr)
                 .to_str()
-                .with_context(|| format!("failed to parse stream symbol name (not utf8)"))?,
+                .context("failed to parse stream symbol name (not utf8)")?,
         )?;
-        let mut pulsed = PulsedModel::new(&model, stream_sym, &pulse_dim)?.into_typed()?;
+        let mut pulsed = PulsedModel::new(model, stream_sym, &pulse_dim)?.into_typed()?;
         std::mem::swap(model, &mut pulsed);
         Ok(())
     })

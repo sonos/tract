@@ -73,23 +73,38 @@ class Nnef:
     def __del__(self):
         check(lib.tract_nnef_destroy(byref(self.ptr)))
 
+    def __valid(self):
+        if self.ptr == None:
+            raise TractError("invalid inference model (maybe already consumed ?)")
+
     def model_for_path(self, path: Union[str, Path]) -> "Model":
+        self.__valid()
         model = c_void_p()
         path = str(path).encode("utf-8")
         check(lib.tract_nnef_model_for_path(self.ptr, path, byref(model)))
         return Model(model)
 
     def with_tract_core(self) -> "Nnef":
+        self.__valid()
         check(lib.tract_nnef_enable_tract_core(self.ptr))
         return self
 
     def with_onnx(self) -> "Nnef":
+        self.__valid()
         check(lib.tract_nnef_enable_onnx(self.ptr))
         return self
 
     def with_pulse(self) -> "Nnef":
+        self.__valid()
         check(lib.tract_nnef_enable_pulse(self.ptr))
         return self
+
+    def write_model_to_dir(self, model: "Model", path: Union[str, Path]) -> None:
+        self.__valid()
+#        model.__valid()
+        if not isinstance(model, Model):
+            raise TractError("Expected a Model, called with " + model);
+        check(lib.tract_nnef_write_model_to_dir(self.ptr, str(path).encode("utf-8"), model.ptr))
 
 class Onnx:
     def __init__(self):
@@ -116,7 +131,7 @@ class InferenceModel:
 
     def __valid(self):
         if self.ptr == None:
-            raise TractError("in__valid inference model (maybe already consumed ?)")
+            raise TractError("invalid inference model (maybe already consumed ?)")
 
     def into_optimized(self) -> "Model":
         self.__valid()

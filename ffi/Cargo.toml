@@ -20,6 +20,7 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 anyhow.workspace = true
+flate2.workspace = true
 tract-data = { path = "../data", version = "=0.19.1-pre" }
 tract-nnef = { path = "../nnef", version = "=0.19.1-pre" }
 tract-onnx = { path = "../onnx", version = "=0.19.1-pre" }
