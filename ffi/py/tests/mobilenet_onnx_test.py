@@ -1,16 +1,16 @@
 import tract
 import numpy
 import urllib.request
-from os import path
 import tempfile
+from pathlib import Path
 
 def setup_module(module):
-    if not path.exists("mobilenetv2-7.onnx"):
+    if not Path("mobilenetv2-7.onnx").exists():
         urllib.request.urlretrieve(
             "https://github.com/onnx/models/raw/main/vision/classification/mobilenet/model/mobilenetv2-7.onnx",
             "mobilenetv2-7.onnx",
         )
-    if not path.exists(""):
+    if not Path("mobilenet_v2_1.0.onnx.nnef.tgz").exists():
         urllib.request.urlretrieve(
             "https://sfo2.digitaloceanspaces.com/nnef-public/mobilenet_v2_1.0.onnx.nnef.tgz",
             "mobilenet_v2_1.0.onnx.nnef.tgz"
@@ -106,9 +106,23 @@ def test_typed_model_to_nnef_and_back():
     model.analyse()
     typed = model.into_typed()
     with tempfile.TemporaryDirectory() as tmpdirname:
+        tmpdirname = Path(tmpdirname)
         nnef = tract.nnef().with_tract_core()
-        path = tmpdirname.join("model")
+
+        path = tmpdirname / "nnef-dir"
         nnef.write_model_to_dir(typed, path)
+        reloaded = nnef.model_for_path(path)
+        assert str(reloaded.input_fact(0)) == "B,3,224,224,F32"
+        assert str(reloaded.output_fact(0)) == "B,1000,F32"
+
+        path = tmpdirname / "nnef.tar"
+        nnef.write_model_to_tar(typed, path)
+        reloaded = nnef.model_for_path(path)
+        assert str(reloaded.input_fact(0)) == "B,3,224,224,F32"
+        assert str(reloaded.output_fact(0)) == "B,1000,F32"
+
+        path = tmpdirname / "nnef.tar.gz"
+        nnef.write_model_to_tar_gz(typed, path)
         reloaded = nnef.model_for_path(path)
         assert str(reloaded.input_fact(0)) == "B,3,224,224,F32"
         assert str(reloaded.output_fact(0)) == "B,1000,F32"
