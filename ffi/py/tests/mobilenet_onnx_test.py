@@ -2,6 +2,7 @@ import tract
 import numpy
 import urllib.request
 from os import path
+import tempfile
 
 def setup_module(module):
     if not path.exists("mobilenetv2-7.onnx"):
@@ -98,3 +99,16 @@ def test_pulse():
     assert properties == ["pulse.delay", "pulse.input_axes", "pulse.output_axes"]
     assert typed.property("pulse.delay").to_numpy() == [0]
 
+def test_typed_model_to_nnef_and_back():
+    model = tract.onnx().model_for_path("./mobilenetv2-7.onnx")
+    model.set_input_fact(0, "B,3,224,224,f32")
+    model.set_output_fact(0, None)
+    model.analyse()
+    typed = model.into_typed()
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        nnef = tract.nnef().with_tract_core()
+        path = tmpdirname.join("model")
+        nnef.write_model_to_dir(typed, path)
+        reloaded = nnef.model_for_path(path)
+        assert str(reloaded.input_fact(0)) == "B,3,224,224,F32"
+        assert str(reloaded.output_fact(0)) == "B,1000,F32"
