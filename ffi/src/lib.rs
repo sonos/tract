@@ -1,6 +1,8 @@
 #![allow(clippy::missing_safety_doc)]
 
 use anyhow::Context;
+use tract_libcli::annotations::Annotations;
+use tract_libcli::profile::BenchLimits;
 use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::ffi::{c_char, c_void, CStr, CString};
@@ -716,6 +718,29 @@ pub unsafe extern "C" fn tract_model_optimize(model: *mut TractModel) -> TRACT_R
     wrap(|| unsafe {
         check_not_null!(model);
         (*model).0.optimize()
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tract_model_profile_json(
+    model: *mut TractModel,
+    inputs: *mut *mut TractValue,
+    json: *mut *mut i8,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(model, json);
+        let model = &(*model).0;
+        let mut annotations = Annotations::from_model(model)?;
+        tract_libcli::profile::extract_costs(&mut annotations, model)?;
+        if !inputs.is_null() {
+            let input_len = model.inputs.len();
+            let values:TVec<TValue> =
+                std::slice::from_raw_parts(inputs, input_len).iter().map(|tv| (**tv).0.clone()).collect();
+            tract_libcli::profile::profile(model, &BenchLimits::default(), &mut annotations, &values)?;
+        }
+        let export = tract_libcli::export::GraphPerfInfo::from(model, &annotations);
+        *json = CString::new(serde_json::to_string(&export)?)?.into_raw();
+        Ok(())
     })
 }
 

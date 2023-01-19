@@ -351,6 +351,28 @@ class Model:
         check(lib.tract_model_property(self.ptr, str(name).encode("utf-8"), byref(value)))
         return Value(value)
 
+    def profile_json(self, inputs: Union[None, list[Union["Value", numpy.ndarray]]]) -> str:
+        self._valid()
+        cstring = c_char_p()
+        input_values = []
+        input_ptrs = None
+        if inputs != None:
+            for v in inputs:
+                if isinstance(v, Value):
+                    input_values.append(v)
+                elif isinstance(v, numpy.ndarray):
+                    input_values.append(Value.from_numpy(v))
+                else:
+                    raise TractError(f"Inputs must be of type tract.Value or numpy.Array, got {v}")
+            input_ptrs = (c_void_p * len(inputs))()
+            for ix, v in enumerate(input_values):
+                input_ptrs[ix] = v.ptr
+        check(lib.tract_model_profile_json(self.ptr, input_ptrs, byref(cstring)))
+        result = str(cstring.value, "utf-8")
+        lib.tract_free_cstring(cstring)
+        return result
+
+
 class Runnable:
     def __init__(self, ptr):
         self.ptr = ptr

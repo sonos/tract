@@ -2,6 +2,7 @@ import tract
 import numpy
 import urllib.request
 import tempfile
+import json
 from pathlib import Path
 
 def setup_module(module):
@@ -126,3 +127,31 @@ def test_typed_model_to_nnef_and_back():
         reloaded = nnef.model_for_path(path)
         assert str(reloaded.input_fact(0)) == "B,3,224,224,F32"
         assert str(reloaded.output_fact(0)) == "B,1000,F32"
+
+def test_cost():
+    model = tract.nnef().model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")
+    assert str(model.input_fact(0)) == "1,3,224,224,F32"
+    model.declutter()
+    model.optimize()
+    profile = model.profile_json(None)
+    profile = json.loads(profile)
+    assert len(profile["nodes"]) > 10
+    assert profile["nodes"][0]["node_name"] != ""
+    assert profile["nodes"][0]["op_name"] != ""
+    assert next(filter(lambda node: "cost" in node and "FMA(F32)" in node["cost"], profile["nodes"]), None) != None
+
+def test_profile():
+    model = tract.nnef().model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")
+    assert str(model.input_fact(0)) == "1,3,224,224,F32"
+    model.declutter()
+    model.optimize()
+    data = numpy.random.rand(1,3,224,224).astype(dtype="float32")
+    profile = model.profile_json([data])
+    profile = json.loads(profile)
+    profiling_info = profile["profiling_info"]
+    assert profiling_info["iterations"] >= 1
+    assert len(profile["nodes"]) > 10
+    assert profile["nodes"][0]["node_name"] != ""
+    assert profile["nodes"][0]["op_name"] != ""
+    assert profile["nodes"][0]["secs_per_iter"] > 0
+    assert next(filter(lambda node: "cost" in node and "FMA(F32)" in node["cost"], profile["nodes"]), None) != None
