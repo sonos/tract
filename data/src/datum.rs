@@ -44,7 +44,16 @@ impl Eq for QParams {}
 
 impl Ord for QParams {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.partial_cmp(other).unwrap_or(std::cmp::Ordering::Equal)
+        use QParams::*;
+        match (self, other) {
+            (MinMax { .. }, ZpScale { .. }) => std::cmp::Ordering::Less,
+            (ZpScale { .. }, MinMax { .. }) => std::cmp::Ordering::Greater,
+            (MinMax { min: min1, max: max1 }, MinMax { min: min2, max: max2 }) => {
+                min1.total_cmp(min2).then_with(|| max1.total_cmp(max2))
+            }
+            (Self::ZpScale { zero_point: zp1, scale: s1 },Self::ZpScale { zero_point: zp2, scale: s2 }) =>
+                zp1.cmp(zp2).then_with(|| s1.total_cmp(s2))
+        }
     }
 }
 
