@@ -34,7 +34,6 @@ rustls.workspace = true
 scan_fmt.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-serde_derive.workspace = true
 tract-core = { version = "=0.19.1-pre", path = "../core" }
 tract-hir = { version = "=0.19.1-pre", path = "../hir" }
 tract-nnef = { version = "=0.19.1-pre", path = "../nnef" }

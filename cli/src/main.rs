@@ -1,8 +1,6 @@
 #![allow(clippy::len_zero)]
 #[macro_use]
 extern crate log;
-#[macro_use]
-extern crate serde_derive;
 
 #[macro_use]
 mod macros;
@@ -25,7 +23,6 @@ mod compare;
 mod cost;
 mod dump;
 mod errors {}
-mod export;
 mod params;
 mod run;
 #[cfg(feature = "pulse")]

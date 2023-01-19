@@ -1,7 +1,8 @@
 use std::collections::HashMap;
+use serde::Serialize;
 use tract_core::internal::*;
-use tract_libcli::annotations::Annotations;
-use tract_libcli::model::Model;
+use crate::annotations::Annotations;
+use crate::model::Model;
 
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct GraphPerfInfo {

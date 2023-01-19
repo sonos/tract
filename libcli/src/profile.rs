@@ -2,8 +2,7 @@ use tract_core::internal::*;
 
 use crate::annotations::*;
 use crate::model::Model;
-use crate::tensor::RunParams;
-use crate::tensor::{make_inputs_for_model, retrieve_or_make_inputs};
+use crate::tensor::make_inputs_for_model;
 use std::time::{Duration, Instant};
 
 pub struct BenchLimits {
@@ -21,7 +20,7 @@ pub fn profile(
     model: &TypedModel,
     bench_limits: &BenchLimits,
     dg: &mut Annotations,
-    run_params: &RunParams,
+    inputs: &TVec<TValue>,
 ) -> TractResult<()> {
     info!("Running entire network");
     let plan = SimplePlan::new(model)?;
@@ -29,9 +28,8 @@ pub fn profile(
     let mut iters = 0usize;
     let start = Instant::now();
     while iters < bench_limits.max_iters && start.elapsed() < bench_limits.max_time {
-        let input = retrieve_or_make_inputs(model, run_params)?;
         let _ =
-            state.run_plan_with_eval(input[0].clone(), |session_state, state, node, input| {
+            state.run_plan_with_eval(inputs.clone(), |session_state, state, node, input| {
                 let start = Instant::now();
                 let r = tract_core::plan::eval(session_state, state, node, input);
                 let elapsed = start.elapsed();
@@ -101,4 +99,39 @@ pub fn profile(
     let sum = dg.tags.values().filter_map(|t| t.profile).sum::<Duration>();
     dg.profile_summary = Some(ProfileSummary { max, sum, entire, iters });
     Ok(())
+}
+
+pub fn extract_costs(annotations: &mut Annotations, model: &dyn Model) -> TractResult<()> {
+    fn extract_costs_rec(
+        annotations: &mut Annotations,
+        model: &dyn Model,
+        prefix: &[(usize, String)],
+        multiplier: TDim,
+    ) -> TractResult<()> {
+        if let Some(model) = model.downcast_ref::<TypedModel>() {
+            for node_id in 0..model.nodes().len() {
+                let inputs = model.node_input_facts(node_id)?;
+                let cost = model.node(node_id).op.cost(&inputs)?;
+                annotations.node_mut(NodeQId(prefix.into(), node_id)).cost = cost
+                    .into_iter()
+                    .map(|(k, v)| (k, if k.is_compute() { v * &multiplier } else { v }))
+                    .collect();
+
+                let nested_subs = model.nested_models(node_id);
+                let nested_multis = (model as &dyn Model).nested_models_iters(node_id, &inputs);
+                for ((name, sub), multi) in nested_subs.iter().zip(nested_multis.iter()) {
+                    let mut prefix: TVec<_> = prefix.into();
+                    prefix.push((node_id, name.to_string()));
+                    extract_costs_rec(
+                        annotations,
+                        *sub,
+                        &prefix,
+                        multi.clone().unwrap_or_else(|| 1.into()) * &multiplier,
+                    )?;
+                }
+            }
+        }
+        Ok(())
+    }
+    extract_costs_rec(annotations, model, &[], 1.into())
 }
