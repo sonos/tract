@@ -7,7 +7,7 @@ use liquid_core::{
 };
 
 pub fn register<C: PartialCompiler>(parser: ParserBuilder<C>) -> ParserBuilder<C> {
-    parser.tag(AmxTag).filter(LeftShift).filter(Setting)
+    parser.tag(AmxTag).filter(LeftShift).filter(Setting).filter(Unsigned)
 }
 
 pub fn globals() -> Vec<(KString, Value)> {
@@ -169,4 +169,23 @@ where
     liquid_core::Error::with_msg("Invalid argument")
         .context("argument", argument)
         .context("cause", cause)
+}
+
+#[derive(Clone, ParseFilter, FilterReflection)]
+#[filter(name = "u", description = "unsigned number", parsed(UnsignedFilter))]
+pub struct Unsigned;
+
+#[derive(Debug, Default, Display_filter)]
+#[name = "float16"]
+struct UnsignedFilter;
+
+impl Filter for UnsignedFilter {
+    fn evaluate(
+        &self,
+        input: &dyn ValueView,
+        _runtime: &dyn Runtime,
+    ) -> liquid_core::Result<Value> {
+        let input = input.as_scalar().unwrap().to_integer().unwrap() as u64;
+        Ok(input.to_string().to_value())
+    }
 }
