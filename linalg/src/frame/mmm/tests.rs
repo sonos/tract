@@ -403,7 +403,13 @@ where
         println!("found, expected:");
         for r in 0..m {
             for c in 0..n {
-                print!("{:4} ", found.as_slice_unchecked::<TC>()[r * n + c]);
+                let f = found.as_slice_unchecked::<TC>()[r * n + c];
+                let e = expected.as_slice_unchecked::<TC>()[r * n + c];
+                let mut s = format!("{:4} ", f);
+                if f != e {
+                    s = ansi_term::Color::Red.paint(s).to_string();
+                }
+                print!("{:4} ", s);
             }
             print!("      ");
             for c in 0..n {

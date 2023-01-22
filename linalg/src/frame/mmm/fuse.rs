@@ -418,7 +418,11 @@ pub mod test {
             println!("found, expected:");
             for m in 0..K::mr() {
                 for n in 0..K::nr() {
-                    print!("{:4} ", v[m * K::nr() + n]);
+                    use ansi_term::Color::*;
+                    let f = v[m * K::nr() + n];
+                    let e = expected[m * K::nr() + n];
+                    let color = if f != e { Red } else { Green };
+                    print!("{} ", color.paint(format!("{:4}", f)));
                 }
                 print!("      ");
                 for n in 0..K::nr() {
@@ -563,7 +567,7 @@ pub mod test {
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
         let len = K::mr() * K::nr();
-        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
+        let v: Vec<TC> = (0..len).map(|f| /*f.as_()*/ 0usize.as_()).collect();
         let bias: Vec<TI> = (0..K::nr()).map(|f| f.as_()).collect();
         fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::PerColAdd(bias.as_ptr())], |_, col, c| {
             c + bias[col]

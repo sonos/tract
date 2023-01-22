@@ -47,7 +47,7 @@ impl ParseTag for AmxTag {
             .unwrap();
         let op_id = [
             "ldx", "ldy", "stx", "sty", "ldz", "stz", "ldzi", "stzi", "extrx", "extry", "fma64",
-            "fms64", "fma32", "fms32", "mac16", "fma16", "fms16", "set", "clr", "vecint", "vecfp",
+            "fms64", "fma32", "fms32", "mac16", "fma16", "fms16", "setclr", "vecint", "vecfp",
             "matint", "matfp", "genlut",
         ]
         .iter()

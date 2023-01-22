@@ -25,13 +25,11 @@ z1[15]                  z63[15]
     {% amx fma32 x1 %}
     b .non_linear_loop
 
-.per_col_add:
 .per_col_max:
 .per_col_min:
 .per_col_mul:
 .per_col_sub:
 .per_col_sub_flipped:
-.per_row_add:
 .per_row_max:
 .per_row_min:
 .per_row_mul:
@@ -40,13 +38,85 @@ z1[15]                  z63[15]
 .q_scale:
 .q_shl:
 .q_shr:
-.scalar_max:
-.scalar_min:
 .scalar_mul:
 .scalar_sub:
 .scalar_sub_flipped:
 .add_mat_mul:
     b .unsupported
+
+.per_col_add:
+    ldr         x2, [x0, #8]
+    mov x1, sp
+    lsr x1, x1, #7
+    lsl x1, x1, #7
+    sub x1, x1, 128
+
+/*
+    fmov        s0, 1.0
+    dup         v0.4s, v0.s[0]
+    dup         v1.4s, v0.s[0]
+    dup         v2.4s, v0.s[0]
+    dup         v3.4s, v0.s[0]
+    st1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x1]
+    {% amx ldx x1 %}
+*/
+
+    ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x2], #64
+    st1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x1], #64
+    ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x2]
+    st1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x1]
+    sub x1, x1, #64
+
+    orr x1, x1, {{ 0|setting:62 }}  // load a pair
+    {% amx ldy x1 %}
+
+    mov x2, 0x20000000    // set 29 => Z+=Y
+    {% amx fma32 x2 %}
+    /*
+    // top half, 0 and 2
+    add x2, x2, 0x200000 // 2 << 20
+    {% amx fma32 x2 %}
+
+    orr x2, x2, {{0|setting:16}}
+    // lower half, 1 and 3
+    sub x2, x2, 0x100000 // 1 << 20
+    {% amx fma32 x2 %}
+    add x2, x2, 0x200000 // 2 << 20
+    {% amx fma32 x2 %}
+    */
+
+    b .non_linear_loop
+
+.per_row_add:
+    ldr         x2, [x0, #8]
+    mov x1, sp
+    lsr x1, x1, #7
+    lsl x1, x1, #7
+    sub x1, x1, 128
+    ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x2], #64
+    st1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x1], #64
+    ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x2]
+    st1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x1]
+    sub x1, x1, #64
+
+    orr x1, x1, {{ 0|setting:62 }}  // load a pair
+    {% amx ldx x1 %}
+
+    mov x2, 0x10000000    // set 28 => Z+=X 
+    // top half, 0 and 2
+    {% amx fma32 x2 %}
+    add x2, x2, 0x200000 // 2 << 20
+    {% amx fma32 x2 %}
+
+    orr x2, x2, {{0|setting:16}}
+    // lower half, 1 and 3
+    sub x2, x2, 0x100000 // 1 << 20
+    {% amx fma32 x2 %}
+    add x2, x2, 0x200000 // 2 << 20
+    {% amx fma32 x2 %}
+
+    b .non_linear_loop
+
 .scalar_add:
     ldr         w5, [x0, #8]
     mov x1, sp
@@ -61,19 +131,46 @@ z1[15]                  z63[15]
 
     st1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x1]
     {% amx ldx x1 %}    // load 16 values
-    mov x3, 0
-    .loop_scalar_add:
 
-        lsl x2, x3, 20                  // Z register to update
-        orr x2, x2, {{ 0|setting:63 }}  // vector mode
-        orr x2, x2, {{ 0|setting:28 }}  // perform Z+=X
+    mov x2, 0x10000000    // set 28 => Z+=X 
+    {% for chunk in (0..3) %}
         {% amx fma32 x2 %}
-        
-    add x3, x3, 1
-    cmp x3, 64
-    bne .loop_scalar_add
+        add x2, x2, 0x100000 // 1 << 20
+    {% endfor %}
+    b .non_linear_loop
+
+.scalar_min:
+    mov x2, 5
+    b .scalar_min_max
+.scalar_max:
+    mov x2, 7
+.scalar_min_max:
+    ldr         w5, [x0, #8]
+    mov x1, sp
+    lsr x1, x1, #7
+    lsl x1, x1, #7
+    sub x1, x1, 128
+    fmov        s0, w5
+    dup         v0.4s, v0.s[0]
+    dup         v1.4s, v0.s[0]
+    dup         v2.4s, v0.s[0]
+    dup         v3.4s, v0.s[0]
+
+    st1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x1]
+    {% amx ldx x1 %}    // load 16 values
+
+    lsl x2, x2, 47
+    orr x2, x2, {{ 0|setting:44 }} // f32
+
+    mov x3, 64
+    .loop_scalar_max:
+        add x2, x2, 0x100000 // 1 << 20
+        {% amx vecfp x2 %}
+        subs x3, x3, 1
+        bne .loop_scalar_max
 
     b .non_linear_loop
+
 .add_unicast:
     ldp         x5, x6, [x0, #8]            // c base ptr, rsc
     ldp         x7, x8, [x0, #24]           // csc, item_size
