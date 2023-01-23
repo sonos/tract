@@ -128,6 +128,7 @@ fn main() -> tract_core::anyhow::Result<()> {
         .arg(arg!(--"nnef-tract-core" "Allow usage of tract-core extension in NNEF dump and load"))
         .arg(arg!(--"nnef-tract-onnx" "Allow usage of tract-onnx extension in NNEF dump and load"))
         .arg(arg!(--"nnef-tract-pulse" "Allow usage of tract-pulse extension in NNEF dump and load"))
+        .arg(arg!(--"nnef-extended-identifier" "Allow usage of the i\"...\" syntax to escape identifier names"))
 
         .arg(arg!(-O --optimize "Optimize before running"))
         .arg(arg!(--pulse [PULSE] "Translate to pulse network"))
@@ -590,6 +591,9 @@ fn nnef(matches: &clap::ArgMatches) -> tract_nnef::internal::Nnef {
     }
     if matches.is_present("nnef-tract-core") {
         fw = fw.with_tract_core();
+    }
+    if matches.is_present("nnef-extended-identifier") {
+        fw.allow_extended_identifier_syntax(true);
     }
     fw
 }

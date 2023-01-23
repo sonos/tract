@@ -214,10 +214,10 @@ pub fn handle(
             rename_outputs(&mut typed, sub_matches)?;
             let proto = tract_nnef::ser::to_proto_model(&nnef, &typed)?;
             if path == "-" {
-                tract_nnef::ast::dump::Dumper::new(&mut std::io::stdout()).document(&proto.doc)?;
+                tract_nnef::ast::dump::Dumper::new(&nnef, &mut std::io::stdout()).document(&proto.doc)?;
             } else {
                 let mut file = std::fs::File::create(path)?;
-                tract_nnef::ast::dump::Dumper::new(&mut file).document(&proto.doc)?;
+                tract_nnef::ast::dump::Dumper::new(&nnef, &mut file).document(&proto.doc)?;
             }
         } else {
             bail!("Only typed model can be dumped")

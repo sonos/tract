@@ -16,6 +16,7 @@ pub struct Nnef {
     pub stdlib: Vec<FragmentDef>,
     pub registries: Vec<Registry>,
     pub resource_loaders: Vec<Box<dyn ResourceLoader + 'static>>,
+    pub allow_extended_identifier_syntax: bool,
 }
 
 impl Default for Nnef {
@@ -28,6 +29,7 @@ impl Default for Nnef {
                 DatLoader.into_boxed(),
                 GraphQuantLoader.into_boxed(),
             ],
+            allow_extended_identifier_syntax: false,
         }
     }
 }
@@ -61,6 +63,11 @@ impl Nnef {
         self
     }
 
+    pub fn allow_extended_identifier_syntax(&mut self, allow_extended_identifier_syntax: bool) {
+        self.allow_extended_identifier_syntax = allow_extended_identifier_syntax;
+    }
+
+
     pub fn translate(
         &self,
         proto_model: &ProtoModel,
@@ -79,7 +86,7 @@ impl Nnef {
             crate::ser::to_proto_model(self, model).context("Translating model to proto_model")?;
         let mut ar = tar::Builder::new(w);
         let mut graph_data = vec![];
-        crate::ast::dump::Dumper::new(&mut graph_data)
+        crate::ast::dump::Dumper::new(&self, &mut graph_data)
             .document(&proto_model.doc)
             .context("Serializing graph.nnef")?;
         let now =
@@ -139,7 +146,7 @@ impl Nnef {
         let proto_model = crate::ser::to_proto_model(self, model)?;
         std::fs::create_dir_all(path)?;
         let mut graph_nnef = std::fs::File::create(path.join("graph.nnef"))?;
-        crate::ast::dump::Dumper::new(&mut graph_nnef).document(&proto_model.doc)?;
+        crate::ast::dump::Dumper::new(&self, &mut graph_nnef).document(&proto_model.doc)?;
 
         if let Some(quantization) = proto_model.quantization {
             let mut graph_quant = std::fs::File::create(path.join("graph.quant"))?;

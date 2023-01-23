@@ -20,7 +20,9 @@ impl<'a> DocDumper<'a> {
         writeln!(self.w)?;
         // Generate and write unit element wise op.
         for unit_el_wise_op in registry.unit_element_wise_ops.iter() {
-            writeln!(self.w, "fragment {}( x: tensor<scalar> ) -> (y: tensor<scalar>);", unit_el_wise_op.0.escaped())?;
+            // we are assuming function names will not exhibit crazy node name weirdness, so we can
+            // dispense with escaping
+            writeln!(self.w, "fragment {}( x: tensor<scalar> ) -> (y: tensor<scalar>);", &unit_el_wise_op.0.0)?;
         }
         writeln!(self.w)?;
 
@@ -32,19 +34,19 @@ impl<'a> DocDumper<'a> {
                 parameters: el_wise_op.3.clone(),
                 results: vec![Result_ { id: "output".into(), spec: TypeName::Any.tensor() }]
             };
-            Dumper::new(self.w).fragment_decl(&fragment_decl)?;
+            Dumper::new(&Nnef::default(), self.w).fragment_decl(&fragment_decl)?;
         }
         // Generate and write Primitive declarations.
         for primitive in registry.primitives.values().sorted_by_key(|v| &v.decl.id) {
             primitive.docstrings.iter().flatten()
                 .try_for_each(|d| writeln!(self.w, "# {}", d))?;
             
-            Dumper::new(self.w).fragment_decl(&primitive.decl)?;
+            Dumper::new(&Nnef::default(), self.w).fragment_decl(&primitive.decl)?;
             writeln!(self.w, ";\n")?;
         }
 
         // Generate and write fragment declarations
-        Dumper::new(self.w)
+        Dumper::new(&Nnef::default(), self.w)
             .fragments(registry.fragments.values().cloned().collect::<Vec<_>>().as_slice())?;
 
         Ok(())
