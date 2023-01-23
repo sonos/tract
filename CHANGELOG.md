@@ -1,3 +1,8 @@
+# 0.19.1 - 2023-01-23
+* [nnef] new identifier syntax is now opt-in for serialization (both accepted at loading)
+* alpha-level C interface. how and how to deploy it (where to put the .h, whether or not to build and ship dylibs)
+* alpha-level python interface. deployed on pypi as "tract". At this stage, API is undocumented and may still change significantly.
+
 # 0.19.0 - 2023-01-11
 * [BREAKING] TValue are now used in run() instead of the previous mix of Tensor and Arc<Tensor>
 * internal API breaking changes: no more op_families, libcli split away. State is no longer Send (but can be "frozen" to a Send counterpart).
