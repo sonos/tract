@@ -180,7 +180,7 @@ impl<'a> Dumper<'a> {
             }
             self.identifier(id)?;
         }
-        write!(self.w, ") {{\n")?;
+        writeln!(self.w, ") {{")?;
         for assignment in &def.body {
             self.assignment(assignment)?;
         }
@@ -229,7 +229,7 @@ impl<'a> Dumper<'a> {
                 write!(self.w, ")")?;
             }
             RValue::Comprehension(comp) => self.comprehension(comp)?,
-            RValue::Identifier(id) => self.identifier(&id)?,
+            RValue::Identifier(id) => self.identifier(id)?,
             RValue::IfThenElse(ifte) => {
                 self.rvalue(&ifte.then)?;
                 write!(self.w, " if ")?;
@@ -282,7 +282,7 @@ impl<'a> Dumper<'a> {
                 write!(self.w, ", ")?;
             }
             if let Some(n) = &arg.id {
-                self.identifier(&n)?;
+                self.identifier(n)?;
                 write!(self.w, " = ")?;
             }
             self.rvalue(&arg.rvalue)?;
