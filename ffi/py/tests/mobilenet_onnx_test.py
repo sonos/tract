@@ -17,6 +17,10 @@ def setup_module(module):
             "mobilenet_v2_1.0.onnx.nnef.tgz"
         )
 
+def grace_hopper_1x3x224x244():
+    return numpy.load(Path(__file__).parent.parent / "grace_hopper_1x3x224x244.npy")
+
+
 def test_version():
     tract.version()
 
@@ -27,9 +31,7 @@ def test_onnx():
         .into_optimized()
         .into_runnable()
     )
-    img = numpy.load("grace_hopper_1x3x224x244.npy")
-
-    result = model.run([img])
+    result = model.run([grace_hopper_1x3x224x244()])
     confidences = result[0].to_numpy()
     assert numpy.argmax(confidences) == 652
 
@@ -43,9 +45,7 @@ def test_nnef():
         .into_optimized()
         .into_runnable()
     )
-    img = numpy.load("grace_hopper_1x3x224x244.npy")
-
-    result = model.run([img])
+    result = model.run([grace_hopper_1x3x224x244()])
     confidences = result[0].to_numpy()
     assert numpy.argmax(confidences) == 652
 

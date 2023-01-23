@@ -9,9 +9,8 @@ requires = [
 
 [tool.cibuildwheel]
 environment = "PATH=$PATH:$HOME/.cargo/bin"
-test-command = """
-python -c "import tract"
-"""
+test-requires = "pytest"
+test-command = """pytest {project}"""
 
 [tool.cibuildwheel.linux]
 skip = "*-musllinux_i686"
@@ -26,10 +25,7 @@ environment = """
 PATH=$HOME/.local/bin:$HOME/.cargo/bin:$PATH
 SCCACHE_DIR=$HOME/.cache/sccache
 SCCACHE_CACHE_SIZE=2G
-"""
-test-command = """
-python -c "import tract"
-$HOME/.local/bin/sccache --show-stats
+RUSTC_WRAPPER=sccache
 """
 
 [tool.cibuildwheel.macos]
@@ -37,10 +33,6 @@ archs = "x86_64 universal2 arm64"
 before-build = """
 rustup target add aarch64-apple-darwin
 [ -e $HOME/.local/bin/sccache ] || ./.travis/setup-sccache.sh ]
-"""
-test-command = """
-python -c "import tract"
-$HOME/.local/bin/sccache --show-stats
 """
 
 [tool.cibuildwheel.windows]
