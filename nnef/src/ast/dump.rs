@@ -14,18 +14,24 @@ macro_rules! comma_loop {
 }
 
 pub struct Dumper<'a> {
+    nnef: &'a Nnef,
     w: &'a mut dyn std::io::Write,
 }
 
 impl<'a> Dumper<'a> {
-    pub fn new(w: &'a mut dyn std::io::Write) -> Dumper {
-        Dumper { w }
+    pub fn new(nnef: &'a Nnef, w: &'a mut dyn std::io::Write) -> Dumper<'a> {
+        Dumper { nnef, w }
     }
 
     pub fn document(&mut self, document: &Document) -> TractResult<()> {
         writeln!(self.w, "version {};\n", document.version)?;
         for ext in document.extension.iter().sorted() {
-            writeln!(self.w, "extension {};", ext.iter().map(|i| i.escaped()).join(" "))?;
+            write!(self.w, "extension")?;
+            for id in ext {
+                write!(self.w, " ")?;
+                self.identifier(id)?;
+            }
+            writeln!(self.w, ";")?;
         }
         if document.extension.len() > 0 {
             writeln!(self.w)?;
@@ -57,7 +63,8 @@ impl<'a> Dumper<'a> {
     }
 
     pub(crate) fn fragment_decl(&mut self, decl: &FragmentDecl) -> TractResult<()> {
-        write!(self.w, "fragment {}", decl.id.escaped())?;
+        write!(self.w, "fragment ")?;
+        self.identifier(&decl.id)?;
         if let Some(generic_decl) = &decl.generic_decl {
             if let Some(name) = generic_decl {
                 write!(self.w, "<?=")?;
@@ -73,7 +80,8 @@ impl<'a> Dumper<'a> {
             if ix > 0 {
                 write!(self.w, ", ")?;
             }
-            write!(self.w, "{}: ", res.id.escaped())?;
+            self.identifier(&res.id)?;
+            write!(self.w, ": ")?;
             self.type_spec(&res.spec)?;
         }
         write!(self.w, ")")?;
@@ -85,7 +93,8 @@ impl<'a> Dumper<'a> {
         let num_parameters = parameters.len();
         for (ix, param) in parameters.iter().enumerate() {
             write!(self.w, "\n    ")?;
-            write!(self.w, "{}: ", param.id.escaped())?;
+            self.identifier(&param.id)?;
+            write!(self.w, ": ")?;
             self.type_spec(&param.spec)?;
             if let Some(lit) = &param.lit {
                 write!(self.w, " = ")?;
@@ -97,7 +106,6 @@ impl<'a> Dumper<'a> {
             if let Some(doc) = &param.doc {
                 write!(self.w, " # {}", doc)?;
             }
-
         }
         write!(self.w, "\n)")?;
         Ok(())
@@ -156,13 +164,23 @@ impl<'a> Dumper<'a> {
     }
 
     fn graph_def(&mut self, def: &GraphDef) -> TractResult<()> {
-        writeln!(
-            self.w,
-            "graph {}( {} ) -> ( {} ) {{",
-            def.id.escaped(),
-            def.parameters.iter().map(Identifier::escaped).join(", "),
-            def.results.iter().map(Identifier::escaped).join(", ")
-        )?;
+        write!(self.w, "graph ")?;
+        self.identifier(&def.id)?;
+        write!(self.w, "(")?;
+        for (ix, id) in def.parameters.iter().enumerate() {
+            if ix > 0 {
+                write!(self.w, ", ")?;
+            }
+            self.identifier(id)?;
+        }
+        write!(self.w, ") -> (")?;
+        for (ix, id) in def.results.iter().enumerate() {
+            if ix > 0 {
+                write!(self.w, ", ")?;
+            }
+            self.identifier(id)?;
+        }
+        write!(self.w, ") {{\n")?;
         for assignment in &def.body {
             self.assignment(assignment)?;
         }
@@ -181,7 +199,7 @@ impl<'a> Dumper<'a> {
 
     fn lvalue(&mut self, left: &LValue) -> TractResult<()> {
         match left {
-            LValue::Identifier(s) => write!(self.w, "{}", s.escaped())?,
+            LValue::Identifier(s) => self.identifier(s)?,
             LValue::Tuple(s) => {
                 write!(self.w, "( ")?;
                 comma_loop!(self, lvalue, s);
@@ -211,7 +229,7 @@ impl<'a> Dumper<'a> {
                 write!(self.w, ")")?;
             }
             RValue::Comprehension(comp) => self.comprehension(comp)?,
-            RValue::Identifier(id) => write!(self.w, "{}", id.escaped())?,
+            RValue::Identifier(id) => self.identifier(&id)?,
             RValue::IfThenElse(ifte) => {
                 self.rvalue(&ifte.then)?;
                 write!(self.w, " if ")?;
@@ -252,7 +270,7 @@ impl<'a> Dumper<'a> {
     }
 
     fn invocation(&mut self, inv: &Invocation) -> TractResult<()> {
-        write!(self.w, "{}", inv.id.escaped())?;
+        self.identifier(&inv.id)?;
         if let Some(tn) = &inv.generic_type_name {
             write!(self.w, "<")?;
             self.type_name(tn)?;
@@ -264,7 +282,8 @@ impl<'a> Dumper<'a> {
                 write!(self.w, ", ")?;
             }
             if let Some(n) = &arg.id {
-                write!(self.w, "{} = ", n.escaped())?;
+                self.identifier(&n)?;
+                write!(self.w, " = ")?;
             }
             self.rvalue(&arg.rvalue)?;
         }
@@ -275,7 +294,8 @@ impl<'a> Dumper<'a> {
     fn comprehension(&mut self, comp: &Comprehension) -> TractResult<()> {
         write!(self.w, "[ for")?;
         for iter in &comp.loop_iters {
-            write!(self.w, "{} in ", &iter.0.escaped())?;
+            self.identifier(&iter.0)?;
+            write!(self.w, " in ")?;
             self.rvalue(&iter.1)?;
         }
         if let Some(filter) = &comp.filter {
@@ -285,6 +305,32 @@ impl<'a> Dumper<'a> {
         write!(self.w, " yield ")?;
         self.rvalue(&comp.yields)?;
         write!(self.w, "]")?;
+        Ok(())
+    }
+
+    fn identifier(&mut self, id: &Identifier) -> TractResult<()> {
+        if id.0.len() == 0 {
+            return Ok(());
+        }
+        let first = id.0.chars().next().unwrap();
+        if (first.is_alphabetic() || first == '_')
+            && id.0.chars().all(|c| c.is_alphanumeric() || c == '_')
+        {
+            write!(self.w, "{}", id.0)?;
+        } else if self.nnef.allow_extended_identifier_syntax {
+            write!(self.w, "i\"{}\"", id.0.replace('\\', "\\\\").replace('\"', "\\\""))?;
+        } else {
+            if !(first.is_alphabetic() || first == '_') {
+                write!(self.w, "_")?;
+            }
+            for c in id.0.chars() {
+                if c.is_alphanumeric() {
+                    write!(self.w, "{}", c)?;
+                } else {
+                    write!(self.w, "_")?;
+                }
+            }
+        }
         Ok(())
     }
 }

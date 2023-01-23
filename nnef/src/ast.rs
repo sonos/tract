@@ -228,20 +228,6 @@ impl AsRef<str> for Identifier {
     }
 }
 
-impl Identifier {
-    fn escaped(&self) -> Cow<str> {
-        if self.0.len() > 0 {
-            let first = self.0.chars().next().unwrap();
-            if (first.is_alphabetic() || first == '_')
-                && self.0.chars().all(|c| c.is_alphanumeric() || c == '_')
-            {
-                return Cow::Borrowed(&self.0);
-            }
-        }
-        Cow::Owned(format!("i\"{}\"", self.0.replace('\\', "\\\\").replace('\"', "\\\"")))
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Assignment {
     pub left: LValue,

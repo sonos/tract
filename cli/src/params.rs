@@ -221,7 +221,7 @@ impl Parameters {
                             .body
                             .iter()
                             .position(|a| a.left == LValue::Identifier(name.clone()))
-                            .context("Coulnt not find input assignement in nnef body")?;
+                            .context("Could not find input assignement in nnef body")?;
                         let mut formatted = vec![];
                         let ass = &mut proto_model.doc.graph_def.body[assignment_id];
                         let inv = if let RValue::Invocation(inv) = &mut ass.right {
@@ -237,7 +237,7 @@ impl Parameters {
                             inv.arguments
                         );
                         assert_eq!(inv.arguments[0].id.as_ref().map(|i| &*i.0), Some("shape"));
-                        Dumper::new(&mut formatted).rvalue(&inv.arguments[0].rvalue)?;
+                        Dumper::new(&nnef, &mut formatted).rvalue(&inv.arguments[0].rvalue)?;
                         let shape = over
                             .shape
                             .concretize()
@@ -815,8 +815,10 @@ impl Parameters {
 
         if let Some(consts) = matches.values_of("constantize") {
             for konst in consts {
-                if let Some(value) =
-                    tensors_values.by_name(konst).and_then(|tv| tv.values.as_ref()).and_then(|v| v.get(0))
+                if let Some(value) = tensors_values
+                    .by_name(konst)
+                    .and_then(|tv| tv.values.as_ref())
+                    .and_then(|v| v.get(0))
                 {
                     let value = value.clone().into_arc_tensor();
                     let id = raw_model.node_id_by_name(konst)?;

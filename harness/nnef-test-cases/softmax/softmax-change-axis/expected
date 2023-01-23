@@ -6,7 +6,7 @@ fragment tract_core_properties(
   properties = [("tract_nnef_ser_version", "0.16.10-pre"), ("tract_nnef_format_version", "beta1")];
 }
 
-graph network( input ) -> ( output ) {
+graph network(input) -> (output) {
   input = external(shape = [2, 1, 3]);
   softmax1 = softmax(input, axes = [2]);
   output = softmax1;

@@ -163,36 +163,41 @@ fn de_scan(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
     let full: TVec<(String, OutletId)> = invocation.named_arg_as(builder, "full")?;
     let state: TVec<(String, OutletId, String)> = invocation.named_arg_as(builder, "state")?;
     for par in &fragment.decl.parameters {
-        let (outer_input_wire, inner_fact) =
-            if let Some((_, wire, axis, chunk)) = scan.iter().find(|s| s.0 == par.id.0) {
-                input_mapping.push(InputMapping::Scan(ScanInfo {
-                    slot: outer_inputs.len(),
-                    axis: *axis,
-                    chunk: *chunk,
-                }));
-                let mut fact = builder.model.outlet_fact(*wire)?.clone();
-                fact.shape.set(*axis, chunk.abs().to_dim());
-                (*wire, fact)
-            } else if let Some((_, wire)) = full.iter().find(|s| s.0 == par.id.0) {
-                input_mapping.push(InputMapping::Full { slot: outer_inputs.len() });
-                let fact = builder.model.outlet_fact(*wire)?.clone();
-                (*wire, fact)
-            } else if let Some((_, wire, _out)) = state.iter().find(|s| s.0 == par.id.0) {
-                let fact = builder.model.outlet_fact(*wire)?.clone();
-                input_mapping.push(InputMapping::State {
-                    initializer: StateInitializer::FromInput(outer_inputs.len()),
-                });
-                (*wire, fact.datum_type.fact(fact.shape))
-            } else {
-                bail!("Unbound body input parameter {}", par.id.0);
-            };
+        let (outer_input_wire, inner_fact) = if let Some((_, wire, axis, chunk)) =
+            scan.iter().find(|s| s.0 == par.id.0 || escape(&s.0) == par.id.0)
+        {
+            input_mapping.push(InputMapping::Scan(ScanInfo {
+                slot: outer_inputs.len(),
+                axis: *axis,
+                chunk: *chunk,
+            }));
+            let mut fact = builder.model.outlet_fact(*wire)?.clone();
+            fact.shape.set(*axis, chunk.abs().to_dim());
+            (*wire, fact)
+        } else if let Some((_, wire)) =
+            full.iter().find(|s| s.0 == par.id.0 || escape(&s.0) == par.id.0)
+        {
+            input_mapping.push(InputMapping::Full { slot: outer_inputs.len() });
+            let fact = builder.model.outlet_fact(*wire)?.clone();
+            (*wire, fact)
+        } else if let Some((_, wire, _out)) =
+            state.iter().find(|s| s.0 == par.id.0 || escape(&s.0) == par.id.0)
+        {
+            let fact = builder.model.outlet_fact(*wire)?.clone();
+            input_mapping.push(InputMapping::State {
+                initializer: StateInitializer::FromInput(outer_inputs.len()),
+            });
+            (*wire, fact.datum_type.fact(fact.shape))
+        } else {
+            bail!("Unbound body input parameter {}", par.id.0);
+        };
         outer_inputs.push(outer_input_wire);
         body.scopes.last_mut().unwrap().insert(
             par.id.clone(),
             Value::Wire(body.model.add_source(par.id.0.to_string(), inner_fact)?),
         );
     }
-    body.wire_body(fragment.body.as_deref().unwrap())?;
+    body.wire_body(fragment.body.as_deref().unwrap()).context("wiring scan body")?;
     let body_outputs = fragment
         .decl
         .results
@@ -202,12 +207,14 @@ fn de_scan(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
                 format!("Could not find variable for scan output named `{}'", r.id.0)
             })
         })
-        .collect::<TractResult<Vec<&Value>>>()?;
+        .collect::<TractResult<Vec<&Value>>>()
+        .context("Finding output in body")?;
 
     let body_outputs: Vec<OutletId> = body_outputs
         .iter()
         .map(|v| v.to::<OutletId>(builder))
-        .collect::<TractResult<Vec<OutletId>>>()?;
+        .collect::<TractResult<Vec<OutletId>>>()
+        .context("Coercing outputs to wires")?;
     body.model.set_output_outlets(&body_outputs)?;
     // preferred form for output is 4 arguments, but early models had 3 arguments output,
     // breaking support for bidirectional
@@ -236,17 +243,33 @@ fn de_scan(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
             scan: outputs
                 .iter()
                 .enumerate()
-                .find(|(_, om)| om.0 == output_name && om.1 == "full")
+                .find(|(_, om)| {
+                    (om.0 == output_name || escape(&om.0) == output_name) && om.1 == "full"
+                })
                 .map(|(ix, om)| ScanInfo { slot: ix, axis: om.2, chunk: om.3 }),
             last_value_slot: outputs
                 .iter()
                 .enumerate()
-                .find(|(_, om)| om.0 == output_name && om.1 == "last")
+                .find(|(_, om)| {
+                    (om.0 == output_name || escape(&om.0) == output_name) && om.1 == "last"
+                })
                 .map(|(ix, _om)| ix),
-            state: state.iter().any(|state| state.2 == output_name),
+            state: state
+                .iter()
+                .any(|state| state.2 == output_name || escape(&state.2) == output_name),
         });
     }
     let skip: usize = invocation.named_arg_as(builder, "skip")?;
     let op = Scan::new(body.model, input_mapping, output_mapping, None, skip)?;
     builder.wire(op, &outer_inputs)
+}
+
+fn escape(it: &str) -> String {
+    let mut escaped = String::new();
+    let first = it.chars().next().unwrap();
+    if !(first.is_alphabetic() || first == '_') {
+        escaped.push('_');
+    }
+    escaped.extend(it.chars().map(|c| if c.is_alphanumeric() { c } else { '_' }));
+    escaped
 }

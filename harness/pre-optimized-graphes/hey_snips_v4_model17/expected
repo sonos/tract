@@ -9,7 +9,7 @@ fragment tract_core_properties(
   properties = [("pulse.delay", tract_core_cast([182], to = "i64")), ("pulse.input_axes", tract_core_cast([0], to = "i64")), ("pulse.output_axes", tract_core_cast([0], to = "i64")), ("tract_nnef_ser_version", "0.16.10-pre"), ("tract_nnef_format_version", "beta1")];
 }
 
-graph wavenet_2( input_node ) -> ( i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D.matmul" ) {
+graph wavenet_2(input_node) -> (i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D.matmul") {
   input_node = external(shape = [8, 20]);
   i"input_batch_normalisation/batchnorm/mul.fix-rank-1-2" = variable<scalar>(label = "wavenet_2/input_batch_normalisation/batchnorm/mul.fix-rank-1-2", shape = [1, 20]);
   i"input_batch_normalisation/batchnorm/mul" = mul(input_node, i"input_batch_normalisation/batchnorm/mul.fix-rank-1-2");

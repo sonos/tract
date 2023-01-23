@@ -1,5 +1,6 @@
 use tract_nnef::ast::dump;
 use tract_nnef::ast::parse;
+use tract_nnef::internal::Nnef;
 
 #[test]
 fn parse_alexnet() {
@@ -12,7 +13,7 @@ fn parse_dump_parse_alexnet() {
     let content = std::fs::read_to_string("tests/alexnet.nnef").unwrap();
     let ast = parse::parse_document(&content).unwrap();
     let mut dumped = vec![];
-    dump::Dumper::new(&mut dumped).document(&ast).unwrap();
+    dump::Dumper::new(&Nnef::default(), &mut dumped).document(&ast).unwrap();
 
     let dumped = String::from_utf8(dumped).unwrap();
     let ast2 = parse::parse_document(&dumped).unwrap();
@@ -32,7 +33,7 @@ fn parse_dump_parse_stdlib() {
     let mut ast = parse::parse_fragments(&content).unwrap();
     ast.sort_by_key(|f| f.decl.id.clone());
     let mut dumped = vec![];
-    dump::Dumper::new(&mut dumped).fragments(&ast).unwrap();
+    dump::Dumper::new(&Nnef::default(), &mut dumped).fragments(&ast).unwrap();
 
     let dumped = String::from_utf8(dumped).unwrap();
     println!("{}", dumped);
