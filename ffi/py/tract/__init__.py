@@ -351,7 +351,7 @@ class Model:
         check(lib.tract_model_property(self.ptr, str(name).encode("utf-8"), byref(value)))
         return Value(value)
 
-    def profile_json(self, inputs: Union[None, list[Union["Value", numpy.ndarray]]]) -> str:
+    def profile_json(self, inputs: Union[None, List[Union["Value", numpy.ndarray]]]) -> str:
         self._valid()
         cstring = c_char_p()
         input_values = []
