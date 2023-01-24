@@ -2,11 +2,16 @@ use std::fmt::Debug;
 
 use crate::internal::*;
 use crate::optim::change_axes::ChangeAxes;
+use crate::tract_data::itertools::Itertools;
+use crate::ops::array::Slice;
 
 mod eval;
 mod expr;
 pub use expr::Axis;
 pub use expr::Expr;
+
+use super::array::TypedConcat;
+use super::math::add;
 mod to_matmul;
 
 #[derive(Clone, Hash, new)]
@@ -25,7 +30,7 @@ impl EinSum {
         node: &TypedNode,
         io: InOut,
         axis: usize,
-    ) -> TractResult<Option<TypedModelPatch>> {
+        ) -> TractResult<Option<TypedModelPatch>> {
         let mut new_axis = match io {
             InOut::In(slot) => self.expr.input_axis(slot, axis).unwrap().clone(),
             InOut::Out(_) => self.expr.output_axis(axis).unwrap().clone(),
@@ -36,24 +41,35 @@ impl EinSum {
         for (ix, input) in node.inputs.iter().enumerate() {
             let mut tap = patch.tap_model(model, *input)?;
             if new_axis.inputs[ix].len() > 1 {
-                return Ok(None) // FIXME maybe
+                return Ok(None); // FIXME maybe
             } else if new_axis.inputs[ix].is_empty() {
                 let insert_at = self.expr.input_rank(ix);
-                tap = patch.wire_node(format!("{}.prop_axis.{}.input_{}", &node.name, new_axis.repr, ix), AxisOp::Add(insert_at), &[tap])?[0];
+                tap = patch.wire_node(
+                    format!("{}.prop_axis.{}.input_{}", &node.name, new_axis.repr, ix),
+                    AxisOp::Add(insert_at),
+                    &[tap],
+                    )?[0];
                 new_axis.inputs[ix].push(insert_at);
             }
             taps.push(tap);
         }
-        let must_rm_axis:Option<usize> = if  new_axis.result.is_none() {
+        let must_rm_axis: Option<usize> = if new_axis.result.is_none() {
             let insert_at = self.expr.output_rank();
             new_axis.result = Some(insert_at);
             Some(insert_at)
-        } else { None };
+        } else {
+            None
+        };
         let mut new_expr = self.expr.clone();
-        *new_expr.iter_all_axes_mut().find(|ax| ax.repr == repr).unwrap() =  new_axis;
-        let mut wire = patch.wire_node(&node.name, Self { expr: new_expr, ..self.clone() }, &taps)?;
+        *new_expr.iter_all_axes_mut().find(|ax| ax.repr == repr).unwrap() = new_axis;
+        let mut wire =
+            patch.wire_node(&node.name, Self { expr: new_expr, ..self.clone() }, &taps)?;
         if let Some(position) = must_rm_axis {
-            wire = patch.wire_node(format!("{}.prop_axis.{}.output", &node.name, repr), AxisOp::Rm(position), &wire)?;
+            wire = patch.wire_node(
+                format!("{}.prop_axis.{}.output", &node.name, repr),
+                AxisOp::Rm(position),
+                &wire,
+                )?;
         }
         patch.shunt_outside(model, node.id.into(), wire[0])?;
         Ok(Some(patch))
@@ -91,9 +107,9 @@ impl EvalOp for EinSum {
 impl TypedOp for EinSum {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(inputs
-            .iter()
-            .enumerate()
-            .all(|(ix, fact)| fact.rank() == self.expr.input_rank(ix)));
+                .iter()
+                .enumerate()
+                .all(|(ix, fact)| fact.rank() == self.expr.input_rank(ix)));
         let shapes: TVec<&[TDim]> = inputs.iter().map(|t| &*t.shape).collect();
         Ok(tvec!(TypedFact::dt_shape(self.operating_dt, eval::output_shape(&self.expr, &shapes))))
     }
@@ -102,7 +118,7 @@ impl TypedOp for EinSum {
         &self,
         inputs: &[&TypedFact],
         _outputs: &[&TypedFact],
-    ) -> TractResult<Invariants> {
+        ) -> TractResult<Invariants> {
         let inv = self
             .expr
             .iter_all_axes()
@@ -116,7 +132,7 @@ impl TypedOp for EinSum {
                     Some(AxisInfo { inputs: i, outputs: tvec!(o), period: 1, disposable: true })
                 }
             })
-            .collect();
+        .collect();
         Ok(inv)
     }
 
@@ -137,10 +153,10 @@ impl TypedOp for EinSum {
                             .collect::<TVec<_>>()
                             .into_iter()
                     })
-                    .max()
+                .max()
                     .unwrap()
             })
-            .product::<TDim>();
+        .product::<TDim>();
         Ok(tvec!((Cost::FMA(self.operating_dt), oshape.iter().product::<TDim>() * ks)))
     }
 
@@ -152,7 +168,7 @@ impl TypedOp for EinSum {
         _output_axis: usize,
         _start: usize,
         _end: usize,
-    ) -> TractResult<Option<TVec<OutletId>>> {
+        ) -> TractResult<Option<TVec<OutletId>>> {
         patch.wire_node(prefix, self.clone(), inputs).map(Some)
     }
 
@@ -163,7 +179,7 @@ impl TypedOp for EinSum {
         node: &TypedNode,
         io: InOut,
         change: &AxisOp,
-    ) -> TractResult<Option<AxisChangeConsequence>> {
+        ) -> TractResult<Option<AxisChangeConsequence>> {
         let (mut inputs, mut result) = self.expr.to_strs();
         let interface: &mut String = match io {
             InOut::In(i) => &mut inputs[i],
@@ -189,15 +205,83 @@ impl TypedOp for EinSum {
         }));
     }
 
-    /*
     fn declutter(
-    &self,
-    model: &TypedModel,
-    node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-    to_matmul::declutter(self, model, node)
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        ) -> TractResult<Option<TypedModelPatch>> {
+        // mka,kn->bmn (m=1, k=384 n=256)
+        eprintln!("{} ({})", node, self.expr);
+        'outer: for (slot, input) in node.inputs.iter().enumerate() {
+            let precursor = model.node(input.node);
+            eprintln!("  - {}", precursor);
+            if let Some(concat) = precursor.op_as::<TypedConcat>() {
+                dbg!(concat);
+                let offsets = concat.offsets(&model.node_input_facts(precursor.id)?)?;
+                let axis_info = self.expr.input_axis(slot, concat.axis).context("Axis unmapped")?;
+                let mut patch = TypedModelPatch::new(format!(
+                        "Split Einsum for concat on axis {}",
+                        axis_info.repr
+                        ));
+                // inputs[einsum_input_slot][concated_slice]. concated_slice = 0 for broadcast
+                let mut inputs: TVec<TVec<OutletId>> = tvec!();
+                for (slot, input) in node.inputs.iter().enumerate() {
+                    let tap = patch.tap_model(model, *input)?;
+                    if axis_info.inputs[slot].len() > 1 {
+                        continue 'outer;
+                    } else if axis_info.inputs[slot].len() == 1 {
+                        let mut slices = tvec!();
+                        for (start, end) in offsets.iter().cloned().tuple_windows() {
+                            let wire = patch.wire_node(
+                                format!("{}.concat-einsum-slice-{}.{}.{}..{}", node.name, axis_info.repr, slot, start, end),
+                                Slice { axis: axis_info.inputs[slot][0], start, end },
+                                &[tap],
+                                )?;
+                            slices.push(wire[0]);
+                        }
+                        inputs.push(slices);
+                    } else {
+                        inputs.push(tvec!(tap)); // broadcast
+                    };
+                }
+                let mut einsums = tvec!();
+                for (ix, (start, end)) in offsets.iter().tuple_windows().enumerate() {
+                    let mut einsum_inputs = tvec!();
+                    for input_ix in 0..node.inputs.len() {
+                        einsum_inputs.push(inputs[input_ix].get(ix).cloned().unwrap_or(inputs[input_ix][0]));
+                    }
+                    let einsum = patch.wire_node(
+                        format!("{}.concat-einsum-{}.{}..{}", node.name, axis_info.repr, start, end),
+                        self.clone(),
+                        &einsum_inputs,
+                        )?[0];
+                    eprintln!("fact {} {:?}", ix, patch.outlet_fact(einsum)?);
+                    einsums.push(einsum);
+                }
+                let wire = if let Some(axis) = axis_info.result {
+                    patch.wire_node(
+                        format!("{}.concat-einsum-{}.concat", node.name, axis_info.repr),
+                        TypedConcat { axis },
+                        &einsums,
+                        )?[0]
+                } else {
+                    let mut wire = einsums[0];
+                    for ix in 1..einsums.len() {
+                        wire = patch.wire_node(
+                            format!("{}.concat-einsum-{}.add-{}", node.name, axis_info.repr, ix),
+                            add(),
+                            &[wire, einsums[ix]]
+                            )?[0]
+                    }
+                    wire
+                };
+                patch.shunt_outside(model, node.id.into(), wire)?;
+                return Ok(Some(patch));
+            }
+        }
+        return Ok(None)
+            //    to_matmul::declutter(self, model, node)
     }
-    */
 
     as_op!();
 }
