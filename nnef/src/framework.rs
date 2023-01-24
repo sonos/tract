@@ -180,9 +180,16 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
         }
 
         let mut resources: HashMap<String, Arc<dyn Resource>> = Default::default();
-        for entry in walkdir::WalkDir::new(path) {
+
+        // `walkdir::new` will first yield the given path at depth 0, but we don't want to load this
+        // entry here: only its descendants at depth >= 1.
+        for entry in walkdir::WalkDir::new(path).min_depth(1) {
             let entry =
                 entry.map_err(|e| format_err!("Can not walk directory {:?}: {:?}", path, e))?;
+            // We don't want to load sub-directories themselves either.
+            if entry.path().is_dir() {
+                continue;
+            }
             let subpath = entry
                 .path()
                 .components()
