@@ -40,8 +40,8 @@ jobs:
             rustup default stable-x86_64-pc-windows-${{matrix.toolchain}}
     - name: top level cargo check
       run: cargo check
-    - name: linalg, core, nnef tests
-      run: cargo test -p tract-linalg -p tract-core -p tract-nnef
+    - name: data / linalg / core / nnef / onnx / onnx-opl
+      run: cargo test -p tract-data -p tract-linalg -p tract-core -p tract-nnef -p tract-onnx -p tract-onnx-opl
     - name: Onnx test suite
       run: |
           choco install --no-progress wget
