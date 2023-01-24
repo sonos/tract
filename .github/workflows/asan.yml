@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
 
-    runs-on: [ ubuntu-latest, macos-latest ]
+    runs-on: [ ubuntu-latest, macOS-latest ]
 
     steps:
     - uses: actions/checkout@v3
