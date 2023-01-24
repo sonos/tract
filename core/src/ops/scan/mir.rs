@@ -454,9 +454,7 @@ impl Scan {
                         )
                         .context("building axis propagating patch")?
                     {
-                        dbg!(&patch);
                         patch.apply(&mut new_body)?;
-                        dbg!(new_body.to_string());
                     }
                 }
                 let emitter_outlet = new_body.output_outlets()?[model_ix];

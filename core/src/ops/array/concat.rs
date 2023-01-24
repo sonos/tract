@@ -1,4 +1,8 @@
+use tract_data::itertools::Itertools;
+
 use crate::internal::*;
+
+use super::Slice;
 
 #[derive(new, Debug, Clone, Hash)]
 pub struct TypedConcat {
@@ -73,6 +77,39 @@ impl TypedOp for TypedConcat {
         Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
     }
 
+    fn slice(
+        &self,
+        patch: &mut TypedModelPatch,
+        prefix: &str,
+        inputs: &[OutletId],
+        output_axis: usize,
+        start: usize,
+        end: usize,
+    ) -> TractResult<Option<TVec<OutletId>>> {
+        let facts =
+            inputs.iter().map(|o| patch.outlet_fact(*o)).collect::<TractResult<TVec<_>>>()?;
+        let offsets = self.offsets(&facts)?;
+        std::mem::forget(facts);
+        for (slice_start, slice_end) in offsets.iter().tuple_windows() {
+            if let (Ok(slice_start), Ok(slice_end)) = (slice_start.to_usize(), slice_end.to_usize())
+            {
+                if slice_start <= start && end <= slice_end {
+                    return patch
+                        .wire_node(
+                            format!("{prefix}.slice-{output_axis}.{start}..{end}"),
+                            Slice {
+                                axis: output_axis,
+                                start: (start - slice_start).to_dim(),
+                                end: (end - slice_start).to_dim(),
+                            },
+                            &inputs,
+                        )
+                        .map(Some);
+                }
+            }
+        }
+        Ok(None)
+    }
 }
 
 impl EvalOp for TypedConcat {
