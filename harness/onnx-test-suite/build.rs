@@ -68,7 +68,7 @@ pub fn ensure_onnx_git_checkout() {
                     .arg("-C")
                     .arg(&tmp)
                     .arg("checkout")
-                    .arg(format!("v{}", v))
+                    .arg(format!("v{v}"))
                     .status()
                     .unwrap();
                 if !run.success() {
@@ -98,7 +98,7 @@ pub fn make_test_file(root: &mut fs::File, tests_set: &str, onnx_tag: &str) {
         .join(tests_set);
     assert!(node_tests.exists());
     let working_list_file =
-        path::PathBuf::from(".").join(format!("{}-{}.txt", tests_set, onnx_tag));
+        path::PathBuf::from(".").join(format!("{tests_set}-{onnx_tag}.txt"));
     println!("cargo:rerun-if-changed={}", working_list_file.to_str().unwrap());
     let working_list: Vec<(String, Vec<String>)> = fs::read_to_string(&working_list_file)
         .unwrap()
@@ -115,7 +115,7 @@ pub fn make_test_file(root: &mut fs::File, tests_set: &str, onnx_tag: &str) {
     let test_dir = out_dir.join("tests");
     let tests_set_ver = format!("{}_{}", tests_set.replace('-', "_"), onnx_tag.replace('.', "_"));
 
-    writeln!(root, "include!(concat!(env!(\"OUT_DIR\"), \"/tests/{}.rs\"));", tests_set_ver)
+    writeln!(root, "include!(concat!(env!(\"OUT_DIR\"), \"/tests/{tests_set_ver}.rs\"));")
         .unwrap();
 
     let test_file = test_dir.join(&tests_set_ver).with_extension("rs");
@@ -125,9 +125,9 @@ pub fn make_test_file(root: &mut fs::File, tests_set: &str, onnx_tag: &str) {
         .map(|de| de.unwrap().file_name().to_str().unwrap().to_owned())
         .collect();
     tests.sort();
-    writeln!(rs, "mod {} {{", tests_set_ver).unwrap();
+    writeln!(rs, "mod {tests_set_ver} {{").unwrap();
     for &mode in &[Plain, Optim, Nnef] {
-        writeln!(rs, "mod {} {{", format!("{:?}", mode).to_lowercase()).unwrap();
+        writeln!(rs, "mod {} {{", format!("{mode:?}").to_lowercase()).unwrap();
         writeln!(rs, "use tract_core::internal::*;").unwrap();
         writeln!(rs, "use crate::onnx::{{run_one, Mode}};").unwrap();
         for t in &tests {
@@ -146,8 +146,8 @@ pub fn make_test_file(root: &mut fs::File, tests_set: &str, onnx_tag: &str) {
                 writeln!(rs, "#[ignore]").unwrap();
             }
             let more = pair.map(|p| &*p.1).unwrap_or(&[]);
-            writeln!(rs, "fn {}() -> TractResult<()> {{", t).unwrap();
-            writeln!(rs, "run_one({:?}, {:?}, Mode::{:?}, &{:?})", node_tests, t, mode, more)
+            writeln!(rs, "fn {t}() -> TractResult<()> {{").unwrap();
+            writeln!(rs, "run_one({node_tests:?}, {t:?}, Mode::{mode:?}, &{more:?})")
                 .unwrap();
             writeln!(rs, "}}").unwrap();
         }

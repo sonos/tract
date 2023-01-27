@@ -55,9 +55,9 @@ impl InputMapping {
 impl fmt::Debug for InputMapping {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            InputMapping::Full { slot } => write!(fmt, "Full, inlet {}", slot),
+            InputMapping::Full { slot } => write!(fmt, "Full, inlet {slot}"),
             InputMapping::State { initializer } => {
-                write!(fmt, "State initialized by {:?}", initializer)
+                write!(fmt, "State initialized by {initializer:?}")
             }
             InputMapping::Scan(info) => {
                 write!(
@@ -99,13 +99,13 @@ impl<F: Clone + fmt::Display> fmt::Debug for OutputMapping<F> {
             write!(fmt, "State. ")?;
         }
         if let Some(last_value_slot) = self.last_value_slot {
-            write!(fmt, "Last value to outlet {}. ", last_value_slot)?;
+            write!(fmt, "Last value to outlet {last_value_slot}. ")?;
         }
         if let Some(info) = self.scan {
             write!(fmt, "Full value to outlet {} (axis: {}). ", info.slot, info.axis)?;
         }
         if let Some(full_dim_hint) = &self.full_dim_hint {
-            write!(fmt, "Full len {}. ", full_dim_hint)?;
+            write!(fmt, "Full len {full_dim_hint}. ")?;
         }
         Ok(())
     }
@@ -121,8 +121,8 @@ impl fmt::Debug for StateInitializer {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         use StateInitializer::*;
         match self {
-            FromInput(i) => write!(fmt, "inlet {}", i),
-            Value(t) => write!(fmt, "tensor {:?}", t),
+            FromInput(i) => write!(fmt, "inlet {i}"),
+            Value(t) => write!(fmt, "tensor {t:?}"),
         }
     }
 }

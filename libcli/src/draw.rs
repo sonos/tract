@@ -20,7 +20,7 @@ impl fmt::Debug for Wire {
         if let Some(c) = self.color {
             write!(fmt, "{}", c.paint(s))
         } else {
-            write!(fmt, "{}", s)
+            write!(fmt, "{s}")
         }
     }
 }

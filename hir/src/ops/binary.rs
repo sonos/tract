@@ -78,7 +78,7 @@ pub fn wire_cast(
     for (ix, mut wire) in inputs.iter().copied().enumerate() {
         if target.outlet_fact(wire)?.datum_type != operating_datum_type {
             wire = target.wire_node(
-                format!("{}.cast-{}", prefix, ix),
+                format!("{prefix}.cast-{ix}"),
                 mir::cast::cast(operating_datum_type),
                 &[wire],
             )?[0];
@@ -167,7 +167,7 @@ impl InferenceRulesOp for Nary {
             (0..n).map(|i| (&inputs[i].datum_type).bex()),
             move |s, types: Vec<DatumType>| {
                 let dt = DatumType::super_type_for(&types)
-                    .with_context(|| format!("No super type for {:?}", types))?;
+                    .with_context(|| format!("No super type for {types:?}"))?;
                 let dt = self.0.operating_datum_type(dt, dt)?;
                 let result = self.0.result_datum_type(dt, dt)?;
                 s.equals(&outputs[0].datum_type, result)
@@ -193,7 +193,7 @@ impl InferenceRulesOp for Nary {
             .map(|i| Ok(target.outlet_fact(*i)?.datum_type))
             .collect::<TractResult<Vec<_>>>()?;
         let dt = DatumType::super_type_for(&types)
-            .with_context(|| format!("No super type for {:?}", types))?;
+            .with_context(|| format!("No super type for {types:?}"))?;
         let operating = self.0.operating_datum_type(dt, dt)?;
         let inputs = wire_cast(&node.name, target, &inputs, operating)?;
         let mut wire = inputs[0];

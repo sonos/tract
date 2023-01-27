@@ -28,7 +28,7 @@ impl Expansion for MultiBroadcastTo {
                 let dims = dims.cast_to::<TDim>()?;
                 let dims =
                     tract_core::broadcast::multi_broadcast(&[dims.as_slice::<TDim>()?, &shape])
-                        .with_context(|| format!("broadcasting {:?} to {:?}", shape, dims))?;
+                        .with_context(|| format!("broadcasting {shape:?} to {dims:?}"))?;
                 s.equals(&outputs[0].shape, ShapeFactoid::from(dims))
             })
         })

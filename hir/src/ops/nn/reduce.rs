@@ -44,41 +44,41 @@ impl Reducer {
             Prod => wire = target.wire_node(name, TReduce::new(axes, TReducer::Prod), &[wire])?[0],
 
             L1 => {
-                wire = target.wire_node(format!("{}.abs", name), math::abs(), &[wire])?[0];
+                wire = target.wire_node(format!("{name}.abs"), math::abs(), &[wire])?[0];
                 wire = target.wire_node(
-                    format!("{}.sum", name),
+                    format!("{name}.sum"),
                     TReduce::new(axes, TReducer::Sum),
                     &[wire],
                 )?[0];
             }
             L2 => {
-                wire = target.wire_node(format!("{}.sq", name), math::square(), &[wire])?[0];
+                wire = target.wire_node(format!("{name}.sq"), math::square(), &[wire])?[0];
                 wire = target.wire_node(
-                    format!("{}.sum", name),
+                    format!("{name}.sum"),
                     TReduce::new(axes, TReducer::Sum),
                     &[wire],
                 )?[0];
-                wire = target.wire_node(format!("{}.sqrt", name), math::sqrt(), &[wire])?[0];
+                wire = target.wire_node(format!("{name}.sqrt"), math::sqrt(), &[wire])?[0];
             }
             LogSum => {
                 wire = target.wire_node(
-                    format!("{}.sum", name),
+                    format!("{name}.sum"),
                     TReduce::new(axes, TReducer::Sum),
                     &[wire],
                 )?[0];
-                wire = target.wire_node(format!("{}.ln", name), math::ln(), &[wire])?[0];
+                wire = target.wire_node(format!("{name}.ln"), math::ln(), &[wire])?[0];
             }
             LogSumExp => {
-                wire = target.wire_node(format!("{}.exp", name), math::exp(), &[wire])?[0];
+                wire = target.wire_node(format!("{name}.exp"), math::exp(), &[wire])?[0];
                 wire = target.wire_node(
-                    format!("{}.sum", name),
+                    format!("{name}.sum"),
                     TReduce::new(axes, TReducer::Sum),
                     &[wire],
                 )?[0];
-                wire = target.wire_node(format!("{}.ln", name), math::ln(), &[wire])?[0];
+                wire = target.wire_node(format!("{name}.ln"), math::ln(), &[wire])?[0];
             }
             SumSquare => {
-                wire = target.wire_node(format!("{}.sq", name), math::square(), &[wire])?[0];
+                wire = target.wire_node(format!("{name}.sq"), math::square(), &[wire])?[0];
                 wire = target.wire_node(
                     name.to_string() + ".sum",
                     TReduce::new(axes, TReducer::Sum),
@@ -216,7 +216,7 @@ impl Expansion for Reduce {
         axes.sort();
         if fact.datum_type == TDim::datum_type() {
             wire = target.wire_node(
-                format!("{}.cast_from_tdim", name),
+                format!("{name}.cast_from_tdim"),
                 tract_core::ops::cast::cast(i64::datum_type()),
                 &[wire],
             )?[0];
@@ -225,7 +225,7 @@ impl Expansion for Reduce {
         if !self.keep_dims {
             for axis in axes.into_iter().rev() {
                 wire = target.wire_node(
-                    format!("{}-dispose-dims-{}", name, axis),
+                    format!("{name}-dispose-dims-{axis}"),
                     AxisOp::Rm(axis),
                     &[wire],
                 )?[0];

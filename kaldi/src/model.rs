@@ -75,8 +75,8 @@ impl GeneralDescriptor {
         None
     }
 
-    fn wire<'a>(
-        &'a self,
+    fn wire(
+        &self,
         inlet: InletId,
         name: &str,
         model: &mut InferenceModel,
@@ -90,7 +90,7 @@ impl GeneralDescriptor {
                 return Ok(());
             }
             Append(appendees) => {
-                let name = format!("{}.Append", name);
+                let name = format!("{name}.Append");
                 let id = model.add_node(
                     &*name,
                     expand(tract_hir::ops::array::Concat::new(1)),
@@ -98,7 +98,7 @@ impl GeneralDescriptor {
                 )?;
                 model.add_edge(OutletId::new(id, 0), inlet)?;
                 for (ix, appendee) in appendees.iter().enumerate() {
-                    let name = format!("{}-{}", name, ix);
+                    let name = format!("{name}-{ix}");
                     appendee.wire(
                         InletId::new(id, ix),
                         &name,
@@ -110,9 +110,9 @@ impl GeneralDescriptor {
                 return Ok(());
             }
             IfDefined(ref o) => {
-                if let &Offset(ref n, ref o) = &**o {
+                if let Offset(n, o) = &**o {
                     if let Name(n) = &**n {
-                        let name = format!("{}.memory", name);
+                        let name = format!("{name}.memory");
                         model.add_node(
                             &*name,
                             crate::ops::memory::Memory::new(n.to_string(), *o),
@@ -124,7 +124,7 @@ impl GeneralDescriptor {
                 }
             }
             Offset(ref n, o) if *o > 0 => {
-                let name = format!("{}-Delay", name);
+                let name = format!("{name}-Delay");
                 let crop = *o + adjust_final_offset.unwrap_or(0);
                 if crop < 0 {
                     bail!("Invalid offset adjustment (network as {}, adjustment is {}", o, crop)
@@ -227,7 +227,7 @@ impl Framework<KaldiProtoModel, InferenceModel> for Kaldi {
                             None => Box::new(tract_hir::ops::unimpl::UnimplementedOp::new(
                                 1,
                                 &component.klass,
-                                format!("{:?}", line),
+                                format!("{line:?}"),
                             )),
                         };
                         let id = model.add_node(

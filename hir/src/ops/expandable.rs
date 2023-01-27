@@ -87,7 +87,7 @@ impl EvalOp for Box<dyn Expansion> {
             .enumerate()
             .map(|(ix, i)| {
                 adhoc.add_source(
-                    format!("adhoc-source-{}", ix),
+                    format!("adhoc-source-{ix}"),
                     TypedFact::from(i.clone().into_tensor()),
                 )
             })

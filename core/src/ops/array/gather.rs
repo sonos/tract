@@ -142,7 +142,7 @@ mod tests {
         let data = Tensor::from(arr1(&[1i64, 2, 3]));
         let gatherer = Gather::new(0);
         for idx in 2..3 {
-            let index = Tensor::from(arr0(idx as i64));
+            let index = Tensor::from(arr0(idx));
             let outputs =
                 gatherer.eval(tvec![data.clone().into_tvalue(), index.into_tvalue()]).unwrap();
             let output = &outputs[0];

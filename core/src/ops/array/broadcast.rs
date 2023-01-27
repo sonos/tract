@@ -13,7 +13,7 @@ impl MultiBroadcastTo {
             let view = input.to_array_view_unchecked::<T>();
             let mut output = view
                 .broadcast(shape)
-                .with_context(|| format!("Broadcasting {:?} to {:?}", view, shape))?
+                .with_context(|| format!("Broadcasting {view:?} to {shape:?}"))?
                 .into_owned()
                 .into_tensor();
             output.set_datum_type(input.datum_type());

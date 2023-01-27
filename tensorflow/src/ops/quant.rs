@@ -86,36 +86,36 @@ impl Expansion for FakeQuantWithMinMaxVars {
             cst!(max_adj, max_adj);
             cst!(step, step);
             let wire = target.wire_node(
-                format!("{}.clamp_min", prefix),
+                format!("{prefix}.clamp_min"),
                 ops::math::max(),
                 &[wire, min_adj],
             )?[0];
             let wire = target.wire_node(
-                format!("{}.clamp_max", prefix),
+                format!("{prefix}.clamp_max"),
                 ops::math::min(),
                 &[max_adj, wire],
             )?[0];
             let wire = target.wire_node(
-                format!("{}.sub-min", prefix),
+                format!("{prefix}.sub-min"),
                 ops::math::sub(),
                 &[wire, min_adj],
             )?[0];
             let wire = target.wire_node(
-                format!("{}.div-step", prefix),
+                format!("{prefix}.div-step"),
                 ops::math::div(),
                 &[wire, step],
             )?[0];
             let wire = target.wire_node(
-                format!("{}.round", prefix),
+                format!("{prefix}.round"),
                 ops::math::round_half_to_even(),
                 &[wire],
             )?[0];
             let wire = target.wire_node(
-                format!("{}.mul-step", prefix),
+                format!("{prefix}.mul-step"),
                 ops::math::mul(),
                 &[wire, step],
             )?[0];
-            target.wire_node(format!("{}.add-min", prefix), ops::math::add(), &[wire, min_adj])
+            target.wire_node(format!("{prefix}.add-min"), ops::math::add(), &[wire, min_adj])
         } else {
             bail!("Operator can not be made a TypedOp.")
         }

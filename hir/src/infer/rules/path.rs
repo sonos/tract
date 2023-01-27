@@ -158,7 +158,7 @@ fn debug_tensorfacts_path(path: &[isize], formatter: &mut fmt::Formatter) -> fmt
     match path[0] {
         -1 => write!(formatter, ".len"),
         n => {
-            write!(formatter, "[{}]", n)?;
+            write!(formatter, "[{n}]")?;
             debug_tensorfact_path(&path[1..], formatter)
         }
     }
@@ -263,7 +263,7 @@ fn debug_tensorfact_path(path: &[isize], formatter: &mut fmt::Formatter) -> fmt:
         [0] => write!(formatter, ".datum_type"),
         [1] => write!(formatter, ".rank"),
         [2] => write!(formatter, ".shape"),
-        [2, k] => write!(formatter, ".shape[{}]", k),
+        [2, k] => write!(formatter, ".shape[{k}]"),
         slice if slice[0] == 3 => debug_value_path(&path[1..], formatter),
         _ => write!(formatter, ".invalid"),
     }
@@ -320,7 +320,7 @@ fn get_value_path(value: &ValueFact, path: &[isize]) -> TractResult<Wrapped> {
 
 fn debug_value_path(path: &[isize], formatter: &mut fmt::Formatter) -> fmt::Result {
     for p in path {
-        write!(formatter, "[{}]", p)?;
+        write!(formatter, "[{p}]")?;
     }
     Ok(())
 }

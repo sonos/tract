@@ -145,8 +145,7 @@ pub fn handle_npz(
                     .nth(1)
                     .with_context(|| {
                         format!(
-                            "npy filenames should be turn_XX/... in multiturn mode, got `{}'",
-                            name
+                            "npy filenames should be turn_XX/... in multiturn mode, got `{name}'"
                         )
                     })?
                     .trim_end_matches(".npy");
@@ -365,8 +364,7 @@ where
                                             let mut msg = vec![Red
                                                 .bold()
                                                 .paint(format!(
-                                                    "At turn {}, wrong value for output {}, {}",
-                                                    turn, ix, e
+                                                    "At turn {turn}, wrong value for output {ix}, {e}"
                                                 ))
                                                 .to_string()];
                                             msg.push(format!("got     : {:?}", obtained[ix]));
@@ -396,7 +394,7 @@ where
                 }
                 let result = if cumulative { tested.or(reference) } else { reference.or(tested) };
                 result.with_context(|| {
-                    format!("Failure to compute and no reference value for {}", node)
+                    format!("Failure to compute and no reference value for {node}")
                 })
             },
         )?;
@@ -424,7 +422,7 @@ where
     if failing.len() > 0 {
         bail!("{} error(s).", failing.len())
     } else {
-        println!("{}", Green.paint(format!("{} node(s) passed the comparison.", ok)));
+        println!("{}", Green.paint(format!("{ok} node(s) passed the comparison.")));
     };
     Ok(())
 }

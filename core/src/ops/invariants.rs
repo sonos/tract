@@ -41,7 +41,7 @@ impl fmt::Debug for Invariants {
             if self.element_wise {
                 write!(fmt, "Element wise. ")?;
             }
-            write!(fmt, "Axes: {}", self.axes.iter().map(|axis| format!("{:?}", axis)).join(", "))?;
+            write!(fmt, "Axes: {}", self.axes.iter().map(|axis| format!("{axis:?}")).join(", "))?;
         } else {
             write!(fmt, "No invariants")?;
         }
@@ -271,7 +271,7 @@ impl AxisTracking {
             let invs = emiter_node
                 .op
                 .invariants(&input_facts, &output_facts)
-                .with_context(|| format!("Computing invariants for {}", emiter_node))?;
+                .with_context(|| format!("Computing invariants for {emiter_node}"))?;
             assert!(invs.axes.iter().all(|axis| axis.inputs.len() == emiter_node.inputs.len()));
             assert!(invs.axes.iter().all(|axis| axis.outputs.len() == emiter_node.outputs.len()));
             if let Some(info) = invs.track_output_axis(wire.slot, axis) {

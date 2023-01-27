@@ -9,7 +9,7 @@ use tract_data::internal::*;
 use DatumType::F32;
 
 fn conv(c: &mut Criterion, dilation: usize, pulse: usize, ci: usize, co: usize) {
-    c.bench_function(&format!("conv_d{}p{}ci{}co{}", dilation, pulse, ci, co), move |be| unsafe {
+    c.bench_function(&format!("conv_d{dilation}p{pulse}ci{ci}co{co}"), move |be| unsafe {
         let t = pulse + 2 * dilation;
         let k = ci * 3;
         let mm =

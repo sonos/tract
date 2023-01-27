@@ -317,7 +317,7 @@ impl From<i64> for Literal {
 
 impl From<f32> for Literal {
     fn from(f: f32) -> Literal {
-        Literal::Numeric(format!("{:?}", f))
+        Literal::Numeric(format!("{f:?}"))
     }
 }
 

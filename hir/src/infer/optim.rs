@@ -23,7 +23,7 @@ impl IncorporatePass for IncorporateOps {
                     trace!("Incorporate {}", node);
                     node.op
                         .incorporate(model, node)
-                        .with_context(|| format!("{:?} node {}", self, node))?
+                        .with_context(|| format!("{self:?} node {node}"))?
                 };
                 if let Some(red) = reduced {
                     {

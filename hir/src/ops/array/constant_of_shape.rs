@@ -53,7 +53,7 @@ impl Expansion for ConstantOfShape {
         if let Some(shape) = target.outlet_fact(inputs[0])?.konst.clone() {
             let shape = shape.cast_to::<TDim>()?;
             let shape = shape.as_slice::<TDim>()?;
-            let scalar = target.add_const(format!("{}.scalar", prefix), self.scalar.clone())?;
+            let scalar = target.add_const(format!("{prefix}.scalar"), self.scalar.clone())?;
             let op = tract_core::ops::array::MultiBroadcastTo::new(shape.into());
             return target.wire_node(prefix, op, &[scalar]);
         }

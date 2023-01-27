@@ -117,9 +117,9 @@ fn wrap<F: FnOnce() -> anyhow::Result<()>>(func: F) -> TRACT_RESULT {
     match func() {
         Ok(_) => TRACT_RESULT::TRACT_RESULT_OK,
         Err(e) => {
-            let msg = format!("{:?}", e);
+            let msg = format!("{e:?}");
             if std::env::var("TRACT_ERROR_STDERR").is_ok() {
-                eprintln!("{}", msg);
+                eprintln!("{msg}");
             }
             LAST_ERROR.with(|p| {
                 *p.borrow_mut() = Some(CString::new(msg).unwrap_or_else(|_| {
@@ -253,7 +253,7 @@ pub unsafe extern "C" fn tract_nnef_model_for_path(
         *model = std::ptr::null_mut();
         let path = CStr::from_ptr(path).to_str()?;
         let m = Box::new(TractModel(
-            (*nnef).0.model_for_path(path).with_context(|| format!("opening file {:?}", path))?,
+            (*nnef).0.model_for_path(path).with_context(|| format!("opening file {path:?}"))?,
         ));
         *model = Box::into_raw(m);
         Ok(())
@@ -274,7 +274,7 @@ pub unsafe extern "C" fn tract_nnef_write_model_to_tar(
     wrap(|| unsafe {
         check_not_null!(nnef, model, path);
         let path = CStr::from_ptr(path).to_str()?;
-        let f = std::fs::File::create(path).with_context(|| format!("creating file {:?}", path))?;
+        let f = std::fs::File::create(path).with_context(|| format!("creating file {path:?}"))?;
         (*nnef).0.write_to_tar(&(*model).0, f)?;
         Ok(())
     })
@@ -292,7 +292,7 @@ pub unsafe extern "C" fn tract_nnef_write_model_to_tar_gz(
     wrap(|| unsafe {
         check_not_null!(nnef, model, path);
         let path = CStr::from_ptr(path).to_str()?;
-        let f = std::fs::File::create(path).with_context(|| format!("creating file {:?}", path))?;
+        let f = std::fs::File::create(path).with_context(|| format!("creating file {path:?}"))?;
         let f = flate2::write::GzEncoder::new(f, flate2::Compression::default());
         (*nnef).0.write_to_tar(&(*model).0, f)?;
         Ok(())
@@ -316,7 +316,7 @@ pub unsafe extern "C" fn tract_nnef_write_model_to_dir(
         (*nnef)
             .0
             .write_to_dir(&(*model).0, path)
-            .with_context(|| format!("writing model to dir {:?}", path))?;
+            .with_context(|| format!("writing model to dir {path:?}"))?;
         Ok(())
     })
 }
@@ -357,7 +357,7 @@ pub unsafe extern "C" fn tract_onnx_model_for_path(
         *model = std::ptr::null_mut();
         let path = CStr::from_ptr(path).to_str()?;
         let m = Box::new(TractInferenceModel(
-            (*onnx).0.model_for_path(path).with_context(|| format!("opening file {:?}", path))?,
+            (*onnx).0.model_for_path(path).with_context(|| format!("opening file {path:?}"))?,
         ));
         *model = Box::into_raw(m);
         Ok(())
@@ -667,7 +667,7 @@ pub unsafe extern "C" fn tract_model_concretize_symbols(
         let model = &mut (*model).0;
         for i in 0..nb_symbols {
             let name = CStr::from_ptr(*symbols.add(i)).to_str().with_context(|| {
-                format!("failed to parse symbol name for {}th symbol (not utf8)", i)
+                format!("failed to parse symbol name for {i}th symbol (not utf8)")
             })?;
             table = table.with(&model.symbol_table.sym(name), *values.add(i));
         }

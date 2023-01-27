@@ -30,7 +30,7 @@ impl DeconvUnary {
 
         // collapse input as (N) I HW or (N) HW I
         let mut input = target.wire_node(
-            format!("{}.reshaped_input", name),
+            format!("{name}.reshaped_input"),
             AxisOp::Reshape(shape.h_axis(), shape.hw_dims().into(), tvec!(geo_dim)),
             &[input],
         )?;
@@ -42,7 +42,7 @@ impl DeconvUnary {
                 + self.pool_spec.data_format.c_is_last() as usize;
             let i_dim = target.outlet_fact(input[0])?.shape[i_axis].clone();
             input = target.wire_node(
-                format!("{}.reshaped_input_for_group", name),
+                format!("{name}.reshaped_input_for_group"),
                 AxisOp::Reshape(
                     i_axis,
                     tvec![i_dim.clone()],
@@ -52,7 +52,7 @@ impl DeconvUnary {
             )?;
             if self.pool_spec.data_format.c_is_last() {
                 input = target.wire_node(
-                    format!("{}.group_axis_left", name),
+                    format!("{name}.group_axis_left"),
                     AxisOp::Move(
                         self.pool_spec.data_format.has_n() as usize + 1,
                         self.pool_spec.data_format.has_n() as usize,
@@ -113,13 +113,13 @@ impl DeconvUnary {
         let axes = MatMulAxes::default_for_rank(kernel_as_g_ohw_i.rank())
             .transposing(false, trans_data, false);
         let gemm = target.wire_node(
-            format!("{}.gemm", name),
+            format!("{name}.gemm"),
             crate::ops::matmul::MatMulUnary::new(kernel_as_g_ohw_i.into_arc_tensor(), axes),
             &input,
         )?;
         // gemm must be (N_)CHkWk_HW
         let deconv_sum = target.wire_node(
-            format!("{}.deconv_sum", name),
+            format!("{name}.deconv_sum"),
             super::deconv_sum::DeconvSum::new(
                 self.pool_spec.clone(),
                 self.kernel_format,

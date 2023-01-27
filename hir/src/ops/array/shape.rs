@@ -40,7 +40,7 @@ impl Expansion for Shape {
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         let shape = tensor1(&model.outlet_fact(inputs[0])?.shape.to_tvec());
-        let wire = model.add_const(format!("{}.const", prefix), shape)?;
+        let wire = model.add_const(format!("{prefix}.const"), shape)?;
         model.wire_node(prefix, tract_core::ops::cast::cast(self.dt), &[wire])
     }
 }

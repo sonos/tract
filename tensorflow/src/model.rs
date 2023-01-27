@@ -140,7 +140,7 @@ impl Tensorflow {
                 let sink_op = cf::NextIteration::new(name.clone(), cf::NextIterationRole::Sink);
                 let _source =
                     model.add_node(name.clone(), source_op, tvec!(InferenceFact::default()))?;
-                let _sink = model.add_node(format!("{}-Sink", name), sink_op, tvec!())?;
+                let _sink = model.add_node(format!("{name}-Sink"), sink_op, tvec!())?;
                 continue;
             }
 
@@ -149,7 +149,7 @@ impl Tensorflow {
                 None => tract_hir::ops::unimpl::UnimplementedOp::new(
                     context.node_output_arities.get(name).cloned().unwrap_or(1),
                     &pbnode.op,
-                    format!("{:?}", pbnode),
+                    format!("{pbnode:?}"),
                 )
                 .into(),
             };

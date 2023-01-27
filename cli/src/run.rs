@@ -59,7 +59,7 @@ pub fn handle(
 
     if let Some(file_path) = sub_matches.value_of("save-outputs") {
         let file =
-            std::fs::File::create(file_path).with_context(|| format!("Creating {}", file_path))?;
+            std::fs::File::create(file_path).with_context(|| format!("Creating {file_path}"))?;
         let mut npz = ndarray_npy::NpzWriter::new_compressed(file);
 
         for (ix, outputs) in outputs.iter().enumerate() {
@@ -67,12 +67,12 @@ pub fn handle(
                 .tract_model
                 .outlet_label(params.tract_model.output_outlets()[ix])
                 .map(|name| name.to_string())
-                .unwrap_or_else(|| format!("output_{}", ix));
+                .unwrap_or_else(|| format!("output_{ix}"));
             if outputs.len() == 1 {
                 npz_add_tensor(&mut npz, name, &outputs[0])?;
             } else {
                 for (turn, output) in outputs.iter().enumerate() {
-                    let name = format!("turn_{}/{}", turn, name);
+                    let name = format!("turn_{turn}/{name}");
                     npz_add_tensor(&mut npz, name, output)?;
                 }
             }
@@ -121,7 +121,7 @@ fn run_regular(
     let steps = sub_matches.is_present("steps");
     let assert_sane_floats = sub_matches.is_present("assert-sane-floats");
     let mut npz = if let Some(npz) = sub_matches.value_of("save-steps") {
-        let npz = std::fs::File::create(npz).with_context(|| format!("Creating {}", npz))?;
+        let npz = std::fs::File::create(npz).with_context(|| format!("Creating {npz}"))?;
         Some(ndarray_npy::NpzWriter::new_compressed(npz))
     } else {
         None
@@ -177,7 +177,7 @@ fn run_regular(
                                 format!("{}:{}", node.name, ix)
                             };
                             if multiturn {
-                                name = format!("turn_{}/{}", turn, name);
+                                name = format!("turn_{turn}/{name}");
                             }
                             npz_add_tensor(npz, name, t)?;
                         }
@@ -186,7 +186,7 @@ fn run_regular(
                         for (ix, o) in r.iter().enumerate() {
                             if let Ok(floats) = o.as_slice::<f32>() {
                                 if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
-                                    eprintln!("{:?}", floats);
+                                    eprintln!("{floats:?}");
                                     tract_core::anyhow::bail!(
                                         "Found {} in output {} of {}",
                                         floats[pos],
@@ -196,7 +196,7 @@ fn run_regular(
                                 }
                             } else if let Ok(floats) = o.as_slice::<f16>() {
                                 if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
-                                    eprintln!("{:?}", floats);
+                                    eprintln!("{floats:?}");
                                     tract_core::anyhow::bail!(
                                         "Found {} in output {} of {}",
                                         floats[pos],

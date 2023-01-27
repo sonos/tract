@@ -17,10 +17,10 @@ pub fn check_outputs(got: &[Vec<TValue>], params: &Parameters) -> TractResult<()
         let exp = params
             .tensors_values
             .by_name(name)
-            .with_context(|| format!("Do not have reference value for output {:?}", name))?;
+            .with_context(|| format!("Do not have reference value for output {name:?}"))?;
         debug!("Output {}, expects {:?}", ix, exp);
         let mut exp: TValue = exp.values.as_ref().with_context(|| {
-            format!("Output {:?}: found reference info without value: {:?}", name, exp)
+            format!("Output {name:?}: found reference info without value: {exp:?}")
         })?[0]
             .clone();
         let got: TValue = if got[ix].len() > 1 {
@@ -45,7 +45,7 @@ pub fn check_outputs(got: &[Vec<TValue>], params: &Parameters) -> TractResult<()
         {
             exp = exp.cast_to_dt(got.datum_type())?.into_owned().into_tvalue();
         }
-        if let Err(e) = exp.close_enough(&got, true).context(format!("Checking output {}", ix)) {
+        if let Err(e) = exp.close_enough(&got, true).context(format!("Checking output {ix}")) {
             if error.is_some() {
                 error!("{:?}", e);
             } else {

@@ -106,7 +106,7 @@ impl Expansion for BatchNorm {
             let slope = target.add_const(prefix.to_string() + ".slope", slope)?;
             let inter = target.add_const(prefix.to_string() + ".inter", inter)?;
             let wire = target.wire_node(
-                format!("{}.mul", prefix),
+                format!("{prefix}.mul"),
                 tract_hir::ops::math::mul(),
                 &[slope, inputs[0]],
             )?;

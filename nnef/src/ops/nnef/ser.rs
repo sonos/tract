@@ -277,8 +277,8 @@ pub fn deconv(
     )
 }
 
-fn cnn_pool_fragment<'a>(
-    ast: &'a mut IntoAst,
+fn cnn_pool_fragment(
+    ast: &mut IntoAst,
     data_format: DataFormat,
     geo_rank: usize,
     op_name: &str,
@@ -287,7 +287,7 @@ fn cnn_pool_fragment<'a>(
         return op_name.into();
     }
     let fragment_name =
-        Identifier(format!("tract_sum_pool_{:?}_{}D", data_format, geo_rank).to_lowercase());
+        Identifier(format!("tract_sum_pool_{data_format:?}_{geo_rank}D").to_lowercase());
     if ast.fragments.contains_key(&fragment_name) {
         return fragment_name;
     }

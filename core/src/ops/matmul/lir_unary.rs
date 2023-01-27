@@ -22,9 +22,9 @@ impl ProtoFusedSpec {
     pub fn name(&self) -> String {
         use ProtoFusedSpec::*;
         match self {
-            BinScalar(_, op) => format!("scalar {:?}", op),
-            BinPerRow(_, op) => format!("row {:?}", op),
-            BinPerCol(_, op) => format!("col {:?}", op),
+            BinScalar(_, op) => format!("scalar {op:?}"),
+            BinPerRow(_, op) => format!("row {op:?}"),
+            BinPerCol(_, op) => format!("col {op:?}"),
             AddRowColProducts(_, _) => "add row*col product".to_string(),
             AddUnicast(_, _) => "add to matrix".to_string(),
             Scaler(s) => format!("scale by {}", 1f32 * *s),
@@ -324,7 +324,7 @@ impl TypedOp for LirMatMulUnary {
                         ..self.clone()
                     },
                 )?;
-                patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ, node));
+                patch.dont_apply_twice = Some(format!("Fuse {succ} into {node}"));
                 return Ok(Some(patch));
             }
         }
@@ -352,7 +352,7 @@ impl TypedOp for LirMatMulUnary {
                     node,
                     Self { mmm, c_fact, ..self.clone() },
                 )?;
-                patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ, node));
+                patch.dont_apply_twice = Some(format!("Fuse {succ} into {node}"));
                 return Ok(Some(patch));
             }
         }
@@ -424,7 +424,7 @@ impl LirMatMulUnary {
             lhs.1.extend(rhs.iter().cloned());
             lhs.1.push(ProtoFusedSpec::Store);
         });
-        let mut patch = TypedModelPatch::new(format!("fusing {}", succ));
+        let mut patch = TypedModelPatch::new(format!("fusing {succ}"));
         patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ.name, node.name));
         let inputs = node
             .inputs

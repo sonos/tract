@@ -338,7 +338,7 @@ impl Parameters {
         if period != 1 {
             let mut outputs = raw_model.output_outlets()?.to_vec();
             let output_name = raw_model.node(outputs[0].node).name.clone();
-            raw_model.node_mut(outputs[0].node).name = format!("{}-old", output_name);
+            raw_model.node_mut(outputs[0].node).name = format!("{output_name}-old");
             let id = raw_model.wire_node(
                 output_name,
                 tract_core::ops::Downsample::new(0, period as _, 0),
@@ -424,7 +424,7 @@ impl Parameters {
         get_facts: bool,
     ) -> TractResult<Vec<TensorValues>> {
         let mut npz = ndarray_npy::NpzReader::new(
-            std::fs::File::open(input).with_context(|| format!("opening {:?}", input))?,
+            std::fs::File::open(input).with_context(|| format!("opening {input:?}"))?,
         )?;
         let vectors = npz
             .names()?
@@ -700,10 +700,10 @@ impl Parameters {
             for set in set {
                 let (key, value) = set
                     .split_once('=')
-                    .with_context(|| format!("--set must be in the X=value form, got {}", set))?;
+                    .with_context(|| format!("--set must be in the X=value form, got {set}"))?;
                 let value: i64 = value
                     .parse()
-                    .with_context(|| format!("value expected to be an integer, got {}", value))?;
+                    .with_context(|| format!("value expected to be an integer, got {value}"))?;
                 let key = typed_model.as_ref().unwrap().get_or_intern_symbol(key);
                 values.set(&key, value);
             }

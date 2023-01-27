@@ -162,7 +162,7 @@ fn parse_nodes_data(node: &NodeProto, is_classifier: bool) -> TractResult<TreeEn
 
     // parse leaf data from protobuf
     let leaf_prefix = if is_classifier { "class" } else { "target" };
-    let cls = |name| format!("{}_{}", leaf_prefix, name);
+    let cls = |name| format!("{leaf_prefix}_{name}");
 
     let n_leaves = node.get_attr_slice::<i64>(&cls("ids"))?.len();
     node.expect_attr(&cls("ids"), n_leaves != 0, "at least one leaf")?;
@@ -289,7 +289,7 @@ impl Expansion for TreeEnsembleClassifier {
         use tract_core::ops::nn::*;
 
         let mut scores = model.wire_node(
-            format!("{}.classifier", prefix),
+            format!("{prefix}.classifier"),
             tract_onnx_opl::ml::tree_ensemble_classifier::TreeEnsembleClassifier {
                 ensemble: self.ensemble.clone(),
             },
@@ -299,7 +299,7 @@ impl Expansion for TreeEnsembleClassifier {
             let base = base_class_score.clone().broadcast_into_rank(2)?.into_arc_tensor();
             let base = model.add_const(prefix.to_string() + ".base", base)?;
             scores = model.wire_node(
-                format!("{}.base_class_score", prefix),
+                format!("{prefix}.base_class_score"),
                 tract_core::ops::math::add(),
                 &[scores[0], base],
             )?;
@@ -308,14 +308,14 @@ impl Expansion for TreeEnsembleClassifier {
             None => (),
             Some(PostTransform::Softmax) => {
                 scores = tract_hir::ops::nn::LayerSoftmax::new(1, false).wire(
-                    &format!("{}.softmax", prefix),
+                    &format!("{prefix}.softmax"),
                     model,
                     &scores,
                 )?;
             }
             Some(PostTransform::Logistic) => {
                 scores = model.wire_node(
-                    &format!("{}.logistic", prefix),
+                    &format!("{prefix}.logistic"),
                     tract_core::ops::nn::sigmoid(),
                     &scores,
                 )?;
@@ -324,39 +324,39 @@ impl Expansion for TreeEnsembleClassifier {
         let processed_scores = scores.clone();
         if self.binary_result_layout {
             scores = model.wire_node(
-                &format!("{}.binary_result_slice", prefix),
+                &format!("{prefix}.binary_result_slice"),
                 Slice::new(1, 0, 1),
                 &scores,
             )?;
             let one = model.add_const(prefix.to_string() + ".one", rctensor2(&[[1f32]]))?;
             let complement = model.wire_node(
-                &format!("{}.binary_result_complement", prefix),
+                &format!("{prefix}.binary_result_complement"),
                 tract_core::ops::math::sub(),
                 &[one, scores[0]],
             )?;
             scores = model.wire_node(
-                &format!("{}.binary_result", prefix),
+                &format!("{prefix}.binary_result"),
                 TypedConcat::new(1),
                 &[complement[0], scores[0]],
             )?;
         }
         let winners = model.wire_node(
-            format!("{}.argmax", prefix),
+            format!("{prefix}.argmax"),
             Reduce::new(tvec!(1), Reducer::ArgMax(false)),
             &processed_scores,
         )?;
         let reduced = model.wire_node(
-            format!("{}.rm_axis", prefix),
+            format!("{prefix}.rm_axis"),
             tract_core::ops::change_axes::AxisOp::Rm(1),
             &winners,
         )?;
         let casted = model.wire_node(
-            format!("{}.casted", prefix),
+            format!("{prefix}.casted"),
             tract_core::ops::cast::cast(i32::datum_type()),
             &reduced,
         )?;
         let labels = model.wire_node(
-            format!("{}.labels", prefix),
+            format!("{prefix}.labels"),
             tract_onnx_opl::ml::DirectLookup::new(
                 self.class_labels.clone(),
                 Tensor::zero_dt(self.class_labels.datum_type(), &[])?.into_arc_tensor(),

@@ -138,7 +138,7 @@ impl<'a> ParsingContext<'a> {
                     tract_hir::ops::unimpl::UnimplementedOp::new(
                         pbnode.output.len(),
                         &*pbnode.op_type,
-                        format!("{:?}", pbnode),
+                        format!("{pbnode:?}"),
                     )
                     .into(),
                     vec![],

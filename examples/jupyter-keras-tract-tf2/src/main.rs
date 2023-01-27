@@ -18,6 +18,6 @@ fn main() -> TractResult<()> {
     // Input the generated data into the model
     let result = model.run(tvec![input.into()]).unwrap();
     let to_show = result[0].to_array_view::<f32>()?;
-    println!("result: {:?}", to_show);
+    println!("result: {to_show:?}");
     Ok(())
 }

@@ -15,9 +15,9 @@ pub fn lrn(
     Ok((inference_wrap(Lrn { alpha, beta, bias, size }, 1, lrn_rules), vec![]))
 }
 
-fn lrn_rules<'r, 'p, 's>(
-    _op: &'s dyn Op,
-    s: &mut Solver<'r>,
+fn lrn_rules<'p>(
+    _op: &dyn Op,
+    s: &mut Solver,
     inputs: &'p [TensorProxy],
     outputs: &'p [TensorProxy],
 ) -> InferenceResult {

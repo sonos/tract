@@ -74,7 +74,7 @@ impl Expansion for Split {
             let end = current.clone() + len;
             outputs.push(
                 target.wire_node(
-                    format!("{}.axis{}_slice{}_{}..{}", prefix, axis, ix, current, end),
+                    format!("{prefix}.axis{axis}_slice{ix}_{current}..{end}"),
                     crate::ops::array::Slice::new(axis, current, end.clone()),
                     inputs,
                 )?[0],

@@ -26,7 +26,7 @@ impl SymbolTable {
         } else {
             let mut i = 0;
             loop {
-                let s = format!("{}_{}", prefix, i);
+                let s = format!("{prefix}_{i}");
                 if table.get(&s).is_none() {
                     break table.get_or_intern(s);
                 }
@@ -88,7 +88,7 @@ impl std::fmt::Display for Symbol {
         if let Some(table) = self.0.upgrade() {
             if let Ok(table) = table.lock() {
                 if let Some(s) = table.resolve(self.1) {
-                    return write!(f, "{}", s);
+                    return write!(f, "{s}");
                 }
             }
         }
@@ -101,7 +101,7 @@ impl fmt::Debug for Symbol {
         if let Some(table) = self.0.upgrade() {
             if let Ok(table) = table.lock() {
                 if let Some(s) = table.resolve(self.1) {
-                    return write!(f, "{}", s);
+                    return write!(f, "{s}");
                 }
             }
         }

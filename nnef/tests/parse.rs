@@ -36,7 +36,7 @@ fn parse_dump_parse_stdlib() {
     dump::Dumper::new(&Nnef::default(), &mut dumped).fragments(&ast).unwrap();
 
     let dumped = String::from_utf8(dumped).unwrap();
-    println!("{}", dumped);
+    println!("{dumped}");
     let mut ast2 = parse::parse_fragments(&dumped).unwrap();
 
     assert_eq!(ast.len(), ast2.len());

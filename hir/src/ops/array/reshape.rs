@@ -22,7 +22,7 @@ impl Expansion for Reshape {
             let shape = shape.cast_to::<TDim>()?;
             let shape = shape.as_slice::<TDim>()?;
             let oshape = compute_shape(&ishape, shape)
-                .with_context(|| format!("Reshaping {:?} to {:?}", ishape, shape))?;
+                .with_context(|| format!("Reshaping {ishape:?} to {shape:?}"))?;
             s.equals(&outputs[0].shape, ShapeFactoid::from(oshape))
         })
     }
@@ -39,7 +39,7 @@ impl Expansion for Reshape {
             let shape = shape.as_slice::<TDim>()?;
             let mut wire = tvec!(inputs[0]);
             for (ix, op) in to_axis_ops(&input_shape, shape)?.into_iter().enumerate() {
-                wire = model.wire_node(format!("{}.{}", prefix, ix), op, &wire)?;
+                wire = model.wire_node(format!("{prefix}.{ix}"), op, &wire)?;
             }
             return Ok(wire);
         }

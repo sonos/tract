@@ -103,7 +103,7 @@ fn main() {
                             .success()
                         {
                             for (i, l) in std::fs::read_to_string(&f).unwrap().lines().enumerate() {
-                                println!("{:8} {}", i, l);
+                                println!("{i:8} {l}");
                             }
                             panic!();
                         }
@@ -276,7 +276,7 @@ fn preprocess_file(
         .and_then(|r| r.render_to(&mut fs::File::create(&output).unwrap(), &globals))
     {
         eprintln!("Processing {}", template.as_ref().to_string_lossy());
-        eprintln!("{}", e);
+        eprintln!("{e}");
         panic!()
     }
 }

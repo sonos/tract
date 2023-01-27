@@ -106,7 +106,7 @@ impl QParams {
 impl std::fmt::Debug for QParams {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let (zp, scale) = self.zp_scale();
-        write!(f, "Z:{} S:{}", zp, scale)
+        write!(f, "Z:{zp} S:{scale}")
     }
 }
 
@@ -305,7 +305,7 @@ impl DatumType {
             (true, 16) => U16,
             (true, 32) => U32,
             (true, 64) => U64,
-            _ => panic!("No integer for signed:{} size:{}", signed, size),
+            _ => panic!("No integer for signed:{signed} size:{size}"),
         }
     }
 
@@ -342,7 +342,7 @@ impl DatumType {
             DatumType::F16 => tensor0(f16::MIN),
             DatumType::F32 => tensor0(f32::MIN),
             DatumType::F64 => tensor0(f64::MIN),
-            _ => panic!("No min value for datum type {:?}", self),
+            _ => panic!("No min value for datum type {self:?}"),
         }
     }
     pub fn max_value(&self) -> Tensor {
@@ -359,7 +359,7 @@ impl DatumType {
             DatumType::F16 => tensor0(f16::MAX),
             DatumType::F32 => tensor0(f32::MAX),
             DatumType::F64 => tensor0(f64::MAX),
-            _ => panic!("No max value for datum type {:?}", self),
+            _ => panic!("No max value for datum type {self:?}"),
         }
     }
 }

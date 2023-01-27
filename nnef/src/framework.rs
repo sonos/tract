@@ -120,7 +120,7 @@ impl Nnef {
             let filename = std::path::Path::new(&label);
             let mut data = vec![];
             crate::tensors::write_tensor(&mut data, t)
-                .with_context(|| format!("Serializing tensor {:?}: {:?}", filename, t))?;
+                .with_context(|| format!("Serializing tensor {filename:?}: {t:?}"))?;
 
             let mut header = tar::Header::new_gnu();
             header.set_size(data.len() as u64);
@@ -129,7 +129,7 @@ impl Nnef {
             header.set_cksum();
 
             ar.append_data(&mut header, filename, &mut &*data)
-                .with_context(|| format!("Appending tensor {:?}", filename))?;
+                .with_context(|| format!("Appending tensor {filename:?}"))?;
         }
         ar.into_inner().context("Finalizing tar")
     }

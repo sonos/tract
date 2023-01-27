@@ -171,7 +171,7 @@ pub fn for_data(
         #[cfg(feature = "onnx")]
         {
             let file =
-                fs::File::open(filename).with_context(|| format!("Can't open {:?}", filename))?;
+                fs::File::open(filename).with_context(|| format!("Can't open {filename:?}"))?;
             let proto = ::tract_onnx::tensor::proto_from_reader(file)?;
             Ok((
                 Some(proto.name.to_string()).filter(|s| !s.is_empty()),
@@ -358,7 +358,7 @@ pub fn retrieve_or_make_inputs(
             };
         } else if params.allow_random_input {
             let fact = tract.outlet_typedfact(*input)?;
-            warn_once(format!("Using random input for input called {:?}: {:?}", name, fact));
+            warn_once(format!("Using random input for input called {name:?}: {fact:?}"));
             let tv = params
                 .tensors_values
                 .by_name(name)
@@ -417,7 +417,7 @@ pub fn tensor_for_fact(
     Ok(random(
         fact.shape
             .as_concrete()
-            .with_context(|| format!("Expected concrete shape, found: {:?}", fact))?,
+            .with_context(|| format!("Expected concrete shape, found: {fact:?}"))?,
         fact.datum_type,
         tv,
     ))

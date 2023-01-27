@@ -63,7 +63,7 @@ impl InferenceFact {
         if !self.shape.open && self.shape.dims.len() == 0 {
             self.datum_type
                 .concretize()
-                .map(|dt| format!("{:?}", dt))
+                .map(|dt| format!("{dt:?}"))
                 .unwrap_or_else(|| "?".to_string())
         } else {
             format!(
@@ -71,7 +71,7 @@ impl InferenceFact {
                 self.shape,
                 self.datum_type
                     .concretize()
-                    .map(|dt| format!("{:?}", dt))
+                    .map(|dt| format!("{dt:?}"))
                     .unwrap_or_else(|| "?".to_string())
             )
         }
@@ -111,7 +111,7 @@ impl Factoid for InferenceFact {
 impl fmt::Debug for InferenceFact {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         if let Some(t) = self.value.concretize() {
-            write!(formatter, "{:?}", t)
+            write!(formatter, "{t:?}")
         } else {
             write!(formatter, "{}", self.format_dt_shape())
         }

@@ -142,7 +142,7 @@ impl Annotations {
                     .iter()
                     .find_map(|cre| hints.get(cre).and_then(|hints| hints.get(axis.outlets[cre])))
                     .cloned()
-                    .unwrap_or_else(|| format!("{}x{}", name_prefix, ix));
+                    .unwrap_or_else(|| format!("{name_prefix}x{ix}"));
                 for outlet in axis.outlets.keys() {
                     let axis = axis.outlets[&outlet];
                     let qid = NodeQId(prefix.into(), outlet.node);
@@ -160,7 +160,7 @@ impl Annotations {
                 if let Some(scan) = node.op_as::<Scan>() {
                     let mut prefix: TVec<_> = prefix.into();
                     prefix.push((node.id, "loop".to_string()));
-                    sub(annotations, &prefix, &format!("{}loop_", name_prefix), &scan.body, &Default::default())?;
+                    sub(annotations, &prefix, &format!("{name_prefix}loop_"), &scan.body, &Default::default())?;
                 }
             }
             Ok(())

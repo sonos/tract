@@ -18,12 +18,12 @@ fn setup_test_logger() {
 pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<Tensor> {
     let mut vec = tvec!();
     let len = fs::read_dir(path)
-        .map_err(|e| format!("accessing {:?}, {:?}", path, e))
+        .map_err(|e| format!("accessing {path:?}, {e:?}"))
         .unwrap()
         .filter(|d| d.as_ref().unwrap().file_name().to_str().unwrap().starts_with(prefix))
         .count();
     for i in 0..len {
-        let filename = path.join(format!("{}_{}.pb", prefix, i));
+        let filename = path.join(format!("{prefix}_{i}.pb"));
         let bytes = bytes::Bytes::from(std::fs::read(filename).unwrap());
         let tensor = TensorProto::decode(bytes).unwrap();
         vec.push(tensor.try_into().unwrap())
@@ -62,7 +62,7 @@ pub fn run_one<P: AsRef<path::Path>>(
             test_path.file_name().unwrap().to_str().unwrap().chars().skip(5).collect();
         info!("Locked {:?}", f);
         if !test_path.join(&name).exists() {
-            let tgz_name = test_path.join(format!("{}.tgz", name));
+            let tgz_name = test_path.join(format!("{name}.tgz"));
             info!("Downloading {:?}", tgz_name);
             let wget = std::process::Command::new("wget")
                 .arg("-q")
@@ -72,11 +72,11 @@ pub fn run_one<P: AsRef<path::Path>>(
                 .status()
                 .expect("Failed to run wget");
             if !wget.success() {
-                panic!("wget: {:?}", wget);
+                panic!("wget: {wget:?}");
             }
             let tar = std::process::Command::new("tar").arg("zxf").arg(&tgz_name).status().unwrap();
             if !tar.success() {
-                panic!("tar: {:?}", tar);
+                panic!("tar: {tar:?}");
             }
             fs::rename(&name, test_path.join(&name)).unwrap();
             fs::remove_file(&tgz_name).unwrap();

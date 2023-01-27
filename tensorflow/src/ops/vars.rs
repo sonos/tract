@@ -15,7 +15,7 @@ fn variable_v2(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn Inf
     let container = node.get_attr_str("container")?;
     let container = if !container.is_empty() { Some(container) } else { None };
     let name = node.name.to_string();
-    let id = format!("{:?}#{:?}#{}", container, shared_name, name);
+    let id = format!("{container:?}#{shared_name:?}#{name}");
     let shape = node.get_attr_shape("shape")?;
     let dt = node.get_attr_datum_type("dtype")?;
     let shape = shape
@@ -71,7 +71,7 @@ impl Op for VariableV2 {
 
     fn info(&self) -> TractResult<Vec<String>> {
         if let Some(init) = &self.initializer {
-            Ok(vec![format!("Initialized to {:?}", init)])
+            Ok(vec![format!("Initialized to {init:?}")])
         } else {
             Ok(vec![format!("Uninitialized")])
         }

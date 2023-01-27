@@ -16,11 +16,13 @@ struct ConvOp {
 
 impl ConvOp {
     fn chain(&self, name: &str, model: &mut InferenceModel, after: OutletId) -> OutletId {
-        let filters = model.add_const(format!("{}-kernel", name), self.ker.clone()).unwrap();
-        let mut conv = tract_hir::ops::cnn::Conv::default();
-        conv.dilations = Some(tvec!(self.dilation));
-        conv.strides = Some(tvec!(self.stride));
-        conv.padding = self.padding.clone();
+        let filters = model.add_const(format!("{name}-kernel"), self.ker.clone()).unwrap();
+        let conv = Conv {
+            dilations: Some(tvec!(self.dilation)),
+            strides: Some(tvec!(self.stride)),
+            padding: self.padding.clone(),
+            ..Conv::default()
+        };
         model.wire_node(name, expand(conv), &[after, filters]).unwrap()[0]
     }
 }
@@ -76,7 +78,8 @@ impl ConvPlusConvProblem {
         let model = Self::model(ops);
         let dims: Vec<&TDim> = model.nodes.iter().map(|n| &n.outputs[0].fact.shape[2]).collect();
         for s in 0usize.. {
-            let symbols = SymbolValues::default().with(&model.symbol_table.get("S").unwrap(), s as _);
+            let symbols =
+                SymbolValues::default().with(&model.symbol_table.get("S").unwrap(), s as _);
             if dims.iter().all(|d| d.eval(&symbols).to_isize().unwrap() > 0) {
                 return s;
             }
@@ -89,7 +92,7 @@ impl ConvPlusConvProblem {
         let s = model.symbol_table.sym("S");
         let mut wire = model.add_source("a", f32::fact(dims!(1, 1, s)).into()).unwrap();
         for (ix, cv) in ops.iter().enumerate() {
-            wire = cv.chain(&format!("conv{}", ix), &mut model, wire);
+            wire = cv.chain(&format!("conv{ix}"), &mut model, wire);
         }
         model.auto_outputs().unwrap();
         model.into_typed().unwrap()
@@ -284,13 +287,14 @@ fn three_stride() {
     let cpc = ConvPlusConvProblem {
         input: t(4),
         pulse: 2,
-        convs: vec![ // 0 1 2 3
+        convs: vec![
+            // 0 1 2 3
             ConvOp { stride: 1, dilation: 1, ker: t(2), padding: PaddingSpec::Valid }, // overlap=1, 1 2 3  -> ∂=1
             // pulse: x 1 | 2 3
             ConvOp { stride: 1, dilation: 1, ker: t(1), padding: PaddingSpec::Valid }, // no delay, 0 0 0 -> ∂=1
             // pulse: x 0 | 0 0
             ConvOp { stride: 2, dilation: 2, ker: t(1), padding: PaddingSpec::Valid }, // 0 0
-            // pulse 0 | 0
+                                                                                       // pulse 0 | 0
         ],
     };
     cpc.run().unwrap();

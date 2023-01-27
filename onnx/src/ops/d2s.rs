@@ -126,7 +126,7 @@ impl Expansion for DepthToSpace {
         }
         let mut wire = tvec!(inputs[0]);
         for (ix, op) in self.to_axis_ops(&ishape)?.into_iter().enumerate() {
-            wire = model.wire_node(format!("{}.{}", prefix, ix), op, &wire)?;
+            wire = model.wire_node(format!("{prefix}.{ix}"), op, &wire)?;
         }
         Ok(wire)
     }

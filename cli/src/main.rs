@@ -459,7 +459,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             let onnx = tract_onnx::onnx();
             let names = onnx.op_register.0.keys().sorted().into_iter().join(", ");
             println!("Onnx:\n");
-            println!("{}", names);
+            println!("{names}");
             println!("\n");
         }
         #[cfg(feature = "tf")]
@@ -467,7 +467,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             let tf = tract_tensorflow::tensorflow();
             let names = tf.op_register.0.keys().sorted().into_iter().join(", ");
             println!("Tensorflow:\n");
-            println!("{}", names);
+            println!("{names}");
             println!("\n");
         }
         return Ok(());

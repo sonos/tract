@@ -44,12 +44,12 @@ impl Expansion for CumSum {
         let mut var_shape = data.shape.clone();
         let axis = if axis < 0 { (axis + data.rank() as i64) as usize } else { axis as usize };
         let zero = model.add_const(
-            format!("{}.zero", prefix),
+            format!("{prefix}.zero"),
             Tensor::zero_dt(data.datum_type, &[])?.into_arc_tensor(),
         )?;
         var_shape.set(axis, 1.to_dim());
         let init = model.wire_node(
-            format!("{}.init", prefix),
+            format!("{prefix}.init"),
             tract_core::ops::array::MultiBroadcastTo::new(var_shape.clone()),
             &[zero],
         )?[0];

@@ -30,6 +30,6 @@ fn main() -> TractResult<()> {
         .cloned()
         .zip(2..)
         .max_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-    println!("result: {:?}", best);
+    println!("result: {best:?}");
     Ok(())
 }

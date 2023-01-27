@@ -86,7 +86,7 @@ impl Expansion for MatMulInteger {
         let mut inputs: TVec<OutletId> = inputs.into();
         inputs[0] = a_and_b[0];
         inputs[1] = a_and_b[1];
-        inputs.insert(2, target.add_const(format!("{}.bias", prefix), tensor0(0i32))?);
+        inputs.insert(2, target.add_const(format!("{prefix}.bias"), tensor0(0i32))?);
         target.wire_node(prefix, op, &inputs)
     }
 }
@@ -148,7 +148,7 @@ impl Expansion for QLinearMatMul {
         );
         let a_and_b =
             tract_hir::ops::binary::wire_rank_broadcast(prefix, target, &[inputs[0], inputs[3]])?;
-        let bias = target.add_const(format!("{}.bias", prefix), tensor0(0i32))?;
+        let bias = target.add_const(format!("{prefix}.bias"), tensor0(0i32))?;
         target.wire_node(
             prefix,
             op,

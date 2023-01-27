@@ -61,7 +61,7 @@ impl Output for usize {
         IntFactoid::from_wrapped(wrapped.clone())?
             .concretize()
             .and_then(|u| u.to_usize())
-            .with_context(|| format!("Tried to convert {:?} to a usize.", wrapped))
+            .with_context(|| format!("Tried to convert {wrapped:?} to a usize."))
     }
 }
 
@@ -74,7 +74,7 @@ impl Output for i64 {
     fn from_wrapped(wrapped: Wrapped) -> TractResult<i64> {
         IntFactoid::from_wrapped(wrapped.clone())?
             .concretize()
-            .with_context(|| format!("Tried to convert {:?} to a i64.", wrapped))
+            .with_context(|| format!("Tried to convert {wrapped:?} to a i64."))
     }
 }
 
