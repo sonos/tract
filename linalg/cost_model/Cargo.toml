@@ -1,6 +1,6 @@
 [package]
 name = "cost_model"
-version = "0.19.2-pre"
+version = "0.19.3-pre"
 edition = "2021"
 
 [workspace]
@@ -15,5 +15,5 @@ colorous = "1.0.6"
 ansi_term = "0.12.1"
 pbr = "1"
 readings-probe = "0.1.4"
-tract-linalg = { path="../../linalg", version = "=0.19.2" }
-tract-data = { path="../../data", version = "=0.19.2" }
+tract-linalg = { path="../../linalg", version = "=0.19.3-pre" }
+tract-data = { path="../../data", version = "=0.19.3-pre" }
