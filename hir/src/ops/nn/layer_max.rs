@@ -49,26 +49,26 @@ impl Expansion for LayerHardmax {
         let mut wires = inputs.into();
         if self.coerce_to_2d {
             wires = target.wire_node(
-                format!("{}.reshaped", name),
+                format!("{name}.reshaped"),
                 AxisOp::Reshape(axis, input_fact.shape[axis..].into(), tvec!(suffix_dim.clone())),
                 &[input],
             )?;
         }
         wires = target.wire_node(
-            format!("{}.argmax", name),
+            format!("{name}.argmax"),
             nn::Reduce::new(tvec!(axis), nn::Reducer::ArgMax(false)),
             &wires,
         )?;
         wires =
-            target.wire_node(format!("{}.rm_axis", name), change_axes::AxisOp::Rm(axis), &wires)?;
+            target.wire_node(format!("{name}.rm_axis"), change_axes::AxisOp::Rm(axis), &wires)?;
         wires = target.wire_node(
-            format!("{}.hardmax", name),
+            format!("{name}.hardmax"),
             array::OneHot { axis, dim, off, on },
             &wires,
         )?;
         if self.coerce_to_2d {
             wires = target.wire_node(
-                format!("{}.hardmax_reshaped", name),
+                format!("{name}.hardmax_reshaped"),
                 AxisOp::Reshape(axis, tvec!(suffix_dim), input_fact.shape[axis..].into()),
                 &wires,
             )?;
@@ -108,7 +108,7 @@ impl Expansion for LayerLogSoftmax {
     ) -> TractResult<TVec<OutletId>> {
         let softmax = LayerSoftmax { axis: self.axis, coerce_to_2d: self.coerce_to_2d }
             .wire(name, target, inputs)?;
-        target.wire_node(format!("{}.logsoftmax", name), tract_core::ops::math::ln(), &softmax)
+        target.wire_node(format!("{name}.logsoftmax"), tract_core::ops::math::ln(), &softmax)
     }
 }
 

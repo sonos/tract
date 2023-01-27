@@ -1345,8 +1345,8 @@ impl PartialEq for Tensor {
 
 impl fmt::Debug for Tensor {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        let content = self.dump(false).unwrap_or_else(|e| format!("Error : {:?}", e));
-        write!(formatter, "{}", content)
+        let content = self.dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
+        write!(formatter, "{content}")
     }
 }
 

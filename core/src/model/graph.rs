@@ -315,7 +315,7 @@ where
             .iter()
             .find(|n| n.name == name)
             .map(|n| n.id)
-            .with_context(|| format!("No node found for name: \"{}\"", name))
+            .with_context(|| format!("No node found for name: \"{name}\""))
     }
 
     /// Find a node by its name.
@@ -379,7 +379,7 @@ where
         outlets
             .get(outlet.slot)
             .map(|o| &o.fact)
-            .with_context(|| format!("Invalid outlet reference: {:?}", outlet))
+            .with_context(|| format!("Invalid outlet reference: {outlet:?}"))
     }
 
     /// Get tensor information for a single outlet.
@@ -388,7 +388,7 @@ where
         outlets
             .get_mut(outlet.slot)
             .map(|o| &mut o.fact)
-            .with_context(|| format!("Invalid outlet reference: {:?}", outlet))
+            .with_context(|| format!("Invalid outlet reference: {outlet:?}"))
     }
 
     /// Get multiple mutable tensor information for outlets.
@@ -581,22 +581,22 @@ where
             let input_1 = self.nodes[i]
                 .inputs
                 .get(0)
-                .map(|o| format!("{:?}", o))
+                .map(|o| format!("{o:?}"))
                 .unwrap_or_else(|| "".to_string());
             let input_2 = self.nodes[i]
                 .inputs
                 .get(1)
-                .map(|o| format!("{:?}", o))
+                .map(|o| format!("{o:?}"))
                 .unwrap_or_else(|| "".to_string());
             let output_1 = self
                 .outlet_successors(OutletId::new(i, 0))
                 .get(0)
-                .map(|o| format!("{:?}", o))
+                .map(|o| format!("{o:?}"))
                 .unwrap_or_else(|| "".to_string());
             let output_2 = self
                 .outlet_successors(OutletId::new(i, 0))
                 .get(1)
-                .map(|o| format!("{:?}", o))
+                .map(|o| format!("{o:?}"))
                 .unwrap_or_else(|| "".to_string());
             writeln!(
                 fmt,
@@ -615,7 +615,7 @@ where
                 writeln!(
                     fmt,
                     "                                               |   * inputs: {}",
-                    self.nodes[i].inputs.iter().map(|s| format!("{:?}", s)).join(", ")
+                    self.nodes[i].inputs.iter().map(|s| format!("{s:?}")).join(", ")
                 )?;
             }
             if self.nodes[i].outputs.len() > 1
@@ -632,14 +632,14 @@ where
                                     self.outlet_label((i, o).into()).unwrap_or(""),
                                     self.outlet_successors((i, o).into())
                                     .iter()
-                                    .map(|s| format!("{:?}", s))
+                                    .map(|s| format!("{s:?}"))
                                     .join(", "),
                                     )?;
                     }
                 }
             }
         }
-        writeln!(fmt, "outputs: {}", self.outputs.iter().map(|o| format!("{:?}", o)).join(", "))?;
+        writeln!(fmt, "outputs: {}", self.outputs.iter().map(|o| format!("{o:?}")).join(", "))?;
         Ok(())
     }
 }
@@ -686,7 +686,7 @@ where
                 bail!("Invalid node id: position is {}, node is {}", ix, n);
             }
             if seen.contains(&n.name) {
-                eprintln!("{}", self);
+                eprintln!("{self}");
                 bail!("duplicate name {}", n.name);
             }
             seen.insert(&n.name);
@@ -718,7 +718,7 @@ mod test {
     #[test]
     fn hashable() {
         let mut model = TypedModel::default();
-        let _s = model.add_source("source", f32::fact(&[1, 2, 3])).unwrap();
+        let _s = model.add_source("source", f32::fact([1, 2, 3])).unwrap();
         let mut hasher = std::collections::hash_map::DefaultHasher::default();
         model.hash(&mut hasher);
     }

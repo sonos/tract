@@ -85,7 +85,7 @@ impl Arbitrary for DeconvProblem {
                             kernel_shape.push(co_over_group);
                         }
                     };
-                    let data_shape = df.from_n_c_hw(n, ci_over_group * group, &hwi).unwrap();
+                    let data_shape = df.from_n_c_hw(n, ci_over_group * group, hwi).unwrap();
                     (
                         Just(opt),
                         Just(df),

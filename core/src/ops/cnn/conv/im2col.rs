@@ -253,10 +253,10 @@ enum Patcher {
 }
 
 impl Patcher {
-    fn patch<'i, 'p, T: Copy + Datum + num_traits::Zero>(
+    fn patch<'p, T: Copy + Datum + num_traits::Zero>(
         &self,
         geo: &'p ConcreteGeometry,
-        input: &'i TensorView,
+        input: &TensorView,
         pack: &'p mut TensorView,
         g: usize,
         pad_value: Option<&Tensor>,
@@ -282,9 +282,9 @@ impl Patcher {
     }
 
     #[inline(never)]
-    fn generic<'i, 'p, T: Copy + Datum>(
+    fn generic<'p, T: Copy + Datum>(
         geometry: &'p ConcreteGeometry,
-        input: &'i TensorView,
+        input: &TensorView,
         pack: &'p mut TensorView,
         g: usize,
         pad_value: &Tensor,
@@ -314,9 +314,9 @@ impl Patcher {
     }
 
     #[inline(never)]
-    fn valid_1d<'i, 'p, T: Copy + Datum>(
+    fn valid_1d<'p, T: Copy + Datum>(
         geometry: &'p ConcreteGeometry,
-        input: &'i TensorView,
+        input: &TensorView,
         pack: &'p mut TensorView,
         g: usize,
     ) -> TractResult<()> {
@@ -343,9 +343,9 @@ impl Patcher {
     }
 
     #[inline(never)]
-    fn padded_2d<'i, 'p, T: Copy + Datum>(
+    fn padded_2d<'p, T: Copy + Datum>(
         geometry: &'p ConcreteGeometry,
-        input: &'i TensorView,
+        input: &TensorView,
         pack: &'p mut TensorView,
         g: usize,
         pad_value: &Tensor,
@@ -436,9 +436,9 @@ impl Patcher {
     }
 
     #[inline(never)]
-    fn valid_2d<'i, 'p, T: Copy + Datum>(
+    fn valid_2d<'p, T: Copy + Datum>(
         geometry: &'p ConcreteGeometry,
-        input: &'i TensorView,
+        input: &TensorView,
         pack: &'p mut TensorView,
         g: usize,
     ) -> TractResult<()> {

@@ -121,7 +121,7 @@ impl<'a> IntoAst<'a> {
             let rv = if let Some(label) = self.model.outlet_label(o) {
                 self.force_variable_and_name(label, &self.mapping[&o].clone())
             } else {
-                self.force_variable(format!("output_{}", ix), &self.mapping[&o].clone())
+                self.force_variable(format!("output_{ix}"), &self.mapping[&o].clone())
             };
             if let RValue::Identifier(name) = rv.as_ref() {
                 self.results.push(name.clone());
@@ -477,7 +477,7 @@ pub fn tuple_4(a: RValue, b: RValue, c: RValue, d: RValue) -> RValue {
 }
 
 pub fn numeric<D: std::fmt::Debug>(num: D) -> RValue {
-    RValue::Literal(Literal::Numeric(format!("{:?}", num)))
+    RValue::Literal(Literal::Numeric(format!("{num:?}")))
 }
 
 pub fn named_arg(id: &str, rv: RValue) -> Argument {

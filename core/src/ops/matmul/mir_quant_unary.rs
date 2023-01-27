@@ -47,7 +47,7 @@ impl EvalOp for QMatMulUnary {
         let mut input_outlets = tvec![a];
         for (i, t) in inputs.iter().enumerate().skip(1) {
             input_outlets
-                .push(model.add_const(format!("source_{}", i), t.clone().into_arc_tensor())?)
+                .push(model.add_const(format!("source_{i}"), t.clone().into_arc_tensor())?)
         }
 
         let mut params = self.params.as_outlet_ids(

@@ -106,11 +106,11 @@ impl Expansion for NonMaxSuppression {
             .optional_max_output_boxes_per_class_input
             .map(|index| Ok(inputs[index]))
             .unwrap_or_else(|| {
-                model.add_const(format!("{}.max_output_boxes_per_class", name), tensor0(0i64))
+                model.add_const(format!("{name}.max_output_boxes_per_class"), tensor0(0i64))
             })?;
         let iou_threshold =
             self.optional_iou_threshold_input.map(|index| Ok(inputs[index])).unwrap_or_else(
-                || model.add_const(format!("{}.iou_threshold", name), tensor0(0.0f32)),
+                || model.add_const(format!("{name}.iou_threshold"), tensor0(0.0f32)),
             )?;
         // score_threshold is an optional input, but we cannot assing it a meaningful default value
         let score_threshold = self.optional_score_threshold_input.map(|index| inputs[index]);

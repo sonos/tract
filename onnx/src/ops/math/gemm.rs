@@ -64,7 +64,7 @@ impl Expansion for Gemm {
         let (a, b, mut c) = (inputs[0], inputs[1], inputs[2]);
         let axes = MatMulAxes::default().transposing(self.trans_a, self.trans_b, false);
         let mut wire = model.wire_node(
-            format!("{}.ab", name),
+            format!("{name}.ab"),
             ops::matmul::MatMul { axes },
             [a, b].as_ref(),
         )?[0];

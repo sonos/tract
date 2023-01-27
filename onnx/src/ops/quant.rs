@@ -201,7 +201,7 @@ impl Expansion for DynamicQuantizeLinear {
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         let op: Box<dyn TypedOp> = Box::new(DynamicQuantizeLinearU8::new());
-        target.wire_node(format!("{}.dynamic_quantize", prefix), op, &[inputs[0]])
+        target.wire_node(format!("{prefix}.dynamic_quantize"), op, &[inputs[0]])
     }
 }
 

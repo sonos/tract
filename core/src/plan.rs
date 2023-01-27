@@ -350,7 +350,7 @@ where
         let fact = self.plan.borrow().model().outlet_fact(outlet)?;
         ensure!(
             fact.matches(&t, Some(&self.session_state.resolved_symbols))
-            .with_context(|| format!("Setting input {}", input))?,
+            .with_context(|| format!("Setting input {input}"))?,
             "Input at index {} has incorrect dtype or shape (got shape {:?} and dtype {:?}, expected to match fact {:?})",
             input,
             t.shape(),
@@ -438,7 +438,7 @@ where
             Some(ref mut state) => state.eval(session_state, node.op(), inputs),
             None => node.op().eval(inputs),
         }
-        .with_context(|| format!("Evaluating {}", node))?;
+        .with_context(|| format!("Evaluating {node}"))?;
         values[node.id] = Some(vs);
         Ok(())
     }
@@ -468,7 +468,7 @@ where
                 }
                 None => plan.borrow().model().nodes()[node].op().eval(inputs),
             }
-            .with_context(|| format!("Evaluating {:?}", node))?
+            .with_context(|| format!("Evaluating {node:?}"))?
         };
         self.values[node] = Some(values);
         Ok(self.values[node].as_ref().unwrap())
@@ -532,7 +532,7 @@ where
         Some(ref mut state) => state.eval(session_state, node.op(), input),
         None => node.op().eval(input),
     }
-    .with_context(|| format!("Evaluating {}", node));
+    .with_context(|| format!("Evaluating {node}"));
     r
 }
 

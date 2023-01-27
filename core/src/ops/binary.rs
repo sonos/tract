@@ -19,7 +19,7 @@ pub fn wire_rank_broadcast(
         let mut wire = inputs[i];
         for j in facts[i].rank()..max_rank {
             wire = target.wire_node(
-                format!("{}.fix-rank-{}-{}", prefix, i, j),
+                format!("{prefix}.fix-rank-{i}-{j}"),
                 AxisOp::Add(0),
                 &[wire],
             )?[0];

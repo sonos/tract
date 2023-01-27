@@ -43,7 +43,7 @@ fn annotate_with_kaldi(
             if let NodeLine::Component(compo) = proto_node {
                 let comp = &proto_model.components[&compo.component];
                 for (k, v) in &comp.attributes {
-                    let value = format!("{:?}", v);
+                    let value = format!("{v:?}");
                     vs.push(format!("Attr {}: {:.240}", bold.paint(k), value));
                 }
             }
@@ -68,7 +68,7 @@ fn annotate_with_tf_graph_def(
                     if let Some(tract_tensorflow::tfpb::tensorflow::attr_value::Value::Tensor(r)) =
                         &a.1.value
                     {
-                        format!("{:?}", r)
+                        format!("{r:?}")
                     } else {
                         format!("{:?}", a.1)
                     };
@@ -98,7 +98,7 @@ fn annotate_with_onnx_model(
                 let value = if let Some(t) = &a.t {
                     format!("{:?}", Tensor::try_from(t)?)
                 } else {
-                    format!("{:?}", a)
+                    format!("{a:?}")
                 };
                 v.push(format!("Attr {}: {:.240}", bold.paint(&a.name), value));
             }

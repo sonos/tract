@@ -33,12 +33,12 @@ use TDim::*;
 impl fmt::Display for TDim {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match &self {
-            Sym(sym) => write!(fmt, "{}", sym),
-            Val(it) => write!(fmt, "{}", it),
-            Add(it) => write!(fmt, "{}", it.iter().map(|x| format!("{}", x)).join("+")),
-            Mul(it) => write!(fmt, "{}", it.iter().map(|x| format!("{}", x)).join("*")),
-            MulInt(a, b) => write!(fmt, "{}*{}", a, b),
-            Div(a, b) => write!(fmt, "({})/{}", a, b),
+            Sym(sym) => write!(fmt, "{sym}"),
+            Val(it) => write!(fmt, "{it}"),
+            Add(it) => write!(fmt, "{}", it.iter().map(|x| format!("{x}")).join("+")),
+            Mul(it) => write!(fmt, "{}", it.iter().map(|x| format!("{x}")).join("*")),
+            MulInt(a, b) => write!(fmt, "{a}*{b}"),
+            Div(a, b) => write!(fmt, "({a})/{b}"),
         }
     }
 }

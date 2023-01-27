@@ -352,13 +352,13 @@ impl NodeProto {
     where
         T: AttrScalarType<'a>,
     {
-        self.expect_ok_or_else(self.get_attr_opt(name)?, || format!("attribute '{}'", name))
+        self.expect_ok_or_else(self.get_attr_opt(name)?, || format!("attribute '{name}'"))
     }
 
     pub fn check_value<T, V: Debug>(&self, attr: &str, value: Result<T, V>) -> TractResult<T> {
         match value {
             Ok(value) => Ok(value),
-            Err(err) => self.bail_attr(attr, &format!("unexpected value: {:?}", err)),
+            Err(err) => self.bail_attr(attr, &format!("unexpected value: {err:?}")),
         }
     }
 
@@ -373,7 +373,7 @@ impl NodeProto {
     where
         T: AttrSliceType<'a>,
     {
-        self.expect_ok_or_else(self.get_attr_opt_slice(name)?, || format!("attribute '{}'", name))
+        self.expect_ok_or_else(self.get_attr_opt_slice(name)?, || format!("attribute '{name}'"))
     }
 
     pub fn get_attr_opt_tvec<'a, T>(&'a self, name: &str) -> TractResult<Option<TVec<T>>>
@@ -387,7 +387,7 @@ impl NodeProto {
     where
         T: AttrTVecType<'a>,
     {
-        self.expect_ok_or_else(self.get_attr_opt_tvec(name)?, || format!("attribute '{}'", name))
+        self.expect_ok_or_else(self.get_attr_opt_tvec(name)?, || format!("attribute '{name}'"))
     }
 
     pub fn get_attr_opt_vec<'a, T>(&'a self, name: &str) -> TractResult<Option<Vec<T>>>

@@ -12,7 +12,7 @@ fn im2col(c: &mut Criterion) {
     let mut group = c.benchmark_group("im2col");
     let pad = rctensor0(0.0f32);
     for dil in &[1, 2, 4, 8] {
-        group.bench_function(&format!("dil_{}", dil), |b| {
+        group.bench_function(&format!("dil_{dil}"), |b| {
             b.iter_with_setup(
                 || {
                     let pool_spec = tract_core::ops::cnn::PoolSpec {

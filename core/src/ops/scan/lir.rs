@@ -46,10 +46,10 @@ impl Op for LirScan {
     fn info(&self) -> TractResult<Vec<String>> {
         let mut lines = vec![];
         for (ix, im) in self.input_mapping.iter().enumerate() {
-            lines.push(format!("Model input  #{}: {:?}", ix, im));
+            lines.push(format!("Model input  #{ix}: {im:?}"));
         }
         for (ix, om) in self.output_mapping.iter().enumerate() {
-            lines.push(format!("Model output #{}: {:?}", ix, om));
+            lines.push(format!("Model output #{ix}: {om:?}"));
         }
         Ok(lines)
     }

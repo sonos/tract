@@ -78,7 +78,7 @@ impl Expansion for ExpandDims {
             let mut wire = inputs[0];
             for axis in axes.iter().rev() {
                 wire = target.wire_node(
-                    format!("{}.axis-{}", prefix, axis),
+                    format!("{prefix}.axis-{axis}"),
                     AxisOp::Add(*axis as _),
                     &[wire],
                 )?[0];

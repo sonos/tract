@@ -55,19 +55,19 @@ impl Expansion for InstanceNorm {
             true,
             tract_hir::ops::nn::Reducer::Mean,
         )
-        .wire(&format!("{}.mean", name), model, &inputs[0..1])?[0];
+        .wire(&format!("{name}.mean"), model, &inputs[0..1])?[0];
         let diff = model.wire_node(
-            format!("{}.diff", name),
+            format!("{name}.diff"),
             tract_hir::ops::math::sub(),
             &[inputs[0], mean],
         )?;
         let sqr_diff =
-            model.wire_node(format!("{}.sqr", name), tract_hir::ops::math::square(), &diff)?;
+            model.wire_node(format!("{name}.sqr"), tract_hir::ops::math::square(), &diff)?;
         let vari =
             tract_hir::ops::nn::Reduce::new(Some(axes), true, tract_hir::ops::nn::Reducer::Mean)
-                .wire(&format!("{}.variance", name), model, &sqr_diff)?[0];
+                .wire(&format!("{name}.variance"), model, &sqr_diff)?[0];
         let epsilon = model.add_const(
-            format!("{}.epsilon.cst", name),
+            format!("{name}.epsilon.cst"),
             tensor0(self.epsilon)
                 .cast_to_dt(input_fact.datum_type)?
                 .into_owned()
@@ -75,39 +75,39 @@ impl Expansion for InstanceNorm {
                 .into_arc_tensor(),
         )?;
         let vari_sane = model.wire_node(
-            format!("{}.epsilon", name),
+            format!("{name}.epsilon"),
             tract_hir::ops::math::add(),
             &[vari, epsilon],
         )?;
         let div = model.wire_node(
-            format!("{}.rsqrt", name),
+            format!("{name}.rsqrt"),
             tract_hir::ops::math::rsqrt(),
             &vari_sane,
         )?;
         let divised = model.wire_node(
-            format!("{}.div", name),
+            format!("{name}.div"),
             tract_hir::ops::math::mul(),
             &[diff[0], div[0]],
         )?;
         let mut scale =
-            model.wire_node(format!("{}.add-scale-axis-n", name), AxisOp::Add(0), &inputs[1..2])?;
+            model.wire_node(format!("{name}.add-scale-axis-n"), AxisOp::Add(0), &inputs[1..2])?;
         for i in 2..rank {
             scale = model.wire_node(
-                format!("{}.add-scale-axis-{}", name, i),
+                format!("{name}.add-scale-axis-{i}"),
                 AxisOp::Add(2),
                 &scale,
             )?;
         }
         let scaled = model.wire_node(
-            format!("{}.scaled", name),
+            format!("{name}.scaled"),
             tract_hir::ops::math::mul(),
             &[divised[0], scale[0]],
         )?;
         let mut bias =
-            model.wire_node(format!("{}.add-bias-axis-n", name), AxisOp::Add(0), &inputs[2..3])?;
+            model.wire_node(format!("{name}.add-bias-axis-n"), AxisOp::Add(0), &inputs[2..3])?;
         for i in 2..rank {
             bias =
-                model.wire_node(format!("{}.add-bias-axis-{}", name, i), AxisOp::Add(2), &bias)?;
+                model.wire_node(format!("{name}.add-bias-axis-{i}"), AxisOp::Add(2), &bias)?;
         }
         model.wire_node(name, tract_hir::ops::math::add(), &[scaled[0], bias[0]])
     }

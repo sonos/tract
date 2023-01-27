@@ -7,9 +7,9 @@ use tract_linalg::frame::MatMatMul;
 use DatumType::*;
 
 pub fn packed_packed(c: &mut Criterion, name: &str, m: usize, k: usize, n: usize) {
-    let mut group = c.benchmark_group(format!("{}/packed_packed", name));
+    let mut group = c.benchmark_group(format!("{name}/packed_packed"));
     group.throughput(Throughput::Elements((m * k * n) as u64));
-    let id = format!("{}x{}x{}", m, k, n);
+    let id = format!("{m}x{k}x{n}");
     group.bench_with_input(BenchmarkId::new("f32/cold", &id), &(F32, m, k, n, true), mat_mat);
     group.bench_with_input(BenchmarkId::new("f32/hot", &id), &(F32, m, k, n, false), mat_mat);
     group.bench_with_input(BenchmarkId::new("i8/cold", &id), &(I8, m, k, n, true), mat_mat);
@@ -18,9 +18,9 @@ pub fn packed_packed(c: &mut Criterion, name: &str, m: usize, k: usize, n: usize
 
 pub fn packed_vec(c: &mut Criterion, name: &str, m: usize, k: usize, n: usize) {
     assert_eq!(n, 1);
-    let mut group = c.benchmark_group(format!("{}/packed_vec", name));
+    let mut group = c.benchmark_group(format!("{name}/packed_vec"));
     group.throughput(Throughput::Elements((m * k * n) as u64));
-    let id = format!("{}x{}x{}", m, k, n);
+    let id = format!("{m}x{k}x{n}");
     group.bench_with_input(BenchmarkId::new("f32/cold", &id), &(F32, m, k, n, true), mat_vec);
     group.bench_with_input(BenchmarkId::new("f32/hot", &id), &(F32, m, k, n, false), mat_vec);
     group.bench_with_input(BenchmarkId::new("i8/cold", &id), &(I8, m, k, n, true), mat_vec);

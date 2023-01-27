@@ -178,7 +178,7 @@ impl Display for Expr {
                 .sorted()
                 .map(|(_, r)| r)
             {
-                write!(f, "{}", axis)?;
+                write!(f, "{axis}")?;
             }
         }
         write!(f, "->")?;
@@ -189,7 +189,7 @@ impl Display for Expr {
             .sorted()
             .map(|(_, r)| r)
         {
-            write!(f, "{}", axis)?;
+            write!(f, "{axis}")?;
         }
         Ok(())
     }

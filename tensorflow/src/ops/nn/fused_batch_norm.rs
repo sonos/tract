@@ -83,12 +83,12 @@ impl Expansion for FusedBatchNorm {
             let slope = target.add_const(prefix.to_string() + ".slope", slope)?;
             let inter = target.add_const(prefix.to_string() + ".inter", inter)?;
             let wire = target.wire_node(
-                format!("{}.mul", prefix),
+                format!("{prefix}.mul"),
                 tract_hir::ops::math::mul(),
                 &[inputs[0], slope],
             )?;
             return target.wire_node(
-                format!("{}.add", prefix),
+                format!("{prefix}.add"),
                 tract_hir::ops::math::add(),
                 &[wire[0], inter],
             );

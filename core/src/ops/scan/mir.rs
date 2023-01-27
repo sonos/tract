@@ -337,8 +337,7 @@ impl Scan {
                     let invariants = successor_node.op.invariants(&input_facts, &output_facts)?;
                     if let Some(axis_after) = invariants.unary_track_axis_down(info.axis, false) {
                         let mut outside_patch = TypedModelPatch::new(format!(
-                            "Outer patch for input extraction of {}",
-                            successor_node
+                            "Outer patch for input extraction of {successor_node}"
                         ));
                         let mut patch_inputs = node
                             .inputs
@@ -362,8 +361,7 @@ impl Scan {
                             new_input_inner_fact,
                         )?;
                         let mut inner_patch = TypedModelPatch::new(format!(
-                            "Inner body patch for extraction of {}",
-                            successor_node
+                            "Inner body patch for extraction of {successor_node}"
                         ));
                         let new_source_wire_in_patch =
                             inner_patch.tap_model(&new_body, new_source_wire)?;
@@ -416,7 +414,7 @@ impl Scan {
                 if let Some(k) = self.body.output_fact(model_output_ix)?.konst.clone() {
                     let inner_node = self.body.output_outlets()?[model_output_ix].node;
                     let inner_node = self.body.node(inner_node);
-                    let mut patch = TypedModelPatch::new(format!("Extract const node {}", inner_node));
+                    let mut patch = TypedModelPatch::new(format!("Extract const node {inner_node}"));
                     let cst = patch.add_const(format!("{}.{}", &node.name, &inner_node.name), k)?;
                     patch.shunt_outside(model, OutletId::new(node.id, slot), cst)?;
                     return Ok(Some(patch));
@@ -482,8 +480,7 @@ impl Scan {
                     outer_slots.push(outer_slot);
                 }
                 let mut outside_patch = TypedModelPatch::new(format!(
-                    "Outside patch for output extraction of {}",
-                    emitter_node
+                    "Outside patch for output extraction of {emitter_node}"
                 ));
                 let inputs = node
                     .inputs
@@ -649,10 +646,10 @@ impl Op for Scan {
     fn info(&self) -> TractResult<Vec<String>> {
         let mut lines = vec![];
         for (ix, im) in self.input_mapping.iter().enumerate() {
-            lines.push(format!("Model input  #{}: {:?}", ix, im));
+            lines.push(format!("Model input  #{ix}: {im:?}"));
         }
         for (ix, om) in self.output_mapping.iter().enumerate() {
-            lines.push(format!("Model output #{}: {:?}", ix, om));
+            lines.push(format!("Model output #{ix}: {om:?}"));
         }
         Ok(lines)
     }

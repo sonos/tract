@@ -104,11 +104,11 @@ impl<'o> OptimizerSession<'o> {
         let mut passes = self.optimizer.passes.clone();
         for p in passes.iter_mut() {
             self.run_one_pass_outer(i, p.as_mut(), model)
-                .with_context(|| format!("running pass {:?}", p))?;
+                .with_context(|| format!("running pass {p:?}"))?;
             model.compact()?;
             model
                 .check_consistency()
-                .with_context(|| format!("consistency check after pass {:?}", p))?;
+                .with_context(|| format!("consistency check after pass {p:?}"))?;
         }
         Ok(())
     }
@@ -125,7 +125,7 @@ impl<'o> OptimizerSession<'o> {
             if self.counter == old_counter {
                 return Ok(());
             }
-            model.compact().with_context(|| format!("after pass {:?}", p))?;
+            model.compact().with_context(|| format!("after pass {p:?}"))?;
         }
     }
 
@@ -142,7 +142,7 @@ impl<'o> OptimizerSession<'o> {
             }
         }
         while let Some(mut patch) = p.next(self, model)? {
-            patch.push_context(format!("{:?}/{}", p, i));
+            patch.push_context(format!("{p:?}/{i}"));
             patch.model.check_consistency().context("checking patch internal consistency")?;
             model
                 .check_consistency()
@@ -167,7 +167,7 @@ impl<'o> OptimizerSession<'o> {
                 }
             }
         }
-        model.check_consistency().with_context(|| format!("after pass {:?}", p))?;
+        model.check_consistency().with_context(|| format!("after pass {p:?}"))?;
         Ok(())
     }
 }

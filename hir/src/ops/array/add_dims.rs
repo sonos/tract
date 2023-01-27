@@ -67,7 +67,7 @@ impl Expansion for AddDims {
             .sorted();
         for axis in axes {
             wire =
-                model.wire_node(format!("{}.axis-{}", prefix, axis), AxisOp::Add(axis), &wire)?;
+                model.wire_node(format!("{prefix}.axis-{axis}"), AxisOp::Add(axis), &wire)?;
         }
         Ok(wire)
     }

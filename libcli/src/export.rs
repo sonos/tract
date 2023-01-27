@@ -42,7 +42,7 @@ impl GraphPerfInfo {
                 cost: node
                     .cost
                     .iter()
-                    .map(|(k, v)| (format!("{:?}", k), format!("{}", v)))
+                    .map(|(k, v)| (format!("{k:?}"), format!("{v}")))
                     .collect(),
                 node_name: id.model(model).unwrap().node_name(id.1).to_string(),
                 op_name: id.model(model).unwrap().node_op_name(id.1).to_string(),

@@ -110,7 +110,7 @@ impl Expansion for BlockLSTM {
         wire!(x = AxisOp::Rm(0), x_source);
 
         // CS: body input 1
-        let cs = model.wire_node(format!("{}.cs-axis", prefix), AxisOp::Add(0), &[inputs[2]])?[0];
+        let cs = model.wire_node(format!("{prefix}.cs-axis"), AxisOp::Add(0), &[inputs[2]])?[0];
         outer_inputs.push(cs);
         let cs_fact = model.outlet_fact(cs)?.clone();
         let cs_source = body.add_source("cs_source", cs_fact)?;
@@ -119,7 +119,7 @@ impl Expansion for BlockLSTM {
         wire!(cs_prev = AxisOp::Rm(0), cs_source);
 
         // H: body input 2
-        let h = model.wire_node(format!("{}.h-axis", prefix), AxisOp::Add(0), &[inputs[3]])?[0];
+        let h = model.wire_node(format!("{prefix}.h-axis"), AxisOp::Add(0), &[inputs[3]])?[0];
         outer_inputs.push(h);
         let h_fact = model.outlet_fact(h)?.clone();
         let h_source = body.add_source("h_source", h_fact)?;
@@ -129,8 +129,8 @@ impl Expansion for BlockLSTM {
 
         wire!(xh = array::TypedConcat::new(1), x, h_prev);
 
-        let w = body.add_const(format!("{}-w", prefix), w)?;
-        let b = body.add_const(format!("{}-b", prefix), b)?;
+        let w = body.add_const(format!("{prefix}-w"), w)?;
+        let b = body.add_const(format!("{prefix}-b"), b)?;
         wire!(i_ci_f_o_1 = matmul::mir::MatMul::default(), xh, w);
         wire!(i_ci_f_o = math::add(), b, i_ci_f_o_1);
 
@@ -138,7 +138,7 @@ impl Expansion for BlockLSTM {
         wire!(i = nn::sigmoid(), i_1);
 
         wire!(f_1 = array::Slice::new(1, 2 * cell_size, 3 * cell_size), i_ci_f_o);
-        let bias = body.add_const(format!("{}-bias", prefix), rctensor2(&[[self.forget_bias]]))?;
+        let bias = body.add_const(format!("{prefix}-bias"), rctensor2(&[[self.forget_bias]]))?;
         wire!(f_2 = math::add(), f_1, bias);
         wire!(f = nn::sigmoid(), f_2);
 

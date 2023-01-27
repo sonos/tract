@@ -31,7 +31,7 @@ impl super::TypedPass for PropConst {
                             for (ix, output) in res.into_iter().enumerate() {
                                 let mut name = node.name.clone();
                                 if ix > 0 {
-                                    name = format!("{}.{}", name, ix);
+                                    name = format!("{name}.{ix}");
                                 }
                                 let wire = patch.add_const(name, output.into_arc_tensor())?;
                                 patch.shunt_outside(model, (n, ix).into(), wire)?;

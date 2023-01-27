@@ -218,12 +218,12 @@ where
         for ia in 0..m / mr {
             scratch.for_valid_tile::<K>(non_linear, ia, 0);
             let err = K::kernel(scratch.uspecs());
-            debug_assert_eq!(err, 0, "Kernel return error {}", err);
+            debug_assert_eq!(err, 0, "Kernel return error {err}");
         }
         if m % mr != 0 {
             scratch.for_border_tile::<K>(non_linear, m / mr, 0);
             let err = K::kernel(scratch.uspecs());
-            debug_assert_eq!(err, 0, "Kernel return error {}", err);
+            debug_assert_eq!(err, 0, "Kernel return error {err}");
             scratch.postprocess_tile::<K>(non_linear, m / mr, 0, m % mr, 1);
         }
         Ok(())
@@ -246,12 +246,12 @@ where
             for ia in 0..m / mr {
                 scratch.for_valid_tile::<K>(non_linear, ia, ib);
                 let err = K::kernel(scratch.uspecs());
-                debug_assert_eq!(err, 0, "Kernel return error {}", err);
+                debug_assert_eq!(err, 0, "Kernel return error {err}");
             }
             if m % mr != 0 {
                 scratch.for_border_tile::<K>(non_linear, m / mr, ib);
                 let err = K::kernel(scratch.uspecs());
-                debug_assert_eq!(err, 0, "Kernel return error {}", err);
+                debug_assert_eq!(err, 0, "Kernel return error {err}");
                 scratch.postprocess_tile::<K>(non_linear, m / mr, ib, m % mr, nr);
             }
         }
@@ -259,13 +259,13 @@ where
             for ia in 0..m / mr {
                 scratch.for_border_tile::<K>(non_linear, ia, n / nr);
                 let err = K::kernel(scratch.uspecs());
-                debug_assert_eq!(err, 0, "Kernel return error {}", err);
+                debug_assert_eq!(err, 0, "Kernel return error {err}");
                 scratch.postprocess_tile::<K>(non_linear, ia, n / nr, mr, n % nr);
             }
             if m % mr != 0 {
                 scratch.for_border_tile::<K>(non_linear, m / mr, n / nr);
                 let err = K::kernel(scratch.uspecs());
-                debug_assert_eq!(err, 0, "Kernel return error {}", err);
+                debug_assert_eq!(err, 0, "Kernel return error {err}");
                 scratch.postprocess_tile::<K>(non_linear, m / mr, n / nr, m % mr, n % nr);
             }
         }
@@ -295,14 +295,14 @@ where
             for ib in 0..n / nr {
                 scratch.for_valid_tile::<K>(non_linear, ia, ib);
                 let err = K::kernel(scratch.uspecs());
-                debug_assert_eq!(err, 0, "Kernel return error {}", err);
+                debug_assert_eq!(err, 0, "Kernel return error {err}");
             }
         }
         if m % mr != 0 {
             for ib in 0..n / nr {
                 scratch.for_border_tile::<K>(non_linear, m / mr, ib);
                 let err = K::kernel(scratch.uspecs());
-                debug_assert_eq!(err, 0, "Kernel return error {}", err);
+                debug_assert_eq!(err, 0, "Kernel return error {err}");
                 scratch.postprocess_tile::<K>(non_linear, m / mr, ib, m % mr, nr);
             }
         }
@@ -310,13 +310,13 @@ where
             for ia in 0..m / mr {
                 scratch.for_border_tile::<K>(non_linear, ia, n / nr);
                 let err = K::kernel(scratch.uspecs());
-                debug_assert_eq!(err, 0, "Kernel return error {}", err);
+                debug_assert_eq!(err, 0, "Kernel return error {err}");
                 scratch.postprocess_tile::<K>(non_linear, ia, n / nr, mr, n % nr);
             }
             if m % mr != 0 {
                 scratch.for_border_tile::<K>(non_linear, m / mr, n / nr);
                 let err = K::kernel(scratch.uspecs());
-                debug_assert_eq!(err, 0, "Kernel return error {}", err);
+                debug_assert_eq!(err, 0, "Kernel return error {err}");
                 scratch.postprocess_tile::<K>(non_linear, m / mr, n / nr, m % mr, n % nr);
             }
         }

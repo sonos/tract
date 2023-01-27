@@ -65,7 +65,7 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
             };
 
             let output_facts = output_facts()
-                .with_context(|| format!("wiring {} ({:?}), determining output_facts", name, op))?;
+                .with_context(|| format!("wiring {name} ({op:?}), determining output_facts"))?;
             let id = self.add_node(&name, &op, output_facts)?;
             inputs
                 .iter()
@@ -80,7 +80,7 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                     .collect(),
             )
         }
-        .with_context(|| format!("Wiring node \"{}\", {:?}", name, op))
+        .with_context(|| format!("Wiring node \"{name}\", {op:?}"))
     }
 }
 

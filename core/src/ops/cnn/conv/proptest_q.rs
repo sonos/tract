@@ -117,7 +117,7 @@ impl QConvProblem {
             temp += &bias.clone().into_shape(shape).unwrap();
         }
         temp.mapv(|i| {
-            (round_ties_to_even(i as f32 / scale as f32) as i32 + c0)
+            (round_ties_to_even(i as f32 / scale) as i32 + c0)
                 .max(std::i8::MIN as i32)
                 .min(std::i8::MAX as i32) as i8
         })
@@ -181,7 +181,7 @@ impl Arbitrary for QConvProblem {
                     if kf == KernelFormat::HWIO && group > 1 {
                         ci0 = 1;
                     }
-                    let shape_in = df.from_n_c_hw(n, ci0 * group, &data_shape).unwrap();
+                    let shape_in = df.from_n_c_hw(n, ci0 * group, data_shape).unwrap();
                     let data_in = qtensor(shape_in.shape.iter().cloned().collect());
                     match kf {
                         KernelFormat::HWIO => {

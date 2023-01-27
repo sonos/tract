@@ -14,13 +14,13 @@ pub fn parse_tdim(symbol_table: &SymbolTable, input: &str) -> TractResult<TDim> 
     }
 }
 
-fn expr<'s, 'i>(symbol_table: &'s SymbolTable, i: &'i str) -> IResult<&'i str, TDim> {
+fn expr<'i>(symbol_table: &SymbolTable, i: &'i str) -> IResult<&'i str, TDim> {
     add(symbol_table, i)
 }
 
 macro_rules! bin {
     ($name: ident, $next: ident, $op: expr, $builder: expr) => {
-        fn $name<'s, 'i>(symbol_table: &'s SymbolTable, input: &'i str) -> IResult<&'i str, TDim> {
+        fn $name<'i>(symbol_table: &SymbolTable, input: &'i str) -> IResult<&'i str, TDim> {
             let s = symbol_table;
             alt((map(separated_pair(|i| $next(s, i), tag($op), |i| $next(s, i)), $builder), |i| {
                 $next(s, i)
@@ -33,14 +33,14 @@ bin!(add, sub, "+", |(a, b)| a + b);
 bin!(sub, mul, "-", |(a, b)| a - b);
 bin!(mul, div, "*", |(a, b)| a * b);
 
-fn div<'s, 'i>(symbol_table: &'s SymbolTable, input: &'i str) -> IResult<&'i str, TDim> {
+fn div<'i>(symbol_table: &SymbolTable, input: &'i str) -> IResult<&'i str, TDim> {
     let s = symbol_table;
     alt((map(separated_pair(|i| atom(s, i), tag("/"), numeric), |(a, b)| a / b), |i| atom(s, i)))(
         input,
     )
 }
 
-fn atom<'s, 'i>(symbol_table: &'s SymbolTable, i: &'i str) -> IResult<&'i str, TDim> {
+fn atom<'i>(symbol_table: &SymbolTable, i: &'i str) -> IResult<&'i str, TDim> {
     alt((
         map(numeric, TDim::Val),
         map(|i| identifier(symbol_table, i), TDim::Sym),

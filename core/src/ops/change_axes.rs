@@ -440,8 +440,8 @@ impl Op for AxisOp {
 
     fn info(&self) -> TractResult<Vec<String>> {
         match self {
-            Add(axis) | Rm(axis) => Ok(vec![format!("Axis: {}", axis)]),
-            Move(from, to) => Ok(vec![format!("Axis {} to {}", from, to)]),
+            Add(axis) | Rm(axis) => Ok(vec![format!("Axis: {axis}")]),
+            Move(from, to) => Ok(vec![format!("Axis {from} to {to}")]),
             Reshape(at, from, to) => Ok(vec![format!(
                 "Axes starting at {}: {:?} to {:?}",
                 at,
@@ -675,7 +675,7 @@ pub fn change_axes(
                 let more = node
                     .op
                     .change_axes(model, node, io, &c.op)
-                    .with_context(|| format!("Propagating {:?} to node {}", change, node))?;
+                    .with_context(|| format!("Propagating {change:?} to node {node}"))?;
                 if more.is_none() {
                     trace!("    Propagation of {:?} blocked by {}", change, node);
                     return Ok(None);
@@ -720,7 +720,7 @@ pub fn change_axes(
         }
     }
     trace!("Translating {:?} to patch", change);
-    let mut patch = TypedModelPatch::new(format!("{:?}", change));
+    let mut patch = TypedModelPatch::new(format!("{change:?}"));
     let mut replaced_wires: HashMap<OutletId, OutletId> = HashMap::default();
     let nodes_to_replace = changed_wires
         .keys()
@@ -1089,7 +1089,7 @@ mod proptests {
             let mut model = TypedModel::default();
             let mut wire = model.add_source("source", i64::fact(&self.input))?;
             for (ix, op) in self.ops.iter().enumerate() {
-                wire = model.wire_node(format!("op_{}", ix), op.clone(), &[wire])?[0];
+                wire = model.wire_node(format!("op_{ix}"), op.clone(), &[wire])?[0];
             }
             model.set_output_outlets(&[wire])?;
             Ok(model)

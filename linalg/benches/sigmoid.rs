@@ -4,7 +4,7 @@ extern crate tract_linalg;
 use criterion::Criterion;
 
 fn ssigmoid(c: &mut Criterion, n: usize) {
-    c.bench_function(&format!("ssigmoid_{}", n), move |be| {
+    c.bench_function(&format!("ssigmoid_{n}"), move |be| {
         let mut s = (0..n).map(|i| i as f32 / 10.0).collect::<Vec<f32>>();
         let op = &(tract_linalg::ops().sigmoid_f32)();
         be.iter(|| op.run(&mut s));

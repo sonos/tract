@@ -79,7 +79,7 @@ impl Expansion for Pack {
             .enumerate()
             .map(|(ix, &o)| {
                 Ok(model.wire_node(
-                    format!("{}.add_dims-{}", prefix, ix),
+                    format!("{prefix}.add_dims-{ix}"),
                     AxisOp::Add(self.axis),
                     &[o],
                 )?[0])

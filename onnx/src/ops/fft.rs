@@ -126,39 +126,39 @@ impl Expansion for Dft {
             let mut pads = vec![(0, 0); fact.rank() - 1];
             pads.push((0, 1));
             wire = model.wire_node(
-                format!("{}.add_imaginary", prefix),
+                format!("{prefix}.add_imaginary"),
                 Pad { mode: tract_hir::ops::array::PadMode::Constant(rctensor0(0f32)), pads },
                 &wire,
             )?;
         };
         wire = model.wire_node(
-            format!("{}.pair_to_cplx", prefix),
+            format!("{prefix}.pair_to_cplx"),
             tract_core::ops::math::InnerDimToComplex,
             &wire,
         )?;
         wire = model.wire_node(
-            format!("{}.fft", prefix),
+            format!("{prefix}.fft"),
             tract_core::ops::fft::Fft { axis: self.axis, inverse: self.inverse },
             &wire,
         )?;
         wire = model.wire_node(
-            format!("{}.to_pair", prefix),
+            format!("{prefix}.to_pair"),
             tract_core::ops::math::ComplexToInnerDim,
             &wire,
         )?;
         if self.inverse {
             let len = model.add_const(
-                format!("{}.len", prefix),
+                format!("{prefix}.len"),
                 tensor0(fact.shape[self.axis].clone()).broadcast_into_rank(fact.rank())?,
             )?;
             let casted =
-                model.wire_node(format!("{}.cast", prefix), cast(fact.datum_type), &[len])?;
-            wire = model.wire_node(format!("{}.norm", prefix), div(), &[wire[0], casted[0]])?;
+                model.wire_node(format!("{prefix}.cast"), cast(fact.datum_type), &[len])?;
+            wire = model.wire_node(format!("{prefix}.norm"), div(), &[wire[0], casted[0]])?;
         }
         if self.onesided {
             let frame = fact.shape[self.axis].clone() / 2 + 1;
             wire = model.wire_node(
-                format!("{}.onesided", prefix),
+                format!("{prefix}.onesided"),
                 tract_core::ops::array::Slice::new(2, 0, frame),
                 &wire,
             )?;
@@ -272,30 +272,30 @@ impl Expansion for Stft {
             let mut pads = vec![(0, 0); fact.rank() - 1];
             pads.push((0, 1));
             wire = model.wire_node(
-                format!("{}.add_imaginary", prefix),
+                format!("{prefix}.add_imaginary"),
                 Pad { mode: tract_hir::ops::array::PadMode::Constant(rctensor0(0f32)), pads },
                 &wire,
             )?;
         };
         wire = model.wire_node(
-            format!("{}.pair_to_cplx", prefix),
+            format!("{prefix}.pair_to_cplx"),
             tract_core::ops::math::InnerDimToComplex,
             &wire,
         )?;
         wire = model.wire_node(
-            format!("{}.fft", prefix),
+            format!("{prefix}.fft"),
             tract_core::ops::fft::Stft { axis: 1, frame, window, stride },
             &wire,
         )?;
         if self.onesided {
             wire = model.wire_node(
-                format!("{}.onesided", prefix),
+                format!("{prefix}.onesided"),
                 tract_core::ops::array::Slice::new(2, 0, frame / 2 + 1),
                 &wire,
             )?;
         }
         wire = model.wire_node(
-            format!("{}.to_pair", prefix),
+            format!("{prefix}.to_pair"),
             tract_core::ops::math::ComplexToInnerDim,
             &wire,
         )?;

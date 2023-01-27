@@ -48,7 +48,7 @@ impl Expansion for Flatten {
         for (ix, op) in
             super::reshape::to_axis_ops(&input_shape, &output_shape)?.into_iter().enumerate()
         {
-            wire = model.wire_node(format!("{}.{}", prefix, ix), op, &wire)?;
+            wire = model.wire_node(format!("{prefix}.{ix}"), op, &wire)?;
         }
         Ok(wire)
     }

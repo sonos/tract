@@ -284,11 +284,7 @@ mod test {
         let error = (found - expected).abs();
         assert!(
             error <= epsilon,
-            "epsilon eq failed: |{:?}-{:?}|={} should be <= {}",
-            found,
-            expected,
-            error,
-            epsilon
+            "epsilon eq failed: |{found:?}-{expected:?}|={error} should be <= {epsilon}"
         );
     }
 

@@ -45,7 +45,7 @@ pub fn handle(
     let start = Instant::now();
     while iters < limits.max_iters && start.elapsed() < limits.max_time {
         if let Some(mon) = probe {
-            let _ = mon.log_event(&format!("loop_{}", iters));
+            let _ = mon.log_event(&format!("loop_{iters}"));
         }
         if let Some(p) = &progress {
             p.store(iters as _, std::sync::atomic::Ordering::Relaxed);

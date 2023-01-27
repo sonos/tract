@@ -86,7 +86,7 @@ impl ResourceLoader for DatLoader {
     ) -> TractResult<Option<(String, Arc<dyn Resource>)>> {
         if path.extension().map(|e| e == "dat").unwrap_or(false) {
             let tensor = crate::tensors::read_tensor(reader)
-                .with_context(|| format!("Error while reading tensor {:?}", path))?;
+                .with_context(|| format!("Error while reading tensor {path:?}"))?;
             Ok(Some((resource_path_to_id(path)?, Arc::new(tensor))))
         } else {
             Ok(None)

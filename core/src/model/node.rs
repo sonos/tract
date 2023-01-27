@@ -85,7 +85,7 @@ impl<F: Fact + Hash> fmt::Debug for Outlet<F> {
             fmt,
             "{:?} {}",
             self.fact,
-            self.successors.iter().map(|o| format!("{:?}", o)).join(" ")
+            self.successors.iter().map(|o| format!("{o:?}")).join(" ")
         )
     }
 }

@@ -233,7 +233,7 @@ impl ConvUnary {
         let abc_scale = qmm::combine_scales(model, name, a_scale, b_scale, c_scale)?;
 
         let im2col = model.wire_node(
-            format!("{}.im2col", name),
+            format!("{name}.im2col"),
             Im2Col::new(self.pool_spec.clone(), self.group, k, &b_fact.shape, mmm.clone())?,
             &[b, b0],
         )?[0];
@@ -249,10 +249,10 @@ impl ConvUnary {
         if self.pool_spec.data_format.has_n() {
             sum_a.insert_axis_inplace(Axis(0));
         }
-        let sum_a = model.add_const(format!("{}.sum_a", name), sum_a)?;
+        let sum_a = model.add_const(format!("{name}.sum_a"), sum_a)?;
 
         let mut sum_b = model.wire_node(
-            format!("{}.sum_b", name),
+            format!("{name}.sum_b"),
             super::QSumB { n: n.clone(), r: mmm.b_pack().panel_width(), k },
             &[im2col],
         )?[0];
@@ -260,7 +260,7 @@ impl ConvUnary {
         if self.group > 1 && self.pool_spec.data_format.c_is_last() {
             let has_n = self.pool_spec.data_format.has_n() as usize;
             sum_b = model.wire_node(
-                format!("{}.transpose_sum_b", name),
+                format!("{name}.transpose_sum_b"),
                 AxisOp::Move(has_n, 1 + has_n),
                 &[sum_b],
             )?[0];
@@ -314,7 +314,7 @@ impl ConvUnary {
         let mut wire = qmm::requant(model, name, wire, c_dt, abc_scale, c0)?;
         if self.group > 1 {
             wire = model.wire_node(
-                format!("{}.reshape_group", name),
+                format!("{name}.reshape_group"),
                 AxisOp::Reshape(
                     c_axis - 1,
                     mmm_output_shape[c_axis - 1..][..2].iter().map(|d| d.to_dim()).collect(),
@@ -339,10 +339,10 @@ impl ConvUnary {
 
         let output_shape = self.pool_spec.output_shape(&b_fact.shape)?;
         let (_, m, k, n, mmm) = self.compute_geo(model.outlet_fact(wire)?)?;
-        let padding = model.add_const(format!("{}.b0", name), Tensor::zero_dt(b_dt, &[])?)?;
+        let padding = model.add_const(format!("{name}.b0"), Tensor::zero_dt(b_dt, &[])?)?;
 
         wire = model.wire_node(
-            format!("{}.im2col", name),
+            format!("{name}.im2col"),
             Im2Col::new(self.pool_spec.clone(), self.group, k, &b_fact.shape, mmm.clone())?,
             &[wire, padding],
         )?[0];
@@ -374,7 +374,7 @@ impl ConvUnary {
 
         if self.group > 1 {
             wire = model.wire_node(
-                format!("{}.reshape_group", name),
+                format!("{name}.reshape_group"),
                 AxisOp::Reshape(
                     c_axis - 1,
                     mmm_output_shape[c_axis - 1..][..2].iter().map(|d| d.to_dim()).collect(),
@@ -456,7 +456,7 @@ impl ConvUnary {
                 ),
                 pads,
             };
-            wire = model.wire_node(format!("{}.pad", name), op, &[wire])?[0];
+            wire = model.wire_node(format!("{name}.pad"), op, &[wire])?[0];
             let valid_pool_spec =
                 PoolSpec { padding: ops::cnn::PaddingSpec::Valid, ..self.pool_spec.clone() };
             b_fact = model.outlet_fact(wire)?.clone();
@@ -527,7 +527,7 @@ impl ConvUnary {
 
         let mmm = tract_linalg::ops()
             .mmm(a_dt, b_dt, c_dt, Some(m), Some(k), n.to_usize().ok())
-            .with_context(|| format!("No multiplier for {:?}x{:?} to {:?}", a_dt, b_dt, c_dt,))?;
+            .with_context(|| format!("No multiplier for {a_dt:?}x{b_dt:?} to {c_dt:?}",))?;
 
         Ok((geo, m, k, n, mmm))
     }
@@ -557,7 +557,7 @@ impl ConvUnary {
         let micro_ops = ArrayD::from_shape_fn(shape, |_| iter.next().unwrap());
 
         let wire = model.wire_node(
-            format!("{}.matmatmul", name),
+            format!("{name}.matmatmul"),
             LirMatMulUnary {
                 c_fact: c_datum_type.fact(mmm_output_shape.clone()),
                 micro_ops,
@@ -759,7 +759,7 @@ impl Op for ConvUnary {
             self.kernel_fmt, self.group, self.kernel
         ));
         if let Some(b) = &self.bias {
-            info.push(format!("Bias: {:?}", b))
+            info.push(format!("Bias: {b:?}"))
         }
         Ok(info)
     }
@@ -783,7 +783,7 @@ impl EvalOp for ConvUnary {
             .iter()
             .enumerate()
             .map(|(ix, v)| {
-                model.add_source(format!("source.{}", ix), v.datum_type().fact(v.shape()))
+                model.add_source(format!("source.{ix}"), v.datum_type().fact(v.shape()))
             })
             .collect::<TractResult<_>>()?;
         let new_op = self.kernel_offset_u8_as_i8(&mut wires, &mut model)?;

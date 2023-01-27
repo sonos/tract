@@ -341,7 +341,7 @@ impl Expansion for Prelu {
             .cast_to_dt(model.outlet_fact(a)?.datum_type)?
             .into_owned()
             .broadcast_into_rank(rank)?;
-        let ab = model.wire_node(format!("{}.mul", name), tract_hir::ops::math::mul(), &[a, b])?[0];
+        let ab = model.wire_node(format!("{name}.mul"), tract_hir::ops::math::mul(), &[a, b])?[0];
         let zero = model.add_const(name.to_string() + ".zero", zero)?;
         let test = model.wire_node(
             name.to_string() + ".test",

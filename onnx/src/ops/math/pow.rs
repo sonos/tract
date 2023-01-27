@@ -57,7 +57,7 @@ impl Expansion for Pow {
         if dta.is_integer() != dtb.is_integer() {
             wires = tract_hir::ops::binary::wire_cast(name, model, &wires, F64)?;
             wires = model.wire_node(
-                format!("{}.pow", name),
+                format!("{name}.pow"),
                 tract_hir::ops::math::pow(),
                 &wires,
             )?;

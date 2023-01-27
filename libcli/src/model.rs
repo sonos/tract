@@ -119,7 +119,7 @@ where
             .iter()
             .find(|n| n.name == name)
             .map(|n| n.id)
-            .with_context(|| format!("No node found for name: \"{}\"", name))
+            .with_context(|| format!("No node found for name: \"{name}\""))
     }
 
     fn node_name(&self, id: usize) -> &str {

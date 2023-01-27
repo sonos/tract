@@ -97,7 +97,7 @@ impl Expansion for Slice1 {
                 let e = (if e >= 0 { e.min(dim) } else { dim + e }) as usize;
                 if b > 0 || e < dim as usize {
                     wire = target.wire_node(
-                        format!("{}.axis-{}", prefix, axis),
+                        format!("{prefix}.axis-{axis}"),
                         tract_hir::ops::array::Slice::new(axis, b, e),
                         [wire].as_ref(),
                     )?[0];

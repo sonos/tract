@@ -126,7 +126,7 @@ impl<T: fmt::Display + fmt::Debug + Clone + PartialEq + Hash> fmt::Display for G
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
             GenericFactoid::Any => write!(formatter, "?"),
-            GenericFactoid::Only(u) => write!(formatter, "{}", u),
+            GenericFactoid::Only(u) => write!(formatter, "{u}"),
         }
     }
 }
@@ -135,7 +135,7 @@ impl<T: fmt::Debug + Clone + PartialEq + Hash> fmt::Debug for GenericFactoid<T> 
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
             GenericFactoid::Any => write!(formatter, "?"),
-            GenericFactoid::Only(u) => write!(formatter, "{:?}", u),
+            GenericFactoid::Only(u) => write!(formatter, "{u:?}"),
         }
     }
 }
@@ -278,7 +278,7 @@ impl Factoid for ShapeFactoid {
                 ),
             })
             .collect::<TractResult<_>>()
-            .with_context(|| format!("Unifying shapes {:?} and {:?}", x, y))?;
+            .with_context(|| format!("Unifying shapes {x:?} and {y:?}"))?;
 
         if x.open && y.open {
             Ok(ShapeFactoid::open(dimensions))
@@ -321,7 +321,7 @@ impl fmt::Debug for ShapeFactoid {
             if ix != 0 {
                 write!(formatter, ",")?
             }
-            write!(formatter, "{}", d)?;
+            write!(formatter, "{d}")?;
         }
         if self.open {
             if self.dims.len() == 0 {

@@ -81,7 +81,7 @@ impl<'mb> ModelBuilder<'mb> {
             .iter()
             .map(|s| {
                 vars.get(s)
-                    .with_context(|| format!("Could not find variable for output named {:?}", s))
+                    .with_context(|| format!("Could not find variable for output named {s:?}"))
             })
             .collect::<TractResult<TVec<&Value>>>()?;
 
@@ -254,7 +254,7 @@ impl<'mb> ModelBuilder<'mb> {
         let name = self.naming_scopes.iter().map(|n| &n.0).join("_");
         if self.model.nodes().iter().any(|n| n.name.starts_with(&name)) {
             for i in 0.. {
-                let candidate = format!("{}_{}", name, i);
+                let candidate = format!("{name}_{i}");
                 if !self.model.nodes().iter().any(|n| n.name.starts_with(&candidate)) {
                     return candidate;
                 }
@@ -270,7 +270,7 @@ impl<'mb> ModelBuilder<'mb> {
     ) -> TractResult<TVec<OutletId>> {
         let op = op.into();
         let name = self.generate_node_name();
-        self.model.wire_node(name, op, inputs).with_context(|| format!("inputs are {:?}", inputs))
+        self.model.wire_node(name, op, inputs).with_context(|| format!("inputs are {inputs:?}"))
     }
 
     pub fn wire(
@@ -297,8 +297,8 @@ impl<'a> ResolvedInvocation<'a> {
         let rv = self.named_arg(name)?;
         let v = rv
             .resolve(builder, &[])
-            .with_context(|| format!("Resolving argument `{}' ({:?})", name, rv))?;
-        v.to::<T>(builder).with_context(|| format!("Converting argument `{}' from {:?}", name, v))
+            .with_context(|| format!("Resolving argument `{name}' ({rv:?})"))?;
+        v.to::<T>(builder).with_context(|| format!("Converting argument `{name}' from {v:?}"))
     }
 
     pub fn named_arg(&self, name: &str) -> TractResult<Cow<RValue>> {
@@ -344,9 +344,9 @@ impl<'a> ResolvedInvocation<'a> {
         let Some(rv) = self.get_named_arg(name) else { return Ok(None) };
         let v = rv
             .resolve(builder, &[])
-            .with_context(|| format!("Resolving argument `{}' ({:?})", name, rv))?;
+            .with_context(|| format!("Resolving argument `{name}' ({rv:?})"))?;
         v.to::<T>(builder)
-            .with_context(|| format!("Converting argument `{}' from {:?}", name, v))
+            .with_context(|| format!("Converting argument `{name}' from {v:?}"))
             .map(Some)
     }
 }
@@ -472,7 +472,7 @@ impl RValue {
                 if f.contains('.') || f.contains('e') {
                     f.parse::<f32>()
                         .map(Value::Scalar)
-                        .with_context(|| format!("Can not parse {} as f32", f))
+                        .with_context(|| format!("Can not parse {f} as f32"))
                 } else if let Ok(i) = f.parse::<i64>() {
                     Ok(Value::Dim(i.into()))
                 } else if let Some(s) = builder.model.symbol_table.get(f) {
@@ -490,7 +490,7 @@ impl RValue {
                     .map(|(i, dt)| RValue::Literal(i.clone()).resolve(builder, &[*dt]))
                     .collect::<TractResult<_>>()?,
             )),
-            _ => panic!("{:?}", self),
+            _ => panic!("{self:?}"),
         }
     }
 }

@@ -104,7 +104,7 @@ impl<'a> Dumper<'a> {
                 write!(self.w, ",")?;
             }
             if let Some(doc) = &param.doc {
-                write!(self.w, " # {}", doc)?;
+                write!(self.w, " # {doc}")?;
             }
         }
         write!(self.w, "\n)")?;
@@ -119,7 +119,7 @@ impl<'a> Dumper<'a> {
             TypeName::String => "string",
             TypeName::Any => "?",
         };
-        write!(self.w, "{}", s)?;
+        write!(self.w, "{s}")?;
         Ok(())
     }
 
@@ -152,8 +152,8 @@ impl<'a> Dumper<'a> {
                 write!(self.w, "]")?;
             }
             Literal::Logical(b) => write!(self.w, "{}", if *b { "true" } else { "false" })?,
-            Literal::Numeric(num) => write!(self.w, "{}", num)?,
-            Literal::String(s) => write!(self.w, "{:?}", s)?,
+            Literal::Numeric(num) => write!(self.w, "{num}")?,
+            Literal::String(s) => write!(self.w, "{s:?}")?,
             Literal::Tuple(lits) => {
                 write!(self.w, "(")?;
                 comma_loop!(self, literal, lits);
@@ -224,7 +224,7 @@ impl<'a> Dumper<'a> {
             RValue::Binary(left, op, right) => {
                 write!(self.w, "(")?;
                 self.rvalue(left)?;
-                write!(self.w, " {} ", op)?;
+                write!(self.w, " {op} ")?;
                 self.rvalue(right)?;
                 write!(self.w, ")")?;
             }
@@ -262,7 +262,7 @@ impl<'a> Dumper<'a> {
                 write!(self.w, ")")?;
             }
             RValue::Unary(op, rv) => {
-                write!(self.w, "{}", op)?;
+                write!(self.w, "{op}")?;
                 self.rvalue(rv)?;
             }
         }
@@ -325,7 +325,7 @@ impl<'a> Dumper<'a> {
             }
             for c in id.0.chars() {
                 if c.is_alphanumeric() {
-                    write!(self.w, "{}", c)?;
+                    write!(self.w, "{c}")?;
                 } else {
                     write!(self.w, "_")?;
                 }

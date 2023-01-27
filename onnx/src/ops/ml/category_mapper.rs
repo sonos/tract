@@ -42,12 +42,12 @@ impl Expansion for CategoryMapper {
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         let wire = model.wire_node(
-            format!("{}.reverse", prefix),
+            format!("{prefix}.reverse"),
             ReverseLookup::new(self.from.clone(), -1)?,
             inputs,
         )?;
         model.wire_node(
-            format!("{}.direct", prefix),
+            format!("{prefix}.direct"),
             DirectLookup::new(self.to.clone(), self.fallback.clone())?,
             &wire,
         )

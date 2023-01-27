@@ -59,15 +59,15 @@ impl Expansion for LstmNonlin {
             .to_array_view::<f32>()?
             .into_dimensionality::<tract_ndarray::Ix2>()?;
         let w_ic: OutletId = target.add_const(
-            format!("{}.w_ic", prefix),
+            format!("{prefix}.w_ic"),
             params.slice_axis(tract_ndarray::Axis(0), (0..1).into()).to_owned(),
         )?;
         let w_fc: OutletId = target.add_const(
-            format!("{}.w_fc", prefix),
+            format!("{prefix}.w_fc"),
             params.slice_axis(tract_ndarray::Axis(0), (1..2).into()).to_owned(),
         )?;
         let w_oc: OutletId = target.add_const(
-            format!("{}.w_oc", prefix),
+            format!("{prefix}.w_oc"),
             params.slice_axis(tract_ndarray::Axis(0), (2..3).into()).to_owned(),
         )?;
 
@@ -76,7 +76,7 @@ impl Expansion for LstmNonlin {
         let mut five_parts = (0..5)
             .map(|ix| {
                 Ok(target.wire_node(
-                    format!("{}.part-{}", prefix, ix),
+                    format!("{prefix}.part-{ix}"),
                     array::Slice::new(1, cell_hidden_dim * ix, cell_hidden_dim * (ix + 1)),
                     inputs,
                 )?[0])

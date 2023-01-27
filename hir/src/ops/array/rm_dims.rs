@@ -69,7 +69,7 @@ impl Expansion for RmDims {
             .rev();
         for axis in axes {
             wire =
-                target.wire_node(format!("{}.axis-{}", prefix, axis), AxisOp::Rm(axis), &[wire])?
+                target.wire_node(format!("{prefix}.axis-{axis}"), AxisOp::Rm(axis), &[wire])?
                     [0];
         }
         Ok(tvec!(wire))

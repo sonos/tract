@@ -265,41 +265,41 @@ impl Expansion for StridedSlice {
                     (preped.end + 1, preped.begin + 1)
                 };
                 wire = target.wire_node(
-                    format!("{}.slice-axis-{}", prefix, axis),
+                    format!("{prefix}.slice-axis-{axis}"),
                     crate::ops::array::Slice::new(axis, left, right),
                     [wire].as_ref(),
                 )?[0];
                 if preped.stride != 1 {
                     wire = target.wire_node(
-                        format!("{}.stride-axis-{}", prefix, axis),
+                        format!("{prefix}.stride-axis-{axis}"),
                         crate::ops::downsample::Downsample::new(axis, preped.stride as isize, 0),
                         [wire].as_ref(),
                     )?[0];
                 }
             } else if strides[ix] == 1 {
                 let left = target.wire_node(
-                    format!("{}.slice-axis-{}-start", prefix, axis),
+                    format!("{prefix}.slice-axis-{axis}-start"),
                     crate::ops::array::Slice::new(0, ix, ix + 1),
                     &[inputs[1]],
                 )?;
                 let left = target.wire_node(
-                    format!("{}.slice-axis-{}-start-rm-axis", prefix, axis),
+                    format!("{prefix}.slice-axis-{axis}-start-rm-axis"),
                     AxisOp::Rm(0),
                     &left,
                 )?[0];
                 let right = target.wire_node(
-                    format!("{}.slice-axis-{}-end", prefix, axis),
+                    format!("{prefix}.slice-axis-{axis}-end"),
                     crate::ops::array::Slice::new(0, ix, ix + 1),
                     &[inputs[2]],
                 )?;
                 let right = target.wire_node(
-                    format!("{}.slice-axis-{}-end-rm-axis", prefix, axis),
+                    format!("{prefix}.slice-axis-{axis}-end-rm-axis"),
                     AxisOp::Rm(0),
                     &right,
                 )?[0];
                 let sym = target.symbol_table.new_with_prefix("l");
                 wire = target.wire_node(
-                    format!("{}.slice-axis-{}", prefix, axis),
+                    format!("{prefix}.slice-axis-{axis}"),
                     tract_core::ops::array::DynSlice::new(axis, true, true, sym),
                     &[wire, left, right],
                 )?[0];
@@ -314,7 +314,7 @@ impl Expansion for StridedSlice {
         shrink.sort();
         for axis in shrink.iter().rev() {
             wire = target.wire_node(
-                format!("{}.RmDim-{}", prefix, axis),
+                format!("{prefix}.RmDim-{axis}"),
                 AxisOp::Rm(*axis),
                 [wire].as_ref(),
             )?[0];

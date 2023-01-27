@@ -93,8 +93,7 @@ fn render_node_prefixed(
     if let Some(ref mut ds) = &mut drawing_state {
         for l in ds.draw_node_vprefix(model, node_id, options)? {
             println!(
-                "{}{}{}{}{} ",
-                cost_column_pad, profile_column_pad, flops_column_pad, prefix, l
+                "{cost_column_pad}{profile_column_pad}{flops_column_pad}{prefix}{l} "
             );
         }
     }
@@ -148,7 +147,7 @@ fn render_node_prefixed(
                 } else if flops > 1e3 {
                     format!("{:.3} kF/s", flops / 1e3)
                 } else {
-                    format!("{:.3}  F/s", flops)
+                    format!("{flops:.3}  F/s")
                 };
                 format!("{:>1$} ", unpadded, 19)
             } else {
@@ -192,13 +191,13 @@ fn render_node_prefixed(
     prefix!();
     println!(
         "{} {} {}",
-        White.bold().paint(format!("{}", node_id)),
+        White.bold().paint(format!("{node_id}")),
         (if node_name == "UnimplementedOp" { Red.bold() } else { Blue.bold() }).paint(node_op_name),
         name_color.italic().paint(node_name)
     );
     for label in tags.labels.iter() {
         prefix!();
-        println!("  * {}", label);
+        println!("  * {label}");
     }
     if let Io::Long = options.io {
         for (ix, i) in model.node_inputs(node_id).iter().enumerate() {
@@ -208,7 +207,7 @@ fn render_node_prefixed(
                 "  {} input fact  #{}: {} {}",
                 star,
                 ix,
-                White.bold().paint(format!("{:?}", i)),
+                White.bold().paint(format!("{i:?}")),
                 model.outlet_fact_format(*i),
             );
         }
@@ -217,14 +216,14 @@ fn render_node_prefixed(
             let outlet = OutletId::new(node_id, slot);
             let mut model_io = vec![];
             for (ix, _) in model.input_outlets().iter().enumerate().filter(|(_, o)| **o == outlet) {
-                model_io.push(Cyan.bold().paint(format!("MODEL INPUT #{}", ix)).to_string());
+                model_io.push(Cyan.bold().paint(format!("MODEL INPUT #{ix}")).to_string());
             }
             if let Some(t) = &tags.model_input {
                 model_io.push(t.to_string());
             }
             for (ix, _) in model.output_outlets().iter().enumerate().filter(|(_, o)| **o == outlet)
             {
-                model_io.push(Yellow.bold().paint(format!("MODEL OUTPUT #{}", ix)).to_string());
+                model_io.push(Yellow.bold().paint(format!("MODEL OUTPUT #{ix}")).to_string());
             }
             if let Some(t) = &tags.model_output {
                 model_io.push(t.to_string());
@@ -242,7 +241,7 @@ fn render_node_prefixed(
                 slot,
                 Green.bold().italic().paint(axes),
                 model.outlet_fact_format(outlet),
-                White.bold().paint(successors.iter().map(|s| format!("{:?}", s)).join(" ")),
+                White.bold().paint(successors.iter().map(|s| format!("{s:?}")).join(" ")),
                 model_io.join(", "),
                 Blue.bold().italic().paint(
                     tags.outlet_labels
@@ -262,7 +261,7 @@ fn render_node_prefixed(
     if options.info {
         for info in model.node_op(node_id).info()? {
             prefix!();
-            println!("  * {}", info);
+            println!("  * {info}");
         }
     }
     if options.invariants {
@@ -271,7 +270,7 @@ fn render_node_prefixed(
             let (inputs, outputs) = typed.node_facts(node.id)?;
             let invariants = node.op().as_typed().unwrap().invariants(&inputs, &outputs)?;
             prefix!();
-            println!("  * {:?}", invariants);
+            println!("  * {invariants:?}");
         }
     }
     if options.debug_op {
@@ -286,14 +285,14 @@ fn render_node_prefixed(
         println!("  * {}", section[0]);
         for s in &section[1..] {
             prefix!();
-            println!("    {}", s);
+            println!("    {s}");
         }
     }
     for (label, sub) in model.nested_models(node_id) {
         let prefix = drawing_lines.next().unwrap();
         let mut scope: TVec<_> = scope.into();
         scope.push((node_id, label.to_string()));
-        render_prefixed(sub, &format!("{} [{}] ", prefix, label), &scope, annotations, options)?
+        render_prefixed(sub, &format!("{prefix} [{label}] "), &scope, annotations, options)?
     }
 
     if let Io::Short = options.io {
@@ -366,7 +365,7 @@ pub fn render_summaries(
         {
             println!(
                 " * {} {:3} nodes: {}",
-                Blue.bold().paint(format!("{:20}", op)),
+                Blue.bold().paint(format!("{op:20}")),
                 n,
                 dur_avg_ratio(dur, summary.sum)
             );
@@ -400,7 +399,7 @@ pub fn render_summaries(
             for _ in prefix.chars().filter(|c| *c == '.') {
                 print!("   ");
             }
-            println!("{}", prefix);
+            println!("{prefix}");
         }
         println!(
             "Not accounted by ops: {}",

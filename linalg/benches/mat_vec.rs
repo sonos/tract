@@ -11,7 +11,7 @@ fn mat_vec_mul(c: &mut Criterion) {
             let (m, k) = &(768usize, 256usize);
             group.throughput(Throughput::Elements((m * k) as u64));
             group.bench_with_input(
-                BenchmarkId::from_parameter(format!("{}x{}", m, k)),
+                BenchmarkId::from_parameter(format!("{m}x{k}")),
                 &(m, k),
                 |be, (&m, &k)| {
                     let mm =

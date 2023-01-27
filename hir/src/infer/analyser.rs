@@ -138,7 +138,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
                 let old_fact = self.model.borrow().outlet_fact(outlet)?;
                 let unified = inferred_fact
                     .unify(old_fact)
-                    .with_context(|| format!("while unifying inputs of {}", node))?;
+                    .with_context(|| format!("while unifying inputs of {node}"))?;
 
                 if &unified != old_fact {
                     debug!("  Refined {:?}: {:?} -> {:?}", outlet, old_fact, unified);

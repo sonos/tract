@@ -15,7 +15,7 @@ impl<'a> DocDumper<'a> {
     pub fn registry(&mut self, registry: &Registry) -> TractResult<()> {
         // Write registry docstrings.
         for d in registry.docstrings.iter().flatten() {
-            writeln!(self.w, "# {}", d)?;
+            writeln!(self.w, "# {d}")?;
         }
         writeln!(self.w)?;
         // Generate and write unit element wise op.
@@ -39,7 +39,7 @@ impl<'a> DocDumper<'a> {
         // Generate and write Primitive declarations.
         for primitive in registry.primitives.values().sorted_by_key(|v| &v.decl.id) {
             primitive.docstrings.iter().flatten()
-                .try_for_each(|d| writeln!(self.w, "# {}", d))?;
+                .try_for_each(|d| writeln!(self.w, "# {d}"))?;
             
             Dumper::new(&Nnef::default(), self.w).fragment_decl(&primitive.decl)?;
             writeln!(self.w, ";\n")?;

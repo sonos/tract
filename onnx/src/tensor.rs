@@ -29,9 +29,9 @@ impl TryFrom<DataType> for DatumType {
     }
 }
 
-pub fn translate_inference_fact<'a>(
+pub fn translate_inference_fact(
     ctx: &ParsingContext,
-    t: &'a type_proto::Tensor,
+    t: &type_proto::Tensor,
 ) -> TractResult<InferenceFact> {
     let mut fact = InferenceFact::default();
     fact = fact.with_datum_type(DataType::from_i32(t.elem_type).unwrap().try_into()?);

@@ -167,25 +167,25 @@ impl Expansion for LSTM {
         let fore = self.wire_one_side(prefix, target, inputs, 0)?;
         let w_fact = target.outlet_fact(inputs[1])?;
         if w_fact.shape[0] == 2.into() {
-            let back = self.wire_one_side(&format!("{}.back", prefix), target, inputs, 1)?;
+            let back = self.wire_one_side(&format!("{prefix}.back"), target, inputs, 1)?;
             let mut outputs = tvec!(0.into(); self.nboutputs()?);
             if let Some(ix) = self.optional_y_output {
                 outputs[ix] = target.wire_node(
-                    format!("{}.merge_y_output", prefix),
+                    format!("{prefix}.merge_y_output"),
                     TypedConcat::new(1),
                     &[fore[ix], back[ix]],
                 )?[0];
             }
             if let Some(ix) = self.optional_y_h_output {
                 outputs[ix] = target.wire_node(
-                    format!("{}.merge_y_h_output", prefix),
+                    format!("{prefix}.merge_y_h_output"),
                     TypedConcat::new(0),
                     &[fore[ix], back[ix]],
                 )?[0];
             }
             if let Some(ix) = self.optional_y_c_output {
                 outputs[ix] = target.wire_node(
-                    format!("{}.merge_y_c_output", prefix),
+                    format!("{prefix}.merge_y_c_output"),
                     TypedConcat::new(0),
                     &[fore[ix], back[ix]],
                 )?[0];

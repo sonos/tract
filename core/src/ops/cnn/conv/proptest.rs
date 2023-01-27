@@ -164,7 +164,7 @@ impl Arbitrary for ConvProblem {
                 if kf == KernelFormat::HWIO && group > 1 {
                     ci0 = 1;
                 }
-                let shape_in = df.from_n_c_hw(n, ci0 * group, &data_shape).unwrap();
+                let shape_in = df.from_n_c_hw(n, ci0 * group, data_shape).unwrap();
                 let data_in = tensor(shape_in.shape.iter().cloned().collect());
                 match kf {
                     KernelFormat::HWIO => {

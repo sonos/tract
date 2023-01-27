@@ -102,7 +102,7 @@ impl Display for TreeEnsembleData {
                             let cat = self.leaves.as_slice::<u32>().unwrap()[vote * 2];
                             let contrib = self.leaves.as_slice::<u32>().unwrap()[vote * 2 + 1];
                             let contrib = f32::from_bits(contrib);
-                            writeln!(f, "{} categ:{} add:{}", n, cat, contrib)?;
+                            writeln!(f, "{n} categ:{cat} add:{contrib}")?;
                         }
                     } else {
                         writeln!(f, "{} {:?}", n, self.get_unchecked(n as _))?;
