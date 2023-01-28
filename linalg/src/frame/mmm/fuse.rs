@@ -137,6 +137,7 @@ pub mod test {
                 #[allow(unused_imports)]
                 use $crate::frame::mmm::fuse::test;
                 use $crate::frame::mmm::fuse::test::tile;
+                use $crate::frame::mmm::fuse::FusedKerSpec;
 
                 #[test]
                 fn return_zeros() {
@@ -154,122 +155,60 @@ pub mod test {
                     }
                 }
 
-                #[test]
-                fn return_c_min_row() {
-                    if $cond {
-                        test::return_c_min_row::<$ker, $tc, $ti>()
+                fn fmin<T: PartialOrd>(a: T, b: T) -> T {
+                    if a < b {
+                        a
+                    } else {
+                        b
                     }
                 }
 
-                #[test]
-                fn return_c_max_row() {
-                    if $cond {
-                        test::return_c_max_row::<$ker, $tc, $ti>()
+                fn fmax<T: PartialOrd>(a: T, b: T) -> T {
+                    if a > b {
+                        a
+                    } else {
+                        b
                     }
                 }
 
-                #[test]
-                fn return_c_min_col() {
-                    if $cond {
-                        test::return_c_min_col::<$ker, $tc, $ti>()
-                    }
+                macro_rules! bin {
+                    ($FKS:ident, $geo:expr, $f:expr) => {
+                        paste! {
+                            #[test]
+                            fn [<$FKS:snake>]() {
+                                if $cond {
+                                    test::$geo::<$ker, $tc, $ti>(FusedKerSpec::$FKS, $f);
+                                }
+                            }
+                        }
+                    };
                 }
 
-                #[test]
-                fn return_c_max_col() {
-                    if $cond {
-                        test::return_c_max_col::<$ker, $tc, $ti>()
-                    }
-                }
+                bin!(PerColMin,  per_col, fmin);
+                bin!(PerColMax,  per_col, fmax);
+                bin!(PerColAdd,  per_col, |a,b| a+b);
+                bin!(PerColMul,  per_col, |a,b| a*b);
+                bin!(PerColSub,  per_col, |a,b| a-b);
+                bin!(PerColSubF, per_col,  |a,b| b-a);
 
-                #[test]
-                fn return_c_add_row() {
-                    if $cond {
-                        test::return_c_add_row::<$ker, $tc, $ti>()
-                    }
-                }
+                bin!(PerRowMin,  per_row, fmin);
+                bin!(PerRowMax,  per_row, fmax);
+                bin!(PerRowAdd,  per_row, |a,b| a+b);
+                bin!(PerRowMul,  per_row, |a,b| a*b);
+                bin!(PerRowSub,  per_row, |a,b| a-b);
+                bin!(PerRowSubF, per_row,  |a,b| b-a);
 
-                #[test]
-                fn return_c_mul_row() {
-                    if $cond {
-                        test::return_c_mul_row::<$ker, $tc, $ti>()
-                    }
-                }
-
-                #[test]
-                fn return_c_sub_row() {
-                    if $cond {
-                        test::return_c_sub_row::<$ker, $tc, $ti>()
-                    }
-                }
-
-                #[test]
-                fn return_c_subf_row() {
-                    if $cond {
-                        test::return_c_subf_row::<$ker, $tc, $ti>()
-                    }
-                }
-
-                #[test]
-                fn return_c_mul_col() {
-                    if $cond {
-                        test::return_c_mul_col::<$ker, $tc, $ti>()
-                    }
-                }
-
-                #[test]
-                fn return_c_add_col() {
-                    if $cond {
-                        test::return_c_add_col::<$ker, $tc, $ti>()
-                    }
-                }
+                bin!(ScalarMin,  scalar, fmin);
+                bin!(ScalarMax,  scalar, fmax);
+                bin!(ScalarAdd,  scalar, |a,b| a+b);
+                bin!(ScalarMul,  scalar, |a,b| a*b);
+                bin!(ScalarSub,  scalar, |a,b| a-b);
+                bin!(ScalarSubF, scalar,  |a,b| b-a);
 
                 #[test]
                 fn return_c_add_row_col_product() {
                     if $cond {
                         test::return_c_add_row_col_product::<$ker, $tc, $ti>()
-                    }
-                }
-
-                #[test]
-                fn return_c_scalar_max() {
-                    if $cond {
-                        test::return_c_scalar_max::<$ker, $tc, $ti>()
-                    }
-                }
-
-                #[test]
-                fn return_c_scalar_min() {
-                    if $cond {
-                        test::return_c_scalar_min::<$ker, $tc, $ti>()
-                    }
-                }
-
-                #[test]
-                fn return_c_scalar_add() {
-                    if $cond {
-                        test::return_c_scalar_add::<$ker, $tc, $ti>()
-                    }
-                }
-
-                #[test]
-                fn return_c_scalar_mul() {
-                    if $cond {
-                        test::return_c_scalar_mul::<$ker, $tc, $ti>()
-                    }
-                }
-
-                #[test]
-                fn return_c_scalar_sub() {
-                    if $cond {
-                        test::return_c_scalar_sub::<$ker, $tc, $ti>()
-                    }
-                }
-
-                #[test]
-                fn return_c_scalar_subf() {
-                    if $cond {
-                        test::return_c_scalar_subf::<$ker, $tc, $ti>()
                     }
                 }
 
@@ -482,143 +421,7 @@ pub mod test {
         );
     }
 
-    pub fn return_c_min_row<K, TC, TI>()
-    where
-        K: MatMatMulKer<TI>,
-        TC: LADatum + AsPrimitive<TI>,
-        TI: LADatum + AsPrimitive<TC>,
-        usize: AsPrimitive<TC> + AsPrimitive<TI>,
-    {
-        let len = K::mr() * K::nr();
-        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-        let bias: Vec<TI> = (0..K::mr()).map(|f| f.as_()).collect();
-        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::PerRowMin(bias.as_ptr())], |row, _, c| {
-            if c < bias[row] {
-                c
-            } else {
-                bias[row]
-            }
-        })
-    }
-
-    pub fn return_c_max_row<K, TC, TI>()
-    where
-        K: MatMatMulKer<TI>,
-        TC: LADatum + AsPrimitive<TI>,
-        TI: LADatum + AsPrimitive<TC>,
-        usize: AsPrimitive<TC> + AsPrimitive<TI>,
-    {
-        let len = K::mr() * K::nr();
-        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-        let bias: Vec<TI> = (0..K::mr()).map(|f| f.as_()).collect();
-        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::PerRowMax(bias.as_ptr())], |row, _, c| {
-            if c > bias[row] {
-                c
-            } else {
-                bias[row]
-            }
-        })
-    }
-
-    pub fn return_c_min_col<K, TC, TI>()
-    where
-        K: MatMatMulKer<TI>,
-        TC: LADatum + AsPrimitive<TI>,
-        TI: LADatum + AsPrimitive<TC>,
-        usize: AsPrimitive<TC> + AsPrimitive<TI>,
-    {
-        let len = K::mr() * K::nr();
-        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-        let bias: Vec<TI> = (0..K::mr()).map(|f| f.as_()).collect();
-        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::PerColMin(bias.as_ptr())], |_, col, c| {
-            if c < bias[col] {
-                c
-            } else {
-                bias[col]
-            }
-        })
-    }
-
-    pub fn return_c_max_col<K, TC, TI>()
-    where
-        K: MatMatMulKer<TI>,
-        TC: LADatum + AsPrimitive<TI>,
-        TI: LADatum + AsPrimitive<TC>,
-        usize: AsPrimitive<TC> + AsPrimitive<TI>,
-    {
-        let len = K::mr() * K::nr();
-        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-        let bias: Vec<TI> = (0..K::mr()).map(|f| f.as_()).collect();
-        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::PerColMax(bias.as_ptr())], |_, col, c| {
-            if c > bias[col] {
-                c
-            } else {
-                bias[col]
-            }
-        })
-    }
-
-    pub fn return_c_add_row<K, TC, TI>()
-    where
-        K: MatMatMulKer<TI>,
-        TC: LADatum + AsPrimitive<TI>,
-        TI: LADatum + AsPrimitive<TC>,
-        usize: AsPrimitive<TC> + AsPrimitive<TI>,
-    {
-        let len = K::mr() * K::nr();
-        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-        let bias: Vec<TI> = (0..K::mr()).map(|f| f.as_()).collect();
-        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::PerRowAdd(bias.as_ptr())], |row, _, c| {
-            c + bias[row]
-        })
-    }
-
-    pub fn return_c_mul_row<K, TC, TI>()
-    where
-        K: MatMatMulKer<TI>,
-        TC: LADatum + AsPrimitive<TI>,
-        TI: LADatum + AsPrimitive<TC>,
-        usize: AsPrimitive<TC> + AsPrimitive<TI>,
-    {
-        let len = K::mr() * K::nr();
-        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-        let bias: Vec<TI> = (0..K::mr()).map(|f| f.as_()).collect();
-        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::PerRowMul(bias.as_ptr())], |row, _, c| {
-            c * bias[row]
-        })
-    }
-
-    pub fn return_c_sub_row<K, TC, TI>()
-    where
-        K: MatMatMulKer<TI>,
-        TC: LADatum + AsPrimitive<TI>,
-        TI: LADatum + AsPrimitive<TC>,
-        usize: AsPrimitive<TC> + AsPrimitive<TI>,
-    {
-        let len = K::mr() * K::nr();
-        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-        let bias: Vec<TI> = (0..K::mr()).map(|f| f.as_()).collect();
-        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::PerRowSub(bias.as_ptr())], |row, _, c| {
-            bias[row] - c
-        })
-    }
-
-    pub fn return_c_subf_row<K, TC, TI>()
-    where
-        K: MatMatMulKer<TI>,
-        TC: LADatum + AsPrimitive<TI>,
-        TI: LADatum + AsPrimitive<TC>,
-        usize: AsPrimitive<TC> + AsPrimitive<TI>,
-    {
-        let len = K::mr() * K::nr();
-        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-        let bias: Vec<TI> = (0..K::mr()).map(|f| f.as_()).collect();
-        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::PerRowSubF(bias.as_ptr())], |row, _, c| {
-            c - bias[row]
-        })
-    }
-
-    pub fn return_c_add_col<K, TC, TI>()
+    pub fn per_col<K, TC, TI>(op: impl Fn(*const TI) -> FusedKerSpec<TI>, f: impl Fn(TI, TI) -> TI)
     where
         K: MatMatMulKer<TI>,
         TC: LADatum + AsPrimitive<TI>,
@@ -628,12 +431,10 @@ pub mod test {
         let len = K::mr() * K::nr();
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
         let bias: Vec<TI> = (0..K::nr()).map(|f| f.as_()).collect();
-        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::PerColAdd(bias.as_ptr())], |_, col, c| {
-            c + bias[col]
-        })
+        fused_ops::<K, TC, TI, _>(&v, &[op(bias.as_ptr())], |_, col, c| f(bias[col], c))
     }
 
-    pub fn return_c_mul_col<K, TC, TI>()
+    pub fn per_row<K, TC, TI>(op: impl Fn(*const TI) -> FusedKerSpec<TI>, f: impl Fn(TI, TI) -> TI)
     where
         K: MatMatMulKer<TI>,
         TC: LADatum + AsPrimitive<TI>,
@@ -642,10 +443,21 @@ pub mod test {
     {
         let len = K::mr() * K::nr();
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-        let bias: Vec<TI> = (0..K::nr()).map(|f| f.as_()).collect();
-        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::PerColMul(bias.as_ptr())], |_, col, c| {
-            c * bias[col]
-        })
+        let bias: Vec<TI> = (0..K::mr()).map(|f| f.as_()).collect();
+        fused_ops::<K, TC, TI, _>(&v, &[op(bias.as_ptr())], |row, _, c| f(bias[row], c))
+    }
+
+    pub fn scalar<K, TC, TI>(op: impl Fn(TI) -> FusedKerSpec<TI>, f: impl Fn(TI, TI) -> TI)
+    where
+        K: MatMatMulKer<TI>,
+        TC: LADatum + AsPrimitive<TI>,
+        TI: LADatum + AsPrimitive<TC>,
+        usize: AsPrimitive<TC> + AsPrimitive<TI>,
+    {
+        let len = K::mr() * K::nr();
+        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
+        let five: TI = 5.as_();
+        fused_ops::<K, TC, TI, _>(&v, &[op(five)], |_, _, c| f(five, c))
     }
 
     pub fn return_c_add_row_col_product<K, TC, TI>()
@@ -676,92 +488,6 @@ pub mod test {
         let len = K::mr() * K::nr();
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
         fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::Clear], |_, _, _| 0.as_())
-    }
-
-    pub fn return_c_scalar_min<K, TC, TI>()
-    where
-        K: MatMatMulKer<TI>,
-        TC: LADatum + AsPrimitive<TI>,
-        TI: LADatum + AsPrimitive<TC>,
-        usize: AsPrimitive<TC> + AsPrimitive<TI>,
-    {
-        let len = K::mr() * K::nr();
-        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::ScalarMin(5.as_())], |_, _, c| {
-            if c > 5.as_() {
-                5.as_()
-            } else {
-                c
-            }
-        })
-    }
-
-    pub fn return_c_scalar_max<K, TC, TI>()
-    where
-        K: MatMatMulKer<TI>,
-        TC: LADatum + AsPrimitive<TI>,
-        TI: LADatum + AsPrimitive<TC>,
-        usize: AsPrimitive<TC> + AsPrimitive<TI>,
-    {
-        let len = K::mr() * K::nr();
-        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::ScalarMax(5.as_())], |_, _, c| {
-            if c < 5.as_() {
-                5.as_()
-            } else {
-                c
-            }
-        })
-    }
-
-    pub fn return_c_scalar_add<K, TC, TI>()
-    where
-        K: MatMatMulKer<TI>,
-        TC: LADatum + AsPrimitive<TI>,
-        TI: LADatum + AsPrimitive<TC>,
-        usize: AsPrimitive<TC> + AsPrimitive<TI>,
-    {
-        let len = K::mr() * K::nr();
-        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::ScalarAdd(5.as_())], |_, _, c| c + 5.as_())
-    }
-
-    pub fn return_c_scalar_mul<K, TC, TI>()
-    where
-        K: MatMatMulKer<TI>,
-        TC: LADatum + AsPrimitive<TI>,
-        TI: LADatum + AsPrimitive<TC>,
-        usize: AsPrimitive<TC> + AsPrimitive<TI>,
-    {
-        let len = K::mr() * K::nr();
-        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::ScalarMul(5.as_())], |_, _, c| c * 5.as_())
-    }
-
-    pub fn return_c_scalar_sub<K, TC, TI>()
-    where
-        K: MatMatMulKer<TI>,
-        TC: LADatum + AsPrimitive<TI>,
-        TI: LADatum + AsPrimitive<TC>,
-        usize: AsPrimitive<TC> + AsPrimitive<TI>,
-    {
-        let len = K::mr() * K::nr();
-        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-        let five: TI = 5.as_();
-        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::ScalarSub(5.as_())], |_, _, c| five - c)
-    }
-
-    pub fn return_c_scalar_subf<K, TC, TI>()
-    where
-        K: MatMatMulKer<TI>,
-        TC: LADatum + AsPrimitive<TI>,
-        TI: LADatum + AsPrimitive<TC>,
-        usize: AsPrimitive<TC> + AsPrimitive<TI>,
-    {
-        let len = K::mr() * K::nr();
-        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-        let five: TI = 5.as_();
-        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::ScalarSubF(5.as_())], |_, _, c| c - five)
     }
 
     pub fn return_c_scale_bigpot<K, TC, TI>()
