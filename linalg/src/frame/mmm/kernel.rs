@@ -373,12 +373,12 @@ pub mod test {
         let b = vec![TB::one(); (k + 1) * K::nr()];
         let mut c: Vec<TC> = vec![TC::zero(); K::mr() * K::nr()];
         let tile = mmm_stride_storage(&mut c, 1, 0);
-        let b_store = b.as_ptr() as _;
+        let pb = unsafe { Tensor::from_slice_align(&b, K::alignment_bytes_packed_b()).unwrap() };
         let non_linear_ops = tvec!(
             FusedKerSpec::Clear,
             FusedKerSpec::AddMatMul {
                 pa: unsafe { pa.as_ptr_unchecked::<u8>() as _ },
-                pb: b_store,
+                pb: unsafe { pb.as_ptr_unchecked::<u8>() as _ },
                 k,
                 cpu_variant: 0,
             },

@@ -1,6 +1,6 @@
 #![allow(clippy::excessive_precision)]
-mod arm64simd;
 mod apple_amx;
+mod arm64simd;
 pub mod cortex_a53;
 mod cortex_a55;
 //mod cortex_a72;
@@ -176,5 +176,9 @@ pub fn plug(ops: &mut Ops) {
     if has_fp16() {
         ops.tanh_f16 = Box::new(|| arm64fp16_tanh_f16_8n::ew());
         ops.sigmoid_f16 = Box::new(|| arm64fp16_sigmoid_f16_8n::ew());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        ops.mmm_f32 = Box::new(|_, _, _| apple_amx::apple_amx_mmm_f32_32x32::mmm());
     }
 }
