@@ -19,11 +19,17 @@ z62[0] .. z62[15] z63[0] .. z63[15]
 {{G}}apple_amx_mmm_f32_32x32_{{suffix}}:
 
 {{ AMX_SET }}
+
+    // set x1 to a 128 bytes aligned block for loads
+    mov x1, sp
+    lsr x1, x1, #7
+    lsl x1, x1, #7
+    sub x1, x1, 128
+
 {% include "dispatcher.tmpliq" %}
 
 .per_col_sub:
 .per_col_sub_flipped:
-.per_row_mul:
 .per_row_sub:
 .per_row_sub_flipped:
 .q_scale:
@@ -56,10 +62,6 @@ z62[0] .. z62[15] z63[0] .. z63[15]
 
 .per_col_add:
     ldr         x2, [x0, #8]
-    mov x1, sp
-    lsr x1, x1, #7
-    lsl x1, x1, #7
-    sub x1, x1, 128
 
     ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x2], #64
     st1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x1], #64
@@ -94,19 +96,14 @@ z62[0] .. z62[15] z63[0] .. z63[15]
 .per_row_add:
     ldr         x2, [x0, #8]
 
-    mov x1, sp
-    lsr x1, x1, #7
-    lsl x1, x1, #7
-    sub x1, x1, 128
-
     ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x2], #64
     st1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x1], #64
     ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x2]
     st1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x1]
     sub x1, x1, #64
 
-    orr x1, x1, {{ 0|setting:62 }}  // load a pair
-    {% amx ldy x1 %}
+    orr x2, x1, {{ 0|setting:62 }}  // load a pair
+    {% amx ldy x2 %}
 
     mov x2, {{ 0|setting:29 }}      // z += y
 
@@ -135,11 +132,6 @@ z62[0] .. z62[15] z63[0] .. z63[15]
     mov x2, 7
 .per_row_min_max:
     ldr         x5, [x0, #8]
-
-    mov x1, sp
-    lsr x1, x1, #7
-    lsl x1, x1, #7
-    sub x1, x1, 128
 
     add x6, x5, 64
 
@@ -195,19 +187,14 @@ z62[0] .. z62[15] z63[0] .. z63[15]
 .per_col_min_max:
     ldr         x4, [x0, #8]
 
-    mov x1, sp
-    lsr x1, x1, #7
-    lsl x1, x1, #7
-    sub x1, x1, 128
-
     ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x4], #64
     st1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x1], #64
     ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x4]
     st1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x1]
     sub x1, x1, #64
 
-    orr x1, x1, {{ 0|setting:62 }}  // load a pair
-    {% amx ldx x1 %}
+    orr x3, x1, {{ 0|setting:62 }}  // load a pair
+    {% amx ldx x3 %}
 
     lsl x2, x2, 47                  // max(x,z) (or min)
     orr x2, x2, {{ 0|setting:44 }}  // f32
@@ -229,19 +216,14 @@ z62[0] .. z62[15] z63[0] .. z63[15]
 .per_col_mul:
     ldr         x4, [x0, #8]
 
-    mov x1, sp
-    lsr x1, x1, #7
-    lsl x1, x1, #7
-    sub x1, x1, 128
-
     ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x4], #64
     st1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x1], #64
     ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x4]
     st1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x1]
     sub x1, x1, #64
 
-    orr x1, x1, {{ 0|setting:62 }}      // load a pair
-    {% amx ldy x1 %}
+    orr x2, x1, {{ 0|setting:62 }}      // load a pair
+    {% amx ldy x2 %}
 
     eor x2, x2, x2                      // X[0] = Z[0]
 
@@ -273,6 +255,72 @@ z62[0] .. z62[15] z63[0] .. z63[15]
 
     b .non_linear_loop
 
+.per_row_mul:
+    ldr         x5, [x0, #8]
+
+    add x6, x5, 64
+
+    // extrx
+    eor x2, x2, x2                      // X[0] = Z[0] (top left)
+
+    eor x3, x3, x3
+    orr x3, x3, {{0|setting:20 }}       // Z[1]
+    orr x3, x3, {{0|setting:16 }}       // X[1] = Z[1] (top right)
+
+    eor x4, x4, x4
+    orr x4, x4, {{0|setting:21}}        // X[0] = Z[2] (bottom left)
+
+    orr x5, x4, {{0|setting:20}}
+    orr x5, x5, {{0|setting:16}}        // X[1] = Z[3] (bottom right)
+
+    // fma32
+    eor x6, x6, x6
+    orr x6, x6, {{0|setting:63}}        // vector mode
+    orr x6, x6, {{0|setting:27}}        // Z=X*Y       Z[0]=X[0]*Y[0]
+
+    orr x7, x6, {{0|setting:20}}        // Z[1]
+    orr x7, x7, {{0|setting:16}}        // X[1]        Z[1] = X[1]*Y[0]
+
+    orr x8, x6, {{0|setting:1}}         // Z[2]
+    orr x8, x6, {{0|setting:1}}         // Z[2]
+
+    mov x31, 16
+    .loop_per_row_mul:
+        // top
+        ld1         { v0.s }[0], [x5], #4
+        dup         v0.4s, v0.s[0]
+        dup         v1.4s, v0.s[0]
+        dup         v2.4s, v0.s[0]
+        dup         v3.4s, v0.s[0]
+        st1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x1]
+
+        {% amx ldy x1 %}
+        {% amx extrx x2 %}
+        {% amx extrx x3 %}
+
+        add x2, x2, {{ 0|setting:22 }}
+        add x3, x3, {{ 0|setting:22 }}
+
+/*
+        // bottom
+        ld1         { v0.s }[0], [x6], #4
+        dup         v0.4s, v0.s[0]
+        dup         v1.4s, v0.s[0]
+        dup         v2.4s, v0.s[0]
+        dup         v3.4s, v0.s[0]
+        st1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x1]
+
+        {% amx ldy x1 %}
+
+        add x8, x8, {{ 0|setting:22 }}
+        add x9, x9, {{ 0|setting:22 }}
+*/
+
+    subs x31, x31, 1
+    bne .loop_per_row_mul
+
+    b .non_linear_loop
+
 .scalar_sub:
     // performs a unary neg on Z, then go to scalar_add
     eor x2, x2, x2                      // X[0] = Z[0]
@@ -294,10 +342,7 @@ z62[0] .. z62[15] z63[0] .. z63[15]
 
 .scalar_add:
     ldr         w5, [x0, #8]
-    mov x1, sp
-    lsr x1, x1, #7
-    lsl x1, x1, #7
-    sub x1, x1, 128
+
     fmov        s0, w5
     dup         v0.4s, v0.s[0]
     dup         v1.4s, v0.s[0]
@@ -316,10 +361,6 @@ z62[0] .. z62[15] z63[0] .. z63[15]
 
 .scalar_sub_flipped:
     ldr         w5, [x0, #8]
-    mov x1, sp
-    lsr x1, x1, #7
-    lsl x1, x1, #7
-    sub x1, x1, 128
     fmov        s0, w5
     dup         v0.4s, v0.s[0]
     dup         v1.4s, v0.s[0]
@@ -338,10 +379,6 @@ z62[0] .. z62[15] z63[0] .. z63[15]
 
 .scalar_mul:
     ldr         w5, [x0, #8]
-    mov x1, sp
-    lsr x1, x1, #7
-    lsl x1, x1, #7
-    sub x1, x1, 128
     fmov        s0, w5
     dup         v0.4s, v0.s[0]
     dup         v1.4s, v0.s[0]
@@ -374,10 +411,6 @@ z62[0] .. z62[15] z63[0] .. z63[15]
     mov x2, 7
 .scalar_min_max:
     ldr         w5, [x0, #8]
-    mov x1, sp
-    lsr x1, x1, #7
-    lsl x1, x1, #7
-    sub x1, x1, 128
     fmov        s0, w5
     dup         v0.4s, v0.s[0]
     dup         v1.4s, v0.s[0]
@@ -403,10 +436,6 @@ z62[0] .. z62[15] z63[0] .. z63[15]
     ldp         x5, x6, [x0, #8]            // c base ptr, rsc
     ldp         x7, x8, [x0, #24]           // csc, item_size
 
-    mov x1, sp
-    lsr x1, x1, #7
-    lsl x1, x1, #7
-    sub x1, x1, 128
     add x8, x1, 64
 
     mov x3, 0                               // x3 is the row
@@ -454,10 +483,6 @@ z62[0] .. z62[15] z63[0] .. z63[15]
 .add_row_col_products:
     ldp         x5, x6, [x0, #8]            // a base ptr, b base ptr
 
-    mov x1, sp
-    lsr x1, x1, #7
-    lsl x1, x1, #7
-    sub x1, x1, 128
     add x8, x1, 64
 
     ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x5], #64
@@ -466,8 +491,8 @@ z62[0] .. z62[15] z63[0] .. z63[15]
     st1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x1]
     sub x1, x1, #64
 
-    orr x1, x1, {{ 0|setting:62 }}  // load a pair
-    {% amx ldy x1 %}
+    orr x2, x1, {{ 0|setting:62 }}  // load a pair
+    {% amx ldy x2 %}
 
     ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x6], #64
     st1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x1], #64
@@ -475,8 +500,8 @@ z62[0] .. z62[15] z63[0] .. z63[15]
     st1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x1]
     sub x1, x1, #64
 
-    orr x1, x1, {{ 0|setting:62 }}  // load a pair
-    {% amx ldx x1 %}
+    orr x2, x1, {{ 0|setting:62 }}  // load a pair
+    {% amx ldx x2 %}
 
     // top left
     eor x2, x2, x2
@@ -503,10 +528,6 @@ z62[0] .. z62[15] z63[0] .. z63[15]
     ldp         x5, x6, [x0, #8]            // c base ptr, rsc
     ldp         x7, x8, [x0, #24]           // csc, item_size
     
-    mov x1, sp
-    lsr x1, x1, #7
-    lsl x1, x1, #7
-    sub x1, x1, 128
     add x8, x1, 64
 
     mov x3, 0                               // row id
