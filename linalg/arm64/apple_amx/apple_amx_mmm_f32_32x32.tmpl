@@ -4,7 +4,7 @@
 
 /* Z: 32x32
  z0[0] ..  z0[15] z1[0] .. z1[15]
- z4[0] ..  z4[15] z1[0] .. z1[15]
+ z4[0] ..  z4[15] z5[0] .. z5[15]
   ..
 z60[0] .. z60[15] z61[0] .. z61[15]
 
@@ -29,7 +29,6 @@ z62[0] .. z62[15] z63[0] .. z63[15]
 .per_col_mul:
 .per_col_sub:
 .per_col_sub_flipped:
-.per_row_min:
 .per_row_mul:
 .per_row_sub:
 .per_row_sub_flipped:
@@ -114,8 +113,64 @@ z62[0] .. z62[15] z63[0] .. z63[15]
 
     b .non_linear_loop
 
+.per_row_min:
+    mov x2, 5
+    b .per_row_min_max
 .per_row_max:
-b .unsupported
+    mov x2, 7
+.per_row_min_max:
+    ldr         x5, [x0, #8]
+
+    mov x1, sp
+    lsr x1, x1, #7
+    lsl x1, x1, #7
+    sub x1, x1, 128
+
+    add x6, x5, 64
+
+    lsl x2, x2, 47                  // max(x,z) (or min)
+    orr x2, x2, {{ 0|setting:44 }}  // f32
+    orr x3, x2, {{ 0|setting:20 }}  // right half: z offset
+
+    orr x8, x2, {{ 0|setting:21 }}  // bottom left
+    orr x9, x3, {{ 0|setting:21 }}  // bottom right
+
+    mov x4, 16
+    .loop_per_row_max:
+        // top half
+        ld1         { v0.s }[0], [x5], #4
+        dup         v0.4s, v0.s[0]
+        dup         v1.4s, v0.s[0]
+        dup         v2.4s, v0.s[0]
+        dup         v3.4s, v0.s[0]
+        st1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x1]
+
+        {% amx ldx x1 %}
+        {% amx vecfp x2 %}
+        {% amx vecfp x3 %}
+
+        add x2, x2, {{ 0|setting:22 }}
+        add x3, x3, {{ 0|setting:22 }}
+
+        // bottom half
+        ld1         { v0.s }[0], [x6], #4
+        dup         v0.4s, v0.s[0]
+        dup         v1.4s, v0.s[0]
+        dup         v2.4s, v0.s[0]
+        dup         v3.4s, v0.s[0]
+        st1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x1]
+
+        {% amx ldx x1 %}
+        {% amx vecfp x8 %}
+        {% amx vecfp x9 %}
+
+        add x8, x8, {{ 0|setting:22 }}
+        add x9, x9, {{ 0|setting:22 }}
+
+    subs x4, x4, 1
+    bne .loop_per_row_max
+
+    b .non_linear_loop
 
 .per_col_min:
     mov x2, 5
