@@ -169,6 +169,20 @@ pub mod test {
                 }
 
                 #[test]
+                fn return_c_min_col() {
+                    if $cond {
+                        test::return_c_min_col::<$ker, $tc, $ti>()
+                    }
+                }
+
+                #[test]
+                fn return_c_max_col() {
+                    if $cond {
+                        test::return_c_max_col::<$ker, $tc, $ti>()
+                    }
+                }
+
+                #[test]
                 fn return_c_add_row() {
                     if $cond {
                         test::return_c_add_row::<$ker, $tc, $ti>()
@@ -495,6 +509,44 @@ pub mod test {
                 c
             } else {
                 bias[row]
+            }
+        })
+    }
+
+    pub fn return_c_min_col<K, TC, TI>()
+    where
+        K: MatMatMulKer<TI>,
+        TC: LADatum + AsPrimitive<TI>,
+        TI: LADatum + AsPrimitive<TC>,
+        usize: AsPrimitive<TC> + AsPrimitive<TI>,
+    {
+        let len = K::mr() * K::nr();
+        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
+        let bias: Vec<TI> = (0..K::mr()).map(|f| f.as_()).collect();
+        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::PerColMin(bias.as_ptr())], |_, col, c| {
+            if c < bias[col] {
+                c
+            } else {
+                bias[col]
+            }
+        })
+    }
+
+    pub fn return_c_max_col<K, TC, TI>()
+    where
+        K: MatMatMulKer<TI>,
+        TC: LADatum + AsPrimitive<TI>,
+        TI: LADatum + AsPrimitive<TC>,
+        usize: AsPrimitive<TC> + AsPrimitive<TI>,
+    {
+        let len = K::mr() * K::nr();
+        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
+        let bias: Vec<TI> = (0..K::mr()).map(|f| f.as_()).collect();
+        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::PerColMax(bias.as_ptr())], |_, col, c| {
+            if c > bias[col] {
+                c
+            } else {
+                bias[col]
             }
         })
     }
