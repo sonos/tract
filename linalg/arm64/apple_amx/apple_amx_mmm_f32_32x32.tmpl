@@ -256,9 +256,8 @@ z62[0] .. z62[15] z63[0] .. z63[15]
     b .non_linear_loop
 
 .per_row_mul:
-    ldr         x5, [x0, #8]
-
-    add x6, x5, 64
+    ldr         x14, [x0, #8]
+    add         x15, x14, 64
 
     // extrx
     eor x2, x2, x2                      // X[0] = Z[0] (top left)
@@ -281,13 +280,16 @@ z62[0] .. z62[15] z63[0] .. z63[15]
     orr x7, x6, {{0|setting:20}}        // Z[1]
     orr x7, x7, {{0|setting:16}}        // X[1]        Z[1] = X[1]*Y[0]
 
-    orr x8, x6, {{0|setting:1}}         // Z[2]
-    orr x8, x6, {{0|setting:1}}         // Z[2]
+    orr x8, x6, {{0|setting:21}}        // Z[2]
+    orr x8, x8, {{0|setting:21}}        // Z[2]
 
-    mov x31, 16
+    orr x9, x8, {{0|setting:20}}        // Z[3]
+    orr x9, x9, {{0|setting:16}}        // X[1]
+
+    mov x10, 16
     .loop_per_row_mul:
         // top
-        ld1         { v0.s }[0], [x5], #4
+        ld1         { v0.s }[0], [x14], #4
         dup         v0.4s, v0.s[0]
         dup         v1.4s, v0.s[0]
         dup         v2.4s, v0.s[0]
@@ -297,13 +299,16 @@ z62[0] .. z62[15] z63[0] .. z63[15]
         {% amx ldy x1 %}
         {% amx extrx x2 %}
         {% amx extrx x3 %}
+        {% amx fma32 x6 %}
+        {% amx fma32 x7 %}
 
         add x2, x2, {{ 0|setting:22 }}
         add x3, x3, {{ 0|setting:22 }}
+        add x6, x6, {{ 0|setting:22 }}
+        add x7, x7, {{ 0|setting:22 }}
 
-/*
         // bottom
-        ld1         { v0.s }[0], [x6], #4
+        ld1         { v0.s }[0], [x15], #4
         dup         v0.4s, v0.s[0]
         dup         v1.4s, v0.s[0]
         dup         v2.4s, v0.s[0]
@@ -311,12 +316,17 @@ z62[0] .. z62[15] z63[0] .. z63[15]
         st1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x1]
 
         {% amx ldy x1 %}
+        {% amx extrx x4 %}
+        {% amx extrx x5 %}
+        {% amx fma32 x8 %}
+        {% amx fma32 x9 %}
 
+        add x4, x4, {{ 0|setting:22 }}
+        add x5, x5, {{ 0|setting:22 }}
         add x8, x8, {{ 0|setting:22 }}
         add x9, x9, {{ 0|setting:22 }}
-*/
 
-    subs x31, x31, 1
+    subs x10, x10, 1
     bne .loop_per_row_mul
 
     b .non_linear_loop
