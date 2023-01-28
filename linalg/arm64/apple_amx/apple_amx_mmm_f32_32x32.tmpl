@@ -28,15 +28,47 @@ z62[0] .. z62[15] z63[0] .. z63[15]
 
 {% include "dispatcher.tmpliq" %}
 
-.per_col_sub:
-.per_col_sub_flipped:
-.per_row_sub:
-.per_row_sub_flipped:
 .q_scale:
 .q_shl:
 .q_shr:
-.add_mat_mul:
     b .unsupported
+
+.add_mat_mul:
+
+    ldr         x2, [x0, #24]       // b
+    ldp         x3, x4, [x0, #8]    // k, a
+
+    cmp         x3, #0
+    beq         .non_linear_loop
+
+    orr         x4, x4, {{0|setting:62}}    // load pairs (A)
+    orr         x2, x2, {{0|setting:62}}    // load pairs (B)
+
+    eor         x5, x5, x5                  // top left
+
+    orr         x6, x5, {{ 0|setting:20 }}  // Z row = 1
+    orr         x6, x6, {{ 0|setting:16 }}  // top right
+
+    orr         x7, x5, {{ 0|setting:21 }}
+    orr         x7, x7, {{ 0|setting:6 }}   // bottom left
+
+    orr         x8, x7, x6                  // bottom right
+
+    .packed_packed_loop_1:
+    {% amx ldx x2 %}
+    {% amx ldy x4 %}
+    add x2, x2, 128
+    add x4, x4, 128
+
+    {% amx fma32 x5 %}
+    {% amx fma32 x6 %}
+    {% amx fma32 x7 %}
+    {% amx fma32 x8 %}
+
+    subs x3, x3, #1
+    bne .packed_packed_loop_1
+
+    b .non_linear_loop
 
 .clear:
     // top left
@@ -59,6 +91,26 @@ z62[0] .. z62[15] z63[0] .. z63[15]
     {% amx fma32 x2 %}
 
     b .non_linear_loop
+
+.per_col_sub:
+
+    // performs a unary neg on Z
+    eor x2, x2, x2                      // X[0] = Z[0]
+
+    mov x4, {{ 0|setting:63 }}          // vector mode
+    orr x4, x4, {{ 0|setting:28 }}
+    orr x4, x4, {{ 0|setting:27 }}      // Z=-X
+
+    mov x6, 64
+    .per_col_sub_loop:
+        {% amx extrx x2 %}
+        {% amx fms32 x4 %}
+        add x2, x2, {{0|setting:20}}    // next Z row
+        add x4, x4, {{0|setting:20}}    // next Z row
+    subs x6, x6, 1
+    bne .per_col_sub_loop
+
+    // continue
 
 .per_col_add:
     ldr         x2, [x0, #8]
@@ -90,8 +142,91 @@ z62[0] .. z62[15] z63[0] .. z63[15]
     eor x2, x2, {{ 0|setting:21 }}  // Z row = 1
     {% amx fma32 x2 %}
 
+    b .non_linear_loop
+
+.per_col_sub_flipped:
+    ldr         x2, [x0, #8]
+
+    ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x2], #64
+    st1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x1], #64
+    ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x2]
+    st1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x1]
+    sub x1, x1, #64
+
+    orr x1, x1, {{ 0|setting:62 }}  // load a pair
+    {% amx ldx x1 %}
+
+    mov x2, {{ 0|setting:28 }}      // z += y
+
+    // top left
+    {% amx fms32 x2 %}
+
+    // bottom left
+    orr x2, x2, {{ 0|setting:21 }}  // Z row = 2
+    {% amx fms32 x2 %}
+
+    // bottom right
+    orr x2, x2, {{ 0|setting:16 }}  // X offset
+    orr x2, x2, {{ 0|setting:20 }}  // Z row = 3
+    {% amx fms32 x2 %}
+
+    // top right
+    eor x2, x2, {{ 0|setting:21 }}  // Z row = 1
+    {% amx fms32 x2 %}
+
 
     b .non_linear_loop
+
+.per_row_sub_flipped:
+    ldr         x2, [x0, #8]
+
+    ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x2], #64
+    st1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x1], #64
+    ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x2]
+    st1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x1]
+    sub x1, x1, #64
+
+    orr x2, x1, {{ 0|setting:62 }}  // load a pair
+    {% amx ldy x2 %}
+
+    mov x2, {{ 0|setting:29 }}      // z += y
+
+    // top left
+    {% amx fms32 x2 %}
+
+    // top right
+    orr x2, x2, {{ 0|setting:20 }}  // Z row = 1
+    {% amx fms32 x2 %}
+
+    // bottom right
+    orr x2, x2, {{ 0|setting:21 }}  // Z row = 3
+    orr x2, x2, {{ 0|setting:6 }}   // Y offset
+    {% amx fms32 x2 %}
+
+    // bottom left
+    eor x2, x2, {{ 0|setting:20 }}  // Z row = 2
+    {% amx fms32 x2 %}
+
+    b .non_linear_loop
+
+.per_row_sub:
+    // performs a unary neg on Z
+    eor x2, x2, x2                      // X[0] = Z[0]
+
+    mov x4, {{ 0|setting:63 }}          // vector mode
+    orr x4, x4, {{ 0|setting:28 }}
+    orr x4, x4, {{ 0|setting:27 }}      // Z=-X
+
+    mov x6, 64
+    .per_row_sub_loop:
+        {% amx extrx x2 %}
+        {% amx fms32 x4 %}
+        add x2, x2, {{0|setting:20}}    // next Z row
+        add x4, x4, {{0|setting:20}}    // next Z row
+    subs x6, x6, 1
+    bne .per_row_sub_loop
+
+    // continue
 
 .per_row_add:
     ldr         x2, [x0, #8]
