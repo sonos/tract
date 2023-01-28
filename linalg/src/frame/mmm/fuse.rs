@@ -619,7 +619,7 @@ pub mod test {
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
         let len = K::mr() * K::nr();
-        let v: Vec<TC> = (0..len).map(|f| /*f.as_()*/ 0usize.as_()).collect();
+        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
         let bias: Vec<TI> = (0..K::nr()).map(|f| f.as_()).collect();
         fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::PerColAdd(bias.as_ptr())], |_, col, c| {
             c + bias[col]
