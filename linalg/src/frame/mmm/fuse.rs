@@ -279,6 +279,13 @@ pub mod test {
                         test::return_c_plus_d::<$ker, $tc, $ti>()
                     }
                 }
+
+                #[test]
+                fn return_c_clear() {
+                    if $cond {
+                        test::return_c_clear::<$ker, $tc, $ti>()
+                    }
+                }
             }
         };
     }
@@ -657,6 +664,18 @@ pub mod test {
             &[FusedKerSpec::AddRowColProducts(rows.as_ptr(), cols.as_ptr())],
             |row, col, c| c + cols[col] * rows[row],
         )
+    }
+
+    pub fn return_c_clear<K, TC, TI>()
+    where
+        K: MatMatMulKer<TI>,
+        TC: LADatum + AsPrimitive<TI>,
+        TI: LADatum + AsPrimitive<TC>,
+        usize: AsPrimitive<TC> + AsPrimitive<TI>,
+    {
+        let len = K::mr() * K::nr();
+        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
+        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::Clear], |_, _, _| 0.as_())
     }
 
     pub fn return_c_scalar_min<K, TC, TI>()
