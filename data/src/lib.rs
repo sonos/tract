@@ -20,10 +20,9 @@ pub mod prelude {
     pub use crate::datum::{round_ties_to_even, Blob, Datum, DatumType, QParams};
     pub use crate::dim::{Symbol, SymbolTable, SymbolValues, TDim, ToDim};
     pub use crate::tensor::litteral::*;
-    pub use crate::tensor::{
-        natural_strides, reinterpret_complex_as_inner_dim, reinterpret_inner_dim_as_complex,
-        IntoArcTensor, IntoTensor, Tensor,
-    };
+    pub use crate::tensor::{ natural_strides, IntoArcTensor, IntoTensor, Tensor };
+    #[cfg(feature = "complex")]
+    pub use crate::tensor::{ reinterpret_complex_as_inner_dim, reinterpret_inner_dim_as_complex, };
     pub use crate::tvec;
     pub use crate::TVec;
     pub use crate::{
@@ -33,6 +32,7 @@ pub mod prelude {
     pub use crate::{TractError, TractResult};
     pub use half::f16;
     pub use itertools as tract_itertools;
+    #[cfg(feature = "complex")]
     pub use num_complex::Complex;
 }
 

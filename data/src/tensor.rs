@@ -5,9 +5,8 @@ use crate::TVec;
 use half::f16;
 use itertools::Itertools;
 use ndarray::prelude::*;
+#[cfg(feature = "complex")]
 use num_complex::Complex;
-#[cfg(feature = "serialize")]
-use serde::ser::{Serialize, Serializer};
 use std::alloc;
 use std::borrow::Cow;
 use std::fmt;
@@ -89,11 +88,17 @@ impl Hash for Tensor {
                 QI8(_) => self.as_slice_unchecked::<i8>().hash(state),
                 QU8(_) => self.as_slice_unchecked::<u8>().hash(state),
                 QI32(_) => self.as_slice_unchecked::<i32>().hash(state),
+                #[cfg(feature = "complex")]
                 ComplexI16 => self.as_slice_unchecked::<Complex<i16>>().hash(state),
+                #[cfg(feature = "complex")]
                 ComplexI32 => self.as_slice_unchecked::<Complex<i32>>().hash(state),
+                #[cfg(feature = "complex")]
                 ComplexI64 => self.as_slice_unchecked::<Complex<i64>>().hash(state),
+                #[cfg(feature = "complex")]
                 ComplexF16 => self.as_slice_unchecked::<Complex<i16>>().hash(state),
+                #[cfg(feature = "complex")]
                 ComplexF32 => self.as_slice_unchecked::<Complex<i32>>().hash(state),
+                #[cfg(feature = "complex")]
                 ComplexF64 => self.as_slice_unchecked::<Complex<i64>>().hash(state),
             }
         }
@@ -1350,6 +1355,7 @@ impl fmt::Debug for Tensor {
     }
 }
 
+#[cfg(feature = "complex")]
 pub fn reinterpret_inner_dim_as_complex(mut t: Tensor) -> anyhow::Result<Tensor> {
     anyhow::ensure!(
         t.shape().last() == Some(&2),
@@ -1364,6 +1370,7 @@ pub fn reinterpret_inner_dim_as_complex(mut t: Tensor) -> anyhow::Result<Tensor>
     }
 }
 
+#[cfg(feature = "complex")]
 pub fn reinterpret_complex_as_inner_dim(mut t: Tensor) -> anyhow::Result<Tensor> {
     unsafe {
         t.shape.push(2);
@@ -1398,38 +1405,6 @@ fn compute_natural_stride_to(strides: &mut TVec<isize>, shape: &[usize]) {
                 strides.push(previous * *dim as isize)
             }
             strides.reverse();
-        }
-    }
-}
-
-#[cfg(feature = "serialize")]
-impl Serialize for Tensor {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        macro_rules! serialize_inner {
-            ($type:ident, $m:ident) => {{
-                let data =
-                    (stringify!($type), self.shape(), $m.iter().cloned().collect::<Vec<_>>());
-                data.serialize(serializer)
-            }};
-        };
-
-        use Tensor::*;
-        match self {
-            Bool(m) => serialize_inner!(bool, m),
-            U8(m) => serialize_inner!(u8, m),
-            U16(m) => serialize_inner!(u16, m),
-            I8(m) => serialize_inner!(i8, m),
-            I16(m) => serialize_inner!(i16, m),
-            I32(m) => serialize_inner!(i32, m),
-            I64(m) => serialize_inner!(i64, m),
-            F16(m) => serialize_inner!(f16, m),
-            F32(m) => serialize_inner!(f32, m),
-            F64(m) => serialize_inner!(f64, m),
-            TDim(m) => serialize_inner!(TDim, m),
-            String(m) => serialize_inner!(str, m),
         }
     }
 }
@@ -1562,6 +1537,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "complex")]
     fn test_reinterpret_inner_dim_as_complex() -> anyhow::Result<()> {
         let input = crate::internal::tensor2(&[[1.0f32, 2.0], [3.0, 4.0], [5.0, 6.0]]);
         let cplx_input = reinterpret_inner_dim_as_complex(input)?;
@@ -1575,6 +1551,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "complex")]
     fn test_reinterpret_inner_dim_as_complex_2() -> anyhow::Result<()> {
         let input =
             crate::internal::tensor3(&[[[1i32, 2], [1, 2]], [[3, 4], [3, 4]], [[5, 6], [5, 6]]]);

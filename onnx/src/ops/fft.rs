@@ -132,18 +132,8 @@ impl Expansion for Dft {
             )?;
         };
         wire = model.wire_node(
-            format!("{prefix}.pair_to_cplx"),
-            tract_core::ops::math::InnerDimToComplex,
-            &wire,
-        )?;
-        wire = model.wire_node(
             format!("{prefix}.fft"),
             tract_core::ops::fft::Fft { axis: self.axis, inverse: self.inverse },
-            &wire,
-        )?;
-        wire = model.wire_node(
-            format!("{prefix}.to_pair"),
-            tract_core::ops::math::ComplexToInnerDim,
             &wire,
         )?;
         if self.inverse {
@@ -278,11 +268,6 @@ impl Expansion for Stft {
             )?;
         };
         wire = model.wire_node(
-            format!("{prefix}.pair_to_cplx"),
-            tract_core::ops::math::InnerDimToComplex,
-            &wire,
-        )?;
-        wire = model.wire_node(
             format!("{prefix}.fft"),
             tract_core::ops::fft::Stft { axis: 1, frame, window, stride },
             &wire,
@@ -294,11 +279,6 @@ impl Expansion for Stft {
                 &wire,
             )?;
         }
-        wire = model.wire_node(
-            format!("{prefix}.to_pair"),
-            tract_core::ops::math::ComplexToInnerDim,
-            &wire,
-        )?;
         Ok(wire)
     }
 }

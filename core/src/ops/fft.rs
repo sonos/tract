@@ -1,8 +1,9 @@
 use crate::internal::*;
 use rustfft::num_traits::{Float, FromPrimitive};
 use rustfft::{FftDirection, FftNum};
-use std::ops::Mul;
+use tract_data::itertools::Itertools;
 use tract_ndarray::Axis;
+use num_complex::Complex;
 
 #[derive(Clone, Debug, Hash)]
 pub struct Fft {
@@ -17,29 +18,28 @@ impl Fft {
         &self,
         tensor: &mut Tensor,
     ) -> TractResult<()>
-    where
-        Complex<T>: Datum + Mul<Complex<T>, Output = Complex<T>>,
     {
         let mut iterator_shape: TVec<usize> = tensor.shape().into();
+        iterator_shape.pop(); // last dim is [re, im]
         iterator_shape[self.axis] = 1;
         let len = tensor.shape()[self.axis];
         let direction = if self.inverse { FftDirection::Inverse } else { FftDirection::Forward };
         let fft = rustfft::FftPlanner::new().plan_fft(len, direction);
-        let mut array = tensor.to_array_view_mut::<Complex<T>>()?;
+        let mut array = tensor.to_array_view_mut::<T>()?;
         let mut v = Vec::with_capacity(len);
         for coords in tract_ndarray::indices(&*iterator_shape) {
             v.clear();
             let mut slice = array.slice_each_axis_mut(|ax| {
-                if ax.axis.index() == self.axis {
+                if ax.axis.index() == self.axis || ax.stride == 1 { // ax.stride == 1 => last dim
                     (..).into()
                 } else {
                     let c = coords[ax.axis.index()] as isize;
                     (c..=c).into()
                 }
             });
-            v.extend(slice.iter().copied());
+            v.extend(slice.iter().tuples().map(|(r,i)| Complex::new(*r,*i)));
             fft.process(&mut v);
-            slice.iter_mut().zip(v.iter()).for_each(|(s, v)| *s = *v);
+            slice.iter_mut().zip(v.iter().flat_map(|cmpl| [cmpl.re, cmpl.im].into_iter())).for_each(|(s, v)| *s = v);
         }
         Ok(())
     }
@@ -65,8 +65,8 @@ impl EvalOp for Fft {
     fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let mut tensor = args_1!(inputs).into_tensor();
         match tensor.datum_type() {
-            DatumType::ComplexF32 => self.eval_t::<f32>(&mut tensor)?,
-            DatumType::ComplexF64 => self.eval_t::<f64>(&mut tensor)?,
+            DatumType::F32 => self.eval_t::<f32>(&mut tensor)?,
+            DatumType::F64 => self.eval_t::<f64>(&mut tensor)?,
             _ => bail!("FFT not implemented for type {:?}", tensor.datum_type()),
         }
         Ok(tvec!(tensor.into_tvalue()))
@@ -75,9 +75,8 @@ impl EvalOp for Fft {
 
 impl TypedOp for Fft {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        if !inputs[0].datum_type.is_complex() {
-            bail!("Fft operators expect input in complex form");
-        }
+        anyhow::ensure!(inputs[0].rank() >= 2, "Expect rank 2 (one for fft dimension, one for complex dimension");
+        anyhow::ensure!(inputs[0].shape.last().unwrap() == &2.to_dim(), "Fft operators expect inner (last) dimension to be 2 for real and imaginary part");
         Ok(tvec!(inputs[0].without_value()))
     }
 
@@ -99,38 +98,22 @@ impl Stft {
         &self,
         input: &Tensor,
     ) -> TractResult<Tensor>
-    where
-        Complex<T>: Datum + Mul<Complex<T>, Output = Complex<T>>,
     {
         let mut iterator_shape: TVec<usize> = input.shape().into();
+        iterator_shape.pop(); // [re,im]
         iterator_shape[self.axis] = 1;
         let mut output_shape: TVec<usize> = input.shape().into();
         let frames = (input.shape()[self.axis] - self.frame) / self.stride + 1;
         output_shape.insert(self.axis, frames);
         output_shape[self.axis + 1] = self.frame;
-        let mut output = unsafe { Tensor::uninitialized::<Complex<T>>(&output_shape)? };
+        let mut output = unsafe { Tensor::uninitialized::<T>(&output_shape)? };
         let fft = rustfft::FftPlanner::new().plan_fft_forward(self.frame);
-        let input = input.to_array_view::<Complex<T>>()?;
-        let mut oview = output.to_array_view_mut::<Complex<T>>()?;
+        let input = input.to_array_view::<T>()?;
+        let mut oview = output.to_array_view_mut::<T>()?;
         let mut v = Vec::with_capacity(self.frame);
-        let (window_real, window_cplx) = if let Some(w) = self.window.as_ref() {
-            if w.datum_type() == T::datum_type() {
-                (Some(w.as_slice::<T>()?), None)
-            } else if w.datum_type() == Complex::<T>::datum_type() {
-                (None, Some(w.as_slice::<Complex<T>>()?))
-            } else {
-                bail!(
-                    "Window has incompatible datum type {:?} (input is {:?})",
-                    w.datum_type(),
-                    T::datum_type()
-                );
-            }
-        } else {
-            (None, None)
-        }; // .map(|t| t.as_slice::<Complex<T>>()).transpose()?;
         for coords in tract_ndarray::indices(&*iterator_shape) {
             let islice = input.slice_each_axis(|ax| {
-                if ax.axis.index() == self.axis {
+                if ax.axis.index() == self.axis || ax.stride == 1 {
                     (..).into()
                 } else {
                     let c = coords[ax.axis.index()] as isize;
@@ -138,7 +121,9 @@ impl Stft {
                 }
             });
             let mut oslice = oview.slice_each_axis_mut(|ax| {
-                if ax.axis.index() < self.axis {
+                if ax.stride == 1 {
+                    (..).into()
+                } else if ax.axis.index() < self.axis {
                     let c = coords[ax.axis.index()] as isize;
                     (c..=c).into()
                 } else if ax.axis.index() == self.axis || ax.axis.index() == self.axis + 1 {
@@ -150,19 +135,18 @@ impl Stft {
             });
             for f in 0..frames {
                 v.clear();
-                v.extend(islice.iter().skip(self.stride * f).take(self.frame).copied());
-                if let Some(window) = window_real {
-                    v.iter_mut().zip(window.iter()).for_each(|(v, w)| *v = *v * w.into());
+                v.extend(islice.iter().tuples().skip(self.stride * f).take(self.frame).map(|(re,im)| Complex::new(*re, *im)));
+                if let Some(win) = &self.window {
+                    let win = win.as_slice::<T>()?;
+                    v.iter_mut().zip(win.iter()).for_each(|(v, w)| *v = *v * Complex::new(*w, T::zero()));
                 }
-                if let Some(window) = window_cplx {
-                    v.iter_mut().zip(window.iter()).for_each(|(v, w)| *v = *v * *w);
-                }
+                dbg!(&v);
                 fft.process(&mut v);
                 oslice
                     .index_axis_mut(Axis(self.axis), f)
                     .iter_mut()
-                    .zip(v.iter())
-                    .for_each(|(s, v)| *s = *v);
+                    .zip(v.iter().flat_map(|cmpl| [cmpl.re, cmpl.im].into_iter()))
+                    .for_each(|(s, v)| *s = v);
             }
         }
         Ok(output)
@@ -185,8 +169,8 @@ impl EvalOp for Stft {
     fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let output = match input.datum_type() {
-            DatumType::ComplexF32 => self.eval_t::<f32>(&input)?,
-            DatumType::ComplexF64 => self.eval_t::<f64>(&input)?,
+            DatumType::F32 => self.eval_t::<f32>(&input)?,
+            DatumType::F64 => self.eval_t::<f64>(&input)?,
             _ => bail!("FFT not implemented for type {:?}", input.datum_type()),
         };
         Ok(tvec!(output.into_tvalue()))
@@ -195,9 +179,8 @@ impl EvalOp for Stft {
 
 impl TypedOp for Stft {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        if !inputs[0].datum_type.is_complex() {
-            bail!("Fft operators expect input in complex form");
-        }
+        anyhow::ensure!(inputs[0].rank() >= 2, "Expect rank 2 (one for fft dimension, one for complex dimension");
+        anyhow::ensure!(inputs[0].shape.last().unwrap() == &2.to_dim(), "Fft operators expect inner (last) dimension to be 2 for real and imaginary part");
         let mut shape = inputs[0].shape.to_tvec();
         let frames = (inputs[0].shape[self.axis].clone() - self.frame) / self.stride + 1;
         shape[self.axis] = frames;
