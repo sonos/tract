@@ -3,6 +3,7 @@ use tract_core::ops;
 
 mod broadcast;
 mod cast;
+#[cfg(feature = "complex")]
 mod complex;
 mod downsample;
 mod fft;
@@ -32,6 +33,7 @@ pub fn register(registry: &mut Registry) {
     registry.register_binary("tract_shr", &ops::math::ShiftRight);
     broadcast::register(registry);
     cast::register(registry);
+    #[cfg(feature = "complex")]
     complex::register(registry);
     downsample::register(registry);
     fft::register(registry);

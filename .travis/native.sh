@@ -14,6 +14,7 @@ cargo test -p tract-core --features paranoid_assertions
 cargo -q test -q -p onnx-test-suite -- --skip real_
 
 cargo check -p tract --no-default-features
+cargo check -p nnef --features complex
 
 ./.travis/onnx-tests.sh
 ./.travis/cli-tests.sh

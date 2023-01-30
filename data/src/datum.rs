@@ -4,6 +4,7 @@ use crate::tensor::litteral::*;
 use crate::tensor::Tensor;
 use crate::TVec;
 use half::f16;
+#[cfg(feature = "complex")]
 use num_complex::Complex;
 use scan_fmt::scan_fmt;
 use std::hash::Hash;
@@ -130,11 +131,17 @@ pub enum DatumType {
     QI8(QParams),
     QU8(QParams),
     QI32(QParams),
+    #[cfg(feature = "complex")]
     ComplexI16,
+    #[cfg(feature = "complex")]
     ComplexI32,
+    #[cfg(feature = "complex")]
     ComplexI64,
+    #[cfg(feature = "complex")]
     ComplexF16,
+    #[cfg(feature = "complex")]
     ComplexF32,
+    #[cfg(feature = "complex")]
     ComplexF64,
 }
 
@@ -143,20 +150,23 @@ impl DatumType {
         use DatumType::*;
         if *self == String || *self == TDim || *self == Blob || *self == Bool || self.is_quantized()
         {
-            tvec!(*self)
-        } else if self.is_complex_float() {
-            [ComplexF16, ComplexF32, ComplexF64]
+            return tvec!(*self);
+        } 
+        #[cfg(feature = "complex")]
+        if self.is_complex_float() {
+            return [ComplexF16, ComplexF32, ComplexF64]
                 .iter()
                 .filter(|s| s.size_of() >= self.size_of())
                 .copied()
-                .collect()
+                .collect();
         } else if self.is_complex_signed() {
-            [ComplexI16, ComplexI32, ComplexI64]
+            return [ComplexI16, ComplexI32, ComplexI64]
                 .iter()
                 .filter(|s| s.size_of() >= self.size_of())
                 .copied()
-                .collect()
-        } else if self.is_float() {
+                .collect();
+        }
+        if self.is_float() {
             [F16, F32, F64].iter().filter(|s| s.size_of() >= self.size_of()).copied().collect()
         } else if self.is_signed() {
             [I8, I16, I32, I64, TDim]
@@ -215,18 +225,22 @@ impl DatumType {
         matches!(self, DatumType::F16 | DatumType::F32 | DatumType::F64)
     }
 
+    #[cfg(feature = "complex")]
     pub fn is_complex(&self) -> bool {
         self.is_complex_float() || self.is_complex_signed()
     }
 
+    #[cfg(feature = "complex")]
     pub fn is_complex_float(&self) -> bool {
         matches!(self, DatumType::ComplexF16 | DatumType::ComplexF32 | DatumType::ComplexF64)
     }
 
+    #[cfg(feature = "complex")]
     pub fn is_complex_signed(&self) -> bool {
         matches!(self, DatumType::ComplexI16 | DatumType::ComplexI32 | DatumType::ComplexI64)
     }
 
+    #[cfg(feature = "complex")]
     pub fn complexify(&self) -> anyhow::Result<DatumType> {
         match *self {
             DatumType::I16 => Ok(DatumType::ComplexI16),
@@ -239,6 +253,7 @@ impl DatumType {
         }
     }
 
+    #[cfg(feature = "complex")]
     pub fn decomplexify(&self) -> anyhow::Result<DatumType> {
         match *self {
             DatumType::ComplexI16 => Ok(DatumType::I16),
@@ -252,11 +267,14 @@ impl DatumType {
     }
 
     pub fn is_copy(&self) -> bool {
+        #[cfg(feature = "complex")]
+        if self.is_complex() {
+            return true
+        }
         *self == DatumType::Bool
             || self.is_unsigned()
             || self.is_signed()
             || self.is_float()
-            || self.is_complex()
     }
 
     pub fn is_quantized(&self) -> bool {
@@ -391,11 +409,17 @@ impl std::str::FromStr for DatumType {
                 "Blob" | "blob" => Ok(DatumType::Blob),
                 "String" | "string" => Ok(DatumType::String),
                 "TDim" | "tdim" => Ok(DatumType::TDim),
+                #[cfg(feature = "complex")]
                 "ComplexI16" | "complexi16" => Ok(DatumType::ComplexI16),
+                #[cfg(feature = "complex")]
                 "ComplexI32" | "complexi32" => Ok(DatumType::ComplexI32),
+                #[cfg(feature = "complex")]
                 "ComplexI64" | "complexi64" => Ok(DatumType::ComplexI64),
+                #[cfg(feature = "complex")]
                 "ComplexF16" | "complexf16" => Ok(DatumType::ComplexF16),
+                #[cfg(feature = "complex")]
                 "ComplexF32" | "complexf32" => Ok(DatumType::ComplexF32),
+                #[cfg(feature = "complex")]
                 "ComplexF64" | "complexf64" => Ok(DatumType::ComplexF64),
                 _ => anyhow::bail!("Unknown type {}", s),
             }
@@ -492,11 +516,17 @@ datum!(u64, U64);
 datum!(TDim, TDim);
 datum!(String, String);
 datum!(Blob, Blob);
+#[cfg(feature = "complex")]
 datum!(Complex<i16>, ComplexI16);
+#[cfg(feature = "complex")]
 datum!(Complex<i32>, ComplexI32);
+#[cfg(feature = "complex")]
 datum!(Complex<i64>, ComplexI64);
+#[cfg(feature = "complex")]
 datum!(Complex<f16>, ComplexF16);
+#[cfg(feature = "complex")]
 datum!(Complex<f32>, ComplexF32);
+#[cfg(feature = "complex")]
 datum!(Complex<f64>, ComplexF64);
 
 #[cfg(test)]
