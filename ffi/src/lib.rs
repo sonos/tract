@@ -45,11 +45,17 @@ pub enum TractDatumType {
     TRACT_DATUM_TYPE_F16 = 0x32,
     TRACT_DATUM_TYPE_F32 = 0x34,
     TRACT_DATUM_TYPE_F64 = 0x38,
+    #[cfg(feature = "complex")]
     TRACT_DATUM_TYPE_COMPLEX_I16 = 0x42,
+    #[cfg(feature = "complex")]
     TRACT_DATUM_TYPE_COMPLEX_I32 = 0x44,
+    #[cfg(feature = "complex")]
     TRACT_DATUM_TYPE_COMPLEX_I64 = 0x48,
+    #[cfg(feature = "complex")]
     TRACT_DATUM_TYPE_COMPLEX_F16 = 0x52,
+    #[cfg(feature = "complex")]
     TRACT_DATUM_TYPE_COMPLEX_F32 = 0x54,
+    #[cfg(feature = "complex")]
     TRACT_DATUM_TYPE_COMPLEX_F64 = 0x58,
 }
 
@@ -70,11 +76,17 @@ impl From<TractDatumType> for DatumType {
             TRACT_DATUM_TYPE_F16 => F16,
             TRACT_DATUM_TYPE_F32 => F32,
             TRACT_DATUM_TYPE_F64 => F64,
+            #[cfg(feature = "complex")]
             TRACT_DATUM_TYPE_COMPLEX_I16 => ComplexI16,
+            #[cfg(feature = "complex")]
             TRACT_DATUM_TYPE_COMPLEX_I32 => ComplexI32,
+            #[cfg(feature = "complex")]
             TRACT_DATUM_TYPE_COMPLEX_I64 => ComplexI64,
+            #[cfg(feature = "complex")]
             TRACT_DATUM_TYPE_COMPLEX_F16 => ComplexF16,
+            #[cfg(feature = "complex")]
             TRACT_DATUM_TYPE_COMPLEX_F32 => ComplexF32,
+            #[cfg(feature = "complex")]
             TRACT_DATUM_TYPE_COMPLEX_F64 => ComplexF64,
         }
     }
@@ -98,11 +110,17 @@ impl TryFrom<DatumType> for TractDatumType {
             F16 => Ok(TRACT_DATUM_TYPE_F16),
             F32 => Ok(TRACT_DATUM_TYPE_F32),
             F64 => Ok(TRACT_DATUM_TYPE_F64),
+            #[cfg(feature = "complex")]
             ComplexI16 => Ok(TRACT_DATUM_TYPE_COMPLEX_I16),
+            #[cfg(feature = "complex")]
             ComplexI32 => Ok(TRACT_DATUM_TYPE_COMPLEX_I32),
+            #[cfg(feature = "complex")]
             ComplexI64 => Ok(TRACT_DATUM_TYPE_COMPLEX_I64),
+            #[cfg(feature = "complex")]
             ComplexF16 => Ok(TRACT_DATUM_TYPE_COMPLEX_F16),
+            #[cfg(feature = "complex")]
             ComplexF32 => Ok(TRACT_DATUM_TYPE_COMPLEX_F32),
+            #[cfg(feature = "complex")]
             ComplexF64 => Ok(TRACT_DATUM_TYPE_COMPLEX_F64),
             _ => anyhow::bail!("tract C bindings do not support {:?} type", it),
         }

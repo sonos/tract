@@ -173,13 +173,14 @@ pub fn write_tensor<W: std::io::Write>(w: &mut W, tensor: &Tensor) -> TractResul
         }
         header.data_size_bytes = (tensor.len() * tensor.datum_type().size_of()) as u32;
         header.bits_per_item = (tensor.datum_type().size_of() * 8) as u32;
-        let (it, itv) = match tensor.datum_type() {
+
+        let (itv, it) = match tensor.datum_type() {
             DatumType::F16|DatumType::F32|DatumType::F64 => (0, 0),
-            DatumType::I8|DatumType::I16|DatumType::I32|DatumType::I64|DatumType::QI8(_)|DatumType::QI32(_) => (0, 4),
-            DatumType::U8|DatumType::U16|DatumType::U32|DatumType::U64|DatumType::QU8(_) => (0, 1),
+            DatumType::U8|DatumType::U16|DatumType::U32|DatumType::U64|DatumType::QU8(_) => (0, 2),
+            DatumType::I8|DatumType::I16|DatumType::I32|DatumType::I64|DatumType::QI8(_)|DatumType::QI32(_) => (0, 3),
             DatumType::String => {
                 header.bits_per_item = 0xFFFF;
-                (0x1000, TRACT_ITEM_TYPE_VENDOR)
+                (TRACT_ITEM_TYPE_VENDOR, 0x1000)
             }
             #[cfg(feature="complex")]
             DatumType::ComplexF16|DatumType::ComplexF32|DatumType::ComplexF64 => (TRACT_ITEM_TYPE_VENDOR, 0),
