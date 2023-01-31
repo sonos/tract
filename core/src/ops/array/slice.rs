@@ -89,6 +89,7 @@ fn eval_slice(input: &Tensor, axis: usize, start: usize, end: usize) -> TractRes
 
 impl TypedOp for Slice {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        anyhow::ensure!(inputs.len() == 1, "Slice has one single input");
         let mut fact = inputs[0].without_value();
         fact.shape.set(self.axis, (self.end.clone() - &self.start).to_dim());
         Ok(tvec!(fact))

@@ -15,7 +15,8 @@ impl super::TypedPass for PushSliceUp {
         _session: &mut OptimizerSession,
         model: &TypedModel,
     ) -> TractResult<Option<TypedModelPatch>> {
-        for n in model.eval_order()? {
+        let eval_order = model.eval_order()?;
+        for &n in &eval_order {
             let (ifacts, ofacts) = model.node_facts(n)?;
             if ofacts.len() != 1 {
                 continue;
@@ -23,9 +24,9 @@ impl super::TypedPass for PushSliceUp {
             let node = model.node(n);
             let invariants = node.op.invariants(&ifacts, &ofacts)?;
             'axis: for axis in 0..ofacts[0].rank() {
-                if let Some(boundaries) = should_slice_output(model, node, axis)? {
+                if let Some(boundaries) = should_slice_output(model, node, axis, &eval_order)? {
                     let mut splits = tvec!();
-                    let mut patch = TypedModelPatch::new("push slice up");
+                    let mut patch = TypedModelPatch::new(format!("Slice {node} by {boundaries:?}"));
                     let inputs = node
                         .inputs
                         .iter()
@@ -66,12 +67,12 @@ impl super::TypedPass for PushSliceUp {
                                 axis,
                                 start,
                                 *end,
-                                )? else {
+                                ).with_context(|| format!("Calling slice on {node}"))? else {
                             continue 'axis };
                         splits.push(wire[0]);
                         start = *end;
                     }
-                    rewire_sliced_outputs(model, node, axis, &mut patch, &boundaries, &splits)?;
+                    rewire_sliced_outputs(model, node, axis, &mut patch, &boundaries, &splits).context("Rewiring sliced outputs")?;
                     return Ok(Some(patch));
                 }
             }
@@ -80,10 +81,11 @@ impl super::TypedPass for PushSliceUp {
     }
 }
 
-pub fn should_slice_output(
+fn should_slice_output(
     model: &TypedModel,
     node: &TypedNode,
     axis: usize,
+    eval_order: &[usize],
 ) -> TractResult<Option<TVec<usize>>> {
     if node.outputs[0].successors.len() == 0 {
         return Ok(None)
@@ -110,6 +112,9 @@ pub fn should_slice_output(
     }
     let slice = node.outputs[0].successors[0].node;
 
+    if !eval_order.contains(&slice) {
+        return Ok(None)
+    }
     let slice_op = model.node(slice).op_as::<Slice>().unwrap();
     let axis = slice_op.axis;
     let mut boundaries = tvec!();
@@ -139,6 +144,8 @@ pub fn should_slice_output(
     boundaries.dedup();
     if boundaries.len() == 0 {
         // happens when input is of size 0. don't care.
+        Ok(None)
+    } else if boundaries.len() == 1 && boundaries[0] == end {
         Ok(None)
     } else {
         Ok(Some(boundaries))
