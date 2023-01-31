@@ -211,12 +211,9 @@ impl TypedOp for EinSum {
         node: &TypedNode,
         ) -> TractResult<Option<TypedModelPatch>> {
         // mka,kn->bmn (m=1, k=384 n=256)
-        eprintln!("{} ({})", node, self.expr);
         'outer: for (slot, input) in node.inputs.iter().enumerate() {
             let precursor = model.node(input.node);
-            eprintln!("  - {}", precursor);
             if let Some(concat) = precursor.op_as::<TypedConcat>() {
-                dbg!(concat);
                 let offsets = concat.offsets(&model.node_input_facts(precursor.id)?)?;
                 let axis_info = self.expr.input_axis(slot, concat.axis).context("Axis unmapped")?;
                 let mut patch = TypedModelPatch::new(format!(
@@ -255,7 +252,6 @@ impl TypedOp for EinSum {
                         self.clone(),
                         &einsum_inputs,
                         )?[0];
-                    eprintln!("fact {} {:?}", ix, patch.outlet_fact(einsum)?);
                     einsums.push(einsum);
                 }
                 let wire = if let Some(axis) = axis_info.result {

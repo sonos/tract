@@ -31,7 +31,6 @@ where
         let mut mapping = HashMap::new();
         for old_id in source.eval_order()? {
             let node = source.node(old_id);
-            trace!("Translating {} {:?}", node, self);
             let outlets = self
                 .translate_node(source, node, &mut target, &mapping)
                 .with_context(|| format!("Translating node {node} {self:?}"))?;
