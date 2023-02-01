@@ -1,5 +1,6 @@
 use crate::ops::einsum::EinSum;
 use crate::ops::konst::Const;
+use crate::ops::source::TypedSource;
 use crate::optim::OptimizerSession;
 
 use super::lir::{LirScan, LirScanOpParams};
@@ -325,20 +326,62 @@ impl Scan {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        for (model_input, input) in self.input_mapping.iter().enumerate() {
+        'candidate: for (model_input_ix, input) in self.input_mapping.iter().enumerate() {
             if let Some(info) = input.as_scan() {
-                let scan_source = self.body.input_outlets()?[model_input];
+                let scan_source = self.body.input_outlets()?[model_input_ix];
                 let scan_source_node = self.body.node(scan_source.node);
-                for successor in &scan_source_node.outputs[0].successors {
-                    let successor_node = self.body.node(successor.node);
-                    if successor_node.inputs.len() != 1 || successor_node.outputs.len() != 1 {
+                for mut succ in &scan_source_node.outputs[0].successors {
+                    for &succ_input in &self.body.node(succ.node).inputs {
+                        if succ_input != scan_source
+                            && self.body.outlet_fact(succ_input)?.konst.is_none()
+                        {
+                            continue 'candidate;
+                        }
+                    }
+                    if self.body.node(succ.node).outputs.len() != 1 {
                         continue;
                     }
-                    let (input_facts, output_facts) = self.body.node_facts(successor_node.id)?;
-                    let invariants = successor_node.op.invariants(&input_facts, &output_facts)?;
-                    if let Some(axis_after) = invariants.unary_track_axis_down(info.axis, false) {
+                    dbg!(self.body.node(succ.node).to_string());
+                    let mut new_body = self.body.clone();
+                    // insert propagate axis on einsum
+                    if let Some(einsum) = new_body.node(succ.node).op_as::<EinSum>() {
+                        dbg!(succ);
+                        dbg!(info.axis);
+                        dbg!(einsum);
+                        if let Some(patch) = einsum
+                            .propagate_axis(
+                                &new_body,
+                                new_body.node(succ.node),
+                                InOut::In(succ.slot),
+                                info.axis,
+                            )
+                            .context("building axis propagating patch")?
+                        {
+                            patch.apply(&mut new_body)?;
+                            // propagate axis injects new nodes at the end. last successor of input
+                            // in new net will be the new succ
+                            let new_body_scan_input = new_body.input_outlets()?[model_input_ix];
+                            succ = &new_body.node(new_body_scan_input.node).outputs[0]
+                                .successors
+                                .last()
+                                .unwrap();
+                        }
+                    }
+
+                    let invariants = {
+                        let (input_facts, output_facts) =
+                            new_body.node_facts(new_body.node(succ.node).id)?;
+                        new_body.node(succ.node).op.invariants(&input_facts, &output_facts)?
+                    };
+                    dbg!(&invariants);
+                    if let Some(axis_after) = invariants
+                        .track_input_axis(succ.slot, info.axis)
+                        .and_then(|info| info.outputs[0])
+                    {
+                        dbg!(axis_after);
                         let mut outside_patch = TypedModelPatch::new(format!(
-                            "Outer patch for input extraction of {successor_node}"
+                            "Outer patch for input extraction of {}",
+                            new_body.node(succ.node)
                         ));
                         let mut patch_inputs = node
                             .inputs
@@ -347,8 +390,8 @@ impl Scan {
                             .collect::<TractResult<TVec<_>>>()?;
                         let input = patch_inputs[info.slot];
                         let new_input_wire = outside_patch.wire_node(
-                            format!("{}.extracted.{}", node.name, successor_node.name),
-                            successor_node.op.clone(),
+                            format!("{}.extracted.{}", node.name, new_body.node(succ.node).name),
+                            new_body.node(succ.node).op.clone(),
                             &[input],
                         )?[0];
                         patch_inputs.push(new_input_wire);
@@ -356,20 +399,21 @@ impl Scan {
                         let mut new_input_inner_fact = new_input_outer_fact.clone();
                         new_input_inner_fact.shape.set(axis_after, info.chunk.abs().to_dim());
 
-                        let mut new_body = self.body.clone();
+                        let mut new_body = new_body.clone();
                         let new_source_wire = new_body.add_source(
-                            format!("{}.extracted.{}", node.name, successor_node.name),
+                            format!("{}.extracted.{}", node.name, new_body.node(succ.node).name),
                             new_input_inner_fact,
                         )?;
                         let mut inner_patch = TypedModelPatch::new(format!(
-                            "Inner body patch for extraction of {successor_node}"
+                            "Inner body patch for extraction of {}",
+                            new_body.node(succ.node)
                         ));
                         let new_source_wire_in_patch =
                             inner_patch.tap_model(&new_body, new_source_wire)?;
                         inner_patch
                             .shunt_outside(
                                 &new_body,
-                                OutletId::new(successor.node, 0),
+                                OutletId::new(succ.node, 0),
                                 new_source_wire_in_patch,
                             )
                             .with_context(|| "patching inner model")?;
@@ -416,7 +460,8 @@ impl Scan {
                 if let Some(k) = self.body.output_fact(model_output_ix)?.konst.clone() {
                     let inner_node = self.body.output_outlets()?[model_output_ix].node;
                     let inner_node = self.body.node(inner_node);
-                    let mut patch = TypedModelPatch::new(format!("Extract const node {inner_node}"));
+                    let mut patch =
+                        TypedModelPatch::new(format!("Extract const node {inner_node}"));
                     let cst = patch.add_const(format!("{}.{}", &node.name, &inner_node.name), k)?;
                     patch.shunt_outside(model, OutletId::new(node.id, slot), cst)?;
                     return Ok(Some(patch));
@@ -463,9 +508,9 @@ impl Scan {
                     new_body.node(emitter_outlet.node).op.invariants(&input_facts, &output_facts)?
                 };
                 let Some(axis_tracking) = invariants.track_output_axis(emitter_outlet.slot, info.axis)
-                else {
-                    continue;
-                };
+            else {
+                continue;
+            };
                 if axis_tracking.inputs.iter().any(|axis| axis.is_none()) {
                     continue;
                 }

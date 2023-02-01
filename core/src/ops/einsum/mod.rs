@@ -60,8 +60,7 @@ impl EinSum {
         } else {
             None
         };
-        let mut new_expr = self.expr.clone();
-        *new_expr.iter_all_axes_mut().find(|ax| ax.repr == repr).unwrap() = new_axis;
+        let new_expr:Expr = self.expr.iter_all_axes().map(|it| if it.repr == new_axis.repr { new_axis.clone() } else { it.clone() }).collect();
         let mut wire =
             patch.wire_node(&node.name, Self { expr: new_expr, ..self.clone() }, &taps)?;
         if let Some(position) = must_rm_axis {
