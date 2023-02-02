@@ -79,7 +79,7 @@ impl Renderable for RenderedAmxTag {
         writer: &mut dyn std::io::Write,
         _runtime: &dyn liquid_core::Runtime,
     ) -> liquid_core::Result<()> {
-        writer.write_all(&self.0.as_bytes()).unwrap();
+        writer.write_all(self.0.as_bytes()).unwrap();
         Ok(())
     }
 }
