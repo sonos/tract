@@ -1,4 +1,5 @@
 #![allow(clippy::excessive_precision)]
+#[cfg(target_os = "macos")]
 mod apple_amx;
 mod arm64simd;
 pub mod cortex_a53;
