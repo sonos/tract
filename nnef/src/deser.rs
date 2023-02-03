@@ -138,18 +138,27 @@ impl<'mb> ModelBuilder<'mb> {
                 })
                 .collect::<Vec<_>>();
             self.naming_scopes.push(identifiers[0].clone());
-            let mut values = if identifiers.len() == 1 {
-                let value: OutletId = assignment
+
+            let values = if identifiers.len() == 1 {
+                assignment
                     .right
                     .resolve(self, &datum_types)
-                    .and_then(|v| v.to(self))
+                    .and_then(|v| -> TractResult<Option<OutletId>> {
+                        match v {
+                            Value::String(s) => {
+                                self.scopes.last_mut().map(|it| it.insert(identifiers[0].clone(), Value::String(s)));
+                                Ok(None)
+                            }
+                            _ => Ok(Some(v.to(self)?)),
+                        }
+                    })
                     .with_context(|| {
                         format!(
                             "Plugging in assignement for {:?}",
                             identifiers.iter().map(|i| &i.0).join(", ")
                         )
-                    })?;
-                tvec!(value)
+                    })?
+                    .map(|outlet_id| tvec!(outlet_id))
             } else {
                 let values: TVec<OutletId> = assignment
                     .right
@@ -168,30 +177,35 @@ impl<'mb> ModelBuilder<'mb> {
                         values.len()
                     )
                 }
-                values
+                Some(values)
             };
-            for (qparam, value) in datum_types.into_iter().zip(values.iter_mut()) {
-                if let Some(qparam) = qparam {
-                    if qparam != self.model.outlet_fact(*value)?.datum_type {
-                        self.model.node_mut(value.node).name =
-                            format!("{}_raw", self.naming_scopes.iter().map(|i| &i.0).join("_"));
-                        *value = self.model.wire_node(
-                            "foo",
-                            tract_core::ops::cast::cast(qparam),
-                            &[*value],
-                        )?[0];
+
+            if let Some(mut values) = values {
+                for (qparam, value) in datum_types.into_iter().zip(values.iter_mut()) {
+                    if let Some(qparam) = qparam {
+                        if qparam != self.model.outlet_fact(*value)?.datum_type {
+                            self.model.node_mut(value.node).name = format!(
+                                "{}_raw",
+                                self.naming_scopes.iter().map(|i| &i.0).join("_")
+                            );
+                            *value = self.model.wire_node(
+                                "foo",
+                                tract_core::ops::cast::cast(qparam),
+                                &[*value],
+                            )?[0];
+                        }
                     }
                 }
-            }
-            for (id, outlet) in identifiers.iter().zip(values.iter()) {
-                self.scopes.last_mut().unwrap().insert((*id).clone(), Value::Wire(*outlet));
-            }
-            self.naming_scopes.pop();
-            for (value, identifier) in values.iter().zip(identifiers.into_iter()) {
-                if self.model.node_mut(value.node).name.is_empty() {
-                    self.naming_scopes.push(identifier.clone());
-                    self.model.node_mut(value.node).name = self.generate_node_name();
-                    self.naming_scopes.pop();
+                for (id, outlet) in identifiers.iter().zip(values.iter()) {
+                    self.scopes.last_mut().unwrap().insert((*id).clone(), Value::Wire(*outlet));
+                }
+                self.naming_scopes.pop();
+                for (value, identifier) in values.iter().zip(identifiers.into_iter()) {
+                    if self.model.node_mut(value.node).name.is_empty() {
+                        self.naming_scopes.push(identifier.clone());
+                        self.model.node_mut(value.node).name = self.generate_node_name();
+                        self.naming_scopes.pop();
+                    }
                 }
             }
         }
