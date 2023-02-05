@@ -672,6 +672,34 @@ z62[0] .. z62[15] z63[0] .. z63[15]
 .store:
     ldp         x5, x6, [x0, #8]            // c base ptr, rsc
     ldp         x7, x8, [x0, #24]           // csc, item_size
+
+    cmp         x7, 4
+    bne         .store_generic
+    ands        x8, x5, 0x7f
+    bne         .store_generic
+    ands        x8, x6, 0x7f
+    bne         .store_generic
+
+    orr x5, x5, {{ 0|setting:62 }}          // pair
+    lsl x8, x6, 4
+    add x8, x8, x5                          // x8 = 16*rsc
+    orr x8, x8, {{ 0|setting:57 }}          // first to x8 is z2
+
+    mov x4, {{0|setting:58}}                // Zreg += 4
+    add x4, x4, x6                          // +rsc
+
+    mov x3, 16
+    .loop_store_direct:
+        {% amx stz x5 %}
+        {% amx stz x8 %}
+        add x5, x5, x4
+        add x8, x8, x4
+    subs x3, x3, 1
+    bne .loop_store_direct
+
+    b .non_linear_loop
+
+.store_generic:
     
     add x8, x1, 64
 
