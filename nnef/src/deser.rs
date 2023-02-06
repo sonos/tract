@@ -600,7 +600,11 @@ impl CoerceFrom<Value> for OutletId {
             Value::Array(_) => {
                 let tensor = Arc::<Tensor>::coerce(builder, from)?;
                 Ok(builder.wire_as_outlets(tract_core::ops::konst::Const::new(tensor), &[])?[0])
-            }
+            },
+            Value::String(s) => {
+                Ok(builder
+                    .wire_as_outlets(tract_core::ops::konst::Const::new(rctensor0(s.clone())), &[])?[0])
+            },
             _ => bail!("Can not build an outletid from {:?}", from),
         }
     }
@@ -642,10 +646,13 @@ impl CoerceFrom<Value> for TDim {
 }
 
 impl CoerceFrom<Value> for String {
-    fn coerce(_builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
+    fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         match from {
             Value::String(s) => Ok(s.to_string()),
             Value::Tensor(t) => Ok(t.to_scalar::<String>()?.clone()),
+            Value::Wire(_) => {
+                Ok(from.to::<Arc<Tensor>>(builder)?.cast_to::<String>()?.to_scalar::<String>()?.clone())
+            }
             _ => bail!("Can not build a String from {:?}", from),
         }
     }
