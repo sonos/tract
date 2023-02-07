@@ -882,14 +882,17 @@ impl TypedOp for Scan {
     ) -> TractResult<Option<TypedModelPatch>> {
         macro_rules! pass {
             ($func:ident) => {
+                eprintln!("in Scan, trying {:?}", stringify!($func));
                 if let Some(mut r) = self
                     .$func(session, model, node)
                     .with_context(|| format!("{}", stringify!($func)))?
                 {
                     trace!(stringify!($func));
                     r.push_context(stringify!($func));
+                    eprintln!("in Scan, {:?} did something", stringify!($func));
                     return Ok(Some(r));
                 }
+                eprintln!("in Scan, {:?} did nothing", stringify!($func));
             };
         }
         pass!(declutter_const_initializer);
