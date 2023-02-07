@@ -1,8 +1,6 @@
 pub mod lir_unary;
 pub mod mir;
 pub mod mir_quant;
-pub mod mir_quant_unary;
-pub mod mir_unary;
 pub mod pack;
 
 #[cfg(test)]
@@ -15,7 +13,6 @@ use tract_ndarray::prelude::*;
 
 pub use self::mir::MatMul;
 pub use self::mir_quant::{MatMulQParams, QMatMul};
-pub use self::mir_unary::MatMulUnary;
 use self::pack::MatMatMulPack;
 
 #[derive(PartialEq, Eq, Clone, Debug, Copy, Hash)]

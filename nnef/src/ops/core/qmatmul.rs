@@ -5,15 +5,10 @@ use crate::deser::Value;
 use crate::internal::*;
 use crate::ser::*;
 use tract_core::ops::matmul::mir_quant::QParamKind;
-use tract_core::ops::matmul::mir_quant_unary::QMatMulUnary;
 use tract_core::ops::matmul::{MatMulAxes, MatMulQParams, QMatMul};
 use Datum;
 
 pub fn register(registry: &mut Registry) {
-    registry.register_dumper(
-        TypeId::of::<tract_core::ops::matmul::mir_quant_unary::QMatMulUnary>(),
-        qmatmul_unary_dump,
-    );
     registry
         .register_dumper(TypeId::of::<tract_core::ops::matmul::mir_quant::QMatMul>(), qmatmul_dump);
     registry.register_primitive(
@@ -98,41 +93,6 @@ fn qmatmul_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<R
     push!(b_scale);
     push!(c0);
     push!(c_scale);
-    Ok(Some(invocation("tract_core_qmatmul", &[], &named_args)))
-}
-
-fn qmatmul_unary_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
-    let op = node.op_as::<QMatMulUnary>().unwrap();
-    let a = ast.konst_variable(format!("{}.a", node.name), &op.a)?;
-    let b = ast.mapping[&node.inputs[0]].clone();
-
-    let [a0, a_scale, b0, b_scale, c0, c_scale] =
-        qparams_to_rvalues(&op.params, &node.inputs, &ast.mapping)?;
-
-    let mut named_args = vec![
-        ("A", (*a).clone()),
-        ("B", (*b).clone()),
-        ("axes", ints(&op.axes.to_array())),
-        ("output_type", string(format!("{:?}", op.output_type))),
-    ];
-    macro_rules! push {
-        ($a: ident) => {
-            if let Some($a) = $a {
-                named_args.push((stringify!($a), $a))
-            }
-        };
-    }
-    push!(a0);
-    push!(a_scale);
-    push!(b0);
-    push!(b_scale);
-    push!(c0);
-    push!(c_scale);
-    if let Some(bias) = &op.bias {
-        named_args
-            .push(("bias", (*ast.konst_variable(format!("{}.bias", node.name), bias)?).clone()));
-    }
-
     Ok(Some(invocation("tract_core_qmatmul", &[], &named_args)))
 }
 

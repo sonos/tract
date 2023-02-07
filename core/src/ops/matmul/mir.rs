@@ -2,7 +2,7 @@ use tract_data::itertools::izip;
 
 use crate::internal::*;
 use crate::ops::einsum::{Axis, EinSum, Expr};
-use crate::ops::matmul::*;
+use crate::ops::{change_axes, matmul::*};
 
 /// The binary op. It will declutter to MatMulUnary if either A or B is constant.
 #[derive(Debug, Clone, Default, Hash)]
@@ -35,13 +35,11 @@ impl EvalOp for MatMul {
 
 impl TypedOp for MatMul {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        if inputs[0].rank() != inputs[1].rank() {
-            bail!(
-                "Inconsistent matmul between {:?} and {:?} (rank mismatch)",
-                inputs[0],
-                inputs[1]
-            );
-        }
+        anyhow::ensure!(inputs.len() == 2, "MatMul must have two inputs");
+        anyhow::ensure!(
+            inputs[0].rank() == inputs[1].rank(),
+            "MatMul inputs must have the same rank"
+        );
         let (_m, _k, _n, c_shape) = compute_shape(&inputs[0].shape, &inputs[1].shape, self.axes)?;
         Ok(tvec!(output_type(inputs[0].datum_type).fact(c_shape)))
     }
@@ -70,7 +68,28 @@ impl TypedOp for MatMul {
         let extra_axes = izip!(alphabet, remain_a, remain_b, remain_c)
             .map(|(letter, a, b, c)| Axis::new(letter).input(0, a).input(1, b).result(c));
         let expr: Expr = extra_axes.chain([k_axis, m_axis, n_axis].into_iter()).collect();
-        TypedModelPatch::replace_single_op(model, node, &node.inputs, EinSum::new(expr, output_type(a_fact.datum_type))).map(Some)
+        TypedModelPatch::replace_single_op(
+            model,
+            node,
+            &node.inputs,
+            EinSum::new(expr, output_type(a_fact.datum_type)),
+        )
+        .map(Some)
+    }
+
+    fn change_axes(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        if let Some((axes, wire_changes)) = mir_change_axes(model, node, io, change, &self.axes)? {
+            let op = Self { axes };
+            Ok(Some(AxisChangeConsequence { substitute_op: Some(Box::new(op)), wire_changes }))
+        } else {
+            Ok(None)
+        }
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
@@ -83,6 +102,39 @@ impl TypedOp for MatMul {
     }
 
     as_op!();
+}
+
+#[allow(clippy::type_repetition_in_bounds, clippy::type_complexity)]
+pub(super) fn mir_change_axes(
+    model: &TypedModel,
+    node: &TypedNode,
+    io: InOut,
+    change: &AxisOp,
+    old_axes: &MatMulAxes,
+) -> TractResult<Option<(MatMulAxes, TVec<(InOut, AxisOp)>)>> {
+    let a_fact = model.outlet_fact(node.inputs[0])?;
+    let result = if io == InOut::In(1) {
+        old_axes.change_axis_from_b(change, a_fact.rank())
+    } else if io == InOut::Out(0) {
+        old_axes.change_axis_from_c(change, a_fact.rank())
+    } else {
+        return Ok(None);
+    };
+    if let Ok((axes, change_a, change_b, change_c)) = result {
+        let mut changes = tvec!();
+        if let Some(change) = change_a {
+            changes.push((InOut::In(0), change))
+        }
+        if let Some(change) = change_b {
+            changes.push((InOut::In(1), change))
+        }
+        if let Some(change) = change_c {
+            changes.push((InOut::Out(0), change))
+        }
+        Ok(Some((axes, changes)))
+    } else {
+        Ok(None) // is it right ? or return error ?
+    }
 }
 
 #[cfg(test)]
@@ -126,16 +178,17 @@ mod test {
         let mut a = Tensor::zero::<f32>(&[1, ci, co])?;
         a.as_slice_mut::<f32>().unwrap()[0] = 1.0;
         let a = a.into_arc_tensor();
+        let a = model.add_const("a", a)?;
         wire = model.wire_node(
             "m",
-            MatMulUnary { a, axes: MatMulAxes::default_for_rank(3).transposing(true, true, true) },
-            &wire,
+            MatMul { axes: MatMulAxes::default_for_rank(3).transposing(true, true, true) },
+            &[a, wire[0]],
         )?;
         let mut b = Tensor::zero::<f32>(&[1, 1, co])?;
         b.as_slice_mut::<f32>().unwrap()[0] = 1.0;
         let b = b.into_arc_tensor();
         let b = model.add_const("b", b)?;
-        wire = model.wire_node("a", crate::ops::math::add(), &[wire[0], b])?;
+        wire = model.wire_node("c", crate::ops::math::add(), &[wire[0], b])?;
         model.set_output_outlets(&wire)?;
         let input = Tensor::zero::<f32>(&input_shape)?.into_tvalue();
         trace!("running mir");

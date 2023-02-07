@@ -1,3 +1,5 @@
+use crate::ops::einsum::EinSum;
+
 use super::*;
 
 use proptest::prelude::*;
@@ -22,7 +24,8 @@ fn strat_for_b_axes(rank: usize) -> impl Strategy<Value = (usize, usize)> {
 struct ChangeAxisMatmulProblem {
     input: Tensor,
     change: AxisOp,
-    matmul: MatMulUnary,
+    a: Arc<Tensor>,
+    matmul: MatMul,
 }
 
 impl Arbitrary for ChangeAxisMatmulProblem {
@@ -69,12 +72,8 @@ impl Arbitrary for ChangeAxisMatmulProblem {
                 ChangeAxisMatmulProblem {
                     input,
                     change,
-                    matmul: MatMulUnary {
-                        a: a.broadcast_into_rank(matmul_input_shape.len())
-                            .unwrap()
-                            .into_arc_tensor(),
-                        axes,
-                    },
+                    a: a.broadcast_into_rank(matmul_input_shape.len()).unwrap().into_arc_tensor(),
+                    matmul: MatMul { axes },
                 }
             })
             .boxed()
@@ -86,37 +85,50 @@ impl ChangeAxisMatmulProblem {
         let mut model = TypedModel::default();
         let source = model.add_source("source", f32::fact(self.input.shape())).unwrap();
         let changed = model.wire_node("change", self.change.clone(), &[source]).unwrap();
-        let output = model.wire_node("mm", self.matmul.clone(), &changed).unwrap();
+        let a = model.add_const("a", self.a.clone()).unwrap();
+        let output = model.wire_node("mm", self.matmul.clone(), &[a, changed[0]]).unwrap();
         model.set_output_outlets(&output).unwrap();
         model
     }
 
     fn reference(&self) -> Tensor {
         let model = self.model();
-        let mut outputs = model.into_runnable().unwrap().run(tvec!(self.input.clone().into())).unwrap();
+        let mut outputs =
+            model.into_runnable().unwrap().run(tvec!(self.input.clone().into())).unwrap();
         outputs.remove(0).into_tensor()
     }
 
     fn assert_killed_change(&self) {
         let dec = self.model().into_decluttered().unwrap();
-        assert_eq!(dec.nodes().len(), 2); // just source and matmul
-        assert!(dec.node(1).op_is::<MatMulUnary>());
+        dbg!(&dec);
+        assert_eq!(dec.nodes().len(), 3); // just source, kernel and matmul
+        assert!(dec.node(2).op_is::<EinSum>());
     }
 
     // if swapping operator fails (not swappable) we get no output here
     fn swapped(&self) -> Option<Tensor> {
         let model = self.model();
+        dbg!(&model);
         self.matmul
-            .change_axes(&model, &model.nodes[2], InOut::In(0), &self.change.recip())
+            .change_axes(&model, &model.nodes[3], InOut::In(1), &self.change.recip())
             .unwrap()
             .map(|changed_mm| {
                 let mut model = TypedModel::default();
                 let source = model.add_source("source", f32::fact(self.input.shape())).unwrap();
+                let mut kernel = model.add_const("kernel", self.a.clone()).unwrap();
+                if let Some(change_kernel) = changed_mm
+                    .wire_changes
+                    .iter()
+                    .find(|(io, _change)| *io == InOut::In(0))
+                    .map(|(_io, change)| change)
+                {
+                    kernel = model.wire_node("change_kernel", change_kernel.clone(), &[kernel]).unwrap()[0];
+                }
                 let mut wire = model
                     .wire_node(
                         "mm",
                         changed_mm.substitute_op.clone().unwrap_or(Box::new(self.matmul.clone())),
-                        &[source],
+                        &[kernel, source],
                     )
                     .unwrap();
                 if let Some(change_after) = changed_mm
@@ -165,10 +177,8 @@ fn rm0() {
     let pb = ChangeAxisMatmulProblem {
         input: Tensor::zero::<f32>(&[3, 1, 1]).unwrap(),
         change: AxisOp::Rm(1),
-        matmul: MatMulUnary {
-            a: Tensor::zero::<f32>(&[1, 3]).unwrap().into_arc_tensor(),
-            axes: MatMulAxes { a_m: 0, a_k: 1, b_k: 0, b_n: 1, c_m: 0, c_n: 1 },
-        },
+        a: Tensor::zero::<f32>(&[1, 3]).unwrap().into_arc_tensor(),
+        matmul: MatMul { axes: MatMulAxes { a_m: 0, a_k: 1, b_k: 0, b_n: 1, c_m: 0, c_n: 1 } },
     };
     assert_eq!(pb.swapped().unwrap(), pb.reference());
 }
@@ -180,10 +190,8 @@ fn rm1_0() {
     let pb = ChangeAxisMatmulProblem {
         input: Tensor::zero::<f32>(&[3, 1, 4, 9]).unwrap(),
         change: AxisOp::Rm(1),
-        matmul: MatMulUnary {
-            a: Tensor::zero::<f32>(&[1, 1, 3]).unwrap().into_arc_tensor(),
-            axes: MatMulAxes { a_m: 1, a_k: 2, b_k: 0, b_n: 1, c_m: 1, c_n: 2 },
-        },
+        a: Tensor::zero::<f32>(&[1, 1, 3]).unwrap().into_arc_tensor(),
+        matmul: MatMul { axes: MatMulAxes { a_m: 1, a_k: 2, b_k: 0, b_n: 1, c_m: 1, c_n: 2 } },
     };
     assert_eq!(pb.swapped().unwrap(), pb.reference());
 }
@@ -194,10 +202,8 @@ fn rm1_1() {
     let pb = ChangeAxisMatmulProblem {
         input: Tensor::zero::<f32>(&[2, 1, 3, 5]).unwrap(),
         change: AxisOp::Rm(1),
-        matmul: MatMulUnary {
-            a: Tensor::zero::<f32>(&[1, 1, 2]).unwrap().into_arc_tensor(),
-            axes: MatMulAxes { a_m: 1, a_k: 2, b_k: 0, b_n: 1, c_m: 1, c_n: 2 },
-        },
+        a: Tensor::zero::<f32>(&[1, 1, 2]).unwrap().into_arc_tensor(),
+        matmul: MatMul { axes: MatMulAxes { a_m: 1, a_k: 2, b_k: 0, b_n: 1, c_m: 1, c_n: 2 } },
     };
     assert_eq!(pb.swapped().unwrap(), pb.reference());
 }
@@ -207,10 +213,8 @@ fn add2() {
     let pb = ChangeAxisMatmulProblem {
         input: Tensor::zero::<f32>(&[5, 2]).unwrap(),
         change: AxisOp::Add(2),
-        matmul: MatMulUnary {
-            a: Tensor::zero::<f32>(&[1, 1, 5]).unwrap().into_arc_tensor(),
-            axes: MatMulAxes { a_m: 1, a_k: 2, b_k: 0, b_n: 1, c_m: 1, c_n: 2 },
-        },
+        a: Tensor::zero::<f32>(&[1, 1, 5]).unwrap().into_arc_tensor(),
+        matmul: MatMul { axes: MatMulAxes { a_m: 1, a_k: 2, b_k: 0, b_n: 1, c_m: 1, c_n: 2 } },
     };
     assert_eq!(pb.swapped().unwrap(), pb.reference());
 }
@@ -220,10 +224,8 @@ fn reshape0() {
     let pb = ChangeAxisMatmulProblem {
         input: Tensor::zero::<f32>(&[3, 5, 2, 2]).unwrap(),
         change: AxisOp::Reshape(1, tvec!(5.into(), 2.into()), tvec!(10.into())),
-        matmul: MatMulUnary {
-            a: Tensor::zero::<f32>(&[1, 1, 3]).unwrap().into_arc_tensor(),
-            axes: MatMulAxes { a_m: 1, a_k: 2, b_k: 0, b_n: 2, c_m: 1, c_n: 2 },
-        },
+        a: Tensor::zero::<f32>(&[1, 1, 3]).unwrap().into_arc_tensor(),
+        matmul: MatMul { axes: MatMulAxes { a_m: 1, a_k: 2, b_k: 0, b_n: 2, c_m: 1, c_n: 2 } },
     };
     assert_eq!(pb.swapped().unwrap(), pb.reference());
 }
@@ -233,10 +235,8 @@ fn move_kn_nk() {
     let pb = ChangeAxisMatmulProblem {
         input: Tensor::zero::<f32>(&[2, 2]).unwrap(),
         change: AxisOp::Move(1, 0),
-        matmul: MatMulUnary {
-            a: Tensor::zero::<f32>(&[1, 2]).unwrap().into_arc_tensor(),
-            axes: MatMulAxes::default(),
-        },
+        a: Tensor::zero::<f32>(&[1, 2]).unwrap().into_arc_tensor(),
+        matmul: MatMul { axes: MatMulAxes::default() },
     };
     pb.assert_killed_change()
 }
@@ -246,10 +246,8 @@ fn move_nak_kna() {
     let pb = ChangeAxisMatmulProblem {
         input: Tensor::zero::<f32>(&[2, 5, 3]).unwrap(), // n a k
         change: AxisOp::Move(2, 0),                      // -> k n a
-        matmul: MatMulUnary {
-            a: Tensor::zero::<f32>(&[1, 1, 3]).unwrap().into_arc_tensor(),
-            axes: MatMulAxes { a_m: 1, a_k: 2, b_k: 0, b_n: 1, c_m: 1, c_n: 2 },
-        },
+        a: Tensor::zero::<f32>(&[1, 1, 3]).unwrap().into_arc_tensor(),
+        matmul: MatMul { axes: MatMulAxes { a_m: 1, a_k: 2, b_k: 0, b_n: 1, c_m: 1, c_n: 2 } },
     };
     pb.assert_killed_change()
 }
@@ -259,10 +257,8 @@ fn move_01() {
     let pb = ChangeAxisMatmulProblem {
         input: Tensor::zero::<f32>(&[3, 2]).unwrap(),
         change: AxisOp::Move(0, 1),
-        matmul: MatMulUnary {
-            a: Tensor::zero::<f32>(&[1, 2]).unwrap().into_arc_tensor(),
-            axes: MatMulAxes { a_m: 0, a_k: 1, b_k: 0, b_n: 1, c_m: 0, c_n: 1 },
-        },
+        a: Tensor::zero::<f32>(&[1, 2]).unwrap().into_arc_tensor(),
+        matmul: MatMul { axes: MatMulAxes { a_m: 0, a_k: 1, b_k: 0, b_n: 1, c_m: 0, c_n: 1 } },
     };
     assert_eq!(pb.swapped().unwrap(), pb.reference());
 }
@@ -272,10 +268,8 @@ fn move_01_bis() {
     let pb = ChangeAxisMatmulProblem {
         input: Tensor::zero::<f32>(&[1, 5, 2, 5]).unwrap(),
         change: AxisOp::Move(0, 1),
-        matmul: MatMulUnary {
-            a: Tensor::zero::<f32>(&[1, 1, 1, 2]).unwrap().into_arc_tensor(),
-            axes: MatMulAxes { a_m: 2, a_k: 3, b_k: 2, b_n: 3, c_m: 2, c_n: 3 },
-        },
+        a: Tensor::zero::<f32>(&[1, 1, 1, 2]).unwrap().into_arc_tensor(),
+        matmul: MatMul { axes: MatMulAxes { a_m: 2, a_k: 3, b_k: 2, b_n: 3, c_m: 2, c_n: 3 } },
     };
     assert_eq!(pb.swapped().unwrap(), pb.reference());
 }
