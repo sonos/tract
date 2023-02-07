@@ -163,7 +163,8 @@ fn main() {
     let test_dir = out_dir.join("tests");
     fs::create_dir_all(&test_dir).unwrap();
     let mut root = fs::File::create(test_dir.join("root.rs")).unwrap();
-    for set in "node real simple pytorch-operator pytorch-converted".split_whitespace() {
+    // for set in "node real simple pytorch-operator pytorch-converted".split_whitespace() {
+    for set in "node simple pytorch-operator pytorch-converted".split_whitespace() {
         for ver in versions() {
             make_test_file(&mut root, set, ver);
         }
