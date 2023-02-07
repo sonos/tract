@@ -10,7 +10,7 @@ pub fn declutter(
 ) -> TractResult<Option<TypedModelPatch>> {
     // 2 input, exactly one axis sum
     // FIXME: no projection (axis present more than once in one input)
-    if op.expr.n_inputs() != 2 || op.expr.sum.len() != 1 || op.expr.output_rank() < 1 {
+    if op.expr.input_count() != 2 || op.expr.sum.len() != 1 || op.expr.output_rank() < 1 {
         return Ok(None);
     }
     let k_axis = op.expr.sum[0].clone();

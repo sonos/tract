@@ -327,7 +327,7 @@ impl Scan {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         'candidate: for (model_input_ix, input) in self.input_mapping.iter().enumerate() {
-            if let Some(info) = input.as_scan() {
+            if let Some(scan_info) = input.as_scan() {
                 let scan_source = self.body.input_outlets()?[model_input_ix];
                 let scan_source_node = self.body.node(scan_source.node);
                 for mut succ in &scan_source_node.outputs[0].successors {
@@ -341,19 +341,15 @@ impl Scan {
                     if self.body.node(succ.node).outputs.len() != 1 {
                         continue;
                     }
-                    dbg!(self.body.node(succ.node).to_string());
                     let mut new_body = self.body.clone();
                     // insert propagate axis on einsum
                     if let Some(einsum) = new_body.node(succ.node).op_as::<EinSum>() {
-                        dbg!(succ);
-                        dbg!(info.axis);
-                        dbg!(einsum);
                         if let Some(patch) = einsum
                             .propagate_axis(
                                 &new_body,
                                 new_body.node(succ.node),
                                 InOut::In(succ.slot),
-                                info.axis,
+                                scan_info.axis,
                             )
                             .context("building axis propagating patch")?
                         {
@@ -373,12 +369,10 @@ impl Scan {
                             new_body.node_facts(new_body.node(succ.node).id)?;
                         new_body.node(succ.node).op.invariants(&input_facts, &output_facts)?
                     };
-                    dbg!(&invariants);
                     if let Some(axis_after) = invariants
-                        .track_input_axis(succ.slot, info.axis)
+                        .track_input_axis(succ.slot, scan_info.axis)
                         .and_then(|info| info.outputs[0])
                     {
-                        dbg!(axis_after);
                         let mut outside_patch = TypedModelPatch::new(format!(
                             "Outer patch for input extraction of {}",
                             new_body.node(succ.node)
@@ -388,16 +382,26 @@ impl Scan {
                             .iter()
                             .map(|&i| outside_patch.tap_model(model, i))
                             .collect::<TractResult<TVec<_>>>()?;
-                        let input = patch_inputs[info.slot];
+                        let mut extracted_op_inputs = tvec!();
+                        for (ix, outlet) in new_body.node(succ.node).inputs.iter().enumerate() {
+                            let wire = if ix == succ.slot {
+                                patch_inputs[scan_info.slot]
+                            } else if let Some(konst) = new_body.outlet_fact(*outlet)?.konst.as_ref() {
+                                outside_patch.add_const(format!("{}.extracted.{}", node.name, new_body.node(outlet.node).name), konst.clone())?
+                            } else {
+                                unreachable!();
+                            };
+                            extracted_op_inputs.push(wire);
+                        }
                         let new_input_wire = outside_patch.wire_node(
                             format!("{}.extracted.{}", node.name, new_body.node(succ.node).name),
                             new_body.node(succ.node).op.clone(),
-                            &[input],
+                            &extracted_op_inputs,
                         )?[0];
                         patch_inputs.push(new_input_wire);
                         let new_input_outer_fact = outside_patch.outlet_fact(new_input_wire)?;
                         let mut new_input_inner_fact = new_input_outer_fact.clone();
-                        new_input_inner_fact.shape.set(axis_after, info.chunk.abs().to_dim());
+                        new_input_inner_fact.shape.set(axis_after, scan_info.chunk.abs().to_dim());
 
                         let mut new_body = new_body.clone();
                         let new_source_wire = new_body.add_source(
@@ -422,7 +426,7 @@ impl Scan {
                         let mut input_mapping = self.input_mapping.clone();
                         input_mapping.push(InputMapping::Scan(ScanInfo {
                             axis: axis_after,
-                            chunk: info.chunk,
+                            chunk: scan_info.chunk,
                             slot: node.inputs.len(),
                         }));
 

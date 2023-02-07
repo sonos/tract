@@ -105,6 +105,7 @@ impl EvalOp for EinSum {
 
 impl TypedOp for EinSum {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        ensure!(inputs.len() == self.expr.input_count());
         ensure!(inputs
                 .iter()
                 .enumerate()

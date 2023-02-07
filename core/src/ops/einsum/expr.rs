@@ -72,7 +72,7 @@ impl Expr {
         self.index.iter_mut().chain(self.sum.iter_mut())
     }
 
-    pub fn n_inputs(&self) -> usize {
+    pub fn input_count(&self) -> usize {
         self.iter_all_axes().map(|axis| axis.inputs.len()).max().unwrap()
     }
 
@@ -129,7 +129,7 @@ impl Expr {
     }
 
     pub fn canonicalize(&mut self) {
-        let n_inputs = self.n_inputs();
+        let n_inputs = self.input_count();
         for axis in &mut self.index {
             axis.ensure_inputs_count(n_inputs);
         }
@@ -144,7 +144,7 @@ impl Expr {
     }
 
     pub fn check(&self) -> TractResult<()> {
-        for i in 0..self.n_inputs() {
+        for i in 0..self.input_count() {
             let rank = self.input_rank(i);
             for axis in 0..rank {
                 let claims: TVec<_> =
@@ -187,7 +187,7 @@ impl Expr {
 
     pub fn to_strs(&self) -> (TVec<String>, String) {
         let mut inputs = tvec![];
-        for input in 0..self.n_inputs() {
+        for input in 0..self.input_count() {
             let s = self
                 .iter_all_axes()
                 .flat_map(|axis| {
