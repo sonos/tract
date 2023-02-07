@@ -45,7 +45,7 @@ impl Expansion for EinSum {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(inputs, self.expr.n_inputs())?;
+        check_input_arity(inputs, self.expr.input_count())?;
         check_output_arity(outputs, 1)?;
         for (ix, input) in inputs.iter().enumerate() {
             s.equals(&input.datum_type, &outputs[0].datum_type)?;
