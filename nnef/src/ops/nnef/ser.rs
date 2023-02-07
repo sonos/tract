@@ -521,36 +521,6 @@ pub fn qmatmul(
     Ok(Some(ast.force_variable(&node.name, &c)))
 }
 
-pub fn matmul_unary(
-    ast: &mut IntoAst,
-    node: &TypedNode,
-    op: &ops::matmul::MatMulUnary,
-) -> TractResult<Option<Arc<RValue>>> {
-    let a = ast.konst(format!("{}_a", node.name), &op.a)?;
-    let b = ast.force_variable(format!("{}_b", node.name), &ast.mapping[&node.inputs[0]].clone());
-    let b_input = ast.model.outlet_fact(node.inputs[0])?;
-    let c = if let Some((a_trans, b_trans, c_trans)) =
-        matmulaxes_as_transpositions(&op.axes, op.a.rank(), b_input.rank())
-    {
-        if c_trans {
-            invocation(
-                "matmul",
-                &[b, a],
-                &[("transposeA", logical(!b_trans)), ("transposeB", logical(!a_trans))],
-            )
-        } else {
-            invocation(
-                "matmul",
-                &[a, b],
-                &[("transposeA", logical(a_trans)), ("transposeB", logical(b_trans))],
-            )
-        }
-    } else {
-        return Ok(None);
-    };
-    Ok(Some(ast.force_variable(&node.name, &c)))
-}
-
 pub fn select(
     ast: &mut IntoAst,
     node: &TypedNode,

@@ -1035,7 +1035,7 @@ impl TypedOp for ConvUnary {
                     .all(|i| self.pool_spec.stride(i) == 1 && self.pool_spec.dilation(i) == 1)
                 && self.group == 1
             {
-                use crate::ops::matmul::MatMulUnary;
+                use crate::ops::matmul::MatMul;
                 let mut patch = TypedModelPatch::default();
                 let mut wire = patch.tap_model(model, node.inputs[0])?;
                 let input_c_is_last = input_shape.c_axis() == input_shape.rank() - 1;
@@ -1060,17 +1060,17 @@ impl TypedOp for ConvUnary {
                     .clone()
                     .into_shape(kernel_shape)?
                     .broadcast_into_rank(operating_rank)?;
+                let kernel = patch.add_const(format!("{}.kernel", &node.name), kernel)?;
                 wire = patch.wire_node(
                     &format!("{}.matmul", &node.name),
-                    MatMulUnary::new(
-                        kernel.into_arc_tensor(),
-                        MatMulAxes::default_for_rank(operating_rank).transposing(
+                    MatMul {
+                        axes: MatMulAxes::default_for_rank(operating_rank).transposing(
                             self.kernel_fmt == KernelFormat::HWIO,
                             input_c_is_last,
                             input_c_is_last,
                         ),
-                    ),
-                    &[wire],
+                    },
+                    &[kernel, wire],
                 )?[0];
                 if let Some(ref bias) = self.bias {
                     let bias_shape =

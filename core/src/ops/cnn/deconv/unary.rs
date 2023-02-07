@@ -112,10 +112,12 @@ impl DeconvUnary {
         let trans_data = self.pool_spec.data_format.c_is_last();
         let axes = MatMulAxes::default_for_rank(kernel_as_g_ohw_i.rank())
             .transposing(false, trans_data, false);
+        let kernel = target.add_const(
+            format!("{}.kernel", name), kernel_as_g_ohw_i.into_arc_tensor())?;
         let gemm = target.wire_node(
             format!("{name}.gemm"),
-            crate::ops::matmul::MatMulUnary::new(kernel_as_g_ohw_i.into_arc_tensor(), axes),
-            &input,
+            crate::ops::matmul::MatMul { axes },
+            &[kernel, input[0]],
         )?;
         // gemm must be (N_)CHkWk_HW
         let deconv_sum = target.wire_node(

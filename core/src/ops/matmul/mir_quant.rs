@@ -6,8 +6,6 @@ use crate::ops;
 use crate::ops::matmul::*;
 use crate::ops::quant::offset_u8_as_i8_elementwise;
 
-use super::mir_quant_unary::QMatMulUnary;
-
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum QParamKind {
     Attr(Arc<Tensor>),
@@ -337,92 +335,6 @@ impl TypedOp for QMatMul {
         };
 
         Ok(tvec!(self.output_type.fact(c_shape)))
-    }
-
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let a_fact = model.outlet_fact(node.inputs[0])?;
-        let b_fact = model.outlet_fact(node.inputs[1])?;
-        let bias_fact = model.outlet_fact(node.inputs[2])?;
-
-        if bias_fact.konst.is_none() {
-            return Ok(None);
-        }
-
-        let konst_ix = if a_fact.konst.is_some() {
-            0
-        } else if b_fact.konst.is_some() {
-            1
-        } else {
-            return Ok(None);
-        };
-
-        let flip = konst_ix == 1;
-        let konst = model.outlet_fact(node.inputs[konst_ix])?.konst.as_ref().unwrap();
-        let bias = model.outlet_fact(node.inputs[2])?.konst.clone().unwrap();
-
-        let inputs: Vec<_> = node
-            .inputs
-            .iter()
-            .enumerate()
-            .filter_map(|(i, out_id)| if i == konst_ix || i == 2 { None } else { Some(*out_id) })
-            .collect();
-
-        let new_params = {
-            let mut qp = self.params.clone();
-            //compensate for the removed parameter
-            for (_, a) in qp.iter_mut() {
-                if let QParamKind::FromInput(i) = a {
-                    *i -= 2
-                }
-            }
-            if flip {
-                MatMulQParams {
-                    a0: qp.b0,
-                    a_scale: qp.b_scale,
-                    b0: qp.a0,
-                    b_scale: qp.a_scale,
-                    ..qp
-                }
-            } else {
-                qp
-            }
-        };
-
-        let axes = if flip {
-            MatMulAxes {
-                a_m: self.axes.b_n,
-                a_k: self.axes.b_k,
-                b_n: self.axes.a_m,
-                b_k: self.axes.a_k,
-                c_m: self.axes.c_n,
-                c_n: self.axes.c_m,
-            }
-        } else {
-            self.axes
-        };
-
-        TypedModelPatch::replace_single_op(
-            model,
-            node,
-            &inputs,
-            QMatMulUnary::new(
-                konst.clone(),
-                // if bias is uniformly zero, it can be discarded
-                Some(bias).filter(|b| {
-                    b.as_uniform()
-                        .map(|b| b.cast_to_scalar::<f32>().unwrap() != 0.0)
-                        .unwrap_or(true)
-                }),
-                axes,
-                self.output_type,
-                new_params,
-            ),
-        )
-        .map(Some)
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
