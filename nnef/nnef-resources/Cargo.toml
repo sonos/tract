@@ -1,0 +1,27 @@
+[package]
+name = "tract-nnef-resources"
+version = "0.19.2-pre"
+authors = [
+	"Mathieu Poumeyrol <kali@zoy.org>",
+	"Hubert de La Jonquière <hubert.delajonquiere@sonos.com>"
+]
+license = "MIT/Apache-2.0"
+description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
+repository = "https://github.com/snipsco/tract"
+keywords = [ "NeuralNetworks", "NNEF" ]
+categories = [ "science" ]
+autobenches = false
+edition = "2021"
+rust-version = "1.65"
+
+[badges]
+maintenance = { status = "actively-developed" }
+
+[dependencies]
+serde_json.workspace = true
+serde.workspace = true
+anyhow.workspace = true
+nom.workspace = true
+tract-nnef = { version = "=0.19.2-pre", path = ".." }
+
+

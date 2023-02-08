@@ -4,8 +4,8 @@ extension tract_registry tract_resource;
 
 graph afe_graph(src) -> (output)
 {
-    w = tract_resource_get(label = "src_config", key = "width");
-    h = tract_resource_get(label = "src_config", key = "height");
+    w = tract_resource_get(label = "src_config", key = "$.width");
+    h = tract_resource_get(label = "src_config", key = "$.height");
     src = external<scalar>(shape = [w, h]);
     output = src;
 }
