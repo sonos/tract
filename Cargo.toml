@@ -7,6 +7,7 @@ members = [
     "pulse-opl",
     "hir",
     "nnef",
+    "nnef/nnef-resources",
     "tensorflow",
     "onnx-opl",
     "onnx",
