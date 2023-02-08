@@ -73,10 +73,7 @@ pub fn convert_value(value: &serde_json::Value) -> TractResult<Value> {
         serde_json::Value::Null => bail!("JSON null value cannot be converted to NNEF value"),
         serde_json::Value::Object(_) => bail!("JSON object cannot be converted to NNEF value"),
         serde_json::Value::Array(values) => {
-            let t_values = values
-                .iter()
-                .map(convert_value)
-                .collect::<Result<Vec<Value>>>()?;
+            let t_values = values.iter().map(convert_value).collect::<Result<Vec<Value>>>()?;
             Ok(Value::Array(t_values))
         }
     }
@@ -154,10 +151,9 @@ fn parse_components(i: &str) -> IResult<&str, Vec<JsonComponent>> {
                         map(char('$'), |_| JsonComponent::Root),
                         map(json_key, |f: &str| JsonComponent::Field(f.to_string())),
                     )),
-                    opt(map_res(
-                        delimited(char('['), digit1, char(']')),
-                        |s: &str| s.parse().map(JsonComponent::Index),
-                    )),
+                    opt(map_res(delimited(char('['), digit1, char(']')), |s: &str| {
+                        s.parse().map(JsonComponent::Index)
+                    })),
                 )),
                 |(c, idx)| vec![Some(c), idx].into_iter().flatten().collect::<Vec<_>>(),
             ),
@@ -190,14 +186,8 @@ mod tests {
         let resource = JsonResource(example);
         assert_eq!(resource.get("$.name")?, Value::String("John Doe".into()));
         assert_eq!(resource.get("$.age")?, Value::Dim(TDim::Val(43)));
-        assert_eq!(
-            resource.get("$.phones[0]")?,
-            Value::String("+44 1234567".into())
-        );
-        assert_eq!(
-            resource.get("$.others-info.address[0]")?,
-            Value::String("Sonos".into())
-        );
+        assert_eq!(resource.get("$.phones[0]")?, Value::String("+44 1234567".into()));
+        assert_eq!(resource.get("$.others-info.address[0]")?, Value::String("Sonos".into()));
         assert_eq!(
             resource.get("$.others-info.indexes")?,
             Value::Array(vec![
