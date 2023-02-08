@@ -26,7 +26,7 @@ tract-core = { version = "=0.19.3-pre", path = "../core" }
 [dev-dependencies]
 temp-dir = "0.1.11"
 serde_json.workspace = true
-tract-nnef-resources = { version = "=0.19.2-pre", path = "./nnef-resources" }
+tract-nnef-resources = { version = "=0.19.3-pre", path = "./nnef-resources" }
 
 [features]
 default = ["flate2"]
