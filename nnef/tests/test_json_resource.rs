@@ -1,40 +1,5 @@
-use std::path::Path;
 use tract_nnef::internal::*;
-
-pub struct JsonLoader;
-
-impl ResourceLoader for JsonLoader {
-    fn name(&self) -> Cow<str> {
-        "JsonLoader".into()
-    }
-
-    fn try_load(
-        &self,
-        path: &Path,
-        reader: &mut dyn std::io::Read,
-    ) -> TractResult<Option<(String, Arc<dyn Resource>)>> {
-        if path.extension().map(|e| e == "json").unwrap_or(false) {
-            let value = serde_json::from_reader(reader)
-                .with_context(|| anyhow!("Error while parsing JSON"))?;
-            Ok(Some((tract_nnef::resource::resource_path_to_id(path)?, Arc::new(JsonResource(value)))))
-        } else {
-            Ok(None)
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct JsonResource(serde_json::Value);
-
-impl Resource for JsonResource {
-    fn get(&self, key: &str) -> TractResult<Value> {
-        let v = self.0.get(key)
-            .with_context(|| anyhow!("No value found for key {:?}", key))?
-            .as_i64()
-            .with_context(|| anyhow!("Value at key {:?} is not an integer", key))?;
-        Ok(Value::Scalar(v as f32))
-    }
-}
+use tract_nnef_resources::internal::JsonLoader;
 
 #[test]
 fn load_model_with_json_resource() -> TractResult<()> {
