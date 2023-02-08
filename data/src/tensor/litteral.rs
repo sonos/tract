@@ -11,13 +11,12 @@ where
     A: Clone,
 {
     use ndarray::*;
-    let mut xs = xs.to_vec();
+    let xs = xs.to_vec();
     let dim = Ix4(xs.len(), V::len(), U::len(), T::len());
-    let ptr = xs.as_mut_ptr();
     let len = xs.len();
     let cap = xs.capacity();
     let expand_len = len * V::len() * U::len() * T::len();
-    ::std::mem::forget(xs);
+    let ptr = Box::into_raw(xs.into_boxed_slice());
     unsafe {
         let v = if ::std::mem::size_of::<A>() == 0 {
             Vec::from_raw_parts(ptr as *mut A, expand_len, expand_len)

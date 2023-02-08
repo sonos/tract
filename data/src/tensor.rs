@@ -1245,24 +1245,24 @@ impl Tensor {
     pub fn deep_clone(&self) -> Tensor {
         if self.dt == DatumType::String {
             let data: Vec<String> = self.as_slice::<String>().unwrap().to_vec();
-            let t = Tensor {
-                data: data.as_ptr() as *mut u8,
+            let data = data.into_boxed_slice();
+            let data = Box::into_raw(data);
+            Tensor {
+                data: data as *mut u8,
                 shape: self.shape.clone(),
                 strides: self.strides.clone(),
                 ..*self
-            };
-            std::mem::forget(data);
-            t
+            }
         } else if self.dt == DatumType::TDim {
             let data: Vec<TDim> = self.as_slice::<TDim>().unwrap().to_vec();
-            let t = Tensor {
-                data: data.as_ptr() as *mut u8,
+            let data = data.into_boxed_slice();
+            let data = Box::into_raw(data);
+            Tensor {
+                data: data as *mut u8,
                 shape: self.shape.clone(),
                 strides: self.strides.clone(),
                 ..*self
-            };
-            std::mem::forget(data);
-            t
+            }
         } else {
             unsafe {
                 let tensor = Tensor::uninitialized_dt(self.datum_type(), self.shape()).unwrap();

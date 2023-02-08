@@ -221,7 +221,7 @@ impl PulsedOp for PulseWrappingOp {
         let axis_info = invariant
             .track_input_axis(pulsing_input, stream.axis)
             .context("Unable to track pulse axis on PulseWrappingOp")?;
-        std::mem::forget(output_facts_ref);
+        std::mem::drop(output_facts_ref);
         output_facts
             .into_iter()
             .enumerate()
@@ -286,7 +286,7 @@ impl PulsedOp for NonPulsingWrappingOp {
         let input_facts_ref = input_facts.iter().map(|f| f.as_ref()).collect::<TVec<_>>();
         let output_facts = self.0.output_facts(&input_facts_ref)?;
         let output_facts_ref = output_facts.iter().collect::<TVec<_>>();
-        std::mem::forget(output_facts_ref);
+        std::mem::drop(output_facts_ref);
         output_facts
             .into_iter()
             .map(|tf| Ok(PulsedFact { shape: tf.shape, datum_type: tf.datum_type, stream: None }))
