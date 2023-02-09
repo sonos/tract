@@ -16,11 +16,17 @@ macro_rules! comma_loop {
 pub struct Dumper<'a> {
     nnef: &'a Nnef,
     w: &'a mut dyn std::io::Write,
+    with_doc: bool,
 }
 
 impl<'a> Dumper<'a> {
     pub fn new(nnef: &'a Nnef, w: &'a mut dyn std::io::Write) -> Dumper<'a> {
-        Dumper { nnef, w }
+        Dumper { nnef, w, with_doc: false }
+    }
+
+    pub fn with_doc(mut self) -> Self {
+        self.with_doc = true;
+        self
     }
 
     pub fn document(&mut self, document: &Document) -> TractResult<()> {
@@ -92,6 +98,11 @@ impl<'a> Dumper<'a> {
         write!(self.w, "(")?;
         let num_parameters = parameters.len();
         for (ix, param) in parameters.iter().enumerate() {
+            if self.with_doc {
+                if let Some(doc) = &param.doc {
+                    write!(self.w, "\n    # {doc}")?;
+                }
+            }
             write!(self.w, "\n    ")?;
             self.identifier(&param.id)?;
             write!(self.w, ": ")?;
@@ -102,9 +113,6 @@ impl<'a> Dumper<'a> {
             }
             if ix < num_parameters - 1 {
                 write!(self.w, ",")?;
-            }
-            if let Some(doc) = &param.doc {
-                write!(self.w, " # {doc}")?;
             }
         }
         write!(self.w, "\n)")?;

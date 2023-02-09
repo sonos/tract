@@ -34,19 +34,22 @@ impl<'a> DocDumper<'a> {
                 parameters: el_wise_op.3.clone(),
                 results: vec![Result_ { id: "output".into(), spec: TypeName::Any.tensor() }]
             };
-            Dumper::new(&Nnef::default(), self.w).fragment_decl(&fragment_decl)?;
+            Dumper::new(&Nnef::default(), self.w).with_doc().fragment_decl(&fragment_decl)?;
         }
         // Generate and write Primitive declarations.
         for primitive in registry.primitives.values().sorted_by_key(|v| &v.decl.id) {
             primitive.docstrings.iter().flatten()
-                .try_for_each(|d| writeln!(self.w, "# {d}"))?;
+                .try_for_each(|d| {
+                    writeln!(self.w, "# {d}")
+                })?;
             
-            Dumper::new(&Nnef::default(), self.w).fragment_decl(&primitive.decl)?;
+            Dumper::new(&Nnef::default(), self.w).with_doc().fragment_decl(&primitive.decl)?;
             writeln!(self.w, ";\n")?;
         }
 
         // Generate and write fragment declarations
         Dumper::new(&Nnef::default(), self.w)
+            .with_doc()
             .fragments(registry.fragments.values().cloned().collect::<Vec<_>>().as_slice())?;
 
         Ok(())
