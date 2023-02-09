@@ -35,7 +35,7 @@ tract-data = { version = "=0.19.3-pre", path = "../data" }
 
 [features]
 default = [ "paranoid_assertions" ]
-complex = [ "tract-data/complex" ]
+complex = [ "tract-data/complex", "tract-linalg/complex" ]
 paranoid_assertions = []
 
 [dev-dependencies]

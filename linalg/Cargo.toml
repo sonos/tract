@@ -44,6 +44,7 @@ proptest.workspace = true
 # preferred.
 no_fp16 = []
 default = []
+complex = [ "tract-data/complex" ]
 
 [[bench]]
 bench = false
