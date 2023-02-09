@@ -117,6 +117,8 @@ impl<'a> Dumper<'a> {
             TypeName::Scalar => "scalar",
             TypeName::Logical => "logical",
             TypeName::String => "string",
+            #[cfg(feature = "complex")]
+            TypeName::Complex => "complex",
             TypeName::Any => "?",
         };
         write!(self.w, "{s}")?;

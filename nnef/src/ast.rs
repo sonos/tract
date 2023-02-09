@@ -90,6 +90,8 @@ impl TypeSpec {
 pub enum TypeName {
     Integer,
     Scalar,
+    #[cfg(feature = "complex")]
+    Complex,
     Logical,
     String,
     Any,

@@ -7,14 +7,14 @@ pub fn register(registry: &mut Registry) {
     registry.register_dumper(TypeId::of::<ops::math::InnerDimToComplex>(), ser_idtc);
     registry.register_primitive(
         "tract_core_complex_to_inner_dim",
-        &[TypeName::Scalar.tensor().named("input")],
+        &[TypeName::Complex.tensor().named("input")],
         &[("output", TypeName::Scalar.tensor())],
         de_ctid,
     );
     registry.register_primitive(
         "tract_core_inner_dim_to_complex",
         &[TypeName::Scalar.tensor().named("input")],
-        &[("output", TypeName::Scalar.tensor())],
+        &[("output", TypeName::Complex.tensor())],
         de_idtc,
     );
 }
