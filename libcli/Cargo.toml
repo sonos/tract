@@ -31,3 +31,5 @@ tract-onnx = { version = "=0.19.3-pre", path = "../onnx", optional = true }
 # hir = ["tract-hir"]
 hir = []
 onnx = [ "tract-onnx" ]
+complex = [ "tract-core/complex" ]
+
