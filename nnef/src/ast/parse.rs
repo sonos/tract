@@ -147,6 +147,8 @@ fn type_name(i: &str) -> IResult<&str, TypeName> {
         map(tag("scalar"), |_| TypeName::Scalar),
         map(tag("logical"), |_| TypeName::Logical),
         map(tag("string"), |_| TypeName::String),
+        #[cfg(feature = "complex")]
+        map(tag("complex"), |_| TypeName::Complex),
         map(tag("?"), |_| TypeName::Any),
     )))(i)
 }
@@ -464,11 +466,14 @@ mod test {
             p(type_spec, "(scalar,scalar[],tensor<scalar>)"),
             Tuple(vec!(Single(Scalar), Array(Box::new(Single(Scalar))), Tensor(Scalar)))
         );
+        assert_eq!(p(type_spec, "tensor<?>[]"), Array(Box::new(Tensor(TypeName::Any))));
         assert_eq!(p(type_spec, "scalar[ ]"), Array(Box::new(Single(Scalar))));
         assert_eq!(
             p(type_spec, " ( scalar , scalar [ ] , tensor < scalar > ) "),
             Tuple(vec!(Single(Scalar), Array(Box::new(Single(Scalar))), Tensor(Scalar)))
         );
+         #[cfg(feature = "complex")]
+        assert_eq!(p(type_spec, "tensor<complex>[]"), Array(Box::new(Tensor(TypeName::Complex))));
     }
 
     #[test]
