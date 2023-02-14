@@ -56,7 +56,6 @@ impl<'t> FusedSpec<'t> {
             match b {
                 InputStore::Packed { .. } => false,
                 InputStore::VirtualPacking { .. } => true,
-                InputStore::LatePacking { .. } => true,
             }
         } else {
             false
