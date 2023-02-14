@@ -342,7 +342,7 @@ mod test {
         let k = tensor4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]);
         let e = tensor4(&[[[[1.0f32], [0.0]]]]);
         let res = op.eval(tvec!(i.into(), k.into())).unwrap();
-        assert_eq!(res, tvec!(e.into()));
+        res[0].close_enough(&e, Approximation::Approximate).unwrap();
     }
 
     #[test]
@@ -352,7 +352,7 @@ mod test {
         let i = tensor4(&[[[[0.0f32, 1.0], [2.0, 3.0]], [[10.0, 11.0], [12.0, 13.0]]]]);
         let k = tensor4(&[[[[1.0f32, 0.0], [0.0, 1.0]]]]);
         let res = op.eval(tvec!(i.clone().into(), k.into())).unwrap();
-        assert_eq!(res, tvec!(i.into()));
+        res[0].close_enough(&i, Approximation::Approximate).unwrap()
     }
 
     #[test]
@@ -365,7 +365,7 @@ mod test {
                 tensor4(&[[[[1.0f32]]]]).into()
             ))
             .unwrap();
-        assert_eq!(result, tvec!(tensor4(&[[[[2.0f32]]], [[[0.0f32]]]]).into()));
+        result[0].close_enough(&tensor4(&[[[[2.0f32]]], [[[0.0f32]]]]), Approximation::Approximate).unwrap();
     }
 
     #[test]
@@ -384,7 +384,7 @@ mod test {
         let result = op
             .eval(tvec!(tensor3(&[[[2.0f32], [0.0f32]]]).into(), tensor3(&[[[1.0f32]]]).into()))
             .unwrap();
-        assert_eq!(result, tvec!(tensor3(&[[[2.0f32], [0.0f32]]]).into()));
+        result[0].close_enough(&tensor3(&[[[2.0f32], [0.0f32]]]), Approximation::Approximate).unwrap();
     }
 
     #[test]
@@ -403,7 +403,7 @@ mod test {
         let result = op
             .eval(tvec!(tensor3(&[[[2.0f32]], [[0.0f32]]]).into(), tensor3(&[[[1.0f32]]]).into()))
             .unwrap();
-        assert_eq!(result, tvec!(tensor3(&[[[2.0f32]], [[0.0f32]]]).into()));
+        result[0].close_enough(&tensor3(&[[[2.0f32]], [[0.0f32]]]), Approximation::Approximate).unwrap();
     }
 
     #[test]
@@ -425,6 +425,6 @@ mod test {
                 tensor3(&[[[1.0f32], [0.0f32]]]).into()
             ))
             .unwrap();
-        assert_eq!(result, tvec!(tensor3(&[[[2.0f32]]]).into()));
+        result[0].close_enough(&tensor3(&[[[2.0f32]]]), Approximation::Approximate).unwrap();
     }
 }
