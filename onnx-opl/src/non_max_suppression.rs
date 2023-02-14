@@ -119,7 +119,7 @@ pub struct NonMaxSuppression {
     pub has_score_threshold: bool,
 }
 
-impl_dyn_hash!(NonMaxSuppression);
+
 
 impl Op for NonMaxSuppression {
     fn name(&self) -> Cow<str> {

@@ -32,7 +32,7 @@ struct NonMaxSuppression {
     num_selected_indices_symbol: Symbol,
 }
 
-impl_dyn_hash!(NonMaxSuppression);
+
 
 impl Expansion for NonMaxSuppression {
     fn name(&self) -> Cow<str> {

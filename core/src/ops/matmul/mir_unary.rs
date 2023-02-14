@@ -11,7 +11,7 @@ pub struct MatMulUnary {
     pub axes: MatMulAxes,
 }
 
-impl_dyn_hash!(MatMulUnary);
+
 
 impl Op for MatMulUnary {
     fn name(&self) -> Cow<str> {

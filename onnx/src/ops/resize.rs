@@ -107,7 +107,7 @@ struct Resize {
     optional_sizes_input: Option<usize>,
 }
 
-impl_dyn_hash!(Resize);
+
 
 impl Op for Resize {
     fn name(&self) -> Cow<str> {

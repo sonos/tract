@@ -31,7 +31,7 @@ pub struct Conv {
     pub override_output_datum_type: Option<DatumType>,
 }
 
-impl_dyn_hash!(Conv);
+
 
 impl Conv {
     pub fn hwc(self) -> Conv {

@@ -25,7 +25,7 @@ pub struct Cast {
     to: DatumType,
 }
 
-impl_dyn_hash!(Cast);
+
 
 impl ElementWiseMiniOp for Cast {
     fn name(&self) -> String {
@@ -87,7 +87,7 @@ fn cast_like(
 #[derive(Debug, Clone, new, Hash)]
 pub struct CastLike;
 
-impl_dyn_hash!(CastLike);
+
 
 impl Expansion for CastLike {
     fn name(&self) -> Cow<str> {

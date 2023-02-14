@@ -20,7 +20,7 @@ pub struct Pad {
     pub pads: Vec<(usize, usize)>,
     pub mode: PadMode,
 }
-impl_dyn_hash!(Pad);
+
 
 impl Pad {
     fn eval_t<T>(&self, input_tensor: TValue) -> TractResult<TValue>

@@ -28,7 +28,7 @@ pub struct DeconvSum {
     pub group: usize,
 }
 
-impl_dyn_hash!(DeconvSum);
+
 
 impl Op for DeconvSum {
     fn name(&self) -> Cow<str> {

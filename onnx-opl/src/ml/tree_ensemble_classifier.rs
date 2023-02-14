@@ -26,7 +26,7 @@ pub struct TreeEnsembleClassifier {
     pub ensemble: TreeEnsemble,
 }
 
-impl_dyn_hash!(TreeEnsembleClassifier);
+
 
 impl Op for TreeEnsembleClassifier {
     fn name(&self) -> Cow<str> {

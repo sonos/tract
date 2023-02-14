@@ -74,7 +74,7 @@ struct Dft {
     has_length_input: bool,
 }
 
-impl_dyn_hash!(Dft);
+
 
 impl Expansion for Dft {
     fn name(&self) -> Cow<str> {
@@ -164,7 +164,7 @@ struct Stft {
     optional_frame_length_input: Option<usize>,
 }
 
-impl_dyn_hash!(Stft);
+
 
 impl Expansion for Stft {
     fn name(&self) -> Cow<str> {
@@ -288,7 +288,7 @@ pub struct MelWeightMatrix {
     datum_type: DatumType,
 }
 
-impl_dyn_hash!(MelWeightMatrix);
+
 
 impl Expansion for MelWeightMatrix {
     fn name(&self) -> Cow<str> {
@@ -423,7 +423,7 @@ pub struct StftWindow {
     window: StftWindowType,
 }
 
-impl_dyn_hash!(StftWindow);
+
 
 impl Expansion for StftWindow {
     fn name(&self) -> Cow<str> {

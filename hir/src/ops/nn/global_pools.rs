@@ -3,7 +3,7 @@ use crate::internal::*;
 
 #[derive(Clone, Debug, new, Hash)]
 pub struct GlobalAvgPool;
-impl_dyn_hash!(GlobalAvgPool);
+
 
 impl Expansion for GlobalAvgPool {
     fn name(&self) -> Cow<str> {
@@ -46,7 +46,7 @@ impl Expansion for GlobalAvgPool {
 
 #[derive(Clone, Debug, new, Hash)]
 pub struct GlobalLpPool(usize);
-impl_dyn_hash!(GlobalLpPool);
+
 
 impl Expansion for GlobalLpPool {
     fn name(&self) -> Cow<str> {
@@ -131,7 +131,7 @@ impl Expansion for GlobalLpPool {
 
 #[derive(Clone, Debug, new, Hash)]
 pub struct GlobalMaxPool;
-impl_dyn_hash!(GlobalMaxPool);
+
 
 impl Expansion for GlobalMaxPool {
     fn name(&self) -> Cow<str> {

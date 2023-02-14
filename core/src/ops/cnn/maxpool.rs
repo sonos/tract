@@ -9,7 +9,7 @@ pub struct MaxPool {
     pub with_index_outputs: Option<DatumType>,
 }
 
-impl_dyn_hash!(MaxPool);
+
 
 impl Op for MaxPool {
     fn name(&self) -> Cow<str> {
@@ -83,7 +83,7 @@ pub struct LirMaxPool {
     pub geometry: PoolGeometry,
 }
 
-impl_dyn_hash!(LirMaxPool);
+
 
 impl Op for LirMaxPool {
     fn name(&self) -> Cow<str> {

@@ -11,7 +11,7 @@ impl Op for Dummy {
     op_as_typed_op!();
 }
 
-impl_dyn_hash!(Dummy);
+
 
 impl EvalOp for Dummy {
     fn is_stateless(&self) -> bool {

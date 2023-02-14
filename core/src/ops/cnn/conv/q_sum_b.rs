@@ -8,7 +8,7 @@ pub struct QSumB {
     pub k: usize,
 }
 
-impl_dyn_hash!(QSumB);
+
 
 impl Op for QSumB {
     fn name(&self) -> Cow<str> {

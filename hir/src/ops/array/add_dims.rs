@@ -7,7 +7,7 @@ pub struct AddDims {
     pub axes: Vec<isize>,
 }
 
-impl_dyn_hash!(AddDims);
+
 
 impl AddDims {
     pub fn output_shape<D: DimLike>(&self, input: &[D]) -> TVec<D> {

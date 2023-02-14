@@ -49,14 +49,7 @@ pub trait Expansion:
 
 tract_core::dyn_clone::clone_trait_object!(Expansion);
 
-impl Hash for Box<dyn Expansion> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        std::hash::Hash::hash(&self.type_id(), state);
-        self.dyn_hash(state)
-    }
-}
 
-impl_dyn_hash!(Box<dyn Expansion>);
 
 impl Op for Box<dyn Expansion> {
     fn name(&self) -> Cow<str> {

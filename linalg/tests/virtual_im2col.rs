@@ -211,7 +211,7 @@ struct EagerIm2colSpec {
     full_kernel_shape: TVec<usize>,
 }
 
-impl_dyn_hash!(EagerIm2colSpec);
+
 
 impl VirtualInputSpec for EagerIm2colSpec {
     fn wrap(&self, input: &TensorView) -> Box<dyn VirtualInput> {
@@ -263,7 +263,7 @@ struct LazyIm2colSpec {
     full_kernel_shape: TVec<usize>,
 }
 
-impl_dyn_hash!(LazyIm2colSpec);
+
 
 impl VirtualInputSpec for LazyIm2colSpec {
     fn wrap(&self, input: &TensorView) -> Box<dyn VirtualInput> {

@@ -11,7 +11,7 @@ pub struct Fft {
     pub inverse: bool,
 }
 
-impl_dyn_hash!(Fft);
+
 
 impl Fft {
     fn eval_t<T: Datum + FftNum + FromPrimitive + Float>(
@@ -91,7 +91,7 @@ pub struct Stft {
     pub window: Option<Arc<Tensor>>,
 }
 
-impl_dyn_hash!(Stft);
+
 
 impl Stft {
     fn eval_t<T: Datum + FftNum + FromPrimitive + Float>(

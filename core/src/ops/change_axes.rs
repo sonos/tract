@@ -454,7 +454,7 @@ impl Op for AxisOp {
     op_as_typed_op!();
 }
 
-impl_dyn_hash!(AxisOp);
+
 
 #[derive(Debug, Clone)]
 struct ReshapeState;

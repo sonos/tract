@@ -50,7 +50,7 @@ fn konst(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn Inference
 #[derive(Clone, Debug, new, Hash)]
 pub struct Noop;
 
-impl_dyn_hash!(Noop);
+
 
 impl Op for Noop {
     fn name(&self) -> Cow<str> {

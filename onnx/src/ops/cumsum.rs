@@ -23,7 +23,7 @@ struct CumSum {
     exclusive: bool,
 }
 
-impl_dyn_hash!(CumSum);
+
 
 impl Expansion for CumSum {
     fn name(&self) -> Cow<str> {

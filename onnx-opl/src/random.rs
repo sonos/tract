@@ -90,7 +90,7 @@ pub struct Random {
     pub seed: Option<u64>,
 }
 
-impl_dyn_hash!(Random);
+
 
 impl Op for Random {
     fn name(&self) -> Cow<str> {

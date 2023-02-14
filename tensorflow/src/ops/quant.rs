@@ -25,7 +25,7 @@ struct FakeQuantWithMinMaxVars {
     num_bits: usize,
 }
 
-impl_dyn_hash!(FakeQuantWithMinMaxVars);
+
 
 impl FakeQuantWithMinMaxVars {
     fn step(&self, min: &Tensor, max: &Tensor) -> TractResult<f32> {

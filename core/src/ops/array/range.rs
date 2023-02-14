@@ -9,7 +9,7 @@ pub struct Range {
     pub step: Tensor,
 }
 
-impl_dyn_hash!(Range);
+
 
 impl Op for Range {
     fn name(&self) -> Cow<str> {

@@ -244,7 +244,7 @@ pub struct QMatMul {
     pub params: MatMulQParams,
 }
 
-impl_dyn_hash!(QMatMul);
+
 
 impl Op for QMatMul {
     fn name(&self) -> Cow<str> {

@@ -23,7 +23,7 @@ pub struct DepthwiseConv2d {
     dilations: TVec<usize>,
 }
 
-impl_dyn_hash!(DepthwiseConv2d);
+
 
 impl Expansion for DepthwiseConv2d {
     fn name(&self) -> Cow<str> {

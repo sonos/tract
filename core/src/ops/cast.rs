@@ -9,7 +9,7 @@ pub struct Cast {
     pub to: DatumType,
 }
 
-impl_dyn_hash!(Cast);
+
 
 impl Op for Cast {
     fn name(&self) -> Cow<str> {

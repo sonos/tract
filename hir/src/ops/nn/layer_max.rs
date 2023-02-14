@@ -9,7 +9,7 @@ pub struct LayerHardmax {
     coerce_to_2d: bool,
 }
 
-impl_dyn_hash!(LayerHardmax);
+
 
 impl Expansion for LayerHardmax {
     fn name(&self) -> Cow<str> {
@@ -83,7 +83,7 @@ pub struct LayerLogSoftmax {
     coerce_to_2d: bool,
 }
 
-impl_dyn_hash!(LayerLogSoftmax);
+
 
 impl Expansion for LayerLogSoftmax {
     fn name(&self) -> Cow<str> {
@@ -118,7 +118,7 @@ pub struct LayerSoftmax {
     coerce_to_2d: bool,
 }
 
-impl_dyn_hash!(LayerSoftmax);
+
 
 impl Expansion for LayerSoftmax {
     fn name(&self) -> Cow<str> {

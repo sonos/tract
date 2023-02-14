@@ -4,7 +4,7 @@ use ndarray::*;
 #[derive(Debug, Clone, new, Hash)]
 pub struct ScatterNd;
 
-impl_dyn_hash!(ScatterNd);
+
 
 impl Op for ScatterNd {
     fn name(&self) -> Cow<str> {

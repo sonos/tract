@@ -5,7 +5,7 @@ use crate::internal::*;
 pub struct GatherElements {
     axis: i64,
 }
-impl_dyn_hash!(GatherElements);
+
 
 impl Expansion for GatherElements {
     fn name(&self) -> Cow<str> {

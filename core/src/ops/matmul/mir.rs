@@ -10,7 +10,7 @@ pub struct MatMul {
     pub axes: MatMulAxes,
 }
 
-impl_dyn_hash!(MatMul);
+
 
 impl Op for MatMul {
     fn name(&self) -> Cow<str> {

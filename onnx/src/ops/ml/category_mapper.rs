@@ -14,7 +14,7 @@ struct CategoryMapper {
     pub fallback: Arc<Tensor>,
 }
 
-impl_dyn_hash!(CategoryMapper);
+
 
 impl Expansion for CategoryMapper {
     fn name(&self) -> Cow<str> {

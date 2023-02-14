@@ -8,7 +8,7 @@ pub struct Split {
     split: Option<Vec<usize>>,
 }
 
-impl_dyn_hash!(Split);
+
 
 impl Split {
     fn split_dims<D: DimLike>(&self, input: &D) -> TractResult<TVec<D>> {

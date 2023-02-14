@@ -20,7 +20,7 @@ pub fn pulsify(
 #[derive(Debug, Clone, Hash)]
 pub struct PulsedSource(pub PulsedFact);
 
-impl_dyn_hash!(PulsedSource);
+
 
 impl Op for PulsedSource {
     fn name(&self) -> Cow<str> {

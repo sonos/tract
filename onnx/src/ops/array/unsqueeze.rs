@@ -19,7 +19,7 @@ pub fn unsqueeze(
 #[derive(Debug, Clone, Hash)]
 struct Unsqueeze13;
 
-impl_dyn_hash!(Unsqueeze13);
+
 
 impl Expansion for Unsqueeze13 {
     fn name(&self) -> Cow<str> {

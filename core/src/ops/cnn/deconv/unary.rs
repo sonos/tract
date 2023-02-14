@@ -134,7 +134,7 @@ impl DeconvUnary {
     }
 }
 
-impl_dyn_hash!(DeconvUnary);
+
 
 impl Op for DeconvUnary {
     fn name(&self) -> Cow<str> {

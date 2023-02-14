@@ -4,7 +4,7 @@ use crate::internal::*;
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct ArrayFeatureExtractor;
 
-impl_dyn_hash!(ArrayFeatureExtractor);
+
 
 impl Expansion for ArrayFeatureExtractor {
     fn name(&self) -> Cow<str> {

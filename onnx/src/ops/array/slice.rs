@@ -31,7 +31,7 @@ pub struct Slice1 {
     ends: Vec<i64>,
 }
 
-impl_dyn_hash!(Slice1);
+
 
 impl Expansion for Slice1 {
     fn name(&self) -> Cow<str> {

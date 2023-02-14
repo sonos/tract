@@ -114,7 +114,7 @@ pub struct Reduce {
     reducer: Reducer,
 }
 
-impl_dyn_hash!(Reduce);
+
 
 impl Reduce {
     pub fn must_reduce(&self, ax: usize, rank: usize) -> bool {

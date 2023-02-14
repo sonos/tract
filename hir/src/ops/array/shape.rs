@@ -5,7 +5,7 @@ use crate::internal::*;
 pub struct Shape {
     pub dt: DatumType,
 }
-impl_dyn_hash!(Shape);
+
 
 impl Expansion for Shape {
     fn name(&self) -> Cow<str> {

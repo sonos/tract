@@ -14,7 +14,7 @@ pub struct Compress {
     axis: Option<isize>,
 }
 
-impl_dyn_hash!(Compress);
+
 
 impl Compress {
     unsafe fn eval_t<T: Datum>(

@@ -24,7 +24,7 @@ pub struct TypedSource {
     pub fact: TypedFact,
 }
 
-impl_dyn_hash!(TypedSource);
+
 
 impl Op for TypedSource {
     fn name(&self) -> Cow<str> {

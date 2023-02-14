@@ -43,7 +43,7 @@ pub struct ConvTranspose {
     have_bias: bool,
 }
 
-impl_dyn_hash!(ConvTranspose);
+
 
 impl Expansion for ConvTranspose {
     fn name(&self) -> Cow<str> {

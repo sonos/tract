@@ -5,7 +5,7 @@ use crate::internal::*;
 pub struct Gather {
     axis: i64,
 }
-impl_dyn_hash!(Gather);
+
 
 impl Gather {
     pub fn to_type_op(&self, input_rank: usize) -> tract_core::ops::array::Gather {

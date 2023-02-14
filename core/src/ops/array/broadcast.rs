@@ -5,7 +5,7 @@ pub struct MultiBroadcastTo {
     pub shape: ShapeFact,
 }
 
-impl_dyn_hash!(MultiBroadcastTo);
+
 
 impl MultiBroadcastTo {
     pub fn eval_t<T: Datum>(input: &Tensor, shape: &[usize]) -> TractResult<TVec<TValue>> {

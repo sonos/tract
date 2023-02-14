@@ -12,7 +12,7 @@ pub struct PulsedSameAxisConcat {
     input_delay: usize,
     input_len: TDim,
 }
-impl_dyn_hash!(PulsedSameAxisConcat);
+
 
 impl Op for PulsedSameAxisConcat {
     fn name(&self) -> Cow<str> {
