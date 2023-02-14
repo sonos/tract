@@ -308,7 +308,6 @@ where
             }
             if m % mr != 0 {
                 scratch.for_border_tile::<K>(non_linear, m / mr, n / nr);
-                dbg!(&scratch);
                 let err = K::kernel(scratch.uspecs());
                 debug_assert_eq!(err, 0, "Kernel return error {err}");
                 scratch.postprocess_tile::<K>(non_linear, m / mr, n / nr, m % mr, n % nr);
