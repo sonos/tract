@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use criterion::*;
 use tract_data::internal::*;
-use tract_linalg::frame::mmm::{FusedSpec, InputStore, PackedStore};
+use tract_linalg::frame::mmm::{FusedSpec, InputStore};
 use tract_linalg::frame::MatMatMul;
 
 use DatumType::*;
@@ -38,7 +38,7 @@ unsafe fn run(
     n: usize,
     be: &mut Bencher,
     mm: &dyn MatMatMul,
-    pa: PackedStore,
+    pa: InputStore,
     pb: InputStore,
     cold: bool,
 ) {
@@ -54,7 +54,7 @@ unsafe fn run(
                 m,
                 n,
                 scratch.as_mut(),
-                &[FusedSpec::AddMatMul { a: pa, b: pb.clone(), k }],
+                &[FusedSpec::AddMatMul { a: pa.clone(), b: pb.clone(), k }],
             )
             .unwrap();
             let time = instant.elapsed();
@@ -86,7 +86,7 @@ pub fn mat_mat_with_mm(
             n,
             be,
             mm,
-            mm.a_packed(dt.size_of(), k).wrap(&pa.view()),
+            mm.a_packed(dt.size_of(), k).wrap(&pa.view()).unwrap(),
             mm.b_packed(dt.size_of(), k).wrap(&pb.view()).unwrap(),
             cold,
         );
@@ -106,7 +106,7 @@ fn mat_vec(be: &mut Bencher, &(dt, m, k, n, cold): &(DatumType, usize, usize, us
             n,
             be,
             &*mm,
-            mm.a_packed(dt.size_of(), k).wrap(&pa.view()),
+            mm.a_packed(dt.size_of(), k).wrap(&pa.view()).unwrap(),
             mm.b_packed(dt.size_of(), k).wrap(&pb.view()).unwrap(),
             cold,
         );
