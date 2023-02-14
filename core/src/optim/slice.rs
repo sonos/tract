@@ -38,18 +38,21 @@ impl super::TypedPass for PushSliceUp {
                         for input_ix in 0..inputs.len() {
                             let mut wire = inputs[input_ix];
                             if let Some(input_axis) = axis_info.and_then(|it| it.inputs[input_ix]) {
-                                wire = patch.wire_node(
-                                    format!(
-                                        "{}.split-{}-over-{}.{}..{}.slice",
-                                        &node.name, input_ix, input_axis, start, end
-                                    ),
-                                    Slice {
-                                        axis: input_axis,
-                                        start: start.to_dim(),
-                                        end: end.to_dim(),
-                                    },
-                                    &[wire],
-                                )?[0];
+                                // dont propagate slice up if input looks like a broadcasting input
+                                if !patch.outlet_fact(wire)?.shape[input_axis].is_one() {
+                                    wire = patch.wire_node(
+                                        format!(
+                                            "{}.split-{}-over-{}.{}..{}.slice",
+                                            &node.name, input_ix, input_axis, start, end
+                                        ),
+                                        Slice {
+                                            axis: input_axis,
+                                            start: start.to_dim(),
+                                            end: end.to_dim(),
+                                        },
+                                        &[wire],
+                                    )?[0];
+                                }
                             }
                             wires.push(wire);
                         }
