@@ -3,7 +3,7 @@ use crate::model::*;
 use crate::ops;
 use crate::ops::invariants;
 use crate::optim::OptimizerSession;
-use crate::plan::{SimplePlan, SimpleState, FrozenSimpleState};
+use crate::plan::{FrozenSimpleState, SimplePlan, SimpleState};
 
 /// A model with completely determined types and shapes.
 pub type TypedModel = Graph<TypedFact, Box<dyn TypedOp>>;
@@ -44,28 +44,35 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
     ) -> TractResult<TVec<OutletId>> {
         let op = op.into();
         let name = name.into();
-
         {
-            let output_facts = || -> TractResult<TVec<TypedFact>> {
-                let input_facts = inputs
+            let input_facts = inputs
+                .iter()
+                .map(|o| self.outlet_fact(*o).cloned())
+                .collect::<TractResult<TVec<_>>>()?;
+
+            if op.is_stateless() {
+                if let Some(tensors) = input_facts
                     .iter()
-                    .map(|o| self.outlet_fact(*o))
-                    .collect::<TractResult<TVec<_>>>()?;
-                let facts = op.output_facts(&input_facts).context("in output_facts invocation")?;
-                if input_facts.iter().all(|f| f.konst.is_some()) && op.is_stateless() {
-                    let tensors = input_facts
-                        .iter()
-                        .map(|f| f.konst.clone().unwrap().into_tvalue())
-                        .collect::<TVec<_>>();
+                    .map(|f| f.konst.clone().map(|t| t.into_tvalue()))
+                    .collect::<Option<TVec<_>>>()
+                {
                     if let Ok(outputs) = op.eval(tensors) {
-                        return Ok(outputs.into_iter().map(|t| TypedFact::from(&*t)).collect());
+                        return outputs
+                            .into_iter()
+                            .enumerate()
+                            .map(|(ix, o)| {
+                                let name =
+                                    if ix == 0 { name.clone() } else { format!("{name}.{ix}") };
+                                self.add_const(name, o)
+                            })
+                            .collect::<TractResult<TVec<OutletId>>>();
                     }
                 }
-                Ok(facts)
-            };
+            }
 
-            let output_facts = output_facts()
-                .with_context(|| format!("wiring {name} ({op:?}), determining output_facts"))?;
+            let input_facts: TVec<_> = input_facts.iter().collect();
+            let output_facts =
+                op.output_facts(&input_facts).context("in output_facts invocation")?;
             let id = self.add_node(&name, &op, output_facts)?;
             inputs
                 .iter()

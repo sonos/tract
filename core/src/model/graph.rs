@@ -696,12 +696,11 @@ where
 
     pub fn compact(&mut self) -> TractResult<()> {
         use crate::model::translator::Translate;
-        let mut result = crate::model::translator::IntoTranslator.translate_model(self)?;
+        *self = crate::model::translator::IntoTranslator.translate_model(self)?;
         #[cfg(debug_assertions)]
         {
-            result.check_compact().context("after graph compaction")?;
+            self.check_compact().context("after graph compaction")?;
         }
-        std::mem::swap(self, &mut result);
         Ok(())
     }
 

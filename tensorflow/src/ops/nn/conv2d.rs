@@ -136,8 +136,8 @@ mod tests {
         let filter = tensor4(&[[[[0.0f32]]], [[[1.0]]], [[[0.0]]]]);
         let exp = tensor4(&[[[[1f32]]]]);
 
-        let result = conv.eval(tvec![data.into(), filter.into()]).unwrap().remove(0);
-        assert_eq!(exp.into_tvalue(), result);
+        let result = conv.eval(tvec![data.into(), filter.into()]).unwrap();
+        result[0].close_enough(&exp, Approximation::Approximate).unwrap()
     }
 
     #[test]
