@@ -21,7 +21,7 @@ pub trait MatMatMul:
 
     fn internal_type(&self) -> DatumType;
 
-    unsafe fn a_packed(&self, item_size: usize, k: usize) -> PackedStoreSpec;
+    unsafe fn a_packed(&self, item_size: usize, k: usize) -> InputStoreSpec;
 
     unsafe fn b_packed(&self, item_size: usize, k: usize) -> InputStoreSpec;
     unsafe fn b_virtual_input(&self, func: Box<dyn VirtualInputSpec>, k: usize) -> InputStoreSpec;
@@ -153,13 +153,14 @@ where
         TI::datum_type()
     }
 
-    unsafe fn a_packed(&self, item_size: usize, k: usize) -> PackedStoreSpec {
-        PackedStoreSpec { panel_bytes: (k * K::mr() * item_size) }
+    unsafe fn a_packed(&self, item_size: usize, k: usize) -> InputStoreSpec {
+        let panel_bytes = k * K::mr() * item_size;
+        InputStoreSpec::Prepacked { panel_bytes }
     }
 
     unsafe fn b_packed(&self, item_size: usize, k: usize) -> InputStoreSpec {
         let panel_bytes = k * K::nr() * item_size;
-        InputStoreSpec::Prepacked(PackedStoreSpec { panel_bytes })
+        InputStoreSpec::Prepacked { panel_bytes }
     }
 
     unsafe fn b_virtual_input(&self, func: Box<dyn VirtualInputSpec>, k: usize) -> InputStoreSpec {
@@ -307,6 +308,7 @@ where
             }
             if m % mr != 0 {
                 scratch.for_border_tile::<K>(non_linear, m / mr, n / nr);
+                dbg!(&scratch);
                 let err = K::kernel(scratch.uspecs());
                 debug_assert_eq!(err, 0, "Kernel return error {err}");
                 scratch.postprocess_tile::<K>(non_linear, m / mr, n / nr, m % mr, n % nr);

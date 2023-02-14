@@ -246,7 +246,7 @@ fn eval(
                 let c_store = c_storage.wrap(&c_view);
                 let mut f = tvec!(FusedSpec::AddMatMul {
                     k: geometry.k,
-                    a: op.mmm.a_packed(size_of_a, geometry.k).wrap(&pa.view()),
+                    a: op.mmm.a_packed(size_of_a, geometry.k).wrap(&pa.view())?,
                     b: geometry
                         .b_storage
                         .wrap(&TensorView::at_prefix_unchecked(&inputs[0], &b_prefix))?,
@@ -260,7 +260,7 @@ fn eval(
             let mut f = Vec::with_capacity(fused.len() + 1);
             f.push(FusedSpec::AddMatMul {
                 k: geometry.k,
-                a: op.mmm.a_packed(size_of_a, geometry.k).wrap(&pa.view()),
+                a: op.mmm.a_packed(size_of_a, geometry.k).wrap(&pa.view())?,
                 b: geometry.b_storage.wrap(&inputs[0].view())?,
             });
             for ix in 0..fused.len() {

@@ -51,7 +51,12 @@ impl<TI: LADatum> Drop for ScratchSpaceFusedNonLinear<TI> {
     }
 }
 
-struct AddMatMulTemp(*const u8, usize);
+#[derive(Debug)]
+struct AddMatMulTemp {
+    ptr: *const u8,
+    panel_id: usize,
+    is_b: bool,
+}
 
 impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
     pub unsafe fn prepare<K: MatMatMulKer<TI>>(&mut self, specs: &[FusedSpec]) -> TractResult<()> {
@@ -100,16 +105,18 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                     offset += TI::datum_type().size_of() * K::mr() * K::nr();
                     FusedKerSpec::Done
                 }
-                FS::AddMatMul { b, .. } => {
-                    let mut ld = ld(ix, self.uspecs.len(), offset as _);
-                    offset += std::mem::size_of::<AddMatMulTemp>();
-                    if let Some(tmp) = b.scratch_panel_buffer_layout() {
-                        align = tmp.align().lcm(&align);
-                        offset = Integer::next_multiple_of(&offset, &tmp.align());
-                        ld.buffer = Some(offset as _);
-                        offset += tmp.size();
+                FS::AddMatMul { a, b, .. } => {
+                    for input in [a, b] {
+                        let mut ld = ld(ix, self.uspecs.len(), offset as _);
+                        offset += std::mem::size_of::<AddMatMulTemp>();
+                        if let Some(tmp) = input.scratch_panel_buffer_layout() {
+                            align = tmp.align().lcm(&align);
+                            offset = Integer::next_multiple_of(&offset, &tmp.align());
+                            ld.buffer = Some(offset as _);
+                            offset += tmp.size();
+                        }
+                        self.loc_dependant.push(ld);
                     }
-                    self.loc_dependant.push(ld);
                     FusedKerSpec::Done
                 }
             };
@@ -124,6 +131,7 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
             self.buffer = std::alloc::alloc(self.layout);
             assert!(!self.buffer.is_null());
         }
+        let mut mat_mul_half_done = false;
         for LocDependant { loc, buffer, spec, .. } in &mut self.loc_dependant {
             *loc = self.buffer.offset(*loc as _);
             if let Some(b) = buffer {
@@ -133,8 +141,10 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
             #[allow(clippy::single_match)]
             match spec {
                 FS::AddMatMul { .. } => {
-                    let scratch = *loc as *mut AddMatMulTemp;
-                    (*scratch).1 = usize::MAX;
+                    let scratch = &mut *(*loc as *mut AddMatMulTemp);
+                    scratch.is_b = mat_mul_half_done;
+                    scratch.panel_id = usize::MAX;
+                    mat_mul_half_done = !mat_mul_half_done;
                 }
                 _ => (),
             };
@@ -153,6 +163,7 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
         use FusedSpec as FS;
         let ScratchSpaceFusedNonLinear { uspecs, loc_dependant, .. } = self;
         debug_assert!(specs.len() + 2 == uspecs.len());
+        let mut adhoc_pa: *const u8 = std::ptr::null();
         for LocDependant { spec, uspec, loc, buffer } in loc_dependant.iter_mut() {
             let spec = specs.get_unchecked(*spec);
             *uspecs.get_unchecked_mut(*uspec) = match spec {
@@ -186,14 +197,22 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                 FS::AddUnicast(store) => FKS::AddUnicast(store.tile_c(down, right)),
                 FS::Store(c_store) => FKS::Store(c_store.tile_c(down, right)),
                 FS::AddMatMul { k, a, b } => {
-                    let pa = a.panel(down);
-                    K::prefetch(pa as _, 512);
-                    let scratch = *loc as *mut AddMatMulTemp;
-                    if (*scratch).1 != right {
-                        (*scratch).0 = b.panel_b(right, *buffer);
-                        (*scratch).1 = right;
+                    let scratch = &mut *(*loc as *mut AddMatMulTemp);
+                    if !scratch.is_b {
+                        if scratch.panel_id != down {
+                            scratch.ptr = a.panel(down, *buffer);
+                            scratch.panel_id = down;
+                        }
+                        adhoc_pa = scratch.ptr;
+                        FKS::Done // will be overriden by the second pass for B. absolutely not
+                                  // done.
+                    } else {
+                        if scratch.panel_id != right {
+                            scratch.ptr = b.panel(right, *buffer);
+                            scratch.panel_id = right;
+                        }
+                        FKS::AddMatMul { k: *k, pa: adhoc_pa, pb: scratch.ptr, cpu_variant: 0 }
                     }
-                    FKS::AddMatMul { k: *k, pa, pb: (*scratch).0, cpu_variant: 0 }
                 }
                 _ => std::hint::unreachable_unchecked(),
             };
@@ -211,6 +230,7 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
         use FusedSpec as FS;
         let ScratchSpaceFusedNonLinear { uspecs, loc_dependant, .. } = self;
         debug_assert!(specs.len() + 2 == uspecs.len());
+        let mut adhoc_pa: *const u8 = std::ptr::null();
         for LocDependant { spec, uspec, loc, buffer } in loc_dependant.iter_mut() {
             let spec = specs.get_unchecked(*spec);
             *uspecs.get_unchecked_mut(*uspec) = match spec {
@@ -273,8 +293,7 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                     let have = rows.len() - down * K::mr();
                     let row_ptr = if have < K::mr() {
                         r.get_unchecked_mut(..have).copy_from_slice(
-                            rows
-                                .as_slice_unchecked()
+                            rows.as_slice_unchecked()
                                 .get_unchecked(down * K::mr()..)
                                 .get_unchecked(..have),
                         );
@@ -285,15 +304,11 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                     } else {
                         rows.as_ptr_unchecked::<TI>().add(down * K::mr())
                     };
-                    let c = std::slice::from_raw_parts_mut(
-                        (*loc as *mut TI).add(K::mr()),
-                        K::nr(),
-                    );
+                    let c = std::slice::from_raw_parts_mut((*loc as *mut TI).add(K::mr()), K::nr());
                     let have = cols.len() - right * K::nr();
                     let col_ptr = if have < K::nr() {
                         c.get_unchecked_mut(..have).copy_from_slice(
-                            cols
-                                .as_slice_unchecked()
+                            cols.as_slice_unchecked()
                                 .get_unchecked(right * K::nr()..)
                                 .get_unchecked(..have),
                         );
@@ -344,14 +359,22 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                     FKS::Store(tmpc)
                 }
                 FS::AddMatMul { k, a, b } => {
-                    let pa = a.panel(down);
-                    K::prefetch(pa as _, 512);
-                    let scratch = *loc as *mut AddMatMulTemp;
-                    if (*scratch).1 != right {
-                        (*scratch).0 = b.panel_b(right, *buffer);
-                        (*scratch).1 = right;
+                    let scratch = &mut *(*loc as *mut AddMatMulTemp);
+                    if !scratch.is_b {
+                        if scratch.panel_id != down {
+                            scratch.ptr = a.panel(down, *buffer);
+                            scratch.panel_id = down;
+                        }
+                        adhoc_pa = scratch.ptr;
+                        FKS::Done // will be overriden by the second pass for B. absolutely not
+                                  // done.
+                    } else {
+                        if scratch.panel_id != right {
+                            scratch.ptr = b.panel(right, *buffer);
+                            scratch.panel_id = right;
+                        }
+                        FKS::AddMatMul { k: *k, pa: adhoc_pa, pb: scratch.ptr, cpu_variant: 0 }
                     }
-                    FKS::AddMatMul { k: *k, pa, pb: (*scratch).0, cpu_variant: 0 }
                 }
                 _ => std::hint::unreachable_unchecked(),
             };

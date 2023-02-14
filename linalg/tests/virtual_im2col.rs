@@ -142,7 +142,7 @@ impl ConvProblem {
         let reshaped_filters = self.filters.clone().into_shape(&[k, m]).unwrap();
         unsafe {
             mmm.a_pack().pack(packed_filter.view_mut(), reshaped_filters.view(), 0, 1);
-            let a_store = mmm.a_packed(F32.size_of(), k).wrap(&packed_filter.view());
+            let a_store = mmm.a_packed(F32.size_of(), k).wrap(&packed_filter.view()).unwrap();
             let im2col: Box<dyn VirtualInputSpec> = if self.lazy_im2col {
                 Box::new(LazyIm2colSpec { full_kernel_shape: self.filters.shape().into() })
             } else {

@@ -450,7 +450,7 @@ pub(super) fn eval(a: &Tensor, b: &Tensor, axes: MatMulAxes) -> TractResult<Tens
                 n,
                 &[
                     FusedSpec::AddMatMul {
-                        a: mm.a_packed(a.datum_type().size_of(), k).wrap(&packed_a.view()),
+                        a: mm.a_packed(a.datum_type().size_of(), k).wrap(&packed_a.view())?,
                         b: mm.b_packed(b.datum_type().size_of(), k).wrap(&packed_b.view())?,
                         k,
                     },

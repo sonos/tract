@@ -17,25 +17,19 @@ dyn_clone::clone_trait_object!(VirtualInput);
 
 #[derive(Clone, Debug)]
 pub enum InputStoreSpec {
-    Prepacked(PackedStoreSpec),
+    Prepacked{panel_bytes: usize},
     VirtualPacking { packer: Packer, func: Box<dyn VirtualInputSpec>, k: usize },
-}
-
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash)]
-pub struct PackedStoreSpec {
-    pub(crate) panel_bytes: usize,
 }
 
 impl InputStoreSpec {
     #[inline]
     pub unsafe fn wrap(&self, tensor: &TensorView) -> TractResult<InputStore> {
-        use InputStore::*;
         use InputStoreSpec as S;
         match self {
-            S::Prepacked(PackedStoreSpec { panel_bytes }) => Ok(Packed(PackedStore {
+            S::Prepacked { panel_bytes } => Ok(InputStore::Packed {
                 ptr: tensor.as_ptr_unchecked::<u8>() as _,
                 panel_bytes: *panel_bytes as isize,
-            })),
+            }),
             S::VirtualPacking { packer, func, k } => Ok(InputStore::VirtualPacking {
                 packer: packer.clone(),
                 input: func.wrap(tensor),
@@ -55,19 +49,12 @@ impl fmt::Display for InputStoreSpec {
     }
 }
 
-impl PackedStoreSpec {
-    #[inline]
-    pub unsafe fn wrap(&self, tensor: &TensorView) -> PackedStore {
-        PackedStore {
-            ptr: tensor.as_ptr_unchecked::<u8>() as _,
-            panel_bytes: self.panel_bytes as isize,
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub enum InputStore {
-    Packed(PackedStore),
+    Packed {
+        ptr: *const u8,
+        panel_bytes: isize,
+    },
     VirtualPacking {
         packer: Packer,
         input: Box<dyn VirtualInput>,
@@ -76,16 +63,10 @@ pub enum InputStore {
     },
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct PackedStore {
-    ptr: *const u8,
-    panel_bytes: isize,
-}
-
 impl InputStore {
     pub(super) unsafe fn scratch_panel_buffer_layout(&self) -> Option<Layout> {
         match self {
-            InputStore::Packed(_) => None,
+            InputStore::Packed { .. } => None,
             InputStore::VirtualPacking { packer, dt, k, .. } => {
                 let size = packer.single_panel_len(*k) * dt.size_of();
                 let align = packer.alignment();
@@ -95,20 +76,13 @@ impl InputStore {
     }
 
     #[inline]
-    pub(super) unsafe fn panel_b(&self, i: usize, buffer: Option<*const u8>) -> *const u8 {
+    pub(super) unsafe fn panel(&self, i: usize, buffer: Option<*const u8>) -> *const u8 {
         match self {
-            InputStore::Packed(packed) => packed.panel(i),
+            InputStore::Packed { ptr, panel_bytes } => ptr.offset(panel_bytes * i as isize),
             InputStore::VirtualPacking { packer, input, k, .. } => {
                 input.input(packer, buffer.unwrap() as _, 0..*k, packer.r * i..packer.r * (i + 1));
                 buffer.unwrap()
             }
         }
-    }
-}
-
-impl PackedStore {
-    #[inline]
-    pub(super) unsafe fn panel(&self, i: usize) -> *const u8 {
-        self.ptr.offset(self.panel_bytes * i as isize)
     }
 }

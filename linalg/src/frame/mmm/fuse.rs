@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use super::{InputStore, OutputStore, OutputStoreKer, PackedStore};
+use super::{InputStore, OutputStore, OutputStoreKer};
 use tract_data::internal::*;
 
 #[repr(usize)]
@@ -47,7 +47,7 @@ pub enum FusedSpec<'t> {
     RoundingShiftRight(usize, RoundingPolicy),
     ShiftLeft(usize),
     Store(OutputStore),
-    AddMatMul { k: usize, a: PackedStore, b: InputStore },
+    AddMatMul { k: usize, a: InputStore, b: InputStore },
 }
 
 impl<'t> FusedSpec<'t> {
