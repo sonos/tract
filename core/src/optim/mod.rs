@@ -129,12 +129,10 @@ impl<'o> OptimizerSession<'o> {
         p: &mut dyn TypedPass,
         model: &mut TypedModel,
     ) -> TractResult<()> {
-        eprintln!(" #### Start pass {p:?} ### ");
         loop {
             let old_counter = self.counter;
             self.run_one_pass_inner(i, p, model)?;
             if self.counter == old_counter {
-                eprintln!(" #### Ending pass {p:?} doing nothing ### ");
                 return Ok(());
             }
             model.compact().with_context(|| format!("after pass {p:?}"))?;
