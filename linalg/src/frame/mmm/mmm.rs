@@ -24,10 +24,6 @@ pub trait MatMatMul:
     unsafe fn a_packed(&self, item_size: usize, k: usize) -> PackedStoreSpec;
 
     unsafe fn b_packed(&self, item_size: usize, k: usize) -> InputStoreSpec;
-    unsafe fn b_late_packing(&self) -> InputStoreSpec {
-        self.b_late_packing_with_axes(0, 1)
-    }
-    unsafe fn b_late_packing_with_axes(&self, k_axis: usize, n_axis: usize) -> InputStoreSpec;
     unsafe fn b_virtual_input(&self, func: Box<dyn VirtualInputSpec>, k: usize) -> InputStoreSpec;
 
     unsafe fn c_view(&self, m_axis: usize, n_axis: usize) -> OutputStoreSpec;
@@ -164,10 +160,6 @@ where
     unsafe fn b_packed(&self, item_size: usize, k: usize) -> InputStoreSpec {
         let panel_bytes = k * K::nr() * item_size;
         InputStoreSpec::Prepacked(PackedStoreSpec { panel_bytes })
-    }
-
-    unsafe fn b_late_packing_with_axes(&self, k_axis: usize, n_axis: usize) -> InputStoreSpec {
-        InputStoreSpec::LatePacking { packer: self.b_pack(), k_axis, mn_axis: n_axis }
     }
 
     unsafe fn b_virtual_input(&self, func: Box<dyn VirtualInputSpec>, k: usize) -> InputStoreSpec {

@@ -23,13 +23,6 @@ macro_rules! mmm_frame_tests {
                 }
 
                 #[test]
-                fn mat_mul_prepacked_late((m, k, n, ref a, ref b) in strat_mat_mat_mul::<$ta, $tb>()) {
-                    if $cond {
-                        test_mat_mat_mul_late::<$ker, $ta, $tb, $tc, $ti>(m, k, n, &a, &b)?
-                    }
-                }
-
-                #[test]
                 fn mat_vec_prepacked_prop((m, k, ref a, ref b) in strat_mat_vec_mul::<$ta, $tb>()) {
                     if $cond {
                         test_mat_vec_mul_prep::<$ker, $ta, $tb, $tc, $ti>(m, k, &*a, b)?
@@ -84,15 +77,6 @@ macro_rules! mmm_frame_tests {
                         &tensor2(&[[0], [1]]).cast_to::<$tb>().unwrap(),
                         )
                         .unwrap()
-                }
-            }
-
-            #[test]
-            fn late_packing_1() {
-                if $cond {
-                    let a = tensor2(&[[1f32, 2f32]]).cast_to::<$ta>().unwrap().into_owned();
-                    let b = tensor2(&[[0f32, 0., 0.], [0., 0., 1.]]).cast_to::<$tb>().unwrap().into_owned();
-                    test_mat_mat_mul_late::<$ker, $ta, $tb, $tc, $ti>(1, 2, 3, &a, &b).unwrap()
                 }
             }
 
@@ -268,50 +252,6 @@ where
             &[FusedSpec::AddMatMul {
                 a: op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view()),
                 b: op.b_packed(TB::datum_type().size_of(), k).wrap(&packed_b.view()).unwrap(),
-                k,
-            }],
-            |r, c| {
-                let mut v: TI = TI::zero();
-                for i in 0..k {
-                    let a: TI = a.as_slice::<TA>().unwrap()[i + k * r].as_();
-                    let b: TI = b.as_slice::<TB>().unwrap()[c + i * n].as_();
-                    v += a * b;
-                }
-                v.as_()
-            },
-        )
-    }
-}
-
-pub fn test_mat_mat_mul_late<K: MatMatMulKer<TI> + 'static, TA, TB, TC, TI>(
-    m: usize,
-    k: usize,
-    n: usize,
-    a: &Tensor,
-    b: &Tensor,
-) -> Result<(), proptest::test_runner::TestCaseError>
-where
-    TA: LADatum + AsPrimitive<TI> + 'static,
-    TB: LADatum + AsPrimitive<TI> + 'static,
-    TC: LADatum + AsPrimitive<TI> + 'static,
-    TI: LADatum + AsPrimitive<TC> + 'static + Neg<Output = TI>,
-    i32: AsPrimitive<TI>,
-    usize: AsPrimitive<TI>,
-{
-    assert_eq!(a.datum_type(), TA::datum_type());
-    let op = MatMatMulImpl::<K, TI>::default();
-    unsafe {
-        let mut packed_a =
-            Tensor::uninitialized_aligned::<TA>(&[op.a_pack().len(k, m)], op.a_pack().alignment())
-                .unwrap();
-        op.a_pack().pack(packed_a.view_mut(), a.view(), 1, 0);
-
-        fused_ops::<K, TA, TB, TC, TI, _>(
-            m,
-            n,
-            &[FusedSpec::AddMatMul {
-                a: op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view()),
-                b: op.b_late_packing().wrap(&b.view()).unwrap(),
                 k,
             }],
             |r, c| {
