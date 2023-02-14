@@ -71,7 +71,6 @@ mod tests {
             + AsMut<dyn Op>
             + Clone
             + 'static
-            + Hash,
     {
         let input = load_image(grace_hopper());
         let outputs = runnable.run(tvec![input.into()])?;

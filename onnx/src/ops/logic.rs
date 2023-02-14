@@ -54,15 +54,13 @@ pub fn _if(
     ))
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new)]
 struct If {
     then_body: InferenceModel,
     then_input_mapping: Vec<usize>,
     else_body: InferenceModel,
     else_input_mapping: Vec<usize>,
 }
-
-impl_dyn_hash!(If);
 
 impl Op for If {
     fn name(&self) -> Cow<str> {

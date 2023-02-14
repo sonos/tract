@@ -3,8 +3,6 @@ use tract_core::ops::math::*;
 
 macro_rules! activation {
     ($op: ident, $wire:expr) => {
-        impl_dyn_hash!($op);
-
         impl Expansion for $op {
             fn name(&self) -> Cow<str> {
                 stringify!($op).into()
@@ -44,12 +42,8 @@ macro_rules! cst {
     };
 }
 
-#[derive(Debug, Clone, new, Educe)]
-#[educe(Hash)]
-pub struct Clip(
-    #[educe(Hash(method = "hash_opt_f32"))] Option<f32>,
-    #[educe(Hash(method = "hash_opt_f32"))] Option<f32>,
-);
+#[derive(Debug, Clone, new)]
+pub struct Clip(Option<f32>, Option<f32>);
 
 activation!(Clip, |op, name: &str, model: &mut TypedModel, inputs| {
     let mut wire: TVec<OutletId> = inputs.into();
@@ -88,9 +82,8 @@ activation!(Softsign, |_op, name: &str, model: &mut TypedModel, inputs| {
     Ok(wire)
 });
 
-#[derive(Debug, Clone, new, Educe)]
-#[educe(Hash)]
-pub struct Elu(#[educe(Hash(method = "hash_f32"))] pub f32);
+#[derive(Debug, Clone, new)]
+pub struct Elu(pub f32);
 
 activation!(Elu, |op, name: &str, model: &mut TypedModel, inputs| {
     cst!(model, inputs, name, zero, 0.0);
@@ -112,12 +105,8 @@ activation!(Elu, |op, name: &str, model: &mut TypedModel, inputs| {
     Ok(wire)
 });
 
-#[derive(Debug, Clone, new, Educe)]
-#[educe(Hash)]
-pub struct HardSigmoid(
-    #[educe(Hash(method = "hash_f32"))] pub f32,
-    #[educe(Hash(method = "hash_f32"))] pub f32,
-);
+#[derive(Debug, Clone, new)]
+pub struct HardSigmoid(pub f32, pub f32);
 
 activation!(HardSigmoid, |op, name: &str, model: &mut TypedModel, inputs| {
     cst!(model, inputs, name, zero, 0.0);
@@ -131,20 +120,15 @@ activation!(HardSigmoid, |op, name: &str, model: &mut TypedModel, inputs| {
     Ok(wire)
 });
 
-#[derive(Debug, Clone, new, Educe)]
-#[educe(Hash)]
-pub struct LeakyRelu(#[educe(Hash(method = "hash_f32"))] pub f32);
+#[derive(Debug, Clone, new)]
+pub struct LeakyRelu(pub f32);
 
 activation!(LeakyRelu, |op, name: &str, model: &mut TypedModel, inputs| {
     model.wire_node(name, tract_core::ops::nn::leaky_relu(op.0), inputs)
 });
 
-#[derive(Debug, Clone, new, Educe)]
-#[educe(Hash)]
-pub struct ParametricSoftplus(
-    #[educe(Hash(method = "hash_f32"))] pub f32,
-    #[educe(Hash(method = "hash_f32"))] pub f32,
-);
+#[derive(Debug, Clone, new)]
+pub struct ParametricSoftplus(pub f32, pub f32);
 
 activation!(ParametricSoftplus, |op, name: &str, model: &mut TypedModel, inputs| {
     cst!(model, inputs, name, one, 1.0);
@@ -158,12 +142,8 @@ activation!(ParametricSoftplus, |op, name: &str, model: &mut TypedModel, inputs|
     Ok(wire)
 });
 
-#[derive(Debug, Clone, new, Educe)]
-#[educe(Hash)]
-pub struct ScaledTanh(
-    #[educe(Hash(method = "hash_f32"))] pub f32,
-    #[educe(Hash(method = "hash_f32"))] pub f32,
-);
+#[derive(Debug, Clone, new)]
+pub struct ScaledTanh(pub f32, pub f32);
 
 activation!(ScaledTanh, |op, name: &str, model: &mut TypedModel, inputs| {
     cst!(model, inputs, name, alpha, op.0);
@@ -174,11 +154,10 @@ activation!(ScaledTanh, |op, name: &str, model: &mut TypedModel, inputs| {
     Ok(wire)
 });
 
-#[derive(Debug, Clone, new, Educe)]
-#[educe(Hash)]
+#[derive(Debug, Clone, new)]
 pub struct Selu(
-    #[educe(Hash(method = "hash_f32"))] pub f32,
-    #[educe(Hash(method = "hash_f32"))] pub f32,
+    pub f32,
+    pub f32,
 );
 
 activation!(Selu, |op, name: &str, model: &mut TypedModel, inputs| {
@@ -202,11 +181,10 @@ activation!(Selu, |op, name: &str, model: &mut TypedModel, inputs| {
     Ok(wire)
 });
 
-#[derive(Debug, Clone, new, Educe)]
-#[educe(Hash)]
+#[derive(Debug, Clone, new)]
 pub struct Shrink(
-    #[educe(Hash(method = "hash_f32"))] pub f32,
-    #[educe(Hash(method = "hash_f32"))] pub f32,
+    pub f32,
+    pub f32,
 );
 
 activation!(Shrink, |op, name: &str, model: &mut TypedModel, inputs| {
@@ -248,9 +226,8 @@ activation!(Shrink, |op, name: &str, model: &mut TypedModel, inputs| {
     Ok(wire)
 });
 
-#[derive(Debug, Clone, new, Educe)]
-#[educe(Hash)]
-pub struct ThresholdRelu(#[educe(Hash(method = "hash_f32"))] pub f32);
+#[derive(Debug, Clone, new)]
+pub struct ThresholdRelu(pub f32);
 
 activation!(ThresholdRelu, |op, name: &str, model: &mut TypedModel, inputs| {
     cst!(model, inputs, name, zero, 0.0);

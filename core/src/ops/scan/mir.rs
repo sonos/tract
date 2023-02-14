@@ -6,7 +6,7 @@ use tract_data::internal::*;
 
 use super::*;
 
-#[derive(Debug, Clone, Default, Hash)]
+#[derive(Debug, Clone, Default)]
 pub struct Scan {
     pub skip: usize,
     pub body: TypedModel,
@@ -15,8 +15,6 @@ pub struct Scan {
     pub input_mapping: Vec<InputMapping>,
     pub output_mapping: Vec<OutputMapping<TDim>>,
 }
-
-impl_dyn_hash!(Scan);
 
 impl Scan {
     pub fn to_codegen_op(&self, optimize_inner: bool) -> TractResult<LirScan> {

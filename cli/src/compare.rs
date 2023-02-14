@@ -277,7 +277,7 @@ pub fn compare<F, O>(
 ) -> TractResult<()>
 where
     F: Fact + Clone + for<'a> From<&'a Tensor> + Hash,
-    O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone + Hash,
+    O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone,
     Graph<F, O>: Model,
 {
     debug!("Obtained reference data, starting test run");

@@ -12,14 +12,10 @@ pub fn renorm(ctx: &ParsingContext, name: &str) -> TractResult<Box<dyn Inference
     Ok(expand(Renorm::new(rms)))
 }
 
-#[derive(Clone, Debug, new, Educe)]
-#[educe(Hash)]
+#[derive(Clone, Debug, new)]
 struct Renorm {
-    #[educe(Hash(method = "hash_f32"))]
     target_rms: f32,
 }
-
-impl_dyn_hash!(Renorm);
 
 impl Expansion for Renorm {
     fn name(&self) -> std::borrow::Cow<str> {

@@ -20,7 +20,6 @@ bit-set.workspace = true
 derive-new.workspace = true
 downcast-rs.workspace = true
 dyn-clone.workspace = true
-educe.workspace = true
 lazy_static.workspace = true
 log.workspace = true
 maplit.workspace = true

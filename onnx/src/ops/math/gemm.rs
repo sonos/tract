@@ -15,18 +15,13 @@ pub fn gemm(
     Ok((expand(Gemm::new(alpha, beta, trans_a, trans_b)), vec![]))
 }
 
-#[derive(Debug, Clone, new, Educe)]
-#[educe(Hash)]
+#[derive(Debug, Clone, new)]
 pub struct Gemm {
-    #[educe(Hash(method = "hash_f32"))]
     alpha: f32,
-    #[educe(Hash(method = "hash_f32"))]
     beta: f32,
     trans_a: bool,
     trans_b: bool,
 }
-
-impl_dyn_hash!(Gemm);
 
 impl Expansion for Gemm {
     fn name(&self) -> Cow<str> {

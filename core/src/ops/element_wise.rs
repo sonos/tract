@@ -3,7 +3,7 @@ use downcast_rs::Downcast;
 use std::fmt;
 
 pub trait ElementWiseMiniOp:
-    fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + DynHash
+    fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast
 {
     fn name(&self) -> String;
     fn prefix(&self) -> &'static str {
@@ -56,17 +56,10 @@ pub trait ElementWiseMiniOp:
     }
 }
 
-impl Hash for Box<dyn ElementWiseMiniOp> {
-    fn hash<H: std::hash::Hasher>(&self, mut state: &mut H) {
-        std::hash::Hash::hash(&self.type_id(), state);
-        self.dyn_hash(&mut state)
-    }
-}
-
 dyn_clone::clone_trait_object!(ElementWiseMiniOp);
 downcast_rs::impl_downcast!(ElementWiseMiniOp);
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone)]
 pub struct ElementWiseOp(pub Box<dyn ElementWiseMiniOp>);
 
 impl Op for ElementWiseOp {
@@ -84,8 +77,6 @@ impl Op for ElementWiseOp {
 
     op_as_typed_op!();
 }
-
-impl_dyn_hash!(ElementWiseOp);
 
 impl EvalOp for ElementWiseOp {
     fn is_stateless(&self) -> bool {
@@ -175,10 +166,8 @@ macro_rules! element_wise {
         $(; quantize: $quantize:expr )?
         $(; validation: $validation:expr )?
     ) => {
-        #[derive(Debug, Clone, Educe)]
-        #[educe(Hash)]
+        #[derive(Debug, Clone)]
         pub struct $Op { $( $( $(#[$meta])? pub $var: $var_typ),* )? }
-        tract_data::internal::impl_dyn_hash!($Op);
         impl $crate::ops::element_wise::ElementWiseMiniOp for $Op {
             fn name(&self) -> String {
                 format!("{}{}", self.prefix(), stringify!($Op))
@@ -270,10 +259,8 @@ macro_rules! element_wise_oop {
         $(; quantize: $quantize:expr )?
         $(; validation: $validation:expr )?
     ) => {
-        #[derive(Debug, Clone, Educe)]
-        #[educe(Hash)]
+        #[derive(Debug, Clone)]
         pub struct $Op { $( $($(#[$meta])? pub $var: $var_typ),* )? }
-        tract_data::internal::impl_dyn_hash!($Op);
         impl $crate::ops::element_wise::ElementWiseMiniOp for $Op {
             fn name(&self) -> String {
                 format!("{}{}", self.prefix(), stringify!($Op))

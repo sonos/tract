@@ -8,12 +8,6 @@ pub struct Slice {
     pub end: TDim,
 }
 
-impl DynHash for Slice {
-    fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
-        dyn_hash(self, hasher)
-    }
-}
-
 impl Slice {
     pub fn new(axis: usize, start: impl ToDim, end: impl ToDim) -> Slice {
         Slice { axis, start: start.to_dim(), end: end.to_dim() }

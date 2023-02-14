@@ -51,8 +51,6 @@ extern crate bit_set;
 extern crate derive_new;
 #[macro_use]
 pub extern crate downcast_rs;
-#[macro_use]
-extern crate educe;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate log;
@@ -76,7 +74,6 @@ pub mod ops;
 pub mod broadcast;
 pub mod framework;
 pub mod half;
-mod hash;
 mod late_bind;
 pub mod model;
 pub mod optim;
@@ -102,7 +99,6 @@ pub mod prelude {
 
 /// This prelude is meant for code extending tract (like implementing new ops).
 pub mod internal {
-    pub use crate::hash::{hash_f32, hash_opt_f32, SloppyHash};
     pub use crate::late_bind::*;
     pub use crate::model::*;
     pub use crate::ops::change_axes::*;

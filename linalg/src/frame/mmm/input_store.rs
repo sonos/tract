@@ -2,11 +2,10 @@ use std::alloc::Layout;
 use std::fmt;
 use std::ops::Range;
 use tract_data::internal::*;
-use tract_data::internal::DynHash;
 
 use crate::frame::Packer;
 
-pub trait VirtualInputSpec: DynHash + dyn_clone::DynClone + std::fmt::Debug + Sync + Send {
+pub trait VirtualInputSpec: dyn_clone::DynClone + std::fmt::Debug + Sync + Send {
     fn wrap(&self, view: &TensorView) -> Box<dyn VirtualInput>;
 }
 dyn_clone::clone_trait_object!(VirtualInputSpec);
@@ -16,15 +15,7 @@ pub trait VirtualInput: dyn_clone::DynClone + std::fmt::Debug + Sync + Send {
 }
 dyn_clone::clone_trait_object!(VirtualInput);
 
-impl std::hash::Hash for Box<dyn VirtualInputSpec> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        use std::any::Any;
-        std::hash::Hash::hash(&self.type_id(), state);
-        self.dyn_hash(state)
-    }
-}
-
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub enum InputStoreSpec {
     Prepacked(PackedStoreSpec),
     LatePacking { packer: Packer, k_axis: usize, mn_axis: usize },

@@ -7,8 +7,8 @@ use std::fmt::{Debug, Display};
 /// as boundaries.
 pub fn eval_order<F, O>(model: &super::Graph<F, O>) -> TractResult<Vec<usize>>
 where
-    F: Fact + Hash + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
+    F: Fact + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     let inputs = model.input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
     let targets = model.output_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
@@ -23,8 +23,8 @@ pub fn eval_order_for_nodes<F, O>(
     more_dependencies: &[(usize, usize)],
 ) -> TractResult<Vec<usize>>
 where
-    F: Fact + Hash + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
+    F: Fact + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     let mut done = bit_set::BitSet::with_capacity(nodes.len());
     let mut order: Vec<usize> = vec![];

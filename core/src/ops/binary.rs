@@ -40,7 +40,7 @@ pub fn wire_with_rank_broadcast(
 }
 
 pub trait BinMiniOp:
-    fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + DynHash
+    fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast
 {
     fn name(&self) -> &'static str;
     fn validation(&self) -> Validation {
@@ -108,16 +108,8 @@ pub trait BinMiniOp:
 dyn_clone::clone_trait_object!(BinMiniOp);
 downcast_rs::impl_downcast!(BinMiniOp);
 
-impl Hash for Box<dyn BinMiniOp> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        std::hash::Hash::hash(&self.type_id(), state);
-        self.dyn_hash(state)
-    }
-}
-
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone)]
 pub struct TypedBinOp(pub Box<dyn BinMiniOp>);
-impl_dyn_hash!(TypedBinOp);
 
 impl Op for TypedBinOp {
     fn name(&self) -> Cow<str> {
@@ -245,9 +237,8 @@ impl TypedOp for TypedBinOp {
     as_op!();
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone)]
 pub struct MergeOpUnicast(pub Box<dyn BinMiniOp>);
-impl_dyn_hash!(MergeOpUnicast);
 
 impl Op for MergeOpUnicast {
     fn name(&self) -> Cow<str> {

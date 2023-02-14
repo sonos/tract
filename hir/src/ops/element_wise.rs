@@ -3,10 +3,8 @@ use crate::internal::*;
 
 use super::binary::wire_cast;
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone)]
 pub struct ElementWiseOp(pub Box<dyn ElementWiseMiniOp>);
-
-impl_dyn_hash!(ElementWiseOp);
 
 impl Expansion for ElementWiseOp {
     fn name(&self) -> Cow<str> {

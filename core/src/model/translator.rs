@@ -6,10 +6,10 @@ use std::fmt;
 
 pub trait Translate<TI1, O1, TI2, O2>: fmt::Debug
 where
-    TI1: Fact + Hash + Clone + 'static,
-    TI2: Fact + Hash + Clone + 'static,
-    O1: fmt::Display + fmt::Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
-    O2: fmt::Display + fmt::Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
+    TI1: Fact  + Clone + 'static,
+    TI2: Fact  + Clone + 'static,
+    O1: fmt::Display + fmt::Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static ,
+    O2: fmt::Display + fmt::Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static ,
 {
     fn translate_node(
         &self,
@@ -67,16 +67,16 @@ pub struct IntoTranslator;
 impl<TI1, O1, TI2, O2, EO, ETI> Translate<TI1, O1, TI2, O2> for IntoTranslator
 where
     TractError: From<EO> + From<ETI>,
-    TI1: Fact + Hash + Clone + 'static,
-    TI2: Fact + Hash + for<'a> TryFrom<&'a TI1, Error = EO> + Clone + 'static,
-    O1: fmt::Display + fmt::Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
+    TI1: Fact  + Clone + 'static,
+    TI2: Fact  + for<'a> TryFrom<&'a TI1, Error = EO> + Clone + 'static,
+    O1: fmt::Display + fmt::Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static ,
     O2: fmt::Display
         + for<'a> TryFrom<&'a O1, Error = ETI>
         + fmt::Debug
         + AsRef<dyn Op>
         + AsMut<dyn Op>
         + Clone
-        + Hash
+        
         + 'static,
     Graph<TI2, O2>: SpecialOps<TI2, O2>,
 {

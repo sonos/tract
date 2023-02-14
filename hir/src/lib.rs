@@ -2,8 +2,6 @@
 #[macro_use]
 extern crate derive_new;
 #[macro_use]
-extern crate educe;
-#[macro_use]
 extern crate log;
 
 #[macro_use]

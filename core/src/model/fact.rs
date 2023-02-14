@@ -191,8 +191,6 @@ pub struct TypedFact {
     pub uniform: Option<Arc<Tensor>>,
 }
 
-impl_dyn_hash!(TypedFact);
-
 impl TypedFact {
     pub fn scalar<T>() -> TypedFact
     where

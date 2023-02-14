@@ -10,12 +10,6 @@ pub struct MatMatMulPack {
     pub(crate) mn_axis: usize,
 }
 
-impl DynHash for MatMatMulPack {
-    fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
-        dyn_hash(self, hasher)
-    }
-}
-
 impl Op for MatMatMulPack {
     fn name(&self) -> Cow<str> {
         "MatMatMulPack".into()

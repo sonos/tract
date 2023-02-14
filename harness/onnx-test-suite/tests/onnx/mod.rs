@@ -1,5 +1,4 @@
 use std::convert::TryInto;
-use std::hash::Hash;
 use std::{fs, path};
 
 use log::*;
@@ -174,8 +173,8 @@ pub fn run_one<P: AsRef<path::Path>>(
 
 fn run_model<F, O>(model: Graph<F, O>, inputs: TVec<Tensor>, data_path: &path::Path)
 where
-    F: Fact + Clone + 'static + Hash,
-    O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
+    F: Fact + Clone + 'static,
+    O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     let plan = SimplePlan::new(&model).unwrap();
     let expected = load_half_dataset("output", data_path);

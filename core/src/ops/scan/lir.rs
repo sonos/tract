@@ -3,7 +3,7 @@ use crate::ops::OpStateFreeze;
 use super::*;
 use tract_data::internal::*;
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new)]
 pub struct LirScanOpParams {
     pub skip: usize,
     pub plan: Arc<TypedSimplePlan<TypedModel>>,
@@ -11,7 +11,7 @@ pub struct LirScanOpParams {
     pub output_mapping: Vec<OutputMapping<TDim>>,
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new)]
 pub struct LirScan(Arc<LirScanOpParams>);
 
 impl std::ops::Deref for LirScan {
@@ -20,8 +20,6 @@ impl std::ops::Deref for LirScan {
         &self.0
     }
 }
-
-impl_dyn_hash!(LirScan);
 
 impl LirScan {
     pub fn iteration_count(&self, inputs: &[&TypedFact]) -> Option<TDim> {

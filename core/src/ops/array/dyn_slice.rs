@@ -9,12 +9,6 @@ pub struct DynSlice {
     pub symbol: Symbol,
 }
 
-impl DynHash for DynSlice {
-    fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
-        dyn_hash(self, hasher)
-    }
-}
-
 impl DynSlice {
     pub fn suffix(&self) -> String {
         format!("axis{}", self.axis)

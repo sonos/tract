@@ -108,12 +108,6 @@ impl ResolveTo<ConcreteGeometry> for SymbolicGeometry {
     }
 }
 
-impl DynHash for Im2Col {
-    fn dyn_hash(&self, state: &mut dyn std::hash::Hasher) {
-        dyn_hash(self, state)
-    }
-}
-
 impl Im2Col {
     pub fn new(
         pool_spec: PoolSpec,

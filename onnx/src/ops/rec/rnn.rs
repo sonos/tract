@@ -23,7 +23,7 @@ pub fn rnn(
     Ok((expand(rnn), vec![]))
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new)]
 pub struct RNN {
     pub optional_bias_input: Option<usize>,
     pub optional_sequence_lens_input: Option<usize>,
@@ -33,8 +33,6 @@ pub struct RNN {
     pub fore: Box<dyn TypedOp>,
     pub back: Box<dyn TypedOp>,
 }
-
-impl_dyn_hash!(RNN);
 
 impl Default for RNN {
     fn default() -> RNN {

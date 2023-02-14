@@ -13,7 +13,7 @@ pub enum InOut {
 }
 
 impl InOut {
-    pub fn as_outlet<F: Clone + Fact + Hash, O: Clone + Hash>(
+    pub fn as_outlet<F: Clone + Fact , O: Clone >(
         &self,
         node: &Node<F, O>,
     ) -> OutletId {

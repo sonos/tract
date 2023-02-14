@@ -330,8 +330,8 @@ impl Parameters {
 
     fn kaldi_downsample<F, O>(raw_model: &mut Graph<F, O>, period: isize) -> TractResult<()>
     where
-        F: std::fmt::Debug + Clone + Hash + Fact,
-        O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + Hash,
+        F: std::fmt::Debug + Clone + Fact,
+        O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone,
         Graph<F, O>: SpecialOps<F, O>,
         tract_core::ops::Downsample: Into<O>,
     {
@@ -359,8 +359,8 @@ impl Parameters {
         right: usize,
     ) -> TractResult<()>
     where
-        F: std::fmt::Debug + Clone + Hash + Fact,
-        O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + Hash,
+        F: std::fmt::Debug + Clone + Fact,
+        O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone,
         Graph<F, O>: SpecialOps<F, O>,
         tract_hir::ops::array::Pad: Into<O>,
     {

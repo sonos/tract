@@ -92,12 +92,6 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
 }
 
 impl TypedModel {
-    pub fn signature(&self) -> u64 {
-        use std::hash::Hasher;
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        self.hash(&mut hasher);
-        hasher.finish()
-    }
 
     pub fn into_optimized(mut self) -> TractResult<TypedModel> {
         self.declutter()?;

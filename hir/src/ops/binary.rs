@@ -5,9 +5,8 @@ use tract_core::ops as mir;
 pub use tract_core::ops::binary::wire_rank_broadcast;
 use tract_core::ops::binary::BinMiniOp;
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone)]
 pub struct InferenceBinOp(pub Box<dyn BinMiniOp>);
-impl_dyn_hash!(InferenceBinOp);
 
 impl Expansion for InferenceBinOp {
     fn name(&self) -> Cow<str> {
@@ -98,9 +97,8 @@ impl<B: BinMiniOp> BinIntoHir for B {
     }
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone)]
 pub struct Nary(pub Box<dyn mir::binary::BinMiniOp>, pub bool);
-impl_dyn_hash!(Nary);
 
 impl Nary {
     fn normalize_t<T>(t: &mut Tensor, n: usize) -> TractResult<()>

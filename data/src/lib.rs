@@ -1,6 +1,5 @@
 #![allow(clippy::len_zero)]
 #![allow(clippy::missing_safety_doc)]
-extern crate educe;
 #[macro_use]
 pub extern crate itertools;
 
@@ -39,8 +38,6 @@ pub mod prelude {
 pub mod internal {
     pub use crate::datum::ClampCast;
     pub use crate::dim::{parse_tdim, DimLike};
-    pub use crate::hash::{dyn_hash, DynHash};
-    pub use crate::impl_dyn_hash;
     pub use crate::prelude::*;
     pub use crate::tensor::view::TensorView;
     pub use crate::tensor::Approximation;
@@ -57,6 +54,5 @@ pub use half;
 
 mod datum;
 mod dim;
-pub mod hash;
 mod scatter;
 mod tensor;

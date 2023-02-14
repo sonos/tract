@@ -15,18 +15,14 @@ pub fn block_lstm(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn 
     Ok(expand(BlockLSTM::new(forget_bias, cell_clip, t, use_peephole)))
 }
 
-#[derive(Clone, Debug, new, Educe)]
-#[educe(Hash)]
+#[derive(Clone, Debug, new)]
+#[allow(dead_code)]
 pub struct BlockLSTM {
-    #[educe(Hash(method = "hash_f32"))]
     forget_bias: f32,
-    #[educe(Hash(method = "hash_f32"))]
     cell_clip: f32,
     t: DatumType,
     use_peephole: bool,
 }
-
-impl_dyn_hash!(BlockLSTM);
 
 impl Expansion for BlockLSTM {
     fn name(&self) -> Cow<str> {
