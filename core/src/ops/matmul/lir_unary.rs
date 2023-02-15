@@ -3,13 +3,18 @@ use crate::ops::cast;
 use ndarray::*;
 use tract_itertools::Itertools;
 
-use tract_linalg::mmm::{
-    BinOp, FusedSpec, InputStoreSpec, MatMatMul, OutputStore, OutputStoreSpec, ScratchSpace,
-};
+use tract_linalg::mmm::{BinOp, FusedSpec, MatMatMul, OutputStore, OutputStoreSpec, ScratchSpace, VirtualInputSpec};
 use tract_linalg::Scaler;
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(Clone, Debug)]
+pub enum ProtoInputStoreSpec {
+    Packed { item_size:usize },
+    Virtual { func: Box<dyn VirtualInputSpec> },
+}
+
+#[derive(Clone, Debug)]
 pub enum ProtoFusedSpec {
+    AddMatMul(AddMatMulGeometry, ProtoInputStoreSpec, ProtoInputStoreSpec, AttrOrInput, AttrOrInput),
     BinScalar(AttrOrInput, BinOp),
     BinPerRow(AttrOrInput, BinOp),
     BinPerCol(AttrOrInput, BinOp),
@@ -23,6 +28,7 @@ impl ProtoFusedSpec {
     pub fn name(&self) -> String {
         use ProtoFusedSpec::*;
         match self {
+            AddMatMul(_, _, _, _, _) => format!("matmul"),
             BinScalar(_, op) => format!("scalar {op:?}"),
             BinPerRow(_, op) => format!("row {op:?}"),
             BinPerCol(_, op) => format!("col {op:?}"),
@@ -37,9 +43,15 @@ impl ProtoFusedSpec {
         &'t self,
         inputs: &'t [TValue],
         prefix: &[usize],
+        symbols: &SymbolValues,
         output: OutputStore,
-    ) -> FusedSpec<'t> {
-        match self {
+    ) -> TractResult<FusedSpec<'t>> {
+        let fs = match self {
+            ProtoFusedSpec::AddMatMul(geo, sto_a, sto_b, a, b) => {
+                let k = geo.to_concrete(symbols)?.k;
+                todo!()
+                //                FusedSpec::AddMatMul { k, a: (), b: () }
+            }
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(v.tensor(inputs), *op),
             ProtoFusedSpec::BinPerRow(v, op) => FusedSpec::BinPerRow(v.tensor(inputs), *op),
             ProtoFusedSpec::BinPerCol(v, op) => FusedSpec::BinPerCol(v.tensor(inputs), *op),
@@ -55,41 +67,59 @@ impl ProtoFusedSpec {
             },
             ProtoFusedSpec::Scaler(scaler) => scaler.as_fused_spec(),
             ProtoFusedSpec::Store => FusedSpec::Store(output),
-        }
+        };
+        Ok(fs)
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct ConcreteMatMulGeometry {
-    pub m: usize,
-    pub k: usize,
-    pub n: usize,
-    pub b_storage: InputStoreSpec,
+#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+pub struct ConcreteAddMatMulGeometry {
+    k: usize,
 }
 
-#[derive(Clone, Debug)]
-pub struct SymbolicMatMulGeometry {
+#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+pub struct SymbolicAddMatMulGeometry {
+    k: TDim,
+}
+
+pub type AddMatMulGeometry = GeometryBound<SymbolicAddMatMulGeometry, ConcreteAddMatMulGeometry>;
+
+impl ResolveTo<ConcreteAddMatMulGeometry> for SymbolicAddMatMulGeometry {
+    type Param = SymbolValues;
+    fn resolve(&self, param: &Self::Param) -> TractResult<ConcreteAddMatMulGeometry> {
+        let k = self.k.eval(param).to_usize()?;
+        Ok(ConcreteAddMatMulGeometry { k })
+    }
+}
+
+#[derive(Clone, Debug, Hash)]
+pub struct ConcreteMatrixGeometry {
+    pub m: usize,
+    pub n: usize,
+    //    pub b_storage: InputStoreSpec,
+}
+
+#[derive(Clone, Debug, Hash)]
+pub struct SymbolicMatrixGeometry {
     pub m: TDim,
-    pub k: TDim,
     pub n: TDim,
     pub mmm: Box<dyn MatMatMul>,
-    pub b_datum_type: DatumType,
 }
 
-impl ResolveTo<ConcreteMatMulGeometry> for SymbolicMatMulGeometry {
+impl ResolveTo<ConcreteMatrixGeometry> for SymbolicMatrixGeometry {
     type Param = SymbolValues;
-    fn resolve(&self, param: &Self::Param) -> TractResult<ConcreteMatMulGeometry> {
+    fn resolve(&self, param: &Self::Param) -> TractResult<ConcreteMatrixGeometry> {
         let m = self.m.eval(param).to_usize()?;
-        let k = self.k.eval(param).to_usize()?;
         let n = self.n.eval(param).to_usize()?;
-        let b_storage = unsafe { self.mmm.b_packed(self.b_datum_type.size_of(), k) };
-        Ok(ConcreteMatMulGeometry { m, k, n, b_storage })
+        //        let b_storage = unsafe { self.mmm.b_packed(self.b_datum_type.size_of(), k) };
+        Ok(ConcreteMatrixGeometry { m, n })
     }
 }
 
-pub type MatMulGeometry = GeometryBound<SymbolicMatMulGeometry, ConcreteMatMulGeometry>;
+pub type MatrixGeometry = GeometryBound<SymbolicMatrixGeometry, ConcreteMatrixGeometry>;
 
-impl MatMulGeometry {
+/*
+impl MatrixGeometry {
     fn k(&self) -> Cow<TDim> {
         match self {
             Self::Symbolic(it) => Cow::Borrowed(&it.k),
@@ -97,6 +127,7 @@ impl MatMulGeometry {
         }
     }
 }
+*/
 
 #[derive(Clone, Debug)]
 pub struct LirMatMulUnary {
@@ -105,7 +136,7 @@ pub struct LirMatMulUnary {
     pub c_n_axis: usize,
     pub micro_ops: ArrayD<(Arc<Tensor>, Vec<ProtoFusedSpec>)>,
     pub c_final_shape: ShapeFact,
-    pub geometry: MatMulGeometry,
+    pub geometry: MatrixGeometry,
     pub mmm: Box<dyn MatMatMul>,
     pub reshape_post: Vec<AxisOp>,
 }
@@ -121,7 +152,10 @@ impl Op for LirMatMulUnary {
             self.c_fact, self.c_m_axis, self.c_n_axis, self.geometry,
         )];
         if let Some(geo) = self.geometry.as_concrete() {
-            infos.push(format!("Mult: m:{} k:{} n:{} with {}", geo.m, geo.k, geo.n, self.mmm));
+            infos.push(format!(
+                "Mult: m:{} k:{} n:{} with {}",
+                geo.m, /*geo.k, */ 0, geo.n, self.mmm
+            ));
         } else {
             infos.push(format!("Mult: {}", self.mmm));
         }
@@ -147,10 +181,7 @@ impl OpState for State {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let op = op.downcast_ref::<LirMatMulUnary>().unwrap();
-        let shape = op.c_fact.shape.eval_to_usize(&session.resolved_symbols)?;
-        let final_shape = op.c_final_shape.eval_to_usize(&session.resolved_symbols)?;
         unsafe {
-            let geometry = op.geometry.to_concrete(&session.resolved_symbols)?;
             if session
                 .cached_mmm_scratch_space
                 .as_deref()
@@ -162,16 +193,7 @@ impl OpState for State {
             let scratch = session
                 .cached_mmm_scratch_space
                 .get_or_insert_with(|| op.mmm.allocate_scratch_space());
-            eval(
-                op,
-                &geometry,
-                scratch.as_mut(),
-                &inputs,
-                &shape,
-                op.c_m_axis,
-                op.c_n_axis,
-                &final_shape,
-            )
+            eval(op, &session.resolved_symbols, scratch.as_mut(), &inputs)
         }
     }
 }
@@ -190,44 +212,34 @@ impl EvalOp for LirMatMulUnary {
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let geometry = self.geometry.to_concrete(&SymbolValues::default())?;
         let mut scratch = unsafe { self.mmm.allocate_scratch_space() };
-        eval(
-            self,
-            &geometry,
-            scratch.as_mut(),
-            &inputs,
-            self.c_fact.shape.as_concrete().unwrap(),
-            self.c_m_axis,
-            self.c_n_axis,
-            self.c_final_shape.as_concrete().unwrap(),
-        )
+        eval(self, &Default::default(), scratch.as_mut(), &inputs)
     }
 }
 
 #[allow(clippy::too_many_arguments)]
 fn eval(
     op: &LirMatMulUnary,
-    geometry: &ConcreteMatMulGeometry,
+    symbols: &SymbolValues,
     scratch: &mut dyn ScratchSpace,
     inputs: &[TValue],
-    c_shape: &[usize],
-    c_m_axis: usize,
-    c_n_axis: usize,
-    c_final_shape: &[usize],
 ) -> TractResult<TVec<TValue>> {
     unsafe {
-        debug_assert!(op.micro_ops.len() > 0);
+        let geometry = op.geometry.to_concrete(symbols)?;
+        let c_shape = op.c_fact.shape.eval_to_usize(symbols)?;
+        let c_final_shape = op.c_final_shape.eval_to_usize(symbols)?;
         let size_of_a = (*op.micro_ops.as_ptr()).0.datum_type().size_of();
-        let mut c = Tensor::uninitialized_dt(op.c_fact.datum_type, c_shape)?;
-        let c_storage = op.mmm.c_view(c_m_axis, c_n_axis);
+        let mut c = Tensor::uninitialized_dt(op.c_fact.datum_type, &c_shape)?;
+        let c_storage = op.mmm.c_view(op.c_m_axis, op.c_n_axis);
         if op
             .c_fact
             .shape
             .iter()
             .enumerate()
-            .any(|(ix, d)| ix != c_m_axis && ix != c_n_axis && d != 1.to_dim())
+            .any(|(ix, d)| ix != op.c_m_axis && ix != op.c_n_axis && d != 1.to_dim())
         {
+            todo!();
+            /*
             let mut looping_shape: TVec<usize> = c_shape.into();
             looping_shape[c_m_axis] = 1;
             looping_shape[c_n_axis] = 1;
@@ -254,21 +266,24 @@ fn eval(
                 f.extend(fused.iter().map(|f| f.resolve(inputs, prefix.slice(), c_store)));
                 op.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch, &f)?;
             }
+            */
         } else {
             let (pa, fused) = &*op.micro_ops.as_ptr();
             let c_store = c_storage.wrap(&c.view_mut());
             let mut f = Vec::with_capacity(fused.len() + 1);
+            /*
             f.push(FusedSpec::AddMatMul {
                 k: geometry.k,
                 a: op.mmm.a_packed(size_of_a, geometry.k).wrap(&pa.view())?,
                 b: geometry.b_storage.wrap(&inputs[0].view())?,
             });
+            */
             for ix in 0..fused.len() {
-                f.push(fused.get_unchecked(ix).resolve(inputs, &[], c_store));
+                f.push(fused.get_unchecked(ix).resolve(inputs, &[], symbols, c_store)?);
             }
             op.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch, &f)?;
         }
-        c.set_shape_unchecked(c_final_shape);
+        c.set_shape_unchecked(&c_final_shape);
         Ok(tvec!(c.into_tvalue()))
     }
 }
@@ -287,6 +302,8 @@ impl TypedOp for LirMatMulUnary {
     }
 
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        todo!();
+        /*
         let sums: TDim = self.c_fact.shape.iter().product();
         Ok(tvec!(
             (Cost::FMA(self.mmm.internal_type()), sums * self.geometry.k().as_ref()),
@@ -295,6 +312,7 @@ impl TypedOp for LirMatMulUnary {
                 self.micro_ops.iter().fold(0.to_dim(), |sum, a| sum + a.0.len())
             )
         ))
+        */
     }
 
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {

@@ -16,7 +16,7 @@ use super::im2col::Im2Col;
 use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolGeometry, PoolSpec};
 use crate::ops::matmul::lir_unary::{
-    ConcreteMatMulGeometry, LirMatMulUnary, MatMulGeometry, ProtoFusedSpec, SymbolicMatMulGeometry,
+    ConcreteMatrixGeometry, LirMatMulUnary, MatrixGeometry, ProtoFusedSpec, SymbolicMatrixGeometry,
 };
 use crate::ops::matmul::MatMulQParams;
 use crate::ops::nn::{BaseDataShape, DataFormat, DataShape};
@@ -268,10 +268,8 @@ impl ConvUnary {
 
         let b_dt = model.outlet_fact(b)?.datum_type;
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
-        let mut geometry = MatMulGeometry::from(SymbolicMatMulGeometry {
-            b_datum_type: b_dt,
+        let mut geometry = MatrixGeometry::from(SymbolicMatrixGeometry {
             m: m.to_dim(),
-            k: k.to_dim(),
             n: n.clone(),
             mmm: mmm.clone(),
         });
@@ -348,10 +346,8 @@ impl ConvUnary {
         )?[0];
 
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
-        let mut geometry = MatMulGeometry::from(SymbolicMatMulGeometry {
-            b_datum_type: b_dt,
+        let mut geometry = MatrixGeometry::from(SymbolicMatrixGeometry {
             m: m.to_dim(),
-            k: k.to_dim(),
             n: n.clone(),
             mmm: mmm.clone(),
         });
@@ -484,11 +480,9 @@ impl ConvUnary {
         let b_storage = mmm.b_virtual_input(Box::new(virtual_input), k);
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&geo.output_shape)?;
 
-        let geometry = MatMulGeometry::Concrete(ConcreteMatMulGeometry {
+        let geometry = MatrixGeometry::Concrete(ConcreteMatrixGeometry {
             m,
-            k,
             n: n.to_usize().unwrap(),
-            b_storage,
         });
         let wire = self.wire_lir_matmatmul(
             model,
@@ -543,7 +537,7 @@ impl ConvUnary {
         mmm_output_shape: ShapeFact,
         m: usize,
         k: usize,
-        geometry: MatMulGeometry,
+        geometry: MatrixGeometry,
         c_m_axis: usize,
         c_n_axis: usize,
     ) -> TractResult<OutletId> {
@@ -782,9 +776,7 @@ impl EvalOp for ConvUnary {
         let mut wires: TVec<OutletId> = inputs
             .iter()
             .enumerate()
-            .map(|(ix, v)| {
-                model.add_source(format!("source.{ix}"), v.datum_type().fact(v.shape()))
-            })
+            .map(|(ix, v)| model.add_source(format!("source.{ix}"), v.datum_type().fact(v.shape())))
             .collect::<TractResult<_>>()?;
         let new_op = self.kernel_offset_u8_as_i8(&mut wires, &mut model)?;
         let wire = unsafe {
@@ -869,7 +861,8 @@ impl TypedOp for ConvUnary {
         let h_axis = shape.h_axis();
         for (ix, &dim) in kernel_spatial_shape.iter().enumerate() {
             if dim == 1 && self.pool_spec.stride(ix) == 1 {
-                let mut info = AxisInfo::simple(ix + h_axis).disposable(kernel_spatial_shape.len() > 1);
+                let mut info =
+                    AxisInfo::simple(ix + h_axis).disposable(kernel_spatial_shape.len() > 1);
                 info.inputs.extend(std::iter::repeat(None).take(inputs.len() - 1));
                 axes.push(info)
             }
