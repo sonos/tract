@@ -7,7 +7,7 @@ use crate::pb::NodeProto;
 #[derive(Debug, Clone, Hash)]
 pub struct NonZero(Symbol);
 
-impl_dyn_hash!(NonZero);
+
 
 pub fn non_zero(
     ctx: &ParsingContext,

@@ -9,7 +9,7 @@ pub struct OneHot {
     pub on: Arc<Tensor>,
 }
 
-impl_dyn_hash!(OneHot);
+
 
 impl Op for OneHot {
     fn name(&self) -> Cow<str> {

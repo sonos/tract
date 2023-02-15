@@ -18,16 +18,12 @@ pub fn register(registry: &mut Registry) {
 }
 
 /// https://github.com/onnx/onnx/blob/main/docs/Operators.md#Multinomial
-#[derive(Clone, Debug, Educe)]
-#[educe(Hash)]
+#[derive(Clone, Debug)]
 pub struct Multinomial {
     pub dtype: DatumType,
     pub sample_size: i32,
-    #[educe(Hash(method = "hash_opt_f32"))]
     pub seed: Option<f32>,
 }
-
-impl_dyn_hash!(Multinomial);
 
 impl Multinomial {
     fn eval_t0<T1>(&self, input: TValue) -> TractResult<TValue>

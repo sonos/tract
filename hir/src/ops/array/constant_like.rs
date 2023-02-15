@@ -2,14 +2,10 @@ use crate::internal::*;
 use tract_ndarray::*;
 use tract_num_traits::{AsPrimitive, One, Zero};
 
-#[derive(Debug, Clone, new, Default, Educe)]
-#[educe(Hash)]
+#[derive(Debug, Clone, new, Default)]
 pub struct ConstantLike {
-    #[educe(Hash(method = "hash_f32"))]
     value: f32,
 }
-
-impl_dyn_hash!(ConstantLike);
 
 impl Op for ConstantLike {
     fn name(&self) -> Cow<str> {
@@ -72,8 +68,6 @@ pub struct EyeLike {
     dt: Option<DatumType>,
     k: isize,
 }
-
-impl_dyn_hash!(EyeLike);
 
 impl EyeLike {
     pub fn make<T>(&self, (r, c): (usize, usize)) -> TractResult<TValue>

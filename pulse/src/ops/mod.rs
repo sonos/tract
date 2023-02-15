@@ -76,7 +76,6 @@ pub trait PulsedOp:
     + 'static
     + Downcast
     + EvalOp
-    + DynHash
 {
     /// Reinterpret the PulsedOp as an Op.
     fn as_op(&self) -> &dyn Op;
@@ -92,13 +91,6 @@ pub trait PulsedOp:
 }
 
 tract_core::dyn_clone::clone_trait_object!(PulsedOp);
-
-impl Hash for Box<dyn PulsedOp> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        std::hash::Hash::hash(&self.type_id(), state);
-        self.dyn_hash(state)
-    }
-}
 
 impl<O: PulsedOp> From<O> for Box<dyn PulsedOp> {
     fn from(it: O) -> Box<dyn PulsedOp> {

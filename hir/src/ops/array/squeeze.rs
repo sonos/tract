@@ -8,7 +8,7 @@ pub struct Squeeze {
     axes: Option<Vec<isize>>,
 }
 
-impl_dyn_hash!(Squeeze);
+
 
 impl Squeeze {
     pub fn output_shape<D: DimLike>(&self, input: &[D]) -> TractResult<TVec<D>> {

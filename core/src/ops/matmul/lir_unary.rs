@@ -7,7 +7,7 @@ use tract_linalg::mmm::{
 };
 use tract_linalg::Scaler;
 
-#[derive(PartialEq, Eq, Clone, Hash, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub enum ProtoFusedSpec {
     BinScalar(AttrOrInput, BinOp),
     BinPerRow(AttrOrInput, BinOp),
@@ -58,7 +58,7 @@ impl ProtoFusedSpec {
     }
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct ConcreteMatMulGeometry {
     pub m: usize,
     pub k: usize,
@@ -66,7 +66,7 @@ pub struct ConcreteMatMulGeometry {
     pub b_storage: InputStoreSpec,
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct SymbolicMatMulGeometry {
     pub m: TDim,
     pub k: TDim,
@@ -97,7 +97,7 @@ impl MatMulGeometry {
     }
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct LirMatMulUnary {
     pub c_fact: TypedFact,
     pub c_m_axis: usize,
@@ -107,12 +107,6 @@ pub struct LirMatMulUnary {
     pub geometry: MatMulGeometry,
     pub mmm: Box<dyn MatMatMul>,
     pub reshape_post: Vec<AxisOp>,
-}
-
-impl DynHash for LirMatMulUnary {
-    fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
-        dyn_hash(self, hasher)
-    }
 }
 
 impl Op for LirMatMulUnary {

@@ -33,7 +33,7 @@ struct ReduceSum13 {
     reducer: tract_hir::ops::nn::Reducer,
 }
 
-impl_dyn_hash!(ReduceSum13);
+
 
 impl Expansion for ReduceSum13 {
     fn name(&self) -> Cow<str> {

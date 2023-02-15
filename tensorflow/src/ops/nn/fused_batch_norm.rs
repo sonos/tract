@@ -9,14 +9,10 @@ pub fn fused_batch_norm(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<
     Ok(expand(FusedBatchNorm::new(epsilon)))
 }
 
-#[derive(Debug, Clone, new, Educe)]
-#[educe(Hash)]
+#[derive(Debug, Clone, new)]
 struct FusedBatchNorm {
-    #[educe(Hash(method = "hash_f32"))]
     epsilon: f32,
 }
-
-impl_dyn_hash!(FusedBatchNorm);
 
 impl Expansion for FusedBatchNorm {
     fn name(&self) -> Cow<str> {

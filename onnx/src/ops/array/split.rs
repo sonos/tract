@@ -23,7 +23,7 @@ struct Split13 {
     outputs: usize,
 }
 
-impl_dyn_hash!(Split13);
+
 
 impl Expansion for Split13 {
     fn name(&self) -> Cow<str> {

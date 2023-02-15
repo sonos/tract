@@ -6,7 +6,7 @@ use crate::internal::*;
 pub struct ScatterElements {
     axis: i64,
 }
-impl_dyn_hash!(ScatterElements);
+
 
 impl Expansion for ScatterElements {
     fn name(&self) -> Cow<str> {

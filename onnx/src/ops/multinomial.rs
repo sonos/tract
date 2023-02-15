@@ -17,16 +17,12 @@ pub fn multinomial(
     Ok((expand(Multinomial { dtype, sample_size, seed }), vec![]))
 }
 
-#[derive(Clone, Debug, Educe)]
-#[educe(Hash)]
+#[derive(Clone, Debug)]
 pub struct Multinomial {
     dtype: DatumType,
     sample_size: i32,
-    #[educe(Hash(method = "hash_opt_f32"))]
     pub seed: Option<f32>,
 }
-
-impl_dyn_hash!(Multinomial);
 
 impl Expansion for Multinomial {
     fn name(&self) -> Cow<str> {

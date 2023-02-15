@@ -244,7 +244,7 @@ pub struct TreeEnsembleClassifier {
     pub binary_result_layout: bool,
 }
 
-impl_dyn_hash!(TreeEnsembleClassifier);
+
 
 impl Expansion for TreeEnsembleClassifier {
     fn name(&self) -> Cow<str> {

@@ -10,14 +10,10 @@ pub fn instance_normalization(
     Ok((expand(InstanceNorm::new(epsilon)), vec![]))
 }
 
-#[derive(Debug, Clone, new, Default, Educe)]
-#[educe(Hash)]
+#[derive(Debug, Clone, new, Default)]
 pub struct InstanceNorm {
-    #[educe(Hash(method = "hash_f32"))]
     epsilon: f32,
 }
-
-impl_dyn_hash!(InstanceNorm);
 
 impl Expansion for InstanceNorm {
     fn name(&self) -> Cow<str> {

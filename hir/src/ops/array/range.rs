@@ -3,7 +3,7 @@ use crate::internal::*;
 #[derive(Debug, Default, Clone, new, Hash)]
 pub struct Range;
 
-impl_dyn_hash!(Range);
+
 
 impl Expansion for Range {
     fn name(&self) -> Cow<str> {

@@ -38,17 +38,13 @@ pub fn random(
     }
 }
 
-#[derive(Debug, Clone, Educe)]
-#[educe(Hash)]
+#[derive(Debug, Clone)]
 struct Random {
     dt: DatumType,
     dist: Dist,
     shape: TVec<TDim>,
-    #[educe(Hash(method = "hash_opt_f32"))]
     seed: Option<f32>,
 }
-
-impl_dyn_hash!(Random);
 
 impl Expansion for Random {
     fn name(&self) -> Cow<str> {
@@ -95,16 +91,12 @@ impl Expansion for Random {
     }
 }
 
-#[derive(Debug, Clone, Educe)]
-#[educe(Hash)]
+#[derive(Debug, Clone)]
 struct RandomLike {
     dt: Option<DatumType>,
     dist: Dist,
-    #[educe(Hash(method = "hash_opt_f32"))]
     seed: Option<f32>,
 }
-
-impl_dyn_hash!(RandomLike);
 
 impl Expansion for RandomLike {
     fn name(&self) -> Cow<str> {

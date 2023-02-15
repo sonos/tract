@@ -18,7 +18,7 @@ pub struct Softmax {
     pub output_dt: DatumType,
 }
 
-impl_dyn_hash!(Softmax);
+
 
 impl Op for Softmax {
     fn name(&self) -> Cow<str> {

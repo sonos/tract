@@ -16,7 +16,7 @@ pub struct DeconvDelay {
     pub deconv_output_dim: TDim,
 }
 
-impl_dyn_hash!(DeconvDelay);
+
 
 impl Op for DeconvDelay {
     fn name(&self) -> Cow<str> {

@@ -26,7 +26,7 @@ pub struct DirectLookup {
     fallback_value: Arc<Tensor>,
 }
 
-impl_dyn_hash!(DirectLookup);
+
 
 impl DirectLookup {
     pub fn new(values: Arc<Tensor>, fallback_value: Arc<Tensor>) -> TractResult<DirectLookup> {
@@ -99,7 +99,7 @@ pub struct ReverseLookup {
     fallback_value: i32,
 }
 
-impl_dyn_hash!(ReverseLookup);
+
 
 impl ReverseLookup {
     pub fn new(keys: Arc<Tensor>, fallback_value: i32) -> TractResult<ReverseLookup> {

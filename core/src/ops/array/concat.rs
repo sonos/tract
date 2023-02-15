@@ -4,7 +4,7 @@ use crate::internal::*;
 pub struct TypedConcat {
     pub axis: usize,
 }
-impl_dyn_hash!(TypedConcat);
+
 
 impl TypedConcat {
     pub fn offsets(&self, inputs: &[&TypedFact]) -> TractResult<Vec<TDim>> {

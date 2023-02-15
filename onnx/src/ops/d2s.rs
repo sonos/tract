@@ -43,7 +43,7 @@ struct DepthToSpace {
     mode: DepthToSpaceMode,
 }
 
-impl_dyn_hash!(DepthToSpace);
+
 
 impl DepthToSpace {
     pub fn compute_shape(&self, shape: &[TDim]) -> TVec<TDim> {

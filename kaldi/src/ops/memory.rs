@@ -11,7 +11,7 @@ pub struct Memory {
     pub offset: isize,
 }
 
-impl_dyn_hash!(Memory);
+
 
 impl Op for Memory {
     fn name(&self) -> Cow<str> {

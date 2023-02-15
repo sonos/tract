@@ -21,7 +21,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
 #[derive(Debug, Clone, new, Hash)]
 pub struct Switch;
 
-impl_dyn_hash!(Switch);
+
 
 impl Op for Switch {
     fn name(&self) -> Cow<str> {
@@ -118,7 +118,7 @@ pub struct Merge {
     n: usize,
 }
 
-impl_dyn_hash!(Merge);
+
 
 impl Op for Merge {
     fn name(&self) -> Cow<str> {

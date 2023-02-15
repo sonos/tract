@@ -62,7 +62,7 @@ pub struct VariableV2 {
     pub initializer: Option<Arc<Tensor>>,
 }
 
-impl_dyn_hash!(VariableV2);
+
 
 impl Op for VariableV2 {
     fn name(&self) -> Cow<str> {
@@ -137,7 +137,7 @@ pub struct Assign {
     pub var_id: Option<String>,
 }
 
-impl_dyn_hash!(Assign);
+
 
 impl Op for Assign {
     fn name(&self) -> Cow<str> {

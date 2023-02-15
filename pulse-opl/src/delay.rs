@@ -110,7 +110,7 @@ pub struct Delay {
     pub overlap: usize,
 }
 
-impl_dyn_hash!(Delay);
+
 
 impl Delay {
     pub fn new_typed(input_fact: &TypedFact, axis: usize, delay: usize, overlap: usize) -> Delay {

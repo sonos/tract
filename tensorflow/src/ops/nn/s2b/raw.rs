@@ -6,7 +6,7 @@ pub struct SpaceToBatch {
     datum_type: DatumType,
 }
 
-impl_dyn_hash!(SpaceToBatch);
+
 
 impl Op for SpaceToBatch {
     fn name(&self) -> Cow<str> {
@@ -100,7 +100,7 @@ pub struct BatchToSpace {
     datum_type: DatumType,
 }
 
-impl_dyn_hash!(BatchToSpace);
+
 
 impl Op for BatchToSpace {
     fn name(&self) -> Cow<str> {

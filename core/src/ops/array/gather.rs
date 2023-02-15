@@ -5,7 +5,7 @@ use ndarray::*;
 pub struct Gather {
     pub axis: usize,
 }
-impl_dyn_hash!(Gather);
+
 
 impl Op for Gather {
     fn name(&self) -> Cow<str> {

@@ -39,7 +39,7 @@ pub struct ConvUnary {
     pub q_params: Option<(DatumType, MatMulQParams)>,
 }
 
-impl_dyn_hash!(ConvUnary);
+
 
 impl ConvUnary {
     fn input_channels(&self) -> usize {

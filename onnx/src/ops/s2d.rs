@@ -52,7 +52,7 @@ impl SpaceToDepth {
     }
 }
 
-impl_dyn_hash!(SpaceToDepth);
+
 
 impl Expansion for SpaceToDepth {
     fn name(&self) -> Cow<str> {

@@ -20,7 +20,7 @@ pub enum LoopGateRole {
 #[derive(Debug, Clone, Hash)]
 pub struct LoopGate(LoopGateRole);
 
-impl_dyn_hash!(LoopGate);
+
 
 impl Op for LoopGate {
     fn name(&self) -> Cow<str> {
@@ -69,7 +69,7 @@ pub struct NextIteration {
     role: NextIterationRole,
 }
 
-impl_dyn_hash!(NextIteration);
+
 
 impl Op for NextIteration {
     fn name(&self) -> Cow<str> {

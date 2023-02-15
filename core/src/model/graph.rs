@@ -3,7 +3,6 @@ use crate::internal::*;
 use crate::ops::Op;
 use crate::prelude::*;
 use std::fmt;
-use std::hash::Hash;
 use tract_data::internal::*;
 use tract_itertools::Itertools;
 
@@ -22,12 +21,11 @@ pub trait SpecialOps<F, O> {
 /// Main model class
 ///
 /// Parameterized by a Fact class.
-#[derive(Clone, Debug, Educe)]
-#[educe(Hash)]
+#[derive(Clone, Debug)]
 pub struct Graph<F, O>
 where
-    F: Fact + Hash + Clone + 'static,
-    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
+    F: Fact + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static
 {
     /// all nodes in the model
     pub nodes: Vec<Node<F, O>>,
@@ -36,37 +34,17 @@ where
     /// model outputs
     pub outputs: Vec<OutletId>,
     /// outlet labels
-    #[educe(Hash(method = "hash_outlet_labels"))]
     pub outlet_labels: HashMap<OutletId, String>,
     /// model properties
-    #[educe(Hash(method = "hash_properties"))]
     pub properties: HashMap<String, Arc<Tensor>>,
     /// symbol table
     pub symbol_table: SymbolTable,
 }
 
-fn hash_outlet_labels<H: std::hash::Hasher>(it: &HashMap<OutletId, String>, state: &mut H) {
-    it.iter().sorted().for_each(|ol| ol.hash(state))
-}
-
-fn hash_properties<H: std::hash::Hasher>(it: &HashMap<String, Arc<Tensor>>, state: &mut H) {
-    it.iter().sorted_by_key(|(k, _)| k.to_owned()).for_each(|ol| ol.hash(state))
-}
-
-impl<F, O> DynHash for Graph<F, O>
-where
-    F: Fact + Hash + Clone + 'static,
-    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
-{
-    fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
-        dyn_hash(self, hasher)
-    }
-}
-
 impl<F, O> Default for Graph<F, O>
 where
-    F: Fact + Hash + Clone + 'static,
-    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
+    F: Fact + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static
 {
     fn default() -> Graph<F, O> {
         Graph {
@@ -82,8 +60,8 @@ where
 
 impl<F, O> Graph<F, O>
 where
-    F: Fact + Hash + Clone + 'static,
-    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
+    F: Fact + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
     Graph<F, O>: SpecialOps<F, O>,
 {
     pub fn add_source(&mut self, name: impl Into<String>, fact: F) -> TractResult<OutletId> {
@@ -97,8 +75,8 @@ where
 
 impl<F, O> Graph<F, O>
 where
-    F: Fact + Hash + Clone + 'static,
-    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
+    F: Fact + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static
 {
     pub fn add_node(
         &mut self,
@@ -549,14 +527,14 @@ where
 
 impl<F: Fact + Clone + 'static, O> Graph<F, O>
 where
-    F: Fact + Clone + 'static + From<std::sync::Arc<Tensor>> + Hash,
+    F: Fact + Clone + 'static + From<std::sync::Arc<Tensor>>,
     O: fmt::Debug
         + fmt::Display
         + From<crate::ops::konst::Const>
         + AsRef<dyn Op>
         + AsMut<dyn Op>
         + Clone
-        + Hash
+       
         + 'static,
 {
     pub fn add_const(
@@ -573,8 +551,8 @@ where
 
 impl<F, O> fmt::Display for Graph<F, O>
 where
-    F: Fact + Hash + Clone + 'static,
-    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
+    F: Fact + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
         for i in 0..self.nodes.len() {
@@ -646,7 +624,7 @@ where
 
 impl<F, O> Graph<F, O>
 where
-    F: Fact + Clone + 'static + std::hash::Hash + for<'a> std::convert::From<&'a F>,
+    F: Fact + Clone + 'static + for<'a> std::convert::From<&'a F>,
     O: std::fmt::Display
         + std::fmt::Debug
         + Clone
@@ -654,7 +632,6 @@ where
         + AsMut<dyn Op>
         + Clone
         + 'static
-        + std::hash::Hash
         + for<'a> std::convert::From<&'a O>,
     Graph<F, O>: SpecialOps<F, O>,
 {
@@ -707,18 +684,5 @@ where
     pub fn into_compact(mut self) -> TractResult<Self> {
         self.compact()?;
         Ok(self)
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use crate::internal::*;
-
-    #[test]
-    fn hashable() {
-        let mut model = TypedModel::default();
-        let _s = model.add_source("source", f32::fact([1, 2, 3])).unwrap();
-        let mut hasher = std::collections::hash_map::DefaultHasher::default();
-        model.hash(&mut hasher);
     }
 }

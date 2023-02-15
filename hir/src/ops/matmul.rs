@@ -11,7 +11,7 @@ pub struct MatMulInference {
     pub c_trans: bool,
 }
 
-impl_dyn_hash!(MatMulInference);
+
 
 impl MatMulInference {
     pub fn with_a_trans(self, a_trans: bool) -> MatMulInference {

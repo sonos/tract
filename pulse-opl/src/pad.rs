@@ -216,7 +216,7 @@ pub struct PulsePad {
     pub overlap: usize,
 }
 
-impl_dyn_hash!(PulsePad);
+
 
 impl Op for PulsePad {
     fn name(&self) -> Cow<str> {

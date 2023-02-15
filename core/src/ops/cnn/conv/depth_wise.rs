@@ -12,7 +12,7 @@ pub struct DepthWise {
     bias: Arc<Tensor>,
 }
 
-impl_dyn_hash!(DepthWise);
+
 
 impl Op for DepthWise {
     fn name(&self) -> Cow<str> {

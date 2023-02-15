@@ -16,7 +16,7 @@ pub struct QMatMulUnary {
     pub params: MatMulQParams,
 }
 
-impl_dyn_hash!(QMatMulUnary);
+
 
 impl Op for QMatMulUnary {
     fn name(&self) -> Cow<str> {

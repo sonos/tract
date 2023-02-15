@@ -9,7 +9,7 @@ pub struct LazyIm2colSpec {
     pub k_bytes_offsets: Vec<isize>,
 }
 
-impl_dyn_hash!(LazyIm2colSpec);
+
 
 impl LazyIm2colSpec {
     fn wrap_t<T: Datum + Copy>(&self, view: &TensorView) -> Box<dyn VirtualInput> {

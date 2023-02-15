@@ -33,7 +33,7 @@ pub struct PulsedFact {
     pub stream: Option<StreamInfo>,
 }
 
-impl_dyn_hash!(PulsedFact);
+
 
 impl PulsedFact {
     pub fn from_tensor_fact_pulse(

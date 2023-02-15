@@ -109,7 +109,6 @@ where
         + AsMut<dyn Op>
         + Clone
         + 'static
-        + Hash
         + Send
         + Sync,
     Graph<F, O>: Send + Sync + 'static,

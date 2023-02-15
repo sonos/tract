@@ -25,7 +25,7 @@ pub fn gru(
     Ok((expand(gru), vec![]))
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone)]
 pub struct GRU {
     pub optional_bias_input: Option<usize>,
     pub optional_sequence_lens_input: Option<usize>,
@@ -36,8 +36,6 @@ pub struct GRU {
     pub g: Box<dyn TypedOp>,
     pub linear_before_reset: bool,
 }
-
-impl_dyn_hash!(GRU);
 
 impl Default for GRU {
     fn default() -> GRU {

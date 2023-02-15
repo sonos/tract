@@ -32,13 +32,12 @@ impl Debug for SessionState {
     }
 }
 
-#[derive(Debug, Clone, Educe)]
-#[educe(Hash)]
+#[derive(Debug, Clone)]
 pub struct SimplePlan<F, O, M>
 where
-    F: Fact + Hash + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
-    M: Borrow<Graph<F, O>> + Hash,
+    F: Fact  + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static ,
+    M: Borrow<Graph<F, O>> ,
 {
     pub model: M,
     pub outputs: Vec<OutletId>,
@@ -50,9 +49,9 @@ where
 
 impl<F, O, M> SimplePlan<F, O, M>
 where
-    F: Fact + Hash + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
-    M: Borrow<Graph<F, O>> + Hash,
+    F: Fact  + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static ,
+    M: Borrow<Graph<F, O>> ,
 {
     /// This contructor returns a plan that will compute all the model default outputs in one pass.
     pub fn new(model: M) -> TractResult<SimplePlan<F, O, M>> {
@@ -124,9 +123,9 @@ where
 #[derive(Clone, Debug)]
 pub struct SimpleState<F, O, M, P>
 where
-    F: Fact + Hash + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
-    M: Borrow<Graph<F, O>> + Hash,
+    F: Fact  + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static ,
+    M: Borrow<Graph<F, O>> ,
     P: Borrow<SimplePlan<F, O, M>>,
 {
     plan: P,
@@ -138,9 +137,9 @@ where
 
 impl<F, O, M, P> SimpleState<F, O, M, P>
 where
-    F: Fact + Hash + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
-    M: Borrow<Graph<F, O>> + Hash,
+    F: Fact  + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static ,
+    M: Borrow<Graph<F, O>> ,
     P: Borrow<SimplePlan<F, O, M>> + Clone,
 {
     pub fn new(plan: P) -> TractResult<SimpleState<F, O, M, P>> {
@@ -525,8 +524,8 @@ pub fn eval<F, O>(
     input: TVec<TValue>,
 ) -> TractResult<TVec<TValue>>
 where
-    F: Fact + Hash + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
+    F: Fact  + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static ,
 {
     let r = match state {
         Some(ref mut state) => state.eval(session_state, node.op(), input),
@@ -539,9 +538,9 @@ where
 #[derive(Clone, Debug)]
 pub struct FrozenSimpleState<F, O, M, P>
 where
-    F: Fact + Hash + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
-    M: Borrow<Graph<F, O>> + Hash,
+    F: Fact  + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static ,
+    M: Borrow<Graph<F, O>> ,
     P: Borrow<SimplePlan<F, O, M>> + Clone,
 {
     plan: P,
@@ -555,9 +554,9 @@ where
 
 impl<F, O, M, P> FrozenSimpleState<F, O, M, P>
 where
-    F: Fact + Hash + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
-    M: Borrow<Graph<F, O>> + Hash,
+    F: Fact  + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static ,
+    M: Borrow<Graph<F, O>> ,
     P: Borrow<SimplePlan<F, O, M>> + Clone,
 {
     pub fn unfreeze(&self) -> SimpleState<F, O, M, P> {

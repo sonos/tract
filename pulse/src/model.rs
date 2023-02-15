@@ -170,10 +170,8 @@ impl
     }
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone)]
 pub(crate) struct PulseWrappingOp(pub Box<dyn TypedOp>);
-
-impl_dyn_hash!(PulseWrappingOp);
 
 impl Op for PulseWrappingOp {
     fn name(&self) -> Cow<str> {
@@ -246,10 +244,8 @@ impl PulsedOp for PulseWrappingOp {
     }
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone)]
 pub(crate) struct NonPulsingWrappingOp(pub Box<dyn TypedOp>);
-
-impl_dyn_hash!(NonPulsingWrappingOp);
 
 impl Op for NonPulsingWrappingOp {
     fn name(&self) -> Cow<str> {

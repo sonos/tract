@@ -11,7 +11,7 @@ impl Op for Identity {
     op_as_typed_op!();
 }
 
-impl_dyn_hash!(Identity);
+
 
 impl EvalOp for Identity {
     fn is_stateless(&self) -> bool {

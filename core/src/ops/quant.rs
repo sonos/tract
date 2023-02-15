@@ -23,7 +23,6 @@ pub fn quantize_linear_f32_i8(x: f32, scale: f32, zero_point: i32) -> i8 {
 
 element_wise_oop!(quantize_linear_u8,
  QuantizeLinearU8 {
-     #[educe(Hash(method="hash_f32"))]
      scale: f32,
      zero_point: u8
  },
@@ -47,7 +46,6 @@ fn info_quantize_linear_u8(q: &QuantizeLinearU8) -> TractResult<Vec<String>> {
 
 element_wise_oop!(quantize_linear_i8,
  QuantizeLinearI8 {
-     #[educe(Hash(method="hash_f32"))]
      scale: f32,
      zero_point: i8
  },
@@ -69,10 +67,8 @@ fn info_quantize_linear_i8(q: &QuantizeLinearI8) -> TractResult<Vec<String>> {
     )])
 }
 
-#[derive(Clone, Debug, new, Educe)]
-#[educe(Hash)]
+#[derive(Clone, Debug, new)]
 pub struct DequantizeLinearF32 {
-    #[educe(Hash(method = "hash_f32"))]
     scale: f32,
     zero_point: i32,
 }
@@ -104,8 +100,6 @@ impl Op for DequantizeLinearF32 {
 
     op_as_typed_op!();
 }
-
-impl_dyn_hash!(DequantizeLinearF32);
 
 impl EvalOp for DequantizeLinearF32 {
     fn is_stateless(&self) -> bool {
@@ -268,7 +262,6 @@ element_wise_oop!(lookup_table,
 
 #[derive(Debug, Clone, Hash)]
 pub struct Scale;
-impl_dyn_hash!(Scale);
 
 impl crate::ops::binary::BinMiniOp for Scale {
     fn name(&self) -> &'static str {
@@ -391,10 +384,8 @@ pub(crate) fn offset_u8_as_i8_elementwise(x: u8) -> i8 {
     x.wrapping_sub(128) as i8
 }
 
-#[derive(Debug, Clone, Educe)]
-#[educe(Hash)]
+#[derive(Debug, Clone)]
 pub struct OffsetU8asI8 {}
-impl_dyn_hash!(OffsetU8asI8);
 impl ElementWiseMiniOp for OffsetU8asI8 {
     fn name(&self) -> String {
         format!("{}{}", self.prefix(), stringify!(OffsetU8asI8))

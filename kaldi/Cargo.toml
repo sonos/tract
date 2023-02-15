@@ -18,7 +18,6 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 bit-set= "0.5.2"
 derive-new.workspace = true
-educe.workspace = true
 lazy_static.workspace = true
 log.workspace = true
 maplit.workspace = true

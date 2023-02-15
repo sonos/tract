@@ -108,7 +108,7 @@ pub trait EvalOp {
 
 /// A base operation
 pub trait Op:
-    fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + EvalOp + DynHash
+    fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + EvalOp
 {
     fn name(&self) -> Cow<str>;
 
@@ -134,7 +134,7 @@ pub trait Op:
 }
 
 pub trait TypedOp:
-    Op + fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + EvalOp + DynHash
+    Op + fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + EvalOp
 {
     /// Reinterpret the TypedOp as an Op.
     fn as_op(&self) -> &dyn Op;

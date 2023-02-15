@@ -6,7 +6,7 @@ pub struct GatherNd {
     pub batch_dims: usize,
 }
 
-impl_dyn_hash!(GatherNd);
+
 
 impl GatherNd {
     fn compute_shape<D: DimLike>(

@@ -5,7 +5,7 @@ pub use tract_core::ops::scan::Scan;
 use tract_core::ops::scan::ScanInfo;
 pub use tract_core::ops::scan::{InputMapping, OutputMapping, StateInitializer};
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default)]
 pub struct InferenceScan {
     pub body: InferenceModel,
     pub input_mapping: Vec<InputMapping>,
@@ -14,8 +14,6 @@ pub struct InferenceScan {
     pub clean_scan_counts: bool,
     pub iter_count_fact: GenericFactoid<TDim>,
 }
-
-impl_dyn_hash!(InferenceScan);
 
 impl Op for InferenceScan {
     fn name(&self) -> Cow<str> {

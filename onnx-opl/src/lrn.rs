@@ -1,19 +1,13 @@
 use tract_ndarray::prelude::*;
 use tract_nnef::internal::*;
 
-#[derive(Debug, Clone, Default, Educe)]
-#[educe(Hash)]
+#[derive(Debug, Clone, Default)]
 pub struct Lrn {
-    #[educe(Hash(method = "hash_f32"))]
     pub alpha: f32,
-    #[educe(Hash(method = "hash_f32"))]
     pub beta: f32,
-    #[educe(Hash(method = "hash_f32"))]
     pub bias: f32,
     pub size: usize,
 }
-
-impl_dyn_hash!(Lrn);
 
 impl Lrn {
     fn eval_t<T>(&self, input: TValue) -> TractResult<TVec<TValue>>

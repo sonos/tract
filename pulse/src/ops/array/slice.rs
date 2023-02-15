@@ -32,7 +32,7 @@ pub struct PulsedAxisSlice {
     pub take: TDim,
 }
 
-impl_dyn_hash!(PulsedAxisSlice);
+
 
 impl Op for PulsedAxisSlice {
     fn name(&self) -> Cow<str> {

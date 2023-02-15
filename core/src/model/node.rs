@@ -4,15 +4,13 @@ use crate::ops::Op;
 use tract_itertools::Itertools;
 use std::fmt;
 use std::fmt::{Debug, Display};
-use std::hash::Hash;
 
 /// A Node in an Model.
 ///
 /// Parameterized by a Fact implementation matching the one used in the
 /// model.
-#[derive(Debug, Clone, Educe)]
-#[educe(Hash)]
-pub struct Node<F: Fact + Hash, O: Hash> {
+#[derive(Debug, Clone)]
+pub struct Node<F: Fact , O> {
     /// node id in the model
     ///
     /// Caution: this id will not be persistent during networks transformation
@@ -32,7 +30,7 @@ pub struct Node<F: Fact + Hash, O: Hash> {
     pub outputs: TVec<Outlet<F>>,
 }
 
-impl<F: Fact + Hash, O: Hash + std::fmt::Display> fmt::Display for Node<F, O> {
+impl<F: Fact , O: std::fmt::Display> fmt::Display for Node<F, O> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "#{} \"{}\" {}", self.id, self.name, self.op)
     }
@@ -40,8 +38,8 @@ impl<F: Fact + Hash, O: Hash + std::fmt::Display> fmt::Display for Node<F, O> {
 
 impl<F, NodeOp> Node<F, NodeOp>
 where
-    F: Fact + Hash,
-    NodeOp: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + AsMut<dyn Op> + Hash,
+    F: Fact ,
+    NodeOp: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + AsMut<dyn Op> ,
 {
     /// Access the op of the node
     pub fn op(&self) -> &dyn Op {
@@ -70,16 +68,15 @@ where
 }
 
 /// Information for each outlet of a node
-#[derive(Clone, Default, Educe)]
-#[educe(Hash)]
-pub struct Outlet<F: Fact + Hash> {
+#[derive(Clone, Default)]
+pub struct Outlet<F: Fact > {
     /// the tensor type information
     pub fact: F,
     /// where this outlet is used.
     pub successors: TVec<InletId>,
 }
 
-impl<F: Fact + Hash> fmt::Debug for Outlet<F> {
+impl<F: Fact > fmt::Debug for Outlet<F> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(
             fmt,

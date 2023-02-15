@@ -26,7 +26,7 @@ pub fn lstm(
     Ok((expand(lstm), vec![]))
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone)]
 pub struct LSTM {
     pub optional_bias_input: Option<usize>,
     pub optional_sequence_lens_input: Option<usize>,
@@ -40,8 +40,6 @@ pub struct LSTM {
     pub g: Box<dyn TypedOp>,
     pub h: Box<dyn TypedOp>,
 }
-
-impl_dyn_hash!(LSTM);
 
 impl Default for LSTM {
     fn default() -> LSTM {

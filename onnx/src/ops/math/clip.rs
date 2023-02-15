@@ -38,7 +38,7 @@ pub struct Clip11 {
     input_max: Option<usize>,
 }
 
-impl_dyn_hash!(Clip11);
+
 
 impl Expansion for Clip11 {
     fn name(&self) -> Cow<str> {

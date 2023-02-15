@@ -11,7 +11,7 @@ pub struct SumPool {
     pub normalize: bool,
 }
 
-impl_dyn_hash!(SumPool);
+
 
 impl Op for SumPool {
     fn name(&self) -> Cow<str> {
@@ -67,7 +67,7 @@ pub struct LirSumPool {
     pub geometry: PoolGeometry,
 }
 
-impl_dyn_hash!(LirSumPool);
+
 
 impl Op for LirSumPool {
     fn name(&self) -> Cow<str> {

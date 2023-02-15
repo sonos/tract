@@ -10,7 +10,7 @@ use super::binary::wire_cast;
 #[derive(Debug, Clone, Hash)]
 pub struct Iff;
 
-impl_dyn_hash!(Iff);
+
 
 impl Expansion for Iff {
     fn name(&self) -> Cow<str> {

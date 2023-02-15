@@ -13,7 +13,7 @@ pub enum InOut {
 }
 
 impl InOut {
-    pub fn as_outlet<F: Clone + Fact + Hash, O: Clone + Hash>(
+    pub fn as_outlet<F: Clone + Fact , O: Clone >(
         &self,
         node: &Node<F, O>,
     ) -> OutletId {
@@ -454,7 +454,7 @@ impl Op for AxisOp {
     op_as_typed_op!();
 }
 
-impl_dyn_hash!(AxisOp);
+
 
 #[derive(Debug, Clone)]
 struct ReshapeState;

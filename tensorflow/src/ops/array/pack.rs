@@ -18,7 +18,7 @@ pub struct Pack {
     axis: usize,
 }
 
-impl_dyn_hash!(Pack);
+
 
 impl Expansion for Pack {
     fn name(&self) -> Cow<str> {

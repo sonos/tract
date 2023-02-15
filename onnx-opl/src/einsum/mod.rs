@@ -12,7 +12,7 @@ pub struct EinSum {
     pub expr: Expr,
 }
 
-impl_dyn_hash!(EinSum);
+
 
 impl Op for EinSum {
     fn name(&self) -> Cow<str> {

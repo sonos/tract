@@ -5,7 +5,7 @@ use crate::internal::*;
 #[derive(Clone, Debug, Hash)]
 pub struct InnerDimToComplex;
 
-impl_dyn_hash!(InnerDimToComplex);
+
 
 impl Op for InnerDimToComplex {
     fn name(&self) -> Cow<str> {
@@ -43,7 +43,7 @@ impl TypedOp for InnerDimToComplex {
 #[derive(Clone, Debug, Hash)]
 pub struct ComplexToInnerDim;
 
-impl_dyn_hash!(ComplexToInnerDim);
+
 
 impl Op for ComplexToInnerDim {
     fn name(&self) -> Cow<str> {

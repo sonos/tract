@@ -2,16 +2,13 @@ use tract_hir::internal::*;
 use tract_hir::ops::nn::DataFormat;
 use tract_num_traits::AsPrimitive;
 
-#[derive(Debug, Clone, new, Default, Educe)]
-#[educe(Hash)]
+#[derive(Debug, Clone, new, Default)]
 pub struct BatchNorm {
     data_format: DataFormat,
-    #[educe(Hash(method = "hash_f32"))]
     epsilon: f32,
+    #[allow(dead_code)]
     spatial: bool,
 }
-
-impl_dyn_hash!(BatchNorm);
 
 impl BatchNorm {
     fn to_slope_and_inter<T>(

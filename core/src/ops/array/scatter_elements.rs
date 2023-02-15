@@ -5,7 +5,7 @@ use ndarray::*;
 pub struct ScatterElements {
     pub axis: usize,
 }
-impl_dyn_hash!(ScatterElements);
+
 
 impl Op for ScatterElements {
     fn name(&self) -> Cow<str> {

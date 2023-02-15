@@ -19,7 +19,7 @@ struct Shape {
     end: Option<i64>,
 }
 
-impl_dyn_hash!(Shape);
+
 
 impl Shape {
     fn resolve(&self, rank: i64) -> Range<usize> {

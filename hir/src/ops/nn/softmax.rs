@@ -6,7 +6,7 @@ pub struct Softmax {
     axis: isize,
 }
 
-impl_dyn_hash!(Softmax);
+
 
 impl Expansion for Softmax {
     fn name(&self) -> Cow<str> {
