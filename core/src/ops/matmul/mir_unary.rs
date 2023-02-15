@@ -1,4 +1,4 @@
-use super::lir_unary::{ConcreteMatMulGeometry, LirMatMulUnary, MatMulGeometry, ProtoFusedSpec};
+use super::lir_unary::{ConcreteMatrixGeometry, LirMatMulUnary, MatrixGeometry, ProtoFusedSpec};
 use super::*;
 use crate::internal::*;
 use crate::ops::array::TypedConcat;
@@ -205,12 +205,12 @@ impl MatMulUnary {
                 &[wire],
             )?[0];
             let b_storage = mmm.b_packed(b_dt.size_of(), k);
-            let geometry = ConcreteMatMulGeometry { m, k, n, b_storage };
+            let geometry = ConcreteMatrixGeometry { m, n };
             wire = patch.wire_node(
                 format!("{}.matmatmul", &*node.name),
                 LirMatMulUnary {
                     c_fact: c_dt.fact(&c_shape),
-                    geometry: MatMulGeometry::Concrete(geometry),
+                    geometry: MatrixGeometry::Concrete(geometry),
                     micro_ops: packed_as,
                     c_m_axis: self.axes.c_m,
                     c_n_axis: self.axes.c_n,

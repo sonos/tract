@@ -62,7 +62,7 @@ fn mmm(c: &mut Criterion) {
                 let input = tvec!(Tensor::zero_dt(f32::datum_type(), &[mmm.b_pack().len(48, 8)])
                     .unwrap()
                     .into_tvalue());
-                let geometry = MatMulGeometry::Concrete(ConcreteMatMulGeometry {
+                let geometry = MatrixGeometry::Concrete(ConcreteMatrixGeometry {
                     k: 48,
                     m: 64,
                     n: 8,
