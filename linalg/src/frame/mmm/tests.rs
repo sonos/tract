@@ -377,7 +377,7 @@ where
     fused_ops::<K, TA, TB, TC, TI, _>(
         m,
         n,
-        &[FusedSpec::BinPerRow(&tensor1(&bias), BinOp::Add)],
+        &[FusedSpec::BinPerRow(tensor1(&bias).view(), BinOp::Add)],
         |r, _| bias[r].as_(),
     )
 }
@@ -400,7 +400,7 @@ where
         n,
         &[
             FusedSpec::BinScalar(&tensor0(1i32.as_()), BinOp::Add),
-            FusedSpec::BinPerRow(&tensor1(&bias), BinOp::Mul),
+            FusedSpec::BinPerRow(tensor1(&bias).view(), BinOp::Mul),
         ],
         |r, _| bias[r].as_(),
     )
@@ -422,7 +422,7 @@ where
     fused_ops::<K, TA, TB, TC, TI, _>(
         m,
         n,
-        &[FusedSpec::BinPerCol(&tensor1(&bias), BinOp::Add)],
+        &[FusedSpec::BinPerCol(tensor1(&bias).view(), BinOp::Add)],
         |_, c| bias[c].as_(),
     )
 }
@@ -445,7 +445,7 @@ where
         n,
         &[
             FusedSpec::BinScalar(&tensor0(1i32.as_()), BinOp::Add),
-            FusedSpec::BinPerCol(&tensor1(&bias), BinOp::Mul),
+            FusedSpec::BinPerCol(tensor1(&bias).view(), BinOp::Mul),
         ],
         |_, c| bias[c].as_(),
     )

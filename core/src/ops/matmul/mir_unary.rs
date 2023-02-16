@@ -1,7 +1,11 @@
-use super::lir_unary::{ConcreteMatrixGeometry, LirMatMulUnary, MatrixGeometry, ProtoFusedSpec};
+use super::lir_unary::{
+    AddMatMulGeometry, ConcreteMatrixGeometry, LirMatMulUnary, MapOutputAxisToInput,
+    MatrixGeometry, ProtoFusedSpec,
+};
 use super::*;
 use crate::internal::*;
 use crate::ops::array::TypedConcat;
+use tract_data::itertools::izip;
 use tract_ndarray::prelude::*;
 
 /// The pseudo Unary matrix multiplier. A is constant, B is the input
@@ -10,8 +14,6 @@ pub struct MatMulUnary {
     pub a: Arc<Tensor>,
     pub axes: MatMulAxes,
 }
-
-
 
 impl Op for MatMulUnary {
     fn name(&self) -> Cow<str> {
@@ -87,10 +89,10 @@ impl TypedOp for MatMulUnary {
         }
         /*
         if let Some(patch) = self
-            .declutter_successors_are_slices(model, node)
-            .context("declutter successor are slice")?
+        .declutter_successors_are_slices(model, node)
+        .context("declutter successor are slice")?
         {
-            return Ok(Some(patch));
+        return Ok(Some(patch));
         }
         */
         Ok(None)
@@ -168,28 +170,6 @@ impl MatMulUnary {
         let mut a_iter_shape: TVec<usize> = self.a.shape().into();
         a_iter_shape[self.axes.a_m] = 1;
         a_iter_shape[self.axes.a_k] = 1;
-        let packed_as = Array::from_shape_fn(&*a_iter_shape, |a_prefix| unsafe {
-            let offset = a_prefix
-                .as_array_view()
-                .iter()
-                .zip(self.a.strides())
-                .map(|(x, s)| *x as isize * s)
-                .sum::<isize>()
-                * self.a.datum_type().size_of() as isize;
-            let mut pa = Tensor::uninitialized_aligned_dt(
-                self.a.datum_type(),
-                &[mmm.a_pack().len(k, m)],
-                mmm.a_pack().alignment(),
-            )
-            .unwrap();
-            mmm.a_pack().pack(
-                &mut pa.view_mut(),
-                TensorView::from_bytes(&self.a, offset, self.a.shape(), self.a.strides()),
-                self.axes.a_k,
-                self.axes.a_m,
-            );
-            (pa.into_arc_tensor(), vec![ProtoFusedSpec::Store])
-        });
         unsafe {
             let mut packed_b_shape: TVec<usize> = b_shape.into();
             packed_b_shape.remove(self.axes.b_k.max(self.axes.b_n));
@@ -204,19 +184,46 @@ impl MatMulUnary {
                 },
                 &[wire],
             )?[0];
+            let a_storage = mmm.a_packed(self.a.datum_type().size_of(), k);
             let b_storage = mmm.b_packed(b_dt.size_of(), k);
+            let mut pa = Tensor::uninitialized_aligned_dt(
+                self.a.datum_type(),
+                &[mmm.a_pack().len(k, m)],
+                mmm.a_pack().alignment(),
+            )
+            .unwrap();
+            mmm.a_pack().pack(&mut pa.view_mut(), &self.a.view(), self.axes.a_k, self.axes.a_m);
+            let c_to_b: TVec<(usize, usize)> = izip!(
+                (0..c_shape.len()).filter(|&c| c != self.axes.c_m && c != self.axes.c_n),
+                (0..b_shape.len()).filter(|&b| b != self.axes.b_k && b != self.axes.b_n),
+            )
+            .collect();
+            let micro_ops = vec![
+                ProtoFusedSpec::AddMatMul(
+                    AddMatMulGeometry {
+                        a_storage,
+                        b_storage,
+                        k: k.to_dim(),
+                        c_to_a_axis_mapping: MapOutputAxisToInput(tvec![]),
+                        c_to_b_axis_mapping: MapOutputAxisToInput(c_to_b),
+                    },
+                    AttrOrInput::Attr(pa.into_arc_tensor()),
+                    AttrOrInput::Input(0),
+                ),
+                ProtoFusedSpec::Store(mmm.c_view(self.axes.c_m, self.axes.c_n)),
+            ];
             let geometry = ConcreteMatrixGeometry { m, n };
             wire = patch.wire_node(
                 format!("{}.matmatmul", &*node.name),
                 LirMatMulUnary {
                     c_fact: c_dt.fact(&c_shape),
                     geometry: MatrixGeometry::Concrete(geometry),
-                    micro_ops: packed_as,
-                    c_m_axis: self.axes.c_m,
-                    c_n_axis: self.axes.c_n,
+                    micro_ops,
                     c_final_shape: c_shape.into(),
                     reshape_post: vec![],
                     mmm,
+                    c_m_axis: self.axes.c_m,
+                    c_n_axis: self.axes.c_n,
                 },
                 &[wire],
             )?[0];
@@ -266,7 +273,6 @@ impl MatMulUnary {
         }
         Ok(None)
     }
-
 }
 
 pub(super) fn mir_unary_invariants(
