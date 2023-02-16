@@ -33,8 +33,7 @@ struct ConcreteGeometry {
     pub ci_per_group: usize,
     patcher: Patcher,
     input_shape_with_n: DataShape,
-    packing_shape: TVec<usize>, // always has n and g
-    packed_shape: TVec<usize>,
+    packed_shape: TVec<usize>, // always Batch,Group,Packed
 }
 
 impl GeometryBound<SymbolicGeometry, ConcreteGeometry> {
@@ -87,13 +86,6 @@ impl ResolveTo<ConcreteGeometry> for SymbolicGeometry {
             self.k,
             &self.b_pack,
         )?;
-        let mut packing_shape = packed_shape.clone();
-        if !pool.input_shape.fmt.has_n() {
-            packing_shape.insert(0, 1);
-        }
-        if self.group == 1 {
-            packing_shape.insert(1, 1);
-        }
         Ok(ConcreteGeometry {
             pool,
             n,
@@ -103,7 +95,6 @@ impl ResolveTo<ConcreteGeometry> for SymbolicGeometry {
             patcher,
             input_shape_with_n,
             packed_shape,
-            packing_shape,
         })
     }
 }
@@ -125,6 +116,7 @@ impl Im2Col {
         Ok(Im2Col { pool_spec, group, geometry })
     }
 
+    // packed shape is Batch,Group,Packed
     fn packed_shape<D: DimLike>(
         input_shape: &BaseDataShape<D, TVec<D>>,
         conv_output_shape: &BaseDataShape<D, TVec<D>>,
@@ -133,12 +125,8 @@ impl Im2Col {
         b_pack: &Packer,
     ) -> TractResult<TVec<D>> {
         let mut output_shape: TVec<D> = tvec!();
-        if let Some(n) = input_shape.n() {
-            output_shape.push(n.clone());
-        }
-        if group != 1 {
-            output_shape.push(group.into());
-        }
+        output_shape.push(input_shape.n().cloned().unwrap_or_else(|| 1.into()));
+        output_shape.push(group.into());
         let n: D = conv_output_shape.hw_dims().iter().cloned().product();
         output_shape.push(b_pack.len(k.into(), n));
         Ok(output_shape)
@@ -170,12 +158,13 @@ impl EvalOp for Im2Col {
             let pad_value: Option<&Tensor> = if inputs.len() > 0 { Some(&inputs[0]) } else { None };
             let mut output = Tensor::uninitialized_aligned_dt(
                 input.datum_type(),
-                &geometry.packing_shape,
+                &geometry.packed_shape,
                 geometry.b_pack.alignment(),
             )?;
             if !self.pool_spec.data_format.has_n() {
                 input.insert_axis(0)?;
             }
+
             // in the loop, we have normalized the input so that N is
             // always here, and output so that N and G are there.
             if !geometry.pool.output_shape.shape.iter().any(|d| *d == 0) {
@@ -196,7 +185,6 @@ impl EvalOp for Im2Col {
                     }
                 }
             }
-            output.set_shape_unchecked(&geometry.packed_shape);
             Ok(tvec!(output.into_tvalue()))
         }
     }

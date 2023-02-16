@@ -5,6 +5,7 @@ use crate::setup_test_logger;
 use proptest::collection::vec;
 use proptest::prelude::*;
 use tract_itertools::izip;
+use tract_ndarray::arr3;
 use tract_ndarray::prelude::*;
 
 #[derive(Debug)]
@@ -586,6 +587,24 @@ fn bias_0() -> anyhow::Result<()> {
 }
 
 #[test]
+fn bias_1() -> anyhow::Result<()> {
+    let kernel = tract_ndarray::ArrayD::<f32>::zeros(vec![2, 1, 2]);
+    let data = tract_ndarray::ArrayD::<f32>::zeros(vec![2, 1]);
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [2])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data,
+        kernel,
+        bias: Some(arr1(&[0.0f32, 1.0]).into_dyn()),
+        pad: PaddingSpec::Valid,
+        strides: tvec!(1, 1),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
 fn bias_chw_0() -> anyhow::Result<()> {
     let pb = ConvProblem {
         shape_in: DataFormat::CHW.from_n_c_hw(1, 1, [3])?,
@@ -609,6 +628,24 @@ fn batch_0() -> anyhow::Result<()> {
         group: 1,
         data: ndarray::ArrayD::<f32>::zeros(vec![2, 2, 1]),
         kernel: ndarray::ArrayD::<f32>::zeros(vec![1, 1, 2]),
+        bias: None,
+        pad: PaddingSpec::Valid,
+        strides: tvec!(1),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
+fn batch_1() -> anyhow::Result<()> {
+    let data = arr3(&[[[0.0f32]], [[1.0]]]).into_dyn();
+    let kernel = arr3(&[[[1.0f32]]]).into_dyn();
+    let pb = ConvProblem {
+        shape_in: DataFormat::NHWC.from_n_c_hw(2, 1, [1])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data,
+        kernel,
         bias: None,
         pad: PaddingSpec::Valid,
         strides: tvec!(1),
@@ -915,3 +952,4 @@ fn depthwise_0() -> anyhow::Result<()> {
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
 }
+

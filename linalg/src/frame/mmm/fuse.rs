@@ -39,8 +39,8 @@ impl BinOp {
 #[derive(Clone, Debug)]
 pub enum FusedSpec<'t> {
     BinScalar(&'t Tensor, BinOp),
-    BinPerRow(&'t Tensor, BinOp),
-    BinPerCol(&'t Tensor, BinOp),
+    BinPerRow(TensorView<'t>, BinOp),
+    BinPerCol(TensorView<'t>, BinOp),
     AddRowColProducts(&'t Tensor, &'t Tensor),
     AddUnicast(OutputStore),
     QScale(isize, RoundingPolicy, i32),
