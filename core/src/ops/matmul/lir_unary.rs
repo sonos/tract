@@ -416,6 +416,7 @@ impl TypedOp for LirMatMulUnary {
 }
 
 impl LirMatMulUnary {
+    /*
     fn fuse_op(
         &self,
         model: &TypedModel,
@@ -514,4 +515,5 @@ impl LirMatMulUnary {
         }
         return Ok(None);
     }
+*/
 }
