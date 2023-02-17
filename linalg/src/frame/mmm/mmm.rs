@@ -214,7 +214,7 @@ where
         let scratch = scratch
             .downcast_mut::<ScratchSpaceFusedNonLinear<TI>>()
             .context("Wrong scratch space type")?;
-        scratch.prepare::<K>(non_linear);
+        scratch.prepare::<K>(non_linear)?;
         for ia in 0..m / mr {
             scratch.for_valid_tile::<K>(non_linear, ia, 0);
             let err = K::kernel(scratch.uspecs());
@@ -241,7 +241,7 @@ where
         let scratch = scratch
             .downcast_mut::<ScratchSpaceFusedNonLinear<TI>>()
             .context("Wrong scratch space type")?;
-        scratch.prepare::<K>(non_linear);
+        scratch.prepare::<K>(non_linear)?;
         for ib in 0..n / nr {
             for ia in 0..m / mr {
                 scratch.for_valid_tile::<K>(non_linear, ia, ib);
@@ -290,7 +290,7 @@ where
         let scratch = scratch
             .downcast_mut::<ScratchSpaceFusedNonLinear<TI>>()
             .context("Wrong scratch space type")?;
-        scratch.prepare::<K>(non_linear);
+        scratch.prepare::<K>(non_linear)?;
         for ia in 0..m / mr {
             for ib in 0..n / nr {
                 scratch.for_valid_tile::<K>(non_linear, ia, ib);
