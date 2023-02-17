@@ -102,7 +102,7 @@ impl Packer {
         k_range: Range<usize>,
         mn_range: Range<usize>,
     ) {
-        debug_assert_eq!(pb.borrow().len(), self.len(k_range.len(), mn_range.len()));
+        debug_assert!(pb.borrow().len() >= self.len(k_range.len(), mn_range.len()));
         let pb = pb.borrow_mut();
         let b = b.borrow();
         let dt = pb.datum_type();
