@@ -54,7 +54,7 @@ impl<TI: LADatum> Drop for ScratchSpaceFusedNonLinear<TI> {
 struct AddMatMulTemp(*const u8, usize);
 
 impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
-    pub unsafe fn prepare<K: MatMatMulKer<TI>>(&mut self, specs: &[FusedSpec]) {
+    pub unsafe fn prepare<K: MatMatMulKer<TI>>(&mut self, specs: &[FusedSpec]) -> TractResult<()> {
         use FusedKerSpec as FKS;
         use FusedSpec as FS;
         self.uspecs.clear();
@@ -70,12 +70,12 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
         for (ix, spec) in specs.iter().enumerate() {
             let uspec = match spec {
                 FS::BinScalar(t, op) => match op {
-                    BinOp::Min => FKS::ScalarMin(*t.to_scalar_unchecked()),
-                    BinOp::Max => FKS::ScalarMax(*t.to_scalar_unchecked()),
-                    BinOp::Mul => FKS::ScalarMul(*t.to_scalar_unchecked()),
-                    BinOp::Add => FKS::ScalarAdd(*t.to_scalar_unchecked()),
-                    BinOp::Sub => FKS::ScalarSub(*t.to_scalar_unchecked()),
-                    BinOp::SubF => FKS::ScalarSubF(*t.to_scalar_unchecked()),
+                    BinOp::Min => FKS::ScalarMin(*t.to_scalar()?),
+                    BinOp::Max => FKS::ScalarMax(*t.to_scalar()?),
+                    BinOp::Mul => FKS::ScalarMul(*t.to_scalar()?),
+                    BinOp::Add => FKS::ScalarAdd(*t.to_scalar()?),
+                    BinOp::Sub => FKS::ScalarSub(*t.to_scalar()?),
+                    BinOp::SubF => FKS::ScalarSubF(*t.to_scalar()?),
                 },
                 FS::ShiftLeft(s) => FKS::ShiftLeft(*s),
                 FS::RoundingShiftRight(s, rp) => FKS::RoundingShiftRight(*s, *rp),
@@ -139,6 +139,7 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                 _ => (),
             };
         }
+        Ok(())
     }
 
     #[inline(always)]
