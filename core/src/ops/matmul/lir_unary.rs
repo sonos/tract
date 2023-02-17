@@ -383,6 +383,7 @@ impl TypedOp for LirMatMulUnary {
             if self.micro_ops.len() == 1 && op.0.is::<ops::math::Add>() {
                 let other_slot = 1 - node.outputs[0].successors[0].slot;
                 let other_input = succ.inputs[other_slot];
+                let other_input = patch.tap_model(model, other_input)?;
 
                 if model.outlet_fact(other_input)?.shape == self.c_fact.shape {
                     let other_storage = unsafe { self.mmm.c_view(self.c_m_axis, self.c_n_axis) };

@@ -173,6 +173,7 @@ fn main() -> tract_core::anyhow::Result<()> {
                 .help("Try nodes one per one to mitigate crashes"),
         );
     let compare = run_options(compare);
+    let compare = assertions_options(compare);
     app = app.subcommand(output_options(compare));
 
     let bench =
