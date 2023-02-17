@@ -1,4 +1,5 @@
 use crate::internal::*;
+use crate::ops::cast;
 use ndarray::*;
 use tract_itertools::Itertools;
 
@@ -351,25 +352,18 @@ impl TypedOp for LirMatMulUnary {
             }
         }
 
+        let mut patch = TypedModelPatch::new(format!("fusing {succ}"));
+        patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ.name, node.name));
         if let Some(op) = succ.op_as::<ops::element_wise::ElementWiseOp>().map(|ew| ew.0.as_ref()) {
             if let Some(op) = op.downcast_ref::<ops::math::QScale>() {
                 return self.fuse_op_with_broadcast(
                     model,
                     node,
+                    patch,
                     &[ProtoFusedSpec::Scaler(op.scaler)],
                     &[],
                 );
             }
-            /* TODO
-        } else if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
-            let binop =
-                if let Some(op) = op.mini_op.as_linalg_binop() { op } else { return Ok(None) };
-            let shape = op.a.shape().into();
-            if op.a.datum_type() != self.mmm.internal_type() {
-                return Ok(None);
-            }
-            return self.fuse_binary(model, node, &shape, op.a.clone().into(), binop, &[]);
-            */
         } else if let Some(op) = succ.op_as::<ops::binary::TypedBinOp>() {
             let mut binop =
                 if let Some(op) = op.0.as_linalg_binop() { op } else { return Ok(None) };
@@ -378,9 +372,7 @@ impl TypedOp for LirMatMulUnary {
                 binop = binop.flip();
             }
             let other_outlet = succ.inputs[flipped as usize];
-            let other_fact = model.outlet_fact(other_outlet)?;
-            let value = node.inputs.len().into();
-            return self.fuse_binary(model, node, &other_fact.shape, value, binop, &[other_outlet]);
+            return self.fuse_binary(model, node, patch, other_outlet, binop);
         } else if let Some(op) = succ.op_as::<ops::binary::MergeOpUnicast>() {
             if self.micro_ops.len() == 1 && op.0.is::<ops::math::Add>() {
                 let other_slot = 1 - node.outputs[0].successors[0].slot;
@@ -391,6 +383,7 @@ impl TypedOp for LirMatMulUnary {
                     return self.fuse_op_with_broadcast(
                         model,
                         node,
+                        patch,
                         &[ProtoFusedSpec::AddUnicast(other_storage, node.inputs.len().into())],
                         &[other_input],
                     );
@@ -408,6 +401,7 @@ impl LirMatMulUnary {
         &self,
         model: &TypedModel,
         node: &TypedNode,
+        mut patch: TypedModelPatch,
         fused_micro_op: &ArrayD<Vec<ProtoFusedSpec>>,
         additional_inputs: &[OutletId],
     ) -> TractResult<Option<TypedModelPatch>> {
@@ -418,14 +412,9 @@ impl LirMatMulUnary {
             lhs.1.extend(rhs.iter().cloned());
             lhs.1.push(ProtoFusedSpec::Store);
         });
-        let mut patch = TypedModelPatch::new(format!("fusing {succ}"));
-        patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ.name, node.name));
-        let inputs = node
-            .inputs
-            .iter()
-            .chain(additional_inputs.iter())
-            .map(|i| patch.tap_model(model, *i))
-            .collect::<TractResult<TVec<OutletId>>>()?;
+        let mut inputs: TVec<OutletId> =
+            node.inputs.iter().map(|i| patch.tap_model(model, *i)).collect::<TractResult<_>>()?;
+        inputs.extend(additional_inputs.iter().cloned());
         let output = patch.wire_node(&node.name, new_op, &inputs)?;
         patch.shunt_outside(model, succ.id.into(), output[0])?;
         Ok(Some(patch))
@@ -435,31 +424,47 @@ impl LirMatMulUnary {
         &self,
         model: &TypedModel,
         node: &TypedNode,
+        patch: TypedModelPatch,
         fused_micro_op: &[ProtoFusedSpec],
         additional_inputs: &[OutletId],
     ) -> TractResult<Option<TypedModelPatch>> {
         let array = arr0(fused_micro_op.to_vec()).into_dyn();
-        self.fuse_op(model, node, &array, additional_inputs)
+        self.fuse_op(model, node, patch, &array, additional_inputs)
     }
 
     fn fuse_binary(
         &self,
         model: &TypedModel,
         node: &TypedNode,
-        shape: &ShapeFact,
-        value: AttrOrInput,
+        mut patch: TypedModelPatch,
+        value: OutletId,
         binop: BinOp,
-        additional_inputs: &[OutletId],
     ) -> TractResult<Option<TypedModelPatch>> {
-        if shape.volume() == 1.to_dim() {
+        let fact = model.outlet_fact(value)?;
+        let (value, additional_inputs): (AttrOrInput, TVec<OutletId>) = if let Some(konst) = &fact.konst {
+            let v = konst.cast_to_dt(self.mmm.internal_type())?.into_owned().into_arc_tensor();
+            (v.into(), tvec!())
+        } else {
+            let mut v = patch.tap_model(model, value)?;
+            if fact.datum_type != self.mmm.internal_type() {
+                v = patch.wire_node(
+                    format!("{}.cast-input-{}", node.name, node.inputs.len()),
+                    cast::cast(self.mmm.internal_type()),
+                    &[v],
+                )?[0];
+            }
+            (AttrOrInput::Input(node.inputs.len()), tvec!(v))
+        };
+        if fact.shape.volume() == 1.to_dim() {
             return self.fuse_op_with_broadcast(
                 model,
                 node,
+                patch,
                 &[ProtoFusedSpec::BinScalar(value, binop)],
-                additional_inputs,
+                &additional_inputs,
             );
         }
-        let mut other_shape = shape.to_owned();
+        let mut other_shape = fact.shape.to_owned();
         for axis_change in self.reshape_post.iter().rev() {
             if axis_change.recip().change_shape(&mut other_shape, true).is_err() {
                 return Ok(None);
@@ -471,8 +476,9 @@ impl LirMatMulUnary {
             return self.fuse_op_with_broadcast(
                 model,
                 node,
+                patch,
                 &[ProtoFusedSpec::BinPerRow(value, binop)],
-                additional_inputs,
+                &additional_inputs,
             );
         }
         if other_shape[self.c_n_axis] == self.c_fact.shape[self.c_n_axis]
@@ -481,8 +487,9 @@ impl LirMatMulUnary {
             return self.fuse_op_with_broadcast(
                 model,
                 node,
+                patch,
                 &[ProtoFusedSpec::BinPerCol(value, binop)],
-                additional_inputs,
+                &additional_inputs,
             );
         }
         Ok(None)
