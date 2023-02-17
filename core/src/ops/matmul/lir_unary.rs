@@ -1,5 +1,4 @@
 use crate::internal::*;
-use crate::ops::cast;
 use ndarray::*;
 use tract_itertools::Itertools;
 
@@ -235,12 +234,10 @@ fn eval(
         let geometry = op.geometry.to_concrete(symbols)?;
         let c_shape = op.c_fact.shape.eval_to_usize(symbols)?;
         let c_final_shape = op.c_final_shape.eval_to_usize(symbols)?;
-        dbg!(&c_shape);
         let mut c = Tensor::uninitialized_dt(op.c_fact.datum_type, &c_shape)?;
         let mut looping_shape: TVec<usize> = c_shape.to_smallvec();
         looping_shape[op.c_m_axis] = 1;
         looping_shape[op.c_n_axis] = 1;
-        dbg!(&op.micro_ops);
         //        if looping_shape.iter().any(|d| *d > 1) {
         for c_coords in indices(&*looping_shape) {
             let ops = op
@@ -248,18 +245,15 @@ fn eval(
                 .iter()
                 .map(|f| f.resolve(inputs, c_coords.slice(), symbols, &mut c))
                 .collect::<TractResult<TVec<_>>>()?;
-            dbg!(&ops);
             op.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch, &ops)?;
         }
         /*
         } else {
-        dbg!("fast path");
         let ops = op
         .micro_ops
         .iter()
         .map(|f| f.resolve(inputs, &looping_shape, symbols, &mut c))
         .collect::<TractResult<TVec<_>>>()?;
-        dbg!("done prep");
         op.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch, &ops)?;
         }
         */

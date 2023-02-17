@@ -112,7 +112,6 @@ impl ChangeAxisMatmulProblem {
             .map(|changed_mm| {
                 let mut model = TypedModel::default();
                 let source = model.add_source("source", f32::fact(self.input.shape())).unwrap();
-                dbg!(&changed_mm);
                 let mut wire = model
                     .wire_node(
                         "mm",

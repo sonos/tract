@@ -528,6 +528,24 @@ fn test_group_3() {
 }
 
 #[test]
+fn test_group_4() {
+    let pb = DeconvProblem {
+        optimized: true,
+        data_format: HWC,
+        kernel_format: OIHW,
+        padding: PaddingSpec::Valid,
+        input: arr2(&[[0f32, 1.]]).into_dyn(),
+        kernel: arr3(&[[[0f32], [1.]]]).into_dyn(),
+        bias: None,
+        strides: tvec!(1),
+        dilations: tvec!(1),
+        adjustments: tvec!(0),
+        group: 2,
+    };
+    pb.check();
+}
+
+#[test]
 fn test_bias_0() {
     let pb = DeconvProblem {
         optimized: false,
@@ -597,6 +615,24 @@ fn test_issue_optim_2d() {
         strides: tvec!(1, 2),
         dilations: tvec!(1, 1),
         adjustments: tvec!(0, 0),
+        group: 1,
+    };
+    pb.check();
+}
+
+#[test]
+fn test_foo() {
+    let pb = DeconvProblem {
+        optimized: true,
+        data_format: NHWC,
+        kernel_format: OIHW,
+        padding: PaddingSpec::Valid,
+        input: arr3(&[[[0f32]], [[1.]]]).into_dyn(),
+        kernel: arr3(&[[[1f32]]]).into_dyn(),
+        bias: None,
+        strides: tvec!(1),
+        dilations: tvec!(1),
+        adjustments: tvec!(0),
         group: 1,
     };
     pb.check();

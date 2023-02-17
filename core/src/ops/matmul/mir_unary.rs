@@ -5,8 +5,8 @@ use super::lir_unary::{
 use super::*;
 use crate::internal::*;
 use crate::ops::array::TypedConcat;
+use num_integer::Integer;
 use tract_data::itertools::izip;
-use tract_ndarray::prelude::*;
 
 /// The pseudo Unary matrix multiplier. A is constant, B is the input
 #[derive(Debug, Clone, new, Hash)]
@@ -167,10 +167,31 @@ impl MatMulUnary {
                 )
             })?;
 
-        let mut a_iter_shape: TVec<usize> = self.a.shape().into();
-        a_iter_shape[self.axes.a_m] = 1;
-        a_iter_shape[self.axes.a_k] = 1;
         unsafe {
+            let mut packed_a_shape: TVec<usize> = self.a.shape().into();
+            packed_a_shape[self.axes.a_k] = 1;
+            packed_a_shape[self.axes.a_m] = 1;
+            let packer_a = mmm.a_pack();
+            packed_a_shape.push(Integer::next_multiple_of(
+                &packer_a.len(k, m),
+                &(packer_a.alignment() / self.a.datum_type().size_of()),
+            ));
+
+            let mut pa = Tensor::uninitialized_aligned_dt(
+                self.a.datum_type(),
+                &packed_a_shape,
+                mmm.a_pack().alignment(),
+            )?;
+            for a_iter in tract_ndarray::indices(&packed_a_shape[..(packed_a_shape.len() - 1)]) {
+                let mut pa_coords = a_iter.slice().to_vec();
+                pa_coords.push(0);
+                packer_a.pack(
+                    &mut pa.view_offsetting_mut(&pa_coords)?,
+                    &self.a.view_offsetting(a_iter.slice())?,
+                    self.axes.a_k,
+                    self.axes.a_m)
+            }
+
             let mut packed_b_shape: TVec<usize> = b_shape.into();
             packed_b_shape.remove(self.axes.b_k.max(self.axes.b_n));
             packed_b_shape.remove(self.axes.b_k.min(self.axes.b_n));
@@ -184,19 +205,20 @@ impl MatMulUnary {
                 },
                 &[wire],
             )?[0];
+
             let a_storage = mmm.a_packed(self.a.datum_type().size_of(), k);
             let b_storage = mmm.b_packed(b_dt.size_of(), k);
-            let mut pa = Tensor::uninitialized_aligned_dt(
-                self.a.datum_type(),
-                &[mmm.a_pack().len(k, m)],
-                mmm.a_pack().alignment(),
+            let c_to_a: TVec<(usize, usize)> = izip!(
+                (0..c_shape.len()).filter(|&c| c != self.axes.c_m && c != self.axes.c_n),
+                (0..self.a.rank()).filter(|&a| a != self.axes.a_k && a != self.axes.a_m),
             )
-            .unwrap();
-            mmm.a_pack().pack(&mut pa.view_mut(), &self.a.view(), self.axes.a_k, self.axes.a_m);
+            .filter(|(_,a)| self.a.shape()[*a] > 1)
+            .collect();
             let c_to_b: TVec<(usize, usize)> = izip!(
                 (0..c_shape.len()).filter(|&c| c != self.axes.c_m && c != self.axes.c_n),
                 (0..b_shape.len()).filter(|&b| b != self.axes.b_k && b != self.axes.b_n),
             )
+            .filter(|(_,b)| b_shape[*b] > 1)
             .collect();
             let micro_ops = vec![
                 ProtoFusedSpec::AddMatMul(
@@ -204,7 +226,7 @@ impl MatMulUnary {
                         a_storage,
                         b_storage,
                         k: k.to_dim(),
-                        c_to_a_axis_mapping: MapOutputAxisToInput(tvec![]),
+                        c_to_a_axis_mapping: MapOutputAxisToInput(c_to_a),
                         c_to_b_axis_mapping: MapOutputAxisToInput(c_to_b),
                     },
                     AttrOrInput::Attr(pa.into_arc_tensor()),
