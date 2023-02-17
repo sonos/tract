@@ -222,9 +222,8 @@ impl MatMulQParams {
             } else {
                 for (param_name, param) in params {
                     match param {
-                        QParamKind::Attr(t) => params_outlets.push(
-                            model.add_const(format!("{node_name}.{param_name}"), t.clone())?,
-                        ),
+                        QParamKind::Attr(t) => params_outlets
+                            .push(model.add_const(format!("{node_name}.{param_name}"), t.clone())?),
                         QParamKind::FromInput(i) => params_outlets.push(inputs_wires[*i]),
                         QParamKind::FromQType => {
                             bail!("Param {} has no quantization parameters", param_name)
@@ -272,8 +271,7 @@ impl EvalOp for QMatMul {
 
         let mut input_outlets = tvec![a, b, bias];
         for (i, t) in inputs.iter().enumerate().skip(3) {
-            input_outlets
-                .push(model.add_const(format!("source_{i}"), t.clone().into_arc_tensor())?)
+            input_outlets.push(model.add_const(format!("source_{i}"), t.clone().into_arc_tensor())?)
         }
 
         let mut params = self.params.as_outlet_ids(
@@ -604,9 +602,8 @@ pub(crate) fn wire_matmul_quant(
         model.wire_node(format!("{name}.sum_b_rm_k_axis"), AxisOp::Rm(axes.b_k), &[sum_b])?[0];
     let sum_b =
         model.wire_node(format!("{name}.sum_a_add_m_axis"), AxisOp::Add(axes.c_m), &[sum_b])?[0];
-    let result = compensate_zero_points(
-        model, name, result, k, params[0], params[2], sum_a, sum_b, axes.c_m, axes.c_n,
-    )?;
+    let result =
+        compensate_zero_points(model, name, result, k, params[0], params[2], sum_a, sum_b)?;
     requant(model, name, result, output_type, abc_scale, params[4])
 }
 
@@ -642,8 +639,6 @@ pub(crate) fn compensate_zero_points(
     b0: OutletId,
     sum_a: OutletId,
     sum_b: OutletId,
-    m_axis: usize,
-    n_axis: usize,
 ) -> TractResult<OutletId> {
     let output_rank = model.outlet_fact(result)?.rank();
     ensure!(model.outlet_fact(sum_a)?.rank() == output_rank);
@@ -656,8 +651,7 @@ pub(crate) fn compensate_zero_points(
         model.wire_node(format!("{name}.cast_b0"), ops::cast::cast(i32::datum_type()), &[b0])?[0];
 
     let k = model.add_const(format!("{name}.k"), rctensor0(k))?;
-    let k =
-        model.wire_node(format!("{name}.cast_k"), ops::cast::cast(i32::datum_type()), &[k])?[0];
+    let k = model.wire_node(format!("{name}.cast_k"), ops::cast::cast(i32::datum_type()), &[k])?[0];
 
     let a0_sum_b = wire_with_rank_broadcast(
         &format!("{name}.a0_sum_b"),
@@ -676,12 +670,9 @@ pub(crate) fn compensate_zero_points(
     let a0_k =
         wire_with_rank_broadcast(&format!("{name}.a0_k"), model, ops::math::mul(), &[a0, k])?[0];
 
-    let a0_k_b0 = wire_with_rank_broadcast(
-        &format!("{name}.a0_k_b0"),
-        model,
-        ops::math::mul(),
-        &[a0_k, b0],
-    )?[0];
+    let a0_k_b0 =
+        wire_with_rank_broadcast(&format!("{name}.a0_k_b0"), model, ops::math::mul(), &[a0_k, b0])?
+            [0];
 
     let result = wire_with_rank_broadcast(
         &format!("{}.minus_a0_B", &name),

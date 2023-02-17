@@ -116,10 +116,6 @@ impl TypedOp for QMatMulUnary {
     }
 
     fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
-        /*
-        dbg!(inputs);
-        dbg!(&self.params);
-        */
         // FIXME: why ?
         if self.params.iter().any(|qp| match qp.1 {
             QParamKind::Attr(t) => t.len() > 1,

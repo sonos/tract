@@ -217,10 +217,8 @@ impl ConvUnary {
 
         let b = wire_offset_u8_as_i8(model, name, wires[0], "b", &mut b0, "b0")?;
         let b_fact = model.outlet_fact(b)?.clone();
-        eprintln!("b_fact: {:?}", b_fact);
         let (_, m, k, n, mmm) = self.compute_geo(&b_fact)?;
         let output_shape = self.pool_spec.output_shape(&b_fact.shape)?;
-        dbg!(&output_shape);
 
         let abc_scale = qmm::combine_scales(model, name, a_scale, b_scale, c_scale)?;
 
@@ -230,13 +228,11 @@ impl ConvUnary {
             &[b, b0],
         )?[0];
 
-        eprintln!("im2col: {:?}", model.outlet_fact(im2col)?);
-
         let a = self.kernel_as_group_o_ihw()?.into_tensor();
         let a = a.cast_to_dt(i32::datum_type())?;
         let a = a.to_array_view::<i32>()?;
         let sum_a = a.sum_axis(Axis(a.ndim() - 1));
-        let mut sum_a_shape:TVec<usize> = sum_a.shape().into();
+        let mut sum_a_shape: TVec<usize> = sum_a.shape().into();
         // align sum_A from G,C to "C" shape: N,HW,G,C (or N,G,C,HW)
         sum_a_shape.insert(0, 1);
         if self.pool_spec.data_format.c_is_last() {
@@ -246,7 +242,6 @@ impl ConvUnary {
         }
         let sum_a = sum_a.into_shape(&*sum_a_shape)?;
         let sum_a = model.add_const(format!("{name}.sum_a"), sum_a)?;
-        eprintln!("sum_a: {:?}", model.outlet_fact(sum_a)?);
 
         let mut sum_b = model.wire_node(
             format!("{name}.sum_b"),
@@ -254,14 +249,14 @@ impl ConvUnary {
             &[im2col],
         )?;
         // sum_b is N,G,HW. make it N,HW,G,C or N,G,C,HW
-        sum_b = model.wire_node(format!("{name}.add_c"), AxisOp::Add(2), &sum_b)?; 
+        sum_b = model.wire_node(format!("{name}.add_c"), AxisOp::Add(2), &sum_b)?;
         if self.pool_spec.data_format.c_is_last() {
-            sum_b = model.wire_node(format!("{name}.transpose_sum_b"), AxisOp::Move(3, 1), &sum_b)?;
+            sum_b =
+                model.wire_node(format!("{name}.transpose_sum_b"), AxisOp::Move(3, 1), &sum_b)?;
         }
-        eprintln!("sum_b: {:?}", model.outlet_fact(sum_b[0])?);
 
         let b_dt = model.outlet_fact(b)?.datum_type;
-        let (mmm_output_shape, c_axis, h_axis) = dbg!(self.mmm_output_shape(&output_shape)?);
+        let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
         let mut geometry = MatrixGeometry::from(SymbolicMatrixGeometry {
             m: m.to_dim(),
             n: n.clone(),
@@ -271,7 +266,7 @@ impl ConvUnary {
             geometry = geometry.optimize_if(Some(&SymbolValues::default()))?;
         }
         let b_storage = unsafe { mmm.b_packed(b_dt.size_of(), k) };
-        let wire= self.wire_lir_matmatmul(
+        let wire = self.wire_lir_matmatmul(
             model,
             name,
             &[im2col],
@@ -285,26 +280,13 @@ impl ConvUnary {
             h_axis,
             b_storage,
         )?;
-        eprintln!("mmm: {:?}", model.outlet_fact(wire[0])?);
-        eprintln!("nogn: {:?}", model.outlet_fact(wire[0])?);
 
-        let wire = qmm::compensate_zero_points(
-            model,
-            name,
-            wire[0],
-            k.to_dim(),
-            a0,
-            b0,
-            sum_a,
-            sum_b[0],
-            c_axis,
-            h_axis,
-        )?;
+        let wire =
+            qmm::compensate_zero_points(model, name, wire[0], k.to_dim(), a0, b0, sum_a, sum_b[0])?;
 
         let wire = self.wire_remove_group(model, name, &[wire], &mmm_output_shape, c_axis)?;
         let wire = self.wire_rm_n_if_needed(model, name, &wire)?;
         let wire = qmm::requant(model, name, wire[0], c_dt, abc_scale, c0)?;
-        eprintln!("{}", model);
         Self::wire_geo_reshape(model, name, &[wire], &output_shape)
     }
 
@@ -339,7 +321,7 @@ impl ConvUnary {
 
         let (_, m, k, n, mmm) = self.compute_geo(model.outlet_fact(wire[0])?)?;
         let geo_output_shape = self.pool_spec.output_shape(&b_fact.shape)?;
-        let (mmm_output_shape, c_axis, h_axis) = dbg!(self.mmm_output_shape(&geo_output_shape)?);
+        let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&geo_output_shape)?;
 
         let padding = model.add_const(format!("{name}.b0"), Tensor::zero_dt(b_dt, &[])?)?;
         let wire = model.wire_node(
@@ -419,15 +401,17 @@ impl ConvUnary {
         output_shape: &BaseDataShape<D, TVec<D>>,
     ) -> TractResult<TVec<OutletId>> {
         let geo_collapsed_out: D = output_shape.hw_dims().iter().cloned().product();
-        model.wire_node(
-            name,
-            AxisOp::Reshape(
-                output_shape.h_axis(),
-                tvec!(geo_collapsed_out.to_dim()),
-                output_shape.hw_dims().iter().map(|d| d.to_dim()).collect(),
-            ),
-            wire,
-        ).context("in wire_geo_reshape")
+        model
+            .wire_node(
+                name,
+                AxisOp::Reshape(
+                    output_shape.h_axis(),
+                    tvec!(geo_collapsed_out.to_dim()),
+                    output_shape.hw_dims().iter().map(|d| d.to_dim()).collect(),
+                ),
+                wire,
+            )
+            .context("in wire_geo_reshape")
     }
 
     pub unsafe fn wire_as_lazy_im2col(
@@ -566,7 +550,9 @@ impl ConvUnary {
                 AttrOrInput::Input(0),
             ),
         ];
-        if let Some(bias) = dispatch_numbers!(Self::bias_as_non_linear(mmm.internal_type())(self, c_m_axis - 1))? {
+        if let Some(bias) =
+            dispatch_numbers!(Self::bias_as_non_linear(mmm.internal_type())(self, c_m_axis - 1))?
+        {
             ops.push(bias);
         }
         ops.push(ProtoFusedSpec::Store(unsafe { mmm.c_view(c_m_axis, c_n_axis) }));
@@ -1080,12 +1066,14 @@ impl TypedOp for ConvUnary {
                     .iter()
                     .map(|w| patch.tap_model(model, *w))
                     .collect::<TractResult<TVec<_>>>()?;
-                let wire = self.wire_as_quant_im2col(
-                    &mut patch,
-                    &node.name,
-                    model.node_input_facts(node.id)?[0].datum_type,
-                    &inputs,
-                ).context("in wire_as_quant_im2col")?;
+                let wire = self
+                    .wire_as_quant_im2col(
+                        &mut patch,
+                        &node.name,
+                        model.node_input_facts(node.id)?[0].datum_type,
+                        &inputs,
+                    )
+                    .context("in wire_as_quant_im2col")?;
                 patch.shunt_outside(model, node.id.into(), wire[0])?;
                 patch.obliterate(node.id)?;
                 Ok(Some(patch.with_context("quantized-codegen")))
