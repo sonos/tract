@@ -244,8 +244,6 @@ pub struct QMatMul {
     pub params: MatMulQParams,
 }
 
-
-
 impl Op for QMatMul {
     fn name(&self) -> Cow<str> {
         "QMatMul".into()
@@ -554,6 +552,9 @@ pub(crate) fn wire_matmul_quant(
 ) -> TractResult<OutletId> {
     let b_fact = model.outlet_fact(b)?.clone();
     // TODO: assumed c_rank == b_rank (== a_rank)
+    eprintln!("a: {:?}", model.outlet_fact(a));
+    eprintln!("b: {:?}", model.outlet_fact(b));
+    eprintln!("self: {:?}", axes);
 
     if let Some(mut bias) = bias {
         // bias is scalar -> ok
@@ -591,14 +592,18 @@ pub(crate) fn wire_matmul_quant(
         &[a_i32],
     )?[0];
     let sum_a =
-        model.wire_node(format!("{name}.sum_a_reduced"), AxisOp::Rm(axes.a_k), &[sum_a])?[0];
+        model.wire_node(format!("{name}.sum_a_rm_k_axis"), AxisOp::Rm(axes.a_k), &[sum_a])?[0];
+    let sum_a =
+        model.wire_node(format!("{name}.sum_a_add_n_axis"), AxisOp::Add(axes.c_n), &[sum_a])?[0];
     let sum_b = model.wire_node(
         format!("{name}.sum_b"),
         ops::nn::Reduce::new(tvec!(axes.b_k), ops::nn::Reducer::Sum),
         &[b_i32],
     )?[0];
     let sum_b =
-        model.wire_node(format!("{name}.sum_b_reduced"), AxisOp::Rm(axes.b_k), &[sum_b])?[0];
+        model.wire_node(format!("{name}.sum_b_rm_k_axis"), AxisOp::Rm(axes.b_k), &[sum_b])?[0];
+    let sum_b =
+        model.wire_node(format!("{name}.sum_a_add_m_axis"), AxisOp::Add(axes.c_m), &[sum_b])?[0];
     let result = compensate_zero_points(
         model, name, result, k, params[0], params[2], sum_a, sum_b, axes.c_m, axes.c_n,
     )?;
@@ -640,28 +645,9 @@ pub(crate) fn compensate_zero_points(
     m_axis: usize,
     n_axis: usize,
 ) -> TractResult<OutletId> {
-    let input_shape = model.outlet_fact(result)?.shape.clone();
-    let rank = model.outlet_fact(result)?.rank();
-
-    debug_assert_eq!(model.outlet_fact(sum_a)?.rank(), rank - 1);
-    debug_assert_eq!(model.outlet_fact(sum_b)?.rank(), rank - 1);
-
-    // make sum_a into from a 1D vector to a vertical matrix, sum_b horizontal
-    // switch shapes if c_trans
-    let sum_a =
-        model.wire_node(format!("{name}.reshape_sum_a"), AxisOp::Add(n_axis), &[sum_a])?[0];
-
-    let sum_b =
-        model.wire_node(format!("{name}.reshape_sum_b"), AxisOp::Add(m_axis), &[sum_b])?[0];
-
-    debug_assert_eq!(
-        model.outlet_fact(sum_a)?.shape[m_axis],
-        model.outlet_fact(result)?.shape[m_axis]
-    );
-    debug_assert_eq!(
-        model.outlet_fact(sum_b)?.shape[n_axis],
-        model.outlet_fact(result)?.shape[n_axis]
-    );
+    let output_rank = model.outlet_fact(result)?.rank();
+    ensure!(model.outlet_fact(sum_a)?.rank() == output_rank);
+    ensure!(model.outlet_fact(sum_b)?.rank() == output_rank);
 
     let a0 =
         model.wire_node(format!("{name}.cast_a0"), ops::cast::cast(i32::datum_type()), &[a0])?[0];
@@ -717,7 +703,6 @@ pub(crate) fn compensate_zero_points(
         &[result, a0_k_b0],
     )?[0];
 
-    debug_assert_eq!(model.outlet_fact(result)?.shape, input_shape);
     Ok(result)
 }
 
