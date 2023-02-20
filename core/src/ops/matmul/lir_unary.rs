@@ -31,10 +31,10 @@ impl ProtoFusedSpec {
     pub fn name(&self) -> String {
         use ProtoFusedSpec::*;
         match self {
-            AddMatMul(_, _, _) => format!("matmul"),
-            BinScalar(_, op) => format!("scalar {op:?}"),
-            BinPerRow(_, op, _) => format!("row {op:?}"),
-            BinPerCol(_, op, _) => format!("col {op:?}"),
+            AddMatMul(geo, _, _) => format!("matmul(k={})", geo.k),
+            BinScalar(_, op) => format!("scalar{op:?}"),
+            BinPerRow(_, op, _) => format!("row{op:?}"),
+            BinPerCol(_, op, _) => format!("col{op:?}"),
             AddRowColProducts(_, _) => "add row*col product".to_string(),
             AddUnicast(_, _) => "add to matrix".to_string(),
             Scaler(s) => format!("scale by {}", 1f32 * *s),
@@ -60,7 +60,7 @@ impl ProtoFusedSpec {
                     geo.c_to_b_axis_mapping.translate_view(output_coords, &mut b);
                 }
                 FusedSpec::AddMatMul {
-                    k: geo.k.eval(&symbols).to_usize()?,
+                    k: geo.k.eval(symbols).to_usize()?,
                     a: unsafe { geo.a_storage.wrap(&a)? },
                     b: unsafe { geo.b_storage.wrap(&b)? },
                 }
@@ -80,16 +80,35 @@ impl ProtoFusedSpec {
                 FusedSpec::AddRowColProducts(row.tensor(inputs), col.tensor(inputs))
             }
             ProtoFusedSpec::AddUnicast(store, v) => unsafe {
-                let view = v.tensor(inputs).view_offsetting(&output_coords)?;
+                let view = v.tensor(inputs).view_offsetting(output_coords)?;
                 FusedSpec::AddUnicast(store.wrap(&view))
             },
             ProtoFusedSpec::Scaler(scaler) => scaler.as_fused_spec(),
             ProtoFusedSpec::Store(oss) => {
-                let view = output.view_offsetting_mut(&output_coords)?;
+                let view = output.view_offsetting_mut(output_coords)?;
                 FusedSpec::Store(unsafe { oss.wrap(&view) })
             }
         };
         Ok(fs)
+    }
+
+    fn rm_c_axis(&mut self, axis: usize) {
+        use ProtoFusedSpec::*;
+        match self {
+            AddMatMul(geo, _a, _b) => {
+                geo.c_to_a_axis_mapping.rm_c_axis(axis);
+                geo.c_to_b_axis_mapping.rm_c_axis(axis);
+            }
+            BinScalar(..) | Scaler(..) | AddRowColProducts(_, _) => {}
+            BinPerRow(_, _, map) | BinPerCol(_, _, map) => map.rm_c_axis(axis),
+            AddUnicast(oss, _) | Store(oss, ..) => match oss {
+                OutputStoreSpec::View { m_axis, n_axis, .. } => {
+                    *m_axis -= (*m_axis > axis) as usize;
+                    *n_axis -= (*n_axis > axis) as usize;
+                }
+                OutputStoreSpec::Strides { .. } => {}
+            },
+        }
     }
 }
 
@@ -101,6 +120,13 @@ impl MapOutputAxisToInput {
     unsafe fn translate_view(&self, output_coords: &[usize], v: &mut TensorView) {
         for &(out_axis, in_axis) in &self.0 {
             v.offset_axis(in_axis, output_coords[out_axis] as isize)
+        }
+    }
+
+    #[inline]
+    fn rm_c_axis(&mut self, axis: usize) {
+        for (c, _) in &mut self.0 {
+            *c -= (*c > axis) as usize;
         }
     }
 }
@@ -143,10 +169,8 @@ pub type MatrixGeometry = GeometryBound<SymbolicMatrixGeometry, ConcreteMatrixGe
 pub struct LirMatMulUnary {
     pub c_fact: TypedFact,
     pub micro_ops: Vec<ProtoFusedSpec>,
-    pub c_final_shape: ShapeFact,
     pub geometry: MatrixGeometry,
     pub mmm: Box<dyn MatMatMul>,
-    pub reshape_post: Vec<AxisOp>,
     pub c_m_axis: usize,
     pub c_n_axis: usize,
 }
@@ -234,7 +258,6 @@ fn eval(
     unsafe {
         let geometry = op.geometry.to_concrete(symbols)?;
         let c_shape = op.c_fact.shape.eval_to_usize(symbols)?;
-        let c_final_shape = op.c_final_shape.eval_to_usize(symbols)?;
         let mut c = Tensor::uninitialized_dt(op.c_fact.datum_type, &c_shape)?;
         let mut looping_shape: TVec<usize> = c_shape.to_smallvec();
         looping_shape[op.c_m_axis] = 1;
@@ -258,7 +281,7 @@ fn eval(
         op.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch, &ops)?;
         }
         */
-        c.set_shape_unchecked(&c_final_shape);
+        //c.set_shape_unchecked(&c_final_shape);
         Ok(tvec!(c.into_tvalue()))
     }
 }
@@ -273,9 +296,7 @@ impl TypedOp for LirMatMulUnary {
         self.c_fact.rank()
         );
         */
-        let mut fact = self.c_fact.clone();
-        fact.shape = self.c_final_shape.clone();
-        Ok(tvec!(fact))
+        Ok(tvec!(self.c_fact.clone()))
     }
 
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
@@ -343,7 +364,20 @@ impl TypedOp for LirMatMulUnary {
                 }
             }
         }
-        return Ok(None);
+        if let Some(AxisOp::Rm(axis)) = succ.op_as::<ops::AxisOp>() {
+            let mut new_op = self.clone();
+            new_op.c_fact.shape.remove_axis(*axis)?;
+            new_op.c_m_axis -= (new_op.c_m_axis > *axis) as usize;
+            new_op.c_n_axis -= (new_op.c_n_axis > *axis) as usize;
+            for uop in &mut new_op.micro_ops {
+                uop.rm_c_axis(*axis);
+            }
+            let mut patch =
+                TypedModelPatch::fuse_with_next(model, node, new_op)?;
+            patch.dont_apply_twice = Some(format!("Fuse {succ} into {node}"));
+            return Ok(Some(patch));
+        }
+        Ok(None)
         /*
            if let Some(op) = succ.op_as::<ops::AxisOp>() {
            if op.only_shape() {
@@ -462,10 +496,8 @@ impl LirMatMulUnary {
     ) -> TractResult<Option<TypedModelPatch>> {
         let succ = model.node(node.outputs[0].successors[0].node);
         let mut new_op = self.clone();
-        dbg!(&new_op.micro_ops);
         let before_last = new_op.micro_ops.len() - 1..new_op.micro_ops.len() - 1;
         new_op.micro_ops.splice(before_last, fused_micro_op);
-        dbg!(&new_op.micro_ops);
         let mut inputs: TVec<OutletId> =
             node.inputs.iter().map(|i| patch.tap_model(model, *i)).collect::<TractResult<_>>()?;
         inputs.extend(additional_inputs.iter().cloned());
@@ -518,12 +550,7 @@ impl LirMatMulUnary {
                 &additional_inputs,
             );
         }
-        let mut other_shape = fact.shape.to_owned();
-        for axis_change in self.reshape_post.iter().rev() {
-            if axis_change.recip().change_shape(&mut other_shape, true).is_err() {
-                return Ok(None);
-            }
-        }
+        let other_shape = fact.shape.to_owned();
         if other_shape[self.c_m_axis] == self.c_fact.shape[self.c_m_axis]
             && other_shape[self.c_m_axis] == other_shape.volume()
         {

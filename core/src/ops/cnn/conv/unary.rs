@@ -330,12 +330,9 @@ impl ConvUnary {
             &[wire[0], padding],
         )?;
 
-        let geometry = MatrixGeometry::from(SymbolicMatrixGeometry {
-            m: m.to_dim(),
-            n: n.clone(),
-            mmm: mmm.clone(),
-        })
-        .optimize_if(Some(&SymbolValues::default()))?;
+        let geometry =
+            MatrixGeometry::from(SymbolicMatrixGeometry { m: m.to_dim(), n, mmm: mmm.clone() })
+                .optimize_if(Some(&SymbolValues::default()))?;
 
         let b_storage = unsafe { mmm.b_packed(b_dt.size_of(), k) };
         let wire = self.wire_lir_matmatmul(
@@ -544,11 +541,7 @@ impl ConvUnary {
         };
         let mut ops: Vec<ProtoFusedSpec> = vec![
             //                let mut bias = bias.clone();
-            ProtoFusedSpec::AddMatMul(
-                geo.clone(),
-                AttrOrInput::Attr(kernels),
-                AttrOrInput::Input(0),
-            ),
+            ProtoFusedSpec::AddMatMul(geo, AttrOrInput::Attr(kernels), AttrOrInput::Input(0)),
         ];
         if let Some(bias) =
             dispatch_numbers!(Self::bias_as_non_linear(mmm.internal_type())(self, c_m_axis - 1))?
@@ -559,12 +552,10 @@ impl ConvUnary {
         model.wire_node(
             format!("{name}.matmatmul"),
             LirMatMulUnary {
-                c_fact: c_datum_type.fact(mmm_output_shape.clone()),
+                c_fact: c_datum_type.fact(mmm_output_shape),
                 micro_ops: ops,
                 c_m_axis,
                 c_n_axis,
-                c_final_shape: mmm_output_shape,
-                reshape_post: vec![],
                 geometry,
                 mmm,
             },
