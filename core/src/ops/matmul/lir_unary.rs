@@ -92,6 +92,22 @@ impl ProtoFusedSpec {
         Ok(fs)
     }
 
+    fn cost(&self, m: &TDim, n: &TDim, idt: DatumType) -> TVec<(Cost, TDim)> {
+        match self {
+            ProtoFusedSpec::AddMatMul(geo, a, b) => {
+                let mut costs = tvec!((Cost::FMA(idt), m.clone() * n * &geo.k));
+                if let AttrOrInput::Attr(t) = a {
+                    costs.push((Cost::Params(t.datum_type()), t.len().into()));
+                }
+                if let AttrOrInput::Attr(t) = b {
+                    costs.push((Cost::Params(t.datum_type()), t.len().into()));
+                }
+                costs
+            }
+            _ => tvec!(), /* FIXME maybe */
+        }
+    }
+
     fn rm_c_axis(&mut self, axis: usize) {
         use ProtoFusedSpec::*;
         match self {
@@ -185,11 +201,9 @@ impl Op for LirMatMulUnary {
             "c_shape:{:?}, c_m_axis:{} c_n_axis:{} b_storage:{:?}",
             self.c_fact, self.c_m_axis, self.c_n_axis, self.geometry,
         )];
-        if let Some(geo) = self.geometry.as_concrete() {
-            infos.push(format!(
-                "Mult: m:{} k:{} n:{} with {}",
-                geo.m, /*geo.k, */ 0, geo.n, self.mmm
-            ));
+        let (m, n) = self.m_n();
+        if let Some(k) = self.guess_k() {
+            infos.push(format!("Mult: m:{} k:{} n:{} with {}", m, k, n, self.mmm));
         } else {
             infos.push(format!("Mult: {}", self.mmm));
         }
@@ -288,29 +302,28 @@ fn eval(
 
 impl TypedOp for LirMatMulUnary {
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        /*
-        ensure!(
-        self.micro_ops.ndim() == self.c_fact.rank(),
-        "Constant A array rank and C rank should be the same. (resp {} and {})",
-        self.micro_ops.ndim(),
-        self.c_fact.rank()
-        );
-        */
         Ok(tvec!(self.c_fact.clone()))
     }
 
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        todo!();
-        /*
-        let sums: TDim = self.c_fact.shape.iter().product();
-        Ok(tvec!(
-        (Cost::FMA(self.mmm.internal_type()), sums * self.geometry.k().as_ref()),
-        (
-        Cost::Params(self.micro_ops.as_slice().unwrap()[0].0.datum_type().unquantized()),
-        self.micro_ops.iter().fold(0.to_dim(), |sum, a| sum + a.0.len())
-        )
-        ))
-        */
+        let mut sums = HashMap::new();
+        let (m, n) = self.m_n();
+        for op in &self.micro_ops {
+            for (cost, count) in op.cost(&m, &n, self.mmm.internal_type()) {
+                *sums.entry(cost).or_default() += count;
+            }
+        }
+        let loops = self
+            .c_fact
+            .shape
+            .iter()
+            .enumerate()
+            .map(|(ix, d)| if ix == self.c_m_axis || ix == self.c_n_axis { 1.to_dim() } else { d })
+            .product::<TDim>();
+        for s in &mut sums.values_mut() {
+            *s *= &loops;
+        }
+        Ok(sums.into_iter().collect())
     }
 
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
@@ -322,7 +335,6 @@ impl TypedOp for LirMatMulUnary {
             return Ok(None);
         }
         let succ = model.node(node.outputs[0].successors[0].node);
-        dbg!(succ);
         let mut patch = TypedModelPatch::new(format!("fusing {succ}"));
         if let Some(op) = succ.op_as::<ops::binary::TypedBinOp>() {
             let mut binop =
@@ -402,6 +414,29 @@ impl TypedOp for LirMatMulUnary {
 }
 
 impl LirMatMulUnary {
+    // for cost and info
+    fn guess_k(&self) -> Option<TDim> {
+        self.micro_ops
+            .iter()
+            .find_map(
+                |o| {
+                    if let ProtoFusedSpec::AddMatMul(geo, _, _) = o {
+                        Some(geo)
+                    } else {
+                        None
+                    }
+                },
+            )
+            .map(|geo| geo.k.clone())
+    }
+
+    fn m_n(&self) -> (TDim, TDim) {
+        match &self.geometry {
+            MatrixGeometry::Concrete(ConcreteMatrixGeometry { m, n }) => (m.to_dim(), n.to_dim()),
+            MatrixGeometry::Symbolic(SymbolicMatrixGeometry { m, n, .. }) => (m.clone(), n.clone()),
+        }
+    }
+
     fn fuse_op(
         &self,
         model: &TypedModel,
