@@ -373,7 +373,7 @@ impl Patcher {
                     let dy = *geometry.pool.patch.data_field.as_ptr().offset(kitem as isize * 2);
                     let dx =
                         *geometry.pool.patch.data_field.as_ptr().offset(1 + kitem as isize * 2);
-                    let valid_x_start = Integer::div_ceil(&-dx, &x_stride).max(0);
+                    let valid_x_start = Integer::div_ceil(&-dx, &x_stride).max(0).min(output_width as _);
                     let valid_x_end =
                         Integer::div_ceil(&(input_width - dx), &x_stride).min(output_width as _);
 
