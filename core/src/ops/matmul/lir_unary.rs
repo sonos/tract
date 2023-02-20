@@ -1,4 +1,5 @@
 use crate::internal::*;
+use crate::ops::cast::cast;
 use ndarray::*;
 use tract_itertools::Itertools;
 
@@ -292,140 +293,179 @@ impl TypedOp for LirMatMulUnary {
     }
 
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+        use crate::ops;
+        if node.outputs.len() != 1
+            || node.outputs[0].successors.len() != 1
+            || model.output_outlets()?.iter().any(|outlet| outlet.node == node.id)
+        {
+            return Ok(None);
+        }
+        let succ = model.node(node.outputs[0].successors[0].node);
+        let patch = TypedModelPatch::new(format!("fusing {succ}"));
+        if let Some(op) = succ.op_as::<ops::binary::TypedBinOp>() {
+            let mut binop =
+                if let Some(op) = op.0.as_linalg_binop() { op } else { return Ok(None) };
+            let flipped = succ.inputs[0].node == node.id;
+            if flipped {
+                binop = binop.flip();
+            }
+            let other_outlet = succ.inputs[flipped as usize];
+            return self.fuse_binary(model, node, patch, other_outlet, binop);
+        }
+
+        if let Some(op) = succ.op_as::<ops::element_wise::ElementWiseOp>().map(|ew| ew.0.as_ref()) {
+            if let Some(op) = op.downcast_ref::<ops::math::QScale>() {
+                return self.fuse_op_with_broadcast(
+                    model,
+                    node,
+                    patch,
+                    vec![ProtoFusedSpec::Scaler(op.scaler)],
+                    &[],
+                );
+            }
+        }
+        if let Some(cast_to) = succ.op_as::<ops::cast::Cast>().map(|cast| cast.to) {
+            if (cast_to.unquantized() == i8::datum_type()
+                || cast_to.unquantized() == u8::datum_type())
+                && self.c_fact.datum_type == i32::datum_type()
+            {
+                if let Some(ProtoFusedSpec::Store(OutputStoreSpec::View { .. })) =
+                    self.micro_ops.last()
+                {
+                    let c_fact = cast_to.fact(self.c_fact.shape.clone());
+                    let mut patch = TypedModelPatch::fuse_with_next(
+                        model,
+                        node,
+                        Self { c_fact, ..self.clone() },
+                    )?;
+                    patch.dont_apply_twice = Some(format!("Fuse {succ} into {node}"));
+                    return Ok(Some(patch));
+                }
+            }
+        }
         return Ok(None);
         /*
-                   use crate::ops;
-                   if node.outputs.len() != 1
-                   || node.outputs[0].successors.len() != 1
-                   || model.output_outlets()?.iter().any(|outlet| outlet.node == node.id)
-                   {
+           if let Some(op) = succ.op_as::<ops::AxisOp>() {
+           if op.only_shape() {
+           let mut reshape_post = self.reshape_post.clone();
+           reshape_post.push(op.clone());
+           let mut patch = TypedModelPatch::fuse_with_next(
+           model,
+           node,
+           Self {
+           c_final_shape: succ.outputs[0].fact.shape.clone(),
+           reshape_post,
+           ..self.clone()
+           },
+           )?;
+           patch.dont_apply_twice = Some(format!("Fuse {succ} into {node}"));
+           return Ok(Some(patch));
+           }
+           }
+
+        /*
+        if let Some(cast) = succ.op_as::<ops::cast::Cast>().map(|cast| cast.to) {
+        if (cast.unquantized() == i8::datum_type() || cast.unquantized() == u8::datum_type())
+        && self.c_fact.datum_type == i32::datum_type()
+        {
+        let at = self.micro_ops.iter().next().unwrap().datum_type();
+        let bt = model.outlet_fact(node.inputs[0])?.datum_type;
+        let mmm = tract_linalg::ops()
+        .mmm(
+        at,
+        bt,
+        i8::datum_type(),
+        self.c_fact.shape[self.c_m_axis].to_usize().ok(),
+        None,
+        self.c_fact.shape[self.c_n_axis].to_usize().ok(),
+        )
+        .unwrap();
+
+        let c_fact = cast.fact(self.c_fact.shape.clone());
+        let mut patch = TypedModelPatch::fuse_with_next(
+        model,
+        node,
+        Self { mmm, c_fact, ..self.clone() },
+        )?;
+        patch.dont_apply_twice = Some(format!("Fuse {succ} into {node}"));
+        return Ok(Some(patch));
+        }
+        }
+        */
+
+        patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ.name, node.name));
+        if let Some(op) = succ.op_as::<ops::element_wise::ElementWiseOp>().map(|ew| ew.0.as_ref()) {
+            if let Some(op) = op.downcast_ref::<ops::math::QScale>() {
+                return self.fuse_op_with_broadcast(
+                    model,
+                    node,
+                    patch,
+                    &[ProtoFusedSpec::Scaler(op.scaler)],
+                    &[],
+                    );
+            }
+            <<<<<<< HEAD
+                =======
+                /* TODO
+                   } else if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
+                   let binop =
+                   if let Some(op) = op.mini_op.as_linalg_binop() { op } else { return Ok(None) };
+                   let shape = op.a.shape().into();
+                   if op.a.datum_type() != self.mmm.internal_type() {
                    return Ok(None);
                    }
-                   let succ = model.node(node.outputs[0].successors[0].node);
-                   if let Some(op) = succ.op_as::<ops::AxisOp>() {
-                   if op.only_shape() {
-                   let mut reshape_post = self.reshape_post.clone();
-                   reshape_post.push(op.clone());
-                   let mut patch = TypedModelPatch::fuse_with_next(
-                   model,
-                   node,
-                   Self {
-                   c_final_shape: succ.outputs[0].fact.shape.clone(),
-                   reshape_post,
-                   ..self.clone()
-                   },
-                   )?;
-                   patch.dont_apply_twice = Some(format!("Fuse {succ} into {node}"));
-                   return Ok(Some(patch));
-                   }
-                   }
+                   return self.fuse_binary(model, node, &shape, op.a.clone().into(), binop, &[]);
+                   */
+                >>>>>>> ff2e4973 (f32 conv ok)
+        } else if let Some(op) = succ.op_as::<ops::binary::TypedBinOp>() {
+            let mut binop =
+                if let Some(op) = op.0.as_linalg_binop() { op } else { return Ok(None) };
+            let flipped = succ.inputs[0].node == node.id;
+            if flipped {
+                binop = binop.flip();
+            }
+            let other_outlet = succ.inputs[flipped as usize];
+            return self.fuse_binary(model, node, patch, other_outlet, binop);
+        } else if let Some(op) = succ.op_as::<ops::binary::MergeOpUnicast>() {
+            if self.micro_ops.len() == 1 && op.0.is::<ops::math::Add>() {
+                let other_slot = 1 - node.outputs[0].successors[0].slot;
+                let other_input = succ.inputs[other_slot];
+                let other_input = patch.tap_model(model, other_input)?;
 
-                /*
-                if let Some(cast) = succ.op_as::<ops::cast::Cast>().map(|cast| cast.to) {
-                if (cast.unquantized() == i8::datum_type() || cast.unquantized() == u8::datum_type())
-                && self.c_fact.datum_type == i32::datum_type()
-                {
-                let at = self.micro_ops.iter().next().unwrap().datum_type();
-                let bt = model.outlet_fact(node.inputs[0])?.datum_type;
-                let mmm = tract_linalg::ops()
-                .mmm(
-                at,
-                bt,
-                i8::datum_type(),
-                self.c_fact.shape[self.c_m_axis].to_usize().ok(),
-                None,
-                self.c_fact.shape[self.c_n_axis].to_usize().ok(),
-                )
-                .unwrap();
-
-                let c_fact = cast.fact(self.c_fact.shape.clone());
-                let mut patch = TypedModelPatch::fuse_with_next(
-                model,
-                node,
-                Self { mmm, c_fact, ..self.clone() },
-                )?;
-                patch.dont_apply_twice = Some(format!("Fuse {succ} into {node}"));
-                return Ok(Some(patch));
+                if model.outlet_fact(other_input)?.shape == self.c_fact.shape {
+                    let other_storage = unsafe { self.mmm.c_view(self.c_m_axis, self.c_n_axis) };
+                    return self.fuse_op_with_broadcast(
+                        model,
+                        node,
+                        patch,
+                        &[ProtoFusedSpec::AddUnicast(other_storage, node.inputs.len().into())],
+                        &[other_input],
+                        );
                 }
-                }
-                */
-
-                let mut patch = TypedModelPatch::new(format!("fusing {succ}"));
-                patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ.name, node.name));
-                if let Some(op) = succ.op_as::<ops::element_wise::ElementWiseOp>().map(|ew| ew.0.as_ref()) {
-                    if let Some(op) = op.downcast_ref::<ops::math::QScale>() {
-                        return self.fuse_op_with_broadcast(
-                            model,
-                            node,
-                            patch,
-                            &[ProtoFusedSpec::Scaler(op.scaler)],
-                            &[],
-                            );
-                    }
-        <<<<<<< HEAD
-        =======
-                    /* TODO
-                       } else if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
-                       let binop =
-                       if let Some(op) = op.mini_op.as_linalg_binop() { op } else { return Ok(None) };
-                       let shape = op.a.shape().into();
-                       if op.a.datum_type() != self.mmm.internal_type() {
-                       return Ok(None);
-                       }
-                       return self.fuse_binary(model, node, &shape, op.a.clone().into(), binop, &[]);
-                       */
-        >>>>>>> ff2e4973 (f32 conv ok)
-                } else if let Some(op) = succ.op_as::<ops::binary::TypedBinOp>() {
-                    let mut binop =
-                        if let Some(op) = op.0.as_linalg_binop() { op } else { return Ok(None) };
-                    let flipped = succ.inputs[0].node == node.id;
-                    if flipped {
-                        binop = binop.flip();
-                    }
-                    let other_outlet = succ.inputs[flipped as usize];
-                    return self.fuse_binary(model, node, patch, other_outlet, binop);
-                } else if let Some(op) = succ.op_as::<ops::binary::MergeOpUnicast>() {
-                    if self.micro_ops.len() == 1 && op.0.is::<ops::math::Add>() {
-                        let other_slot = 1 - node.outputs[0].successors[0].slot;
-                        let other_input = succ.inputs[other_slot];
-                        let other_input = patch.tap_model(model, other_input)?;
-
-                        if model.outlet_fact(other_input)?.shape == self.c_fact.shape {
-                            let other_storage = unsafe { self.mmm.c_view(self.c_m_axis, self.c_n_axis) };
-                            return self.fuse_op_with_broadcast(
-                                model,
-                                node,
-                                patch,
-                                &[ProtoFusedSpec::AddUnicast(other_storage, node.inputs.len().into())],
-                                &[other_input],
-                                );
-                        }
-                    }
-                };
-                Ok(None)
-                    */
+            }
+        };
+        Ok(None)
+            */
     }
 
     as_op!();
 }
 
 impl LirMatMulUnary {
-    /*
     fn fuse_op(
         &self,
         model: &TypedModel,
         node: &TypedNode,
         mut patch: TypedModelPatch,
-        fused_micro_op: &ArrayD<Vec<ProtoFusedSpec>>,
+        fused_micro_op: Vec<ProtoFusedSpec>,
         additional_inputs: &[OutletId],
     ) -> TractResult<Option<TypedModelPatch>> {
         let succ = model.node(node.outputs[0].successors[0].node);
         let mut new_op = self.clone();
-        new_op.micro_ops.zip_mut_with(fused_micro_op, |lhs, rhs| {
-            lhs.1.pop();
-            lhs.1.extend(rhs.iter().cloned());
-            lhs.1.push(ProtoFusedSpec::Store);
-        });
+        dbg!(&new_op.micro_ops);
+        let before_last = new_op.micro_ops.len() - 1..new_op.micro_ops.len() - 1;
+        new_op.micro_ops.splice(before_last, fused_micro_op);
+        dbg!(&new_op.micro_ops);
         let mut inputs: TVec<OutletId> =
             node.inputs.iter().map(|i| patch.tap_model(model, *i)).collect::<TractResult<_>>()?;
         inputs.extend(additional_inputs.iter().cloned());
@@ -439,11 +479,10 @@ impl LirMatMulUnary {
         model: &TypedModel,
         node: &TypedNode,
         patch: TypedModelPatch,
-        fused_micro_op: &[ProtoFusedSpec],
+        fused_micro_op: Vec<ProtoFusedSpec>,
         additional_inputs: &[OutletId],
     ) -> TractResult<Option<TypedModelPatch>> {
-        let array = arr0(fused_micro_op.to_vec()).into_dyn();
-        self.fuse_op(model, node, patch, &array, additional_inputs)
+        self.fuse_op(model, node, patch, fused_micro_op, additional_inputs)
     }
 
     fn fuse_binary(
@@ -464,7 +503,7 @@ impl LirMatMulUnary {
                 if fact.datum_type != self.mmm.internal_type() {
                     v = patch.wire_node(
                         format!("{}.cast-input-{}", node.name, node.inputs.len()),
-                        cast::cast(self.mmm.internal_type()),
+                        cast(self.mmm.internal_type()),
                         &[v],
                     )?[0];
                 }
@@ -475,7 +514,7 @@ impl LirMatMulUnary {
                 model,
                 node,
                 patch,
-                &[ProtoFusedSpec::BinScalar(value, binop)],
+                vec![ProtoFusedSpec::BinScalar(value, binop)],
                 &additional_inputs,
             );
         }
@@ -492,7 +531,11 @@ impl LirMatMulUnary {
                 model,
                 node,
                 patch,
-                &[ProtoFusedSpec::BinPerRow(value, binop)],
+                vec![ProtoFusedSpec::BinPerRow(
+                    value,
+                    binop,
+                    MapOutputAxisToInput(tvec!((self.c_m_axis, self.c_m_axis))),
+                )],
                 &additional_inputs,
             );
         }
@@ -503,11 +546,14 @@ impl LirMatMulUnary {
                 model,
                 node,
                 patch,
-                &[ProtoFusedSpec::BinPerCol(value, binop)],
+                vec![ProtoFusedSpec::BinPerCol(
+                    value,
+                    binop,
+                    MapOutputAxisToInput(tvec!((self.c_n_axis, self.c_n_axis))),
+                )],
                 &additional_inputs,
             );
         }
         return Ok(None);
     }
-*/
 }
