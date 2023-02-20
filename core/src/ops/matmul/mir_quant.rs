@@ -550,9 +550,6 @@ pub(crate) fn wire_matmul_quant(
 ) -> TractResult<OutletId> {
     let b_fact = model.outlet_fact(b)?.clone();
     // TODO: assumed c_rank == b_rank (== a_rank)
-    eprintln!("a: {:?}", model.outlet_fact(a));
-    eprintln!("b: {:?}", model.outlet_fact(b));
-    eprintln!("self: {:?}", axes);
 
     if let Some(mut bias) = bias {
         // bias is scalar -> ok
