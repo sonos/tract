@@ -241,8 +241,6 @@ impl MatMulUnary {
                     c_fact: c_dt.fact(&c_shape),
                     geometry: MatrixGeometry::Concrete(geometry),
                     micro_ops,
-                    c_final_shape: c_shape.into(),
-                    reshape_post: vec![],
                     mmm,
                     c_m_axis: self.axes.c_m,
                     c_n_axis: self.axes.c_n,
