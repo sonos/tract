@@ -5,10 +5,10 @@ use tract_core::ops::source::TypedSource;
 pub fn register(registry: &mut Registry) {
     registry.register_dumper(TypeId::of::<TypedSource>(), external_dump);
     registry.register_primitive(
-        "tract_core_external", 
+        "tract_core_external",
         &external_parameters(),
         &[("output", TypeName::Any.tensor())],
-        external_load
+        external_load,
     );
 }
 
@@ -38,9 +38,8 @@ fn external_load(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
 ) -> TractResult<Value> {
-    builder.allow_new_symbol = true;
-    let shape: TVec<TDim> = invocation.named_arg_as(builder, "shape")?;
-    builder.allow_new_symbol = false;
+    let shape: TVec<TDim> =
+        builder.allowing_new_symbols(|builder| invocation.named_arg_as(builder, "shape"))?;
     let mut dt: DatumType = invocation.named_arg_as::<String>(builder, "datum_type")?.parse()?;
     if let Some(Some(qdt)) = invocation.dt_from_quant_file.get(0) {
         dt = *qdt;

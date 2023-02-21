@@ -13,7 +13,7 @@ pub struct ModelBuilder<'a> {
     pub scopes: Vec<HashMap<Identifier, Value>>,
     pub proto_model: &'a ProtoModel,
     pub symbols: Vec<Symbol>,
-    pub allow_new_symbol: bool,
+    allow_new_symbol: bool,
 }
 
 impl<'mb> ModelBuilder<'mb> {
@@ -33,6 +33,13 @@ impl<'mb> ModelBuilder<'mb> {
             symbols: vec![],
             allow_new_symbol: false,
         }
+    }
+
+    pub fn allowing_new_symbols<R>(&mut self, closure: impl Fn(&mut Self) -> R) -> R {
+        self.allow_new_symbol = true;
+        let r = closure(self);
+        self.allow_new_symbol = false;
+        r
     }
 
     fn translate(&mut self) -> TractResult<()> {

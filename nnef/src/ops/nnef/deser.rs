@@ -28,9 +28,8 @@ pub fn external(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
     } else {
         todo!()
     };
-    builder.allow_new_symbol = true;
-    let shape: TVec<TDim> = invocation.named_arg_as(builder, "shape")?;
-    builder.allow_new_symbol = false;
+    let shape: TVec<TDim> =
+        builder.allowing_new_symbols(|builder| invocation.named_arg_as(builder, "shape"))?;
     Ok(Value::Wire(builder.model.add_source("", dt.fact(&shape))?))
 }
 
@@ -40,11 +39,11 @@ pub fn variable(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
     let label = Identifier(invocation.named_arg_as(builder, "label")?);
     let mut tensor = Arc::clone(
         builder
-            .proto_model
-            .tensors
-            .get(&label)
-            .ok_or_else(|| format_err!("No data for tensor {:?}", label))?,
-    );
+        .proto_model
+        .tensors
+        .get(&label)
+        .ok_or_else(|| format_err!("No data for tensor {:?}", label))?,
+        );
     if let Some(Some(dt)) = invocation.dt_from_quant_file.get(0) {
         if dt.size_of() != tensor.datum_type().size_of() {
             bail!(
@@ -52,7 +51,7 @@ pub fn variable(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
                 label.0,
                 *dt,
                 tensor.datum_type()
-            );
+                );
         }
         if *dt != tensor.datum_type() {
             trace!(
@@ -60,7 +59,7 @@ pub fn variable(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
                 label.0,
                 tensor.datum_type(),
                 *dt
-            );
+                );
             //FIXME: avoid cast by late-loading tensors ?
             tensor = tensor.cast_to_dt(*dt)?.into_owned().into_arc_tensor()
         }
@@ -71,7 +70,7 @@ pub fn variable(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
             label,
             tensor.shape(),
             shape
-        );
+            );
     }
     builder.wire(tract_core::ops::konst::Const::new(tensor), &[])
 }
@@ -106,7 +105,7 @@ pub fn reshape(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> T
 pub fn transpose(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<Value> {
+    ) -> TractResult<Value> {
     let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
     let wire = tvec!(invocation.named_arg_as(builder, "input")?);
     ops::change_axes::perm_to_ops(&axes)
@@ -135,28 +134,31 @@ pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
     let wire = tvec!(invocation.named_arg_as(builder, "input")?);
     let input_fact = builder.model.outlet_fact(wire[0])?.clone();
     let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
-    let begins: TVec<i64> = invocation.named_arg_as(builder, "begin")?;
-    let begins = begins.into_iter().enumerate().map(|(ix, b)| -> TDim {
-        if b < 0 {
-            input_fact.shape[ix].clone() + b
-        } else {
-            b.into()
-        }
-    });
-    let ends: TVec<i64> = invocation.named_arg_as(builder, "end")?;
-    let ends = ends
-        .into_iter()
-        .enumerate()
-        .map(|(ix, b)| -> TDim {
-            // use "<=", no "<" end[axis] = 0 means "up to the end"
-            // CAUTION: this notation is 1/ deprecated 2/ invalid with non trivial slicing
-            if b <= 0 {
-                input_fact.shape[axes[ix]].clone() + b
+    let (begins, ends) = builder.allowing_new_symbols(|builder| -> TractResult<_> {
+        let begins: TVec<i64> = invocation.named_arg_as(builder, "begin")?;
+        let begins = begins.into_iter().enumerate().map(|(ix, b)| -> TDim {
+            if b < 0 {
+                input_fact.shape[ix].clone() + b
             } else {
                 b.into()
             }
-        })
+        });
+        let ends: TVec<i64> = invocation.named_arg_as(builder, "end")?;
+        let ends = ends
+            .into_iter()
+            .enumerate()
+            .map(|(ix, b)| -> TDim {
+                // use "<=", no "<" end[axis] = 0 means "up to the end"
+                // CAUTION: this notation is 1/ deprecated 2/ invalid with non trivial slicing
+                if b <= 0 {
+                    input_fact.shape[axes[ix]].clone() + b
+                } else {
+                    b.into()
+                }
+            })
         .collect_vec();
+        Ok((begins, ends))
+    })?;
     let strides: TVec<isize> = invocation
         .named_arg_as(builder, "stride")
         .unwrap_or_else(|_| ends.iter().map(|_| 1).collect());
@@ -168,11 +170,11 @@ pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
                 w = builder.wire_as_outlets(
                     tract_core::ops::downsample::Downsample::new(axis, stride, 0),
                     &w?,
-                );
+                    );
             }
             w
         })
-        .map(Value::from)
+    .map(Value::from)
 }
 
 // fragment squeeze<?>( input: tensor<?>, axes: integer[] ) -> ( output: tensor<?> );
@@ -185,14 +187,14 @@ pub fn squeeze(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> T
         .try_fold(wire, |wire, &axis| {
             builder.wire_as_outlets(ops::change_axes::AxisOp::Rm(axis), &wire)
         })
-        .map(Value::from)
+    .map(Value::from)
 }
 
 // fragment unsqueeze<?>( input: tensor<?>, axes: integer[] ) -> ( output: tensor<?> );
 pub fn unsqueeze(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<Value> {
+    ) -> TractResult<Value> {
     let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
     let wire = tvec!(invocation.named_arg_as(builder, "input")?);
     axes.iter()
@@ -200,7 +202,7 @@ pub fn unsqueeze(
         .try_fold(wire, |wire, &axis| {
             builder.wire_as_outlets(ops::change_axes::AxisOp::Add(axis), &wire)
         })
-        .map(Value::from)
+    .map(Value::from)
 }
 
 // fragment tile<?>( input: tensor<?>, repeats: integer[] ) -> ( output: tensor<?> );
@@ -232,25 +234,25 @@ pub fn pad(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
 }
 
 /*
-fragment conv( input: tensor<scalar>, filter: tensor<scalar>,
-bias: tensor<scalar> = 0.0, border: string = 'constant',
-padding: (integer,integer)[] = [], stride: integer[] = [],
-dilation: integer[] = [], groups: integer = 1 )
--> ( output: tensor<scalar> );
-*/
+   fragment conv( input: tensor<scalar>, filter: tensor<scalar>,
+   bias: tensor<scalar> = 0.0, border: string = 'constant',
+   padding: (integer,integer)[] = [], stride: integer[] = [],
+   dilation: integer[] = [], groups: integer = 1 )
+   -> ( output: tensor<scalar> );
+   */
 
 /*  fragment deconv(
-input: tensor<scalar>,
-filter: tensor<scalar>,
-bias: tensor<scalar> = 0.0,
-border: string = 'constant',
-padding: (integer,integer)[] = [],
-stride: integer[] = [],
-dilation: integer[] = [],
-output_shape: integer[] = [],
-groups: integer = 1 )
--> ( output: tensor<scalar> );
-*/
+    input: tensor<scalar>,
+    filter: tensor<scalar>,
+    bias: tensor<scalar> = 0.0,
+    border: string = 'constant',
+    padding: (integer,integer)[] = [],
+    stride: integer[] = [],
+    dilation: integer[] = [],
+    output_shape: integer[] = [],
+    groups: integer = 1 )
+    -> ( output: tensor<scalar> );
+    */
 
 pub fn conv(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     conv_or_deconv(builder, invocation, false)
@@ -265,7 +267,7 @@ pub fn read_conv_parameters(
     invocation: &ResolvedInvocation,
     kernel_shape: &[usize],
     input_fact: &TypedFact,
-) -> TractResult<(usize, PoolSpec)> {
+    ) -> TractResult<(usize, PoolSpec)> {
     let mut group = invocation.named_arg_as(builder, "groups")?;
     if group == 0 {
         group = kernel_shape[0]
@@ -300,7 +302,7 @@ pub fn read_conv_parameters(
         if dilation.len() > 0 { Some(dilation) } else { None },
         if stride.len() > 0 { Some(stride) } else { None },
         Some(kernel_shape[0]),
-    );
+        );
 
     let border: String = invocation.named_arg_as(builder, "border")?;
     assert_eq!(border, "constant");
@@ -312,7 +314,7 @@ pub fn conv_or_deconv(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
     deconv: bool,
-) -> TractResult<Value> {
+    ) -> TractResult<Value> {
     use ops::cnn::deconv::DeconvUnary;
     use ops::cnn::{ConvUnary, KernelFormat};
 
@@ -324,7 +326,7 @@ pub fn conv_or_deconv(
             "Convolution input expected as NCHW, filter as OIHW. Got {:?} and {:?}.",
             input_fact,
             kernel
-        );
+            );
     }
 
     let (group, pool_spec) =
@@ -347,7 +349,7 @@ pub fn conv_or_deconv(
         ensure!(
             output_channels == bias.len(),
             "Bias tensor should be scalar or have one value per output channel"
-        );
+            );
         let mut reshaped_bias = bias.into_tensor();
         reshaped_bias.set_shape(&[output_channels])?;
         Some(reshaped_bias)
@@ -372,22 +374,22 @@ pub fn conv_or_deconv(
         let kernel =
             kernel.into_tensor().split_axis(0, group)?.move_axis(0, 1)?.collapse_axis_with_next(1);
         Box::new(DeconvUnary::new(
-            pool_spec,
-            KernelFormat::OIHW,
-            kernel.into_arc_tensor(),
-            bias.map(Tensor::into_arc_tensor),
-            adjustments,
-            group,
-        ))
+                pool_spec,
+                KernelFormat::OIHW,
+                kernel.into_arc_tensor(),
+                bias.map(Tensor::into_arc_tensor),
+                adjustments,
+                group,
+                ))
     } else {
         Box::new(ConvUnary::new(
-            pool_spec,
-            KernelFormat::OIHW,
-            kernel.clone(),
-            group,
-            bias.map(Tensor::into_arc_tensor),
-            qparams,
-        ))
+                pool_spec,
+                KernelFormat::OIHW,
+                kernel.clone(),
+                group,
+                bias.map(Tensor::into_arc_tensor),
+                qparams,
+                ))
     };
     builder.wire(op, &[input])
 }
@@ -396,7 +398,7 @@ fn pool_spec_for_pools(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
     shape: &[usize],
-) -> TractResult<ops::cnn::PoolSpec> {
+    ) -> TractResult<ops::cnn::PoolSpec> {
     let spatial_shape = DataFormat::NCHW.shape(shape)?.hw_dims().into();
     let dilation: TVec<usize> = invocation.named_arg_as(builder, "dilation")?;
     if dilation.len() > 0 && (dilation.len() != shape.len() || dilation[0] != 1 || dilation[1] != 1)
@@ -435,13 +437,13 @@ fn pool_spec_for_pools(
         PaddingSpec::Explicit(spatial_pool_bef, spatial_pool_aft, false)
     };
     Ok(PoolSpec::new(
-        DataFormat::NCHW,
-        spatial_shape,
-        padding,
-        spatial_dilation,
-        spatial_stride,
-        None,
-    ))
+            DataFormat::NCHW,
+            spatial_shape,
+            padding,
+            spatial_dilation,
+            spatial_stride,
+            None,
+            ))
 }
 
 /*
@@ -453,7 +455,7 @@ fn pool_spec_for_pools(
 pub fn max_pool_with_index(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<Value> {
+    ) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
     let size: TVec<usize> = invocation.named_arg_as(builder, "size")?;
     let input_fact = builder.model.outlet_fact(input)?;
@@ -528,9 +530,9 @@ pub fn reduce(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     let cardinality = builder.wire_as_outlets(
         ops::konst::Const::new(
             tensor0(cardinality).broadcast_into_rank(fact.rank())?.into_arc_tensor(),
-        ),
-        &[],
-    )?;
+            ),
+            &[],
+            )?;
     let cardinality =
         builder.wire_as_outlets(ops::cast::Cast::new(fact.datum_type), &cardinality)?;
     builder.wire(ops::math::div(), &[wire[0], cardinality[0]])
@@ -598,25 +600,25 @@ pub fn matmul(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
         let bias = builder.model.add_const(
             format!("{}.bias", invocation.invocation.id.0),
             Tensor::zero_dt(accum_dt, &[1])?,
-        )?;
+            )?;
         builder.model.node(a.node);
 
         builder.wire(
             ops::matmul::QMatMul { axes, output_type: dt, params: MatMulQParams::all_from_qtype() },
             &[a, b, bias],
-        )
+            )
     } else {
         builder.wire(ops::matmul::MatMul { axes }, &[a, b])
     }
 }
 
 /*
-* fragment select<?>(
-condition: tensor<logical>,     # the condition for selecting the result
-true_value: tensor<?>,          # the result when the condition is true
-false_value: tensor<?> )        # the result when the condition is false
--> ( output: tensor<?> )
-*/
+ * fragment select<?>(
+ condition: tensor<logical>,     # the condition for selecting the result
+ true_value: tensor<?>,          # the result when the condition is true
+ false_value: tensor<?> )        # the result when the condition is false
+ -> ( output: tensor<?> )
+ */
 
 pub fn select(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let cond = invocation.named_arg_as(builder, "condition")?;
@@ -634,7 +636,7 @@ pub fn select(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
 pub fn leaky_relu(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-) -> TractResult<Value> {
+    ) -> TractResult<Value> {
     let x = invocation.named_arg_as(builder, "x")?;
     let alpha = invocation.named_arg_as(builder, "alpha")?;
     builder.wire(ops::nn::leaky_relu(alpha), &[x])
@@ -687,12 +689,12 @@ pub fn unstack(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> T
                 builder.wire_as_outlets(ops::change_axes::AxisOp::Rm(axis), &sliced_wire)?;
             Ok(squeezed_wire[0])
         })
-        .collect::<TractResult<TVec<_>>>()
+    .collect::<TractResult<TVec<_>>>()
         .map(Value::from)
 }
 
 /*
-* fragment softmax( x: tensor<scalar>, axes: integer[] = [1] ) -> ( y: tensor<scalar> )
+ * fragment softmax( x: tensor<scalar>, axes: integer[] = [1] ) -> ( y: tensor<scalar> )
  * {
  *    m = max_reduce(x, axes = axes);
  *    e = exp(x - m);
