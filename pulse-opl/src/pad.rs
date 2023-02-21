@@ -52,10 +52,12 @@ fn deser(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractRe
     let overlap = invocation.named_arg_as(builder, "overlap")?;
     let border = invocation.named_arg_as::<String>(builder, "border")?;
     let value: Tensor = tensor0(invocation.named_arg_as::<f32>(builder, "value")?);
-    builder.allow_new_symbol = true;
-    let after = invocation.named_arg_as(builder, "after")?;
-    let end_input = invocation.named_arg_as(builder, "end_input")?;
-    builder.allow_new_symbol = false;
+    let (after, end_input) = builder.allowing_new_symbols(|builder| {
+        TractResult::Ok((
+            invocation.named_arg_as(builder, "after")?,
+            invocation.named_arg_as(builder, "end_input")?,
+        ))
+    })?;
 
     let mode = tract_nnef::ops::nnef::deser::pad_mode(&border, value)?;
     let op = PulsePad { axis, before, after, begin_input, end_input, mode, overlap };
@@ -215,8 +217,6 @@ pub struct PulsePad {
     pub mode: PadMode,
     pub overlap: usize,
 }
-
-
 
 impl Op for PulsePad {
     fn name(&self) -> Cow<str> {
