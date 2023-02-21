@@ -1295,26 +1295,37 @@ impl Tensor {
         dispatch_datum!(slice_t(self.datum_type())(self, axis, start, end))
     }
 
+    #[inline]
     pub fn view(&self) -> view::TensorView {
         unsafe { view::TensorView::at_prefix_unchecked(self, &[]) }
     }
 
+    #[inline]
     pub fn view_at_prefix(&self, prefix: &[usize]) -> anyhow::Result<view::TensorView> {
         view::TensorView::at_prefix(self, prefix)
     }
 
+    #[inline]
     pub fn view_offsetting(&self, coords: &[usize]) -> anyhow::Result<view::TensorView> {
         view::TensorView::offsetting(self, coords)
     }
+    
+    #[inline]
+    pub unsafe fn view_offsetting_unchecked(&self, coords: &[usize]) -> view::TensorView {
+        view::TensorView::offsetting_unchecked(self, coords)
+    }
 
+    #[inline]
     pub fn view_mut(&mut self) -> view::TensorView {
         unsafe { view::TensorView::at_prefix_unchecked(self, &[]) }
     }
 
+    #[inline]
     pub fn view_at_prefix_mut(&mut self, prefix: &[usize]) -> anyhow::Result<view::TensorView> {
         view::TensorView::at_prefix(self, prefix)
     }
 
+    #[inline]
     pub fn view_offsetting_mut(&mut self, coords: &[usize]) -> anyhow::Result<view::TensorView> {
         view::TensorView::offsetting(self, coords)
     }

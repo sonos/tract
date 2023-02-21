@@ -44,15 +44,26 @@ impl fmt::Display for TDim {
 }
 
 impl TDim {
+    #[inline]
     pub fn is_one(&self) -> bool {
         self == &Val(1)
     }
 
+    #[inline]
     pub fn to_i64(&self) -> anyhow::Result<i64> {
         if let Val(v) = self {
             Ok(*v)
         } else {
             Err(UndeterminedSymbol(self.clone()).into())
+        }
+    }
+
+    #[inline]
+    pub fn as_i64(&self) -> Option<i64> {
+        if let Val(v) = self {
+            Some(*v)
+        } else {
+            None
         }
     }
 
