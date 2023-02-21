@@ -21,13 +21,13 @@ fn mat_mul_smmm(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize))
                 n,
                 &[
                     FusedSpec::AddMatMul {
-                        a: mm.a_packed(F32.size_of(), k).wrap(&pa.view()).unwrap(),
-                        b: mm.b_packed(F32.size_of(), k).wrap(&pb.view()).unwrap(),
+                        a: mm.a_packed(F32.size_of(), k).wrap(&pa.view()),
+                        b: mm.b_packed(F32.size_of(), k).wrap(&pb.view()),
                         k,
                     },
                     FusedSpec::Store(mm.c_view(0, 1).wrap(&c.view_mut())),
                 ],
-                )
+            )
         });
     }
 }

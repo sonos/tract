@@ -142,13 +142,13 @@ impl ConvProblem {
         let reshaped_filters = self.filters.clone().into_shape(&[k, m]).unwrap();
         unsafe {
             mmm.a_pack().pack(packed_filter.view_mut(), reshaped_filters.view(), 0, 1);
-            let a_store = mmm.a_packed(F32.size_of(), k).wrap(&packed_filter.view()).unwrap();
+            let a_store = mmm.a_packed(F32.size_of(), k).wrap(&packed_filter.view());
             let im2col: Box<dyn VirtualInputSpec> = if self.lazy_im2col {
                 Box::new(LazyIm2colSpec { full_kernel_shape: self.filters.shape().into() })
             } else {
                 Box::new(EagerIm2colSpec { full_kernel_shape: self.filters.shape().into() })
             };
-            let b_store = mmm.b_virtual_input(im2col, k).wrap(&self.input.view()).unwrap();
+            let b_store = mmm.b_virtual_input(im2col, k).wrap(&self.input.view());
             let c_store = mmm.c_view(0, 1).wrap(&output.view());
             mmm.run(
                 m,
@@ -211,8 +211,6 @@ struct EagerIm2colSpec {
     full_kernel_shape: TVec<usize>,
 }
 
-
-
 impl VirtualInputSpec for EagerIm2colSpec {
     fn wrap(&self, input: &TensorView) -> Box<dyn VirtualInput> {
         let (_, k, n, h, w) = mknhw(&self.full_kernel_shape, input.shape());
@@ -262,8 +260,6 @@ impl VirtualInput for EagerIm2col {
 struct LazyIm2colSpec {
     full_kernel_shape: TVec<usize>,
 }
-
-
 
 impl VirtualInputSpec for LazyIm2colSpec {
     fn wrap(&self, input: &TensorView) -> Box<dyn VirtualInput> {

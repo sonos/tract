@@ -86,8 +86,8 @@ pub fn mat_mat_with_mm(
             n,
             be,
             mm,
-            mm.a_packed(dt.size_of(), k).wrap(&pa.view()).unwrap(),
-            mm.b_packed(dt.size_of(), k).wrap(&pb.view()).unwrap(),
+            mm.a_packed(dt.size_of(), k).wrap(&pa.view()),
+            mm.b_packed(dt.size_of(), k).wrap(&pb.view()),
             cold,
         );
     }
@@ -106,8 +106,8 @@ fn mat_vec(be: &mut Bencher, &(dt, m, k, n, cold): &(DatumType, usize, usize, us
             n,
             be,
             &*mm,
-            mm.a_packed(dt.size_of(), k).wrap(&pa.view()).unwrap(),
-            mm.b_packed(dt.size_of(), k).wrap(&pb.view()).unwrap(),
+            mm.a_packed(dt.size_of(), k).wrap(&pa.view()),
+            mm.b_packed(dt.size_of(), k).wrap(&pb.view()),
             cold,
         );
     }
