@@ -222,7 +222,7 @@ impl Arbitrary for DataFormat {
 
 pub fn tensor(shape: Vec<usize>) -> BoxedStrategy<ArrayD<f32>> {
     let len = shape.iter().product::<usize>();
-    vec(any::<i8>().prop_map(|i| i as f32), len..=len)
+    vec((-10i8..=10i8).prop_map(|i| i as f32), len..=len)
         .prop_map(move |vec| ArrayD::from_shape_vec(shape.clone(), vec).unwrap())
         .boxed()
 }
@@ -569,6 +569,23 @@ fn group_bias_0() -> anyhow::Result<()> {
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
 }
+
+#[test]
+fn group_bias_1() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 2, [1])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 2,
+        data: tract_ndarray::arr2(&[[0.0, 0.0]]).into_dyn(),
+        kernel: tract_ndarray::ArrayD::<f32>::zeros(vec!(4, 1, 1)),
+        bias: Some(tract_ndarray::arr1(&[0.0, 0.0, 0.0, 1.0]).into_dyn()),
+        pad: PaddingSpec::Valid,
+        strides: tvec!(1),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
 
 #[test]
 fn bias_0() -> anyhow::Result<()> {

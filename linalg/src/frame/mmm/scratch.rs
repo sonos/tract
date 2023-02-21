@@ -236,7 +236,7 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
             *uspecs.get_unchecked_mut(*uspec) = match spec {
                 FS::BinPerRow(v, op) => {
                     let buf = std::slice::from_raw_parts_mut(*loc as *mut TI, K::mr());
-                    let have = v.len().saturating_sub(down * K::mr()).min(K::mr());
+                    let have = (v.valid_bytes() / TI::datum_type().size_of()).saturating_sub(down * K::mr()).min(K::mr());
                     let ptr = if have < K::mr() {
                         if have > 0 {
                             buf.get_unchecked_mut(..have).copy_from_slice(
@@ -263,7 +263,7 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                 }
                 FS::BinPerCol(v, op) => {
                     let buf = std::slice::from_raw_parts_mut(*loc as *mut TI, K::nr());
-                    let have = v.len().saturating_sub(right * K::nr()).min(K::nr());
+                    let have = (v.valid_bytes() / TI::datum_type().size_of()) .saturating_sub(right * K::nr()).min(K::nr());
                     let ptr = if have < K::nr() {
                         if have > 0 {
                             buf.get_unchecked_mut(..have).copy_from_slice(
