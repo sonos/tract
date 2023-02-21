@@ -172,19 +172,10 @@ where
         } else {
             bail!("Non single successor fuse attempt")
         };
-        let new_op = new_op.into();
-        let by = patch.add_node(&*node.name, new_op, tvec!(succ.outputs[0].fact.clone()))?;
-        for (ix, i) in node.inputs.iter().enumerate() {
-            let o = patch.tap_model(patched_model, *i)?;
-            patch.add_edge(o, InletId::new(by, ix))?;
-        }
-        for ix in 0..node.outputs.len() {
-            patch.shunt_outside(
-                patched_model,
-                OutletId::new(succ.id, ix),
-                OutletId::new(by, ix),
-            )?;
-        }
+        let inputs =  node.inputs.iter().map(|o|
+            patch.tap_model(patched_model, *o)).collect::<TractResult<TVec<OutletId>>>()?;
+        let output = patch.wire_node(&node.name, new_op.into(), &inputs)?;
+        patch.shunt_outside(patched_model, succ.id.into(), output[0])?;
         Ok(patch)
     }
 
