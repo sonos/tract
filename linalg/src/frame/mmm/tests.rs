@@ -250,8 +250,8 @@ where
             m,
             n,
             &[FusedSpec::AddMatMul {
-                a: op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view()).unwrap(),
-                b: op.b_packed(TB::datum_type().size_of(), k).wrap(&packed_b.view()).unwrap(),
+                a: op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view()),
+                b: op.b_packed(TB::datum_type().size_of(), k).wrap(&packed_b.view()),
                 k,
             }],
             |r, c| {
@@ -293,8 +293,8 @@ where
         let b = b.clone().into_shape(&[k, 1]).unwrap();
         op.b_pack().pack(&mut packed_b.view_mut(), &b.view(), 0, 1);
 
-        let pa = op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view()).unwrap();
-        let pb = op.b_packed(b.datum_type().size_of(), k).wrap(&packed_b.view()).unwrap();
+        let pa = op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view());
+        let pb = op.b_packed(b.datum_type().size_of(), k).wrap(&packed_b.view());
 
         fused_ops::<K, TA, TB, TC, TI, _>(
             m,
