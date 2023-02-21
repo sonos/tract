@@ -23,19 +23,19 @@ pub enum InputStoreSpec {
 
 impl InputStoreSpec {
     #[inline]
-    pub unsafe fn wrap(&self, tensor: &TensorView) -> TractResult<InputStore> {
+    pub unsafe fn wrap(&self, tensor: &TensorView) -> InputStore {
         use InputStoreSpec as S;
         match self {
-            S::Prepacked { panel_bytes } => Ok(InputStore::Packed {
+            S::Prepacked { panel_bytes } => InputStore::Packed {
                 ptr: tensor.as_ptr_unchecked::<u8>() as _,
                 panel_bytes: *panel_bytes as isize,
-            }),
-            S::VirtualPacking { packer, func, k } => Ok(InputStore::VirtualPacking {
+            },
+            S::VirtualPacking { packer, func, k } => InputStore::VirtualPacking {
                 packer: packer.clone(),
                 input: func.wrap(tensor),
                 k: *k,
                 dt: tensor.datum_type(),
-            }),
+            },
         }
     }
 }

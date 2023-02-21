@@ -48,7 +48,7 @@ impl ProtoFusedSpec {
         output_coords: &[usize],
         symbols: &SymbolValues,
         output: &mut Tensor,
-    ) -> TractResult<FusedSpec<'t>> {
+    ) -> FusedSpec<'t> {
         let fs = match self {
             ProtoFusedSpec::AddMatMul(geo, a, b) => {
                 let mut a = a.tensor(inputs).view();
@@ -60,9 +60,9 @@ impl ProtoFusedSpec {
                     geo.c_to_b_axis_mapping.translate_view(output_coords, &mut b);
                 }
                 FusedSpec::AddMatMul {
-                    k: geo.k.eval(symbols).to_usize()?,
-                    a: unsafe { geo.a_storage.wrap(&a)? },
-                    b: unsafe { geo.b_storage.wrap(&b)? },
+                    k: geo.k.eval(symbols).to_usize().unwrap(),
+                    a: unsafe { geo.a_storage.wrap(&a) },
+                    b: unsafe { geo.b_storage.wrap(&b) },
                 }
             }
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(v.tensor(inputs), *op),
@@ -80,16 +80,60 @@ impl ProtoFusedSpec {
                 FusedSpec::AddRowColProducts(row.tensor(inputs), col.tensor(inputs))
             }
             ProtoFusedSpec::AddUnicast(store, v) => unsafe {
-                let view = v.tensor(inputs).view_offsetting(output_coords)?;
+                let view = v.tensor(inputs).view_offsetting_unchecked(output_coords);
                 FusedSpec::AddUnicast(store.wrap(&view))
             },
             ProtoFusedSpec::Scaler(scaler) => scaler.as_fused_spec(),
-            ProtoFusedSpec::Store(oss) => {
-                let view = output.view_offsetting_mut(output_coords)?;
-                FusedSpec::Store(unsafe { oss.wrap(&view) })
-            }
+            ProtoFusedSpec::Store(oss) => unsafe {
+                let view = output.view_offsetting_unchecked(output_coords);
+                FusedSpec::Store(oss.wrap(&view))
+            },
         };
-        Ok(fs)
+        fs
+    }
+
+    pub fn has_symbols(&self) -> bool {
+        match self {
+            ProtoFusedSpec::AddMatMul(geo, _, _) => geo.k.as_i64().is_none(),
+            _ => false,
+        }
+    }
+
+    pub fn resolve_trivial<'t>(
+        &'t self,
+        inputs: &'t [TValue],
+        output: &mut Tensor,
+    ) -> FusedSpec<'t> {
+        let fs = match self {
+            ProtoFusedSpec::AddMatMul(geo, a, b) => {
+                let a = a.tensor(inputs).view();
+                let b = b.tensor(inputs).view();
+                FusedSpec::AddMatMul {
+                    k: unsafe { geo.k.as_i64().unwrap_unchecked() as usize },
+                    a: unsafe { geo.a_storage.wrap(&a) },
+                    b: unsafe { geo.b_storage.wrap(&b) },
+                }
+            }
+            ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(v.tensor(inputs), *op),
+            ProtoFusedSpec::BinPerRow(v, op, _) => {
+                let v = v.tensor(inputs).view();
+                FusedSpec::BinPerRow(v, *op)
+            }
+            ProtoFusedSpec::BinPerCol(v, op, _) => {
+                let v = v.tensor(inputs).view();
+                FusedSpec::BinPerCol(v, *op)
+            }
+            ProtoFusedSpec::AddRowColProducts(row, col) => {
+                FusedSpec::AddRowColProducts(row.tensor(inputs), col.tensor(inputs))
+            }
+            ProtoFusedSpec::AddUnicast(store, v) => unsafe {
+                let view = v.tensor(inputs).view();
+                FusedSpec::AddUnicast(store.wrap(&view))
+            },
+            ProtoFusedSpec::Scaler(scaler) => scaler.as_fused_spec(),
+            ProtoFusedSpec::Store(oss) => unsafe { FusedSpec::Store(oss.wrap(&output.view_mut())) },
+        };
+        fs
     }
 
     fn cost(&self, m: &TDim, n: &TDim, idt: DatumType) -> TVec<(Cost, TDim)> {
@@ -189,6 +233,7 @@ pub struct LirMatMulUnary {
     mmm: Box<dyn MatMatMul>,
     c_m_axis: usize,
     c_n_axis: usize,
+    trivial_path: bool,
 }
 
 impl Op for LirMatMulUnary {
@@ -270,34 +315,35 @@ fn eval(
     inputs: &[TValue],
 ) -> TractResult<TVec<TValue>> {
     unsafe {
-//        dbg!(op);
-        let geometry = op.geometry.to_concrete(symbols)?;
-        let c_shape = op.c_fact.shape.eval_to_usize(symbols)?;
-        let mut c = Tensor::uninitialized_dt(op.c_fact.datum_type, &c_shape)?;
-        let mut looping_shape: TVec<usize> = c_shape.to_smallvec();
-        looping_shape[op.c_m_axis] = 1;
-        looping_shape[op.c_n_axis] = 1;
-        //        if looping_shape.iter().any(|d| *d > 1) {
-        for c_coords in indices(&*looping_shape) {
-            let ops = op
-                .micro_ops
-                .iter()
-                .map(|f| f.resolve(inputs, c_coords.slice(), symbols, &mut c))
-                .collect::<TractResult<TVec<_>>>()?;
-            op.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch, &ops)?;
-        }
-        /*
+        if op.trivial_path {
+            let c_shape = op.c_fact.shape.as_concrete().unwrap_unchecked();
+            let geometry = op.geometry.as_concrete().unwrap_unchecked();
+            let mut c = Tensor::uninitialized_dt(op.c_fact.datum_type, c_shape)?;
+            let uops: Vec<FusedSpec> =
+                op.micro_ops.iter().map(|o| o.resolve_trivial(inputs, &mut c)).collect();
+            op.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch, &uops)?;
+            Ok(tvec!(c.into_tvalue()))
         } else {
-        let ops = op
-        .micro_ops
-        .iter()
-        .map(|f| f.resolve(inputs, &looping_shape, symbols, &mut c))
-        .collect::<TractResult<TVec<_>>>()?;
-        op.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch, &ops)?;
+            let geometry = op.geometry.to_concrete(symbols)?;
+            let c_shape = op.c_fact.shape.eval_to_usize(symbols)?;
+            let mut c = Tensor::uninitialized_dt(op.c_fact.datum_type, &c_shape)?;
+            let mut uops = vec![FusedSpec::ShiftLeft(0); op.micro_ops.len()];
+            let mut looping_shape: TVec<usize> = c_shape.to_smallvec();
+            looping_shape[op.c_m_axis] = 1;
+            looping_shape[op.c_n_axis] = 1;
+            for c_coords in indices(&*looping_shape) {
+                for ix in 0..op.micro_ops.len() {
+                    *uops.get_unchecked_mut(ix) = op.micro_ops.get_unchecked(ix).resolve(
+                        inputs,
+                        c_coords.slice(),
+                        symbols,
+                        &mut c,
+                    );
+                }
+                op.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch, &uops)?;
+            }
+            Ok(tvec!(c.into_tvalue()))
         }
-        */
-        //c.set_shape_unchecked(&c_final_shape);
-        Ok(tvec!(c.into_tvalue()))
     }
 }
 
@@ -305,6 +351,7 @@ impl TypedOp for LirMatMulUnary {
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(self.c_m_axis < self.c_fact.rank());
         ensure!(self.c_n_axis < self.c_fact.rank());
+        ensure!(self.trivial_path == self.can_use_trivial_path());
         Ok(tvec!(self.c_fact.clone()))
     }
 
@@ -352,7 +399,7 @@ impl TypedOp for LirMatMulUnary {
 
         if let Some(op) = succ.op_as::<ops::element_wise::ElementWiseOp>().map(|ew| ew.0.as_ref()) {
             if let Some(op) = op.downcast_ref::<ops::math::QScale>() {
-                return self.fuse_op_with_broadcast(
+                return self.fuse_op(
                     model,
                     node,
                     patch,
@@ -382,7 +429,7 @@ impl TypedOp for LirMatMulUnary {
         }
         if let Some(AxisOp::Rm(axis)) = succ.op_as::<ops::AxisOp>() {
             if *axis == self.c_m_axis || *axis == self.c_n_axis {
-                return Ok(None)
+                return Ok(None);
             }
             let mut new_op = self.clone();
             new_op.c_fact.shape.remove_axis(*axis)?;
@@ -403,7 +450,7 @@ impl TypedOp for LirMatMulUnary {
 
                 if patch.outlet_fact(other_input)?.shape == self.c_fact.shape {
                     let other_storage = unsafe { self.mmm.c_view(self.c_m_axis, self.c_n_axis) };
-                    return self.fuse_op_with_broadcast(
+                    return self.fuse_op(
                         model,
                         node,
                         patch,
@@ -435,7 +482,17 @@ impl LirMatMulUnary {
             n: c_fact.shape[c_n_axis].clone(),
         })
         .optimize_if(Some(&Default::default()))?;
-        Ok(LirMatMulUnary { mmm, c_fact, geometry, c_m_axis, c_n_axis, micro_ops })
+        let mut it = LirMatMulUnary {
+            mmm,
+            c_fact,
+            geometry,
+            c_m_axis,
+            c_n_axis,
+            micro_ops,
+            trivial_path: false,
+        };
+        it.update_trivial_path();
+        Ok(it)
     }
     // for cost and info
     fn guess_k(&self) -> Option<TDim> {
@@ -460,6 +517,22 @@ impl LirMatMulUnary {
         }
     }
 
+    fn update_trivial_path(&mut self) {
+        self.trivial_path = self.can_use_trivial_path();
+    }
+
+    fn can_use_trivial_path(&self) -> bool {
+        self.c_fact.shape.is_concrete()
+            && self.geometry.is_concrete()
+            && self
+                .c_fact
+                .shape
+                .iter()
+                .enumerate()
+                .all(|(ax, dim)| ax == self.c_m_axis || ax == self.c_n_axis || dim == TDim::Val(1))
+            && self.micro_ops.iter().all(|o| !o.has_symbols())
+    }
+
     fn fuse_op(
         &self,
         model: &TypedModel,
@@ -472,23 +545,13 @@ impl LirMatMulUnary {
         let mut new_op = self.clone();
         let before_last = new_op.micro_ops.len() - 1..new_op.micro_ops.len() - 1;
         new_op.micro_ops.splice(before_last, fused_micro_op);
+        new_op.update_trivial_path();
         let mut inputs: TVec<OutletId> =
             node.inputs.iter().map(|i| patch.tap_model(model, *i)).collect::<TractResult<_>>()?;
         inputs.extend(additional_inputs.iter().cloned());
         let output = patch.wire_node(&node.name, new_op, &inputs)?;
         patch.shunt_outside(model, succ.id.into(), output[0])?;
         Ok(Some(patch))
-    }
-
-    fn fuse_op_with_broadcast(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-        patch: TypedModelPatch,
-        fused_micro_op: Vec<ProtoFusedSpec>,
-        additional_inputs: &[OutletId],
-    ) -> TractResult<Option<TypedModelPatch>> {
-        self.fuse_op(model, node, patch, fused_micro_op, additional_inputs)
     }
 
     fn fuse_binary(
@@ -516,7 +579,7 @@ impl LirMatMulUnary {
                 (AttrOrInput::Input(node.inputs.len()), tvec!(v))
             };
         if fact.shape.volume() == 1.to_dim() {
-            return self.fuse_op_with_broadcast(
+            return self.fuse_op(
                 model,
                 node,
                 patch,
@@ -528,7 +591,7 @@ impl LirMatMulUnary {
         if other_shape[self.c_m_axis] == self.c_fact.shape[self.c_m_axis]
             && other_shape[self.c_m_axis] == other_shape.volume()
         {
-            return self.fuse_op_with_broadcast(
+            return self.fuse_op(
                 model,
                 node,
                 patch,
@@ -543,7 +606,7 @@ impl LirMatMulUnary {
         if other_shape[self.c_n_axis] == self.c_fact.shape[self.c_n_axis]
             && other_shape[self.c_n_axis] == other_shape.volume()
         {
-            return self.fuse_op_with_broadcast(
+            return self.fuse_op(
                 model,
                 node,
                 patch,
