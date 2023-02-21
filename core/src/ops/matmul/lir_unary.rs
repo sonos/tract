@@ -183,12 +183,12 @@ pub type MatrixGeometry = GeometryBound<SymbolicMatrixGeometry, ConcreteMatrixGe
 
 #[derive(Clone, Debug)]
 pub struct LirMatMulUnary {
-    pub c_fact: TypedFact,
-    pub micro_ops: Vec<ProtoFusedSpec>,
-    pub geometry: MatrixGeometry,
-    pub mmm: Box<dyn MatMatMul>,
-    pub c_m_axis: usize,
-    pub c_n_axis: usize,
+    c_fact: TypedFact,
+    micro_ops: Vec<ProtoFusedSpec>,
+    geometry: MatrixGeometry,
+    mmm: Box<dyn MatMatMul>,
+    c_m_axis: usize,
+    c_n_axis: usize,
 }
 
 impl Op for LirMatMulUnary {
@@ -270,6 +270,7 @@ fn eval(
     inputs: &[TValue],
 ) -> TractResult<TVec<TValue>> {
     unsafe {
+//        dbg!(op);
         let geometry = op.geometry.to_concrete(symbols)?;
         let c_shape = op.c_fact.shape.eval_to_usize(symbols)?;
         let mut c = Tensor::uninitialized_dt(op.c_fact.datum_type, &c_shape)?;
@@ -302,6 +303,8 @@ fn eval(
 
 impl TypedOp for LirMatMulUnary {
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        ensure!(self.c_m_axis < self.c_fact.rank());
+        ensure!(self.c_n_axis < self.c_fact.rank());
         Ok(tvec!(self.c_fact.clone()))
     }
 
@@ -378,6 +381,9 @@ impl TypedOp for LirMatMulUnary {
             }
         }
         if let Some(AxisOp::Rm(axis)) = succ.op_as::<ops::AxisOp>() {
+            if *axis == self.c_m_axis || *axis == self.c_n_axis {
+                return Ok(None)
+            }
             let mut new_op = self.clone();
             new_op.c_fact.shape.remove_axis(*axis)?;
             new_op.c_m_axis -= (new_op.c_m_axis > *axis) as usize;
@@ -414,6 +420,23 @@ impl TypedOp for LirMatMulUnary {
 }
 
 impl LirMatMulUnary {
+    pub fn new(
+        mmm: Box<dyn MatMatMul>,
+        c_fact: TypedFact,
+        c_m_axis: usize,
+        c_n_axis: usize,
+        micro_ops: Vec<ProtoFusedSpec>,
+    ) -> TractResult<Self> {
+        ensure!(c_m_axis < c_fact.rank());
+        ensure!(c_n_axis < c_fact.rank());
+        let geometry = MatrixGeometry::from(SymbolicMatrixGeometry {
+            mmm: mmm.clone(),
+            m: c_fact.shape[c_m_axis].clone(),
+            n: c_fact.shape[c_n_axis].clone(),
+        })
+        .optimize_if(Some(&Default::default()))?;
+        Ok(LirMatMulUnary { mmm, c_fact, geometry, c_m_axis, c_n_axis, micro_ops })
+    }
     // for cost and info
     fn guess_k(&self) -> Option<TDim> {
         self.micro_ops

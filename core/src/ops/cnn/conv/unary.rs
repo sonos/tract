@@ -20,9 +20,7 @@ use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
 use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolGeometry, PoolSpec};
-use crate::ops::matmul::lir_unary::{
-    ConcreteMatrixGeometry, LirMatMulUnary, MatrixGeometry, ProtoFusedSpec, SymbolicMatrixGeometry,
-};
+use crate::ops::matmul::lir_unary::{LirMatMulUnary, ProtoFusedSpec};
 use crate::ops::matmul::MatMulQParams;
 use crate::ops::nn::{BaseDataShape, DataFormat, DataShape};
 
@@ -257,14 +255,6 @@ impl ConvUnary {
 
         let b_dt = model.outlet_fact(b)?.datum_type;
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
-        let mut geometry = MatrixGeometry::from(SymbolicMatrixGeometry {
-            m: m.to_dim(),
-            n: n.clone(),
-            mmm: mmm.clone(),
-        });
-        if n.to_usize().is_ok() {
-            geometry = geometry.optimize_if(Some(&SymbolValues::default()))?;
-        }
         let b_storage = unsafe { mmm.b_packed(b_dt.size_of(), k) };
         let wire = self.wire_lir_matmatmul(
             model,
@@ -275,7 +265,6 @@ impl ConvUnary {
             mmm_output_shape.clone().into(),
             m,
             k,
-            geometry,
             c_axis,
             h_axis,
             b_storage,
@@ -299,15 +288,16 @@ impl ConvUnary {
         c_axis: usize,
     ) -> TractResult<TVec<OutletId>> {
         let m = &mmm_output_shape[c_axis];
-        model.wire_node(
-            format!("{name}.reshape_group"),
+        let op = if self.group == 1 {
+            AxisOp::Rm(c_axis - 1)
+        } else {
             AxisOp::Reshape(
                 c_axis - 1,
                 tvec!(self.group.to_dim(), m.to_dim()),
                 tvec!(m.to_dim() * self.group),
-            ),
-            wire,
-        )
+            )
+        };
+        model.wire_node(format!("{name}.reshape_group"), op, wire)
     }
     pub unsafe fn wire_as_im2col_pair(
         &self,
@@ -319,7 +309,7 @@ impl ConvUnary {
         let b_dt = b_fact.datum_type;
         let c_dt = crate::ops::matmul::output_type(b_fact.datum_type);
 
-        let (_, m, k, n, mmm) = self.compute_geo(model.outlet_fact(wire[0])?)?;
+        let (_, m, k, _, mmm) = self.compute_geo(model.outlet_fact(wire[0])?)?;
         let geo_output_shape = self.pool_spec.output_shape(&b_fact.shape)?;
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&geo_output_shape)?;
 
@@ -329,10 +319,6 @@ impl ConvUnary {
             Im2Col::new(self.pool_spec.clone(), self.group, k, &b_fact.shape, mmm.clone())?,
             &[wire[0], padding],
         )?;
-
-        let geometry =
-            MatrixGeometry::from(SymbolicMatrixGeometry { m: m.to_dim(), n, mmm: mmm.clone() })
-                .optimize_if(Some(&SymbolValues::default()))?;
 
         let b_storage = unsafe { mmm.b_packed(b_dt.size_of(), k) };
         let wire = self.wire_lir_matmatmul(
@@ -344,7 +330,6 @@ impl ConvUnary {
             mmm_output_shape.clone().into(),
             m.to_usize().unwrap(),
             k.to_usize().unwrap(),
-            geometry,
             c_axis,
             h_axis,
             b_storage,
@@ -418,7 +403,7 @@ impl ConvUnary {
         mut wire: OutletId,
     ) -> TractResult<TVec<OutletId>> {
         let mut b_fact = model.outlet_fact(wire)?.clone();
-        let (geo, m, k, n, mmm) = self.compute_geo(&b_fact)?;
+        let (geo, m, k, _, mmm) = self.compute_geo(&b_fact)?;
         let input_shape = b_fact.shape.as_concrete().unwrap().to_vec();
         let mut geo = geo.to_concrete(&input_shape)?.into_owned();
         let mut input_shape: DataShape = self.pool_spec.data_format.shape(input_shape.into())?;
@@ -462,8 +447,6 @@ impl ConvUnary {
         let b_storage = mmm.b_virtual_input(Box::new(virtual_input), k);
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&geo.output_shape)?;
 
-        let geometry =
-            MatrixGeometry::Concrete(ConcreteMatrixGeometry { m, n: n.to_usize().unwrap() });
         let wire = self.wire_lir_matmatmul(
             model,
             name,
@@ -473,7 +456,6 @@ impl ConvUnary {
             mmm_output_shape.clone().into(),
             m.to_usize().unwrap(),
             k,
-            geometry,
             c_axis,
             h_axis,
             b_storage,
@@ -519,7 +501,6 @@ impl ConvUnary {
         mmm_output_shape: ShapeFact,
         m: usize,
         k: usize,
-        geometry: MatrixGeometry,
         c_m_axis: usize,
         c_n_axis: usize,
         b_storage: InputStoreSpec,
@@ -551,14 +532,7 @@ impl ConvUnary {
         ops.push(ProtoFusedSpec::Store(unsafe { mmm.c_view(c_m_axis, c_n_axis) }));
         model.wire_node(
             format!("{name}.matmatmul"),
-            LirMatMulUnary {
-                c_fact: c_datum_type.fact(mmm_output_shape),
-                micro_ops: ops,
-                c_m_axis,
-                c_n_axis,
-                geometry,
-                mmm,
-            },
+            LirMatMulUnary::new(mmm, c_datum_type.fact(mmm_output_shape), c_m_axis, c_n_axis, ops)?,
             wire,
         )
     }

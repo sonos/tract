@@ -1,7 +1,4 @@
-use super::lir_unary::{
-    AddMatMulGeometry, ConcreteMatrixGeometry, LirMatMulUnary, MapOutputAxisToInput,
-    MatrixGeometry, ProtoFusedSpec,
-};
+use super::lir_unary::{AddMatMulGeometry, LirMatMulUnary, MapOutputAxisToInput, ProtoFusedSpec};
 use super::*;
 use crate::internal::*;
 use crate::ops::array::TypedConcat;
@@ -189,7 +186,8 @@ impl MatMulUnary {
                     &mut pa.view_offsetting_mut(&pa_coords)?,
                     &self.a.view_offsetting(a_iter.slice())?,
                     self.axes.a_k,
-                    self.axes.a_m)
+                    self.axes.a_m,
+                )
             }
 
             let mut packed_b_shape: TVec<usize> = b_shape.into();
@@ -212,13 +210,13 @@ impl MatMulUnary {
                 (0..c_shape.len()).filter(|&c| c != self.axes.c_m && c != self.axes.c_n),
                 (0..self.a.rank()).filter(|&a| a != self.axes.a_k && a != self.axes.a_m),
             )
-            .filter(|(_,a)| self.a.shape()[*a] > 1)
+            .filter(|(_, a)| self.a.shape()[*a] > 1)
             .collect();
             let c_to_b: TVec<(usize, usize)> = izip!(
                 (0..c_shape.len()).filter(|&c| c != self.axes.c_m && c != self.axes.c_n),
                 (0..b_shape.len()).filter(|&b| b != self.axes.b_k && b != self.axes.b_n),
             )
-            .filter(|(_,b)| b_shape[*b] > 1)
+            .filter(|(_, b)| b_shape[*b] > 1)
             .collect();
             let micro_ops = vec![
                 ProtoFusedSpec::AddMatMul(
@@ -234,17 +232,15 @@ impl MatMulUnary {
                 ),
                 ProtoFusedSpec::Store(mmm.c_view(self.axes.c_m, self.axes.c_n)),
             ];
-            let geometry = ConcreteMatrixGeometry { m, n };
             wire = patch.wire_node(
                 format!("{}.matmatmul", &*node.name),
-                LirMatMulUnary {
-                    c_fact: c_dt.fact(&c_shape),
-                    geometry: MatrixGeometry::Concrete(geometry),
-                    micro_ops,
+                LirMatMulUnary::new(
                     mmm,
-                    c_m_axis: self.axes.c_m,
-                    c_n_axis: self.axes.c_n,
-                },
+                    c_dt.fact(&c_shape),
+                    self.axes.c_m,
+                    self.axes.c_n,
+                    micro_ops,
+                )?,
                 &[wire],
             )?[0];
             patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
