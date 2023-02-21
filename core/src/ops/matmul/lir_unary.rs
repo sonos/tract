@@ -555,6 +555,6 @@ impl LirMatMulUnary {
                 &additional_inputs,
             );
         }
-        return Ok(None);
+        Ok(None)
     }
 }

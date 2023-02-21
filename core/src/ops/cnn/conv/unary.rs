@@ -243,7 +243,7 @@ impl ConvUnary {
 
         let mut sum_b = model.wire_node(
             format!("{name}.sum_b"),
-            super::QSumB { n: n.clone(), r: mmm.b_pack().panel_width(), k },
+            super::QSumB { n, r: mmm.b_pack().panel_width(), k },
             &[im2col],
         )?;
         // sum_b is N,G,HW. make it N,HW,G,C or N,G,C,HW
