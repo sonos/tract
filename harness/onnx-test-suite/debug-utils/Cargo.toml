@@ -1,6 +1,6 @@
 [package]
 name = "debug-utils"
-version = "0.19.3-pre"
+version = "0.19.4-pre"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 edition = "2021"
 
@@ -9,4 +9,4 @@ members = []
 
 [dependencies]
 protobuf = "*"
-tract-onnx = { path = "../../../onnx" , version = "=0.19.3" }
+tract-onnx = { path = "../../../onnx" , version = "=0.19.4-pre" }
