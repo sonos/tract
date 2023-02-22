@@ -28,13 +28,23 @@ dyn_clone::clone_trait_object!(TypedPass);
 
 #[derive(Debug)]
 pub struct Optimizer {
-    passes: Vec<Box<dyn TypedPass>>,
-    steps: Option<usize>,
+    pub passes: Vec<Box<dyn TypedPass>>,
+    pub steps: Option<usize>,
 }
 
 impl Optimizer {
     fn passes(passes: Vec<Box<dyn TypedPass>>) -> Optimizer {
         Optimizer { passes, steps: None }
+    }
+
+    pub fn add_pass(&mut self, idx: usize, pass: Box<dyn TypedPass>) {
+        let num_pass = self.passes.len();
+        if idx > num_pass {
+            log::warn!("Cannot add new pass {:?} at index {}. Optimizer currently as {} passes, pass will be added as the last pass.", pass, idx, num_pass);
+            self.passes.push(pass);
+        } else {
+            self.passes.insert(idx, pass);
+        }
     }
 
     pub fn stopping_at(self, steps: usize) -> Optimizer {
@@ -160,6 +170,7 @@ impl<'o> OptimizerSession<'o> {
             model
                 .check_consistency()
                 .context("Checking target model consistency after patchign")?;
+
             self.counter += 1;
             if let Some(steps) = self.optimizer.steps {
                 if self.counter >= steps {
