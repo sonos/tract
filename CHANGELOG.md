@@ -1,3 +1,8 @@
+# 0.19.5 - 2023-02-22
+* 0.19.3 and 0.19.4 are release misfires
+* lots of bugfixes following 0.19 big changes
+* introducing the JSON NNEF resource
+
 # 0.19.1 - 2023-01-23
 * [nnef] new identifier syntax is now opt-in for serialization (both accepted at loading)
 * alpha-level C interface. how and how to deploy it (where to put the .h, whether or not to build and ship dylibs)
