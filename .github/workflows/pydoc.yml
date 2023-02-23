@@ -15,6 +15,8 @@ jobs:
 
       - name: Build doc
         run: |
+          git config user.name "CI bot"
+          git config user.email ci-bot@tract.rs
           cd ffi/py
           pip install -r requirements-docs.txt
           mike deploy foo
