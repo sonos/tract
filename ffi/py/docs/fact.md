@@ -1,0 +1,3 @@
+# Facts
+
+::: tract.fact

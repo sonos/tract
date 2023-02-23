@@ -1,0 +1,20 @@
+site_name: tract.py
+
+theme:
+  name: "material"
+
+nav:
+  - Home: index.md
+  - Reference:
+    - tract: tract.md
+    - ONNX: onnx.md
+    - NNEF: nnef.md
+    - Inference model: inference_model.md
+    - Model: model.md
+    - Fact: fact.md
+    - Runnable: runnable.md
+    - Value: value.md
+
+plugins:
+- search
+- mkdocstrings
