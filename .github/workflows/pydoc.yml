@@ -13,32 +13,23 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Build doc
+      - name: Extract version tag
+        id: version
+        if: github.event_name == 'release' && github.event.action == 'published'
+        run: echo value=$(echo ${{ github.ref }} | cut -f 3 -d / | tr -d 'v' ) >> $GITHUB_OUTPUT
+
+      - name: Build and publish doc
         run: |
           git config user.name "CI bot"
           git config user.email ci-bot@tract.rs
           git fetch origin gh-pages --depth=1
           cd ffi/py
           pip install -r requirements-docs.txt
-          mike deploy foo
-
-      - name: Update site
-        #        if: github.event_name == 'release' && github.event.action == 'published'
-        run: git push origin gh-pages:gh-pages
-
-
-          #   upload_all:
-          #     needs: [build_wheels, make_sdist]
-          #     runs-on: ubuntu-latest
-          # 
-          #     steps:
-          #     - uses: actions/download-artifact@v3
-          #       with:
-          #         name: artifact
-          #         path: dist
-          # 
-          #     - uses: pypa/gh-action-pypi-publish@v1.5.1
-          #       with:
-          #         user: __token__
-          #         password: ${{ secrets.PYPI }}
-          #         verbose: true
+          version=${{steps.version.outputs.value}}
+          if [ -n "$version" ]
+          then
+            mike deploy $version
+            git push origin gh-pages:gh-pages
+          else
+            mike deploy foo
+          fi
