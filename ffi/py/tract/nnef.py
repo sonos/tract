@@ -33,7 +33,7 @@ class Nnef:
         """
         Load an NNEF model from the file or folder at `path`
 
-        ```
+        ```python
         model = (
             tract.nnef()
             .model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")

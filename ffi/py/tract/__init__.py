@@ -63,5 +63,5 @@ def onnx() -> Onnx:
     """Return a newly-created ONNX context for loading models"""
     return Onnx()
 
-__all__ = [version, nnef, onnx, Nnef]
+__all__ = [version, nnef, onnx, Nnef, Onnx]
 
