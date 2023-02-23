@@ -22,23 +22,14 @@ jobs:
           pip install -r requirements-docs.txt
           mike deploy foo
 
-          #   make_sdist:
-          #     name: Make SDist
-          #     runs-on: ubuntu-latest
-          #     steps:
-          #     - uses: actions/checkout@v3
-          # 
-          #     - name: Build SDist
-          #       run: cd ffi/py ; pipx run build --sdist
-          # 
-          #     - uses: actions/upload-artifact@v3
-          #       with:
-          #         path: ffi/py/dist/*.tar.gz
-          # 
+      - name: Update site
+        #        if: github.event_name == 'release' && github.event.action == 'published'
+        run: git push origin gh-pages:gh-pages
+
+
           #   upload_all:
           #     needs: [build_wheels, make_sdist]
           #     runs-on: ubuntu-latest
-          #     if: github.event_name == 'release' && github.event.action == 'published'
           # 
           #     steps:
           #     - uses: actions/download-artifact@v3
