@@ -1,3 +1,0 @@
-# `tract` API reference
-
-::: tract
