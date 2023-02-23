@@ -1,0 +1,50 @@
+name: Python gh-pages doc
+
+on:
+  pull_request:
+  release:
+  workflow_dispatch:
+
+jobs:
+  build_doc:
+    name: Build doc
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Build doc
+        run: 
+          cd ffi/py
+          pip install -r requirements-docs.txt
+          mike deploy foo
+
+          #   make_sdist:
+          #     name: Make SDist
+          #     runs-on: ubuntu-latest
+          #     steps:
+          #     - uses: actions/checkout@v3
+          # 
+          #     - name: Build SDist
+          #       run: cd ffi/py ; pipx run build --sdist
+          # 
+          #     - uses: actions/upload-artifact@v3
+          #       with:
+          #         path: ffi/py/dist/*.tar.gz
+          # 
+          #   upload_all:
+          #     needs: [build_wheels, make_sdist]
+          #     runs-on: ubuntu-latest
+          #     if: github.event_name == 'release' && github.event.action == 'published'
+          # 
+          #     steps:
+          #     - uses: actions/download-artifact@v3
+          #       with:
+          #         name: artifact
+          #         path: dist
+          # 
+          #     - uses: pypa/gh-action-pypi-publish@v1.5.1
+          #       with:
+          #         user: __token__
+          #         password: ${{ secrets.PYPI }}
+          #         verbose: true
