@@ -15,9 +15,9 @@ jobs:
 
       - name: Build doc
         run: 
-          cd ffi/py
-          pip install -r requirements-docs.txt
-          mike deploy foo
+          | cd ffi/py
+          | pip install -r requirements-docs.txt
+          | mike deploy foo
 
           #   make_sdist:
           #     name: Make SDist
