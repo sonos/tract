@@ -138,12 +138,20 @@ pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
         Ok((invocation.named_arg_as(builder, "begin")?,
         invocation.named_arg_as(builder, "end")?))})?;
 
-    for bound in [&mut begins, &mut ends] {
-        for (ix, d) in bound.iter_mut().enumerate() {
-            if let Ok(i) = d.to_i64() {
-                if i < 0 {
-                    *d += input_fact.shape[ix].to_dim();
-                }
+    for (ix, d) in begins.iter_mut().enumerate() {
+        if let Ok(i) = d.to_i64() {
+            if i < 0 {
+                *d += input_fact.shape[ix].to_dim();
+            }
+        }
+    }
+
+    // use "<=", no "<" end[axis] = 0 means "up to the end"
+    // CAUTION: this notation is 1/ deprecated 2/ invalid with non trivial slicing
+    for (ix, d) in ends.iter_mut().enumerate() {
+        if let Ok(i) = d.to_i64() {
+            if i <= 0 {
+                *d += input_fact.shape[ix].to_dim();
             }
         }
     }
