@@ -1,3 +1,7 @@
+# 0.19.6 - 2023-02-24
+* more bug fixes
+* wip on python doc auto-deploy
+
 # 0.19.5 - 2023-02-22
 * 0.19.3 and 0.19.4 are release misfires
 * lots of bugfixes following 0.19 big changes
