@@ -1,12 +1,12 @@
 [package]
 name = "tf-inceptionv3"
-version = "0.19.6-pre"
+version = "0.19.8-pre"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT/Apache-2.0"
 
 [dependencies]
 image.workspace = true
-tract-tensorflow = { path = "../../tensorflow", version = "=0.19.7" }
+tract-tensorflow = { path = "../../tensorflow", version = "=0.19.8-pre" }
 
 [features]
 conform = [ "tract-tensorflow/conform" ]

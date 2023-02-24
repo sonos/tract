@@ -1,6 +1,6 @@
 [package]
 name = "onnx-test-suite"
-version = "0.19.6-pre"
+version = "0.19.8-pre"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT/Apache-2.0"
 edition = "2021"
@@ -10,9 +10,9 @@ bytes.workspace = true
 fs2.workspace = true
 log.workspace = true
 prost.workspace = true
-tract-core = { path = "../../core", version = "=0.19.7" }
-tract-nnef = { path = "../../nnef", version = "=0.19.7" }
-tract-onnx = { path = "../../onnx", version = "=0.19.7" }
+tract-core = { path = "../../core", version = "=0.19.8-pre" }
+tract-nnef = { path = "../../nnef", version = "=0.19.8-pre" }
+tract-onnx = { path = "../../onnx", version = "=0.19.8-pre" }
 
 [features]
 onnx_1_4_1 = []
