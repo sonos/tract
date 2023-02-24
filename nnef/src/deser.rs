@@ -289,7 +289,7 @@ impl<'mb> ModelBuilder<'mb> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ResolvedInvocation<'a> {
     pub invocation: &'a Invocation,
     pub dt_from_quant_file: &'a [Option<DatumType>],

@@ -83,7 +83,7 @@ pub fn reshape(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> T
     let start: usize = invocation.named_arg_as(builder, "axis_start")?;
     let count: i64 = invocation.named_arg_as(builder, "axis_count")?;
     let count = if count == -1 { input_shape.len() - start } else { count as usize };
-    let shape: TVec<TDim> = invocation.named_arg_as(builder, "shape")?;
+    let shape: TVec<TDim> = builder.allowing_new_symbols(|builder| invocation.named_arg_as(builder, "shape"))?;
 
     let mut replacement = shape;
     for i in 0..replacement.len() {
@@ -134,31 +134,19 @@ pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
     let wire = tvec!(invocation.named_arg_as(builder, "input")?);
     let input_fact = builder.model.outlet_fact(wire[0])?.clone();
     let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
-    let (begins, ends) = builder.allowing_new_symbols(|builder| -> TractResult<_> {
-        let begins: TVec<i64> = invocation.named_arg_as(builder, "begin")?;
-        let begins = begins.into_iter().enumerate().map(|(ix, b)| -> TDim {
-            if b < 0 {
-                input_fact.shape[ix].clone() + b
-            } else {
-                b.into()
-            }
-        });
-        let ends: TVec<i64> = invocation.named_arg_as(builder, "end")?;
-        let ends = ends
-            .into_iter()
-            .enumerate()
-            .map(|(ix, b)| -> TDim {
-                // use "<=", no "<" end[axis] = 0 means "up to the end"
-                // CAUTION: this notation is 1/ deprecated 2/ invalid with non trivial slicing
-                if b <= 0 {
-                    input_fact.shape[axes[ix]].clone() + b
-                } else {
-                    b.into()
+    let (mut begins, mut ends):(TVec<TDim>, TVec<TDim>) = builder.allowing_new_symbols(|builder| -> TractResult<_> {
+        Ok((invocation.named_arg_as(builder, "begin")?,
+        invocation.named_arg_as(builder, "end")?))})?;
+
+    for bound in [&mut begins, &mut ends] {
+        for (ix, d) in bound.iter_mut().enumerate() {
+            if let Ok(i) = d.to_i64() {
+                if i < 0 {
+                    *d += input_fact.shape[ix].to_dim();
                 }
-            })
-        .collect_vec();
-        Ok((begins, ends))
-    })?;
+            }
+        }
+    }
     let strides: TVec<isize> = invocation
         .named_arg_as(builder, "stride")
         .unwrap_or_else(|_| ends.iter().map(|_| 1).collect());
