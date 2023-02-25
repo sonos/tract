@@ -87,6 +87,7 @@ impl EvalOp for Downsample {
 
 impl TypedOp for Downsample {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        ensure!(self.axis < inputs[0].rank());
         let mut downed = inputs[0].clone();
         let down_len = self.transform_dim(&downed.shape[self.axis]);
         downed.shape.set(self.axis, down_len);
@@ -129,19 +130,26 @@ fn pull_downsample_up(
         } else if let Some(other_op) = prec.op_as::<ops::scan::Scan>() {
             return scan::pull_downsample_over_scan(model, prec, other_op, down_node, down_op);
         }
-        if let Some(above_axis) = invariants.unary_track_axis_up(down_op.axis, false) {
+        if prec.outputs.len() > 1 {
+            return Ok(None)
+        }
+        if let Some(axis_info) = invariants.track_output_axis(0, down_op.axis) {
             let mut patch = TypedModelPatch::default();
             let mut inputs = vec![];
             for (ix, &oo) in prec.inputs.iter().enumerate() {
-                let source = patch.tap_model(model, oo)?;
-                let mut op = down_op.clone();
-                op.axis = above_axis;
-                let ds = patch.wire_node(
-                    format!("{}.{}-{}", down_node.name, prec.name, ix),
-                    op,
-                    [source].as_ref(),
-                )?;
-                inputs.push(ds[0]);
+                let mut wire = patch.tap_model(model, oo)?;
+                if let Some(axis) = axis_info.inputs[ix] {
+                    if !patch.outlet_fact(wire)?.shape[axis].is_one() {
+                        let mut op = down_op.clone();
+                        op.axis = axis;
+                        wire  = patch.wire_node(
+                            format!("{}.{}-{}", down_node.name, prec.name, ix),
+                            op,
+                            &[wire]
+                        )?[0];
+                    }
+                }
+                inputs.push(wire);
             }
             let other = patch.wire_node(&prec.name, prec.op.clone(), &inputs)?;
             patch.shunt_outside(model, OutletId::new(down_node.id, 0), other[0])?;
