@@ -138,35 +138,47 @@ impl Invariants {
         self.axes.iter().find(|conn| conn.outputs.get(output) == Some(&Some(axis)))
     }
 
-    pub fn unary_track_axis_up(&self, axis: usize, only_disposable: bool) -> Option<usize> {
+    pub fn unary_track_axis_up(
+        &self,
+        axis: usize,
+        only_disposable: bool,
+    ) -> TractResult<Option<usize>> {
+        ensure!(self.axes.iter().all(|a| a.inputs.len() <= 1 && a.outputs.len() <= 1));
         // TODO use track_input_axis
         if self.element_wise {
-            Some(axis)
+            Ok(Some(axis))
         } else {
-            self.axes
+            Ok(self
+                .axes
                 .iter()
                 .find(|connection| {
                     connection.outputs.get(0) == Some(&Some(axis)) && connection.period == 1
                 })
                 .filter(|conn| conn.disposable || !only_disposable)
                 .and_then(|connection| connection.inputs.get(0))
-                .and_then(|d| *d)
+                .and_then(|d| *d))
         }
     }
 
-    pub fn unary_track_axis_down(&self, axis: usize, only_disposable: bool) -> Option<usize> {
+    pub fn unary_track_axis_down(
+        &self,
+        axis: usize,
+        only_disposable: bool,
+    ) -> TractResult<Option<usize>> {
+        ensure!(self.axes.iter().all(|a| a.inputs.len() <= 1 && a.outputs.len() <= 1));
         // TODO use track_input_axis
         if self.element_wise {
-            Some(axis)
+            Ok(Some(axis))
         } else {
-            self.axes
+            Ok(self
+                .axes
                 .iter()
                 .find(|connection| {
                     connection.inputs.get(0) == Some(&Some(axis)) && connection.period == 1
                 })
                 .filter(|conn| conn.disposable || !only_disposable)
                 .and_then(|connection| connection.outputs.get(0))
-                .and_then(|d| *d)
+                .and_then(|d| *d))
         }
     }
 }
