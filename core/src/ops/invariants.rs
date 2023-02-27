@@ -67,7 +67,6 @@ impl std::iter::FromIterator<AxisInfo> for Invariants {
 pub struct AxisInfo {
     pub inputs: TVec<Option<usize>>,
     pub outputs: TVec<Option<usize>>,
-    pub period: usize,
 }
 
 impl fmt::Debug for AxisInfo {
@@ -84,20 +83,13 @@ impl fmt::Debug for AxisInfo {
                 .map(|i| i.map(|a| a.to_string()).unwrap_or_else(|| "_".to_string()))
                 .join(",")
         )?;
-        if self.period != 1 {
-            write!(fmt, " period: {}", self.period)?;
-        }
         Ok(())
     }
 }
 
 impl AxisInfo {
     pub fn simple(axis: usize) -> AxisInfo {
-        AxisInfo { inputs: tvec!(Some(axis)), outputs: tvec!(Some(axis)), period: 1 }
-    }
-
-    pub fn with_period(self, period: usize) -> AxisInfo {
-        AxisInfo { period, ..self }
+        AxisInfo { inputs: tvec!(Some(axis)), outputs: tvec!(Some(axis)) }
     }
 
     pub fn for_facts(
@@ -108,7 +100,6 @@ impl AxisInfo {
         Ok(AxisInfo {
             inputs: inputs.iter().map(|_| Some(axis)).collect(),
             outputs: outputs.iter().map(|_| Some(axis)).collect(),
-            period: 1,
         })
     }
 }
@@ -131,9 +122,7 @@ impl Invariants {
             Ok(self
                 .axes
                 .iter()
-                .find(|connection| {
-                    connection.outputs.get(0) == Some(&Some(axis)) && connection.period == 1
-                })
+                .find(|connection| connection.outputs.get(0) == Some(&Some(axis)))
                 .and_then(|connection| connection.inputs.get(0))
                 .and_then(|d| *d))
         }
@@ -149,7 +138,7 @@ impl Invariants {
                 .axes
                 .iter()
                 .find(|connection| {
-                    connection.inputs.get(0) == Some(&Some(axis)) && connection.period == 1
+                    connection.inputs.get(0) == Some(&Some(axis))
                 })
                 .and_then(|connection| connection.outputs.get(0))
                 .and_then(|d| *d))
@@ -331,7 +320,7 @@ pub fn for_model(model: &TypedModel) -> TractResult<Invariants> {
                 model.input_outlets()?.iter().map(|i| tracking.outlets.get(i).cloned()).collect();
             let outputs =
                 model.output_outlets()?.iter().map(|i| tracking.outlets.get(i).cloned()).collect();
-            Ok(AxisInfo { inputs, outputs, period: 1 })
+            Ok(AxisInfo { inputs, outputs })
         })
         .collect()
 }

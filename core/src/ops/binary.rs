@@ -185,7 +185,6 @@ impl TypedOp for TypedBinOp {
             .map(|axis| AxisInfo {
                 inputs: tvec!(Some(axis), Some(axis)),
                 outputs: tvec!(Some(axis)),
-                period: 1,
             })
             .collect())
     }
