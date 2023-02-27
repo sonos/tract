@@ -157,7 +157,7 @@ impl TypedOp for TypedBinOp {
         &self,
         model: &TypedModel,
         node: &TypedNode,
-        io: InOut,
+        _io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
         if let AxisOp::Rm(rm) = change {

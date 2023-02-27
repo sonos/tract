@@ -13,7 +13,6 @@ use tract_ndarray::prelude::*;
 
 pub use self::mir::MatMul;
 pub use self::mir_quant::{MatMulQParams, QMatMul};
-use self::pack::MatMatMulPack;
 
 #[derive(PartialEq, Eq, Clone, Debug, Copy, Hash)]
 pub struct MatMulAxes {

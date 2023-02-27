@@ -2,15 +2,13 @@ use tract_data::itertools::izip;
 
 use crate::internal::*;
 use crate::ops::einsum::{Axis, EinSum, Expr};
-use crate::ops::{change_axes, matmul::*};
+use crate::ops::matmul::*;
 
 /// The binary op. It will declutter to MatMulUnary if either A or B is constant.
 #[derive(Debug, Clone, Default, Hash)]
 pub struct MatMul {
     pub axes: MatMulAxes,
 }
-
-
 
 impl Op for MatMul {
     fn name(&self) -> Cow<str> {
