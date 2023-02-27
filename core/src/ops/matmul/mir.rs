@@ -53,8 +53,8 @@ impl TypedOp for MatMul {
         assert!(a_fact.rank() == b_fact.rank());
 
         let k_axis = Axis::new('k').input(0, self.axes.a_k).input(1, self.axes.b_k);
-        let m_axis = Axis::new('m').input(0, self.axes.a_m).result(self.axes.c_m);
-        let n_axis = Axis::new('n').input(1, self.axes.b_n).result(self.axes.c_n);
+        let m_axis = Axis::new('m').input(0, self.axes.a_m).output(0, self.axes.c_m);
+        let n_axis = Axis::new('n').input(1, self.axes.b_n).output(0, self.axes.c_n);
         let rank = a_fact.rank();
         fn remaining(rank: usize, skip1: usize, skip2: usize) -> impl Iterator<Item = usize> {
             (0..rank).filter(move |&i| i != skip1 && i != skip2)
@@ -64,7 +64,7 @@ impl TypedOp for MatMul {
         let remain_c = remaining(rank, self.axes.c_m, self.axes.c_n);
         let alphabet = ('a'..).filter(|&c| c != 'k' && c != 'm' && c != 'n');
         let extra_axes = izip!(alphabet, remain_a, remain_b, remain_c)
-            .map(|(letter, a, b, c)| Axis::new(letter).input(0, a).input(1, b).result(c));
+            .map(|(letter, a, b, c)| Axis::new(letter).input(0, a).input(1, b).output(0, c));
         let expr: Expr = extra_axes.chain([k_axis, m_axis, n_axis].into_iter()).collect();
         TypedModelPatch::replace_single_op(
             model,

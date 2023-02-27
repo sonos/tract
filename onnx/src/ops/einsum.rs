@@ -8,7 +8,7 @@ pub fn einsum(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let expr = node.get_attr::<String>("equation")?;
-    let expr = expr.replace("...", "*").parse()?;
+    let expr:Expr = expr.replace("...", "*").parse()?;
     Ok((expand(EinSum { expr }), vec![]))
 }
 
@@ -64,11 +64,11 @@ impl Expansion for EinSum {
         s.given_all(ranks, move |s, ranks| {
             let ranks = ranks.iter().map(|r| *r as usize).collect::<TVec<_>>();
             let expr = resolve_ellipsis(&self.expr, &ranks)?;
-            s.equals(&outputs[0].rank, expr.output_rank() as i64)?;
+            s.equals(&outputs[0].rank, expr.output_rank(0) as i64)?;
             for axis in expr.iter_all_axes() {
                 let mut axes = vec![];
-                if let Some(result) = axis.result {
-                    axes.push(outputs[0].shape[result].bex())
+                if let Some(result) = axis.outputs[0].get(0) {
+                    axes.push(outputs[0].shape[*result].bex())
                 }
                 for (input_id, input_axis_positions) in axis.inputs.iter().enumerate() {
                     for position in input_axis_positions {
