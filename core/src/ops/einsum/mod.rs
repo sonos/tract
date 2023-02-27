@@ -205,7 +205,7 @@ impl TypedOp for EinSum {
                 } else {
                     let i = (0..inputs.len()).map(|i| axis.inputs[i].get(0).cloned()).collect();
                     let o = (0..outputs.len()).map(|i| axis.outputs[i].get(0).cloned()).collect();
-                    Some(AxisInfo { inputs: i, outputs: o, period: 1 })
+                    Some(AxisInfo { inputs: i, outputs: o})
                 }
             })
             .collect();

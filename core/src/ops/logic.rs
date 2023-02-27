@@ -9,18 +9,17 @@ use crate::internal::*;
 use super::binary::BinMiniOp;
 use super::element_wise::ElementWiseOp;
 
-
 bin_to_super_type!(and, And,
                    [bool, u8, u16, u32, u64, i8, i16, i32, i64] => |c, &a, &b| *c = (a as i64 != 0 && b as i64 != 0) as _);
 bin_to_super_type!(or, Or,
                    [bool, u8, u16, u32, u64, i8, i16, i32, i64] => |c, &a, &b| *c = (a as i64 != 0 || b as i64 != 0) as _);
 bin_to_super_type!(xor, Xor, /*flip: commute, */ [bool] => |c, &a, &b| *c = a ^ b);
 bin_to_bool!(equals, Equals,
-             [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, TDim] => |c, a, b | *c = a == b
-            );
+ [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, TDim] => |c, a, b | *c = a == b
+);
 bin_to_bool!(not_equals, NotEquals, /* flip: commute, */
-             [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, TDim] => |c, a, b | *c = a != b
-            );
+ [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, TDim] => |c, a, b | *c = a != b
+);
 
 bin_to_bool!(less, Less,
              codegen: codegen_compare_to_zero,
@@ -54,7 +53,7 @@ fn codegen_compare_to_zero(
     op: &dyn BinMiniOp,
     model: &TypedModel,
     node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
+) -> TractResult<Option<TypedModelPatch>> {
     let facts = model.node_input_facts(node.id)?;
     if let Some(uniform) = crate::ops::binary::one_input_is_uniform(model, node)? {
         let dt = facts[0].datum_type;
@@ -64,9 +63,9 @@ fn codegen_compare_to_zero(
                 macro_rules! m {
                     ($bin: ty, $same: expr, $other: expr) => {
                         if op.is::<$bin>() {
-                            return if reversed {Box::new($other) } else {Box::new($same)}
+                            return if reversed { Box::new($other) } else { Box::new($same) };
                         };
-                    }
+                    };
                 }
                 m!(Less, LessThanZero {}, GreaterEqualThanZero {});
                 m!(LessEqual, LessEqualThanZero {}, GreaterThanZero {});
@@ -75,11 +74,11 @@ fn codegen_compare_to_zero(
                 unreachable!();
             };
             return Ok(Some(TypedModelPatch::replace_single_op(
-                        model,
-                        node,
-                        &[uniform.var],
-                        ElementWiseOp(mapped()),
-                        )?));
+                model,
+                node,
+                &[uniform.var],
+                ElementWiseOp(mapped()),
+            )?));
         }
     }
     Ok(None)
@@ -113,15 +112,13 @@ element_wise!(not, Not, [bool] => |_, vs| {
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct Iff;
 
-
-
 impl Iff {
     pub unsafe fn eval_t<T: Datum>(
         cond: &ArrayViewD<bool>,
         out: &mut Tensor,
         t: &Tensor,
         f: &Tensor,
-        ) {
+    ) {
         Zip::from(out.to_array_view_mut_unchecked::<T>())
             .and_broadcast(cond)
             .and_broadcast(t.to_array_view_unchecked::<T>())
@@ -152,7 +149,7 @@ impl EvalOp for Iff {
                     cond.shape(),
                     t.shape(),
                     f.shape()
-                    )
+                )
             })?;
         unsafe {
             let mut result = Tensor::uninitialized_dt(t.datum_type(), &shape)?;
@@ -175,11 +172,11 @@ impl TypedOp for Iff {
             bail!("Inconsistent ranks, {:?}", inputs);
         }
         let shape = multi_broadcast(&[
-                                    inputs[0].shape.to_tvec(),
-                                    inputs[1].shape.to_tvec(),
-                                    inputs[2].shape.to_tvec(),
+            inputs[0].shape.to_tvec(),
+            inputs[1].shape.to_tvec(),
+            inputs[2].shape.to_tvec(),
         ])
-            .unwrap();
+        .unwrap();
         Ok(tvec!(inputs[1].datum_type.fact(shape)))
     }
 
@@ -187,19 +184,19 @@ impl TypedOp for Iff {
         &self,
         inputs: &[&TypedFact],
         _outputs: &[&TypedFact],
-        ) -> TractResult<Invariants> {
+    ) -> TractResult<Invariants> {
         let a = &inputs[0];
         let b = &inputs[1];
         let c = &inputs[2];
         assert!(a.rank() == b.rank() && b.rank() == c.rank());
         let rank = a.rank();
         Ok((0..rank)
-           .map(|axis| AxisInfo {
-               inputs: tvec!(Some(axis), Some(axis), Some(axis)),
-               outputs: tvec!(Some(axis)),
-               period: 1,
-           })
-           .collect())
+            .into_iter()
+            .map(|axis| AxisInfo {
+                inputs: tvec!(Some(axis), Some(axis), Some(axis)),
+                outputs: tvec!(Some(axis)),
+            })
+            .collect())
     }
 }
 

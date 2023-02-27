@@ -13,10 +13,7 @@ pub enum InOut {
 }
 
 impl InOut {
-    pub fn as_outlet<F: Clone + Fact , O: Clone >(
-        &self,
-        node: &Node<F, O>,
-    ) -> OutletId {
+    pub fn as_outlet<F: Clone + Fact, O: Clone>(&self, node: &Node<F, O>) -> OutletId {
         match self {
             InOut::In(ix) => node.inputs[*ix],
             InOut::Out(ix) => OutletId::new(node.id, *ix),
@@ -454,8 +451,6 @@ impl Op for AxisOp {
     op_as_typed_op!();
 }
 
-
-
 #[derive(Debug, Clone)]
 struct ReshapeState;
 trivial_op_state_freeeze!(ReshapeState);
@@ -520,11 +515,7 @@ impl TypedOp for AxisOp {
         let is_rm = matches!(self, AxisOp::Rm(_));
         for i in 0..(outputs[0].rank() + is_rm as usize) {
             if let Some(out) = self.transform_axis(i) {
-                axes.push(AxisInfo {
-                    inputs: tvec!(Some(i)),
-                    outputs: tvec!(Some(out)),
-                    period: 1,
-                });
+                axes.push(AxisInfo { inputs: tvec!(Some(i)), outputs: tvec!(Some(out)) });
             }
         }
         Ok(axes.into_iter().collect())
@@ -697,9 +688,15 @@ pub fn change_axes(
                     let outlet_group = bound_outlets(wire.as_outlet(node));
                     match changed_wires.entry(outlet_group.clone()) {
                         Entry::Vacant(entry) => {
-                            trace!("         {:?} {:?} change on {:?} is new", wire, op, outlet_group);
+                            trace!(
+                                "         {:?} {:?} change on {:?} is new",
+                                wire,
+                                op,
+                                outlet_group
+                            );
                             entry.insert(op.clone());
-                            todo_changes.push((AxisChange { outlet: outlet_group[0], op }, Some(node_id)));
+                            todo_changes
+                                .push((AxisChange { outlet: outlet_group[0], op }, Some(node_id)));
                         }
                         Entry::Occupied(previous) => {
                             if *previous.get() == op {

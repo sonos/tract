@@ -781,7 +781,7 @@ impl TypedOp for Scan {
         let mut invariants = tvec!();
         let body_invs = self.body.invariants().with_context(|| "Computing body invariants")?;
         for body_axis in body_invs.axes {
-            let mut info = AxisInfo::default().with_period(1);
+            let mut info = AxisInfo::default();
             for (ix, input_mapping) in self.input_mapping.iter().enumerate() {
                 if let Some(slot) = input_mapping.slot() {
                     while info.inputs.len() <= slot {
