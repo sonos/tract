@@ -1,6 +1,5 @@
 use crate::ops::einsum::EinSum;
 use crate::ops::konst::Const;
-use crate::ops::source::TypedSource;
 use crate::optim::OptimizerSession;
 
 use super::lir::{LirScan, LirScanOpParams};
