@@ -11,7 +11,7 @@ pub use expr::Expr;
 
 use super::array::TypedConcat;
 use super::math::add;
-mod to_matmul;
+// mod to_matmul;
 
 #[derive(Clone, Hash, new)]
 pub struct EinSum {
@@ -30,7 +30,7 @@ impl EinSum {
     ) -> TractResult<Option<TypedModelPatch>> {
         let mut new_axis = match io {
             InOut::In(slot) => self.expr.input_axis(slot, axis).unwrap().clone(),
-            InOut::Out(_) => self.expr.output_axis(axis).unwrap().clone(),
+            InOut::Out(_) => self.expr.output_axis(0, axis).unwrap().clone(),
         };
         let repr = new_axis.repr;
         let mut patch = TypedModelPatch::new(format!("Propagate axis {}", new_axis.repr));
@@ -50,9 +50,9 @@ impl EinSum {
             }
             taps.push(tap);
         }
-        let must_rm_axis: Option<usize> = if new_axis.result.is_none() {
-            let insert_at = self.expr.output_rank();
-            new_axis.result = Some(insert_at);
+        let must_rm_axis: Option<usize> = if new_axis.outputs[0].len() == 0 {
+            let insert_at = self.expr.output_rank(0);
+            new_axis.outputs[0].push(insert_at);
             Some(insert_at)
         } else {
             None
@@ -130,7 +130,7 @@ impl EinSum {
                     )?[0];
                     einsums.push(einsum);
                 }
-                let wire = if let Some(axis) = axis_info.result {
+                let wire = if let Some(axis) = axis_info.outputs[0].get(0).cloned() {
                     patch.wire_node(
                         format!("{}.concat-einsum-{}.concat", node.name, axis_info.repr),
                         TypedConcat { axis },
@@ -194,11 +194,7 @@ impl TypedOp for EinSum {
         Ok(tvec!(TypedFact::dt_shape(self.operating_dt, eval::output_shape(&self.expr, &shapes))))
     }
 
-    fn invariants(
-        &self,
-        inputs: &[&TypedFact],
-        _outputs: &[&TypedFact],
-    ) -> TractResult<Invariants> {
+    fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
         let inv = self
             .expr
             .iter_all_axes()
@@ -208,8 +204,8 @@ impl TypedOp for EinSum {
                     None
                 } else {
                     let i = (0..inputs.len()).map(|i| axis.inputs[i].get(0).cloned()).collect();
-                    let o = axis.result;
-                    Some(AxisInfo { inputs: i, outputs: tvec!(o), period: 1, disposable: true })
+                    let o = (0..outputs.len()).map(|i| axis.outputs[i].get(0).cloned()).collect();
+                    Some(AxisInfo { inputs: i, outputs: o, period: 1, disposable: true })
                 }
             })
             .collect();
@@ -221,8 +217,8 @@ impl TypedOp for EinSum {
         let oshape = eval::output_shape(&self.expr, &shapes);
         let ks = self
             .expr
-            .sum
-            .iter()
+            .iter_all_axes()
+            .filter(|axis| axis.outputs[0].len() == 0)
             .map(|axis| {
                 axis.inputs
                     .iter()
@@ -260,10 +256,10 @@ impl TypedOp for EinSum {
         io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
-        let (mut inputs, mut result) = self.expr.to_strs();
+        let (mut inputs, mut outputs) = self.expr.to_strs();
         let interface: &mut String = match io {
             InOut::In(i) => &mut inputs[i],
-            InOut::Out(o) => &mut result,
+            InOut::Out(o) => &mut outputs[o],
         };
         let mut axes: Vec<char> = interface.chars().collect();
         match change {
@@ -278,7 +274,7 @@ impl TypedOp for EinSum {
             _ => return Ok(None),
         };
         *interface = axes.into_iter().collect();
-        let expr = Expr::from_strs(&inputs, Some(&result));
+        let expr = Expr::from_strs(&inputs, &outputs);
         return Ok(Some(AxisChangeConsequence {
             substitute_op: Some(Box::new(EinSum::new(expr, self.operating_dt))),
             wire_changes: tvec!((io, change.clone())),

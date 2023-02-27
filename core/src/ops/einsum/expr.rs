@@ -7,27 +7,24 @@ use crate::prelude::tract_itertools::Itertools;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Hash)]
 pub struct Axis {
-    pub result: Option<usize>,
     pub inputs: TVec<TVec<usize>>,
+    pub outputs: TVec<TVec<usize>>,
     pub repr: char,
 }
 
 impl Axis {
     pub fn new(repr: char) -> Axis {
-        Axis { repr, result: None, inputs: tvec!() }
-    }
-
-    pub fn result(self, axis: usize) -> Axis {
-        Axis { result: Some(axis), ..self }
-    }
-
-    pub fn set_result(&mut self, axis: usize) {
-        self.result = Some(axis)
+        Axis { repr, inputs: tvec!(), outputs: tvec!() }
     }
 
     #[allow(dead_code)]
     pub fn input(mut self, input_id: usize, axis: usize) -> Axis {
         self.add_input(input_id, axis);
+        self
+    }
+
+    pub fn output(mut self, output_id: usize, axis: usize) -> Axis {
+        self.add_output(output_id, axis);
         self
     }
 
@@ -37,43 +34,41 @@ impl Axis {
         }
     }
 
+    pub fn ensure_outputs_count(&mut self, outputs: usize) {
+        if self.outputs.len() < outputs {
+            self.outputs.resize(outputs, tvec!())
+        }
+    }
+
     pub fn add_input(&mut self, input_id: usize, axis: usize) {
         self.ensure_inputs_count(input_id + 1);
         self.inputs[input_id].push(axis);
     }
+
+    pub fn add_output(&mut self, output_id: usize, axis: usize) {
+        self.ensure_outputs_count(output_id + 1);
+        self.outputs[output_id].push(axis);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Expr {
-    pub index: TVec<Axis>,
-    pub sum: TVec<Axis>,
-}
+pub struct Expr(TVec<Axis>);
 
 impl Expr {
-    pub fn new(index: TVec<Axis>, sum: TVec<Axis>) -> Expr {
-        let mut e = Expr { index, sum };
-        e.canonicalize();
-        e
-    }
-
-    pub fn index(&self) -> &[Axis] {
-        &self.index
-    }
-
-    pub fn sum(&self) -> &[Axis] {
-        &self.sum
-    }
-
     pub fn iter_all_axes(&self) -> impl Iterator<Item = &Axis> {
-        self.index.iter().chain(self.sum.iter())
+        self.0.iter()
     }
 
     pub fn iter_all_axes_mut(&mut self) -> impl Iterator<Item = &mut Axis> {
-        self.index.iter_mut().chain(self.sum.iter_mut())
+        self.0.iter_mut()
     }
 
     pub fn input_count(&self) -> usize {
         self.iter_all_axes().map(|axis| axis.inputs.len()).max().unwrap()
+    }
+
+    pub fn output_count(&self) -> usize {
+        self.iter_all_axes().map(|axis| axis.outputs.len()).max().unwrap()
     }
 
     pub fn axis_by_repr(&self, c: char) -> Option<&Axis> {
@@ -100,93 +95,110 @@ impl Expr {
         (0..self.input_rank(input)).map(move |ix| self.input_axis(input, ix).unwrap())
     }
 
-    pub fn output_rank(&self) -> usize {
-        self.index.len()
+    pub fn output_rank(&self, output: usize) -> usize {
+        self.iter_all_axes().map(|axis| axis.outputs[output].len()).sum()
     }
 
+    /*
     pub fn output_axes(&self) -> impl Iterator<Item = &Axis> {
-        self.index.iter()
+    self.index.iter()
+    }
+    */
+
+    pub fn output_axis(&self, output: usize, position: usize) -> Option<&Axis> {
+        self.iter_all_axes().find(|axis| axis.outputs[output].contains(&position))
     }
 
-    pub fn output_axis(&self, position: usize) -> Option<&Axis> {
-        self.iter_all_axes().find(|axis| axis.result == Some(position))
+    pub fn output_axis_mut(&mut self, output: usize, position: usize) -> Option<&mut Axis> {
+        self.iter_all_axes_mut().find(|axis| axis.outputs[output].contains(&position))
     }
 
-    pub fn output_axis_mut(&mut self, position: usize) -> Option<&mut Axis> {
-        self.iter_all_axes_mut().find(|axis| axis.result == Some(position))
-    }
-
+    /*
     pub fn insert_input_axis(&mut self, axis: char, input: usize, position: usize) {
-        self.index.iter_mut().for_each(|ax| {
-            ax.inputs[input].iter_mut().for_each(|pos| *pos += (*pos >= position) as usize)
-        });
-        self.sum.iter_mut().for_each(|ax| {
-            ax.inputs[input].iter_mut().for_each(|pos| *pos += (*pos >= position) as usize)
-        });
-        self.index.iter_mut().chain(self.sum.iter_mut()).find(|x| x.repr == axis).unwrap().inputs
-            [input]
-            .push(position)
+    self.index.iter_mut().for_each(|ax| {
+    ax.inputs[input].iter_mut().for_each(|pos| *pos += (*pos >= position) as usize)
+    });
+    self.sum.iter_mut().for_each(|ax| {
+    ax.inputs[input].iter_mut().for_each(|pos| *pos += (*pos >= position) as usize)
+    });
+    self.index.iter_mut().chain(self.sum.iter_mut()).find(|x| x.repr == axis).unwrap().inputs
+    [input]
+    .push(position)
+    }
+    */
+
+    pub fn ensure_input_counts(&mut self, n: usize) {
+        for axis in &mut self.0 {
+            axis.ensure_inputs_count(n);
+        }
+    }
+
+    pub fn ensure_output_counts(&mut self, n: usize) {
+        for axis in &mut self.0 {
+            axis.ensure_outputs_count(n);
+        }
     }
 
     pub fn canonicalize(&mut self) {
-        let n_inputs = self.input_count();
-        for axis in &mut self.index {
-            axis.ensure_inputs_count(n_inputs);
-        }
-        for axis in &mut self.sum {
-            axis.ensure_inputs_count(n_inputs);
-        }
-        self.index.retain(|axis| axis.inputs.iter().any(|i| i.len() > 0) || axis.result.is_some())
+        self.0.retain(|axis| {
+            axis.inputs.iter().any(|i| i.len() > 0) || axis.outputs.iter().any(|i| i.len() > 0)
+        });
+        self.0.sort_by_key(|axis| axis.repr);
+        self.ensure_input_counts(self.input_count());
+        self.ensure_output_counts(self.output_count().max(1));
     }
 
     pub fn available_label(&self) -> char {
         ('a'..).find(|c| self.iter_all_axes().all(|axis| axis.repr != *c)).unwrap()
     }
 
+    /*
     pub fn check(&self) -> TractResult<()> {
-        for i in 0..self.input_count() {
-            let rank = self.input_rank(i);
-            for axis in 0..rank {
-                let claims: TVec<_> =
-                    self.iter_all_axes().filter(|a| a.inputs[i].contains(&axis)).collect();
-                if claims.len() != 1 {
-                    bail!(
-                        "Axis {} for input {} is claimed {} times: {:?}",
-                        axis,
-                        i,
-                        claims.len(),
-                        claims
-                    )
-                }
-            }
-        }
-        Ok(())
+    for i in 0..self.input_count() {
+    let rank = self.input_rank(i);
+    for axis in 0..rank {
+    let claims: TVec<_> =
+    self.iter_all_axes().filter(|a| a.inputs[i].contains(&axis)).collect();
+    if claims.len() != 1 {
+    bail!(
+    "Axis {} for input {} is claimed {} times: {:?}",
+    axis,
+    i,
+    claims.len(),
+    claims
+    )
     }
+    }
+    }
+    Ok(())
+    }
+    */
 
-    pub fn from_strs(inputs: &[impl AsRef<str>], result: Option<&str>) -> Expr {
+    pub fn from_strs(inputs: &[impl AsRef<str>], outputs: &[impl AsRef<str>]) -> Expr {
         let mut axes = HashMap::<char, Axis>::default();
-        if let Some(result) = result {
-            for (ix, axis) in result.chars().enumerate() {
-                axes.insert(axis, Axis::new(axis).result(ix));
-            }
-        }
         for (input_ix, input) in inputs.iter().enumerate() {
             for (ix, axis) in input.as_ref().chars().enumerate() {
                 axes.entry(axis).or_insert_with(|| Axis::new(axis)).add_input(input_ix, ix);
             }
         }
-        if result.is_none() {
+        for (output_ix, output) in outputs.iter().enumerate() {
+            for (ix, axis) in output.as_ref().chars().enumerate() {
+                axes.entry(axis).or_insert_with(|| Axis::new(axis)).add_output(output_ix, ix);
+            }
+        }
+        if outputs.len() == 0 {
             axes.iter_mut()
                 .sorted_by_key(|(k, _)| *k)
                 .filter(|(_, v)| v.inputs.iter().map(|input| input.len()).sum::<usize>() == 1)
                 .enumerate()
-                .for_each(|(ix, (_, v))| v.set_result(ix))
+                .for_each(|(ix, (_, v))| v.add_output(0, ix))
         }
         axes.into_iter().sorted_by_key(|(k, _)| *k).map(|(_, v)| v).collect::<Expr>()
     }
 
-    pub fn to_strs(&self) -> (TVec<String>, String) {
+    pub fn to_strs(&self) -> (TVec<String>, TVec<String>) {
         let mut inputs = tvec![];
+        let mut outputs = tvec![];
         for input in 0..self.input_count() {
             let s = self
                 .iter_all_axes()
@@ -198,21 +210,26 @@ impl Expr {
                 .collect();
             inputs.push(s);
         }
-        let r = self
-            .index
-            .iter()
-            .flat_map(|axis| axis.result.iter().map(move |position| (position, axis.repr)))
-            .sorted()
-            .map(|(_, r)| r)
-            .collect();
-        (inputs, r)
+        for output in 0..self.output_count() {
+            let s = self
+                .iter_all_axes()
+                .flat_map(|axis| {
+                    axis.outputs[output].iter().map(move |position| (position, axis.repr))
+                })
+                .sorted()
+                .map(|(_, r)| r)
+                .collect();
+            outputs.push(s);
+        }
+        (inputs, outputs)
     }
 }
 
 impl FromIterator<Axis> for Expr {
     fn from_iter<T: IntoIterator<Item = Axis>>(iter: T) -> Self {
-        let (index, sum) = iter.into_iter().partition(|ax| ax.result.is_some());
-        Expr::new(index, sum)
+        let mut e = Expr(iter.into_iter().collect());
+        e.canonicalize();
+        e
     }
 }
 
@@ -227,17 +244,18 @@ impl FromStr for Expr {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         assert!(!s.contains("..."));
         let s = s.replace(' ', "");
-        let (inputs, result) =
-            if let Some((i, r)) = s.split_once("->") { (i, Some(r)) } else { (&*s, None) };
+        let (inputs, outputs) =
+            if let Some((i, r)) = s.split_once("->") { (i, r) } else { (&*s, "") };
         let inputs: TVec<&str> = inputs.split(',').collect();
-        Ok(Expr::from_strs(&inputs, result))
+        let outputs: TVec<&str> = outputs.split(',').filter(|s| s.len() > 0).collect();
+        Ok(Expr::from_strs(&inputs, &outputs))
     }
 }
 
 impl Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let (inputs, result) = self.to_strs();
-        write!(f, "{}->{}", inputs.iter().join(","), result)
+        let (inputs, outputs) = self.to_strs();
+        write!(f, "{}->{}", inputs.iter().join(","), outputs.iter().join(","))
     }
 }
 
@@ -246,29 +264,12 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_expr_builder() {
-        assert_eq!(
-            Expr::from(tvec![
-                Axis::new('a').result(0).input(0, 1),
-                Axis::new('b').result(1).input(0, 0)
-            ]),
-            Expr {
-                index: tvec!(
-                    Axis::new('a').result(0).input(0, 1),
-                    Axis::new('b').result(1).input(0, 0)
-                ),
-                sum: tvec!(),
-            }
-        )
-    }
-
-    #[test]
     fn test_parse_transpose() {
         assert_eq!(
             "ij->ji".parse::<Expr>().unwrap(),
             Expr::from(tvec![
-                Axis::new('i').result(1).input(0, 0),
-                Axis::new('j').result(0).input(0, 1)
+                Axis::new('i').output(0, 1).input(0, 0),
+                Axis::new('j').output(0, 0).input(0, 1)
             ]),
         )
     }
@@ -277,7 +278,7 @@ mod test {
     fn test_parse_diag() {
         assert_eq!(
             "ii->i".parse::<Expr>().unwrap(),
-            Expr::from(tvec![Axis::new('i').result(0).input(0, 0).input(0, 1)]),
+            Expr::from(tvec![Axis::new('i').output(0, 0).input(0, 0).input(0, 1)]),
         )
     }
 
@@ -285,7 +286,7 @@ mod test {
     fn test_parse_adamar_product_explicit() {
         assert_eq!(
             "i,i->i".parse::<Expr>().unwrap(),
-            Expr::from(tvec![Axis::new('i').result(0).input(0, 0).input(1, 0)]),
+            Expr::from(tvec![Axis::new('i').output(0, 0).input(0, 0).input(1, 0)]),
         )
     }
 
@@ -299,10 +300,10 @@ mod test {
         assert_eq!(
             "bij , bjk -> bik ".parse::<Expr>().unwrap(),
             Expr::from(tvec![
-                Axis::new('b').result(0).input(0, 0).input(1, 0),
-                Axis::new('i').result(1).input(0, 1),
+                Axis::new('b').output(0, 0).input(0, 0).input(1, 0),
+                Axis::new('i').output(0, 1).input(0, 1),
                 Axis::new('j').input(0, 2).input(1, 1),
-                Axis::new('k').result(2).input(1, 2)
+                Axis::new('k').output(0, 2).input(1, 2)
             ])
         )
     }
@@ -312,8 +313,8 @@ mod test {
         assert_eq!(
             "i,j->ij".parse::<Expr>().unwrap(),
             Expr::from(tvec![
-                Axis::new('i').result(0).input(0, 0),
-                Axis::new('j').result(1).input(1, 0)
+                Axis::new('i').output(0, 0).input(0, 0),
+                Axis::new('j').output(0, 1).input(1, 0)
             ]),
         )
     }
@@ -323,8 +324,8 @@ mod test {
         assert_eq!(
             "ik,jkl,il->ij".parse::<Expr>().unwrap(),
             Expr::from(tvec![
-                Axis::new('i').result(0).input(0, 0).input(2, 0),
-                Axis::new('j').result(1).input(1, 0),
+                Axis::new('i').output(0, 0).input(0, 0).input(2, 0),
+                Axis::new('j').output(0, 1).input(1, 0),
                 Axis::new('k').input(0, 1).input(1, 1),
                 Axis::new('l').input(1, 2).input(2, 1)
             ]),
@@ -336,13 +337,13 @@ mod test {
         assert_eq!(
             "pqrs,tuqvr->pstuv".parse::<Expr>().unwrap(),
             Expr::from(tvec![
-                Axis::new('p').result(0).input(0, 0),
+                Axis::new('p').output(0, 0).input(0, 0),
                 Axis::new('q').input(0, 1).input(1, 2),
                 Axis::new('r').input(0, 2).input(1, 4),
-                Axis::new('s').result(1).input(0, 3),
-                Axis::new('t').result(2).input(1, 0),
-                Axis::new('u').result(3).input(1, 1),
-                Axis::new('v').result(4).input(1, 3),
+                Axis::new('s').output(0, 1).input(0, 3),
+                Axis::new('t').output(0, 2).input(1, 0),
+                Axis::new('u').output(0, 3).input(1, 1),
+                Axis::new('v').output(0, 4).input(1, 3),
             ]),
         )
     }
@@ -365,10 +366,10 @@ mod test {
         assert_eq!(
             "sij,ijk->sik".parse::<Expr>().unwrap(),
             Expr::from(tvec![
-                Axis::new('i').result(1).input(0, 1).input(1, 0),
-                Axis::new('k').result(2).input(1, 2),
-                Axis::new('s').result(0).input(0, 0),
+                Axis::new('i').output(0, 1).input(0, 1).input(1, 0),
                 Axis::new('j').input(0, 2).input(1, 1),
+                Axis::new('k').output(0, 2).input(1, 2),
+                Axis::new('s').output(0, 0).input(0, 0),
             ])
         )
     }
@@ -378,11 +379,11 @@ mod test {
         assert_eq!(
             "bsij,ijk->bsik".parse::<Expr>().unwrap(),
             Expr::from(tvec![
-                Axis::new('b').result(0).input(0, 0),
-                Axis::new('i').result(2).input(0, 2).input(1, 0),
-                Axis::new('k').result(3).input(1, 2),
-                Axis::new('s').result(1).input(0, 1),
+                Axis::new('b').output(0, 0).input(0, 0),
+                Axis::new('i').output(0, 2).input(0, 2).input(1, 0),
                 Axis::new('j').input(0, 3).input(1, 1),
+                Axis::new('k').output(0, 3).input(1, 2),
+                Axis::new('s').output(0, 1).input(0, 1),
             ])
         )
     }
