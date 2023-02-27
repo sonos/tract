@@ -6,6 +6,7 @@ mod shape;
 mod slice;
 mod split;
 mod squeeze;
+mod trilu;
 mod unsqueeze;
 
 use tract_hir::internal::*;
@@ -41,6 +42,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Squeeze", squeeze::squeeze);
     reg.insert("Tile", |_, _| Ok((expand(array::Tile::default()), vec![])));
     reg.insert("Transpose", transpose);
+    reg.insert("Trilu", trilu::trilu);
     reg.insert("Unsqueeze", unsqueeze::unsqueeze);
 }
 
