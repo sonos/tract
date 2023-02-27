@@ -198,7 +198,6 @@ impl TypedOp for Iff {
                inputs: tvec!(Some(axis), Some(axis), Some(axis)),
                outputs: tvec!(Some(axis)),
                period: 1,
-               disposable: true,
            })
            .collect())
     }

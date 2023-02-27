@@ -186,7 +186,6 @@ impl TypedOp for TypedBinOp {
                 inputs: tvec!(Some(axis), Some(axis)),
                 outputs: tvec!(Some(axis)),
                 period: 1,
-                disposable: a.shape[axis].is_one() && b.shape[axis].is_one(),
             })
             .collect())
     }

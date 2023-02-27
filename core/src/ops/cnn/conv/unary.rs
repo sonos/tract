@@ -822,7 +822,7 @@ impl TypedOp for ConvUnary {
         let shape = self.pool_spec.data_format.shape(fact.shape.iter().collect::<Vec<TDim>>())?;
         let mut axes = vec![];
         if let Some(n_axis) = shape.n_axis() {
-            let mut info = AxisInfo::simple(n_axis).disposable(true);
+            let mut info = AxisInfo::simple(n_axis);
             info.inputs.extend(std::iter::repeat(None).take(inputs.len() - 1));
             axes.push(info);
         }
@@ -831,8 +831,7 @@ impl TypedOp for ConvUnary {
         let h_axis = shape.h_axis();
         for (ix, &dim) in kernel_spatial_shape.iter().enumerate() {
             if dim == 1 && self.pool_spec.stride(ix) == 1 {
-                let mut info =
-                    AxisInfo::simple(ix + h_axis).disposable(kernel_spatial_shape.len() > 1);
+                let mut info = AxisInfo::simple(ix + h_axis);
                 info.inputs.extend(std::iter::repeat(None).take(inputs.len() - 1));
                 axes.push(info)
             }
