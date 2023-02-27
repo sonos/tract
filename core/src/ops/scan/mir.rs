@@ -806,7 +806,6 @@ impl TypedOp for Scan {
                 }
             }
             if info.inputs.iter().any(|i| i.is_some()) || info.outputs.iter().any(|i| i.is_some()) {
-                info.disposable = body_axis.disposable;
                 invariants.push(info);
             }
         }

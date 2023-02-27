@@ -524,7 +524,6 @@ impl TypedOp for AxisOp {
                     inputs: tvec!(Some(i)),
                     outputs: tvec!(Some(out)),
                     period: 1,
-                    disposable: true,
                 });
             }
         }

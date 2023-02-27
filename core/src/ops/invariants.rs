@@ -23,9 +23,7 @@ impl Invariants {
             bail!("Inconsistent element wise operation: {:?} {:?}", inputs, outputs);
         }
         let axes = (0..shape.rank())
-            .map(|axis| {
-                Ok(AxisInfo::for_facts(inputs, outputs, axis)?.disposable(shape[axis] == 1.into()))
-            })
+            .map(|axis| Ok(AxisInfo::for_facts(inputs, outputs, axis)?))
             .collect::<TractResult<_>>()?;
         Ok(Invariants { element_wise: true, axes })
     }
@@ -70,7 +68,6 @@ pub struct AxisInfo {
     pub inputs: TVec<Option<usize>>,
     pub outputs: TVec<Option<usize>>,
     pub period: usize,
-    pub disposable: bool,
 }
 
 impl fmt::Debug for AxisInfo {
@@ -87,9 +84,6 @@ impl fmt::Debug for AxisInfo {
                 .map(|i| i.map(|a| a.to_string()).unwrap_or_else(|| "_".to_string()))
                 .join(",")
         )?;
-        if !self.disposable {
-            write!(fmt, " not disposable")?;
-        }
         if self.period != 1 {
             write!(fmt, " period: {}", self.period)?;
         }
@@ -99,20 +93,11 @@ impl fmt::Debug for AxisInfo {
 
 impl AxisInfo {
     pub fn simple(axis: usize) -> AxisInfo {
-        AxisInfo {
-            inputs: tvec!(Some(axis)),
-            outputs: tvec!(Some(axis)),
-            period: 1,
-            disposable: true,
-        }
+        AxisInfo { inputs: tvec!(Some(axis)), outputs: tvec!(Some(axis)), period: 1 }
     }
 
     pub fn with_period(self, period: usize) -> AxisInfo {
         AxisInfo { period, ..self }
-    }
-
-    pub fn disposable(self, disposable: bool) -> AxisInfo {
-        AxisInfo { disposable, ..self }
     }
 
     pub fn for_facts(
@@ -123,7 +108,6 @@ impl AxisInfo {
         Ok(AxisInfo {
             inputs: inputs.iter().map(|_| Some(axis)).collect(),
             outputs: outputs.iter().map(|_| Some(axis)).collect(),
-            disposable: true,
             period: 1,
         })
     }
@@ -138,11 +122,7 @@ impl Invariants {
         self.axes.iter().find(|conn| conn.outputs.get(output) == Some(&Some(axis)))
     }
 
-    pub fn unary_track_axis_up(
-        &self,
-        axis: usize,
-        only_disposable: bool,
-    ) -> TractResult<Option<usize>> {
+    pub fn unary_track_axis_up(&self, axis: usize) -> TractResult<Option<usize>> {
         ensure!(self.axes.iter().all(|a| a.inputs.len() <= 1 && a.outputs.len() <= 1));
         // TODO use track_input_axis
         if self.element_wise {
@@ -154,17 +134,12 @@ impl Invariants {
                 .find(|connection| {
                     connection.outputs.get(0) == Some(&Some(axis)) && connection.period == 1
                 })
-                .filter(|conn| conn.disposable || !only_disposable)
                 .and_then(|connection| connection.inputs.get(0))
                 .and_then(|d| *d))
         }
     }
 
-    pub fn unary_track_axis_down(
-        &self,
-        axis: usize,
-        only_disposable: bool,
-    ) -> TractResult<Option<usize>> {
+    pub fn unary_track_axis_down(&self, axis: usize) -> TractResult<Option<usize>> {
         ensure!(self.axes.iter().all(|a| a.inputs.len() <= 1 && a.outputs.len() <= 1));
         // TODO use track_input_axis
         if self.element_wise {
@@ -176,7 +151,6 @@ impl Invariants {
                 .find(|connection| {
                     connection.inputs.get(0) == Some(&Some(axis)) && connection.period == 1
                 })
-                .filter(|conn| conn.disposable || !only_disposable)
                 .and_then(|connection| connection.outputs.get(0))
                 .and_then(|d| *d))
         }
@@ -258,7 +232,6 @@ pub struct AxisTracking {
     pub creators: TVec<OutletId>,
     pub destructors: TVec<InletId>,
     pub outlets: OutletMap<usize>,
-    pub disposable: bool,
 }
 
 impl AxisTracking {
@@ -269,7 +242,6 @@ impl AxisTracking {
     ) -> TractResult<Option<AxisTracking>> {
         let mut mapped_outlets = OutletMap::default();
         let mut todo = OutletMap::default();
-        let mut disposable = true;
         let mut creators = tvec!();
         let mut destructors = tvec!();
         mapped_outlets.insert(outlet, axis);
@@ -305,7 +277,6 @@ impl AxisTracking {
             }
             let mut new_outlets = vec![];
             for (n, axes) in nodes {
-                disposable = disposable && axes.disposable;
                 let node = model.node(n);
                 for slot in 0..node.outputs.len() {
                     if let Some(axis) = axes.outputs[slot] {
@@ -329,7 +300,7 @@ impl AxisTracking {
                 }
             }
         }
-        Ok(Some(AxisTracking { creators, destructors, outlets: mapped_outlets, disposable }))
+        Ok(Some(AxisTracking { creators, destructors, outlets: mapped_outlets }))
     }
 }
 
@@ -360,7 +331,7 @@ pub fn for_model(model: &TypedModel) -> TractResult<Invariants> {
                 model.input_outlets()?.iter().map(|i| tracking.outlets.get(i).cloned()).collect();
             let outputs =
                 model.output_outlets()?.iter().map(|i| tracking.outlets.get(i).cloned()).collect();
-            Ok(AxisInfo { inputs, outputs, disposable: tracking.disposable, period: 1 })
+            Ok(AxisInfo { inputs, outputs, period: 1 })
         })
         .collect()
 }

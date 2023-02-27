@@ -37,7 +37,6 @@ impl TypedOp for OneHot {
                 inputs: tvec!(Some(i)),
                 outputs: tvec!(Some(i + (i >= self.axis) as usize)),
                 period: 1,
-                disposable: true,
             });
         }
         Ok(axes.into_iter().collect())
