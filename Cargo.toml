@@ -32,7 +32,6 @@ members = [
 ]
 
 [workspace.dependencies]
-ansi_term = "0.12.1"
 anyhow = "1.0.43"
 approx = "0.5"
 atty = "0.2.14"
@@ -49,7 +48,7 @@ dinghy-test = "0.6"
 downcast-rs = "1.2.0"
 dyn-clone = "1.0.4"
 educe = "0.4.18"
-env_logger = "0.9.0"
+env_logger = "0.10"
 flate2 = "1.0.20"
 fs2 = "0.4.3"
 getrandom = "0.2"
@@ -65,6 +64,7 @@ memmap2 = "0.5"
 ndarray = "0.15.3"
 ndarray-npy = { version = "0.8.0", features = [ "compressed_npz" ] }
 nom = "7.0.0"
+nu-ansi-term = "0.46"
 num-complex = "0.4.0"
 num-integer = "0.1.44"
 num-traits = "0.2.14"
