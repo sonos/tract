@@ -112,38 +112,6 @@ impl Invariants {
     pub fn track_output_axis(&self, output: usize, axis: usize) -> Option<&AxisInfo> {
         self.axes.iter().find(|conn| conn.outputs.get(output) == Some(&Some(axis)))
     }
-
-    pub fn unary_track_axis_up(&self, axis: usize) -> TractResult<Option<usize>> {
-        ensure!(self.axes.iter().all(|a| a.inputs.len() <= 1 && a.outputs.len() <= 1));
-        // TODO use track_input_axis
-        if self.element_wise {
-            Ok(Some(axis))
-        } else {
-            Ok(self
-                .axes
-                .iter()
-                .find(|connection| connection.outputs.get(0) == Some(&Some(axis)))
-                .and_then(|connection| connection.inputs.get(0))
-                .and_then(|d| *d))
-        }
-    }
-
-    pub fn unary_track_axis_down(&self, axis: usize) -> TractResult<Option<usize>> {
-        ensure!(self.axes.iter().all(|a| a.inputs.len() <= 1 && a.outputs.len() <= 1));
-        // TODO use track_input_axis
-        if self.element_wise {
-            Ok(Some(axis))
-        } else {
-            Ok(self
-                .axes
-                .iter()
-                .find(|connection| {
-                    connection.inputs.get(0) == Some(&Some(axis))
-                })
-                .and_then(|connection| connection.outputs.get(0))
-                .and_then(|d| *d))
-        }
-    }
 }
 
 #[derive(Debug, Clone, Default)]
