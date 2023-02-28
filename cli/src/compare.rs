@@ -3,7 +3,7 @@ use std::fmt::{Debug, Display};
 #[allow(unused_imports)]
 use std::fs;
 
-use ansi_term::Color::*;
+use nu_ansi_term::Color::*;
 
 use log::Level::Info;
 use tract_core::internal::*;
@@ -401,7 +401,7 @@ where
     }
 
     for node in tract.nodes() {
-        let color: ansi_term::Style = if failing.contains(&node.id) {
+        let color: nu_ansi_term::Style = if failing.contains(&node.id) {
             Red.into()
         } else if unchecked.contains(&node.id) {
             White.into()

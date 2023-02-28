@@ -34,8 +34,8 @@ walkdir.workspace = true
 half.workspace = true
 
 [dev-dependencies]
-ansi_term.workspace = true
 criterion.workspace = true
+nu-ansi-term.workspace = true
 proptest.workspace = true
 
 [features]

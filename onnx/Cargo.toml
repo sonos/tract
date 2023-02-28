@@ -30,7 +30,7 @@ tract-hir = { version = "=0.19.3-pre", path = "../hir" }
 tract-onnx-opl = { version = "=0.19.3-pre", path = "../onnx-opl" }
 
 [dev-dependencies]
-env_logger = "0.9.0"
+env_logger.workspace = true
 
 # [build-dependencies]
 # protobuf-src = "1.0.5+3.19.3"
