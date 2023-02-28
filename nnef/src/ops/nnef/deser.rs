@@ -334,11 +334,13 @@ pub fn conv_or_deconv(
 
     let output_dt =
         invocation.dt_from_quant_file.get(0).cloned().flatten().unwrap_or(DatumType::F32);
-    let quantized = input_fact.datum_type.is_quantized()
-        || kernel.datum_type().is_quantized()
-        || output_dt.is_quantized();
-
-    let qparams = if quantized { Some((output_dt, MatMulQParams::all_from_qtype())) } else { None };
+    let qparams = if let (Some(a), Some(b), Some(c)) =
+        (kernel.datum_type().qparams(), input_fact.datum_type.qparams(), output_dt.qparams())
+    {
+        Some((output_dt, MatMulQParams::all_from_qtype(&a, &b, &c)?))
+    } else {
+        None
+    };
     let bias: Arc<Tensor> = invocation.named_arg_as(builder, "bias")?;
 
     // Remove or reshape bias for efficient processing
@@ -596,15 +598,22 @@ pub fn matmul(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
             scale: a_dt.zp_scale().1 * b_dt.zp_scale().1,
             zero_point: 0,
         });
-        let dt = invocation.dt_from_quant_file.get(0).cloned().flatten().unwrap_or(accum_dt);
+        let c_dt = invocation.dt_from_quant_file.get(0).cloned().flatten().unwrap_or(accum_dt);
         let bias = builder.model.add_const(
             format!("{}.bias", invocation.invocation.id.0),
             Tensor::zero_dt(accum_dt, &[1])?,
         )?;
         builder.model.node(a.node);
 
+        let a_qp = a_dt.qparams().unwrap_or_default();
+        let b_qp = b_dt.qparams().unwrap_or_default();
+        let c_qp = c_dt.qparams().unwrap_or_default();
         builder.wire(
-            ops::matmul::QMatMul { axes, output_type: dt, params: MatMulQParams::all_from_qtype() },
+            ops::matmul::QMatMul {
+                axes,
+                output_type: c_dt,
+                params: MatMulQParams::all_from_qtype(&a_qp, &b_qp, &c_qp)?,
+            },
             &[a, b, bias],
         )
     } else {

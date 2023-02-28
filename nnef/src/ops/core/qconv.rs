@@ -112,11 +112,18 @@ fn qconv_load(
     let c0: Option<Value> = invocation.named_arg_as(builder, "c0").ok();
     let c_scale: Option<Value> = invocation.named_arg_as(builder, "c_scale").ok();
     let mut inputs = vec![input];
-    let qparams = values_to_qparams(a0, a_scale, b0, b_scale, c0, c_scale, &mut inputs, builder)?;
+    let b_dt = builder.model.outlet_fact(input)?.datum_type;
+    let c_dt = if let Some(c) = invocation.dt_from_quant_file.get(0).cloned().flatten() {
+        c
+    } else {
+        b_dt.unquantized()
+    };
+    let qparams = values_to_qparams(&kernel.datum_type(), a0, a_scale, &b_dt, b0, b_scale, &c_dt, c0, c_scale, &mut inputs, builder)?;
     let bias: Arc<Tensor> = invocation.named_arg_as(builder, "bias")?;
 
     let bias: Option<Arc<Tensor>> =
         if bias.is_uniform() && bias.cast_to_scalar::<f32>()? == 0.0 { None } else { Some(bias) };
+
     let output_dt = input_fact.datum_type.with_qparams(QParams::ZpScale {
         zero_point: *qparams
             .c0
@@ -129,6 +136,7 @@ fn qconv_load(
             .context("The output quantization need to be static in convolution")?
             .to_scalar()?,
     });
+
     let op: Box<dyn TypedOp> = Box::new(ConvUnary::new(
         pool_spec,
         KernelFormat::OIHW,

@@ -4,7 +4,6 @@ use crate::deser::CoerceFrom;
 use crate::deser::Value;
 use crate::internal::*;
 use crate::ser::*;
-use tract_core::ops::matmul::mir_quant::QParamKind;
 use tract_core::ops::matmul::{MatMulAxes, MatMulQParams, QMatMul};
 use Datum;
 
@@ -12,10 +11,10 @@ pub fn register(registry: &mut Registry) {
     registry
         .register_dumper(TypeId::of::<tract_core::ops::matmul::mir_quant::QMatMul>(), qmatmul_dump);
     registry.register_primitive(
-        "tract_core_qmatmul", 
-        &qmatmul_parameters(), 
+        "tract_core_qmatmul",
+        &qmatmul_parameters(),
         &[("output", TypeName::Scalar.tensor())],
-        qmatmul_load
+        qmatmul_load,
     );
 }
 
@@ -43,11 +42,10 @@ pub fn qparams_to_rvalues(
     macro_rules! attr_to_rvalue {
         ($a:ident, $typ:ty) => {
             match &params.$a {
-                QParamKind::Attr(t) => {
+                AttrOrInput::Attr(t) => {
                     Some(numeric(t.cast_to_dt(<$typ>::datum_type())?.to_scalar::<$typ>()?))
                 }
-                QParamKind::FromInput(i) => Some((*ast_mapping[&node_inputs[*i]]).clone()),
-                QParamKind::FromQType => None,
+                AttrOrInput::Input(i) => Some((*ast_mapping[&node_inputs[*i]]).clone()),
             }
         };
     }
@@ -98,46 +96,49 @@ fn qmatmul_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<R
 
 #[allow(clippy::too_many_arguments)]
 pub fn values_to_qparams(
+    a_dt: &DatumType,
     a0: Option<Value>,
     a_scale: Option<Value>,
+    b_dt: &DatumType,
     b0: Option<Value>,
     b_scale: Option<Value>,
+    c_dt: &DatumType,
     c0: Option<Value>,
     c_scale: Option<Value>,
     inputs: &mut Vec<OutletId>,
     builder: &mut ModelBuilder,
 ) -> TractResult<MatMulQParams> {
     macro_rules! value_to_attr {
-        ($a:ident, $typ:ty) => {
-            if let Some($a) = $a {
+        ($a:ident, $typ:ty, $dt:expr, $sub_param: tt) => {
+            if let Some(qp) = $dt.qparams() {
+                let par = qp.zp_scale().$sub_param;
+                rctensor0(par).into()
+            } else if let Some($a) = $a {
                 if let Ok(t) = Arc::<Tensor>::coerce(builder, &$a) {
-                    QParamKind::Attr(
+                    AttrOrInput::Attr(
                         t.cast_to_dt(<$typ>::datum_type())?.into_owned().into_arc_tensor(),
                     )
                 } else {
                     let outlet_id = OutletId::coerce(builder, &$a)?;
                     inputs.push(outlet_id);
-                    QParamKind::FromInput(inputs.len() - 1)
+                    AttrOrInput::Input(inputs.len() - 1)
                 }
             } else {
-                QParamKind::FromQType
+                bail!("No explicit parameter, no datum type parameter for {}", stringify!($a));
             }
         };
     }
-    let a0 = value_to_attr!(a0, i32);
-    let a_scale = value_to_attr!(a_scale, f32);
-    let b0 = value_to_attr!(b0, i32);
-    let b_scale = value_to_attr!(b_scale, f32);
-    let c0 = value_to_attr!(c0, i32);
-    let c_scale = value_to_attr!(c_scale, f32);
+    let a0 = value_to_attr!(a0, i32, a_dt, 0);
+    let a_scale = value_to_attr!(a_scale, f32, a_dt, 1);
+    let b0 = value_to_attr!(b0, i32, b_dt, 0);
+    let b_scale = value_to_attr!(b_scale, f32, b_dt, 1);
+    let c0 = value_to_attr!(c0, i32, c_dt, 0);
+    let c_scale = value_to_attr!(c_scale, f32, c_dt, 1);
 
     Ok(MatMulQParams { a0, a_scale, b0, b_scale, c0, c_scale })
 }
 
-fn qmatmul_load(
-    builder: &mut ModelBuilder,
-    invocation: &ResolvedInvocation,
-) -> TractResult<Value> {
+fn qmatmul_load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let a: OutletId = invocation.named_arg_as(builder, "A")?;
     let b: OutletId = invocation.named_arg_as(builder, "B")?;
     let bias: OutletId = invocation.named_arg_as(builder, "bias")?;
@@ -147,11 +148,28 @@ fn qmatmul_load(
     let b_scale: Option<Value> = invocation.named_arg_as(builder, "b_scale").ok();
     let c0: Option<Value> = invocation.named_arg_as(builder, "c0").ok();
     let c_scale: Option<Value> = invocation.named_arg_as(builder, "c_scale").ok();
-    let output_type =
-        DatumType::from_str(&invocation.named_arg_as::<String>(builder, "output_type")?)?;
+    let a_dt = builder.model.outlet_fact(a)?.datum_type;
+    let b_dt = builder.model.outlet_fact(b)?.datum_type;
+    let c_dt = if let Some(c) = invocation.dt_from_quant_file.get(0).cloned().flatten() {
+        c
+    } else {
+        DatumType::from_str(&invocation.named_arg_as::<String>(builder, "output_type")?)?
+    };
     let mut inputs = vec![a, b, bias];
-    let params = values_to_qparams(a0, a_scale, b0, b_scale, c0, c_scale, &mut inputs, builder)?;
+    let params = values_to_qparams(
+        &a_dt,
+        a0,
+        a_scale,
+        &b_dt,
+        b0,
+        b_scale,
+        &c_dt,
+        c0,
+        c_scale,
+        &mut inputs,
+        builder,
+    )?;
     let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
     let axes = MatMulAxes::from_array(&axes)?;
-    builder.wire(QMatMul { axes, output_type, params }, &inputs)
+    builder.wire(QMatMul { axes, output_type: c_dt, params }, &inputs)
 }
