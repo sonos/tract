@@ -15,7 +15,6 @@ include = [ "Cargo.toml", "src/**/*.rs", "LICENSE*" ]
 maintenance = { status = "actively-developed" }
 
 [dependencies]
-ansi_term.workspace = true
 atty.workspace = true
 box_drawing.workspace = true
 clap.workspace = true
@@ -26,6 +25,7 @@ flate2.workspace = true
 lazy_static.workspace = true
 log.workspace = true
 ndarray-npy.workspace = true
+nu-ansi-term.workspace = true
 py_literal.workspace = true
 readings-probe.workspace = true
 regex.workspace = true

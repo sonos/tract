@@ -2,7 +2,7 @@ use std::fs::File;
 
 use crate::TractResult;
 use crate::{Model, Parameters};
-use ansi_term::Color::*;
+use nu_ansi_term::Color::*;
 use ndarray_npy::NpzWriter;
 use tract_core::tract_data::itertools::izip;
 use tract_hir::internal::*;

@@ -4,8 +4,8 @@ use crate::annotations::*;
 use crate::display_params::*;
 use crate::draw::DrawingState;
 use crate::model::Model;
-use ansi_term::ANSIString;
-use ansi_term::Color::*;
+use nu_ansi_term::AnsiString;
+use nu_ansi_term::Color::*;
 #[allow(unused_imports)]
 use std::convert::TryFrom;
 use tract_core::internal::*;
@@ -105,7 +105,7 @@ fn render_node_prefixed(
         let ratio = measure.as_secs_f64() / profile_summary.sum.as_secs_f64();
         let ratio_for_color = measure.as_secs_f64() / profile_summary.max.as_secs_f64();
         let color = colorous::RED_YELLOW_GREEN.eval_continuous(1.0 - ratio_for_color);
-        let color = ansi_term::Color::RGB(color.r, color.g, color.b);
+        let color = nu_ansi_term::Color::Rgb(color.r, color.g, color.b);
         let label = format!(
             "{:7.3} {}s/i {}  ",
             measure.as_secs_f64() * if use_micros { 1e6 } else { 1e3 },
@@ -125,7 +125,7 @@ fn render_node_prefixed(
                     let value = render_tdim(&c.1);
                     let value_visible_len = c.1.to_string().len();
                     let padding = 24usize.saturating_sub(value_visible_len + key.len());
-                    key + &*std::iter::repeat(' ').take(padding).join("") + &value + " "
+                    key + &*std::iter::repeat(' ').take(padding).join("") + &value.to_string() + " "
                 })
                 .peekable(),
         )
@@ -428,7 +428,7 @@ pub fn dur_avg_ratio(measure: Duration, global: Duration) -> String {
     )
 }
 
-fn render_tdim(d: &TDim) -> ANSIString<'static> {
+fn render_tdim(d: &TDim) -> AnsiString<'static> {
     if let Ok(i) = d.to_i64() {
         render_big_integer(i)
     } else {
@@ -436,7 +436,7 @@ fn render_tdim(d: &TDim) -> ANSIString<'static> {
     }
 }
 
-fn render_big_integer(i: i64) -> ansi_term::ANSIString<'static> {
+fn render_big_integer(i: i64) -> nu_ansi_term::AnsiString<'static> {
     let raw = i.to_string();
     let mut blocks = raw
         .chars()

@@ -2,7 +2,7 @@ use crate::params::SomeGraphDef;
 use crate::tensor::run_params_from_subcommand;
 use crate::Parameters;
 #[allow(unused_imports)]
-use ansi_term::Style;
+use nu_ansi_term::Style;
 use tract_hir::internal::*;
 use tract_libcli::annotations::*;
 use tract_libcli::display_params::*;

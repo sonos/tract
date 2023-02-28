@@ -1,6 +1,6 @@
 use crate::display_params::DisplayParams;
 use crate::model::Model;
-use ansi_term::{Color, Style};
+use nu_ansi_term::{Color, Style};
 use box_drawing::heavy::*;
 use std::fmt;
 use std::fmt::Write;

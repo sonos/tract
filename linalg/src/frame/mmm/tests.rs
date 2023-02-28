@@ -347,7 +347,7 @@ where
                 let e = expected.as_slice_unchecked::<TC>()[r * n + c];
                 let mut s = format!("{:4} ", f);
                 if f != e {
-                    s = ansi_term::Color::Red.paint(s).to_string();
+                    s = nu_ansi_term::Color::Red.paint(s).to_string();
                 }
                 print!("{:4} ", s);
             }

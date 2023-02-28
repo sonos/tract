@@ -13,12 +13,12 @@ edition = "2021"
 maintenance = { status = "actively-developed" }
 
 [dependencies]
-ansi_term.workspace = true
 box_drawing.workspace = true
 colorous.workspace = true
 lazy_static.workspace = true
 log.workspace = true
 ndarray-npy.workspace = true
+nu-ansi-term.workspace = true
 py_literal.workspace = true
 rand.workspace = true
 serde.workspace = true
