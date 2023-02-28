@@ -64,6 +64,12 @@ impl PartialOrd for QParams {
     }
 }
 
+impl Default for QParams {
+    fn default() -> Self {
+        QParams::ZpScale { zero_point: 0, scale: 1. }
+    }
+}
+
 #[allow(clippy::derived_hash_with_manual_eq)]
 impl Hash for QParams {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {

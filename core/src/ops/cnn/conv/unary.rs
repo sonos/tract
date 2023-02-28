@@ -12,8 +12,8 @@ use crate::ops::array::PadMode;
 use crate::ops::cnn::PaddingSpec;
 use crate::ops::matmul::lir_unary::AddMatMulGeometry;
 use crate::ops::matmul::lir_unary::MapOutputAxisToInput;
+use crate::ops::matmul::mir_quant::offset_u8_as_i8;
 use crate::ops::matmul::mir_quant::wire_offset_u8_as_i8;
-use crate::ops::matmul::mir_quant::QParamKind;
 use crate::ops::matmul::MatMulAxes;
 
 use super::depth_wise::DepthWise;
@@ -105,10 +105,8 @@ impl ConvUnary {
                     .as_ref()
                     .map(|(dt, qp)| -> TractResult<_> {
                         let a0 = match &qp.a0 {
-                            QParamKind::Attr(_) | QParamKind::FromQType => {
-                                qp.a0.offset_u8_as_i8(model, &[])?
-                            }
-                            QParamKind::FromInput(i) => {
+                            AttrOrInput::Attr(t) => offset_u8_as_i8(t)?,
+                            AttrOrInput::Input(i) => {
                                 match model.outlet_fact(inputs[*i])?.datum_type.unquantized() {
                                     DatumType::U8 => {
                                         inputs[*i] = model.wire_node(
@@ -142,7 +140,7 @@ impl ConvUnary {
                                     }
                                     _ => (),
                                 }
-                                QParamKind::FromInput(*i)
+                                AttrOrInput::Input(*i)
                             }
                         };
                         Ok((*dt, MatMulQParams { a0, ..qp.clone() }))
@@ -190,21 +188,13 @@ impl ConvUnary {
         &self,
         model: &mut TypedModel,
         name: &str,
-        b_dt: DatumType,
         wires: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         use crate::ops::matmul::mir_quant as qmm;
 
         let c_dt = self.q_params.as_ref().unwrap().0;
 
-        let params = self.q_params.as_ref().unwrap().1.as_outlet_ids(
-            model,
-            name,
-            wires,
-            self.kernel.datum_type(),
-            b_dt,
-            c_dt,
-        )?;
+        let params = self.q_params.as_ref().unwrap().1.as_outlet_ids(model, name, wires)?;
 
         let a0 = params[0];
         let a_scale = params[1];
@@ -752,12 +742,7 @@ impl EvalOp for ConvUnary {
         let wire = unsafe {
             if self.q_params.is_some() {
                 let op_ref = if let Some(op) = new_op.as_ref() { op } else { self };
-                op_ref.wire_as_quant_im2col(
-                    &mut model,
-                    "im2col-adhoc",
-                    inputs[0].datum_type(),
-                    &wire,
-                )?
+                op_ref.wire_as_quant_im2col(&mut model, "im2col-adhoc", &wire)?
             } else {
                 self.wire_as_im2col_pair(&mut model, "im2col-adhoc", &wire)?
             }
@@ -1019,12 +1004,7 @@ impl TypedOp for ConvUnary {
                     .map(|w| patch.tap_model(model, *w))
                     .collect::<TractResult<TVec<_>>>()?;
                 let wire = self
-                    .wire_as_quant_im2col(
-                        &mut patch,
-                        &node.name,
-                        model.node_input_facts(node.id)?[0].datum_type,
-                        &inputs,
-                    )
+                    .wire_as_quant_im2col(&mut patch, &node.name, &inputs)
                     .context("in wire_as_quant_im2col")?;
                 patch.shunt_outside(model, node.id.into(), wire[0])?;
                 patch.obliterate(node.id)?;

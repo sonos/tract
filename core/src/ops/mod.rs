@@ -68,7 +68,6 @@ impl Cost {
     }
 }
 
-
 pub trait FrozenOpState: fmt::Debug + dyn_clone::DynClone + Send + 'static {
     fn unfreeze(&self) -> Box<dyn OpState>;
 }
@@ -108,9 +107,7 @@ pub trait EvalOp {
 }
 
 /// A base operation
-pub trait Op:
-    fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + EvalOp
-{
+pub trait Op: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + EvalOp {
     fn name(&self) -> Cow<str>;
 
     /// The kind of accuracy check that should be performed on operation when
@@ -341,6 +338,30 @@ impl AttrOrInput {
         match self {
             AttrOrInput::Attr(t) => Some(t),
             AttrOrInput::Input(_) => None,
+        }
+    }
+
+    fn insert_input(&mut self, ix: usize) {
+        if let AttrOrInput::Input(slot) = self {
+            *slot = *slot + (*slot >= ix) as usize;
+        }
+    }
+
+    fn remove_input(&mut self, ix: usize) {
+        if let AttrOrInput::Input(slot) = self {
+            *slot = *slot - (*slot > ix) as usize;
+        }
+    }
+
+    fn as_input(
+        &self,
+        model: &mut TypedModel,
+        input_wires: &[OutletId],
+        name: impl ToString,
+    ) -> TractResult<OutletId> {
+        match self {
+            AttrOrInput::Attr(t) => model.add_const(name.to_string(), t.clone()),
+            AttrOrInput::Input(i) => Ok(input_wires[*i]),
         }
     }
 }
