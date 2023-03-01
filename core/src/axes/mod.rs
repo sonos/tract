@@ -1,8 +1,8 @@
 use crate::internal::*;
 
-mod expr;
+mod mapping;
 
-pub use expr::Expr;
+pub use mapping::AxesMapping;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Hash)]
 pub struct Axis {

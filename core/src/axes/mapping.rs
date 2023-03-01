@@ -8,9 +8,9 @@ use crate::prelude::tract_itertools::Itertools;
 use super::Axis;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Expr(TVec<Axis>);
+pub struct AxesMapping(TVec<Axis>);
 
-impl Expr {
+impl AxesMapping {
     pub fn iter_all_axes(&self) -> impl Iterator<Item = &Axis> {
         self.0.iter()
     }
@@ -88,7 +88,7 @@ impl Expr {
         ('a'..).find(|c| self.iter_all_axes().all(|axis| axis.repr != *c)).unwrap()
     }
 
-    pub fn from_strs(inputs: &[impl AsRef<str>], outputs: &[impl AsRef<str>]) -> Expr {
+    pub fn from_strs(inputs: &[impl AsRef<str>], outputs: &[impl AsRef<str>]) -> AxesMapping {
         let mut axes = HashMap::<char, Axis>::default();
         for (input_ix, input) in inputs.iter().enumerate() {
             for (ix, axis) in input.as_ref().chars().enumerate() {
@@ -107,7 +107,7 @@ impl Expr {
                 .enumerate()
                 .for_each(|(ix, (_, v))| v.add_output(0, ix))
         }
-        axes.into_iter().sorted_by_key(|(k, _)| *k).map(|(_, v)| v).collect::<Expr>()
+        axes.into_iter().sorted_by_key(|(k, _)| *k).map(|(_, v)| v).collect::<AxesMapping>()
     }
 
     pub fn to_strs(&self) -> (TVec<String>, TVec<String>) {
@@ -139,21 +139,21 @@ impl Expr {
     }
 }
 
-impl FromIterator<Axis> for Expr {
+impl FromIterator<Axis> for AxesMapping {
     fn from_iter<T: IntoIterator<Item = Axis>>(iter: T) -> Self {
-        let mut e = Expr(iter.into_iter().collect());
+        let mut e = AxesMapping(iter.into_iter().collect());
         e.canonicalize();
         e
     }
 }
 
-impl<I: IntoIterator<Item = Axis>> From<I> for Expr {
+impl<I: IntoIterator<Item = Axis>> From<I> for AxesMapping {
     fn from(it: I) -> Self {
         it.into_iter().collect()
     }
 }
 
-impl FromStr for Expr {
+impl FromStr for AxesMapping {
     type Err = TractError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         assert!(!s.contains("..."));
@@ -162,11 +162,11 @@ impl FromStr for Expr {
             if let Some((i, r)) = s.split_once("->") { (i, r) } else { (&*s, "") };
         let inputs: TVec<&str> = inputs.split(',').collect();
         let outputs: TVec<&str> = outputs.split(',').filter(|s| s.len() > 0).collect();
-        Ok(Expr::from_strs(&inputs, &outputs))
+        Ok(AxesMapping::from_strs(&inputs, &outputs))
     }
 }
 
-impl Display for Expr {
+impl Display for AxesMapping {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let (inputs, outputs) = self.to_strs();
         write!(f, "{}->{}", inputs.iter().join(","), outputs.iter().join(","))
@@ -180,8 +180,8 @@ mod test {
     #[test]
     fn test_parse_transpose() {
         assert_eq!(
-            "ij->ji".parse::<Expr>().unwrap(),
-            Expr::from(tvec![
+            "ij->ji".parse::<AxesMapping>().unwrap(),
+            AxesMapping::from(tvec![
                 Axis::new('i').output(0, 1).input(0, 0),
                 Axis::new('j').output(0, 0).input(0, 1)
             ]),
@@ -191,29 +191,29 @@ mod test {
     #[test]
     fn test_parse_diag() {
         assert_eq!(
-            "ii->i".parse::<Expr>().unwrap(),
-            Expr::from(tvec![Axis::new('i').output(0, 0).input(0, 0).input(0, 1)]),
+            "ii->i".parse::<AxesMapping>().unwrap(),
+            AxesMapping::from(tvec![Axis::new('i').output(0, 0).input(0, 0).input(0, 1)]),
         )
     }
 
     #[test]
     fn test_parse_adamar_product_explicit() {
         assert_eq!(
-            "i,i->i".parse::<Expr>().unwrap(),
-            Expr::from(tvec![Axis::new('i').output(0, 0).input(0, 0).input(1, 0)]),
+            "i,i->i".parse::<AxesMapping>().unwrap(),
+            AxesMapping::from(tvec![Axis::new('i').output(0, 0).input(0, 0).input(1, 0)]),
         )
     }
 
     #[test]
     fn test_parse_inner_product_implicit() {
-        assert_eq!("i,i".parse::<Expr>().unwrap(), "i,i->".parse::<Expr>().unwrap(),)
+        assert_eq!("i,i".parse::<AxesMapping>().unwrap(), "i,i->".parse::<AxesMapping>().unwrap(),)
     }
 
     #[test]
     fn test_parse_batch_matmul() {
         assert_eq!(
-            "bij , bjk -> bik ".parse::<Expr>().unwrap(),
-            Expr::from(tvec![
+            "bij , bjk -> bik ".parse::<AxesMapping>().unwrap(),
+            AxesMapping::from(tvec![
                 Axis::new('b').output(0, 0).input(0, 0).input(1, 0),
                 Axis::new('i').output(0, 1).input(0, 1),
                 Axis::new('j').input(0, 2).input(1, 1),
@@ -225,8 +225,8 @@ mod test {
     #[test]
     fn test_parse_outer_product() {
         assert_eq!(
-            "i,j->ij".parse::<Expr>().unwrap(),
-            Expr::from(tvec![
+            "i,j->ij".parse::<AxesMapping>().unwrap(),
+            AxesMapping::from(tvec![
                 Axis::new('i').output(0, 0).input(0, 0),
                 Axis::new('j').output(0, 1).input(1, 0)
             ]),
@@ -236,8 +236,8 @@ mod test {
     #[test]
     fn test_parse_bilinear() {
         assert_eq!(
-            "ik,jkl,il->ij".parse::<Expr>().unwrap(),
-            Expr::from(tvec![
+            "ik,jkl,il->ij".parse::<AxesMapping>().unwrap(),
+            AxesMapping::from(tvec![
                 Axis::new('i').output(0, 0).input(0, 0).input(2, 0),
                 Axis::new('j').output(0, 1).input(1, 0),
                 Axis::new('k').input(0, 1).input(1, 1),
@@ -249,8 +249,8 @@ mod test {
     #[test]
     fn test_parse_complex_tensor_contraction() {
         assert_eq!(
-            "pqrs,tuqvr->pstuv".parse::<Expr>().unwrap(),
-            Expr::from(tvec![
+            "pqrs,tuqvr->pstuv".parse::<AxesMapping>().unwrap(),
+            AxesMapping::from(tvec![
                 Axis::new('p').output(0, 0).input(0, 0),
                 Axis::new('q').input(0, 1).input(1, 2),
                 Axis::new('r').input(0, 2).input(1, 4),
@@ -265,21 +265,21 @@ mod test {
     #[test]
     fn test_parse_complex_tensor_contraction_implicit() {
         assert_eq!(
-            "pqrs,tuqvr".parse::<Expr>().unwrap(),
-            "pqrs,tuqvr->pstuv".parse::<Expr>().unwrap(),
+            "pqrs,tuqvr".parse::<AxesMapping>().unwrap(),
+            "pqrs,tuqvr->pstuv".parse::<AxesMapping>().unwrap(),
         )
     }
 
     #[test]
     fn test_display_expr() {
-        assert_eq!("pqrs,tuqvr->pstuv".parse::<Expr>().unwrap().to_string(), "pqrs,tuqvr->pstuv");
+        assert_eq!("pqrs,tuqvr->pstuv".parse::<AxesMapping>().unwrap().to_string(), "pqrs,tuqvr->pstuv");
     }
 
     #[test]
     fn test_parse_pulsed_matmul() {
         assert_eq!(
-            "sij,ijk->sik".parse::<Expr>().unwrap(),
-            Expr::from(tvec![
+            "sij,ijk->sik".parse::<AxesMapping>().unwrap(),
+            AxesMapping::from(tvec![
                 Axis::new('i').output(0, 1).input(0, 1).input(1, 0),
                 Axis::new('j').input(0, 2).input(1, 1),
                 Axis::new('k').output(0, 2).input(1, 2),
@@ -291,8 +291,8 @@ mod test {
     #[test]
     fn test_parse_pulsed_batch_matmul() {
         assert_eq!(
-            "bsij,ijk->bsik".parse::<Expr>().unwrap(),
-            Expr::from(tvec![
+            "bsij,ijk->bsik".parse::<AxesMapping>().unwrap(),
+            AxesMapping::from(tvec![
                 Axis::new('b').output(0, 0).input(0, 0),
                 Axis::new('i').output(0, 2).input(0, 2).input(1, 0),
                 Axis::new('j').input(0, 3).input(1, 1),

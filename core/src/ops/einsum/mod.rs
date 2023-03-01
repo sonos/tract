@@ -13,7 +13,7 @@ use super::math::add;
 
 #[derive(Clone, Hash, new)]
 pub struct EinSum {
-    pub expr: Expr,
+    pub expr: AxesMapping,
     pub operating_dt: DatumType,
 }
 
@@ -55,7 +55,7 @@ impl EinSum {
         } else {
             None
         };
-        let new_expr: Expr = self
+        let new_expr: AxesMapping = self
             .expr
             .iter_all_axes()
             .map(|it| if it.repr == new_axis.repr { new_axis.clone() } else { it.clone() })
@@ -272,7 +272,7 @@ impl TypedOp for EinSum {
             _ => return Ok(None),
         };
         *interface = axes.into_iter().collect();
-        let expr = Expr::from_strs(&inputs, &outputs);
+        let expr = AxesMapping::from_strs(&inputs, &outputs);
         return Ok(Some(AxisChangeConsequence {
             substitute_op: Some(Box::new(EinSum::new(expr, self.operating_dt))),
             wire_changes: tvec!((io, change.clone())),

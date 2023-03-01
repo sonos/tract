@@ -89,8 +89,8 @@ mod late_bind;
 pub mod prelude {
     pub use crate::framework::Framework;
     pub use crate::model::*;
-    pub use crate::value::{IntoTValue, TValue};
     pub use crate::plan::{SimplePlan, SimpleState};
+    pub use crate::value::{IntoTValue, TValue};
     pub use std::sync::Arc;
     pub use tract_data::prelude::*;
 
@@ -102,15 +102,14 @@ pub mod prelude {
 
 /// This prelude is meant for code extending tract (like implementing new ops).
 pub mod internal {
+    pub use crate::axes::AxesMapping;
+    pub use crate::invariants;
+    pub use crate::invariants::*;
     pub use crate::late_bind::*;
     pub use crate::model::*;
     pub use crate::ops::change_axes::*;
     pub use crate::ops::element_wise::ElementWiseMiniOp;
-    pub use crate::invariants;
-    pub use crate::invariants::*;
-    pub use crate::ops::{
-        AttrOrInput, Cost, EvalOp, FrozenOpState, Op, OpState, Validation,
-    };
+    pub use crate::ops::{AttrOrInput, Cost, EvalOp, FrozenOpState, Op, OpState, Validation};
     pub use crate::plan::SessionState;
     pub use crate::prelude::*;
     pub use anyhow::{anyhow, bail, ensure, format_err, Context as TractErrorContext};

@@ -1,6 +1,5 @@
 use crate::model::ParsingContext;
 use crate::pb::*;
-use tract_core::ops::einsum::Expr;
 use tract_hir::internal::*;
 
 pub fn einsum(
@@ -8,13 +7,13 @@ pub fn einsum(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let expr = node.get_attr::<String>("equation")?;
-    let expr:Expr = expr.replace("...", "*").parse()?;
+    let expr:AxesMapping = expr.replace("...", "*").parse()?;
     Ok((expand(EinSum { expr }), vec![]))
 }
 
 #[derive(Debug, Clone, Hash)]
 pub struct EinSum {
-    pub expr: Expr,
+    pub expr: AxesMapping,
 }
 
 
@@ -82,7 +81,7 @@ impl Expansion for EinSum {
     }
 }
 
-fn resolve_ellipsis(expr: &Expr, ranks: &[usize]) -> TractResult<Expr> {
+fn resolve_ellipsis(expr: &AxesMapping, ranks: &[usize]) -> TractResult<AxesMapping> {
     if expr.axis_by_repr('*').is_none() {
         return Ok(expr.clone());
     }
@@ -147,7 +146,7 @@ mod test {
 
     #[test]
     fn test_resolve_numpy_ellipsis_1() -> TractResult<()> {
-        let expr: Expr = "*gi,*gih->*gh".parse()?;
+        let expr: AxesMapping = "*gi,*gih->*gh".parse()?;
         let resolved = resolve_ellipsis(&expr, &[4, 3])?;
         assert_eq!(resolved, "abgi,gih->abgh".parse().unwrap());
         Ok(())
