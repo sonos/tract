@@ -1,7 +1,6 @@
 use crate::internal::*;
 use crate::model::*;
 use crate::ops;
-use crate::ops::invariants;
 use crate::optim::OptimizerSession;
 use crate::plan::{FrozenSimpleState, SimplePlan, SimpleState};
 
@@ -185,8 +184,8 @@ impl TypedModel {
         crate::optim::Optimizer::codegen().optimize(self)
     }
 
-    pub fn invariants(&self) -> TractResult<invariants::Invariants> {
-        invariants::for_model(self)
+    pub fn invariants(&self) -> TractResult<Invariants> {
+        crate::invariants::for_model(self)
     }
 }
 

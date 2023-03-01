@@ -1,5 +1,4 @@
 use crate::internal::*;
-use crate::ops::invariants::*;
 use downcast_rs::Downcast;
 use tract_data::itertools::izip;
 use std::fmt;

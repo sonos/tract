@@ -5,51 +5,7 @@ use std::str::FromStr;
 use crate::internal::*;
 use crate::prelude::tract_itertools::Itertools;
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Hash)]
-pub struct Axis {
-    pub inputs: TVec<TVec<usize>>,
-    pub outputs: TVec<TVec<usize>>,
-    pub repr: char,
-}
-
-impl Axis {
-    pub fn new(repr: char) -> Axis {
-        Axis { repr, inputs: tvec!(), outputs: tvec!() }
-    }
-
-    #[allow(dead_code)]
-    pub fn input(mut self, input_id: usize, axis: usize) -> Axis {
-        self.add_input(input_id, axis);
-        self
-    }
-
-    pub fn output(mut self, output_id: usize, axis: usize) -> Axis {
-        self.add_output(output_id, axis);
-        self
-    }
-
-    pub fn ensure_inputs_count(&mut self, inputs: usize) {
-        if self.inputs.len() < inputs {
-            self.inputs.resize(inputs, tvec!())
-        }
-    }
-
-    pub fn ensure_outputs_count(&mut self, outputs: usize) {
-        if self.outputs.len() < outputs {
-            self.outputs.resize(outputs, tvec!())
-        }
-    }
-
-    pub fn add_input(&mut self, input_id: usize, axis: usize) {
-        self.ensure_inputs_count(input_id + 1);
-        self.inputs[input_id].push(axis);
-    }
-
-    pub fn add_output(&mut self, output_id: usize, axis: usize) {
-        self.ensure_outputs_count(output_id + 1);
-        self.outputs[output_id].push(axis);
-    }
-}
+use super::Axis;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Expr(TVec<Axis>);
@@ -99,12 +55,6 @@ impl Expr {
         self.iter_all_axes().map(|axis| axis.outputs[output].len()).sum()
     }
 
-    /*
-    pub fn output_axes(&self) -> impl Iterator<Item = &Axis> {
-    self.index.iter()
-    }
-    */
-
     pub fn output_axis(&self, output: usize, position: usize) -> Option<&Axis> {
         self.iter_all_axes().find(|axis| axis.outputs[output].contains(&position))
     }
@@ -112,20 +62,6 @@ impl Expr {
     pub fn output_axis_mut(&mut self, output: usize, position: usize) -> Option<&mut Axis> {
         self.iter_all_axes_mut().find(|axis| axis.outputs[output].contains(&position))
     }
-
-    /*
-    pub fn insert_input_axis(&mut self, axis: char, input: usize, position: usize) {
-    self.index.iter_mut().for_each(|ax| {
-    ax.inputs[input].iter_mut().for_each(|pos| *pos += (*pos >= position) as usize)
-    });
-    self.sum.iter_mut().for_each(|ax| {
-    ax.inputs[input].iter_mut().for_each(|pos| *pos += (*pos >= position) as usize)
-    });
-    self.index.iter_mut().chain(self.sum.iter_mut()).find(|x| x.repr == axis).unwrap().inputs
-    [input]
-    .push(position)
-    }
-    */
 
     pub fn ensure_input_counts(&mut self, n: usize) {
         for axis in &mut self.0 {
@@ -151,28 +87,6 @@ impl Expr {
     pub fn available_label(&self) -> char {
         ('a'..).find(|c| self.iter_all_axes().all(|axis| axis.repr != *c)).unwrap()
     }
-
-    /*
-    pub fn check(&self) -> TractResult<()> {
-    for i in 0..self.input_count() {
-    let rank = self.input_rank(i);
-    for axis in 0..rank {
-    let claims: TVec<_> =
-    self.iter_all_axes().filter(|a| a.inputs[i].contains(&axis)).collect();
-    if claims.len() != 1 {
-    bail!(
-    "Axis {} for input {} is claimed {} times: {:?}",
-    axis,
-    i,
-    claims.len(),
-    claims
-    )
-    }
-    }
-    }
-    Ok(())
-    }
-    */
 
     pub fn from_strs(inputs: &[impl AsRef<str>], outputs: &[impl AsRef<str>]) -> Expr {
         let mut axes = HashMap::<char, Axis>::default();
