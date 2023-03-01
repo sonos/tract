@@ -1,10 +1,10 @@
-use super::Expr;
+use super::AxesMapping;
 use crate::internal::*;
 use tract_data::itertools::Itertools;
 use tract_ndarray::{Axis, Dimension};
 use tract_num_traits::{One, Zero};
 
-pub fn output_shape<D: DimLike>(expr: &Expr, inputs: &[&[D]]) -> TVec<D> {
+pub fn output_shape<D: DimLike>(expr: &AxesMapping, inputs: &[&[D]]) -> TVec<D> {
     expr.iter_all_axes()
         .filter(|a| a.outputs[0].len() > 0)
         .sorted_by_key(|axis| axis.outputs[0][0])
@@ -22,7 +22,7 @@ pub fn output_shape<D: DimLike>(expr: &Expr, inputs: &[&[D]]) -> TVec<D> {
 }
 
 pub fn eval_t<Acc: Datum + Zero + One>(
-    expr: &Expr,
+    expr: &AxesMapping,
     inputs: TVec<TValue>,
 ) -> TractResult<TVec<TValue>> {
     let shapes: TVec<_> = inputs.iter().map(|t| t.shape()).collect();

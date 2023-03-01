@@ -1,7 +1,7 @@
 use tract_data::itertools::izip;
 
 use crate::internal::*;
-use crate::ops::einsum::{Axis, EinSum, Expr};
+use crate::ops::einsum::{Axis, EinSum, AxesMapping};
 use crate::ops::matmul::*;
 
 /// The binary op. It will declutter to MatMulUnary if either A or B is constant.
@@ -65,7 +65,7 @@ impl TypedOp for MatMul {
         let alphabet = ('a'..).filter(|&c| c != 'k' && c != 'm' && c != 'n');
         let extra_axes = izip!(alphabet, remain_a, remain_b, remain_c)
             .map(|(letter, a, b, c)| Axis::new(letter).input(0, a).input(1, b).output(0, c));
-        let expr: Expr = extra_axes.chain([k_axis, m_axis, n_axis].into_iter()).collect();
+        let expr: AxesMapping = extra_axes.chain([k_axis, m_axis, n_axis].into_iter()).collect();
         TypedModelPatch::replace_single_op(
             model,
             node,
