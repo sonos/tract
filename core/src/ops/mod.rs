@@ -12,8 +12,6 @@ pub mod element_wise;
 #[macro_use]
 pub mod binary;
 
-pub mod invariants;
-
 pub mod array;
 pub mod cast;
 pub mod change_axes;
@@ -34,7 +32,6 @@ pub mod source;
 pub mod unimpl;
 
 pub use downsample::Downsample;
-pub use invariants::*;
 
 use crate::internal::*;
 use crate::optim::OptimizerSession;

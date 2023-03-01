@@ -135,7 +135,7 @@ impl Annotations {
             model: &TypedModel,
             hints: &HashMap<OutletId, TVec<String>>,
         ) -> TractResult<()> {
-            let tracking = tract_core::ops::invariants::full_axis_tracking(model)?;
+            let tracking = invariants::full_axis_tracking(model)?;
             for (ix, axis) in tracking.iter().enumerate() {
                 let name = axis
                     .creators

@@ -5,9 +5,7 @@ use crate::ops::array::Slice;
 use crate::tract_data::itertools::Itertools;
 
 mod eval;
-mod expr;
-pub use expr::Axis;
-pub use expr::Expr;
+pub use crate::axes::*;
 
 use super::array::TypedConcat;
 use super::math::add;

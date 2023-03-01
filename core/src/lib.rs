@@ -71,16 +71,19 @@ pub mod macros;
 #[macro_use]
 pub mod ops;
 
+pub mod axes;
 pub mod broadcast;
 pub mod framework;
 pub mod half;
-mod late_bind;
+pub mod invariants;
 pub mod model;
 pub mod optim;
 pub mod plan;
 pub mod value;
 
 pub use dyn_clone;
+
+mod late_bind;
 
 /// This prelude is meant for code using tract.
 pub mod prelude {
@@ -103,9 +106,10 @@ pub mod internal {
     pub use crate::model::*;
     pub use crate::ops::change_axes::*;
     pub use crate::ops::element_wise::ElementWiseMiniOp;
-    pub use crate::ops::invariants::*;
+    pub use crate::invariants;
+    pub use crate::invariants::*;
     pub use crate::ops::{
-        AttrOrInput, AxisInfo, Cost, EvalOp, FrozenOpState, Invariants, Op, OpState, Validation,
+        AttrOrInput, Cost, EvalOp, FrozenOpState, Op, OpState, Validation,
     };
     pub use crate::plan::SessionState;
     pub use crate::prelude::*;
