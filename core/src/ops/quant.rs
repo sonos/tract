@@ -142,6 +142,8 @@ impl TypedOp for DequantizeLinearF32 {
         model: &TypedModel,
         dequant: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
+        // FIXME
+        /*
         let mut current = dequant;
         let incoming_dt = model.node_input_facts(dequant.id)?[0].datum_type;
         while let Some(quant) = model.single_succ(current.id)? {
@@ -235,6 +237,7 @@ impl TypedOp for DequantizeLinearF32 {
                 break;
             }
         }
+        */
         Ok(None)
     }
 

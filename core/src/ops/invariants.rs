@@ -4,13 +4,12 @@ use tract_itertools::Itertools;
 
 #[derive(Clone, Default)]
 pub struct Invariants {
-    element_wise: bool,
     pub axes: TVec<AxisInfo>,
 }
 
 impl Invariants {
     pub fn none() -> Invariants {
-        Invariants { element_wise: false, axes: tvec!() }
+        Invariants { axes: tvec!() }
     }
 
     pub fn new_element_wise(
@@ -25,20 +24,14 @@ impl Invariants {
         let axes = (0..shape.rank())
             .map(|axis| Ok(AxisInfo::for_facts(inputs, outputs, axis)?))
             .collect::<TractResult<_>>()?;
-        Ok(Invariants { element_wise: true, axes })
+        Ok(Invariants { axes })
     }
 
-    pub fn element_wise(&self) -> bool {
-        self.element_wise
-    }
 }
 
 impl fmt::Debug for Invariants {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         if self.axes.len() > 0 {
-            if self.element_wise {
-                write!(fmt, "Element wise. ")?;
-            }
             write!(fmt, "Axes: {}", self.axes.iter().map(|axis| format!("{axis:?}")).join(", "))?;
         } else {
             write!(fmt, "No invariants")?;
@@ -49,7 +42,7 @@ impl fmt::Debug for Invariants {
 
 impl From<TVec<AxisInfo>> for Invariants {
     fn from(axes: TVec<AxisInfo>) -> Invariants {
-        Invariants { element_wise: false, axes }
+        Invariants { axes }
     }
 }
 
@@ -58,7 +51,7 @@ impl std::iter::FromIterator<AxisInfo> for Invariants {
     where
         T: IntoIterator<Item = AxisInfo>,
     {
-        Invariants { element_wise: false, axes: iter.into_iter().collect() }
+        Invariants { axes: iter.into_iter().collect() }
     }
 }
 
