@@ -66,7 +66,7 @@ fn de_stft(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
     let axis: usize = invocation.named_arg_as(builder, "axis")?;
     let frame: usize = invocation.named_arg_as(builder, "frame")?;
     let stride: usize = invocation.named_arg_as(builder, "stride")?;
-    let window = invocation.named_arg_as::<Arc<Tensor>>(builder, "window").ok();
+    let window = invocation.optional_named_arg_as::<Arc<Tensor>>(builder, "window")?;
     let op = Stft { axis, frame, stride, window };
     builder.wire(op, &[input])
 }
