@@ -308,6 +308,34 @@ impl<'a> ResolvedInvocation<'a> {
         v.to::<T>(builder).with_context(|| format!("Converting argument `{name}' from {v:?}"))
     }
 
+    pub fn optional_named_arg_as<T>(
+        &self,
+        builder: &mut ModelBuilder,
+        name: &str,
+    ) -> TractResult<Option<T>>
+    where
+        T: CoerceFrom<Value>,
+    {
+        let rv = self.named_arg(name)?;
+        let v = rv
+            .resolve(builder, &[])
+            .with_context(|| format!("Resolving argument `{name}' ({rv:?})"))?;
+        match v {
+            Value::Bool(b) => {
+                if !b {
+                    Ok(None)
+                } else {
+                    bail!("Bool(true) not expected for optional values, you might want to access a boolean direclty.")
+                }
+            }
+            _ => v
+                .to::<T>(builder)
+                .map(Option::Some)
+                .with_context(|| format!("Converting argument `{name}' from {v:?}")),
+        }
+        //v.to::<T>(builder).with_context(|| format!("Converting argument `{name}' from {v:?}"))
+    }
+
     pub fn named_arg(&self, name: &str) -> TractResult<Cow<RValue>> {
         self.get_named_arg(name).ok_or_else(|| format_err!("expected argument {}", name))
     }
