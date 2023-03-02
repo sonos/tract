@@ -32,7 +32,7 @@ pub mod internal {
     pub use crate::prelude::*;
     pub use crate::registry::*;
     pub use crate::resource::{
-        DatLoader, GraphNnefLoader, GraphQuantLoader, Resource, ResourceLoader,
+        DatLoader, GraphNnefLoader, GraphQuantLoader, Resource, ResourceLoader, TypedModelResource, TypedModelLoader,
     };
     pub use crate::ser::{invocation, logical, numeric, string, IntoAst};
     pub use std::any::TypeId;
