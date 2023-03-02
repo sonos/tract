@@ -55,7 +55,7 @@ impl Nnef {
     }
 
     pub fn enable_tract_resource(&mut self) {
-        self.registries.push(crate::ops::tract_core());
+        self.registries.push(crate::ops::tract_resource());
     }
 
     pub fn with_tract_resource(mut self) -> Self {
