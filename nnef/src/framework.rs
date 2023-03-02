@@ -2,11 +2,12 @@ use tract_core::tract_data::itertools::Itertools;
 
 use crate::ast::quant::write_quant_format;
 use crate::ast::{Document, Identifier, ProtoModel, QuantFormat};
-use crate::internal::*;
+use crate::{internal::*, nnef};
 use std::io::Read;
 #[cfg(target_family = "unix")]
 use std::os::unix::prelude::OsStrExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 pub fn stdlib() -> Vec<FragmentDef> {
     crate::ast::parse::parse_fragments(include_str!("../stdlib.nnef")).unwrap()
@@ -66,7 +67,6 @@ impl Nnef {
     pub fn allow_extended_identifier_syntax(&mut self, allow_extended_identifier_syntax: bool) {
         self.allow_extended_identifier_syntax = allow_extended_identifier_syntax;
     }
-
 
     pub fn translate(
         &self,
@@ -237,10 +237,47 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
 }
 
 fn proto_model_from_resources(
-    mut resources: HashMap<String, Arc<dyn Resource>>,
+    resources: HashMap<String, Arc<dyn Resource>>,
 ) -> TractResult<ProtoModel> {
+    // Iter resources IDs to detect submodels. Submodels are IDs with
+    // - two path compoents (ex: XXX/file)
+    // - a graph.nnef file as filename
+    let sub_models = resources
+        .keys()
+        .clone()
+        .filter_map(|id| {
+            let id_components = id.split("/").collect::<Vec<_>>();
+            if (id_components.last() == Some(&crate::resource::GRAPH_NNEF_FILENAME))
+                & (id_components.len() == 2)
+            {
+                id_components.get(0).map(|it| it.to_string())
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+
+    // If there are submodels, we use the associated resources to create a TypedModel resource and add
+    // it as a new resource.
+    let mut new_resources = if sub_models.len() > 0 {
+        sub_models.into_iter().try_fold(resources, |r, it| -> TractResult<HashMap<_, _>> {
+            let (submodel_resources, mut resources): (HashMap<String, Arc<dyn Resource>>, _) =
+                r.into_iter().partition(|(k, _v)| k.starts_with(&it));
+            let submodel_resources = submodel_resources
+                .into_iter()
+                .map(|(k, v)| (k.split("/").last().unwrap().to_string(), v))
+                .collect::<HashMap<String, Arc<dyn Resource>>>();
+            let typed_model = nnef()
+                .model_for_proto_model(&proto_model_from_resources(submodel_resources).unwrap())?;
+            resources.insert(it, Arc::new(TypedModelResource(typed_model)));
+            Ok(resources)
+        })?
+    } else {
+        resources
+    };
+
     // NNEF document extraction
-    let doc = resources
+    let doc = new_resources
         .remove(crate::resource::GRAPH_NNEF_FILENAME)
         .with_context(|| {
             anyhow!("Resource {} was not found in the model", crate::resource::GRAPH_NNEF_FILENAME)
@@ -252,7 +289,7 @@ fn proto_model_from_resources(
         .map_err(|_| anyhow!("Error while extracting NNEF Document from shared reference. Only one reference to the document is expected"))?;
 
     // Collect all resources that can be downcastable to Arc<Tensor>.
-    let tensors: HashMap<_, _> = resources
+    let tensors: HashMap<_, _> = new_resources
         .iter()
         .filter_map(|(key, resource)| {
             Arc::clone(resource)
@@ -263,11 +300,13 @@ fn proto_model_from_resources(
         .collect();
     // Iterate over tensors keys to remove them from the global resources hash map.
     tensors.keys().for_each(|k| {
-        resources.remove(&*k.0);
+        new_resources.remove(&*k.0);
     });
 
     // Quantization format resources extraction if present.
-    let quantization = if let Some(q_r) = resources.remove(crate::resource::GRAPH_QUANT_FILENAME) {
+    let quantization = if let Some(q_r) =
+        new_resources.remove(crate::resource::GRAPH_QUANT_FILENAME)
+    {
         let Ok(q_r) = q_r
             .downcast_arc::<HashMap<String, QuantFormat>>() else {
             bail!("Error while downcasting quantization format resource")
@@ -279,7 +318,7 @@ fn proto_model_from_resources(
         None
     };
 
-    let proto = ProtoModel { doc, tensors, quantization, resources };
+    let proto = ProtoModel { doc, tensors, quantization, resources: new_resources };
     proto.validate()?;
     Ok(proto)
 }
