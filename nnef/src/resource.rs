@@ -58,11 +58,11 @@ impl ResourceLoader for GraphNnefLoader {
         path: &Path,
         reader: &mut dyn std::io::Read,
     ) -> TractResult<Option<(String, Arc<dyn Resource>)>> {
-        if path.to_str() == Some(GRAPH_NNEF_FILENAME) {
+        if path.ends_with(GRAPH_NNEF_FILENAME) {
             let mut text = String::new();
             reader.read_to_string(&mut text)?;
             let document = crate::ast::parse::parse_document(&text)?;
-            Ok(Some((GRAPH_NNEF_FILENAME.to_string(), Arc::new(document))))
+            Ok(Some((path.to_str().unwrap().to_string(), Arc::new(document))))
         } else {
             Ok(None)
         }
@@ -109,15 +109,76 @@ impl ResourceLoader for GraphQuantLoader {
         path: &Path,
         reader: &mut dyn std::io::Read,
     ) -> TractResult<Option<(String, Arc<dyn Resource>)>> {
-        if path.to_str() == Some(GRAPH_QUANT_FILENAME) {
+        if path.ends_with(GRAPH_QUANT_FILENAME) {
             let mut t = String::new();
             reader.read_to_string(&mut t)?;
             let quant = crate::ast::quant::parse_quantization(&t)?;
             let quant: HashMap<String, QuantFormat> =
                 quant.into_iter().map(|(k, v)| (k.0, v)).collect();
-            Ok(Some((GRAPH_QUANT_FILENAME.to_string(), Arc::new(quant))))
+            Ok(Some((path.to_str().unwrap().to_string(), Arc::new(quant))))
         } else {
             Ok(None)
         }
     }
 }
+
+pub struct TypedModelLoader {
+    pub nnef: crate::framework::Nnef,
+    pub optimized_model: bool,
+}
+
+impl TypedModelLoader {
+    pub fn new(optimized_model: bool) -> Self {
+        Self { nnef: crate::nnef(), optimized_model }
+    }
+
+    pub fn with_tract_core(mut self) -> Self {
+        self.nnef.registries.push(crate::ops::tract_core());
+        self
+    }
+
+    pub fn with_tract_resource(mut self) -> Self {
+        self.nnef.registries.push(crate::ops::tract_resource());
+        self
+    }
+
+    pub fn with_registry(mut self, registry: Registry) -> Self {
+        self.nnef.registries.push(registry);
+        self
+    }
+}
+
+impl ResourceLoader for TypedModelLoader {
+    fn name(&self) -> Cow<str> {
+        "TypedModelLoader".into()
+    }
+
+    fn try_load(
+        &self,
+        path: &Path,
+        reader: &mut dyn std::io::Read,
+    ) -> TractResult<Option<(String, Arc<dyn Resource>)>> {
+        const NNEF_TGZ: &str = ".nnef.tgz";
+
+        if path.to_str().unwrap_or("").ends_with(NNEF_TGZ) {
+            let model = if self.optimized_model {
+                self.nnef.model_for_read(reader)?.into_optimized()?
+            } else {
+                self.nnef.model_for_read(reader)?
+            };
+
+            let label = path
+                .to_str()
+                .ok_or_else(|| anyhow!("invalid model resource path"))?
+                .trim_end_matches(NNEF_TGZ);
+            Ok(Some((resource_path_to_id(label)?, Arc::new(TypedModelResource(model)))))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedModelResource(pub TypedModel);
+
+impl Resource for TypedModelResource {}
