@@ -333,7 +333,6 @@ impl<'a> ResolvedInvocation<'a> {
                 .map(Option::Some)
                 .with_context(|| format!("Converting argument `{name}' from {v:?}")),
         }
-        //v.to::<T>(builder).with_context(|| format!("Converting argument `{name}' from {v:?}"))
     }
 
     pub fn named_arg(&self, name: &str) -> TractResult<Cow<RValue>> {
