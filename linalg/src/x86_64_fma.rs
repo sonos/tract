@@ -94,35 +94,19 @@ fn plug_fma(ops: &mut Ops) {
 }
 
 fn plug_avx512f(ops: &mut Ops) {
-    ops.mmv_f32 = Box::new(|m, _k| {
-        // guessed heuristic, not measured
-        if m.unwrap_or(usize::MAX) < 128 {
-            mmm::avx512_mmm_f32_16x1::mmm()
-        } else {
-            mmm::avx512_mmm_f32_128x1::mmm()
-        }
+    ops.mmv_f32 = Box::new(|m, _k| match m {
+        Some(m) if m < 31 => mmm::avx512_mmm_f32_16x1::mmm(),
+        _ => mmm::avx512_mmm_f32_128x1::mmm(),
     });
 
-    ops.mmm_f32 = Box::new(|_,_,n| {
-        
-        if n.is_none() {
-            return mmm::avx512_mmm_f32_32x6::mmm();
-        }
-        
-        return mmm::avx512_mmm_f32_32x6::mmm();
-        
-        let n = n.unwrap();
-
-        if n <= 8 {
-            mmm::avx512_mmm_f32_16x8::mmm()
-        }
-        else {
-            mmm::avx512_mmm_f32_16x12::mmm()
-        }
+    ops.mmm_f32 = Box::new(|_, _, n| match n {
+        Some(1) => unreachable!("should've been mmv"),
+        Some(2) => mmm::avx512_mmm_f32_80x2::mmm(),
+        Some(n) if n % 3 == 0 && n % 4 != 0 => mmm::avx512_mmm_f32_64x3::mmm(),
+        _ => mmm::avx512_mmm_f32_48x4::mmm(),
     });
     log::info!("mmm_f32, mmv_f32: x86_64/avx512f activated");
 }
-
 
 pub fn plug(ops: &mut Ops) {
     if is_x86_feature_detected!("avx2") {
