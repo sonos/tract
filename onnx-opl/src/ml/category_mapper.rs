@@ -75,8 +75,8 @@ impl TypedOp for DirectLookup {
         Ok(tvec!(self.values.datum_type().fact(inputs[0].shape.iter())))
     }
 
-    fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
-        Invariants::new_element_wise(inputs, outputs)
+    fn axes_mapping(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<AxesMapping> {
+        AxesMapping::natural(inputs, outputs)
     }
 
     fn change_axes(
@@ -179,8 +179,8 @@ impl TypedOp for ReverseLookup {
         Ok(tvec!(i32::fact(inputs[0].shape.iter())))
     }
 
-    fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
-        Invariants::new_element_wise(inputs, outputs)
+    fn axes_mapping(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<AxesMapping> {
+        AxesMapping::natural(inputs, outputs)
     }
 
     fn change_axes(

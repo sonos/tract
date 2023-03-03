@@ -40,7 +40,7 @@ impl InputMapping {
         matches!(self, InputMapping::State { initializer: StateInitializer::Value(_) })
     }
 
-    pub fn slot(&self) -> Option<usize> {
+    pub fn outer_slot(&self) -> Option<usize> {
         match self {
             InputMapping::Full { slot } => Some(*slot),
             InputMapping::Scan(info) => Some(info.slot),

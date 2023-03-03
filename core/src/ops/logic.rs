@@ -180,23 +180,8 @@ impl TypedOp for Iff {
         Ok(tvec!(inputs[1].datum_type.fact(shape)))
     }
 
-    fn invariants(
-        &self,
-        inputs: &[&TypedFact],
-        _outputs: &[&TypedFact],
-    ) -> TractResult<Invariants> {
-        let a = &inputs[0];
-        let b = &inputs[1];
-        let c = &inputs[2];
-        assert!(a.rank() == b.rank() && b.rank() == c.rank());
-        let rank = a.rank();
-        Ok((0..rank)
-            .into_iter()
-            .map(|axis| AxisInfo {
-                inputs: tvec!(Some(axis), Some(axis), Some(axis)),
-                outputs: tvec!(Some(axis)),
-            })
-            .collect())
+    fn axes_mapping(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<AxesMapping> {
+        AxesMapping::natural(inputs, outputs)
     }
 }
 

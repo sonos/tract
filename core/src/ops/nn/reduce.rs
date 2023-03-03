@@ -1,6 +1,8 @@
-use crate::{internal::*, tract_data::internal::ClampCast};
-use ndarray::prelude::*;
+use crate::internal::Axis;
+use crate::internal::*;
 use std::convert::TryFrom;
+use tract_data::internal::ClampCast;
+use tract_ndarray::prelude::*;
 use tract_num_traits::Bounded;
 
 macro_rules! r {
@@ -248,8 +250,6 @@ pub struct Reduce {
     pub reducer: Reducer,
 }
 
-
-
 impl Op for Reduce {
     fn name(&self) -> Cow<str> {
         format!("Reduce<{:?}>", self.reducer).into()
@@ -288,16 +288,27 @@ impl TypedOp for Reduce {
         Ok(tvec!(dt.fact(shape)))
     }
 
-    fn invariants(
+    fn axes_mapping(
         &self,
         inputs: &[&TypedFact],
-        _outputs: &[&TypedFact],
-    ) -> TractResult<Invariants> {
-        let axes = (0..inputs[0].rank())
-            .filter(|axis| !self.axes.contains(axis))
-            .map(AxisInfo::simple)
-            .collect::<TVec<_>>();
-        Ok(axes.into())
+        outputs: &[&TypedFact],
+    ) -> TractResult<AxesMapping> {
+        let mut letters = ('a'..).into_iter();
+        (0..inputs[0].rank())
+            .flat_map(|ix| {
+                if self.axes.contains(&ix) {
+                    tvec!(
+                        Axis::new(letters.next().unwrap(), inputs.len(), outputs.len())
+                            .input(0, ix),
+                        Axis::new(letters.next().unwrap(), inputs.len(), outputs.len())
+                            .output(0, ix),
+                    )
+                } else {
+                    tvec!(Axis::natural(inputs, outputs, letters.next().unwrap(), ix))
+                }
+                .into_iter()
+            })
+            .collect()
     }
 
     fn change_axes(

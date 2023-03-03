@@ -9,7 +9,6 @@ pub struct TypedConcat {
     pub axis: usize,
 }
 
-
 impl TypedConcat {
     pub fn offsets(&self, inputs: &[&TypedFact]) -> TractResult<Vec<TDim>> {
         let mut offsets = vec![0.to_dim()];
@@ -55,13 +54,21 @@ impl TypedOp for TypedConcat {
         fact.shape.set(self.axis, self.offsets(inputs)?.pop().unwrap());
         Ok(tvec!(fact))
     }
-
-    fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
-        let rank = inputs[0].rank();
-        (0..rank)
-            .filter(|&ax| ax != self.axis)
-            .map(|axis| AxisInfo::for_facts(inputs, outputs, axis))
-            .collect()
+    fn axes_mapping(
+        &self,
+        inputs: &[&TypedFact],
+        outputs: &[&TypedFact],
+    ) -> TractResult<AxesMapping> {
+        let mut axes = AxesMapping::disconnected(inputs, outputs)?;
+        for ax in 0..outputs[0].rank() {
+            if ax != self.axis {
+                let repr = axes.output_axis(0, ax)?.repr;
+                for i in 0..inputs.len() {
+                    axes = axes.with_input_axis_named(i, ax, '$')?.linking(repr, '$')?;
+                }
+            }
+        }
+        Ok(axes)
     }
 
     fn change_axes(

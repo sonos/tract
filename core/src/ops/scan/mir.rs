@@ -363,15 +363,13 @@ impl Scan {
                         }
                     }
 
-                    let invariants = {
+                    let axes_mapping = {
                         let (input_facts, output_facts) =
                             new_body.node_facts(new_body.node(succ.node).id)?;
-                        new_body.node(succ.node).op.invariants(&input_facts, &output_facts)?
+                        new_body.node(succ.node).op.axes_mapping(&input_facts, &output_facts)?
                     };
-                    if let Some(axis_after) = invariants
-                        .track_input_axis(succ.slot, scan_info.axis)
-                        .and_then(|info| info.outputs[0])
-                    {
+                    let axis_info = axes_mapping.input_axis(succ.slot, scan_info.axis)?;
+                    if let &[axis_after] = &*axis_info.outputs[0] {
                         let mut outside_patch = TypedModelPatch::new(format!(
                             "Outer patch for input extraction of {}",
                             new_body.node(succ.node)
@@ -385,8 +383,17 @@ impl Scan {
                         for (ix, outlet) in new_body.node(succ.node).inputs.iter().enumerate() {
                             let wire = if ix == succ.slot {
                                 patch_inputs[scan_info.slot]
-                            } else if let Some(konst) = new_body.outlet_fact(*outlet)?.konst.as_ref() {
-                                outside_patch.add_const(format!("{}.extracted.{}", node.name, new_body.node(outlet.node).name), konst.clone())?
+                            } else if let Some(konst) =
+                                new_body.outlet_fact(*outlet)?.konst.as_ref()
+                            {
+                                outside_patch.add_const(
+                                    format!(
+                                        "{}.extracted.{}",
+                                        node.name,
+                                        new_body.node(outlet.node).name
+                                    ),
+                                    konst.clone(),
+                                )?
                             } else {
                                 unreachable!();
                             };
@@ -481,10 +488,11 @@ impl Scan {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         for (model_ix, mapping) in self.output_mapping.iter().enumerate() {
-            if let Some(info) = mapping.scan {
+            if let Some(scan_info) = mapping.scan {
                 let emitter_outlet = self.body.output_outlets()?[model_ix];
                 if self.body.node(emitter_outlet.node).outputs[emitter_outlet.slot].successors.len()
                     > 0
+                    || self.body.inputs.contains(&emitter_outlet)
                     || mapping.state
                     || mapping.scan.map(|i| i.chunk > 1).unwrap_or(true)
                 {
@@ -498,7 +506,7 @@ impl Scan {
                             &new_body,
                             new_body.node(emitter_outlet.node),
                             InOut::Out(0),
-                            info.axis,
+                            scan_info.axis,
                         )
                         .context("building axis propagating patch")?
                     {
@@ -508,14 +516,14 @@ impl Scan {
                 let emitter_outlet = new_body.output_outlets()?[model_ix];
                 let invariants = {
                     let (input_facts, output_facts) = new_body.node_facts(emitter_outlet.node)?;
-                    new_body.node(emitter_outlet.node).op.invariants(&input_facts, &output_facts)?
+                    new_body
+                        .node(emitter_outlet.node)
+                        .op
+                        .axes_mapping(&input_facts, &output_facts)?
                 };
-                let Some(axis_tracking) = invariants.track_output_axis(emitter_outlet.slot, info.axis)
-            else {
-                continue;
-            };
-                if axis_tracking.inputs.iter().any(|axis| axis.is_none()) {
-                    continue;
+                let axis_tracking = invariants.output_axis(emitter_outlet.slot, scan_info.axis)?;
+                if axis_tracking.outputs.iter().any(|o| o.len() > 1) {
+                    return Ok(None);
                 }
                 let mut new_output_mapping = self.output_mapping.clone();
                 let mut new_scan_outputs = node.outputs.len();
@@ -536,16 +544,18 @@ impl Scan {
                         }
                         new_scan_outputs += 1;
                         mapping.last_value_slot.unwrap()
-                    } else {
+                    } else if let &[axis] = &*axis_tracking.inputs[input_slot] {
                         if mapping.scan.is_none() {
                             mapping.scan = Some(ScanInfo {
                                 slot: new_scan_outputs,
-                                axis: axis_tracking.inputs[input_slot].unwrap(),
-                                chunk: info.chunk,
+                                axis,
+                                chunk: scan_info.chunk,
                             });
                             new_scan_outputs += 1;
                         }
                         mapping.scan.unwrap().slot
+                    } else {
+                        return Ok(None);
                     };
                     outer_slots.push(outer_slot);
                 }
@@ -652,7 +662,7 @@ impl Scan {
                 .find(|(iface, _change)| iface == &InOut::In(ix))
                 .map(|pair| pair.1.clone())
             {
-                if let Some(slot) = m.slot() {
+                if let Some(slot) = m.outer_slot() {
                     wire_changes.push((InOut::In(slot), change.clone()));
                 }
                 match &*m {
@@ -773,21 +783,18 @@ impl TypedOp for Scan {
         Ok(outputs)
     }
 
-    fn invariants(
+    fn axes_mapping(
         &self,
-        _inputs: &[&TypedFact],
-        _outputs: &[&TypedFact],
-    ) -> TractResult<Invariants> {
-        let mut invariants = tvec!();
-        let body_invs = self.body.invariants().with_context(|| "Computing body invariants")?;
-        for body_axis in body_invs.axes {
-            let mut info = AxisInfo::default();
+        inputs: &[&TypedFact],
+        outputs: &[&TypedFact],
+    ) -> TractResult<AxesMapping> {
+        let mut mappings = vec![];
+        let body_invs = self.body.axes_mapping().with_context(|| "Computing body axes mapping")?;
+        for body_axis in body_invs.iter_all_axes() {
+            let mut info = Axis::new(body_axis.repr, inputs.len(), outputs.len());
             for (ix, input_mapping) in self.input_mapping.iter().enumerate() {
-                if let Some(slot) = input_mapping.slot() {
-                    while info.inputs.len() <= slot {
-                        info.inputs.push(None);
-                    }
-                    info.inputs[slot] = body_axis.inputs[ix];
+                if let Some(slot) = input_mapping.outer_slot() {
+                    info.inputs[slot] = body_axis.inputs[ix].clone();
                 }
             }
             for (ix, output_mapping) in self.output_mapping.iter().enumerate() {
@@ -799,17 +806,14 @@ impl TypedOp for Scan {
                     slots.push(slot);
                 }
                 for slot in slots {
-                    while info.outputs.len() <= slot {
-                        info.outputs.push(None);
-                    }
-                    info.outputs[slot] = body_axis.outputs[ix];
+                    info.outputs[slot] = body_axis.outputs[ix].clone();
                 }
             }
-            if info.inputs.iter().any(|i| i.is_some()) || info.outputs.iter().any(|i| i.is_some()) {
-                invariants.push(info);
+            if info.inputs.iter().any(|i| i.len() > 0) || info.outputs.iter().any(|i| i.len() > 0) {
+                mappings.push(info);
             }
         }
-        Ok(Invariants::from(invariants))
+        mappings.into_iter().collect()
     }
 
     fn suggested_axis_changes(&self) -> TractResult<TVec<(InOut, AxisOp)>> {
@@ -841,7 +845,8 @@ impl TypedOp for Scan {
         trace!("Propagating through {}: {:?} {:?}", node, io, change);
         let body_leading_outlet = match io {
             InOut::In(ix) => {
-                if let Some(input) = self.input_mapping.iter().position(|im| im.slot() == Some(ix))
+                if let Some(input) =
+                    self.input_mapping.iter().position(|im| im.outer_slot() == Some(ix))
                 {
                     self.body.input_outlets()?[input]
                 } else {

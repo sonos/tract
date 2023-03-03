@@ -1,5 +1,4 @@
 use crate::internal::*;
-use tract_ndarray::prelude::*;
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct OneHot {
@@ -8,8 +7,6 @@ pub struct OneHot {
     pub off: Arc<Tensor>,
     pub on: Arc<Tensor>,
 }
-
-
 
 impl Op for OneHot {
     fn name(&self) -> Cow<str> {
@@ -26,19 +23,22 @@ impl TypedOp for OneHot {
         Ok(tvec!(self.off.datum_type().fact(&*shape)))
     }
 
-    fn invariants(
+    fn axes_mapping(
         &self,
         inputs: &[&TypedFact],
-        _outputs: &[&TypedFact],
-    ) -> TractResult<Invariants> {
-        let mut axes = vec![];
-        for i in 0..inputs[0].rank() {
-            axes.push(AxisInfo {
-                inputs: tvec!(Some(i)),
-                outputs: tvec!(Some(i + (i >= self.axis) as usize)),
-            });
-        }
-        Ok(axes.into_iter().collect())
+        outputs: &[&TypedFact],
+    ) -> TractResult<AxesMapping> {
+        (0..inputs[0].rank())
+            .zip('a'..)
+            .map(|(i, repr)| {
+                Axis::new(repr, inputs.len(), outputs.len())
+                    .input(0, i)
+                    .output(0, i + (i >= self.axis) as usize)
+            })
+            .chain(std::iter::once(
+                Axis::new('Z', inputs.len(), outputs.len()).output(0, self.axis),
+            ))
+            .collect()
     }
 
     as_op!();
@@ -86,6 +86,7 @@ impl OneHot {
         let input = input.cast_to::<i32>()?;
         let input = input.to_array_view::<i32>()?;
         for icoord in tract_ndarray::indices_of(&input) {
+            use tract_ndarray::Dimension;
             let mut ocoord: Vec<usize> = icoord.slice().into();
             let coord = input[&icoord];
             let coord = if coord < 0 { coord + self.dim as i32 } else { coord } as usize;

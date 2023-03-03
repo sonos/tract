@@ -1,8 +1,10 @@
 use crate::internal::*;
 
 mod mapping;
+mod model;
 
 pub use mapping::AxesMapping;
+pub use model::{for_model, full_axis_tracking};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Hash)]
 pub struct Axis {
@@ -12,8 +14,19 @@ pub struct Axis {
 }
 
 impl Axis {
-    pub fn new(repr: char) -> Axis {
-        Axis { repr, inputs: tvec!(), outputs: tvec!() }
+    pub fn new(repr: char, inputs: usize, outputs: usize) -> Axis {
+        Axis { repr, inputs: tvec!(tvec!(); inputs), outputs: tvec!(tvec!(); outputs) }
+    }
+
+    pub fn natural(
+        inputs: &[&TypedFact],
+        outputs: &[&TypedFact],
+        repr: char,
+        axis_id: usize,
+    ) -> Axis {
+        let inputs = tvec!(tvec!(axis_id); inputs.len());
+        let outputs = tvec!(tvec!(axis_id); outputs.len());
+        Axis { inputs, outputs, repr }
     }
 
     #[allow(dead_code)]
@@ -24,6 +37,16 @@ impl Axis {
 
     pub fn output(mut self, output_id: usize, axis: usize) -> Axis {
         self.add_output(output_id, axis);
+        self
+    }
+
+    pub fn inputs_count(mut self, inputs: usize) -> Axis {
+        self.inputs.resize(inputs, tvec!());
+        self
+    }
+
+    pub fn outputs_count(mut self, outputs: usize) -> Axis {
+        self.outputs.resize(outputs, tvec!());
         self
     }
 
@@ -49,4 +72,3 @@ impl Axis {
         self.outputs[output_id].push(axis);
     }
 }
-

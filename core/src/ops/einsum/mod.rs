@@ -5,7 +5,6 @@ use crate::ops::array::Slice;
 use crate::tract_data::itertools::Itertools;
 
 mod eval;
-pub use crate::axes::*;
 
 use super::array::TypedConcat;
 use super::math::add;
@@ -55,11 +54,11 @@ impl EinSum {
         } else {
             None
         };
-        let new_expr: AxesMapping = self
+        let new_expr = self
             .expr
             .iter_all_axes()
             .map(|it| if it.repr == new_axis.repr { new_axis.clone() } else { it.clone() })
-            .collect();
+            .collect::<TractResult<AxesMapping>>()?;
         let mut wire =
             patch.wire_node(&node.name, Self { expr: new_expr, ..self.clone() }, &taps)?;
         if let Some(position) = must_rm_axis {
@@ -192,22 +191,12 @@ impl TypedOp for EinSum {
         Ok(tvec!(TypedFact::dt_shape(self.operating_dt, eval::output_shape(&self.expr, &shapes))))
     }
 
-    fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
-        let inv = self
-            .expr
-            .iter_all_axes()
-            .filter_map(|axis| {
-                // if axis is used twice, don't even dare do anything
-                if axis.inputs.iter().any(|input| input.len() > 1) {
-                    None
-                } else {
-                    let i = (0..inputs.len()).map(|i| axis.inputs[i].get(0).cloned()).collect();
-                    let o = (0..outputs.len()).map(|i| axis.outputs[i].get(0).cloned()).collect();
-                    Some(AxisInfo { inputs: i, outputs: o})
-                }
-            })
-            .collect();
-        Ok(inv)
+    fn axes_mapping(
+        &self,
+        _inputs: &[&TypedFact],
+        _outputs: &[&TypedFact],
+    ) -> TractResult<AxesMapping> {
+        Ok(self.expr.clone())
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
@@ -272,7 +261,7 @@ impl TypedOp for EinSum {
             _ => return Ok(None),
         };
         *interface = axes.into_iter().collect();
-        let expr = AxesMapping::from_strs(&inputs, &outputs);
+        let expr = AxesMapping::from_strs(&inputs, &outputs)?;
         return Ok(Some(AxisChangeConsequence {
             substitute_op: Some(Box::new(EinSum::new(expr, self.operating_dt))),
             wire_changes: tvec!((io, change.clone())),

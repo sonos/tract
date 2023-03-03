@@ -798,30 +798,38 @@ impl TypedOp for ConvUnary {
         Ok(tvec!(fact))
     }
 
-    fn invariants(
+    fn axes_mapping(
         &self,
         inputs: &[&TypedFact],
-        _outputs: &[&TypedFact],
-    ) -> TractResult<Invariants> {
+        outputs: &[&TypedFact],
+    ) -> TractResult<AxesMapping> {
         let fact = &inputs[0];
         let shape = self.pool_spec.data_format.shape(fact.shape.iter().collect::<Vec<TDim>>())?;
-        let mut axes = vec![];
+        let mut axes = AxesMapping::disconnected(inputs, outputs)?
+            .with_input_axis_named(0, shape.c_axis(), 'I')?
+            .with_output_axis_named(0, shape.c_axis(), 'O')?;
         if let Some(n_axis) = shape.n_axis() {
-            let mut info = AxisInfo::simple(n_axis);
-            info.inputs.extend(std::iter::repeat(None).take(inputs.len() - 1));
-            axes.push(info);
+            axes = axes
+                .with_input_axis_named(0, n_axis, 'N')?
+                .with_output_axis_named(0, n_axis, '$')?
+                .linking('N', '$')?;
         }
+        let h_axis = shape.h_axis();
+        let geo = "HWXYZ".chars().chain('a'..);
         let kernel_spatial_shape =
             &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
-        let h_axis = shape.h_axis();
-        for (ix, &dim) in kernel_spatial_shape.iter().enumerate() {
-            if dim == 1 && self.pool_spec.stride(ix) == 1 {
-                let mut info = AxisInfo::simple(ix + h_axis);
-                info.inputs.extend(std::iter::repeat(None).take(inputs.len() - 1));
-                axes.push(info)
+        for ((ix, &dim), repr) in kernel_spatial_shape.iter().enumerate().zip(geo) {
+            if dim == 1
+                && self.pool_spec.stride(ix) == 1
+                && self.pool_spec.padding.valid_dim(ix, true)
+            {
+                axes = axes
+                    .with_input_axis_named(0, ix + h_axis, repr)?
+                    .with_output_axis_named(0, ix + h_axis, '$')?
+                    .linking(repr, '$')?
             }
         }
-        Ok(axes.into_iter().collect())
+        Ok(axes)
     }
 
     fn declutter(

@@ -22,7 +22,10 @@ impl super::TypedPass for PushSliceUp {
                 continue;
             }
             let node = model.node(n);
-            let invariants = node.op.invariants(&ifacts, &ofacts)?;
+            let invariants = node
+                .op
+                .axes_mapping(&ifacts, &ofacts)
+                .with_context(|| format!("Mapping axes for {node}"))?;
             'axis: for axis in 0..ofacts[0].rank() {
                 if let Some(boundaries) = should_slice_output(model, node, axis, &eval_order)? {
                     let mut splits = tvec!();
@@ -33,12 +36,12 @@ impl super::TypedPass for PushSliceUp {
                         .map(|i| patch.tap_model(model, *i))
                         .collect::<TractResult<TVec<OutletId>>>()?;
                     let mut start = 0;
-                    let axis_info = invariants.track_output_axis(0, axis);
+                    let axis_info = invariants.output_axis(0, axis).unwrap();
                     for end in &boundaries {
                         let mut wires = tvec!();
                         for input_ix in 0..inputs.len() {
                             let mut wire = inputs[input_ix];
-                            if let Some(input_axis) = axis_info.and_then(|it| it.inputs[input_ix]) {
+                            if let &[input_axis] = &*axis_info.inputs[input_ix] {
                                 // dont propagate slice up if input looks like a broadcasting input
                                 if !patch.outlet_fact(wire)?.shape[input_axis].is_one() {
                                     wire = patch.wire_node(
@@ -72,7 +75,8 @@ impl super::TypedPass for PushSliceUp {
                         splits.push(wire[0]);
                         start = *end;
                     }
-                    rewire_sliced_outputs(model, node, axis, &mut patch, &boundaries, &splits).context("Rewiring sliced outputs")?;
+                    rewire_sliced_outputs(model, node, axis, &mut patch, &boundaries, &splits)
+                        .context("Rewiring sliced outputs")?;
                     return Ok(Some(patch));
                 }
             }
@@ -113,7 +117,7 @@ fn should_slice_output(
     let slice = node.outputs[0].successors[0].node;
 
     if !eval_order.contains(&slice) {
-        return Ok(None)
+        return Ok(None);
     }
     let slice_op = model.node(slice).op_as::<Slice>().unwrap();
     let axis = slice_op.axis;

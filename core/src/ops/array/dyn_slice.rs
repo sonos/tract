@@ -68,14 +68,16 @@ impl TypedOp for DynSlice {
         Ok(tvec!(fact))
     }
 
-    fn invariants(
+    fn axes_mapping(
         &self,
         inputs: &[&TypedFact],
-        _outputs: &[&TypedFact],
-    ) -> TractResult<Invariants> {
-        let axes =
-            (0..inputs[0].rank()).filter(|&ax| self.axis != ax).map(AxisInfo::simple).collect();
-        Ok(axes)
+        outputs: &[&TypedFact],
+    ) -> TractResult<AxesMapping> {
+        (0..inputs[0].rank())
+            .filter(|&ax| self.axis != ax)
+            .zip('a'..)
+            .map(|(ix, repr)| Axis::natural(inputs, outputs, repr, ix))
+            .collect()
     }
 
     fn change_axes(

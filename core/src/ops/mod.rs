@@ -141,8 +141,8 @@ pub trait TypedOp:
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>>;
 
     #[allow(unused_variables)]
-    fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
-        Ok(Invariants::default())
+    fn axes_mapping(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<AxesMapping> {
+        AxesMapping::disconnected(inputs, outputs)
     }
 
     /// Fuse op after codegen to deal with local optimisations.

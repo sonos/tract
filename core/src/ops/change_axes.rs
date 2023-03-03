@@ -506,19 +506,27 @@ impl TypedOp for AxisOp {
         Ok(tvec!(inputs[0].datum_type.fact(shape)))
     }
 
-    fn invariants(
+    fn axes_mapping(
         &self,
-        _inputs: &[&TypedFact],
+        inputs: &[&TypedFact],
         outputs: &[&TypedFact],
-    ) -> TractResult<Invariants> {
-        let mut axes = vec![];
-        let is_rm = matches!(self, AxisOp::Rm(_));
-        for i in 0..(outputs[0].rank() + is_rm as usize) {
-            if let Some(out) = self.transform_axis(i) {
-                axes.push(AxisInfo { inputs: tvec!(Some(i)), outputs: tvec!(Some(out)) });
+    ) -> TractResult<AxesMapping> {
+        let mut axes: Vec<Axis> = (0..inputs[0].rank())
+            .zip('a'..)
+            .map(|(axis_id, repr)| {
+                let mut axis = Axis::new(repr, inputs.len(), outputs.len()).input(0, axis_id);
+                if let Some(out) = self.transform_axis(axis_id) {
+                    axis = axis.output(0, out);
+                }
+                axis
+            })
+            .collect();
+        for (axis, letter) in (0..outputs[0].rank()).zip('A'..) {
+            if self.recip().transform_axis(axis).is_none() {
+                axes.push(Axis::new(letter, inputs.len(), outputs.len()).output(0, axis));
             }
         }
-        Ok(axes.into_iter().collect())
+        axes.into_iter().collect()
     }
 
     fn declutter(
@@ -1248,6 +1256,15 @@ mod proptests {
         let pb = ComposeProblem {
             input: tvec![2, 3, 2],
             ops: tvec![Move(0, 1), Move(2, 0), Move(2, 0)],
+        };
+        pb.check().unwrap();
+    }
+
+    #[test]
+    fn reshape_axes_tracking() {
+        let pb = ComposeProblem {
+            input: tvec![2, 2, 2],
+            ops: tvec![Reshape(0, tvec!(2.to_dim(), 2.to_dim()), tvec!(4.to_dim()))],
         };
         pb.check().unwrap();
     }
