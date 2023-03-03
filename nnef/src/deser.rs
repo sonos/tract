@@ -308,6 +308,33 @@ impl<'a> ResolvedInvocation<'a> {
         v.to::<T>(builder).with_context(|| format!("Converting argument `{name}' from {v:?}"))
     }
 
+    pub fn optional_named_arg_as<T>(
+        &self,
+        builder: &mut ModelBuilder,
+        name: &str,
+    ) -> TractResult<Option<T>>
+    where
+        T: CoerceFrom<Value>,
+    {
+        let rv = self.named_arg(name)?;
+        let v = rv
+            .resolve(builder, &[])
+            .with_context(|| format!("Resolving argument `{name}' ({rv:?})"))?;
+        match v {
+            Value::Bool(b) => {
+                if !b {
+                    Ok(None)
+                } else {
+                    bail!("Bool(true) not expected for optional values, you might want to access a boolean direclty.")
+                }
+            }
+            _ => v
+                .to::<T>(builder)
+                .map(Option::Some)
+                .with_context(|| format!("Converting argument `{name}' from {v:?}")),
+        }
+    }
+
     pub fn named_arg(&self, name: &str) -> TractResult<Cow<RValue>> {
         self.get_named_arg(name).ok_or_else(|| format_err!("expected argument {}", name))
     }
@@ -549,6 +576,7 @@ impl CoerceFrom<Value> for Arc<Tensor> {
             Value::Tuple(t) if t.len() == 1 => t[0].to(builder),
             Value::Scalar(f) => Ok(rctensor0(*f)),
             Value::String(f) => Ok(rctensor0(f.clone())),
+            Value::Bool(b) => Ok(rctensor0(*b)),
             Value::Wire(o) => builder
                 .model
                 .outlet_fact(*o)?
@@ -577,6 +605,7 @@ impl CoerceFrom<Value> for (Arc<Tensor>, DatumType) {
             Value::Tensor(t) => Ok((t.clone(), t.datum_type())),
             Value::Scalar(f) => Ok((rctensor0(*f), DatumType::F32)),
             Value::String(f) => Ok((rctensor0(f.clone()), DatumType::String)),
+            Value::Bool(b) => Ok((rctensor0(*b), DatumType::Bool)),
             Value::Wire(o) => {
                 let outlet_fact = builder.model.outlet_fact(*o)?;
                 Ok((
@@ -607,11 +636,14 @@ impl CoerceFrom<Value> for OutletId {
             Value::Array(_) => {
                 let tensor = Arc::<Tensor>::coerce(builder, from)?;
                 Ok(builder.wire_as_outlets(tract_core::ops::konst::Const::new(tensor), &[])?[0])
-            },
-            Value::String(s) => {
+            }
+            Value::String(s) => Ok(builder
+                .wire_as_outlets(tract_core::ops::konst::Const::new(rctensor0(s.clone())), &[])?
+                [0]),
+            Value::Bool(b) => {
                 Ok(builder
-                    .wire_as_outlets(tract_core::ops::konst::Const::new(rctensor0(s.clone())), &[])?[0])
-            },
+                    .wire_as_outlets(tract_core::ops::konst::Const::new(rctensor0(*b)), &[])?[0])
+            }
             _ => bail!("Can not build an outletid from {:?}", from),
         }
     }
@@ -657,20 +689,25 @@ impl CoerceFrom<Value> for String {
         match from {
             Value::String(s) => Ok(s.to_string()),
             Value::Tensor(t) => Ok(t.to_scalar::<String>()?.clone()),
-            Value::Wire(_) => {
-                Ok(from.to::<Arc<Tensor>>(builder)?.cast_to::<String>()?.to_scalar::<String>()?.clone())
-            }
+            Value::Wire(_) => Ok(from
+                .to::<Arc<Tensor>>(builder)?
+                .cast_to::<String>()?
+                .to_scalar::<String>()?
+                .clone()),
             _ => bail!("Can not build a String from {:?}", from),
         }
     }
 }
 
 impl CoerceFrom<Value> for bool {
-    fn coerce(_builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
-        if let Value::Bool(b) = from {
-            Ok(*b)
-        } else {
-            bail!("Can not build a boolean from {:?}", from)
+    fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
+        match from {
+            Value::Bool(b) => Ok(*b),
+            Value::Tensor(t) => Ok(*t.to_scalar::<bool>()?),
+            Value::Wire(_) => {
+                Ok(*from.to::<Arc<Tensor>>(builder)?.cast_to::<bool>()?.to_scalar::<bool>()?)
+            }
+            _ => bail!("Can not build a boolean from {:?}", from),
         }
     }
 }

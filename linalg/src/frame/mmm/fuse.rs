@@ -418,7 +418,11 @@ pub mod test {
             println!("found, expected:");
             for m in 0..K::mr() {
                 for n in 0..K::nr() {
-                    print!("{:4} ", v[m * K::nr() + n]);
+                    use nu_ansi_term::Color::*;
+                    let f = v[m * K::nr() + n];
+                    let e = expected[m * K::nr() + n];
+                    let color = if f != e { Red } else { Green };
+                    print!("{} ", color.paint(format!("{:4}", f)));
                 }
                 print!("      ");
                 for n in 0..K::nr() {

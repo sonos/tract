@@ -35,6 +35,7 @@ half.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
+nu-ansi-term.workspace = true
 proptest.workspace = true
 
 [features]

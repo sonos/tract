@@ -315,9 +315,9 @@ fn display_comparison(m: usize, k: usize, n: usize, alts: &[(&str, f64)], choice
         );
         if Some(*s) == choice {
             if ix == 0 {
-                println!("{}", ansi_term::Color::Green.bold().paint(line));
+                println!("{}", nu_ansi_term::Color::Green.bold().paint(line));
             } else {
-                println!("{}", ansi_term::Color::Red.bold().paint(line));
+                println!("{}", nu_ansi_term::Color::Red.bold().paint(line));
             }
         } else {
             println!("{}", line);

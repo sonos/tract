@@ -555,7 +555,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
     }?;
 
     if need_optimisations {
-        let style = ansi_term::Style::new().fg(ansi_term::Color::Red).bold();
+        let style = nu_ansi_term::Style::new().fg(nu_ansi_term::Color::Red).bold();
         if !matches.is_present("optimize") {
             warn!("{}", style.paint("Profiling an un-optimized network. Consider adding -O."));
         }
