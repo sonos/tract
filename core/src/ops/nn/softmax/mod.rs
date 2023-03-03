@@ -18,8 +18,6 @@ pub struct Softmax {
     pub output_dt: DatumType,
 }
 
-
-
 impl Op for Softmax {
     fn name(&self) -> Cow<str> {
         "Softmax".into()
@@ -61,12 +59,12 @@ impl TypedOp for Softmax {
         Ok(tvec!(fact))
     }
 
-    fn invariants(
+    fn axes_mapping(
         &self,
         inputs: &[&TypedFact],
-        _outputs: &[&TypedFact],
-    ) -> TractResult<Invariants> {
-        Ok((0..inputs[0].rank()).map(AxisInfo::simple).collect())
+        outputs: &[&TypedFact],
+    ) -> TractResult<AxesMapping> {
+        AxesMapping::natural(inputs, outputs)
     }
 
     fn change_axes(

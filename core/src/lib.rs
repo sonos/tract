@@ -75,7 +75,6 @@ pub mod axes;
 pub mod broadcast;
 pub mod framework;
 pub mod half;
-pub mod invariants;
 pub mod model;
 pub mod optim;
 pub mod plan;
@@ -102,9 +101,7 @@ pub mod prelude {
 
 /// This prelude is meant for code extending tract (like implementing new ops).
 pub mod internal {
-    pub use crate::axes::AxesMapping;
-    pub use crate::invariants;
-    pub use crate::invariants::*;
+    pub use crate::axes::{ Axis, AxesMapping };
     pub use crate::late_bind::*;
     pub use crate::model::*;
     pub use crate::ops::change_axes::*;

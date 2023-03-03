@@ -1,7 +1,7 @@
 use crate::internal::*;
 use downcast_rs::Downcast;
-use tract_data::itertools::izip;
 use std::fmt;
+use tract_data::itertools::izip;
 
 pub fn wire_rank_broadcast(
     prefix: &str,
@@ -17,11 +17,8 @@ pub fn wire_rank_broadcast(
     for i in 0..inputs.len() {
         let mut wire = inputs[i];
         for j in facts[i].rank()..max_rank {
-            wire = target.wire_node(
-                format!("{prefix}.fix-rank-{i}-{j}"),
-                AxisOp::Add(0),
-                &[wire],
-            )?[0];
+            wire =
+                target.wire_node(format!("{prefix}.fix-rank-{i}-{j}"), AxisOp::Add(0), &[wire])?[0];
         }
         wires.push(wire);
     }
@@ -38,9 +35,7 @@ pub fn wire_with_rank_broadcast(
     target.wire_node(prefix, &op.into(), &wires)
 }
 
-pub trait BinMiniOp:
-    fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast
-{
+pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast {
     fn name(&self) -> &'static str;
     fn validation(&self) -> Validation {
         Validation::Accurate
@@ -171,21 +166,12 @@ impl TypedOp for TypedBinOp {
         Ok(Some(AxisChangeConsequence::new(model, node, None, change)))
     }
 
-    fn invariants(
+    fn axes_mapping(
         &self,
         inputs: &[&TypedFact],
-        _outputs: &[&TypedFact],
-    ) -> TractResult<Invariants> {
-        let a = &inputs[0];
-        let b = &inputs[1];
-        assert!(a.rank() == b.rank());
-        let rank = a.rank();
-        Ok((0..rank)
-            .map(|axis| AxisInfo {
-                inputs: tvec!(Some(axis), Some(axis)),
-                outputs: tvec!(Some(axis)),
-            })
-            .collect())
+        outputs: &[&TypedFact],
+    ) -> TractResult<AxesMapping> {
+        AxesMapping::natural(inputs, outputs)
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
@@ -651,9 +637,8 @@ pub(crate) fn one_input_is_uniform(
         let var_fact = [a, b][uni.left_is_uniform as usize];
         let uni_fact = [a, b][!uni.left_is_uniform as usize];
         if izip!(var_fact.shape.iter(), uni_fact.shape.iter()).all(|(v, u)| u.is_one() || u == v) {
-            return Ok(Some(uni))
+            return Ok(Some(uni));
         }
     }
     Ok(None)
 }
-

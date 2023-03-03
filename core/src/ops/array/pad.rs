@@ -1,6 +1,4 @@
 use crate::internal::*;
-use ndarray::*;
-use std::convert::TryFrom;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PadMode {
@@ -21,12 +19,12 @@ pub struct Pad {
     pub mode: PadMode,
 }
 
-
 impl Pad {
     fn eval_t<T>(&self, input_tensor: TValue) -> TractResult<TValue>
     where
         T: Copy + Datum,
     {
+        use tract_ndarray::*;
         let input = input_tensor.to_array_view::<T>()?;
         let output_shape: Vec<usize> =
             input.shape().iter().zip(self.pads.iter()).map(|(&d, &(a, b))| d + a + b).collect();
@@ -123,18 +121,19 @@ impl TypedOp for Pad {
         Ok(tvec!(fact))
     }
 
-    fn invariants(
+    fn axes_mapping(
         &self,
-        _inputs: &[&TypedFact],
-        _outputs: &[&TypedFact],
-    ) -> TractResult<Invariants> {
-        let mut inv = Invariants::none();
-        for (axis, pads) in self.pads.iter().enumerate() {
+        inputs: &[&TypedFact],
+        outputs: &[&TypedFact],
+    ) -> TractResult<AxesMapping> {
+        let mut result = AxesMapping::disconnected(inputs, outputs)?;
+        for (ix, pads) in self.pads.iter().enumerate() {
             if pads == &(0, 0) {
-                inv.axes.push(AxisInfo::simple(axis))
+                let repr = result.input_axis(0, ix).unwrap().repr;
+                result = result.with_output_axis_named(0, ix, '$')?.linking(repr, '$')?;
             }
         }
-        Ok(inv)
+        Ok(result)
     }
 
     fn change_axes(
@@ -156,7 +155,7 @@ impl TypedOp for Pad {
             }
         }
         if let (InOut::In(0), AxisOp::Add(ix)) = (io, change) {
-            new_op.pads.insert(*ix, (0,0));
+            new_op.pads.insert(*ix, (0, 0));
             return Ok(Some(AxisChangeConsequence::new(
                 model,
                 node,

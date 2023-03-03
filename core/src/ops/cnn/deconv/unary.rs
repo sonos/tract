@@ -112,8 +112,8 @@ impl DeconvUnary {
         let trans_data = self.pool_spec.data_format.c_is_last();
         let axes = MatMulAxes::default_for_rank(kernel_as_g_ohw_i.rank())
             .transposing(false, trans_data, false);
-        let kernel = target.add_const(
-            format!("{}.kernel", name), kernel_as_g_ohw_i.into_arc_tensor())?;
+        let kernel =
+            target.add_const(format!("{}.kernel", name), kernel_as_g_ohw_i.into_arc_tensor())?;
         let gemm = target.wire_node(
             format!("{name}.gemm"),
             crate::ops::matmul::MatMul { axes },
@@ -135,8 +135,6 @@ impl DeconvUnary {
         Ok(deconv_sum)
     }
 }
-
-
 
 impl Op for DeconvUnary {
     fn name(&self) -> Cow<str> {
@@ -183,27 +181,39 @@ impl TypedOp for DeconvUnary {
         Ok(tvec!(x_fact.datum_type.fact(&output_shape)))
     }
 
-    fn invariants(
+    fn axes_mapping(
         &self,
-        _inputs: &[&TypedFact],
-        _outputs: &[&TypedFact],
-    ) -> TractResult<Invariants> {
-        let mut invariants = Invariants::default();
-        if self.pool_spec.data_format.has_n() {
-            invariants.axes.push(AxisInfo::simple(0))
+        inputs: &[&TypedFact],
+        outputs: &[&TypedFact],
+    ) -> TractResult<AxesMapping> {
+        let fact = &inputs[0];
+        let shape = self.pool_spec.data_format.shape(fact.shape.iter().collect::<Vec<TDim>>())?;
+        let mut axes = AxesMapping::disconnected(inputs, outputs)?
+            .with_input_axis_named(0, shape.c_axis(), 'I')?
+            .with_output_axis_named(0, shape.c_axis(), 'O')?;
+        if let Some(n_axis) = shape.n_axis() {
+            axes = axes
+                .with_input_axis_named(0, n_axis, 'N')?
+                .with_output_axis_named(0, n_axis, '$')?
+                .linking('N', '$')?;
         }
-        for geo_axis in 0..self.pool_spec.kernel_shape.len() {
-            if self.pool_spec.kernel_shape[geo_axis] == 1
-                && self.pool_spec.strides()[geo_axis] == 1
-                && self.pool_spec.padding.valid_dim(geo_axis, true)
-                && self.adjustments[geo_axis] == 0
+        let h_axis = shape.h_axis();
+        let geo = "HWXYZ".chars().chain('a'..);
+        let kernel_spatial_shape =
+            &self.kernel.shape()[self.kernel_format.h_axis()..][..shape.hw_rank()];
+        for ((ix, &dim), repr) in kernel_spatial_shape.iter().enumerate().zip(geo) {
+            if dim == 1
+                && self.pool_spec.stride(ix) == 1
+                && self.pool_spec.padding.valid_dim(ix, true)
+                && self.adjustments[ix] == 0
             {
-                invariants
-                    .axes
-                    .push(AxisInfo::simple(geo_axis + self.pool_spec.data_format.h_axis()))
+                axes = axes
+                    .with_input_axis_named(0, ix + h_axis, repr)?
+                    .with_output_axis_named(0, ix + h_axis, '$')?
+                    .linking(repr, '$')?
             }
         }
-        Ok(invariants)
+        Ok(axes)
     }
 
     fn codegen(

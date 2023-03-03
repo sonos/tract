@@ -155,12 +155,12 @@ impl
 
         let (stream_input_ix, pulse_fact) =
             pulse_facts.iter().enumerate().find(|(_ix, pf)| pf.stream.is_some()).unwrap();
-
         let (input_facts, output_facts) = source.node_facts(node.id)?;
-        let invariants = node.op.invariants(&input_facts, &output_facts)?;
-        let axis_info =
-            invariants.track_input_axis(stream_input_ix, pulse_fact.stream.as_ref().unwrap().axis);
-        if axis_info.is_some() {
+        let axes_mapping = node.op.axes_mapping(&input_facts, &output_facts)?;
+        let axis_info = axes_mapping
+            .input_axis(stream_input_ix, pulse_fact.stream.as_ref().unwrap().axis)
+            .unwrap();
+        if axis_info.outputs[0].len() == 1 {
             let pulse_op = PulseWrappingOp(node.op.clone());
             let inputs = sync_inputs(node, target, mapping)?;
             return target.wire_node(&node.name, pulse_op, &inputs);
@@ -215,24 +215,28 @@ impl PulsedOp for PulseWrappingOp {
         let input_facts_ref = input_facts.iter().map(|f| f.as_ref()).collect::<TVec<_>>();
         let output_facts = self.0.output_facts(&input_facts_ref)?;
         let output_facts_ref = output_facts.iter().collect::<TVec<_>>();
-        let invariant = self.0.invariants(&input_facts_ref, &output_facts_ref)?;
-        let axis_info = invariant
-            .track_input_axis(pulsing_input, stream.axis)
+        let axes_mapping = self.0.axes_mapping(&input_facts_ref, &output_facts_ref)?;
+        let axis_info = axes_mapping
+            .input_axis(pulsing_input, stream.axis)
             .context("Unable to track pulse axis on PulseWrappingOp")?;
         std::mem::drop(output_facts_ref);
         output_facts
             .into_iter()
             .enumerate()
             .map(|(ix, tf)| {
-                Ok(PulsedFact {
-                    shape: tf.shape,
-                    datum_type: tf.datum_type,
-                    stream: Some(StreamInfo {
-                        delay: stream.delay,
-                        axis: axis_info.outputs[ix].context("Disappearing streaming axis")?,
-                        dim: stream.dim.clone(),
-                    }),
-                })
+                if let &[axis] = &*axis_info.outputs[ix] {
+                    Ok(PulsedFact {
+                        shape: tf.shape,
+                        datum_type: tf.datum_type,
+                        stream: Some(StreamInfo {
+                            delay: stream.delay,
+                            axis,
+                            dim: stream.dim.clone(),
+                        }),
+                    })
+                } else {
+                    bail!("Disappearing pulsing axis")
+                }
             })
             .collect()
     }

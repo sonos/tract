@@ -35,8 +35,6 @@ impl Downsample {
     }
 }
 
-
-
 impl Op for Downsample {
     fn name(&self) -> Cow<str> {
         "Downsample".into()
@@ -100,7 +98,12 @@ impl TypedOp for Downsample {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         if self.stride == 1 {
-            return Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, Identity)?));
+            return Ok(Some(TypedModelPatch::replace_single_op(
+                model,
+                node,
+                &node.inputs,
+                Identity,
+            )?));
         }
         pull_downsample_up(model, node)
             .with_context(|| format!("Pulling {} over {}", node, model.node(node.inputs[0].node)))
@@ -117,11 +120,13 @@ fn pull_downsample_up(
     let down_op = down_node.op_as::<Downsample>().unwrap();
     if let Some(prec) = model.single_prec(down_node.id)? {
         let (input_facts, output_facts) = model.node_facts(prec.id)?;
-        let invariants = prec.op.invariants(&input_facts, &output_facts)?;
-        debug!("Consider pull {:?} over {:?} (invariants: {:?})", down_op, prec, invariants);
+        let axes_mapping = prec.op.axes_mapping(&input_facts, &output_facts)?;
+        debug!("Consider pull {:?} over {:?} (invariants: {:?})", down_op, prec, axes_mapping);
         if let Some(slice_op) = prec.op_as::<ops::array::Slice>() {
-            if let Some(p) = array::pull_downsample_over_slice(model, prec, slice_op, down_node, down_op)? {
-                return Ok(Some(p))
+            if let Some(p) =
+                array::pull_downsample_over_slice(model, prec, slice_op, down_node, down_op)?
+            {
+                return Ok(Some(p));
             }
         } else if let Some(other_op) = prec.op_as::<AxisOp>() {
             return array::pull_downsample_over_axis_op(model, prec, other_op, down_node, down_op);
@@ -130,31 +135,32 @@ fn pull_downsample_up(
         } else if let Some(other_op) = prec.op_as::<ops::scan::Scan>() {
             return scan::pull_downsample_over_scan(model, prec, other_op, down_node, down_op);
         }
-        if prec.outputs.len() > 1 {
-            return Ok(None)
+        if prec.outputs.len() > 1 || prec.inputs.len() == 0 {
+            return Ok(None);
         }
-        if let Some(axis_info) = invariants.track_output_axis(0, down_op.axis) {
-            let mut patch = TypedModelPatch::default();
-            let mut inputs = vec![];
-            for (ix, &oo) in prec.inputs.iter().enumerate() {
-                let mut wire = patch.tap_model(model, oo)?;
-                if let Some(axis) = axis_info.inputs[ix] {
-                    if !patch.outlet_fact(wire)?.shape[axis].is_one() {
-                        let mut op = down_op.clone();
-                        op.axis = axis;
-                        wire  = patch.wire_node(
-                            format!("{}.{}-{}", down_node.name, prec.name, ix),
-                            op,
-                            &[wire]
-                        )?[0];
-                    }
+        let axis_info = axes_mapping.output_axis(0, down_op.axis)?;
+        let mut patch = TypedModelPatch::default();
+        let mut inputs = vec![];
+        for (ix, (outlet, axis_info)) in prec.inputs.iter().zip(&axis_info.inputs).enumerate() {
+            let mut wire = patch.tap_model(model, *outlet)?;
+            if let &[axis] = &**axis_info {
+                if !patch.outlet_fact(wire)?.shape[axis].is_one() {
+                    let mut op = down_op.clone();
+                    op.axis = axis;
+                    wire = patch.wire_node(
+                        format!("{}.{}-{}", down_node.name, prec.name, ix),
+                        op,
+                        &[wire],
+                    )?[0];
                 }
-                inputs.push(wire);
+            } else {
+                return Ok(None);
             }
-            let other = patch.wire_node(&prec.name, prec.op.clone(), &inputs)?;
-            patch.shunt_outside(model, OutletId::new(down_node.id, 0), other[0])?;
-            return Ok(Some(patch));
+            inputs.push(wire);
         }
+        let other = patch.wire_node(&prec.name, prec.op.clone(), &inputs)?;
+        patch.shunt_outside(model, OutletId::new(down_node.id, 0), other[0])?;
+        return Ok(Some(patch));
     }
     Ok(None)
 }

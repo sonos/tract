@@ -79,8 +79,8 @@ impl TypedOp for Cast {
         }
     }
 
-    fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
-        Invariants::new_element_wise(inputs, outputs)
+    fn axes_mapping(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<AxesMapping> {
+        AxesMapping::natural(inputs, outputs)
     }
 
     fn change_axes(

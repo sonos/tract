@@ -90,19 +90,32 @@ fn eval_slice(input: &Tensor, axis: usize, start: usize, end: usize) -> TractRes
 impl TypedOp for Slice {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         anyhow::ensure!(inputs.len() == 1, "Slice has one single input");
+        if let (Ok(start), Ok(end), Ok(len)) =
+            (self.start.to_usize(), self.end.to_usize(), inputs[0].shape[self.axis].to_usize())
+        {
+            ensure!(start <= end);
+            ensure!(end <= len);
+        }
         let mut fact = inputs[0].without_value();
         fact.shape.set(self.axis, (self.end.clone() - &self.start).to_dim());
         Ok(tvec!(fact))
     }
 
-    fn invariants(
+    fn axes_mapping(
         &self,
         inputs: &[&TypedFact],
-        _outputs: &[&TypedFact],
-    ) -> TractResult<Invariants> {
-        let axes =
-            (0..inputs[0].rank()).filter(|&ax| self.axis != ax).map(AxisInfo::simple).collect();
-        Ok(axes)
+        outputs: &[&TypedFact],
+    ) -> TractResult<AxesMapping> {
+        let mut mapping = AxesMapping::disconnected(inputs, outputs)?;
+        for (axis, repr) in (0..inputs[0].rank()).zip('a'..) {
+            if self.axis != axis {
+                mapping = mapping
+                    .with_input_axis_named(0, axis, repr)?
+                    .with_output_axis_named(0, axis, '$')?
+                    .linking(repr, '$')?
+            }
+        }
+        Ok(mapping)
     }
 
     fn change_axes(

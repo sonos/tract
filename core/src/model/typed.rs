@@ -91,7 +91,6 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
 }
 
 impl TypedModel {
-
     pub fn into_optimized(mut self) -> TractResult<TypedModel> {
         self.declutter()?;
         self.optimize()?;
@@ -140,7 +139,7 @@ impl TypedModel {
                 })?
             }
         }
-        self.invariants()?;
+        self.axes_mapping()?;
         Ok(())
     }
 
@@ -184,8 +183,8 @@ impl TypedModel {
         crate::optim::Optimizer::codegen().optimize(self)
     }
 
-    pub fn invariants(&self) -> TractResult<Invariants> {
-        crate::invariants::for_model(self)
+    pub fn axes_mapping(&self) -> TractResult<AxesMapping> {
+        crate::axes::for_model(self)
     }
 }
 

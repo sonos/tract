@@ -268,9 +268,9 @@ fn render_node_prefixed(
         if let Some(typed) = model.downcast_ref::<TypedModel>() {
             let node = typed.node(node_id);
             let (inputs, outputs) = typed.node_facts(node.id)?;
-            let invariants = node.op().as_typed().unwrap().invariants(&inputs, &outputs)?;
+            let axes_mapping = node.op().as_typed().unwrap().axes_mapping(&inputs, &outputs)?;
             prefix!();
-            println!("  * {invariants:?}");
+            println!("  * {axes_mapping:?}");
         }
     }
     if options.debug_op {

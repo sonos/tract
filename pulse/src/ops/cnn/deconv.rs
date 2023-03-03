@@ -23,9 +23,11 @@ fn pulsify(
         bail!("Pulsification on C axis is not supported");
     }
     if op
-        .invariants(&source.node_input_facts(node.id)?, &source.node_output_facts(node.id)?)?
-        .track_input_axis(0, stream.axis)
-        .is_some()
+        .axes_mapping(&source.node_input_facts(node.id)?, &source.node_output_facts(node.id)?)?
+        .input_axis(0, stream.axis)?
+        .outputs[0]
+        .len()
+        == 1
     {
         // general case for invariants will manage
         return Ok(None);
