@@ -17,13 +17,6 @@ fn use_masm() -> bool {
     env::var("CARGO_CFG_TARGET_ENV") == Ok("msvc".to_string()) && var("HOST").contains("-windows-")
 }
 
-fn needs_pragma() -> bool {
-    // This will add the following to the asm templates if true:
-    // .cpu generic+fp+simd+fp16
-    !cc::Build::new().get_compiler().is_like_clang()
-        && !cc::Build::new().get_compiler().is_like_gnu()
-}
-
 fn jump_table() -> Vec<String> {
     println!("cargo:rerun-if-changed=src/frame/mmm/fuse.rs");
     std::fs::read_to_string("src/frame/mmm/fuse.rs")
@@ -315,7 +308,7 @@ fn load_partials(p: &path::Path, msvc: bool) -> liquid::partials::InMemorySource
         }
 
         let ext = f.path().extension().map(|s| s.to_string_lossy()).unwrap_or("".into());
-        let text = std::fs::read_to_string(f.path()).expect(&format!("file {:?}", f));
+        let text = std::fs::read_to_string(f.path()).unwrap_or_else(|_| panic!("file {:?}", f));
         let text = match ext.as_ref() {
             "tmpli" => Some(text.replace("{{", "{").replace("}}", "}")),
             "tmpliq" => Some(text),
