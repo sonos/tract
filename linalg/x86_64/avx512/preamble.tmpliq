@@ -1,3 +1,20 @@
+{% comment %}
+// vim: set syntax=asm :
+
+System V ABI:
+    args: rdi, rsi, rdx, rcx, r8, r9
+    preserve: rbx, rsp, rbp, r12, r13, r14, r15
+    scratch: rax, rdi, rsi, rdx, rcx, r8, r9, r10, r11
+    return: rax (+rdx)
+
+Windows ABI:
+    args: RCX, RDX, R8, R9
+    preserve: RBX, RBP, RDI, RSI, RSP, R12, R13, R14, R15, and XMM6-15
+    scratch: RAX, RCX, RDX, R8, R9, R10, R11, XMM0-5, and the upper portions of YMM0-15 and ZMM0-15
+    return: rax (+rdx)
+*/
+{% endcomment %}
+
 {% if msvc %}
 
 _text segment

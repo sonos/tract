@@ -1,0 +1,23 @@
+{% comment %}
+Generate the code for the store instruction.
+---
+Arguments:
+    nr - kernel size in number of elements
+{% endcomment %}
+
+{% assign nr_min_1 = nr | minus: 1 %}
+
+{{L}}add_row_col_products:
+    mov             rax, [ rdi + 8 ]
+    mov             rbx, [ rdi + 16 ]
+
+    vmovups         zmm31, zmmword ptr [rax]
+    vmovups         zmm30, zmmword ptr [rax+64]
+
+{% for i in (0..nr_min_1) %}
+    vbroadcastss    zmm29, dword ptr [rbx + {{i|times:4}} ]
+    vfmadd231ps     zmm{{i | times: 2}}, zmm31, zmm29
+    vfmadd231ps     zmm{{i | times: 2 | plus: 1}}, zmm30, zmm29
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop

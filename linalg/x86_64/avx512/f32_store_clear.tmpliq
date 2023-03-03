@@ -1,0 +1,52 @@
+{% comment %}
+Generate the code for the store and clear instructions.
+---
+Arguments:
+    mr - kernel size in number of elements
+    nr - kernel size in number of elements
+{% endcomment %}
+
+{% assign arch_mr_min_1 = mr | divided_by:16 | minus:1 %}
+{% assign nr_min_1 = nr | minus:1 %}
+
+{{L}}store:
+    mov     r8,     [rdi + 8]           // c ptr
+    mov     rsi,    [rdi + 16]          // row stride
+    mov     rbx,    [rdi + 24]          // col stride
+
+    mov     r9,     r8                  // current row
+    mov     r10,    r8                  // current col
+
+    {% for regcol in (0..nr_min_1) %}
+        {% for regrow in (0..arch_mr_min_1) %}
+            {% for quarter in (0..3) %}
+                vextractf32x4 xmm31, zmm{{regcol | times:2 | plus:regrow}}, {{quarter}}
+                {% for innerrow in (0..3) %}
+                    vextractps  dword ptr [r9], xmm31, {{innerrow}}
+                    add r9, rsi
+                {% endfor %}
+            {% endfor %}
+        {% endfor %}
+        add r10, rbx
+        mov r9, r10
+    {% endfor %}
+
+    jmp     {{L}}non_linear_loop
+
+{% assign last_reg = mr | divided_by:16 | times:nr | minus:1 %}
+
+{{L}}clear:
+    vzeroall
+    // turns out vzeroall only zeroes zmm0 to zmm15
+    {% for regcol in (15..last_reg) %}
+        vmovups zmm16,  zmm0
+        vmovups zmm17,  zmm0
+        vmovups zmm18,  zmm0
+        vmovups zmm19,  zmm0
+        vmovups zmm20,  zmm0
+        vmovups zmm21,  zmm0
+        vmovups zmm22,  zmm0
+        vmovups zmm23,  zmm0
+    {% endfor %}
+
+    jmp     {{L}}non_linear_loop

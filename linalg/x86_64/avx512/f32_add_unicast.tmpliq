@@ -1,0 +1,94 @@
+{% comment %}
+Generate the code for the add_unicast instruction.
+---
+Arguments:
+    mr - kernel size in number of elements
+    nr - kernel size in number of elements
+{% endcomment %}
+
+
+{{L}}add_unicast:
+
+    mov     r10,    [rdi + 8]           // c ptr
+    mov     rsi,    [rdi + 16]          // row stride
+    mov     rbx,    [rdi + 24]          // col stride
+
+    mov     eax,    0
+
+// this is a hack - we move stuff around because 
+// pinsrd and vperm2f128 don't support ymm16-ymm31 registers
+// meaning we need some scratch registers on ymm0-ymm16
+// however we have our data there :/
+
+{% assign last_data_reg = mr | divided_by:16 | times:nr | minus:1 %}
+{% if last_data_reg >= 12 %}
+    vmovups zmm28,  zmm12
+{% endif %}
+{% if last_data_reg >= 13 %}
+    vmovups zmm29,  zmm13
+{% endif %}
+{% if last_data_reg >= 14 %}
+    vmovups zmm30,  zmm14
+{% endif %}
+{% if last_data_reg >= 15 %}
+    vmovups zmm31,  zmm15
+{% endif %}
+
+{% for i in (0..3) %}
+    pinsrd  xmm14,  eax, {{i}}
+    add     eax,    esi
+{% endfor %}
+{% for i in (0..3) %}
+    pinsrd  xmm15, eax, {{i}}
+    add     eax,    esi
+{% endfor %}
+{% for i in (0..3) %}
+    pinsrd  xmm12, eax, {{i}}
+    add     eax,    esi
+{% endfor %}
+{% for i in (0..3) %}
+    pinsrd  xmm13, eax, {{i}}
+    add     eax,    esi
+{% endfor %}
+
+    vperm2f128      ymm14,  ymm14, ymm15,   32 // ymm14 <- xmm14::xmm15
+    vperm2f128      ymm13,  ymm12, ymm13,   32 // ymm12 <- xmm12::xmm13
+    vinsertf32x8    zmm14,  zmm14, ymm13,   1
+
+    vmovups         zmm25,  zmm15
+    vmovups         zmm26,  zmm14
+    vmovups         zmm27,  zmm12
+
+{% if last_data_reg >= 12 %}
+    vmovups         zmm12,  zmm28
+{% endif %}
+{% if last_data_reg >= 13 %}
+    vmovups         zmm13,  zmm29
+{% endif %}
+{% if last_data_reg >= 14 %}
+    vmovups         zmm14,  zmm30
+{% endif %}
+{% if last_data_reg >= 15 %}
+    vmovups         zmm15,  zmm31
+{% endif %}
+
+{% for i in (0..nr) %}
+    kxnorw      k1,k1,k1
+    vgatherdps  zmm27{k1}, [r10 + zmm26]
+    add         r10, rbx
+    vaddps      zmm{{i | times:2}}, zmm{{i | times:2}}, zmm27
+{% endfor %}
+
+    mov          r10,   [rdi + 8]
+    imul         esi,   16
+    vpbroadcastd zmm25, esi
+    vpaddd       zmm26, zmm26,  zmm25
+
+{% for i in (0..nr) %}
+    kxnorw k1,k1,k1
+    vgatherdps      zmm27{k1},  [r10 + zmm26]
+    add     r10, rbx
+    vaddps          zmm{{i | times:2 | plus:1}},   zmm{{i | times:2 | plus: 1}},   zmm27
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop

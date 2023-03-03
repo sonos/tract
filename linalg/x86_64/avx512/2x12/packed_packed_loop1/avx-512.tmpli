@@ -1,0 +1,60 @@
+	// Tile size: 2x12
+	// Accumulators: zmm0-23
+	// Col regs: zmm25
+	// Row regs: zmm26-27
+
+	prefetcht0		[rax + 256]
+	prefetcht0		[rax+64 + 256]
+	vmovaps			zmm26,	[rax]
+	vmovaps			zmm27,	[rax+64]
+
+	vbroadcastss	zmm25,	dword ptr [rcx+0]
+	vfmadd231ps		zmm0,	zmm26,  zmm25
+	vfmadd231ps		zmm1,	zmm27,  zmm25
+
+	vbroadcastss	zmm25,	dword ptr [rcx+4]
+	vfmadd231ps		zmm2,	zmm26,  zmm25
+	vfmadd231ps		zmm3,	zmm27,  zmm25
+
+	vbroadcastss	zmm25,	dword ptr [rcx+8]
+	vfmadd231ps		zmm4,	zmm26,  zmm25
+	vfmadd231ps		zmm5,	zmm27,  zmm25
+
+	vbroadcastss	zmm25,	dword ptr [rcx+12]
+	vfmadd231ps		zmm6,	zmm26,  zmm25
+	vfmadd231ps		zmm7,	zmm27,  zmm25
+
+	vbroadcastss	zmm25,	dword ptr [rcx+16]
+	vfmadd231ps		zmm8,	zmm26,  zmm25
+	vfmadd231ps		zmm9,	zmm27,  zmm25
+
+	vbroadcastss	zmm25,	dword ptr [rcx+20]
+	vfmadd231ps		zmm10,	zmm26,  zmm25
+	vfmadd231ps		zmm11,	zmm27,  zmm25
+
+	vbroadcastss	zmm25,	dword ptr [rcx+24]
+	vfmadd231ps		zmm12,	zmm26,  zmm25
+	vfmadd231ps		zmm13,	zmm27,  zmm25
+
+	vbroadcastss	zmm25,	dword ptr [rcx+28]
+	vfmadd231ps		zmm14,	zmm26,  zmm25
+	vfmadd231ps		zmm15,	zmm27,  zmm25
+
+	vbroadcastss	zmm25,	dword ptr [rcx+32]
+	vfmadd231ps		zmm16,	zmm26,  zmm25
+	vfmadd231ps		zmm17,	zmm27,  zmm25
+
+	vbroadcastss	zmm25,	dword ptr [rcx+36]
+	vfmadd231ps		zmm18,	zmm26,  zmm25
+	vfmadd231ps		zmm19,	zmm27,  zmm25
+
+	vbroadcastss	zmm25,	dword ptr [rcx+40]
+	vfmadd231ps		zmm20,	zmm26,  zmm25
+	vfmadd231ps		zmm21,	zmm27,  zmm25
+
+	vbroadcastss	zmm25,	dword ptr [rcx+44]
+	vfmadd231ps		zmm22,	zmm26,  zmm25
+	vfmadd231ps		zmm23,	zmm27,  zmm25
+
+	add rax, 128
+	add rcx, 48

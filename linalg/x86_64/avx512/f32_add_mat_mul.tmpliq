@@ -1,0 +1,62 @@
+{% comment %}
+Generate the code for the add_mat_mul instruction.
+---
+Arguments:
+    mr - kernel size in number of elements
+    nr - kernel size in number of elements
+{% endcomment %}
+
+{{L}}add_mat_mul:
+    mov     rcx,    [rdi + 24]   // B
+    mov     rax,    [rdi + 16]   // A
+
+    mov     rbx,    [rdi + 8]    // k
+    test    rcx,    rcx
+    jz      {{L}}non_linear_loop
+
+{{L}}main_loop_packed_packed:
+
+{% assign arch_mr = mr | divided_by: 16 %}
+{% assign arch_mr_min_1 = mr | divided_by: 16 | minus: 1 %}
+
+{% assign nr_min_1 = nr | minus: 1 %}
+
+// total bytes of the tile on the m axis
+{% assign m_total_bytes = mr | times: 4 %}
+// total bytes of the tile on the n axis
+{% assign n_total_bytes = nr | times: 4 %}
+
+// first register to be used for row
+{% assign row_reg = arch_mr | times: nr %}
+// the column register
+{% assign col_reg = row_reg | plus: arch_mr | plus: 1 %}
+
+{% assign prefetch_dist = 2 %}
+
+{% for i in (0..arch_mr_min_1) %}
+	prefetcht0 [rax + {{i | times:64}} + {{m_total_bytes | times:prefetch_dist}}]
+{% endfor %}
+
+{% for i in (0..arch_mr_min_1) %}
+	vmovaps zmm{{row_reg | plus:i}}, [rax + {{i | times:64}}]
+{% endfor %}
+
+// this loop will access A 16 elements at a time
+// and B 1 element at a time
+
+{% for i in (0..nr_min_1) %}
+	vbroadcastss zmm{{col_reg}}, dword ptr [rcx + {{i | times:4}}]
+
+    {% for j in (0..arch_mr_min_1) %}
+	    vfmadd231ps zmm{{i | times:arch_mr | plus:j}}, zmm{{row_reg | plus:j}}, zmm{{col_reg}}
+    {% endfor %}
+
+{% endfor %}
+
+	add     rax,    {{m_total_bytes}}
+	add     rcx,    {{n_total_bytes}}
+
+    dec     rbx
+    jnz     {{L}}main_loop_packed_packed
+
+    jmp     {{L}}non_linear_loop

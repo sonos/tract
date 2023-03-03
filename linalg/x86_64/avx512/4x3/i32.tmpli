@@ -1,0 +1,50 @@
+	// Tile size: 4x3
+	// Accumulators: 0-11
+	// Col regs: zmm12
+	// Row regs: zmm13-15
+
+	// Load col of A
+	vmovaps			zmm12,	[rax]
+
+	// Fill 3 cols of B
+	vbroadcastss	zmm13,	dword ptr [rcx + 0]
+	vbroadcastss	zmm14,	dword ptr [rcx + 4]
+	vbroadcastss	zmm15,	dword ptr [rcx + 8]
+
+	// N.B. Stepping cols in inner loop
+    vpmulld         zmm31,  zmm12,  zmm13
+    vpaddd          zmm0,   zmm0,   zmm31
+    vpmulld         zmm30,  zmm12,  zmm14
+    vpaddd          zmm4,   zmm4,   zmm30
+    vpmulld         zmm29,  zmm12,  zmm15
+    vpaddd          zmm8,   zmm8,   zmm29
+
+	vmovaps			zmm12,	[rax+64]
+
+    vpmulld         zmm31,  zmm12,  zmm13
+    vpaddd          zmm1,   zmm1,   zmm31
+    vpmulld         zmm30,  zmm12,  zmm14
+    vpaddd          zmm5,   zmm5,   zmm30
+    vpmulld         zmm29,  zmm12,  zmm15
+    vpaddd          zmm9,   zmm9,   zmm29
+
+	vmovaps			zmm12,	[rax+128]
+
+    vpmulld         zmm31,  zmm12,  zmm13
+    vpaddd          zmm2,   zmm2,   zmm31
+    vpmulld         zmm30,  zmm12,  zmm14
+    vpaddd          zmm6,   zmm6,   zmm30
+    vpmulld         zmm29,  zmm12,  zmm15
+    vpaddd          zmm10,  zmm10,  zmm29
+
+	vmovaps			zmm12,	[rax+192]
+
+    vpmulld         zmm31,  zmm12,  zmm13
+    vpaddd          zmm3,   zmm3,   zmm31
+    vpmulld         zmm30,  zmm12,  zmm14
+    vpaddd          zmm7,   zmm7,   zmm30
+    vpmulld         zmm29,  zmm12,  zmm15
+    vpaddd          zmm11,  zmm11,  zmm29
+
+    add             rcx,    12
+    add             rax,    256
