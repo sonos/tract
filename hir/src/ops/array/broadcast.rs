@@ -6,12 +6,10 @@ use tract_core::ops::array::MultiBroadcastTo as Typed;
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct MultiBroadcastTo;
 
-
 impl Expansion for MultiBroadcastTo {
     fn name(&self) -> Cow<str> {
         "MultiBroadcastTo".into()
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -31,12 +29,24 @@ impl Expansion for MultiBroadcastTo {
                         .with_context(|| format!("broadcasting {shape:?} to {dims:?}"))?;
                 s.equals(&outputs[0].shape, ShapeFactoid::from(dims))
             })
-        })
+        })?;
+        Ok(())
     }
 
     fn wire(
+            &self,
+            _prefix: &str,
+            _model: &mut TypedModel,
+            _inputs: &[OutletId],
+        ) -> TractResult<TVec<OutletId>> {
+        unreachable!()
+    }
+
+    fn wire_with_inference_model_and_node(
         &self,
         prefix: &str,
+        source: &InferenceModel,
+        node: &InferenceNode,
         model: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
@@ -48,8 +58,11 @@ impl Expansion for MultiBroadcastTo {
                 .context("incompatible shapes")?;
             let op = Typed::new(dims.into());
             model.wire_node(prefix, op, &[inputs[0]])
+        } else if let Some(shape) = source.outlet_fact(node.id.into())?.shape.concretize() {
+            let op = Typed::new(shape.into());
+            model.wire_node(prefix, op, &[inputs[0]])
         } else {
-            bail!("shape input is variable")
+            bail!("shape input is variable, of variable length (output can not have variable rank)")
         }
     }
 }
