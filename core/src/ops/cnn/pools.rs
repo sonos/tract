@@ -84,6 +84,32 @@ impl PoolSpec {
             output_shape,
         }))
     }
+
+    pub fn change_geo_axes(&self, op: &AxisOp) -> TractResult<PoolSpec> {
+        let mut dilations = self.dilations().into_owned().into();
+        op.change_shape_array(&mut dilations, false)?;
+        let mut kernel_shape = self.kernel_shape.clone();
+        op.change_shape_array(&mut kernel_shape, false)?;
+        let mut strides = self.strides().into_owned().into();
+        op.change_shape_array(&mut strides, false)?;
+        let padding = if let PaddingSpec::Explicit(before, after, round) = &self.padding {
+            let mut before: TVec<usize> = before.clone();
+            let mut after: TVec<usize> = after.clone();
+            op.change_shape_array(&mut before, false)?;
+            op.change_shape_array(&mut after, false)?;
+            PaddingSpec::Explicit(before, after, *round)
+        } else {
+            self.padding.clone()
+        };
+        Ok(PoolSpec {
+            data_format: self.data_format.clone(),
+            kernel_shape,
+            padding,
+            dilations: Some(dilations),
+            strides: Some(strides),
+            output_channel_override: self.output_channel_override,
+        })
+    }
 }
 
 pub type PoolGeometry = super::GeometryBound<SymbolicPoolGeometry, ConcretePoolGeometry>;
