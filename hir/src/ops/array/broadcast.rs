@@ -6,6 +6,22 @@ use tract_core::ops::array::MultiBroadcastTo as Typed;
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct MultiBroadcastTo;
 
+impl MultiBroadcastTo {
+    fn wire_with_known_target_shape(
+        &self,
+        prefix: &str,
+        model: &mut TypedModel,
+        inputs: &[OutletId],
+        target_shape: &[TDim],
+    ) -> TractResult<TVec<OutletId>> {
+        let left_shape = model.outlet_fact(inputs[0])?.shape.to_tvec();
+        let dims = tract_core::broadcast::multi_broadcast(&[&*left_shape, target_shape])
+            .context("incompatible shapes")?;
+        let op = Typed::new(dims.into());
+        model.wire_node(prefix, op, &[inputs[0]])
+    }
+}
+
 impl Expansion for MultiBroadcastTo {
     fn name(&self) -> Cow<str> {
         "MultiBroadcastTo".into()
@@ -34,12 +50,17 @@ impl Expansion for MultiBroadcastTo {
     }
 
     fn wire(
-            &self,
-            _prefix: &str,
-            _model: &mut TypedModel,
-            _inputs: &[OutletId],
-        ) -> TractResult<TVec<OutletId>> {
-        unreachable!()
+        &self,
+        prefix: &str,
+        model: &mut TypedModel,
+        inputs: &[OutletId],
+    ) -> TractResult<TVec<OutletId>> {
+        if let Some(shape) = model.outlet_fact(inputs[1])?.konst.clone() {
+            let shape = shape.cast_to::<TDim>()?;
+            self.wire_with_known_target_shape(prefix, model, inputs, shape.as_slice()?)
+        } else {
+            bail!("shape input is variable")
+        }
     }
 
     fn wire_with_inference_model_and_node(
@@ -51,13 +72,8 @@ impl Expansion for MultiBroadcastTo {
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         if let Some(shape) = model.outlet_fact(inputs[1])?.konst.clone() {
-            let input_shape = model.outlet_fact(inputs[0])?.shape.to_tvec();
             let shape = shape.cast_to::<TDim>()?;
-            let shape = shape.as_slice::<TDim>()?;
-            let dims = tract_core::broadcast::multi_broadcast(&[&*input_shape, shape])
-                .context("incompatible shapes")?;
-            let op = Typed::new(dims.into());
-            model.wire_node(prefix, op, &[inputs[0]])
+            self.wire_with_known_target_shape(prefix, model, inputs, shape.as_slice()?)
         } else if let Some(shape) = source.outlet_fact(node.id.into())?.shape.concretize() {
             let op = Typed::new(shape.into());
             model.wire_node(prefix, op, &[inputs[0]])
