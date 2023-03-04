@@ -655,7 +655,7 @@ impl Parameters {
             stage!("tf-preproc", inference_model -> inference_model, |m:InferenceModel| ext.preproc(m));
         }
         stage!("incorporate", inference_model -> inference_model, |m:InferenceModel| m.incorporate());
-        stage!("type", inference_model -> typed_model, |m:InferenceModel| m.into_typed());
+        stage!("type", inference_model -> typed_model, |m:InferenceModel| { let mut m = m.into_typed()?; m.compact()?; Ok(m) });
         stage!("declutter", typed_model -> typed_model, |mut m:TypedModel| {
             if matches.is_present("label-wires") {
                 for node in 0..m.nodes().len() {
