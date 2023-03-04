@@ -102,7 +102,7 @@ impl PoolSpec {
             self.padding.clone()
         };
         Ok(PoolSpec {
-            data_format: self.data_format.clone(),
+            data_format: self.data_format,
             kernel_shape,
             padding,
             dilations: Some(dilations),
