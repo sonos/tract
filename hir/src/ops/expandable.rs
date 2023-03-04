@@ -35,6 +35,18 @@ pub trait Expansion:
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>>;
 
+    #[allow(unused_variables)]
+    fn wire_with_inference_model_and_node(
+        &self,
+        prefix: &str,
+        model: &InferenceModel,
+        node: &InferenceNode,
+        typed_model: &mut TypedModel,
+        inputs: &[OutletId],
+    ) -> TractResult<TVec<OutletId>> {
+        self.wire(prefix, typed_model, inputs)
+    }
+
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -48,8 +60,6 @@ pub trait Expansion:
 }
 
 tract_core::dyn_clone::clone_trait_object!(Expansion);
-
-
 
 impl Op for Box<dyn Expansion> {
     fn name(&self) -> Cow<str> {
@@ -103,13 +113,14 @@ impl InferenceRulesOp for Box<dyn Expansion> {
 
     fn to_typed(
         &self,
-        _source: &InferenceModel,
+        source: &InferenceModel,
         node: &InferenceNode,
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<Vec<_>>();
-        let outputs = self.wire(&node.name, target, &inputs)?;
+        let outputs =
+            self.wire_with_inference_model_and_node(&node.name, source, node, target, &inputs)?;
         for (ix, o) in outputs.iter().enumerate() {
             let expected = &node.outputs[ix].fact;
             let got = target.outlet_fact(*o)?;
