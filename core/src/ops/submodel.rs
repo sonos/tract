@@ -1,12 +1,14 @@
 use crate::{internal::*, ops::OpStateFreeze};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash)]
 pub struct SubmodelOp {
     model: TypedModel,
     label: String,
     decluttered: bool,
     optimized: bool,
 }
+
+impl_dyn_hash!(SubmodelOp);
 
 impl SubmodelOp {
     pub fn new(model: TypedModel, label: &str) -> TractResult<Self> {
