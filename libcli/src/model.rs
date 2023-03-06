@@ -64,6 +64,9 @@ pub trait Model:
 
     /// Subnets of a node
     fn nested_models(&self, id: usize) -> Vec<(String, &dyn Model)> {
+        if let Some(submodel) = self.node_op(id).downcast_ref::<tract_core::ops::submodel::SubmodelOp>() {
+            return vec![("submodel".into(), submodel.model())];
+        }
         if let Some(lir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::LirScan>() {
             return vec![("loop".into(), lir.plan.model())];
         }
