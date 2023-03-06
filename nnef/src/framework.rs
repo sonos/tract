@@ -6,8 +6,7 @@ use crate::{internal::*, nnef};
 use std::io::Read;
 #[cfg(target_family = "unix")]
 use std::os::unix::prelude::OsStrExt;
-use std::path::{Path, PathBuf};
-use std::str::FromStr;
+use std::path::Path;
 
 pub fn stdlib() -> Vec<FragmentDef> {
     crate::ast::parse::parse_fragments(include_str!("../stdlib.nnef")).unwrap()
@@ -29,6 +28,7 @@ impl Default for Nnef {
                 GraphNnefLoader.into_boxed(),
                 DatLoader.into_boxed(),
                 GraphQuantLoader.into_boxed(),
+                TypedModelLoader::new(false).into_boxed()
             ],
             allow_extended_identifier_syntax: false,
         }
@@ -196,7 +196,7 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
                 .skip(path.components().count())
                 .collect::<std::path::PathBuf>();
             let mut stream = std::fs::File::open(entry.path())?;
-            read_stream(&self.resource_loaders, &subpath, &mut stream, &mut resources)?;
+            read_stream(&subpath, &mut stream, &mut resources, &self)?;
         }
         proto_model_from_resources(resources)
     }
@@ -222,7 +222,7 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
         for entry in tar.entries()? {
             let mut entry = entry?;
             let path = entry.path()?.to_path_buf();
-            read_stream(&self.resource_loaders, &path, &mut entry, &mut resources)?;
+            read_stream(&path, &mut entry, &mut resources, &self)?;
         }
         proto_model_from_resources(resources)
     }
@@ -324,10 +324,10 @@ fn proto_model_from_resources(
 }
 
 fn read_stream<R: std::io::Read>(
-    resource_loaders: &[Box<dyn ResourceLoader>],
     path: &Path,
     reader: &mut R,
     resources: &mut HashMap<String, Arc<dyn Resource>>,
+    framework: &Nnef,
 ) -> TractResult<()> {
     // ignore path with any component starting with "." (because OSX's tar is weird)
     #[cfg(target_family = "unix")]
@@ -335,9 +335,9 @@ fn read_stream<R: std::io::Read>(
         return Ok(());
     }
     let mut last_loader_name;
-    for loader in resource_loaders {
+    for loader in framework.resource_loaders.iter() {
         last_loader_name = Some(loader.name());
-        let loaded = loader.try_load(path, reader).with_context(|| {
+        let loaded = loader.try_load(path, reader, framework).with_context(|| {
             anyhow!("Error while loading resource by {:?} at path {:?}", loader.name(), path)
         })?;
         if let Some((id, resource)) = loaded {

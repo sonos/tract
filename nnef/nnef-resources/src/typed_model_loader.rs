@@ -39,6 +39,7 @@ impl ResourceLoader for TypedModelLoader {
         &self,
         path: &Path,
         reader: &mut dyn std::io::Read,
+        _nnef: &tract_nnef::framework::Nnef,
     ) -> TractResult<Option<(String, Arc<dyn Resource>)>> {
         const NNEF_TGZ: &str = ".nnef.tgz";
 

@@ -1,0 +1,4 @@
+"output": zero_point_linear_quantize(zero_point = 0, scale = 0.064853981, bits = 8, signed = false, symmetric = true);
+"conv_weights": zero_point_linear_quantize(zero_point = 128, scale = 0.000184978, bits = 8, signed = false, symmetric = false);
+"input": zero_point_linear_quantize(zero_point = 0, scale = 0.064853981, bits = 8, signed = false, symmetric = true);
+"output_conv": zero_point_linear_quantize(zero_point = 0, scale = 0.064853981, bits = 8, signed = false, symmetric = true);
