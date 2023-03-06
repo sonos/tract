@@ -79,13 +79,17 @@ impl Nnef {
     }
 
     pub fn write(&self, model: &TypedModel, w: impl std::io::Write) -> TractResult<()> {
-        let mut ar = tar::Builder::new(w);
-        self.write_to_tar(model, &mut ar)?;
-        ar.into_inner().context("Finalizing tar")?;
+        self.write_to_tar(model, w)?;
         Ok(())
     }
+    
+    pub fn write_to_tar<W: std::io::Write>(&self, model: &TypedModel, w: W) -> TractResult<W> {
+        let mut ar = tar::Builder::new(w);
+        self._write_to_tar(model, &mut ar)?; 
+        ar.into_inner().context("Finalizing tar")
+    }
 
-    pub fn write_to_tar<W: std::io::Write>(&self, model: &TypedModel, ar: &mut Builder<W>) -> TractResult<()> {
+    fn _write_to_tar<W: std::io::Write>(&self, model: &TypedModel, ar: &mut Builder<W>) -> TractResult<()> {
         let proto_model =
             crate::ser::to_proto_model(self, model).context("Translating model to proto_model")?;
 
