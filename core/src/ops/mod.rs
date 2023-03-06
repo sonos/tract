@@ -30,6 +30,7 @@ pub mod nn;
 pub mod quant;
 pub mod scan;
 pub mod source;
+pub mod submodel;
 pub mod unimpl;
 
 pub use downsample::Downsample;
