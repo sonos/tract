@@ -26,7 +26,7 @@ impl ResourceLoader for JsonLoader {
         &self,
         path: &Path,
         reader: &mut dyn std::io::Read,
-        _nnef: &tract_nnef::framework::Nnef,
+        _framework: &tract_nnef::framework::Nnef,
     ) -> TractResult<Option<(String, Arc<dyn Resource>)>> {
         if path.extension().map(|e| e == "json").unwrap_or(false) {
             let value = serde_json::from_reader(reader)
