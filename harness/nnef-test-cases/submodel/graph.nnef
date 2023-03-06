@@ -7,11 +7,11 @@ graph nnet(input) -> (output)
     input = external<scalar>(shape = [1, 1, 5]);
 
     # First model is loaded from a tgz archive
-    nnet_1_out = tract_core_submodel(input = input, label = 'nnet1');
+    nnet_1_out = tract_core_submodel(input, label = 'nnet1');
     
     # Second model is a quantized model and loaded from a subfolder
     nnet_1_out_quant = tract_core_cast(nnet_1_out);
-    nnet_2_out_quant = tract_core_submodel(input = nnet_1_out_quant, label = 'nnet2');
+    nnet_2_out_quant = tract_core_submodel(nnet_1_out_quant, label = 'nnet2');
     nnet_2_out = tract_core_cast(nnet_2_out_quant, to = 'f32');
 
     output = nnet_2_out;

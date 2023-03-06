@@ -3,17 +3,22 @@ use crate::{internal::*, ops::OpStateFreeze};
 #[derive(Debug, Clone)]
 pub struct SubmodelOp {
     model: TypedModel,
+    label: String,
     decluttered: bool,
     optimized: bool,
 }
 
 impl SubmodelOp {
-    pub fn new(model: TypedModel) -> TractResult<Self> {
-        Ok(Self { model, decluttered: false, optimized: false })
+    pub fn new(model: TypedModel, label: &str) -> TractResult<Self> {
+        Ok(Self { model, label: label.to_string(), decluttered: false, optimized: false })
     }
 
     pub fn model(&self) -> &TypedModel {
         &self.model
+    }
+
+    pub fn label(&self) -> &str {
+        self.label.as_str()
     }
 }
 
