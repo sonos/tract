@@ -1,0 +1,2 @@
+"nnet_1_out_quant": zero_point_linear_quantize(zero_point = 0, scale = 0.064853981, bits = 8, signed = false, symmetric = true);
+"nnet_2_out_quant": zero_point_linear_quantize(zero_point = 0, scale = 0.064853981, bits = 8, signed = false, symmetric = true);
