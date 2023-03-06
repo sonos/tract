@@ -11,6 +11,10 @@ impl SubmodelOp {
     pub fn new(model: TypedModel) -> TractResult<Self> {
         Ok(Self { model, decluttered: false, optimized: false })
     }
+
+    pub fn model(&self) -> &TypedModel {
+        &self.model
+    }
 }
 
 impl Op for SubmodelOp {
