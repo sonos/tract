@@ -49,7 +49,7 @@ impl TypedOp for SubmodelOp {
         let facts = self
             .model
             .output_outlets()?
-            .into_iter()
+            .iter()
             .map(|outlet| self.model.outlet_fact(*outlet).map(|c| c.clone()))
             .collect::<TractResult<TVec<_>>>()?;
         Ok(facts)
