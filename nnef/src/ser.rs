@@ -25,7 +25,6 @@ pub struct IntoAst<'a> {
     pub parent: Option<&'a IntoAst<'a>>,
     pub registries: Vec<Identifier>,
     pub symbols: Vec<Symbol>,
-    pub prefix: Option<Identifier>,
     pub model: &'a TypedModel,
     pub parameters: Vec<Identifier>,
     pub results: Vec<Identifier>,
@@ -45,12 +44,10 @@ pub struct RequiredTensorParameter {
 
 impl<'a> IntoAst<'a> {
     pub fn new(framework: &'a Nnef, model: &'a TypedModel) -> IntoAst<'a> {
-        let prefix = Self::extract_prefix(model);
         IntoAst {
             framework,
             registries: Default::default(),
             symbols: Default::default(),
-            prefix,
             model,
             parameters: Default::default(),
             results: Default::default(),
@@ -79,27 +76,6 @@ impl<'a> IntoAst<'a> {
             self.symbols.push(s.clone());
         }
         Ok(())
-    }
-
-    fn extract_prefix(model: &TypedModel) -> Option<Identifier> {
-        let names = model
-            .nodes()
-            .iter()
-            .filter(|n| !model.input_outlets().unwrap().contains(&n.id.into()))
-            .map(|n| &n.name)
-            .collect::<Vec<_>>();
-        if names.len() > 2 {
-            Some(Identifier(names[1..].iter().fold(names[0].to_string(), |prefix, name| {
-                (prefix.chars())
-                    .zip(name.chars())
-                    .take_while(|(a, b)| a == b)
-                    .map(|(a, _)| a)
-                    .collect()
-            })))
-            .filter(|p| p.0.len() > 0)
-        } else {
-            None
-        }
     }
 
     fn translate(&mut self) -> TractResult<()> {
@@ -141,11 +117,8 @@ impl<'a> IntoAst<'a> {
                 value: t.clone(),
             })
         }
-        let IntoAst { prefix, body, mut parameters, results, .. } = self;
+        let IntoAst { body, mut parameters, results, .. } = self;
         parameters.extend(tensor_params.iter().map(|rtp| rtp.parameter_id.clone()).sorted());
-        let id = prefix
-            .map(|p| p.0.trim_end_matches(&['-', '/', '.']).to_string())
-            .unwrap_or_else(|| "network".into());
         let body = body
             .into_iter()
             .filter(|assign| match &assign.left {
@@ -156,7 +129,7 @@ impl<'a> IntoAst<'a> {
         Ok((
             FragmentDef {
                 decl: FragmentDecl {
-                    id: Identifier(id),
+                    id: Identifier("network".into()),
                     generic_decl: None,
                     parameters: parameters
                         .into_iter()
@@ -193,10 +166,7 @@ impl<'a> IntoAst<'a> {
                 .clone(),
         ));
         let properties: Assignment = assignment("properties", Arc::new(array(properties)));
-        let IntoAst { prefix, mut fragments, body, tensors, parameters, results, .. } = self;
-        let id = prefix
-            .map(|p| p.0.trim_end_matches(&['-', '/', '.']).to_owned())
-            .unwrap_or_else(|| "network".into());
+        let IntoAst { mut fragments, body, tensors, parameters, results, .. } = self;
         let mut extension = vec![];
         self.registries.sort();
         for reg in self.registries {
@@ -225,7 +195,7 @@ impl<'a> IntoAst<'a> {
             version: "1.0".into(),
             extension,
             fragments: fragments.into_values().collect(),
-            graph_def: GraphDef { id: Identifier(id), parameters, results, body },
+            graph_def: GraphDef { id: Identifier("network".into()), parameters, results, body },
         };
         let quantization = if self.quantization.len() > 0 { Some(self.quantization) } else { None };
         Ok(ProtoModel { doc, tensors, quantization, resources: self.resources })
@@ -289,12 +259,7 @@ impl<'a> IntoAst<'a> {
     }
 
     pub fn scoped_id(&self, name: impl AsRef<str>) -> Identifier {
-        let mut name = name.as_ref().to_string();
-        if let Some(p) = &self.prefix {
-            if name.starts_with(&*p.0) && *name != *p.0 {
-                name = name.chars().skip(p.0.len()).collect()
-            }
-        }
+        let name = name.as_ref().to_string();
         Identifier(name)
     }
 

@@ -1,3 +1,4 @@
+use tar::Builder;
 use tract_core::tract_data::itertools::Itertools;
 
 use crate::ast::quant::write_quant_format;
@@ -7,6 +8,7 @@ use std::io::Read;
 #[cfg(target_family = "unix")]
 use std::os::unix::prelude::OsStrExt;
 use std::path::Path;
+use std::str::FromStr;
 
 pub fn stdlib() -> Vec<FragmentDef> {
     crate::ast::parse::parse_fragments(include_str!("../stdlib.nnef")).unwrap()
@@ -77,14 +79,16 @@ impl Nnef {
     }
 
     pub fn write(&self, model: &TypedModel, w: impl std::io::Write) -> TractResult<()> {
-        self.write_to_tar(model, w)?;
+        let mut ar = tar::Builder::new(w);
+        self.write_to_tar(model, &mut ar)?;
+        ar.into_inner().context("Finalizing tar")?;
         Ok(())
     }
 
-    pub fn write_to_tar<W: std::io::Write>(&self, model: &TypedModel, w: W) -> TractResult<W> {
+    pub fn write_to_tar<W: std::io::Write>(&self, model: &TypedModel, ar: &mut Builder<W>) -> TractResult<()> {
         let proto_model =
             crate::ser::to_proto_model(self, model).context("Translating model to proto_model")?;
-        let mut ar = tar::Builder::new(w);
+
         let mut graph_data = vec![];
         crate::ast::dump::Dumper::new(self, &mut graph_data)
             .document(&proto_model.doc)
@@ -131,7 +135,26 @@ impl Nnef {
             ar.append_data(&mut header, filename, &mut &*data)
                 .with_context(|| format!("Appending tensor {filename:?}"))?;
         }
-        ar.into_inner().context("Finalizing tar")
+        
+        for (label, resource) in proto_model.resources.iter() {
+            if let Some(typed_model_resource) = resource.downcast_ref::<TypedModelResource>() {
+                let mut submodel_data = vec![];
+                let mut filename = std::path::PathBuf::from_str(&label)?;
+                filename.set_extension("nnef.tgz");
+                let typed_model = &typed_model_resource.0;
+                self.write(&typed_model, &mut submodel_data)?;
+                
+                let mut header = tar::Header::new_gnu();
+                header.set_size(submodel_data.len() as u64);
+                header.set_mode(0o644);
+                header.set_mtime(now.as_secs());
+                header.set_cksum();
+
+                ar.append_data(&mut header, filename, &mut &*submodel_data)
+                    .with_context(|| format!("Appending submodel {label:?}"))?;
+                }
+        }
+        Ok(())
     }
 
     pub fn write_to_dir(
@@ -329,6 +352,7 @@ fn read_stream<R: std::io::Read>(
     resources: &mut HashMap<String, Arc<dyn Resource>>,
     framework: &Nnef,
 ) -> TractResult<()> {
+
     // ignore path with any component starting with "." (because OSX's tar is weird)
     #[cfg(target_family = "unix")]
     if path.components().any(|name| name.as_os_str().as_bytes().first() == Some(&b'.')) {
