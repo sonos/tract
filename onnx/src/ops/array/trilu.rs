@@ -8,7 +8,7 @@ pub fn trilu(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let upper: i64 = node.get_attr_opt("upper")?.unwrap_or(1);
     let has_k = node.input.len() == 2;
-    Ok((Box::new(Trilu { upper: upper == 1, has_k }), vec![]))
+    Ok((expand(Trilu { upper: upper == 1, has_k }), vec![]))
 }
 
 #[derive(Debug, Clone)]
@@ -17,50 +17,30 @@ struct Trilu {
     has_k: bool,
 }
 
-impl Op for Trilu {
+impl Expansion for Trilu {
     fn name(&self) -> Cow<str> {
         "Trilu".into()
     }
 
-    not_a_typed_op!();
-}
-
-impl EvalOp for Trilu {
-    fn is_stateless(&self) -> bool {
-        true
-    }
-
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let (mut input, k) = if self.has_k {
-            let (input, k) = args_2!(inputs);
-            let k = *k.to_scalar::<i64>()?;
-            (input.into_tensor(), k)
+    fn wire(
+        &self,
+        prefix: &str,
+        model: &mut TypedModel,
+        inputs: &[OutletId],
+    ) -> TractResult<TVec<OutletId>> {
+        let augmented_inputs = if self.has_k {
+            inputs.into()
         } else {
-            (args_1!(inputs).into_tensor(), 0)
+            let k = model.add_const(format!("{prefix}.k"), tensor0(0i64))?;
+            tvec!(inputs[0], k)
         };
-        fn eval_t<T: Datum>(tensor: &mut Tensor, upper: bool, k: i64) -> TractResult<()> {
-            let mut view = tensor.to_array_view_mut::<T>()?;
-            for coords in tract_ndarray::indices(view.shape()) {
-                let row = coords[view.ndim() - 2] as i64;
-                let col = coords[view.ndim() - 1] as i64;
-                if upper {
-                    if col < row + k {
-                        view[coords] = T::default();
-                    }
-                } else {
-                    if col > row + k {
-                        view[coords] = T::default();
-                    }
-                }
-            }
-            Ok(())
-        }
-        dispatch_datum!(eval_t(input.datum_type())(&mut input, self.upper, k))?;
-        Ok(tvec!(input.into_tvalue()))
+        model.wire_node(
+            prefix,
+            tract_core::ops::array::Trilu { upper: self.upper },
+            &augmented_inputs,
+        )
     }
-}
 
-impl InferenceRulesOp for Trilu {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         solver: &mut Solver<'r>,
@@ -77,6 +57,4 @@ impl InferenceRulesOp for Trilu {
         }
         Ok(())
     }
-
-    as_op!();
 }
