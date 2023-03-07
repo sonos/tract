@@ -30,6 +30,6 @@ pub fn load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Trac
     let expr = invocation.named_arg_as::<String>(builder, "expr")?.parse::<AxesMapping>()?;
     let inputs: TVec<OutletId> = invocation.named_arg_as(builder, "inputs")?;
     let operating_dt = builder.model.outlet_fact(inputs[0])?.datum_type;
-    let einsum = EinSum::new(expr, operating_dt);
+    let einsum = EinSum::new(expr, operating_dt, None);
     builder.wire(einsum, &inputs)
 }

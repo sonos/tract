@@ -857,6 +857,14 @@ impl Tensor {
         unsafe { Ok(self.to_scalar_unchecked()) }
     }
 
+    /// Make the tensor a scalar tensor (assumes it contains a single value).
+    pub fn to_scalar_tensor(&self) -> anyhow::Result<Tensor> {
+        fn to_scalar_tensor_t<D: Datum>(t: &Tensor) -> anyhow::Result<Tensor> {
+            Ok(litteral::tensor0(t.to_scalar::<D>()?.clone()))
+        }
+        dispatch_datum!(to_scalar_tensor_t(self.datum_type())(self))
+    }
+
     /// Access the data as a scalar.
     pub unsafe fn to_scalar_unchecked<D: Datum>(&self) -> &D {
         &*(self.data as *mut D)
@@ -1309,7 +1317,7 @@ impl Tensor {
     pub fn view_offsetting(&self, coords: &[usize]) -> anyhow::Result<view::TensorView> {
         view::TensorView::offsetting(self, coords)
     }
-    
+
     #[inline]
     pub unsafe fn view_offsetting_unchecked(&self, coords: &[usize]) -> view::TensorView {
         view::TensorView::offsetting_unchecked(self, coords)

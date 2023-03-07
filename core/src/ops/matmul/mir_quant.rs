@@ -3,6 +3,7 @@ use ops::binary::wire_with_rank_broadcast;
 
 use crate::internal::*;
 use crate::ops;
+use crate::ops::einsum::EinSum;
 use crate::ops::matmul::*;
 use crate::ops::quant::offset_u8_as_i8_elementwise;
 
@@ -246,6 +247,42 @@ impl TypedOp for QMatMul {
         )
     }
 
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let a_fact = model.outlet_fact(node.inputs[0])?;
+        let b_fact = model.outlet_fact(node.inputs[1])?;
+        assert!(a_fact.rank() == b_fact.rank());
+        let mut axes = self.axes.to_axis_mapping(a_fact.rank())?;
+        let mut patch = TypedModelPatch::new("QMatMul as Einsum");
+        let name = &node.name;
+        // a, b, bias
+        let mut inputs: Vec<OutletId> = (node.inputs[0..3])
+            .iter()
+            .map(|i| patch.tap_model(model, *i))
+            .collect::<TractResult<Vec<_>>>()?;
+        let bias_fact = model.outlet_fact(node.inputs[2])?;
+        axes = axes.add_input(bias_fact.rank())?;
+        if bias_fact.rank() == 1 {
+            axes = axes.with_input_axis_named(2, 0, '$')?.linking('m', '$')?;
+        }
+        for (param_name, param_value) in self.params.iter() {
+            let outlet = match &param_value {
+                AttrOrInput::Attr(k) => patch.add_const(format!("{name}.{param_name}"), k.clone())?,
+                AttrOrInput::Input(i) => patch.tap_model(model, node.inputs[*i])?,
+            };
+            inputs.push(outlet);
+            axes = axes.add_input(patch.outlet_fact(outlet)?.rank())?;
+        }
+        let op = EinSum::new(axes, DatumType::I32, Some(self.output_type));
+        let output = patch.wire_node(&node.name, op, &inputs)?[0];
+        patch.shunt_outside(model, node.id.into(), output)?;
+        Ok(Some(patch))
+    }
+
+    /*
     fn codegen(
         &self,
         model: &TypedModel,
@@ -292,6 +329,7 @@ impl TypedOp for QMatMul {
         patch.shunt_outside(model, node.id.into(), result)?;
         Ok(Some(patch))
     }
+    */
 
     as_op!();
 }

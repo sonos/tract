@@ -14,6 +14,7 @@ use super::math::add;
 pub struct EinSum {
     pub expr: AxesMapping,
     pub operating_dt: DatumType,
+    pub q_params: Option<DatumType>,
 }
 
 impl EinSum {
@@ -192,7 +193,10 @@ impl TypedOp for EinSum {
             .enumerate()
             .all(|(ix, fact)| fact.rank() == self.expr.input_rank(ix)));
         let shapes: TVec<&[TDim]> = inputs.iter().map(|t| &*t.shape).collect();
-        Ok(tvec!(TypedFact::dt_shape(self.operating_dt, eval::output_shape(&self.expr, &shapes))))
+        Ok(tvec!(TypedFact::dt_shape(
+            self.q_params.unwrap_or(self.operating_dt),
+            eval::output_shape(&self.expr, &shapes)
+        )))
     }
 
     fn axes_mapping(
@@ -267,7 +271,7 @@ impl TypedOp for EinSum {
         *interface = axes.into_iter().collect();
         let expr = AxesMapping::from_strs(&inputs, &outputs)?;
         return Ok(Some(AxisChangeConsequence {
-            substitute_op: Some(Box::new(EinSum::new(expr, self.operating_dt))),
+            substitute_op: Some(Box::new(EinSum::new(expr, self.operating_dt, self.q_params))),
             wire_changes: tvec!((io, change.clone())),
         }));
     }
