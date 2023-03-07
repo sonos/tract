@@ -18,6 +18,7 @@ mod scan;
 mod scatter;
 mod shape_of;
 mod source;
+mod trilu;
 
 pub fn register(registry: &mut Registry) {
     registry.register_unit_element_wise("tract_core_round_even", &ops::math::RoundHalfToEven {});
@@ -48,4 +49,5 @@ pub fn register(registry: &mut Registry) {
     shape_of::register(registry);
     source::register(registry);
     range::register(registry);
+    trilu::register(registry);
 }
