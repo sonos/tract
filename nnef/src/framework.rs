@@ -143,10 +143,10 @@ impl Nnef {
         for (label, resource) in proto_model.resources.iter() {
             if let Some(typed_model_resource) = resource.downcast_ref::<TypedModelResource>() {
                 let mut submodel_data = vec![];
-                let mut filename = std::path::PathBuf::from_str(&label)?;
+                let mut filename = std::path::PathBuf::from_str(label)?;
                 filename.set_extension("nnef.tgz");
                 let typed_model = &typed_model_resource.0;
-                self.write(&typed_model, &mut submodel_data)?;
+                self.write(typed_model, &mut submodel_data)?;
                 
                 let mut header = tar::Header::new_gnu();
                 header.set_size(submodel_data.len() as u64);
@@ -223,7 +223,7 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
                 .skip(path.components().count())
                 .collect::<std::path::PathBuf>();
             let mut stream = std::fs::File::open(entry.path())?;
-            read_stream(&subpath, &mut stream, &mut resources, &self)?;
+            read_stream(&subpath, &mut stream, &mut resources, self)?;
         }
         proto_model_from_resources(resources)
     }
@@ -249,7 +249,7 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
         for entry in tar.entries()? {
             let mut entry = entry?;
             let path = entry.path()?.to_path_buf();
-            read_stream(&path, &mut entry, &mut resources, &self)?;
+            read_stream(&path, &mut entry, &mut resources, self)?;
         }
         proto_model_from_resources(resources)
     }
@@ -273,11 +273,11 @@ fn proto_model_from_resources(
         .keys()
         .clone()
         .filter_map(|id| {
-            let id_components = id.split("/").collect::<Vec<_>>();
+            let id_components = id.split('/').collect::<Vec<_>>();
             if (id_components.last() == Some(&crate::resource::GRAPH_NNEF_FILENAME))
                 & (id_components.len() == 2)
             {
-                id_components.get(0).map(|it| it.to_string())
+                id_components.first().map(|it| it.to_string())
             } else {
                 None
             }
@@ -292,7 +292,7 @@ fn proto_model_from_resources(
                 r.into_iter().partition(|(k, _v)| k.starts_with(&it));
             let submodel_resources = submodel_resources
                 .into_iter()
-                .map(|(k, v)| (k.split("/").last().unwrap().to_string(), v))
+                .map(|(k, v)| (k.split('/').last().unwrap().to_string(), v))
                 .collect::<HashMap<String, Arc<dyn Resource>>>();
             let typed_model = nnef()
                 .model_for_proto_model(&proto_model_from_resources(submodel_resources).unwrap())?;
