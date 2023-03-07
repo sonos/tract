@@ -67,7 +67,7 @@ pub fn slice(
         &[
             ("axes", ints(&[op.axis])),
             ("begin", tdims(&[op.start.clone()])),
-            ("end", tdims(&[end]))
+            ("end", tdims(&[end])),
         ],
     )))
 }
@@ -287,13 +287,14 @@ fn cnn_pool_fragment(
         return op_name.into();
     }
     let fragment_name =
-        Identifier(format!("tract_sum_pool_{data_format:?}_{geo_rank}D").to_lowercase());
+        Identifier(format!("tract_{op_name}_{data_format:?}_{geo_rank}D").to_lowercase());
     if ast.fragments.contains_key(&fragment_name) {
         return fragment_name;
     }
 
     let mut body = vec![];
-    let mut fragment = ast.framework.stdlib.iter().find(|f| f.decl.id.0 == op_name).unwrap().clone();
+    let mut fragment =
+        ast.framework.stdlib.iter().find(|f| f.decl.id.0 == op_name).unwrap().clone();
     fragment.decl.id = fragment_name.clone();
 
     let mut wire = ident("input").into();
@@ -311,9 +312,9 @@ fn cnn_pool_fragment(
             .map(|f| (&*f.id.0, ident(&f.id)))
             .collect::<Vec<_>>(),
     );
-    body.push(assignment("sum_pool", wire));
+    body.push(assignment(op_name, wire));
 
-    wire = data_from_ncwh(data_format, geo_rank, ident("sum_pool").into());
+    wire = data_from_ncwh(data_format, geo_rank, ident(op_name).into());
 
     body.push(assignment("output", wire));
     fragment.body = Some(body);
