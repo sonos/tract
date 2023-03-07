@@ -31,7 +31,7 @@ fn de_submodel(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> T
         .clone()
         .downcast_arc::<TypedModelResource>()
         .map_err(|_| anyhow!("Error while downcasting typed model resource"))
-        .and_then(|r| Ok(r.0.clone()))
+        .map(|r| r.0.clone())
         .with_context(|| anyhow!("Error while loading typed model resource"))?;
 
     let op: Box<dyn TypedOp> = Box::new(SubmodelOp::new(model, &label)?);
