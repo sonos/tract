@@ -544,7 +544,7 @@ test_split_equal_parts_default_axis
 test_split_variable_parts_1d
 test_split_variable_parts_2d
 test_split_variable_parts_default_axis
-test_split_zero_size_splits  not-typable not-nnef
+test_split_zero_size_splits
 test_sqrt
 test_sqrt_example
 test_squeeze
