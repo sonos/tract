@@ -38,21 +38,24 @@ impl EvalOp for Trilu {
         } else {
             (args_1!(inputs).into_tensor(), 0)
         };
-        dbg!(k);
-        let mut view = input.to_array_view_mut::<i64>()?;
-        for coords in tract_ndarray::indices(view.shape()) {
-            let row = coords[view.ndim() - 2] as i64;
-            let col = coords[view.ndim() - 1] as i64;
-            if self.upper {
-                if (col as i64) < row as i64 + k {
-                    view[coords] = 0;
-                }
-            } else {
-                if (col as i64) > row as i64 + k {
-                    view[coords] = 0;
+        fn eval_t<T: Datum>(tensor: &mut Tensor, upper: bool, k: i64) -> TractResult<()> {
+            let mut view = tensor.to_array_view_mut::<T>()?;
+            for coords in tract_ndarray::indices(view.shape()) {
+                let row = coords[view.ndim() - 2] as i64;
+                let col = coords[view.ndim() - 1] as i64;
+                if upper {
+                    if col < row + k {
+                        view[coords] = T::default();
+                    }
+                } else {
+                    if col > row + k {
+                        view[coords] = T::default();
+                    }
                 }
             }
+            Ok(())
         }
+        dispatch_datum!(eval_t(input.datum_type())(&mut input, self.upper, k))?;
         Ok(tvec!(input.into_tvalue()))
     }
 }
