@@ -82,6 +82,10 @@ impl EinSum {
             if let Some(concat) = precursor.op_as::<TypedConcat>() {
                 let offsets = concat.offsets(&model.node_input_facts(precursor.id)?)?;
                 let axis_info = self.expr.input_axis(slot, concat.axis).context("Axis unmapped")?;
+                // only split if axis is a summing axis
+                if axis_info.outputs[0].len() > 0 {
+                    continue;
+                }
                 let mut patch = TypedModelPatch::new(format!(
                     "Split Einsum for concat on axis {}",
                     axis_info.repr
