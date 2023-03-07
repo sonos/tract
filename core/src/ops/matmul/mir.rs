@@ -1,5 +1,3 @@
-use tract_data::itertools::izip;
-
 use crate::internal::*;
 use crate::ops::einsum::EinSum;
 
@@ -50,31 +48,13 @@ impl TypedOp for MatMul {
     ) -> TractResult<Option<TypedModelPatch>> {
         let a_fact = model.outlet_fact(node.inputs[0])?;
         let b_fact = model.outlet_fact(node.inputs[1])?;
-
         assert!(a_fact.rank() == b_fact.rank());
-
-        let k_axis = Axis::new('k', 2, 1).input(0, self.axes.a_k).input(1, self.axes.b_k);
-        let m_axis = Axis::new('m', 2, 1).input(0, self.axes.a_m).output(0, self.axes.c_m);
-        let n_axis = Axis::new('n', 2, 1).input(1, self.axes.b_n).output(0, self.axes.c_n);
-        let rank = a_fact.rank();
-        fn remaining(rank: usize, skip1: usize, skip2: usize) -> impl Iterator<Item = usize> {
-            (0..rank).filter(move |&i| i != skip1 && i != skip2)
-        }
-        let remain_a = remaining(rank, self.axes.a_k, self.axes.a_m);
-        let remain_b = remaining(rank, self.axes.b_k, self.axes.b_n);
-        let remain_c = remaining(rank, self.axes.c_m, self.axes.c_n);
-        let alphabet = ('a'..).filter(|&c| c != 'k' && c != 'm' && c != 'n');
-        let extra_axes = izip!(alphabet, remain_a, remain_b, remain_c)
-            .map(|(letter, a, b, c)| Axis::new(letter, 2, 1).input(0, a).input(1, b).output(0, c));
-        let expr = extra_axes
-            .chain([k_axis, m_axis, n_axis].into_iter())
-            .map(|axis| axis.inputs_count(2).outputs_count(1))
-            .collect::<TractResult<AxesMapping>>()?;
+        let axes = self.axes.to_axis_mapping(a_fact.rank())?;
         TypedModelPatch::replace_single_op(
             model,
             node,
             &node.inputs,
-            EinSum::new(expr, output_type(a_fact.datum_type)),
+            EinSum::new(axes, output_type(a_fact.datum_type), None),
         )
         .map(Some)
     }

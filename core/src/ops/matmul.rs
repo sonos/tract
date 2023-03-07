@@ -6,7 +6,9 @@ pub mod pack;
 #[cfg(test)]
 mod change_axis_test;
 
+use crate::axes::Axis;
 use crate::internal::*;
+use tract_data::itertools::izip;
 use tract_itertools::Itertools;
 use tract_linalg::mmm::FusedSpec;
 use tract_ndarray::prelude::*;
@@ -301,6 +303,25 @@ impl MatMulAxes {
             c_m: array[4],
             c_n: array[5],
         })
+    }
+
+    pub fn to_axis_mapping(&self, rank: usize) -> TractResult<AxesMapping> {
+        let k_axis = Axis::new('k', 2, 1).input(0, self.a_k).input(1, self.b_k);
+        let m_axis = Axis::new('m', 2, 1).input(0, self.a_m).output(0, self.c_m);
+        let n_axis = Axis::new('n', 2, 1).input(1, self.b_n).output(0, self.c_n);
+        fn remaining(rank: usize, skip1: usize, skip2: usize) -> impl Iterator<Item = usize> {
+            (0..rank).filter(move |&i| i != skip1 && i != skip2)
+        }
+        let remain_a = remaining(rank, self.a_k, self.a_m);
+        let remain_b = remaining(rank, self.b_k, self.b_n);
+        let remain_c = remaining(rank, self.c_m, self.c_n);
+        let alphabet = ('a'..).filter(|&c| c != 'k' && c != 'm' && c != 'n');
+        let extra_axes = izip!(alphabet, remain_a, remain_b, remain_c)
+            .map(|(letter, a, b, c)| Axis::new(letter, 2, 1).input(0, a).input(1, b).output(0, c));
+        extra_axes
+            .chain([k_axis, m_axis, n_axis].into_iter())
+            .map(|axis| axis.inputs_count(2).outputs_count(1))
+            .collect::<TractResult<AxesMapping>>()
     }
 }
 
