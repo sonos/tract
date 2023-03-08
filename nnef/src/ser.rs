@@ -448,6 +448,10 @@ pub fn string(s: impl AsRef<str>) -> RValue {
     RValue::Literal(Literal::String(s.as_ref().into()))
 }
 
+pub fn datum_type(dt: DatumType) -> RValue {
+    string(format!("{:?}", dt.unquantized()).to_lowercase())
+}
+
 pub fn logical(b: bool) -> RValue {
     RValue::Literal(Literal::Logical(b))
 }
