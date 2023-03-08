@@ -1,3 +1,13 @@
+# Unreleased (targerting 0.20)
+* [optim] 32x32 f32 AMX kernel (for Apple Silicone M family)
+* [optim] bunch of AMX512F kernels (square, skinny, vector)
+* [ONNX] introduce Trilu
+* [NNEF/OPL] submodel loader
+
+# 0.19.2 - 2023-01-30
+* [NNEF/OPL] introduce json resource loader
+* extend Complex number support (under a feature flag)
+
 # 0.19.1 - 2023-01-23
 * [nnef] new identifier syntax is now opt-in for serialization (both accepted at loading)
 * alpha-level C interface. how and how to deploy it (where to put the .h, whether or not to build and ship dylibs)
