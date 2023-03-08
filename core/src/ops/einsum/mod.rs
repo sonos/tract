@@ -8,7 +8,7 @@ mod eval;
 
 use super::array::TypedConcat;
 use super::math::add;
-// mod to_matmul;
+mod codegen;
 
 #[derive(Clone, Hash, new)]
 pub struct EinSum {
@@ -301,6 +301,14 @@ impl TypedOp for EinSum {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         self.declutter_after_concat(model, node)
+    }
+
+    fn codegen(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        codegen::codegen(self, model, node)
     }
 
     as_op!();
