@@ -1,6 +1,7 @@
 use super::AxesMapping;
 use crate::internal::*;
 use tract_data::itertools::Itertools;
+use tract_linalg::Scaler;
 use tract_ndarray::{Axis, Dimension};
 use tract_num_traits::{One, Zero};
 
@@ -9,7 +10,7 @@ pub fn output_shape<D: DimLike>(expr: &AxesMapping, inputs: &[&[D]]) -> TVec<D> 
         .filter(|a| a.outputs[0].len() > 0)
         .sorted_by_key(|axis| axis.outputs[0][0])
         .map(|axis| {
-            axis.inputs
+            axis.inputs[0..inputs.len()]
                 .iter()
                 .enumerate()
                 .flat_map(|(input_id, positions)| {
@@ -24,7 +25,7 @@ pub fn output_shape<D: DimLike>(expr: &AxesMapping, inputs: &[&[D]]) -> TVec<D> 
 pub fn eval_t<Acc: Datum + Zero + One>(
     expr: &AxesMapping,
     inputs: TVec<TValue>,
-) -> TractResult<TVec<TValue>> {
+) -> TractResult<Tensor> {
     let shapes: TVec<_> = inputs.iter().map(|t| t.shape()).collect();
     let output_shape = output_shape(expr, &shapes);
     let inputs: TVec<Cow<Tensor>> =
@@ -57,7 +58,8 @@ pub fn eval_t<Acc: Datum + Zero + One>(
             .sorted_by_key(|axis| axis.outputs[0][0])
             .zip(coords)
         {
-            for (input_id, input_axis_positions) in axis.inputs.iter().enumerate() {
+            for (input_id, input_axis_positions) in axis.inputs[0..inputs.len()].iter().enumerate()
+            {
                 for position in input_axis_positions {
                     let x = if views[input_id].shape()[*position] == 1 { 0 } else { *x };
                     views[input_id]
@@ -87,5 +89,44 @@ pub fn eval_t<Acc: Datum + Zero + One>(
         }
         sum
     });
-    Ok(tvec!(output.into_tvalue()))
+    Ok(output.into_tensor())
+}
+
+pub fn eval_q(expr: &AxesMapping, qp: DatumType, inputs: TVec<TValue>) -> TractResult<Tensor> {
+    let [a, b, bias, a0, a_scale, b0, b_scale, c0, c_scale] = &*inputs else {
+        bail!("Expect exactly 9 inputs")
+    };
+
+    let mut a = a.cast_to::<i32>()?.into_owned();
+    let a0 = a0.cast_to_scalar::<i32>()?;
+    a.as_slice_mut::<i32>()?.iter_mut().for_each(|x| *x -= a0);
+    let mut b = b.cast_to::<i32>()?.into_owned();
+    let b0 = b0.cast_to_scalar::<i32>()?;
+    b.as_slice_mut::<i32>()?.iter_mut().for_each(|x| *x -= b0);
+
+    let mut output =
+        eval_t::<i32>(expr, tvec!(a.into_tvalue(), b.into_tvalue()))?.into_array::<i32>()?;
+    let scale = a_scale.cast_to_scalar::<f32>()? * b_scale.cast_to_scalar::<f32>()?
+        / c_scale.cast_to_scalar::<f32>()?;
+    let scale = Scaler::new(scale, tract_linalg::mmm::RoundingPolicy::Even);
+    let c0 = c0.cast_to_scalar::<i32>()?;
+
+    if bias.rank() == 0 {
+        output = output + inputs[2].cast_to_scalar::<i32>()?;
+    } else {
+        let mut bias_shape = tvec!(1; output.ndim());
+        bias_shape[expr.input_axis(2, 0)?.outputs[0][0]] = bias.len();
+        let bias = bias.to_array_view::<i32>()?.into_shape(&*bias_shape)?;
+        output = output + bias;
+    }
+
+    output.mapv_inplace(|x| x * scale);
+    output.mapv_inplace(|x| x + c0);
+
+    if qp.unquantized() == i8::datum_type() {
+        output.mapv_inplace(|x| x.clamp(i8::MIN as _, i8::MAX as _))
+    } else if qp.unquantized() == u8::datum_type() {
+        output.mapv_inplace(|x| x.clamp(u8::MIN as _, u8::MAX as _))
+    }
+    Ok(output.into_tensor().cast_to_dt(qp)?.into_owned())
 }

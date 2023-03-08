@@ -8,7 +8,6 @@ use crate::ops::nn::*;
 use crate::setup_test_logger;
 use proptest::collection::vec;
 use proptest::prelude::*;
-use proptest::test_runner::TestCaseResult;
 use tract_itertools::izip;
 use tract_ndarray::prelude::*;
 use tract_ndarray::*;
@@ -154,9 +153,8 @@ impl QConvProblem {
         output.remove(0).into_tensor().into_array::<i8>()
     }
 
-    fn check(&self) -> TestCaseResult {
-        prop_assert_eq!(self.tract().unwrap(), self.reference());
-        Ok(())
+    fn check(&self) -> TractResult<()> {
+        self.tract()?.into_tensor().close_enough(&self.reference().into_tensor(), Approximation::Exact)
     }
 }
 
@@ -216,7 +214,7 @@ proptest::proptest! {
 }
 
 #[test]
-fn trivial_0() {
+fn trivial_0() -> TractResult<()> {
     QConvProblem {
         shape_in: HWC.from_n_c_hw(1, 1, [1]).unwrap(),
         co: 1,
@@ -229,7 +227,6 @@ fn trivial_0() {
         optim: true,
     }
     .check()
-    .unwrap();
 }
 
 #[test]
@@ -409,6 +406,25 @@ fn scale_3() {
         bias: Some(arr1(&[35i32]).into_dyn()),
         qp,
         optim: true,
+    }
+    .check()
+    .unwrap();
+}
+
+#[test]
+fn c0_0() {
+    let mut qp = MatMulQParams::noop_static(i8::datum_type());
+    qp.c0 = tensor0(1i32).into();
+    QConvProblem {
+        shape_in: HWC.from_n_c_hw(1, 1, [1]).unwrap(),
+        co: 1,
+        kernel_format: OIHW,
+        group: 1,
+        data: arr2(&[[0i8]]).into_dyn(),
+        kernel: arr3(&[[[0i8]]]).into_dyn(),
+        bias: None,
+        qp,
+        optim: false,
     }
     .check()
     .unwrap();
