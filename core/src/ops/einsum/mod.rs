@@ -14,6 +14,8 @@ use super::math::add;
 pub struct EinSum {
     pub expr: AxesMapping,
     pub operating_dt: DatumType,
+    // if present, assume we're a binary op.
+    // 9 inputs are: A,B,bias, A0,Ascale, B0,BScale, C0,Cscale
     pub q_params: Option<DatumType>,
 }
 
@@ -181,7 +183,12 @@ impl EvalOp for EinSum {
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        dispatch_numbers!(eval::eval_t(self.operating_dt)(&self.expr, inputs))
+        let output = if let Some(qp) = self.q_params {
+            eval::eval_q(&self.expr, qp, inputs)
+        } else {
+            dispatch_numbers!(eval::eval_t(self.operating_dt)(&self.expr, inputs))
+        }?;
+        Ok(tvec!(output.into_tvalue()))
     }
 }
 
@@ -193,10 +200,15 @@ impl TypedOp for EinSum {
             .enumerate()
             .all(|(ix, fact)| fact.rank() == self.expr.input_rank(ix)));
         let shapes: TVec<&[TDim]> = inputs.iter().map(|t| &*t.shape).collect();
-        Ok(tvec!(TypedFact::dt_shape(
-            self.q_params.unwrap_or(self.operating_dt),
-            eval::output_shape(&self.expr, &shapes)
-        )))
+        if let Some(qp) = self.q_params {
+            ensure!(inputs.len() == 9);
+            Ok(tvec!(qp.fact(eval::output_shape(&self.expr, &shapes[0..2]))))
+        } else {
+            Ok(tvec!(TypedFact::dt_shape(
+                self.operating_dt,
+                eval::output_shape(&self.expr, &shapes)
+            )))
+        }
     }
 
     fn axes_mapping(
