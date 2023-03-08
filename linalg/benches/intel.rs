@@ -63,7 +63,7 @@ fn bench_to_nanos<
             FusedSpec::AddMatMul {
                 k,
                 a: kernel.a_packed(4, k).wrap(&a.view()),
-                b: kernel.b_packed(4, k).wrap(&b.view()).unwrap(),
+                b: kernel.b_packed(4, k).wrap(&b.view()),
             },
             // FusedSpec::AddUnicast(kernel.c_view(1, 0).wrap(&c.view_mut())),
             FusedSpec::Store(kernel.c_view(1, 0).wrap(&c.view_mut())),
