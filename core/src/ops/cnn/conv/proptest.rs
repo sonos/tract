@@ -577,7 +577,7 @@ fn group_bias_1() -> anyhow::Result<()> {
         kernel_format: KernelFormat::OIHW,
         group: 2,
         data: tract_ndarray::arr2(&[[0.0, 0.0]]).into_dyn(),
-        kernel: tract_ndarray::ArrayD::<f32>::zeros(vec!(4, 1, 1)),
+        kernel: tract_ndarray::ArrayD::<f32>::zeros(vec![4, 1, 1]),
         bias: Some(tract_ndarray::arr1(&[0.0, 0.0, 0.0, 1.0]).into_dyn()),
         pad: PaddingSpec::Valid,
         strides: tvec!(1),
@@ -585,7 +585,6 @@ fn group_bias_1() -> anyhow::Result<()> {
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
 }
-
 
 #[test]
 fn bias_0() -> anyhow::Result<()> {
@@ -659,6 +658,24 @@ fn batch_1() -> anyhow::Result<()> {
     let kernel = arr3(&[[[1.0f32]]]).into_dyn();
     let pb = ConvProblem {
         shape_in: DataFormat::NHWC.from_n_c_hw(2, 1, [1])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data,
+        kernel,
+        bias: None,
+        pad: PaddingSpec::Valid,
+        strides: tvec!(1),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
+fn batch_2() -> anyhow::Result<()> {
+    let data = arr3(&[[[0.0f32, 0.0]], [[0.0, 0.0]]]).into_dyn();
+    let kernel = arr3(&[[[0.0f32]]]).into_dyn();
+    let pb = ConvProblem {
+        shape_in: DataFormat::NCHW.from_n_c_hw(2, 1, [2])?,
         kernel_format: KernelFormat::OIHW,
         group: 1,
         data,
@@ -969,4 +986,3 @@ fn depthwise_0() -> anyhow::Result<()> {
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
 }
-
