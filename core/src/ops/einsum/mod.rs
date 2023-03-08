@@ -80,6 +80,9 @@ impl EinSum {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
+        if self.q_params.is_some() { // FIXME
+            return Ok(None)
+        }
         'outer: for (slot, input) in node.inputs.iter().enumerate() {
             let precursor = model.node(input.node);
             if let Some(concat) = precursor.op_as::<TypedConcat>() {
@@ -171,7 +174,11 @@ impl Op for EinSum {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("{}", self.expr)])
+        let mut info = vec![format!("{} ({:?})", self.expr, self.operating_dt)];
+        if let Some(qp) = self.q_params {
+            info.push(format!("Quantized output: {qp:?}"));
+        }
+        Ok(info)
     }
 
     op_as_typed_op!();

@@ -32,12 +32,16 @@ pub fn eval_t<Acc: Datum + Zero + One>(
         inputs.iter().map(|t| t.cast_to::<Acc>()).collect::<TractResult<_>>()?;
     let inputs: TVec<tract_ndarray::ArrayViewD<Acc>> =
         inputs.iter().map(|t| t.to_array_view::<Acc>()).collect::<TractResult<_>>()?;
-    let summing_shape: TVec<usize> = expr
+    let summing_axes: TVec<_> = expr
         .iter_all_axes()
-        .filter(|a| a.outputs[0].len() == 0)
+        .filter(|a| a.outputs[0].len() == 0 && a.inputs[0..inputs.len()].iter().any(|i| i.len() > 0))
+        .collect();
+    let summing_shape: TVec<usize> = summing_axes
+        .iter()
         .map(|axis| {
             axis.inputs
                 .iter()
+                .take(inputs.len())
                 .enumerate()
                 .find_map(|(input_id, positions)| {
                     if positions.len() > 0 {
@@ -71,10 +75,10 @@ pub fn eval_t<Acc: Datum + Zero + One>(
         for sum_coords in tract_ndarray::indices(&*summing_shape) {
             let mut views = views.clone();
             let sum_coords = sum_coords.as_array_view();
-            for (axis, x) in
-                expr.iter_all_axes().filter(|a| a.outputs[0].len() == 0).zip(&sum_coords)
-            {
-                for (input_id, input_axis_positions) in axis.inputs.iter().enumerate() {
+            for (axis, x) in summing_axes.iter().zip(sum_coords) {
+                for (input_id, input_axis_positions) in
+                    axis.inputs.iter().take(inputs.len()).enumerate()
+                {
                     for position in input_axis_positions {
                         views[input_id].slice_axis_inplace(Axis(*position), (*x..=*x).into())
                     }
