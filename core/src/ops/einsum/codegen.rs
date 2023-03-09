@@ -34,10 +34,6 @@ pub(crate) fn codegen(
     else {
         return Ok(None)
     };
-    eprintln!(
-        "{} {:?} m:{} k:{} n:{}",
-        op.expr, input_facts, m_axis.repr, k_axis.repr, n_axis.repr
-    );
     let a_m = m_axis.inputs[0][0];
     let a_k = k_axis.inputs[0][0];
     let b_n = n_axis.inputs[1][0];
@@ -50,10 +46,6 @@ pub(crate) fn codegen(
     let dt = op.operating_dt;
     let mmm =
         tract_linalg::ops().mmm(dt, dt, dt, m.to_usize().ok(), Some(k), n.to_usize().ok()).unwrap();
-    dbg!(m, k, n);
-    dbg!(&mmm);
-    dbg!(&mmm.a_pack());
-    dbg!(&mmm.b_pack());
     let name = &node.name;
     let mut patch = TypedModelPatch::new("Einsum to LirMatMulUnary");
     let a = patch.tap_model(model, node.inputs[0])?;
@@ -90,7 +82,6 @@ pub(crate) fn codegen(
         c_to_a_axis_mapping: MapOutputAxisToInput(c_to_a_axis_mapping),
         c_to_b_axis_mapping: MapOutputAxisToInput(c_to_b_axis_mapping),
     };
-    dbg!(&geo);
     let output = unsafe { mmm.c_view(c_m, c_n) };
     let lir = LirMatMulUnary::new(
         mmm,
