@@ -1,3 +1,4 @@
+use crate::axes::Axis;
 use crate::internal::*;
 use ndarray::*;
 
@@ -64,6 +65,23 @@ impl EvalOp for MatMatMulPack {
 impl TypedOp for MatMatMulPack {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(inputs[0].datum_type.fact(self.output_shape(&inputs[0].shape))))
+    }
+
+    fn axes_mapping(
+        &self,
+        inputs: &[&TypedFact],
+        outputs: &[&TypedFact],
+    ) -> TractResult<AxesMapping> {
+        let mut axes: Vec<Axis> = (0..inputs[0].rank())
+            .filter(|&ix| ix != self.k_axis && ix != self.mn_axis)
+            .enumerate()
+            .zip('a'..)
+            .map(|((o, i), repr)| Axis::new(repr, 1, 1).input(0, i).output(0, o))
+            .collect();
+        axes.push(Axis::new('K', 1, 1).input(0, self.k_axis));
+        axes.push(Axis::new('M', 1, 1).input(0, self.mn_axis));
+        axes.push(Axis::new('P', 1, 1).output(0, outputs[0].rank() - 1));
+        axes.into_iter().collect()
     }
 
     as_op!();

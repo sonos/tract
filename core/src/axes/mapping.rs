@@ -186,7 +186,6 @@ impl AxesMapping {
     fn do_check(&self) -> TractResult<()> {
         for input_ix in 0..self.input_count() {
             for axis in 0..self.input_rank(input_ix) {
-                assert!(self.input_axis(input_ix, axis).is_ok());
                 ensure!(self.input_axis(input_ix, axis).is_ok());
             }
         }

@@ -183,6 +183,11 @@ impl TypedModel {
         crate::optim::Optimizer::codegen().optimize(self)
     }
 
+    pub fn node_axes_mapping(&self, id: usize) -> TractResult<AxesMapping> {
+        let (inputs, outputs) = self.node_facts(id)?;
+        self.nodes[id].op.axes_mapping(&inputs, &outputs)
+    }
+
     pub fn axes_mapping(&self) -> TractResult<AxesMapping> {
         crate::axes::for_model(self)
     }
