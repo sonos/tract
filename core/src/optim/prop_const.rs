@@ -19,6 +19,12 @@ impl super::TypedPass for PropConst {
         let mut patch = TypedModelPatch::default();
         for n in model.eval_order()? {
             let node = model.node(n);
+            // bit of a hack here. pulse erase const from fact, so this little dance puts it back
+            if node.op_is::<Const>() && node.outputs[0].fact.konst.is_none() {
+                let k = node.op_as::<Const>().unwrap().0.clone();
+                let wire = patch.add_const(&node.name, k)?;
+                patch.shunt_outside(model, node.id.into(), wire)?;
+            }
             if node.op.is_stateless() && !node.op_is::<Const>() {
                 if let Some(inputs) = model
                     .node_input_facts(n)?
