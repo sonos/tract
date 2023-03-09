@@ -1,5 +1,3 @@
-use tract_linalg::mmm::OutputStoreSpec;
-
 use super::*;
 use crate::ops::matmul::lir_unary::{
     AddMatMulGeometry, LirMatMulUnary, MapOutputAxisToInput, ProtoFusedSpec,
