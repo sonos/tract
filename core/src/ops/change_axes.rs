@@ -26,7 +26,7 @@ impl InOut {
 
 #[derive(Clone, Debug, Hash, Eq)]
 #[allow(clippy::large_enum_variant)] // FIXME ?
-#[allow(clippy::derive_hash_xor_eq)] // FIXME. this one may be pretty bad. how about a.canonical() == b.canonical() ? need proper canonicalizeation of Reshape
+#[allow(clippy::derived_hash_with_manual_eq)] // FIXME. this one may be pretty bad. how about a.canonical() == b.canonical() ? need proper canonicalizeation of Reshape
 pub enum AxisOp {
     Add(usize),
     Rm(usize),

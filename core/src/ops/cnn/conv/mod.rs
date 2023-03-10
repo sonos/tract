@@ -14,16 +14,11 @@ pub use self::im2col::Im2Col;
 pub(crate) use self::q_sum_b::QSumB;
 pub use self::unary::ConvUnary;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Default)]
 pub enum KernelFormat {
+    #[default]
     OIHW,
     HWIO,
-}
-
-impl Default for KernelFormat {
-    fn default() -> KernelFormat {
-        KernelFormat::OIHW
-    }
 }
 
 impl KernelFormat {

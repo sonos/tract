@@ -268,18 +268,13 @@ impl AggregateFn for MinFn {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub enum Aggregate {
+    #[default]
     Sum,
     Avg,
     Max,
     Min,
-}
-
-impl Default for Aggregate {
-    fn default() -> Self {
-        Aggregate::Sum
-    }
 }
 
 #[derive(Clone, Debug, Hash)]
