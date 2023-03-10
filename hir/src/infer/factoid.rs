@@ -78,9 +78,10 @@ pub trait Factoid: fmt::Debug + Clone + PartialEq + Default + Hash {
 
 /// Partial information about a value of type T.
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, Default)]
 pub enum GenericFactoid<T: fmt::Debug + Clone + PartialEq + Hash> {
     Only(T),
+    #[default]
     Any,
 }
 
@@ -107,12 +108,6 @@ impl<T: fmt::Debug + Clone + PartialEq + Hash> Factoid for GenericFactoid<T> {
         };
 
         Ok(fact)
-    }
-}
-
-impl<T: fmt::Debug + Clone + PartialEq + Hash> Default for GenericFactoid<T> {
-    fn default() -> Self {
-        GenericFactoid::Any
     }
 }
 
