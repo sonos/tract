@@ -72,23 +72,32 @@ Arguments:
     vmovups         zmm15,  zmm31
 {% endif %}
 
-{% for i in (0..nr) %}
-    kxnorw      k1,k1,k1
-    vgatherdps  zmm27{k1}, [r10 + zmm26]
-    add         r10, rbx
-    vaddps      zmm{{i | times:2}}, zmm{{i | times:2}}, zmm27
-{% endfor %}
+{% assign nr_min_1 = nr | minus:1 %}
+{% assign mr_arch = mr | divided_by:16 %}
+{% assign mr_arch_min_1 = mr | divided_by:16 | minus:1 %}
 
-    mov          r10,   [rdi + 8]
-    imul         esi,   16
-    vpbroadcastd zmm25, esi
-    vpaddd       zmm26, zmm26,  zmm25
-
-{% for i in (0..nr) %}
-    kxnorw k1,k1,k1
+{% for i in (0..nr_min_1) %}
+    kxnorw          k1,k1,k1
     vgatherdps      zmm27{k1},  [r10 + zmm26]
-    add     r10, rbx
-    vaddps          zmm{{i | times:2 | plus:1}},   zmm{{i | times:2 | plus: 1}},   zmm27
+    add             r10,        rbx
+    vaddps          zmm{{i | times:mr_arch}}, zmm{{i | times:mr_arch}}, zmm27
 {% endfor %}
+
+    imul            esi,    16
+    vpbroadcastd    zmm25,  esi
+
+{% for j in (1..mr_arch_min_1) %}
+    mov             r10,    [rdi + 8]
+    vpaddd          zmm26, zmm26, zmm25
+
+    {% for i in (0..nr_min_1) %}
+        kxnorw k1,k1,k1
+        vgatherdps      zmm27{k1},  [r10 + zmm26]
+        add             r10,        rbx
+        vaddps          zmm{{i | times:mr_arch | plus:j}}, zmm{{i | times:mr_arch | plus:j}}, zmm27
+    {% endfor %}
+{% endfor %}
+
 
     jmp    {{L}}non_linear_loop
+

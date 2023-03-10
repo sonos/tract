@@ -6,7 +6,7 @@ use tract_linalg::mmm::OutputStoreKer;
 
 fn ruin_cache() {
     // return;
-    let _a = (0..1000000).collect::<Vec<i32>>();
+    let _a = std::hint::black_box((0..10000000).collect::<Vec<i32>>());
 }
 
 pub fn reference<T, K>(mr: usize, k: usize, nr: usize) -> Vec<f32>
@@ -63,7 +63,7 @@ fn bench_to_nanos<
             FusedSpec::AddMatMul {
                 k,
                 a: kernel.a_packed(4, k).wrap(&a.view()),
-                b: kernel.b_packed(4, k).wrap(&b.view()).unwrap(),
+                b: kernel.b_packed(4, k).wrap(&b.view()),
             },
             // FusedSpec::AddUnicast(kernel.c_view(1, 0).wrap(&c.view_mut())),
             FusedSpec::Store(kernel.c_view(1, 0).wrap(&c.view_mut())),

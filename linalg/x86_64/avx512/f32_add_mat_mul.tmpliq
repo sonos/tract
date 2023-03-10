@@ -33,7 +33,19 @@ Arguments:
 
 {% assign prefetch_dist = 2 %}
 
-{% for i in (0..arch_mr_min_1) %}
+// we limit the number of prefetches
+// because otherwise we end up producing too many prefetches at once
+// and, we fill the Line Fill Buffer, which is the cpu's buffer for
+// outstanding fetch request for L1 - which by the way has a size of
+// 10 requests on most cpus
+//
+// filling up the LFB is actually a very big deal, because subsequent prefetches
+// will block until there is space in the LFB
+//
+// so we definitely do not want to issue 10 prefetches when mr is 10 :D
+// we only issue 2 prefetches here at most
+{% assign prefetches_to_issue_min_1 = arch_mr | at_most: 2 | minus: 1 %}
+{% for i in (0..prefetches_to_issue_min_1) %}
 	prefetcht0 [rax + {{i | times:64}} + {{m_total_bytes | times:prefetch_dist}}]
 {% endfor %}
 

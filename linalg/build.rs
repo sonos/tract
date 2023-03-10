@@ -72,6 +72,11 @@ impl ConfigForHalf {
     }
 }
 
+struct GenerateKernelsSpec {
+    sizes: Vec<(usize, usize)>,
+    file: path::PathBuf,
+}
+
 fn main() {
     let target = var("TARGET");
     let arch = var("CARGO_CFG_TARGET_ARCH");
@@ -83,8 +88,28 @@ fn main() {
 
     match arch.as_ref() {
         "x86_64" => {
-            let mut files = preprocess_files("x86_64/fma", &[], &suffix, false);
-            files.extend(preprocess_files("x86_64/avx512", &[], &suffix, false));
+            let mut files = preprocess_files("x86_64/fma", &[], &suffix, false, None);
+            // limits of the size of the kernels in avx512; index is n-1
+            let avx_kernels_max = [
+                240, 160, 112, 96, 80, 64, 48, 48, 48, 32, 32, 32, 32, 32, 16, 16, 16, 16, 16, 16,
+                16, 16, 16, 16, 16, 16, 16, 16, 16,
+            ];
+            let avx512_kernels: Vec<_> = avx_kernels_max
+                .iter()
+                .enumerate()
+                .flat_map(|(n_min_1, &max)| (16..=max).step_by(16).map(move |m| (m, n_min_1 + 1)))
+                .collect();
+
+            files.extend(preprocess_files(
+                "x86_64/avx512",
+                &[],
+                &suffix,
+                false,
+                Some(GenerateKernelsSpec {
+                    sizes: avx512_kernels,
+                    file: "x86_64/avx512/avx512_mmm_f32.tmpliq".into(),
+                }),
+            ));
 
             if os == "windows" {
                 if use_masm() {
@@ -136,7 +161,7 @@ fn main() {
             }
         }
         "arm" | "armv7" => {
-            let files = preprocess_files("arm32/armvfpv2", &[], &suffix, false);
+            let files = preprocess_files("arm32/armvfpv2", &[], &suffix, false, None);
             cc::Build::new()
                 .files(files)
                 .flag("-marm")
@@ -148,6 +173,7 @@ fn main() {
                 &[("core", vec!["cortexa7", "cortexa9", "generic"])],
                 &suffix,
                 false,
+                None,
             );
             cc::Build::new()
                 .files(files)
@@ -162,11 +188,12 @@ fn main() {
                 &[("core", vec!["a53", "a55", "gen"])],
                 &suffix,
                 false,
+                None,
             );
             cc::Build::new().files(files).static_flag(true).compile("arm64simd");
             if os == "macos" {
                 // aarch64 darwin => M1
-                let files = preprocess_files("arm64/apple_amx", &[], &suffix, false);
+                let files = preprocess_files("arm64/apple_amx", &[], &suffix, false, None);
                 cc::Build::new().files(files).static_flag(true).compile("appleamx");
             }
             if std::env::var("CARGO_FEATURE_NO_FP16").is_err() {
@@ -177,6 +204,7 @@ fn main() {
                     &[("core", vec!["a55", "gen"])],
                     &suffix,
                     config.needs_pragma,
+                    None,
                 );
                 config.cc().files(files).static_flag(true).compile("arm64fp16")
             }
@@ -192,36 +220,53 @@ fn preprocess_files(
     variants: &[Variant],
     suffix: &str,
     needs_pragma: bool,
+    generate_kernels_spec: Option<GenerateKernelsSpec>,
 ) -> Vec<path::PathBuf> {
     let out_dir = path::PathBuf::from(var("OUT_DIR"));
     let mut files = vec![];
-    let dir_entries = {
-        let mut dir_entries: Vec<fs::DirEntry> =
-            input.as_ref().read_dir().unwrap().map(|f| f.unwrap()).collect();
-        dir_entries.sort_by_key(|a| a.path());
-        dir_entries
-    };
-    for f in dir_entries {
-        if f.path().extension() == Some(ffi::OsStr::new("tmpl")) {
-            let tmpl_file = f.path().file_name().unwrap().to_str().unwrap().to_owned();
-            let concerned_variants: Vec<&Variant> =
-                variants.iter().filter(|v| tmpl_file.contains(v.0)).collect();
-            let expanded_variants = concerned_variants.iter().map(|pair| pair.1.len()).product();
-            for v in 0..expanded_variants {
-                let mut tmpl_file = tmpl_file.clone();
-                let mut id = v;
-                let mut globals = vec![];
-                for variable in variants {
-                    let key = variable.0;
-                    let value = variable.1[id % variable.1.len()];
-                    globals.push((key, value));
-                    tmpl_file = tmpl_file.replace(key, value);
-                    id /= variable.1.len();
+
+    if let Some(spec) = generate_kernels_spec {
+        let tmpl_file = spec.file.file_name().unwrap().to_str().unwrap();
+        for (m, n) in spec.sizes {
+            let globals = vec![
+                ("mr", liquid::model::Value::scalar(format!("{m}"))),
+                ("nr", liquid::model::Value::scalar(format!("{n}"))),
+            ];
+            let file = out_dir.join(format!("{tmpl_file}_{m}x{n}.S"));
+            println!("{}", file.display());
+            preprocess_file(&spec.file, &file, &globals, suffix, needs_pragma);
+            files.push(file);
+        }
+    } else {
+        let dir_entries = {
+            let mut dir_entries: Vec<fs::DirEntry> =
+                input.as_ref().read_dir().unwrap().map(|f| f.unwrap()).collect();
+            dir_entries.sort_by_key(|a| a.path());
+            dir_entries
+        };
+        for f in dir_entries {
+            if f.path().extension() == Some(ffi::OsStr::new("tmpl")) {
+                let tmpl_file = f.path().file_name().unwrap().to_str().unwrap().to_owned();
+                let concerned_variants: Vec<&Variant> =
+                    variants.iter().filter(|v| tmpl_file.contains(v.0)).collect();
+                let expanded_variants =
+                    concerned_variants.iter().map(|pair| pair.1.len()).product();
+                for v in 0..expanded_variants {
+                    let mut tmpl_file = tmpl_file.clone();
+                    let mut id = v;
+                    let mut globals = vec![];
+                    for variable in variants {
+                        let key = variable.0;
+                        let value = variable.1[id % variable.1.len()];
+                        globals.push((key, liquid::model::Value::scalar(value)));
+                        tmpl_file = tmpl_file.replace(key, value);
+                        id /= variable.1.len();
+                    }
+                    let mut file = out_dir.join(tmpl_file);
+                    file.set_extension("S");
+                    preprocess_file(f.path(), &file, &globals, suffix, needs_pragma);
+                    files.push(file);
                 }
-                let mut file = out_dir.join(tmpl_file);
-                file.set_extension("S");
-                preprocess_file(f.path(), &file, &globals, suffix, needs_pragma);
-                files.push(file);
             }
         }
     }
@@ -239,7 +284,7 @@ fn strip_comments(s: String, msvc: bool) -> String {
 fn preprocess_file(
     template: impl AsRef<path::Path>,
     output: impl AsRef<path::Path>,
-    variants: &[(&'static str, &'static str)],
+    added_globals: &[(&'static str, liquid::model::Value)],
     suffix: &str,
     needs_pragma: bool,
 ) {
@@ -277,8 +322,8 @@ fn preprocess_file(
         "jump_table": jump_table(),
         "align": align,
     });
-    for (k, v) in variants {
-        globals.insert(k.to_string().into(), liquid::model::Value::scalar(*v));
+    for (k, v) in added_globals {
+        globals.insert(k.to_string().into(), v.clone());
     }
     let partials = load_partials(template.as_ref().parent().unwrap(), msvc);
     let mut parser = liquid::ParserBuilder::with_stdlib()

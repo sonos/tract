@@ -28,7 +28,8 @@ pub fn packed_vec(c: &mut Criterion, name: &str, m: usize, k: usize, n: usize) {
 }
 
 pub fn ruin_cache() {
-    let _a = (0..1000000).collect::<Vec<i32>>();
+    // the collect gets optimized out by llvm without black_box
+    let _a = std::hint::black_box((0..10000000).collect::<Vec<i32>>());
 }
 
 #[allow(clippy::too_many_arguments)]

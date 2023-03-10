@@ -1,11 +1,17 @@
-// vim: set syntax=asm :
+{% comment %}
+Generate the code for the scalar instructions for f32.
+---
+Arguments:
+    mr - kernel size in number of elements
+    nr - kernel size in number of elements
+{% endcomment %}
 
-{% include "zmm_scalar.tmpliq" label:"scalar_min", op:"vminps", from:from, to:to %}
-{% include "zmm_scalar.tmpliq" label:"scalar_max", op:"vmaxps", from:from, to:to %}
-{% include "zmm_scalar.tmpliq" label:"scalar_add", op:"vaddps", from:from, to:to %}
-{% include "zmm_scalar.tmpliq" label:"scalar_mul", op:"vmulps", from:from, to:to %}
-{% include "zmm_scalar.tmpliq" label:"scalar_sub", op:"vsubps", from:from, to:to %}
-{% include "zmm_scalar.tmpliq" label:"scalar_sub_flipped", op:"vsubps", from:from, to:to, flipped: true %}
+{% include "zmm_scalar.tmpliq" label:"scalar_min", op:"vminps", mr:mr, nr:nr %}
+{% include "zmm_scalar.tmpliq" label:"scalar_max", op:"vmaxps", mr:mr, nr:nr %}
+{% include "zmm_scalar.tmpliq" label:"scalar_add", op:"vaddps", mr:mr, nr:nr %}
+{% include "zmm_scalar.tmpliq" label:"scalar_mul", op:"vmulps", mr:mr, nr:nr %}
+{% include "zmm_scalar.tmpliq" label:"scalar_sub", op:"vsubps", mr:mr, nr:nr %}
+{% include "zmm_scalar.tmpliq" label:"scalar_sub_flipped", op:"vsubps", mr:mr, nr:nr, flipped:true %}
 
 {{L}}q_scale:
 {{L}}q_shl:

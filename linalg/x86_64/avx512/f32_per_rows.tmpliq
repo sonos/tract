@@ -1,8 +1,14 @@
-// vim: set syntax=asm :
+{% comment %}
+Generate the code for the per-row instructions for f32.
+---
+Arguments:
+    mr - kernel size in number of elements
+    nr - kernel size in number of elements
+{% endcomment %}
 
-{% include "zmm_per_row.tmpliq" label:"per_row_min", op:"vminps", mr:mr, from:from, to:to %}
-{% include "zmm_per_row.tmpliq" label:"per_row_max", op:"vmaxps", mr:mr, from:from, to:to %}
-{% include "zmm_per_row.tmpliq" label:"per_row_add", op:"vaddps", mr:mr, from:from, to:to %}
-{% include "zmm_per_row.tmpliq" label:"per_row_mul", op:"vmulps", mr:mr, from:from, to:to %}
-{% include "zmm_per_row.tmpliq" label:"per_row_sub", op:"vsubps", from:from, to:to %}
-{% include "zmm_per_row.tmpliq" label:"per_row_sub_flipped", op:"vsubps", from:from, to:to, flipped: true %}
+{% include "zmm_per_row.tmpliq" label:"per_row_min", op:"vminps", mr:mr, nr:nr %}
+{% include "zmm_per_row.tmpliq" label:"per_row_max", op:"vmaxps", mr:mr, nr:nr %}
+{% include "zmm_per_row.tmpliq" label:"per_row_add", op:"vaddps", mr:mr, nr:nr %}
+{% include "zmm_per_row.tmpliq" label:"per_row_mul", op:"vmulps", mr:mr, nr:nr %}
+{% include "zmm_per_row.tmpliq" label:"per_row_sub", op:"vsubps", mr:mr, nr:nr %}
+{% include "zmm_per_row.tmpliq" label:"per_row_sub_flipped", op:"vsubps", mr:mr, nr:nr, flipped:true %}
