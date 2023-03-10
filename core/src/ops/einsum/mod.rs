@@ -10,6 +10,9 @@ use super::array::TypedConcat;
 use super::math::add;
 mod codegen;
 
+#[cfg(test)]
+mod proptest;
+
 #[derive(Clone, Hash, new)]
 pub struct EinSum {
     pub expr: AxesMapping,
