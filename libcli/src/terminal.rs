@@ -359,7 +359,6 @@ pub fn render_summaries(
                         .fold((Duration::default(), 0), |acc, d| (acc.0 + d.1, acc.1 + 1)),
                 )
             })
-            .into_iter()
             .sorted_by_key(|(_, d)| d.0)
             .rev()
         {

@@ -173,7 +173,6 @@ impl TypedOp for TypedBinOp {
         assert!(a.rank() == b.rank());
         let rank = a.rank();
         Ok((0..rank)
-            .into_iter()
             .map(|axis| AxisInfo {
                 inputs: tvec!(Some(axis), Some(axis)),
                 outputs: tvec!(Some(axis)),

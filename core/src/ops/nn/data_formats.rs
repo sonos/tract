@@ -2,18 +2,13 @@ use crate::internal::*;
 use std::fmt;
 use tract_itertools::Itertools;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Default)]
 pub enum DataFormat {
+    #[default]
     NCHW,
     NHWC,
     CHW,
     HWC,
-}
-
-impl Default for DataFormat {
-    fn default() -> DataFormat {
-        DataFormat::NCHW
-    }
 }
 
 impl DataFormat {
