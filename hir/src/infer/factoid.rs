@@ -78,11 +78,18 @@ pub trait Factoid: fmt::Debug + Clone + PartialEq + Default + Hash {
 
 /// Partial information about a value of type T.
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[derive(Clone, PartialEq, Eq, Hash, Default)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum GenericFactoid<T: fmt::Debug + Clone + PartialEq + Hash> {
     Only(T),
-    #[default]
     Any,
+}
+
+// if T is not Default, autoderive wont work
+#[allow(clippy::derivable_impls)]
+impl<T: fmt::Debug + Clone + PartialEq + Hash> Default for GenericFactoid<T> {
+    fn default() -> Self {
+        GenericFactoid::Any
+    }
 }
 
 impl<T: Copy + Clone + fmt::Debug + PartialEq + Hash> Copy for GenericFactoid<T> {}
