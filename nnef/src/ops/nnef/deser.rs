@@ -679,7 +679,6 @@ pub fn unstack(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> T
     let input_fact = builder.model.outlet_fact(wire[0])?.clone();
 
     (0..input_fact.shape[axis].clone().to_i32()?)
-        .into_iter()
         .map(|start_int| {
             let start = start_int.to_dim();
             let end = (start_int + 1).to_dim();

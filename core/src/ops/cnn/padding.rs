@@ -1,17 +1,12 @@
 use crate::internal::*;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum PaddingSpec {
     Explicit(TVec<usize>, TVec<usize>, bool),
+    #[default]
     Valid,
     SameUpper,
     SameLower,
-}
-
-impl Default for PaddingSpec {
-    fn default() -> PaddingSpec {
-        PaddingSpec::Valid
-    }
 }
 
 #[derive(Debug, Clone, new, PartialEq, Eq)]

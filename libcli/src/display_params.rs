@@ -1,17 +1,12 @@
 use tract_core::prelude::*;
 use crate::model::Model;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Io {
     None,
+    #[default]
     Short,
     Long,
-}
-
-impl Default for Io {
-    fn default() -> Io {
-        Io::Short
-    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
