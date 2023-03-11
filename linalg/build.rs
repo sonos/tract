@@ -226,7 +226,7 @@ fn preprocess_files(
     let mut files = vec![];
 
     if let Some(spec) = generate_kernels_spec {
-        let tmpl_file = spec.file.file_name().unwrap().to_str().unwrap();
+        let tmpl_file = spec.file.file_stem().unwrap().to_str().unwrap();
         for (m, n) in spec.sizes {
             let globals = vec![
                 ("mr", liquid::model::Value::scalar(format!("{m}"))),
@@ -237,36 +237,34 @@ fn preprocess_files(
             preprocess_file(&spec.file, &file, &globals, suffix, needs_pragma);
             files.push(file);
         }
-    } else {
-        let dir_entries = {
-            let mut dir_entries: Vec<fs::DirEntry> =
-                input.as_ref().read_dir().unwrap().map(|f| f.unwrap()).collect();
-            dir_entries.sort_by_key(|a| a.path());
-            dir_entries
-        };
-        for f in dir_entries {
-            if f.path().extension() == Some(ffi::OsStr::new("tmpl")) {
-                let tmpl_file = f.path().file_name().unwrap().to_str().unwrap().to_owned();
-                let concerned_variants: Vec<&Variant> =
-                    variants.iter().filter(|v| tmpl_file.contains(v.0)).collect();
-                let expanded_variants =
-                    concerned_variants.iter().map(|pair| pair.1.len()).product();
-                for v in 0..expanded_variants {
-                    let mut tmpl_file = tmpl_file.clone();
-                    let mut id = v;
-                    let mut globals = vec![];
-                    for variable in variants {
-                        let key = variable.0;
-                        let value = variable.1[id % variable.1.len()];
-                        globals.push((key, liquid::model::Value::scalar(value)));
-                        tmpl_file = tmpl_file.replace(key, value);
-                        id /= variable.1.len();
-                    }
-                    let mut file = out_dir.join(tmpl_file);
-                    file.set_extension("S");
-                    preprocess_file(f.path(), &file, &globals, suffix, needs_pragma);
-                    files.push(file);
+    }
+    let dir_entries = {
+        let mut dir_entries: Vec<fs::DirEntry> =
+            input.as_ref().read_dir().unwrap().map(|f| f.unwrap()).collect();
+        dir_entries.sort_by_key(|a| a.path());
+        dir_entries
+    };
+    for f in dir_entries {
+        if f.path().extension() == Some(ffi::OsStr::new("tmpl")) {
+            let tmpl_file = f.path().file_name().unwrap().to_str().unwrap().to_owned();
+            let concerned_variants: Vec<&Variant> =
+                variants.iter().filter(|v| tmpl_file.contains(v.0)).collect();
+            let expanded_variants = concerned_variants.iter().map(|pair| pair.1.len()).product();
+            for v in 0..expanded_variants {
+                let mut tmpl_file = tmpl_file.clone();
+                let mut id = v;
+                let mut globals = vec![];
+                for variable in variants {
+                    let key = variable.0;
+                    let value = variable.1[id % variable.1.len()];
+                    globals.push((key, liquid::model::Value::scalar(value)));
+                    tmpl_file = tmpl_file.replace(key, value);
+                    id /= variable.1.len();
                 }
+                let mut file = out_dir.join(tmpl_file);
+                file.set_extension("S");
+                preprocess_file(f.path(), &file, &globals, suffix, needs_pragma);
+                files.push(file);
             }
         }
     }
