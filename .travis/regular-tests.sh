@@ -44,7 +44,12 @@ fi
 
 cargo -q test $CARGO_EXTRA -q -p tract-core -p tract-hir -p tract-onnx -p tract-linalg
 # doc test are not finding libtensorflow.so
-cargo -q test $CARGO_EXTRA -q -p tract-tensorflow --lib $ALL_FEATURES
+if ! cargo -q test $CARGO_EXTRA -q -p tract-tensorflow --lib $ALL_FEATURES
+then
+    # this crate triggers an incremental bug on nightly.
+    cargo clean -p tract-tensorflow
+    cargo -q test $CARGO_EXTRA -q -p tract-tensorflow --lib $ALL_FEATURES
+fi
 
 if [ -n "$SHORT" ]
 then
