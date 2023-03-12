@@ -6,6 +6,7 @@ Arguments:
     nr - kernel size in number of elements
 {% endcomment %}
 
+{%capture offset%}{% if msvc %} offset {%else%} rip + {%endif%}{%endcapture%}
 
 {{L}}add_unicast:
 
@@ -13,91 +14,54 @@ Arguments:
     mov     rsi,    [rdi + 16]          // row stride
     mov     rbx,    [rdi + 24]          // col stride
 
-    mov     eax,    0
+    // gather operation
 
-// this is a hack - we move stuff around because 
-// pinsrd and vperm2f128 don't support ymm16-ymm31 registers
-// meaning we need some scratch registers on ymm0-ymm16
-// however we have our data there :/
+    vpbroadcastd    zmm30,  esi
+    vpmulld         zmm30,  zmm30,  zmmword ptr [{{offset}} {{L}}numbers_seq_add_unicast]
 
-{% assign last_data_reg = mr | divided_by:16 | times:nr | minus:1 %}
-{% if last_data_reg >= 12 %}
-    vmovups zmm28,  zmm12
-{% endif %}
-{% if last_data_reg >= 13 %}
-    vmovups zmm29,  zmm13
-{% endif %}
-{% if last_data_reg >= 14 %}
-    vmovups zmm30,  zmm14
-{% endif %}
-{% if last_data_reg >= 15 %}
-    vmovups zmm31,  zmm15
-{% endif %}
-
-{% for i in (0..3) %}
-    pinsrd  xmm14,  eax, {{i}}
-    add     eax,    esi
-{% endfor %}
-{% for i in (0..3) %}
-    pinsrd  xmm15, eax, {{i}}
-    add     eax,    esi
-{% endfor %}
-{% for i in (0..3) %}
-    pinsrd  xmm12, eax, {{i}}
-    add     eax,    esi
-{% endfor %}
-{% for i in (0..3) %}
-    pinsrd  xmm13, eax, {{i}}
-    add     eax,    esi
-{% endfor %}
-
-    vperm2f128      ymm14,  ymm14, ymm15,   32 // ymm14 <- xmm14::xmm15
-    vperm2f128      ymm13,  ymm12, ymm13,   32 // ymm12 <- xmm12::xmm13
-    vinsertf32x8    zmm14,  zmm14, ymm13,   1
-
-    vmovups         zmm25,  zmm15
-    vmovups         zmm26,  zmm14
-    vmovups         zmm27,  zmm12
-
-{% if last_data_reg >= 12 %}
-    vmovups         zmm12,  zmm28
-{% endif %}
-{% if last_data_reg >= 13 %}
-    vmovups         zmm13,  zmm29
-{% endif %}
-{% if last_data_reg >= 14 %}
-    vmovups         zmm14,  zmm30
-{% endif %}
-{% if last_data_reg >= 15 %}
-    vmovups         zmm15,  zmm31
-{% endif %}
+    // zmm30 is now a sequence of 0,esi,esi*2,esi*3...esi*15
 
 {% assign nr_min_1 = nr | minus:1 %}
 {% assign mr_arch = mr | divided_by:16 %}
 {% assign mr_arch_min_1 = mr | divided_by:16 | minus:1 %}
 
-{% for i in (0..nr_min_1) %}
-    kxnorw          k1,k1,k1
-    vgatherdps      zmm27{k1},  [r10 + zmm26]
-    add             r10,        rbx
-    vaddps          zmm{{i | times:mr_arch}}, zmm{{i | times:mr_arch}}, zmm27
-{% endfor %}
+    // r10 is cur col
+    imul    rsi,    16                  // stride for 16 elems
 
-    imul            esi,    16
-    vpbroadcastd    zmm25,  esi
+{% for col in (0..nr_min_1) %}
+    mov     r9,     r10                 // cur row
 
-{% for j in (1..mr_arch_min_1) %}
-    mov             r10,    [rdi + 8]
-    vpaddd          zmm26, zmm26, zmm25
+    {% for row in (0..mr_arch_min_1) %}
+        kxnorw      k1,k1,k1            // set writemask to ones
+        vgatherdps  zmm31{k1},  [r9 + zmm30]
+        vaddps      zmm{{col | times:mr_arch | plus:row}}, zmm{{col | times:mr_arch | plus:row}}, zmm31
 
-    {% for i in (0..nr_min_1) %}
-        kxnorw k1,k1,k1
-        vgatherdps      zmm27{k1},  [r10 + zmm26]
-        add             r10,        rbx
-        vaddps          zmm{{i | times:mr_arch | plus:j}}, zmm{{i | times:mr_arch | plus:j}}, zmm27
+        {% if row != mr_arch_min_1 %}
+            add r9, rsi
+        {% endif %}
     {% endfor %}
-{% endfor %}
 
+    {% if col != nr_min_1 %}
+        add r10, rbx
+    {% endif %}
+{% endfor %}
 
     jmp    {{L}}non_linear_loop
 
+{{L}}numbers_seq_add_unicast:
+    {{long}} 0
+    {{long}} 1
+    {{long}} 2
+    {{long}} 3
+    {{long}} 4
+    {{long}} 5
+    {{long}} 6
+    {{long}} 7
+    {{long}} 8
+    {{long}} 9
+    {{long}} 10
+    {{long}} 11
+    {{long}} 12
+    {{long}} 13
+    {{long}} 14
+    {{long}} 15

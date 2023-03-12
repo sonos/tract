@@ -46,7 +46,7 @@ Arguments:
 {% assign prefetches_to_issue_min_1 = arch_mr | at_most:2 | minus:1 %}
 
 // how many unrolls on k should we produce
-{% assign unroll_count = 8 %}
+{% assign unroll_count = 4 %}
 {% assign unroll_count_min_1 = unroll_count | minus:1 %}
 
 // this is the dispatch part
@@ -60,13 +60,13 @@ Arguments:
     cmp     rbx,   3
     jb      {{L}}main_loop_packed_packed_2
     je      {{L}}main_loop_packed_packed_3
+{% comment %}
     cmp     rbx,   5
     jb      {{L}}main_loop_packed_packed_4
     je      {{L}}main_loop_packed_packed_5
     cmp     rbx,   7
     jb      {{L}}main_loop_packed_packed_6
     je      {{L}}main_loop_packed_packed_7
-{% comment %}
 {% endcomment %}
 
 {% for unroll in (0..unroll_count_min_1) %}

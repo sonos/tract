@@ -4,7 +4,7 @@
 Display the kernel throughputs as a dataframe and a csv file.
 
 Usage: 
-1. First, run the benchmarks using `cargo bench -p tract-linalg --bench kernel_test`.
+1. First, run the benchmarks using `cargo bench -p tract-linalg --features compile_all_kernels --bench kernel_test`.
 2. Then run this file in the project root: `python3 linalg/x86_64/kernel_throughput.py`. 
 
 The results are in Gelem/s.
@@ -42,9 +42,8 @@ for r in results:
     elements = benchmark["throughput"]["Elements"]
     time_per_iter = sum(sample["times"]) / sum(sample["iters"])
 
-    df.loc[m, n] = 1 / (time_per_iter / elements)
+    df.loc[m, n] = round(1 / (time_per_iter / elements), 2)
     print(df.loc[m, n])
-    df.loc[m, n] = f"{round(df.loc[m, n], 2)}"
 
 pd.set_option('display.max_columns', None)
 print(df)

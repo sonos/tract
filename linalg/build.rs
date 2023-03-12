@@ -89,16 +89,36 @@ fn main() {
     match arch.as_ref() {
         "x86_64" => {
             let mut files = preprocess_files("x86_64/fma", &[], &suffix, false, None);
-            // limits of the size of the kernels in avx512; index is n-1
-            let avx_kernels_max = [
-                240, 160, 112, 96, 80, 64, 48, 48, 48, 32, 32, 32, 32, 32, 16, 16, 16, 16, 16, 16,
-                16, 16, 16, 16, 16, 16, 16, 16, 16,
-            ];
-            let avx512_kernels: Vec<_> = avx_kernels_max
-                .iter()
-                .enumerate()
-                .flat_map(|(n_min_1, &max)| (16..=max).step_by(16).map(move |m| (m, n_min_1 + 1)))
-                .collect();
+
+            let avx512_kernels: Vec<_> = if cfg!(feature = "compile_all_kernels") {
+                // limits of the max M size of the kernels in avx512; index is n-1
+                let avx512_kernels_max = [
+                    240, 160, 112, 96, 80, 64, 48, 48, 48, 32, 32, 32, 32, 32, 16, 16, 16, 16, 16,
+                    16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                ];
+                avx512_kernels_max
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(n_min_1, &max)| {
+                        (16..=max).step_by(16).map(move |m| (m, n_min_1 + 1))
+                    })
+                    .collect()
+            } else {
+                vec![
+                    (96, 1),
+                    (96, 2),
+                    (80, 3),
+                    (64, 4),
+                    (32, 5),
+                    (32, 6),
+                    (32, 7),
+                    (32, 8),
+                    (32, 9),
+                    (32, 10),
+                    (32, 11),
+                    (32, 12),
+                ]
+            };
 
             files.extend(preprocess_files(
                 "x86_64/avx512",
