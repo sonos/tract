@@ -20,10 +20,10 @@ Arguments:
 
     // scatter operation
 
-    vpbroadcastd    zmm30,  esi
-    vpmulld         zmm30,  zmm30,  zmmword ptr [{{offset}} {{L}}numbers_seq_store]
+    vpbroadcastd    zmm31,  esi
+    vpmulld         zmm31,  zmm31,  zmmword ptr [{{offset}} {{L}}numbers_seq_store]
 
-    // zmm30 is now a sequence of 0,esi,esi*2,esi*3...esi*15
+    // zmm31 is now a sequence of 0,esi,esi*2,esi*3...esi*15
 
 {% assign nr_min_1 = nr | minus:1 %}
 {% assign mr_arch = mr | divided_by:16 %}
@@ -36,10 +36,8 @@ Arguments:
     mov     r9,     r10                 // cur row
 
     {% for row in (0..mr_arch_min_1) %}
-        vmovaps     zmm31, zmm{{col | times:mr_arch | plus:row}}
-
         kxnorw      k1,k1,k1            // set writemask to ones
-        vscatterdps [r9 + zmm30]{k1}, zmm31  
+        vscatterdps [r9 + zmm31]{k1}, zmm{{col | times:mr_arch | plus:row}}  
 
         {% if row != mr_arch_min_1 %}
             add r9, rsi
