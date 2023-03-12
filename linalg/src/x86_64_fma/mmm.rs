@@ -13,18 +13,21 @@ MMMKernel!(i32, avx2_mmm_i32_8x8; 8, 8; 32, 4; 0, 0; no_prefetch, is_x86_feature
 #[cfg(not(feature = "compile_all_kernels"))]
 mod avx512_best {
     use super::*;
-    MMMKernel!(f32, avx512_mmm_f32_240x1; 240, 1; 64, 4; 0, 0; no_prefetch, is_x86_feature_detected!("avx512f"));
-    MMMKernel!(f32, avx512_mmm_f32_160x2; 160, 2; 64, 4; 0, 0; no_prefetch, is_x86_feature_detected!("avx512f"));
-    MMMKernel!(f32, avx512_mmm_f32_112x3; 112, 3; 64, 4; 0, 0; no_prefetch, is_x86_feature_detected!("avx512f"));
-    MMMKernel!(f32, avx512_mmm_f32_96x4; 96, 4; 64, 4; 0, 0; no_prefetch, is_x86_feature_detected!("avx512f"));
-    MMMKernel!(f32, avx512_mmm_f32_80x5; 80, 5; 64, 4; 0, 0; no_prefetch, is_x86_feature_detected!("avx512f"));
-    MMMKernel!(f32, avx512_mmm_f32_64x6; 64, 6; 64, 4; 0, 0; no_prefetch, is_x86_feature_detected!("avx512f"));
-    MMMKernel!(f32, avx512_mmm_f32_48x7; 48, 7; 64, 4; 0, 0; no_prefetch, is_x86_feature_detected!("avx512f"));
-    MMMKernel!(f32, avx512_mmm_f32_48x8; 48, 8; 64, 4; 0, 0; no_prefetch, is_x86_feature_detected!("avx512f"));
-    MMMKernel!(f32, avx512_mmm_f32_48x9; 48, 9; 64, 4; 0, 0; no_prefetch, is_x86_feature_detected!("avx512f"));
+    MMMKernel!(f32, avx512_mmm_f32_16x1; 12, 1; 64, 4; 0, 0; no_prefetch, is_x86_feature_detected!("avx512f"));
+    MMMKernel!(f32, avx512_mmm_f32_96x1; 96, 1; 64, 4; 0, 0; no_prefetch, is_x86_feature_detected!("avx512f"));
+    MMMKernel!(f32, avx512_mmm_f32_96x2; 96, 2; 64, 4; 0, 0; no_prefetch, is_x86_feature_detected!("avx512f"));
+    MMMKernel!(f32, avx512_mmm_f32_80x3; 80, 3; 64, 4; 0, 0; no_prefetch, is_x86_feature_detected!("avx512f"));
+    MMMKernel!(f32, avx512_mmm_f32_64x4; 64, 4; 64, 4; 0, 0; no_prefetch, is_x86_feature_detected!("avx512f"));
+    MMMKernel!(f32, avx512_mmm_f32_32x5; 32, 5; 64, 4; 0, 0; no_prefetch, is_x86_feature_detected!("avx512f"));
+    MMMKernel!(f32, avx512_mmm_f32_32x6; 32, 6; 64, 4; 0, 0; no_prefetch, is_x86_feature_detected!("avx512f"));
+    MMMKernel!(f32, avx512_mmm_f32_32x7; 32, 7; 64, 4; 0, 0; no_prefetch, is_x86_feature_detected!("avx512f"));
+    MMMKernel!(f32, avx512_mmm_f32_32x8; 32, 8; 64, 4; 0, 0; no_prefetch, is_x86_feature_detected!("avx512f"));
+    MMMKernel!(f32, avx512_mmm_f32_32x9; 32, 9; 64, 4; 0, 0; no_prefetch, is_x86_feature_detected!("avx512f"));
     MMMKernel!(f32, avx512_mmm_f32_32x10; 32, 10; 64, 4; 0, 0; no_prefetch, is_x86_feature_detected!("avx512f"));
     MMMKernel!(f32, avx512_mmm_f32_32x11; 32, 11; 64, 4; 0, 0; no_prefetch, is_x86_feature_detected!("avx512f"));
     MMMKernel!(f32, avx512_mmm_f32_32x12; 32, 12; 64, 4; 0, 0; no_prefetch, is_x86_feature_detected!("avx512f"));
+    MMMKernel!(f32, avx512_mmm_f32_32x13; 32, 12; 64, 4; 0, 0; no_prefetch, is_x86_feature_detected!("avx512f"));
+    MMMKernel!(f32, avx512_mmm_f32_32x14; 32, 12; 64, 4; 0, 0; no_prefetch, is_x86_feature_detected!("avx512f"));
 }
 #[cfg(not(feature = "compile_all_kernels"))]
 pub use avx512_best::*;

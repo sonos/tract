@@ -106,8 +106,3 @@ harness = false
 bench = false
 name = "kernel_test"
 harness = false
-
-[[bench]]
-bench = false
-name = "kernel_selection"
-harness = false
