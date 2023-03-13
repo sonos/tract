@@ -20,13 +20,15 @@ pub(crate) fn codegen(
     else {
         return Ok(None)
     };
-    let Some(k_axis) = op
+    let k_axes: TVec<&Axis> = op
         .expr
         .iter_all_axes()
-        .find(|a| a.inputs[0].len() == 1 && a.inputs[1].len() == 1 && a.outputs[0].len() == 0)
-        else {
-            return Ok(None)
-        };
+        .filter(|a| a.inputs[0].len() == 1 && a.inputs[1].len() == 1 && a.outputs[0].len() == 0)
+        .collect();
+    if k_axes.len() > 1 {
+        return Ok(None);
+    }
+    let k_axis = k_axes[0];
     let Some(n_axis) = op
             .expr
             .iter_all_axes()
