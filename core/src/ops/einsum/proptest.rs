@@ -15,6 +15,8 @@ struct BinEinsumProblem {
     expr: AxesMapping,
     a: Tensor,
     b: Tensor,
+    a_constant: bool,
+    b_constant: bool,
 }
 
 impl std::fmt::Debug for BinEinsumProblem {
@@ -61,9 +63,13 @@ impl Arbitrary for BinEinsumProblem {
                     .map(|axis| expr.iter_all_axes().position(|x| x == axis).unwrap())
                     .map(|dim| axis_dims[dim])
                     .collect();
-                (Just(expr), tensor(&shape_a), tensor(&shape_b))
+                (Just(expr), tensor(&shape_a), tensor(&shape_b), 0..3usize)
             })
-            .prop_map(|(expr, a, b)| BinEinsumProblem { expr, a, b })
+            .prop_map(|(expr, a, b, a_b_constant)| {
+                let a_constant = (a_b_constant & 0x1) != 0;
+                let b_constant = (a_b_constant & 0x2) != 0;
+                BinEinsumProblem { expr, a, b, a_constant, b_constant }
+            })
             .boxed()
     }
 }
@@ -79,25 +85,29 @@ pub fn tensor(shape: &[usize]) -> BoxedStrategy<Tensor> {
 impl BinEinsumProblem {
     fn check(&self) -> TractResult<()> {
         let mut model = TypedModel::default();
-        let a = model.add_source("a", TypedFact::from(&self.a).without_value())?;
-        let b = model.add_source("b", TypedFact::from(&self.b).without_value())?;
+        let mut inputs = tvec!();
+        let a = if self.a_constant {
+            model.add_const("a", self.a.clone())?
+        } else {
+            inputs.push(self.a.clone().into_tvalue());
+            model.add_source("a", TypedFact::from(&self.a).without_value())?
+        };
+        let b = if self.b_constant {
+            model.add_const("b", self.b.clone())?
+        } else {
+            inputs.push(self.b.clone().into_tvalue());
+            model.add_source("b", TypedFact::from(&self.b).without_value())?
+        };
         let sum = model.wire_node(
             "einsum",
             EinSum { expr: self.expr.clone(), operating_dt: f32::datum_type(), q_params: None },
             &[a, b],
         )?;
         model.set_output_outlets(&sum)?;
-        let expected = model
-            .clone()
-            .into_runnable()?
-            .run(tvec![self.a.clone().into(), self.b.clone().into()])?
-            .remove(0);
+        let expected = model.clone().into_runnable()?.run(inputs.clone())?.remove(0);
         let optimised = model.clone().into_optimized()?;
         ensure!(optimised.nodes[optimised.nodes.len() - 1].op_is::<LirMatMulUnary>());
-        let found = optimised
-            .into_runnable()?
-            .run(tvec![self.a.clone().into(), self.b.clone().into()])?
-            .remove(0);
+        let found = optimised.into_runnable()?.run(inputs.clone())?.remove(0);
         found.close_enough(&expected, Approximation::Close)
     }
 }
