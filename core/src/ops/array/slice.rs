@@ -16,6 +16,20 @@ impl Slice {
     pub fn suffix(&self, name: &str) -> String {
         format!("{}.axis{}_{}_{}", name, self.axis, self.start, self.end)
     }
+
+    pub fn declutter_slice_after_slice(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+        let prec = model.node(node.inputs[0].node);
+        if let Some(other) = prec.op_as::<Slice>() {
+            if other.axis == self.axis {
+                return TypedModelPatch::replace_single_op(model, node, &prec.inputs , Slice {
+                    axis: self.axis,
+                    start: self.start.clone() + &other.start,
+                    end: self.end.clone() + &other.start,
+                }).map(Some)
+            }
+        }
+        Ok(None)
+    }
 }
 
 impl Op for Slice {
@@ -149,6 +163,8 @@ impl TypedOp for Slice {
         if self.start.is_zero() && (self.end == model.outlet_fact(node.inputs[0])?.shape[self.axis])
         {
             TypedModelPatch::shunt_one_op(model, node)
+        } else if let Some(p) = self.declutter_slice_after_slice(model, node)? {
+            Ok(Some(p))
         } else {
             Ok(None)
         }
