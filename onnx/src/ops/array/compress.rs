@@ -14,8 +14,6 @@ pub struct Compress {
     axis: Option<isize>,
 }
 
-
-
 impl Compress {
     unsafe fn eval_t<T: Datum>(
         axis: Option<usize>,
