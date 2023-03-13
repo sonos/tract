@@ -113,6 +113,10 @@ impl AxesMapping {
         )
     }
 
+    pub fn output_axes(&self, output: usize) -> impl Iterator<Item = &Axis> {
+        (0..self.output_rank(output)).map(move |ix| self.output_axis(output, ix).unwrap())
+    }
+
     fn output_axis_mut(&mut self, output: usize, position: usize) -> TractResult<&mut Axis> {
         let repr = self.output_axis(output, position)?.repr;
         Ok(self.axes.iter_mut().find(|axis| axis.repr == repr).unwrap())

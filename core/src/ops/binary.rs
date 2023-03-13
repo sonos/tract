@@ -212,7 +212,7 @@ impl TypedOp for TypedBinOp {
         let inputs = model.node_input_facts(node.id)?;
         if self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?
             == inputs[0].datum_type
-            && inputs[0] == inputs[1]
+            && inputs[0].without_value() == inputs[1].without_value()
         {
             Ok(Some(TypedModelPatch::replace_single_op(
                 model,
