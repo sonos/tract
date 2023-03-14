@@ -30,7 +30,7 @@ pub(crate) fn codegen(
                 && input_facts[0].shape[a.inputs[0][0]] != 1.to_dim()
         })
         .collect();
-    if k_axes.len() > 1 {
+    if k_axes.len() != 1 {
         return Ok(None);
     }
     let k_axis = k_axes[0];
