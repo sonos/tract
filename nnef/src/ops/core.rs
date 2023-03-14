@@ -18,6 +18,7 @@ mod scan;
 mod scatter;
 mod shape_of;
 mod source;
+mod topk;
 mod trilu;
 
 pub fn register(registry: &mut Registry) {
@@ -49,5 +50,6 @@ pub fn register(registry: &mut Registry) {
     shape_of::register(registry);
     source::register(registry);
     range::register(registry);
+    topk::register(registry);
     trilu::register(registry);
 }
