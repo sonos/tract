@@ -13,11 +13,13 @@ pub(crate) fn codegen(
         return Ok(None);
     }
     let input_facts = model.node_input_facts(node.id)?;
+    let input_shapes: TVec<&[TDim]> = input_facts.iter().map(|f| &*f.shape).collect();
+    let output_shape = super::eval::output_shape(&op.expr, &input_shapes);
     let Some(m_axis) = op
         .expr
         .iter_all_axes()
-        .filter(|a| a.inputs[0].len() == 1 && a.inputs[1].len() == 0 && a.outputs[0].len() == 1)
-        .max_by_key(|a| &input_facts[0].shape[a.inputs[0][0]])
+        .filter(|a| a.inputs[0].len() == 1 && (a.inputs[1].len() == 0 || input_facts[1].shape[a.inputs[1][0]].is_one()) && a.outputs[0].len() == 1)
+        .max_by_key(|a| &output_shape[a.outputs[0][0]])
     else {
         return Ok(None)
     };
@@ -35,13 +37,13 @@ pub(crate) fn codegen(
     }
     let k_axis = k_axes[0];
     let Some(n_axis) = op
-            .expr
-            .iter_all_axes()
-            .filter(|a| a.inputs[0].len() == 0 && a.inputs[1].len() == 1 && a.outputs[0].len() == 1)
-            .max_by_key(|a| &input_facts[1].shape[a.inputs[1][0]])
-        else {
-            return Ok(None)
-        };
+        .expr
+        .iter_all_axes()
+        .filter(|a| (a.inputs[0].len() == 0 || input_facts[0].shape[a.inputs[0][0]].is_one()) && a.inputs[1].len() == 1 && a.outputs[0].len() == 1)
+                .max_by_key(|a| &output_shape[a.outputs[0][0]])
+                else {
+                    return Ok(None)
+                };
     let a_m = m_axis.inputs[0][0];
     let a_k = k_axis.inputs[0][0];
     let b_n = n_axis.inputs[1][0];
@@ -51,6 +53,24 @@ pub(crate) fn codegen(
     let m = &input_facts[0].shape[a_m];
     let k = input_facts[0].shape[a_k].to_usize()?;
     let n = &input_facts[1].shape[b_n];
+    if m < n {
+        let expr = op
+            .expr
+            .iter_all_axes()
+            .map(|axis| {
+                let mut axis = axis.clone();
+                axis.inputs.swap(0, 1);
+                axis
+            })
+            .collect::<TVec<Axis>>();
+        return TypedModelPatch::replace_single_op(
+            model,
+            node,
+            &[node.inputs[1], node.inputs[0]],
+            EinSum { expr: AxesMapping::new(expr)?, ..op.clone() },
+        )
+        .map(Some);
+    }
     let dt = op.operating_dt;
     let mmm =
         tract_linalg::ops().mmm(dt, dt, dt, m.to_usize().ok(), Some(k), n.to_usize().ok()).unwrap();
