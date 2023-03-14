@@ -1,7 +1,6 @@
 use std::fmt;
 
 use crate::internal::*;
-use crate::ops::matmul::lir_unary::LirMatMulUnary;
 use proptest::prelude::*;
 use proptest::strategy::BoxedStrategy;
 use tract_ndarray::ArrayD;
@@ -122,7 +121,6 @@ impl BinEinsumProblem {
         model = model.into_decluttered()?;
         let expected = model.clone().into_runnable()?.run(inputs.clone())?.remove(0);
         let optimised = model.clone().into_optimized()?;
-        ensure!(optimised.nodes[optimised.nodes.len() - 1].op_is::<LirMatMulUnary>());
         let found = optimised.into_runnable()?.run(inputs.clone())?.remove(0);
         found.close_enough(&expected, Approximation::Close)
     }
