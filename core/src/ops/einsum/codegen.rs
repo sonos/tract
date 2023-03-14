@@ -24,6 +24,10 @@ pub(crate) fn codegen(
         .expr
         .iter_all_axes()
         .filter(|a| a.inputs[0].len() == 1 && a.inputs[1].len() == 1 && a.outputs[0].len() == 0)
+        .filter(|a| {
+            input_facts[0].shape[a.inputs[0][0]] == input_facts[1].shape[a.inputs[1][0]]
+                && input_facts[0].shape[a.inputs[0][0]] != 1.to_dim()
+        })
         .collect();
     if k_axes.len() > 1 {
         return Ok(None);
