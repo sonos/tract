@@ -116,7 +116,7 @@ pub fn eval_q(expr: &AxesMapping, qp: DatumType, inputs: TVec<TValue>) -> TractR
     let c0 = c0.cast_to_scalar::<i32>()?;
 
     if bias.rank() == 0 {
-        output = output + inputs[2].cast_to_scalar::<i32>()?;
+        output += inputs[2].cast_to_scalar::<i32>()?;
     } else {
         let mut bias_shape = tvec!(1; output.ndim());
         bias_shape[expr.input_axis(2, 0)?.outputs[0][0]] = bias.len();

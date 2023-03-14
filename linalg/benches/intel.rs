@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use tract_data::prelude::*;
 use tract_linalg::frame::mmm::*;
-use tract_linalg::mmm::OutputStoreKer;
+
 
 fn ruin_cache() {
     // return;
@@ -22,7 +22,7 @@ where
                 let a: f32 = 1.0;
                 let b = 1.0;
                 let offset = { n + m * nr };
-                vi[offset] = vi[offset] + a * b;
+                vi[offset] += a * b;
             }
         }
     }
@@ -100,7 +100,7 @@ fn as_match_line<T: Datum + Copy + num_traits::Zero + tract_linalg::LADatum, K: 
 }
 
 fn main() {
-    use tract_linalg::x86_64_fma::mmm::*;
+    
     let core_id = core_affinity::get_core_ids().unwrap()[0];
     core_affinity::set_for_current(core_id);
     // as_match_line::<f32, fma_mmm_f32_64x1>();
@@ -133,14 +133,14 @@ fn mmv_perf_m() {
     print!("fma_mmm_f32_64x1\t");
     print!("avx512_mmm_f32_128x1\t");
     print!("avx512_mmm_f32_16x1\t");
-    println!("");
+    println!();
     for n in 1..=128 {
         eprintln!("{n}");
         print!("{n}\t");
         bench::<f32, fma_mmm_f32_64x1>(n);
         bench::<f32, avx512_mmm_f32_128x1>(n);
         bench::<f32, avx512_mmm_f32_16x1>(n);
-        println!("");
+        println!();
     }
 }
 
@@ -174,7 +174,7 @@ fn mmm_perf_batch_size() {
     print!("avx512_mmm_f32_48x4\t");
     print!("avx512_mmm_f32_64x3\t");
     print!("avx512_mmm_f32_80x2\t");
-    println!("");
+    println!();
     for n in 1..=128 {
         eprintln!("{n}");
         print!("{n}\t");
@@ -194,6 +194,6 @@ fn mmm_perf_batch_size() {
         bench::<f32, avx512_mmm_f32_48x4>(n);
         bench::<f32, avx512_mmm_f32_64x3>(n);
         bench::<f32, avx512_mmm_f32_80x2>(n);
-        println!("");
+        println!();
     }
 }

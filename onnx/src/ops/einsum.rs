@@ -66,7 +66,7 @@ impl Expansion for EinSum {
             s.equals(&outputs[0].rank, expr.output_rank(0) as i64)?;
             for axis in expr.iter_all_axes() {
                 let mut axes = vec![];
-                if let Some(result) = axis.outputs[0].get(0) {
+                if let Some(result) = axis.outputs[0].first() {
                     axes.push(outputs[0].shape[*result].bex())
                 }
                 for (input_id, input_axis_positions) in axis.inputs.iter().enumerate() {

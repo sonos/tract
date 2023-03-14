@@ -92,7 +92,7 @@ fn should_slice_output(
     eval_order: &[usize],
 ) -> TractResult<Option<TVec<usize>>> {
     if node.outputs[0].successors.len() == 0 {
-        return Ok(None)
+        return Ok(None);
     }
     let slicers: TVec<usize> = node.outputs[0]
         .successors
@@ -112,7 +112,7 @@ fn should_slice_output(
     */
     /* non-aggressive: we need all consumers to be slice */
     if slicers.len() < node.outputs[0].successors.len() {
-        return Ok(None)
+        return Ok(None);
     }
     let slice = node.outputs[0].successors[0].node;
 
@@ -146,10 +146,7 @@ fn should_slice_output(
     boundaries.retain(|x| *x > 0);
     boundaries.sort();
     boundaries.dedup();
-    if boundaries.len() == 0 {
-        // happens when input is of size 0. don't care.
-        Ok(None)
-    } else if boundaries.len() == 1 && boundaries[0] == end {
+    if boundaries.len() == 0 || (boundaries.len() == 1 && boundaries[0] == end) {
         Ok(None)
     } else {
         Ok(Some(boundaries))

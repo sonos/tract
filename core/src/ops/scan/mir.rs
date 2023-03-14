@@ -356,7 +356,7 @@ impl Scan {
                             // propagate axis injects new nodes at the end. last successor of input
                             // in new net will be the new succ
                             let new_body_scan_input = new_body.input_outlets()?[model_input_ix];
-                            succ = &new_body.node(new_body_scan_input.node).outputs[0]
+                            succ = new_body.node(new_body_scan_input.node).outputs[0]
                                 .successors
                                 .last()
                                 .unwrap();
@@ -868,7 +868,7 @@ impl TypedOp for Scan {
         let axis_change = AxisChange { outlet: body_leading_outlet, op: change.clone() };
         let result = self
             .try_body_axes_change(axis_change, false)
-            .with_context(|| format!("Attemping to run change through scan body"))?;
+            .with_context(|| "Attemping to run change through scan body".to_string())?;
         if result.is_some() {
             trace!("{} accepted axis change", node);
         } else {

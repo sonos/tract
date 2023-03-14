@@ -36,7 +36,7 @@ impl AxesMapping {
 
     pub fn disconnected_for_ranks(inputs: &[usize], outputs: &[usize]) -> TractResult<AxesMapping> {
         let mut axes = tvec!();
-        let mut alphabet = ('a'..).into_iter();
+        let mut alphabet = 'a'..;
         for (ix, &rank) in inputs.iter().enumerate() {
             for a in 0..rank {
                 axes.push(
@@ -57,7 +57,6 @@ impl AxesMapping {
     pub fn natural(inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<AxesMapping> {
         let rank = inputs[0].rank();
         let axes = (0..rank)
-            .into_iter()
             .zip('a'..)
             .map(|(axis_id, repr)| Axis::natural(inputs, outputs, repr, axis_id))
             .collect::<TVec<_>>();
