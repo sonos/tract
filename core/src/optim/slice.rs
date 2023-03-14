@@ -85,11 +85,31 @@ pub fn should_slice_output(
     node: &TypedNode,
     axis: usize,
 ) -> TractResult<Option<TVec<usize>>> {
+    if node.outputs[0].successors.len() == 0 {
+        return Ok(None)
+    }
+    let slicers: TVec<usize> = node.outputs[0]
+        .successors
+        .iter()
+        .filter(|inlet| {
+            model.node(inlet.node).op_as::<Slice>().filter(|slice| slice.axis == axis).is_some()
+        })
+        .map(|inlet| inlet.node)
+        .collect();
+    /* aggressive: 1 slice as succesor => we propagate it */
+    /*
     let Some(slice) = node.outputs[0].successors.iter().find_map(|inlet| {
         model.node(inlet.node).op_as::<Slice>().filter(|slice| slice.axis == axis).map(|_| inlet.node)
     }) else {
         return Ok(None)
     };
+    */
+    /* non-aggressive: we need all consumers to be slice */
+    if slicers.len() < node.outputs[0].successors.len() {
+        return Ok(None)
+    }
+    let slice = node.outputs[0].successors[0].node;
+
     let slice_op = model.node(slice).op_as::<Slice>().unwrap();
     let axis = slice_op.axis;
     let mut boundaries = tvec!();
@@ -117,7 +137,8 @@ pub fn should_slice_output(
     boundaries.retain(|x| *x > 0);
     boundaries.sort();
     boundaries.dedup();
-    if boundaries.len() == 0 { // happens when input is of size 0. don't care.
+    if boundaries.len() == 0 {
+        // happens when input is of size 0. don't care.
         Ok(None)
     } else {
         Ok(Some(boundaries))
