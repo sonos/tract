@@ -121,5 +121,5 @@ pub(crate) fn codegen(
     )?;
     let output = patch.wire_node(name, lir, &[pa, pb])?[0];
     patch.shunt_outside(model, node.id.into(), output)?;
-    return Ok(Some(patch));
+    Ok(Some(patch))
 }

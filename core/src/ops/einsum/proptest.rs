@@ -41,7 +41,7 @@ impl Arbitrary for BinEinsumProblem {
                 let iter_axes: String = ('w'..).take(iter_axes).collect();
                 let a_axes: Vec<char> = (m_axes.clone() + &iter_axes + "k").chars().collect();
                 let b_axes: Vec<char> = (n_axes.clone() + &iter_axes + "k").chars().collect();
-                let c_axes: Vec<char> = (m_axes.clone() + &n_axes + &iter_axes).chars().collect();
+                let c_axes: Vec<char> = (m_axes + &n_axes + &iter_axes).chars().collect();
                 (Just(a_axes), Just(b_axes), Just(c_axes))
             })
             .prop_flat_map(|(a, b, c)| (a.prop_shuffle(), b.prop_shuffle(), c.prop_shuffle()))
@@ -72,7 +72,7 @@ impl Arbitrary for BinEinsumProblem {
                     .map(|axis| expr.iter_all_axes().position(|x| x == axis).unwrap())
                     .map(|dim| axis_dims[dim])
                     .collect();
-                let unicast_add_constant = proptest::option::of(tensor(&*shape_output));
+                let unicast_add_constant = proptest::option::of(tensor(&shape_output));
                 (Just(expr), tensor(&shape_a), tensor(&shape_b), 0..3usize, unicast_add_constant)
             })
             .prop_map(|(expr, a, b, a_b_constant, unicast_add_constant)| {

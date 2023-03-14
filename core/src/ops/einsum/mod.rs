@@ -78,6 +78,7 @@ impl EinSum {
         Ok(Some(patch))
     }
 
+    #[allow(clippy::comparison_chain)]
     fn declutter_after_concat(
         &self,
         model: &TypedModel,
@@ -140,7 +141,7 @@ impl EinSum {
                     )?[0];
                     einsums.push(einsum);
                 }
-                let wire = if let Some(axis) = axis_info.outputs[0].get(0).cloned() {
+                let wire = if let Some(axis) = axis_info.outputs[0].first().cloned() {
                     patch.wire_node(
                         format!("{}.concat-einsum-{}.concat", node.name, axis_info.repr),
                         TypedConcat { axis },
@@ -161,7 +162,7 @@ impl EinSum {
                 return Ok(Some(patch));
             }
         }
-        return Ok(None);
+        Ok(None)
     }
 }
 
@@ -292,10 +293,10 @@ impl TypedOp for EinSum {
         };
         *interface = axes.into_iter().collect();
         let expr = AxesMapping::from_strs(&inputs, &outputs)?;
-        return Ok(Some(AxisChangeConsequence {
+        Ok(Some(AxisChangeConsequence {
             substitute_op: Some(Box::new(EinSum::new(expr, self.operating_dt, self.q_params))),
             wire_changes: tvec!((io, change.clone())),
-        }));
+        }))
     }
 
     fn declutter(

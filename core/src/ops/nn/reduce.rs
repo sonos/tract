@@ -293,7 +293,7 @@ impl TypedOp for Reduce {
         inputs: &[&TypedFact],
         outputs: &[&TypedFact],
     ) -> TractResult<AxesMapping> {
-        let mut letters = ('a'..).into_iter();
+        let mut letters = 'a'..;
         (0..inputs[0].rank())
             .flat_map(|ix| {
                 if self.axes.contains(&ix) {
