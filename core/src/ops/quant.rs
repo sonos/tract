@@ -123,7 +123,11 @@ impl TypedOp for DequantizeLinearF32 {
         Ok(tvec!(fact))
     }
 
-    fn axes_mapping(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<AxesMapping> {
+    fn axes_mapping(
+        &self,
+        inputs: &[&TypedFact],
+        outputs: &[&TypedFact],
+    ) -> TractResult<AxesMapping> {
         AxesMapping::natural(inputs, outputs)
     }
 
@@ -142,8 +146,6 @@ impl TypedOp for DequantizeLinearF32 {
         model: &TypedModel,
         dequant: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        // FIXME
-        /*
         let mut current = dequant;
         let incoming_dt = model.node_input_facts(dequant.id)?[0].datum_type;
         while let Some(quant) = model.single_succ(current.id)? {
@@ -229,15 +231,14 @@ impl TypedOp for DequantizeLinearF32 {
             let (input_facts, output_facts) = model.node_facts(quant.id)?;
             let invariants = quant
                 .op
-                .invariants(&input_facts, &output_facts)
+                .axes_mapping(&input_facts, &output_facts)
                 .with_context(|| format!("Querying invariants for {quant}"))?;
-            if invariants.element_wise() {
+            if invariants.element_wise_unary() {
                 current = quant;
             } else {
                 break;
             }
         }
-        */
         Ok(None)
     }
 

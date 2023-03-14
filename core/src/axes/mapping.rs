@@ -182,7 +182,7 @@ impl AxesMapping {
             let mut inputs = tvec!(tvec!(); self.input_count);
             inputs[self.input_count - 1].push(ix);
             let outputs = tvec!(tvec!(); self.output_count);
-            self.axes.push(Axis{ repr, inputs, outputs });
+            self.axes.push(Axis { repr, inputs, outputs });
         }
         self.check()
     }
@@ -209,6 +209,14 @@ impl AxesMapping {
 
     pub fn available_label(&self) -> char {
         ('a'..).find(|c| self.iter_all_axes().all(|axis| axis.repr != *c)).unwrap()
+    }
+
+    pub fn element_wise_unary(&self) -> bool {
+        self.input_count == 1
+            && self.output_count == 1
+            && self
+                .iter_all_axes()
+                .all(|axis| axis.inputs[0].len() == 1 && axis.outputs[0] == axis.inputs[0])
     }
 
     pub fn from_strs(
