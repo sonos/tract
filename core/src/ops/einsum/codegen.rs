@@ -16,7 +16,8 @@ pub(crate) fn codegen(
     let Some(m_axis) = op
         .expr
         .iter_all_axes()
-        .find(|a| a.inputs[0].len() == 1 && a.inputs[1].len() == 0 && a.outputs[0].len() == 1)
+        .filter(|a| a.inputs[0].len() == 1 && a.inputs[1].len() == 0 && a.outputs[0].len() == 1)
+        .max_by_key(|a| &input_facts[0].shape[a.inputs[0][0]])
     else {
         return Ok(None)
     };
@@ -36,10 +37,11 @@ pub(crate) fn codegen(
     let Some(n_axis) = op
             .expr
             .iter_all_axes()
-            .find(|a| a.inputs[0].len() == 0 && a.inputs[1].len() == 1 && a.outputs[0].len() == 1)
-            else {
-                return Ok(None)
-            };
+            .filter(|a| a.inputs[0].len() == 0 && a.inputs[1].len() == 1 && a.outputs[0].len() == 1)
+            .max_by_key(|a| &input_facts[1].shape[a.inputs[1][0]])
+        else {
+            return Ok(None)
+        };
     let a_m = m_axis.inputs[0][0];
     let a_k = k_axis.inputs[0][0];
     let b_n = n_axis.inputs[1][0];
