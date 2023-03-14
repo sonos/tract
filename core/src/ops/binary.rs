@@ -209,17 +209,17 @@ impl TypedOp for TypedBinOp {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        let inputs = model.node_input_facts(node.id)?;
-        if self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?
-            == inputs[0].datum_type
-            && inputs[0].without_value() == inputs[1].without_value()
+        let facts = model.node_input_facts(node.id)?;
+        if self.0.result_datum_type(facts[0].datum_type, facts[1].datum_type)?
+            == facts[0].datum_type
+            && facts[0].without_value() == facts[1].without_value()
         {
             Ok(Some(TypedModelPatch::replace_single_op(
                 model,
                 node,
                 &node.inputs,
                 MergeOpUnicast(self.0.clone()),
-            )?))
+            )?.with_context("Unicast")))
         } else {
             Ok(None)
         }
@@ -255,7 +255,7 @@ impl EvalOp for MergeOpUnicast {
 impl TypedOp for MergeOpUnicast {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         debug_assert_eq!(inputs[0].shape, inputs[1].shape);
-        Ok(tvec!(inputs[0].clone()))
+        Ok(tvec!(inputs[0].without_value()))
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
