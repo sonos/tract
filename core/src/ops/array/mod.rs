@@ -13,6 +13,7 @@ mod scatter_elements;
 mod scatter_nd;
 mod slice;
 mod tile;
+mod topk;
 mod trilu;
 
 pub use self::broadcast::MultiBroadcastTo;
@@ -29,4 +30,5 @@ pub use self::scatter_elements::ScatterElements;
 pub use self::scatter_nd::ScatterNd;
 pub use self::slice::Slice;
 pub use self::tile::Tile;
+pub use self::topk::Topk;
 pub use self::trilu::Trilu;

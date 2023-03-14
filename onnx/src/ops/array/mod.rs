@@ -6,9 +6,9 @@ mod shape;
 mod slice;
 mod split;
 mod squeeze;
+mod topk;
 mod trilu;
 mod unsqueeze;
-mod topk;
 
 use tract_hir::internal::*;
 use tract_hir::ops::array;

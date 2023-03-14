@@ -376,6 +376,7 @@ test_thresholdedrelu_default
 test_thresholdedrelu_example
 test_tile input:x
 test_tile_precomputed input:x
+test_top_k not-nnef not-typable
 test_transpose_all_permutations_0
 test_transpose_all_permutations_1
 test_transpose_all_permutations_2
