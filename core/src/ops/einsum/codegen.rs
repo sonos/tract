@@ -51,8 +51,10 @@ pub(crate) fn codegen(
     let c_m = m_axis.outputs[0][0];
     let c_n = n_axis.outputs[0][0];
     let m = &input_facts[0].shape[a_m];
-    let k = input_facts[0].shape[a_k].to_usize()?;
     let n = &input_facts[1].shape[b_n];
+    let Ok(k) = input_facts[0].shape[a_k].to_usize() else {
+        return Ok(None);
+    };
     if m < n {
         let expr = op
             .expr
@@ -101,6 +103,7 @@ pub(crate) fn codegen(
     }
 
     let c_fact = op.output_facts(&input_facts)?.remove(0);
+    let name = &node.name;
     let geo = AddMatMulGeometry {
         k: k.to_dim(),
         a_storage: unsafe { mmm.a_packed(dt.size_of(), k) },
@@ -118,7 +121,7 @@ pub(crate) fn codegen(
             ProtoFusedSpec::AddMatMul(geo, AttrOrInput::Input(0), AttrOrInput::Input(1)),
             ProtoFusedSpec::Store(output),
         ],
-    )?;
+    ).context("Creating LirMatMulUnary")?;
     let output = patch.wire_node(name, lir, &[pa, pb])?[0];
     patch.shunt_outside(model, node.id.into(), output)?;
     Ok(Some(patch))

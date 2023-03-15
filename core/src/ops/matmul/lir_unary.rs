@@ -480,8 +480,8 @@ impl LirMatMulUnary {
             mmm: mmm.clone(),
             m: c_fact.shape[c_m_axis].clone(),
             n: c_fact.shape[c_n_axis].clone(),
-        })
-        .optimize_if(Some(&Default::default()))?;
+        });
+        let geometry = geometry.clone().optimize_if(Some(&Default::default())).unwrap_or(geometry);
         let mut it = LirMatMulUnary {
             mmm,
             c_fact,
