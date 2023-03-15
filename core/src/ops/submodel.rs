@@ -1,22 +1,26 @@
+use std::fmt::Debug;
+
+use tract_downcast_rs::Downcast;
+
 use crate::{internal::*, ops::OpStateFreeze};
 
 #[derive(Debug, Clone, Hash)]
 pub struct SubmodelOp {
-    model: TypedModel,
+    model: Box<dyn InnerModel>,
     label: String,
     decluttered: bool,
-    optimized: bool,
+    codegen: bool,
 }
 
 impl_dyn_hash!(SubmodelOp);
 
 impl SubmodelOp {
-    pub fn new(model: TypedModel, label: &str) -> TractResult<Self> {
-        Ok(Self { model, label: label.to_string(), decluttered: false, optimized: false })
+    pub fn new(model: Box<dyn InnerModel>, label: &str) -> TractResult<Self> {
+        Ok(Self { model, label: label.to_string(), decluttered: false, codegen: false })
     }
 
     pub fn model(&self) -> &TypedModel {
-        &self.model
+        self.model.as_typed()
     }
 
     pub fn label(&self) -> &str {
@@ -39,21 +43,16 @@ impl EvalOp for SubmodelOp {
 
     fn state(
         &self,
-        _session: &mut SessionState,
-        _node_id: usize,
+        session: &mut SessionState,
+        node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(SubmodelOpState::new(self)?)))
+        self.model.state(session, node_id)
     }
 }
 
 impl TypedOp for SubmodelOp {
-    fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let facts = self
-            .model
-            .output_outlets()?
-            .iter()
-            .map(|outlet| self.model.outlet_fact(*outlet).map(|c| c.clone()))
-            .collect::<TractResult<TVec<_>>>()?;
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        let facts = self.model.output_facts(inputs)?;
         Ok(facts)
     }
 
@@ -77,10 +76,10 @@ impl TypedOp for SubmodelOp {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if !self.optimized {
+        if !self.codegen {
             let mut new = self.clone();
-            new.model.optimize()?;
-            new.optimized = true;
+            new.model.codegen()?;
+            new.codegen = true;
             Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, new)?))
         } else {
             Ok(None)
@@ -90,20 +89,82 @@ impl TypedOp for SubmodelOp {
     as_op!();
 }
 
+pub trait InnerModel: Debug + dyn_clone::DynClone + Downcast + Sync + Send + 'static {
+    #[allow(unused_variables)]
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>>;
+    fn is_stateless(&self) -> bool;
+
+    #[allow(unused_variables)]
+    fn state(
+        &self,
+        session: &mut SessionState,
+        node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        Ok(None)
+    }
+
+    #[allow(unused_variables)]
+    fn declutter(&mut self) -> TractResult<()>;
+
+    fn codegen(&mut self) -> TractResult<()>;
+
+    fn as_typed(&self) -> &TypedModel;
+}
+
+dyn_clone::clone_trait_object!(InnerModel);
+downcast_rs::impl_downcast!(InnerModel);
+
+impl InnerModel for TypedModel {
+    fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        let facts = self
+            .output_outlets()?
+            .iter()
+            .map(|outlet| self.outlet_fact(*outlet).map(|c| c.clone()))
+            .collect::<TractResult<TVec<_>>>()?;
+        Ok(facts)
+    }
+    fn is_stateless(&self) -> bool {
+        false
+    }
+
+    #[allow(unused_variables)]
+    fn state(
+        &self,
+        session: &mut SessionState,
+        node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        Ok(Some(Box::new(TypedModelOpState::new(self)?)))
+    }
+
+    #[allow(unused_variables)]
+    fn declutter(&mut self) -> TractResult<()> {
+        self.declutter()
+    }
+
+    fn codegen(&mut self) -> TractResult<()> {
+        self.optimize()
+    }
+
+    fn as_typed(&self) -> &TypedModel {
+        self
+    }
+}
+
+
 #[derive(Debug, Clone)]
-pub struct SubmodelOpState {
+pub struct TypedModelOpState {
     state: TypedSimpleState<TypedModel, TypedSimplePlan<TypedModel>>,
 }
 
-impl SubmodelOpState {
-    pub fn new(op: &SubmodelOp) -> TractResult<Self> {
-        let plan = SimplePlan::new(op.model.clone())?;
+impl TypedModelOpState {
+    pub fn new(model: &TypedModel) -> TractResult<Self> {
+        let plan = SimplePlan::new(model.clone())?;
         let state = SimpleState::new(plan)?;
         Ok(Self { state })
     }
 }
 
-impl OpState for SubmodelOpState {
+impl OpState for TypedModelOpState {
     fn eval(
         &mut self,
         _session: &mut SessionState,
@@ -122,11 +183,11 @@ pub struct FrozenSubmodelOpState {
 
 impl FrozenOpState for FrozenSubmodelOpState {
     fn unfreeze(&self) -> Box<dyn OpState> {
-        Box::new(SubmodelOpState { state: self.state.unfreeze() })
+        Box::new(TypedModelOpState { state: self.state.unfreeze() })
     }
 }
 
-impl OpStateFreeze for SubmodelOpState {
+impl OpStateFreeze for TypedModelOpState {
     fn freeze(&self) -> Box<dyn FrozenOpState> {
         Box::new(FrozenSubmodelOpState { state: self.state.freeze() })
     }
