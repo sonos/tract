@@ -16,7 +16,7 @@ pub(crate) fn codegen(
     node: &TypedNode,
 ) -> TractResult<Option<TypedModelPatch>> {
     if (op.q_params.is_none() && node.inputs.len() != 2)
-        && (op.q_params.is_some() && node.inputs.len() != 9)
+        || (op.q_params.is_some() && node.inputs.len() != 9)
     {
         return Ok(None);
     }
