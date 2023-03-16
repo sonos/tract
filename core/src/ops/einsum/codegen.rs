@@ -1,11 +1,12 @@
 use super::*;
-use crate::ops::binary::wire_with_rank_broadcast;
 use crate::ops::cast::cast;
 use crate::ops::math::add;
 use crate::ops::matmul::lir_unary::{
     AddMatMulGeometry, LirMatMulUnary, MapOutputAxisToInput, ProtoFusedSpec,
 };
-use crate::ops::matmul::mir_quant::{combine_scales, requant, wire_offset_u8_as_i8, compensate_zero_points};
+use crate::ops::matmul::mir_quant::{
+    combine_scales, compensate_zero_points, requant, wire_offset_u8_as_i8,
+};
 use crate::ops::matmul::pack::MatMatMulPack;
 use crate::ops::nn::{Reduce, Reducer};
 
@@ -14,17 +15,20 @@ pub(crate) fn codegen(
     model: &TypedModel,
     node: &TypedNode,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if node.inputs.len() != 2 {
+    if (op.q_params.is_none() && node.inputs.len() != 2)
+        && (op.q_params.is_some() && node.inputs.len() != 9)
+    {
         return Ok(None);
     }
-    if let Some(axes) = choose_mkn_axes(op, model, node)? {
-        if op.q_params.is_some() && op.q_params != Some(i32::datum_type()) {
-            return dequant_output(op, model, node, axes);
+    if let Some(axes) = choose_mkn_axes(op, model, node).context("Choosing axes")? {
+        if op.q_params.is_none() {
+            lir_mat_mul_unary(op, model, node, axes).context("Translating to LirMatMul")
         } else {
-            return lir_mat_mul_unary(op, model, node, axes);
+            dequant_output(op, model, node, axes).context("Dequantizing output")
         }
+    } else {
+        Ok(None)
     }
-    Ok(None)
 }
 
 fn choose_mkn_axes<'a>(
@@ -64,6 +68,19 @@ fn choose_mkn_axes<'a>(
     Ok(Some((m_axis, k_axis, n_axis)))
 }
 
+fn wire_axes_fix(
+    patch: &mut TypedModelPatch,
+    name: &str,
+    var: &str,
+    mapping: &AxesMapping,
+    mut outlet: TVec<OutletId>,
+) -> TractResult<TVec<OutletId>> {
+    for (ix, axis_op) in mapping.translate_to_axis_ops()?.into_iter().enumerate() {
+        outlet = patch.wire_node(format!("{name}.fix_{var}.{ix})"), axis_op, &outlet)?;
+    }
+    Ok(outlet)
+}
+
 fn dequant_output(
     op: &EinSum,
     model: &TypedModel,
@@ -74,26 +91,20 @@ fn dequant_output(
     let mut patch = TypedModelPatch::new("Dequantizing einsum");
     let taps: Vec<OutletId> =
         node.inputs.iter().map(|i| patch.tap_model(model, *i)).collect::<TractResult<Vec<_>>>()?;
-    let [a, b, mut bias, mut a0, a_scale, mut b0, b_scale, c0, c_scale] = *taps else {
+    let [a, b, bias, mut a0, a_scale, mut b0, b_scale, c0, c_scale] = *taps else {
         bail!("Expect exactly 9 inputs")
     };
 
     let a = wire_offset_u8_as_i8(&mut patch, &node.name, a, "a", &mut a0, "a0")?;
     let b = wire_offset_u8_as_i8(&mut patch, &node.name, b, "b", &mut b0, "b0")?;
 
-    let expr = AxesMapping::new(
-        op.expr
-            .iter_all_axes()
-            .map(|a| {
-                let mut a = a.clone();
-                a.inputs.truncate(2);
-                a
-            })
-            .collect_vec(),
-    )?;
     let mut output = patch.wire_node(
         &node.name,
-        EinSum { q_params: None, expr, operating_dt: op.operating_dt },
+        EinSum {
+            q_params: None,
+            expr: op.expr.extract_sub_mapping(&[0, 1], &[0])?,
+            operating_dt: op.operating_dt,
+        },
         &[a, b],
     )?;
 
@@ -103,37 +114,28 @@ fn dequant_output(
         format!("{name}.sum_a"),
         Reduce::new(tvec!(k_axis.inputs[0][0]), Reducer::Sum),
         &[a_i32],
-    )?[0];
+    )?;
     let sum_b = patch.wire_node(
         format!("{name}.sum_b"),
         Reduce::new(tvec!(k_axis.inputs[1][0]), Reducer::Sum),
         &[b_i32],
-    )?[0];
+    )?;
+
+    let sum_a =
+        wire_axes_fix(&mut patch, name, "sum_a", &op.expr.extract_sub_mapping(&[0], &[0])?, sum_a)?;
+    let sum_b =
+        wire_axes_fix(&mut patch, name, "sum_b", &op.expr.extract_sub_mapping(&[1], &[0])?, sum_b)?;
+    let bias = tvec!(bias);
+    let bias =
+        wire_axes_fix(&mut patch, name, "bias", &op.expr.extract_sub_mapping(&[2], &[0])?, bias)?;
 
     let abc_scale = combine_scales(&mut patch, name, a_scale, b_scale, c_scale)?;
 
-    // bias is scalar -> ok
-    // bias is vec, align its axis according to expr (counting from right)
-    let bias_axis = op.expr.input_axis(2, 0).ok().and_then(|axis| axis.outputs[0].first()).cloned();
-    for i in 0..op.expr.output_rank(0) {
-        if Some(i) != bias_axis {
-            bias = patch.wire_node(
-                format!("{name}.bias_axis_rank_fix.{i}"),
-                AxisOp::Add(i),
-                &[bias],
-            )?[0];
-        }
-    }
-    output = wire_with_rank_broadcast(
-        &format!("{name}.add_bias"),
-        &mut patch,
-        add(),
-        &[output[0], bias],
-    )?;
+    output = patch.wire_node(format!("{name}.add_bias"), add(), &[output[0], bias[0]])?;
 
     let k = model.outlet_fact(node.inputs[0])?.shape[k_axis.inputs[0][0]].clone();
-    let output =
-        compensate_zero_points(&mut patch, name, output[0], k, a0, b0, sum_a, sum_b)?;
+    let output = compensate_zero_points(&mut patch, name, output[0], k, a0, b0, sum_a[0], sum_b[0])
+        .context("Zero point compensation")?;
     let output = requant(&mut patch, name, output, op.q_params.unwrap(), abc_scale, c0)?;
     patch.shunt_outside(model, node.id.into(), output)?;
     Ok(Some(patch))
@@ -175,9 +177,12 @@ fn lir_mat_mul_unary(
         )
         .map(Some);
     }
+    let a_dt = input_facts[0].datum_type;
+    let b_dt = input_facts[1].datum_type;
     let dt = op.operating_dt;
-    let mmm =
-        tract_linalg::ops().mmm(dt, dt, dt, m.to_usize().ok(), Some(k), n.to_usize().ok()).unwrap();
+    let mmm = tract_linalg::ops()
+        .mmm(a_dt, b_dt, dt, m.to_usize().ok(), Some(k), n.to_usize().ok())
+        .unwrap();
     let name = &node.name;
     let mut patch = TypedModelPatch::new("Einsum to LirMatMulUnary");
     let a = patch.tap_model(model, node.inputs[0])?;
@@ -208,8 +213,8 @@ fn lir_mat_mul_unary(
     let name = &node.name;
     let geo = AddMatMulGeometry {
         k: k.to_dim(),
-        a_storage: unsafe { mmm.a_packed(dt.size_of(), k) },
-        b_storage: unsafe { mmm.b_packed(dt.size_of(), k) },
+        a_storage: unsafe { mmm.a_packed(a_dt.size_of(), k) },
+        b_storage: unsafe { mmm.b_packed(b_dt.size_of(), k) },
         c_to_a_axis_mapping: MapOutputAxisToInput(c_to_a_axis_mapping),
         c_to_b_axis_mapping: MapOutputAxisToInput(c_to_b_axis_mapping),
     };

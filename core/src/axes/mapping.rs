@@ -210,12 +210,98 @@ impl AxesMapping {
         ('a'..).find(|c| self.iter_all_axes().all(|axis| axis.repr != *c)).unwrap()
     }
 
-    pub fn element_wise_unary(&self) -> bool {
+    pub fn is_element_wise_unary(&self) -> bool {
         self.input_count == 1
             && self.output_count == 1
             && self
                 .iter_all_axes()
                 .all(|axis| axis.inputs[0].len() == 1 && axis.outputs[0] == axis.inputs[0])
+    }
+
+    pub fn extract_sub_mapping(
+        &self,
+        inputs: &[usize],
+        outputs: &[usize],
+    ) -> TractResult<AxesMapping> {
+        let axes: Vec<_> = self
+            .iter_all_axes()
+            .filter(|axis| {
+                inputs.iter().any(|i| axis.inputs[*i].len() > 0)
+                    || outputs.iter().any(|o| axis.outputs[*o].len() > 0)
+            })
+            .map(|axis| Axis {
+                inputs: axis
+                    .inputs
+                    .iter()
+                    .enumerate()
+                    .filter(|(ix, _)| inputs.contains(ix))
+                    .map(|(_, it)| it.clone())
+                    .collect(),
+                outputs: axis
+                    .outputs
+                    .iter()
+                    .enumerate()
+                    .filter(|(ix, _)| outputs.contains(ix))
+                    .map(|(_, it)| it.clone())
+                    .collect(),
+                repr: axis.repr,
+            })
+            .collect();
+        AxesMapping::new(axes)
+    }
+
+    pub fn remove_axis(&self, repr: char) -> TractResult<AxesMapping> {
+        let mut axes: TVec<Axis> =
+            self.axes.iter().filter(|axis| axis.repr != repr).cloned().collect();
+        let removed = self.axis_by_repr(repr).context("Axis not found")?;
+        for input in 0..self.input_count {
+            for &position in &removed.inputs[input] {
+                for other in &mut axes {
+                    other.inputs[input]
+                        .iter_mut()
+                        .for_each(|other_pos| *other_pos -= (*other_pos > position) as usize);
+                }
+            }
+        }
+        for output in 0..self.output_count {
+            for &position in &removed.outputs[output] {
+                for other in &mut axes {
+                    other.outputs[output]
+                        .iter_mut()
+                        .for_each(|other_pos| *other_pos -= (*other_pos > position) as usize);
+                }
+            }
+        }
+        AxesMapping { axes, ..self.clone() }.check()
+    }
+
+    pub fn translate_to_axis_ops(&self) -> TractResult<Vec<AxisOp>> {
+        ensure!(self.input_count() == 1);
+        ensure!(self.output_count() == 1);
+        ensure!(self.iter_all_axes().all(|axis| axis.inputs[0].len() <= 1));
+        let rms = self
+            .iter_all_axes()
+            .filter(|a| a.outputs[0].len() == 0)
+            .sorted_by_key(|axis| -(axis.inputs[0][0] as isize))
+            .collect_vec();
+        let adds = self
+            .iter_all_axes()
+            .filter(|a| a.inputs[0].len() == 0)
+            .sorted_by_key(|axis| axis.outputs[0][0] as isize)
+            .collect_vec();
+        let permutation = rms
+            .iter()
+            .chain(adds.iter())
+            .try_fold(self.clone(), |mapping, axis| mapping.remove_axis(axis.repr))?;
+        let permutation = permutation
+            .iter_all_axes()
+            .sorted_by_key(|axis| axis.inputs[0][0])
+            .map(|a| a.outputs[0][0])
+            .collect_vec();
+        let permutation = perm_to_ops(&permutation);
+        let rms = rms.iter().map(|axis| AxisOp::Rm(axis.inputs[0][0]));
+        let adds = adds.iter().map(|axis| AxisOp::Add(axis.outputs[0][0]));
+        Ok(rms.chain(permutation).chain(adds).collect())
     }
 
     pub fn from_strs(
@@ -310,10 +396,14 @@ impl Display for AxesMapping {
 mod test {
     use super::*;
 
+    fn m(s: &str) -> AxesMapping {
+        s.parse().unwrap()
+    }
+
     #[test]
     fn test_parse_transpose() {
         assert_eq!(
-            "ij->ji".parse::<AxesMapping>().unwrap(),
+            m("ij->ji"),
             AxesMapping::new(tvec![
                 Axis::new('i', 1, 1).output(0, 1).input(0, 0),
                 Axis::new('j', 1, 1).output(0, 0).input(0, 1)
@@ -325,7 +415,7 @@ mod test {
     #[test]
     fn test_parse_diag() {
         assert_eq!(
-            "ii->i".parse::<AxesMapping>().unwrap(),
+            m("ii->i"),
             AxesMapping::new(tvec![Axis::new('i', 1, 1).output(0, 0).input(0, 0).input(0, 1)])
                 .unwrap(),
         )
@@ -334,7 +424,7 @@ mod test {
     #[test]
     fn test_parse_adamar_product_explicit() {
         assert_eq!(
-            "i,i->i".parse::<AxesMapping>().unwrap(),
+            m("i,i->i"),
             AxesMapping::new(tvec![Axis::new('i', 2, 1).output(0, 0).input(0, 0).input(1, 0)])
                 .unwrap(),
         )
@@ -342,13 +432,13 @@ mod test {
 
     #[test]
     fn test_parse_inner_product_implicit() {
-        assert_eq!("i,i".parse::<AxesMapping>().unwrap(), "i,i->".parse::<AxesMapping>().unwrap(),)
+        assert_eq!(m("i,i"), m("i,i->"))
     }
 
     #[test]
     fn test_parse_batch_matmul() {
         assert_eq!(
-            "bij , bjk -> bik ".parse::<AxesMapping>().unwrap(),
+            m("bij , bjk -> bik "),
             AxesMapping::new(tvec![
                 Axis::new('b', 2, 1).output(0, 0).input(0, 0).input(1, 0),
                 Axis::new('i', 2, 1).output(0, 1).input(0, 1),
@@ -362,7 +452,7 @@ mod test {
     #[test]
     fn test_parse_outer_product() {
         assert_eq!(
-            "i,j->ij".parse::<AxesMapping>().unwrap(),
+            m("i,j->ij"),
             AxesMapping::new(tvec![
                 Axis::new('i', 2, 1).output(0, 0).input(0, 0),
                 Axis::new('j', 2, 1).output(0, 1).input(1, 0)
@@ -374,7 +464,7 @@ mod test {
     #[test]
     fn test_parse_bilinear() {
         assert_eq!(
-            "ik,jkl,il->ij".parse::<AxesMapping>().unwrap(),
+            m("ik,jkl,il->ij"),
             AxesMapping::new(tvec![
                 Axis::new('i', 3, 1).output(0, 0).input(0, 0).input(2, 0),
                 Axis::new('j', 3, 1).output(0, 1).input(1, 0),
@@ -388,7 +478,7 @@ mod test {
     #[test]
     fn test_parse_complex_tensor_contraction() {
         assert_eq!(
-            "pqrs,tuqvr->pstuv".parse::<AxesMapping>().unwrap(),
+            m("pqrs,tuqvr->pstuv"),
             AxesMapping::new(tvec![
                 Axis::new('p', 2, 1).output(0, 0).input(0, 0),
                 Axis::new('q', 2, 1).input(0, 1).input(1, 2),
@@ -404,24 +494,18 @@ mod test {
 
     #[test]
     fn test_parse_complex_tensor_contraction_implicit() {
-        assert_eq!(
-            "pqrs,tuqvr".parse::<AxesMapping>().unwrap(),
-            "pqrs,tuqvr->pstuv".parse::<AxesMapping>().unwrap(),
-        )
+        assert_eq!(m("pqrs,tuqvr"), m("pqrs,tuqvr->pstuv"))
     }
 
     #[test]
     fn test_display_expr() {
-        assert_eq!(
-            "pqrs,tuqvr->pstuv".parse::<AxesMapping>().unwrap().to_string(),
-            "pqrs,tuqvr->pstuv"
-        );
+        assert_eq!(m("pqrs,tuqvr->pstuv").to_string(), "pqrs,tuqvr->pstuv");
     }
 
     #[test]
     fn test_parse_pulsed_matmul() {
         assert_eq!(
-            "sij,ijk->sik".parse::<AxesMapping>().unwrap(),
+            m("sij,ijk->sik"),
             AxesMapping::new(tvec![
                 Axis::new('i', 2, 1).output(0, 1).input(0, 1).input(1, 0),
                 Axis::new('j', 2, 1).input(0, 2).input(1, 1),
@@ -435,7 +519,7 @@ mod test {
     #[test]
     fn test_parse_pulsed_batch_matmul() {
         assert_eq!(
-            "bsij,ijk->bsik".parse::<AxesMapping>().unwrap(),
+            m("bsij,ijk->bsik"),
             AxesMapping::new(tvec![
                 Axis::new('b', 2, 1).output(0, 0).input(0, 0),
                 Axis::new('i', 2, 1).output(0, 2).input(0, 2).input(1, 0),
@@ -445,5 +529,42 @@ mod test {
             ])
             .unwrap()
         )
+    }
+
+    #[test]
+    fn test_extract_sub_mapping() {
+        assert_eq!(m("bsij,ijk->bsik").extract_sub_mapping(&[0], &[0]).unwrap(), m("bsij->bsik"));
+        assert_eq!(m("bsij,ijk->bsik").extract_sub_mapping(&[1], &[0]).unwrap(), m("ijk->bsik"));
+        assert_eq!(m("bsij,ijk->ij").extract_sub_mapping(&[1], &[0]).unwrap(), m("ijk->ij"));
+    }
+
+    #[test]
+    fn test_remove_axis_0() {
+        assert_eq!(m("ab->a").remove_axis('b').unwrap(), m("a->a"));
+        assert_eq!(m("ba->a").remove_axis('b').unwrap(), m("a->a"));
+        assert_eq!(m("a->ba").remove_axis('b').unwrap(), m("a->a"));
+        assert_eq!(m("a->ab").remove_axis('b').unwrap(), m("a->a"));
+        assert_eq!(m("ab,a->a").remove_axis('b').unwrap(), m("a,a->a"));
+        assert_eq!(m("ba,a->a").remove_axis('b').unwrap(), m("a,a->a"));
+        assert_eq!(m("a,ab->a").remove_axis('b').unwrap(), m("a,a->a"));
+        assert_eq!(m("a,ba->a").remove_axis('b').unwrap(), m("a,a->a"));
+        assert_eq!(m("a,a->ab").remove_axis('b').unwrap(), m("a,a->a"));
+        assert_eq!(m("a,a->ba").remove_axis('b').unwrap(), m("a,a->a"));
+        assert_eq!(m("bsij,ijk->bsik").remove_axis('i').unwrap(), m("bsj,jk->bsk"),);
+    }
+
+    #[test]
+    fn test_translate_to_ops_rm_add() {
+        assert_eq!(m("ab->a").translate_to_axis_ops().unwrap(), vec!(AxisOp::Rm(1)));
+        assert_eq!(m("ba->a").translate_to_axis_ops().unwrap(), vec!(AxisOp::Rm(0)));
+        assert_eq!(
+            m("ab->c").translate_to_axis_ops().unwrap(),
+            vec!(AxisOp::Rm(1), AxisOp::Rm(0), AxisOp::Add(0))
+        );
+    }
+
+    #[test]
+    fn test_translate_to_ops_move() {
+        assert_eq!(m("ab->ba").translate_to_axis_ops().unwrap(), vec!(AxisOp::Move(1, 0)));
     }
 }

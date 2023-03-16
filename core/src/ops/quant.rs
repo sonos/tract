@@ -233,7 +233,7 @@ impl TypedOp for DequantizeLinearF32 {
                 .op
                 .axes_mapping(&input_facts, &output_facts)
                 .with_context(|| format!("Querying invariants for {quant}"))?;
-            if invariants.element_wise_unary() {
+            if invariants.is_element_wise_unary() {
                 current = quant;
             } else {
                 break;

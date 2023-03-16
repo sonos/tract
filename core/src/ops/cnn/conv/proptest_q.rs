@@ -266,6 +266,23 @@ fn trivial_2() {
 }
 
 #[test]
+fn trivial_3() {
+    QConvProblem {
+        shape_in: CHW.from_n_c_hw(1, 2, [1]).unwrap(),
+        co: 2,
+        kernel_format: HWIO,
+        group: 1,
+        data: arr2(&[[0i8], [0]]).into_dyn(),
+        kernel: arr3(&[[[0i8, 0], [0, 0]]]).into_dyn(),
+        bias: None,
+        qp: MatMulQParams::noop_static(i8::datum_type()),
+        optim: true,
+    }
+    .check()
+    .unwrap();
+}
+
+#[test]
 fn b0() {
     QConvProblem {
         optim: true,
@@ -643,6 +660,26 @@ fn bias_vec_with_batch() {
         bias: Some(arr1(&[0, 1]).into_dyn()),
         qp,
         optim: false,
+    }
+    .check()
+    .unwrap();
+}
+
+#[test]
+fn asan_0() {
+    let qp = MatMulQParams::noop_static(i8::datum_type());
+    let data = ArrayD::zeros(vec![1, 2]);
+    let kernel = ArrayD::zeros(vec![5, 2, 1]);
+    QConvProblem {
+        shape_in: HWC.from_n_c_hw(1, 2, [1]).unwrap(),
+        co: 5,
+        kernel_format: OIHW,
+        group: 1,
+        data,
+        kernel,
+        bias: None,
+        qp,
+        optim: true,
     }
     .check()
     .unwrap();
