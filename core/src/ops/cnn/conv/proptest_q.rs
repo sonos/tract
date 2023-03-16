@@ -154,7 +154,9 @@ impl QConvProblem {
     }
 
     fn check(&self) -> TractResult<()> {
-        self.tract()?.into_tensor().close_enough(&self.reference().into_tensor(), Approximation::Exact)
+        self.tract()?
+            .into_tensor()
+            .close_enough(&self.reference().into_tensor(), Approximation::Exact)
     }
 }
 
@@ -258,6 +260,26 @@ fn trivial_2() {
         bias: None,
         qp: MatMulQParams::noop_static(i8::datum_type()),
         optim: true,
+    }
+    .check()
+    .unwrap();
+}
+
+#[test]
+fn b0() {
+    QConvProblem {
+        optim: true,
+        shape_in: HWC.from_n_c_hw(1, 1, [1]).unwrap(),
+        kernel_format: OIHW,
+        co: 1,
+        group: 1,
+        data: arr2(&[[0i8]]).into_dyn(),
+        kernel: arr3(&[[[-1i8]]]).into_dyn(),
+        bias: None,
+        qp: MatMulQParams {
+            b0: tensor0(1i32).into(),
+            ..MatMulQParams::noop_static(i8::datum_type())
+        },
     }
     .check()
     .unwrap();

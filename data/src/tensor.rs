@@ -929,6 +929,10 @@ impl Tensor {
         }
     }
 
+    pub fn is_zero(&self) -> anyhow::Result<bool> {
+        Ok(self == &Tensor::zero_scalar_dt(self.dt)?)
+    }
+
     unsafe fn natural_cast<
         Source: Datum + num_traits::AsPrimitive<Target>,
         Target: Datum + Copy,
