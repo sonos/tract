@@ -35,10 +35,10 @@ impl ProtoFusedSpec {
             BinScalar(_, op) => format!("scalar{op:?}"),
             BinPerRow(_, op, _) => format!("row{op:?}"),
             BinPerCol(_, op, _) => format!("col{op:?}"),
-            AddRowColProducts(_, _) => "add row*col product".to_string(),
-            AddUnicast(_, _) => "add to matrix".to_string(),
-            Scaler(s) => format!("scale by {}", 1f32 * *s),
-            Store(_oss) => "Store".to_string(),
+            AddRowColProducts(_, _) => "add_row_col_product".to_string(),
+            AddUnicast(_, _) => "add_to_matrix".to_string(),
+            Scaler(s) => format!("scale({})", 1f32 * *s),
+            Store(_oss) => "store".to_string(),
         }
     }
 
@@ -252,7 +252,7 @@ impl Op for LirMatMulUnary {
         } else {
             infos.push(format!("Mult: {}", self.mmm));
         }
-        infos.push(format!("Ops: {:?}", self.micro_ops.iter().map(|o| o.name()).join(">")));
+        infos.push(format!("Ops: {}", self.micro_ops.iter().map(|o| o.name()).join(" . ")));
         Ok(infos)
     }
 
