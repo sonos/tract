@@ -282,55 +282,6 @@ impl TypedOp for QMatMul {
         Ok(Some(patch))
     }
 
-    /*
-    fn codegen(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let mut patch = TypedModelPatch::default();
-
-        if let Some((inputs, qp)) = self.params.inline_static(model, node)? {
-            let mut patch = TypedModelPatch::new("inlining matmul quantized params");
-            let inputs: Vec<OutletId> =
-                inputs.iter().map(|i| patch.tap_model(model, *i)).collect::<TractResult<_>>()?;
-            let op = Self { params: qp, ..self.clone() };
-            let wire = patch.wire_node(&node.name, op, &inputs)?;
-            patch.shunt_outside(model, node.id.into(), wire[0])?;
-            return Ok(Some(patch));
-        }
-
-        let a = patch.tap_model(model, node.inputs[0])?;
-        let b = patch.tap_model(model, node.inputs[1])?;
-        let bias = patch.tap_model(model, node.inputs[2])?;
-
-        let mut input_outlets = tvec![a, b, bias];
-        for i in node.inputs.iter().skip(3) {
-            input_outlets.push(patch.tap_model(model, *i)?)
-        }
-        let mut params = self.params.as_outlet_ids(&mut patch, &node.name, &input_outlets)?;
-
-        let a = wire_offset_u8_as_i8(&mut patch, &node.name, a, "a", &mut params[0], "a0")?;
-        let b = wire_offset_u8_as_i8(&mut patch, &node.name, b, "b", &mut params[2], "b0")?;
-
-        let new_op = MatMul { axes: self.axes };
-        let result = patch.wire_node(format!("{}.matmul", &node.name), new_op, &[a, b])?[0];
-        let result = wire_matmul_quant(
-            &mut patch,
-            &node.name,
-            a,
-            b,
-            Some(bias),
-            self.axes,
-            result,
-            self.output_type,
-            &params,
-        )?;
-        patch.shunt_outside(model, node.id.into(), result)?;
-        Ok(Some(patch))
-    }
-    */
-
     as_op!();
 }
 
