@@ -661,8 +661,7 @@ impl ConvUnary {
                     operating_dt: i32::datum_type(),
                     q_params: Some(q_params.0),
                 };
-                let wire = patch.wire_node(format!("{}.einsum", node.name), op, &inputs)?[0];
-                wire
+                patch.wire_node(format!("{}.einsum", node.name), op, &inputs)?[0]
             } else {
                 let op =
                     EinSum { expr: axes, operating_dt: input_facts[0].datum_type, q_params: None };

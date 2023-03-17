@@ -1,6 +1,7 @@
 use crate::internal::*;
 use crate::ops::cnn::KernelFormat;
 use crate::ops::cnn::PoolSpec;
+use crate::ops::einsum::EinSum;
 
 #[derive(Clone, Debug, new, Hash)]
 pub struct DeconvUnary {
@@ -114,10 +115,10 @@ impl DeconvUnary {
             "Ngmk,Ngkn->Ngmn".to_string()
         };
         if !self.pool_spec.data_format.has_n() {
-            expr = expr.replace("N", "");
+            expr = expr.replace('N', "");
         }
         if self.group == 1 {
-            expr = expr.replace("g", "");
+            expr = expr.replace('g', "");
         }
         let einsum = target.wire_node(
             format!("{name}.einsum"),
