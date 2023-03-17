@@ -7,7 +7,7 @@ mod mir;
 pub use lir::LirScan;
 pub use mir::Scan;
 
-#[derive(Clone, new, Hash, Eq, PartialEq, Copy)]
+#[derive(Clone, new, Hash, Eq, PartialEq, Copy, Debug)]
 pub struct ScanInfo {
     pub slot: usize,
     pub axis: usize,
