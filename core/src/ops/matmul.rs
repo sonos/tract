@@ -14,7 +14,7 @@ use tract_linalg::mmm::FusedSpec;
 use tract_ndarray::prelude::*;
 
 pub use self::mir::MatMul;
-pub use self::mir_quant::{MatMulQParams, QMatMul};
+pub use self::mir_quant::MatMulQParams;
 
 #[derive(PartialEq, Eq, Clone, Debug, Copy, Hash)]
 pub struct MatMulAxes {
