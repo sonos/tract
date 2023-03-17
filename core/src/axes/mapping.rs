@@ -171,6 +171,7 @@ impl AxesMapping {
         self.check()
     }
 
+    // FIXME: fuse with with_extra_input ?
     pub fn add_input(mut self, rank: usize) -> TractResult<AxesMapping> {
         self.input_count += 1;
         for axis in &mut self.axes {
@@ -187,6 +188,10 @@ impl AxesMapping {
     }
 
     fn do_check(&self) -> TractResult<()> {
+        for axis in &self.axes {
+            ensure!(axis.inputs.len() == self.input_count);
+            ensure!(axis.outputs.len() == self.output_count);
+        }
         for input_ix in 0..self.input_count() {
             for axis in 0..self.input_rank(input_ix) {
                 ensure!(self.input_axis(input_ix, axis).is_ok());
@@ -273,6 +278,25 @@ impl AxesMapping {
             }
         }
         AxesMapping { axes, ..self.clone() }.check()
+    }
+
+    pub fn with_extra_input(&self, slot: usize) -> TractResult<AxesMapping> {
+        let axes: TVec<Axis> = self.iter_all_axes().map(|axis| {
+            let mut axis = axis.clone();
+            axis.inputs.insert(slot, tvec!());
+            axis
+        }).collect();
+        AxesMapping { axes, input_count: self.input_count + 1, .. self.clone() }.check()
+    }
+
+    pub fn with_extra_input_axis(&self, repr: char, slot: usize, position: usize) -> TractResult<AxesMapping> {
+        let mut axes: TVec<Axis> = self.axes.clone();
+        axes.iter_mut().for_each(|axis| axis.inputs[slot].iter_mut().for_each(|pos| *pos += (*pos >= position) as usize));
+        let mut axis = Axis::new(repr, self.input_count, self.output_count);
+        axis.inputs[slot].push(position);
+        axes.push(axis);
+//        dbg!(&axes);
+        AxesMapping { axes, .. self.clone() }.check()
     }
 
     pub fn translate_to_axis_ops(&self) -> TractResult<Vec<AxisOp>> {

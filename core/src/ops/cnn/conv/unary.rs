@@ -10,6 +10,7 @@ use crate::ops;
 use crate::ops::array::Pad;
 use crate::ops::array::PadMode;
 use crate::ops::cnn::PaddingSpec;
+use crate::ops::einsum::EinSum;
 use crate::ops::matmul::lir_unary::AddMatMulGeometry;
 use crate::ops::matmul::lir_unary::MapOutputAxisToInput;
 use crate::ops::matmul::mir_quant::offset_u8_as_i8;
@@ -591,54 +592,87 @@ impl ConvUnary {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        use crate::ops::matmul::*;
-        let input_fact = model.outlet_fact(node.inputs[0])?;
-        let full_input_shape = input_fact.shape.to_tvec();
+        let (input_facts, output_facts) = model.node_facts(node.id)?;
+        let full_input_shape = input_facts[0].shape.to_tvec();
         let input_shape = self.pool_spec.data_format.shape(&full_input_shape)?;
         if input_shape.hw_rank() == 1
             && self.group == 1
             && self.pool_spec.stride(0) == 1
             && self.kernel.len() == self.input_channels() * self.output_channels()
         {
+            let name = &node.name;
             let ci = self.input_channels();
             let co = self.output_channels();
             let ker = self.kernel.clone().into_tensor();
-            let (a_shape, a_trans) = if self.kernel_fmt == KernelFormat::HWIO {
-                ([ci, co], true)
-            } else {
-                ([co, ci], false)
-            };
+            let a_shape = if self.kernel_fmt == KernelFormat::HWIO { [ci, co] } else { [co, ci] };
             let a = ker
                 .into_shape(&a_shape)?
                 .broadcast_into_rank(full_input_shape.len())?
                 .into_arc_tensor();
-            let trans_data = self.pool_spec.data_format == DataFormat::HWC
-                || self.pool_spec.data_format == DataFormat::NHWC;
             let mut patch = TypedModelPatch::new("declutter_as_matmul");
-            let a = patch.add_const(format!("{}.filters", &node.name), a)?;
-            let mut inputs = node
+            let a = patch.add_const(format!("{name}.filters"), a)?;
+            let taps = node
                 .inputs
                 .iter()
                 .map(|i| patch.tap_model(model, *i))
                 .collect::<TractResult<TVec<_>>>()?;
+            let mut inputs = taps.clone();
             inputs.insert(0, a);
-            let axes = MatMulAxes::default_for_rank(full_input_shape.len())
-                .transposing(a_trans, trans_data, trans_data);
-            // in Q case, the bias has to be injected inside the QMatMul (as it
-            // must be added before requantization)
+            let mut axes = self.axes_mapping(&input_facts, &output_facts)?.with_extra_input(0)?;
+            for i in 0..full_input_shape.len() - 2 {
+                axes = axes
+                    .with_extra_input_axis('$', 0, i)?
+                    .linking(axes.input_axis(1, i)?.repr, '$')?;
+            }
+            axes = axes
+                .with_extra_input_axis('2', 0, full_input_shape.len() - 2)?
+                .with_extra_input_axis('1', 0, full_input_shape.len() - 1)?;
+            if self.kernel_fmt == KernelFormat::HWIO {
+                axes = axes.linking('I', '2')?.linking('O', '1')?;
+            } else {
+                axes = axes.linking('I', '1')?.linking('O', '2')?;
+            }
             let wire = if let Some(q_params) = &self.q_params {
-                let mut params = q_params.1.clone();
-                params.insert_input(0); // kernel as input
-                params.insert_input(2); // bias as input
                 let bias = self.bias.clone().unwrap_or_else(|| rctensor0(0i32));
                 anyhow::ensure!(bias.rank() == 0 || bias.rank() == 1);
-                let bias = patch.add_const(format!("{}.bias", &node.name), bias)?;
+                axes = axes.with_extra_input(2)?;
+                if bias.rank() == 1 {
+                    axes = axes.with_extra_input_axis('$', 2, 0)?.linking('O', '$')?;
+                }
+                let bias = patch.add_const(format!("{name}.bias"), bias)?;
                 inputs.insert(2, bias);
-                let op = QMatMul { axes, output_type: q_params.0, params: q_params.1.clone() };
-                patch.wire_node(&*node.name, op, &inputs)?[0]
+                inputs.truncate(3);
+                for (qp_ix, (qp_name, qp_val)) in q_params.1.iter().enumerate() {
+                    let konst = match qp_val {
+                        AttrOrInput::Input(ix) => taps[*ix],
+                        AttrOrInput::Attr(a) => {
+                            patch.add_const(format!("{name}.{qp_name}"), a.clone())?
+                        }
+                    };
+                    axes = axes.with_extra_input(qp_ix + 3)?;
+                    let qp_rank = patch.outlet_fact(konst)?.rank();
+                    if qp_rank == 1 {
+                        axes = axes.with_extra_input_axis('$', qp_ix + 3, 0)?;
+                        axes = match qp_ix {
+                            0 | 1 => axes.linking('O', '$')?,
+                            2 | 3 => axes.linking('I', '$')?,
+                            4 | 5 => axes.linking('O', '$')?,
+                            _ => unreachable!(),
+                        };
+                    }
+                    inputs.push(konst);
+                }
+                let op = EinSum {
+                    expr: axes,
+                    operating_dt: i32::datum_type(),
+                    q_params: Some(q_params.0),
+                };
+                let wire = patch.wire_node(format!("{}.einsum", node.name), op, &inputs)?[0];
+                wire
             } else {
-                let op = MatMul { axes };
-                let mut wire = patch.wire_node(format!("{}.matmul", node.name), op, &inputs)?[0];
+                let op =
+                    EinSum { expr: axes, operating_dt: input_facts[0].datum_type, q_params: None };
+                let mut wire = patch.wire_node(format!("{}.einsum", node.name), op, &inputs)?[0];
                 if let Some(b) = self.bias.as_ref().filter(|_| self.q_params.is_none()) {
                     anyhow::ensure!(b.rank() == 0 || b.rank() == 1);
                     let mut bias_shape = tvec!(1; input_shape.rank());
@@ -818,10 +852,13 @@ impl TypedOp for ConvUnary {
         let geo = "HWXYZ".chars().chain('a'..);
         let kernel_spatial_shape =
             &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
+        let padding = self.pool_spec.computed_padding(shape.hw_dims());
         for ((ix, &dim), repr) in kernel_spatial_shape.iter().enumerate().zip(geo) {
             if dim == 1
+                && self.pool_spec.dilation(ix) == 1
                 && self.pool_spec.stride(ix) == 1
-                && self.pool_spec.padding.valid_dim(ix, true)
+                && padding[ix].pad_before.is_zero()
+                && padding[ix].pad_after.is_zero()
             {
                 axes = axes
                     .with_input_axis_named(0, ix + h_axis, repr)?
