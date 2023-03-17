@@ -684,3 +684,4 @@ fn asan_0() {
     .check()
     .unwrap();
 }
+

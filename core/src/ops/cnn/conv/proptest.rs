@@ -986,3 +986,21 @@ fn depthwise_0() -> anyhow::Result<()> {
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
 }
+
+#[test]
+fn same_upper() -> anyhow::Result<()> {
+    let data = ArrayD::zeros(vec![2, 1]);
+    let kernel = ArrayD::zeros(vec![1, 1, 1]);
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [2]).unwrap(),
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data,
+        kernel,
+        bias: None,
+        pad: PaddingSpec::SameUpper,
+        strides: tvec!(1)
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
