@@ -1,9 +1,6 @@
 use crate::internal::*;
 use crate::ops::cnn::KernelFormat;
 use crate::ops::cnn::PoolSpec;
-use crate::ops::matmul::MatMulAxes;
-
-// no-bias, no-group, f32
 
 #[derive(Clone, Debug, new, Hash)]
 pub struct DeconvUnary {
@@ -109,17 +106,26 @@ impl DeconvUnary {
             shape_g_ohw_i.insert(0, 1);
         }
         let kernel_as_g_ohw_i = kernel_as_g_o_h_w_i.into_shape(&shape_g_ohw_i)?;
-        let trans_data = self.pool_spec.data_format.c_is_last();
-        let axes = MatMulAxes::default_for_rank(kernel_as_g_ohw_i.rank())
-            .transposing(false, trans_data, false);
         let kernel =
             target.add_const(format!("{}.kernel", name), kernel_as_g_ohw_i.into_arc_tensor())?;
-        let gemm = target.wire_node(
-            format!("{name}.gemm"),
-            crate::ops::matmul::MatMul { axes },
+        let mut expr = if self.pool_spec.data_format.c_is_last() {
+            "Ngmk,Ngnk->Ngmn".to_string()
+        } else {
+            "Ngmk,Ngkn->Ngmn".to_string()
+        };
+        if !self.pool_spec.data_format.has_n() {
+            expr = expr.replace("N", "");
+        }
+        if self.group == 1 {
+            expr = expr.replace("g", "");
+        }
+        let einsum = target.wire_node(
+            format!("{name}.einsum"),
+            EinSum { expr: expr.parse()?, operating_dt: self.kernel.datum_type(), q_params: None },
             &[kernel, input[0]],
         )?;
-        // gemm must be (N_)CHkWk_HW
+
+        // einsum must be (N_)CHkWk_HW
         let deconv_sum = target.wire_node(
             format!("{name}.deconv_sum"),
             super::deconv_sum::DeconvSum::new(
@@ -130,7 +136,7 @@ impl DeconvUnary {
                 self.bias.clone(),
                 self.group,
             ),
-            &gemm,
+            &einsum,
         )?;
         Ok(deconv_sum)
     }
