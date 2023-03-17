@@ -34,7 +34,7 @@ impl LirScan {
             })
             .unwrap();
         let outside_dim = inputs[info.slot].shape[info.axis].clone();
-        Some(outside_dim / info.chunk)
+        Some(outside_dim / info.chunk.abs())
     }
 }
 
