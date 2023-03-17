@@ -425,9 +425,8 @@ pub fn offset_u8_as_i8() -> ElementWiseOp {
 #[cfg(test)]
 pub mod scale {
     use crate::internal::*;
-    use crate::ops;
+    use crate::ops::einsum::EinSum;
     use crate::ops::math::round_ties_to_even;
-    use crate::ops::matmul::MatMulAxes;
     use proptest::prelude::*;
 
     fn test_scale(a: i8, b: i8, scale: f32) {
@@ -441,10 +440,18 @@ pub mod scale {
         let a = model.add_const("a", tensor2(&[[a]])).unwrap();
         let b = model.add_source("b", i8::fact([1, 1])).unwrap();
         let bias = model.add_const("bias", tensor0(0i32)).unwrap();
-        let mut qp = ops::matmul::MatMulQParams::noop_static(i8::datum_type());
-        qp.c_scale = tensor0(scale).into();
-        let op = ops::matmul::QMatMul::new(MatMulAxes::default(), i8::datum_type(), qp);
-        let output = model.wire_node("mmm", op, &[a, b, bias]).unwrap();
+        let a0 = model.add_const("a0", tensor0(0i8)).unwrap();
+        let a_scale = model.add_const("a_scale", tensor0(1f32)).unwrap();
+        let b0 = model.add_const("b0", tensor0(0i8)).unwrap();
+        let b_scale = model.add_const("b_scale", tensor0(1f32)).unwrap();
+        let c0 = model.add_const("c0", tensor0(0i8)).unwrap();
+        let c_scale = model.add_const("c_scale", tensor0(scale)).unwrap();
+        let op = EinSum {
+            expr: "mk,kn,,,,,,,->mn".parse().unwrap(),
+            operating_dt: i32::datum_type(),
+            q_params: Some(i8::datum_type()),
+        };
+        let output = model.wire_node("mmm", op, &[a, b, bias, a0, a_scale, b0, b_scale, c0, c_scale]).unwrap();
         model.set_output_outlets(&output).unwrap();
 
         let plain = model.clone().into_runnable().unwrap().run(input.clone()).unwrap();
