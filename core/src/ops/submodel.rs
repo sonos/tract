@@ -93,7 +93,7 @@ impl TypedOp for SubmodelOp {
     as_op!();
 }
 
-pub trait InnerModel: Debug + dyn_clone::DynClone + Downcast + Sync + Send + 'static {
+pub trait InnerModel: Debug + dyn_clone::DynClone + Downcast + Sync + Send + 'static + DynHash {
     #[allow(unused_variables)]
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>>;
     fn is_stateless(&self) -> bool;
@@ -117,6 +117,13 @@ pub trait InnerModel: Debug + dyn_clone::DynClone + Downcast + Sync + Send + 'st
 
 dyn_clone::clone_trait_object!(InnerModel);
 downcast_rs::impl_downcast!(InnerModel);
+
+impl Hash for Box<dyn InnerModel> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        std::hash::Hash::hash(&self.type_id(), state);
+        self.dyn_hash(state)
+    }
+}
 
 impl InnerModel for TypedModel {
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
