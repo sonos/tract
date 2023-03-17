@@ -3,8 +3,6 @@ use ops::binary::wire_with_rank_broadcast;
 
 use crate::internal::*;
 use crate::ops;
-use crate::ops::einsum::EinSum;
-use crate::ops::matmul::*;
 use crate::ops::quant::offset_u8_as_i8_elementwise;
 
 pub fn offset_u8_as_i8(param: &Arc<Tensor>) -> TractResult<AttrOrInput> {
@@ -142,149 +140,6 @@ impl MatMulQParams {
     }
 }
 
-#[derive(Debug, Clone, new, Hash)]
-pub struct QMatMul {
-    pub axes: MatMulAxes,
-    pub output_type: DatumType,
-    pub params: MatMulQParams,
-}
-
-impl Op for QMatMul {
-    fn name(&self) -> Cow<str> {
-        "QMatMul".into()
-    }
-
-    op_as_typed_op!();
-}
-
-impl EvalOp for QMatMul {
-    fn is_stateless(&self) -> bool {
-        true
-    }
-
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        ensure!(
-            inputs[0].rank() == inputs[1].rank(),
-            "Rank mismatch {:?} vs {:?}",
-            inputs[0],
-            inputs[1]
-        );
-
-        let mut model = TypedModel::default();
-        let a = model.add_const("source_a", inputs[0].clone().into_arc_tensor())?;
-        let b = model.add_const("source_b", inputs[1].clone().into_arc_tensor())?;
-        let bias = model.add_const("source_bias", inputs[2].clone().into_arc_tensor())?;
-
-        let mut input_outlets = tvec![a, b, bias];
-        for (i, t) in inputs.iter().enumerate().skip(3) {
-            input_outlets.push(model.add_const(format!("source_{i}"), t.clone().into_arc_tensor())?)
-        }
-
-        let mut params = self.params.as_outlet_ids(&mut model, "qmatmul_unary", &input_outlets)?;
-
-        let a = wire_offset_u8_as_i8(&mut model, "adhoc", a, "a", &mut params[0], "a0")?;
-        let b = wire_offset_u8_as_i8(&mut model, "adhoc", b, "b", &mut params[2], "b0")?;
-
-        let new_op = MatMul { axes: self.axes };
-        let result = model.wire_node("adhoc.matmul", new_op, &[a, b])?[0];
-        let result = wire_matmul_quant(
-            &mut model,
-            "adhoc",
-            a,
-            b,
-            Some(bias),
-            self.axes,
-            result,
-            self.output_type,
-            &params,
-        )?;
-        model.set_output_outlets(&[result])?;
-        model.into_runnable()?.run(tvec![])
-    }
-}
-
-impl TypedOp for QMatMul {
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        if inputs.len() != 3 + self.params.input_count() {
-            bail!(
-                "Inconsistent q matmul. expects {} inputs, got {}",
-                3 + self.params.input_count(),
-                inputs.len()
-            );
-        }
-        if inputs[0].rank() != inputs[1].rank() {
-            bail!(
-                "Inconsistent matmul between {:?} and {:?} (rank mismatch)",
-                inputs[0],
-                inputs[1]
-            );
-        }
-        let (_m, _k, _n, c_shape) = compute_shape(&inputs[0].shape, &inputs[1].shape, self.axes)?;
-
-        let bias = &inputs[2];
-        #[allow(clippy::comparison_chain)]
-        if bias.rank() > 1 {
-            anyhow::bail!("Bias must be either scalar or vector (rank 0 or 1).");
-        } else if bias.rank() == 1 {
-            let expected_len = &c_shape[self.axes.c_m];
-            anyhow::ensure!(
-                &bias.shape[0] == expected_len,
-                "got: {:?} expected len: {:?}",
-                bias,
-                expected_len
-            );
-        };
-
-        Ok(tvec!(self.output_type.fact(c_shape)))
-    }
-
-    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        cost(
-            &inputs[0].shape.to_tvec(),
-            &inputs[1].shape.to_tvec(),
-            inputs[0].datum_type,
-            self.axes,
-        )
-    }
-
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let a_fact = model.outlet_fact(node.inputs[0])?;
-        let b_fact = model.outlet_fact(node.inputs[1])?;
-        assert!(a_fact.rank() == b_fact.rank());
-        let mut axes = self.axes.to_axis_mapping(a_fact.rank())?;
-        let mut patch = TypedModelPatch::new("QMatMul as Einsum");
-        let name = &node.name;
-        // a, b, bias
-        let mut inputs: Vec<OutletId> = (node.inputs[0..3])
-            .iter()
-            .map(|i| patch.tap_model(model, *i))
-            .collect::<TractResult<Vec<_>>>()?;
-        let bias_fact = model.outlet_fact(node.inputs[2])?;
-        axes = axes.add_input(bias_fact.rank())?;
-        if bias_fact.rank() == 1 {
-            axes = axes.with_input_axis_named(2, 0, '$')?.linking('m', '$')?;
-        }
-        for (param_name, param_value) in self.params.iter() {
-            let outlet = match &param_value {
-                AttrOrInput::Attr(k) => patch.add_const(format!("{name}.{param_name}"), k.clone())?,
-                AttrOrInput::Input(i) => patch.tap_model(model, node.inputs[*i])?,
-            };
-            inputs.push(outlet);
-            axes = axes.add_input(patch.outlet_fact(outlet)?.rank())?;
-        }
-        let op = EinSum::new(axes, DatumType::I32, Some(self.output_type));
-        let output = patch.wire_node(&node.name, op, &inputs)?[0];
-        patch.shunt_outside(model, node.id.into(), output)?;
-        Ok(Some(patch))
-    }
-
-    as_op!();
-}
-
 /// Wires the offsetting of a matrix and zero point node.
 ///
 /// Only wires nodes of u8 type and leaves nodes of different type untouched.
@@ -328,74 +183,6 @@ pub(crate) fn wire_offset_u8_as_i8(
     } else {
         Ok(matrix)
     }
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn wire_matmul_quant(
-    model: &mut TypedModel,
-    name: &str,
-    a: OutletId,
-    b: OutletId,
-    bias: Option<OutletId>,
-    axes: MatMulAxes,
-    mut result: OutletId,
-    output_type: DatumType,
-    params: &[OutletId],
-) -> TractResult<OutletId> {
-    let b_fact = model.outlet_fact(b)?.clone();
-    // TODO: assumed c_rank == b_rank (== a_rank)
-
-    if let Some(mut bias) = bias {
-        // bias is scalar -> ok
-        // bias is vec, m is right in C -> broadcast will add left side axes to bias
-        // bias is vec, m is not right in C -> we must append in C axes to the right to align them
-        let bias_rank = model.outlet_fact(bias)?.rank();
-        if bias_rank == 1 && axes.c_m < b_fact.rank() - 1 {
-            for i in 0..(b_fact.rank() - axes.c_m - 1) {
-                bias = model.wire_node(
-                    format!("{name}.axis_rank_fix.{i}"),
-                    AxisOp::Add(bias_rank + i),
-                    &[bias],
-                )?[0]
-            }
-        }
-        result = wire_with_rank_broadcast(
-            &format!("{}.add_bias", &name),
-            model,
-            ops::math::add(),
-            &[result, bias],
-        )?[0];
-    }
-
-    let k = model.outlet_fact(a)?.shape[axes.a_k].clone();
-
-    let abc_scale = combine_scales(model, name, params[1], params[3], params[5])?;
-
-    let a_i32 =
-        model.wire_node(format!("{name}.a_as_i32"), ops::cast::cast(i32::datum_type()), &[a])?[0];
-    let b_i32 =
-        model.wire_node(format!("{name}.b_as_i32"), ops::cast::cast(i32::datum_type()), &[b])?[0];
-    let sum_a = model.wire_node(
-        format!("{name}.sum_a"),
-        ops::nn::Reduce::new(tvec!(axes.a_k), ops::nn::Reducer::Sum),
-        &[a_i32],
-    )?[0];
-    let sum_a =
-        model.wire_node(format!("{name}.sum_a_rm_k_axis"), AxisOp::Rm(axes.a_k), &[sum_a])?[0];
-    let sum_a =
-        model.wire_node(format!("{name}.sum_a_add_n_axis"), AxisOp::Add(axes.c_n), &[sum_a])?[0];
-    let sum_b = model.wire_node(
-        format!("{name}.sum_b"),
-        ops::nn::Reduce::new(tvec!(axes.b_k), ops::nn::Reducer::Sum),
-        &[b_i32],
-    )?[0];
-    let sum_b =
-        model.wire_node(format!("{name}.sum_b_rm_k_axis"), AxisOp::Rm(axes.b_k), &[sum_b])?[0];
-    let sum_b =
-        model.wire_node(format!("{name}.sum_a_add_m_axis"), AxisOp::Add(axes.c_m), &[sum_b])?[0];
-    let result =
-        compensate_zero_points(model, name, result, k, params[0], params[2], sum_a, sum_b)?;
-    requant(model, name, result, output_type, abc_scale, params[4])
 }
 
 pub(crate) fn combine_scales(
@@ -798,7 +585,7 @@ mod test {
                         .add_source("bias", i32::fact(self.bias.shape()))
                         .unwrap(),
                         );
-                    let qparams = if qp {
+                    if qp {
                         inputs.push(model.add_source("a0", TypedFact::scalar::<$a>()).unwrap());
                         inputs
                             .push(model.add_source("a_scale", TypedFact::scalar::<f32>()).unwrap());
@@ -808,24 +595,27 @@ mod test {
                         inputs.push(model.add_source("c0", TypedFact::scalar::<$c>()).unwrap());
                         inputs
                             .push(model.add_source("c_scale", TypedFact::scalar::<f32>()).unwrap());
-                        MatMulQParams::all_dynamic(3)
                     } else {
-                        MatMulQParams {
-                            a0: rctensor0::<$a>(self.a0).into(),
-                            a_scale: rctensor0::<f32>(self.a_scale).into(),
-                            b0: rctensor0::<$b>(self.b0).into(),
-                            b_scale:rctensor0::<f32>(self.b_scale).into(),
-                            c0: rctensor0::<$c>(self.c0).into(),
-                            c_scale:rctensor0::<f32>(self.c_scale).into(),
-                        }
+                        inputs.push(model.add_const("a0", rctensor0(self.a0)).unwrap());
+                        inputs
+                            .push(model.add_const("a_scale", rctensor0(self.a_scale)).unwrap());
+                        inputs.push(model.add_const("b0", rctensor0(self.b0)).unwrap());
+                        inputs
+                            .push(model.add_const("b_scale", rctensor0(self.b_scale)).unwrap());
+                        inputs.push(model.add_const("c0", rctensor0(self.c0)).unwrap());
+                        inputs
+                            .push(model.add_const("c_scale", rctensor0(self.c_scale)).unwrap());
                     };
                     let result = model
                         .wire_node(
-                            "qmm",
-                            QMatMul::new(MatMulAxes::default(), <$c>::datum_type(), qparams),
+                            "einsum",
+                            crate::ops::einsum::EinSum {
+                                expr: "mk,kn,,,,,,,->mn".parse().unwrap(),
+                                operating_dt: i32::datum_type(),
+                                q_params: Some(<$c>::datum_type())
+                            },
                             &inputs,
-                            )
-                        .unwrap();
+                        ).unwrap();
                     model.set_output_outlets(&result).unwrap();
 
                     let inputs = if qp {
@@ -1035,115 +825,5 @@ mod test {
             c_scale: 0.09411765,
         }
         .check(); // c: [[75, 86, 96, 106, 117], [255, 191, 127, 65, 1]]
-    }
-
-    fn setup_qparams(inputs: [usize; 6]) -> ([OutletId; 9], MatMulQParams, TypedModel, OutletId) {
-        let mut model = TypedModel::default();
-        let ids = [
-            model.add_source("a", i8::fact([2, 3])).unwrap(),
-            model.add_source("b", i8::fact([3, 4])).unwrap(),
-            model.add_const("bias", Tensor::zero_scalar::<i32>().unwrap()).unwrap(),
-            model.add_const("a0", Tensor::zero_scalar::<i8>().unwrap()).unwrap(),
-            model.add_const("a_scale", Tensor::zero_scalar::<f32>().unwrap()).unwrap(),
-            model.add_source("b0", i8::scalar_fact()).unwrap(),
-            model.add_source("b_scale", f32::scalar_fact()).unwrap(),
-            model.add_const("c0", Tensor::zero_scalar::<i8>().unwrap()).unwrap(),
-            model.add_const("c_scale", Tensor::zero_scalar::<f32>().unwrap()).unwrap(),
-        ];
-        let indices = inputs
-            .iter()
-            .enumerate()
-            .sorted_by(|(_, this), (_, other)| this.cmp(other))
-            .map(|(idx, _)| idx + 3)
-            .collect::<Vec<_>>();
-        let qparams = MatMulQParams {
-            a0: indices[0].into(),
-            a_scale: indices[1].into(),
-            b0: indices[2].into(),
-            b_scale: indices[3].into(),
-            c0: indices[4].into(),
-            c_scale: indices[5].into(),
-        };
-        let op = QMatMul {
-            axes: MatMulAxes::default(),
-            output_type: i8::datum_type(),
-            params: qparams.clone(),
-        };
-        let node = model
-            .wire_node(
-                "qmatmul",
-                op,
-                &[
-                    ids[0],
-                    ids[1],
-                    ids[2],
-                    ids[inputs[0]],
-                    ids[inputs[1]],
-                    ids[inputs[2]],
-                    ids[inputs[3]],
-                    ids[inputs[4]],
-                    ids[inputs[5]],
-                ],
-            )
-            .unwrap()[0];
-
-        (ids, qparams, model, node)
-    }
-
-    #[test]
-    fn test_qparams_inline_ascending() {
-        let (ids, qparams, model, node) = setup_qparams([3, 4, 5, 6, 7, 8]);
-        let (new_ids, new_qparams) =
-            qparams.inline_static(&model, model.node(node.node)).unwrap().unwrap();
-        assert_eq!(new_ids, [ids[0], ids[1], ids[2], ids[5], ids[6]]);
-        assert!(matches!(
-            new_qparams,
-            MatMulQParams {
-                a0: AttrOrInput::Attr(_),
-                a_scale: AttrOrInput::Attr(_),
-                b0: AttrOrInput::Input(3),
-                b_scale: AttrOrInput::Input(4),
-                c0: AttrOrInput::Attr(_),
-                c_scale: AttrOrInput::Attr(_),
-            },
-        ));
-    }
-
-    #[test]
-    fn test_qparams_inline_descending() {
-        let (ids, qparams, model, node) = setup_qparams([8, 7, 6, 5, 4, 3]);
-        let (new_ids, new_qparams) =
-            qparams.inline_static(&model, model.node(node.node)).unwrap().unwrap();
-        assert_eq!(new_ids, [ids[0], ids[1], ids[2], ids[6], ids[5]]);
-        assert!(matches!(
-            new_qparams,
-            MatMulQParams {
-                a0: AttrOrInput::Attr(_),
-                a_scale: AttrOrInput::Attr(_),
-                b0: AttrOrInput::Input(4),
-                b_scale: AttrOrInput::Input(3),
-                c0: AttrOrInput::Attr(_),
-                c_scale: AttrOrInput::Attr(_),
-            },
-        ));
-    }
-
-    #[test]
-    fn test_qparams_inline_mixed() {
-        let (ids, qparams, model, node) = setup_qparams([5, 3, 8, 4, 7, 6]);
-        let (new_ids, new_qparams) =
-            qparams.inline_static(&model, model.node(node.node)).unwrap().unwrap();
-        assert_eq!(new_ids, [ids[0], ids[1], ids[2], ids[5], ids[6]]);
-        assert!(matches!(
-            new_qparams,
-            MatMulQParams {
-                a0: AttrOrInput::Attr(_),
-                a_scale: AttrOrInput::Attr(_),
-                b0: AttrOrInput::Input(3),
-                b_scale: AttrOrInput::Input(4),
-                c0: AttrOrInput::Attr(_),
-                c_scale: AttrOrInput::Attr(_),
-            },
-        ));
     }
 }
