@@ -15,7 +15,6 @@ use crate::ops::matmul::lir_unary::AddMatMulGeometry;
 use crate::ops::matmul::lir_unary::MapOutputAxisToInput;
 use crate::ops::matmul::mir_quant::offset_u8_as_i8;
 use crate::ops::matmul::mir_quant::wire_offset_u8_as_i8;
-use crate::ops::matmul::MatMulAxes;
 
 use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
@@ -587,7 +586,7 @@ impl ConvUnary {
         Ok(None)
     }
 
-    fn declutter_as_matmul(
+    fn declutter_as_einsum(
         &self,
         model: &TypedModel,
         node: &TypedNode,
@@ -595,21 +594,23 @@ impl ConvUnary {
         let (input_facts, output_facts) = model.node_facts(node.id)?;
         let full_input_shape = input_facts[0].shape.to_tvec();
         let input_shape = self.pool_spec.data_format.shape(&full_input_shape)?;
-        if input_shape.hw_rank() == 1
-            && self.group == 1
-            && self.pool_spec.stride(0) == 1
+        if self.group == 1
+            && self.pool_spec.strides().iter().all(|s| *s == 1)
+            && self.pool_spec.dilations().iter().all(|d| *d == 1)
             && self.kernel.len() == self.input_channels() * self.output_channels()
+            && self
+                .pool_spec
+                .computed_padding(input_shape.hw_dims())
+                .iter()
+                .all(|pad| pad.pad_after.is_zero() && pad.pad_before.is_zero())
         {
             let name = &node.name;
             let ci = self.input_channels();
             let co = self.output_channels();
             let ker = self.kernel.clone().into_tensor();
             let a_shape = if self.kernel_fmt == KernelFormat::HWIO { [ci, co] } else { [co, ci] };
-            let a = ker
-                .into_shape(&a_shape)?
-                .broadcast_into_rank(full_input_shape.len())?
-                .into_arc_tensor();
-            let mut patch = TypedModelPatch::new("declutter_as_matmul");
+            let a = ker.into_shape(&a_shape)?.into_arc_tensor();
+            let mut patch = TypedModelPatch::new("declutter_as_einsum");
             let a = patch.add_const(format!("{name}.filters"), a)?;
             let taps = node
                 .inputs
@@ -619,18 +620,11 @@ impl ConvUnary {
             let mut inputs = taps.clone();
             inputs.insert(0, a);
             let mut axes = self.axes_mapping(&input_facts, &output_facts)?.with_extra_input(0)?;
-            for i in 0..full_input_shape.len() - 2 {
-                axes = axes
-                    .with_extra_input_axis('$', 0, i)?
-                    .linking(axes.input_axis(1, i)?.repr, '$')?;
-            }
-            axes = axes
-                .with_extra_input_axis('2', 0, full_input_shape.len() - 2)?
-                .with_extra_input_axis('1', 0, full_input_shape.len() - 1)?;
+            axes = axes.with_extra_input_axis('0', 0, 0)?.with_extra_input_axis('1', 0, 1)?;
             if self.kernel_fmt == KernelFormat::HWIO {
-                axes = axes.linking('I', '2')?.linking('O', '1')?;
+                axes = axes.linking('I', '0')?.linking('O', '1')?;
             } else {
-                axes = axes.linking('I', '1')?.linking('O', '2')?;
+                axes = axes.linking('I', '1')?.linking('O', '0')?;
             }
             let wire = if let Some(q_params) = &self.q_params {
                 let bias = self.bias.clone().unwrap_or_else(|| rctensor0(0i32));
@@ -883,7 +877,7 @@ impl TypedOp for ConvUnary {
                 return Ok(Some(patch));
             }
         }
-        for d in &[Self::declutter_stride_slice_to_downsample, Self::declutter_as_matmul] {
+        for d in &[Self::declutter_stride_slice_to_downsample, Self::declutter_as_einsum] {
             if let Some(p) = d(self, model, node)? {
                 return Ok(Some(p));
             }
@@ -1034,11 +1028,7 @@ impl TypedOp for ConvUnary {
             return Ok(Some(patch.with_context("kernel-u8-to-i8")));
         }
 
-        let full_input_shape = model.outlet_fact(node.inputs[0])?.shape.to_tvec();
         let input_fact = model.outlet_fact(node.inputs[0])?;
-        let input_shape = self.pool_spec.data_format.shape(&full_input_shape)?;
-        let spatial_rank = input_shape.hw_rank();
-        let kernel_spatial_shape = &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];
         unsafe {
             let dt = input_fact.datum_type;
             if self.q_params.is_some() {
@@ -1054,76 +1044,6 @@ impl TypedOp for ConvUnary {
                 patch.shunt_outside(model, node.id.into(), wire[0])?;
                 patch.obliterate(node.id)?;
                 Ok(Some(patch.with_context("quantized-codegen")))
-            } else if kernel_spatial_shape.iter().product::<usize>() == 1
-                && (0..spatial_rank)
-                    .all(|i| self.pool_spec.stride(i) == 1 && self.pool_spec.dilation(i) == 1)
-                && self.group == 1
-            {
-                use crate::ops::matmul::MatMul;
-                let mut patch = TypedModelPatch::default();
-                let mut wire = patch.tap_model(model, node.inputs[0])?;
-                let input_c_is_last = input_shape.c_axis() == input_shape.rank() - 1;
-                let geo_dim: TDim = input_shape.hw_dims().iter().product();
-                wire = patch.wire_node(
-                    format!("{}.reshape_input", &*node.name),
-                    AxisOp::Reshape(
-                        input_shape.h_axis(),
-                        input_shape.hw_dims().into(),
-                        tvec!(geo_dim.clone()),
-                    ),
-                    &[wire],
-                )?[0];
-                let kernel_shape = match self.kernel_fmt {
-                    KernelFormat::HWIO => &self.kernel.shape()[spatial_rank..],
-                    KernelFormat::OIHW => &self.kernel.shape()[..2],
-                };
-                let operating_rank = input_fact.rank() + 1 - kernel_spatial_shape.len();
-                let kernel = self
-                    .kernel
-                    .as_ref()
-                    .clone()
-                    .into_shape(kernel_shape)?
-                    .broadcast_into_rank(operating_rank)?;
-                let kernel = patch.add_const(format!("{}.kernel", &node.name), kernel)?;
-                wire = patch.wire_node(
-                    &format!("{}.matmul", &node.name),
-                    MatMul {
-                        axes: MatMulAxes::default_for_rank(operating_rank).transposing(
-                            self.kernel_fmt == KernelFormat::HWIO,
-                            input_c_is_last,
-                            input_c_is_last,
-                        ),
-                    },
-                    &[kernel, wire],
-                )?[0];
-                if let Some(ref bias) = self.bias {
-                    let bias_shape =
-                        if input_c_is_last { [1, bias.len()] } else { [bias.len(), 1] };
-                    let bias = bias
-                        .clone()
-                        .into_tensor()
-                        .into_shape(&bias_shape)?
-                        .broadcast_into_rank(operating_rank)?
-                        .into_arc_tensor();
-                    let bias = patch.add_const(format!("{}.bias.cst", node.name), bias)?;
-                    wire = patch.wire_node(
-                        format!("{}.bias", node.name),
-                        crate::ops::math::add(),
-                        &[wire, bias],
-                    )?[0];
-                }
-                wire = patch.wire_node(
-                    &*node.name,
-                    AxisOp::Reshape(
-                        input_shape.h_axis(),
-                        tvec!(geo_dim),
-                        input_shape.hw_dims().into(),
-                    ),
-                    &[wire],
-                )?[0];
-                patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
-                patch.obliterate(node.id)?;
-                Ok(Some(patch))
             } else if input_fact
                 .shape
                 .as_concrete()

@@ -999,7 +999,23 @@ fn same_upper() -> anyhow::Result<()> {
         kernel,
         bias: None,
         pad: PaddingSpec::SameUpper,
-        strides: tvec!(1)
+        strides: tvec!(1),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
+fn dnn_2d() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::NCHW.from_n_c_hw(1, 2, [1, 1]).unwrap(),
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data: arr4(&[[[[0.0]], [[1.0]]]]).into_dyn(),
+        kernel: arr4(&[[[[0.0]], [[1.0]]]]).into_dyn(),
+        bias: None,
+        pad: PaddingSpec::Valid,
+        strides: tvec!(1, 1),
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
