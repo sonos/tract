@@ -16,6 +16,10 @@ impl SubmodelOp {
     pub fn new(model: Box<dyn InnerModel>, label: &str) -> TractResult<Self> {
         Ok(Self { model, label: label.to_string(), decluttered: false, codegen: false })
     }
+    
+    pub fn iteration_count(&self, _inputs: &[&TypedFact]) -> Option<TDim> {
+        None 
+    }
 
     pub fn model(&self) -> &TypedModel {
         self.model.as_typed()
