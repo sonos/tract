@@ -18,13 +18,10 @@ struct MatMulInteger {
     pub optional_b_zero_point_input: Option<usize>,
 }
 
-
-
 impl Expansion for MatMulInteger {
     fn name(&self) -> Cow<str> {
         "MatMulInteger".into()
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -59,35 +56,42 @@ impl Expansion for MatMulInteger {
         target: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let a_and_b =
+        let mut new_inputs =
             tract_hir::ops::binary::wire_rank_broadcast(prefix, target, &[inputs[0], inputs[1]])?;
-        let rank = target.outlet_fact(a_and_b[0])?.rank();
-        let a0 = if let Some(o) = self.optional_a_zero_point_input {
-            (o + 1).into()
+        new_inputs.push(target.add_const(format!("{prefix}.bias"), tensor0(0i32))?);
+        if let Some(o) = self.optional_a_zero_point_input {
+            new_inputs.push(inputs[o]);
         } else {
-            let a_dt = target.outlet_fact(inputs[0])?.datum_type;
-            Tensor::zero_scalar_dt(a_dt)?.into()
+            new_inputs.push(target.add_const(format!("{prefix}.a0"), tensor0(0i32))?);
         };
-        let b0 = if let Some(o) = self.optional_b_zero_point_input {
-            (o + 1).into()
+        new_inputs.push(target.add_const(format!("{prefix}.a_scale"), tensor0(1f32))?);
+        if let Some(o) = self.optional_b_zero_point_input {
+            new_inputs.push(inputs[o]);
         } else {
-            let b_dt = target.outlet_fact(inputs[1])?.datum_type;
-            Tensor::zero_scalar_dt(b_dt)?.into()
+            new_inputs.push(target.add_const(format!("{prefix}.b0"), tensor0(0i32))?);
         };
-        let params = MatMulQParams {
-            a0,
-            b0,
-            c0: tensor0(0i32).into(),
-            a_scale: tensor0(1f32).into(),
-            b_scale: tensor0(1f32).into(),
-            c_scale: tensor0(1f32).into(),
+        new_inputs.push(target.add_const(format!("{prefix}.b_scale"), tensor0(1f32))?);
+        new_inputs.push(target.add_const(format!("{prefix}.c0"), tensor0(0i32))?);
+        new_inputs.push(target.add_const(format!("{prefix}.c_scale"), tensor0(1f32))?);
+        let rank = target.outlet_fact(new_inputs[0])?.rank();
+        let rank_a0 = target.outlet_fact(new_inputs[3])?.rank();
+        let rank_b0 = target.outlet_fact(new_inputs[5])?.rank();
+        let expr = AxesMapping::disconnected_for_ranks(
+            &[rank, rank, 0, rank_a0, 0, rank_b0, 0, 0, 0],
+            &[rank],
+        )?
+        .with_input_axis_named(0, rank - 2, 'm')?
+        .with_output_axis_linked_to(0, rank - 2, 'm')?
+        .with_input_axis_named(1, rank - 1, 'n')?
+        .with_output_axis_linked_to(0, rank - 1, 'n')?
+        .with_input_axis_named(0, rank - 1, 'k')?
+        .with_input_axis_linked_to(1, rank - 2, 'k')?;
+        let op = tract_core::ops::einsum::EinSum {
+            expr,
+            operating_dt: i32::datum_type(),
+            q_params: Some(i32::datum_type()),
         };
-        let op = QMatMul::new(MatMulAxes::default_for_rank(rank), i32::datum_type(), params);
-        let mut inputs: TVec<OutletId> = inputs.into();
-        inputs[0] = a_and_b[0];
-        inputs[1] = a_and_b[1];
-        inputs.insert(2, target.add_const(format!("{prefix}.bias"), tensor0(0i32))?);
-        target.wire_node(prefix, op, &inputs)
+        target.wire_node(prefix, op, &new_inputs)
     }
 }
 
@@ -101,13 +105,10 @@ pub fn q_linear_mat_mul(
 #[derive(Debug, Clone, new, Hash)]
 struct QLinearMatMul;
 
-
-
 impl Expansion for QLinearMatMul {
     fn name(&self) -> Cow<str> {
         "QLinearMatMul".into()
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
