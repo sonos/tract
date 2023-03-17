@@ -82,7 +82,9 @@ pub trait Model:
 
     /// Subnets of a node
     fn nested_models_iters(&self, id: usize, input: &[&TypedFact]) -> Vec<Option<TDim>> {
-        if let Some(lir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::LirScan>() {
+        if let Some(submodel) = self.node_op(id).downcast_ref::<tract_core::ops::submodel::SubmodelOp>() {
+            vec![submodel.iteration_count(input)]
+        } else if let Some(lir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::LirScan>() {
             vec![lir.iteration_count(input)]
         } else if let Some(mir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::Scan>() {
             vec![mir.iteration_count(input)]
