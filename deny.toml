@@ -35,6 +35,7 @@ skip = [
     { name = "half", version="1.8.2" }, # old versions pulled by serde_cbor and criterionin dev mode
     { name = "hashbrown", version="0.11.2" }, # string interner pulls old version
     { name = "quick-error", version="<2" }, # cascading from flate
+    { name = "syn", version="<2" },
     { name = "windows-sys", version="0.42.0" },
 ]
 
