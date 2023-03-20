@@ -41,7 +41,7 @@ pub struct Registry {
     pub docstrings: Option<Vec<String>>,
     pub aliases: Vec<Identifier>,
     pub fragments: HashMap<Identifier, FragmentDef>,
-    pub primitives: HashMap<Identifier, PrimitiveDecl>,
+    pub primitives: HashMap<Identifier, Vec<PrimitiveDecl>>,
     pub unit_element_wise_ops: Vec<(Identifier, Box<dyn ElementWiseMiniOp>)>,
     pub element_wise_ops: Vec<(Identifier, TypeId, FromTract, Vec<ast::Parameter>, ToTract)>,
     pub binary_ops: Vec<BinOp>,
@@ -81,27 +81,54 @@ impl Registry {
         results: &[impl Into<ast::Result_> + Clone],
         func: ToTract,
     ) -> &mut PrimitiveDecl {
-        let id:Identifier = id.as_ref().into();
+        let id: Identifier = id.as_ref().into();
         let decl = FragmentDecl {
             id: id.clone(),
             generic_decl: None,
             parameters: params.to_vec(),
             results: results.iter().cloned().map(|it| it.into()).collect(),
         };
+        let primitive_decl = PrimitiveDecl { decl, docstrings: None, to_tract: func };
+        self.primitives.insert(id.clone(), vec![primitive_decl.clone()]);
         self.primitives
-            .insert(id.clone(), PrimitiveDecl { decl, docstrings: None, to_tract: func });
-        self.primitives.get_mut(&id).expect("Unexpected empty entry in primitives hashmap")
+            .get_mut(&id)
+            .map(|it| it.last_mut())
+            .flatten()
+            .expect("Unexpected empty entry in primitives hashmap")
+    }
+
+    pub fn register_primitive_alternative(
+        &mut self,
+        id: impl AsRef<str>,
+        func: ToTract,
+    ) -> TractResult<&mut PrimitiveDecl> {
+        let id: Identifier = id.as_ref().into();
+        self.primitives.get_mut(&id).map_or_else(
+            || bail!("No primitive with name '{}' in registry: {}", id.as_ref(), self.id.as_ref()),
+            |it| -> TractResult<()> {
+                let last = it.last().expect(
+                    format!("Unexpected empty primitive declaration for '{}'", id.as_ref())
+                        .as_str(),
+                );
+                let mut new = last.clone();
+                new.to_tract = func;
+                it.insert(0, new);
+                Ok(())
+            },
+        )?;
+        Ok(self
+            .primitives
+            .get_mut(&id)
+            .map(|it| it.last_mut())
+            .flatten()
+            .expect("Unexpected empty entry in primitives hashmap"))
     }
 
     pub fn register_fragment(&mut self, def: FragmentDef) {
         self.fragments.insert(def.decl.id.clone(), def);
     }
 
-    pub fn register_unit_element_wise(
-        &mut self,
-        id: impl AsRef<str>,
-        ew: &dyn ElementWiseMiniOp,
-    ) {
+    pub fn register_unit_element_wise(&mut self, id: impl AsRef<str>, ew: &dyn ElementWiseMiniOp) {
         assert!(std::mem::size_of_val(ew) == 0);
         self.unit_element_wise_ops.push((id.as_ref().into(), clone_box(ew)));
     }
@@ -167,14 +194,29 @@ impl Registry {
         invocation: &ast::Invocation,
         dt: &[Option<DatumType>],
     ) -> TractResult<Option<Value>> {
-        if let Some(op) = self.primitives.get(&invocation.id) {
-            let resolved = ResolvedInvocation {
-                invocation,
-                default_params: &op.decl.parameters,
-                dt_from_quant_file: dt,
-            };
-            let out_value = (op.to_tract)(builder, &resolved)
-                .with_context(|| format!("Deserializing op `{}'", invocation.id.0))?;
+        if let Some(p) = self.primitives.get(&invocation.id) {
+            let out_value = p
+                .iter()
+                .enumerate()
+                .find_map(|(idx, op)| {
+                    let resolved = ResolvedInvocation {
+                        invocation,
+                        default_params: &op.decl.parameters,
+                        dt_from_quant_file: dt,
+                    };
+                    let out_value = (op.to_tract)(builder, &resolved)
+                        .map_err(|err| {
+                            log::debug!(
+                                "Failed to load {:?} with deserializer {}: {:?}",
+                                &invocation.id,
+                                idx,
+                                &err
+                            );
+                        })
+                        .ok();
+                    out_value
+                })
+                .ok_or(anyhow!("No valid deserializer found for {:?}", &invocation.id))?;
             return Ok(Some(out_value));
         }
         if let Some(ew) = self.unit_element_wise_ops.iter().find(|ew| ew.0 == invocation.id) {

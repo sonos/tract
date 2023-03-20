@@ -37,7 +37,7 @@ impl<'a> DocDumper<'a> {
             Dumper::new(&Nnef::default(), self.w).fragment_decl(&fragment_decl)?;
         }
         // Generate and write Primitive declarations.
-        for primitive in registry.primitives.values().sorted_by_key(|v| &v.decl.id) {
+        for primitive in registry.primitives.values().flatten().sorted_by_key(|v| &v.decl.id) {
             primitive.docstrings.iter().flatten()
                 .try_for_each(|d| writeln!(self.w, "# {d}"))?;
             
