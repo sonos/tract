@@ -30,7 +30,7 @@ impl Default for Nnef {
                 GraphNnefLoader.into_boxed(),
                 DatLoader.into_boxed(),
                 GraphQuantLoader.into_boxed(),
-                TypedModelLoader::new(false).into_boxed()
+                TypedModelLoader::new(false).into_boxed(),
             ],
             allow_extended_identifier_syntax: false,
         }
@@ -54,6 +54,20 @@ impl Nnef {
 
     pub fn with_tract_core(mut self) -> Self {
         self.registries.push(crate::ops::tract_core());
+        self
+    }
+
+    pub fn with_primitive_alternative(
+        mut self,
+        registry_id: &str,
+        op_id: &str,
+        func: ToTract,
+    ) -> Self {
+        if let Some(reg) = self.registries.iter_mut().find(|it| it.id == registry_id.into()) {
+            reg.register_primitive_alternative(op_id, func).expect(
+                format!("Impossible to add new primitive alternative for op {}", op_id).as_str(),
+            );
+        }
         self
     }
 
@@ -82,14 +96,18 @@ impl Nnef {
         self.write_to_tar(model, w)?;
         Ok(())
     }
-    
+
     pub fn write_to_tar<W: std::io::Write>(&self, model: &TypedModel, w: W) -> TractResult<W> {
         let mut ar = tar::Builder::new(w);
-        self._write_to_tar(model, &mut ar)?; 
+        self._write_to_tar(model, &mut ar)?;
         ar.into_inner().context("Finalizing tar")
     }
 
-    fn _write_to_tar<W: std::io::Write>(&self, model: &TypedModel, ar: &mut Builder<W>) -> TractResult<()> {
+    fn _write_to_tar<W: std::io::Write>(
+        &self,
+        model: &TypedModel,
+        ar: &mut Builder<W>,
+    ) -> TractResult<()> {
         let proto_model =
             crate::ser::to_proto_model(self, model).context("Translating model to proto_model")?;
 
@@ -139,7 +157,7 @@ impl Nnef {
             ar.append_data(&mut header, filename, &mut &*data)
                 .with_context(|| format!("Appending tensor {filename:?}"))?;
         }
-        
+
         for (label, resource) in proto_model.resources.iter() {
             if let Some(typed_model_resource) = resource.downcast_ref::<TypedModelResource>() {
                 let mut submodel_data = vec![];
@@ -147,7 +165,7 @@ impl Nnef {
                 filename.set_extension("nnef.tgz");
                 let typed_model = &typed_model_resource.0;
                 self.write(typed_model, &mut submodel_data)?;
-                
+
                 let mut header = tar::Header::new_gnu();
                 header.set_size(submodel_data.len() as u64);
                 header.set_mode(0o644);
@@ -156,7 +174,7 @@ impl Nnef {
 
                 ar.append_data(&mut header, filename, &mut &*submodel_data)
                     .with_context(|| format!("Appending submodel {label:?}"))?;
-                }
+            }
         }
         Ok(())
     }
@@ -356,7 +374,6 @@ fn read_stream<R: std::io::Read>(
     resources: &mut HashMap<String, Arc<dyn Resource>>,
     framework: &Nnef,
 ) -> TractResult<()> {
-
     // ignore path with any component starting with "." (because OSX's tar is weird)
     #[cfg(target_family = "unix")]
     if path.components().any(|name| name.as_os_str().as_bytes().first() == Some(&b'.')) {
