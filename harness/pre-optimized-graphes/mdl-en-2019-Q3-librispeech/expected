@@ -133,10 +133,10 @@ graph network(input) -> (output) {
   i"lda.output_bias" = variable<scalar>(label = "lda.output_bias", shape = [200]);
   i"lda.output_conv" = conv(i"lda.output_input", i"lda.output_weigths", i"lda.output_bias", dilation = [1], stride = [1], border = "constant", groups = 1, padding = [(0, 0)]);
   i"lda.output" = squeeze(transpose(i"lda.output_conv", axes = [0, 2, 1]), axes = [0]);
-  i"tdnn1.affine.output.filters" = variable<scalar>(label = "tdnn1.affine.output.filters", shape = [1, 256, 200]);
-  i"tdnn1.affine.output.matmul" = tract_core_einsum([i"tdnn1.affine.output.filters", i"lda.output"], expr = "amk,nk->amn", acc = "f32", output = "");
+  i"tdnn1.affine.output.filters" = variable<scalar>(label = "tdnn1.affine.output.filters", shape = [256, 200]);
+  i"tdnn1.affine.output.einsum" = tract_core_einsum([i"tdnn1.affine.output.filters", i"lda.output"], expr = "OI,HI->NOH", acc = "f32", output = "");
   i"tdnn1.affine.output.bias.cst" = variable<scalar>(label = "tdnn1.affine.output.bias.cst", shape = [1, 256, 1]);
-  i"tdnn1.affine.output.bias" = add(i"tdnn1.affine.output.matmul", i"tdnn1.affine.output.bias.cst");
+  i"tdnn1.affine.output.bias" = add(i"tdnn1.affine.output.einsum", i"tdnn1.affine.output.bias.cst");
   i"tdnn1.relu.output.low.cst" = [[[0.0]]];
   i"tdnn1.relu.output.low" = max(i"tdnn1.affine.output.bias", i"tdnn1.relu.output.low.cst");
   i"tdnn1.renorm.reduced.sq" = square(i"tdnn1.relu.output.low");

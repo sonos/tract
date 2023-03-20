@@ -280,6 +280,10 @@ impl<'mb> ModelBuilder<'mb> {
         self.model.wire_node(name, op, inputs).with_context(|| format!("inputs are {inputs:?}"))
     }
 
+    pub fn add_const(&mut self, v: impl IntoArcTensor) -> TractResult<OutletId> {
+        self.model.add_const(self.generate_node_name(), v)
+    }
+
     pub fn wire(
         &mut self,
         op: impl Into<Box<dyn TypedOp>>,

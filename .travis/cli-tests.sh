@@ -68,7 +68,7 @@ echo
 ( cd onnx/test_cases ; ./run_all.sh )
 
 echo
-echo $WHITE • old integreation test cases $NC
+echo $WHITE • old integration test cases $NC
 echo
 
 ./.travis/cache_file.sh \
