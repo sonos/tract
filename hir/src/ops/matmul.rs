@@ -1,8 +1,7 @@
 use crate::infer::*;
 use crate::internal::*;
 
-pub use tract_core::ops::matmul::MatMul;
-use tract_core::ops::matmul::MatMulAxes;
+use tract_core::ops::einsum::EinSum;
 
 #[derive(Debug, Clone, Default, Hash)]
 pub struct MatMulInference {
@@ -10,8 +9,6 @@ pub struct MatMulInference {
     pub b_trans: bool,
     pub c_trans: bool,
 }
-
-
 
 impl MatMulInference {
     pub fn with_a_trans(self, a_trans: bool) -> MatMulInference {
@@ -31,7 +28,6 @@ impl Expansion for MatMulInference {
     fn name(&self) -> Cow<str> {
         "MatMulInference".into()
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -58,12 +54,13 @@ impl Expansion for MatMulInference {
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         let inputs = crate::ops::binary::wire_rank_broadcast(prefix, target, inputs)?;
-        let axes = MatMulAxes::default_for_rank(target.outlet_fact(inputs[0])?.rank()).transposing(
-            self.a_trans,
-            self.b_trans,
-            self.c_trans,
-        );
-        target.wire_node(prefix, tract_core::ops::matmul::MatMul { axes }, &inputs)
+        let fact = target.outlet_fact(inputs[0])?;
+        let axes = AxesMapping::for_numpy_matmul(fact.rank(), self.a_trans, self.b_trans, self.c_trans)?;
+        target.wire_node(
+            prefix,
+            EinSum { axes, operating_dt: fact.datum_type, q_params: None },
+            &inputs,
+        )
     }
 }
 

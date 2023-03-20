@@ -555,14 +555,12 @@ pub fn matmul(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     let mk = if a_trans { "km" } else { "mk" };
     let kn = if b_trans { "nk" } else { "kn" };
     let c_rank = a_rank.max(b_rank);
-    let a_prefix: String = ('a'..).take(c_rank - 2).skip(c_rank - a_rank).collect();
-    let b_prefix: String = ('a'..).take(c_rank - 2).skip(c_rank - b_rank).collect();
-    let c_prefix: String = ('a'..).take(c_rank - 2).collect();
-    let qparams = if a_dt.is_quantized() || b_dt.is_quantized() { ",,,,,,," } else { "" };
-    let expr: AxesMapping =
-        format!("{a_prefix}{mk},{b_prefix}{kn}{qparams}->{c_prefix}mn").parse()?;
+    let mut axes = AxesMapping::for_numpy_matmul(c_rank, a_trans, b_trans, false)?;
     let name = &*invocation.invocation.id.0;
     if a_dt.is_quantized() || b_dt.is_quantized() {
+        for input in 0..7 {
+            axes = axes.add_input(input)?;
+        }
         let accum_dt = DatumType::QI32(QParams::ZpScale {
             scale: a_dt.zp_scale().1 * b_dt.zp_scale().1,
             zero_point: 0,
@@ -582,11 +580,11 @@ pub fn matmul(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
         let c_scale = builder.model.add_const(format!("{name}.c_scale"), rctensor0(c_qp.1))?;
 
         builder.wire(
-            ops::einsum::EinSum { expr, operating_dt: i32::datum_type(), q_params: Some(c_dt) },
+            ops::einsum::EinSum { axes, operating_dt: i32::datum_type(), q_params: Some(c_dt) },
             &[a, b, bias, a0, a_scale, b0, b_scale, c0, c_scale],
         )
     } else {
-        builder.wire(ops::einsum::EinSum { expr, operating_dt: a_dt, q_params: None }, &[a, b])
+        builder.wire(ops::einsum::EinSum { axes, operating_dt: a_dt, q_params: None }, &[a, b])
     }
 }
 

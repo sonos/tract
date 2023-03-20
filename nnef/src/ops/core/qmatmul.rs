@@ -70,7 +70,7 @@ fn qmatmul_load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
     let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
     let axes = from_legacy_axes_spec(&axes, builder.model.outlet_fact(a)?.rank())?;
     builder
-        .wire(EinSum { expr: axes, operating_dt: i32::datum_type(), q_params: Some(c_dt) }, &inputs)
+        .wire(EinSum { axes, operating_dt: i32::datum_type(), q_params: Some(c_dt) }, &inputs)
 }
 
 pub fn from_legacy_axes_spec(spec: &[usize], rank: usize) -> TractResult<AxesMapping> {

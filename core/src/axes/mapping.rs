@@ -28,6 +28,42 @@ impl AxesMapping {
         AxesMapping { axes, input_count: 0, output_count }.check()
     }
 
+    pub fn for_numpy_matmul(
+        rank: usize,
+        transposing_a: bool,
+        transposing_b: bool,
+        transposing_c: bool,
+    ) -> TractResult<AxesMapping> {
+        let mut axes: TVec<Axis> = ('a'..)
+            .take(rank - 2)
+            .enumerate()
+            .map(|(ix, repr)| Axis {
+                repr,
+                inputs: tvec!(tvec!(ix), tvec!(ix)),
+                outputs: tvec!(tvec!(ix)),
+            })
+            .collect();
+        axes.push(Axis {
+            repr: 'm',
+            inputs: tvec!(tvec!(rank - 2 + transposing_a as usize), tvec!()),
+            outputs: tvec!(tvec!(rank - 2 + transposing_c as usize)),
+        });
+        axes.push(Axis {
+            repr: 'k',
+            inputs: tvec!(
+                tvec!(rank - 1 - transposing_a as usize),
+                tvec!(rank - 2 + transposing_b as usize)
+            ),
+            outputs: tvec!(tvec!()),
+        });
+        axes.push(Axis {
+            repr: 'n',
+            inputs: tvec!(tvec!(), tvec!(rank - 1 - transposing_b as usize),),
+            outputs: tvec!(tvec!(rank - 1 - transposing_c as usize)),
+        });
+        AxesMapping::new(axes)
+    }
+
     pub fn disconnected(inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<AxesMapping> {
         let input_ranks: TVec<usize> = inputs.iter().map(|i| i.rank()).collect();
         let output_ranks: TVec<usize> = outputs.iter().map(|i| i.rank()).collect();

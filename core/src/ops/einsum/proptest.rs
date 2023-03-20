@@ -110,7 +110,7 @@ impl BinEinsumProblem {
         };
         let mut output = model.wire_node(
             "einsum",
-            EinSum { expr: self.expr.clone(), operating_dt: f32::datum_type(), q_params: None },
+            EinSum { axes: self.expr.clone(), operating_dt: f32::datum_type(), q_params: None },
             &[a, b],
         )?;
         if let Some(c) = &self.unicast_add_constant {

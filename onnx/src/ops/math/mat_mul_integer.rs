@@ -179,7 +179,7 @@ fn wire_as_einsum(
     }
     dbg!(&expr.to_string());
     let op = tract_core::ops::einsum::EinSum {
-        expr,
+        axes: expr,
         operating_dt: i32::datum_type(),
         q_params: Some(output),
     };
