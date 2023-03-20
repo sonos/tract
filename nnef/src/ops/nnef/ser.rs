@@ -488,39 +488,6 @@ pub fn matmul(
     Ok(Some(ast.force_variable(&node.name, &c)))
 }
 
-pub fn qmatmul(
-    ast: &mut IntoAst,
-    node: &TypedNode,
-    op: &ops::matmul::QMatMul,
-) -> TractResult<Option<Arc<RValue>>> {
-    if !node.outputs[0].fact.datum_type.is_quantized() {
-        return Ok(None);
-    }
-    let a = ast.force_variable(format!("{}_a", node.name), &ast.mapping[&node.inputs[0]].clone());
-    let b = ast.force_variable(format!("{}_b", node.name), &ast.mapping[&node.inputs[1]].clone());
-    let inputs = ast.model.node_input_facts(node.id)?;
-    let c = if let Some((a_trans, b_trans, c_trans)) =
-        matmulaxes_as_transpositions(&op.axes, inputs[0].rank(), inputs[1].rank())
-    {
-        if c_trans {
-            invocation(
-                "matmul",
-                &[b, a],
-                &[("transposeA", logical(!b_trans)), ("transposeB", logical(!a_trans))],
-            )
-        } else {
-            invocation(
-                "matmul",
-                &[a, b],
-                &[("transposeA", logical(a_trans)), ("transposeB", logical(b_trans))],
-            )
-        }
-    } else {
-        return Ok(None);
-    };
-    Ok(Some(ast.force_variable(&node.name, &c)))
-}
-
 pub fn select(
     ast: &mut IntoAst,
     node: &TypedNode,

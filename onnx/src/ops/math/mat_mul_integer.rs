@@ -1,6 +1,5 @@
 use crate::model::ParsingContext;
 use crate::pb::*;
-use tract_core::ops::matmul::*;
 use tract_hir::internal::*;
 
 pub fn mat_mul_integer(
@@ -73,25 +72,7 @@ impl Expansion for MatMulInteger {
         new_inputs.push(target.add_const(format!("{prefix}.b_scale"), tensor0(1f32))?);
         new_inputs.push(target.add_const(format!("{prefix}.c0"), tensor0(0i32))?);
         new_inputs.push(target.add_const(format!("{prefix}.c_scale"), tensor0(1f32))?);
-        let rank = target.outlet_fact(new_inputs[0])?.rank();
-        let rank_a0 = target.outlet_fact(new_inputs[3])?.rank();
-        let rank_b0 = target.outlet_fact(new_inputs[5])?.rank();
-        let expr = AxesMapping::disconnected_for_ranks(
-            &[rank, rank, 0, rank_a0, 0, rank_b0, 0, 0, 0],
-            &[rank],
-        )?
-        .with_input_axis_named(0, rank - 2, 'm')?
-        .with_output_axis_linked_to(0, rank - 2, 'm')?
-        .with_input_axis_named(1, rank - 1, 'n')?
-        .with_output_axis_linked_to(0, rank - 1, 'n')?
-        .with_input_axis_named(0, rank - 1, 'k')?
-        .with_input_axis_linked_to(1, rank - 2, 'k')?;
-        let op = tract_core::ops::einsum::EinSum {
-            expr,
-            operating_dt: i32::datum_type(),
-            q_params: Some(i32::datum_type()),
-        };
-        target.wire_node(prefix, op, &new_inputs)
+        wire_as_einsum(prefix, target, &new_inputs, i32::datum_type())
     }
 }
 
@@ -141,22 +122,66 @@ impl Expansion for QLinearMatMul {
         target: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let rank = target.outlet_fact(inputs[0])?.rank().max(target.outlet_fact(inputs[2])?.rank());
-        let op = tract_core::ops::matmul::QMatMul::new(
-            MatMulAxes::default_for_rank(rank),
-            target.outlet_fact(inputs[7])?.datum_type,
-            tract_core::ops::matmul::MatMulQParams::all_dynamic(3),
-        );
-        let a_and_b =
+        let mut new_inputs =
             tract_hir::ops::binary::wire_rank_broadcast(prefix, target, &[inputs[0], inputs[3]])?;
-        let bias = target.add_const(format!("{prefix}.bias"), tensor0(0i32))?;
-        target.wire_node(
-            prefix,
-            op,
-            &[
-                a_and_b[0], a_and_b[1], bias, inputs[2], inputs[1], inputs[5], inputs[4],
-                inputs[7], inputs[6],
-            ],
-        )
+        new_inputs.push(target.add_const(format!("{prefix}.bias"), tensor0(0i32))?);
+        for i in [2, 1, 5, 4, 7, 6] {
+            new_inputs.push(inputs[i]);
+        }
+        wire_as_einsum(prefix, target, &new_inputs, target.outlet_fact(inputs[7])?.datum_type)
     }
+}
+
+fn wire_as_einsum(
+    prefix: &str,
+    target: &mut TypedModel,
+    inputs: &[OutletId],
+    output: DatumType,
+) -> TractResult<TVec<OutletId>> {
+    assert!(inputs.len() == 9);
+    let rank = target.outlet_fact(inputs[0])?.rank();
+    let ranks = inputs
+        .iter()
+        .map(|i| Ok(target.outlet_fact(*i)?.rank()))
+        .collect::<TractResult<Vec<_>>>()?;
+    let mut expr = AxesMapping::disconnected_for_ranks(&*ranks, &ranks[0..1])?
+        .with_input_axis_named(0, rank - 2, 'm')?
+        .with_output_axis_linked_to(0, rank - 2, 'm')?
+        .with_input_axis_named(1, rank - 1, 'n')?
+        .with_output_axis_linked_to(0, rank - 1, 'n')?
+        .with_input_axis_named(0, rank - 1, 'k')?
+        .with_input_axis_linked_to(1, rank - 2, 'k')?;
+    for ax in 0..rank - 2 {
+        let repr = expr.input_axis(0, ax)?.repr;
+        expr =
+            expr.with_input_axis_linked_to(1, ax, repr)?.with_output_axis_linked_to(0, ax, repr)?;
+    }
+    if ranks[2] == 1 {
+        expr = expr.with_input_axis_linked_to(2, 0, 'm')?;
+    }
+    if ranks[3] == 1 {
+        expr = expr.with_input_axis_linked_to(3, 0, 'm')?;
+    }
+    if ranks[4] == 1 {
+        expr = expr.with_input_axis_linked_to(4, 0, 'm')?;
+    }
+    if ranks[5] == 1 {
+        expr = expr.with_input_axis_linked_to(5, 0, 'n')?;
+    }
+    if ranks[6] == 1 {
+        expr = expr.with_input_axis_linked_to(6, 0, 'n')?;
+    }
+    if ranks[7] == 1 {
+        expr = expr.with_input_axis_linked_to(7, 0, 'm')?;
+    }
+    if ranks[8] == 1 {
+        expr = expr.with_input_axis_linked_to(8, 0, 'm')?;
+    }
+    dbg!(&expr.to_string());
+    let op = tract_core::ops::einsum::EinSum {
+        expr,
+        operating_dt: i32::datum_type(),
+        q_params: Some(output),
+    };
+    target.wire_node(prefix, op, &inputs)
 }

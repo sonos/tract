@@ -1,20 +1,21 @@
-use super::qmatmul::qparams_to_rvalues;
 use crate::deser::Value;
 use crate::internal::*;
-use crate::ops::core::qmatmul::values_to_qparams;
 use crate::ops::nnef::deser::read_conv_parameters;
 use crate::ops::nnef::ser::make_conv_named_args;
 use crate::ser::*;
 use tract_core::ops::cnn::ConvUnary;
 use tract_core::ops::cnn::KernelFormat;
+use tract_core::ops::matmul::MatMulQParams;
+
+use super::qmatmul::qparams_as_outlets;
 
 pub fn register(registry: &mut Registry) {
     registry.register_dumper(TypeId::of::<tract_core::ops::cnn::ConvUnary>(), qconv_unary_dump);
     registry.register_primitive(
-        "tract_core_qconv", 
+        "tract_core_qconv",
         &qconv_parameters(),
-        &[("output", TypeName::Scalar.tensor())], 
-        qconv_load
+        &[("output", TypeName::Scalar.tensor())],
+        qconv_load,
     );
 }
 
@@ -42,23 +43,17 @@ fn qconv_unary_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<A
     if op.q_params.is_none() || node.outputs[0].fact.datum_type.is_quantized() {
         return Ok(None);
     }
+    let name = &node.name;
     let mut named_args = make_conv_named_args(node, &op.pool_spec, op.group, false, None)?;
 
-    let [a0, a_scale, b0, b_scale, c0, c_scale] =
-        qparams_to_rvalues(&op.q_params.as_ref().unwrap().1, &node.inputs, &ast.mapping)?;
-    macro_rules! push {
-        ($a: ident) => {
-            if let Some($a) = $a {
-                named_args.push((stringify!($a), $a));
-            }
+    for (ix, (name, val)) in op.q_params.as_ref().unwrap().1.iter().enumerate() {
+        let v = match val {
+            AttrOrInput::Attr(t) if ix % 2 == 0 => numeric(t.cast_to_scalar::<i32>()?),
+            AttrOrInput::Attr(t) => numeric(t.cast_to_scalar::<f32>()?),
+            AttrOrInput::Input(i) => (*ast.mapping[&node.inputs[*i]]).clone(),
         };
+        named_args.push((name, v));
     }
-    push!(a0);
-    push!(a_scale);
-    push!(b0);
-    push!(b_scale);
-    push!(c0);
-    push!(c_scale);
 
     let ci = op
         .pool_spec
@@ -73,27 +68,23 @@ fn qconv_unary_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<A
     kernel_shape.extend(op.pool_spec.kernel_shape.iter().copied());
     let mut weights = op.kernel_as_group_o_ihw()?.into_tensor();
     weights.set_shape(&kernel_shape)?;
-    let weigths =
-        ast.konst_variable(format!("{}_weigths", node.name), &weights.into_arc_tensor())?;
-    wire = ast.force_variable(format!("{}_input", node.name), &wire);
+    let weigths = ast.konst_variable(format!("{name}_weigths"), &weights.into_arc_tensor())?;
+    wire = ast.force_variable(format!("{name}_input"), &wire);
 
     let mut inputs = tvec![wire, weigths];
     if let Some(bias) = op.bias.as_ref() {
-        let bias = ast.konst(format!("{}_bias", node.name), bias)?;
+        let bias = ast.konst(format!("{name}_bias"), bias)?;
         inputs.push(bias)
     }
 
     Ok(Some(invocation("tract_core_qconv", &inputs, &named_args)))
 }
 
-fn qconv_load(
-    builder: &mut ModelBuilder,
-    invocation: &ResolvedInvocation,
-) -> TractResult<Value> {
-    let input: OutletId = invocation.named_arg_as(builder, "input")?;
+fn qconv_load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
+    let mut inputs: TVec<OutletId> = tvec!(invocation.named_arg_as(builder, "input")?);
     let kernel: Arc<Tensor> = invocation.named_arg_as(builder, "filter")?;
 
-    let input_fact = builder.model.outlet_fact(input)?.clone();
+    let input_fact = builder.model.outlet_fact(inputs[0])?.clone();
     if input_fact.rank() != kernel.rank() {
         bail!(
             "Convolution input expected as NCHW, filter as OIHW. Got {:?} and {:?}.",
@@ -105,36 +96,22 @@ fn qconv_load(
     let (group, pool_spec) =
         read_conv_parameters(builder, invocation, kernel.shape(), &input_fact)?;
 
-    let a0: Option<Value> = invocation.named_arg_as(builder, "a0").ok();
-    let a_scale: Option<Value> = invocation.named_arg_as(builder, "a_scale").ok();
-    let b0: Option<Value> = invocation.named_arg_as(builder, "b0").ok();
-    let b_scale: Option<Value> = invocation.named_arg_as(builder, "b_scale").ok();
-    let c0: Option<Value> = invocation.named_arg_as(builder, "c0").ok();
-    let c_scale: Option<Value> = invocation.named_arg_as(builder, "c_scale").ok();
-    let mut inputs = vec![input];
-    let b_dt = builder.model.outlet_fact(input)?.datum_type;
-    let c_dt = if let Some(c) = invocation.dt_from_quant_file.get(0).cloned().flatten() {
-        c
-    } else {
-        b_dt.unquantized()
-    };
-    let qparams = values_to_qparams(&kernel.datum_type(), a0, a_scale, &b_dt, b0, b_scale, &c_dt, c0, c_scale, &mut inputs, builder)?;
+    let qparams = qparams_as_outlets(builder, invocation).context("Loading qparams")?;
+    inputs.extend(qparams.iter().cloned());
     let bias: Arc<Tensor> = invocation.named_arg_as(builder, "bias")?;
 
     let bias: Option<Arc<Tensor>> =
         if bias.is_uniform() && bias.cast_to_scalar::<f32>()? == 0.0 { None } else { Some(bias) };
 
+    let Some(c0) = &builder.model.outlet_fact(qparams[4])?.konst else {
+        bail!("For quantized convolution, output quantization must be static");
+    };
+    let Some(c_scale) = &builder.model.outlet_fact(qparams[5])?.konst else {
+        bail!("For quantized convolution, output quantization must be static");
+    };
     let output_dt = input_fact.datum_type.with_qparams(QParams::ZpScale {
-        zero_point: *qparams
-            .c0
-            .as_static()
-            .context("The output quantization need to be static in convolution")?
-            .to_scalar()?,
-        scale: *qparams
-            .c_scale
-            .as_static()
-            .context("The output quantization need to be static in convolution")?
-            .to_scalar()?,
+        zero_point: c0.cast_to_scalar()?,
+        scale: c_scale.cast_to_scalar()?,
     });
 
     let op: Box<dyn TypedOp> = Box::new(ConvUnary::new(
@@ -143,7 +120,7 @@ fn qconv_load(
         kernel.clone(),
         group,
         bias,
-        Some((output_dt, qparams)),
+        Some((output_dt, MatMulQParams::all_dynamic(1))),
     ));
 
     builder.wire(op, &inputs)

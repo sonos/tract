@@ -5,7 +5,7 @@ use tract_core::ops::array::PadMode;
 use tract_core::ops::cnn::deconv::adjustments;
 use tract_core::ops::cnn::PaddingSpec;
 use tract_core::ops::cnn::PoolSpec;
-use tract_core::ops::matmul::{MatMulAxes, MatMulQParams};
+use tract_core::ops::matmul::MatMulQParams;
 use tract_core::ops::nn::DataFormat;
 use tract_itertools::izip;
 use tract_itertools::Itertools;
@@ -541,45 +541,6 @@ pub fn reduce(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
 }
 
 /*
-/* override linear to manage quantization in intermediaries
- * fragment linear(
- *    input: tensor<scalar>,
- *    filter: tensor<scalar>,
- *    bias: tensor<scalar> = 0.0 ) -> ( output: tensor<scalar> )
- {
- output = matmul(input, filter, transposeB = true) + bias;
- }
- */
-pub fn linear(
-    builder: &mut ModelBuilder,
-    invocation: &ResolvedInvocation,
-    ) -> TractResult<TVec<OutletId>> {
-    let input: OutletId = invocation.named_arg_as(builder, "input")?;
-    let filter: OutletId = invocation.named_arg_as(builder, "filter")?;
-    let bias: OutletId = invocation.named_arg_as(builder, "bias")?;
-    if let Some(Some(dt)) = &invocation.dt_from_quant_file.get(0) {
-        if let Some(_) = dt.qparams() {
-            return builder.wire(
-                ops::matmul::QMatMul {
-                    a_trans: false,
-                    b_trans: true,
-                    c_trans: false,
-                    output_type_foo: *dt,
-                    params: MatMulQParams::all_from_qtype(),
-                },
-                &[input, filter, bias],
-                );
-        }
-    }
-    let mul = builder.wire(
-        ops::matmul::MatMul { a_trans: false, b_trans: true, c_trans: false },
-        &[input, filter],
-        )?[0];
-    builder.wire(ops::math::add::bin_typed(), &[bias, mul])
-}
-*/
-
-/*
  * fragment matmul( A: tensor<scalar>, B: tensor<scalar>, transposeA: logical = false, transposeB: logical = false ) -> ( C: tensor<scalar> );
  */
 pub fn matmul(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
@@ -591,33 +552,41 @@ pub fn matmul(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     let b_dt = builder.model.outlet_fact(b)?.datum_type;
     let a_rank = builder.model.outlet_fact(a)?.rank();
     let b_rank = builder.model.outlet_fact(b)?.rank();
-    let axes = MatMulAxes::default_for_ranks(a_rank, b_rank, a_rank.max(b_rank))
-        .transposing(a_trans, b_trans, false);
+    let mk = if a_trans { "km" } else { "mk" };
+    let kn = if b_trans { "nk" } else { "kn" };
+    let c_rank = a_rank.max(b_rank);
+    let a_prefix: String = ('a'..).take(c_rank - 2).skip(c_rank - a_rank).collect();
+    let b_prefix: String = ('a'..).take(c_rank - 2).skip(c_rank - b_rank).collect();
+    let c_prefix: String = ('a'..).take(c_rank - 2).collect();
+    let qparams = if a_dt.is_quantized() || b_dt.is_quantized() { ",,,,,,," } else { "" };
+    let expr: AxesMapping =
+        format!("{a_prefix}{mk},{b_prefix}{kn}{qparams}->{c_prefix}mn").parse()?;
+    let name = &*invocation.invocation.id.0;
     if a_dt.is_quantized() || b_dt.is_quantized() {
         let accum_dt = DatumType::QI32(QParams::ZpScale {
             scale: a_dt.zp_scale().1 * b_dt.zp_scale().1,
             zero_point: 0,
         });
         let c_dt = invocation.dt_from_quant_file.get(0).cloned().flatten().unwrap_or(accum_dt);
-        let bias = builder.model.add_const(
-            format!("{}.bias", invocation.invocation.id.0),
-            Tensor::zero_dt(accum_dt, &[1])?,
-        )?;
-        builder.model.node(a.node);
 
-        let a_qp = a_dt.qparams().unwrap_or_default();
-        let b_qp = b_dt.qparams().unwrap_or_default();
-        let c_qp = c_dt.qparams().unwrap_or_default();
+        let a_qp = a_dt.qparams().unwrap_or_default().zp_scale();
+        let b_qp = b_dt.qparams().unwrap_or_default().zp_scale();
+        let c_qp = c_dt.qparams().unwrap_or_default().zp_scale();
+        let bias =
+            builder.model.add_const(format!("{name}.bias"), Tensor::zero_scalar_dt(accum_dt)?)?;
+        let a0 = builder.model.add_const(format!("{name}.a0"), rctensor0(a_qp.0))?;
+        let a_scale = builder.model.add_const(format!("{name}.a_scale"), rctensor0(a_qp.1))?;
+        let b0 = builder.model.add_const(format!("{name}.b0"), rctensor0(b_qp.0))?;
+        let b_scale = builder.model.add_const(format!("{name}.b_scale"), rctensor0(b_qp.1))?;
+        let c0 = builder.model.add_const(format!("{name}.c0"), rctensor0(c_qp.0))?;
+        let c_scale = builder.model.add_const(format!("{name}.c_scale"), rctensor0(c_qp.1))?;
+
         builder.wire(
-            ops::matmul::QMatMul {
-                axes,
-                output_type: c_dt,
-                params: MatMulQParams::all_from_qtype(&a_qp, &b_qp, &c_qp)?,
-            },
-            &[a, b, bias],
+            ops::einsum::EinSum { expr, operating_dt: i32::datum_type(), q_params: Some(c_dt) },
+            &[a, b, bias, a0, a_scale, b0, b_scale, c0, c_scale],
         )
     } else {
-        builder.wire(ops::matmul::MatMul { axes }, &[a, b])
+        builder.wire(ops::einsum::EinSum { expr, operating_dt: a_dt, q_params: None }, &[a, b])
     }
 }
 
