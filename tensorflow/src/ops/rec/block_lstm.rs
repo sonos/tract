@@ -1,4 +1,5 @@
 use tract_hir::internal::*;
+use tract_hir::tract_core::ops::einsum::EinSum;
 use tract_hir::tract_core::ops::scan::ScanInfo;
 
 use crate::model::ParsingContext;
@@ -73,7 +74,7 @@ impl Expansion for BlockLSTM {
         model: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        use tract_hir::tract_core::ops::{array, math, matmul, nn, scan};
+        use tract_hir::tract_core::ops::{array, math, nn, scan};
 
         let mut body = TypedModel::default();
         let mut outer_inputs = vec![];
@@ -127,7 +128,7 @@ impl Expansion for BlockLSTM {
 
         let w = body.add_const(format!("{prefix}-w"), w)?;
         let b = body.add_const(format!("{prefix}-b"), b)?;
-        wire!(i_ci_f_o_1 = matmul::mir::MatMul::default(), xh, w);
+        wire!(i_ci_f_o_1 = EinSum::new("mk,kn->mn".parse()?, f32::datum_type()), xh, w);
         wire!(i_ci_f_o = math::add(), b, i_ci_f_o_1);
 
         wire!(i_1 = array::Slice::new(1, 0, cell_size), i_ci_f_o);

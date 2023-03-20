@@ -2,7 +2,7 @@ use crate::model::ParsingContext;
 use crate::pb::*;
 use tract_hir::internal::*;
 use tract_hir::ops;
-use tract_hir::tract_core::ops::matmul::MatMulAxes;
+use tract_hir::tract_core::ops::einsum::EinSum;
 use tract_hir::tract_core::ops::scan::ScanInfo;
 
 pub fn gru(
@@ -168,7 +168,7 @@ impl GRU {
         inputs: &[OutletId],
         dir: usize,
     ) -> TractResult<TVec<OutletId>> {
-        use tract_hir::ops::{array, math, matmul, scan};
+        use tract_hir::ops::{array, math, scan};
 
         let x_fact = target.outlet_fact(inputs[0])?.clone();
         let r_fact = target.outlet_fact(inputs[2])?.clone();
@@ -280,7 +280,7 @@ impl GRU {
         wire!(Wr = array::Slice::new(0, 1.to_dim() * h_size, 2.to_dim() * h_size), W);
         wire!(Wh = array::Slice::new(0, 2.to_dim() * h_size, 3.to_dim() * h_size), W);
 
-        let matmul_t = matmul::MatMul { axes: MatMulAxes::default().transposing_b() };
+        let matmul_t = EinSum::new("mk,nk->mn".parse()?, f32::datum_type());
 
         // zt = f(Xt*(Wz^T) + Ht-1*(Rz^T) + Wbz + Rbz)
         wire!(Xt_WzT = matmul_t.clone(), Xt, Wz);

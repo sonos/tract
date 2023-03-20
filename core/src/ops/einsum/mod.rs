@@ -13,9 +13,9 @@ mod codegen;
 #[cfg(test)]
 mod proptest;
 
-#[derive(Clone, Hash, new)]
+#[derive(Clone, Hash)]
 pub struct EinSum {
-    pub expr: AxesMapping,
+    pub axes: AxesMapping,
     pub operating_dt: DatumType,
     // if present, assume we're a binary op.
     // 9 inputs are: A,B,bias, A0,Ascale, B0,BScale, C0,Cscale
@@ -23,6 +23,14 @@ pub struct EinSum {
 }
 
 impl EinSum {
+    pub fn new(axes: AxesMapping, operating_dt: DatumType) -> EinSum {
+        EinSum { axes, operating_dt, q_params: None }
+    }
+
+    pub fn newq(axes: AxesMapping, operating_dt: DatumType, output_type: DatumType) -> EinSum {
+        EinSum { axes, operating_dt, q_params: Some(output_type) }
+    }
+
     #[allow(unused_variables)]
     pub(crate) fn propagate_axis(
         &self,
@@ -32,8 +40,8 @@ impl EinSum {
         axis: usize,
     ) -> TractResult<Option<TypedModelPatch>> {
         let mut new_axis = match io {
-            InOut::In(slot) => self.expr.input_axis(slot, axis).unwrap().clone(),
-            InOut::Out(_) => self.expr.output_axis(0, axis).unwrap().clone(),
+            InOut::In(slot) => self.axes.input_axis(slot, axis).unwrap().clone(),
+            InOut::Out(_) => self.axes.output_axis(0, axis).unwrap().clone(),
         };
         let repr = new_axis.repr;
         let mut patch = TypedModelPatch::new(format!("Propagate axis {}", new_axis.repr));
@@ -43,7 +51,7 @@ impl EinSum {
             if new_axis.inputs[ix].len() > 1 {
                 return Ok(None); // FIXME maybe
             } else if new_axis.inputs[ix].is_empty() {
-                let insert_at = self.expr.input_rank(ix);
+                let insert_at = self.axes.input_rank(ix);
                 tap = patch.wire_node(
                     format!("{}.prop_axis.{}.input_{}", &node.name, new_axis.repr, ix),
                     AxisOp::Add(insert_at),
@@ -54,19 +62,19 @@ impl EinSum {
             taps.push(tap);
         }
         let must_rm_axis: Option<usize> = if new_axis.outputs[0].len() == 0 {
-            let insert_at = self.expr.output_rank(0);
+            let insert_at = self.axes.output_rank(0);
             new_axis.outputs[0].push(insert_at);
             Some(insert_at)
         } else {
             None
         };
         let new_expr = self
-            .expr
+            .axes
             .iter_all_axes()
             .map(|it| if it.repr == new_axis.repr { new_axis.clone() } else { it.clone() })
             .collect::<TractResult<AxesMapping>>()?;
         let mut wire =
-            patch.wire_node(&node.name, Self { expr: new_expr, ..self.clone() }, &taps)?;
+            patch.wire_node(&node.name, Self { axes: new_expr, ..self.clone() }, &taps)?;
         if let Some(position) = must_rm_axis {
             wire = patch.wire_node(
                 format!("{}.prop_axis.{}.output", &node.name, repr),
@@ -84,14 +92,15 @@ impl EinSum {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if self.q_params.is_some() { // FIXME
-            return Ok(None)
+        if self.q_params.is_some() {
+            // FIXME
+            return Ok(None);
         }
         'outer: for (slot, input) in node.inputs.iter().enumerate() {
             let precursor = model.node(input.node);
             if let Some(concat) = precursor.op_as::<TypedConcat>() {
                 let offsets = concat.offsets(&model.node_input_facts(precursor.id)?)?;
-                let axis_info = self.expr.input_axis(slot, concat.axis).context("Axis unmapped")?;
+                let axis_info = self.axes.input_axis(slot, concat.axis).context("Axis unmapped")?;
                 // only split if axis is a summing axis
                 if axis_info.outputs[0].len() > 0 {
                     continue;
@@ -168,7 +177,7 @@ impl EinSum {
 
 impl Debug for EinSum {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "EinSum {} ({:?})", self.expr, self.operating_dt)
+        write!(f, "EinSum {} ({:?})", self.axes, self.operating_dt)
     }
 }
 
@@ -178,7 +187,7 @@ impl Op for EinSum {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        let mut info = vec![format!("{} ({:?})", self.expr, self.operating_dt)];
+        let mut info = vec![format!("{} ({:?})", self.axes, self.operating_dt)];
         if let Some(qp) = self.q_params {
             info.push(format!("Quantized output: {qp:?}"));
         }
@@ -195,9 +204,9 @@ impl EvalOp for EinSum {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let output = if let Some(qp) = self.q_params {
-            eval::eval_q(&self.expr, qp, inputs)
+            eval::eval_q(&self.axes, qp, inputs)
         } else {
-            dispatch_numbers!(eval::eval_t(self.operating_dt)(&self.expr, inputs))
+            dispatch_numbers!(eval::eval_t(self.operating_dt)(&self.axes, inputs))
         }?;
         Ok(tvec!(output.into_tvalue()))
     }
@@ -205,19 +214,19 @@ impl EvalOp for EinSum {
 
 impl TypedOp for EinSum {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        ensure!(inputs.len() == self.expr.input_count());
+        ensure!(inputs.len() == self.axes.input_count());
         ensure!(inputs
             .iter()
             .enumerate()
-            .all(|(ix, fact)| fact.rank() == self.expr.input_rank(ix)));
+            .all(|(ix, fact)| fact.rank() == self.axes.input_rank(ix)));
         let shapes: TVec<&[TDim]> = inputs.iter().map(|t| &*t.shape).collect();
         if let Some(qp) = self.q_params {
             ensure!(inputs.len() == 9);
-            Ok(tvec!(qp.fact(eval::output_shape(&self.expr, &shapes[0..2]))))
+            Ok(tvec!(qp.fact(eval::output_shape(&self.axes, &shapes[0..2]))))
         } else {
             Ok(tvec!(TypedFact::dt_shape(
                 self.operating_dt,
-                eval::output_shape(&self.expr, &shapes)
+                eval::output_shape(&self.axes, &shapes)
             )))
         }
     }
@@ -227,14 +236,14 @@ impl TypedOp for EinSum {
         _inputs: &[&TypedFact],
         _outputs: &[&TypedFact],
     ) -> TractResult<AxesMapping> {
-        Ok(self.expr.clone())
+        Ok(self.axes.clone())
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         let shapes: TVec<&[TDim]> = inputs.iter().map(|t| &*t.shape).collect();
-        let oshape = eval::output_shape(&self.expr, &shapes);
+        let oshape = eval::output_shape(&self.axes, &shapes);
         let ks = self
-            .expr
+            .axes
             .iter_all_axes()
             .filter(|axis| axis.outputs[0].len() == 0)
             .map(|axis| {
@@ -274,7 +283,7 @@ impl TypedOp for EinSum {
         io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
-        let (mut inputs, mut outputs) = self.expr.to_strs();
+        let (mut inputs, mut outputs) = self.axes.to_strs();
         let interface: &mut String = match io {
             InOut::In(i) => &mut inputs[i],
             InOut::Out(o) => &mut outputs[o],
@@ -284,7 +293,7 @@ impl TypedOp for EinSum {
             AxisOp::Rm(rm) => {
                 axes.remove(*rm);
             }
-            AxisOp::Add(add) => axes.insert(*add, self.expr.available_label()),
+            AxisOp::Add(add) => axes.insert(*add, self.axes.available_label()),
             AxisOp::Move(from, to) => {
                 let c = axes.remove(*from);
                 axes.insert(*to, c);
@@ -292,9 +301,9 @@ impl TypedOp for EinSum {
             _ => return Ok(None),
         };
         *interface = axes.into_iter().collect();
-        let expr = AxesMapping::from_strs(&inputs, &outputs)?;
+        let axes = AxesMapping::from_strs(&inputs, &outputs)?;
         Ok(Some(AxisChangeConsequence {
-            substitute_op: Some(Box::new(EinSum::new(expr, self.operating_dt, self.q_params))),
+            substitute_op: Some(Box::new(EinSum { axes, ..self.clone() })),
             wire_changes: tvec!((io, change.clone())),
         }))
     }

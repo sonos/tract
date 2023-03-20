@@ -447,7 +447,7 @@ pub mod scale {
         let c0 = model.add_const("c0", tensor0(0i8)).unwrap();
         let c_scale = model.add_const("c_scale", tensor0(scale)).unwrap();
         let op = EinSum {
-            expr: "mk,kn,,,,,,,->mn".parse().unwrap(),
+            axes: "mk,kn,,,,,,,->mn".parse().unwrap(),
             operating_dt: i32::datum_type(),
             q_params: Some(i8::datum_type()),
         };

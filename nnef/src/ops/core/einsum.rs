@@ -60,7 +60,7 @@ pub fn ser_einsum(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc
         "tract_core_einsum",
         &[Arc::new(RValue::Array(inputs))],
         &[
-            ("expr", string(einsum.expr.to_string())),
+            ("expr", string(einsum.axes.to_string())),
             ("acc", datum_type(einsum.operating_dt)),
             ("output", einsum.q_params.map(datum_type).unwrap_or_else(|| string(""))),
         ],
@@ -74,7 +74,7 @@ pub fn ser_einsum_q(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<A
         "tract_core_einsum_q",
         &[Arc::new(RValue::Array(vec![inputs[0].clone(), inputs[1].clone()]))],
         &[
-            ("expr", string(einsum.expr.to_string())),
+            ("expr", string(einsum.axes.to_string())),
             ("acc", datum_type(einsum.operating_dt)),
             ("output", einsum.q_params.map(datum_type).unwrap_or_else(|| string(""))),
             ("bias", inputs[2].clone()),
@@ -96,7 +96,7 @@ pub fn de_einsum(
     let inputs: TVec<OutletId> = invocation.named_arg_as(builder, "inputs")?;
     let operating_dt = invocation.named_arg_as::<String>(builder, "acc")?;
     let operating_dt = operating_dt.parse()?;
-    let einsum = EinSum::new(expr, operating_dt, None);
+    let einsum = EinSum::new(expr, operating_dt);
     builder.wire(einsum, &inputs)
 }
 
@@ -114,10 +114,10 @@ pub fn de_einsum_q(
     let output_dt = if let Some(odt) =
         invocation.get_named_arg_as::<String>(builder, "output")?.filter(|odt| odt.len() > 0)
     {
-        Some(odt.parse()?)
+        odt.parse()?
     } else {
         bail!("Expected an output type for tract_core_einsum_q")
     };
-    let einsum = EinSum::new(expr, operating_dt, output_dt);
+    let einsum = EinSum::newq(expr, operating_dt, output_dt);
     builder.wire(einsum, &inputs)
 }

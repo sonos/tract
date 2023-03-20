@@ -114,7 +114,7 @@ pub fn tract_nnef() -> Registry {
     registry.register_binary("max", &ops::math::Max {});
 
     primitive(&mut registry, "matmul", deser::matmul);
-    dumper!(ops::matmul::MatMul, ser::matmul);
+//    dumper!(ops::matmul::MatMul, ser::matmul);
 
     primitive(&mut registry, "conv", deser::conv);
     dumper!(ops::cnn::ConvUnary, ser::conv);

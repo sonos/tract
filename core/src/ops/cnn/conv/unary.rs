@@ -657,14 +657,14 @@ impl ConvUnary {
                     inputs.push(konst);
                 }
                 let op = EinSum {
-                    expr: axes,
+                    axes,
                     operating_dt: i32::datum_type(),
                     q_params: Some(q_params.0),
                 };
                 patch.wire_node(format!("{}.einsum", node.name), op, &inputs)?[0]
             } else {
                 let op =
-                    EinSum { expr: axes, operating_dt: input_facts[0].datum_type, q_params: None };
+                    EinSum { axes, operating_dt: input_facts[0].datum_type, q_params: None };
                 let mut wire = patch.wire_node(format!("{}.einsum", node.name), op, &inputs)?[0];
                 if let Some(b) = self.bias.as_ref().filter(|_| self.q_params.is_none()) {
                     anyhow::ensure!(b.rank() == 0 || b.rank() == 1);

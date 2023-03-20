@@ -5,7 +5,6 @@ use crate::ser::*;
 use tract_core::num_traits::Zero;
 use tract_core::ops;
 use tract_core::ops::cnn::PoolSpec;
-use tract_core::ops::matmul::MatMulAxes;
 use tract_core::ops::nn::DataFormat;
 
 pub fn source(
@@ -438,54 +437,6 @@ pub fn reduce(
         _ => return Ok(None),
     };
     Ok(Some(invocation(oper, &[wire], &[("axes", ints(&op.axes))])))
-}
-
-pub fn matmulaxes_as_transpositions(
-    axes: &MatMulAxes,
-    a_rank: usize,
-    b_rank: usize,
-) -> Option<(bool, bool, bool)> {
-    fn check_one(axis_1: usize, axis_2: usize, rank: usize) -> bool {
-        (axis_1 as isize - axis_2 as isize).abs() == 1 && axis_1.max(axis_2) == rank - 1
-    }
-    if check_one(axes.a_k, axes.a_m, a_rank)
-        && check_one(axes.b_k, axes.b_n, b_rank)
-        && check_one(axes.c_m, axes.c_n, a_rank.max(b_rank))
-    {
-        Some((axes.a_m > axes.a_k, axes.b_k > axes.b_n, axes.c_m > axes.c_n))
-    } else {
-        None
-    }
-}
-
-pub fn matmul(
-    ast: &mut IntoAst,
-    node: &TypedNode,
-    op: &ops::matmul::MatMul,
-) -> TractResult<Option<Arc<RValue>>> {
-    let a = ast.force_variable(format!("{}_a", node.name), &ast.mapping[&node.inputs[0]].clone());
-    let b = ast.force_variable(format!("{}_b", node.name), &ast.mapping[&node.inputs[1]].clone());
-    let inputs = ast.model.node_input_facts(node.id)?;
-    let c = if let Some((a_trans, b_trans, c_trans)) =
-        matmulaxes_as_transpositions(&op.axes, inputs[0].rank(), inputs[1].rank())
-    {
-        if c_trans {
-            invocation(
-                "matmul",
-                &[b, a],
-                &[("transposeA", logical(!b_trans)), ("transposeB", logical(!a_trans))],
-            )
-        } else {
-            invocation(
-                "matmul",
-                &[a, b],
-                &[("transposeA", logical(a_trans)), ("transposeB", logical(b_trans))],
-            )
-        }
-    } else {
-        return Ok(None);
-    };
-    Ok(Some(ast.force_variable(&node.name, &c)))
 }
 
 pub fn select(

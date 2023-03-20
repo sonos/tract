@@ -122,7 +122,7 @@ impl DeconvUnary {
         }
         let einsum = target.wire_node(
             format!("{name}.einsum"),
-            EinSum { expr: expr.parse()?, operating_dt: self.kernel.datum_type(), q_params: None },
+            EinSum { axes: expr.parse()?, operating_dt: self.kernel.datum_type(), q_params: None },
             &[kernel, input[0]],
         )?;
 

@@ -38,9 +38,9 @@ fn choose_mkn_axes<'a>(
 ) -> TractResult<Option<(&'a Axis, &'a Axis, &'a Axis)>> {
     let input_facts = model.node_input_facts(node.id)?;
     let input_shapes: TVec<&[TDim]> = input_facts.iter().map(|f| &*f.shape).collect();
-    let output_shape = super::eval::output_shape(&op.expr, &input_shapes);
+    let output_shape = super::eval::output_shape(&op.axes, &input_shapes);
     let k_axes: TVec<&Axis> = op
-        .expr
+        .axes
         .iter_all_axes()
         .filter(|a| a.inputs[0].len() == 1 && a.inputs[1].len() == 1 && a.outputs[0].len() == 0)
         .filter(|a| {
@@ -50,7 +50,7 @@ fn choose_mkn_axes<'a>(
         .collect();
     let [k_axis] = &*k_axes else { return Ok(None) };
     let Some(m_axis) = op
-        .expr
+        .axes
         .iter_all_axes()
         .filter(|a| a.inputs[0].len() == 1 && (a.inputs[1].len() == 0 || input_facts[1].shape[a.inputs[1][0]].is_one()) && a.outputs[0].len() == 1)
         .max_by_key(|a| &output_shape[a.outputs[0][0]])
@@ -58,7 +58,7 @@ fn choose_mkn_axes<'a>(
         return Ok(None)
     };
     let Some(n_axis) = op
-        .expr
+        .axes
         .iter_all_axes()
         .filter(|a| (a.inputs[0].len() == 0 || input_facts[0].shape[a.inputs[0][0]].is_one()) && a.inputs[1].len() == 1 && a.outputs[0].len() == 1)
         .max_by_key(|a| &output_shape[a.outputs[0][0]])
@@ -102,7 +102,7 @@ fn dequant_output(
         &node.name,
         EinSum {
             q_params: None,
-            expr: op.expr.extract_sub_mapping(&[0, 1], &[0])?,
+            axes: op.axes.extract_sub_mapping(&[0, 1], &[0])?,
             operating_dt: op.operating_dt,
         },
         &[a, b],
@@ -122,12 +122,12 @@ fn dequant_output(
     )?;
 
     let sum_a =
-        wire_axes_fix(&mut patch, name, "sum_a", &op.expr.extract_sub_mapping(&[0], &[0])?, sum_a)?;
+        wire_axes_fix(&mut patch, name, "sum_a", &op.axes.extract_sub_mapping(&[0], &[0])?, sum_a)?;
     let sum_b =
-        wire_axes_fix(&mut patch, name, "sum_b", &op.expr.extract_sub_mapping(&[1], &[0])?, sum_b)?;
+        wire_axes_fix(&mut patch, name, "sum_b", &op.axes.extract_sub_mapping(&[1], &[0])?, sum_b)?;
     let bias = tvec!(bias);
     let bias =
-        wire_axes_fix(&mut patch, name, "bias", &op.expr.extract_sub_mapping(&[2], &[0])?, bias)?;
+        wire_axes_fix(&mut patch, name, "bias", &op.axes.extract_sub_mapping(&[2], &[0])?, bias)?;
 
     let abc_scale = combine_scales(&mut patch, name, a_scale, b_scale, c_scale)?;
 
@@ -161,7 +161,7 @@ fn lir_mat_mul_unary(
     };
     if m < n {
         let expr = op
-            .expr
+            .axes
             .iter_all_axes()
             .map(|axis| {
                 let mut axis = axis.clone();
@@ -173,7 +173,7 @@ fn lir_mat_mul_unary(
             model,
             node,
             &[node.inputs[1], node.inputs[0]],
-            EinSum { expr: AxesMapping::new(expr)?, ..op.clone() },
+            EinSum { axes: AxesMapping::new(expr)?, ..op.clone() },
         )
         .map(Some);
     }
@@ -194,7 +194,7 @@ fn lir_mat_mul_unary(
 
     let mut c_to_a_axis_mapping = tvec!();
     let mut c_to_b_axis_mapping = tvec!();
-    for axis in op.expr.iter_all_axes().filter(|&axis| ![m_axis, k_axis, n_axis].contains(&axis)) {
+    for axis in op.axes.iter_all_axes().filter(|&axis| ![m_axis, k_axis, n_axis].contains(&axis)) {
         if let (&[c], &[a]) = (&*axis.outputs[0], &*axis.inputs[0]) {
             if input_facts[0].shape[a] != 1.to_dim() {
                 let a = a - (a > a_m) as usize - (a > a_k) as usize;

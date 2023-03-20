@@ -2,7 +2,7 @@ use crate::model::ParsingContext;
 use crate::pb::*;
 use tract_hir::internal::*;
 use tract_hir::ops;
-use tract_hir::tract_core::ops::matmul::MatMulAxes;
+use tract_hir::tract_core::ops::einsum::EinSum;
 use tract_hir::tract_core::ops::scan::ScanInfo;
 
 pub fn rnn(
@@ -161,7 +161,7 @@ impl RNN {
         inputs: &[OutletId],
         dir: usize,
     ) -> TractResult<TVec<OutletId>> {
-        use tract_hir::ops::{array, math, matmul, scan};
+        use tract_hir::ops::{array, math, scan};
 
         let x_fact = target.outlet_fact(inputs[0])?.clone();
         let r_fact = target.outlet_fact(inputs[2])?.clone();
@@ -270,7 +270,7 @@ impl RNN {
             None
         };
 
-        let matmul_t = matmul::MatMul { axes: MatMulAxes::default().transposing_b() };
+        let matmul_t = EinSum::new("mk,nk->mn".parse()?, f32::datum_type());
 
         // Ht = f(Xt*(Wi^T) + Ht-1*(Ri^T) + Wbi + Rbi)
         wire!(Xt_WiT = matmul_t.clone(), Xt, W);

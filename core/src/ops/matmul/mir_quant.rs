@@ -610,7 +610,7 @@ mod test {
                         .wire_node(
                             "einsum",
                             crate::ops::einsum::EinSum {
-                                expr: "mk,kn,,,,,,,->mn".parse().unwrap(),
+                                axes: "mk,kn,,,,,,,->mn".parse().unwrap(),
                                 operating_dt: i32::datum_type(),
                                 q_params: Some(<$c>::datum_type())
                             },
