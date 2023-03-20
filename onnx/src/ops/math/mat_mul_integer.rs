@@ -144,7 +144,7 @@ fn wire_as_einsum(
         .iter()
         .map(|i| Ok(target.outlet_fact(*i)?.rank()))
         .collect::<TractResult<Vec<_>>>()?;
-    let mut expr = AxesMapping::disconnected_for_ranks(&*ranks, &ranks[0..1])?
+    let mut expr = AxesMapping::disconnected_for_ranks(&ranks, &ranks[0..1])?
         .with_input_axis_named(0, rank - 2, 'm')?
         .with_output_axis_linked_to(0, rank - 2, 'm')?
         .with_input_axis_named(1, rank - 1, 'n')?
@@ -183,5 +183,5 @@ fn wire_as_einsum(
         operating_dt: i32::datum_type(),
         q_params: Some(output),
     };
-    target.wire_node(prefix, op, &inputs)
+    target.wire_node(prefix, op, inputs)
 }
