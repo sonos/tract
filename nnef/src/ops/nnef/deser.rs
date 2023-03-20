@@ -552,8 +552,6 @@ pub fn matmul(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     let b_dt = builder.model.outlet_fact(b)?.datum_type;
     let a_rank = builder.model.outlet_fact(a)?.rank();
     let b_rank = builder.model.outlet_fact(b)?.rank();
-    let mk = if a_trans { "km" } else { "mk" };
-    let kn = if b_trans { "nk" } else { "kn" };
     let c_rank = a_rank.max(b_rank);
     let mut axes = AxesMapping::for_numpy_matmul(c_rank, a_trans, b_trans, false)?;
     let name = &*invocation.invocation.id.0;
