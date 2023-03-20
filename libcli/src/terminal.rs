@@ -292,7 +292,8 @@ fn render_node_prefixed(
         let prefix = drawing_lines.next().unwrap();
         let mut scope: TVec<_> = scope.into();
         scope.push((node_id, label.to_string()));
-        render_prefixed(sub, &format!("{prefix} [{label}] "), &scope, annotations, options)?
+        let scope_prefix = scope.iter().map(|(_, p)| p).join("|");
+        render_prefixed(sub, &format!("{prefix} [{scope_prefix}] "), &scope, annotations, options)?
     }
 
     if let Io::Short = options.io {

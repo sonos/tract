@@ -62,13 +62,13 @@ impl Nnef {
         registry_id: &str,
         op_id: &str,
         func: ToTract,
-    ) -> Self {
+    ) -> TractResult<Self> {
         if let Some(reg) = self.registries.iter_mut().find(|it| it.id == registry_id.into()) {
-            reg.register_primitive_alternative(op_id, func).expect(
-                format!("Impossible to add new primitive alternative for op {}", op_id).as_str(),
-            );
+            reg.register_primitive_alternative(op_id, func).with_context(|| {
+                anyhow!("Impossible to add new primitive alternative for op {}", op_id)
+            })?;
         }
-        self
+        Ok(self)
     }
 
     pub fn enable_tract_resource(&mut self) {
