@@ -364,6 +364,22 @@ impl AxesMapping {
         AxesMapping { axes, ..self.clone() }.check()
     }
 
+    pub fn with_extra_output_axis(
+        &self,
+        repr: char,
+        slot: usize,
+        position: usize,
+    ) -> TractResult<AxesMapping> {
+        let mut axes: TVec<Axis> = self.axes.clone();
+        axes.iter_mut().for_each(|axis| {
+            axis.outputs[slot].iter_mut().for_each(|pos| *pos += (*pos >= position) as usize)
+        });
+        let mut axis = Axis::new(repr, self.input_count, self.output_count);
+        axis.outputs[slot].push(position);
+        axes.push(axis);
+        AxesMapping { axes, ..self.clone() }.check()
+    }
+
     pub fn translate_to_axis_ops(&self) -> TractResult<Vec<AxisOp>> {
         ensure!(self.input_count() == 1);
         ensure!(self.output_count() == 1);

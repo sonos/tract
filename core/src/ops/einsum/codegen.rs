@@ -20,14 +20,21 @@ pub(crate) fn codegen(
     {
         return Ok(None);
     }
-    if let Some(axes) = choose_mkn_axes(op, model, node).context("Choosing axes")? {
-        if op.q_params.is_none() {
-            lir_mat_mul_unary(op, model, node, axes).context("Translating to LirMatMul")
-        } else {
-            dequant_output(op, model, node, axes).context("Dequantizing output")
-        }
+    let (m_axis, k_axis, n_axis) = choose_mkn_axes(op, model, node).context("Choosing axes")?;
+    let Some(k_axis) = k_axis else {
+        return Ok(None)
+    };
+    let Some(m_axis) = m_axis else {
+        return Ok(Some(inject_m_or_n_axis(op, model, node, false)?));
+    };
+    let Some(n_axis) = n_axis else {
+        return Ok(Some(inject_m_or_n_axis(op, model, node, true)?));
+    };
+    if op.q_params.is_none() {
+        lir_mat_mul_unary(op, model, node, (m_axis, k_axis, n_axis))
+            .context("Translating to LirMatMul")
     } else {
-        Ok(None)
+        dequant_output(op, model, node, (m_axis, k_axis, n_axis)).context("Dequantizing output")
     }
 }
 
@@ -35,7 +42,7 @@ fn choose_mkn_axes<'a>(
     op: &'a EinSum,
     model: &TypedModel,
     node: &TypedNode,
-) -> TractResult<Option<(&'a Axis, &'a Axis, &'a Axis)>> {
+) -> TractResult<(Option<&'a Axis>, Option<&'a Axis>, Option<&'a Axis>)> {
     let input_facts = model.node_input_facts(node.id)?;
     let input_shapes: TVec<&[TDim]> = input_facts.iter().map(|f| &*f.shape).collect();
     let output_shape = super::eval::output_shape(&op.axes, &input_shapes);
@@ -48,24 +55,79 @@ fn choose_mkn_axes<'a>(
                 && input_facts[0].shape[a.inputs[0][0]] != 1.to_dim()
         })
         .collect();
-    let [k_axis] = &*k_axes else { return Ok(None) };
-    let Some(m_axis) = op
+    let k_axis = if k_axes.len() == 1 { Some(k_axes[0]) } else { None };
+    let m_axis = op
         .axes
         .iter_all_axes()
-        .filter(|a| a.inputs[0].len() == 1 && (a.inputs[1].len() == 0 || input_facts[1].shape[a.inputs[1][0]].is_one()) && a.outputs[0].len() == 1)
-        .max_by_key(|a| &output_shape[a.outputs[0][0]])
-    else {
-        return Ok(None)
-    };
-    let Some(n_axis) = op
+        .filter(|a| {
+            a.inputs[0].len() == 1
+                && (a.inputs[1].len() == 0 || input_facts[1].shape[a.inputs[1][0]].is_one())
+                && a.outputs[0].len() == 1
+        })
+        .max_by_key(|a| &output_shape[a.outputs[0][0]]);
+    let n_axis = op
         .axes
         .iter_all_axes()
-        .filter(|a| (a.inputs[0].len() == 0 || input_facts[0].shape[a.inputs[0][0]].is_one()) && a.inputs[1].len() == 1 && a.outputs[0].len() == 1)
-        .max_by_key(|a| &output_shape[a.outputs[0][0]])
-    else {
-        return Ok(None)
-    };
-    Ok(Some((m_axis, k_axis, n_axis)))
+        .filter(|a| {
+            (a.inputs[0].len() == 0 || input_facts[0].shape[a.inputs[0][0]].is_one())
+                && a.inputs[1].len() == 1
+                && a.outputs[0].len() == 1
+        })
+        .max_by_key(|a| &output_shape[a.outputs[0][0]]);
+    Ok((m_axis, k_axis, n_axis))
+}
+
+fn inject_m_or_n_axis(
+    op: &EinSum,
+    model: &TypedModel,
+    node: &TypedNode,
+    is_n: bool,
+) -> TractResult<TypedModelPatch> {
+    let input_to_fix = is_n as usize;
+    let input_facts = model.node_input_facts(node.id)?;
+    let quasi_m_or_n_axis = op.axes.iter_all_axes().find(|a| {
+        (a.inputs[1 - input_to_fix].len() == 0
+            || input_facts[1 - input_to_fix].shape[a.inputs[1 - input_to_fix][0]].is_one())
+            && (a.inputs[input_to_fix].len() == 1 || a.outputs[0].len() == 1)
+    });
+    let name = &node.name;
+    let mut patch = TypedModelPatch::new("Injecting m or n axis");
+    let mut wire =
+        node.inputs.iter().map(|i| patch.tap_model(model, *i)).collect::<TractResult<TVec<_>>>()?;
+    if let Some(axis) = quasi_m_or_n_axis {
+        if axis.inputs[input_to_fix].len() == 1 {
+            let new_axes = op.axes.with_extra_output_axis('$', 0, 0)?.linking(axis.repr, '$')?;
+            wire = patch.wire_node(
+                format!("{name}.einsum"),
+                EinSum { axes: new_axes, ..op.clone() },
+                &wire,
+            )?;
+            wire = patch.wire_node(&node.name, AxisOp::Rm(0), &wire)?;
+        } else {
+            let new_axes =
+                op.axes.with_extra_input_axis('$', input_to_fix, 0)?.linking(axis.repr, '$')?;
+            wire[input_to_fix] =
+                patch.wire_node(format!("{name}.add_mn"), AxisOp::Add(0), &[wire[input_to_fix]])?
+                    [0];
+            wire = patch.wire_node(&node.name, EinSum { axes: new_axes, ..op.clone() }, &wire)?;
+        }
+    } else {
+        let repr = op.axes.available_label();
+        let new_axes = op
+            .axes
+            .with_extra_input_axis(repr, input_to_fix, 0)?
+            .with_extra_output_axis('$', 0, 0)?
+            .linking(repr, '$')?;
+        wire[input_to_fix] = patch.wire_node(format!("{name}.add_m"), AxisOp::Add(0), &[wire[input_to_fix]])?[0];
+        wire = patch.wire_node(
+            format!("{name}.einsum"),
+            EinSum { axes: new_axes, ..op.clone() },
+            &wire,
+        )?;
+        wire = patch.wire_node(&node.name, AxisOp::Rm(0), &wire)?;
+    }
+    patch.shunt_outside(model, node.id.into(), wire[0])?;
+    Ok(patch)
 }
 
 fn wire_axes_fix(
