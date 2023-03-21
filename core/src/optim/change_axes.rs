@@ -42,7 +42,6 @@ impl TypedPass for ChangeAxes {
                     }
                 }
             }
-            /*
             for (slot, fact) in model.node(n).outputs.iter().enumerate() {
                 for (ix, dim) in fact.fact.shape.iter().enumerate() {
                     if dim.is_one() {
@@ -60,7 +59,6 @@ impl TypedPass for ChangeAxes {
                     }
                 }
             }
-            */
         }
         Ok(None)
     }

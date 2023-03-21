@@ -3,6 +3,7 @@ use std::collections::hash_map::Entry;
 
 use crate::internal::*;
 use crate::model::{TypedModel, TypedNode};
+use crate::ops::einsum::EinSum;
 use crate::ops::identity::Identity;
 use tract_itertools::Itertools;
 
@@ -671,10 +672,12 @@ pub fn change_axes(
                 let node = model.node(node_id);
                 let op = if let Some(op) = changed_ops.get(&node_id) {
                     trace!("  Change {:?} revisiting {}", change, model.node(node_id));
-                    /*
-                    return Ok(None)
-                    */
-                    op
+                    if op.is::<EinSum>() {
+                        // FIXME Einsum can swallow any combination of axis change on all interfaces
+                        op
+                    } else {
+                        return Ok(None);
+                    }
                 } else {
                     &node.op
                 };

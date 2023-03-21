@@ -2,6 +2,7 @@ use crate::internal::Axis;
 use crate::internal::*;
 use std::convert::TryFrom;
 use tract_data::internal::ClampCast;
+use tract_data::itertools::Itertools;
 use tract_ndarray::prelude::*;
 use tract_num_traits::Bounded;
 
@@ -271,8 +272,8 @@ impl EvalOp for Reduce {
 }
 
 impl TypedOp for Reduce {
-    as_op!();
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        ensure!(self.axes.iter().tuple_windows().all(|(a, b)| a < b));
         if inputs[0].datum_type == TDim::datum_type() {
             bail!("Reduce input must be cast from TDim to i64 beforehand")
         }
@@ -285,6 +286,7 @@ impl TypedOp for Reduce {
         } else {
             inputs[0].datum_type
         };
+        ensure!(!shape.iter().any(|d| *d == 768.to_dim()));
         Ok(tvec!(dt.fact(shape)))
     }
 
@@ -326,7 +328,10 @@ impl TypedOp for Reduce {
                 return Ok(None);
             }
         }
+        axes.sort();
         let op = Some(Box::new(Self { axes, ..self.clone() }) as _);
         Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
     }
+
+    as_op!();
 }
