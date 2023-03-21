@@ -16,7 +16,8 @@ pub struct AxesMapping {
 
 impl AxesMapping {
     pub fn new(it: impl AsRef<[Axis]>) -> TractResult<AxesMapping> {
-        let axes: TVec<_> = it.as_ref().into();
+        let mut axes: TVec<_> = it.as_ref().into();
+        axes.sort_by_key(|ax| ax.repr);
         let input_count = axes[0].inputs.len();
         let output_count = axes[0].outputs.len();
         AxesMapping { axes, output_count, input_count }.check()
@@ -168,6 +169,7 @@ impl AxesMapping {
             conflict.repr = old_label
         }
         self.input_axis_mut(input_id, axis_pos)?.repr = name;
+        self.sort();
         self.check()
     }
 
@@ -182,6 +184,7 @@ impl AxesMapping {
             conflict.repr = old_label
         }
         self.output_axis_mut(output_id, axis_pos)?.repr = name;
+        self.sort();
         self.check()
     }
 
@@ -204,6 +207,7 @@ impl AxesMapping {
         for (ia, ib) in a.outputs.iter_mut().zip(b.outputs.iter()) {
             ia.extend(ib.into_iter().cloned())
         }
+        self.sort();
         self.check()
     }
 
@@ -240,7 +244,12 @@ impl AxesMapping {
             let outputs = tvec!(tvec!(); self.output_count);
             self.axes.push(Axis { repr, inputs, outputs });
         }
+        self.sort();
         self.check()
+    }
+
+    fn sort(&mut self) {
+        self.axes.sort_by_key(|axis| axis.repr);
     }
 
     fn do_check(&self) -> TractResult<()> {
@@ -259,6 +268,9 @@ impl AxesMapping {
             }
         }
         ensure!(self.axes.iter().map(|ax| ax.repr).duplicates().count() == 0);
+        for (a, b) in self.axes.iter().tuple_windows() {
+            ensure!(a.repr < b.repr);
+        }
         Ok(())
     }
 
@@ -337,7 +349,7 @@ impl AxesMapping {
     }
 
     pub fn with_extra_input(&self, slot: usize) -> TractResult<AxesMapping> {
-        let axes: TVec<Axis> = self
+        let mut axes: TVec<Axis> = self
             .iter_all_axes()
             .map(|axis| {
                 let mut axis = axis.clone();
@@ -345,6 +357,7 @@ impl AxesMapping {
                 axis
             })
             .collect();
+        axes.sort_by_key(|ax| ax.repr);
         AxesMapping { axes, input_count: self.input_count + 1, ..self.clone() }.check()
     }
 
@@ -361,6 +374,7 @@ impl AxesMapping {
         let mut axis = Axis::new(repr, self.input_count, self.output_count);
         axis.inputs[slot].push(position);
         axes.push(axis);
+        axes.sort_by_key(|ax| ax.repr);
         AxesMapping { axes, ..self.clone() }.check()
     }
 

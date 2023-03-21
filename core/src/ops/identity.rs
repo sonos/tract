@@ -41,5 +41,9 @@ impl TypedOp for Identity {
         TypedModelPatch::shunt_one_op(model, node)
     }
 
+    fn axes_mapping(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<AxesMapping> {
+        AxesMapping::natural(inputs, outputs)
+    }
+
     as_op!();
 }
