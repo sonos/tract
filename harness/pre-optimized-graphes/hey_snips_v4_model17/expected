@@ -33,7 +33,7 @@ graph wavenet_2(input_node) -> (i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D
   i"dilation_layer_0-dilation_rate_1-gate-conv1d/Sigmoid" = sigmoid(i"dilation_layer_0-dilation_rate_1-gate-conv1d/convolution/Conv2D");
   mul = mul(i"dilation_layer_0-dilation_rate_1-filter-conv1d/Tanh", i"dilation_layer_0-dilation_rate_1-gate-conv1d/Sigmoid");
   i"dilation_layer_0-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_0-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.filters", shape = [64, 32]);
-  i"dilation_layer_0-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_0-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul], expr = "IO,WI->NHWO", acc = "f32", output = "");
+  i"dilation_layer_0-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_0-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul], expr = "IO,WI->WO", acc = "f32", output = "");
   i"dilation_layer_0-dilation_rate_1-1x1_conv_transform-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_0-dilation_rate_1-1x1_conv_transform-conv1d/convolution/Conv2D.filters", shape = [64, 16]);
   i"dilation_layer_0-dilation_rate_1-1x1_conv_transform-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_0-dilation_rate_1-1x1_conv_transform-conv1d/convolution/Conv2D.filters", mul], expr = "IO,WI->WO", acc = "f32", output = "");
   add = add(i"dilation_layer_0-dilation_rate_1-1x1_conv_transform-conv1d/convolution/Conv2D.einsum", i"pre_conv-conv1d/convolution/Conv2D");
@@ -50,7 +50,7 @@ graph wavenet_2(input_node) -> (i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D
   i"dilation_layer_1-dilation_rate_2-gate-conv1d/Sigmoid" = sigmoid(i"dilation_layer_1-dilation_rate_2-gate-conv1d/convolution/Conv2D");
   mul_1 = mul(i"dilation_layer_1-dilation_rate_2-filter-conv1d/Tanh", i"dilation_layer_1-dilation_rate_2-gate-conv1d/Sigmoid");
   i"dilation_layer_1-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_1-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.filters", shape = [64, 32]);
-  i"dilation_layer_1-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_1-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_1], expr = "IO,WI->NHWO", acc = "f32", output = "");
+  i"dilation_layer_1-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_1-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_1], expr = "IO,WI->WO", acc = "f32", output = "");
   i"AddN.0" = add(i"dilation_layer_0-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.einsum", i"dilation_layer_1-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.einsum");
   i"dilation_layer_1-dilation_rate_2-1x1_conv_transform-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_1-dilation_rate_2-1x1_conv_transform-conv1d/convolution/Conv2D.filters", shape = [64, 16]);
   i"dilation_layer_1-dilation_rate_2-1x1_conv_transform-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_1-dilation_rate_2-1x1_conv_transform-conv1d/convolution/Conv2D.filters", mul_1], expr = "IO,WI->WO", acc = "f32", output = "");
@@ -68,7 +68,7 @@ graph wavenet_2(input_node) -> (i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D
   i"dilation_layer_2-dilation_rate_4-gate-conv1d/Sigmoid" = sigmoid(i"dilation_layer_2-dilation_rate_4-gate-conv1d/convolution/Conv2D");
   mul_2 = mul(i"dilation_layer_2-dilation_rate_4-filter-conv1d/Tanh", i"dilation_layer_2-dilation_rate_4-gate-conv1d/Sigmoid");
   i"dilation_layer_2-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_2-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.filters", shape = [64, 32]);
-  i"dilation_layer_2-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_2-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_2], expr = "IO,WI->NHWO", acc = "f32", output = "");
+  i"dilation_layer_2-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_2-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_2], expr = "IO,WI->WO", acc = "f32", output = "");
   i"AddN.1" = add(i"AddN.0", i"dilation_layer_2-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.einsum");
   i"dilation_layer_2-dilation_rate_4-1x1_conv_transform-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_2-dilation_rate_4-1x1_conv_transform-conv1d/convolution/Conv2D.filters", shape = [64, 16]);
   i"dilation_layer_2-dilation_rate_4-1x1_conv_transform-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_2-dilation_rate_4-1x1_conv_transform-conv1d/convolution/Conv2D.filters", mul_2], expr = "IO,WI->WO", acc = "f32", output = "");
@@ -86,7 +86,7 @@ graph wavenet_2(input_node) -> (i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D
   i"dilation_layer_3-dilation_rate_8-gate-conv1d/Sigmoid" = sigmoid(i"dilation_layer_3-dilation_rate_8-gate-conv1d/convolution/Conv2D");
   mul_3 = mul(i"dilation_layer_3-dilation_rate_8-filter-conv1d/Tanh", i"dilation_layer_3-dilation_rate_8-gate-conv1d/Sigmoid");
   i"dilation_layer_3-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_3-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.filters", shape = [64, 32]);
-  i"dilation_layer_3-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_3-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_3], expr = "IO,WI->NHWO", acc = "f32", output = "");
+  i"dilation_layer_3-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_3-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_3], expr = "IO,WI->WO", acc = "f32", output = "");
   i"AddN.2" = add(i"AddN.1", i"dilation_layer_3-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.einsum");
   i"dilation_layer_3-dilation_rate_8-1x1_conv_transform-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_3-dilation_rate_8-1x1_conv_transform-conv1d/convolution/Conv2D.filters", shape = [64, 16]);
   i"dilation_layer_3-dilation_rate_8-1x1_conv_transform-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_3-dilation_rate_8-1x1_conv_transform-conv1d/convolution/Conv2D.filters", mul_3], expr = "IO,WI->WO", acc = "f32", output = "");
@@ -104,7 +104,7 @@ graph wavenet_2(input_node) -> (i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D
   i"dilation_layer_4-dilation_rate_1-gate-conv1d/Sigmoid" = sigmoid(i"dilation_layer_4-dilation_rate_1-gate-conv1d/convolution/Conv2D");
   mul_4 = mul(i"dilation_layer_4-dilation_rate_1-filter-conv1d/Tanh", i"dilation_layer_4-dilation_rate_1-gate-conv1d/Sigmoid");
   i"dilation_layer_4-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_4-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.filters", shape = [64, 32]);
-  i"dilation_layer_4-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_4-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_4], expr = "IO,WI->NHWO", acc = "f32", output = "");
+  i"dilation_layer_4-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_4-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_4], expr = "IO,WI->WO", acc = "f32", output = "");
   i"AddN.3" = add(i"AddN.2", i"dilation_layer_4-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.einsum");
   i"dilation_layer_4-dilation_rate_1-1x1_conv_transform-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_4-dilation_rate_1-1x1_conv_transform-conv1d/convolution/Conv2D.filters", shape = [64, 16]);
   i"dilation_layer_4-dilation_rate_1-1x1_conv_transform-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_4-dilation_rate_1-1x1_conv_transform-conv1d/convolution/Conv2D.filters", mul_4], expr = "IO,WI->WO", acc = "f32", output = "");
@@ -122,7 +122,7 @@ graph wavenet_2(input_node) -> (i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D
   i"dilation_layer_5-dilation_rate_2-gate-conv1d/Sigmoid" = sigmoid(i"dilation_layer_5-dilation_rate_2-gate-conv1d/convolution/Conv2D");
   mul_5 = mul(i"dilation_layer_5-dilation_rate_2-filter-conv1d/Tanh", i"dilation_layer_5-dilation_rate_2-gate-conv1d/Sigmoid");
   i"dilation_layer_5-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_5-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.filters", shape = [64, 32]);
-  i"dilation_layer_5-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_5-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_5], expr = "IO,WI->NHWO", acc = "f32", output = "");
+  i"dilation_layer_5-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_5-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_5], expr = "IO,WI->WO", acc = "f32", output = "");
   i"AddN.4" = add(i"AddN.3", i"dilation_layer_5-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.einsum");
   i"dilation_layer_5-dilation_rate_2-1x1_conv_transform-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_5-dilation_rate_2-1x1_conv_transform-conv1d/convolution/Conv2D.filters", shape = [64, 16]);
   i"dilation_layer_5-dilation_rate_2-1x1_conv_transform-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_5-dilation_rate_2-1x1_conv_transform-conv1d/convolution/Conv2D.filters", mul_5], expr = "IO,WI->WO", acc = "f32", output = "");
@@ -140,7 +140,7 @@ graph wavenet_2(input_node) -> (i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D
   i"dilation_layer_6-dilation_rate_4-gate-conv1d/Sigmoid" = sigmoid(i"dilation_layer_6-dilation_rate_4-gate-conv1d/convolution/Conv2D");
   mul_6 = mul(i"dilation_layer_6-dilation_rate_4-filter-conv1d/Tanh", i"dilation_layer_6-dilation_rate_4-gate-conv1d/Sigmoid");
   i"dilation_layer_6-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_6-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.filters", shape = [64, 32]);
-  i"dilation_layer_6-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_6-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_6], expr = "IO,WI->NHWO", acc = "f32", output = "");
+  i"dilation_layer_6-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_6-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_6], expr = "IO,WI->WO", acc = "f32", output = "");
   i"AddN.5" = add(i"AddN.4", i"dilation_layer_6-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.einsum");
   i"dilation_layer_6-dilation_rate_4-1x1_conv_transform-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_6-dilation_rate_4-1x1_conv_transform-conv1d/convolution/Conv2D.filters", shape = [64, 16]);
   i"dilation_layer_6-dilation_rate_4-1x1_conv_transform-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_6-dilation_rate_4-1x1_conv_transform-conv1d/convolution/Conv2D.filters", mul_6], expr = "IO,WI->WO", acc = "f32", output = "");
@@ -158,7 +158,7 @@ graph wavenet_2(input_node) -> (i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D
   i"dilation_layer_7-dilation_rate_8-gate-conv1d/Sigmoid" = sigmoid(i"dilation_layer_7-dilation_rate_8-gate-conv1d/convolution/Conv2D");
   mul_7 = mul(i"dilation_layer_7-dilation_rate_8-filter-conv1d/Tanh", i"dilation_layer_7-dilation_rate_8-gate-conv1d/Sigmoid");
   i"dilation_layer_7-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_7-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.filters", shape = [64, 32]);
-  i"dilation_layer_7-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_7-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_7], expr = "IO,WI->NHWO", acc = "f32", output = "");
+  i"dilation_layer_7-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_7-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_7], expr = "IO,WI->WO", acc = "f32", output = "");
   i"AddN.6" = add(i"AddN.5", i"dilation_layer_7-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.einsum");
   i"dilation_layer_7-dilation_rate_8-1x1_conv_transform-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_7-dilation_rate_8-1x1_conv_transform-conv1d/convolution/Conv2D.filters", shape = [64, 16]);
   i"dilation_layer_7-dilation_rate_8-1x1_conv_transform-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_7-dilation_rate_8-1x1_conv_transform-conv1d/convolution/Conv2D.filters", mul_7], expr = "IO,WI->WO", acc = "f32", output = "");
@@ -176,7 +176,7 @@ graph wavenet_2(input_node) -> (i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D
   i"dilation_layer_8-dilation_rate_1-gate-conv1d/Sigmoid" = sigmoid(i"dilation_layer_8-dilation_rate_1-gate-conv1d/convolution/Conv2D");
   mul_8 = mul(i"dilation_layer_8-dilation_rate_1-filter-conv1d/Tanh", i"dilation_layer_8-dilation_rate_1-gate-conv1d/Sigmoid");
   i"dilation_layer_8-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_8-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.filters", shape = [64, 32]);
-  i"dilation_layer_8-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_8-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_8], expr = "IO,WI->NHWO", acc = "f32", output = "");
+  i"dilation_layer_8-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_8-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_8], expr = "IO,WI->WO", acc = "f32", output = "");
   i"AddN.7" = add(i"AddN.6", i"dilation_layer_8-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.einsum");
   i"dilation_layer_8-dilation_rate_1-1x1_conv_transform-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_8-dilation_rate_1-1x1_conv_transform-conv1d/convolution/Conv2D.filters", shape = [64, 16]);
   i"dilation_layer_8-dilation_rate_1-1x1_conv_transform-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_8-dilation_rate_1-1x1_conv_transform-conv1d/convolution/Conv2D.filters", mul_8], expr = "IO,WI->WO", acc = "f32", output = "");
@@ -194,7 +194,7 @@ graph wavenet_2(input_node) -> (i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D
   i"dilation_layer_9-dilation_rate_2-gate-conv1d/Sigmoid" = sigmoid(i"dilation_layer_9-dilation_rate_2-gate-conv1d/convolution/Conv2D");
   mul_9 = mul(i"dilation_layer_9-dilation_rate_2-filter-conv1d/Tanh", i"dilation_layer_9-dilation_rate_2-gate-conv1d/Sigmoid");
   i"dilation_layer_9-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_9-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.filters", shape = [64, 32]);
-  i"dilation_layer_9-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_9-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_9], expr = "IO,WI->NHWO", acc = "f32", output = "");
+  i"dilation_layer_9-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_9-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_9], expr = "IO,WI->WO", acc = "f32", output = "");
   i"AddN.8" = add(i"AddN.7", i"dilation_layer_9-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.einsum");
   i"dilation_layer_9-dilation_rate_2-1x1_conv_transform-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_9-dilation_rate_2-1x1_conv_transform-conv1d/convolution/Conv2D.filters", shape = [64, 16]);
   i"dilation_layer_9-dilation_rate_2-1x1_conv_transform-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_9-dilation_rate_2-1x1_conv_transform-conv1d/convolution/Conv2D.filters", mul_9], expr = "IO,WI->WO", acc = "f32", output = "");
@@ -212,7 +212,7 @@ graph wavenet_2(input_node) -> (i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D
   i"dilation_layer_10-dilation_rate_4-gate-conv1d/Sigmoid" = sigmoid(i"dilation_layer_10-dilation_rate_4-gate-conv1d/convolution/Conv2D");
   mul_10 = mul(i"dilation_layer_10-dilation_rate_4-filter-conv1d/Tanh", i"dilation_layer_10-dilation_rate_4-gate-conv1d/Sigmoid");
   i"dilation_layer_10-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_10-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.filters", shape = [64, 32]);
-  i"dilation_layer_10-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_10-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_10], expr = "IO,WI->NHWO", acc = "f32", output = "");
+  i"dilation_layer_10-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_10-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_10], expr = "IO,WI->WO", acc = "f32", output = "");
   i"AddN.9" = add(i"AddN.8", i"dilation_layer_10-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.einsum");
   i"dilation_layer_10-dilation_rate_4-1x1_conv_transform-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_10-dilation_rate_4-1x1_conv_transform-conv1d/convolution/Conv2D.filters", shape = [64, 16]);
   i"dilation_layer_10-dilation_rate_4-1x1_conv_transform-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_10-dilation_rate_4-1x1_conv_transform-conv1d/convolution/Conv2D.filters", mul_10], expr = "IO,WI->WO", acc = "f32", output = "");
@@ -230,7 +230,7 @@ graph wavenet_2(input_node) -> (i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D
   i"dilation_layer_11-dilation_rate_8-gate-conv1d/Sigmoid" = sigmoid(i"dilation_layer_11-dilation_rate_8-gate-conv1d/convolution/Conv2D");
   mul_11 = mul(i"dilation_layer_11-dilation_rate_8-filter-conv1d/Tanh", i"dilation_layer_11-dilation_rate_8-gate-conv1d/Sigmoid");
   i"dilation_layer_11-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_11-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.filters", shape = [64, 32]);
-  i"dilation_layer_11-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_11-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_11], expr = "IO,WI->NHWO", acc = "f32", output = "");
+  i"dilation_layer_11-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_11-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_11], expr = "IO,WI->WO", acc = "f32", output = "");
   i"AddN.10" = add(i"AddN.9", i"dilation_layer_11-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.einsum");
   i"dilation_layer_11-dilation_rate_8-1x1_conv_transform-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_11-dilation_rate_8-1x1_conv_transform-conv1d/convolution/Conv2D.filters", shape = [64, 16]);
   i"dilation_layer_11-dilation_rate_8-1x1_conv_transform-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_11-dilation_rate_8-1x1_conv_transform-conv1d/convolution/Conv2D.filters", mul_11], expr = "IO,WI->WO", acc = "f32", output = "");
@@ -248,7 +248,7 @@ graph wavenet_2(input_node) -> (i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D
   i"dilation_layer_12-dilation_rate_1-gate-conv1d/Sigmoid" = sigmoid(i"dilation_layer_12-dilation_rate_1-gate-conv1d/convolution/Conv2D");
   mul_12 = mul(i"dilation_layer_12-dilation_rate_1-filter-conv1d/Tanh", i"dilation_layer_12-dilation_rate_1-gate-conv1d/Sigmoid");
   i"dilation_layer_12-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_12-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.filters", shape = [64, 32]);
-  i"dilation_layer_12-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_12-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_12], expr = "IO,WI->NHWO", acc = "f32", output = "");
+  i"dilation_layer_12-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_12-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_12], expr = "IO,WI->WO", acc = "f32", output = "");
   i"AddN.11" = add(i"AddN.10", i"dilation_layer_12-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.einsum");
   i"dilation_layer_12-dilation_rate_1-1x1_conv_transform-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_12-dilation_rate_1-1x1_conv_transform-conv1d/convolution/Conv2D.filters", shape = [64, 16]);
   i"dilation_layer_12-dilation_rate_1-1x1_conv_transform-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_12-dilation_rate_1-1x1_conv_transform-conv1d/convolution/Conv2D.filters", mul_12], expr = "IO,WI->WO", acc = "f32", output = "");
@@ -266,7 +266,7 @@ graph wavenet_2(input_node) -> (i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D
   i"dilation_layer_13-dilation_rate_2-gate-conv1d/Sigmoid" = sigmoid(i"dilation_layer_13-dilation_rate_2-gate-conv1d/convolution/Conv2D");
   mul_13 = mul(i"dilation_layer_13-dilation_rate_2-filter-conv1d/Tanh", i"dilation_layer_13-dilation_rate_2-gate-conv1d/Sigmoid");
   i"dilation_layer_13-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_13-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.filters", shape = [64, 32]);
-  i"dilation_layer_13-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_13-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_13], expr = "IO,WI->NHWO", acc = "f32", output = "");
+  i"dilation_layer_13-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_13-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_13], expr = "IO,WI->WO", acc = "f32", output = "");
   i"AddN.12" = add(i"AddN.11", i"dilation_layer_13-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.einsum");
   i"dilation_layer_13-dilation_rate_2-1x1_conv_transform-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_13-dilation_rate_2-1x1_conv_transform-conv1d/convolution/Conv2D.filters", shape = [64, 16]);
   i"dilation_layer_13-dilation_rate_2-1x1_conv_transform-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_13-dilation_rate_2-1x1_conv_transform-conv1d/convolution/Conv2D.filters", mul_13], expr = "IO,WI->WO", acc = "f32", output = "");
@@ -284,7 +284,7 @@ graph wavenet_2(input_node) -> (i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D
   i"dilation_layer_14-dilation_rate_4-gate-conv1d/Sigmoid" = sigmoid(i"dilation_layer_14-dilation_rate_4-gate-conv1d/convolution/Conv2D");
   mul_14 = mul(i"dilation_layer_14-dilation_rate_4-filter-conv1d/Tanh", i"dilation_layer_14-dilation_rate_4-gate-conv1d/Sigmoid");
   i"dilation_layer_14-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_14-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.filters", shape = [64, 32]);
-  i"dilation_layer_14-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_14-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_14], expr = "IO,WI->NHWO", acc = "f32", output = "");
+  i"dilation_layer_14-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_14-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_14], expr = "IO,WI->WO", acc = "f32", output = "");
   i"AddN.13" = add(i"AddN.12", i"dilation_layer_14-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.einsum");
   i"dilation_layer_14-dilation_rate_4-1x1_conv_transform-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_14-dilation_rate_4-1x1_conv_transform-conv1d/convolution/Conv2D.filters", shape = [64, 16]);
   i"dilation_layer_14-dilation_rate_4-1x1_conv_transform-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_14-dilation_rate_4-1x1_conv_transform-conv1d/convolution/Conv2D.filters", mul_14], expr = "IO,WI->WO", acc = "f32", output = "");
@@ -302,7 +302,7 @@ graph wavenet_2(input_node) -> (i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D
   i"dilation_layer_15-dilation_rate_8-gate-conv1d/Sigmoid" = sigmoid(i"dilation_layer_15-dilation_rate_8-gate-conv1d/convolution/Conv2D");
   mul_15 = mul(i"dilation_layer_15-dilation_rate_8-filter-conv1d/Tanh", i"dilation_layer_15-dilation_rate_8-gate-conv1d/Sigmoid");
   i"dilation_layer_15-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_15-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.filters", shape = [64, 32]);
-  i"dilation_layer_15-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_15-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_15], expr = "IO,WI->NHWO", acc = "f32", output = "");
+  i"dilation_layer_15-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_15-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_15], expr = "IO,WI->WO", acc = "f32", output = "");
   i"AddN.14" = add(i"AddN.13", i"dilation_layer_15-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.einsum");
   i"dilation_layer_15-dilation_rate_8-1x1_conv_transform-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_15-dilation_rate_8-1x1_conv_transform-conv1d/convolution/Conv2D.filters", shape = [64, 16]);
   i"dilation_layer_15-dilation_rate_8-1x1_conv_transform-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_15-dilation_rate_8-1x1_conv_transform-conv1d/convolution/Conv2D.filters", mul_15], expr = "IO,WI->WO", acc = "f32", output = "");
@@ -320,7 +320,7 @@ graph wavenet_2(input_node) -> (i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D
   i"dilation_layer_16-dilation_rate_1-gate-conv1d/Sigmoid" = sigmoid(i"dilation_layer_16-dilation_rate_1-gate-conv1d/convolution/Conv2D");
   mul_16 = mul(i"dilation_layer_16-dilation_rate_1-filter-conv1d/Tanh", i"dilation_layer_16-dilation_rate_1-gate-conv1d/Sigmoid");
   i"dilation_layer_16-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_16-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.filters", shape = [64, 32]);
-  i"dilation_layer_16-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_16-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_16], expr = "IO,WI->NHWO", acc = "f32", output = "");
+  i"dilation_layer_16-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_16-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_16], expr = "IO,WI->WO", acc = "f32", output = "");
   i"AddN.15" = add(i"AddN.14", i"dilation_layer_16-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.einsum");
   i"dilation_layer_16-dilation_rate_1-1x1_conv_transform-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_16-dilation_rate_1-1x1_conv_transform-conv1d/convolution/Conv2D.filters", shape = [64, 16]);
   i"dilation_layer_16-dilation_rate_1-1x1_conv_transform-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_16-dilation_rate_1-1x1_conv_transform-conv1d/convolution/Conv2D.filters", mul_16], expr = "IO,WI->WO", acc = "f32", output = "");
@@ -338,7 +338,7 @@ graph wavenet_2(input_node) -> (i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D
   i"dilation_layer_17-dilation_rate_2-gate-conv1d/Sigmoid" = sigmoid(i"dilation_layer_17-dilation_rate_2-gate-conv1d/convolution/Conv2D");
   mul_17 = mul(i"dilation_layer_17-dilation_rate_2-filter-conv1d/Tanh", i"dilation_layer_17-dilation_rate_2-gate-conv1d/Sigmoid");
   i"dilation_layer_17-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_17-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.filters", shape = [64, 32]);
-  i"dilation_layer_17-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_17-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_17], expr = "IO,WI->NHWO", acc = "f32", output = "");
+  i"dilation_layer_17-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_17-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_17], expr = "IO,WI->WO", acc = "f32", output = "");
   i"AddN.16" = add(i"AddN.15", i"dilation_layer_17-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.einsum");
   i"dilation_layer_17-dilation_rate_2-1x1_conv_transform-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_17-dilation_rate_2-1x1_conv_transform-conv1d/convolution/Conv2D.filters", shape = [64, 16]);
   i"dilation_layer_17-dilation_rate_2-1x1_conv_transform-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_17-dilation_rate_2-1x1_conv_transform-conv1d/convolution/Conv2D.filters", mul_17], expr = "IO,WI->WO", acc = "f32", output = "");
@@ -356,7 +356,7 @@ graph wavenet_2(input_node) -> (i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D
   i"dilation_layer_18-dilation_rate_4-gate-conv1d/Sigmoid" = sigmoid(i"dilation_layer_18-dilation_rate_4-gate-conv1d/convolution/Conv2D");
   mul_18 = mul(i"dilation_layer_18-dilation_rate_4-filter-conv1d/Tanh", i"dilation_layer_18-dilation_rate_4-gate-conv1d/Sigmoid");
   i"dilation_layer_18-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_18-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.filters", shape = [64, 32]);
-  i"dilation_layer_18-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_18-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_18], expr = "IO,WI->NHWO", acc = "f32", output = "");
+  i"dilation_layer_18-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_18-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_18], expr = "IO,WI->WO", acc = "f32", output = "");
   i"AddN.17" = add(i"AddN.16", i"dilation_layer_18-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.einsum");
   i"dilation_layer_18-dilation_rate_4-1x1_conv_transform-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_18-dilation_rate_4-1x1_conv_transform-conv1d/convolution/Conv2D.filters", shape = [64, 16]);
   i"dilation_layer_18-dilation_rate_4-1x1_conv_transform-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_18-dilation_rate_4-1x1_conv_transform-conv1d/convolution/Conv2D.filters", mul_18], expr = "IO,WI->WO", acc = "f32", output = "");
@@ -374,7 +374,7 @@ graph wavenet_2(input_node) -> (i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D
   i"dilation_layer_19-dilation_rate_8-gate-conv1d/Sigmoid" = sigmoid(i"dilation_layer_19-dilation_rate_8-gate-conv1d/convolution/Conv2D");
   mul_19 = mul(i"dilation_layer_19-dilation_rate_8-filter-conv1d/Tanh", i"dilation_layer_19-dilation_rate_8-gate-conv1d/Sigmoid");
   i"dilation_layer_19-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_19-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.filters", shape = [64, 32]);
-  i"dilation_layer_19-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_19-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_19], expr = "IO,WI->NHWO", acc = "f32", output = "");
+  i"dilation_layer_19-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_19-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_19], expr = "IO,WI->WO", acc = "f32", output = "");
   i"AddN.18" = add(i"AddN.17", i"dilation_layer_19-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.einsum");
   i"dilation_layer_19-dilation_rate_8-1x1_conv_transform-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_19-dilation_rate_8-1x1_conv_transform-conv1d/convolution/Conv2D.filters", shape = [64, 16]);
   i"dilation_layer_19-dilation_rate_8-1x1_conv_transform-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_19-dilation_rate_8-1x1_conv_transform-conv1d/convolution/Conv2D.filters", mul_19], expr = "IO,WI->WO", acc = "f32", output = "");
@@ -392,7 +392,7 @@ graph wavenet_2(input_node) -> (i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D
   i"dilation_layer_20-dilation_rate_1-gate-conv1d/Sigmoid" = sigmoid(i"dilation_layer_20-dilation_rate_1-gate-conv1d/convolution/Conv2D");
   mul_20 = mul(i"dilation_layer_20-dilation_rate_1-filter-conv1d/Tanh", i"dilation_layer_20-dilation_rate_1-gate-conv1d/Sigmoid");
   i"dilation_layer_20-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_20-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.filters", shape = [64, 32]);
-  i"dilation_layer_20-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_20-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_20], expr = "IO,WI->NHWO", acc = "f32", output = "");
+  i"dilation_layer_20-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_20-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_20], expr = "IO,WI->WO", acc = "f32", output = "");
   i"AddN.19" = add(i"AddN.18", i"dilation_layer_20-dilation_rate_1-1x1_conv_skip-conv1d/convolution/Conv2D.einsum");
   i"dilation_layer_20-dilation_rate_1-1x1_conv_transform-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_20-dilation_rate_1-1x1_conv_transform-conv1d/convolution/Conv2D.filters", shape = [64, 16]);
   i"dilation_layer_20-dilation_rate_1-1x1_conv_transform-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_20-dilation_rate_1-1x1_conv_transform-conv1d/convolution/Conv2D.filters", mul_20], expr = "IO,WI->WO", acc = "f32", output = "");
@@ -410,7 +410,7 @@ graph wavenet_2(input_node) -> (i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D
   i"dilation_layer_21-dilation_rate_2-gate-conv1d/Sigmoid" = sigmoid(i"dilation_layer_21-dilation_rate_2-gate-conv1d/convolution/Conv2D");
   mul_21 = mul(i"dilation_layer_21-dilation_rate_2-filter-conv1d/Tanh", i"dilation_layer_21-dilation_rate_2-gate-conv1d/Sigmoid");
   i"dilation_layer_21-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_21-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.filters", shape = [64, 32]);
-  i"dilation_layer_21-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_21-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_21], expr = "IO,WI->NHWO", acc = "f32", output = "");
+  i"dilation_layer_21-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_21-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_21], expr = "IO,WI->WO", acc = "f32", output = "");
   i"AddN.20" = add(i"AddN.19", i"dilation_layer_21-dilation_rate_2-1x1_conv_skip-conv1d/convolution/Conv2D.einsum");
   i"dilation_layer_21-dilation_rate_2-1x1_conv_transform-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_21-dilation_rate_2-1x1_conv_transform-conv1d/convolution/Conv2D.filters", shape = [64, 16]);
   i"dilation_layer_21-dilation_rate_2-1x1_conv_transform-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_21-dilation_rate_2-1x1_conv_transform-conv1d/convolution/Conv2D.filters", mul_21], expr = "IO,WI->WO", acc = "f32", output = "");
@@ -428,7 +428,7 @@ graph wavenet_2(input_node) -> (i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D
   i"dilation_layer_22-dilation_rate_4-gate-conv1d/Sigmoid" = sigmoid(i"dilation_layer_22-dilation_rate_4-gate-conv1d/convolution/Conv2D");
   mul_22 = mul(i"dilation_layer_22-dilation_rate_4-filter-conv1d/Tanh", i"dilation_layer_22-dilation_rate_4-gate-conv1d/Sigmoid");
   i"dilation_layer_22-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_22-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.filters", shape = [64, 32]);
-  i"dilation_layer_22-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_22-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_22], expr = "IO,WI->NHWO", acc = "f32", output = "");
+  i"dilation_layer_22-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_22-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_22], expr = "IO,WI->WO", acc = "f32", output = "");
   i"AddN.21" = add(i"AddN.20", i"dilation_layer_22-dilation_rate_4-1x1_conv_skip-conv1d/convolution/Conv2D.einsum");
   i"dilation_layer_22-dilation_rate_4-1x1_conv_transform-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_22-dilation_rate_4-1x1_conv_transform-conv1d/convolution/Conv2D.filters", shape = [64, 16]);
   i"dilation_layer_22-dilation_rate_4-1x1_conv_transform-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_22-dilation_rate_4-1x1_conv_transform-conv1d/convolution/Conv2D.filters", mul_22], expr = "IO,WI->WO", acc = "f32", output = "");
@@ -446,14 +446,14 @@ graph wavenet_2(input_node) -> (i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D
   i"dilation_layer_23-dilation_rate_8-gate-conv1d/Sigmoid" = sigmoid(i"dilation_layer_23-dilation_rate_8-gate-conv1d/convolution/Conv2D");
   mul_23 = mul(i"dilation_layer_23-dilation_rate_8-filter-conv1d/Tanh", i"dilation_layer_23-dilation_rate_8-gate-conv1d/Sigmoid");
   i"dilation_layer_23-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/dilation_layer_23-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.filters", shape = [64, 32]);
-  i"dilation_layer_23-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_23-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_23], expr = "IO,WI->NHWO", acc = "f32", output = "");
+  i"dilation_layer_23-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"dilation_layer_23-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.filters", mul_23], expr = "IO,WI->WO", acc = "f32", output = "");
   i"AddN.22" = add(i"AddN.21", i"dilation_layer_23-dilation_rate_8-1x1_conv_skip-conv1d/convolution/Conv2D.einsum");
-  i"Relu.low.cst" = [[[[0.0]]]];
+  i"Relu.low.cst" = [[0.0]];
   i"Relu.low" = max(i"AddN.22", i"Relu.low.cst");
   i"post_proc_1-1x1_conv-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/post_proc_1-1x1_conv-conv1d/convolution/Conv2D.filters", shape = [32, 32]);
-  i"post_proc_1-1x1_conv-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"post_proc_1-1x1_conv-conv1d/convolution/Conv2D.filters", i"Relu.low"], expr = "IO,NHWI->NHWO", acc = "f32", output = "");
-  i"post_proc_1-1x1_conv-conv1d/Relu.low.cst" = [[[[0.0]]]];
+  i"post_proc_1-1x1_conv-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"post_proc_1-1x1_conv-conv1d/convolution/Conv2D.filters", i"Relu.low"], expr = "IO,WI->WO", acc = "f32", output = "");
+  i"post_proc_1-1x1_conv-conv1d/Relu.low.cst" = [[0.0]];
   i"post_proc_1-1x1_conv-conv1d/Relu.low" = max(i"post_proc_1-1x1_conv-conv1d/convolution/Conv2D.einsum", i"post_proc_1-1x1_conv-conv1d/Relu.low.cst");
   i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D.filters" = variable<scalar>(label = "wavenet_2/post_proc_2-1x1_conv-conv1d/convolution/Conv2D.filters", shape = [32, 2]);
-  i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D.filters", i"post_proc_1-1x1_conv-conv1d/Relu.low"], expr = "IO,NHWI->WO", acc = "f32", output = "");
+  i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D.einsum" = tract_core_einsum([i"post_proc_2-1x1_conv-conv1d/convolution/Conv2D.filters", i"post_proc_1-1x1_conv-conv1d/Relu.low"], expr = "IO,WI->WO", acc = "f32", output = "");
 }
