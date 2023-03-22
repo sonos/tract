@@ -194,5 +194,5 @@ pub fn for_model(model: &TypedModel) -> TractResult<AxesMapping> {
             }
         }
     }
-    Ok(result)
+    result.relabel()
 }
