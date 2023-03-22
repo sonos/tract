@@ -143,8 +143,8 @@ graph network(input) -> (output) {
   i"tdnn1.renorm.reduced.sum" = sum_reduce(i"tdnn1.renorm.reduced.sq", axes = [1]);
   i"tdnn1.renorm.scaled-recip" = [[[0.00390625]]];
   i"tdnn1.renorm.scaled" = mul(i"tdnn1.renorm.reduced.sum", i"tdnn1.renorm.scaled-recip");
-  i"tdnn1.renorm.norm" = sqrt(i"tdnn1.renorm.scaled");
-  i"tdnn1.renorm.output" = div(i"tdnn1.relu.output.low", i"tdnn1.renorm.norm");
+  i"tdnn1.renorm.output-recip" = rsqrt(i"tdnn1.renorm.scaled");
+  i"tdnn1.renorm.output" = mul(i"tdnn1.relu.output.low", i"tdnn1.renorm.output-recip");
   i"tdnn2.affine.output.delay" = tract_pulse_delay(i"tdnn1.renorm.output", axis = 2, delay = 0, overlap = 2);
   i"tdnn2.affine.output_weigths" = variable<scalar>(label = "tdnn2.affine.output_weigths", shape = [256, 256, 3]);
   i"tdnn2.affine.output_bias" = variable<scalar>(label = "tdnn2.affine.output_bias", shape = [256]);
@@ -156,8 +156,8 @@ graph network(input) -> (output) {
   i"tdnn2.renorm.reduced.sum" = sum_reduce(i"tdnn2.renorm.reduced.sq", axes = [1]);
   i"tdnn2.renorm.scaled-recip" = [[[0.00390625]]];
   i"tdnn2.renorm.scaled" = mul(i"tdnn2.renorm.reduced.sum", i"tdnn2.renorm.scaled-recip");
-  i"tdnn2.renorm.norm" = sqrt(i"tdnn2.renorm.scaled");
-  i"tdnn2.renorm.output" = div(i"tdnn2.relu.output.low", i"tdnn2.renorm.norm");
+  i"tdnn2.renorm.output-recip" = rsqrt(i"tdnn2.renorm.scaled");
+  i"tdnn2.renorm.output" = mul(i"tdnn2.relu.output.low", i"tdnn2.renorm.output-recip");
   i"tdnn3.affine.output_weigths" = variable<scalar>(label = "tdnn3.affine.output_weigths", shape = [256, 256, 3]);
   i"tdnn3.affine.output_bias" = variable<scalar>(label = "tdnn3.affine.output_bias", shape = [256]);
   i"tdnn3.affine.output_conv" = conv(i"tdnn2.renorm.output", i"tdnn3.affine.output_weigths", i"tdnn3.affine.output_bias", dilation = [1], stride = [3], border = "constant", groups = 1, padding = [(0, 0)]);
@@ -168,8 +168,8 @@ graph network(input) -> (output) {
   i"tdnn3.renorm.reduced.sum" = sum_reduce(i"tdnn3.renorm.reduced.sq", axes = [1]);
   i"tdnn3.renorm.scaled-recip" = [[[0.00390625]]];
   i"tdnn3.renorm.scaled" = mul(i"tdnn3.renorm.reduced.sum", i"tdnn3.renorm.scaled-recip");
-  i"tdnn3.renorm.norm" = sqrt(i"tdnn3.renorm.scaled");
-  i"tdnn3.renorm.output" = div(i"tdnn3.relu.output.low", i"tdnn3.renorm.norm");
+  i"tdnn3.renorm.output-recip" = rsqrt(i"tdnn3.renorm.scaled");
+  i"tdnn3.renorm.output" = mul(i"tdnn3.relu.output.low", i"tdnn3.renorm.output-recip");
   i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.concat-einsum-k.0..256.split-over-1.0..256.prop_axis.a.input_1" = variable<scalar>(label = "fastlstm1.c_final.extracted.fastlstm1.four_parts.W.concat-einsum-k.0..256.split-over-1.0..256.prop_axis.a.input_1", shape = [256, 256, 1]);
   i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.concat-einsum-k.0..256.split-over-1.0..256" = tract_core_einsum([i"tdnn3.renorm.output", i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.concat-einsum-k.0..256.split-over-1.0..256.prop_axis.a.input_1"], expr = "mka,kna->amn", acc = "f32", output = "");
   i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.concat-einsum-k.0..256.split-over-1.512..768.prop_axis.a.input_1" = variable<scalar>(label = "fastlstm1.c_final.extracted.fastlstm1.four_parts.W.concat-einsum-k.0..256.split-over-1.512..768.prop_axis.a.input_1", shape = [256, 256, 1]);
@@ -210,8 +210,8 @@ graph network(input) -> (output) {
   i"tdnn4.renorm.reduced.sum" = sum_reduce(i"tdnn4.renorm.reduced.sq", axes = [1]);
   i"tdnn4.renorm.scaled-recip" = [[[0.00390625]]];
   i"tdnn4.renorm.scaled" = mul(i"tdnn4.renorm.reduced.sum", i"tdnn4.renorm.scaled-recip");
-  i"tdnn4.renorm.norm" = sqrt(i"tdnn4.renorm.scaled");
-  i"tdnn4.renorm.output" = div(i"tdnn4.relu.output.low", i"tdnn4.renorm.norm");
+  i"tdnn4.renorm.output-recip" = rsqrt(i"tdnn4.renorm.scaled");
+  i"tdnn4.renorm.output" = mul(i"tdnn4.relu.output.low", i"tdnn4.renorm.output-recip");
   i"tdnn5.affine.output.delay" = tract_pulse_delay(i"tdnn4.renorm.output", axis = 2, delay = 0, overlap = 2);
   i"tdnn5.affine.output_weigths" = variable<scalar>(label = "tdnn5.affine.output_weigths", shape = [256, 256, 3]);
   i"tdnn5.affine.output_bias" = variable<scalar>(label = "tdnn5.affine.output_bias", shape = [256]);
@@ -223,8 +223,8 @@ graph network(input) -> (output) {
   i"tdnn5.renorm.reduced.sum" = sum_reduce(i"tdnn5.renorm.reduced.sq", axes = [1]);
   i"tdnn5.renorm.scaled-recip" = [[[0.00390625]]];
   i"tdnn5.renorm.scaled" = mul(i"tdnn5.renorm.reduced.sum", i"tdnn5.renorm.scaled-recip");
-  i"tdnn5.renorm.norm" = sqrt(i"tdnn5.renorm.scaled");
-  i"tdnn5.renorm.output" = div(i"tdnn5.relu.output.low", i"tdnn5.renorm.norm");
+  i"tdnn5.renorm.output-recip" = rsqrt(i"tdnn5.renorm.scaled");
+  i"tdnn5.renorm.output" = mul(i"tdnn5.relu.output.low", i"tdnn5.renorm.output-recip");
   i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.concat-einsum-k.0..256.split-over-1.0..256.prop_axis.a.input_1" = variable<scalar>(label = "fastlstm2.c_final.extracted.fastlstm2.four_parts.W.concat-einsum-k.0..256.split-over-1.0..256.prop_axis.a.input_1", shape = [256, 256, 1]);
   i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.concat-einsum-k.0..256.split-over-1.0..256" = tract_core_einsum([i"tdnn5.renorm.output", i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.concat-einsum-k.0..256.split-over-1.0..256.prop_axis.a.input_1"], expr = "mka,kna->amn", acc = "f32", output = "");
   i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.concat-einsum-k.0..256.split-over-1.512..768.prop_axis.a.input_1" = variable<scalar>(label = "fastlstm2.c_final.extracted.fastlstm2.four_parts.W.concat-einsum-k.0..256.split-over-1.512..768.prop_axis.a.input_1", shape = [256, 256, 1]);
