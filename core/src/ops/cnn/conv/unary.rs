@@ -9,8 +9,13 @@ use crate::model::*;
 use crate::ops;
 use crate::ops::array::Pad;
 use crate::ops::array::PadMode;
+use crate::ops::binary::TypedBinOp;
 use crate::ops::cnn::PaddingSpec;
 use crate::ops::einsum::EinSum;
+use crate::ops::math::Add;
+use crate::ops::math::Div;
+use crate::ops::math::Mul;
+use crate::ops::math::Sub;
 use crate::ops::matmul::lir_unary::AddMatMulGeometry;
 use crate::ops::matmul::lir_unary::MapOutputAxisToInput;
 use crate::ops::matmul::mir_quant::offset_u8_as_i8;
@@ -656,15 +661,11 @@ impl ConvUnary {
                     }
                     inputs.push(konst);
                 }
-                let op = EinSum {
-                    axes,
-                    operating_dt: i32::datum_type(),
-                    q_params: Some(q_params.0),
-                };
+                let op =
+                    EinSum { axes, operating_dt: i32::datum_type(), q_params: Some(q_params.0) };
                 patch.wire_node(format!("{}.einsum", node.name), op, &inputs)?[0]
             } else {
-                let op =
-                    EinSum { axes, operating_dt: input_facts[0].datum_type, q_params: None };
+                let op = EinSum { axes, operating_dt: input_facts[0].datum_type, q_params: None };
                 let mut wire = patch.wire_node(format!("{}.einsum", node.name), op, &inputs)?[0];
                 if let Some(b) = self.bias.as_ref().filter(|_| self.q_params.is_none()) {
                     anyhow::ensure!(b.rank() == 0 || b.rank() == 1);
@@ -724,6 +725,85 @@ impl ConvUnary {
         let wire = patch.tap_model(model, prec.inputs[0])?;
         let wire = patch.wire_node(&node.name, new, &[wire])?;
         patch.shunt_outside(model, node.id.into(), wire[0])?;
+        Ok(Some(patch))
+    }
+
+    fn declutter_channel_arithmetic_succ(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if self.q_params.is_some() || self.group != 1 {
+            return Ok(None);
+        }
+        let &[succ] = &*node.outputs[0].successors else {
+            return Ok(None)
+        };
+        let Some(bin) = model.node(succ.node).op_as::<TypedBinOp>() else {
+            return Ok(None)
+        };
+        let other_input = model.node(succ.node).inputs[1 - succ.slot];
+        let other_fact = &model.outlet_fact(other_input)?;
+        let Some(konst) = &other_fact.konst else {
+            return Ok(None)
+        };
+        let axes_mapping = model.node_axes_mapping(succ.node)?;
+        let input_shape =
+            self.pool_spec.data_format.shape(&model.outlet_fact(node.inputs[0])?.shape)?;
+        let conv_c_axis = input_shape.c_axis();
+        let &[konst_c_axis] = &*axes_mapping.input_axis(succ.slot, conv_c_axis)?.inputs[1- succ.slot] else {
+            return Ok(None)
+        };
+        let Ok(co) = node.outputs[0].fact.shape[conv_c_axis].to_usize() else {
+            return Ok(None)
+        };
+        let operand_for_bias = if konst.shape()[konst_c_axis] == co && konst.len() == co {
+            konst.clone().into_tensor().into_shape(&[co])?
+        } else if konst.len() == 1 {
+            konst.clone().to_scalar_tensor()?.broadcast_scalar_to_shape(&[co])?
+        } else {
+            return Ok(None);
+        };
+        let mut bias = if let Some(b) = &self.bias {
+            b.clone()
+        } else {
+            Tensor::zero_dt(other_fact.datum_type, &[co])?.into_arc_tensor()
+        };
+        let mut kernel = self.kernel.clone();
+        let mut operand_shape_for_kernel = tvec!(1; 2 + input_shape.hw_rank());
+        let o_axis = if self.kernel_fmt == KernelFormat::OIHW { 0 } else { self.kernel.rank() - 1 };
+        operand_shape_for_kernel[o_axis] = co;
+        let operand_for_kernel = operand_for_bias.clone().into_shape(&operand_shape_for_kernel)?;
+        if bin.0.is::<Sub>() && succ.slot == 0 {
+            bias = (bias.into_tensor().into_array::<f32>()?
+                - operand_for_bias.to_array_view::<f32>()?)
+            .into_arc_tensor()
+        } else if bin.0.is::<Div>() && succ.slot == 0 {
+            bias = (bias.into_tensor().into_array::<f32>()?
+                / operand_for_bias.to_array_view::<f32>()?)
+            .into_arc_tensor();
+            kernel = (kernel.into_tensor().into_array::<f32>()?
+                / operand_for_kernel.to_array_view::<f32>()?)
+            .into_arc_tensor();
+        } else if bin.0.is::<Add>() {
+            bias = (bias.into_tensor().into_array::<f32>()?
+                + operand_for_bias.to_array_view::<f32>()?)
+            .into_arc_tensor();
+        } else if bin.0.is::<Mul>() {
+            bias = (bias.into_tensor().into_array::<f32>()?
+                * operand_for_bias.to_array_view::<f32>()?)
+            .into_arc_tensor();
+            kernel = (kernel.into_tensor().into_array::<f32>()?
+                * operand_for_kernel.to_array_view::<f32>()?)
+            .into_arc_tensor();
+        } else {
+            return Ok(None);
+        };
+        let new_op = ConvUnary { bias: Some(bias), kernel, ..self.clone() };
+        let mut patch = TypedModelPatch::default();
+        let wire = patch.tap_model(model, node.inputs[0])?;
+        let wire = patch.wire_node(&node.name, new_op, &[wire])?[0];
+        patch.shunt_outside(model, succ.node.into(), wire)?;
         Ok(Some(patch))
     }
 }
@@ -876,7 +956,11 @@ impl TypedOp for ConvUnary {
                 return Ok(Some(patch));
             }
         }
-        for d in &[Self::declutter_stride_slice_to_downsample, Self::declutter_as_einsum] {
+        for d in &[
+            Self::declutter_stride_slice_to_downsample,
+            Self::declutter_as_einsum,
+            Self::declutter_channel_arithmetic_succ,
+        ] {
             if let Some(p) = d(self, model, node)? {
                 return Ok(Some(p));
             }
