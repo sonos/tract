@@ -302,8 +302,8 @@ fn declutter_div(
         return Ok(Some(p));
     }
     if let &[p, q] = &*model.node_input_facts(node.id)? {
+        let dt = q.datum_type;
         if let Some(q) = &q.uniform {
-            let dt = q.datum_type();
             if let Ok(integer) = q.cast_to_scalar::<i64>() {
                 if tensor0(integer).cast_to_dt(dt)?.close_enough(q, false).is_ok()
                     && dt.is_integer()
@@ -327,19 +327,18 @@ fn declutter_div(
                     )?));
                 }
             }
-            if dt.is_float() {
-                return Ok(Some(TypedModelPatch::rewire(
-                    model,
-                    &node.inputs,
-                    &[node.id.into()],
-                    &|patch, taps| {
-                        let q =
-                            patch.wire_node(format!("{}-recip", node.name), recip(), &[taps[1]])?
-                                [0];
-                        patch.wire_node(&node.name, mul(), &[taps[0], q])
-                    },
-                )?));
-            }
+        }
+        if dt.is_float() {
+            return Ok(Some(TypedModelPatch::rewire(
+                model,
+                &node.inputs,
+                &[node.id.into()],
+                &|patch, taps| {
+                    let q =
+                        patch.wire_node(format!("{}-recip", node.name), recip(), &[taps[1]])?[0];
+                    patch.wire_node(&node.name, mul(), &[taps[0], q])
+                },
+            )?));
         }
     }
     Ok(None)
