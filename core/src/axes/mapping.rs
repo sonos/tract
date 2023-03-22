@@ -323,6 +323,13 @@ impl AxesMapping {
         AxesMapping::new(axes)
     }
 
+    pub fn relabel(mut self) -> TractResult<AxesMapping> {
+        for (ax, repr) in self.axes.iter_mut().zip('a'..) {
+            ax.repr = repr;
+        }
+        Ok(self)
+    }
+
     pub fn remove_axis(&self, repr: char) -> TractResult<AxesMapping> {
         let mut axes: TVec<Axis> =
             self.axes.iter().filter(|axis| axis.repr != repr).cloned().collect();

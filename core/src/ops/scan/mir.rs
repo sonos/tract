@@ -88,6 +88,16 @@ impl Scan {
                 let outlet = suggestion.0.as_outlet(node);
                 suggestions.push(AxisChange { outlet, op: suggestion.1 })
             }
+            for (slot, fact) in node.outputs.iter().enumerate() {
+                for (ix, dim) in fact.fact.shape.iter().enumerate() {
+                    if dim.is_one() {
+                        suggestions.push(AxisChange {
+                            outlet: OutletId::new(n, slot),
+                            op: AxisOp::Rm(ix),
+                        });
+                    }
+                }
+            }
         }
         for suggestion in suggestions.into_iter() {
             if let Some(op) =
@@ -641,7 +651,7 @@ impl Scan {
         self.body.check_consistency()?;
         let interface = self.body_exposed_outlets()?;
         let (patch, body_changed_wires) = if let Some(changes) =
-            crate::ops::change_axes::change_axes(
+            crate::optim::change_axes::change_axes(
                 &self.body,
                 &change,
                 if locked_interface { &interface } else { &[] },
