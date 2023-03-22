@@ -269,7 +269,7 @@ impl AxesMapping {
         }
         ensure!(self.axes.iter().map(|ax| ax.repr).duplicates().count() == 0);
         for (a, b) in self.axes.iter().tuple_windows() {
-            ensure!(a.repr < b.repr);
+            ensure!(a.repr < b.repr, "{self}");
         }
         Ok(())
     }
@@ -398,6 +398,7 @@ impl AxesMapping {
         let mut axis = Axis::new(repr, self.input_count, self.output_count);
         axis.outputs[slot].push(position);
         axes.push(axis);
+        axes.sort_by_key(|ax| ax.repr);
         AxesMapping { axes, ..self.clone() }.check()
     }
 
