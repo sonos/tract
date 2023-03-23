@@ -76,7 +76,7 @@ pub trait OpStateFreeze {
 
 dyn_clone::clone_trait_object!(FrozenOpState);
 
-pub trait OpState: fmt::Debug + dyn_clone::DynClone + OpStateFreeze {
+pub trait OpState: fmt::Debug + dyn_clone::DynClone + OpStateFreeze + Downcast {
     fn eval(
         &mut self,
         session: &mut SessionState,
@@ -85,6 +85,7 @@ pub trait OpState: fmt::Debug + dyn_clone::DynClone + OpStateFreeze {
     ) -> TractResult<TVec<TValue>>;
 }
 dyn_clone::clone_trait_object!(OpState);
+impl_downcast!(OpState);
 
 pub trait EvalOp {
     #[allow(unused_variables)]
