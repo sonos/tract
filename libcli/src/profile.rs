@@ -1,8 +1,14 @@
-use tract_core::{internal::*, ops::submodel::{SubmodelOp, InnerModel}};
+use tract_core::{
+    internal::*,
+    ops::{scan::State, submodel::TypedModelOpState},
+};
 
-use crate::{annotations::*, tensor::make_inputs_for_model};
 use crate::model::Model;
-use std::{time::{Duration, Instant}, any::TypeId};
+use crate::{annotations::*, tensor::make_inputs_for_model};
+use std::{
+    any::TypeId,
+    time::{Duration, Instant},
+};
 
 pub struct BenchLimits {
     pub max_iters: usize,
@@ -19,16 +25,17 @@ pub fn profile(
     model: &TypedModel,
     bench_limits: &BenchLimits,
     dg: &mut Annotations,
-    inputs: &TVec<TValue>,
     custom_profiler: Option<HashMap<TypeId, Profiler>>,
 ) -> TractResult<()> {
     info!("Running entire network");
     let mut iters = 0usize;
     let start = Instant::now();
     let mut prefix = tvec!();
-    
+    let plan = TypedSimplePlan::new(model.clone())?;
+    let mut state = TypedSimpleState::new(Arc::new(plan))?;
+
     while iters < 1 && start.elapsed() < bench_limits.max_time {
-        rec_profiler(model, inputs.clone(), dg, custom_profiler.as_ref(), &mut prefix)?;
+        rec_profiler(&mut state, dg, custom_profiler.as_ref(), &mut prefix)?;
         iters += 1;
     }
     let entire = start.elapsed();
@@ -48,55 +55,56 @@ pub fn profile(
     Ok(())
 }
 
-pub fn rec_profiler(model: &TypedModel, inputs: TVec<TValue>, dg: &mut Annotations, profilers: Option<&HashMap<TypeId, Profiler>>, prefix: &[(usize, String)]) -> TractResult<TVec<TValue>> {
-    let plan = TypedSimplePlan::new(model)?;
-    let mut state = TypedSimpleState::new(&plan)?;
+pub fn rec_profiler(
+    state: &mut TypedSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>,
+    dg: &mut Annotations,
+    profilers: Option<&HashMap<TypeId, Profiler>>,
+    prefix: &[(usize, String)],
+) -> TractResult<TVec<TValue>> {
+    let inputs = make_inputs_for_model(state.plan().model())?;
     let mut parent_prefix: TVec<_> = prefix.into();
     parent_prefix.pop();
-    let r = state.run_plan_with_eval(
-        inputs,
-        |session_state, state, node, input| {
-            // Specific case for submodels
-            if let Some(submodel) = node.op_as::<SubmodelOp>() {
+    let r = state.run_plan_with_eval(inputs, |session_state, mut state, node, input| {
+        if let Some(ref mut op_state) = state {
+            if let Some(profiler) = profilers.map(|it| it.get(&op_state.type_id())).flatten() {
                 let mut prefix: TVec<_> = prefix.into();
                 prefix.push((node.id, "submodel".to_string()));
-                
-                // Check if submodel has specific profiler
-                if let Some(profiler) = profilers.map(|it| it.get(&submodel.model.as_ref().type_id())).flatten() {
-                    (profiler.func)(&submodel.model, input, dg, &prefix)
-                } else {
-                    rec_profiler(submodel.model(), input, dg, profilers, &prefix)
-                }
-            // Specific case for nested models
-            } else if let Some((inner_model_name, inner_model)) = model.nested_models(node.id) {
+                return (profiler.func)(*op_state, input, dg, &prefix);
+            } else if let Some(scan_state) = op_state.downcast_mut::<State>() {
                 let mut prefix: TVec<_> = prefix.into();
-                prefix.push((node.id, inner_model_name.to_string()));
-                let inner_model = inner_model.downcast_ref::<TypedModel>().ok_or(anyhow!("Expected inner model to be a TypedModel"))?;
-                let inner_input = make_inputs_for_model(inner_model)?;
-                rec_profiler(inner_model, inner_input, dg, None, &prefix)
-            } else {
-                let start = Instant::now();
-                let r = tract_core::plan::eval(session_state, state, node, input);
-                let elapsed = start.elapsed().mul_f32(1 as _);
-                *dg.node_mut(NodeQId(prefix.into(), node.id))
-                    .profile
-                    .get_or_insert(Duration::default()) += elapsed;
-               
-                if prefix.len() > 0 {
-                    let parent = dg
-                        .node_mut(NodeQId(parent_prefix.clone(), prefix.last().map(|it| it.0).unwrap()))
-                        .profile
-                        .get_or_insert(Duration::default());
-                    *parent += elapsed;
-                }
-                r
+                prefix.push((node.id, "loop".to_string()));
+                return rec_profiler(&mut scan_state.model_state, dg, None, &prefix);
+            } else if let Some(typed_model_state) = op_state.downcast_mut::<TypedModelOpState>() {
+                let mut prefix: TVec<_> = prefix.into();
+                prefix.push((node.id, "submodel".to_string()));
+                return rec_profiler(typed_model_state, dg, None, &prefix);
             }
-        },
-    )?;
+        }
+
+        let start = Instant::now();
+        let r = tract_core::plan::eval(session_state, state, node, input);
+        let elapsed = start.elapsed().mul_f32(1 as _);
+        *dg.node_mut(NodeQId(prefix.into(), node.id)).profile.get_or_insert(Duration::default()) +=
+            elapsed;
+
+        if prefix.len() > 0 {
+            let parent = dg
+                .node_mut(NodeQId(parent_prefix.clone(), prefix.last().map(|it| it.0).unwrap()))
+                .profile
+                .get_or_insert(Duration::default());
+            *parent += elapsed;
+        }
+        r
+    })?;
     Ok(r)
 }
 
-type ProfilerFn = fn(&Box<dyn InnerModel>, TVec<TValue>, &mut Annotations, &[(usize, String)]) -> TractResult<TVec<TValue>>;
+type ProfilerFn = fn(
+    &mut dyn OpState,
+    TVec<TValue>,
+    &mut Annotations,
+    &[(usize, String)],
+) -> TractResult<TVec<TValue>>;
 
 #[derive(Clone)]
 pub struct Profiler {
