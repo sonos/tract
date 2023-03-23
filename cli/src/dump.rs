@@ -131,7 +131,7 @@ pub fn handle(
             .downcast_ref::<TypedModel>()
             .context("Can only profile typed models")?;
         let inputs = retrieve_or_make_inputs(model, &run_params)?;
-        tract_libcli::profile::profile(model, bench_limits, &mut annotations, &inputs[0])?;
+        tract_libcli::profile::profile(model, bench_limits, &mut annotations, &inputs[0], None)?;
     }
 
     if sub_matches.is_present("axes") || sub_matches.is_present("axes-names") {

@@ -6,7 +6,7 @@ use crate::{internal::*, ops::OpStateFreeze};
 
 #[derive(Debug, Clone)]
 pub struct SubmodelOp {
-    model: Box<dyn InnerModel>,
+    pub model: Box<dyn InnerModel>,
     label: String,
     decluttered: bool,
     codegen: bool,
