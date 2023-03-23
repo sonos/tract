@@ -63,33 +63,33 @@ pub trait Model:
     fn outlet_successors(&self, outlet: OutletId) -> &[InletId];
 
     /// Subnets of a node
-    fn nested_models(&self, id: usize) -> Vec<(String, &dyn Model)> {
+    fn nested_models(&self, id: usize) -> Option<(String, &dyn Model)> {
         if let Some(submodel) = self.node_op(id).downcast_ref::<tract_core::ops::submodel::SubmodelOp>() {
-            return vec![("submodel".into(), submodel.model())];
+            return Some(("submodel".into(), submodel.model()));
         }
         if let Some(lir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::LirScan>() {
-            return vec![("loop".into(), lir.plan.model())];
+            return Some(("loop".into(), lir.plan.model()));
         }
         if let Some(mir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::Scan>() {
-            return vec![("loop".into(), &mir.body)];
+            return Some(("loop".into(), &mir.body));
         }
         #[cfg(feature = "hir")]
         if let Some(hir) = self.node_op(id).downcast_ref::<tract_hir::ops::scan::InferenceScan>() {
-            return vec![("loop".into(), &hir.body)];
+            return Some(("loop".into(), &hir.body));
         }
-        vec![]
+        None
     }
 
     /// Subnets of a node
-    fn nested_models_iters(&self, id: usize, input: &[&TypedFact]) -> Vec<Option<TDim>> {
+    fn nested_models_iters(&self, id: usize, input: &[&TypedFact]) -> Option<TDim> {
         if let Some(submodel) = self.node_op(id).downcast_ref::<tract_core::ops::submodel::SubmodelOp>() {
-            vec![submodel.iteration_count(input)]
+            submodel.iteration_count(input)
         } else if let Some(lir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::LirScan>() {
-            vec![lir.iteration_count(input)]
+            lir.iteration_count(input)
         } else if let Some(mir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::Scan>() {
-            vec![mir.iteration_count(input)]
+            mir.iteration_count(input)
         } else {
-            vec![]
+            None
         }
     }
 
