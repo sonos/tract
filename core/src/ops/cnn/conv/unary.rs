@@ -574,12 +574,11 @@ impl ConvUnary {
             let a = ker.into_shape(&a_shape)?.into_arc_tensor();
             let mut patch = TypedModelPatch::new("declutter_as_einsum");
             let a = patch.add_const(format!("{name}.filters"), a)?;
-            let taps = node
+            let mut inputs = node
                 .inputs
                 .iter()
                 .map(|i| patch.tap_model(model, *i))
                 .collect::<TractResult<TVec<_>>>()?;
-            let mut inputs = taps.clone();
             inputs.insert(0, a);
             let mut axes = self.axes_mapping(&input_facts, &output_facts)?.with_extra_input(0)?;
             axes = axes.with_extra_input_axis('0', 0, 0)?.with_extra_input_axis('1', 0, 1)?;
@@ -597,11 +596,7 @@ impl ConvUnary {
                 }
                 let bias = patch.add_const(format!("{name}.bias"), bias)?;
                 inputs.insert(2, bias);
-                let op = EinSum {
-                    axes,
-                    operating_dt: i32::datum_type(),
-                    q_params: self.q_params.clone(),
-                };
+                let op = EinSum { axes, operating_dt: i32::datum_type(), q_params: self.q_params };
                 patch.wire_node(format!("{}.einsum", node.name), op, &inputs)?[0]
             } else {
                 let op = EinSum { axes, operating_dt: input_facts[0].datum_type, q_params: None };
@@ -879,7 +874,7 @@ impl TypedOp for ConvUnary {
         }
         if self.q_params.is_some() {
             for qp_ix in 0..6 {
-                if inputs[qp_ix+1].rank() == 1 {
+                if inputs[qp_ix + 1].rank() == 1 {
                     axes = axes.with_input_axis_named(qp_ix + 1, 0, '$')?;
                     axes = match qp_ix {
                         0 | 1 => axes.linking('O', '$')?,
@@ -1027,7 +1022,7 @@ impl TypedOp for ConvUnary {
             kernel: kernel.into_arc_tensor(),
             group: self.group,
             bias: self.bias.clone(),
-            q_params: self.q_params.clone(),
+            q_params: self.q_params,
         };
         Ok(Some(AxisChangeConsequence {
             substitute_op: Some(Box::new(new_op)),
