@@ -144,7 +144,9 @@ impl InnerModel for TypedModel {
         session: &mut SessionState,
         node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(TypedModelOpState::new(self)?)))
+        let plan = SimplePlan::new(self.clone())?;
+        let state = SimpleState::new(Arc::new(plan))?;
+        Ok(Some(Box::new(state)))
     }
 
     #[allow(unused_variables)]
@@ -162,18 +164,7 @@ impl InnerModel for TypedModel {
 }
 
 
-#[derive(Debug, Clone)]
-pub struct TypedModelOpState {
-    state: TypedSimpleState<TypedModel, TypedSimplePlan<TypedModel>>,
-}
-
-impl TypedModelOpState {
-    pub fn new(model: &TypedModel) -> TractResult<Self> {
-        let plan = SimplePlan::new(model.clone())?;
-        let state = SimpleState::new(plan)?;
-        Ok(Self { state })
-    }
-}
+pub type TypedModelOpState = TypedSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>;
 
 impl OpState for TypedModelOpState {
     fn eval(
@@ -182,24 +173,21 @@ impl OpState for TypedModelOpState {
         _op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let inference_out = self.state.run(inputs)?;
+        let inference_out = self.run(inputs)?;
         Ok(inference_out)
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct FrozenSubmodelOpState {
-    state: TypedFrozenSimpleState<TypedModel, TypedSimplePlan<TypedModel>>,
-}
+pub type FrozenSubmodelOpState = TypedFrozenSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>;
 
 impl FrozenOpState for FrozenSubmodelOpState {
     fn unfreeze(&self) -> Box<dyn OpState> {
-        Box::new(TypedModelOpState { state: self.state.unfreeze() })
+        Box::new(self.unfreeze())
     }
 }
 
 impl OpStateFreeze for TypedModelOpState {
     fn freeze(&self) -> Box<dyn FrozenOpState> {
-        Box::new(FrozenSubmodelOpState { state: self.state.freeze() })
+        Box::new(self.freeze())
     }
 }
