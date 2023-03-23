@@ -1,9 +1,8 @@
-use tract_core::internal::*;
+use tract_core::{internal::*, ops::submodel::{SubmodelOp, InnerModel}};
 
-use crate::annotations::*;
+use crate::{annotations::*, tensor::make_inputs_for_model};
 use crate::model::Model;
-use crate::tensor::make_inputs_for_model;
-use std::time::{Duration, Instant};
+use std::{time::{Duration, Instant}, any::TypeId};
 
 pub struct BenchLimits {
     pub max_iters: usize,
@@ -21,73 +20,21 @@ pub fn profile(
     bench_limits: &BenchLimits,
     dg: &mut Annotations,
     inputs: &TVec<TValue>,
+    custom_profiler: Option<HashMap<TypeId, Profiler>>,
 ) -> TractResult<()> {
     info!("Running entire network");
-    let plan = SimplePlan::new(model)?;
-    let mut state = SimpleState::new(&plan)?;
     let mut iters = 0usize;
     let start = Instant::now();
-    while iters < bench_limits.max_iters && start.elapsed() < bench_limits.max_time {
-        let _ =
-            state.run_plan_with_eval(inputs.clone(), |session_state, state, node, input| {
-                let start = Instant::now();
-                let r = tract_core::plan::eval(session_state, state, node, input);
-                let elapsed = start.elapsed();
-                *dg.node_mut(NodeQId(tvec!(), node.id))
-                    .profile
-                    .get_or_insert(Duration::default()) += elapsed;
-                r
-            })?;
+    let mut prefix = tvec!();
+    
+    while iters < 1 && start.elapsed() < bench_limits.max_time {
+        rec_profiler(model, inputs.clone(), dg, custom_profiler.as_ref(), &mut prefix)?;
         iters += 1;
     }
     let entire = start.elapsed();
-
     info!("Running {} iterations max. for each node.", bench_limits.max_iters);
     info!("Running for {} ms max. for each node.", bench_limits.max_time.as_millis());
 
-    for &outer_node in &plan.order {
-        if let Some(m) = (model as &dyn Model).downcast_ref::<Graph<TypedFact, Box<dyn TypedOp>>>()
-        {
-            let outer_node = m.node(outer_node);
-            let inputs: TVec<TypedFact> = model
-                .node_input_facts(outer_node.id)?
-                .iter()
-                .map(|&i| i.to_typed_fact().map(|f| f.into_owned()))
-                .collect::<TractResult<_>>()?;
-            let ref_inputs: TVec<&TypedFact> = inputs.iter().collect();
-            for ((inner_model_name, inner_model), multiplier) in model
-                .nested_models(outer_node.id)
-                .iter()
-                .zip(model.nested_models_iters(outer_node.id, &ref_inputs).iter())
-            {
-                let multi = multiplier.as_ref().unwrap_or(&TDim::Val(1)).to_isize().unwrap();
-                let prefix = tvec!((outer_node.id, inner_model_name.to_string()));
-                if let Some(inner_model) = inner_model.downcast_ref::<TypedModel>() {
-                    for _ in 0..iters {
-                        let inner_plan = SimplePlan::new(inner_model)?;
-                        let mut state = SimpleState::new(inner_plan)?;
-                        let _ = state.run_plan_with_eval(
-                            make_inputs_for_model(inner_model)?,
-                            |session_state, state, node, input| {
-                                let start = Instant::now();
-                                let r = tract_core::plan::eval(session_state, state, node, input);
-                                let elapsed = start.elapsed().mul_f32(multi as _);
-                                *dg.node_mut(NodeQId(prefix.clone(), node.id))
-                                    .profile
-                                    .get_or_insert(Duration::default()) += elapsed;
-                                let parent = dg
-                                    .node_mut(NodeQId(tvec!(), outer_node.id))
-                                    .profile
-                                    .get_or_insert(Duration::default());
-                                *parent -= elapsed.min(*parent);
-                                r
-                            },
-                        )?;
-                    }
-                }
-            }
-        }
-    }
     let denum = (iters as f32).recip();
     let entire = entire.mul_f32(denum);
     for d in dg.tags.values_mut() {
@@ -99,6 +46,68 @@ pub fn profile(
     let sum = dg.tags.values().filter_map(|t| t.profile).sum::<Duration>();
     dg.profile_summary = Some(ProfileSummary { max, sum, entire, iters });
     Ok(())
+}
+
+pub fn rec_profiler(model: &TypedModel, inputs: TVec<TValue>, dg: &mut Annotations, profilers: Option<&HashMap<TypeId, Profiler>>, prefix: &[(usize, String)]) -> TractResult<TVec<TValue>> {
+    let plan = TypedSimplePlan::new(model)?;
+    let mut state = TypedSimpleState::new(&plan)?;
+    let mut parent_prefix: TVec<_> = prefix.into();
+    parent_prefix.pop();
+    let r = state.run_plan_with_eval(
+        inputs,
+        |session_state, state, node, input| {
+            // Specific case for submodels
+            if let Some(submodel) = node.op_as::<SubmodelOp>() {
+                let mut prefix: TVec<_> = prefix.into();
+                prefix.push((node.id, "submodel".to_string()));
+                
+                // Check if submodel has specific profiler
+                if let Some(profiler) = profilers.map(|it| it.get(&submodel.model.as_ref().type_id())).flatten() {
+                    (profiler.func)(&submodel.model, input, dg, &prefix)
+                } else {
+                    rec_profiler(submodel.model(), input, dg, profilers, &prefix)
+                }
+            // Specific case for nested models
+            } else if let Some((inner_model_name, inner_model)) = model.nested_models(node.id) {
+                let mut prefix: TVec<_> = prefix.into();
+                prefix.push((node.id, inner_model_name.to_string()));
+                let inner_model = inner_model.downcast_ref::<TypedModel>().ok_or(anyhow!("Expected inner model to be a TypedModel"))?;
+                let inner_input = make_inputs_for_model(inner_model)?;
+                rec_profiler(inner_model, inner_input, dg, None, &prefix)
+            } else {
+                let start = Instant::now();
+                let r = tract_core::plan::eval(session_state, state, node, input);
+                let elapsed = start.elapsed().mul_f32(1 as _);
+                *dg.node_mut(NodeQId(prefix.into(), node.id))
+                    .profile
+                    .get_or_insert(Duration::default()) += elapsed;
+               
+                if prefix.len() > 0 {
+                    let parent = dg
+                        .node_mut(NodeQId(parent_prefix.clone(), prefix.last().map(|it| it.0).unwrap()))
+                        .profile
+                        .get_or_insert(Duration::default());
+                    *parent += elapsed;
+                }
+                r
+            }
+        },
+    )?;
+    Ok(r)
+}
+
+type ProfilerFn = fn(&Box<dyn InnerModel>, TVec<TValue>, &mut Annotations, &[(usize, String)]) -> TractResult<TVec<TValue>>;
+
+#[derive(Clone)]
+pub struct Profiler {
+    pub func: ProfilerFn,
+    pub name: &'static str,
+}
+
+impl Hash for Profiler {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state)
+    }
 }
 
 pub fn extract_costs(annotations: &mut Annotations, model: &dyn Model) -> TractResult<()> {
@@ -119,14 +128,14 @@ pub fn extract_costs(annotations: &mut Annotations, model: &dyn Model) -> TractR
 
                 let nested_subs = model.nested_models(node_id);
                 let nested_multis = (model as &dyn Model).nested_models_iters(node_id, &inputs);
-                for ((name, sub), multi) in nested_subs.iter().zip(nested_multis.iter()) {
+                if let Some((name, sub)) = nested_subs {
                     let mut prefix: TVec<_> = prefix.into();
                     prefix.push((node_id, name.to_string()));
                     extract_costs_rec(
                         annotations,
-                        *sub,
+                        sub,
                         &prefix,
-                        multi.clone().unwrap_or_else(|| 1.into()) * &multiplier,
+                        nested_multis.clone().unwrap_or_else(|| 1.into()) * &multiplier,
                     )?;
                 }
             }

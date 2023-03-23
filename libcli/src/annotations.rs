@@ -29,9 +29,7 @@ impl NodeQId {
             } else {
                 model
                     .nested_models(path[0].0)
-                    .iter()
-                    .find(|(name, _)| name == &*path[0].1)
-                    .map(|(_, sub)| *sub)
+                    .map(|(_, sub)| sub)
             }
         }
         scope(&self.0, model)
@@ -189,7 +187,7 @@ impl Annotations {
                             vec![label.to_string()];
                     }
                 }
-                for (label, sub /*, ins, outs*/) in model.nested_models(n) {
+                if let Some((label, sub /*, ins, outs*/)) = model.nested_models(n) {
                     let mut prefix: TVec<(usize, String)> = prefix.into();
                     prefix.push((n, label.to_string()));
                     set_subio_labels(sub, &prefix, annotations);
