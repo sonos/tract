@@ -327,9 +327,17 @@ impl AxisOp {
 
     pub fn change_tensor(&self, tensor: &mut Tensor, broadcasting: bool) -> TractResult<()> {
         match self.canonical().as_ref() {
-            Add(ix) => tensor.insert_axis(*ix),
-            Rm(ix) => tensor.remove_axis(*ix),
+            Add(ix) => {
+                ensure!(*ix <= tensor.rank());
+                tensor.insert_axis(*ix)
+            }
+            Rm(ix) => {
+                ensure!(*ix < tensor.rank());
+                tensor.remove_axis(*ix)
+            }
             Move(from, to) => {
+                ensure!(*from < tensor.rank());
+                ensure!(*to < tensor.rank());
                 let mut tmp = tensor.clone().move_axis(*from, *to)?;
                 std::mem::swap(tensor, &mut tmp);
                 Ok(())

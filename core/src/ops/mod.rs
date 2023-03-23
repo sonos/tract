@@ -337,30 +337,6 @@ impl AttrOrInput {
             AttrOrInput::Input(_) => None,
         }
     }
-
-    fn insert_input(&mut self, ix: usize) {
-        if let AttrOrInput::Input(slot) = self {
-            *slot = *slot + (*slot >= ix) as usize;
-        }
-    }
-
-    fn remove_input(&mut self, ix: usize) {
-        if let AttrOrInput::Input(slot) = self {
-            *slot = *slot - (*slot > ix) as usize;
-        }
-    }
-
-    fn as_input(
-        &self,
-        model: &mut TypedModel,
-        input_wires: &[OutletId],
-        name: impl ToString,
-    ) -> TractResult<OutletId> {
-        match self {
-            AttrOrInput::Attr(t) => model.add_const(name.to_string(), t.clone()),
-            AttrOrInput::Input(i) => Ok(input_wires[*i]),
-        }
-    }
 }
 
 impl From<usize> for AttrOrInput {

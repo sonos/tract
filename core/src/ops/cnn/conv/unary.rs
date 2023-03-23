@@ -18,7 +18,6 @@ use crate::ops::math::Mul;
 use crate::ops::math::Sub;
 use crate::ops::matmul::lir_unary::AddMatMulGeometry;
 use crate::ops::matmul::lir_unary::MapOutputAxisToInput;
-use crate::ops::matmul::mir_quant::offset_u8_as_i8;
 use crate::ops::matmul::mir_quant::wire_offset_u8_as_i8;
 
 use super::depth_wise::DepthWise;
@@ -26,7 +25,6 @@ use super::im2col::Im2Col;
 use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolGeometry, PoolSpec};
 use crate::ops::matmul::lir_unary::{LirMatMulUnary, ProtoFusedSpec};
-use crate::ops::matmul::MatMulQParams;
 use crate::ops::nn::{BaseDataShape, DataFormat, DataShape};
 
 use tract_linalg::frame::Packer;
@@ -44,7 +42,7 @@ pub struct ConvUnary {
 
     pub bias: Option<Arc<Tensor>>,
 
-    pub q_params: Option<(DatumType, MatMulQParams)>,
+    pub q_params: Option<DatumType>,
 }
 
 impl ConvUnary {
@@ -102,56 +100,20 @@ impl ConvUnary {
         inputs: &mut [OutletId],
         model: &mut TypedModel,
     ) -> TractResult<Option<Self>> {
+        ensure!(self.q_params.is_some());
         if let DatumType::U8 = self.kernel.datum_type().unquantized() {
-            let new_op = Self {
-                kernel: self.kernel.offset_u8_as_i8(),
-                q_params: self
-                    .q_params
-                    .as_ref()
-                    .map(|(dt, qp)| -> TractResult<_> {
-                        let a0 = match &qp.a0 {
-                            AttrOrInput::Attr(t) => offset_u8_as_i8(t)?,
-                            AttrOrInput::Input(i) => {
-                                match model.outlet_fact(inputs[*i])?.datum_type.unquantized() {
-                                    DatumType::U8 => {
-                                        inputs[*i] = model.wire_node(
-                                            format!(
-                                                "{}.offset_{}_as_i8",
-                                                model.node(inputs[*i].node).name,
-                                                "a0"
-                                            ),
-                                            ops::quant::offset_u8_as_i8(),
-                                            &[inputs[*i]],
-                                        )?[0];
-                                    }
-                                    DatumType::I32 => {
-                                        let cst = model.add_const(
-                                            format!(
-                                                "{}.offset_{}_as_i8.cst",
-                                                &model.node(inputs[*i].node).name,
-                                                "a0"
-                                            ),
-                                            rctensor0(-128i32),
-                                        )?;
-                                        inputs[*i] = model.wire_node(
-                                            format!(
-                                                "{}.offset_{}_as_i8",
-                                                model.node(inputs[*i].node).name,
-                                                "a0"
-                                            ),
-                                            ops::math::add(),
-                                            &[inputs[*i], cst],
-                                        )?[0];
-                                    }
-                                    _ => (),
-                                }
-                                AttrOrInput::Input(*i)
-                            }
-                        };
-                        Ok((*dt, MatMulQParams { a0, ..qp.clone() }))
-                    })
-                    .transpose()?,
-                ..self.clone()
+            let new_op = Self { kernel: self.kernel.offset_u8_as_i8(), ..self.clone() };
+            let name = format!("{}.a0_as_i8", model.node(inputs[1].node).name);
+            match model.outlet_fact(inputs[1])?.datum_type.unquantized() {
+                DatumType::U8 => {
+                    inputs[1] =
+                        model.wire_node(name, ops::quant::offset_u8_as_i8(), &[inputs[1]])?[0];
+                }
+                DatumType::I32 => {
+                    let cst = model.add_const(format!("{name}.cst"), tensor0(-128i32))?;
+                    inputs[1] = model.wire_node(name, ops::math::add(), &[inputs[1], cst])?[0];
+                }
+                _ => (),
             };
             Ok(Some(new_op))
         } else {
@@ -195,18 +157,13 @@ impl ConvUnary {
         name: &str,
         wires: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
+        ensure!(self.q_params.is_some());
         use crate::ops::matmul::mir_quant as qmm;
 
-        let c_dt = self.q_params.as_ref().unwrap().0;
-
-        let params = self.q_params.as_ref().unwrap().1.as_outlet_ids(model, name, wires)?;
-
-        let a0 = params[0];
-        let a_scale = params[1];
-        let mut b0 = params[2];
-        let b_scale = params[3];
-        let c0 = params[4];
-        let c_scale = params[5];
+        let c_dt = self.q_params.unwrap();
+        let [a0, a_scale, mut b0, b_scale, c0, c_scale] = wires[1..] else {
+            bail!("Wrong number of inputs")
+        };
 
         let b = wire_offset_u8_as_i8(model, name, wires[0], "b", &mut b0, "b0")?;
         let b_fact = model.outlet_fact(b)?.clone();
@@ -631,7 +588,7 @@ impl ConvUnary {
             } else {
                 axes = axes.linking('I', '1')?.linking('O', '0')?;
             }
-            let wire = if let Some(q_params) = &self.q_params {
+            let wire = if self.q_params.is_some() {
                 let bias = self.bias.clone().unwrap_or_else(|| rctensor0(0i32));
                 anyhow::ensure!(bias.rank() == 0 || bias.rank() == 1);
                 axes = axes.with_extra_input(2)?;
@@ -640,29 +597,11 @@ impl ConvUnary {
                 }
                 let bias = patch.add_const(format!("{name}.bias"), bias)?;
                 inputs.insert(2, bias);
-                inputs.truncate(3);
-                for (qp_ix, (qp_name, qp_val)) in q_params.1.iter().enumerate() {
-                    let konst = match qp_val {
-                        AttrOrInput::Input(ix) => taps[*ix],
-                        AttrOrInput::Attr(a) => {
-                            patch.add_const(format!("{name}.{qp_name}"), a.clone())?
-                        }
-                    };
-                    axes = axes.with_extra_input(qp_ix + 3)?;
-                    let qp_rank = patch.outlet_fact(konst)?.rank();
-                    if qp_rank == 1 {
-                        axes = axes.with_extra_input_axis('$', qp_ix + 3, 0)?;
-                        axes = match qp_ix {
-                            0 | 1 => axes.linking('O', '$')?,
-                            2 | 3 => axes.linking('I', '$')?,
-                            4 | 5 => axes.linking('O', '$')?,
-                            _ => unreachable!(),
-                        };
-                    }
-                    inputs.push(konst);
-                }
-                let op =
-                    EinSum { axes, operating_dt: i32::datum_type(), q_params: Some(q_params.0) };
+                let op = EinSum {
+                    axes,
+                    operating_dt: i32::datum_type(),
+                    q_params: self.q_params.clone(),
+                };
                 patch.wire_node(format!("{}.einsum", node.name), op, &inputs)?[0]
             } else {
                 let op = EinSum { axes, operating_dt: input_facts[0].datum_type, q_params: None };
@@ -737,26 +676,26 @@ impl ConvUnary {
             return Ok(None);
         }
         let &[succ] = &*node.outputs[0].successors else {
-            return Ok(None)
-        };
+        return Ok(None)
+    };
         let Some(bin) = model.node(succ.node).op_as::<TypedBinOp>() else {
-            return Ok(None)
-        };
+        return Ok(None)
+    };
         let other_input = model.node(succ.node).inputs[1 - succ.slot];
         let other_fact = &model.outlet_fact(other_input)?;
         let Some(konst) = &other_fact.konst else {
-            return Ok(None)
-        };
+        return Ok(None)
+    };
         let axes_mapping = model.node_axes_mapping(succ.node)?;
         let input_shape =
             self.pool_spec.data_format.shape(&model.outlet_fact(node.inputs[0])?.shape)?;
         let conv_c_axis = input_shape.c_axis();
         let &[konst_c_axis] = &*axes_mapping.input_axis(succ.slot, conv_c_axis)?.inputs[1- succ.slot] else {
-            return Ok(None)
-        };
+        return Ok(None)
+    };
         let Ok(co) = node.outputs[0].fact.shape[conv_c_axis].to_usize() else {
-            return Ok(None)
-        };
+        return Ok(None)
+    };
         let operand_for_bias = if konst.shape()[konst_c_axis] == co && konst.len() == co {
             konst.clone().into_tensor().into_shape(&[co])?
         } else if konst.len() == 1 {
@@ -839,15 +778,14 @@ impl EvalOp for ConvUnary {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let mut model = TypedModel::default();
-
         let mut wire: TVec<OutletId> = inputs
             .iter()
             .enumerate()
             .map(|(ix, v)| model.add_source(format!("source.{ix}"), v.datum_type().fact(v.shape())))
             .collect::<TractResult<_>>()?;
-        let new_op = self.kernel_offset_u8_as_i8(&mut wire, &mut model)?;
         let wire = unsafe {
             if self.q_params.is_some() {
+                let new_op = self.kernel_offset_u8_as_i8(&mut wire, &mut model)?;
                 let op_ref = if let Some(op) = new_op.as_ref() { op } else { self };
                 op_ref.wire_as_quant_im2col(&mut model, "im2col-adhoc", &wire)?
             } else {
@@ -861,7 +799,7 @@ impl EvalOp for ConvUnary {
 
 impl TypedOp for ConvUnary {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let q_inputs = self.q_params.as_ref().map(|(_, qp)| qp.input_count()).unwrap_or(0);
+        let q_inputs = if self.q_params.is_some() { 6 } else { 0 };
         if inputs.len() != 1 + q_inputs {
             bail!("Wrong number of inputs: expected {} got {}", 1 + q_inputs, inputs.len());
         }
@@ -892,8 +830,8 @@ impl TypedOp for ConvUnary {
         }
 
         let mut fact = self.pool_spec.output_facts(inputs)?.remove(0);
-        if let Some((dt, _qp)) = self.q_params.as_ref() {
-            fact.datum_type = *dt;
+        if let Some(dt) = self.q_params {
+            fact.datum_type = dt;
         } else {
             ensure!(
                 inputs[0].datum_type == self.kernel.datum_type(),
@@ -939,6 +877,19 @@ impl TypedOp for ConvUnary {
                     .linking(repr, '$')?
             }
         }
+        if self.q_params.is_some() {
+            for qp_ix in 0..6 {
+                if inputs[qp_ix+1].rank() == 1 {
+                    axes = axes.with_input_axis_named(qp_ix + 1, 0, '$')?;
+                    axes = match qp_ix {
+                        0 | 1 => axes.linking('O', '$')?,
+                        2 | 3 => axes.linking('I', '$')?,
+                        4 | 5 => axes.linking('O', '$')?,
+                        _ => unreachable!(),
+                    };
+                }
+            }
+        }
         Ok(axes)
     }
 
@@ -947,27 +898,19 @@ impl TypedOp for ConvUnary {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if let Some((_, qp)) = self.q_params.as_ref() {
-            if let Some((inputs, qp)) = qp.inline_static(model, node)? {
-                let mut op = self.clone();
-                op.q_params.as_mut().unwrap().1 = qp;
-                let patch = TypedModelPatch::replace_single_op(model, node, &inputs, op)?
-                    .with_context("inlining quantized conv params");
-                return Ok(Some(patch));
-            }
+        macro_rules! pass {
+            ($func:ident) => {
+                if let Some(mut r) = self.$func(model, node).context(stringify!($func))? {
+                    trace!(stringify!($func));
+                    r.push_context(stringify!($func));
+                    return Ok(Some(r));
+                }
+            };
         }
-        for d in &[
-            Self::declutter_stride_slice_to_downsample,
-            Self::declutter_as_einsum,
-            Self::declutter_channel_arithmetic_succ,
-        ] {
-            if let Some(p) = d(self, model, node)? {
-                return Ok(Some(p));
-            }
-        }
-        if let Some(p) = self.declutter_precursor_padding(model, node)? {
-            return Ok(Some(p));
-        }
+        pass!(declutter_stride_slice_to_downsample);
+        pass!(declutter_as_einsum);
+        pass!(declutter_channel_arithmetic_succ);
+        pass!(declutter_precursor_padding);
         Ok(None)
     }
 
@@ -1196,7 +1139,7 @@ mod test {
             kernel: rctensor4(&[[[[1u8, 1], [1, 1]]]]),
             group: 1,
             bias: None,
-            q_params: Some((i32::datum_type(), MatMulQParams::all_dynamic(1))),
+            q_params: Some(i32::datum_type()),
         };
         let input = tvec!(
             rctensor4(&[[[[1u8, 2, 3], [4, 5, 6], [7, 8, 9]]]]),

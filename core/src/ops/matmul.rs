@@ -4,8 +4,6 @@ pub mod pack;
 
 use crate::internal::*;
 
-pub use self::mir_quant::MatMulQParams;
-
 pub fn output_type(input: DatumType) -> DatumType {
     if input.is_float() {
         input

@@ -5,7 +5,6 @@ use tract_core::ops::array::PadMode;
 use tract_core::ops::cnn::deconv::adjustments;
 use tract_core::ops::cnn::PaddingSpec;
 use tract_core::ops::cnn::PoolSpec;
-use tract_core::ops::matmul::MatMulQParams;
 use tract_core::ops::nn::DataFormat;
 use tract_itertools::izip;
 use tract_itertools::Itertools;
@@ -328,18 +327,22 @@ pub fn conv_or_deconv(
             kernel
         );
     }
+    let mut inputs = tvec!(input);
 
     let (group, pool_spec) =
         read_conv_parameters(builder, invocation, kernel.shape(), &input_fact)?;
 
     let output_dt =
         invocation.dt_from_quant_file.get(0).cloned().flatten().unwrap_or(DatumType::F32);
-    let qparams = if let (Some(a), Some(b), Some(c)) =
+    if let (Some(a), Some(b), Some(c)) =
         (kernel.datum_type().qparams(), input_fact.datum_type.qparams(), output_dt.qparams())
     {
-        Some((output_dt, MatMulQParams::all_from_qtype(&a, &b, &c)?))
-    } else {
-        None
+        inputs.push(builder.add_const(tensor0(a.zp_scale().0))?);
+        inputs.push(builder.add_const(tensor0(a.zp_scale().1))?);
+        inputs.push(builder.add_const(tensor0(b.zp_scale().0))?);
+        inputs.push(builder.add_const(tensor0(b.zp_scale().1))?);
+        inputs.push(builder.add_const(tensor0(c.zp_scale().0))?);
+        inputs.push(builder.add_const(tensor0(c.zp_scale().1))?);
     };
     let bias: Arc<Tensor> = invocation.named_arg_as(builder, "bias")?;
 
@@ -390,10 +393,10 @@ pub fn conv_or_deconv(
             kernel.clone(),
             group,
             bias.map(Tensor::into_arc_tensor),
-            qparams,
+            Some(output_dt).filter(|dt| dt.is_quantized()),
         ))
     };
-    builder.wire(op, &[input])
+    builder.wire(op, &inputs)
 }
 
 fn pool_spec_for_pools(

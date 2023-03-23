@@ -30,8 +30,6 @@ pub struct Conv {
     pub override_output_datum_type: Option<DatumType>,
 }
 
-
-
 impl Conv {
     pub fn hwc(self) -> Conv {
         Conv { data_format: DataFormat::HWC, ..self }
@@ -116,7 +114,6 @@ impl Expansion for Conv {
     fn validation(&self) -> Validation {
         Validation::Rounding
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -204,6 +201,7 @@ impl Expansion for Conv {
         } else {
             None
         };
+        let mut wires = vec!(inputs[0]);
         let spatial_rank = kernel.rank() - 2;
         let kshape = kernel.shape();
         let group = self.group.unwrap_or(1);
@@ -227,42 +225,28 @@ impl Expansion for Conv {
             || self.y_zero_point_input.is_some()
             || self.y_scale_input.is_some();
         let output_type = self.override_output_datum_type.unwrap_or(input.datum_type);
-        let q_params = if quantized {
-            use tract_core::ops::matmul::MatMulQParams;
+        if quantized {
+            let zero = model
+                .add_const(format!("{prefix}.zero"), Tensor::zero_scalar_dt(input.datum_type)?)?;
+            let one = model.add_const(format!("{prefix}.one"), tensor0(1f32))?;
 
-            let zero: AttrOrInput = Tensor::zero_scalar_dt(input.datum_type)?.into();
-            let one: AttrOrInput = tensor0(1f32).into();
-            let a0 = if let Some(o) = self.k_zero_point_input { o.into() } else { zero.clone() };
-            let a_scale = if let Some(o) = self.k_scale_input { o.into() } else { one.clone() };
-
-            let b0 = if let Some(o) = self.x_zero_point_input { o.into() } else { zero.clone() };
-            let b_scale = if let Some(o) = self.x_scale_input { o.into() } else { one.clone() };
-
-            let c0 = if let Some(o) = self.y_zero_point_input { o.into() } else { zero };
-            let c_scale = if let Some(o) = self.y_scale_input { o.into() } else { one };
-
-            let mut qp = MatMulQParams { a0, b0, c0, a_scale, b_scale, c_scale };
-            qp.remove_input(self.k_input.unwrap_or(1));
-            if let Some(b) = self.bias_input {
-                qp.remove_input(b);
-            }
-
-            Some((output_type, qp))
-        } else {
-            None
+            wires.push(self.k_zero_point_input.map(|i| inputs[i]).unwrap_or(zero));
+            wires.push(self.k_scale_input.map(|i| inputs[i]).unwrap_or(one));
+            wires.push(self.x_zero_point_input.map(|i| inputs[i]).unwrap_or(zero));
+            wires.push(self.x_scale_input.map(|i| inputs[i]).unwrap_or(one));
+            wires.push(self.y_zero_point_input.map(|i| inputs[i]).unwrap_or(zero));
+            wires.push(self.y_scale_input.map(|i| inputs[i]).unwrap_or(one));
         };
 
-        let inputs = inputs
-            .iter()
-            .enumerate()
-            .filter(|&(ix, _)| {
-                ix != self.k_input.unwrap_or(1) && self.bias_input.map(|b| ix != b).unwrap_or(true)
-            })
-            .map(|pair| *pair.1)
-            .collect::<TVec<_>>();
-
-        let reduced = ConvUnary::new(pool_spec, self.kernel_fmt, kernel, group, bias, q_params);
-        model.wire_node(prefix, reduced, &inputs)
+        let reduced = ConvUnary::new(
+            pool_spec,
+            self.kernel_fmt,
+            kernel,
+            group,
+            bias,
+            Some(output_type).filter(|_| quantized),
+        );
+        model.wire_node(prefix, reduced, &wires)
     }
 }
 
@@ -364,7 +348,9 @@ mod test {
                 tensor4(&[[[[1.0f32]]]]).into()
             ))
             .unwrap();
-        result[0].close_enough(&tensor4(&[[[[2.0f32]]], [[[0.0f32]]]]), Approximation::Approximate).unwrap();
+        result[0]
+            .close_enough(&tensor4(&[[[[2.0f32]]], [[[0.0f32]]]]), Approximation::Approximate)
+            .unwrap();
     }
 
     #[test]
@@ -383,7 +369,9 @@ mod test {
         let result = op
             .eval(tvec!(tensor3(&[[[2.0f32], [0.0f32]]]).into(), tensor3(&[[[1.0f32]]]).into()))
             .unwrap();
-        result[0].close_enough(&tensor3(&[[[2.0f32], [0.0f32]]]), Approximation::Approximate).unwrap();
+        result[0]
+            .close_enough(&tensor3(&[[[2.0f32], [0.0f32]]]), Approximation::Approximate)
+            .unwrap();
     }
 
     #[test]
@@ -402,7 +390,9 @@ mod test {
         let result = op
             .eval(tvec!(tensor3(&[[[2.0f32]], [[0.0f32]]]).into(), tensor3(&[[[1.0f32]]]).into()))
             .unwrap();
-        result[0].close_enough(&tensor3(&[[[2.0f32]], [[0.0f32]]]), Approximation::Approximate).unwrap();
+        result[0]
+            .close_enough(&tensor3(&[[[2.0f32]], [[0.0f32]]]), Approximation::Approximate)
+            .unwrap();
     }
 
     #[test]
