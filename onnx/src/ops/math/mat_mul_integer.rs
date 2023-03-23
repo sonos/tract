@@ -177,7 +177,6 @@ fn wire_as_einsum(
     if ranks[8] == 1 {
         expr = expr.with_input_axis_linked_to(8, 0, 'm')?;
     }
-    dbg!(&expr.to_string());
     let op = tract_core::ops::einsum::EinSum {
         axes: expr,
         operating_dt: i32::datum_type(),

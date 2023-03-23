@@ -2,7 +2,6 @@ use super::proptest::*;
 use crate::ops::cnn::KernelFormat::*;
 use crate::ops::cnn::*;
 use crate::ops::math::round_ties_to_even;
-use crate::ops::matmul::*;
 use crate::ops::nn::DataFormat::*;
 use crate::ops::nn::*;
 use crate::setup_test_logger;
@@ -19,15 +18,17 @@ pub fn qtensor(shape: Vec<usize>) -> BoxedStrategy<ArrayD<i8>> {
         .boxed()
 }
 
-pub fn q_params() -> BoxedStrategy<MatMulQParams> {
+pub fn q_params() -> BoxedStrategy<[Tensor; 6]> {
     (-10i32..10, -10i32..10, -10i32..10, -3..3i32, -3..3i32, -3..3i32)
-        .prop_map(|(a0, b0, c0, a_scale, b_scale, c_scale)| MatMulQParams {
-            a0: tensor0(a0).into(),
-            b0: tensor0(b0).into(),
-            c0: tensor0(c0).into(),
-            a_scale: tensor0(2f32.powi(a_scale)).into(),
-            b_scale: tensor0(2f32.powi(b_scale)).into(),
-            c_scale: tensor0(2f32.powi(c_scale)).into(),
+        .prop_map(|(a0, b0, c0, a_scale, b_scale, c_scale)| {
+            [
+                tensor0(a0),
+                tensor0(2f32.powi(a_scale)),
+                tensor0(b0),
+                tensor0(2f32.powi(b_scale)),
+                tensor0(c0),
+                tensor0(2f32.powi(c_scale)),
+            ]
         })
         .boxed()
 }
@@ -42,7 +43,7 @@ struct QConvProblem {
     data: ArrayD<i8>,
     kernel: ArrayD<i8>,
     bias: Option<ArrayD<i32>>,
-    qp: MatMulQParams,
+    qp: [Tensor; 6],
 }
 
 impl QConvProblem {
@@ -56,12 +57,12 @@ impl QConvProblem {
         let n = *self.shape_in.n().unwrap_or(&1);
         let ci_per_g = self.shape_in.c() / self.group;
         let co_per_g = self.co / self.group;
-        let a0 = self.qp.a0.as_static().unwrap().cast_to_scalar::<i32>().unwrap();
-        let b0 = self.qp.b0.as_static().unwrap().cast_to_scalar::<i32>().unwrap();
-        let c0 = self.qp.c0.as_static().unwrap().cast_to_scalar::<i32>().unwrap();
-        let scale = self.qp.c_scale.as_static().unwrap().cast_to_scalar::<f32>().unwrap()
-            / self.qp.a_scale.as_static().unwrap().cast_to_scalar::<f32>().unwrap()
-            / self.qp.b_scale.as_static().unwrap().cast_to_scalar::<f32>().unwrap();
+        let a0 = self.qp[0].cast_to_scalar::<i32>().unwrap();
+        let b0 = self.qp[2].cast_to_scalar::<i32>().unwrap();
+        let c0 = self.qp[4].cast_to_scalar::<i32>().unwrap();
+        let scale = self.qp[5].cast_to_scalar::<f32>().unwrap()
+            / self.qp[1].cast_to_scalar::<f32>().unwrap()
+            / self.qp[3].cast_to_scalar::<f32>().unwrap();
         let shape_out: TVec<usize> = izip!(self.shape_in.hw_dims(), self.geo_ker())
             .map(|(i, k)| (*i + 1).saturating_sub(*k))
             .collect();
@@ -127,6 +128,10 @@ impl QConvProblem {
         assert_eq!(self.data.shape(), &*self.shape_in.shape);
         let mut model = TypedModel::default();
         let wire = model.add_source("input", i8::fact(&self.shape_in.shape))?;
+        let mut inputs = tvec!(wire);
+        for (ix, qp) in self.qp.iter().enumerate() {
+            inputs.push(model.add_const(format!("qp.{ix}"), qp.clone())?);
+        }
         let op = ConvUnary::new(
             PoolSpec::new(
                 self.shape_in.fmt,
@@ -140,9 +145,9 @@ impl QConvProblem {
             self.kernel.clone().into_arc_tensor(),
             self.group,
             self.bias.clone().map(|a| a.into_arc_tensor()),
-            Some((i8::datum_type(), self.qp.clone())),
+            Some(i8::datum_type()),
         );
-        let wire = model.wire_node("conv", op, &[wire])?[0];
+        let wire = model.wire_node("conv", op, &inputs)?[0];
         model.set_output_outlets(&[wire])?;
         if self.optim {
             model = model.into_optimized()?;
@@ -215,6 +220,10 @@ proptest::proptest! {
     }
 }
 
+fn qp_noop_i8() -> [Tensor; 6] {
+    [tensor0(0i8), tensor0(1f32), tensor0(0i8), tensor0(1f32), tensor0(0i8), tensor0(1f32)]
+}
+
 #[test]
 fn trivial_0() -> TractResult<()> {
     QConvProblem {
@@ -225,7 +234,7 @@ fn trivial_0() -> TractResult<()> {
         data: arr2(&[[0i8]]).into_dyn(),
         kernel: arr3(&[[[0i8]]]).into_dyn(),
         bias: None,
-        qp: MatMulQParams::noop_static(i8::datum_type()),
+        qp: qp_noop_i8(),
         optim: true,
     }
     .check()
@@ -241,7 +250,7 @@ fn trivial_1() {
         data: arr2(&[[2i8]]).into_dyn(),
         kernel: arr3(&[[[64i8]]]).into_dyn(),
         bias: None,
-        qp: MatMulQParams::noop_static(i8::datum_type()),
+        qp: qp_noop_i8(),
         optim: true,
     }
     .check()
@@ -258,7 +267,7 @@ fn trivial_2() {
         data: arr2(&[[-13i8], [26]]).into_dyn(),
         kernel: arr3(&[[[8i8, -2]]]).into_dyn(),
         bias: None,
-        qp: MatMulQParams::noop_static(i8::datum_type()),
+        qp: qp_noop_i8(),
         optim: true,
     }
     .check()
@@ -275,7 +284,7 @@ fn trivial_3() {
         data: arr2(&[[0i8], [0]]).into_dyn(),
         kernel: arr3(&[[[0i8, 0], [0, 0]]]).into_dyn(),
         bias: None,
-        qp: MatMulQParams::noop_static(i8::datum_type()),
+        qp: qp_noop_i8(),
         optim: true,
     }
     .check()
@@ -284,6 +293,8 @@ fn trivial_3() {
 
 #[test]
 fn b0() {
+    let mut qp = qp_noop_i8();
+    qp[2] = tensor0(1i32);
     QConvProblem {
         optim: true,
         shape_in: HWC.from_n_c_hw(1, 1, [1]).unwrap(),
@@ -293,10 +304,7 @@ fn b0() {
         data: arr2(&[[0i8]]).into_dyn(),
         kernel: arr3(&[[[-1i8]]]).into_dyn(),
         bias: None,
-        qp: MatMulQParams {
-            b0: tensor0(1i32).into(),
-            ..MatMulQParams::noop_static(i8::datum_type())
-        },
+        qp,
     }
     .check()
     .unwrap();
@@ -312,7 +320,7 @@ fn shape_0() {
         data: arr3(&[[[0], [0]]]).into_dyn(),
         kernel: arr4(&[[[[0]]]]).into_dyn(),
         bias: None,
-        qp: MatMulQParams::noop_static(i8::datum_type()),
+        qp: qp_noop_i8(),
         optim: true,
     }
     .check()
@@ -329,7 +337,7 @@ fn batch_0() {
         data: arr3(&[[[0], [0]], [[0], [0]], [[0], [0]]]).into_dyn(),
         kernel: arr3(&[[[0, 0]]]).into_dyn(),
         bias: None,
-        qp: MatMulQParams::noop_static(i8::datum_type()),
+        qp: qp_noop_i8(),
         optim: true,
     }
     .check()
@@ -338,7 +346,7 @@ fn batch_0() {
 
 #[test]
 fn batch_1() {
-    let qp = MatMulQParams::noop_static(i8::datum_type());
+    let qp = qp_noop_i8();
     let data = ArrayD::zeros(vec![2, 1, 1]);
     let kernel = arr3(&[[[1]]]).into_dyn();
     QConvProblem {
@@ -366,7 +374,7 @@ fn a0_0() {
         data: arr2(&[[1]]).into_dyn(),
         kernel: arr3(&[[[0]]]).into_dyn(),
         bias: None,
-        qp: MatMulQParams::noop_static(i8::datum_type()),
+        qp: qp_noop_i8(),
         optim: true,
     }
     .check()
@@ -375,8 +383,8 @@ fn a0_0() {
 
 #[test]
 fn scale_0() {
-    let mut qp = MatMulQParams::noop_static(i8::datum_type());
-    qp.c_scale = tensor0(9.274534f32).into();
+    let mut qp = qp_noop_i8();
+    qp[5] = tensor0(9.274534f32);
     QConvProblem {
         shape_in: HWC.from_n_c_hw(1, 1, [1]).unwrap(),
         co: 1,
@@ -394,8 +402,8 @@ fn scale_0() {
 
 #[test]
 fn scale_1() {
-    let mut qp = MatMulQParams::noop_static(i8::datum_type());
-    qp.c_scale = tensor0(1.1400417f32).into();
+    let mut qp = qp_noop_i8();
+    qp[5] = tensor0(1.1400417f32);
     QConvProblem {
         shape_in: HWC.from_n_c_hw(1, 1, [1]).unwrap(),
         co: 1,
@@ -413,8 +421,8 @@ fn scale_1() {
 
 #[test]
 fn scale_2() {
-    let mut qp = MatMulQParams::noop_static(i8::datum_type());
-    qp.b_scale = tensor0(0.5f32).into();
+    let mut qp = qp_noop_i8();
+    qp[3] = tensor0(0.5f32).into();
     QConvProblem {
         shape_in: HWC.from_n_c_hw(1, 1, [1]).unwrap(),
         co: 1,
@@ -432,9 +440,9 @@ fn scale_2() {
 
 #[test]
 fn scale_3() {
-    let mut qp = MatMulQParams::noop_static(i8::datum_type());
-    qp.b_scale = tensor0(0.5f32).into();
-    qp.c_scale = tensor0(2f32).into();
+    let mut qp = qp_noop_i8();
+    qp[3] = tensor0(0.5f32);
+    qp[5] = tensor0(2f32);
     QConvProblem {
         shape_in: HWC.from_n_c_hw(1, 1, [1]).unwrap(),
         co: 1,
@@ -452,8 +460,8 @@ fn scale_3() {
 
 #[test]
 fn c0_0() {
-    let mut qp = MatMulQParams::noop_static(i8::datum_type());
-    qp.c0 = tensor0(1i32).into();
+    let mut qp = qp_noop_i8();
+    qp[4] = tensor0(1i32);
     QConvProblem {
         shape_in: HWC.from_n_c_hw(1, 1, [1]).unwrap(),
         co: 1,
@@ -479,7 +487,7 @@ fn group_0() {
         data: arr2(&[[0, 0]]).into_dyn(),
         kernel: arr3(&[[[0]], [[0]]]).into_dyn(),
         bias: None,
-        qp: MatMulQParams::noop_static(i8::datum_type()),
+        qp: qp_noop_i8(),
         optim: true,
     }
     .check()
@@ -488,8 +496,8 @@ fn group_0() {
 
 #[test]
 fn group_1() {
-    let mut qp = MatMulQParams::noop_static(i8::datum_type());
-    qp.b0 = tensor0(1i32).into();
+    let mut qp = qp_noop_i8();
+    qp[2] = tensor0(1i32);
     QConvProblem {
         shape_in: NCHW.from_n_c_hw(1, 2, [1]).unwrap(),
         co: 2,
@@ -507,8 +515,8 @@ fn group_1() {
 
 #[test]
 fn group_2() {
-    let mut qp = MatMulQParams::noop_static(i8::datum_type());
-    qp.b0 = tensor0(1i32).into();
+    let mut qp = qp_noop_i8();
+    qp[2] = tensor0(1i32);
     QConvProblem {
         shape_in: HWC.from_n_c_hw(1, 2, [1]).unwrap(),
         co: 2,
@@ -526,8 +534,8 @@ fn group_2() {
 
 #[test]
 fn rounding_on_arm() {
-    let mut qp = MatMulQParams::noop_static(i8::datum_type());
-    qp.c_scale = tensor0(1.3759452f32).into();
+    let mut qp = qp_noop_i8();
+    qp[5] = tensor0(1.3759452f32);
     QConvProblem {
         shape_in: HWC.from_n_c_hw(1, 1, [1]).unwrap(),
         co: 2,
@@ -545,7 +553,7 @@ fn rounding_on_arm() {
 
 #[test]
 fn bias_1() {
-    let qp = MatMulQParams::noop_static(i8::datum_type());
+    let qp = qp_noop_i8();
     let data = ArrayD::zeros(vec![1, 1, 1, 1]);
     let kernel = ArrayD::zeros(vec![2, 1, 1, 1]);
     QConvProblem {
@@ -565,7 +573,7 @@ fn bias_1() {
 
 #[test]
 fn bias_2() {
-    let qp = MatMulQParams::noop_static(i8::datum_type());
+    let qp = qp_noop_i8();
     let data = ArrayD::zeros(vec![1, 1]);
     let kernel = ArrayD::zeros(vec![2, 1, 1]);
     QConvProblem {
@@ -585,8 +593,8 @@ fn bias_2() {
 
 #[test]
 fn bias_3() {
-    let mut qp = MatMulQParams::noop_static(i8::datum_type());
-    qp.b0 = tensor0(-1).into();
+    let mut qp = qp_noop_i8();
+    qp[2] = tensor0(-1);
     let data = ArrayD::zeros(vec![2, 1]);
     let mut kernel = ArrayD::zeros(vec![5, 1, 2]);
     *kernel.as_slice_mut().unwrap().last_mut().unwrap() = -1;
@@ -607,7 +615,7 @@ fn bias_3() {
 
 #[test]
 fn bias_in_chw() {
-    let qp = MatMulQParams::noop_static(i8::datum_type());
+    let qp = qp_noop_i8();
     let data = ArrayD::zeros(vec![1, 1]);
     let kernel = ArrayD::zeros(vec![2, 1, 1]);
     QConvProblem {
@@ -627,7 +635,7 @@ fn bias_in_chw() {
 
 #[test]
 fn bias_with_batch() {
-    let qp = MatMulQParams::noop_static(i8::datum_type());
+    let qp = qp_noop_i8();
     let data = ArrayD::zeros(vec![1, 1, 1]);
     let kernel = ArrayD::zeros(vec![1, 1, 1]);
     QConvProblem {
@@ -647,7 +655,7 @@ fn bias_with_batch() {
 
 #[test]
 fn bias_vec_with_batch() {
-    let qp = MatMulQParams::noop_static(i8::datum_type());
+    let qp = qp_noop_i8();
     let data = ArrayD::zeros(vec![1, 1, 1]);
     let kernel = ArrayD::zeros(vec![2, 1, 1]);
     QConvProblem {
@@ -667,7 +675,7 @@ fn bias_vec_with_batch() {
 
 #[test]
 fn asan_0() {
-    let qp = MatMulQParams::noop_static(i8::datum_type());
+    let qp = qp_noop_i8();
     let data = ArrayD::zeros(vec![1, 2]);
     let kernel = ArrayD::zeros(vec![5, 2, 1]);
     QConvProblem {
@@ -684,4 +692,3 @@ fn asan_0() {
     .check()
     .unwrap();
 }
-

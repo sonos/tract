@@ -21,7 +21,9 @@ fn pulsify(
     if let Some((wire, pool_spec)) =
         pulsify_pooled_input(&op.pool_spec, source, node, target, mapping, Some(zero))?
     {
-        Ok(Some(target.wire_node(&node.name, ConvUnary { pool_spec, ..op.clone() }, &[wire])?))
+        let mut wires:TVec<_> = node.inputs.iter().map(|i| mapping[i]).collect();
+        wires[0] = wire;
+        Ok(Some(target.wire_node(&node.name, ConvUnary { pool_spec, ..op.clone() }, &wires)?))
     } else {
         Ok(None)
     }
@@ -29,7 +31,7 @@ fn pulsify(
 
 impl PulsedOp for ConvUnary {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
-        let dt = if let Some(q) = &self.q_params { q.0 } else { inputs[0].datum_type };
+        let dt = self.q_params.unwrap_or(inputs[0].datum_type);
         super::pools::pulsed_output_facts(&self.pool_spec, inputs, dt)
     }
 

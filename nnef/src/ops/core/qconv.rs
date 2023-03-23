@@ -5,7 +5,6 @@ use crate::ops::nnef::ser::make_conv_named_args;
 use crate::ser::*;
 use tract_core::ops::cnn::ConvUnary;
 use tract_core::ops::cnn::KernelFormat;
-use tract_core::ops::matmul::MatMulQParams;
 
 use super::qmatmul::qparams_as_outlets;
 
@@ -46,13 +45,8 @@ fn qconv_unary_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<A
     let name = &node.name;
     let mut named_args = make_conv_named_args(node, &op.pool_spec, op.group, false, None)?;
 
-    for (ix, (name, val)) in op.q_params.as_ref().unwrap().1.iter().enumerate() {
-        let v = match val {
-            AttrOrInput::Attr(t) if ix % 2 == 0 => numeric(t.cast_to_scalar::<i32>()?),
-            AttrOrInput::Attr(t) => numeric(t.cast_to_scalar::<f32>()?),
-            AttrOrInput::Input(i) => (*ast.mapping[&node.inputs[*i]]).clone(),
-        };
-        named_args.push((name, v));
+    for (ix, name) in ["a0", "a_scale", "b0", "b_scale", "c0", "c_scale"].iter().enumerate() {
+        named_args.push((name, (*ast.mapping[&node.inputs[1 + ix]]).clone()));
     }
 
     let ci = op
@@ -120,7 +114,7 @@ fn qconv_load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
         kernel.clone(),
         group,
         bias,
-        Some((output_dt, MatMulQParams::all_dynamic(1))),
+        Some(output_dt),
     ));
 
     builder.wire(op, &inputs)
