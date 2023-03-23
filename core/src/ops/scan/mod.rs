@@ -4,7 +4,7 @@ use std::fmt;
 mod lir;
 mod mir;
 
-pub use lir::LirScan;
+pub use lir::{LirScan, State};
 pub use mir::Scan;
 
 #[derive(Clone, new, Hash, Eq, PartialEq, Copy, Debug)]

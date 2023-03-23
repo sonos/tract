@@ -75,11 +75,11 @@ impl EvalOp for LirScan {
 }
 
 #[derive(Clone, Debug)]
-struct State {
+pub struct State {
     op: Arc<LirScanOpParams>,
     position: usize,
     hidden_state: TVec<TValue>,
-    model_state: TypedSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>,
+    pub model_state: TypedSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>,
 }
 
 #[derive(Debug, Clone)]
