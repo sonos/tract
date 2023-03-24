@@ -3,6 +3,7 @@
 * [optim] bunch of AMX512F kernels (square, skinny, vector)
 * [ONNX] introduce Trilu
 * [NNEF/OPL] submodel loader
+* [ONNX] support alternative layout for LSTM (layout=1, batch becomes first axis)
 
 # 0.19.2 - 2023-01-30
 * [NNEF/OPL] introduce json resource loader

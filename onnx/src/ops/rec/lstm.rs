@@ -23,6 +23,8 @@ pub fn lstm(
     lstm.optional_y_h_output = options.next().unwrap();
     lstm.optional_y_c_output = options.next().unwrap();
 
+    lstm.batch_first = pb.get_attr_opt("layout")?.unwrap_or(0) == 1;
+
     Ok((expand(lstm), vec![]))
 }
 
@@ -39,6 +41,7 @@ pub struct LSTM {
     pub f: Box<dyn TypedOp>,
     pub g: Box<dyn TypedOp>,
     pub h: Box<dyn TypedOp>,
+    pub batch_first: bool,
 }
 
 impl Default for LSTM {
@@ -55,8 +58,29 @@ impl Default for LSTM {
             f: Box::new(ops::nn::sigmoid()),
             g: Box::new(ops::math::tanh()),
             h: Box::new(ops::math::tanh()),
+            batch_first: false,
         }
     }
+}
+
+/* If 0,
+ *      X.shape = [seq_length, batch_size, input_size],
+ *      Y.shape = [seq_length, num_directions, batch_size, hidden_size],
+ *      initial_h.shape = Y_h.shape = initial_c.shape = Y_c.shape
+ *          = [num_directions, batch_size, hidden_size].
+ *  If 1,
+ *      X.shape = [batch_size, seq_length, input_size],
+ *      Y.shape = [batch_size, seq_length, num_directions, hidden_size],
+ *      initial_h.shape = Y_h.shape = initial_c.shape = Y_c.shape
+ *          = [batch_size, num_directions, hidden_size].
+ * */
+fn axes(batch_first: bool) -> (usize, usize, usize, usize, usize) {
+    let b = if batch_first { 0 } else { 1 };
+    let b_in_y = if batch_first { 0 } else { 2 };
+    let seq_len = if batch_first { 1 } else { 0 };
+    let dirs = if batch_first { 1 } else { 0 };
+    let dirs_in_y = if batch_first { 2 } else { 1 };
+    (b, b_in_y, seq_len, dirs, dirs_in_y)
 }
 
 impl Expansion for LSTM {
@@ -85,6 +109,7 @@ impl Expansion for LSTM {
             + self.optional_y_h_output.is_some() as usize
             + self.optional_y_c_output.is_some() as usize;
         check_output_arity(outputs, output_count)?;
+        let (b, b_in_y, seq_len, dirs, dirs_in_y) = axes(self.batch_first);
         s.equals(&inputs[0].datum_type, &inputs[1].datum_type)?;
         s.equals(&inputs[0].datum_type, &inputs[2].datum_type)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
@@ -103,20 +128,20 @@ impl Expansion for LSTM {
         }
         if let Some(seq_len) = self.optional_sequence_lens_input {
             s.equals(&inputs[seq_len].rank, 1)?;
-            s.equals(&inputs[seq_len].shape[0], &inputs[0].shape[1])?; // batch_size
+            s.equals(&inputs[seq_len].shape[0], &inputs[0].shape[b])?; // batch_size
         }
         if let Some(initial_h) = self.optional_initial_h_input {
             s.equals(&inputs[initial_h].datum_type, &inputs[0].datum_type)?;
             s.equals(&inputs[initial_h].rank, 3)?;
-            s.equals(&inputs[initial_h].shape[0], &inputs[1].shape[0])?; // num_directions
-            s.equals(&inputs[initial_h].shape[1], &inputs[0].shape[1])?; // batch_size
+            s.equals(&inputs[initial_h].shape[dirs], &inputs[1].shape[0])?; // num_directions
+            s.equals(&inputs[initial_h].shape[b], &inputs[0].shape[b])?; // batch_size
             s.equals(&inputs[initial_h].shape[2], &inputs[2].shape[2])?; // hidden_size
         }
         if let Some(initial_c) = self.optional_initial_c_input {
             s.equals(&inputs[initial_c].datum_type, &inputs[0].datum_type)?;
             s.equals(&inputs[initial_c].rank, 3)?;
-            s.equals(&inputs[initial_c].shape[0], &inputs[1].shape[0])?; // num_directions
-            s.equals(&inputs[initial_c].shape[1], &inputs[0].shape[1])?; // batch_size
+            s.equals(&inputs[initial_c].shape[dirs], &inputs[1].shape[0])?; // num_directions
+            s.equals(&inputs[initial_c].shape[b], &inputs[0].shape[b])?; // batch_size
             s.equals(&inputs[initial_c].shape[2], &inputs[2].shape[2])?; // hidden_size
         }
         if let Some(p) = self.optional_p_input {
@@ -127,23 +152,23 @@ impl Expansion for LSTM {
         }
         if let Some(y) = self.optional_y_output {
             s.equals(&outputs[y].rank, 4)?;
-            s.equals(&outputs[y].shape[0], &inputs[0].shape[0])?; // seq_lentgh
-            s.equals(&outputs[y].shape[1], &inputs[1].shape[0])?; // num_directions
-            s.equals(&outputs[y].shape[2], &inputs[0].shape[1])?; // batch_size
+            s.equals(&outputs[y].shape[seq_len], &inputs[seq_len].shape[0])?; // seq_lentgh
+            s.equals(&outputs[y].shape[dirs_in_y], &inputs[1].shape[0])?; // num_directions
+            s.equals(&outputs[y].shape[b_in_y], &inputs[0].shape[b])?; // batch_size
             s.equals(&outputs[y].shape[3], &inputs[2].shape[2])?; // hidden_size
         }
         if let Some(y_h) = self.optional_y_h_output {
             s.equals(&outputs[y_h].datum_type, &inputs[0].datum_type)?;
             s.equals(&outputs[y_h].rank, 3)?;
-            s.equals(&outputs[y_h].shape[0], &inputs[1].shape[0])?; // num_directions
-            s.equals(&outputs[y_h].shape[1], &inputs[0].shape[1])?; // batch_size
+            s.equals(&outputs[y_h].shape[dirs], &inputs[1].shape[0])?; // num_directions
+            s.equals(&outputs[y_h].shape[b], &inputs[0].shape[b])?; // batch_size
             s.equals(&outputs[y_h].shape[2], &inputs[2].shape[2])?; // hidden_size
         }
         if let Some(y_c) = self.optional_y_c_output {
             s.equals(&outputs[y_c].datum_type, &inputs[0].datum_type)?;
             s.equals(&outputs[y_c].rank, 3)?;
-            s.equals(&outputs[y_c].shape[0], &inputs[1].shape[0])?; // num_directions
-            s.equals(&outputs[y_c].shape[1], &inputs[0].shape[1])?; // batch_size
+            s.equals(&outputs[y_c].shape[dirs], &inputs[1].shape[0])?; // num_directions
+            s.equals(&outputs[y_c].shape[b], &inputs[0].shape[b])?; // batch_size
             s.equals(&outputs[y_c].shape[2], &inputs[2].shape[2])?; // hidden_size
         }
         Ok(())
@@ -236,7 +261,12 @@ impl LSTM {
 
         // X: onnx interface: [seq_length, batch_size, input_size]
         // move batch first
-        target_wire!(x_batch_first = AxisOp::Move(1, 0), inputs[0]);
+        let x_batch_first = if self.batch_first {
+            inputs[0]
+        } else {
+            target_wire!(x_batch_first = AxisOp::Move(1, 0), inputs[0]);
+            x_batch_first
+        };
         // X: onnx interface: [batch_size, seq_length, input_size]
         // scan outer interface: idem
         // scann inner interface: [batch_size, chunk=1, input_size]
@@ -284,7 +314,12 @@ impl LSTM {
         // scan inner: [batch_size, chunk=1, hidden_size]
         // onnx inner: [batch_size, hidden_size]
         let initializer = if let Some(initial_h_input) = self.optional_initial_h_input {
-            target_wire!(h_dir = array::Slice::new(0, dir, dir + 1), inputs[initial_h_input]);
+            let mut input = inputs[initial_h_input];
+            if self.batch_first {
+                target_wire!(h_batch_first = AxisOp::Move(1, 0), input);
+                input = h_batch_first;
+            };
+            target_wire!(h_dir = array::Slice::new(0, dir, dir + 1), input);
             target_wire!(h = AxisOp::Rm(0), h_dir);
             target_wire!(h_chunk_ = AxisOp::Add(0), h);
             target_wire!(h_chunk = AxisOp::Move(1, 0), h_chunk_);
@@ -308,7 +343,12 @@ impl LSTM {
         )?;
 
         let initializer = if let Some(initial_c_input) = self.optional_initial_c_input {
-            target_wire!(c_dir = array::Slice::new(0, dir, dir + 1), inputs[initial_c_input]);
+            let mut input = inputs[initial_c_input];
+            if self.batch_first {
+                target_wire!(c_batch_first = AxisOp::Move(1, 0), input);
+                input = c_batch_first;
+            };
+            target_wire!(c_dir = array::Slice::new(0, dir, dir + 1), input);
             target_wire!(c = AxisOp::Rm(0), c_dir);
             target_wire!(c_chunk_ = AxisOp::Add(0), c);
             target_wire!(c_chunk = AxisOp::Move(1, 0), c_chunk_);
@@ -491,17 +531,33 @@ impl LSTM {
 
         let mut result = tvec!();
         if let Some(slot) = self.optional_y_output {
-            target_wire!(y_batch_middle = AxisOp::Move(1, 0), scan_outputs[slot]);
-            target_wire!(y = AxisOp::Add(1), y_batch_middle);
-            result.push(y);
+            // scan: [batch_size, seq_len, hidden_size]
+            if self.batch_first {
+                // onnx: Y.shape = [batch_size, seq_length, num_directions, hidden_size]
+                target_wire!(y = AxisOp::Add(2), scan_outputs[slot]);
+                result.push(y);
+            } else {
+                // onnx: Y.shape = [seq_length, num_directions, batch_size, hidden_size]
+                target_wire!(y_batch_middle = AxisOp::Move(1, 0), scan_outputs[slot]);
+                target_wire!(y = AxisOp::Add(1), y_batch_middle);
+                result.push(y);
+            }
         }
         if let Some(slot) = self.optional_y_h_output {
-            target_wire!(y_h_batch_middle = AxisOp::Move(1, 0), scan_outputs[slot]);
-            result.push(y_h_batch_middle);
+            if self.batch_first {
+                result.push(scan_outputs[slot]);
+            } else {
+                target_wire!(y_h_batch_middle = AxisOp::Move(1, 0), scan_outputs[slot]);
+                result.push(y_h_batch_middle);
+            }
         }
         if let Some(slot) = self.optional_y_c_output {
-            target_wire!(y_c_batch_middle = AxisOp::Move(1, 0), scan_outputs[slot]);
-            result.push(y_c_batch_middle);
+            if self.batch_first {
+                result.push(scan_outputs[slot]);
+            } else {
+                target_wire!(y_c_batch_middle = AxisOp::Move(1, 0), scan_outputs[slot]);
+                result.push(y_c_batch_middle);
+            }
         }
 
         Ok(result)
