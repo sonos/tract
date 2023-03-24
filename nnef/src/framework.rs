@@ -103,7 +103,7 @@ impl Nnef {
             let mut quant_data = vec![];
 
             for (name, format) in quantization.into_iter() {
-                write_quant_format(&mut quant_data, &name, format)
+                write_quant_format(&mut quant_data, &name, format, self.allow_extended_identifier_syntax)
                     .context("Serializing graph.quant")?;
             }
 
@@ -151,7 +151,7 @@ impl Nnef {
         if let Some(quantization) = proto_model.quantization {
             let mut graph_quant = std::fs::File::create(path.join("graph.quant"))?;
             for (name, format) in quantization.into_iter().sorted_by_key(|(x, _)| x.clone()) {
-                write_quant_format(&mut graph_quant, &name, format)?;
+                write_quant_format(&mut graph_quant, &name, format, self.allow_extended_identifier_syntax)?;
             }
         }
 
