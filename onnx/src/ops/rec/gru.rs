@@ -37,6 +37,10 @@ impl WireBody for GRU {
         (3, 6)
     }
 
+    fn have_extra_c_state(&self) -> bool {
+        false
+    }
+
     #[allow(non_snake_case)]
     fn wire_body(&self, prefix: &str, body: &mut TypedModel) -> TractResult<()> {
         use tract_hir::ops::{array, math};
