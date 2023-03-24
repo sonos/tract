@@ -63,26 +63,6 @@ impl Default for LSTM {
     }
 }
 
-/* If 0,
- *      X.shape = [seq_length, batch_size, input_size],
- *      Y.shape = [seq_length, num_directions, batch_size, hidden_size],
- *      initial_h.shape = Y_h.shape = initial_c.shape = Y_c.shape
- *          = [num_directions, batch_size, hidden_size].
- *  If 1,
- *      X.shape = [batch_size, seq_length, input_size],
- *      Y.shape = [batch_size, seq_length, num_directions, hidden_size],
- *      initial_h.shape = Y_h.shape = initial_c.shape = Y_c.shape
- *          = [batch_size, num_directions, hidden_size].
- * */
-fn axes(batch_first: bool) -> (usize, usize, usize, usize, usize) {
-    let b = if batch_first { 0 } else { 1 };
-    let b_in_y = if batch_first { 0 } else { 2 };
-    let seq_len = if batch_first { 1 } else { 0 };
-    let dirs = if batch_first { 1 } else { 0 };
-    let dirs_in_y = if batch_first { 2 } else { 1 };
-    (b, b_in_y, seq_len, dirs, dirs_in_y)
-}
-
 impl Expansion for LSTM {
     fn name(&self) -> Cow<str> {
         "LSTM".into()
@@ -109,13 +89,31 @@ impl Expansion for LSTM {
             + self.optional_y_h_output.is_some() as usize
             + self.optional_y_c_output.is_some() as usize;
         check_output_arity(outputs, output_count)?;
-        let (b, b_in_y, seq_len, dirs, dirs_in_y) = axes(self.batch_first);
+
         s.equals(&inputs[0].datum_type, &inputs[1].datum_type)?;
         s.equals(&inputs[0].datum_type, &inputs[2].datum_type)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[0].rank, 3)?;
         s.equals(&inputs[1].rank, 3)?;
         s.equals(&inputs[2].rank, 3)?;
+
+        /* If 0,
+         *      X.shape = [seq_length, batch_size, input_size],
+         *      Y.shape = [seq_length, num_directions, batch_size, hidden_size],
+         *      initial_h.shape = Y_h.shape = initial_c.shape = Y_c.shape
+         *          = [num_directions, batch_size, hidden_size].
+         *  If 1,
+         *      X.shape = [batch_size, seq_length, input_size],
+         *      Y.shape = [batch_size, seq_length, num_directions, hidden_size],
+         *      initial_h.shape = Y_h.shape = initial_c.shape = Y_c.shape
+         *          = [batch_size, num_directions, hidden_size].
+         * */
+        let b = if self.batch_first { 0 } else { 1 };
+        let b_in_y = if self.batch_first { 0 } else { 2 };
+        let seq_len = if self.batch_first { 1 } else { 0 };
+        let dirs = if self.batch_first { 1 } else { 0 };
+        let dirs_in_y = if self.batch_first { 2 } else { 1 };
+
         s.equals(&inputs[1].shape[0], &inputs[2].shape[0])?; // num_directions
         s.equals(&inputs[1].shape[1], &inputs[2].shape[1])?; // 4*hidden_size
         s.equals(&inputs[2].shape[1], 4 * inputs[2].shape[2].bex())?; // hidden_size

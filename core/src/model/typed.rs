@@ -70,8 +70,9 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
             }
 
             let input_facts: TVec<_> = input_facts.iter().collect();
-            let output_facts =
-                op.output_facts(&input_facts).context("in output_facts invocation")?;
+            let output_facts = op
+                .output_facts(&input_facts)
+                .with_context(|| format!("in output_facts invocation for {name}"))?;
             let id = self.add_node(&name, &op, output_facts)?;
             inputs
                 .iter()
