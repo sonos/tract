@@ -52,11 +52,11 @@ impl WireBody for RNN {
         let Ht_1: OutletId = body.node_by_name("Ht_1").unwrap().id.into();
         let b: Option<OutletId> = body.node_by_name("b").ok().map(|n| n.id.into());
 
-        let ref h_size = body.outlet_fact(R)?.shape[1].clone();
+        let h_size = body.outlet_fact(R)?.shape[1].clone();
 
         let bias = if let Some(b) = b {
-            wire!(Wbi = array::Slice::new(1, 0.to_dim() * h_size, 1.to_dim() * h_size), b);
-            wire!(Rbi = array::Slice::new(1, 1.to_dim() * h_size, 2.to_dim() * h_size), b);
+            wire!(Wbi = array::Slice::new(1, 0.to_dim() * &h_size, 1.to_dim() * &h_size), b);
+            wire!(Rbi = array::Slice::new(1, 1.to_dim() * &h_size, 2.to_dim() * &h_size), b);
             wire!(bi = math::add(), Wbi, Rbi);
             Some(bi)
         } else {
