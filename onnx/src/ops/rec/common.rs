@@ -9,6 +9,7 @@ pub trait WireBody: Debug + DynClone + Send + Sync {
     fn name(&self) -> &'static str;
     fn wire_body(&self, prefix: &str, body: &mut TypedModel) -> TractResult<()>;
     fn w_b_multipliers(&self) -> (usize, usize);
+    fn have_extra_c_state(&self) -> bool;
 }
 
 clone_trait_object!(WireBody);
@@ -18,8 +19,11 @@ pub(super) struct CommonRec {
     pub optional_bias_input: Option<usize>,
     pub optional_sequence_lens_input: Option<usize>,
     pub optional_initial_h_input: Option<usize>,
+    pub optional_initial_c_input: Option<usize>,
+    pub optional_p_input: Option<usize>,
     pub optional_y_output: Option<usize>,
     pub optional_y_h_output: Option<usize>,
+    pub optional_y_c_output: Option<usize>,
     pub batch_first: bool,
     pub body: Box<dyn WireBody>,
 }
@@ -37,9 +41,12 @@ impl CommonRec {
             optional_bias_input: inputs.next().unwrap(),
             optional_sequence_lens_input: inputs.next().unwrap(),
             optional_initial_h_input: inputs.next().unwrap(),
+            optional_initial_c_input: inputs.next().unwrap(),
+            optional_p_input: inputs.next().unwrap(),
 
             optional_y_output: outputs.next().unwrap(),
             optional_y_h_output: outputs.next().unwrap(),
+            optional_y_c_output: outputs.next().unwrap(),
 
             batch_first: pb.get_attr_opt("layout")?.unwrap_or(0) == 1,
             body,
@@ -168,21 +175,69 @@ impl CommonRec {
         )?;
         wire!(Ht_1 = AxisOp::Rm(1), h_source);
 
+        if self.body.have_extra_c_state() {
+            let initializer = if let Some(initial_c_input) = self.optional_initial_c_input {
+                let mut input = inputs[initial_c_input];
+                if self.batch_first {
+                    target_wire!(c_batch_first = AxisOp::Move(1, 0), input);
+                    input = c_batch_first;
+                };
+                target_wire!(c_dir = array::Slice::new(0, dir, dir + 1), input);
+                target_wire!(c = AxisOp::Rm(0), c_dir);
+                target_wire!(c_chunk_ = AxisOp::Add(0), c);
+                target_wire!(c_chunk = AxisOp::Move(1, 0), c_chunk_);
+                outer_inputs.push(c_chunk);
+                scan::StateInitializer::FromInput(initial_c_input)
+            } else {
+                scan::StateInitializer::Value(
+                    tensor0(0.0f32)
+                        .broadcast_scalar_to_shape(&[
+                            b_size.to_usize().unwrap(),
+                            1,
+                            h_size.to_usize().unwrap(),
+                        ])?
+                        .into_arc_tensor(),
+                )
+            };
+            input_mapping.push(scan::InputMapping::State { initializer });
+            let c_source = body.add_source(
+                "c_source",
+                x_fact.datum_type.fact(&[b_size.clone(), 1.to_dim(), h_size.clone()]),
+            )?;
+            wire!(Ct_1 = AxisOp::Rm(1), c_source);
+        }
+
+        // P: onnx [num_directions, 3*hidde_size]
+        if let Some(slot) = self.optional_p_input {
+            target_wire!(p = array::Slice::new(0, dir, dir + 1), inputs[slot]);
+            outer_inputs.push(p);
+            input_mapping.push(scan::InputMapping::Full { slot });
+            body.add_source("peepholes", target.outlet_fact(p)?.clone())?;
+        };
+
         self.body.wire_body(prefix, &mut body).context("Wiring body")?;
 
-        let output_mapping = scan::OutputMapping {
+        let mut output_mapping = vec![scan::OutputMapping {
             state: true,
             full_dim_hint: None,
             last_value_slot: self.optional_y_h_output,
             scan: self.optional_y_output.map(|slot| ScanInfo { slot, axis: 1, chunk }),
-        };
+        }];
+        if self.body.have_extra_c_state() {
+            output_mapping.push(scan::OutputMapping {
+                state: true,
+                full_dim_hint: None,
+                last_value_slot: self.optional_y_c_output,
+                scan: None,
+            });
+        }
 
         let scan_outputs = target.wire_node(
             prefix,
             tract_core::ops::scan::Scan::new(
                 body,
                 input_mapping,
-                vec![output_mapping],
+                output_mapping,
                 self.optional_sequence_lens_input,
                 0,
             )?,
@@ -211,6 +266,14 @@ impl CommonRec {
                 result.push(y_h_batch_middle);
             }
         }
+        if let Some(slot) = self.optional_y_c_output {
+            if self.batch_first {
+                result.push(scan_outputs[slot]);
+            } else {
+                target_wire!(y_c_batch_middle = AxisOp::Move(1, 0), scan_outputs[slot]);
+                result.push(y_c_batch_middle);
+            }
+        }
 
         Ok(result)
     }
@@ -226,7 +289,9 @@ impl Expansion for CommonRec {
     }
 
     fn nboutputs(&self) -> TractResult<usize> {
-        Ok(self.optional_y_output.is_some() as usize + self.optional_y_h_output.is_some() as usize)
+        Ok(self.optional_y_output.is_some() as usize
+            + self.optional_y_h_output.is_some() as usize
+            + self.optional_y_c_output.is_some() as usize)
     }
 
     fn rules<'r, 'p: 'r, 's: 'r>(
@@ -238,7 +303,9 @@ impl Expansion for CommonRec {
         let input_count = 3
             + self.optional_bias_input.is_some() as usize
             + self.optional_sequence_lens_input.is_some() as usize
-            + self.optional_initial_h_input.is_some() as usize;
+            + self.optional_initial_h_input.is_some() as usize
+            + self.optional_initial_c_input.is_some() as usize
+            + self.optional_p_input.is_some() as usize;
         check_input_arity(inputs, input_count)?;
         let output_count =
             self.optional_y_output.is_some() as usize + self.optional_y_h_output.is_some() as usize;
@@ -266,8 +333,7 @@ impl Expansion for CommonRec {
         let dirs = if self.batch_first { 1 } else { 0 };
         let dirs_in_y = if self.batch_first { 2 } else { 1 };
 
-        dbg!(&self.body);
-        let (w_mul, b_mul) = dbg!(self.body.w_b_multipliers());
+        let (w_mul, b_mul) = self.body.w_b_multipliers();
 
         s.equals(&inputs[1].shape[0], &inputs[2].shape[0])?; // num_directions
         s.equals(&inputs[1].shape[1], (w_mul as i64) * inputs[2].shape[2].bex())?; // hidden_size
@@ -290,6 +356,19 @@ impl Expansion for CommonRec {
             s.equals(&inputs[initial_h].shape[b], &inputs[0].shape[b])?; // batch_size
             s.equals(&inputs[initial_h].shape[2], &inputs[2].shape[2])?; // hidden_size
         }
+        if let Some(initial_c) = self.optional_initial_c_input {
+            s.equals(&inputs[initial_c].datum_type, &inputs[0].datum_type)?;
+            s.equals(&inputs[initial_c].rank, 3)?;
+            s.equals(&inputs[initial_c].shape[dirs], &inputs[1].shape[0])?; // num_directions
+            s.equals(&inputs[initial_c].shape[b], &inputs[0].shape[b])?; // batch_size
+            s.equals(&inputs[initial_c].shape[2], &inputs[2].shape[2])?; // hidden_size
+        }
+        if let Some(p) = self.optional_p_input {
+            s.equals(&inputs[p].datum_type, &inputs[0].datum_type)?;
+            s.equals(&inputs[p].rank, 2)?;
+            s.equals(&inputs[p].shape[0], &inputs[1].shape[0])?; // num_directions
+            s.equals(&inputs[p].shape[1], 3 * inputs[2].shape[2].bex())?; // hidden_size
+        }
         if let Some(y) = self.optional_y_output {
             s.equals(&outputs[y].datum_type, &inputs[0].datum_type)?;
             s.equals(&outputs[y].rank, 4)?;
@@ -304,6 +383,13 @@ impl Expansion for CommonRec {
             s.equals(&outputs[y_h].shape[dirs], &inputs[1].shape[0])?; // num_directions
             s.equals(&outputs[y_h].shape[b], &inputs[0].shape[b])?; // batch_size
             s.equals(&outputs[y_h].shape[2], &inputs[2].shape[2])?; // hidden_size
+        }
+        if let Some(y_c) = self.optional_y_c_output {
+            s.equals(&outputs[y_c].datum_type, &inputs[0].datum_type)?;
+            s.equals(&outputs[y_c].rank, 3)?;
+            s.equals(&outputs[y_c].shape[dirs], &inputs[1].shape[0])?; // num_directions
+            s.equals(&outputs[y_c].shape[b], &inputs[0].shape[b])?; // batch_size
+            s.equals(&outputs[y_c].shape[2], &inputs[2].shape[2])?; // hidden_size
         }
         Ok(())
     }
@@ -330,6 +416,13 @@ impl Expansion for CommonRec {
             if let Some(ix) = self.optional_y_h_output {
                 outputs[ix] = target.wire_node(
                     format!("{prefix}.merge_y_h_output"),
+                    TypedConcat::new(0),
+                    &[fore[ix], back[ix]],
+                )?[0];
+            }
+            if let Some(ix) = self.optional_y_c_output {
+                outputs[ix] = target.wire_node(
+                    format!("{prefix}.merge_y_c_output"),
                     TypedConcat::new(0),
                     &[fore[ix], back[ix]],
                 )?[0];
