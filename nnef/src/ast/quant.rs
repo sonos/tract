@@ -3,15 +3,17 @@ use std::str::FromStr;
 use nom::branch::permutation;
 use nom::character::complete::digit1;
 use nom::combinator::map_res;
+use nom::sequence::delimited;
 use tract_core::internal::*;
 
 use nom::{bytes::complete::*, multi::*};
+use nom::branch::alt;
 use nom::{combinator::all_consuming, IResult};
 use nom::{combinator::opt, number::complete::float};
 
 use crate::ast::*;
 
-use super::parse::{identifier, logical_literal, stag, translate_error};
+use super::parse::{logical_literal, stag, translate_error, direct_identifier, escaped_identifier};
 
 #[inline(never)]
 pub fn parse_quantization(doc: &str) -> TractResult<Vec<(Identifier, QuantFormat)>> {
@@ -21,9 +23,7 @@ pub fn parse_quantization(doc: &str) -> TractResult<Vec<(Identifier, QuantFormat
 // <quantization> ::= "<identifier>": <qparam>
 fn quantization(i: &str) -> IResult<&str, (Identifier, QuantFormat)> {
     let (i, _) = stag("")(i)?;
-    let (i, _) = tag("\"")(i)?;
-    let (i, id) = identifier(i)?;
-    let (i, _) = tag("\"")(i)?;
+    let (i, id) = alt((delimited(tag("\""), direct_identifier, tag("\"")), escaped_identifier))(i)?;
     let (i, _) = stag(":")(i)?;
     let (i, qp) = qparam(i)?;
     let (i, _) = stag(";")(i)?;
@@ -82,14 +82,20 @@ pub(crate) fn write_quant_format(
     w: &mut impl std::io::Write,
     name: &Identifier,
     format: QuantFormat,
+    allow_extended_identifier_syntax: bool,
 ) -> TractResult<()> {
+    let escaped_name = if allow_extended_identifier_syntax {
+        format!("i\"{}\"", name.0)
+    } else {
+        format!("\"{}\"", name.0)
+    };
     match format {
         QuantFormat::Linear {
             params: QParams::ZpScale {zero_point, scale}, bits, signed
-        } => writeln!(w, "{:?}: zero_point_linear_quantize(zero_point = {}, scale = {:.9}, bits = {}, signed = {}, symmetric = {});", name.0, zero_point, scale, bits, signed, zero_point == 0)?,
+        } => writeln!(w, "{}: zero_point_linear_quantize(zero_point = {}, scale = {:.9}, bits = {}, signed = {}, symmetric = {});", escaped_name, zero_point, scale, bits, signed, zero_point == 0)?,
         QuantFormat::Linear {
             params: QParams::MinMax {min, max}, bits, signed: _
-        } => writeln!(w, "{:?}: linear_quantize(max = {:.9}, min = {:.9}, bits = {});", name.0, max, min, bits)?, // FIXME we lazily use rust debug escaping form here
+        } => writeln!(w, "{}: linear_quantize(max = {:.9}, min = {:.9}, bits = {});", escaped_name, max, min, bits)?, // FIXME we lazily use rust debug escaping form here
     }
     Ok(())
 }
@@ -164,6 +170,45 @@ mod test {
                 ),
                 (
                     Identifier("tensor_name2".to_string()),
+                    QuantFormat::Linear {
+                        params: QParams::MinMax { max: 0.52, min: 123.82 },
+                        bits: 82,
+                        signed: true
+                    }
+                ),
+                (
+                    Identifier("tensor_name3".to_string()),
+                    QuantFormat::Linear {
+                        params: QParams::ZpScale { zero_point: 52, scale: 123.83 },
+                        bits: 83,
+                        signed: true
+                    }
+                )
+            ]
+        );
+    }
+    
+    #[test]
+    fn test_quant_file_1() {
+        assert_eq!(
+            p(
+                many0(quantization),
+                r#"
+                   i"tensor.name1": linear_quantize(min = 0.5, max = 123.8, bits = 8);
+                   i"tensor/name2": linear_quantize(max = 0.52, min = 123.82, bits = 82);
+                   "tensor_name3": zero_point_linear_quantize(zero_point = 52, scale = 123.83, bits = 83, signed = true, symmetric = false);"#
+            ),
+            vec![
+                (
+                    Identifier("tensor.name1".to_string()),
+                    QuantFormat::Linear {
+                        params: QParams::MinMax { min: 0.5, max: 123.8 },
+                        bits: 8,
+                        signed: true
+                    }
+                ),
+                (
+                    Identifier("tensor/name2".to_string()),
                     QuantFormat::Linear {
                         params: QParams::MinMax { max: 0.52, min: 123.82 },
                         bits: 82,
