@@ -713,6 +713,7 @@ test_shrink_soft_expanded_ver18
 test_sigmoid
 test_sigmoid_example
 test_sign
+test_simple_rnn_batchwise
 test_simple_rnn_defaults
 test_simple_rnn_with_initial_bias
 test_sin
