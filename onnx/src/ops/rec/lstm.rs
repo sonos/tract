@@ -59,28 +59,28 @@ impl WireBody for LSTM {
         let b: Option<OutletId> = body.node_by_name("b").ok().map(|n| n.id.into());
         let peepholes: Option<OutletId> = body.node_by_name("peepholes").ok().map(|n| n.id.into());
 
-        let ref h_size = body.outlet_fact(R)?.shape[1].clone();
+        let h_size = body.outlet_fact(R)?.shape[1].clone();
 
-        wire!(Wi = array::Slice::new(0, 0.to_dim() * h_size, 1.to_dim() * h_size), W);
-        wire!(Wo = array::Slice::new(0, 1.to_dim() * h_size, 2.to_dim() * h_size), W);
-        wire!(Wf = array::Slice::new(0, 2.to_dim() * h_size, 3.to_dim() * h_size), W);
-        wire!(Wc = array::Slice::new(0, 3.to_dim() * h_size, 4.to_dim() * h_size), W);
+        wire!(Wi = array::Slice::new(0, 0.to_dim() * &h_size, 1.to_dim() * &h_size), W);
+        wire!(Wo = array::Slice::new(0, 1.to_dim() * &h_size, 2.to_dim() * &h_size), W);
+        wire!(Wf = array::Slice::new(0, 2.to_dim() * &h_size, 3.to_dim() * &h_size), W);
+        wire!(Wc = array::Slice::new(0, 3.to_dim() * &h_size, 4.to_dim() * &h_size), W);
 
-        wire!(Ri = array::Slice::new(0, 0.to_dim() * h_size, 1.to_dim() * h_size), R);
-        wire!(Ro = array::Slice::new(0, 1.to_dim() * h_size, 2.to_dim() * h_size), R);
-        wire!(Rf = array::Slice::new(0, 2.to_dim() * h_size, 3.to_dim() * h_size), R);
-        wire!(Rc = array::Slice::new(0, 3.to_dim() * h_size, 4.to_dim() * h_size), R);
+        wire!(Ri = array::Slice::new(0, 0.to_dim() * &h_size, 1.to_dim() * &h_size), R);
+        wire!(Ro = array::Slice::new(0, 1.to_dim() * &h_size, 2.to_dim() * &h_size), R);
+        wire!(Rf = array::Slice::new(0, 2.to_dim() * &h_size, 3.to_dim() * &h_size), R);
+        wire!(Rc = array::Slice::new(0, 3.to_dim() * &h_size, 4.to_dim() * &h_size), R);
 
         let biases = if let Some(b) = b {
-            wire!(Wbi = array::Slice::new(1, 0.to_dim() * h_size, 1.to_dim() * h_size), b);
-            wire!(Wbo = array::Slice::new(1, 1.to_dim() * h_size, 2.to_dim() * h_size), b);
-            wire!(Wbf = array::Slice::new(1, 2.to_dim() * h_size, 3.to_dim() * h_size), b);
-            wire!(Wbc = array::Slice::new(1, 3.to_dim() * h_size, 4.to_dim() * h_size), b);
+            wire!(Wbi = array::Slice::new(1, 0.to_dim() * &h_size, 1.to_dim() * &h_size), b);
+            wire!(Wbo = array::Slice::new(1, 1.to_dim() * &h_size, 2.to_dim() * &h_size), b);
+            wire!(Wbf = array::Slice::new(1, 2.to_dim() * &h_size, 3.to_dim() * &h_size), b);
+            wire!(Wbc = array::Slice::new(1, 3.to_dim() * &h_size, 4.to_dim() * &h_size), b);
 
-            wire!(Rbi = array::Slice::new(1, 4.to_dim() * h_size, 5.to_dim() * h_size), b);
-            wire!(Rbo = array::Slice::new(1, 5.to_dim() * h_size, 6.to_dim() * h_size), b);
-            wire!(Rbf = array::Slice::new(1, 6.to_dim() * h_size, 7.to_dim() * h_size), b);
-            wire!(Rbc = array::Slice::new(1, 7.to_dim() * h_size, 8.to_dim() * h_size), b);
+            wire!(Rbi = array::Slice::new(1, 4.to_dim() * &h_size, 5.to_dim() * &h_size), b);
+            wire!(Rbo = array::Slice::new(1, 5.to_dim() * &h_size, 6.to_dim() * &h_size), b);
+            wire!(Rbf = array::Slice::new(1, 6.to_dim() * &h_size, 7.to_dim() * &h_size), b);
+            wire!(Rbc = array::Slice::new(1, 7.to_dim() * &h_size, 8.to_dim() * &h_size), b);
 
             wire!(bi = math::add(), Wbi, Rbi);
             wire!(bo = math::add(), Wbo, Rbo);
@@ -93,9 +93,9 @@ impl WireBody for LSTM {
         };
 
         let peepholes = if let Some(p) = peepholes {
-            wire!(pi = array::Slice::new(1, 0.to_dim() * h_size, 1.to_dim() * h_size), p);
-            wire!(po = array::Slice::new(1, 1.to_dim() * h_size, 2.to_dim() * h_size), p);
-            wire!(pf = array::Slice::new(1, 2.to_dim() * h_size, 3.to_dim() * h_size), p);
+            wire!(pi = array::Slice::new(1, 0.to_dim() * &h_size, 1.to_dim() * &h_size), p);
+            wire!(po = array::Slice::new(1, 1.to_dim() * &h_size, 2.to_dim() * &h_size), p);
+            wire!(pf = array::Slice::new(1, 2.to_dim() * &h_size, 3.to_dim() * &h_size), p);
             Some((pi, po, pf))
         } else {
             None
