@@ -44,12 +44,21 @@ impl LstmProblem {
         let b_iofc = b_iofc.into_shape((1, 8 * s))?;
 
         let x = model.add_source("x", self.x.datum_type().fact(self.x.shape()).into())?;
-        let op = tract_onnx::ops::rec::lstm::LSTM {
+        let op = tract_onnx::ops::rec::common::CommonRec {
             optional_y_output: Some(0),
             optional_bias_input: Some(3),
             optional_initial_h_input: Some(4),
             optional_initial_c_input: Some(5),
-            ..Default::default()
+            optional_sequence_lens_input: None,
+            optional_p_input: None,
+            optional_y_h_output: None,
+            optional_y_c_output: None,
+            body: Box::new(tract_onnx::ops::rec::lstm::LSTM {
+                f: Box::new(tract_core::ops::nn::sigmoid()),
+                g: Box::new(tract_core::ops::math::tanh()),
+                h: Box::new(tract_core::ops::math::tanh()),
+            }),
+            batch_first: false,
         };
         let w = model.add_const("w", w_iofc)?;
         let r = model.add_const("r", r_iofc)?;
@@ -180,11 +189,7 @@ impl LstmProblem {
         let model = self.onnx_model()?;
         let plan = SimplePlan::new(model)?;
         let mut state = SimpleState::new(plan)?;
-        let y = state
-            .run(tvec!(self.x.clone()))?
-            .remove(0)
-            .into_tensor()
-            .into_array::<f32>()?;
+        let y = state.run(tvec!(self.x.clone()))?.remove(0).into_tensor().into_array::<f32>()?;
         let y = y.into_shape((self.length, self.batch_size, self.cell_size)).unwrap();
         Ok(y.into_tvalue())
     }

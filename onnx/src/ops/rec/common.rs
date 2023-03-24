@@ -15,7 +15,7 @@ pub trait WireBody: Debug + DynClone + Send + Sync {
 clone_trait_object!(WireBody);
 
 #[derive(Debug, Clone)]
-pub(super) struct CommonRec {
+pub struct CommonRec {
     pub optional_bias_input: Option<usize>,
     pub optional_sequence_lens_input: Option<usize>,
     pub optional_initial_h_input: Option<usize>,
