@@ -187,4 +187,43 @@ mod test {
             ]
         );
     }
+    
+    #[test]
+    fn test_quant_file_1() {
+        assert_eq!(
+            p(
+                many0(quantization),
+                r#"
+                   i"tensor.name1": linear_quantize(min = 0.5, max = 123.8, bits = 8);
+                   i"tensor/name2": linear_quantize(max = 0.52, min = 123.82, bits = 82);
+                   "tensor_name3": zero_point_linear_quantize(zero_point = 52, scale = 123.83, bits = 83, signed = true, symmetric = false);"#
+            ),
+            vec![
+                (
+                    Identifier("tensor.name1".to_string()),
+                    QuantFormat::Linear {
+                        params: QParams::MinMax { min: 0.5, max: 123.8 },
+                        bits: 8,
+                        signed: true
+                    }
+                ),
+                (
+                    Identifier("tensor/name2".to_string()),
+                    QuantFormat::Linear {
+                        params: QParams::MinMax { max: 0.52, min: 123.82 },
+                        bits: 82,
+                        signed: true
+                    }
+                ),
+                (
+                    Identifier("tensor_name3".to_string()),
+                    QuantFormat::Linear {
+                        params: QParams::ZpScale { zero_point: 52, scale: 123.83 },
+                        bits: 83,
+                        signed: true
+                    }
+                )
+            ]
+        );
+    }
 }
