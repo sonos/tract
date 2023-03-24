@@ -6,7 +6,7 @@ use nom::combinator::map_res;
 use nom::sequence::delimited;
 use tract_core::internal::*;
 
-use nom::multi::*;
+use nom::{bytes::complete::*, multi::*};
 use nom::branch::alt;
 use nom::{combinator::all_consuming, IResult};
 use nom::{combinator::opt, number::complete::float};
@@ -22,7 +22,8 @@ pub fn parse_quantization(doc: &str) -> TractResult<Vec<(Identifier, QuantFormat
 
 // <quantization> ::= "<identifier>": <qparam>
 fn quantization(i: &str) -> IResult<&str, (Identifier, QuantFormat)> {
-    let (i, id) = alt((delimited(stag("\""), direct_identifier, stag("\"")), escaped_identifier))(i)?;
+    let (i, _) = stag("")(i)?;
+    let (i, id) = alt((delimited(tag("\""), direct_identifier, tag("\"")), escaped_identifier))(i)?;
     let (i, _) = stag(":")(i)?;
     let (i, qp) = qparam(i)?;
     let (i, _) = stag(";")(i)?;
