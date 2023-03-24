@@ -91,6 +91,8 @@ fn annotate_with_onnx_model(
         let mut node_name = &gnode.name;
         if !node_name.is_empty() && gnode.output.len() > 0 {
             node_name = &gnode.output[0];
+        } else if let Some(n) = gnode.output.get(0) {
+            node_name = n;
         }
         if let Ok(id) = model.node_id_by_name(node_name) {
             let mut v = vec![];
