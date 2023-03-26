@@ -296,7 +296,7 @@ where
         }
         debug_assert_eq!(target.input_outlets()?.len(), prior_target_inputs);
         debug_assert_eq!(target.output_outlets()?.len(), prior_target_outputs);
-        for (outlet, by) in shunt_outlet_by {
+        for (&outlet, &by) in shunt_outlet_by.iter().sorted() {
             let replace_by = mapping[&by];
             let succs = target.nodes()[outlet.node].outputs[outlet.slot].successors.clone();
             for succ in succs {
@@ -316,7 +316,7 @@ where
         }
         debug_assert_eq!(target.input_outlets()?.len(), prior_target_inputs);
         debug_assert_eq!(target.output_outlets()?.len(), prior_target_outputs);
-        for (node, inputs) in all_inputs {
+        for (&node, inputs) in all_inputs.iter().sorted() {
             for (ix, input) in inputs.into_iter().enumerate() {
                 target.add_edge(mapping[&input], InletId::new(node, ix))?;
             }
