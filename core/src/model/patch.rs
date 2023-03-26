@@ -317,8 +317,8 @@ where
         debug_assert_eq!(target.input_outlets()?.len(), prior_target_inputs);
         debug_assert_eq!(target.output_outlets()?.len(), prior_target_outputs);
         for (&node, inputs) in all_inputs.iter().sorted() {
-            for (ix, input) in inputs.into_iter().enumerate() {
-                target.add_edge(mapping[&input], InletId::new(node, ix))?;
+            for (ix, input) in inputs.iter().enumerate() {
+                target.add_edge(mapping[input], InletId::new(node, ix))?;
             }
         }
         debug_assert_eq!(target.input_outlets()?.len(), prior_target_inputs);
