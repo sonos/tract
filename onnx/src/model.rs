@@ -5,6 +5,7 @@ use std::{fs, path};
 use std::collections::HashMap;
 
 use tract_hir::internal::*;
+use tract_hir::prelude::tract_itertools::Itertools;
 
 use crate::pb;
 use crate::tensor::translate_inference_fact;
@@ -84,7 +85,7 @@ impl<'a> ParsingContext<'a> {
                 .map(|init| Ok((&*init.name, init.try_into()?)))
                 .collect::<TractResult<_>>()?;
         }
-        for (k, v) in initializers.iter() {
+        for (k, v) in initializers.iter().sorted_by_key(|kv| kv.0) {
             trace!("Initializer: {} {:?}", k, v);
         }
         let mut outlets_by_name = HashMap::<String, OutletId>::new();
@@ -109,7 +110,7 @@ impl<'a> ParsingContext<'a> {
         for output in graph.output.iter() {
             trace!("Model output: {:?}", output);
         }
-        for (name, t) in initializers.into_iter() {
+        for (name, t) in initializers.into_iter().sorted_by_key(|kv| kv.0) {
             let id = model.add_const(name, t)?;
             outlets_by_name.insert(name.to_string(), id);
         }
