@@ -89,7 +89,6 @@ pub fn change_axes(
                 return Ok(None);
             }
             let mut interfaces = vec![(outlet.node, InOut::Out(outlet.slot))];
-            eprintln!("successors: {:?}", model.outlet_successors(outlet));
             for inlet in model.outlet_successors(outlet) {
                 interfaces.push((inlet.node, InOut::In(inlet.slot)));
             }
