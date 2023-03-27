@@ -1,11 +1,11 @@
 [package]
 name = "lstm-proptest-onnx-vs-tf"
-version = "0.19.8-pre"
+version = "0.19.9-pre"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT/Apache-2.0"
 edition = "2021"
 
 [dependencies]
 proptest.workspace = true
-tract-tensorflow = { path = "../../tensorflow", version = "=0.19.8" }
-tract-onnx = { path = "../../onnx", version = "=0.19.8" }
+tract-tensorflow = { path = "../../tensorflow", version = "=0.19.9-pre" }
+tract-onnx = { path = "../../onnx", version = "=0.19.9-pre" }
