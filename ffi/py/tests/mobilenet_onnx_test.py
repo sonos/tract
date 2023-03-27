@@ -123,6 +123,7 @@ def test_typed_model_to_nnef_and_back():
         assert str(reloaded.output_fact(0)) == "B,1000,F32"
 
         path = tmpdirname / "nnef.tar.gz"
+        nnef = nnef.with_extended_identifier_syntax()
         nnef.write_model_to_tar_gz(typed, path)
         reloaded = nnef.model_for_path(path)
         assert str(reloaded.input_fact(0)) == "B,3,224,224,F32"
