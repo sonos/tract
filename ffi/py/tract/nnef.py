@@ -72,6 +72,14 @@ class Nnef:
         check(lib.tract_nnef_enable_pulse(self.ptr))
         return self
 
+    def with_extended_identifier_syntax(self) -> "Nnef":
+        """
+        Enable tract-opl extensions to NNEF for extended identifiers (will support PyTorch 2 path-like ids)
+        """
+        self._valid()
+        check(lib.tract_nnef_allow_extended_identifier_syntax(self.ptr, True))
+        return self
+
     def write_model_to_dir(self, model: Model, path: Union[str, Path]) -> None:
         """
         Save `model` as a NNEF directory model in `path`.
