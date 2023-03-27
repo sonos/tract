@@ -73,7 +73,7 @@ pub fn change_axes(
     locked: &[OutletId],
     bounds: &[TVec<OutletId>],
 ) -> TractResult<Option<(TypedModelPatch, TVec<(InOut, AxisOp)>)>> {
-    trace!("Considering change {:?}", change);
+    debug!("  Considering change {:?}", change);
     let mut todo_changes = vec![(change.clone(), None)];
     let mut changed_wires: HashMap<TVec<OutletId>, AxisOp> = HashMap::new();
     let bound_outlets = |o: OutletId| -> TVec<OutletId> {
@@ -85,14 +85,14 @@ pub fn change_axes(
         let outlet_group = bound_outlets(c.outlet);
         for &outlet in &outlet_group {
             if locked.contains(&outlet) {
-                trace!("  Change {:?} blocked by locked interface {:?}", change, outlet);
+                debug!("    Change {:?} blocked by locked interface {:?}", change, outlet);
                 return Ok(None);
             }
-            let mut nodes = vec![(outlet.node, InOut::Out(outlet.slot))];
+            let mut interfaces = vec![(outlet.node, InOut::Out(outlet.slot))];
             for inlet in model.outlet_successors(outlet) {
-                nodes.push((inlet.node, InOut::In(inlet.slot)));
+                interfaces.push((inlet.node, InOut::In(inlet.slot)));
             }
-            for (node_id, io) in nodes {
+            for (node_id, io) in interfaces {
                 if Some(node_id) == emitter {
                     continue;
                 }
@@ -103,6 +103,7 @@ pub fn change_axes(
                         // FIXME Einsum can swallow any combination of axis change on all interfaces
                         op
                     } else {
+                        debug!("  Change {:?} blocked: revisiting {}", change, model.node(node_id));
                         return Ok(None);
                     }
                 } else {
@@ -112,7 +113,7 @@ pub fn change_axes(
                     .change_axes(model, node, io, &c.op)
                     .with_context(|| format!("Propagating {change:?} to node {node}"))?;
                 if more.is_none() {
-                    trace!("    Propagation of {:?} blocked by {}", change, node);
+                    debug!("    Propagation of {:?} blocked by {}", change, node);
                     return Ok(None);
                 }
                 let AxisChangeConsequence { substitute_op, wire_changes } = more.unwrap();
@@ -145,7 +146,7 @@ pub fn change_axes(
                                     outlet_group
                                 );
                             } else {
-                                trace!(
+                                debug!(
                                     "         {:?} {:?} change on {:?} conflicting with {:?}. Blocked.",
                                     wire,
                                     op,
@@ -160,7 +161,7 @@ pub fn change_axes(
             }
         }
     }
-    trace!("Translating {:?} to patch", change);
+    debug!("Translating {:?} to patch", change);
     let mut patch = TypedModelPatch::new(format!("{change:?}"));
     let mut replaced_wires: HashMap<OutletId, OutletId> = HashMap::default();
     let nodes_to_replace = changed_wires
@@ -219,6 +220,7 @@ pub fn change_axes(
         patch.model.nodes.iter().map(|n| &n.name).collect::<std::collections::HashSet<_>>().len()
             == patch.model.nodes.len()
     );
+    debug!("Patch ready for {:?}", change);
     Ok(Some((patch, interface_change)))
 }
 
