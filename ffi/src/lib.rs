@@ -250,6 +250,15 @@ pub unsafe extern "C" fn tract_nnef_enable_pulse(nnef: *mut TractNnef) -> TRACT_
     })
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn tract_nnef_allow_extended_identifier_syntax(nnef: *mut TractNnef, enable: bool) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(nnef);
+        (*nnef).0.allow_extended_identifier_syntax(enable);
+        Ok(())
+    })
+}
+
 /// Destroy the NNEF parser. It is safe to detroy the NNEF parser once the model had been loaded.
 #[no_mangle]
 pub unsafe extern "C" fn tract_nnef_destroy(nnef: *mut *mut TractNnef) -> TRACT_RESULT {
