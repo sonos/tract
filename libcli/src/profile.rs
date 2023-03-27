@@ -34,11 +34,12 @@ pub fn profile(
     let mut state = TypedSimpleState::new(Arc::new(plan))?;
 
     let start = Instant::now();
+    let mut time_accounted_by_inner_nodes = Duration::default();
     while iters < bench_limits.max_iters && start.elapsed() < bench_limits.max_time {
-        rec_profiler(&mut state, dg, custom_profiler.as_ref(), &mut prefix, None)?;
+        rec_profiler(&mut state, dg, custom_profiler.as_ref(), &mut prefix, None, &mut time_accounted_by_inner_nodes)?;
         iters += 1;
     }
-    let entire = start.elapsed();
+    let entire = start.elapsed() - time_accounted_by_inner_nodes;
     info!("Running {} iterations max. for each node.", bench_limits.max_iters);
     info!("Running for {} ms max. for each node.", bench_limits.max_time.as_millis());
 
@@ -61,6 +62,7 @@ pub fn rec_profiler(
     profilers: Option<&HashMap<TypeId, Profiler>>,
     prefix: &[(usize, String)],
     multiplier: Option<isize>,
+    time_accounted_by_inner_nodes: &mut Duration,
 ) -> TractResult<TVec<TValue>> {
     let model = state.plan().model();
     let inputs = make_inputs_for_model(model)?;
@@ -79,7 +81,9 @@ pub fn rec_profiler(
             if let Some(profiler) = profilers.map(|it| it.get(&op_state.type_id())).flatten() {
                 let mut prefix: TVec<_> = prefix.into();
                 prefix.push((node.id, "submodel".to_string()));
+                let start = Instant::now();
                 (profiler.func)(*op_state, input.clone(), dg, &prefix)?;
+                *time_accounted_by_inner_nodes += start.elapsed();
             } else if let Some(scan_state) = op_state.downcast_mut::<State>() {
                 let mut prefix: TVec<_> = prefix.into();
                 prefix.push((node.id, "loop".to_string()));
@@ -92,11 +96,16 @@ pub fn rec_profiler(
                 } else {
                     None
                 };
-                rec_profiler(&mut scan_state.model_state, dg, None, &prefix, multi)?;
+                let start = Instant::now();
+                rec_profiler(&mut scan_state.model_state, dg, None, &prefix, multi, time_accounted_by_inner_nodes)?;
+                *time_accounted_by_inner_nodes += start.elapsed();
             } else if let Some(typed_model_state) = op_state.downcast_mut::<TypedModelOpState>() {
                 let mut prefix: TVec<_> = prefix.into();
                 prefix.push((node.id, "submodel".to_string()));
-                rec_profiler(typed_model_state, dg, None, &prefix, None)?;
+
+                let start = Instant::now();
+                rec_profiler(typed_model_state, dg, None, &prefix, None, time_accounted_by_inner_nodes)?;
+                *time_accounted_by_inner_nodes += start.elapsed();
             }
 
             (r, elapsed)
