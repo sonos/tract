@@ -30,7 +30,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
         }
         let mut first_error = None;
         let mut did_something = false;
-        while let Some(&node) = nodes_to_visit.first() {
+        while let Some(&node) = nodes_to_visit.iter().next() {
             trace!("Remaining nodes {}, visiting {}", nodes_to_visit.len(), node);
             match self.analyse_one(node) {
                 Ok(changed_edges) => {
