@@ -2,6 +2,7 @@ use crate::model::ParsingContext;
 use crate::pb::*;
 use tract_hir::internal::*;
 use tract_hir::ops;
+use tract_hir::tract_core::ops::binary::wire_bin;
 use tract_hir::tract_core::ops::einsum::EinSum;
 
 pub fn gemm(
@@ -66,11 +67,8 @@ impl Expansion for Gemm {
         if self.alpha != 1.0 {
             let alpha = tensor0(self.alpha).broadcast_into_rank(model.outlet_fact(wire)?.rank())?;
             let alpha = model.add_const(name.to_string() + ".alpha_ab.cst", alpha)?;
-            wire = model.wire_node(
-                name.to_string() + ".alpha_ab",
-                ops::math::mul(),
-                &[alpha, wire],
-            )?[0];
+            wire =
+                wire_bin(name.to_string() + ".alpha_ab", model, ops::math::Mul, &[alpha, wire])?[0];
         }
         if self.beta != 0.0f32 {
             while model.outlet_fact(wire)?.rank() > model.outlet_fact(c)?.rank() {
@@ -83,8 +81,8 @@ impl Expansion for Gemm {
             let beta = tensor0(self.beta).broadcast_into_rank(model.outlet_fact(wire)?.rank())?;
             let beta = model.add_const(name.to_string() + ".beta_c.cst", beta)?;
             let beta_c =
-                model.wire_node(name.to_string() + ".beta_c", ops::math::mul(), &[beta, c])?[0];
-            wire = model.wire_node(name, ops::math::add(), &[wire, beta_c])?[0];
+                wire_bin(name.to_string() + ".beta_c", model, ops::math::Mul, &[beta, c])?[0];
+            wire = wire_bin(name, model, ops::math::Add, &[wire, beta_c])?[0];
         }
         Ok(tvec!(wire))
     }

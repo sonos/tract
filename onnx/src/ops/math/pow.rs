@@ -1,6 +1,7 @@
 use crate::model::ParsingContext;
 use crate::pb::*;
 use tract_hir::internal::*;
+use tract_hir::tract_core::ops::binary::wire_bin;
 
 pub fn pow(
     _ctx: &ParsingContext,
@@ -12,13 +13,10 @@ pub fn pow(
 #[derive(Debug, Clone, new, Hash)]
 pub struct Pow;
 
-
-
 impl Expansion for Pow {
     fn name(&self) -> Cow<str> {
         "Pow".into()
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -53,19 +51,15 @@ impl Expansion for Pow {
         use DatumType::*;
         let dta = model.outlet_fact(inputs[0])?.datum_type;
         let dtb = model.outlet_fact(inputs[1])?.datum_type;
-        let mut wires = tract_hir::ops::binary::wire_rank_broadcast(name, model, inputs)?;
+        let mut wires: TVec<OutletId> = inputs.into();
         if dta.is_integer() != dtb.is_integer() {
             wires = tract_hir::ops::binary::wire_cast(name, model, &wires, F64)?;
-            wires = model.wire_node(
-                format!("{name}.pow"),
-                tract_hir::ops::math::pow(),
-                &wires,
-            )?;
+            wires = wire_bin(format!("{name}.pow"), model, tract_core::ops::math::Pow, &wires)?;
             model.wire_node(name, tract_hir::ops::cast::cast(dta), &wires)
         } else {
             let dt = dta.common_super_type(dtb).unwrap();
             wires = tract_hir::ops::binary::wire_cast(name, model, &wires, dt)?;
-            model.wire_node(name, tract_hir::ops::math::pow(), &wires)
+            wire_bin(name, model, tract_core::ops::math::Pow, &wires)
         }
     }
 }

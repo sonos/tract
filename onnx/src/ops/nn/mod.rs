@@ -1,6 +1,7 @@
 use tract_hir::internal::*;
 use tract_hir::ops;
 use tract_hir::ops::{cnn, nn};
+use tract_hir::tract_core::ops::binary::wire_bin;
 
 use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::NodeProto;
@@ -302,7 +303,6 @@ pub fn parametric_softplus(
 #[derive(Debug, Clone, Hash)]
 struct Prelu;
 
-
 impl Expansion for Prelu {
     fn name(&self) -> Cow<str> {
         "Prelu".into()
@@ -337,15 +337,13 @@ impl Expansion for Prelu {
                 &[b],
             )?[0];
         }
-        let zero = tensor0(0.0)
-            .cast_to_dt(model.outlet_fact(a)?.datum_type)?
-            .into_owned()
-            .broadcast_into_rank(rank)?;
-        let ab = model.wire_node(format!("{name}.mul"), tract_hir::ops::math::mul(), &[a, b])?[0];
+        let zero = tensor0(0.0).cast_to_dt(model.outlet_fact(a)?.datum_type)?.into_owned();
+        let ab = wire_bin(format!("{name}.mul"), model, tract_hir::ops::math::Mul, &[a, b])?[0];
         let zero = model.add_const(name.to_string() + ".zero", zero)?;
-        let test = model.wire_node(
+        let test = wire_bin(
             name.to_string() + ".test",
-            tract_hir::ops::logic::greater(),
+            model,
+            tract_hir::ops::logic::Greater,
             &[zero, a],
         )?;
         model.wire_node(name.to_string() + ".iff", tract_core::ops::logic::Iff, &[test[0], ab, a])

@@ -529,6 +529,7 @@ macro_rules! bin_to_super_type {
                     })?
         }
 
+        #[deprecated]
         pub fn $func() -> $crate::ops::binary::TypedBinOp {
             $crate::ops::binary::TypedBinOp { op: Box::new($Op) }
         }
@@ -647,6 +648,7 @@ macro_rules! bin_to_bool {
 
         }
 
+        #[deprecated]
         pub fn $func() -> $crate::ops::binary::TypedBinOp {
             $crate::ops::binary::TypedBinOp { op: Box::new($Op) }
         }

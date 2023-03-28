@@ -9,6 +9,7 @@ use crate::model::*;
 use crate::ops;
 use crate::ops::array::Pad;
 use crate::ops::array::PadMode;
+use crate::ops::binary::wire_bin;
 use crate::ops::binary::TypedBinOp;
 use crate::ops::cnn::PaddingSpec;
 use crate::ops::einsum::EinSum;
@@ -111,7 +112,7 @@ impl ConvUnary {
                 }
                 DatumType::I32 => {
                     let cst = model.add_const(format!("{name}.cst"), tensor0(-128i32))?;
-                    inputs[1] = model.wire_node(name, ops::math::add(), &[inputs[1], cst])?[0];
+                    inputs[1] = wire_bin(name, model, Add, &[inputs[1], cst])?[0];
                 }
                 _ => (),
             };
@@ -608,11 +609,7 @@ impl ConvUnary {
                     let b = b.clone().into_tensor().into_shape(&bias_shape)?;
                     let b =
                         patch.add_const(format!("{}.bias.cst", node.name), b.into_arc_tensor())?;
-                    wire = patch.wire_node(
-                        format!("{}.bias", node.name),
-                        crate::ops::math::add(),
-                        &[wire, b],
-                    )?[0];
+                    wire = wire_bin(format!("{}.bias", node.name), &mut patch, Add, &[wire, b])?[0];
                 }
                 wire
             };

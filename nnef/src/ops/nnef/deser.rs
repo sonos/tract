@@ -2,9 +2,11 @@ use crate::ast::*;
 use crate::deser::Value;
 use tract_core::internal::*;
 use tract_core::ops::array::PadMode;
+use tract_core::ops::binary::wire_bin;
 use tract_core::ops::cnn::deconv::adjustments;
 use tract_core::ops::cnn::PaddingSpec;
 use tract_core::ops::cnn::PoolSpec;
+use tract_core::ops::math::Div;
 use tract_core::ops::nn::DataFormat;
 use tract_itertools::izip;
 use tract_itertools::Itertools;
@@ -540,7 +542,8 @@ pub fn reduce(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     )?;
     let cardinality =
         builder.wire_as_outlets(ops::cast::Cast::new(fact.datum_type), &cardinality)?;
-    builder.wire(ops::math::div(), &[wire[0], cardinality[0]])
+    let outlet = wire_bin(builder.generate_node_name(), &mut builder.model, Div, &[wire[0], cardinality[0]])?;
+    Ok(outlet.into())
 }
 
 /*

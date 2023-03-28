@@ -3,6 +3,9 @@ use anyhow::ensure;
 use crate::internal::*;
 use crate::ops;
 use crate::ops::binary::wire_bin;
+use crate::ops::math::Add;
+use crate::ops::math::Max;
+use crate::ops::math::Min;
 use crate::ops::quant::offset_u8_as_i8_elementwise;
 
 pub fn offset_u8_as_i8(param: &Arc<Tensor>) -> TractResult<AttrOrInput> {
@@ -44,9 +47,10 @@ pub(crate) fn wire_offset_u8_as_i8(
                     format!("{model_name}.offset_{zero_point_name}_as_i8.min"),
                     tensor0(-128i32).broadcast_into_rank(zp_rank)?.into_arc_tensor(),
                 )?;
-                *zero_point = model.wire_node(
+                *zero_point = wire_bin(
                     format!("{model_name}.offset_{zero_point_name}_as_i8"),
-                    ops::math::add(),
+                    model,
+                    Add,
                     &[*zero_point, cst],
                 )?[0];
             }
@@ -167,8 +171,8 @@ pub(crate) fn clamp_and_cast_to(
         .broadcast_into_rank(rank)?
         .into_arc_tensor();
     let sup = model.add_const(format!("{name}.max.const"), sup)?;
-    let wire = model.wire_node(format!("{name}.min"), ops::math::min(), &[wire, sup])?;
-    let wire = model.wire_node(format!("{name}.max"), ops::math::max(), &[wire[0], inf])?;
+    let wire = wire_bin(format!("{name}.min"), model, Min, &[wire, sup])?;
+    let wire = wire_bin(format!("{name}.max"), model, Max, &[wire[0], inf])?;
     let wire = model.wire_node(format!("{name}.cast"), ops::cast::cast(dt), &wire)?;
     Ok(wire[0])
 }

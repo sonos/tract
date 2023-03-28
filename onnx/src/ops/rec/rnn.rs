@@ -46,6 +46,15 @@ impl WireBody for RNN {
             }
         }
 
+        macro_rules! wbin {
+            ($name: ident = $op: expr, $($param: expr),*) => {
+                let $name = tract_hir::tract_core::ops::binary::wire_bin(
+                    format!("{}.{}", prefix, stringify!($name)),
+                    body,
+                    $op, [$($param),*].as_ref())?[0];
+            }
+        }
+
         let Xt: OutletId = body.node_by_name("Xt").unwrap().id.into();
         let W: OutletId = body.node_by_name("W").unwrap().id.into();
         let R: OutletId = body.node_by_name("R").unwrap().id.into();
@@ -57,7 +66,7 @@ impl WireBody for RNN {
         let bias = if let Some(b) = b {
             wire!(Wbi = array::Slice::new(1, 0.to_dim() * &h_size, 1.to_dim() * &h_size), b);
             wire!(Rbi = array::Slice::new(1, 1.to_dim() * &h_size, 2.to_dim() * &h_size), b);
-            wire!(bi = math::add(), Wbi, Rbi);
+            wbin!(bi = math::Add, Wbi, Rbi);
             Some(bi)
         } else {
             None
@@ -69,10 +78,10 @@ impl WireBody for RNN {
         wire!(Xt_WiT = matmul_t.clone(), Xt, W);
         wire!(Ht_1_RiT = matmul_t, Ht_1, R);
 
-        wire!(ht0 = math::add(), Xt_WiT, Ht_1_RiT);
+        wbin!(ht0 = math::Add, Xt_WiT, Ht_1_RiT);
         let mut ht0 = ht0;
         if let Some(bias) = bias {
-            wire!(ht_bias = math::add(), ht0, bias);
+            wbin!(ht_bias = math::Add, ht0, bias);
             ht0 = ht_bias;
         }
         wire!(Ht = self.fore.clone(), ht0);

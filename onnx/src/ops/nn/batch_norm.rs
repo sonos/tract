@@ -1,5 +1,6 @@
 use tract_hir::internal::*;
 use tract_hir::ops::nn::DataFormat;
+use tract_hir::tract_core::ops::binary::wire_bin;
 use tract_num_traits::AsPrimitive;
 
 #[derive(Debug, Clone, new, Default)]
@@ -102,12 +103,13 @@ impl Expansion for BatchNorm {
 
             let slope = target.add_const(prefix.to_string() + ".slope", slope)?;
             let inter = target.add_const(prefix.to_string() + ".inter", inter)?;
-            let wire = target.wire_node(
+            let wire = wire_bin(
                 format!("{prefix}.mul"),
-                tract_hir::ops::math::mul(),
+                target,
+                tract_hir::ops::math::Mul,
                 &[slope, inputs[0]],
             )?;
-            return target.wire_node(prefix, tract_hir::ops::math::add(), &[inter, wire[0]]);
+            return wire_bin(prefix, target, tract_hir::ops::math::Add, &[inter, wire[0]]);
         }
         bail!("Params are not const")
     }

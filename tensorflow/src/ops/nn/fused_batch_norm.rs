@@ -1,4 +1,5 @@
 use tract_hir::internal::*;
+use tract_hir::tract_core::ops::binary::wire_bin;
 use tract_itertools::izip;
 
 use crate::model::ParsingContext;
@@ -22,7 +23,6 @@ impl Expansion for FusedBatchNorm {
     fn validation(&self) -> Validation {
         Validation::Rounding
     }
-
 
     /// Registers the inference rules of the operator.
     fn rules<'r, 'p: 'r, 's: 'r>(
@@ -78,14 +78,16 @@ impl Expansion for FusedBatchNorm {
             let inter = tensor1(&inter).into_shape(&shape)?;
             let slope = target.add_const(prefix.to_string() + ".slope", slope)?;
             let inter = target.add_const(prefix.to_string() + ".inter", inter)?;
-            let wire = target.wire_node(
+            let wire = wire_bin(
                 format!("{prefix}.mul"),
-                tract_hir::ops::math::mul(),
+                target,
+                tract_hir::ops::math::Mul,
                 &[inputs[0], slope],
             )?;
-            return target.wire_node(
+            return wire_bin(
                 format!("{prefix}.add"),
-                tract_hir::ops::math::add(),
+                target,
+                tract_hir::ops::math::Add,
                 &[wire[0], inter],
             );
         };

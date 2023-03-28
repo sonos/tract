@@ -2,6 +2,7 @@
 #![allow(clippy::unnecessary_cast)]
 
 use super::array::MultiBroadcastTo;
+use super::binary::wire_bin;
 use crate::internal::*;
 use crate::ops::quant::scale_by;
 use num_traits::bounds::Bounded;
@@ -285,7 +286,7 @@ fn declutter_mul(
                             .into_owned()
                             .broadcast_into_rank(var_fact.rank())?,
                     )?;
-                    patch.wire_node(&node.name, shift_left(), &[taps[0], shift])
+                    wire_bin(&node.name, patch, ShiftLeft, &[taps[0], shift])
                 },
             )?));
         }
@@ -322,7 +323,7 @@ fn declutter_div(
                                     .into_owned()
                                     .broadcast_into_rank(p.rank())?,
                             )?;
-                            patch.wire_node(&node.name, shift_right(), &[taps[0], shift])
+                            wire_bin(&node.name, patch, ShiftRight, &[taps[0], shift])
                         },
                     )?));
                 }
@@ -336,7 +337,7 @@ fn declutter_div(
                 &|patch, taps| {
                     let q =
                         patch.wire_node(format!("{}-recip", node.name), recip(), &[taps[1]])?[0];
-                    patch.wire_node(&node.name, mul(), &[taps[0], q])
+                    wire_bin(&node.name, patch, Mul, &[taps[0], q])
                 },
             )?));
         }

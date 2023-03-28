@@ -2,8 +2,10 @@ use crate::infer::*;
 use crate::internal::*;
 
 use tract_core::ops as mir;
+use tract_core::ops::binary::wire_bin;
 pub use tract_core::ops::binary::wire_rank_broadcast;
 use tract_core::ops::binary::BinMiniOp;
+use tract_core::ops::math::Div;
 
 #[derive(Debug, Clone)]
 pub struct InferenceBinOp(pub Box<dyn BinMiniOp>);
@@ -209,11 +211,7 @@ impl InferenceRulesOp for Nary {
                 .into_owned()
                 .broadcast_into_rank(target.outlet_fact(inputs[0])?.rank())?;
             let n = target.add_const(format!("{}.n", node.name), n.into_arc_tensor())?;
-            wire = target.wire_node(
-                format!("{}.norm", node.name),
-                crate::ops::math::div(),
-                &[wire, n],
-            )?[0];
+            wire = wire_bin(format!("{}.norm", node.name), target, Div, &[wire, n])?[0];
         }
         Ok(tvec!(wire))
     }

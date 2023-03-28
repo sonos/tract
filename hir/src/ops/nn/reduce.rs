@@ -1,5 +1,7 @@
 use crate::internal::*;
 
+use tract_core::ops::binary::wire_bin;
+use tract_core::ops::math::Div;
 use tract_core::ops::nn::Reduce as TReduce;
 use tract_core::ops::nn::Reducer as TReducer;
 
@@ -100,7 +102,7 @@ impl Reducer {
                     tract_core::ops::cast::cast(fact.datum_type),
                     &[size],
                 )?[0];
-                wire = target.wire_node(name.to_string() + ".norm", math::div(), &[wire, size])?[0];
+                wire = wire_bin(name.to_string() + ".norm", target, Div, &[wire, size])?[0];
             }
         };
         Ok(wire)
@@ -113,8 +115,6 @@ pub struct Reduce {
     keep_dims: bool,
     reducer: Reducer,
 }
-
-
 
 impl Reduce {
     pub fn must_reduce(&self, ax: usize, rank: usize) -> bool {

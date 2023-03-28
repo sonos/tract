@@ -7,7 +7,8 @@ use crate::tract_data::itertools::Itertools;
 mod eval;
 
 use super::array::TypedConcat;
-use super::math::add;
+use super::binary::wire_bin;
+use super::math::Add;
 mod codegen;
 
 #[cfg(test)]
@@ -159,9 +160,10 @@ impl EinSum {
                 } else {
                     let mut wire = einsums[0];
                     for ix in 1..einsums.len() {
-                        wire = patch.wire_node(
+                        wire = wire_bin(
                             format!("{}.concat-einsum-{}.add-{}", node.name, axis_info.repr, ix),
-                            add(),
+                            &mut patch,
+                            Add,
                             &[wire, einsums[ix]],
                         )?[0]
                     }

@@ -3,7 +3,8 @@ use crate::pb::NodeProto;
 use tract_hir::internal::*;
 use tract_hir::ops::array::Pad;
 use tract_hir::ops::cast::cast;
-use tract_hir::ops::math::div;
+use tract_hir::ops::math::Div;
+use tract_hir::tract_core::ops::binary::wire_bin;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("DFT", dft);
@@ -74,8 +75,6 @@ struct Dft {
     has_length_input: bool,
 }
 
-
-
 impl Expansion for Dft {
     fn name(&self) -> Cow<str> {
         "DFT".into()
@@ -143,7 +142,7 @@ impl Expansion for Dft {
             )?;
             let casted =
                 model.wire_node(format!("{prefix}.cast"), cast(fact.datum_type), &[len])?;
-            wire = model.wire_node(format!("{prefix}.norm"), div(), &[wire[0], casted[0]])?;
+            wire = wire_bin(format!("{prefix}.norm"), model, Div, &[wire[0], casted[0]])?;
         }
         if self.onesided {
             let frame = fact.shape[self.axis].clone() / 2 + 1;
@@ -163,8 +162,6 @@ struct Stft {
     optional_window_input: Option<usize>,
     optional_frame_length_input: Option<usize>,
 }
-
-
 
 impl Expansion for Stft {
     fn name(&self) -> Cow<str> {
@@ -287,8 +284,6 @@ impl Expansion for Stft {
 pub struct MelWeightMatrix {
     datum_type: DatumType,
 }
-
-
 
 impl Expansion for MelWeightMatrix {
     fn name(&self) -> Cow<str> {
@@ -422,8 +417,6 @@ pub struct StftWindow {
     periodic: bool,
     window: StftWindowType,
 }
-
-
 
 impl Expansion for StftWindow {
     fn name(&self) -> Cow<str> {
