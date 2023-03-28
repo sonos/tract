@@ -81,7 +81,7 @@ impl Registry {
         results: &[impl Into<ast::Result_> + Clone],
         func: ToTract,
     ) -> &mut PrimitiveDecl {
-        let id:Identifier = id.as_ref().into();
+        let id: Identifier = id.as_ref().into();
         let decl = FragmentDecl {
             id: id.clone(),
             generic_decl: None,
@@ -97,11 +97,7 @@ impl Registry {
         self.fragments.insert(def.decl.id.clone(), def);
     }
 
-    pub fn register_unit_element_wise(
-        &mut self,
-        id: impl AsRef<str>,
-        ew: &dyn ElementWiseMiniOp,
-    ) {
+    pub fn register_unit_element_wise(&mut self, id: impl AsRef<str>, ew: &dyn ElementWiseMiniOp) {
         assert!(std::mem::size_of_val(ew) == 0);
         self.unit_element_wise_ops.push((id.as_ref().into(), clone_box(ew)));
     }
@@ -147,7 +143,7 @@ impl Registry {
             }
         } else if let Some(op) = node.op().downcast_ref::<ops::binary::TypedBinOp>() {
             if let Some(op) =
-                self.binary_ops.iter().find(|ew| ew.1.as_ref().type_id() == op.0.type_id())
+                self.binary_ops.iter().find(|ew| ew.1.as_ref().type_id() == op.op.type_id())
             {
                 let a = ast.mapping[&node.inputs[0]].clone();
                 let b = ast.mapping[&node.inputs[1]].clone();
@@ -220,8 +216,10 @@ impl Registry {
                 };
             }
             let inputs = multicast(builder, &[a, b])?;
-            let mut wire = builder
-                .wire_as_outlets(tract_core::ops::binary::TypedBinOp(bin.1.clone()), &inputs)?[0];
+            let mut wire = builder.wire_as_outlets(
+                tract_core::ops::binary::TypedBinOp { op: bin.1.clone() },
+                &inputs,
+            )?[0];
             if let Some(Some(out_dt)) = dt.get(0) {
                 if out_dt != &a_dt {
                     wire =

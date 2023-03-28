@@ -103,15 +103,17 @@ dyn_clone::clone_trait_object!(BinMiniOp);
 downcast_rs::impl_downcast!(BinMiniOp);
 
 #[derive(Debug, Clone)]
-pub struct TypedBinOp(pub Box<dyn BinMiniOp>);
+pub struct TypedBinOp {
+    pub op: Box<dyn BinMiniOp>,
+}
 
 impl Op for TypedBinOp {
     fn name(&self) -> Cow<str> {
-        self.0.name().into()
+        self.op.name().into()
     }
 
     fn validation(&self) -> Validation {
-        self.0.validation()
+        self.op.validation()
     }
 
     op_as_typed_op!();
@@ -125,7 +127,7 @@ impl EvalOp for TypedBinOp {
     fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a, b) = args_2!(inputs);
         debug_assert_eq!(a.rank(), b.rank());
-        Ok(tvec!(self.0.eval(a, b)?.into_tvalue()))
+        Ok(tvec!(self.op.eval(a, b)?.into_tvalue()))
     }
 }
 
@@ -134,7 +136,7 @@ impl TypedOp for TypedBinOp {
         if inputs[0].rank() != inputs[1].rank() {
             bail!("Typed ops require rank match. Invalid inputs for {}: {:?}", self.name(), inputs);
         }
-        Ok(tvec!(self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?.fact(
+        Ok(tvec!(self.op.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?.fact(
             &*crate::broadcast::multi_broadcast(&[
                 &inputs[0].shape.to_tvec(),
                 &inputs[1].shape.to_tvec()
@@ -177,7 +179,7 @@ impl TypedOp for TypedBinOp {
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         let count: TDim = self.output_facts(inputs)?[0].shape.iter().product();
         Ok(self
-            .0
+            .op
             .cost_per_element(inputs[0].datum_type)
             .into_iter()
             .map(|(c, n)| (c, count.clone() * n))
@@ -201,7 +203,7 @@ impl TypedOp for TypedBinOp {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        self.0.declutter(model, node)
+        self.op.declutter(model, node)
     }
 
     fn codegen(
@@ -210,16 +212,19 @@ impl TypedOp for TypedBinOp {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         let facts = model.node_input_facts(node.id)?;
-        if self.0.result_datum_type(facts[0].datum_type, facts[1].datum_type)?
+        if self.op.result_datum_type(facts[0].datum_type, facts[1].datum_type)?
             == facts[0].datum_type
             && facts[0].without_value() == facts[1].without_value()
         {
-            Ok(Some(TypedModelPatch::replace_single_op(
-                model,
-                node,
-                &node.inputs,
-                MergeOpUnicast(self.0.clone()),
-            )?.with_context("Unicast")))
+            Ok(Some(
+                TypedModelPatch::replace_single_op(
+                    model,
+                    node,
+                    &node.inputs,
+                    MergeOpUnicast(self.op.clone()),
+                )?
+                .with_context("Unicast"),
+            ))
         } else {
             Ok(None)
         }
@@ -417,22 +422,22 @@ macro_rules! bin_to_super_type {
                         $crate::ndarray::Zip::from(&mut a).and_broadcast(b).for_each(|a, b| cab(a, &a.clone(), b));
                         return Ok(())
                     })*
-                )*
-                $(
+                 )*
                     $(
-                        $(if a.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
-                            let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
-                            let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
-                            let mut a = a.to_array_view_mut::<$typ_dt>()?;
-                            let b = b.to_array_view::<$typ_dt>()?;
-                            $crate::ndarray::Zip::from(&mut a).and_broadcast(b).for_each(|a, b| {
-                                cab(a, &(a.clone()), b, zp, scale)
-                            });
-                            return Ok(())
-                        })*
-                    )*
-                )?
-                bail!("{} does not support {:?} (eval in a)", self.name(), a.datum_type());
+                        $(
+                            $(if a.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
+                                let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
+                                let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
+                                let mut a = a.to_array_view_mut::<$typ_dt>()?;
+                                let b = b.to_array_view::<$typ_dt>()?;
+                                $crate::ndarray::Zip::from(&mut a).and_broadcast(b).for_each(|a, b| {
+                                    cab(a, &(a.clone()), b, zp, scale)
+                                });
+                                return Ok(())
+                            })*
+                         )*
+                     )?
+                    bail!("{} does not support {:?} (eval in a)", self.name(), a.datum_type());
             }
 
             $(fn eval(&self, a: TValue, b: TValue) -> TractResult<Tensor> {
@@ -451,15 +456,15 @@ macro_rules! bin_to_super_type {
                 self.operating_datum_type(a, b)
             }
 
-                $(
-                    fn declutter(
-                        &self,
-                        model: &TypedModel,
-                        node: &TypedNode,
-                        ) -> TractResult<Option<TypedModelPatch>> {
-                        ($declutter)(self, model, node)
-                    }
-                 )?
+            $(
+                fn declutter(
+                    &self,
+                    model: &TypedModel,
+                    node: &TypedNode,
+                    ) -> TractResult<Option<TypedModelPatch>> {
+                    ($declutter)(self, model, node)
+                }
+             )?
                 $(
                     fn codegen(
                         &self,
@@ -492,7 +497,7 @@ macro_rules! bin_to_super_type {
         }
 
         pub fn $func() -> $crate::ops::binary::TypedBinOp {
-            $crate::ops::binary::TypedBinOp(Box::new($Op))
+            $crate::ops::binary::TypedBinOp { op: Box::new($Op) }
         }
     };
 }
@@ -610,7 +615,7 @@ macro_rules! bin_to_bool {
         }
 
         pub fn $func() -> $crate::ops::binary::TypedBinOp {
-            $crate::ops::binary::TypedBinOp(Box::new($Op))
+            $crate::ops::binary::TypedBinOp { op: Box::new($Op) }
         }
     };
 }

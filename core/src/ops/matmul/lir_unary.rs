@@ -412,7 +412,7 @@ impl TypedOp for LirMatMulUnary {
         let mut patch = TypedModelPatch::new(format!("fusing {succ}"));
         if let Some(op) = succ.op_as::<ops::binary::TypedBinOp>() {
             let mut binop =
-                if let Some(op) = op.0.as_linalg_binop() { op } else { return Ok(None) };
+                if let Some(op) = op.op.as_linalg_binop() { op } else { return Ok(None) };
             let flipped = succ.inputs[0].node == node.id;
             if flipped {
                 binop = binop.flip();
@@ -470,7 +470,7 @@ impl TypedOp for LirMatMulUnary {
             if let &[next] = &*succ.outputs[0].successors {
                 let bin = model.node(next.node);
                 if let Some(op) = bin.op_as::<ops::binary::TypedBinOp>() {
-                    if op.0.as_linalg_binop().is_none() {
+                    if op.op.as_linalg_binop().is_none() {
                         return Ok(None);
                     };
                     let flipped = succ.inputs[0].node == node.id;

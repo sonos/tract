@@ -38,7 +38,7 @@ impl Expansion for InferenceBinOp {
         )?;
         let wires = wire_rank_broadcast(prefix, target, inputs)?;
         let wires = wire_cast(prefix, target, &wires, operating_datum_type)?;
-        target.wire_node(prefix, mir::binary::TypedBinOp(self.0.clone()), &wires)
+        target.wire_node(prefix, mir::binary::TypedBinOp { op: self.0.clone() }, &wires)
     }
 }
 
@@ -199,7 +199,7 @@ impl InferenceRulesOp for Nary {
             let wires = wire_rank_broadcast(&format!("{}.{}", node.name, ix), target, &[wire, *i])?;
             wire = target.wire_node(
                 format!("{}.{}", node.name, ix),
-                mir::binary::TypedBinOp(self.0.clone()),
+                mir::binary::TypedBinOp { op: self.0.clone() },
                 &wires,
             )?[0];
         }

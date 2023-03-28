@@ -380,7 +380,7 @@ where
 }
 
 pub fn scale() -> TypedBinOp {
-    TypedBinOp(Box::new(Scale))
+    TypedBinOp { op: Box::new(Scale) }
 }
 
 /// Offsets u8 integers as i8 integers.
@@ -451,7 +451,9 @@ pub mod scale {
             operating_dt: i32::datum_type(),
             q_params: Some(i8::datum_type()),
         };
-        let output = model.wire_node("mmm", op, &[a, b, bias, a0, a_scale, b0, b_scale, c0, c_scale]).unwrap();
+        let output = model
+            .wire_node("mmm", op, &[a, b, bias, a0, a_scale, b0, b_scale, c0, c_scale])
+            .unwrap();
         model.set_output_outlets(&output).unwrap();
 
         let plain = model.clone().into_runnable().unwrap().run(input.clone()).unwrap();

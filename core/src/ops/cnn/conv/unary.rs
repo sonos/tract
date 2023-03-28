@@ -708,22 +708,22 @@ impl ConvUnary {
         let o_axis = if self.kernel_fmt == KernelFormat::OIHW { 0 } else { self.kernel.rank() - 1 };
         operand_shape_for_kernel[o_axis] = co;
         let operand_for_kernel = operand_for_bias.clone().into_shape(&operand_shape_for_kernel)?;
-        if bin.0.is::<Sub>() && succ.slot == 0 {
+        if bin.op.is::<Sub>() && succ.slot == 0 {
             bias = (bias.into_tensor().into_array::<f32>()?
                 - operand_for_bias.to_array_view::<f32>()?)
             .into_arc_tensor()
-        } else if bin.0.is::<Div>() && succ.slot == 0 {
+        } else if bin.op.is::<Div>() && succ.slot == 0 {
             bias = (bias.into_tensor().into_array::<f32>()?
                 / operand_for_bias.to_array_view::<f32>()?)
             .into_arc_tensor();
             kernel = (kernel.into_tensor().into_array::<f32>()?
                 / operand_for_kernel.to_array_view::<f32>()?)
             .into_arc_tensor();
-        } else if bin.0.is::<Add>() {
+        } else if bin.op.is::<Add>() {
             bias = (bias.into_tensor().into_array::<f32>()?
                 + operand_for_bias.to_array_view::<f32>()?)
             .into_arc_tensor();
-        } else if bin.0.is::<Mul>() {
+        } else if bin.op.is::<Mul>() {
             bias = (bias.into_tensor().into_array::<f32>()?
                 * operand_for_bias.to_array_view::<f32>()?)
             .into_arc_tensor();
