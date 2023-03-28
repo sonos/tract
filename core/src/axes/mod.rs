@@ -18,14 +18,9 @@ impl Axis {
         Axis { repr, inputs: tvec!(tvec!(); inputs), outputs: tvec!(tvec!(); outputs) }
     }
 
-    pub fn natural(
-        inputs: &[&TypedFact],
-        outputs: &[&TypedFact],
-        repr: char,
-        axis_id: usize,
-    ) -> Axis {
-        let inputs = tvec!(tvec!(axis_id); inputs.len());
-        let outputs = tvec!(tvec!(axis_id); outputs.len());
+    pub fn natural(inputs: usize, outputs: usize, repr: char, axis_id: usize) -> Axis {
+        let inputs = tvec!(tvec!(axis_id); inputs);
+        let outputs = tvec!(tvec!(axis_id); outputs);
         Axis { inputs, outputs, repr }
     }
 

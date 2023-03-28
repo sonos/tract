@@ -1,7 +1,7 @@
 use crate::model::ParsingContext;
 use crate::pb::*;
 use tract_hir::internal::*;
-use tract_hir::ops::logic::wire_with_rank_broadcast;
+use tract_hir::tract_core::ops::binary::wire_bin;
 
 pub fn clip(
     ctx: &ParsingContext,
@@ -38,13 +38,10 @@ pub struct Clip11 {
     input_max: Option<usize>,
 }
 
-
-
 impl Expansion for Clip11 {
     fn name(&self) -> Cow<str> {
         "Clip".into()
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -76,18 +73,18 @@ impl Expansion for Clip11 {
     ) -> TractResult<TVec<OutletId>> {
         let mut wire = inputs[0];
         if let Some(min) = self.input_min {
-            wire = wire_with_rank_broadcast(
+            wire = wire_bin(
                 &format!("{name}.min"),
                 model,
-                tract_hir::ops::math::max(),
+                tract_hir::ops::math::Max,
                 &[wire, inputs[min]],
             )?[0];
         }
         if let Some(max) = self.input_max {
-            wire = wire_with_rank_broadcast(
+            wire = wire_bin(
                 &format!("{name}.max"),
                 model,
-                tract_hir::ops::math::min(),
+                tract_hir::ops::math::Min,
                 &[wire, inputs[max]],
             )?[0];
         }

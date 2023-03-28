@@ -25,13 +25,40 @@ pub fn wire_rank_broadcast(
     Ok(wires)
 }
 
+#[deprecated]
 pub fn wire_with_rank_broadcast(
-    prefix: &str,
+    prefix: impl ToString,
     target: &mut TypedModel,
     op: impl Into<Box<dyn TypedOp>>,
     inputs: &[OutletId],
 ) -> TractResult<TVec<OutletId>> {
-    let wires = wire_rank_broadcast(prefix, target, inputs)?;
+    let prefix = prefix.to_string();
+    let wires = wire_rank_broadcast(&prefix, target, inputs)?;
+    target.wire_node(prefix, &op.into(), &wires)
+}
+
+pub fn wire_bin(
+    name: impl ToString,
+    target: &mut TypedModel,
+    op: impl Into<Box<dyn BinMiniOp>>,
+    inputs: &[OutletId],
+) -> TractResult<TVec<OutletId>> {
+    ensure!(inputs.len() == 2);
+    /*
+    let rank_a = target.outlet_fact(inputs[0])?.rank();
+    let rank_b = target.outlet_fact(inputs[1])?.rank();
+    let rank_c = rank_a.max(rank_b);
+    let mut axes = AxesMapping::natural_for_rank(2, 1, rank_c)?;
+    for _ in rank_a..rank_c {
+        axes = axes.remove_input_axis(0, 0)?;
+    }
+    for _ in rank_b..rank_c {
+        axes = axes.remove_input_axis(1, 0)?;
+    }
+    */
+    let op = TypedBinOp { op: op.into() };
+    let prefix = name.to_string();
+    let wires = wire_rank_broadcast(&prefix, target, inputs)?;
     target.wire_node(prefix, &op.into(), &wires)
 }
 
@@ -101,6 +128,12 @@ pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + 
 }
 dyn_clone::clone_trait_object!(BinMiniOp);
 downcast_rs::impl_downcast!(BinMiniOp);
+
+impl<B:BinMiniOp> From<B> for Box<dyn BinMiniOp + 'static> {
+    fn from(value: B) -> Self {
+        Box::new(value)
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct TypedBinOp {

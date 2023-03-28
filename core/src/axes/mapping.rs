@@ -95,9 +95,17 @@ impl AxesMapping {
         let rank = inputs[0].rank();
         let axes = (0..rank)
             .zip('a'..)
-            .map(|(axis_id, repr)| Axis::natural(inputs, outputs, repr, axis_id))
+            .map(|(axis_id, repr)| Axis::natural(inputs.len(), outputs.len(), repr, axis_id))
             .collect::<TVec<_>>();
         AxesMapping { axes, output_count: outputs.len(), input_count: inputs.len() }.check()
+    }
+    
+    pub fn natural_for_rank(inputs: usize, outputs: usize, rank:usize) -> TractResult<AxesMapping> {
+        let axes = (0..rank)
+            .zip('a'..)
+            .map(|(axis_id, repr)| Axis::natural(inputs, outputs, repr, axis_id))
+            .collect::<TVec<_>>();
+        AxesMapping { axes, output_count: outputs, input_count: inputs }.check()
     }
 
     pub fn iter_all_axes(&self) -> impl Iterator<Item = &Axis> {
@@ -351,6 +359,15 @@ impl AxesMapping {
                         .for_each(|other_pos| *other_pos -= (*other_pos > position) as usize);
                 }
             }
+        }
+        AxesMapping { axes, ..self.clone() }.check()
+    }
+
+    pub fn remove_input_axis(&self, slot: usize, position: usize) -> TractResult<AxesMapping> {
+        let mut axes = self.axes.clone();
+        for axis in &mut axes {
+            axis.inputs[slot].retain(|pos| *pos != position);
+            axis.inputs[slot].iter_mut().for_each(|pos| *pos -= (*pos > position) as usize);
         }
         AxesMapping { axes, ..self.clone() }.check()
     }

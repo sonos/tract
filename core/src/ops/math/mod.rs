@@ -627,7 +627,7 @@ mod tests {
             .op()
             .downcast_ref::<TypedBinOp>()
             .unwrap();
-        assert!(op.0.downcast_ref::<ShiftLeft>().is_some());
+        assert!(op.op.downcast_ref::<ShiftLeft>().is_some());
         Ok(())
     }
 
@@ -649,7 +649,7 @@ mod tests {
             .op()
             .downcast_ref::<TypedBinOp>()
             .unwrap();
-        assert!(op.0.downcast_ref::<ShiftRight>().is_some());
+        assert!(op.op.downcast_ref::<ShiftRight>().is_some());
         Ok(())
     }
 }

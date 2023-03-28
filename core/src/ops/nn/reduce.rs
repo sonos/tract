@@ -306,7 +306,9 @@ impl TypedOp for Reduce {
                             .output(0, ix),
                     )
                 } else {
-                    tvec!(Axis::natural(inputs, outputs, letters.next().unwrap(), ix))
+                    tvec!(Axis::new(letters.next().unwrap(), inputs.len(), outputs.len())
+                        .input(0, ix)
+                        .output(0, ix))
                 }
                 .into_iter()
             })

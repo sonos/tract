@@ -1,4 +1,5 @@
 use crate::internal::*;
+#[allow(deprecated)]
 use crate::ops::binary::wire_with_rank_broadcast;
 use crate::ops::cast::cast;
 use ndarray::*;
@@ -480,6 +481,7 @@ impl TypedOp for LirMatMulUnary {
                         let cst =
                             patch.add_const(&model.node(other_outlet.node).name, uni.clone())?;
                         let output = patch.tap_model(model, node.id.into())?;
+                        #[allow(deprecated)]
                         let wire = wire_with_rank_broadcast(
                             &bin.name,
                             &mut patch,
