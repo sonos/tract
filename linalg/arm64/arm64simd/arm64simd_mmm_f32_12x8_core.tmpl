@@ -1,6 +1,9 @@
 // vim: ft=arm
 
-// C tile regs: d8..d16 to preserve, v16 to v31, no need to preserve
+// C tile regs: 
+// - x19-x29 to preserve (but x19, x28, x29 not used) 
+// - d8..d15 to preserve
+// - v16 to v31, no need to preserve
 //
 // v8  v11 v14 v17 v20 v23 v26 v29
 // v9  v12 v15 v18 v21 v24 v27 v30
@@ -17,12 +20,10 @@
 .global {{G}}arm64simd_mmm_f32_12x8_{{core}}_{{suffix}}
 {{G}}arm64simd_mmm_f32_12x8_{{core}}_{{suffix}}:
 
-    stp         x19, x20, [sp, #-16]!
-    stp         x21, x22, [sp, #-16]!
-    stp         x23, x24, [sp, #-16]!
-    stp         x25, x26, [sp, #-16]!
-    stp         x27, x28, [sp, #-16]!
-    stp         x29, x30, [sp, #-16]!
+    stp         x20, x21, [sp, #-16]!
+    stp         x22, x23, [sp, #-16]!
+    stp         x24, x25, [sp, #-16]!
+    stp         x26, x27, [sp, #-16]!
 
     stp         d8, d9, [sp, #-16]!
     stp         d10, d11, [sp, #-16]!
@@ -152,12 +153,10 @@
     ldp         d10, d11, [sp], #16
     ldp         d8, d9, [sp], #16
 
-    ldp         x29, x30, [sp], #16
-    ldp         x27, x28, [sp], #16
-    ldp         x25, x26, [sp], #16
-    ldp         x23, x24, [sp], #16
-    ldp         x21, x22, [sp], #16
-    ldp         x19, x20, [sp], #16
+    ldp         x26, x27, [sp], #16
+    ldp         x24, x25, [sp], #16
+    ldp         x22, x23, [sp], #16
+    ldp         x20, x21, [sp], #16
 
     ret
 
