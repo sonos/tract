@@ -569,7 +569,7 @@ impl TypedOp for AxisOp {
                 axes.push(Axis::new(letter, inputs.len(), outputs.len()).output(0, axis));
             }
         }
-        axes.into_iter().collect()
+        AxesMapping::new(inputs.len(), outputs.len(), axes)
     }
 
     fn declutter(

@@ -3,6 +3,7 @@ use crate::internal::*;
 use std::convert::TryFrom;
 use tract_data::internal::ClampCast;
 use tract_data::itertools::Itertools;
+use tract_ndarray::iter::Axes;
 use tract_ndarray::prelude::*;
 use tract_num_traits::Bounded;
 
@@ -296,7 +297,7 @@ impl TypedOp for Reduce {
         outputs: &[&TypedFact],
     ) -> TractResult<AxesMapping> {
         let mut letters = 'a'..;
-        (0..inputs[0].rank())
+        let axes = (0..inputs[0].rank())
             .flat_map(|ix| {
                 if self.axes.contains(&ix) {
                     tvec!(
@@ -312,7 +313,8 @@ impl TypedOp for Reduce {
                 }
                 .into_iter()
             })
-            .collect()
+            .collect_vec();
+        AxesMapping::new(1, 1, axes)
     }
 
     fn change_axes(

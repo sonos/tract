@@ -69,13 +69,13 @@ impl EinSum {
         } else {
             None
         };
-        let new_expr = self
+        let axes = self
             .axes
             .iter_all_axes()
             .map(|it| if it.repr == new_axis.repr { new_axis.clone() } else { it.clone() })
-            .collect::<TractResult<AxesMapping>>()?;
-        let mut wire =
-            patch.wire_node(&node.name, Self { axes: new_expr, ..self.clone() }, &taps)?;
+            .collect_vec();
+        let axes = AxesMapping::new(self.axes.input_count(), 1, axes)?;
+        let mut wire = patch.wire_node(&node.name, Self { axes, ..self.clone() }, &taps)?;
         if let Some(position) = must_rm_axis {
             wire = patch.wire_node(
                 format!("{}.prop_axis.{}.output", &node.name, repr),

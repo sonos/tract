@@ -224,7 +224,7 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
             let path = entry.path()?.to_path_buf();
             read_stream(&self.resource_loaders, &path, &mut entry, &mut resources)?;
         }
-        proto_model_from_resources(resources)
+dbg!(        proto_model_from_resources(resources))
     }
 
     fn model_for_proto_model_with_symbols(
@@ -280,6 +280,7 @@ fn proto_model_from_resources(
     };
 
     let proto = ProtoModel { doc, tensors, quantization, resources };
+    dbg!(&proto);
     proto.validate()?;
     Ok(proto)
 }
@@ -296,11 +297,13 @@ fn read_stream<R: std::io::Read>(
         return Ok(());
     }
     let mut last_loader_name;
+    trace!("reading {path:?}");
     for loader in resource_loaders {
         last_loader_name = Some(loader.name());
         let loaded = loader.try_load(path, reader).with_context(|| {
             anyhow!("Error while loading resource by {:?} at path {:?}", loader.name(), path)
         })?;
+        dbg!(&loaded);
         if let Some((id, resource)) = loaded {
             ensure!(
                 !resources.contains_key(&id),

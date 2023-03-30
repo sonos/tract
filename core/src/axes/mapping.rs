@@ -1,5 +1,4 @@
 use std::fmt::Display;
-use std::iter::FromIterator;
 use std::str::FromStr;
 
 use tract_ndarray::{ArrayViewD, ArrayViewMutD};
@@ -17,18 +16,14 @@ pub struct AxesMapping {
 }
 
 impl AxesMapping {
-    pub fn new(it: impl AsRef<[Axis]>) -> TractResult<AxesMapping> {
+    pub fn new(
+        input_count: usize,
+        output_count: usize,
+        it: impl AsRef<[Axis]>,
+    ) -> TractResult<AxesMapping> {
         let mut axes: TVec<_> = it.as_ref().into();
         axes.sort_by_key(|ax| ax.repr);
-        let input_count = axes[0].inputs.len();
-        let output_count = axes[0].outputs.len();
         AxesMapping { axes, output_count, input_count }.check()
-    }
-
-    pub fn new_no_inputs(it: impl AsRef<[Axis]>) -> TractResult<AxesMapping> {
-        let axes: TVec<_> = it.as_ref().into();
-        let output_count = axes[0].outputs.len();
-        AxesMapping { axes, input_count: 0, output_count }.check()
     }
 
     pub fn for_numpy_matmul(
@@ -64,7 +59,7 @@ impl AxesMapping {
             inputs: tvec!(tvec!(), tvec!(rank - 1 - transposing_b as usize),),
             outputs: tvec!(tvec!(rank - 1 - transposing_c as usize)),
         });
-        AxesMapping::new(axes)
+        AxesMapping::new(2, 1, axes)
     }
 
     pub fn disconnected(inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<AxesMapping> {
@@ -341,7 +336,7 @@ impl AxesMapping {
                 repr: axis.repr,
             })
             .collect();
-        AxesMapping::new(axes)
+        AxesMapping::new(inputs.len(), outputs.len(), axes)
     }
 
     pub fn relabel(mut self) -> TractResult<AxesMapping> {
@@ -487,7 +482,11 @@ impl AxesMapping {
                 .enumerate()
                 .for_each(|(ix, (_, v))| v.add_output(0, ix))
         }
-        axes.into_iter().sorted_by_key(|(k, _)| *k).map(|(_, v)| v).collect()
+        Self::new(
+            inputs.len(),
+            outputs.len().max(1),
+            axes.into_iter().sorted_by_key(|(k, _)| *k).map(|(_, v)| v).collect_vec(),
+        )
     }
 
     pub fn to_strs(&self) -> (TVec<String>, TVec<String>) {
@@ -559,15 +558,12 @@ impl AxesMapping {
         }
         let mut ops = vec![AxisOp::Add(0); target_rank - rank];
         ops.extend(crate::ops::change_axes::perm_to_ops(&permutation).into_iter());
-        dbg!(&ops);
         Ok(ops)
     }
 
     pub fn view_to_canonical<D>(&self, io: InOut, view: &mut ArrayViewD<D>) -> TractResult<()> {
-        dbg!(&view.shape());
         for op in self.axis_ops_to_canonical(io)? {
             op.change_view(view)?;
-            dbg!(op, &view.shape());
         }
         Ok(())
     }
@@ -577,21 +573,10 @@ impl AxesMapping {
         io: InOut,
         view: &mut ArrayViewMutD<D>,
     ) -> TractResult<()> {
-        dbg!(&self.axes);
-        for op in dbg!(self.axis_ops_to_canonical(io)?) {
+        for op in self.axis_ops_to_canonical(io)? {
             op.change_view_mut(view)?;
         }
         Ok(())
-    }
-}
-
-impl FromIterator<Axis> for TractResult<AxesMapping> {
-    fn from_iter<T: IntoIterator<Item = Axis>>(iter: T) -> TractResult<AxesMapping> {
-        let axes = iter.into_iter().collect::<TVec<_>>();
-        if axes.len() == 0 {
-            bail!("Can not build axes mapping by collecting 0 axes");
-        }
-        AxesMapping::new(axes)
     }
 }
 
@@ -627,10 +612,14 @@ mod test {
     fn test_parse_transpose() {
         assert_eq!(
             m("ij->ji"),
-            AxesMapping::new(tvec![
-                Axis::new('i', 1, 1).output(0, 1).input(0, 0),
-                Axis::new('j', 1, 1).output(0, 0).input(0, 1)
-            ])
+            AxesMapping::new(
+                1,
+                1,
+                tvec![
+                    Axis::new('i', 1, 1).output(0, 1).input(0, 0),
+                    Axis::new('j', 1, 1).output(0, 0).input(0, 1)
+                ]
+            )
             .unwrap(),
         )
     }
@@ -639,8 +628,12 @@ mod test {
     fn test_parse_diag() {
         assert_eq!(
             m("ii->i"),
-            AxesMapping::new(tvec![Axis::new('i', 1, 1).output(0, 0).input(0, 0).input(0, 1)])
-                .unwrap(),
+            AxesMapping::new(
+                1,
+                1,
+                tvec![Axis::new('i', 1, 1).output(0, 0).input(0, 0).input(0, 1)]
+            )
+            .unwrap(),
         )
     }
 
@@ -648,8 +641,12 @@ mod test {
     fn test_parse_adamar_product_explicit() {
         assert_eq!(
             m("i,i->i"),
-            AxesMapping::new(tvec![Axis::new('i', 2, 1).output(0, 0).input(0, 0).input(1, 0)])
-                .unwrap(),
+            AxesMapping::new(
+                2,
+                1,
+                tvec![Axis::new('i', 2, 1).output(0, 0).input(0, 0).input(1, 0)]
+            )
+            .unwrap(),
         )
     }
 
@@ -662,12 +659,16 @@ mod test {
     fn test_parse_batch_matmul() {
         assert_eq!(
             m("bij , bjk -> bik "),
-            AxesMapping::new(tvec![
-                Axis::new('b', 2, 1).output(0, 0).input(0, 0).input(1, 0),
-                Axis::new('i', 2, 1).output(0, 1).input(0, 1),
-                Axis::new('j', 2, 1).input(0, 2).input(1, 1),
-                Axis::new('k', 2, 1).output(0, 2).input(1, 2)
-            ])
+            AxesMapping::new(
+                2,
+                1,
+                tvec![
+                    Axis::new('b', 2, 1).output(0, 0).input(0, 0).input(1, 0),
+                    Axis::new('i', 2, 1).output(0, 1).input(0, 1),
+                    Axis::new('j', 2, 1).input(0, 2).input(1, 1),
+                    Axis::new('k', 2, 1).output(0, 2).input(1, 2)
+                ]
+            )
             .unwrap()
         )
     }
@@ -676,10 +677,14 @@ mod test {
     fn test_parse_outer_product() {
         assert_eq!(
             m("i,j->ij"),
-            AxesMapping::new(tvec![
-                Axis::new('i', 2, 1).output(0, 0).input(0, 0),
-                Axis::new('j', 2, 1).output(0, 1).input(1, 0)
-            ])
+            AxesMapping::new(
+                2,
+                1,
+                tvec![
+                    Axis::new('i', 2, 1).output(0, 0).input(0, 0),
+                    Axis::new('j', 2, 1).output(0, 1).input(1, 0)
+                ]
+            )
             .unwrap(),
         )
     }
@@ -688,12 +693,16 @@ mod test {
     fn test_parse_bilinear() {
         assert_eq!(
             m("ik,jkl,il->ij"),
-            AxesMapping::new(tvec![
-                Axis::new('i', 3, 1).output(0, 0).input(0, 0).input(2, 0),
-                Axis::new('j', 3, 1).output(0, 1).input(1, 0),
-                Axis::new('k', 3, 1).input(0, 1).input(1, 1),
-                Axis::new('l', 3, 1).input(1, 2).input(2, 1)
-            ])
+            AxesMapping::new(
+                3,
+                1,
+                tvec![
+                    Axis::new('i', 3, 1).output(0, 0).input(0, 0).input(2, 0),
+                    Axis::new('j', 3, 1).output(0, 1).input(1, 0),
+                    Axis::new('k', 3, 1).input(0, 1).input(1, 1),
+                    Axis::new('l', 3, 1).input(1, 2).input(2, 1)
+                ]
+            )
             .unwrap(),
         )
     }
@@ -702,15 +711,19 @@ mod test {
     fn test_parse_complex_tensor_contraction() {
         assert_eq!(
             m("pqrs,tuqvr->pstuv"),
-            AxesMapping::new(tvec![
-                Axis::new('p', 2, 1).output(0, 0).input(0, 0),
-                Axis::new('q', 2, 1).input(0, 1).input(1, 2),
-                Axis::new('r', 2, 1).input(0, 2).input(1, 4),
-                Axis::new('s', 2, 1).output(0, 1).input(0, 3),
-                Axis::new('t', 2, 1).output(0, 2).input(1, 0),
-                Axis::new('u', 2, 1).output(0, 3).input(1, 1),
-                Axis::new('v', 2, 1).output(0, 4).input(1, 3),
-            ])
+            AxesMapping::new(
+                2,
+                1,
+                tvec![
+                    Axis::new('p', 2, 1).output(0, 0).input(0, 0),
+                    Axis::new('q', 2, 1).input(0, 1).input(1, 2),
+                    Axis::new('r', 2, 1).input(0, 2).input(1, 4),
+                    Axis::new('s', 2, 1).output(0, 1).input(0, 3),
+                    Axis::new('t', 2, 1).output(0, 2).input(1, 0),
+                    Axis::new('u', 2, 1).output(0, 3).input(1, 1),
+                    Axis::new('v', 2, 1).output(0, 4).input(1, 3),
+                ]
+            )
             .unwrap(),
         )
     }
@@ -729,12 +742,16 @@ mod test {
     fn test_parse_pulsed_matmul() {
         assert_eq!(
             m("sij,ijk->sik"),
-            AxesMapping::new(tvec![
-                Axis::new('i', 2, 1).output(0, 1).input(0, 1).input(1, 0),
-                Axis::new('j', 2, 1).input(0, 2).input(1, 1),
-                Axis::new('k', 2, 1).output(0, 2).input(1, 2),
-                Axis::new('s', 2, 1).output(0, 0).input(0, 0),
-            ])
+            AxesMapping::new(
+                2,
+                1,
+                tvec![
+                    Axis::new('i', 2, 1).output(0, 1).input(0, 1).input(1, 0),
+                    Axis::new('j', 2, 1).input(0, 2).input(1, 1),
+                    Axis::new('k', 2, 1).output(0, 2).input(1, 2),
+                    Axis::new('s', 2, 1).output(0, 0).input(0, 0),
+                ]
+            )
             .unwrap()
         )
     }
@@ -743,13 +760,17 @@ mod test {
     fn test_parse_pulsed_batch_matmul() {
         assert_eq!(
             m("bsij,ijk->bsik"),
-            AxesMapping::new(tvec![
-                Axis::new('b', 2, 1).output(0, 0).input(0, 0),
-                Axis::new('i', 2, 1).output(0, 2).input(0, 2).input(1, 0),
-                Axis::new('j', 2, 1).input(0, 3).input(1, 1),
-                Axis::new('k', 2, 1).output(0, 3).input(1, 2),
-                Axis::new('s', 2, 1).output(0, 1).input(0, 1),
-            ])
+            AxesMapping::new(
+                2,
+                1,
+                tvec![
+                    Axis::new('b', 2, 1).output(0, 0).input(0, 0),
+                    Axis::new('i', 2, 1).output(0, 2).input(0, 2).input(1, 0),
+                    Axis::new('j', 2, 1).input(0, 3).input(1, 1),
+                    Axis::new('k', 2, 1).output(0, 3).input(1, 2),
+                    Axis::new('s', 2, 1).output(0, 1).input(0, 1),
+                ]
+            )
             .unwrap()
         )
     }

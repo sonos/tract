@@ -93,7 +93,6 @@ pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + 
         } else {
             */
         let c_shape = output_shape(axes, a.shape(), b.shape())?;
-        eprintln!("XXXXXXXX {axes} {:?} x {:?} -> {:?}", a.shape(), b.shape(), c_shape);
 
         /*
         if &*c_shape == a.shape() && c_dt == a.datum_type() {
@@ -180,7 +179,6 @@ fn output_shape<D: DimLike>(
         };
         shape.push(dim_c);
     }
-    eprintln!("YYYYYYYY {axes} {a:?} {b:?} {shape:?}");
     Ok(shape)
 }
 
@@ -232,7 +230,6 @@ impl TypedOp for TypedBinOp {
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
         let Some(axes) = self.axes.change_axis_sink(io, change)? else { return Ok(None) };
-        eprintln!("AAAAAA {node} {} {io:?} {change:?} => {axes}", self.axes);
         Ok(Some(AxisChangeConsequence {
             substitute_op: Some(Box::new(Self { axes, ..self.clone() })),
             wire_changes: tvec!((io, change.clone())),
@@ -501,14 +498,12 @@ macro_rules! bin_to_super_type {
                 $(if $out_of_place(c, a, b)? { return Ok(()) } )?
                     $(
                         $(if c.datum_type() == $typ::datum_type() {
-                            eprintln!("axes: {axes}");
                             let mut a = a.to_array_view::<$typ>()?;
                             let mut b = b.to_array_view::<$typ>()?;
                             let mut c = c.to_array_view_mut::<$typ>()?;
                             axes.view_to_canonical(InOut::In(0), &mut a)?;
                             axes.view_to_canonical(InOut::In(1), &mut b)?;
                             axes.view_to_canonical_mut(InOut::Out(0), &mut c)?;
-                            eprintln!("{axes} {:?} {:?} {:?}", a.shape(), b.shape(), c.shape());
                             $crate::ndarray::Zip::from(&mut c).and_broadcast(a).and_broadcast(b).for_each($cab);
                             return Ok(())
                         })*

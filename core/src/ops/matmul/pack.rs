@@ -81,7 +81,7 @@ impl TypedOp for MatMatMulPack {
         axes.push(Axis::new('K', 1, 1).input(0, self.k_axis));
         axes.push(Axis::new('M', 1, 1).input(0, self.mn_axis));
         axes.push(Axis::new('P', 1, 1).output(0, outputs[0].rank() - 1));
-        axes.into_iter().collect()
+        AxesMapping::new(1, 1, axes)
     }
 
     as_op!();

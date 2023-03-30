@@ -16,8 +16,6 @@ pub struct EinSum {
     pub expr: AxesMapping,
 }
 
-
-
 impl Expansion for EinSum {
     fn name(&self) -> Cow<str> {
         "EinSum".into()
