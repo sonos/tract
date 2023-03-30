@@ -769,6 +769,23 @@ impl TypedOp for Scan {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        anyhow::ensure!(
+            self.input_mapping.iter().filter(|m| m.as_state().is_some()).count()
+                == self.output_mapping.iter().filter(|m| m.state).count()
+        );
+        for (i, o) in self
+            .input_mapping
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| m.as_state().is_some())
+            .map(|(i, _)| i)
+            .zip(self.output_mapping.iter().enumerate().filter(|(_, m)| m.state).map(|(o, _)| o))
+        {
+            anyhow::ensure!(
+                self.body.outlet_fact(self.body.inputs[i])?
+                    == self.body.outlet_fact(self.body.outputs[o])?
+            )
+        }
         let mut outputs = tvec!();
         let iters = {
             let info = self.input_mapping.iter().flat_map(|it| it.as_scan()).next().unwrap();
