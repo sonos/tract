@@ -319,15 +319,17 @@ fn rvalue(i: &str) -> IResult<&str, RValue> {
 
     // <if-else-expr> ::= <rvalue-expr> "if" <rvalue-expr> "else" <rvalue-expr>
     fn ite(i: &str) -> IResult<&str, RValue> {
-        spaced(alt((
-            map(
-                tuple((in_for, stag("if"), in_for, stag("else"), in_for)),
-                |(then, _, cond, _, otherwise)| {
-                    RValue::IfThenElse(Box::new(IfThenElse { cond, then, otherwise }))
-                },
-            ),
-            in_for,
-        )))(i)
+        let (i, cond) = in_for(i)?;
+        let (i, _) = space_and_comments(i)?;
+        if i.starts_with("if") {
+            let (i, _) = stag("if")(i)?;
+            let (i, then) = in_for(i)?;
+            let (i, _) = stag("else")(i)?;
+            let (i, otherwise) = in_for(i)?;
+            Ok((i, RValue::IfThenElse(Box::new(IfThenElse { cond, then, otherwise }))))
+        } else {
+            Ok((i, cond))
+        }
     }
 
     ite(i)
@@ -472,7 +474,7 @@ mod test {
             p(type_spec, " ( scalar , scalar [ ] , tensor < scalar > ) "),
             Tuple(vec!(Single(Scalar), Array(Box::new(Single(Scalar))), Tensor(Scalar)))
         );
-         #[cfg(feature = "complex")]
+        #[cfg(feature = "complex")]
         assert_eq!(p(type_spec, "tensor<complex>[]"), Array(Box::new(Tensor(TypeName::Complex))));
     }
 
@@ -496,8 +498,8 @@ mod test {
     #[test]
     fn test_fragment_decl_logarithmic_quantize() {
         let parsed = p(fragment_decl,
-                       "fragment logarithmic_quantize(x: tensor<scalar>, max: tensor<scalar>, bits: integer ) -> ( y: tensor<scalar> )"
-                      );
+                           "fragment logarithmic_quantize(x: tensor<scalar>, max: tensor<scalar>, bits: integer ) -> ( y: tensor<scalar> )"
+                          );
         assert_eq!(
             parsed,
             FragmentDecl {
@@ -752,7 +754,6 @@ mod test {
     }
 
     #[test]
-    #[ignore]
     fn test_freeze() {
         p(
             document,
@@ -767,28 +768,28 @@ graph y( x, s, bias ) -> ( y ) {
         mul(
             mul(
                 sub(
-                    x, 
+                    x,
                     mul(
                         0.33333334,
                         sum_reduce(
-                            x, 
+                            x,
                             axes = [0, 2, 3]
                         )
                     )
                 ),
                 rsqrt(
                     add(
-                        0.00001, 
+                        0.00001,
                         mul(
-                            0.33333334, 
+                            0.33333334,
                             sum_reduce(
                                 square(
                                     sub(
-                                        x, 
+                                        x,
                                         mul(
-                                            0.33333334, 
+                                            0.33333334,
                                             sum_reduce(
-                                                x, 
+                                                x,
                                                 axes = [0, 2, 3]
                                             )
                                         )
