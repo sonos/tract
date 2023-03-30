@@ -319,16 +319,16 @@ fn rvalue(i: &str) -> IResult<&str, RValue> {
 
     // <if-else-expr> ::= <rvalue-expr> "if" <rvalue-expr> "else" <rvalue-expr>
     fn ite(i: &str) -> IResult<&str, RValue> {
-        let (i, cond) = in_for(i)?;
+        let (i, leftmost) = in_for(i)?;
         let (i, _) = space_and_comments(i)?;
         if i.starts_with("if") {
             let (i, _) = stag("if")(i)?;
-            let (i, then) = in_for(i)?;
+            let (i, cond) = in_for(i)?;
             let (i, _) = stag("else")(i)?;
             let (i, otherwise) = in_for(i)?;
-            Ok((i, RValue::IfThenElse(Box::new(IfThenElse { cond, then, otherwise }))))
+            Ok((i, RValue::IfThenElse(Box::new(IfThenElse { cond, then: leftmost, otherwise }))))
         } else {
-            Ok((i, cond))
+            Ok((i, leftmost))
         }
     }
 
