@@ -141,13 +141,13 @@ impl Registry {
                     return Ok(Some(result));
                 }
             }
-        } else if let Some(op) = node.op().downcast_ref::<ops::binary::TypedBinOp>() {
-            if let Some(op) =
-                self.binary_ops.iter().find(|ew| ew.1.as_ref().type_id() == op.op.type_id())
+        } else if let Some(bin_op) = node.op().downcast_ref::<ops::binary::TypedBinOp>() {
+            if let Some(mini_op_name) =
+                self.binary_ops.iter().find(|(_name, op)| op.as_ref().type_id() == bin_op.op.type_id()).map(|(name, _op)| name)
             {
                 let a = ast.mapping[&node.inputs[0]].clone();
                 let b = ast.mapping[&node.inputs[1]].clone();
-                return Ok(Some(invocation(&op.0, &[a, b], &[])));
+                return Ok(Some(invocation(&mini_op_name, &[a, b], &[])));
             }
         } else if let Some(op) = self.from_tract.get(&node.op().type_id()) {
             if let Some(result) = op(ast, node)? {
@@ -216,8 +216,10 @@ impl Registry {
                 };
             }
             let inputs = multicast(builder, &[a, b])?;
-            let mut wire = builder.wire_as_outlets(
-                tract_core::ops::binary::TypedBinOp { op: bin.1.clone() },
+            let mut wire = wire_bin(
+                builder.generate_node_name(),
+                &mut builder.model,
+                bin.1.clone(),
                 &inputs,
             )?[0];
             if let Some(Some(out_dt)) = dt.get(0) {

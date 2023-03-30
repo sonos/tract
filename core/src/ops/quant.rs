@@ -8,7 +8,6 @@ use tract_linalg::lut::Lut;
 use tract_linalg::mmm::RoundingPolicy;
 use tract_linalg::Scaler;
 
-use super::binary::TypedBinOp;
 use super::math::round_ties_to_even;
 
 pub fn quantize_linear_f32_u8(x: f32, scale: f32, zero_point: i32) -> u8 {
@@ -28,8 +27,8 @@ element_wise_oop!(quantize_linear_u8,
  },
  [f32,i32] => u8 |op, xs, ys| {
      xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
-                                           *y = quantize_linear_f32_u8(*x as f32, op.scale, op.zero_point as i32)
-                                          );
+        *y = quantize_linear_f32_u8(*x as f32, op.scale, op.zero_point as i32)
+     );
      Ok(())
  };
  info: info_quantize_linear_u8
@@ -313,24 +312,35 @@ impl crate::ops::binary::BinMiniOp for Scale {
         Ok(())
     }
 
-    fn eval_out_of_place(&self, c: &mut Tensor, a: &Tensor, b: &Tensor) -> TractResult<()> {
-        let a = a.to_array_view::<f32>()?;
+    fn eval_out_of_place(
+        &self,
+        axes: &AxesMapping,
+        c: &mut Tensor,
+        a: &Tensor,
+        b: &Tensor,
+    ) -> TractResult<()> {
+        let mut a = a.to_array_view::<f32>()?;
+        axes.view_to_canonical(InOut::In(0), &mut a)?;
         unsafe fn eval_out_of_place_t<T: Datum + AsPrimitive<f32>>(
+            axes: &AxesMapping,
             c: &mut Tensor,
             a: &ndarray::ArrayViewD<f32>,
             b: &Tensor,
-        ) where
+        ) -> TractResult<()>
+        where
             f32: AsPrimitive<T>,
         {
-            let b = b.to_array_view_unchecked::<T>();
+            let mut b = b.to_array_view_unchecked::<T>();
+            axes.view_to_canonical(InOut::In(1), &mut b)?;
             let mut c = c.to_array_view_mut_unchecked::<T>();
+            axes.view_to_canonical_mut(InOut::Out(0), &mut c)?;
             ndarray::Zip::from(&mut c)
                 .and_broadcast(a)
                 .and_broadcast(b)
-                .for_each(|c, a, b| *c = scale_by(*b, *a))
+                .for_each(|c, a, b| *c = scale_by(*b, *a));
+            Ok(())
         }
-        unsafe { dispatch_numbers!(eval_out_of_place_t(b.datum_type())(c, &a, b)) }
-        Ok(())
+        unsafe { dispatch_numbers!(eval_out_of_place_t(b.datum_type())(axes, c, &a, b)) }
     }
 
     fn eval_in_a(&self, a: &mut Tensor, b: &Tensor) -> TractResult<()> {
@@ -377,10 +387,6 @@ where
 {
     let b = b.as_();
     (round_ties_to_even(b.abs() * a) * b.signum()).as_()
-}
-
-pub fn scale() -> TypedBinOp {
-    TypedBinOp { op: Box::new(Scale) }
 }
 
 /// Offsets u8 integers as i8 integers.

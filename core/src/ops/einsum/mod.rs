@@ -285,27 +285,9 @@ impl TypedOp for EinSum {
         io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
-        let (mut inputs, mut outputs) = self.axes.to_strs();
-        let interface: &mut String = match io {
-            InOut::In(i) => &mut inputs[i],
-            InOut::Out(o) => &mut outputs[o],
-        };
-        let mut axes: Vec<char> = interface.chars().collect();
-        match change {
-            AxisOp::Rm(rm) => {
-                axes.remove(*rm);
-            }
-            AxisOp::Add(add) => axes.insert(*add, self.axes.available_label()),
-            AxisOp::Move(from, to) => {
-                let c = axes.remove(*from);
-                axes.insert(*to, c);
-            }
-            _ => return Ok(None),
-        };
-        *interface = axes.into_iter().collect();
-        let axes = AxesMapping::from_strs(&inputs, &outputs)?;
+        let Some(axes) = self.axes.change_axis_sink(io, change)? else { return Ok(None) };
         Ok(Some(AxisChangeConsequence {
-            substitute_op: Some(Box::new(EinSum { axes, ..self.clone() })),
+            substitute_op: Some(Box::new(Self { axes, ..self.clone() })),
             wire_changes: tvec!((io, change.clone())),
         }))
     }

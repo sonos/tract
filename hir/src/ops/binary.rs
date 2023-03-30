@@ -38,9 +38,8 @@ impl Expansion for InferenceBinOp {
             target.outlet_fact(inputs[0])?.datum_type,
             target.outlet_fact(inputs[1])?.datum_type,
         )?;
-        let wires = wire_rank_broadcast(prefix, target, inputs)?;
-        let wires = wire_cast(prefix, target, &wires, operating_datum_type)?;
-        target.wire_node(prefix, mir::binary::TypedBinOp { op: self.0.clone() }, &wires)
+        let wires = wire_cast(prefix, target, &inputs, operating_datum_type)?;
+        wire_bin(prefix, target, self.0.clone(), &wires)
     }
 }
 
@@ -116,7 +115,7 @@ impl Nary {
     }
 }
 
-impl Op for Nary {
+impl Expansion for Nary {
     fn name(&self) -> Cow<str> {
         format!("{}Nary", self.0.name()).into()
     }
@@ -125,36 +124,6 @@ impl Op for Nary {
         self.0.validation()
     }
 
-    not_a_typed_op!();
-}
-
-impl EvalOp for Nary {
-    fn is_stateless(&self) -> bool {
-        true
-    }
-
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let mut t = inputs[0].clone().into_tensor();
-        for i in inputs[1..].iter() {
-            let mut i = i.clone().into_tensor();
-            let operating_datum_type =
-                self.0.operating_datum_type(t.datum_type(), i.datum_type())?;
-            if i.datum_type() != operating_datum_type {
-                i = i.cast_to_dt(operating_datum_type)?.into_owned();
-            }
-            if t.datum_type() != operating_datum_type {
-                t = t.cast_to_dt(operating_datum_type)?.into_owned();
-            }
-            t = self.0.eval(t.into_tvalue(), i.into_tvalue())?;
-        }
-        if self.1 {
-            dispatch_numbers!(Self::normalize_t(t.datum_type())(&mut t, inputs.len()))?;
-        }
-        Ok(tvec!(t.into_tvalue()))
-    }
-}
-
-impl InferenceRulesOp for Nary {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -180,41 +149,29 @@ impl InferenceRulesOp for Nary {
         })
     }
 
-    fn to_typed(
+    fn wire(
         &self,
-        _source: &InferenceModel,
-        node: &InferenceNode,
-        target: &mut TypedModel,
-        mapping: &HashMap<OutletId, OutletId>,
+        prefix: &str,
+        model: &mut TypedModel,
+        inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<Vec<_>>();
         let types = inputs
             .iter()
-            .map(|i| Ok(target.outlet_fact(*i)?.datum_type))
+            .map(|i| Ok(model.outlet_fact(*i)?.datum_type))
             .collect::<TractResult<Vec<_>>>()?;
         let dt = DatumType::super_type_for(&types)
             .with_context(|| format!("No super type for {types:?}"))?;
         let operating = self.0.operating_datum_type(dt, dt)?;
-        let inputs = wire_cast(&node.name, target, &inputs, operating)?;
+        let inputs = wire_cast(prefix, model, &inputs, operating)?;
         let mut wire = inputs[0];
         for (ix, i) in inputs[1..].iter().enumerate() {
-            let wires = wire_rank_broadcast(&format!("{}.{}", node.name, ix), target, &[wire, *i])?;
-            wire = target.wire_node(
-                format!("{}.{}", node.name, ix),
-                mir::binary::TypedBinOp { op: self.0.clone() },
-                &wires,
-            )?[0];
+            wire = wire_bin(format!("{prefix}.{ix}"), model, self.0.clone(), &[wire, *i])?[0];
         }
         if self.1 {
-            let n = tensor0(inputs.len() as i32)
-                .cast_to_dt(node.outputs[0].fact.datum_type.concretize().unwrap())?
-                .into_owned()
-                .broadcast_into_rank(target.outlet_fact(inputs[0])?.rank())?;
-            let n = target.add_const(format!("{}.n", node.name), n.into_arc_tensor())?;
-            wire = wire_bin(format!("{}.norm", node.name), target, Div, &[wire, n])?[0];
+            let n = tensor0(inputs.len() as i32).cast_to_dt(dt)?.into_owned();
+            let n = model.add_const(format!("{prefix}.n"), n)?;
+            wire = wire_bin(format!("{prefix}.norm"), model, Div, &[wire, n])?[0];
         }
         Ok(tvec!(wire))
     }
-
-    as_op!();
 }

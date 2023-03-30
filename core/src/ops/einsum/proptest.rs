@@ -1,6 +1,8 @@
 use std::fmt;
 
 use crate::internal::*;
+use crate::ops::binary::wire_bin;
+use crate::ops::math::Add;
 use proptest::prelude::*;
 use proptest::strategy::BoxedStrategy;
 use tract_ndarray::ArrayD;
@@ -115,7 +117,7 @@ impl BinEinsumProblem {
         )?;
         if let Some(c) = &self.unicast_add_constant {
             let c = model.add_const("c", c.clone())?;
-            output = model.wire_node("add", crate::ops::math::add(), &[output[0], c])?;
+            output = wire_bin("add", &mut model, Add, &[output[0], c])?;
         }
         model.set_output_outlets(&output)?;
         model = model.into_decluttered()?;
@@ -156,6 +158,20 @@ fn unicast_1() {
         a_constant: false,
         b_constant: false,
         unicast_add_constant: Some(tensor2(&[[0f32, 0.], [0., 1.]])),
+    }
+    .check()
+    .unwrap()
+}
+
+#[test]
+fn broadcast_0() {
+    BinEinsumProblem {
+        expr: "awk,gwk->agw".parse().unwrap(),
+        a: Tensor::zero::<f32>(&[2, 1, 1]).unwrap(),
+        b: Tensor::zero::<f32>(&[1, 1, 1]).unwrap(),
+        a_constant: false,
+        b_constant: false,
+        unicast_add_constant: Some(tensor3(&[[[0f32]], [[1.]]])),
     }
     .check()
     .unwrap()

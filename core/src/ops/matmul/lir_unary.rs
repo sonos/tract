@@ -403,6 +403,7 @@ impl TypedOp for LirMatMulUnary {
 
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         use crate::ops;
+        return Ok(None);
         if node.outputs.len() != 1
             || node.outputs[0].successors.len() != 1
             || model.output_outlets()?.contains(&node.id.into())
@@ -411,6 +412,7 @@ impl TypedOp for LirMatMulUnary {
         }
         let succ = model.node(node.outputs[0].successors[0].node);
         let mut patch = TypedModelPatch::new(format!("fusing {succ}"));
+        /*
         if let Some(op) = succ.op_as::<ops::binary::TypedBinOp>() {
             let mut binop =
                 if let Some(op) = op.op.as_linalg_binop() { op } else { return Ok(None) };
@@ -421,6 +423,7 @@ impl TypedOp for LirMatMulUnary {
             let other_outlet = succ.inputs[flipped as usize];
             return self.fuse_binary(model, node, patch, other_outlet, binop);
         }
+        */
 
         if let Some(op) = succ.op_as::<ops::element_wise::ElementWiseOp>().map(|ew| ew.0.as_ref()) {
             if let Some(op) = op.downcast_ref::<ops::math::QScale>() {

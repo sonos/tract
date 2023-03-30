@@ -24,10 +24,10 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("BitwiseXor", |_, _| Ok((ops::logic::BitXor.into_hir(), vec![])));
     reg.insert("BitwiseNot", |_, _| Ok((ops::logic::bitnot().into_hir(), vec![])));
 
-    reg.insert("Sum", |_, _| Ok((Box::new(Nary(Box::new(ops::math::Add), false)), vec![])));
-    reg.insert("Max", |_, _| Ok((Box::new(Nary(Box::new(ops::math::Max), false)), vec![])));
-    reg.insert("Min", |_, _| Ok((Box::new(Nary(Box::new(ops::math::Min), false)), vec![])));
-    reg.insert("Mean", |_, _| Ok((Box::new(Nary(Box::new(ops::math::Add), true)), vec![])));
+    reg.insert("Sum", |_, _| Ok((expand(Nary(Box::new(ops::math::Add), false)), vec![])));
+    reg.insert("Max", |_, _| Ok((expand(Nary(Box::new(ops::math::Max), false)), vec![])));
+    reg.insert("Min", |_, _| Ok((expand(Nary(Box::new(ops::math::Min), false)), vec![])));
+    reg.insert("Mean", |_, _| Ok((expand(Nary(Box::new(ops::math::Add), true)), vec![])));
 
     reg.insert("Abs", |_, _| Ok((ops::math::abs().into_hir(), vec![])));
     reg.insert("Ceil", |_, _| Ok((ops::math::ceil().into_hir(), vec![])));

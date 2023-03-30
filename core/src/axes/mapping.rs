@@ -2,6 +2,8 @@ use std::fmt::Display;
 use std::iter::FromIterator;
 use std::str::FromStr;
 
+use tract_ndarray::{ArrayViewD, ArrayViewMutD};
+
 use crate::internal::*;
 use crate::prelude::tract_itertools::Itertools;
 
@@ -99,8 +101,12 @@ impl AxesMapping {
             .collect::<TVec<_>>();
         AxesMapping { axes, output_count: outputs.len(), input_count: inputs.len() }.check()
     }
-    
-    pub fn natural_for_rank(inputs: usize, outputs: usize, rank:usize) -> TractResult<AxesMapping> {
+
+    pub fn natural_for_rank(
+        inputs: usize,
+        outputs: usize,
+        rank: usize,
+    ) -> TractResult<AxesMapping> {
         let axes = (0..rank)
             .zip('a'..)
             .map(|(axis_id, repr)| Axis::natural(inputs, outputs, repr, axis_id))
@@ -137,6 +143,13 @@ impl AxesMapping {
     fn input_axis_mut(&mut self, input: usize, position: usize) -> TractResult<&mut Axis> {
         let repr = self.input_axis(input, position)?.repr;
         Ok(self.axes.iter_mut().find(|axis| axis.repr == repr).unwrap())
+    }
+
+    pub fn interface_rank(&self, io: InOut) -> usize {
+        match io {
+            InOut::In(i) => self.input_rank(i),
+            InOut::Out(o) => self.output_rank(o),
+        }
     }
 
     pub fn input_rank(&self, input: usize) -> usize {
@@ -503,6 +516,72 @@ impl AxesMapping {
             outputs.push(s);
         }
         (inputs, outputs)
+    }
+
+    pub fn change_axis_sink(&self, io: InOut, change: &AxisOp) -> TractResult<Option<AxesMapping>> {
+        let (mut inputs, mut outputs) = self.to_strs();
+        let interface: &mut String = match io {
+            InOut::In(i) => &mut inputs[i],
+            InOut::Out(o) => &mut outputs[o],
+        };
+        let mut axes: Vec<char> = interface.chars().collect();
+        match change {
+            AxisOp::Rm(rm) => {
+                axes.remove(*rm);
+            }
+            AxisOp::Add(add) => axes.insert(*add, self.available_label()),
+            AxisOp::Move(from, to) => {
+                let c = axes.remove(*from);
+                axes.insert(*to, c);
+            }
+            _ => return Ok(None),
+        };
+        *interface = axes.into_iter().collect();
+        Ok(Some(AxesMapping::from_strs(&inputs, &outputs)?))
+    }
+
+    pub fn axis_ops_to_canonical(&self, io: InOut) -> TractResult<Vec<AxisOp>> {
+        let rank = self.interface_rank(io);
+        let target_rank = self.axes.len();
+        let mut next_insert_axis = 0;
+        let mut permutation = tvec!();
+        for axis in &self.axes {
+            let spec = match io {
+                InOut::In(i) => axis.inputs[i].get(0),
+                InOut::Out(o) => axis.outputs[o].get(0),
+            };
+            if let Some(pos_in_a) = spec {
+                permutation.push(pos_in_a + target_rank - rank)
+            } else {
+                permutation.push(next_insert_axis);
+                next_insert_axis += 1;
+            }
+        }
+        let mut ops = vec![AxisOp::Add(0); target_rank - rank];
+        ops.extend(crate::ops::change_axes::perm_to_ops(&permutation).into_iter());
+        dbg!(&ops);
+        Ok(ops)
+    }
+
+    pub fn view_to_canonical<D>(&self, io: InOut, view: &mut ArrayViewD<D>) -> TractResult<()> {
+        dbg!(&view.shape());
+        for op in self.axis_ops_to_canonical(io)? {
+            op.change_view(view)?;
+            dbg!(op, &view.shape());
+        }
+        Ok(())
+    }
+
+    pub fn view_to_canonical_mut<D>(
+        &self,
+        io: InOut,
+        view: &mut ArrayViewMutD<D>,
+    ) -> TractResult<()> {
+        dbg!(&self.axes);
+        for op in dbg!(self.axis_ops_to_canonical(io)?) {
+            op.change_view_mut(view)?;
+        }
+        Ok(())
     }
 }
 
