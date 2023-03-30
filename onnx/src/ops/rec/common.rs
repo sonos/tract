@@ -66,7 +66,7 @@ impl CommonRec {
         let x_fact = target.outlet_fact(inputs[0])?.clone();
         let r_fact = target.outlet_fact(inputs[2])?.clone();
 
-        let b_size = &x_fact.shape[1];
+        let b_size = &x_fact.shape[1 - self.batch_first as usize];
         let h_size = &r_fact.shape[2];
 
         let chunk = if dir == 0 { 1 } else { -1 };
