@@ -1,8 +1,9 @@
 // vim: ft=arm
 
-// x20..x27 are used, callee-preserved
-
 // C tile regs: v16 to v31, (scratch)
+// - x19-x29 to preserve (but x19, x28, x29 not used) 
+// - d8..d15 to preserve
+// - v16 to v31, no need to preserve
 // 
 //      v16[0] v18[0] v20[0] v22[0] v24[0] v26[0] v28[0] v30[0]
 //      v16[1] v18[1] 
@@ -14,7 +15,6 @@
 //      v17[2] v19[2] 
 //      v17[3] v19[3] 
 
-// v8 is used, d8 (lower half) must preserved
 // v0-v7 (scratch registers)
 //  packed A buffering (2x8 values): alternating v0, v1 with v2, v3
 //  packed B buffering (2x8 values): alternating v4, v5 with v6, v7
@@ -26,13 +26,11 @@
 .global {{G}}arm64simd_mmm_f32_8x8_{{core}}_{{suffix}}
 {{G}}arm64simd_mmm_f32_8x8_{{core}}_{{suffix}}:
 
-    stp         x19, x20, [sp, #-16]!
-    stp         x21, x22, [sp, #-16]!
-    stp         x23, x24, [sp, #-16]!
-    stp         x25, x26, [sp, #-16]!
-    stp         x27, x28, [sp, #-16]!
-    stp         x29, x30, [sp, #-16]!
-
+    stp         x20, x21, [sp, #-16]!
+    stp         x22, x23, [sp, #-16]!
+    stp         x24, x25, [sp, #-16]!
+    stp         x26, x27, [sp, #-16]!
+    
     stp         d8, d9, [sp, #-16]!
     stp         d10, d11, [sp, #-16]!
     stp         d12, d13, [sp, #-16]!
@@ -175,11 +173,9 @@
     ldp         d10, d11, [sp], #16
     ldp         d8, d9, [sp], #16
 
-    ldp         x29, x30, [sp], #16
-    ldp         x27, x28, [sp], #16
-    ldp         x25, x26, [sp], #16
-    ldp         x23, x24, [sp], #16
-    ldp         x21, x22, [sp], #16
-    ldp         x19, x20, [sp], #16
+    ldp         x26, x27, [sp], #16
+    ldp         x24, x25, [sp], #16
+    ldp         x22, x23, [sp], #16
+    ldp         x20, x21, [sp], #16
 
     ret
