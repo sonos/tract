@@ -16,12 +16,17 @@
 .global {{G}}arm64simd_mmm_f32_16x4_{{core}}_{{suffix}}
 {{G}}arm64simd_mmm_f32_16x4_{{core}}_{{suffix}}:
 
-    stp         x20, x21, [sp, #-16]!
-    stp         x22, x23, [sp, #-16]!
-    stp         x24, x25, [sp, #-16]!
-    stp         x26, x27, [sp, #-16]!
+    stp         x19, x20, [sp, #-16]!
+    stp         x21, x22, [sp, #-16]!
+    stp         x23, x24, [sp, #-16]!
+    stp         x25, x26, [sp, #-16]!
+    stp         x27, x28, [sp, #-16]!
+    stp         x29, x30, [sp, #-16]!
 
     stp         d8, d9, [sp, #-16]!
+    stp         d10, d11, [sp, #-16]!
+    stp         d12, d13, [sp, #-16]!
+    stp         d14, d15, [sp, #-16]!
 
 {% include "dispatcher.tmpliq" %}
 
@@ -155,12 +160,17 @@
     b           .non_linear_loop
 
 .return:
+    ldp         d14, d15, [sp], #16
+    ldp         d12, d13, [sp], #16
+    ldp         d10, d11, [sp], #16
     ldp         d8, d9, [sp], #16
 
-    ldp         x26, x27, [sp], #16
-    ldp         x24, x25, [sp], #16
-    ldp         x22, x23, [sp], #16
-    ldp         x20, x21, [sp], #16
+    ldp         x29, x30, [sp], #16
+    ldp         x27, x28, [sp], #16
+    ldp         x25, x26, [sp], #16
+    ldp         x23, x24, [sp], #16
+    ldp         x21, x22, [sp], #16
+    ldp         x19, x20, [sp], #16
 
     ret
 
