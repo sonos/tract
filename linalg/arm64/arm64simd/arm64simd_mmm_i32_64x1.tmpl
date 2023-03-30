@@ -1,6 +1,9 @@
 // vim: ft=arm
 
-// C tile regs: v16 to v31, no need to preserve
+// C tile regs: 
+// - x19-x29 to preserve (but x19, x28, x29 not used) 
+// - d8..d15 to preserve
+// - v16 to v31, no need to preserve
 
 // no preservation either for v0-v7...
 // packed A buffering (2x8 values): alternating v0, v1 with v2, v3
@@ -17,11 +20,15 @@
     prfm        pldl1keep, [x1]
     prfm        pldl1keep, [x2]
 */
-
     stp         x20, x21, [sp, #-16]!
     stp         x22, x23, [sp, #-16]!
     stp         x24, x25, [sp, #-16]!
     stp         x26, x27, [sp, #-16]!
+
+    stp         d8, d9, [sp, #-16]!
+    stp         d10, d11, [sp, #-16]!
+    stp         d12, d13, [sp, #-16]!
+    stp         d14, d15, [sp, #-16]!
 
 {% include "dispatcher.tmpliq" %}
 
@@ -133,6 +140,11 @@ non_linear_addc_i32:
     b   .non_linear_loop
 
 .return:
+    ldp         d14, d15, [sp], #16
+    ldp         d12, d13, [sp], #16
+    ldp         d10, d11, [sp], #16
+    ldp         d8, d9, [sp], #16
+    
     ldp         x26, x27, [sp], #16
     ldp         x24, x25, [sp], #16
     ldp         x22, x23, [sp], #16

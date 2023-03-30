@@ -1,6 +1,9 @@
 // vim: ft=arm
 
-// C tile regs: d8..d16 to preserve, v16 to v31, no need to preserve
+// C tile regs: 
+// - x19-x29 to preserve (but x19, x28, x29 not used) 
+// - d8..d15 to preserve
+// - v16 to v31, no need to preserve
 //
 // v8  v11 v14 v17 v20 v23 v26 v29
 // v9  v12 v15 v18 v21 v24 v27 v30
