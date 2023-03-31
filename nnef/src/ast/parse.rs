@@ -289,25 +289,28 @@ fn rvalue(i: &str) -> IResult<&str, RValue> {
 
     // <subscript-expr> ::= <rvalue-expr> "[" (<rvalue-expr> | [<rvalue-expr>] ":" [<rvalue-expr>]) "]"
     fn sub(i: &str) -> IResult<&str, RValue> {
-        alt((
+        fn subscript_indices(rv: RValue, i: &str) -> IResult<&str, RValue> {
             map(
-                pair(
-                    atom,
-                    delimited(
-                        stag("["),
-                        alt((
-                            map(separated_pair(opt(rvalue), stag(":"), opt(rvalue)), |(a, b)| {
-                                Subscript::Range(a, b)
-                            }),
-                            map(rvalue, Subscript::Single),
-                        )),
-                        stag("]"),
-                    ),
+                delimited(
+                    stag("["),
+                    alt((
+                        map(separated_pair(opt(rvalue), stag(":"), opt(rvalue)), |(a, b)| {
+                            Subscript::Range(a, b)
+                        }),
+                        map(rvalue, Subscript::Single),
+                    )),
+                    stag("]"),
                 ),
-                |(rv, range)| RValue::Subscript(Box::new(rv), Box::new(range)),
-            ),
-            atom,
-        ))(i)
+                |range| RValue::Subscript(Box::new(rv.clone()), Box::new(range)),
+            )(i)
+        }
+        let (i, a) = atom(i)?;
+        let (i, _) = space_and_comments(i)?;
+        if i.starts_with('[') {
+            subscript_indices(a, i)
+        } else {
+            Ok((i, a))
+        }
     }
 
     bin!(exp, sub, tag("^"));
