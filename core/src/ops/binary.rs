@@ -2,7 +2,6 @@ use crate::internal::*;
 use downcast_rs::Downcast;
 use std::fmt;
 use tract_data::itertools::izip;
-use tract_ndarray::{ArrayViewD, ArrayViewMutD};
 
 pub fn wire_rank_broadcast(
     prefix: &str,
@@ -111,6 +110,7 @@ pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + 
     #[allow(unused_variables)]
     fn declutter(
         &self,
+        axes: &AxesMapping,
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
@@ -271,7 +271,7 @@ impl TypedOp for TypedBinOp {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        self.op.declutter(model, node)
+        self.op.declutter(&self.axes, model, node).context("binary op declutter")
     }
 
     /*
@@ -343,13 +343,16 @@ impl TypedOp for MergeOpUnicast {
             .collect())
     }
 
+    /*
     fn declutter(
         &self,
+        axes: &AxesMapping,
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        self.0.declutter(model, node)
+        self.0.declutter(&self.axes, model, node)
     }
+    */
 
     as_op!();
 }
@@ -574,10 +577,11 @@ macro_rules! bin_to_super_type {
             $(
                 fn declutter(
                     &self,
+                    axes: &AxesMapping,
                     model: &TypedModel,
                     node: &TypedNode,
                     ) -> TractResult<Option<TypedModelPatch>> {
-                    ($declutter)(self, model, node)
+                    ($declutter)(self, axes, model, node)
                 }
              )?
                 $(
@@ -708,10 +712,11 @@ macro_rules! bin_to_bool {
                 $(
                     fn declutter(
                         &self,
+                        axes: &AxesMapping,
                         model: &TypedModel,
                         node: &TypedNode,
                         ) -> TractResult<Option<TypedModelPatch>> {
-                        ($declutter)(self, model, node)
+                        ($declutter)(self, axes, model, node)
                     }
                  )?
 

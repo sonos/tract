@@ -353,6 +353,7 @@ impl crate::ops::binary::BinMiniOp for Scale {
 
     fn declutter(
         &self,
+        _axes: &AxesMapping,
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {

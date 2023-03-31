@@ -3,7 +3,6 @@ use crate::internal::*;
 use std::convert::TryFrom;
 use tract_data::internal::ClampCast;
 use tract_data::itertools::Itertools;
-use tract_ndarray::iter::Axes;
 use tract_ndarray::prelude::*;
 use tract_num_traits::Bounded;
 

@@ -196,6 +196,7 @@ bin_to_super_type!(shift_right, ShiftRight,
 fn declutter_neutral(
     model: &TypedModel,
     node: &TypedNode,
+    axes: &AxesMapping,
     value: i64,
     also_left: bool,
 ) -> TractResult<Option<TypedModelPatch>> {
@@ -212,12 +213,15 @@ fn declutter_neutral(
             && integer == value
             && (also_left || !uniform.left_is_uniform)
         {
-            return Ok(Some(TypedModelPatch::rewire(
-                model,
-                &[uniform.var],
-                &[node.id.into()],
-                &|_, inputs| Ok(inputs.into()),
-            )?));
+            let name = &node.name;
+            let ops = axes.extract_sub_mapping(&[uniform.left_is_uniform as usize], &[0])?.translate_to_axis_ops()?;
+            let mut patch= TypedModelPatch::new("neutral uniform");
+            let mut wire = tvec!(patch.tap_model(model, node.inputs[uniform.left_is_uniform as usize])?);
+            for (ix, op) in ops.into_iter().enumerate()  {
+                wire = patch.wire_node(format!("{name}.{ix}"), op, &wire)?;
+            }
+            patch.shunt_outside(model, node.id.into(), wire[0])?;
+            return Ok(Some(patch))
         }
     }
     Ok(None)
@@ -225,26 +229,29 @@ fn declutter_neutral(
 
 fn declutter_add(
     _op: &Add,
+    axes: &AxesMapping,
     model: &TypedModel,
     node: &TypedNode,
 ) -> TractResult<Option<TypedModelPatch>> {
-    declutter_neutral(model, node, 0, true)
+    declutter_neutral(model, node,  axes, 0, true)
 }
 
 fn declutter_sub(
     _op: &Sub,
+    axes: &AxesMapping,
     model: &TypedModel,
     node: &TypedNode,
 ) -> TractResult<Option<TypedModelPatch>> {
-    declutter_neutral(model, node, 0, false)
+    declutter_neutral(model, node, axes, 0, false)
 }
 
 fn declutter_mul(
     _op: &Mul,
+    axes: &AxesMapping,
     model: &TypedModel,
     node: &TypedNode,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if let Some(p) = declutter_neutral(model, node, 1, true).context("decluttering neutral")? {
+    if let Some(p) = declutter_neutral(model, node, axes, 1, true).context("decluttering neutral")? {
         return Ok(Some(p));
     }
     if let Some(uniform) = crate::ops::binary::one_input_is_uniform(model, node)? {
@@ -298,10 +305,11 @@ fn declutter_mul(
 
 fn declutter_div(
     _op: &Div,
+    axes: &AxesMapping,
     model: &TypedModel,
     node: &TypedNode,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if let Some(p) = declutter_neutral(model, node, 1, false)? {
+    if let Some(p) = declutter_neutral(model, node, axes, 1, false)? {
         return Ok(Some(p));
     }
     if let &[p, q] = &*model.node_input_facts(node.id)? {
@@ -349,10 +357,11 @@ fn declutter_div(
 
 fn declutter_pow(
     _op: &Pow,
+    axes: &AxesMapping,
     model: &TypedModel,
     node: &TypedNode,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if let Some(p) = declutter_neutral(model, node, 1, false)? {
+    if let Some(p) = declutter_neutral(model, node, axes, 1, false)? {
         return Ok(Some(p));
     }
     let b = model.outlet_fact(node.inputs[1])?;
