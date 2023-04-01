@@ -48,89 +48,71 @@ where
 }
 
 bin_to_super_type!(mul, Mul,
-                   cost: |dt| tvec!((Cost::FMA(dt), 1)),
-                   declutter: declutter_mul,
-                   linalg: Mul,
-                   out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
-                       if c.datum_type() == TDim::datum_type() &&
-                           a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
-                               let a = a.to_array_view::<TDim>()?;
-                               let b = b.cast_to::<i32>()?;
-                               let b = b.to_array_view::<i32>()?;
-                               let c = c.to_array_view_mut::<TDim>()?;
-                               crate::ndarray::Zip::from(c).and_broadcast(a).and_broadcast(b).for_each(|c,a,b| *c = a.clone() * *b);
-                               Ok(true)
-                           }
-                       else {
-                           match c.datum_type() {
-                               DatumType::QI8(params) => {
-                                   let (zp, scale) = params.zp_scale();
-                                   let a = a.to_array_view::<i8>()?;
-                                   let b = b.to_array_view::<i8>()?;
-                                   let c = c.to_array_view_mut::<i8>()?;
-                                   crate::ndarray::Zip::from(c)
-                                       .and_broadcast(a)
-                                       .and_broadcast(b)
-                                       .for_each(|c,a,b| *c = scale_by((*a as i16 - zp as i16) * (*b as i16 - zp as i16) + zp as i16, scale).clamp_cast());
-                                   Ok(true)
-                               }
-                               DatumType::QU8(params) => {
-                                   let (zp, scale) = params.zp_scale();
-                                   let a = a.to_array_view::<u8>()?;
-                                   let b = b.to_array_view::<u8>()?;
-                                   let c = c.to_array_view_mut::<u8>()?;
-                                   crate::ndarray::Zip::from(c)
-                                       .and_broadcast(a)
-                                       .and_broadcast(b)
-                                       .for_each(|c,a,b| *c = scale_by((*a as i32 - zp as i32) * (*b as i32 - zp as i32) + zp as i32, scale).clamp_cast());
-                                   Ok(true)
-                               }
-                               _ => Ok(false)
-                           }
-                       }
-                   },
-                   q: [i8, u8, i32] => |c, a, b, _, _| *c = a.clone() * b;
+   cost: |dt| tvec!((Cost::FMA(dt), 1)),
+   declutter: declutter_mul,
+   linalg: Mul,
+   out_of_place: |axes: &AxesMapping, c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
+       if c.datum_type() == TDim::datum_type() &&
+           a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
+                let b = b.cast_to::<i32>()?;
+                crate::ops::binary::eval_out_of_place::<TDim, TDim, i32>(axes, c, &a, &b, 
+                    |c, a, b| *c = a.clone() * b)?;
+               Ok(true)
+           }
+       else {
+           match c.datum_type() {
+               DatumType::QI8(params) => {
+                   let (zp, scale) = params.zp_scale();
+                   crate::ops::binary::eval_out_of_place::<i8, i8, i8>(axes, c, &a, &b, 
+                        |c,a,b| *c = scale_by((*a as i16 - zp as i16) * (*b as i16 - zp as i16) + zp as i16, scale).clamp_cast())?;
+                   Ok(true)
+               }
+               DatumType::QU8(params) => {
+                   let (zp, scale) = params.zp_scale();
+                   crate::ops::binary::eval_out_of_place::<u8, u8, u8>(axes, c, &a, &b, 
+                       |c,a,b| *c = scale_by((*a as i32 - zp as i32) * (*b as i32 - zp as i32) + zp as i32, scale).clamp_cast())?;
+                   Ok(true)
+               }
+               _ => Ok(false)
+           }
+       }
+   },
+   q: [i8, u8, i32] => |c, a, b, _, _| *c = a.clone() * b;
 [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() * b
 );
 
 bin_to_super_type!(div, Div,
 cost: |dt| tvec!((Cost::Div(dt), 1)),
 declutter: declutter_div,
-/*
-eval_override: |a:TValue, b: TValue| -> TractResult<Tensor> {
-    if
-        a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
-            let a = a.to_array_view::<TDim>()?;
+eval_override: |axes: &AxesMapping, a:TValue, b: TValue| -> TractResult<Tensor> {
+    if a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
             let b = b.cast_to::<i32>()?;
-            let b = b.to_array_view::<i32>()?;
-            let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()]).context("no broadcast solution")?;
-            unsafe {
-                let mut c = Tensor::uninitialized_dt(DatumType::TDim, &c_shape)?;
-                let view = c.to_array_view_mut::<TDim>()?;
-                crate::ndarray::Zip::from(view).and_broadcast(a).and_broadcast(b).for_each(|c,a,b| *c = a.clone() / *b);
-                Ok(c)
-            }
+            let c_shape = crate::ops::binary::output_shape(axes, a.shape(), b.shape())?;
+            let mut c = unsafe { Tensor::uninitialized_dt(DatumType::TDim, &c_shape)? };
+            crate::ops::binary::eval_out_of_place::<TDim, TDim, i32>(axes, &mut c, &a, &b,
+                                                                     |c,a,b| *c = a.clone() / *b
+                                                                     )?;
+            Ok(c)
         } else {
-            Div.generic_eval(a,b)
+            Div.generic_eval(axes, a,b)
         }
 },
-*/
-out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
+out_of_place: |axes: &AxesMapping, c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
     if c.datum_type() == TDim::datum_type() &&
         a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
-            let a = a.to_array_view::<TDim>()?;
             let b = b.cast_to::<i32>()?;
-            let b = b.to_array_view::<i32>()?;
-            let c = c.to_array_view_mut::<TDim>()?;
-            crate::ndarray::Zip::from(c).and_broadcast(a).and_broadcast(b).for_each(|c,a,b| *c = a.clone() / *b);
+            crate::ops::binary::eval_out_of_place::<TDim, TDim, i32>(axes, c, a, &*b,
+                                                                     |c,a,b| *c = a.clone() / *b
+                                                                     )?;
             Ok(true)
         } else if c.datum_type().is_quantized() || b.datum_type().is_quantized() || a.datum_type().is_quantized() {
-            let a_f32 = a.cast_to::<f32>()?;
-            let a_f32 = a_f32.to_array_view::<f32>()?;
-            let b_f32 = b.cast_to::<f32>()?;
-            let b_f32 = b_f32.to_array_view::<f32>()?;
-            let c_f32 = &a_f32 / &b_f32;
-            *c = c_f32.into_tensor().cast_to_dt(c.datum_type())?.into_owned();
+            let a = a.cast_to::<f32>()?;
+            let b = b.cast_to::<f32>()?;
+            let c_shape = crate::ops::binary::output_shape(axes, a.shape(), b.shape())?;
+            let mut c = unsafe { Tensor::uninitialized_dt(DatumType::TDim, &c_shape)? };
+            crate::ops::binary::eval_out_of_place::<f32, f32, f32>(axes, &mut c, &*a, &*b,
+                                                                     |c,a,b| *c = a.clone() / *b
+                                                                     )?;
             Ok(true)
         } else {
             Ok(false)
@@ -140,37 +122,31 @@ out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
 );
 
 bin_to_super_type!(rem, Rem,
-                                      eval_override: |a:TValue, b: TValue| -> TractResult<Tensor> {
-                                          if
-                                              a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
-                                                  let a = a.to_array_view::<TDim>()?;
-                                                  let b = b.cast_to::<i32>()?;
-                                                  let b = b.to_array_view::<i32>()?;
-                                                  let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()]).context("no broadcast solution")?;
-                                                  unsafe {
-                                                      let mut c = Tensor::uninitialized_dt(DatumType::TDim, &c_shape)?;
-                                                      let view = c.to_array_view_mut::<TDim>()?;
-                                                      crate::ndarray::Zip::from(view).and_broadcast(a).and_broadcast(b).for_each(|c,a,b| *c = a.clone() % *b);
-                                                      Ok(c)
-                                                  }
-                                              } else {
-                                                  Rem.generic_eval(a,b)
-                                              }
-                                      },
-                                      out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
-                                          if c.datum_type() == TDim::datum_type() &&
-                                              a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
-                                                  let a = a.to_array_view::<TDim>()?;
-                                                  let b = b.cast_to::<i32>()?;
-                                                  let b = b.to_array_view::<i32>()?;
-                                                  let c = c.to_array_view_mut::<TDim>()?;
-                                                  crate::ndarray::Zip::from(c).and_broadcast(a).and_broadcast(b).for_each(|c,a,b| *c = a.clone() % *b);
-                                                  Ok(true)
-                                              } else {
-                                                  Ok(false)
-                                              }
-                                      },
-                                      [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64] => |c, a, b| *c = a.clone() % b);
+  eval_override: |axes: &AxesMapping,  a:TValue, b: TValue| -> TractResult<Tensor> {
+      if
+          a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
+              let b = b.cast_to::<i32>()?;
+              let c_shape = crate::ops::binary::output_shape(axes, a.shape(), b.shape())?;
+              unsafe {
+                  let mut c = Tensor::uninitialized_dt(DatumType::TDim, &c_shape)?;
+                  crate::ops::binary::eval_out_of_place::<TDim, TDim, i32>(axes, &mut c, &a, &*b, |c,a,b| *c = a.clone() % *b)?;
+                  Ok(c)
+              }
+          } else {
+              Rem.generic_eval(axes, a,b)
+          }
+  },
+  out_of_place: |axes: &AxesMapping, c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
+      if c.datum_type() == TDim::datum_type() &&
+          a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
+              let b = b.cast_to::<i32>()?;
+              crate::ops::binary::eval_out_of_place::<TDim, TDim, i32>(axes, c, a, &*b, |c,a,b| *c = a.clone() % *b)?;
+              Ok(true)
+          } else {
+              Ok(false)
+          }
+  },
+  [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64] => |c, a, b| *c = a.clone() % b);
 
 bin_to_super_type!(min, Min, linalg:Min,
                    operating_datum_type: super::logic::operating_datum_type_for_cmp,
@@ -214,14 +190,17 @@ fn declutter_neutral(
             && (also_left || !uniform.left_is_uniform)
         {
             let name = &node.name;
-            let ops = axes.extract_sub_mapping(&[uniform.left_is_uniform as usize], &[0])?.translate_to_axis_ops()?;
-            let mut patch= TypedModelPatch::new("neutral uniform");
-            let mut wire = tvec!(patch.tap_model(model, node.inputs[uniform.left_is_uniform as usize])?);
-            for (ix, op) in ops.into_iter().enumerate()  {
+            let ops = axes
+                .extract_sub_mapping(&[uniform.left_is_uniform as usize], &[0])?
+                .translate_to_axis_ops()?;
+            let mut patch = TypedModelPatch::new("neutral uniform");
+            let mut wire =
+                tvec!(patch.tap_model(model, node.inputs[uniform.left_is_uniform as usize])?);
+            for (ix, op) in ops.into_iter().enumerate() {
                 wire = patch.wire_node(format!("{name}.{ix}"), op, &wire)?;
             }
             patch.shunt_outside(model, node.id.into(), wire[0])?;
-            return Ok(Some(patch))
+            return Ok(Some(patch));
         }
     }
     Ok(None)
@@ -233,7 +212,7 @@ fn declutter_add(
     model: &TypedModel,
     node: &TypedNode,
 ) -> TractResult<Option<TypedModelPatch>> {
-    declutter_neutral(model, node,  axes, 0, true)
+    declutter_neutral(model, node, axes, 0, true)
 }
 
 fn declutter_sub(
@@ -251,7 +230,9 @@ fn declutter_mul(
     model: &TypedModel,
     node: &TypedNode,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if let Some(p) = declutter_neutral(model, node, axes, 1, true).context("decluttering neutral")? {
+    if let Some(p) =
+        declutter_neutral(model, node, axes, 1, true).context("decluttering neutral")?
+    {
         return Ok(Some(p));
     }
     if let Some(uniform) = crate::ops::binary::one_input_is_uniform(model, node)? {

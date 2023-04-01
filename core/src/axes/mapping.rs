@@ -539,6 +539,10 @@ impl AxesMapping {
         Ok(Some(AxesMapping::from_strs(&inputs, &outputs)?))
     }
 
+    pub fn direct(&self, a:InOut, b:InOut) -> bool {
+        self.axes.iter().all(|axis| axis.interface(a) == axis.interface(b))
+    }
+
     pub fn axis_ops_to_canonical(&self, io: InOut) -> TractResult<Vec<AxisOp>> {
         let rank = self.interface_rank(io);
         let target_rank = self.axes.len();

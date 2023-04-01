@@ -66,4 +66,11 @@ impl Axis {
         self.ensure_outputs_count(output_id + 1);
         self.outputs[output_id].push(axis);
     }
+
+    pub fn interface(&self, io: InOut) -> &[usize] {
+        match io {
+            InOut::In(ix) => &self.inputs[ix],
+            InOut::Out(ix) => &self.outputs[ix],
+        }
+    }
 }

@@ -335,12 +335,9 @@ impl crate::ops::binary::BinMiniOp for Scale {
         unsafe { dispatch_numbers!(eval_out_of_place_t(b.datum_type())(axes, c, &a, b)) }
     }
 
-    fn eval_in_a(&self, a: &mut Tensor, b: &Tensor) -> TractResult<()> {
+    fn eval_in_a(&self, axes: &AxesMapping, a: &mut Tensor, b: &Tensor) -> TractResult<()> {
         // a is f32 by construction (scaler). if we are here in mean c is also f32, so b is f32
-        let a = a.to_array_view_mut::<f32>()?;
-        let b = b.to_array_view::<f32>()?;
-        ndarray::Zip::from(a).and_broadcast(b).for_each(|a, b| *a = scale_by(*b, *a));
-        Ok(())
+        crate::ops::binary::eval_in_a(axes, a, b, |c, a, b| *c = scale_by(*b, *a))
     }
 
     fn declutter(
