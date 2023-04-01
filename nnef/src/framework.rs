@@ -67,7 +67,6 @@ impl Nnef {
         self.allow_extended_identifier_syntax = allow_extended_identifier_syntax;
     }
 
-
     pub fn translate(
         &self,
         proto_model: &ProtoModel,
@@ -103,8 +102,13 @@ impl Nnef {
             let mut quant_data = vec![];
 
             for (name, format) in quantization.into_iter() {
-                write_quant_format(&mut quant_data, &name, format, self.allow_extended_identifier_syntax)
-                    .context("Serializing graph.quant")?;
+                write_quant_format(
+                    &mut quant_data,
+                    &name,
+                    format,
+                    self.allow_extended_identifier_syntax,
+                )
+                .context("Serializing graph.quant")?;
             }
 
             header.set_path("graph.quant").context("Setting graph.quant path")?;
@@ -151,7 +155,12 @@ impl Nnef {
         if let Some(quantization) = proto_model.quantization {
             let mut graph_quant = std::fs::File::create(path.join("graph.quant"))?;
             for (name, format) in quantization.into_iter().sorted_by_key(|(x, _)| x.clone()) {
-                write_quant_format(&mut graph_quant, &name, format, self.allow_extended_identifier_syntax)?;
+                write_quant_format(
+                    &mut graph_quant,
+                    &name,
+                    format,
+                    self.allow_extended_identifier_syntax,
+                )?;
             }
         }
 
@@ -224,7 +233,7 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
             let path = entry.path()?.to_path_buf();
             read_stream(&self.resource_loaders, &path, &mut entry, &mut resources)?;
         }
-dbg!(        proto_model_from_resources(resources))
+        proto_model_from_resources(resources)
     }
 
     fn model_for_proto_model_with_symbols(
@@ -280,7 +289,6 @@ fn proto_model_from_resources(
     };
 
     let proto = ProtoModel { doc, tensors, quantization, resources };
-    dbg!(&proto);
     proto.validate()?;
     Ok(proto)
 }
@@ -303,7 +311,6 @@ fn read_stream<R: std::io::Read>(
         let loaded = loader.try_load(path, reader).with_context(|| {
             anyhow!("Error while loading resource by {:?} at path {:?}", loader.name(), path)
         })?;
-        dbg!(&loaded);
         if let Some((id, resource)) = loaded {
             ensure!(
                 !resources.contains_key(&id),
