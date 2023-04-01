@@ -80,19 +80,21 @@ pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + 
     ) -> TractResult<()>;
     fn generic_eval(&self, axes: &AxesMapping, a: TValue, b: TValue) -> TractResult<Tensor> {
         let c_dt = self.result_datum_type(a.datum_type(), b.datum_type())?;
+        let c_shape = output_shape(axes, a.shape(), b.shape())?;
         /*
         if c_dt == b.datum_type() && a.len() == 1 {
             let mut b = b.into_tensor();
             self.eval_uniform_in_place(&a, &mut b)?;
             Ok(b)
-        } else if a.shape() == b.shape() && c_dt == b.datum_type() {
+        } else */if a.shape() == b.shape()
+            && c_dt == b.datum_type()
+            && axes.direct(InOut::In(0), InOut::In(1))
+            && axes.direct(InOut::In(0), InOut::Out(0))
+        {
             let mut b = b.into_tensor();
             self.eval_unicast_in_place(&a, &mut b)?;
             Ok(b)
-        } else {
-            */
-        let c_shape = output_shape(axes, a.shape(), b.shape())?;
-        if &*c_shape == a.shape()
+        } else if &*c_shape == a.shape()
             && axes.direct(InOut::In(0), InOut::Out(0))
             && c_dt == a.datum_type()
         {
@@ -104,8 +106,6 @@ pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + 
             self.eval_out_of_place(axes, &mut c, &a, &b)?;
             Ok(c)
         }
-        /*
-        } */
     }
     fn eval(&self, axes: &AxesMapping, a: TValue, b: TValue) -> TractResult<Tensor> {
         self.generic_eval(axes, a, b)
