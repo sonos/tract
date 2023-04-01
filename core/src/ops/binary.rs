@@ -501,14 +501,7 @@ macro_rules! bin_to_super_type {
                 $(if $out_of_place(c, a, b)? { return Ok(()) } )?
                     $(
                         $(if c.datum_type() == $typ::datum_type() {
-                            let mut a = a.to_array_view::<$typ>()?;
-                            let mut b = b.to_array_view::<$typ>()?;
-                            let mut c = c.to_array_view_mut::<$typ>()?;
-                            axes.view_to_canonical(InOut::In(0), &mut a)?;
-                            axes.view_to_canonical(InOut::In(1), &mut b)?;
-                            axes.view_to_canonical_mut(InOut::Out(0), &mut c)?;
-                            $crate::ndarray::Zip::from(&mut c).and_broadcast(a).and_broadcast(b).for_each($cab);
-                            return Ok(())
+                            return crate::ops::binary::eval_out_of_place::<$typ, $typ, $typ>(axes, c, a, b, $cab)
                         })*
                      )*
                     $(
@@ -516,11 +509,7 @@ macro_rules! bin_to_super_type {
                             $(if a.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
                                 let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
                                 let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
-                                let a = a.to_array_view::<$typ_dt>()?;
-                                let b = b.to_array_view::<$typ_dt>()?;
-                                let mut c = c.to_array_view_mut::<$typ_dt>()?;
-                                $crate::ndarray::Zip::from(&mut c).and_broadcast(a).and_broadcast(b).for_each(|c, a, b| cab(c, a, b, zp, scale));
-                                return Ok(())
+                                return crate::ops::binary::eval_out_of_place::<$typ_dt, $typ_dt, $typ_dt>(axes, c, a, b, |c, a, b| cab(c,a,b,zp, scale) )
                             }
                             )*
                          )*
@@ -676,14 +665,7 @@ macro_rules! bin_to_bool {
                 $(
                     $(if a.datum_type() == $typ::datum_type() {
                         let cab: fn(&mut bool, &$typ, &$typ) -> () = $cab;
-                        let mut a = a.to_array_view::<$typ>()?;
-                        let mut b = b.to_array_view::<$typ>()?;
-                        let mut c = c.to_array_view_mut::<bool>()?;
-                        axes.view_to_canonical(InOut::In(0), &mut a)?;
-                        axes.view_to_canonical(InOut::In(1), &mut b)?;
-                        axes.view_to_canonical_mut(InOut::Out(0), &mut c)?;
-                        ndarray::Zip::from(&mut c).and_broadcast(a).and_broadcast(b).for_each(cab);
-                        return Ok(())
+                        return crate::ops::binary::eval_out_of_place::<bool, $typ, $typ>(axes, c, a, b, cab)
                     }
                     )*
                  )*
@@ -761,4 +743,21 @@ pub(crate) fn one_input_is_uniform(
         }
     }
     Ok(None)
+}
+
+pub fn eval_out_of_place<C: Datum, A: Datum, B: Datum>(
+    axes: &AxesMapping,
+    c: &mut Tensor,
+    a: &Tensor,
+    b: &Tensor,
+    cab: impl FnMut(&mut C, &A, &B),
+) -> TractResult<()> {
+    let mut a = a.to_array_view::<A>()?;
+    let mut b = b.to_array_view::<B>()?;
+    let mut c = c.to_array_view_mut::<C>()?;
+    axes.view_to_canonical(InOut::In(0), &mut a)?;
+    axes.view_to_canonical(InOut::In(1), &mut b)?;
+    axes.view_to_canonical_mut(InOut::Out(0), &mut c)?;
+    tract_ndarray::Zip::from(&mut c).and_broadcast(a).and_broadcast(b).for_each(cab);
+    Ok(())
 }

@@ -319,26 +319,18 @@ impl crate::ops::binary::BinMiniOp for Scale {
         a: &Tensor,
         b: &Tensor,
     ) -> TractResult<()> {
-        let mut a = a.to_array_view::<f32>()?;
-        axes.view_to_canonical(InOut::In(0), &mut a)?;
         unsafe fn eval_out_of_place_t<T: Datum + AsPrimitive<f32>>(
             axes: &AxesMapping,
             c: &mut Tensor,
-            a: &ndarray::ArrayViewD<f32>,
+            a: &Tensor,
             b: &Tensor,
         ) -> TractResult<()>
         where
             f32: AsPrimitive<T>,
         {
-            let mut b = b.to_array_view_unchecked::<T>();
-            axes.view_to_canonical(InOut::In(1), &mut b)?;
-            let mut c = c.to_array_view_mut_unchecked::<T>();
-            axes.view_to_canonical_mut(InOut::Out(0), &mut c)?;
-            ndarray::Zip::from(&mut c)
-                .and_broadcast(a)
-                .and_broadcast(b)
-                .for_each(|c, a, b| *c = scale_by(*b, *a));
-            Ok(())
+            crate::ops::binary::eval_out_of_place::<T, f32, T>(axes, c, a, b, |c, a, b| {
+                *c = scale_by(*b, *a)
+            })
         }
         unsafe { dispatch_numbers!(eval_out_of_place_t(b.datum_type())(axes, c, &a, b)) }
     }
