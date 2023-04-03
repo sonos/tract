@@ -285,7 +285,7 @@ impl crate::ops::binary::BinMiniOp for Scale {
         Ok(b)
     }
 
-    fn eval_uniform_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
+    fn eval_uniform_in_right(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
         let a = a.to_scalar::<f32>()?;
         unsafe fn eval_in_place_t<T: Datum + AsPrimitive<f32>>(a: f32, b: &mut Tensor)
         where
@@ -297,7 +297,7 @@ impl crate::ops::binary::BinMiniOp for Scale {
         Ok(())
     }
 
-    fn eval_unicast_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
+    fn eval_unicast_in_right(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
         let a = a.to_array_view::<f32>()?;
         unsafe fn eval_in_place_t<T: Datum + AsPrimitive<f32>>(
             a: &ndarray::ArrayViewD<f32>,

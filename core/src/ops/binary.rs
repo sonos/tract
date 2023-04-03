@@ -68,8 +68,8 @@ pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + 
         a.common_super_type(b).with_context(|| format_err!("No super type for {:?} and {:?}", a, b))
     }
     fn result_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType>;
-    fn eval_unicast_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()>;
-    fn eval_uniform_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()>;
+    fn eval_unicast_in_right(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()>;
+    fn eval_uniform_in_right(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()>;
     fn eval_in_a(&self, axes: &AxesMapping, a: &mut Tensor, b: &Tensor) -> TractResult<()>;
     fn eval_out_of_place(
         &self,
@@ -83,30 +83,30 @@ pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + 
         let c_shape = output_shape(axes, a.shape(), b.shape())?;
         /*
         if c_dt == b.datum_type() && a.len() == 1 && axes.direct(InOut::In(1), InOut::Out(0)) {
-            let mut b = b.into_tensor();
-            self.eval_uniform_in_place(&a, &mut b)?;
-            Ok(b)
+        let mut b = b.into_tensor();
+        self.eval_uniform_in_place(&a, &mut b)?;
+        Ok(b)
         } else if a.shape() == b.shape()
-            && c_dt == b.datum_type()
-            && axes.direct(InOut::In(0), InOut::In(1))
-            && axes.direct(InOut::In(0), InOut::Out(0))
+        && c_dt == b.datum_type()
+        && axes.direct(InOut::In(0), InOut::In(1))
+        && axes.direct(InOut::In(0), InOut::Out(0))
         {
-            let mut b = b.into_tensor();
-            self.eval_unicast_in_place(&a, &mut b)?;
-            Ok(b)
+        let mut b = b.into_tensor();
+        self.eval_unicast_in_place(&a, &mut b)?;
+        Ok(b)
         } else if &*c_shape == a.shape()
-            && axes.direct(InOut::In(0), InOut::Out(0))
-            && c_dt == a.datum_type()
+        && axes.direct(InOut::In(0), InOut::Out(0))
+        && c_dt == a.datum_type()
         {
-            let mut a = a.into_tensor();
-            self.eval_in_a(axes, &mut a, &b)?;
-            Ok(a)
+        let mut a = a.into_tensor();
+        self.eval_in_a(axes, &mut a, &b)?;
+        Ok(a)
         } else {
         }
         */
-            let mut c = unsafe { Tensor::uninitialized_dt(c_dt, &c_shape)? };
-            self.eval_out_of_place(axes, &mut c, &a, &b)?;
-            Ok(c)
+        let mut c = unsafe { Tensor::uninitialized_dt(c_dt, &c_shape)? };
+        self.eval_out_of_place(axes, &mut c, &a, &b)?;
+        Ok(c)
     }
     fn eval(&self, axes: &AxesMapping, a: TValue, b: TValue) -> TractResult<Tensor> {
         self.generic_eval(axes, a, b)
@@ -149,14 +149,8 @@ impl<B: BinMiniOp> From<B> for Box<dyn BinMiniOp + 'static> {
 pub enum BinOpCodegen {
     #[default]
     Generic,
-    UnicastInPlace {
-        mutate: usize,
-        fixes: Vec<AxisOp>,
-    },
-    UniformInPlace {
-        mutate: usize,
-        fixes: Vec<AxisOp>,
-    },
+    UnicastInRight(Vec<AxisOp>),
+    UniformInRight(Vec<AxisOp>),
 }
 
 #[derive(Debug, Clone)]
@@ -195,23 +189,21 @@ impl EvalOp for TypedBinOp {
     fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a, b) = args_2!(inputs);
         match &self.codegen {
-            Some(BinOpCodegen::UnicastInPlace { mutate, fixes }) if *mutate == 1 => {
-                let (mutate, other) = if *mutate == 0 { (a, b) } else { (b, a) };
-                let mut mutate = mutate.into_tensor();
-                self.op.eval_unicast_in_place(&other, &mut mutate)?;
+            Some(BinOpCodegen::UnicastInRight(fixes)) => {
+                let mut b = b.into_tensor();
+                self.op.eval_unicast_in_right(&a, &mut b)?;
                 for axis_fix in fixes {
-                    axis_fix.change_tensor(&mut mutate, false)?;
+                    axis_fix.change_tensor(&mut b, false)?;
                 }
-                return Ok(tvec!(mutate.into_tvalue()));
+                return Ok(tvec!(b.into_tvalue()));
             }
-            Some(BinOpCodegen::UniformInPlace { mutate, fixes }) if *mutate == 1 => {
-                let (mutate, other) = if *mutate == 0 { (a, b) } else { (b, a) };
-                let mut mutate = mutate.into_tensor();
-                self.op.eval_uniform_in_place(&other, &mut mutate)?;
+            Some(BinOpCodegen::UniformInRight(fixes)) => {
+                let mut b = b.into_tensor();
+                self.op.eval_uniform_in_right(&a, &mut b)?;
                 for axis_fix in fixes {
-                    axis_fix.change_tensor(&mut mutate, false)?;
+                    axis_fix.change_tensor(&mut b, false)?;
                 }
-                return Ok(tvec!(mutate.into_tvalue()));
+                return Ok(tvec!(b.into_tvalue()));
             }
             _ => (),
         };
@@ -309,20 +301,20 @@ impl TypedOp for TypedBinOp {
             && self.axes.same_layout(InOut::In(0), InOut::In(1), &facts[0].shape, &facts[1].shape)
             && self.axes.same_layout(InOut::In(0), InOut::Out(0), &facts[0].shape, &output_shape)
         {
-            BinOpCodegen::UnicastInPlace {
-                mutate: 0,
-                fixes: self.axes.extract_sub_mapping(&[0], &[0])?.translate_to_axis_ops()?,
-            }
+            BinOpCodegen::UnicastInRight(
+                self.axes.extract_sub_mapping(&[1], &[0])?.translate_to_axis_ops()?,
+            )
         } else if facts[0].shape.volume().is_one() && cdt == facts[1].datum_type {
-            BinOpCodegen::UniformInPlace {
-                mutate: 1,
-                fixes: self.axes.extract_sub_mapping(&[1], &[0])?.translate_to_axis_ops()?,
-            }
+            BinOpCodegen::UniformInRight(
+                self.axes.extract_sub_mapping(&[1], &[0])?.translate_to_axis_ops()?,
+            )
+                /*
         } else if facts[1].shape.volume().is_one() && cdt == facts[0].datum_type {
             BinOpCodegen::UniformInPlace {
                 mutate: 0,
                 fixes: self.axes.extract_sub_mapping(&[0], &[0])?.translate_to_axis_ops()?,
             }
+            */
         } else {
             BinOpCodegen::Generic
         };
@@ -397,7 +389,7 @@ macro_rules! bin_to_super_type {
                 stringify!($Op)
             }
 
-            fn eval_uniform_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
+            fn eval_uniform_in_right(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
                 $(
                     $(if a.datum_type() == $typ::datum_type() {
                         let cab: fn(&mut $typ, &$typ, &$typ) -> () = $cab;
@@ -437,7 +429,7 @@ macro_rules! bin_to_super_type {
                     bail!("{} does not support {:?} (inplace uniform)", self.name(), a.datum_type());
             }
 
-            fn eval_unicast_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
+            fn eval_unicast_in_right(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
                 $(
                     $(if a.datum_type() == $typ::datum_type() {
                         let cab: fn(&mut $typ, &$typ, &$typ) -> () = $cab;
@@ -590,7 +582,7 @@ macro_rules! bin_to_bool {
                 stringify!($Op)
             }
 
-            fn eval_uniform_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
+            fn eval_uniform_in_right(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
                 $(
                     $(if a.datum_type() == $typ::datum_type() {
                         let cab: fn(&mut bool, &bool, &bool) -> () = $cab;
@@ -611,7 +603,7 @@ macro_rules! bin_to_bool {
             }
 
             #[allow(unreachable_code)]
-            fn eval_unicast_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
+            fn eval_unicast_in_right(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
                 $(
                     $(if a.datum_type() == $typ::datum_type() {
                         let cab: fn(&mut bool, &bool, &bool) -> () = $cab;

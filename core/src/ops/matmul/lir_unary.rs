@@ -1,6 +1,5 @@
 use crate::internal::*;
 #[allow(deprecated)]
-use crate::ops::binary::BinOpCodegen;
 use crate::ops::cast::cast;
 use ndarray::*;
 use tract_itertools::Itertools;
