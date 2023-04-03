@@ -376,7 +376,6 @@ pub fn exp2f(x: f32) -> f32 {
     y = y * fpart + EXP2P[4];
     y = y * fpart + EXP2P[5];
     y = y * fpart + EXP2P[6];
-dbg!(y, two_pow_ipart);
     y * two_pow_ipart
 }
 
