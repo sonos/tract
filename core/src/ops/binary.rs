@@ -55,7 +55,7 @@ pub fn wire_bin(
     for _ in rank_b..rank_c {
         axes = axes.remove_input_axis(1, 0)?;
     }
-    let op = TypedBinOp { op: op.into(), axes };
+    let op = TypedBinOp { op: op.into(), axes, codegen: None };
     target.wire_node(prefix, &op.into(), &inputs)
 }
 
@@ -144,44 +144,17 @@ impl<B: BinMiniOp> From<B> for Box<dyn BinMiniOp + 'static> {
 }
 
 #[derive(Debug, Clone)]
+pub enum BinOpCodegen {
+    Unicast,
+    Uniform,
+    Generic,
+}
+
+#[derive(Debug, Clone)]
 pub struct TypedBinOp {
     pub op: Box<dyn BinMiniOp>,
     pub axes: AxesMapping,
-}
-
-pub fn output_shape<D: DimLike>(
-    axes: &AxesMapping,
-    a: impl AsRef<[D]>,
-    b: impl AsRef<[D]>,
-) -> TractResult<TVec<D>> {
-    let a = a.as_ref();
-    let b = b.as_ref();
-    let mut shape = tvec!();
-    for axis in axes.output_axes(0) {
-        if axis.inputs[0].len() > 1 || axis.inputs[1].len() > 1 {
-            bail!("Invalid expression for binary mapping {}", axes);
-        }
-        let one = D::one();
-        let dim_a = axis.inputs[0].get(0).map(|ax| &a[*ax]).unwrap_or(&one);
-        let dim_b = axis.inputs[1].get(0).map(|ax| &b[*ax]).unwrap_or(&one);
-        let dim_c = if dim_a == &one {
-            dim_b.clone()
-        } else if dim_b == &one {
-            dim_a.clone()
-        } else if dim_a == dim_b {
-            dim_a.clone()
-        } else {
-            bail!(
-                "Can not compute dim for axis {} with inputs {:?} and {:?} and expression {}",
-                axis.repr,
-                a,
-                b,
-                axes
-            );
-        };
-        shape.push(dim_c);
-    }
-    Ok(shape)
+    pub codegen: Option<BinOpCodegen>,
 }
 
 impl Op for TypedBinOp {
@@ -231,6 +204,9 @@ impl TypedOp for TypedBinOp {
         io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
+        if self.codegen.is_some() {
+            return Ok(None);
+        }
         let Some(axes) = self.axes.change_axis_sink(io, change)? else { return Ok(None) };
         Ok(Some(AxisChangeConsequence {
             substitute_op: Some(Box::new(Self { axes, ..self.clone() })),
@@ -265,6 +241,9 @@ impl TypedOp for TypedBinOp {
         _start: usize,
         _end: usize,
     ) -> TractResult<Option<TVec<OutletId>>> {
+        if self.codegen.is_some() {
+            return Ok(None);
+        }
         Ok(Some(patch.wire_node(prefix, self.clone(), inputs)?))
     }
 
@@ -273,129 +252,130 @@ impl TypedOp for TypedBinOp {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
+        if self.codegen.is_some() {
+            return Ok(None);
+        }
         self.op.declutter(&self.axes, model, node).context("binary op declutter")
     }
 
-    /*
     fn codegen(
         &self,
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
+        if self.codegen.is_some() {
+            return Ok(None);
+        }
         let facts = model.node_input_facts(node.id)?;
-        if self.op.result_datum_type(facts[0].datum_type, facts[1].datum_type)?
+        let codegen = if self.op.result_datum_type(facts[0].datum_type, facts[1].datum_type)?
             == facts[0].datum_type
             && facts[0].without_value() == facts[1].without_value()
+            && self.axes.direct(InOut::In(0), InOut::In(1))
+            && self.axes.direct(InOut::In(0), InOut::Out(0))
         {
-            Ok(Some(
-                TypedModelPatch::replace_single_op(
-                    model,
-                    node,
-                    &node.inputs,
-                    MergeOpUnicast(self.op.clone()),
-                )?
-                .with_context("Unicast"),
-            ))
+            BinOpCodegen::Unicast
         } else {
-            Ok(None)
+            BinOpCodegen::Generic
+        };
+        let ctx = format!("{codegen:?}");
+        Ok(Some(
+            TypedModelPatch::replace_single_op(
+                model,
+                node,
+                &node.inputs,
+                Self { codegen: Some(codegen), ..self.clone() },
+            )?
+            .with_context(ctx),
+        ))
+    }
+
+    as_op!();
+}
+
+pub fn output_shape<D: DimLike>(
+    axes: &AxesMapping,
+    a: impl AsRef<[D]>,
+    b: impl AsRef<[D]>,
+) -> TractResult<TVec<D>> {
+    let a = a.as_ref();
+    let b = b.as_ref();
+    let mut shape = tvec!();
+    for axis in axes.output_axes(0) {
+        if axis.inputs[0].len() > 1 || axis.inputs[1].len() > 1 {
+            bail!("Invalid expression for binary mapping {}", axes);
         }
+        let one = D::one();
+        let dim_a = axis.inputs[0].get(0).map(|ax| &a[*ax]).unwrap_or(&one);
+        let dim_b = axis.inputs[1].get(0).map(|ax| &b[*ax]).unwrap_or(&one);
+        let dim_c = if dim_a == &one {
+            dim_b.clone()
+        } else if dim_b == &one {
+            dim_a.clone()
+        } else if dim_a == dim_b {
+            dim_a.clone()
+        } else {
+            bail!(
+                "Can not compute dim for axis {} with inputs {:?} and {:?} and expression {}",
+                axis.repr,
+                a,
+                b,
+                axes
+            );
+        };
+        shape.push(dim_c);
     }
-    */
-
-    as_op!();
-}
-
-#[derive(Debug, Clone)]
-pub struct MergeOpUnicast(pub Box<dyn BinMiniOp>);
-
-impl Op for MergeOpUnicast {
-    fn name(&self) -> Cow<str> {
-        format!("{}Unicast", self.0.name()).into()
-    }
-
-    op_as_typed_op!();
-}
-
-impl EvalOp for MergeOpUnicast {
-    fn is_stateless(&self) -> bool {
-        true
-    }
-
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let (a, b) = args_2!(inputs);
-        let mut b = b.into_tensor();
-        self.0.eval_unicast_in_place(&a, &mut b)?;
-        Ok(tvec!(b.into_tvalue()))
-    }
-}
-
-impl TypedOp for MergeOpUnicast {
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        debug_assert_eq!(inputs[0].shape, inputs[1].shape);
-        Ok(tvec!(inputs[0].without_value()))
-    }
-
-    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let count: TDim = self.output_facts(inputs)?[0].shape.iter().product();
-        Ok(self
-            .0
-            .cost_per_element(inputs[0].datum_type)
-            .into_iter()
-            .map(|(c, n)| (c, count.clone() * n))
-            .collect())
-    }
-
-    /*
-    fn declutter(
-        &self,
-        axes: &AxesMapping,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        self.0.declutter(&self.axes, model, node)
-    }
-    */
-
-    as_op!();
+    Ok(shape)
 }
 
 /*
-pub fn transform_to_mapping_geo<'a, 'd, D: Datum>(
-    axes: &'a AxesMapping,
-    interface: InOut,
-    view: &'d ArrayViewD<D>,
-) -> ArrayViewD<'d, D> {
-    dbg!(axes.to_string());
-    dbg!(interface);
-    dbg!(view.shape());
-    let mut view = view.view();
-    for op in axes.axis_ops_to_canonical(interface)? {
-        op.change_view(&mut view);
-    }
-    Ok(view)
+#[derive(Debug, Clone)]
+pub struct MergeOpUnicast {
+pub op: Box<dyn BinMiniOp>,
+pub axes: AxesMapping,
 }
 
-pub fn transform_to_mapping_geo_mut<'a, 'd, D: Datum>(
-    axes: &'a AxesMapping,
-    interface: InOut,
-    view: &'d mut ArrayViewMutD<D>,
-) -> ArrayViewMutD<'d, D> {
-    debug_assert_eq!(axes.interface_rank(interface), view.ndim());
-    let mut view = view.view_mut();
-    let mut permutation = tvec!();
-    for axis in axes.iter_all_axes() {
-        let spec = match interface {
-            InOut::In(i) => axis.inputs[i].get(0),
-            InOut::Out(o) => axis.outputs[o].get(0),
-        };
-        if let Some(pos_in_a) = spec {
-            permutation.push(*pos_in_a)
-        } else {
-            permutation.push(view.ndim());
-            view.insert_axis_inplace(tract_ndarray::Axis(view.ndim()));
-        }
-    }
-    view.permuted_axes(&*permutation)
+impl Op for MergeOpUnicast {
+fn name(&self) -> Cow<str> {
+format!("{}Unicast", self.op.name()).into()
+}
+
+fn info(&self) -> TractResult<Vec<String>> {
+Ok(vec![self.axes.to_string()])
+}
+
+op_as_typed_op!();
+}
+
+impl EvalOp for MergeOpUnicast {
+fn is_stateless(&self) -> bool {
+true
+}
+
+fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+let (a, b) = args_2!(inputs);
+let mut b = b.into_tensor();
+self.op.eval_unicast_in_place(&a, &mut b)?;
+Ok(tvec!(b.into_tvalue()))
+}
+}
+
+impl TypedOp for MergeOpUnicast {
+fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+debug_assert_eq!(inputs[0].shape, inputs[1].shape);
+Ok(tvec!(inputs[0].without_value()))
+}
+
+fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+let count: TDim = self.output_facts(inputs)?[0].shape.iter().product();
+Ok(self
+.op
+.cost_per_element(inputs[0].datum_type)
+.into_iter()
+.map(|(c, n)| (c, count.clone() * n))
+.collect())
+}
+
+as_op!();
 }
 */
 
@@ -533,7 +513,7 @@ macro_rules! bin_to_super_type {
                                 let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
                                 let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
                                 return crate::ops::binary::eval_in_a::<$typ_dt, $typ_dt>(axes, a, b,
-                                    |c,a,b| cab(c, &(a.clone()), b, zp, scale));
+                                                                                         |c,a,b| cab(c, &(a.clone()), b, zp, scale));
                             })*
                          )*
                      )?

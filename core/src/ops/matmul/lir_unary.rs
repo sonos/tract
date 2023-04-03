@@ -403,7 +403,6 @@ impl TypedOp for LirMatMulUnary {
 
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         use crate::ops;
-        return Ok(None);
         if node.outputs.len() != 1
             || node.outputs[0].successors.len() != 1
             || model.output_outlets()?.contains(&node.id.into())
@@ -411,8 +410,7 @@ impl TypedOp for LirMatMulUnary {
             return Ok(None);
         }
         let succ = model.node(node.outputs[0].successors[0].node);
-        let mut patch = TypedModelPatch::new(format!("fusing {succ}"));
-        /*
+        let patch = TypedModelPatch::new(format!("fusing {succ}"));
         if let Some(op) = succ.op_as::<ops::binary::TypedBinOp>() {
             let mut binop =
                 if let Some(op) = op.op.as_linalg_binop() { op } else { return Ok(None) };
@@ -423,7 +421,6 @@ impl TypedOp for LirMatMulUnary {
             let other_outlet = succ.inputs[flipped as usize];
             return self.fuse_binary(model, node, patch, other_outlet, binop);
         }
-        */
 
         if let Some(op) = succ.op_as::<ops::element_wise::ElementWiseOp>().map(|ew| ew.0.as_ref()) {
             if let Some(op) = op.downcast_ref::<ops::math::QScale>() {
@@ -455,6 +452,7 @@ impl TypedOp for LirMatMulUnary {
                 }
             }
         }
+        /*
         if let Some(AxisOp::Rm(axis)) = succ.op_as::<ops::AxisOp>() {
             if *axis == self.c_m_axis || *axis == self.c_n_axis {
                 return Ok(None);
@@ -498,8 +496,10 @@ impl TypedOp for LirMatMulUnary {
                 }
             }
         }
+        */
+        /*
         if let Some(op) = succ.op_as::<ops::binary::MergeOpUnicast>() {
-            if op.0.is::<ops::math::Add>() {
+            if op.op.is::<ops::math::Add>() {
                 let other_slot = 1 - node.outputs[0].successors[0].slot;
                 let other_input = succ.inputs[other_slot];
                 let other_input = patch.tap_model(model, other_input)?;
@@ -516,6 +516,7 @@ impl TypedOp for LirMatMulUnary {
                 }
             }
         };
+        */
         Ok(None)
     }
 
@@ -643,6 +644,7 @@ impl LirMatMulUnary {
                 &additional_inputs,
             );
         }
+        /*
         let other_shape = fact.shape.to_owned();
         if other_shape[self.c_m_axis] == self.c_fact.shape[self.c_m_axis]
             && other_shape[self.c_m_axis] == other_shape.volume()
@@ -674,6 +676,7 @@ impl LirMatMulUnary {
                 &additional_inputs,
             );
         }
+        */
         Ok(None)
     }
 }
