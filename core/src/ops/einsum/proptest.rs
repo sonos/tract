@@ -164,6 +164,20 @@ fn unicast_1() {
 }
 
 #[test]
+fn unicast_2() {
+    BinEinsumProblem {
+        expr: "ak,gk->ag".parse().unwrap(),
+        a: Tensor::zero::<f32>(&[2, 2]).unwrap(),
+        b: Tensor::zero::<f32>(&[2, 2]).unwrap(),
+        a_constant: false,
+        b_constant: false,
+        unicast_add_constant: Some(tensor2(&[[0f32, 0.], [0., 1.]])),
+    }
+    .check()
+    .unwrap()
+}
+
+#[test]
 fn broadcast_0() {
     BinEinsumProblem {
         expr: "awk,gwk->agw".parse().unwrap(),

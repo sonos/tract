@@ -1,6 +1,7 @@
 use std::fmt::Display;
 use std::str::FromStr;
 
+use tract_data::itertools::izip;
 use tract_ndarray::{ArrayViewD, ArrayViewMutD};
 
 use crate::internal::*;
@@ -149,6 +150,17 @@ impl AxesMapping {
 
     pub fn input_rank(&self, input: usize) -> usize {
         self.iter_all_axes().map(|axis| axis.inputs[input].len()).sum()
+    }
+
+    pub fn interface_axis(&self, io: InOut, position: usize) -> TractResult<&Axis> {
+        match io {
+            InOut::In(i) => self.input_axis(i, position),
+            InOut::Out(o) => self.output_axis(o, position),
+        }
+    }
+
+    pub fn interface_axes(&self, io: InOut) -> impl Iterator<Item = &Axis> {
+        (0..self.interface_rank(io)).map(move |ix| self.interface_axis(io, ix).unwrap())
     }
 
     pub fn input_axes(&self, input: usize) -> impl Iterator<Item = &Axis> {
@@ -541,6 +553,16 @@ impl AxesMapping {
 
     pub fn direct(&self, a:InOut, b:InOut) -> bool {
         self.axes.iter().all(|axis| axis.interface(a) == axis.interface(b))
+    }
+
+    pub fn same_layout<D: DimLike>(&self, a:InOut, b:InOut, shape_a: impl AsRef<[D]>, shape_b: impl AsRef<[D]>) -> bool {
+        let shape_a = shape_a.as_ref();
+        let shape_b = shape_b.as_ref();
+        shape_a.iter().cloned().product::<D>() == shape_b.iter().cloned().product()
+            && izip!(
+                self.interface_axes(a).zip(shape_a.iter()).filter(|(_axis, d)| **d != D::one()),
+                self.interface_axes(b).zip(shape_b.iter()).filter(|(_axis, d)| **d != D::one())
+            ).all(|(a, b)| a == b)
     }
 
     pub fn axis_ops_to_canonical(&self, io: InOut) -> TractResult<Vec<AxisOp>> {

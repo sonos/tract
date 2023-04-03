@@ -81,6 +81,7 @@ pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + 
     fn generic_eval(&self, axes: &AxesMapping, a: TValue, b: TValue) -> TractResult<Tensor> {
         let c_dt = self.result_datum_type(a.datum_type(), b.datum_type())?;
         let c_shape = output_shape(axes, a.shape(), b.shape())?;
+        /*
         if c_dt == b.datum_type() && a.len() == 1 && axes.direct(InOut::In(1), InOut::Out(0)) {
             let mut b = b.into_tensor();
             self.eval_uniform_in_place(&a, &mut b)?;
@@ -101,10 +102,11 @@ pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + 
             self.eval_in_a(axes, &mut a, &b)?;
             Ok(a)
         } else {
+        }
+        */
             let mut c = unsafe { Tensor::uninitialized_dt(c_dt, &c_shape)? };
             self.eval_out_of_place(axes, &mut c, &a, &b)?;
             Ok(c)
-        }
     }
     fn eval(&self, axes: &AxesMapping, a: TValue, b: TValue) -> TractResult<Tensor> {
         self.generic_eval(axes, a, b)
@@ -143,11 +145,18 @@ impl<B: BinMiniOp> From<B> for Box<dyn BinMiniOp + 'static> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub enum BinOpCodegen {
-    Unicast,
-    Uniform,
+    #[default]
     Generic,
+    UnicastInPlace {
+        mutate: usize,
+        fixes: Vec<AxisOp>,
+    },
+    UniformInPlace {
+        mutate: usize,
+        fixes: Vec<AxisOp>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -167,7 +176,12 @@ impl Op for TypedBinOp {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![self.axes.to_string()])
+        let i = if let Some(codegen) = &self.codegen {
+            format!("{} ({codegen:?})", self.axes)
+        } else {
+            self.axes.to_string()
+        };
+        Ok(vec![i])
     }
 
     op_as_typed_op!();
@@ -180,7 +194,29 @@ impl EvalOp for TypedBinOp {
 
     fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a, b) = args_2!(inputs);
-        Ok(tvec!(self.op.eval(&self.axes, a, b)?.into_tvalue()))
+        match &self.codegen {
+            Some(BinOpCodegen::UnicastInPlace { mutate, fixes }) if *mutate == 1 => {
+                let (mutate, other) = if *mutate == 0 { (a, b) } else { (b, a) };
+                let mut mutate = mutate.into_tensor();
+                self.op.eval_unicast_in_place(&other, &mut mutate)?;
+                for axis_fix in fixes {
+                    axis_fix.change_tensor(&mut mutate, false)?;
+                }
+                return Ok(tvec!(mutate.into_tvalue()));
+            }
+            Some(BinOpCodegen::UniformInPlace { mutate, fixes }) if *mutate == 1 => {
+                let (mutate, other) = if *mutate == 0 { (a, b) } else { (b, a) };
+                let mut mutate = mutate.into_tensor();
+                self.op.eval_uniform_in_place(&other, &mut mutate)?;
+                for axis_fix in fixes {
+                    axis_fix.change_tensor(&mut mutate, false)?;
+                }
+                return Ok(tvec!(mutate.into_tvalue()));
+            }
+            _ => (),
+        };
+        let c = self.op.eval(&self.axes, a, b)?;
+        Ok(tvec!(c.into_tvalue()))
     }
 }
 
@@ -267,13 +303,26 @@ impl TypedOp for TypedBinOp {
             return Ok(None);
         }
         let facts = model.node_input_facts(node.id)?;
-        let codegen = if self.op.result_datum_type(facts[0].datum_type, facts[1].datum_type)?
-            == facts[0].datum_type
-            && facts[0].without_value() == facts[1].without_value()
-            && self.axes.direct(InOut::In(0), InOut::In(1))
-            && self.axes.direct(InOut::In(0), InOut::Out(0))
+        let output_shape = output_shape(&self.axes, &facts[0].shape, &facts[1].shape)?;
+        let cdt = self.op.result_datum_type(facts[0].datum_type, facts[1].datum_type)?;
+        let codegen = if cdt == facts[0].datum_type
+            && self.axes.same_layout(InOut::In(0), InOut::In(1), &facts[0].shape, &facts[1].shape)
+            && self.axes.same_layout(InOut::In(0), InOut::Out(0), &facts[0].shape, &output_shape)
         {
-            BinOpCodegen::Unicast
+            BinOpCodegen::UnicastInPlace {
+                mutate: 0,
+                fixes: self.axes.extract_sub_mapping(&[0], &[0])?.translate_to_axis_ops()?,
+            }
+        } else if facts[0].shape.volume().is_one() && cdt == facts[1].datum_type {
+            BinOpCodegen::UniformInPlace {
+                mutate: 1,
+                fixes: self.axes.extract_sub_mapping(&[1], &[0])?.translate_to_axis_ops()?,
+            }
+        } else if facts[1].shape.volume().is_one() && cdt == facts[0].datum_type {
+            BinOpCodegen::UniformInPlace {
+                mutate: 0,
+                fixes: self.axes.extract_sub_mapping(&[0], &[0])?.translate_to_axis_ops()?,
+            }
         } else {
             BinOpCodegen::Generic
         };
@@ -326,58 +375,6 @@ pub fn output_shape<D: DimLike>(
     }
     Ok(shape)
 }
-
-/*
-#[derive(Debug, Clone)]
-pub struct MergeOpUnicast {
-pub op: Box<dyn BinMiniOp>,
-pub axes: AxesMapping,
-}
-
-impl Op for MergeOpUnicast {
-fn name(&self) -> Cow<str> {
-format!("{}Unicast", self.op.name()).into()
-}
-
-fn info(&self) -> TractResult<Vec<String>> {
-Ok(vec![self.axes.to_string()])
-}
-
-op_as_typed_op!();
-}
-
-impl EvalOp for MergeOpUnicast {
-fn is_stateless(&self) -> bool {
-true
-}
-
-fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-let (a, b) = args_2!(inputs);
-let mut b = b.into_tensor();
-self.op.eval_unicast_in_place(&a, &mut b)?;
-Ok(tvec!(b.into_tvalue()))
-}
-}
-
-impl TypedOp for MergeOpUnicast {
-fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-debug_assert_eq!(inputs[0].shape, inputs[1].shape);
-Ok(tvec!(inputs[0].without_value()))
-}
-
-fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-let count: TDim = self.output_facts(inputs)?[0].shape.iter().product();
-Ok(self
-.op
-.cost_per_element(inputs[0].datum_type)
-.into_iter()
-.map(|(c, n)| (c, count.clone() * n))
-.collect())
-}
-
-as_op!();
-}
-*/
 
 #[macro_export]
 macro_rules! bin_to_super_type {
