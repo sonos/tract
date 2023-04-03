@@ -27,6 +27,15 @@ fn crit(c: &mut Criterion, name: &str, r: impl Fn(f32) -> f32, prog: &Program) {
                 BatchSize::LargeInput,
             )
         });
+        group.bench_with_input(BenchmarkId::new("VMVec", size), size, |b, size| {
+            b.iter_batched(
+                || vec![1.0f32; *size as usize],
+                |mut v| {
+                    prog.compute_slice(black_box(&mut v));
+                },
+                BatchSize::LargeInput,
+            )
+        });
     }
 }
 
