@@ -370,40 +370,40 @@ impl AxisOp {
 
     pub fn change_view<D>(&self, view: &mut ArrayViewD<D>) -> TractResult<()> {
         use tract_ndarray::Axis;
-        match self {
-            &AxisOp::Rm(axis) => view.index_axis_inplace(Axis(axis), 0),
-            &AxisOp::Add(axis) => view.insert_axis_inplace(Axis(axis)),
-            &AxisOp::Move(from, to) if from < to => {
+        match *self {
+            AxisOp::Rm(axis) => view.index_axis_inplace(Axis(axis), 0),
+            AxisOp::Add(axis) => view.insert_axis_inplace(Axis(axis)),
+            AxisOp::Move(from, to) if from < to => {
                 for left in from..to {
                     view.swap_axes(left, left + 1);
                 }
             }
-            &AxisOp::Move(from, to) => {
+            AxisOp::Move(from, to) => {
                 for left in (to..from).rev() {
                     view.swap_axes(left, left + 1);
                 }
             }
-            &AxisOp::Reshape(_,_,_) => bail!("Reshape can not change views in place")
+            AxisOp::Reshape(_, _, _) => bail!("Reshape can not change views in place"),
         }
         Ok(())
     }
 
     pub fn change_view_mut<D>(&self, view: &mut ArrayViewMutD<D>) -> TractResult<()> {
         use tract_ndarray::Axis;
-        match self {
-            &AxisOp::Rm(axis) => view.index_axis_inplace(Axis(axis), 0),
-            &AxisOp::Add(axis) => view.insert_axis_inplace(Axis(axis)),
-            &AxisOp::Move(from, to) if from < to => {
+        match *self {
+            AxisOp::Rm(axis) => view.index_axis_inplace(Axis(axis), 0),
+            AxisOp::Add(axis) => view.insert_axis_inplace(Axis(axis)),
+            AxisOp::Move(from, to) if from < to => {
                 for left in from..to {
                     view.swap_axes(left, left + 1);
                 }
             }
-            &AxisOp::Move(from, to) => {
+            AxisOp::Move(from, to) => {
                 for left in (to..from).rev() {
                     view.swap_axes(left, left + 1);
                 }
             }
-            &AxisOp::Reshape(_,_,_) => bail!("Reshape can not change views in place")
+            AxisOp::Reshape(_, _, _) => bail!("Reshape can not change views in place"),
         }
         Ok(())
     }

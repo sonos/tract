@@ -55,7 +55,7 @@ bin_to_super_type!(mul, Mul,
        if c.datum_type() == TDim::datum_type() &&
            a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
                 let b = b.cast_to::<i32>()?;
-                crate::ops::binary::eval_out_of_place::<TDim, TDim, i32>(axes, c, &a, &b, 
+                crate::ops::binary::eval_out_of_place::<TDim, TDim, i32>(axes, c, a, &b, 
                     |c, a, b| *c = a.clone() * b)?;
                Ok(true)
            }
@@ -63,13 +63,13 @@ bin_to_super_type!(mul, Mul,
            match c.datum_type() {
                DatumType::QI8(params) => {
                    let (zp, scale) = params.zp_scale();
-                   crate::ops::binary::eval_out_of_place::<i8, i8, i8>(axes, c, &a, &b, 
+                   crate::ops::binary::eval_out_of_place::<i8, i8, i8>(axes, c, a, b, 
                         |c,a,b| *c = scale_by((*a as i16 - zp as i16) * (*b as i16 - zp as i16) + zp as i16, scale).clamp_cast())?;
                    Ok(true)
                }
                DatumType::QU8(params) => {
                    let (zp, scale) = params.zp_scale();
-                   crate::ops::binary::eval_out_of_place::<u8, u8, u8>(axes, c, &a, &b, 
+                   crate::ops::binary::eval_out_of_place::<u8, u8, u8>(axes, c, a, b, 
                        |c,a,b| *c = scale_by((*a as i32 - zp as i32) * (*b as i32 - zp as i32) + zp as i32, scale).clamp_cast())?;
                    Ok(true)
                }
@@ -101,7 +101,7 @@ out_of_place: |axes: &AxesMapping, c:&mut Tensor, a:&Tensor, b: &Tensor| -> Trac
     if c.datum_type() == TDim::datum_type() &&
         a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
             let b = b.cast_to::<i32>()?;
-            crate::ops::binary::eval_out_of_place::<TDim, TDim, i32>(axes, c, a, &*b,
+            crate::ops::binary::eval_out_of_place::<TDim, TDim, i32>(axes, c, a, &b,
                                                                      |c,a,b| *c = a.clone() / *b
                                                                      )?;
             Ok(true)
@@ -110,7 +110,7 @@ out_of_place: |axes: &AxesMapping, c:&mut Tensor, a:&Tensor, b: &Tensor| -> Trac
             let b = b.cast_to::<f32>()?;
             let c_shape = crate::ops::binary::output_shape(axes, a.shape(), b.shape())?;
             let mut c = unsafe { Tensor::uninitialized_dt(DatumType::TDim, &c_shape)? };
-            crate::ops::binary::eval_out_of_place::<f32, f32, f32>(axes, &mut c, &*a, &*b,
+            crate::ops::binary::eval_out_of_place::<f32, f32, f32>(axes, &mut c, &a, &b,
                                                                      |c,a,b| *c = a.clone() / *b
                                                                      )?;
             Ok(true)
@@ -129,7 +129,7 @@ bin_to_super_type!(rem, Rem,
               let c_shape = crate::ops::binary::output_shape(axes, a.shape(), b.shape())?;
               unsafe {
                   let mut c = Tensor::uninitialized_dt(DatumType::TDim, &c_shape)?;
-                  crate::ops::binary::eval_out_of_place::<TDim, TDim, i32>(axes, &mut c, &a, &*b, |c,a,b| *c = a.clone() % *b)?;
+                  crate::ops::binary::eval_out_of_place::<TDim, TDim, i32>(axes, &mut c, &a, &b, |c,a,b| *c = a.clone() % *b)?;
                   Ok(c)
               }
           } else {
@@ -140,7 +140,7 @@ bin_to_super_type!(rem, Rem,
       if c.datum_type() == TDim::datum_type() &&
           a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
               let b = b.cast_to::<i32>()?;
-              crate::ops::binary::eval_out_of_place::<TDim, TDim, i32>(axes, c, a, &*b, |c,a,b| *c = a.clone() % *b)?;
+              crate::ops::binary::eval_out_of_place::<TDim, TDim, i32>(axes, c, a, &b, |c,a,b| *c = a.clone() % *b)?;
               Ok(true)
           } else {
               Ok(false)

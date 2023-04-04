@@ -56,7 +56,7 @@ pub fn wire_bin(
         axes = axes.remove_input_axis(1, 0)?;
     }
     let op = TypedBinOp { op: op.into(), axes, codegen: None };
-    target.wire_node(prefix, &op.into(), &inputs)
+    target.wire_node(prefix, &op.into(), inputs)
 }
 
 pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast {
@@ -353,8 +353,9 @@ pub fn output_shape<D: DimLike>(
             bail!("Invalid expression for binary mapping {}", axes);
         }
         let one = D::one();
-        let dim_a = axis.inputs[0].get(0).map(|ax| &a[*ax]).unwrap_or(&one);
-        let dim_b = axis.inputs[1].get(0).map(|ax| &b[*ax]).unwrap_or(&one);
+        let dim_a = axis.inputs[0].first().map(|ax| &a[*ax]).unwrap_or(&one);
+        let dim_b = axis.inputs[1].first().map(|ax| &b[*ax]).unwrap_or(&one);
+        #[allow(clippy::if_same_then_else)]
         let dim_c = if dim_a == &one {
             dim_b.clone()
         } else if dim_b == &one {
@@ -518,7 +519,7 @@ macro_rules! bin_to_super_type {
                 $(if $out_of_place(axes, c, a, b)? { return Ok(()) } )?
                     $(
                         $(if c.datum_type() == $typ::datum_type() {
-                            return crate::ops::binary::eval_out_of_place::<$typ, $typ, $typ>(axes, c, a, b, $cab)
+                            return $crate::ops::binary::eval_out_of_place::<$typ, $typ, $typ>(axes, c, a, b, $cab)
                         })*
                      )*
                     $(

@@ -101,20 +101,6 @@ impl<B: BinMiniOp> BinIntoHir for B {
 #[derive(Debug, Clone)]
 pub struct Nary(pub Box<dyn mir::binary::BinMiniOp>, pub bool);
 
-impl Nary {
-    fn normalize_t<T>(t: &mut Tensor, n: usize) -> TractResult<()>
-    where
-        T: Datum + std::ops::DivAssign<T> + Copy,
-        usize: tract_num_traits::AsPrimitive<T>,
-    {
-        use tract_num_traits::AsPrimitive;
-        let mut t = t.to_array_view_mut::<T>()?;
-        let n: T = n.as_();
-        t /= &tract_ndarray::arr0(n);
-        Ok(())
-    }
-}
-
 impl Expansion for Nary {
     fn name(&self) -> Cow<str> {
         format!("{}Nary", self.0.name()).into()

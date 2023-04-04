@@ -578,8 +578,8 @@ impl AxesMapping {
         let mut permutation = tvec!();
         for axis in &self.axes {
             let spec = match io {
-                InOut::In(i) => axis.inputs[i].get(0),
-                InOut::Out(o) => axis.outputs[o].get(0),
+                InOut::In(i) => axis.inputs[i].first(),
+                InOut::Out(o) => axis.outputs[o].first(),
             };
             if let Some(pos_in_a) = spec {
                 permutation.push(pos_in_a + target_rank - rank)

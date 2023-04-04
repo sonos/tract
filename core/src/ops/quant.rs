@@ -336,7 +336,7 @@ impl crate::ops::binary::BinMiniOp for Scale {
                 *c = scale_by(*b, *a)
             })
         }
-        unsafe { dispatch_numbers!(eval_out_of_place_t(b.datum_type())(axes, c, &a, b)) }
+        unsafe { dispatch_numbers!(eval_out_of_place_t(b.datum_type())(axes, c, a, b)) }
     }
 
     fn eval_in_a(&self, axes: &AxesMapping, a: &mut Tensor, b: &Tensor) -> TractResult<()> {
