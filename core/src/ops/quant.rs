@@ -285,6 +285,10 @@ impl crate::ops::binary::BinMiniOp for Scale {
         Ok(b)
     }
 
+    fn eval_uniform_in_left(&self, _: &mut Tensor, _: &Tensor) -> TractResult<()> {
+        bail!("Unexpected call to uniform_in_left for Scale");
+    }
+
     fn eval_uniform_in_right(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
         let a = a.to_scalar::<f32>()?;
         unsafe fn eval_in_place_t<T: Datum + AsPrimitive<f32>>(a: f32, b: &mut Tensor)

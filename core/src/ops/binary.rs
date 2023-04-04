@@ -69,6 +69,7 @@ pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + 
     }
     fn result_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType>;
     fn eval_unicast_in_right(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()>;
+    fn eval_uniform_in_left(&self, a: &mut Tensor, b: &Tensor) -> TractResult<()>;
     fn eval_uniform_in_right(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()>;
     fn eval_in_a(&self, axes: &AxesMapping, a: &mut Tensor, b: &Tensor) -> TractResult<()>;
     fn eval_out_of_place(
@@ -150,6 +151,7 @@ pub enum BinOpCodegen {
     #[default]
     Generic,
     UnicastInRight(Vec<AxisOp>),
+    UniformInLeft(Vec<AxisOp>),
     UniformInRight(Vec<AxisOp>),
 }
 
@@ -196,6 +198,14 @@ impl EvalOp for TypedBinOp {
                     axis_fix.change_tensor(&mut b, false)?;
                 }
                 return Ok(tvec!(b.into_tvalue()));
+            }
+            Some(BinOpCodegen::UniformInLeft(fixes)) => {
+                let mut a = a.into_tensor();
+                self.op.eval_uniform_in_left(&mut a, &b)?;
+                for axis_fix in fixes {
+                    axis_fix.change_tensor(&mut a, false)?;
+                }
+                return Ok(tvec!(a.into_tvalue()));
             }
             Some(BinOpCodegen::UniformInRight(fixes)) => {
                 let mut b = b.into_tensor();
@@ -308,13 +318,10 @@ impl TypedOp for TypedBinOp {
             BinOpCodegen::UniformInRight(
                 self.axes.extract_sub_mapping(&[1], &[0])?.translate_to_axis_ops()?,
             )
-                /*
         } else if facts[1].shape.volume().is_one() && cdt == facts[0].datum_type {
-            BinOpCodegen::UniformInPlace {
-                mutate: 0,
-                fixes: self.axes.extract_sub_mapping(&[0], &[0])?.translate_to_axis_ops()?,
-            }
-            */
+            BinOpCodegen::UniformInLeft(
+                self.axes.extract_sub_mapping(&[0], &[0])?.translate_to_axis_ops()?,
+            )
         } else {
             BinOpCodegen::Generic
         };
@@ -387,6 +394,45 @@ macro_rules! bin_to_super_type {
         impl $crate::ops::binary::BinMiniOp for $Op {
             fn name(&self) -> &'static str {
                 stringify!($Op)
+            }
+            fn eval_uniform_in_left(&self, a: &mut Tensor, b: &Tensor) -> TractResult<()> {
+                $(
+                    $(if a.datum_type() == $typ::datum_type() {
+                        let cab: fn(&mut $typ, &$typ, &$typ) -> () = $cab;
+                        let a = a.as_slice_mut::<$typ>()?;
+                        let b = b.to_scalar::<$typ>()?;
+                        unsafe {
+                            for i in 0..a.len() {
+                                let mut c = $typ::default();
+                                cab(&mut c, a.get_unchecked(i), b);
+                                *a.get_unchecked_mut(i) = c;
+                            }
+                        }
+                        return Ok(())
+                    }
+                    )*
+                 )*
+
+                    $(
+                        $(
+                            $(if a.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
+                                let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
+                                let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
+                                let a = a.as_slice_mut::<$typ_dt>()?;
+                                let b = b.to_scalar::<$typ_dt>()?;
+                                unsafe {
+                                    for i in 0..a.len() {
+                                        let mut c = $typ_dt::default();
+                                        cab(&mut c, a.get_unchecked_mut(i), b, zp, scale);
+                                        *a.get_unchecked_mut(i) = c;
+                                    }
+                                }
+                                return Ok(())
+                            }
+                            )*
+                         )*
+                     )?
+                    bail!("{} does not support {:?} (inplace uniform)", self.name(), a.datum_type());
             }
 
             fn eval_uniform_in_right(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
@@ -593,6 +639,26 @@ macro_rules! bin_to_bool {
                                 let mut c = bool::default();
                                 cab(&mut c, a, b.get_unchecked(i));
                                 *b.get_unchecked_mut(i) = c;
+                            }
+                        }
+                        return Ok(())
+                    }
+                    )*
+                 )*
+                    bail!("{} does not support {:?} (inplace uniform)", self.name(), a.datum_type());
+            }
+
+            fn eval_uniform_in_left(&self, a: &mut Tensor, b: &Tensor) -> TractResult<()> {
+                $(
+                    $(if a.datum_type() == $typ::datum_type() {
+                        let cab: fn(&mut bool, &bool, &bool) -> () = $cab;
+                        let a = a.as_slice_mut::<bool>()?;
+                        let b = b.to_scalar::<bool>()?;
+                        unsafe {
+                            for i in 0..a.len() {
+                                let mut c = bool::default();
+                                cab(&mut c, a.get_unchecked(i), b);
+                                *a.get_unchecked_mut(i) = c;
                             }
                         }
                         return Ok(())
