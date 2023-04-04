@@ -186,6 +186,12 @@ impl AxesMapping {
         Ok(self.axes.iter_mut().find(|axis| axis.repr == repr).unwrap())
     }
 
+    pub fn track_axis(&self, from: InOut, to:InOut, position: usize) -> TractResult<Option<usize>> {
+        let axis = self.interface_axis(from, position)?;
+        let positions = axis.interface(to);
+        Ok(if positions.len() == 1 { Some(positions[0]) } else { None })
+    }
+
     pub fn with_input_axis_named(
         mut self,
         input_id: usize,

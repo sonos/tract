@@ -291,7 +291,7 @@ fn lir_mat_mul_unary(
         ],
     )
     .context("Creating LirMatMulUnary")?;
-    let output = patch.wire_node(name, lir, &[pa, pb])?[0];
+    let output = patch.wire_node(format!("{name}.mm"), lir, &[pa, pb])?[0];
     patch.shunt_outside(model, node.id.into(), output)?;
     Ok(Some(patch))
 }

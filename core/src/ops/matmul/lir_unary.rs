@@ -491,26 +491,6 @@ impl TypedOp for LirMatMulUnary {
         }
         }
         */
-        /*
-        if let Some(op) = succ.op_as::<ops::binary::MergeOpUnicast>() {
-        if op.op.is::<ops::math::Add>() {
-        let other_slot = 1 - node.outputs[0].successors[0].slot;
-        let other_input = succ.inputs[other_slot];
-        let other_input = patch.tap_model(model, other_input)?;
-
-        if patch.outlet_fact(other_input)?.shape == self.c_fact.shape {
-        let other_storage = unsafe { self.mmm.c_view(self.c_m_axis, self.c_n_axis) };
-        return self.fuse_op(
-        model,
-        node,
-        patch,
-        vec![ProtoFusedSpec::AddUnicast(other_storage, node.inputs.len().into())],
-        &[other_input],
-        );
-        }
-        }
-        };
-        */
         Ok(None)
     }
 
@@ -620,15 +600,16 @@ impl LirMatMulUnary {
             binop = binop.flip();
         }
         let other_outlet = succ.inputs[other_slot];
-        let fact = model.outlet_fact(other_outlet)?;
+        let mm_fact = &node.outputs[0].fact;
+        let other_fact = model.outlet_fact(other_outlet)?;
         let mut patch = TypedModelPatch::new(format!("Fusing {succ} into {node}"));
         let (value, additional_inputs): (AttrOrInput, TVec<OutletId>) =
-            if let Some(konst) = &fact.konst {
+            if let Some(konst) = &other_fact.konst {
                 let v = konst.cast_to_dt(self.mmm.internal_type())?.into_owned().into_arc_tensor();
                 (v.into(), tvec!())
             } else {
                 let mut v = patch.tap_model(model, other_outlet)?;
-                if fact.datum_type != self.mmm.internal_type() {
+                if other_fact.datum_type != self.mmm.internal_type() {
                     v = patch.wire_node(
                         format!("{}.cast-input-{}", node.name, node.inputs.len()),
                         cast(self.mmm.internal_type()),
@@ -637,12 +618,12 @@ impl LirMatMulUnary {
                 }
                 (AttrOrInput::Input(node.inputs.len()), tvec!(v))
             };
-        if fact.shape.volume().is_one() {
+        let wire_it = |fused: ProtoFusedSpec| {
             let mut wire = self.wire_to_patch_with_fused_op(
                 model,
                 node,
                 &mut patch,
-                vec![ProtoFusedSpec::BinScalar(value, binop)],
+                vec![fused],
                 &additional_inputs,
             )?;
             for (ix, axis_fix) in op
@@ -655,85 +636,48 @@ impl LirMatMulUnary {
                 wire = patch.wire_node(format!("{name}.fused-axis-fix-{ix}"), axis_fix, &wire)?;
             }
             patch.shunt_outside(model, succ.id.into(), wire[0])?;
-            return Ok(Some(patch));
-        }
-        /*a
-        let wire = match op.codegen.clone().unwrap_or_default() {
-            BinOpCodegen::UniformInPlace { .. } => self
-                .wire_to_patch_with_fused_op(
-                    model,
-                    node,
-                    &mut patch,
-                    vec![ProtoFusedSpec::BinScalar(value, binop)],
-                    &additional_inputs,
-                )
-                .map(Some)?,
-                */
-        /*
-            BinOpCodegen::UnicastInPlace{ .. } if binop == BinOp::Add => {
-                let m_axis = op.axes.input_axis(mm_slot, self.c_m_axis)?.inputs[other_slot][0];
-                let n_axis = op.axes.input_axis(mm_slot, self.c_n_axis)?.inputs[other_slot][0];
-                let other_storage = unsafe { self.mmm.c_view(m_axis, n_axis) };
-                self.wire_to_patch_with_fused_op(
-                    model,
-                    node,
-                    &mut patch,
-                    vec![ProtoFusedSpec::AddUnicast(other_storage, value)],
-                    &additional_inputs,
-                )
-                .map(Some)?
-            }
-            _ => return Ok(None),
+            Ok(Some(patch))
         };
-            */
-        /*
-        if let Some(mut wire) = wire {
-            for (ix, axis_fix) in op
-                .axes
-                .extract_sub_mapping(&[mm_slot], &[0])?
-                .translate_to_axis_ops()?
-                .into_iter()
-                .enumerate()
-            {
-                wire = patch.wire_node(format!("{name}.fused-axis-fix-{ix}"), axis_fix, &wire)?;
+        if other_fact.shape.volume().is_one() {
+            return wire_it(ProtoFusedSpec::BinScalar(value, binop));
+        }
+        if let Some(other_n) =
+            op.axes.track_axis(InOut::In(mm_slot), InOut::In(other_slot), self.c_n_axis)?
+        {
+            if other_fact.shape[other_n] == other_fact.shape.volume() {
+                return wire_it(ProtoFusedSpec::BinPerCol(
+                    value,
+                    binop,
+                    MapOutputAxisToInput(tvec!((self.c_n_axis, other_n))),
+                ));
             }
-            patch.shunt_outside(model, succ.id.into(), wire[0])?;
-            return Ok(Some(patch));
         }
-        */
-        /*
-        let other_shape = fact.shape.to_owned();
-        if other_shape[self.c_m_axis] == self.c_fact.shape[self.c_m_axis]
-        && other_shape[self.c_m_axis] == other_shape.volume()
+        if let Some(other_m) =
+            op.axes.track_axis(InOut::In(mm_slot), InOut::In(other_slot), self.c_m_axis)?
         {
-        return self.fuse_op(
-        model,
-        node,
-        patch,
-        vec![ProtoFusedSpec::BinPerRow(
-        value,
-        binop,
-        MapOutputAxisToInput(tvec!((self.c_m_axis, self.c_m_axis))),
-        )],
-        &additional_inputs,
-        );
+            if other_fact.shape[other_m] == other_fact.shape.volume() {
+                return wire_it(ProtoFusedSpec::BinPerRow(
+                    value,
+                    binop,
+                    MapOutputAxisToInput(tvec!((self.c_n_axis, other_m))),
+                ));
+            }
         }
-        if other_shape[self.c_n_axis] == self.c_fact.shape[self.c_n_axis]
-        && other_shape[self.c_n_axis] == other_shape.volume()
+        if op.axes.same_layout(
+            InOut::In(mm_slot),
+            InOut::In(other_slot),
+            &mm_fact.shape,
+            &other_fact.shape,
+        ) && binop == BinOp::Add
         {
-        return self.fuse_op(
-        model,
-        node,
-        patch,
-        vec![ProtoFusedSpec::BinPerCol(
-        value,
-        binop,
-        MapOutputAxisToInput(tvec!((self.c_n_axis, self.c_n_axis))),
-        )],
-        &additional_inputs,
-        );
+            if let (Some(m_axis), Some(n_axis)) = (
+                op.axes.track_axis(InOut::In(mm_slot), InOut::In(other_slot), self.c_m_axis)?,
+                op.axes.track_axis(InOut::In(mm_slot), InOut::In(other_slot), self.c_n_axis)?,
+            ) {
+                let other_storage = unsafe { self.mmm.c_view(m_axis, n_axis) };
+                return wire_it(ProtoFusedSpec::AddUnicast(other_storage, value));
+            }
         }
-        */
         Ok(None)
     }
 }
