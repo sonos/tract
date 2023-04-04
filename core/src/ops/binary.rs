@@ -527,7 +527,7 @@ macro_rules! bin_to_super_type {
                             $(if a.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
                                 let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
                                 let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
-                                return crate::ops::binary::eval_out_of_place::<$typ_dt, $typ_dt, $typ_dt>(axes, c, a, b, |c, a, b| cab(c,a,b,zp, scale) )
+                                return $crate::ops::binary::eval_out_of_place::<$typ_dt, $typ_dt, $typ_dt>(axes, c, a, b, |c, a, b| cab(c,a,b,zp, scale) )
                             }
                             )*
                          )*
@@ -540,7 +540,7 @@ macro_rules! bin_to_super_type {
                 $(
                     $(if b.datum_type() == $typ::datum_type() {
                         let cab: fn(&mut $typ, &$typ, &$typ) -> () = $cab;
-                        return crate::ops::binary::eval_in_a::<$typ, $typ>(axes, a, b, cab);
+                        return $crate::ops::binary::eval_in_a::<$typ, $typ>(axes, a, b, cab);
                     })*
                  )*
                     $(
@@ -548,7 +548,7 @@ macro_rules! bin_to_super_type {
                             $(if a.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
                                 let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
                                 let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
-                                return crate::ops::binary::eval_in_a::<$typ_dt, $typ_dt>(axes, a, b,
+                                return $crate::ops::binary::eval_in_a::<$typ_dt, $typ_dt>(axes, a, b,
                                                                                          |c,a,b| cab(c, &(a.clone()), b, zp, scale));
                             })*
                          )*
@@ -694,7 +694,7 @@ macro_rules! bin_to_bool {
                 $(
                     $(if a.datum_type() == $typ::datum_type() {
                         let cab: fn(&mut bool, &$typ, &$typ) -> () = $cab;
-                        return crate::ops::binary::eval_out_of_place::<bool, $typ, $typ>(axes, c, a, b, cab)
+                        return $crate::ops::binary::eval_out_of_place::<bool, $typ, $typ>(axes, c, a, b, cab)
                     }
                     )*
                  )*

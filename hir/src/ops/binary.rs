@@ -38,7 +38,7 @@ impl Expansion for InferenceBinOp {
             target.outlet_fact(inputs[0])?.datum_type,
             target.outlet_fact(inputs[1])?.datum_type,
         )?;
-        let wires = wire_cast(prefix, target, &inputs, operating_datum_type)?;
+        let wires = wire_cast(prefix, target, inputs, operating_datum_type)?;
         wire_bin(prefix, target, self.0.clone(), &wires)
     }
 }
@@ -148,7 +148,7 @@ impl Expansion for Nary {
         let dt = DatumType::super_type_for(&types)
             .with_context(|| format!("No super type for {types:?}"))?;
         let operating = self.0.operating_datum_type(dt, dt)?;
-        let inputs = wire_cast(prefix, model, &inputs, operating)?;
+        let inputs = wire_cast(prefix, model, inputs, operating)?;
         let mut wire = inputs[0];
         for (ix, i) in inputs[1..].iter().enumerate() {
             wire = wire_bin(format!("{prefix}.{ix}"), model, self.0.clone(), &[wire, *i])?[0];

@@ -155,7 +155,7 @@ impl Registry {
                 let mut b = ast.mapping[&node.inputs[1]].clone();
                 let b_rank = ast.model.outlet_fact(node.inputs[1])?.rank();
                 b = ser_axes_mapping(b_rank, bin_op.axes.axis_ops_to_canonical(InOut::In(1))?, b)?;
-                let mut c = invocation(&mini_op_name, &[a, b], &[]);
+                let mut c = invocation(mini_op_name, &[a, b], &[]);
                 let c_axes_map = bin_op
                     .axes
                     .axis_ops_to_canonical(InOut::Out(0))?
