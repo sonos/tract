@@ -10,7 +10,7 @@ jobs:
   windows:
     strategy:
       matrix:
-        os: [ windows-2019 ]
+        os: [ windows-2022 ]
         toolchain: [ gnu, msvc ]
       fail-fast: false
 
