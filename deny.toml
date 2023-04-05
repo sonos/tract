@@ -36,7 +36,9 @@ skip = [
     { name = "hashbrown", version="0.11.2" }, # string interner pulls old version
     { name = "quick-error", version="<2" }, # cascading from flate
     { name = "syn", version="<2" },
-    { name = "windows-sys", version="0.42.0" },
+    { name = "windows-sys", version="<0.48" },
+    { name = "windows-targets", version="<0.48" },
+    { name = "windows_x86_64_msvc", version="<0.48" },
 ]
 
 [sources]
