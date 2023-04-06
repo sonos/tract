@@ -60,10 +60,21 @@ impl ProtoFusedSpec {
                 unsafe {
                     geo.c_to_b_axis_mapping.translate_view(output_coords, &mut b);
                 }
-                FusedSpec::AddMatMul {
-                    k: geo.k.eval(symbols).to_usize().unwrap(),
-                    a: unsafe { geo.a_storage.wrap(&a) },
-                    b: unsafe { geo.b_storage.wrap(&b) },
+                let k = geo.k.eval(symbols).to_usize().unwrap();
+                unsafe {
+                    // careful here. this work because a_packed() return a packer from which
+                    // nothing is borrowed
+                    let a = if let Some(sto) = &geo.a_storage {
+                        sto.wrap(&a)
+                    } else {
+                        geo.mmm.a_packed(a.datum_type().size_of(), k).wrap(&a)
+                    };
+                    let b = if let Some(sto) = &geo.b_storage {
+                        sto.wrap(&b)
+                    } else {
+                        geo.mmm.b_packed(b.datum_type().size_of(), k).wrap(&b)
+                    };
+                    FusedSpec::AddMatMul { k, a, b }
                 }
             }
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(v.tensor(inputs), *op),
@@ -109,10 +120,21 @@ impl ProtoFusedSpec {
             ProtoFusedSpec::AddMatMul(geo, a, b) => {
                 let a = a.tensor(inputs).view();
                 let b = b.tensor(inputs).view();
-                FusedSpec::AddMatMul {
-                    k: unsafe { geo.k.as_i64().unwrap_unchecked() as usize },
-                    a: unsafe { geo.a_storage.wrap(&a) },
-                    b: unsafe { geo.b_storage.wrap(&b) },
+                unsafe {
+                    let k = geo.k.as_i64().unwrap_unchecked() as usize;
+                    // careful here. this work because a_packed() return a packer from which
+                    // nothing is borrowed
+                    let a = if let Some(sto) = &geo.a_storage {
+                        sto.wrap(&a)
+                    } else {
+                        geo.mmm.a_packed(a.datum_type().size_of(), k).wrap(&a)
+                    };
+                    let b = if let Some(sto) = &geo.b_storage {
+                        sto.wrap(&b)
+                    } else {
+                        geo.mmm.b_packed(b.datum_type().size_of(), k).wrap(&b)
+                    };
+                    FusedSpec::AddMatMul { k, a, b }
                 }
             }
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(v.tensor(inputs), *op),
@@ -195,8 +217,9 @@ impl MapOutputAxisToInput {
 #[derive(Clone, Debug)]
 pub struct AddMatMulGeometry {
     pub k: TDim,
-    pub a_storage: InputStoreSpec,
-    pub b_storage: InputStoreSpec,
+    pub a_storage: Option<InputStoreSpec>,
+    pub b_storage: Option<InputStoreSpec>,
+    pub mmm: Box<dyn MatMatMul>,
     pub c_to_a_axis_mapping: MapOutputAxisToInput,
     pub c_to_b_axis_mapping: MapOutputAxisToInput,
 }

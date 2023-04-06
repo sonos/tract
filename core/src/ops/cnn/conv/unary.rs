@@ -467,13 +467,13 @@ impl ConvUnary {
 
         let geo = AddMatMulGeometry {
             k: k.to_dim(),
-            a_storage,
-            b_storage,
+            a_storage: Some(a_storage),
+            b_storage: Some(b_storage),
+            mmm: mmm.clone(),
             c_to_a_axis_mapping: MapOutputAxisToInput(c_to_a_axis_mapping),
             c_to_b_axis_mapping: MapOutputAxisToInput(c_to_b_axis_mapping),
         };
         let mut ops: Vec<ProtoFusedSpec> = vec![
-            //                let mut bias = bias.clone();
             ProtoFusedSpec::AddMatMul(geo, AttrOrInput::Attr(kernels), AttrOrInput::Input(0)),
         ];
         if let Some(bias) =
