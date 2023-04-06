@@ -5,6 +5,7 @@ use std::marker::PhantomData;
 use crate::internal::*;
 use crate::model::order::eval_order_for_nodes;
 use crate::model::{Fact, Graph, OutletId};
+use crate::ops::konst::Const;
 use crate::ops::FrozenOpState;
 
 #[derive(Default)]
@@ -35,23 +36,23 @@ impl Debug for SessionState {
 #[derive(Debug, Clone)]
 pub struct SimplePlan<F, O, M>
 where
-    F: Fact  + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static ,
-    M: Borrow<Graph<F, O>> ,
+    F: Fact + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    M: Borrow<Graph<F, O>>,
 {
-    pub model: M,
-    pub outputs: Vec<OutletId>,
-    pub order: Vec<usize>,
-    pub flush_lists: Vec<TVec<usize>>,
-    pub has_unresolved_symbols: bool,
+    model: M,
+    outputs: Vec<OutletId>,
+    order: Vec<usize>,
+    flush_lists: Vec<TVec<usize>>,
+    has_unresolved_symbols: bool,
     _casper: PhantomData<(F, O)>,
 }
 
 impl<F, O, M> SimplePlan<F, O, M>
 where
-    F: Fact  + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static ,
-    M: Borrow<Graph<F, O>> ,
+    F: Fact + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    M: Borrow<Graph<F, O>>,
 {
     /// This contructor returns a plan that will compute all the model default outputs in one pass.
     pub fn new(model: M) -> TractResult<SimplePlan<F, O, M>> {
@@ -76,7 +77,9 @@ where
     ) -> TractResult<SimplePlan<F, O, M>> {
         let inputs = model.borrow().input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
         let outputs_nodes = outputs.iter().map(|n| n.node).collect::<Vec<usize>>();
-        let order = eval_order_for_nodes(model.borrow().nodes(), &inputs, &outputs_nodes, deps)?;
+        let mut order =
+            eval_order_for_nodes(model.borrow().nodes(), &inputs, &outputs_nodes, deps)?;
+        order.retain(|node| !model.borrow().node(*node).op_is::<Const>());
         let mut values_needed_until_step = vec![0; model.borrow().nodes().len()];
         for (step, node) in order.iter().enumerate() {
             for i in &model.borrow().node(*node).inputs {
@@ -88,7 +91,7 @@ where
         }
         let mut flush_lists: Vec<TVec<usize>> = vec![tvec!(); order.len() + 1];
         for (node, &flush_at) in values_needed_until_step.iter().enumerate() {
-            if flush_at != 0 {
+            if flush_at != 0 && !model.borrow().node(node).op_is::<Const>() {
                 flush_lists[flush_at].push(node)
             }
         }
@@ -110,6 +113,10 @@ where
         })
     }
 
+    pub fn order_without_consts(&self) -> &[usize] {
+        &self.order
+    }
+
     pub fn run(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let mut state = SimpleState::new(self)?;
         state.run(inputs)
@@ -123,9 +130,9 @@ where
 #[derive(Clone, Debug)]
 pub struct SimpleState<F, O, M, P>
 where
-    F: Fact  + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static ,
-    M: Borrow<Graph<F, O>> ,
+    F: Fact + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    M: Borrow<Graph<F, O>>,
     P: Borrow<SimplePlan<F, O, M>>,
 {
     plan: P,
@@ -137,9 +144,9 @@ where
 
 impl<F, O, M, P> SimpleState<F, O, M, P>
 where
-    F: Fact  + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static ,
-    M: Borrow<Graph<F, O>> ,
+    F: Fact + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    M: Borrow<Graph<F, O>>,
     P: Borrow<SimplePlan<F, O, M>> + Clone,
 {
     pub fn new(plan: P) -> TractResult<SimpleState<F, O, M, P>> {
@@ -151,12 +158,27 @@ where
             .iter()
             .map(|n: &Node<F, O>| n.op().state(&mut session, n.id))
             .collect::<TractResult<_>>()?;
-        Ok(SimpleState { plan, states, session_state: session, values, _phantom: PhantomData })
+        let mut state =
+            SimpleState { plan, states, session_state: session, values, _phantom: PhantomData };
+        state.populate_consts();
+        Ok(state)
+    }
+
+    pub fn populate_consts(&mut self) {
+        for node in &self.plan.borrow().model().nodes {
+            if let Some(k) = node.op_as::<Const>() {
+                self.values[node.id] = Some(tvec!(k.0.clone().into_tvalue()));
+            }
+        }
     }
 
     /// Reset wires state.
     pub fn reset_turn(&mut self) -> TractResult<()> {
-        self.values.iter_mut().for_each(|s| *s = None);
+        for node in &self.plan.borrow().model().nodes {
+            if !node.op_is::<Const>() {
+                self.values[node.id] = None;
+            }
+        }
         Ok(())
     }
 
@@ -510,7 +532,14 @@ where
             values: self
                 .values
                 .iter()
-                .map(|t| t.as_ref().map(|t| t.iter().map(|t| t.clone().into_tensor()).collect()))
+                .enumerate()
+                .map(|(ix, t)| {
+                    if self.model().nodes[ix].op_is::<Const>() {
+                        t.as_ref().map(|t| t.iter().map(|t| t.clone().into_tensor()).collect())
+                    } else {
+                        None
+                    }
+                })
                 .collect(),
             _phantom: PhantomData,
         }
@@ -524,8 +553,8 @@ pub fn eval<F, O>(
     input: TVec<TValue>,
 ) -> TractResult<TVec<TValue>>
 where
-    F: Fact  + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static ,
+    F: Fact + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     let r = match state {
         Some(ref mut state) => state.eval(session_state, node.op(), input),
@@ -538,9 +567,9 @@ where
 #[derive(Clone, Debug)]
 pub struct FrozenSimpleState<F, O, M, P>
 where
-    F: Fact  + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static ,
-    M: Borrow<Graph<F, O>> ,
+    F: Fact + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    M: Borrow<Graph<F, O>>,
     P: Borrow<SimplePlan<F, O, M>> + Clone,
 {
     plan: P,
@@ -554,13 +583,13 @@ where
 
 impl<F, O, M, P> FrozenSimpleState<F, O, M, P>
 where
-    F: Fact  + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static ,
-    M: Borrow<Graph<F, O>> ,
+    F: Fact + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    M: Borrow<Graph<F, O>>,
     P: Borrow<SimplePlan<F, O, M>> + Clone,
 {
     pub fn unfreeze(&self) -> SimpleState<F, O, M, P> {
-        SimpleState {
+        let mut state = SimpleState {
             plan: self.plan.clone(),
             session_state: SessionState {
                 inputs: self.inputs.iter().map(|(ix, t)| (*ix, t.clone().into_tvalue())).collect(),
@@ -575,7 +604,9 @@ where
                 .map(|t| t.as_ref().map(|t| t.iter().map(|t| t.clone().into_tvalue()).collect()))
                 .collect(),
             _phantom: PhantomData,
-        }
+        };
+        state.populate_consts();
+        state
     }
 }
 

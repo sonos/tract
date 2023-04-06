@@ -45,7 +45,7 @@ pub fn profile(
     info!("Running {} iterations max. for each node.", bench_limits.max_iters);
     info!("Running for {} ms max. for each node.", bench_limits.max_time.as_millis());
 
-    for &outer_node in &plan.order {
+    for &outer_node in plan.order_without_consts() {
         if let Some(m) = (model as &dyn Model).downcast_ref::<Graph<TypedFact, Box<dyn TypedOp>>>()
         {
             let outer_node = m.node(outer_node);
