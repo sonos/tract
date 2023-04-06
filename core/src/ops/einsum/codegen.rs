@@ -118,7 +118,8 @@ fn inject_m_or_n_axis(
             .with_extra_input_axis(repr, input_to_fix, 0)?
             .with_extra_output_axis('$', 0, 0)?
             .linking(repr, '$')?;
-        wire[input_to_fix] = patch.wire_node(format!("{name}.add_m"), AxisOp::Add(0), &[wire[input_to_fix]])?[0];
+        wire[input_to_fix] =
+            patch.wire_node(format!("{name}.add_m"), AxisOp::Add(0), &[wire[input_to_fix]])?[0];
         wire = patch.wire_node(
             format!("{name}.einsum"),
             EinSum { axes: new_axes, ..op.clone() },
@@ -217,10 +218,8 @@ fn lir_mat_mul_unary(
     let c_m = m_axis.outputs[0][0];
     let c_n = n_axis.outputs[0][0];
     let m = &input_facts[0].shape[a_m];
+    let k = &input_facts[0].shape[a_k];
     let n = &input_facts[1].shape[b_n];
-    let Ok(k) = input_facts[0].shape[a_k].to_usize() else {
-        return Ok(None);
-    };
     if m < n {
         let expr = op
             .axes
@@ -243,7 +242,7 @@ fn lir_mat_mul_unary(
     let b_dt = input_facts[1].datum_type;
     let dt = op.operating_dt;
     let mmm = tract_linalg::ops()
-        .mmm(a_dt, b_dt, dt, m.to_usize().ok(), Some(k), n.to_usize().ok())
+        .mmm(a_dt, b_dt, dt, m.to_usize().ok(), k.to_usize().ok(), n.to_usize().ok())
         .unwrap();
     let name = &node.name;
     let mut patch = TypedModelPatch::new("Einsum to LirMatMulUnary");
