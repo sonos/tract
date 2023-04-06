@@ -275,8 +275,9 @@ fn lir_mat_mul_unary(
     let name = &node.name;
     let geo = AddMatMulGeometry {
         k: k.to_dim(),
-        a_storage: unsafe { mmm.a_packed(a_dt.size_of(), k) },
-        b_storage: unsafe { mmm.b_packed(b_dt.size_of(), k) },
+        a_storage: None,
+        b_storage: None,
+        mmm: mmm.clone(),
         c_to_a_axis_mapping: MapOutputAxisToInput(c_to_a_axis_mapping),
         c_to_b_axis_mapping: MapOutputAxisToInput(c_to_b_axis_mapping),
     };
