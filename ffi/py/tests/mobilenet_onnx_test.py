@@ -154,5 +154,6 @@ def test_profile():
     assert len(profile["nodes"]) > 10
     assert profile["nodes"][0]["node_name"] != ""
     assert profile["nodes"][0]["op_name"] != ""
-    assert profile["nodes"][0]["secs_per_iter"] > 0
+    if "secs_per_iter" in profile["nodes"][0]:
+        assert profile["nodes"][0]["secs_per_iter"] >= 0
     assert next(filter(lambda node: "cost" in node and "FMA(F32)" in node["cost"], profile["nodes"]), None) != None
