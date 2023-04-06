@@ -164,7 +164,7 @@ where
         Ok(state)
     }
 
-    pub fn populate_consts(&mut self) {
+    fn populate_consts(&mut self) {
         for node in &self.plan.borrow().model().nodes {
             if let Some(k) = node.op_as::<Const>() {
                 self.values[node.id] = Some(tvec!(k.0.clone().into_tvalue()));
@@ -174,10 +174,8 @@ where
 
     /// Reset wires state.
     pub fn reset_turn(&mut self) -> TractResult<()> {
-        for node in &self.plan.borrow().model().nodes {
-            if !node.op_is::<Const>() {
-                self.values[node.id] = None;
-            }
+        for node in &self.plan.borrow().order {
+            self.values[*node] = None;
         }
         Ok(())
     }
