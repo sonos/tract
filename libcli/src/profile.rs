@@ -31,7 +31,7 @@ pub fn profile(
 ) -> TractResult<()> {
     info!("Running entire network");
     let mut iters = 0usize;
-    let mut prefix = tvec!();
+    let prefix = tvec!();
     let plan = TypedSimplePlan::new(model.clone())?;
     let mut state = TypedSimpleState::new(Arc::new(plan))?;
 
@@ -43,7 +43,7 @@ pub fn profile(
             dg,
             inputs,
             custom_profiler.as_ref(),
-            &mut prefix,
+            &prefix,
             None,
             &mut time_accounted_by_inner_nodes,
             full_output,
@@ -93,7 +93,7 @@ pub fn rec_profiler(
 
                 // Run inner node model
                 if full_output {
-                    if let Some(profiler) = profilers.map(|it| it.get(&op_state.type_id())).flatten() {
+                    if let Some(profiler) = profilers.and_then(|it| it.get(&op_state.type_id())) {
                         let mut prefix: TVec<_> = prefix.into();
                         prefix.push((node.id, "submodel".to_string()));
 
@@ -170,7 +170,7 @@ pub fn rec_profiler(
             };
 
             let prefix_vec = prefix.to_vec();
-            if prefix_vec.len() > 0 {
+            if !prefix_vec.is_empty() {
                 (1..prefix_vec.len() + 1).map(|idx| prefix_vec[..idx].to_vec()).for_each(
                     |parent_path| {
                         let parent_node = parent_path.last().map(|it| it.0).unwrap();
