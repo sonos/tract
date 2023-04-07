@@ -939,6 +939,7 @@ pub fn display_params_from_clap(
         konst: matches.is_present("const"),
         cost: matches.is_present("cost"),
         profile: matches.is_present("profile"),
+        full_output: !matches.is_present("condensed"),
         left_column_width: 0,
         invariants: matches.is_present("invariants"),
         quiet: matches.is_present("quiet"),
