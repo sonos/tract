@@ -745,7 +745,7 @@ pub unsafe extern "C" fn tract_model_profile_json(
             let input_len = model.inputs.len();
             let values:TVec<TValue> =
                 std::slice::from_raw_parts(inputs, input_len).iter().map(|tv| (**tv).0.clone()).collect();
-            tract_libcli::profile::profile(model, &BenchLimits::default(), &mut annotations, &values)?;
+            tract_libcli::profile::profile(model, &BenchLimits::default(), &mut annotations, &values, None)?;
         }
         let export = tract_libcli::export::GraphPerfInfo::from(model, &annotations);
         *json = CString::new(serde_json::to_string(&export)?)?.into_raw();
