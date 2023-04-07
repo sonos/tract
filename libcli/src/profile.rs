@@ -27,6 +27,7 @@ pub fn profile(
     dg: &mut Annotations,
     inputs: &TVec<TValue>,
     custom_profiler: Option<HashMap<TypeId, Profiler>>,
+    full_output: bool,
 ) -> TractResult<()> {
     info!("Running entire network");
     let mut iters = 0usize;
@@ -45,6 +46,7 @@ pub fn profile(
             &mut prefix,
             None,
             &mut time_accounted_by_inner_nodes,
+            full_output,
         )?;
         iters += 1;
     }
@@ -73,6 +75,7 @@ pub fn rec_profiler(
     prefix: &[(usize, String)],
     multiplier: Option<isize>,
     time_accounted_by_inner_nodes: &mut Duration,
+    full_output: bool,
 ) -> TractResult<TVec<TValue>> {
     let mut parent_prefix: TVec<_> = prefix.into();
     parent_prefix.pop();
@@ -89,68 +92,71 @@ pub fn rec_profiler(
                     .get_or_insert(Duration::default()) += elapsed;
 
                 // Run inner node model
-                if let Some(profiler) = profilers.map(|it| it.get(&op_state.type_id())).flatten() {
-                    let mut prefix: TVec<_> = prefix.into();
-                    prefix.push((node.id, "submodel".to_string()));
+                if full_output {
+                    if let Some(profiler) = profilers.map(|it| it.get(&op_state.type_id())).flatten() {
+                        let mut prefix: TVec<_> = prefix.into();
+                        prefix.push((node.id, "submodel".to_string()));
 
-                    let start = Instant::now();
-                    let (_, _) = (profiler.func)(
-                        *op_state,
-                        input,
-                        dg,
-                        &prefix,
-                        time_accounted_by_inner_nodes,
-                    )?;
-                    *time_accounted_by_inner_nodes += start.elapsed();
-                } else if let Some(scan_state) = op_state.downcast_mut::<State>() {
-                    let mut prefix: TVec<_> = prefix.into();
-                    prefix.push((node.id, "loop".to_string()));
+                        let start = Instant::now();
+                        let (_, _) = (profiler.func)(
+                            *op_state,
+                            input,
+                            dg,
+                            &prefix,
+                            time_accounted_by_inner_nodes,
+                        )?;
+                        *time_accounted_by_inner_nodes += start.elapsed();
+                    } else if let Some(scan_state) = op_state.downcast_mut::<State>() {
+                        let mut prefix: TVec<_> = prefix.into();
+                        prefix.push((node.id, "loop".to_string()));
 
-                    let scan_inputs = make_inputs_for_model(scan_state.model_state.model())?;
-                    let input_facts = node
-                        .inputs
-                        .iter()
-                        .map(|outlet| {
-                            node.outputs.get(outlet.slot).map(|o| &o.fact).ok_or(anyhow!(""))
-                        })
-                        .collect::<TractResult<TVec<_>>>()?;
-                    let multi = if let Some(lir) = node.op_as::<tract_core::ops::scan::LirScan>() {
-                        lir.iteration_count(&input_facts).map(|it| it.to_isize().unwrap())
-                    } else if let Some(mir) = node.op_as::<tract_core::ops::scan::Scan>() {
-                        mir.iteration_count(&input_facts).map(|it| it.to_isize().unwrap())
-                    } else {
-                        None
-                    };
+                        let scan_inputs = make_inputs_for_model(scan_state.model_state.model())?;
+                        let input_facts = node
+                            .inputs
+                            .iter()
+                            .map(|outlet| {
+                                node.outputs.get(outlet.slot).map(|o| &o.fact).ok_or(anyhow!(""))
+                            })
+                            .collect::<TractResult<TVec<_>>>()?;
+                        let multi = if let Some(lir) = node.op_as::<tract_core::ops::scan::LirScan>() {
+                            lir.iteration_count(&input_facts).map(|it| it.to_isize().unwrap())
+                        } else if let Some(mir) = node.op_as::<tract_core::ops::scan::Scan>() {
+                            mir.iteration_count(&input_facts).map(|it| it.to_isize().unwrap())
+                        } else {
+                            None
+                        };
 
-                    let start = Instant::now();
-                    rec_profiler(
-                        &mut scan_state.model_state,
-                        dg,
-                        &scan_inputs,
-                        None,
-                        &prefix,
-                        multi,
-                        time_accounted_by_inner_nodes,
-                    )?;
-                    *time_accounted_by_inner_nodes += start.elapsed();
-                } else if let Some(typed_model_state) = op_state.downcast_mut::<TypedModelOpState>()
-                {
-                    let mut prefix: TVec<_> = prefix.into();
-                    prefix.push((node.id, "submodel".to_string()));
+                        let start = Instant::now();
+                        rec_profiler(
+                            &mut scan_state.model_state,
+                            dg,
+                            &scan_inputs,
+                            None,
+                            &prefix,
+                            multi,
+                            time_accounted_by_inner_nodes,
+                            full_output,
+                        )?;
+                        *time_accounted_by_inner_nodes += start.elapsed();
+                    } else if let Some(typed_model_state) = op_state.downcast_mut::<TypedModelOpState>()
+                    {
+                        let mut prefix: TVec<_> = prefix.into();
+                        prefix.push((node.id, "submodel".to_string()));
 
-                    let start = Instant::now();
-                    rec_profiler(
-                        typed_model_state,
-                        dg,
-                        &input,
-                        None,
-                        &prefix,
-                        None,
-                        time_accounted_by_inner_nodes,
-                    )?;
-                    *time_accounted_by_inner_nodes += start.elapsed();
+                        let start = Instant::now();
+                        rec_profiler(
+                            typed_model_state,
+                            dg,
+                            &input,
+                            None,
+                            &prefix,
+                            None,
+                            time_accounted_by_inner_nodes,
+                            full_output
+                        )?;
+                        *time_accounted_by_inner_nodes += start.elapsed();
+                    }
                 }
-
                 (r, elapsed)
             } else {
                 // Profile node

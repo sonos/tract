@@ -18,6 +18,7 @@ pub struct DisplayParams {
     pub debug_op: bool,
     pub cost: bool,
     pub profile: bool,
+    pub full_output: bool,
     pub node_ids: Option<Vec<TVec<(usize, String)>>>,
     pub op_name: Option<String>,
     pub node_name: Option<String>,
