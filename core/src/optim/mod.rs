@@ -9,7 +9,7 @@ mod prop_const;
 mod push_split_down;
 mod slice;
 
-use self::change_axes::ChangeAxes;
+use self::change_axes::{ChangeAxes, ChangeAxes2};
 use self::prop_const::PropConst;
 use self::push_split_down::PushSplitDown;
 use self::slice::PushSliceUp;
@@ -58,6 +58,7 @@ impl Optimizer {
             Box::new(PushSliceUp),
             Box::new(PushSplitDown),
             Box::<ChangeAxes>::default(),
+            Box::<ChangeAxes2>::default(),
         ])
     }
 
