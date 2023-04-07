@@ -1,5 +1,6 @@
 use crate::params::SomeGraphDef;
 use crate::Parameters;
+use crate::tensor::run_params_from_subcommand;
 #[allow(unused_imports)]
 use nu_ansi_term::Style;
 use tract_hir::internal::*;
@@ -7,6 +8,7 @@ use tract_libcli::annotations::*;
 use tract_libcli::display_params::*;
 use tract_libcli::model::Model;
 use tract_libcli::profile::BenchLimits;
+use tract_libcli::tensor::retrieve_or_make_inputs;
 use tract_libcli::terminal;
 
 #[allow(unused_variables)]
@@ -123,11 +125,13 @@ pub fn handle(
         tract_libcli::profile::extract_costs(&mut annotations, model)?;
     }
     if options.profile {
+        let run_params = run_params_from_subcommand(params, sub_matches)?;
         let model = params
             .tract_model
             .downcast_ref::<TypedModel>()
             .context("Can only profile typed models")?;
-        tract_libcli::profile::profile(model, bench_limits, &mut annotations, None)?;
+        let inputs = retrieve_or_make_inputs(model, &run_params)?;
+        tract_libcli::profile::profile(model, bench_limits, &mut annotations, &inputs[0], None)?;
     }
 
     if sub_matches.is_present("axes") || sub_matches.is_present("axes-names") {
