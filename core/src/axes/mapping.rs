@@ -22,9 +22,8 @@ impl AxesMapping {
         output_count: usize,
         it: impl AsRef<[Axis]>,
     ) -> TractResult<AxesMapping> {
-        let mut axes: TVec<_> = it.as_ref().into();
-        axes.sort_by_key(|ax| ax.repr);
-        AxesMapping { axes, output_count, input_count }.check()
+        let axes: TVec<_> = it.as_ref().into();
+        AxesMapping { axes, output_count, input_count }.sorted().check()
     }
 
     pub fn for_numpy_matmul(
@@ -86,7 +85,7 @@ impl AxesMapping {
                 );
             }
         }
-        AxesMapping { axes, input_count: inputs.len(), output_count: outputs.len() }.check()
+        AxesMapping::new(inputs.len(), outputs.len(), axes)
     }
 
     pub fn natural(inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<AxesMapping> {
@@ -95,7 +94,7 @@ impl AxesMapping {
             .zip('a'..)
             .map(|(axis_id, repr)| Axis::natural(inputs.len(), outputs.len(), repr, axis_id))
             .collect::<TVec<_>>();
-        AxesMapping { axes, output_count: outputs.len(), input_count: inputs.len() }.check()
+        AxesMapping::new(inputs.len(), outputs.len(), axes)
     }
 
     pub fn natural_for_rank(
@@ -107,7 +106,7 @@ impl AxesMapping {
             .zip('a'..)
             .map(|(axis_id, repr)| Axis::natural(inputs, outputs, repr, axis_id))
             .collect::<TVec<_>>();
-        AxesMapping { axes, output_count: outputs, input_count: inputs }.check()
+        AxesMapping::new(inputs, outputs, axes)
     }
 
     pub fn iter_all_axes(&self) -> impl Iterator<Item = &Axis> {
@@ -186,7 +185,12 @@ impl AxesMapping {
         Ok(self.axes.iter_mut().find(|axis| axis.repr == repr).unwrap())
     }
 
-    pub fn track_axis(&self, from: InOut, to:InOut, position: usize) -> TractResult<Option<usize>> {
+    pub fn track_axis(
+        &self,
+        from: InOut,
+        to: InOut,
+        position: usize,
+    ) -> TractResult<Option<usize>> {
         let axis = self.interface_axis(from, position)?;
         let positions = axis.interface(to);
         Ok(if positions.len() == 1 { Some(positions[0]) } else { None })
@@ -283,13 +287,40 @@ impl AxesMapping {
     }
 
     fn sort(&mut self) {
-        self.axes.sort_by_key(|axis| axis.repr);
+        let order: Vec<(char, usize, usize, char)> = self
+            .axes
+            .iter()
+            .flat_map(|axis| {
+                axis.inputs
+                    .iter()
+                    .enumerate()
+                    .flat_map(move |(slot, input)| {
+                        input.iter().map(move |p| ('i', slot, *p, axis.repr))
+                    })
+                    .chain(axis.outputs.iter().enumerate().flat_map(move |(slot, output)| {
+                        output.iter().map(move |p| ('o', slot, *p, axis.repr))
+                    }))
+            })
+            .sorted()
+            .dedup()
+            .collect_vec();
+        self.axes.sort_by_key(|axis| order.iter().position(|tuple| tuple.3 == axis.repr).unwrap());
+    }
+
+    fn sorted(mut self) -> AxesMapping {
+        self.sort();
+        self
     }
 
     fn do_check(&self) -> TractResult<()> {
         for axis in &self.axes {
             ensure!(axis.inputs.len() == self.input_count);
             ensure!(axis.outputs.len() == self.output_count);
+            ensure!(
+                axis.inputs.iter().map(|i| i.len()).sum::<usize>()
+                    + axis.outputs.iter().map(|o| o.len()).sum::<usize>()
+                    > 0
+            );
         }
         for input_ix in 0..self.input_count() {
             for axis in 0..self.input_rank(input_ix) {
@@ -302,9 +333,14 @@ impl AxesMapping {
             }
         }
         ensure!(self.axes.iter().map(|ax| ax.repr).duplicates().count() == 0);
-        for (a, b) in self.axes.iter().tuple_windows() {
-            ensure!(a.repr < b.repr, "{self}");
-        }
+        dbg!(self);
+        ensure!(
+            self == &{
+                let mut x = self.clone();
+                x.sort();
+                x
+            }
+        );
         Ok(())
     }
 
@@ -386,7 +422,7 @@ impl AxesMapping {
                 }
             }
         }
-        AxesMapping { axes, ..self.clone() }.check()
+        AxesMapping::new(self.input_count, self.output_count, axes)
     }
 
     pub fn remove_input_axis(&self, slot: usize, position: usize) -> TractResult<AxesMapping> {
@@ -395,11 +431,11 @@ impl AxesMapping {
             axis.inputs[slot].retain(|pos| *pos != position);
             axis.inputs[slot].iter_mut().for_each(|pos| *pos -= (*pos > position) as usize);
         }
-        AxesMapping { axes, ..self.clone() }.check()
+        AxesMapping::new(self.input_count, self.output_count, axes)
     }
 
     pub fn with_extra_input(&self, slot: usize) -> TractResult<AxesMapping> {
-        let mut axes: TVec<Axis> = self
+        let axes: TVec<Axis> = self
             .iter_all_axes()
             .map(|axis| {
                 let mut axis = axis.clone();
@@ -407,8 +443,7 @@ impl AxesMapping {
                 axis
             })
             .collect();
-        axes.sort_by_key(|ax| ax.repr);
-        AxesMapping { axes, input_count: self.input_count + 1, ..self.clone() }.check()
+        AxesMapping::new(self.input_count + 1, self.output_count, axes)
     }
 
     pub fn with_extra_input_axis(
@@ -424,8 +459,7 @@ impl AxesMapping {
         let mut axis = Axis::new(repr, self.input_count, self.output_count);
         axis.inputs[slot].push(position);
         axes.push(axis);
-        axes.sort_by_key(|ax| ax.repr);
-        AxesMapping { axes, ..self.clone() }.check()
+        AxesMapping::new(self.input_count, self.output_count, axes)
     }
 
     pub fn with_extra_output_axis(
@@ -441,8 +475,7 @@ impl AxesMapping {
         let mut axis = Axis::new(repr, self.input_count, self.output_count);
         axis.outputs[slot].push(position);
         axes.push(axis);
-        axes.sort_by_key(|ax| ax.repr);
-        AxesMapping { axes, ..self.clone() }.check()
+        AxesMapping::new(self.input_count, self.output_count, axes)
     }
 
     pub fn translate_to_axis_ops(&self) -> TractResult<Vec<AxisOp>> {
@@ -557,18 +590,25 @@ impl AxesMapping {
         Ok(Some(AxesMapping::from_strs(&inputs, &outputs)?))
     }
 
-    pub fn direct(&self, a:InOut, b:InOut) -> bool {
+    pub fn direct(&self, a: InOut, b: InOut) -> bool {
         self.axes.iter().all(|axis| axis.interface(a) == axis.interface(b))
     }
 
-    pub fn same_layout<D: DimLike>(&self, a:InOut, b:InOut, shape_a: impl AsRef<[D]>, shape_b: impl AsRef<[D]>) -> bool {
+    pub fn same_layout<D: DimLike>(
+        &self,
+        a: InOut,
+        b: InOut,
+        shape_a: impl AsRef<[D]>,
+        shape_b: impl AsRef<[D]>,
+    ) -> bool {
         let shape_a = shape_a.as_ref();
         let shape_b = shape_b.as_ref();
         shape_a.iter().cloned().product::<D>() == shape_b.iter().cloned().product()
             && izip!(
                 self.interface_axes(a).zip(shape_a.iter()).filter(|(_axis, d)| **d != D::one()),
                 self.interface_axes(b).zip(shape_b.iter()).filter(|(_axis, d)| **d != D::one())
-            ).all(|(a, b)| a == b)
+            )
+            .all(|(a, b)| a == b)
     }
 
     pub fn axis_ops_to_canonical(&self, io: InOut) -> TractResult<Vec<AxisOp>> {
