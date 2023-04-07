@@ -36,7 +36,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
 }
 
 pub fn add_n(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
-    Ok(Box::new(ops::binary::Nary(Box::new(ops::math::Add), false)))
+    Ok(expand(ops::binary::Nary(Box::new(ops::math::Add), false)))
 }
 
 pub fn mat_mul(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {

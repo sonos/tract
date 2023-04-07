@@ -9,6 +9,7 @@ use crate::model::*;
 use crate::ops;
 use crate::ops::array::Pad;
 use crate::ops::array::PadMode;
+use crate::ops::binary::wire_bin;
 use crate::ops::binary::TypedBinOp;
 use crate::ops::cnn::PaddingSpec;
 use crate::ops::einsum::EinSum;
@@ -111,7 +112,7 @@ impl ConvUnary {
                 }
                 DatumType::I32 => {
                     let cst = model.add_const(format!("{name}.cst"), tensor0(-128i32))?;
-                    inputs[1] = model.wire_node(name, ops::math::add(), &[inputs[1], cst])?[0];
+                    inputs[1] = wire_bin(name, model, Add, &[inputs[1], cst])?[0];
                 }
                 _ => (),
             };
@@ -608,11 +609,7 @@ impl ConvUnary {
                     let b = b.clone().into_tensor().into_shape(&bias_shape)?;
                     let b =
                         patch.add_const(format!("{}.bias.cst", node.name), b.into_arc_tensor())?;
-                    wire = patch.wire_node(
-                        format!("{}.bias", node.name),
-                        crate::ops::math::add(),
-                        &[wire, b],
-                    )?[0];
+                    wire = wire_bin(format!("{}.bias", node.name), &mut patch, Add, &[wire, b])?[0];
                 }
                 wire
             };
@@ -708,22 +705,22 @@ impl ConvUnary {
         let o_axis = if self.kernel_fmt == KernelFormat::OIHW { 0 } else { self.kernel.rank() - 1 };
         operand_shape_for_kernel[o_axis] = co;
         let operand_for_kernel = operand_for_bias.clone().into_shape(&operand_shape_for_kernel)?;
-        if bin.0.is::<Sub>() && succ.slot == 0 {
+        if bin.op.is::<Sub>() && succ.slot == 0 {
             bias = (bias.into_tensor().into_array::<f32>()?
                 - operand_for_bias.to_array_view::<f32>()?)
             .into_arc_tensor()
-        } else if bin.0.is::<Div>() && succ.slot == 0 {
+        } else if bin.op.is::<Div>() && succ.slot == 0 {
             bias = (bias.into_tensor().into_array::<f32>()?
                 / operand_for_bias.to_array_view::<f32>()?)
             .into_arc_tensor();
             kernel = (kernel.into_tensor().into_array::<f32>()?
                 / operand_for_kernel.to_array_view::<f32>()?)
             .into_arc_tensor();
-        } else if bin.0.is::<Add>() {
+        } else if bin.op.is::<Add>() {
             bias = (bias.into_tensor().into_array::<f32>()?
                 + operand_for_bias.to_array_view::<f32>()?)
             .into_arc_tensor();
-        } else if bin.0.is::<Mul>() {
+        } else if bin.op.is::<Mul>() {
             bias = (bias.into_tensor().into_array::<f32>()?
                 * operand_for_bias.to_array_view::<f32>()?)
             .into_arc_tensor();

@@ -4,6 +4,8 @@ use crate::pb_helpers::*;
 use std::iter;
 use tract_hir::internal::*;
 use tract_hir::ops::array::{Slice, TypedConcat};
+use tract_hir::ops::math::{Add, Sub};
+use tract_hir::tract_core::ops::binary::wire_bin;
 use tract_onnx_opl::ml::tree::*;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
@@ -244,8 +246,6 @@ pub struct TreeEnsembleClassifier {
     pub binary_result_layout: bool,
 }
 
-
-
 impl Expansion for TreeEnsembleClassifier {
     fn name(&self) -> Cow<str> {
         "TreeEnsembleClassifier".into()
@@ -298,11 +298,8 @@ impl Expansion for TreeEnsembleClassifier {
         if let Some(base_class_score) = self.base_class_score.as_deref() {
             let base = base_class_score.clone().broadcast_into_rank(2)?.into_arc_tensor();
             let base = model.add_const(prefix.to_string() + ".base", base)?;
-            scores = model.wire_node(
-                format!("{prefix}.base_class_score"),
-                tract_core::ops::math::add(),
-                &[scores[0], base],
-            )?;
+            scores =
+                wire_bin(format!("{prefix}.base_class_score"), model, Add, &[scores[0], base])?;
         }
         match self.post_transform {
             None => (),
@@ -329,9 +326,10 @@ impl Expansion for TreeEnsembleClassifier {
                 &scores,
             )?;
             let one = model.add_const(prefix.to_string() + ".one", rctensor2(&[[1f32]]))?;
-            let complement = model.wire_node(
+            let complement = wire_bin(
                 &format!("{prefix}.binary_result_complement"),
-                tract_core::ops::math::sub(),
+                model,
+                Sub,
                 &[one, scores[0]],
             )?;
             scores = model.wire_node(

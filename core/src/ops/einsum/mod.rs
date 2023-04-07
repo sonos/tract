@@ -7,7 +7,8 @@ use crate::tract_data::itertools::Itertools;
 mod eval;
 
 use super::array::TypedConcat;
-use super::math::add;
+use super::binary::wire_bin;
+use super::math::Add;
 mod codegen;
 
 #[cfg(test)]
@@ -68,13 +69,13 @@ impl EinSum {
         } else {
             None
         };
-        let new_expr = self
+        let axes = self
             .axes
             .iter_all_axes()
             .map(|it| if it.repr == new_axis.repr { new_axis.clone() } else { it.clone() })
-            .collect::<TractResult<AxesMapping>>()?;
-        let mut wire =
-            patch.wire_node(&node.name, Self { axes: new_expr, ..self.clone() }, &taps)?;
+            .collect_vec();
+        let axes = AxesMapping::new(self.axes.input_count(), 1, axes)?;
+        let mut wire = patch.wire_node(&node.name, Self { axes, ..self.clone() }, &taps)?;
         if let Some(position) = must_rm_axis {
             wire = patch.wire_node(
                 format!("{}.prop_axis.{}.output", &node.name, repr),
@@ -159,9 +160,10 @@ impl EinSum {
                 } else {
                     let mut wire = einsums[0];
                     for ix in 1..einsums.len() {
-                        wire = patch.wire_node(
+                        wire = wire_bin(
                             format!("{}.concat-einsum-{}.add-{}", node.name, axis_info.repr, ix),
-                            add(),
+                            &mut patch,
+                            Add,
                             &[wire, einsums[ix]],
                         )?[0]
                     }
@@ -283,27 +285,9 @@ impl TypedOp for EinSum {
         io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
-        let (mut inputs, mut outputs) = self.axes.to_strs();
-        let interface: &mut String = match io {
-            InOut::In(i) => &mut inputs[i],
-            InOut::Out(o) => &mut outputs[o],
-        };
-        let mut axes: Vec<char> = interface.chars().collect();
-        match change {
-            AxisOp::Rm(rm) => {
-                axes.remove(*rm);
-            }
-            AxisOp::Add(add) => axes.insert(*add, self.axes.available_label()),
-            AxisOp::Move(from, to) => {
-                let c = axes.remove(*from);
-                axes.insert(*to, c);
-            }
-            _ => return Ok(None),
-        };
-        *interface = axes.into_iter().collect();
-        let axes = AxesMapping::from_strs(&inputs, &outputs)?;
+        let Some(axes) = self.axes.change_axis_sink(io, change)? else { return Ok(None) };
         Ok(Some(AxisChangeConsequence {
-            substitute_op: Some(Box::new(EinSum { axes, ..self.clone() })),
+            substitute_op: Some(Box::new(Self { axes, ..self.clone() })),
             wire_changes: tvec!((io, change.clone())),
         }))
     }

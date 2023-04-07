@@ -51,6 +51,15 @@ impl WireBody for LSTM {
             }
         }
 
+        macro_rules! wbin {
+            ($name: ident = $op: expr, $($param: expr),*) => {
+                let $name = tract_hir::tract_core::ops::binary::wire_bin(
+                    format!("{}.{}", prefix, stringify!($name)),
+                    body,
+                    $op, [$($param),*].as_ref())?[0];
+            }
+        }
+
         let Xt: OutletId = body.node_by_name("Xt").unwrap().id.into();
         let W: OutletId = body.node_by_name("W").unwrap().id.into();
         let R: OutletId = body.node_by_name("R").unwrap().id.into();
@@ -82,10 +91,10 @@ impl WireBody for LSTM {
             wire!(Rbf = array::Slice::new(1, 6.to_dim() * &h_size, 7.to_dim() * &h_size), b);
             wire!(Rbc = array::Slice::new(1, 7.to_dim() * &h_size, 8.to_dim() * &h_size), b);
 
-            wire!(bi = math::add(), Wbi, Rbi);
-            wire!(bo = math::add(), Wbo, Rbo);
-            wire!(bf = math::add(), Wbf, Rbf);
-            wire!(bc = math::add(), Wbc, Rbc);
+            wbin!(bi = math::Add, Wbi, Rbi);
+            wbin!(bo = math::Add, Wbo, Rbo);
+            wbin!(bf = math::Add, Wbf, Rbf);
+            wbin!(bc = math::Add, Wbc, Rbc);
 
             Some((bi, bo, bf, bc))
         } else {
@@ -106,15 +115,15 @@ impl WireBody for LSTM {
         // it = f(Xt*(Wi^T) + Ht-1*(Ri^T) + Pi (.) Ct-1 + Wbi + Rbi)
         wire!(Xt_WiT = matmul_t.clone(), Xt, Wi);
         wire!(Ht_1_RiT = matmul_t.clone(), Ht_1, Ri);
-        wire!(it0 = math::add(), Xt_WiT, Ht_1_RiT);
+        wbin!(it0 = math::Add, Xt_WiT, Ht_1_RiT);
         let mut it0 = it0;
         if let Some(biases) = biases {
-            wire!(it_bias = math::add(), it0, biases.0);
+            wbin!(it_bias = math::Add, it0, biases.0);
             it0 = it_bias;
         };
         if let Some(peephole) = peepholes {
-            wire!(Pi_Ct_1 = math::mul(), peephole.0, Ct_1);
-            wire!(it_peep = math::add(), Pi_Ct_1, it0);
+            wbin!(Pi_Ct_1 = math::Mul, peephole.0, Ct_1);
+            wbin!(it_peep = math::Add, Pi_Ct_1, it0);
             it0 = it_peep;
         }
         wire!(it = self.f.clone(), it0);
@@ -122,15 +131,15 @@ impl WireBody for LSTM {
         // ft = f(Xt*(Wf^T) + Ht-1*(Rf^T) + Pf (.) Ct-1 + Wbf + Rbf)
         wire!(Xt_WfT = matmul_t.clone(), Xt, Wf);
         wire!(Ht_1_RfT = matmul_t.clone(), Ht_1, Rf);
-        wire!(ft0 = math::add(), Xt_WfT, Ht_1_RfT);
+        wbin!(ft0 = math::Add, Xt_WfT, Ht_1_RfT);
         let mut ft0 = ft0;
         if let Some(biases) = biases {
-            wire!(ft_bias = math::add(), ft0, biases.2);
+            wbin!(ft_bias = math::Add, ft0, biases.2);
             ft0 = ft_bias;
         };
         if let Some(peephole) = peepholes {
-            wire!(Pf_Ct_1 = math::mul(), peephole.2, Ct_1);
-            wire!(ft_peep = math::add(), Pf_Ct_1, ft0);
+            wbin!(Pf_Ct_1 = math::Mul, peephole.2, Ct_1);
+            wbin!(ft_peep = math::Add, Pf_Ct_1, ft0);
             ft0 = ft_peep;
         }
         wire!(ft = self.f.clone(), ft0);
@@ -138,38 +147,38 @@ impl WireBody for LSTM {
         // ct = g(Xt*(Wc^T) + Ht-1*(Rc^T) + Wbc + Rbc)
         wire!(Xt_WcT = matmul_t.clone(), Xt, Wc);
         wire!(Ht_1_RcT = matmul_t.clone(), Ht_1, Rc);
-        wire!(ct0 = math::add(), Xt_WcT, Ht_1_RcT);
+        wbin!(ct0 = math::Add, Xt_WcT, Ht_1_RcT);
         let mut ct0 = ct0;
         if let Some(biases) = biases {
-            wire!(ct_bias = math::add(), ct0, biases.3);
+            wbin!(ct_bias = math::Add, ct0, biases.3);
             ct0 = ct_bias
         };
         wire!(ct = self.g.clone(), ct0);
 
         // Ct = ft (.) Ct-1 + it (.) ct
-        wire!(ft_Ct_1 = math::mul(), ft, Ct_1);
-        wire!(it_ct = math::mul(), it, ct);
-        wire!(Ct = math::add(), ft_Ct_1, it_ct);
+        wbin!(ft_Ct_1 = math::Mul, ft, Ct_1);
+        wbin!(it_ct = math::Mul, it, ct);
+        wbin!(Ct = math::Add, ft_Ct_1, it_ct);
 
         // ot = f(Xt*(Wo^T) + Ht-1*(Ro^T) + Po (.) Ct + Wbo + Rbo)
         wire!(Xt_WoT = matmul_t.clone(), Xt, Wo);
         wire!(Ht_1_RoT = matmul_t, Ht_1, Ro);
-        wire!(ot0 = math::add(), Xt_WoT, Ht_1_RoT);
+        wbin!(ot0 = math::Add, Xt_WoT, Ht_1_RoT);
         let mut ot0 = ot0;
         if let Some(biases) = biases {
-            wire!(ot_bias = math::add(), ot0, biases.1);
+            wbin!(ot_bias = math::Add, ot0, biases.1);
             ot0 = ot_bias
         };
         if let Some(peephole) = peepholes {
-            wire!(Po_Ct = math::mul(), peephole.1, Ct);
-            wire!(ot_peep = math::add(), Po_Ct, ot0);
+            wbin!(Po_Ct = math::Mul, peephole.1, Ct);
+            wbin!(ot_peep = math::Add, Po_Ct, ot0);
             ot0 = ot_peep;
         }
         wire!(ot = self.f.clone(), ot0);
 
         // Ht = ot (.) h(Ct)
         wire!(h_Ct = self.h.clone(), Ct);
-        wire!(Ht = math::mul(), ot, h_Ct);
+        wbin!(Ht = math::Mul, ot, h_Ct);
 
         // onnx inner interface: [batch_size, input_size]
         // add sequence axis (chunk == 1)

@@ -67,7 +67,6 @@ impl Nnef {
         self.allow_extended_identifier_syntax = allow_extended_identifier_syntax;
     }
 
-
     pub fn translate(
         &self,
         proto_model: &ProtoModel,
@@ -103,8 +102,13 @@ impl Nnef {
             let mut quant_data = vec![];
 
             for (name, format) in quantization.into_iter() {
-                write_quant_format(&mut quant_data, &name, format, self.allow_extended_identifier_syntax)
-                    .context("Serializing graph.quant")?;
+                write_quant_format(
+                    &mut quant_data,
+                    &name,
+                    format,
+                    self.allow_extended_identifier_syntax,
+                )
+                .context("Serializing graph.quant")?;
             }
 
             header.set_path("graph.quant").context("Setting graph.quant path")?;
@@ -151,7 +155,12 @@ impl Nnef {
         if let Some(quantization) = proto_model.quantization {
             let mut graph_quant = std::fs::File::create(path.join("graph.quant"))?;
             for (name, format) in quantization.into_iter().sorted_by_key(|(x, _)| x.clone()) {
-                write_quant_format(&mut graph_quant, &name, format, self.allow_extended_identifier_syntax)?;
+                write_quant_format(
+                    &mut graph_quant,
+                    &name,
+                    format,
+                    self.allow_extended_identifier_syntax,
+                )?;
             }
         }
 
@@ -296,6 +305,7 @@ fn read_stream<R: std::io::Read>(
         return Ok(());
     }
     let mut last_loader_name;
+    trace!("reading {path:?}");
     for loader in resource_loaders {
         last_loader_name = Some(loader.name());
         let loaded = loader.try_load(path, reader).with_context(|| {

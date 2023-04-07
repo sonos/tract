@@ -2,9 +2,10 @@ use super::OptimizerSession;
 use super::TypedPass;
 use crate::internal::*;
 use crate::model::*;
+use crate::ops::binary::TypedBinOp;
 use crate::ops::einsum::EinSum;
-use std::collections::HashSet;
 use std::collections::hash_map::Entry;
+use std::collections::HashSet;
 use std::fmt::Debug;
 
 use crate::ops::change_axes::*;
@@ -40,7 +41,7 @@ impl TypedPass for ChangeAxes {
                             format!("Making patch for {:?} from {}", change, model.node(n))
                         })?
                     {
-                        return Ok(Some(patch));
+                        return Ok(Some(patch.with_context(format!("suggested by {}", model.node(n)))));
                     }
                 }
             }
@@ -55,8 +56,52 @@ impl TypedPass for ChangeAxes {
                                     format!("Making patch for {:?} from {}", change, model.node(n))
                                 })?
                             {
-                                return Ok(Some(patch));
+                                return Ok(Some(patch.with_context(format!("trivial axis stripping"))));
                             }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(None)
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct ChangeAxes2(HashSet<crate::ops::change_axes::AxisChange>);
+
+impl Debug for ChangeAxes2 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ChangeAxes2")
+    }
+}
+
+impl TypedPass for ChangeAxes2 {
+    fn reset(&mut self) -> TractResult<()> {
+        self.0.clear();
+        Ok(())
+    }
+    fn next(
+        &mut self,
+        _session: &mut OptimizerSession,
+        model: &TypedModel,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let mut interfaces = model.output_outlets()?.to_vec();
+        interfaces.extend(model.input_outlets()?.iter());
+        // look for transpositions in binary ops
+        for &n in model.eval_order()?.iter().rev() {
+            if model.node(n).op_is::<TypedBinOp>() {
+                let mapping = model.node_axes_mapping(n)?;
+                for (slot, &outlet) in model.node(n).inputs.iter().enumerate() {
+                    let ops = mapping.extract_sub_mapping(&[slot], &[0])?.translate_to_axis_ops()?;
+                    if let [AxisOp::Move(_, _)] = &*ops {
+                        let change = AxisChange { outlet, op: ops[0].recip() };
+    debug!("  Considering for bin transpose {:?}", change);
+                        if let Some((patch, _)) = change_axes(model, &change, &interfaces, &[])? {
+                            return Ok(Some(patch.with_context(format!(
+                                "bin eject transpose {} (slot:{slot} {mapping})",
+                                model.node(n)
+                            ))));
                         }
                     }
                 }
@@ -73,7 +118,7 @@ pub fn change_axes(
     locked: &[OutletId],
     bounds: &[TVec<OutletId>],
 ) -> TractResult<Option<(TypedModelPatch, TVec<(InOut, AxisOp)>)>> {
-    debug!("  Considering change {:?}", change);
+    trace!("  Considering change {:?}", change);
     let mut todo_changes = vec![(change.clone(), None)];
     let mut changed_wires: HashMap<TVec<OutletId>, AxisOp> = HashMap::new();
     let bound_outlets = |o: OutletId| -> TVec<OutletId> {
@@ -85,7 +130,7 @@ pub fn change_axes(
         let outlet_group = bound_outlets(c.outlet);
         for &outlet in &outlet_group {
             if locked.contains(&outlet) {
-                debug!("    Change {:?} blocked by locked interface {:?}", change, outlet);
+                trace!("    Change {:?} blocked by locked interface {:?}", change, outlet);
                 return Ok(None);
             }
             let mut interfaces = vec![(outlet.node, InOut::Out(outlet.slot))];
@@ -103,7 +148,7 @@ pub fn change_axes(
                         // FIXME Einsum can swallow any combination of axis change on all interfaces
                         op
                     } else {
-                        debug!("  Change {:?} blocked: revisiting {}", change, model.node(node_id));
+                        trace!("  Change {:?} blocked: revisiting {}", change, model.node(node_id));
                         return Ok(None);
                     }
                 } else {
@@ -113,7 +158,7 @@ pub fn change_axes(
                     .change_axes(model, node, io, &c.op)
                     .with_context(|| format!("Propagating {change:?} to node {node}"))?;
                 if more.is_none() {
-                    debug!("    Propagation of {:?} blocked by {}", change, node);
+                    trace!("    Propagation of {:?} blocked by {}", change, node);
                     return Ok(None);
                 }
                 let AxisChangeConsequence { substitute_op, wire_changes } = more.unwrap();
@@ -146,7 +191,7 @@ pub fn change_axes(
                                     outlet_group
                                 );
                             } else {
-                                debug!(
+                                trace!(
                                     "         {:?} {:?} change on {:?} conflicting with {:?}. Blocked.",
                                     wire,
                                     op,
@@ -223,4 +268,3 @@ pub fn change_axes(
     debug!("Patch ready for {:?}", change);
     Ok(Some((patch, interface_change)))
 }
-

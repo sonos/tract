@@ -5,6 +5,7 @@ use crate::internal::*;
 
 use crate::ast;
 use crate::deser::Value;
+use crate::ser::ints;
 
 use tract_core::dyn_clone::clone_box;
 use tract_core::ops::binary::*;
@@ -81,7 +82,7 @@ impl Registry {
         results: &[impl Into<ast::Result_> + Clone],
         func: ToTract,
     ) -> &mut PrimitiveDecl {
-        let id:Identifier = id.as_ref().into();
+        let id: Identifier = id.as_ref().into();
         let decl = FragmentDecl {
             id: id.clone(),
             generic_decl: None,
@@ -97,11 +98,7 @@ impl Registry {
         self.fragments.insert(def.decl.id.clone(), def);
     }
 
-    pub fn register_unit_element_wise(
-        &mut self,
-        id: impl AsRef<str>,
-        ew: &dyn ElementWiseMiniOp,
-    ) {
+    pub fn register_unit_element_wise(&mut self, id: impl AsRef<str>, ew: &dyn ElementWiseMiniOp) {
         assert!(std::mem::size_of_val(ew) == 0);
         self.unit_element_wise_ops.push((id.as_ref().into(), clone_box(ew)));
     }
@@ -145,13 +142,29 @@ impl Registry {
                     return Ok(Some(result));
                 }
             }
-        } else if let Some(op) = node.op().downcast_ref::<ops::binary::TypedBinOp>() {
-            if let Some(op) =
-                self.binary_ops.iter().find(|ew| ew.1.as_ref().type_id() == op.0.type_id())
+        } else if let Some(bin_op) = node.op().downcast_ref::<ops::binary::TypedBinOp>() {
+            if let Some(mini_op_name) = self
+                .binary_ops
+                .iter()
+                .find(|(_name, op)| op.as_ref().type_id() == bin_op.op.type_id())
+                .map(|(name, _op)| name)
             {
-                let a = ast.mapping[&node.inputs[0]].clone();
-                let b = ast.mapping[&node.inputs[1]].clone();
-                return Ok(Some(invocation(&op.0, &[a, b], &[])));
+                let mut a = ast.mapping[&node.inputs[0]].clone();
+                let a_rank = ast.model.outlet_fact(node.inputs[0])?.rank();
+                a = ser_axes_mapping(a_rank, bin_op.axes.axis_ops_to_canonical(InOut::In(0))?, a)?;
+                let mut b = ast.mapping[&node.inputs[1]].clone();
+                let b_rank = ast.model.outlet_fact(node.inputs[1])?.rank();
+                b = ser_axes_mapping(b_rank, bin_op.axes.axis_ops_to_canonical(InOut::In(1))?, b)?;
+                let mut c = invocation(mini_op_name, &[a, b], &[]);
+                let c_axes_map = bin_op
+                    .axes
+                    .axis_ops_to_canonical(InOut::Out(0))?
+                    .into_iter()
+                    .map(|op| op.recip())
+                    .rev()
+                    .collect();
+                c = ser_axes_mapping(bin_op.axes.iter_all_axes().count(), c_axes_map, c)?;
+                return Ok(Some(c));
             }
         } else if let Some(op) = self.from_tract.get(&node.op().type_id()) {
             if let Some(result) = op(ast, node)? {
@@ -220,8 +233,9 @@ impl Registry {
                 };
             }
             let inputs = multicast(builder, &[a, b])?;
-            let mut wire = builder
-                .wire_as_outlets(tract_core::ops::binary::TypedBinOp(bin.1.clone()), &inputs)?[0];
+            let mut wire =
+                wire_bin(builder.generate_node_name(), &mut builder.model, bin.1.clone(), &inputs)?
+                    [0];
             if let Some(Some(out_dt)) = dt.get(0) {
                 if out_dt != &a_dt {
                     wire =
@@ -258,4 +272,34 @@ pub fn multicast(builder: &mut ModelBuilder, inputs: &[OutletId]) -> TractResult
             (r..max_rank).try_fold(i, |w, n| Ok(builder.wire_as_outlets(AxisOp::Add(n), &[w])?[0]))
         })
         .collect()
+}
+
+fn ser_axes_mapping(
+    mut rank: usize,
+    ops: Vec<AxisOp>,
+    mut input: Arc<RValue>,
+) -> TractResult<Arc<RValue>> {
+    for op in ops {
+        input = match op {
+            AxisOp::Rm(axis) => {
+                rank -= 1;
+                invocation("squeeze", &[input], &[("axes", ints(&[axis]))])
+            }
+            AxisOp::Add(axis) => {
+                rank += 1;
+                invocation("unsqueeze", &[input], &[("axes", ints(&[axis]))])
+            }
+            AxisOp::Move(from, to) => {
+                let mut perm: TVec<usize> = (0..rank).collect();
+                if from < to {
+                    perm[from..(to + 1)].rotate_left(1);
+                } else {
+                    perm[to..(from + 1)].rotate_right(1);
+                }
+                invocation("transpose", &[input], &[("axes", ints(&perm))])
+            }
+            _ => unreachable!("AxesMapping traduction do not use reshaep"),
+        }
+    }
+    Ok(input)
 }

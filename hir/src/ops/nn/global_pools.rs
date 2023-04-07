@@ -1,9 +1,12 @@
+use tract_core::ops::binary::wire_bin;
+use tract_core::ops::math::Div;
+use tract_core::ops::math::Pow;
+
 use crate::infer::*;
 use crate::internal::*;
 
 #[derive(Clone, Debug, new, Hash)]
 pub struct GlobalAvgPool;
-
 
 impl Expansion for GlobalAvgPool {
     fn name(&self) -> Cow<str> {
@@ -40,13 +43,12 @@ impl Expansion for GlobalAvgPool {
 
         let div = target.add_const(name.to_string() + ".div", div)?;
 
-        target.wire_node(name.to_string() + ".norm", tract_core::ops::math::div(), &[wire[0], div])
+        wire_bin(name.to_string() + ".norm", target, Div, &[wire[0], div])
     }
 }
 
 #[derive(Clone, Debug, new, Hash)]
 pub struct GlobalLpPool(usize);
-
 
 impl Expansion for GlobalLpPool {
     fn name(&self) -> Cow<str> {
@@ -85,11 +87,7 @@ impl Expansion for GlobalLpPool {
                 .broadcast_into_rank(input_fact.rank())?
                 .into_arc_tensor();
             let pow = target.add_const(name.to_string() + ".pow.cst", pow)?;
-            wire = target.wire_node(
-                name.to_string() + ".pow",
-                tract_core::ops::math::pow(),
-                &[wire[0], pow],
-            )?;
+            wire = wire_bin(name.to_string() + ".pow", target, Pow, &[wire[0], pow])?;
         }
         wire = target.wire_node(
             name.to_string() + ".sum",
@@ -101,11 +99,7 @@ impl Expansion for GlobalLpPool {
             .into_owned()
             .broadcast_into_rank(input_fact.rank())?;
         let div = target.add_const(name.to_string() + ".div", div)?;
-        wire = target.wire_node(
-            name.to_string() + ".norm",
-            tract_core::ops::math::div(),
-            &[wire[0], div],
-        )?;
+        wire = wire_bin(name.to_string() + ".norm", target, Div, &[wire[0], div])?;
         if self.0 == 2 {
             wire = target.wire_node(
                 name.to_string() + ".sqrt",
@@ -119,11 +113,7 @@ impl Expansion for GlobalLpPool {
                 .broadcast_into_rank(input_fact.rank())?
                 .into_arc_tensor();
             let anti_pow = target.add_const(name.to_string() + ".anti_pow", anti_pow)?;
-            wire = target.wire_node(
-                name.to_string() + ".antipow",
-                tract_core::ops::math::pow(),
-                &[wire[0], anti_pow],
-            )?;
+            wire = wire_bin(name.to_string() + ".antipow", target, Pow, &[wire[0], anti_pow])?;
         }
         Ok(wire)
     }
@@ -131,7 +121,6 @@ impl Expansion for GlobalLpPool {
 
 #[derive(Clone, Debug, new, Hash)]
 pub struct GlobalMaxPool;
-
 
 impl Expansion for GlobalMaxPool {
     fn name(&self) -> Cow<str> {

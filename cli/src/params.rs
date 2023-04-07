@@ -686,7 +686,14 @@ impl Parameters {
                     PulsedModel::new(&m, sym, &pulse)
                 });
                 stage!("pulse-to-type", pulsed_model -> typed_model, |m:PulsedModel| m.into_typed());
-                stage!("pulse-declutter", typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
+                stage!("pulse-declutter", typed_model -> typed_model, |mut m:TypedModel| {
+                    let mut dec = tract_core::optim::Optimizer::declutter();
+                    if let Some(steps) = matches.value_of("pulse-declutter-step") {
+                        dec = dec.stopping_at(steps.parse()?);
+                    }
+                    dec.optimize(&mut m)?;
+                    Ok(m)
+                });
             }
         }
         if matches.is_present("half-floats") {

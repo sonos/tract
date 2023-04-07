@@ -1,6 +1,5 @@
 use super::*;
 use crate::ops::cast::cast;
-use crate::ops::math::add;
 use crate::ops::matmul::lir_unary::{
     AddMatMulGeometry, LirMatMulUnary, MapOutputAxisToInput, ProtoFusedSpec,
 };
@@ -194,7 +193,7 @@ fn dequant_output(
 
     let abc_scale = combine_scales(&mut patch, name, a_scale, b_scale, c_scale)?;
 
-    output = patch.wire_node(format!("{name}.add_bias"), add(), &[output[0], bias[0]])?;
+    output = wire_bin(format!("{name}.add_bias"), &mut patch, Add, &[output[0], bias[0]])?;
 
     let k = model.outlet_fact(node.inputs[0])?.shape[k_axis.inputs[0][0]].clone();
     let output = compensate_zero_points(&mut patch, name, output[0], k, a0, b0, sum_a[0], sum_b[0])
@@ -234,7 +233,7 @@ fn lir_mat_mul_unary(
             model,
             node,
             &[node.inputs[1], node.inputs[0]],
-            EinSum { axes: AxesMapping::new(expr)?, ..op.clone() },
+            EinSum { axes: AxesMapping::new(2, 1, expr)?, ..op.clone() },
         )
         .map(Some);
     }
@@ -292,7 +291,7 @@ fn lir_mat_mul_unary(
         ],
     )
     .context("Creating LirMatMulUnary")?;
-    let output = patch.wire_node(name, lir, &[pa, pb])?[0];
+    let output = patch.wire_node(format!("{name}.mm"), lir, &[pa, pb])?[0];
     patch.shunt_outside(model, node.id.into(), output)?;
     Ok(Some(patch))
 }

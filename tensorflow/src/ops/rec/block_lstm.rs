@@ -94,6 +94,14 @@ impl Expansion for BlockLSTM {
                     $op, [$($param),*].as_ref())?[0];
             }
         }
+        macro_rules! wbin {
+            ($name: ident = $op: expr, $($param: expr),*) => {
+                let $name = tract_hir::tract_core::ops::binary::wire_bin(
+                    format!("{}-{}", prefix, stringify!($name)),
+                    &mut body,
+                    $op, [$($param),*].as_ref())?[0];
+            }
+        }
 
         let seq_len = inputs[0];
         outer_inputs.push(seq_len);
@@ -129,14 +137,14 @@ impl Expansion for BlockLSTM {
         let w = body.add_const(format!("{prefix}-w"), w)?;
         let b = body.add_const(format!("{prefix}-b"), b)?;
         wire!(i_ci_f_o_1 = EinSum::new("mk,kn->mn".parse()?, f32::datum_type()), xh, w);
-        wire!(i_ci_f_o = math::add(), b, i_ci_f_o_1);
+        wbin!(i_ci_f_o = math::Add, b, i_ci_f_o_1);
 
         wire!(i_1 = array::Slice::new(1, 0, cell_size), i_ci_f_o);
         wire!(i = nn::sigmoid(), i_1);
 
         wire!(f_1 = array::Slice::new(1, 2 * cell_size, 3 * cell_size), i_ci_f_o);
         let bias = body.add_const(format!("{prefix}-bias"), rctensor2(&[[self.forget_bias]]))?;
-        wire!(f_2 = math::add(), f_1, bias);
+        wbin!(f_2 = math::Add, f_1, bias);
         wire!(f = nn::sigmoid(), f_2);
 
         wire!(ci_1 = array::Slice::new(1, cell_size, 2 * cell_size), i_ci_f_o);
@@ -145,12 +153,12 @@ impl Expansion for BlockLSTM {
         wire!(o_1 = array::Slice::new(1, 3 * cell_size, 4 * cell_size), i_ci_f_o);
         wire!(o = nn::sigmoid(), o_1);
 
-        wire!(ci_i = math::mul(), ci, i);
-        wire!(cs_1 = math::mul(), cs_prev, f);
-        wire!(cs = math::add(), cs_1, ci_i);
+        wbin!(ci_i = math::Mul, ci, i);
+        wbin!(cs_1 = math::Mul, cs_prev, f);
+        wbin!(cs = math::Add, cs_1, ci_i);
 
         wire!(co = math::tanh(), cs);
-        wire!(h = math::mul(), co, o);
+        wbin!(h = math::Mul, co, o);
 
         wire!(i_ = AxisOp::Add(0), i);
         wire!(cs_ = AxisOp::Add(0), cs);

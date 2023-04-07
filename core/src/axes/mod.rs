@@ -18,14 +18,9 @@ impl Axis {
         Axis { repr, inputs: tvec!(tvec!(); inputs), outputs: tvec!(tvec!(); outputs) }
     }
 
-    pub fn natural(
-        inputs: &[&TypedFact],
-        outputs: &[&TypedFact],
-        repr: char,
-        axis_id: usize,
-    ) -> Axis {
-        let inputs = tvec!(tvec!(axis_id); inputs.len());
-        let outputs = tvec!(tvec!(axis_id); outputs.len());
+    pub fn natural(inputs: usize, outputs: usize, repr: char, axis_id: usize) -> Axis {
+        let inputs = tvec!(tvec!(axis_id); inputs);
+        let outputs = tvec!(tvec!(axis_id); outputs);
         Axis { inputs, outputs, repr }
     }
 
@@ -70,5 +65,12 @@ impl Axis {
     pub fn add_output(&mut self, output_id: usize, axis: usize) {
         self.ensure_outputs_count(output_id + 1);
         self.outputs[output_id].push(axis);
+    }
+
+    pub fn interface(&self, io: InOut) -> &[usize] {
+        match io {
+            InOut::In(ix) => &self.inputs[ix],
+            InOut::Out(ix) => &self.outputs[ix],
+        }
     }
 }

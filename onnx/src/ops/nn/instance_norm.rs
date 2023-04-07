@@ -1,6 +1,7 @@
 use crate::model::ParsingContext;
 use crate::pb::NodeProto;
 use tract_hir::internal::*;
+use tract_hir::tract_core::ops::binary::wire_bin;
 
 pub fn instance_normalization(
     _ctx: &ParsingContext,
@@ -43,6 +44,7 @@ impl Expansion for InstanceNorm {
         model: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
+        use tract_hir::ops::math::*;
         let input_fact = model.outlet_fact(inputs[0])?.clone();
         let rank = input_fact.rank();
         let axes: Vec<_> = (0..rank as i64).filter(|&axis| axis != 1).collect();
@@ -52,11 +54,7 @@ impl Expansion for InstanceNorm {
             tract_hir::ops::nn::Reducer::Mean,
         )
         .wire(&format!("{name}.mean"), model, &inputs[0..1])?[0];
-        let diff = model.wire_node(
-            format!("{name}.diff"),
-            tract_hir::ops::math::sub(),
-            &[inputs[0], mean],
-        )?;
+        let diff = wire_bin(format!("{name}.diff"), model, Sub, &[inputs[0], mean])?;
         let sqr_diff =
             model.wire_node(format!("{name}.sqr"), tract_hir::ops::math::square(), &diff)?;
         let vari =
@@ -64,47 +62,24 @@ impl Expansion for InstanceNorm {
                 .wire(&format!("{name}.variance"), model, &sqr_diff)?[0];
         let epsilon = model.add_const(
             format!("{name}.epsilon.cst"),
-            tensor0(self.epsilon)
-                .cast_to_dt(input_fact.datum_type)?
-                .into_owned()
-                .broadcast_into_rank(rank)?
-                .into_arc_tensor(),
+            tensor0(self.epsilon).cast_to_dt(input_fact.datum_type)?.into_owned().into_arc_tensor(),
         )?;
-        let vari_sane = model.wire_node(
-            format!("{name}.epsilon"),
-            tract_hir::ops::math::add(),
-            &[vari, epsilon],
-        )?;
-        let div = model.wire_node(
-            format!("{name}.rsqrt"),
-            tract_hir::ops::math::rsqrt(),
-            &vari_sane,
-        )?;
-        let divised = model.wire_node(
-            format!("{name}.div"),
-            tract_hir::ops::math::mul(),
-            &[diff[0], div[0]],
-        )?;
+        let vari_sane = wire_bin(format!("{name}.epsilon"), model, Add, &[vari, epsilon])?;
+        let div =
+            model.wire_node(format!("{name}.rsqrt"), tract_hir::ops::math::rsqrt(), &vari_sane)?;
+        let divised = wire_bin(format!("{name}.div"), model, Mul, &[diff[0], div[0]])?;
         let mut scale =
             model.wire_node(format!("{name}.add-scale-axis-n"), AxisOp::Add(0), &inputs[1..2])?;
         for i in 2..rank {
-            scale = model.wire_node(
-                format!("{name}.add-scale-axis-{i}"),
-                AxisOp::Add(2),
-                &scale,
-            )?;
+            scale =
+                model.wire_node(format!("{name}.add-scale-axis-{i}"), AxisOp::Add(2), &scale)?;
         }
-        let scaled = model.wire_node(
-            format!("{name}.scaled"),
-            tract_hir::ops::math::mul(),
-            &[divised[0], scale[0]],
-        )?;
+        let scaled = wire_bin(format!("{name}.scaled"), model, Mul, &[divised[0], scale[0]])?;
         let mut bias =
             model.wire_node(format!("{name}.add-bias-axis-n"), AxisOp::Add(0), &inputs[2..3])?;
         for i in 2..rank {
-            bias =
-                model.wire_node(format!("{name}.add-bias-axis-{i}"), AxisOp::Add(2), &bias)?;
+            bias = model.wire_node(format!("{name}.add-bias-axis-{i}"), AxisOp::Add(2), &bias)?;
         }
-        model.wire_node(name, tract_hir::ops::math::add(), &[scaled[0], bias[0]])
+        wire_bin(name, model, Add, &[scaled[0], bias[0]])
     }
 }

@@ -36,7 +36,7 @@ impl OpOptim {
 
 impl std::fmt::Debug for OpOptim {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(fmt, "{}", self.0)
+        write!(fmt, "op {}", self.0)
     }
 }
 

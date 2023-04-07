@@ -11,6 +11,7 @@
 //! # extern crate tract_core;
 //! # fn main() {
 //! use tract_core::internal::*;
+//! use tract_core::ops::binary::wire_bin;
 //!
 //! // build a simple model that just add 3 to each input component
 //! let mut model = TypedModel::default();
@@ -18,8 +19,9 @@
 //! let input_fact = f32::fact(&[3]);
 //! let input = model.add_source("input", input_fact).unwrap();
 //! let three = model.add_const("three".to_string(), tensor1(&[3f32])).unwrap();
-//! let add = model.wire_node("add".to_string(),
-//!     tract_core::ops::math::add(),
+//! let add = wire_bin("add".to_string(),
+//!     &mut model,
+//!     tract_core::ops::math::Add,
 //!     [input, three].as_ref()
 //!     ).unwrap();
 //!

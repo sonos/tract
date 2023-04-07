@@ -25,14 +25,38 @@ pub fn wire_rank_broadcast(
     Ok(wires)
 }
 
+#[deprecated]
 pub fn wire_with_rank_broadcast(
-    prefix: &str,
+    prefix: impl ToString,
     target: &mut TypedModel,
     op: impl Into<Box<dyn TypedOp>>,
     inputs: &[OutletId],
 ) -> TractResult<TVec<OutletId>> {
-    let wires = wire_rank_broadcast(prefix, target, inputs)?;
+    let prefix = prefix.to_string();
+    let wires = wire_rank_broadcast(&prefix, target, inputs)?;
     target.wire_node(prefix, &op.into(), &wires)
+}
+
+pub fn wire_bin(
+    name: impl ToString,
+    target: &mut TypedModel,
+    op: impl Into<Box<dyn BinMiniOp>>,
+    inputs: &[OutletId],
+) -> TractResult<TVec<OutletId>> {
+    ensure!(inputs.len() == 2);
+    let prefix = name.to_string();
+    let rank_a = target.outlet_fact(inputs[0])?.rank();
+    let rank_b = target.outlet_fact(inputs[1])?.rank();
+    let rank_c = rank_a.max(rank_b);
+    let mut axes = AxesMapping::natural_for_rank(2, 1, rank_c)?;
+    for _ in rank_a..rank_c {
+        axes = axes.remove_input_axis(0, 0)?;
+    }
+    for _ in rank_b..rank_c {
+        axes = axes.remove_input_axis(1, 0)?;
+    }
+    let op = TypedBinOp { op: op.into(), axes, codegen: None };
+    target.wire_node(prefix, &op.into(), inputs)
 }
 
 pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast {
@@ -44,40 +68,30 @@ pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + 
         a.common_super_type(b).with_context(|| format_err!("No super type for {:?} and {:?}", a, b))
     }
     fn result_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType>;
-    fn eval_unicast_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()>;
-    fn eval_uniform_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()>;
-    fn eval_in_a(&self, a: &mut Tensor, b: &Tensor) -> TractResult<()>;
-    fn eval_out_of_place(&self, c: &mut Tensor, a: &Tensor, b: &Tensor) -> TractResult<()>;
-    fn generic_eval(&self, a: TValue, b: TValue) -> TractResult<Tensor> {
+    fn eval_unicast_in_right(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()>;
+    fn eval_uniform_in_left(&self, a: &mut Tensor, b: &Tensor) -> TractResult<()>;
+    fn eval_uniform_in_right(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()>;
+    fn eval_out_of_place(
+        &self,
+        axes: &AxesMapping,
+        c: &mut Tensor,
+        a: &Tensor,
+        b: &Tensor,
+    ) -> TractResult<()>;
+    fn generic_eval(&self, axes: &AxesMapping, a: TValue, b: TValue) -> TractResult<Tensor> {
         let c_dt = self.result_datum_type(a.datum_type(), b.datum_type())?;
-        if c_dt == b.datum_type() && a.len() == 1 {
-            let mut b = b.into_tensor();
-            self.eval_uniform_in_place(&a, &mut b)?;
-            Ok(b)
-        } else if a.shape() == b.shape() && c_dt == b.datum_type() {
-            let mut b = b.into_tensor();
-            self.eval_unicast_in_place(&a, &mut b)?;
-            Ok(b)
-        } else {
-            let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])
-                .ok_or_else(|| format_err!("Can not compute resulting shape"))?;
-            if &*c_shape == a.shape() && c_dt == a.datum_type() {
-                let mut a = a.into_tensor();
-                self.eval_in_a(&mut a, &b)?;
-                Ok(a)
-            } else {
-                let mut c = unsafe { Tensor::uninitialized_dt(c_dt, &c_shape)? };
-                self.eval_out_of_place(&mut c, &a, &b)?;
-                Ok(c)
-            }
-        }
+        let c_shape = output_shape(axes, a.shape(), b.shape())?;
+        let mut c = unsafe { Tensor::uninitialized_dt(c_dt, &c_shape)? };
+        self.eval_out_of_place(axes, &mut c, &a, &b)?;
+        Ok(c)
     }
-    fn eval(&self, a: TValue, b: TValue) -> TractResult<Tensor> {
-        self.generic_eval(a, b)
+    fn eval(&self, axes: &AxesMapping, a: TValue, b: TValue) -> TractResult<Tensor> {
+        self.generic_eval(axes, a, b)
     }
     #[allow(unused_variables)]
     fn declutter(
         &self,
+        axes: &AxesMapping,
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
@@ -102,16 +116,44 @@ pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + 
 dyn_clone::clone_trait_object!(BinMiniOp);
 downcast_rs::impl_downcast!(BinMiniOp);
 
+impl<B: BinMiniOp> From<B> for Box<dyn BinMiniOp + 'static> {
+    fn from(value: B) -> Self {
+        Box::new(value)
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub enum BinOpCodegen {
+    #[default]
+    Generic,
+    UnicastInRight(Vec<AxisOp>),
+    UniformInLeft(Vec<AxisOp>),
+    UniformInRight(Vec<AxisOp>),
+}
+
 #[derive(Debug, Clone)]
-pub struct TypedBinOp(pub Box<dyn BinMiniOp>);
+pub struct TypedBinOp {
+    pub op: Box<dyn BinMiniOp>,
+    pub axes: AxesMapping,
+    pub codegen: Option<BinOpCodegen>,
+}
 
 impl Op for TypedBinOp {
     fn name(&self) -> Cow<str> {
-        self.0.name().into()
+        self.op.name().into()
     }
 
     fn validation(&self) -> Validation {
-        self.0.validation()
+        self.op.validation()
+    }
+
+    fn info(&self) -> TractResult<Vec<String>> {
+        let i = if let Some(codegen) = &self.codegen {
+            format!("{} ({codegen:?})", self.axes)
+        } else {
+            self.axes.to_string()
+        };
+        Ok(vec![i])
     }
 
     op_as_typed_op!();
@@ -124,60 +166,80 @@ impl EvalOp for TypedBinOp {
 
     fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a, b) = args_2!(inputs);
-        debug_assert_eq!(a.rank(), b.rank());
-        Ok(tvec!(self.0.eval(a, b)?.into_tvalue()))
+        match &self.codegen {
+            Some(BinOpCodegen::UnicastInRight(fixes)) => {
+                let mut b = b.into_tensor();
+                self.op.eval_unicast_in_right(&a, &mut b)?;
+                for axis_fix in fixes {
+                    axis_fix.change_tensor(&mut b, false)?;
+                }
+                return Ok(tvec!(b.into_tvalue()));
+            }
+            Some(BinOpCodegen::UniformInLeft(fixes)) => {
+                let mut a = a.into_tensor();
+                self.op.eval_uniform_in_left(&mut a, &b)?;
+                for axis_fix in fixes {
+                    axis_fix.change_tensor(&mut a, false)?;
+                }
+                return Ok(tvec!(a.into_tvalue()));
+            }
+            Some(BinOpCodegen::UniformInRight(fixes)) => {
+                let mut b = b.into_tensor();
+                self.op.eval_uniform_in_right(&a, &mut b)?;
+                for axis_fix in fixes {
+                    axis_fix.change_tensor(&mut b, false)?;
+                }
+                return Ok(tvec!(b.into_tvalue()));
+            }
+            _ => (),
+        };
+        let c = self.op.eval(&self.axes, a, b)?;
+        Ok(tvec!(c.into_tvalue()))
     }
 }
 
 impl TypedOp for TypedBinOp {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        if inputs[0].rank() != inputs[1].rank() {
-            bail!("Typed ops require rank match. Invalid inputs for {}: {:?}", self.name(), inputs);
+        if inputs[0].rank() != self.axes.input_rank(0)
+            || inputs[1].rank() != self.axes.input_rank(1)
+        {
+            bail!("Invalid binary wiring {} : inputs are {:?}", self.axes, inputs);
         }
-        Ok(tvec!(self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?.fact(
-            &*crate::broadcast::multi_broadcast(&[
-                &inputs[0].shape.to_tvec(),
-                &inputs[1].shape.to_tvec()
-            ])
-            .ok_or_else(|| format_err!(
-                "Can not broadcast shapes a:{:?} b:{:?}",
-                &inputs[0],
-                &inputs[1]
-            ))?
-        )))
+        let dt = self.op.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?;
+        let shape = output_shape(&self.axes, &inputs[0].shape, &inputs[1].shape)?;
+        Ok(tvec!(dt.fact(shape)))
     }
 
+    #[allow(unused_variables)]
     fn change_axes(
         &self,
         model: &TypedModel,
         node: &TypedNode,
-        _io: InOut,
+        io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
-        if let AxisOp::Rm(rm) = change {
-            let (inputs, outputs) = model.node_facts(node.id)?;
-            if !inputs[0].shape[*rm].is_one()
-                || !inputs[0].shape[*rm].is_one()
-                || !outputs[0].shape[*rm].is_one()
-            {
-                return Ok(None);
-            }
+        if self.codegen.is_some() {
+            return Ok(None);
         }
-        Ok(Some(AxisChangeConsequence::new(model, node, None, change)))
+        let Some(axes) = self.axes.change_axis_sink(io, change)? else { return Ok(None) };
+        Ok(Some(AxisChangeConsequence {
+            substitute_op: Some(Box::new(Self { axes, ..self.clone() })),
+            wire_changes: tvec!((io, change.clone())),
+        }))
     }
 
     fn axes_mapping(
         &self,
-        inputs: &[&TypedFact],
-        outputs: &[&TypedFact],
+        _inputs: &[&TypedFact],
+        _outputs: &[&TypedFact],
     ) -> TractResult<AxesMapping> {
-        AxesMapping::natural(inputs, outputs)
+        Ok(self.axes.clone())
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         let count: TDim = self.output_facts(inputs)?[0].shape.iter().product();
         Ok(self
-            .0
+            .op
             .cost_per_element(inputs[0].datum_type)
             .into_iter()
             .map(|(c, n)| (c, count.clone() * n))
@@ -193,6 +255,9 @@ impl TypedOp for TypedBinOp {
         _start: usize,
         _end: usize,
     ) -> TractResult<Option<TVec<OutletId>>> {
+        if self.codegen.is_some() {
+            return Ok(None);
+        }
         Ok(Some(patch.wire_node(prefix, self.clone(), inputs)?))
     }
 
@@ -201,7 +266,10 @@ impl TypedOp for TypedBinOp {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        self.0.declutter(model, node)
+        if self.codegen.is_some() {
+            return Ok(None);
+        }
+        self.op.declutter(&self.axes, model, node).context("binary op declutter")
     }
 
     fn codegen(
@@ -209,74 +277,79 @@ impl TypedOp for TypedBinOp {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
+        if self.codegen.is_some() {
+            return Ok(None);
+        }
         let facts = model.node_input_facts(node.id)?;
-        if self.0.result_datum_type(facts[0].datum_type, facts[1].datum_type)?
-            == facts[0].datum_type
-            && facts[0].without_value() == facts[1].without_value()
+        let output_shape = output_shape(&self.axes, &facts[0].shape, &facts[1].shape)?;
+        let cdt = self.op.result_datum_type(facts[0].datum_type, facts[1].datum_type)?;
+        let codegen = if cdt == facts[0].datum_type
+            && self.axes.same_layout(InOut::In(0), InOut::In(1), &facts[0].shape, &facts[1].shape)
+            && self.axes.same_layout(InOut::In(0), InOut::Out(0), &facts[0].shape, &output_shape)
         {
-            Ok(Some(TypedModelPatch::replace_single_op(
+            BinOpCodegen::UnicastInRight(
+                self.axes.extract_sub_mapping(&[1], &[0])?.translate_to_axis_ops()?,
+            )
+        } else if facts[0].shape.volume().is_one() && cdt == facts[1].datum_type {
+            BinOpCodegen::UniformInRight(
+                self.axes.extract_sub_mapping(&[1], &[0])?.translate_to_axis_ops()?,
+            )
+        } else if facts[1].shape.volume().is_one() && cdt == facts[0].datum_type {
+            BinOpCodegen::UniformInLeft(
+                self.axes.extract_sub_mapping(&[0], &[0])?.translate_to_axis_ops()?,
+            )
+        } else {
+            BinOpCodegen::Generic
+        };
+        let ctx = format!("{codegen:?}");
+        Ok(Some(
+            TypedModelPatch::replace_single_op(
                 model,
                 node,
                 &node.inputs,
-                MergeOpUnicast(self.0.clone()),
-            )?.with_context("Unicast")))
-        } else {
-            Ok(None)
+                Self { codegen: Some(codegen), ..self.clone() },
+            )?
+            .with_context(ctx),
+        ))
+    }
+
+    as_op!();
+}
+
+pub fn output_shape<D: DimLike>(
+    axes: &AxesMapping,
+    a: impl AsRef<[D]>,
+    b: impl AsRef<[D]>,
+) -> TractResult<TVec<D>> {
+    let a = a.as_ref();
+    let b = b.as_ref();
+    let mut shape = tvec!();
+    for axis in axes.output_axes(0) {
+        if axis.inputs[0].len() > 1 || axis.inputs[1].len() > 1 {
+            bail!("Invalid expression for binary mapping {}", axes);
         }
+        let one = D::one();
+        let dim_a = axis.inputs[0].first().map(|ax| &a[*ax]).unwrap_or(&one);
+        let dim_b = axis.inputs[1].first().map(|ax| &b[*ax]).unwrap_or(&one);
+        #[allow(clippy::if_same_then_else)]
+        let dim_c = if dim_a == &one {
+            dim_b.clone()
+        } else if dim_b == &one {
+            dim_a.clone()
+        } else if dim_a == dim_b {
+            dim_a.clone()
+        } else {
+            bail!(
+                "Can not compute dim for axis {} with inputs {:?} and {:?} and expression {}",
+                axis.repr,
+                a,
+                b,
+                axes
+            );
+        };
+        shape.push(dim_c);
     }
-
-    as_op!();
-}
-
-#[derive(Debug, Clone)]
-pub struct MergeOpUnicast(pub Box<dyn BinMiniOp>);
-
-impl Op for MergeOpUnicast {
-    fn name(&self) -> Cow<str> {
-        format!("{}Unicast", self.0.name()).into()
-    }
-
-    op_as_typed_op!();
-}
-
-impl EvalOp for MergeOpUnicast {
-    fn is_stateless(&self) -> bool {
-        true
-    }
-
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let (a, b) = args_2!(inputs);
-        let mut b = b.into_tensor();
-        self.0.eval_unicast_in_place(&a, &mut b)?;
-        Ok(tvec!(b.into_tvalue()))
-    }
-}
-
-impl TypedOp for MergeOpUnicast {
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        debug_assert_eq!(inputs[0].shape, inputs[1].shape);
-        Ok(tvec!(inputs[0].without_value()))
-    }
-
-    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let count: TDim = self.output_facts(inputs)?[0].shape.iter().product();
-        Ok(self
-            .0
-            .cost_per_element(inputs[0].datum_type)
-            .into_iter()
-            .map(|(c, n)| (c, count.clone() * n))
-            .collect())
-    }
-
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        self.0.declutter(model, node)
-    }
-
-    as_op!();
+    Ok(shape)
 }
 
 #[macro_export]
@@ -299,8 +372,47 @@ macro_rules! bin_to_super_type {
             fn name(&self) -> &'static str {
                 stringify!($Op)
             }
+            fn eval_uniform_in_left(&self, a: &mut Tensor, b: &Tensor) -> TractResult<()> {
+                $(
+                    $(if a.datum_type() == $typ::datum_type() {
+                        let cab: fn(&mut $typ, &$typ, &$typ) -> () = $cab;
+                        let a = a.as_slice_mut::<$typ>()?;
+                        let b = b.to_scalar::<$typ>()?;
+                        unsafe {
+                            for i in 0..a.len() {
+                                let mut c = $typ::default();
+                                cab(&mut c, a.get_unchecked(i), b);
+                                *a.get_unchecked_mut(i) = c;
+                            }
+                        }
+                        return Ok(())
+                    }
+                    )*
+                 )*
 
-            fn eval_uniform_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
+                    $(
+                        $(
+                            $(if a.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
+                                let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
+                                let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
+                                let a = a.as_slice_mut::<$typ_dt>()?;
+                                let b = b.to_scalar::<$typ_dt>()?;
+                                unsafe {
+                                    for i in 0..a.len() {
+                                        let mut c = $typ_dt::default();
+                                        cab(&mut c, a.get_unchecked_mut(i), b, zp, scale);
+                                        *a.get_unchecked_mut(i) = c;
+                                    }
+                                }
+                                return Ok(())
+                            }
+                            )*
+                         )*
+                     )?
+                    bail!("{} does not support {:?} (inplace uniform)", self.name(), a.datum_type());
+            }
+
+            fn eval_uniform_in_right(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
                 $(
                     $(if a.datum_type() == $typ::datum_type() {
                         let cab: fn(&mut $typ, &$typ, &$typ) -> () = $cab;
@@ -340,7 +452,7 @@ macro_rules! bin_to_super_type {
                     bail!("{} does not support {:?} (inplace uniform)", self.name(), a.datum_type());
             }
 
-            fn eval_unicast_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
+            fn eval_unicast_in_right(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
                 $(
                     $(if a.datum_type() == $typ::datum_type() {
                         let cab: fn(&mut $typ, &$typ, &$typ) -> () = $cab;
@@ -379,15 +491,11 @@ macro_rules! bin_to_super_type {
                     bail!("{} does not support {:?} (inplace)", self.name(), a.datum_type());
             }
 
-            fn eval_out_of_place(&self, c: &mut Tensor, a: &Tensor, b: &Tensor) -> TractResult<()> {
-                $(if $out_of_place(c, a, b)? { return Ok(()) } )?
+            fn eval_out_of_place(&self, axes: &AxesMapping, c: &mut Tensor, a: &Tensor, b: &Tensor) -> TractResult<()> {
+                $(if $out_of_place(axes, c, a, b)? { return Ok(()) } )?
                     $(
                         $(if c.datum_type() == $typ::datum_type() {
-                            let a = a.to_array_view::<$typ>()?;
-                            let b = b.to_array_view::<$typ>()?;
-                            let mut c = c.to_array_view_mut::<$typ>()?;
-                            $crate::ndarray::Zip::from(&mut c).and_broadcast(a).and_broadcast(b).for_each($cab);
-                            return Ok(())
+                            return $crate::ops::binary::eval_out_of_place::<$typ, $typ, $typ>(axes, c, a, b, $cab)
                         })*
                      )*
                     $(
@@ -395,11 +503,7 @@ macro_rules! bin_to_super_type {
                             $(if a.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
                                 let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
                                 let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
-                                let a = a.to_array_view::<$typ_dt>()?;
-                                let b = b.to_array_view::<$typ_dt>()?;
-                                let mut c = c.to_array_view_mut::<$typ_dt>()?;
-                                $crate::ndarray::Zip::from(&mut c).and_broadcast(a).and_broadcast(b).for_each(|c, a, b| cab(c, a, b, zp, scale));
-                                return Ok(())
+                                return $crate::ops::binary::eval_out_of_place::<$typ_dt, $typ_dt, $typ_dt>(axes, c, a, b, |c, a, b| cab(c,a,b,zp, scale) )
                             }
                             )*
                          )*
@@ -407,36 +511,8 @@ macro_rules! bin_to_super_type {
                     bail!("{} does not support {:?} (out of place)", self.name(), c.datum_type());
             }
 
-            fn eval_in_a(&self, a: &mut Tensor, b: &Tensor) -> TractResult<()> {
-                // c and a are same type
-                $(
-                    $(if b.datum_type() == $typ::datum_type() {
-                        let cab: fn(&mut $typ, &$typ, &$typ) -> () = $cab;
-                        let b = b.to_array_view::<$typ>()?;
-                        let mut a = a.to_array_view_mut::<$typ>()?;
-                        $crate::ndarray::Zip::from(&mut a).and_broadcast(b).for_each(|a, b| cab(a, &a.clone(), b));
-                        return Ok(())
-                    })*
-                )*
-                $(
-                    $(
-                        $(if a.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
-                            let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
-                            let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
-                            let mut a = a.to_array_view_mut::<$typ_dt>()?;
-                            let b = b.to_array_view::<$typ_dt>()?;
-                            $crate::ndarray::Zip::from(&mut a).and_broadcast(b).for_each(|a, b| {
-                                cab(a, &(a.clone()), b, zp, scale)
-                            });
-                            return Ok(())
-                        })*
-                    )*
-                )?
-                bail!("{} does not support {:?} (eval in a)", self.name(), a.datum_type());
-            }
-
-            $(fn eval(&self, a: TValue, b: TValue) -> TractResult<Tensor> {
-                $eval_override(a, b)
+            $(fn eval(&self, axes:&AxesMapping, a: TValue, b: TValue) -> TractResult<Tensor> {
+                $eval_override(axes, a, b)
             })?
 
             fn result_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
@@ -451,15 +527,16 @@ macro_rules! bin_to_super_type {
                 self.operating_datum_type(a, b)
             }
 
-                $(
-                    fn declutter(
-                        &self,
-                        model: &TypedModel,
-                        node: &TypedNode,
-                        ) -> TractResult<Option<TypedModelPatch>> {
-                        ($declutter)(self, model, node)
-                    }
-                 )?
+            $(
+                fn declutter(
+                    &self,
+                    axes: &AxesMapping,
+                    model: &TypedModel,
+                    node: &TypedNode,
+                    ) -> TractResult<Option<TypedModelPatch>> {
+                    ($declutter)(self, axes, model, node)
+                }
+             )?
                 $(
                     fn codegen(
                         &self,
@@ -490,10 +567,6 @@ macro_rules! bin_to_super_type {
                         ($operating_datum_type)(a, b)
                     })?
         }
-
-        pub fn $func() -> $crate::ops::binary::TypedBinOp {
-            $crate::ops::binary::TypedBinOp(Box::new($Op))
-        }
     };
 }
 
@@ -511,7 +584,7 @@ macro_rules! bin_to_bool {
                 stringify!($Op)
             }
 
-            fn eval_uniform_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
+            fn eval_uniform_in_right(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
                 $(
                     $(if a.datum_type() == $typ::datum_type() {
                         let cab: fn(&mut bool, &bool, &bool) -> () = $cab;
@@ -531,8 +604,28 @@ macro_rules! bin_to_bool {
                     bail!("{} does not support {:?} (inplace uniform)", self.name(), a.datum_type());
             }
 
+            fn eval_uniform_in_left(&self, a: &mut Tensor, b: &Tensor) -> TractResult<()> {
+                $(
+                    $(if a.datum_type() == $typ::datum_type() {
+                        let cab: fn(&mut bool, &bool, &bool) -> () = $cab;
+                        let a = a.as_slice_mut::<bool>()?;
+                        let b = b.to_scalar::<bool>()?;
+                        unsafe {
+                            for i in 0..a.len() {
+                                let mut c = bool::default();
+                                cab(&mut c, a.get_unchecked(i), b);
+                                *a.get_unchecked_mut(i) = c;
+                            }
+                        }
+                        return Ok(())
+                    }
+                    )*
+                 )*
+                    bail!("{} does not support {:?} (inplace uniform)", self.name(), a.datum_type());
+            }
+
             #[allow(unreachable_code)]
-            fn eval_unicast_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
+            fn eval_unicast_in_right(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
                 $(
                     $(if a.datum_type() == $typ::datum_type() {
                         let cab: fn(&mut bool, &bool, &bool) -> () = $cab;
@@ -552,23 +645,15 @@ macro_rules! bin_to_bool {
                     bail!("{} does not support {:?}", self.name(), a.datum_type());
             }
 
-            fn eval_out_of_place(&self, c: &mut Tensor, a: &Tensor, b: &Tensor) -> TractResult<()> {
+            fn eval_out_of_place(&self, axes:&AxesMapping, c: &mut Tensor, a: &Tensor, b: &Tensor) -> TractResult<()> {
                 $(
                     $(if a.datum_type() == $typ::datum_type() {
                         let cab: fn(&mut bool, &$typ, &$typ) -> () = $cab;
-                        let a = a.to_array_view::<$typ>()?;
-                        let b = b.to_array_view::<$typ>()?;
-                        let mut c = c.to_array_view_mut::<bool>()?;
-                        ndarray::Zip::from(&mut c).and_broadcast(a).and_broadcast(b).for_each(cab);
-                        return Ok(())
+                        return $crate::ops::binary::eval_out_of_place::<bool, $typ, $typ>(axes, c, a, b, cab)
                     }
                     )*
                  )*
                     bail!("{} does not support {:?}", self.name(), a.datum_type());
-            }
-
-            fn eval_in_a(&self, a: &mut Tensor, _b: &Tensor) -> TractResult<()> {
-                bail!("{} does not support {:?}", self.name(), a.datum_type());
             }
 
             fn result_datum_type(&self, _a: DatumType, _b: DatumType) -> TractResult<DatumType> {
@@ -589,10 +674,11 @@ macro_rules! bin_to_bool {
                 $(
                     fn declutter(
                         &self,
+                        axes: &AxesMapping,
                         model: &TypedModel,
                         node: &TypedNode,
                         ) -> TractResult<Option<TypedModelPatch>> {
-                        ($declutter)(self, model, node)
+                        ($declutter)(self, axes, model, node)
                     }
                  )?
 
@@ -607,10 +693,6 @@ macro_rules! bin_to_bool {
                         ($operating_datum_type)(a, b)
                     })?
 
-        }
-
-        pub fn $func() -> $crate::ops::binary::TypedBinOp {
-            $crate::ops::binary::TypedBinOp(Box::new($Op))
         }
     };
 }
@@ -641,4 +723,21 @@ pub(crate) fn one_input_is_uniform(
         }
     }
     Ok(None)
+}
+
+pub fn eval_out_of_place<C: Datum, A: Datum, B: Datum>(
+    axes: &AxesMapping,
+    c: &mut Tensor,
+    a: &Tensor,
+    b: &Tensor,
+    cab: impl FnMut(&mut C, &A, &B),
+) -> TractResult<()> {
+    let mut a = a.to_array_view::<A>()?;
+    let mut b = b.to_array_view::<B>()?;
+    let mut c = c.to_array_view_mut::<C>()?;
+    axes.view_to_canonical(InOut::In(0), &mut a)?;
+    axes.view_to_canonical(InOut::In(1), &mut b)?;
+    axes.view_to_canonical_mut(InOut::Out(0), &mut c)?;
+    tract_ndarray::Zip::from(&mut c).and_broadcast(a).and_broadcast(b).for_each(cab);
+    Ok(())
 }

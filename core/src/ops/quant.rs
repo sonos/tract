@@ -8,7 +8,6 @@ use tract_linalg::lut::Lut;
 use tract_linalg::mmm::RoundingPolicy;
 use tract_linalg::Scaler;
 
-use super::binary::TypedBinOp;
 use super::math::round_ties_to_even;
 
 pub fn quantize_linear_f32_u8(x: f32, scale: f32, zero_point: i32) -> u8 {
@@ -28,8 +27,8 @@ element_wise_oop!(quantize_linear_u8,
  },
  [f32,i32] => u8 |op, xs, ys| {
      xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
-                                           *y = quantize_linear_f32_u8(*x as f32, op.scale, op.zero_point as i32)
-                                          );
+        *y = quantize_linear_f32_u8(*x as f32, op.scale, op.zero_point as i32)
+     );
      Ok(())
  };
  info: info_quantize_linear_u8
@@ -286,7 +285,11 @@ impl crate::ops::binary::BinMiniOp for Scale {
         Ok(b)
     }
 
-    fn eval_uniform_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
+    fn eval_uniform_in_left(&self, _: &mut Tensor, _: &Tensor) -> TractResult<()> {
+        bail!("Unexpected call to uniform_in_left for Scale");
+    }
+
+    fn eval_uniform_in_right(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
         let a = a.to_scalar::<f32>()?;
         unsafe fn eval_in_place_t<T: Datum + AsPrimitive<f32>>(a: f32, b: &mut Tensor)
         where
@@ -298,7 +301,7 @@ impl crate::ops::binary::BinMiniOp for Scale {
         Ok(())
     }
 
-    fn eval_unicast_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
+    fn eval_unicast_in_right(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
         let a = a.to_array_view::<f32>()?;
         unsafe fn eval_in_place_t<T: Datum + AsPrimitive<f32>>(
             a: &ndarray::ArrayViewD<f32>,
@@ -313,36 +316,32 @@ impl crate::ops::binary::BinMiniOp for Scale {
         Ok(())
     }
 
-    fn eval_out_of_place(&self, c: &mut Tensor, a: &Tensor, b: &Tensor) -> TractResult<()> {
-        let a = a.to_array_view::<f32>()?;
+    fn eval_out_of_place(
+        &self,
+        axes: &AxesMapping,
+        c: &mut Tensor,
+        a: &Tensor,
+        b: &Tensor,
+    ) -> TractResult<()> {
         unsafe fn eval_out_of_place_t<T: Datum + AsPrimitive<f32>>(
+            axes: &AxesMapping,
             c: &mut Tensor,
-            a: &ndarray::ArrayViewD<f32>,
+            a: &Tensor,
             b: &Tensor,
-        ) where
+        ) -> TractResult<()>
+        where
             f32: AsPrimitive<T>,
         {
-            let b = b.to_array_view_unchecked::<T>();
-            let mut c = c.to_array_view_mut_unchecked::<T>();
-            ndarray::Zip::from(&mut c)
-                .and_broadcast(a)
-                .and_broadcast(b)
-                .for_each(|c, a, b| *c = scale_by(*b, *a))
+            crate::ops::binary::eval_out_of_place::<T, f32, T>(axes, c, a, b, |c, a, b| {
+                *c = scale_by(*b, *a)
+            })
         }
-        unsafe { dispatch_numbers!(eval_out_of_place_t(b.datum_type())(c, &a, b)) }
-        Ok(())
-    }
-
-    fn eval_in_a(&self, a: &mut Tensor, b: &Tensor) -> TractResult<()> {
-        // a is f32 by construction (scaler). if we are here in mean c is also f32, so b is f32
-        let a = a.to_array_view_mut::<f32>()?;
-        let b = b.to_array_view::<f32>()?;
-        ndarray::Zip::from(a).and_broadcast(b).for_each(|a, b| *a = scale_by(*b, *a));
-        Ok(())
+        unsafe { dispatch_numbers!(eval_out_of_place_t(b.datum_type())(axes, c, a, b)) }
     }
 
     fn declutter(
         &self,
+        _axes: &AxesMapping,
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
@@ -377,10 +376,6 @@ where
 {
     let b = b.as_();
     (round_ties_to_even(b.abs() * a) * b.signum()).as_()
-}
-
-pub fn scale() -> TypedBinOp {
-    TypedBinOp(Box::new(Scale))
 }
 
 /// Offsets u8 integers as i8 integers.
@@ -451,7 +446,9 @@ pub mod scale {
             operating_dt: i32::datum_type(),
             q_params: Some(i8::datum_type()),
         };
-        let output = model.wire_node("mmm", op, &[a, b, bias, a0, a_scale, b0, b_scale, c0, c_scale]).unwrap();
+        let output = model
+            .wire_node("mmm", op, &[a, b, bias, a0, a_scale, b0, b_scale, c0, c_scale])
+            .unwrap();
         model.set_output_outlets(&output).unwrap();
 
         let plain = model.clone().into_runnable().unwrap().run(input.clone()).unwrap();

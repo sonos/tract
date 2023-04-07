@@ -1,6 +1,7 @@
 use tract_hir::internal::*;
 use tract_hir::ops;
 use tract_hir::ops::math::round_ties_to_even;
+use tract_hir::tract_core::ops::binary::wire_bin;
 
 use crate::model::ParsingContext;
 use crate::model::TfOpRegister;
@@ -24,8 +25,6 @@ struct FakeQuantWithMinMaxVars {
     narrow_range: bool,
     num_bits: usize,
 }
-
-
 
 impl FakeQuantWithMinMaxVars {
     fn step(&self, min: &Tensor, max: &Tensor) -> TractResult<f32> {
@@ -85,37 +84,24 @@ impl Expansion for FakeQuantWithMinMaxVars {
             cst!(min_adj, min_adj);
             cst!(max_adj, max_adj);
             cst!(step, step);
-            let wire = target.wire_node(
-                format!("{prefix}.clamp_min"),
-                ops::math::max(),
-                &[wire, min_adj],
-            )?[0];
-            let wire = target.wire_node(
-                format!("{prefix}.clamp_max"),
-                ops::math::min(),
-                &[max_adj, wire],
-            )?[0];
-            let wire = target.wire_node(
-                format!("{prefix}.sub-min"),
-                ops::math::sub(),
-                &[wire, min_adj],
-            )?[0];
-            let wire = target.wire_node(
-                format!("{prefix}.div-step"),
-                ops::math::div(),
-                &[wire, step],
-            )?[0];
+            let wire =
+                wire_bin(format!("{prefix}.clamp_min"), target, ops::math::Max, &[wire, min_adj])?
+                    [0];
+            let wire =
+                wire_bin(format!("{prefix}.clamp_max"), target, ops::math::Min, &[max_adj, wire])?
+                    [0];
+            let wire =
+                wire_bin(format!("{prefix}.sub-min"), target, ops::math::Sub, &[wire, min_adj])?[0];
+            let wire =
+                wire_bin(format!("{prefix}.div-step"), target, ops::math::Div, &[wire, step])?[0];
             let wire = target.wire_node(
                 format!("{prefix}.round"),
                 ops::math::round_half_to_even(),
                 &[wire],
             )?[0];
-            let wire = target.wire_node(
-                format!("{prefix}.mul-step"),
-                ops::math::mul(),
-                &[wire, step],
-            )?[0];
-            target.wire_node(format!("{prefix}.add-min"), ops::math::add(), &[wire, min_adj])
+            let wire =
+                wire_bin(format!("{prefix}.mul-step"), target, ops::math::Mul, &[wire, step])?[0];
+            wire_bin(format!("{prefix}.add-min"), target, ops::math::Add, &[wire, min_adj])
         } else {
             bail!("Operator can not be made a TypedOp.")
         }

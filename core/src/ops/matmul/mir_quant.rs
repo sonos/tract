@@ -1,8 +1,11 @@
 use anyhow::ensure;
-use ops::binary::wire_with_rank_broadcast;
 
 use crate::internal::*;
 use crate::ops;
+use crate::ops::binary::wire_bin;
+use crate::ops::math::Add;
+use crate::ops::math::Max;
+use crate::ops::math::Min;
 use crate::ops::quant::offset_u8_as_i8_elementwise;
 
 pub fn offset_u8_as_i8(param: &Arc<Tensor>) -> TractResult<AttrOrInput> {
@@ -44,9 +47,10 @@ pub(crate) fn wire_offset_u8_as_i8(
                     format!("{model_name}.offset_{zero_point_name}_as_i8.min"),
                     tensor0(-128i32).broadcast_into_rank(zp_rank)?.into_arc_tensor(),
                 )?;
-                *zero_point = model.wire_node(
+                *zero_point = wire_bin(
                     format!("{model_name}.offset_{zero_point_name}_as_i8"),
-                    ops::math::add(),
+                    model,
+                    Add,
                     &[*zero_point, cst],
                 )?[0];
             }
@@ -69,18 +73,10 @@ pub(crate) fn combine_scales(
     b_scale: OutletId,
     c_scale: OutletId,
 ) -> TractResult<OutletId> {
-    let ab_scale = wire_with_rank_broadcast(
-        &format!("{name}.ab_scale"),
-        model,
-        ops::math::mul(),
-        &[a_scale, b_scale],
-    )?[0];
-    let abc_scale = wire_with_rank_broadcast(
-        &format!("{name}.abc_scales"),
-        model,
-        ops::math::div(),
-        &[ab_scale, c_scale],
-    )?[0];
+    let ab_scale =
+        wire_bin(&format!("{name}.ab_scale"), model, ops::math::Mul, &[a_scale, b_scale])?[0];
+    let abc_scale =
+        wire_bin(&format!("{name}.abc_scales"), model, ops::math::Div, &[ab_scale, c_scale])?[0];
     Ok(abc_scale)
 }
 
@@ -108,46 +104,21 @@ pub(crate) fn compensate_zero_points(
     let k = model.add_const(format!("{name}.k"), rctensor0(k))?;
     let k = model.wire_node(format!("{name}.cast_k"), ops::cast::cast(i32::datum_type()), &[k])?[0];
 
-    let a0_sum_b = wire_with_rank_broadcast(
-        &format!("{name}.a0_sum_b"),
-        model,
-        ops::math::mul(),
-        &[a0, sum_b],
-    )?[0];
+    let a0_sum_b = wire_bin(&format!("{name}.a0_sum_b"), model, ops::math::Mul, &[a0, sum_b])?[0];
 
-    let b0_sum_a = wire_with_rank_broadcast(
-        &format!("{name}.b0_sum_a"),
-        model,
-        ops::math::mul(),
-        &[b0, sum_a],
-    )?[0];
+    let b0_sum_a = wire_bin(&format!("{name}.b0_sum_a"), model, ops::math::Mul, &[b0, sum_a])?[0];
 
-    let a0_k =
-        wire_with_rank_broadcast(&format!("{name}.a0_k"), model, ops::math::mul(), &[a0, k])?[0];
+    let a0_k = wire_bin(&format!("{name}.a0_k"), model, ops::math::Mul, &[a0, k])?[0];
 
-    let a0_k_b0 =
-        wire_with_rank_broadcast(&format!("{name}.a0_k_b0"), model, ops::math::mul(), &[a0_k, b0])?
-            [0];
+    let a0_k_b0 = wire_bin(&format!("{name}.a0_k_b0"), model, ops::math::Mul, &[a0_k, b0])?[0];
 
-    let result = wire_with_rank_broadcast(
-        &format!("{}.minus_a0_B", &name),
-        model,
-        ops::math::sub(),
-        &[result, a0_sum_b],
-    )?[0];
-    let result = wire_with_rank_broadcast(
-        &format!("{}.minus_b0_A", &name),
-        model,
-        ops::math::sub(),
-        &[result, b0_sum_a],
-    )?[0];
+    let result =
+        wire_bin(&format!("{}.minus_a0_B", &name), model, ops::math::Sub, &[result, a0_sum_b])?[0];
+    let result =
+        wire_bin(&format!("{}.minus_b0_A", &name), model, ops::math::Sub, &[result, b0_sum_a])?[0];
 
-    let result = wire_with_rank_broadcast(
-        &format!("{}.plus_a0_k_b0", &name),
-        model,
-        ops::math::add(),
-        &[result, a0_k_b0],
-    )?[0];
+    let result =
+        wire_bin(&format!("{}.plus_a0_k_b0", &name), model, ops::math::Add, &[result, a0_k_b0])?[0];
 
     Ok(result)
 }
@@ -160,12 +131,7 @@ pub(crate) fn requant(
     scale: OutletId,
     zero_point: OutletId,
 ) -> TractResult<OutletId> {
-    let wire = wire_with_rank_broadcast(
-        &format!("{name}.scale"),
-        model,
-        ops::quant::scale(),
-        &[scale, wire],
-    )?[0];
+    let wire = wire_bin(&format!("{name}.scale"), model, ops::quant::Scale, &[scale, wire])?[0];
 
     let zero_point = model.wire_node(
         format!("{name}.cast_c0"),
@@ -173,12 +139,8 @@ pub(crate) fn requant(
         &[zero_point],
     )?[0];
 
-    let wire = wire_with_rank_broadcast(
-        &format!("{name}.zeropoint"),
-        model,
-        ops::math::add(),
-        &[wire, zero_point],
-    )?[0];
+    let wire =
+        wire_bin(&format!("{name}.zeropoint"), model, ops::math::Add, &[wire, zero_point])?[0];
 
     clamp_and_cast_to(model, name, dt, wire)
 }
@@ -209,8 +171,8 @@ pub(crate) fn clamp_and_cast_to(
         .broadcast_into_rank(rank)?
         .into_arc_tensor();
     let sup = model.add_const(format!("{name}.max.const"), sup)?;
-    let wire = model.wire_node(format!("{name}.min"), ops::math::min(), &[wire, sup])?;
-    let wire = model.wire_node(format!("{name}.max"), ops::math::max(), &[wire[0], inf])?;
+    let wire = wire_bin(format!("{name}.min"), model, Min, &[wire, sup])?;
+    let wire = wire_bin(format!("{name}.max"), model, Max, &[wire[0], inf])?;
     let wire = model.wire_node(format!("{name}.cast"), ops::cast::cast(dt), &wire)?;
     Ok(wire[0])
 }

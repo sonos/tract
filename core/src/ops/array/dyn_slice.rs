@@ -71,13 +71,16 @@ impl TypedOp for DynSlice {
     fn axes_mapping(
         &self,
         inputs: &[&TypedFact],
-        outputs: &[&TypedFact],
+        _outputs: &[&TypedFact],
     ) -> TractResult<AxesMapping> {
-        (0..inputs[0].rank())
-            .filter(|&ax| self.axis != ax)
-            .zip('a'..)
-            .map(|(ix, repr)| Axis::natural(inputs, outputs, repr, ix))
-            .collect()
+        let mut axes = AxesMapping::natural_for_rank(1, 1, inputs[0].rank())?;
+        if self.start_input {
+            axes = axes.with_extra_input(1)?;
+        }
+        if self.end_input {
+            axes = axes.with_extra_input(self.start_input as usize)?;
+        }
+        Ok(axes)
     }
 
     fn change_axes(

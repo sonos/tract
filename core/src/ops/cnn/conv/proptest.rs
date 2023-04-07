@@ -621,6 +621,42 @@ fn bias_1() -> anyhow::Result<()> {
 }
 
 #[test]
+fn bias_2() -> anyhow::Result<()> {
+    let kernel = tract_ndarray::ArrayD::<f32>::zeros(vec![1, 1, 1]);
+    let data = tract_ndarray::ArrayD::<f32>::zeros(vec![1, 1]);
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [1])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data,
+        kernel,
+        bias: Some(arr1(&[1.0]).into_dyn()),
+        pad: PaddingSpec::Valid,
+        strides: tvec!(1, 1),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
+fn bias_3() -> anyhow::Result<()> {
+    let kernel = tract_ndarray::ArrayD::<f32>::zeros(vec![2, 2, 1]);
+    let data = tract_ndarray::ArrayD::<f32>::zeros(vec![2, 2]);
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 2, [2])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data,
+        kernel,
+        bias: Some(arr1(&[0.0, 1.0]).into_dyn()),
+        pad: PaddingSpec::Valid,
+        strides: tvec!(1, 1),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
 fn bias_chw_0() -> anyhow::Result<()> {
     let pb = ConvProblem {
         shape_in: DataFormat::CHW.from_n_c_hw(1, 1, [3])?,
