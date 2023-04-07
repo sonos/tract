@@ -130,14 +130,11 @@ impl AxesMapping {
     }
 
     pub fn input_axis(&self, input: usize, position: usize) -> TractResult<&Axis> {
-        self.iter_all_axes().find(|axis| axis.inputs[input].contains(&position)).with_context(
-            || format!("Failed to find axis {position} in input {input} for \"{self}\""),
-        )
+        Ok(self.axes.iter().find(|axis| axis.inputs[input].contains(&position)).unwrap())
     }
 
     fn input_axis_mut(&mut self, input: usize, position: usize) -> TractResult<&mut Axis> {
-        let repr = self.input_axis(input, position)?.repr;
-        Ok(self.axes.iter_mut().find(|axis| axis.repr == repr).unwrap())
+        Ok(self.axes.iter_mut().find(|axis| axis.inputs[input].contains(&position)).unwrap())
     }
 
     pub fn interface_rank(&self, io: InOut) -> usize {
@@ -171,9 +168,7 @@ impl AxesMapping {
     }
 
     pub fn output_axis(&self, output: usize, position: usize) -> TractResult<&Axis> {
-        self.iter_all_axes().find(|axis| axis.outputs[output].contains(&position)).with_context(
-            || format!("Failed to find axis {position} in output {output} for \"{self}\""),
-        )
+        Ok(self.axes.iter().find(|axis| axis.outputs[output].contains(&position)).unwrap())
     }
 
     pub fn output_axes(&self, output: usize) -> impl Iterator<Item = &Axis> {
@@ -181,8 +176,7 @@ impl AxesMapping {
     }
 
     fn output_axis_mut(&mut self, output: usize, position: usize) -> TractResult<&mut Axis> {
-        let repr = self.output_axis(output, position)?.repr;
-        Ok(self.axes.iter_mut().find(|axis| axis.repr == repr).unwrap())
+        Ok(self.axes.iter_mut().find(|axis| axis.outputs[output].contains(&position)).unwrap())
     }
 
     pub fn track_axis(
@@ -287,7 +281,7 @@ impl AxesMapping {
     }
 
     fn sort(&mut self) {
-        let order: Vec<(char, usize, usize, char)> = self
+        let order: Vec<(usize, usize, usize, char)> = self
             .axes
             .iter()
             .flat_map(|axis| {
@@ -295,10 +289,10 @@ impl AxesMapping {
                     .iter()
                     .enumerate()
                     .flat_map(move |(slot, input)| {
-                        input.iter().map(move |p| ('i', slot, *p, axis.repr))
+                        input.iter().map(move |p| (1, slot, *p, axis.repr))
                     })
                     .chain(axis.outputs.iter().enumerate().flat_map(move |(slot, output)| {
-                        output.iter().map(move |p| ('o', slot, *p, axis.repr))
+                        output.iter().map(move |p| (0, slot, *p, axis.repr))
                     }))
             })
             .sorted()
@@ -333,7 +327,6 @@ impl AxesMapping {
             }
         }
         ensure!(self.axes.iter().map(|ax| ax.repr).duplicates().count() == 0);
-        dbg!(self);
         ensure!(
             self == &{
                 let mut x = self.clone();
