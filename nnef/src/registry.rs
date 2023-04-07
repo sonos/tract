@@ -89,11 +89,10 @@ impl Registry {
             results: results.iter().cloned().map(|it| it.into()).collect(),
         };
         let primitive_decl = PrimitiveDecl { decl, docstrings: None, to_tract: func };
-        self.primitives.insert(id.clone(), vec![primitive_decl.clone()]);
+        self.primitives.insert(id.clone(), vec![primitive_decl]);
         self.primitives
             .get_mut(&id)
-            .map(|it| it.last_mut())
-            .flatten()
+            .and_then(|it| it.last_mut())
             .expect("Unexpected empty entry in primitives hashmap")
     }
 
@@ -106,10 +105,7 @@ impl Registry {
         self.primitives.get_mut(&id).map_or_else(
             || bail!("No primitive with name '{}' in registry: {}", id.as_ref(), self.id.as_ref()),
             |it| -> TractResult<()> {
-                let last = it.last().expect(
-                    format!("Unexpected empty primitive declaration for '{}'", id.as_ref())
-                        .as_str(),
-                );
+                let last = it.last().unwrap_or_else(|| panic!("Unexpected empty primitive declaration for '{}'", id.as_ref()));
                 let mut new = last.clone();
                 new.to_tract = func;
                 it.insert(0, new);
@@ -119,8 +115,7 @@ impl Registry {
         Ok(self
             .primitives
             .get_mut(&id)
-            .map(|it| it.last_mut())
-            .flatten()
+            .and_then(|it| it.last_mut())
             .expect("Unexpected empty entry in primitives hashmap"))
     }
 
@@ -204,7 +199,7 @@ impl Registry {
                         default_params: &op.decl.parameters,
                         dt_from_quant_file: dt,
                     };
-                    let out_value = (op.to_tract)(builder, &resolved)
+                    (op.to_tract)(builder, &resolved)
                         .map_err(|err| {
                             log::debug!(
                                 "Failed to load {:?} with deserializer {}: {:?}",
@@ -213,8 +208,7 @@ impl Registry {
                                 &err
                             );
                         })
-                        .ok();
-                    out_value
+                        .ok()
                 })
                 .ok_or(anyhow!("No valid deserializer found for {:?}", &invocation.id))?;
             return Ok(Some(out_value));
