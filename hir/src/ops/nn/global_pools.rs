@@ -1,9 +1,10 @@
+use tract_core::ops::binary::wire_with_rank_broadcast;
+
 use crate::infer::*;
 use crate::internal::*;
 
 #[derive(Clone, Debug, new, Hash)]
 pub struct GlobalAvgPool;
-
 
 impl Expansion for GlobalAvgPool {
     fn name(&self) -> Cow<str> {
@@ -33,20 +34,24 @@ impl Expansion for GlobalAvgPool {
             tract_core::ops::nn::Reduce::new(axes, tract_core::ops::nn::Reducer::Sum),
             &[input],
         )?;
-        let div = tensor0(input_fact.shape.iter().skip(2).product::<TDim>().to_i64()? as f64)
-            .cast_to_dt(input_fact.datum_type)?
-            .into_owned()
-            .broadcast_into_rank(input_fact.rank())?;
-
-        let div = target.add_const(name.to_string() + ".div", div)?;
-
-        target.wire_node(name.to_string() + ".norm", tract_core::ops::math::div(), &[wire[0], div])
+        let div = tensor0(input_fact.shape.iter().skip(2).product::<TDim>());
+        let div = target.add_const(format!("{name}.div"), div)?;
+        let div = target.wire_node(
+            format!("{name}.casted"),
+            tract_core::ops::cast::cast(input_fact.datum_type),
+            &[div],
+        )?;
+        wire_with_rank_broadcast(
+            &format!("{name}.norm"),
+            target,
+            tract_core::ops::math::div(),
+            &[wire[0], div[0]],
+        )
     }
 }
 
 #[derive(Clone, Debug, new, Hash)]
 pub struct GlobalLpPool(usize);
-
 
 impl Expansion for GlobalLpPool {
     fn name(&self) -> Cow<str> {
@@ -131,7 +136,6 @@ impl Expansion for GlobalLpPool {
 
 #[derive(Clone, Debug, new, Hash)]
 pub struct GlobalMaxPool;
-
 
 impl Expansion for GlobalMaxPool {
     fn name(&self) -> Cow<str> {
