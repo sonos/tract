@@ -120,8 +120,7 @@ impl InferenceModelExt for InferenceModel {
                 } else {
                     let outputs = node
                         .op
-                        .to_typed(source, node, target, mapping)
-                        .with_context(|| format!("translating op {:?}", node.op))?;
+                        .to_typed(source, node, target, mapping)?;
                     for output in &outputs {
                         let fact = target.outlet_fact(*output)?;
                         fact.consistent().with_context(|| {
