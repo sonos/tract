@@ -307,8 +307,9 @@ impl Expansion for CommonRec {
             + self.optional_initial_c_input.is_some() as usize
             + self.optional_p_input.is_some() as usize;
         check_input_arity(inputs, input_count)?;
-        let output_count =
-            self.optional_y_output.is_some() as usize + self.optional_y_h_output.is_some() as usize;
+        let output_count = self.optional_y_output.is_some() as usize
+            + self.optional_y_h_output.is_some() as usize
+            + self.optional_y_c_output.is_some() as usize;
         check_output_arity(outputs, output_count)?;
         s.equals(&inputs[0].datum_type, &inputs[1].datum_type)?;
         s.equals(&inputs[0].datum_type, &inputs[2].datum_type)?;
