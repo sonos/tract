@@ -17,7 +17,7 @@ impl Cast {
                 for (dim, i) in
                     tract_itertools::izip!(input.as_slice::<TDim>()?, tmp.as_slice_mut::<i64>()?)
                 {
-                    *i = dim.eval(&symbols).to_i64()?
+                    *i = dim.eval(symbols).to_i64()?
                 }
                 Ok(tvec!(tmp.cast_to_dt(self.to)?.into_owned().into_tvalue()))
             }
