@@ -9,7 +9,23 @@ pub struct Cast {
     pub to: DatumType,
 }
 
-
+impl Cast {
+    fn do_eval(&self, input: &Tensor, symbols: &SymbolValues) -> TractResult<TVec<TValue>> {
+        if input.datum_type() == TDim::datum_type() {
+            unsafe {
+                let mut tmp = Tensor::uninitialized_dt(i64::datum_type(), input.shape())?;
+                for (dim, i) in
+                    tract_itertools::izip!(input.as_slice::<TDim>()?, tmp.as_slice_mut::<i64>()?)
+                {
+                    *i = dim.eval(&symbols).to_i64()?
+                }
+                Ok(tvec!(tmp.cast_to_dt(self.to)?.into_owned().into_tvalue()))
+            }
+        } else {
+            Ok(tvec!(input.cast_to_dt(self.to)?.into_owned().into_tvalue()))
+        }
+    }
+}
 
 impl Op for Cast {
     fn name(&self) -> Cow<str> {
@@ -25,7 +41,7 @@ impl EvalOp for Cast {
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        Ok(tvec!(inputs[0].cast_to_dt(self.to)?.into_owned().into_tvalue()))
+        self.do_eval(&inputs[0], &Default::default())
     }
 
     fn state(
@@ -44,20 +60,7 @@ impl OpState for Cast {
         _op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        if inputs[0].datum_type() == TDim::datum_type() {
-            unsafe {
-                let mut tmp = Tensor::uninitialized_dt(i64::datum_type(), inputs[0].shape())?;
-                for (dim, i) in tract_itertools::izip!(
-                    inputs[0].as_slice::<TDim>()?,
-                    tmp.as_slice_mut::<i64>()?
-                ) {
-                    *i = dim.eval(&session.resolved_symbols).to_i64()?
-                }
-                Ok(tvec!(tmp.cast_to_dt(self.to)?.into_owned().into_tvalue()))
-            }
-        } else {
-            <Cast as EvalOp>::eval(self, inputs)
-        }
+        self.do_eval(&inputs[0], &session.resolved_symbols)
     }
 }
 
@@ -79,7 +82,11 @@ impl TypedOp for Cast {
         }
     }
 
-    fn axes_mapping(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<AxesMapping> {
+    fn axes_mapping(
+        &self,
+        inputs: &[&TypedFact],
+        outputs: &[&TypedFact],
+    ) -> TractResult<AxesMapping> {
         AxesMapping::natural(inputs, outputs)
     }
 
