@@ -1,4 +1,4 @@
-use crate::model::{ParsingContext, OnnxOpRegister};
+use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::*;
 use tract_hir::internal::*;
 use tract_hir::ops::identity::Identity;
@@ -25,8 +25,6 @@ pub struct Cast {
     to: DatumType,
 }
 
-
-
 impl ElementWiseMiniOp for Cast {
     fn name(&self) -> String {
         "onnx.Cast".into()
@@ -52,7 +50,9 @@ impl ElementWiseMiniOp for Cast {
                 Ok(output)
             }
         } else {
-            t.cast_to_dt(self.to).map(|t| t.into_owned())
+            tract_hir::ops::cast::cast(self.to)
+                .eval(tvec!(t.clone().into_tvalue()))
+                .map(|mut t| t.remove(0).into_tensor())
         }
     }
 
@@ -86,8 +86,6 @@ fn cast_like(
 
 #[derive(Debug, Clone, new, Hash)]
 pub struct CastLike;
-
-
 
 impl Expansion for CastLike {
     fn name(&self) -> Cow<str> {
