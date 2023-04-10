@@ -156,7 +156,8 @@ pub trait LADatum:
     + 'static
     + Add<Output = Self>
     + Sub<Output = Self>
-    + Mul
+    + Mul<Output = Self>
+    + Div<Output = Self>
     + AddAssign
     + PartialOrd
     + Bounded

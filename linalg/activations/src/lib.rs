@@ -161,8 +161,8 @@ mod test {
     }
 
     mod scalar {
-        use proptest::prelude::*;
         use super::close_enough;
+        use proptest::prelude::*;
 
         macro_rules! prop_activation {
             ($name: ident ( $($param:ident),* )) => {
@@ -186,8 +186,8 @@ mod test {
     }
 
     mod vector {
-        use proptest::prelude::*;
         use super::close_enough;
+        use proptest::prelude::*;
 
         macro_rules! prop_activation {
             ($name: ident ( $($param:ident),* )) => {

@@ -1,4 +1,6 @@
 #[macro_use]
+pub mod activations;
+#[macro_use]
 pub mod element_wise;
 #[macro_use]
 pub mod lut;
