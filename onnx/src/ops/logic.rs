@@ -120,6 +120,12 @@ impl InferenceOp for If {
                     changed =
                         changed || body.output_fact_mut(oix)?.unify_with_mut(&mut outputs[oix])?;
                 }
+            } else {
+                for ix in 0..self.nboutputs()? {
+                    changed = changed
+                        || self.then_body.output_fact_mut(ix)?.unify_with_mut(&mut outputs[ix])?
+                        || self.else_body.output_fact_mut(ix)?.unify_with_mut(&mut outputs[ix])?;
+                }
             }
             changed = changed || self.then_body.analyse(false)?;
             changed = changed || self.else_body.analyse(false)?;
