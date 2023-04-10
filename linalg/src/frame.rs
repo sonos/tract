@@ -9,6 +9,7 @@ pub mod pack;
 pub mod sigmoid;
 #[macro_use]
 pub mod tanh;
+pub mod element_wise_helper;
 
 pub use pack::Packer;
 pub use pack::PackingWriter;
