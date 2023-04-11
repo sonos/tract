@@ -18,12 +18,12 @@ pub enum ProtoInputStoreSpec {
 
 #[derive(Clone, Debug)]
 pub enum ProtoFusedSpec {
-    AddMatMul(AddMatMulGeometry, AttrOrInput, AttrOrInput),
-    BinScalar(AttrOrInput, BinOp),
-    BinPerRow(AttrOrInput, BinOp, MapOutputAxisToInput),
-    BinPerCol(AttrOrInput, BinOp, MapOutputAxisToInput),
-    AddRowColProducts(AttrOrInput, AttrOrInput),
-    AddUnicast(OutputStoreSpec, AttrOrInput),
+    AddMatMul(AddMatMulGeometry, usize, usize),
+    BinScalar(usize, BinOp),
+    BinPerRow(usize, BinOp, MapOutputAxisToInput),
+    BinPerCol(usize, BinOp, MapOutputAxisToInput),
+    AddRowColProducts(usize, usize),
+    AddUnicast(OutputStoreSpec, usize),
     Scaler(Scaler),
     Store(OutputStoreSpec),
 }
@@ -52,11 +52,11 @@ impl ProtoFusedSpec {
     ) -> FusedSpec<'t> {
         let fs = match self {
             ProtoFusedSpec::AddMatMul(geo, a, b) => {
-                let mut a = a.tensor(inputs).view();
+                let mut a = inputs[*a].view();
                 unsafe {
                     geo.c_to_a_axis_mapping.translate_view(output_coords, &mut a);
                 }
-                let mut b = b.tensor(inputs).view();
+                let mut b = inputs[*b].view();
                 unsafe {
                     geo.c_to_b_axis_mapping.translate_view(output_coords, &mut b);
                 }
@@ -77,22 +77,22 @@ impl ProtoFusedSpec {
                     FusedSpec::AddMatMul { k, a, b }
                 }
             }
-            ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(v.tensor(inputs), *op),
+            ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),
             ProtoFusedSpec::BinPerRow(v, op, map) => {
-                let mut v = v.tensor(inputs).view();
+                let mut v = inputs[*v].view();
                 unsafe { map.translate_view(output_coords, &mut v) }
                 FusedSpec::BinPerRow(v, *op)
             }
             ProtoFusedSpec::BinPerCol(v, op, map) => {
-                let mut v = v.tensor(inputs).view();
+                let mut v = inputs[*v].view();
                 unsafe { map.translate_view(output_coords, &mut v) }
                 FusedSpec::BinPerCol(v, *op)
             }
             ProtoFusedSpec::AddRowColProducts(row, col) => {
-                FusedSpec::AddRowColProducts(row.tensor(inputs), col.tensor(inputs))
+                FusedSpec::AddRowColProducts(&inputs[*row], &inputs[*col])
             }
             ProtoFusedSpec::AddUnicast(store, v) => unsafe {
-                let view = v.tensor(inputs).view_offsetting_unchecked(output_coords);
+                let view = inputs[*v].view_offsetting_unchecked(output_coords);
                 FusedSpec::AddUnicast(store.wrap(&view))
             },
             ProtoFusedSpec::Scaler(scaler) => scaler.as_fused_spec(),
@@ -118,8 +118,8 @@ impl ProtoFusedSpec {
     ) -> FusedSpec<'t> {
         let fs = match self {
             ProtoFusedSpec::AddMatMul(geo, a, b) => {
-                let a = a.tensor(inputs).view();
-                let b = b.tensor(inputs).view();
+                let a = inputs[*a].view();
+                let b = inputs[*b].view();
                 unsafe {
                     let k = geo.k.as_i64().unwrap_unchecked() as usize;
                     // careful here. this work because a_packed() return a packer from which
@@ -137,20 +137,20 @@ impl ProtoFusedSpec {
                     FusedSpec::AddMatMul { k, a, b }
                 }
             }
-            ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(v.tensor(inputs), *op),
+            ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),
             ProtoFusedSpec::BinPerRow(v, op, _) => {
-                let v = v.tensor(inputs).view();
+                let v = inputs[*v].view();
                 FusedSpec::BinPerRow(v, *op)
             }
             ProtoFusedSpec::BinPerCol(v, op, _) => {
-                let v = v.tensor(inputs).view();
+                let v = inputs[*v].view();
                 FusedSpec::BinPerCol(v, *op)
             }
             ProtoFusedSpec::AddRowColProducts(row, col) => {
-                FusedSpec::AddRowColProducts(row.tensor(inputs), col.tensor(inputs))
+                FusedSpec::AddRowColProducts(&inputs[*row], &inputs[*col])
             }
             ProtoFusedSpec::AddUnicast(store, v) => unsafe {
-                let view = v.tensor(inputs).view();
+                let view = inputs[*v].view();
                 FusedSpec::AddUnicast(store.wrap(&view))
             },
             ProtoFusedSpec::Scaler(scaler) => scaler.as_fused_spec(),
@@ -163,12 +163,6 @@ impl ProtoFusedSpec {
         match self {
             ProtoFusedSpec::AddMatMul(geo, a, b) => {
                 let mut costs = tvec!((Cost::FMA(idt), m.clone() * n * &geo.k));
-                if let AttrOrInput::Attr(t) = a {
-                    costs.push((Cost::Params(t.datum_type()), t.len().into()));
-                }
-                if let AttrOrInput::Attr(t) = b {
-                    costs.push((Cost::Params(t.datum_type()), t.len().into()));
-                }
                 costs
             }
             _ => tvec!(), /* FIXME maybe */
@@ -614,28 +608,23 @@ impl LirMatMulUnary {
         binop: BinOp,
     ) -> TractResult<Option<TypedModelPatch>> {
         let fact = model.outlet_fact(value)?;
-        let (value, additional_inputs): (AttrOrInput, TVec<OutletId>) =
-            if let Some(konst) = &fact.konst {
-                let v = konst.cast_to_dt(self.mmm.internal_type())?.into_owned().into_arc_tensor();
-                (v.into(), tvec!())
-            } else {
-                let mut v = patch.tap_model(model, value)?;
-                if fact.datum_type != self.mmm.internal_type() {
-                    v = patch.wire_node(
-                        format!("{}.cast-input-{}", node.name, node.inputs.len()),
-                        cast(self.mmm.internal_type()),
-                        &[v],
-                    )?[0];
-                }
-                (AttrOrInput::Input(node.inputs.len()), tvec!(v))
-            };
+        let mut v = patch.tap_model(model, value)?;
+        if fact.datum_type != self.mmm.internal_type() {
+            v = patch.wire_node(
+                format!("{}.cast-input-{}", node.name, node.inputs.len()),
+                cast(self.mmm.internal_type()),
+                &[v],
+            )?[0];
+        }
+        let value = node.inputs.len();
+        let additional_input = tvec!(v);
         if fact.shape.volume() == 1.to_dim() {
             return self.fuse_op(
                 model,
                 node,
                 patch,
                 vec![ProtoFusedSpec::BinScalar(value, binop)],
-                &additional_inputs,
+                &additional_input,
             );
         }
         let other_shape = fact.shape.to_owned();
@@ -651,7 +640,7 @@ impl LirMatMulUnary {
                     binop,
                     MapOutputAxisToInput(tvec!((self.c_m_axis, self.c_m_axis))),
                 )],
-                &additional_inputs,
+                &additional_input,
             );
         }
         if other_shape[self.c_n_axis] == self.c_fact.shape[self.c_n_axis]
@@ -666,7 +655,7 @@ impl LirMatMulUnary {
                     binop,
                     MapOutputAxisToInput(tvec!((self.c_n_axis, self.c_n_axis))),
                 )],
-                &additional_inputs,
+                &additional_input,
             );
         }
         Ok(None)

@@ -287,7 +287,7 @@ fn lir_mat_mul_unary(
         c_m,
         c_n,
         vec![
-            ProtoFusedSpec::AddMatMul(geo, AttrOrInput::Input(0), AttrOrInput::Input(1)),
+            ProtoFusedSpec::AddMatMul(geo, 0, 1),
             ProtoFusedSpec::Store(output),
         ],
     )
