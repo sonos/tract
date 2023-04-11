@@ -2,6 +2,11 @@ from ctypes import *
 from tract.bindings import check, lib
 
 class InferenceFact:
+    """
+    Tract inference fact, to be used with InferenceModel.
+
+    It can represent partial type and shape information of a Tensor during model analysis.
+    """
     def __init__(self, ptr):
         self.ptr = ptr
 
@@ -25,6 +30,12 @@ class InferenceFact:
         return result
 
 class Fact:
+    """
+    Tract-core fact, to be used with Model.
+
+    It always contains the full shape (sometimes using symbolic dimensions) and item type.
+    In some situation it can also contain the constant value of the associated tensor.
+    """
     def __init__(self, ptr):
         self.ptr = ptr
 
