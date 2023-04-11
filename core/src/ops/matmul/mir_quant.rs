@@ -3,19 +3,6 @@ use ops::binary::wire_with_rank_broadcast;
 
 use crate::internal::*;
 use crate::ops;
-use crate::ops::quant::offset_u8_as_i8_elementwise;
-
-pub fn offset_u8_as_i8(param: &Arc<Tensor>) -> TractResult<AttrOrInput> {
-    match param.datum_type().unquantized() {
-        DatumType::U8 => {
-            Ok(param.to_array_view()?.mapv(offset_u8_as_i8_elementwise).into_arc_tensor().into())
-        }
-        DatumType::I32 => {
-            Ok(param.to_array_view()?.mapv(|i: i32| i - 128).into_arc_tensor().into())
-        }
-        _ => Ok(param.clone().into()),
-    }
-}
 
 /// Wires the offsetting of a matrix and zero point node.
 ///

@@ -101,12 +101,12 @@ pub mod prelude {
 
 /// This prelude is meant for code extending tract (like implementing new ops).
 pub mod internal {
-    pub use crate::axes::{ Axis, AxesMapping };
+    pub use crate::axes::{AxesMapping, Axis};
     pub use crate::late_bind::*;
     pub use crate::model::*;
     pub use crate::ops::change_axes::*;
     pub use crate::ops::element_wise::ElementWiseMiniOp;
-    pub use crate::ops::{AttrOrInput, Cost, EvalOp, FrozenOpState, Op, OpState, Validation};
+    pub use crate::ops::{Cost, EvalOp, FrozenOpState, Op, OpState, Validation};
     pub use crate::plan::SessionState;
     pub use crate::prelude::*;
     pub use anyhow::{anyhow, bail, ensure, format_err, Context as TractErrorContext};

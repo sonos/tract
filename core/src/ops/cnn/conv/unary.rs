@@ -122,29 +122,28 @@ impl ConvUnary {
     }
 
     // group,bias
-    fn bias_as_non_linear<T>(&self, c_group_axis: usize) -> TractResult<Option<ProtoFusedSpec>>
+    fn bias_as_non_linear<T>(&self, c_group_axis: usize) -> TractResult<Option<(ProtoFusedSpec, Tensor)>>
     where
         T: Datum + Copy + Zero,
     {
         use tract_linalg::mmm::BinOp::Add;
-        use AttrOrInput::Attr;
         if let Some(bias) = &self.bias {
             if let Some(uni) = bias.as_uniform() {
                 if uni == Tensor::zero_scalar::<T>()? {
                     Ok(None)
                 } else {
-                    Ok(Some(ProtoFusedSpec::BinScalar(Attr(uni.into_arc_tensor()), Add)))
+                    Ok(Some((ProtoFusedSpec::BinScalar(2, Add), uni)))
                 }
             } else {
                 let bias = bias
                     .clone()
                     .into_tensor()
                     .into_shape(&[self.group, bias.len() / self.group])?;
-                Ok(Some(ProtoFusedSpec::BinPerRow(
-                    Attr(bias.into_arc_tensor()),
+                Ok(Some((ProtoFusedSpec::BinPerRow(
+                    2,
                     Add,
                     MapOutputAxisToInput(tvec!((c_group_axis, 0))),
-                )))
+                ), bias)))
             }
         } else {
             Ok(None)
@@ -473,19 +472,22 @@ impl ConvUnary {
             c_to_a_axis_mapping: MapOutputAxisToInput(c_to_a_axis_mapping),
             c_to_b_axis_mapping: MapOutputAxisToInput(c_to_b_axis_mapping),
         };
-        let mut ops: Vec<ProtoFusedSpec> = vec![
-            ProtoFusedSpec::AddMatMul(geo, AttrOrInput::Attr(kernels), AttrOrInput::Input(0)),
-        ];
-        if let Some(bias) =
+        let mut wires: TVec<OutletId> = wire.into();
+        let kernels = model.add_const(format!("{name}.kernels"), kernels)?;
+        wires.push(kernels);
+        let mut ops: Vec<ProtoFusedSpec> = vec![ProtoFusedSpec::AddMatMul(geo, 1, 0)];
+        if let Some((fused, tensor)) =
             dispatch_numbers!(Self::bias_as_non_linear(mmm.internal_type())(self, c_m_axis - 1))?
         {
-            ops.push(bias);
+            let bias = model.add_const(format!("{name}.bias"), tensor)?;
+            wires.push(bias);
+            ops.push(fused);
         }
         ops.push(ProtoFusedSpec::Store(unsafe { mmm.c_view(c_m_axis, c_n_axis) }));
         model.wire_node(
             format!("{name}.matmatmul"),
             LirMatMulUnary::new(mmm, c_datum_type.fact(mmm_output_shape), c_m_axis, c_n_axis, ops)?,
-            wire,
+            &wires,
         )
     }
 
