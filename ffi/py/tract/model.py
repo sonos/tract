@@ -130,6 +130,12 @@ class Model:
         self._valid()
         check(lib.tract_model_pulse_simple(byref(self.ptr), symbol.encode("utf-8"), str(pulse).encode("utf-8")))
 
+    def half(self) -> None:
+        """Convert the model to hald precision
+        """
+        self._valid()
+        check(lib.tract_model_half(byref(self.ptr)))
+
     def declutter(self) -> None:
         """Declutter a model.
 
