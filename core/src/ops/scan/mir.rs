@@ -128,14 +128,9 @@ impl Scan {
                     slot: info.slot - (info.slot > discarded) as usize,
                     ..info
                 }),
-                InputMapping::State { initializer } => {
-                    let initializer = match initializer {
-                        StateInitializer::FromInput(n) => {
-                            StateInitializer::FromInput(*n - (*n > discarded) as usize)
-                        }
-                        StateInitializer::Value(v) => StateInitializer::Value(v.clone()),
-                    };
-                    InputMapping::State { initializer }
+                InputMapping::State { init_value: n } => {
+                    let initializer = *n - (*n > discarded) as usize;
+                    InputMapping::State { init_value: initializer }
                 }
             })
             .collect()
@@ -188,30 +183,6 @@ impl Scan {
         Ok(None)
     }
 
-    fn declutter_const_initializer(
-        &self,
-        _session: &mut OptimizerSession,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let inputs = model.node_input_facts(node.id)?;
-        for (ix, mapping) in self.input_mapping.iter().enumerate() {
-            if let InputMapping::State { initializer: StateInitializer::FromInput(n) } = mapping {
-                if let Some(i) = inputs[*n].konst.as_ref() {
-                    let mut op = self.clone();
-                    op.input_mapping[ix] =
-                        InputMapping::State { initializer: StateInitializer::Value(i.clone()) };
-                    op.input_mapping =
-                        Self::remove_outer_input_from_mappings(&op.input_mapping, *n);
-                    let mut inputs = node.inputs.clone();
-                    inputs.remove(*n);
-                    return Ok(Some(TypedModelPatch::replace_single_op(model, node, &inputs, op)?));
-                }
-            }
-        }
-        Ok(None)
-    }
-
     fn declutter_discard_unused_input_mapping(
         &self,
         _session: &mut OptimizerSession,
@@ -225,22 +196,15 @@ impl Scan {
             {
                 let mut new_inputs = node.inputs.clone();
                 let slot = match &self.input_mapping[inner_input_id] {
-                    InputMapping::Full { slot } => Some(*slot),
-                    InputMapping::Scan(info) => Some(info.slot),
-                    InputMapping::State { initializer } => match initializer {
-                        StateInitializer::FromInput(n) => Some(*n),
-                        _ => None,
-                    },
+                    InputMapping::Full { slot } => *slot,
+                    InputMapping::Scan(info) => info.slot,
+                    InputMapping::State { init_value: initializer } => *initializer,
                 };
                 let mut new_mappings: Vec<_> = self.input_mapping.clone();
                 new_mappings.remove(inner_input_id);
-                if let Some(slot) = slot {
-                    new_mappings = Self::remove_outer_input_from_mappings(&new_mappings, slot);
-                }
+                new_mappings = Self::remove_outer_input_from_mappings(&new_mappings, slot);
                 let mut model_inputs = self.body.input_outlets()?.to_vec();
-                if let Some(slot) = slot {
-                    new_inputs.remove(slot);
-                }
+                new_inputs.remove(slot);
                 model_inputs.remove(inner_input_id);
                 let mut body = self.body.clone();
                 let mut patch = TypedModelPatch::default();
@@ -628,12 +592,8 @@ impl Scan {
     }
 
     fn body_exposed_outlets(&self) -> TractResult<TVec<OutletId>> {
-        let input_outlets = self
-            .input_mapping
-            .iter()
-            .zip(self.body.input_outlets()?.iter())
-            .filter(|(m, _)| !m.invisible())
-            .map(|(_, o)| o);
+        let input_outlets =
+            self.input_mapping.iter().zip(self.body.input_outlets()?.iter()).map(|(_, o)| o);
         let output_outlets = self
             .output_mapping
             .iter()
@@ -684,16 +644,7 @@ impl Scan {
                             return Ok(None);
                         };
                     }
-                    InputMapping::State { initializer } => match initializer {
-                        StateInitializer::FromInput(_) => (),
-                        StateInitializer::Value(ref v) => {
-                            let mut v = v.clone().into_tensor();
-                            change.change_tensor(&mut v, false)?;
-                            *m = InputMapping::State {
-                                initializer: StateInitializer::Value(v.into_arc_tensor()),
-                            };
-                        }
-                    },
+                    InputMapping::State { .. } => (),
                 };
             }
         }
@@ -922,7 +873,6 @@ impl TypedOp for Scan {
                 }
             };
         }
-        pass!(declutter_const_initializer);
         pass!(declutter_const_input);
         pass!(declutter_discard_unused_input_mapping);
         pass!(declutter_discard_useless_outer_output);

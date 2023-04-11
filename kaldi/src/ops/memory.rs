@@ -131,7 +131,7 @@ fn incorporate_memory_ops_as_scans(
             let zeroes =
                 Tensor::from(tract_ndarray::Array2::<f32>::zeros(((-op.offset) as usize, channel)));
             mapped_inputs.push(tract_hir::ops::scan::InputMapping::State {
-                initializer: tract_hir::ops::scan::StateInitializer::Value(zeroes.into()),
+                init_value: tract_hir::ops::scan::StateInitializer::Value(zeroes.into()),
             });
             mapped_outputs.push(tract_hir::ops::scan::OutputMapping {
                 state: true,

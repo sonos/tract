@@ -161,9 +161,8 @@ impl ProtoFusedSpec {
 
     fn cost(&self, m: &TDim, n: &TDim, idt: DatumType) -> TVec<(Cost, TDim)> {
         match self {
-            ProtoFusedSpec::AddMatMul(geo, a, b) => {
-                let mut costs = tvec!((Cost::FMA(idt), m.clone() * n * &geo.k));
-                costs
+            ProtoFusedSpec::AddMatMul(geo, _, _) => {
+                tvec!((Cost::FMA(idt), m.clone() * n * &geo.k))
             }
             _ => tvec!(), /* FIXME maybe */
         }

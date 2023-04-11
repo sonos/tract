@@ -56,7 +56,7 @@ impl Expansion for CumSum {
         let chunk = if self.reverse { -1 } else { 1 };
         let input_mapping = vec![
             scan::InputMapping::Scan(ScanInfo { slot: 0, axis, chunk }),
-            scan::InputMapping::State { initializer: scan::StateInitializer::FromInput(1) },
+            scan::InputMapping::State { init_value: scan::StateInitializer::FromInput(1) },
         ];
         // outputs will be
         // acc + x (!exclusive)

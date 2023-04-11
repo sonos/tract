@@ -168,7 +168,7 @@ impl CommonRec {
                     .into_arc_tensor(),
             )
         };
-        input_mapping.push(scan::InputMapping::State { initializer });
+        input_mapping.push(scan::InputMapping::State { init_value: initializer });
         let h_source = body.add_source(
             "h_source",
             x_fact.datum_type.fact(&[b_size.clone(), 1.to_dim(), h_size.clone()]),
@@ -199,7 +199,7 @@ impl CommonRec {
                         .into_arc_tensor(),
                 )
             };
-            input_mapping.push(scan::InputMapping::State { initializer });
+            input_mapping.push(scan::InputMapping::State { init_value: initializer });
             let c_source = body.add_source(
                 "c_source",
                 x_fact.datum_type.fact(&[b_size.clone(), 1.to_dim(), h_size.clone()]),

@@ -4,7 +4,6 @@ use crate::ops::array::{Pad, PadMode};
 use crate::ops::cnn::{ConvUnary, DeconvUnary};
 use crate::ops::einsum::EinSum;
 use crate::ops::konst::Const;
-use crate::ops::scan::{InputMapping, Scan, StateInitializer};
 use crate::ops::source::TypedSource;
 
 #[derive(Debug)]
@@ -42,15 +41,6 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Hal
             } else {
                 Box::new(op.clone())
             }
-        } else if let Some(op) = node.op_as::<Scan>() {
-            let mut new = op.clone();
-            new.body = HalfTranslator.translate_model(&op.body)?;
-            for im in &mut new.input_mapping {
-                if let InputMapping::State { initializer: StateInitializer::Value(v) } = im {
-                    *v = tensor_f32_to_f16(v)
-                }
-            }
-            Box::new(new)
         } else {
             node.op.clone()
         };

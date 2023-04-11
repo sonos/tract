@@ -69,20 +69,33 @@ pub fn pull_downsample_over_scan(
 
     let mut new_scan = scan_op.clone();
     new_scan.body = inner_model;
-    for input in &mut new_scan.input_mapping {
+
+    let mut patch = TypedModelPatch::default();
+    let mut inputs = tvec!();
+    for (i, input) in &mut new_scan.input_mapping.iter_mut().enumerate() {
         match input {
-            InputMapping::State { ref mut initializer } => {
-                if let StateInitializer::Value(ref v) = initializer {
-                    let mut new_v = down_op.eval(tvec!(v.clone().into_tvalue()))?;
-                    *initializer = StateInitializer::Value(new_v.remove(0).into_arc_tensor());
-                }
+            InputMapping::State { init_value } => {
+                let init = patch.tap_model(model, OutletId::new(scan_node.id, *init_value))?;
+                let ds = patch.wire_node(
+                    format!("{}-{}", down_node.name, i),
+                    down_op.clone(),
+                    &[init],
+                )?[0];
+                inputs.push(ds);
             }
             InputMapping::Scan(info) => {
                 if info.chunk > 0 && info.chunk as usize % down_op.stride as usize != 0 {
                     return Ok(None);
                 }
                 info.chunk = info.chunk.unsigned_abs().divceil(down_op.stride as usize) as isize
-                    * info.chunk.signum()
+                    * info.chunk.signum();
+                let tap = patch.tap_model(model, OutletId::new(scan_node.id, info.slot))?;
+                let ds = patch.wire_node(
+                    format!("{}-{}", down_node.name, i),
+                    down_op.clone(),
+                    &[tap],
+                )?[0];
+                inputs.push(ds);
             }
             _ => (),
         }
@@ -100,13 +113,6 @@ pub fn pull_downsample_over_scan(
         }
     }
 
-    let mut patch = TypedModelPatch::default();
-    let mut inputs = tvec!();
-    for (ix, &i) in scan_node.inputs.iter().enumerate() {
-        let tap = patch.tap_model(model, i)?;
-        let ds = patch.wire_node(format!("{}-{}", down_node.name, ix), down_op.clone(), &[tap])?[0];
-        inputs.push(ds);
-    }
     let scan = patch.wire_node(&*scan_node.name, new_scan, &inputs)?;
     for ix in 0..scan_node.outputs.len() {
         // FIXME need to check earlier on that all output are followed by a ds
