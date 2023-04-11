@@ -632,6 +632,9 @@ pub unsafe extern "C" fn tract_model_input_name(
     })
 }
 
+/// Query the input fact of a model.
+///
+/// Thre returned fact must be freed with tract_fact_destroy.
 #[no_mangle]
 pub unsafe extern "C" fn tract_model_input_fact(
     model: *const TractModel,
@@ -666,6 +669,9 @@ pub unsafe extern "C" fn tract_model_output_name(
     })
 }
 
+/// Query the output fact of a model.
+///
+/// Thre returned fact must be freed with tract_fact_destroy.
 #[no_mangle]
 pub unsafe extern "C" fn tract_model_output_fact(
     model: *const TractModel,
@@ -681,6 +687,9 @@ pub unsafe extern "C" fn tract_model_output_fact(
     })
 }
 
+/// Concretize one or more symbols in the model.
+///
+/// * symbols is a an array of nb_symbols symbol names. Each symbol is a null-terminated string.
 #[no_mangle]
 pub unsafe extern "C" fn tract_model_concretize_symbols(
     model: *mut TractModel,
@@ -704,6 +713,10 @@ pub unsafe extern "C" fn tract_model_concretize_symbols(
     })
 }
 
+/// Pulsify the model
+///
+/// * stream_symbol is the name of the stream symbol
+/// * pulse expression is a dim to use as the pulse size (like "8", "P" or "3*p").
 #[no_mangle]
 pub unsafe extern "C" fn tract_model_pulse_simple(
     model: *mut *mut TractModel,
