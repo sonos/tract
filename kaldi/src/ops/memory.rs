@@ -11,8 +11,6 @@ pub struct Memory {
     pub offset: isize,
 }
 
-
-
 impl Op for Memory {
     fn name(&self) -> Cow<str> {
         "Memory".into()
@@ -78,8 +76,6 @@ fn incorporate_memory_ops_as_scans(
         .iter()
         .map(|id| Ok((*id, time_loop_nodes_for_memory(model, *id)?)))
         .collect::<TractResult<_>>()?;
-
-    trace!("Loops: {:?}", loops);
 
     let mut patch = InferenceModelPatch::default();
     while loops.len() > 0 {
@@ -210,7 +206,10 @@ fn incorporate_memory_ops_as_scans(
             });
         }
 
-        // prepare patch
+        let mut inputs = tvec!();
+        for input in &scan_inputs {
+            inputs.push(patch.tap_model(model, *input)?);
+        }
         let scan = tract_hir::ops::scan::InferenceScan::new(
             inner_model,
             mapped_inputs,
@@ -220,23 +219,12 @@ fn incorporate_memory_ops_as_scans(
             GenericFactoid::default(),
         );
 
-        let mut output_facts = tvec!();
-
-        for output in &scan_outputs {
-            output_facts.push(model.outlet_fact(*output)?.clone());
-        }
-
         let name =
             format!("scan-{}", scan_inputs.iter().map(|li| &model.node(li.node).name).join("-"));
-        let scan_id = patch.add_node(name, scan, output_facts)?;
+        let new_outputs = patch.wire_node(name, scan, &inputs)?;
 
-        for (ix, input) in scan_inputs.iter().enumerate() {
-            let tapped = patch.tap_model(model, *input)?;
-            patch.add_edge(tapped, InletId::new(scan_id, ix))?;
-        }
-
-        for (ix, output) in scan_outputs.iter().enumerate() {
-            patch.shunt_outside(model, *output, OutletId::new(scan_id, ix))?;
+        for (old, new) in scan_outputs.iter().zip(new_outputs.iter()) {
+            patch.shunt_outside(model, *old, *new)?;
         }
 
         for mem in coupled_mem_ops {
