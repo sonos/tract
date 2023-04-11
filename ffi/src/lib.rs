@@ -752,7 +752,7 @@ pub unsafe extern "C" fn tract_model_half(
     wrap(|| unsafe {
         check_not_null!(model, *model);
         let model = &mut (**model).0;
-        let mut half = tract_nnef::tract_core::half::HalfTranslator.translate_model(&model)?;
+        let mut half = tract_nnef::tract_core::half::HalfTranslator.translate_model(model)?;
         std::mem::swap(model, &mut half);
         Ok(())
     })
