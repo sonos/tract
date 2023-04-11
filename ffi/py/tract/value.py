@@ -37,6 +37,12 @@ def dt_numpy_to_tract(dt):
 
 
 class Value:
+    """
+    Represents a tensor suitable for manipulation by tract.
+
+    On the Python side, the main way to access tensor data is to
+    convert the value to a numpy array.
+    """
     def __init__(self, ptr):
         self.ptr = ptr
 
@@ -63,6 +69,7 @@ class Value:
         return Value(ptr)
 
     def to_numpy(self) -> numpy.array:
+        """Builds a numpy array equivalent to the data in this value."""
         self._valid()
         rank = c_size_t();
         shape = POINTER(c_size_t)()
@@ -75,6 +82,7 @@ class Value:
         return array
 
     def into_numpy(self) -> numpy.array:
+        """Same as to_numpy(), but drop the value content once the numpy array is built."""
         result = self.to_numpy()
         check(lib.tract_value_destroy(byref(self.ptr)))
         return result

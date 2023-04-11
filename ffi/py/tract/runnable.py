@@ -5,6 +5,9 @@ from .value import Value
 from .bindings import check, lib
 
 class Runnable:
+    """
+    A model in the Runnable state is ready to perform computation.
+    """
     def __init__(self, ptr):
         self.ptr = ptr
         i = c_size_t()
@@ -21,6 +24,9 @@ class Runnable:
             raise TractError("invalid runnable (maybe already consumed ?)")
 
     def run(self, inputs: List[Union[Value, numpy.ndarray]]) -> List[Value]:
+        """
+        Runs the model over the provided input list, and returns the model outputs.
+        """
         self._valid()
         input_values = []
         for v in inputs:
