@@ -194,11 +194,8 @@ impl OpState for State {
         // initialize state at first pass
         if hidden_state.len() == 0 {
             for input in &op.input_mapping {
-                if let InputMapping::State { initializer } = input {
-                    hidden_state.push(match initializer {
-                        StateInitializer::FromInput(slot) => inputs[*slot].clone(),
-                        StateInitializer::Value(v) => (**v).to_owned().into_tvalue(),
-                    });
+                if let InputMapping::State { init_value } = input {
+                    hidden_state.push(inputs[*init_value].clone());
                 }
             }
         }

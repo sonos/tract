@@ -112,7 +112,7 @@ impl Expansion for BlockLSTM {
         let cs_fact = model.outlet_fact(cs)?.clone();
         let cs_source = body.add_source("cs_source", cs_fact)?;
         input_mapping
-            .push(scan::InputMapping::State { initializer: scan::StateInitializer::FromInput(2) });
+            .push(scan::InputMapping::State { init_value: 2 });
         wire!(cs_prev = AxisOp::Rm(0), cs_source);
 
         // H: body input 2
@@ -121,7 +121,7 @@ impl Expansion for BlockLSTM {
         let h_fact = model.outlet_fact(h)?.clone();
         let h_source = body.add_source("h_source", h_fact)?;
         input_mapping
-            .push(scan::InputMapping::State { initializer: scan::StateInitializer::FromInput(3) });
+            .push(scan::InputMapping::State { init_value: 3 });
         wire!(h_prev = AxisOp::Rm(0), h_source);
 
         wire!(xh = array::TypedConcat::new(1), x, h_prev);

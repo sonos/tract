@@ -23,9 +23,7 @@ pub fn scan(
     let mut mapped_inputs = vec![];
     let mut mapped_outputs = vec![];
     for ix in 0..num_hidden_state {
-        mapped_inputs.push(ops::scan::InputMapping::State {
-            initializer: ops::scan::StateInitializer::FromInput(ix),
-        });
+        mapped_inputs.push(ops::scan::InputMapping::State { init_value: ix });
         mapped_outputs.push(ops::scan::OutputMapping {
             state: true,
             last_value_slot: Some(ix),

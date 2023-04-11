@@ -3,7 +3,7 @@ use crate::internal::*;
 
 pub use tract_core::ops::scan::Scan;
 use tract_core::ops::scan::ScanInfo;
-pub use tract_core::ops::scan::{InputMapping, OutputMapping, StateInitializer};
+pub use tract_core::ops::scan::{InputMapping, OutputMapping};
 
 #[derive(Debug, Clone, new, Default)]
 pub struct InferenceScan {
@@ -62,8 +62,8 @@ impl InferenceScan {
                         ..*info
                     }),
                     InputMapping::Full { slot } => InputMapping::Full { slot: *slot },
-                    InputMapping::State { initializer } => {
-                        InputMapping::State { initializer: initializer.clone() }
+                    InputMapping::State { init_value: initializer } => {
+                        InputMapping::State { init_value: initializer.clone() }
                     }
                 })
             })
@@ -111,16 +111,10 @@ impl InferenceScan {
             .or_else(|| inner.shape.rank().concretize())
             .map(|r| r as usize);
         if let Some(rank) = rank {
-            if outer
-                .shape
-                .unify_with(&ShapeFactoid::closed(tvec!(GenericFactoid::Any; rank)))?
-            {
+            if outer.shape.unify_with(&ShapeFactoid::closed(tvec!(GenericFactoid::Any; rank)))? {
                 changed = true;
             }
-            if inner
-                .shape
-                .unify_with(&ShapeFactoid::closed(tvec!(GenericFactoid::Any; rank)))?
-            {
+            if inner.shape.unify_with(&ShapeFactoid::closed(tvec!(GenericFactoid::Any; rank)))? {
                 changed = true;
             }
             for axis in 0..rank {
@@ -169,35 +163,19 @@ impl InferenceScan {
                 .nth(state_ix)
                 .unwrap()
                 .0;
-            match initializer {
-                StateInitializer::Value(v) => {
-                    let fact = TypedFact::from(&**v).without_value().into();
-                    if self.body.input_fact(inner_model_input_ix)? != &fact {
-                        self.body.set_input_fact(inner_model_input_ix, fact.clone())?;
-                        changed = true;
-                    }
-                    if self.body.output_fact(inner_model_input_ix)? != &fact {
-                        self.body.set_output_fact(inner_model_output_ix, fact)?;
-                        changed = true;
-                    }
-                }
-                StateInitializer::FromInput(outer_input_ix) => {
-                    let mut facts = self.body.outlets_fact_mut(&[
-                        self.body.input_outlets()?[inner_model_input_ix],
-                        self.body.output_outlets()?[inner_model_output_ix],
-                    ])?;
-                    facts.push(&mut inputs[*outer_input_ix]);
-                    if Factoid::unify_all(
-                        &mut facts.iter_mut().map(|f| &mut f.datum_type).collect::<TVec<_>>(),
-                    )? {
-                        changed = true;
-                    }
-                    if Factoid::unify_all(
-                        &mut facts.iter_mut().map(|f| &mut f.shape).collect::<TVec<_>>(),
-                    )? {
-                        changed = true;
-                    }
-                }
+            let mut facts = self.body.outlets_fact_mut(&[
+                self.body.input_outlets()?[inner_model_input_ix],
+                self.body.output_outlets()?[inner_model_output_ix],
+            ])?;
+            facts.push(&mut inputs[initializer]);
+            if Factoid::unify_all(
+                &mut facts.iter_mut().map(|f| &mut f.datum_type).collect::<TVec<_>>(),
+            )? {
+                changed = true;
+            }
+            if Factoid::unify_all(&mut facts.iter_mut().map(|f| &mut f.shape).collect::<TVec<_>>())?
+            {
+                changed = true;
             }
         }
         for (ix, i) in self.input_mapping.iter().enumerate() {
@@ -274,8 +252,8 @@ impl InferenceOp for InferenceScan {
     ) -> TractResult<(TVec<InferenceFact>, TVec<InferenceFact>, TVec<InferenceFact>)> {
         let body_inputs = self.body.input_outlets()?.len();
         let body_outputs = self.body.output_outlets()?.len();
-        let expected_op_inputs = self.input_mapping.iter().filter(|m| !m.invisible()).count();
-        let expected_op_outputs = self.output_mapping.iter().filter(|m| !m.invisible()).count();
+        let expected_op_inputs = self.input_mapping.iter().count();
+        let expected_op_outputs = self.output_mapping.iter().count();
         if inputs.len() != expected_op_inputs {
             bail!("Scan receives {} inputs, mappings expects {}", inputs.len(), expected_op_inputs)
         }

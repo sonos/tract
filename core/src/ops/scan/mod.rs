@@ -17,14 +17,14 @@ pub struct ScanInfo {
 #[derive(Clone, new, Hash)]
 pub enum InputMapping {
     Full { slot: usize },
-    State { initializer: StateInitializer },
+    State { init_value: usize },
     Scan(ScanInfo),
 }
 
 impl InputMapping {
-    pub fn as_state(&self) -> Option<&StateInitializer> {
+    pub fn as_state(&self) -> Option<usize> {
         match self {
-            InputMapping::State { initializer } => Some(initializer),
+            InputMapping::State { init_value: initializer } => Some(*initializer),
             _ => None,
         }
     }
@@ -36,18 +36,11 @@ impl InputMapping {
         }
     }
 
-    pub fn invisible(&self) -> bool {
-        matches!(self, InputMapping::State { initializer: StateInitializer::Value(_) })
-    }
-
     pub fn outer_slot(&self) -> Option<usize> {
         match self {
             InputMapping::Full { slot } => Some(*slot),
             InputMapping::Scan(info) => Some(info.slot),
-            InputMapping::State { initializer } => match initializer {
-                StateInitializer::FromInput(slot) => Some(*slot),
-                _ => None,
-            },
+            InputMapping::State { init_value: initializer } => Some(*initializer)
         }
     }
 }
@@ -56,8 +49,8 @@ impl fmt::Debug for InputMapping {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self {
             InputMapping::Full { slot } => write!(fmt, "Full, inlet {slot}"),
-            InputMapping::State { initializer } => {
-                write!(fmt, "State initialized by {initializer:?}")
+            InputMapping::State { init_value: initializer } => {
+                write!(fmt, "State initialized by input {initializer}")
             }
             InputMapping::Scan(info) => {
                 write!(
@@ -108,21 +101,5 @@ impl<F: Clone + fmt::Display> fmt::Debug for OutputMapping<F> {
             write!(fmt, "Full len {full_dim_hint}. ")?;
         }
         Ok(())
-    }
-}
-
-#[derive(Clone, new, Hash)]
-pub enum StateInitializer {
-    FromInput(usize),
-    Value(Arc<Tensor>),
-}
-
-impl fmt::Debug for StateInitializer {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        use StateInitializer::*;
-        match self {
-            FromInput(i) => write!(fmt, "inlet {i}"),
-            Value(t) => write!(fmt, "tensor {t:?}"),
-        }
     }
 }
