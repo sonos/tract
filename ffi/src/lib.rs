@@ -3,6 +3,7 @@
 use anyhow::Context;
 use tract_libcli::annotations::Annotations;
 use tract_libcli::profile::BenchLimits;
+use tract_nnef::prelude::translator::Translate;
 use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::ffi::{c_char, c_void, CStr, CString};
@@ -739,6 +740,20 @@ pub unsafe extern "C" fn tract_model_pulse_simple(
         )?;
         let mut pulsed = PulsedModel::new(model, stream_sym, &pulse_dim)?.into_typed()?;
         std::mem::swap(model, &mut pulsed);
+        Ok(())
+    })
+}
+
+/// Convert the model from single precision to half precision.
+#[no_mangle]
+pub unsafe extern "C" fn tract_model_half(
+    model: *mut *mut TractModel,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(model, *model);
+        let model = &mut (**model).0;
+        let mut half = tract_nnef::tract_core::half::HalfTranslator.translate_model(&model)?;
+        std::mem::swap(model, &mut half);
         Ok(())
     })
 }

@@ -100,6 +100,16 @@ def test_pulse():
     assert properties == ["pulse.delay", "pulse.input_axes", "pulse.output_axes"]
     assert typed.property("pulse.delay").to_numpy() == [0]
 
+def test_half():
+    model = tract.onnx().model_for_path("./mobilenetv2-7.onnx")
+    model.set_input_fact(0, "1,3,224,224,f32")
+    model.set_output_fact(0, None)
+    model.analyse()
+    typed = model.into_typed().into_decluttered()
+    typed.half()
+    assert str(typed.input_fact(0)) == "1,3,224,224,F16"
+    assert str(typed.output_fact(0)) == "1,1000,F16"
+
 def test_typed_model_to_nnef_and_back():
     model = tract.onnx().model_for_path("./mobilenetv2-7.onnx")
     model.set_input_fact(0, "B,3,224,224,f32")
