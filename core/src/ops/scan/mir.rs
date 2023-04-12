@@ -128,9 +128,9 @@ impl Scan {
                     slot: info.slot - (info.slot > discarded) as usize,
                     ..info
                 }),
-                InputMapping::State { init_value: n } => {
+                InputMapping::State { init_slot: n } => {
                     let initializer = *n - (*n > discarded) as usize;
-                    InputMapping::State { init_value: initializer }
+                    InputMapping::State { init_slot: initializer }
                 }
             })
             .collect()
@@ -198,7 +198,7 @@ impl Scan {
                 let slot = match &self.input_mapping[inner_input_id] {
                     InputMapping::Full { slot } => *slot,
                     InputMapping::Scan(info) => info.slot,
-                    InputMapping::State { init_value: initializer } => *initializer,
+                    InputMapping::State { init_slot: initializer } => *initializer,
                 };
                 let mut new_mappings: Vec<_> = self.input_mapping.clone();
                 new_mappings.remove(inner_input_id);

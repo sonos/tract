@@ -155,10 +155,10 @@ impl CommonRec {
             target_wire!(h = AxisOp::Rm(0), h_dir);
             target_wire!(h_chunk_ = AxisOp::Add(0), h);
             target_wire!(h_chunk = AxisOp::Move(1, 0), h_chunk_);
-            outer_inputs.push(h_chunk);
-            scan::StateInitializer::FromInput(initial_h_input)
+            h_chunk
         } else {
-            scan::StateInitializer::Value(
+            target.add_const(
+                format!("{prefix}.h0"),
                 tensor0(0.0f32)
                     .broadcast_scalar_to_shape(&[
                         b_size.to_usize().unwrap(),
@@ -166,9 +166,11 @@ impl CommonRec {
                         h_size.to_usize().unwrap(),
                     ])?
                     .into_arc_tensor(),
-            )
+            )?
         };
-        input_mapping.push(scan::InputMapping::State { init_value: initializer });
+        outer_inputs.push(initializer);
+        input_mapping.push(scan::InputMapping::State { init_slot: outer_inputs.len() - 1 });
+
         let h_source = body.add_source(
             "h_source",
             x_fact.datum_type.fact(&[b_size.clone(), 1.to_dim(), h_size.clone()]),
@@ -186,10 +188,10 @@ impl CommonRec {
                 target_wire!(c = AxisOp::Rm(0), c_dir);
                 target_wire!(c_chunk_ = AxisOp::Add(0), c);
                 target_wire!(c_chunk = AxisOp::Move(1, 0), c_chunk_);
-                outer_inputs.push(c_chunk);
-                scan::StateInitializer::FromInput(initial_c_input)
+                c_chunk
             } else {
-                scan::StateInitializer::Value(
+                target.add_const(
+                    format!("{prefix}.c0"),
                     tensor0(0.0f32)
                         .broadcast_scalar_to_shape(&[
                             b_size.to_usize().unwrap(),
@@ -197,9 +199,10 @@ impl CommonRec {
                             h_size.to_usize().unwrap(),
                         ])?
                         .into_arc_tensor(),
-                )
+                )?
             };
-            input_mapping.push(scan::InputMapping::State { init_value: initializer });
+            outer_inputs.push(initializer);
+            input_mapping.push(scan::InputMapping::State { init_slot: outer_inputs.len() - 1 });
             let c_source = body.add_source(
                 "c_source",
                 x_fact.datum_type.fact(&[b_size.clone(), 1.to_dim(), h_size.clone()]),

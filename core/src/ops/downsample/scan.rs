@@ -74,8 +74,8 @@ pub fn pull_downsample_over_scan(
     let mut inputs = tvec!();
     for (i, input) in &mut new_scan.input_mapping.iter_mut().enumerate() {
         match input {
-            InputMapping::State { init_value } => {
-                let init = patch.tap_model(model, OutletId::new(scan_node.id, *init_value))?;
+            InputMapping::State { init_slot } => {
+                let init = patch.tap_model(model, scan_node.inputs[*init_slot])?;
                 let ds = patch.wire_node(
                     format!("{}-{}", down_node.name, i),
                     down_op.clone(),
@@ -89,7 +89,7 @@ pub fn pull_downsample_over_scan(
                 }
                 info.chunk = info.chunk.unsigned_abs().divceil(down_op.stride as usize) as isize
                     * info.chunk.signum();
-                let tap = patch.tap_model(model, OutletId::new(scan_node.id, info.slot))?;
+                let tap = patch.tap_model(model, scan_node.inputs[info.slot])?;
                 let ds = patch.wire_node(
                     format!("{}-{}", down_node.name, i),
                     down_op.clone(),
@@ -100,6 +100,7 @@ pub fn pull_downsample_over_scan(
             _ => (),
         }
     }
+
     for output in &mut new_scan.output_mapping {
         if let Some(d) = output.full_dim_hint.as_mut() {
             *d = down_op.transform_dim(d)

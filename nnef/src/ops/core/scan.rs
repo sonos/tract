@@ -71,8 +71,8 @@ fn ser_scan(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValu
                     numeric(info.chunk),
                 ));
             }
-            InputMapping::State { init_value } => {
-                let initializer = (*ast.mapping[&node.inputs[*init_value]]).clone();
+            InputMapping::State { init_slot } => {
+                let initializer = (*ast.mapping[&node.inputs[*init_slot]]).clone();
                 let output: usize = op
                     .output_mapping
                     .iter()
@@ -179,7 +179,7 @@ fn de_scan(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
             state.iter().find(|s| s.0 == par.id.0 || escape(&s.0) == par.id.0)
         {
             let fact = builder.model.outlet_fact(*wire)?.clone();
-            input_mapping.push(InputMapping::State { init_value: outer_inputs.len() });
+            input_mapping.push(InputMapping::State { init_slot: outer_inputs.len() });
             (*wire, fact.datum_type.fact(fact.shape))
         } else {
             bail!("Unbound body input parameter {}", par.id.0);

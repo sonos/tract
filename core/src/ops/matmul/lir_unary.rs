@@ -498,7 +498,7 @@ impl TypedOp for LirMatMulUnary {
                         model,
                         node,
                         patch,
-                        vec![ProtoFusedSpec::AddUnicast(other_storage, node.inputs.len().into())],
+                        vec![ProtoFusedSpec::AddUnicast(other_storage, node.inputs.len())],
                         &[other_input],
                     );
                 }

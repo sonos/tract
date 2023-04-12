@@ -62,8 +62,8 @@ impl InferenceScan {
                         ..*info
                     }),
                     InputMapping::Full { slot } => InputMapping::Full { slot: *slot },
-                    InputMapping::State { init_value: initializer } => {
-                        InputMapping::State { init_value: initializer.clone() }
+                    InputMapping::State { init_slot: initializer } => {
+                        InputMapping::State { init_slot: *initializer }
                     }
                 })
             })
@@ -252,8 +252,14 @@ impl InferenceOp for InferenceScan {
     ) -> TractResult<(TVec<InferenceFact>, TVec<InferenceFact>, TVec<InferenceFact>)> {
         let body_inputs = self.body.input_outlets()?.len();
         let body_outputs = self.body.output_outlets()?.len();
-        let expected_op_inputs = self.input_mapping.iter().count();
-        let expected_op_outputs = self.output_mapping.iter().count();
+        let expected_op_inputs = self.input_mapping.len();
+        let expected_op_outputs = self
+            .output_mapping
+            .iter()
+            .filter_map(|om| om.last_value_slot)
+            .chain(self.output_mapping.iter().filter_map(|om| om.scan.map(|si| si.slot)))
+            .max()
+            .context("No output slot found")? + 1;
         if inputs.len() != expected_op_inputs {
             bail!("Scan receives {} inputs, mappings expects {}", inputs.len(), expected_op_inputs)
         }
