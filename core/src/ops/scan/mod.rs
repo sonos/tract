@@ -17,14 +17,14 @@ pub struct ScanInfo {
 #[derive(Clone, new, Hash)]
 pub enum InputMapping {
     Full { slot: usize },
-    State { init_value: usize },
+    State { init_slot: usize },
     Scan(ScanInfo),
 }
 
 impl InputMapping {
     pub fn as_state(&self) -> Option<usize> {
         match self {
-            InputMapping::State { init_value: initializer } => Some(*initializer),
+            InputMapping::State { init_slot: initializer } => Some(*initializer),
             _ => None,
         }
     }
@@ -40,7 +40,7 @@ impl InputMapping {
         match self {
             InputMapping::Full { slot } => Some(*slot),
             InputMapping::Scan(info) => Some(info.slot),
-            InputMapping::State { init_value: initializer } => Some(*initializer)
+            InputMapping::State { init_slot: initializer } => Some(*initializer)
         }
     }
 }
@@ -49,7 +49,7 @@ impl fmt::Debug for InputMapping {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self {
             InputMapping::Full { slot } => write!(fmt, "Full, inlet {slot}"),
-            InputMapping::State { init_value: initializer } => {
+            InputMapping::State { init_slot: initializer } => {
                 write!(fmt, "State initialized by input {initializer}")
             }
             InputMapping::Scan(info) => {

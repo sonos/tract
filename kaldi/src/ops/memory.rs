@@ -115,10 +115,13 @@ fn incorporate_memory_ops_as_scans(
             })
             .map(|(id, _fact)| id)
             .collect();
+        let name =
+            format!("scan-{}", scan_inputs.iter().map(|li| &model.node(li.node).name).join("-"));
         let mut inner_model = InferenceModel::default();
         let mut mapped_inputs = vec![];
         let mut mapped_outputs = vec![];
         let mut node_id_old_to_new: HashMap<usize, usize> = HashMap::new();
+        let mut outer_inputs = tvec!();
         for &mem in &coupled_mem_ops {
             let mem_node = model.node(mem);
             let op = mem_node.op_as::<Memory>().unwrap();
@@ -128,11 +131,13 @@ fn incorporate_memory_ops_as_scans(
                 .add_source(&*mem_node.name, f32::fact([(-op.offset) as usize, channel]).into())?;
             node_id_old_to_new.insert(mem, id.node);
 
-            let zeroes =
-                Tensor::from(tract_ndarray::Array2::<f32>::zeros(((-op.offset) as usize, channel)));
-            mapped_inputs.push(tract_hir::ops::scan::InputMapping::State {
-                init_value: tract_hir::ops::scan::StateInitializer::Value(zeroes.into()),
-            });
+            let zeroes = patch.add_const(
+                format!("{name}.{}", mem_node.name),
+                Tensor::zero::<f32>(&[(-op.offset) as usize, channel])?,
+            )?;
+            mapped_inputs
+                .push(tract_hir::ops::scan::InputMapping::State { init_slot: outer_inputs.len() });
+            outer_inputs.push(zeroes);
             mapped_outputs.push(tract_hir::ops::scan::OutputMapping {
                 state: true,
                 full_dim_hint: None,
@@ -186,8 +191,7 @@ fn incorporate_memory_ops_as_scans(
         }
 
         inner_model.set_output_outlets(&inner_outputs)?;
-
-        inner_model.analyse(false)?;
+        inner_model.analyse(false).context("Analysing inner model")?;
 
         for (ix, scan_input) in scan_inputs.iter().enumerate() {
             let old_node = model.node(scan_input.node);
@@ -196,7 +200,7 @@ fn incorporate_memory_ops_as_scans(
             mapped_inputs.push(tract_hir::ops::scan::InputMapping::Scan(ScanInfo {
                 axis: 0,
                 chunk,
-                slot: ix,
+                slot: ix + coupled_mem_ops.len(),
             }));
             mapped_outputs.push(tract_hir::ops::scan::OutputMapping {
                 state: false,
@@ -204,12 +208,9 @@ fn incorporate_memory_ops_as_scans(
                 last_value_slot: None,
                 full_dim_hint: old_node.outputs[0].fact.shape.dim(0).unwrap().concretize(),
             });
+            outer_inputs.push(patch.tap_model(model, *scan_input)?);
         }
 
-        let mut inputs = tvec!();
-        for input in &scan_inputs {
-            inputs.push(patch.tap_model(model, *input)?);
-        }
         let scan = tract_hir::ops::scan::InferenceScan::new(
             inner_model,
             mapped_inputs,
@@ -218,10 +219,7 @@ fn incorporate_memory_ops_as_scans(
             false,
             GenericFactoid::default(),
         );
-
-        let name =
-            format!("scan-{}", scan_inputs.iter().map(|li| &model.node(li.node).name).join("-"));
-        let new_outputs = patch.wire_node(name, scan, &inputs)?;
+        let new_outputs = patch.wire_node(name, scan, &outer_inputs)?;
 
         for (old, new) in scan_outputs.iter().zip(new_outputs.iter()) {
             patch.shunt_outside(model, *old, *new)?;
