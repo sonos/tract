@@ -67,108 +67,42 @@ pub fn profile(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn rec_profiler(
     state: &mut TypedSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>,
     dg: &mut Annotations,
     inputs: &TVec<TValue>,
     profilers: Option<&HashMap<TypeId, Profiler>>,
     prefix: &[(usize, String)],
-    multiplier: Option<isize>,
+    multiplier: Option<usize>,
     time_accounted_by_inner_nodes: &mut Duration,
     full_output: bool,
 ) -> TractResult<TVec<TValue>> {
-    let mut parent_prefix: TVec<_> = prefix.into();
-    parent_prefix.pop();
     let r = state.run_plan_with_eval(
         inputs.clone(),
         |session_state, mut node_state, node, input| {
-            let (r, e) = if let Some(ref mut op_state) = node_state {
-                // Run top node
+            // Profile node
+            let start = Instant::now();
+            let res = tract_core::plan::eval(session_state, node_state.as_deref_mut(), node, input.clone());
+            let elapsed = start.elapsed().mul_f32(multiplier.unwrap_or(1) as _);
+            let node_id = NodeQId(prefix.into(), node.id);
+            *dg.node_mut(node_id).profile.get_or_insert(Duration::default()) += elapsed;
+
+            if full_output {
                 let start = Instant::now();
-                let r = tract_core::plan::eval(session_state, Some(*op_state), node, input.clone());
-                let elapsed = start.elapsed().mul_f32(multiplier.unwrap_or(1) as _);
-                *dg.node_mut(NodeQId(prefix.into(), node.id))
-                    .profile
-                    .get_or_insert(Duration::default()) += elapsed;
+                profile_submodel(
+                    node,
+                    node_state,
+                    input,
+                    dg,
+                    profilers,
+                    prefix,
+                    time_accounted_by_inner_nodes,
+                )?;
+                *time_accounted_by_inner_nodes += start.elapsed();
+            }
 
-                // Run inner node model
-                if full_output {
-                    if let Some(profiler) = profilers.and_then(|it| it.get(&op_state.type_id())) {
-                        let mut prefix: TVec<_> = prefix.into();
-                        prefix.push((node.id, "submodel".to_string()));
-
-                        let start = Instant::now();
-                        let (_, _) = (profiler.func)(
-                            *op_state,
-                            input,
-                            dg,
-                            &prefix,
-                            time_accounted_by_inner_nodes,
-                        )?;
-                        *time_accounted_by_inner_nodes += start.elapsed();
-                    } else if let Some(scan_state) = op_state.downcast_mut::<State>() {
-                        let mut prefix: TVec<_> = prefix.into();
-                        prefix.push((node.id, "loop".to_string()));
-
-                        let scan_inputs = make_inputs_for_model(scan_state.model_state.model())?;
-                        let input_facts = node
-                            .inputs
-                            .iter()
-                            .map(|outlet| {
-                                node.outputs.get(outlet.slot).map(|o| &o.fact).ok_or(anyhow!(""))
-                            })
-                            .collect::<TractResult<TVec<_>>>()?;
-                        let multi = if let Some(lir) = node.op_as::<tract_core::ops::scan::LirScan>() {
-                            lir.iteration_count(&input_facts).map(|it| it.to_isize().unwrap())
-                        } else if let Some(mir) = node.op_as::<tract_core::ops::scan::Scan>() {
-                            mir.iteration_count(&input_facts).map(|it| it.to_isize().unwrap())
-                        } else {
-                            None
-                        };
-
-                        let start = Instant::now();
-                        rec_profiler(
-                            &mut scan_state.model_state,
-                            dg,
-                            &scan_inputs,
-                            None,
-                            &prefix,
-                            multi,
-                            time_accounted_by_inner_nodes,
-                            full_output,
-                        )?;
-                        *time_accounted_by_inner_nodes += start.elapsed();
-                    } else if let Some(typed_model_state) = op_state.downcast_mut::<TypedModelOpState>()
-                    {
-                        let mut prefix: TVec<_> = prefix.into();
-                        prefix.push((node.id, "submodel".to_string()));
-
-                        let start = Instant::now();
-                        rec_profiler(
-                            typed_model_state,
-                            dg,
-                            &input,
-                            None,
-                            &prefix,
-                            None,
-                            time_accounted_by_inner_nodes,
-                            full_output
-                        )?;
-                        *time_accounted_by_inner_nodes += start.elapsed();
-                    }
-                }
-                (r, elapsed)
-            } else {
-                // Profile node
-                let start = Instant::now();
-                let r = tract_core::plan::eval(session_state, node_state, node, input);
-                let elapsed = start.elapsed().mul_f32(multiplier.unwrap_or(1) as _);
-                *dg.node_mut(NodeQId(prefix.into(), node.id))
-                    .profile
-                    .get_or_insert(Duration::default()) += elapsed;
-                (r, elapsed)
-            };
-
+            // Update parent nodes if any (childs timings are deducted from parents)
             let prefix_vec = prefix.to_vec();
             if !prefix_vec.is_empty() {
                 (1..prefix_vec.len() + 1).map(|idx| prefix_vec[..idx].to_vec()).for_each(
@@ -181,14 +115,67 @@ pub fn rec_profiler(
                             ))
                             .profile
                             .get_or_insert(Duration::default());
-                        *parent -= e.min(*parent);
+                        *parent -= elapsed.min(*parent);
                     },
                 );
             }
-            r
+            res
         },
     )?;
     Ok(r)
+}
+
+fn profile_submodel(
+    node: &TypedNode,
+    mut node_state: Option<&mut dyn OpState>,
+    input: TVec<TValue>,
+    dg: &mut Annotations,
+    profilers: Option<&HashMap<TypeId, Profiler>>,
+    prefix: &[(usize, String)],
+    time_accounted_by_inner_nodes: &mut Duration,
+) -> TractResult<()> {
+    if let Some(ref mut op_state) = node_state {
+        if let Some(profiler) = profilers.and_then(|it| it.get(&op_state.type_id())) {
+            let mut prefix: TVec<_> = prefix.into();
+            prefix.push((node.id, "submodel".to_string()));
+
+            let (_, _) =
+                (profiler.func)(*op_state, input, dg, &prefix, time_accounted_by_inner_nodes)?;
+        } else if let Some(scan_state) = op_state.downcast_mut::<State>() {
+            let mut new_prefix: TVec<_> = prefix.into();
+            new_prefix.push((node.id, "loop".to_string()));
+
+            let scan_inputs = make_inputs_for_model(scan_state.model_state.model())?;
+            let multi = scan_state.iteration_count(&input);
+
+            rec_profiler(
+                &mut scan_state.model_state,
+                dg,
+                &scan_inputs,
+                None,
+                &new_prefix,
+                Some(multi),
+                time_accounted_by_inner_nodes,
+                true,
+            )?;
+        } else if let Some(typed_model_state) = op_state.downcast_mut::<TypedModelOpState>() {
+            let mut prefix: TVec<_> = prefix.into();
+            prefix.push((node.id, "submodel".to_string()));
+
+            rec_profiler(
+                typed_model_state,
+                dg,
+                &input,
+                None,
+                &prefix,
+                None,
+                time_accounted_by_inner_nodes,
+                true,
+            )?;
+        }
+    }
+
+    Ok(())
 }
 
 type ProfilerFn = fn(
