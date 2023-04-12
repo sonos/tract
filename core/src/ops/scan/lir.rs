@@ -113,6 +113,19 @@ impl FrozenOpState for FrozenState {
 }
 
 impl State {
+    pub fn iteration_count(&self, inputs: &TVec<TValue>) -> usize {
+        let info = self
+            .op
+            .input_mapping
+            .iter()
+            .find_map(|it| match it {
+                InputMapping::Scan(info) => Some(info),
+                _ => None,
+            })
+            .unwrap();
+        inputs[info.slot].shape()[info.axis].divceil(info.chunk.unsigned_abs())
+    }
+
     pub(super) fn slice_input(
         input: &Tensor,
         axis: usize,
@@ -175,6 +188,8 @@ impl OpState for State {
         _op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
+        let iters = self.iteration_count(&inputs);
+        
         let State { op, ref mut hidden_state, ref mut position, ref mut model_state } = self;
         // initialize state at first pass
         if hidden_state.len() == 0 {
@@ -187,18 +202,6 @@ impl OpState for State {
                 }
             }
         }
-
-        let iters = {
-            let info = op
-                .input_mapping
-                .iter()
-                .find_map(|it| match it {
-                    InputMapping::Scan(info) => Some(info),
-                    _ => None,
-                })
-                .unwrap();
-            inputs[info.slot].shape()[info.axis].divceil(info.chunk.unsigned_abs())
-        };
 
         let mut outputs = tvec!();
         for (ix, output) in op.output_mapping.iter().enumerate() {
