@@ -148,17 +148,26 @@ impl ResourceLoader for TypedModelLoader {
         framework: &Nnef,
     ) -> TractResult<Option<(String, Arc<dyn Resource>)>> {
         const NNEF_TGZ: &str = ".nnef.tgz";
-        if path.to_str().unwrap_or("").ends_with(NNEF_TGZ) {
+        const NNEF_TAR: &str = ".nnef.tar";
+        let path_str = path.to_str().unwrap_or("");
+        if path_str.ends_with(NNEF_TGZ) || path_str.ends_with(NNEF_TAR) {
             let model = if self.optimized_model {
                 framework.model_for_read(reader)?.into_optimized()?
             } else {
                 framework.model_for_read(reader)?
             };
 
-            let label = path
-                .to_str()
-                .ok_or_else(|| anyhow!("invalid model resource path"))?
-                .trim_end_matches(NNEF_TGZ);
+            let label = if path_str.ends_with(NNEF_TGZ) {
+                path
+                    .to_str()
+                    .ok_or_else(|| anyhow!("invalid model resource path"))?
+                    .trim_end_matches(NNEF_TGZ)
+            } else {
+                path
+                    .to_str()
+                    .ok_or_else(|| anyhow!("invalid model resource path"))?
+                    .trim_end_matches(NNEF_TAR)
+            };
             Ok(Some((resource_path_to_id(label)?, Arc::new(TypedModelResource(model)))))
         } else {
             Ok(None)

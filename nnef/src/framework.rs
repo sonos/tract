@@ -99,7 +99,13 @@ impl Nnef {
 
     pub fn write_to_tar<W: std::io::Write>(&self, model: &TypedModel, w: W) -> TractResult<W> {
         let mut ar = tar::Builder::new(w);
-        self._write_to_tar(model, &mut ar)?;
+        self._write_to_tar(model, &mut ar, false)?;
+        ar.into_inner().context("Finalizing tar")
+    }
+
+    pub fn write_to_tar_with_config<W: std::io::Write>(&self, model: &TypedModel, w: W, compress_nested_models: bool) -> TractResult<W> {
+        let mut ar = tar::Builder::new(w);
+        self._write_to_tar(model, &mut ar, compress_nested_models)?;
         ar.into_inner().context("Finalizing tar")
     }
 
@@ -107,6 +113,7 @@ impl Nnef {
         &self,
         model: &TypedModel,
         ar: &mut Builder<W>,
+        compress_nested_models: bool,
     ) -> TractResult<()> {
         let proto_model =
             crate::ser::to_proto_model(self, model).context("Translating model to proto_model")?;
@@ -117,6 +124,7 @@ impl Nnef {
             .context("Serializing graph.nnef")?;
         let now =
             std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap();
+
         let mut header = tar::Header::new_gnu();
         header.set_path("graph.nnef").context("Setting graph.nnef path")?;
         header.set_size(graph_data.len() as u64);
@@ -162,9 +170,16 @@ impl Nnef {
             if let Some(typed_model_resource) = resource.downcast_ref::<TypedModelResource>() {
                 let mut submodel_data = vec![];
                 let mut filename = std::path::PathBuf::from_str(label)?;
-                filename.set_extension("nnef.tgz");
                 let typed_model = &typed_model_resource.0;
-                self.write(typed_model, &mut submodel_data)?;
+
+                if compress_nested_models {
+                    filename.set_extension("nnef.tgz");
+                    let encoder = flate2::write::GzEncoder::new(&mut submodel_data, flate2::Compression::default());
+                    self.write(typed_model, encoder)?;
+                } else {
+                    filename.set_extension("nnef.tar");
+                    self.write(typed_model, &mut submodel_data)?;
+                }
 
                 let mut header = tar::Header::new_gnu();
                 header.set_size(submodel_data.len() as u64);
