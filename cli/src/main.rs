@@ -319,6 +319,11 @@ fn dump_subcommand<'a>() -> clap::Command<'a> {
             .help("Dump the network in NNEF format (as a tar.gz file)"),
             )
         .arg(
+            Arg::new("compress-submodels")
+            .long("compress-submodels")
+            .help("Compress submodels if any (as a .tgz file)"),
+            )
+        .arg(
             Arg::new("nnef-graph")
             .takes_value(true)
             .long("nnef-graph")
@@ -445,7 +450,7 @@ fn output_options(command: clap::Command) -> clap::Command {
         .arg(Arg::new("outlet-labels").long("outlet-labels").help("display outlet labels"))
         .arg(Arg::new("cost").long("cost").help("Include const information"))
         .arg(Arg::new("profile").long("profile").help("Include results for profile run"))
-        .arg(Arg::new("condensed").long("condensed").help("Don't display submodel informations"))
+        .arg(Arg::new("folded").long("folded").help("Don't display submodel informations"))
         .arg(
             Arg::new("invariants")
                 .takes_value(false)
