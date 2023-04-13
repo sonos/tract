@@ -36,11 +36,11 @@ impl InputMapping {
         }
     }
 
-    pub fn outer_slot(&self) -> Option<usize> {
+    pub fn outer_slot(&self) -> usize {
         match self {
-            InputMapping::Full { slot } => Some(*slot),
-            InputMapping::Scan(info) => Some(info.slot),
-            InputMapping::State { init_slot: initializer } => Some(*initializer)
+            InputMapping::Full { slot } => *slot,
+            InputMapping::Scan(info) => info.slot,
+            InputMapping::State { init_slot: initializer } => *initializer
         }
     }
 }
