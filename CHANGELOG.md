@@ -1,4 +1,15 @@
-# 0.19.6 - 2023-02-24
+
+# 0.19.9 - 2023-04-17
+* HardSwiwh ONNX, tract_core_hard_swish in NNEF/OPL
+* introducing tract_core_submodel in NNEF/OPL
+* JSON resource loader in NNEF/OPL
+* Profiling API tweaks
+* --folded view for model command line dump (hide Scan loops)
+
+# 0.19.8 - 2023-03-27
+* Various bug fixes
+
+# 0.19.7 & 0.19.6 - 2023-02-24
 * more bug fixes
 * wip on python doc auto-deploy
 
