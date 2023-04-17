@@ -4,7 +4,7 @@ cargo install tomato-toml
 
 CRATE=$1
 VERSION=$2
-CRATES="data linalg core nnef pulse-opl pulse hir tensorflow onnx-opl onnx kaldi libcli ffi cli"
+CRATES="data linalg core nnef nnef/nnef-resources pulse-opl pulse hir tensorflow onnx-opl onnx kaldi libcli ffi cli"
 
 if [ -z "$VERSION" ]
 then
@@ -29,9 +29,10 @@ tomato set package.version $VERSION $CRATE/Cargo.toml
 
 for manifest in `find * -mindepth 1 -a -name Cargo.toml`
 do
-    if tomato get dependencies.tract-$CRATE.version $manifest | grep -F .
+    crate=$(basename $CRATE)
+    if tomato get dependencies.tract-$crate.version $manifest | grep -F .
     then
-        tomato set "dependencies.tract-$CRATE.version" "=$VERSION" $manifest
+        tomato set "dependencies.tract-$crate.version" "=$VERSION" $manifest
     fi
 done
 
