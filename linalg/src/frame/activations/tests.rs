@@ -1,10 +1,14 @@
 use crate::LADatum;
 
-use super::{Program, Op};
+use super::{Op, Program};
 use Op::*;
 
 pub fn noop<T: LADatum>() -> Program<T> {
     Program { ops: vec![Done], csts: vec![] }
+}
+
+pub fn max_const<T: LADatum>(c: T) -> Program<T> {
+    Program { ops: vec![MaxConst(0)], csts: vec![c] }
 }
 
 macro_rules! prop_act_e2e {
@@ -14,7 +18,7 @@ macro_rules! prop_act_e2e {
             fn $name(
                 x in proptest::prelude::any::<$ti>(),
                 repeat in 1usize..4,
-                $($param in proptest::prelude::any::<$ti>()),*) 
+                $($param in proptest::prelude::any::<$ti>()),*)
             {
                 use crate::frame::activations::ActivationKer;
                 if $cond {
@@ -39,14 +43,14 @@ macro_rules! prop_act_unit {
             fn $name(
                 x in proptest::prelude::any::<$ti>(),
                 repeat in 1usize..4,
-                $($param in proptest::prelude::any::<$ti>()),*) 
+                $($param in proptest::prelude::any::<$ti>()),*)
             {
                 use crate::frame::activations::ActivationKer;
                 if $cond {
                     let mut input = tract_data::prelude::Tensor::zero_aligned::<$ti>(&[<$ker>::nr() * repeat], <$ker>::alignment_bytes()).unwrap();
                     input.fill_t::<$ti>(x).unwrap();
-                    let refer2: fn($ti) -> $ti = $refer;
-                    let expected:Vec<$ti> = input.as_slice::<$ti>().unwrap().iter().cloned().map(refer2).collect();
+//                    let refer2: fn($ti, $($param),*) -> $ti = $refer;
+                    let expected:Vec<$ti> = input.as_slice::<$ti>().unwrap().iter().cloned().map(|x| $refer(x, $($param),*)).collect();
                     let prog = crate::frame::activations::tests::$name($($param),*);
                     <$ker>::run(&prog.ops, &prog.csts, &mut input.as_slice_mut::<$ti>().unwrap());
 
@@ -62,6 +66,7 @@ macro_rules! prop_act_unit {
 macro_rules! act_tests {
     ($cond:expr, $ker:ty, $ti:ty) => {
         prop_act_unit!($cond, $ti, $ker, noop(), |x| x);
+        prop_act_unit!($cond, $ti, $ker, max_const(alpha), |x: $ti, alpha| x.max(alpha));
 
         prop_act_e2e!($cond, $ti, $ker, relu());
         prop_act_e2e!($cond, $ti, $ker, affine(alpha, beta));
@@ -75,4 +80,3 @@ macro_rules! act_tests {
         */
     };
 }
-

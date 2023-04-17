@@ -133,8 +133,12 @@ macro_rules! act_impl {
                 }
             }
 
-            #[cfg(test)]
-            act_tests!($cond, $func, $ti);
+            mod [<test_ $func>] {
+                use super::*;
+
+                #[cfg(test)]
+                act_tests!($cond, $func, $ti);
+            }
         }
     };
 }
