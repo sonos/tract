@@ -1,6 +1,6 @@
 [package]
 name = "jupyter-keras-tract-tf1"
-version = "0.19.9-pre"
+version = "0.19.11-pre"
 authors = ["Matthew Alhonte <mattalhonte@gmail.com>"]
 license = "MIT/Apache-2.0"
 edition = "2021"
@@ -9,5 +9,5 @@ edition = "2021"
 
 [dependencies]
 rand.workspace = true
-tract-core = { path = "../../core", version = "=0.19.10" }
-tract-tensorflow = { path = "../../tensorflow", version = "=0.19.10" }
+tract-core = { path = "../../core", version = "=0.19.11-pre" }
+tract-tensorflow = { path = "../../tensorflow", version = "=0.19.11-pre" }
