@@ -1,5 +1,5 @@
 
-# 0.19.9 - 2023-04-17
+# 0.19.9 & 0.19.10 - 2023-04-17
 * HardSwiwh ONNX, tract_core_hard_swish in NNEF/OPL
 * introducing tract_core_submodel in NNEF/OPL
 * JSON resource loader in NNEF/OPL
