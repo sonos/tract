@@ -264,6 +264,7 @@ test_hardmax_one_hot
 test_hardsigmoid
 test_hardsigmoid_default
 test_hardsigmoid_example
+test_hardswish
 test_hardswish_expanded
 test_identity
 test_if not-nnef not-typable
