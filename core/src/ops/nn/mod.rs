@@ -18,6 +18,6 @@ element_wise!(hard_swish, HardSwish,
  [f32] => |_, xs| { xs.iter_mut().for_each(|x| *x = *x * 0f32.max(1f32.min((1. / 6.) * *x + 0.5))); Ok(()) }
 );
 
-element_wise!(leaky_relu, LeakyRelu { alpha: f32 },
+element_wise!(leaky_relu, LeakyRelu { #[educe(Hash(method = "hash_f32"))]  alpha: f32 },
  [f32] => |op, xs| { xs.iter_mut().for_each(|x| *x *= if *x < 0. { op.alpha } else { 1.0 }); Ok(()) }
 );
