@@ -1,0 +1,29 @@
+// vim: ft=arm
+
+// C tile regs: v16 to v31, (scratch)
+// - x19-x29 to preserve (but x19, x28, x29 not used) 
+// - d8..d15 to preserve
+// - v16 to v31, no need to preserve
+
+.text
+.align 4
+
+.cpu generic+fp+simd
+.global {{G}}arm64simd_act_f32_32n_{{suffix}}
+{{G}}arm64simd_act_f32_32n_{{suffix}}:
+
+    stp         d8, d9, [sp, #-16]!
+    stp         d10, d11, [sp, #-16]!
+    stp         d12, d13, [sp, #-16]!
+    stp         d14, d15, [sp, #-16]!
+
+    mov         x0, 0
+//    b           .return
+
+.return:
+    ldp         d14, d15, [sp], #16
+    ldp         d12, d13, [sp], #16
+    ldp         d10, d11, [sp], #16
+    ldp         d8, d9, [sp], #16
+
+    ret

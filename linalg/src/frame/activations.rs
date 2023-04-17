@@ -96,19 +96,20 @@ where
 }
 
 macro_rules! act_impl {
-    ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr) => {
+    ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr, $cond: expr) => {
         paste! {
             mod [<sys_ $func>] {
                 #[allow(unused_imports)]
                 use tract_data::prelude::f16;
-                extern_kernel!(fn $func(ptr: *mut $ti, count: usize) -> ());
+                use crate::frame::activations::Op;
+                extern_kernel!(fn $func(ops: *const Op, constants: *const $ti, xs: *mut $ti, len: usize) -> usize);
             }
 
             #[derive(Copy, Clone, Debug)]
             #[allow(non_camel_case_types)]
             pub struct $func;
 
-            impl ActivationKer<$ti> for $func {
+            impl $crate::frame::activations::ActivationKer<$ti> for $func {
                 #[inline(always)]
                 fn name() -> &'static str {
                     stringify!($func)
@@ -126,10 +127,14 @@ macro_rules! act_impl {
                     $alignment_items * std::mem::size_of::<$ti>()
                 }
                 #[inline(never)]
-                fn run(ops: &Op, csts:&[T], buf: &mut [$ti]) {
-                    unsafe { [<sys_ $func>]::$func(ops.as_ptr(), csts.as_ptr(), buf.as_mut_ptr(), buf.len()) }
+                fn run(ops: &[$crate::frame::activations::Op], csts:&[$ti], buf: &mut [$ti]) {
+                    let err = unsafe { [<sys_ $func>]::$func(ops.as_ptr(), csts.as_ptr(), buf.as_mut_ptr(), buf.len()) };
+                    assert_eq!(err, 0);
                 }
             }
+
+            #[cfg(test)]
+            act_tests!($cond, $func, $ti);
         }
     };
 }

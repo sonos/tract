@@ -94,5 +94,20 @@ impl ActivationKer<f32> for SActivations {
 }
 
 #[cfg(test)]
-act_frame_tests!(true, SActivations, f32);
+act_tests!(true, SActivations, f32);
 
+#[cfg(test)]
+mod tests {
+    use crate::frame::activations::Op;
+    use crate::frame::activations::ActivationKer;
+
+    use super::SActivations;
+
+    #[test]
+    fn act_noop() {
+        let mut xs = vec!(1f32; SActivations::nr());
+        let expect = xs.clone();
+        SActivations::run(&[Op::Done], &[], &mut *xs);
+        assert_eq!(expect, xs);
+    }
+}
