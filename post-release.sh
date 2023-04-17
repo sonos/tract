@@ -1,7 +1,7 @@
 #!/bin/sh
 
 VERSION=$1
-CRATES="data linalg core nnef pulse-opl pulse hir tensorflow onnx-opl onnx kaldi libcli cli ffi"
+CRATES="data linalg core nnef nnef/nnef-resources pulse-opl pulse hir tensorflow onnx-opl onnx kaldi libcli cli ffi"
 
 if [ `uname` = "Darwin" ]
 then
@@ -22,6 +22,7 @@ do
     tomato set package.version $VERSION $f > /dev/null
     for dep in $CRATES
     do
+        dep=$(basename $dep)
         if tomato get dependencies.tract-$dep.version $f | grep -F . > /dev/null
         then
             tomato set dependencies.tract-$dep.version "=$VERSION" $f > /dev/null
