@@ -354,8 +354,7 @@ impl<'a> IntoAst<'a> {
             name = (0..)
                 .map(|it| Identifier::from(&*format!("{}_{}", name.0, it)))
                 .find(|it| !self.tensors.contains_key(it))
-                .unwrap()
-                .into();
+                .unwrap();
         }
         
         self.tensors.insert(name.clone(), tensor.clone());
