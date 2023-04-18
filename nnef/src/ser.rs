@@ -335,7 +335,7 @@ impl<'a> IntoAst<'a> {
         tensor: &Arc<Tensor>,
         force_variable: bool,
     ) -> TractResult<Arc<RValue>> {
-        let name: Identifier = name.as_ref().into();
+        let mut name: Identifier = name.as_ref().into();
         if !force_variable && tensor.len() <= 8 {
             if tensor.datum_type() == String::datum_type() {
                 return Ok(Self::dump_rec_tensor(&tensor.to_array_view::<String>()?, |f| string(f) ).into());
@@ -349,6 +349,15 @@ impl<'a> IntoAst<'a> {
                 }
             };
         }
+        
+        if self.tensors.contains_key(&name) {
+            name = (0..)
+                .map(|it| Identifier::from(&*format!("{}_{}", name.0, it)))
+                .find(|it| !self.tensors.contains_key(it))
+                .unwrap()
+                .into();
+        }
+        
         self.tensors.insert(name.clone(), tensor.clone());
         let id = self.scoped_id(&name);
         self.assignment(
