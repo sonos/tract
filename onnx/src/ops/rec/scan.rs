@@ -23,7 +23,7 @@ pub fn scan(
     let mut mapped_inputs = vec![];
     let mut mapped_outputs = vec![];
     for ix in 0..num_hidden_state {
-        mapped_inputs.push(ops::scan::InputMapping::State { init_slot: ix });
+        mapped_inputs.push(ops::scan::InputMapping::State);
         mapped_outputs.push(ops::scan::OutputMapping {
             state: true,
             last_value_slot: Some(ix),
@@ -44,17 +44,12 @@ pub fn scan(
         )?
         .apply(&mut model)?;
         model.set_outlet_fact(outlet, InferenceFact::default())?;
-        mapped_inputs.push(ops::scan::InputMapping::Scan(ScanInfo {
-            axis: *ax as usize,
-            slot: ix + num_hidden_state,
-            chunk: 1,
-        }));
+        mapped_inputs
+            .push(ops::scan::InputMapping::Scan(ScanInfo { axis: *ax as usize, chunk: 1 }));
     }
 
-    for (ix, _input) in unresolved_inputs.iter().enumerate() {
-        mapped_inputs.push(ops::scan::InputMapping::Full {
-            slot: model.input_outlets()?.len() - closure_inputs + ix,
-        });
+    for _input in unresolved_inputs.iter() {
+        mapped_inputs.push(ops::scan::InputMapping::Full);
     }
 
     for (ix, ax) in scan_output_axes.iter().enumerate() {
@@ -70,7 +65,7 @@ pub fn scan(
         .apply(&mut model)?;
         mapped_outputs.push(ops::scan::OutputMapping {
             state: false,
-            scan: Some(ScanInfo { axis: *ax as usize, slot: ix + num_hidden_state, chunk: 1 }),
+            scan: Some((ix + num_hidden_state, ScanInfo { axis: *ax as usize, chunk: 1 })),
             full_dim_hint: None,
             last_value_slot: None,
         });

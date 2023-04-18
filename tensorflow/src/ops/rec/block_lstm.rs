@@ -100,7 +100,7 @@ impl Expansion for BlockLSTM {
 
         // X: body input 0: X, new outside input 0 (was 1)
         outer_inputs.push(inputs[1]);
-        input_mapping.push(scan::InputMapping::Scan(ScanInfo { slot: 1, axis: 0, chunk: 1 }));
+        input_mapping.push(scan::InputMapping::Scan(ScanInfo { axis: 0, chunk: 1 }));
         let mut x_source_fact = model.outlet_fact(inputs[1])?.clone();
         x_source_fact.shape.set(0, 1.to_dim());
         let x_source = body.add_source("x_source", x_source_fact)?;
@@ -111,8 +111,7 @@ impl Expansion for BlockLSTM {
         outer_inputs.push(cs);
         let cs_fact = model.outlet_fact(cs)?.clone();
         let cs_source = body.add_source("cs_source", cs_fact)?;
-        input_mapping
-            .push(scan::InputMapping::State { init_slot: 2 });
+        input_mapping.push(scan::InputMapping::State);
         wire!(cs_prev = AxisOp::Rm(0), cs_source);
 
         // H: body input 2
@@ -120,8 +119,7 @@ impl Expansion for BlockLSTM {
         outer_inputs.push(h);
         let h_fact = model.outlet_fact(h)?.clone();
         let h_source = body.add_source("h_source", h_fact)?;
-        input_mapping
-            .push(scan::InputMapping::State { init_slot: 3 });
+        input_mapping.push(scan::InputMapping::State);
         wire!(h_prev = AxisOp::Rm(0), h_source);
 
         wire!(xh = array::TypedConcat::new(1), x, h_prev);
@@ -165,7 +163,7 @@ impl Expansion for BlockLSTM {
                 state: ix == 1 || ix == 6,
                 full_dim_hint: None,
                 last_value_slot: None,
-                scan: Some(ScanInfo { axis: 0, slot: ix, chunk: 1 }),
+                scan: Some((ix, ScanInfo { axis: 0, chunk: 1 })),
             })
         }
 

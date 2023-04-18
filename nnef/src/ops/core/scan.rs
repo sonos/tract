@@ -60,19 +60,19 @@ fn ser_scan(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValu
     let mut state = vec![];
     let mut full = vec![];
     let mut outputs = vec![];
-    for (ix, input) in op.input_mapping.iter().enumerate() {
-        let name = string(&body.decl.parameters[ix].id.0);
+    for (slot, input) in op.input_mapping.iter().enumerate() {
+        let name = string(&body.decl.parameters[slot].id.0);
         match input {
             InputMapping::Scan(info) => {
                 scan.push(tuple_4(
                     name,
-                    ast.mapping[&node.inputs[info.slot]].as_ref().clone(),
+                    ast.mapping[&node.inputs[slot]].as_ref().clone(),
                     numeric(info.axis),
                     numeric(info.chunk),
                 ));
             }
-            InputMapping::State { init_slot } => {
-                let initializer = (*ast.mapping[&node.inputs[*init_slot]]).clone();
+            InputMapping::State => {
+                let initializer = (*ast.mapping[&node.inputs[slot]]).clone();
                 let output: usize = op
                     .output_mapping
                     .iter()
@@ -87,8 +87,8 @@ fn ser_scan(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValu
                     string(body.decl.results[output].id.clone()),
                 ));
             }
-            InputMapping::Full { slot } => {
-                full.push(tuple_2(name, ast.mapping[&node.inputs[*slot]].as_ref().clone()))
+            InputMapping::Full => {
+                full.push(tuple_2(name, ast.mapping[&node.inputs[slot]].as_ref().clone()))
             }
         }
     }
@@ -101,13 +101,13 @@ fn ser_scan(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValu
             .output_mapping
             .iter()
             .enumerate()
-            .find(|(_ix, om)| om.scan.map(|s| s.slot) == Some(slot))
+            .find(|(_ix, om)| om.scan.map(|s| s.0) == Some(slot))
         {
             outputs.push(tuple_4(
                 string(body.decl.results[r_ix].id.clone()),
                 string("full"),
-                numeric(om.scan.unwrap().axis),
-                numeric(om.scan.unwrap().chunk),
+                numeric(om.scan.unwrap().1.axis),
+                numeric(om.scan.unwrap().1.chunk),
             ));
         } else if let Some((r_ix, _om)) =
             op.output_mapping.iter().enumerate().find(|(_ix, om)| om.last_value_slot == Some(slot))
@@ -161,25 +161,21 @@ fn de_scan(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
         let (outer_input_wire, inner_fact) = if let Some((_, wire, axis, chunk)) =
             scan.iter().find(|s| s.0 == par.id.0 || escape(&s.0) == par.id.0)
         {
-            input_mapping.push(InputMapping::Scan(ScanInfo {
-                slot: outer_inputs.len(),
-                axis: *axis,
-                chunk: *chunk,
-            }));
+            input_mapping.push(InputMapping::Scan(ScanInfo { axis: *axis, chunk: *chunk }));
             let mut fact = builder.model.outlet_fact(*wire)?.clone();
             fact.shape.set(*axis, chunk.abs().to_dim());
             (*wire, fact)
         } else if let Some((_, wire)) =
             full.iter().find(|s| s.0 == par.id.0 || escape(&s.0) == par.id.0)
         {
-            input_mapping.push(InputMapping::Full { slot: outer_inputs.len() });
+            input_mapping.push(InputMapping::Full);
             let fact = builder.model.outlet_fact(*wire)?.clone();
             (*wire, fact)
         } else if let Some((_, wire, _out)) =
             state.iter().find(|s| s.0 == par.id.0 || escape(&s.0) == par.id.0)
         {
             let fact = builder.model.outlet_fact(*wire)?.clone();
-            input_mapping.push(InputMapping::State { init_slot: outer_inputs.len() });
+            input_mapping.push(InputMapping::State);
             (*wire, fact.datum_type.fact(fact.shape))
         } else {
             bail!("Unbound body input parameter {}", par.id.0);
@@ -239,7 +235,7 @@ fn de_scan(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
                 .find(|(_, om)| {
                     (om.0 == output_name || escape(&om.0) == output_name) && om.1 == "full"
                 })
-                .map(|(ix, om)| ScanInfo { slot: ix, axis: om.2, chunk: om.3 }),
+                .map(|(ix, om)| (ix, ScanInfo { axis: om.2, chunk: om.3 })),
             last_value_slot: outputs
                 .iter()
                 .enumerate()

@@ -72,12 +72,12 @@ pub fn pull_downsample_over_scan(
 
     let mut patch = TypedModelPatch::default();
     let mut inputs = tvec!();
-    for (i, input) in &mut new_scan.input_mapping.iter_mut().enumerate() {
+    for (slot, input) in &mut new_scan.input_mapping.iter_mut().enumerate() {
         match input {
-            InputMapping::State { init_slot } => {
-                let init = patch.tap_model(model, scan_node.inputs[*init_slot])?;
+            InputMapping::State => {
+                let init = patch.tap_model(model, scan_node.inputs[slot])?;
                 let ds = patch.wire_node(
-                    format!("{}-{}", down_node.name, i),
+                    format!("{}-{}", down_node.name, slot),
                     down_op.clone(),
                     &[init],
                 )?[0];
@@ -89,9 +89,9 @@ pub fn pull_downsample_over_scan(
                 }
                 info.chunk = info.chunk.unsigned_abs().divceil(down_op.stride as usize) as isize
                     * info.chunk.signum();
-                let tap = patch.tap_model(model, scan_node.inputs[info.slot])?;
+                let tap = patch.tap_model(model, scan_node.inputs[slot])?;
                 let ds = patch.wire_node(
-                    format!("{}-{}", down_node.name, i),
+                    format!("{}-{}", down_node.name, slot),
                     down_op.clone(),
                     &[tap],
                 )?[0];
@@ -105,7 +105,7 @@ pub fn pull_downsample_over_scan(
         if let Some(d) = output.full_dim_hint.as_mut() {
             *d = down_op.transform_dim(d)
         }
-        if let Some(info) = &mut output.scan {
+        if let Some((_slot, info)) = &mut output.scan {
             if info.chunk as usize % down_op.stride as usize != 0 {
                 return Ok(None);
             }

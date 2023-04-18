@@ -23,8 +23,6 @@ struct CumSum {
     exclusive: bool,
 }
 
-
-
 impl Expansion for CumSum {
     fn name(&self) -> Cow<str> {
         "CumSum".into()
@@ -54,22 +52,20 @@ impl Expansion for CumSum {
             &[zero],
         )?[0];
         let chunk = if self.reverse { -1 } else { 1 };
-        let input_mapping = vec![
-            scan::InputMapping::Scan(ScanInfo { slot: 0, axis, chunk }),
-            scan::InputMapping::State { init_slot: 1 },
-        ];
+        let input_mapping =
+            vec![scan::InputMapping::Scan(ScanInfo { axis, chunk }), scan::InputMapping::State];
         // outputs will be
         // acc + x (!exclusive)
         // acc input (exclusive)
         let output_mapping = vec![
             scan::OutputMapping {
-                scan: Some(ScanInfo { slot: 0, axis, chunk }),
+                scan: Some((0, ScanInfo { axis, chunk })),
                 full_dim_hint: None,
                 last_value_slot: None,
                 state: true,
             },
             scan::OutputMapping {
-                scan: Some(ScanInfo { slot: 1, axis, chunk }),
+                scan: Some((1, ScanInfo { axis, chunk })),
                 full_dim_hint: None,
                 last_value_slot: None,
                 state: false,

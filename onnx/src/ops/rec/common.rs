@@ -104,7 +104,7 @@ impl CommonRec {
         // scann inner interface: [chunk=1, batch_size, input_size]
         // onnx inner interface: [batch_size, input_size]
         outer_inputs.push(x_batch_first);
-        input_mapping.push(scan::InputMapping::Scan(ScanInfo { slot: 0, axis: 1, chunk }));
+        input_mapping.push(scan::InputMapping::Scan(ScanInfo { axis: 1, chunk }));
         let mut x_source_fact = target.outlet_fact(x_batch_first)?.without_value();
         x_source_fact.shape.set(1, 1.to_dim());
         let x_source = body.add_source("x_source", x_source_fact)?;
@@ -115,7 +115,7 @@ impl CommonRec {
         target_wire!(w_dir = array::Slice::new(0, dir, dir + 1), inputs[1]);
         target_wire!(w = AxisOp::Rm(0), w_dir);
         outer_inputs.push(w);
-        input_mapping.push(scan::InputMapping::Full { slot: 1 });
+        input_mapping.push(scan::InputMapping::Full);
         body.add_source("W", target.outlet_fact(w)?.clone())?;
 
         // R: onnx interface: [num_directions, 3*hidden_size, hidden_size]
@@ -123,20 +123,21 @@ impl CommonRec {
         target_wire!(r_dir = array::Slice::new(0, dir, dir + 1), inputs[2]);
         target_wire!(r = AxisOp::Rm(0), r_dir);
         outer_inputs.push(r);
-        input_mapping.push(scan::InputMapping::Full { slot: 2 });
+        input_mapping.push(scan::InputMapping::Full);
         body.add_source("R", target.outlet_fact(r)?.clone())?;
 
         // B: onnx interface: [num_directions, 6*hidden_size]
         if let Some(slot) = self.optional_bias_input {
             target_wire!(b_dir = array::Slice::new(0, dir, dir + 1), inputs[slot]);
             outer_inputs.push(b_dir);
-            input_mapping.push(scan::InputMapping::Full { slot });
+            input_mapping.push(scan::InputMapping::Full);
             let b = body.add_source("b", target.outlet_fact(b_dir)?.clone())?;
             Some(b)
         } else {
             None
         };
 
+        // FIXME is this working ? is it tested ?
         if let Some(slot) = self.optional_sequence_lens_input {
             outer_inputs.push(inputs[slot]);
         }
@@ -169,7 +170,7 @@ impl CommonRec {
             )?
         };
         outer_inputs.push(initializer);
-        input_mapping.push(scan::InputMapping::State { init_slot: outer_inputs.len() - 1 });
+        input_mapping.push(scan::InputMapping::State);
 
         let h_source = body.add_source(
             "h_source",
@@ -202,7 +203,7 @@ impl CommonRec {
                 )?
             };
             outer_inputs.push(initializer);
-            input_mapping.push(scan::InputMapping::State { init_slot: outer_inputs.len() - 1 });
+            input_mapping.push(scan::InputMapping::State);
             let c_source = body.add_source(
                 "c_source",
                 x_fact.datum_type.fact(&[b_size.clone(), 1.to_dim(), h_size.clone()]),
@@ -214,7 +215,7 @@ impl CommonRec {
         if let Some(slot) = self.optional_p_input {
             target_wire!(p = array::Slice::new(0, dir, dir + 1), inputs[slot]);
             outer_inputs.push(p);
-            input_mapping.push(scan::InputMapping::Full { slot });
+            input_mapping.push(scan::InputMapping::Full);
             body.add_source("peepholes", target.outlet_fact(p)?.clone())?;
         };
 
@@ -224,7 +225,7 @@ impl CommonRec {
             state: true,
             full_dim_hint: None,
             last_value_slot: self.optional_y_h_output,
-            scan: self.optional_y_output.map(|slot| ScanInfo { slot, axis: 1, chunk }),
+            scan: self.optional_y_output.map(|slot| (slot, ScanInfo { axis: 1, chunk })),
         }];
         if self.body.have_extra_c_state() {
             output_mapping.push(scan::OutputMapping {

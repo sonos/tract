@@ -23,16 +23,7 @@ impl std::ops::Deref for LirScan {
 
 impl LirScan {
     pub fn iteration_count(&self, inputs: &[&TypedFact]) -> Option<TDim> {
-        let info = self
-            .input_mapping
-            .iter()
-            .find_map(|it| match it {
-                InputMapping::Scan(info) => Some(info),
-                _ => None,
-            })
-            .unwrap();
-        let outside_dim = inputs[info.slot].shape[info.axis].clone();
-        Some(outside_dim / info.chunk.abs())
+        super::iteration_count(&self.input_mapping, inputs)
     }
 }
 
@@ -114,16 +105,14 @@ impl FrozenOpState for FrozenState {
 
 impl State {
     pub fn iteration_count(&self, inputs: &TVec<TValue>) -> usize {
-        let info = self
+        let (slot, info) = self
             .op
             .input_mapping
             .iter()
-            .find_map(|it| match it {
-                InputMapping::Scan(info) => Some(info),
-                _ => None,
-            })
+            .enumerate()
+            .find_map(|(ix, it)| it.as_scan().map(|scan| (ix, scan)))
             .unwrap();
-        inputs[info.slot].shape()[info.axis].divceil(info.chunk.unsigned_abs())
+        inputs[slot].shape()[info.axis].divceil(info.chunk.unsigned_abs())
     }
 
     pub(super) fn slice_input(
@@ -189,20 +178,20 @@ impl OpState for State {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let iters = self.iteration_count(&inputs);
-        
+
         let State { op, ref mut hidden_state, ref mut position, ref mut model_state } = self;
         // initialize state at first pass
         if hidden_state.len() == 0 {
-            for input in &op.input_mapping {
-                if let InputMapping::State { init_slot } = input {
-                    hidden_state.push(inputs[*init_slot].clone());
+            for (slot, input) in op.input_mapping.iter().enumerate() {
+                if input.is_state() {
+                    hidden_state.push(inputs[slot].clone());
                 }
             }
         }
 
         let mut outputs = tvec!();
         for (ix, output) in op.output_mapping.iter().enumerate() {
-            if let Some(info) = output.scan {
+            if let Some((slot, info)) = output.scan {
                 let fact = op.plan.model().output_fact(ix)?;
                 let mut shape: TVec<usize> =
                     fact.shape.eval_to_usize(&session.resolved_symbols)?.into_owned();
@@ -213,7 +202,7 @@ impl OpState for State {
                     .unwrap_or(shape[info.axis] * iters);
                 shape[info.axis] = scanning_dim;
                 let t = unsafe { Tensor::uninitialized_dt(fact.datum_type, &shape)? };
-                outputs.push((info.slot, t));
+                outputs.push((slot, t));
             }
             if let Some(slot) = output.last_value_slot {
                 outputs.push((slot, Tensor::default()));
@@ -232,14 +221,15 @@ impl OpState for State {
             let iter_inputs: TVec<TValue> = op
                 .input_mapping
                 .iter()
-                .map(|m| {
+                .enumerate()
+                .map(|(slot, m)| {
                     Ok(match m {
                         InputMapping::State { .. } => Some(hidden_state.pop().unwrap()),
                         InputMapping::Scan(info) => Some(
-                            Self::slice_input(&inputs[info.slot], info.axis, i, info.chunk)?
+                            Self::slice_input(&inputs[slot], info.axis, i, info.chunk)?
                                 .into_tvalue(),
                         ),
-                        InputMapping::Full { slot } => Some(inputs[*slot].clone()),
+                        InputMapping::Full => Some(inputs[slot].clone()),
                     })
                 })
                 .collect::<TractResult<Vec<_>>>()?
@@ -253,8 +243,8 @@ impl OpState for State {
             trace!("iter_outputs #{}: {:?}", i, iter_outputs);
 
             for (v, mapping) in iter_outputs.into_iter().zip(&op.output_mapping) {
-                if let Some(info) = mapping.scan {
-                    Self::assign_output(&mut outputs[info.slot], info.axis, &v, i, info.chunk < 0);
+                if let Some((slot, info)) = mapping.scan {
+                    Self::assign_output(&mut outputs[slot], info.axis, &v, i, info.chunk < 0);
                 }
                 if i == iters - 1 {
                     if let Some(slot) = mapping.last_value_slot {
@@ -276,21 +266,18 @@ impl TypedOp for LirScan {
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut outputs = tvec!();
-        let iters = {
-            let info = self.input_mapping.iter().find_map(|it| it.as_scan()).unwrap();
-            inputs[info.slot].shape[info.axis].clone().div_ceil(info.chunk.unsigned_abs() as _)
-        };
+        let iters = super::iteration_count(&self.input_mapping, inputs).unwrap();
         for (ix, output) in self.output_mapping.iter().enumerate() {
             let fact = self.plan.model().output_fact(ix)?;
             if let Some(slot) = output.last_value_slot {
                 outputs.push((slot, fact.datum_type.fact(fact.shape.clone())));
             }
-            if let Some(info) = output.scan {
+            if let Some((slot, info)) = output.scan {
                 let mut shape = fact.shape.clone();
                 let scanning_dim =
                     output.full_dim_hint.clone().unwrap_or(shape[info.axis].clone() * &iters);
                 shape.set(info.axis, scanning_dim);
-                outputs.push((info.slot, fact.datum_type.fact(shape)));
+                outputs.push((slot, fact.datum_type.fact(shape)));
             }
         }
         outputs.sort_by_key(|a| a.0);
