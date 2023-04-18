@@ -61,10 +61,7 @@ impl InferenceScan {
                         chunk: typed_model.input_fact(ix)?.shape[info.axis].to_isize()?,
                         ..*info
                     }),
-                    InputMapping::Full { slot } => InputMapping::Full { slot: *slot },
-                    InputMapping::State { init_slot: initializer } => {
-                        InputMapping::State { init_slot: *initializer }
-                    }
+                    other => other.clone(),
                 })
             })
             .collect::<TractResult<_>>()?;
@@ -73,11 +70,11 @@ impl InferenceScan {
             .iter()
             .enumerate()
             .map(|(ix, im)| {
-                let scan = if let Some(scan) = im.scan {
-                    Some(ScanInfo {
+                let scan = if let Some((slot, scan)) = im.scan {
+                    Some((slot, ScanInfo {
                         chunk: typed_model.input_fact(ix)?.shape[scan.axis].to_isize()?,
                         ..scan
-                    })
+                    }))
                 } else {
                     None
                 };
@@ -145,16 +142,9 @@ impl InferenceScan {
         outputs: &mut [InferenceFact],
     ) -> TractResult<bool> {
         let mut changed = false;
-        let hidden_state_len = self.input_mapping.iter().filter_map(|m| m.as_state()).count();
+        let hidden_state_len = self.input_mapping.iter().filter(|m| m.is_state()).count();
         for state_ix in 0..hidden_state_len {
             trace!("Unify hidden state #{}", state_ix);
-            let (inner_model_input_ix, initializer) = self
-                .input_mapping
-                .iter()
-                .enumerate()
-                .filter_map(|(ix, m)| m.as_state().map(|init| (ix, init)))
-                .nth(state_ix)
-                .unwrap();
             let inner_model_output_ix = self
                 .output_mapping
                 .iter()
@@ -164,10 +154,10 @@ impl InferenceScan {
                 .unwrap()
                 .0;
             let mut facts = self.body.outlets_fact_mut(&[
-                self.body.input_outlets()?[inner_model_input_ix],
+                self.body.input_outlets()?[state_ix],
                 self.body.output_outlets()?[inner_model_output_ix],
             ])?;
-            facts.push(&mut inputs[initializer]);
+            facts.push(&mut inputs[state_ix]);
             if Factoid::unify_all(
                 &mut facts.iter_mut().map(|f| &mut f.datum_type).collect::<TVec<_>>(),
             )? {
@@ -178,17 +168,17 @@ impl InferenceScan {
                 changed = true;
             }
         }
-        for (ix, i) in self.input_mapping.iter().enumerate() {
+        for (slot, i) in self.input_mapping.iter().enumerate() {
             match i {
                 InputMapping::State { .. } => {}
-                InputMapping::Full { slot } => {
-                    if inputs[*slot].unify_with_mut(self.body.input_fact_mut(ix)?)? {
+                InputMapping::Full => {
+                    if inputs[slot].unify_with_mut(self.body.input_fact_mut(slot)?)? {
                         changed = true;
                     }
                 }
                 InputMapping::Scan(scan) => {
-                    let incoming = &mut inputs[scan.slot];
-                    let inner = self.body.input_fact_mut(ix)?;
+                    let incoming = &mut inputs[slot];
+                    let inner = self.body.input_fact_mut(slot)?;
                     if Self::unify_scanning_tensor_fact(incoming, inner, scan.axis)? {
                         changed = true;
                     };
@@ -211,8 +201,8 @@ impl InferenceScan {
             }
         }
         for (ix, i) in self.output_mapping.iter().enumerate() {
-            if let Some(scan) = i.scan {
-                let outgoing = &mut outputs[scan.slot];
+            if let Some((slot, scan)) = i.scan {
+                let outgoing = &mut outputs[slot];
                 let inner = self.body.output_fact_mut(ix)?;
                 if Self::unify_scanning_tensor_fact(outgoing, inner, scan.axis)? {
                     changed = true
@@ -257,7 +247,7 @@ impl InferenceOp for InferenceScan {
             .output_mapping
             .iter()
             .filter_map(|om| om.last_value_slot)
-            .chain(self.output_mapping.iter().filter_map(|om| om.scan.map(|si| si.slot)))
+            .chain(self.output_mapping.iter().filter_map(|om| om.scan.map(|si| si.0)))
             .max()
             .context("No output slot found")? + 1;
         if inputs.len() != expected_op_inputs {

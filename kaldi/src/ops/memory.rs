@@ -135,8 +135,7 @@ fn incorporate_memory_ops_as_scans(
                 format!("{name}.{}", mem_node.name),
                 Tensor::zero::<f32>(&[(-op.offset) as usize, channel])?,
             )?;
-            mapped_inputs
-                .push(tract_hir::ops::scan::InputMapping::State { init_slot: outer_inputs.len() });
+            mapped_inputs.push(tract_hir::ops::scan::InputMapping::State);
             outer_inputs.push(zeroes);
             mapped_outputs.push(tract_hir::ops::scan::OutputMapping {
                 state: true,
@@ -197,14 +196,11 @@ fn incorporate_memory_ops_as_scans(
             let old_node = model.node(scan_input.node);
             let fact = inner_model.input_fact(coupled_mem_ops.len() + ix)?;
             let chunk = fact.shape.dim(0).unwrap().concretize().unwrap().to_isize()?;
-            mapped_inputs.push(tract_hir::ops::scan::InputMapping::Scan(ScanInfo {
-                axis: 0,
-                chunk,
-                slot: ix + coupled_mem_ops.len(),
-            }));
+            mapped_inputs
+                .push(tract_hir::ops::scan::InputMapping::Scan(ScanInfo { axis: 0, chunk }));
             mapped_outputs.push(tract_hir::ops::scan::OutputMapping {
                 state: false,
-                scan: Some(ScanInfo { slot: ix, axis: 0, chunk }),
+                scan: Some((ix, ScanInfo { axis: 0, chunk })),
                 last_value_slot: None,
                 full_dim_hint: old_node.outputs[0].fact.shape.dim(0).unwrap().concretize(),
             });
