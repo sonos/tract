@@ -27,7 +27,7 @@ pub fn profile(
     dg: &mut Annotations,
     inputs: &TVec<TValue>,
     custom_profiler: Option<HashMap<TypeId, Profiler>>,
-    full_output: bool,
+    folded: bool,
 ) -> TractResult<()> {
     info!("Running entire network");
     let mut iters = 0usize;
@@ -46,7 +46,7 @@ pub fn profile(
             &prefix,
             None,
             &mut time_accounted_by_inner_nodes,
-            full_output,
+            folded,
         )?;
         iters += 1;
     }
@@ -76,7 +76,7 @@ pub fn rec_profiler(
     prefix: &[(usize, String)],
     multiplier: Option<usize>,
     time_accounted_by_inner_nodes: &mut Duration,
-    full_output: bool,
+    folded: bool,
 ) -> TractResult<TVec<TValue>> {
     let r = state.run_plan_with_eval(
         inputs.clone(),
@@ -88,7 +88,7 @@ pub fn rec_profiler(
             let node_id = NodeQId(prefix.into(), node.id);
             *dg.node_mut(node_id).profile.get_or_insert(Duration::default()) += elapsed;
 
-            if full_output {
+            if !folded {
                 let start = Instant::now();
                 profile_submodel(
                     node,
