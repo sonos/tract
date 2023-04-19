@@ -57,20 +57,6 @@ impl Nnef {
         self
     }
 
-    pub fn with_primitive_alternative(
-        mut self,
-        registry_id: &str,
-        op_id: &str,
-        func: ToTract,
-    ) -> TractResult<Self> {
-        if let Some(reg) = self.registries.iter_mut().find(|it| it.id == registry_id.into()) {
-            reg.register_primitive_alternative(op_id, func).with_context(|| {
-                anyhow!("Impossible to add new primitive alternative for op {}", op_id)
-            })?;
-        }
-        Ok(self)
-    }
-
     pub fn enable_tract_resource(&mut self) {
         self.registries.push(crate::ops::tract_core());
     }

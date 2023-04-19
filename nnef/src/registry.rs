@@ -41,7 +41,7 @@ pub struct Registry {
     pub docstrings: Option<Vec<String>>,
     pub aliases: Vec<Identifier>,
     pub fragments: HashMap<Identifier, FragmentDef>,
-    pub primitives: HashMap<Identifier, Vec<PrimitiveDecl>>,
+    pub primitives: HashMap<Identifier, PrimitiveDecl>,
     pub unit_element_wise_ops: Vec<(Identifier, Box<dyn ElementWiseMiniOp>)>,
     pub element_wise_ops: Vec<(Identifier, TypeId, FromTract, Vec<ast::Parameter>, ToTract)>,
     pub binary_ops: Vec<BinOp>,
@@ -89,34 +89,10 @@ impl Registry {
             results: results.iter().cloned().map(|it| it.into()).collect(),
         };
         let primitive_decl = PrimitiveDecl { decl, docstrings: None, to_tract: func };
-        self.primitives.insert(id.clone(), vec![primitive_decl]);
+        self.primitives.insert(id.clone(), primitive_decl);
         self.primitives
             .get_mut(&id)
-            .and_then(|it| it.last_mut())
             .expect("Unexpected empty entry in primitives hashmap")
-    }
-
-    pub fn register_primitive_alternative(
-        &mut self,
-        id: impl AsRef<str>,
-        func: ToTract,
-    ) -> TractResult<&mut PrimitiveDecl> {
-        let id: Identifier = id.as_ref().into();
-        self.primitives.get_mut(&id).map_or_else(
-            || bail!("No primitive with name '{}' in registry: {}", id.as_ref(), self.id.as_ref()),
-            |it| -> TractResult<()> {
-                let last = it.last().unwrap_or_else(|| panic!("Unexpected empty primitive declaration for '{}'", id.as_ref()));
-                let mut new = last.clone();
-                new.to_tract = func;
-                it.insert(0, new);
-                Ok(())
-            },
-        )?;
-        Ok(self
-            .primitives
-            .get_mut(&id)
-            .and_then(|it| it.last_mut())
-            .expect("Unexpected empty entry in primitives hashmap"))
     }
 
     pub fn register_fragment(&mut self, def: FragmentDef) {
@@ -189,28 +165,14 @@ impl Registry {
         invocation: &ast::Invocation,
         dt: &[Option<DatumType>],
     ) -> TractResult<Option<Value>> {
-        if let Some(p) = self.primitives.get(&invocation.id) {
-            let out_value = p
-                .iter()
-                .enumerate()
-                .find_map(|(idx, op)| {
-                    let resolved = ResolvedInvocation {
-                        invocation,
-                        default_params: &op.decl.parameters,
-                        dt_from_quant_file: dt,
-                    };
-                    (op.to_tract)(builder, &resolved)
-                        .map_err(|err| {
-                            log::debug!(
-                                "Failed to load {:?} with deserializer {}: {:?}",
-                                &invocation.id,
-                                idx,
-                                &err
-                            );
-                        })
-                        .ok()
-                })
-                .ok_or(anyhow!("No valid deserializer found for {:?}", &invocation.id))?;
+        if let Some(op) = self.primitives.get(&invocation.id) {
+            let resolved = ResolvedInvocation {
+                invocation,
+                default_params: &op.decl.parameters,
+                dt_from_quant_file: dt,
+            };
+            let out_value = (op.to_tract)(builder, &resolved)
+                .with_context(|| format!("Deserializing op `{}'", invocation.id.0))?;
             return Ok(Some(out_value));
         }
         if let Some(ew) = self.unit_element_wise_ops.iter().find(|ew| ew.0 == invocation.id) {
