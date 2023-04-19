@@ -224,7 +224,9 @@ impl<'mb> ModelBuilder<'mb> {
                 );
             }
         }
-        for registry in &self.framework.registries {
+
+        // We start with the registry that has been added last
+        for registry in self.framework.registries.iter().rev() {
             if self.registries.contains(&registry.id) {
                 if let Some(outputs) = registry
                     .deserialize(self, invocation, dt)
