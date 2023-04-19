@@ -1,7 +1,10 @@
 [package]
-name = "rs"
+name = "tract-rs"
 version = "0.1.0"
 edition = "2021"
 
-[build-dependencies]
-bindgen.workspace = true
+[dependencies]
+anyhow.workspace = true
+ndarray.workspace = true
+tract-rs-sys = { path = "sys", version = "=0.20.0-pre" }
+

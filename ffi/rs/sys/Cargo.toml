@@ -1,6 +1,6 @@
 [package]
-name = "sys"
-version = "0.1.0"
+name = "tract-rs-sys"
+version = "0.20.0-pre"
 edition = "2021"
 
 [build-dependencies]
