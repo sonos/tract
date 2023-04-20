@@ -1,13 +1,13 @@
 [package]
 name = "tf-moz-deepspeech"
-version = "0.19.11-pre"
+version = "0.19.13-pre"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 edition = "2021"
 license = "MIT/Apache-2.0"
 
 [dependencies]
 log.workspace = true
-tract-tensorflow = { path = "../../tensorflow", version = "=0.19.12" }
+tract-tensorflow = { path = "../../tensorflow", version = "=0.19.13-pre" }
 
 [dev-dependencies]
 env_logger.workspace = true

@@ -1,6 +1,6 @@
 [package]
 name = "tract-ci-minion"
-version = "0.19.11-pre"
+version = "0.19.13-pre"
 edition = "2021"
 
 [workspace]
