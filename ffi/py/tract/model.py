@@ -8,7 +8,7 @@ from .runnable import Runnable
 
 class Model:
     """
-    Main model object
+    # Main model object
 
     ## Central focus point of the model transformation pipeline
 
@@ -23,12 +23,13 @@ class Model:
 
     ## Model cooking
 
-    But some model transformations can be peformed on the Model class:
-     * declutter (getting rid of training artefacts)
-     * "pulsification" (transforming a batch-oriented model into a streaming model)
-     * symbol substitution (make N or Batch a fixed number, unlocking potential optimisation later on)
-     * static cost evalation and dynamic profiling
-     * ...
+    But some model transformations can be peformed on the `Model` class:
+
+    * declutter (getting rid of training artefacts)
+    * "pulsification" (transforming a batch-oriented model into a streaming model)
+    * symbol substitution (make N or Batch a fixed number, unlocking potential optimisation later on)
+    * static cost evalation and dynamic profiling
+    * ...
 
     In some situation, these operation are done "on-the-fly" when a ONNX or NNEF model is loaded,
     at start-up time. In other situation, when start-up time becomes an issue, it may be beneficial
@@ -36,7 +37,7 @@ class Model:
     tract-opl extension if needed). At start-up this model can be significantly less expensive to
     "cook" for inference.
 
-    # Model and TypedModel
+    ## Model and TypedModel
 
     This class is actually a wrapper around the "TypedModel" in Rust codebase. The "Typed"
     bit means than all shapes and element types in all input, output and temporary values must
@@ -44,6 +45,7 @@ class Model:
     capabilities on symbolic expression. For instance, it is relatively frequent to work with
     a Model where all tensors shapes start with the `N` or `Batch`.
     """
+
     def __init__(self, ptr):
         self.ptr = ptr
 
@@ -55,22 +57,22 @@ class Model:
         if self.ptr == None:
             raise TractError("invalid model (maybe already consumed ?)")
 
-    """Return the number of inputs of the model"""
     def input_count(self) -> int:
+        """Return the number of inputs of the model"""
         self._valid()
         i = c_size_t()
         check(lib.tract_model_nbio(self.ptr, byref(i), None))
         return i.value
 
-    """Return the number of outputs of the model"""
     def output_count(self) -> int:
+        """Return the number of outputs of the model"""
         self._valid()
         i = c_size_t()
         check(lib.tract_model_nbio(self.ptr, None, byref(i)))
         return i.value
 
-    """Return the name of the input_id-th input"""
     def input_name(self, input_id: int) -> str:
+        """Return the name of the input_id-th input"""
         self._valid()
         cstring = c_char_p()
         check(lib.tract_model_input_name(self.ptr, input_id, byref(cstring)))
@@ -78,15 +80,26 @@ class Model:
         lib.tract_free_cstring(cstring)
         return result
 
-    """Return the fact of the input_id-th input"""
     def input_fact(self, input_id: int) -> Fact:
+        """Return the fact of the input_id-th input"""
         self._valid()
         fact = c_void_p()
         check(lib.tract_model_input_fact(self.ptr, input_id, byref(fact)))
         return Fact(fact)
 
-    """Return the name of the output_id-th output"""
+    def set_output_names(self, names: List[str]):
+        """Change the output nodes of the model"""
+        self._valid()
+        nb = len(names)
+        names_str = []
+        names_ptr = (c_char_p * nb)()
+        for ix, n in enumerate(names):
+            names_str.append(str(n).encode("utf-8"))
+            names_ptr[ix] = names_str[ix]
+        check(lib.tract_model_set_output_names(self.ptr, nb, names_ptr))
+
     def output_name(self, output_id: int) -> str:
+        """Return the name of the output_id-th output"""
         self._valid()
         cstring = c_char_p()
         check(lib.tract_model_output_name(self.ptr, output_id, byref(cstring)))
@@ -94,21 +107,21 @@ class Model:
         lib.tract_free_cstring(cstring)
         return result
 
-    """Return the fact of the output_id-th output"""
     def output_fact(self, input_id: int) -> Fact:
+        """Return the fact of the output_id-th output"""
         self._valid()
         fact = c_void_p()
         check(lib.tract_model_output_fact(self.ptr, input_id, byref(fact)))
         return Fact(fact)
 
-    """Substitute symbols by a value
-
-    Replace all occurencies of the symbols in the dictionary, in all the Model facts shapes.
-
-    While this is not strictly necesary, the optimizing steps may make better choices if the model
-    is informed of some specific symbol values.
-    """
     def concretize_symbols(self, values: Dict[str, int]) -> None:
+        """Substitute symbols by a value
+
+        Replace all occurencies of the symbols in the dictionary, in all the Model facts shapes.
+
+        While this is not strictly necesary, the optimizing steps may make better choices if the model
+        is informed of some specific symbol values.
+        """
         self._valid()
         nb = len(values)
         names_str = []
@@ -120,39 +133,43 @@ class Model:
             values_list[ix] = v
         check(lib.tract_model_concretize_symbols(self.ptr, c_size_t(nb), names, values_list))
 
-    """Pulsify a model.
-
-    `pulse` is typically a one-length dictionary mapping the time dimension symbol to a pulse len.
-    """
     def pulse(self, symbol: str, pulse: Union[str, int]) -> None:
+        """Pulsify a model.
+
+        `pulse` is typically a one-length dictionary mapping the time dimension symbol to a pulse len.
+        """
         self._valid()
         check(lib.tract_model_pulse_simple(byref(self.ptr), symbol.encode("utf-8"), str(pulse).encode("utf-8")))
 
     def declutter(self) -> None:
+        """Declutter the model in place"""
         self._valid()
         check(lib.tract_model_declutter(self.ptr))
 
     def optimize(self) -> None:
+        """Optimize the model in place"""
         self._valid()
         check(lib.tract_model_optimize(self.ptr))
 
-    """Convenience method performing `declutter()` and returning the model"""
     def into_decluttered(self) -> "Model":
+        """Convenience method performing `declutter()` and returning the model"""
         self.declutter();
         return self
 
-    """Convenience method performing `optimize()` and returning the model"""
     def into_optimized(self) -> "Model":
+        """Convenience method performing `optimize()` and returning the model"""
         self.optimize()
         return self
 
     def into_runnable(self) -> Runnable:
+        """Transform the model into a Runnable model ready to be used"""
         self._valid()
         runnable = c_void_p()
         check(lib.tract_model_into_runnable(byref(self.ptr), byref(runnable)))
         return Runnable(runnable)
 
     def property_keys(self) -> List[str]:
+        """Extract the list of properties from a model"""
         self._valid()
         count = c_size_t()
         check(lib.tract_model_property_count(self.ptr, byref(count)))
@@ -166,12 +183,14 @@ class Model:
         return names
 
     def property(self, name: str) -> Value:
+        """Query a property by name"""
         self._valid()
         value = c_void_p()
         check(lib.tract_model_property(self.ptr, str(name).encode("utf-8"), byref(value)))
         return Value(value)
 
     def profile_json(self, inputs: Union[None, List[Union[Value, numpy.ndarray]]]) -> str:
+        """Profile the model on the provided input"""
         self._valid()
         cstring = c_char_p()
         input_values = []
