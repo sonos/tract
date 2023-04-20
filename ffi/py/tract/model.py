@@ -8,8 +8,8 @@ from .runnable import Runnable
 
 class Model:
     """
-    Main model object
- 
+    # Main model object
+
     ## Central focus point of the model transformation pipeline
  
     The Model is the central point of tract model loading and "model cooking". ONNX and NNEF 
@@ -37,8 +37,8 @@ class Model:
     tract-opl extension if needed). At start-up this model can be significantly less expensive to
     "cook" for inference.
  
-    # Model and TypedModel
- 
+    ## Model and TypedModel
+
     This class is actually a wrapper around the "TypedModel" in Rust codebase. The "Typed"
     bit means than all shapes and element types in all input, output and temporary values must
     known. There is support in tract for symbols in dimensions, with some limited computation
@@ -86,6 +86,17 @@ class Model:
         fact = c_void_p()
         check(lib.tract_model_input_fact(self.ptr, input_id, byref(fact)))
         return Fact(fact)
+
+    def set_output_names(self, names: List[str]):
+        """Change the output nodes of the model"""
+        self._valid()
+        nb = len(names)
+        names_str = []
+        names_ptr = (c_char_p * nb)()
+        for ix, n in enumerate(names):
+            names_str.append(str(n).encode("utf-8"))
+            names_ptr[ix] = names_str[ix]
+        check(lib.tract_model_set_output_names(self.ptr, nb, names_ptr))
 
     def output_name(self, output_id: int) -> str:
         """Return the name of the output_id-th output"""
@@ -165,7 +176,7 @@ class Model:
         return self
 
     def into_runnable(self) -> Runnable:
-        """Convert the optimized model to a read-to-run object."""
+        """Transform the model into a ready to be used Runnable model"""
         self._valid()
         runnable = c_void_p()
         check(lib.tract_model_into_runnable(byref(self.ptr), byref(runnable)))
@@ -186,7 +197,7 @@ class Model:
         return names
 
     def property(self, name: str) -> Value:
-        """Get a property value from the model."""
+        """Query a property by name"""
         self._valid()
         value = c_void_p()
         check(lib.tract_model_property(self.ptr, str(name).encode("utf-8"), byref(value)))
