@@ -62,6 +62,14 @@ def test_inference_model():
     assert str(model.output_fact(0)) == "B,1000,F32"
     typed = model.into_typed()
 
+def test_set_output_names_on_inference_model():
+    model = tract.onnx().model_for_path("./mobilenetv2-7.onnx")
+    model.set_input_fact(0, "B,3,224,224,f32")
+    model.set_output_fact(0, None)
+    model.analyse()
+    model.set_output_names(["mobilenetv20_output_pred_fwd"])
+    assert str(model.output_fact(0)) == "B,1000,1,1,F32"
+
 def test_typed_model():
     model = tract.nnef().model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")
     assert model.input_count() == 1
@@ -71,6 +79,11 @@ def test_typed_model():
     assert str(model.input_fact(0)) == "1,3,224,224,F32"
     assert str(model.output_fact(0)) == "1,1000,F32"
     model.declutter()
+
+def test_set_output_names():
+    model = tract.nnef().model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")
+    model.set_output_names(["conv_53"])
+    assert str(model.output_fact(0)) == "1,1000,1,1,F32"
 
 def test_concretize():
     model = tract.onnx().model_for_path("./mobilenetv2-7.onnx")

@@ -1,21 +1,19 @@
 #![allow(clippy::missing_safety_doc)]
 
 use anyhow::Context;
-use tract_libcli::annotations::Annotations;
-use tract_libcli::profile::BenchLimits;
-use tract_nnef::prelude::translator::Translate;
 use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::sync::Arc;
 use tract_data::internal::parse_tdim;
-use tract_pulse::model::{PulsedModel, PulsedModelExt};
-
+use tract_libcli::annotations::Annotations;
+use tract_libcli::profile::BenchLimits;
 use tract_nnef::internal as native;
 use tract_nnef::tract_core::prelude::*;
-
 use tract_onnx::prelude::InferenceModelExt;
 use tract_onnx::prelude::{self as onnx, InferenceFact};
+use tract_pulse::internal::translator::Translate;
+use tract_pulse::model::{PulsedModel, PulsedModelExt};
 
 /// Used as a return type of functions that can encounter errors.
 /// If the function encountered an error, you can retrieve it using the `tract_get_last_error`
@@ -252,7 +250,10 @@ pub unsafe extern "C" fn tract_nnef_enable_pulse(nnef: *mut TractNnef) -> TRACT_
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn tract_nnef_allow_extended_identifier_syntax(nnef: *mut TractNnef, enable: bool) -> TRACT_RESULT {
+pub unsafe extern "C" fn tract_nnef_allow_extended_identifier_syntax(
+    nnef: *mut TractNnef,
+    enable: bool,
+) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(nnef);
         (*nnef).0.allow_extended_identifier_syntax(enable);
@@ -488,6 +489,25 @@ pub unsafe extern "C" fn tract_inference_model_set_input_fact(
     })
 }
 
+/// Change the model outputs nodes (by name).
+///
+/// `names` is an array containing `len` pointers to null terminated strings.
+#[no_mangle]
+pub unsafe extern "C" fn tract_inference_model_set_output_names(
+    model: *mut TractInferenceModel,
+    len: usize,
+    names: *const *const c_char,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(model, names, *names);
+        let node_names = (0..len)
+            .map(|i| Ok(CStr::from_ptr(*names.add(i)).to_str()?.to_owned()))
+            .collect::<TractResult<Vec<_>>>()?;
+        (*model).0.set_output_names(&node_names)?;
+        Ok(())
+    })
+}
+
 /// Query an output fact for an InferenceModel.
 ///
 /// The return model must be freed using `tract_inference_fact_destroy`.
@@ -688,9 +708,31 @@ pub unsafe extern "C" fn tract_model_output_fact(
     })
 }
 
-/// Concretize one or more symbols in the model.
+/// Change the model outputs nodes (by name).
 ///
-/// * symbols is a an array of nb_symbols symbol names. Each symbol is a null-terminated string.
+/// `names` is an array containing `len` pointers to null terminated strings.
+#[no_mangle]
+pub unsafe extern "C" fn tract_model_set_output_names(
+    model: *mut TractModel,
+    len: usize,
+    names: *const *const c_char,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(model, names, *names);
+        let node_names = (0..len)
+            .map(|i| Ok(CStr::from_ptr(*names.add(i)).to_str()?.to_owned()))
+            .collect::<TractResult<Vec<_>>>()?;
+        dbg!(&node_names);
+        (*model).0.set_output_names(&node_names)?;
+        Ok(())
+    })
+}
+
+/// Give value one or more symbols used in the model.
+///
+/// * symbols is an array of `nb_symbols` pointers to null-terminated UTF-8 string for the symbols
+/// names to substitue
+/// * values is an array of `nb_symbols` integer values
 #[no_mangle]
 pub unsafe extern "C" fn tract_model_concretize_symbols(
     model: *mut TractModel,
@@ -746,9 +788,7 @@ pub unsafe extern "C" fn tract_model_pulse_simple(
 
 /// Convert the model from single precision to half precision.
 #[no_mangle]
-pub unsafe extern "C" fn tract_model_half(
-    model: *mut *mut TractModel,
-) -> TRACT_RESULT {
+pub unsafe extern "C" fn tract_model_half(model: *mut *mut TractModel) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(model, *model);
         let model = &mut (**model).0;
@@ -776,6 +816,7 @@ pub unsafe extern "C" fn tract_model_optimize(model: *mut TractModel) -> TRACT_R
     })
 }
 
+/// Perform a profile of the model using the provided inputs.
 #[no_mangle]
 pub unsafe extern "C" fn tract_model_profile_json(
     model: *mut TractModel,
@@ -789,9 +830,18 @@ pub unsafe extern "C" fn tract_model_profile_json(
         tract_libcli::profile::extract_costs(&mut annotations, model)?;
         if !inputs.is_null() {
             let input_len = model.inputs.len();
-            let values:TVec<TValue> =
-                std::slice::from_raw_parts(inputs, input_len).iter().map(|tv| (**tv).0.clone()).collect();
-            tract_libcli::profile::profile(model, &BenchLimits::default(), &mut annotations, &values, None, true)?;
+            let values: TVec<TValue> = std::slice::from_raw_parts(inputs, input_len)
+                .iter()
+                .map(|tv| (**tv).0.clone())
+                .collect();
+            tract_libcli::profile::profile(
+                model,
+                &BenchLimits::default(),
+                &mut annotations,
+                &values,
+                None,
+                true,
+            )?;
         }
         let export = tract_libcli::export::GraphPerfInfo::from(model, &annotations);
         *json = CString::new(serde_json::to_string(&export)?)?.into_raw();
