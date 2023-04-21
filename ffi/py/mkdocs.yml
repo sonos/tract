@@ -32,3 +32,7 @@ plugins:
           show_object_full_path: false
           show_signature_annotations: true
           show_submodules: true
+
+extra:
+  version:
+    provider: mike
