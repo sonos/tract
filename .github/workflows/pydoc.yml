@@ -13,12 +13,9 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Debug info
-        run: cat "${{ github.event_path }}"
-
       - name: Extract version tag
         id: version
-        if: github.event_name == 'release' && github.event.action == 'published'
+        if: github.event_name == 'release' && github.event.action == 'released'
         run: echo value=$(echo ${{ github.ref }} | cut -f 3 -d / | tr -d 'v' ) >> $GITHUB_OUTPUT
 
       - name: Build and publish doc
