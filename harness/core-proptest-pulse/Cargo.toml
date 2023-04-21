@@ -1,15 +1,15 @@
 [package]
 name = "core-proptest-pulse"
-version = "0.19.13-pre"
+version = "0.19.15-pre"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT/Apache-2.0"
 edition = "2021"
 
 [dependencies]
-tract-hir = { path = "../../hir", version = "=0.19.14" }
-tract-pulse = { path = "../../pulse", version = "=0.19.14" }
-tract-onnx = { path = "../../onnx", version = "=0.19.14" }
-tract-onnx-opl = { path = "../../onnx-opl", version = "=0.19.14" }
+tract-hir = { path = "../../hir", version = "=0.19.15-pre" }
+tract-pulse = { path = "../../pulse", version = "=0.19.15-pre" }
+tract-onnx = { path = "../../onnx", version = "=0.19.15-pre" }
+tract-onnx-opl = { path = "../../onnx-opl", version = "=0.19.15-pre" }
 
 [dev-dependencies]
 log.workspace = true
