@@ -1,6 +1,9 @@
 #![allow(clippy::bool_comparison)]
 #![allow(clippy::unnecessary_cast)]
 
+mod ite;
+pub use ite::IfThenElse;
+
 use ndarray::*;
 
 use crate::broadcast::multi_broadcast;
