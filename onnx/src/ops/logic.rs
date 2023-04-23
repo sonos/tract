@@ -123,8 +123,26 @@ impl InferenceOp for If {
             } else {
                 for ix in 0..self.nboutputs()? {
                     changed = changed
-                        || self.then_body.output_fact_mut(ix)?.unify_with_mut(&mut outputs[ix])?
-                        || self.else_body.output_fact_mut(ix)?.unify_with_mut(&mut outputs[ix])?;
+                        || self
+                            .then_body
+                            .output_fact_mut(ix)?
+                            .shape
+                            .unify_with_mut(&mut outputs[ix].shape)?
+                        || self
+                            .else_body
+                            .output_fact_mut(ix)?
+                            .shape
+                            .unify_with_mut(&mut outputs[ix].shape)?
+                        || self
+                            .then_body
+                            .output_fact_mut(ix)?
+                            .datum_type
+                            .unify_with_mut(&mut outputs[ix].datum_type)?
+                        || self
+                            .else_body
+                            .output_fact_mut(ix)?
+                            .datum_type
+                            .unify_with_mut(&mut outputs[ix].datum_type)?;
                 }
             }
             changed = changed || self.then_body.analyse(false)?;
@@ -149,33 +167,16 @@ impl InferenceOp for If {
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        if let Some(cond) = &target.outlet_fact(mapping[&node.inputs[0]])?.konst {
-            let cond = cond.cast_to_scalar::<bool>()?;
-            let (body, input_mapping) = if cond {
-                (&self.then_body, &self.then_input_mapping)
-            } else {
-                (&self.else_body, &self.else_input_mapping)
-            };
-            let mut inner_mapping: HashMap<OutletId, OutletId> = HashMap::default();
-            let body = body.clone().into_typed()?;
-            for (input_ix, outlet) in tract_itertools::izip!(input_mapping, body.input_outlets()?) {
-                inner_mapping.insert(*outlet, mapping[&node.inputs[*input_ix]]);
-            }
-            for node in body.eval_order()? {
-                if Graph::is_source(&body.node(node).op) {
-                    continue;
-                }
-                let node_inputs =
-                    body.node(node).inputs.iter().map(|o| inner_mapping[o]).collect::<TVec<_>>();
-                let node_outputs =
-                    target.wire_node(&body.node(node).name, &body.node(node).op, &node_inputs)?;
-                for (slot_ix, outlet) in node_outputs.iter().enumerate() {
-                    inner_mapping.insert((node, slot_ix).into(), *outlet);
-                }
-            }
-            return Ok(body.output_outlets()?.iter().map(|o| inner_mapping[o]).collect());
-        }
-        bail!("Can only deal with constant conditions in If translation")
+        let then_body = self.then_body.clone().into_typed()?;
+        let else_body = self.else_body.clone().into_typed()?;
+        let inputs: TVec<_> = node.inputs.iter().map(|o| mapping[o]).collect();
+        let op = tract_core::ops::logic::IfThenElse {
+            then_body,
+            else_body,
+            then_input_mapping: self.then_input_mapping.clone(),
+            else_input_mapping: self.else_input_mapping.clone(),
+        };
+        target.wire_node(self.name(), op, &inputs)
     }
 
     as_op!();
