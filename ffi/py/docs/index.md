@@ -12,12 +12,121 @@ computers.
 
 ## Getting started
 
-### Install tract
+### Install tract library
 
-Just `pip install tract`. Prebuilt wheels are provided for x86-64 Linux and
+`pip install tract`. Prebuilt wheels are provided for x86-64 Linux and
 Windows, x86-64 and arm64 for MacOS.
 
+### Downloading the model
 
+First we need to obtain the model. We will download an ONNX-converted MobileNET
+2.7 from the ONNX model zoo.
+
+`wget https://github.com/onnx/models/raw/main/vision/classification/mobilenet/model/mobilenetv2-7.onnx`.
+
+### Preprocessing an image
+
+Then we need a sample image. You can use pretty much anything. If you lack
+inspiration, you can this picture of Grace Hopper.
+
+`wget https://s3.amazonaws.com/tract-ci-builds/tests/grace_hopper.jpg`
+
+We will be needing `pillow` to load the image and crop it.
+
+`pip install pillow`
+
+Now let's start our python script. We will want to use tract, obviously, but we
+will also need PIL's Image and numpy to put the data in the form MobileNet expects it.
+
+```python
+#!/usr/bin/env python
+
+import tract
+import numpy
+from PIL import Image
+```
+
+We want to load the image, crop it into its central square, then scale this
+square to be 224x224.
+
+```python
+im = Image.open("grace_hopper.jpg")
+if im.height > im.width:
+    top_crop = int((im.height - im.width) / 2)
+    im = im.crop((0, top_crop, im.width, top_crop + im.width))
+else:
+    left_crop = int((im.width - im.height) / 2)
+    im = im.crop((left_crop, 0, left_crop + im_height, im.height))
+im = im.resize((224, 224))
+im = numpy.array(im)
+```
+
+At this stage, we obtain a 224x224x3 tensor of 8-bit positive integers. We need to transform
+these integers to floats and normalize them for MobileNet.
+At some point during this normalization, numpy decides to promote our tensor to
+double precision, but our model is single precison, so we are converting it
+again after the normalization.
+
+```python
+im = (im.astype(float) / 255. - [0.485, 0.456, 0.406]) / [0.229, 0.224, 0.225]
+im = im.astype(numpy.single)
+```
+
+Finally, ONNX variant of Mobilenet expects its input in NCHW convention, and
+our data is in HWC. We need to move the C axis before H and W, then insert the
+N at the left.
+
+```python
+im = numpy.moveaxis(im, 2, 0)
+im = numpy.expand_dims(im, 0)
+```
+
+### Loading the model
+
+Loading a model is relatively simple. We need to instantiate the ONNX loader
+first, the we use it to load the model. Then we ask tract to optimize the model
+and get it ready to run.
+
+```python
+model = tract.onnx().model_for_path("./mobilenetv2-7.onnx").into_optimized().into_runnable()
+```
+
+If we wanted to process several images, this would only have to be done once
+out of our image loop.
+
+### Running the model
+
+tract run methods take a list of inputs and returns a list of outputs. Each input
+can be a numpy array. The outputs are tract's own Value data type, which should 
+be converted to numpy array.
+
+```python
+outputs = model.run([im])
+output = outputs[0].to_numpy()
+```
+
+### Interpreting the result
+
+If we print the output, what we get is a array of 1000 values. Each value is
+the score of our image on one of the 1000 categoris of ImageNet. What we want
+is to find the category with the highest score.
+
+```python
+print(numpy.argmax(output))
+```
+
+If all goes according to plan, this should output the number 652. There is a copy
+of ImageNet categories at the following URL, with helpful line numbering.
+
+```
+https://github.com/sonos/tract/blob/main/examples/nnef-mobilenet-v2/imagenet_slim_labels.txt
+```
+
+And... 652 is "microphone". Which is wrong. The trick is, the lines are
+numbered from 1, while our results start at 0, plus the label list include a
+"dummy" label first that should be ignored. So the right value is at the line
+654: "military uniform". If you looked at the picture before you noticed that
+Grace Hopper is in uniform on the picture, so it does make sense.
 
 ## Model cooking with `tract`
 
@@ -43,15 +152,7 @@ persist the model resulting of the transformation. It could be persisted at the
 first application start-up for instance. But it could also be "prepared", or
 "cooked" before distribution to the devices.
 
-## Cooking to NNEF
-
-NNEF is another standard for neural networks exchange. While ONNX is designed
-for models at training time, NNEF focused on the simpler semantics at play at
-runtime. Unencumbered by their training semantics, many layers collapse into a
-smaller operators set, made of arithmetic operations and simple tensor
-transformations.
-
-`tract` supports NNEF. It can read a NNEF neural network and run it. But it can
+## Cooking to NNEtract` supports NNEF. It can read a NNEF neural network and run it. But it can
 also dump its preferred representation of a model in NNEF.
 
 At this stage, a possible path to production for a neural model becomes can be drawn:
