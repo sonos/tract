@@ -123,7 +123,7 @@ https://github.com/sonos/tract/blob/main/examples/nnef-mobilenet-v2/imagenet_sli
 ```
 
 And... 652 is "microphone". Which is wrong. The trick is, the lines are
-numbered from 1, while our results start at 0, plus the label list include a
+numbered from 1, while our results starts at 0, plus the label list includes a
 "dummy" label first that should be ignored. So the right value is at the line
 654: "military uniform". If you looked at the picture before you noticed that
 Grace Hopper is in uniform on the picture, so it does make sense.
@@ -152,7 +152,9 @@ persist the model resulting of the transformation. It could be persisted at the
 first application start-up for instance. But it could also be "prepared", or
 "cooked" before distribution to the devices.
 
-## Cooking to NNEtract` supports NNEF. It can read a NNEF neural network and run it. But it can
+## Cooking to NNEF
+
+`tract` supports NNEF. It can read a NNEF neural network and run it. But it can
 also dump its preferred representation of a model in NNEF.
 
 At this stage, a possible path to production for a neural model becomes can be drawn:
