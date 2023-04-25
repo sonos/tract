@@ -16,7 +16,7 @@ fn pulsify(
     for input_id in 0..node.inputs.len() {
         let input = mapping[&node.inputs[input_id]];
         let input_fact = target.outlet_fact(input)?;
-        if let Some(info) = op.input_mapping.iter().find_map(InputMapping::as_scan) {
+        if let Some(info) = op.input_mapping[input_id].as_scan() {
             if info.chunk < 0 {
                 bail!("Can not pulsify a backward scan.")
             }

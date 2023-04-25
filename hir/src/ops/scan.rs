@@ -10,7 +10,6 @@ pub struct InferenceScan {
     pub body: InferenceModel,
     pub input_mapping: Vec<InputMapping>,
     pub output_mapping: Vec<OutputMapping<TDim>>,
-    pub seq_length_input_slot: Option<usize>,
     pub clean_scan_counts: bool,
     pub iter_count_fact: GenericFactoid<TDim>,
 }
@@ -90,7 +89,6 @@ impl InferenceScan {
             typed_model,
             input_mapping,
             output_mapping,
-            self.seq_length_input_slot,
             0,
         )?))
     }

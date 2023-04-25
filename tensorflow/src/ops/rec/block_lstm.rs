@@ -95,9 +95,6 @@ impl Expansion for BlockLSTM {
             }
         }
 
-        let seq_len = inputs[0];
-        outer_inputs.push(seq_len);
-
         // X: body input 0: X, new outside input 0 (was 1)
         outer_inputs.push(inputs[1]);
         input_mapping.push(scan::InputMapping::Scan(ScanInfo { axis: 0, chunk: 1 }));
@@ -167,7 +164,17 @@ impl Expansion for BlockLSTM {
             })
         }
 
-        let scan = scan::Scan::new(body, input_mapping, output_mapping, Some(0), 0)?;
+        let Some(seqlen) = &model.outlet_fact(inputs[0])?.konst else {
+                bail!("Non constant seq_len is not supported");
+            };
+        let Some(seqlen) = seqlen.as_uniform() else {
+                bail!("Non uniform seq_len is not supported");
+            };
+        let seqlen = seqlen.cast_to::<TDim>()?;
+        if seqlen.to_scalar::<TDim>()? != &model.outlet_fact(inputs[1])?.shape[0] {
+            bail!("seq_len only supported for trivial noop case");
+        };
+        let scan = scan::Scan::new(body, input_mapping, output_mapping, 0)?;
         model.wire_node(prefix, scan, &outer_inputs)
     }
 }

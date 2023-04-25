@@ -12,7 +12,6 @@ pub struct Scan {
     pub skip: usize,
     pub body: TypedModel,
     decluttered: bool,
-    pub seq_length_input_slot: Option<usize>,
     pub input_mapping: Vec<InputMapping>,
     pub output_mapping: Vec<OutputMapping<TDim>>,
 }
@@ -37,20 +36,12 @@ impl Scan {
         body: TypedModel,
         input_mapping: Vec<InputMapping>,
         output_mapping: Vec<OutputMapping<TDim>>,
-        seq_length_input_slot: Option<usize>,
         skip: usize,
     ) -> TractResult<Scan> {
         body.check_consistency()?;
         ensure!(input_mapping.len() == body.input_outlets()?.len());
         ensure!(output_mapping.len() == body.output_outlets()?.len());
-        Ok(Scan {
-            skip,
-            body,
-            decluttered: false,
-            input_mapping,
-            output_mapping,
-            seq_length_input_slot,
-        })
+        Ok(Scan { skip, body, decluttered: false, input_mapping, output_mapping })
     }
 
     pub fn iteration_count(&self, inputs: &[&TypedFact]) -> Option<TDim> {
@@ -221,14 +212,8 @@ impl Scan {
                 patch.apply(&mut body)?;
                 body.set_input_outlets(&model_inputs)?;
                 body.declutter()?;
-                let op = Self {
-                    body,
-                    skip: self.skip,
-                    seq_length_input_slot: self.seq_length_input_slot,
-                    input_mapping: new_mappings,
-                    decluttered: true,
-                    output_mapping: self.output_mapping.clone(),
-                };
+                let op =
+                    Self { body, input_mapping: new_mappings, decluttered: true, ..self.clone() };
                 return Ok(Some(TypedModelPatch::replace_single_op(model, node, &new_inputs, op)?));
             }
         }
@@ -420,11 +405,9 @@ impl Scan {
 
                         let new_op = Self {
                             input_mapping,
-                            output_mapping: self.output_mapping.clone(),
                             decluttered: false,
                             body: new_body,
-                            skip: self.skip,
-                            seq_length_input_slot: self.seq_length_input_slot,
+                            ..self.clone()
                         };
                         let output_wires =
                             outside_patch.wire_node(&*node.name, new_op, &patch_inputs)?;
@@ -549,12 +532,10 @@ impl Scan {
                     .map(|&i| outside_patch.tap_model(model, i))
                     .collect::<TractResult<TVec<_>>>()?;
                 let new_op = Self {
-                    input_mapping: self.input_mapping.clone(),
                     output_mapping: new_output_mapping,
                     decluttered: false,
                     body: new_body.clone(), // FIXME maybe remove clone
-                    skip: self.skip,
-                    seq_length_input_slot: self.seq_length_input_slot,
+                    ..self.clone()
                 };
                 let scan_outputs = outside_patch.wire_node(&node.name, new_op, &inputs)?;
                 let output = mapping.scan.unwrap();
@@ -727,6 +708,8 @@ impl TypedOp for Scan {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        anyhow::ensure!(inputs.len() == self.body.inputs.len());
+        anyhow::ensure!(self.input_mapping.len() == self.body.inputs.len());
         anyhow::ensure!(
             self.input_mapping.iter().filter(|m| m.is_state()).count()
                 == self.output_mapping.iter().filter(|m| m.state).count()
