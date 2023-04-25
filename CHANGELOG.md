@@ -1,9 +1,10 @@
 # Unreleased (targerting 0.20)
-* [optim] 32x32 f32 AMX kernel (for Apple Silicone M family)
+* [optim] 32x32 f32 AMX kernel (for Apple Silicon M family)
 * [optim] bunch of AMX512F kernels (square, skinny, vector)
-* [ONNX] introduce Trilu
+* [ONNX] introduce Trilu, TopK
 * [NNEF/OPL] submodel loader
 * [ONNX] support alternative layout for LSTM (layout=1, batch becomes first axis)
+* [ONNX] If operators with dynamic condition (very basic optimisations, no nnef support yet).
 
 # 0.19.2 - 2023-01-30
 * [NNEF/OPL] introduce json resource loader
