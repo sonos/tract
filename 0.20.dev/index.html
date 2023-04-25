@@ -61,7 +61,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#indexmd" class="md-skip">
+        <a href="#tract-python-bindings" class="md-skip">
           Skip to content
         </a>
       
@@ -215,9 +215,123 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          Home
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="." class="md-nav__link md-nav__link--active">
         Home
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#getting-started" class="md-nav__link">
+    Getting started
+  </a>
+  
+    <nav class="md-nav" aria-label="Getting started">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#install-tract-library" class="md-nav__link">
+    Install tract library
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#downloading-the-model" class="md-nav__link">
+    Downloading the model
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#preprocessing-an-image" class="md-nav__link">
+    Preprocessing an image
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#loading-the-model" class="md-nav__link">
+    Loading the model
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#running-the-model" class="md-nav__link">
+    Running the model
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#interpreting-the-result" class="md-nav__link">
+    Interpreting the result
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#model-cooking-with-tract" class="md-nav__link">
+    Model cooking with tract
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cooking-to-nnef" class="md-nav__link">
+    Cooking to NNEF
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing-and-benching-models-early" class="md-nav__link">
+    Testing and benching models early
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tract-opl" class="md-nav__link">
+    tract-opl
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pulsing" class="md-nav__link">
+    Pulsing
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -348,6 +462,104 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#getting-started" class="md-nav__link">
+    Getting started
+  </a>
+  
+    <nav class="md-nav" aria-label="Getting started">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#install-tract-library" class="md-nav__link">
+    Install tract library
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#downloading-the-model" class="md-nav__link">
+    Downloading the model
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#preprocessing-an-image" class="md-nav__link">
+    Preprocessing an image
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#loading-the-model" class="md-nav__link">
+    Loading the model
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#running-the-model" class="md-nav__link">
+    Running the model
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#interpreting-the-result" class="md-nav__link">
+    Interpreting the result
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#model-cooking-with-tract" class="md-nav__link">
+    Model cooking with tract
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cooking-to-nnef" class="md-nav__link">
+    Cooking to NNEF
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing-and-benching-models-early" class="md-nav__link">
+    Testing and benching models early
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tract-opl" class="md-nav__link">
+    tract-opl
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pulsing" class="md-nav__link">
+    Pulsing
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -364,7 +576,152 @@
   
 
 
-<h1 id="indexmd">index.md</h1>
+<h1 id="tract-python-bindings"><code>tract</code> python bindings</h1>
+<p><code>tract</code> is a library for neural network inference. While PyTorch and TensorFlow
+deal with the much harder training problem, <code>tract</code> focuses on what happens once
+the model in trained.</p>
+<p><code>tract</code> ultimate goal is to use the model on end-user data (aka "running the
+model") as efficiently as possible, in a variety of possible deployments,
+including some which are no completely mainstream : a lot of energy have been
+invested in making <code>tract</code> an efficient engine to run models on ARM single board
+computers.</p>
+<h2 id="getting-started">Getting started</h2>
+<h3 id="install-tract-library">Install tract library</h3>
+<p><code>pip install tract</code>. Prebuilt wheels are provided for x86-64 Linux and
+Windows, x86-64 and arm64 for MacOS.</p>
+<h3 id="downloading-the-model">Downloading the model</h3>
+<p>First we need to obtain the model. We will download an ONNX-converted MobileNET
+2.7 from the ONNX model zoo.</p>
+<p><code>wget https://github.com/onnx/models/raw/main/vision/classification/mobilenet/model/mobilenetv2-7.onnx</code>.</p>
+<h3 id="preprocessing-an-image">Preprocessing an image</h3>
+<p>Then we need a sample image. You can use pretty much anything. If you lack
+inspiration, you can this picture of Grace Hopper.</p>
+<p><code>wget https://s3.amazonaws.com/tract-ci-builds/tests/grace_hopper.jpg</code></p>
+<p>We will be needing <code>pillow</code> to load the image and crop it.</p>
+<p><code>pip install pillow</code></p>
+<p>Now let's start our python script. We will want to use tract, obviously, but we
+will also need PIL's Image and numpy to put the data in the form MobileNet expects it.</p>
+<pre><code class="language-python">#!/usr/bin/env python
+
+import tract
+import numpy
+from PIL import Image
+</code></pre>
+<p>We want to load the image, crop it into its central square, then scale this
+square to be 224x224.</p>
+<pre><code class="language-python">im = Image.open(&quot;grace_hopper.jpg&quot;)
+if im.height &gt; im.width:
+    top_crop = int((im.height - im.width) / 2)
+    im = im.crop((0, top_crop, im.width, top_crop + im.width))
+else:
+    left_crop = int((im.width - im.height) / 2)
+    im = im.crop((left_crop, 0, left_crop + im_height, im.height))
+im = im.resize((224, 224))
+im = numpy.array(im)
+</code></pre>
+<p>At this stage, we obtain a 224x224x3 tensor of 8-bit positive integers. We need to transform
+these integers to floats and normalize them for MobileNet.
+At some point during this normalization, numpy decides to promote our tensor to
+double precision, but our model is single precison, so we are converting it
+again after the normalization.</p>
+<pre><code class="language-python">im = (im.astype(float) / 255. - [0.485, 0.456, 0.406]) / [0.229, 0.224, 0.225]
+im = im.astype(numpy.single)
+</code></pre>
+<p>Finally, ONNX variant of Mobilenet expects its input in NCHW convention, and
+our data is in HWC. We need to move the C axis before H and W, then insert the
+N at the left.</p>
+<pre><code class="language-python">im = numpy.moveaxis(im, 2, 0)
+im = numpy.expand_dims(im, 0)
+</code></pre>
+<h3 id="loading-the-model">Loading the model</h3>
+<p>Loading a model is relatively simple. We need to instantiate the ONNX loader
+first, the we use it to load the model. Then we ask tract to optimize the model
+and get it ready to run.</p>
+<pre><code class="language-python">model = tract.onnx().model_for_path(&quot;./mobilenetv2-7.onnx&quot;).into_optimized().into_runnable()
+</code></pre>
+<p>If we wanted to process several images, this would only have to be done once
+out of our image loop.</p>
+<h3 id="running-the-model">Running the model</h3>
+<p>tract run methods take a list of inputs and returns a list of outputs. Each input
+can be a numpy array. The outputs are tract's own Value data type, which should 
+be converted to numpy array.</p>
+<pre><code class="language-python">outputs = model.run([im])
+output = outputs[0].to_numpy()
+</code></pre>
+<h3 id="interpreting-the-result">Interpreting the result</h3>
+<p>If we print the output, what we get is a array of 1000 values. Each value is
+the score of our image on one of the 1000 categoris of ImageNet. What we want
+is to find the category with the highest score.</p>
+<pre><code class="language-python">print(numpy.argmax(output))
+</code></pre>
+<p>If all goes according to plan, this should output the number 652. There is a copy
+of ImageNet categories at the following URL, with helpful line numbering.</p>
+<pre><code>https://github.com/sonos/tract/blob/main/examples/nnef-mobilenet-v2/imagenet_slim_labels.txt
+</code></pre>
+<p>And... 652 is "microphone". Which is wrong. The trick is, the lines are
+numbered from 1, while our results starts at 0, plus the label list includes a
+"dummy" label first that should be ignored. So the right value is at the line
+654: "military uniform". If you looked at the picture before you noticed that
+Grace Hopper is in uniform on the picture, so it does make sense.</p>
+<h2 id="model-cooking-with-tract">Model cooking with <code>tract</code></h2>
+<p>Over the years of <code>tract</code> development, it became clear that beside "training"
+and "running", there was a third time in the life-cycle of a model. One of
+our contributors nicknamed it "model cooking" and the term stuck. This extra stage
+is about all what happens after the training and before running.</p>
+<p>If training and Runtime are relatively easy to define, the model cooking gets a
+bit less obvious. It comes from the realisation that the training form (an ONNX
+or TensorFlow file or ste of files) of a model may is usually not the most
+convenient form for running it. Every time a device loads a model in ONNX form
+and transform it into a suitable form for runtime, it goes through the same
+series or more or less complicated operations, that can amount to several
+seconds of high-CPU usage for current models. When running the model on a
+device, this can have several negative impact on experience: the device will
+take time to start-up, consume a lot of battery energy to get ready, maybe fight
+over CPU availability with other processes trying to get ready at the same
+instant on the device.</p>
+<p>As this sequence of operations is generally the same, it becomes relevant to
+persist the model resulting of the transformation. It could be persisted at the
+first application start-up for instance. But it could also be "prepared", or
+"cooked" before distribution to the devices.</p>
+<h2 id="cooking-to-nnef">Cooking to NNEF</h2>
+<p><code>tract</code> supports NNEF. It can read a NNEF neural network and run it. But it can
+also dump its preferred representation of a model in NNEF.</p>
+<p>At this stage, a possible path to production for a neural model becomes can be drawn:
+* model is trained, typically on big servers on the cloud, and exported to ONNX.
+* model is cooked, simplified, using <code>tract</code> command line or python bindings.
+* model is shipped to devices or servers in charge of running it.</p>
+<h2 id="testing-and-benching-models-early">Testing and benching models early</h2>
+<p>As soon as the model is in ONNX form, <code>tract</code> can load and run it. It gives
+opportunities to validate and test on the training system, asserting early on that
+<code>tract</code> will compute at runtime the same result than what the training model
+predicts, limiting the risk of late-minute surprise.</p>
+<p>But tract command line can also be used to bench and profile an ONNX model on
+the target system answering very early the "will the device be fast enough"
+question. The nature of neural network is such that in many cases an
+untrained model, or a poorly trained one will perform the same computations than
+the final model, so it may be possible to bench the model for on-device
+efficiency before going through a costly and long model training.</p>
+<h2 id="tract-opl">tract-opl</h2>
+<p>NNEF is a pretty little standard. But we needed to go beyond it and we extended
+it in several ways. For instance, NNEF does not provide syntax for recurring
+neural network (LSTM and friends), which are an absolute must in signal and voice
+processing. <code>tract</code> also supports symbolic dimensions, which are useful to
+represent a late bound batch dimension (if you don't know in advance how many
+inputs will have to be computed concurrently).</p>
+<h2 id="pulsing">Pulsing</h2>
+<p>For interactive applications where time plays a role (voice, signal, ...),
+<code>tract</code> can automatically transform batch models, to equivalent streaming models
+suitable for runtime. While batch models are presented at training time the
+whole signal in one go, a streaming model received the signal by "pulse" and
+produces step by step the same output that the batching model.</p>
+<p>It does not work for every model, <code>tract</code> can obviously not generate a model
+where the output at a time depends on input not received yet. Of course, models
+have to be <em>causal</em> to be pulsable. For instance, a bi-directional LSTM is not
+pulsable. Most convolution nets can be made causal at designe time by padding,
+or at cooking time by adding fixed delays.</p>
+<p>This cooking step is a recurring annoyance in the real-time voice and signal
+field : it can be done manually, but is very easy to get wrong. <code>tract</code> makes
+it automactic.</p>
 
 
 
