@@ -76,7 +76,6 @@ pub fn scan(
             model,
             mapped_inputs,
             mapped_outputs,
-            None,
             true,
             GenericFactoid::default(),
         )),

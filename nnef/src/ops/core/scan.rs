@@ -42,9 +42,6 @@ pub fn register(registry: &mut Registry) {
             ])
             .array()
             .named("output"),
-            TypeName::Integer.spec()    // if present, assumes B is first axis in all inputs
-                    .named("seq_length")
-                    .default(-1),
             TypeName::Integer.spec().named("skip").default(0), // needed for pulse
         ],
         &[("outputs", TypeName::Scalar.tensor().array())],
@@ -249,7 +246,7 @@ fn de_scan(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
         });
     }
     let skip: usize = invocation.named_arg_as(builder, "skip")?;
-    let op = Scan::new(body.model, input_mapping, output_mapping, None, skip)?;
+    let op = Scan::new(body.model, input_mapping, output_mapping, skip)?;
     builder.wire(op, &outer_inputs)
 }
 

@@ -66,6 +66,19 @@ impl CommonRec {
         let x_fact = target.outlet_fact(inputs[0])?.clone();
         let r_fact = target.outlet_fact(inputs[2])?.clone();
 
+        if let Some(seqlen) = self.optional_sequence_lens_input {
+            let Some(seqlen) = &target.outlet_fact(inputs[seqlen])?.konst else {
+                bail!("Non constant seq_len is not supported");
+            };
+            let Some(seqlen) = seqlen.as_uniform() else {
+                bail!("Non uniform seq_len is not supported");
+            };
+            let seqlen = seqlen.cast_to::<TDim>()?;
+            if seqlen.to_scalar::<TDim>()? != &x_fact.shape[self.batch_first as usize] {
+                bail!("seq_len only supported for trivial noop case");
+            };
+        }
+
         let b_size = &x_fact.shape[1 - self.batch_first as usize];
         let h_size = &r_fact.shape[2];
 
@@ -136,11 +149,6 @@ impl CommonRec {
         } else {
             None
         };
-
-        // FIXME is this working ? is it tested ?
-        if let Some(slot) = self.optional_sequence_lens_input {
-            outer_inputs.push(inputs[slot]);
-        }
 
         // initial h, optional: onnx: [num_directions, batch_size, hidden_size]
         // scan outer: [batch_size, chunk=1, hidden_size]
@@ -242,7 +250,6 @@ impl CommonRec {
                 body,
                 input_mapping,
                 output_mapping,
-                self.optional_sequence_lens_input,
                 0,
             )?,
             &outer_inputs,

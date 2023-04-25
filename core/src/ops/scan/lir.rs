@@ -180,6 +180,7 @@ impl OpState for State {
         let iters = self.iteration_count(&inputs);
 
         let State { op, ref mut hidden_state, ref mut position, ref mut model_state } = self;
+
         // initialize state at first pass
         if hidden_state.len() == 0 {
             for (slot, input) in op.input_mapping.iter().enumerate() {

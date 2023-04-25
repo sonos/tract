@@ -211,7 +211,6 @@ fn incorporate_memory_ops_as_scans(
             inner_model,
             mapped_inputs,
             mapped_outputs,
-            None,
             false,
             GenericFactoid::default(),
         );
