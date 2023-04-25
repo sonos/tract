@@ -1,10 +1,10 @@
 [package]
 name = "example-onnx-mobilenet-v2"
-version = "0.20.0-pre"
+version = "0.20.1-pre"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT/Apache-2.0"
 edition = "2021"
 
 [dependencies]
 image.workspace = true
-tract-onnx = { path = "../../onnx", version = "=0.20.0" }
+tract-onnx = { path = "../../onnx", version = "=0.20.1-pre" }
