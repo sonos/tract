@@ -85,5 +85,5 @@ pub fn iteration_count(input_mapping: &[InputMapping], inputs: &[&TypedFact]) ->
                             .find_map(|(slot, im)| im.as_scan().map(|scan| (slot, scan)))
         else { return None };
     let outside_dim = inputs[slot].shape[info.axis].clone();
-    Some(outside_dim.div_ceil(info.chunk.abs() as u64))
+    Some(outside_dim.div_ceil(info.chunk.unsigned_abs() as u64))
 }
