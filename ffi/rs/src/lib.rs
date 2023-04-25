@@ -3,8 +3,8 @@ use std::fmt::Display;
 use std::os::unix::prelude::OsStrExt;
 use std::path::Path;
 use std::ptr::{null, null_mut};
-use std::str::FromStr;
 
+use boow::Bow;
 use ndarray::Dimension;
 use tract_rs_sys as sys;
 
@@ -89,6 +89,11 @@ impl Onnx {
 wrapper!(InferenceModel, TractInferenceModel, tract_inference_model_destroy);
 
 impl InferenceModel {
+    pub fn set_output_names(&mut self, outputs: impl IntoIterator<Item = impl AsRef<str>>) -> Result<()> {
+        check!(sys::tract_inference_model_set_output_names(&mut self.0))?;
+        Ok(())
+    }
+
     pub fn input_count(&self) -> Result<usize> {
         let mut count = 0;
         check!(sys::tract_inference_model_nbio(self.0, &mut count, null_mut()))?;
@@ -117,6 +122,37 @@ impl InferenceModel {
         let mut ptr = null_mut();
         check!(sys::tract_inference_model_input_fact(self.0, id, &mut ptr))?;
         Ok(InferenceFact(ptr))
+    }
+
+    pub fn set_input_fact(
+        &mut self,
+        id: usize,
+        fact: impl AsFact<InferenceModel, InferenceFact>,
+    ) -> Result<()> {
+        let fact = fact.as_fact(self)?;
+        check!(sys::tract_inference_model_set_input_fact(self.0, id, fact.0))?;
+        Ok(())
+    }
+
+    pub fn set_output_fact(
+        &mut self,
+        id: usize,
+        fact: impl AsFact<InferenceModel, InferenceFact>,
+    ) -> Result<()> {
+        let fact = fact.as_fact(self)?;
+        check!(sys::tract_inference_model_set_input_fact(self.0, id, fact.0))?;
+        Ok(())
+    }
+
+    pub fn analyse(&mut self) -> Result<()> {
+        check!(sys::tract_inference_model_analyse(self.0, true))?;
+        Ok(())
+    }
+
+    pub fn into_optimized(mut self) -> Result<Model> {
+        let mut ptr = null_mut();
+        check!(sys::tract_inference_model_into_optimized(&mut self.0, &mut ptr))?;
+        Ok(Model(ptr))
     }
 }
 
@@ -268,5 +304,39 @@ impl InferenceFact {
 impl Display for InferenceFact {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.dump().unwrap())
+    }
+}
+
+pub trait AsFact<M, F> {
+    fn as_fact(&self, model: &mut M) -> Result<Bow<F>>;
+}
+
+impl AsFact<InferenceModel, InferenceFact> for InferenceFact {
+    fn as_fact(&self, _model: &mut InferenceModel) -> Result<Bow<InferenceFact>> {
+        Ok(Bow::Borrowed(self))
+    }
+}
+
+impl AsFact<InferenceModel, InferenceFact> for &str {
+    fn as_fact(&self, model: &mut InferenceModel) -> Result<Bow<InferenceFact>> {
+        Ok(Bow::Owned(InferenceFact::new(model, self)?))
+    }
+}
+
+impl AsFact<InferenceModel, InferenceFact> for () {
+    fn as_fact(&self, model: &mut InferenceModel) -> Result<Bow<InferenceFact>> {
+        Ok(Bow::Owned(InferenceFact::new(model, "")?))
+    }
+}
+
+impl AsFact<Model, Fact> for Fact {
+    fn as_fact(&self, _model: &mut Model) -> Result<Bow<Fact>> {
+        Ok(Bow::Borrowed(self))
+    }
+}
+
+impl<S: AsRef<str>> AsFact<Model, Fact> for S {
+    fn as_fact(&self, model: &mut Model) -> Result<Bow<Fact>> {
+        Ok(Bow::Owned(Fact::new(model, self.as_ref())?))
     }
 }

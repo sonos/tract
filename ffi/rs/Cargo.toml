@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow.workspace = true
+boow = "0.1.3"
 ndarray.workspace = true
 tract-rs-sys = { path = "sys", version = "=0.20.0-pre" }
 
