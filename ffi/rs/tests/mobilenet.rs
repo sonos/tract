@@ -25,17 +25,15 @@ fn test_nnef() -> anyhow::Result<()> {
 }
 
 #[test]
-fn test_inference_nnef() -> anyhow::Result<()> {
-    let model = tract_rs::onnx()?.model_for_path("tests/mobilenetv2-7.onnx")?;
+fn test_inference_model() -> anyhow::Result<()> {
+    let mut model = tract_rs::onnx()?.model_for_path("tests/mobilenetv2-7.onnx")?;
     assert_eq!(model.input_count().unwrap(), 1);
     assert_eq!(model.output_count().unwrap(), 1);
     assert_eq!(model.input_name(0).unwrap(), "data");
     assert_eq!(model.output_name(0).unwrap(), "mobilenetv20_output_flatten0_reshape0");
     assert_eq!(model.input_fact(0).unwrap().to_string(), "1,3,224,224,F32");
-    model.set_input_fact(0, "1,3,224,224,F32");
-    /*
-        .into_optimized()?
-        .into_runnable()?;
+    model.set_input_fact(0, "1,3,224,224,F32")?;
+    let model = model.into_optimized()?.into_runnable()?;
     let hopper = grace_hopper();
     let result = model.run([hopper])?;
     let view = ndarray::ArrayView::try_from(&result[0])?;
@@ -47,6 +45,16 @@ fn test_inference_nnef() -> anyhow::Result<()> {
         .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
         .unwrap();
     assert_eq!(best.0, 652);
-    */
+    Ok(())
+}
+
+#[test]
+fn test_set_output_names_on_inference_model() -> anyhow::Result<()> {
+    let mut model = tract_rs::onnx()?.model_for_path("tests/mobilenetv2-7.onnx")?;
+    model.set_input_fact(0, "B,3,224,224,f32")?;
+    model.set_output_fact(0, ())?;
+    model.analyse()?;
+    model.set_output_names(["mobilenetv20_output_pred_fwd"])?;
+    assert_eq!(model.output_fact(0).unwrap().to_string(), "B,1000,1,1,F32");
     Ok(())
 }
