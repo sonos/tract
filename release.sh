@@ -1,5 +1,10 @@
 #!/bin/bash
 
+set -e
+
+git pull # make sure we are in sync
+git push
+
 cargo install tomato-toml
 
 CRATE=$1
