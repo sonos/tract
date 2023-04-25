@@ -1,9 +1,29 @@
-# Unreleased (targerting 0.20)
-* [optim] 32x32 f32 AMX kernel (for Apple Silicone M family)
+# 0.20.0 - 2023-04-25
+* [optim] 32x32 f32 AMX kernel (for Apple Silicon M family)
 * [optim] bunch of AMX512F kernels (square, skinny, vector)
-* [ONNX] introduce Trilu
+* [ONNX] introduce Trilu, TopK
 * [NNEF/OPL] submodel loader
 * [ONNX] support alternative layout for LSTM (layout=1, batch becomes first axis)
+* [ONNX] If operators with dynamic condition (very basic optimisations, no nnef support yet).
+
+# 0.19.9 & 0.19.10 - 2023-04-17
+* HardSwiwh ONNX, tract_core_hard_swish in NNEF/OPL
+* introducing tract_core_submodel in NNEF/OPL
+* JSON resource loader in NNEF/OPL
+* Profiling API tweaks
+* `--folded` view for model command line dump (hide Scan loops)
+
+# 0.19.8 - 2023-03-27
+* Various bug fixes
+
+# 0.19.7 & 0.19.6 - 2023-02-24
+* more bug fixes
+* wip on python doc auto-deploy
+
+# 0.19.5 - 2023-02-22
+* 0.19.3 and 0.19.4 are release misfires
+* lots of bugfixes following 0.19 big changes
+* introducing the JSON NNEF resource
 
 # 0.19.2 - 2023-01-30
 * [NNEF/OPL] introduce json resource loader
