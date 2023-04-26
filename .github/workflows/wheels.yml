@@ -36,6 +36,7 @@ jobs:
         uses: nick-fields/retry@v2
         with:
           max_attempts: 3
+          timeout_seconds: 36000 # 10 hours :/
           command: python -m cibuildwheel --output-dir wheelhouse ffi/py
 
       - uses: actions/upload-artifact@v3
