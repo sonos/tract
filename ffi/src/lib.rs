@@ -722,7 +722,6 @@ pub unsafe extern "C" fn tract_model_set_output_names(
         let node_names = (0..len)
             .map(|i| Ok(CStr::from_ptr(*names.add(i)).to_str()?.to_owned()))
             .collect::<TractResult<Vec<_>>>()?;
-        dbg!(&node_names);
         (*model).0.set_output_names(&node_names)?;
         Ok(())
     })
