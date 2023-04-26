@@ -1,4 +1,4 @@
-# 0.20.0 - 2023-04-25
+# 0.20.0, 0.20.1, 0,20.2, 0.20.3 - 2023-04-25
 * [optim] 32x32 f32 AMX kernel (for Apple Silicon M family)
 * [optim] bunch of AMX512F kernels (square, skinny, vector)
 * [ONNX] introduce Trilu, TopK
