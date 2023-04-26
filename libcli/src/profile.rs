@@ -136,11 +136,11 @@ fn profile_submodel(
 ) -> TractResult<()> {
     if let Some(ref mut op_state) = node_state {
         if let Some(profiler) = profilers.and_then(|it| it.get(&op_state.type_id())) {
-            let mut prefix: TVec<_> = prefix.into();
-            prefix.push((node.id, "submodel".to_string()));
+            let mut new_prefix: TVec<_> = prefix.into();
+            new_prefix.push((node.id, "submodel".to_string()));
 
             let (_, _) =
-                (profiler.func)(*op_state, input, dg, &prefix, time_accounted_by_inner_nodes)?;
+                (profiler.func)(*op_state, input, dg, &new_prefix, time_accounted_by_inner_nodes)?;
         } else if let Some(scan_state) = op_state.downcast_mut::<State>() {
             let mut new_prefix: TVec<_> = prefix.into();
             new_prefix.push((node.id, "loop".to_string()));
@@ -156,21 +156,21 @@ fn profile_submodel(
                 &new_prefix,
                 Some(multi),
                 time_accounted_by_inner_nodes,
-                true,
+                false,
             )?;
         } else if let Some(typed_model_state) = op_state.downcast_mut::<TypedModelOpState>() {
-            let mut prefix: TVec<_> = prefix.into();
-            prefix.push((node.id, "submodel".to_string()));
+            let mut new_prefix: TVec<_> = prefix.into();
+            new_prefix.push((node.id, "submodel".to_string()));
 
             rec_profiler(
                 typed_model_state,
                 dg,
                 &input,
                 None,
-                &prefix,
+                &new_prefix,
                 None,
                 time_accounted_by_inner_nodes,
-                true,
+                false,
             )?;
         }
     }
