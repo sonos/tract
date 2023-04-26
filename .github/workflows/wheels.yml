@@ -27,10 +27,15 @@ jobs:
         with:
           rust-version: stable
 
+      - uses: actions/setup-python@v3
+
+      - name: Install cibuildwheel
+        run: python -m pip install cibuildwheel
+
       - name: Build wheels
-        uses: pypa/cibuildwheel@v2.11.2
-        with:
-          package-dir: ffi/py
+        uses: nick-fields/retry@v2
+        max_attempts: 3
+        command: python -m cibuildwheel --output-dir wheelhouse ffi/py
 
       - uses: actions/upload-artifact@v3
         with:
@@ -52,7 +57,7 @@ jobs:
   upload_all:
     needs: [build_wheels, make_sdist]
     runs-on: ubuntu-latest
-    if: (github.event_name == 'release' && github.event.action == 'published')
+    if: (github.event_name == 'release' && github.event.action == 'published') || inputs.publish
 
     steps:
     - uses: actions/download-artifact@v3
