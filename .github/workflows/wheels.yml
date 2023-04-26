@@ -8,7 +8,7 @@ on:
     inputs:
       publish:
         description: force publish to pypi
-        required: false
+        type: boolean
 
 jobs:
   build_wheels:
