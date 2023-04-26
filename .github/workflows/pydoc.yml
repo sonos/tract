@@ -28,7 +28,7 @@ jobs:
           version=${{steps.version.outputs.value}}
           if [ -n "$version" ]
           then
-            mike deploy $version 0.20
+            mike deploy $version
           else
             mike deploy 0.20.dev
           fi
