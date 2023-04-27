@@ -5,6 +5,10 @@ on:
     - cron:  '0 3 * * *'
   release:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: force publish to pypi
+        type: boolean
 
 jobs:
   build_wheels:
@@ -23,10 +27,17 @@ jobs:
         with:
           rust-version: stable
 
+      - uses: actions/setup-python@v3
+
+      - name: Install cibuildwheel
+        run: python -m pip install cibuildwheel
+
       - name: Build wheels
-        uses: pypa/cibuildwheel@v2.11.2
+        uses: nick-fields/retry@v2
         with:
-          package-dir: ffi/py
+          max_attempts: 3
+          timeout_seconds: 36000 # 10 hours :/
+          command: python -m cibuildwheel --output-dir wheelhouse ffi/py
 
       - uses: actions/upload-artifact@v3
         with:
@@ -48,7 +59,7 @@ jobs:
   upload_all:
     needs: [build_wheels, make_sdist]
     runs-on: ubuntu-latest
-    if: github.event_name == 'release' && github.event.action == 'published'
+    if: (github.event_name == 'release' && github.event.action == 'published') || inputs.publish
 
     steps:
     - uses: actions/download-artifact@v3
