@@ -1,6 +1,8 @@
 use std::fmt::Display;
-use std::iter::FromIterator;
 use std::str::FromStr;
+
+use tract_data::itertools::izip;
+use tract_ndarray::{ArrayViewD, ArrayViewMutD};
 
 use crate::internal::*;
 use crate::prelude::tract_itertools::Itertools;
@@ -15,18 +17,13 @@ pub struct AxesMapping {
 }
 
 impl AxesMapping {
-    pub fn new(it: impl AsRef<[Axis]>) -> TractResult<AxesMapping> {
-        let mut axes: TVec<_> = it.as_ref().into();
-        axes.sort_by_key(|ax| ax.repr);
-        let input_count = axes[0].inputs.len();
-        let output_count = axes[0].outputs.len();
-        AxesMapping { axes, output_count, input_count }.check()
-    }
-
-    pub fn new_no_inputs(it: impl AsRef<[Axis]>) -> TractResult<AxesMapping> {
+    pub fn new(
+        input_count: usize,
+        output_count: usize,
+        it: impl AsRef<[Axis]>,
+    ) -> TractResult<AxesMapping> {
         let axes: TVec<_> = it.as_ref().into();
-        let output_count = axes[0].outputs.len();
-        AxesMapping { axes, input_count: 0, output_count }.check()
+        AxesMapping { axes, output_count, input_count }.sorted().check()
     }
 
     pub fn for_numpy_matmul(
@@ -62,7 +59,7 @@ impl AxesMapping {
             inputs: tvec!(tvec!(), tvec!(rank - 1 - transposing_b as usize),),
             outputs: tvec!(tvec!(rank - 1 - transposing_c as usize)),
         });
-        AxesMapping::new(axes)
+        AxesMapping::new(2, 1, axes)
     }
 
     pub fn disconnected(inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<AxesMapping> {
@@ -88,16 +85,28 @@ impl AxesMapping {
                 );
             }
         }
-        AxesMapping { axes, input_count: inputs.len(), output_count: outputs.len() }.check()
+        AxesMapping::new(inputs.len(), outputs.len(), axes)
     }
 
     pub fn natural(inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<AxesMapping> {
         let rank = inputs[0].rank();
         let axes = (0..rank)
             .zip('a'..)
+            .map(|(axis_id, repr)| Axis::natural(inputs.len(), outputs.len(), repr, axis_id))
+            .collect::<TVec<_>>();
+        AxesMapping::new(inputs.len(), outputs.len(), axes)
+    }
+
+    pub fn natural_for_rank(
+        inputs: usize,
+        outputs: usize,
+        rank: usize,
+    ) -> TractResult<AxesMapping> {
+        let axes = (0..rank)
+            .zip('a'..)
             .map(|(axis_id, repr)| Axis::natural(inputs, outputs, repr, axis_id))
             .collect::<TVec<_>>();
-        AxesMapping { axes, output_count: outputs.len(), input_count: inputs.len() }.check()
+        AxesMapping::new(inputs, outputs, axes)
     }
 
     pub fn iter_all_axes(&self) -> impl Iterator<Item = &Axis> {
@@ -121,18 +130,33 @@ impl AxesMapping {
     }
 
     pub fn input_axis(&self, input: usize, position: usize) -> TractResult<&Axis> {
-        self.iter_all_axes().find(|axis| axis.inputs[input].contains(&position)).with_context(
-            || format!("Failed to find axis {position} in input {input} for \"{self}\""),
-        )
+        Ok(self.axes.iter().find(|axis| axis.inputs[input].contains(&position)).unwrap())
     }
 
     fn input_axis_mut(&mut self, input: usize, position: usize) -> TractResult<&mut Axis> {
-        let repr = self.input_axis(input, position)?.repr;
-        Ok(self.axes.iter_mut().find(|axis| axis.repr == repr).unwrap())
+        Ok(self.axes.iter_mut().find(|axis| axis.inputs[input].contains(&position)).unwrap())
+    }
+
+    pub fn interface_rank(&self, io: InOut) -> usize {
+        match io {
+            InOut::In(i) => self.input_rank(i),
+            InOut::Out(o) => self.output_rank(o),
+        }
     }
 
     pub fn input_rank(&self, input: usize) -> usize {
         self.iter_all_axes().map(|axis| axis.inputs[input].len()).sum()
+    }
+
+    pub fn interface_axis(&self, io: InOut, position: usize) -> TractResult<&Axis> {
+        match io {
+            InOut::In(i) => self.input_axis(i, position),
+            InOut::Out(o) => self.output_axis(o, position),
+        }
+    }
+
+    pub fn interface_axes(&self, io: InOut) -> impl Iterator<Item = &Axis> {
+        (0..self.interface_rank(io)).map(move |ix| self.interface_axis(io, ix).unwrap())
     }
 
     pub fn input_axes(&self, input: usize) -> impl Iterator<Item = &Axis> {
@@ -144,9 +168,7 @@ impl AxesMapping {
     }
 
     pub fn output_axis(&self, output: usize, position: usize) -> TractResult<&Axis> {
-        self.iter_all_axes().find(|axis| axis.outputs[output].contains(&position)).with_context(
-            || format!("Failed to find axis {position} in output {output} for \"{self}\""),
-        )
+        Ok(self.axes.iter().find(|axis| axis.outputs[output].contains(&position)).unwrap())
     }
 
     pub fn output_axes(&self, output: usize) -> impl Iterator<Item = &Axis> {
@@ -154,8 +176,18 @@ impl AxesMapping {
     }
 
     fn output_axis_mut(&mut self, output: usize, position: usize) -> TractResult<&mut Axis> {
-        let repr = self.output_axis(output, position)?.repr;
-        Ok(self.axes.iter_mut().find(|axis| axis.repr == repr).unwrap())
+        Ok(self.axes.iter_mut().find(|axis| axis.outputs[output].contains(&position)).unwrap())
+    }
+
+    pub fn track_axis(
+        &self,
+        from: InOut,
+        to: InOut,
+        position: usize,
+    ) -> TractResult<Option<usize>> {
+        let axis = self.interface_axis(from, position)?;
+        let positions = axis.interface(to);
+        Ok(if positions.len() == 1 { Some(positions[0]) } else { None })
     }
 
     pub fn with_input_axis_named(
@@ -249,13 +281,40 @@ impl AxesMapping {
     }
 
     fn sort(&mut self) {
-        self.axes.sort_by_key(|axis| axis.repr);
+        let order: Vec<(usize, usize, usize, char)> = self
+            .axes
+            .iter()
+            .flat_map(|axis| {
+                axis.inputs
+                    .iter()
+                    .enumerate()
+                    .flat_map(move |(slot, input)| {
+                        input.iter().map(move |p| (1, slot, *p, axis.repr))
+                    })
+                    .chain(axis.outputs.iter().enumerate().flat_map(move |(slot, output)| {
+                        output.iter().map(move |p| (0, slot, *p, axis.repr))
+                    }))
+            })
+            .sorted()
+            .dedup()
+            .collect_vec();
+        self.axes.sort_by_key(|axis| order.iter().position(|tuple| tuple.3 == axis.repr).unwrap());
+    }
+
+    fn sorted(mut self) -> AxesMapping {
+        self.sort();
+        self
     }
 
     fn do_check(&self) -> TractResult<()> {
         for axis in &self.axes {
             ensure!(axis.inputs.len() == self.input_count);
             ensure!(axis.outputs.len() == self.output_count);
+            ensure!(
+                axis.inputs.iter().map(|i| i.len()).sum::<usize>()
+                    + axis.outputs.iter().map(|o| o.len()).sum::<usize>()
+                    > 0
+            );
         }
         for input_ix in 0..self.input_count() {
             for axis in 0..self.input_rank(input_ix) {
@@ -268,9 +327,13 @@ impl AxesMapping {
             }
         }
         ensure!(self.axes.iter().map(|ax| ax.repr).duplicates().count() == 0);
-        for (a, b) in self.axes.iter().tuple_windows() {
-            ensure!(a.repr < b.repr, "{self}");
-        }
+        ensure!(
+            self == &{
+                let mut x = self.clone();
+                x.sort();
+                x
+            }
+        );
         Ok(())
     }
 
@@ -320,7 +383,7 @@ impl AxesMapping {
                 repr: axis.repr,
             })
             .collect();
-        AxesMapping::new(axes)
+        AxesMapping::new(inputs.len(), outputs.len(), axes)
     }
 
     pub fn relabel(mut self) -> TractResult<AxesMapping> {
@@ -352,11 +415,20 @@ impl AxesMapping {
                 }
             }
         }
-        AxesMapping { axes, ..self.clone() }.check()
+        AxesMapping::new(self.input_count, self.output_count, axes)
+    }
+
+    pub fn remove_input_axis(&self, slot: usize, position: usize) -> TractResult<AxesMapping> {
+        let mut axes = self.axes.clone();
+        for axis in &mut axes {
+            axis.inputs[slot].retain(|pos| *pos != position);
+            axis.inputs[slot].iter_mut().for_each(|pos| *pos -= (*pos > position) as usize);
+        }
+        AxesMapping::new(self.input_count, self.output_count, axes)
     }
 
     pub fn with_extra_input(&self, slot: usize) -> TractResult<AxesMapping> {
-        let mut axes: TVec<Axis> = self
+        let axes: TVec<Axis> = self
             .iter_all_axes()
             .map(|axis| {
                 let mut axis = axis.clone();
@@ -364,8 +436,7 @@ impl AxesMapping {
                 axis
             })
             .collect();
-        axes.sort_by_key(|ax| ax.repr);
-        AxesMapping { axes, input_count: self.input_count + 1, ..self.clone() }.check()
+        AxesMapping::new(self.input_count + 1, self.output_count, axes)
     }
 
     pub fn with_extra_input_axis(
@@ -381,8 +452,7 @@ impl AxesMapping {
         let mut axis = Axis::new(repr, self.input_count, self.output_count);
         axis.inputs[slot].push(position);
         axes.push(axis);
-        axes.sort_by_key(|ax| ax.repr);
-        AxesMapping { axes, ..self.clone() }.check()
+        AxesMapping::new(self.input_count, self.output_count, axes)
     }
 
     pub fn with_extra_output_axis(
@@ -398,8 +468,7 @@ impl AxesMapping {
         let mut axis = Axis::new(repr, self.input_count, self.output_count);
         axis.outputs[slot].push(position);
         axes.push(axis);
-        axes.sort_by_key(|ax| ax.repr);
-        AxesMapping { axes, ..self.clone() }.check()
+        AxesMapping::new(self.input_count, self.output_count, axes)
     }
 
     pub fn translate_to_axis_ops(&self) -> TractResult<Vec<AxisOp>> {
@@ -457,7 +526,11 @@ impl AxesMapping {
                 .enumerate()
                 .for_each(|(ix, (_, v))| v.add_output(0, ix))
         }
-        axes.into_iter().sorted_by_key(|(k, _)| *k).map(|(_, v)| v).collect()
+        Self::new(
+            inputs.len(),
+            outputs.len().max(1),
+            axes.into_iter().sorted_by_key(|(k, _)| *k).map(|(_, v)| v).collect_vec(),
+        )
     }
 
     pub fn to_strs(&self) -> (TVec<String>, TVec<String>) {
@@ -487,15 +560,88 @@ impl AxesMapping {
         }
         (inputs, outputs)
     }
-}
 
-impl FromIterator<Axis> for TractResult<AxesMapping> {
-    fn from_iter<T: IntoIterator<Item = Axis>>(iter: T) -> TractResult<AxesMapping> {
-        let axes = iter.into_iter().collect::<TVec<_>>();
-        if axes.len() == 0 {
-            bail!("Can not build axes mapping by collecting 0 axes");
+    pub fn change_axis_sink(&self, io: InOut, change: &AxisOp) -> TractResult<Option<AxesMapping>> {
+        let (mut inputs, mut outputs) = self.to_strs();
+        let interface: &mut String = match io {
+            InOut::In(i) => &mut inputs[i],
+            InOut::Out(o) => &mut outputs[o],
+        };
+        let mut axes: Vec<char> = interface.chars().collect();
+        match change {
+            AxisOp::Rm(rm) => {
+                axes.remove(*rm);
+            }
+            AxisOp::Add(add) => axes.insert(*add, self.available_label()),
+            AxisOp::Move(from, to) => {
+                let c = axes.remove(*from);
+                axes.insert(*to, c);
+            }
+            _ => return Ok(None),
+        };
+        *interface = axes.into_iter().collect();
+        Ok(Some(AxesMapping::from_strs(&inputs, &outputs)?))
+    }
+
+    pub fn direct(&self, a: InOut, b: InOut) -> bool {
+        self.axes.iter().all(|axis| axis.interface(a) == axis.interface(b))
+    }
+
+    pub fn same_layout<D: DimLike>(
+        &self,
+        a: InOut,
+        b: InOut,
+        shape_a: impl AsRef<[D]>,
+        shape_b: impl AsRef<[D]>,
+    ) -> bool {
+        let shape_a = shape_a.as_ref();
+        let shape_b = shape_b.as_ref();
+        shape_a.iter().cloned().product::<D>() == shape_b.iter().cloned().product()
+            && izip!(
+                self.interface_axes(a).zip(shape_a.iter()).filter(|(_axis, d)| **d != D::one()),
+                self.interface_axes(b).zip(shape_b.iter()).filter(|(_axis, d)| **d != D::one())
+            )
+            .all(|(a, b)| a == b)
+    }
+
+    pub fn axis_ops_to_canonical(&self, io: InOut) -> TractResult<Vec<AxisOp>> {
+        let rank = self.interface_rank(io);
+        let target_rank = self.axes.len();
+        let mut next_insert_axis = 0;
+        let mut permutation = tvec!();
+        for axis in &self.axes {
+            let spec = match io {
+                InOut::In(i) => axis.inputs[i].first(),
+                InOut::Out(o) => axis.outputs[o].first(),
+            };
+            if let Some(pos_in_a) = spec {
+                permutation.push(pos_in_a + target_rank - rank)
+            } else {
+                permutation.push(next_insert_axis);
+                next_insert_axis += 1;
+            }
         }
-        AxesMapping::new(axes)
+        let mut ops = vec![AxisOp::Add(0); target_rank - rank];
+        ops.extend(crate::ops::change_axes::perm_to_ops(&permutation).into_iter());
+        Ok(ops)
+    }
+
+    pub fn view_to_canonical<D>(&self, io: InOut, view: &mut ArrayViewD<D>) -> TractResult<()> {
+        for op in self.axis_ops_to_canonical(io)? {
+            op.change_view(view)?;
+        }
+        Ok(())
+    }
+
+    pub fn view_to_canonical_mut<D>(
+        &self,
+        io: InOut,
+        view: &mut ArrayViewMutD<D>,
+    ) -> TractResult<()> {
+        for op in self.axis_ops_to_canonical(io)? {
+            op.change_view_mut(view)?;
+        }
+        Ok(())
     }
 }
 
@@ -531,10 +677,14 @@ mod test {
     fn test_parse_transpose() {
         assert_eq!(
             m("ij->ji"),
-            AxesMapping::new(tvec![
-                Axis::new('i', 1, 1).output(0, 1).input(0, 0),
-                Axis::new('j', 1, 1).output(0, 0).input(0, 1)
-            ])
+            AxesMapping::new(
+                1,
+                1,
+                tvec![
+                    Axis::new('i', 1, 1).output(0, 1).input(0, 0),
+                    Axis::new('j', 1, 1).output(0, 0).input(0, 1)
+                ]
+            )
             .unwrap(),
         )
     }
@@ -543,8 +693,12 @@ mod test {
     fn test_parse_diag() {
         assert_eq!(
             m("ii->i"),
-            AxesMapping::new(tvec![Axis::new('i', 1, 1).output(0, 0).input(0, 0).input(0, 1)])
-                .unwrap(),
+            AxesMapping::new(
+                1,
+                1,
+                tvec![Axis::new('i', 1, 1).output(0, 0).input(0, 0).input(0, 1)]
+            )
+            .unwrap(),
         )
     }
 
@@ -552,8 +706,12 @@ mod test {
     fn test_parse_adamar_product_explicit() {
         assert_eq!(
             m("i,i->i"),
-            AxesMapping::new(tvec![Axis::new('i', 2, 1).output(0, 0).input(0, 0).input(1, 0)])
-                .unwrap(),
+            AxesMapping::new(
+                2,
+                1,
+                tvec![Axis::new('i', 2, 1).output(0, 0).input(0, 0).input(1, 0)]
+            )
+            .unwrap(),
         )
     }
 
@@ -566,12 +724,16 @@ mod test {
     fn test_parse_batch_matmul() {
         assert_eq!(
             m("bij , bjk -> bik "),
-            AxesMapping::new(tvec![
-                Axis::new('b', 2, 1).output(0, 0).input(0, 0).input(1, 0),
-                Axis::new('i', 2, 1).output(0, 1).input(0, 1),
-                Axis::new('j', 2, 1).input(0, 2).input(1, 1),
-                Axis::new('k', 2, 1).output(0, 2).input(1, 2)
-            ])
+            AxesMapping::new(
+                2,
+                1,
+                tvec![
+                    Axis::new('b', 2, 1).output(0, 0).input(0, 0).input(1, 0),
+                    Axis::new('i', 2, 1).output(0, 1).input(0, 1),
+                    Axis::new('j', 2, 1).input(0, 2).input(1, 1),
+                    Axis::new('k', 2, 1).output(0, 2).input(1, 2)
+                ]
+            )
             .unwrap()
         )
     }
@@ -580,10 +742,14 @@ mod test {
     fn test_parse_outer_product() {
         assert_eq!(
             m("i,j->ij"),
-            AxesMapping::new(tvec![
-                Axis::new('i', 2, 1).output(0, 0).input(0, 0),
-                Axis::new('j', 2, 1).output(0, 1).input(1, 0)
-            ])
+            AxesMapping::new(
+                2,
+                1,
+                tvec![
+                    Axis::new('i', 2, 1).output(0, 0).input(0, 0),
+                    Axis::new('j', 2, 1).output(0, 1).input(1, 0)
+                ]
+            )
             .unwrap(),
         )
     }
@@ -592,12 +758,16 @@ mod test {
     fn test_parse_bilinear() {
         assert_eq!(
             m("ik,jkl,il->ij"),
-            AxesMapping::new(tvec![
-                Axis::new('i', 3, 1).output(0, 0).input(0, 0).input(2, 0),
-                Axis::new('j', 3, 1).output(0, 1).input(1, 0),
-                Axis::new('k', 3, 1).input(0, 1).input(1, 1),
-                Axis::new('l', 3, 1).input(1, 2).input(2, 1)
-            ])
+            AxesMapping::new(
+                3,
+                1,
+                tvec![
+                    Axis::new('i', 3, 1).output(0, 0).input(0, 0).input(2, 0),
+                    Axis::new('j', 3, 1).output(0, 1).input(1, 0),
+                    Axis::new('k', 3, 1).input(0, 1).input(1, 1),
+                    Axis::new('l', 3, 1).input(1, 2).input(2, 1)
+                ]
+            )
             .unwrap(),
         )
     }
@@ -606,15 +776,19 @@ mod test {
     fn test_parse_complex_tensor_contraction() {
         assert_eq!(
             m("pqrs,tuqvr->pstuv"),
-            AxesMapping::new(tvec![
-                Axis::new('p', 2, 1).output(0, 0).input(0, 0),
-                Axis::new('q', 2, 1).input(0, 1).input(1, 2),
-                Axis::new('r', 2, 1).input(0, 2).input(1, 4),
-                Axis::new('s', 2, 1).output(0, 1).input(0, 3),
-                Axis::new('t', 2, 1).output(0, 2).input(1, 0),
-                Axis::new('u', 2, 1).output(0, 3).input(1, 1),
-                Axis::new('v', 2, 1).output(0, 4).input(1, 3),
-            ])
+            AxesMapping::new(
+                2,
+                1,
+                tvec![
+                    Axis::new('p', 2, 1).output(0, 0).input(0, 0),
+                    Axis::new('q', 2, 1).input(0, 1).input(1, 2),
+                    Axis::new('r', 2, 1).input(0, 2).input(1, 4),
+                    Axis::new('s', 2, 1).output(0, 1).input(0, 3),
+                    Axis::new('t', 2, 1).output(0, 2).input(1, 0),
+                    Axis::new('u', 2, 1).output(0, 3).input(1, 1),
+                    Axis::new('v', 2, 1).output(0, 4).input(1, 3),
+                ]
+            )
             .unwrap(),
         )
     }
@@ -633,12 +807,16 @@ mod test {
     fn test_parse_pulsed_matmul() {
         assert_eq!(
             m("sij,ijk->sik"),
-            AxesMapping::new(tvec![
-                Axis::new('i', 2, 1).output(0, 1).input(0, 1).input(1, 0),
-                Axis::new('j', 2, 1).input(0, 2).input(1, 1),
-                Axis::new('k', 2, 1).output(0, 2).input(1, 2),
-                Axis::new('s', 2, 1).output(0, 0).input(0, 0),
-            ])
+            AxesMapping::new(
+                2,
+                1,
+                tvec![
+                    Axis::new('i', 2, 1).output(0, 1).input(0, 1).input(1, 0),
+                    Axis::new('j', 2, 1).input(0, 2).input(1, 1),
+                    Axis::new('k', 2, 1).output(0, 2).input(1, 2),
+                    Axis::new('s', 2, 1).output(0, 0).input(0, 0),
+                ]
+            )
             .unwrap()
         )
     }
@@ -647,13 +825,17 @@ mod test {
     fn test_parse_pulsed_batch_matmul() {
         assert_eq!(
             m("bsij,ijk->bsik"),
-            AxesMapping::new(tvec![
-                Axis::new('b', 2, 1).output(0, 0).input(0, 0),
-                Axis::new('i', 2, 1).output(0, 2).input(0, 2).input(1, 0),
-                Axis::new('j', 2, 1).input(0, 3).input(1, 1),
-                Axis::new('k', 2, 1).output(0, 3).input(1, 2),
-                Axis::new('s', 2, 1).output(0, 1).input(0, 1),
-            ])
+            AxesMapping::new(
+                2,
+                1,
+                tvec![
+                    Axis::new('b', 2, 1).output(0, 0).input(0, 0),
+                    Axis::new('i', 2, 1).output(0, 2).input(0, 2).input(1, 0),
+                    Axis::new('j', 2, 1).input(0, 3).input(1, 1),
+                    Axis::new('k', 2, 1).output(0, 3).input(1, 2),
+                    Axis::new('s', 2, 1).output(0, 1).input(0, 1),
+                ]
+            )
             .unwrap()
         )
     }

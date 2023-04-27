@@ -808,7 +808,7 @@ impl TypedOp for Scan {
                 mappings.push(info);
             }
         }
-        mappings.into_iter().collect()
+        AxesMapping::new(inputs.len(), outputs.len(), mappings)
     }
 
     fn suggested_axis_changes(&self) -> TractResult<TVec<(InOut, AxisOp)>> {

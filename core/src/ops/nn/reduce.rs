@@ -296,21 +296,20 @@ impl TypedOp for Reduce {
         outputs: &[&TypedFact],
     ) -> TractResult<AxesMapping> {
         let mut letters = 'a'..;
-        (0..inputs[0].rank())
-            .flat_map(|ix| {
-                if self.axes.contains(&ix) {
-                    tvec!(
-                        Axis::new(letters.next().unwrap(), inputs.len(), outputs.len())
-                            .input(0, ix),
-                        Axis::new(letters.next().unwrap(), inputs.len(), outputs.len())
-                            .output(0, ix),
-                    )
-                } else {
-                    tvec!(Axis::natural(inputs, outputs, letters.next().unwrap(), ix))
-                }
-                .into_iter()
-            })
-            .collect()
+        let axes = (0..inputs[0].rank()).flat_map(|ix| {
+            if self.axes.contains(&ix) {
+                tvec!(
+                    Axis::new(letters.next().unwrap(), inputs.len(), outputs.len()).input(0, ix),
+                    Axis::new(letters.next().unwrap(), inputs.len(), outputs.len()).output(0, ix),
+                )
+            } else {
+                tvec!(Axis::new(letters.next().unwrap(), inputs.len(), outputs.len())
+                    .input(0, ix)
+                    .output(0, ix))
+            }
+            .into_iter()
+        }).collect_vec();
+        AxesMapping::new(1, 1, axes)
     }
 
     fn change_axes(

@@ -234,7 +234,7 @@ fn lir_mat_mul_unary(
             model,
             node,
             &[node.inputs[1], node.inputs[0]],
-            EinSum { axes: AxesMapping::new(expr)?, ..op.clone() },
+            EinSum { axes: AxesMapping::new(node.inputs.len(), 1, expr)?, ..op.clone() },
         )
         .map(Some);
     }

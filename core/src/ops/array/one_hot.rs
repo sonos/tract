@@ -1,3 +1,5 @@
+use tract_data::itertools::Itertools;
+
 use crate::internal::*;
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
@@ -28,7 +30,7 @@ impl TypedOp for OneHot {
         inputs: &[&TypedFact],
         outputs: &[&TypedFact],
     ) -> TractResult<AxesMapping> {
-        (0..inputs[0].rank())
+        let axes = (0..inputs[0].rank())
             .zip('a'..)
             .map(|(i, repr)| {
                 Axis::new(repr, inputs.len(), outputs.len())
@@ -38,7 +40,8 @@ impl TypedOp for OneHot {
             .chain(std::iter::once(
                 Axis::new('Z', inputs.len(), outputs.len()).output(0, self.axis),
             ))
-            .collect()
+            .collect_vec();
+        AxesMapping::new(inputs.len(), outputs.len(), axes)
     }
 
     as_op!();

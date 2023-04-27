@@ -4,6 +4,8 @@ use crate::internal::*;
 use crate::model::{TypedModel, TypedNode};
 use crate::ops::identity::Identity;
 use tract_itertools::Itertools;
+use tract_ndarray::{ArrayViewD, ArrayViewMutD};
+use AxisOp::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum InOut {
@@ -29,8 +31,6 @@ pub enum AxisOp {
     Move(usize, usize),
     Reshape(usize, TVec<TDim>, TVec<TDim>),
 }
-
-use AxisOp::*;
 
 impl PartialEq for AxisOp {
     fn eq(&self, other: &AxisOp) -> bool {
@@ -368,6 +368,46 @@ impl AxisOp {
         }
     }
 
+    pub fn change_view<D>(&self, view: &mut ArrayViewD<D>) -> TractResult<()> {
+        use tract_ndarray::Axis;
+        match *self {
+            AxisOp::Rm(axis) => view.index_axis_inplace(Axis(axis), 0),
+            AxisOp::Add(axis) => view.insert_axis_inplace(Axis(axis)),
+            AxisOp::Move(from, to) if from < to => {
+                for left in from..to {
+                    view.swap_axes(left, left + 1);
+                }
+            }
+            AxisOp::Move(from, to) => {
+                for left in (to..from).rev() {
+                    view.swap_axes(left, left + 1);
+                }
+            }
+            AxisOp::Reshape(_, _, _) => bail!("Reshape can not change views in place"),
+        }
+        Ok(())
+    }
+
+    pub fn change_view_mut<D>(&self, view: &mut ArrayViewMutD<D>) -> TractResult<()> {
+        use tract_ndarray::Axis;
+        match *self {
+            AxisOp::Rm(axis) => view.index_axis_inplace(Axis(axis), 0),
+            AxisOp::Add(axis) => view.insert_axis_inplace(Axis(axis)),
+            AxisOp::Move(from, to) if from < to => {
+                for left in from..to {
+                    view.swap_axes(left, left + 1);
+                }
+            }
+            AxisOp::Move(from, to) => {
+                for left in (to..from).rev() {
+                    view.swap_axes(left, left + 1);
+                }
+            }
+            AxisOp::Reshape(_, _, _) => bail!("Reshape can not change views in place"),
+        }
+        Ok(())
+    }
+
     pub fn recip(&self) -> AxisOp {
         match self.canonical().as_ref() {
             Add(ix) => Rm(*ix),
@@ -529,7 +569,7 @@ impl TypedOp for AxisOp {
                 axes.push(Axis::new(letter, inputs.len(), outputs.len()).output(0, axis));
             }
         }
-        axes.into_iter().collect()
+        AxesMapping::new(inputs.len(), outputs.len(), axes)
     }
 
     fn declutter(
