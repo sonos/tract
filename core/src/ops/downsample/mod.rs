@@ -138,7 +138,7 @@ fn pull_downsample_up(
         if prec.outputs.len() > 1 || prec.inputs.len() == 0 {
             return Ok(None);
         }
-        let axis_info = axes_mapping.output_axis(0, down_op.axis)?;
+        let axis_info = axes_mapping.interface_axis(InOut::Out(0), down_op.axis)?;
         let mut patch = TypedModelPatch::default();
         let mut inputs = vec![];
         for (ix, (outlet, axis_info)) in prec.inputs.iter().zip(&axis_info.inputs).enumerate() {

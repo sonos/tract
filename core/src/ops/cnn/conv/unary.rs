@@ -122,7 +122,10 @@ impl ConvUnary {
     }
 
     // group,bias
-    fn bias_as_non_linear<T>(&self, c_group_axis: usize) -> TractResult<Option<(ProtoFusedSpec, Tensor)>>
+    fn bias_as_non_linear<T>(
+        &self,
+        c_group_axis: usize,
+    ) -> TractResult<Option<(ProtoFusedSpec, Tensor)>>
     where
         T: Datum + Copy + Zero,
     {
@@ -139,11 +142,14 @@ impl ConvUnary {
                     .clone()
                     .into_tensor()
                     .into_shape(&[self.group, bias.len() / self.group])?;
-                Ok(Some((ProtoFusedSpec::BinPerRow(
-                    2,
-                    Add,
-                    MapOutputAxisToInput(tvec!((c_group_axis, 0))),
-                ), bias)))
+                Ok(Some((
+                    ProtoFusedSpec::BinPerRow(
+                        2,
+                        Add,
+                        MapOutputAxisToInput(tvec!((c_group_axis, 0))),
+                    ),
+                    bias,
+                )))
             }
         } else {
             Ok(None)
@@ -687,7 +693,7 @@ impl ConvUnary {
         let input_shape =
             self.pool_spec.data_format.shape(&model.outlet_fact(node.inputs[0])?.shape)?;
         let conv_c_axis = input_shape.c_axis();
-        let &[konst_c_axis] = &*axes_mapping.input_axis(succ.slot, conv_c_axis)?.inputs[1- succ.slot] else {
+        let &[konst_c_axis] = &*axes_mapping.interface_axis(InOut::In(succ.slot), conv_c_axis)?.inputs[1- succ.slot] else {
         return Ok(None)
     };
         let Ok(co) = node.outputs[0].fact.shape[conv_c_axis].to_usize() else {
@@ -848,12 +854,12 @@ impl TypedOp for ConvUnary {
         let fact = &inputs[0];
         let shape = self.pool_spec.data_format.shape(fact.shape.iter().collect::<Vec<TDim>>())?;
         let mut axes = AxesMapping::disconnected(inputs, outputs)?
-            .with_input_axis_named(0, shape.c_axis(), 'I')?
-            .with_output_axis_named(0, shape.c_axis(), 'O')?;
+            .with_interface_axis_named(InOut::In(0), shape.c_axis(), 'I')?
+            .with_interface_axis_named(InOut::Out(0), shape.c_axis(), 'O')?;
         if let Some(n_axis) = shape.n_axis() {
             axes = axes
-                .with_input_axis_named(0, n_axis, 'N')?
-                .with_output_axis_named(0, n_axis, '$')?
+                .with_interface_axis_named(InOut::In(0), n_axis, 'N')?
+                .with_interface_axis_named(InOut::Out(0), n_axis, '$')?
                 .linking('N', '$')?;
         }
         let h_axis = shape.h_axis();
@@ -869,15 +875,15 @@ impl TypedOp for ConvUnary {
                 && padding[ix].pad_after.is_zero()
             {
                 axes = axes
-                    .with_input_axis_named(0, ix + h_axis, repr)?
-                    .with_output_axis_named(0, ix + h_axis, '$')?
+                    .with_interface_axis_named(InOut::In(0), ix + h_axis, repr)?
+                    .with_interface_axis_named(InOut::Out(0), ix + h_axis, '$')?
                     .linking(repr, '$')?
             }
         }
         if self.q_params.is_some() {
             for qp_ix in 0..6 {
                 if inputs[qp_ix + 1].rank() == 1 {
-                    axes = axes.with_input_axis_named(qp_ix + 1, 0, '$')?;
+                    axes = axes.with_interface_axis_named(InOut::In(qp_ix + 1), 0, '$')?;
                     axes = match qp_ix {
                         0 | 1 => axes.linking('O', '$')?,
                         2 | 3 => axes.linking('I', '$')?,

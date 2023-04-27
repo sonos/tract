@@ -99,7 +99,7 @@ impl AxisTracking {
                 .op
                 .axes_mapping(&input_facts, &output_facts)
                 .with_context(|| format!("Computing axes mapping for {emiter_node}"))?;
-            let info = invs.output_axis(wire.slot, axis)?;
+            let info = invs.interface_axis(InOut::Out(wire.slot), axis)?;
             if info.inputs.iter().any(|i| i.len() > 0) {
                 nodes.push((wire.node, info.clone()));
             } else {
@@ -109,7 +109,7 @@ impl AxisTracking {
                 let succ_node = model.node(succ.node);
                 let (input_facts, output_facts) = model.node_facts(succ_node.id)?;
                 let invs = succ_node.op.axes_mapping(&input_facts, &output_facts)?;
-                let info = invs.input_axis(succ.slot, axis)?;
+                let info = invs.interface_axis(InOut::In(succ.slot), axis)?;
                 if info.outputs.iter().any(|o| o.len() > 0) {
                     nodes.push((succ_node.id, info.clone()));
                 } else {
@@ -180,12 +180,12 @@ pub fn for_model(model: &TypedModel) -> TractResult<AxesMapping> {
         let mut reprs:Vec<char> = vec![];
         for (ix, outlet) in model.input_outlets()?.iter().enumerate() {
             if let Some(appearance) = tracking.outlets.get(outlet) {
-                reprs.push(result.input_axis(ix, *appearance).unwrap().repr);
+                reprs.push(result.interface_axis(InOut::In(ix), *appearance).unwrap().repr);
             }
         }
         for (ix, outlet) in model.output_outlets()?.iter().enumerate() {
             if let Some(appearance) = tracking.outlets.get(outlet) {
-                reprs.push(result.output_axis(ix, *appearance).unwrap().repr);
+                reprs.push(result.interface_axis(InOut::Out(ix), *appearance).unwrap().repr);
             }
         }
         if reprs.len() > 1 {
