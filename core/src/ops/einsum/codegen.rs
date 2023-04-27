@@ -96,7 +96,7 @@ fn inject_m_or_n_axis(
         node.inputs.iter().map(|i| patch.tap_model(model, *i)).collect::<TractResult<TVec<_>>>()?;
     if let Some(axis) = quasi_m_or_n_axis {
         if axis.inputs[input_to_fix].len() == 1 {
-            let new_axes = op.axes.with_extra_output_axis('$', 0, 0)?.linking(axis.repr, '$')?;
+            let new_axes = op.axes.clone().with_extra_output_axis('$', 0, 0)?.linking(axis.repr, '$')?;
             wire = patch.wire_node(
                 format!("{name}.einsum"),
                 EinSum { axes: new_axes, ..op.clone() },
@@ -105,7 +105,7 @@ fn inject_m_or_n_axis(
             wire = patch.wire_node(&node.name, AxisOp::Rm(0), &wire)?;
         } else {
             let new_axes =
-                op.axes.with_extra_input_axis('$', input_to_fix, 0)?.linking(axis.repr, '$')?;
+                op.axes.clone().with_extra_input_axis('$', input_to_fix, 0)?.linking(axis.repr, '$')?;
             wire[input_to_fix] =
                 patch.wire_node(format!("{name}.add_mn"), AxisOp::Add(0), &[wire[input_to_fix]])?
                     [0];
@@ -115,6 +115,7 @@ fn inject_m_or_n_axis(
         let repr = op.axes.available_label();
         let new_axes = op
             .axes
+            .clone()
             .with_extra_input_axis(repr, input_to_fix, 0)?
             .with_extra_output_axis('$', 0, 0)?
             .linking(repr, '$')?;
