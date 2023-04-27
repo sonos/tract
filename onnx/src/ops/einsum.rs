@@ -7,7 +7,7 @@ pub fn einsum(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let expr = node.get_attr::<String>("equation")?;
-    let expr:AxesMapping = expr.replace("...", "*").parse()?;
+    let expr: AxesMapping = expr.replace("...", "*").parse()?;
     Ok((expand(EinSum { expr }), vec![]))
 }
 
@@ -15,8 +15,6 @@ pub fn einsum(
 pub struct EinSum {
     pub expr: AxesMapping,
 }
-
-
 
 impl Expansion for EinSum {
     fn name(&self) -> Cow<str> {
@@ -35,7 +33,11 @@ impl Expansion for EinSum {
             .collect::<TractResult<TVec<_>>>()?;
         let expr = resolve_ellipsis(&self.expr, &ranks)?;
         let operating_dt = model.outlet_fact(inputs[0])?.datum_type;
-        model.wire_node(prefix, tract_core::ops::einsum::EinSum { axes: expr, operating_dt, q_params: None }, inputs)
+        model.wire_node(
+            prefix,
+            tract_core::ops::einsum::EinSum { axes: expr, operating_dt, q_params: None },
+            inputs,
+        )
     }
 
     fn rules<'r, 'p: 'r, 's: 'r>(
@@ -89,7 +91,7 @@ fn resolve_ellipsis(expr: &AxesMapping, ranks: &[usize]) -> TractResult<AxesMapp
         .iter()
         .enumerate()
         .filter_map(|(ix, rank)| {
-            if expr.axis_positions_in_input(ix, '*').is_some() {
+            if expr.axis_positions(InOut::In(ix), '*').is_some() {
                 Some(rank + 1 - expr.interface_rank(InOut::In(ix)))
             } else {
                 None

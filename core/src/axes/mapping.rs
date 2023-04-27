@@ -125,8 +125,12 @@ impl AxesMapping {
         self.iter_all_axes().find(|axis| axis.repr == c)
     }
 
-    pub fn axis_positions_in_input(&self, input: usize, c: char) -> Option<&[usize]> {
-        self.axis_by_repr(c).map(|axis| &*axis.inputs[input])
+    pub fn axis_positions(&self, io: InOut, c: char) -> Option<&[usize]> {
+        let axis = self.axis_by_repr(c);
+        match io {
+            InOut::In(i) => axis.map(|axis| &*axis.inputs[i]),
+            InOut::Out(o) => axis.map(|axis| &*axis.outputs[o]),
+        }
     }
 
     pub fn interface_rank(&self, io: InOut) -> usize {
@@ -211,23 +215,13 @@ impl AxesMapping {
         self.check()
     }
 
-    pub fn with_input_axis_linked_to(
+    pub fn with_interface_axis_linked_to(
         self,
-        slot: usize,
+        io: InOut,
         axis: usize,
         to: char,
     ) -> TractResult<AxesMapping> {
-        let from = self.interface_axis(InOut::In(slot), axis)?.repr;
-        self.linking(to, from)
-    }
-
-    pub fn with_output_axis_linked_to(
-        self,
-        slot: usize,
-        axis: usize,
-        to: char,
-    ) -> TractResult<AxesMapping> {
-        let from = self.interface_axis(InOut::Out(slot), axis)?.repr;
+        let from = self.interface_axis(io, axis)?.repr;
         self.linking(to, from)
     }
 

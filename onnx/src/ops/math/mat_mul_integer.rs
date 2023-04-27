@@ -146,36 +146,37 @@ fn wire_as_einsum(
         .collect::<TractResult<Vec<_>>>()?;
     let mut expr = AxesMapping::disconnected_for_ranks(&ranks, &ranks[0..1])?
         .with_interface_axis_named(InOut::In(0), rank - 2, 'm')?
-        .with_output_axis_linked_to(0, rank - 2, 'm')?
+        .with_interface_axis_linked_to(InOut::Out(0), rank - 2, 'm')?
         .with_interface_axis_named(InOut::In(1), rank - 1, 'n')?
-        .with_output_axis_linked_to(0, rank - 1, 'n')?
+        .with_interface_axis_linked_to(InOut::Out(0), rank - 1, 'n')?
         .with_interface_axis_named(InOut::In(0), rank - 1, 'k')?
-        .with_input_axis_linked_to(1, rank - 2, 'k')?;
+        .with_interface_axis_linked_to(InOut::In(1), rank - 2, 'k')?;
     for ax in 0..rank - 2 {
         let repr = expr.interface_axis(InOut::In(0), ax)?.repr;
-        expr =
-            expr.with_input_axis_linked_to(1, ax, repr)?.with_output_axis_linked_to(0, ax, repr)?;
+        expr = expr
+            .with_interface_axis_linked_to(InOut::In(1), ax, repr)?
+            .with_interface_axis_linked_to(InOut::Out(0), ax, repr)?;
     }
     if ranks[2] == 1 {
-        expr = expr.with_input_axis_linked_to(2, 0, 'm')?;
+        expr = expr.with_interface_axis_linked_to(InOut::In(2), 0, 'm')?;
     }
     if ranks[3] == 1 {
-        expr = expr.with_input_axis_linked_to(3, 0, 'm')?;
+        expr = expr.with_interface_axis_linked_to(InOut::In(3), 0, 'm')?;
     }
     if ranks[4] == 1 {
-        expr = expr.with_input_axis_linked_to(4, 0, 'm')?;
+        expr = expr.with_interface_axis_linked_to(InOut::In(4), 0, 'm')?;
     }
     if ranks[5] == 1 {
-        expr = expr.with_input_axis_linked_to(5, 0, 'n')?;
+        expr = expr.with_interface_axis_linked_to(InOut::In(5), 0, 'n')?;
     }
     if ranks[6] == 1 {
-        expr = expr.with_input_axis_linked_to(6, 0, 'n')?;
+        expr = expr.with_interface_axis_linked_to(InOut::In(6), 0, 'n')?;
     }
     if ranks[7] == 1 {
-        expr = expr.with_input_axis_linked_to(7, 0, 'm')?;
+        expr = expr.with_interface_axis_linked_to(InOut::In(7), 0, 'm')?;
     }
     if ranks[8] == 1 {
-        expr = expr.with_input_axis_linked_to(8, 0, 'm')?;
+        expr = expr.with_interface_axis_linked_to(InOut::In(8), 0, 'm')?;
     }
     let op = tract_core::ops::einsum::EinSum {
         axes: expr,
