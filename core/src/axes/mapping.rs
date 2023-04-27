@@ -225,23 +225,6 @@ impl AxesMapping {
         self.linking(to, from)
     }
 
-    // FIXME: fuse with with_extra_input ?
-    pub fn add_input(mut self, rank: usize) -> TractResult<AxesMapping> {
-        self.input_count += 1;
-        for axis in &mut self.axes {
-            axis.inputs.push(tvec!());
-        }
-        for ix in 0..rank {
-            let repr = self.available_label();
-            let mut inputs = tvec!(tvec!(); self.input_count);
-            inputs[self.input_count - 1].push(ix);
-            let outputs = tvec!(tvec!(); self.output_count);
-            self.axes.push(Axis { repr, inputs, outputs });
-        }
-        self.sort();
-        self.check()
-    }
-
     fn sort(&mut self) {
         let order: Vec<(usize, usize, usize, char)> = self
             .axes
@@ -389,7 +372,7 @@ impl AxesMapping {
         AxesMapping::new(self.input_count, self.output_count, axes)
     }
 
-    pub fn with_extra_input(&self, slot: usize) -> TractResult<AxesMapping> {
+    pub fn with_extra_input(self, slot: usize) -> TractResult<AxesMapping> {
         let axes: TVec<Axis> = self
             .iter_all_axes()
             .map(|axis| {
@@ -402,7 +385,7 @@ impl AxesMapping {
     }
 
     pub fn with_extra_input_axis(
-        &self,
+        self,
         repr: char,
         slot: usize,
         position: usize,
@@ -418,7 +401,7 @@ impl AxesMapping {
     }
 
     pub fn with_extra_output_axis(
-        &self,
+        self,
         repr: char,
         slot: usize,
         position: usize,
