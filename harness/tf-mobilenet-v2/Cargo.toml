@@ -1,12 +1,12 @@
 [package]
 name = "tf-mobilenet-v2"
-version = "0.20.4-pre"
+version = "0.20.5-pre"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT/Apache-2.0"
 
 [dependencies]
 image.workspace = true
-tract-tensorflow = { path = "../../tensorflow", version = "=0.20.4" }
+tract-tensorflow = { path = "../../tensorflow", version = "=0.20.5-pre" }
 
 [dev-dependencies]
 dinghy-test.workspace = true
