@@ -244,13 +244,13 @@ pub type MatrixGeometry = GeometryBound<SymbolicMatrixGeometry, ConcreteMatrixGe
 
 #[derive(Clone, Debug)]
 pub struct LirMatMulUnary {
-    c_fact: TypedFact,
-    micro_ops: Vec<ProtoFusedSpec>,
-    geometry: MatrixGeometry,
-    mmm: Box<dyn MatMatMul>,
-    c_m_axis: usize,
-    c_n_axis: usize,
-    trivial_path: bool,
+    pub c_fact: TypedFact,
+    pub micro_ops: Vec<ProtoFusedSpec>,
+    pub geometry: MatrixGeometry,
+    pub mmm: Box<dyn MatMatMul>,
+    pub c_m_axis: usize,
+    pub c_n_axis: usize,
+    pub trivial_path: bool,
 }
 
 impl Op for LirMatMulUnary {
