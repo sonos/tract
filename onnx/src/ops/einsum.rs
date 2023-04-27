@@ -65,7 +65,7 @@ impl Expansion for EinSum {
         s.given_all(ranks, move |s, ranks| {
             let ranks = ranks.iter().map(|r| *r as usize).collect::<TVec<_>>();
             let expr = resolve_ellipsis(&self.expr, &ranks)?;
-            s.equals(&outputs[0].rank, expr.interface_rank(InOut::Out(0)) as i64)?;
+            s.equals(&outputs[0].rank, expr.rank(InOut::Out(0)) as i64)?;
             for axis in expr.iter_all_axes() {
                 let mut axes = vec![];
                 if let Some(result) = axis.outputs[0].first() {
@@ -92,7 +92,7 @@ fn resolve_ellipsis(expr: &AxesMapping, ranks: &[usize]) -> TractResult<AxesMapp
         .enumerate()
         .filter_map(|(ix, rank)| {
             if expr.axis_positions(InOut::In(ix), '*').is_some() {
-                Some(rank + 1 - expr.interface_rank(InOut::In(ix)))
+                Some(rank + 1 - expr.rank(InOut::In(ix)))
             } else {
                 None
             }

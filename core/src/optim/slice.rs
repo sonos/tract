@@ -36,7 +36,7 @@ impl super::TypedPass for PushSliceUp {
                         .map(|i| patch.tap_model(model, *i))
                         .collect::<TractResult<TVec<OutletId>>>()?;
                     let mut start = 0;
-                    let axis_info = invariants.interface_axis(InOut::Out(0), axis).unwrap();
+                    let axis_info = invariants.axis(InOut::Out(0), axis).unwrap();
                     for end in &boundaries {
                         let mut wires = tvec!();
                         for input_ix in 0..inputs.len() {

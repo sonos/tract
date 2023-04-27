@@ -145,14 +145,14 @@ fn wire_as_einsum(
         .map(|i| Ok(target.outlet_fact(*i)?.rank()))
         .collect::<TractResult<Vec<_>>>()?;
     let mut expr = AxesMapping::disconnected_for_ranks(&ranks, &ranks[0..1])?
-        .with_interface_axis_named(InOut::In(0), rank - 2, 'm')?
+        .with_axis_named(InOut::In(0), rank - 2, 'm')?
         .with_interface_axis_linked_to(InOut::Out(0), rank - 2, 'm')?
-        .with_interface_axis_named(InOut::In(1), rank - 1, 'n')?
+        .with_axis_named(InOut::In(1), rank - 1, 'n')?
         .with_interface_axis_linked_to(InOut::Out(0), rank - 1, 'n')?
-        .with_interface_axis_named(InOut::In(0), rank - 1, 'k')?
+        .with_axis_named(InOut::In(0), rank - 1, 'k')?
         .with_interface_axis_linked_to(InOut::In(1), rank - 2, 'k')?;
     for ax in 0..rank - 2 {
-        let repr = expr.interface_axis(InOut::In(0), ax)?.repr;
+        let repr = expr.axis(InOut::In(0), ax)?.repr;
         expr = expr
             .with_interface_axis_linked_to(InOut::In(1), ax, repr)?
             .with_interface_axis_linked_to(InOut::Out(0), ax, repr)?;

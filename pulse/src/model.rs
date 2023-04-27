@@ -158,7 +158,7 @@ impl
         let (input_facts, output_facts) = source.node_facts(node.id)?;
         let axes_mapping = node.op.axes_mapping(&input_facts, &output_facts)?;
         let axis_info = axes_mapping
-            .interface_axis(InOut::In(stream_input_ix), pulse_fact.stream.as_ref().unwrap().axis)
+            .axis(InOut::In(stream_input_ix), pulse_fact.stream.as_ref().unwrap().axis)
             .unwrap();
         if axis_info.outputs[0].len() == 1 {
             let pulse_op = PulseWrappingOp(node.op.clone());
@@ -217,7 +217,7 @@ impl PulsedOp for PulseWrappingOp {
         let output_facts_ref = output_facts.iter().collect::<TVec<_>>();
         let axes_mapping = self.0.axes_mapping(&input_facts_ref, &output_facts_ref)?;
         let axis_info = axes_mapping
-            .interface_axis(InOut::In(pulsing_input), stream.axis)
+            .axis(InOut::In(pulsing_input), stream.axis)
             .context("Unable to track pulse axis on PulseWrappingOp")?;
         std::mem::drop(output_facts_ref);
         output_facts

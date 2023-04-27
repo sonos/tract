@@ -196,12 +196,12 @@ impl TypedOp for DeconvUnary {
         let fact = &inputs[0];
         let shape = self.pool_spec.data_format.shape(fact.shape.iter().collect::<Vec<TDim>>())?;
         let mut axes = AxesMapping::disconnected(inputs, outputs)?
-            .with_interface_axis_named(InOut::In(0), shape.c_axis(), 'I')?
-            .with_interface_axis_named(InOut::Out(0), shape.c_axis(), 'O')?;
+            .with_axis_named(InOut::In(0), shape.c_axis(), 'I')?
+            .with_axis_named(InOut::Out(0), shape.c_axis(), 'O')?;
         if let Some(n_axis) = shape.n_axis() {
             axes = axes
-                .with_interface_axis_named(InOut::In(0), n_axis, 'N')?
-                .with_interface_axis_named(InOut::Out(0), n_axis, '$')?
+                .with_axis_named(InOut::In(0), n_axis, 'N')?
+                .with_axis_named(InOut::Out(0), n_axis, '$')?
                 .linking('N', '$')?;
         }
         let h_axis = shape.h_axis();
@@ -215,8 +215,8 @@ impl TypedOp for DeconvUnary {
                 && self.adjustments[ix] == 0
             {
                 axes = axes
-                    .with_interface_axis_named(InOut::In(0), ix + h_axis, repr)?
-                    .with_interface_axis_named(InOut::Out(0), ix + h_axis, '$')?
+                    .with_axis_named(InOut::In(0), ix + h_axis, repr)?
+                    .with_axis_named(InOut::Out(0), ix + h_axis, '$')?
                     .linking(repr, '$')?
             }
         }
