@@ -39,10 +39,7 @@ impl EinSum {
         io: InOut,
         axis: usize,
     ) -> TractResult<Option<TypedModelPatch>> {
-        let mut new_axis = match io {
-            InOut::In(slot) => self.axes.input_axis(slot, axis).unwrap().clone(),
-            InOut::Out(_) => self.axes.output_axis(0, axis).unwrap().clone(),
-        };
+        let mut new_axis = self.axes.interface_axis(io, axis)?.clone();
         let repr = new_axis.repr;
         let mut patch = TypedModelPatch::new(format!("Propagate axis {}", new_axis.repr));
         let mut taps = tvec!();
@@ -51,7 +48,7 @@ impl EinSum {
             if new_axis.inputs[ix].len() > 1 {
                 return Ok(None); // FIXME maybe
             } else if new_axis.inputs[ix].is_empty() {
-                let insert_at = self.axes.input_rank(ix);
+                let insert_at = self.axes.interface_rank(InOut::In(ix));
                 tap = patch.wire_node(
                     format!("{}.prop_axis.{}.input_{}", &node.name, new_axis.repr, ix),
                     AxisOp::Add(insert_at),
@@ -62,7 +59,7 @@ impl EinSum {
             taps.push(tap);
         }
         let must_rm_axis: Option<usize> = if new_axis.outputs[0].len() == 0 {
-            let insert_at = self.axes.output_rank(0);
+            let insert_at = self.axes.interface_rank(InOut::Out(0));
             new_axis.outputs[0].push(insert_at);
             Some(insert_at)
         } else {
@@ -100,7 +97,10 @@ impl EinSum {
             let precursor = model.node(input.node);
             if let Some(concat) = precursor.op_as::<TypedConcat>() {
                 let offsets = concat.offsets(&model.node_input_facts(precursor.id)?)?;
-                let axis_info = self.axes.input_axis(slot, concat.axis).context("Axis unmapped")?;
+                let axis_info = self
+                    .axes
+                    .interface_axis(InOut::In(slot), concat.axis)
+                    .context("Axis unmapped")?;
                 // only split if axis is a summing axis
                 if axis_info.outputs[0].len() > 0 {
                     continue;
@@ -218,7 +218,7 @@ impl TypedOp for EinSum {
         ensure!(inputs
             .iter()
             .enumerate()
-            .all(|(ix, fact)| fact.rank() == self.axes.input_rank(ix)));
+            .all(|(ix, fact)| fact.rank() == self.axes.interface_rank(InOut::In(ix))));
         let shapes: TVec<&[TDim]> = inputs.iter().map(|t| &*t.shape).collect();
         if let Some(qp) = self.q_params {
             ensure!(inputs.len() == 9);

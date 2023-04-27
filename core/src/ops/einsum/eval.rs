@@ -34,7 +34,9 @@ pub fn eval_t<Acc: Datum + Zero + One>(
         inputs.iter().map(|t| t.to_array_view::<Acc>()).collect::<TractResult<_>>()?;
     let summing_axes: TVec<_> = expr
         .iter_all_axes()
-        .filter(|a| a.outputs[0].len() == 0 && a.inputs[0..inputs.len()].iter().any(|i| i.len() > 0))
+        .filter(|a| {
+            a.outputs[0].len() == 0 && a.inputs[0..inputs.len()].iter().any(|i| i.len() > 0)
+        })
         .collect();
     let summing_shape: TVec<usize> = summing_axes
         .iter()
@@ -119,7 +121,7 @@ pub fn eval_q(expr: &AxesMapping, qp: DatumType, inputs: TVec<TValue>) -> TractR
         output += inputs[2].cast_to_scalar::<i32>()?;
     } else {
         let mut bias_shape = tvec!(1; output.ndim());
-        bias_shape[expr.input_axis(2, 0)?.outputs[0][0]] = bias.len();
+        bias_shape[expr.interface_axis(InOut::In(2), 0)?.outputs[0][0]] = bias.len();
         let bias = bias.to_array_view::<i32>()?.into_shape(&*bias_shape)?;
         output = output + bias;
     }

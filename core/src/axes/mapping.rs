@@ -129,54 +129,37 @@ impl AxesMapping {
         self.axis_by_repr(c).map(|axis| &*axis.inputs[input])
     }
 
-    pub fn input_axis(&self, input: usize, position: usize) -> TractResult<&Axis> {
-        Ok(self.axes.iter().find(|axis| axis.inputs[input].contains(&position)).unwrap())
-    }
-
-    fn input_axis_mut(&mut self, input: usize, position: usize) -> TractResult<&mut Axis> {
-        Ok(self.axes.iter_mut().find(|axis| axis.inputs[input].contains(&position)).unwrap())
-    }
-
     pub fn interface_rank(&self, io: InOut) -> usize {
         match io {
-            InOut::In(i) => self.input_rank(i),
-            InOut::Out(o) => self.output_rank(o),
+            InOut::In(i) => self.iter_all_axes().map(|axis| axis.inputs[i].len()).sum(),
+            InOut::Out(o) => self.iter_all_axes().map(|axis| axis.outputs[o].len()).sum(),
         }
-    }
-
-    pub fn input_rank(&self, input: usize) -> usize {
-        self.iter_all_axes().map(|axis| axis.inputs[input].len()).sum()
     }
 
     pub fn interface_axis(&self, io: InOut, position: usize) -> TractResult<&Axis> {
         match io {
-            InOut::In(i) => self.input_axis(i, position),
-            InOut::Out(o) => self.output_axis(o, position),
+            InOut::In(i) => {
+                Ok(self.axes.iter().find(|axis| axis.inputs[i].contains(&position)).unwrap())
+            }
+            InOut::Out(o) => {
+                Ok(self.axes.iter().find(|axis| axis.outputs[o].contains(&position)).unwrap())
+            }
+        }
+    }
+
+    fn interface_axis_mut(&mut self, io: InOut, position: usize) -> TractResult<&mut Axis> {
+        match io {
+            InOut::In(i) => {
+                Ok(self.axes.iter_mut().find(|axis| axis.inputs[i].contains(&position)).unwrap())
+            }
+            InOut::Out(o) => {
+                Ok(self.axes.iter_mut().find(|axis| axis.outputs[o].contains(&position)).unwrap())
+            }
         }
     }
 
     pub fn interface_axes(&self, io: InOut) -> impl Iterator<Item = &Axis> {
         (0..self.interface_rank(io)).map(move |ix| self.interface_axis(io, ix).unwrap())
-    }
-
-    pub fn input_axes(&self, input: usize) -> impl Iterator<Item = &Axis> {
-        (0..self.input_rank(input)).map(move |ix| self.input_axis(input, ix).unwrap())
-    }
-
-    pub fn output_rank(&self, output: usize) -> usize {
-        self.iter_all_axes().map(|axis| axis.outputs[output].len()).sum()
-    }
-
-    pub fn output_axis(&self, output: usize, position: usize) -> TractResult<&Axis> {
-        Ok(self.axes.iter().find(|axis| axis.outputs[output].contains(&position)).unwrap())
-    }
-
-    pub fn output_axes(&self, output: usize) -> impl Iterator<Item = &Axis> {
-        (0..self.output_rank(output)).map(move |ix| self.output_axis(output, ix).unwrap())
-    }
-
-    fn output_axis_mut(&mut self, output: usize, position: usize) -> TractResult<&mut Axis> {
-        Ok(self.axes.iter_mut().find(|axis| axis.outputs[output].contains(&position)).unwrap())
     }
 
     pub fn track_axis(
@@ -190,32 +173,17 @@ impl AxesMapping {
         Ok(if positions.len() == 1 { Some(positions[0]) } else { None })
     }
 
-    pub fn with_input_axis_named(
+    pub fn with_interface_axis_named(
         mut self,
-        input_id: usize,
+        io: InOut,
         axis_pos: usize,
         name: char,
     ) -> TractResult<AxesMapping> {
-        let old_label = self.input_axis(input_id, axis_pos)?.repr;
+        let old_label = self.interface_axis(io, axis_pos)?.repr;
         if let Some(conflict) = self.axes.iter_mut().find(|axis| axis.repr == name) {
             conflict.repr = old_label
         }
-        self.input_axis_mut(input_id, axis_pos)?.repr = name;
-        self.sort();
-        self.check()
-    }
-
-    pub fn with_output_axis_named(
-        mut self,
-        output_id: usize,
-        axis_pos: usize,
-        name: char,
-    ) -> TractResult<AxesMapping> {
-        let old_label = self.output_axis(output_id, axis_pos)?.repr;
-        if let Some(conflict) = self.axes.iter_mut().find(|axis| axis.repr == name) {
-            conflict.repr = old_label
-        }
-        self.output_axis_mut(output_id, axis_pos)?.repr = name;
+        self.interface_axis_mut(io, axis_pos)?.repr = name;
         self.sort();
         self.check()
     }
@@ -249,7 +217,7 @@ impl AxesMapping {
         axis: usize,
         to: char,
     ) -> TractResult<AxesMapping> {
-        let from = self.input_axis(slot, axis)?.repr;
+        let from = self.interface_axis(InOut::In(slot), axis)?.repr;
         self.linking(to, from)
     }
 
@@ -259,7 +227,7 @@ impl AxesMapping {
         axis: usize,
         to: char,
     ) -> TractResult<AxesMapping> {
-        let from = self.output_axis(slot, axis)?.repr;
+        let from = self.interface_axis(InOut::Out(slot), axis)?.repr;
         self.linking(to, from)
     }
 
@@ -317,13 +285,13 @@ impl AxesMapping {
             );
         }
         for input_ix in 0..self.input_count() {
-            for axis in 0..self.input_rank(input_ix) {
-                ensure!(self.input_axis(input_ix, axis).is_ok());
+            for axis in 0..self.interface_rank(InOut::In(input_ix)) {
+                ensure!(self.interface_axis(InOut::In(input_ix), axis).is_ok());
             }
         }
         for output_ix in 0..self.output_count() {
-            for axis in 0..self.output_rank(output_ix) {
-                ensure!(self.output_axis(output_ix, axis).is_ok());
+            for axis in 0..self.interface_rank(InOut::Out(output_ix)) {
+                ensure!(self.interface_axis(InOut::Out(output_ix), axis).is_ok());
             }
         }
         ensure!(self.axes.iter().map(|ax| ax.repr).duplicates().count() == 0);

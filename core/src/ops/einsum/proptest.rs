@@ -58,17 +58,17 @@ impl Arbitrary for BinEinsumProblem {
             })
             .prop_flat_map(|(expr, axis_dims)| {
                 let shape_a: TVec<usize> = expr
-                    .input_axes(0)
+                    .interface_axes(InOut::In(0))
                     .map(|axis| expr.iter_all_axes().position(|x| x == axis).unwrap())
                     .map(|dim| axis_dims[dim])
                     .collect();
                 let shape_b: TVec<usize> = expr
-                    .input_axes(1)
+                    .interface_axes(InOut::In(1))
                     .map(|axis| expr.iter_all_axes().position(|x| x == axis).unwrap())
                     .map(|dim| axis_dims[dim])
                     .collect();
                 let shape_output: TVec<usize> = expr
-                    .output_axes(0)
+                    .interface_axes(InOut::Out(0))
                     .map(|axis| expr.iter_all_axes().position(|x| x == axis).unwrap())
                     .map(|dim| axis_dims[dim])
                     .collect();

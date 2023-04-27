@@ -62,9 +62,9 @@ impl TypedOp for TypedConcat {
         let mut axes = AxesMapping::disconnected(inputs, outputs)?;
         for ax in 0..outputs[0].rank() {
             if ax != self.axis {
-                let repr = axes.output_axis(0, ax)?.repr;
+                let repr = axes.interface_axis(InOut::Out(0), ax)?.repr;
                 for i in 0..inputs.len() {
-                    axes = axes.with_input_axis_named(i, ax, '$')?.linking(repr, '$')?;
+                    axes = axes.with_interface_axis_named(InOut::In(i), ax, '$')?.linking(repr, '$')?;
                 }
             }
         }

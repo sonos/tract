@@ -17,15 +17,25 @@ impl Slice {
         format!("{}.axis{}_{}_{}", name, self.axis, self.start, self.end)
     }
 
-    pub fn declutter_slice_after_slice(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+    pub fn declutter_slice_after_slice(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
         let prec = model.node(node.inputs[0].node);
         if let Some(other) = prec.op_as::<Slice>() {
             if other.axis == self.axis {
-                return TypedModelPatch::replace_single_op(model, node, &prec.inputs , Slice {
-                    axis: self.axis,
-                    start: self.start.clone() + &other.start,
-                    end: self.end.clone() + &other.start,
-                }).map(Some)
+                return TypedModelPatch::replace_single_op(
+                    model,
+                    node,
+                    &prec.inputs,
+                    Slice {
+                        axis: self.axis,
+                        start: self.start.clone() + &other.start,
+                        end: self.end.clone() + &other.start,
+                    },
+                )
+                .map(Some);
             }
         }
         Ok(None)
@@ -124,8 +134,8 @@ impl TypedOp for Slice {
         for (axis, repr) in (0..inputs[0].rank()).zip('a'..) {
             if self.axis != axis {
                 mapping = mapping
-                    .with_input_axis_named(0, axis, repr)?
-                    .with_output_axis_named(0, axis, '$')?
+                    .with_interface_axis_named(InOut::In(0), axis, repr)?
+                    .with_interface_axis_named(InOut::Out(0), axis, '$')?
                     .linking(repr, '$')?
             }
         }
