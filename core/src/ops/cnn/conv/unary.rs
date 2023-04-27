@@ -95,7 +95,7 @@ impl ConvUnary {
         }
     }
 
-    fn kernel_offset_u8_as_i8(
+    pub fn kernel_offset_u8_as_i8(
         &self,
         inputs: &mut [OutletId],
         model: &mut TypedModel,
