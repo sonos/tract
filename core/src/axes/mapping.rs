@@ -133,14 +133,14 @@ impl AxesMapping {
         }
     }
 
-    pub fn interface_rank(&self, io: InOut) -> usize {
+    pub fn rank(&self, io: InOut) -> usize {
         match io {
             InOut::In(i) => self.iter_all_axes().map(|axis| axis.inputs[i].len()).sum(),
             InOut::Out(o) => self.iter_all_axes().map(|axis| axis.outputs[o].len()).sum(),
         }
     }
 
-    pub fn interface_axis(&self, io: InOut, position: usize) -> TractResult<&Axis> {
+    pub fn axis(&self, io: InOut, position: usize) -> TractResult<&Axis> {
         match io {
             InOut::In(i) => {
                 Ok(self.axes.iter().find(|axis| axis.inputs[i].contains(&position)).unwrap())
@@ -151,7 +151,7 @@ impl AxesMapping {
         }
     }
 
-    fn interface_axis_mut(&mut self, io: InOut, position: usize) -> TractResult<&mut Axis> {
+    fn axis_mut(&mut self, io: InOut, position: usize) -> TractResult<&mut Axis> {
         match io {
             InOut::In(i) => {
                 Ok(self.axes.iter_mut().find(|axis| axis.inputs[i].contains(&position)).unwrap())
@@ -162,8 +162,8 @@ impl AxesMapping {
         }
     }
 
-    pub fn interface_axes(&self, io: InOut) -> impl Iterator<Item = &Axis> {
-        (0..self.interface_rank(io)).map(move |ix| self.interface_axis(io, ix).unwrap())
+    pub fn axes(&self, io: InOut) -> impl Iterator<Item = &Axis> {
+        (0..self.rank(io)).map(move |ix| self.axis(io, ix).unwrap())
     }
 
     pub fn track_axis(
@@ -172,22 +172,22 @@ impl AxesMapping {
         to: InOut,
         position: usize,
     ) -> TractResult<Option<usize>> {
-        let axis = self.interface_axis(from, position)?;
+        let axis = self.axis(from, position)?;
         let positions = axis.interface(to);
         Ok(if positions.len() == 1 { Some(positions[0]) } else { None })
     }
 
-    pub fn with_interface_axis_named(
+    pub fn with_axis_named(
         mut self,
         io: InOut,
         axis_pos: usize,
         name: char,
     ) -> TractResult<AxesMapping> {
-        let old_label = self.interface_axis(io, axis_pos)?.repr;
+        let old_label = self.axis(io, axis_pos)?.repr;
         if let Some(conflict) = self.axes.iter_mut().find(|axis| axis.repr == name) {
             conflict.repr = old_label
         }
-        self.interface_axis_mut(io, axis_pos)?.repr = name;
+        self.axis_mut(io, axis_pos)?.repr = name;
         self.sort();
         self.check()
     }
@@ -221,7 +221,7 @@ impl AxesMapping {
         axis: usize,
         to: char,
     ) -> TractResult<AxesMapping> {
-        let from = self.interface_axis(io, axis)?.repr;
+        let from = self.axis(io, axis)?.repr;
         self.linking(to, from)
     }
 
@@ -279,13 +279,13 @@ impl AxesMapping {
             );
         }
         for input_ix in 0..self.input_count() {
-            for axis in 0..self.interface_rank(InOut::In(input_ix)) {
-                ensure!(self.interface_axis(InOut::In(input_ix), axis).is_ok());
+            for axis in 0..self.rank(InOut::In(input_ix)) {
+                ensure!(self.axis(InOut::In(input_ix), axis).is_ok());
             }
         }
         for output_ix in 0..self.output_count() {
-            for axis in 0..self.interface_rank(InOut::Out(output_ix)) {
-                ensure!(self.interface_axis(InOut::Out(output_ix), axis).is_ok());
+            for axis in 0..self.rank(InOut::Out(output_ix)) {
+                ensure!(self.axis(InOut::Out(output_ix), axis).is_ok());
             }
         }
         ensure!(self.axes.iter().map(|ax| ax.repr).duplicates().count() == 0);
@@ -560,14 +560,14 @@ impl AxesMapping {
         let shape_b = shape_b.as_ref();
         shape_a.iter().cloned().product::<D>() == shape_b.iter().cloned().product()
             && izip!(
-                self.interface_axes(a).zip(shape_a.iter()).filter(|(_axis, d)| **d != D::one()),
-                self.interface_axes(b).zip(shape_b.iter()).filter(|(_axis, d)| **d != D::one())
+                self.axes(a).zip(shape_a.iter()).filter(|(_axis, d)| **d != D::one()),
+                self.axes(b).zip(shape_b.iter()).filter(|(_axis, d)| **d != D::one())
             )
             .all(|(a, b)| a == b)
     }
 
     pub fn axis_ops_to_canonical(&self, io: InOut) -> TractResult<Vec<AxisOp>> {
-        let rank = self.interface_rank(io);
+        let rank = self.rank(io);
         let target_rank = self.axes.len();
         let mut next_insert_axis = 0;
         let mut permutation = tvec!();

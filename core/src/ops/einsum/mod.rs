@@ -39,7 +39,7 @@ impl EinSum {
         io: InOut,
         axis: usize,
     ) -> TractResult<Option<TypedModelPatch>> {
-        let mut new_axis = self.axes.interface_axis(io, axis)?.clone();
+        let mut new_axis = self.axes.axis(io, axis)?.clone();
         let repr = new_axis.repr;
         let mut patch = TypedModelPatch::new(format!("Propagate axis {}", new_axis.repr));
         let mut taps = tvec!();
@@ -48,7 +48,7 @@ impl EinSum {
             if new_axis.inputs[ix].len() > 1 {
                 return Ok(None); // FIXME maybe
             } else if new_axis.inputs[ix].is_empty() {
-                let insert_at = self.axes.interface_rank(InOut::In(ix));
+                let insert_at = self.axes.rank(InOut::In(ix));
                 tap = patch.wire_node(
                     format!("{}.prop_axis.{}.input_{}", &node.name, new_axis.repr, ix),
                     AxisOp::Add(insert_at),
@@ -59,7 +59,7 @@ impl EinSum {
             taps.push(tap);
         }
         let must_rm_axis: Option<usize> = if new_axis.outputs[0].len() == 0 {
-            let insert_at = self.axes.interface_rank(InOut::Out(0));
+            let insert_at = self.axes.rank(InOut::Out(0));
             new_axis.outputs[0].push(insert_at);
             Some(insert_at)
         } else {
@@ -99,7 +99,7 @@ impl EinSum {
                 let offsets = concat.offsets(&model.node_input_facts(precursor.id)?)?;
                 let axis_info = self
                     .axes
-                    .interface_axis(InOut::In(slot), concat.axis)
+                    .axis(InOut::In(slot), concat.axis)
                     .context("Axis unmapped")?;
                 // only split if axis is a summing axis
                 if axis_info.outputs[0].len() > 0 {
@@ -218,7 +218,7 @@ impl TypedOp for EinSum {
         ensure!(inputs
             .iter()
             .enumerate()
-            .all(|(ix, fact)| fact.rank() == self.axes.interface_rank(InOut::In(ix))));
+            .all(|(ix, fact)| fact.rank() == self.axes.rank(InOut::In(ix))));
         let shapes: TVec<&[TDim]> = inputs.iter().map(|t| &*t.shape).collect();
         if let Some(qp) = self.q_params {
             ensure!(inputs.len() == 9);
