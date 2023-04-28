@@ -1,3 +1,6 @@
+use tract_ndarray::Ix2;
+use tract_num_traits::One;
+
 use super::EinSum;
 use crate::internal::*;
 
@@ -40,6 +43,10 @@ pub fn step(
     model: &TypedModel,
     node: &TypedNode,
 ) -> TractResult<Option<TypedModelPatch>> {
+    assert!(
+        (node.inputs.len() == 2 && op.q_params.is_none())
+            || (node.inputs.len() == 9 && op.q_params.is_some())
+    );
     let (m_axis, k_axis, n_axis) = super::codegen::choose_mkn_axes(op, model, node)?;
     let Some(k_axis) = k_axis else { todo!("Einsum decomposition, no k axis") };
     let Some(m_axis) = m_axis else {
@@ -73,19 +80,29 @@ pub fn step(
         model,
         node,
         &node.inputs,
-        NumPyMatMul { transpose_a, transpose_b, transpose_c, output_fact: c.clone() },
+        BasicMatMul { transpose_a, transpose_b, transpose_c },
     )?))
 }
 
 #[derive(Clone, Debug)]
-pub struct NumPyMatMul {
+pub struct BasicMatMul {
     pub transpose_a: bool,
     pub transpose_b: bool,
     pub transpose_c: bool,
-    pub output_fact: TypedFact,
 }
 
-impl Op for NumPyMatMul {
+impl BasicMatMul {
+    fn output_shape<D: DimLike + One>(&self, a: &[D], b: &[D]) -> TVec<D> {
+        let mut output: TVec<D> = (0..a.len() - 2)
+            .map(|ix| if a[ix].is_one() { b[ix].clone() } else { a[ix].clone() })
+            .collect();
+        output.push(a[a.len() - 2 + self.transpose_a as usize].clone());
+        output.push(b[b.len() - 2 + !self.transpose_b as usize].clone());
+        output
+    }
+}
+
+impl Op for BasicMatMul {
     fn name(&self) -> Cow<str> {
         "MatMul".into()
     }
@@ -93,19 +110,55 @@ impl Op for NumPyMatMul {
     op_as_typed_op!();
 }
 
-impl EvalOp for NumPyMatMul {
+impl EvalOp for BasicMatMul {
     fn is_stateless(&self) -> bool {
-        false
+        true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        bail!("This op is not meant be evaled.")
+    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        let (a, b) = args_2!(inputs);
+        let mut c = Tensor::zero_dt(a.datum_type(), &self.output_shape(a.shape(), b.shape()))?;
+        fn eval_t<T: Datum + tract_ndarray::LinalgScalar>(
+            c: &mut Tensor,
+            a: &Tensor,
+            b: &Tensor,
+        ) -> TractResult<()> {
+            use crate::ndarray::Dimension;
+            let a = a.to_array_view::<T>()?;
+            let b = b.to_array_view::<T>()?;
+            let mut c = c.to_array_view_mut::<T>()?;
+            for prefix in tract_ndarray::indices(&c.shape()[..c.ndim() - 2]) {
+                let mut a = a.view();
+                let mut b = b.view();
+                let mut c = c.view_mut();
+                for d in prefix.slice().iter() {
+                    a.index_axis_inplace(tract_ndarray::Axis(0), *d.max(&a.shape()[0]));
+                    b.index_axis_inplace(tract_ndarray::Axis(0), *d.max(&b.shape()[0]));
+                    c.index_axis_inplace(tract_ndarray::Axis(0), *d);
+                }
+                let a = a.into_dimensionality::<Ix2>().unwrap();
+                let b = b.into_dimensionality::<Ix2>().unwrap();
+                let mut c = c.into_dimensionality::<Ix2>().unwrap();
+                c.assign(&a.dot(&b))
+            }
+            Ok(())
+        }
+        dispatch_numbers!(eval_t(a.datum_type())(&mut c, &a, &b)).unwrap();
+        Ok(tvec!(c.into_tvalue()))
     }
 }
 
-impl TypedOp for NumPyMatMul {
-    fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(self.output_fact.clone()))
+impl TypedOp for BasicMatMul {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        let a = inputs[0];
+        let b = inputs[1];
+        ensure!(a.rank() == b.rank());
+        ensure!(a.rank() >= 2);
+        ensure!(
+            a.shape[a.rank() - 2 + !self.transpose_a as usize]
+                == b.shape[b.rank() - 2 + self.transpose_b as usize]
+        );
+        Ok(tvec!(a.datum_type.fact(self.output_shape(&a.shape, &b.shape))))
     }
 
     as_op!();
@@ -114,22 +167,39 @@ impl TypedOp for NumPyMatMul {
 #[cfg(test)]
 mod test {
     use super::*;
+    use proptest::collection::vec;
+    use proptest::prelude::*;
 
     macro_rules! e {
         ($lit:literal) => {
-            EinSum::new($lit.parse().unwrap(), i32::datum_type())
+            EinSum::new($lit.parse().unwrap(), f32::datum_type())
         };
     }
 
-    #[test]
-    fn decompose_matmul() {
-        let mut model = TypedModel::default();
-        let a = model.add_source("a", i32::fact(&[2, 3])).unwrap();
-        let b = model.add_source("b", i32::fact(&[3, 4])).unwrap();
-        let einsum = model.wire_node("einsum", e!("mk,kn->mn"), &[a, b]).unwrap();
-        model.set_output_outlets(&einsum).unwrap();
-        decompose_einsums_in_place(&mut model).unwrap();
-        assert!(model.nodes.iter().all(|n| !n.op_is::<EinSum>()));
+    pub fn tensor(shape: &[usize]) -> BoxedStrategy<Tensor> {
+        let shape = shape.to_vec();
+        let len = shape.iter().product::<usize>();
+        vec((-10i8..=10i8).prop_map(|i| i as f32), len..=len)
+            .prop_map(move |vec| tensor1(&vec).into_shape(&shape).unwrap())
+            .boxed()
     }
-    
+
+    proptest::proptest! {
+        #[test]
+        fn decompose_matmul(a in tensor(&[3,4]), b in tensor(&[4,5])) {
+            let mut model = TypedModel::default();
+            let sa = model.add_source("a", f32::fact(a.shape())).unwrap();
+            let sb = model.add_source("b", f32::fact(b.shape())).unwrap();
+            let einsum = model.wire_node("einsum", e!("mk,kn->mn"), &[sa, sb]).unwrap();
+            model.set_output_outlets(&einsum).unwrap();
+            let a = a.into_tvalue();
+            let b = b.into_tvalue();
+            let inputs = tvec!(a,b);
+            let reference = TypedRunnableModel::new(&model).unwrap().run(inputs.clone()).unwrap().remove(0);
+            decompose_einsums_in_place(&mut model).unwrap();
+            assert!(model.nodes.iter().all(|n| !n.op_is::<EinSum>()));
+            let test = TypedRunnableModel::new(&model).unwrap().run(inputs).unwrap().remove(0);
+            reference.close_enough(&test, true).unwrap();
+        }
+    }
 }
