@@ -9,6 +9,31 @@ use crate::prelude::tract_itertools::Itertools;
 
 use super::Axis;
 
+pub trait AxisPattern: std::fmt::Debug {
+    fn search(&self, mapping: &AxesMapping) -> Option<usize>;
+}
+
+impl AxisPattern for char {
+    fn search(&self, mapping: &AxesMapping) -> Option<usize> {
+        mapping.axes.iter().position(|axis| axis.repr == *self)
+    }
+}
+
+impl AxisPattern for (InOut, usize) {
+    fn search(&self, mapping: &AxesMapping) -> Option<usize> {
+        match self.0 {
+            InOut::In(i) => mapping.axes.iter().position(|axis| axis.inputs[i].contains(&self.1)),
+            InOut::Out(o) => mapping.axes.iter().position(|axis| axis.outputs[o].contains(&self.1)),
+        }
+    }
+}
+
+impl<'axis> AxisPattern for &'axis Axis {
+    fn search(&self, mapping: &AxesMapping) -> Option<usize> {
+        mapping.axes.iter().position(|ax| self == &ax)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AxesMapping {
     input_count: usize,
@@ -121,16 +146,12 @@ impl AxesMapping {
         self.output_count
     }
 
-    pub fn axis_by_repr(&self, c: char) -> Option<&Axis> {
-        self.iter_all_axes().find(|axis| axis.repr == c)
-    }
-
-    pub fn axis_positions(&self, io: InOut, c: char) -> Option<&[usize]> {
-        let axis = self.axis_by_repr(c);
-        match io {
-            InOut::In(i) => axis.map(|axis| &*axis.inputs[i]),
-            InOut::Out(o) => axis.map(|axis| &*axis.outputs[o]),
-        }
+    pub fn axis_positions(&self, io: InOut, c: char) -> TractResult<&[usize]> {
+        let axis = self.axis(c)?;
+        Ok(match io {
+            InOut::In(i) => &*axis.inputs[i],
+            InOut::Out(o) => &*axis.outputs[o],
+        })
     }
 
     pub fn rank(&self, io: InOut) -> usize {
@@ -140,30 +161,18 @@ impl AxesMapping {
         }
     }
 
-    pub fn axis(&self, io: InOut, position: usize) -> TractResult<&Axis> {
-        match io {
-            InOut::In(i) => {
-                Ok(self.axes.iter().find(|axis| axis.inputs[i].contains(&position)).unwrap())
-            }
-            InOut::Out(o) => {
-                Ok(self.axes.iter().find(|axis| axis.outputs[o].contains(&position)).unwrap())
-            }
-        }
+    pub fn axis(&self, p: impl AxisPattern) -> TractResult<&Axis> {
+        let ix = p.search(self).with_context(|| format!("Axis {p:?} not found in {self}"))?;
+        Ok(&self.axes[ix])
     }
 
-    fn axis_mut(&mut self, io: InOut, position: usize) -> TractResult<&mut Axis> {
-        match io {
-            InOut::In(i) => {
-                Ok(self.axes.iter_mut().find(|axis| axis.inputs[i].contains(&position)).unwrap())
-            }
-            InOut::Out(o) => {
-                Ok(self.axes.iter_mut().find(|axis| axis.outputs[o].contains(&position)).unwrap())
-            }
-        }
+    fn axis_mut(&mut self, p: impl AxisPattern) -> TractResult<&mut Axis> {
+        let ix = p.search(self).with_context(|| format!("Axis {p:?} not found in {self}"))?;
+        Ok(&mut self.axes[ix])
     }
 
     pub fn axes(&self, io: InOut) -> impl Iterator<Item = &Axis> {
-        (0..self.rank(io)).map(move |ix| self.axis(io, ix).unwrap())
+        (0..self.rank(io)).map(move |ix| self.axis((io, ix)).unwrap())
     }
 
     pub fn track_axis(
@@ -172,7 +181,7 @@ impl AxesMapping {
         to: InOut,
         position: usize,
     ) -> TractResult<Option<usize>> {
-        let axis = self.axis(from, position)?;
+        let axis = self.axis((from, position))?;
         let positions = axis.interface(to);
         Ok(if positions.len() == 1 { Some(positions[0]) } else { None })
     }
@@ -183,46 +192,32 @@ impl AxesMapping {
         axis_pos: usize,
         name: char,
     ) -> TractResult<AxesMapping> {
-        let old_label = self.axis(io, axis_pos)?.repr;
-        if let Some(conflict) = self.axes.iter_mut().find(|axis| axis.repr == name) {
+        let old_label = self.axis((io, axis_pos))?.repr;
+        if let Ok(conflict) = self.axis_mut(name) {
             conflict.repr = old_label
         }
-        self.axis_mut(io, axis_pos)?.repr = name;
+        self.axis_mut((io, axis_pos))?.repr = name;
         self.sort();
         self.check()
     }
 
-    pub fn linking(mut self, a: char, b: char) -> TractResult<AxesMapping> {
-        let b = self
-            .axes
-            .iter()
-            .position(|axis| axis.repr == b)
-            .with_context(|| format!("No axis called {b} in {self}"))?;
-        let b = self.axes.remove(b);
-        let a = self
-            .axes
-            .iter()
-            .position(|axis| axis.repr == a)
-            .with_context(|| format!("No axis called {a} in {self}"))?;
-        let a = &mut self.axes[a];
-        for (ia, ib) in a.inputs.iter_mut().zip(b.inputs.iter()) {
-            ia.extend(ib.into_iter().cloned())
-        }
-        for (ia, ib) in a.outputs.iter_mut().zip(b.outputs.iter()) {
-            ia.extend(ib.into_iter().cloned())
-        }
-        self.sort();
-        self.check()
-    }
-
-    pub fn with_interface_axis_linked_to(
-        self,
-        io: InOut,
-        axis: usize,
-        to: char,
+    pub fn linking(
+        mut self,
+        target: impl AxisPattern,
+        axis: impl AxisPattern,
     ) -> TractResult<AxesMapping> {
-        let from = self.axis(io, axis)?.repr;
-        self.linking(to, from)
+        let axis = self.axis(axis)?;
+        let axis_ix = self.axes.iter().position(|a| a == axis).unwrap();
+        let axis = self.axes.remove(axis_ix);
+        let target = self.axis_mut(target)?;
+        for (ia, ib) in target.inputs.iter_mut().zip(axis.inputs.iter()) {
+            ia.extend(ib.into_iter().cloned())
+        }
+        for (ia, ib) in target.outputs.iter_mut().zip(axis.outputs.iter()) {
+            ia.extend(ib.into_iter().cloned())
+        }
+        self.sort();
+        self.check()
     }
 
     fn sort(&mut self) {
@@ -263,12 +258,12 @@ impl AxesMapping {
         }
         for input_ix in 0..self.input_count() {
             for axis in 0..self.rank(InOut::In(input_ix)) {
-                ensure!(self.axis(InOut::In(input_ix), axis).is_ok());
+                ensure!(self.axis((InOut::In(input_ix), axis)).is_ok());
             }
         }
         for output_ix in 0..self.output_count() {
             for axis in 0..self.rank(InOut::Out(output_ix)) {
-                ensure!(self.axis(InOut::Out(output_ix), axis).is_ok());
+                ensure!(self.axis((InOut::Out(output_ix), axis)).is_ok());
             }
         }
         ensure!(self.axes.iter().map(|ax| ax.repr).duplicates().count() == 0);
@@ -341,7 +336,7 @@ impl AxesMapping {
     pub fn remove_axis(&self, repr: char) -> TractResult<AxesMapping> {
         let mut axes: TVec<Axis> =
             self.axes.iter().filter(|axis| axis.repr != repr).cloned().collect();
-        let removed = self.axis_by_repr(repr).context("Axis not found")?;
+        let removed = self.axis(repr).context("Axis not found")?;
         for input in 0..self.input_count {
             for &position in &removed.inputs[input] {
                 for other in &mut axes {
@@ -384,34 +379,30 @@ impl AxesMapping {
         AxesMapping::new(self.input_count + 1, self.output_count, axes)
     }
 
-    pub fn with_extra_input_axis(
+    pub fn with_extra_axis(
         self,
         repr: char,
-        slot: usize,
+        io: InOut,
         position: usize,
     ) -> TractResult<AxesMapping> {
         let mut axes: TVec<Axis> = self.axes.clone();
-        axes.iter_mut().for_each(|axis| {
-            axis.inputs[slot].iter_mut().for_each(|pos| *pos += (*pos >= position) as usize)
-        });
         let mut axis = Axis::new(repr, self.input_count, self.output_count);
-        axis.inputs[slot].push(position);
-        axes.push(axis);
-        AxesMapping::new(self.input_count, self.output_count, axes)
-    }
-
-    pub fn with_extra_output_axis(
-        self,
-        repr: char,
-        slot: usize,
-        position: usize,
-    ) -> TractResult<AxesMapping> {
-        let mut axes: TVec<Axis> = self.axes.clone();
-        axes.iter_mut().for_each(|axis| {
-            axis.outputs[slot].iter_mut().for_each(|pos| *pos += (*pos >= position) as usize)
-        });
-        let mut axis = Axis::new(repr, self.input_count, self.output_count);
-        axis.outputs[slot].push(position);
+        match io {
+            InOut::In(slot) => {
+                axes.iter_mut().for_each(|axis| {
+                    axis.inputs[slot].iter_mut().for_each(|pos| *pos += (*pos >= position) as usize)
+                });
+                axis.inputs[slot].push(position);
+            }
+            InOut::Out(slot) => {
+                axes.iter_mut().for_each(|axis| {
+                    axis.outputs[slot]
+                        .iter_mut()
+                        .for_each(|pos| *pos += (*pos >= position) as usize)
+                });
+                axis.outputs[slot].push(position);
+            }
+        }
         axes.push(axis);
         AxesMapping::new(self.input_count, self.output_count, axes)
     }

@@ -24,7 +24,7 @@ fn pulsify(
     }
     if op
         .axes_mapping(&source.node_input_facts(node.id)?, &source.node_output_facts(node.id)?)?
-        .axis(InOut::In(0), stream.axis)?
+        .axis((InOut::In(0), stream.axis))?
         .outputs[0]
         .len()
         == 1

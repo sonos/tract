@@ -39,7 +39,7 @@ impl EinSum {
         io: InOut,
         axis: usize,
     ) -> TractResult<Option<TypedModelPatch>> {
-        let mut new_axis = self.axes.axis(io, axis)?.clone();
+        let mut new_axis = self.axes.axis((io, axis))?.clone();
         let repr = new_axis.repr;
         let mut patch = TypedModelPatch::new(format!("Propagate axis {}", new_axis.repr));
         let mut taps = tvec!();
@@ -97,10 +97,7 @@ impl EinSum {
             let precursor = model.node(input.node);
             if let Some(concat) = precursor.op_as::<TypedConcat>() {
                 let offsets = concat.offsets(&model.node_input_facts(precursor.id)?)?;
-                let axis_info = self
-                    .axes
-                    .axis(InOut::In(slot), concat.axis)
-                    .context("Axis unmapped")?;
+                let axis_info = self.axes.axis((InOut::In(slot), concat.axis))?;
                 // only split if axis is a summing axis
                 if axis_info.outputs[0].len() > 0 {
                     continue;

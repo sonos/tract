@@ -589,7 +589,11 @@ impl ConvUnary {
                 .collect::<TractResult<TVec<_>>>()?;
             inputs.insert(0, a);
             let mut axes = self.axes_mapping(&input_facts, &output_facts)?.with_extra_input(0)?;
-            axes = axes.with_extra_input_axis('0', 0, 0)?.with_extra_input_axis('1', 0, 1)?;
+            axes = axes.with_extra_axis('0', InOut::In(0), 0)?.with_extra_axis(
+                '1',
+                InOut::In(0),
+                1,
+            )?;
             if self.kernel_fmt == KernelFormat::HWIO {
                 axes = axes.linking('I', '0')?.linking('O', '1')?;
             } else {
@@ -600,7 +604,7 @@ impl ConvUnary {
                 anyhow::ensure!(bias.rank() == 0 || bias.rank() == 1);
                 axes = axes.with_extra_input(2)?;
                 if bias.rank() == 1 {
-                    axes = axes.with_extra_input_axis('$', 2, 0)?.linking('O', '$')?;
+                    axes = axes.with_extra_axis('$', InOut::In(2), 0)?.linking('O', '$')?;
                 }
                 let bias = patch.add_const(format!("{name}.bias"), bias)?;
                 inputs.insert(2, bias);
@@ -693,7 +697,7 @@ impl ConvUnary {
         let input_shape =
             self.pool_spec.data_format.shape(&model.outlet_fact(node.inputs[0])?.shape)?;
         let conv_c_axis = input_shape.c_axis();
-        let &[konst_c_axis] = &*axes_mapping.axis(InOut::In(succ.slot), conv_c_axis)?.inputs[1- succ.slot] else {
+        let &[konst_c_axis] = &*axes_mapping.axis((InOut::In(succ.slot), conv_c_axis))?.inputs[1- succ.slot] else {
         return Ok(None)
     };
         let Ok(co) = node.outputs[0].fact.shape[conv_c_axis].to_usize() else {
