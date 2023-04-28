@@ -75,10 +75,10 @@ fn qmatmul_load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
 pub fn from_legacy_axes_spec(spec: &[usize], rank: usize) -> TractResult<AxesMapping> {
     let [a_m, a_k, b_k, b_n, c_m, c_n] = spec else { bail!("Invalid axes specification")};
     AxesMapping::disconnected_for_ranks(&[rank, rank], &[rank])?
-        .with_axis_named(InOut::In(0), *a_m, 'm')?
+        .renaming((InOut::In(0), *a_m), 'm')?
         .linking('m', (InOut::Out(0), *c_m))?
-        .with_axis_named(InOut::In(0), *a_k, 'k')?
+        .renaming((InOut::In(0), *a_k), 'k')?
         .linking('k', (InOut::In(1), *b_k))?
-        .with_axis_named(InOut::In(1), *b_n, 'n')?
+        .renaming((InOut::In(1), *b_n), 'n')?
         .linking('n', (InOut::In(0), *c_n))
 }

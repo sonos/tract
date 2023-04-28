@@ -134,9 +134,8 @@ impl TypedOp for Slice {
         for (axis, repr) in (0..inputs[0].rank()).zip('a'..) {
             if self.axis != axis {
                 mapping = mapping
-                    .with_axis_named(InOut::In(0), axis, repr)?
-                    .with_axis_named(InOut::Out(0), axis, '$')?
-                    .linking(repr, '$')?
+                    .renaming((InOut::In(0), axis), repr)?
+                    .linking(repr, (InOut::Out(0), axis))?;
             }
         }
         Ok(mapping)
