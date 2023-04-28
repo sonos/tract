@@ -27,9 +27,9 @@ where
     /// map of replaced inputs (patch node id to model node id)
     pub inputs: HashMap<usize, usize>,
     /// map of patch inputs to model wires
-    pub incoming: HashMap<OutletId, OutletId>,
-    /// map of old wires to be replaced by new wires
-    pub shunt_outlet_by: HashMap<OutletId, OutletId>,
+    pub taps: HashMap<OutletId, OutletId>,
+    /// map of old model wires to be replaced by wires from the patch
+    pub shunts: HashMap<OutletId, OutletId>,
     /// operations to discard from the model
     pub obliterate: Vec<usize>,
 }
@@ -45,8 +45,8 @@ where
             dont_apply_twice: None,
             model: Graph::default(),
             inputs: HashMap::default(),
-            incoming: HashMap::new(),
-            shunt_outlet_by: HashMap::new(),
+            taps: HashMap::new(),
+            shunts: HashMap::new(),
             obliterate: vec![],
         }
     }
@@ -93,7 +93,7 @@ where
     }
 
     pub fn is_empty(&self) -> bool {
-        self.model.nodes.is_empty() && self.shunt_outlet_by.is_empty() && self.obliterate.is_empty()
+        self.model.nodes.is_empty() && self.shunts.is_empty() && self.obliterate.is_empty()
     }
 
     /// Draw a tap from a preexisting node.
@@ -105,7 +105,7 @@ where
             format!("incoming-{}/{}", outlet.node, outlet.slot),
             dyn_clone::clone(fact),
         )?;
-        self.incoming.insert(id, outlet);
+        self.taps.insert(id, outlet);
         Ok(id)
     }
 
@@ -114,7 +114,7 @@ where
         outlet: OutletId,
         by: OutletId,
     ) -> TractResult<()> {
-        self.shunt_outlet_by.insert(outlet, by);
+        self.shunts.insert(outlet, by);
         Ok(())
     }
 
@@ -130,7 +130,7 @@ where
         if !original_fact.compatible_with(new_fact) {
             bail!("Trying to substitute a {:?} by {:?}.\n{:?}", original_fact, new_fact, self);
         }
-        self.shunt_outlet_by.insert(outlet, by);
+        self.shunts.insert(outlet, by);
         Ok(())
     }
 
@@ -248,8 +248,8 @@ where
         let prior_target_outputs = target.output_outlets()?.len();
         let ModelPatch {
             model: patch,
-            incoming: mut mapping,
-            shunt_outlet_by,
+            taps: mut mapping,
+            shunts: shunt_outlet_by,
             obliterate,
             inputs: replaced_inputs,
             ..
