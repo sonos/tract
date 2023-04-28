@@ -129,9 +129,8 @@ impl TypedOp for Pad {
         let mut result = AxesMapping::disconnected(inputs, outputs)?;
         for (ix, pads) in self.pads.iter().enumerate() {
             if pads == &(0, 0) {
-                let repr = result.axis(InOut::In(0), ix).unwrap().repr;
-                result =
-                    result.with_axis_named(InOut::Out(0), ix, '$')?.linking(repr, '$')?;
+                let repr = result.axis((InOut::In(0), ix)).unwrap().repr;
+                result = result.with_axis_named(InOut::Out(0), ix, '$')?.linking(repr, '$')?;
             }
         }
         Ok(result)

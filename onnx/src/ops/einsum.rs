@@ -84,14 +84,14 @@ impl Expansion for EinSum {
 }
 
 fn resolve_ellipsis(expr: &AxesMapping, ranks: &[usize]) -> TractResult<AxesMapping> {
-    if expr.axis_by_repr('*').is_none() {
+    if expr.axis('*').is_err() {
         return Ok(expr.clone());
     }
     let elipsed_axes: TVec<usize> = ranks
         .iter()
         .enumerate()
         .filter_map(|(ix, rank)| {
-            if expr.axis_positions(InOut::In(ix), '*').is_some() {
+            if expr.axis_positions(InOut::In(ix), '*').is_ok() {
                 Some(rank + 1 - expr.rank(InOut::In(ix)))
             } else {
                 None

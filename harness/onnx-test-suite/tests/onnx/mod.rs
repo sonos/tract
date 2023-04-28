@@ -49,13 +49,12 @@ pub fn run_one<P: AsRef<path::Path>>(
     let test_path = root.as_ref().join(test);
     let path = if test_path.join("data.json").exists() {
         use fs2::FileExt;
-        let url = fs::read_to_string(test_path.join("data.json"))
-            .unwrap()
+        let url = fs::read_to_string(test_path.join("data.json"))?
             .split('\"')
             .find(|s| s.starts_with("https://"))
             .unwrap()
             .to_string();
-        let f = fs::File::open(test_path.join("data.json")).unwrap();
+        let f = fs::File::open(test_path.join("data.json"))?;
         let _lock = f.lock_exclusive();
         let name: String =
             test_path.file_name().unwrap().to_str().unwrap().chars().skip(5).collect();
@@ -73,12 +72,12 @@ pub fn run_one<P: AsRef<path::Path>>(
             if !wget.success() {
                 panic!("wget: {wget:?}");
             }
-            let tar = std::process::Command::new("tar").arg("zxf").arg(&tgz_name).status().unwrap();
+            let tar = std::process::Command::new("tar").arg("zxf").arg(&tgz_name).status()?;
             if !tar.success() {
                 panic!("tar: {tar:?}");
             }
-            fs::rename(&name, test_path.join(&name)).unwrap();
-            fs::remove_file(&tgz_name).unwrap();
+            fs::rename(&name, test_path.join(&name))?;
+            fs::remove_file(&tgz_name)?;
         }
         info!("Done with {:?}", f);
         test_path.join(&name)
@@ -104,7 +103,7 @@ pub fn run_one<P: AsRef<path::Path>>(
     trace!("Proto Model:\n{:#?}", onnx.proto_model_for_path(&model_file));
     for d in fs::read_dir(&path)? {
         let mut model = onnx.model_for_path(&model_file)?;
-        let d = d.unwrap();
+        let d = d?;
         if d.metadata().unwrap().is_dir()
             && d.file_name().to_str().unwrap().starts_with("test_data_set_")
         {
@@ -115,7 +114,7 @@ pub fn run_one<P: AsRef<path::Path>>(
                     let input = setup.split(':').nth(1).unwrap_or("");
                     let mut actual_inputs = vec![];
                     let mut actual_input_values = tvec![];
-                    let input_outlets = model.input_outlets().unwrap().to_vec();
+                    let input_outlets = model.input_outlets()?.to_vec();
                     for (ix, outlet) in input_outlets.iter().enumerate() {
                         if model.node(outlet.node).name == input {
                             actual_inputs.push(*outlet);
@@ -127,15 +126,15 @@ pub fn run_one<P: AsRef<path::Path>>(
                                 ));
                         }
                     }
-                    model.set_input_outlets(&actual_inputs).unwrap();
+                    model.set_input_outlets(&actual_inputs)?;
                     inputs = actual_input_values;
                 }
             }
             info!("Analyse");
             trace!("Model:\n{:#?}", model);
-            model.analyse(false).unwrap();
+            model.analyse(false)?;
             info!("Incorporate");
-            let model = model.incorporate().unwrap();
+            let model = model.incorporate()?;
             info!("Test model (mode: {:?}) {:#?}", mode, path);
             match mode {
                 Optim => {
@@ -144,8 +143,8 @@ pub fn run_one<P: AsRef<path::Path>>(
                         panic!("Incomplete inference {:?}", model.missing_type_shape());
                     }
                     info!("Into type");
-                    let model = model.into_typed().unwrap();
-                    let optimized = model.into_decluttered().unwrap().into_optimized().unwrap();
+                    let model = model.into_typed()?;
+                    let optimized = model.into_decluttered()?.into_optimized()?;
                     trace!("Run optimized model:\n{:#?}", optimized);
                     run_model(optimized, inputs, &data_path)
                 }
@@ -154,14 +153,14 @@ pub fn run_one<P: AsRef<path::Path>>(
                     run_model(model, inputs, &data_path)
                 }
                 Nnef => {
-                    let model = model.into_typed().unwrap();
+                    let model = model.into_typed()?;
                     info!("Declutter");
-                    let optimized = model.into_decluttered().unwrap();
+                    let optimized = model.into_decluttered()?;
                     info!("Store to NNEF");
                     let mut buffer = vec![];
-                    nnef.write_to_tar(&optimized, &mut buffer).unwrap();
+                    nnef.write_to_tar(&optimized, &mut buffer)?;
                     info!("Reload from NNEF");
-                    let reloaded = nnef.model_for_read(&mut &*buffer).unwrap();
+                    let reloaded = nnef.model_for_read(&mut &*buffer)?;
                     run_model(reloaded, inputs, &data_path)
                 }
             }

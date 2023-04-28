@@ -362,8 +362,7 @@ impl Scan {
                             new_body.node_facts(new_body.node(succ.node).id)?;
                         new_body.node(succ.node).op.axes_mapping(&input_facts, &output_facts)?
                     };
-                    let axis_info =
-                        axes_mapping.axis(InOut::In(succ.slot), scan_info.axis)?;
+                    let axis_info = axes_mapping.axis((InOut::In(succ.slot), scan_info.axis))?;
                     if let &[axis_after] = &*axis_info.outputs[0] {
                         let mut outside_patch = TypedModelPatch::new(format!(
                             "Outer patch for input extraction of {}",
@@ -517,7 +516,7 @@ impl Scan {
                         .axes_mapping(&input_facts, &output_facts)?
                 };
                 let axis_tracking =
-                    invariants.axis(InOut::Out(emitter_outlet.slot), scan_info.axis)?;
+                    invariants.axis((InOut::Out(emitter_outlet.slot), scan_info.axis))?;
                 if axis_tracking.outputs.iter().any(|o| o.len() > 1) {
                     return Ok(None);
                 }
