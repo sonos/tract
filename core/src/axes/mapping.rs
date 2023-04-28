@@ -162,7 +162,7 @@ impl AxesMapping {
     }
 
     fn search(&self, p: impl AxisPattern) -> TractResult<usize> {
-        Ok(p.search(&self).with_context(|| format!("Axis {p:?} not found in {self}"))?)
+        p.search(self).with_context(|| format!("Axis {p:?} not found in {self}"))
     }
 
     pub fn axis(&self, p: impl AxisPattern) -> TractResult<&Axis> {
