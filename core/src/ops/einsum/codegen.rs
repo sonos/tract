@@ -38,7 +38,7 @@ pub(crate) fn codegen(
     }
 }
 
-fn choose_mkn_axes<'a>(
+pub(super) fn choose_mkn_axes<'a>(
     op: &'a EinSum,
     model: &TypedModel,
     node: &TypedNode,
@@ -77,7 +77,7 @@ fn choose_mkn_axes<'a>(
     Ok((m_axis, k_axis, n_axis))
 }
 
-fn inject_m_or_n_axis(
+pub(super) fn inject_m_or_n_axis(
     op: &EinSum,
     model: &TypedModel,
     node: &TypedNode,

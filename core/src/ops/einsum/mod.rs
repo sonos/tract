@@ -8,6 +8,7 @@ mod eval;
 
 use super::array::TypedConcat;
 use super::math::add;
+mod as_matmul;
 mod codegen;
 
 #[cfg(test)]
