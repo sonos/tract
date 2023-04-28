@@ -54,6 +54,7 @@ impl TypedOp for TypedConcat {
         fact.shape.set(self.axis, self.offsets(inputs)?.pop().unwrap());
         Ok(tvec!(fact))
     }
+
     fn axes_mapping(
         &self,
         inputs: &[&TypedFact],
@@ -62,9 +63,8 @@ impl TypedOp for TypedConcat {
         let mut axes = AxesMapping::disconnected(inputs, outputs)?;
         for ax in 0..outputs[0].rank() {
             if ax != self.axis {
-                let repr = axes.axis((InOut::Out(0), ax))?.repr;
                 for i in 0..inputs.len() {
-                    axes = axes.with_axis_named(InOut::In(i), ax, '$')?.linking(repr, '$')?;
+                    axes = axes.linking((InOut::Out(0), ax), (InOut::In(i), ax))?;
                 }
             }
         }

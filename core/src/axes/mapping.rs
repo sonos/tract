@@ -146,8 +146,8 @@ impl AxesMapping {
         self.output_count
     }
 
-    pub fn axis_positions(&self, io: InOut, c: char) -> TractResult<&[usize]> {
-        let axis = self.axis(c)?;
+    pub fn axis_positions(&self, io: InOut, p: impl AxisPattern) -> TractResult<&[usize]> {
+        let axis = self.axis(p)?;
         Ok(match io {
             InOut::In(i) => &*axis.inputs[i],
             InOut::Out(o) => &*axis.outputs[o],
@@ -161,13 +161,16 @@ impl AxesMapping {
         }
     }
 
+    fn search(&self, p: impl AxisPattern) -> TractResult<usize> {
+        Ok(p.search(&self).with_context(|| format!("Axis {p:?} not found in {self}"))?)
+    }
+
     pub fn axis(&self, p: impl AxisPattern) -> TractResult<&Axis> {
-        let ix = p.search(self).with_context(|| format!("Axis {p:?} not found in {self}"))?;
-        Ok(&self.axes[ix])
+        Ok(&self.axes[self.search(p)?])
     }
 
     fn axis_mut(&mut self, p: impl AxisPattern) -> TractResult<&mut Axis> {
-        let ix = p.search(self).with_context(|| format!("Axis {p:?} not found in {self}"))?;
+        let ix = self.search(p)?;
         Ok(&mut self.axes[ix])
     }
 
@@ -175,28 +178,19 @@ impl AxesMapping {
         (0..self.rank(io)).map(move |ix| self.axis((io, ix)).unwrap())
     }
 
-    pub fn track_axis(
-        &self,
-        from: InOut,
-        to: InOut,
-        position: usize,
-    ) -> TractResult<Option<usize>> {
-        let axis = self.axis((from, position))?;
+    pub fn track_axis(&self, from: impl AxisPattern, to: InOut) -> TractResult<Option<usize>> {
+        let axis = self.axis(from)?;
         let positions = axis.interface(to);
         Ok(if positions.len() == 1 { Some(positions[0]) } else { None })
     }
 
-    pub fn with_axis_named(
-        mut self,
-        io: InOut,
-        axis_pos: usize,
-        name: char,
-    ) -> TractResult<AxesMapping> {
-        let old_label = self.axis((io, axis_pos))?.repr;
+    pub fn renaming(mut self, axis: impl AxisPattern, name: char) -> TractResult<AxesMapping> {
+        let position = self.search(axis)?;
+        let old_label = self.axes[position].repr;
         if let Ok(conflict) = self.axis_mut(name) {
             conflict.repr = old_label
         }
-        self.axis_mut((io, axis_pos))?.repr = name;
+        self.axes[position].repr = name;
         self.sort();
         self.check()
     }
