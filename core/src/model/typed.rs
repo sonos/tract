@@ -49,7 +49,7 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                 .map(|o| self.outlet_fact(*o).cloned())
                 .collect::<TractResult<TVec<_>>>()?;
 
-            if op.is_stateless() {
+            if op.is_stateless() & (input_facts.len() > 0) {
                 if let Some(tensors) = input_facts
                     .iter()
                     .map(|f| f.konst.clone().map(|t| t.into_tvalue()))
