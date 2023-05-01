@@ -12,6 +12,11 @@ pub mod reference;
 #[macro_use]
 pub mod tests;
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct Program<T: LADatum> {
+    pub ops: Vec<Op<T>>,
+}
+
 #[derive(Copy, Clone, Debug, PartialEq)]
 #[repr(u8)]
 pub enum RegisterId {
@@ -20,37 +25,116 @@ pub enum RegisterId {
     C = 2,
 }
 
-type ConstantId = u8;
-
-#[repr(C, u16)]
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum Op {
-    Done, // 0
+pub enum Op<T: LADatum> {
     Move(RegisterId, RegisterId),
-    Load(RegisterId, ConstantId),
+    Load(RegisterId, T),
     Abs, // 3
     Recip,
     Add,
     Sub, // 6
     Mul,
     Min,
-    Max, // 9
-    AddConst(ConstantId), // 10
-    SubConst(ConstantId),
-    MulConst(ConstantId),
-    MinConst(ConstantId),
-    MaxConst(ConstantId), // 14
-    FMA(ConstantId), // a <- a * b + cst
+    Max,         // 9
+    AddConst(T), // 10
+    SubConst(T),
+    MulConst(T),
+    MinConst(T),
+    MaxConst(T), // 14
+    FMA(T),      // a <- a * b + cst
     IfPosTE,
     SwapBC,
     Floor,
     TwoPowOfInt,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Program<T: LADatum> {
-    pub ops: Vec<Op>,
-    pub csts: Vec<T>,
+impl<T: LADatum> Program<T> {
+    pub fn translate(&self) -> KerProgram<T> {
+        let mut ops: Vec<OpOrConst<T>> = vec![];
+        for op in &self.ops {
+            match op {
+                Op::Move(a, b) => ops.push(OpOrConst { op: KerOp::Move(*a, *b) }),
+                Op::Load(a, t) => {
+                    ops.push(OpOrConst { op: KerOp::Load(*a) });
+                    ops.push(OpOrConst { t: *t });
+                }
+                Op::Abs => ops.push(OpOrConst { op: KerOp::Abs }),
+                Op::Recip => ops.push(OpOrConst { op: KerOp::Recip }),
+                Op::Add => ops.push(OpOrConst { op: KerOp::Add }),
+                Op::Sub => ops.push(OpOrConst { op: KerOp::Sub }), // 6
+                Op::Mul => ops.push(OpOrConst { op: KerOp::Mul }),
+                Op::Min => ops.push(OpOrConst { op: KerOp::Min }),
+                Op::Max => ops.push(OpOrConst { op: KerOp::Max }), // 9
+                Op::AddConst(t) => {
+                    ops.push(OpOrConst { op: KerOp::AddConst });
+                    ops.push(OpOrConst { t: *t });
+                }
+                Op::SubConst(t) => {
+                    ops.push(OpOrConst { op: KerOp::SubConst });
+                    ops.push(OpOrConst { t: *t });
+                }
+                Op::MulConst(t) => {
+                    ops.push(OpOrConst { op: KerOp::MulConst });
+                    ops.push(OpOrConst { t: *t });
+                }
+                Op::MinConst(t) => {
+                    ops.push(OpOrConst { op: KerOp::MinConst });
+                    ops.push(OpOrConst { t: *t });
+                }
+                Op::MaxConst(t) => {
+                    ops.push(OpOrConst { op: KerOp::MaxConst });
+                    ops.push(OpOrConst { t: *t });
+                }
+                Op::FMA(t) => {
+                    ops.push(OpOrConst { op: KerOp::FMA });
+                    ops.push(OpOrConst { t: *t });
+                }
+                Op::IfPosTE => ops.push(OpOrConst { op: KerOp::IfPosTE }),
+                Op::SwapBC => ops.push(OpOrConst { op: KerOp::SwapBC }),
+                Op::Floor => ops.push(OpOrConst { op: KerOp::Floor }),
+                Op::TwoPowOfInt => ops.push(OpOrConst { op: KerOp::TwoPowOfInt }),
+            }
+        }
+        ops.push(OpOrConst { op: KerOp::Done });
+        KerProgram { ops }
+    }
+}
+
+#[repr(C, u16)]
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum KerOp {
+    Done, // 0
+    Move(RegisterId, RegisterId),
+    Load(RegisterId),
+    Abs, // 3
+    Recip,
+    Add,
+    Sub, // 6
+    Mul,
+    Min,
+    Max,      // 9
+    AddConst, // 10
+    SubConst,
+    MulConst,
+    MinConst,
+    MaxConst, // 14
+    FMA,      // a <- a * b + cst
+    IfPosTE,
+    SwapBC,
+    Floor,
+    TwoPowOfInt,
+}
+
+#[derive(Clone)]
+pub struct KerProgram<T: LADatum> {
+    pub ops: Vec<OpOrConst<T>>,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub union OpOrConst<T: LADatum> {
+    pub op: KerOp,
+    pub t: T,
 }
 
 pub trait Activation<T: LADatum>: Send + Sync + Debug + dyn_clone::DynClone {
@@ -72,9 +156,10 @@ where
     K: ActivationKer<T> + Clone,
 {
     fn run(&self, program: &Program<T>, vec: &mut [T]) -> TractResult<()> {
+        let ker_program = program.translate();
         run_over_slice_with_alignment(
             vec,
-            |slice| K::run(&program.ops, &*program.csts, slice),
+            |slice| K::run(&ker_program.ops, slice),
             K::nr(),
             K::alignment_bytes(),
         )
@@ -89,7 +174,7 @@ where
     fn alignment_bytes() -> usize;
     fn alignment_items() -> usize;
     fn nr() -> usize;
-    fn run(ops: &[Op], csts: &[T], vec: &mut [T]);
+    fn run(ops: &[OpOrConst<T>], vec: &mut [T]);
     fn act() -> Box<dyn Activation<T>> {
         Box::new(ActivationImpl::<Self, T>::new())
     }
@@ -101,8 +186,8 @@ macro_rules! act_impl {
             mod [<sys_ $func>] {
                 #[allow(unused_imports)]
                 use tract_data::prelude::f16;
-                use crate::frame::activations::Op;
-                extern_kernel!(fn $func(ops: *const Op, constants: *const $ti, xs: *mut $ti, len: usize) -> usize);
+                use $crate::frame::activations::OpOrConst;
+                extern_kernel!(fn $func(ops: *const OpOrConst<$ti>, xs: *mut $ti, len: usize) -> usize);
             }
 
             #[derive(Copy, Clone, Debug)]
@@ -127,8 +212,8 @@ macro_rules! act_impl {
                     $alignment_items * std::mem::size_of::<$ti>()
                 }
                 #[inline(never)]
-                fn run(ops: &[$crate::frame::activations::Op], csts:&[$ti], buf: &mut [$ti]) {
-                    let err = unsafe { [<sys_ $func>]::$func(ops.as_ptr(), csts.as_ptr(), buf.as_mut_ptr(), buf.len()) };
+                fn run(ops: &[$crate::frame::activations::OpOrConst<$ti>], buf: &mut [$ti]) {
+                    let err = unsafe { [<sys_ $func>]::$func(ops.as_ptr(), buf.as_mut_ptr(), buf.len()) };
                     assert_eq!(err, 0, "Kernel function return non zero {}", err);
                 }
             }
@@ -149,7 +234,6 @@ mod test {
 
     #[test]
     fn size_of_op() {
-        assert_eq!(std::mem::size_of::<Op>(), 4);
+        assert_eq!(std::mem::size_of::<OpOrConst<f32>>(), 4);
     }
-
 }

@@ -3,18 +3,16 @@ use super::RegisterId::*;
 use super::*;
 
 pub fn relu<T: LADatum>() -> Program<T> {
-    Program { ops: vec![MaxConst(0), Done], csts: vec![T::zero()] }
+    Program { ops: vec![MaxConst(T::zero())] }
 }
 
 pub fn affine<T: LADatum>(alpha: T, beta: T) -> Program<T> {
     Program {
         #[rustfmt::skip]
             ops: vec![
-                MulConst(0),
-                AddConst(1),
-                Done,
+                MulConst(alpha),
+                AddConst(beta),
             ],
-        csts: vec![alpha, beta],
     }
 }
 
@@ -23,13 +21,11 @@ pub fn leaky_relu<T: LADatum>(alpha: T) -> Program<T> {
         #[rustfmt::skip]
             ops: vec![
                 Move(B,A),
-                MulConst(0),
+                MulConst(alpha),
                 Move(C,A),
                 Move(A,B),
                 IfPosTE,
-                Done,
             ],
-        csts: vec![alpha],
     }
 }
 
@@ -38,12 +34,10 @@ pub fn threshold_relu<T: LADatum>(alpha: T) -> Program<T> {
         #[rustfmt::skip]
             ops: vec![
                 Move(B,A),
-                SubConst(1),
-                Load(C,0),
+                SubConst(alpha),
+                Load(C, T::zero()),
                 IfPosTE,
-                Done,
             ],
-        csts: vec![T::zero(), alpha],
     }
 }
 
@@ -53,33 +47,26 @@ pub fn softsign<T: LADatum>() -> Program<T> {
             ops: vec![
                 Move(B,A),
                 Abs,
-                AddConst(0),
+                AddConst(T::one()),
                 Recip,
                 Mul,
-                Done,
             ],
-        csts: vec![T::one()],
     }
 }
 
 pub fn hardswish<T: LADatum>() -> Program<T> {
+    let one_sixth = T::one() / (T::one() + T::one() + T::one() + T::one() + T::one() + T::one());
+    let one_half = T::one() / (T::one() + T::one());
     Program {
         #[rustfmt::skip]
             ops: vec![
                 Move(B, A),
-                MulConst(2),
-                AddConst(3),
-                MinConst(1),
-                MaxConst(0),
+                MulConst(one_sixth),
+                AddConst(one_half),
+                MinConst(T::one()),
+                MaxConst(T::zero()),
                 Mul,
-                Done,
             ],
-        csts: vec![
-            T::zero(),
-            T::one(),
-            T::one() / (T::one() + T::one() + T::one() + T::one() + T::one() + T::one()), // 1/6
-            T::one() / (T::one() + T::one()), // 1/2
-        ],
     }
 }
 
