@@ -25,21 +25,21 @@ type ConstantId = u8;
 #[repr(C, u16)]
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Op {
-    Done,
+    Done, // 0
     Move(RegisterId, RegisterId),
     Load(RegisterId, ConstantId),
-    Abs,
+    Abs, // 3
     Recip,
     Add,
-    Sub,
+    Sub, // 6
     Mul,
     Min,
-    Max,
-    AddConst(ConstantId),
+    Max, // 9
+    AddConst(ConstantId), // 10
     SubConst(ConstantId),
     MulConst(ConstantId),
     MinConst(ConstantId),
-    MaxConst(ConstantId),
+    MaxConst(ConstantId), // 14
     FMA(ConstantId), // a <- a * b + cst
     IfPosTE,
     SwapBC,
@@ -129,7 +129,7 @@ macro_rules! act_impl {
                 #[inline(never)]
                 fn run(ops: &[$crate::frame::activations::Op], csts:&[$ti], buf: &mut [$ti]) {
                     let err = unsafe { [<sys_ $func>]::$func(ops.as_ptr(), csts.as_ptr(), buf.as_mut_ptr(), buf.len()) };
-                    assert_eq!(err, 0);
+                    assert_eq!(err, 0, "Kernel function return non zero {}", err);
                 }
             }
 
@@ -145,8 +145,11 @@ macro_rules! act_impl {
 
 #[cfg(test)]
 mod test {
+    use super::*;
+
     #[test]
     fn size_of_op() {
-        assert_eq!(std::mem::size_of::<super::Op>(), 4);
+        assert_eq!(std::mem::size_of::<Op>(), 4);
     }
+
 }
