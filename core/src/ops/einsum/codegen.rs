@@ -97,16 +97,16 @@ pub(super) fn inject_k_axis(
     node: &TypedNode,
 ) -> TractResult<TypedModelPatch> {
     let k_axes_input = op.axes.iter_all_axes().find(|a| a.outputs[0].len() == 0).unwrap();
+    let input_to_fix = (k_axes_input.inputs[0].len() > 0) as usize;
     let new_axes = op
         .axes
         .clone()
-        .with_extra_axis('$', InOut::In(0), 0)?
+        .with_extra_axis('$', InOut::In(input_to_fix), 0)?
         .linking(k_axes_input.repr, '$')?;
-
     let name = &node.name;
     let mut patch = TypedModelPatch::new("inject k axis");
     let mut wire = node.inputs.iter().map(|i| patch.tap_model(model, *i)).collect::<TractResult<TVec<_>>>()?;
-    wire[0] = patch.wire_node(format!("{name}.add_mn"), AxisOp::Add(0), &[wire[0]])?[0];
+    wire[input_to_fix] = patch.wire_node(format!("{name}.add_mn"), AxisOp::Add(0), &[wire[input_to_fix]])?[0];
     wire = patch.wire_node(&node.name, EinSum { axes: new_axes, ..op.clone() }, &wire)?;
     patch.shunt_outside(model, node.id.into(), wire[0])?;
     Ok(patch)
