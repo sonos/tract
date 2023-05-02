@@ -1,0 +1,18 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+fragment tract_core_properties(
+) -> (properties: (string, tensor<scalar>)[])
+{
+  properties = [("tract_nnef_ser_version", "0.18.3-pre"), ("tract_nnef_format_version", "beta1")];
+}
+
+graph network(input) -> (output) {
+  input = external(shape = [1, 1, 5]);
+  nnet1 = tract_core_submodel(input, label = "nnet1");
+  nnet_1_out_quant = tract_core_cast(nnet1, to = "u8");
+  nnet2 = tract_core_submodel(nnet_1_out_quant, label = "nnet2");
+  nnet_2_out = tract_core_cast(nnet2, to = "f32");
+  output = nnet_2_out;
+}

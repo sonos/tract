@@ -1,0 +1,37 @@
+use std::{any::TypeId, sync::Arc};
+
+use crate::{
+    internal::*,
+    ser::{array, ints},
+};
+use tract_core::ops::force_eval::ForceEval;
+
+pub fn register(registry: &mut Registry) {
+    registry.register_dumper(TypeId::of::<ForceEval>(), ser_force_eval);
+    registry.register_primitive(
+        "force_eval",
+        &[
+            TypeName::Scalar.tensor().array().named("inputs"),
+            TypeName::Integer.array().named("slots"),
+        ],
+        &[("output", TypeName::Scalar.tensor())],
+        de_force_eval,
+    );
+}
+
+fn ser_force_eval(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
+    let op = node.op().downcast_ref::<ForceEval>().unwrap();
+    let wires: TVec<RValue> =
+        node.inputs.iter().map(|it| ast.mapping[it].as_ref().clone()).collect();
+    Ok(Some(invocation("force_eval", &[array(&wires).into()], &[("slots", ints(&op.slots))])))
+}
+
+pub fn de_force_eval(
+    builder: &mut ModelBuilder,
+    invocation: &ResolvedInvocation,
+) -> TractResult<Value> {
+    let input_wire: TVec<OutletId> = invocation.named_arg_as(builder, "inputs")?;
+    let output_slots: TVec<usize> = invocation.named_arg_as(builder, "slots")?;
+    let force_eval_node = ForceEval::new(output_slots.to_vec());
+    builder.wire(force_eval_node, &input_wire)
+}

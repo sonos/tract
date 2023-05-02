@@ -1,0 +1,14 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+graph nnet(input) -> (output)
+{
+    input = external<scalar>(shape = [1, 2, 2]);
+    default_state = [[[0, 0], [0, 0]]];
+    state = load(default_state, id = "state-0");
+    v2 = linear(input, state);
+    new_state = add(state, state);
+    dummy = store(input = v2, state = new_state, id = "state-0");
+    output = force_eval(v2, dummy, slots = [1]);
+}

@@ -8,7 +8,9 @@ mod complex;
 mod downsample;
 mod einsum;
 mod fft;
+mod force_eval;
 mod gather;
+mod load;
 mod matmul;
 mod one_hot;
 mod qconv;
@@ -19,9 +21,10 @@ mod scan;
 mod scatter;
 mod shape_of;
 mod source;
+mod store;
+mod submodel;
 mod topk;
 mod trilu;
-mod submodel;
 
 pub fn register(registry: &mut Registry) {
     registry.register_unit_element_wise("tract_core_round_even", &ops::math::RoundHalfToEven {});
@@ -43,7 +46,9 @@ pub fn register(registry: &mut Registry) {
     downsample::register(registry);
     einsum::register(registry);
     fft::register(registry);
+    force_eval::register(registry);
     gather::register(registry);
+    load::register(registry);
     matmul::register(registry);
     one_hot::register(registry);
     qconv::register(registry);
@@ -53,6 +58,7 @@ pub fn register(registry: &mut Registry) {
     scatter::register(registry);
     shape_of::register(registry);
     source::register(registry);
+    store::register(registry);
     submodel::register(registry);
     range::register(registry);
     topk::register(registry);
