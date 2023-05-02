@@ -20,8 +20,10 @@ pub mod downsample;
 pub mod dummy;
 pub mod einsum;
 pub mod fft;
+pub mod force_eval;
 pub mod identity;
 pub mod konst;
+pub mod load;
 pub mod logic;
 pub mod math;
 pub mod matmul;
@@ -29,6 +31,7 @@ pub mod nn;
 pub mod quant;
 pub mod scan;
 pub mod source;
+pub mod store;
 pub mod submodel;
 pub mod unimpl;
 
