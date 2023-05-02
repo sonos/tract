@@ -24,13 +24,15 @@ pub fn decompose(op: &EinSum, model: &TypedModel, node: &TypedNode) -> TractResu
 }
 
 pub fn decompose_einsums_in_place(model: &mut TypedModel) -> TractResult<()> {
-    loop {
+    'top: loop {
+        dbg!(&model);
         for n in model.eval_order()? {
             let node = &model.nodes[n];
             if let Some(einsum) = node.op_as::<EinSum>() {
                 if let Some(patch) = step(einsum, model, node)? {
                     patch.apply(model)?;
-                    continue;
+                    model.compact().unwrap();
+                    continue 'top;
                 }
             }
         }
@@ -48,7 +50,9 @@ pub fn step(
             || (node.inputs.len() == 9 && op.q_params.is_some())
     );
     let (m_axis, k_axis, n_axis) = super::codegen::choose_mkn_axes(op, model, node)?;
-    let Some(k_axis) = k_axis else { todo!("Einsum decomposition, no k axis") };
+    let Some(k_axis) = k_axis else {
+        return Ok(Some(super::codegen::inject_k_axis(op, model, node)?));
+    };
     let Some(m_axis) = m_axis else {
         return Ok(Some(super::codegen::inject_m_or_n_axis(op, model, node, false)?));
     };
@@ -98,7 +102,44 @@ impl BasicMatMul {
             .collect();
         output.push(a[a.len() - 2 + self.transpose_a as usize].clone());
         output.push(b[b.len() - 2 + !self.transpose_b as usize].clone());
+        if self.transpose_c {
+            let len = output.len();
+            output.swap(len - 2, len - 1);
+        }
         output
+    }
+
+    fn eval_t<T: Datum + tract_ndarray::LinalgScalar>(
+        &self,
+        c: &mut Tensor,
+        a: &Tensor,
+        b: &Tensor,
+    ) -> TractResult<()> {
+        use crate::ndarray::Dimension;
+        let a = a.to_array_view::<T>()?;
+        let b = b.to_array_view::<T>()?;
+        let mut c = c.to_array_view_mut::<T>()?;
+        for prefix in tract_ndarray::indices(&c.shape()[..c.ndim() - 2]) {
+            let mut a = a.view();
+            let mut b = b.view();
+            let mut c = c.view_mut();
+            for d in prefix.slice().iter() {
+                a.index_axis_inplace(tract_ndarray::Axis(0), *d.max(&a.shape()[0]));
+                b.index_axis_inplace(tract_ndarray::Axis(0), *d.max(&b.shape()[0]));
+                c.index_axis_inplace(tract_ndarray::Axis(0), *d);
+            }
+            let a = a.into_dimensionality::<Ix2>().unwrap();
+            let b = b.into_dimensionality::<Ix2>().unwrap();
+            let mut c = c.into_dimensionality::<Ix2>().unwrap();
+            let a = if self.transpose_a { a.t() } else { a };
+            let b = if self.transpose_b { b.t() } else { b };
+            if self.transpose_c {
+                c.assign(&b.t().dot(&a.t()))
+            } else {
+                c.assign(&a.dot(&b))
+            }
+        }
+        Ok(())
     }
 }
 
@@ -118,32 +159,7 @@ impl EvalOp for BasicMatMul {
     fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a, b) = args_2!(inputs);
         let mut c = Tensor::zero_dt(a.datum_type(), &self.output_shape(a.shape(), b.shape()))?;
-        fn eval_t<T: Datum + tract_ndarray::LinalgScalar>(
-            c: &mut Tensor,
-            a: &Tensor,
-            b: &Tensor,
-        ) -> TractResult<()> {
-            use crate::ndarray::Dimension;
-            let a = a.to_array_view::<T>()?;
-            let b = b.to_array_view::<T>()?;
-            let mut c = c.to_array_view_mut::<T>()?;
-            for prefix in tract_ndarray::indices(&c.shape()[..c.ndim() - 2]) {
-                let mut a = a.view();
-                let mut b = b.view();
-                let mut c = c.view_mut();
-                for d in prefix.slice().iter() {
-                    a.index_axis_inplace(tract_ndarray::Axis(0), *d.max(&a.shape()[0]));
-                    b.index_axis_inplace(tract_ndarray::Axis(0), *d.max(&b.shape()[0]));
-                    c.index_axis_inplace(tract_ndarray::Axis(0), *d);
-                }
-                let a = a.into_dimensionality::<Ix2>().unwrap();
-                let b = b.into_dimensionality::<Ix2>().unwrap();
-                let mut c = c.into_dimensionality::<Ix2>().unwrap();
-                c.assign(&a.dot(&b))
-            }
-            Ok(())
-        }
-        dispatch_numbers!(eval_t(a.datum_type())(&mut c, &a, &b)).unwrap();
+        dispatch_numbers!(Self::eval_t(a.datum_type())(self, &mut c, &a, &b)).unwrap();
         Ok(tvec!(c.into_tvalue()))
     }
 }
@@ -203,33 +219,85 @@ mod test {
     }
 
     // FIXME add broadcast (set axis dim to 1 randomly)
-    fn test_expr(e: &str) {
+    fn test_expr(expr: &str) {
+        let expr = expr.to_string();
         let mut runner = TestRunner::default();
-        let e: AxesMapping = e.parse().unwrap();
-        let cases = full_shapes(&e)
-            .prop_flat_map(|(a_shape, b_shape)| (tensor(&a_shape), tensor(&b_shape)));
-        runner.run(&cases, |(a, b)| decompose_matmul(e.clone(), a, b)).unwrap();
+        let axes: AxesMapping = expr.parse().unwrap();
+        let cases = full_shapes(&axes)
+            .prop_flat_map(|(a_shape, b_shape)| (tensor(&a_shape), tensor(&b_shape)))
+            .prop_map(|(a, b)| DeconvProblem { expr: expr.clone(), a, b });
+        runner.run(&cases, |pb| pb.check()).unwrap()
     }
 
-    fn decompose_matmul(e: AxesMapping, a: Tensor, b: Tensor) -> TestCaseResult {
-        let mut model = TypedModel::default();
-        let sa = model.add_source("a", f32::fact(a.shape())).unwrap();
-        let sb = model.add_source("b", f32::fact(b.shape())).unwrap();
-        let einsum =
-            model.wire_node("einsum", EinSum::new(e, f32::datum_type()), &[sa, sb]).unwrap();
-        model.set_output_outlets(&einsum).unwrap();
-        let a = a.clone().into_tvalue();
-        let b = b.into_tvalue();
-        let inputs = tvec!(a, b);
-        let reference =
-            TypedRunnableModel::new(&model).unwrap().run(inputs.clone()).unwrap().remove(0);
-        decompose_einsums_in_place(&mut model).unwrap();
-        assert!(model.nodes.iter().all(|n| !n.op_is::<EinSum>()));
-        let test = TypedRunnableModel::new(&model).unwrap().run(inputs).unwrap().remove(0);
-        reference.close_enough(&test, true).unwrap();
-        Ok(())
+    #[derive(Debug, Clone, PartialEq)]
+    struct DeconvProblem {
+        expr: String,
+        a: Tensor,
+        b: Tensor,
     }
 
-    #[rustfmt::skip] #[test] fn mk_kn_mn() { test_expr("mk,kn->mn") }
-    #[rustfmt::skip] #[test] fn k_kn_mn() { test_expr("k,kn->mn") }
+    impl DeconvProblem {
+        fn check(&self) -> TestCaseResult {
+            let mut model = TypedModel::default();
+            let sa = model.add_source("a", f32::fact(self.a.shape())).unwrap();
+            let sb = model.add_source("b", f32::fact(self.b.shape())).unwrap();
+            let einsum = model
+                .wire_node(
+                    "einsum",
+                    EinSum::new(self.expr.parse().unwrap(), f32::datum_type()),
+                    &[sa, sb],
+                )
+                .unwrap();
+            model.set_output_outlets(&einsum).unwrap();
+            let a = self.a.clone().into_tvalue();
+            let b = self.b.clone().into_tvalue();
+            let inputs = tvec!(a, b);
+            let reference =
+                TypedRunnableModel::new(&model).unwrap().run(inputs.clone()).unwrap().remove(0);
+            decompose_einsums_in_place(&mut model).unwrap();
+            model.compact().unwrap();
+            prop_assert!(model.nodes.iter().all(|n| !n.op_is::<EinSum>()));
+            let test = TypedRunnableModel::new(&model).unwrap().run(inputs).unwrap().remove(0);
+            reference.close_enough(&test, true).unwrap();
+            Ok(())
+        }
+    }
+
+    #[rustfmt::skip] #[test] fn prop_mk_kn_mn() { test_expr("mk,kn->mn") }
+    #[rustfmt::skip] #[test] fn prop_km_kn_mn() { test_expr("km,kn->mn") }
+    #[rustfmt::skip] #[test] fn prop_mk_nk_mn() { test_expr("mk,nk->mn") }
+    #[rustfmt::skip] #[test] fn prop_mk_kn_nm() { test_expr("mk,kn->nm") }
+    #[rustfmt::skip] #[test] fn prop_k_kn_mn() { test_expr("k,kn->mn") }
+    #[rustfmt::skip] #[test] fn prop_mk_k_mn() { test_expr("mk,k->mn") }
+    //    #[rustfmt::skip] #[test] fn prop_m_n_mn() { test_expr("m,n->mn") }
+
+    #[test]
+    fn k_kn_mn_0() -> TestCaseResult {
+        DeconvProblem {
+            expr: "k,kn->mn".to_string(),
+            a: tensor1(&[0f32, 0f32]),
+            b: tensor2(&[[0f32, 0.], [0., 0.]]),
+        }
+        .check()
+    }
+
+    #[test]
+    fn mk_k_mn_0() -> TestCaseResult {
+        DeconvProblem {
+            expr: "mk,k->mn".to_string(),
+            a: tensor2(&[[0f32, 0.], [0., 0.]]),
+            b: tensor1(&[0f32, 0f32]),
+        }
+        .check()
+    }
+
+    #[test]
+    fn mk_kn_nm_0() -> TestCaseResult {
+        DeconvProblem {
+            expr: "mk,kn->mn".to_string(),
+            a: Tensor::zero::<f32>(&[3, 2]).unwrap(),
+            b: Tensor::zero::<f32>(&[2, 2]).unwrap(),
+        }
+        .check()
+    }
 }
