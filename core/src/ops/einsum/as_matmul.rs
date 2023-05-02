@@ -169,12 +169,8 @@ mod test {
     use super::*;
     use proptest::collection::vec;
     use proptest::prelude::*;
-
-    macro_rules! e {
-        ($lit:literal) => {
-            EinSum::new($lit.parse().unwrap(), f32::datum_type())
-        };
-    }
+    use proptest::test_runner::{TestCaseResult, TestRunner};
+    use tract_data::itertools::Itertools;
 
     pub fn tensor(shape: &[usize]) -> BoxedStrategy<Tensor> {
         let shape = shape.to_vec();
@@ -184,22 +180,56 @@ mod test {
             .boxed()
     }
 
-    proptest::proptest! {
-        #[test]
-        fn decompose_matmul(a in tensor(&[3,4]), b in tensor(&[4,5])) {
-            let mut model = TypedModel::default();
-            let sa = model.add_source("a", f32::fact(a.shape())).unwrap();
-            let sb = model.add_source("b", f32::fact(b.shape())).unwrap();
-            let einsum = model.wire_node("einsum", e!("mk,kn->mn"), &[sa, sb]).unwrap();
-            model.set_output_outlets(&einsum).unwrap();
-            let a = a.into_tvalue();
-            let b = b.into_tvalue();
-            let inputs = tvec!(a,b);
-            let reference = TypedRunnableModel::new(&model).unwrap().run(inputs.clone()).unwrap().remove(0);
-            decompose_einsums_in_place(&mut model).unwrap();
-            assert!(model.nodes.iter().all(|n| !n.op_is::<EinSum>()));
-            let test = TypedRunnableModel::new(&model).unwrap().run(inputs).unwrap().remove(0);
-            reference.close_enough(&test, true).unwrap();
-        }
+    fn full_shapes(e: &AxesMapping) -> BoxedStrategy<(Vec<usize>, Vec<usize>)> {
+        let e = e.clone();
+        let inputs_axes = e
+            .iter_all_axes()
+            .filter(|axis| axis.inputs[0].len() + axis.inputs[1].len() > 0)
+            .cloned()
+            .collect_vec();
+        let dims = vec![2usize..6; inputs_axes.len()];
+        dims.prop_map(move |dims| {
+            let a: Vec<usize> = e
+                .axes(InOut::In(0))
+                .map(|a| dims[inputs_axes.iter().position(|b| a == b).unwrap()])
+                .collect_vec();
+            let b: Vec<usize> = e
+                .axes(InOut::In(1))
+                .map(|a| dims[inputs_axes.iter().position(|b| a == b).unwrap()])
+                .collect_vec();
+            (a, b)
+        })
+        .boxed()
     }
+
+    // FIXME add broadcast (set axis dim to 1 randomly)
+    fn test_expr(e: &str) {
+        let mut runner = TestRunner::default();
+        let e: AxesMapping = e.parse().unwrap();
+        let cases = full_shapes(&e)
+            .prop_flat_map(|(a_shape, b_shape)| (tensor(&a_shape), tensor(&b_shape)));
+        runner.run(&cases, |(a, b)| decompose_matmul(e.clone(), a, b)).unwrap();
+    }
+
+    fn decompose_matmul(e: AxesMapping, a: Tensor, b: Tensor) -> TestCaseResult {
+        let mut model = TypedModel::default();
+        let sa = model.add_source("a", f32::fact(a.shape())).unwrap();
+        let sb = model.add_source("b", f32::fact(b.shape())).unwrap();
+        let einsum =
+            model.wire_node("einsum", EinSum::new(e, f32::datum_type()), &[sa, sb]).unwrap();
+        model.set_output_outlets(&einsum).unwrap();
+        let a = a.clone().into_tvalue();
+        let b = b.into_tvalue();
+        let inputs = tvec!(a, b);
+        let reference =
+            TypedRunnableModel::new(&model).unwrap().run(inputs.clone()).unwrap().remove(0);
+        decompose_einsums_in_place(&mut model).unwrap();
+        assert!(model.nodes.iter().all(|n| !n.op_is::<EinSum>()));
+        let test = TypedRunnableModel::new(&model).unwrap().run(inputs).unwrap().remove(0);
+        reference.close_enough(&test, true).unwrap();
+        Ok(())
+    }
+
+    #[rustfmt::skip] #[test] fn mk_kn_mn() { test_expr("mk,kn->mn") }
+    #[rustfmt::skip] #[test] fn k_kn_mn() { test_expr("k,kn->mn") }
 }
