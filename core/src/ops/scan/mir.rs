@@ -125,30 +125,6 @@ impl Scan {
         Ok(None)
     }
 
-    /*
-    fn remove_outer_input_from_mappings(
-    mappings: &[InputMapping],
-    discarded: usize,
-    ) -> Vec<InputMapping> {
-    mappings
-    .iter()
-    .map(|m| match m {
-    &InputMapping::Full { slot } => {
-    InputMapping::Full { slot: slot - (slot > discarded) as usize }
-    }
-    &InputMapping::Scan(info) => InputMapping::Scan(ScanInfo {
-    slot: info.slot - (info.slot > discarded) as usize,
-    ..info
-    }),
-    InputMapping::State { init_slot: n } => {
-    let initializer = *n - (*n > discarded) as usize;
-    InputMapping::State { init_slot: initializer }
-    }
-    })
-    .collect()
-    }
-    */
-
     fn remove_outer_output_from_mappings(
         mappings: &[OutputMapping<TDim>],
         discarded: usize,
@@ -189,7 +165,7 @@ impl Scan {
         Ok(None)
     }
 
-    fn declutter_discard_unused_input_mapping(
+    fn declutter_discard_unused_input(
         &self,
         _session: &mut OptimizerSession,
         model: &TypedModel,
@@ -847,7 +823,7 @@ impl TypedOp for Scan {
             };
         }
         pass!(declutter_const_input);
-        pass!(declutter_discard_unused_input_mapping);
+        pass!(declutter_discard_unused_input);
         pass!(declutter_discard_useless_outer_output);
         pass!(declutter_discard_empty_output_mapping_with_body_output);
         pass!(declutter_body);
