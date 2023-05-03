@@ -502,8 +502,8 @@ mod test {
                         ]
                     };
                     let inputs = inputs.into_iter().map(|t| t.into_tvalue()).collect();
-                    let mut outputs = if opt { model.into_optimized().unwrap() } else { model }
-                    .into_runnable()
+                    let optimized = if opt { model.into_optimized().unwrap() } else { model };
+                    let mut outputs = optimized.into_runnable()
                         .unwrap()
                         .run(inputs)
                         .unwrap();

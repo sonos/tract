@@ -236,7 +236,9 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
             *uspecs.get_unchecked_mut(*uspec) = match spec {
                 FS::BinPerRow(v, op) => {
                     let buf = std::slice::from_raw_parts_mut(*loc as *mut TI, K::mr());
-                    let have = (v.valid_bytes() / TI::datum_type().size_of()).saturating_sub(down * K::mr()).min(K::mr());
+                    let have = (v.valid_bytes() / TI::datum_type().size_of())
+                        .saturating_sub(down * K::mr())
+                        .min(K::mr());
                     let ptr = if have < K::mr() {
                         if have > 0 {
                             buf.get_unchecked_mut(..have).copy_from_slice(
@@ -263,7 +265,9 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                 }
                 FS::BinPerCol(v, op) => {
                     let buf = std::slice::from_raw_parts_mut(*loc as *mut TI, K::nr());
-                    let have = (v.valid_bytes() / TI::datum_type().size_of()) .saturating_sub(right * K::nr()).min(K::nr());
+                    let have = (v.valid_bytes() / TI::datum_type().size_of())
+                        .saturating_sub(right * K::nr())
+                        .min(K::nr());
                     let ptr = if have < K::nr() {
                         if have > 0 {
                             buf.get_unchecked_mut(..have).copy_from_slice(
@@ -331,6 +335,9 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                         std::slice::from_raw_parts_mut(*loc as *mut TI, K::mr() * K::nr());
                     let m = (store.m - down * K::mr()).min(K::mr());
                     let n = (store.n - right * K::nr()).min(K::nr());
+                    if cfg!(debug_assertions) {
+                        tmp_d_tile.iter_mut().for_each(|t| *t = TI::zero());
+                    }
                     for r in 0..m as isize {
                         for c in 0..n as isize {
                             let inner_offset = c * col_byte_stride + r * row_byte_stride;
