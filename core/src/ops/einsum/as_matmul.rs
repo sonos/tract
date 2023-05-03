@@ -218,12 +218,39 @@ mod test {
         .boxed()
     }
 
-    // FIXME add broadcast (set axis dim to 1 randomly)
     fn test_expr(expr: &str) {
         let expr = expr.to_string();
         let mut runner = TestRunner::default();
         let axes: AxesMapping = expr.parse().unwrap();
+        fn is_k(axes: &AxesMapping, input: usize, position: usize) -> bool {
+            let axis = axes.axis((InOut::In(input), position)).unwrap();
+            axis.inputs[1 - input].len() == 1 && axis.outputs[0].len() == 0
+        }
         let cases = full_shapes(&axes)
+            .prop_flat_map(|(a, b)| {
+                (
+                    a.iter()
+                        .enumerate()
+                        .map(|(ix, d)| {
+                            if is_k(&axes, 0, ix) {
+                                prop_oneof![Just(*d)].boxed()
+                            } else {
+                                prop_oneof![Just(1usize), Just(*d)].boxed()
+                            }
+                        })
+                        .collect_vec(),
+                    b.iter()
+                        .enumerate()
+                        .map(|(ix, d)| {
+                            if is_k(&axes, 1, ix) {
+                                prop_oneof![Just(*d)].boxed()
+                            } else {
+                                prop_oneof![Just(1usize), Just(*d)].boxed()
+                            }
+                        })
+                        .collect_vec(),
+                )
+            })
             .prop_flat_map(|(a_shape, b_shape)| (tensor(&a_shape), tensor(&b_shape)))
             .prop_map(|(a, b)| DeconvProblem { expr: expr.clone(), a, b });
         runner.run(&cases, |pb| pb.check()).unwrap()
