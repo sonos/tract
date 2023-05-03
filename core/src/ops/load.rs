@@ -44,7 +44,7 @@ impl TypedOp for Load {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(inputs.len() == 1, "Expected one input (default value) for Load op");
         let input_facts = inputs.to_vec();
-        Ok(input_facts.into_iter().map(|it| it.clone()).collect::<TVec<_>>())
+        Ok(input_facts.into_iter().cloned().collect::<TVec<_>>())
     }
 }
 

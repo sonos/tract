@@ -8,7 +8,7 @@ pub fn register(registry: &mut Registry) {
     registry.register_primitive(
         "store",
         &[
-            TypeName::Scalar.tensor().named("inputs"),
+            TypeName::Scalar.tensor().named("input"),
             TypeName::Scalar.tensor().named("state"),
             TypeName::String.named("id"),
         ],
@@ -19,8 +19,12 @@ pub fn register(registry: &mut Registry) {
 
 fn ser_store(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
     let op = node.op().downcast_ref::<Store>().unwrap();
-    let wires: TVec<Arc<RValue>> = node.inputs.iter().map(|it| ast.mapping[it].clone()).collect();
-    Ok(Some(invocation("store", &wires, &[("id", string(op.id.clone()))])))
+    let wires: TVec<RValue> = node.inputs.iter().map(|it| (*ast.mapping[it]).clone()).collect();
+    Ok(Some(invocation(
+        "store",
+        &[],
+        &[("input", wires[0].clone()), ("state", wires[1].clone()), ("id", string(op.id.clone()))],
+    )))
 }
 
 pub fn de_store(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
