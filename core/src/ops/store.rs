@@ -46,8 +46,7 @@ impl TypedOp for Store {
             inputs.len() == 2,
             "Expected two inputs (input to propagate and state to store) for Store op"
         );
-        let (input_fact, _) = args_2!(inputs.to_vec());
-        Ok(tvec![input_fact.clone()])
+        Ok(tvec![inputs[0].clone()])
     }
 }
 
@@ -62,10 +61,7 @@ impl OpState for StoreState {
         mut inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let (input, state) = args_2!(inputs);
-
         let store_op = op.downcast_ref::<Store>().ok_or(anyhow!("Expected Store node"))?;
-
-        // Update state in session
         session.tensors.insert(store_op.id.clone(), state.into_tensor());
         Ok(tvec![input])
     }

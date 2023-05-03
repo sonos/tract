@@ -30,8 +30,8 @@ pub fn de_force_eval(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
 ) -> TractResult<Value> {
-    let input_wire: TVec<OutletId> = invocation.named_arg_as(builder, "inputs")?;
+    let input_wires: TVec<OutletId> = invocation.named_arg_as(builder, "inputs")?;
     let output_slots: TVec<usize> = invocation.named_arg_as(builder, "slots")?;
     let force_eval_node = ForceEval::new(output_slots.to_vec());
-    builder.wire(force_eval_node, &input_wire)
+    builder.wire(force_eval_node, &input_wires)
 }
