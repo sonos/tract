@@ -1,9 +1,9 @@
 use tract_ndarray::Ix2;
 use tract_num_traits::One;
 
+use super::codegen::*;
 use super::EinSum;
 use crate::internal::*;
-use super::codegen::*;
 
 pub fn decompose(op: &EinSum, model: &TypedModel, node: &TypedNode) -> TractResult<TypedModel> {
     let mut substitute = TypedModel::default();
@@ -52,8 +52,9 @@ pub fn step(
     );
     let (m_axis, k_axis, n_axis) = match ensure_mkn_axes(op, model, node)? {
         AxesOrPatch::Axes(m, k, n) => (m, k, n),
-        AxesOrPatch::Patch(p) => return Ok(Some(p))
+        AxesOrPatch::Patch(p) => return Ok(Some(p)),
     };
+    eprintln!("m:{}, k:{}, n:{}", m_axis.repr, k_axis.repr, n_axis.repr);
     let a = model.outlet_fact(node.inputs[0])?;
     let b = model.outlet_fact(node.inputs[1])?;
     let c = &node.outputs[0].fact;
@@ -66,12 +67,39 @@ pub fn step(
     let b_n = n_axis.inputs[1][0];
     let c_m = m_axis.outputs[0][0];
     let c_n = n_axis.outputs[0][0];
-    assert!(a_m >= rank - 2);
-    assert!(a_k >= rank - 2);
-    assert!(b_k >= rank - 2);
-    assert!(b_n >= rank - 2);
-    assert!(c_m >= rank - 2);
-    assert!(c_n >= rank - 2);
+    let name = &node.name;
+    let mut patch = TypedModelPatch::default();
+    let mut wire =
+        node.inputs.iter().map(|i| patch.tap_model(model, *i)).collect::<TractResult<TVec<_>>>()?;
+    for (input, axis, axis_name) in [(0, a_m, "Am"), (0, a_k, "Ak"), (1, b_k, "Bk"), (1, b_n, "Bn")]
+    {
+        if axis < rank - 2 {
+            let mov = AxisOp::Move(axis, rank - 1);
+            patch = patch.with_context(format!("Moving {axis_name} at the end"));
+            let new_op = EinSum {
+                axes: op.axes.change_axis_sink(InOut::In(input), &mov)?.unwrap(),
+                ..op.clone()
+            };
+            wire[input] = patch.wire_node(format!("{name}.{axis_name}"), mov, &[wire[input]])?[0];
+            let wire = patch.wire_node(name, new_op, &wire)?;
+            patch.shunt_outside(model, node.id.into(), wire[0])?;
+            return Ok(Some(patch));
+        }
+    }
+    for (axis, axis_name) in [(c_m, "Cm"), (c_n, "Cn")] {
+        if axis < rank - 2 {
+            let mov = AxisOp::Move(axis, rank - 1);
+            patch = patch.with_context(format!("Moving {axis_name} at the end"));
+            let new_op = EinSum {
+                axes: op.axes.change_axis_sink(InOut::Out(0), &mov)?.unwrap(),
+                ..op.clone()
+            };
+            wire = patch.wire_node(name, new_op, &wire)?;
+            wire = patch.wire_node(format!("{name}.{axis_name}"), mov.recip(), &wire)?;
+            patch.shunt_outside(model, node.id.into(), wire[0])?;
+            return Ok(Some(patch));
+        }
+    }
     let transpose_a = a_m > a_k;
     let transpose_b = b_k > b_n;
     let transpose_c = c_m > c_n;
@@ -118,10 +146,10 @@ impl BasicMatMul {
             let mut a = a.view();
             let mut b = b.view();
             let mut c = c.view_mut();
-            for d in prefix.slice().iter() {
-                a.index_axis_inplace(tract_ndarray::Axis(0), *d.max(&a.shape()[0]));
-                b.index_axis_inplace(tract_ndarray::Axis(0), *d.max(&b.shape()[0]));
-                c.index_axis_inplace(tract_ndarray::Axis(0), *d);
+            for &d in prefix.slice().iter() {
+                a.index_axis_inplace(tract_ndarray::Axis(0), d.min(a.shape()[0] - 1));
+                b.index_axis_inplace(tract_ndarray::Axis(0), d.min(b.shape()[0] - 1));
+                c.index_axis_inplace(tract_ndarray::Axis(0), d);
             }
             let a = a.into_dimensionality::<Ix2>().unwrap();
             let b = b.into_dimensionality::<Ix2>().unwrap();
@@ -213,7 +241,7 @@ mod test {
         .boxed()
     }
 
-    fn test_expr(expr: &str) {
+    fn test_expr(expr: &str) -> TestCaseResult {
         let expr = expr.to_string();
         let mut runner = TestRunner::default();
         let axes: AxesMapping = expr.parse().unwrap();
@@ -248,7 +276,8 @@ mod test {
             })
             .prop_flat_map(|(a_shape, b_shape)| (tensor(&a_shape), tensor(&b_shape)))
             .prop_map(|(a, b)| DeconvProblem { expr: expr.clone(), a, b });
-        runner.run(&cases, |pb| pb.check()).unwrap()
+        runner.run(&cases, |pb| pb.check())?;
+        Ok(())
     }
 
     #[derive(Debug, Clone, PartialEq)]
@@ -285,13 +314,14 @@ mod test {
         }
     }
 
-    #[rustfmt::skip] #[test] fn prop_mk_kn_mn() { test_expr("mk,kn->mn") }
-    #[rustfmt::skip] #[test] fn prop_km_kn_mn() { test_expr("km,kn->mn") }
-    #[rustfmt::skip] #[test] fn prop_mk_nk_mn() { test_expr("mk,nk->mn") }
-    #[rustfmt::skip] #[test] fn prop_mk_kn_nm() { test_expr("mk,kn->nm") }
-    #[rustfmt::skip] #[test] fn prop_k_kn_mn() { test_expr("k,kn->mn") }
-    #[rustfmt::skip] #[test] fn prop_mk_k_mn() { test_expr("mk,k->mn") }
-    #[rustfmt::skip] #[test] fn prop_m_n_mn() { test_expr("m,n->mn") }
+    #[rustfmt::skip] #[test] fn prop_mk_kn_mn() -> TestCaseResult { test_expr("mk,kn->mn") }
+    #[rustfmt::skip] #[test] fn prop_km_kn_mn() -> TestCaseResult { test_expr("km,kn->mn") }
+    #[rustfmt::skip] #[test] fn prop_mk_nk_mn() -> TestCaseResult { test_expr("mk,nk->mn") }
+    #[rustfmt::skip] #[test] fn prop_mk_kn_nm() -> TestCaseResult { test_expr("mk,kn->nm") }
+    #[rustfmt::skip] #[test] fn prop_k_kn_mn() -> TestCaseResult { test_expr("k,kn->mn") }
+    #[rustfmt::skip] #[test] fn prop_mk_k_mn() -> TestCaseResult { test_expr("mk,k->mn") }
+    #[rustfmt::skip] #[test] fn prop_m_n_mn() -> TestCaseResult { test_expr("m,n->mn") }
+    #[rustfmt::skip] #[test] fn prop_amk_akn_amn() -> TestCaseResult { test_expr("amk,akn->amn") }
 
     #[test]
     fn k_kn_mn_0() -> TestCaseResult {
@@ -319,6 +349,36 @@ mod test {
             expr: "mk,kn->mn".to_string(),
             a: Tensor::zero::<f32>(&[3, 2]).unwrap(),
             b: Tensor::zero::<f32>(&[2, 2]).unwrap(),
+        }
+        .check()
+    }
+
+    #[test]
+    fn amk_akn_amn_0() -> TestCaseResult {
+        DeconvProblem {
+            expr: "amk,akn->amn".to_string(),
+            a: Tensor::zero::<f32>(&[1, 1, 2]).unwrap(),
+            b: Tensor::zero::<f32>(&[1, 2, 1]).unwrap(),
+        }
+        .check()
+    }
+
+    #[test]
+    fn amk_akn_amn_1() -> TestCaseResult {
+        DeconvProblem {
+            expr: "amk,akn->amn".to_string(),
+            a: Tensor::zero::<f32>(&[2, 1, 2]).unwrap(),
+            b: Tensor::zero::<f32>(&[1, 2, 1]).unwrap(),
+        }
+        .check()
+    }
+
+    #[test]
+    fn amk_akn_amn_2() -> TestCaseResult {
+        DeconvProblem {
+            expr: "amk,akn->amn".to_string(),
+            a: Tensor::zero::<f32>(&[1, 1, 2]).unwrap(),
+            b: Tensor::zero::<f32>(&[2, 2, 2]).unwrap(),
         }
         .check()
     }
