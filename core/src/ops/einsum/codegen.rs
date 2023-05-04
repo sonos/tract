@@ -10,6 +10,11 @@ use crate::ops::matmul::mir_quant::{
 use crate::ops::matmul::pack::MatMatMulPack;
 use crate::ops::nn::{Reduce, Reducer};
 
+pub enum AxesOrPatch<'a> {
+    Axes(&'a Axis, &'a Axis, &'a Axis),
+    Patch(TypedModelPatch),
+}
+
 pub(crate) fn codegen(
     op: &EinSum,
     model: &TypedModel,
@@ -20,15 +25,9 @@ pub(crate) fn codegen(
     {
         return Ok(None);
     }
-    let (m_axis, k_axis, n_axis) = choose_mkn_axes(op, model, node).context("Choosing axes")?;
-    let Some(k_axis) = k_axis else {
-        return Ok(Some(inject_k_axis(op, model, node)?));
-    };
-    let Some(m_axis) = m_axis else {
-        return Ok(Some(inject_m_or_n_axis(op, model, node, false)?));
-    };
-    let Some(n_axis) = n_axis else {
-        return Ok(Some(inject_m_or_n_axis(op, model, node, true)?));
+    let (m_axis, k_axis, n_axis) = match ensure_mkn_axes(op, model, node)? {
+        AxesOrPatch::Axes(m, k, n) => (m, k, n),
+        AxesOrPatch::Patch(p) => return Ok(Some(p)),
     };
     if op.q_params.is_none() {
         lir_mat_mul_unary(op, model, node, (m_axis, k_axis, n_axis))
@@ -38,11 +37,11 @@ pub(crate) fn codegen(
     }
 }
 
-pub(super) fn choose_mkn_axes<'a>(
+pub(super) fn ensure_mkn_axes<'a>(
     op: &'a EinSum,
     model: &TypedModel,
     node: &TypedNode,
-) -> TractResult<(Option<&'a Axis>, Option<&'a Axis>, Option<&'a Axis>)> {
+) -> TractResult<AxesOrPatch<'a>> {
     let input_facts = model.node_input_facts(node.id)?;
     let input_shapes: TVec<&[TDim]> = input_facts.iter().map(|f| &*f.shape).collect();
     let output_shape = super::eval::output_shape(&op.axes, &input_shapes);
@@ -54,22 +53,22 @@ pub(super) fn choose_mkn_axes<'a>(
             a.inputs[0].len() == 1 && a.inputs[1].len() == 1 && a.outputs[0].len() == 0 &&
                 input_facts[0].shape[a.inputs[0][0]] == input_facts[1].shape[a.inputs[1][0]]
         })
-        .collect();
+    .collect();
 
-    let non_trivial_k_axis = candidate_k_axes.iter().filter(|a| {
-        input_facts[0].shape[a.inputs[0][0]] > 1.to_dim()
-    }).collect::<TVec<_>>();
+    let non_trivial_k_axis = candidate_k_axes
+        .iter()
+        .filter(|a| input_facts[0].shape[a.inputs[0][0]] > 1.to_dim())
+        .collect::<TVec<_>>();
 
     let k_axis = if non_trivial_k_axis.len() > 1 {
         // TODO: handle case where multiple consecutive k in the same order in both input.
         bail!("Multiple k-axis candidate found");
     } else {
-        non_trivial_k_axis.get(0)
-            .map(|it| *it)
-            .or_else(|| candidate_k_axes.get(0))
-            .map(|it| *it)
+        non_trivial_k_axis.get(0).map(|it| *it).or_else(|| candidate_k_axes.get(0)).map(|it| *it)
     };
-    
+    let Some(k_axis) = k_axis else {
+        return Ok(AxesOrPatch::Patch(inject_k_axis(op, model, node)?));
+    };
     let m_axis = op
         .axes
         .iter_all_axes()
@@ -79,6 +78,9 @@ pub(super) fn choose_mkn_axes<'a>(
                 && a.outputs[0].len() == 1
         })
         .max_by_key(|a| &output_shape[a.outputs[0][0]]);
+    let Some(m_axis) = m_axis else {
+        return Ok(AxesOrPatch::Patch(inject_m_or_n_axis(op, model, node, false)?));
+    };
     let n_axis = op
         .axes
         .iter_all_axes()
@@ -88,7 +90,10 @@ pub(super) fn choose_mkn_axes<'a>(
                 && a.outputs[0].len() == 1
         })
         .max_by_key(|a| &output_shape[a.outputs[0][0]]);
-    Ok((m_axis, k_axis, n_axis))
+    let Some(n_axis) = n_axis else {
+        return Ok(AxesOrPatch::Patch(inject_m_or_n_axis(op, model, node, true)?));
+    };
+    Ok(AxesOrPatch::Axes(m_axis, k_axis, n_axis))
 }
 
 pub(super) fn inject_k_axis(
@@ -96,17 +101,28 @@ pub(super) fn inject_k_axis(
     model: &TypedModel,
     node: &TypedNode,
 ) -> TractResult<TypedModelPatch> {
-    let k_axes_input = op.axes.iter_all_axes().find(|a| a.outputs[0].len() == 0).unwrap();
-    let input_to_fix = (k_axes_input.inputs[0].len() > 0) as usize;
-    let new_axes = op
-        .axes
-        .clone()
-        .with_extra_axis('$', InOut::In(input_to_fix), 0)?
-        .linking(k_axes_input.repr, '$')?;
+    let mut new_axes = op.axes.clone();
     let name = &node.name;
     let mut patch = TypedModelPatch::new("inject k axis");
-    let mut wire = node.inputs.iter().map(|i| patch.tap_model(model, *i)).collect::<TractResult<TVec<_>>>()?;
-    wire[input_to_fix] = patch.wire_node(format!("{name}.add_k"), AxisOp::Add(0), &[wire[input_to_fix]])?[0];
+    let mut wire =
+        node.inputs.iter().map(|i| patch.tap_model(model, *i)).collect::<TractResult<TVec<_>>>()?;
+    let possible_k_axis =
+        new_axes.iter_all_axes().find(|a| a.outputs[0].len() == 0).map(|axis| axis.repr);
+    if let Some(axis) = possible_k_axis {
+        let input_to_fix = (new_axes.axis(axis)?.inputs[0].len() > 0) as usize;
+        new_axes = new_axes.with_extra_axis_occurency(axis, InOut::In(input_to_fix), 0)?;
+        wire[input_to_fix] =
+            patch.wire_node(format!("{name}.add_k"), AxisOp::Add(0), &[wire[input_to_fix]])?[0];
+    } else {
+        let repr = new_axes.available_label();
+        new_axes = new_axes.with_extra_axis(repr, InOut::In(0), 0)?.with_extra_axis_occurency(
+            repr,
+            InOut::In(1),
+            0,
+        )?;
+        wire[0] = patch.wire_node(format!("{name}.add_k.0"), AxisOp::Add(0), &[wire[0]])?[0];
+        wire[1] = patch.wire_node(format!("{name}.add_k.1"), AxisOp::Add(0), &[wire[1]])?[0];
+    };
     wire = patch.wire_node(&node.name, EinSum { axes: new_axes, ..op.clone() }, &wire)?;
     patch.shunt_outside(model, node.id.into(), wire[0])?;
     Ok(patch)
