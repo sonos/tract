@@ -374,31 +374,40 @@ impl AxesMapping {
     }
 
     pub fn with_extra_axis(
-        self,
+        mut self,
         repr: char,
         io: InOut,
         position: usize,
     ) -> TractResult<AxesMapping> {
-        let mut axes: TVec<Axis> = self.axes.clone();
-        let mut axis = Axis::new(repr, self.input_count, self.output_count);
+        let axis = Axis::new(repr, self.input_count, self.output_count);
+        self.axes.push(axis);
+        self.with_extra_axis_occurency(repr, io, position)
+    }
+
+    pub fn with_extra_axis_occurency(
+        mut self,
+        axis: impl AxisPattern,
+        io: InOut,
+        position: usize,
+    ) -> TractResult<AxesMapping> {
         match io {
             InOut::In(slot) => {
-                axes.iter_mut().for_each(|axis| {
+                self.axes.iter_mut().for_each(|axis| {
                     axis.inputs[slot].iter_mut().for_each(|pos| *pos += (*pos >= position) as usize)
                 });
-                axis.inputs[slot].push(position);
+                self.axis_mut(axis)?.inputs[slot].push(position);
             }
             InOut::Out(slot) => {
-                axes.iter_mut().for_each(|axis| {
+                self.axes.iter_mut().for_each(|axis| {
                     axis.outputs[slot]
                         .iter_mut()
                         .for_each(|pos| *pos += (*pos >= position) as usize)
                 });
-                axis.outputs[slot].push(position);
+                self.axis_mut(axis)?.outputs[slot].push(position);
             }
         }
-        axes.push(axis);
-        AxesMapping::new(self.input_count, self.output_count, axes)
+        self.sort();
+        self.check()
     }
 
     pub fn translate_to_axis_ops(&self) -> TractResult<Vec<AxisOp>> {

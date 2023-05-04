@@ -3,6 +3,7 @@ use tract_num_traits::One;
 
 use super::EinSum;
 use crate::internal::*;
+use super::codegen::*;
 
 pub fn decompose(op: &EinSum, model: &TypedModel, node: &TypedNode) -> TractResult<TypedModel> {
     let mut substitute = TypedModel::default();
@@ -18,7 +19,7 @@ pub fn decompose(op: &EinSum, model: &TypedModel, node: &TypedNode) -> TractResu
         })
         .collect::<TractResult<Vec<_>>>()?;
     let outputs = substitute.wire_node(&node.name, op.clone(), &inputs)?;
-    let op = substitute.nodes[outputs[0].slot].op_as::<EinSum>();
+    substitute.set_output_outlets(&outputs)?;
     decompose_einsums_in_place(&mut substitute)?;
     Ok(substitute)
 }
@@ -49,15 +50,9 @@ pub fn step(
         (node.inputs.len() == 2 && op.q_params.is_none())
             || (node.inputs.len() == 9 && op.q_params.is_some())
     );
-    let (m_axis, k_axis, n_axis) = super::codegen::choose_mkn_axes(op, model, node)?;
-    let Some(k_axis) = k_axis else {
-        return Ok(Some(super::codegen::inject_k_axis(op, model, node)?));
-    };
-    let Some(m_axis) = m_axis else {
-        return Ok(Some(super::codegen::inject_m_or_n_axis(op, model, node, false)?));
-    };
-    let Some(n_axis) = n_axis else {
-        return Ok(Some(super::codegen::inject_m_or_n_axis(op, model, node, true)?));
+    let (m_axis, k_axis, n_axis) = match ensure_mkn_axes(op, model, node)? {
+        AxesOrPatch::Axes(m, k, n) => (m, k, n),
+        AxesOrPatch::Patch(p) => return Ok(Some(p))
     };
     let a = model.outlet_fact(node.inputs[0])?;
     let b = model.outlet_fact(node.inputs[1])?;
@@ -296,7 +291,7 @@ mod test {
     #[rustfmt::skip] #[test] fn prop_mk_kn_nm() { test_expr("mk,kn->nm") }
     #[rustfmt::skip] #[test] fn prop_k_kn_mn() { test_expr("k,kn->mn") }
     #[rustfmt::skip] #[test] fn prop_mk_k_mn() { test_expr("mk,k->mn") }
-    //    #[rustfmt::skip] #[test] fn prop_m_n_mn() { test_expr("m,n->mn") }
+    #[rustfmt::skip] #[test] fn prop_m_n_mn() { test_expr("m,n->mn") }
 
     #[test]
     fn k_kn_mn_0() -> TestCaseResult {
