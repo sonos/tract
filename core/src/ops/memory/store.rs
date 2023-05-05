@@ -34,7 +34,7 @@ impl EvalOp for Store {
         _session: &mut SessionState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(StoreState { id: self.id.clone() })))
+        Ok(Some(Box::new(self.clone())))
     }
 }
 
@@ -50,12 +50,7 @@ impl TypedOp for Store {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct StoreState {
-    id: String,
-}
-
-impl OpState for StoreState {
+impl OpState for Store {
     fn eval(
         &mut self,
         session: &mut SessionState,
@@ -68,4 +63,4 @@ impl OpState for StoreState {
     }
 }
 
-trivial_op_state_freeeze!(StoreState);
+trivial_op_state_freeeze!(Store);
