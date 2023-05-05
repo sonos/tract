@@ -34,7 +34,7 @@ impl EvalOp for Load {
         _session: &mut SessionState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(LoadState { id: self.id.clone() })))
+        Ok(Some(Box::new(self.clone())))
     }
 }
 
@@ -52,12 +52,7 @@ impl TypedOp for Load {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct LoadState {
-    id: String,
-}
-
-impl OpState for LoadState {
+impl OpState for Load {
     fn eval(
         &mut self,
         session: &mut SessionState,
@@ -93,4 +88,4 @@ impl OpState for LoadState {
     }
 }
 
-trivial_op_state_freeeze!(LoadState);
+trivial_op_state_freeeze!(Load);
