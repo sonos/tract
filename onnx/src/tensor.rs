@@ -4,7 +4,7 @@ use crate::pb::*;
 use prost::Message;
 use std::convert::{TryFrom, TryInto};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tract_hir::internal::*;
 
 impl TryFrom<DataType> for DatumType {
@@ -55,6 +55,32 @@ pub fn translate_inference_fact(
     Ok(fact)
 }
 
+#[cfg(target_family="wasm")]
+fn extend_bytes_from_path(buf: &mut Vec<u8>, p: impl AsRef<Path>) -> TractResult<()> {
+    use std::io::BufRead;
+
+    let file = fs::File::open(p)?;
+    let file_size = file.metadata()?.len() as usize;
+    if buf.capacity() < file_size + buf.len() {
+        buf.reserve(file_size);
+    }
+
+    let mut reader = std::io::BufReader::new(file);
+    while reader.fill_buf()?.len() > 0 {
+        buf.extend_from_slice(reader.buffer());
+        reader.consume(reader.buffer().len());
+    }    
+    Ok(())
+}
+
+#[cfg(any(windows, unix))]
+fn extend_bytes_from_path(buf: &mut Vec<u8>, p: impl AsRef<Path>) -> TractResult<()> {
+    let file = fs::File::open(p)?;
+    let mmap = unsafe { memmap2::Mmap::map(&file)? };
+    buf.extend_from_slice(&mmap);
+    Ok(())
+}
+
 fn get_external_resources(t: &TensorProto, path: &str) -> TractResult<Vec<u8>> {
     let mut tensor_data: Vec<u8> = Vec::new();
     trace!("number of external file needed for this tensor: {}", t.external_data.len());
@@ -63,8 +89,7 @@ fn get_external_resources(t: &TensorProto, path: &str) -> TractResult<Vec<u8>> {
     {
         let p = PathBuf::from(format!("{}/{}", path, external_data.value));
         trace!("external file detected: {:?}", p);
-        let file = unsafe { memmap2::Mmap::map(&fs::File::open(p)?)? };
-        tensor_data.extend_from_slice(&file);
+        extend_bytes_from_path(&mut tensor_data, p)?;
         trace!("external file loaded");
     }
     Ok(tensor_data)
