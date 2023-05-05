@@ -81,6 +81,17 @@ impl Tensorflow {
         Ok(())
     }
 
+    #[cfg(target_family="wasm")]
+    pub fn read_frozen_from_path(&self, p: impl AsRef<path::Path>) -> TractResult<GraphDef> {
+        use std::io::Read;
+        let mut file = fs::File::open(p)?;
+        let mut v = Vec::with_capacity(file.metadata()?.len() as usize);
+        file.read_to_end(&mut v)?;
+        let b = bytes::Bytes::from(v);
+        Ok(GraphDef::decode(b)?)
+    }
+
+    #[cfg(any(windows, unix))]
     pub fn read_frozen_from_path(&self, p: impl AsRef<path::Path>) -> TractResult<GraphDef> {
         let map = unsafe { memmap2::Mmap::map(&fs::File::open(p)?)? };
         Ok(GraphDef::decode(&*map)?)
