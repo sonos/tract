@@ -157,3 +157,26 @@ score, with its index, and diplay it...
         .max_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
     println!("result: {:?}", best);
 ```
+
+## Try it on WebAssembly
+
+You can also compile the example into webassembly and run it on wasm runtime like [wasmtime](https://github.com/bytecodealliance/wasmtime).
+You need to [install wasmtime](https://docs.wasmtime.dev/cli-install.html) and add wasm as a target with rustup.
+
+```sh
+rustup target add wasm32-wasi
+```
+
+Build the example with the `wasm32-wasi` target.
+
+```sh
+cargo build --target wasm32-wasi
+```
+
+Then run the example with wasmtime, use `--dir=.` to specify the directory path used in the example.
+
+```sh
+wasmtime ../../target/wasm32-wasi/debug/example-onnx-mobilenet-v2.wasm --dir=.
+```
+
+You should see the same result as the native one.
