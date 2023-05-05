@@ -34,7 +34,7 @@ impl EvalOp for Load {
         _session: &mut SessionState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(LoadState {})))
+        Ok(Some(Box::new(LoadState { id: self.id.clone() })))
     }
 }
 
@@ -53,20 +53,21 @@ impl TypedOp for Load {
 }
 
 #[derive(Debug, Clone)]
-pub struct LoadState;
+pub struct LoadState {
+    id: String,
+}
 
 impl OpState for LoadState {
     fn eval(
         &mut self,
         session: &mut SessionState,
-        op: &dyn Op,
+        _op: &dyn Op,
         mut inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
-        let load_op = op.downcast_ref::<Load>().ok_or(anyhow!("Expected Load op"))?;
         let tensor = session
             .tensors
-            .get(&load_op.id)
+            .get(&self.id)
             .map_or_else(
                 || -> TractResult<TVec<TValue>> { Ok(tvec!(input.clone())) },
                 |it| {

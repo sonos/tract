@@ -34,7 +34,7 @@ impl EvalOp for Store {
         _session: &mut SessionState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(StoreState {})))
+        Ok(Some(Box::new(StoreState { id: self.id.clone() })))
     }
 }
 
@@ -51,18 +51,19 @@ impl TypedOp for Store {
 }
 
 #[derive(Debug, Clone)]
-pub struct StoreState;
+pub struct StoreState {
+    id: String,
+}
 
 impl OpState for StoreState {
     fn eval(
         &mut self,
         session: &mut SessionState,
-        op: &dyn Op,
+        _op: &dyn Op,
         mut inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let (input, state) = args_2!(inputs);
-        let store_op = op.downcast_ref::<Store>().ok_or(anyhow!("Expected Store node"))?;
-        session.tensors.insert(store_op.id.clone(), state.into_tensor());
+        session.tensors.insert(self.id.clone(), state.into_tensor());
         Ok(tvec![input])
     }
 }
