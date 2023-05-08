@@ -183,6 +183,7 @@ where
     }
 }
 
+#[allow(unused_macros)]
 macro_rules! act_impl {
     ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr, $cond: expr) => {
         paste! {
@@ -221,10 +222,9 @@ macro_rules! act_impl {
                 }
             }
 
+            #[cfg(test)]
             mod [<test_ $func>] {
-                use super::*;
-
-                #[cfg(test)]
+                pub use super::*;
                 act_tests!($cond, $func, $ti);
             }
         }

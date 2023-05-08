@@ -103,15 +103,13 @@ impl ActivationKer<f32> for SActivations {
 }
 
 #[cfg(test)]
-act_tests!(true, SActivations, f32);
-
-#[cfg(test)]
 mod tests {
     use crate::frame::activations::ActivationKer;
     use crate::frame::activations::KerOp;
     use crate::frame::activations::OpOrConst;
-
     use super::SActivations;
+
+    act_tests!(true, crate::generic::activations::SActivations, f32);
 
     #[test]
     fn act_noop() {

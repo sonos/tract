@@ -1,6 +1,6 @@
 use crate::LADatum;
 
-use super::{Op, Program};
+use super::{ActivationKer, Op, Program};
 use Op::*;
 
 pub fn noop<T: LADatum>() -> Program<T> {
@@ -11,116 +11,104 @@ pub fn max_const<T: LADatum>(c: T) -> Program<T> {
     Program { ops: vec![MaxConst(c)] }
 }
 
-macro_rules! prop_act_e2e {
-    ($cond:expr, $ti: ty, $ker: ty, $name: ident ( $($param:ident),* )) => {
-        proptest::proptest! {
-            #[test]
-            fn $name(
-                x in proptest::prelude::any::<$ti>(),
-                repeat in 1usize..4,
-                $($param in proptest::prelude::any::<$ti>()),*)
-            {
-                use crate::frame::activations::ActivationKer;
-                if $cond {
-                    let mut input = tract_data::prelude::Tensor::zero_aligned::<$ti>(&[<$ker>::nr() * repeat], <$ker>::alignment_bytes()).unwrap();
-                    input.fill_t::<$ti>(x).unwrap();
-                    let prog = crate::frame::activations::definitions::$name($($param),*).translate();
-                    <$ker>::run(&prog.ops, input.as_slice_mut::<$ti>().unwrap());
-                    let expected = crate::frame::activations::reference::$name(x, $($param),*);
-                    let mut output = tract_data::prelude::Tensor::zero_aligned::<$ti>(&[<$ker>::nr() * repeat], <$ker>::alignment_bytes()).unwrap();
-                    output.fill_t::<$ti>(expected).unwrap();
-                    output.close_enough(&input, true).unwrap();
-                }
-            }
-        }
-    }
-}
-
-macro_rules! prop_act_unit {
-    ($cond:expr, $ti: ty, $ker: ty, $name: ident ( $($param:ident),* ), $refer: expr) => {
-        proptest::proptest! {
-            #[test]
-            fn $name(
-                x in proptest::prelude::any::<$ti>(),
-                repeat in 1usize..4,
-                $($param in proptest::prelude::any::<$ti>()),*)
-            {
-                use crate::frame::activations::ActivationKer;
-                if $cond {
-                    let mut input = tract_data::prelude::Tensor::zero_aligned::<$ti>(&[<$ker>::nr() * repeat], <$ker>::alignment_bytes()).unwrap();
-                    input.fill_t::<$ti>(x).unwrap();
-                    let expected:Vec<$ti> = input.as_slice::<$ti>().unwrap().iter().cloned().map(|x| $refer(x, $($param),*)).collect();
-                    let prog = crate::frame::activations::tests::$name($($param),*).translate();
-                    <$ker>::run(&prog.ops, input.as_slice_mut::<$ti>().unwrap());
-
-                    let expected = tract_data::prelude::tensor1(&expected);
-                    expected.close_enough(&input, true).unwrap();
-                }
-            }
-        }
-    }
+pub fn run_kernel_test<TI: LADatum, K: ActivationKer<TI>>(
+    input: &[TI],
+    prog: &[Op<TI>],
+    refer: impl Fn(TI) -> TI,
+) {
+    let mut tensor =
+        tract_data::prelude::Tensor::zero_aligned::<TI>(&[input.len()], K::alignment_bytes())
+            .unwrap();
+    tensor.as_slice_mut::<TI>().unwrap().copy_from_slice(input);
+    let expected: Vec<TI> = input.iter().cloned().map(|x| refer(x)).collect();
+    let expected = tract_data::prelude::tensor1(&expected);
+    let prog = Program { ops: prog.to_vec() };
+    let prog = prog.translate();
+    K::run(&prog.ops, tensor.as_slice_mut::<TI>().unwrap());
+    expected.close_enough(&tensor, true).unwrap();
 }
 
 #[macro_export]
 macro_rules! act_tests {
     ($cond:expr, $ker:ty, $ti:ty) => {
-        prop_act_unit!($cond, $ti, $ker, noop(), |x| x);
-        prop_act_unit!($cond, $ti, $ker, max_const(alpha), |x: $ti, alpha| x.max(alpha));
+        mod acttest {
+            #[allow(unused_imports)]
+            use super::*;
+            use $crate::frame::activations::ActivationKer;
+            use $crate::frame::activations::tests::*;
+            use $crate::frame::activations::Op::*;
+            use num_traits::Zero;
+            use proptest::prelude::*;
+            use proptest::collection::vec;
 
-        #[test]
-        fn max_const_0() {
-            use crate::frame::activations::ActivationKer;
-            if $cond {
-                let mut input = tract_data::prelude::Tensor::zero_aligned::<$ti>(
-                    &[<$ker>::nr()],
-                    <$ker>::alignment_bytes(),
-                )
-                .unwrap();
-                input.fill_t::<$ti>(0.0).unwrap();
-                let expected: Vec<$ti> =
-                    input.as_slice::<$ti>().unwrap().iter().cloned().map(|x| x.max(0f32)).collect();
-                let prog = crate::frame::activations::tests::max_const(0f32).translate();
-                <$ker>::run(&prog.ops, input.as_slice_mut::<$ti>().unwrap());
-
-                let expected = tract_data::prelude::tensor1(&expected);
-                expected.close_enough(&input, true).unwrap();
+            fn x_strat() -> impl Strategy<Value = Vec<$ti>> {
+                (1usize..4).prop_flat_map(|repeat| {
+                    let size = <$ker>::nr() * repeat;
+                    vec(any::<$ti>(), size..size+1)
+                })
             }
-        }
 
-        #[test]
-        fn max_const_big_alpha() {
-            use crate::frame::activations::ActivationKer;
-            if $cond {
-                let mut input = tract_data::prelude::Tensor::zero_aligned::<$ti>(
-                    &[<$ker>::nr()],
-                    <$ker>::alignment_bytes(),
-                )
-                .unwrap();
-                input.fill_t::<$ti>(0.0).unwrap();
-                let expected: Vec<$ti> = input
-                    .as_slice::<$ti>()
-                    .unwrap()
-                    .iter()
-                    .cloned()
-                    .map(|x| x.max(7.567773e37))
-                    .collect();
-                let prog = crate::frame::activations::tests::max_const(7.567773e37).translate();
-                <$ker>::run(&prog.ops, input.as_slice_mut::<$ti>().unwrap());
+            proptest::proptest! {
+                #[test]
+                fn noop(x in x_strat()) {
+                    if $cond {
+                        run_kernel_test::<$ti, $ker>(&x, &[], |x| x);
+                    }
+                }
 
-                let expected = tract_data::prelude::tensor1(&expected);
-                expected.close_enough(&input, true).unwrap();
+                #[test]
+                fn max_const_prop(alpha in any::<$ti>(), x in x_strat()) {
+                    if $cond {
+                        run_kernel_test::<$ti, $ker>(&x, &[MaxConst(alpha)], |x| x.max(alpha));
+                    }
+                }
             }
-        }
 
-        prop_act_e2e!($cond, $ti, $ker, relu());
-        prop_act_e2e!($cond, $ti, $ker, affine(alpha, beta));
-        prop_act_e2e!($cond, $ti, $ker, leaky_relu(alpha));
-        prop_act_e2e!($cond, $ti, $ker, threshold_relu(alpha));
-        prop_act_e2e!($cond, $ti, $ker, softsign());
-        prop_act_e2e!($cond, $ti, $ker, hardswish());
-        /*
-        prop_activation!($cond, $ti, $ker, sigmoid());
-        prop_activation!($cond, $ti, $ker, exp2f());
-        */
+            #[test]
+            fn max_const_zero() {
+                if $cond {
+                    run_kernel_test::<$ti, $ker>(
+                        &vec!(<$ti>::zero(); <$ker>::nr()),
+                        &[MaxConst(<$ti>::zero())],
+                        |x| x.max(<$ti>::zero())
+                    );
+                }
+            }
+
+            #[test]
+            fn max_const_big_alpha() {
+                if $cond {
+                    run_kernel_test::<$ti, $ker>(
+                        &vec!(<$ti>::zero(); <$ker>::nr()),
+                        &[MaxConst(7.567773e37.into())],
+                        |x| x.max(7.567773e37.into())
+                    );
+                }
+            }
+
+            proptest::proptest! {
+                #[test]
+                fn relu_prop(x in x_strat()) {
+                    if $cond {
+                        run_kernel_test::<$ti, $ker>(
+                            &x,
+                            &$crate::frame::activations::definitions::relu().ops,
+                            |x| x.max(<$ti>::zero())
+                        );
+                    }
+                }
+            }
+            /*
+            prop_act_e2e!($cond, $ti, $ker, affine(alpha, beta));
+            prop_act_e2e!($cond, $ti, $ker, leaky_relu(alpha));
+            prop_act_e2e!($cond, $ti, $ker, threshold_relu(alpha));
+            prop_act_e2e!($cond, $ti, $ker, softsign());
+            prop_act_e2e!($cond, $ti, $ker, hardswish());
+            /*
+               prop_activation!($cond, $ti, $ker, sigmoid());
+               prop_activation!($cond, $ti, $ker, exp2f());
+               */
+            */
+        }
     };
 }
