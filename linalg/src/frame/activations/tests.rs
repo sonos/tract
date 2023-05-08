@@ -57,6 +57,20 @@ macro_rules! act_tests {
                 }
 
                 #[test]
+                fn add_const_prop(alpha in any::<$ti>(), x in x_strat()) {
+                    if $cond {
+                        run_kernel_test::<$ti, $ker>(&x, &[AddConst(alpha)], |x| x + alpha);
+                    }
+                }
+
+                #[test]
+                fn mul_const_prop(alpha in any::<$ti>(), x in x_strat()) {
+                    if $cond {
+                        run_kernel_test::<$ti, $ker>(&x, &[MulConst(alpha)], |x| x * alpha);
+                    }
+                }
+
+                #[test]
                 fn max_const_prop(alpha in any::<$ti>(), x in x_strat()) {
                     if $cond {
                         run_kernel_test::<$ti, $ker>(&x, &[MaxConst(alpha)], |x| x.max(alpha));
@@ -94,6 +108,17 @@ macro_rules! act_tests {
                             &x,
                             &$crate::frame::activations::definitions::relu().ops,
                             |x| x.max(<$ti>::zero())
+                        );
+                    }
+                }
+
+                #[test]
+                fn affine_prop(x in x_strat(), alpha in any::<$ti>(), beta in any::<$ti>()) {
+                    if $cond {
+                        run_kernel_test::<$ti, $ker>(
+                            &x,
+                            &$crate::frame::activations::definitions::affine(alpha, beta).ops,
+                            |x| x * alpha + beta
                         );
                     }
                 }
