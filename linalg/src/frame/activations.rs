@@ -96,6 +96,7 @@ impl<T: LADatum> Program<T> {
             }
         }
         ops.push(OpOrConst { op: KerOp::Done });
+        ops.push(OpOrConst { op: KerOp::Done }); // add a second one to help with pair load
         KerProgram { ops }
     }
 }
