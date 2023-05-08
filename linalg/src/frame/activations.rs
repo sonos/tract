@@ -103,27 +103,29 @@ impl<T: LADatum> Program<T> {
 
 #[repr(C, u16)]
 #[derive(Copy, Clone, Debug, PartialEq)]
+#[rustfmt::skip]
 pub enum KerOp {
-    Done, // 0
-    Move(RegisterId, RegisterId),
-    Load(RegisterId),
-    Abs, // 3
-    Recip,
-    Add,
-    Sub, // 6
-    Mul,
-    Min,
-    Max,      // 9
-    AddConst, // 10
-    SubConst,
-    MulConst,
-    MinConst,
-    MaxConst, // 14
-    FMA,      // a <- a * b + cst
-    IfPosTE,
-    SwapBC,
-    Floor,
-    TwoPowOfInt,
+    Done,                           // jump_to:done
+    Move(RegisterId, RegisterId),   // jump_to:move
+    Load(RegisterId),               // jump_to:load
+    Abs,                            // jump_to:abs
+    Recip,                          // jump_to:recip
+    Add,                            // jump_to:add
+    Sub,                            // jump_to:sub
+    Mul,                            // jump_to:mul
+    Min,                            // jump_to:min
+    Max,                            // jump_to:max
+    AddConst,                       // jump_to:add_const
+    SubConst,                       // jump_to:sub_const
+    MulConst,                       // jump_to:mul_const
+    MinConst,                       // jump_to:min_const
+    MaxConst,                       // jump_to:max_const
+    // a <- a * b + cst
+    FMA,                            // jump_to:fma
+    IfPosTE,                        // jump_to:if_pos_then_else
+    SwapBC,                         // jump_to:swap_b_c
+    Floor,                          // jump_to:floor
+    TwoPowOfInt,                    // jump_to:two_pow_of_int
 }
 
 #[derive(Clone)]
