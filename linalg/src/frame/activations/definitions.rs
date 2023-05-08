@@ -41,6 +41,18 @@ pub fn threshold_relu<T: LADatum>(alpha: T) -> Program<T> {
     }
 }
 
+pub fn hard_sigmoid<T: LADatum>(alpha: T, beta: T) -> Program<T> {
+    Program {
+        #[rustfmt::skip]
+            ops: vec![
+                MulConst(alpha),
+                AddConst(beta),
+                MinConst(T::one()),
+                MaxConst(T::zero()),
+            ],
+    }
+}
+
 pub fn softsign<T: LADatum>() -> Program<T> {
     Program {
         #[rustfmt::skip]
@@ -54,7 +66,7 @@ pub fn softsign<T: LADatum>() -> Program<T> {
     }
 }
 
-pub fn hardswish<T: LADatum>() -> Program<T> {
+pub fn hard_swish<T: LADatum>() -> Program<T> {
     let one_sixth = T::one() / (T::one() + T::one() + T::one() + T::one() + T::one() + T::one());
     let one_half = T::one() / (T::one() + T::one());
     Program {

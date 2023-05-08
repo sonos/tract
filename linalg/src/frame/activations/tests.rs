@@ -1,7 +1,8 @@
 use crate::LADatum;
 
-use super::{ActivationKer, Op, Program};
+use super::{ActivationKer, Op, Program, RegisterId};
 use Op::*;
+use proptest::prelude::*;
 
 pub fn noop<T: LADatum>() -> Program<T> {
     Program { ops: vec![] }
@@ -28,6 +29,14 @@ pub fn run_kernel_test<TI: LADatum, K: ActivationKer<TI>>(
     expected.close_enough(&tensor, true).unwrap();
 }
 
+impl Arbitrary for RegisterId {
+    type Parameters = ();
+    type Strategy = BoxedStrategy<RegisterId>;
+    fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
+        proptest::prop_oneof![Just(RegisterId::A), Just(RegisterId::B), Just(RegisterId::C)].boxed()
+    }
+}
+
 #[macro_export]
 macro_rules! act_tests {
     ($cond:expr, $ker:ty, $ti:ty) => {
@@ -37,7 +46,8 @@ macro_rules! act_tests {
             use $crate::frame::activations::ActivationKer;
             use $crate::frame::activations::tests::*;
             use $crate::frame::activations::Op::*;
-            use num_traits::Zero;
+            use $crate::frame::activations::RegisterId;
+            use num_traits::{Zero, One};
             use proptest::prelude::*;
             use proptest::collection::vec;
 
@@ -53,6 +63,38 @@ macro_rules! act_tests {
                 fn noop(x in x_strat()) {
                     if $cond {
                         run_kernel_test::<$ti, $ker>(&x, &[], |x| x);
+                    }
+                }
+
+                #[test]
+                fn load_a_prop(x in x_strat(), konst in any::<$ti>()) {
+                    if $cond {
+                        run_kernel_test::<$ti, $ker>(&x, &[Load(RegisterId::A, konst)], |_| konst);
+                    }
+                }
+
+                #[test]
+                fn load_b_prop(x in x_strat(), konst in any::<$ti>()) {
+                    if $cond {
+                        run_kernel_test::<$ti, $ker>(&x, &[Load(RegisterId::B, konst)], |x| x);
+                    }
+                }
+
+                #[test]
+                fn load_c_prop(x in x_strat(), konst in any::<$ti>()) {
+                    if $cond {
+                        run_kernel_test::<$ti, $ker>(&x, &[Load(RegisterId::C, konst)], |x| x);
+                    }
+                }
+
+                #[test]
+                fn move_b_to_a_prop(x in x_strat(), konst in any::<$ti>()) {
+                    if $cond {
+                        run_kernel_test::<$ti, $ker>(
+                            &x,
+                            &[Load(RegisterId::B, konst), Move(RegisterId::A, RegisterId::B)],
+                            |_| konst
+                        );
                     }
                 }
 
@@ -119,6 +161,28 @@ macro_rules! act_tests {
                             &x,
                             &$crate::frame::activations::definitions::affine(alpha, beta).ops,
                             |x| x * alpha + beta
+                        );
+                    }
+                }
+
+                #[test]
+                fn hard_sigmoid(x in x_strat(), alpha in any::<$ti>(), beta in any::<$ti>()) {
+                    if $cond {
+                        run_kernel_test::<$ti, $ker>(
+                            &x,
+                            &$crate::frame::activations::definitions::hard_sigmoid(alpha, beta).ops,
+                            |x| (x * alpha + beta).min(<$ti>::one()).max(<$ti>::zero())
+                        );
+                    }
+                }
+
+                #[test]
+                fn hard_swish(x in x_strat()) {
+                    if $cond {
+                        run_kernel_test::<$ti, $ker>(
+                            &x,
+                            &$crate::frame::activations::definitions::hard_swish().ops,
+                            |x| (x * 1./6. + 0.5).min(<$ti>::one()).max(<$ti>::zero()) * x
                         );
                     }
                 }

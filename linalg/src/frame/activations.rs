@@ -10,6 +10,7 @@ use super::element_wise_helper::run_over_slice_with_alignment;
 pub mod definitions;
 pub mod reference;
 #[macro_use]
+#[cfg(test)]
 pub mod tests;
 
 #[derive(Clone, Debug, PartialEq)]
