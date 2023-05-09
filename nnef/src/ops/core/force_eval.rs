@@ -9,7 +9,7 @@ use tract_core::ops::force_eval::ForceEval;
 pub fn register(registry: &mut Registry) {
     registry.register_dumper(TypeId::of::<ForceEval>(), ser_force_eval);
     registry.register_primitive(
-        "force_eval",
+        "tract_core_force_eval",
         &[
             TypeName::Scalar.tensor().array().named("inputs"),
             TypeName::Integer.array().named("slots"),
@@ -23,7 +23,7 @@ fn ser_force_eval(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc
     let op = node.op().downcast_ref::<ForceEval>().unwrap();
     let wires: TVec<RValue> =
         node.inputs.iter().map(|it| ast.mapping[it].as_ref().clone()).collect();
-    Ok(Some(invocation("force_eval", &[array(&wires).into()], &[("slots", ints(&op.slots))])))
+    Ok(Some(invocation("tract_core_force_eval", &[array(&wires).into()], &[("slots", ints(&op.slots))])))
 }
 
 pub fn de_force_eval(

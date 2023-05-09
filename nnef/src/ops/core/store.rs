@@ -6,7 +6,7 @@ use tract_core::ops::store::Store;
 pub fn register(registry: &mut Registry) {
     registry.register_dumper(TypeId::of::<Store>(), ser_store);
     registry.register_primitive(
-        "store",
+        "tract_core_store",
         &[
             TypeName::Scalar.tensor().named("input"),
             TypeName::Scalar.tensor().named("state"),
@@ -21,7 +21,7 @@ fn ser_store(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RVal
     let op = node.op().downcast_ref::<Store>().unwrap();
     let wires: TVec<RValue> = node.inputs.iter().map(|it| (*ast.mapping[it]).clone()).collect();
     Ok(Some(invocation(
-        "store",
+        "tract_core_store",
         &[],
         &[("input", wires[0].clone()), ("state", wires[1].clone()), ("id", string(op.id.clone()))],
     )))
