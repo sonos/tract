@@ -65,8 +65,6 @@ impl ModelLocation {
 #[allow(clippy::large_enum_variant)]
 pub enum SomeGraphDef {
     NoGraphDef,
-    #[cfg(feature = "kaldi")]
-    Kaldi(tract_kaldi::KaldiProtoModel),
     Nnef(tract_nnef::ProtoModel),
     #[cfg(feature = "onnx")]
     Onnx(tract_onnx::pb::ModelProto, tract_onnx::model::ParseResult),
@@ -157,9 +155,6 @@ impl Parameters {
         let format = matches.value_of("format").unwrap_or(
             if location.path().extension().map(|s| s == "onnx").unwrap_or(false) {
                 "onnx"
-            } else if location.path().extension().map(|s| s == "raw" || s == "txt").unwrap_or(false)
-            {
-                "kaldi"
             } else if location.is_dir()
                 || location.path().to_string_lossy().ends_with(".tar")
                 || location.path().to_string_lossy().ends_with(".tar.gz")
@@ -171,22 +166,6 @@ impl Parameters {
             },
         );
         let triplet: (SomeGraphDef, Box<dyn Model>, Option<TfExt>) = match format {
-            #[cfg(feature = "kaldi")]
-            "kaldi" => {
-                let kaldi = tract_kaldi::kaldi();
-                info_usage("loaded framework (kaldi)", probe);
-                let mut graph = kaldi.proto_model_for_read(&mut *location.read()?)?;
-                info_usage("proto model loaded", probe);
-                if let Some(i) = matches.value_of("kaldi-adjust-final-offset") {
-                    graph.adjust_final_offset = i.parse()?;
-                }
-                let parsed = kaldi.model_for_proto_model_with_symbols(&graph, symbol_table)?;
-                if need_graph {
-                    (SomeGraphDef::Kaldi(graph), Box::new(parsed), Option::<TfExt>::None)
-                } else {
-                    (SomeGraphDef::NoGraphDef, Box::new(parsed), Option::<TfExt>::None)
-                }
-            }
             "nnef" => {
                 let nnef = super::nnef(matches);
                 let mut proto_model = if location.is_dir() {
@@ -328,36 +307,7 @@ impl Parameters {
         Ok(triplet)
     }
 
-    fn kaldi_downsample<F, O>(raw_model: &mut Graph<F, O>, period: isize) -> TractResult<()>
-    where
-        F: std::fmt::Debug + Clone + Fact,
-        O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone,
-        Graph<F, O>: SpecialOps<F, O>,
-        tract_core::ops::Downsample: Into<O>,
-    {
-        if period != 1 {
-            let mut outputs = raw_model.output_outlets()?.to_vec();
-            let output_name = raw_model.node(outputs[0].node).name.clone();
-            raw_model.node_mut(outputs[0].node).name = format!("{output_name}-old");
-            let id = raw_model.wire_node(
-                output_name,
-                tract_core::ops::Downsample::new(0, period as _, 0),
-                &outputs[0..1],
-            )?[0];
-            if let Some(label) = raw_model.outlet_label(outputs[0]).map(|s| s.to_string()) {
-                raw_model.set_outlet_label(id, label)?;
-            }
-            outputs[0] = id;
-            raw_model.set_output_outlets(&outputs)?;
-        }
-        Ok(())
-    }
-
-    fn kaldi_context<F, O>(
-        raw_model: &mut Graph<F, O>,
-        left: usize,
-        right: usize,
-    ) -> TractResult<()>
+    fn edge_context<F, O>(raw_model: &mut Graph<F, O>, left: usize, right: usize) -> TractResult<()>
     where
         F: std::fmt::Debug + Clone + Fact,
         O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone,
@@ -856,16 +806,12 @@ impl Parameters {
             _ => Assertions::default(),
         };
 
-        if let Some(sub) = matches.value_of("kaldi-downsample") {
-            dispatch_model_mut_no_pulse!(raw_model, |m| Self::kaldi_downsample(m, sub.parse()?))?;
-        }
-
-        if matches.value_of("kaldi-left-context").is_some()
-            || matches.value_of("kaldi-right-context").is_some()
+        if matches.value_of("edge-left-context").is_some()
+            || matches.value_of("edge-right-context").is_some()
         {
-            let left = matches.value_of("kaldi-left-context").unwrap_or("0").parse()?;
-            let right = matches.value_of("kaldi-right-context").unwrap_or("0").parse()?;
-            dispatch_model_mut_no_pulse!(raw_model, |m| Self::kaldi_context(m, left, right))?;
+            let left = matches.value_of("edge-left-context").unwrap_or("0").parse()?;
+            let right = matches.value_of("edge-right-context").unwrap_or("0").parse()?;
+            dispatch_model_mut_no_pulse!(raw_model, |m| Self::edge_context(m, left, right))?;
         }
 
         if let Some(infer) = raw_model.downcast_mut::<InferenceModel>() {

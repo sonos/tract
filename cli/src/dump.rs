@@ -19,38 +19,12 @@ pub fn annotate_with_graph_def(
 ) -> TractResult<()> {
     match graph_def {
         SomeGraphDef::NoGraphDef => Ok(()),
-        #[cfg(feature = "kaldi")]
-        SomeGraphDef::Kaldi(kaldi) => annotate_with_kaldi(annotations, model, kaldi),
         SomeGraphDef::Nnef(_) => todo!(),
         #[cfg(feature = "onnx")]
         SomeGraphDef::Onnx(onnx, _) => annotate_with_onnx_model(annotations, model, onnx),
         #[cfg(feature = "tf")]
         SomeGraphDef::Tf(tf) => annotate_with_tf_graph_def(annotations, model, tf),
     }
-}
-
-#[cfg(feature = "kaldi")]
-fn annotate_with_kaldi(
-    annotations: &mut Annotations,
-    model: &dyn Model,
-    proto_model: &tract_kaldi::KaldiProtoModel,
-) -> TractResult<()> {
-    use tract_kaldi::model::NodeLine;
-    let bold = Style::new().bold();
-    for (name, proto_node) in &proto_model.config_lines.nodes {
-        if let Ok(node_id) = model.node_id_by_name(name) {
-            let mut vs = vec![];
-            if let NodeLine::Component(compo) = proto_node {
-                let comp = &proto_model.components[&compo.component];
-                for (k, v) in &comp.attributes {
-                    let value = format!("{v:?}");
-                    vs.push(format!("Attr {}: {:.240}", bold.paint(k), value));
-                }
-            }
-            annotations.node_mut(node_id.into()).sections.push(vs)
-        }
-    }
-    Ok(())
 }
 
 #[cfg(feature = "tf")]
