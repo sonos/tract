@@ -48,15 +48,15 @@ do
             nnef) opti="--nnef-cycle --nnef-tract-core" ;;
         esac
         options="$OPTIONS"
-        if [ -n "$left_context" ]
+        if [ -n "$left_context" -a "$left_context" != "0" ]
         then
             options="$options --kaldi-left-context $left_context"
         fi
-        if [ -n "$right_context" ]
+        if [ -n "$right_context" -a "$right_context" != "0" ]
         then
             options="$options --kaldi-right-context $right_context"
         fi
-        if [ -n "$adjust_final_offset" ]
+        if [ -n "$adjust_final_offset" -a "$adjust_final_offset" != "0" ]
         then
             options="$options --kaldi-adjust-final-offset $adjust_final_offset"
         fi

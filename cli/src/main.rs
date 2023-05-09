@@ -75,7 +75,7 @@ fn main() -> tract_core::anyhow::Result<()> {
         .arg(arg!(verbose: -v ... "Sets the level of verbosity."))
         .arg(arg!([model] "Sets the model to use"))
         .arg(arg!(-f --format [format]
-                  "Hint the model format ('kaldi', 'onnx', 'nnef' or 'tf') instead of guess from extension."))
+                  "Hint the model format ('onnx', 'nnef' or 'tf') instead of guess from extension."))
         .arg(Arg::new("input").long("input").short('i').multiple_occurrences(true).takes_value(true).long_help(
                   "Set input shape and type (@file.pb or @file.npz:thing.npy or 3,4,i32)."))
         .arg(Arg::new("constantize").long("constantize").multiple_occurrences(true).takes_value(true).long_help(
@@ -88,10 +88,8 @@ fn main() -> tract_core::anyhow::Result<()> {
 
         .arg(arg!(--"input-facts-from-bundle" [input_bundle] "Path to an input container (.npz). This only sets input facts."))
 
-        .arg(arg!(--"kaldi-adjust-final-offset" [frames] "Adjust value of final offset in network (for reproducibility)"))
-        .arg(arg!(--"kaldi-downsample" [frames] "Add a subsampling to output on axis 0"))
-        .arg(arg!(--"kaldi-left-context" [frames] "Add lines of left context to input (dupping first time frame)"))
-        .arg(arg!(--"kaldi-right-context" [frames] "Add lines of right context to input (dupping last time frame)"))
+        .arg(arg!(--"edge-left-context" [frames] "Add lines of left context to input (dupping first time frame)").alias("kaldi-left-context"))
+        .arg(arg!(--"edge-right-context" [frames] "Add lines of right context to input (dupping last time frame)").alias("kaldi-right-context"))
 
         .arg(arg!(--"onnx-test-data-set" [data_set] "Use onnx-test data-set as input (expect test_data_set_N dir with input_X.pb, etc. inside)"))
         .arg(arg!(--"onnx-ignore-output-shapes" "Ignore output shapes from model (workaround for pytorch export bug with mask axes)"))
