@@ -20,95 +20,115 @@ pub fn decompose(op: &EinSum, model: &TypedModel, node: &TypedNode) -> TractResu
         .collect::<TractResult<Vec<_>>>()?;
     let outputs = substitute.wire_node(&node.name, op.clone(), &inputs)?;
     substitute.set_output_outlets(&outputs)?;
-    decompose_einsums_in_place(&mut substitute)?;
+    decompose_one_in_place(&mut substitute)?;
     Ok(substitute)
 }
 
+/*
 pub fn decompose_einsums_in_place(model: &mut TypedModel) -> TractResult<()> {
-    'top: loop {
-        dbg!(&model);
-        for n in model.eval_order()? {
-            let node = &model.nodes[n];
-            if let Some(einsum) = node.op_as::<EinSum>() {
-                if let Some(patch) = step(einsum, model, node)? {
-                    patch.apply(model)?;
-                    model.compact().unwrap();
-                    continue 'top;
-                }
+'top: loop {
+dbg!(&model);
+for n in model.eval_order()? {
+let node = &model.nodes[n];
+if let Some(einsum) = node.op_as::<EinSum>() {
+if let Some(patch) = step(einsum, model, node)? {
+patch.apply(model)?;
+model.compact().unwrap();
+continue 'top;
+}
+}
+}
+return Ok(());
+}
+}
+*/
+
+fn decompose_one_in_place(model: &mut TypedModel) -> TractResult<()> {
+    let (m, k, n) = loop {
+        let node = model.nodes.iter().find(|n| n.op_is::<EinSum>()).unwrap();
+        let op = node.op_as::<EinSum>().unwrap();
+        match ensure_mkn_axes(op, model, node)? {
+            AxesOrPatch::Axes(m, k, n) => break (m, k, n),
+            AxesOrPatch::Patch(p) => {
+                p.apply(model)?;
+                model.compact()?;
+            }
+        };
+    };
+    let (m, k, n) = (m.repr, k.repr, n.repr);
+    eprintln!("m:{m}, k:{k}, n:{n}");
+    while let Some(node) = model.nodes.iter().find(|n| n.op_is::<EinSum>()) {
+        let op = node.op_as::<EinSum>().unwrap();
+        let a = model.outlet_fact(node.inputs[0])?;
+        let b = model.outlet_fact(node.inputs[1])?;
+        let c = &node.outputs[0].fact;
+        assert_eq!(a.rank(), b.rank());
+        assert_eq!(a.rank(), c.rank());
+        let rank = a.rank();
+        let m_axis = op.axes.axis(m)?;
+        let k_axis = op.axes.axis(k)?;
+        let n_axis = op.axes.axis(n)?;
+        let a_m = m_axis.inputs[0][0];
+        let a_k = k_axis.inputs[0][0];
+        let b_k = k_axis.inputs[1][0];
+        let b_n = n_axis.inputs[1][0];
+        let c_m = m_axis.outputs[0][0];
+        let c_n = n_axis.outputs[0][0];
+        let name = &node.name;
+        let mut patch = TypedModelPatch::default();
+        let mut wire = node
+            .inputs
+            .iter()
+            .map(|i| patch.tap_model(model, *i))
+            .collect::<TractResult<TVec<_>>>()?;
+        /*
+        for (input, axis, axis_name) in
+            [(0, a_m, "Am"), (0, a_k, "Ak"), (1, b_k, "Bk"), (1, b_n, "Bn")]
+        {
+            if axis < rank - 2 {
+                let mov = AxisOp::Move(axis, rank - 1);
+                patch = patch.with_context(format!("Moving {axis_name} at the end"));
+                let new_op = EinSum {
+                    axes: op.axes.change_axis_sink(InOut::In(input), &mov)?.unwrap(),
+                    ..op.clone()
+                };
+                wire[input] =
+                    patch.wire_node(format!("{name}.{axis_name}"), mov, &[wire[input]])?[0];
+                let wire = patch.wire_node(name, new_op, &wire)?;
+                patch.shunt_outside(model, node.id.into(), wire[0])?;
+                return Ok(Some(patch));
             }
         }
-        return Ok(());
-    }
-}
-
-pub fn step(
-    op: &EinSum,
-    model: &TypedModel,
-    node: &TypedNode,
-) -> TractResult<Option<TypedModelPatch>> {
-    assert!(
-        (node.inputs.len() == 2 && op.q_params.is_none())
-            || (node.inputs.len() == 9 && op.q_params.is_some())
-    );
-    let (m_axis, k_axis, n_axis) = match ensure_mkn_axes(op, model, node)? {
-        AxesOrPatch::Axes(m, k, n) => (m, k, n),
-        AxesOrPatch::Patch(p) => return Ok(Some(p)),
-    };
-    eprintln!("m:{}, k:{}, n:{}", m_axis.repr, k_axis.repr, n_axis.repr);
-    let a = model.outlet_fact(node.inputs[0])?;
-    let b = model.outlet_fact(node.inputs[1])?;
-    let c = &node.outputs[0].fact;
-    assert_eq!(a.rank(), b.rank());
-    assert_eq!(a.rank(), c.rank());
-    let rank = a.rank();
-    let a_m = m_axis.inputs[0][0];
-    let a_k = k_axis.inputs[0][0];
-    let b_k = k_axis.inputs[1][0];
-    let b_n = n_axis.inputs[1][0];
-    let c_m = m_axis.outputs[0][0];
-    let c_n = n_axis.outputs[0][0];
-    let name = &node.name;
-    let mut patch = TypedModelPatch::default();
-    let mut wire =
-        node.inputs.iter().map(|i| patch.tap_model(model, *i)).collect::<TractResult<TVec<_>>>()?;
-    for (input, axis, axis_name) in [(0, a_m, "Am"), (0, a_k, "Ak"), (1, b_k, "Bk"), (1, b_n, "Bn")]
-    {
-        if axis < rank - 2 {
-            let mov = AxisOp::Move(axis, rank - 1);
-            patch = patch.with_context(format!("Moving {axis_name} at the end"));
-            let new_op = EinSum {
-                axes: op.axes.change_axis_sink(InOut::In(input), &mov)?.unwrap(),
-                ..op.clone()
-            };
-            wire[input] = patch.wire_node(format!("{name}.{axis_name}"), mov, &[wire[input]])?[0];
-            let wire = patch.wire_node(name, new_op, &wire)?;
-            patch.shunt_outside(model, node.id.into(), wire[0])?;
-            return Ok(Some(patch));
+        */
+        /*
+        for (axis, axis_name) in [(c_m, "Cm"), (c_n, "Cn")] {
+            if axis < rank - 2 {
+                let mov = AxisOp::Move(axis, rank - 1);
+                patch = patch.with_context(format!("Moving {axis_name} at the end"));
+                let new_op = EinSum {
+                    axes: op.axes.change_axis_sink(InOut::Out(0), &mov)?.unwrap(),
+                    ..op.clone()
+                };
+                wire = patch.wire_node(name, new_op, &wire)?;
+                wire = patch.wire_node(format!("{name}.{axis_name}"), mov.recip(), &wire)?;
+                patch.shunt_outside(model, node.id.into(), wire[0])?;
+                return Ok(Some(patch));
+            }
         }
+        */
+        let transpose_a = a_m > a_k;
+        let transpose_b = b_k > b_n;
+        let transpose_c = c_m > c_n;
+        TypedModelPatch::replace_single_op(
+            model,
+            node,
+            &node.inputs,
+            BasicMatMul { transpose_a, transpose_b, transpose_c },
+        )?
+        .apply(model)?;
+        model.compact()?;
     }
-    for (axis, axis_name) in [(c_m, "Cm"), (c_n, "Cn")] {
-        if axis < rank - 2 {
-            let mov = AxisOp::Move(axis, rank - 1);
-            patch = patch.with_context(format!("Moving {axis_name} at the end"));
-            let new_op = EinSum {
-                axes: op.axes.change_axis_sink(InOut::Out(0), &mov)?.unwrap(),
-                ..op.clone()
-            };
-            wire = patch.wire_node(name, new_op, &wire)?;
-            wire = patch.wire_node(format!("{name}.{axis_name}"), mov.recip(), &wire)?;
-            patch.shunt_outside(model, node.id.into(), wire[0])?;
-            return Ok(Some(patch));
-        }
-    }
-    let transpose_a = a_m > a_k;
-    let transpose_b = b_k > b_n;
-    let transpose_c = c_m > c_n;
-    Ok(Some(TypedModelPatch::replace_single_op(
-        model,
-        node,
-        &node.inputs,
-        BasicMatMul { transpose_a, transpose_b, transpose_c },
-    )?))
+    Ok(())
 }
 
 #[derive(Clone, Debug)]
@@ -305,8 +325,7 @@ mod test {
             let inputs = tvec!(a, b);
             let reference =
                 TypedRunnableModel::new(&model).unwrap().run(inputs.clone()).unwrap().remove(0);
-            decompose_einsums_in_place(&mut model).unwrap();
-            model.compact().unwrap();
+            decompose_one_in_place(&mut model).unwrap();
             prop_assert!(model.nodes.iter().all(|n| !n.op_is::<EinSum>()));
             let test = TypedRunnableModel::new(&model).unwrap().run(inputs).unwrap().remove(0);
             reference.close_enough(&test, true).unwrap();
