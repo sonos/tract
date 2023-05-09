@@ -6,7 +6,7 @@ use tract_core::ops::load::Load;
 pub fn register(registry: &mut Registry) {
     registry.register_dumper(TypeId::of::<Load>(), ser_load);
     registry.register_primitive(
-        "load",
+        "tract_core_load",
         &[TypeName::Scalar.tensor().array().named("input"), TypeName::String.named("id")],
         &[("output", TypeName::Scalar.tensor())],
         de_load,
@@ -16,7 +16,7 @@ pub fn register(registry: &mut Registry) {
 fn ser_load(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
     let op = node.op().downcast_ref::<Load>().unwrap();
     let wire = ast.mapping[&node.inputs[0]].clone();
-    Ok(Some(invocation("load", &[wire], &[("id", string(op.id.clone()))])))
+    Ok(Some(invocation("tract_core_load", &[wire], &[("id", string(op.id.clone()))])))
 }
 
 pub fn de_load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
