@@ -56,12 +56,6 @@ do
 done
 
 echo
-echo $WHITE • kaldi/test_cases $NC
-echo
-
-( cd kaldi/test_cases ; ./run_all.sh )
-
-echo
 echo $WHITE • onnx/test_cases $NC
 echo
 
@@ -145,27 +139,9 @@ $TRACT_RUN $CACHEDIR/hey_snips_v4_model17.pb -i S,20,f32 \
     dump -q \
     --assert-op-count AddAxis 0
 
-$TRACT_RUN $CACHEDIR/en_libri_real/model.raw.txt \
-    -f kaldi --output-node output \
-    --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
-    --input-facts-from-bundle $CACHEDIR/en_libri_real/io.npz \
-    run \
-    --input-from-bundle $CACHEDIR/en_libri_real/io.npz \
-    --allow-random-input \
-    --assert-output-bundle $CACHEDIR/en_libri_real/io.npz
-
-$TRACT_RUN $CACHEDIR/en_libri_real/model.raw \
-    -f kaldi --output-node output \
-    --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
-    --input-facts-from-bundle $CACHEDIR/en_libri_real/io.npz \
-    run \
-    --input-from-bundle $CACHEDIR/en_libri_real/io.npz \
-    --allow-random-input \
-    --assert-output-bundle $CACHEDIR/en_libri_real/io.npz
-
 $TRACT_RUN $CACHEDIR/en_libri_real/model.onnx \
     --output-node output \
-    --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
+    --edge-left-context 5 --edge-right-context 15 \
     --input-facts-from-bundle $CACHEDIR/en_libri_real/io.npz \
     run \
     --input-from-bundle $CACHEDIR/en_libri_real/io.npz \

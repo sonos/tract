@@ -90,17 +90,8 @@ net_bench mobilenet_v2_1 pass $CACHEDIR/mobilenet_v2_1.4_224_frozen.pb -i 1,224,
 net_bench inceptionv1q pass $CACHEDIR/inceptionv1_quant.nnef.tar.gz --nnef-tract-core
 net_bench inceptionv3 pass $CACHEDIR/inception_v3_2016_08_28_frozen.pb -i 1,299,299,3,f32
 
-net_bench kaldi_librispeech_clean_tdnn_lstm_1e_256 2600ms \
-    $CACHEDIR/en_libri_real/model.raw -f kaldi --output-node output \
-    --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
-    -i 264,40
 
-net_bench kaldi_librispeech_clean_tdnn_lstm_1e_256 pulse_240ms \
-    $CACHEDIR/en_libri_real/model.raw -f kaldi  --output-node output \
-    --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
-    -i S,40 --pulse 24 \
-
-    net_bench mdl-en-2019-Q3-librispeech_onnx 2600ms $CACHEDIR/en_libri_real/model.onnx --output-node output -i 264,40
+net_bench mdl-en-2019-Q3-librispeech_onnx 2600ms $CACHEDIR/en_libri_real/model.onnx --output-node output -i 264,40
 net_bench mdl-en-2019-Q3-librispeech_onnx pulse_240ms $CACHEDIR/en_libri_real/model.onnx --output-node output -i S,40 --pulse 24
 net_bench en_tdnn_lstm_bn_q7 2600ms $CACHEDIR/en_tdnn_lstm_bn_q7/model.onnx --output-node output -i 264,40
 net_bench en_tdnn_lstm_bn_q7 pulse_240ms $CACHEDIR/en_tdnn_lstm_bn_q7/model.onnx --output-node output -i S,40 --pulse 24
