@@ -79,7 +79,7 @@ pub(super) fn ensure_mkn_axes<'a>(
         })
         .max_by_key(|a| &output_shape[a.outputs[0][0]]);
     let Some(m_axis) = m_axis else {
-        return Ok(AxesOrPatch::Patch(inject_m_or_n_axis(op, model, node, false)?));
+        return Ok(AxesOrPatch::Patch(inject_m_or_n_axis(op, model, node, false, &[k_axis])?));
     };
     let n_axis = op
         .axes
@@ -91,7 +91,7 @@ pub(super) fn ensure_mkn_axes<'a>(
         })
         .max_by_key(|a| &output_shape[a.outputs[0][0]]);
     let Some(n_axis) = n_axis else {
-        return Ok(AxesOrPatch::Patch(inject_m_or_n_axis(op, model, node, true)?));
+        return Ok(AxesOrPatch::Patch(inject_m_or_n_axis(op, model, node, true, &[k_axis, m_axis])?));
     };
     Ok(AxesOrPatch::Axes(m_axis, k_axis, n_axis))
 }
@@ -133,10 +133,12 @@ pub(super) fn inject_m_or_n_axis(
     model: &TypedModel,
     node: &TypedNode,
     is_n: bool,
+    exclude: &[&Axis],
 ) -> TractResult<TypedModelPatch> {
     let input_to_fix = is_n as usize;
+    let label = if is_n { "n" } else { "m" };
     let input_facts = model.node_input_facts(node.id)?;
-    let quasi_m_or_n_axis = op.axes.iter_all_axes().find(|a| {
+    let quasi_m_or_n_axis = op.axes.iter_all_axes().filter(|a| !exclude.contains(a)).find(|a| {
         (a.inputs[1 - input_to_fix].len() == 0
             || input_facts[1 - input_to_fix].shape[a.inputs[1 - input_to_fix][0]].is_one())
             && (a.inputs[input_to_fix].len() == 1 || a.outputs[0].len() == 1)
@@ -162,7 +164,7 @@ pub(super) fn inject_m_or_n_axis(
                 .with_extra_axis('$', InOut::In(input_to_fix), 0)?
                 .linking(axis.repr, '$')?;
             wire[input_to_fix] =
-                patch.wire_node(format!("{name}.add_mn"), AxisOp::Add(0), &[wire[input_to_fix]])?
+                patch.wire_node(format!("{name}.add_{label}"), AxisOp::Add(0), &[wire[input_to_fix]])?
                     [0];
             wire = patch.wire_node(&node.name, EinSum { axes: new_axes, ..op.clone() }, &wire)?;
         }
@@ -175,7 +177,7 @@ pub(super) fn inject_m_or_n_axis(
             .with_extra_axis('$', InOut::Out(0), 0)?
             .linking(repr, '$')?;
         wire[input_to_fix] =
-            patch.wire_node(format!("{name}.add_m"), AxisOp::Add(0), &[wire[input_to_fix]])?[0];
+            patch.wire_node(format!("{name}.add_{label}"), AxisOp::Add(0), &[wire[input_to_fix]])?[0];
         wire = patch.wire_node(
             format!("{name}.einsum"),
             EinSum { axes: new_axes, ..op.clone() },

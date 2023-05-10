@@ -44,6 +44,7 @@ return Ok(());
 */
 
 fn decompose_one_in_place(model: &mut TypedModel) -> TractResult<()> {
+    ensure!(model.nodes.iter().filter(|n| n.op_is::<EinSum>()).count() == 1);
     let (m, k, n) = loop {
         let node = model.nodes.iter().find(|n| n.op_is::<EinSum>()).unwrap();
         let op = node.op_as::<EinSum>().unwrap();
@@ -56,82 +57,44 @@ fn decompose_one_in_place(model: &mut TypedModel) -> TractResult<()> {
         };
     };
     let (m, k, n) = (m.repr, k.repr, n.repr);
-    eprintln!("m:{m}, k:{k}, n:{n}");
-    while let Some(node) = model.nodes.iter().find(|n| n.op_is::<EinSum>()) {
-        let op = node.op_as::<EinSum>().unwrap();
-        let a = model.outlet_fact(node.inputs[0])?;
-        let b = model.outlet_fact(node.inputs[1])?;
-        let c = &node.outputs[0].fact;
-        assert_eq!(a.rank(), b.rank());
-        assert_eq!(a.rank(), c.rank());
-        let rank = a.rank();
-        let m_axis = op.axes.axis(m)?;
-        let k_axis = op.axes.axis(k)?;
-        let n_axis = op.axes.axis(n)?;
-        let a_m = m_axis.inputs[0][0];
-        let a_k = k_axis.inputs[0][0];
-        let b_k = k_axis.inputs[1][0];
-        let b_n = n_axis.inputs[1][0];
-        let c_m = m_axis.outputs[0][0];
-        let c_n = n_axis.outputs[0][0];
-        let name = &node.name;
-        let mut patch = TypedModelPatch::default();
-        let mut wire = node
-            .inputs
-            .iter()
-            .map(|i| patch.tap_model(model, *i))
-            .collect::<TractResult<TVec<_>>>()?;
-        /*
-        for (input, axis, axis_name) in
-            [(0, a_m, "Am"), (0, a_k, "Ak"), (1, b_k, "Bk"), (1, b_n, "Bn")]
-        {
-            if axis < rank - 2 {
-                let mov = AxisOp::Move(axis, rank - 1);
-                patch = patch.with_context(format!("Moving {axis_name} at the end"));
-                let new_op = EinSum {
-                    axes: op.axes.change_axis_sink(InOut::In(input), &mov)?.unwrap(),
-                    ..op.clone()
-                };
-                wire[input] =
-                    patch.wire_node(format!("{name}.{axis_name}"), mov, &[wire[input]])?[0];
-                let wire = patch.wire_node(name, new_op, &wire)?;
-                patch.shunt_outside(model, node.id.into(), wire[0])?;
-                return Ok(Some(patch));
-            }
-        }
-        */
-        /*
-        for (axis, axis_name) in [(c_m, "Cm"), (c_n, "Cn")] {
-            if axis < rank - 2 {
-                let mov = AxisOp::Move(axis, rank - 1);
-                patch = patch.with_context(format!("Moving {axis_name} at the end"));
-                let new_op = EinSum {
-                    axes: op.axes.change_axis_sink(InOut::Out(0), &mov)?.unwrap(),
-                    ..op.clone()
-                };
-                wire = patch.wire_node(name, new_op, &wire)?;
-                wire = patch.wire_node(format!("{name}.{axis_name}"), mov.recip(), &wire)?;
-                patch.shunt_outside(model, node.id.into(), wire[0])?;
-                return Ok(Some(patch));
-            }
-        }
-        */
-        let transpose_a = a_m > a_k;
-        let transpose_b = b_k > b_n;
-        let transpose_c = c_m > c_n;
-        TypedModelPatch::replace_single_op(
-            model,
-            node,
-            &node.inputs,
-            BasicMatMul { transpose_a, transpose_b, transpose_c },
-        )?
-        .apply(model)?;
-        model.compact()?;
+    let node = model.nodes.iter().find(|n| n.op_is::<EinSum>()).unwrap();
+    let op = node.op_as::<EinSum>().unwrap();
+    dbg!(op.axes.to_string());
+    let node_name = &node.name;
+    let prefix: String =
+        op.axes.iter_all_axes().filter(|a| ![m, k, n].contains(&a.repr)).map(|a| a.repr).collect();
+    let a_order_es: String = op.axes.axes(InOut::In(0)).map(|a| a.repr).collect();
+    let a_order_mm = format!("{prefix}{m}{k}");
+    let b_order_es: String = op.axes.axes(InOut::In(1)).map(|a| a.repr).collect();
+    let b_order_mm = format!("{prefix}{k}{n}");
+    let c_order_es: String = op.axes.axes(InOut::Out(0)).map(|a| a.repr).collect();
+    let c_order_mm = format!("{prefix}{m}{n}");
+    let mut patch = TypedModelPatch::default();
+    let mut wire =
+        node.inputs.iter().map(|i| patch.tap_model(model, *i)).collect::<TractResult<TVec<_>>>()?;
+    let a_transform = format!("{}->{}", a_order_es, a_order_mm).parse::<AxesMapping>()?;
+    for (ix, op) in a_transform.translate_to_axis_ops()?.into_iter().enumerate() {
+        wire[0] = patch.wire_node(format!("{node_name}.fix_a.{ix}"), op, &[wire[0]])?[0];
     }
+    let b_transform = format!("{}->{}", b_order_es, b_order_mm).parse::<AxesMapping>()?;
+    for (ix, op) in b_transform.translate_to_axis_ops()?.into_iter().enumerate() {
+        wire[1] = patch.wire_node(format!("{node_name}.fix_b.{ix}"), op, &[wire[1]])?[0];
+    }
+    dbg!(&a_order_es, &b_order_es, &c_order_es);
+    dbg!(&a_order_mm, &b_order_mm, &c_order_mm);
+    wire = patch.wire_node(node_name, BasicMatMul::default(), &wire)?;
+    dbg!(&patch);
+    let c_transform = format!("{}->{}", c_order_mm, c_order_es).parse::<AxesMapping>()?;
+    for (ix, op) in c_transform.translate_to_axis_ops()?.into_iter().enumerate() {
+        wire = patch.wire_node(format!("{node_name}.fix_c.{ix}"), op, &wire)?;
+    }
+    patch.shunt_outside(model, node.id.into(), wire[0])?;
+    patch.apply(model)?;
+    model.compact()?;
     Ok(())
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct BasicMatMul {
     pub transpose_a: bool,
     pub transpose_b: bool,
@@ -295,20 +258,20 @@ mod test {
                 )
             })
             .prop_flat_map(|(a_shape, b_shape)| (tensor(&a_shape), tensor(&b_shape)))
-            .prop_map(|(a, b)| DeconvProblem { expr: expr.clone(), a, b });
-        runner.run(&cases, |pb| pb.check())?;
+            .prop_map(|(a, b)| EinSumProblem { expr: expr.clone(), a, b });
+        runner.run(&cases, |pb| pb.check().map_err(|e| TestCaseError::fail(e.to_string())))?;
         Ok(())
     }
 
     #[derive(Debug, Clone, PartialEq)]
-    struct DeconvProblem {
+    struct EinSumProblem {
         expr: String,
         a: Tensor,
         b: Tensor,
     }
 
-    impl DeconvProblem {
-        fn check(&self) -> TestCaseResult {
+    impl EinSumProblem {
+        fn check(&self) -> TractResult<()> {
             let mut model = TypedModel::default();
             let sa = model.add_source("a", f32::fact(self.a.shape())).unwrap();
             let sb = model.add_source("b", f32::fact(self.b.shape())).unwrap();
@@ -325,8 +288,8 @@ mod test {
             let inputs = tvec!(a, b);
             let reference =
                 TypedRunnableModel::new(&model).unwrap().run(inputs.clone()).unwrap().remove(0);
-            decompose_one_in_place(&mut model).unwrap();
-            prop_assert!(model.nodes.iter().all(|n| !n.op_is::<EinSum>()));
+            decompose_one_in_place(&mut model)?;
+            assert!(model.nodes.iter().all(|n| !n.op_is::<EinSum>()));
             let test = TypedRunnableModel::new(&model).unwrap().run(inputs).unwrap().remove(0);
             reference.close_enough(&test, true).unwrap();
             Ok(())
@@ -341,10 +304,11 @@ mod test {
     #[rustfmt::skip] #[test] fn prop_mk_k_mn() -> TestCaseResult { test_expr("mk,k->mn") }
     #[rustfmt::skip] #[test] fn prop_m_n_mn() -> TestCaseResult { test_expr("m,n->mn") }
     #[rustfmt::skip] #[test] fn prop_amk_akn_amn() -> TestCaseResult { test_expr("amk,akn->amn") }
+    #[rustfmt::skip] #[test] fn prop_mk_akn_amn() -> TestCaseResult { test_expr("mk,akn->amn") }
 
     #[test]
-    fn k_kn_mn_0() -> TestCaseResult {
-        DeconvProblem {
+    fn k_kn_mn_0() -> TractResult<()> {
+        EinSumProblem {
             expr: "k,kn->mn".to_string(),
             a: tensor1(&[0f32, 0f32]),
             b: tensor2(&[[0f32, 0.], [0., 0.]]),
@@ -353,18 +317,28 @@ mod test {
     }
 
     #[test]
-    fn mk_k_mn_0() -> TestCaseResult {
-        DeconvProblem {
+    fn mk_k_mn_0() -> TractResult<()> {
+        EinSumProblem {
             expr: "mk,k->mn".to_string(),
-            a: tensor2(&[[0f32, 0.], [0., 0.]]),
-            b: tensor1(&[0f32, 0f32]),
+            a: Tensor::zero::<f32>(&[2, 2]).unwrap(),
+            b: Tensor::zero::<f32>(&[2]).unwrap(),
         }
         .check()
     }
 
     #[test]
-    fn mk_kn_nm_0() -> TestCaseResult {
-        DeconvProblem {
+    fn mk_k_mn_1() -> TractResult<()> {
+        EinSumProblem {
+            expr: "mk,k->mn".to_string(),
+            a: Tensor::zero::<f32>(&[1, 2]).unwrap(),
+            b: Tensor::zero::<f32>(&[2]).unwrap(),
+        }
+        .check()
+    }
+
+    #[test]
+    fn mk_kn_nm_0() -> TractResult<()> {
+        EinSumProblem {
             expr: "mk,kn->mn".to_string(),
             a: Tensor::zero::<f32>(&[3, 2]).unwrap(),
             b: Tensor::zero::<f32>(&[2, 2]).unwrap(),
@@ -373,8 +347,8 @@ mod test {
     }
 
     #[test]
-    fn amk_akn_amn_0() -> TestCaseResult {
-        DeconvProblem {
+    fn amk_akn_amn_0() -> TractResult<()> {
+        EinSumProblem {
             expr: "amk,akn->amn".to_string(),
             a: Tensor::zero::<f32>(&[1, 1, 2]).unwrap(),
             b: Tensor::zero::<f32>(&[1, 2, 1]).unwrap(),
@@ -383,8 +357,8 @@ mod test {
     }
 
     #[test]
-    fn amk_akn_amn_1() -> TestCaseResult {
-        DeconvProblem {
+    fn amk_akn_amn_1() -> TractResult<()> {
+        EinSumProblem {
             expr: "amk,akn->amn".to_string(),
             a: Tensor::zero::<f32>(&[2, 1, 2]).unwrap(),
             b: Tensor::zero::<f32>(&[1, 2, 1]).unwrap(),
@@ -393,11 +367,31 @@ mod test {
     }
 
     #[test]
-    fn amk_akn_amn_2() -> TestCaseResult {
-        DeconvProblem {
+    fn amk_akn_amn_2() -> TractResult<()> {
+        EinSumProblem {
             expr: "amk,akn->amn".to_string(),
             a: Tensor::zero::<f32>(&[1, 1, 2]).unwrap(),
             b: Tensor::zero::<f32>(&[2, 2, 2]).unwrap(),
+        }
+        .check()
+    }
+
+    #[test]
+    fn amk_akn_amn_3() -> TractResult<()> {
+        EinSumProblem {
+            expr: "amk,akn->amn".to_string(),
+            a: Tensor::zero::<f32>(&[1, 1, 2]).unwrap(),
+            b: Tensor::zero::<f32>(&[2, 2, 1]).unwrap(),
+        }
+        .check()
+    }
+
+    #[test]
+    fn km_anbck_bmn_0() -> TractResult<()> {
+        EinSumProblem {
+            expr: "km,anbck->bmn".to_string(),
+            a: Tensor::zero::<f32>(&[2, 1]).unwrap(),
+            b: Tensor::zero::<f32>(&[1, 1, 1, 1, 2]).unwrap(),
         }
         .check()
     }
