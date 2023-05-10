@@ -361,6 +361,15 @@ impl AxesMapping {
         AxesMapping::new(self.input_count, self.output_count, axes)
     }
 
+    pub fn remove_output_axis(&self, slot: usize, position: usize) -> TractResult<AxesMapping> {
+        let mut axes = self.axes.clone();
+        for axis in &mut axes {
+            axis.outputs[slot].retain(|pos| *pos != position);
+            axis.outputs[slot].iter_mut().for_each(|pos| *pos -= (*pos > position) as usize);
+        }
+        AxesMapping::new(self.input_count, self.output_count, axes)
+    }
+
     pub fn with_extra_input(self, slot: usize) -> TractResult<AxesMapping> {
         let axes: TVec<Axis> = self
             .iter_all_axes()
@@ -430,8 +439,8 @@ impl AxesMapping {
             .try_fold(self.clone(), |mapping, axis| mapping.remove_axis(axis.repr))?;
         let permutation = permutation
             .iter_all_axes()
-            .sorted_by_key(|axis| axis.inputs[0][0])
-            .map(|a| a.outputs[0][0])
+            .sorted_by_key(|axis| axis.outputs[0][0])
+            .map(|axis| axis.inputs[0][0])
             .collect_vec();
         let permutation = perm_to_ops(&permutation);
         let rms = rms.iter().map(|axis| AxisOp::Rm(axis.inputs[0][0]));
@@ -812,7 +821,25 @@ mod test {
     }
 
     #[test]
+    fn test_translate_to_ops_add_0() {
+        assert_eq!(m("bacmn->bmn").translate_to_axis_ops().unwrap(), vec!(AxisOp::Rm(2), AxisOp::Rm(1)));
+    }
+
+    #[test]
     fn test_translate_to_ops_move() {
         assert_eq!(m("ab->ba").translate_to_axis_ops().unwrap(), vec!(AxisOp::Move(1, 0)));
+    }
+
+    #[test]
+    fn test_translate_to_ops_move_20() {
+        assert_eq!(m("abc->cab").translate_to_axis_ops().unwrap(), vec!(AxisOp::Move(2, 0)));
+    }
+
+    #[test]
+    fn test_translate_to_ops_complex() {
+        assert_eq!(
+            m("anbck->backn").translate_to_axis_ops().unwrap(),
+            vec!(AxisOp::Move(2, 0), AxisOp::Move(2, 4))
+        );
     }
 }
