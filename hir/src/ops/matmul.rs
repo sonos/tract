@@ -53,9 +53,21 @@ impl Expansion for MatMulInference {
         target: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
+        let implicit_m = target.outlet_fact(inputs[0])?.rank() < 2;
+        let implicit_n = target.outlet_fact(inputs[1])?.rank() < 2;
         let inputs = crate::ops::binary::wire_rank_broadcast(prefix, target, inputs)?;
         let fact = target.outlet_fact(inputs[0])?;
-        let axes = AxesMapping::for_numpy_matmul(fact.rank(), self.a_trans, self.b_trans, self.c_trans)?;
+        let mut axes = AxesMapping::for_numpy_matmul(fact.rank(), self.a_trans, self.b_trans, self.c_trans)?;
+        if implicit_m {
+            let a = InOut::In(0);
+            let m_axis = axes.axis((a, axes.rank(a) - 2))?;
+            axes = axes.remove_output_axis(0, m_axis.outputs[0][0])?;
+        }
+        if implicit_n {
+            let b = InOut::In(1);
+            let n_axis = axes.axis((b, axes.rank(b) - 2))?;
+            axes = axes.remove_output_axis(0, n_axis.outputs[0][0])?;
+        }
         target.wire_node(
             prefix,
             EinSum { axes, operating_dt: fact.datum_type, q_params: None },
