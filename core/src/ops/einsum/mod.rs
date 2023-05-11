@@ -171,6 +171,14 @@ impl EinSum {
         }
         Ok(None)
     }
+
+    pub fn decompose_in_legacy_ops(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<TypedModel> {
+        as_matmul::decompose(self, model, node)
+    }
 }
 
 impl Debug for EinSum {

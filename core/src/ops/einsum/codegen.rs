@@ -64,7 +64,7 @@ pub(super) fn ensure_mkn_axes<'a>(
         // TODO: handle case where multiple consecutive k in the same order in both input.
         bail!("Multiple k-axis candidate found");
     } else {
-        non_trivial_k_axis.get(0).map(|it| *it).or_else(|| candidate_k_axes.get(0)).map(|it| *it)
+        non_trivial_k_axis.get(0).copied().or_else(|| candidate_k_axes.get(0)).copied()
     };
     let Some(k_axis) = k_axis else {
         return Ok(AxesOrPatch::Patch(inject_k_axis(op, model, node)?));

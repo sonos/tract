@@ -24,25 +24,6 @@ pub fn decompose(op: &EinSum, model: &TypedModel, node: &TypedNode) -> TractResu
     Ok(substitute)
 }
 
-/*
-pub fn decompose_einsums_in_place(model: &mut TypedModel) -> TractResult<()> {
-'top: loop {
-dbg!(&model);
-for n in model.eval_order()? {
-let node = &model.nodes[n];
-if let Some(einsum) = node.op_as::<EinSum>() {
-if let Some(patch) = step(einsum, model, node)? {
-patch.apply(model)?;
-model.compact().unwrap();
-continue 'top;
-}
-}
-}
-return Ok(());
-}
-}
-*/
-
 fn decompose_one_in_place(model: &mut TypedModel) -> TractResult<()> {
     ensure!(model.nodes.iter().filter(|n| n.op_is::<EinSum>()).count() == 1);
     let (m, k, n) = loop {
