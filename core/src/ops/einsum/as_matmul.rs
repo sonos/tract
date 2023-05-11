@@ -40,7 +40,6 @@ fn decompose_one_in_place(model: &mut TypedModel) -> TractResult<()> {
     let (m, k, n) = (m.repr, k.repr, n.repr);
     let node = model.nodes.iter().find(|n| n.op_is::<EinSum>()).unwrap();
     let op = node.op_as::<EinSum>().unwrap();
-    dbg!(op.axes.to_string());
     let node_name = &node.name;
     let prefix: String =
         op.axes.iter_all_axes().filter(|a| ![m, k, n].contains(&a.repr)).map(|a| a.repr).collect();
@@ -61,10 +60,7 @@ fn decompose_one_in_place(model: &mut TypedModel) -> TractResult<()> {
     for (ix, op) in b_transform.translate_to_axis_ops()?.into_iter().enumerate() {
         wire[1] = patch.wire_node(format!("{node_name}.fix_b.{ix}"), op, &[wire[1]])?[0];
     }
-    dbg!(&a_order_es, &b_order_es, &c_order_es);
-    dbg!(&a_order_mm, &b_order_mm, &c_order_mm);
     wire = patch.wire_node(node_name, BasicMatMul::default(), &wire)?;
-    dbg!(&patch);
     let c_transform = format!("{}->{}", c_order_mm, c_order_es).parse::<AxesMapping>()?;
     for (ix, op) in c_transform.translate_to_axis_ops()?.into_iter().enumerate() {
         wire = patch.wire_node(format!("{node_name}.fix_c.{ix}"), op, &wire)?;
