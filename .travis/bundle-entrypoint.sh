@@ -114,6 +114,8 @@ net_bench en_tdnn_15M pulse_240ms $CACHEDIR/en_tdnn_15M.onnx --output-node outpu
 net_bench en_tdnn_15M pulse_120ms $CACHEDIR/en_tdnn_15M.onnx --output-node output -i S,40 --pulse 12
 net_bench en_tdnn_15M_nnef pulse_240ms $CACHEDIR/en_tdnn_15M.alpha1.tar --nnef-tract-pulse
 
+net_bench en_tdnn_pyt_15M pulse_120ms $CACHEDIR/mdl-en-2023-03-27-allen-17h11m50s.nnef.tar --nnef-tract-core --pulse 12
+
 net_bench speaker_id pulse8 $CACHEDIR/speaker-id-2019-03.onnx -i 1,S,40,f32 --output-node 257 --partial --pulse 8
 
 net_bench voicecom_fake_quant 2sec $CACHEDIR/snips-voice-commands-cnn-fake-quant.pb -i 200,10,f32
