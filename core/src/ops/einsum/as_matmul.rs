@@ -372,4 +372,32 @@ mod test {
         }
         .check()
     }
+
+    #[test]
+    fn q() -> TractResult<()> {
+        let qp = QParams::ZpScale { zero_point: 0, scale: 0.1 };
+        let op = EinSum {
+            axes: "mk,kn,m,,,,,,->mn".parse()?,
+            operating_dt: i32::datum_type(),
+            q_params: Some(DatumType::QI8(qp)),
+        };
+        let mut model = TypedModelPatch::default();
+        let inputs = [
+            model.add_source("a", DatumType::QI8(qp).fact(&[3, 2]))?,
+            model.add_source("b", DatumType::QI8(qp).fact(&[2, 4]))?,
+            model.add_source("bias", i32::datum_type().fact(&[3]))?,
+            model.add_source("a0", i8::datum_type().scalar_fact())?,
+            model.add_source("a_scale", f32::datum_type().scalar_fact())?,
+            model.add_source("b0", i8::datum_type().scalar_fact())?,
+            model.add_source("b_scale", f32::datum_type().scalar_fact())?,
+            model.add_source("c0", i8::datum_type().scalar_fact())?,
+            model.add_source("c_scale", f32::datum_type().scalar_fact())?,
+        ];
+        let wire = model.wire_node("einsum", op.clone(), &inputs)?;
+        model.set_output_outlets(&wire)?;
+        let mut sub = op.decompose_in_legacy_ops(&model,model.node(wire[0].node))?;
+        sub.compact()?;
+        assert!(sub.nodes.iter().all(|n| !n.op_is::<EinSum>()));
+        Ok(())
+    }
 }
