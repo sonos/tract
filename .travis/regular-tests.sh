@@ -25,6 +25,8 @@ if [ `uname` = "Darwin" ]
 then
     sysctl -n machdep.cpu.brand_string
     brew install coreutils
+else
+    sudo apt-get install -y llvm
 fi
 
 # if [ `uname` = "Linux" -a -z "$TRAVIS" ]
