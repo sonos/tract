@@ -38,8 +38,10 @@ jobs:
         command: |
             rustup toolchain add stable-x86_64-pc-windows-${{matrix.toolchain}}
             rustup default stable-x86_64-pc-windows-${{matrix.toolchain}}
-    - name: Install LLVM
-      run: choco install llvm
+    - name: Install LLVM and Clang
+      uses: KyleMayes/install-llvm-action@v1
+      with:
+        version: "11.0"
     - name: top level cargo check
       run: cargo check
     - name: data / linalg / core / nnef / onnx / onnx-opl
