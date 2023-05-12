@@ -42,12 +42,10 @@ jobs:
       uses: KyleMayes/install-llvm-action@v1
       with:
         version: "11.0"
-    - name: debug
-      run: dir "C:\\Program Files\\LLVM"
     - name: top level cargo check
       run: cargo check
       env:
-        LIBCLANG_PATH: "C:\\Program File\\LLVM"
+        LIBCLANG_PATH: "C:\\Program File\\LLVM\\bin"
     - name: data / linalg / core / nnef / onnx / onnx-opl
       run: cargo test -p tract-data -p tract-linalg -p tract-core -p tract-nnef -p tract-onnx -p tract-onnx-opl
     - name: Onnx test suite
