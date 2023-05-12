@@ -545,15 +545,15 @@ macro_rules! impl_datum_type {
     }
 }
 
-impl_datum_type!(bool, 0x01);
-impl_datum_type!(u8, 0x11);
-impl_datum_type!(u16, 0x12);
-impl_datum_type!(u32, 0x14);
-impl_datum_type!(u64, 0x18);
-impl_datum_type!(i8, 0x21);
-impl_datum_type!(i16, 0x22);
-impl_datum_type!(i32, 0x24);
-impl_datum_type!(i64, 0x28);
-impl_datum_type!(half::f16, 0x32);
-impl_datum_type!(f32, 0x34);
-impl_datum_type!(f64, 0x38);
+impl_datum_type!(bool, 0x01u32);
+impl_datum_type!(u8, 0x11u32);
+impl_datum_type!(u16, 0x12u32);
+impl_datum_type!(u32, 0x14u32);
+impl_datum_type!(u64, 0x18u32);
+impl_datum_type!(i8, 0x21u32);
+impl_datum_type!(i16, 0x22u32);
+impl_datum_type!(i32, 0x24u32);
+impl_datum_type!(i64, 0x28u32);
+impl_datum_type!(half::f16, 0x32u32);
+impl_datum_type!(f32, 0x34u32);
+impl_datum_type!(f64, 0x38u32);
