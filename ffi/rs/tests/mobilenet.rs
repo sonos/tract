@@ -4,10 +4,28 @@ fn grace_hopper() -> tract_rs::Value {
     tract_rs::Value::from_shape_and_slice(&[1, 3, 224, 224], data).unwrap()
 }
 
+fn ensure_models() -> anyhow::Result<()> {
+    for (url, file) in [(
+            "https://github.com/onnx/models/raw/main/vision/classification/mobilenet/model/mobilenetv2-7.onnx",
+            "mobilenetv2-7.onnx"),
+            (
+            "https://sfo2.digitaloceanspaces.com/nnef-public/mobilenet_v2_1.0.onnx.nnef.tgz",
+            "mobilenet_v2_1.0.onnx.nnef.tgz")
+    ] {
+        if std::fs::metadata(file).is_err() {
+            let client = reqwest::blocking::Client::new();
+            let model = client.get(url).send()?;
+            std::fs::write(file, model.bytes()?)?;
+        }
+    }
+    Ok(())
+}
+
 #[test]
 fn test_nnef() -> anyhow::Result<()> {
+    ensure_models()?;
     let model = tract_rs::nnef()?
-        .model_for_path("tests/mobilenet_v2_1.0.onnx.nnef.tgz")?
+        .model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")?
         .into_optimized()?
         .into_runnable()?;
     let hopper = grace_hopper();
@@ -26,7 +44,8 @@ fn test_nnef() -> anyhow::Result<()> {
 
 #[test]
 fn test_inference_model() -> anyhow::Result<()> {
-    let mut model = tract_rs::onnx()?.model_for_path("tests/mobilenetv2-7.onnx")?;
+    ensure_models()?;
+    let mut model = tract_rs::onnx()?.model_for_path("mobilenetv2-7.onnx")?;
     assert_eq!(model.input_count().unwrap(), 1);
     assert_eq!(model.output_count().unwrap(), 1);
     assert_eq!(model.input_name(0).unwrap(), "data");
@@ -50,7 +69,8 @@ fn test_inference_model() -> anyhow::Result<()> {
 
 #[test]
 fn test_set_output_names_on_inference_model() -> anyhow::Result<()> {
-    let mut model = tract_rs::onnx()?.model_for_path("tests/mobilenetv2-7.onnx")?;
+    ensure_models()?;
+    let mut model = tract_rs::onnx()?.model_for_path("mobilenetv2-7.onnx")?;
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.set_output_fact(0, None)?;
     model.analyse()?;
@@ -61,7 +81,8 @@ fn test_set_output_names_on_inference_model() -> anyhow::Result<()> {
 
 #[test]
 fn test_typed_model() -> anyhow::Result<()> {
-    let mut model = tract_rs::nnef()?.model_for_path("tests/mobilenet_v2_1.0.onnx.nnef.tgz")?;
+    ensure_models()?;
+    let mut model = tract_rs::nnef()?.model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")?;
     assert_eq!(model.input_count()?, 1);
     assert_eq!(model.output_count()?, 1);
     assert_eq!(model.input_name(0)?, "data");
@@ -74,7 +95,8 @@ fn test_typed_model() -> anyhow::Result<()> {
 
 #[test]
 fn test_set_output_names() -> anyhow::Result<()> {
-    let mut model = tract_rs::nnef()?.model_for_path("tests/mobilenet_v2_1.0.onnx.nnef.tgz")?;
+    ensure_models()?;
+    let mut model = tract_rs::nnef()?.model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")?;
     model.set_output_names(["conv_53"])?;
     assert_eq!(model.output_fact(0)?.to_string(), "1,1000,1,1,F32");
     Ok(())
@@ -82,7 +104,8 @@ fn test_set_output_names() -> anyhow::Result<()> {
 
 #[test]
 fn test_concretize() -> anyhow::Result<()> {
-    let mut model = tract_rs::onnx()?.model_for_path("tests/mobilenetv2-7.onnx")?;
+    ensure_models()?;
+    let mut model = tract_rs::onnx()?.model_for_path("mobilenetv2-7.onnx")?;
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.set_output_fact(0, None)?;
     model.analyse()?;
@@ -97,14 +120,15 @@ fn test_concretize() -> anyhow::Result<()> {
 
 #[test]
 fn test_pulse() -> anyhow::Result<()> {
-    let mut model = tract_rs::onnx()?.model_for_path("tests/mobilenetv2-7.onnx")?;
+    ensure_models()?;
+    let mut model = tract_rs::onnx()?.model_for_path("mobilenetv2-7.onnx")?;
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.set_output_fact(0, None)?;
     model.analyse()?;
     let mut typed = model.into_typed()?.into_decluttered()?;
     assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F32");
     assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,F32");
-    typed.pulse("B",  "5")?;
+    typed.pulse("B", "5")?;
     assert_eq!(typed.input_fact(0)?.to_string(), "5,3,224,224,F32");
     assert_eq!(typed.output_fact(0)?.to_string(), "5,1000,F32");
     let mut properties = typed.property_keys()?;
@@ -116,56 +140,62 @@ fn test_pulse() -> anyhow::Result<()> {
 
 #[test]
 fn test_typed_model_to_nnef_and_back() -> anyhow::Result<()> {
-    let mut model = tract_rs::onnx()?.model_for_path("tests/mobilenetv2-7.onnx")?;
+    ensure_models()?;
+    let mut model = tract_rs::onnx()?.model_for_path("mobilenetv2-7.onnx")?;
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.set_output_fact(0, None)?;
     model.analyse()?;
     let typed = model.into_typed()?;
     let dir = tempfile::tempdir()?;
-        let nnef = tract_rs::nnef()?.with_tract_core()?;
+    let nnef = tract_rs::nnef()?.with_tract_core()?;
 
-        let path = dir.path().join("nnef-dir");
-        nnef.write_model_to_dir(&path, &typed)?;
-        let reloaded = nnef.model_for_path(path)?;
-        assert_eq!(reloaded.input_fact(0)?.to_string(), "B,3,224,224,F32");
-        assert_eq!(reloaded.output_fact(0)?.to_string(), "B,1000,F32");
+    let path = dir.path().join("nnef-dir");
+    nnef.write_model_to_dir(&path, &typed)?;
+    let reloaded = nnef.model_for_path(path)?;
+    assert_eq!(reloaded.input_fact(0)?.to_string(), "B,3,224,224,F32");
+    assert_eq!(reloaded.output_fact(0)?.to_string(), "B,1000,F32");
 
-        let path = dir.path().join("nnef.tar");
-        nnef.write_model_to_tar(&path, &typed)?;
-        let reloaded = nnef.model_for_path(path)?;
-        assert_eq!(reloaded.input_fact(0)?.to_string(), "B,3,224,224,F32");
-        assert_eq!(reloaded.output_fact(0)?.to_string(), "B,1000,F32");
+    let path = dir.path().join("nnef.tar");
+    nnef.write_model_to_tar(&path, &typed)?;
+    let reloaded = nnef.model_for_path(path)?;
+    assert_eq!(reloaded.input_fact(0)?.to_string(), "B,3,224,224,F32");
+    assert_eq!(reloaded.output_fact(0)?.to_string(), "B,1000,F32");
 
-        let path = dir.path().join("nnef.tar.gz");
-        nnef.write_model_to_tar_gz(&path, &typed)?;
-        let reloaded = nnef.model_for_path(path)?;
-        assert_eq!(reloaded.input_fact(0)?.to_string(), "B,3,224,224,F32");
-        assert_eq!(reloaded.output_fact(0)?.to_string(), "B,1000,F32");
+    let path = dir.path().join("nnef.tar.gz");
+    nnef.write_model_to_tar_gz(&path, &typed)?;
+    let reloaded = nnef.model_for_path(path)?;
+    assert_eq!(reloaded.input_fact(0)?.to_string(), "B,3,224,224,F32");
+    assert_eq!(reloaded.output_fact(0)?.to_string(), "B,1000,F32");
     Ok(())
 }
 
 #[test]
 fn test_cost() -> anyhow::Result<()> {
-    let mut model = tract_rs::nnef()?.model_for_path("tests/mobilenet_v2_1.0.onnx.nnef.tgz")?;
+    ensure_models()?;
+    let mut model = tract_rs::nnef()?.model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")?;
     model.declutter()?;
     model.optimize()?;
     let profile = model.cost_json()?;
-    let json : serde_json::Value = serde_json::from_str(&profile)?;
+    let json: serde_json::Value = serde_json::from_str(&profile)?;
     let nodes = json.get("nodes").unwrap().as_array().unwrap();
     assert!(nodes.len() > 10);
     let node = nodes[0].as_object().unwrap();
     assert!(node["node_name"].as_str().unwrap() != "");
     assert!(node["op_name"].as_str().unwrap() != "");
-    assert!(nodes.iter().find_map(|n| n.get("cost").and_then(|c| c.as_object().unwrap().get("FMA(F32)"))).is_some());
+    assert!(nodes
+        .iter()
+        .find_map(|n| n.get("cost").and_then(|c| c.as_object().unwrap().get("FMA(F32)")))
+        .is_some());
     Ok(())
 }
 
 #[test]
 fn test_profile() -> anyhow::Result<()> {
-    let mut model = tract_rs::nnef()?.model_for_path("tests/mobilenet_v2_1.0.onnx.nnef.tgz")?;
+    ensure_models()?;
+    let mut model = tract_rs::nnef()?.model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")?;
     model.declutter()?;
     model.optimize()?;
-    let data = ndarray::ArrayD::<f32>::zeros(vec!(1, 3, 224, 224));
+    let data = ndarray::ArrayD::<f32>::zeros(vec![1, 3, 224, 224]);
     let profile = model.profile_json(Some([data]))?;
     let profile: serde_json::Value = serde_json::from_str(&profile)?;
     let profiling_info = profile["profiling_info"].as_object().unwrap();
