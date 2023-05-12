@@ -42,6 +42,10 @@ jobs:
       uses: KyleMayes/install-llvm-action@v1
       with:
         version: "11.0"
+    - name: debug bin
+      run: dir "C:\\Program File\\LLVM\\bin"
+    - name: debug lib
+      run: dir "C:\\Program File\\LLVM\\lib"
     - name: top level cargo check
       run: cargo check
       env:
