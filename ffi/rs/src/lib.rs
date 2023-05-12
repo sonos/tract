@@ -390,7 +390,7 @@ impl Value {
         anyhow::ensure!(data.len() == shape.iter().product());
         let mut value = null_mut();
         check!(sys::tract_value_create(
-            T::c_repr(),
+            T::c_repr() as _,
             shape.len(),
             shape.as_ptr(),
             data.as_ptr() as _,
