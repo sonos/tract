@@ -8,7 +8,7 @@ use boow::Bow;
 use ndarray::{Dimension, RawData, Data};
 use tract_rs_sys as sys;
 
-use anyhow::Result;
+use anyhow::{Result, Context};
 
 macro_rules! check {
     ($expr:expr) => {
@@ -56,7 +56,8 @@ impl Nnef {
     }
 
     pub fn model_for_path(&self, path: impl AsRef<Path>) -> Result<Model> {
-        let path = CString::new(path.as_ref().as_os_str().as_bytes().to_vec())?;
+        let path = path.as_ref();
+        let path = CString::new(path.to_str().with_context(|| format!("Failed to re-encode {path:?} to uff-8"))?)?;
         let mut model = null_mut();
         check!(sys::tract_nnef_model_for_path(self.0, path.as_ptr(), &mut model))?;
         Ok(Model(model))
@@ -78,19 +79,22 @@ impl Nnef {
     }
 
     pub fn write_model_to_dir(&self, path: impl AsRef<Path>, model: &Model) -> Result<()> {
-        let path = CString::new(path.as_ref().as_os_str().as_bytes().to_vec())?;
+        let path = path.as_ref();
+        let path = CString::new(path.to_str().with_context(|| format!("Failed to re-encode {path:?} to uff-8"))?)?;
         check!(sys::tract_nnef_write_model_to_dir(self.0, path.as_ptr(), model.0))?;
         Ok(())
     }
 
     pub fn write_model_to_tar(&self, path: impl AsRef<Path>, model: &Model) -> Result<()> {
-        let path = CString::new(path.as_ref().as_os_str().as_bytes().to_vec())?;
+        let path = path.as_ref();
+        let path = CString::new(path.to_str().with_context(|| format!("Failed to re-encode {path:?} to uff-8"))?)?;
         check!(sys::tract_nnef_write_model_to_tar(self.0, path.as_ptr(), model.0))?;
         Ok(())
     }
 
     pub fn write_model_to_tar_gz(&self, path: impl AsRef<Path>, model: &Model) -> Result<()> {
-        let path = CString::new(path.as_ref().as_os_str().as_bytes().to_vec())?;
+        let path = path.as_ref();
+        let path = CString::new(path.to_str().with_context(|| format!("Failed to re-encode {path:?} to uff-8"))?)?;
         check!(sys::tract_nnef_write_model_to_tar_gz(self.0, path.as_ptr(), model.0))?;
         Ok(())
     }
@@ -111,7 +115,8 @@ impl Onnx {
     }
 
     pub fn model_for_path(&self, path: impl AsRef<Path>) -> Result<InferenceModel> {
-        let path = CString::new(path.as_ref().as_os_str().as_bytes().to_vec())?;
+        let path = path.as_ref();
+        let path = CString::new(path.to_str().with_context(|| format!("Failed to re-encode {path:?} to uff-8"))?)?;
         let mut model = null_mut();
         check!(sys::tract_onnx_model_for_path(self.0, path.as_ptr(), &mut model))?;
         Ok(InferenceModel(model))
