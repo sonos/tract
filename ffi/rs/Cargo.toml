@@ -11,5 +11,6 @@ ndarray.workspace = true
 tract-rs-sys = { path = "sys", version = "=0.20.0-pre" }
 
 [dev-dependencies]
+reqwest.workspace = true
 tempfile = "*"
 serde_json = "*"
