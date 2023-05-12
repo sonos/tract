@@ -373,7 +373,7 @@ impl State {
         let mut outputs = vec![null_mut(); self.2];
         let mut inputs: Vec<_> = inputs.iter().map(|v| v.0).collect();
         check!(sys::tract_state_run(self.0, inputs.as_mut_ptr(), outputs.as_mut_ptr()))?;
-        let outputs = outputs.into_iter().map(|o| Value(o)).collect();
+        let outputs = outputs.into_iter().map(Value).collect();
         Ok(outputs)
     }
 }
@@ -395,7 +395,7 @@ impl Value {
         Ok(Value(value))
     }
 
-    pub fn as_parts<'a, T: TractProxyDatumType>(&'a self) -> Result<(&'a [usize], &'a [T])> {
+    pub fn as_parts<T: TractProxyDatumType>(&self) -> Result<(&[usize], &[T])> {
         let mut rank = 0;
         let mut dt = 0;
         let mut shape = null();
@@ -410,7 +410,7 @@ impl Value {
         }
     }
 
-    pub fn view<'a, T: TractProxyDatumType>(&self) -> Result<ndarray::ArrayViewD<T>> {
+    pub fn view<T: TractProxyDatumType>(&self) -> Result<ndarray::ArrayViewD<T>> {
         let (shape, data) = self.as_parts()?;
         Ok(ndarray::ArrayViewD::from_shape(shape, data)?)
     }
