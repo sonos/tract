@@ -1,6 +1,5 @@
 use std::ffi::{CStr, CString};
 use std::fmt::Display;
-use std::os::unix::prelude::OsStrExt;
 use std::path::Path;
 use std::ptr::{null, null_mut};
 
