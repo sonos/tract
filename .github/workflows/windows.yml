@@ -43,15 +43,15 @@ jobs:
       with:
         version: "11.0"
     - name: debug
-      run: dir "C:\\Program File\\LLVM"
+      run: dir "C:\\Program Files\\LLVM"
     - name: debug lib
-      run: dir "C:\\Program File\\LLVM\\lib"
+      run: dir "C:\\Program Files\\LLVM\\lib"
     - name: debug bin
-      run: dir "C:\\Program File\\LLVM\\bin"
+      run: dir "C:\\Program Files\\LLVM\\bin"
     - name: top level cargo check
       run: cargo check
       env:
-        LIBCLANG_PATH: "C:\\Program File\\LLVM\\bin"
+        LIBCLANG_PATH: "C:\\Program Files\\LLVM\\bin"
     - name: data / linalg / core / nnef / onnx / onnx-opl
       run: cargo test -p tract-data -p tract-linalg -p tract-core -p tract-nnef -p tract-onnx -p tract-onnx-opl
     - name: Onnx test suite
