@@ -535,7 +535,7 @@ impl<S: AsRef<str>> AsFact<Model, Fact> for S {
 }
 
 pub trait TractProxyDatumType: Clone {
-    fn c_repr() -> u32;
+    fn c_repr() -> TractDatumType;
 }
 
 macro_rules! impl_datum_type {
