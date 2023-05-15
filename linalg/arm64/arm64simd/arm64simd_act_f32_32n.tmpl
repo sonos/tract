@@ -152,10 +152,12 @@
     adr         x4, .load_jmp_table
     add         x4, x4, x7, LSL#2
     br          x4
+
 .load_jmp_table:
     b           .load_a
     b           .load_b
     b           .load_c
+
 .load_a:
     dup         v0.4s, v24.s[0]
     dup         v1.4s, v24.s[0]
@@ -166,6 +168,7 @@
     dup         v6.4s, v24.s[0]
     dup         v7.4s, v24.s[0]
     b .inner_loop
+
 .load_b:
     dup         v8.4s, v24.s[0]
     dup         v9.4s, v24.s[0]
@@ -176,6 +179,7 @@
     dup         v14.4s, v24.s[0]
     dup         v15.4s, v24.s[0]
     b .inner_loop
+
 .load_c:
     dup         v16.4s, v24.s[0]
     dup         v17.4s, v24.s[0]
@@ -186,6 +190,7 @@
     dup         v22.4s, v24.s[0]
     dup         v23.4s, v24.s[0]
     b .inner_loop
+
 .abs:
     fabs        v0.4s, v0.4s
     fabs        v1.4s, v1.4s
@@ -196,6 +201,7 @@
     fabs        v6.4s, v6.4s
     fabs        v7.4s, v7.4s
     b .inner_loop
+
 .recip:
     fmov        v24.4s, #1.0
     fdiv        v0.4s, v24.4s, v0.4s
@@ -207,10 +213,29 @@
     fdiv        v6.4s, v24.4s, v6.4s
     fdiv        v7.4s, v24.4s, v7.4s
     b .inner_loop
+
 .add:
-    b           .unsupported
+    fadd        v0.4s, v0.4s, v8.4s
+    fadd        v1.4s, v1.4s, v9.4s
+    fadd        v2.4s, v2.4s, v10.4s
+    fadd        v3.4s, v3.4s, v11.4s
+    fadd        v4.4s, v4.4s, v12.4s
+    fadd        v5.4s, v5.4s, v13.4s
+    fadd        v6.4s, v6.4s, v14.4s
+    fadd        v7.4s, v7.4s, v15.4s
+    b .inner_loop
+
 .sub:
-    b           .unsupported
+    fsub        v0.4s, v0.4s, v8.4s
+    fsub        v1.4s, v1.4s, v9.4s
+    fsub        v2.4s, v2.4s, v10.4s
+    fsub        v3.4s, v3.4s, v11.4s
+    fsub        v4.4s, v4.4s, v12.4s
+    fsub        v5.4s, v5.4s, v13.4s
+    fsub        v6.4s, v6.4s, v14.4s
+    fsub        v7.4s, v7.4s, v15.4s
+    b .inner_loop
+
 .mul:
     fmul        v0.4s, v0.4s, v8.4s
     fmul        v1.4s, v1.4s, v9.4s
@@ -221,10 +246,29 @@
     fmul        v6.4s, v6.4s, v14.4s
     fmul        v7.4s, v7.4s, v15.4s
     b .inner_loop
+
 .min:
-    b           .unsupported
+    fmin        v0.4s, v0.4s, v8.4s
+    fmin        v1.4s, v1.4s, v9.4s
+    fmin        v2.4s, v2.4s, v10.4s
+    fmin        v3.4s, v3.4s, v11.4s
+    fmin        v4.4s, v4.4s, v12.4s
+    fmin        v5.4s, v5.4s, v13.4s
+    fmin        v6.4s, v6.4s, v14.4s
+    fmin        v7.4s, v7.4s, v15.4s
+    b .inner_loop
+
 .max:
-    b           .unsupported
+    fmax        v0.4s, v0.4s, v8.4s
+    fmax        v1.4s, v1.4s, v9.4s
+    fmax        v2.4s, v2.4s, v10.4s
+    fmax        v3.4s, v3.4s, v11.4s
+    fmax        v4.4s, v4.4s, v12.4s
+    fmax        v5.4s, v5.4s, v13.4s
+    fmax        v6.4s, v6.4s, v14.4s
+    fmax        v7.4s, v7.4s, v15.4s
+    b .inner_loop
+
 .add_const:
     ins         v24.s[0], w3
     add         x5, x5, 4
@@ -297,6 +341,7 @@
 
 .fma:
     b           .unsupported
+
 .if_pos_then_else:
     fcmge       v0.4s, v0.4s, #0.0
     fcmge       v1.4s, v1.4s, #0.0
@@ -315,10 +360,13 @@
     bsl         v6.16b, v14.16b, v22.16b
     bsl         v7.16b, v15.16b, v23.16b
     b .inner_loop
+
 .swap_b_c:
     b           .unsupported
+
 .floor:
     b           .unsupported
+
 .two_pow_of_int:
     b           .unsupported
 

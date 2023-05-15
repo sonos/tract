@@ -148,11 +148,40 @@ macro_rules! act_tests {
                 }
 
                 #[test]
+                fn add_prop(x in x_strat(), v in any::<$ti>()) {
+                    if $cond {
+                        run_kernel_test::<$ti, $ker>(&x, &[Load(RegisterId::B, v), Add], |x| x + v);
+                    }
+                }
+
+                #[test]
+                fn sub_prop(x in x_strat(), v in any::<$ti>()) {
+                    if $cond {
+                        run_kernel_test::<$ti, $ker>(&x, &[Load(RegisterId::B, v), Sub], |x| x - v);
+                    }
+                }
+
+                #[test]
                 fn mul_prop(x in x_strat(), v in any::<$ti>()) {
                     if $cond {
                         run_kernel_test::<$ti, $ker>(&x, &[Load(RegisterId::B, v), Mul], |x| x * v);
                     }
                 }
+
+                #[test]
+                fn min_prop(x in x_strat(), v in any::<$ti>()) {
+                    if $cond {
+                        run_kernel_test::<$ti, $ker>(&x, &[Load(RegisterId::B, v), Min], |x| x.min(v));
+                    }
+                }
+
+                #[test]
+                fn max_prop(x in x_strat(), v in any::<$ti>()) {
+                    if $cond {
+                        run_kernel_test::<$ti, $ker>(&x, &[Load(RegisterId::B, v), Max], |x| x.max(v));
+                    }
+                }
+
 
                 #[test]
                 fn ifposte_prop(x in x_strat()) {
