@@ -401,7 +401,7 @@ impl Value {
 
     pub fn as_parts<T: TractProxyDatumType>(&self) -> Result<(&[usize], &[T])> {
         let mut rank = 0;
-        let mut dt = 0;
+        let mut dt = 0u32;
         let mut shape = null();
         let mut data = null();
         check!(sys::tract_value_inspect(self.0, &mut dt, &mut rank, &mut shape, &mut data))?;
