@@ -5,6 +5,7 @@ use std::ptr::{null, null_mut};
 
 use boow::Bow;
 use ndarray::{Dimension, RawData, Data};
+use sys::TractDatumType;
 use tract_rs_sys as sys;
 
 use anyhow::{Result, Context};
