@@ -1,8 +1,8 @@
 use crate::LADatum;
 
 use super::{ActivationKer, Op, Program, RegisterId};
-use Op::*;
 use proptest::prelude::*;
+use Op::*;
 
 pub fn noop<T: LADatum>() -> Program<T> {
     Program { ops: vec![] }
@@ -43,18 +43,18 @@ macro_rules! act_tests {
         mod acttest {
             #[allow(unused_imports)]
             use super::*;
-            use $crate::frame::activations::ActivationKer;
+            use num_traits::{One, Zero};
+            use proptest::collection::vec;
+            use proptest::prelude::*;
             use $crate::frame::activations::tests::*;
+            use $crate::frame::activations::ActivationKer;
             use $crate::frame::activations::Op::*;
             use $crate::frame::activations::RegisterId;
-            use num_traits::{Zero, One};
-            use proptest::prelude::*;
-            use proptest::collection::vec;
 
             fn x_strat() -> impl Strategy<Value = Vec<$ti>> {
                 (1usize..4).prop_flat_map(|repeat| {
                     let size = <$ker>::nr() * repeat;
-                    vec(any::<$ti>(), size..size+1)
+                    vec(any::<$ti>(), size..size + 1)
                 })
             }
 
@@ -118,15 +118,22 @@ macro_rules! act_tests {
                         run_kernel_test::<$ti, $ker>(&x, &[MaxConst(alpha)], |x| x.max(alpha));
                     }
                 }
+
+                #[test]
+                fn min_const_prop(alpha in any::<$ti>(), x in x_strat()) {
+                    if $cond {
+                        run_kernel_test::<$ti, $ker>(&x, &[MinConst(alpha)], |x| x.min(alpha));
+                    }
+                }
             }
 
             #[test]
             fn max_const_zero() {
                 if $cond {
                     run_kernel_test::<$ti, $ker>(
-                        &vec!(<$ti>::zero(); <$ker>::nr()),
+                        &vec![<$ti>::zero(); <$ker>::nr()],
                         &[MaxConst(<$ti>::zero())],
-                        |x| x.max(<$ti>::zero())
+                        |x| x.max(<$ti>::zero()),
                     );
                 }
             }
@@ -135,9 +142,20 @@ macro_rules! act_tests {
             fn max_const_big_alpha() {
                 if $cond {
                     run_kernel_test::<$ti, $ker>(
-                        &vec!(<$ti>::zero(); <$ker>::nr()),
+                        &vec![<$ti>::zero(); <$ker>::nr()],
                         &[MaxConst(7.567773e37.into())],
-                        |x| x.max(7.567773e37.into())
+                        |x| x.max(7.567773e37.into()),
+                    );
+                }
+            }
+
+            #[test]
+            fn move_b_to_a_0() {
+                if $cond {
+                    run_kernel_test::<$ti, $ker>(
+                        &*vec![<$ti>::zero(); <$ker>::nr()],
+                        &[Load(RegisterId::B, 1.0 as _), Move(RegisterId::A, RegisterId::B)],
+                        |_| 1.0 as _,
                     );
                 }
             }
