@@ -5,7 +5,6 @@ use std::ptr::{null, null_mut};
 
 use boow::Bow;
 use ndarray::{Dimension, RawData, Data};
-use sys::TractDatumType;
 use tract_rs_sys as sys;
 
 use anyhow::{Result, Context};
@@ -539,22 +538,22 @@ pub trait TractProxyDatumType: Clone {
 }
 
 macro_rules! impl_datum_type {
-    ($ty:ty, $c_repr:literal) => {
+    ($ty:ty, $c_repr:expr) => {
         impl TractProxyDatumType for $ty {
-            fn c_repr() -> u32 { $c_repr}
+            fn c_repr() -> TractDatumType { $c_repr}
         }
     }
 }
 
-impl_datum_type!(bool, 0x01u32);
-impl_datum_type!(u8, 0x11u32);
-impl_datum_type!(u16, 0x12u32);
-impl_datum_type!(u32, 0x14u32);
-impl_datum_type!(u64, 0x18u32);
-impl_datum_type!(i8, 0x21u32);
-impl_datum_type!(i16, 0x22u32);
-impl_datum_type!(i32, 0x24u32);
-impl_datum_type!(i64, 0x28u32);
-impl_datum_type!(half::f16, 0x32u32);
-impl_datum_type!(f32, 0x34u32);
-impl_datum_type!(f64, 0x38u32);
+impl_datum_type!(bool, sys::TractDatumType_TRACT_DATUM_TYPE_BOOL);
+impl_datum_type!(u8, sys::TractDatumType_TRACT_DATUM_TYPE_U8);
+impl_datum_type!(u16, sys::TractDatumType_TRACT_DATUM_TYPE_U16);
+impl_datum_type!(u32, sys::TractDatumType_TRACT_DATUM_TYPE_U32);
+impl_datum_type!(u64, sys::TractDatumType_TRACT_DATUM_TYPE_U64);
+impl_datum_type!(i8, sys::TractDatumType_TRACT_DATUM_TYPE_I8);
+impl_datum_type!(i16, sys::TractDatumType_TRACT_DATUM_TYPE_I16);
+impl_datum_type!(i32, sys::TractDatumType_TRACT_DATUM_TYPE_I32);
+impl_datum_type!(i64, sys::TractDatumType_TRACT_DATUM_TYPE_I64);
+impl_datum_type!(half::f16, sys::TractDatumType_TRACT_DATUM_TYPE_F16);
+impl_datum_type!(f32, sys::TractDatumType_TRACT_DATUM_TYPE_F32);
+impl_datum_type!(f64, sys::TractDatumType_TRACT_DATUM_TYPE_F64);
