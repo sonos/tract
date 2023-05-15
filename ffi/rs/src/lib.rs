@@ -404,7 +404,7 @@ impl Value {
         let mut dt = 0u32;
         let mut shape = null();
         let mut data = null();
-        check!(sys::tract_value_inspect(self.0, &mut dt, &mut rank, &mut shape, &mut data))?;
+        check!(sys::tract_value_inspect(self.0, &mut dt as _, &mut rank, &mut shape, &mut data))?;
         anyhow::ensure!(dt == T::c_repr());
         unsafe {
             let shape = std::slice::from_raw_parts(shape, rank);
