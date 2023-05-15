@@ -5,6 +5,7 @@ use std::ptr::{null, null_mut};
 
 use boow::Bow;
 use ndarray::{Dimension, RawData, Data};
+use sys::TractDatumType;
 use tract_rs_sys as sys;
 
 use anyhow::{Result, Context};
@@ -401,10 +402,10 @@ impl Value {
 
     pub fn as_parts<T: TractProxyDatumType>(&self) -> Result<(&[usize], &[T])> {
         let mut rank = 0;
-        let mut dt = 0u32;
+        let mut dt:TractDatumType = sys::TractDatumType_TRACT_DATUM_TYPE_BOOL;
         let mut shape = null();
         let mut data = null();
-        check!(sys::tract_value_inspect(self.0, &mut dt as &mut _, &mut rank, &mut shape, &mut data))?;
+        check!(sys::tract_value_inspect(self.0, &mut dt, &mut rank, &mut shape, &mut data))?;
         anyhow::ensure!(dt == T::c_repr());
         unsafe {
             let shape = std::slice::from_raw_parts(shape, rank);
