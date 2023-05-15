@@ -99,9 +99,30 @@ macro_rules! act_tests {
                 }
 
                 #[test]
+                fn abs_prop(x in x_strat()) {
+                    if $cond {
+                        run_kernel_test::<$ti, $ker>(&x, &[Abs], |x| x.abs());
+                    }
+                }
+
+                #[test]
+                fn recip_prop(x in x_strat()) {
+                    if $cond {
+                        run_kernel_test::<$ti, $ker>(&x, &[Recip], |x| x.recip());
+                    }
+                }
+
+                #[test]
                 fn add_const_prop(alpha in any::<$ti>(), x in x_strat()) {
                     if $cond {
                         run_kernel_test::<$ti, $ker>(&x, &[AddConst(alpha)], |x| x + alpha);
+                    }
+                }
+
+                #[test]
+                fn sub_const_prop(alpha in any::<$ti>(), x in x_strat()) {
+                    if $cond {
+                        run_kernel_test::<$ti, $ker>(&x, &[SubConst(alpha)], |x| x - alpha);
                     }
                 }
 
@@ -211,12 +232,34 @@ macro_rules! act_tests {
                     }
 
                     #[test]
+                    fn threshold_relu_prop(x in x_strat(), alpha in any::<$ti>()) {
+                        if $cond {
+                            run_kernel_test::<$ti, $ker>(
+                                &x,
+                                &$crate::frame::activations::definitions::threshold_relu(alpha).ops,
+                                |x| if x >= alpha { x } else { <$ti>::zero() }
+                                );
+                        }
+                    }
+
+                    #[test]
                     fn hard_sigmoid(x in x_strat(), alpha in any::<$ti>(), beta in any::<$ti>()) {
                         if $cond {
                             run_kernel_test::<$ti, $ker>(
                                 &x,
                                 &$crate::frame::activations::definitions::hard_sigmoid(alpha, beta).ops,
                                 |x| (x * alpha + beta).min(<$ti>::one()).max(<$ti>::zero())
+                                );
+                        }
+                    }
+
+                    #[test]
+                    fn softsign(x in x_strat()) {
+                        if $cond {
+                            run_kernel_test::<$ti, $ker>(
+                                &x,
+                                &$crate::frame::activations::definitions::softsign().ops,
+                                |x| x / ( <$ti>::one() + x.abs())
                                 );
                         }
                     }
@@ -232,17 +275,6 @@ macro_rules! act_tests {
                         }
                     }
                 }
-                /*
-                   prop_act_e2e!($cond, $ti, $ker, affine(alpha, beta));
-                   prop_act_e2e!($cond, $ti, $ker, leaky_relu(alpha));
-                   prop_act_e2e!($cond, $ti, $ker, threshold_relu(alpha));
-                   prop_act_e2e!($cond, $ti, $ker, softsign());
-                   prop_act_e2e!($cond, $ti, $ker, hardswish());
-                /*
-                prop_activation!($cond, $ti, $ker, sigmoid());
-                prop_activation!($cond, $ti, $ker, exp2f());
-                */
-                */
             }
         };
     }
