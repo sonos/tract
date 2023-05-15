@@ -6,9 +6,13 @@ edition = "2021"
 [dependencies]
 anyhow.workspace = true
 boow = "0.1.3"
+flate2.workspace = true
 half.workspace = true
 ndarray.workspace = true
 tract-rs-sys = { path = "sys", version = "=0.20.0-pre" }
+tract-nnef = { path = "../../nnef/" }
+tract-onnx = { path = "../../onnx/" }
+tract-onnx-opl = { path = "../../onnx-opl/" }
 
 [dev-dependencies]
 reqwest.workspace = true
