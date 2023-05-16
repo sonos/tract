@@ -1,3 +1,6 @@
+# Unreleased, targetting 0.21
+* [kaldi] remove experimental kaldi support
+
 # 0.20.5 - 2023-05-26
 * Various bugfix around Einsum
 * Einsum now has functions to translate to MatMul and other axes manipulations
