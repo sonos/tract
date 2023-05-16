@@ -1,3 +1,6 @@
+# Unreleased, targetting 0.21
+* [kaldi] remove experimental kaldi support
+
 # 0.20.6 - 2023-06-09
 * Bug fixes, fix display of If operator
 

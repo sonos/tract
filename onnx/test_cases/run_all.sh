@@ -26,7 +26,7 @@ do
     then
         continue
     fi
-    unset OPTIONS IGNORE MODEL left_context right_context subsampling adjust_final_offset
+    unset OPTIONS IGNORE MODEL left_context right_context subsampling
     . $tc/vars.sh
     for file in $CACHE_FILES
     do
@@ -50,15 +50,11 @@ do
         options="$OPTIONS"
         if [ -n "$left_context" -a "$left_context" != "0" ]
         then
-            options="$options --kaldi-left-context $left_context"
+            options="$options --edge-left-context $left_context"
         fi
         if [ -n "$right_context" -a "$right_context" != "0" ]
         then
-            options="$options --kaldi-right-context $right_context"
-        fi
-        if [ -n "$adjust_final_offset" -a "$adjust_final_offset" != "0" ]
-        then
-            options="$options --kaldi-adjust-final-offset $adjust_final_offset"
+            options="$options --edge-right-context $right_context"
         fi
         cmd="$TRACT_RUN \
             $MODEL \
