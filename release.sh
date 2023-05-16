@@ -9,7 +9,7 @@ cargo install tomato-toml
 
 CRATE=$1
 VERSION=$2
-CRATES="data linalg core nnef nnef/nnef-resources pulse-opl pulse hir tensorflow onnx-opl onnx kaldi libcli ffi cli"
+CRATES="data linalg core nnef nnef/nnef-resources pulse-opl pulse hir tensorflow onnx-opl onnx libcli ffi cli"
 
 if [ -z "$VERSION" ]
 then
