@@ -1,9 +1,10 @@
+use std::fmt::Display;
 use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{Result, Context};
 use ndarray::{RawData, Data, Dimension};
-use tract_nnef::prelude::{Framework, TypedModel, TValue, Datum, tensor1, IntoTValue, TypedRunnableModel, TypedSimpleState, TypedSimplePlan, TVec};
+use tract_nnef::prelude::{Framework, TypedModel, TValue, Datum, tensor1, IntoTValue, TypedRunnableModel, TypedSimpleState, TypedSimplePlan, TVec, TypedFact};
 use tract_onnx_opl::WithOnnx;
 
 // NNEF
@@ -79,33 +80,27 @@ impl Model {
         self.0.set_output_names(outputs)
     }
 
-//    pub fn input_fact(&self, id: usize) -> Result<Fact> {
-//        let mut ptr = null_mut();
-//        check!(sys::tract_model_input_fact(self.0, id, &mut ptr))?;
-//        Ok(Fact(ptr))
-//    }
-//
-//    pub fn output_fact(&self, id: usize) -> Result<Fact> {
-//        let mut ptr = null_mut();
-//        check!(sys::tract_model_output_fact(self.0, id, &mut ptr))?;
-//        Ok(Fact(ptr))
-//    }
-//
-//    pub fn declutter(&mut self) -> Result<()> {
-//        check!(sys::tract_model_declutter(self.0))?;
-//        Ok(())
-//    }
-//
-//    pub fn optimize(&mut self) -> Result<()> {
-//        check!(sys::tract_model_optimize(self.0))?;
-//        Ok(())
-//    }
-//
-//    pub fn into_decluttered(self) -> Result<Model> {
-//        check!(sys::tract_model_declutter(self.0))?;
-//        Ok(self)
-//    }
-//
+   pub fn input_fact(&self, id: usize) -> Result<Fact> {
+       Ok(Fact(self.0.input_fact(id)?.clone()))
+   }
+
+   pub fn output_fact(&self, id: usize) -> Result<Fact> {
+       Ok(Fact(self.0.output_fact(id)?.clone()))
+   }
+
+   pub fn declutter(&mut self) -> Result<()> {
+       self.0.declutter()
+   }
+
+   pub fn optimize(&mut self) -> Result<()> {
+       self.0.optimize()
+   }
+
+   pub fn into_decluttered(mut self) -> Result<Model> {
+       self.0.declutter()?;
+       Ok(self)
+   }
+
    pub fn into_optimized(self) -> Result<Model> {
        Ok(Model(self.0.into_optimized()?))
    }
@@ -245,3 +240,23 @@ impl<'a, T: Datum> TryFrom<&'a Value> for ndarray::ArrayViewD<'a, T> {
         value.view()
     }
 }
+
+pub struct Fact(TypedFact);
+
+impl Fact {
+    pub fn new(model: &mut Model, spec: impl ToString) -> Result<Fact> {
+        let fact = tract_nnef::prelude::Fact::to_typed_fact(&tract_libcli::tensor::parse_spec(&model.0.symbol_table, &spec.to_string())?)?.into_owned();
+        Ok(Fact(fact))
+    }
+
+    fn dump(&self) -> Result<String> {
+        Ok(format!("{:?}", self.0))
+    }
+}
+
+impl Display for Fact {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.dump().unwrap())
+    }
+}
+
