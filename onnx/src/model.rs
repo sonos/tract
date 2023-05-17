@@ -117,7 +117,7 @@ impl<'a> ParsingContext<'a> {
         let consts = model.nodes().len();
         for pbnode in graph.node.iter() {
             let name = if !pbnode.name.is_empty() {
-                pbnode.name.to_string().replace('/', "_")
+                pbnode.name.to_string()
             } else if pbnode.output.len() > 0 && !pbnode.output[0].is_empty() {
                 pbnode.output[0].to_owned()
             } else {
