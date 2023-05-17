@@ -13,6 +13,7 @@ tract-rs-sys = { path = "sys", version = "=0.20.0-pre" }
 tract-nnef = { path = "../../nnef/" }
 tract-onnx = { path = "../../onnx/" }
 tract-onnx-opl = { path = "../../onnx-opl/" }
+tract-libcli = { path = "../../libcli" }
 
 [dev-dependencies]
 reqwest.workspace = true
