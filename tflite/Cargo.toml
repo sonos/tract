@@ -1,0 +1,17 @@
+[package]
+name = "tract-tflite"
+version = "0.1.0"
+authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
+license = "MIT/Apache-2.0"
+description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
+repository = "https://github.com/snipsco/tract"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+flatbuffers = {version="23.1.21"}
+
+[lib]
+name="tflite-rs"
+path="src/lib.rs"
