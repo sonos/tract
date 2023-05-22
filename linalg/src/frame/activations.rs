@@ -142,6 +142,7 @@ pub union OpOrConst<T: LADatum> {
 }
 
 pub trait Activation<T: LADatum>: Send + Sync + Debug + dyn_clone::DynClone {
+    fn name(&self) -> &'static str;
     fn run(&self, prog: &Program<T>, vec: &mut [T]) -> TractResult<()>;
 }
 
@@ -159,6 +160,10 @@ where
     T: LADatum,
     K: ActivationKer<T> + Clone,
 {
+    fn name(&self) -> &'static str {
+        K::name()
+    }
+
     fn run(&self, program: &Program<T>, vec: &mut [T]) -> TractResult<()> {
         let ker_program = program.translate();
         run_over_slice_with_alignment(
