@@ -70,6 +70,7 @@ pub struct TensorValues {
 
 fn parse_dt(dt: &str) -> TractResult<DatumType> {
     Ok(match dt.to_lowercase().as_ref() {
+        "bool" => DatumType::Bool,
         "f16" => DatumType::F16,
         "f32" => DatumType::F32,
         "f64" => DatumType::F64,
