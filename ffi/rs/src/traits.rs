@@ -151,86 +151,12 @@ pub trait ValueInterface: Sized {
     fn view<T: TractProxyDatumType>(&self) -> Result<ndarray::ArrayViewD<T>>;
 }
 
-/*
-impl<V: ValueInterface, T, S, D> TryFrom<ndarray::ArrayBase<S, D>> for V
-where
-T: TractProxyDatumType,
-S: RawData<Elem = T> + Data,
-D: Dimension,
-{
-type Error = anyhow::Error;
-fn try_from(view: ndarray::ArrayBase<S, D>) -> Result<V> {
-if let Some(slice) = view.as_slice_memory_order() {
-V::from_shape_and_slice(view.shape(), slice)
-} else {
-let slice: Vec<_> = view.iter().cloned().collect();
-V::from_shape_and_slice(view.shape(), &slice)
-}
-}
-}
-
-impl<'a, V: ValueInterface, T: TractProxyDatumType> TryFrom<&'a V> for ndarray::ArrayViewD<'a, T> {
-type Error = anyhow::Error;
-fn try_from(value: &'a V) -> Result<Self, Self::Error> {
-value.view()
-}
-}
-*/
-
 pub trait FactInterface: Display {}
 pub trait InferenceFactInterface: Display {}
 
 pub trait AsFact<M, F> {
     fn as_fact(&self, model: &mut M) -> Result<Bow<F>>;
 }
-
-/*
-
-impl<M: InferenceModelInterface> AsFact<M, M::InferenceFact> for M::InferenceFact
-where
-    M::InferenceFact: Sized + 'static,
-{
-    fn as_fact(&self, _model: &mut M) -> Result<Bow<M::InferenceFact>> {
-        Ok(Bow::Borrowed(self))
-    }
-}
-
-impl<'s, M: InferenceModelInterface> AsFact<M, M::InferenceFact> for &'s str {
-    fn as_fact(&self, model: &mut M) -> Result<Bow<M::InferenceFact>> {
-        Ok(Bow::Owned(M::InferenceFact::new(model, self)?))
-    }
-}
-*/
-
-/*
-impl AsFact<InferenceModel, InferenceFact> for () {
-fn as_fact(&self, model: &mut InferenceModel) -> Result<Bow<InferenceFact>> {
-Ok(Bow::Owned(InferenceFact::new(model, "")?))
-}
-}
-
-impl AsFact<InferenceModel, InferenceFact> for Option<&str> {
-fn as_fact(&self, model: &mut InferenceModel) -> Result<Bow<InferenceFact>> {
-if let Some(it) = self {
-Ok(Bow::Owned(InferenceFact::new(model, it)?))
-} else {
-Ok(Bow::Owned(InferenceFact::new(model, "")?))
-}
-}
-}
-
-impl AsFact<Model, Fact> for Fact {
-fn as_fact(&self, _model: &mut Model) -> Result<Bow<Fact>> {
-Ok(Bow::Borrowed(self))
-}
-}
-
-impl<S: AsRef<str>> AsFact<Model, Fact> for S {
-fn as_fact(&self, model: &mut Model) -> Result<Bow<Fact>> {
-Ok(Bow::Owned(Fact::new(model, self.as_ref())?))
-}
-}
-*/
 
 pub trait TractProxyDatumType: Clone {
     fn c_repr() -> TractDatumType;

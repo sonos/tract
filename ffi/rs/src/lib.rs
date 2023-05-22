@@ -1,3 +1,6 @@
+#[macro_use]
+mod macros;
+
 mod dylib;
 //mod staticlib;
 mod traits;
