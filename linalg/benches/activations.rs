@@ -1,9 +1,11 @@
 use criterion::{black_box, criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
 use tract_linalg::frame::activations::{definitions, reference, ActivationKer, Program};
 
+const SIZES:&[i32] = &[32, 256, 1024, 8192];
+
 fn crit(c: &mut Criterion, name: &str, r: impl Fn(f32) -> f32, prog: &Program<f32>) {
     let mut group = c.benchmark_group(name);
-    for size in [1i32, 32, 256, 1024, 8192].iter() {
+    for size in SIZES {
         group.throughput(criterion::Throughput::Elements(*size as u64));
         group.bench_with_input(BenchmarkId::new("Reference", size), size, |b, size| {
             b.iter_batched(
@@ -14,7 +16,7 @@ fn crit(c: &mut Criterion, name: &str, r: impl Fn(f32) -> f32, prog: &Program<f3
                     }
                 },
                 BatchSize::LargeInput,
-            )
+                )
         });
         #[allow(unused_mut)]
         let mut vms = vec!(tract_linalg::generic::activations::SActivations::act());
@@ -29,7 +31,17 @@ fn crit(c: &mut Criterion, name: &str, r: impl Fn(f32) -> f32, prog: &Program<f3
                     || vec![1.0f32; *size as usize],
                     |mut v| vm.run(prog, &mut v),
                     BatchSize::LargeInput,
-                )
+                    )
+            });
+        }
+        if name == "sigmoid" {
+            let sigmoid = (tract_linalg::ops().sigmoid_f32)();
+            group.bench_with_input(BenchmarkId::new("handcrafted", size), size, |b, size| {
+                b.iter_batched(
+                    || vec![1.0f32; *size as usize],
+                    |mut v| sigmoid.run(&mut v),
+                    BatchSize::LargeInput,
+                    )
             });
         }
     }
@@ -38,11 +50,12 @@ fn crit(c: &mut Criterion, name: &str, r: impl Fn(f32) -> f32, prog: &Program<f3
 fn criterion_benchmark(c: &mut Criterion) {
     crit(c, "relu", reference::relu, &definitions::relu());
     crit(c, "hardswish", reference::hardswish, &definitions::hard_swish());
-    /*
-    crit(c, "exp2f", reference::exp2f, &definitions::exp2f());
     crit(c, "sigmoid", reference::sigmoid, &definitions::sigmoid());
-    */
-}
 
-criterion_group!(benches, criterion_benchmark);
-criterion_main!(benches);
+        /*
+           crit(c, "exp2f", reference::exp2f, &definitions::exp2f());
+           */
+    }
+
+    criterion_group!(benches, criterion_benchmark);
+    criterion_main!(benches);

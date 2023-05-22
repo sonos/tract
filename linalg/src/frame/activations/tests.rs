@@ -189,9 +189,27 @@ macro_rules! act_tests {
                         run_kernel_test::<$ti, $ker>(&x,
                             &[Load(RegisterId::B, 2 as _), Load(RegisterId::C, 3 as _), IfPosTE], 
                             |x| if x >= <$ti>::zero() { 2 as _ } else { 3 as _ });
-                        }
                     }
                 }
+
+                #[test]
+                fn swapbc_prop(x in x_strat()) {
+                    if $cond {
+                        run_kernel_test::<$ti, $ker>(&x,
+                            &[Load(RegisterId::B, 2 as _), Load(RegisterId::C, 3 as _), SwapBC, IfPosTE], 
+                            |x| if x >= <$ti>::zero() { 3 as _ } else { 2 as _ });
+                    }
+                }
+
+                #[test]
+                fn fma_prop(x in x_strat(), b in any::<$ti>(), k in any::<$ti>()) {
+                    if $cond {
+                        run_kernel_test::<$ti, $ker>(&x,
+                            &[Load(RegisterId::B, b), FMA(k)],
+                            |x| x * b + k);
+                    }
+                }
+            }
 
                 #[test]
                 fn max_const_zero() {
@@ -272,7 +290,7 @@ macro_rules! act_tests {
                     }
 
                     #[test]
-                    fn hard_sigmoid(x in x_strat(), alpha in any::<$ti>(), beta in any::<$ti>()) {
+                    fn hard_sigmoid_prop(x in x_strat(), alpha in any::<$ti>(), beta in any::<$ti>()) {
                         if $cond {
                             run_kernel_test::<$ti, $ker>(
                                 &x,
@@ -283,7 +301,7 @@ macro_rules! act_tests {
                     }
 
                     #[test]
-                    fn softsign(x in x_strat()) {
+                    fn softsign_prop(x in x_strat()) {
                         if $cond {
                             run_kernel_test::<$ti, $ker>(
                                 &x,
@@ -294,12 +312,23 @@ macro_rules! act_tests {
                     }
 
                     #[test]
-                    fn hard_swish(x in x_strat()) {
+                    fn hard_swish_prop(x in x_strat()) {
                         if $cond {
                             run_kernel_test::<$ti, $ker>(
                                 &x,
                                 &$crate::frame::activations::definitions::hard_swish().ops,
                                 |x| (x * 1./6. + 0.5).min(<$ti>::one()).max(<$ti>::zero()) * x
+                                );
+                        }
+                    }
+
+                    #[test]
+                    fn sigmoid_prop(x in x_strat()) {
+                        if $cond {
+                            run_kernel_test::<$ti, $ker>(
+                                &x,
+                                &$crate::frame::activations::definitions::sigmoid().ops,
+                                crate::generic::sigmoid::ssigmoid
                                 );
                         }
                     }

@@ -339,8 +339,41 @@
     fmax        v7.4s, v7.4s, v24.4s
     b .inner_loop
 
-.fma:
-    b           .unsupported
+.fma: 
+    // a <- a * b + k
+    // vfma a,b,c does a <- a + b * c
+    // mov d,a ; mov a,#k ; vfma a, b, d
+
+    and         v24.16b, v0.16b, v0.16b
+    and         v25.16b, v1.16b, v1.16b
+    and         v26.16b, v2.16b, v2.16b
+    and         v27.16b, v3.16b, v3.16b
+    and         v28.16b, v4.16b, v4.16b
+    and         v29.16b, v5.16b, v5.16b
+    and         v30.16b, v6.16b, v6.16b
+    and         v31.16b, v7.16b, v7.16b
+
+    ins         v0.s[0], w3
+    add         x5, x5, 4
+    dup         v0.4s, v0.s[0]
+    dup         v1.4s, v0.s[0]
+    dup         v2.4s, v0.s[0]
+    dup         v3.4s, v0.s[0]
+    dup         v4.4s, v0.s[0]
+    dup         v5.4s, v0.s[0]
+    dup         v6.4s, v0.s[0]
+    dup         v7.4s, v0.s[0]
+
+    fmla        v0.4s, v24.4s, v8.4s 
+    fmla        v1.4s, v25.4s, v9.4s 
+    fmla        v2.4s, v26.4s, v10.4s
+    fmla        v3.4s, v27.4s, v11.4s
+    fmla        v4.4s, v28.4s, v12.4s
+    fmla        v5.4s, v29.4s, v13.4s
+    fmla        v6.4s, v30.4s, v14.4s
+    fmla        v7.4s, v31.4s, v15.4s
+
+    b           .inner_loop
 
 .if_pos_then_else:
     fcmge       v0.4s, v0.4s, #0.0
@@ -362,7 +395,34 @@
     b .inner_loop
 
 .swap_b_c:
-    b           .unsupported
+// move d <- b
+    and        v24.16b, v8.16b , v8.16b
+    and        v25.16b, v9.16b , v9.16b
+    and        v26.16b, v10.16b, v10.16b
+    and        v27.16b, v11.16b, v11.16b
+    and        v28.16b, v12.16b, v12.16b
+    and        v29.16b, v13.16b, v13.16b
+    and        v30.16b, v14.16b, v14.16b
+    and        v31.16b, v15.16b, v15.16b
+// move b <- c
+    and        v8.16b , v16.16b, v16.16b
+    and        v9.16b , v17.16b, v17.16b
+    and        v10.16b, v18.16b, v18.16b
+    and        v11.16b, v19.16b, v19.16b
+    and        v12.16b, v20.16b, v20.16b
+    and        v13.16b, v21.16b, v21.16b
+    and        v14.16b, v22.16b, v22.16b
+    and        v15.16b, v23.16b, v23.16b
+// move c <- d
+    and        v16.16b, v24.16b, v24.16b
+    and        v17.16b, v25.16b, v25.16b
+    and        v18.16b, v26.16b, v26.16b
+    and        v19.16b, v27.16b, v27.16b
+    and        v20.16b, v28.16b, v28.16b
+    and        v21.16b, v29.16b, v29.16b
+    and        v22.16b, v30.16b, v30.16b
+    and        v23.16b, v31.16b, v31.16b
+    b           .inner_loop
 
 .floor:
     b           .unsupported
