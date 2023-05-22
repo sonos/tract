@@ -552,42 +552,5 @@ impl std::fmt::Display for InferenceFact {
     }
 }
 
-impl AsFact<InferenceModel, InferenceFact> for InferenceFact {
-    fn as_fact(&self, _model: &mut InferenceModel) -> Result<Bow<InferenceFact>> {
-        Ok(Bow::Borrowed(self))
-    }
-}
-
-impl AsFact<InferenceModel, InferenceFact> for &str {
-    fn as_fact(&self, model: &mut InferenceModel) -> Result<Bow<InferenceFact>> {
-        Ok(Bow::Owned(InferenceFact::new(model, self)?))
-    }
-}
-
-impl AsFact<InferenceModel, InferenceFact> for () {
-    fn as_fact(&self, model: &mut InferenceModel) -> Result<Bow<InferenceFact>> {
-        Ok(Bow::Owned(InferenceFact::new(model, "")?))
-    }
-}
-
-impl AsFact<InferenceModel, InferenceFact> for Option<&str> {
-    fn as_fact(&self, model: &mut InferenceModel) -> Result<Bow<InferenceFact>> {
-        if let Some(it) = self {
-            Ok(Bow::Owned(InferenceFact::new(model, it)?))
-        } else {
-            Ok(Bow::Owned(InferenceFact::new(model, "")?))
-        }
-    }
-}
-
-impl AsFact<Model, Fact> for Fact {
-    fn as_fact(&self, _model: &mut Model) -> Result<Bow<Fact>> {
-        Ok(Bow::Borrowed(self))
-    }
-}
-
-impl<S: AsRef<str>> AsFact<Model, Fact> for S {
-    fn as_fact(&self, model: &mut Model) -> Result<Bow<Fact>> {
-        Ok(Bow::Owned(Fact::new(model, self.as_ref())?))
-    }
-}
+as_inference_fact_impl!(InferenceModel, InferenceFact);
+as_fact_impl!(Model, Fact);
