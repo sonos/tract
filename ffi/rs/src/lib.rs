@@ -1,5 +1,9 @@
 mod dylib;
-mod staticlib;
+//mod staticlib;
+mod traits;
 
-// pub use dylib::*;
-pub use staticlib::*;
+pub use traits::*;
+pub use dylib::*;
+//pub use staticlib::*;
+
+pub use dylib::Tract;
