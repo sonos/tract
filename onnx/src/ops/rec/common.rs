@@ -119,6 +119,7 @@ impl CommonRec {
         outer_inputs.push(x_batch_first);
         input_mapping.push(scan::InputMapping::Scan(ScanInfo { axis: 1, chunk }));
         let mut x_source_fact = target.outlet_fact(x_batch_first)?.without_value();
+        let iters = x_source_fact.shape[1].clone();
         x_source_fact.shape.set(1, 1.to_dim());
         let x_source = body.add_source("x_source", x_source_fact)?;
         wire!(Xt = AxisOp::Rm(1), x_source);
@@ -246,12 +247,7 @@ impl CommonRec {
 
         let scan_outputs = target.wire_node(
             prefix,
-            tract_core::ops::scan::Scan::new(
-                body,
-                input_mapping,
-                output_mapping,
-                0,
-            )?,
+            tract_core::ops::scan::Scan::new(body, input_mapping, output_mapping, 0, iters)?,
             &outer_inputs,
         )?;
 

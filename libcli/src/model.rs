@@ -85,9 +85,9 @@ pub trait Model:
         if let Some(submodel) = self.node_op(id).downcast_ref::<tract_core::ops::submodel::SubmodelOp>() {
             submodel.iteration_count(input)
         } else if let Some(lir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::LirScan>() {
-            lir.iteration_count(input)
+            Some(lir.iters.clone())
         } else if let Some(mir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::Scan>() {
-            mir.iteration_count(input)
+            Some(mir.iters.clone())
         } else {
             None
         }

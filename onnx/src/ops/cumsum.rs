@@ -45,6 +45,7 @@ impl Expansion for CumSum {
             format!("{prefix}.zero"),
             Tensor::zero_dt(data.datum_type, &[])?.into_arc_tensor(),
         )?;
+        let iters = var_shape[axis].clone();
         var_shape.set(axis, 1.to_dim());
         let init = model.wire_node(
             format!("{prefix}.init"),
@@ -77,7 +78,7 @@ impl Expansion for CumSum {
         let acc = body.add_source("acc_input", var_fact)?;
         let sum = body.wire_node("add", tract_core::ops::math::add(), &[x, acc])?[0];
         body.set_output_outlets(&[sum, acc])?;
-        let scan = scan::Scan::new(body, input_mapping, output_mapping, 0)?;
+        let scan = scan::Scan::new(body, input_mapping, output_mapping, 0, iters)?;
         let wires = model.wire_node(prefix, scan, &[inputs[0], init])?;
         let output = wires[self.exclusive as usize];
         Ok(tvec![output])
