@@ -154,12 +154,14 @@ fn de_scan(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
     let scan: TVec<(String, OutletId, usize, isize)> = invocation.named_arg_as(builder, "scan")?;
     let full: TVec<(String, OutletId)> = invocation.named_arg_as(builder, "full")?;
     let state: TVec<(String, OutletId, String)> = invocation.named_arg_as(builder, "state")?;
+    let mut iters:Option<TDim>  = None;
     for par in &fragment.decl.parameters {
         let (outer_input_wire, inner_fact) = if let Some((_, wire, axis, chunk)) =
             scan.iter().find(|s| s.0 == par.id.0 || escape(&s.0) == par.id.0)
         {
             input_mapping.push(InputMapping::Scan(ScanInfo { axis: *axis, chunk: *chunk }));
             let mut fact = builder.model.outlet_fact(*wire)?.clone();
+            iters = Some(fact.shape[*axis].clone().div_ceil(chunk.abs() as _));
             fact.shape.set(*axis, chunk.abs().to_dim());
             (*wire, fact)
         } else if let Some((_, wire)) =
@@ -183,6 +185,7 @@ fn de_scan(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
             Value::Wire(body.model.add_source(par.id.0.to_string(), inner_fact)?),
         );
     }
+    let iters = iters.unwrap();
     body.wire_body(fragment.body.as_deref().unwrap()).context("wiring scan body")?;
     let body_outputs = fragment
         .decl
@@ -246,7 +249,7 @@ fn de_scan(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
         });
     }
     let skip: usize = invocation.named_arg_as(builder, "skip")?;
-    let op = Scan::new(body.model, input_mapping, output_mapping, skip)?;
+    let op = Scan::new(body.model, input_mapping, output_mapping, skip, iters)?;
     builder.wire(op, &outer_inputs)
 }
 

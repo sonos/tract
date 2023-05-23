@@ -99,6 +99,7 @@ impl Expansion for BlockLSTM {
         outer_inputs.push(inputs[1]);
         input_mapping.push(scan::InputMapping::Scan(ScanInfo { axis: 0, chunk: 1 }));
         let mut x_source_fact = model.outlet_fact(inputs[1])?.clone();
+        let iters = x_source_fact.shape[0].clone();
         x_source_fact.shape.set(0, 1.to_dim());
         let x_source = body.add_source("x_source", x_source_fact)?;
         wire!(x = AxisOp::Rm(0), x_source);
@@ -174,7 +175,7 @@ impl Expansion for BlockLSTM {
         if seqlen.to_scalar::<TDim>()? != &model.outlet_fact(inputs[1])?.shape[0] {
             bail!("seq_len only supported for trivial noop case");
         };
-        let scan = scan::Scan::new(body, input_mapping, output_mapping, 0)?;
+        let scan = scan::Scan::new(body, input_mapping, output_mapping, 0, iters)?;
         model.wire_node(prefix, scan, &outer_inputs)
     }
 }

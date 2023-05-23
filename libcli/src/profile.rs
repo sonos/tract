@@ -146,7 +146,7 @@ fn profile_submodel(
             new_prefix.push((node.id, "loop".to_string()));
 
             let scan_inputs = make_inputs_for_model(scan_state.model_state.model())?;
-            let multi = scan_state.iteration_count(&input);
+            let multi = scan_state.params.iters.to_usize().unwrap();
 
             rec_profiler(
                 &mut scan_state.model_state,
