@@ -3,6 +3,7 @@ use std::fmt::Debug;
 use crate::pb::*;
 use tract_hir::internal::*;
 use tract_hir::tract_core::dyn_clone::{clone_trait_object, DynClone};
+use tract_hir::tract_core::ops::array::DynSlice;
 use tract_hir::tract_core::ops::scan::ScanInfo;
 
 pub trait WireBody: Debug + DynClone + Send + Sync {
@@ -117,12 +118,21 @@ impl CommonRec {
         // scann inner interface: [chunk=1, batch_size, input_size]
         // onnx inner interface: [batch_size, input_size]
         outer_inputs.push(x_batch_first);
-        input_mapping.push(scan::InputMapping::Scan(ScanInfo { axis: 1, chunk }));
-        let mut x_source_fact = target.outlet_fact(x_batch_first)?.without_value();
+        //        input_mapping.push(scan::InputMapping::Scan(ScanInfo { axis: 1, chunk }));
+        input_mapping.push(scan::InputMapping::Full);
+        let x_source_fact = target.outlet_fact(x_batch_first)?.without_value();
         let iters = x_source_fact.shape[1].clone();
-        x_source_fact.shape.set(1, 1.to_dim());
         let x_source = body.add_source("x_source", x_source_fact)?;
-        wire!(Xt = AxisOp::Rm(1), x_source);
+
+        input_mapping.push(scan::InputMapping::State);
+        let zero = target.add_const(format!("{prefix}.zero"), tensor0(0i64))?;
+        outer_inputs.push(zero);
+        let i = body.add_source("i", i64::scalar_fact())?;
+        let one = body.add_const("one", tensor0(1i64))?;
+        wire!(i_plus_one = tract_core::ops::math::add(), i, one);
+        let dyn_slice = DynSlice { axis: 1, start_input: true, end_input: true, len: 1.to_dim() };
+        wire!(x_slice = dyn_slice, x_source, i, i_plus_one);
+        wire!(Xt = AxisOp::Rm(1), x_slice);
 
         // W: onnx interface: [num_directions, 3*hidden_size, input_size]
         // scan interfaces: [3*hidden_size, input_size]
@@ -229,13 +239,24 @@ impl CommonRec {
         };
 
         self.body.wire_body(prefix, &mut body).context("Wiring body")?;
+        let mut outputs = body.outputs.clone();
+        outputs.insert(0, i_plus_one);
+        body.set_output_outlets(&*outputs)?;
 
-        let mut output_mapping = vec![scan::OutputMapping {
-            state: true,
-            full_dim_hint: None,
-            last_value_slot: self.optional_y_h_output,
-            scan: self.optional_y_output.map(|slot| (slot, ScanInfo { axis: 1, chunk })),
-        }];
+        let mut output_mapping = vec![
+            scan::OutputMapping {
+                state: true,
+                full_dim_hint: None,
+                last_value_slot: None,
+                scan: None,
+            },
+            scan::OutputMapping {
+                state: true,
+                full_dim_hint: None,
+                last_value_slot: self.optional_y_h_output,
+                scan: self.optional_y_output.map(|slot| (slot, ScanInfo { axis: 1, chunk })),
+            },
+        ];
         if self.body.have_extra_c_state() {
             output_mapping.push(scan::OutputMapping {
                 state: true,
