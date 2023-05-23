@@ -6,7 +6,7 @@ pub struct DynSlice {
     pub axis: usize,
     pub start_input: bool,
     pub end_input: bool,
-    pub symbol: Symbol,
+    pub len: TDim,
 }
 
 impl DynSlice {
@@ -63,8 +63,8 @@ impl EvalOp for DynSlice {
 
 impl TypedOp for DynSlice {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let mut fact = inputs[0].clone();
-        fact.shape.set(self.axis, self.symbol.clone().into());
+        let mut fact = inputs[0].without_value();
+        fact.shape.set(self.axis, self.len.clone().into());
         Ok(tvec!(fact))
     }
 
