@@ -560,7 +560,7 @@ pub fn matmul(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     let name = &*invocation.invocation.id.0;
     if a_dt.is_quantized() || b_dt.is_quantized() {
         for input in 0..7 {
-            axes = axes.with_extra_input(input)?;
+            axes = axes.with_extra_input(2 + input)?;
         }
         let accum_dt = DatumType::QI32(QParams::ZpScale {
             scale: a_dt.zp_scale().1 * b_dt.zp_scale().1,
