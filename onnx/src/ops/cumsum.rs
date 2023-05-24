@@ -1,4 +1,5 @@
 use tract_hir::internal::*;
+use tract_hir::tract_core::ops::array::DynSlice;
 use tract_hir::tract_core::ops::scan::ScanInfo;
 
 use crate::model::{OnnxOpRegister, ParsingContext};
@@ -45,6 +46,7 @@ impl Expansion for CumSum {
             format!("{prefix}.zero"),
             Tensor::zero_dt(data.datum_type, &[])?.into_arc_tensor(),
         )?;
+        let iters = var_shape[axis].clone();
         var_shape.set(axis, 1.to_dim());
         let init = model.wire_node(
             format!("{prefix}.init"),
@@ -53,11 +55,17 @@ impl Expansion for CumSum {
         )?[0];
         let chunk = if self.reverse { -1 } else { 1 };
         let input_mapping =
-            vec![scan::InputMapping::Scan(ScanInfo { axis, chunk }), scan::InputMapping::State];
+            vec![scan::InputMapping::Full, scan::InputMapping::State, scan::InputMapping::State];
         // outputs will be
         // acc + x (!exclusive)
         // acc input (exclusive)
         let output_mapping = vec![
+            scan::OutputMapping {
+                scan: None,
+                full_dim_hint: None,
+                last_value_slot: None,
+                state: true,
+            },
             scan::OutputMapping {
                 scan: Some((0, ScanInfo { axis, chunk })),
                 full_dim_hint: None,
@@ -73,12 +81,32 @@ impl Expansion for CumSum {
         ];
         let mut body = TypedModel::default();
         let var_fact = data.datum_type.fact(var_shape);
-        let x = body.add_source("scan_input", var_fact.clone())?;
+        let x = body.add_source("scan_input", data)?;
+
+        let i = body.add_source("i", i64::scalar_fact())?;
+        let one = body.add_const("one", tensor0(1i64))?;
+        let i_plus_one = body.wire_node("inc_i", tract_core::ops::math::add(), &[i, one])?[0];
+        let x_slice = body.wire_node(
+            "x",
+            DynSlice {
+                axis,
+                start_input: true,
+                end_input: true,
+                len: 1.to_dim(),
+            },
+            &[x, i, i_plus_one],
+        )?[0];
+
         let acc = body.add_source("acc_input", var_fact)?;
-        let sum = body.wire_node("add", tract_core::ops::math::add(), &[x, acc])?[0];
-        body.set_output_outlets(&[sum, acc])?;
-        let scan = scan::Scan::new(body, input_mapping, output_mapping, 0)?;
-        let wires = model.wire_node(prefix, scan, &[inputs[0], init])?;
+        dbg!(axis);
+        dbg!(body.outlet_fact(x));
+        dbg!(body.outlet_fact(x_slice));
+        dbg!(body.outlet_fact(acc));
+        let sum = body.wire_node("add", tract_core::ops::math::add(), &[x_slice, acc])?[0];
+        body.set_output_outlets(&[i_plus_one, sum, acc])?;
+        let scan = scan::Scan::new(body, input_mapping, output_mapping, 0, iters)?;
+        let zero = model.add_const(format!("{prefix}.zero"), tensor0(0i64))?;
+        let wires = model.wire_node(prefix, scan, &[inputs[0], zero, init])?;
         let output = wires[self.exclusive as usize];
         Ok(tvec![output])
     }

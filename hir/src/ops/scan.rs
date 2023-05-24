@@ -49,17 +49,19 @@ impl EvalOp for InferenceScan {
 
 impl InferenceScan {
     pub(super) fn to_mir_scan(&self) -> TractResult<Box<Scan>> {
-        let typed_model = self.body.clone().into_typed()?;
+        let iters = self.iter_count_fact.concretize().unwrap();
+        let typed_body = self.body.clone().into_typed()?;
         let input_mapping = self
             .input_mapping
             .iter()
             .enumerate()
             .map(|(ix, im)| {
                 Ok(match im {
-                    InputMapping::Scan(info) => InputMapping::Scan(ScanInfo {
-                        chunk: typed_model.input_fact(ix)?.shape[info.axis].to_isize()?,
+                    InputMapping::Scan(info) => { 
+                        InputMapping::Scan(ScanInfo {
+                        chunk: typed_body.input_fact(ix)?.shape[info.axis].to_isize()?,
                         ..*info
-                    }),
+                    })},
                     other => other.clone(),
                 })
             })
@@ -70,10 +72,13 @@ impl InferenceScan {
             .enumerate()
             .map(|(ix, im)| {
                 let scan = if let Some((slot, scan)) = im.scan {
-                    Some((slot, ScanInfo {
-                        chunk: typed_model.input_fact(ix)?.shape[scan.axis].to_isize()?,
-                        ..scan
-                    }))
+                    Some((
+                        slot,
+                        ScanInfo {
+                            chunk: typed_body.input_fact(ix)?.shape[scan.axis].to_isize()?,
+                            ..scan
+                        },
+                    ))
                 } else {
                     None
                 };
@@ -85,12 +90,7 @@ impl InferenceScan {
                 })
             })
             .collect::<TractResult<_>>()?;
-        Ok(Box::new(Scan::new(
-            typed_model,
-            input_mapping,
-            output_mapping,
-            0,
-        )?))
+        Ok(Box::new(Scan::new(typed_body, input_mapping, output_mapping, 0, iters)?))
     }
 
     fn unify_scanning_tensor_fact(
@@ -248,7 +248,8 @@ impl InferenceOp for InferenceScan {
             .filter_map(|om| om.last_value_slot)
             .chain(self.output_mapping.iter().filter_map(|om| om.scan.map(|si| si.0)))
             .max()
-            .context("No output slot found")? + 1;
+            .context("No output slot found")?
+            + 1;
         if inputs.len() != expected_op_inputs {
             bail!("Scan receives {} inputs, mappings expects {}", inputs.len(), expected_op_inputs)
         }
