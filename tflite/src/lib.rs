@@ -1,15 +1,24 @@
+mod ops;
 mod tflite_generated;
-use crate::tflite_generated::tflite::Model;
-pub struct TFLiteModel<'model> {
-    pub model: Model<'model>,
+use crate::tflite_generated::tflite::Model as ModelBuffer;
+
+impl ModelBuffer
+{
+    pub fn from_file(path: P) -> Result<ModelBuffer, Error> {
+        let model_file = &*fs::read(model_file_path)?;
+        let mut buffer = Vec::new();
+        let table = unsafe { flatbuffers::Table::new(&model_file, 28) };
+        let model = unsafe { Model::init_from_table(table) };
+        Ok(model)
+    }
 }
 
-impl TFLiteModel<'_> {
-    pub fn new(model_file: &[u8]) -> TFLiteModel {
-        unsafe {
-            let table = flatbuffers::Table::new(model_file, 28);
-            let model = Model::init_from_table(table);
-            TFLiteModel { model }
-        }
-    }
+#[derive(Clone, Default)]
+pub struct TFLiteOpRegister(pub HashMap<u8, OpBuilder)
+pub struct TFLiteModel<'model> {
+    pub model: TFLiteOpRegister,
+}
+
+impl TFLite<'_> {
+    
 }
