@@ -6,7 +6,13 @@ unimplemented, sausage is being made. If you want to help feel free to open a PR
 
 [link to the related issue](https://github.com/sonos/tract/issues/1086)
 
-right now the main task is to create a typedmodel from the model from the flatbuffer table. I'll add more here as progress is made.
+The generated code handles creating a model from a flatbuffer table. Right now the main task (as far as I understand) is to start adding the code to build a Tract Model from the ModelBuffer.
+
+So the modelBuffer(the model read from a flatbuffer file) has a few components (with associated functions) worth looking at: operator_codes, subgraphs, and then buffers.
+- subgraphs are likely the primary thing needed to create a tract model
+  - composed of tensors, inputs,outputs, operators, and a name
+  - input and output are fairly small vectors, I suspect they may be indices
+- buffers are sometimes empty (why?)
 
 ### Operators
 
