@@ -1,6 +1,6 @@
 [package]
 name = "example-dump-nnef-mobilenet-v2"
-version = "0.20.5-pre"
+version = "0.20.6-pre"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT/Apache-2.0"
 edition = "2021"
@@ -8,4 +8,4 @@ edition = "2021"
 [dependencies]
 image.workspace = true
 
-tract-nnef = { version = "=0.20.5", path = "../../nnef" }
+tract-nnef = { version = "=0.20.6-pre", path = "../../nnef" }
