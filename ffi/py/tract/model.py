@@ -145,7 +145,7 @@ class Model:
         """Convert the model to hald precision
         """
         self._valid()
-        check(lib.tract_model_half(byref(self.ptr)))
+        check(lib.tract_model_half(self.ptr))
 
     def declutter(self) -> None:
         """Declutter a model.
