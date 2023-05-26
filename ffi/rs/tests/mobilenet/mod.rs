@@ -139,6 +139,19 @@ fn test_pulse() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_half() -> anyhow::Result<()> {
+    let mut model = onnx()?.model_for_path("mobilenetv2-7.onnx")?;
+    model.set_input_fact(0, "B,3,224,224,f32")?;
+    model.set_output_fact(0, None)?;
+    model.analyse()?;
+    let mut typed = model.into_typed()?.into_decluttered()?;
+    typed.half()?;
+    assert_eq!(typed.input_fact(0)?.to_string(), "1,3,224,224,F16");
+    assert_eq!(typed.output_fact(0)?.to_string(), "1,1000,F16");
+    Ok(())
+}
+
+#[test]
 fn test_typed_model_to_nnef_and_back() -> anyhow::Result<()> {
     ensure_models()?;
     let mut model = onnx()?.model_for_path("mobilenetv2-7.onnx")?;
