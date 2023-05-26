@@ -3,7 +3,7 @@ use std::path::Path;
 
 use boow::Bow;
 use sys::TractDatumType;
-use tract_nnef::prelude::{Datum, DatumType};
+use tract_nnef::prelude::Datum;
 use tract_rs_sys as sys;
 
 use anyhow::Result;
@@ -11,13 +11,10 @@ use anyhow::Result;
 pub trait TractInterface {
     type Nnef: NnefInterface;
     type Onnx: OnnxInterface;
-    type Value: ValueInterface;
 
     fn version() -> &'static str;
     fn nnef() -> Result<Self::Nnef>;
     fn onnx() -> Result<Self::Onnx>;
-
-    fn value_from_shape_and_slice<T: TractProxyDatumType>(shape: &[usize], data: &[T]) -> Result<Self::Value>;
 }
 
 pub trait NnefInterface: Sized {
@@ -165,9 +162,6 @@ pub trait AsFact<M, F> {
     fn as_fact(&self, model: &mut M) -> Result<Bow<F>>;
 }
 
-pub use tract_onnx::prelude::Datum as TractProxyDatumType;
-
-/*
 pub trait TractProxyDatumType: Datum {
     fn c_repr() -> TractDatumType;
 }
@@ -194,4 +188,3 @@ impl_datum_type!(i64, sys::TractDatumType_TRACT_DATUM_TYPE_I64);
 impl_datum_type!(half::f16, sys::TractDatumType_TRACT_DATUM_TYPE_F16);
 impl_datum_type!(f32, sys::TractDatumType_TRACT_DATUM_TYPE_F32);
 impl_datum_type!(f64, sys::TractDatumType_TRACT_DATUM_TYPE_F64);
-*/

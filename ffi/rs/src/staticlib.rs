@@ -22,7 +22,6 @@ pub struct Tract;
 impl TractInterface for Tract {
     type Nnef = Nnef;
     type Onnx = Onnx;
-    type Value = Value;
     fn nnef() -> Result<Self::Nnef> {
         Ok(Nnef(tract_nnef::nnef()))
     }
@@ -31,12 +30,6 @@ impl TractInterface for Tract {
     }
     fn version() -> &'static str {
         env!("CARGO_PKG_VERSION")
-    }
-    fn value_from_shape_and_slice<T: TractProxyDatumType>(
-        shape: &[usize],
-        data: &[T],
-    ) -> Result<Self::Value> {
-        Value::from_shape_and_slice(shape, data)
     }
 }
 
@@ -339,7 +332,8 @@ pub struct Value(TValue);
 
 impl ValueInterface for Value {
     fn from_shape_and_slice<T: TractProxyDatumType>(shape: &[usize], data: &[T]) -> Result<Value> {
-        Ok(Value(tensor1(data).into_shape(shape)?.into_tvalue()))
+        let data = tensor1(data);
+        Ok(Value(data.into_shape(shape)?.into_tvalue()))
     }
 
     fn as_parts<T: TractProxyDatumType>(&self) -> Result<(&[usize], &[T])> {
@@ -355,7 +349,7 @@ impl ValueInterface for Value {
 
 impl<T, S, D> TryFrom<ndarray::ArrayBase<S, D>> for Value
 where
-    T: Datum,
+    T: TractProxyDatumType,
     S: RawData<Elem = T> + Data,
     D: Dimension,
 {

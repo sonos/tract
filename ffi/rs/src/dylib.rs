@@ -1,9 +1,7 @@
 use std::ffi::{CStr, CString};
-use std::fmt::Display;
 use std::path::Path;
 use std::ptr::{null, null_mut};
 
-use boow::Bow;
 use ndarray::{Data, Dimension, RawData};
 use sys::TractDatumType;
 use tract_rs_sys as sys;
@@ -414,7 +412,7 @@ wrapper!(State, TractState, tract_state_destroy, usize, usize);
 
 impl StateInterface for State {
     type Value = Value;
-    fn run<I, V, E>(&self, inputs: I) -> Result<Vec<Value>>
+    fn run<I, V, E>(&mut self, inputs: I) -> Result<Vec<Value>>
     where
         I: IntoIterator<Item = V>,
         V: TryInto<Value, Error = E>,
