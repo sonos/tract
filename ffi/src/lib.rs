@@ -749,8 +749,7 @@ pub unsafe extern "C" fn tract_model_concretize_symbols(
             })?;
             table = table.with(&model.symbol_table.sym(name), *values.add(i));
         }
-        let mut new = model.concretize_dims(&table)?;
-        std::mem::swap(model, &mut new);
+        *model = model.concretize_dims(&table)?;
         Ok(())
     })
 }
@@ -779,20 +778,18 @@ pub unsafe extern "C" fn tract_model_pulse_simple(
                 .to_str()
                 .context("failed to parse stream symbol name (not utf8)")?,
         )?;
-        let mut pulsed = PulsedModel::new(model, stream_sym, &pulse_dim)?.into_typed()?;
-        std::mem::swap(model, &mut pulsed);
+        *model = PulsedModel::new(model, stream_sym, &pulse_dim)?.into_typed()?;
         Ok(())
     })
 }
 
 /// Convert the model from single precision to half precision.
 #[no_mangle]
-pub unsafe extern "C" fn tract_model_half(model: *mut *mut TractModel) -> TRACT_RESULT {
+pub unsafe extern "C" fn tract_model_half(model: *mut TractModel) -> TRACT_RESULT {
     wrap(|| unsafe {
-        check_not_null!(model, *model);
-        let model = &mut (**model).0;
-        let mut half = tract_nnef::tract_core::half::HalfTranslator.translate_model(model)?;
-        std::mem::swap(model, &mut half);
+        check_not_null!(model);
+        let model = &mut (*model).0;
+        *model = tract_nnef::tract_core::half::HalfTranslator.translate_model(model)?;
         Ok(())
     })
 }

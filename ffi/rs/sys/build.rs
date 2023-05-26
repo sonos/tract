@@ -4,7 +4,7 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
-//    println!("cargo:rustc-link-search=/path/to/lib");
+    println!("cargo:rerun-if-changed=../../tract.h");
     println!("cargo:rustc-link-lib=tract");
 
     // The bindgen::Builder is the main entry point
