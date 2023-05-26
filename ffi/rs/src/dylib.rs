@@ -37,23 +37,20 @@ macro_rules! wrapper {
 
 use crate::traits::*;
 
-pub struct Tract;
-impl TractInterface for Tract {
-    type Nnef = Nnef;
-    type Onnx = Onnx;
-    fn nnef() -> Result<Self::Nnef> {
-        let mut nnef = null_mut();
-        check!(sys::tract_nnef_create(&mut nnef))?;
-        Ok(Nnef(nnef))
-    }
-    fn onnx() -> Result<Self::Onnx> {
-        let mut onnx = null_mut();
-        check!(sys::tract_onnx_create(&mut onnx))?;
-        Ok(Onnx(onnx))
-    }
-    fn version() -> &'static str {
-        unsafe { CStr::from_ptr(sys::tract_version()).to_str().unwrap() }
-    }
+pub fn nnef() -> Result<Nnef> {
+    let mut nnef = null_mut();
+    check!(sys::tract_nnef_create(&mut nnef))?;
+    Ok(Nnef(nnef))
+}
+
+pub fn onnx() -> Result<Onnx> {
+    let mut onnx = null_mut();
+    check!(sys::tract_onnx_create(&mut onnx))?;
+    Ok(Onnx(onnx))
+}
+
+pub fn version() -> &'static str {
+    unsafe { CStr::from_ptr(sys::tract_version()).to_str().unwrap() }
 }
 
 wrapper!(Nnef, TractNnef, tract_nnef_destroy);
