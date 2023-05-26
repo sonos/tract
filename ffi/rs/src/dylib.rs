@@ -59,7 +59,6 @@ impl TractInterface for Tract {
 }
 
 wrapper!(Nnef, TractNnef, tract_nnef_destroy);
-
 impl NnefInterface for Nnef {
     type Model = Model;
     fn model_for_path(&self, path: impl AsRef<Path>) -> Result<Model> {
@@ -133,7 +132,6 @@ impl OnnxInterface for Onnx {
 
 // INFERENCE MODEL
 wrapper!(InferenceModel, TractInferenceModel, tract_inference_model_destroy);
-
 impl InferenceModelInterface for InferenceModel {
     type Model = Model;
     type InferenceFact = InferenceFact;
@@ -327,6 +325,11 @@ impl ModelInterface for Model {
         Ok(())
     }
 
+    fn half(&mut self) -> Result<()> {
+        check!(sys::tract_model_half(self.0))?;
+        Ok(())
+    }
+
     fn pulse(&mut self, name: impl AsRef<str>, value: impl AsRef<str>) -> Result<()> {
         let name = CString::new(name.as_ref())?;
         let value = CString::new(value.as_ref())?;
@@ -435,7 +438,7 @@ wrapper!(Value, TractValue, tract_value_destroy);
 
 impl ValueInterface for Value {
     fn from_shape_and_slice<T: TractProxyDatumType>(shape: &[usize], data: &[T]) -> Result<Value> {
-        anyhow::ensure!(data.len() == shape.iter().product());
+        anyhow::ensure!(data.len() == shape.iter().product::<usize>());
         let mut value = null_mut();
         check!(sys::tract_value_create(
             T::c_repr() as _,
@@ -502,9 +505,7 @@ impl Fact {
         check!(sys::tract_fact_parse(model.0, cstr.as_ptr(), &mut fact))?;
         Ok(Fact(fact))
     }
-}
 
-impl Fact {
     fn dump(&self) -> Result<String> {
         let mut ptr = null_mut();
         check!(sys::tract_fact_dump(self.0, &mut ptr))?;

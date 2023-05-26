@@ -1,9 +1,9 @@
 use tract_rs::*;
 
-fn grace_hopper() -> tract_rs::Value {
+fn grace_hopper<T: TractInterface>() -> T::Value {
     let data = std::fs::read("tests/grace_hopper_3_224_224.f32.raw").unwrap();
     let data: &[f32] = unsafe { std::slice::from_raw_parts(data.as_ptr() as _, 3 * 224 * 224) };
-    tract_rs::Value::from_shape_and_slice(&[1, 3, 224, 224], data).unwrap()
+    T::value_from_shape_and_slice(&[1, 3, 224, 224], data).unwrap()
 }
 
 fn ensure_models() -> anyhow::Result<()> {
@@ -30,7 +30,7 @@ fn test_nnef() -> anyhow::Result<()> {
         .model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")?
         .into_optimized()?
         .into_runnable()?;
-    let hopper = grace_hopper();
+    let hopper = grace_hopper::<Tract>();
     let result = model.run([hopper])?;
     let result = result[0].view::<f32>()?;
     let best = result
@@ -55,7 +55,7 @@ fn test_inference_model() -> anyhow::Result<()> {
     assert_eq!(model.input_fact(0).unwrap().to_string(), "1,3,224,224,F32");
     model.set_input_fact(0, "1,3,224,224,F32")?;
     let model = model.into_optimized()?.into_runnable()?;
-    let hopper = grace_hopper();
+    let hopper = grace_hopper::<Tract>();
     let result = model.run([hopper])?;
     let view = result[0].view::<f32>()?;
     let best = view
