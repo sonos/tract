@@ -1,9 +1,7 @@
-use tract_rs::*;
-
-fn grace_hopper<T: TractInterface>() -> T::Value {
+fn grace_hopper() -> Value {
     let data = std::fs::read("tests/grace_hopper_3_224_224.f32.raw").unwrap();
     let data: &[f32] = unsafe { std::slice::from_raw_parts(data.as_ptr() as _, 3 * 224 * 224) };
-    T::value_from_shape_and_slice(&[1, 3, 224, 224], data).unwrap()
+    Value::from_shape_and_slice(&[1, 3, 224, 224], data).unwrap()
 }
 
 fn ensure_models() -> anyhow::Result<()> {
@@ -26,11 +24,11 @@ fn ensure_models() -> anyhow::Result<()> {
 #[test]
 fn test_nnef() -> anyhow::Result<()> {
     ensure_models()?;
-    let model = Tract::nnef()?
+    let model = nnef()?
         .model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")?
         .into_optimized()?
         .into_runnable()?;
-    let hopper = grace_hopper::<Tract>();
+    let hopper = grace_hopper();
     let result = model.run([hopper])?;
     let result = result[0].view::<f32>()?;
     let best = result
@@ -47,7 +45,7 @@ fn test_nnef() -> anyhow::Result<()> {
 #[test]
 fn test_inference_model() -> anyhow::Result<()> {
     ensure_models()?;
-    let mut model = Tract::onnx()?.model_for_path("mobilenetv2-7.onnx")?;
+    let mut model = onnx()?.model_for_path("mobilenetv2-7.onnx")?;
     assert_eq!(model.input_count().unwrap(), 1);
     assert_eq!(model.output_count().unwrap(), 1);
     assert_eq!(model.input_name(0).unwrap(), "data");
@@ -55,7 +53,7 @@ fn test_inference_model() -> anyhow::Result<()> {
     assert_eq!(model.input_fact(0).unwrap().to_string(), "1,3,224,224,F32");
     model.set_input_fact(0, "1,3,224,224,F32")?;
     let model = model.into_optimized()?.into_runnable()?;
-    let hopper = grace_hopper::<Tract>();
+    let hopper = grace_hopper();
     let result = model.run([hopper])?;
     let view = result[0].view::<f32>()?;
     let best = view
@@ -72,7 +70,7 @@ fn test_inference_model() -> anyhow::Result<()> {
 #[test]
 fn test_set_output_names_on_inference_model() -> anyhow::Result<()> {
     ensure_models()?;
-    let mut model = Tract::onnx()?.model_for_path("mobilenetv2-7.onnx")?;
+    let mut model = onnx()?.model_for_path("mobilenetv2-7.onnx")?;
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.set_output_fact(0, None)?;
     model.analyse()?;
@@ -84,7 +82,7 @@ fn test_set_output_names_on_inference_model() -> anyhow::Result<()> {
 #[test]
 fn test_typed_model() -> anyhow::Result<()> {
     ensure_models()?;
-    let mut model = Tract::nnef()?.model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")?;
+    let mut model = nnef()?.model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")?;
     assert_eq!(model.input_count()?, 1);
     assert_eq!(model.output_count()?, 1);
     assert_eq!(model.input_name(0)?, "data");
@@ -98,7 +96,7 @@ fn test_typed_model() -> anyhow::Result<()> {
 #[test]
 fn test_set_output_names() -> anyhow::Result<()> {
     ensure_models()?;
-    let mut model = Tract::nnef()?.model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")?;
+    let mut model = nnef()?.model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")?;
     model.set_output_names(["conv_53"])?;
     assert_eq!(model.output_fact(0)?.to_string(), "1,1000,1,1,F32");
     Ok(())
@@ -107,7 +105,7 @@ fn test_set_output_names() -> anyhow::Result<()> {
 #[test]
 fn test_concretize() -> anyhow::Result<()> {
     ensure_models()?;
-    let mut model = Tract::onnx()?.model_for_path("mobilenetv2-7.onnx")?;
+    let mut model = onnx()?.model_for_path("mobilenetv2-7.onnx")?;
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.set_output_fact(0, None)?;
     model.analyse()?;
@@ -123,7 +121,7 @@ fn test_concretize() -> anyhow::Result<()> {
 #[test]
 fn test_pulse() -> anyhow::Result<()> {
     ensure_models()?;
-    let mut model = Tract::onnx()?.model_for_path("mobilenetv2-7.onnx")?;
+    let mut model = onnx()?.model_for_path("mobilenetv2-7.onnx")?;
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.set_output_fact(0, None)?;
     model.analyse()?;
@@ -143,13 +141,13 @@ fn test_pulse() -> anyhow::Result<()> {
 #[test]
 fn test_typed_model_to_nnef_and_back() -> anyhow::Result<()> {
     ensure_models()?;
-    let mut model = Tract::onnx()?.model_for_path("mobilenetv2-7.onnx")?;
+    let mut model = onnx()?.model_for_path("mobilenetv2-7.onnx")?;
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.set_output_fact(0, None)?;
     model.analyse()?;
     let typed = model.into_typed()?;
     let dir = tempfile::tempdir()?;
-    let nnef = Tract::nnef()?.with_tract_core()?;
+    let nnef = nnef()?.with_tract_core()?;
 
     let path = dir.path().join("nnef-dir");
     nnef.write_model_to_dir(&path, &typed)?;
@@ -174,7 +172,7 @@ fn test_typed_model_to_nnef_and_back() -> anyhow::Result<()> {
 #[test]
 fn test_cost() -> anyhow::Result<()> {
     ensure_models()?;
-    let mut model = Tract::nnef()?.model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")?;
+    let mut model = nnef()?.model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")?;
     model.declutter()?;
     model.optimize()?;
     let profile = model.cost_json()?;
@@ -194,7 +192,7 @@ fn test_cost() -> anyhow::Result<()> {
 #[test]
 fn test_profile() -> anyhow::Result<()> {
     ensure_models()?;
-    let mut model = Tract::nnef()?.model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")?;
+    let mut model = nnef()?.model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")?;
     model.declutter()?;
     model.optimize()?;
     let data = ndarray::ArrayD::<f32>::zeros(vec![1, 3, 224, 224]);

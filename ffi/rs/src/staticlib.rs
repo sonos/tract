@@ -18,19 +18,16 @@ use tract_pulse::model::{PulsedModel, PulsedModelExt};
 
 use crate::*;
 
-pub struct Tract;
-impl TractInterface for Tract {
-    type Nnef = Nnef;
-    type Onnx = Onnx;
-    fn nnef() -> Result<Self::Nnef> {
-        Ok(Nnef(tract_nnef::nnef()))
-    }
-    fn onnx() -> Result<Self::Onnx> {
-        Ok(Onnx(tract_onnx::onnx()))
-    }
-    fn version() -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
+pub fn nnef() -> Result<Nnef> {
+    Ok(Nnef(tract_nnef::nnef()))
+}
+
+pub fn onnx() -> Result<Onnx> {
+    Ok(Onnx(tract_onnx::onnx()))
+}
+
+pub fn version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
 }
 
 // NNEF
