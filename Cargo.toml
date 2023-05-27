@@ -15,6 +15,7 @@ members = [
     "libcli",
     "cli",
     "ffi",
+    "tflite",
     "examples/tensorflow-mobilenet-v2",
     "examples/jupyter-keras-tract-tf1",
     "examples/jupyter-keras-tract-tf2",

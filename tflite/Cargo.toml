@@ -11,7 +11,8 @@ edition = "2021"
 
 [dependencies]
 flatbuffers = {version="23.1.21"}
+tract-hir = { version = "=0.20.5-pre", path = "../hir" }
 
 [lib]
-name="tflite-rs"
+name="tflite"
 path="src/lib.rs"

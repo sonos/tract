@@ -1,9 +1,9 @@
 mod ops;
+mod tensors;
 mod tflite_generated;
 use crate::tflite_generated::tflite::Model as ModelBuffer;
 
-impl ModelBuffer
-{
+impl ModelBuffer {
     pub fn from_file(path: P) -> Result<ModelBuffer, Error> {
         let model_file = &*fs::read(model_file_path)?;
         let mut buffer = Vec::new();
@@ -13,12 +13,10 @@ impl ModelBuffer
     }
 }
 
-#[derive(Clone, Default)]
-pub struct TFLiteOpRegister(pub HashMap<u8, OpBuilder)
+//#[derive(Clone, Default)]
+//pub struct TFLiteOpRegister(pub HashMap<u8, OpBuilder)
 pub struct TFLiteModel<'model> {
     pub model: TFLiteOpRegister,
 }
 
-impl TFLite<'_> {
-    
-}
+impl TFLite<'_> {}
