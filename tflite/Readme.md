@@ -4,6 +4,8 @@ unimplemented, sausage is being made. If you want to help feel free to open a PR
 
 ## Notes and Relevant Links
 
+[link to the tflite c api](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/c)
+
 [link to the related issue](https://github.com/sonos/tract/issues/1086)
 
 The generated code handles creating a model from a flatbuffer table. Right now the main task (as far as I understand) is to start adding the code to build a Tract Model from the ModelBuffer.
@@ -13,6 +15,13 @@ So the modelBuffer(the model read from a flatbuffer file) has a few components (
   - composed of tensors, inputs,outputs, operators, and a name
   - input and output are fairly small vectors, I suspect they may be indices
 - buffers are sometimes empty (why?)
+
+
+
+## Tensors
+- probably need to convert from the generated datatypes to Tract's [DatumType](https://github.com/skewballfox/tract/blob/300db595a1ffe3088658643b694b41aaac71ee76/data/src/datum.rs#L121). it's in the toplevel data crate.
+  - this is part of the depenendency tract-core
+- [SO: what a variant tensor?](https://stackoverflow.com/questions/58899763/what-is-a-dt-variant-tensor)
 
 ### Operators
 
