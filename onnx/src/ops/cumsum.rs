@@ -84,29 +84,23 @@ impl Expansion for CumSum {
         let x = body.add_source("scan_input", data)?;
 
         let i = body.add_source("i", i64::scalar_fact())?;
-        let one = body.add_const("one", tensor0(1i64))?;
-        let i_plus_one = body.wire_node("inc_i", tract_core::ops::math::add(), &[i, one])?[0];
+        let chunk = body.add_const("chunk", tensor0(chunk as i64))?;
+        let i_plus_chunk = body.wire_node("inc_i", tract_core::ops::math::add(), &[i, chunk])?[0];
         let x_slice = body.wire_node(
             "x",
-            DynSlice {
-                axis,
-                start_input: true,
-                end_input: true,
-                len: 1.to_dim(),
-            },
-            &[x, i, i_plus_one],
+            DynSlice { axis, len: 1.to_dim() },
+            &if self.reverse { [x, i_plus_chunk, i] } else { [x, i, i_plus_chunk] },
         )?[0];
 
         let acc = body.add_source("acc_input", var_fact)?;
-        dbg!(axis);
-        dbg!(body.outlet_fact(x));
-        dbg!(body.outlet_fact(x_slice));
-        dbg!(body.outlet_fact(acc));
         let sum = body.wire_node("add", tract_core::ops::math::add(), &[x_slice, acc])?[0];
-        body.set_output_outlets(&[i_plus_one, sum, acc])?;
-        let scan = scan::Scan::new(body, input_mapping, output_mapping, 0, iters)?;
-        let zero = model.add_const(format!("{prefix}.zero"), tensor0(0i64))?;
-        let wires = model.wire_node(prefix, scan, &[inputs[0], zero, init])?;
+        body.set_output_outlets(&[i_plus_chunk, sum, acc])?;
+        let scan = scan::Scan::new(body, input_mapping, output_mapping, 0, iters.clone())?;
+        let index_init = model.add_const(
+            format!("{prefix}.index_init"),
+            tensor0(if self.reverse { iters.to_i64()? } else { 0 }),
+        )?;
+        let wires = model.wire_node(prefix, scan, &[inputs[0], index_init, init])?;
         let output = wires[self.exclusive as usize];
         Ok(tvec![output])
     }

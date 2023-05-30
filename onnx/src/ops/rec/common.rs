@@ -130,7 +130,7 @@ impl CommonRec {
         let i = body.add_source("i", i64::scalar_fact())?;
         let one = body.add_const("one", tensor0(1i64))?;
         wire!(i_plus_one = tract_core::ops::math::add(), i, one);
-        let dyn_slice = DynSlice { axis: 1, start_input: true, end_input: true, len: 1.to_dim() };
+        let dyn_slice = DynSlice { axis: 1, len: 1.to_dim() };
         wire!(x_slice = dyn_slice, x_source, i, i_plus_one);
         wire!(Xt = AxisOp::Rm(1), x_slice);
 
