@@ -21,3 +21,8 @@ serde_json.workspace = true
 reqwest.workspace = true
 tempfile = "*"
 serde_json = "*"
+
+# [features]
+# default = [ "dylib" ]
+# dylib = []
+# staticlib = []

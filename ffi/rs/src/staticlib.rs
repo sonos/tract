@@ -374,7 +374,7 @@ impl FactInterface for Fact {}
 
 impl Fact {
     fn new(model: &mut Model, spec: impl ToString) -> Result<Fact> {
-        let fact = tract_libcli::tensor::parse_spec(&mut model.0.symbol_table, &spec.to_string())?;
+        let fact = tract_libcli::tensor::parse_spec(&model.0.symbol_table, &spec.to_string())?;
         let fact = tract_onnx::prelude::Fact::to_typed_fact(&fact)?.into_owned();
         Ok(Fact(fact))
     }
@@ -396,7 +396,7 @@ impl InferenceFactInterface for InferenceFact {}
 
 impl InferenceFact {
     fn new(model: &mut InferenceModel, spec: impl ToString) -> Result<InferenceFact> {
-        let fact = tract_libcli::tensor::parse_spec(&mut model.0.symbol_table, &spec.to_string())?;
+        let fact = tract_libcli::tensor::parse_spec(&model.0.symbol_table, &spec.to_string())?;
         Ok(InferenceFact(fact))
     }
 
