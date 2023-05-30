@@ -77,7 +77,7 @@ fn main() -> tract_core::anyhow::Result<()> {
         .arg(arg!(-f --format [format]
                   "Hint the model format ('kaldi', 'onnx', 'nnef' or 'tf') instead of guess from extension."))
         .arg(Arg::new("input").long("input").short('i').multiple_occurrences(true).takes_value(true).long_help(
-                  "Set input shape and type (@file.pb or @file.npz:thing.npy or 3x4xi32)."))
+                  "Set input shape and type (@file.pb or @file.npz:thing.npy or 3,4,i32)."))
         .arg(Arg::new("constantize").long("constantize").multiple_occurrences(true).takes_value(true).long_help(
                   "Transorm an input into a Constant"))
 
@@ -353,7 +353,7 @@ fn assertions_options(command: clap::Command) -> clap::Command {
                 .multiple_occurrences(true)
                 .number_of_values(1)
                 .long("assert-output")
-                .help("Fact to check the ouput tensor against (@filename, or 3x4xf32)"),
+                .help("Fact to check the ouput tensor against (@filename, or 3,4,f32)"),
         )
         .arg(
             Arg::new("assert-output-bundle")
