@@ -146,8 +146,8 @@ fn test_half() -> anyhow::Result<()> {
     model.analyse()?;
     let mut typed = model.into_typed()?.into_decluttered()?;
     typed.half()?;
-    assert_eq!(typed.input_fact(0)?.to_string(), "1,3,224,224,F16");
-    assert_eq!(typed.output_fact(0)?.to_string(), "1,1000,F16");
+    assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F16");
+    assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,F16");
     Ok(())
 }
 
