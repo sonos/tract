@@ -128,8 +128,8 @@ impl CommonRec {
         let zero = target.add_const(format!("{prefix}.zero"), tensor0(0i64))?;
         outer_inputs.push(zero);
         let i = body.add_source("i", i64::scalar_fact())?;
-        let one = body.add_const("one", tensor0(1i64))?;
-        wire!(i_plus_one = tract_core::ops::math::add(), i, one);
+        let step = body.add_const("step", tensor0(1i64))?;
+        wire!(i_plus_one = tract_core::ops::math::add(), i, step);
         let dyn_slice = DynSlice { axis: 1, len: 1.to_dim() };
         wire!(x_slice = dyn_slice, x_source, i, i_plus_one);
         wire!(Xt = AxisOp::Rm(1), x_slice);
