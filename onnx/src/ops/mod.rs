@@ -8,7 +8,7 @@ mod cumsum;
 mod d2s;
 mod einsum;
 mod fft;
-mod logic;
+pub mod logic;
 mod math;
 mod ml;
 pub mod multinomial;

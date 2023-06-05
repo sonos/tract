@@ -63,28 +63,40 @@ pub trait Model:
     fn outlet_successors(&self, outlet: OutletId) -> &[InletId];
 
     /// Subnets of a node
-    fn nested_models(&self, id: usize) -> Option<(String, &dyn Model)> {
-        if let Some(submodel) = self.node_op(id).downcast_ref::<tract_core::ops::submodel::SubmodelOp>() {
-            return Some(("submodel".into(), submodel.model()));
+    fn nested_models(&self, id: usize) -> Vec<(String, &dyn Model)> {
+        if let Some(submodel) =
+            self.node_op(id).downcast_ref::<tract_core::ops::submodel::SubmodelOp>()
+        {
+            return vec![("submodel".into(), submodel.model())];
         }
         if let Some(lir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::LirScan>() {
-            return Some(("loop".into(), lir.plan.model()));
+            return vec![("loop".into(), lir.plan.model())];
         }
         if let Some(mir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::Scan>() {
-            return Some(("loop".into(), &mir.body));
+            return vec![("loop".into(), &mir.body)];
+        }
+        if let Some(mir) = self.node_op(id).downcast_ref::<tract_core::ops::logic::IfThenElse>() {
+            return vec![("loop".into(), &mir.then_body), ("else".into(), &mir.else_body)];
         }
         #[cfg(feature = "hir")]
         if let Some(hir) = self.node_op(id).downcast_ref::<tract_hir::ops::scan::InferenceScan>() {
-            return Some(("loop".into(), &hir.body));
+            return vec![("loop".into(), &hir.body)];
         }
-        None
+        #[cfg(feature = "hir")]
+        if let Some(hir) = self.node_op(id).downcast_ref::<tract_onnx::ops::logic::If>() {
+            return vec![("loop".into(), &hir.then_body), ("else".into(), &hir.else_body)];
+        }
+        vec![]
     }
 
     /// Subnets of a node
     fn nested_models_iters(&self, id: usize, input: &[&TypedFact]) -> Option<TDim> {
-        if let Some(submodel) = self.node_op(id).downcast_ref::<tract_core::ops::submodel::SubmodelOp>() {
+        if let Some(submodel) =
+            self.node_op(id).downcast_ref::<tract_core::ops::submodel::SubmodelOp>()
+        {
             submodel.iteration_count(input)
-        } else if let Some(lir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::LirScan>() {
+        } else if let Some(lir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::LirScan>()
+        {
             lir.iteration_count(input)
         } else if let Some(mir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::Scan>() {
             mir.iteration_count(input)

@@ -55,10 +55,10 @@ pub fn _if(
 }
 
 #[derive(Debug, Clone, new)]
-struct If {
-    then_body: InferenceModel,
+pub struct If {
+    pub then_body: InferenceModel,
     then_input_mapping: Vec<usize>,
-    else_body: InferenceModel,
+    pub else_body: InferenceModel,
     else_input_mapping: Vec<usize>,
 }
 
