@@ -43,7 +43,7 @@ int main() {
 
     TractValue* input = NULL;
     size_t shape[] = {1, 3, 224, 224 };
-    check(tract_value_create(TRACT_DATUM_TYPE_F32, 4, shape, image, &input));
+    check(tract_value_from_bytes(TRACT_DATUM_TYPE_F32, 4, shape, image, &input));
     free(image);
 
     TractValue* output = NULL;
@@ -52,7 +52,7 @@ int main() {
     check(tract_runnable_run(runnable, &input, &output));
 
     const float *data = NULL;
-    check(tract_value_inspect(output, NULL, NULL, NULL, (const void**) &data));
+    check(tract_value_as_bytes(output, NULL, NULL, NULL, (const void**) &data));
     float max = data[0];
     int argmax = 0;
     for(int i = 0; i < 1000 ; i++) {
@@ -76,7 +76,7 @@ int main() {
 
     check(tract_state_run(state, &input, &output));
 
-    check(tract_value_inspect(output, NULL, NULL, NULL, (const void**) &data));
+    check(tract_value_as_bytes(output, NULL, NULL, NULL, (const void**) &data));
     assert(data[argmax] == max);
     check(tract_value_destroy(&output));
 

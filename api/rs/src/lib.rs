@@ -9,14 +9,15 @@ use tract_libcli::profile::BenchLimits;
 use tract_nnef::internal::parse_tdim;
 use tract_nnef::prelude::translator::Translate;
 use tract_nnef::prelude::{
-    tensor1, Datum, Framework, IntoTValue, SymbolValues, TValue, TVec, TractResult, TypedFact,
+    Datum, Framework, IntoTValue, SymbolValues, TValue, TVec, Tensor, TractResult, TypedFact,
     TypedModel, TypedRunnableModel, TypedSimplePlan, TypedSimpleState,
 };
 use tract_onnx::prelude::InferenceModelExt;
 use tract_onnx_opl::WithOnnx;
 use tract_pulse::model::{PulsedModel, PulsedModelExt};
+use tract_pulse::WithPulse;
 
-use crate::*;
+use tract_api::*;
 
 pub fn nnef() -> Result<Nnef> {
     Ok(Nnef(tract_nnef::nnef()))
@@ -39,17 +40,24 @@ impl NnefInterface for Nnef {
         self.0.model_for_path(path).map(Model)
     }
 
-    fn with_tract_core(self) -> Result<Nnef> {
-        Ok(Nnef(self.0.with_tract_core()))
+    fn enable_tract_core(&mut self) -> Result<()> {
+        self.0.enable_tract_core();
+        Ok(())
     }
 
-    fn with_onnx(self) -> Result<Nnef> {
-        Ok(Nnef(self.0.with_onnx()))
+    fn enable_onnx(&mut self) -> Result<()> {
+        self.0.enable_onnx();
+        Ok(())
     }
 
-    fn with_extended_identifier_syntax(mut self) -> Result<Nnef> {
+    fn enable_pulse(&mut self) -> Result<()> {
+        self.0.enable_pulse();
+        Ok(())
+    }
+
+    fn enable_extended_identifier_syntax(&mut self) -> Result<()> {
         self.0.allow_extended_identifier_syntax(true);
-        Ok(self)
+        Ok(())
     }
 
     fn write_model_to_dir(&self, path: impl AsRef<Path>, model: &Model) -> Result<()> {
@@ -297,6 +305,14 @@ impl RunnableInterface for Runnable {
         self.spawn_state()?.run(inputs)
     }
 
+    fn input_count(&self) -> Result<usize> {
+        Ok(self.0.model().inputs.len())
+    }
+
+    fn output_count(&self) -> Result<usize> {
+        Ok(self.0.model().outputs.len())
+    }
+
     fn spawn_state(&self) -> Result<State> {
         let state = TypedSimpleState::new(self.0.clone())?;
         Ok(State(state))
@@ -308,6 +324,14 @@ pub struct State(TypedSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>)
 
 impl StateInterface for State {
     type Value = Value;
+
+    fn input_count(&self) -> Result<usize> {
+        Ok(self.0.model().inputs.len())
+    }
+
+    fn output_count(&self) -> Result<usize> {
+        Ok(self.0.model().outputs.len())
+    }
 
     fn run<I, V, E>(&mut self, inputs: I) -> Result<Vec<Value>>
     where
@@ -325,49 +349,36 @@ impl StateInterface for State {
 }
 
 // VALUE
+#[derive(Clone)]
 pub struct Value(TValue);
 
 impl ValueInterface for Value {
-    fn from_shape_and_slice<T: TractProxyDatumType>(shape: &[usize], data: &[T]) -> Result<Value> {
-        let data = tensor1(data);
-        Ok(Value(data.into_shape(shape)?.into_tvalue()))
+    fn from_bytes(dt: DatumType, shape: &[usize], data: &[u8]) -> Result<Self> {
+        let dt = to_internal_dt(dt);
+        let len = shape.iter().product::<usize>() * dt.size_of();
+        anyhow::ensure!(len == data.len());
+        let tensor = unsafe { Tensor::from_raw_dt(dt, shape, data)? };
+        Ok(Value(tensor.into_tvalue()))
     }
 
-    fn as_parts<T: TractProxyDatumType>(&self) -> Result<(&[usize], &[T])> {
+    fn as_bytes(&self) -> Result<(DatumType, &[usize], &[u8])> {
+        let dt = from_internal_dt(self.0.datum_type())?;
+        Ok((dt, self.0.shape(), unsafe { self.0.as_slice_unchecked::<u8>() }))
+    }
+
+    /*
+    fn as_parts<T: 'static>(&self) -> Result<(&[usize], &[T])> {
+        let _dt = to_datum_type::<T>()?;
         let shape = self.0.shape();
-        let data = self.0.as_slice::<T>()?;
+        let data = unsafe {
+            std::slice::from_raw_parts(self.0.as_ptr_unchecked::<u8>() as *const T, self.0.len())
+        };
         Ok((shape, data))
     }
-
-    fn view<T: TractProxyDatumType>(&self) -> Result<ndarray::ArrayViewD<T>> {
-        self.0.to_array_view::<T>()
-    }
+    */
 }
 
-impl<T, S, D> TryFrom<ndarray::ArrayBase<S, D>> for Value
-where
-    T: TractProxyDatumType,
-    S: RawData<Elem = T> + Data,
-    D: Dimension,
-{
-    type Error = anyhow::Error;
-    fn try_from(view: ndarray::ArrayBase<S, D>) -> Result<Value> {
-        if let Some(slice) = view.as_slice_memory_order() {
-            Value::from_shape_and_slice(view.shape(), slice)
-        } else {
-            let slice: Vec<_> = view.iter().cloned().collect();
-            Value::from_shape_and_slice(view.shape(), &slice)
-        }
-    }
-}
-
-impl<'a, T: Datum> TryFrom<&'a Value> for ndarray::ArrayViewD<'a, T> {
-    type Error = anyhow::Error;
-    fn try_from(value: &'a Value) -> Result<Self, Self::Error> {
-        value.0.to_array_view()
-    }
-}
-
+#[derive(Clone, Debug)]
 pub struct Fact(TypedFact);
 
 impl FactInterface for Fact {}
@@ -390,9 +401,14 @@ impl Display for Fact {
     }
 }
 
+#[derive(Default, Clone, Debug)]
 pub struct InferenceFact(tract_onnx::prelude::InferenceFact);
 
-impl InferenceFactInterface for InferenceFact {}
+impl InferenceFactInterface for InferenceFact {
+    fn empty() -> Result<InferenceFact> {
+        Ok(InferenceFact(Default::default()))
+    }
+}
 
 impl InferenceFact {
     fn new(model: &mut InferenceModel, spec: impl ToString) -> Result<InferenceFact> {
@@ -411,5 +427,80 @@ impl Display for InferenceFact {
     }
 }
 
+value_from_to_ndarray!();
 as_inference_fact_impl!(InferenceModel, InferenceFact);
 as_fact_impl!(Model, Fact);
+
+/*
+#[inline(always)]
+fn to_datum_type<T: TractProxyDatumType>() -> Result<tract_nnef::prelude::DatumType> {
+macro_rules! dt { ($($t:ty),*) => { $(if TypeId::of::<T>() == TypeId::of::<$t>() { return Ok(<$t>::datum_type()); })* }}
+dt!(f32, f16, f64, i64, i32, i16, i8, bool, u64, u32, u16, u8);
+anyhow::bail!("Unsupported type {}", std::any::type_name::<T>())
+}
+*/
+
+fn to_internal_dt(it: DatumType) -> tract_nnef::prelude::DatumType {
+    use tract_nnef::prelude::DatumType::*;
+    use DatumType::*;
+    match it {
+        TRACT_DATUM_TYPE_BOOL => Bool,
+        TRACT_DATUM_TYPE_U8 => U8,
+        TRACT_DATUM_TYPE_U16 => U16,
+        TRACT_DATUM_TYPE_U32 => U32,
+        TRACT_DATUM_TYPE_U64 => U64,
+        TRACT_DATUM_TYPE_I8 => I8,
+        TRACT_DATUM_TYPE_I16 => I16,
+        TRACT_DATUM_TYPE_I32 => I32,
+        TRACT_DATUM_TYPE_I64 => I64,
+        TRACT_DATUM_TYPE_F16 => F16,
+        TRACT_DATUM_TYPE_F32 => F32,
+        TRACT_DATUM_TYPE_F64 => F64,
+        #[cfg(feature = "complex")]
+        TRACT_DATUM_TYPE_COMPLEX_I16 => ComplexI16,
+        #[cfg(feature = "complex")]
+        TRACT_DATUM_TYPE_COMPLEX_I32 => ComplexI32,
+        #[cfg(feature = "complex")]
+        TRACT_DATUM_TYPE_COMPLEX_I64 => ComplexI64,
+        #[cfg(feature = "complex")]
+        TRACT_DATUM_TYPE_COMPLEX_F16 => ComplexF16,
+        #[cfg(feature = "complex")]
+        TRACT_DATUM_TYPE_COMPLEX_F32 => ComplexF32,
+        #[cfg(feature = "complex")]
+        TRACT_DATUM_TYPE_COMPLEX_F64 => ComplexF64,
+    }
+}
+
+fn from_internal_dt(it: tract_nnef::prelude::DatumType) -> Result<DatumType> {
+    use tract_nnef::prelude::DatumType::*;
+    use DatumType::*;
+    Ok(match it {
+        Bool => TRACT_DATUM_TYPE_BOOL,
+        U8 => TRACT_DATUM_TYPE_U8,
+        U16 => TRACT_DATUM_TYPE_U16,
+        U32 => TRACT_DATUM_TYPE_U32,
+        U64 => TRACT_DATUM_TYPE_U64,
+        I8 => TRACT_DATUM_TYPE_I8,
+        I16 => TRACT_DATUM_TYPE_I16,
+        I32 => TRACT_DATUM_TYPE_I32,
+        I64 => TRACT_DATUM_TYPE_I64,
+        F16 => TRACT_DATUM_TYPE_F16,
+        F32 => TRACT_DATUM_TYPE_F32,
+        F64 => TRACT_DATUM_TYPE_F64,
+        #[cfg(feature = "complex")]
+        TRACT_DATUM_TYPE_COMPLEX_I16 => ComplexI16,
+        #[cfg(feature = "complex")]
+        TRACT_DATUM_TYPE_COMPLEX_I32 => ComplexI32,
+        #[cfg(feature = "complex")]
+        TRACT_DATUM_TYPE_COMPLEX_I64 => ComplexI64,
+        #[cfg(feature = "complex")]
+        TRACT_DATUM_TYPE_COMPLEX_F16 => ComplexF16,
+        #[cfg(feature = "complex")]
+        TRACT_DATUM_TYPE_COMPLEX_F32 => ComplexF32,
+        #[cfg(feature = "complex")]
+        TRACT_DATUM_TYPE_COMPLEX_F64 => ComplexF64,
+        _ => {
+            anyhow::bail!("Unsupported DatumType in the public API {:?}", it)
+        }
+    })
+}

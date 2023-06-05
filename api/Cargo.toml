@@ -1,0 +1,28 @@
+[package]
+name = "tract-api"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow.workspace = true
+boow.workspace = true
+flate2.workspace = true
+half.workspace = true
+ndarray.workspace = true
+# tract-rs-sys = { path = "sys", version = "=0.20.0-pre" }
+# tract-nnef = { path = "../nnef/" }
+# tract-onnx = { path = "../onnx/" }
+# tract-onnx-opl = { path = "../onnx-opl/" }
+# tract-pulse = { path = "../pulse/" }
+# tract-libcli = { path = "../libcli" }
+# serde_json.workspace = true
+
+[dev-dependencies]
+reqwest.workspace = true
+tempfile = "*"
+serde_json = "*"
+
+# [features]
+# default = [ "dylib" ]
+# dylib = []
+# staticlib = []

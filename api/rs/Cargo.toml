@@ -5,14 +5,14 @@ edition = "2021"
 
 [dependencies]
 anyhow.workspace = true
-boow = "0.1.3"
+boow.workspace = true
 flate2.workspace = true
 half.workspace = true
 ndarray.workspace = true
-tract-rs-sys = { path = "sys", version = "=0.20.0-pre" }
+tract-api = { path = ".." }
 tract-nnef = { path = "../../nnef/" }
-tract-onnx = { path = "../../onnx/" }
 tract-onnx-opl = { path = "../../onnx-opl/" }
+tract-onnx = { path = "../../onnx/" }
 tract-pulse = { path = "../../pulse/" }
 tract-libcli = { path = "../../libcli" }
 serde_json.workspace = true
