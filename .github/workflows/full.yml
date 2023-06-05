@@ -213,7 +213,7 @@ jobs:
 
     - name: C smoke tests
       run: |
-        cd ffi/c
+        cd api/c
         cargo install cbindgen
         make
     - name: Stop sccache server
@@ -244,7 +244,7 @@ jobs:
     - name: Pytest bindings
       run: |
         sudo apt-get install -y python3-virtualenv
-        cd ffi/py
+        cd api/py
         virtualenv venv
         . venv/bin/activate
         pip install -r requirements.txt
