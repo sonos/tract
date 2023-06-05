@@ -1240,7 +1240,7 @@ a Model where all tensors shapes start with the <code>N</code> or <code>Batch</c
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Convert the model to hald precision</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
-        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_half</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">))</span>
+        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_half</span><span class="p">(</span><span class="n">byref</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">)))</span>
 
     <span class="k">def</span> <span class="nf">declutter</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Declutter a model.</span>
@@ -1704,7 +1704,7 @@ is informed of some specific symbol values.</p>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert the model to hald precision</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
-    <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_half</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">))</span>
+    <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_half</span><span class="p">(</span><span class="n">byref</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">)))</span>
 </code></pre></div></td></tr></table></div>
       </details>
   </div>
