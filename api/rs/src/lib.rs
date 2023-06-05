@@ -9,8 +9,8 @@ use tract_libcli::profile::BenchLimits;
 use tract_nnef::internal::parse_tdim;
 use tract_nnef::prelude::translator::Translate;
 use tract_nnef::prelude::{
-    Datum, Framework, IntoTValue, SymbolValues, TValue, TVec, Tensor, TractResult, TypedFact,
-    TypedModel, TypedRunnableModel, TypedSimplePlan, TypedSimpleState,
+    Framework, IntoTValue, SymbolValues, TValue, TVec, Tensor, TractResult, TypedFact, TypedModel,
+    TypedRunnableModel, TypedSimplePlan, TypedSimpleState,
 };
 use tract_onnx::prelude::InferenceModelExt;
 use tract_onnx_opl::WithOnnx;

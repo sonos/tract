@@ -11,3 +11,8 @@ boow.workspace = true
 ndarray.workspace = true
 tract-api = { path = ".." }
 tract-rs-sys = { path = "sys" }
+
+[dev-dependencies]
+reqwest.workspace = true
+tempfile = "*"
+serde_json = "*"

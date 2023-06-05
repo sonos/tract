@@ -68,10 +68,10 @@ macro_rules! value_from_to_ndarray {
             }
         }
 
-        impl<'a, T: Datum> TryFrom<&'a Value> for ndarray::ArrayViewD<'a, T> {
+        impl<'a, T: $crate::Datum> TryFrom<&'a Value> for ndarray::ArrayViewD<'a, T> {
             type Error = anyhow::Error;
             fn try_from(value: &'a Value) -> Result<Self, Self::Error> {
-                value.0.to_array_view()
+                value.view()
             }
         }
     };

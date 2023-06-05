@@ -1,10 +1,9 @@
 use std::ffi::{CStr, CString};
 use std::path::Path;
 use std::ptr::{null, null_mut};
-use tract_api::*;
 
-use tract_rs_sys as sys;
 use tract_api::*;
+use tract_rs_sys as sys;
 
 use anyhow::{Context, Result};
 use ndarray::*;
@@ -226,16 +225,16 @@ wrapper!(Model, TractModel, tract_model_destroy);
 impl ModelInterface for Model {
     type Fact = Fact;
     type Value = Value;
-    type Runnable = Runnable;
+    type Runnable =Runnable;
     fn input_count(&self) -> Result<usize> {
         let mut count = 0;
-        check!(sys::tract_model_nbio(self.0, &mut count, null_mut()))?;
+        check!(sys::tract_model_input_count(self.0, &mut count))?;
         Ok(count)
     }
 
     fn output_count(&self) -> Result<usize> {
         let mut count = 0;
-        check!(sys::tract_model_nbio(self.0, null_mut(), &mut count))?;
+        check!(sys::tract_model_output_count(self.0, &mut count))?;
         Ok(count)
     }
 
@@ -298,10 +297,7 @@ impl ModelInterface for Model {
         let mut model = self;
         let mut runnable = null_mut();
         check!(sys::tract_model_into_runnable(&mut model.0, &mut runnable))?;
-        let mut i = 0;
-        let mut o = 0;
-        check!(sys::tract_runnable_nbio(runnable, &mut i, &mut o))?;
-        Ok(Runnable(runnable, i, o))
+        Ok(Runnable(runnable))
     }
 
     fn concretize_symbols(
@@ -384,7 +380,7 @@ impl ModelInterface for Model {
 }
 
 // RUNNABLE
-wrapper!(Runnable, TractRunnable, tract_runnable_release, usize, usize);
+wrapper!(Runnable, TractRunnable, tract_runnable_release);
 
 impl RunnableInterface for Runnable {
     type Value = Value;
@@ -402,12 +398,24 @@ impl RunnableInterface for Runnable {
     fn spawn_state(&self) -> Result<State> {
         let mut state = null_mut();
         check!(sys::tract_runnable_spawn_state(self.0, &mut state))?;
-        Ok(State(state, self.1, self.2))
+        Ok(State(state))
+    }
+
+    fn input_count(&self) -> Result<usize> {
+        let mut count = 0;
+        check!(sys::tract_runnable_input_count(self.0, &mut count))?;
+        Ok(count)
+    }
+
+    fn output_count(&self) -> Result<usize> {
+        let mut count = 0;
+        check!(sys::tract_runnable_output_count(self.0, &mut count))?;
+        Ok(count)
     }
 }
 
 // STATE
-wrapper!(State, TractState, tract_state_destroy, usize, usize);
+wrapper!(State, TractState, tract_state_destroy);
 
 impl StateInterface for State {
     type Value = Value;
@@ -421,12 +429,23 @@ impl StateInterface for State {
             .into_iter()
             .map(|i| i.try_into().map_err(|e| e.into()))
             .collect::<Result<Vec<Value>>>()?;
-        anyhow::ensure!(inputs.len() == self.1);
-        let mut outputs = vec![null_mut(); self.2];
+        let mut outputs = vec![null_mut(); self.output_count()?];
         let mut inputs: Vec<_> = inputs.iter().map(|v| v.0).collect();
         check!(sys::tract_state_run(self.0, inputs.as_mut_ptr(), outputs.as_mut_ptr()))?;
         let outputs = outputs.into_iter().map(Value).collect();
         Ok(outputs)
+    }
+
+    fn input_count(&self) -> Result<usize> {
+        let mut count = 0;
+        check!(sys::tract_state_input_count(self.0, &mut count))?;
+        Ok(count)
+    }
+
+    fn output_count(&self) -> Result<usize> {
+        let mut count = 0;
+        check!(sys::tract_state_output_count(self.0, &mut count))?;
+        Ok(count)
     }
 }
 
@@ -435,10 +454,10 @@ wrapper!(Value, TractValue, tract_value_destroy);
 
 impl ValueInterface for Value {
     fn from_bytes(dt: DatumType, shape: &[usize], data: &[u8]) -> Result<Self> {
-        anyhow::ensure!(data.len() == shape.iter().product::<usize>());
+        anyhow::ensure!(data.len() == shape.iter().product::<usize>() * dt.size_of());
         let mut value = null_mut();
         check!(sys::tract_value_from_bytes(
-            dt,
+            dt as _,
             shape.len(),
             shape.as_ptr(),
             data.as_ptr() as _,
@@ -449,15 +468,16 @@ impl ValueInterface for Value {
 
     fn as_bytes(&self) -> Result<(DatumType, &[usize], &[u8])> {
         let mut rank = 0;
-        let mut dt: DatumType = sys::DatumType_TRACT_DATUM_TYPE_BOOL;
+        let mut dt = sys::DatumType_TRACT_DATUM_TYPE_BOOL as _;
         let mut shape = null();
         let mut data = null();
         check!(sys::tract_value_as_bytes(self.0, &mut dt, &mut rank, &mut shape, &mut data))?;
         unsafe {
+            let dt: DatumType = std::mem::transmute(dt);
             let shape = std::slice::from_raw_parts(shape, rank);
-            let len = shape.iter().product();
-            let data = std::slice::from_raw_parts(data, len * dt.size_of());
-            Ok((shape, data))
+            let len: usize = shape.iter().product();
+            let data = std::slice::from_raw_parts(data as *const u8, len * dt.size_of());
+            Ok((dt, shape, data))
         }
     }
 }
