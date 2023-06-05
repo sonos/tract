@@ -1,0 +1,11 @@
+[package]
+name = "tract-rs-sys"
+version = "0.20.0-pre"
+edition = "2021"
+
+[dependencies]
+tract-ffi = { path = "../../ffi" }
+
+[build-dependencies]
+bindgen.workspace = true
+
