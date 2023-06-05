@@ -216,7 +216,7 @@ pub fn extract_costs(annotations: &mut Annotations, model: &dyn Model) -> TractR
 
                 let nested_subs = model.nested_models(node_id);
                 let nested_multis = (model as &dyn Model).nested_models_iters(node_id, &inputs);
-                if let Some((name, sub)) = nested_subs {
+                for (name, sub) in nested_subs {
                     let mut prefix: TVec<_> = prefix.into();
                     prefix.push((node_id, name.to_string()));
                     extract_costs_rec(
