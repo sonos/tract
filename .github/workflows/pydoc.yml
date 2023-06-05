@@ -23,7 +23,7 @@ jobs:
           git config user.name "CI bot"
           git config user.email ci-bot@tract.rs
           git fetch origin gh-pages --depth=1
-          cd ffi/py
+          cd api/py
           pip install -r requirements-docs.txt
           version=${{steps.version.outputs.value}}
           if [ -n "$version" ]

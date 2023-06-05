@@ -37,7 +37,7 @@ jobs:
         with:
           max_attempts: 3
           timeout_seconds: 36000 # 10 hours :/
-          command: python -m cibuildwheel --output-dir wheelhouse ffi/py
+          command: python -m cibuildwheel --output-dir wheelhouse api/py
 
       - uses: actions/upload-artifact@v3
         with:
@@ -50,11 +50,11 @@ jobs:
     - uses: actions/checkout@v3
 
     - name: Build SDist
-      run: cd ffi/py ; pipx run build --sdist
+      run: cd api/py ; pipx run build --sdist
 
     - uses: actions/upload-artifact@v3
       with:
-        path: ffi/py/dist/*.tar.gz
+        path: api/py/dist/*.tar.gz
 
   upload_all:
     needs: [build_wheels, make_sdist]
