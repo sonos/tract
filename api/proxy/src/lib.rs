@@ -1,12 +1,13 @@
 use std::ffi::{CStr, CString};
 use std::path::Path;
 use std::ptr::{null, null_mut};
+use tract_api::*;
 
-use ndarray::{Data, Dimension, RawData};
-use sys::TractDatumType;
 use tract_rs_sys as sys;
+use tract_api::*;
 
 use anyhow::{Context, Result};
+use ndarray::*;
 
 macro_rules! check {
     ($expr:expr) => {
@@ -23,6 +24,7 @@ macro_rules! check {
 
 macro_rules! wrapper {
     ($new_type:ident, $c_type:ident, $dest:ident $(, $typ:ty )*) => {
+        #[derive(Debug, Clone)]
         pub struct $new_type(*mut sys::$c_type $(, $typ)*);
 
         impl Drop for $new_type {
@@ -34,8 +36,6 @@ macro_rules! wrapper {
         }
     };
 }
-
-use crate::traits::*;
 
 pub fn nnef() -> Result<Nnef> {
     let mut nnef = null_mut();
@@ -66,19 +66,20 @@ impl NnefInterface for Nnef {
         Ok(Model(model))
     }
 
-    fn with_tract_core(self) -> Result<Nnef> {
-        check!(sys::tract_nnef_enable_tract_core(self.0))?;
-        Ok(self)
+    fn enable_tract_core(&mut self) -> Result<()> {
+        check!(sys::tract_nnef_enable_tract_core(self.0))
     }
 
-    fn with_onnx(self) -> Result<Nnef> {
-        check!(sys::tract_nnef_enable_onnx(self.0))?;
-        Ok(self)
+    fn enable_onnx(&mut self) -> Result<()> {
+        check!(sys::tract_nnef_enable_onnx(self.0))
     }
 
-    fn with_extended_identifier_syntax(self) -> Result<Nnef> {
-        check!(sys::tract_nnef_allow_extended_identifier_syntax(self.0, true))?;
-        Ok(self)
+    fn enable_pulse(&mut self) -> Result<()> {
+        check!(sys::tract_nnef_enable_pulse(self.0))
+    }
+
+    fn enable_extended_identifier_syntax(&mut self) -> Result<()> {
+        check!(sys::tract_nnef_enable_extended_identifier_syntax(self.0))
     }
 
     fn write_model_to_dir(&self, path: impl AsRef<Path>, model: &Model) -> Result<()> {
@@ -147,13 +148,13 @@ impl InferenceModelInterface for InferenceModel {
 
     fn input_count(&self) -> Result<usize> {
         let mut count = 0;
-        check!(sys::tract_inference_model_nbio(self.0, &mut count, null_mut()))?;
+        check!(sys::tract_inference_model_input_count(self.0, &mut count))?;
         Ok(count)
     }
 
     fn output_count(&self) -> Result<usize> {
         let mut count = 0;
-        check!(sys::tract_inference_model_nbio(self.0, null_mut(), &mut count))?;
+        check!(sys::tract_inference_model_output_count(self.0, &mut count))?;
         Ok(count)
     }
 
@@ -202,7 +203,7 @@ impl InferenceModelInterface for InferenceModel {
     }
 
     fn analyse(&mut self) -> Result<()> {
-        check!(sys::tract_inference_model_analyse(self.0, true))?;
+        check!(sys::tract_inference_model_analyse(self.0))?;
         Ok(())
     }
 
@@ -388,6 +389,7 @@ wrapper!(Runnable, TractRunnable, tract_runnable_release, usize, usize);
 impl RunnableInterface for Runnable {
     type Value = Value;
     type State = State;
+
     fn run<I, V, E>(&self, inputs: I) -> Result<Vec<Value>>
     where
         I: IntoIterator<Item = V>,
@@ -432,11 +434,11 @@ impl StateInterface for State {
 wrapper!(Value, TractValue, tract_value_destroy);
 
 impl ValueInterface for Value {
-    fn from_shape_and_slice<T: TractProxyDatumType>(shape: &[usize], data: &[T]) -> Result<Value> {
+    fn from_bytes(dt: DatumType, shape: &[usize], data: &[u8]) -> Result<Self> {
         anyhow::ensure!(data.len() == shape.iter().product::<usize>());
         let mut value = null_mut();
-        check!(sys::tract_value_create(
-            T::c_repr() as _,
+        check!(sys::tract_value_from_bytes(
+            dt,
             shape.len(),
             shape.as_ptr(),
             data.as_ptr() as _,
@@ -445,50 +447,22 @@ impl ValueInterface for Value {
         Ok(Value(value))
     }
 
-    fn as_parts<T: TractProxyDatumType>(&self) -> Result<(&[usize], &[T])> {
+    fn as_bytes(&self) -> Result<(DatumType, &[usize], &[u8])> {
         let mut rank = 0;
-        let mut dt: TractDatumType = sys::TractDatumType_TRACT_DATUM_TYPE_BOOL;
+        let mut dt: DatumType = sys::DatumType_TRACT_DATUM_TYPE_BOOL;
         let mut shape = null();
         let mut data = null();
-        check!(sys::tract_value_inspect(self.0, &mut dt, &mut rank, &mut shape, &mut data))?;
-        anyhow::ensure!(dt == T::c_repr());
+        check!(sys::tract_value_as_bytes(self.0, &mut dt, &mut rank, &mut shape, &mut data))?;
         unsafe {
             let shape = std::slice::from_raw_parts(shape, rank);
             let len = shape.iter().product();
-            let data = std::slice::from_raw_parts(data as *const T, len);
+            let data = std::slice::from_raw_parts(data, len * dt.size_of());
             Ok((shape, data))
         }
     }
-
-    fn view<T: TractProxyDatumType>(&self) -> Result<ndarray::ArrayViewD<T>> {
-        let (shape, data) = self.as_parts()?;
-        Ok(ndarray::ArrayViewD::from_shape(shape, data)?)
-    }
 }
 
-impl<T, S, D> TryFrom<ndarray::ArrayBase<S, D>> for Value
-where
-    T: TractProxyDatumType,
-    S: RawData<Elem = T> + Data,
-    D: Dimension,
-{
-    type Error = anyhow::Error;
-    fn try_from(view: ndarray::ArrayBase<S, D>) -> Result<Value> {
-        if let Some(slice) = view.as_slice_memory_order() {
-            Value::from_shape_and_slice(view.shape(), slice)
-        } else {
-            let slice: Vec<_> = view.iter().cloned().collect();
-            Value::from_shape_and_slice(view.shape(), &slice)
-        }
-    }
-}
-
-impl<'a, T: TractProxyDatumType> TryFrom<&'a Value> for ndarray::ArrayViewD<'a, T> {
-    type Error = anyhow::Error;
-    fn try_from(value: &'a Value) -> Result<Self, Self::Error> {
-        value.view()
-    }
-}
+value_from_to_ndarray!();
 
 // FACT
 wrapper!(Fact, TractFact, tract_fact_destroy);
@@ -537,7 +511,19 @@ impl InferenceFact {
     }
 }
 
-impl InferenceFactInterface for InferenceFact {}
+impl InferenceFactInterface for InferenceFact {
+    fn empty() -> Result<InferenceFact> {
+        let mut fact = null_mut();
+        check!(sys::tract_inference_fact_empty(&mut fact))?;
+        Ok(InferenceFact(fact))
+    }
+}
+
+impl Default for InferenceFact {
+    fn default() -> Self {
+        Self::empty().unwrap()
+    }
+}
 
 impl std::fmt::Display for InferenceFact {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

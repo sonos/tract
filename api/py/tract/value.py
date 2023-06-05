@@ -65,7 +65,7 @@ class Value:
         for ix in range(0, array.ndim):
             shape[ix] = array.shape[ix]
         dt = dt_numpy_to_tract(array.dtype)
-        check(lib.tract_value_create(dt, c_size_t(array.ndim), shape, data, byref(ptr)))
+        check(lib.tract_value_from_bytes(dt, c_size_t(array.ndim), shape, data, byref(ptr)))
         return Value(ptr)
 
     def to_numpy(self) -> numpy.array:
@@ -75,7 +75,7 @@ class Value:
         shape = POINTER(c_size_t)()
         dt = c_float
         data = POINTER(dt)()
-        check(lib.tract_value_inspect(self.ptr, None, byref(rank), byref(shape), byref(data)))
+        check(lib.tract_value_as_bytes(self.ptr, None, byref(rank), byref(shape), byref(data)))
         rank = rank.value
         shape = [ int(shape[ix]) for ix in range(0, rank) ]
         array = numpy.ctypeslib.as_array(data, shape).copy()

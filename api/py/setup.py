@@ -38,7 +38,7 @@ setup(
             "License :: OSI Approved :: Apache Software License",
             "License :: OSI Approved :: MIT License"
             ],
-        rust_extensions=[RustExtension("tract.tract", binding=Binding.NoBinding, path="../Cargo.toml")],
+        rust_extensions=[RustExtension("tract.tract", binding=Binding.NoBinding, path="../ffi/Cargo.toml")],
         packages=["tract"],
         zip_safe=False,
         python_requires=">=3.7",

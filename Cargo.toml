@@ -14,10 +14,18 @@ members = [
     "onnx",
     "libcli",
     "cli",
+<<<<<<< HEAD
     "ffi",
     "tflite",
     "ffi/rs",
     "ffi/rs/sys",
+
+    "api",
+    "api/rs",
+    "api/ffi",
+    "api/proxy",
+    "api/proxy/sys",
+
     "examples/tensorflow-mobilenet-v2",
     "examples/tflite-mobilenet-v3",
     "examples/jupyter-keras-tract-tf1",
@@ -53,6 +61,7 @@ approx = "0.5"
 atty = "0.2.14"
 bindgen= "0.53"
 bit-set= "0.5.2"
+boow = "0.1.3"
 box_drawing = "0.1.2"
 byteorder = "1.4.3"
 bytes = "1.0.1"

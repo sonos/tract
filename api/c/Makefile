@@ -12,7 +12,8 @@ libtract.so:
 	cp ../../target/release/libtract.so .
 
 tract.h:
-	cd .. ; cbindgen -l c > c/tract.h
+	cd ../ffi ; cbindgen -l c > tract.h
+	cp ../ffi/tract.h .
 
 mobilenet_v2_1.0.onnx.nnef.tgz:
 	wget -q https://sfo2.digitaloceanspaces.com/nnef-public/mobilenet_v2_1.0.onnx.nnef.tgz

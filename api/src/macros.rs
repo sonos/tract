@@ -1,3 +1,4 @@
+#[macro_export]
 macro_rules! as_inference_fact_impl {
     ($IM:ident, $IF: ident) => {
         impl AsFact<$IM, $IF> for $IF {
@@ -30,6 +31,7 @@ macro_rules! as_inference_fact_impl {
     };
 }
 
+#[macro_export]
 macro_rules! as_fact_impl {
     ($M:ident, $F: ident) => {
         impl AsFact<$M, $F> for $F {
@@ -38,9 +40,38 @@ macro_rules! as_fact_impl {
             }
         }
 
-        impl<S: AsRef<str>> AsFact<$M, $F> for S {
+        impl AsFact<$M, $F> for &str {
             fn as_fact(&self, model: &mut $M) -> Result<boow::Bow<$F>> {
-                Ok(boow::Bow::Owned($F::new(model, self.as_ref())?))
+                Ok(boow::Bow::Owned($F::new(model, self)?))
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! value_from_to_ndarray {
+    () => {
+        impl<T, S, D> TryFrom<ndarray::ArrayBase<S, D>> for Value
+        where
+            T: $crate::Datum + Clone + 'static,
+            S: RawData<Elem = T> + Data,
+            D: Dimension,
+        {
+            type Error = anyhow::Error;
+            fn try_from(view: ndarray::ArrayBase<S, D>) -> Result<Value> {
+                if let Some(slice) = view.as_slice_memory_order() {
+                    Value::from_slice(view.shape(), slice)
+                } else {
+                    let slice: Vec<_> = view.iter().cloned().collect();
+                    Value::from_slice(view.shape(), &slice)
+                }
+            }
+        }
+
+        impl<'a, T: Datum> TryFrom<&'a Value> for ndarray::ArrayViewD<'a, T> {
+            type Error = anyhow::Error;
+            fn try_from(value: &'a Value) -> Result<Self, Self::Error> {
+                value.0.to_array_view()
             }
         }
     };

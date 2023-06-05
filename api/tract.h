@@ -2,6 +2,27 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+    typedef enum DatumType {
+      TRACT_DATUM_TYPE_BOOL = 1,
+      TRACT_DATUM_TYPE_U8 = 17,
+      TRACT_DATUM_TYPE_U16 = 18,
+      TRACT_DATUM_TYPE_U32 = 20,
+      TRACT_DATUM_TYPE_U64 = 24,
+      TRACT_DATUM_TYPE_I8 = 33,
+      TRACT_DATUM_TYPE_I16 = 34,
+      TRACT_DATUM_TYPE_I32 = 36,
+      TRACT_DATUM_TYPE_I64 = 40,
+      TRACT_DATUM_TYPE_F16 = 50,
+      TRACT_DATUM_TYPE_F32 = 52,
+      TRACT_DATUM_TYPE_F64 = 56,
+      TRACT_DATUM_TYPE_COMPLEX_I16 = 66,
+      TRACT_DATUM_TYPE_COMPLEX_I32 = 68,
+      TRACT_DATUM_TYPE_COMPLEX_I64 = 72,
+      TRACT_DATUM_TYPE_COMPLEX_F16 = 82,
+      TRACT_DATUM_TYPE_COMPLEX_F32 = 84,
+      TRACT_DATUM_TYPE_COMPLEX_F64 = 88,
+    } DatumType;
+
 
 /**
  * Used as a return type of functions that can encounter errors.
@@ -18,27 +39,6 @@ typedef enum TRACT_RESULT {
    */
   TRACT_RESULT_KO = 1,
 } TRACT_RESULT;
-
-typedef enum TractDatumType {
-  TRACT_DATUM_TYPE_BOOL = 1,
-  TRACT_DATUM_TYPE_U8 = 17,
-  TRACT_DATUM_TYPE_U16 = 18,
-  TRACT_DATUM_TYPE_U32 = 20,
-  TRACT_DATUM_TYPE_U64 = 24,
-  TRACT_DATUM_TYPE_I8 = 33,
-  TRACT_DATUM_TYPE_I16 = 34,
-  TRACT_DATUM_TYPE_I32 = 36,
-  TRACT_DATUM_TYPE_I64 = 40,
-  TRACT_DATUM_TYPE_F16 = 50,
-  TRACT_DATUM_TYPE_F32 = 52,
-  TRACT_DATUM_TYPE_F64 = 56,
-  TRACT_DATUM_TYPE_COMPLEX_I16 = 66,
-  TRACT_DATUM_TYPE_COMPLEX_I32 = 68,
-  TRACT_DATUM_TYPE_COMPLEX_I64 = 72,
-  TRACT_DATUM_TYPE_COMPLEX_F16 = 82,
-  TRACT_DATUM_TYPE_COMPLEX_F32 = 84,
-  TRACT_DATUM_TYPE_COMPLEX_F64 = 88,
-} TractDatumType;
 
 typedef struct TractFact TractFact;
 
@@ -96,7 +96,7 @@ enum TRACT_RESULT tract_nnef_enable_onnx(struct TractNnef *nnef);
 
 enum TRACT_RESULT tract_nnef_enable_pulse(struct TractNnef *nnef);
 
-enum TRACT_RESULT tract_nnef_allow_extended_identifier_syntax(struct TractNnef *nnef, bool enable);
+enum TRACT_RESULT tract_nnef_enable_extended_identifier_syntax(struct TractNnef *nnef);
 
 /**
  * Destroy the NNEF parser. It is safe to detroy the NNEF parser once the model had been loaded.
@@ -167,13 +167,16 @@ enum TRACT_RESULT tract_onnx_model_for_path(const struct TractOnnx *onnx,
                                             struct TractInferenceModel **model);
 
 /**
- * Query an InferenceModel input and output counts.
- *
- * It can be called with null as `inputs` or `outputs` if only one count is required.
+ * Query an InferenceModel input counts.
  */
-enum TRACT_RESULT tract_inference_model_nbio(const struct TractInferenceModel *model,
-                                             uintptr_t *inputs,
-                                             uintptr_t *outputs);
+enum TRACT_RESULT tract_inference_model_input_count(const struct TractInferenceModel *model,
+                                                    uintptr_t *inputs);
+
+/**
+ * Query an InferenceModel output counts.
+ */
+enum TRACT_RESULT tract_inference_model_output_count(const struct TractInferenceModel *model,
+                                                     uintptr_t *outputs);
 
 /**
  * Query the name of a model input.
@@ -238,7 +241,7 @@ enum TRACT_RESULT tract_inference_model_set_output_fact(struct TractInferenceMod
 /**
  * Analyse an InferencedModel in-place.
  */
-enum TRACT_RESULT tract_inference_model_analyse(struct TractInferenceModel *model, bool obstinate);
+enum TRACT_RESULT tract_inference_model_analyse(struct TractInferenceModel *model);
 
 /**
  * Convenience function to obtain an optimized TypedModel from an InferenceModel.
@@ -268,13 +271,14 @@ enum TRACT_RESULT tract_inference_model_into_typed(struct TractInferenceModel **
 enum TRACT_RESULT tract_inference_model_destroy(struct TractInferenceModel **model);
 
 /**
- * Query an Model input and output counts.
- *
- * It can be called with null as `inputs` or `outputs` if only one count is required.
+ * Query an InferenceModel input counts.
  */
-enum TRACT_RESULT tract_model_nbio(const struct TractModel *model,
-                                   uintptr_t *inputs,
-                                   uintptr_t *outputs);
+enum TRACT_RESULT tract_model_input_count(const struct TractModel *model, uintptr_t *inputs);
+
+/**
+ * Query an InferenceModel output counts.
+ */
+enum TRACT_RESULT tract_model_output_count(const struct TractModel *model, uintptr_t *outputs);
 
 /**
  * Query the name of a model input.
@@ -429,13 +433,15 @@ enum TRACT_RESULT tract_runnable_run(struct TractRunnable *runnable,
                                      struct TractValue **outputs);
 
 /**
- * Query a runnable model input and output counts.
- *
- * It can be called with null as `inputs` or `outputs` if only one count is required.
+ * Query a Runnable input counts.
  */
-enum TRACT_RESULT tract_runnable_nbio(const struct TractRunnable *runnable,
-                                      uintptr_t *inputs,
-                                      uintptr_t *outputs);
+enum TRACT_RESULT tract_runnable_input_count(const struct TractRunnable *model, uintptr_t *inputs);
+
+/**
+ * Query an Runnable output counts.
+ */
+enum TRACT_RESULT tract_runnable_output_count(const struct TractRunnable *model,
+                                              uintptr_t *outputs);
 
 enum TRACT_RESULT tract_runnable_release(struct TractRunnable **runnable);
 
@@ -449,11 +455,11 @@ enum TRACT_RESULT tract_runnable_release(struct TractRunnable **runnable);
  *
  * The returned value must be destroyed by `tract_value_destroy`.
  */
-enum TRACT_RESULT tract_value_create(enum TractDatumType datum_type,
-                                     uintptr_t rank,
-                                     const uintptr_t *shape,
-                                     void *data,
-                                     struct TractValue **value);
+enum TRACT_RESULT tract_value_from_bytes(DatumType datum_type,
+                                         uintptr_t rank,
+                                         const uintptr_t *shape,
+                                         void *data,
+                                         struct TractValue **value);
 
 /**
  * Destroy a value.
@@ -464,11 +470,11 @@ enum TRACT_RESULT tract_value_destroy(struct TractValue **value);
  * Inspect part of a value. Except `value`, all argument pointers can be null if only some specific bits
  * are required.
  */
-enum TRACT_RESULT tract_value_inspect(struct TractValue *value,
-                                      enum TractDatumType *datum_type,
-                                      uintptr_t *rank,
-                                      const uintptr_t **shape,
-                                      const void **data);
+enum TRACT_RESULT tract_value_as_bytes(struct TractValue *value,
+                                       DatumType *datum_type,
+                                       uintptr_t *rank,
+                                       const uintptr_t **shape,
+                                       const void **data);
 
 /**
  * Run a turn on a model state
@@ -483,6 +489,16 @@ enum TRACT_RESULT tract_value_inspect(struct TractValue *value,
 enum TRACT_RESULT tract_state_run(struct TractState *state,
                                   struct TractValue **inputs,
                                   struct TractValue **outputs);
+
+/**
+ * Query a State input counts.
+ */
+enum TRACT_RESULT tract_state_input_count(const struct TractState *state, uintptr_t *inputs);
+
+/**
+ * Query an State output counts.
+ */
+enum TRACT_RESULT tract_state_output_count(const struct TractState *state, uintptr_t *outputs);
 
 enum TRACT_RESULT tract_state_destroy(struct TractState **state);
 
@@ -512,6 +528,13 @@ enum TRACT_RESULT tract_fact_destroy(struct TractFact **fact);
 enum TRACT_RESULT tract_inference_fact_parse(struct TractInferenceModel *model,
                                              const char *spec,
                                              struct TractInferenceFact **fact);
+
+/**
+ * Creates an empty inference fact.
+ *
+ * The returned fact must be freed by the caller using tract_inference_fact_destroy
+ */
+enum TRACT_RESULT tract_inference_fact_empty(struct TractInferenceFact **fact);
 
 /**
  * Write an inference fact as its specification string.
