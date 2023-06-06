@@ -25,7 +25,7 @@ fn ensure_models() -> anyhow::Result<()> {
 fn test_onnx() -> anyhow::Result<()> {
     ensure_models()?;
     let model = onnx()?
-        .model_for_path("mobilenet_v2-7.onnx")?
+        .model_for_path("mobilenetv2-7.onnx")?
         .into_optimized()?
         .into_runnable()?;
     let hopper = grace_hopper();
@@ -46,7 +46,7 @@ fn test_onnx() -> anyhow::Result<()> {
 fn test_state() -> anyhow::Result<()> {
     ensure_models()?;
     let model = onnx()?
-        .model_for_path("mobilenet_v2-7.onnx")?
+        .model_for_path("mobilenetv2-7.onnx")?
         .into_optimized()?
         .into_runnable()?;
     let mut state = model.spawn_state()?;

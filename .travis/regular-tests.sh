@@ -50,7 +50,7 @@ then
     ALL_FEATURES=--all-features
 fi
 
-for c in data linalg core nnef hir onnx pulse onnx-opl pulse-opl
+for c in data linalg core nnef hir onnx pulse onnx-opl pulse-opl rs proxy
 do
     cargo -q test $CARGO_EXTRA -q -p tract-$c
 done
