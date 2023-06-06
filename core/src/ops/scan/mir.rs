@@ -479,7 +479,7 @@ impl Scan {
                         new_body.outputs.push(*input);
                     }
                     let body_output_id = new_body.outputs.iter().position(|o| o == input).unwrap();
-                    let mut mapping = &mut new_output_mapping[body_output_id];
+                    let mapping = &mut new_output_mapping[body_output_id];
                     let outer_slot = if new_body.outlet_fact(*input)?.konst.is_some() {
                         if mapping.last_value_slot.is_none() {
                             mapping.last_value_slot = Some(new_scan_outputs);

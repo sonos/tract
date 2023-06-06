@@ -87,7 +87,7 @@ pub fn pulsed_output_facts(
         spatial_dims,
     )?;
     let mut fact = inputs[0].clone();
-    let mut stream = fact.stream.as_mut().unwrap();
+    let stream = fact.stream.as_mut().unwrap();
     let input_shape = spec.data_format.shape(&*fact.shape)?;
     let geo_axis = stream.axis - input_shape.h_axis();
     let dilation = spec.dilations.as_ref().map(|d| d[geo_axis]).unwrap_or(1);

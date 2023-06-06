@@ -301,7 +301,7 @@ where
         state.run_plan_with_eval(
             inputs,
             |session_state, state, node, input| -> TractResult<TVec<TValue>> {
-                let mut tags = annotations.node_mut(node.id.into());
+                let tags = annotations.node_mut(node.id.into());
                 let reference: Option<TVec<TValue>> = (0..node.outputs.len())
                     .map(|ix| {
                         let get_value = |label: &str| {
