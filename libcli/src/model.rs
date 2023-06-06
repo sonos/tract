@@ -76,7 +76,7 @@ pub trait Model:
             return vec![("loop".into(), &mir.body)];
         }
         if let Some(mir) = self.node_op(id).downcast_ref::<tract_core::ops::logic::IfThenElse>() {
-            return vec![("loop".into(), &mir.then_body), ("else".into(), &mir.else_body)];
+            return vec![("then".into(), &mir.then_body), ("else".into(), &mir.else_body)];
         }
         #[cfg(feature = "hir")]
         if let Some(hir) = self.node_op(id).downcast_ref::<tract_hir::ops::scan::InferenceScan>() {
@@ -84,7 +84,7 @@ pub trait Model:
         }
         #[cfg(feature = "hir")]
         if let Some(hir) = self.node_op(id).downcast_ref::<tract_onnx::ops::logic::If>() {
-            return vec![("loop".into(), &hir.then_body), ("else".into(), &hir.else_body)];
+            return vec![("then".into(), &hir.then_body), ("else".into(), &hir.else_body)];
         }
         vec![]
     }
