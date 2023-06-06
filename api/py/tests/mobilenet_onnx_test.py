@@ -35,6 +35,18 @@ def test_onnx():
     confidences = result[0].to_numpy()
     assert numpy.argmax(confidences) == 652
 
+def test_state():
+    model = (
+        tract.onnx()
+        .model_for_path("./mobilenetv2-7.onnx")
+        .into_optimized()
+        .into_runnable()
+    )
+    state = model.spawn_state()
+    result = state.run([grace_hopper_1x3x224x244()])
+    confidences = result[0].to_numpy()
+    assert numpy.argmax(confidences) == 652
+
 def test_nnef_register():
     tract.nnef().with_tract_core().with_onnx().with_pulse()
 

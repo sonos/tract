@@ -61,14 +61,14 @@ class Model:
         """Return the number of inputs of the model"""
         self._valid()
         i = c_size_t()
-        check(lib.tract_model_nbio(self.ptr, byref(i), None))
+        check(lib.tract_model_input_count(self.ptr, byref(i)))
         return i.value
 
     def output_count(self) -> int:
         """Return the number of outputs of the model"""
         self._valid()
         i = c_size_t()
-        check(lib.tract_model_nbio(self.ptr, None, byref(i)))
+        check(lib.tract_model_output_count(self.ptr, byref(i)))
         return i.value
 
     def input_name(self, input_id: int) -> str:
