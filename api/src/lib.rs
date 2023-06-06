@@ -178,7 +178,7 @@ pub trait ValueInterface: Sized + Clone {
         let data = unsafe {
             std::slice::from_raw_parts(
                 data.as_ptr() as *const u8,
-                data.len() * std::mem::size_of::<T>(),
+                std::mem::size_of_val(data)
             )
         };
         Self::from_bytes(T::datum_type(), shape, data)

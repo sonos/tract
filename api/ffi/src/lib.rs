@@ -406,7 +406,7 @@ pub unsafe extern "C" fn tract_inference_model_output_fact(
         check_not_null!(model, fact);
         *fact = std::ptr::null_mut();
         let f = (*model).0.output_fact(output_id)?;
-        *fact = Box::into_raw(Box::new(TractInferenceFact(f.clone())));
+        *fact = Box::into_raw(Box::new(TractInferenceFact(f)));
         Ok(())
     })
 }
