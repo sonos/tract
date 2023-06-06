@@ -29,7 +29,7 @@ impl Pad {
         let output_shape: Vec<usize> =
             input.shape().iter().zip(self.pads.iter()).map(|(&d, &(a, b))| d + a + b).collect();
         let element = match &self.mode {
-            PadMode::Constant(f) => *f.to_scalar::<T>()?,
+            PadMode::Constant(f) => f.cast_to_scalar::<T>()?,
             _ => T::default(),
         };
         let mut output = ArrayD::<T>::from_elem(output_shape, element);
