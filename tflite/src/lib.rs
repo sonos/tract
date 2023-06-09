@@ -1,8 +1,13 @@
 mod ops;
 mod tensors;
-mod tflite_generated;
-use crate::tflite_generated::tflite::Model as ModelBuffer;
 
+#[allow(unused_imports)]
+mod tflite_generated;
+pub use tflite_generated::tflite;
+
+
+/*
+use crate::tflite_generated::tflite::Model as ModelBuffer;
 impl ModelBuffer {
     pub fn from_file(path: P) -> Result<ModelBuffer, Error> {
         let model_file = &*fs::read(model_file_path)?;
@@ -20,3 +25,4 @@ pub struct TFLiteModel<'model> {
 }
 
 impl TFLite<'_> {}
+*/

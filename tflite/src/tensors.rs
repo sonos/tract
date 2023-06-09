@@ -1,4 +1,4 @@
-use crate::tflite_generated::{tflite::TensorType, TensorType as BufferTensorType};
+use crate::tflite_generated::tflite::{TensorType, TensorType as BufferTensorType};
 #[cfg(feature = "complex")]
 use num_complex::Complex;
 use tract_hir::internal::*;
@@ -8,7 +8,7 @@ impl TryFrom<BufferTensorType> for DatumType {
     fn try_from(t: BufferTensorType) -> TractResult<DatumType> {
         Ok(match t {
             BufferTensorType::FLOAT32 => DatumType::F32,
-            BUfferTensorType::FLOAT16 => DatumType::F16,
+            BufferTensorType::FLOAT16 => DatumType::F16,
             BufferTensorType::INT32 => DatumType::I32,
             BufferTensorType::UINT8 => DatumType::U8,
             BufferTensorType::INT64 => DatumType::I64,
@@ -16,7 +16,7 @@ impl TryFrom<BufferTensorType> for DatumType {
             BufferTensorType::BOOL => DatumType::Bool,
             BufferTensorType::INT16 => DatumType::I16,
             #[cfg(feature = "complex")]
-            BufferTensorType::COMPLEX64 => DatumType::ComplexF64,
+            BufferTensorType::COMPLEX64 => DatumType::ComplexF64, // TODO check this
             TensorType::INT8 => DatumType::I8,
             TensorType::FLOAT64 => DatumType::F64,
             //TensorType::COMPLEX128 => DatumType::ComplexF64,
@@ -32,7 +32,7 @@ impl TryFrom<BufferTensorType> for DatumType {
     }
 }
 
-fn create_tensor(shape: Vec<usize>, dt: DatumType, data: &[u8]) -> TractResult<Tensor> {
+fn create_tensor(dt: DatumType, shape: &[usize], data: &[u8]) -> TractResult<Tensor> {
     unsafe {
         match dt {
             DatumType::U8 => Tensor::from_raw::<u8>(&shape, data),
@@ -47,7 +47,7 @@ fn create_tensor(shape: Vec<usize>, dt: DatumType, data: &[u8]) -> TractResult<T
             DatumType::F32 => Tensor::from_raw::<f32>(&shape, data),
             DatumType::F64 => Tensor::from_raw::<f64>(&shape, data),
             #[cfg(feature = "complex")]
-            DatumType::ComplexF64 => Tensor::from_raw::<Complex<f64>>(&shape, data),
+            DatumType::ComplexF64 => Tensor::from_raw::<Complex<f64>>(&shape, data), // TODO check this
             DatumType::Bool => Ok(Tensor::from_raw::<u8>(&shape, data)?
                 .into_array::<u8>()?
                 .mapv(|x| x != 0)
