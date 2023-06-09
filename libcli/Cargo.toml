@@ -26,6 +26,7 @@ serde_json.workspace = true
 tract-core = { version = "=0.20.7-pre", path = "../core" }
 tract-hir = { version = "=0.20.7-pre", path = "../hir" }
 tract-onnx = { version = "=0.20.7-pre", path = "../onnx", optional = true }
+tract-tflite = { version = "=0.20.7-pre", path = "../tflite", optional = true }
 
 [features]
 # hir = ["tract-hir"]

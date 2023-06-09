@@ -75,7 +75,7 @@ fn main() -> tract_core::anyhow::Result<()> {
         .arg(arg!(verbose: -v ... "Sets the level of verbosity."))
         .arg(arg!([model] "Sets the model to use"))
         .arg(arg!(-f --format [format]
-                  "Hint the model format ('onnx', 'nnef' or 'tf') instead of guess from extension."))
+                  "Hint the model format ('onnx', 'nnef', 'tflite' or 'tf') instead of guess from extension."))
         .arg(Arg::new("input").long("input").short('i').multiple_occurrences(true).takes_value(true).long_help(
                   "Set input shape and type (@file.pb or @file.npz:thing.npy or 3,4,i32)."))
         .arg(Arg::new("constantize").long("constantize").multiple_occurrences(true).takes_value(true).long_help(

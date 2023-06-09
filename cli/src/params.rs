@@ -15,6 +15,8 @@ use tract_hir::internal::*;
 use tract_pulse::internal::*;
 #[cfg(feature = "tf")]
 use tract_tensorflow::tfpb::tensorflow::GraphDef;
+#[cfg(feature = "tflite")]
+use tract_tflite::internal::TfliteProtoModel;
 
 use tract_nnef::ast::dump::Dumper;
 
@@ -70,6 +72,8 @@ pub enum SomeGraphDef {
     Onnx(tract_onnx::pb::ModelProto, tract_onnx::model::ParseResult),
     #[cfg(feature = "tf")]
     Tf(GraphDef),
+    #[cfg(feature = "tflite")]
+    Tflite(TfliteProtoModel),
 }
 
 #[derive(Debug)]
@@ -155,6 +159,8 @@ impl Parameters {
         let format = matches.value_of("format").unwrap_or(
             if location.path().extension().map(|s| s == "onnx").unwrap_or(false) {
                 "onnx"
+            } else if location.path().extension().map(|s| s == "tflite").unwrap_or(false) {
+                "tflite"
             } else if location.is_dir()
                 || location.path().to_string_lossy().ends_with(".tar")
                 || location.path().to_string_lossy().ends_with(".tar.gz")
@@ -244,6 +250,16 @@ impl Parameters {
                     ),
                     Option::<TfExt>::None,
                 )
+            }
+            #[cfg(feature = "tflite")]
+            "tflite" => {
+                let tflite = tract_tflite::tflite();
+                info_usage("loaded framework (tflite)", probe);
+                let proto = tflite.proto_model_for_read(&mut *location.read()?)?;
+                info_usage("proto model loaded", probe);
+                let model = tflite.model_for_proto_model_with_symbols(&proto, symbol_table)?;
+                info_usage("proto model translated", probe);
+                (SomeGraphDef::Tflite(proto), Box::new(model), Option::<TfExt>::None)
             }
             #[cfg(feature = "onnx")]
             "onnx" => {

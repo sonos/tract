@@ -1,7 +1,9 @@
+use crate::tflite::{Model, SubGraph};
 use crate::tflite_generated::tflite::{TensorType, TensorType as BufferTensorType};
 #[cfg(feature = "complex")]
 use num_complex::Complex;
 use tract_hir::internal::*;
+use tract_hir::prelude::tract_itertools::Itertools;
 
 impl TryFrom<BufferTensorType> for DatumType {
     type Error = TractError;
@@ -49,11 +51,30 @@ fn create_tensor(dt: DatumType, shape: &[usize], data: &[u8]) -> TractResult<Ten
             DatumType::F64 => Tensor::from_raw::<f64>(shape, data),
             #[cfg(feature = "complex")]
             DatumType::ComplexF64 => Tensor::from_raw::<Complex<f64>>(&shape, data), // TODO check this
-            DatumType::Bool => Ok(Tensor::from_raw::<u8>(shape, data)?
-                .into_array::<u8>()?
-                .mapv(|x| x != 0)
-                .into()),
+            DatumType::Bool => {
+                Ok(Tensor::from_raw::<u8>(shape, data)?.into_array::<u8>()?.mapv(|x| x != 0).into())
+            }
             _ => unimplemented!("FIXME, raw tensor loading"),
         }
     }
+}
+
+pub fn tensor_to_fact<'m>(
+    &model: &'m Model<'m>,
+    graph: &'m SubGraph<'m>,
+    id: i32,
+) -> TractResult<(TypedFact, &'m str)> {
+    let flat = graph.tensors().unwrap().get(id as _);
+    let dt: DatumType = flat.type_().try_into()?;
+    let mut fact = dt.fact(flat.shape().unwrap().iter().map(|d| d as usize).collect_vec());
+    let buffer_ix = flat.buffer() as usize;
+    if buffer_ix != 0 {
+        let buffer = model.buffers().unwrap().get(flat.buffer() as usize);
+        if let Some(data) = buffer.data() {
+            let data =
+                create_tensor(fact.datum_type, fact.shape.as_concrete().unwrap(), data.bytes())?;
+            fact = data.into();
+        }
+    }
+    Ok((fact, flat.name().unwrap()))
 }

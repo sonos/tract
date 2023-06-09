@@ -24,6 +24,8 @@ pub fn annotate_with_graph_def(
         SomeGraphDef::Onnx(onnx, _) => annotate_with_onnx_model(annotations, model, onnx),
         #[cfg(feature = "tf")]
         SomeGraphDef::Tf(tf) => annotate_with_tf_graph_def(annotations, model, tf),
+        #[cfg(feature = "tflite")]
+        SomeGraphDef::Tflite(tflite) => annotate_with_tflite_graph_def(annotations, model, tflite),
     }
 }
 
@@ -51,6 +53,15 @@ fn annotate_with_tf_graph_def(
             annotations.node_mut(node_id.into()).sections.push(v);
         }
     }
+    Ok(())
+}
+
+#[cfg(feature = "tflite")]
+fn annotate_with_tflite_graph_def(
+    _annotations: &mut Annotations,
+    _model: &dyn Model,
+    _graph_def: &tract_tflite::internal::TfliteProtoModel,
+) -> TractResult<()> {
     Ok(())
 }
 
