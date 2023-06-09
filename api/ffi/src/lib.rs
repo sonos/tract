@@ -103,7 +103,7 @@ macro_rules! release {
 // NNEF
 pub struct TractNnef(tract_rs::Nnef);
 
-/// Creates an instance of an NNEF framework and parser that can be used to load models.
+/// Creates an instance of an NNEF framework and parser that can be used to load and dump NNEF models.
 ///
 /// The returned object should be destroyed with `tract_nnef_destroy` once the model
 /// has been loaded.
