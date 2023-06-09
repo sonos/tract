@@ -28,8 +28,8 @@ jobs:
           version=${{steps.version.outputs.value}}
           if [ -n "$version" ]
           then
-            mike deploy $version
+            mike deploy --rebase $version
           else
-            mike deploy 0.20.dev
+            mike deploy --rebase 0.20.dev
           fi
           git push origin gh-pages:gh-pages

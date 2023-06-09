@@ -1,6 +1,6 @@
 use crate::params::SomeGraphDef;
-use crate::Parameters;
 use crate::tensor::run_params_from_subcommand;
+use crate::Parameters;
 #[allow(unused_imports)]
 use nu_ansi_term::Style;
 use tract_hir::internal::*;
@@ -72,7 +72,7 @@ fn annotate_with_tf_graph_def(
                     } else {
                         format!("{:?}", a.1)
                     };
-                v.push(format!("Attr {}: {:.240}", bold.paint(a.0), value));
+                v.push(format!("Attr {}: {:.300}", bold.paint(a.0), value));
             }
             annotations.node_mut(node_id.into()).sections.push(v);
         }
@@ -88,13 +88,11 @@ fn annotate_with_onnx_model(
 ) -> TractResult<()> {
     let bold = Style::new().bold();
     for gnode in model_proto.graph.as_ref().unwrap().node.iter() {
-        let mut node_name = &gnode.name;
-        if !node_name.is_empty() && gnode.output.len() > 0 {
-            node_name = &gnode.output[0];
-        } else if let Some(n) = gnode.output.get(0) {
-            node_name = n;
-        }
-        if let Ok(id) = model.node_id_by_name(node_name) {
+        if let Some(id) = model
+            .node_id_by_name(&gnode.name)
+            .ok()
+            .or_else(|| gnode.output.get(0).and_then(|n| model.node_id_by_name(n).ok()))
+        {
             let mut v = vec![];
             for a in gnode.attribute.iter() {
                 let value = if let Some(t) = &a.t {
@@ -131,7 +129,14 @@ pub fn handle(
             .downcast_ref::<TypedModel>()
             .context("Can only profile typed models")?;
         let inputs = retrieve_or_make_inputs(model, &run_params)?;
-        tract_libcli::profile::profile(model, bench_limits, &mut annotations, &inputs[0], None, options.folded)?;
+        tract_libcli::profile::profile(
+            model,
+            bench_limits,
+            &mut annotations,
+            &inputs[0],
+            None,
+            options.folded,
+        )?;
     }
 
     if sub_matches.is_present("axes") || sub_matches.is_present("axes-names") {
@@ -174,7 +179,8 @@ pub fn handle(
             rename_outputs(&mut typed, sub_matches)?;
             let file = std::fs::File::create(path)?;
             let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
-            nnef.write_to_tar_with_config(&typed, encoder, compress_submodels).context("Writting model to tgz")?;
+            nnef.write_to_tar_with_config(&typed, encoder, compress_submodels)
+                .context("Writting model to tgz")?;
         } else {
             bail!("Only typed model can be dumped")
         }
@@ -185,7 +191,8 @@ pub fn handle(
         if let Some(mut typed) = model.downcast_ref::<TypedModel>().cloned() {
             rename_outputs(&mut typed, sub_matches)?;
             let file = std::fs::File::create(path)?;
-            nnef.write_to_tar_with_config(&typed, file, compress_submodels).context("Writting model to tar")?;
+            nnef.write_to_tar_with_config(&typed, file, compress_submodels)
+                .context("Writting model to tar")?;
         } else {
             bail!("Only typed model can be dumped")
         }
@@ -217,7 +224,8 @@ pub fn handle(
             rename_outputs(&mut typed, sub_matches)?;
             let proto = tract_nnef::ser::to_proto_model(&nnef, &typed)?;
             if path == "-" {
-                tract_nnef::ast::dump::Dumper::new(&nnef, &mut std::io::stdout()).document(&proto.doc)?;
+                tract_nnef::ast::dump::Dumper::new(&nnef, &mut std::io::stdout())
+                    .document(&proto.doc)?;
             } else {
                 let mut file = std::fs::File::create(path)?;
                 tract_nnef::ast::dump::Dumper::new(&nnef, &mut file).document(&proto.doc)?;

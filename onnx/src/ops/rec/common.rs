@@ -246,12 +246,7 @@ impl CommonRec {
 
         let scan_outputs = target.wire_node(
             prefix,
-            tract_core::ops::scan::Scan::new(
-                body,
-                input_mapping,
-                output_mapping,
-                0,
-            )?,
+            tract_core::ops::scan::Scan::new(body, input_mapping, output_mapping, 0)?,
             &outer_inputs,
         )?;
 
@@ -293,6 +288,10 @@ impl CommonRec {
 impl Expansion for CommonRec {
     fn name(&self) -> Cow<str> {
         self.body.name().into()
+    }
+
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![format!("batch_first: {:?}", self.batch_first)])
     }
 
     fn validation(&self) -> Validation {

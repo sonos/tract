@@ -725,7 +725,7 @@ impl Parameters {
         if let Some(sub) = matches.value_of("extract-decluttered-sub") {
             stage!("extract", typed_model -> typed_model, |m:TypedModel| {
                 let node = m.node_id_by_name(sub)?;
-                Ok(m.nested_models(node).unwrap().1.downcast_ref::<TypedModel>().unwrap().clone())
+                Ok(m.nested_models(node)[0].1.downcast_ref::<TypedModel>().unwrap().clone())
             });
         }
         stage!("before-optimize", typed_model -> typed_model, Ok);

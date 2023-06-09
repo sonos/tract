@@ -7,7 +7,8 @@ use std::collections::HashMap;
 use tract_hir::internal::*;
 use tract_hir::prelude::tract_itertools::Itertools;
 
-use crate::pb;
+use crate::pb::type_proto::Value;
+use crate::pb::{self, TypeProto};
 use crate::tensor::translate_inference_fact;
 use prost::Message;
 
@@ -117,7 +118,7 @@ impl<'a> ParsingContext<'a> {
         let consts = model.nodes().len();
         for pbnode in graph.node.iter() {
             let name = if !pbnode.name.is_empty() {
-                pbnode.name.to_string().replace('/', "_")
+                pbnode.name.to_string()
             } else if pbnode.output.len() > 0 && !pbnode.output[0].is_empty() {
                 pbnode.output[0].to_owned()
             } else {
@@ -194,6 +195,13 @@ impl<'a> ParsingContext<'a> {
             model.set_outlet_fact(outlet, fact)?;
         }
         model.set_output_outlets(&outputs)?;
+        for info in &graph.value_info {
+            if let Some(TypeProto { value: Some(Value::TensorType(t)), .. }) = &info.r#type {
+                if let Some(outlet) = outlets_by_name.get(&info.name) {
+                    model.set_outlet_fact(*outlet, translate_inference_fact(&ctx, t)?.without_datum_type())?;
+                }
+            }
+        }
         let result = ParseResult { model, unresolved_inputs, outlets_by_name };
         Ok(result)
     }
@@ -291,10 +299,10 @@ impl Framework<pb::ModelProto, InferenceModel> for Onnx {
         Ok(model)
     }
 
-    #[cfg(target_family="wasm")]
+    #[cfg(target_family = "wasm")]
     fn proto_model_for_path(&self, p: impl AsRef<path::Path>) -> TractResult<pb::ModelProto> {
         let mut file = fs::File::open(p)?;
-        Ok(self.proto_model_for_read(&mut file)?)        
+        Ok(self.proto_model_for_read(&mut file)?)
     }
 
     #[cfg(any(windows, unix))]

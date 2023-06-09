@@ -103,7 +103,7 @@ fn overlap(pulse_axis: usize, op: &DeconvUnary) -> usize {
 impl PulsedOp for DeconvUnary {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
-        let mut stream = fact.stream.as_mut().unwrap();
+        let stream = fact.stream.as_mut().unwrap();
         let overlap = overlap(stream.axis, self);
         let geo_axis = stream.axis - self.pool_spec.data_format.h_axis();
         let stride = self.pool_spec.stride(geo_axis);
@@ -130,7 +130,7 @@ impl PulsedOp for DeconvUnary {
 impl PulsedOp for DeconvDelay {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
-        let mut stream = fact.stream.as_mut().unwrap();
+        let stream = fact.stream.as_mut().unwrap();
         stream.dim = self.deconv_output_dim.clone();
         let pulse_len = fact.shape[stream.axis].clone();
         fact.shape.set(stream.axis, pulse_len - self.overlap);

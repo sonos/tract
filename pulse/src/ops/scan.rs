@@ -31,7 +31,7 @@ fn pulsify(
     let mut op = op.clone();
     let first_scan_slot = op.input_mapping.iter().position(InputMapping::is_scan).unwrap();
     op.skip = target.outlet_fact(pulse_inputs[first_scan_slot])?.stream.as_ref().unwrap().delay;
-    for mut om in op.output_mapping.iter_mut() {
+    for om in op.output_mapping.iter_mut() {
         if om.scan.is_some() {
             om.full_dim_hint = None;
         }

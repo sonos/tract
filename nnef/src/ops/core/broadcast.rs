@@ -17,7 +17,8 @@ fn de_broadcast(
     invocation: &ResolvedInvocation,
 ) -> TractResult<Value> {
     let wire = invocation.named_arg_as(builder, "input")?;
-    let shape: TVec<TDim> = invocation.named_arg_as(builder, "shape")?;
+    let shape: TVec<TDim> =
+        builder.allowing_new_symbols(|builder| invocation.named_arg_as(builder, "shape"))?;
     builder.wire(ops::array::MultiBroadcastTo { shape: shape.into() }, &[wire])
 }
 

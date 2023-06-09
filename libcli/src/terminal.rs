@@ -290,7 +290,7 @@ fn render_node_prefixed(
     }
 
     if !options.folded {
-        if let Some((label, sub)) = model.nested_models(node_id) {
+        for (label, sub) in model.nested_models(node_id) {
             let prefix = drawing_lines.next().unwrap();
             let mut scope: TVec<_> = scope.into();
             scope.push((node_id, label));

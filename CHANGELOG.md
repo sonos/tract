@@ -1,3 +1,10 @@
+# 0.20.6 - 2023-06-09
+* Bug fixes, fix display of If operator
+
+# 0.20.5 - 2023-05-26
+* Various bugfix around Einsum
+* Einsum now has functions to translate to MatMul and other axes manipulations
+
 # 0.20.0, 0.20.1, 0,20.2, 0.20.3 - 2023-04-25
 * [optim] 32x32 f32 AMX kernel (for Apple Silicon M family)
 * [optim] bunch of AMX512F kernels (square, skinny, vector)
