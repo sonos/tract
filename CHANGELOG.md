@@ -1,3 +1,6 @@
+# 0.20.6 - 2023-06-09
+* Bug fixes, fix display of If operator
+
 # 0.20.5 - 2023-05-26
 * Various bugfix around Einsum
 * Einsum now has functions to translate to MatMul and other axes manipulations
