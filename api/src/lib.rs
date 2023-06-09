@@ -1,4 +1,4 @@
-use anyhow::{Result, ensure};
+use anyhow::{ensure, Result};
 use boow::Bow;
 use std::fmt::{Debug, Display};
 use std::path::Path;
@@ -6,42 +6,66 @@ use std::path::Path;
 #[macro_use]
 pub mod macros;
 
-pub trait TractInterface {
-    type Nnef: NnefInterface;
-    type Onnx: OnnxInterface;
-
-    fn version() -> &'static str;
-    fn nnef() -> Result<Self::Nnef>;
-    fn onnx() -> Result<Self::Onnx>;
-}
-
+/// an implementation of tract's NNEF framework object
+///
+/// Entry point for NNEF model manipulation: loading from file, dumping to file.
 pub trait NnefInterface: Sized {
     type Model: ModelInterface;
+    /// Load a NNEF model from the path into a tract-core model.
+    ///
+    /// * `path` can point to a directory, a `tar` file or a `tar.gz` file.
     fn model_for_path(&self, path: impl AsRef<Path>) -> Result<Self::Model>;
 
+    /// Allow the framework to use tract_core extensions instead of a stricter NNEF definition.
     fn enable_tract_core(&mut self) -> Result<()>;
+
+    /// Allow the framework to use tract_onnx extensions to support operators in ONNX that are
+    /// absent from NNEF.
     fn enable_onnx(&mut self) -> Result<()>;
+
+    /// Allow the framework to use tract_pulse extensions to support stateful streaming operation.
     fn enable_pulse(&mut self) -> Result<()>;
+
+    /// Allow the framework to use a tract-proprietary extension that can support special characters
+    /// in node names. If disable, tract will replace everything by underscore '_' to keep
+    /// compatibility with NNEF. If enabled, the extended syntax will be used, allowing to maintain
+    /// the node names in serialized form.
     fn enable_extended_identifier_syntax(&mut self) -> Result<()>;
 
+    /// Convenience function, similar with enable_tract_core but allowing method chaining.
     fn with_tract_core(mut self) -> Result<Self> {
         self.enable_tract_core()?;
         Ok(self)
     }
+
+    /// Convenience function, similar with enable_onnx but allowing method chaining.
     fn with_onnx(mut self) -> Result<Self> {
         self.enable_onnx()?;
         Ok(self)
     }
+
+    /// Convenience function, similar with enable_pulse but allowing method chaining.
     fn with_pulse(mut self) -> Result<Self> {
         self.enable_pulse()?;
         Ok(self)
     }
+
+    /// Convenience function, similar with enable_extended_identifier_syntax but allowing method chaining.
     fn with_extended_identifier_syntax(mut self) -> Result<Self> {
         self.enable_extended_identifier_syntax()?;
         Ok(self)
     }
 
+    /// Dump a TypedModel as a NNEF directory.
+    ///
+    /// `path` is the directory name to dump to
     fn write_model_to_dir(&self, path: impl AsRef<Path>, model: &Self::Model) -> Result<()>;
+
+    /// Dump a TypedModel as a NNEF tar file.
+    ///
+    /// This function creates a plain, non-compressed, archive.
+    ///
+    /// `path` is the archive name 
     fn write_model_to_tar(&self, path: impl AsRef<Path>, model: &Self::Model) -> Result<()>;
     fn write_model_to_tar_gz(&self, path: impl AsRef<Path>, model: &Self::Model) -> Result<()>;
 }
@@ -176,10 +200,7 @@ pub trait ValueInterface: Sized + Clone {
 
     fn from_slice<T: Datum>(shape: &[usize], data: &[T]) -> Result<Self> {
         let data = unsafe {
-            std::slice::from_raw_parts(
-                data.as_ptr() as *const u8,
-                std::mem::size_of_val(data)
-            )
+            std::slice::from_raw_parts(data.as_ptr() as *const u8, std::mem::size_of_val(data))
         };
         Self::from_bytes(T::datum_type(), shape, data)
     }

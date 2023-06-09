@@ -19,6 +19,7 @@ use tract_pulse::WithPulse;
 
 use tract_api::*;
 
+/// Creates an instance of an NNEF framework and parser that can be used to load and dump NNEF models.
 pub fn nnef() -> Result<Nnef> {
     Ok(Nnef(tract_nnef::nnef()))
 }
@@ -27,11 +28,11 @@ pub fn onnx() -> Result<Onnx> {
     Ok(Onnx(tract_onnx::onnx()))
 }
 
+/// tract version tag
 pub fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 
-// NNEF
 pub struct Nnef(tract_nnef::internal::Nnef);
 
 impl NnefInterface for Nnef {
