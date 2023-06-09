@@ -1,7 +1,9 @@
+#![allow(dead_code)]
+
 mod ops;
 mod tensors;
 
-#[allow(unused_imports)]
+#[allow(unused_imports,clippy::extra_unused_lifetimes,clippy::missing_safety_doc,clippy::derivable_impls,clippy::needless_lifetimes)]
 mod tflite_generated;
 pub use tflite_generated::tflite;
 
