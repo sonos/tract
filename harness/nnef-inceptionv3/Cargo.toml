@@ -1,6 +1,6 @@
 [package]
 name = "nnef-inceptionv3"
-version = "0.20.6-pre"
+version = "0.20.7-pre"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT/Apache-2.0"
 edition = "2021"
@@ -8,8 +8,8 @@ edition = "2021"
 [dependencies]
 flate2.workspace = true
 image.workspace = true
-tract-core = { version = "=0.20.6", path = "../../core" }
-tract-nnef = { version = "=0.20.6", path = "../../nnef" }
+tract-core = { version = "=0.20.7-pre", path = "../../core" }
+tract-nnef = { version = "=0.20.7-pre", path = "../../nnef" }
 
 [dev-dependencies]
 dinghy-test.workspace = true
