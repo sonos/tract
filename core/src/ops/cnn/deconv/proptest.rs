@@ -84,6 +84,10 @@ impl Arbitrary for DeconvProblem {
                             kernel_shape.push(ci_over_group * group);
                             kernel_shape.push(co_over_group);
                         }
+                        OHWI => {
+                            kernel_shape.insert(0, co_over_group);
+                            kernel_shape.push(ci_over_group * group);
+                        }
                     };
                     let data_shape = df.from_n_c_hw(n, ci_over_group * group, hwi).unwrap();
                     (
@@ -144,6 +148,7 @@ impl DeconvProblem {
             Some(match self.kernel_format {
                 KernelFormat::OIHW => self.kernel.shape()[0] * self.group,
                 KernelFormat::HWIO => self.kernel.shape()[self.kernel.ndim() - 1] * self.group,
+                KernelFormat::OHWI => self.kernel.shape()[0] * self.group,
             }),
         );
         let op = DeconvUnary::new(
@@ -180,7 +185,7 @@ impl DeconvProblem {
         use std::iter::once;
         let co = match self.kernel_format {
             KernelFormat::HWIO => self.kernel.shape()[self.kernel.ndim() - 1] * self.group,
-            KernelFormat::OIHW => self.kernel.shape()[0] * self.group,
+            KernelFormat::OIHW | KernelFormat::OHWI => self.kernel.shape()[0] * self.group,
         };
         let input_shape = self.data_format.shape(self.input.shape()).unwrap();
         let n = if self.data_format.has_n() { self.input.shape()[0] } else { 1 };
@@ -257,6 +262,10 @@ impl DeconvProblem {
                                         .cloned()
                                         .chain(once(ci + ci_per_group * g))
                                         .chain(once(co))
+                                        .collect(),
+                                    OHWI => once(co)
+                                        .chain(hwk.slice().iter().cloned())
+                                        .chain(once(ci + ci_per_group * g))
                                         .collect(),
                                 };
                                 if let Some(cell) = output.get_mut(&*o.shape) {

@@ -58,6 +58,20 @@ impl KernelFormat {
         &full_shape[self.o_axis(full_shape)]
     }
 
+    pub fn input_channels<D: DimLike>(&self, full_shape: &[D], group: usize) -> D {
+        match self {
+            KernelFormat::OIHW => self.i(full_shape).clone() * group,
+            KernelFormat::HWIO | KernelFormat::OHWI => self.i(full_shape).clone(),
+        }
+    }
+
+    pub fn output_channels<D: DimLike>(&self, full_shape: &[D], group: usize) -> D {
+        match self {
+            KernelFormat::OIHW => self.o(full_shape).clone(),
+            KernelFormat::HWIO | KernelFormat::OHWI => self.o(full_shape).clone() * group
+        }
+    }
+
     pub fn kernel_as_group_o_ihw(
         &self,
         kernel: &Tensor,
