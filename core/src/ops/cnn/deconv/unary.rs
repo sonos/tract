@@ -62,7 +62,7 @@ impl DeconvUnary {
 
         let kernel_spatial_shape = self.kernel_format.spatial_shape(self.kernel.shape());
 
-        // kernel: insert G: before O in OIHW, before I in HWIO
+        // kernel: insert G: before O in OIHW, before I in HWIO and OWHI
         let kernel_shape_with_g: TVec<usize> = match self.kernel_format {
             KernelFormat::OIHW => once(self.kernel.shape()[0])
                 .chain(once(self.group))
@@ -75,6 +75,11 @@ impl DeconvUnary {
                 .chain(once(self.group))
                 .chain(once(self.kernel.shape()[self.kernel.rank() - 2] / self.group))
                 .chain(once(self.kernel.shape()[self.kernel.rank() - 1]))
+                .collect(),
+            KernelFormat::OHWI => once(self.kernel.shape()[0])
+                .chain(self.kernel.shape()[1..].iter().take(self.kernel.rank() - 2).cloned())
+                .chain(once(self.group))
+                .chain(once(self.kernel.shape()[self.kernel.rank() - 1] / self.group))
                 .collect(),
         };
         let kernel_with_group =
@@ -93,6 +98,11 @@ impl DeconvUnary {
                 .chain(once(kernel_with_group.rank() - 1))
                 .chain(0..kernel_with_group.rank() - 3)
                 .chain(once(kernel_with_group.rank() - 2))
+                .collect(),
+            // kernel_with_group is in O H W G I
+            KernelFormat::OHWI => once(kernel_with_group.rank() - 2)
+                .chain(0..kernel_with_group.rank() - 2)
+                .chain(once(kernel_with_group.rank() - 1))
                 .collect(),
         };
         let kernel_as_g_o_h_w_i = kernel_with_group.permute_axes(&permutation_to_g_o_h_w_i)?;

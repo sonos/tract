@@ -47,10 +47,7 @@ fn pulsify(
         &fact.streaming_shape(),
         &op.adjustments,
     )?;
-    let kernel_spatial_shape = match op.kernel_format {
-        tract_core::ops::cnn::KernelFormat::OIHW => &op.kernel.shape()[2..],
-        tract_core::ops::cnn::KernelFormat::HWIO => &op.kernel.shape()[..op.kernel.rank() - 2],
-    };
+    let kernel_spatial_shape = op.kernel_format.hw(op.kernel.shape());
     let shape = op.pool_spec.data_format.shape(fact.streaming_shape())?;
     let paddings = op.pool_spec.padding.compute_for_deconv(
         shape.hw_dims(),
@@ -93,10 +90,7 @@ fn pulsify(
 
 fn overlap(pulse_axis: usize, op: &DeconvUnary) -> usize {
     let geo_axis = pulse_axis - op.pool_spec.data_format.h_axis();
-    let axis_in_kernel = match op.kernel_format {
-        tract_core::ops::cnn::KernelFormat::OIHW => 2 + geo_axis,
-        tract_core::ops::cnn::KernelFormat::HWIO => geo_axis,
-    };
+    let axis_in_kernel = op.kernel_format.h_axis() + geo_axis;
     (op.kernel.shape()[axis_in_kernel] - 1) * op.pool_spec.dilation(geo_axis)
 }
 

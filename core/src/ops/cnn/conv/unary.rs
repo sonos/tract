@@ -50,6 +50,7 @@ impl ConvUnary {
         match self.kernel_fmt {
             KernelFormat::OIHW => self.kernel.shape()[1] * self.group,
             KernelFormat::HWIO => self.kernel.shape()[self.kernel.shape().len() - 2],
+            KernelFormat::OHWI => self.kernel.shape()[self.kernel.shape().len() - 1],
         }
     }
 
@@ -58,6 +59,7 @@ impl ConvUnary {
         match self.kernel_fmt {
             KernelFormat::OIHW => kshape[0],
             KernelFormat::HWIO => kshape[kshape.len() - 1] * self.group,
+            KernelFormat::OHWI => self.kernel.shape()[0] * self.group,
         }
     }
 

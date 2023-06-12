@@ -6,7 +6,6 @@ pub struct Flatten {
     axis: i64,
 }
 
-
 impl Flatten {
     pub fn compute_shape<D: DimLike>(&self, shape: &[D]) -> TractResult<[D; 2]> {
         if shape.iter().filter(|d| d.to_usize().is_err()).count() > 1 {
@@ -21,7 +20,6 @@ impl Expansion for Flatten {
     fn name(&self) -> Cow<str> {
         "Flatten".into()
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -46,7 +44,9 @@ impl Expansion for Flatten {
         let output_shape = self.compute_shape(&input_shape)?;
         let mut wire = tvec!(inputs[0]);
         for (ix, op) in
-            super::reshape::to_axis_ops(&input_shape, &output_shape)?.into_iter().enumerate()
+            tract_core::ops::change_axes::to_axis_ops_with_tf_rules(&input_shape, &output_shape)?
+                .into_iter()
+                .enumerate()
         {
             wire = model.wire_node(format!("{prefix}.{ix}"), op, &wire)?;
         }

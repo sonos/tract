@@ -19,6 +19,7 @@ pub enum KernelFormat {
     #[default]
     OIHW,
     HWIO,
+    OHWI,
 }
 
 impl KernelFormat {
@@ -26,25 +27,35 @@ impl KernelFormat {
         match self {
             KernelFormat::OIHW => 2,
             KernelFormat::HWIO => 0,
+            KernelFormat::OHWI => 1,
         }
     }
 
-    pub fn spatial_shape<'a, D: DimLike>(&self, full_shape: &'a [D]) -> &'a [D] {
+    pub fn spatial_shape<'a, D>(&self, full_shape: &'a [D]) -> &'a [D] {
         &full_shape[self.h_axis()..][..full_shape.len() - 2]
     }
 
-    pub fn i<'a, D: DimLike>(&self, full_shape: &'a [D]) -> &'a D {
+    pub fn hw<'a, D>(&self, full_shape: &'a [D]) -> &'a [D] {
+        self.spatial_shape(full_shape)
+    }
+
+    pub fn i<'a, D>(&self, full_shape: &'a [D]) -> &'a D {
         match self {
             KernelFormat::OIHW => &full_shape[1],
             KernelFormat::HWIO => &full_shape[full_shape.len() - 2],
+            KernelFormat::OHWI => &full_shape[full_shape.len() - 1],
         }
     }
 
-    pub fn o<'a, D: DimLike>(&self, full_shape: &'a [D]) -> &'a D {
+    pub fn o_axis<'a, D>(&self, full_shape: &'a [D]) -> usize {
         match self {
-            KernelFormat::OIHW => &full_shape[0],
-            KernelFormat::HWIO => &full_shape[full_shape.len() - 1],
+            KernelFormat::OIHW | KernelFormat::OHWI => 0,
+            KernelFormat::HWIO => full_shape.len() - 1,
         }
+    }
+
+    pub fn o<'a, D>(&self, full_shape: &'a [D]) -> &'a D {
+        &full_shape[self.o_axis(full_shape)]
     }
 
     pub fn kernel_as_group_o_ihw(
@@ -69,6 +80,14 @@ impl KernelFormat {
                 Ok(tensor)
             }
             KernelFormat::OIHW => Ok(kernel.clone().into_shape(&final_shape)?.into_arc_tensor()),
+            KernelFormat::OHWI => {
+                // move I to OIHW, then same as OIHW
+                Ok(kernel
+                    .clone()
+                    .move_axis(kernel.rank() - 1, 1)?
+                    .into_shape(&final_shape)?
+                    .into_arc_tensor())
+            }
         }
     }
 }

@@ -87,17 +87,14 @@ impl Conv {
         let ishape = self.data_format.shape(ishape)?;
         let spatial_rank = ishape.hw_rank();
         let ones = tvec![1; spatial_rank];
-        let kernel_spatial_shape = &kshape[self.kernel_fmt.h_axis()..][..spatial_rank];
+        let kernel_spatial_shape = self.kernel_fmt.hw(kshape);
         let computed = self.padding.compute(
             ishape.hw_dims(),
             kernel_spatial_shape,
             self.dilations.as_ref().unwrap_or(&ones),
             self.strides.as_ref().unwrap_or(&ones),
         );
-        let channels_out = match self.kernel_fmt {
-            KernelFormat::OIHW => kshape[0],
-            KernelFormat::HWIO => kshape[kshape.len() - 1] * self.group.unwrap_or(1),
-        };
+        let channels_out = *self.kernel_fmt.o(kshape);
         result[ishape.c_axis()] = channels_out.into();
         for (ix, d) in computed.iter().enumerate() {
             result[ishape.h_axis() + ix] = d.convoluted.clone();
@@ -148,6 +145,7 @@ impl Expansion for Conv {
                 let filter_o = match self.kernel_fmt {
                     KernelFormat::OIHW => &k_input.shape[0],
                     KernelFormat::HWIO => &k_input.shape[krank as usize - 1],
+                    KernelFormat::OHWI => &k_input.shape[0],
                 };
                 s.equals(&inputs[bias].shape[0], filter_o)
             })?
@@ -162,6 +160,7 @@ impl Expansion for Conv {
             let filter_i = match self.kernel_fmt {
                 KernelFormat::OIHW => &k_input.shape[1],
                 KernelFormat::HWIO => &k_input.shape[krank as usize - 2],
+                KernelFormat::OHWI => &k_input.shape[krank as usize - 1],
             };
             s.equals(input_c.bex(), self.group.unwrap_or(1) as i64 * filter_i.bex())
         })?;
@@ -192,6 +191,7 @@ impl Expansion for Conv {
         let channels_in = match self.kernel_fmt {
             KernelFormat::OIHW => kernel.shape()[1] * self.group.unwrap_or(1),
             KernelFormat::HWIO => kernel.shape()[kernel.rank() - 2],
+            KernelFormat::OHWI => kernel.shape()[kernel.rank() - 1],
         };
         if input_shape.c_dim() != &channels_in.to_dim() {
             bail!("Input has {} channels, kernel expects {}", input_shape.c_dim(), channels_in)
@@ -205,10 +205,7 @@ impl Expansion for Conv {
         let spatial_rank = kernel.rank() - 2;
         let kshape = kernel.shape();
         let group = self.group.unwrap_or(1);
-        let output_channels = match self.kernel_fmt {
-            KernelFormat::OIHW => kshape[0],
-            KernelFormat::HWIO => kshape[kshape.len() - 1] * group,
-        };
+        let output_channels = *self.kernel_fmt.o(kshape);
         let pool_spec = PoolSpec {
             data_format: self.data_format,
             padding: self.padding.clone(),

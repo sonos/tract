@@ -45,7 +45,6 @@ impl Framework<TfliteProtoModel, TypedModel> for Tflite {
     ) -> TractResult<TypedModel> {
         let root = proto.root();
         let main = &root.subgraphs().context("No subgraphs in Tflite model")?.get(0);
-        let tensors = main.tensors().unwrap();
         let mut target = TypedModel::default();
         let mut mapping = HashMap::new();
         for input in main.inputs().unwrap() {
@@ -63,11 +62,8 @@ impl Framework<TfliteProtoModel, TypedModel> for Tflite {
             }
             self.0.op(&root, main, &op, &mut target, &mut mapping)?;
         }
-        for output in main.outputs().unwrap() {
-            dbg!(output);
-            dbg!(tensors.get(output as _));
-        }
-        dbg!(&target);
+        let outputs:TVec<_> = main.outputs().unwrap().iter().map(|o| mapping[&o]).collect();
+        target.set_output_outlets(&outputs)?;
         Ok(target)
     }
 }
