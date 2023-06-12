@@ -47,20 +47,11 @@ pub struct ConvUnary {
 
 impl ConvUnary {
     fn input_channels(&self) -> usize {
-        match self.kernel_fmt {
-            KernelFormat::OIHW => self.kernel.shape()[1] * self.group,
-            KernelFormat::HWIO => self.kernel.shape()[self.kernel.shape().len() - 2],
-            KernelFormat::OHWI => self.kernel.shape()[self.kernel.shape().len() - 1],
-        }
+        self.kernel_fmt.input_channels(self.kernel.shape(), self.group)
     }
 
     fn output_channels(&self) -> usize {
-        let kshape = self.kernel.shape();
-        match self.kernel_fmt {
-            KernelFormat::OIHW => kshape[0],
-            KernelFormat::HWIO => kshape[kshape.len() - 1] * self.group,
-            KernelFormat::OHWI => self.kernel.shape()[0] * self.group,
-        }
+        self.kernel_fmt.output_channels(self.kernel.shape(), self.group)
     }
 
     pub fn kernel_as_group_o_ihw(&self) -> TractResult<Arc<Tensor>> {
@@ -816,7 +807,7 @@ impl TypedOp for ConvUnary {
             != &self.input_channels().to_dim()
         {
             bail!(
-                "Inconsistent convolution: input is {:?}, kernel expects {} input channels, {:?}",
+                "Inconsistent convolution: input is {:?}, but kernel expects {} input channels.\n{:?}",
                 inputs[0],
                 self.input_channels(),
                 self
@@ -824,7 +815,7 @@ impl TypedOp for ConvUnary {
         }
         if self.pool_spec.output_channel_override != Some(self.output_channels()) {
             bail!(
-                "Inconsistent convolution: output channels from pool spec is {:?}, kernel expects {} output channels, {:?}",
+                "Inconsistent convolution: output channels from pool spec is {:?}, kernel expects {} output channels.\n{:?}",
                 self.pool_spec.output_channel_override,
                 self.output_channels(),
                 self
@@ -837,7 +828,6 @@ impl TypedOp for ConvUnary {
                 bias
             );
         }
-
         let mut fact = self.pool_spec.output_facts(inputs)?.remove(0);
         if let Some(dt) = self.q_params {
             fact.datum_type = dt;

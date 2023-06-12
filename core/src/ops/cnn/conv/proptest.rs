@@ -33,6 +33,7 @@ impl ConvProblem {
         let co_per_g = match self.kernel_format {
             KernelFormat::OIHW => self.kernel.shape()[0] / self.group,
             KernelFormat::HWIO => self.kernel.shape()[self.kernel.ndim() - 1],
+            KernelFormat::OHWI => self.kernel.shape()[0],
         };
         let (shape_out, left_pads): (TVec<_>, TVec<_>) = if self.pad == PaddingSpec::Valid {
             izip!(self.shape_in.hw_dims(), self.geo_ker(), &self.strides)
@@ -97,6 +98,10 @@ impl ConvProblem {
                                         kernel_coords.push(ci + g * ci_per_g);
                                         kernel_coords.push(co);
                                     }
+                                    KernelFormat::OHWI => {
+                                        kernel_coords.insert(0, co);
+                                        kernel_coords.push(ci + g * ci_per_g);
+                                    }
                                 }
                                 let k = self.kernel[&*kernel_coords];
                                 out[&*output_coords] += k * i;
@@ -122,6 +127,7 @@ impl ConvProblem {
         let co = match self.kernel_format {
             KernelFormat::OIHW => self.kernel.shape()[0],
             KernelFormat::HWIO => self.kernel.shape()[self.kernel.ndim() - 1] * self.group,
+            KernelFormat::OHWI => self.kernel.shape()[0] * self.group,
         };
         let op = ConvUnary::new(
             PoolSpec::new(
@@ -175,6 +181,10 @@ impl Arbitrary for ConvProblem {
                     KernelFormat::OIHW => {
                         ker_shape.insert(0, ci0);
                         ker_shape.insert(0, co0 * group)
+                    }
+                    KernelFormat::OHWI => {
+                        ker_shape.insert(0, co0);
+                        ker_shape.push(ci0 * group);
                     }
                 };
                 let strides = vec(1usize..=3, shape_in.hw_rank()..=shape_in.hw_rank());

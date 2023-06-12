@@ -188,13 +188,12 @@ impl Expansion for Conv {
             .context("Kernel must be const")?;
         let input = model.outlet_fact(inputs[0])?.clone();
         let input_shape = self.data_format.shape(input.shape.iter().collect::<TVec<_>>())?;
-        let channels_in = match self.kernel_fmt {
-            KernelFormat::OIHW => kernel.shape()[1] * self.group.unwrap_or(1),
-            KernelFormat::HWIO => kernel.shape()[kernel.rank() - 2],
-            KernelFormat::OHWI => kernel.shape()[kernel.rank() - 1],
-        };
-        if input_shape.c_dim() != &channels_in.to_dim() {
-            bail!("Input has {} channels, kernel expects {}", input_shape.c_dim(), channels_in)
+        let kernel_full_shape = kernel.shape();
+        let group = self.group.unwrap_or(1);
+        let input_channels = self.kernel_fmt.input_channels(kernel_full_shape, group);
+        let output_channels = self.kernel_fmt.output_channels(kernel_full_shape, group);
+        if input_shape.c_dim() != &input_channels.to_dim() {
+            bail!("Input has {} channels, kernel expects {}", input_shape.c_dim(), input_channels)
         }
         let bias = if let Some(slot) = self.bias_input {
             Some(model.outlet_fact(inputs[slot])?.konst.clone().context("Bias must be const")?)
@@ -202,16 +201,12 @@ impl Expansion for Conv {
             None
         };
         let mut wires = vec!(inputs[0]);
-        let spatial_rank = kernel.rank() - 2;
-        let kshape = kernel.shape();
-        let group = self.group.unwrap_or(1);
-        let output_channels = *self.kernel_fmt.o(kshape);
         let pool_spec = PoolSpec {
             data_format: self.data_format,
             padding: self.padding.clone(),
             strides: self.strides.clone(),
             dilations: self.dilations.clone(),
-            kernel_shape: kshape[self.kernel_fmt.h_axis()..][..spatial_rank].into(),
+            kernel_shape: self.kernel_fmt.hw(kernel_full_shape).into(),
             output_channel_override: Some(output_channels),
         };
 

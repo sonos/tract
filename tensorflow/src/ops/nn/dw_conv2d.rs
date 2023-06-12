@@ -90,6 +90,6 @@ impl Expansion for DepthwiseConv2d {
         if self.data_format == DataFormat::NHWC {
             conv = conv.nhwc()
         }
-        conv.wire(prefix, model, inputs).context("Failed to translate")
+        conv.wire(prefix, model, inputs)
     }
 }

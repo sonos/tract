@@ -102,6 +102,10 @@ impl QConvProblem {
                                         kernel_coords.push(ci + g * ci_per_g);
                                         kernel_coords.push(co);
                                     }
+                                    KernelFormat::OHWI => {
+                                        kernel_coords.insert(0, co);
+                                        kernel_coords.push(ci + g * ci_per_g);
+                                    }
                                 }
                                 let k = self.kernel[&*kernel_coords] as i32;
                                 temp[&*output_coords] += (k - a0) * (i - b0);
@@ -196,6 +200,10 @@ impl Arbitrary for QConvProblem {
                         KernelFormat::OIHW => {
                             ker_shape.insert(0, ci0);
                             ker_shape.insert(0, co0 * group)
+                        }
+                        KernelFormat::OHWI => {
+                            ker_shape.insert(0, co0);
+                            ker_shape.push(ci0 * group)
                         }
                     };
                     let kernel = qtensor(ker_shape);
