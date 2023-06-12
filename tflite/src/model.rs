@@ -1,3 +1,5 @@
+use std::collections::hash_map::Entry;
+
 use tract_hir::internal::*;
 
 use crate::registry::Registry;
@@ -54,10 +56,10 @@ impl Framework<TfliteProtoModel, TypedModel> for Tflite {
         }
         for op in main.operators().unwrap() {
             for input in op.inputs().unwrap() {
-                if !mapping.contains_key(&input) {
+                if let Entry::Vacant(slot) = mapping.entry(input) {
                     let (fact, name) = crate::tensors::tensor_to_fact(&root, main, input)?;
                     let konst = target.add_const(name, fact.konst.unwrap())?;
-                    mapping.insert(input, konst);
+                    slot.insert(konst);
                 }
             }
             self.0.op(&root, main, &op, &mut target, &mut mapping)?;

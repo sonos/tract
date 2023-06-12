@@ -47,7 +47,7 @@ impl KernelFormat {
         }
     }
 
-    pub fn o_axis<'a, D>(&self, full_shape: &'a [D]) -> usize {
+    pub fn o_axis<D>(&self, full_shape: &[D]) -> usize {
         match self {
             KernelFormat::OIHW | KernelFormat::OHWI => 0,
             KernelFormat::HWIO => full_shape.len() - 1,
@@ -68,7 +68,7 @@ impl KernelFormat {
     pub fn output_channels<D: DimLike>(&self, full_shape: &[D], group: usize) -> D {
         match self {
             KernelFormat::OIHW => self.o(full_shape).clone(),
-            KernelFormat::HWIO | KernelFormat::OHWI => self.o(full_shape).clone() * group
+            KernelFormat::HWIO | KernelFormat::OHWI => self.o(full_shape).clone() * group,
         }
     }
 
