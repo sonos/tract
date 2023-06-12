@@ -1,0 +1,10 @@
+[package]
+name = "example-tflite-mobilenet-v3"
+version = "0.20.7-pre"
+authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
+license = "MIT/Apache-2.0"
+edition = "2021"
+
+[dependencies]
+image.workspace = true
+tract-tflite = { path = "../../tflite", version = "=0.20.7-pre" }
