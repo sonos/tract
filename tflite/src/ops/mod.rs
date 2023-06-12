@@ -21,6 +21,7 @@ pub fn register_all(reg: &mut Registry) {
     reg.to_tract.insert(BuiltinOperator::DEPTHWISE_CONV_2D, dw_conv2d);
 
     reg.to_tract.insert(BuiltinOperator::MEAN, reduce_mean);
+    reg.to_tract.insert(BuiltinOperator::SOFTMAX, softmax);
 
     reg.to_tract.insert(BuiltinOperator::RELU, relu);
     reg.to_tract.insert(BuiltinOperator::RELU6, relu6);
@@ -230,6 +231,23 @@ fn reduce_mean(
     let norm = target.add_const("{prefix}.card", tensor0(norm))?;
     let wires = wire_cast(prefix, target, &[wire[0], norm], input.datum_type)?;
     wire_with_rank_broadcast(prefix, target, core::math::div(), &wires)
+}
+
+fn softmax(
+    _model: &Model,
+    _subgraph: &SubGraph,
+    prefix: &str,
+    flat: &Operator,
+    target: &mut TypedModel,
+    inputs: &[OutletId],
+) -> TractResult<TVec<OutletId>> {
+    let mut facts =
+        inputs.iter().map(|o| target.outlet_fact(*o).cloned()).collect::<TractResult<TVec<_>>>()?;
+    let input = args_1!(facts);
+    let options = flat.builtin_options_as_softmax_options().unwrap();
+    ensure!(options.beta() == 1.0);
+    let op = core::nn::Softmax { axes: tvec!(input.rank() - 1), output_dt: input.datum_type };
+    target.wire_node(prefix, op, inputs)
 }
 
 fn relu(
