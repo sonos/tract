@@ -77,8 +77,8 @@ fn average_pool_2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
 
 fn conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let (_input, kernel, bias) = args_3!(op.facts()?);
-    let bias = bias.konst.clone().unwrap();
-    let kernel = kernel.konst.clone().unwrap();
+    let bias = bias.konst.unwrap();
+    let kernel = kernel.konst.unwrap();
     let kernel_full_shape: TVec<usize> = kernel.shape().into();
     let kernel_shape: TVec<usize> = KernelFormat::OHWI.spatial_shape(&kernel_full_shape).into();
     let options = builtin!(op, builtin_options_as_conv_2_doptions);
@@ -113,8 +113,8 @@ fn conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
 
 fn dw_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let (_input, kernel, bias) = args_3!(op.facts()?);
-    let bias = bias.konst.clone().unwrap();
-    let kernel = kernel.konst.clone().unwrap();
+    let bias = bias.konst.unwrap();
+    let kernel = kernel.konst.unwrap();
     let kernel_full_shape: TVec<usize> = kernel.shape().into();
     let kernel_shape: TVec<usize> = KernelFormat::OHWI.spatial_shape(&kernel_full_shape).into();
     let options = builtin!(op, builtin_options_as_depthwise_conv_2_doptions);
