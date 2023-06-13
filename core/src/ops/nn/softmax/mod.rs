@@ -330,7 +330,7 @@ mod test {
             let softmax = Softmax { axes: self.axes.clone(), output_dt: self.output_dt };
 
             // Compute quantized output
-            let mut result = softmax.eval(inputs)?;
+            let result = softmax.eval(inputs)?;
             let result = args_1!(result);
             let result_float = result.cast_to::<f32>()?;
 
@@ -338,7 +338,7 @@ mod test {
             let input_float = self.data.cast_to::<f32>()?;
             let inputs_float = tvec!(input_float.into_owned().into_tvalue());
             let softmax_float = Softmax { axes: self.axes.clone(), output_dt: DatumType::F32 };
-            let mut reference_float = softmax_float.eval(inputs_float)?;
+            let reference_float = softmax_float.eval(inputs_float)?;
             let reference_array = args_1!(reference_float);
             let reference = reference_array.to_array_view::<f32>()?;
 
