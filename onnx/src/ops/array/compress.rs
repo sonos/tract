@@ -58,7 +58,7 @@ impl EvalOp for Compress {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input, conds) = args_2!(inputs);
         let conds = conds.as_slice()?;
         let compressed_dim = conds.iter().filter(|c| **c).count();

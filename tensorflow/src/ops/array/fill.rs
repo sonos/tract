@@ -15,7 +15,7 @@ pub fn fill(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Inferenc
 }
 
 impl Fill {
-    fn eval_t<T: Datum>(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval_t<T: Datum>(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (shape, value) = args_2!(inputs);
         let value = value.to_scalar::<T>()?;
         let shape = shape.cast_to::<i32>()?;

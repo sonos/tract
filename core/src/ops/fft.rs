@@ -62,7 +62,7 @@ impl EvalOp for Fft {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let mut tensor = args_1!(inputs).into_tensor();
         match tensor.datum_type() {
             DatumType::F32 => self.eval_t::<f32>(&mut tensor)?,
@@ -166,7 +166,7 @@ impl EvalOp for Stft {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let output = match input.datum_type() {
             DatumType::F32 => self.eval_t::<f32>(&input)?,

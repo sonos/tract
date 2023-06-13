@@ -32,11 +32,11 @@ macro_rules! not_a_typed_op {
 #[macro_export]
 macro_rules! args_1 {
     ($inputs:expr) => {{
-        if $inputs.len() != 1 {
-            $crate::internal::bail!("Expected 1 arg, got {:?}", $inputs)
+        let mut inputs = $inputs;
+        if inputs.len() != 1 {
+            $crate::internal::bail!("Expected 1 arg, got {:?}", inputs)
         }
-        let result = $inputs.pop().unwrap();
-        ::std::mem::drop($inputs);
+        let result = inputs.pop().unwrap();
         result
     }};
 }
@@ -44,12 +44,12 @@ macro_rules! args_1 {
 #[macro_export]
 macro_rules! args_2 {
     ($inputs:expr) => {{
-        if $inputs.len() != 2 {
-            $crate::internal::bail!("Expected 2 arg, got {:?}", $inputs)
+        let mut inputs = $inputs;
+        if inputs.len() != 2 {
+            $crate::internal::bail!("Expected 2 arg, got {:?}", inputs)
         }
-        $inputs.reverse();
-        let result = ($inputs.pop().unwrap(), $inputs.pop().unwrap());
-        ::std::mem::drop($inputs);
+        inputs.reverse();
+        let result = (inputs.pop().unwrap(), inputs.pop().unwrap());
         result
     }};
 }
@@ -58,12 +58,12 @@ macro_rules! args_2 {
 #[macro_export]
 macro_rules! args_3 {
     ($inputs:expr) => {{
-        if $inputs.len() != 3 {
-            $crate::internal::bail!("Expected 3 arg, got {:?}", $inputs)
+        let mut inputs = $inputs;
+        if inputs.len() != 3 {
+            $crate::internal::bail!("Expected 3 arg, got {:?}", inputs)
         }
-        $inputs.reverse();
-        let result = ($inputs.pop().unwrap(), $inputs.pop().unwrap(), $inputs.pop().unwrap());
-        ::std::mem::drop($inputs);
+        inputs.reverse();
+        let result = (inputs.pop().unwrap(), inputs.pop().unwrap(), inputs.pop().unwrap());
         result
     }};
 }
@@ -72,17 +72,17 @@ macro_rules! args_3 {
 #[macro_export]
 macro_rules! args_4 {
     ($inputs:expr) => {{
-        if $inputs.len() != 4 {
-            $crate::internal::bail!("Expected 4 arg, got {:?}", $inputs)
+        let mut inputs = $inputs;
+        if inputs.len() != 4 {
+            $crate::internal::bail!("Expected 4 arg, got {:?}", inputs)
         }
-        $inputs.reverse();
+        inputs.reverse();
         let result = (
-            $inputs.pop().unwrap(),
-            $inputs.pop().unwrap(),
-            $inputs.pop().unwrap(),
-            $inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
         );
-        ::std::mem::drop($inputs);
         result
     }};
 }
@@ -91,18 +91,18 @@ macro_rules! args_4 {
 #[macro_export]
 macro_rules! args_5 {
     ($inputs:expr) => {{
-        if $inputs.len() != 5 {
-            $crate::internal::bail!("Expected 5 arg, got {:?}", $inputs)
+        let mut inputs = $inputs;
+        if inputs.len() != 5 {
+            $crate::internal::bail!("Expected 5 arg, got {:?}", inputs)
         }
-        $inputs.reverse();
+        inputs.reverse();
         let result = (
-            $inputs.pop().unwrap(),
-            $inputs.pop().unwrap(),
-            $inputs.pop().unwrap(),
-            $inputs.pop().unwrap(),
-            $inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
         );
-        ::std::mem::drop($inputs);
         result
     }};
 }
@@ -111,19 +111,19 @@ macro_rules! args_5 {
 #[macro_export]
 macro_rules! args_6 {
     ($inputs:expr) => {{
-        if $inputs.len() != 6 {
-            $crate::internal::bail!("Expected 6 arg, got {:?}", $inputs)
+        let mut inputs = $inputs;
+        if inputs.len() != 6 {
+            $crate::internal::bail!("Expected 6 arg, got {:?}", inputs)
         }
-        $inputs.reverse();
+        inputs.reverse();
         let result = (
-            $inputs.pop().unwrap(),
-            $inputs.pop().unwrap(),
-            $inputs.pop().unwrap(),
-            $inputs.pop().unwrap(),
-            $inputs.pop().unwrap(),
-            $inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
         );
-        ::std::mem::drop($inputs);
         result
     }};
 }
@@ -132,18 +132,19 @@ macro_rules! args_6 {
 #[macro_export]
 macro_rules! args_7 {
     ($inputs:expr) => {{
-        if $inputs.len() != 7 {
-            $crate::internal::bail!("Expected 7 arg, got {:?}", $inputs)
+        let mut inputs = $inputs;
+        if inputs.len() != 7 {
+            $crate::internal::bail!("Expected 7 arg, got {:?}", inputs)
         }
-        $inputs.reverse();
+        inputs.reverse();
         let result = (
-            $inputs.pop().unwrap(),
-            $inputs.pop().unwrap(),
-            $inputs.pop().unwrap(),
-            $inputs.pop().unwrap(),
-            $inputs.pop().unwrap(),
-            $inputs.pop().unwrap(),
-            $inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
         );
         ::std::mem::drop($inputs);
         result
@@ -154,21 +155,21 @@ macro_rules! args_7 {
 #[macro_export]
 macro_rules! args_8 {
     ($inputs:expr) => {{
-        if $inputs.len() != 8 {
-            $crate::internal::bail!("Expected 8 arg, got {:?}", $inputs)
+        let mut inputs = $inputs;
+        if inputs.len() != 8 {
+            $crate::internal::bail!("Expected 8 arg, got {:?}", inputs)
         }
         $inputs.reverse();
         let result = (
-            $inputs.pop().unwrap(),
-            $inputs.pop().unwrap(),
-            $inputs.pop().unwrap(),
-            $inputs.pop().unwrap(),
-            $inputs.pop().unwrap(),
-            $inputs.pop().unwrap(),
-            $inputs.pop().unwrap(),
-            $inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
         );
-        ::std::mem::drop($inputs);
         result
     }};
 }

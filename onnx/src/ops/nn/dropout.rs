@@ -29,7 +29,7 @@ impl EvalOp for Dropout {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         if self.output_mask {
             let input = args_1!(inputs);
             let mask = tract_ndarray::ArrayD::from_elem(input.shape(), true);

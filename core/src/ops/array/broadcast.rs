@@ -35,7 +35,7 @@ impl EvalOp for MultiBroadcastTo {
         self.shape.is_concrete()
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let dims: Vec<usize> =
             self.shape.iter().map(|d| d.to_usize()).collect::<TractResult<_>>()?;

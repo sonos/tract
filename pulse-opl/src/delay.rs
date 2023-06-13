@@ -78,7 +78,7 @@ impl OpState for DelayState {
         &mut self,
         _state: &mut SessionState,
         op: &dyn Op,
-        mut inputs: TVec<TValue>,
+        inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let op = op.downcast_ref::<Delay>().ok_or_else(|| format_err!("Wrong Op type"))?;

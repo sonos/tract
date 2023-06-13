@@ -506,7 +506,7 @@ impl EvalOp for AxisOp {
         }
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let mut input = args_1!(inputs).into_tensor();
         self.change_tensor(&mut input, false)?;
         Ok(tvec!(input.into_tvalue()))

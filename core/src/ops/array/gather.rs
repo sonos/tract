@@ -123,7 +123,7 @@ impl EvalOp for Gather {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (data, indices) = args_2!(inputs);
         unsafe {
             Ok(tvec!(dispatch_datum_by_size!(Self::eval_t(data.datum_type())(

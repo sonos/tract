@@ -55,7 +55,7 @@ impl OpState for Store {
         &mut self,
         session: &mut SessionState,
         _op: &dyn Op,
-        mut inputs: TVec<TValue>,
+        inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let (input, state) = args_2!(inputs);
         session.tensors.insert(self.id.clone(), state.into_tensor());

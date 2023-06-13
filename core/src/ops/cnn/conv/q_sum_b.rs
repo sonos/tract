@@ -70,7 +70,7 @@ impl TypedOp for QSumB {
 }
 
 impl QSumB {
-    fn eval(&self, mut inputs: TVec<TValue>, n: usize) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>, n: usize) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let mut shape: TVec<usize> = input.shape().into();
         shape[input.rank() - 1] = n;

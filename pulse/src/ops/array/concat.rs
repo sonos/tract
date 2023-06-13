@@ -47,8 +47,11 @@ fn pulsify_along_concat_axis(
         pulse_facts.iter().enumerate().find(|(_ix, pf)| pf.stream.is_some()).unwrap();
     let stream = pulse_fact.stream.as_ref().unwrap();
 
-    let pre_owned =
-        source_facts.iter().take(stream_input_ix).map(|s| s.konst.clone().unwrap()).collect::<TVec<_>>();
+    let pre_owned = source_facts
+        .iter()
+        .take(stream_input_ix)
+        .map(|s| s.konst.clone().unwrap())
+        .collect::<TVec<_>>();
     let pre = Tensor::stack_tensors(op.axis, &pre_owned)?;
     let post_owned = source_facts
         .iter()
@@ -90,7 +93,6 @@ pub struct PulsedSameAxisConcat {
     input_delay: usize,
     input_len: TDim,
 }
-
 
 impl Op for PulsedSameAxisConcat {
     fn name(&self) -> Cow<str> {
@@ -150,7 +152,7 @@ impl OpState for PulsedSameAxisConcatState {
         &mut self,
         session: &mut SessionState,
         op: &dyn Op,
-        mut inputs: TVec<TValue>,
+        inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let op = op
             .downcast_ref::<PulsedSameAxisConcat>()

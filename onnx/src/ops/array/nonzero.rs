@@ -48,7 +48,7 @@ impl EvalOp for NonZero {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         unsafe {
             let input = args_1!(inputs);
             let output = if input.datum_type() == bool::datum_type() {

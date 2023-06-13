@@ -28,7 +28,7 @@ impl EvalOp for MatMatMulPack {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let b = args_1!(inputs);
         let dt = b.datum_type();
         unsafe {

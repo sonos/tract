@@ -41,7 +41,7 @@ impl EvalOp for TreeEnsembleClassifier {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let input = input.cast_to::<f32>()?;
         let input = input.to_array_view::<f32>()?;

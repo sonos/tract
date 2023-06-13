@@ -154,7 +154,7 @@ impl EvalOp for Resize {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let scales = self.optional_scales_input.and_then(|ix| inputs.get(ix));
         let sizes = self.optional_sizes_input.and_then(|ix| inputs.get(ix));
         let output_shape = self.compute_output_shape(
@@ -162,7 +162,7 @@ impl EvalOp for Resize {
             scales.map(|t| &**t),
             sizes.map(|t| &**t),
         )?;
-        let mut data = inputs.remove(0).into_tensor().into_array::<f32>()?;
+        let mut data = args_1!(inputs).into_tensor().into_array::<f32>()?;
         for axis in 0..data.ndim() {
             #[allow(clippy::comparison_chain)]
             if output_shape[axis] == data.shape()[axis] {

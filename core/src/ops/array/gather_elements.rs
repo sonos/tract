@@ -48,7 +48,7 @@ impl EvalOp for GatherElements {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (data, indices) = args_2!(inputs);
         let indices = indices.cast_to::<i64>()?;
         let indices = indices.to_array_view::<i64>()?;

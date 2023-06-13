@@ -20,7 +20,7 @@ impl EvalOp for InnerDimToComplex {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         Ok(tvec!(reinterpret_inner_dim_as_complex(inputs.remove(0).into_tensor())?.into_tvalue()))
     }
 }
@@ -58,7 +58,7 @@ impl EvalOp for ComplexToInnerDim {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         Ok(tvec!(reinterpret_complex_as_inner_dim(inputs.remove(0).into_tensor())?.into_tvalue()))
     }
 }
