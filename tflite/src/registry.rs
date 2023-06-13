@@ -15,14 +15,29 @@ pub struct Registry {
     //    pub from_tract: HashMap<TypeId, FromTract>,
 }
 
-type ToTract = fn(
-    model: &Model,
-    subgraph: &SubGraph,
-    prefix: &str,
-    flat: &Operator,
-    target: &mut TypedModel,
-    inputs: &[OutletId],
-) -> TractResult<TVec<OutletId>>;
+pub struct DeserContext<'ctx> {
+    pub model: &'ctx Model<'ctx>,
+    pub subgraph: &'ctx SubGraph<'ctx>,
+    pub target: &'ctx mut TypedModel,
+}
+
+pub struct DeserOp<'op> {
+    pub ctx: DeserContext<'op>,
+    pub prefix: &'op str,
+    pub flat: &'op Operator<'op>,
+    pub inputs: &'op [OutletId],
+}
+
+impl<'op> DeserOp<'op> {
+    pub fn facts(&self) -> TractResult<TVec<TypedFact>> {
+        self.inputs
+            .iter()
+            .map(|o| self.ctx.target.outlet_fact(*o).cloned())
+            .collect::<TractResult<TVec<_>>>()
+    }
+}
+
+pub type ToTract = fn(op_ctx: &mut DeserOp) -> TractResult<TVec<OutletId>>;
 
 impl Registry {
     pub fn op(
@@ -38,19 +53,20 @@ impl Registry {
             inputs.push(mapping[&input]);
         }
         let tensors = subgraph.tensors().unwrap();
-        let name = tensors.get(flat.outputs().unwrap().get(0) as usize).name().unwrap();
+        let prefix = tensors.get(flat.outputs().unwrap().get(0) as usize).name().unwrap();
         let opcode_index = flat.opcode_index();
         let opcode = model.operator_codes().unwrap().get(opcode_index as _).builtin_code();
+        let ctx = DeserContext { model, subgraph, target };
         if let Some(ew) =
             self.element_wise_ops.iter().find(|bin| bin.0 == opcode).map(|pair| pair.1.clone())
         {
-            inputs = target.wire_node(name, ElementWiseOp(ew.clone()), &inputs)?;
+            inputs = target.wire_node(prefix, ElementWiseOp(ew.clone()), &inputs)?;
         } else if let Some(bin) =
             self.binary_ops.iter().find(|bin| bin.0 == opcode).map(|pair| pair.1.clone())
         {
-            inputs = wire_with_rank_broadcast(name, target, bin, &inputs)?;
+            inputs = wire_with_rank_broadcast(prefix, target, bin, &inputs)?;
         } else if let Some(op) = self.to_tract.get(&opcode) {
-            inputs = (op)(model, subgraph, name, flat, target, &inputs)?
+            inputs = (op)(&mut DeserOp { ctx, prefix: &prefix, flat, inputs: &inputs })?
         } else {
             let facts =
                 inputs.iter().map(|o| target.outlet_fact(*o)).collect::<TractResult<TVec<_>>>()?;
