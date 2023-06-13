@@ -1,5 +1,4 @@
 use crate::internal::*;
-use crate::num_traits::Zero;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, new)]
 pub struct DynSlice {
@@ -38,7 +37,7 @@ impl EvalOp for DynSlice {
         false
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         unreachable!();
     }
 

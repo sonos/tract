@@ -6,7 +6,7 @@ mod cast;
 #[cfg(feature = "complex")]
 mod complex;
 mod downsample;
-// mod dyn_slice;
+mod dyn_slice;
 mod einsum;
 mod fft;
 mod force_eval;
@@ -45,7 +45,7 @@ pub fn register(registry: &mut Registry) {
     #[cfg(feature = "complex")]
     complex::register(registry);
     downsample::register(registry);
-//    dyn_slice::register(registry);
+    dyn_slice::register(registry);
     einsum::register(registry);
     fft::register(registry);
     force_eval::register(registry);

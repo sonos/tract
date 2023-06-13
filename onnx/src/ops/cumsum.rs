@@ -1,4 +1,5 @@
 use tract_hir::internal::*;
+use tract_hir::ops::identity::Identity;
 use tract_hir::tract_core::ops::array::DynSlice;
 use tract_hir::tract_core::ops::scan::ScanInfo;
 
@@ -54,11 +55,10 @@ impl Expansion for CumSum {
             &[zero],
         )?[0];
         let chunk = if self.reverse { -1 } else { 1 };
+        // inputs are X, i, acc
         let input_mapping =
             vec![scan::InputMapping::Full, scan::InputMapping::State, scan::InputMapping::State];
-        // outputs will be
-        // acc + x (!exclusive)
-        // acc input (exclusive)
+        // outputs are (i+1, acc + x[i], acc)
         let output_mapping = vec![
             scan::OutputMapping {
                 scan: None,
@@ -94,7 +94,8 @@ impl Expansion for CumSum {
 
         let acc = body.add_source("acc_input", var_fact)?;
         let sum = body.wire_node("add", tract_core::ops::math::add(), &[x_slice, acc])?[0];
-        body.set_output_outlets(&[i_plus_chunk, sum, acc])?;
+        let copy_acc = body.wire_node("copy_acc", Identity, &[acc])?;
+        body.set_output_outlets(&[i_plus_chunk, sum, copy_acc[0]])?;
         let scan = scan::Scan::new(body, input_mapping, output_mapping, 0, iters.clone())?;
         let index_init = model.add_const(
             format!("{prefix}.index_init"),

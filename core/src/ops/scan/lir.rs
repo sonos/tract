@@ -253,7 +253,7 @@ impl OpState for State {
 impl TypedOp for LirScan {
     as_op!();
 
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+    fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut outputs = tvec!();
         for (ix, output) in self.output_mapping.iter().enumerate() {
             let fact = self.plan.model().output_fact(ix)?;
