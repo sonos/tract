@@ -1,36 +1,36 @@
 use std::{fs, path};
 
-fn versions() -> Vec<&'static str> {
+fn versions() -> Vec<(&'static str, usize)> {
     let mut versions = vec![];
     if cfg!(feature = "onnx_1_4_1") {
-        versions.push("1.4.1");
+        versions.push(("1.4.1", 9));
     }
     if cfg!(feature = "onnx_1_5_0") {
-        versions.push("1.5.0");
+        versions.push(("1.5.0", 10));
     }
     if cfg!(feature = "onnx_1_6_0") {
-        versions.push("1.6.0");
+        versions.push(("1.6.0", 11));
     }
     if cfg!(feature = "onnx_1_7_0") {
-        versions.push("1.7.0");
+        versions.push(("1.7.0", 12));
     }
     if cfg!(feature = "onnx_1_8_1") {
-        versions.push("1.8.1");
+        versions.push(("1.8.1", 13));
     }
     if cfg!(feature = "onnx_1_9_0") {
-        versions.push("1.9.0");
+        versions.push(("1.9.0", 14));
     }
     if cfg!(feature = "onnx_1_10_2") {
-        versions.push("1.10.2");
+        versions.push(("1.10.2", 15));
     }
     if cfg!(feature = "onnx_1_11_0") {
-        versions.push("1.11.0");
+        versions.push(("1.11.0", 16));
     }
     if cfg!(feature = "onnx_1_12_0") {
-        versions.push("1.12.0");
+        versions.push(("1.12.0", 17));
     }
     if cfg!(feature = "onnx_1_13_0") {
-        versions.push("1.13.0");
+        versions.push(("1.13.0", 18));
     }
     versions
 }
@@ -49,7 +49,7 @@ pub fn ensure_onnx_git_checkout() {
         fs::create_dir_all(dir()).unwrap();
         let lockfile = dir().join(".lock");
         let _lock = fs::File::create(lockfile).unwrap().lock_exclusive();
-        for v in versions() {
+        for (v, _) in versions() {
             let wanted = dir().join(format!("onnx-{}", v.replace('.', "_")));
             if !wanted.join("onnx/backend/test/data").exists() {
                 let tmp = wanted.with_extension("tmp");
@@ -88,7 +88,7 @@ enum Mode {
     Nnef,
 }
 
-pub fn make_test_file(root: &mut fs::File, tests_set: &str, onnx_tag: &str) {
+pub fn make_test_file(root: &mut fs::File, tests_set: &str, onnx_tag: &str, opset: usize) {
     use std::io::Write;
     use Mode::*;
     ensure_onnx_git_checkout();
@@ -97,8 +97,7 @@ pub fn make_test_file(root: &mut fs::File, tests_set: &str, onnx_tag: &str) {
         .join("onnx/backend/test/data")
         .join(tests_set);
     assert!(node_tests.exists());
-    let working_list_file =
-        path::PathBuf::from(".").join(format!("{tests_set}-{onnx_tag}.txt"));
+    let working_list_file = path::PathBuf::from(".").join(format!("{tests_set}.txt"));
     println!("cargo:rerun-if-changed={}", working_list_file.to_str().unwrap());
     let working_list: Vec<(String, Vec<String>)> = fs::read_to_string(&working_list_file)
         .unwrap()
@@ -115,8 +114,7 @@ pub fn make_test_file(root: &mut fs::File, tests_set: &str, onnx_tag: &str) {
     let test_dir = out_dir.join("tests");
     let tests_set_ver = format!("{}_{}", tests_set.replace('-', "_"), onnx_tag.replace('.', "_"));
 
-    writeln!(root, "include!(concat!(env!(\"OUT_DIR\"), \"/tests/{tests_set_ver}.rs\"));")
-        .unwrap();
+    writeln!(root, "include!(concat!(env!(\"OUT_DIR\"), \"/tests/{tests_set_ver}.rs\"));").unwrap();
 
     let test_file = test_dir.join(&tests_set_ver).with_extension("rs");
     let mut rs = fs::File::create(test_file).unwrap();
@@ -131,24 +129,31 @@ pub fn make_test_file(root: &mut fs::File, tests_set: &str, onnx_tag: &str) {
         writeln!(rs, "use tract_core::internal::*;").unwrap();
         writeln!(rs, "use crate::onnx::{{run_one, Mode}};").unwrap();
         for t in &tests {
-            writeln!(rs, "#[test]").unwrap();
-            let pair = working_list.iter().find(|pair| &pair.0 == t);
-            let ignore = pair.is_none()
+            let more = working_list.iter().find(|pair| &pair.0 == t).map(|pair| &pair.1);
+            let ignore = more.is_none()
+                || more.unwrap().iter().any(|s| {
+                    s.strip_prefix("since:")
+                        .is_some_and(|since| since.parse::<usize>().unwrap() > opset)
+                })
                 || match mode {
                     Mode::Plain => false,
-                    Mode::Optim => pair.as_ref().unwrap().1.contains(&"not-typable".to_string()),
+                    Mode::Optim => more.unwrap().contains(&"not-typable".to_string()),
                     Mode::Nnef => {
-                        pair.as_ref().unwrap().1.contains(&"not-typable".to_string())
-                            || pair.as_ref().unwrap().1.contains(&"not-nnef".to_string())
+                        more.unwrap().contains(&"not-typable".to_string())
+                            || more.unwrap().contains(&"not-nnef".to_string())
                     }
                 };
+            writeln!(rs, "#[test]").unwrap();
             if ignore {
                 writeln!(rs, "#[ignore]").unwrap();
             }
-            let more = pair.map(|p| &*p.1).unwrap_or(&[]);
             writeln!(rs, "fn {t}() -> TractResult<()> {{").unwrap();
-            writeln!(rs, "run_one({node_tests:?}, {t:?}, Mode::{mode:?}, &{more:?})")
-                .unwrap();
+            writeln!(
+                rs,
+                "run_one({node_tests:?}, {t:?}, Mode::{mode:?}, &{:?})",
+                more.map(|v| &**v).unwrap_or(&[])
+            )
+            .unwrap();
             writeln!(rs, "}}").unwrap();
         }
         writeln!(rs, "}}").unwrap();
@@ -163,10 +168,9 @@ fn main() {
     let test_dir = out_dir.join("tests");
     fs::create_dir_all(&test_dir).unwrap();
     let mut root = fs::File::create(test_dir.join("root.rs")).unwrap();
-    // for set in "node real simple pytorch-operator pytorch-converted".split_whitespace() {
-    for set in "node simple pytorch-operator pytorch-converted".split_whitespace() {
-        for ver in versions() {
-            make_test_file(&mut root, set, ver);
+    for set in "node real simple pytorch-operator pytorch-converted".split_whitespace() {
+        for (ver, opset) in versions() {
+            make_test_file(&mut root, set, ver, opset);
         }
     }
 }
