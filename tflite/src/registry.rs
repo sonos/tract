@@ -66,7 +66,7 @@ impl Registry {
         {
             inputs = wire_with_rank_broadcast(prefix, target, bin, &inputs)?;
         } else if let Some(op) = self.to_tract.get(&opcode) {
-            inputs = (op)(&mut DeserOp { ctx, prefix: &prefix, flat, inputs: &inputs })?
+            inputs = (op)(&mut DeserOp { ctx, prefix, flat, inputs: &inputs })?
         } else {
             let facts =
                 inputs.iter().map(|o| target.outlet_fact(*o)).collect::<TractResult<TVec<_>>>()?;
