@@ -152,7 +152,7 @@ impl OpState for AssignState {
         &mut self,
         session: &mut SessionState,
         op: &dyn Op,
-        mut inputs: TVec<TValue>,
+        inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let (_current, new) = args_2!(inputs);
         let op = op.downcast_ref::<Assign>().context("wrong op for variable state")?;

@@ -52,7 +52,7 @@ impl EvalOp for OneHot {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let mut shape: TVec<usize> = input.shape().into();
         shape.insert(self.axis, self.dim);

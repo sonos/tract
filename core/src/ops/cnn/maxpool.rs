@@ -102,7 +102,7 @@ impl EvalOp for LirMaxPool {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let geo = self.geometry.to_concrete(input.shape())?;
         dispatch_numbers!(Self::eval_t(input.datum_type())(self, &*input, geo.as_ref()))

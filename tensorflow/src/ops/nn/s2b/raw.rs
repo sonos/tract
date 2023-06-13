@@ -21,7 +21,7 @@ impl EvalOp for SpaceToBatch {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input, block_shape, paddings) = args_3!(inputs);
         let block_shape = block_shape.cast_to::<i32>()?;
         let block_shape = block_shape.to_array_view::<i32>()?.into_dimensionality()?;
@@ -115,7 +115,7 @@ impl EvalOp for BatchToSpace {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input, block_shape, crops) = args_3!(inputs);
         let block_shape = block_shape.cast_to::<i32>()?;
         let block_shape = block_shape.to_array_view::<i32>()?.into_dimensionality()?;

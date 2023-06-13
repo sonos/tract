@@ -12,8 +12,6 @@ pub struct DepthWise {
     bias: Arc<Tensor>,
 }
 
-
-
 impl Op for DepthWise {
     fn name(&self) -> Cow<str> {
         "DepthWiseConv".into()
@@ -43,7 +41,7 @@ impl EvalOp for DepthWise {
 impl DepthWise {
     fn eval_t<T: Datum + Copy + num_traits::Zero + ndarray::LinalgScalar>(
         &self,
-        mut inputs: TVec<TValue>,
+        inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let img = args_1!(inputs);
         let mut output = unsafe { Tensor::uninitialized::<T>(&self.output_shape.shape)? };

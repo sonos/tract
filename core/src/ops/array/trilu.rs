@@ -18,7 +18,7 @@ impl EvalOp for Trilu {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input, k) = args_2!(inputs);
         let mut input = input.into_tensor();
         let k = *k.to_scalar::<i64>()?;

@@ -90,7 +90,7 @@ impl EvalOp for LirSumPool {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let geo = self.geometry.to_concrete(input.shape())?;
         let values = if input.datum_type().is_float() {

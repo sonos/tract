@@ -67,7 +67,7 @@ impl EvalOp for Slice {
         self.start.to_usize().is_ok() && self.end.to_usize().is_ok()
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let start = self.start.to_usize()?;
         let end = self.end.to_usize()?;
@@ -89,7 +89,7 @@ impl OpState for Slice {
         &mut self,
         session: &mut SessionState,
         _op: &dyn Op,
-        mut inputs: TVec<TValue>,
+        inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let start = self.start.eval(&session.resolved_symbols).to_usize()?;

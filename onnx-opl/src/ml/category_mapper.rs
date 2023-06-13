@@ -56,7 +56,7 @@ impl EvalOp for DirectLookup {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let output = dispatch_hash!(Self::eval_t(self.values.datum_type())(self, &input))?;
         Ok(tvec!(output.into_tvalue()))
@@ -167,7 +167,7 @@ impl EvalOp for ReverseLookup {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let output = dispatch_hash!(Self::eval_t(self.keys.datum_type())(self, &input))?;
         Ok(tvec!(output.into_tvalue()))

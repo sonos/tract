@@ -122,7 +122,7 @@ impl EvalOp for TypedBinOp {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a, b) = args_2!(inputs);
         debug_assert_eq!(a.rank(), b.rank());
         Ok(tvec!(self.0.eval(a, b)?.into_tvalue()))
@@ -244,7 +244,7 @@ impl EvalOp for MergeOpUnicast {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a, b) = args_2!(inputs);
         let mut b = b.into_tensor();
         self.0.eval_unicast_in_place(&a, &mut b)?;

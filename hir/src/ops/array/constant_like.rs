@@ -20,7 +20,7 @@ impl EvalOp for ConstantLike {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         Ok(tvec!(tensor0(self.value).broadcast_scalar_to_shape(input.shape())?.into_tvalue()))
     }
@@ -99,7 +99,7 @@ impl EvalOp for EyeLike {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let dt = self.dt.unwrap_or_else(|| input.datum_type());
         Ok(tvec!(dispatch_numbers!(Self::make(dt)(self, (input.shape()[0], input.shape()[1])))?))

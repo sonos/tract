@@ -28,8 +28,6 @@ pub struct DeconvSum {
     pub group: usize,
 }
 
-
-
 impl Op for DeconvSum {
     fn name(&self) -> Cow<str> {
         "DeconvSum".into()
@@ -79,7 +77,7 @@ trivial_op_state_freeeze!(DeconvSum);
 impl DeconvSum {
     fn eval_with_values<T: Datum + Float + Copy + AddAssign<T>>(
         &self,
-        mut inputs: TVec<TValue>,
+        inputs: TVec<TValue>,
         values: &SymbolValues,
     ) -> TractResult<TVec<TValue>> {
         let gemm = args_1!(inputs).into_tensor();

@@ -25,7 +25,7 @@ impl EvalOp for FiniteReshape {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let mut tensor = input.into_tensor();
         unsafe {

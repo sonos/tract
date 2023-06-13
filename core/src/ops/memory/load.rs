@@ -57,7 +57,7 @@ impl OpState for Load {
         &mut self,
         session: &mut SessionState,
         _op: &dyn Op,
-        mut inputs: TVec<TValue>,
+        inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let tensor = session

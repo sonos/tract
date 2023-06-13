@@ -170,7 +170,7 @@ impl EvalOp for DeconvUnary {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let mut model = TypedModel::default();
         let source = model.add_source("source", input.datum_type().fact(input.shape()))?;

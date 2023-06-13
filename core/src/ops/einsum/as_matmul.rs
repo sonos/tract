@@ -139,7 +139,7 @@ impl EvalOp for BasicMatMul {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a, b) = args_2!(inputs);
         let mut c = Tensor::zero_dt(a.datum_type(), &self.output_shape(a.shape(), b.shape()))?;
         dispatch_numbers!(Self::eval_t(a.datum_type())(self, &mut c, &a, &b)).unwrap();
