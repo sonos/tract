@@ -146,11 +146,11 @@ pub fn run_one<P: AsRef<path::Path>>(
                     let model = model.into_typed()?;
                     let optimized = model.into_decluttered()?.into_optimized()?;
                     trace!("Run optimized model:\n{:#?}", optimized);
-                    run_model(optimized, inputs, &data_path)
+                    run_model(optimized, inputs, &data_path)?
                 }
                 Plain => {
                     trace!("Run analysed model:\n{:#?}", model);
-                    run_model(model, inputs, &data_path)
+                    run_model(model, inputs, &data_path)?
                 }
                 Nnef => {
                     let model = model.into_typed()?;
@@ -161,7 +161,7 @@ pub fn run_one<P: AsRef<path::Path>>(
                     nnef.write_to_tar(&optimized, &mut buffer)?;
                     info!("Reload from NNEF");
                     let reloaded = nnef.model_for_read(&mut &*buffer)?;
-                    run_model(reloaded, inputs, &data_path)
+                    run_model(reloaded, inputs, &data_path)?
                 }
             }
             info!("Test model (mode: {:?}) {:#?} OK.", mode, path);
@@ -170,7 +170,11 @@ pub fn run_one<P: AsRef<path::Path>>(
     Ok(())
 }
 
-fn run_model<F, O>(model: Graph<F, O>, inputs: TVec<Tensor>, data_path: &path::Path)
+fn run_model<F, O>(
+    model: Graph<F, O>,
+    inputs: TVec<Tensor>,
+    data_path: &path::Path,
+) -> TractResult<()>
 where
     F: Fact + Clone + 'static,
     O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
@@ -179,7 +183,7 @@ where
     let expected = load_half_dataset("output", data_path);
     trace!("Loaded output asserts: {:?}", expected);
     let inputs = inputs.into_iter().map(|t| t.into_tvalue()).collect();
-    let computed = plan.run(inputs).unwrap();
+    let computed = plan.run(inputs)?;
     if computed.len() != expected.len() {
         panic!(
             "For {:?}, different number of results: got:{} expected:{}",
@@ -202,4 +206,5 @@ where
             )
         }
     }
+    Ok(())
 }
