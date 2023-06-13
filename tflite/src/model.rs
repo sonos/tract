@@ -49,22 +49,28 @@ impl Framework<TfliteProtoModel, TypedModel> for Tflite {
         let main = &root.subgraphs().context("No subgraphs in Tflite model")?.get(0);
         let mut target = TypedModel::default();
         let mut mapping = HashMap::new();
-        for input in main.inputs().unwrap() {
+        for input in main.inputs().context("No inputs in Tflite model")? {
             let (fact, name) = crate::tensors::tensor_to_fact(&root, main, input)?;
             let it = target.add_source(name, fact)?;
             mapping.insert(input, it);
         }
-        for op in main.operators().unwrap() {
-            for input in op.inputs().unwrap() {
+        for op in main.operators().context("No operators in Tflite model")? {
+            for input in op.inputs().context("No input in Tflite  operator")? {
                 if let Entry::Vacant(slot) = mapping.entry(input) {
                     let (fact, name) = crate::tensors::tensor_to_fact(&root, main, input)?;
-                    let konst = target.add_const(name, fact.konst.unwrap())?;
+                    let value = fact.konst.with_context(|| format!("Error in TF file for operator {:?}. No prior computation nor constant for input {}", op, input))?;
+                    let konst = target.add_const(name, value)?;
                     slot.insert(konst);
                 }
             }
             self.0.op(&root, main, &op, &mut target, &mut mapping)?;
         }
-        let outputs:TVec<_> = main.outputs().unwrap().iter().map(|o| mapping[&o]).collect();
+        let outputs: TVec<_> = main
+            .outputs()
+            .context("No outputs in Tflite model")?
+            .iter()
+            .map(|o| mapping[&o])
+            .collect();
         target.set_output_outlets(&outputs)?;
         Ok(target)
     }
