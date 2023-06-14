@@ -681,6 +681,7 @@ impl TypedOp for AxisOp {
     }
 }
 
+
 // a, b, c is a <- b, b <- c, c <- a
 fn perm_to_cycles(perm: &[usize]) -> TVec<TVec<usize>> {
     let mut cycles: TVec<TVec<usize>> = tvec!();
