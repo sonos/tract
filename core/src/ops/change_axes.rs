@@ -774,10 +774,7 @@ pub fn change_axes(
             interface_change.push((InOut::Out(ix), change.clone()));
         }
     }
-    debug_assert!(
-        patch.model.nodes.iter().map(|n| &n.name).collect::<std::collections::HashSet<_>>().len()
-            == patch.model.nodes.len()
-    );
+    patch.model.check_names()?;
     Ok(Some((patch, interface_change)))
 }
 
