@@ -1,6 +1,6 @@
 [package]
 name = "tract-ffi"
-version = "0.19.15"
+version = "0.19.16"
 license = "MIT/Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -23,9 +23,9 @@ anyhow.workspace = true
 flate2.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tract-data = { path = "../data", version = "=0.19.15" }
-tract-nnef = { path = "../nnef", version = "=0.19.15" }
-tract-onnx = { path = "../onnx", version = "=0.19.15" }
-tract-pulse = { path = "../pulse", version = "=0.19.15" }
-tract-tensorflow = { path = "../tensorflow", version = "=0.19.15" }
-tract-libcli = { path = "../libcli", version = "=0.19.15" }
+tract-data = { path = "../data", version = "=0.19.16" }
+tract-nnef = { path = "../nnef", version = "=0.19.16" }
+tract-onnx = { path = "../onnx", version = "=0.19.16" }
+tract-pulse = { path = "../pulse", version = "=0.19.16" }
+tract-tensorflow = { path = "../tensorflow", version = "=0.19.16" }
+tract-libcli = { path = "../libcli", version = "=0.19.16" }
