@@ -457,7 +457,6 @@ where
 
     /// Performs a sanity check on network connections.
     #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
-    #[inline]
     pub fn check_edges(&self) -> TractResult<()> {
         for node_id in self.eval_order()? {
             let node = &self.nodes[node_id];
@@ -485,6 +484,21 @@ where
                 }
             }
         }
+        Ok(())
+    }
+
+    #[cfg(not(all(debug_assertions, feature = "paranoid_assertions")))]
+    #[inline]
+    pub fn check_names(&self) -> TractResult<()> {
+        Ok(())
+    }
+
+    /// Performs a sanity check on network connections.
+    #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
+    pub fn check_names(&self) -> TractResult<()> {
+        let dups =
+            self.eval_order()?.iter().map(|n| &self.nodes[*n].name).duplicates().collect_vec();
+        ensure!(dups.len() == 0, "Duplicate node name(s) : {:?}\n{}", dups, &self);
         Ok(())
     }
 

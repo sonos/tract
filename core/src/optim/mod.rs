@@ -99,6 +99,7 @@ impl<'o> OptimizerSession<'o> {
     pub fn optimize(&mut self, model: &mut TypedModel) -> TractResult<()> {
         model.check_consistency().context("during optimizer preflight check")?;
         model.compact().context("during optimizer preflight compaction")?;
+        model.check_names().context("after optimizer preflight compaction")?;
         for i in 0.. {
             let old = self.counter;
             self.run_all_passes(i, model)?;
