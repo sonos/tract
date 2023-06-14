@@ -1,6 +1,6 @@
 [package]
 name = "example-pytorch-resnet"
-version = "0.19.15-pre"
+version = "0.19.7-pre"
 authors = ["Teddy Koker <teddy.koker@gmail.com>"]
 license = "MIT/Apache-2.0"
 edition = "2021"
@@ -9,4 +9,4 @@ edition = "2021"
 
 [dependencies]
 image.workspace = true
-tract-onnx = { path = "../../onnx", version = "=0.19.16" }
+tract-onnx = { path = "../../onnx", version = "=0.19.7-pre" }
