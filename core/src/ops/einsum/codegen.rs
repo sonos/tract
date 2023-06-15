@@ -13,6 +13,7 @@ use crate::ops::nn::{Reduce, Reducer};
 pub enum AxesOrPatch<'a> {
     Axes(&'a Axis, &'a Axis, &'a Axis),
     Patch(TypedModelPatch),
+    NotAMatMul(&'a Axis),
 }
 
 pub(crate) fn codegen(
@@ -28,6 +29,7 @@ pub(crate) fn codegen(
     let (m_axis, k_axis, n_axis) = match ensure_mkn_axes(op, model, node)? {
         AxesOrPatch::Axes(m, k, n) => (m, k, n),
         AxesOrPatch::Patch(p) => return Ok(Some(p)),
+        AxesOrPatch::NotAMatMul(_) => return Ok(None),
     };
     if op.q_params.is_none() {
         lir_mat_mul_unary(op, model, node, (m_axis, k_axis, n_axis))
@@ -93,6 +95,17 @@ pub(super) fn ensure_mkn_axes<'a>(
     let Some(n_axis) = n_axis else {
         return Ok(AxesOrPatch::Patch(inject_m_or_n_axis(op, model, node, true, &[k_axis, m_axis])?));
     };
+    for axis in op.axes.iter_all_axes() {
+        let one = TDim::one();
+        let in_left =
+            axis.inputs[0].get(0).map(|pos| &input_facts[0].shape[*pos]).unwrap_or(&one) != &one;
+        let in_right =
+            axis.inputs[1].get(0).map(|pos| &input_facts[1].shape[*pos]).unwrap_or(&one) != &one;
+        let in_out = axis.outputs[0].get(0).map(|pos| &output_shape[*pos]).unwrap_or(&one) != &one;
+        if (in_left ^ in_right) && !in_out {
+            return Ok(AxesOrPatch::NotAMatMul(axis));
+        }
+    }
     Ok(AxesOrPatch::Axes(m_axis, k_axis, n_axis))
 }
 
@@ -163,9 +176,11 @@ pub(super) fn inject_m_or_n_axis(
                 .clone()
                 .with_extra_axis('$', InOut::In(input_to_fix), 0)?
                 .linking(axis.repr, '$')?;
-            wire[input_to_fix] =
-                patch.wire_node(format!("{name}.add_{label}"), AxisOp::Add(0), &[wire[input_to_fix]])?
-                    [0];
+            wire[input_to_fix] = patch.wire_node(
+                format!("{name}.add_{label}"),
+                AxisOp::Add(0),
+                &[wire[input_to_fix]],
+            )?[0];
             wire = patch.wire_node(&node.name, EinSum { axes: new_axes, ..op.clone() }, &wire)?;
         }
     } else {
@@ -176,8 +191,11 @@ pub(super) fn inject_m_or_n_axis(
             .with_extra_axis(repr, InOut::In(input_to_fix), 0)?
             .with_extra_axis('$', InOut::Out(0), 0)?
             .linking(repr, '$')?;
-        wire[input_to_fix] =
-            patch.wire_node(format!("{name}.add_{label}"), AxisOp::Add(0), &[wire[input_to_fix]])?[0];
+        wire[input_to_fix] = patch.wire_node(
+            format!("{name}.add_{label}"),
+            AxisOp::Add(0),
+            &[wire[input_to_fix]],
+        )?[0];
         wire = patch.wire_node(
             format!("{name}.einsum"),
             EinSum { axes: new_axes, ..op.clone() },

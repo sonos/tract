@@ -35,6 +35,7 @@ fn decompose_one_in_place(model: &mut TypedModel) -> TractResult<()> {
                 p.apply(model)?;
                 model.compact()?;
             }
+            AxesOrPatch::NotAMatMul(axis) => bail!("{} is not a matmul because of axis {}", op.axes, axis.repr),
         };
     };
     let (m, k, n) = (m.repr, k.repr, n.repr);
@@ -312,6 +313,8 @@ mod test {
     #[rustfmt::skip] #[test] fn prop_m_n_mn() -> TestCaseResult { test_expr("m,n->mn") }
     #[rustfmt::skip] #[test] fn prop_amk_akn_amn() -> TestCaseResult { test_expr("amk,akn->amn") }
     #[rustfmt::skip] #[test] fn prop_mk_akn_amn() -> TestCaseResult { test_expr("mk,akn->amn") }
+    #[rustfmt::skip] #[test] fn prop_btgi_gih_tgh() -> TestCaseResult { test_expr("btgi,gih->tgh") }
+    #[rustfmt::skip] #[test] fn prop_tgi_gih_btgh() -> TestCaseResult { test_expr("tgi,gih->btgh") }
 
     #[test]
     fn k_kn_mn_0() -> TractResult<()> {
@@ -399,6 +402,16 @@ mod test {
             expr: "km,anbck->bmn".to_string(),
             a: Tensor::zero::<f32>(&[2, 1]).unwrap(),
             b: Tensor::zero::<f32>(&[1, 1, 1, 1, 2]).unwrap(),
+        }
+        .check()
+    }
+
+    #[test]
+    fn btgi_gih_tgh_0() -> TractResult<()> {
+        EinSumProblem {
+            expr: "btgi,gih->tgh ".to_string(),
+            a: Tensor::zero::<f32>(&[2, 1, 1, 2]).unwrap(),
+            b: Tensor::zero::<f32>(&[1, 2, 1]).unwrap(),
         }
         .check()
     }
