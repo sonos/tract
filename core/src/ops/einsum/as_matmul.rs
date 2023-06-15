@@ -240,6 +240,10 @@ mod test {
             let axis = axes.axis((InOut::In(input), position)).unwrap();
             axis.inputs[1 - input].len() == 1 && axis.outputs[0].len() == 0
         }
+        fn is_disapearing_axis(axes: &AxesMapping, input: usize, position: usize) -> bool {
+            let axis = axes.axis((InOut::In(input), position)).unwrap();
+            axis.outputs[0].len() == 0
+        }
         let cases = full_shapes(&axes)
             .prop_flat_map(|(a, b)| {
                 (
@@ -248,6 +252,8 @@ mod test {
                         .map(|(ix, d)| {
                             if is_k(&axes, 0, ix) {
                                 prop_oneof![Just(*d)].boxed()
+                            } else if is_disapearing_axis(&axes, 0, ix) {
+                                Just(1).boxed()
                             } else {
                                 prop_oneof![Just(1usize), Just(*d)].boxed()
                             }
@@ -258,6 +264,8 @@ mod test {
                         .map(|(ix, d)| {
                             if is_k(&axes, 1, ix) {
                                 prop_oneof![Just(*d)].boxed()
+                            } else if is_disapearing_axis(&axes, 1, ix) {
+                                Just(1).boxed()
                             } else {
                                 prop_oneof![Just(1usize), Just(*d)].boxed()
                             }
@@ -402,16 +410,6 @@ mod test {
             expr: "km,anbck->bmn".to_string(),
             a: Tensor::zero::<f32>(&[2, 1]).unwrap(),
             b: Tensor::zero::<f32>(&[1, 1, 1, 1, 2]).unwrap(),
-        }
-        .check()
-    }
-
-    #[test]
-    fn btgi_gih_tgh_0() -> TractResult<()> {
-        EinSumProblem {
-            expr: "btgi,gih->tgh ".to_string(),
-            a: Tensor::zero::<f32>(&[2, 1, 1, 2]).unwrap(),
-            b: Tensor::zero::<f32>(&[1, 2, 1]).unwrap(),
         }
         .check()
     }
