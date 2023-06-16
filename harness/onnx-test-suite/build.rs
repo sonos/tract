@@ -83,8 +83,7 @@ pub fn ensure_onnx_git_checkout() {
 
 #[derive(PartialEq, Copy, Clone, Debug)]
 enum Mode {
-    Plain,
-    Optim,
+    Normal,
     Nnef,
 }
 
@@ -124,7 +123,7 @@ pub fn make_test_file(root: &mut fs::File, tests_set: &str, onnx_tag: &str, opse
         .collect();
     tests.sort();
     writeln!(rs, "mod {tests_set_ver} {{").unwrap();
-    for &mode in &[Plain, Optim, Nnef] {
+    for &mode in &[Normal, Nnef] {
         writeln!(rs, "mod {} {{", format!("{mode:?}").to_lowercase()).unwrap();
         writeln!(rs, "use tract_core::internal::*;").unwrap();
         writeln!(rs, "use crate::onnx::{{run_one, Mode}};").unwrap();
@@ -136,12 +135,8 @@ pub fn make_test_file(root: &mut fs::File, tests_set: &str, onnx_tag: &str, opse
                         .is_some_and(|since| since.parse::<usize>().unwrap() > opset)
                 })
                 || match mode {
-                    Mode::Plain => false,
-                    Mode::Optim => more.unwrap().contains(&"not-typable".to_string()),
-                    Mode::Nnef => {
-                        more.unwrap().contains(&"not-typable".to_string())
-                            || more.unwrap().contains(&"not-nnef".to_string())
-                    }
+                    Mode::Normal => false,
+                    Mode::Nnef => more.unwrap().contains(&"not-nnef".to_string()),
                 };
             writeln!(rs, "#[test]").unwrap();
             if ignore {
