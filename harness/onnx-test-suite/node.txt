@@ -127,9 +127,6 @@ test_castlike_STRING_to_FLOAT_expanded not-nnef
 test_ceil
 test_ceil_example
 test_celu_expanded
-test_center_crop_pad_crop_and_pad_expanded not-nnef not-typable
-test_center_crop_pad_crop_expanded not-nnef not-typable
-test_center_crop_pad_pad_expanded not-nnef not-typable
 test_clip
 test_clip_default_inbounds
 test_clip_default_inbounds_expanded
@@ -152,10 +149,6 @@ test_clip_outbounds
 test_clip_outbounds_expanded
 test_clip_splitbounds
 test_clip_splitbounds_expanded
-test_compress_0                                                                      not-typable not-nnef
-test_compress_1                                                                      not-typable not-nnef
-test_compress_default_axis                                                           not-typable not-nnef
-test_compress_negative_axis not-nnef not-typable
 test_concat_1d_axis_0
 test_concat_1d_axis_negative_1
 test_concat_2d_axis_0
@@ -173,19 +166,13 @@ test_constant_pad input:x
 test_constantlike_ones_with_input not-nnef
 test_constantlike_threes_with_shape_and_dtype not-nnef
 test_constantlike_zeros_without_input_dtype not-nnef
-test_constantofshape_float_ones                                                      not-typable not-nnef
-test_constantofshape_int_shape_zero  not-typable not-nnef
-test_constantofshape_int_zeros                                                       not-typable not-nnef
-test_conv_with_autopad_same not-nnef not-typable
 test_conv_with_strides_and_asymmetric_padding input:x
 test_conv_with_strides_no_padding input:x
 test_conv_with_strides_padding input:x
 test_convinteger_with_padding                                                       input:x 
-test_convinteger_without_padding not-nnef not-typable
 test_convtranspose input:X
 test_convtranspose_1d input:X
 test_convtranspose_3d input:X
-test_convtranspose_autopad_same not-nnef not-typable since:15
 test_convtranspose_dilations input:X
 test_convtranspose_kernel_shape input:X
 test_convtranspose_output_shape input:X
@@ -217,15 +204,12 @@ test_div_bcast
 test_div_example
 test_div_uint8
 test_dropout_default
-test_dropout_default_mask  not-typable not-nnef
 test_dropout_default_old
 test_dropout_random not-nnef
 test_dropout_random_old
 test_dynamicquantizelinear  not-nnef
 test_dynamicquantizelinear_max_adjusted  not-nnef
-test_dynamicquantizelinear_max_adjusted_expanded  not-typable not-nnef
 test_dynamicquantizelinear_min_adjusted  not-nnef
-test_dynamicquantizelinear_min_adjusted_expanded  not-typable not-nnef
 test_edge_pad input:x
 test_einsum_batch_diagonal
 test_einsum_batch_matmul
@@ -318,7 +302,6 @@ test_hardsigmoid_expanded_ver18
 test_hardswish
 test_hardswish_expanded
 test_identity
-test_if not-nnef not-typable
 test_instancenorm_example
 test_isinf
 test_isinf_negative
@@ -543,12 +526,9 @@ test_prelu_broadcast
 test_prelu_broadcast_expanded
 test_prelu_example
 test_prelu_example_expanded
-test_qlinearconv                                                                     not-typable 
 test_qlinearmatmul_2D                                                                
 test_qlinearmatmul_3D                                                                
 test_quantizelinear                                                                 input:x not-nnef
-test_range_float_type_positive_delta not-nnef not-typable
-test_range_int32_type_negative_delta not-nnef not-typable
 test_reciprocal
 test_reciprocal_example
 test_reduce_l1_default_axes_keepdims_example input:data
@@ -680,7 +660,6 @@ test_reshape_reordered_last_dims input:data
 test_reshape_zero_and_negative_dim input:data
 test_reshape_zero_dim input:data
 test_resize_upsample_scales_linear_align_corners                                    input:X not-nnef
-test_resize_upsample_scales_nearest not-nnef not-typable
 test_rnn_seq_length
 test_round
 test_scan9_sum
@@ -729,7 +708,6 @@ test_slice_default_steps input:x
 test_slice_end_out_of_bounds input:x
 test_slice_neg input:x
 test_slice_neg_steps input:x
-test_slice_negative_axes  not-typable not-nnef
 test_slice_start_out_of_bounds input:x
 test_softmax_axis_0
 test_softmax_axis_0_expanded
@@ -782,8 +760,6 @@ test_split_variable_parts_default_axis input:input
 test_split_variable_parts_default_axis_opset13 input:input
 test_split_variable_parts_default_axis_opset18 input:input
 test_split_zero_size_splits input:input
-test_split_zero_size_splits_opset13 not-typable not-nnef
-test_split_zero_size_splits_opset18 not-typable not-nnef
 test_sqrt
 test_sqrt_example
 test_squeeze input:x
