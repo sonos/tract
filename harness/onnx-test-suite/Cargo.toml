@@ -15,16 +15,16 @@ tract-nnef = { path = "../../nnef", version = "=0.20.7-pre" }
 tract-onnx = { path = "../../onnx", version = "=0.20.7-pre" }
 
 [features]
-onnx_1_4_1 = []
-onnx_1_5_0 = []
-onnx_1_6_0 = []
-onnx_1_7_0 = []
-onnx_1_8_1 = []
-onnx_1_9_0 = []
-onnx_1_10_2 = []
-onnx_1_11_0 = []
-onnx_1_12_0 = []
-onnx_1_13_0 = []
+onnx_1_4_1 =  ["gen-onnx-test-suite/onnx_1_4_1"]
+onnx_1_5_0 =  ["gen-onnx-test-suite/onnx_1_5_0"]
+onnx_1_6_0 =  ["gen-onnx-test-suite/onnx_1_6_0"]
+onnx_1_7_0 =  ["gen-onnx-test-suite/onnx_1_7_0"]
+onnx_1_8_1 =  ["gen-onnx-test-suite/onnx_1_8_1"]
+onnx_1_9_0 =  ["gen-onnx-test-suite/onnx_1_9_0"]
+onnx_1_10_2 = ["gen-onnx-test-suite/onnx_1_10_2"]
+onnx_1_11_0 = ["gen-onnx-test-suite/onnx_1_11_0"]
+onnx_1_12_0 = ["gen-onnx-test-suite/onnx_1_12_0"]
+onnx_1_13_0 = ["gen-onnx-test-suite/onnx_1_13_0"]
 default = [ "onnx_1_13_0" ]
 
 [dev-dependencies]
@@ -33,3 +33,4 @@ lazy_static.workspace = true
 
 [build-dependencies]
 fs2.workspace = true
+gen-onnx-test-suite = { path = "../gen-onnx-test-suite" }
