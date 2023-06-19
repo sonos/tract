@@ -47,6 +47,5 @@ test_resize_upsample_scales_linear_align_corners
 test_unsqueeze
 "#
     .lines()
-    .find(|s| s.trim() == t)
-    .is_some()
+    .any(|s| s.trim() == t)
 }
