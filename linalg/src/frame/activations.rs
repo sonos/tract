@@ -47,6 +47,7 @@ pub enum Op<T: LADatum> {
     SwapBC,
     Floor,
     TwoPowOfInt,
+    Noop,
 }
 
 impl<T: LADatum> Program<T> {
@@ -94,6 +95,7 @@ impl<T: LADatum> Program<T> {
                 Op::SwapBC => ops.push(OpOrConst { op: KerOp::SwapBC }),
                 Op::Floor => ops.push(OpOrConst { op: KerOp::Floor }),
                 Op::TwoPowOfInt => ops.push(OpOrConst { op: KerOp::TwoPowOfInt }),
+                Op::Noop => ops.push(OpOrConst { op: KerOp::Noop }),
             }
         }
         ops.push(OpOrConst { op: KerOp::Done });
@@ -127,6 +129,7 @@ pub enum KerOp {
     SwapBC,                         // jump_to:swap_b_c
     Floor,                          // jump_to:floor
     TwoPowOfInt,                    // jump_to:two_pow_of_int
+    Noop                            // jump_to:noop
 }
 
 #[derive(Clone)]

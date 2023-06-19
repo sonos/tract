@@ -70,6 +70,7 @@ unsafe fn compute_slice(ops: *const OpOrConst<f32>, xs: *mut f32, len: usize) {
             KerOp::TwoPowOfInt => {
                 a.iter_mut().for_each(|x| *x = f32::from_bits((((*x as i32) + 127) as u32) << 23))
             }
+            KerOp::Noop => {},
         }
         pc = pc.add(1);
     }

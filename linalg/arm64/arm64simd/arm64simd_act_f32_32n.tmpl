@@ -420,6 +420,9 @@
 .two_pow_of_int:
     b           .unsupported
 
+.noop:
+    b           .inner_loop
+
 .unsupported:
     mov         x0, 1
     b           .return
