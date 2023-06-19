@@ -1,12 +1,12 @@
 use std::{fs, path};
 
-const MANIFEST_NODE: &'static str = include_str!("../node.txt");
-const MANIFEST_REAL: &'static str = include_str!("../real.txt");
-const MANIFEST_SIMPLE: &'static str = include_str!("../simple.txt");
-const MANIFEST_PYTORCH_CONVERTED: &'static str = include_str!("../pytorch-converted.txt");
-const MANIFEST_PYTORCH_OPERATOR: &'static str = include_str!("../pytorch-operator.txt");
+const MANIFEST_NODE: &str = include_str!("../node.txt");
+const MANIFEST_REAL: &str = include_str!("../real.txt");
+const MANIFEST_SIMPLE: &str = include_str!("../simple.txt");
+const MANIFEST_PYTORCH_CONVERTED: &str = include_str!("../pytorch-converted.txt");
+const MANIFEST_PYTORCH_OPERATOR: &str = include_str!("../pytorch-operator.txt");
 
-const RUNNER: &'static str = include_str!("runner.rs");
+const RUNNER: &str = include_str!("runner.rs");
 
 fn versions() -> Vec<(&'static str, usize)> {
     let mut versions = vec![];
