@@ -89,7 +89,7 @@ pub fn ensure_onnx_git_checkout() {
     });
 }
 
-pub fn runtime(runtime_name: &str) {
+pub fn runtime(runtime_name: &str, include: impl Fn(&str) -> bool) {
     use std::io::Write;
     ensure_onnx_git_checkout();
     let out_dir = std::env::var("OUT_DIR").unwrap();
@@ -146,7 +146,7 @@ pub fn runtime(runtime_name: &str) {
                     || details.unwrap().iter().any(|s| {
                         s.strip_prefix("since:")
                             .is_some_and(|since| since.parse::<usize>().unwrap() > opset)
-                    });
+                    } || !include(t));
                 writeln!(rs, "#[test]").unwrap();
                 if ignore {
                     writeln!(rs, "#[ignore]").unwrap();
