@@ -29,6 +29,7 @@ default = [ "onnx_1_13_0" ]
 
 [dev-dependencies]
 env_logger.workspace = true
+lazy_static.workspace = true
 
 [build-dependencies]
 fs2.workspace = true

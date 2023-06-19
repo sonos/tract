@@ -78,6 +78,7 @@ pub mod half;
 pub mod model;
 pub mod optim;
 pub mod plan;
+pub mod runtime;
 pub mod value;
 
 pub use dyn_clone;
@@ -124,6 +125,7 @@ pub mod internal {
     pub use {args_1, args_2, args_3, args_4, args_5, args_6, args_7, args_8};
     pub use {as_op, impl_op_same_as, not_a_typed_op, op_as_typed_op};
     pub use {bin_to_super_type, element_wise, element_wise_oop};
+    pub use crate::runtime::{Runtime, Runnable, DefaultRuntime};
 }
 
 #[cfg(test)]
