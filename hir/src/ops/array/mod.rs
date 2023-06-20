@@ -5,6 +5,7 @@ mod concat;
 mod constant_like;
 mod constant_of_shape;
 mod crop;
+mod dyn_slice;
 mod flatten;
 mod gather;
 mod gather_elements;

@@ -213,10 +213,6 @@ impl OpState for State {
                 .map(|(slot, m)| {
                     Ok(match m {
                         InputMapping::State { .. } => Some(hidden_state.pop().unwrap()),
-                        InputMapping::Scan(info) => Some(
-                            Self::slice_input(&inputs[slot], info.axis, i, info.chunk)?
-                                .into_tvalue(),
-                        ),
                         InputMapping::Full => Some(inputs[slot].clone()),
                     })
                 })

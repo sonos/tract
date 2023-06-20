@@ -16,14 +16,6 @@ pub fn register(registry: &mut Registry) {
             ast::TypeSpec::Tuple(vec![
                 TypeName::String.spec(),   // body param name
                 TypeName::Scalar.tensor(), // input
-                TypeName::Integer.spec(),  // axis
-                TypeName::Integer.spec(),  // step
-            ])
-            .array()
-            .named("scan"),
-            ast::TypeSpec::Tuple(vec![
-                TypeName::String.spec(),   // body param name
-                TypeName::Scalar.tensor(), // input
             ])
             .array()
             .named("full"),
@@ -43,7 +35,7 @@ pub fn register(registry: &mut Registry) {
             .array()
             .named("output"),
             TypeName::Integer.spec().named("iters").default(0), // needed for pulse
-            TypeName::Integer.spec().named("skip").default(0), // needed for pulse
+            TypeName::Integer.spec().named("skip").default(0),  // needed for pulse
         ],
         &[("outputs", TypeName::Scalar.tensor().array())],
         de_scan,
@@ -54,21 +46,12 @@ fn ser_scan(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValu
     let op = node.op().downcast_ref::<Scan>().unwrap();
     let (mut body, body_tensors) = crate::ser::to_fragment_def(ast, &op.body)?;
     body.decl.id = Identifier(format!("scan_body_{}", ast.fragments.len()));
-    let mut scan = vec![];
     let mut state = vec![];
     let mut full = vec![];
     let mut outputs = vec![];
     for (slot, input) in op.input_mapping.iter().enumerate() {
         let name = string(&body.decl.parameters[slot].id.0);
         match input {
-            InputMapping::Scan(info) => {
-                scan.push(tuple_4(
-                    name,
-                    ast.mapping[&node.inputs[slot]].as_ref().clone(),
-                    numeric(info.axis),
-                    numeric(info.chunk),
-                ));
-            }
             InputMapping::State => {
                 let initializer = (*ast.mapping[&node.inputs[slot]]).clone();
                 let output: usize = op
@@ -125,7 +108,6 @@ fn ser_scan(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValu
         &[],
         &[
             ("body", string(&body.decl.id)),
-            ("scan", array(scan)),
             ("full", array(full)),
             ("state", array(state)),
             ("output", array(outputs)),
@@ -153,18 +135,10 @@ fn de_scan(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
     body.registries = builder.registries.clone();
     let mut outer_inputs: TVec<OutletId> = tvec!();
     let mut input_mapping = vec![];
-    let scan: TVec<(String, OutletId, usize, isize)> = invocation.named_arg_as(builder, "scan")?;
     let full: TVec<(String, OutletId)> = invocation.named_arg_as(builder, "full")?;
     let state: TVec<(String, OutletId, String)> = invocation.named_arg_as(builder, "state")?;
     for par in &fragment.decl.parameters {
-        let (outer_input_wire, inner_fact) = if let Some((_, wire, axis, chunk)) =
-            scan.iter().find(|s| s.0 == par.id.0 || escape(&s.0) == par.id.0)
-        {
-            input_mapping.push(InputMapping::Scan(ScanInfo { axis: *axis, chunk: *chunk }));
-            let mut fact = builder.model.outlet_fact(*wire)?.clone();
-            fact.shape.set(*axis, chunk.abs().to_dim());
-            (*wire, fact)
-        } else if let Some((_, wire)) =
+        let (outer_input_wire, inner_fact) = if let Some((_, wire)) =
             full.iter().find(|s| s.0 == par.id.0 || escape(&s.0) == par.id.0)
         {
             input_mapping.push(InputMapping::Full);

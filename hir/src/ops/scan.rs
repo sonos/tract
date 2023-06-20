@@ -9,6 +9,9 @@ pub use tract_core::ops::scan::{InputMapping, OutputMapping};
 pub struct InferenceScan {
     pub body: InferenceModel,
     pub input_mapping: Vec<InputMapping>,
+    pub state_initializers: Vec<Option<Arc<Tensor>>>, // the len of this matches the number of
+    // state inputs. if None, there is an outer
+    // input for initialization
     pub output_mapping: Vec<OutputMapping<TDim>>,
     pub clean_scan_counts: bool,
     pub iter_count_fact: GenericFactoid<TDim>,
@@ -51,21 +54,6 @@ impl InferenceScan {
     pub(super) fn to_mir_scan(&self) -> TractResult<Box<Scan>> {
         let iters = self.iter_count_fact.concretize().unwrap();
         let typed_body = self.body.clone().into_typed()?;
-        let input_mapping = self
-            .input_mapping
-            .iter()
-            .enumerate()
-            .map(|(ix, im)| {
-                Ok(match im {
-                    InputMapping::Scan(info) => { 
-                        InputMapping::Scan(ScanInfo {
-                        chunk: typed_body.input_fact(ix)?.shape[info.axis].to_isize()?,
-                        ..*info
-                    })},
-                    other => other.clone(),
-                })
-            })
-            .collect::<TractResult<_>>()?;
         let output_mapping = self
             .output_mapping
             .iter()
@@ -90,7 +78,7 @@ impl InferenceScan {
                 })
             })
             .collect::<TractResult<_>>()?;
-        Ok(Box::new(Scan::new(typed_body, input_mapping, output_mapping, 0, iters)?))
+        Ok(Box::new(Scan::new(typed_body, self.input_mapping.clone(), output_mapping, 0, iters)?))
     }
 
     fn unify_scanning_tensor_fact(
@@ -136,11 +124,13 @@ impl InferenceScan {
 
     fn unify_facts(
         &mut self,
-        inputs: &mut [InferenceFact],
-        outputs: &mut [InferenceFact],
+        ext_inputs: &mut [InferenceFact],
+        ext_outputs: &mut [InferenceFact],
     ) -> TractResult<bool> {
         let mut changed = false;
         let hidden_state_len = self.input_mapping.iter().filter(|m| m.is_state()).count();
+        let mut external_initializer_input_slot = 0;
+        let mut constant_initializers = vec![];
         #[allow(clippy::needless_range_loop)]
         for state_ix in 0..hidden_state_len {
             trace!("Unify hidden state #{}", state_ix);
@@ -156,7 +146,13 @@ impl InferenceScan {
                 self.body.input_outlets()?[state_ix],
                 self.body.output_outlets()?[inner_model_output_ix],
             ])?;
-            facts.push(&mut inputs[state_ix]);
+            if let Some(init) = &self.state_initializers[state_ix] {
+                constant_initializers.push(init.clone().into());
+                facts.push(constant_initializers.last_mut().unwrap());
+            } else {
+                facts.push(&mut ext_inputs[external_initializer_input_slot]);
+                external_initializer_input_slot += 1;
+            }
             if Factoid::unify_all(
                 &mut facts.iter_mut().map(|f| &mut f.datum_type).collect::<TVec<_>>(),
             )? {
@@ -167,41 +163,23 @@ impl InferenceScan {
                 changed = true;
             }
         }
+        let constant_initializers_count =
+            self.state_initializers.iter().filter(|s| s.is_some()).count();
         for (slot, i) in self.input_mapping.iter().enumerate() {
             match i {
                 InputMapping::State { .. } => {}
                 InputMapping::Full => {
-                    if inputs[slot].unify_with_mut(self.body.input_fact_mut(slot)?)? {
+                    if ext_inputs[slot - constant_initializers_count]
+                        .unify_with_mut(self.body.input_fact_mut(slot)?)?
+                    {
                         changed = true;
-                    }
-                }
-                InputMapping::Scan(scan) => {
-                    let incoming = &mut inputs[slot];
-                    let inner = self.body.input_fact_mut(slot)?;
-                    if Self::unify_scanning_tensor_fact(incoming, inner, scan.axis)? {
-                        changed = true;
-                    };
-                    if self.clean_scan_counts {
-                        if incoming.shape.ensure_rank_at_least(scan.axis) {
-                            changed = true;
-                        }
-                        let value =
-                            self.iter_count_fact.unify(&incoming.shape.dim(scan.axis).unwrap())?;
-                        if self.iter_count_fact != value {
-                            changed = true;
-                            self.iter_count_fact = value.clone();
-                        }
-                        if incoming.shape.dim(scan.axis).unwrap() != value {
-                            changed = true;
-                            incoming.shape.set_dim(scan.axis, value.concretize().unwrap());
-                        }
                     }
                 }
             }
         }
         for (ix, i) in self.output_mapping.iter().enumerate() {
             if let Some((slot, scan)) = i.scan {
-                let outgoing = &mut outputs[slot];
+                let outgoing = &mut ext_outputs[slot];
                 let inner = self.body.output_fact_mut(ix)?;
                 if Self::unify_scanning_tensor_fact(outgoing, inner, scan.axis)? {
                     changed = true
@@ -223,7 +201,7 @@ impl InferenceScan {
                 }
             }
             if let Some(slot) = i.last_value_slot {
-                if outputs[slot].unify_with(self.body.output_fact_mut(ix)?)? {
+                if ext_outputs[slot].unify_with(self.body.output_fact_mut(ix)?)? {
                     changed = true;
                 }
             }
@@ -241,7 +219,8 @@ impl InferenceOp for InferenceScan {
     ) -> TractResult<(TVec<InferenceFact>, TVec<InferenceFact>, TVec<InferenceFact>)> {
         let body_inputs = self.body.input_outlets()?.len();
         let body_outputs = self.body.output_outlets()?.len();
-        let expected_op_inputs = self.input_mapping.len();
+        let expected_op_inputs = self.input_mapping.len()
+            - self.state_initializers.iter().filter(|i| i.is_some()).count();
         let expected_op_outputs = self
             .output_mapping
             .iter()
@@ -270,11 +249,11 @@ impl InferenceOp for InferenceScan {
                 self.output_mapping.len()
             )
         }
-        let mut inputs: TVec<InferenceFact> = inputs.into_iter().cloned().collect();
-        let mut outputs: TVec<InferenceFact> = outputs.into_iter().cloned().collect();
+        let mut external_inputs: TVec<InferenceFact> = inputs.into_iter().cloned().collect();
+        let mut external_outputs: TVec<InferenceFact> = outputs.into_iter().cloned().collect();
         loop {
             trace!("Unify inner and outer interface");
-            let mut changed = self.unify_facts(&mut inputs, &mut outputs)?;
+            let mut changed = self.unify_facts(&mut external_inputs, &mut external_outputs)?;
             trace!("iters: {:?} changed: {:?}", self.iter_count_fact, changed);
             for (ix, input) in self.body.input_outlets()?.iter().enumerate() {
                 trace!("  Input inner model: {} {:?} {:?}", ix, input, self.body.input_fact(ix));
@@ -283,6 +262,7 @@ impl InferenceOp for InferenceScan {
                 trace!("  Output inner model: {} {:?} {:?}", ix, output, self.body.output_fact(ix));
             }
             trace!("Inner model analyse");
+            //    dbg!(&self.body);
             if self.body.analyse(false).context("analysing inner model")? {
                 changed = true;
             }
@@ -291,7 +271,7 @@ impl InferenceOp for InferenceScan {
             }
             trace!("Finished inner model analyse");
         }
-        Ok((inputs, outputs, tvec!()))
+        Ok((external_inputs, external_outputs, tvec!()))
     }
 
     fn to_typed(
@@ -301,7 +281,13 @@ impl InferenceOp for InferenceScan {
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        let inputs = node.inputs.iter().map(|m| mapping[m]).collect::<TVec<_>>();
+        let mut inputs = node.inputs.iter().map(|m| mapping[m]).collect::<TVec<_>>();
+        for (ix, value) in self.state_initializers.iter().enumerate() {
+            if let Some(value) = value {
+                let k = target.add_const(format!("{}.{}", node.name, ix), value.clone())?;
+                inputs.insert(ix,k);
+            }
+        }
         target.wire_node(&*node.name, self.to_mir_scan()? as Box<dyn TypedOp>, &inputs)
     }
 

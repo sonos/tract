@@ -6,7 +6,7 @@ use super::identity::Identity;
 
 mod array;
 mod conv;
-mod scan;
+// mod scan;
 
 #[derive(Debug, Clone, new, Default, PartialEq, Eq, Hash)]
 pub struct Downsample {
@@ -132,8 +132,10 @@ fn pull_downsample_up(
             return array::pull_downsample_over_axis_op(model, prec, other_op, down_node, down_op);
         } else if let Some(conv_op) = prec.op_as::<ops::cnn::conv::ConvUnary>() {
             return conv::fuse_downsample_into_conv(model, prec, conv_op, down_node, down_op);
+            /*
         } else if let Some(other_op) = prec.op_as::<ops::scan::Scan>() {
             return scan::pull_downsample_over_scan(model, prec, other_op, down_node, down_op);
+            */
         }
         if prec.outputs.len() > 1 || prec.inputs.len() == 0 {
             return Ok(None);

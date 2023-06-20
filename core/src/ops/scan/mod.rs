@@ -17,23 +17,11 @@ pub struct ScanInfo {
 pub enum InputMapping {
     Full,
     State,
-    Scan(ScanInfo),
 }
 
 impl InputMapping {
     pub fn is_state(&self) -> bool {
         matches!(self, InputMapping::State)
-    }
-
-    pub fn is_scan(&self) -> bool {
-        self.as_scan().is_some()
-    }
-
-    pub fn as_scan(&self) -> Option<&ScanInfo> {
-        match self {
-            InputMapping::Scan(s) => Some(s),
-            _ => None,
-        }
     }
 }
 
