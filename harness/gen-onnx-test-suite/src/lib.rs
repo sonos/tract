@@ -145,7 +145,7 @@ pub fn runtime(runtime_name: &str, include: impl Fn(&str) -> bool) {
                 let ignore = details.is_none()
                     || details.unwrap().iter().any(|s| {
                         s.strip_prefix("since:")
-                            .is_some_and(|since| since.parse::<usize>().unwrap() > opset)
+                            .map(|since| since.parse::<usize>().unwrap() > opset).unwrap_or(false)
                     } || !include(t));
                 writeln!(rs, "#[test]").unwrap();
                 if ignore {
