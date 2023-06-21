@@ -64,16 +64,13 @@ pub fn ser_einsum(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc
                 return Ok(Some(invocation(
                     "matmul",
                     &[Arc::new(inputs[1].clone()), Arc::new(inputs[0].clone())],
-                    &[
-                        ("transpose_a", logical(!transpose_b)),
-                        ("transpose_b", logical(!transpose_a)),
-                    ],
+                    &[("transposeA", logical(!transpose_b)), ("transposeB", logical(!transpose_a))],
                 )));
             } else {
                 return Ok(Some(invocation(
                     "matmul",
                     &[Arc::new(inputs[0].clone()), Arc::new(inputs[1].clone())],
-                    &[("transpose_a", logical(transpose_a)), ("transpose_b", logical(transpose_b))],
+                    &[("transposeA", logical(transpose_a)), ("transposeB", logical(transpose_b))],
                 )));
             }
         }
