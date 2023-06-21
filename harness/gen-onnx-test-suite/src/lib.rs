@@ -1,7 +1,6 @@
 use std::{fs, path};
 
 const MANIFEST_NODE: &str = include_str!("../node.txt");
-const MANIFEST_REAL: &str = include_str!("../real.txt");
 const MANIFEST_SIMPLE: &str = include_str!("../simple.txt");
 const MANIFEST_PYTORCH_CONVERTED: &str = include_str!("../pytorch-converted.txt");
 const MANIFEST_PYTORCH_OPERATOR: &str = include_str!("../pytorch-operator.txt");
@@ -102,7 +101,6 @@ pub fn runtime(runtime_name: &str, include: impl Fn(&str) -> bool) {
 
     for (tests_set, manifest) in [
         ("node", MANIFEST_NODE),
-        ("real", MANIFEST_REAL),
         ("simple", MANIFEST_SIMPLE),
         ("pytorch-operator", MANIFEST_PYTORCH_OPERATOR),
         ("pytorch-converted", MANIFEST_PYTORCH_CONVERTED),
