@@ -43,26 +43,56 @@ fn decompose_one_in_place(model: &mut TypedModel) -> TractResult<()> {
     let node_name = &node.name;
     let prefix: String =
         op.axes.iter_all_axes().filter(|a| ![m, k, n].contains(&a.repr)).map(|a| a.repr).collect();
-    let a_order_es: String = op.axes.axes(InOut::In(0)).map(|a| a.repr).collect();
-    let a_order_mm = format!("{prefix}{m}{k}");
-    let b_order_es: String = op.axes.axes(InOut::In(1)).map(|a| a.repr).collect();
-    let b_order_mm = format!("{prefix}{k}{n}");
-    let c_order_es: String = op.axes.axes(InOut::Out(0)).map(|a| a.repr).collect();
-    let c_order_mm = format!("{prefix}{m}{n}");
     let mut patch = TypedModelPatch::default();
     let mut wire =
         node.inputs.iter().map(|i| patch.tap_model(model, *i)).collect::<TractResult<TVec<_>>>()?;
-    let a_transform = format!("{}->{}", a_order_es, a_order_mm).parse::<AxesMapping>()?;
-    for (ix, op) in a_transform.translate_to_axis_ops()?.into_iter().enumerate() {
+
+    let a_order_es: String = op.axes.axes(InOut::In(0)).map(|a| a.repr).collect();
+    let a_order_mm = format!("{prefix}{m}{k}");
+    let a_order_mm_t = format!("{prefix}{k}{m}");
+    let a_transform = format!("{}->{}", a_order_es, a_order_mm)
+        .parse::<AxesMapping>()?
+        .translate_to_axis_ops()?;
+    let a_transform_t = format!("{}->{}", a_order_es, a_order_mm_t)
+        .parse::<AxesMapping>()?
+        .translate_to_axis_ops()?;
+    let transpose_a = a_transform.len() > a_transform_t.len();
+    let a_transform = if transpose_a { a_transform_t } else { a_transform };
+    for (ix, op) in a_transform.into_iter().enumerate() {
         wire[0] = patch.wire_node(format!("{node_name}.fix_a.{ix}"), op, &[wire[0]])?[0];
     }
-    let b_transform = format!("{}->{}", b_order_es, b_order_mm).parse::<AxesMapping>()?;
-    for (ix, op) in b_transform.translate_to_axis_ops()?.into_iter().enumerate() {
+
+    let b_order_es: String = op.axes.axes(InOut::In(1)).map(|a| a.repr).collect();
+    let b_order_mm = format!("{prefix}{k}{n}");
+    let b_order_mm_t = format!("{prefix}{n}{k}");
+    let b_transform = format!("{}->{}", b_order_es, b_order_mm)
+        .parse::<AxesMapping>()?
+        .translate_to_axis_ops()?;
+    let b_transform_t = format!("{}->{}", b_order_es, b_order_mm_t)
+        .parse::<AxesMapping>()?
+        .translate_to_axis_ops()?;
+    let transpose_b = b_transform.len() > b_transform_t.len();
+    let b_transform = if transpose_b { b_transform_t } else { b_transform };
+    for (ix, op) in b_transform.into_iter().enumerate() {
         wire[1] = patch.wire_node(format!("{node_name}.fix_b.{ix}"), op, &[wire[1]])?[0];
     }
-    wire = patch.wire_node(node_name, BasicMatMul::default(), &wire)?;
-    let c_transform = format!("{}->{}", c_order_mm, c_order_es).parse::<AxesMapping>()?;
-    for (ix, op) in c_transform.translate_to_axis_ops()?.into_iter().enumerate() {
+
+    let c_order_es: String = op.axes.axes(InOut::Out(0)).map(|a| a.repr).collect();
+    let c_order_mm = format!("{prefix}{m}{n}");
+    let c_order_mm_t = format!("{prefix}{n}{m}");
+    let c_transform = format!("{}->{}", c_order_mm, c_order_es)
+        .parse::<AxesMapping>()?
+        .translate_to_axis_ops()?;
+    let c_transform_t = format!("{}->{}", c_order_mm_t, c_order_es)
+        .parse::<AxesMapping>()?
+        .translate_to_axis_ops()?;
+    let transpose_c = c_transform.len() > c_transform_t.len();
+    let c_transform = if transpose_c { c_transform_t } else { c_transform };
+
+    wire =
+        patch.wire_node(node_name, BasicMatMul { transpose_a, transpose_b, transpose_c }, &wire)?;
+
+    for (ix, op) in c_transform.into_iter().enumerate() {
         wire = patch.wire_node(format!("{node_name}.fix_c.{ix}"), op, &wire)?;
     }
     patch.shunt_outside(model, node.id.into(), wire[0])?;
@@ -395,7 +425,7 @@ mod test {
         ];
         let wire = model.wire_node("einsum", op.clone(), &inputs)?;
         model.set_output_outlets(&wire)?;
-        let mut sub = op.decompose_in_legacy_ops(&model,model.node(wire[0].node))?;
+        let mut sub = op.decompose_in_legacy_ops(&model, model.node(wire[0].node))?;
         sub.compact()?;
         assert!(sub.nodes.iter().all(|n| !n.op_is::<EinSum>()));
         Ok(())
