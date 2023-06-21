@@ -59,9 +59,9 @@ pub fn run_one<P: AsRef<path::Path>>(
                 .arg(&url)
                 .arg("-O")
                 .arg(&tgz_name)
-                .status()
-                .expect("Failed to run wget");
-            if !wget.success() {
+                .output()
+                .expect("Failed to start wget");
+            if !wget.status.success() {
                 panic!("wget: {wget:?}");
             }
             let tar = std::process::Command::new("tar").arg("zxf").arg(&tgz_name).status()?;
