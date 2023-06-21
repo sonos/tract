@@ -38,44 +38,7 @@ pub fn run_one<P: AsRef<path::Path>>(
     more: &'static [&'static str],
 ) -> TractResult<()> {
     setup_test_logger();
-    let test_path = root.as_ref().join(test);
-    let path = if test_path.join("data.json").exists() {
-        use fs2::FileExt;
-        let url = fs::read_to_string(test_path.join("data.json"))?
-            .split('\"')
-            .find(|s| s.starts_with("https://"))
-            .unwrap()
-            .to_string();
-        let f = fs::File::open(test_path.join("data.json"))?;
-        let _lock = f.lock_exclusive();
-        let name: String =
-            test_path.file_name().unwrap().to_str().unwrap().chars().skip(5).collect();
-        info!("Locked {:?}", f);
-        if !test_path.join(&name).exists() {
-            let tgz_name = test_path.join(format!("{name}.tgz"));
-            info!("Downloading {:?}", tgz_name);
-            let wget = std::process::Command::new("wget")
-                .arg("-q")
-                .arg(&url)
-                .arg("-O")
-                .arg(&tgz_name)
-                .output()
-                .expect("Failed to start wget");
-            if !wget.status.success() {
-                panic!("wget: {wget:?}");
-            }
-            let tar = std::process::Command::new("tar").arg("zxf").arg(&tgz_name).status()?;
-            if !tar.success() {
-                panic!("tar: {tar:?}");
-            }
-            fs::rename(&name, test_path.join(&name))?;
-            fs::remove_file(&tgz_name)?;
-        }
-        info!("Done with {:?}", f);
-        test_path.join(&name)
-    } else {
-        test_path
-    };
+    let path = root.as_ref().join(test);
     let model_file = path.join("model.onnx");
     info!("Loading {:?}", model_file);
     let mut onnx = tract_onnx::onnx();

@@ -1,9 +1,0 @@
-test_bvlc_alexnet since:18
-test_densenet121 since:18
-test_inception_v1 since:18
-test_inception_v2 since:18
-test_resnet50 since:18
-test_shufflenet since:18
-test_squeezenet since:18
-test_vgg19 since:18
-test_zfnet512 since:18
