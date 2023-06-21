@@ -193,7 +193,7 @@ impl EinSum {
                 return Ok(Some((op.transpose_a, op.transpose_b, op.transpose_c)));
             }
         }
-        return Ok(None);
+        Ok(None)
     }
 }
 

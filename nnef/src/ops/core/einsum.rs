@@ -58,7 +58,7 @@ pub fn ser_einsum(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc
     let inputs: Vec<_> = node.inputs.iter().map(|i| (*ast.mapping[i]).clone()).collect();
     if inputs.len() == 2 {
         if let Some((transpose_a, transpose_b, transpose_c)) =
-            einsum.as_prefixed_matmul(&ast.model, node)?
+            einsum.as_prefixed_matmul(ast.model, node)?
         {
             if transpose_c {
                 return Ok(Some(invocation(
