@@ -98,10 +98,10 @@ pub(super) fn ensure_mkn_axes<'a>(
     for axis in op.axes.iter_all_axes() {
         let one = TDim::one();
         let in_left =
-            axis.inputs[0].get(0).map(|pos| &input_facts[0].shape[*pos]).unwrap_or(&one) != &one;
+            axis.inputs[0].first().map(|pos| &input_facts[0].shape[*pos]).unwrap_or(&one) != &one;
         let in_right =
-            axis.inputs[1].get(0).map(|pos| &input_facts[1].shape[*pos]).unwrap_or(&one) != &one;
-        let in_out = axis.outputs[0].get(0).map(|pos| &output_shape[*pos]).unwrap_or(&one) != &one;
+            axis.inputs[1].first().map(|pos| &input_facts[1].shape[*pos]).unwrap_or(&one) != &one;
+        let in_out = axis.outputs[0].first().map(|pos| &output_shape[*pos]).unwrap_or(&one) != &one;
         if (in_left ^ in_right) && !in_out {
             return Ok(AxesOrPatch::NotAMatMul(axis));
         }
