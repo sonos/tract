@@ -6,6 +6,8 @@ use crate::tract_data::itertools::Itertools;
 
 mod eval;
 
+use self::as_matmul::BasicMatMul;
+
 use super::array::TypedConcat;
 use super::math::add;
 mod as_matmul;
@@ -178,6 +180,20 @@ impl EinSum {
         node: &TypedNode,
     ) -> TractResult<TypedModel> {
         as_matmul::decompose(self, model, node)
+    }
+
+    pub fn as_prefixed_matmul(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<(bool, bool, bool)>> {
+        let decomp = self.decompose_in_legacy_ops(model, node)?;
+        if decomp.nodes.len() == 3 {
+            if let Some(op) = decomp.node(2).op_as::<BasicMatMul>() {
+                return Ok(Some((op.transpose_a, op.transpose_b, op.transpose_c)));
+            }
+        }
+        return Ok(None);
     }
 }
 

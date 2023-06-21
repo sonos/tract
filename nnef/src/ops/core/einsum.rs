@@ -55,7 +55,31 @@ pub fn ser(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue
 
 pub fn ser_einsum(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
     let einsum = node.op_as::<EinSum>().unwrap();
-    let inputs = node.inputs.iter().map(|i| (*ast.mapping[i]).clone()).collect();
+    let inputs: Vec<_> = node.inputs.iter().map(|i| (*ast.mapping[i]).clone()).collect();
+    if inputs.len() == 2 {
+        dbg!(inputs.len());
+        if let Some((transpose_a, transpose_b, transpose_c)) =
+            einsum.as_prefixed_matmul(&ast.model, node)?
+        {
+            dbg!(transpose_a, transpose_b, transpose_c);
+            if transpose_c {
+                return Ok(Some(invocation(
+                    "matmul",
+                    &[Arc::new(inputs[1].clone()), Arc::new(inputs[0].clone())],
+                    &[
+                        ("transpose_a", logical(!transpose_b)),
+                        ("transpose_b", logical(!transpose_a)),
+                    ],
+                )));
+            } else {
+                return Ok(Some(invocation(
+                    "matmul",
+                    &[Arc::new(inputs[0].clone()), Arc::new(inputs[1].clone())],
+                    &[("transpose_a", logical(transpose_a)), ("transpose_b", logical(transpose_b))],
+                )));
+            }
+        }
+    }
     Ok(Some(invocation(
         "tract_core_einsum",
         &[Arc::new(RValue::Array(inputs))],
