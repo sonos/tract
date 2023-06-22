@@ -136,7 +136,10 @@ impl Nnef {
         }
 
         for (label, t) in &proto_model.tensors {
-            let label = label.0.to_string() + ".dat";
+            let mut label = label.0.to_string() + ".dat";
+            if label.starts_with("/") {
+                label.insert(0, '.');
+            }
             let filename = std::path::Path::new(&label);
             let mut data = vec![];
             crate::tensors::write_tensor(&mut data, t)
