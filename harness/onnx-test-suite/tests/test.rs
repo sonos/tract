@@ -1,23 +1,29 @@
-use tract_core::internal::*;
-
-pub fn default() -> &'static DefaultRuntime {
-    &DefaultRuntime
-}
-
-pub struct UnoptimizedRuntime;
-
-impl Runtime for UnoptimizedRuntime {
-    fn name(&self) -> Cow<str> {
-        Cow::Borrowed("unoptimized")
+mod default {
+    use tract_core::internal::*;
+    pub fn default() -> &'static DefaultRuntime {
+        &DefaultRuntime
     }
-    fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
-        Ok(Box::new(model.into_runnable()?))
+    include!(concat!(env!("OUT_DIR"), "/tests/default.rs"));
+}
+
+mod unoptimized {
+    use tract_core::internal::*;
+
+    pub fn unoptimized() -> &'static UnoptimizedRuntime {
+        &UnoptimizedRuntime
     }
+
+    pub struct UnoptimizedRuntime;
+
+    impl Runtime for UnoptimizedRuntime {
+        fn name(&self) -> Cow<str> {
+            Cow::Borrowed("unoptimized")
+        }
+        fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
+            Ok(Box::new(model.into_runnable()?))
+        }
+    }
+
+    include!(concat!(env!("OUT_DIR"), "/tests/unoptimized.rs"));
 }
 
-pub fn unoptimized() -> &'static UnoptimizedRuntime {
-    &UnoptimizedRuntime
-}
-
-include!(concat!(env!("OUT_DIR"), "/tests/default.rs"));
-include!(concat!(env!("OUT_DIR"), "/tests/unoptimized.rs"));

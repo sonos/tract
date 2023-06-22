@@ -1,10 +1,12 @@
 fn main() {
-    gen_onnx_test_suite::runtime("nnef_cycle", |t| !ignore(t));
+    let mut suite = gen_onnx_test_suite::suite().clone();
+    suite.0.retain(|k, _| !dbg!(ignore(dbg!(k))));
+    suite.test_runtime("nnef_cycle", "gen_onnx_test_suite::suite()", "nnef_cycle()")
 }
 
 fn ignore(t: &str) -> bool {
     r#"
-    test_averagepool_2d_ceil
+test_averagepool_2d_ceil
 test_averagepool_2d_pads_count_include_pad
 test_averagepool_2d_precomputed_pads_count_include_pad
 test_averagepool_2d_same_lower
@@ -46,6 +48,7 @@ test_reshape_reordered_dims
 test_resize_upsample_scales_linear_align_corners
 test_unsqueeze
 "#
+    .trim()
     .lines()
-    .any(|s| s.trim() == t)
+    .any(|s| t.ends_with(s.trim()))
 }
