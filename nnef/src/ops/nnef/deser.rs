@@ -36,11 +36,11 @@ pub fn external(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
 pub fn variable(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let shape: TVec<usize> = invocation.named_arg_as(builder, "shape")?;
     let label = Identifier(invocation.named_arg_as(builder, "label")?);
+    let tensors = &builder.proto_model.tensors;
     let mut tensor = Arc::clone(
-        builder
-            .proto_model
-            .tensors
+        tensors
             .get(&label)
+            .or_else(|| tensors.get(&Identifier(label.0.trim_start_matches("/").to_owned())))
             .ok_or_else(|| format_err!("No data for tensor {:?}", label))?,
     );
     if let Some(Some(dt)) = invocation.dt_from_quant_file.get(0) {
