@@ -137,7 +137,7 @@ impl Nnef {
 
         for (label, t) in &proto_model.tensors {
             let mut label = label.0.to_string() + ".dat";
-            if label.starts_with("/") {
+            if label.starts_with('/') {
                 label.insert(0, '.');
             }
             let filename = std::path::Path::new(&label);
