@@ -8,11 +8,14 @@ edition = "2021"
 [dependencies]
 bytes.workspace = true
 fs2.workspace = true
+lazy_static.workspace = true
 log.workspace = true
 prost.workspace = true
 tract-core = { path = "../../core", version = "=0.20.7-pre" }
 tract-nnef = { path = "../../nnef", version = "=0.20.7-pre" }
 tract-onnx = { path = "../../onnx", version = "=0.20.7-pre" }
+test-suite-utils = { path = "../test-suite-utils" }
+gen-onnx-test-suite = { path = "../gen-onnx-test-suite" }
 
 [features]
 onnx_1_4_1 =  ["gen-onnx-test-suite/onnx_1_4_1"]
@@ -28,7 +31,6 @@ onnx_1_13_0 = ["gen-onnx-test-suite/onnx_1_13_0"]
 default = [ "onnx_1_13_0" ]
 
 [dev-dependencies]
-env_logger.workspace = true
 lazy_static.workspace = true
 
 [build-dependencies]

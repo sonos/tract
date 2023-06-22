@@ -6,7 +6,18 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow.workspace = true
+bytes.workspace = true
+env_logger.workspace = true
 fs2.workspace = true
+itertools.workspace = true
+lazy_static.workspace = true
+log.workspace = true
+prost.workspace = true
+test-suite-utils = { path = "../test-suite-utils" }
+tract-core = { path = "../../core" }
+tract-onnx = { path = "../../onnx" }
+tract-hir = { path = "../../hir" }
 
 [features]
 onnx_1_4_1 = []

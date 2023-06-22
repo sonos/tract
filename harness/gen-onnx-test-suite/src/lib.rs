@@ -1,11 +1,95 @@
-use std::{fs, path};
+use log::*;
+use prost::Message;
+use std::path::PathBuf;
+use tract_hir::internal::*;
+use tract_onnx::pb::TensorProto;
+
+use test_suite_utils::{Test, TestSuite};
+
+pub fn suite() -> &'static TestSuite {
+    lazy_static::lazy_static! {
+        static ref SUITE: TestSuite = full();
+    };
+    &SUITE
+}
 
 const MANIFEST_NODE: &str = include_str!("../node.txt");
 const MANIFEST_SIMPLE: &str = include_str!("../simple.txt");
 const MANIFEST_PYTORCH_CONVERTED: &str = include_str!("../pytorch-converted.txt");
 const MANIFEST_PYTORCH_OPERATOR: &str = include_str!("../pytorch-operator.txt");
 
-const RUNNER: &str = include_str!("runner.rs");
+#[derive(Clone, Debug)]
+struct OnnxTestCase {
+    skipped: bool,
+    path: PathBuf,
+    ignore_output_shapes: bool,
+    ignore_output_type: bool,
+    input: Option<String>,
+}
+
+impl Test for OnnxTestCase {
+    fn ignore(&self) -> bool {
+        self.skipped
+    }
+
+    fn run(&self, runtime: &dyn Runtime) -> TractResult<()> {
+        setup_test_logger();
+        let model_file = self.path.join("model.onnx");
+        info!("Loading {:?}", model_file);
+        let mut onnx = tract_onnx::onnx();
+
+        // hack: some tests (test_nonmaxsuppression_*) include the output shapes in the onnx model
+        // even though there should be no way of knowing them at optimization time. This breaks
+        // the solver.
+        if self.ignore_output_shapes {
+            onnx = onnx.with_ignore_output_shapes(true);
+        }
+        // in some other cases, we need to deal with a tdim vs i64 mismatch (test for Shape, and Size)
+        if self.ignore_output_type {
+            onnx = onnx.with_ignore_output_types(true);
+        }
+
+        trace!("Proto Model:\n{:#?}", onnx.proto_model_for_path(&model_file));
+        for d in std::fs::read_dir(&self.path)? {
+            let mut model = onnx.model_for_path(&model_file)?;
+            let d = d?;
+            if d.metadata().unwrap().is_dir()
+                && d.file_name().to_str().unwrap().starts_with("test_data_set_")
+            {
+                let data_path = d.path();
+                let mut inputs = load_half_dataset("input", &data_path);
+                if let Some(input) = &self.input {
+                    let mut actual_inputs = vec![];
+                    let mut actual_input_values = tvec![];
+                    let input_outlets = model.input_outlets()?.to_vec();
+                    for (ix, outlet) in input_outlets.iter().enumerate() {
+                        if &model.node(outlet.node).name == input {
+                            actual_inputs.push(*outlet);
+                            actual_input_values.push(inputs[ix].clone());
+                        } else {
+                            model.node_mut(outlet.node).op =
+                                Box::new(tract_hir::ops::konst::Const::new(
+                                    inputs[ix].clone().into_arc_tensor(),
+                                ));
+                        }
+                    }
+                    model.set_input_outlets(&actual_inputs)?;
+                    inputs = actual_input_values;
+                }
+                info!("Analyse");
+                trace!("Model:\n{:#?}", model);
+                model.analyse(false)?;
+                model = model.incorporate()?;
+                let model = model.into_typed()?.into_decluttered()?;
+                info!("Test model (mode: {}) {:#?}", runtime.name(), self.path);
+                let runnable = runtime.prepare(model)?;
+                run_model(&*runnable, inputs, &data_path);
+                info!("Test model (mode: {}) {:#?} OK.", runtime.name(), self.path);
+            }
+        }
+        Ok(())
+    }
+}
 
 fn versions() -> Vec<(&'static str, usize)> {
     let mut versions = vec![];
@@ -42,10 +126,10 @@ fn versions() -> Vec<(&'static str, usize)> {
     versions
 }
 
-pub fn dir() -> path::PathBuf {
+pub fn dir() -> PathBuf {
     let cache = ::std::env::var("CACHEDIR").unwrap_or_else(|_| "../../.cached".to_string());
-    fs::create_dir_all(&cache).unwrap();
-    path::PathBuf::from(cache).join("onnx")
+    std::fs::create_dir_all(&cache).unwrap();
+    PathBuf::from(cache).join("onnx")
 }
 
 pub fn ensure_onnx_git_checkout() {
@@ -53,15 +137,15 @@ pub fn ensure_onnx_git_checkout() {
     static START: Once = Once::new();
     START.call_once(|| {
         use fs2::FileExt;
-        fs::create_dir_all(dir()).unwrap();
+        std::fs::create_dir_all(dir()).unwrap();
         let lockfile = dir().join(".lock");
-        let _lock = fs::File::create(lockfile).unwrap().lock_exclusive();
+        let _lock = std::fs::File::create(lockfile).unwrap().lock_exclusive();
         for (v, _) in versions() {
             let wanted = dir().join(format!("onnx-{}", v.replace('.', "_")));
             if !wanted.join("onnx/backend/test/data").exists() {
                 let tmp = wanted.with_extension("tmp");
-                let _ = fs::remove_dir_all(&wanted);
-                let _ = fs::remove_dir_all(&tmp);
+                let _ = std::fs::remove_dir_all(&wanted);
+                let _ = std::fs::remove_dir_all(&tmp);
                 let run = std::process::Command::new("git")
                     .arg("clone")
                     .arg("https://github.com/onnx/onnx")
@@ -81,24 +165,16 @@ pub fn ensure_onnx_git_checkout() {
                 if !run.success() {
                     panic!("Failed to checkout onnx branch")
                 }
-                fs::rename(tmp, wanted).unwrap();
+                std::fs::rename(tmp, wanted).unwrap();
             }
         }
         println!("onnx checkout done");
     });
 }
 
-pub fn runtime(runtime_name: &str, include: impl Fn(&str) -> bool) {
-    use std::io::Write;
+fn full() -> TestSuite {
     ensure_onnx_git_checkout();
-    let out_dir = std::env::var("OUT_DIR").unwrap();
-    let out_dir = path::PathBuf::from(out_dir);
-    let test_dir = out_dir.join("tests");
-    fs::create_dir_all(&test_dir).unwrap();
-
-    let test_file = test_dir.join(runtime_name).with_extension("rs");
-    let mut rs = fs::File::create(test_file).unwrap();
-
+    let mut suite = HashMap::default();
     for (tests_set, manifest) in [
         ("node", MANIFEST_NODE),
         ("simple", MANIFEST_SIMPLE),
@@ -122,43 +198,93 @@ pub fn runtime(runtime_name: &str, include: impl Fn(&str) -> bool) {
                 .join(tests_set);
             assert!(node_tests.exists());
 
-            let identifier = format!(
-                "{}_{}_{}",
-                tests_set.replace('-', "_"),
-                onnx_tag.replace('.', "_"),
-                runtime_name.to_lowercase()
-            );
+            let identifier =
+                format!("{}_{}", tests_set.replace('-', "_"), onnx_tag.replace('.', "_"),);
 
-            let mut tests: Vec<String> = fs::read_dir(&node_tests)
+            let tests: Vec<String> = std::fs::read_dir(&node_tests)
                 .unwrap()
                 .map(|de| de.unwrap().file_name().to_str().unwrap().to_owned())
                 .collect();
-            tests.sort();
-            writeln!(rs, "#[allow(non_snake_case)]").unwrap();
-            writeln!(rs, "mod {identifier} {{").unwrap();
-            writeln!(rs, "use tract_core::internal::*;").unwrap();
-            writeln!(rs, "{}", RUNNER).unwrap();
             for t in &tests {
-                let details = working_list.iter().find(|pair| &pair.0 == t).map(|pair| &pair.1);
-                let ignore = details.is_none()
+                let details = working_list.iter().find(|pair| &pair.0 == t).map(|pair| &*pair.1);
+                let skipped = details.is_none()
                     || details.unwrap().iter().any(|s| {
                         s.strip_prefix("since:")
-                            .map(|since| since.parse::<usize>().unwrap() > opset).unwrap_or(false)
-                    } || !include(t));
-                writeln!(rs, "#[test]").unwrap();
-                if ignore {
-                    writeln!(rs, "#[ignore]").unwrap();
-                }
-                writeln!(rs, "fn {t}() -> TractResult<()> {{").unwrap();
-                writeln!(
-                    rs,
-                    "run_one({node_tests:?}, {t:?}, super::{runtime_name}(), &{:?})",
-                    details.map(|v| &**v).unwrap_or(&[])
-                )
-                .unwrap();
-                writeln!(rs, "}}").unwrap();
+                            .map(|since| since.parse::<usize>().unwrap() > opset)
+                            .unwrap_or(false)
+                    });
+                let ignore_output_shapes =
+                    details.unwrap_or_default().iter().any(|s| s == "onnx-ignore-output-shape");
+                let ignore_output_type =
+                    details.unwrap_or_default().iter().any(|s| s == "onnx-ignore-output-type");
+                let input = details
+                    .unwrap_or_default()
+                    .iter()
+                    .find_map(|s| s.strip_prefix("input:"))
+                    .map(|s| s.to_owned());
+                suite.insert(
+                    format!("{identifier}_{t}"),
+                    Box::new(OnnxTestCase {
+                        path: node_tests.join(t),
+                        skipped,
+                        ignore_output_type,
+                        ignore_output_shapes,
+                        input,
+                    }) as _,
+                );
             }
-            writeln!(rs, "}}").unwrap();
+        }
+    }
+    TestSuite(suite)
+}
+
+#[allow(dead_code)]
+fn setup_test_logger() {
+    let _ = env_logger::Builder::from_env("TRACT_LOG").try_init();
+}
+
+pub fn load_half_dataset(prefix: &str, path: &std::path::Path) -> TVec<Tensor> {
+    let mut vec = tvec!();
+    let len = std::fs::read_dir(path)
+        .map_err(|e| format!("accessing {path:?}, {e:?}"))
+        .unwrap()
+        .filter(|d| d.as_ref().unwrap().file_name().to_str().unwrap().starts_with(prefix))
+        .count();
+    for i in 0..len {
+        let filename = path.join(format!("{prefix}_{i}.pb"));
+        let bytes = bytes::Bytes::from(std::fs::read(filename).unwrap());
+        let tensor = TensorProto::decode(bytes).unwrap();
+        vec.push(tensor.try_into().unwrap())
+    }
+    debug!("{:?}: {:?}", path, vec);
+    vec
+}
+
+fn run_model(model: &dyn Runnable, inputs: TVec<Tensor>, data_path: &std::path::Path) {
+    let expected = load_half_dataset("output", data_path);
+    trace!("Loaded output asserts: {:?}", expected);
+    let inputs = inputs.into_iter().map(|t| t.into_tvalue()).collect();
+    let computed = model.run(inputs).unwrap();
+    if computed.len() != expected.len() {
+        panic!(
+            "For {:?}, different number of results: got:{} expected:{}",
+            data_path,
+            computed.len(),
+            expected.len()
+        );
+    }
+    for (ix, (a, b)) in computed.iter().zip(expected.iter()).enumerate() {
+        //                println!("computed: {:?}", computed[ix].dump(true));
+        //                println!("expected: {:?}", expected[ix].dump(true));
+        if let Err(e) = a.close_enough(b, true) {
+            panic!(
+                "For {:?}, different result for output #{}:\ngot:\n{:?}\nexpected:\n{:?}\n{}",
+                data_path,
+                ix,
+                a.cast_to::<f32>().unwrap().to_array_view::<f32>().unwrap(),
+                b.cast_to::<f32>().unwrap().to_array_view::<f32>().unwrap(),
+                e //                e.display_chain()
+            )
         }
     }
 }

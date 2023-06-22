@@ -1,4 +1,5 @@
 fn main() {
-    gen_onnx_test_suite::runtime("default", |_| true);
-    gen_onnx_test_suite::runtime("unoptimized", |_| true);
+    let suite = gen_onnx_test_suite::suite();
+    suite.test_runtime("default", "gen_onnx_test_suite::suite()", "default()");
+    suite.test_runtime("unoptimized", "gen_onnx_test_suite::suite()", "unoptimized()");
 }

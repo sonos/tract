@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+dyn-clone.workspace = true
 fs2.workspace = true
 log.workspace = true
 prost.workspace = true
@@ -15,7 +16,9 @@ tract-onnx = { path = "../../onnx", version = "=0.20.7-pre" }
 gen-onnx-test-suite = { path = "../gen-onnx-test-suite" }
 
 [dev-dependencies]
+gen-onnx-test-suite = { path = "../gen-onnx-test-suite" }
 bytes.workspace = true
 env_logger.workspace = true
 lazy_static.workspace = true
 log.workspace = true
+onnx-test-suite = { path = "../onnx-test-suite" }

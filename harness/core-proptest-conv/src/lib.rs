@@ -5,6 +5,9 @@ use tract_core::ops::cnn::*;
 use tract_core::ops::nn::*;
 use tract_ndarray::*;
 
+#[macro_use]
+pub mod conv_f32;
+
 pub fn setup_test_logger() {
     let _ = env_logger::Builder::from_env("TRACT_LOG").try_init();
 }
