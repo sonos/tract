@@ -40,7 +40,7 @@ pub fn variable(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
     let mut tensor = Arc::clone(
         tensors
             .get(&label)
-            .or_else(|| tensors.get(&Identifier(label.0.trim_start_matches("/").to_owned())))
+            .or_else(|| tensors.get(&Identifier(label.0.trim_start_matches('/').to_owned())))
             .ok_or_else(|| format_err!("No data for tensor {:?}", label))?,
     );
     if let Some(Some(dt)) = invocation.dt_from_quant_file.get(0) {
