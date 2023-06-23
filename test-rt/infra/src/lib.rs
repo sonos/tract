@@ -1,3 +1,4 @@
+#![allow(clippy::len_zero)]
 use std::collections::HashMap;
 use std::io::Write;
 
