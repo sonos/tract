@@ -34,7 +34,7 @@ impl TestSuite {
         let test_file = test_dir.join(name).with_extension("rs");
         let mut rs = std::fs::File::create(test_file).unwrap();
 
-        for (id, test) in self.0.iter().sorted_by_key(|(k, _)| k.clone()) {
+        for (id, test) in self.0.iter().sorted_by_key(|(k, _)| k.to_owned()) {
             writeln!(rs, "#[allow(non_snake_case)]").unwrap();
             writeln!(rs, "#[test]").unwrap();
             if test.ignore() {
