@@ -34,10 +34,11 @@ members = [
     "harness/tf-moz-deepspeech",
 
     "test-rt/infra",
+    "test-rt/suite-conv",
     "test-rt/suite-onnx",
+    "test-rt/test-conv-core",
     "test-rt/test-onnx-core",
     "test-rt/test-onnx-nnef-cycle",
-    "test-rt/core-proptest-conv",
 ]
 
 [workspace.dependencies]

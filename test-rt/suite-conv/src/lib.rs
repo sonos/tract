@@ -8,9 +8,7 @@ use tract_ndarray::*;
 #[macro_use]
 pub mod conv_f32;
 
-pub fn setup_test_logger() {
-    let _ = env_logger::Builder::from_env("TRACT_LOG").try_init();
-}
+pub use conv_f32::suite;
 
 pub fn tensor(shape: Vec<usize>) -> BoxedStrategy<ArrayD<f32>> {
     let len = shape.iter().product::<usize>();
