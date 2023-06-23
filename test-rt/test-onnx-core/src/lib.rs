@@ -1,3 +1,4 @@
+#![cfg(test)]
 mod default {
     use tract_core::internal::*;
     pub fn default() -> &'static DefaultRuntime {

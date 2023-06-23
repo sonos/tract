@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use tract_hir::internal::*;
 use tract_onnx::pb::TensorProto;
 
-use test_suite_utils::{Test, TestSuite};
+use infra::{Test, TestSuite};
 
 pub fn suite() -> &'static TestSuite {
     lazy_static::lazy_static! {

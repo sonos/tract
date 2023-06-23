@@ -1,0 +1,29 @@
+[package]
+name = "test-onnx-core"
+version = "0.20.7-pre"
+authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
+license = "MIT/Apache-2.0"
+edition = "2021"
+
+[dependencies]
+lazy_static.workspace = true
+tract-core = { path = "../../core", version = "=0.20.7-pre" }
+tract-nnef = { path = "../../nnef", version = "=0.20.7-pre" }
+tract-onnx = { path = "../../onnx", version = "=0.20.7-pre" }
+suite-onnx = { path = "../suite-onnx" }
+
+[features]
+onnx_1_4_1 =  ["suite-onnx/onnx_1_4_1"]
+onnx_1_5_0 =  ["suite-onnx/onnx_1_5_0"]
+onnx_1_6_0 =  ["suite-onnx/onnx_1_6_0"]
+onnx_1_7_0 =  ["suite-onnx/onnx_1_7_0"]
+onnx_1_8_1 =  ["suite-onnx/onnx_1_8_1"]
+onnx_1_9_0 =  ["suite-onnx/onnx_1_9_0"]
+onnx_1_10_2 = ["suite-onnx/onnx_1_10_2"]
+onnx_1_11_0 = ["suite-onnx/onnx_1_11_0"]
+onnx_1_12_0 = ["suite-onnx/onnx_1_12_0"]
+onnx_1_13_0 = ["suite-onnx/onnx_1_13_0"]
+default = [ "onnx_1_13_0" ]
+
+[build-dependencies]
+suite-onnx = { path = "../suite-onnx" }

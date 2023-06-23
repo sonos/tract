@@ -1,0 +1,16 @@
+[package]
+name = "test-onnx-nnef-cycle"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+[build-dependencies]
+suite-onnx = { path = "../suite-onnx" }
+
+[dev-dependencies]
+lazy_static.workspace = true
+log.workspace = true
+tract-nnef = { path = "../../nnef", version = "=0.20.7-pre" }
+tract-onnx-opl = { path = "../../onnx-opl", version = "=0.20.7-pre" }
+suite-onnx = { path = "../suite-onnx" }
