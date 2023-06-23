@@ -79,7 +79,7 @@ impl TestSuite {
                     prefix.pop();
                 }
             }
-            TestSuite::Leaf(_, run) => *run = *run && !dbg!(ign(&*dbg!(prefix))),
+            TestSuite::Leaf(_, run) => *run = *run && !ign(&*prefix),
         }
     }
 
