@@ -1,10 +1,10 @@
 fn main() {
     let mut suite = suite_onnx::suite().clone();
-    suite.0.retain(|k, _| !dbg!(ignore(dbg!(k))));
-    suite.test_runtime("nnef_cycle", "suite_onnx::suite()", "nnef_cycle()")
+    suite.ignore(&ignore);
+    suite.test_runtime("nnef_cycle", "suite_onnx::suite()", "nnef_cycle()");
 }
 
-fn ignore(t: &str) -> bool {
+fn ignore(t: &[String]) -> bool {
     r#"
 test_averagepool_2d_ceil
 test_averagepool_2d_pads_count_include_pad
@@ -50,5 +50,5 @@ test_unsqueeze
 "#
     .trim()
     .lines()
-    .any(|s| t.ends_with(s.trim()))
+    .any(|s| t.last().unwrap() == s.trim())
 }

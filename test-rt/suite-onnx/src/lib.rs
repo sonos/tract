@@ -174,7 +174,7 @@ pub fn ensure_onnx_git_checkout() {
 
 fn full() -> TestSuite {
     ensure_onnx_git_checkout();
-    let mut suite = HashMap::default();
+    let mut suite = TestSuite::default();
     for (tests_set, manifest) in [
         ("node", MANIFEST_NODE),
         ("simple", MANIFEST_SIMPLE),
@@ -191,6 +191,7 @@ fn full() -> TestSuite {
             })
             .collect();
 
+        let mut tags = TestSuite::default();
         for (onnx_tag, opset) in versions() {
             let node_tests = dir()
                 .join(format!("onnx-{}", onnx_tag.replace('.', "_")))
@@ -198,13 +199,13 @@ fn full() -> TestSuite {
                 .join(tests_set);
             assert!(node_tests.exists());
 
-            let identifier =
-                format!("{}_{}", tests_set.replace('-', "_"), onnx_tag.replace('.', "_"),);
+            let identifier = "v".to_string() + &onnx_tag.replace('.', "_");
 
             let tests: Vec<String> = std::fs::read_dir(&node_tests)
                 .unwrap()
                 .map(|de| de.unwrap().file_name().to_str().unwrap().to_owned())
                 .collect();
+            let mut units = TestSuite::default();
             for t in &tests {
                 let details = working_list.iter().find(|pair| &pair.0 == t).map(|pair| &*pair.1);
                 let skipped = details.is_none()
@@ -222,20 +223,23 @@ fn full() -> TestSuite {
                     .iter()
                     .find_map(|s| s.strip_prefix("input:"))
                     .map(|s| s.to_owned());
-                suite.insert(
-                    format!("{identifier}_{t}"),
-                    Box::new(OnnxTestCase {
+                units.add_test(
+                    t,
+                    OnnxTestCase {
                         path: node_tests.join(t),
                         skipped,
                         ignore_output_type,
                         ignore_output_shapes,
                         input,
-                    }) as _,
+                    },
+                    skipped,
                 );
             }
+            tags.add(identifier, units);
         }
+        suite.add(tests_set.replace('-', "_"), tags);
     }
-    TestSuite(suite)
+    suite
 }
 
 #[allow(dead_code)]

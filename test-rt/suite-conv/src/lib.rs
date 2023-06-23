@@ -1,3 +1,4 @@
+use infra::TestSuite;
 use proptest::collection::vec;
 use proptest::prelude::*;
 use tract_core::internal::*;
@@ -5,10 +6,15 @@ use tract_core::ops::cnn::*;
 use tract_core::ops::nn::*;
 use tract_ndarray::*;
 
-#[macro_use]
 pub mod conv_f32;
+pub mod conv_q;
 
-pub use conv_f32::suite;
+pub fn suite() -> TractResult<TestSuite> {
+    let mut suite:TestSuite = Default::default();
+    suite.add("f32", conv_f32::suite()?);
+    suite.add("q", conv_q::suite()?);
+    Ok(suite)
+}
 
 pub fn tensor(shape: Vec<usize>) -> BoxedStrategy<ArrayD<f32>> {
     let len = shape.iter().product::<usize>();
@@ -42,5 +48,3 @@ pub fn data_format() -> impl Strategy<Value = DataFormat> {
 pub fn kernel_format() -> impl Strategy<Value = KernelFormat> {
     prop_oneof![Just(KernelFormat::OIHW), /* Just(KernelFormat::OHWI), */ Just(KernelFormat::HWIO)]
 }
-
-

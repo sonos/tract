@@ -9,4 +9,4 @@ fi
 
 # useful as debug_asserts will come into play
 cargo test -p tract-core
-cargo test -p onnx-test-suite -- --skip real_
+cargo test -p test-onnx-core -p test-onnx-nnef-cycle -p test-conv-core
