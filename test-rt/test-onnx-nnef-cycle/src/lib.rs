@@ -1,6 +1,7 @@
+#![cfg(test)]
 use log::*;
 use tract_nnef::internal::*;
-use tract_onnx::prelude::*;
+use tract_onnx_opl::*;
 
 struct NnefCyclingRuntime(Nnef);
 

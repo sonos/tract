@@ -15,6 +15,7 @@ members = [
     "cli",
     "ffi",
     "tflite",
+
     "examples/tensorflow-mobilenet-v2",
     "examples/tflite-mobilenet-v3",
     "examples/jupyter-keras-tract-tf1",
@@ -24,17 +25,19 @@ members = [
     "examples/onnx-mobilenet-v2",
     "examples/pytorch-albert-v2",
     "examples/pytorch-resnet",
-    "harness/test-suite-utils",
-    "harness/core-proptest-conv",
+
     "harness/core-proptest-pulse",
     "harness/lstm-proptest-onnx-vs-tf",
     "harness/nnef-inceptionv3",
-    "harness/gen-onnx-test-suite",
-    "harness/onnx-test-suite",
-    "harness/onnx-to-nnef",
     "harness/tf-inceptionv3",
     "harness/tf-mobilenet-v2",
     "harness/tf-moz-deepspeech",
+
+    "test-rt/infra",
+    "test-rt/suite-onnx",
+    "test-rt/test-onnx-core",
+    "test-rt/test-onnx-nnef-cycle",
+    "test-rt/core-proptest-conv",
 ]
 
 [workspace.dependencies]

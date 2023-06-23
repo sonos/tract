@@ -1,7 +1,7 @@
 fn main() {
-    let mut suite = gen_onnx_test_suite::suite().clone();
+    let mut suite = suite_onnx::suite().clone();
     suite.0.retain(|k, _| !dbg!(ignore(dbg!(k))));
-    suite.test_runtime("nnef_cycle", "gen_onnx_test_suite::suite()", "nnef_cycle()")
+    suite.test_runtime("nnef_cycle", "suite_onnx::suite()", "nnef_cycle()")
 }
 
 fn ignore(t: &str) -> bool {

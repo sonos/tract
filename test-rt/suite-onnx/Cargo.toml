@@ -1,5 +1,5 @@
 [package]
-name = "gen-onnx-test-suite"
+name = "suite-onnx"
 version = "0.1.0"
 edition = "2021"
 
@@ -14,7 +14,7 @@ itertools.workspace = true
 lazy_static.workspace = true
 log.workspace = true
 prost.workspace = true
-test-suite-utils = { path = "../test-suite-utils" }
+infra = { path = "../infra" }
 tract-core = { path = "../../core" }
 tract-onnx = { path = "../../onnx" }
 tract-hir = { path = "../../hir" }
