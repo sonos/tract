@@ -4,7 +4,11 @@ use dyn_clone::DynClone;
 use itertools::Itertools;
 use tract_core::runtime::Runtime;
 
-type TestResult = anyhow::Result<()>;
+pub fn setup_test_logger() {
+    let _ = env_logger::Builder::from_env("TRACT_LOG").try_init();
+}
+
+pub type TestResult = anyhow::Result<()>;
 
 pub trait Test: 'static + Send + Sync + DynClone {
     fn ignore(&self) -> bool;
@@ -13,10 +17,14 @@ pub trait Test: 'static + Send + Sync + DynClone {
 
 dyn_clone::clone_trait_object!(Test);
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct TestSuite(pub HashMap<String, Box<dyn Test>>);
 
 impl TestSuite {
+    pub fn add(&mut self, id: impl ToString, test: impl Test) {
+        self.0.insert(id.to_string(), Box::new(test));
+    }
+
     pub fn test_runtime(&self, name: &str, test_suite: &str, runtime: &str) {
         use std::io::Write;
         let out_dir = std::env::var("OUT_DIR").unwrap();
