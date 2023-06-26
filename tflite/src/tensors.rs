@@ -1,4 +1,4 @@
-use crate::tflite::{Model, SubGraph};
+use crate::tflite::{BufferBuilder, Model, SubGraph};
 use crate::tflite_generated::tflite::{TensorType, TensorType as BufferTensorType};
 #[cfg(feature = "complex")]
 use num_complex::Complex;
@@ -59,7 +59,7 @@ fn create_tensor(dt: DatumType, shape: &[usize], data: &[u8]) -> TractResult<Ten
     }
 }
 
-pub fn tensor_to_fact<'m>(
+pub fn flat_tensor_to_tract_fact<'m>(
     &model: &'m Model<'m>,
     graph: &'m SubGraph<'m>,
     id: i32,
