@@ -139,7 +139,8 @@ pub fn ensure_onnx_git_checkout() {
         use fs2::FileExt;
         std::fs::create_dir_all(dir()).unwrap();
         let lockfile = dir().join(".lock");
-        let _lock = std::fs::File::create(lockfile).unwrap().lock_exclusive();
+        dbg!(&lockfile);
+        let _lock = std::fs::File::create(lockfile).unwrap().lock_exclusive().unwrap();
         for (v, _) in versions() {
             let wanted = dir().join(format!("onnx-{}", v.replace('.', "_")));
             if !wanted.join("onnx/backend/test/data").exists() {
