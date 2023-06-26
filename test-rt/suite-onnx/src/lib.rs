@@ -143,6 +143,11 @@ pub fn ensure_onnx_git_checkout() {
         for (v, _) in versions() {
             let wanted = dir().join(format!("onnx-{}", v.replace('.', "_")));
             if !wanted.join("onnx/backend/test/data").exists() {
+                let df = std::process::Command::new("df")
+                    .arg("-h")
+                    .output()
+                    .unwrap();
+                dbg!(df);
                 let tmp = wanted.with_extension("tmp");
                 let _ = std::fs::remove_dir_all(&wanted);
                 let _ = std::fs::remove_dir_all(&tmp);
