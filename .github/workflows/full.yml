@@ -156,7 +156,7 @@ jobs:
     - name: With assertions
       run: |
         rustup update
-        cargo -q test -q -p onnx-test-suite -- --skip real_
+        cargo -q test -q -p test-onnx-core
 
     - name: Stop sccache server
       run: sccache --stop-server || true
