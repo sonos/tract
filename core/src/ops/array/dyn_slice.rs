@@ -1,12 +1,9 @@
 use crate::internal::*;
-use crate::num_traits::Zero;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, new)]
 pub struct DynSlice {
     pub axis: usize,
-    pub start_input: bool,
-    pub end_input: bool,
-    pub symbol: Symbol,
+    pub len: TDim,
 }
 
 impl DynSlice {
@@ -37,34 +34,55 @@ impl Op for DynSlice {
 
 impl EvalOp for DynSlice {
     fn is_stateless(&self) -> bool {
-        true
+        false
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        unsafe {
-            let start =
-                if self.start_input { inputs[1].cast_to_scalar::<i64>()? as usize } else { 0 };
-            let end = if self.end_input {
-                inputs[1 + self.start_input as usize].cast_to_scalar::<i64>()? as usize
-            } else {
-                inputs[0].shape()[self.axis]
-            };
-            if start >= end {
-                bail!("Invalid range {}-{}", start, end);
-            }
-            let mut shape: TVec<_> = inputs[0].shape().into();
-            shape[self.axis] = end - start;
-            let mut tensor = Tensor::uninitialized_dt(inputs[0].datum_type(), &shape)?;
-            tensor.assign_slice_unchecked(.., &inputs[0], start..end, self.axis);
-            Ok(tvec!(tensor.into_tvalue()))
-        }
+    fn eval(&self, _inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        unreachable!()
+    }
+
+    fn state(
+        &self,
+        _session: &mut SessionState,
+        _node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        Ok(Some(Box::new(self.clone())))
     }
 }
 
+impl OpState for DynSlice {
+    fn eval(
+        &mut self,
+        session: &mut SessionState,
+        _op: &dyn Op,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        let start = inputs[1]
+            .cast_to::<TDim>()?
+            .to_scalar::<TDim>()?
+            .eval(&session.resolved_symbols)
+            .to_usize()?;
+        let end = inputs[2]
+            .cast_to::<TDim>()?
+            .to_scalar::<TDim>()?
+            .eval(&session.resolved_symbols)
+            .to_usize()?;
+        ensure!(start <= end);
+        if let Ok(len) = self.len.eval(&session.resolved_symbols).to_usize() {
+            ensure!(start + len == end);
+        }
+        let slice = inputs[0].slice(self.axis, start, end)?;
+        Ok(tvec!(slice.into()))
+    }
+}
+
+trivial_op_state_freeeze!(DynSlice);
+
 impl TypedOp for DynSlice {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let mut fact = inputs[0].clone();
-        fact.shape.set(self.axis, self.symbol.clone().into());
+        ensure!(inputs.len() == 3);
+        let mut fact = inputs[0].without_value();
+        fact.shape.set(self.axis, self.len.clone());
         Ok(tvec!(fact))
     }
 
@@ -73,23 +91,21 @@ impl TypedOp for DynSlice {
         inputs: &[&TypedFact],
         _outputs: &[&TypedFact],
     ) -> TractResult<AxesMapping> {
-        let mut axes = AxesMapping::natural_for_rank(1, 1, inputs[0].rank())?;
-        if self.start_input {
-            axes = axes.with_extra_input(1)?;
-        }
-        if self.end_input {
-            axes = axes.with_extra_input(self.start_input as usize)?;
-        }
-        Ok(axes)
+        AxesMapping::natural_for_rank(1, 1, inputs[0].rank())?
+            .with_extra_input(1)?
+            .with_extra_input(2)
     }
 
     fn change_axes(
         &self,
         model: &TypedModel,
         node: &TypedNode,
-        _io: InOut,
+        io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
+        if io == InOut::In(1) || io == InOut::In(2) {
+            return Ok(None);
+        }
         if let Some(axis) = change.transform_axis(self.axis) {
             if axis != self.axis {
                 Ok(Some(AxisChangeConsequence::new(
@@ -112,23 +128,15 @@ impl TypedOp for DynSlice {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         let inputs = model.node_input_facts(node.id)?;
-        let start =
-            if self.start_input { inputs[1].konst.clone() } else { Some(rctensor0(TDim::zero())) };
-        let end = if self.end_input {
-            inputs[1 + self.start_input as usize].konst.clone()
-        } else {
-            Some(rctensor0(inputs[0].shape[self.axis].clone()))
-        };
-        if let (Some(start), Some(end)) = (start, end) {
+        if let (Some(start), Some(end)) = (&inputs[1].konst, &inputs[2].konst) {
+            let start = start.cast_to::<TDim>()?.to_scalar::<TDim>()?.clone();
+            let end = end.cast_to::<TDim>()?.to_scalar::<TDim>()?.clone();
+
             return Ok(Some(TypedModelPatch::replace_single_op(
                 model,
                 node,
                 &[node.inputs[0]],
-                crate::ops::array::Slice {
-                    axis: self.axis,
-                    start: start.cast_to::<TDim>()?.to_scalar::<TDim>()?.clone(),
-                    end: end.cast_to::<TDim>()?.to_scalar::<TDim>()?.clone(),
-                },
+                crate::ops::array::Slice { axis: self.axis, start, end },
             )?));
         }
         Ok(None)

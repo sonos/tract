@@ -300,7 +300,7 @@ impl Expansion for StridedSlice {
                 let sym = target.symbol_table.new_with_prefix("l");
                 wire = target.wire_node(
                     format!("{prefix}.slice-axis-{axis}"),
-                    tract_core::ops::array::DynSlice::new(axis, true, true, sym),
+                    tract_core::ops::array::DynSlice::new(axis, sym.to_dim()),
                     &[wire, left, right],
                 )?[0];
             }
