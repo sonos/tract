@@ -39,6 +39,7 @@ members = [
     "test-rt/test-conv-core",
     "test-rt/test-onnx-core",
     "test-rt/test-onnx-nnef-cycle",
+    "test-rt/test-onnx-tflite-cycle",
 ]
 
 [workspace.dependencies]
