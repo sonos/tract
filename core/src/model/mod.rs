@@ -41,6 +41,7 @@ mod graph;
 mod node;
 pub mod order;
 mod patch;
+mod rewriter;
 pub mod translator;
 pub mod typed;
 
@@ -49,6 +50,7 @@ pub use self::graph::*;
 pub use self::node::*;
 pub use self::order::eval_order;
 pub use self::patch::ModelPatch;
+pub use self::rewriter::Rewriter;
 pub use crate::ops::{Op, TypedOp};
 
 pub use typed::*;

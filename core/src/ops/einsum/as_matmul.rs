@@ -5,38 +5,26 @@ use super::codegen::*;
 use super::EinSum;
 use crate::internal::*;
 
-pub fn decompose(op: &EinSum, model: &TypedModel, node: &TypedNode) -> TractResult<TypedModel> {
-    let mut substitute = TypedModel::default();
-    let inputs = node
-        .inputs
-        .iter()
-        .enumerate()
-        .map(|(ix, input)| {
-            substitute.add_source(
-                format!("adhoc_source_{ix}"),
-                model.outlet_fact(*input)?.without_value(),
-            )
-        })
-        .collect::<TractResult<Vec<_>>>()?;
-    let outputs = substitute.wire_node(&node.name, op.clone(), &inputs)?;
-    substitute.set_output_outlets(&outputs)?;
-    decompose_one_in_place(&mut substitute)?;
-    Ok(substitute)
+pub fn rewrite_einsums_as_matmul(model: &mut TypedModel) -> TractResult<()> {
+    let rules = Rewriter::default().with_rule_for::<EinSum>(Box::new(einsum_rules));
+    rules.rewrite(&(), model)
 }
 
-fn decompose_one_in_place(model: &mut TypedModel) -> TractResult<()> {
-    ensure!(model.nodes.iter().filter(|n| n.op_is::<EinSum>()).count() == 1);
-    let (m, k, n) = loop {
-        let node = model.nodes.iter().find(|n| n.op_is::<EinSum>()).unwrap();
-        let op = node.op_as::<EinSum>().unwrap();
-        match ensure_mkn_axes(op, model, node)? {
-            AxesOrPatch::Axes(m, k, n) => break (m, k, n),
-            AxesOrPatch::Patch(p) => {
-                p.apply(model)?;
-                model.compact()?;
-            }
-            AxesOrPatch::NotAMatMul(axis) => bail!("{} is not a matmul because of axis {}", op.axes, axis.repr),
-        };
+fn einsum_rules(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+) -> TractResult<Option<TypedModelPatch>> {
+    let Some(op) = node.op_as::<EinSum>() else {
+        bail!("Called on the wrong op")
+    };
+    dbg!(op);
+    let (m, k, n) = match ensure_mkn_axes(op, model, node)? {
+        AxesOrPatch::Axes(m, k, n) => (m, k, n),
+        AxesOrPatch::Patch(p) => return Ok(Some(p)),
+        AxesOrPatch::NotAMatMul(axis) => {
+            bail!("{} is not a matmul because of axis {}", op.axes, axis.repr)
+        }
     };
     let (m, k, n) = (m.repr, k.repr, n.repr);
     let node = model.nodes.iter().find(|n| n.op_is::<EinSum>()).unwrap();
@@ -97,9 +85,7 @@ fn decompose_one_in_place(model: &mut TypedModel) -> TractResult<()> {
         wire = patch.wire_node(format!("{node_name}.fix_c.{ix}"), op, &wire)?;
     }
     patch.shunt_outside(model, node.id.into(), wire[0])?;
-    patch.apply(model)?;
-    model.compact()?;
-    Ok(())
+    Ok(Some(patch))
 }
 
 #[derive(Clone, Debug, Default)]
@@ -304,7 +290,7 @@ mod test {
             let inputs = tvec!(a, b);
             let reference =
                 TypedRunnableModel::new(&model).unwrap().run(inputs.clone()).unwrap().remove(0);
-            decompose_one_in_place(&mut model)?;
+            rewrite_einsums_as_matmul(&mut model)?;
             assert!(model.nodes.iter().all(|n| !n.op_is::<EinSum>()));
             let test = TypedRunnableModel::new(&model).unwrap().run(inputs).unwrap().remove(0);
             reference.close_enough(&test, true).unwrap();
@@ -436,9 +422,8 @@ mod test {
         ];
         let wire = model.wire_node("einsum", op.clone(), &inputs)?;
         model.set_output_outlets(&wire)?;
-        let mut sub = op.decompose_in_legacy_ops(&model, model.node(wire[0].node))?;
-        sub.compact()?;
-        assert!(sub.nodes.iter().all(|n| !n.op_is::<EinSum>()));
+        rewrite_einsums_as_matmul(&mut model)?;
+        assert!(model.nodes.iter().all(|n| !n.op_is::<EinSum>()));
         Ok(())
     }
 }

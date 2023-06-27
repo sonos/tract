@@ -6,8 +6,6 @@ use crate::tract_data::itertools::Itertools;
 
 mod eval;
 
-use self::as_matmul::BasicMatMul;
-
 use super::array::TypedConcat;
 use super::math::add;
 mod as_matmul;
@@ -15,6 +13,8 @@ mod codegen;
 
 #[cfg(test)]
 mod proptest;
+
+pub use as_matmul::rewrite_einsums_as_matmul;
 
 #[derive(Clone, Hash)]
 pub struct EinSum {
@@ -174,6 +174,7 @@ impl EinSum {
         Ok(None)
     }
 
+    /*
     pub fn decompose_in_legacy_ops(
         &self,
         model: &TypedModel,
@@ -195,6 +196,7 @@ impl EinSum {
         }
         Ok(None)
     }
+    */
 }
 
 impl Debug for EinSum {
