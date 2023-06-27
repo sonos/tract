@@ -4,6 +4,7 @@ use flatbuffers::{FlatBufferBuilder, Push, Vector, WIPOffset};
 use tract_hir::internal::*;
 use tract_hir::ops::cnn::ConvUnary;
 use tract_hir::ops::konst::Const;
+use tract_hir::ops::nn::DataFormat;
 use tract_hir::prelude::tract_itertools::Itertools;
 use tract_hir::tract_core::ops::source::TypedSource;
 
@@ -135,6 +136,7 @@ fn write_subgraph<'f>(
                     })
                     .into(),
             )?);
+            ensure!(conv.pool_spec.data_format == DataFormat::NHWC);
             let options = Conv2DOptions::create(builder, &Conv2DOptionsArgs {
                 padding: Padding::VALID,
                 stride_w: 1,
