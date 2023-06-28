@@ -174,7 +174,6 @@ pub fn ensure_onnx_git_checkout() {
                 std::fs::rename(tmp, wanted).unwrap();
             }
         }
-        println!("onnx checkout done");
     });
 }
 

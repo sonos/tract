@@ -1,3 +1,5 @@
+use tract_data::itertools::Itertools;
+use tract_linalg::Scaler;
 use tract_ndarray::Ix2;
 use tract_num_traits::One;
 
@@ -19,7 +21,11 @@ fn einsum_rules(
     let Some(op) = node.op_as::<EinSum>() else {
         bail!("Called on the wrong op")
     };
-    if !(op.q_params.is_none() && node.inputs.len() == 2) {
+    // F: 2 inputs
+    // Q: 2 inputs
+    if !((op.q_params.is_none() && node.inputs.len() == 2)
+        || (op.q_params.is_some() && node.inputs.len() == 9))
+    {
         return Ok(None);
     }
     let (m, k, n) = match ensure_mkn_axes(op, model, node)? {
@@ -34,8 +40,9 @@ fn einsum_rules(
     let prefix: String =
         op.axes.iter_all_axes().filter(|a| ![m, k, n].contains(&a.repr)).map(|a| a.repr).collect();
     let mut patch = TypedModelPatch::default();
-    let mut wire =
+    let inputs =
         node.inputs.iter().map(|i| patch.tap_model(model, *i)).collect::<TractResult<TVec<_>>>()?;
+    let mut wire = tvec!(inputs[0], inputs[1]);
 
     let a_order_es: String = op.axes.axes(InOut::In(0)).map(|a| a.repr).collect();
     let a_order_mm = format!("{prefix}{m}{k}");
@@ -79,8 +86,30 @@ fn einsum_rules(
     let transpose_c = c_transform.len() > c_transform_t.len();
     let c_transform = if transpose_c { c_transform_t } else { c_transform };
 
-    wire =
-        patch.wire_node(node_name, BasicMatMul { transpose_a, transpose_b, transpose_c }, &wire)?;
+    let quantize_output = if let Some(qp) = op.q_params {
+        let qparams: Vec<&Tensor> = inputs[3..9]
+            .iter()
+            .map(|f| {
+                model
+                    .outlet_fact(*f)?
+                    .konst
+                    .as_deref()
+                    .context("Can only translate fixed scalar quantization")
+            })
+            .try_collect()?;
+        Some(qp.with_qparams(QParams::ZpScale {
+            zero_point: qparams[4].cast_to_scalar::<i32>()?,
+            scale: qparams[5].cast_to_scalar::<f32>()?,
+        }))
+    } else {
+        None
+    };
+
+    wire = patch.wire_node(
+        node_name,
+        BasicMatMul { transpose_a, transpose_b, transpose_c, quantize_output },
+        &wire,
+    )?;
 
     for (ix, op) in c_transform.into_iter().enumerate() {
         wire = patch.wire_node(format!("{node_name}.fix_c.{ix}"), op, &wire)?;
@@ -94,32 +123,33 @@ pub struct BasicMatMul {
     pub transpose_a: bool,
     pub transpose_b: bool,
     pub transpose_c: bool,
+    pub quantize_output: Option<DatumType>,
 }
 
 impl BasicMatMul {
     fn output_shape<D: DimLike + One>(&self, a: &[D], b: &[D]) -> TVec<D> {
-        let mut output: TVec<D> = (0..a.len() - 2)
+        let rank = a.len();
+        let mut output: TVec<D> = (0..rank - 2)
             .map(|ix| if a[ix].is_one() { b[ix].clone() } else { a[ix].clone() })
             .collect();
-        output.push(a[a.len() - 2 + self.transpose_a as usize].clone());
-        output.push(b[b.len() - 2 + !self.transpose_b as usize].clone());
+        output.push(a[rank - 2 + self.transpose_a as usize].clone());
+        output.push(b[rank - 2 + !self.transpose_b as usize].clone());
         if self.transpose_c {
-            let len = output.len();
-            output.swap(len - 2, len - 1);
+            output.swap(rank - 2, rank - 1);
         }
         output
     }
 
-    fn eval_t<T: Datum + tract_ndarray::LinalgScalar>(
+    fn mm<Acc: Datum + tract_ndarray::LinalgScalar>(
         &self,
-        c: &mut Tensor,
+        acc: &mut Tensor,
         a: &Tensor,
         b: &Tensor,
     ) -> TractResult<()> {
         use crate::ndarray::Dimension;
-        let a = a.to_array_view::<T>()?;
-        let b = b.to_array_view::<T>()?;
-        let mut c = c.to_array_view_mut::<T>()?;
+        let a = a.to_array_view::<Acc>()?;
+        let b = b.to_array_view::<Acc>()?;
+        let mut c = acc.to_array_view_mut::<Acc>()?;
         for prefix in tract_ndarray::indices(&c.shape()[..c.ndim() - 2]) {
             let mut a = a.view();
             let mut b = b.view();
@@ -159,23 +189,43 @@ impl EvalOp for BasicMatMul {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a, b) = args_2!(inputs);
-        let mut c = Tensor::zero_dt(a.datum_type(), &self.output_shape(a.shape(), b.shape()))?;
-        dispatch_numbers!(Self::eval_t(a.datum_type())(self, &mut c, &a, &b)).unwrap();
-        Ok(tvec!(c.into_tvalue()))
+        let output_shape = self.output_shape(a.shape(), b.shape());
+        if let Some(qp) = self.quantize_output {
+            let mut acc = Tensor::zero_dt(i32::datum_type(), &output_shape)?;
+            let mut a_i32 = a.cast_to::<i32>()?.into_owned();
+            a_i32.as_slice_mut::<i32>()?.iter_mut().for_each(|x| *x -= a.datum_type().zp_scale().0);
+            let mut b_i32 = b.cast_to::<i32>()?.into_owned();
+            b_i32.as_slice_mut::<i32>()?.iter_mut().for_each(|x| *x -= b.datum_type().zp_scale().0);
+            self.mm::<i32>(&mut acc, &a_i32, &b_i32)?;
+            let scale = a.datum_type().zp_scale().1 * b.datum_type().zp_scale().1 / qp.zp_scale().1;
+            let scaler = Scaler::new(scale, tract_linalg::mmm::RoundingPolicy::Even);
+            acc.to_array_view_mut::<i32>()?.iter_mut().for_each(|x| *x = *x * scaler);
+            let mut c: Tensor = acc.cast_to_dt(qp.unquantized())?.into_owned();
+            unsafe { c.set_datum_type(qp) };
+            Ok(tvec!(c.into_tvalue()))
+        } else {
+            let mut c = Tensor::zero_dt(a.datum_type(), &output_shape)?;
+            dispatch_floatlike!(Self::mm(c.datum_type())(self, &mut c, &a, &b))?;
+            Ok(tvec!(c.into_tvalue()))
+        }
     }
 }
 
 impl TypedOp for BasicMatMul {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let a = inputs[0];
-        let b = inputs[1];
+        let [a, b] = inputs else {
+            bail!("Expects 2 inputs");
+        };
         ensure!(a.rank() == b.rank());
         ensure!(a.rank() >= 2);
         ensure!(
             a.shape[a.rank() - 2 + !self.transpose_a as usize]
                 == b.shape[b.rank() - 2 + self.transpose_b as usize]
         );
-        Ok(tvec!(a.datum_type.fact(self.output_shape(&a.shape, &b.shape))))
+        Ok(tvec!(self
+            .quantize_output
+            .unwrap_or(a.datum_type)
+            .fact(self.output_shape(&a.shape, &b.shape))))
     }
 
     as_op!();
@@ -401,7 +451,6 @@ mod test {
         .check()
     }
 
-    /*
     #[test]
     fn q() -> TractResult<()> {
         let qp = QParams::ZpScale { zero_point: 0, scale: 0.1 };
@@ -415,12 +464,12 @@ mod test {
             model.add_source("a", DatumType::QI8(qp).fact(&[3, 2]))?,
             model.add_source("b", DatumType::QI8(qp).fact(&[2, 4]))?,
             model.add_source("bias", i32::datum_type().fact(&[3]))?,
-            model.add_source("a0", i8::datum_type().scalar_fact())?,
-            model.add_source("a_scale", f32::datum_type().scalar_fact())?,
-            model.add_source("b0", i8::datum_type().scalar_fact())?,
-            model.add_source("b_scale", f32::datum_type().scalar_fact())?,
-            model.add_source("c0", i8::datum_type().scalar_fact())?,
-            model.add_source("c_scale", f32::datum_type().scalar_fact())?,
+            model.add_const("a0", tensor0(qp.zp_scale().0))?,
+            model.add_const("a_scale", tensor0(qp.zp_scale().1))?,
+            model.add_const("b0", tensor0(qp.zp_scale().0))?,
+            model.add_const("b_scale", tensor0(qp.zp_scale().1))?,
+            model.add_const("c0", tensor0(qp.zp_scale().0))?,
+            model.add_const("c_scale", tensor0(qp.zp_scale().1))?,
         ];
         let wire = model.wire_node("einsum", op.clone(), &inputs)?;
         model.set_output_outlets(&wire)?;
@@ -428,5 +477,4 @@ mod test {
         assert!(model.nodes.iter().all(|n| !n.op_is::<EinSum>()));
         Ok(())
     }
-    */
 }

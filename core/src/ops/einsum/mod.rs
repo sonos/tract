@@ -173,30 +173,6 @@ impl EinSum {
         }
         Ok(None)
     }
-
-    /*
-    pub fn decompose_in_legacy_ops(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<TypedModel> {
-        as_matmul::decompose(self, model, node)
-    }
-
-    pub fn as_prefixed_matmul(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<(bool, bool, bool)>> {
-        let decomp = self.decompose_in_legacy_ops(model, node)?;
-        if decomp.nodes.len() == 3 {
-            if let Some(op) = decomp.node(2).op_as::<BasicMatMul>() {
-                return Ok(Some((op.transpose_a, op.transpose_b, op.transpose_c)));
-            }
-        }
-        Ok(None)
-    }
-    */
 }
 
 impl Debug for EinSum {
