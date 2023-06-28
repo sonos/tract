@@ -41,9 +41,12 @@ test_mod_uint16
 test_mod_uint32
 test_mod_uint64
 test_mod_uint8
+test_matmulinteger
 test_nllloss_NCd1d2d3_none_no_weight_negative_ii_expanded
 test_nonzero_example
 test_quantizelinear
+test_qlinearmatmul_2D
+test_qlinearmatmul_3D
 test_reshape_reordered_dims
 test_resize_upsample_scales_linear_align_corners
 test_unsqueeze
