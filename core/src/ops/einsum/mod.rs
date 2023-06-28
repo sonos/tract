@@ -14,7 +14,7 @@ mod codegen;
 #[cfg(test)]
 mod proptest;
 
-pub use as_matmul::rewrite_einsums_as_matmul;
+pub use as_matmul::{rewrite_einsums_as_matmul, BasicMatMul};
 
 #[derive(Clone, Hash)]
 pub struct EinSum {

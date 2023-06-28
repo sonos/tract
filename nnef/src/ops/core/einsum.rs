@@ -1,9 +1,11 @@
 use crate::internal::*;
 use crate::ser::*;
+use tract_core::ops::einsum::BasicMatMul;
 use tract_core::ops::einsum::EinSum;
 use tract_core::tract_data::itertools::Itertools;
 
 pub fn register(registry: &mut Registry) {
+    registry.register_dumper(TypeId::of::<BasicMatMul>(), ser_basic_matmul);
     registry.register_dumper(TypeId::of::<EinSum>(), ser);
     registry.register_primitive(
         "tract_core_einsum",
@@ -53,28 +55,27 @@ pub fn ser(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue
     }
 }
 
+pub fn ser_basic_matmul(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
+    let op = node.op_as::<BasicMatMul>().unwrap();
+    let inputs = node.inputs.iter().map(|i| (*ast.mapping[i]).clone()).collect_vec();
+    if op.transpose_c {
+        Ok(Some(invocation(
+            "matmul",
+            &[Arc::new(inputs[1].clone()), Arc::new(inputs[0].clone())],
+            &[("transposeA", logical(!op.transpose_b)), ("transposeB", logical(!op.transpose_a))],
+        )))
+    } else {
+        Ok(Some(invocation(
+            "matmul",
+            &[Arc::new(inputs[0].clone()), Arc::new(inputs[1].clone())],
+            &[("transposeA", logical(op.transpose_a)), ("transposeB", logical(op.transpose_b))],
+        )))
+    }
+}
+
 pub fn ser_einsum(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
     let einsum = node.op_as::<EinSum>().unwrap();
     let inputs: Vec<_> = node.inputs.iter().map(|i| (*ast.mapping[i]).clone()).collect();
-    if inputs.len() == 2 {
-        if let Some((transpose_a, transpose_b, transpose_c)) =
-            einsum.as_prefixed_matmul(ast.model, node)?
-        {
-            if transpose_c {
-                return Ok(Some(invocation(
-                    "matmul",
-                    &[Arc::new(inputs[1].clone()), Arc::new(inputs[0].clone())],
-                    &[("transposeA", logical(!transpose_b)), ("transposeB", logical(!transpose_a))],
-                )));
-            } else {
-                return Ok(Some(invocation(
-                    "matmul",
-                    &[Arc::new(inputs[0].clone()), Arc::new(inputs[1].clone())],
-                    &[("transposeA", logical(transpose_a)), ("transposeB", logical(transpose_b))],
-                )));
-            }
-        }
-    }
     Ok(Some(invocation(
         "tract_core_einsum",
         &[Arc::new(RValue::Array(inputs))],
