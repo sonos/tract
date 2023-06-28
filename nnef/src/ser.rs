@@ -5,7 +5,9 @@ use tract_core::ndarray::Axis;
 use tract_itertools::Itertools;
 
 pub fn to_proto_model(framework: &Nnef, model: &TypedModel) -> TractResult<ProtoModel> {
-    let mut into_ast = IntoAst::new(framework, model);
+    let mut fixed_model = model.clone();
+    tract_core::ops::einsum::rewrite_einsums_as_matmul(&mut fixed_model)?;
+    let mut into_ast = IntoAst::new(framework, &fixed_model);
     into_ast.translate().context("Translating model to AST")?;
     into_ast.into_proto_model().context("Translating AST to proto model")
 }
