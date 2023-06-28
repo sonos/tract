@@ -24,8 +24,8 @@ impl<Ctx> Rewriter<Ctx> {
         loop {
             let mut done_anything = false;
             for n in model.eval_order()? {
-                if let Some((name, rule)) = self.rules.get(&(&*model.node(n).op).type_id()) {
-                    if let Some(patch) = (rule)(ctx, model, &model.node(n)).with_context(|| {
+                if let Some((name, rule)) = self.rules.get(&(*model.node(n).op).type_id()) {
+                    if let Some(patch) = (rule)(ctx, model, model.node(n)).with_context(|| {
                         format!("Matching rule {name} on {}", model.node(n).name)
                     })? {
                         patch.apply(model).with_context(|| {
