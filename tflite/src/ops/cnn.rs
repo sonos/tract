@@ -1,14 +1,18 @@
 use super::wire_fused_activation;
 use crate::registry::{DeserOp, Registry};
-use crate::tflite::{BuiltinOperator, Padding};
+use crate::ser::SubgraphBuilder;
+use crate::tflite::{BuiltinOperator, Padding, Conv2DOptions, Conv2DOptionsArgs, ActivationFunctionType, BuiltinOptions};
 use tract_hir::internal::*;
-use tract_hir::ops::cnn::PaddingSpec;
+use tract_hir::ops::cnn::{PaddingSpec, ConvUnary};
+use tract_hir::ops::nn::DataFormat;
+use tract_hir::prelude::tract_itertools::Itertools;
 use tract_hir::tract_core::ops as core;
 use tract_hir::tract_core::ops::cnn::KernelFormat;
 
 pub fn register_all(reg: &mut Registry) {
     reg.to_tract.insert(BuiltinOperator::AVERAGE_POOL_2D, average_pool_2d);
     reg.to_tract.insert(BuiltinOperator::CONV_2D, conv2d);
+    reg.reg_to_tflite::<ConvUnary>(ser_conv);
     reg.to_tract.insert(BuiltinOperator::DEPTHWISE_CONV_2D, dw_conv2d);
 }
 
@@ -22,7 +26,7 @@ fn average_pool_2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         _ => todo!(),
     };
     let pool_spec = core::cnn::PoolSpec {
-        data_format: tract_hir::ops::nn::DataFormat::NHWC,
+        data_format: DataFormat::NHWC,
         kernel_shape,
         padding,
         strides: Some(strides),
@@ -32,6 +36,49 @@ fn average_pool_2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let pool = core::cnn::SumPool { pool_spec, normalize: true, count_include_pad: false };
     let wires = op.ctx.target.wire_node(op.prefix, pool, &op.inputs[0..1])?;
     wire_fused_activation(op, &wires, &options.fused_activation_function())
+}
+
+fn ser_conv(builder: &mut SubgraphBuilder, model: &TypedModel, node: &TypedNode) -> TractResult<()> {
+    let node_name = &node.name;
+    let conv = node.op_as::<ConvUnary>().unwrap();
+    let mut inputs = node.inputs.iter().map(|o| builder.outlets_to_tensors[o]).collect_vec();
+    let outputs = (0..node.outputs.len())
+        .map(|o| builder.outlets_to_tensors[&OutletId::new(node.id, o)])
+        .collect_vec();
+    inputs.push(builder.write_fact(&format!("{node_name}.weights"), &conv.kernel.clone().into())?);
+    inputs.push(
+        builder.write_fact(
+            &format!("{node_name}.bias"),
+            &conv
+                .bias
+                .clone()
+                .unwrap_or_else(|| {
+                    rctensor1(&vec![0f32; conv.pool_spec.output_channel_override.unwrap()])
+                })
+                .into(),
+        )?,
+    );
+    ensure!(conv.pool_spec.data_format == DataFormat::NHWC);
+    ensure!(model.node_input_facts(node.id)?[0].rank() == 4);
+    let options = Conv2DOptions::create(
+        builder.fb(),
+        &Conv2DOptionsArgs {
+            padding: Padding::VALID,
+            stride_w: 1,
+            stride_h: 1,
+            dilation_w_factor: 1,
+            dilation_h_factor: 1,
+            fused_activation_function: ActivationFunctionType::NONE,
+        },
+    );
+    builder.write_op_with_options(
+        &inputs,
+        &outputs,
+        BuiltinOperator::CONV_2D,
+        options.as_union_value(),
+        BuiltinOptions::Conv2DOptions,
+    )?;
+    Ok(())
 }
 
 fn conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
