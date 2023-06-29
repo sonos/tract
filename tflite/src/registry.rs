@@ -1,9 +1,15 @@
+use std::any::TypeId;
+
 use tract_hir::internal::*;
 use tract_hir::ops::logic::wire_with_rank_broadcast;
 use tract_hir::tract_core::ops::binary::TypedBinOp;
 use tract_hir::tract_core::ops::element_wise::ElementWiseOp;
 
+use crate::ser::SubgraphBuilder;
 use crate::tflite::{BuiltinOperator, Model, Operator, SubGraph};
+
+pub type ToTract = fn(op_ctx: &mut DeserOp) -> TractResult<TVec<OutletId>>;
+pub type ToTflite = fn(&mut SubgraphBuilder, &TypedModel, &TypedNode) -> TractResult<()>;
 
 #[derive(Default)]
 pub struct Registry {
@@ -12,7 +18,7 @@ pub struct Registry {
     pub element_wise_ops: Vec<(BuiltinOperator, Box<dyn ElementWiseMiniOp>)>,
     pub binary_ops: Vec<(BuiltinOperator, TypedBinOp)>,
     pub to_tract: HashMap<BuiltinOperator, ToTract>,
-    //    pub from_tract: HashMap<TypeId, FromTract>,
+    pub to_tflite: HashMap<TypeId, ToTflite>,
 }
 
 pub struct DeserContext<'ctx> {
@@ -37,9 +43,11 @@ impl<'op> DeserOp<'op> {
     }
 }
 
-pub type ToTract = fn(op_ctx: &mut DeserOp) -> TractResult<TVec<OutletId>>;
-
 impl Registry {
+    pub fn reg_to_tflite<T: 'static>(&mut self, tflite: ToTflite) {
+        self.to_tflite.insert(std::any::TypeId::of::<T>(), tflite);
+    }
+
     pub fn op(
         &self,
         model: &Model,

@@ -32,21 +32,21 @@ impl TfliteProtoModel {
     }
 }
 
-fn write_model(model: &TypedModel) -> TractResult<FlatBufferBuilder> {
+fn write_model<'fb>(registry: &Registry, model: &TypedModel) -> TractResult<FlatBufferBuilder<'fb>> {
     let mut model = model.clone();
     crate::rewriter::rewrite_for_tflite(&mut model)?;
     let mut builder = flatbuffers::FlatBufferBuilder::new();
     let mut op_codes = vec![];
     let sentinel = Buffer::create(&mut builder, &BufferArgs { data: None });
     let mut buffers = vec![sentinel];
-    crate::ser::TfliteBuilder { builder: &mut builder, op_codes: &mut op_codes, buffers: &mut buffers }
+    crate::ser::ModelBuilder { registry, builder: &mut builder, op_codes: &mut op_codes, buffers: &mut buffers }
         .write_model(&model)?;
     Ok(builder)
 }
 
 impl Tflite {
     pub fn write(&self, model: &TypedModel, mut w: impl std::io::Write) -> TractResult<()> {
-        let builder = write_model(model)?;
+        let builder = write_model(&self.0, model)?;
         w.write_all(builder.finished_data())?;
         Ok(())
     }

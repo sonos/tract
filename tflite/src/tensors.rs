@@ -1,4 +1,4 @@
-use crate::tflite::{BufferBuilder, Model, SubGraph};
+use crate::tflite::{Model, SubGraph};
 use crate::tflite_generated::tflite::{TensorType, TensorType as BufferTensorType};
 #[cfg(feature = "complex")]
 use num_complex::Complex;
@@ -30,6 +30,27 @@ impl TryFrom<BufferTensorType> for DatumType {
             //TensorType::COMPLEX128 => DatumType::ComplexF64,
             //TensorType::UINT4 => {DatumType::U4},
             _ => bail!("Unknown DatumType {:?}", t),
+        })
+    }
+}
+
+impl TryFrom<DatumType> for BufferTensorType {
+    type Error = TractError;
+    fn try_from(value: DatumType) -> Result<Self, Self::Error> {
+        Ok(match value {
+            DatumType::Bool => BufferTensorType::BOOL,
+            DatumType::U8 => BufferTensorType::UINT8,
+            DatumType::U16 => BufferTensorType::UINT16,
+            DatumType::U32 => BufferTensorType::UINT32,
+            DatumType::U64 => BufferTensorType::UINT64,
+            DatumType::I8 => BufferTensorType::INT8,
+            DatumType::I16 => BufferTensorType::INT16,
+            DatumType::I32 => BufferTensorType::INT32,
+            DatumType::I64 => BufferTensorType::INT64,
+            DatumType::F16 => BufferTensorType::FLOAT16,
+            DatumType::F32 => BufferTensorType::FLOAT32,
+            DatumType::F64 => BufferTensorType::FLOAT64,
+            _ => bail!("Unsupported DatumType {:?}", value),
         })
     }
 }
