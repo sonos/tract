@@ -1,4 +1,5 @@
 use tract_hir::internal::*;
+use tract_hir::prelude::tract_itertools::Itertools;
 
 use crate::registry::{DeserOp, Registry};
 use crate::ser::SubgraphBuilder;
@@ -7,6 +8,7 @@ use crate::tflite::{BuiltinOperator, BuiltinOptions, TransposeOptions, Transpose
 pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tflite::<AxisOp>(ser_axisop);
     reg.to_tract.insert(BuiltinOperator::RESHAPE, de_reshape);
+    reg.to_tract.insert(BuiltinOperator::TRANSPOSE, de_transpose);
 }
 
 fn de_reshape(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
@@ -17,6 +19,23 @@ fn de_reshape(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let mut wire = tvec!(op.inputs[0]);
     let prefix = op.prefix;
     for (ix, axis_op) in to_axis_ops_with_tf_rules(&input_shape, shape)?.into_iter().enumerate() {
+        wire = op.ctx.target.wire_node(format!("{prefix}.{ix}"), axis_op, &wire)?;
+    }
+    Ok(wire)
+}
+
+fn de_transpose(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let perm = op
+        .ctx
+        .target
+        .outlet_fact(op.inputs[1])?
+        .konst
+        .as_ref()
+        .context("Dynamic TRANSPOSE in not supported by tract")?;
+    let perm = perm.as_slice::<i32>()?.iter().map(|x| *x as usize).collect_vec();
+    let mut wire = tvec!(op.inputs[0]);
+    let prefix = op.prefix;
+    for (ix, axis_op) in perm_to_ops(&perm).into_iter().enumerate() {
         wire = op.ctx.target.wire_node(format!("{prefix}.{ix}"), axis_op, &wire)?;
     }
     Ok(wire)

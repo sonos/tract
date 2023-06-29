@@ -7,7 +7,7 @@ use crate::registry::Registry;
 use crate::tflite::{
     Buffer, BufferArgs, BuiltinOperator, BuiltinOptions, CustomOptionsFormat, Model, ModelArgs,
     Operator, OperatorArgs, OperatorCode, OperatorCodeArgs, SubGraph, SubGraphArgs, Tensor,
-    TensorArgs, TensorType,
+    TensorArgs,
 };
 use flatbuffers::{FlatBufferBuilder, UnionWIPOffset, WIPOffset};
 
@@ -141,7 +141,9 @@ impl<'f, 'b, 'mb> SubgraphBuilder<'f, 'b, 'mb> {
             // Source and Const are not reified
             if node.op_is::<TypedSource>() || node.op_is::<Const>() {
                 continue;
-            } else if let Some(to_tflite) = self.model.registry.to_tflite.get(&(*(node.op)).type_id()) {
+            } else if let Some(to_tflite) =
+                self.model.registry.to_tflite.get(&(*(node.op)).type_id())
+            {
                 to_tflite(self, model, node)?;
             } else {
                 bail!("Unsupported op: {}", node)
