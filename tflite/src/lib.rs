@@ -3,7 +3,7 @@
 mod model;
 mod ops;
 mod registry;
-mod rewriter;
+pub mod rewriter;
 mod ser;
 mod tensors;
 

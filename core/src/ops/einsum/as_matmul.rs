@@ -8,8 +8,7 @@ use super::EinSum;
 use crate::internal::*;
 
 pub fn rewrite_einsums_as_matmul(model: &mut TypedModel) -> TractResult<()> {
-    let rules =
-        Rewriter::default().with_rule_for::<EinSum>("einsum-to-matmul", Box::new(einsum_rules));
+    let rules = Rewriter::default().with_rule_for::<EinSum>("einsum-to-matmul", einsum_rules);
     rules.rewrite(&(), model)
 }
 
@@ -17,10 +16,9 @@ fn einsum_rules(
     _ctx: &(),
     model: &TypedModel,
     node: &TypedNode,
+    node_name: &str,
+    op: &EinSum,
 ) -> TractResult<Option<TypedModelPatch>> {
-    let Some(op) = node.op_as::<EinSum>() else {
-        bail!("Called on the wrong op")
-    };
     // F: 2 inputs
     // Q: 2 inputs
     if !((op.q_params.is_none() && node.inputs.len() == 2)
@@ -36,7 +34,6 @@ fn einsum_rules(
         }
     };
     let (m, k, n) = (m.repr, k.repr, n.repr);
-    let node_name = &node.name;
     let prefix: String =
         op.axes.iter_all_axes().filter(|a| ![m, k, n].contains(&a.repr)).map(|a| a.repr).collect();
     let mut patch = TypedModelPatch::default();

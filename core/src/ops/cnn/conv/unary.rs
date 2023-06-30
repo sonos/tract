@@ -803,6 +803,7 @@ impl TypedOp for ConvUnary {
         if inputs.len() != 1 + q_inputs {
             bail!("Wrong number of inputs: expected {} got {}", 1 + q_inputs, inputs.len());
         }
+        ensure!(self.pool_spec.rank() == self.kernel.rank() - 2);
         if self.pool_spec.data_format.shape(&*inputs[0].shape)?.c()
             != &self.input_channels().to_dim()
         {

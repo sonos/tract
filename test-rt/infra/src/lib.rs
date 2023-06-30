@@ -49,6 +49,11 @@ impl TestSuite {
         }
     }
 
+    pub fn with(mut self, id: impl ToString, test: impl Into<TestSuite>) -> Self {
+        self.add(id, test);
+        self
+    }
+
     pub fn add_test(&mut self, id: impl ToString, test: impl Test, ignore: bool) {
         match self {
             TestSuite::Node(it) => {
