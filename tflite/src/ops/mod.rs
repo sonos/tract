@@ -3,6 +3,8 @@ use tract_hir::internal::*;
 use crate::registry::{DeserContext, DeserOp, Registry};
 use crate::tflite::ActivationFunctionType;
 
+// https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/core/c/builtin_op_data.h
+
 macro_rules! builtin {
     ($op: expr, $id:ident) => {
         $op.flat.$id().with_context(|| {
