@@ -39,7 +39,7 @@ members = [
     "test-rt/test-conv-core",
     "test-rt/test-onnx-core",
     "test-rt/test-onnx-nnef-cycle",
-    "test-rt/test-tflite-cycle",
+    "test-rt/test-tflite",
 ]
 
 [workspace.dependencies]
@@ -61,6 +61,7 @@ dinghy-test = "0.6"
 downcast-rs = "1.2.0"
 dyn-clone = "1.0.4"
 env_logger = "0.10"
+flatbuffers = "23.1.21"
 flate2 = "1.0.20"
 fs2 = "0.4.3"
 getrandom = "0.2"
@@ -99,6 +100,7 @@ serde_json = "1.0"
 string-interner = "0.14"
 tar = "0.4.37"
 tensorflow = "0.17.0"
+tflite = "0.9.7"
 time = "=0.3.23"
 time-macros = "=0.2.10"
 tokenizers = "0.13"

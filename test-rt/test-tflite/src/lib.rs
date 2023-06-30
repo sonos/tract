@@ -8,6 +8,8 @@ use tract_tflite::Tflite;
 #[path = "../suite.rs"]
 mod suite;
 
+mod tflite_runtime;
+
 mod tflite_predump {
     use super::*;
     struct TflitePredump(Tflite);
@@ -20,18 +22,18 @@ mod tflite_predump {
         fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
             let mut model = model.clone();
             tract_tflite::rewriter::rewrite_for_tflite(&mut model)?;
-            Ok(Box::new(model.into_runnable()?))
+            Ok(Box::new(Arc::new(model.into_runnable()?)))
         }
     }
 
-    fn tflite_predump() -> &'static TflitePredump {
+    fn runtime() -> &'static TflitePredump {
         lazy_static::lazy_static! {
             static ref RT: TflitePredump = TflitePredump(Tflite::default());
         };
         &RT
     }
 
-    include!(concat!(env!("OUT_DIR"), "/tests/tflite_predump.rs"));
+    include!(concat!(env!("OUT_DIR"), "/tests/tests.rs"));
 }
 
 mod tflite_cycle {
@@ -50,17 +52,16 @@ mod tflite_cycle {
             info!("Reload from Tflite");
             let reloaded = self.0.model_for_read(&mut &*buffer)?;
             println!("{reloaded:#?}");
-            Ok(Box::new(reloaded.into_optimized()?.into_runnable()?))
+            Ok(Box::new(Arc::new(reloaded.into_optimized()?.into_runnable()?)))
         }
     }
 
-    fn tflite_cycle() -> &'static TfliteCyclingRuntime {
+    fn runtime() -> &'static TfliteCyclingRuntime {
         lazy_static::lazy_static! {
             static ref RT: TfliteCyclingRuntime = TfliteCyclingRuntime(Tflite::default());
         };
         &RT
     }
 
-    include!(concat!(env!("OUT_DIR"), "/tests/tflite_cycle.rs"));
+    include!(concat!(env!("OUT_DIR"), "/tests/tests.rs"));
 }
-

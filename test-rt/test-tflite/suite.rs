@@ -12,5 +12,6 @@ fn ignore_onnx(t: &[String]) -> bool {
 }
 
 fn ignore_conv(t: &[String]) -> bool {
-    t[0] == "q"
+    let unit: &str = t.last().map(|s| &**s).unwrap();
+    t[0] == "q" || unit.starts_with("group")
 }

@@ -2,7 +2,7 @@ use tract_hir::internal::*;
 use tract_hir::prelude::tract_itertools::Itertools;
 
 use crate::registry::{DeserOp, Registry};
-use crate::ser::SubgraphBuilder;
+use crate::ser::{BuiltinOp, SubgraphBuilder};
 use crate::tflite::{
     BuiltinOperator, BuiltinOptions, ExpandDimsOptions, ExpandDimsOptionsArgs, SqueezeOptions,
     SqueezeOptionsArgs, TransposeOptions, TransposeOptionsArgs,
@@ -51,7 +51,8 @@ fn de_squeeze(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let mut wire = tvec!(op.inputs[0]);
     let prefix = op.prefix;
     for (ix, axis) in options.squeeze_dims().unwrap().iter().sorted().enumerate() {
-        wire = op.ctx.target.wire_node(format!("{prefix}.{ix}"), AxisOp::Rm(axis as usize), &wire)?;
+        wire =
+            op.ctx.target.wire_node(format!("{prefix}.{ix}"), AxisOp::Rm(axis as usize), &wire)?;
     }
     Ok(wire)
 }
@@ -95,9 +96,8 @@ fn ser_axisop(
             builder.write_op_with_options(
                 &inputs,
                 &[output],
-                BuiltinOperator::TRANSPOSE,
+                BuiltinOp::new(39, 1, BuiltinOperator::TRANSPOSE, BuiltinOptions::TransposeOptions),
                 options.as_union_value(),
-                BuiltinOptions::TransposeOptions,
             )
         }
         AxisOp::Add(a) => {
@@ -108,9 +108,13 @@ fn ser_axisop(
             builder.write_op_with_options(
                 &inputs,
                 &[output],
-                BuiltinOperator::EXPAND_DIMS,
+                BuiltinOp::new(
+                    70,
+                    1,
+                    BuiltinOperator::EXPAND_DIMS,
+                    BuiltinOptions::ExpandDimsOptions,
+                ),
                 options.as_union_value(),
-                BuiltinOptions::ExpandDimsOptions,
             )
         }
         AxisOp::Rm(a) => {
@@ -122,9 +126,8 @@ fn ser_axisop(
             builder.write_op_with_options(
                 &inputs,
                 &[output],
-                BuiltinOperator::SQUEEZE,
+                BuiltinOp::new(43, 1, BuiltinOperator::SQUEEZE, BuiltinOptions::SqueezeOptions),
                 options.as_union_value(),
-                BuiltinOptions::SqueezeOptions,
             )
         }
         _ => todo!("reshape translation"),

@@ -1,6 +1,6 @@
 use super::wire_fused_activation;
 use crate::registry::{DeserOp, Registry};
-use crate::ser::SubgraphBuilder;
+use crate::ser::{BuiltinOp, SubgraphBuilder};
 use crate::tflite::{
     ActivationFunctionType, BuiltinOperator, BuiltinOptions, Conv2DOptions, Conv2DOptionsArgs,
     Padding,
@@ -102,9 +102,8 @@ fn ser_conv(
     builder.write_op_with_options(
         &inputs,
         &outputs,
-        BuiltinOperator::CONV_2D,
+        BuiltinOp::new(3, 2, BuiltinOperator::CONV_2D, BuiltinOptions::Conv2DOptions),
         options.as_union_value(),
-        BuiltinOptions::Conv2DOptions,
     )?;
     Ok(())
 }

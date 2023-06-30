@@ -11,10 +11,18 @@ use crate::tflite::{
 };
 use flatbuffers::{FlatBufferBuilder, UnionWIPOffset, WIPOffset};
 
+#[derive(Debug, PartialEq, Copy, Clone, new)]
+pub struct BuiltinOp {
+    deprecated_builtin_code: i8,
+    version: i32,
+    code: BuiltinOperator,
+    options_type: BuiltinOptions,
+}
+
 pub struct ModelBuilder<'f, 'b> {
     pub registry: &'b Registry,
     pub builder: &'b mut FlatBufferBuilder<'f>,
-    pub op_codes: &'b mut Vec<BuiltinOperator>,
+    pub op_codes: &'b mut Vec<BuiltinOp>,
     pub buffers: &'b mut Vec<WIPOffset<Buffer<'f>>>,
 }
 
@@ -33,10 +41,10 @@ impl<'f, 'b> ModelBuilder<'f, 'b> {
                 OperatorCode::create(
                     &mut self.builder,
                     &OperatorCodeArgs {
-                        deprecated_builtin_code: 0,
+                        deprecated_builtin_code: code.deprecated_builtin_code,
                         custom_code: None,
-                        version: 1,
-                        builtin_code: *code,
+                        version: code.version,
+                        builtin_code: code.code,
                     },
                 )
             })
@@ -55,11 +63,11 @@ impl<'f, 'b> ModelBuilder<'f, 'b> {
                 signature_defs: None,
             },
         );
-        self.builder.finish_minimal(model);
+        self.builder.finish(model, Some("TFL3"));
         Ok(())
     }
 
-    fn operator_code_index(&mut self, builtin: BuiltinOperator) -> u32 {
+    fn operator_code_index(&mut self, builtin: BuiltinOp) -> u32 {
         if let Some(found) = self.op_codes.iter().position(|op| op == &builtin) {
             found as u32
         } else {
@@ -156,11 +164,10 @@ impl<'f, 'b, 'mb> SubgraphBuilder<'f, 'b, 'mb> {
         &mut self,
         inputs: &[i32],
         outputs: &[i32],
-        op_code: BuiltinOperator,
+        op: BuiltinOp,
         builtin_options: WIPOffset<UnionWIPOffset>,
-        builtin_options_type: BuiltinOptions,
     ) -> TractResult<()> {
-        let opcode_index = self.model.operator_code_index(op_code);
+        let opcode_index = self.model.operator_code_index(op);
         let inputs = self.fb().create_vector(&inputs);
         let outputs = self.fb().create_vector(&outputs);
         let operator = Operator::create(
@@ -170,7 +177,7 @@ impl<'f, 'b, 'mb> SubgraphBuilder<'f, 'b, 'mb> {
                 outputs: Some(outputs),
                 opcode_index,
                 builtin_options: Some(builtin_options),
-                builtin_options_type,
+                builtin_options_type: op.options_type,
                 custom_options: None,
                 custom_options_format: CustomOptionsFormat::FLEXBUFFERS,
                 mutating_variable_inputs: None,
