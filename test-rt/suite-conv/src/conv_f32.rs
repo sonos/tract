@@ -1,9 +1,10 @@
 use super::*;
 use infra::*;
 use proptest::collection::vec;
+use proptest::test_runner::{Config, FileFailurePersistence, TestRunner};
 use tract_itertools::izip;
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct ConvProblem {
     pub shape_in: DataShape,
     pub kernel_format: KernelFormat,
@@ -206,23 +207,35 @@ impl Test for ConvProblem {
 
     fn run(&self, runtime: &dyn Runtime) -> TestResult {
         let reference = self.reference().into_tensor();
-        let mut output = runtime.prepare(self.tract()?)?.run(tvec![self.data.clone().into_tvalue()])?;
+        let mut output =
+            runtime.prepare(self.tract()?)?.run(tvec![self.data.clone().into_tvalue()])?;
         let output = output.remove(0).into_tensor();
         reference.close_enough(&output, true)
     }
 }
 
-/*
-proptest::proptest! {
-    #[test]
-    fn prop(pb in any::<ConvProblem>()) {
-        pb.tract($runtime).unwrap().into_tensor().close_enough(&pb.reference().into_tensor(), true).unwrap();
+#[derive(Clone)]
+struct ConvProptest;
+
+impl Test for ConvProptest {
+    fn ignore(&self) -> bool {
+        false
+    }
+
+    fn run(&self, runtime: &dyn Runtime) -> TestResult {
+        let mut runner = TestRunner::new(Config {
+            failure_persistence: Some(Box::new(FileFailurePersistence::Off)),
+            ..Config::default()
+        });
+        runner.run(&any::<ConvProblem>(), |v| Ok(v.run(runtime).unwrap()))?;
+        Ok(())
     }
 }
-*/
 
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite = TestSuite::default();
+
+    suite.add("proptest", ConvProptest);
 
     suite.add(
         "trivial_0",
