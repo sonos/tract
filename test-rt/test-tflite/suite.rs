@@ -13,5 +13,13 @@ fn ignore_onnx(t: &[String]) -> bool {
 
 fn ignore_conv(t: &[String]) -> bool {
     let unit: &str = t.last().map(|s| &**s).unwrap();
-    t[0] == "q" || unit.starts_with("group")
+    t[0] == "q" 
+        // grouping and depthwise
+        || unit == "depthwise_0"
+        || unit.starts_with("group")
+        // conv 3D 
+        || unit == "lazy_im2col_big"
+        || unit == "lazy_im2col_big_2"
+        || unit == "batch_3d"
+        || unit == "bias_3d_1"
 }

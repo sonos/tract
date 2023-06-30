@@ -42,7 +42,7 @@ mod tflite_cycle {
 
     impl Runtime for TfliteCyclingRuntime {
         fn name(&self) -> Cow<str> {
-            "tflite_cycle".into()
+            "tflite-cycle".into()
         }
 
         fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
@@ -51,7 +51,6 @@ mod tflite_cycle {
             self.0.write(&model, &mut buffer)?;
             info!("Reload from Tflite");
             let reloaded = self.0.model_for_read(&mut &*buffer)?;
-            println!("{reloaded:#?}");
             Ok(Box::new(Arc::new(reloaded.into_optimized()?.into_runnable()?)))
         }
     }

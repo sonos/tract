@@ -998,7 +998,7 @@ impl TypedOp for ConvUnary {
         use AxisOp::*;
         let h_axis = shape.h_axis();
         let hw_axes = shape.hw_axes();
-        let kh_axis = if self.kernel_fmt == KernelFormat::OIHW { 2 } else { 0 };
+        let kh_axis = self.kernel_fmt.h_axis();
         let (geo_adjusted, kernel_adjusted) = match change {
             Rm(a)
                 if hw_axes.contains(a)

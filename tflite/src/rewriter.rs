@@ -92,12 +92,20 @@ fn nchw_to_nhwc(
 ) -> TractResult<Option<TypedModelPatch>> {
     if !conv.pool_spec.data_format.c_is_last() {
         let mut new = conv.clone();
-        new.pool_spec.data_format = DataFormat::NHWC;
+        new.pool_spec.data_format = match conv.pool_spec.data_format {
+            DataFormat::NHWC | DataFormat::HWC => unreachable!(),
+            DataFormat::CHW => DataFormat::HWC,
+            DataFormat::NCHW => DataFormat::NHWC,
+        };
         let mut patch = TypedModelPatch::default();
+        let fact = model.outlet_fact(node.inputs[0])?;
+        let shape = conv.pool_spec.data_format.shape(&fact.shape)?;
+        let before = shape.c_axis();
+        let after = fact.rank() - 1;
         let mut wire = tvec!(patch.tap_model(model, node.inputs[0])?);
-        wire = patch.wire_node(format!("{name}.nhwc"), AxisOp::Move(1, conv.pool_spec.rank() + 1), &wire)?;
+        wire = patch.wire_node(format!("{name}.nhwc"), AxisOp::Move(before, after), &wire)?;
         wire = patch.wire_node(name, new, &wire)?;
-        wire = patch.wire_node(format!("{name}.nchw"), AxisOp::Move(conv.pool_spec.rank() + 1, 1), &wire)?;
+        wire = patch.wire_node(format!("{name}.nchw"), AxisOp::Move(after, before), &wire)?;
         patch.shunt_outside(model, node.id.into(), wire[0])?;
         return Ok(Some(patch));
     }
