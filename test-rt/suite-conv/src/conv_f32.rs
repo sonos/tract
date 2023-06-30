@@ -98,7 +98,6 @@ impl ConvProblem {
                                     }
                                 }
                                 let k = self.kernel[&*kernel_coords];
-                                eprintln!("g:{g} ci:{ci} i:{i} co:{co} k:{k}");
                                 out[&*output_coords] += k * i;
                             }
                         }

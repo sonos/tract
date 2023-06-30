@@ -3,12 +3,34 @@ use tract_hir::prelude::tract_itertools::Itertools;
 
 use crate::registry::{DeserOp, Registry};
 use crate::ser::SubgraphBuilder;
-use crate::tflite::{BuiltinOperator, BuiltinOptions, TransposeOptions, TransposeOptionsArgs};
+use crate::tflite::{
+    BuiltinOperator, BuiltinOptions, ExpandDimsOptions, ExpandDimsOptionsArgs, SqueezeOptions,
+    SqueezeOptionsArgs, TransposeOptions, TransposeOptionsArgs,
+};
 
 pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tflite::<AxisOp>(ser_axisop);
+    reg.to_tract.insert(BuiltinOperator::EXPAND_DIMS, de_expand_dims);
     reg.to_tract.insert(BuiltinOperator::RESHAPE, de_reshape);
+    reg.to_tract.insert(BuiltinOperator::SQUEEZE, de_squeeze);
     reg.to_tract.insert(BuiltinOperator::TRANSPOSE, de_transpose);
+}
+
+fn de_expand_dims(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let axes = op
+        .ctx
+        .target
+        .outlet_fact(op.inputs[1])?
+        .konst
+        .clone()
+        .context("Dynamic EXPAND_DIMS is not supported")?;
+    let mut wire = tvec!(op.inputs[0]);
+    let prefix = op.prefix;
+    for (ix, &axis) in axes.as_slice::<i32>()?.iter().sorted().rev().enumerate() {
+        wire =
+            op.ctx.target.wire_node(format!("{prefix}.{ix}"), AxisOp::Add(axis as usize), &wire)?;
+    }
+    Ok(wire)
 }
 
 fn de_reshape(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
@@ -20,6 +42,16 @@ fn de_reshape(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let prefix = op.prefix;
     for (ix, axis_op) in to_axis_ops_with_tf_rules(&input_shape, shape)?.into_iter().enumerate() {
         wire = op.ctx.target.wire_node(format!("{prefix}.{ix}"), axis_op, &wire)?;
+    }
+    Ok(wire)
+}
+
+fn de_squeeze(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let options = builtin!(op, builtin_options_as_squeeze_options);
+    let mut wire = tvec!(op.inputs[0]);
+    let prefix = op.prefix;
+    for (ix, axis) in options.squeeze_dims().unwrap().iter().sorted().enumerate() {
+        wire = op.ctx.target.wire_node(format!("{prefix}.{ix}"), AxisOp::Rm(axis as usize), &wire)?;
     }
     Ok(wire)
 }
@@ -68,6 +100,33 @@ fn ser_axisop(
                 BuiltinOptions::TransposeOptions,
             )
         }
-        _ => todo!(),
+        AxisOp::Add(a) => {
+            inputs.push(
+                builder.write_fact(&format!("{}.axis", node.name), &rctensor0(*a as i32).into())?,
+            );
+            let options = ExpandDimsOptions::create(builder.fb(), &ExpandDimsOptionsArgs {});
+            builder.write_op_with_options(
+                &inputs,
+                &[output],
+                BuiltinOperator::EXPAND_DIMS,
+                options.as_union_value(),
+                BuiltinOptions::ExpandDimsOptions,
+            )
+        }
+        AxisOp::Rm(a) => {
+            let axes = builder.fb().create_vector(&[*a as i32]);
+            let options = SqueezeOptions::create(
+                builder.fb(),
+                &SqueezeOptionsArgs { squeeze_dims: Some(axes) },
+            );
+            builder.write_op_with_options(
+                &inputs,
+                &[output],
+                BuiltinOperator::SQUEEZE,
+                options.as_union_value(),
+                BuiltinOptions::SqueezeOptions,
+            )
+        }
+        _ => todo!("reshape translation"),
     }
 }
