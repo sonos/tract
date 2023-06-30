@@ -49,6 +49,7 @@ fn ser_conv(
     let conv = node.op_as::<ConvUnary>().unwrap();
     ensure!(conv.pool_spec.data_format == DataFormat::NHWC);
     ensure!(model.node_input_facts(node.id)?[0].rank() == 4);
+    ensure!(conv.group == 1);
     let node_name = &node.name;
     let mut inputs = node.inputs.iter().map(|o| builder.outlets_to_tensors[o]).collect_vec();
     let outputs = (0..node.outputs.len())
@@ -85,6 +86,8 @@ fn ser_conv(
         )
     {
         Padding::SAME
+    } else if padding == &PaddingSpec::SameUpper {
+        Padding::SAME
     } else {
         todo!();
     };
@@ -92,10 +95,10 @@ fn ser_conv(
         builder.fb(),
         &Conv2DOptionsArgs {
             padding,
-            stride_w: conv.pool_spec.stride(0) as _,
-            stride_h: conv.pool_spec.stride(1) as _,
-            dilation_w_factor: conv.pool_spec.dilation(0) as _,
-            dilation_h_factor: conv.pool_spec.dilation(1) as _,
+            stride_h: conv.pool_spec.stride(0) as _,
+            stride_w: conv.pool_spec.stride(1) as _,
+            dilation_h_factor: conv.pool_spec.dilation(0) as _,
+            dilation_w_factor: conv.pool_spec.dilation(1) as _,
             fused_activation_function: ActivationFunctionType::NONE,
         },
     );
