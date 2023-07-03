@@ -37,6 +37,9 @@ skip = [
     { name = "quick-error", version="<2" }, # cascading from flate
     { name = "regex-syntax", version="0.6.29" },
     { name = "syn", version="<2" },
+    { name = "rustix", version="<0.38" },
+    { name = "linux-raw-sys", version="<0.4" },
+    { name = "bitflags", version="<2" },
 ]
 
 [sources]
