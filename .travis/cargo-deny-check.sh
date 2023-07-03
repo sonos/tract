@@ -7,7 +7,7 @@ else
     CARGO_DENY="cargo deny"
 fi
 
-for crate in onnx pulse kaldi tensorflow
+for crate in onnx pulse tensorflow
 do
     echo $crate:
     (cd $crate ; $CARGO_DENY check)

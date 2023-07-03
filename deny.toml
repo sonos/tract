@@ -37,9 +37,6 @@ skip = [
     { name = "quick-error", version="<2" }, # cascading from flate
     { name = "regex-syntax", version="0.6.29" },
     { name = "syn", version="<2" },
-    { name = "windows-sys", version="<0.48" },
-    { name = "windows-targets", version="<0.48" },
-    { name = "windows_x86_64_msvc", version="<0.48" },
 ]
 
 [sources]
