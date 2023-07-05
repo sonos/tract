@@ -1,0 +1,83 @@
+{% comment %}
+Generate the code for the store and clear instructions.
+---
+Arguments:
+    mr - kernel size in number of elements
+    nr - kernel size in number of elements
+{% endcomment %}
+
+{%capture offset%}{% if msvc %} offset {%else%} rip + {%endif%}{%endcapture%}
+
+{% assign arch_mr = mr | divided_by:16 %}
+{% assign arch_mr_min_1 = mr | divided_by:16 | minus:1 %}
+{% assign nr_min_1 = nr | minus:1 %}
+
+{{L}}store:
+
+    mov     r10,    [rdi + 8]           // c ptr
+    mov     rsi,    [rdi + 16]          // row stride
+    mov     rbx,    [rdi + 24]          // col stride
+
+    // scatter operation
+
+    vpbroadcastd    zmm31,  esi
+    vpmulld         zmm31,  zmm31,  zmmword ptr [{{offset}} {{L}}numbers_seq_store]
+
+    // zmm31 is now a sequence of 0,esi,esi*2,esi*3...esi*15
+
+{% assign nr_min_1 = nr | minus:1 %}
+{% assign mr_arch = mr | divided_by:16 %}
+{% assign mr_arch_min_1 = mr | divided_by:16 | minus:1 %}
+
+    // r10 is cur col
+    imul    rsi,    16                  // stride for 16 elems
+
+{% for col in (0..nr_min_1) %}
+    mov     r9,     r10                 // cur row
+
+    {% for row in (0..mr_arch_min_1) %}
+        kxnorw      k1,k1,k1            // set writemask to ones
+        vscatterdps [r9 + zmm31]{k1}, zmm{{col | times:mr_arch | plus:row}}  
+
+        {% if row != mr_arch_min_1 %}
+            add r9, rsi
+        {% endif %}
+    {% endfor %}
+
+    {% if col != nr_min_1 %}
+        add r10, rbx
+    {% endif %}
+{% endfor %}
+
+    jmp     {{L}}non_linear_loop
+
+{{L}}numbers_seq_store:
+    {{long}} 0
+    {{long}} 1
+    {{long}} 2
+    {{long}} 3
+    {{long}} 4
+    {{long}} 5
+    {{long}} 6
+    {{long}} 7
+    {{long}} 8
+    {{long}} 9
+    {{long}} 10
+    {{long}} 11
+    {{long}} 12
+    {{long}} 13
+    {{long}} 14
+    {{long}} 15
+
+{% assign last_reg = mr | divided_by:16 | times:nr | minus:1 %}
+
+{{L}}clear:
+    vzeroall
+    {% if last_reg >= 16 %}
+    // turns out vzeroall only zeroes zmm0 to zmm15
+    {% for regcol in (16..last_reg) %}
+        vmovups zmm{{regcol}}, zmm0
+    {% endfor %}
+    {% endif %}
+
+    jmp     {{L}}non_linear_loop

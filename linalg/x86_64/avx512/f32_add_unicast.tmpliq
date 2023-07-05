@@ -1,0 +1,67 @@
+{% comment %}
+Generate the code for the add_unicast instruction.
+---
+Arguments:
+    mr - kernel size in number of elements
+    nr - kernel size in number of elements
+{% endcomment %}
+
+{%capture offset%}{% if msvc %} offset {%else%} rip + {%endif%}{%endcapture%}
+
+{{L}}add_unicast:
+
+    mov     r10,    [rdi + 8]           // c ptr
+    mov     rsi,    [rdi + 16]          // row stride
+    mov     rbx,    [rdi + 24]          // col stride
+
+    // gather operation
+
+    vpbroadcastd    zmm30,  esi
+    vpmulld         zmm30,  zmm30,  zmmword ptr [{{offset}} {{L}}numbers_seq_add_unicast]
+
+    // zmm30 is now a sequence of 0,esi,esi*2,esi*3...esi*15
+
+{% assign nr_min_1 = nr | minus:1 %}
+{% assign mr_arch = mr | divided_by:16 %}
+{% assign mr_arch_min_1 = mr | divided_by:16 | minus:1 %}
+
+    // r10 is cur col
+    imul    rsi,    16                  // stride for 16 elems
+
+{% for col in (0..nr_min_1) %}
+    mov     r9,     r10                 // cur row
+
+    {% for row in (0..mr_arch_min_1) %}
+        kxnorw      k1,k1,k1            // set writemask to ones
+        vgatherdps  zmm31{k1},  [r9 + zmm30]
+        vaddps      zmm{{col | times:mr_arch | plus:row}}, zmm{{col | times:mr_arch | plus:row}}, zmm31
+
+        {% if row != mr_arch_min_1 %}
+            add r9, rsi
+        {% endif %}
+    {% endfor %}
+
+    {% if col != nr_min_1 %}
+        add r10, rbx
+    {% endif %}
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}numbers_seq_add_unicast:
+    {{long}} 0
+    {{long}} 1
+    {{long}} 2
+    {{long}} 3
+    {{long}} 4
+    {{long}} 5
+    {{long}} 6
+    {{long}} 7
+    {{long}} 8
+    {{long}} 9
+    {{long}} 10
+    {{long}} 11
+    {{long}} 12
+    {{long}} 13
+    {{long}} 14
+    {{long}} 15

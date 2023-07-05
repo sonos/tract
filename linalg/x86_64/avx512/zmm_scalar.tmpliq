@@ -1,14 +1,30 @@
-// vim: set syntax=asm :
+{% comment %}
+Generate the code for a per-row instruction.
+---
+Arguments:
+    mr - kernel size in number of elements
+    nr - kernel size in number of elements
+    op - the avx512 instruction
+    flipped - boolean to flip the order
+    label - the asm label to clear
+{% endcomment %}
+
+{% assign mr_over_16 = mr | divided_by:16 %}
+
+{% assign from = 0 %}
+{% assign to = mr_over_16 | times:nr | minus:1 %}
+
+// from={{from}} to={{to}}
 
 {{L}}{{label}}:
-    vbroadcastss    zmm12, dword ptr [rdi + 8]
+    vbroadcastss    zmm31, dword ptr [rdi + 8]
     {% if flipped %}
         {% for reg in (from..to) %}
-            {{op}}          zmm{{reg}}, zmm{{reg}}, zmm12
+            {{op}}          zmm{{reg}}, zmm{{reg}}, zmm31
         {% endfor %}
     {% else %}
         {% for reg in (from..to) %}
-            {{op}}          zmm{{reg}}, zmm12, zmm{{reg}}
+            {{op}}          zmm{{reg}}, zmm31, zmm{{reg}}
         {% endfor %}
     {% endif %}
 

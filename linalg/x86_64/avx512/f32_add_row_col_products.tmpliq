@@ -1,0 +1,31 @@
+{% comment %}
+Generate the code for the store instruction.
+---
+Arguments:
+    mr - kernel size in number of elements
+    nr - kernel size in number of elements
+{% endcomment %}
+
+{% assign nr_min_1 = nr | minus:1 %}
+{% assign mr_arch = mr | divided_by:16 %}
+{% assign mr_arch_min_1 = mr | divided_by:16 | minus:1 %}
+
+{{L}}add_row_col_products:
+    mov             rax, [rdi + 8]
+    mov             rbx, [rdi + 16]
+
+// name of the first scratch reg
+{% assign scratch = mr_arch | times: nr %}
+
+{% for j in (0..mr_arch_min_1) %}
+    vmovups         zmm{{scratch | plus:j}}, zmmword ptr [rax + {{j | times:64}}]
+{% endfor %}
+
+{% for i in (0..nr_min_1) %}
+    vbroadcastss    zmm31, dword ptr [rbx + {{i | times:4}}]
+    {% for j in (0..mr_arch_min_1) %}
+        vfmadd231ps     zmm{{mr_arch | times:i | plus:j}}, zmm{{scratch | plus:j}}, zmm31
+    {% endfor %}
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop

@@ -6,7 +6,7 @@ use tract_linalg::frame::mmm::*;
 
 fn ruin_cache() {
     // return;
-    let _a = (0..1000000).collect::<Vec<i32>>();
+    let _a = std::hint::black_box((0..10000000).collect::<Vec<i32>>());
 }
 
 pub fn reference<T, K>(mr: usize, k: usize, nr: usize) -> Vec<f32>

@@ -1,23 +1,35 @@
-// vim: set syntax=asm :
+{% comment %}
+Generate the code for a per-col instruction.
+---
+Arguments:
+    mr - kernel size in number of elements
+    nr - kernel size in number of elements
+    op - the avx512 instruction
+    flipped - boolean to flip the order
+    label - the asm label to clear
+{% endcomment %}
 
 {{L}}{{label}}:
-    mov             rax, [ rdi + 8 ]
+    mov             rax, [rdi + 8]
 
-{% capture mr_over_16 %}{{ mr | divided_by: 16}}{%endcapture%}
-{% capture mr_over_16_min_1 %}{{ mr | divided_by: 16 | minus: 1}}{%endcapture%}
+{% assign mr_over_16 = mr | divided_by:16 %}
+{% assign mr_over_16_min_1 = mr | divided_by:16 | minus:1 %}
 
-{%capture tmp%}{{to | plus: 1 }}{%endcapture%}
+{% assign from = 0 %}
+{% assign to = mr_over_16 | times:nr | minus:1 %}
 
-{%capture cols%}{{to | plus: 1| minus:from| divided_by:mr_over_16}}{%endcapture%}
-{%capture cols_min_1%}{{to | plus: 1| minus:from| divided_by:mr_over_16|minus:1}}{%endcapture%}
+{% assign tmp = to | plus:1 %}
+{% assign cols = to | plus:1 | minus:from | divided_by:mr_over_16 %}
+
+{% assign cols_min_1 = to | plus:1 | minus:from | divided_by:mr_over_16 | minus:1 %}
 // {{to|minus:from|plus:1}} cols:{{cols}}
 
 {% for right in (0..cols_min_1) %}
-    vbroadcastss    zmm{{tmp}}, dword ptr [ rax ]
+    vbroadcastss    zmm{{tmp}}, dword ptr [rax]
     add             rax, 4
 
     {% for down in (0..mr_over_16_min_1) %}
-        {%capture acc%}{{mr_over_16|times:right|plus:from|plus:down}}{%endcapture%}
+        {% assign acc = mr_over_16 | times:right | plus:from | plus:down %}
         {% if flipped %}
             {{op}} zmm{{acc}}, zmm{{acc}}, zmm{{tmp}}
         {% else %}

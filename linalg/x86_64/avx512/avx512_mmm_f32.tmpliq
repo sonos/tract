@@ -1,0 +1,41 @@
+{% comment %}
+Generate the code for a full AVX512 f32 kernel.
+---
+Arguments:
+    mr - kernel size in number of elements
+    nr - kernel size in number of elements
+{% endcomment %}
+
+// The kernel will operate on mr times nr elements at once,
+// by laying them out in the zmm registers.
+// 
+// As an example, mmm f32 32 x 12 will be laid out this way:
+//     zmm0 zmm2 zmm4 zmm6 zmm8 zmm10 zmm12 zmm14 zmm16 zmm18 zmm20 zmm22
+//     zmm1 zmm3 zmm5 zmm7 zmm9 zmm11 zmm13 zmm15 zmm17 zmm19 zmm21 zmm23
+//
+// The scratch registers are currently:
+// - zmm31 and zmm30 in every case
+// - every zmm register from `mr_arch * nr` to the end
+// 
+// This means you always have at least mr_arch registers scratch registers
+// plus zmm31 and zmm30 available.
+// 
+// More scratch registers may be added later if we decide to limit the
+// range for data registers, as we don't really need the biggest kernel sizes.
+//
+// The list of possible kernel sizes is thus defined by every mr,nr combinations
+// that match `mr_arch * nr + mr_arch + 2 <= 32`.
+
+{% assign kernel_name = mr | append:"x" | append:nr %}
+
+{% include "preamble.tmpliq" size:kernel_name, suffix:suffix, G:G, arch:"avx512" %}
+
+{% include "f32_add_mat_mul.tmpliq" mr:mr, nr:nr %}
+{% include "f32_scalars.tmpliq" mr:mr, nr:nr %}
+{% include "f32_per_rows.tmpliq" mr:mr, nr:nr %}
+{% include "f32_per_cols.tmpliq" mr:mr, nr:nr %}
+{% include "f32_store_clear.tmpliq" mr:mr, nr:nr %}
+{% include "f32_add_row_col_products.tmpliq" mr:mr, nr:nr %}
+{% include "f32_add_unicast.tmpliq" mr:mr, nr:nr %}
+
+{% include "postamble.tmpliq" size:kernel_name, suffix:suffix, G:G, L:L, arch:"avx512" %}

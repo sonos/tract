@@ -47,6 +47,8 @@ core_affinity.workspace = true
 no_fp16 = []
 default = []
 complex = [ "tract-data/complex" ]
+# Internal feature for benchmarking matmul kernels
+compile_all_kernels = []
 
 [[bench]]
 bench = false
@@ -98,4 +100,9 @@ harness = false
 
 [[bench]]
 name = "intel"
+harness = false
+
+[[bench]]
+bench = false
+name = "kernel_test"
 harness = false

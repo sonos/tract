@@ -1,0 +1,103 @@
+{% comment %}
+Generate the code for the add_mat_mul instruction.
+---
+Arguments:
+    mr - kernel size in number of elements
+    nr - kernel size in number of elements
+{% endcomment %}
+
+{{L}}add_mat_mul:
+    mov     rcx,    [rdi + 24]   // B
+    mov     rax,    [rdi + 16]   // A
+
+    mov     rbx,    [rdi + 8]    // k
+    test    rcx,    rcx
+    jz      {{L}}non_linear_loop
+
+// the main loop will access A 16 elements at a time
+// and B 1 element at a time
+// it may be unrolled on a few elements of K
+
+{% assign arch_mr = mr | divided_by:16 %}
+{% assign arch_mr_min_1 = mr | divided_by:16 | minus:1 %}
+
+{% assign nr_min_1 = nr | minus:1 %}
+
+// total bytes of the tile on the m axis
+{% assign m_total_bytes = mr | times:4 %}
+// total bytes of the tile on the n axis
+{% assign n_total_bytes = nr | times:4 %}
+
+// first register to be used for row
+{% assign row_reg = arch_mr | times:nr %}
+// the column register
+{% assign col_reg = row_reg | plus:arch_mr | plus:1 %}
+
+{% assign prefetch_dist = 2 %}
+
+// we limit the number of prefetches
+// because otherwise we end up producing too many prefetches at once
+// and, we fill the Line Fill Buffer, which is the cpu's buffer for
+// outstanding fetch request for L1 - which by the way has a size of
+// 10 requests on most intel cpus
+//
+// filling up the LFB is actually a very big deal, because subsequent prefetches
+// will block until there is space in the LFB
+{% assign prefetches_to_issue_min_1 = arch_mr | at_most:2 | minus:1 %}
+
+// how many unrolls on k should we produce
+{% assign unroll_count = 4 %}
+{% assign unroll_count_min_1 = unroll_count | minus:1 %}
+
+// this is the dispatch part
+{{L}}main_loop_packed_packed:
+
+// hardcoded 8 unrolls
+
+    cmp     rbx,   1
+    jb      {{L}}non_linear_loop
+    je      {{L}}main_loop_packed_packed_1
+    cmp     rbx,   3
+    jb      {{L}}main_loop_packed_packed_2
+    je      {{L}}main_loop_packed_packed_3
+{% comment %}
+    cmp     rbx,   5
+    jb      {{L}}main_loop_packed_packed_4
+    je      {{L}}main_loop_packed_packed_5
+    cmp     rbx,   7
+    jb      {{L}}main_loop_packed_packed_6
+    je      {{L}}main_loop_packed_packed_7
+{% endcomment %}
+
+{% for unroll in (0..unroll_count_min_1) %}
+
+    {% assign n_items_on_k = unroll_count | minus:unroll %}
+
+    {{L}}main_loop_packed_packed_{{n_items_on_k}}:
+
+    {% assign unroll_min_1 = n_items_on_k | minus:1 %}
+    {% for cur_unroll_count in (0..unroll_min_1) %}
+
+        {% for i in (0..prefetches_to_issue_min_1) %}
+            prefetcht0 [rax + {{i | times:64}} + {{m_total_bytes | times:prefetch_dist}} + {{cur_unroll_count | times:m_total_bytes}}]
+        {% endfor %}
+
+        {% for i in (0..arch_mr_min_1) %}
+            vmovaps zmm{{row_reg | plus:i}}, [rax + {{i | times:64}} + {{cur_unroll_count | times:m_total_bytes}}]
+        {% endfor %}
+
+        {% for i in (0..nr_min_1) %}
+            vbroadcastss zmm{{col_reg}}, dword ptr [rcx + {{i | times:4}} + {{cur_unroll_count | times:n_total_bytes}}]
+
+            {% for j in (0..arch_mr_min_1) %}
+                vfmadd231ps zmm{{i | times:arch_mr | plus:j}}, zmm{{row_reg | plus:j}}, zmm{{col_reg}}
+            {% endfor %}
+        {% endfor %}
+    {% endfor %}
+
+    add     rax,    {{m_total_bytes | times:n_items_on_k}}
+    add     rcx,    {{n_total_bytes | times:n_items_on_k}}
+    sub     rbx,    {{n_items_on_k}}
+
+    jmp     {{L}}main_loop_packed_packed
+{% endfor %}
