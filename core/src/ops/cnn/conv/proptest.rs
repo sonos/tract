@@ -35,21 +35,41 @@ impl ConvProblem {
             KernelFormat::HWIO => self.kernel.shape()[self.kernel.ndim() - 1],
             KernelFormat::OHWI => self.kernel.shape()[0],
         };
-        let (shape_out, left_pads): (TVec<_>, TVec<_>) = if self.pad == PaddingSpec::Valid {
-            izip!(self.shape_in.hw_dims(), self.geo_ker(), &self.strides)
+        let (shape_out, left_pads): (TVec<_>, TVec<_>) = match &self.pad {
+            PaddingSpec::Valid => izip!(self.shape_in.hw_dims(), self.geo_ker(), &self.strides)
                 .map(|(i, k, s)| {
                     let out = (*i + 1).saturating_sub(*k).divceil(*s);
                     (out, 0)
                 })
-                .unzip()
-        } else {
-            izip!(self.shape_in.hw_dims(), self.geo_ker(), &self.strides)
+                .unzip(),
+            PaddingSpec::SameUpper => izip!(self.shape_in.hw_dims(), self.geo_ker(), &self.strides)
                 .map(|(input, k, stride)| {
                     let out = input.divceil(*stride);
                     let pad = ((out - 1) * stride + k).saturating_sub(*input);
                     (out, pad / 2)
                 })
-                .unzip()
+                .unzip(),
+            PaddingSpec::SameLower => izip!(self.shape_in.hw_dims(), self.geo_ker(), &self.strides)
+                .map(|(input, k, stride)| {
+                    let out = input.divceil(*stride);
+                    let pad = ((out - 1) * stride + k).saturating_sub(*input);
+                    (out, pad.divceil(2))
+                })
+                .unzip(),
+            PaddingSpec::Explicit(l, r, ceil) => {
+                izip!(self.shape_in.hw_dims(), self.geo_ker(), &self.strides, l, r)
+                    .map(|(input, k, stride, l, r)| {
+                        let dil = 1;
+                        let kf = (k - 1) * dil + 1;
+                        let out = if *ceil {
+                            (input + l + r).saturating_sub(kf).divceil(*stride) + 1
+                        } else {
+                            (input + l + r).saturating_sub(kf) / *stride + 1
+                        };
+                        (out, *l)
+                    })
+                    .unzip()
+            }
         };
         let shape_out = self
             .shape_in
@@ -146,10 +166,17 @@ impl ConvProblem {
         );
         let wire = model.wire_node("conv", op, &[wire])?[0];
         model.set_output_outlets(&[wire])?;
+        dbg!(&model);
         let mut output =
             model.into_optimized()?.into_runnable()?.run(tvec![self.data.clone().into_tvalue()])?;
         output.remove(0).into_tensor().into_array::<f32>()
     }
+}
+
+fn explicit_padding(rank: usize) -> impl Strategy<Value = PaddingSpec> {
+    let left = vec(0..3usize, rank..rank + 1);
+    let right = vec(0..3usize, rank..rank + 1);
+    (left, right, any::<bool>()).prop_map(|(l, r, b)| PaddingSpec::Explicit(l.into(), r.into(), b))
 }
 
 impl Arbitrary for ConvProblem {
@@ -159,20 +186,25 @@ impl Arbitrary for ConvProblem {
         (
             any::<DataFormat>(),
             any::<KernelFormat>(),
-            prop_oneof![Just(PaddingSpec::Valid), Just(PaddingSpec::SameUpper)],
             1usize..=3,
             1usize..=4,
             1usize..=4,
             1usize..=3,
             (1usize..=3).prop_flat_map(shapes),
         )
-            .prop_flat_map(|(df, kf, pad, n, mut ci0, co0, group, (mut ker_shape, data_shape))| {
+            .prop_flat_map(|(df, kf, n, mut ci0, co0, group, (mut ker_shape, data_shape))| {
                 // FIXME in HWIO order, only regular and depthwise are supported
                 if kf == KernelFormat::HWIO && group > 1 {
                     ci0 = 1;
                 }
                 let shape_in = df.from_n_c_hw(n, ci0 * group, data_shape).unwrap();
                 let data_in = tensor(shape_in.shape.iter().cloned().collect());
+                let pad = prop_oneof![
+                    Just(PaddingSpec::Valid).boxed(),
+                    Just(PaddingSpec::SameUpper).boxed(),
+                    Just(PaddingSpec::SameLower).boxed(),
+                    explicit_padding(ker_shape.len()).boxed()
+                ];
                 match kf {
                     KernelFormat::HWIO => {
                         ker_shape.push(ci0 * group);
@@ -190,9 +222,9 @@ impl Arbitrary for ConvProblem {
                 let strides = vec(1usize..=3, shape_in.hw_rank()..=shape_in.hw_rank());
                 let kernel = tensor(ker_shape);
                 let bias = proptest::option::of(tensor(vec![co0 * group]));
-                (Just((kf, pad, shape_in, group)), data_in, kernel, bias, strides)
+                (Just((kf, shape_in, group)), pad, data_in, kernel, bias, strides)
             })
-            .prop_map(|((kernel_format, pad, shape_in, group), data, kernel, bias, strides)| {
+            .prop_map(|((kernel_format, shape_in, group), pad, data, kernel, bias, strides)| {
                 ConvProblem {
                     shape_in,
                     kernel_format,
@@ -843,6 +875,54 @@ fn strides_1() -> anyhow::Result<()> {
 }
 
 #[test]
+fn strides_2_dnn_padding_1() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [6])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data: tract_ndarray::arr2(&[[0.0], [0.0], [0.0], [0.0], [0.0], [0.0]]).into_dyn(),
+        kernel: tract_ndarray::arr3(&[[[0.0]]]).into_dyn(),
+        bias: None,
+        pad: PaddingSpec::Explicit(tvec!(1), tvec!(1), false),
+        strides: tvec!(2),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
+fn strides_2_dnn_padding_2() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [1])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data: tract_ndarray::arr2(&[[0.0]]).into_dyn(),
+        kernel: tract_ndarray::arr3(&[[[0.0]]]).into_dyn(),
+        bias: None,
+        pad: PaddingSpec::Explicit(tvec!(1), tvec!(1), false),
+        strides: tvec!(2),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
+fn strides_2_dnn_padding_3() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [2])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data: tract_ndarray::arr2(&[[0.0],[0.0]]).into_dyn(),
+        kernel: tract_ndarray::arr3(&[[[0.0]]]).into_dyn(),
+        bias: None,
+        pad: PaddingSpec::Explicit(tvec!(0), tvec!(0), true),
+        strides: tvec!(2),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
 fn strides_2() -> anyhow::Result<()> {
     let pb = ConvProblem {
         shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [3])?,
@@ -1009,6 +1089,22 @@ fn same_upper() -> anyhow::Result<()> {
         kernel,
         bias: None,
         pad: PaddingSpec::SameUpper,
+        strides: tvec!(1),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
+fn explicit_dnn() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [1])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data: tract_ndarray::arr2(&[[0.0]]).into_dyn(),
+        kernel: tract_ndarray::arr3(&[[[0.0]]]).into_dyn(),
+        bias: None,
+        pad: PaddingSpec::Explicit(tvec!(2), tvec!(0), false),
         strides: tvec!(1),
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());

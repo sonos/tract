@@ -1,7 +1,7 @@
 use crate::internal::*;
 
-use tract_itertools::Itertools;
 use std::ops::Range;
+use tract_itertools::Itertools;
 
 #[derive(Clone, Debug, new, PartialEq, Eq)]
 pub struct Region {
@@ -37,7 +37,7 @@ impl PatchAxis {
 
     fn invalid_at_left(&self, pos: usize) -> usize {
         let center_pos = pos * self.stride;
-        self.pad_before.saturating_sub(center_pos).divceil(self.dilation)
+        self.pad_before.saturating_sub(center_pos).divceil(self.dilation).min(self.kernel_dim)
     }
 
     fn invalid_at_right(&self, pos: usize) -> usize {
@@ -259,5 +259,11 @@ pub mod test {
         // 0 -> 2 -> (0)
         let regions = PatchAxis::new(1, 2, 0, 1, 1, 1, 1).regions();
         assert_eq!(regions, tvec!(Region::new(0..1, Some(tvec!(false, true))),));
+    }
+
+    #[test]
+    fn axis_dnn_left_pad() {
+        let regions = PatchAxis::new(1, 1, 2, 0, 3, 1, 1).regions();
+        assert_eq!(regions, tvec!(Region::new(0..2, Some(tvec!(true))), Region::new(2..3, None)));
     }
 }
