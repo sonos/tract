@@ -232,6 +232,7 @@ impl TDim {
                     a
                 } else if let Add(terms) = &a {
                     Add(terms.clone().into_iter().map(|a| MulInt(p, b!(a)).simplify()).collect())
+                        .reduce()
                 } else if let Val(p2) = a {
                     Val(p * p2)
                 } else if let MulInt(p2, a) = a {
