@@ -521,9 +521,9 @@ impl ConvUnary {
         let spatial_rank = self.kernel.rank() - 2;
         if let Some(axis) = (0..spatial_rank).find(|&ax| {
             self.pool_spec.stride(ax) > 1
+                && self.pool_spec.padding.valid_dim(ax, self.pool_spec.stride(ax) == 1)
                 && (self.pool_spec.kernel_shape[ax] == 1
-                    || (self.pool_spec.padding.valid_dim(ax, self.pool_spec.stride(ax) == 1)
-                        && self.pool_spec.dilation(ax) % self.pool_spec.stride(ax) == 0))
+                    || self.pool_spec.dilation(ax) % self.pool_spec.stride(ax) == 0)
         }) {
             let downsample_factor = self.pool_spec.stride(axis);
             let mut new_op = self.clone();
@@ -543,6 +543,7 @@ impl ConvUnary {
                 &[tap],
             )?;
             let id = patch.wire_node(&*node.name, new_op, &down)?[0];
+            dbg!(&patch);
             patch.shunt_outside(model, OutletId::new(node.id, 0), id)?;
             return Ok(Some(patch));
         }
@@ -807,11 +808,11 @@ impl TypedOp for ConvUnary {
             != &self.input_channels().to_dim()
         {
             bail!(
-                "Inconsistent convolution: input is {:?}, but kernel expects {} input channels.\n{:?}",
-                inputs[0],
-                self.input_channels(),
-                self
-            );
+                    "Inconsistent convolution: input is {:?}, but kernel expects {} input channels.\n{:?}",
+                    inputs[0],
+                    self.input_channels(),
+                    self
+                    );
         }
         if self.pool_spec.output_channel_override != Some(self.output_channels()) {
             bail!(

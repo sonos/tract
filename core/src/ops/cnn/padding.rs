@@ -282,6 +282,15 @@ mod tests {
     }
 
     #[test]
+    fn explicit_floor_1() {
+        assert_eq!(
+            PS::explicit(&1usize, 1usize, 1, 2, 1, 1, false),
+            ComputedPaddedDim::new(1, 2, 1, 1)
+        );
+    }
+
+
+    #[test]
     fn explicit_2() {
         assert_eq!(
             PS::explicit(&28usize, 3usize, 1, 1, 2, 2, true),
