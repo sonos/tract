@@ -20,7 +20,6 @@ const MANIFEST_PYTORCH_OPERATOR: &str = include_str!("../pytorch-operator.txt");
 
 #[derive(Clone, Debug)]
 struct OnnxTestCase {
-    skipped: bool,
     path: PathBuf,
     ignore_output_shapes: bool,
     ignore_output_type: bool,
@@ -28,10 +27,6 @@ struct OnnxTestCase {
 }
 
 impl Test for OnnxTestCase {
-    fn ignore(&self) -> bool {
-        self.skipped
-    }
-
     fn run(&self, runtime: &dyn Runtime) -> TractResult<()> {
         setup_test_logger();
         let model_file = self.path.join("model.onnx");
@@ -232,7 +227,6 @@ fn full() -> TestSuite {
                     t,
                     OnnxTestCase {
                         path: node_tests.join(t),
-                        skipped,
                         ignore_output_type,
                         ignore_output_shapes,
                         input,

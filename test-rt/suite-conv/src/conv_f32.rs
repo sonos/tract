@@ -144,10 +144,15 @@ impl ConvProblem {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct ConvProblemParams {
+    pub no_arbitrary_grouping: bool,
+}
+
 impl Arbitrary for ConvProblem {
-    type Parameters = ();
+    type Parameters = ConvProblemParams;
     type Strategy = BoxedStrategy<ConvProblem>;
-    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+    fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
         (
             data_format(),
             kernel_format(),
@@ -158,32 +163,38 @@ impl Arbitrary for ConvProblem {
             1usize..=3,
             (1usize..=3).prop_flat_map(shapes),
         )
-            .prop_flat_map(|(df, kf, pad, n, mut ci0, co0, group, (mut ker_shape, data_shape))| {
-                // FIXME in HWIO order, only regular and depthwise are supported
-                if kf == KernelFormat::HWIO && group > 1 {
-                    ci0 = 1;
-                }
-                let shape_in = df.from_n_c_hw(n, ci0 * group, data_shape).unwrap();
-                let data_in = tensor(shape_in.shape.iter().cloned().collect());
-                match kf {
-                    KernelFormat::HWIO => {
-                        ker_shape.push(ci0 * group);
-                        ker_shape.push(co0)
+            .prop_flat_map(
+                move |(df, kf, pad, n, mut ci0, mut co0, group, (mut ker_shape, data_shape))| {
+                    // FIXME in HWIO order, only regular and depthwise are supported
+                    if params.no_arbitrary_grouping && group > 1 {
+                        ci0 = 1;
+                        co0 = 1;
                     }
-                    KernelFormat::OIHW => {
-                        ker_shape.insert(0, ci0);
-                        ker_shape.insert(0, co0 * group)
+                    if kf == KernelFormat::HWIO && group > 1 {
+                        ci0 = 1;
                     }
-                    KernelFormat::OHWI => {
-                        ker_shape.insert(0, co0);
-                        ker_shape.push(ci0 * group);
-                    }
-                };
-                let strides = vec(1usize..=3, shape_in.hw_rank()..=shape_in.hw_rank());
-                let kernel = tensor(ker_shape);
-                let bias = proptest::option::of(tensor(vec![co0 * group]));
-                (Just((kf, pad, shape_in, group)), data_in, kernel, bias, strides)
-            })
+                    let shape_in = df.from_n_c_hw(n, ci0 * group, data_shape).unwrap();
+                    let data_in = tensor(shape_in.shape.iter().cloned().collect());
+                    match kf {
+                        KernelFormat::HWIO => {
+                            ker_shape.push(ci0 * group);
+                            ker_shape.push(co0)
+                        }
+                        KernelFormat::OIHW => {
+                            ker_shape.insert(0, ci0);
+                            ker_shape.insert(0, co0 * group)
+                        }
+                        KernelFormat::OHWI => {
+                            ker_shape.insert(0, co0);
+                            ker_shape.push(ci0 * group);
+                        }
+                    };
+                    let strides = vec(1usize..=3, shape_in.hw_rank()..=shape_in.hw_rank());
+                    let kernel = tensor(ker_shape);
+                    let bias = proptest::option::of(tensor(vec![co0 * group]));
+                    (Just((kf, pad, shape_in, group)), data_in, kernel, bias, strides)
+                },
+            )
             .prop_map(|((kernel_format, pad, shape_in, group), data, kernel, bias, strides)| {
                 ConvProblem {
                     shape_in,
@@ -201,10 +212,6 @@ impl Arbitrary for ConvProblem {
 }
 
 impl Test for ConvProblem {
-    fn ignore(&self) -> bool {
-        false
-    }
-
     fn run(&self, runtime: &dyn Runtime) -> TestResult {
         let reference = self.reference().into_tensor();
         let mut output =
@@ -215,13 +222,9 @@ impl Test for ConvProblem {
 }
 
 #[derive(Clone)]
-struct ConvProptest;
+pub struct ConvProptest;
 
 impl Test for ConvProptest {
-    fn ignore(&self) -> bool {
-        false
-    }
-
     fn run(&self, runtime: &dyn Runtime) -> TestResult {
         let mut runner = TestRunner::new(Config {
             failure_persistence: Some(Box::new(FileFailurePersistence::Off)),
