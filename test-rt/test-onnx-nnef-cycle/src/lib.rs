@@ -16,7 +16,7 @@ impl Runtime for NnefCyclingRuntime {
         self.0.write_to_tar(&model, &mut buffer)?;
         info!("Reload from NNEF");
         let reloaded = self.0.model_for_read(&mut &*buffer)?;
-        Ok(Box::new(reloaded.into_optimized()?.into_runnable()?))
+        Ok(Box::new(Arc::new(reloaded.into_optimized()?.into_runnable()?)))
     }
 }
 

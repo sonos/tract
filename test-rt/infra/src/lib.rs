@@ -1,11 +1,10 @@
 #![allow(clippy::len_zero)]
 use std::collections::HashMap;
 use std::io::Write;
-use std::marker::PhantomData;
 
 use dyn_clone::DynClone;
 use itertools::Itertools;
-use proptest::prelude::{any, any_with, Arbitrary};
+use proptest::prelude::{any_with, Arbitrary};
 use proptest::test_runner::{Config, FileFailurePersistence, TestRunner};
 use tract_core::runtime::Runtime;
 use tract_core::tract_data::TractResult;
@@ -51,8 +50,11 @@ impl TestSuite {
         }
     }
 
-    pub fn add_arbitrary<A: Arbitrary + Test + Clone>(&mut self, id: impl ToString, params: A::Parameters)
-    where
+    pub fn add_arbitrary<A: Arbitrary + Test + Clone>(
+        &mut self,
+        id: impl ToString,
+        params: A::Parameters,
+    ) where
         A::Parameters: Clone + Send + Sync,
     {
         self.add(id, ProptestWrapper::<A>(params));

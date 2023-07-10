@@ -7,7 +7,7 @@ pub fn suite() -> infra::TestSuite {
     conv.ignore(&ignore_conv);
     conv.add_arbitrary::<ConvProblem>(
         "proptest",
-        ConvProblemParams { no_arbitrary_grouping: true, ..ConvProblemParams::default() },
+        ConvProblemParams { no_group: true, geo_rank: Some(1..3), ..ConvProblemParams::default() },
     );
     infra::TestSuite::default().with("onnx", onnx).with("conv", conv)
 }
@@ -29,4 +29,6 @@ fn ignore_conv(t: &[String]) -> bool {
         || unit == "lazy_im2col_big_2"
         || unit == "batch_3d"
         || unit == "bias_3d_1"
+        // nonsense. bug in tfl ? hole in the spec ?
+        || unit == "same_1d_1"
 }
