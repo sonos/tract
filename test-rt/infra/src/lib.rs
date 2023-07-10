@@ -1,9 +1,12 @@
 #![allow(clippy::len_zero)]
 use std::collections::HashMap;
 use std::io::Write;
+use std::marker::PhantomData;
 
 use dyn_clone::DynClone;
 use itertools::Itertools;
+use proptest::prelude::{any, any_with, Arbitrary};
+use proptest::test_runner::{Config, FileFailurePersistence, TestRunner};
 use tract_core::runtime::Runtime;
 use tract_core::tract_data::TractResult;
 
@@ -14,7 +17,6 @@ pub fn setup_test_logger() {
 pub type TestResult = anyhow::Result<()>;
 
 pub trait Test: 'static + Send + Sync + DynClone {
-    fn ignore(&self) -> bool;
     fn run(&self, runtime: &dyn Runtime) -> TestResult;
 }
 
@@ -47,6 +49,13 @@ impl TestSuite {
             }
             TestSuite::Leaf(..) => panic!("Can not add test case to a leaf"),
         }
+    }
+
+    pub fn add_arbitrary<A: Arbitrary + Test + Clone>(&mut self, id: impl ToString, params: A::Parameters)
+    where
+        A::Parameters: Clone + Send + Sync,
+    {
+        self.add(id, ProptestWrapper::<A>(params));
     }
 
     pub fn with(mut self, id: impl ToString, test: impl Into<TestSuite>) -> Self {
@@ -137,5 +146,24 @@ impl TestSuite {
         let test_file = test_dir.join(name).with_extension("rs");
         let mut rs = std::fs::File::create(test_file).unwrap();
         self.dump(test_suite, runtime, "", "", &mut rs).unwrap();
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ProptestWrapper<A: Arbitrary + Test + Clone>(A::Parameters)
+where
+    A::Parameters: Clone + Send + Sync;
+
+impl<A: Arbitrary + Test + Clone> Test for ProptestWrapper<A>
+where
+    A::Parameters: Clone + Send + Sync,
+{
+    fn run(&self, runtime: &dyn Runtime) -> TestResult {
+        let mut runner = TestRunner::new(Config {
+            failure_persistence: Some(Box::new(FileFailurePersistence::Off)),
+            ..Config::default()
+        });
+        runner.run(&any_with::<A>(self.0.clone()), |v| Ok(v.run(runtime).unwrap()))?;
+        Ok(())
     }
 }

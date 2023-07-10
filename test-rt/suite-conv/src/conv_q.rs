@@ -155,9 +155,6 @@ impl QConvProblem {
 }
 
 impl Test for QConvProblem {
-    fn ignore(&self) -> bool {
-        false
-    }
     fn run(&self, runtime: &dyn Runtime) -> TractResult<()> {
         let model = runtime.prepare(self.tract()?)?;
         let output = model.run(tvec!(self.data.clone().into_tensor().into_tvalue()))?.remove(0);
