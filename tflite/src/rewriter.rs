@@ -64,13 +64,13 @@ fn make_1d_2d(
     conv: &ConvUnary,
 ) -> TractResult<Option<TypedModelPatch>> {
     if conv.pool_spec.rank() == 1 {
-        let pos = conv.pool_spec.data_format.h_axis();
+        let pos = conv.pool_spec.data_format.h_axis() + 1;
         let mut new = conv.clone();
-        new.pool_spec.kernel_shape.insert(0, 1);
-        new.pool_spec.dilations.iter_mut().for_each(|dil| dil.insert(0, 1));
-        new.pool_spec.strides.iter_mut().for_each(|dil| dil.insert(0, 1));
+        new.pool_spec.kernel_shape.insert(1, 1);
+        new.pool_spec.dilations.iter_mut().for_each(|dil| dil.insert(1, 1));
+        new.pool_spec.strides.iter_mut().for_each(|dil| dil.insert(1, 1));
         let mut kernel = new.kernel.clone().into_tensor();
-        kernel.insert_axis(conv.kernel_fmt.h_axis())?;
+        kernel.insert_axis(conv.kernel_fmt.h_axis() + 1)?;
         new.kernel = kernel.into_arc_tensor();
         let mut patch = TypedModelPatch::default();
         let mut wire = tvec!(patch.tap_model(model, node.inputs[0])?);

@@ -1,8 +1,16 @@
+use std::ops::Range;
+
 use super::*;
 use infra::*;
 use proptest::collection::vec;
-use proptest::test_runner::{Config, FileFailurePersistence, TestRunner};
 use tract_itertools::izip;
+
+#[derive(Debug, Clone, Default)]
+pub struct ConvProblemParams {
+    pub no_group: bool,
+    pub no_arbitrary_grouping: bool,
+    pub geo_rank: Option<Range<usize>>,
+}
 
 #[derive(Debug, Clone)]
 pub struct ConvProblem {
@@ -30,21 +38,41 @@ impl ConvProblem {
             KernelFormat::HWIO => self.kernel.shape()[self.kernel.ndim() - 1],
             KernelFormat::OHWI => self.kernel.shape()[0],
         };
-        let (shape_out, left_pads): (TVec<_>, TVec<_>) = if self.pad == PaddingSpec::Valid {
-            izip!(self.shape_in.hw_dims(), self.geo_ker(), &self.strides)
+        let (shape_out, left_pads): (TVec<_>, TVec<_>) = match &self.pad {
+            PaddingSpec::Valid => izip!(self.shape_in.hw_dims(), self.geo_ker(), &self.strides)
                 .map(|(i, k, s)| {
                     let out = (*i + 1).saturating_sub(*k).divceil(*s);
                     (out, 0)
                 })
-                .unzip()
-        } else {
-            izip!(self.shape_in.hw_dims(), self.geo_ker(), &self.strides)
+                .unzip(),
+            PaddingSpec::SameUpper => izip!(self.shape_in.hw_dims(), self.geo_ker(), &self.strides)
                 .map(|(input, k, stride)| {
                     let out = input.divceil(*stride);
                     let pad = ((out - 1) * stride + k).saturating_sub(*input);
                     (out, pad / 2)
                 })
-                .unzip()
+                .unzip(),
+            PaddingSpec::SameLower => izip!(self.shape_in.hw_dims(), self.geo_ker(), &self.strides)
+                .map(|(input, k, stride)| {
+                    let out = input.divceil(*stride);
+                    let pad = ((out - 1) * stride + k).saturating_sub(*input);
+                    (out, pad.divceil(2))
+                })
+                .unzip(),
+            PaddingSpec::Explicit(l, r, ceil) => {
+                izip!(self.shape_in.hw_dims(), self.geo_ker(), &self.strides, l, r)
+                    .map(|(input, k, stride, l, r)| {
+                        let dil = 1;
+                        let kf = (k - 1) * dil + 1;
+                        let out = if *ceil {
+                            (input + l + r).saturating_sub(kf).divceil(*stride) + 1
+                        } else {
+                            (input + l + r).saturating_sub(kf) / *stride + 1
+                        };
+                        (out, *l)
+                    })
+                    .unzip()
+            }
         };
         let shape_out = self
             .shape_in
@@ -144,15 +172,11 @@ impl ConvProblem {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct ConvProblemParams {
-    pub no_arbitrary_grouping: bool,
-}
-
 impl Arbitrary for ConvProblem {
     type Parameters = ConvProblemParams;
     type Strategy = BoxedStrategy<ConvProblem>;
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+        let geo_rank = params.geo_rank.unwrap_or(1..4);
         (
             data_format(),
             kernel_format(),
@@ -160,8 +184,8 @@ impl Arbitrary for ConvProblem {
             1usize..=3,
             1usize..=4,
             1usize..=4,
-            1usize..=3,
-            (1usize..=3).prop_flat_map(shapes),
+            1usize..=(if params.no_group { 1 } else { 3 }),
+            geo_rank.prop_flat_map(shapes),
         )
             .prop_flat_map(
                 move |(df, kf, pad, n, mut ci0, mut co0, group, (mut ker_shape, data_shape))| {
@@ -217,28 +241,15 @@ impl Test for ConvProblem {
         let mut output =
             runtime.prepare(self.tract()?)?.run(tvec![self.data.clone().into_tvalue()])?;
         let output = output.remove(0).into_tensor();
-        reference.close_enough(&output, true)
-    }
-}
-
-#[derive(Clone)]
-pub struct ConvProptest;
-
-impl Test for ConvProptest {
-    fn run(&self, runtime: &dyn Runtime) -> TestResult {
-        let mut runner = TestRunner::new(Config {
-            failure_persistence: Some(Box::new(FileFailurePersistence::Off)),
-            ..Config::default()
-        });
-        runner.run(&any::<ConvProblem>(), |v| Ok(v.run(runtime).unwrap()))?;
-        Ok(())
+        eprintln!("output: {output:?} reference: {reference:?}");
+        output.close_enough(&reference, true)
     }
 }
 
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite = TestSuite::default();
 
-    suite.add("proptest", ConvProptest);
+    suite.add_arbitrary::<ConvProblem>("proptest", ConvProblemParams::default());
 
     suite.add(
         "trivial_0",
@@ -308,6 +319,21 @@ pub fn suite() -> TractResult<TestSuite> {
             strides: tvec!(1),
         },
     );
+
+    suite.add(
+        "group_0",
+        ConvProblem {
+            shape_in: DataFormat::CHW.from_n_c_hw(1, 2, [1])?,
+            kernel_format: KernelFormat::OIHW,
+            group: 2,
+            data: arr2(&[[0.0f32], [0.0]]).into_dyn(),
+            kernel: arr3(&[[[0.0f32]], [[0.0]]]).into_dyn(),
+            bias: None,
+            pad: PaddingSpec::Valid,
+            strides: tvec!(1),
+        },
+    );
+
     suite.add(
         "group_1",
         ConvProblem {
@@ -627,7 +653,7 @@ pub fn suite() -> TractResult<TestSuite> {
     );
 
     suite.add(
-        "same_0",
+        "same_1d_0",
         ConvProblem {
             shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [1])?,
             kernel_format: KernelFormat::OIHW,
@@ -641,13 +667,13 @@ pub fn suite() -> TractResult<TestSuite> {
     );
 
     suite.add(
-        "same_1",
+        "same_1d_1",
         ConvProblem {
             shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [2])?,
             kernel_format: KernelFormat::OIHW,
             group: 1,
             data: arr2(&[[0.0], [1.0]]).into_dyn(),
-            kernel: arr3(&[[[0.0, 1.0]]]).into_dyn(),
+            kernel: arr3(&[[[0.0, 2.0]]]).into_dyn(),
             bias: None,
             pad: PaddingSpec::SameUpper,
             strides: tvec!(1),
