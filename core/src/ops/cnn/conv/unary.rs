@@ -543,7 +543,6 @@ impl ConvUnary {
                 &[tap],
             )?;
             let id = patch.wire_node(&*node.name, new_op, &down)?[0];
-            dbg!(&patch);
             patch.shunt_outside(model, OutletId::new(node.id, 0), id)?;
             return Ok(Some(patch));
         }

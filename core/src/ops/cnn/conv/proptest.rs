@@ -61,11 +61,19 @@ impl ConvProblem {
                     .map(|(input, k, stride, l, r)| {
                         let dil = 1;
                         let kf = (k - 1) * dil + 1;
-                        let out = if *ceil {
+                        let mut out = if *ceil {
                             (input + l + r).saturating_sub(kf).divceil(*stride) + 1
                         } else {
                             (input + l + r).saturating_sub(kf) / *stride + 1
                         };
+                        // pytorch semantics diverge from onnx (and onnx are super weird)
+                        // https://github.com/pytorch/pytorch/blob/main/aten/src/ATen/native/Pool.h#L48C2-L54C6
+                        if *ceil {
+                            if (out - 1) * stride >= input + l {
+                                out -= 1;
+                            }
+                        }
+
                         (out, *l)
                     })
                     .unzip()
@@ -166,7 +174,6 @@ impl ConvProblem {
         );
         let wire = model.wire_node("conv", op, &[wire])?[0];
         model.set_output_outlets(&[wire])?;
-        dbg!(&model);
         let mut output =
             model.into_optimized()?.into_runnable()?.run(tvec![self.data.clone().into_tvalue()])?;
         output.remove(0).into_tensor().into_array::<f32>()
@@ -907,12 +914,28 @@ fn strides_2_dnn_padding_2() -> anyhow::Result<()> {
 }
 
 #[test]
-fn strides_2_dnn_padding_3() -> anyhow::Result<()> {
+fn strides_2_dnn_padding_ceil_0() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [1])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data: tract_ndarray::arr2(&[[0.0]]).into_dyn(),
+        kernel: tract_ndarray::arr3(&[[[0.0]]]).into_dyn(),
+        bias: None,
+        pad: PaddingSpec::Explicit(tvec!(0), tvec!(1), true),
+        strides: tvec!(2),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
+fn strides_2_dnn_padding_ceil_1() -> anyhow::Result<()> {
     let pb = ConvProblem {
         shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [2])?,
         kernel_format: KernelFormat::OIHW,
         group: 1,
-        data: tract_ndarray::arr2(&[[0.0],[0.0]]).into_dyn(),
+        data: tract_ndarray::arr2(&[[0.0], [0.0]]).into_dyn(),
         kernel: tract_ndarray::arr3(&[[[0.0]]]).into_dyn(),
         bias: None,
         pad: PaddingSpec::Explicit(tvec!(0), tvec!(0), true),
@@ -997,6 +1020,22 @@ fn strides_two_axes() -> anyhow::Result<()> {
         bias: None,
         pad: PaddingSpec::Valid,
         strides: tvec!(2, 2),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
+fn strides_two_axes_explicit() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [2, 3])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data: tract_ndarray::ArrayD::<f32>::zeros(vec![2, 3, 1]),
+        kernel: tract_ndarray::ArrayD::<f32>::zeros(vec![1, 1, 2, 3]),
+        bias: None,
+        pad: PaddingSpec::Explicit(tvec!(0, 1), tvec!(0, 0), true),
+        strides: tvec!(1, 2),
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
@@ -1096,7 +1135,7 @@ fn same_upper() -> anyhow::Result<()> {
 }
 
 #[test]
-fn explicit_dnn() -> anyhow::Result<()> {
+fn explicit_dnn_left() -> anyhow::Result<()> {
     let pb = ConvProblem {
         shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [1])?,
         kernel_format: KernelFormat::OIHW,
@@ -1105,6 +1144,38 @@ fn explicit_dnn() -> anyhow::Result<()> {
         kernel: tract_ndarray::arr3(&[[[0.0]]]).into_dyn(),
         bias: None,
         pad: PaddingSpec::Explicit(tvec!(2), tvec!(0), false),
+        strides: tvec!(1),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
+fn explicit_dnn_right_0() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [1])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data: tract_ndarray::arr2(&[[0.0]]).into_dyn(),
+        kernel: tract_ndarray::arr3(&[[[0.0]]]).into_dyn(),
+        bias: None,
+        pad: PaddingSpec::Explicit(tvec!(0), tvec!(2), false),
+        strides: tvec!(1),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
+fn explicit_dnn_right_1() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [1])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data: tract_ndarray::arr2(&[[0.0]]).into_dyn(),
+        kernel: tract_ndarray::arr3(&[[[0.0]]]).into_dyn(),
+        bias: None,
+        pad: PaddingSpec::Explicit(tvec!(0), tvec!(1), true),
         strides: tvec!(1),
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
