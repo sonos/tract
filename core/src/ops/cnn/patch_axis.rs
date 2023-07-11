@@ -43,7 +43,7 @@ impl PatchAxis {
     fn invalid_at_right(&self, pos: usize) -> usize {
         let center_pos = pos * self.stride;
         let last_valid = self.input_dim + self.pad_before;
-        let valid = (last_valid - center_pos).divceil(self.dilation);
+        let valid = last_valid.saturating_sub(center_pos).divceil(self.dilation);
         self.kernel_dim.saturating_sub(valid)
     }
 
