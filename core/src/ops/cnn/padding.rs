@@ -196,12 +196,12 @@ impl PaddingSpec {
         if ceil_mode {
             // ensure that the last pooling starts inside the image
             // needed to avoid problems in ceil mode
-            if (output - 1) * stride >= input.clone() + bef {
+            if (output - 1) * stride >= input + bef {
                 output -= 1;
             }
         }
         let after = (output * stride) + kernel_field - 1 - input - bef;
-        ComputedPaddedDim::new(input.clone(), output, bef.into(), after.into())
+        ComputedPaddedDim::new(input, output, bef, after)
     }
 
     fn explicit_for_deconv<D: DimLike>(
