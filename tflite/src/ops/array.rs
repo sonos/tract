@@ -12,21 +12,18 @@ pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tflite::<AxisOp>(ser_axisop);
     reg.to_tract.insert(BuiltinOperator::EXPAND_DIMS, de_expand_dims);
     reg.to_tract.insert(BuiltinOperator::RESHAPE, de_reshape);
+    reg.to_tract.insert(BuiltinOperator::SHAPE, de_shape);
     reg.to_tract.insert(BuiltinOperator::SQUEEZE, de_squeeze);
     reg.to_tract.insert(BuiltinOperator::TRANSPOSE, de_transpose);
 }
 
 fn de_expand_dims(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
-    let axes = op
-        .ctx
-        .target
-        .outlet_fact(op.inputs[1])?
-        .konst
-        .clone()
-        .context("Dynamic EXPAND_DIMS is not supported")?;
+    let (input, axes) = args_2!(op.facts()?);
+    let axes = axes.konst.clone().context("Dynamic EXPAND_DIMS is not supported")?;
     let mut wire = tvec!(op.inputs[0]);
     let prefix = op.prefix;
     for (ix, &axis) in axes.as_slice::<i32>()?.iter().sorted().rev().enumerate() {
+        let axis = if axis < 0 { axis + input.rank() as i32 } else { axis };
         wire =
             op.ctx.target.wire_node(format!("{prefix}.{ix}"), AxisOp::Add(axis as usize), &wire)?;
     }
@@ -45,6 +42,13 @@ fn de_reshape(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     }
     Ok(wire)
 }
+
+fn de_shape(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let input = args_1!(op.facts()?);
+    let wire = op.ctx.target.add_const(op.prefix, tensor1(&input.shape))?;
+    Ok(tvec!(wire))
+}
+
 
 fn de_squeeze(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let options = builtin!(op, builtin_options_as_squeeze_options);
