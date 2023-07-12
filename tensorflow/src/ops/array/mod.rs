@@ -3,6 +3,7 @@ use tract_hir::internal::*;
 
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
+use tract_core::ops::array::StridedSlice;
 
 mod concatv2;
 mod expand_dims;
@@ -33,11 +34,10 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
 }
 
 fn strided_slice(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
-    use tract_hir::ops::array::StridedSlice;
     let begin_mask = pb.get_attr_opt_int("begin_mask")?.unwrap_or(0);
     let end_mask = pb.get_attr_opt_int("end_mask")?.unwrap_or(0);
     let shrink_axis_mask = pb.get_attr_opt_int("shrink_axis_mask")?.unwrap_or(0);
-    Ok(expand(StridedSlice {
+    Ok(Box::new(StridedSlice {
         begin_mask,
         end_mask,
         shrink_axis_mask,
@@ -47,8 +47,7 @@ fn strided_slice(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Inf
 }
 
 fn slice(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
-    use tract_hir::ops::array::StridedSlice;
-    Ok(expand(StridedSlice {
+    Ok(Box::new(StridedSlice {
         optional_axes_input: None,
         optional_steps_input: None,
         begin_mask: 0,

@@ -117,7 +117,7 @@ fn slice10(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let mut optional_inputs = crate::model::optional_inputs(node).skip(3);
     Ok((
-        expand(tract_hir::ops::array::StridedSlice {
+        Box::new(tract_hir::ops::array::StridedSlice {
             begin_mask: 0,
             end_mask: 0,
             shrink_axis_mask: 0,
