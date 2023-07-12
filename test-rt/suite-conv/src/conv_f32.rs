@@ -64,11 +64,19 @@ impl ConvProblem {
                     .map(|(input, k, stride, l, r)| {
                         let dil = 1;
                         let kf = (k - 1) * dil + 1;
-                        let out = if *ceil {
+                        let mut out = if *ceil {
                             (input + l + r).saturating_sub(kf).divceil(*stride) + 1
                         } else {
                             (input + l + r).saturating_sub(kf) / *stride + 1
                         };
+
+                        // pytorch semantics diverge from onnx (and onnx are super weird)
+                        // https://github.com/pytorch/pytorch/blob/main/aten/src/ATen/native/Pool.h#L48C2-L54C6
+                        if *ceil {
+                            if (out - 1) * stride >= input + l {
+                                out -= 1;
+                            }
+                        }
                         (out, *l)
                     })
                     .unzip()
@@ -653,6 +661,20 @@ pub fn suite() -> TractResult<TestSuite> {
     );
 
     suite.add(
+        "same_0",
+        ConvProblem {
+            shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [1])?,
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: ArrayD::<f32>::zeros(vec![1, 1]),
+            kernel: ArrayD::<f32>::zeros(vec![1, 1, 1]),
+            bias: None,
+            pad: PaddingSpec::SameUpper,
+            strides: tvec!(1),
+        },
+    );
+
+    suite.add(
         "same_1d_0",
         ConvProblem {
             shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [1])?,
@@ -751,6 +773,62 @@ pub fn suite() -> TractResult<TestSuite> {
     );
 
     suite.add(
+        "strides_2_dnn_padding_1",
+        ConvProblem {
+            shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [6])?,
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: tract_ndarray::arr2(&[[0.0], [0.0], [0.0], [0.0], [0.0], [0.0]]).into_dyn(),
+            kernel: tract_ndarray::arr3(&[[[0.0]]]).into_dyn(),
+            bias: None,
+            pad: PaddingSpec::Explicit(tvec!(1), tvec!(1), false),
+            strides: tvec!(2),
+        },
+    );
+
+    suite.add(
+        "strides_2_dnn_padding_2",
+        ConvProblem {
+            shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [1])?,
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: tract_ndarray::arr2(&[[0.0]]).into_dyn(),
+            kernel: tract_ndarray::arr3(&[[[0.0]]]).into_dyn(),
+            bias: None,
+            pad: PaddingSpec::Explicit(tvec!(1), tvec!(1), false),
+            strides: tvec!(2),
+        },
+    );
+
+    suite.add(
+        "strides_2_dnn_padding_ceil_0",
+        ConvProblem {
+            shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [1])?,
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: tract_ndarray::arr2(&[[0.0]]).into_dyn(),
+            kernel: tract_ndarray::arr3(&[[[0.0]]]).into_dyn(),
+            bias: None,
+            pad: PaddingSpec::Explicit(tvec!(0), tvec!(1), true),
+            strides: tvec!(2),
+        },
+    );
+
+    suite.add(
+        "strides_2_dnn_padding_ceil_1",
+        ConvProblem {
+            shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [2])?,
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: tract_ndarray::arr2(&[[0.0], [0.0]]).into_dyn(),
+            kernel: tract_ndarray::arr3(&[[[0.0]]]).into_dyn(),
+            bias: None,
+            pad: PaddingSpec::Explicit(tvec!(0), tvec!(0), true),
+            strides: tvec!(2),
+        },
+    );
+
+    suite.add(
         "strides_2",
         ConvProblem {
             shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [3])?,
@@ -817,6 +895,20 @@ pub fn suite() -> TractResult<TestSuite> {
             bias: None,
             pad: PaddingSpec::Valid,
             strides: tvec!(2, 2),
+        },
+    );
+
+    suite.add(
+        "strides_two_axes_explicit",
+        ConvProblem {
+            shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [2, 3])?,
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: tract_ndarray::ArrayD::<f32>::zeros(vec![2, 3, 1]),
+            kernel: tract_ndarray::ArrayD::<f32>::zeros(vec![1, 1, 2, 3]),
+            bias: None,
+            pad: PaddingSpec::Explicit(tvec!(0, 1), tvec!(0, 0), true),
+            strides: tvec!(1, 2),
         },
     );
 
@@ -899,6 +991,47 @@ pub fn suite() -> TractResult<TestSuite> {
             kernel,
             bias: None,
             pad: PaddingSpec::SameUpper,
+            strides: tvec!(1),
+        },
+    );
+    suite.add(
+        "explicit_dnn_left",
+        ConvProblem {
+            shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [1])?,
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: tract_ndarray::arr2(&[[0.0]]).into_dyn(),
+            kernel: tract_ndarray::arr3(&[[[0.0]]]).into_dyn(),
+            bias: None,
+            pad: PaddingSpec::Explicit(tvec!(2), tvec!(0), false),
+            strides: tvec!(1),
+        },
+    );
+
+    suite.add(
+        "explicit_dnn_right_0",
+        ConvProblem {
+            shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [1])?,
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: tract_ndarray::arr2(&[[0.0]]).into_dyn(),
+            kernel: tract_ndarray::arr3(&[[[0.0]]]).into_dyn(),
+            bias: None,
+            pad: PaddingSpec::Explicit(tvec!(0), tvec!(2), false),
+            strides: tvec!(1),
+        },
+    );
+
+    suite.add(
+        "explicit_dnn_right_1",
+        ConvProblem {
+            shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [1])?,
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: tract_ndarray::arr2(&[[0.0]]).into_dyn(),
+            kernel: tract_ndarray::arr3(&[[[0.0]]]).into_dyn(),
+            bias: None,
+            pad: PaddingSpec::Explicit(tvec!(0), tvec!(1), true),
             strides: tvec!(1),
         },
     );
