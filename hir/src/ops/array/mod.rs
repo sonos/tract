@@ -48,5 +48,5 @@ pub use size::Size;
 pub use slice::Slice;
 pub use split::Split;
 pub use squeeze::Squeeze;
-pub use strided_slice::StridedSlice;
+pub use tract_core::ops::array::StridedSlice;
 pub use tile::Tile;
