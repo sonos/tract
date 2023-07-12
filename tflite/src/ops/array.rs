@@ -10,6 +10,8 @@ use crate::tflite::{
     SqueezeOptionsArgs, TransposeOptions, TransposeOptionsArgs,
 };
 
+use super::wire_fused_activation;
+
 pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tflite::<AxisOp>(ser_axisop);
     reg.to_tract.insert(BuiltinOperator::CONCATENATION, de_concat);
@@ -28,7 +30,8 @@ fn de_concat(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         if options.axis() < 0 { rank as i32 + options.axis() } else { options.axis() } as usize;
     let dt = DatumType::super_type_for(op.facts()?.iter().map(|f| f.datum_type)).unwrap();
     let inputs = wire_cast(&op.prefix, &mut op.ctx.target, &op.inputs, dt)?;
-    op.ctx.target.wire_node(op.prefix, TypedConcat::new(axis), &inputs)
+    let wires = op.ctx.target.wire_node(op.prefix, TypedConcat::new(axis), &inputs)?;
+    wire_fused_activation(op, &wires, &options.fused_activation_function())
 }
 
 fn de_expand_dims(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
