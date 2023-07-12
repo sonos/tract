@@ -1,4 +1,6 @@
 use tract_hir::internal::*;
+use tract_hir::ops::array::TypedConcat;
+use tract_hir::ops::binary::wire_cast;
 use tract_hir::prelude::tract_itertools::Itertools;
 
 use crate::registry::{DeserOp, Registry};
@@ -10,12 +12,23 @@ use crate::tflite::{
 
 pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tflite::<AxisOp>(ser_axisop);
+    reg.to_tract.insert(BuiltinOperator::CONCATENATION, de_concat);
     reg.to_tract.insert(BuiltinOperator::EXPAND_DIMS, de_expand_dims);
     reg.to_tract.insert(BuiltinOperator::RESHAPE, de_reshape);
     reg.to_tract.insert(BuiltinOperator::SHAPE, de_shape);
     reg.to_tract.insert(BuiltinOperator::SQUEEZE, de_squeeze);
     reg.to_tract.insert(BuiltinOperator::STRIDED_SLICE, de_strided_slice);
     reg.to_tract.insert(BuiltinOperator::TRANSPOSE, de_transpose);
+}
+
+fn de_concat(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let options = builtin!(op, builtin_options_as_concatenation_options);
+    let rank = op.facts()?[0].rank();
+    let axis =
+        if options.axis() < 0 { rank as i32 + options.axis() } else { options.axis() } as usize;
+    let dt = DatumType::super_type_for(op.facts()?.iter().map(|f| f.datum_type)).unwrap();
+    let inputs = wire_cast(&op.prefix, &mut op.ctx.target, &op.inputs, dt)?;
+    op.ctx.target.wire_node(op.prefix, TypedConcat::new(axis), &inputs)
 }
 
 fn de_expand_dims(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
@@ -54,7 +67,9 @@ fn de_squeeze(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let options = builtin!(op, builtin_options_as_squeeze_options);
     let mut wire = tvec!(op.inputs[0]);
     let prefix = op.prefix;
+    let rank = op.facts()?[0].rank();
     for (ix, axis) in options.squeeze_dims().unwrap().iter().sorted().enumerate() {
+        let axis = if axis < 0 { rank as i32 + axis } else { axis } as usize;
         wire =
             op.ctx.target.wire_node(format!("{prefix}.{ix}"), AxisOp::Rm(axis as usize), &wire)?;
     }
