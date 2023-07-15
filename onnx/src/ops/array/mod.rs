@@ -22,7 +22,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Concat", concat);
     reg.insert("ConstantLike", constant_like);
     reg.insert("ConstantOfShape", constant_of_shape);
-    reg.insert("Expand", |_, _| Ok((expand(array::MultiBroadcastTo::default()), vec![])));
+    reg.insert("Expand", |_, _| Ok((expand(array::MultiBroadcastTo), vec![])));
     reg.insert("EyeLike", eye_like);
     reg.insert("Flatten", flatten);
     reg.insert("Gather", gather);
@@ -30,7 +30,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("GatherND", gather_nd);
     reg.insert("NonZero", nonzero::non_zero);
     reg.insert("OneHot", one_hot::one_hot);
-    reg.insert("Range", |_, _| Ok((expand(array::Range::default()), vec![])));
+    reg.insert("Range", |_, _| Ok((expand(array::Range), vec![])));
     reg.insert("Pad", pad::pad);
     reg.insert("Reshape", |_, _| Ok((expand(array::Reshape::default()), vec![])));
     reg.insert("Scatter", scatter_elements);
@@ -41,7 +41,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Slice", slice::slice);
     reg.insert("Split", split::split);
     reg.insert("Squeeze", squeeze::squeeze);
-    reg.insert("Tile", |_, _| Ok((expand(array::Tile::default()), vec![])));
+    reg.insert("Tile", |_, _| Ok((expand(array::Tile), vec![])));
     reg.insert("TopK", topk::topk);
     reg.insert("Transpose", transpose);
     reg.insert("Trilu", trilu::trilu);
