@@ -839,7 +839,7 @@
 
 
 <h3 id="tract.model.Model" class="doc doc-heading">
-        <code>Model</code>
+          <code>Model</code>
 
 
 </h3>
@@ -878,10 +878,9 @@ known. There is support in tract for symbols in dimensions, with some limited co
 capabilities on symbolic expression. For instance, it is relatively frequent to work with
 a Model where all tensors shapes start with the <code>N</code> or <code>Batch</code>.</p>
 
-
-        <details class="quote">
-          <summary>Source code in <code>tract/model.py</code></summary>
-          <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">  9</span>
+            <details class="quote">
+              <summary>Source code in <code>tract/model.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">  9</span>
 <span class="normal"> 10</span>
 <span class="normal"> 11</span>
 <span class="normal"> 12</span>
@@ -1323,7 +1322,7 @@ a Model where all tensors shapes start with the <code>N</code> or <code>Batch</c
         <span class="n">lib</span><span class="o">.</span><span class="n">tract_free_cstring</span><span class="p">(</span><span class="n">cstring</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">result</span>
 </code></pre></div></td></tr></table></div>
-        </details>
+            </details>
 
   
 
@@ -1336,6 +1335,7 @@ a Model where all tensors shapes start with the <code>N</code> or <code>Batch</c
 
 
 <h4 id="tract.model.Model-functions">Functions</h4>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1351,9 +1351,9 @@ a Model where all tensors shapes start with the <code>N</code> or <code>Batch</c
   
       <p>Return the number of inputs of the model</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">60</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">60</span>
 <span class="normal">61</span>
 <span class="normal">62</span>
 <span class="normal">63</span>
@@ -1365,10 +1365,11 @@ a Model where all tensors shapes start with the <code>N</code> or <code>Batch</c
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_nbio</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">i</span><span class="p">),</span> <span class="kc">None</span><span class="p">))</span>
     <span class="k">return</span> <span class="n">i</span><span class="o">.</span><span class="n">value</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1384,9 +1385,9 @@ a Model where all tensors shapes start with the <code>N</code> or <code>Batch</c
   
       <p>Return the number of outputs of the model</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">67</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">67</span>
 <span class="normal">68</span>
 <span class="normal">69</span>
 <span class="normal">70</span>
@@ -1398,10 +1399,11 @@ a Model where all tensors shapes start with the <code>N</code> or <code>Batch</c
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_nbio</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">i</span><span class="p">)))</span>
     <span class="k">return</span> <span class="n">i</span><span class="o">.</span><span class="n">value</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1417,9 +1419,9 @@ a Model where all tensors shapes start with the <code>N</code> or <code>Batch</c
   
       <p>Return the name of the input_id-th input</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">74</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">74</span>
 <span class="normal">75</span>
 <span class="normal">76</span>
 <span class="normal">77</span>
@@ -1435,10 +1437,11 @@ a Model where all tensors shapes start with the <code>N</code> or <code>Batch</c
     <span class="n">lib</span><span class="o">.</span><span class="n">tract_free_cstring</span><span class="p">(</span><span class="n">cstring</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">result</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1454,9 +1457,9 @@ a Model where all tensors shapes start with the <code>N</code> or <code>Batch</c
   
       <p>Return the fact of the input_id-th input</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">83</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">83</span>
 <span class="normal">84</span>
 <span class="normal">85</span>
 <span class="normal">86</span>
@@ -1468,10 +1471,11 @@ a Model where all tensors shapes start with the <code>N</code> or <code>Batch</c
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_input_fact</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">input_id</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">fact</span><span class="p">)))</span>
     <span class="k">return</span> <span class="n">Fact</span><span class="p">(</span><span class="n">fact</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1487,9 +1491,9 @@ a Model where all tensors shapes start with the <code>N</code> or <code>Batch</c
   
       <p>Change the output nodes of the model</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">90</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">90</span>
 <span class="normal">91</span>
 <span class="normal">92</span>
 <span class="normal">93</span>
@@ -1509,10 +1513,11 @@ a Model where all tensors shapes start with the <code>N</code> or <code>Batch</c
         <span class="n">names_ptr</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span> <span class="o">=</span> <span class="n">names_str</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span>
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_set_output_names</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">nb</span><span class="p">,</span> <span class="n">names_ptr</span><span class="p">))</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1528,9 +1533,9 @@ a Model where all tensors shapes start with the <code>N</code> or <code>Batch</c
   
       <p>Return the name of the output_id-th output</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">101</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">101</span>
 <span class="normal">102</span>
 <span class="normal">103</span>
 <span class="normal">104</span>
@@ -1546,10 +1551,11 @@ a Model where all tensors shapes start with the <code>N</code> or <code>Batch</c
     <span class="n">lib</span><span class="o">.</span><span class="n">tract_free_cstring</span><span class="p">(</span><span class="n">cstring</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">result</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1565,9 +1571,9 @@ a Model where all tensors shapes start with the <code>N</code> or <code>Batch</c
   
       <p>Return the fact of the output_id-th output</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">110</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">110</span>
 <span class="normal">111</span>
 <span class="normal">112</span>
 <span class="normal">113</span>
@@ -1579,10 +1585,11 @@ a Model where all tensors shapes start with the <code>N</code> or <code>Batch</c
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_output_fact</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">input_id</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">fact</span><span class="p">)))</span>
     <span class="k">return</span> <span class="n">Fact</span><span class="p">(</span><span class="n">fact</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1601,9 +1608,9 @@ a Model where all tensors shapes start with the <code>N</code> or <code>Batch</c
 <p>While this is not strictly necesary, the optimizing steps may make better choices if the model
 is informed of some specific symbol values.</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">117</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">117</span>
 <span class="normal">118</span>
 <span class="normal">119</span>
 <span class="normal">120</span>
@@ -1639,10 +1646,11 @@ is informed of some specific symbol values.</p>
         <span class="n">values_list</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span>
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_concretize_symbols</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">c_size_t</span><span class="p">(</span><span class="n">nb</span><span class="p">),</span> <span class="n">names</span><span class="p">,</span> <span class="n">values_list</span><span class="p">))</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1659,9 +1667,9 @@ is informed of some specific symbol values.</p>
       <p>Pulsify a model.</p>
 <p><code>pulse</code> is typically a one-length dictionary mapping the time dimension symbol to a pulse len.</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">136</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">136</span>
 <span class="normal">137</span>
 <span class="normal">138</span>
 <span class="normal">139</span>
@@ -1675,10 +1683,11 @@ is informed of some specific symbol values.</p>
     <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_pulse_simple</span><span class="p">(</span><span class="n">byref</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">),</span> <span class="n">symbol</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">),</span> <span class="nb">str</span><span class="p">(</span><span class="n">pulse</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)))</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1694,9 +1703,9 @@ is informed of some specific symbol values.</p>
   
       <p>Convert the model to hald precision</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">144</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">144</span>
 <span class="normal">145</span>
 <span class="normal">146</span>
 <span class="normal">147</span>
@@ -1706,10 +1715,11 @@ is informed of some specific symbol values.</p>
     <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_half</span><span class="p">(</span><span class="n">byref</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">)))</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1727,9 +1737,9 @@ is informed of some specific symbol values.</p>
 <p>Perform the first "half" of optimisation phases, consisting or removing training artefacts and converge
 on tract-core canonical form.</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">150</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">150</span>
 <span class="normal">151</span>
 <span class="normal">152</span>
 <span class="normal">153</span>
@@ -1745,10 +1755,11 @@ on tract-core canonical form.</p>
     <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_declutter</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">))</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1766,9 +1777,9 @@ on tract-core canonical form.</p>
 <p>Perform the second "half" of optimisation phases, consisting of translating the tract-core canonical
 form to the best runtime for the current architecture.</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">159</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">159</span>
 <span class="normal">160</span>
 <span class="normal">161</span>
 <span class="normal">162</span>
@@ -1784,10 +1795,11 @@ form to the best runtime for the current architecture.</p>
     <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_optimize</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">))</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1803,9 +1815,9 @@ form to the best runtime for the current architecture.</p>
   
       <p>Convenience method performing <code>declutter()</code> and returning the model</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">168</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">168</span>
 <span class="normal">169</span>
 <span class="normal">170</span>
 <span class="normal">171</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">into_decluttered</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Model&quot;</span><span class="p">:</span>
@@ -1813,10 +1825,11 @@ form to the best runtime for the current architecture.</p>
     <span class="bp">self</span><span class="o">.</span><span class="n">declutter</span><span class="p">();</span>
     <span class="k">return</span> <span class="bp">self</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1832,9 +1845,9 @@ form to the best runtime for the current architecture.</p>
   
       <p>Convenience method performing <code>optimize()</code> and returning the model</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">173</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">173</span>
 <span class="normal">174</span>
 <span class="normal">175</span>
 <span class="normal">176</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">into_optimized</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Model&quot;</span><span class="p">:</span>
@@ -1842,10 +1855,11 @@ form to the best runtime for the current architecture.</p>
     <span class="bp">self</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
     <span class="k">return</span> <span class="bp">self</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1861,9 +1875,9 @@ form to the best runtime for the current architecture.</p>
   
       <p>Transform the model into a ready to be used Runnable model</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">178</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">178</span>
 <span class="normal">179</span>
 <span class="normal">180</span>
 <span class="normal">181</span>
@@ -1875,10 +1889,11 @@ form to the best runtime for the current architecture.</p>
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_into_runnable</span><span class="p">(</span><span class="n">byref</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">),</span> <span class="n">byref</span><span class="p">(</span><span class="n">runnable</span><span class="p">)))</span>
     <span class="k">return</span> <span class="n">Runnable</span><span class="p">(</span><span class="n">runnable</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1894,9 +1909,9 @@ form to the best runtime for the current architecture.</p>
   
       <p>Query the list of properties names of the model.</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">185</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">185</span>
 <span class="normal">186</span>
 <span class="normal">187</span>
 <span class="normal">188</span>
@@ -1922,10 +1937,11 @@ form to the best runtime for the current architecture.</p>
         <span class="n">lib</span><span class="o">.</span><span class="n">tract_free_cstring</span><span class="p">(</span><span class="n">cstrings</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
     <span class="k">return</span> <span class="n">names</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1941,9 +1957,9 @@ form to the best runtime for the current architecture.</p>
   
       <p>Query a property by name</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">199</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">199</span>
 <span class="normal">200</span>
 <span class="normal">201</span>
 <span class="normal">202</span>
@@ -1955,10 +1971,11 @@ form to the best runtime for the current architecture.</p>
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_property</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">),</span> <span class="n">byref</span><span class="p">(</span><span class="n">value</span><span class="p">)))</span>
     <span class="k">return</span> <span class="n">Value</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1975,9 +1992,9 @@ form to the best runtime for the current architecture.</p>
       <p>Profile the model. Also compute the static costs of operators.</p>
 <p>Returns is a json buffer.</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">206</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">206</span>
 <span class="normal">207</span>
 <span class="normal">208</span>
 <span class="normal">209</span>
@@ -2025,7 +2042,7 @@ form to the best runtime for the current architecture.</p>
     <span class="n">lib</span><span class="o">.</span><span class="n">tract_free_cstring</span><span class="p">(</span><span class="n">cstring</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">result</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>

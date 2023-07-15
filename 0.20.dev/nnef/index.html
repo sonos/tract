@@ -631,7 +631,7 @@
 
 
 <h3 id="tract.nnef.Nnef" class="doc doc-heading">
-        <code>Nnef</code>
+          <code>Nnef</code>
 
 
 </h3>
@@ -648,10 +648,9 @@ as <code>tract-opl</code> models. <code>tract-opl</code> is a set of proprierary
 serializeing most of the models tract can handle. These extension can be activated by the
 <code>with_*() methods</code>.</p>
 
-
-        <details class="quote">
-          <summary>Source code in <code>tract/nnef.py</code></summary>
-          <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">  7</span>
+            <details class="quote">
+              <summary>Source code in <code>tract/nnef.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">  7</span>
 <span class="normal">  8</span>
 <span class="normal">  9</span>
 <span class="normal"> 10</span>
@@ -879,7 +878,7 @@ serializeing most of the models tract can handle. These extension can be activat
         <span class="n">path</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_nnef_write_model_to_tar_gz</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">ptr</span><span class="p">))</span>
 </code></pre></div></td></tr></table></div>
-        </details>
+            </details>
 
   
 
@@ -892,6 +891,7 @@ serializeing most of the models tract can handle. These extension can be activat
 
 
 <h4 id="tract.nnef.Nnef-functions">Functions</h4>
+
 
 <div class="doc doc-object doc-function">
 
@@ -914,9 +914,9 @@ serializeing most of the models tract can handle. These extension can be activat
 )
 </code></pre>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/nnef.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">32</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/nnef.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">32</span>
 <span class="normal">33</span>
 <span class="normal">34</span>
 <span class="normal">35</span>
@@ -952,10 +952,11 @@ serializeing most of the models tract can handle. These extension can be activat
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_nnef_model_for_path</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">model</span><span class="p">)))</span>
     <span class="k">return</span> <span class="n">Model</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -971,9 +972,9 @@ serializeing most of the models tract can handle. These extension can be activat
   
       <p>Enable tract-opl extensions to NNEF to covers tract-core operator set</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/nnef.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">51</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/nnef.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">51</span>
 <span class="normal">52</span>
 <span class="normal">53</span>
 <span class="normal">54</span>
@@ -987,10 +988,11 @@ serializeing most of the models tract can handle. These extension can be activat
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_nnef_enable_tract_core</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">))</span>
     <span class="k">return</span> <span class="bp">self</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1006,9 +1008,9 @@ serializeing most of the models tract can handle. These extension can be activat
   
       <p>Enable tract-opl extensions to NNEF to covers (more or) ONNX operator set</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/nnef.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">59</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/nnef.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">59</span>
 <span class="normal">60</span>
 <span class="normal">61</span>
 <span class="normal">62</span>
@@ -1022,10 +1024,11 @@ serializeing most of the models tract can handle. These extension can be activat
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_nnef_enable_onnx</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">))</span>
     <span class="k">return</span> <span class="bp">self</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1041,9 +1044,9 @@ serializeing most of the models tract can handle. These extension can be activat
   
       <p>Enable tract-opl extensions to NNEF for tract pulse operators (for audio streaming)</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/nnef.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">67</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/nnef.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">67</span>
 <span class="normal">68</span>
 <span class="normal">69</span>
 <span class="normal">70</span>
@@ -1057,10 +1060,11 @@ serializeing most of the models tract can handle. These extension can be activat
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_nnef_enable_pulse</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">))</span>
     <span class="k">return</span> <span class="bp">self</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1076,9 +1080,9 @@ serializeing most of the models tract can handle. These extension can be activat
   
       <p>Enable tract-opl extensions to NNEF for extended identifiers (will support PyTorch 2 path-like ids)</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/nnef.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">75</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/nnef.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">75</span>
 <span class="normal">76</span>
 <span class="normal">77</span>
 <span class="normal">78</span>
@@ -1092,10 +1096,11 @@ serializeing most of the models tract can handle. These extension can be activat
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_nnef_allow_extended_identifier_syntax</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="kc">True</span><span class="p">))</span>
     <span class="k">return</span> <span class="bp">self</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1112,9 +1117,9 @@ serializeing most of the models tract can handle. These extension can be activat
       <p>Save <code>model</code> as a NNEF directory model in <code>path</code>.</p>
 <p>tract tries to stick to strict NNEF even if extensions has been enabled.</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/nnef.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">83</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/nnef.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">83</span>
 <span class="normal">84</span>
 <span class="normal">85</span>
 <span class="normal">86</span>
@@ -1138,10 +1143,11 @@ serializeing most of the models tract can handle. These extension can be activat
     <span class="n">path</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_nnef_write_model_to_dir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">ptr</span><span class="p">))</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1158,9 +1164,9 @@ serializeing most of the models tract can handle. These extension can be activat
       <p>Save <code>model</code> as a NNEF tar archive in <code>path</code>.</p>
 <p>tract tries to stick to strict NNEF even if extensions has been enabled.</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/nnef.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 96</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/nnef.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 96</span>
 <span class="normal"> 97</span>
 <span class="normal"> 98</span>
 <span class="normal"> 99</span>
@@ -1184,10 +1190,11 @@ serializeing most of the models tract can handle. These extension can be activat
     <span class="n">path</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_nnef_write_model_to_tar</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">ptr</span><span class="p">))</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1204,9 +1211,9 @@ serializeing most of the models tract can handle. These extension can be activat
       <p>Save <code>model</code> as a NNEF tar compressed archive in <code>path</code>.</p>
 <p>tract tries to stick to strict NNEF even if extensions has been enabled.</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/nnef.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">109</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/nnef.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">109</span>
 <span class="normal">110</span>
 <span class="normal">111</span>
 <span class="normal">112</span>
@@ -1230,7 +1237,7 @@ serializeing most of the models tract can handle. These extension can be activat
     <span class="n">path</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_nnef_write_model_to_tar_gz</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">ptr</span><span class="p">))</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>

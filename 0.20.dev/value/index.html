@@ -545,7 +545,7 @@
 
 
 <h3 id="tract.value.Value" class="doc doc-heading">
-        <code>Value</code>
+          <code>Value</code>
 
 
 </h3>
@@ -558,10 +558,9 @@
 <p>On the Python side, the main way to access tensor data is to
 convert the value to a numpy array.</p>
 
-
-        <details class="quote">
-          <summary>Source code in <code>tract/value.py</code></summary>
-          <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">39</span>
+            <details class="quote">
+              <summary>Source code in <code>tract/value.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">39</span>
 <span class="normal">40</span>
 <span class="normal">41</span>
 <span class="normal">42</span>
@@ -661,7 +660,7 @@ convert the value to a numpy array.</p>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_value_destroy</span><span class="p">(</span><span class="n">byref</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">)))</span>
         <span class="k">return</span> <span class="n">result</span>
 </code></pre></div></td></tr></table></div>
-        </details>
+            </details>
 
   
 
@@ -674,6 +673,7 @@ convert the value to a numpy array.</p>
 
 
 <h4 id="tract.value.Value-functions">Functions</h4>
+
 
 <div class="doc doc-object doc-function">
 
@@ -689,9 +689,9 @@ convert the value to a numpy array.</p>
   
       <p>Builds a numpy array equivalent to the data in this value.</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/value.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">71</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/value.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">71</span>
 <span class="normal">72</span>
 <span class="normal">73</span>
 <span class="normal">74</span>
@@ -715,10 +715,11 @@ convert the value to a numpy array.</p>
     <span class="n">array</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">ctypeslib</span><span class="o">.</span><span class="n">as_array</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">shape</span><span class="p">)</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
     <span class="k">return</span> <span class="n">array</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -734,9 +735,9 @@ convert the value to a numpy array.</p>
   
       <p>Same as to_numpy(), but drop the value content once the numpy array is built.</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/value.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">84</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/value.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">84</span>
 <span class="normal">85</span>
 <span class="normal">86</span>
 <span class="normal">87</span>
@@ -746,7 +747,7 @@ convert the value to a numpy array.</p>
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_value_destroy</span><span class="p">(</span><span class="n">byref</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">)))</span>
     <span class="k">return</span> <span class="n">result</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>

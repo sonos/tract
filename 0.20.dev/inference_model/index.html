@@ -715,7 +715,7 @@
 
 
 <h3 id="tract.inference_model.InferenceModel" class="doc doc-heading">
-        <code>InferenceModel</code>
+          <code>InferenceModel</code>
 
 
 </h3>
@@ -740,10 +740,9 @@ model.set_input_fact(0, &quot;1,3,224,224,f32&quot;)
 model = model.into_optimized().into_runnable()
 </code></pre>
 
-
-        <details class="quote">
-          <summary>Source code in <code>tract/inference_model.py</code></summary>
-          <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">  7</span>
+            <details class="quote">
+              <summary>Source code in <code>tract/inference_model.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">  7</span>
 <span class="normal">  8</span>
 <span class="normal">  9</span>
 <span class="normal"> 10</span>
@@ -1057,7 +1056,7 @@ model = model.into_optimized().into_runnable()
         <span class="bp">self</span><span class="o">.</span><span class="n">analyse</span><span class="p">()</span>
         <span class="k">return</span> <span class="bp">self</span>
 </code></pre></div></td></tr></table></div>
-        </details>
+            </details>
 
   
 
@@ -1070,6 +1069,7 @@ model = model.into_optimized().into_runnable()
 
 
 <h4 id="tract.inference_model.InferenceModel-functions">Functions</h4>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1086,9 +1086,9 @@ model = model.into_optimized().into_runnable()
       <p>Run the InferenceModel through the full tract optimisation pipeline to get an
 optimised Model.</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/inference_model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">38</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/inference_model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">38</span>
 <span class="normal">39</span>
 <span class="normal">40</span>
 <span class="normal">41</span>
@@ -1106,10 +1106,11 @@ optimised Model.</p>
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_inference_model_into_optimized</span><span class="p">(</span><span class="n">byref</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">),</span> <span class="n">byref</span><span class="p">(</span><span class="n">model</span><span class="p">)))</span>
     <span class="k">return</span> <span class="n">Model</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1127,9 +1128,9 @@ optimised Model.</p>
 <p>This will leave the opportunity to run more transformation on the intermediary form of the
 model, before optimisint it all the way.</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/inference_model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">48</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/inference_model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">48</span>
 <span class="normal">49</span>
 <span class="normal">50</span>
 <span class="normal">51</span>
@@ -1151,10 +1152,11 @@ model, before optimisint it all the way.</p>
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_inference_model_into_typed</span><span class="p">(</span><span class="n">byref</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">),</span> <span class="n">byref</span><span class="p">(</span><span class="n">model</span><span class="p">)))</span>
     <span class="k">return</span> <span class="n">Model</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1170,9 +1172,9 @@ model, before optimisint it all the way.</p>
   
       <p>Return the number of inputs of the model</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/inference_model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">60</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/inference_model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">60</span>
 <span class="normal">61</span>
 <span class="normal">62</span>
 <span class="normal">63</span>
@@ -1184,10 +1186,11 @@ model, before optimisint it all the way.</p>
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_inference_model_nbio</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">i</span><span class="p">),</span> <span class="kc">None</span><span class="p">))</span>
     <span class="k">return</span> <span class="n">i</span><span class="o">.</span><span class="n">value</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1203,9 +1206,9 @@ model, before optimisint it all the way.</p>
   
       <p>Return the number of outputs of the model</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/inference_model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">67</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/inference_model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">67</span>
 <span class="normal">68</span>
 <span class="normal">69</span>
 <span class="normal">70</span>
@@ -1217,10 +1220,11 @@ model, before optimisint it all the way.</p>
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_inference_model_nbio</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">i</span><span class="p">)))</span>
     <span class="k">return</span> <span class="n">i</span><span class="o">.</span><span class="n">value</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1236,9 +1240,9 @@ model, before optimisint it all the way.</p>
   
       <p>Return the name of the <code>input_id</code>th input.</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/inference_model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">74</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/inference_model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">74</span>
 <span class="normal">75</span>
 <span class="normal">76</span>
 <span class="normal">77</span>
@@ -1254,10 +1258,11 @@ model, before optimisint it all the way.</p>
     <span class="n">lib</span><span class="o">.</span><span class="n">tract_free_cstring</span><span class="p">(</span><span class="n">cstring</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">result</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1273,9 +1278,9 @@ model, before optimisint it all the way.</p>
   
       <p>Extract the InferenceFact of the <code>input_id</code>th input.</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/inference_model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">83</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/inference_model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">83</span>
 <span class="normal">84</span>
 <span class="normal">85</span>
 <span class="normal">86</span>
@@ -1287,10 +1292,11 @@ model, before optimisint it all the way.</p>
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_inference_model_input_fact</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">input_id</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">fact</span><span class="p">)))</span>
     <span class="k">return</span> <span class="n">InferenceFact</span><span class="p">(</span><span class="n">fact</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1306,9 +1312,9 @@ model, before optimisint it all the way.</p>
   
       <p>Change the InferenceFact of the <code>input_id</code>th input.</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/inference_model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">90</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/inference_model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">90</span>
 <span class="normal">91</span>
 <span class="normal">92</span>
 <span class="normal">93</span>
@@ -1326,10 +1332,11 @@ model, before optimisint it all the way.</p>
     <span class="k">else</span><span class="p">:</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_inference_model_set_input_fact</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">input_id</span><span class="p">,</span> <span class="n">fact</span><span class="o">.</span><span class="n">ptr</span><span class="p">))</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1345,9 +1352,9 @@ model, before optimisint it all the way.</p>
   
       <p>Change the output nodes of the model</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/inference_model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">100</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/inference_model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">100</span>
 <span class="normal">101</span>
 <span class="normal">102</span>
 <span class="normal">103</span>
@@ -1367,10 +1374,11 @@ model, before optimisint it all the way.</p>
         <span class="n">names_ptr</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span> <span class="o">=</span> <span class="n">names_str</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span>
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_inference_model_set_output_names</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">nb</span><span class="p">,</span> <span class="n">names_ptr</span><span class="p">))</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1386,9 +1394,9 @@ model, before optimisint it all the way.</p>
   
       <p>Return the name of the <code>output_id</code>th output.</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/inference_model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">111</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/inference_model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">111</span>
 <span class="normal">112</span>
 <span class="normal">113</span>
 <span class="normal">114</span>
@@ -1404,10 +1412,11 @@ model, before optimisint it all the way.</p>
     <span class="n">lib</span><span class="o">.</span><span class="n">tract_free_cstring</span><span class="p">(</span><span class="n">cstring</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">result</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1423,9 +1432,9 @@ model, before optimisint it all the way.</p>
   
       <p>Extract the InferenceFact of the <code>output_id</code>th output.</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/inference_model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">120</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/inference_model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">120</span>
 <span class="normal">121</span>
 <span class="normal">122</span>
 <span class="normal">123</span>
@@ -1437,10 +1446,11 @@ model, before optimisint it all the way.</p>
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_inference_model_output_fact</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">output_id</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">fact</span><span class="p">)))</span>
     <span class="k">return</span> <span class="n">InferenceFact</span><span class="p">(</span><span class="n">fact</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1456,9 +1466,9 @@ model, before optimisint it all the way.</p>
   
       <p>Change the InferenceFact of the <code>output_id</code>th output.</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/inference_model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">127</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/inference_model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">127</span>
 <span class="normal">128</span>
 <span class="normal">129</span>
 <span class="normal">130</span>
@@ -1476,10 +1486,11 @@ model, before optimisint it all the way.</p>
     <span class="k">else</span><span class="p">:</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_inference_model_set_output_fact</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">output_id</span><span class="p">,</span> <span class="n">fact</span><span class="o">.</span><span class="n">ptr</span><span class="p">))</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1498,9 +1509,9 @@ model, before optimisint it all the way.</p>
 list of dimension, one for each axis, plus an mnemonic for the element type. f32 is 
 single precision "float", i16 is a 16-bit signed integer, and u8 a 8-bit unsigned integer.</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/inference_model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">137</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/inference_model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">137</span>
 <span class="normal">138</span>
 <span class="normal">139</span>
 <span class="normal">140</span>
@@ -1526,10 +1537,11 @@ single precision "float", i16 is a 16-bit signed integer, and u8 a 8-bit unsigne
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_inference_fact_parse</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">spec</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">fact</span><span class="p">)))</span>
     <span class="k">return</span> <span class="n">InferenceFact</span><span class="p">(</span><span class="n">fact</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1545,9 +1557,9 @@ single precision "float", i16 is a 16-bit signed integer, and u8 a 8-bit unsigne
   
       <p>Perform shape and element type inference on the model.</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/inference_model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">151</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/inference_model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">151</span>
 <span class="normal">152</span>
 <span class="normal">153</span>
 <span class="normal">154</span>
@@ -1559,10 +1571,11 @@ single precision "float", i16 is a 16-bit signed integer, and u8 a 8-bit unsigne
     <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_inference_model_analyse</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="kc">False</span><span class="p">))</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
+
 
 <div class="doc doc-object doc-function">
 
@@ -1578,9 +1591,9 @@ single precision "float", i16 is a 16-bit signed integer, and u8 a 8-bit unsigne
   
       <p>Perform shape and element type inference on the model.</p>
 
-      <details class="quote">
-        <summary>Source code in <code>tract/inference_model.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">158</span>
+          <details class="quote">
+            <summary>Source code in <code>tract/inference_model.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">158</span>
 <span class="normal">159</span>
 <span class="normal">160</span>
 <span class="normal">161</span>
@@ -1592,7 +1605,7 @@ single precision "float", i16 is a 16-bit signed integer, and u8 a 8-bit unsigne
     <span class="bp">self</span><span class="o">.</span><span class="n">analyse</span><span class="p">()</span>
     <span class="k">return</span> <span class="bp">self</span>
 </code></pre></div></td></tr></table></div>
-      </details>
+          </details>
   </div>
 
 </div>
