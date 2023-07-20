@@ -2,7 +2,7 @@
 name = "example-pytorch-resnet"
 version = "0.20.7-pre"
 authors = ["Teddy Koker <teddy.koker@gmail.com>"]
-license = "MIT/Apache-2.0"
+license = "MIT OR Apache-2.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
