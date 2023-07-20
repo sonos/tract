@@ -2,7 +2,7 @@
 name = "example-onnx-mobilenet-v2"
 version = "0.20.7-pre"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
-license = "MIT/Apache-2.0"
+license = "MIT OR Apache-2.0"
 edition = "2021"
 
 [dependencies]

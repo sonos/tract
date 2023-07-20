@@ -5,7 +5,7 @@ authors = [
 	"Mathieu Poumeyrol <kali@zoy.org>",
 	"Hubert de La Jonquière <hubert.delajonquiere@sonos.com>"
 ]
-license = "MIT/Apache-2.0"
+license = "MIT OR Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
 repository = "https://github.com/snipsco/tract"
 keywords = [ "NeuralNetworks", "NNEF" ]
