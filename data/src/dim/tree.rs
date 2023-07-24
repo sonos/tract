@@ -106,29 +106,41 @@ impl TDim {
             Sym(_) | Val(_) | Mul(_) => vec![self.clone()],
             Add(terms) => {
                 let mut forms = vec![];
-                let sub_wiggle = terms.iter().map(|e| e.wiggle()).multi_cartesian_product();
-                for sub in sub_wiggle {
-                    if let Some((ix, num, q)) = sub.iter().enumerate().find_map(|(ix, t)| {
-                        if let Div(a, q) = t {
-                            Some((ix, a, q))
-                        } else {
-                            None
-                        }
-                    }) {
-                        let new_num = sub
-                            .iter()
-                            .enumerate()
-                            .map(|(ix2, t)| {
-                                if ix2 != ix {
-                                    MulInt(*q as i64, b!(t.clone()))
-                                } else {
-                                    (**num).clone()
-                                }
-                            })
-                            .collect();
-                        forms.push(Div(b!(Add(new_num)), *q))
+                let sub_exprs = terms.iter().map(|e| e.wiggle()).multi_cartesian_product();
+
+                fn first_div_term(terms: &[TDim]) -> Option<(usize, &Box<TDim>, u64)> {
+                    terms.iter().enumerate().find_map(|(index, t)| match t {
+                        Div(numerator, quotient) => Some((index, numerator, *quotient)),
+                        _ => None,
+                    })
+                }
+
+                fn generate_new_numerator(
+                    div_index: usize,
+                    numerator: &Box<TDim>,
+                    quotient: u64,
+                    expr: &[TDim],
+                ) -> Vec<TDim> {
+                    expr.iter()
+                        .enumerate()
+                        .map(|(index, term)| {
+                            if index == div_index {
+                                (**numerator).clone()
+                            } else {
+                                MulInt(quotient as i64, Box::new(term.clone()))
+                            }
+                        })
+                        .collect()
+                }
+
+                for expr in sub_exprs {
+                    if let Some((div_index, numerator, quotient)) = first_div_term(&expr) {
+                        let new_numerator =
+                            generate_new_numerator(div_index, numerator, quotient, &expr);
+                        forms.push(Div(Box::new(Add(new_numerator)), quotient))
                     }
-                    forms.push(Add(sub));
+
+                    forms.push(Add(expr));
                 }
                 forms
             }
@@ -157,88 +169,83 @@ impl TDim {
         use num_integer::Integer;
         match self {
             Add(mut terms) => {
-                let mut reduced: HashMap<TDim, i64> = HashMap::new();
+                let mut simplified_terms: HashMap<TDim, i64> = HashMap::new();
                 // factorize common sub-expr
-                while let Some(item) = terms.pop() {
-                    let term = item.simplify();
-                    match term {
-                        Add(items) => {
-                            terms.extend(items.into_iter());
+                while let Some(term) = terms.pop() {
+                    let simplified = term.simplify();
+                    match simplified {
+                        Val(0) => {} // ignore
+                        Add(members) => {
+                            terms.extend(members);
                             continue;
                         }
-                        Val(0) => (),
-                        Val(v) => *reduced.entry(Val(1)).or_insert(0) += v,
-                        MulInt(v, f) => {
-                            *reduced.entry((*f).clone()).or_insert(0) += v;
+                        Val(value) => *simplified_terms.entry(Val(1)).or_insert(0) += value,
+                        MulInt(value, factor) => {
+                            *simplified_terms.entry((*factor).clone()).or_insert(0) += value;
                         }
-                        n => *reduced.entry(n).or_insert(0) += 1,
+                        n => *simplified_terms.entry(n).or_insert(0) += 1,
                     };
                 }
-                let mut members: Vec<_> = reduced
+
+                pub fn evaluate_count(term: TDim, count: i64) -> Option<TDim> {
+                    match count {
+                        0 => None,
+                        _ if term == TDim::Val(1) => Some(TDim::Val(count)),
+                        1 => Some(term),
+                        _ => Some(TDim::MulInt(count, Box::new(term))),
+                    }
+                }
+
+                let mut members: Vec<_> = simplified_terms
                     .into_iter()
-                    .filter_map(|(k, v)| {
-                        if v == 0 {
-                            None
-                        } else if k == Val(1) {
-                            Some(Val(v))
-                        } else if v == 1 {
-                            Some(k)
-                        } else {
-                            Some(MulInt(v, b![k]))
-                        }
-                    })
+                    .filter_map(|(term, count)| evaluate_count(term, count))
                     .collect();
                 members.sort();
-                if members.len() == 0 {
-                    Val(0)
-                } else if members.len() > 1 {
-                    Add(members)
-                } else {
-                    members.remove(0)
+
+                match members.len() {
+                    0 => TDim::Val(0),
+                    1 => members.into_iter().next().unwrap(),
+                    _ => TDim::Add(members),
                 }
             }
             Mul(terms) => {
-                let (ints, mut rest): (i64, Vec<TDim>) =
-                    terms.into_iter().fold((1, vec![]), |acc, t| match t.simplify() {
-                        MulInt(a, p) => {
-                            (acc.0 * a, acc.1.into_iter().chain(Some(p.as_ref().clone())).collect())
-                        }
-                        Val(a) => (acc.0 * a, acc.1),
-                        it => (acc.0, acc.1.into_iter().chain(Some(it).into_iter()).collect()),
+                let (coef_prod, mut vars) =
+                    terms.into_iter().fold((1, vec![]), |acc, term| match term.simplify() {
+                        MulInt(coef, expr) => (
+                            acc.0 * coef,
+                            acc.1.into_iter().chain(Some(expr.as_ref().clone())).collect(),
+                        ),
+                        Val(v) => (acc.0 * v, acc.1),
+                        t => (acc.0, acc.1.into_iter().chain(Some(t).into_iter()).collect()),
                     });
-                if rest.len() == 0 {
-                    Val(ints)
-                } else if ints == 0 {
-                    Val(0)
-                } else {
-                    let rest = if rest.len() == 1 { rest.remove(0) } else { Mul(rest) };
-                    if ints == 1 {
-                        rest
-                    } else {
-                        MulInt(ints, Box::new(rest))
-                    }
+
+                match (coef_prod, vars.len()) {
+                    (_, 0) => Val(coef_prod), // Case #1: If 0 variables, return product
+                    (0, _) => Val(0),         // Case #2: Result is 0 if coef is 0
+                    (1, 1) => vars.remove(0), // Case #3: Product is 1, so return the only term
+                    (1, _) => Mul(vars), // Case #4: Product is 1, so return the non-integer terms
+                    (_, 1) => MulInt(coef_prod, Box::new(vars.remove(0))), // Case #5: Single variable, convert to 1 MulInt
+                    _ => MulInt(coef_prod, Box::new(Mul(vars))), // Case #6: Multiple variables, convert to MulInt
                 }
             }
-            MulInt(p, a) => {
-                if let MulInt(p2, a) = *a {
-                    return MulInt(p * p2, a).simplify();
-                } else if let Val(p2) = *a {
-                    return Val(p * p2);
+            MulInt(coef, expr) => {
+                match *expr {
+                    MulInt(c2, inner) => return MulInt(coef * c2, inner).simplify(),
+                    Val(v) => return Val(coef * v),
+                    _ => {}
                 }
-                let a = a.simplify();
-                if p == 0 {
-                    Val(0)
-                } else if p == 1 {
-                    a
-                } else if let Add(terms) = &a {
-                    Add(terms.clone().into_iter().map(|a| MulInt(p, b!(a)).simplify()).collect())
-                        .reduce()
-                } else if let Val(p2) = a {
-                    Val(p * p2)
-                } else if let MulInt(p2, a) = a {
-                    MulInt(p * p2, a)
-                } else {
-                    MulInt(p, b!(a))
+
+                let simplified = expr.simplify();
+                match (coef, simplified) {
+                    (0, _) => Val(0), // Case #1: If coef is 0, return 0
+                    (1, s) => s,      // Case #2: If coef is 1, return the simplified expression
+                    (_, Add(terms)) => Add(terms
+                        .into_iter()
+                        .map(|term| MulInt(coef, Box::new(term)).simplify())
+                        .collect()), // Case #3: If expression is an addition, distribute the coef
+                    (c, Val(v)) => Val(c * v), // Case #4: If expression is a value, combine coefs
+                    (c, MulInt(v, inner)) => MulInt(c * v, inner), // Case #5: If expression is a MulInt, combine coefs
+                    (_, s) => MulInt(coef, Box::new(s)), // Case #6: Otherwise, return the original
                 }
             }
             Div(a, q) => {
