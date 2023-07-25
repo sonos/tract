@@ -108,16 +108,16 @@ impl TDim {
                 let mut forms = vec![];
                 let sub_exprs = terms.iter().map(|e| e.wiggle()).multi_cartesian_product();
 
-                fn first_div_term(terms: &[TDim]) -> Option<(usize, &Box<TDim>, u64)> {
+                fn first_div_term(terms: &[TDim]) -> Option<(usize, &TDim, u64)> {
                     terms.iter().enumerate().find_map(|(index, t)| match t {
-                        Div(numerator, quotient) => Some((index, numerator, *quotient)),
+                        Div(numerator, quotient) => Some((index, &**numerator, *quotient)),
                         _ => None,
                     })
                 }
 
                 fn generate_new_numerator(
                     div_index: usize,
-                    numerator: &Box<TDim>,
+                    numerator: &TDim,
                     quotient: u64,
                     expr: &[TDim],
                 ) -> Vec<TDim> {
@@ -125,7 +125,7 @@ impl TDim {
                         .enumerate()
                         .map(|(index, term)| {
                             if index == div_index {
-                                (**numerator).clone()
+                                numerator.clone()
                             } else {
                                 MulInt(quotient as i64, Box::new(term.clone()))
                             }
