@@ -6,6 +6,7 @@ type GenRewriteRule<Ctx> =
     Box<dyn Fn(&Ctx, &TypedModel, &TypedNode) -> TractResult<Option<TypedModelPatch>>>;
 
 #[derive(Default)]
+#[allow(clippy::type_complexity)]
 pub struct Rewriter<Ctx> {
     rules: HashMap<TypeId, Vec<(Cow<'static, str>, GenRewriteRule<Ctx>)>>,
 }

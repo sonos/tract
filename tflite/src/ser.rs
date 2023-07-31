@@ -33,13 +33,13 @@ impl<'f, 'b> ModelBuilder<'f, 'b> {
         let subgraph = subgraph.finish(model)?;
         let subgraphs = vec![subgraph];
         let subgraphs = self.builder.create_vector(&subgraphs);
-        let buffers = self.builder.create_vector(&mut self.buffers);
+        let buffers = self.builder.create_vector(self.buffers);
         let operator_codes = self
             .op_codes
             .iter()
             .map(|code| {
                 OperatorCode::create(
-                    &mut self.builder,
+                    self.builder,
                     &OperatorCodeArgs {
                         deprecated_builtin_code: code.deprecated_builtin_code,
                         custom_code: None,
@@ -51,7 +51,7 @@ impl<'f, 'b> ModelBuilder<'f, 'b> {
             .collect_vec();
         let operator_codes = self.builder.create_vector(&operator_codes);
         let model = Model::create(
-            &mut self.builder,
+            self.builder,
             &ModelArgs {
                 version: 3,
                 operator_codes: Some(operator_codes),
@@ -98,14 +98,18 @@ impl<'f, 'b, 'mb> SubgraphBuilder<'f, 'b, 'mb> {
     where
         'f: 'short,
     {
-        &mut self.model.builder
+        self.model.builder
     }
 
-    pub fn write_fact(&mut self, name: impl AsRef<str>, fact: impl Into<TypedFact>) -> TractResult<i32> {
+    pub fn write_fact(
+        &mut self,
+        name: impl AsRef<str>,
+        fact: impl Into<TypedFact>,
+    ) -> TractResult<i32> {
         let fact = fact.into();
         let buffer = if let Some(k) = &fact.konst {
             let data = self.fb().create_vector(unsafe { k.as_bytes() });
-            let buffer = Buffer::create(&mut self.fb(), &BufferArgs { data: Some(data) });
+            let buffer = Buffer::create(self.fb(), &BufferArgs { data: Some(data) });
             self.model.buffers.push(buffer);
             self.model.buffers.len() as u32 - 1
         } else {
@@ -169,8 +173,8 @@ impl<'f, 'b, 'mb> SubgraphBuilder<'f, 'b, 'mb> {
         builtin_options: WIPOffset<UnionWIPOffset>,
     ) -> TractResult<()> {
         let opcode_index = self.model.operator_code_index(op);
-        let inputs = self.fb().create_vector(&inputs);
-        let outputs = self.fb().create_vector(&outputs);
+        let inputs = self.fb().create_vector(inputs);
+        let outputs = self.fb().create_vector(outputs);
         let operator = Operator::create(
             self.fb(),
             &OperatorArgs {

@@ -141,6 +141,7 @@ fn padding(
         let fact = model.outlet_fact(node.inputs[0])?;
         let shape = conv.pool_spec.data_format.shape(&fact.shape)?;
         let actual = conv.pool_spec.computed_padding(shape.hw_dims());
+        #[allow(clippy::single_element_loop)]
         for pad in [PaddingSpec::Valid /*, PaddingSpec::SameUpper*/] {
             let found = pad.compute(
                 shape.hw_dims(),

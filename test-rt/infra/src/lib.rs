@@ -165,7 +165,10 @@ where
             failure_persistence: Some(Box::new(FileFailurePersistence::Off)),
             ..Config::default()
         });
-        runner.run(&any_with::<A>(self.0.clone()), |v| Ok(v.run(runtime).unwrap()))?;
+        runner.run(&any_with::<A>(self.0.clone()), |v| {
+            v.run(runtime).unwrap();
+            Ok(())
+        })?;
         Ok(())
     }
 }
