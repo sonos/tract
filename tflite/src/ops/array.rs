@@ -31,7 +31,7 @@ fn de_concat(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let axis =
         if options.axis() < 0 { rank as i32 + options.axis() } else { options.axis() } as usize;
     let dt = DatumType::super_type_for(op.facts()?.iter().map(|f| f.datum_type)).unwrap();
-    let inputs = wire_cast(&op.prefix, &mut op.ctx.target, &op.inputs, dt)?;
+    let inputs = wire_cast(op.prefix, op.ctx.target, op.inputs, dt)?;
     let wires = op.ctx.target.wire_node(op.prefix, TypedConcat::new(axis), &inputs)?;
     wire_fused_activation(op, &wires, &options.fused_activation_function())
 }
@@ -91,8 +91,7 @@ fn de_squeeze(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let rank = op.facts()?[0].rank();
     for (ix, axis) in options.squeeze_dims().unwrap().iter().sorted().enumerate() {
         let axis = if axis < 0 { rank as i32 + axis } else { axis } as usize;
-        wire =
-            op.ctx.target.wire_node(format!("{prefix}.{ix}"), AxisOp::Rm(axis as usize), &wire)?;
+        wire = op.ctx.target.wire_node(format!("{prefix}.{ix}"), AxisOp::Rm(axis), &wire)?;
     }
     Ok(wire)
 }
@@ -107,7 +106,7 @@ fn de_strided_slice(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         optional_axes_input: None,
         optional_steps_input: Some(3),
     };
-    op.ctx.target.wire_node(op.prefix, slice, &op.inputs)
+    op.ctx.target.wire_node(op.prefix, slice, op.inputs)
 }
 
 fn de_transpose(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {

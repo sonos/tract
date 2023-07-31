@@ -1,7 +1,7 @@
 use infra::{Test, TestSuite};
 use proptest::collection::vec;
 use proptest::prelude::*;
-use proptest::*;
+// use proptest::*;
 use tract_core::internal::*;
 use tract_core::ops::cnn::KernelFormat::*;
 use tract_core::ops::cnn::{ConvUnary, KernelFormat, PaddingSpec, PoolSpec};

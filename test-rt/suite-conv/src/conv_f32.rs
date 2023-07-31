@@ -72,10 +72,8 @@ impl ConvProblem {
 
                         // pytorch semantics diverge from onnx (and onnx are super weird)
                         // https://github.com/pytorch/pytorch/blob/main/aten/src/ATen/native/Pool.h#L48C2-L54C6
-                        if *ceil {
-                            if (out - 1) * stride >= input + l {
-                                out -= 1;
-                            }
+                        if *ceil && (out - 1) * stride >= input + l {
+                            out -= 1;
                         }
                         (out, *l)
                     })
