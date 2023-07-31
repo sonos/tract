@@ -1,7 +1,7 @@
 #!/bin/sh
 
 cd `dirname $0`
-set -x
+set -ex
 
 : ${TRACT_RUN:=cargo run -p tract $CARGO_OPTS --}
 
