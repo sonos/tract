@@ -97,6 +97,10 @@ impl PoolSpec {
             let mut after: TVec<usize> = after.clone();
             op.change_shape_array(&mut before, false)?;
             op.change_shape_array(&mut after, false)?;
+            if let AxisOp::Add(add) = op {
+                before[*add] = 0;
+                after[*add] = 0;
+            }
             PaddingSpec::Explicit(before, after, *round)
         } else {
             self.padding.clone()

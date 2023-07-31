@@ -822,6 +822,10 @@ impl TypedOp for ConvUnary {
                 self
                 );
         }
+        if let PaddingSpec::Explicit(before, after, _) = &self.pool_spec.padding {
+            anyhow::ensure!(before.len() == self.pool_spec.rank());
+            anyhow::ensure!(after.len() == self.pool_spec.rank());
+        }
         if let Some(bias) = &self.bias {
             ensure!(
                 bias.rank() == 0 || (bias.rank() == 1 && bias.len() == self.output_channels()),

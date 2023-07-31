@@ -249,7 +249,6 @@ impl Test for ConvProblem {
         let mut output =
             runtime.prepare(self.tract()?)?.run(tvec![self.data.clone().into_tvalue()])?;
         let output = output.remove(0).into_tensor();
-        eprintln!("output: {output:?} reference: {reference:?}");
         output.close_enough(&reference, true)
     }
 }

@@ -354,6 +354,17 @@ impl<'a> From<&'a TypedFact> for TypedFact {
     }
 }
 
+impl<'a> From<&'a Arc<Tensor>> for TypedFact {
+    fn from(t: &'a Arc<Tensor>) -> TypedFact {
+        TypedFact {
+            datum_type: t.datum_type(),
+            shape: ShapeFact::from_dims(t.shape().iter().map(TDim::from)),
+            uniform: t.as_uniform().map(Arc::new),
+            konst: Some(t.clone()),
+        }
+    }
+}
+
 impl fmt::Debug for TypedFact {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self.konst {
