@@ -2,12 +2,13 @@ use tract_hir::internal::*;
 use tract_hir::ops::array::TypedConcat;
 use tract_hir::ops::binary::wire_cast;
 use tract_hir::prelude::tract_itertools::Itertools;
+use tract_hir::tract_ndarray::ArrayView2;
 
 use crate::registry::{DeserOp, Registry};
 use crate::ser::{BuiltinOp, SubgraphBuilder};
 use crate::tflite::{
-    BuiltinOperator, BuiltinOptions, ExpandDimsOptions, ExpandDimsOptionsArgs, SqueezeOptions,
-    SqueezeOptionsArgs, TransposeOptions, TransposeOptionsArgs,
+    BuiltinOperator, BuiltinOptions, ExpandDimsOptions, ExpandDimsOptionsArgs, ReshapeOptions,
+    ReshapeOptionsArgs, SqueezeOptions, SqueezeOptionsArgs, TransposeOptions, TransposeOptionsArgs,
 };
 
 use super::wire_fused_activation;
@@ -16,6 +17,7 @@ pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tflite::<AxisOp>(ser_axisop);
     reg.to_tract.insert(BuiltinOperator::CONCATENATION, de_concat);
     reg.to_tract.insert(BuiltinOperator::EXPAND_DIMS, de_expand_dims);
+    reg.to_tract.insert(BuiltinOperator::PADV2, de_padv2);
     reg.to_tract.insert(BuiltinOperator::RESHAPE, de_reshape);
     reg.to_tract.insert(BuiltinOperator::SHAPE, de_shape);
     reg.to_tract.insert(BuiltinOperator::SQUEEZE, de_squeeze);
@@ -47,9 +49,25 @@ fn de_expand_dims(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     Ok(wire)
 }
 
+fn de_padv2(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let (_input, pads, value) = args_3!(op.facts()?);
+    let pads = pads.konst.as_ref().context("Dynamic PADV2 is not supported")?;
+    let prefix = op.prefix;
+    let pads: ArrayView2<i32> = pads.to_array_view::<i32>()?.into_dimensionality()?;
+    let pads: Vec<(usize, usize)> =
+        pads.rows().into_iter().map(|row| (row[0] as usize, row[1] as usize)).collect();
+    let mode = tract_hir::ops::array::PadMode::Constant(value.konst.context("Constant expected")?);
+    op.ctx.target.wire_node(prefix, tract_core::ops::array::Pad { pads, mode }, &op.inputs[0..1])
+}
+
 fn de_reshape(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let input_shape: TVec<TDim> = op.ctx.target.outlet_fact(op.inputs[0])?.shape.to_tvec();
-    let shape = op.ctx.target.outlet_fact(op.inputs[1])?.konst.clone().unwrap();
+    let shape = if let Some(outlet) = op.inputs.get(1) {
+        op.ctx.target.outlet_fact(*outlet)?.konst.clone().unwrap()
+    } else {
+        let options = builtin!(op, builtin_options_as_reshape_options);
+        rctensor1(&options.new_shape().as_ref().unwrap().iter().collect::<Vec<i32>>())
+    };
     let shape = shape.cast_to::<TDim>()?;
     let shape = shape.as_slice::<TDim>()?;
     let mut wire = tvec!(op.inputs[0]);
@@ -123,10 +141,7 @@ fn ser_axisop(
             let mut permutation: Vec<i32> = (0..rank).map(|d| d as i32).collect();
             permutation.remove(*from);
             permutation.insert(*to, *from as _);
-            inputs.push(
-                builder
-                    .write_fact(&format!("{}.perm", node.name), &rctensor1(&permutation).into())?,
-            );
+            inputs.push(builder.write_fact(&format!("{}.perm", node.name), tensor1(&permutation))?);
             let options = TransposeOptions::create(builder.fb(), &TransposeOptionsArgs {});
             builder.write_op_with_options(
                 &inputs,
@@ -136,9 +151,7 @@ fn ser_axisop(
             )
         }
         AxisOp::Add(a) => {
-            inputs.push(
-                builder.write_fact(&format!("{}.axis", node.name), &rctensor0(*a as i32).into())?,
-            );
+            inputs.push(builder.write_fact(&format!("{}.axis", node.name), tensor0(*a as i32))?);
             let options = ExpandDimsOptions::create(builder.fb(), &ExpandDimsOptionsArgs {});
             builder.write_op_with_options(
                 &inputs,
@@ -165,6 +178,24 @@ fn ser_axisop(
                 options.as_union_value(),
             )
         }
-        _ => todo!("reshape translation"),
+        AxisOp::Reshape(_, _, _) => {
+            let new_shape = node.outputs[0]
+                .fact
+                .shape
+                .iter()
+                .map(|x| x.to_i32())
+                .collect::<TractResult<Vec<i32>>>()?;
+            let new_shape = builder.fb().create_vector(&new_shape);
+            let options = ReshapeOptions::create(
+                builder.fb(),
+                &ReshapeOptionsArgs { new_shape: Some(new_shape) },
+            );
+            builder.write_op_with_options(
+                &inputs,
+                &[output],
+                BuiltinOp::new(22, 1, BuiltinOperator::RESHAPE, BuiltinOptions::ReshapeOptions),
+                options.as_union_value(),
+            )
+        }
     }
 }

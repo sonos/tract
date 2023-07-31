@@ -14,7 +14,16 @@ pub fn suite() -> infra::TestSuite {
 
 fn ignore_onnx(t: &[String]) -> bool {
     let name = t.last().unwrap();
-    !name.contains("_conv_") || name == "test_conv_with_strides_and_asymmetric_padding"
+    let included = "_conv_ Conv1d Conv2d squeeze _transpose_ test_reshape test_flatten";
+    let excluded = "
+            test_Conv1d_groups
+            test_Conv2d_groups
+            test_Conv1d_depthwise_with_multiplier
+            test_Conv2d_depthwise_with_multiplier
+            test_Conv2d_groups_thnn
+            test_reshape_allowzero_reordered";
+    !included.split_whitespace().any(|s| name.contains(s))
+        || excluded.split_whitespace().any(|s| s == name)
 }
 
 fn ignore_conv(t: &[String]) -> bool {
@@ -22,7 +31,6 @@ fn ignore_conv(t: &[String]) -> bool {
     t[0] == "q"
         || unit == "proptest"
         // grouping and depthwise
-        || unit == "depthwise_0"
         || unit.starts_with("group")
         // conv 3D
         || unit == "lazy_im2col_big"

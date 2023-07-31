@@ -33,13 +33,11 @@ impl<Ctx> Rewriter<Ctx> {
             for n in model.eval_order()? {
                 if let Some(rules) = self.rules.get(&(*model.node(n).op).type_id()) {
                     for (name, rule) in rules {
-                        if let Some(patch) =
-                            (rule)(ctx, model, model.node(n)).with_context(|| {
-                                format!("Matching rule {name} on {}", model.node(n).name)
-                            })?
+                        if let Some(patch) = (rule)(ctx, model, model.node(n))
+                            .with_context(|| format!("Evaluating rule {name} on {}", model.node(n)))?
                         {
                             patch.apply(model).with_context(|| {
-                                format!("Applying patch for rule {name} on {}", model.node(n).name)
+                                format!("Applying patch for rule {name} on {}", model.node(n))
                             })?;
                             done_anything = true;
                         }

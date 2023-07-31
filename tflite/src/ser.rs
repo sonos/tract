@@ -101,7 +101,8 @@ impl<'f, 'b, 'mb> SubgraphBuilder<'f, 'b, 'mb> {
         &mut self.model.builder
     }
 
-    pub fn write_fact(&mut self, name: &str, fact: &TypedFact) -> TractResult<i32> {
+    pub fn write_fact(&mut self, name: impl AsRef<str>, fact: impl Into<TypedFact>) -> TractResult<i32> {
+        let fact = fact.into();
         let buffer = if let Some(k) = &fact.konst {
             let data = self.fb().create_vector(unsafe { k.as_bytes() });
             let buffer = Buffer::create(&mut self.fb(), &BufferArgs { data: Some(data) });
@@ -112,7 +113,7 @@ impl<'f, 'b, 'mb> SubgraphBuilder<'f, 'b, 'mb> {
         };
         let shape = fact.shape.as_concrete().unwrap().iter().map(|d| *d as i32).collect_vec();
         let shape = self.fb().create_vector(&shape);
-        let name = self.fb().create_string(name);
+        let name = self.fb().create_string(name.as_ref());
         let tensor = Tensor::create(
             self.fb(),
             &TensorArgs {
