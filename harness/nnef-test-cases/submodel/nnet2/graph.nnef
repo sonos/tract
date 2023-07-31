@@ -10,6 +10,6 @@ graph network( input ) -> ( output ) {
   input = external(shape = [1, 2, 3]);
   conv_weights = [[[0, 0, 0], [0, 0, 0]]];
   conv_bias = [[[1]]];
-  output_conv = conv(input, conv_weights, conv_bias, dilation = [1], stride = [1], border = "constant", groups = 1, padding = [(0, 0), (0, 0)]);
+  output_conv = conv(input, conv_weights, conv_bias, dilation = [1], stride = [1], border = "constant", groups = 1, padding = [(0, 0)]);
   output = output_conv;
 }
