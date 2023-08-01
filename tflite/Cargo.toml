@@ -11,6 +11,3 @@ edition = "2021"
 derive-new.workspace = true
 flatbuffers.workspace = true
 tract-hir = { version = "=0.20.7-pre", path = "../hir" }
-
-[dev-dependencies]
-tflite.workspace = true
