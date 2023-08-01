@@ -204,7 +204,7 @@ impl Arbitrary for ConvProblem {
                         ci0 = 1;
                     }
                     let shape_in = df.from_n_c_hw(n, ci0 * group, data_shape).unwrap();
-                    let data_in = tensor(shape_in.shape.iter().cloned().collect());
+                    let data_in = tensor(&*shape_in.shape);
                     match kf {
                         KernelFormat::HWIO => {
                             ker_shape.push(ci0 * group);
@@ -220,8 +220,8 @@ impl Arbitrary for ConvProblem {
                         }
                     };
                     let strides = vec(1usize..=3, shape_in.hw_rank()..=shape_in.hw_rank());
-                    let kernel = tensor(ker_shape);
-                    let bias = proptest::option::of(tensor(vec![co0 * group]));
+                    let kernel = tensor(&ker_shape);
+                    let bias = proptest::option::of(tensor(&[co0 * group]));
                     (Just((kf, pad, shape_in, group)), data_in, kernel, bias, strides)
                 },
             )

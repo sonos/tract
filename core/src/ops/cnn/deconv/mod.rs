@@ -2,8 +2,6 @@ use crate::internal::*;
 use crate::ops::cnn::{PaddingSpec, PoolSpec};
 
 mod deconv_sum;
-#[cfg(test)]
-mod proptest;
 mod unary;
 
 pub use unary::DeconvUnary;

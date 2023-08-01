@@ -1,10 +1,6 @@
 mod depth_wise;
 mod im2col;
 mod lazy_im2col;
-#[cfg(test)]
-pub mod proptest;
-#[cfg(test)]
-mod proptest_q;
 mod q_sum_b;
 mod unary;
 

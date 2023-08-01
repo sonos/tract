@@ -1,15 +1,25 @@
-use crate::ops::cnn::conv::KernelFormat;
-use crate::ops::cnn::*;
-use crate::ops::nn::*;
+use infra::Test;
+use infra::TestResult;
+use infra::TestSuite;
 use proptest::collection::vec;
 use proptest::prelude::*;
+use tract_core::ops::cnn::conv::KernelFormat;
+use tract_core::ops::cnn::*;
+use tract_core::ops::nn::*;
+use tract_ndarray as ndarray;
 use tract_ndarray::{prelude::*, *};
 use DataFormat::*;
 use KernelFormat::*;
 
-#[derive(Debug)]
+use crate::data_format;
+use crate::kernel_format;
+use crate::tensor;
+
+#[derive(Debug, Clone, Default)]
+pub struct DeconvProblemParams {}
+
+#[derive(Debug, Clone)]
 struct DeconvProblem {
-    optimized: bool,
     data_format: DataFormat,
     kernel_format: KernelFormat,
     padding: PaddingSpec,
@@ -22,24 +32,15 @@ struct DeconvProblem {
     group: usize,
 }
 
-fn tensor(shape: &[usize]) -> BoxedStrategy<ArrayD<f32>> {
-    let shape = shape.to_vec();
-    let len = shape.iter().product::<usize>();
-    vec(any::<i8>().prop_map(|i| i as f32), len..=len)
-        .prop_map(move |vec| ArrayD::from_shape_vec(&*shape, vec).unwrap())
-        .boxed()
-}
-
 impl Arbitrary for DeconvProblem {
     type Strategy = BoxedStrategy<DeconvProblem>;
-    type Parameters = ();
+    type Parameters = DeconvProblemParams;
     fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-        (any::<bool>(), 1usize..4)
-            .prop_flat_map(|(opt, georank)| {
+        (1usize..4)
+            .prop_flat_map(|georank| {
                 (
-                    Just(opt),
-                    any::<DataFormat>(),
-                    any::<KernelFormat>(),
+                    data_format(),
+                    kernel_format(),
                     prop_oneof![Just(PaddingSpec::Valid), Just(PaddingSpec::SameUpper)],
                     1usize..3,                         // n
                     1usize..4,                         // ci / group
@@ -53,7 +54,7 @@ impl Arbitrary for DeconvProblem {
             })
             .prop_filter(
                 "dilation, strides and shapes in SAME",
-                |(_, _, _, pad, _, _, _, hwk, _, strides, dilations, _)| {
+                |(_, _, pad, _, _, _, hwk, _, strides, dilations, _)| {
                     pad == &PaddingSpec::Valid
                         || tract_itertools::izip!(hwk, dilations, strides)
                             .all(|(k, d, s)| (k - 1) * d > s - 1)
@@ -61,7 +62,6 @@ impl Arbitrary for DeconvProblem {
             )
             .prop_flat_map(
                 |(
-                    opt,
                     df,
                     kf,
                     pad,
@@ -91,7 +91,6 @@ impl Arbitrary for DeconvProblem {
                     };
                     let data_shape = df.from_n_c_hw(n, ci_over_group * group, hwi).unwrap();
                     (
-                        Just(opt),
                         Just(df),
                         Just(kf),
                         Just(pad),
@@ -106,7 +105,6 @@ impl Arbitrary for DeconvProblem {
             )
             .prop_map(
                 |(
-                    optimized,
                     data_format,
                     kernel_format,
                     padding,
@@ -119,7 +117,6 @@ impl Arbitrary for DeconvProblem {
                 )| {
                     let adjustments = tvec!(0; kernel.ndim() - 2); // FIXME maybe
                     DeconvProblem {
-                        optimized,
                         data_format,
                         kernel_format,
                         padding,
@@ -164,21 +161,12 @@ impl DeconvProblem {
         op
     }
 
-    fn model_eval(&self) -> ArrayD<f32> {
+    fn tract(&self) -> TractResult<TypedModel> {
         let mut model = TypedModel::default();
         let src = model.add_source("src", f32::fact(self.input.shape())).unwrap();
         let output = model.wire_node("deconv", self.as_op(), &[src]).unwrap();
         model.set_output_outlets(&output).unwrap();
-        let model = model.into_optimized().unwrap();
-        let mut outputs =
-            model.into_runnable().unwrap().run(tvec!(self.input.clone().into_tvalue())).unwrap();
-        outputs.remove(0).into_tensor().into_array().unwrap().into_dimensionality().unwrap()
-    }
-
-    fn op_eval(&self) -> ArrayD<f32> {
-        let op = self.as_op();
-        let mut outputs = op.eval(tvec!(self.input.clone().into_tvalue())).unwrap();
-        outputs.remove(0).into_tensor().into_array().unwrap().into_dimensionality().unwrap()
+        Ok(model)
     }
 
     fn reference(&self) -> ArrayD<f32> {
@@ -279,370 +267,328 @@ impl DeconvProblem {
         }
         output
     }
+}
 
-    fn check(&self) {
-        if self.optimized {
-            self.model_eval()
-                .into_tensor()
-                .close_enough(&self.reference().into_tensor(), true)
-                .unwrap()
-        } else {
-            self.op_eval()
-                .into_tensor()
-                .close_enough(&self.reference().into_tensor(), true)
-                .unwrap()
-        }
+impl Test for DeconvProblem {
+    fn run(&self, runtime: &dyn Runtime) -> TestResult {
+        let reference = self.reference().into_tensor();
+        let mut output =
+            runtime.prepare(self.tract()?)?.run(tvec![self.input.clone().into_tvalue()])?;
+        let output = output.remove(0).into_tensor();
+        output.close_enough(&reference, true)
     }
 }
 
-proptest::proptest! {
-    #[test]
-    fn prop(pb in any::<DeconvProblem>()) {
-        pb.check();
-    }
-}
+pub fn suite() -> TractResult<TestSuite> {
+    let mut suite = TestSuite::default();
+    suite.add_arbitrary::<DeconvProblem>("proptest", DeconvProblemParams::default());
 
-#[test]
-fn test_trivial_0() {
-    let pb = DeconvProblem {
-        optimized: false,
-        data_format: NCHW,
-        kernel_format: OIHW,
-        padding: PaddingSpec::Valid,
-        input: arr4(&[[[[0.0]]]]).into_dyn(),
-        kernel: arr4(&[[[[0.0]]]]).into_dyn(),
-        bias: None,
-        strides: tvec!(1, 1),
-        dilations: tvec!(1, 1),
-        adjustments: tvec!(0, 0),
-        group: 1,
-    };
-    pb.check();
-}
+    suite.add(
+        "trivial_0",
+        DeconvProblem {
+            data_format: NCHW,
+            kernel_format: OIHW,
+            padding: PaddingSpec::Valid,
+            input: arr4(&[[[[0.0]]]]).into_dyn(),
+            kernel: arr4(&[[[[0.0]]]]).into_dyn(),
+            bias: None,
+            strides: tvec!(1, 1),
+            dilations: tvec!(1, 1),
+            adjustments: tvec!(0, 0),
+            group: 1,
+        },
+    );
 
-#[test]
-fn test_hwc_0() {
-    let pb = DeconvProblem {
-        optimized: false,
-        data_format: HWC,
-        kernel_format: OIHW,
-        padding: PaddingSpec::Valid,
-        input: arr3(&[[[0.0]], [[0.0]]]).into_dyn(),
-        kernel: arr4(&[[[[0.0]]]]).into_dyn(),
-        bias: None,
-        strides: tvec!(1, 1),
-        dilations: tvec!(1, 1),
-        adjustments: tvec!(0, 0),
-        group: 1,
-    };
-    pb.check();
-}
+    suite.add(
+        "hwc_0",
+        DeconvProblem {
+            data_format: HWC,
+            kernel_format: OIHW,
+            padding: PaddingSpec::Valid,
+            input: arr3(&[[[0.0]], [[0.0]]]).into_dyn(),
+            kernel: arr4(&[[[[0.0]]]]).into_dyn(),
+            bias: None,
+            strides: tvec!(1, 1),
+            dilations: tvec!(1, 1),
+            adjustments: tvec!(0, 0),
+            group: 1,
+        },
+    );
 
-#[test]
-fn test_geo_0() {
-    let pb = DeconvProblem {
-        optimized: false,
-        data_format: HWC,
-        kernel_format: OIHW,
-        padding: PaddingSpec::Valid,
-        input: arr3(&[[[0.0]]]).into_dyn(),
-        kernel: arr4(&[[[[0.0], [0.0]]]]).into_dyn(),
-        bias: None,
-        strides: tvec!(1, 1),
-        dilations: tvec!(1, 1),
-        adjustments: tvec!(0, 0),
-        group: 1,
-    };
-    pb.check();
-}
+    suite.add(
+        "geo_0",
+        DeconvProblem {
+            data_format: HWC,
+            kernel_format: OIHW,
+            padding: PaddingSpec::Valid,
+            input: arr3(&[[[0.0]]]).into_dyn(),
+            kernel: arr4(&[[[[0.0], [0.0]]]]).into_dyn(),
+            bias: None,
+            strides: tvec!(1, 1),
+            dilations: tvec!(1, 1),
+            adjustments: tvec!(0, 0),
+            group: 1,
+        },
+    );
 
-#[test]
-fn test_hwio_0() {
-    let pb = DeconvProblem {
-        optimized: false,
-        data_format: HWC,
-        kernel_format: HWIO,
-        padding: PaddingSpec::Valid,
-        input: arr3(&[[[0.0]]]).into_dyn(),
-        kernel: arr4(&[[[[0.0, 0.0]]]]).into_dyn(),
-        bias: None,
-        strides: tvec!(1, 1),
-        dilations: tvec!(1, 1),
-        adjustments: tvec!(0, 0),
-        group: 1,
-    };
-    pb.check();
-}
+    suite.add(
+        "hwio_0",
+        DeconvProblem {
+            data_format: HWC,
+            kernel_format: HWIO,
+            padding: PaddingSpec::Valid,
+            input: arr3(&[[[0.0]]]).into_dyn(),
+            kernel: arr4(&[[[[0.0, 0.0]]]]).into_dyn(),
+            bias: None,
+            strides: tvec!(1, 1),
+            dilations: tvec!(1, 1),
+            adjustments: tvec!(0, 0),
+            group: 1,
+        },
+    );
 
-#[test]
-fn test_strides_1() {
-    let pb = DeconvProblem {
-        optimized: false,
-        data_format: HWC,
-        kernel_format: OIHW,
-        padding: PaddingSpec::Valid,
-        input: arr2(&[[0.0], [1.0]]).into_dyn(),
-        kernel: arr3(&[[[1.0]]]).into_dyn(),
-        bias: None,
-        strides: tvec!(2),
-        dilations: tvec!(1),
-        adjustments: tvec!(0, 0),
-        group: 1,
-    };
-    pb.check();
-}
+    suite.add(
+        "strides_1",
+        DeconvProblem {
+            data_format: HWC,
+            kernel_format: OIHW,
+            padding: PaddingSpec::Valid,
+            input: arr2(&[[0.0], [1.0]]).into_dyn(),
+            kernel: arr3(&[[[1.0]]]).into_dyn(),
+            bias: None,
+            strides: tvec!(2),
+            dilations: tvec!(1),
+            adjustments: tvec!(0, 0),
+            group: 1,
+        },
+    );
 
-#[test]
-fn test_same_upper_1() {
-    let pb = DeconvProblem {
-        optimized: false,
-        data_format: HWC,
-        kernel_format: OIHW,
-        padding: PaddingSpec::SameUpper,
-        input: arr2(&[[0.0]]).into_dyn(),
-        kernel: arr3(&[[[0.0, 0.0]]]).into_dyn(),
-        bias: None,
-        strides: tvec!(1),
-        dilations: tvec!(1),
-        adjustments: tvec!(0, 0),
-        group: 1,
-    };
-    pb.check();
-}
+    suite.add(
+        "same_upper_1",
+        DeconvProblem {
+            data_format: HWC,
+            kernel_format: OIHW,
+            padding: PaddingSpec::SameUpper,
+            input: arr2(&[[0.0]]).into_dyn(),
+            kernel: arr3(&[[[0.0, 0.0]]]).into_dyn(),
+            bias: None,
+            strides: tvec!(1),
+            dilations: tvec!(1),
+            adjustments: tvec!(0, 0),
+            group: 1,
+        },
+    );
 
-#[test]
-fn test_same_upper_dil() {
-    let pb = DeconvProblem {
-        optimized: false,
-        data_format: HWC,
-        kernel_format: OIHW,
-        padding: PaddingSpec::SameUpper,
-        input: arr2(&[[0.0]]).into_dyn(),
-        kernel: arr3(&[[[0.0, 0.0]]]).into_dyn(),
-        bias: None,
-        strides: tvec!(1),
-        dilations: tvec!(2),
-        adjustments: tvec!(0, 0),
-        group: 1,
-    };
-    pb.check();
-}
+    suite.add(
+        "same_upper_dil",
+        DeconvProblem {
+            data_format: HWC,
+            kernel_format: OIHW,
+            padding: PaddingSpec::SameUpper,
+            input: arr2(&[[0.0]]).into_dyn(),
+            kernel: arr3(&[[[0.0, 0.0]]]).into_dyn(),
+            bias: None,
+            strides: tvec!(1),
+            dilations: tvec!(2),
+            adjustments: tvec!(0, 0),
+            group: 1,
+        },
+    );
 
-#[test]
-fn test_same_upper_strides() {
-    let pb = DeconvProblem {
-        optimized: false,
-        data_format: HWC,
-        kernel_format: OIHW,
-        padding: PaddingSpec::SameUpper,
-        input: arr2(&[[0.0]]).into_dyn(),
-        kernel: arr3(&[[[0.0, 0.0, 0.0]]]).into_dyn(),
-        bias: None,
-        strides: tvec!(2),
-        dilations: tvec!(1),
-        adjustments: tvec!(0, 0),
-        group: 1,
-    };
-    pb.check();
-}
+    suite.add(
+        "same_upper_strides",
+        DeconvProblem {
+            data_format: HWC,
+            kernel_format: OIHW,
+            padding: PaddingSpec::SameUpper,
+            input: arr2(&[[0.0]]).into_dyn(),
+            kernel: arr3(&[[[0.0, 0.0, 0.0]]]).into_dyn(),
+            bias: None,
+            strides: tvec!(2),
+            dilations: tvec!(1),
+            adjustments: tvec!(0, 0),
+            group: 1,
+        },
+    );
 
-#[test]
-fn test_channel_0() {
-    let pb = DeconvProblem {
-        optimized: false,
-        data_format: HWC,
-        kernel_format: OIHW,
-        padding: PaddingSpec::Valid,
-        input: arr2(&[[0.0]]).into_dyn(),
-        kernel: arr3(&[[[0.0]], [[0.0]]]).into_dyn(),
-        bias: None,
-        strides: tvec!(1),
-        dilations: tvec!(1),
-        adjustments: tvec!(0),
-        group: 1,
-    };
-    pb.check();
-}
+    suite.add(
+        "channel_0",
+        DeconvProblem {
+            data_format: HWC,
+            kernel_format: OIHW,
+            padding: PaddingSpec::Valid,
+            input: arr2(&[[0.0]]).into_dyn(),
+            kernel: arr3(&[[[0.0]], [[0.0]]]).into_dyn(),
+            bias: None,
+            strides: tvec!(1),
+            dilations: tvec!(1),
+            adjustments: tvec!(0),
+            group: 1,
+        },
+    );
 
-#[test]
-fn test_group_0() {
-    let pb = DeconvProblem {
-        optimized: false,
-        data_format: HWC,
-        kernel_format: OIHW,
-        padding: PaddingSpec::Valid,
-        input: arr2(&[[0.0, 0.0]]).into_dyn(),
-        kernel: arr3(&[[[0.0], [0.0]]]).into_dyn(),
-        bias: None,
-        strides: tvec!(1),
-        dilations: tvec!(1),
-        adjustments: tvec!(0),
-        group: 2,
-    };
-    pb.check();
-}
+    suite.add(
+        "group_0",
+        DeconvProblem {
+            data_format: HWC,
+            kernel_format: OIHW,
+            padding: PaddingSpec::Valid,
+            input: arr2(&[[0.0, 0.0]]).into_dyn(),
+            kernel: arr3(&[[[0.0], [0.0]]]).into_dyn(),
+            bias: None,
+            strides: tvec!(1),
+            dilations: tvec!(1),
+            adjustments: tvec!(0),
+            group: 2,
+        },
+    );
 
-#[test]
-fn test_group_1() {
-    let pb = DeconvProblem {
-        optimized: false,
-        data_format: HWC,
-        kernel_format: HWIO,
-        padding: PaddingSpec::Valid,
-        input: arr2(&[[0.0, 0.0]]).into_dyn(),
-        kernel: arr3(&[[[0.0], [0.0]]]).into_dyn(),
-        bias: None,
-        strides: tvec!(1),
-        dilations: tvec!(1),
-        adjustments: tvec!(0),
-        group: 2,
-    };
-    pb.check();
-}
+    suite.add(
+        "group_1",
+        DeconvProblem {
+            data_format: HWC,
+            kernel_format: HWIO,
+            padding: PaddingSpec::Valid,
+            input: arr2(&[[0.0, 0.0]]).into_dyn(),
+            kernel: arr3(&[[[0.0], [0.0]]]).into_dyn(),
+            bias: None,
+            strides: tvec!(1),
+            dilations: tvec!(1),
+            adjustments: tvec!(0),
+            group: 2,
+        },
+    );
 
-#[test]
-fn test_group_2() {
-    let pb = DeconvProblem {
-        optimized: false,
-        data_format: HWC,
-        kernel_format: OIHW,
-        padding: PaddingSpec::Valid,
-        input: ndarray::arr2(&[[1.0, 0.0]]).into_dyn(),
-        kernel: ndarray::arr3(&[[[1.0], [0.0]]]).into_dyn(),
-        bias: None,
-        strides: tvec!(1),
-        dilations: tvec!(1),
-        adjustments: tvec!(0),
-        group: 2,
-    };
-    pb.check();
-}
+    suite.add(
+        "group_2",
+        DeconvProblem {
+            data_format: HWC,
+            kernel_format: OIHW,
+            padding: PaddingSpec::Valid,
+            input: ndarray::arr2(&[[1.0, 0.0]]).into_dyn(),
+            kernel: ndarray::arr3(&[[[1.0], [0.0]]]).into_dyn(),
+            bias: None,
+            strides: tvec!(1),
+            dilations: tvec!(1),
+            adjustments: tvec!(0),
+            group: 2,
+        },
+    );
 
-#[test]
-fn test_group_3() {
-    let pb = DeconvProblem {
-        optimized: false,
-        data_format: HWC,
-        kernel_format: OIHW,
-        padding: PaddingSpec::Valid,
-        input: ndarray::arr2(&[[0.0, 1.0]]).into_dyn(),
-        kernel: ndarray::arr3(&[[[0.0], [0.0]], [[1.0], [0.0]]]).into_dyn(),
-        bias: None,
-        strides: tvec!(1),
-        dilations: tvec!(1),
-        adjustments: tvec!(0),
-        group: 2,
-    };
-    pb.check();
-}
+    suite.add(
+        "group_3",
+        DeconvProblem {
+            data_format: HWC,
+            kernel_format: OIHW,
+            padding: PaddingSpec::Valid,
+            input: ndarray::arr2(&[[0.0, 1.0]]).into_dyn(),
+            kernel: ndarray::arr3(&[[[0.0], [0.0]], [[1.0], [0.0]]]).into_dyn(),
+            bias: None,
+            strides: tvec!(1),
+            dilations: tvec!(1),
+            adjustments: tvec!(0),
+            group: 2,
+        },
+    );
 
-#[test]
-fn test_group_4() {
-    let pb = DeconvProblem {
-        optimized: true,
-        data_format: HWC,
-        kernel_format: OIHW,
-        padding: PaddingSpec::Valid,
-        input: arr2(&[[0f32, 1.]]).into_dyn(),
-        kernel: arr3(&[[[0f32], [1.]]]).into_dyn(),
-        bias: None,
-        strides: tvec!(1),
-        dilations: tvec!(1),
-        adjustments: tvec!(0),
-        group: 2,
-    };
-    pb.check();
-}
+    suite.add(
+        "group_4",
+        DeconvProblem {
+            data_format: HWC,
+            kernel_format: OIHW,
+            padding: PaddingSpec::Valid,
+            input: arr2(&[[0f32, 1.]]).into_dyn(),
+            kernel: arr3(&[[[0f32], [1.]]]).into_dyn(),
+            bias: None,
+            strides: tvec!(1),
+            dilations: tvec!(1),
+            adjustments: tvec!(0),
+            group: 2,
+        },
+    );
 
-#[test]
-fn test_bias_0() {
-    let pb = DeconvProblem {
-        optimized: false,
-        data_format: HWC,
-        kernel_format: OIHW,
-        padding: PaddingSpec::Valid,
-        input: arr2(&[[0.0]]).into_dyn(),
-        kernel: arr3(&[[[0.0]]]).into_dyn(),
-        bias: Some(arr1(&[1.0f32]).into_dyn()),
-        strides: tvec!(1),
-        dilations: tvec!(1),
-        adjustments: tvec!(0),
-        group: 1,
-    };
-    pb.check();
-}
+    suite.add(
+        "bias_0",
+        DeconvProblem {
+            data_format: HWC,
+            kernel_format: OIHW,
+            padding: PaddingSpec::Valid,
+            input: arr2(&[[0.0]]).into_dyn(),
+            kernel: arr3(&[[[0.0]]]).into_dyn(),
+            bias: Some(arr1(&[1.0f32]).into_dyn()),
+            strides: tvec!(1),
+            dilations: tvec!(1),
+            adjustments: tvec!(0),
+            group: 1,
+        },
+    );
 
-#[test]
-fn test_rank_5_with_group() {
-    let pb = DeconvProblem {
-        optimized: false,
-        data_format: HWC,
-        kernel_format: OIHW,
-        padding: PaddingSpec::Valid,
-        input: arr4(&[[[[0.0, 0.0, 0.0, 1.0]]]]).into_dyn(),
-        kernel: arr1(&[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0])
-            .into_shape(vec![1, 4, 1, 2, 1])
-            .unwrap()
-            .into_dyn(),
-        bias: None,
-        strides: tvec!(1, 1, 1),
-        dilations: tvec!(1, 1, 1),
-        adjustments: tvec!(0, 0, 0),
-        group: 2,
-    };
-    pb.check();
-}
+    suite.add(
+        "rank_5_with_group",
+        DeconvProblem {
+            data_format: HWC,
+            kernel_format: OIHW,
+            padding: PaddingSpec::Valid,
+            input: arr4(&[[[[0.0, 0.0, 0.0, 1.0]]]]).into_dyn(),
+            kernel: arr1(&[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0])
+                .into_shape(vec![1, 4, 1, 2, 1])
+                .unwrap()
+                .into_dyn(),
+            bias: None,
+            strides: tvec!(1, 1, 1),
+            dilations: tvec!(1, 1, 1),
+            adjustments: tvec!(0, 0, 0),
+            group: 2,
+        },
+    );
 
-#[test]
-fn test_issue_512_simplified() {
-    let pb = DeconvProblem {
-        optimized: false,
-        data_format: NCHW,
-        kernel_format: OIHW,
-        padding: PaddingSpec::Valid,
-        input: ndarray::Array4::zeros([1, 4, 1, 1]).into_dyn(),
-        kernel: ndarray::Array4::zeros([1, 4, 1, 1]).into_dyn(),
-        bias: None,
-        strides: tvec!(1, 1),
-        dilations: tvec!(1, 1),
-        adjustments: tvec!(0, 0),
-        group: 2,
-    };
-    pb.check();
-}
+    suite.add(
+        "issue_512_simplified",
+        DeconvProblem {
+            data_format: NCHW,
+            kernel_format: OIHW,
+            padding: PaddingSpec::Valid,
+            input: ndarray::Array4::zeros([1, 4, 1, 1]).into_dyn(),
+            kernel: ndarray::Array4::zeros([1, 4, 1, 1]).into_dyn(),
+            bias: None,
+            strides: tvec!(1, 1),
+            dilations: tvec!(1, 1),
+            adjustments: tvec!(0, 0),
+            group: 2,
+        },
+    );
 
-#[test]
-fn test_issue_optim_2d() {
-    let pb = DeconvProblem {
-        optimized: false,
-        data_format: HWC,
-        kernel_format: OIHW,
-        padding: PaddingSpec::Valid,
-        input: ndarray::Array3::zeros([2, 2, 1]).into_dyn(),
-        kernel: ndarray::Array4::zeros([1, 1, 1, 1]).into_dyn(),
-        bias: None,
-        strides: tvec!(1, 2),
-        dilations: tvec!(1, 1),
-        adjustments: tvec!(0, 0),
-        group: 1,
-    };
-    pb.check();
-}
+    suite.add(
+        "issue_optim_2d",
+        DeconvProblem {
+            data_format: HWC,
+            kernel_format: OIHW,
+            padding: PaddingSpec::Valid,
+            input: ndarray::Array3::zeros([2, 2, 1]).into_dyn(),
+            kernel: ndarray::Array4::zeros([1, 1, 1, 1]).into_dyn(),
+            bias: None,
+            strides: tvec!(1, 2),
+            dilations: tvec!(1, 1),
+            adjustments: tvec!(0, 0),
+            group: 1,
+        },
+    );
 
-#[test]
-fn test_foo() {
-    let pb = DeconvProblem {
-        optimized: true,
-        data_format: NHWC,
-        kernel_format: OIHW,
-        padding: PaddingSpec::Valid,
-        input: arr3(&[[[0f32]], [[1.]]]).into_dyn(),
-        kernel: arr3(&[[[1f32]]]).into_dyn(),
-        bias: None,
-        strides: tvec!(1),
-        dilations: tvec!(1),
-        adjustments: tvec!(0),
-        group: 1,
-    };
-    pb.check();
+    suite.add(
+        "foo",
+        DeconvProblem {
+            data_format: NHWC,
+            kernel_format: OIHW,
+            padding: PaddingSpec::Valid,
+            input: arr3(&[[[0f32]], [[1.]]]).into_dyn(),
+            kernel: arr3(&[[[1f32]]]).into_dyn(),
+            bias: None,
+            strides: tvec!(1),
+            dilations: tvec!(1),
+            adjustments: tvec!(0),
+            group: 1,
+        },
+    );
+
+    Ok(suite)
 }
