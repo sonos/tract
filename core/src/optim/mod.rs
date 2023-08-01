@@ -153,7 +153,6 @@ impl<'o> OptimizerSession<'o> {
             }
         }
         while let Some(mut patch) = p.next(self, model)? {
-            debug!("Got a patch");
             patch.push_context(format!("{p:?}/{i}"));
             patch.model.check_consistency().context("checking patch internal consistency")?;
             model
