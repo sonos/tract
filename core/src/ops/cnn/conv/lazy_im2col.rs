@@ -1,15 +1,20 @@
 use crate::internal::*;
+use std::fmt::Debug;
 use std::ops::Range;
 use tract_linalg::frame::PackingWriter;
 use tract_linalg::mmm::{VirtualInput, VirtualInputSpec};
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Hash)]
 pub struct LazyIm2colSpec {
     pub n_bytes_offsets: Vec<isize>,
     pub k_bytes_offsets: Vec<isize>,
 }
 
-
+impl Debug for LazyIm2colSpec {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "LazyIm2colSpec {{...}}")
+    }
+}
 
 impl LazyIm2colSpec {
     fn wrap_t<T: Datum + Copy>(&self, view: &TensorView) -> Box<dyn VirtualInput> {
