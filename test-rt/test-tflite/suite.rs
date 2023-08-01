@@ -37,6 +37,4 @@ fn ignore_conv(t: &[String]) -> bool {
         || unit == "lazy_im2col_big_2"
         || unit == "batch_3d"
         || unit == "bias_3d_1"
-        // nonsense. bug in tfl ? hole in the spec ?
-        || unit == "same_1d_1"
 }
