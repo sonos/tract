@@ -8,18 +8,21 @@ use tract_ndarray::*;
 
 pub mod conv_f32;
 pub mod conv_q;
+pub mod deconv;
 
 pub fn suite() -> TractResult<TestSuite> {
-    let mut suite:TestSuite = Default::default();
+    let mut suite: TestSuite = Default::default();
     suite.add("f32", conv_f32::suite()?);
     suite.add("q", conv_q::suite()?);
+    suite.add("deconv", deconv::suite()?);
     Ok(suite)
 }
 
-pub fn tensor(shape: Vec<usize>) -> BoxedStrategy<ArrayD<f32>> {
+pub fn tensor<'a>(shape: impl IntoIterator<Item = &'a usize>) -> BoxedStrategy<ArrayD<f32>> {
+    let shape = shape.into_iter().copied().collect::<Vec<_>>();
     let len = shape.iter().product::<usize>();
     vec((-10i8..=10i8).prop_map(|i| i as f32), len..=len)
-        .prop_map(move |vec| ArrayD::from_shape_vec(shape.clone(), vec).unwrap())
+        .prop_map(move |vec| ArrayD::from_shape_vec(shape.to_vec(), vec).unwrap())
         .boxed()
 }
 
@@ -46,5 +49,8 @@ pub fn data_format() -> impl Strategy<Value = DataFormat> {
 }
 
 pub fn kernel_format() -> impl Strategy<Value = KernelFormat> {
-    prop_oneof![Just(KernelFormat::OIHW), /* Just(KernelFormat::OHWI), */ Just(KernelFormat::HWIO)]
+    prop_oneof![
+        Just(KernelFormat::OIHW),
+        /* Just(KernelFormat::OHWI), */ Just(KernelFormat::HWIO)
+    ]
 }
