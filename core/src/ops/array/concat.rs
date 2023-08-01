@@ -93,6 +93,9 @@ impl TypedOp for TypedConcat {
         start: usize,
         end: usize,
     ) -> TractResult<Option<TVec<OutletId>>> {
+        if output_axis != self.axis {
+            return Ok(Some(patch.wire_node(prefix, self.clone(), inputs)?));
+        }
         let facts =
             inputs.iter().map(|o| patch.outlet_fact(*o)).collect::<TractResult<TVec<_>>>()?;
         let offsets = self.offsets(&facts)?;
