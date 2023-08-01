@@ -32,7 +32,7 @@ impl ProtoFusedSpec {
     pub fn name(&self) -> String {
         use ProtoFusedSpec::*;
         match self {
-            AddMatMul(geo, _, _) => format!("matmul(k={})", geo.k),
+            AddMatMul(geo, _, _) => format!("matmul(k={}, {:?})", geo.k, geo),
             BinScalar(_, op) => format!("scalar{op:?}"),
             BinPerRow(_, op, _) => format!("row{op:?}"),
             BinPerCol(_, op, _) => format!("col{op:?}"),
@@ -260,7 +260,7 @@ impl Op for LirMatMulUnary {
 
     fn info(&self) -> TractResult<Vec<String>> {
         let mut infos = vec![format!(
-            "c_shape:{:?}, c_m_axis:{} c_n_axis:{} b_storage:{:?}",
+            "c_shape:{:?}, c_m_axis:{} c_n_axis:{} geometry:{:?}",
             self.c_fact, self.c_m_axis, self.c_n_axis, self.geometry,
         )];
         let (m, n) = self.m_n();

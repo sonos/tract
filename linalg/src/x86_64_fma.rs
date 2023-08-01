@@ -99,11 +99,13 @@ fn plug_avx512f(ops: &mut Ops) {
         _ => mmm::avx512_mmm_f32_128x1::mmm(),
     });
 
-    ops.mmm_f32 = Box::new(|_, _, n| match n {
-        Some(1) => unreachable!("should've been mmv"),
-        Some(2) => mmm::avx512_mmm_f32_80x2::mmm(),
-        Some(n) if n % 4 == 0 && n % 3 != 0 => mmm::avx512_mmm_f32_48x4::mmm(),
-        _ => mmm::avx512_mmm_f32_64x3::mmm(),
+    ops.mmm_f32 = Box::new(|m, _, n| match (m, n) {
+        (_, Some(1)) => unreachable!("should've been mmv"),
+        (_, Some(2)) => mmm::avx512_mmm_f32_80x2::mmm(),
+        (Some(m), _) if m <= 16 => mmm::avx512_mmm_f32_16x12::mmm(),
+        (_, Some(n)) if n % 4 == 0 && n % 3 != 0 && n < 32 => mmm::avx512_mmm_f32_48x4::mmm(),
+        (_, Some(n)) if n < 32 => mmm::avx512_mmm_f32_64x3::mmm(),
+        _ => mmm::avx512_mmm_f32_16x12::mmm(),
     });
     log::info!("mmm_f32, mmv_f32: x86_64/avx512f activated");
 }
