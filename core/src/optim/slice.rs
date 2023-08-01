@@ -30,11 +30,7 @@ impl super::TypedPass for PushSliceUp {
                 if let Some(boundaries) = should_slice_output(model, node, axis, &eval_order)? {
                     let mut splits = tvec!();
                     let mut patch = TypedModelPatch::new(format!("Slice {node} by {boundaries:?}"));
-                    let inputs = node
-                        .inputs
-                        .iter()
-                        .map(|i| patch.tap_model(model, *i))
-                        .collect::<TractResult<TVec<OutletId>>>()?;
+                    let inputs = patch.taps(model, &node.inputs)?;
                     let mut start = 0;
                     let axis_info = invariants.axis((InOut::Out(0), axis)).unwrap();
                     for end in &boundaries {

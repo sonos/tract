@@ -117,8 +117,7 @@ pub(super) fn inject_k_axis(
     let mut new_axes = op.axes.clone();
     let name = &node.name;
     let mut patch = TypedModelPatch::new("inject k axis");
-    let mut wire =
-        node.inputs.iter().map(|i| patch.tap_model(model, *i)).collect::<TractResult<TVec<_>>>()?;
+    let mut wire = patch.taps(model, &node.inputs)?;
     let possible_k_axis =
         new_axes.iter_all_axes().find(|a| a.outputs[0].len() == 0).map(|axis| axis.repr);
     if let Some(axis) = possible_k_axis {
@@ -158,8 +157,7 @@ pub(super) fn inject_m_or_n_axis(
     });
     let name = &node.name;
     let mut patch = TypedModelPatch::new("Injecting m or n axis");
-    let mut wire =
-        node.inputs.iter().map(|i| patch.tap_model(model, *i)).collect::<TractResult<TVec<_>>>()?;
+    let mut wire = patch.taps(model, &node.inputs)?;
     if let Some(axis) = quasi_m_or_n_axis {
         if axis.inputs[input_to_fix].len() == 1 {
             let new_axes =
@@ -228,8 +226,7 @@ fn dequant_output(
 ) -> TractResult<Option<TypedModelPatch>> {
     let name = &node.name;
     let mut patch = TypedModelPatch::new("Dequantizing einsum");
-    let taps: Vec<OutletId> =
-        node.inputs.iter().map(|i| patch.tap_model(model, *i)).collect::<TractResult<Vec<_>>>()?;
+    let taps = patch.taps(model, &node.inputs)?;
     let [a, b, bias, mut a0, a_scale, mut b0, b_scale, c0, c_scale] = *taps else {
         bail!("Expect exactly 9 inputs")
     };

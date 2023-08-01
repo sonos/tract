@@ -14,8 +14,8 @@ use crate::model::*;
 #[derive(Clone, Debug)]
 pub struct ModelPatch<F, O>
 where
-    F: Fact + Clone + 'static ,
-    O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static
+    F: Fact + Clone + 'static,
+    O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     /// patch label for auditing and debugging
     pub context: Vec<String>,
@@ -36,8 +36,8 @@ where
 
 impl<F, O> Default for ModelPatch<F, O>
 where
-    F: Fact + Clone + 'static ,
-    O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static
+    F: Fact + Clone + 'static,
+    O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     fn default() -> ModelPatch<F, O> {
         ModelPatch {
@@ -54,8 +54,8 @@ where
 
 impl<F, O> Deref for ModelPatch<F, O>
 where
-    F: Fact + Clone + 'static ,
-    O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static
+    F: Fact + Clone + 'static,
+    O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     type Target = Graph<F, O>;
     fn deref(&self) -> &Graph<F, O> {
@@ -65,8 +65,8 @@ where
 
 impl<F, O> DerefMut for ModelPatch<F, O>
 where
-    F: Fact + Clone + 'static ,
-    O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static
+    F: Fact + Clone + 'static,
+    O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     fn deref_mut(&mut self) -> &mut Graph<F, O> {
         &mut self.model
@@ -75,8 +75,8 @@ where
 
 impl<F, O> ModelPatch<F, O>
 where
-    F: Fact + Clone + 'static ,
-    O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static ,
+    F: Fact + Clone + 'static,
+    O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
     Graph<F, O>: SpecialOps<F, O>,
 {
     pub fn new(s: impl Into<String>) -> Self {
@@ -107,6 +107,17 @@ where
         )?;
         self.taps.insert(id, outlet);
         Ok(id)
+    }
+
+    /// Draw taps from a preexisting node.
+    ///
+    /// returns an OutletId usable in the little "patch" model
+    pub fn taps<'a>(
+        &mut self,
+        model: &Graph<F, O>,
+        outlets: impl IntoIterator<Item = &'a OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        outlets.into_iter().map(|o| self.tap_model(model, *o)).collect::<TractResult<TVec<_>>>()
     }
 
     pub unsafe fn shunt_outside_unchecked(
@@ -148,10 +159,7 @@ where
     ) -> TractResult<ModelPatch<F, O>> {
         let mut patch = ModelPatch::default();
         let new_op = new_op.into();
-        let inputs = inputs
-            .iter()
-            .map(|i| patch.tap_model(patched_model, *i))
-            .collect::<TractResult<TVec<_>>>()?;
+        let inputs = patch.taps(patched_model, inputs)?;
         let wires = patch.wire_node(&node.name, new_op, &inputs)?;
         for (ix, o) in wires.iter().enumerate() {
             patch.shunt_outside(patched_model, OutletId::new(node.id, ix), *o)?;
@@ -172,8 +180,7 @@ where
         } else {
             bail!("Non single successor fuse attempt")
         };
-        let inputs =  node.inputs.iter().map(|o|
-            patch.tap_model(patched_model, *o)).collect::<TractResult<TVec<OutletId>>>()?;
+        let inputs = patch.taps(patched_model, &node.inputs)?;
         let output = patch.wire_node(&node.name, new_op.into(), &inputs)?;
         patch.shunt_outside(patched_model, succ.id.into(), output[0])?;
         Ok(patch)
@@ -184,10 +191,13 @@ where
         patched_model: &Graph<F, O>,
         node: &Node<F, O>,
     ) -> TractResult<Option<ModelPatch<F, O>>> {
-        if patched_model.outputs.contains(&node.id.into()) && patched_model.outputs.contains(&node.inputs[0]) {
+        if patched_model.outputs.contains(&node.id.into())
+            && patched_model.outputs.contains(&node.inputs[0])
+        {
             Ok(None)
         } else {
-            Self::rewire(patched_model, &node.inputs, &[node.id.into()], &|_p, xs| Ok(xs.into())).map(Some)
+            Self::rewire(patched_model, &node.inputs, &[node.id.into()], &|_p, xs| Ok(xs.into()))
+                .map(Some)
         }
     }
 
@@ -199,10 +209,7 @@ where
         wiring: &dyn Fn(&mut Self, &[OutletId]) -> TractResult<TVec<OutletId>>,
     ) -> TractResult<ModelPatch<F, O>> {
         let mut patch = ModelPatch::default();
-        let taps = from
-            .iter()
-            .map(|f| patch.tap_model(patched_model, *f))
-            .collect::<TractResult<TVec<_>>>()?;
+        let taps = patch.taps(patched_model, from)?;
         let news = wiring(&mut patch, &taps)?;
         if news.len() != to.len() {
             bail!(
