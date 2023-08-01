@@ -590,8 +590,7 @@ impl LirMatMulUnary {
         let before_last = new_op.micro_ops.len() - 1..new_op.micro_ops.len() - 1;
         new_op.micro_ops.splice(before_last, fused_micro_op);
         new_op.update_trivial_path();
-        let mut inputs: TVec<OutletId> =
-            node.inputs.iter().map(|i| patch.tap_model(model, *i)).collect::<TractResult<_>>()?;
+        let mut inputs = patch.taps(model, &node.inputs)?;
         inputs.extend(additional_inputs.iter().cloned());
         let output = patch.wire_node(&node.name, new_op, &inputs)?;
         patch.shunt_outside(model, succ.id.into(), output[0])?;

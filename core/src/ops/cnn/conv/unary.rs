@@ -575,11 +575,7 @@ impl ConvUnary {
             let a = ker.into_shape(&a_shape)?.into_arc_tensor();
             let mut patch = TypedModelPatch::new("declutter_as_einsum");
             let a = patch.add_const(format!("{name}.filters"), a)?;
-            let mut inputs = node
-                .inputs
-                .iter()
-                .map(|i| patch.tap_model(model, *i))
-                .collect::<TractResult<TVec<_>>>()?;
+            let mut inputs = patch.taps(model, &node.inputs)?;
             inputs.insert(0, a);
             let mut axes = self.axes_mapping(&input_facts, &output_facts)?.with_extra_input(0)?;
             axes = axes.with_extra_axis('0', InOut::In(0), 0)?.with_extra_axis(
@@ -1043,11 +1039,7 @@ impl TypedOp for ConvUnary {
     ) -> TractResult<Option<TypedModelPatch>> {
         if let DatumType::U8 = self.kernel.datum_type().unquantized() {
             let mut patch = TypedModelPatch::default();
-            let mut inputs = node
-                .inputs
-                .iter()
-                .map(|w| patch.tap_model(model, *w))
-                .collect::<TractResult<TVec<_>>>()?;
+            let mut inputs = patch.taps(model, &node.inputs)?;
             let new_op = self.kernel_offset_u8_as_i8(&mut inputs, &mut patch)?.unwrap();
             let wire = patch.wire_node(&node.name, new_op, &inputs)?;
             patch.shunt_outside(model, node.id.into(), wire[0])?;
@@ -1060,11 +1052,7 @@ impl TypedOp for ConvUnary {
             let dt = input_fact.datum_type;
             if self.q_params.is_some() {
                 let mut patch = TypedModelPatch::default();
-                let inputs = node
-                    .inputs
-                    .iter()
-                    .map(|w| patch.tap_model(model, *w))
-                    .collect::<TractResult<TVec<_>>>()?;
+                let inputs = patch.taps(model, &node.inputs)?;
                 let wire = self
                     .wire_as_quant_im2col(&mut patch, &node.name, &inputs)
                     .context("in wire_as_quant_im2col")?;

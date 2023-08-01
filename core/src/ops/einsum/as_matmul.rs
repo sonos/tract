@@ -37,8 +37,7 @@ fn einsum_rules(
     let prefix: String =
         op.axes.iter_all_axes().filter(|a| ![m, k, n].contains(&a.repr)).map(|a| a.repr).collect();
     let mut patch = TypedModelPatch::default();
-    let inputs =
-        node.inputs.iter().map(|i| patch.tap_model(model, *i)).collect::<TractResult<TVec<_>>>()?;
+    let inputs = patch.taps(model, &node.inputs)?;
     let mut wire = tvec!(inputs[0], inputs[1]);
 
     let a_order_es: String = op.axes.axes(InOut::In(0)).map(|a| a.repr).collect();
