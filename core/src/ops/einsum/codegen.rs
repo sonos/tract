@@ -118,23 +118,14 @@ pub(super) fn inject_k_axis(
     let name = &node.name;
     let mut patch = TypedModelPatch::new("inject k axis");
     let mut wire = patch.taps(model, &node.inputs)?;
-    let possible_k_axis =
-        new_axes.iter_all_axes().find(|a| a.outputs[0].len() == 0).map(|axis| axis.repr);
-    if let Some(axis) = possible_k_axis {
-        let input_to_fix = (new_axes.axis(axis)?.inputs[0].len() > 0) as usize;
-        new_axes = new_axes.with_extra_axis_occurency(axis, InOut::In(input_to_fix), 0)?;
-        wire[input_to_fix] =
-            patch.wire_node(format!("{name}.add_k"), AxisOp::Add(0), &[wire[input_to_fix]])?[0];
-    } else {
-        let repr = new_axes.available_label();
-        new_axes = new_axes.with_extra_axis(repr, InOut::In(0), 0)?.with_extra_axis_occurency(
-            repr,
-            InOut::In(1),
-            0,
-        )?;
-        wire[0] = patch.wire_node(format!("{name}.add_k.0"), AxisOp::Add(0), &[wire[0]])?[0];
-        wire[1] = patch.wire_node(format!("{name}.add_k.1"), AxisOp::Add(0), &[wire[1]])?[0];
-    };
+    let repr = new_axes.available_label();
+    new_axes = new_axes.with_extra_axis(repr, InOut::In(0), 0)?.with_extra_axis_occurency(
+        repr,
+        InOut::In(1),
+        0,
+    )?;
+    wire[0] = patch.wire_node(format!("{name}.add_k.0"), AxisOp::Add(0), &[wire[0]])?[0];
+    wire[1] = patch.wire_node(format!("{name}.add_k.1"), AxisOp::Add(0), &[wire[1]])?[0];
     wire = patch.wire_node(&node.name, EinSum { axes: new_axes, ..op.clone() }, &wire)?;
     patch.shunt_outside(model, node.id.into(), wire[0])?;
     Ok(patch)
