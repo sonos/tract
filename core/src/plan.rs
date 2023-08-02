@@ -241,7 +241,7 @@ where
                 ..
             } = self;
             let plan = plan.borrow();
-            let model = plan.model().borrow();
+            let model = plan.model();
             for (step, n) in plan.order.iter().enumerate() {
                 let node = model.node(*n);
                 trace!("Running step {}, node {}", step, node);
@@ -483,9 +483,9 @@ where
             let plan = plan.borrow();
             match states[node] {
                 Some(ref mut state) => {
-                    state.eval(session_state, plan.borrow().model().nodes()[node].op(), inputs)
+                    state.eval(session_state, plan.model().nodes()[node].op(), inputs)
                 }
-                None => plan.borrow().model().nodes()[node].op().eval(inputs),
+                None => plan.model().nodes()[node].op().eval(inputs),
             }
             .with_context(|| format!("Evaluating {node:?}"))?
         };
