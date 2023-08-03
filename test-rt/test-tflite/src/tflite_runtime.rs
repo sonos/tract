@@ -15,11 +15,16 @@ impl Runtime for TfliteRuntime {
         let mut buffer = vec![];
         self.0.write(&model, &mut buffer)?;
         //       std::fs::write("foo.tflite", &buffer).unwrap();
-        Ok(Box::new(TfliteRunnable(buffer)))
+        let output_dt = model
+            .output_outlets()?
+            .iter()
+            .map(|oo| model.outlet_fact(*oo).unwrap().datum_type)
+            .collect();
+        Ok(Box::new(TfliteRunnable(buffer, output_dt)))
     }
 }
 
-struct TfliteRunnable(Vec<u8>);
+struct TfliteRunnable(Vec<u8>, TVec<DatumType>);
 
 impl Runnable for TfliteRunnable {
     fn spawn(&self) -> TractResult<Box<dyn State>> {
@@ -28,11 +33,11 @@ impl Runnable for TfliteRunnable {
         let builder = InterpreterBuilder::new(fb, resolver)?;
         let mut interpreter = builder.build()?;
         interpreter.allocate_tensors()?;
-        Ok(Box::new(TfliteState(interpreter)))
+        Ok(Box::new(TfliteState(interpreter, self.1.clone())))
     }
 }
 
-struct TfliteState(Interpreter<'static, BuiltinOpResolver>);
+struct TfliteState(Interpreter<'static, BuiltinOpResolver>, TVec<DatumType>);
 
 impl State for TfliteState {
     fn run(&mut self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
@@ -50,7 +55,7 @@ impl State for TfliteState {
             let output_tensor = self.0.tensor_info(output_ix).unwrap();
             let dt = match output_tensor.element_kind as u32 {
                 1 => f32::datum_type(),
-                9 => i8::datum_type(),
+                9 => self.1[ix].clone(), // impossible to retrieve QP from this TFL binding
                 _ => bail!("unknown type"),
             };
             let tensor = unsafe {
