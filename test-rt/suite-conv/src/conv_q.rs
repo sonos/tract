@@ -50,7 +50,7 @@ impl QConvProblem {
         &self.kernel.shape()[self.kernel_format.h_axis()..][..self.shape_in.hw_rank()]
     }
 
-    fn reference(&self) -> ArrayD<i8> {
+    fn reference(&self) -> Tensor {
         assert_eq!(self.data.shape(), &*self.shape_in.shape);
         let n = *self.shape_in.n().unwrap_or(&1);
         let ci_per_g = self.shape_in.c() / self.group;
@@ -58,7 +58,8 @@ impl QConvProblem {
         let a0 = self.qp[0].cast_to_scalar::<i32>().unwrap();
         let b0 = self.qp[2].cast_to_scalar::<i32>().unwrap();
         let c0 = self.qp[4].cast_to_scalar::<i32>().unwrap();
-        let scale = self.qp[5].cast_to_scalar::<f32>().unwrap()
+        let c_scale = self.qp[5].cast_to_scalar::<f32>().unwrap();
+        let scale = c_scale
             / self.qp[1].cast_to_scalar::<f32>().unwrap()
             / self.qp[3].cast_to_scalar::<f32>().unwrap();
         let shape_out: TVec<usize> = izip!(self.shape_in.hw_dims(), self.geo_ker())
@@ -123,6 +124,10 @@ impl QConvProblem {
                 .max(std::i8::MIN as i32)
                 .min(std::i8::MAX as i32) as i8
         })
+        .into_tensor()
+        .cast_to_dt(i8::datum_type().quantize(QParams::ZpScale { zero_point: c0, scale: c_scale }))
+        .unwrap()
+        .into_owned()
     }
 
     fn tract(&self) -> TractResult<TypedModel> {
