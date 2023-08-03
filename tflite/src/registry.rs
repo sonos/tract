@@ -15,9 +15,9 @@ pub type ToTflite = fn(&mut SubgraphBuilder, &TypedModel, &TypedNode) -> TractRe
 pub struct Registry {
     //    pub primitives: HashMap<Identifier, PrimitiveDecl>,
     //    pub unit_element_wise_ops: Vec<(Identifier, Box<dyn ElementWiseMiniOp>)>,
-    pub element_wise_ops: Vec<(BuiltinOperator, Box<dyn ElementWiseMiniOp>)>,
-    pub binary_ops: Vec<(BuiltinOperator, TypedBinOp)>,
-    pub to_tract: HashMap<BuiltinOperator, ToTract>,
+    pub element_wise_ops: Vec<(i32, Box<dyn ElementWiseMiniOp>)>,
+    pub binary_ops: Vec<(i32, TypedBinOp)>,
+    pub to_tract: HashMap<i32, ToTract>,
     pub to_tflite: HashMap<TypeId, ToTflite>,
 }
 
@@ -48,6 +48,18 @@ impl Registry {
         self.to_tflite.insert(std::any::TypeId::of::<T>(), tflite);
     }
 
+    pub fn reg_to_tract(&mut self, op: BuiltinOperator, to: ToTract) {
+        self.to_tract.insert(op.0, to);
+    }
+
+    pub fn reg_element_wise(&mut self, tflite: BuiltinOperator, tract: Box<dyn ElementWiseMiniOp>) {
+        self.element_wise_ops.push((tflite.0, tract));
+    }
+
+    pub fn reg_binary(&mut self, tflite: BuiltinOperator, tract: TypedBinOp) {
+        self.binary_ops.push((tflite.0, tract));
+    }
+
     pub fn op(
         &self,
         model: &Model,
@@ -63,7 +75,14 @@ impl Registry {
         let tensors = subgraph.tensors().unwrap();
         let prefix = tensors.get(flat.outputs().unwrap().get(0) as usize).name().unwrap();
         let opcode_index = flat.opcode_index();
-        let opcode = model.operator_codes().unwrap().get(opcode_index as _).builtin_code();
+        let op = model.operator_codes().unwrap().get(opcode_index as _);
+        let opcode = if op.deprecated_builtin_code() as i32
+            == BuiltinOperator::PLACEHOLDER_FOR_GREATER_OP_CODES.0
+        {
+            op.builtin_code().0
+        } else {
+            op.deprecated_builtin_code() as i32
+        };
         let ctx = DeserContext { model, subgraph, target };
         if let Some(ew) =
             self.element_wise_ops.iter().find(|bin| bin.0 == opcode).map(|pair| pair.1.clone())

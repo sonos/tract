@@ -7,12 +7,12 @@ use crate::registry::{DeserOp, Registry};
 use crate::tflite::BuiltinOperator;
 
 pub fn register_all(reg: &mut Registry) {
-    reg.to_tract.insert(BuiltinOperator::MEAN, reduce_mean);
-    reg.to_tract.insert(BuiltinOperator::SOFTMAX, softmax);
+    reg.reg_to_tract(BuiltinOperator::MEAN, reduce_mean);
+    reg.reg_to_tract(BuiltinOperator::SOFTMAX, softmax);
 
-    reg.to_tract.insert(BuiltinOperator::RELU, relu);
-    reg.to_tract.insert(BuiltinOperator::RELU6, relu6);
-    reg.element_wise_ops.push((BuiltinOperator::HARD_SWISH, Box::new(core::nn::HardSwish {})));
+    reg.reg_to_tract(BuiltinOperator::RELU, relu);
+    reg.reg_to_tract(BuiltinOperator::RELU6, relu6);
+    reg.reg_element_wise(BuiltinOperator::HARD_SWISH, Box::new(core::nn::HardSwish {}));
 }
 
 fn reduce_mean(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
