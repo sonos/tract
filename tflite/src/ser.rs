@@ -6,8 +6,8 @@ use tract_hir::tract_core::ops::source::TypedSource;
 use crate::registry::Registry;
 use crate::tflite::{
     Buffer, BufferArgs, BuiltinOperator, BuiltinOptions, CustomOptionsFormat, Model, ModelArgs,
-    Operator, OperatorArgs, OperatorCode, OperatorCodeArgs, SubGraph, SubGraphArgs, Tensor,
-    TensorArgs,
+    Operator, OperatorArgs, OperatorCode, OperatorCodeArgs, QuantizationDetails,
+    QuantizationParameters, QuantizationParametersArgs, SubGraph, SubGraphArgs, Tensor, TensorArgs,
 };
 use flatbuffers::{FlatBufferBuilder, UnionWIPOffset, WIPOffset};
 
@@ -118,13 +118,32 @@ impl<'f, 'b, 'mb> SubgraphBuilder<'f, 'b, 'mb> {
         let shape = fact.shape.as_concrete().unwrap().iter().map(|d| *d as i32).collect_vec();
         let shape = self.fb().create_vector(&shape);
         let name = self.fb().create_string(name.as_ref());
+        let quantization = if let Some(qp) = fact.datum_type.qparams() {
+            let zero_point = self.fb().create_vector(&[qp.zp_scale().0 as i64]);
+            let scale = self.fb().create_vector(&[qp.zp_scale().1]);
+            let qp = QuantizationParameters::create(
+                self.fb(),
+                &QuantizationParametersArgs {
+                    min: None,
+                    max: None,
+                    zero_point: Some(zero_point),
+                    scale: Some(scale),
+                    details: None,
+                    details_type: QuantizationDetails::NONE,
+                    quantized_dimension: 0,
+                },
+            );
+            Some(qp)
+        } else {
+            None
+        };
         let tensor = Tensor::create(
             self.fb(),
             &TensorArgs {
                 name: Some(name),
                 buffer,
                 is_variable: false,
-                quantization: None,
+                quantization,
                 shape: Some(shape),
                 type_: fact.datum_type.try_into()?,
                 sparsity: None,

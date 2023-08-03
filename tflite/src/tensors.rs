@@ -37,7 +37,7 @@ impl TryFrom<BufferTensorType> for DatumType {
 impl TryFrom<DatumType> for BufferTensorType {
     type Error = TractError;
     fn try_from(value: DatumType) -> Result<Self, Self::Error> {
-        Ok(match value {
+        Ok(match value.unquantized() {
             DatumType::Bool => BufferTensorType::BOOL,
             DatumType::U8 => BufferTensorType::UINT8,
             DatumType::U16 => BufferTensorType::UINT16,
