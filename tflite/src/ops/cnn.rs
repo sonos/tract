@@ -9,7 +9,6 @@ use tract_hir::internal::*;
 use tract_hir::ops::array::{Pad, PadMode};
 use tract_hir::ops::cnn::{ConvUnary, PaddingSpec};
 use tract_hir::ops::nn::DataFormat;
-use tract_hir::ops::quant::quantize_linear_i8;
 use tract_hir::prelude::tract_itertools::Itertools;
 use tract_hir::tract_core::ops as core;
 use tract_hir::tract_core::ops::cnn::KernelFormat;
@@ -119,29 +118,6 @@ fn ser_conv(
     }
 }
 
-fn quantization_suport(
-    op: &mut DeserOp,
-    input: &TypedFact,
-    kernel: &Tensor,
-    inputs: &mut TVec<OutletId>,
-) -> TractResult<Option<DatumType>> {
-    if op.output_facts[0].datum_type.is_quantized() {
-        let p = &op.prefix;
-        let kqp = kernel.datum_type().qparams().unwrap();
-        let iqp = input.datum_type.qparams().unwrap();
-        let oqp = op.output_facts[0].datum_type;
-        inputs.push(op.ctx.target.add_const(format!("{p}.k0"), rctensor0(kqp.zp_scale().0))?);
-        inputs.push(op.ctx.target.add_const(format!("{p}.kscale"), rctensor0(kqp.zp_scale().1))?);
-        inputs.push(op.ctx.target.add_const(format!("{p}.i0"), rctensor0(iqp.zp_scale().0))?);
-        inputs.push(op.ctx.target.add_const(format!("{p}.iscale"), rctensor0(iqp.zp_scale().1))?);
-        inputs.push(op.ctx.target.add_const(format!("{p}.c0"), rctensor0(oqp.zp_scale().0))?);
-        inputs.push(op.ctx.target.add_const(format!("{p}.cscale"), rctensor0(oqp.zp_scale().1))?);
-        Ok(Some(oqp))
-    } else {
-        Ok(None)
-    }
-}
-
 fn de_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let (input, kernel, bias) = args_3!(op.facts()?);
     let kernel = kernel.konst.unwrap();
@@ -167,7 +143,7 @@ fn de_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         output_channel_override: Some(*co),
     };
     let mut inputs = tvec!(op.inputs[0]);
-    let q_params = quantization_suport(op, &input, &kernel, &mut inputs)?;
+    let q_params = super::linearops_quantization_suport(op, &input, &kernel, &mut inputs)?;
     let conv = core::cnn::ConvUnary {
         pool_spec,
         kernel_fmt: KernelFormat::OHWI,
@@ -205,7 +181,7 @@ fn de_dw_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         output_channel_override: Some(co),
     };
     let mut inputs = tvec!(op.inputs[0]);
-    let q_params = quantization_suport(op, &input, &kernel, &mut inputs)?;
+    let q_params = super::linearops_quantization_suport(op, &input, &kernel, &mut inputs)?;
     let conv = core::cnn::ConvUnary {
         pool_spec,
         kernel_fmt: KernelFormat::OHWI,
