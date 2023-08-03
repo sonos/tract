@@ -8,7 +8,6 @@ use tract_hir::prelude::tract_itertools::Itertools;
 impl TryFrom<BufferTensorType> for DatumType {
     type Error = TractError;
     fn try_from(t: BufferTensorType) -> TractResult<DatumType> {
-        dbg!(&t);
         Ok(match t {
             BufferTensorType::FLOAT32 => DatumType::F32,
             BufferTensorType::FLOAT16 => DatumType::F16,
@@ -87,14 +86,27 @@ pub fn flat_tensor_to_tract_fact<'m>(
     id: i32,
 ) -> TractResult<(TypedFact, &'m str)> {
     let flat = graph.tensors().unwrap().get(id as _);
-    let dt: DatumType = flat.type_().try_into()?;
+    let mut dt: DatumType = flat.type_().try_into()?;
+    if let Some(qp) = flat.quantization() {
+        if let (Some(scale), Some(zp)) = (qp.scale(), qp.zero_point()) {
+            ensure!(scale.len() == 1);
+            ensure!(zp.len() == 1);
+            dt = dt.quantize(QParams::ZpScale { zero_point: zp.get(0) as _, scale: scale.get(0) })
+        }
+    }
     let mut fact = dt.fact(flat.shape().unwrap().iter().map(|d| d as usize).collect_vec());
     let buffer_ix = flat.buffer() as usize;
     if buffer_ix != 0 {
         let buffer = model.buffers().unwrap().get(flat.buffer() as usize);
         if let Some(data) = buffer.data() {
-            let data =
-                create_tensor(fact.datum_type, fact.shape.as_concrete().unwrap(), data.bytes())?;
+            let mut data = create_tensor(
+                fact.datum_type.unquantized(),
+                fact.shape.as_concrete().unwrap(),
+                data.bytes(),
+            )?;
+            unsafe {
+                data.set_datum_type(dt);
+            };
             fact = data.into();
         }
     }

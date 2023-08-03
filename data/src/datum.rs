@@ -304,6 +304,16 @@ impl DatumType {
             _ => *self,
         }
     }
+
+    pub fn quantize(&self, qparams: QParams) -> DatumType {
+        match self {
+            DatumType::I8 => DatumType::QI8(qparams),
+            DatumType::U8 => DatumType::QI8(qparams),
+            DatumType::I32=> DatumType::QI32(qparams),
+            _ => panic!("Can't quantize {self:?}"),
+        }
+    }
+
     #[inline(always)]
     pub fn zp_scale(&self) -> (i32, f32) {
         self.qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.))
