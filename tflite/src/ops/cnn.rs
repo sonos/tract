@@ -9,15 +9,16 @@ use tract_hir::internal::*;
 use tract_hir::ops::array::{Pad, PadMode};
 use tract_hir::ops::cnn::{ConvUnary, PaddingSpec};
 use tract_hir::ops::nn::DataFormat;
+use tract_hir::ops::quant::quantize_linear_i8;
 use tract_hir::prelude::tract_itertools::Itertools;
 use tract_hir::tract_core::ops as core;
 use tract_hir::tract_core::ops::cnn::KernelFormat;
 
 pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tract(BuiltinOperator::AVERAGE_POOL_2D, average_pool_2d);
-    reg.reg_to_tract(BuiltinOperator::CONV_2D, conv2d);
+    reg.reg_to_tract(BuiltinOperator::CONV_2D, de_conv2d);
     reg.reg_to_tflite::<ConvUnary>(ser_conv);
-    reg.reg_to_tract(BuiltinOperator::DEPTHWISE_CONV_2D, dw_conv2d);
+    reg.reg_to_tract(BuiltinOperator::DEPTHWISE_CONV_2D, de_dw_conv2d);
     reg.reg_to_tflite::<Pad>(ser_pad);
 }
 
@@ -118,8 +119,31 @@ fn ser_conv(
     }
 }
 
-fn conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
-    let (_input, kernel, bias) = args_3!(op.facts()?);
+fn quantization_suport(
+    op: &mut DeserOp,
+    input: &TypedFact,
+    kernel: &Tensor,
+    inputs: &mut TVec<OutletId>,
+) -> TractResult<Option<DatumType>> {
+    if op.output_facts[0].datum_type.is_quantized() {
+        let p = &op.prefix;
+        let kqp = kernel.datum_type().qparams().unwrap();
+        let iqp = input.datum_type.qparams().unwrap();
+        let oqp = op.output_facts[0].datum_type;
+        inputs.push(op.ctx.target.add_const(format!("{p}.k0"), rctensor0(kqp.zp_scale().0))?);
+        inputs.push(op.ctx.target.add_const(format!("{p}.kscale"), rctensor0(kqp.zp_scale().1))?);
+        inputs.push(op.ctx.target.add_const(format!("{p}.i0"), rctensor0(iqp.zp_scale().0))?);
+        inputs.push(op.ctx.target.add_const(format!("{p}.iscale"), rctensor0(iqp.zp_scale().1))?);
+        inputs.push(op.ctx.target.add_const(format!("{p}.c0"), rctensor0(oqp.zp_scale().0))?);
+        inputs.push(op.ctx.target.add_const(format!("{p}.cscale"), rctensor0(oqp.zp_scale().1))?);
+        Ok(Some(oqp))
+    } else {
+        Ok(None)
+    }
+}
+
+fn de_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let (input, kernel, bias) = args_3!(op.facts()?);
     let kernel = kernel.konst.unwrap();
     let bias = bias.konst.unwrap();
     let kernel_full_shape: TVec<usize> = kernel.shape().into();
@@ -142,20 +166,22 @@ fn conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         dilations: Some(dilations),
         output_channel_override: Some(*co),
     };
+    let mut inputs = tvec!(op.inputs[0]);
+    let q_params = quantization_suport(op, &input, &kernel, &mut inputs)?;
     let conv = core::cnn::ConvUnary {
         pool_spec,
         kernel_fmt: KernelFormat::OHWI,
         kernel,
         group: 1,
         bias: Some(bias),
-        q_params: None,
+        q_params,
     };
-    let wires = op.ctx.target.wire_node(op.prefix, conv, &op.inputs[0..1])?;
+    let wires = op.ctx.target.wire_node(op.prefix, conv, &inputs)?;
     wire_fused_activation(op, &wires, &options.fused_activation_function())
 }
 
-fn dw_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
-    let (_input, kernel, bias) = args_3!(op.facts()?);
+fn de_dw_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let (input, kernel, bias) = args_3!(op.facts()?);
     let bias = bias.konst.unwrap();
     let kernel = kernel.konst.unwrap();
     let kernel_full_shape: TVec<usize> = kernel.shape().into();
@@ -178,15 +204,17 @@ fn dw_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         dilations: Some(dilations),
         output_channel_override: Some(co),
     };
+    let mut inputs = tvec!(op.inputs[0]);
+    let q_params = quantization_suport(op, &input, &kernel, &mut inputs)?;
     let conv = core::cnn::ConvUnary {
         pool_spec,
         kernel_fmt: KernelFormat::OHWI,
         kernel,
         group: co,
         bias: Some(bias),
-        q_params: None,
+        q_params,
     };
-    let wires = op.ctx.target.wire_node(op.prefix, conv, &op.inputs[0..1])?;
+    let wires = op.ctx.target.wire_node(op.prefix, conv, &inputs)?;
     wire_fused_activation(op, &wires, &options.fused_activation_function())
 }
 
