@@ -8,6 +8,7 @@ use tract_hir::prelude::tract_itertools::Itertools;
 impl TryFrom<BufferTensorType> for DatumType {
     type Error = TractError;
     fn try_from(t: BufferTensorType) -> TractResult<DatumType> {
+        dbg!(&t);
         Ok(match t {
             BufferTensorType::FLOAT32 => DatumType::F32,
             BufferTensorType::FLOAT16 => DatumType::F16,
