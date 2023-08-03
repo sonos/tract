@@ -94,7 +94,9 @@ impl Framework<TfliteProtoModel, TypedModel> for Tflite {
                     slot.insert(konst);
                 }
             }
-            self.0.op(&root, main, &op, &mut target, &mut mapping)?;
+            self.0
+                .op(&root, main, &op, &mut target, &mut mapping)
+                .with_context(|| format!("Parsing op {op:#?}"))?;
         }
         let outputs: TVec<_> = main
             .outputs()

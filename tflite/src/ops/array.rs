@@ -17,6 +17,7 @@ pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tflite::<AxisOp>(ser_axisop);
     reg.reg_to_tract(BuiltinOperator::CONCATENATION, de_concat);
     reg.reg_to_tract(BuiltinOperator::EXPAND_DIMS, de_expand_dims);
+    reg.reg_to_tract(BuiltinOperator::PAD, de_pad);
     reg.reg_to_tract(BuiltinOperator::PADV2, de_padv2);
     reg.reg_to_tract(BuiltinOperator::RESHAPE, de_reshape);
     reg.reg_to_tract(BuiltinOperator::SHAPE, de_shape);
@@ -47,6 +48,19 @@ fn de_expand_dims(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
             op.ctx.target.wire_node(format!("{prefix}.{ix}"), AxisOp::Add(axis as usize), &wire)?;
     }
     Ok(wire)
+}
+
+fn de_pad(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let (input, pads) = args_2!(op.facts()?);
+    let pads = pads.konst.as_ref().context("Dynamic PAD is not supported")?;
+    let prefix = op.prefix;
+    let pads: ArrayView2<i32> = pads.to_array_view::<i32>()?.into_dimensionality()?;
+    let pads: Vec<(usize, usize)> =
+        pads.rows().into_iter().map(|row| (row[0] as usize, row[1] as usize)).collect();
+    let mode = tract_hir::ops::array::PadMode::Constant(
+        Tensor::zero_scalar_dt(input.datum_type)?.into(),
+    );
+    op.ctx.target.wire_node(prefix, tract_core::ops::array::Pad { pads, mode }, &op.inputs[0..1])
 }
 
 fn de_padv2(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {

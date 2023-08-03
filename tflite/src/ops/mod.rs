@@ -44,8 +44,32 @@ fn wire_fused_activation(
     };
     match *activation {
         ActivationFunctionType::NONE => Ok(wires.into()),
-        ActivationFunctionType::RELU => nn::relu(&mut op),
-        ActivationFunctionType::RELU6 => nn::relu6(&mut op),
+        ActivationFunctionType::RELU => nn::de_relu(&mut op),
+        ActivationFunctionType::RELU6 => nn::de_relu6(&mut op),
         af => bail!("Unsupported fused activation type: {af:?}"),
     }
 }
+
+fn linearops_quantization_suport(
+    op: &mut DeserOp,
+    input: &TypedFact,
+    kernel: &Tensor,
+    inputs: &mut TVec<OutletId>,
+) -> TractResult<Option<DatumType>> {
+    if op.output_facts[0].datum_type.is_quantized() {
+        let p = &op.prefix;
+        let kqp = kernel.datum_type().qparams().unwrap();
+        let iqp = input.datum_type.qparams().unwrap();
+        let oqp = op.output_facts[0].datum_type;
+        inputs.push(op.ctx.target.add_const(format!("{p}.k0"), rctensor0(kqp.zp_scale().0))?);
+        inputs.push(op.ctx.target.add_const(format!("{p}.kscale"), rctensor0(kqp.zp_scale().1))?);
+        inputs.push(op.ctx.target.add_const(format!("{p}.i0"), rctensor0(iqp.zp_scale().0))?);
+        inputs.push(op.ctx.target.add_const(format!("{p}.iscale"), rctensor0(iqp.zp_scale().1))?);
+        inputs.push(op.ctx.target.add_const(format!("{p}.c0"), rctensor0(oqp.zp_scale().0))?);
+        inputs.push(op.ctx.target.add_const(format!("{p}.cscale"), rctensor0(oqp.zp_scale().1))?);
+        Ok(Some(oqp))
+    } else {
+        Ok(None)
+    }
+}
+

@@ -73,13 +73,13 @@ impl Registry {
         let tensors = subgraph.tensors().unwrap();
         let prefix = tensors.get(flat.outputs().unwrap().get(0) as usize).name().unwrap();
         let opcode_index = flat.opcode_index();
-        let op = model.operator_codes().unwrap().get(opcode_index as _);
-        let opcode = if op.deprecated_builtin_code() as i32
+        let operator_code = model.operator_codes().unwrap().get(opcode_index as _);
+        let opcode = if operator_code.deprecated_builtin_code() as i32
             == BuiltinOperator::PLACEHOLDER_FOR_GREATER_OP_CODES.0
         {
-            op.builtin_code().0
+            operator_code.builtin_code().0
         } else {
-            op.deprecated_builtin_code() as i32
+            operator_code.deprecated_builtin_code() as i32
         };
         let ctx = DeserContext { model, subgraph, target };
         let results = if let Some(ew) =
@@ -97,11 +97,12 @@ impl Registry {
                 .iter()
                 .map(|t| Ok(crate::tensors::flat_tensor_to_tract_fact(model, subgraph, t)?.0))
                 .collect::<TractResult<TVec<TypedFact>>>()?;
-            (op)(&mut DeserOp { ctx, prefix, flat, inputs: &inputs, output_facts: &output_facts })?
+            (op)(&mut DeserOp { ctx, prefix, flat, inputs: &inputs, output_facts: &output_facts })
+                .with_context(|| format!("Opcode is {operator_code:#?}"))?
         } else {
             let facts =
                 inputs.iter().map(|o| target.outlet_fact(*o)).collect::<TractResult<TVec<_>>>()?;
-            bail!("Unsupported operator {opcode:?}, inputs: {facts:#?}")
+            bail!("Unsupported: {operator_code:#?}, inputs: {facts:#?}")
         };
         for (flat, wire) in flat.outputs().unwrap().iter().zip(results.iter()) {
             mapping.insert(flat, *wire);
