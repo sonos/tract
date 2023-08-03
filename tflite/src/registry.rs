@@ -32,6 +32,7 @@ pub struct DeserOp<'op> {
     pub prefix: &'op str,
     pub flat: &'op Operator<'op>,
     pub inputs: &'op [OutletId],
+    pub output_facts: &'op [TypedFact],
 }
 
 impl<'op> DeserOp<'op> {
@@ -68,10 +69,7 @@ impl Registry {
         target: &mut TypedModel,
         mapping: &mut HashMap<i32, OutletId>,
     ) -> TractResult<()> {
-        let mut inputs = tvec!();
-        for input in flat.inputs().unwrap() {
-            inputs.push(mapping[&input]);
-        }
+        let inputs: TVec<OutletId> = flat.inputs().unwrap().iter().map(|o| mapping[&o]).collect();
         let tensors = subgraph.tensors().unwrap();
         let prefix = tensors.get(flat.outputs().unwrap().get(0) as usize).name().unwrap();
         let opcode_index = flat.opcode_index();
@@ -84,22 +82,28 @@ impl Registry {
             op.deprecated_builtin_code() as i32
         };
         let ctx = DeserContext { model, subgraph, target };
-        if let Some(ew) =
+        let results = if let Some(ew) =
             self.element_wise_ops.iter().find(|bin| bin.0 == opcode).map(|pair| pair.1.clone())
         {
-            inputs = target.wire_node(prefix, ElementWiseOp(ew.clone()), &inputs)?;
+            target.wire_node(prefix, ElementWiseOp(ew.clone()), &inputs)?
         } else if let Some(bin) =
             self.binary_ops.iter().find(|bin| bin.0 == opcode).map(|pair| pair.1.clone())
         {
-            inputs = wire_with_rank_broadcast(prefix, target, bin, &inputs)?;
+            wire_with_rank_broadcast(prefix, target, bin, &inputs)?
         } else if let Some(op) = self.to_tract.get(&opcode) {
-            inputs = (op)(&mut DeserOp { ctx, prefix, flat, inputs: &inputs })?
+            let output_facts = flat
+                .outputs()
+                .unwrap()
+                .iter()
+                .map(|t| Ok(crate::tensors::flat_tensor_to_tract_fact(model, subgraph, t)?.0))
+                .collect::<TractResult<TVec<TypedFact>>>()?;
+            (op)(&mut DeserOp { ctx, prefix, flat, inputs: &inputs, output_facts: &output_facts })?
         } else {
             let facts =
                 inputs.iter().map(|o| target.outlet_fact(*o)).collect::<TractResult<TVec<_>>>()?;
             bail!("Unsupported operator {opcode:?}, inputs: {facts:#?}")
-        }
-        for (flat, wire) in flat.outputs().unwrap().iter().zip(inputs.iter()) {
+        };
+        for (flat, wire) in flat.outputs().unwrap().iter().zip(results.iter()) {
             mapping.insert(flat, *wire);
         }
         Ok(())
