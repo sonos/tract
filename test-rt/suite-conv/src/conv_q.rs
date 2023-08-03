@@ -182,7 +182,7 @@ impl Test for QConvProblem {
         });
         let data = self.data.clone().into_tensor().cast_to_dt(idt)?.into_owned().into_tvalue();
         let output = model.run(tvec!(data))?.remove(0);
-        output.close_enough(&self.reference().into_tensor(), Approximation::Exact)
+        output.close_enough(&self.reference(), Approximation::Exact)
     }
 }
 
