@@ -46,7 +46,7 @@ fn kernel_in_ohwi(
     new.kernel_fmt = KernelFormat::OHWI;
     new.kernel = kernel.into_arc_tensor();
     let mut patch = TypedModelPatch::default();
-    let mut wire = tvec!(patch.tap_model(model, node.inputs[0])?);
+    let mut wire = patch.taps(model, &node.inputs)?;
     wire = patch.wire_node(name, new, &wire)?;
     patch.shunt_outside(model, node.id.into(), wire[0])?;
     Ok(Some(patch))
@@ -63,8 +63,8 @@ fn force_n_axis(
         let mut new = conv.clone();
         new.pool_spec.data_format = conv.pool_spec.data_format.with_n();
         let mut patch = TypedModelPatch::default();
-        let mut wire = tvec!(patch.tap_model(model, node.inputs[0])?);
-        wire = patch.wire_node(format!("{name}.add_n"), AxisOp::Add(0), &wire)?;
+        let mut wire = patch.taps(model, &node.inputs)?;
+        wire[0] = patch.wire_node(format!("{name}.add_n"), AxisOp::Add(0), &[wire[0]])?[0];
         wire = patch.wire_node(name, new, &wire)?;
         wire = patch.wire_node(format!("{name}.rm_n"), AxisOp::Rm(0), &wire)?;
         patch.shunt_outside(model, node.id.into(), wire[0])?;
@@ -88,8 +88,8 @@ fn make_1d_2d(
         kernel.insert_axis(conv.kernel_fmt.h_axis() + 1)?;
         new.kernel = kernel.into_arc_tensor();
         let mut patch = TypedModelPatch::default();
-        let mut wire = tvec!(patch.tap_model(model, node.inputs[0])?);
-        wire = patch.wire_node(format!("{name}.add_dim"), AxisOp::Add(pos), &wire)?;
+        let mut wire = patch.taps(model, &node.inputs)?;
+        wire[0] = patch.wire_node(format!("{name}.add_dim"), AxisOp::Add(pos), &[wire[0]])?[0];
         wire = patch.wire_node(name, new, &wire)?;
         wire = patch.wire_node(format!("{name}.rm_dim"), AxisOp::Rm(pos), &wire)?;
         patch.shunt_outside(model, node.id.into(), wire[0])?;
@@ -117,8 +117,9 @@ fn nchw_to_nhwc(
         let shape = conv.pool_spec.data_format.shape(&fact.shape)?;
         let before = shape.c_axis();
         let after = fact.rank() - 1;
-        let mut wire = tvec!(patch.tap_model(model, node.inputs[0])?);
-        wire = patch.wire_node(format!("{name}.nhwc"), AxisOp::Move(before, after), &wire)?;
+        let mut wire = patch.taps(model, &node.inputs)?;
+        wire[0] =
+            patch.wire_node(format!("{name}.nhwc"), AxisOp::Move(before, after), &[wire[0]])?[0];
         wire = patch.wire_node(name, new, &wire)?;
         wire = patch.wire_node(format!("{name}.nchw"), AxisOp::Move(after, before), &wire)?;
         patch.shunt_outside(model, node.id.into(), wire[0])?;
@@ -161,7 +162,7 @@ fn padding(
             }
         }
         let mut patch = TypedModelPatch::default();
-        let mut wires = tvec!(patch.tap_model(model, node.inputs[0])?);
+        let mut wires = patch.taps(model, &node.inputs)?;
         let mut pads = vec![(0usize, 0usize); fact.rank()];
         for (padding, axis) in actual.iter().zip(shape.hw_axes()) {
             pads[axis] = (padding.pad_before.to_usize()?, padding.pad_after.to_usize()?);

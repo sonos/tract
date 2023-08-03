@@ -58,17 +58,22 @@ fn ser_conv(
             || conv.pool_spec.padding == PaddingSpec::SameUpper
     );
     let node_name = &node.name;
-    let mut inputs = node.inputs.iter().map(|o| builder.outlets_to_tensors[o]).collect_vec();
-    let outputs = (0..node.outputs.len())
-        .map(|o| builder.outlets_to_tensors[&OutletId::new(node.id, o)])
-        .collect_vec();
+    let mut inputs = tvec!(builder.outlets_to_tensors[&node.inputs[0]]);
     inputs.push(builder.write_fact(&format!("{node_name}.weights"), &conv.kernel)?);
     inputs.push(builder.write_fact(
         &format!("{node_name}.bias"),
         &conv.bias.clone().unwrap_or_else(|| {
-            rctensor1(&vec![0f32; conv.pool_spec.output_channel_override.unwrap()])
+            let co = conv.pool_spec.output_channel_override.unwrap();
+            if conv.q_params.is_some() {
+                Tensor::zero::<i32>(&[co]).unwrap()
+            } else {
+                Tensor::zero::<f32>(&[co]).unwrap()
+            }
+            .into_arc_tensor()
         }),
     )?);
+    let output = builder.outlets_to_tensors[&node.id.into()];
+
     let padding =
         if conv.pool_spec.padding == PaddingSpec::Valid { Padding::VALID } else { Padding::SAME };
     if conv.group == 1 {
@@ -85,7 +90,7 @@ fn ser_conv(
         );
         builder.write_op_with_options(
             &inputs,
-            &outputs,
+            &[output],
             BuiltinOp::new(3, 2, BuiltinOperator::CONV_2D, BuiltinOptions::Conv2DOptions),
             options.as_union_value(),
         )
@@ -106,7 +111,7 @@ fn ser_conv(
         );
         builder.write_op_with_options(
             &inputs,
-            &outputs,
+            &[output],
             BuiltinOp::new(
                 4,
                 2,

@@ -14,7 +14,7 @@ impl Runtime for TfliteRuntime {
     fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
         let mut buffer = vec![];
         self.0.write(&model, &mut buffer)?;
- //       std::fs::write("foo.tflite", &buffer).unwrap();
+        //       std::fs::write("foo.tflite", &buffer).unwrap();
         Ok(Box::new(TfliteRunnable(buffer)))
     }
 }
@@ -40,7 +40,6 @@ impl State for TfliteState {
         for (ix, input) in inputs.iter().enumerate() {
             let input_ix = self.0.inputs()[ix];
             let input_tensor = self.0.tensor_info(input_ix).unwrap();
-            assert_eq!(input_tensor.element_kind as u32, 1); // 1 is f32
             assert_eq!(input_tensor.dims, input.shape());
             self.0.tensor_buffer_mut(input_ix).unwrap().copy_from_slice(unsafe { input.as_bytes() })
         }
@@ -49,10 +48,14 @@ impl State for TfliteState {
         for ix in 0..self.0.outputs().len() {
             let output_ix = self.0.outputs()[ix];
             let output_tensor = self.0.tensor_info(output_ix).unwrap();
-            assert_eq!(output_tensor.element_kind as u32, 1);
+            let dt = match output_tensor.element_kind as u32 {
+                1 => f32::datum_type(),
+                9 => i8::datum_type(),
+                _ => bail!("unknown type"),
+            };
             let tensor = unsafe {
                 Tensor::from_raw_dt(
-                    f32::datum_type(),
+                    dt,
                     &output_tensor.dims,
                     self.0.tensor_buffer(output_ix).unwrap(),
                 )?

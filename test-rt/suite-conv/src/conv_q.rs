@@ -128,11 +128,25 @@ impl QConvProblem {
     fn tract(&self) -> TractResult<TypedModel> {
         assert_eq!(self.data.shape(), &*self.shape_in.shape);
         let mut model = TypedModel::default();
-        let wire = model.add_source("input", i8::fact(&self.shape_in.shape))?;
+        let kdt = DatumType::QI8(QParams::ZpScale {
+            zero_point: self.qp[0].cast_to_scalar()?,
+            scale: *self.qp[1].to_scalar()?,
+        });
+        let idt = DatumType::QI8(QParams::ZpScale {
+            zero_point: self.qp[2].cast_to_scalar()?,
+            scale: *self.qp[3].to_scalar()?,
+        });
+        let cdt = DatumType::QI8(QParams::ZpScale {
+            zero_point: self.qp[4].cast_to_scalar()?,
+            scale: *self.qp[5].to_scalar()?,
+        });
+        let wire = model.add_source("input", idt.fact(&self.shape_in.shape))?;
         let mut inputs = tvec!(wire);
         for (ix, qp) in self.qp.iter().enumerate() {
             inputs.push(model.add_const(format!("qp.{ix}"), qp.clone())?);
         }
+        let mut kernel = self.kernel.clone().into_tensor();
+        unsafe { kernel.set_datum_type(kdt) };
         let op = ConvUnary::new(
             PoolSpec::new(
                 self.shape_in.fmt,
@@ -143,10 +157,10 @@ impl QConvProblem {
                 Some(self.co),
             ),
             self.kernel_format,
-            self.kernel.clone().into_arc_tensor(),
+            kernel.into_arc_tensor(),
             self.group,
             self.bias.clone().map(|a| a.into_arc_tensor()),
-            Some(i8::datum_type()),
+            Some(cdt),
         );
         let wire = model.wire_node("conv", op, &inputs)?[0];
         model.set_output_outlets(&[wire])?;
@@ -157,7 +171,12 @@ impl QConvProblem {
 impl Test for QConvProblem {
     fn run(&self, runtime: &dyn Runtime) -> TractResult<()> {
         let model = runtime.prepare(self.tract()?)?;
-        let output = model.run(tvec!(self.data.clone().into_tensor().into_tvalue()))?.remove(0);
+        let idt = DatumType::QI8(QParams::ZpScale {
+            zero_point: self.qp[2].cast_to_scalar()?,
+            scale: *self.qp[3].to_scalar()?,
+        });
+        let data = self.data.clone().into_tensor().cast_to_dt(idt)?.into_owned().into_tvalue();
+        let output = model.run(tvec!(data))?.remove(0);
         output.close_enough(&self.reference().into_tensor(), Approximation::Exact)
     }
 }
@@ -212,11 +231,11 @@ impl Arbitrary for QConvProblem {
 }
 
 /*
-proptest::proptest! {
-    #[test]
-    fn prop(pb in any::<QConvProblem>()) {
-        pb.check().unwrap()
-    }
+   proptest::proptest! {
+#[test]
+fn prop(pb in any::<QConvProblem>()) {
+pb.check().unwrap()
+}
 }
 */
 

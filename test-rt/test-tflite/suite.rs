@@ -28,7 +28,7 @@ fn ignore_onnx(t: &[String]) -> bool {
 
 fn ignore_conv(t: &[String]) -> bool {
     let [section, unit] = t else { return false };
-    section == "q" || section == "deconv"
+    section == "deconv"
         || unit == "proptest"
         // grouping and depthwise
         || unit.starts_with("group")
