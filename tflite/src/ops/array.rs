@@ -15,14 +15,14 @@ use super::wire_fused_activation;
 
 pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tflite::<AxisOp>(ser_axisop);
-    reg.to_tract.insert(BuiltinOperator::CONCATENATION, de_concat);
-    reg.to_tract.insert(BuiltinOperator::EXPAND_DIMS, de_expand_dims);
-    reg.to_tract.insert(BuiltinOperator::PADV2, de_padv2);
-    reg.to_tract.insert(BuiltinOperator::RESHAPE, de_reshape);
-    reg.to_tract.insert(BuiltinOperator::SHAPE, de_shape);
-    reg.to_tract.insert(BuiltinOperator::SQUEEZE, de_squeeze);
-    reg.to_tract.insert(BuiltinOperator::STRIDED_SLICE, de_strided_slice);
-    reg.to_tract.insert(BuiltinOperator::TRANSPOSE, de_transpose);
+    reg.reg_to_tract(BuiltinOperator::CONCATENATION, de_concat);
+    reg.reg_to_tract(BuiltinOperator::EXPAND_DIMS, de_expand_dims);
+    reg.reg_to_tract(BuiltinOperator::PADV2, de_padv2);
+    reg.reg_to_tract(BuiltinOperator::RESHAPE, de_reshape);
+    reg.reg_to_tract(BuiltinOperator::SHAPE, de_shape);
+    reg.reg_to_tract(BuiltinOperator::SQUEEZE, de_squeeze);
+    reg.reg_to_tract(BuiltinOperator::STRIDED_SLICE, de_strided_slice);
+    reg.reg_to_tract(BuiltinOperator::TRANSPOSE, de_transpose);
 }
 
 fn de_concat(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {

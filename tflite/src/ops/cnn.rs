@@ -14,10 +14,10 @@ use tract_hir::tract_core::ops as core;
 use tract_hir::tract_core::ops::cnn::KernelFormat;
 
 pub fn register_all(reg: &mut Registry) {
-    reg.to_tract.insert(BuiltinOperator::AVERAGE_POOL_2D, average_pool_2d);
-    reg.to_tract.insert(BuiltinOperator::CONV_2D, conv2d);
+    reg.reg_to_tract(BuiltinOperator::AVERAGE_POOL_2D, average_pool_2d);
+    reg.reg_to_tract(BuiltinOperator::CONV_2D, conv2d);
     reg.reg_to_tflite::<ConvUnary>(ser_conv);
-    reg.to_tract.insert(BuiltinOperator::DEPTHWISE_CONV_2D, dw_conv2d);
+    reg.reg_to_tract(BuiltinOperator::DEPTHWISE_CONV_2D, dw_conv2d);
     reg.reg_to_tflite::<Pad>(ser_pad);
 }
 
