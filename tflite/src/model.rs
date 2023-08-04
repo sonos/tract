@@ -105,7 +105,6 @@ impl Framework<TfliteProtoModel, TypedModel> for Tflite {
             .map(|o| mapping[&o])
             .collect();
         target.set_output_outlets(&outputs)?;
-    dbg!(&target);
         Ok(target)
     }
 }

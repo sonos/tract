@@ -182,7 +182,9 @@ impl Test for QConvProblem {
         });
         let data = self.data.clone().into_tensor().cast_to_dt(idt)?.into_owned().into_tvalue();
         let output = model.run(tvec!(data))?.remove(0);
-        output.close_enough(&self.reference(), Approximation::Exact)
+        let reference = self.reference();
+        eprintln!("reference: {reference:?}\noutput   : {output:?}");
+        output.close_enough(&reference, Approximation::Exact)
     }
 }
 
@@ -507,9 +509,7 @@ pub fn suite() -> TractResult<TestSuite> {
             qp,
         },
     );
-    let qp = qp_noop_i8();
-    let data = ArrayD::zeros(vec![1, 1, 1, 1]);
-    let kernel = ArrayD::zeros(vec![2, 1, 1, 1]);
+
     suite.add(
         "bias_1",
         QConvProblem {
@@ -517,12 +517,13 @@ pub fn suite() -> TractResult<TestSuite> {
             co: 2,
             kernel_format: OIHW,
             group: 1,
-            data,
-            kernel,
+            data: ArrayD::zeros(vec![1, 1, 1, 1]),
+            kernel: ArrayD::zeros(vec![2, 1, 1, 1]),
             bias: Some(tract_ndarray::arr1(&[1, 2]).into_dyn()),
-            qp,
+            qp: qp_noop_i8(),
         },
     );
+
     let qp = qp_noop_i8();
     let data = ArrayD::zeros(vec![1, 1]);
     let kernel = ArrayD::zeros(vec![2, 1, 1]);
