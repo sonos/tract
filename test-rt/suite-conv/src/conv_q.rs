@@ -20,8 +20,9 @@ pub fn qtensor(shape: Vec<usize>) -> BoxedStrategy<ArrayD<i8>> {
         .boxed()
 }
 
-pub fn q_params() -> BoxedStrategy<[Tensor; 6]> {
-    (-10i32..10, -10i32..10, -10i32..10, -3..3i32, -3..3i32, -3..3i32)
+pub fn q_params(params: &QConvProblemParams) -> BoxedStrategy<[Tensor; 6]> {
+    let a0 = if params.no_kernel_zp { 0i32..1i32 } else { -10i32..10 };
+    (a0, -10i32..10, -10i32..10, -3..3i32, -3..3i32, -3..3i32)
         .prop_map(|(a0, b0, c0, a_scale, b_scale, c_scale)| {
             [
                 tensor0(a0),
@@ -33,6 +34,12 @@ pub fn q_params() -> BoxedStrategy<[Tensor; 6]> {
             ]
         })
         .boxed()
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct QConvProblemParams {
+    pub conv: ConvProblemParams,
+    pub no_kernel_zp: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -191,24 +198,24 @@ impl Test for QConvProblem {
 }
 
 impl Arbitrary for QConvProblem {
-    type Parameters = ConvProblemParams;
+    type Parameters = QConvProblemParams;
     type Strategy = BoxedStrategy<QConvProblem>;
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-        let geo_rank = params.geo_rank.unwrap_or(1..4);
+        let geo_rank = params.conv.geo_rank.clone().unwrap_or(1..4);
         (
             crate::data_format(),
             crate::kernel_format(),
             1usize..=10,
             1usize..=8,
             1usize..=8,
-            1usize..=(if params.no_group { 1 } else { 3 }),
+            1usize..=(if params.conv.no_group { 1 } else { 3 }),
             geo_rank.prop_flat_map(crate::shapes),
-            q_params(),
+            q_params(&params),
         )
             .prop_flat_map(
                 move |(df, kf, n, mut ci0, mut co0, group, (mut ker_shape, data_shape), qp)| {
                     // FIXME in HWIO order, only regular and depthwise are supported
-                    if params.no_arbitrary_grouping && group > 1 {
+                    if params.conv.no_arbitrary_grouping && group > 1 {
                         ci0 = 1;
                         co0 = 1;
                     }
@@ -253,7 +260,7 @@ fn qp_noop_i8() -> [Tensor; 6] {
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite = TestSuite::default();
 
-    suite.add_arbitrary::<QConvProblem>("proptest", ConvProblemParams::default());
+    suite.add_arbitrary::<QConvProblem>("proptest", QConvProblemParams::default());
 
     suite.add(
         "trivial_0",
@@ -325,7 +332,7 @@ pub fn suite() -> TractResult<TestSuite> {
     let mut qp = qp_noop_i8();
     qp[0] = tensor0(1i32);
     suite.add(
-        "a0_1",
+        "kernel_zp",
         QConvProblem {
             shape_in: CHW.from_n_c_hw(1, 1, [1]).unwrap(),
             kernel_format: OIHW,
@@ -560,6 +567,7 @@ pub fn suite() -> TractResult<TestSuite> {
             qp,
         },
     );
+
     let mut qp = qp_noop_i8();
     qp[2] = tensor0(-1);
     let data = ArrayD::zeros(vec![2, 1]);
@@ -578,6 +586,21 @@ pub fn suite() -> TractResult<TestSuite> {
             qp,
         },
     );
+
+    suite.add(
+        "bias_4",
+        QConvProblem {
+            shape_in: NHWC.from_n_c_hw(1, 1, [1, 1]).unwrap(),
+            co: 2,
+            kernel_format: OIHW,
+            group: 1,
+            data: ArrayD::zeros(vec![1, 1, 1, 1]),
+            kernel: ArrayD::zeros(vec![2, 1, 1, 1]),
+            bias: Some(tract_ndarray::arr1(&[0, 1]).into_dyn()),
+            qp: qp_noop_i8(),
+        },
+    );
+
     let qp = qp_noop_i8();
     let data = ArrayD::zeros(vec![1, 1]);
     let kernel = ArrayD::zeros(vec![2, 1, 1]);

@@ -1,18 +1,17 @@
 use suite_conv::conv_f32::{ConvProblem, ConvProblemParams};
-use suite_conv::conv_q::QConvProblem;
+use suite_conv::conv_q::{QConvProblem, QConvProblemParams};
 
 pub fn suite() -> infra::TestSuite {
     let mut onnx = suite_onnx::suite().clone();
     onnx.ignore(&ignore_onnx);
     let mut conv = suite_conv::suite().unwrap().clone();
     conv.ignore(&ignore_conv);
-    conv.get_sub_mut("f32").add_arbitrary::<ConvProblem>(
-        "proptest",
-        ConvProblemParams { no_group: true, geo_rank: Some(1..3), ..ConvProblemParams::default() },
-    );
+    let cv =
+        ConvProblemParams { no_group: true, geo_rank: Some(1..3), ..ConvProblemParams::default() };
+    conv.get_sub_mut("f32").add_arbitrary::<ConvProblem>("proptest", cv.clone());
     conv.get_sub_mut("q").add_arbitrary::<QConvProblem>(
         "proptest",
-        ConvProblemParams { no_group: true, geo_rank: Some(1..3), ..ConvProblemParams::default() },
+        QConvProblemParams { conv: cv, no_kernel_zp: true },
     );
     infra::TestSuite::default().with("onnx", onnx).with("conv", conv)
 }
@@ -41,4 +40,6 @@ fn ignore_conv(t: &[String]) -> bool {
         || unit == "lazy_im2col_big_2"
         || unit == "batch_3d"
         || unit == "bias_3d_1"
+        // kernel with non 0 zero_point
+        || unit == "kernel_zp"
 }

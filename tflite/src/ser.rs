@@ -107,6 +107,73 @@ impl<'f, 'b, 'mb> SubgraphBuilder<'f, 'b, 'mb> {
         fact: impl Into<TypedFact>,
     ) -> TractResult<i32> {
         let fact = fact.into();
+        if let Some(qp) = fact.datum_type.qparams() {
+            self.write_fact_with_per_axis_q(
+                name,
+                fact,
+                &[qp.zp_scale().0 as i64],
+                &[qp.zp_scale().1],
+                0,
+            )
+        } else {
+            self.write_fact_with_quantization(name, fact, None)
+        }
+    }
+
+    pub fn write_fact_faking_per_axis_q(
+        &mut self,
+        name: impl AsRef<str>,
+        fact: impl Into<TypedFact>,
+        axis: usize,
+    ) -> TractResult<i32> {
+        let fact = fact.into();
+        if let Some(qp) = fact.datum_type.qparams() {
+            let dim = fact.shape[axis].to_usize()?;
+            self.write_fact_with_per_axis_q(
+                name,
+                fact,
+                &vec![qp.zp_scale().0 as i64; dim],
+                &vec![qp.zp_scale().1; dim],
+                axis,
+            )
+        } else {
+            self.write_fact_with_quantization(name, fact, None)
+        }
+    }
+
+    pub fn write_fact_with_per_axis_q(
+        &mut self,
+        name: impl AsRef<str>,
+        fact: impl Into<TypedFact>,
+        zp: &[i64],
+        scale: &[f32],
+        axis: usize,
+    ) -> TractResult<i32> {
+        let fact = fact.into();
+        let zero_point = self.fb().create_vector(zp);
+        let scale = self.fb().create_vector(scale);
+        let qp = QuantizationParameters::create(
+            self.fb(),
+            &QuantizationParametersArgs {
+                min: None,
+                max: None,
+                zero_point: Some(zero_point),
+                scale: Some(scale),
+                details: None,
+                details_type: QuantizationDetails::NONE,
+                quantized_dimension: axis as i32,
+            },
+        );
+        self.write_fact_with_quantization(name, fact, Some(qp))
+    }
+
+    pub fn write_fact_with_quantization(
+        &mut self,
+        name: impl AsRef<str>,
+        fact: impl Into<TypedFact>,
+        quantization: Option<WIPOffset<QuantizationParameters>>,
+    ) -> TractResult<i32> {
+        let fact = fact.into();
         let buffer = if let Some(k) = &fact.konst {
             let data = self.fb().create_vector(unsafe { k.as_bytes() });
             let buffer = Buffer::create(self.fb(), &BufferArgs { data: Some(data) });
@@ -118,25 +185,6 @@ impl<'f, 'b, 'mb> SubgraphBuilder<'f, 'b, 'mb> {
         let shape = fact.shape.as_concrete().unwrap().iter().map(|d| *d as i32).collect_vec();
         let shape = self.fb().create_vector(&shape);
         let name = self.fb().create_string(name.as_ref());
-        let quantization = if let Some(qp) = fact.datum_type.qparams() {
-            let zero_point = self.fb().create_vector(&[qp.zp_scale().0 as i64]);
-            let scale = self.fb().create_vector(&[qp.zp_scale().1]);
-            let qp = QuantizationParameters::create(
-                self.fb(),
-                &QuantizationParametersArgs {
-                    min: None,
-                    max: None,
-                    zero_point: Some(zero_point),
-                    scale: Some(scale),
-                    details: None,
-                    details_type: QuantizationDetails::NONE,
-                    quantized_dimension: 0,
-                },
-            );
-            Some(qp)
-        } else {
-            None
-        };
         let tensor = Tensor::create(
             self.fb(),
             &TensorArgs {
