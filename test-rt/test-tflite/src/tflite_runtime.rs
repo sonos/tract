@@ -14,7 +14,7 @@ impl Runtime for TfliteRuntime {
     fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
         let mut buffer = vec![];
         self.0.write(&model, &mut buffer)?;
-        //       std::fs::write("foo.tflite", &buffer).unwrap();
+        std::fs::write("foo.tflite", &buffer).unwrap();
         let output_dt = model
             .output_outlets()?
             .iter()

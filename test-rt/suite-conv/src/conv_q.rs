@@ -11,6 +11,8 @@ use tract_core::ops::nn::DataShape;
 use tract_itertools::izip;
 use tract_ndarray::*;
 
+use crate::conv_f32::ConvProblemParams;
+
 pub fn qtensor(shape: Vec<usize>) -> BoxedStrategy<ArrayD<i8>> {
     let len = shape.iter().product::<usize>();
     vec(any::<i8>(), len..=len)
@@ -34,7 +36,7 @@ pub fn q_params() -> BoxedStrategy<[Tensor; 6]> {
 }
 
 #[derive(Debug, Clone)]
-struct QConvProblem {
+pub struct QConvProblem {
     shape_in: DataShape,
     kernel_format: KernelFormat,
     co: usize,
@@ -189,47 +191,54 @@ impl Test for QConvProblem {
 }
 
 impl Arbitrary for QConvProblem {
-    type Parameters = ();
+    type Parameters = ConvProblemParams;
     type Strategy = BoxedStrategy<QConvProblem>;
-    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+    fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+        let geo_rank = params.geo_rank.unwrap_or(1..4);
         (
             crate::data_format(),
             crate::kernel_format(),
             1usize..=10,
             1usize..=8,
             1usize..=8,
-            1usize..=3,
-            (1usize..=3).prop_flat_map(crate::shapes),
+            1usize..=(if params.no_group { 1 } else { 3 }),
+            geo_rank.prop_flat_map(crate::shapes),
             q_params(),
         )
-            .prop_flat_map(|(df, kf, n, mut ci0, co0, group, (mut ker_shape, data_shape), qp)| {
-                // FIXME in HWIO order, only regular and depthwise are supported
-                if kf == KernelFormat::HWIO && group > 1 {
-                    ci0 = 1;
-                }
-                let shape_in = df.from_n_c_hw(n, ci0 * group, data_shape).unwrap();
-                let data_in = qtensor(shape_in.shape.iter().cloned().collect());
-                match kf {
-                    KernelFormat::HWIO => {
-                        ker_shape.push(ci0 * group);
-                        ker_shape.push(co0)
+            .prop_flat_map(
+                move |(df, kf, n, mut ci0, mut co0, group, (mut ker_shape, data_shape), qp)| {
+                    // FIXME in HWIO order, only regular and depthwise are supported
+                    if params.no_arbitrary_grouping && group > 1 {
+                        ci0 = 1;
+                        co0 = 1;
                     }
-                    KernelFormat::OIHW => {
-                        ker_shape.insert(0, ci0);
-                        ker_shape.insert(0, co0 * group)
+                    if kf == KernelFormat::HWIO && group > 1 {
+                        ci0 = 1;
                     }
-                    KernelFormat::OHWI => {
-                        ker_shape.insert(0, co0);
-                        ker_shape.push(ci0 * group)
-                    }
-                };
-                let kernel = qtensor(ker_shape);
-                let bias = proptest::option::of(
-                    qtensor(vec![co0 * group]).prop_map(|a| a.mapv(|v| v as i32)),
-                );
-                (Just((kf, shape_in, co0 * group, group, qp)), data_in, kernel, bias)
-                // FIXME
-            })
+                    let shape_in = df.from_n_c_hw(n, ci0 * group, data_shape).unwrap();
+                    let data_in = qtensor(shape_in.shape.iter().cloned().collect());
+                    match kf {
+                        KernelFormat::HWIO => {
+                            ker_shape.push(ci0 * group);
+                            ker_shape.push(co0)
+                        }
+                        KernelFormat::OIHW => {
+                            ker_shape.insert(0, ci0);
+                            ker_shape.insert(0, co0 * group)
+                        }
+                        KernelFormat::OHWI => {
+                            ker_shape.insert(0, co0);
+                            ker_shape.push(ci0 * group)
+                        }
+                    };
+                    let kernel = qtensor(ker_shape);
+                    let bias = proptest::option::of(
+                        qtensor(vec![co0 * group]).prop_map(|a| a.mapv(|v| v as i32)),
+                    );
+                    (Just((kf, shape_in, co0 * group, group, qp)), data_in, kernel, bias)
+                    // FIXME
+                },
+            )
             .prop_map(|((kernel_format, shape_in, co, group, qp), data, kernel, bias)| {
                 QConvProblem { shape_in, co, kernel_format, group, data, kernel, bias, qp }
             })
@@ -237,21 +246,14 @@ impl Arbitrary for QConvProblem {
     }
 }
 
-/*
-   proptest::proptest! {
-#[test]
-fn prop(pb in any::<QConvProblem>()) {
-pb.check().unwrap()
-}
-}
-*/
-
 fn qp_noop_i8() -> [Tensor; 6] {
     [tensor0(0i8), tensor0(1f32), tensor0(0i8), tensor0(1f32), tensor0(0i8), tensor0(1f32)]
 }
 
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite = TestSuite::default();
+
+    suite.add_arbitrary::<QConvProblem>("proptest", ConvProblemParams::default());
 
     suite.add(
         "trivial_0",
@@ -305,6 +307,37 @@ pub fn suite() -> TractResult<TestSuite> {
             qp: qp_noop_i8(),
         },
     );
+
+    suite.add(
+        "a0_0",
+        QConvProblem {
+            shape_in: HWC.from_n_c_hw(1, 1, [1]).unwrap(),
+            co: 1,
+            kernel_format: OIHW,
+            group: 1,
+            data: arr2(&[[1]]).into_dyn(),
+            kernel: arr3(&[[[0]]]).into_dyn(),
+            bias: None,
+            qp: qp_noop_i8(),
+        },
+    );
+
+    let mut qp = qp_noop_i8();
+    qp[0] = tensor0(1i32);
+    suite.add(
+        "a0_1",
+        QConvProblem {
+            shape_in: CHW.from_n_c_hw(1, 1, [1]).unwrap(),
+            kernel_format: OIHW,
+            co: 1,
+            group: 1,
+            data: arr2(&[[1i8]]).into_dyn(),
+            kernel: arr3(&[[[0i8]]]).into_dyn(),
+            bias: None,
+            qp,
+        },
+    );
+
     let mut qp = qp_noop_i8();
     qp[2] = tensor0(1i32);
     suite.add(
@@ -360,19 +393,6 @@ pub fn suite() -> TractResult<TestSuite> {
             kernel,
             bias: None,
             qp,
-        },
-    );
-    suite.add(
-        "a0_0",
-        QConvProblem {
-            shape_in: HWC.from_n_c_hw(1, 1, [1]).unwrap(),
-            co: 1,
-            kernel_format: OIHW,
-            group: 1,
-            data: arr2(&[[1]]).into_dyn(),
-            kernel: arr3(&[[[0]]]).into_dyn(),
-            bias: None,
-            qp: qp_noop_i8(),
         },
     );
     let mut qp = qp_noop_i8();

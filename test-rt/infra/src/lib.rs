@@ -87,6 +87,32 @@ impl TestSuite {
         }
     }
 
+    pub fn get_sub(&self, id: &str) -> &TestSuite {
+        match self {
+            TestSuite::Node(n) => {
+                if let Some((head, tail)) = id.split_once("::") {
+                    n[head].get_sub(tail)
+                } else {
+                    n[id].get_sub("")
+                }
+            }
+            TestSuite::Leaf(_, _) => panic!(),
+        }
+    }
+
+    pub fn get_sub_mut(&mut self, id: &str) -> &mut TestSuite {
+        match self {
+            TestSuite::Node(n) => {
+                if let Some((head, tail)) = id.split_once("::") {
+                    n.get_mut(head).unwrap().get_sub_mut(tail)
+                } else {
+                    n.get_mut(id).unwrap()
+                }
+            }
+            TestSuite::Leaf(_, _) => panic!(),
+        }
+    }
+
     fn ignore_rec(&mut self, prefix: &mut Vec<String>, ign: &dyn Fn(&[String]) -> bool) {
         match self {
             TestSuite::Node(n) => {

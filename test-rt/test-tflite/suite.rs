@@ -1,11 +1,16 @@
 use suite_conv::conv_f32::{ConvProblem, ConvProblemParams};
+use suite_conv::conv_q::QConvProblem;
 
 pub fn suite() -> infra::TestSuite {
     let mut onnx = suite_onnx::suite().clone();
     onnx.ignore(&ignore_onnx);
     let mut conv = suite_conv::suite().unwrap().clone();
     conv.ignore(&ignore_conv);
-    conv.add_arbitrary::<ConvProblem>(
+    conv.get_sub_mut("f32").add_arbitrary::<ConvProblem>(
+        "proptest",
+        ConvProblemParams { no_group: true, geo_rank: Some(1..3), ..ConvProblemParams::default() },
+    );
+    conv.get_sub_mut("q").add_arbitrary::<QConvProblem>(
         "proptest",
         ConvProblemParams { no_group: true, geo_rank: Some(1..3), ..ConvProblemParams::default() },
     );
@@ -29,7 +34,6 @@ fn ignore_onnx(t: &[String]) -> bool {
 fn ignore_conv(t: &[String]) -> bool {
     let [section, unit] = t else { return false };
     section == "deconv"
-        || unit == "proptest"
         // grouping and depthwise
         || unit.starts_with("group")
         // conv 3D
