@@ -98,5 +98,10 @@ name = "x86_64"
 harness = false
 
 [[bench]]
+bench = false
 name = "intel"
+harness = false
+
+[[bench]]
+name = "activations"
 harness = false

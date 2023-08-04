@@ -44,3 +44,6 @@ sigmoid_impl!(f32, arm64simd_sigmoid_f32_4n, 4, 4, true);
 tanh_impl!(f16, arm64fp16_tanh_f16_8n, 8, 8, crate::arm64::has_fp16());
 #[cfg(not(feature="no_fp16"))]
 sigmoid_impl!(f16, arm64fp16_sigmoid_f16_8n, 8, 8, crate::arm64::has_fp16());
+
+act_impl!(f32, arm64simd_act_f32_32n, 32, 4, true);
+

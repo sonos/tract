@@ -1,3 +1,4 @@
+pub mod activations;
 pub mod erf;
 pub mod lut;
 pub mod mmm;

@@ -1,0 +1,439 @@
+// vim: ft=arm
+
+// C tile regs: v16 to v31, (scratch)
+// - x19-x29 to preserve (but x19, x28, x29 not used) 
+// - d8..d15 to preserve
+// - v16 to v31, no need to preserve
+
+.text
+.align 4
+
+// fn(ops: *const OpOrConst, xs: *mut $ti, len: usize) -> usize
+// x0 <- ops, x1 <- xs, x2 <- len(xs)
+
+.cpu generic+fp+simd
+.global {{G}}arm64simd_act_f32_32n_{{suffix}}
+{{G}}arm64simd_act_f32_32n_{{suffix}}:
+
+    stp         d8, d9, [sp, #-16]!
+    stp         d10, d11, [sp, #-16]!
+    stp         d12, d13, [sp, #-16]!
+    stp         d14, d15, [sp, #-16]!
+    
+    cmp         x2, 0
+    beq         .ok
+
+.outer_loop:
+    mov         x5, x0          // x5 is "pc"
+    ld1         {v0.4s, v1.4s, v2.4s, v3.4s}, [x1], 64
+    ld1         {v4.4s, v5.4s, v6.4s, v7.4s}, [x1], 64
+    sub         x1, x1, 128
+
+.inner_loop:
+    ldp         w6, w3, [x5], 4         // x6 is fetched instruction at x5, w3 is next or const
+                                        // read 8, but only move by 4, as the second word could be a const
+    and         w7, w6, 0xffff
+    adr         x4, .jmp_table
+    add         x4, x4, x7, LSL#2
+    br          x4
+
+.jmp_table:
+{% for j in jump_table_act %}
+    b   .{{j}}
+{% endfor %}
+
+.done:
+    st1         {v0.4s, v1.4s, v2.4s, v3.4s}, [x1], 64
+    st1         {v4.4s, v5.4s, v6.4s, v7.4s}, [x1], 64
+
+    subs        x2, x2, 32
+    bne         .outer_loop
+    b           .ok
+
+.move:
+    lsr         w7, w6, 16
+    and         w7, w7, 0xff        // w7 is dst reg
+    lsr         w6, w6, 24
+    and         w6, w6, 0xff        // w6 is src
+    add         w7, w6, w7, LSL#2   // 4bits DDSS
+    adr         x4, .move_jmp_table
+    add         x4, x4, x7, LSL#2
+    br          x4
+
+.move_jmp_table:
+    b          .inner_loop // a to a
+    b          .move_a_b
+    b          .move_a_c
+    b          .unsupported // a <- d
+    b          .move_b_a
+    b          .inner_loop // b <- b
+    b          .move_b_c
+    b          .unsupported // b <- d
+    b          .move_c_a
+    b          .move_c_b
+    b          .inner_loop // c <- c
+    b          .unsupported // c <- d
+    b          .unsupported // a <- d
+    b          .unsupported // b <- d
+    b          .unsupported // c <- d
+    b          .unsupported // d <- d
+
+.move_a_b:
+    and        v0.16b, v8.16b, v8.16b
+    and        v1.16b, v9.16b, v9.16b
+    and        v2.16b, v10.16b, v10.16b
+    and        v3.16b, v11.16b, v11.16b
+    and        v4.16b, v12.16b, v12.16b
+    and        v5.16b, v13.16b, v13.16b
+    and        v6.16b, v14.16b, v14.16b
+    and        v7.16b, v15.16b, v15.16b
+    b           .inner_loop
+
+.move_a_c:
+    and        v0.16b, v16.16b, v16.16b
+    and        v1.16b, v17.16b, v17.16b
+    and        v2.16b, v18.16b, v18.16b
+    and        v3.16b, v19.16b, v19.16b
+    and        v4.16b, v20.16b, v20.16b
+    and        v5.16b, v21.16b, v21.16b
+    and        v6.16b, v22.16b, v22.16b
+    and        v7.16b, v23.16b, v23.16b
+    b           .inner_loop
+
+.move_b_a:
+    and        v8.16b , v0.16b, v0.16b
+    and        v9.16b , v1.16b, v1.16b
+    and        v10.16b, v2.16b, v2.16b
+    and        v11.16b, v3.16b, v3.16b
+    and        v12.16b, v4.16b, v4.16b
+    and        v13.16b, v5.16b, v5.16b
+    and        v14.16b, v6.16b, v6.16b
+    and        v15.16b, v7.16b, v7.16b
+    b           .inner_loop
+
+.move_b_c:
+    and        v8.16b , v16.16b, v16.16b
+    and        v9.16b , v17.16b, v17.16b
+    and        v10.16b, v18.16b, v18.16b
+    and        v11.16b, v19.16b, v19.16b
+    and        v12.16b, v20.16b, v20.16b
+    and        v13.16b, v21.16b, v21.16b
+    and        v14.16b, v22.16b, v22.16b
+    and        v15.16b, v23.16b, v23.16b
+    b           .inner_loop
+
+.move_c_a:
+    and        v16.16b, v0.16b, v0.16b
+    and        v17.16b, v1.16b, v1.16b
+    and        v18.16b, v2.16b, v2.16b
+    and        v19.16b, v3.16b, v3.16b
+    and        v20.16b, v4.16b, v4.16b
+    and        v21.16b, v5.16b, v5.16b
+    and        v22.16b, v6.16b, v6.16b
+    and        v23.16b, v7.16b, v7.16b
+    b           .inner_loop
+
+.move_c_b:
+    and        v16.16b, v8.16b , v8.16b 
+    and        v17.16b, v9.16b , v9.16b 
+    and        v18.16b, v10.16b, v10.16b
+    and        v19.16b, v11.16b, v11.16b
+    and        v20.16b, v12.16b, v12.16b
+    and        v21.16b, v13.16b, v13.16b
+    and        v22.16b, v14.16b, v14.16b
+    and        v23.16b, v15.16b, v15.16b
+    b           .inner_loop
+
+.load:
+    add         x5, x5, 4
+    ins         v24.s[0], w3
+    lsr         w7, w6, 16
+    and         w7, w7, 0xff
+    adr         x4, .load_jmp_table
+    add         x4, x4, x7, LSL#2
+    br          x4
+
+.load_jmp_table:
+    b           .load_a
+    b           .load_b
+    b           .load_c
+
+.load_a:
+    dup         v0.4s, v24.s[0]
+    dup         v1.4s, v24.s[0]
+    dup         v2.4s, v24.s[0]
+    dup         v3.4s, v24.s[0]
+    dup         v4.4s, v24.s[0]
+    dup         v5.4s, v24.s[0]
+    dup         v6.4s, v24.s[0]
+    dup         v7.4s, v24.s[0]
+    b .inner_loop
+
+.load_b:
+    dup         v8.4s, v24.s[0]
+    dup         v9.4s, v24.s[0]
+    dup         v10.4s, v24.s[0]
+    dup         v11.4s, v24.s[0]
+    dup         v12.4s, v24.s[0]
+    dup         v13.4s, v24.s[0]
+    dup         v14.4s, v24.s[0]
+    dup         v15.4s, v24.s[0]
+    b .inner_loop
+
+.load_c:
+    dup         v16.4s, v24.s[0]
+    dup         v17.4s, v24.s[0]
+    dup         v18.4s, v24.s[0]
+    dup         v19.4s, v24.s[0]
+    dup         v20.4s, v24.s[0]
+    dup         v21.4s, v24.s[0]
+    dup         v22.4s, v24.s[0]
+    dup         v23.4s, v24.s[0]
+    b .inner_loop
+
+.abs:
+    fabs        v0.4s, v0.4s
+    fabs        v1.4s, v1.4s
+    fabs        v2.4s, v2.4s
+    fabs        v3.4s, v3.4s
+    fabs        v4.4s, v4.4s
+    fabs        v5.4s, v5.4s
+    fabs        v6.4s, v6.4s
+    fabs        v7.4s, v7.4s
+    b .inner_loop
+
+.recip:
+    fmov        v24.4s, #1.0
+    fdiv        v0.4s, v24.4s, v0.4s
+    fdiv        v1.4s, v24.4s, v1.4s
+    fdiv        v2.4s, v24.4s, v2.4s
+    fdiv        v3.4s, v24.4s, v3.4s
+    fdiv        v4.4s, v24.4s, v4.4s
+    fdiv        v5.4s, v24.4s, v5.4s
+    fdiv        v6.4s, v24.4s, v6.4s
+    fdiv        v7.4s, v24.4s, v7.4s
+    b .inner_loop
+
+.add:
+    fadd        v0.4s, v0.4s, v8.4s
+    fadd        v1.4s, v1.4s, v9.4s
+    fadd        v2.4s, v2.4s, v10.4s
+    fadd        v3.4s, v3.4s, v11.4s
+    fadd        v4.4s, v4.4s, v12.4s
+    fadd        v5.4s, v5.4s, v13.4s
+    fadd        v6.4s, v6.4s, v14.4s
+    fadd        v7.4s, v7.4s, v15.4s
+    b .inner_loop
+
+.sub:
+    fsub        v0.4s, v0.4s, v8.4s
+    fsub        v1.4s, v1.4s, v9.4s
+    fsub        v2.4s, v2.4s, v10.4s
+    fsub        v3.4s, v3.4s, v11.4s
+    fsub        v4.4s, v4.4s, v12.4s
+    fsub        v5.4s, v5.4s, v13.4s
+    fsub        v6.4s, v6.4s, v14.4s
+    fsub        v7.4s, v7.4s, v15.4s
+    b .inner_loop
+
+.mul:
+    fmul        v0.4s, v0.4s, v8.4s
+    fmul        v1.4s, v1.4s, v9.4s
+    fmul        v2.4s, v2.4s, v10.4s
+    fmul        v3.4s, v3.4s, v11.4s
+    fmul        v4.4s, v4.4s, v12.4s
+    fmul        v5.4s, v5.4s, v13.4s
+    fmul        v6.4s, v6.4s, v14.4s
+    fmul        v7.4s, v7.4s, v15.4s
+    b .inner_loop
+
+.min:
+    fmin        v0.4s, v0.4s, v8.4s
+    fmin        v1.4s, v1.4s, v9.4s
+    fmin        v2.4s, v2.4s, v10.4s
+    fmin        v3.4s, v3.4s, v11.4s
+    fmin        v4.4s, v4.4s, v12.4s
+    fmin        v5.4s, v5.4s, v13.4s
+    fmin        v6.4s, v6.4s, v14.4s
+    fmin        v7.4s, v7.4s, v15.4s
+    b .inner_loop
+
+.max:
+    fmax        v0.4s, v0.4s, v8.4s
+    fmax        v1.4s, v1.4s, v9.4s
+    fmax        v2.4s, v2.4s, v10.4s
+    fmax        v3.4s, v3.4s, v11.4s
+    fmax        v4.4s, v4.4s, v12.4s
+    fmax        v5.4s, v5.4s, v13.4s
+    fmax        v6.4s, v6.4s, v14.4s
+    fmax        v7.4s, v7.4s, v15.4s
+    b .inner_loop
+
+.add_const:
+    ins         v24.s[0], w3
+    add         x5, x5, 4
+    dup         v24.4s, v24.s[0]
+    fadd        v0.4s, v0.4s, v24.4s
+    fadd        v1.4s, v1.4s, v24.4s
+    fadd        v2.4s, v2.4s, v24.4s
+    fadd        v3.4s, v3.4s, v24.4s
+    fadd        v4.4s, v4.4s, v24.4s
+    fadd        v5.4s, v5.4s, v24.4s
+    fadd        v6.4s, v6.4s, v24.4s
+    fadd        v7.4s, v7.4s, v24.4s
+    b .inner_loop
+
+.sub_const:
+    ins         v24.s[0], w3
+    add         x5, x5, 4
+    dup         v24.4s, v24.s[0]
+    fsub        v0.4s, v0.4s, v24.4s
+    fsub        v1.4s, v1.4s, v24.4s
+    fsub        v2.4s, v2.4s, v24.4s
+    fsub        v3.4s, v3.4s, v24.4s
+    fsub        v4.4s, v4.4s, v24.4s
+    fsub        v5.4s, v5.4s, v24.4s
+    fsub        v6.4s, v6.4s, v24.4s
+    fsub        v7.4s, v7.4s, v24.4s
+    b .inner_loop
+
+.mul_const:
+    ins         v24.s[0], w3
+    add         x5, x5, 4
+    dup         v24.4s, v24.s[0]
+    fmul        v0.4s, v0.4s, v24.4s
+    fmul        v1.4s, v1.4s, v24.4s
+    fmul        v2.4s, v2.4s, v24.4s
+    fmul        v3.4s, v3.4s, v24.4s
+    fmul        v4.4s, v4.4s, v24.4s
+    fmul        v5.4s, v5.4s, v24.4s
+    fmul        v6.4s, v6.4s, v24.4s
+    fmul        v7.4s, v7.4s, v24.4s
+    b .inner_loop
+
+.min_const:
+    ins         v24.s[0], w3
+    add         x5, x5, 4
+    dup         v24.4s, v24.s[0]
+    fmin        v0.4s, v0.4s, v24.4s
+    fmin        v1.4s, v1.4s, v24.4s
+    fmin        v2.4s, v2.4s, v24.4s
+    fmin        v3.4s, v3.4s, v24.4s
+    fmin        v4.4s, v4.4s, v24.4s
+    fmin        v5.4s, v5.4s, v24.4s
+    fmin        v6.4s, v6.4s, v24.4s
+    fmin        v7.4s, v7.4s, v24.4s
+    b .inner_loop
+
+.max_const:
+    ins         v24.s[0], w3
+    add         x5, x5, 4
+    dup         v24.4s, v24.s[0]
+    fmax        v0.4s, v0.4s, v24.4s
+    fmax        v1.4s, v1.4s, v24.4s
+    fmax        v2.4s, v2.4s, v24.4s
+    fmax        v3.4s, v3.4s, v24.4s
+    fmax        v4.4s, v4.4s, v24.4s
+    fmax        v5.4s, v5.4s, v24.4s
+    fmax        v6.4s, v6.4s, v24.4s
+    fmax        v7.4s, v7.4s, v24.4s
+    b .inner_loop
+
+.fma:
+    // a <- a * b
+    fmul        v0.4s, v0.4s, v8.4s
+    fmul        v1.4s, v1.4s, v9.4s
+    fmul        v2.4s, v2.4s, v10.4s
+    fmul        v3.4s, v3.4s, v11.4s
+    fmul        v4.4s, v4.4s, v12.4s
+    fmul        v5.4s, v5.4s, v13.4s
+    fmul        v6.4s, v6.4s, v14.4s
+    fmul        v7.4s, v7.4s, v15.4s
+    
+    // a <- a + k
+    ins         v24.s[0], w3
+    add         x5, x5, 4
+    dup         v24.4s, v24.s[0]
+    fadd        v0.4s, v0.4s, v24.4s
+    fadd        v1.4s, v1.4s, v24.4s
+    fadd        v2.4s, v2.4s, v24.4s
+    fadd        v3.4s, v3.4s, v24.4s
+    fadd        v4.4s, v4.4s, v24.4s
+    fadd        v5.4s, v5.4s, v24.4s
+    fadd        v6.4s, v6.4s, v24.4s
+    fadd        v7.4s, v7.4s, v24.4s
+
+    b           .inner_loop
+
+.if_pos_then_else:
+    fcmge       v0.4s, v0.4s, #0.0
+    fcmge       v1.4s, v1.4s, #0.0
+    fcmge       v2.4s, v2.4s, #0.0
+    fcmge       v3.4s, v3.4s, #0.0
+    fcmge       v4.4s, v4.4s, #0.0
+    fcmge       v5.4s, v5.4s, #0.0
+    fcmge       v6.4s, v6.4s, #0.0
+    fcmge       v7.4s, v7.4s, #0.0
+    bsl         v0.16b, v8.16b,  v16.16b
+    bsl         v1.16b, v9.16b,  v17.16b
+    bsl         v2.16b, v10.16b, v18.16b
+    bsl         v3.16b, v11.16b, v19.16b
+    bsl         v4.16b, v12.16b, v20.16b
+    bsl         v5.16b, v13.16b, v21.16b
+    bsl         v6.16b, v14.16b, v22.16b
+    bsl         v7.16b, v15.16b, v23.16b
+    b .inner_loop
+
+.swap_b_c:
+// move d <- b
+    and        v24.16b, v8.16b , v8.16b
+    and        v25.16b, v9.16b , v9.16b
+    and        v26.16b, v10.16b, v10.16b
+    and        v27.16b, v11.16b, v11.16b
+    and        v28.16b, v12.16b, v12.16b
+    and        v29.16b, v13.16b, v13.16b
+    and        v30.16b, v14.16b, v14.16b
+    and        v31.16b, v15.16b, v15.16b
+// move b <- c
+    and        v8.16b , v16.16b, v16.16b
+    and        v9.16b , v17.16b, v17.16b
+    and        v10.16b, v18.16b, v18.16b
+    and        v11.16b, v19.16b, v19.16b
+    and        v12.16b, v20.16b, v20.16b
+    and        v13.16b, v21.16b, v21.16b
+    and        v14.16b, v22.16b, v22.16b
+    and        v15.16b, v23.16b, v23.16b
+// move c <- d
+    and        v16.16b, v24.16b, v24.16b
+    and        v17.16b, v25.16b, v25.16b
+    and        v18.16b, v26.16b, v26.16b
+    and        v19.16b, v27.16b, v27.16b
+    and        v20.16b, v28.16b, v28.16b
+    and        v21.16b, v29.16b, v29.16b
+    and        v22.16b, v30.16b, v30.16b
+    and        v23.16b, v31.16b, v31.16b
+    b           .inner_loop
+
+.floor:
+    b           .unsupported
+
+.two_pow_of_int:
+    b           .unsupported
+
+.noop:
+    b           .inner_loop
+
+.unsupported:
+    mov         x0, 1
+    b           .return
+
+.ok:
+    mov         x0, 0
+
+.return:
+    ldp         d14, d15, [sp], #16
+    ldp         d12, d13, [sp], #16
+    ldp         d10, d11, [sp], #16
+    ldp         d8, d9, [sp], #16
+
+    ret

@@ -113,6 +113,9 @@ pub fn generic() -> Ops {
         tanh_f32: Box::new(|| generic::STanh4::ew()),
         erf_f32: Box::new(|| generic::SErf4::ew()),
         lut_u8: Box::new(|table: &[u8]| Box::new(lut::LutImpl::<generic::GenericLut8>::new(table))),
+        /*
+        activation_f32: Box::new(|microcode| generic::SActivation::new(microcode))
+        */
     }
 }
 
@@ -153,7 +156,8 @@ pub trait LADatum:
     + 'static
     + Add<Output = Self>
     + Sub<Output = Self>
-    + Mul
+    + Mul<Output = Self>
+    + Div<Output = Self>
     + AddAssign
     + PartialOrd
     + Bounded
