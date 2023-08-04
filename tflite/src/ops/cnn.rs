@@ -60,18 +60,23 @@ fn ser_conv(
     let node_name = &node.name;
     let mut inputs = tvec!(builder.outlets_to_tensors[&node.inputs[0]]);
     inputs.push(builder.write_fact(&format!("{node_name}.weights"), &conv.kernel)?);
-    inputs.push(builder.write_fact(
-        &format!("{node_name}.bias"),
-        &conv.bias.clone().unwrap_or_else(|| {
-            let co = conv.pool_spec.output_channel_override.unwrap();
-            if conv.q_params.is_some() {
-                Tensor::zero::<i32>(&[co]).unwrap()
-            } else {
-                Tensor::zero::<f32>(&[co]).unwrap()
-            }
-            .into_arc_tensor()
-        }),
-    )?);
+    let mut bias = conv.bias.clone().unwrap_or_else(|| {
+        let co = conv.pool_spec.output_channel_override.unwrap();
+        if conv.q_params.is_some() {
+            Tensor::zero::<i32>(&[co]).unwrap()
+        } else {
+            Tensor::zero::<f32>(&[co]).unwrap()
+        }
+        .into_arc_tensor()
+    });
+    if conv.q_params.is_some() {
+        let iscale = model.node_input_facts(node.id).unwrap()[0].datum_type.zp_scale().1;
+        let kscale = conv.kernel.datum_type().zp_scale().1;
+        let dt =
+            i32::datum_type().quantize(QParams::ZpScale { zero_point: 0, scale: iscale * kscale });
+        bias = bias.clone().into_tensor().cast_to_dt(dt)?.into_owned().into_arc_tensor();
+    }
+    inputs.push(builder.write_fact(&format!("{node_name}.bias"), bias)?);
     let output = builder.outlets_to_tensors[&node.id.into()];
 
     let padding =
@@ -149,6 +154,8 @@ fn de_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     };
     let mut inputs = tvec!(op.inputs[0]);
     let q_params = super::linearops_quantization_suport(op, &input, &kernel, &mut inputs)?;
+    let bias_dt = bias.datum_type().unquantized();
+    let bias = bias.into_tensor().cast_to_dt(bias_dt)?.into_owned().into_arc_tensor();
     let conv = core::cnn::ConvUnary {
         pool_spec,
         kernel_fmt: KernelFormat::OHWI,
