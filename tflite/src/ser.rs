@@ -159,6 +159,10 @@ impl<'f, 'b, 'mb> SubgraphBuilder<'f, 'b, 'mb> {
     fn write_subgraph(&mut self, model: &TypedModel) -> TractResult<()> {
         for &node_id in &model.eval_order()? {
             let node = &model.nodes[node_id];
+            // will serialize constants at the demand of operators only
+            if node.op_is::<Const>() {
+                continue;
+            }
             // create fb tensors for all outputs
             for (slot, output) in node.outputs.iter().enumerate() {
                 let name = model
@@ -170,8 +174,8 @@ impl<'f, 'b, 'mb> SubgraphBuilder<'f, 'b, 'mb> {
                 let outlet = OutletId::new(node.id, slot);
                 self.outlets_to_tensors.insert(outlet, tensor);
             }
-            // Source and Const are not reified
-            if node.op_is::<TypedSource>() || node.op_is::<Const>() {
+            // Source inputs are not reified
+            if node.op_is::<TypedSource>() {
                 continue;
             } else if let Some(to_tflite) =
                 self.model.registry.to_tflite.get(&(*(node.op)).type_id())
