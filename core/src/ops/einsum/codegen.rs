@@ -231,7 +231,7 @@ fn dequant_output(
     if !model.outlet_fact(a_scale)?.shape.volume().is_one() {
         let q_axis_in_output = op.axes.axis((InOut::In(4), 0))?.outputs[0][0];
         let output_rank = node.outputs[0].fact.rank();
-        for i in q_axis_in_output + 1..output_rank {
+        for i in 1..(output_rank - q_axis_in_output) {
             a_scale = patch.wire_node(
                 format!("{name}.a_scale_axis_fix_{i}"),
                 AxisOp::Add(i),
