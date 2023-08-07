@@ -1,7 +1,7 @@
 fn main() {
     let mut suite = suite_onnx::suite().clone();
     suite.ignore(&ignore);
-    suite.test_runtime("nnef_cycle", "suite_onnx::suite()", "nnef_cycle()");
+    suite.test_runtime("nnef_cycle", "suite_onnx::suite()", "nnef_cycle()", "Approximation::Close");
 }
 
 fn ignore(t: &[String]) -> bool {

@@ -27,7 +27,7 @@ struct OnnxTestCase {
 }
 
 impl Test for OnnxTestCase {
-    fn run(&self, runtime: &dyn Runtime) -> TractResult<()> {
+    fn run_with_approx(&self, runtime: &dyn Runtime, approx: Approximation) -> TractResult<()> {
         setup_test_logger();
         let model_file = self.path.join("model.onnx");
         info!("Loading {:?}", model_file);
@@ -78,7 +78,7 @@ impl Test for OnnxTestCase {
                 let model = model.into_typed()?.into_decluttered()?;
                 info!("Test model (mode: {}) {:#?}", runtime.name(), self.path);
                 let runnable = runtime.prepare(model)?;
-                run_model(&*runnable, inputs, &data_path);
+                run_model(&*runnable, inputs, &data_path, approx);
                 info!("Test model (mode: {}) {:#?} OK.", runtime.name(), self.path);
             }
         }
@@ -139,10 +139,7 @@ pub fn ensure_onnx_git_checkout() {
         for (v, _) in versions() {
             let wanted = dir().join(format!("onnx-{}", v.replace('.', "_")));
             if !wanted.join("onnx/backend/test/data").exists() {
-                let df = std::process::Command::new("df")
-                    .arg("-h")
-                    .output()
-                    .unwrap();
+                let df = std::process::Command::new("df").arg("-h").output().unwrap();
                 dbg!(df);
                 let tmp = wanted.with_extension("tmp");
                 let _ = std::fs::remove_dir_all(&wanted);
@@ -263,7 +260,12 @@ pub fn load_half_dataset(prefix: &str, path: &std::path::Path) -> TVec<Tensor> {
     vec
 }
 
-fn run_model(model: &dyn Runnable, inputs: TVec<Tensor>, data_path: &std::path::Path) {
+fn run_model(
+    model: &dyn Runnable,
+    inputs: TVec<Tensor>,
+    data_path: &std::path::Path,
+    approx: Approximation,
+) {
     let expected = load_half_dataset("output", data_path);
     trace!("Loaded output asserts: {:?}", expected);
     let inputs = inputs.into_iter().map(|t| t.into_tvalue()).collect();
@@ -279,7 +281,7 @@ fn run_model(model: &dyn Runnable, inputs: TVec<Tensor>, data_path: &std::path::
     for (ix, (a, b)) in computed.iter().zip(expected.iter()).enumerate() {
         //                println!("computed: {:?}", computed[ix].dump(true));
         //                println!("expected: {:?}", expected[ix].dump(true));
-        if let Err(e) = a.close_enough(b, true) {
+        if let Err(e) = a.close_enough(b, approx) {
             panic!(
                 "For {:?}, different result for output #{}:\ngot:\n{:?}\nexpected:\n{:?}\n{}",
                 data_path,

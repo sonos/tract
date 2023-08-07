@@ -242,12 +242,12 @@ impl Arbitrary for ConvProblem {
 }
 
 impl Test for ConvProblem {
-    fn run(&self, runtime: &dyn Runtime) -> TestResult {
+    fn run_with_approx(&self, runtime: &dyn Runtime, approx: Approximation) -> TestResult {
         let reference = self.reference().into_tensor();
         let mut output =
             runtime.prepare(self.tract()?)?.run(tvec![self.data.clone().into_tvalue()])?;
         let output = output.remove(0).into_tensor();
-        output.close_enough(&reference, true)
+        output.close_enough(&reference, approx)
     }
 }
 

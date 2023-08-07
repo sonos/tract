@@ -2,6 +2,6 @@
 mod suite;
 
 fn main() {
-    suite::suite().test_runtime("tests", "suite::suite()", "runtime()");
+    suite::suite().test_runtime("tests", "suite::suite()", "runtime()", "Approximation::Approximate");
 }
 

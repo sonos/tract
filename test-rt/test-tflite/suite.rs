@@ -11,7 +11,7 @@ pub fn suite() -> infra::TestSuite {
     conv.get_sub_mut("f32").add_arbitrary::<ConvProblem>("proptest", cv.clone());
     conv.get_sub_mut("q").add_arbitrary::<QConvProblem>(
         "proptest",
-        QConvProblemParams { conv: cv, no_kernel_zp: true },
+        QConvProblemParams { conv: cv, no_kernel_zero_point: true, .. QConvProblemParams::default() },
     );
     infra::TestSuite::default().with("onnx", onnx).with("conv", conv)
 }

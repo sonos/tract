@@ -20,22 +20,6 @@ pub fn qtensor(shape: Vec<usize>) -> BoxedStrategy<ArrayD<i8>> {
         .prop_map(move |vec| ArrayD::from_shape_vec(shape.clone(), vec).unwrap())
         .boxed()
 }
-
-pub fn per_tensor_q_params() -> BoxedStrategy<[Tensor; 6]> {
-    (-10i32..10, -10i32..10, -10i32..10, -3..3i32, -3..3i32, -3..3i32)
-        .prop_map(|(a0, b0, c0, a_scale, b_scale, c_scale)| {
-            [
-                tensor0(a0),
-                tensor0(2f32.powi(a_scale)),
-                tensor0(b0),
-                tensor0(2f32.powi(b_scale)),
-                tensor0(c0),
-                tensor0(2f32.powi(c_scale)),
-            ]
-        })
-        .boxed()
-}
-
 /* https://www.tensorflow.org/lite/performance/quantization_spec
 CONV_2D
 Input 0:
@@ -58,12 +42,24 @@ range      : [-128, 127]
 granularity: per-tensor
 */
 
-pub fn tflite_per_axis_q_params(co: usize) -> BoxedStrategy<[Tensor; 6]> {
-    (-10i32..10, -10i32..10, vec(-3..3i32, co..=co), -3..3i32, -3..3i32)
-        .prop_map(|(b0, c0, a_scale, b_scale, c_scale)| {
+pub fn q_params(params: &QConvProblemParams, co: usize) -> BoxedStrategy<[Tensor; 6]> {
+    let a0 = if params.no_kernel_zero_point { Just(0i32).boxed() } else { (-10..10i32).boxed() };
+    (
+        a0,
+        -10i32..10,
+        -10i32..10,
+        prop_oneof![
+            (Just(false), (-3..3i32).prop_map(|x| vec!(x)).boxed()),
+            (Just(true), vec(-3..3i32, co..=co).boxed())
+        ],
+        -3..3i32,
+        -3..3i32,
+    )
+        .prop_map(|(a0, b0, c0, a_scale, b_scale, c_scale)| {
+            let a_scale_values = a_scale.1.iter().map(|x| 2f32.powi(*x)).collect_vec();
             [
-                tensor0(0i32),
-                tensor1(&a_scale.iter().map(|x| 2f32.powi(*x)).collect_vec()),
+                tensor0(a0),
+                if a_scale.0 { tensor1(&a_scale_values) } else { tensor0(a_scale_values[0]) },
                 tensor0(b0),
                 tensor0(2f32.powi(b_scale)),
                 tensor0(c0),
@@ -76,7 +72,7 @@ pub fn tflite_per_axis_q_params(co: usize) -> BoxedStrategy<[Tensor; 6]> {
 #[derive(Debug, Clone, Default)]
 pub struct QConvProblemParams {
     pub conv: ConvProblemParams,
-    pub no_tflite_per_axis_q: bool,
+    pub no_kernel_zero_point: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -230,7 +226,7 @@ impl QConvProblem {
 }
 
 impl Test for QConvProblem {
-    fn run(&self, runtime: &dyn Runtime) -> TractResult<()> {
+    fn run_with_approx(&self, runtime: &dyn Runtime, approx: Approximation) -> infra::TestResult {
         let reference = self.reference();
         let model = runtime.prepare(self.tract()?)?;
         let idt = DatumType::QI8(QParams::ZpScale {
@@ -240,7 +236,7 @@ impl Test for QConvProblem {
         let data = self.data.clone().into_tensor().cast_to_dt(idt)?.into_owned().into_tvalue();
         let output = model.run(tvec!(data))?.remove(0);
         eprintln!("reference: {reference:?}\noutput   : {output:?}");
-        output.close_enough(&reference, Approximation::Exact)
+        output.close_enough(&reference, approx)
     }
 }
 
@@ -269,12 +265,7 @@ impl Arbitrary for QConvProblem {
                     if kf == KernelFormat::HWIO && group > 1 {
                         ci0 = 1;
                     }
-                    let qp = if params.no_tflite_per_axis_q {
-                        per_tensor_q_params().boxed()
-                    } else {
-                        prop_oneof!(per_tensor_q_params(), tflite_per_axis_q_params(co0 * group))
-                            .boxed()
-                    };
+                    let qp = q_params(&params, co0 * group);
                     let shape_in = df.from_n_c_hw(n, ci0 * group, data_shape).unwrap();
                     let data_in = qtensor(shape_in.shape.iter().cloned().collect());
                     match kf {
@@ -732,7 +723,8 @@ pub fn suite() -> TractResult<TestSuite> {
             bias: None,
             qp,
         },
-    );    let mut qp = qp_noop_i8();
+    );
+    let mut qp = qp_noop_i8();
     qp[1] = tensor1(&[1f32, 1f32]);
     suite.add(
         "tflite_per_axis_1",

@@ -6,6 +6,7 @@ use dyn_clone::DynClone;
 use itertools::Itertools;
 use proptest::prelude::{any_with, Arbitrary};
 use proptest::test_runner::{Config, FileFailurePersistence, TestRunner};
+use tract_core::internal::Approximation;
 use tract_core::runtime::Runtime;
 use tract_core::tract_data::TractResult;
 
@@ -16,7 +17,10 @@ pub fn setup_test_logger() {
 pub type TestResult = anyhow::Result<()>;
 
 pub trait Test: 'static + Send + Sync + DynClone {
-    fn run(&self, runtime: &dyn Runtime) -> TestResult;
+    fn run(&self, runtime: &dyn Runtime) -> TestResult {
+        self.run_with_approx(runtime, Approximation::Close)
+    }
+    fn run_with_approx(&self, runtime: &dyn Runtime, approx: Approximation) -> TestResult;
 }
 
 dyn_clone::clone_trait_object!(Test);
@@ -137,6 +141,7 @@ impl TestSuite {
         prefix: &str,
         id: &str,
         rs: &mut impl Write,
+        approx: &str,
     ) -> TractResult<()> {
         let full_id = [prefix, id].into_iter().filter(|s| s.len() > 0).join("::");
         match self {
@@ -146,7 +151,7 @@ impl TestSuite {
                     writeln!(rs, "use super::*;").unwrap();
                 }
                 for (id, test) in h.iter().sorted_by_key(|(k, _)| k.to_owned()) {
-                    test.dump(test_suite, runtime, &full_id, id, rs)?;
+                    test.dump(test_suite, runtime, &full_id, id, rs, approx)?;
                 }
                 if id.len() > 0 {
                     writeln!(rs, "}}").unwrap();
@@ -159,21 +164,21 @@ impl TestSuite {
                     writeln!(rs, "#[ignore]").unwrap();
                 }
                 writeln!(rs, "fn {id}() -> TractResult<()> {{",).unwrap();
-                writeln!(rs, "    {test_suite}.get({full_id:?}).run({runtime})",).unwrap();
+                writeln!(rs, "    {test_suite}.get({full_id:?}).run_with_approx({runtime}, {approx})",).unwrap();
                 writeln!(rs, "}}").unwrap();
             }
         }
         Ok(())
     }
 
-    pub fn test_runtime(&self, name: &str, test_suite: &str, runtime: &str) {
+    pub fn test_runtime(&self, name: &str, test_suite: &str, runtime: &str, approx: &str) {
         let out_dir = std::env::var("OUT_DIR").unwrap();
         let out_dir = std::path::PathBuf::from(out_dir);
         let test_dir = out_dir.join("tests");
         std::fs::create_dir_all(&test_dir).unwrap();
         let test_file = test_dir.join(name).with_extension("rs");
         let mut rs = std::fs::File::create(test_file).unwrap();
-        self.dump(test_suite, runtime, "", "", &mut rs).unwrap();
+        self.dump(test_suite, runtime, "", "", &mut rs, approx).unwrap();
     }
 }
 
@@ -186,13 +191,13 @@ impl<A: Arbitrary + Test + Clone> Test for ProptestWrapper<A>
 where
     A::Parameters: Clone + Send + Sync,
 {
-    fn run(&self, runtime: &dyn Runtime) -> TestResult {
+    fn run_with_approx(&self, runtime: &dyn Runtime, approx: Approximation) -> TestResult {
         let mut runner = TestRunner::new(Config {
             failure_persistence: Some(Box::new(FileFailurePersistence::Off)),
             ..Config::default()
         });
         runner.run(&any_with::<A>(self.0.clone()), |v| {
-            v.run(runtime).unwrap();
+            v.run_with_approx(runtime, approx).unwrap();
             Ok(())
         })?;
         Ok(())
