@@ -80,17 +80,26 @@ fn create_tensor(dt: DatumType, shape: &[usize], data: &[u8]) -> TractResult<Ten
     }
 }
 
+pub fn flat_tensor_uses_per_axis_q<'m>(graph: &'m SubGraph<'m>, id: i32) -> bool {
+    let flat = graph.tensors().unwrap().get(id as _);
+    if let Some(qp) = flat.quantization() {
+        if let (Some(scale), Some(zp)) = (qp.scale(), qp.zero_point()) {
+            return !scale.iter().all_equal() || !zp.iter().all_equal();
+        }
+    }
+    false
+}
+
 pub fn flat_tensor_to_tract_fact<'m>(
     &model: &'m Model<'m>,
     graph: &'m SubGraph<'m>,
     id: i32,
 ) -> TractResult<(TypedFact, &'m str)> {
+    ensure!(!flat_tensor_uses_per_axis_q(graph, id));
     let flat = graph.tensors().unwrap().get(id as _);
     let mut dt: DatumType = flat.type_().try_into()?;
     if let Some(qp) = flat.quantization() {
         if let (Some(scale), Some(zp)) = (qp.scale(), qp.zero_point()) {
-            ensure!(scale.len() == 1);
-            ensure!(zp.len() == 1);
             dt = dt.quantize(QParams::ZpScale { zero_point: zp.get(0) as _, scale: scale.get(0) })
         }
     }
@@ -111,4 +120,11 @@ pub fn flat_tensor_to_tract_fact<'m>(
         }
     }
     Ok((fact, flat.name().unwrap()))
+}
+
+#[derive(Clone, Debug)]
+pub struct PerAxisQ {
+    axis: usize,
+    zp: Vec<i32>,
+    scale: Vec<f32>,
 }

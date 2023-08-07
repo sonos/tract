@@ -76,7 +76,6 @@ impl Framework<TfliteProtoModel, TypedModel> for Tflite {
         _symbols: &SymbolTable,
     ) -> TractResult<TypedModel> {
         let root = proto.root();
-        dbg!(&root);
         let main = &root.subgraphs().context("No subgraphs in Tflite model")?.get(0);
         let mut target = TypedModel::default();
         let mut mapping = HashMap::new();
