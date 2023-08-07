@@ -93,7 +93,13 @@ pub(super) fn ensure_mkn_axes<'a>(
         })
         .max_by_key(|a| &output_shape[a.outputs[0][0]]);
     let Some(n_axis) = n_axis else {
-        return Ok(AxesOrPatch::Patch(inject_m_or_n_axis(op, model, node, true, &[k_axis, m_axis])?));
+        return Ok(AxesOrPatch::Patch(inject_m_or_n_axis(
+            op,
+            model,
+            node,
+            true,
+            &[k_axis, m_axis],
+        )?));
     };
     for axis in op.axes.iter_all_axes() {
         let one = TDim::one();
@@ -218,9 +224,21 @@ fn dequant_output(
     let name = &node.name;
     let mut patch = TypedModelPatch::new("Dequantizing einsum");
     let taps = patch.taps(model, &node.inputs)?;
-    let [a, b, bias, mut a0, a_scale, mut b0, b_scale, c0, c_scale] = *taps else {
+    let [a, b, bias, mut a0, mut a_scale, mut b0, b_scale, c0, c_scale] = *taps else {
         bail!("Expect exactly 9 inputs")
     };
+
+    if !model.outlet_fact(a_scale)?.shape.volume().is_one() {
+        let q_axis_in_output = op.axes.axis((InOut::In(4), 0))?.outputs[0][0];
+        let output_rank = node.outputs[0].fact.rank();
+        for i in q_axis_in_output + 1..output_rank {
+            a_scale = patch.wire_node(
+                format!("{name}.a_scale_axis_fix_{i}"),
+                AxisOp::Add(i),
+                &[a_scale],
+            )?[0];
+        }
+    }
 
     let a = wire_offset_u8_as_i8(&mut patch, &node.name, a, "a", &mut a0, "a0")?;
     let b = wire_offset_u8_as_i8(&mut patch, &node.name, b, "b", &mut b0, "b0")?;
