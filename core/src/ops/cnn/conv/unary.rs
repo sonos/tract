@@ -159,7 +159,7 @@ impl ConvUnary {
         use crate::ops::matmul::mir_quant as qmm;
 
         let c_dt = self.q_params.unwrap();
-        let [a0, a_scale, mut b0, b_scale, c0, c_scale] = wires[1..] else {
+        let [a0, mut a_scale, mut b0, b_scale, c0, c_scale] = wires[1..] else {
             bail!("Wrong number of inputs")
         };
 
@@ -167,6 +167,18 @@ impl ConvUnary {
         let b_fact = model.outlet_fact(b)?.clone();
         let (_, m, k, n, mmm) = self.compute_geo(&b_fact)?;
         let output_shape = self.pool_spec.output_shape(&b_fact.shape)?;
+
+        if !model.outlet_fact(a_scale)?.shape.volume().is_one() {
+            // requant is performed before geo_reshape, so we need at most one geo axis to the
+            // right
+            if !output_shape.fmt.c_is_last() {
+                a_scale = model.wire_node(
+                    format!("{name}.a_scale_axis_fix"),
+                    AxisOp::Add(1),
+                    &[a_scale],
+                )?[0];
+            }
+        }
 
         let abc_scale = qmm::combine_scales(model, name, a_scale, b_scale, c_scale)?;
 
@@ -671,27 +683,21 @@ impl ConvUnary {
         if self.q_params.is_some() || self.group != 1 {
             return Ok(None);
         }
-        let &[succ] = &*node.outputs[0].successors else {
-            return Ok(None)
-        };
-        let Some(bin) = model.node(succ.node).op_as::<TypedBinOp>() else {
-            return Ok(None)
-        };
+        let &[succ] = &*node.outputs[0].successors else { return Ok(None) };
+        let Some(bin) = model.node(succ.node).op_as::<TypedBinOp>() else { return Ok(None) };
         let other_input = model.node(succ.node).inputs[1 - succ.slot];
         let other_fact = &model.outlet_fact(other_input)?;
-        let Some(konst) = &other_fact.konst else {
-            return Ok(None)
-        };
+        let Some(konst) = &other_fact.konst else { return Ok(None) };
         let axes_mapping = model.node_axes_mapping(succ.node)?;
         let input_shape =
             self.pool_spec.data_format.shape(&model.outlet_fact(node.inputs[0])?.shape)?;
         let conv_c_axis = input_shape.c_axis();
-        let &[konst_c_axis] = &*axes_mapping.axis((InOut::In(succ.slot), conv_c_axis))?.inputs[1- succ.slot] else {
-            return Ok(None)
+        let &[konst_c_axis] =
+            &*axes_mapping.axis((InOut::In(succ.slot), conv_c_axis))?.inputs[1 - succ.slot]
+        else {
+            return Ok(None);
         };
-        let Ok(co) = node.outputs[0].fact.shape[conv_c_axis].to_usize() else {
-            return Ok(None)
-        };
+        let Ok(co) = node.outputs[0].fact.shape[conv_c_axis].to_usize() else { return Ok(None) };
         let operand_for_bias = if konst.shape()[konst_c_axis] == co && konst.len() == co {
             konst.clone().into_tensor().into_shape(&[co])?
         } else if konst.len() == 1 {

@@ -232,7 +232,6 @@ impl QConvProblem {
 impl Test for QConvProblem {
     fn run(&self, runtime: &dyn Runtime) -> TractResult<()> {
         let reference = self.reference();
-        dbg!(&reference);
         let model = runtime.prepare(self.tract()?)?;
         let idt = DatumType::QI8(QParams::ZpScale {
             zero_point: self.qp[2].cast_to_scalar()?,
@@ -730,6 +729,50 @@ pub fn suite() -> TractResult<TestSuite> {
             group: 1,
             data: ArrayD::zeros(vec![1, 1]),
             kernel: ArrayD::zeros(vec![2, 1, 1]),
+            bias: None,
+            qp,
+        },
+    );    let mut qp = qp_noop_i8();
+    qp[1] = tensor1(&[1f32, 1f32]);
+    suite.add(
+        "tflite_per_axis_1",
+        QConvProblem {
+            shape_in: CHW.from_n_c_hw(1, 1, [1, 2]).unwrap(),
+            co: 2,
+            kernel_format: OIHW,
+            group: 1,
+            data: ArrayD::zeros(vec![1, 1, 2]),
+            kernel: ArrayD::zeros(vec![2, 1, 1, 2]),
+            bias: None,
+            qp,
+        },
+    );
+    let mut qp = qp_noop_i8();
+    qp[1] = tensor1(&[1f32, 1f32]);
+    suite.add(
+        "tflite_per_axis_nchw_0",
+        QConvProblem {
+            shape_in: NCHW.from_n_c_hw(1, 1, [1]).unwrap(),
+            co: 2,
+            kernel_format: OIHW,
+            group: 1,
+            data: ArrayD::zeros(vec![1, 1, 1]),
+            kernel: ArrayD::zeros(vec![2, 1, 1]),
+            bias: None,
+            qp,
+        },
+    );
+    let mut qp = qp_noop_i8();
+    qp[1] = tensor1(&[1f32, 1f32]);
+    suite.add(
+        "tflite_per_axis_nchw_1",
+        QConvProblem {
+            shape_in: NCHW.from_n_c_hw(1, 1, [2]).unwrap(),
+            co: 2,
+            kernel_format: OIHW,
+            group: 1,
+            data: ArrayD::zeros(vec![1, 1, 2]),
+            kernel: ArrayD::zeros(vec![2, 1, 2]),
             bias: None,
             qp,
         },
