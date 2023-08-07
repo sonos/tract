@@ -1,12 +1,15 @@
 use std::fs::File;
+use std::path::PathBuf;
+use std::str::FromStr;
 
 use crate::TractResult;
 use crate::{Model, Parameters};
-use nu_ansi_term::Color::*;
 use ndarray_npy::NpzWriter;
+use nu_ansi_term::Color::*;
 use tract_core::tract_data::itertools::izip;
 use tract_hir::internal::*;
 use tract_libcli::tensor::RunParams;
+use tract_nnef::tensors::write_tensor;
 #[cfg(feature = "pulse")]
 use tract_pulse::internal::*;
 
@@ -53,6 +56,29 @@ pub fn handle(
         for (ix, output) in outputs.iter().enumerate() {
             for (turn, output) in output.iter().enumerate() {
                 println!("output #{}, turn #{}\n{}\n", ix, turn, output.dump(true)?);
+            }
+        }
+    }
+
+    if let Some(file_path) = sub_matches.value_of("save-output-tensors") {
+        std::fs::create_dir_all(file_path)
+            .with_context(|| format!("Creating {file_path} directory"))?;
+        for (ix, outputs) in outputs.iter().enumerate() {
+            let name = params
+                .tract_model
+                .outlet_label(params.tract_model.output_outlets()[ix])
+                .map(|name| format!("{name}.dat"))
+                .unwrap_or_else(|| format!("output_{ix}.dat"));
+
+            if outputs.len() == 1 {
+                let mut f = std::fs::File::create(PathBuf::from_str(file_path)?.join(&name))?;
+                write_tensor(&mut f, &outputs[0])?;
+            } else {
+                for (turn, output) in outputs.iter().enumerate() {
+                    let name = format!("turn_{turn}/{name}");
+                    let mut f = std::fs::File::open(PathBuf::from_str(file_path)?.join(name))?;
+                    write_tensor(&mut f, output)?;
+                }
             }
         }
     }

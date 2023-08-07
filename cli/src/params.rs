@@ -9,6 +9,7 @@ use tract_core::ops::konst::Const;
 #[allow(unused_imports)]
 use tract_itertools::Itertools;
 use tract_libcli::profile::BenchLimits;
+use tract_nnef::tensors::read_tensor;
 
 use tract_core::internal::*;
 use tract_core::model::TypedModel;
@@ -388,19 +389,66 @@ impl Parameters {
         Ok(result)
     }
 
+    fn tensor_values_from_iter(
+        iter: impl Iterator<Item = (String, usize, Tensor)>,
+        get_values: bool,
+        get_facts: bool,
+    ) -> Vec<TensorValues> {
+        let mut result = vec![];
+        for (name, vals) in iter.group_by(|triple| triple.0.clone()).into_iter() {
+            let vals: Vec<_> = vals
+                .into_iter()
+                .sorted_by_key(|(_, turn, _)| *turn)
+                .map(|(_, _, tensor)| tensor.into_tvalue())
+                .collect();
+            result.push(TensorValues {
+                input_index: None,
+                output_index: None,
+                name: Some(name),
+                fact: if get_facts {
+                    Some(InferenceFact::from(&*vals[0]).without_value())
+                } else {
+                    None
+                },
+                values: if get_values { Some(vals) } else { None },
+                random_range: None,
+            })
+        }
+        result
+    }
+
+    pub fn parse_nnef_tensors(
+        input: &str,
+        get_values: bool,
+        get_facts: bool,
+    ) -> TractResult<Vec<TensorValues>> {
+        let files = std::fs::read_dir(input)?;
+        let vector = files
+            .map(|n| {
+                let file_path = n?.path();
+                let tensor_file = std::fs::read(&file_path)?;
+                let file_name = file_path.as_os_str().to_str().unwrap();
+                if let Ok((turn, name)) =
+                    scan_fmt::scan_fmt!(file_name, "turn_{d}/{}.dat", usize, String)
+                {
+                    Ok((name, turn, read_tensor(tensor_file.as_slice())?))
+                } else {
+                    let name = file_path.file_stem().unwrap().to_os_string().into_string().unwrap();
+                    Ok((name, 0, read_tensor(tensor_file.as_slice())?))
+                }
+            })
+            .collect::<TractResult<Vec<_>>>()?;
+        Ok(Self::tensor_values_from_iter(vector.into_iter(), get_values, get_facts))
+    }
+
     pub fn parse_npz(
         input: &str,
         get_values: bool,
         get_facts: bool,
     ) -> TractResult<Vec<TensorValues>> {
-        fn do_it(
-            get_values: bool,
-            get_facts: bool,
-            reader: impl Read + Seek,
-        ) -> TractResult<Vec<TensorValues>> {
+        fn do_it(reader: impl Read + Seek) -> TractResult<Vec<(String, usize, Tensor)>> {
             let mut npz = ndarray_npy::NpzReader::new(reader)?;
-            let vectors = npz
-                .names()?
+            npz.names()?
                 .iter()
                 .map(|n| {
                     if let Ok((turn, name)) =
@@ -412,40 +460,18 @@ impl Parameters {
                         Ok((name, 0, tensor::for_npz(&mut npz, n)?))
                     }
                 })
-                .collect::<TractResult<Vec<_>>>()?;
-            let mut result = vec![];
-            for (name, vals) in vectors.into_iter().group_by(|triple| triple.0.clone()).into_iter()
-            {
-                let vals: Vec<_> = vals
-                    .into_iter()
-                    .sorted_by_key(|(_, turn, _)| *turn)
-                    .map(|(_, _, tensor)| tensor.into_tvalue())
-                    .collect();
-                result.push(TensorValues {
-                    input_index: None,
-                    output_index: None,
-                    name: Some(name),
-                    fact: if get_facts {
-                        Some(InferenceFact::from(&*vals[0]).without_value())
-                    } else {
-                        None
-                    },
-                    values: if get_values { Some(vals) } else { None },
-                    random_range: None,
-                });
-            }
-            Ok(result)
+                .collect()
         }
-        if input.starts_with("http://") || input.starts_with("https://") {
+        let triples = if input.starts_with("http://") || input.starts_with("https://") {
             let mut buf = vec![];
             reqwest::blocking::get(input)?.error_for_status()?.read_to_end(&mut buf)?;
-            do_it(get_values, get_facts, Cursor::new(buf))
-                .with_context(|| format!("reading file from {input:?}"))
+            do_it(Cursor::new(buf)).with_context(|| format!("reading file from {input:?}"))
         } else {
             let fd =
                 std::fs::File::open(input).with_context(|| format!("reading file {input:?}"))?;
-            do_it(get_values, get_facts, fd)
-        }
+            do_it(fd)
+        }?;
+        Ok(Self::tensor_values_from_iter(triples.into_iter(), get_values, get_facts))
     }
 
     fn parse_tensors(
@@ -590,45 +616,45 @@ impl Parameters {
         }
 
         macro_rules! stage {
-                          ($name:expr, $from:ident -> $to:ident, $block:expr) => {
-                              if let Some(from) = $from.take() {
-                                  info!(concat!("Running '", $name, "'"));
-                                  let mut last_model: Option<Box<dyn Model>> =
-                                      if keep_last { Some(Box::new(from.as_ref().clone())) } else { None };
-                                  let block: &dyn Fn(_) -> TractResult<_> = &$block;
-                                  let owned_model =
-                                      Arc::try_unwrap(from).unwrap_or_else(|from| from.as_ref().clone());
-                                  match block(owned_model).context(concat!("Error at stage ", $name)) {
-                                      Ok(it) => {
-                                          $to = Some(Arc::new(it));
-                                      }
-                                      Err(e) => {
-                                          if let Some(last_model) = last_model.take() {
-                                              return Err(ModelBuildingError(last_model, e.into()))?;
-                                          } else {
-                                              return Err(e)?;
-                                          }
-                                      }
-                                  }
-                                  info_usage(concat!("after ", $name), probe);
-                                  if reference_stage.as_deref() == Some($name) {
-                                      reference_model = Some($to.as_ref().unwrap().clone());
-                                  }
-                                  if stop_at == $name {
-                                      return Ok((
-                                              $to.take().expect("returnable model"),
-                                              pulsed_model,
-                                              reference_model,
-                                              ));
-                                  }
-                              } else {
-                                  debug!("Skip stage {}", $name);
-                                  if stop_at == $name {
-                                      bail!("Stage {} is skipped, it can not be used as stop with these input format or parameters.", $name);
-                                  }
-                              }
-                          };
-                      }
+            ($name:expr, $from:ident -> $to:ident, $block:expr) => {
+                if let Some(from) = $from.take() {
+                    info!(concat!("Running '", $name, "'"));
+                    let mut last_model: Option<Box<dyn Model>> =
+                        if keep_last { Some(Box::new(from.as_ref().clone())) } else { None };
+                    let block: &dyn Fn(_) -> TractResult<_> = &$block;
+                    let owned_model =
+                        Arc::try_unwrap(from).unwrap_or_else(|from| from.as_ref().clone());
+                    match block(owned_model).context(concat!("Error at stage ", $name)) {
+                        Ok(it) => {
+                            $to = Some(Arc::new(it));
+                        }
+                        Err(e) => {
+                            if let Some(last_model) = last_model.take() {
+                                return Err(ModelBuildingError(last_model, e.into()))?;
+                            } else {
+                                return Err(e)?;
+                            }
+                        }
+                    }
+                    info_usage(concat!("after ", $name), probe);
+                    if reference_stage.as_deref() == Some($name) {
+                        reference_model = Some($to.as_ref().unwrap().clone());
+                    }
+                    if stop_at == $name {
+                        return Ok((
+                                $to.take().expect("returnable model"),
+                                pulsed_model,
+                                reference_model,
+                                ));
+                    }
+                } else {
+                    debug!("Skip stage {}", $name);
+                    if stop_at == $name {
+                        bail!("Stage {} is skipped, it can not be used as stop with these input format or parameters.", $name);
+                    }
+                }
+            };
+        }
 
         stage!("analyse", inference_model -> inference_model,
         |mut m:InferenceModel| -> TractResult<_> {
