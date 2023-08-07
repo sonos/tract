@@ -200,6 +200,12 @@ fn main() -> tract_core::anyhow::Result<()> {
                 .takes_value(true)
                 .help("Save the outputs into a npz file"),
         )
+        .arg(
+            Arg::new("save-output-tensors")
+                .long("save-output-tensors")
+                .takes_value(true)
+                .help("Save the output tensor into a .dat file"),
+        )
         .arg(Arg::new("steps").long("steps").help("Show all inputs and outputs"))
         .arg(
             Arg::new("set")
@@ -399,6 +405,11 @@ fn run_options(command: clap::Command) -> clap::Command {
                 .long("input-from-bundle")
                 .takes_value(true)
                 .help("Path to an input container (.npz). This sets tensor values."),
+        )
+        .arg(
+            Arg::new("input-from-tensors").long("input-from-tensors").takes_value(true).help(
+                "Path to a directory containing input tensors (.dat). This sets tensor values.",
+            ),
         )
         .arg(
             Arg::new("allow-random-input")

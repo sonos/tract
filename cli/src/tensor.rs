@@ -17,6 +17,12 @@ pub fn run_params_from_subcommand(
         }
     }
 
+    if let Some(dir) = sub_matches.value_of("input-from-tensors") {
+        for tensor in Parameters::parse_nnef_tensors(dir, true, false)? {
+            tv.add(tensor);
+        }
+    }
+
     // We also support the global arg variants for backward compatibility
     let allow_random_input: bool =
         params.allow_random_input || sub_matches.is_present("allow-random-input");
