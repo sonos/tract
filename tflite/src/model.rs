@@ -4,6 +4,7 @@ use flatbuffers::FlatBufferBuilder;
 use tract_hir::internal::*;
 
 use crate::registry::Registry;
+use crate::tensors::{flat_tensor_to_tract_fact, flat_tensor_uses_per_axis_q};
 use crate::tflite;
 use crate::tflite::{Buffer, BufferArgs};
 
@@ -80,15 +81,16 @@ impl Framework<TfliteProtoModel, TypedModel> for Tflite {
         let mut target = TypedModel::default();
         let mut mapping = HashMap::new();
         for input in main.inputs().context("No inputs in Tflite model")? {
-            let (fact, name) = crate::tensors::flat_tensor_to_tract_fact(&root, main, input)?;
-            let it = target.add_source(name, fact)?;
-            mapping.insert(input, it);
+            if !flat_tensor_uses_per_axis_q(main, input) {
+                let (fact, name) = flat_tensor_to_tract_fact(&root, main, input)?;
+                let it = target.add_source(name, fact)?;
+                mapping.insert(input, it);
+            }
         }
         for op in main.operators().context("No operators in Tflite model")? {
             for input in op.inputs().context("No input in Tflite  operator")? {
                 if let Entry::Vacant(slot) = mapping.entry(input) {
-                    let (fact, name) =
-                        crate::tensors::flat_tensor_to_tract_fact(&root, main, input)?;
+                    let (fact, name) = flat_tensor_to_tract_fact(&root, main, input)?;
                     let value = fact.konst.with_context(|| format!("Error in TF file for operator {:?}. No prior computation nor constant for input {}", op, input))?;
                     let konst = target.add_const(name, value)?;
                     slot.insert(konst);

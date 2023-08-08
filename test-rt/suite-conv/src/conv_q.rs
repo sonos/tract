@@ -251,8 +251,7 @@ impl Arbitrary for QConvProblem {
             1usize..=10,
             1usize..=8,
             1usize..=8,
-            //            1usize..=(if params.conv.no_group { 1 } else { 3 })
-            1usize..=1, //FIXME
+            1usize..=(if params.conv.no_group { 1 } else { 3 }),
             geo_rank.prop_flat_map(crate::shapes),
         )
             .prop_flat_map(
@@ -356,6 +355,22 @@ pub fn suite() -> TractResult<TestSuite> {
             kernel: arr3(&[[[0i8, 0], [0, 0]]]).into_dyn(),
             bias: None,
             qp: qp_noop_i8(),
+        },
+    );
+    let mut qp = qp_noop_i8();
+    qp[1] = tensor1(&[1f32, 0.5]);
+    qp[2] = tensor0(-2i8);
+    suite.add(
+        "weird_4",
+        QConvProblem {
+            shape_in: CHW.from_n_c_hw(1, 1, [1]).unwrap(),
+            kernel_format: OIHW,
+            co: 2,
+            group: 1,
+            data: arr2(&[[0i8]]).into_dyn(),
+            kernel: arr3(&[[[0i8]], [[7]]]).into_dyn(),
+            bias: None,
+            qp,
         },
     );
 
@@ -641,6 +656,20 @@ pub fn suite() -> TractResult<TestSuite> {
             data: ArrayD::zeros(vec![1, 1, 1, 1]),
             kernel: ArrayD::zeros(vec![2, 1, 1, 1]),
             bias: Some(tract_ndarray::arr1(&[0, 1]).into_dyn()),
+            qp: qp_noop_i8(),
+        },
+    );
+
+    suite.add(
+        "bias_5",
+        QConvProblem {
+            shape_in: NHWC.from_n_c_hw(1, 1, [1, 1]).unwrap(),
+            co: 1,
+            kernel_format: OIHW,
+            group: 1,
+            data: ArrayD::zeros(vec![1, 1, 1, 1]),
+            kernel: ArrayD::zeros(vec![1, 1, 1, 1]),
+            bias: Some(tract_ndarray::arr1(&[1]).into_dyn()),
             qp: qp_noop_i8(),
         },
     );
