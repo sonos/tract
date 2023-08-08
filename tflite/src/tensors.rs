@@ -90,12 +90,21 @@ pub fn flat_tensor_uses_per_axis_q<'m>(graph: &'m SubGraph<'m>, id: i32) -> bool
     false
 }
 
+pub fn per_axis_q_params<'m>(
+    graph: &'m SubGraph<'m>,
+    id: i32,
+) -> TractResult<(Vec<i32>, Vec<f32>)> {
+    let flat = graph.tensors().unwrap().get(id as _);
+    let Some(qp) = flat.quantization() else { bail!("Unquantized value") };
+    let (Some(scale), Some(zp)) = (qp.scale(), qp.zero_point()) else { bail!("No ZP/scale found") };
+    Ok((zp.iter().map(|i| i as i32).collect_vec(), scale.iter().collect_vec()))
+}
+
 pub fn flat_tensor_to_tract_fact<'m>(
     &model: &'m Model<'m>,
     graph: &'m SubGraph<'m>,
     id: i32,
 ) -> TractResult<(TypedFact, &'m str)> {
-    ensure!(!flat_tensor_uses_per_axis_q(graph, id));
     let flat = graph.tensors().unwrap().get(id as _);
     let mut dt: DatumType = flat.type_().try_into()?;
     if let Some(qp) = flat.quantization() {

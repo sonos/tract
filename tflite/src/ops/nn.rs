@@ -20,7 +20,7 @@ pub fn register_all(reg: &mut Registry) {
 }
 
 fn de_fully_connected(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
-    let (input, weights, _bias) = args_3!(op.facts()?);
+    let (input, _weights, _bias) = args_3!(op.facts()?);
     let options = builtin!(op, builtin_options_as_fully_connected_options);
     ensure!(input.datum_type.is_quantized());
     ensure!(options.weights_format() == FullyConnectedOptionsWeightsFormat::DEFAULT);
@@ -30,7 +30,6 @@ fn de_fully_connected(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let qp = super::linearops_quantization_suport(
         op,
         &input,
-        weights.konst.as_ref().context("Expect constant weights in FULLY_CONNECTED")?,
         &mut inputs,
     )?;
     let operating_dt =

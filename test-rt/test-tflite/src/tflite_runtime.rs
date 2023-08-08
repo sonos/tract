@@ -14,7 +14,6 @@ impl Runtime for TfliteRuntime {
     fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
         let mut buffer = vec![];
         self.0.write(&model, &mut buffer)?;
-        std::fs::write("foo.tflite", &buffer).unwrap();
         let output_dt = model
             .output_outlets()?
             .iter()
@@ -58,6 +57,7 @@ impl State for TfliteState {
                 9 => self.1[ix].clone(), // impossible to retrieve QP from this TFL binding
                 _ => bail!("unknown type"),
             };
+            dbg!(self.0.tensor_buffer(output_ix));
             let tensor = unsafe {
                 Tensor::from_raw_dt(
                     dt,
