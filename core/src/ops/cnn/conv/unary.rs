@@ -653,7 +653,7 @@ impl ConvUnary {
             return Ok(None);
         };
         let shape = self.pool_spec.data_format.shape(&model.outlet_fact(node.inputs[0])?.shape)?;
-        if value.is_zero()?
+        if !value.is_zero()?
             || (self.pool_spec.data_format.has_n() && pad.pads[0] != (0, 0))
             || pad.pads[shape.c_axis()] != (0, 0)
         {
