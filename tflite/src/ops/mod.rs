@@ -41,7 +41,7 @@ fn wire_fused_activation(
         prefix: &prefix,
         flat: op.flat,
         inputs: wires,
-        output_facts: &op.output_facts,
+        output_facts: op.output_facts,
     };
     match *activation {
         ActivationFunctionType::NONE => Ok(wires.into()),
