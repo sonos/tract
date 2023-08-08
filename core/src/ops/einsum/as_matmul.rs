@@ -457,9 +457,9 @@ mod test {
         };
         let mut model = TypedModelPatch::default();
         let inputs = [
-            model.add_source("a", DatumType::QI8(qp).fact(&[3, 2]))?,
-            model.add_source("b", DatumType::QI8(qp).fact(&[2, 4]))?,
-            model.add_source("bias", i32::datum_type().fact(&[3]))?,
+            model.add_source("a", DatumType::QI8(qp).fact([3, 2]))?,
+            model.add_source("b", DatumType::QI8(qp).fact([2, 4]))?,
+            model.add_source("bias", i32::datum_type().fact([3]))?,
             model.add_const("a0", tensor0(qp.zp_scale().0))?,
             model.add_const("a_scale", tensor0(qp.zp_scale().1))?,
             model.add_const("b0", tensor0(qp.zp_scale().0))?,

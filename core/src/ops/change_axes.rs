@@ -72,7 +72,7 @@ impl AxisOp {
                 Reshape(*at, from[..from.len() - 1].into(), to[..to.len() - 1].into()).simplify()
             }
             Reshape(at, from, to) if from[0] == 1.to_dim() => std::iter::once(Rm(*at))
-                .chain(Reshape(*at, from[1..].into(), to.clone()).simplify().into_iter())
+                .chain(Reshape(*at, from[1..].into(), to.clone()).simplify())
                 .collect(),
             Reshape(at, from, to) if to[0] == 1.to_dim() => {
                 Reshape(*at, from.clone(), to[1..].into())
@@ -84,14 +84,13 @@ impl AxisOp {
             Reshape(at, from, to) if from[from.len() - 1] == 1.to_dim() => std::iter::once(Rm(at
                 + from.len()
                 - 1))
-            .chain(Reshape(*at, from[..from.len() - 1].into(), to.clone()).simplify().into_iter())
+            .chain(Reshape(*at, from[..from.len() - 1].into(), to.clone()).simplify())
             .collect(),
             Reshape(at, from, to) if to[to.len() - 1] == 1.to_dim() => {
                 std::iter::once(Add(at + from.len()))
                     .chain(
                         Reshape(*at, from.clone(), to[..to.len() - 1].into())
-                            .simplify()
-                            .into_iter(),
+                            .simplify(),
                     )
                     .collect()
             }

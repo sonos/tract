@@ -116,7 +116,7 @@ impl PulsePadOpState {
 
     fn pad(
         &mut self,
-        session: &mut SessionState,
+        session: &SessionState,
         op: &PulsePad,
         mut input: Tensor,
     ) -> TractResult<Tensor> {

@@ -165,7 +165,7 @@ fn render_node_prefixed(
             let body = ds.draw_node_body(model, node_id, options)?;
             let suffix = ds.draw_node_vsuffix(model, node_id, options)?;
             let filler = ds.draw_node_vfiller(model, node_id)?;
-            Box::new(body.into_iter().chain(suffix.into_iter()).chain(std::iter::repeat(filler)))
+            Box::new(body.into_iter().chain(suffix).chain(std::iter::repeat(filler)))
         } else {
             Box::new(std::iter::repeat(cost_column_pad.clone()))
         };

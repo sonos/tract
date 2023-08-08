@@ -640,8 +640,8 @@ mod test {
         assert_eq!(p(string_literal, r#"''"#), "");
         assert_eq!(p(string_literal, r#"'foo'"#), "foo");
 
-        assert_eq!(p(string_literal, r#"'f\oo'"#), "foo");
-        assert_eq!(p(string_literal, r#"'f\'oo'"#), "f'oo");
+        assert_eq!(p(string_literal, r"'f\oo'"), "foo");
+        assert_eq!(p(string_literal, r"'f\'oo'"), "f'oo");
         assert_eq!(p(string_literal, r#"'f\"oo'"#), "f\"oo");
     }
 
