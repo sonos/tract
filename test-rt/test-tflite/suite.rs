@@ -1,6 +1,7 @@
 use suite_conv::conv_f32::{ConvProblem, ConvProblemParams};
 use suite_conv::conv_q::{QConvProblem, QConvProblemParams};
 
+#[allow(clippy::needless_update)]
 pub fn suite() -> infra::TestSuite {
     let mut onnx = suite_onnx::suite().clone();
     onnx.ignore(&ignore_onnx);
