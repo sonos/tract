@@ -85,7 +85,7 @@ impl DimLike for TDim {
         fn expand(dim: &TDim) -> (i64, Vec<TDim>) {
             match dim {
                 TDim::Mul(terms) => terms.iter().map(expand).fold((1i64, vec![]), |acc, t| {
-                    (acc.0 * t.0, acc.1.into_iter().chain(t.1.into_iter()).collect())
+                    (acc.0 * t.0, acc.1.into_iter().chain(t.1).collect())
                 }),
                 TDim::MulInt(a, terms) => {
                     let (b, v) = expand(terms);

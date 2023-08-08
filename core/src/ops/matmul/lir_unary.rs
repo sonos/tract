@@ -48,7 +48,7 @@ impl ProtoFusedSpec {
         inputs: &'t [TValue],
         output_coords: &[usize],
         symbols: &SymbolValues,
-        output: &mut Tensor,
+        output: &Tensor,
     ) -> FusedSpec<'t> {
         let fs = match self {
             ProtoFusedSpec::AddMatMul(geo, a, b) => {
@@ -343,7 +343,7 @@ fn eval(
         } else {
             let geometry = op.geometry.to_concrete(symbols)?;
             let c_shape = op.c_fact.shape.eval_to_usize(symbols)?;
-            let mut c = Tensor::uninitialized_dt(op.c_fact.datum_type, &c_shape)?;
+            let c = Tensor::uninitialized_dt(op.c_fact.datum_type, &c_shape)?;
             let mut uops = vec![FusedSpec::ShiftLeft(0); op.micro_ops.len()];
             let mut looping_shape: TVec<usize> = c_shape.to_smallvec();
             looping_shape[op.c_m_axis] = 1;
@@ -354,7 +354,7 @@ fn eval(
                         inputs,
                         c_coords.slice(),
                         symbols,
-                        &mut c,
+                        &c,
                     );
                 }
                 op.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch, &uops)?;

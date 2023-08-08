@@ -574,22 +574,22 @@ where
                 .inputs
                 .get(0)
                 .map(|o| format!("{o:?}"))
-                .unwrap_or_else(|| "".to_string());
+                .unwrap_or_default();
             let input_2 = self.nodes[i]
                 .inputs
                 .get(1)
                 .map(|o| format!("{o:?}"))
-                .unwrap_or_else(|| "".to_string());
+                .unwrap_or_default();
             let output_1 = self
                 .outlet_successors(OutletId::new(i, 0))
                 .get(0)
                 .map(|o| format!("{o:?}"))
-                .unwrap_or_else(|| "".to_string());
+                .unwrap_or_default();
             let output_2 = self
                 .outlet_successors(OutletId::new(i, 0))
                 .get(1)
                 .map(|o| format!("{o:?}"))
-                .unwrap_or_else(|| "".to_string());
+                .unwrap_or_default();
             writeln!(
                 fmt,
                 "{:5} | {:8} {:8} -> {:8} {:8} | {:25} {:50} {:?} => {:?}",

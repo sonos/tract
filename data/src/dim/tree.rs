@@ -216,7 +216,7 @@ impl TDim {
                             acc.1.into_iter().chain(Some(expr.as_ref().clone())).collect(),
                         ),
                         Val(v) => (acc.0 * v, acc.1),
-                        t => (acc.0, acc.1.into_iter().chain(Some(t).into_iter()).collect()),
+                        t => (acc.0, acc.1.into_iter().chain(Some(t)).collect()),
                     });
 
                 match (coef_prod, vars.len()) {
@@ -398,7 +398,7 @@ impl TDim {
             Val(_) => maplit::hashset!(),
             Sym(s) => maplit::hashset!(s.clone()),
             Add(terms) | Mul(terms) => terms.iter().fold(maplit::hashset!(), |mut set, v| {
-                set.extend(v.symbols().into_iter());
+                set.extend(v.symbols());
                 set
             }),
             MulInt(_, a) => a.symbols(),

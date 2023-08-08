@@ -8,7 +8,7 @@ pub fn clip(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     match ctx.onnx_operator_set_version {
-        6 | 7 | 8 | 9 | 10 => clip_6(ctx, node),
+        6..=10 => clip_6(ctx, node),
         v if v >= 10 => clip_11(ctx, node),
         _ => bail!("Unsupported operator set for Clip operator"),
     }

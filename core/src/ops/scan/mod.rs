@@ -79,11 +79,10 @@ impl<F: Clone + fmt::Display> fmt::Debug for OutputMapping<F> {
 }
 
 pub fn iteration_count(input_mapping: &[InputMapping], inputs: &[&TypedFact]) -> Option<TDim> {
-    let Some((slot, info)) = input_mapping
-                            .iter()
-                            .enumerate()
-                            .find_map(|(slot, im)| im.as_scan().map(|scan| (slot, scan)))
-        else { return None };
+    let (slot, info) = input_mapping
+        .iter()
+        .enumerate()
+        .find_map(|(slot, im)| im.as_scan().map(|scan| (slot, scan)))?;
     let outside_dim = inputs[slot].shape[info.axis].clone();
     Some(outside_dim.div_ceil(info.chunk.unsigned_abs() as u64))
 }

@@ -1,4 +1,4 @@
-#[cfg(features = "conform")]
+#[cfg(feature = "conform")]
 extern crate conform;
 extern crate image;
 extern crate tract_tensorflow;

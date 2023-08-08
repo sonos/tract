@@ -985,6 +985,7 @@ impl Tensor {
     }
 
     /// Optionnaly convert data to a tensor for a new DatumType.
+    #[allow(clippy::redundant_closure_call)]
     pub fn cast_to_dt(&self, dst_dt: DatumType) -> anyhow::Result<Cow<Tensor>> {
         unsafe {
             if self.dt == dst_dt {
@@ -1249,7 +1250,7 @@ impl Tensor {
                 return t;
             }
             // finally use ndarray into_iter()
-            t.as_slice_mut_unchecked().iter_mut().zip(it.into_iter()).for_each(|(t, a)| *t = a);
+            t.as_slice_mut_unchecked().iter_mut().zip(it).for_each(|(t, a)| *t = a);
             t
         }
     }

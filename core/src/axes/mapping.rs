@@ -570,7 +570,7 @@ impl AxesMapping {
             }
         }
         let mut ops = vec![AxisOp::Add(0); target_rank - rank];
-        ops.extend(crate::ops::change_axes::perm_to_ops(&permutation).into_iter());
+        ops.extend(crate::ops::change_axes::perm_to_ops(&permutation));
         Ok(ops)
     }
 

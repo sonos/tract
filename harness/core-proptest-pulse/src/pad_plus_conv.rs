@@ -66,9 +66,7 @@ impl PadPlusConvProblem {
         use tract_hir::ops::cnn::*;
         let mut model = InferenceModel::default();
         let s = model.symbol_table.sym("S");
-        let mut wire = model
-            .add_source("a", f32::fact(dims!(1, 1, s)).into())
-            .unwrap();
+        let mut wire = model.add_source("a", f32::fact(dims!(1, 1, s)).into()).unwrap();
         if self.pad_before > 0 || self.pad_after > 0 {
             wire = model
                 .wire_node(
@@ -81,9 +79,11 @@ impl PadPlusConvProblem {
                 )
                 .unwrap()[0];
         }
-        let mut conv = Conv::default();
-        conv.dilations = Some(tvec!(self.dilation));
-        conv.strides = Some(tvec!(self.stride));
+        let conv = Conv {
+            dilations: Some(tvec!(self.dilation)),
+            strides: Some(tvec!(self.stride)),
+            ..Conv::default()
+        };
         let kernel = model.add_const("kernel", self.ker.clone()).unwrap();
         let conv = model.wire_node("conv", expand(conv), &[wire, kernel]).unwrap();
         model.set_output_outlets(&conv).unwrap();

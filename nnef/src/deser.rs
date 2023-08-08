@@ -194,7 +194,7 @@ impl<'mb> ModelBuilder<'mb> {
                 self.scopes.last_mut().unwrap().insert((*id).clone(), Value::Wire(*outlet));
             }
             self.naming_scopes.pop();
-            for (value, identifier) in values.iter().zip(identifiers.into_iter()) {
+            for (value, identifier) in values.iter().zip(identifiers) {
                 if self.model.node_mut(value.node).name.is_empty() {
                     self.naming_scopes.push(identifier.clone());
                     self.model.node_mut(value.node).name = self.generate_node_name();

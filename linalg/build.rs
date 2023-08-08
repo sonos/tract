@@ -41,7 +41,7 @@ impl ConfigForHalf {
     fn all() -> Vec<ConfigForHalf> {
         let mut configs = vec![];
         for extra_flags in
-            vec![vec![], vec!["-march=armv8.2-a".to_string()], vec!["-mcpu=cortex-a55".to_string()]]
+            [vec![], vec!["-march=armv8.2-a".to_string()], vec!["-mcpu=cortex-a55".to_string()]]
         {
             for needs_pragma in [false, true] {
                 configs.push(ConfigForHalf::new(extra_flags.clone(), needs_pragma))
@@ -78,7 +78,7 @@ fn main() {
     let os = var("CARGO_CFG_TARGET_OS");
     let out_dir = path::PathBuf::from(var("OUT_DIR"));
 
-    let suffix = env!("CARGO_PKG_VERSION").replace('-', "_").replace('.', "_");
+    let suffix = env!("CARGO_PKG_VERSION").replace(['-', '.'], "_");
     make_extern_kernel_decl_macro(&out_dir, &suffix);
 
     match arch.as_ref() {
