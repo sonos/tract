@@ -580,6 +580,26 @@ pub fn suite() -> TractResult<TestSuite> {
             qp,
         },
     );
+
+    let mut qp = qp_noop_i8();
+    qp[1] = tensor0(0.5f32);
+    qp[2] = tensor0(2i32);
+    qp[3] = tensor0(2f32);
+    qp[5] = tensor0(2f32);
+    suite.add(
+        "rounding_0",
+        QConvProblem {
+            shape_in: CHW.from_n_c_hw(1, 1, [1]).unwrap(),
+            co: 1,
+            kernel_format: OIHW,
+            group: 1,
+            data: arr2(&[[4i8]]).into_dyn(),
+            kernel: arr3(&[[[-5]]]).into_dyn(),
+            bias: Some(arr1(&[-125i32]).into_dyn()),
+            qp,
+        },
+    );
+
     let mut qp = qp_noop_i8();
     qp[5] = tensor0(1.3759452f32);
     suite.add(
