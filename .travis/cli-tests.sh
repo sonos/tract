@@ -65,96 +65,81 @@ echo
 echo $WHITE • old integration test cases $NC
 echo
 
-./.travis/cache_file.sh \
-    inceptionv1_quant.io.npz \
-    inceptionv1_quant.nnef.tar.gz \
-    ARM-ML-KWS-CNN-M.pb \
-    GRU128KeywordSpotter-v2-10epochs.onnx \
-    hey_snips_v4_model17.pb \
-    hey_snips_v4_model17.alpha1.tgz \
-    inception_v3_2016_08_28_frozen.pb \
-    mdl-en-2019-Q3-librispeech.onnx \
-    mobilenet_v1_1.0_224_frozen.pb \
-    mobilenet_v2_1.4_224_frozen.pb \
-    squeezenet.onnx \
-    en_libri_real.tar.gz
 
-(
-cd $CACHEDIR
-[ -d en_libri_real ] || tar zxf en_libri_real.tar.gz
-)
+MODELS=https://s3.amazonaws.com/tract-ci-builds/tests
+set -ex
 
-$TRACT_RUN $CACHEDIR/squeezenet.onnx \
+$TRACT_RUN $MODELS/squeezenet.onnx \
     run -q \
     --allow-random-input \
     --assert-output-fact 1,1000,1,1,f32
 
 $TRACT_RUN \
-    $CACHEDIR/inception_v3_2016_08_28_frozen.pb \
+    $MODELS/inception_v3_2016_08_28_frozen.pb \
     -i 1,299,299,3,f32 \
     run -q \
     --allow-random-input \
     --assert-output-fact 1,1001,f32
 
 $TRACT_RUN \
-    $CACHEDIR/inception_v3_2016_08_28_frozen.pb \
+    $MODELS/inception_v3_2016_08_28_frozen.pb \
     -i 1,299,299,3,f32 -O \
     run -q \
     --allow-random-input \
     --assert-output-fact 1,1001,f32
 
-$TRACT_RUN $CACHEDIR/ARM-ML-KWS-CNN-M.pb \
+$TRACT_RUN $MODELS/ARM-ML-KWS-CNN-M.pb \
     -O -i 49,10,f32 --partial \
     --input-node Mfcc \
     run -q \
     --allow-random-input
     
-$TRACT_RUN $CACHEDIR/mdl-en-2019-Q3-librispeech.onnx \
+$TRACT_RUN $MODELS/mdl-en-2019-Q3-librispeech.onnx \
     -O -i S,40,f32 --output-node output --pulse 24 \
     run -q \
     --allow-random-input
     
-$TRACT_RUN $CACHEDIR/mobilenet_v1_1.0_224_frozen.pb \
+$TRACT_RUN $MODELS/mobilenet_v1_1.0_224_frozen.pb \
     -O -i 1,224,224,3,f32 \
     run -q \
     --allow-random-input \
     --assert-output-fact 1,1001,f32
 
-$TRACT_RUN $CACHEDIR/mobilenet_v2_1.4_224_frozen.pb \
+$TRACT_RUN $MODELS/mobilenet_v2_1.4_224_frozen.pb \
     -O -i 1,224,224,3,f32 \
     run -q \
     --allow-random-input \
     --assert-output-fact 1,1001,f32
 
-$TRACT_RUN $CACHEDIR/GRU128KeywordSpotter-v2-10epochs.onnx \
+$TRACT_RUN $MODELS/GRU128KeywordSpotter-v2-10epochs.onnx \
     -O run -q \
     --allow-random-input \
     --assert-output-fact 1,3,f32
 
-$TRACT_RUN $CACHEDIR/hey_snips_v4_model17.pb \
+$TRACT_RUN $MODELS/hey_snips_v4_model17.pb \
     -i S,20,f32 --pulse 8 dump --cost -q \
     --assert-cost "FMA(F32)=2060448,Div(F32)=24576,Buffer(F32)=2920,Params(F32)=222250"
 
-$TRACT_RUN $CACHEDIR/hey_snips_v4_model17.pb -i S,20,f32 \
+$TRACT_RUN $MODELS/hey_snips_v4_model17.pb -i S,20,f32 \
     dump -q \
     --assert-op-count AddAxis 0
 
-$TRACT_RUN $CACHEDIR/en_libri_real/model.onnx \
+$TRACT_RUN $MODELS/en_libri_real/model.onnx \
     --output-node output \
     --edge-left-context 5 --edge-right-context 15 \
-    --input-facts-from-bundle $CACHEDIR/en_libri_real/io.npz \
+    --input-facts-from-bundle $MODELS/en_libri_real/io.npz \
     run \
-    --input-from-bundle $CACHEDIR/en_libri_real/io.npz \
+    --input-from-bundle $MODELS/en_libri_real/io.npz \
     --allow-random-input \
-    --assert-output-bundle $CACHEDIR/en_libri_real/io.npz
+    --assert-output-bundle $MODELS/en_libri_real/io.npz
 
-$TRACT_RUN $CACHEDIR/inceptionv1_quant.nnef.tar.gz \
+$TRACT_RUN $MODELS/inceptionv1_quant.nnef.tar.gz \
     --nnef-tract-core \
-    --input-facts-from-bundle $CACHEDIR/inceptionv1_quant.io.npz \
+    --input-facts-from-bundle $MODELS/inceptionv1_quant.io.npz \
     run \
-    --input-from-bundle $CACHEDIR/inceptionv1_quant.io.npz \
+    --input-from-bundle $MODELS/inceptionv1_quant.io.npz \
     --allow-random-input \
-    --assert-output-bundle $CACHEDIR/inceptionv1_quant.io.npz
+    --assert-output-bundle $MODELS/inceptionv1_quant.io.npz
 
 for t in harness/pre-optimized-graphes/*
 do

@@ -1,6 +1,5 @@
 use std::collections::HashSet;
-use std::fs;
-use std::io::Read;
+use std::io::{Read, Seek};
 use std::ops::Range;
 use std::str::FromStr;
 use std::sync::Mutex;
@@ -140,11 +139,13 @@ fn parse_values<T: Datum + FromStr>(shape: &[usize], it: Vec<&str>) -> TractResu
     Ok(tract_ndarray::Array::from_shape_vec(shape, values)?.into())
 }
 
-fn tensor_for_text_data(symbol_table: &SymbolTable, filename: &str) -> TractResult<Tensor> {
-    let mut file = fs::File::open(filename)
-        .map_err(|e| format_err!("Reading tensor from {}, {:?}", filename, e))?;
+fn tensor_for_text_data(
+    symbol_table: &SymbolTable,
+    _filename: &str,
+    mut reader: impl Read,
+) -> TractResult<Tensor> {
     let mut data = String::new();
-    file.read_to_string(&mut data)?;
+    reader.read_to_string(&mut data)?;
 
     let mut lines = data.lines();
     let proto = parse_spec(symbol_table, lines.next().context("Empty data file")?)?;
@@ -165,15 +166,18 @@ fn tensor_for_text_data(symbol_table: &SymbolTable, filename: &str) -> TractResu
 pub fn for_data(
     symbol_table: &SymbolTable,
     filename: &str,
+    reader: impl Read + std::io::Seek,
 ) -> TractResult<(Option<String>, InferenceFact)> {
     #[allow(unused_imports)]
     use std::convert::TryFrom;
     if filename.ends_with(".pb") {
         #[cfg(feature = "onnx")]
         {
+            /*
             let file =
                 fs::File::open(filename).with_context(|| format!("Can't open {filename:?}"))?;
-            let proto = ::tract_onnx::tensor::proto_from_reader(file)?;
+                */
+            let proto = ::tract_onnx::tensor::proto_from_reader(reader)?;
             Ok((
                 Some(proto.name.to_string()).filter(|s| !s.is_empty()),
                 Tensor::try_from(proto)?.into(),
@@ -185,15 +189,18 @@ pub fn for_data(
         }
     } else if filename.contains(".npz:") {
         let mut tokens = filename.split(':');
-        let (filename, inner) = (tokens.next().unwrap(), tokens.next().unwrap());
-        let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(filename)?)?;
+        let (_filename, inner) = (tokens.next().unwrap(), tokens.next().unwrap());
+        let mut npz = ndarray_npy::NpzReader::new(reader)?;
         Ok((None, for_npz(&mut npz, inner)?.into()))
     } else {
-        Ok((None, tensor_for_text_data(symbol_table, filename)?.into()))
+        Ok((None, tensor_for_text_data(symbol_table, filename, reader)?.into()))
     }
 }
 
-pub fn for_npz(npz: &mut ndarray_npy::NpzReader<fs::File>, name: &str) -> TractResult<Tensor> {
+pub fn for_npz(
+    npz: &mut ndarray_npy::NpzReader<impl Read + Seek>,
+    name: &str,
+) -> TractResult<Tensor> {
     if let Ok(t) = npz.by_name::<tract_ndarray::OwnedRepr<f32>, tract_ndarray::IxDyn>(name) {
         return Ok(t.into_tensor());
     }
@@ -234,32 +241,26 @@ pub fn for_string(
     symbol_table: &SymbolTable,
     value: &str,
 ) -> TractResult<(Option<String>, InferenceFact)> {
-    if let Some(stripped) = value.strip_prefix('@') {
-        for_data(symbol_table, stripped)
+    let (name, value) = if value.contains(':') {
+        let mut splits = value.split(':');
+        (Some(splits.next().unwrap().to_string()), splits.next().unwrap())
     } else {
-        let (name, value) = if value.contains(':') {
-            let mut splits = value.split(':');
-            (Some(splits.next().unwrap().to_string()), splits.next().unwrap())
-        } else {
-            (None, value)
-        };
-        if value.contains('=') {
-            let mut split = value.split('=');
-            let spec = parse_spec(symbol_table, split.next().unwrap())?;
-            let value = split.next().unwrap().split(',');
-            let dt = spec
-                .datum_type
-                .concretize()
-                .context("Must specify type when giving tensor value")?;
-            let shape = spec
-                .shape
-                .as_concrete_finite()?
-                .context("Must specify concrete shape when giving tensor value")?;
-            let tensor = dispatch_numbers!(parse_values(dt)(&*shape, value.collect()))?;
-            Ok((name, tensor.into()))
-        } else {
-            Ok((name, parse_spec(symbol_table, value)?))
-        }
+        (None, value)
+    };
+    if value.contains('=') {
+        let mut split = value.split('=');
+        let spec = parse_spec(symbol_table, split.next().unwrap())?;
+        let value = split.next().unwrap().split(',');
+        let dt =
+            spec.datum_type.concretize().context("Must specify type when giving tensor value")?;
+        let shape = spec
+            .shape
+            .as_concrete_finite()?
+            .context("Must specify concrete shape when giving tensor value")?;
+        let tensor = dispatch_numbers!(parse_values(dt)(&*shape, value.collect()))?;
+        Ok((name, tensor.into()))
+    } else {
+        Ok((name, parse_spec(symbol_table, value)?))
     }
 }
 
