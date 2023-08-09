@@ -17,10 +17,11 @@ pub fn setup_test_logger() {
 pub type TestResult = anyhow::Result<()>;
 
 pub trait Test: 'static + Send + Sync + DynClone {
-    fn run(&self, runtime: &dyn Runtime) -> TestResult {
-        self.run_with_approx(runtime, Approximation::Close)
+    fn run(&self, id: &str, runtime: &dyn Runtime) -> TestResult {
+        self.run_with_approx(id, runtime, Approximation::Close)
     }
-    fn run_with_approx(&self, runtime: &dyn Runtime, approx: Approximation) -> TestResult;
+    fn run_with_approx(&self, id: &str, runtime: &dyn Runtime, approx: Approximation)
+        -> TestResult;
 }
 
 dyn_clone::clone_trait_object!(Test);
@@ -164,7 +165,11 @@ impl TestSuite {
                     writeln!(rs, "#[ignore]").unwrap();
                 }
                 writeln!(rs, "fn {id}() -> TractResult<()> {{",).unwrap();
-                writeln!(rs, "    {test_suite}.get({full_id:?}).run_with_approx({runtime}, {approx})",).unwrap();
+                writeln!(
+                    rs,
+                    "    {test_suite}.get({full_id:?}).run_with_approx({full_id:?}, {runtime}, {approx})",
+                )
+                .unwrap();
                 writeln!(rs, "}}").unwrap();
             }
         }
@@ -191,13 +196,13 @@ impl<A: Arbitrary + Test + Clone> Test for ProptestWrapper<A>
 where
     A::Parameters: Clone + Send + Sync,
 {
-    fn run_with_approx(&self, runtime: &dyn Runtime, approx: Approximation) -> TestResult {
+    fn run_with_approx(&self, id: &str, runtime: &dyn Runtime, approx: Approximation) -> TestResult {
         let mut runner = TestRunner::new(Config {
             failure_persistence: Some(Box::new(FileFailurePersistence::Off)),
             ..Config::default()
         });
         runner.run(&any_with::<A>(self.0.clone()), |v| {
-            v.run_with_approx(runtime, approx).unwrap();
+            v.run_with_approx(id, runtime, approx).unwrap();
             Ok(())
         })?;
         Ok(())
