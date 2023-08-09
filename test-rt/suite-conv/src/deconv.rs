@@ -270,10 +270,12 @@ impl DeconvProblem {
 }
 
 impl Test for DeconvProblem {
-    fn run_with_approx(&self, runtime: &dyn Runtime, approx: Approximation) -> TestResult {
+    fn run_with_approx(&self, id: &str, runtime: &dyn Runtime, approx: Approximation) -> TestResult {
         let reference = self.reference().into_tensor();
+        let mut model = self.tract()?;
+        model.properties.insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));
         let mut output =
-            runtime.prepare(self.tract()?)?.run(tvec![self.input.clone().into_tvalue()])?;
+            runtime.prepare(model)?.run(tvec![self.input.clone().into_tvalue()])?;
         let output = output.remove(0).into_tensor();
         output.close_enough(&reference, approx)
     }

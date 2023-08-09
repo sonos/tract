@@ -226,8 +226,15 @@ impl QConvProblem {
 }
 
 impl Test for QConvProblem {
-    fn run_with_approx(&self, runtime: &dyn Runtime, approx: Approximation) -> infra::TestResult {
+    fn run_with_approx(
+        &self,
+        id: &str,
+        runtime: &dyn Runtime,
+        approx: Approximation,
+    ) -> infra::TestResult {
         let reference = self.reference();
+        let mut model = self.tract()?;
+        model.properties.insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));
         let model = runtime.prepare(self.tract()?)?;
         let idt = DatumType::QI8(QParams::ZpScale {
             zero_point: self.qp[2].cast_to_scalar()?,

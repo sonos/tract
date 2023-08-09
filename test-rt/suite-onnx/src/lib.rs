@@ -27,7 +27,7 @@ struct OnnxTestCase {
 }
 
 impl Test for OnnxTestCase {
-    fn run_with_approx(&self, runtime: &dyn Runtime, approx: Approximation) -> TractResult<()> {
+    fn run_with_approx(&self, _id: &str, runtime: &dyn Runtime, approx: Approximation) -> TractResult<()> {
         setup_test_logger();
         let model_file = self.path.join("model.onnx");
         info!("Loading {:?}", model_file);
