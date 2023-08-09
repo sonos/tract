@@ -228,7 +228,7 @@ fn dequant_output(
         bail!("Expect exactly 9 inputs")
     };
 
-    if !model.outlet_fact(a_scale)?.shape.volume().is_one() {
+    if !patch.outlet_fact(a_scale)?.shape.volume().is_one() {
         let q_axis_in_output = op.axes.axis((InOut::In(4), 0))?.outputs[0][0];
         let output_rank = node.outputs[0].fact.rank();
         for i in 1..(output_rank - q_axis_in_output) {
