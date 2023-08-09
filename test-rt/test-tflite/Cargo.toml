@@ -13,7 +13,7 @@ suite-conv = { path = "../suite-conv" }
 [dev-dependencies]
 lazy_static.workspace = true
 log.workspace = true
-tflite = { git= "https://github.com/Marekkon5/tflite-rs" }
+tflite.workspace = true
 tract-tflite = { path = "../../tflite", version = "=0.20.7-pre" }
 tract-onnx-opl = { path = "../../onnx-opl", version = "=0.20.7-pre" }
 infra = { path = "../infra" }
