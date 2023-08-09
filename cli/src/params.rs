@@ -1,6 +1,8 @@
 use reqwest::Url;
 use scan_fmt::scan_fmt;
+use std::io::Cursor;
 use std::io::Read;
+use std::io::Seek;
 use std::path::PathBuf;
 use std::str::FromStr;
 use tract_core::ops::konst::Const;
@@ -370,7 +372,9 @@ impl Parameters {
                     .next()
                     .unwrap()
                     .parse::<usize>()?;
-                let (name, tensor) = tensor::for_data(symbol_table, file.path().to_str().unwrap())?;
+                let fd = std::fs::File::open(file.path())?;
+                let (name, tensor) =
+                    tensor::for_data(symbol_table, file.path().to_str().unwrap(), fd)?;
                 result.push(TensorValues {
                     input_index: Some(ix).filter(|_| is_input),
                     output_index: Some(ix).filter(|_| is_output),
@@ -389,42 +393,59 @@ impl Parameters {
         get_values: bool,
         get_facts: bool,
     ) -> TractResult<Vec<TensorValues>> {
-        let mut npz = ndarray_npy::NpzReader::new(
-            std::fs::File::open(input).with_context(|| format!("opening {input:?}"))?,
-        )?;
-        let vectors = npz
-            .names()?
-            .iter()
-            .map(|n| {
-                if let Ok((turn, name)) = scan_fmt::scan_fmt!(n, "turn_{d}/{}.npy", usize, String) {
-                    Ok((name, turn, tensor::for_npz(&mut npz, n)?))
-                } else {
-                    let name = n.trim_end_matches(".npy").to_string();
-                    Ok((name, 0, tensor::for_npz(&mut npz, n)?))
-                }
-            })
-            .collect::<TractResult<Vec<_>>>()?;
-        let mut result = vec![];
-        for (name, vals) in vectors.into_iter().group_by(|triple| triple.0.clone()).into_iter() {
-            let vals: Vec<_> = vals
-                .into_iter()
-                .sorted_by_key(|(_, turn, _)| *turn)
-                .map(|(_, _, tensor)| tensor.into_tvalue())
-                .collect();
-            result.push(TensorValues {
-                input_index: None,
-                output_index: None,
-                name: Some(name),
-                fact: if get_facts {
-                    Some(InferenceFact::from(&*vals[0]).without_value())
-                } else {
-                    None
-                },
-                values: if get_values { Some(vals) } else { None },
-                random_range: None,
-            })
+        fn do_it(
+            get_values: bool,
+            get_facts: bool,
+            reader: impl Read + Seek,
+        ) -> TractResult<Vec<TensorValues>> {
+            let mut npz = ndarray_npy::NpzReader::new(reader)?;
+            let vectors = npz
+                .names()?
+                .iter()
+                .map(|n| {
+                    if let Ok((turn, name)) =
+                        scan_fmt::scan_fmt!(n, "turn_{d}/{}.npy", usize, String)
+                    {
+                        Ok((name, turn, tensor::for_npz(&mut npz, n)?))
+                    } else {
+                        let name = n.trim_end_matches(".npy").to_string();
+                        Ok((name, 0, tensor::for_npz(&mut npz, n)?))
+                    }
+                })
+                .collect::<TractResult<Vec<_>>>()?;
+            let mut result = vec![];
+            for (name, vals) in vectors.into_iter().group_by(|triple| triple.0.clone()).into_iter()
+            {
+                let vals: Vec<_> = vals
+                    .into_iter()
+                    .sorted_by_key(|(_, turn, _)| *turn)
+                    .map(|(_, _, tensor)| tensor.into_tvalue())
+                    .collect();
+                result.push(TensorValues {
+                    input_index: None,
+                    output_index: None,
+                    name: Some(name),
+                    fact: if get_facts {
+                        Some(InferenceFact::from(&*vals[0]).without_value())
+                    } else {
+                        None
+                    },
+                    values: if get_values { Some(vals) } else { None },
+                    random_range: None,
+                });
+            }
+            Ok(result)
         }
-        Ok(result)
+        if input.starts_with("http://") || input.starts_with("https://") {
+            let mut buf = vec![];
+            reqwest::blocking::get(input)?.error_for_status()?.read_to_end(&mut buf)?;
+            do_it(get_values, get_facts, Cursor::new(buf))
+                .with_context(|| format!("reading file from {input:?}"))
+        } else {
+            let fd =
+                std::fs::File::open(input).with_context(|| format!("reading file {input:?}"))?;
+            do_it(get_values, get_facts, fd)
+        }
     }
 
     fn parse_tensors(
@@ -569,45 +590,45 @@ impl Parameters {
         }
 
         macro_rules! stage {
-            ($name:expr, $from:ident -> $to:ident, $block:expr) => {
-                if let Some(from) = $from.take() {
-                    info!(concat!("Running '", $name, "'"));
-                    let mut last_model: Option<Box<dyn Model>> =
-                        if keep_last { Some(Box::new(from.as_ref().clone())) } else { None };
-                    let block: &dyn Fn(_) -> TractResult<_> = &$block;
-                    let owned_model =
-                        Arc::try_unwrap(from).unwrap_or_else(|from| from.as_ref().clone());
-                    match block(owned_model).context(concat!("Error at stage ", $name)) {
-                        Ok(it) => {
-                            $to = Some(Arc::new(it));
-                        }
-                        Err(e) => {
-                            if let Some(last_model) = last_model.take() {
-                                return Err(ModelBuildingError(last_model, e.into()))?;
-                            } else {
-                                return Err(e)?;
-                            }
-                        }
-                    }
-                    info_usage(concat!("after ", $name), probe);
-                    if reference_stage.as_deref() == Some($name) {
-                        reference_model = Some($to.as_ref().unwrap().clone());
-                    }
-                    if stop_at == $name {
-                        return Ok((
-                                $to.take().expect("returnable model"),
-                                pulsed_model,
-                                reference_model,
-                                ));
-                    }
-                } else {
-                    debug!("Skip stage {}", $name);
-                    if stop_at == $name {
-                        bail!("Stage {} is skipped, it can not be used as stop with these input format or parameters.", $name);
-                    }
-                }
-            };
-        }
+                          ($name:expr, $from:ident -> $to:ident, $block:expr) => {
+                              if let Some(from) = $from.take() {
+                                  info!(concat!("Running '", $name, "'"));
+                                  let mut last_model: Option<Box<dyn Model>> =
+                                      if keep_last { Some(Box::new(from.as_ref().clone())) } else { None };
+                                  let block: &dyn Fn(_) -> TractResult<_> = &$block;
+                                  let owned_model =
+                                      Arc::try_unwrap(from).unwrap_or_else(|from| from.as_ref().clone());
+                                  match block(owned_model).context(concat!("Error at stage ", $name)) {
+                                      Ok(it) => {
+                                          $to = Some(Arc::new(it));
+                                      }
+                                      Err(e) => {
+                                          if let Some(last_model) = last_model.take() {
+                                              return Err(ModelBuildingError(last_model, e.into()))?;
+                                          } else {
+                                              return Err(e)?;
+                                          }
+                                      }
+                                  }
+                                  info_usage(concat!("after ", $name), probe);
+                                  if reference_stage.as_deref() == Some($name) {
+                                      reference_model = Some($to.as_ref().unwrap().clone());
+                                  }
+                                  if stop_at == $name {
+                                      return Ok((
+                                              $to.take().expect("returnable model"),
+                                              pulsed_model,
+                                              reference_model,
+                                              ));
+                                  }
+                              } else {
+                                  debug!("Skip stage {}", $name);
+                                  if stop_at == $name {
+                                      bail!("Stage {} is skipped, it can not be used as stop with these input format or parameters.", $name);
+                                  }
+                              }
+                          };
+                      }
 
         stage!("analyse", inference_model -> inference_model,
         |mut m:InferenceModel| -> TractResult<_> {
