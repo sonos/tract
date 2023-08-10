@@ -15,9 +15,9 @@ rustc --version
 if [ `uname` = "Darwin" ]
 then
     brew install coreutils
-else
+else if [ -n "$GITHUB_ACTIONS" ]
     # this seems to help with tflite / bindgen obscure bug
-    apt-get install -y libclang-dev
+    sudo apt-get install -y libclang-dev
 fi
 
 # if [ `uname` = "Linux" -a -z "$TRAVIS" ]
