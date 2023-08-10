@@ -158,6 +158,7 @@ then
         OUTPUT=/dev/stdout
     fi
     (
+    mkdir -p $CACHEDIR
     cd $CACHEDIR
     aws s3 sync s3://tract-ci-builds/model/private private
     for t in `find private -name t.sh`
