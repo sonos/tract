@@ -59,14 +59,13 @@ echo
 echo $WHITE • onnx/test_cases $NC
 echo
 
-# ( cd onnx/test_cases ; ./run_all.sh )
+MODELS=https://s3.amazonaws.com/tract-ci-builds/tests
+
+( cd onnx/test_cases ; CACHEDIR=$MODELS ./run_all.sh )
 
 echo
 echo $WHITE • old integration test cases $NC
 echo
-
-
-MODELS=https://s3.amazonaws.com/tract-ci-builds/tests
 
 $TRACT_RUN $MODELS/squeezenet.onnx \
     run -q \
