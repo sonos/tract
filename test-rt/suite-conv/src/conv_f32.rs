@@ -902,6 +902,34 @@ pub fn suite() -> TractResult<TestSuite> {
     );
 
     suite.add(
+        "strides_one_axis_explicit",
+        ConvProblem {
+            shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [3])?,
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: tract_ndarray::ArrayD::<f32>::zeros(vec![3, 1]),
+            kernel: tract_ndarray::ArrayD::<f32>::zeros(vec![1, 1, 3]),
+            bias: None,
+            pad: PaddingSpec::Explicit(tvec!(1), tvec!(0), true),
+            strides: tvec!(2),
+        },
+    );
+
+    suite.add(
+        "strides_one_axis_explicit_prime",
+        ConvProblem {
+            shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [2])?,
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: tract_ndarray::ArrayD::<f32>::zeros(vec![2, 1]),
+            kernel: tract_ndarray::ArrayD::<f32>::zeros(vec![1, 1, 2]),
+            bias: None,
+            pad: PaddingSpec::Explicit(tvec!(0), tvec!(0), true),
+            strides: tvec!(1),
+        },
+    );
+
+    suite.add(
         "strides_two_axes_explicit",
         ConvProblem {
             shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [2, 3])?,
