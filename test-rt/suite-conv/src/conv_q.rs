@@ -235,7 +235,7 @@ impl Test for QConvProblem {
         let reference = self.reference();
         let mut model = self.tract()?;
         model.properties.insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));
-        let model = runtime.prepare(self.tract()?)?;
+        let model = runtime.prepare(model)?;
         let idt = DatumType::QI8(QParams::ZpScale {
             zero_point: self.qp[2].cast_to_scalar()?,
             scale: *self.qp[3].to_scalar()?,
