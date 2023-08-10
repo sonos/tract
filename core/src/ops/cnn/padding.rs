@@ -91,14 +91,16 @@ impl PaddingSpec {
         dilation: usize,
         stride: usize,
     ) -> ComputedPaddedDim<D> {
-        match self {
+        let r = match self {
             PaddingSpec::Valid => Self::valid(input, kernel, dilation, stride),
             PaddingSpec::Explicit(ref bef, ref aft, ceil_mode) => {
                 Self::explicit(input, kernel, dilation, stride, bef[axis], aft[axis], *ceil_mode)
             }
             PaddingSpec::SameUpper => Self::same(input, kernel, dilation, stride, true),
             PaddingSpec::SameLower => Self::same(input, kernel, dilation, stride, false),
-        }
+        };
+        eprintln!("{self:?} axis:{axis} input:{input:?} kernel:{kernel} dilation:{dilation} stride:{stride} => {r:?}");
+        r
     }
 
     pub fn compute_one_for_deconv<D: DimLike>(
@@ -201,7 +203,7 @@ impl PaddingSpec {
             }
         }
         let after = (output * stride) + kernel_field - 1 - input - bef;
-        ComputedPaddedDim::new(input, output, bef, after)
+        ComputedPaddedDim::new(input, output, bef, aft)
     }
 
     fn explicit_for_deconv<D: DimLike>(
@@ -332,5 +334,12 @@ mod tests {
     #[test]
     fn same_upper() {
         assert_eq!(PS::same(&7usize, 1usize, 1, 2, true), ComputedPaddedDim::new(7, 4, 0, 0));
+    }
+
+    // 0 1 2 3 4 5 6 7 8 9 a b
+    // 012 345 678 9ab
+    #[test]
+    fn bug_explicit_stride() {
+        assert_eq!(PS::explicit(&12usize, 3usize, 1, 3, 0, 0, false), ComputedPaddedDim::new(12, 4, 0, 0));
     }
 }
