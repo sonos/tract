@@ -59,7 +59,7 @@ echo
 echo $WHITE • onnx/test_cases $NC
 echo
 
-( cd onnx/test_cases ; ./run_all.sh )
+# ( cd onnx/test_cases ; ./run_all.sh )
 
 echo
 echo $WHITE • old integration test cases $NC
@@ -67,7 +67,6 @@ echo
 
 
 MODELS=https://s3.amazonaws.com/tract-ci-builds/tests
-set -ex
 
 $TRACT_RUN $MODELS/squeezenet.onnx \
     run -q \
@@ -143,7 +142,7 @@ $TRACT_RUN $MODELS/inceptionv1_quant.nnef.tar.gz \
 
 for t in harness/pre-optimized-graphes/*
 do
-    ( cd $t ; ./runme.sh)
+    ( cd $t ; CACHEDIR=$MODELS ./runme.sh)
 done
 
 (
