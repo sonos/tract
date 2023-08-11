@@ -68,26 +68,6 @@ pub fn rules<'r, 'p: 'r, 's: 'r, DT: Fn(DatumType, DatumType) -> TractResult<Dat
     Ok(())
 }
 
-pub fn wire_cast(
-    prefix: &str,
-    target: &mut TypedModel,
-    inputs: &[OutletId],
-    operating_datum_type: DatumType,
-) -> TractResult<TVec<OutletId>> {
-    let mut wires = tvec!();
-    for (ix, mut wire) in inputs.iter().copied().enumerate() {
-        if target.outlet_fact(wire)?.datum_type != operating_datum_type {
-            wire = target.wire_node(
-                format!("{prefix}.cast-{ix}"),
-                mir::cast::cast(operating_datum_type),
-                &[wire],
-            )?[0];
-        }
-        wires.push(wire);
-    }
-    Ok(wires)
-}
-
 pub trait BinIntoHir {
     fn into_hir(self) -> Box<dyn InferenceOp>;
 }

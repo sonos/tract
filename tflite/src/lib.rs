@@ -22,13 +22,12 @@ pub use tflite_generated::tflite;
 pub use model::Tflite;
 
 pub mod prelude {
-    pub use tract_hir::prelude::*;
-    pub use tract_hir::tract_core;
+    pub use tract_core::prelude::*;
 }
 
 pub mod internal {
     pub use crate::model::TfliteProtoModel;
-    pub use tract_hir::internal::*;
+    pub use tract_core::internal::*;
 }
 
 pub fn tflite() -> Tflite {

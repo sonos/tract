@@ -1,8 +1,8 @@
-use tract_hir::internal::*;
-use tract_hir::ops::array::TypedConcat;
-use tract_hir::ops::binary::wire_cast;
-use tract_hir::prelude::tract_itertools::Itertools;
-use tract_hir::tract_ndarray::ArrayView2;
+use tract_core::internal::*;
+use tract_core::ops::array::TypedConcat;
+use tract_core::ops::binary::wire_cast;
+use tract_core::prelude::tract_itertools::Itertools;
+use tract_ndarray::ArrayView2;
 
 use crate::registry::{DeserOp, Registry};
 use crate::ser::{BuiltinOp, SubgraphBuilder};
@@ -57,7 +57,7 @@ fn de_pad(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let pads: ArrayView2<i32> = pads.to_array_view::<i32>()?.into_dimensionality()?;
     let pads: Vec<(usize, usize)> =
         pads.rows().into_iter().map(|row| (row[0] as usize, row[1] as usize)).collect();
-    let mode = tract_hir::ops::array::PadMode::Constant(
+    let mode = tract_core::ops::array::PadMode::Constant(
         Tensor::zero_scalar_dt(input.datum_type)?.into(),
     );
     op.ctx.target.wire_node(prefix, tract_core::ops::array::Pad { pads, mode }, &op.inputs[0..1])
@@ -70,7 +70,7 @@ fn de_padv2(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let pads: ArrayView2<i32> = pads.to_array_view::<i32>()?.into_dimensionality()?;
     let pads: Vec<(usize, usize)> =
         pads.rows().into_iter().map(|row| (row[0] as usize, row[1] as usize)).collect();
-    let mode = tract_hir::ops::array::PadMode::Constant(value.konst.context("Constant expected")?);
+    let mode = tract_core::ops::array::PadMode::Constant(value.konst.context("Constant expected")?);
     op.ctx.target.wire_node(prefix, tract_core::ops::array::Pad { pads, mode }, &op.inputs[0..1])
 }
 

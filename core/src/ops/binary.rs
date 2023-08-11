@@ -3,6 +3,26 @@ use downcast_rs::Downcast;
 use std::fmt;
 use tract_data::itertools::izip;
 
+pub fn wire_cast(
+    prefix: &str,
+    target: &mut TypedModel,
+    inputs: &[OutletId],
+    operating_datum_type: DatumType,
+) -> TractResult<TVec<OutletId>> {
+    let mut wires = tvec!();
+    for (ix, mut wire) in inputs.iter().copied().enumerate() {
+        if target.outlet_fact(wire)?.datum_type != operating_datum_type {
+            wire = target.wire_node(
+                format!("{prefix}.cast-{ix}"),
+                crate::ops::cast::cast(operating_datum_type),
+                &[wire],
+            )?[0];
+        }
+        wires.push(wire);
+    }
+    Ok(wires)
+}
+
 pub fn wire_rank_broadcast(
     prefix: &str,
     target: &mut TypedModel,
@@ -214,12 +234,15 @@ impl TypedOp for TypedBinOp {
             == facts[0].datum_type
             && facts[0].without_value() == facts[1].without_value()
         {
-            Ok(Some(TypedModelPatch::replace_single_op(
-                model,
-                node,
-                &node.inputs,
-                MergeOpUnicast(self.0.clone()),
-            )?.with_context("Unicast")))
+            Ok(Some(
+                TypedModelPatch::replace_single_op(
+                    model,
+                    node,
+                    &node.inputs,
+                    MergeOpUnicast(self.0.clone()),
+                )?
+                .with_context("Unicast"),
+            ))
         } else {
             Ok(None)
         }

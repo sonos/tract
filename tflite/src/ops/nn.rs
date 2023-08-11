@@ -1,10 +1,10 @@
-use tract_hir::internal::*;
-use tract_hir::ops::binary::wire_cast;
-use tract_hir::ops::logic::wire_with_rank_broadcast;
-use tract_hir::prelude::tract_itertools::Itertools;
-use tract_hir::tract_core::ops as core;
-use tract_hir::tract_core::ops::cast::Cast;
-use tract_hir::tract_core::ops::einsum::EinSum;
+use tract_core::internal::*;
+use tract_core::ops::binary::wire_cast;
+use tract_core::ops::binary::wire_with_rank_broadcast;
+use tract_core::prelude::tract_itertools::Itertools;
+use tract_core::ops as core;
+use tract_core::ops::cast::Cast;
+use tract_core::ops::einsum::EinSum;
 
 use crate::registry::{DeserOp, Registry};
 use crate::tflite::{BuiltinOperator, FullyConnectedOptionsWeightsFormat};

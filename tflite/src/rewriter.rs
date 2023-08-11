@@ -1,8 +1,8 @@
-use tract_hir::internal::*;
-use tract_hir::ops::array::{Pad, PadMode};
-use tract_hir::ops::cnn::{ConvUnary, PaddingSpec};
-use tract_hir::ops::nn::DataFormat;
-use tract_hir::tract_core::ops::cnn::KernelFormat;
+use tract_core::internal::*;
+use tract_core::ops::array::{Pad, PadMode};
+use tract_core::ops::cnn::{ConvUnary, PaddingSpec};
+use tract_core::ops::nn::DataFormat;
+use tract_core::ops::cnn::KernelFormat;
 
 pub fn rewrite_for_tflite(model: &mut TypedModel) -> TractResult<()> {
     Rewriter::default()

@@ -2,8 +2,8 @@ use crate::tflite::{Model, SubGraph};
 use crate::tflite_generated::tflite::{TensorType, TensorType as BufferTensorType};
 #[cfg(feature = "complex")]
 use num_complex::Complex;
-use tract_hir::internal::*;
-use tract_hir::prelude::tract_itertools::Itertools;
+use tract_core::internal::*;
+use tract_core::prelude::tract_itertools::Itertools;
 
 impl TryFrom<BufferTensorType> for DatumType {
     type Error = TractError;
