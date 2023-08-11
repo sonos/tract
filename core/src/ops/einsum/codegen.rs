@@ -35,7 +35,7 @@ pub(crate) fn codegen(
         lir_mat_mul_unary(op, model, node, (m_axis, k_axis, n_axis))
             .context("Translating to LirMatMul")
     } else {
-        dequant_output(op, model, node, (m_axis, k_axis, n_axis)).context("Dequantizing output")
+        dequant(op, model, node, (m_axis, k_axis, n_axis)).context("Dequantize")
     }
 }
 
@@ -215,7 +215,7 @@ fn wire_axes_fix(
     Ok(outlet)
 }
 
-fn dequant_output(
+fn dequant(
     op: &EinSum,
     model: &TypedModel,
     node: &TypedNode,

@@ -589,6 +589,7 @@ impl LirMatMulUnary {
         let mut new_op = self.clone();
         let before_last = new_op.micro_ops.len() - 1..new_op.micro_ops.len() - 1;
         new_op.micro_ops.splice(before_last, fused_micro_op);
+        new_op.c_fact = succ.outputs[0].fact.clone();
         new_op.update_trivial_path();
         let mut inputs = patch.taps(model, &node.inputs)?;
         inputs.extend(additional_inputs.iter().cloned());
