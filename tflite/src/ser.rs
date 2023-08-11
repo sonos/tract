@@ -1,7 +1,7 @@
-use tract_hir::internal::*;
-use tract_hir::ops::konst::Const;
-use tract_hir::prelude::tract_itertools::Itertools;
-use tract_hir::tract_core::ops::source::TypedSource;
+use tract_core::internal::*;
+use tract_core::ops::konst::Const;
+use tract_core::prelude::tract_itertools::Itertools;
+use tract_core::ops::source::TypedSource;
 
 use crate::registry::Registry;
 use crate::tflite::{

@@ -5,13 +5,13 @@ use crate::tflite::{
     ActivationFunctionType, BuiltinOperator, BuiltinOptions, Conv2DOptions, Conv2DOptionsArgs,
     DepthwiseConv2DOptions, DepthwiseConv2DOptionsArgs, PadOptions, PadOptionsArgs, Padding,
 };
-use tract_hir::internal::*;
-use tract_hir::ops::array::{Pad, PadMode};
-use tract_hir::ops::cnn::{ConvUnary, PaddingSpec};
-use tract_hir::ops::nn::DataFormat;
-use tract_hir::prelude::tract_itertools::Itertools;
-use tract_hir::tract_core::ops as core;
-use tract_hir::tract_core::ops::cnn::KernelFormat;
+use tract_core::internal::*;
+use tract_core::ops::array::{Pad, PadMode};
+use tract_core::ops::cnn::{ConvUnary, PaddingSpec};
+use tract_core::ops::nn::DataFormat;
+use tract_core::prelude::tract_itertools::Itertools;
+use tract_core::ops as core;
+use tract_core::ops::cnn::KernelFormat;
 
 pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tract(BuiltinOperator::AVERAGE_POOL_2D, average_pool_2d);
@@ -165,7 +165,7 @@ fn de_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         tvec!(options.dilation_h_factor() as usize, options.dilation_w_factor() as usize);
     let co = KernelFormat::OHWI.o(&kernel_full_shape);
     let pool_spec = core::cnn::PoolSpec {
-        data_format: tract_hir::ops::nn::DataFormat::NHWC,
+        data_format: tract_core::ops::nn::DataFormat::NHWC,
         kernel_shape,
         padding,
         strides: Some(strides),
@@ -205,7 +205,7 @@ fn de_dw_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         tvec!(options.dilation_h_factor() as usize, options.dilation_w_factor() as usize);
     let co = *KernelFormat::OHWI.i(&kernel_full_shape);
     let pool_spec = core::cnn::PoolSpec {
-        data_format: tract_hir::ops::nn::DataFormat::NHWC,
+        data_format: tract_core::ops::nn::DataFormat::NHWC,
         kernel_shape,
         padding,
         strides: Some(strides),

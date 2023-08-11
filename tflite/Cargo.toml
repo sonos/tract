@@ -10,4 +10,4 @@ edition = "2021"
 [dependencies]
 derive-new.workspace = true
 flatbuffers.workspace = true
-tract-hir = { version = "=0.20.7-pre", path = "../hir" }
+tract-core = { version = "=0.20.7-pre", path = "../core" }

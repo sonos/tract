@@ -1,7 +1,7 @@
 use std::collections::hash_map::Entry;
 
 use flatbuffers::FlatBufferBuilder;
-use tract_hir::internal::*;
+use tract_core::internal::*;
 
 use crate::registry::Registry;
 use crate::tensors::{flat_tensor_to_tract_fact, flat_tensor_uses_per_axis_q};
@@ -65,7 +65,7 @@ impl Framework<TfliteProtoModel, TypedModel> for Tflite {
     fn proto_model_for_read(
         &self,
         reader: &mut dyn std::io::Read,
-    ) -> tract_hir::prelude::TractResult<TfliteProtoModel> {
+    ) -> tract_core::prelude::TractResult<TfliteProtoModel> {
         let mut buf = vec![];
         reader.read_to_end(&mut buf)?;
         TfliteProtoModel::new(buf)

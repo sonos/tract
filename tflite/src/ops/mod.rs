@@ -1,5 +1,5 @@
-use tract_hir::internal::*;
-use tract_hir::prelude::tract_itertools::Itertools;
+use tract_core::internal::*;
+use tract_core::prelude::tract_itertools::Itertools;
 
 use crate::registry::{DeserContext, DeserOp, Registry};
 use crate::tflite::ActivationFunctionType;

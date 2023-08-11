@@ -1,6 +1,6 @@
 use crate::registry::Registry;
 use crate::tflite::BuiltinOperator;
-use tract_hir::tract_core::ops as core;
+use tract_core::ops as core;
 
 pub fn register_all(reg: &mut Registry) {
     reg.reg_binary(BuiltinOperator::ADD, core::math::add());

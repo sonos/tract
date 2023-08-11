@@ -1,9 +1,9 @@
 use std::any::TypeId;
 
-use tract_hir::internal::*;
-use tract_hir::ops::logic::wire_with_rank_broadcast;
-use tract_hir::tract_core::ops::binary::TypedBinOp;
-use tract_hir::tract_core::ops::element_wise::ElementWiseOp;
+use tract_core::internal::*;
+use tract_core::ops::binary::wire_with_rank_broadcast;
+use tract_core::ops::binary::TypedBinOp;
+use tract_core::ops::element_wise::ElementWiseOp;
 
 use crate::ser::SubgraphBuilder;
 use crate::tflite::{BuiltinOperator, Model, Operator, SubGraph};
