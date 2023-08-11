@@ -70,13 +70,7 @@ mod tests {
     {
         let input = load_image(grace_hopper());
         let outputs = runnable.run(tvec![input.into()])?;
-        let label_id = outputs[0]
-            .as_slice::<f32>()?
-            .iter()
-            .enumerate()
-            .max_by(|a, b| a.1.total_cmp(b.1))
-            .unwrap()
-            .0;
+        let label_id = outputs[0].as_slice::<i8>()?.iter().enumerate().max().unwrap().0;
         let labels = load_labels();
         let label = &labels[label_id];
         assert_eq!(label, "military uniform");
