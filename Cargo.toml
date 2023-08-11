@@ -33,6 +33,7 @@ members = [
     "harness/tf-inceptionv3",
     "harness/tf-mobilenet-v2",
     "harness/tf-moz-deepspeech",
+    "harness/tfl-mobilenet-v2-q",
 
     "test-rt/infra",
     "test-rt/suite-conv",
