@@ -23,6 +23,7 @@ pub use model::Tflite;
 
 pub mod prelude {
     pub use tract_hir::prelude::*;
+    pub use tract_hir::tract_core;
 }
 
 pub mod internal {
