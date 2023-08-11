@@ -31,6 +31,7 @@ fn de_fully_connected(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         op,
         &input,
         &mut inputs,
+        false,
     )?;
     let operating_dt =
         if input.datum_type.is_float() { input.datum_type } else { i32::datum_type() };
