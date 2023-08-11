@@ -669,8 +669,9 @@ impl ConvUnary {
         let mut new = self.clone();
         new.pool_spec.padding = padding;
         let mut patch = TypedModelPatch::default();
-        let wire = patch.tap_model(model, prec.inputs[0])?;
-        let wire = patch.wire_node(&node.name, new, &[wire])?;
+        let mut wire = patch.taps(model, &node.inputs)?;
+        wire[0] = patch.tap_model(model, prec.inputs[0])?;
+        let wire = patch.wire_node(&node.name, new, &wire)?;
         patch.shunt_outside(model, node.id.into(), wire[0])?;
         Ok(Some(patch))
     }
