@@ -52,8 +52,10 @@ impl Ord for QParams {
             (MinMax { min: min1, max: max1 }, MinMax { min: min2, max: max2 }) => {
                 min1.total_cmp(min2).then_with(|| max1.total_cmp(max2))
             }
-            (Self::ZpScale { zero_point: zp1, scale: s1 },Self::ZpScale { zero_point: zp2, scale: s2 }) =>
-                zp1.cmp(zp2).then_with(|| s1.total_cmp(s2))
+            (
+                Self::ZpScale { zero_point: zp1, scale: s1 },
+                Self::ZpScale { zero_point: zp2, scale: s2 },
+            ) => zp1.cmp(zp2).then_with(|| s1.total_cmp(s2)),
         }
     }
 }
@@ -157,7 +159,7 @@ impl DatumType {
         if *self == String || *self == TDim || *self == Blob || *self == Bool || self.is_quantized()
         {
             return tvec!(*self);
-        } 
+        }
         #[cfg(feature = "complex")]
         if self.is_complex_float() {
             return [ComplexF16, ComplexF32, ComplexF64]
@@ -275,12 +277,9 @@ impl DatumType {
     pub fn is_copy(&self) -> bool {
         #[cfg(feature = "complex")]
         if self.is_complex() {
-            return true
+            return true;
         }
-        *self == DatumType::Bool
-            || self.is_unsigned()
-            || self.is_signed()
-            || self.is_float()
+        *self == DatumType::Bool || self.is_unsigned() || self.is_signed() || self.is_float()
     }
 
     pub fn is_quantized(&self) -> bool {
@@ -309,7 +308,10 @@ impl DatumType {
         match self {
             DatumType::I8 => DatumType::QI8(qparams),
             DatumType::U8 => DatumType::QI8(qparams),
-            DatumType::I32=> DatumType::QI32(qparams),
+            DatumType::I32 => DatumType::QI32(qparams),
+            DatumType::QI8(_) => DatumType::QI8(qparams),
+            DatumType::QU8(_) => DatumType::QU8(qparams),
+            DatumType::QI32(_) => DatumType::QI32(qparams),
             _ => panic!("Can't quantize {self:?}"),
         }
     }
@@ -317,6 +319,11 @@ impl DatumType {
     #[inline(always)]
     pub fn zp_scale(&self) -> (i32, f32) {
         self.qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.))
+    }
+
+    #[inline(always)]
+    pub fn with_zp_scale(&self, zero_point: i32, scale: f32) -> DatumType {
+        self.quantize(QParams::ZpScale { zero_point, scale })
     }
 
     pub fn unquantized(&self) -> DatumType {

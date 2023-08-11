@@ -1,7 +1,7 @@
+use tract_core::ops::binary::wire_cast;
+
 use crate::infer::*;
 use crate::internal::*;
-
-use super::binary::wire_cast;
 
 #[derive(Debug, Clone)]
 pub struct ElementWiseOp(pub Box<dyn ElementWiseMiniOp>);
@@ -20,7 +20,11 @@ impl Expansion for ElementWiseOp {
         let operating_datum_type =
             self.0.operating_datum_type(target.outlet_fact(inputs[0])?.datum_type);
         let wires = wire_cast(prefix, target, inputs, operating_datum_type)?;
-        target.wire_node(prefix, tract_core::ops::element_wise::ElementWiseOp(self.0.clone()), &wires)
+        target.wire_node(
+            prefix,
+            tract_core::ops::element_wise::ElementWiseOp(self.0.clone()),
+            &wires,
+        )
     }
 
     fn rules<'r, 'p: 'r, 's: 'r>(

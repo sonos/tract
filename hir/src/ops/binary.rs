@@ -2,6 +2,7 @@ use crate::infer::*;
 use crate::internal::*;
 
 use tract_core::ops as mir;
+pub use tract_core::ops::binary::wire_cast;
 pub use tract_core::ops::binary::wire_rank_broadcast;
 use tract_core::ops::binary::BinMiniOp;
 
@@ -55,7 +56,11 @@ pub fn rules<'r, 'p: 'r, 's: 'r, DT: Fn(DatumType, DatumType) -> TractResult<Dat
         s.with(&inputs[1].shape, move |s, b_shape| {
             if let Some(c_shape) =
                 crate::infer::helpers::infer_shape_broadcasting(&[&a_shape, &b_shape])
-                    .with_context(|| format!("Matching {a_shape:?} and {b_shape:?} with numpy/onnx broadcast rules"))?
+                    .with_context(|| {
+                        format!(
+                            "Matching {a_shape:?} and {b_shape:?} with numpy/onnx broadcast rules"
+                        )
+                    })?
             {
                 s.equals(&outputs[0].shape, c_shape)?;
             }

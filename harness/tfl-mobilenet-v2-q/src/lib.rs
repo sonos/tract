@@ -1,7 +1,6 @@
 use std::{fs, path};
 
-use tract_core::internal::*;
-use tract_tflite::prelude::*;
+use tract_tflite::internal::*;
 
 fn download() {
     use std::sync::Once;
@@ -35,14 +34,21 @@ pub fn grace_hopper() -> path::PathBuf {
     cachedir().join("grace_hopper.jpg")
 }
 
+pub fn input_dt() -> DatumType {
+    i8::datum_type().with_zp_scale(-1, 0.007843138)
+}
+
 pub fn load_image<P: AsRef<path::Path>>(p: P) -> Tensor {
     let image = image::open(&p).unwrap().to_rgb8();
     let resized = image::imageops::resize(&image, 224, 224, image::imageops::FilterType::Triangle);
-    tract_ndarray::Array4::from_shape_fn((1, 224, 224, 3), |(_, y, x, c)| {
-        resized[(x as _, y as _)][c] as f32 / 255.0
-    })
-    .into_dyn()
-    .into()
+    let mut tensor: Tensor =
+        tract_ndarray::Array4::from_shape_fn((1, 224, 224, 3), |(_, y, x, c)| {
+            (resized[(x as _, y as _)][c] as i32 - 128) as i8
+        })
+        .into_dyn()
+        .into();
+    unsafe { tensor.set_datum_type(input_dt()) };
+    tensor
 }
 
 #[cfg(test)]
@@ -87,7 +93,7 @@ mod tests {
     fn declutter() -> TractResult<()> {
         let tfd = tract_tflite::tflite()
             .model_for_path(mobilenet_v2())?
-            .with_input_fact(0, f32::fact([1, 224, 224, 3]).into())?
+            .with_input_fact(0, input_dt().fact([1, 224, 224, 3]).into())?
             .into_decluttered()?
             .into_runnable()?;
         run(tfd)
@@ -97,7 +103,7 @@ mod tests {
     fn optimized() -> TractResult<()> {
         let tfd = tract_tflite::tflite()
             .model_for_path(mobilenet_v2())?
-            .with_input_fact(0, f32::fact([1, 224, 224, 3]).into())?
+            .with_input_fact(0, input_dt().fact([1, 224, 224, 3]).into())?
             .into_optimized()?
             .into_runnable()?;
         run(tfd)
