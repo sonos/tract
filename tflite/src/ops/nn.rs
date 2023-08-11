@@ -35,7 +35,7 @@ fn de_fully_connected(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     )?;
     let operating_dt =
         if input.datum_type.is_float() { input.datum_type } else { i32::datum_type() };
-    let einsum = EinSum { axes: "BI,OI,I,,,,,,->BO".parse()?, q_params: qp, operating_dt };
+    let einsum = EinSum { axes: "BI,OI,O,,,,,,->BO".parse()?, q_params: qp, operating_dt };
     let wires = op.ctx.target.wire_node(op.prefix, einsum, &inputs)?;
     super::wire_fused_activation(op, &wires, &options.fused_activation_function())
 }
