@@ -1,9 +1,7 @@
 name: Sanitized build tests
 
 on:
-  workflow_dispatch:
-  schedule:
-    - cron:  '0 5 * * *'
+  pull_request:
 
 jobs:
   sanitizer-address:
