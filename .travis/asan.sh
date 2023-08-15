@@ -19,6 +19,10 @@ df -h
 df -h
 du -hs target
 du -hs .cached
+if [ -n "$CI" ]
+then
+    cargo clean
+fi
 ./.travis/onnx-tests.sh
 df -h
 du -hs target
