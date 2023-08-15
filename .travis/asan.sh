@@ -15,11 +15,14 @@ export RUST_VERSION=nightly
 export CARGO_EXTRA="-Zbuild-std --target $TARGET"
 
 df -h
-
 ./.travis/regular-tests.sh
 df -h
-# ./.travis/onnx-tests.sh
-# df -h
+du -hs target
+du -hs .cached
+./.travis/onnx-tests.sh
+df -h
+du -hs target
+du -hs .cached
 # ./.travis/cli-tests.sh
 # df -h
 
