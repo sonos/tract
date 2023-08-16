@@ -81,7 +81,7 @@ fn main() -> TractResult<()> {
     .into();
 
     // run the model on the input
-    let result = model.run(tvec!(image))?;
+    let result = model.run(tvec!(image.into()))?;
 
     // find and display the max value with its index
     let best = result[0]
@@ -137,7 +137,7 @@ it is easy to get the right version for tract conversions to work.
 ### Run the network!
 
 ```rust
-    let result = model.run(tvec!(image))?;
+    let result = model.run(tvec!(image.into()))?;
 ```
 
 ### Interpret the result
