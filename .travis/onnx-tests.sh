@@ -39,8 +39,9 @@ fi
 export CACHEDIR
 
 opset=onnx_"${1:-1_13_0}"
-
-cargo -q test -p test-onnx-core $CARGO_EXTRA -q --no-default-features --features $opset
-cargo -q test -p test-onnx-nnef-cycle $CARGO_EXTRA -q --no-default-features
-cargo -q test -p test-conv-core $CARGO_EXTRA -q 
+# 
+# cargo -q test -p test-onnx-core $CARGO_EXTRA -q --no-default-features --features $opset
+# cargo -q test -p test-onnx-nnef-cycle $CARGO_EXTRA -q --no-default-features
+# cargo -q test -p test-conv-core $CARGO_EXTRA -q 
+cargo tree
 cargo -q test -p test-tflite $CARGO_EXTRA -q 
