@@ -102,7 +102,7 @@ serde_json = "1.0"
 string-interner = "0.14"
 tar = "0.4.37"
 tensorflow = "0.17.0"
-tflite = { git = "https://github.com/kali/tflite-rs.git", rev="659a2ff" }
+tflite = { git = "https://github.com/kali/tflite-rs.git", rev="8705942" }
 time = "=0.3.23"
 time-macros = "=0.2.10"
 tokenizers = "0.13"
