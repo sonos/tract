@@ -17,8 +17,8 @@ export CARGO_EXTRA="-Zbuild-std --target $TARGET"
 df -h
 # ./.travis/regular-tests.sh
 df -h
-du -hs target
-du -hs .cached
+# du -hs target
+#du -hs .cached
 if [ -n "$CI" ]
 then
     cargo clean
