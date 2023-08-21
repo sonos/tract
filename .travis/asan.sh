@@ -14,6 +14,14 @@ export RUST_VERSION=nightly
 export CARGO_EXTRA="-Zbuild-std --target $TARGET"
 
 ./.travis/regular-tests.sh
+if [ -n "$CI" ]
+then
+    cargo clean
+fi
 ./.travis/onnx-tests.sh
+if [ -n "$CI" ]
+then
+    cargo clean
+fi
 ./.travis/cli-tests.sh
 
