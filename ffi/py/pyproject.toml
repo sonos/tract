@@ -1,8 +1,8 @@
 [build-system]
 requires = [
-    "setuptools>=62.1<63",
-    "setuptools_rust>=1.5<1.6",
-    "wheel>=0.34<0.35",
+    "setuptools>=68<69",
+    "setuptools_rust>=1.6<1.7",
+    "wheel>=0.41<0.42",
     "toml>=0.10<0.11"
 ]
 
