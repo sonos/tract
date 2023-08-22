@@ -292,7 +292,7 @@ pub fn read_conv_parameters(
             before.push(p[0]);
             after.push(p[1]);
         }
-        PaddingSpec::Explicit(before, after, false)
+        PaddingSpec::ExplicitOnnxPool(before, after, false)
     };
     let pool_spec = PoolSpec::new(
         DataFormat::NCHW,
@@ -439,7 +439,7 @@ fn pool_spec_for_pools(
         }
         let spatial_pool_bef = DataFormat::NCHW.shape(&before)?.hw_dims().into();
         let spatial_pool_aft = DataFormat::NCHW.shape(&after)?.hw_dims().into();
-        PaddingSpec::Explicit(spatial_pool_bef, spatial_pool_aft, false)
+        PaddingSpec::ExplicitOnnxPool(spatial_pool_bef, spatial_pool_aft, false)
     };
     Ok(PoolSpec::new(
         DataFormat::NCHW,

@@ -36,7 +36,7 @@ impl Arbitrary for ConvOp {
             .prop_flat_map(|(stride, dil, ker)| {
                 let padding = (ker - 1) * dil;
                 let explicit = (0..=padding).prop_map(move |right| {
-                    PaddingSpec::Explicit(tvec!(padding - right), tvec!(right), false)
+                    PaddingSpec::ExplicitOnnxPool(tvec!(padding - right), tvec!(right), false)
                 });
                 (Just((stride, dil, ker)), prop_oneof![Just(PaddingSpec::Valid), explicit])
             })
@@ -257,7 +257,7 @@ fn stride() {
             stride: 2,
             dilation: 1,
             ker: t(2),
-            padding: PaddingSpec::Explicit(tvec!(1), tvec!(0), false),
+            padding: PaddingSpec::ExplicitOnnxPool(tvec!(1), tvec!(0), false),
         }],
     };
     cpc.run().unwrap();
@@ -275,7 +275,7 @@ fn three() {
                 stride: 1,
                 dilation: 1,
                 ker: t(2),
-                padding: PaddingSpec::Explicit(tvec!(1), tvec!(0), false),
+                padding: PaddingSpec::ExplicitOnnxPool(tvec!(1), tvec!(0), false),
             },
         ],
     };

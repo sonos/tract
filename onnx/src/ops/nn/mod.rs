@@ -73,21 +73,25 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Softsign", |_, _| Ok((expand(ops::activations::Softsign), vec![])));
 }
 
-fn pad(node: &NodeProto) -> TractResult<cnn::PaddingSpec> {
+fn pad(node: &NodeProto, pool_rules: bool) -> TractResult<cnn::PaddingSpec> {
     let ceil_mode = node.get_attr_opt::<isize>("ceil_mode")?.unwrap_or(0) == 1;
     let default = match node.get_attr_opt_vec::<isize>("kernel_shape")? {
-        Some(shape) => {
-            cnn::PaddingSpec::Explicit(tvec!(0; shape.len()), tvec!(0; shape.len()), ceil_mode)
-        }
+        Some(shape) => cnn::PaddingSpec::ExplicitOnnxPool(
+            tvec!(0; shape.len()),
+            tvec!(0; shape.len()),
+            ceil_mode,
+        ),
         None => cnn::PaddingSpec::Valid,
     };
     if let Some(pads) = node.get_attr_opt_tvec("pads")? {
         let len = pads.len();
-        return Ok(cnn::PaddingSpec::Explicit(
-            pads.iter().cloned().take(len / 2).collect(),
-            pads.iter().cloned().skip(len / 2).collect(),
-            ceil_mode,
-        ));
+        let left = pads.iter().cloned().take(len / 2).collect();
+        let right = pads.iter().cloned().skip(len / 2).collect();
+        if pool_rules {
+            return Ok(cnn::PaddingSpec::ExplicitOnnxPool(left, right, ceil_mode));
+        } else {
+            return Ok(cnn::PaddingSpec::Explicit(left, right));
+        }
     }
     Ok(node
         .get_attr_opt("auto_pad")?
@@ -302,7 +306,6 @@ pub fn parametric_softplus(
 
 #[derive(Debug, Clone, Hash)]
 struct Prelu;
-
 
 impl Expansion for Prelu {
     fn name(&self) -> Cow<str> {

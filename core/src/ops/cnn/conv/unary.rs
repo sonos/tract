@@ -641,7 +641,7 @@ impl ConvUnary {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         if self.pool_spec.padding != PaddingSpec::Valid
-            && !matches!(self.pool_spec.padding, PaddingSpec::Explicit(_, _, _))
+            && !matches!(self.pool_spec.padding, PaddingSpec::ExplicitOnnxPool(_, _, _))
         {
             return Ok(None);
         }
@@ -661,11 +661,11 @@ impl ConvUnary {
         }
         let mut before: TVec<usize> = pad.pads[shape.hw_axes()].iter().map(|pair| pair.0).collect();
         let mut after: TVec<usize> = pad.pads[shape.hw_axes()].iter().map(|pair| pair.1).collect();
-        if let PaddingSpec::Explicit(bef, aft, false) = &self.pool_spec.padding {
+        if let PaddingSpec::ExplicitOnnxPool(bef, aft, false) = &self.pool_spec.padding {
             izip!(&mut before, bef).for_each(|(pad, cv)| *pad += cv);
             izip!(&mut after, aft).for_each(|(pad, cv)| *pad += cv);
         }
-        let padding = PaddingSpec::Explicit(before, after, false);
+        let padding = PaddingSpec::ExplicitOnnxPool(before, after, false);
         let mut new = self.clone();
         new.pool_spec.padding = padding;
         let mut patch = TypedModelPatch::default();
@@ -825,7 +825,7 @@ impl TypedOp for ConvUnary {
                 self
                 );
         }
-        if let PaddingSpec::Explicit(before, after, _) = &self.pool_spec.padding {
+        if let PaddingSpec::ExplicitOnnxPool(before, after, _) = &self.pool_spec.padding {
             anyhow::ensure!(before.len() == self.pool_spec.rank());
             anyhow::ensure!(after.len() == self.pool_spec.rank());
         }
@@ -1171,7 +1171,7 @@ mod test {
                     dilations: None,
                     strides: None,
                     kernel_shape: tvec![2],
-                    padding: crate::ops::cnn::PaddingSpec::Explicit(tvec![0], tvec![0], false),
+                    padding: crate::ops::cnn::PaddingSpec::ExplicitOnnxPool(tvec![0], tvec![0], false),
                     output_channel_override: Some(1),
                 },
                 kernel_fmt: crate::ops::cnn::KernelFormat::OIHW,
@@ -1188,7 +1188,7 @@ mod test {
         let cv = model.nodes()[1].op_as::<ConvUnary>().unwrap();
         assert_eq!(
             cv.pool_spec.padding,
-            crate::ops::cnn::PaddingSpec::Explicit(tvec![1], tvec![0], false)
+            crate::ops::cnn::PaddingSpec::ExplicitOnnxPool(tvec![1], tvec![0], false)
         ); // source + conv
         Ok(())
     }

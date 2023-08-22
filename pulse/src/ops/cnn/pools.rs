@@ -206,7 +206,7 @@ pub fn pulsify_pooled_input(
         }
         Ok(Some((
             wire,
-            PoolSpec { padding: PaddingSpec::Explicit(bef, aft, false), ..spec.clone() },
+            PoolSpec { padding: PaddingSpec::ExplicitOnnxPool(bef, aft, false), ..spec.clone() },
         )))
     } else {
         Ok(Some((wire, spec.clone())))
@@ -234,7 +234,7 @@ mod test {
                     dilations: None,
                     strides: None,
                     kernel_shape: tvec![2],
-                    padding: tract_core::ops::cnn::PaddingSpec::Explicit(tvec![1], tvec![0], false),
+                    padding: tract_core::ops::cnn::PaddingSpec::ExplicitOnnxPool(tvec![1], tvec![0], false),
                     output_channel_override: Some(1),
                 },
                 kernel_fmt: tract_core::ops::cnn::KernelFormat::OIHW,
