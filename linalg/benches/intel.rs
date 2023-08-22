@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::time::Instant;
 
 use tract_data::prelude::*;
