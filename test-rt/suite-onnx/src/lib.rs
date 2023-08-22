@@ -145,23 +145,14 @@ pub fn ensure_onnx_git_checkout() {
                 let _ = std::fs::remove_dir_all(&wanted);
                 let _ = std::fs::remove_dir_all(&tmp);
                 let run = std::process::Command::new("git")
-                    .arg("clone")
+                    .args(["clone", "--depth=1", "--branch"])
+                    .arg(format!("v{v}"))
                     .arg("https://github.com/onnx/onnx")
                     .arg(&tmp)
                     .status()
                     .unwrap();
                 if !run.success() {
                     panic!("Failed to clone onnx")
-                }
-                let run = std::process::Command::new("git")
-                    .arg("-C")
-                    .arg(&tmp)
-                    .arg("checkout")
-                    .arg(format!("v{v}"))
-                    .status()
-                    .unwrap();
-                if !run.success() {
-                    panic!("Failed to checkout onnx branch")
                 }
                 std::fs::rename(tmp, wanted).unwrap();
             }
