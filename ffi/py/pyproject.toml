@@ -13,7 +13,7 @@ test-requires = "pytest"
 test-command = """pytest {project}"""
 
 [tool.cibuildwheel.linux]
-skip = "*-musllinux_i686"
+skip = "cp312-* *-musllinux_i686"
 before-build = """
 cargo --version || (curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
 . $HOME/.cargo/env
@@ -30,11 +30,12 @@ RUSTC_WRAPPER=sccache
 
 [tool.cibuildwheel.macos]
 archs = "x86_64 universal2 arm64"
+skip = "cp312-*"
 before-build = """
 rustup target add aarch64-apple-darwin
 [ -e $HOME/.local/bin/sccache ] || ./.travis/setup-sccache.sh ]
 """
 
 [tool.cibuildwheel.windows]
-skip = "*-win32"
+skip = "cp312-* *-win32"
 
