@@ -16,7 +16,7 @@ pub mod tests;
 pub use cost_model::*;
 pub use fuse::*;
 pub use input_store::*;
-pub use kernel::*;
+pub use kernel::MatMatMulKer;
 pub use mmm::*;
 pub use scratch::*;
 pub use storage::*;
