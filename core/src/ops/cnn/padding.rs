@@ -2,7 +2,8 @@ use crate::internal::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum PaddingSpec {
-    Explicit(TVec<usize>, TVec<usize>, bool),
+    Explicit(TVec<usize>, TVec<usize>),
+    ExplicitOnnxPool(TVec<usize>, TVec<usize>, bool),
     #[default]
     Valid,
     SameUpper,
@@ -21,7 +22,7 @@ impl PaddingSpec {
     pub fn valid_dim(&self, d: usize, stride_is_one: bool) -> bool {
         match self {
             PaddingSpec::Valid => true,
-            PaddingSpec::Explicit(a, b, ceil_mode) => {
+            PaddingSpec::ExplicitOnnxPool(a, b, ceil_mode) => {
                 (*ceil_mode || stride_is_one) && a[d] == 0 && b[d] == 0
             }
             _ => false,
@@ -30,12 +31,12 @@ impl PaddingSpec {
 
     pub fn rm_axis(&self, d: usize) -> PaddingSpec {
         match self {
-            PaddingSpec::Explicit(a, b, ceil_mode) => {
+            PaddingSpec::ExplicitOnnxPool(a, b, ceil_mode) => {
                 let mut a = a.clone();
                 let mut b = b.clone();
                 a.remove(d);
                 b.remove(d);
-                PaddingSpec::Explicit(a, b, *ceil_mode)
+                PaddingSpec::ExplicitOnnxPool(a, b, *ceil_mode)
             }
             _ => self.clone(),
         }
@@ -93,9 +94,12 @@ impl PaddingSpec {
     ) -> ComputedPaddedDim<D> {
         let r = match self {
             PaddingSpec::Valid => Self::valid(input, kernel, dilation, stride),
-            PaddingSpec::Explicit(ref bef, ref aft, ceil_mode) => {
-                Self::explicit(input, kernel, dilation, stride, bef[axis], aft[axis], *ceil_mode)
+            PaddingSpec::Explicit(ref bef, ref aft) => {
+                Self::explicit(input, kernel, dilation, stride, bef[axis], aft[axis])
             }
+            PaddingSpec::ExplicitOnnxPool(ref bef, ref aft, ceil_mode) => Self::explicit_onnx_pool(
+                input, kernel, dilation, stride, bef[axis], aft[axis], *ceil_mode,
+            ),
             PaddingSpec::SameUpper => Self::same(input, kernel, dilation, stride, true),
             PaddingSpec::SameLower => Self::same(input, kernel, dilation, stride, false),
         };
@@ -122,9 +126,15 @@ impl PaddingSpec {
             PaddingSpec::SameLower => {
                 Self::same_for_deconv(input, kernel, dilation, stride, adjustment, false)
             }
-            PaddingSpec::Explicit(ref bef, ref aft, _ceil_mode) => Self::explicit_for_deconv(
+            PaddingSpec::Explicit(ref bef, ref aft) => Self::explicit_for_deconv(
                 input, kernel, dilation, stride, bef[axis], aft[axis], adjustment,
             ),
+            // unreachable ?
+            PaddingSpec::ExplicitOnnxPool(ref bef, ref aft, _ceil_mode) => {
+                Self::explicit_for_deconv(
+                    input, kernel, dilation, stride, bef[axis], aft[axis], adjustment,
+                )
+            }
         }
     }
 
@@ -162,10 +172,48 @@ impl PaddingSpec {
         stride: usize,
         bef: usize,
         aft: usize,
+    ) -> ComputedPaddedDim<D> {
+        if let Ok(i) = input.to_dim().to_usize() {
+            let ints = Self::explicit_usize(i, kernel, dilation, stride, bef, aft);
+            ComputedPaddedDim::new(
+                input.clone(),
+                ints.convoluted.into(),
+                ints.pad_before.into(),
+                ints.pad_after.into(),
+            )
+        } else {
+            let kernel_field = (kernel - 1) * dilation + 1;
+            let dividend = input.clone() + bef + aft - kernel_field;
+            let output = dividend.div(stride) + 1;
+            ComputedPaddedDim::new(input.clone(), output, bef.into(), aft.into())
+        }
+    }
+    fn explicit_usize(
+        input: usize,
+        kernel: usize,
+        dilation: usize,
+        stride: usize,
+        bef: usize,
+        aft: usize,
+    ) -> ComputedPaddedDim<usize> {
+        let kernel_field = (kernel - 1) * dilation + 1;
+        let dividend = (input + bef + aft).saturating_sub(kernel_field);
+        let output = dividend / stride + 1;
+        ComputedPaddedDim::new(input, output, bef, aft)
+    }
+
+    fn explicit_onnx_pool<D: DimLike>(
+        input: &D,
+        kernel: usize,
+        dilation: usize,
+        stride: usize,
+        bef: usize,
+        aft: usize,
         ceil_mode: bool,
     ) -> ComputedPaddedDim<D> {
         if let Ok(i) = input.to_dim().to_usize() {
-            let ints = Self::explicit_usize(i, kernel, dilation, stride, bef, aft, ceil_mode);
+            let ints =
+                Self::explicit_onnx_pool_usize(i, kernel, dilation, stride, bef, aft, ceil_mode);
             ComputedPaddedDim::new(
                 input.clone(),
                 ints.convoluted.into(),
@@ -182,7 +230,7 @@ impl PaddingSpec {
         }
     }
 
-    fn explicit_usize(
+    fn explicit_onnx_pool_usize(
         input: usize,
         kernel: usize,
         dilation: usize,
@@ -202,7 +250,6 @@ impl PaddingSpec {
                 output -= 1;
             }
         }
-        let after = (output * stride) + kernel_field - 1 - input - bef;
         ComputedPaddedDim::new(input, output, bef, aft)
     }
 
@@ -317,7 +364,7 @@ mod tests {
     #[test]
     fn explicit_2() {
         assert_eq!(
-            PS::explicit(&28usize, 3usize, 1, 1, 2, 2, true),
+            PS::explicit_onnx_pool(&28usize, 3usize, 1, 1, 2, 2, true),
             ComputedPaddedDim::new(28, 30, 2, 2)
         );
     }
@@ -326,7 +373,7 @@ mod tests {
     #[ignore = "ONNX weird output computation for explicit"]
     fn explicit_3() {
         assert_eq!(
-            PS::explicit(&2usize, 1usize, 1, 2, 0, 0, true),
+            PS::explicit_onnx_pool(&2usize, 1usize, 1, 2, 0, 0, true),
             ComputedPaddedDim::new(2, 2, 0, 0)
         );
     }
@@ -340,6 +387,9 @@ mod tests {
     // 012 345 678 9ab
     #[test]
     fn bug_explicit_stride() {
-        assert_eq!(PS::explicit(&12usize, 3usize, 1, 3, 0, 0, false), ComputedPaddedDim::new(12, 4, 0, 0));
+        assert_eq!(
+            PS::explicit_onnx_pool(&12usize, 3usize, 1, 3, 0, 0, false),
+            ComputedPaddedDim::new(12, 4, 0, 0)
+        );
     }
 }

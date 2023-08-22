@@ -267,7 +267,7 @@ fn deconv2d() {
         pool_spec: PoolSpec {
             data_format: tract_hir::ops::nn::DataFormat::NCHW,
             kernel_shape: tvec!(1, 3),
-            padding: cnn::PaddingSpec::Explicit(tvec!(0, 1), tvec!(0, 1), false),
+            padding: cnn::PaddingSpec::Explicit(tvec!(0, 1), tvec!(0, 1)),
             strides: Some(tvec!(1, 2)),
             dilations: Some(tvec![1, 1]),
             output_channel_override: Some(2),

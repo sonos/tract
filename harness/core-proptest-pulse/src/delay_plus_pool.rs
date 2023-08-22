@@ -25,7 +25,7 @@ impl Arbitrary for DelayPlusPoolProblem {
             .prop_flat_map(|(pool_window, factor, delay, stride)| {
                 let padding = pool_window - 1;
                 let explicit = (0..=padding).prop_map(move |right| {
-                    PaddingSpec::Explicit(tvec!(padding - right), tvec!(right), false)
+                    PaddingSpec::ExplicitOnnxPool(tvec!(padding - right), tvec!(right), false)
                 });
                 let min_input = delay + pool_window;
                 (
@@ -195,7 +195,7 @@ fn test_pad_right() {
         delay: 0,
         stride: 1,
         pool_window: 2,
-        padding: PaddingSpec::Explicit(tvec!(0), tvec!(1), false),
+        padding: PaddingSpec::ExplicitOnnxPool(tvec!(0), tvec!(1), false),
     }
     .run()
     .unwrap()
@@ -209,7 +209,7 @@ fn test_pad_right_2() {
         delay: 1,
         stride: 2,
         pool_window: 2,
-        padding: PaddingSpec::Explicit(tvec!(0), tvec!(1), false),
+        padding: PaddingSpec::ExplicitOnnxPool(tvec!(0), tvec!(1), false),
     }
     .run()
     .unwrap()

@@ -43,7 +43,7 @@ pub fn adjustments(
     debug_assert_eq!(pool_spec.rank(), output_geo.len());
     let rank = pool_spec.rank();
     let pad: TVec<usize> = match &pool_spec.padding {
-        PaddingSpec::Explicit(beg, end, _) => (0..rank).map(|r| beg[r] + end[r]).collect(),
+        PaddingSpec::ExplicitOnnxPool(beg, end, _) => (0..rank).map(|r| beg[r] + end[r]).collect(),
         PaddingSpec::Valid => tvec!(0; rank),
         _ => todo!("Unsupported combination of deconvolution arguments"),
     };

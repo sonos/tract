@@ -92,7 +92,7 @@ impl PoolSpec {
         op.change_shape_array(&mut kernel_shape, false)?;
         let mut strides = self.strides().into_owned().into();
         op.change_shape_array(&mut strides, false)?;
-        let padding = if let PaddingSpec::Explicit(before, after, round) = &self.padding {
+        let padding = if let PaddingSpec::ExplicitOnnxPool(before, after, round) = &self.padding {
             let mut before: TVec<usize> = before.clone();
             let mut after: TVec<usize> = after.clone();
             op.change_shape_array(&mut before, false)?;
@@ -101,7 +101,7 @@ impl PoolSpec {
                 before[*add] = 0;
                 after[*add] = 0;
             }
-            PaddingSpec::Explicit(before, after, *round)
+            PaddingSpec::ExplicitOnnxPool(before, after, *round)
         } else {
             self.padding.clone()
         };

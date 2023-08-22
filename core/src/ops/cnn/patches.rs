@@ -685,7 +685,7 @@ pub mod test {
             .unwrap()
             .with_dilations(tvec!(dilation))
             .with_kernel_shape(tvec!(kdim))
-            .with_padding(PaddingSpec::Explicit(tvec![pad_before], tvec![bad_after], true))
+            .with_padding(PaddingSpec::ExplicitOnnxPool(tvec![pad_before], tvec![bad_after], true))
             .with_strides(tvec![stride])
             .into_patch();
         patch.output_shape[0]
