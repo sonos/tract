@@ -695,9 +695,10 @@ impl TypedOp for Scan {
                 self.output_mapping.iter().enumerate().filter(|(_, m)| m.state).map(|(o, _)| o),
             )
         {
-            anyhow::ensure!(
-                self.body.outlet_fact(self.body.inputs[i])?
-                    == self.body.outlet_fact(self.body.outputs[o])?
+            let ifact = self.body.outlet_fact(self.body.inputs[i])?;
+            let ofact = self.body.outlet_fact(self.body.outputs[o])?;
+            anyhow::ensure!(ifact == ofact,
+                "inconsistent state shape: body input {i} is {ifact:?} and body output {o} is {ofact:?}",
             )
         }
         let mut outputs = tvec!();
