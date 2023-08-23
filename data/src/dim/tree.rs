@@ -78,6 +78,17 @@ impl TDim {
         }
     }
 
+    pub fn substitute(&self, from: &Symbol, to: &Self) -> Self {
+        match self {
+            Sym(sym) => if sym == from { to.clone() } else { self.clone() },
+            Val(v) => Val(*v),
+            Add(terms) => terms.iter().fold(Val(0), |acc, it| -> TDim { acc + it.substitute(from, to) }),
+            Mul(terms) => terms.iter().fold(Val(1), |acc, it| -> TDim { acc * it.substitute(from, to) }),
+            Div(a, q) => a.substitute(from, to) / *q as i64,
+            MulInt(p, a) => a.substitute(from, to) * *p,
+        }
+    }
+
     pub fn reduce(self) -> TDim {
         self.simplify()
             .wiggle()

@@ -1,5 +1,6 @@
 use std::ops::ControlFlow;
 
+use tract_core::num_traits::Zero;
 use tract_core::tract_data::itertools::Itertools;
 
 use crate::ast::*;
@@ -712,7 +713,8 @@ impl CoerceFrom<Value> for bool {
             Value::Tensor(t) => Ok(*t.to_scalar::<bool>()?),
             Value::Wire(_) => {
                 Ok(*from.to::<Arc<Tensor>>(builder)?.cast_to::<bool>()?.to_scalar::<bool>()?)
-            }
+            },
+            Value::Dim(n) => Ok(!n.is_zero()),
             _ => bail!("Can not build a boolean from {:?}", from),
         }
     }

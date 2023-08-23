@@ -6,6 +6,7 @@ use tract_data::internal::*;
 #[derive(Debug, Clone, new)]
 pub struct LirScanOpParams {
     pub skip: usize,
+    pub reset_every_turn: bool,
     pub plan: Arc<TypedSimplePlan<TypedModel>>,
     pub input_mapping: Vec<InputMapping>,
     pub output_mapping: Vec<OutputMapping<TDim>>,
@@ -182,7 +183,7 @@ impl OpState for State {
         let State { op, ref mut hidden_state, ref mut position, ref mut model_state } = self;
 
         // initialize state at first pass
-        if hidden_state.len() == 0 {
+        if hidden_state.len() == 0 || op.reset_every_turn {
             for (slot, input) in op.input_mapping.iter().enumerate() {
                 if input.is_state() {
                     hidden_state.push(inputs[slot].clone());

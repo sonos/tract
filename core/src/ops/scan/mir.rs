@@ -10,6 +10,7 @@ use super::*;
 #[derive(Debug, Clone, Default)]
 pub struct Scan {
     pub skip: usize,
+    pub reset_every_turn: bool,
     pub body: TypedModel,
     decluttered: bool,
     pub input_mapping: Vec<InputMapping>,
@@ -26,6 +27,7 @@ impl Scan {
 
         Ok(LirScan::new(Arc::new(LirScanOpParams::new(
             self.skip,
+            self.reset_every_turn,
             Arc::new(plan),
             self.input_mapping.clone(),
             self.output_mapping.clone(),
@@ -41,7 +43,14 @@ impl Scan {
         body.check_consistency()?;
         ensure!(input_mapping.len() == body.input_outlets()?.len());
         ensure!(output_mapping.len() == body.output_outlets()?.len());
-        Ok(Scan { skip, body, decluttered: false, input_mapping, output_mapping })
+        Ok(Scan {
+            skip,
+            reset_every_turn: false,
+            body,
+            decluttered: false,
+            input_mapping,
+            output_mapping,
+        })
     }
 
     pub fn iteration_count(&self, inputs: &[&TypedFact]) -> Option<TDim> {
