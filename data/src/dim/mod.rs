@@ -73,6 +73,8 @@ pub trait DimLike:
     fn one() -> Self;
 
     fn eval(&self, values: &SymbolValues) -> Self;
+
+    fn substitute(&self, from: &Symbol, to: &Self) -> Self;
 }
 
 impl DimLike for TDim {
@@ -138,6 +140,10 @@ impl DimLike for TDim {
     fn eval(&self, values: &SymbolValues) -> Self {
         self.eval(values)
     }
+
+    fn substitute(&self, from: &Symbol, to: &Self) -> Self {
+        self.substitute(from, to)
+    }
 }
 
 impl<'a> std::convert::TryFrom<&'a TDim> for TDim {
@@ -163,6 +169,10 @@ impl DimLike for usize {
     }
 
     fn eval(&self, _values: &SymbolValues) -> Self {
+        *self
+    }
+
+    fn substitute(&self, _from: &Symbol, _to: &Self) -> Self {
         *self
     }
 }
