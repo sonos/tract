@@ -61,7 +61,7 @@ impl EvalOp for PulsedMultibroadcastTo {
 }
 
 impl PulsedOp for PulsedMultibroadcastTo {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
+    fn pulsed_output_facts(&self, _inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         Ok(tvec!(self.fact.clone()))
     }
 
