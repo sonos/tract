@@ -270,7 +270,7 @@ fn render_node_prefixed(
             let (inputs, outputs) = typed.node_facts(node.id)?;
             let axes_mapping = node.op().as_typed().unwrap().axes_mapping(&inputs, &outputs)?;
             prefix!();
-            println!("  * {axes_mapping:?}");
+            println!("  * {axes_mapping}");
         }
     }
     if options.debug_op {
