@@ -1,6 +1,5 @@
 use crate::fact::StreamInfo;
 use crate::internal::*;
-use crate::model::PulseWrappingOp;
 use tract_pulse_opl::tract_core::ops::array::MultiBroadcastTo;
 
 register_all!(MultiBroadcastTo: pulsify);
@@ -23,7 +22,7 @@ fn pulsify(
         };
         let new_op = PulsedMultibroadcastTo { fact };
         target
-            .wire_node(&node.name, PulseWrappingOp(Box::new(new_op)), &[mapping[&node.inputs[0]]])
+            .wire_node(&node.name, new_op, &[mapping[&node.inputs[0]]])
             .map(Some)
     } else {
         Ok(None)
