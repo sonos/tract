@@ -42,6 +42,7 @@ range      : [-128, 127]
 granularity: per-tensor
 */
 
+#[allow(clippy::arc_with_non_send_sync)]
 pub fn q_params(params: &QConvProblemParams, co: usize) -> BoxedStrategy<[Tensor; 6]> {
     let a0 = if params.no_kernel_zero_point { Just(0i32).boxed() } else { (-10..10i32).boxed() };
     (
