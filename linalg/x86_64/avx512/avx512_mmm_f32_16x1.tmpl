@@ -116,8 +116,8 @@ Windows ABI:
     mov     r8,     [rdi + 8]           // c ptr
     mov     rsi,    [rdi + 16]          // row stride
 
-	cmp rsi, 4
-	jne {{L}}crash
+    cmp     rsi, 4
+    jne      {{L}}store_noncontiguous
 
 	test r8, 63
 	jnz {{L}}store_unaligned
@@ -129,6 +129,14 @@ Windows ABI:
 	vmovups [r8], zmm0
     jmp     {{L}}non_linear_loop
 
-{{L}}crash:
-	mov r10, [0]
+{{L}}store_noncontiguous:
+    {% for quarter in (0..3) %}
+        vextractf32x4 xmm8, zmm0, {{quarter}}
+        {% for row in (0..3) %}
+            vextractps  dword ptr [r8], xmm8, {{row}}
+            add         r8, rsi
+        {% endfor %}
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
 {% include "postamble.tmpliq" size:"16x1", suffix:suffix, G:G, L:L, arch:"avx512" %}
