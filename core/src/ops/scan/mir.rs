@@ -666,6 +666,7 @@ impl Op for Scan {
         for (ix, om) in self.output_mapping.iter().enumerate() {
             lines.push(format!("Model output #{ix}: {om:?}"));
         }
+        lines.push(format!("skip:{} reset_every_turn:{:?}", self.skip, self.reset_every_turn));
         Ok(lines)
     }
 
