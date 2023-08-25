@@ -145,6 +145,13 @@ pub mod test {
                     }
                 }
 
+                #[test]
+                fn store_non_contiguous() {
+                    if $cond {
+                        test::store_non_contiguous::<$ker, $tc, $ti>()
+                    }
+                }
+
                 proptest::proptest! {
                     #[test]
                     fn return_c_prop(c in tile::<$ker, $tc, $ti>()) {
@@ -350,6 +357,31 @@ pub mod test {
         let err = K::kernel(&non_linear);
         assert_eq!(err, 0);
         let expected = vec![TC::zero(); v.len()];
+        assert_eq!(v, expected);
+    }
+
+    pub fn store_non_contiguous<K, TC, TI>()
+    where
+        K: MatMatMulKer<TI>,
+        TC: LADatum,
+        TI: LADatum + Bounded + PartialEq,
+    {
+        let v = vec![TC::max_value(); K::mr() * 5 * K::nr() * 3];
+        let c = OutputStoreKer {
+            ptr: v.as_ptr() as _,
+            row_byte_stride: (std::mem::size_of::<TC>() * 3 * K::nr() * 5) as isize,
+            col_byte_stride: std::mem::size_of::<TC>() as isize * 3,
+            item_size: std::mem::size_of::<TC>(),
+        };
+        let non_linear = tvec![FusedKerSpec::Clear, FusedKerSpec::Store(c), FusedKerSpec::Done];
+        let err = K::kernel(&non_linear);
+        assert_eq!(err, 0);
+        let mut expected = vec![TC::max_value(); v.len()];
+        for c in 0..K::nr() {
+            for r in 0..K::mr() {
+                expected[c * 3 + r * 3 * 5 * K::nr()] = TC::zero();
+            }
+        }
         assert_eq!(v, expected);
     }
 
