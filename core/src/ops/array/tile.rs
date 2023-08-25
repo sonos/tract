@@ -116,7 +116,7 @@ impl TypedOp for Tile {
                 model,
                 node,
                 &node.inputs,
-                MultiBroadcastTo { shape: output_fact.shape.into() },
+                MultiBroadcastTo { shape: output_fact.shape },
             )
             .map(Some)
         } else {
