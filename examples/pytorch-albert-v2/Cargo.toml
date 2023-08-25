@@ -8,4 +8,5 @@ edition = "2021"
 [dependencies]
 ndarray.workspace = true
 tokenizers.workspace = true
+clap_lex = { version = "=0.5.0" }
 tract-onnx = { path = "../../onnx", version = "=0.20.7-pre" }
