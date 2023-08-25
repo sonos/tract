@@ -107,8 +107,6 @@ struct Resize {
     optional_sizes_input: Option<usize>,
 }
 
-
-
 impl Op for Resize {
     fn name(&self) -> Cow<str> {
         "Resize".into()
@@ -118,26 +116,37 @@ impl Op for Resize {
 }
 
 impl Resize {
-    fn compute_output_shape(
+    fn compute_output_shape<D: DimLike>(
         &self,
-        input_shape: &[usize],
+        input_shape: &[D],
         input_scale: Option<&Tensor>,
         input_sizes: Option<&Tensor>,
-    ) -> TractResult<TVec<usize>> {
+    ) -> TractResult<TVec<D>> {
         if let Some(scale) = input_scale {
             if scale.len() == input_shape.len() {
-                let scales = scale.cast_to::<f32>()?;
-                return Ok(input_shape
-                    .iter()
-                    .zip(scales.as_slice::<f32>()?.iter())
-                    .map(|(input, scale)| ((*input as f32) * scale) as usize)
-                    .collect());
+                let mut shape = tvec!();
+                for (i, s) in
+                    input_shape.iter().zip(scale.cast_to::<f32>()?.as_slice::<f32>()?.iter())
+                {
+                    if s.round() == *s {
+                        shape.push(i.clone() * (*s as usize));
+                    } else if let Ok(i) = i.to_usize() {
+                        shape.push(((i as f32 * s) as usize).into());
+                    } else {
+                        bail!("Can not compute output shape. inputs are {input_shape:?} and scale {scale:?}")
+                    }
+                }
+                return Ok(shape);
             }
         }
         if let Some(sizes) = input_sizes {
             if sizes.len() == input_shape.len() {
-                let size = sizes.cast_to::<i64>()?;
-                return Ok(size.as_slice::<i64>()?.iter().map(|i| *i as usize).collect());
+                return sizes
+                    .cast_to::<TDim>()?
+                    .as_slice::<TDim>()?
+                    .iter()
+                    .map(|i| i.try_into())
+                    .collect();
             }
         }
         bail!(
@@ -243,8 +252,6 @@ fn rules_with_scales<'r, 'p: 'r, 's: 'r>(
         &inputs[0].shape,
         &inputs[op.optional_scales_input.unwrap()].value,
         move |s, input_shape, scales| {
-            let input_shape =
-                input_shape.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<usize>>>()?;
             let output_size = op.compute_output_shape(&input_shape, Some(scales.as_ref()), None)?;
             let rank = input_shape.len();
             for i in 0..rank {
@@ -276,15 +283,10 @@ impl TypedOp for Resize {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let input_shape = if let Some(s) = inputs[0].shape.as_concrete() {
-            s
-        } else {
-            bail!("Only constant input shape are supported in Resize")
-        };
         let scales = self.optional_scales_input.and_then(|ix| inputs.get(ix));
         let sizes = self.optional_sizes_input.and_then(|ix| inputs.get(ix));
         let output_shape = self.compute_output_shape(
-            input_shape,
+            &inputs[0].shape,
             scales.and_then(|f| f.konst.as_deref()),
             sizes.and_then(|f| f.konst.as_deref()),
         )?;
