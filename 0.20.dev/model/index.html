@@ -16,7 +16,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.5.2, mkdocs-material-9.2.3">
+      <meta name="generator" content="mkdocs-1.5.2, mkdocs-material-9.2.5">
     
     
       
@@ -1205,14 +1205,14 @@ a Model where all tensors shapes start with the <code>N</code> or <code>Batch</c
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the number of inputs of the model&quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">i</span> <span class="o">=</span> <span class="n">c_size_t</span><span class="p">()</span>
-        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_nbio</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">i</span><span class="p">),</span> <span class="kc">None</span><span class="p">))</span>
+        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_input_count</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">i</span><span class="p">)))</span>
         <span class="k">return</span> <span class="n">i</span><span class="o">.</span><span class="n">value</span>
 
     <span class="k">def</span> <span class="nf">output_count</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the number of outputs of the model&quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">i</span> <span class="o">=</span> <span class="n">c_size_t</span><span class="p">()</span>
-        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_nbio</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">i</span><span class="p">)))</span>
+        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_output_count</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">i</span><span class="p">)))</span>
         <span class="k">return</span> <span class="n">i</span><span class="o">.</span><span class="n">value</span>
 
     <span class="k">def</span> <span class="nf">input_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
@@ -1289,7 +1289,7 @@ a Model where all tensors shapes start with the <code>N</code> or <code>Batch</c
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Convert the model to hald precision</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
-        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_half</span><span class="p">(</span><span class="n">byref</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">)))</span>
+        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_half</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">))</span>
 
     <span class="k">def</span> <span class="nf">declutter</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Declutter a model.</span>
@@ -1413,7 +1413,7 @@ a Model where all tensors shapes start with the <code>N</code> or <code>Batch</c
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the number of inputs of the model&quot;&quot;&quot;</span>
     <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
     <span class="n">i</span> <span class="o">=</span> <span class="n">c_size_t</span><span class="p">()</span>
-    <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_nbio</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">i</span><span class="p">),</span> <span class="kc">None</span><span class="p">))</span>
+    <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_input_count</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">i</span><span class="p">)))</span>
     <span class="k">return</span> <span class="n">i</span><span class="o">.</span><span class="n">value</span>
 </code></pre></div></td></tr></table></div>
           </details>
@@ -1448,7 +1448,7 @@ a Model where all tensors shapes start with the <code>N</code> or <code>Batch</c
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the number of outputs of the model&quot;&quot;&quot;</span>
     <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
     <span class="n">i</span> <span class="o">=</span> <span class="n">c_size_t</span><span class="p">()</span>
-    <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_nbio</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">i</span><span class="p">)))</span>
+    <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_output_count</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">i</span><span class="p">)))</span>
     <span class="k">return</span> <span class="n">i</span><span class="o">.</span><span class="n">value</span>
 </code></pre></div></td></tr></table></div>
           </details>
@@ -1773,7 +1773,7 @@ is informed of some specific symbol values.</p>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert the model to hald precision</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
-    <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_half</span><span class="p">(</span><span class="n">byref</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">)))</span>
+    <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_half</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">))</span>
 </code></pre></div></td></tr></table></div>
           </details>
   </div>
