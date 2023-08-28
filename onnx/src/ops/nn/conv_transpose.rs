@@ -12,7 +12,7 @@ pub fn conv_transpose(
     _ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let padding_spec = super::pad(node)?;
+    let padding_spec = super::pad(node, false)?;
     let strides = super::strides(node)?;
     let dilations = super::dilations(node)?;
     let adjustments = node.get_attr_opt_tvec::<usize>("output_padding")?;

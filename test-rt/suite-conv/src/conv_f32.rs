@@ -59,6 +59,16 @@ impl ConvProblem {
                     (out, pad.divceil(2))
                 })
                 .unzip(),
+            PaddingSpec::Explicit(l, r) => {
+                izip!(self.shape_in.hw_dims(), self.geo_ker(), &self.strides, l, r)
+                    .map(|(input, k, stride, l, r)| {
+                        let dil = 1;
+                        let kf = (k - 1) * dil + 1;
+                        let out = (input + l + r).saturating_sub(kf) / *stride + 1;
+                        (out, *l)
+                    })
+                    .unzip()
+            }
             PaddingSpec::ExplicitOnnxPool(l, r, ceil) => {
                 izip!(self.shape_in.hw_dims(), self.geo_ker(), &self.strides, l, r)
                     .map(|(input, k, stride, l, r)| {
@@ -784,7 +794,7 @@ pub fn suite() -> TractResult<TestSuite> {
             data: tract_ndarray::arr2(&[[0.0], [0.0], [0.0], [0.0], [0.0], [0.0]]).into_dyn(),
             kernel: tract_ndarray::arr3(&[[[0.0]]]).into_dyn(),
             bias: None,
-            pad: PaddingSpec::ExplicitOnnxPool(tvec!(1), tvec!(1), false),
+            pad: PaddingSpec::Explicit(tvec!(1), tvec!(1)),
             strides: tvec!(2),
         },
     );
@@ -798,7 +808,7 @@ pub fn suite() -> TractResult<TestSuite> {
             data: tract_ndarray::arr2(&[[0.0]]).into_dyn(),
             kernel: tract_ndarray::arr3(&[[[0.0]]]).into_dyn(),
             bias: None,
-            pad: PaddingSpec::ExplicitOnnxPool(tvec!(1), tvec!(1), false),
+            pad: PaddingSpec::Explicit(tvec!(1), tvec!(1)),
             strides: tvec!(2),
         },
     );
@@ -812,7 +822,7 @@ pub fn suite() -> TractResult<TestSuite> {
             data: tract_ndarray::arr2(&[[0.0]]).into_dyn(),
             kernel: tract_ndarray::arr3(&[[[0.0]]]).into_dyn(),
             bias: None,
-            pad: PaddingSpec::ExplicitOnnxPool(tvec!(0), tvec!(1), true),
+            pad: PaddingSpec::Explicit(tvec!(0), tvec!(1)),
             strides: tvec!(2),
         },
     );
@@ -826,7 +836,7 @@ pub fn suite() -> TractResult<TestSuite> {
             data: tract_ndarray::arr2(&[[0.0], [0.0]]).into_dyn(),
             kernel: tract_ndarray::arr3(&[[[0.0]]]).into_dyn(),
             bias: None,
-            pad: PaddingSpec::ExplicitOnnxPool(tvec!(0), tvec!(0), true),
+            pad: PaddingSpec::Explicit(tvec!(0), tvec!(0)),
             strides: tvec!(2),
         },
     );
@@ -910,7 +920,7 @@ pub fn suite() -> TractResult<TestSuite> {
             data: tract_ndarray::ArrayD::<f32>::zeros(vec![3, 1]),
             kernel: tract_ndarray::ArrayD::<f32>::zeros(vec![1, 1, 3]),
             bias: None,
-            pad: PaddingSpec::ExplicitOnnxPool(tvec!(1), tvec!(0), true),
+            pad: PaddingSpec::Explicit(tvec!(1), tvec!(0)),
             strides: tvec!(2),
         },
     );
@@ -924,7 +934,7 @@ pub fn suite() -> TractResult<TestSuite> {
             data: tract_ndarray::ArrayD::<f32>::zeros(vec![2, 1]),
             kernel: tract_ndarray::ArrayD::<f32>::zeros(vec![1, 1, 2]),
             bias: None,
-            pad: PaddingSpec::ExplicitOnnxPool(tvec!(0), tvec!(0), true),
+            pad: PaddingSpec::Explicit(tvec!(0), tvec!(0)),
             strides: tvec!(1),
         },
     );
@@ -938,7 +948,7 @@ pub fn suite() -> TractResult<TestSuite> {
             data: tract_ndarray::ArrayD::<f32>::zeros(vec![2, 3, 1]),
             kernel: tract_ndarray::ArrayD::<f32>::zeros(vec![1, 1, 2, 3]),
             bias: None,
-            pad: PaddingSpec::ExplicitOnnxPool(tvec!(0, 1), tvec!(0, 0), true),
+            pad: PaddingSpec::Explicit(tvec!(0, 1), tvec!(0, 0)),
             strides: tvec!(1, 2),
         },
     );
@@ -1034,7 +1044,7 @@ pub fn suite() -> TractResult<TestSuite> {
             data: tract_ndarray::arr2(&[[0.0]]).into_dyn(),
             kernel: tract_ndarray::arr3(&[[[0.0]]]).into_dyn(),
             bias: None,
-            pad: PaddingSpec::ExplicitOnnxPool(tvec!(2), tvec!(0), false),
+            pad: PaddingSpec::Explicit(tvec!(2), tvec!(0)),
             strides: tvec!(1),
         },
     );
@@ -1048,7 +1058,7 @@ pub fn suite() -> TractResult<TestSuite> {
             data: tract_ndarray::arr2(&[[0.0]]).into_dyn(),
             kernel: tract_ndarray::arr3(&[[[0.0]]]).into_dyn(),
             bias: None,
-            pad: PaddingSpec::ExplicitOnnxPool(tvec!(0), tvec!(2), false),
+            pad: PaddingSpec::Explicit(tvec!(0), tvec!(2)),
             strides: tvec!(1),
         },
     );
@@ -1062,7 +1072,7 @@ pub fn suite() -> TractResult<TestSuite> {
             data: tract_ndarray::arr2(&[[0.0]]).into_dyn(),
             kernel: tract_ndarray::arr3(&[[[0.0]]]).into_dyn(),
             bias: None,
-            pad: PaddingSpec::ExplicitOnnxPool(tvec!(0), tvec!(1), true),
+            pad: PaddingSpec::Explicit(tvec!(0), tvec!(1)),
             strides: tvec!(1),
         },
     );

@@ -149,7 +149,7 @@ pub fn make_conv_named_args<'a>(
     use tract_core::ops::cnn::PaddingSpec;
     let output_shape = pool_spec.data_format.shape(node.outputs[0].fact.shape.to_tvec())?;
     let padding = match &pool_spec.padding {
-        PaddingSpec::ExplicitOnnxPool(bef, after, _) => array(
+        PaddingSpec::ExplicitOnnxPool(bef, after, _) | PaddingSpec::Explicit(bef, after) => array(
             &bef.iter()
                 .zip(after.iter())
                 .map(|(a, b)| tuple_2(numeric(a), numeric(b)))
@@ -333,7 +333,7 @@ fn cnn_pool(
     wire = ast.force_variable(format!("{}_input", node.name), &wire);
     let conv_fragment = cnn_pool_fragment(ast, pool_spec.data_format, pool_spec.rank(), op_name);
     let padding = match &pool_spec.padding {
-        PaddingSpec::ExplicitOnnxPool(bef, after, _) => Some(
+        PaddingSpec::ExplicitOnnxPool(bef, after, _) | PaddingSpec::Explicit(bef, after) => Some(
             bef.iter()
                 .zip(after.iter())
                 .map(|(a, b)| tuple_2(numeric(a), numeric(b)))
