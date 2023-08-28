@@ -1,5 +1,9 @@
-# Unreleased, targetting 0.21
-* [kaldi] remove experimental kaldi support
+# 0.20.7 - todo, 2023-08-
+* [intel] fix in AVX512F matrix vector product
+* [tflite] alpha, embryonic support. some convolutional models working.
+* [kaldi] remove abandonned kaldi experimental support
+* [refactoring] Runtime abstraction and runtime-targetting tests
+* [refactoring] Refactoring Python and C API around a possible tract-api. Introducing dylib support.
 
 # 0.20.6 - 2023-06-09
 * Bug fixes, fix display of If operator
