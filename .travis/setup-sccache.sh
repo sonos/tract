@@ -14,7 +14,7 @@ then
 fi
 
 LINK=https://github.com/mozilla/sccache/releases/download
-SCCACHE_VERSION=v0.3.0
+SCCACHE_VERSION=v0.5.4
 
 echo $HOME
 if [ `uname` = "Linux" ]
