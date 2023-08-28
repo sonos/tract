@@ -9,7 +9,7 @@ pub fn run_params_from_subcommand(
 ) -> TractResult<RunParams> {
     let mut tv = params.tensors_values.clone();
 
-    if let Some(bundle) = sub_matches.values_of("input-from-bundle") {
+    if let Some(bundle) = sub_matches.values_of("input-from-npz") {
         for input in bundle {
             for tensor in Parameters::parse_npz(input, true, false)? {
                 tv.add(tensor);
@@ -17,7 +17,7 @@ pub fn run_params_from_subcommand(
         }
     }
 
-    if let Some(dir) = sub_matches.value_of("input-from-tensors") {
+    if let Some(dir) = sub_matches.value_of("input-from-nnef") {
         for tensor in Parameters::parse_nnef_tensors(dir, true, false)? {
             tv.add(tensor);
         }
