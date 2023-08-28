@@ -131,7 +131,7 @@ pub fn batch_normalization(
 }
 
 fn common_conv(node: &NodeProto) -> TractResult<cnn::Conv> {
-    let mut op = ops::cnn::Conv::default().padding(pad(node)?);
+    let mut op = ops::cnn::Conv::default().padding(pad(node, false)?);
     if let Some(kernel_shape) = node.get_attr_opt_tvec("kernel_shape")? {
         op = op.kernel_shape(kernel_shape);
     }
@@ -197,7 +197,7 @@ pub fn average_pool(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let kernel_shape = node.get_attr_tvec("kernel_shape")?;
-    let pad = pad(node)?;
+    let pad = pad(node, true)?;
     let strides = strides(node)?;
     let count_include_pad = node.get_attr_opt("count_include_pad")?.unwrap_or(false);
     Ok((
@@ -284,7 +284,7 @@ pub fn max_pool(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let kernel_shape = node.get_attr_tvec("kernel_shape")?;
-    let pad = pad(node)?;
+    let pad = pad(node, true)?;
     let strides = strides(node)?;
     Ok((
         Box::new(cnn::MaxPool::new(

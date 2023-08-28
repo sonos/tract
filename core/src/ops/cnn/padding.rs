@@ -10,6 +10,8 @@ pub enum PaddingSpec {
     SameLower,
 }
 
+use PaddingSpec::*;
+
 #[derive(Debug, Clone, new, PartialEq, Eq)]
 pub struct ComputedPaddedDim<D: DimLike> {
     pub deconvoluted: D,
@@ -21,24 +23,40 @@ pub struct ComputedPaddedDim<D: DimLike> {
 impl PaddingSpec {
     pub fn valid_dim(&self, d: usize, stride_is_one: bool) -> bool {
         match self {
-            PaddingSpec::Valid => true,
-            PaddingSpec::ExplicitOnnxPool(a, b, ceil_mode) => {
+            Valid => true,
+            Explicit(bef, aft) => bef[d] == 0 && aft[d] == 0,
+            ExplicitOnnxPool(a, b, ceil_mode) => {
                 (*ceil_mode || stride_is_one) && a[d] == 0 && b[d] == 0
             }
             _ => false,
         }
     }
 
-    pub fn rm_axis(&self, d: usize) -> PaddingSpec {
-        match self {
-            PaddingSpec::ExplicitOnnxPool(a, b, ceil_mode) => {
-                let mut a = a.clone();
-                let mut b = b.clone();
-                a.remove(d);
-                b.remove(d);
-                PaddingSpec::ExplicitOnnxPool(a, b, *ceil_mode)
+    pub fn change_geo_axes(&self, op: &AxisOp) -> TractResult<PaddingSpec> {
+        match &self {
+            ExplicitOnnxPool(before, after, round) => {
+                let mut before: TVec<usize> = before.clone();
+                let mut after: TVec<usize> = after.clone();
+                op.change_shape_array(&mut before, false)?;
+                op.change_shape_array(&mut after, false)?;
+                if let AxisOp::Add(add) = op {
+                    before[*add] = 0;
+                    after[*add] = 0;
+                }
+                Ok(ExplicitOnnxPool(before, after, *round))
             }
-            _ => self.clone(),
+            Explicit(before, after) => {
+                let mut before: TVec<usize> = before.clone();
+                let mut after: TVec<usize> = after.clone();
+                op.change_shape_array(&mut before, false)?;
+                op.change_shape_array(&mut after, false)?;
+                if let AxisOp::Add(add) = op {
+                    before[*add] = 0;
+                    after[*add] = 0;
+                }
+                Ok(Explicit(before, after))
+            }
+            Valid | SameLower | SameUpper => Ok(self.clone()),
         }
     }
 
@@ -92,19 +110,17 @@ impl PaddingSpec {
         dilation: usize,
         stride: usize,
     ) -> ComputedPaddedDim<D> {
-        let r = match self {
-            PaddingSpec::Valid => Self::valid(input, kernel, dilation, stride),
-            PaddingSpec::Explicit(ref bef, ref aft) => {
+        match self {
+            Valid => Self::valid(input, kernel, dilation, stride),
+            Explicit(ref bef, ref aft) => {
                 Self::explicit(input, kernel, dilation, stride, bef[axis], aft[axis])
             }
-            PaddingSpec::ExplicitOnnxPool(ref bef, ref aft, ceil_mode) => Self::explicit_onnx_pool(
+            ExplicitOnnxPool(ref bef, ref aft, ceil_mode) => Self::explicit_onnx_pool(
                 input, kernel, dilation, stride, bef[axis], aft[axis], *ceil_mode,
             ),
-            PaddingSpec::SameUpper => Self::same(input, kernel, dilation, stride, true),
-            PaddingSpec::SameLower => Self::same(input, kernel, dilation, stride, false),
-        };
-        eprintln!("{self:?} axis:{axis} input:{input:?} kernel:{kernel} dilation:{dilation} stride:{stride} => {r:?}");
-        r
+            SameUpper => Self::same(input, kernel, dilation, stride, true),
+            SameLower => Self::same(input, kernel, dilation, stride, false),
+        }
     }
 
     pub fn compute_one_for_deconv<D: DimLike>(
@@ -117,24 +133,16 @@ impl PaddingSpec {
         adjustment: usize,
     ) -> TractResult<ComputedPaddedDim<D>> {
         match self {
-            PaddingSpec::Valid => {
-                Self::valid_for_deconv(input, kernel, dilation, stride, adjustment)
-            }
-            PaddingSpec::SameUpper => {
-                Self::same_for_deconv(input, kernel, dilation, stride, adjustment, true)
-            }
-            PaddingSpec::SameLower => {
-                Self::same_for_deconv(input, kernel, dilation, stride, adjustment, false)
-            }
-            PaddingSpec::Explicit(ref bef, ref aft) => Self::explicit_for_deconv(
+            Valid => Self::valid_for_deconv(input, kernel, dilation, stride, adjustment),
+            SameUpper => Self::same_for_deconv(input, kernel, dilation, stride, adjustment, true),
+            SameLower => Self::same_for_deconv(input, kernel, dilation, stride, adjustment, false),
+            Explicit(ref bef, ref aft) => Self::explicit_for_deconv(
                 input, kernel, dilation, stride, bef[axis], aft[axis], adjustment,
             ),
             // unreachable ?
-            PaddingSpec::ExplicitOnnxPool(ref bef, ref aft, _ceil_mode) => {
-                Self::explicit_for_deconv(
-                    input, kernel, dilation, stride, bef[axis], aft[axis], adjustment,
-                )
-            }
+            ExplicitOnnxPool(ref bef, ref aft, _ceil_mode) => Self::explicit_for_deconv(
+                input, kernel, dilation, stride, bef[axis], aft[axis], adjustment,
+            ),
         }
     }
 
@@ -184,7 +192,7 @@ impl PaddingSpec {
         } else {
             let kernel_field = (kernel - 1) * dilation + 1;
             let dividend = input.clone() + bef + aft - kernel_field;
-            let output = dividend.div(stride) + 1;
+            let output = dividend.divceil(stride) + 1;
             ComputedPaddedDim::new(input.clone(), output, bef.into(), aft.into())
         }
     }

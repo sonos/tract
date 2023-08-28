@@ -10,7 +10,7 @@ use crate::ops;
 use crate::ops::array::Pad;
 use crate::ops::array::PadMode;
 use crate::ops::binary::TypedBinOp;
-use crate::ops::cnn::PaddingSpec;
+use crate::ops::cnn::PaddingSpec::*;
 use crate::ops::einsum::EinSum;
 use crate::ops::math::Add;
 use crate::ops::math::Div;
@@ -382,8 +382,7 @@ impl ConvUnary {
                 pads,
             };
             wire = model.wire_node(format!("{name}.pad"), op, &[wire])?[0];
-            let valid_pool_spec =
-                PoolSpec { padding: ops::cnn::PaddingSpec::Valid, ..self.pool_spec.clone() };
+            let valid_pool_spec = PoolSpec { padding: Valid, ..self.pool_spec.clone() };
             b_fact = model.outlet_fact(wire)?.clone();
             let concrete_shape = b_fact.shape.as_concrete().unwrap();
             input_shape = valid_pool_spec.data_format.shape(concrete_shape.into())?;
@@ -640,9 +639,7 @@ impl ConvUnary {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if self.pool_spec.padding != PaddingSpec::Valid
-            && !matches!(self.pool_spec.padding, PaddingSpec::ExplicitOnnxPool(_, _, _))
-        {
+        if matches!(self.pool_spec.padding, ExplicitOnnxPool(_, _, _) | SameLower | SameUpper) {
             return Ok(None);
         }
         let prec = model.node(node.inputs[0].node);
@@ -661,11 +658,11 @@ impl ConvUnary {
         }
         let mut before: TVec<usize> = pad.pads[shape.hw_axes()].iter().map(|pair| pair.0).collect();
         let mut after: TVec<usize> = pad.pads[shape.hw_axes()].iter().map(|pair| pair.1).collect();
-        if let PaddingSpec::ExplicitOnnxPool(bef, aft, false) = &self.pool_spec.padding {
+        if let Explicit(bef, aft) = &self.pool_spec.padding {
             izip!(&mut before, bef).for_each(|(pad, cv)| *pad += cv);
             izip!(&mut after, aft).for_each(|(pad, cv)| *pad += cv);
         }
-        let padding = PaddingSpec::ExplicitOnnxPool(before, after, false);
+        let padding = Explicit(before, after);
         let mut new = self.clone();
         new.pool_spec.padding = padding;
         let mut patch = TypedModelPatch::default();
@@ -825,8 +822,8 @@ impl TypedOp for ConvUnary {
                 self
                 );
         }
-        if let PaddingSpec::ExplicitOnnxPool(before, after, _) = &self.pool_spec.padding {
-            anyhow::ensure!(before.len() == self.pool_spec.rank());
+        if let ExplicitOnnxPool(bef, after, _) | Explicit(bef, after) = &self.pool_spec.padding {
+            anyhow::ensure!(bef.len() == self.pool_spec.rank());
             anyhow::ensure!(after.len() == self.pool_spec.rank());
         }
         if let Some(bias) = &self.bias {
@@ -1117,7 +1114,6 @@ fn should_use_lazy(_input_shape: &DataShape, pool_spec: &PoolSpec, group: usize)
 mod test {
     use super::*;
     use crate::ops::array::Pad;
-    use crate::ops::cnn::PaddingSpec;
     use DataFormat::*;
 
     #[test]
@@ -1126,7 +1122,7 @@ mod test {
             pool_spec: PoolSpec {
                 data_format: NCHW,
                 kernel_shape: tvec!(2, 2),
-                padding: PaddingSpec::Valid,
+                padding: Valid,
                 dilations: None,
                 strides: None,
                 output_channel_override: Some(1),
@@ -1171,7 +1167,7 @@ mod test {
                     dilations: None,
                     strides: None,
                     kernel_shape: tvec![2],
-                    padding: crate::ops::cnn::PaddingSpec::ExplicitOnnxPool(tvec![0], tvec![0], false),
+                    padding: Explicit(tvec![0], tvec![0]),
                     output_channel_override: Some(1),
                 },
                 kernel_fmt: crate::ops::cnn::KernelFormat::OIHW,
@@ -1186,10 +1182,7 @@ mod test {
         model.declutter()?;
         assert_eq!(model.nodes().len(), 2); // source + conv
         let cv = model.nodes()[1].op_as::<ConvUnary>().unwrap();
-        assert_eq!(
-            cv.pool_spec.padding,
-            crate::ops::cnn::PaddingSpec::ExplicitOnnxPool(tvec![1], tvec![0], false)
-        ); // source + conv
+        assert_eq!(cv.pool_spec.padding, Explicit(tvec![1], tvec![0])); // source + conv
         Ok(())
     }
 }
