@@ -60,7 +60,7 @@ pub fn handle(
         }
     }
 
-    if let Some(file_path) = sub_matches.value_of("save-output-tensors") {
+    if let Some(file_path) = sub_matches.value_of("save-outputs-nnef") {
         std::fs::create_dir_all(file_path)
             .with_context(|| format!("Creating {file_path} directory"))?;
         for (ix, outputs) in outputs.iter().enumerate() {
@@ -83,7 +83,7 @@ pub fn handle(
         }
     }
 
-    if let Some(file_path) = sub_matches.value_of("save-outputs") {
+    if let Some(file_path) = sub_matches.value_of("save-outputs-npz") {
         let file =
             std::fs::File::create(file_path).with_context(|| format!("Creating {file_path}"))?;
         let mut npz = ndarray_npy::NpzWriter::new_compressed(file);

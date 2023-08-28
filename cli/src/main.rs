@@ -195,16 +195,17 @@ fn main() -> tract_core::anyhow::Result<()> {
         .long_about("Run the graph")
         .arg(Arg::new("dump").long("dump").help("Show output"))
         .arg(
-            Arg::new("save-outputs")
-                .long("save-outputs")
+            Arg::new("save-outputs-npz")
+                .long("save-outputs-npz")
+                .alias("save-outputs")
                 .takes_value(true)
                 .help("Save the outputs into a npz file"),
         )
         .arg(
-            Arg::new("save-output-tensors")
-                .long("save-output-tensors")
+            Arg::new("save-outputs-nnef")
+                .long("save-outputs-nnef")
                 .takes_value(true)
-                .help("Save the output tensor into a .dat file"),
+                .help("Save the output tensor into a folder of nnef .dat files"),
         )
         .arg(Arg::new("steps").long("steps").help("Show all inputs and outputs"))
         .arg(
@@ -401,14 +402,15 @@ fn run_options(command: clap::Command) -> clap::Command {
     use clap::*;
     command
         .arg(
-            Arg::new("input-from-bundle")
-                .long("input-from-bundle")
+            Arg::new("input-from-npz")
+                .long("input-from-npz")
+                .alias("input-from-bundle")
                 .takes_value(true)
                 .help("Path to an input container (.npz). This sets tensor values."),
         )
         .arg(
-            Arg::new("input-from-tensors").long("input-from-tensors").takes_value(true).help(
-                "Path to a directory containing input tensors (.dat). This sets tensor values.",
+            Arg::new("input-from-nnef").long("input-from-nnef").takes_value(true).help(
+                "Path to a directory containing input tensors in NNEF format (.dat files). This sets tensor values.",
             ),
         )
         .arg(
