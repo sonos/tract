@@ -160,13 +160,21 @@ impl InferenceModelInterface for InferenceModel {
     fn input_name(&self, id: usize) -> Result<String> {
         let mut ptr = null_mut();
         check!(sys::tract_inference_model_input_name(self.0, id, &mut ptr))?;
-        unsafe { Ok(CStr::from_ptr(ptr).to_str()?.to_owned()) }
+        unsafe {
+            let ret = CStr::from_ptr(ptr).to_str()?.to_owned();
+            sys::tract_free_cstring(ptr);
+            Ok(ret)
+        }
     }
 
     fn output_name(&self, id: usize) -> Result<String> {
         let mut ptr = null_mut();
         check!(sys::tract_inference_model_output_name(self.0, id, &mut ptr))?;
-        unsafe { Ok(CStr::from_ptr(ptr).to_str()?.to_owned()) }
+        unsafe {
+            let ret = CStr::from_ptr(ptr).to_str()?.to_owned();
+            sys::tract_free_cstring(ptr);
+            Ok(ret)
+        }
     }
 
     fn input_fact(&self, id: usize) -> Result<InferenceFact> {
@@ -225,7 +233,7 @@ wrapper!(Model, TractModel, tract_model_destroy);
 impl ModelInterface for Model {
     type Fact = Fact;
     type Value = Value;
-    type Runnable =Runnable;
+    type Runnable = Runnable;
     fn input_count(&self) -> Result<usize> {
         let mut count = 0;
         check!(sys::tract_model_input_count(self.0, &mut count))?;
@@ -241,13 +249,21 @@ impl ModelInterface for Model {
     fn input_name(&self, id: usize) -> Result<String> {
         let mut ptr = null_mut();
         check!(sys::tract_model_input_name(self.0, id, &mut ptr))?;
-        unsafe { Ok(CStr::from_ptr(ptr).to_str()?.to_owned()) }
+        unsafe {
+            let ret = CStr::from_ptr(ptr).to_str()?.to_owned();
+            sys::tract_free_cstring(ptr);
+            Ok(ret)
+        }
     }
 
     fn output_name(&self, id: usize) -> Result<String> {
         let mut ptr = null_mut();
         check!(sys::tract_model_output_name(self.0, id, &mut ptr))?;
-        unsafe { Ok(CStr::from_ptr(ptr).to_str()?.to_owned()) }
+        unsafe {
+            let ret = CStr::from_ptr(ptr).to_str()?.to_owned();
+            sys::tract_free_cstring(ptr);
+            Ok(ret)
+        }
     }
 
     fn set_output_names(
@@ -368,7 +384,15 @@ impl ModelInterface for Model {
         check!(sys::tract_model_property_count(self.0, &mut len))?;
         let mut keys = vec![null_mut(); len];
         check!(sys::tract_model_property_names(self.0, keys.as_mut_ptr()))?;
-        unsafe { keys.into_iter().map(|pc| Ok(CStr::from_ptr(pc).to_str()?.to_owned())).collect() }
+        unsafe {
+            keys.into_iter()
+                .map(|pc| {
+                    let s = CStr::from_ptr(pc).to_str()?.to_owned();
+                    sys::tract_free_cstring(pc);
+                    Ok(s)
+                })
+                .collect()
+        }
     }
 
     fn property(&self, name: impl AsRef<str>) -> Result<Value> {
@@ -498,7 +522,11 @@ impl Fact {
     fn dump(&self) -> Result<String> {
         let mut ptr = null_mut();
         check!(sys::tract_fact_dump(self.0, &mut ptr))?;
-        unsafe { Ok(CStr::from_ptr(ptr).to_str()?.to_owned()) }
+        unsafe {
+            let s = CStr::from_ptr(ptr).to_owned();
+            sys::tract_free_cstring(ptr);
+            Ok(s.to_str()?.to_owned())
+        }
     }
 }
 
@@ -527,7 +555,11 @@ impl InferenceFact {
     fn dump(&self) -> Result<String> {
         let mut ptr = null_mut();
         check!(sys::tract_inference_fact_dump(self.0, &mut ptr))?;
-        unsafe { Ok(CStr::from_ptr(ptr).to_str()?.to_owned()) }
+        unsafe {
+            let s = CStr::from_ptr(ptr).to_owned();
+            sys::tract_free_cstring(ptr);
+            Ok(s.to_str()?.to_owned())
+        }
     }
 }
 
