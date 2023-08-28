@@ -14,11 +14,8 @@ members = [
     "onnx",
     "libcli",
     "cli",
-<<<<<<< HEAD
-    "ffi",
+
     "tflite",
-    "ffi/rs",
-    "ffi/rs/sys",
 
     "api",
     "api/rs",
@@ -59,7 +56,7 @@ ansi_term = "0.12.1"
 anyhow = "1.0.43"
 approx = "0.5"
 atty = "0.2.14"
-bindgen= "0.53"
+bindgen= "0.66"
 bit-set= "0.5.2"
 boow = "0.1.3"
 box_drawing = "0.1.2"
