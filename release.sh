@@ -35,11 +35,11 @@ cargo publish --allow-dirty -p $crate
 
 for other_cargo_toml in `find . -name Cargo.toml`
 do
-    if tomato get dependencies.$crate.version $other_cargo_toml | grep -F .
+    if tomato get dependencies.$crate $other_cargo_toml | grep -F .
     then
         tomato set "dependencies.$crate.version" "=$VERSION" $other_cargo_toml
     fi
-    if tomato get dev-dependencies.$crate.version $other_cargo_toml | grep -F .
+    if tomato get dev-dependencies.$crate $other_cargo_toml | grep -F .
     then
         tomato set "dev-dependencies.$crate.version" "=$VERSION" $other_cargo_toml
     fi

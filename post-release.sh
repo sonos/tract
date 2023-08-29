@@ -22,11 +22,11 @@ do
     tomato set package.version $VERSION $path/Cargo.toml > /dev/null
     for other_cargo_toml in `find . -name Cargo.toml`
     do
-        if tomato get dependencies.$crate.version $other_cargo_toml | grep -F . > /dev/null
+        if tomato get dependencies.$crate $other_cargo_toml | grep -F . > /dev/null
         then
             tomato set dependencies.$crate.version "=$VERSION" $other_cargo_toml > /dev/null
         fi
-        if tomato get dev-dependencies.$crate.version $other_cargo_toml | grep -F . > /dev/null
+        if tomato get dev-dependencies.$crate $other_cargo_toml | grep -F . > /dev/null
         then
             tomato set dev-dependencies.$crate.version "=$VERSION" $other_cargo_toml > /dev/null
         fi
