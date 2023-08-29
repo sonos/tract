@@ -10,6 +10,7 @@ categories = [ "science" ]
 autobenches = false
 edition = "2021"
 rust-version = "1.65"
+include = [ "Cargo.toml", "src/**/*.rs", "LICENSE*", "tests" ]
 
 [dependencies]
 anyhow.workspace = true
