@@ -67,20 +67,25 @@ then
     exit 0
 fi
 
-OLD_CACHEDIR=$CACHEDIR
-mkdir -p $CACHEDIR/big
-export CACHEDIR=$CACHEDIR/big
-
-cargo -q test $CARGO_EXTRA -q -p tract-rs
-
-cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p core-proptest-pulse $ALL_FEATURES
-cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p lstm-proptest-onnx-vs-tf $ALL_FEATURES
-cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p nnef-inceptionv3 $ALL_FEATURES
-cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p tf-inceptionv3 $ALL_FEATURES
-cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p tf-mobilenet-v2 $ALL_FEATURES
-cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p tf-moz-deepspeech $ALL_FEATURES
 if [ -n "$GITHUB_ACTIONS" ]
 then
-    rm -r $OLD_CACHEDIR/big
+    CLEANUP="rm -rf $CACHEDIR/*"
+else
+    CLEANUP=true
 fi
+
+$CLEANUP
+cargo -q test $CARGO_EXTRA -q -p tract-rs
+$CLEANUP
+cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p core-proptest-pulse $ALL_FEATURES
+$CLEANUP
+cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p lstm-proptest-onnx-vs-tf $ALL_FEATURES
+$CLEANUP
+cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p nnef-inceptionv3 $ALL_FEATURES
+$CLEANUP
+cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p tf-inceptionv3 $ALL_FEATURES
+$CLEANUP
+cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p tf-mobilenet-v2 $ALL_FEATURES
+$CLEANUP
+cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p tf-moz-deepspeech $ALL_FEATURES
 CACHEDIR=$OLD_CACHEDIR
