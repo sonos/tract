@@ -17,7 +17,7 @@ anyhow.workspace = true
 boow.workspace = true
 ndarray.workspace = true
 tract-api = { path = ".." }
-tract-rs-sys = { path = "sys" }
+tract-proxy-sys = { path = "sys" }
 
 [dev-dependencies]
 reqwest.workspace = true

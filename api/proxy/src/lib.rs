@@ -3,7 +3,7 @@ use std::path::Path;
 use std::ptr::{null, null_mut};
 
 use tract_api::*;
-use tract_rs_sys as sys;
+use tract_proxy_sys as sys;
 
 use anyhow::{Context, Result};
 use ndarray::*;

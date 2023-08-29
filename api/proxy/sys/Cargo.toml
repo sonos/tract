@@ -1,7 +1,17 @@
 [package]
-name = "tract-rs-sys"
-version = "0.20.0-pre"
+name = "tract-proxy-sys"
+version = "0.20.7-pre"
+license = "MIT OR Apache-2.0"
+authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
+description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
+repository = "https://github.com/sonos/tract"
+keywords = [ "NeuralNetworks" ]
+categories = [ "science" ]
+autobenches = false
 edition = "2021"
+rust-version = "1.65"
+include = [ "Cargo.toml", "src/**/*.rs", "LICENSE*" ]
+
 
 [dependencies]
 tract-ffi = { path = "../../ffi" }
