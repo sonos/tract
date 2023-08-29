@@ -16,15 +16,15 @@ then
     exit 1
 fi
 
-for other_path in `find . -name Cargo.toml`
+for path in $ALL_CRATES_PATH
 do
     crate=$(tomato get package.name $path/Cargo.toml)
     tomato set package.version $VERSION $path/Cargo.toml > /dev/null
-    for other_path in $ALL_CRATES_PATH
+    for other_cargo_toml in `find . -name Cargo.toml`
     do
-        if tomato get dependencies.$crate.version $other_path/Cargo.toml | grep -F . > /dev/null
+        if tomato get dependencies.$crate.version $other_cargo_toml | grep -F . > /dev/null
         then
-            tomato set dependencies.$crate.version "=$VERSION" $other_path/Cargo.toml > /dev/null
+            tomato set dependencies.$crate.version "=$VERSION" $other_cargo_toml > /dev/null
         fi
     done
 done
