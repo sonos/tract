@@ -16,7 +16,7 @@ then
     exit 1
 fi
 
-for path in $ALL_CRATES_PATH
+for other_path in `find . -name Cargo.toml`
 do
     crate=$(tomato get package.name $path/Cargo.toml)
     tomato set package.version $VERSION $path/Cargo.toml > /dev/null

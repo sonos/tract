@@ -33,7 +33,7 @@ crate=$(tomato get package.name $CRATE_PATH/Cargo.toml)
 tomato set package.version $VERSION $CRATE_PATH/Cargo.toml
 cargo publish --allow-dirty -p $crate
 
-for other_path in $ALL_CRATES_PATH
+for other_path in `find . -name Cargo.toml`
 do
     if tomato get dependencies.$crate.version $other_path/Cargo.toml | grep -F .
     then
