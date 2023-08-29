@@ -7,43 +7,43 @@ git push
 
 cargo install tomato-toml
 
-CRATE=$1
+CRATE_PATH=$1
 VERSION=$2
-CRATES="data linalg core nnef nnef/nnef-resources pulse-opl pulse hir tflite tensorflow onnx-opl onnx libcli ffi cli"
+ALL_CRATES_PATH="data linalg core nnef nnef/nnef-resources pulse-opl pulse hir tflite tensorflow onnx-opl onnx libcli api api/rs api/proxy cli"
 
 if [ -z "$VERSION" ]
 then
     echo "Usage: $0 <crate> <version>" 
-    echo crates order is: $CRATES
+    echo crates order is: $ALL_CRATES_PATH
     exit 1
 fi
 
 set -ex
 
-if [ "$CRATE" = "all" ]
+if [ "$CRATE_PATH" = "all" ]
 then
-    for c in $CRATES
+    for c in $ALL_CRATES_PATH
     do
         $0 $c $VERSION
     done
     exit 0
 fi
 
-tomato set package.version $VERSION $CRATE/Cargo.toml
-(cd $CRATE ; cargo publish --allow-dirty)
+crate=$(tomato get package.name $CRATE_PATH/Cargo.toml)
+tomato set package.version $VERSION $CRATE_PATH/Cargo.toml
+cargo publish --allow-dirty -p $crate
 
-for manifest in `find * -mindepth 1 -a -name Cargo.toml`
+for other_path in $ALL_CRATES_PATH
 do
-    crate=$(basename $CRATE)
-    if tomato get dependencies.tract-$crate.version $manifest | grep -F .
+    if tomato get dependencies.$crate.version $other_path/Cargo.toml | grep -F .
     then
-        tomato set "dependencies.tract-$crate.version" "=$VERSION" $manifest
+        tomato set "dependencies.$crate.version" "=$VERSION" $other_path/Cargo.toml
     fi
 done
 
 cargo update
 
-if [ "$CRATE" = "cli" ]
+if [ "$CRATE_PATH" = "cli" ]
 then
     git commit -m "release $VERSION" .
     git tag -f v"$VERSION"

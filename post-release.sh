@@ -1,7 +1,7 @@
 #!/bin/sh
 
 VERSION=$1
-CRATES="data linalg core nnef nnef/nnef-resources pulse-opl pulse hir tflite tensorflow onnx-opl onnx libcli cli ffi"
+ALL_CRATES_PATH="data linalg core nnef nnef/nnef-resources pulse-opl pulse hir tflite tensorflow onnx-opl onnx libcli api api/rs api/proxy cli"
 
 if [ `uname` = "Darwin" ]
 then
@@ -16,17 +16,15 @@ then
     exit 1
 fi
 
-for f in `find * -mindepth 1 -a -name Cargo.toml`
+for path in $ALL_CRATES_PATH
 do
-    back=$(echo $(dirname $f) | sed 's/[^\/]\+/../g')
-    tomato set package.version $VERSION $f > /dev/null
-    for dep in $CRATES
+    crate=$(tomato get package.name $path/Cargo.toml)
+    tomato set package.version $VERSION $path/Cargo.toml > /dev/null
+    for other_path in $ALL_CRATES_PATH
     do
-        dep=$(basename $dep)
-        if tomato get dependencies.tract-$dep.version $f | grep -F . > /dev/null
+        if tomato get dependencies.$crate.version $other_path/Cargo.toml | grep -F . > /dev/null
         then
-            tomato set dependencies.tract-$dep.version "=$VERSION" $f > /dev/null
-            tomato set dependencies.tract-$dep.path $back/$dep $f > /dev/null
+            tomato set dependencies.$crate.version "=$VERSION" $other_path/Cargo.toml > /dev/null
         fi
     done
 done
