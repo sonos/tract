@@ -26,6 +26,10 @@ do
         then
             tomato set dependencies.$crate.version "=$VERSION" $other_cargo_toml > /dev/null
         fi
+        if tomato get dev-dependencies.$crate.version $other_cargo_toml | grep -F . > /dev/null
+        then
+            tomato set dev-dependencies.$crate.version "=$VERSION" $other_cargo_toml > /dev/null
+        fi
     done
 done
 
