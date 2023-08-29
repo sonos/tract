@@ -41,7 +41,7 @@ do
     fi
     if tomato get dev-dependencies.$crate.version $other_cargo_toml | grep -F .
     then
-        tomato set "dev-ependencies.$crate.version" "=$VERSION" $other_cargo_toml
+        tomato set "dev-dependencies.$crate.version" "=$VERSION" $other_cargo_toml
     fi
 done
 
