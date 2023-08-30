@@ -128,6 +128,7 @@ fn main() -> tract_core::anyhow::Result<()> {
         .arg(arg!(--"nnef-tract-core" "Allow usage of tract-core extension in NNEF dump and load"))
         .arg(arg!(--"nnef-tract-onnx" "Allow usage of tract-onnx extension in NNEF dump and load"))
         .arg(arg!(--"nnef-tract-pulse" "Allow usage of tract-pulse extension in NNEF dump and load"))
+        .arg(arg!(--"nnef-tract-extra" "Allow usage of tract-extra extension in NNEF dump and load"))
         .arg(arg!(--"nnef-extended-identifier" "Allow usage of the i\"...\" syntax to escape identifier names"))
 
         .arg(arg!(-O --optimize "Optimize before running"))
@@ -607,6 +608,17 @@ fn nnef(matches: &clap::ArgMatches) -> tract_nnef::internal::Nnef {
         #[cfg(not(feature = "pulse-opl"))]
         {
             panic!("tract is build without pulse-opl support")
+        }
+    }
+    if matches.is_present("nnef-tract-extra") {
+        #[cfg(feature = "extra")]
+        {
+            use tract_extra::WithExtra;
+            fw = fw.with_extra();
+        }
+        #[cfg(not(feature = "extra"))]
+        {
+            panic!("tract is build without tract-extra support")
         }
     }
     if matches.is_present("nnef-tract-core") {

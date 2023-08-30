@@ -38,6 +38,7 @@ tract-core = { version = "=0.20.19-pre", path = "../core" }
 tract-hir = { version = "=0.20.19-pre", path = "../hir" }
 tract-nnef = { version = "=0.20.19-pre", path = "../nnef" }
 tract-libcli = { version = "=0.20.19-pre", path = "../libcli" }
+tract-extra = { optional = true, version = "=0.20.19-pre", path = "../extra" }
 tract-pulse-opl = { optional = true, version = "=0.20.19-pre", path = "../pulse-opl" }
 tract-pulse = { optional = true, version = "=0.20.19-pre", path = "../pulse" }
 tract-onnx = { optional = true, version = "=0.20.19-pre", path = "../onnx" }
@@ -45,8 +46,9 @@ tract-tensorflow = { optional = true, version = "=0.20.19-pre", path = "../tenso
 tract-tflite = { optional = true, version = "=0.20.19-pre", path = "../tflite" }
 
 [features]
-default = ["onnx", "tf", "pulse", "pulse-opl", "tflite"]
+default = ["onnx", "tf", "pulse", "pulse-opl", "tflite", "extra"]
 onnx = [ "tract-onnx", "tract-libcli/hir", "tract-libcli/onnx" ]
+extra = [ "tract-extra" ]
 pulse-opl = [ "tract-pulse-opl" ]
 pulse = [ "tract-pulse", "tract-pulse-opl" ]
 tf = [ "tract-tensorflow", "tract-libcli/hir" ]
