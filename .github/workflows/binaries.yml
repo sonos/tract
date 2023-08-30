@@ -5,6 +5,9 @@ on:
 
 name: Upload Release Binaries
 
+env:
+  CARGO_INCREMENTAL: false
+
 jobs:
   assets:
     name: Upload Release Binaries

@@ -5,6 +5,9 @@ on:
 
 name: Create release
 
+env:
+  CARGO_INCREMENTAL: false
+
 jobs:
   release:
     name: Create release
