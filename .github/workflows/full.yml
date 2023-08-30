@@ -26,19 +26,19 @@ jobs:
           ~/.rustup
           ~/.cargo/registry
           ~/.cargo/git
-          ~/.cache/sccache
+          #~/.cache/sccache
           target
           .cached
         key: ${{ runner.os }}-full-regular-${{steps.date.outputs.date}}-e
 
-    - name: "Setup sccache"
-      run: .travis/setup-sccache.sh
+          #    - name: "Setup sccache"
+          #      run: .travis/setup-sccache.sh
 
     - name: Full test
       run: .travis/regular-tests.sh
 
-    - name: Stop sccache server
-      run: sccache --stop-server || true
+        # - name: Stop sccache server
+        #   run: sccache --stop-server || true
 
   cli-tests:
     runs-on: ubuntu-latest
@@ -55,13 +55,13 @@ jobs:
           ~/.rustup
           ~/.cargo/registry
           ~/.cargo/git
-          ~/.cache/sccache
+          #      ~/.cache/sccache
           target
           .cached
         key: ${{ runner.os }}-full-regular-${{steps.date.outputs.date}}-e
 
-    - name: "Setup sccache"
-      run: .travis/setup-sccache.sh
+          #    - name: "Setup sccache"
+          #      run: .travis/setup-sccache.sh
     - name: Full test 
       env:
         AWS_ACCESS_KEY_ID: ${{secrets.TRACT_CI_AWS_ACCESS_KEY_ID}}
@@ -69,8 +69,8 @@ jobs:
         AWS_EC2_METADATA_DISABLED: true
       run: .travis/cli-tests.sh
 
-    - name: Stop sccache server
-      run: sccache --stop-server || true
+        #    - name: Stop sccache server
+        #      run: sccache --stop-server || true
 
   examples:
     runs-on: ubuntu-latest
@@ -87,13 +87,13 @@ jobs:
           ~/.rustup
           ~/.cargo/registry
           ~/.cargo/git
-          ~/.cache/sccache
+          #          ~/.cache/sccache
           target
           .cached
         key: ${{ runner.os }}-full-regular-${{steps.date.outputs.date}}-e
 
-    - name: "Setup sccache"
-      run: .travis/setup-sccache.sh
+          #  - name: "Setup sccache"
+          #    run: .travis/setup-sccache.sh
 
     - name: example tests
       env:
@@ -102,8 +102,8 @@ jobs:
         AWS_EC2_METADATA_DISABLED: true
       run: .travis/examples.sh
 
-    - name: Stop sccache server
-      run: sccache --stop-server || true
+        # - name: Stop sccache server
+        #   run: sccache --stop-server || true
 
   onnx-tests:
     runs-on: ubuntu-latest
@@ -123,17 +123,17 @@ jobs:
           ~/.rustup
           ~/.cargo/registry
           ~/.cargo/git
-          ~/.cache/sccache
+          #      ~/.cache/sccache
           target
           .cached
         key: ${{ runner.os }}-full-onnx-${{matrix.opset}}-${{steps.date.outputs.date}}-e
-    - name: "Setup sccache"
-      run: .travis/setup-sccache.sh
+          #    - name: "Setup sccache"
+          #      run: .travis/setup-sccache.sh
     - name: Full test
       run: .travis/onnx-tests.sh ${{ matrix.opset }}
 
-    - name: Stop sccache server
-      run: sccache --stop-server || true
+        #     - name: Stop sccache server
+        #       run: sccache --stop-server || true
 
   onnx-with-asserts:
     runs-on: ubuntu-latest
@@ -150,19 +150,19 @@ jobs:
           ~/.rustup
           ~/.cargo/registry
           ~/.cargo/git
-          ~/.cache/sccache
+          #~/.cache/sccache
           target
           .cached
         key: ${{ runner.os }}-full-onnx-with-asserts-${{steps.date.outputs.date}}-e
-    - name: "Setup sccache"
-      run: .travis/setup-sccache.sh
+          #     - name: "Setup sccache"
+          #       run: .travis/setup-sccache.sh
     - name: With assertions
       run: |
         rustup update
         cargo -q test -q -p test-onnx-core
 
-    - name: Stop sccache server
-      run: sccache --stop-server || true
+        #    - name: Stop sccache server
+        #      run: sccache --stop-server || true
 
   core-paranoid:
     runs-on: ubuntu-latest
@@ -179,18 +179,18 @@ jobs:
           ~/.rustup
           ~/.cargo/registry
           ~/.cargo/git
-          ~/.cache/sccache
+          #~/.cache/sccache
           target
           .cached
         key: ${{ runner.os }}-full-core-paranoid-${{steps.date.outputs.date}}-e
-    - name: "Setup sccache"
-      run: .travis/setup-sccache.sh
+          #    - name: "Setup sccache"
+          #      run: .travis/setup-sccache.sh
     - name: Core test with paranoid assertions
       run: |
         rustup update
         cargo test -p tract-core --features paranoid_assertions
-    - name: Stop sccache server
-      run: sccache --stop-server || true
+        #    - name: Stop sccache server
+        #      run: sccache --stop-server || true
 
   C:
     runs-on: ubuntu-latest
@@ -207,20 +207,20 @@ jobs:
           ~/.rustup
           ~/.cargo/registry
           ~/.cargo/git
-          ~/.cache/sccache
+          #~/.cache/sccache
           target
           .cached
         key: ${{ runner.os }}-full-core-paranoid-${{steps.date.outputs.date}}-e
-    - name: "Setup sccache"
-      run: .travis/setup-sccache.sh
+          #    - name: "Setup sccache"
+          #      run: .travis/setup-sccache.sh
 
     - name: C smoke tests
       run: |
         cd api/c
         cargo install cbindgen
         make
-    - name: Stop sccache server
-      run: sccache --stop-server || true
+        #    - name: Stop sccache server
+        #      run: sccache --stop-server || true
 
   python:
     runs-on: ubuntu-latest
@@ -237,12 +237,12 @@ jobs:
           ~/.rustup
           ~/.cargo/registry
           ~/.cargo/git
-          ~/.cache/sccache
+          #~/.cache/sccache
           target
           .cached
         key: ${{ runner.os }}-full-core-paranoid-${{steps.date.outputs.date}}-e
-    - name: "Setup sccache"
-      run: .travis/setup-sccache.sh
+          #    - name: "Setup sccache"
+          #      run: .travis/setup-sccache.sh
 
     - name: Pytest bindings
       run: |
@@ -254,5 +254,5 @@ jobs:
         python setup.py install
         pip install pytest
         pytest .
-    - name: Stop sccache server
-      run: sccache --stop-server || true
+        #    - name: Stop sccache server
+        #      run: sccache --stop-server || true

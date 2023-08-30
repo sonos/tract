@@ -30,13 +30,13 @@ jobs:
           ~/.rustup
           ~/.cargo/registry
           ~/.cargo/git
-          ~/.cache/sccache
           target
           .cached
+          #          ~/.cache/sccache
         key: ${{ runner.os }}-main-${{matrix.rust}}-${{steps.date.outputs.date}}-d
 
-    - name: "Setup sccache"
-      run: .travis/setup-sccache.sh
+          #     - name: "Setup sccache"
+          #       run: .travis/setup-sccache.sh
 
     - name: Rustup update
       run: rustup update
@@ -45,8 +45,8 @@ jobs:
         RUST_VERSION: ${{matrix.rust}}
       run: .travis/regular-tests.sh
 
-    - name: Stop sccache server
-      run: sccache --stop-server || true
+        #     - name: Stop sccache server
+        #       run: sccache --stop-server || true
 
   warnings:
     strategy:
