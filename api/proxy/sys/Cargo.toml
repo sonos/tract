@@ -14,6 +14,7 @@ include = [ "Cargo.toml", "src/**/*.rs", "LICENSE*" ]
 
 
 [dependencies]
+tract-ffi = { path =  "../../ffi" }
 
 [build-dependencies]
 bindgen.workspace = true
