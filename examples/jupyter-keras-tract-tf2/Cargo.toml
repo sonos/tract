@@ -10,5 +10,5 @@ edition = "2021"
 [dependencies]
 
 rand.workspace = true
-tract-core = { path = "../../core", version = "=0.20.18" }
-tract-onnx = { path = "../../onnx", version = "=0.20.18" }
+tract-core = { path = "../../core", version = "=0.20.19-pre" }
+tract-onnx = { path = "../../onnx", version = "=0.20.19-pre" }

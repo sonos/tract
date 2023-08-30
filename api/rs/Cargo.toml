@@ -1,6 +1,6 @@
 [package]
 name = "tract-rs"
-version = "0.20.18"
+version = "0.20.19-pre"
 license = "MIT OR Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -18,12 +18,12 @@ boow.workspace = true
 flate2.workspace = true
 half.workspace = true
 ndarray.workspace = true
-tract-api = { path = ".." , version = "=0.20.18" }
-tract-nnef = { path = "../../nnef/" , version = "=0.20.18" }
-tract-onnx-opl = { path = "../../onnx-opl/" , version = "=0.20.18" }
-tract-onnx = { path = "../../onnx/" , version = "=0.20.18" }
-tract-pulse = { path = "../../pulse/" , version = "=0.20.18" }
-tract-libcli = { path = "../../libcli" , version = "=0.20.18" }
+tract-api = { path = ".." , version = "=0.20.19-pre" }
+tract-nnef = { path = "../../nnef/" , version = "=0.20.19-pre" }
+tract-onnx-opl = { path = "../../onnx-opl/" , version = "=0.20.19-pre" }
+tract-onnx = { path = "../../onnx/" , version = "=0.20.19-pre" }
+tract-pulse = { path = "../../pulse/" , version = "=0.20.19-pre" }
+tract-libcli = { path = "../../libcli" , version = "=0.20.19-pre" }
 serde_json.workspace = true
 
 [dev-dependencies]

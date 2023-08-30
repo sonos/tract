@@ -1,7 +1,7 @@
 #!/bin/sh
 
 VERSION=$1
-ALL_CRATES_PATH="data linalg core nnef nnef/nnef-resources pulse-opl pulse hir tflite tensorflow onnx-opl onnx libcli api api/rs api/proxy/ffi api/proxy/sys api/proxy cli"
+ALL_CRATES_PATH="data linalg core nnef nnef/nnef-resources pulse-opl pulse hir tflite tensorflow onnx-opl onnx libcli api api/rs api/ffi api/proxy/sys api/proxy cli"
 
 if [ `uname` = "Darwin" ]
 then
