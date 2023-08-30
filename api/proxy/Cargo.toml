@@ -1,6 +1,6 @@
 [package]
 name = "tract-proxy"
-version = "0.20.7-pre"
+version = "0.20.18"
 license = "MIT OR Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -16,8 +16,8 @@ include = [ "Cargo.toml", "src/**/*.rs", "LICENSE*" ]
 anyhow.workspace = true
 boow.workspace = true
 ndarray.workspace = true
-tract-api = { path = ".." }
-tract-proxy-sys = { path = "sys" }
+tract-api = { path = ".." , version = "=0.20.18" }
+tract-proxy-sys = { path = "sys", version = "=0.20.18" }
 
 [dev-dependencies]
 reqwest.workspace = true

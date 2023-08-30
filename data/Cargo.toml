@@ -1,6 +1,6 @@
 [package]
 name = "tract-data"
-version = "0.20.7-pre"
+version = "0.20.18"
 license = "MIT OR Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"

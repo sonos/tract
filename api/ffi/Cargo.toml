@@ -1,6 +1,6 @@
 [package]
 name = "tract-ffi"
-version = "0.20.7-pre"
+version = "0.20.18"
 license = "MIT OR Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, neural network inference"
@@ -23,5 +23,5 @@ anyhow.workspace = true
 flate2.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tract-api = { path = ".." }
-tract-rs = { path = "../rs" }
+tract-api = { path = ".." , version = "=0.20.18" }
+tract-rs = { path = "../rs" , version = "=0.20.18" }

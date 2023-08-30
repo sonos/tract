@@ -7,7 +7,7 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 log.workspace = true
-tract-tensorflow = { path = "../../tensorflow", version = "=0.20.7-pre" }
+tract-tensorflow = { path = "../../tensorflow", version = "=0.20.18" }
 
 [dev-dependencies]
 env_logger.workspace = true

@@ -15,9 +15,9 @@ lazy_static.workspace = true
 log.workspace = true
 prost.workspace = true
 infra = { path = "../infra" }
-tract-core = { path = "../../core" }
-tract-onnx = { path = "../../onnx" }
-tract-hir = { path = "../../hir" }
+tract-core = { path = "../../core" , version = "=0.20.18" }
+tract-onnx = { path = "../../onnx" , version = "=0.20.18" }
+tract-hir = { path = "../../hir" , version = "=0.20.18" }
 
 [features]
 onnx_1_4_1 = []

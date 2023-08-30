@@ -1,6 +1,6 @@
 [package]
 name = "tract-onnx-opl"
-version = "0.20.7-pre"
+version = "0.20.18"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT OR Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -19,7 +19,7 @@ log.workspace = true
 rand.workspace = true
 rand_distr.workspace = true
 rustfft.workspace = true
-tract-nnef = { version = "=0.20.7-pre", path = "../nnef" }
+tract-nnef = { version = "=0.20.18", path = "../nnef" }
 
 [dev-dependencies]
 env_logger.workspace = true
