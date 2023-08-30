@@ -110,8 +110,6 @@ pub struct Delay {
     pub overlap: usize,
 }
 
-
-
 impl Delay {
     pub fn new_typed(input_fact: &TypedFact, axis: usize, delay: usize, overlap: usize) -> Delay {
         let mut buffer_shape: TVec<TDim> = input_fact.shape.to_tvec();
