@@ -42,13 +42,13 @@ jobs:
           ~/.rustup
           ~/.cargo/registry
           ~/.cargo/git
-          ~/.cache/sccache
+          #          ~/.cache/sccache
           .cached
           target
         key: ${{ runner.os }}-${{matrix.platform}}-${{steps.date.outputs.date}}
 
-    - name: "Setup sccache"
-      run: .travis/setup-sccache.sh
+          #     - name: "Setup sccache"
+          #       run: .travis/setup-sccache.sh
 
     - name: Cross script
       env:
@@ -58,8 +58,8 @@ jobs:
         AWS_EC2_METADATA_DISABLED: true
       run: .travis/cross.sh
 
-    - name: Stop sccache server
-      run: sccache --stop-server || true
+        #     - name: Stop sccache server
+        #       run: sccache --stop-server || true
 
   apple:
     strategy:
@@ -89,13 +89,13 @@ jobs:
           target
         key: ${{ runner.os }}-${{matrix.platform}}-${{steps.date.outputs.date}}
 
-    - name: "Setup sccache"
-      run: .travis/setup-sccache.sh
+          #     - name: "Setup sccache"
+          #       run: .travis/setup-sccache.sh
 
     - name: Cross script
       env:
         PLATFORM: ${{matrix.platform}}
       run: .travis/cross.sh
 
-    - name: Stop sccache server
-      run: sccache --stop-server || true
+        #     - name: Stop sccache server
+        #       run: sccache --stop-server || true
