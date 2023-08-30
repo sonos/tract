@@ -5,6 +5,9 @@ on:
   schedule:
     - cron:  '0 5 * * *'
 
+env:
+  CARGO_INCREMENTAL: false
+
 jobs:
   linux:
     strategy:
