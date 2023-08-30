@@ -1,9 +1,12 @@
-# 0.20.7 - todo, 2023-08-
+# 0.20.18 - 2023-08-30
 * [intel] fix in AVX512F matrix vector product
 * [tflite] alpha, embryonic support. some convolutional models working.
 * [kaldi] remove abandonned kaldi experimental support
 * [refactoring] Runtime abstraction and runtime-targetting tests
 * [refactoring] Refactoring Python and C API around a possible tract-api. Introducing dylib support.
+* [pytorch compat] fixes around node names starting by / (bug triggered by recent pytorch versions)
+
+0.20.7 to 0.20.17 are misfires
 
 # 0.20.6 - 2023-06-09
 * Bug fixes, fix display of If operator
