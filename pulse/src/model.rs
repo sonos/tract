@@ -1,3 +1,5 @@
+use std::sync::Mutex;
+
 use crate::fact::StreamInfo;
 use crate::{internal::*, ops::sync_inputs};
 use tract_core::model::translator::Translate;
@@ -107,7 +109,7 @@ impl SpecialOps<PulsedFact, Box<dyn PulsedOp>> for PulsedModel {
     }
 }
 
-struct Pulsifier(Symbol, TDim, HashMap<TypeId, crate::ops::OpPulsifier>);
+struct Pulsifier(Symbol, TDim, Arc<Mutex<HashMap<TypeId, crate::ops::OpPulsifier>>>);
 
 impl std::fmt::Debug for Pulsifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -137,12 +139,10 @@ impl
             .unwrap());
         }
 
-        if let Some(pulsifier) = self.2.get(&node.op.type_id()) {
-            if let Some(pulsified) =
-                (pulsifier.func)(source, node, target, mapping, &self.0, &self.1)?
-            {
-                return Ok(pulsified);
-            }
+        if let Some(pulsified) =
+            OpPulsifier::pulsify(source, node, target, mapping, &self.0, &self.1)?
+        {
+            return Ok(pulsified);
         }
 
         let pulse_facts: TVec<PulsedFact> =

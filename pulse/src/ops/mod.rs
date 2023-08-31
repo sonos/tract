@@ -1,4 +1,8 @@
+use std::any::Any;
+use std::sync::Mutex;
+
 use crate::internal::*;
+use lazy_static::lazy_static;
 use tract_pulse_opl::ops::Delay;
 
 pub mod array;
@@ -60,22 +64,53 @@ pub struct OpPulsifier {
 }
 
 impl OpPulsifier {
-    pub fn inventory() -> HashMap<TypeId, OpPulsifier> {
-        let mut inventory = HashMap::default();
-        register_all(&mut inventory);
-        inventory
+    pub fn inventory() -> Arc<Mutex<HashMap<TypeId, OpPulsifier>>> {
+        lazy_static! {
+            static ref INVENTORY: Arc<Mutex<HashMap<TypeId, OpPulsifier>>> = {
+                let mut it = HashMap::default();
+                register_all(&mut it);
+                Arc::new(Mutex::new(it))
+            };
+        };
+        (*INVENTORY).clone()
+    }
+
+    pub fn register<T: Any>(func: PulsifierFn) -> TractResult<()> {
+        let inv = Self::inventory();
+        let mut inv = inv.lock().map_err(|e| anyhow!("Fail to lock inventory {e}"))?;
+        inv.insert(
+            std::any::TypeId::of::<T>(),
+            OpPulsifier {
+                type_id: std::any::TypeId::of::<T>(),
+                name: std::any::type_name::<T>(),
+                func,
+            },
+        );
+        Ok(())
+    }
+
+    pub fn pulsify(
+        source: &TypedModel,
+        node: &TypedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        symbol: &Symbol,
+        pulse: &TDim,
+    ) -> TractResult<Option<TVec<OutletId>>> {
+        let inv = Self::inventory();
+        let inv = inv.lock().map_err(|e| anyhow!("Fail to lock inventory {e}"))?;
+        if let Some(pulsifier) = inv.get(&(*node.op).type_id()) {
+            if let Some(pulsified) = (pulsifier.func)(source, node, target, mapping, symbol, pulse)?
+            {
+                return Ok(Some(pulsified));
+            }
+        }
+        Ok(None)
     }
 }
 
 pub trait PulsedOp:
-    Op
-    + fmt::Debug
-    + tract_core::dyn_clone::DynClone
-    + Send
-    + Sync
-    + 'static
-    + Downcast
-    + EvalOp
+    Op + fmt::Debug + tract_core::dyn_clone::DynClone + Send + Sync + 'static + Downcast + EvalOp
 {
     /// Reinterpret the PulsedOp as an Op.
     fn as_op(&self) -> &dyn Op;
