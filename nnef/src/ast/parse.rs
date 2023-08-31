@@ -388,7 +388,7 @@ pub(super) fn numeric_literal(i: &str) -> IResult<&str, String> {
         recognize(tuple((tag("."), digit0)))(i)
     }
     spaced(map(
-        recognize(tuple((opt(tag("-")), digit1, opt(frac_part), opt(exp_part)))),
+        recognize(tuple((opt(tag("-")), alt((digit1, tag("inf"))), opt(frac_part), opt(exp_part)))),
         |s: &str| s.to_owned(),
     ))(i)
 }
