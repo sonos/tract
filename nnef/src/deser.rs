@@ -510,7 +510,7 @@ impl RValue {
                 ))
             }
             RValue::Literal(Literal::Numeric(f)) => {
-                if f.contains('.') || f.contains('e') {
+                if f.contains('.') || f.contains('e') || f == "inf" || f == "-inf" {
                     f.parse::<f32>()
                         .map(Value::Scalar)
                         .with_context(|| format!("Can not parse {f} as f32"))
