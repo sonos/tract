@@ -1,8 +1,8 @@
+use tflitec::interpreter::Interpreter;
+use tflitec::model::Model;
+use tflitec::tensor::DataType;
+
 use super::*;
-use tflite::ops::builtin::BuiltinOpResolver;
-use tflite::FlatBufferModel;
-use tflite::Interpreter;
-use tflite::InterpreterBuilder;
 
 struct TfliteRuntime(Tflite);
 
@@ -23,47 +23,48 @@ impl Runtime for TfliteRuntime {
     }
 }
 
+#[derive(Clone)]
 struct TfliteRunnable(Vec<u8>, TVec<DatumType>);
 
 impl Runnable for TfliteRunnable {
     fn spawn(&self) -> TractResult<Box<dyn State>> {
-        let fb = FlatBufferModel::build_from_buffer(self.0.clone())?;
-        let resolver = BuiltinOpResolver::default();
-        let builder = InterpreterBuilder::new(fb, resolver)?;
-        let mut interpreter = builder.build()?;
-        interpreter.allocate_tensors()?;
-        Ok(Box::new(TfliteState(interpreter, self.1.clone())))
+        Ok(Box::new(TfliteState(self.clone())))
     }
 }
 
-struct TfliteState(Interpreter<'static, BuiltinOpResolver>, TVec<DatumType>);
+struct TfliteState(TfliteRunnable);
 
 impl State for TfliteState {
     fn run(&mut self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        ensure!(inputs.len() == self.0.inputs().len());
+        let model = Model::from_bytes(&self.0 .0)?;
+        let interpreter = Interpreter::new(&model, None)?;
+        interpreter.allocate_tensors()?;
+        ensure!(inputs.len() == interpreter.input_tensor_count());
         for (ix, input) in inputs.iter().enumerate() {
-            let input_ix = self.0.inputs()[ix];
-            let input_tensor = self.0.tensor_info(input_ix).unwrap();
-            assert_eq!(input_tensor.dims, input.shape());
-            self.0.tensor_buffer_mut(input_ix).unwrap().copy_from_slice(unsafe { input.as_bytes() })
+            let input_tensor = interpreter.input(ix)?;
+            dbg!(&input_tensor);
+            assert_eq!(input_tensor.shape().dimensions(), input.shape());
+            dbg!(&input);
+            input_tensor.set_data(unsafe { input.as_bytes() })?;
         }
-        self.0.invoke()?;
+        interpreter.invoke()?;
         let mut outputs = tvec![];
-        for ix in 0..self.0.outputs().len() {
-            let output_ix = self.0.outputs()[ix];
-            let output_tensor = self.0.tensor_info(output_ix).unwrap();
-            let dt = match output_tensor.element_kind as u32 {
-                1 => f32::datum_type(),
-                9 => self.1[ix].clone(), // impossible to retrieve QP from this TFL binding
+        for ix in 0..interpreter.output_tensor_count() {
+            let output_tensor = interpreter.output(ix)?;
+            let dt = match output_tensor.data_type() {
+                DataType::Float32 => f32::datum_type(),
+                DataType::Int64 => i64::datum_type(),
+                DataType::Int8 => {
+                    if let Some(qp) = output_tensor.quantization_parameters() {
+                        i8::datum_type().quantize(QParams::ZpScale { zero_point: qp.zero_point, scale: qp.scale })
+                    } else {
+                        i8::datum_type()
+                    }
+                }
                 _ => bail!("unknown type"),
             };
-            dbg!(self.0.tensor_buffer(output_ix));
             let tensor = unsafe {
-                Tensor::from_raw_dt(
-                    dt,
-                    &output_tensor.dims,
-                    self.0.tensor_buffer(output_ix).unwrap(),
-                )?
+                Tensor::from_raw_dt(dt, &output_tensor.shape().dimensions(), output_tensor.data())?
             };
             outputs.push(tensor.into_tvalue());
         }
