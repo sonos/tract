@@ -6,19 +6,19 @@ use crate::tflite::{
     DepthwiseConv2DOptions, DepthwiseConv2DOptionsArgs, PadOptions, PadOptionsArgs, Padding,
 };
 use tract_core::internal::*;
+use tract_core::ops as core;
 use tract_core::ops::array::{Pad, PadMode};
+use tract_core::ops::cnn::KernelFormat;
 use tract_core::ops::cnn::{ConvUnary, PaddingSpec};
 use tract_core::ops::nn::DataFormat;
 use tract_core::prelude::tract_itertools::Itertools;
-use tract_core::ops as core;
-use tract_core::ops::cnn::KernelFormat;
 
 pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tract(BuiltinOperator::AVERAGE_POOL_2D, average_pool_2d);
     reg.reg_to_tract(BuiltinOperator::CONV_2D, de_conv2d);
-    reg.reg_to_tflite::<ConvUnary>(ser_conv);
+    reg.reg_to_tflite(ser_conv);
     reg.reg_to_tract(BuiltinOperator::DEPTHWISE_CONV_2D, de_dw_conv2d);
-    reg.reg_to_tflite::<Pad>(ser_pad);
+    reg.reg_to_tflite(ser_pad);
 }
 
 fn average_pool_2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
@@ -47,8 +47,8 @@ fn ser_conv(
     builder: &mut SubgraphBuilder,
     model: &TypedModel,
     node: &TypedNode,
+    conv: &ConvUnary,
 ) -> TractResult<()> {
-    let conv = node.op_as::<ConvUnary>().unwrap();
     ensure!(conv.pool_spec.data_format == DataFormat::NHWC);
     ensure!(model.node_input_facts(node.id)?[0].rank() == 4);
     ensure!(conv.kernel_fmt == KernelFormat::OHWI);
@@ -230,8 +230,8 @@ fn ser_pad(
     builder: &mut SubgraphBuilder,
     _model: &TypedModel,
     node: &TypedNode,
+    pad: &Pad,
 ) -> TractResult<()> {
-    let pad = node.op_as::<Pad>().unwrap();
     let node_name = &node.name;
     let mut inputs = tvec!(builder.outlets_to_tensors[&node.inputs[0]]);
     let outputs = (0..node.outputs.len())

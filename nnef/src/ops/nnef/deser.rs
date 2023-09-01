@@ -292,7 +292,7 @@ pub fn read_conv_parameters(
             before.push(p[0]);
             after.push(p[1]);
         }
-        PaddingSpec::ExplicitOnnxPool(before, after, false)
+        PaddingSpec::Explicit(before, after)
     };
     let pool_spec = PoolSpec::new(
         DataFormat::NCHW,

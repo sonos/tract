@@ -1,8 +1,11 @@
 use tract_core::internal::*;
+use tract_core::ops::binary::wire_with_rank_broadcast;
+use tract_core::ops::logic::Iff;
 use tract_core::prelude::tract_itertools::Itertools;
 
 use crate::registry::{DeserContext, DeserOp, Registry};
-use crate::tflite::ActivationFunctionType;
+use crate::ser::SubgraphBuilder;
+use crate::tflite::{ActivationFunctionType, BuiltinOperator};
 
 // https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/core/c/builtin_op_data.h
 
@@ -28,6 +31,8 @@ pub fn register_all(reg: &mut Registry) {
     cnn::register_all(reg);
     math::register_all(reg);
     nn::register_all(reg);
+    reg.reg_to_tflite(ser_iff);
+    reg.reg_to_tract(BuiltinOperator::SELECT, de_iff);
 }
 
 fn wire_fused_activation(
@@ -81,4 +86,14 @@ fn linearops_quantization_suport(
     } else {
         Ok(None)
     }
+}
+
+fn ser_iff(builder: &mut SubgraphBuilder, model: &TypedModel, node: &TypedNode, _op: &Iff) -> TractResult<()> {
+    let inputs = builder.map_outlets(model, &node.inputs)?;
+    let outputs = builder.map_outlets(model, [OutletId::new(node.id, 0)])?;
+    builder.write_op(&inputs, &outputs, 123, 1, BuiltinOperator::SELECT_V2)
+}
+
+fn de_iff(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    wire_with_rank_broadcast(op.prefix, op.ctx.target, Iff, &op.inputs)
 }
