@@ -105,7 +105,9 @@ impl ShapeFact {
         self.dims.remove(axis);
         if let Some(concrete) = &mut self.concrete {
             concrete.remove(axis);
-        }
+        } else {
+            self.compute_concrete();
+        };
         Ok(())
     }
 
@@ -123,6 +125,14 @@ impl ShapeFact {
     pub fn scalar() -> ShapeFact {
         let void: &[usize] = &[];
         Self::from(void)
+    }
+
+    pub fn consistent(&self) -> TractResult<()> {
+        ensure!(
+            self.concrete
+                == self.dims.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<_>>>().ok()
+        );
+        Ok(())
     }
 }
 
@@ -241,6 +251,7 @@ impl TypedFact {
     }
 
     pub fn consistent(&self) -> TractResult<()> {
+        self.shape.consistent()?;
         if let Some(k) = &self.konst {
             if !self.matches(k.as_ref(), None)? {
                 bail!("fact says {}, constant is {:?}", self.format_dt_shape_nocheck(), k);
