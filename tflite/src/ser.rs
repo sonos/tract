@@ -1,7 +1,9 @@
+use std::borrow::Borrow;
+
 use tract_core::internal::*;
 use tract_core::ops::konst::Const;
-use tract_core::prelude::tract_itertools::Itertools;
 use tract_core::ops::source::TypedSource;
+use tract_core::prelude::tract_itertools::Itertools;
 
 use crate::registry::Registry;
 use crate::tflite::{
@@ -101,6 +103,22 @@ impl<'f, 'b, 'mb> SubgraphBuilder<'f, 'b, 'mb> {
         self.model.builder
     }
 
+    pub fn map_outlet(&mut self, model: &TypedModel, outlet: OutletId) -> TractResult<i32> {
+        if let Some(t) = self.outlets_to_tensors.get(&outlet) {
+            Ok(*t)
+        } else {
+            let fact = model.outlet_fact(outlet)?;
+            self.write_fact(format!("{}.{}", model.node(outlet.node).name, outlet.slot), fact)
+        }
+    }
+
+    pub fn map_outlets(
+        &mut self,
+        model: &TypedModel,
+        outlets: impl IntoIterator<Item = impl Borrow<OutletId>>,
+    ) -> TractResult<TVec<i32>> {
+        outlets.into_iter().map(|o| self.map_outlet(model, *o.borrow())).collect()
+    }
     pub fn write_fact(
         &mut self,
         name: impl AsRef<str>,
@@ -228,11 +246,47 @@ impl<'f, 'b, 'mb> SubgraphBuilder<'f, 'b, 'mb> {
             } else if let Some(to_tflite) =
                 self.model.registry.to_tflite.get(&(*(node.op)).type_id())
             {
-                to_tflite(self, model, node)?;
+                to_tflite(self, model, node).with_context(|| format!("Translating {node}"))?;
             } else {
                 bail!("Unsupported op: {}", node)
             };
         }
+        Ok(())
+    }
+
+    pub fn write_op(
+        &mut self,
+        inputs: &[i32],
+        outputs: &[i32],
+        deprecated_builtin_code: i8,
+        version: i32,
+        code: BuiltinOperator,
+    ) -> TractResult<()> {
+        let op = BuiltinOp {
+            deprecated_builtin_code,
+            version,
+            code,
+            options_type: BuiltinOptions::NONE,
+        };
+        dbg!(&op);
+        let opcode_index = self.model.operator_code_index(op);
+        let inputs = self.fb().create_vector(inputs);
+        let outputs = self.fb().create_vector(outputs);
+        let operator = Operator::create(
+            self.fb(),
+            &OperatorArgs {
+                inputs: Some(inputs),
+                outputs: Some(outputs),
+                opcode_index,
+                builtin_options: None,
+                builtin_options_type: op.options_type,
+                custom_options: None,
+                custom_options_format: CustomOptionsFormat::FLEXBUFFERS,
+                mutating_variable_inputs: None,
+                intermediates: None,
+            },
+        );
+        self.operators.push(operator);
         Ok(())
     }
 

@@ -595,8 +595,6 @@ impl Parameters {
             "before-optimize"
         });
 
-        let nnef_cycle = matches.is_present("nnef-cycle");
-
         info!("Will stop at {}", stop_at);
 
         if stop_at == "load" {
@@ -725,15 +723,25 @@ impl Parameters {
             });
             stage!("set-declutter", typed_model -> typed_model, TypedModel::into_decluttered);
         }
-        if nnef_cycle {
+        if matches.is_present("nnef-cycle") {
             stage!("nnef-cycle", typed_model -> typed_model, |m:TypedModel| {
                 let nnef = super::nnef(matches);
                 let mut vec = vec!();
-                nnef.write(&m, &mut vec).context("Serializing")?;
+                nnef.write(&m, &mut vec).context("Serializing to nnef")?;
                 info!("Dumped, now reloading...");
-                nnef.model_for_read(&mut &*vec).context("Deserializing")
+                nnef.model_for_read(&mut &*vec).context("Deserializing from nnef intermediary")
             });
             stage!("nnef-declutter", typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
+        }
+        if matches.is_present("tflite-cycle") {
+            stage!("tflite-cycle", typed_model -> typed_model, |m:TypedModel| {
+                let tflite = tract_tflite::tflite();
+                let mut vec = vec!();
+                tflite.write(&m, &mut vec).context("Serializing to tflite")?;
+                info!("Dumped, now reloading...");
+                tflite.model_for_read(&mut &*vec).context("Deserializing from tflite intermediary")
+            });
+            stage!("tflite-declutter", typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
         }
         if let Some(sub) = matches.value_of("extract-decluttered-sub") {
             stage!("extract", typed_model -> typed_model, |m:TypedModel| {

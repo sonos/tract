@@ -35,10 +35,10 @@ impl<Ctx> Rewriter<Ctx> {
                 if let Some(rules) = self.rules.get(&(*model.node(n).op).type_id()) {
                     for (name, rule) in rules {
                         if let Some(patch) = (rule)(ctx, model, model.node(n))
-                            .with_context(|| format!("Evaluating rule {name} on {}", model.node(n)))?
+                            .with_context(|| format!("Evaluating rewriting rule \"{name}\" on node {}", model.node(n)))?
                         {
                             patch.apply(model).with_context(|| {
-                                format!("Applying patch for rule {name} on {}", model.node(n))
+                                format!("Applying patch for rewriting rule \"{name}\" on node {}", model.node(n))
                             })?;
                             done_anything = true;
                         }

@@ -61,6 +61,8 @@ pub const STAGES: &[&str] = &[
     "set-declutter",
     "nnef-cycle",
     "nnef-cycle-declutter",
+    "tlite-cycle",
+    "tfile-cycle-declutter",
     "before-optimize",
     "optimize",
 ];
@@ -124,6 +126,7 @@ fn main() -> tract_core::anyhow::Result<()> {
         .arg(arg!(--"allow-float-casts" "Allow casting between f16, f32 and f64 around model").hide(true))
 
         .arg(arg!(--"nnef-cycle" "Perform NNEF dump and reload before optimizing"))
+        .arg(arg!(--"tflite-cycle" "Perform TFLITE dump and reload before optimizing"))
 
         .arg(arg!(--"nnef-tract-core" "Allow usage of tract-core extension in NNEF dump and load"))
         .arg(arg!(--"nnef-tract-onnx" "Allow usage of tract-onnx extension in NNEF dump and load"))

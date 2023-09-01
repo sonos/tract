@@ -14,7 +14,7 @@ use crate::tflite::{
 use super::wire_fused_activation;
 
 pub fn register_all(reg: &mut Registry) {
-    reg.reg_to_tflite::<AxisOp>(ser_axisop);
+    reg.reg_to_tflite(ser_axisop);
     reg.reg_to_tract(BuiltinOperator::CONCATENATION, de_concat);
     reg.reg_to_tract(BuiltinOperator::EXPAND_DIMS, de_expand_dims);
     reg.reg_to_tract(BuiltinOperator::PAD, de_pad);
@@ -57,9 +57,8 @@ fn de_pad(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let pads: ArrayView2<i32> = pads.to_array_view::<i32>()?.into_dimensionality()?;
     let pads: Vec<(usize, usize)> =
         pads.rows().into_iter().map(|row| (row[0] as usize, row[1] as usize)).collect();
-    let mode = tract_core::ops::array::PadMode::Constant(
-        Tensor::zero_scalar_dt(input.datum_type)?.into(),
-    );
+    let mode =
+        tract_core::ops::array::PadMode::Constant(Tensor::zero_scalar_dt(input.datum_type)?.into());
     op.ctx.target.wire_node(prefix, tract_core::ops::array::Pad { pads, mode }, &op.inputs[0..1])
 }
 
@@ -144,8 +143,8 @@ fn ser_axisop(
     builder: &mut SubgraphBuilder,
     model: &TypedModel,
     node: &TypedNode,
+    op: &AxisOp,
 ) -> TractResult<()> {
-    let op = node.op_as::<AxisOp>().unwrap();
     let mut inputs = tvec!(builder.outlets_to_tensors[&node.inputs[0]]);
     let output = builder.outlets_to_tensors[&node.id.into()];
     match op {

@@ -38,7 +38,7 @@ fn write_model<'fb>(
     model: &TypedModel,
 ) -> TractResult<FlatBufferBuilder<'fb>> {
     let mut model = model.clone();
-    crate::rewriter::rewrite_for_tflite(&mut model)?;
+    crate::rewriter::rewrite_for_tflite(&mut model).context("Pre-dump rewrite")?;
     let mut builder = flatbuffers::FlatBufferBuilder::new();
     let mut op_codes = vec![];
     let sentinel = Buffer::create(&mut builder, &BufferArgs { data: None });
@@ -97,7 +97,7 @@ impl Framework<TfliteProtoModel, TypedModel> for Tflite {
                 }
             }
             self.0
-                .op(&root, main, &op, &mut target, &mut mapping)
+                .deser_op(&root, main, &op, &mut target, &mut mapping)
                 .with_context(|| format!("Parsing op {op:#?}"))?;
         }
         let outputs: TVec<_> = main
