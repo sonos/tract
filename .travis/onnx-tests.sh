@@ -17,8 +17,7 @@ then
     brew install coreutils
 elif [ -n "$GITHUB_ACTIONS" ]
 then
-    # this seems to help with tflite / bindgen obscure bug
-    sudo apt-get install -y libclang-dev
+    pip install numpy
 fi
 
 # if [ `uname` = "Linux" -a -z "$TRAVIS" ]
