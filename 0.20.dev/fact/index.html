@@ -16,7 +16,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.5.2, mkdocs-material-9.2.6">
+      <meta name="generator" content="mkdocs-1.5.2, mkdocs-material-9.2.7">
     
     
       
@@ -24,7 +24,7 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.0e669242.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.046329b4.min.css">
       
       
 
@@ -368,29 +368,16 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#tract.fact-classes" class="md-nav__link">
-    Classes
-  </a>
-  
-    <nav class="md-nav" aria-label="Classes">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#tract.fact.InferenceFact" class="md-nav__link">
-    InferenceFact
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#tract.fact.Fact" class="md-nav__link">
     Fact
   </a>
   
 </li>
-        
-      </ul>
-    </nav>
+      
+        <li class="md-nav__item">
+  <a href="#tract.fact.InferenceFact" class="md-nav__link">
+    InferenceFact
+  </a>
   
 </li>
       
@@ -474,29 +461,16 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#tract.fact-classes" class="md-nav__link">
-    Classes
-  </a>
-  
-    <nav class="md-nav" aria-label="Classes">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#tract.fact.InferenceFact" class="md-nav__link">
-    InferenceFact
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#tract.fact.Fact" class="md-nav__link">
     Fact
   </a>
   
 </li>
-        
-      </ul>
-    </nav>
+      
+        <li class="md-nav__item">
+  <a href="#tract.fact.InferenceFact" class="md-nav__link">
+    InferenceFact
+  </a>
   
 </li>
       
@@ -537,114 +511,18 @@
 
 
 
-<h2 id="tract.fact-classes">Classes</h2>
+
 
 <div class="doc doc-object doc-class">
 
 
 
 
-<h3 id="tract.fact.InferenceFact" class="doc doc-heading">
-          <code>InferenceFact</code>
-
-
-</h3>
-
-
-  <div class="doc doc-contents ">
-
-  
-      <p>Tract inference fact, to be used with InferenceModel.</p>
-<p>It can represent partial type and shape information of a Tensor during model analysis.</p>
-
-            <details class="quote">
-              <summary>Source code in <code>tract/fact.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 4</span>
-<span class="normal"> 5</span>
-<span class="normal"> 6</span>
-<span class="normal"> 7</span>
-<span class="normal"> 8</span>
-<span class="normal"> 9</span>
-<span class="normal">10</span>
-<span class="normal">11</span>
-<span class="normal">12</span>
-<span class="normal">13</span>
-<span class="normal">14</span>
-<span class="normal">15</span>
-<span class="normal">16</span>
-<span class="normal">17</span>
-<span class="normal">18</span>
-<span class="normal">19</span>
-<span class="normal">20</span>
-<span class="normal">21</span>
-<span class="normal">22</span>
-<span class="normal">23</span>
-<span class="normal">24</span>
-<span class="normal">25</span>
-<span class="normal">26</span>
-<span class="normal">27</span>
-<span class="normal">28</span>
-<span class="normal">29</span>
-<span class="normal">30</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span> <span class="nc">InferenceFact</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Tract inference fact, to be used with InferenceModel.</span>
-
-<span class="sd">    It can represent partial type and shape information of a Tensor during model analysis.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ptr</span><span class="p">):</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span> <span class="o">=</span> <span class="n">ptr</span>
-
-    <span class="k">def</span> <span class="fm">__del__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">:</span>
-            <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_inference_fact_destroy</span><span class="p">(</span><span class="n">byref</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">)))</span>
-
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">dump</span><span class="p">()</span>
-
-    <span class="k">def</span> <span class="nf">_valid</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span> <span class="o">==</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">&quot;invalid inference fact (maybe already consumed ?)&quot;</span><span class="p">)</span>
-
-    <span class="k">def</span> <span class="nf">dump</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
-        <span class="n">cstring</span> <span class="o">=</span> <span class="n">c_char_p</span><span class="p">();</span>
-        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_inference_fact_dump</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">cstring</span><span class="p">)))</span>
-        <span class="n">result</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">cstring</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
-        <span class="n">lib</span><span class="o">.</span><span class="n">tract_free_cstring</span><span class="p">(</span><span class="n">cstring</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">result</span>
-</code></pre></div></td></tr></table></div>
-            </details>
-
-  
-
-  <div class="doc doc-children">
-
-
-
-
-
-
-
-
-
-
-
-  </div>
-
-  </div>
-
-</div>
-
-<div class="doc doc-object doc-class">
-
-
-
-
-<h3 id="tract.fact.Fact" class="doc doc-heading">
+<h2 id="tract.fact.Fact" class="doc doc-heading">
           <code>Fact</code>
 
 
-</h3>
+</h2>
 
 
   <div class="doc doc-contents ">
@@ -734,6 +612,102 @@ In some situation it can also contain the constant value of the associated tenso
 
 </div>
 
+<div class="doc doc-object doc-class">
+
+
+
+
+<h2 id="tract.fact.InferenceFact" class="doc doc-heading">
+          <code>InferenceFact</code>
+
+
+</h2>
+
+
+  <div class="doc doc-contents ">
+
+  
+      <p>Tract inference fact, to be used with InferenceModel.</p>
+<p>It can represent partial type and shape information of a Tensor during model analysis.</p>
+
+            <details class="quote">
+              <summary>Source code in <code>tract/fact.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 4</span>
+<span class="normal"> 5</span>
+<span class="normal"> 6</span>
+<span class="normal"> 7</span>
+<span class="normal"> 8</span>
+<span class="normal"> 9</span>
+<span class="normal">10</span>
+<span class="normal">11</span>
+<span class="normal">12</span>
+<span class="normal">13</span>
+<span class="normal">14</span>
+<span class="normal">15</span>
+<span class="normal">16</span>
+<span class="normal">17</span>
+<span class="normal">18</span>
+<span class="normal">19</span>
+<span class="normal">20</span>
+<span class="normal">21</span>
+<span class="normal">22</span>
+<span class="normal">23</span>
+<span class="normal">24</span>
+<span class="normal">25</span>
+<span class="normal">26</span>
+<span class="normal">27</span>
+<span class="normal">28</span>
+<span class="normal">29</span>
+<span class="normal">30</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span> <span class="nc">InferenceFact</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Tract inference fact, to be used with InferenceModel.</span>
+
+<span class="sd">    It can represent partial type and shape information of a Tensor during model analysis.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ptr</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span> <span class="o">=</span> <span class="n">ptr</span>
+
+    <span class="k">def</span> <span class="fm">__del__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">:</span>
+            <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_inference_fact_destroy</span><span class="p">(</span><span class="n">byref</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">)))</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">dump</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">_valid</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span> <span class="o">==</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">&quot;invalid inference fact (maybe already consumed ?)&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">dump</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
+        <span class="n">cstring</span> <span class="o">=</span> <span class="n">c_char_p</span><span class="p">();</span>
+        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_inference_fact_dump</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">cstring</span><span class="p">)))</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">cstring</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+        <span class="n">lib</span><span class="o">.</span><span class="n">tract_free_cstring</span><span class="p">(</span><span class="n">cstring</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">result</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+
+  
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+  </div>
+
+</div>
+
 
 
 
@@ -782,7 +756,7 @@ In some situation it can also contain the constant value of the associated tenso
     <script id="__config" type="application/json">{"base": "..", "features": [], "search": "../assets/javascripts/workers/search.dfff1995.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
     
     
-      <script src="../assets/javascripts/bundle.78eede0e.min.js"></script>
+      <script src="../assets/javascripts/bundle.dff1b7c8.min.js"></script>
       
     
   </body>
