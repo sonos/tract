@@ -43,9 +43,9 @@ members = [
     "harness/tfl-mobilenet-v2-q",
 
     "test-rt/infra",
-    "test-rt/suite-conv",
+    "test-rt/suite-unit",
     "test-rt/suite-onnx",
-    "test-rt/test-conv-core",
+    "test-rt/test-unit-core",
     "test-rt/test-onnx-core",
     "test-rt/test-onnx-nnef-cycle",
     "test-rt/test-tflite",

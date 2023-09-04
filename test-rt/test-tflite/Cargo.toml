@@ -8,7 +8,7 @@ edition = "2021"
 [build-dependencies]
 infra = { path = "../infra" }
 suite-onnx = { path = "../suite-onnx" }
-suite-conv = { path = "../suite-conv" }
+suite-unit = { path = "../suite-unit" }
 
 [dev-dependencies]
 lazy_static.workspace = true
@@ -18,4 +18,4 @@ tract-tflite = { path = "../../tflite", version = "=0.20.19-pre" }
 tract-onnx-opl = { path = "../../onnx-opl", version = "=0.20.19-pre" }
 infra = { path = "../infra" }
 suite-onnx = { path = "../suite-onnx" }
-suite-conv = { path = "../suite-conv" }
+suite-unit = { path = "../suite-unit" }

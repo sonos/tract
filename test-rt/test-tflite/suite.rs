@@ -1,20 +1,20 @@
-use suite_conv::conv_f32::{ConvProblem, ConvProblemParams};
-use suite_conv::conv_q::{QConvProblem, QConvProblemParams};
+use suite_unit::conv_f32::{ConvProblem, ConvProblemParams};
+use suite_unit::conv_q::{QConvProblem, QConvProblemParams};
 
 #[allow(clippy::needless_update)]
 pub fn suite() -> infra::TestSuite {
     let mut onnx = suite_onnx::suite().clone();
     onnx.ignore(&ignore_onnx);
-    let mut conv = suite_conv::suite().unwrap().clone();
-    conv.ignore(&ignore_conv);
+    let mut unit = suite_unit::suite().unwrap().clone();
+    unit.ignore(&ignore_conv);
     let cv =
         ConvProblemParams { no_group: true, geo_rank: Some(1..3), ..ConvProblemParams::default() };
-    conv.get_sub_mut("f32").add_arbitrary::<ConvProblem>("proptest", cv.clone());
-    conv.get_sub_mut("q").add_arbitrary::<QConvProblem>(
+    unit.get_sub_mut("conv_f32").add_arbitrary::<ConvProblem>("proptest", cv.clone());
+    unit.get_sub_mut("conv_q").add_arbitrary::<QConvProblem>(
         "proptest",
         QConvProblemParams { conv: cv, no_kernel_zero_point: true, .. QConvProblemParams::default() },
     );
-    infra::TestSuite::default().with("onnx", onnx).with("conv", conv)
+    infra::TestSuite::default().with("onnx", onnx).with("conv", unit)
 }
 
 fn ignore_onnx(t: &[String]) -> bool {
