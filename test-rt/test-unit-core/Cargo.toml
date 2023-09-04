@@ -1,5 +1,5 @@
 [package]
-name = "test-conv-core"
+name = "test-unit-core"
 version = "0.1.0"
 edition = "2021"
 
