@@ -9,12 +9,16 @@ use tract_ndarray::*;
 pub mod conv_f32;
 pub mod conv_q;
 pub mod deconv;
+pub mod downsample;
+pub mod slice;
 
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite: TestSuite = Default::default();
     suite.add("conv_f32", conv_f32::suite()?);
     suite.add("conv_q", conv_q::suite()?);
     suite.add("deconv", deconv::suite()?);
+    suite.add("downsample", downsample::suite()?);
+    suite.add("slice", slice::suite()?);
     Ok(suite)
 }
 

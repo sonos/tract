@@ -168,8 +168,8 @@ impl TestSuite {
                 writeln!(
                     rs,
                     "    {test_suite}.get({full_id:?}).run_with_approx({full_id:?}, {runtime}, {approx})",
-                )
-                .unwrap();
+                    )
+                    .unwrap();
                 writeln!(rs, "}}").unwrap();
             }
         }
@@ -196,14 +196,19 @@ impl<A: Arbitrary + Test + Clone> Test for ProptestWrapper<A>
 where
     A::Parameters: Clone + Send + Sync,
 {
-    fn run_with_approx(&self, id: &str, runtime: &dyn Runtime, approx: Approximation) -> TestResult {
+    fn run_with_approx(
+        &self,
+        id: &str,
+        runtime: &dyn Runtime,
+        approx: Approximation,
+    ) -> TestResult {
         let mut runner = TestRunner::new(Config {
             failure_persistence: Some(Box::new(FileFailurePersistence::Off)),
             ..Config::default()
         });
         runner.run(&any_with::<A>(self.0.clone()), |v| {
-            v.run_with_approx(id, runtime, approx).unwrap();
-            Ok(())
+            v.run_with_approx(id, runtime, approx)
+                .map_err(|e| proptest::test_runner::TestCaseError::Fail(format!("{e:?}").into()))
         })?;
         Ok(())
     }
