@@ -12,8 +12,8 @@ pub mod deconv;
 
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite: TestSuite = Default::default();
-    suite.add("f32", conv_f32::suite()?);
-    suite.add("q", conv_q::suite()?);
+    suite.add("conv_f32", conv_f32::suite()?);
+    suite.add("conv_q", conv_q::suite()?);
     suite.add("deconv", deconv::suite()?);
     Ok(suite)
 }

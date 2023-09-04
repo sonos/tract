@@ -1,5 +1,5 @@
 [package]
-name = "suite-conv"
+name = "test-conv-core"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,5 +7,9 @@ edition = "2021"
 
 [dependencies]
 tract-core = { path = "../../core" , version = "=0.20.19-pre" }
-proptest.workspace = true
-infra = { path = "../infra" }
+
+[dev-dependencies]
+suite-unit = { path = "../suite-unit" }
+
+[build-dependencies]
+suite-unit = { path = "../suite-unit" }
