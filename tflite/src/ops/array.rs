@@ -1,6 +1,7 @@
 use tract_core::internal::*;
-use tract_core::ops::array::TypedConcat;
+use tract_core::ops::array::{Slice, TypedConcat};
 use tract_core::ops::binary::wire_cast;
+use tract_core::ops::Downsample;
 use tract_core::prelude::tract_itertools::Itertools;
 use tract_ndarray::ArrayView2;
 
@@ -8,19 +9,23 @@ use crate::registry::{DeserOp, Registry};
 use crate::ser::{BuiltinOp, SubgraphBuilder};
 use crate::tflite::{
     BuiltinOperator, BuiltinOptions, ExpandDimsOptions, ExpandDimsOptionsArgs, ReshapeOptions,
-    ReshapeOptionsArgs, SqueezeOptions, SqueezeOptionsArgs, TransposeOptions, TransposeOptionsArgs,
+    ReshapeOptionsArgs, SliceOptions, SliceOptionsArgs, SqueezeOptions, SqueezeOptionsArgs,
+    StridedSliceOptions, StridedSliceOptionsArgs, TransposeOptions, TransposeOptionsArgs,
 };
 
 use super::wire_fused_activation;
 
 pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tflite(ser_axisop);
+    reg.reg_to_tflite(ser_downsample);
+    reg.reg_to_tflite(ser_slice);
     reg.reg_to_tract(BuiltinOperator::CONCATENATION, de_concat);
     reg.reg_to_tract(BuiltinOperator::EXPAND_DIMS, de_expand_dims);
     reg.reg_to_tract(BuiltinOperator::PAD, de_pad);
     reg.reg_to_tract(BuiltinOperator::PADV2, de_padv2);
     reg.reg_to_tract(BuiltinOperator::RESHAPE, de_reshape);
     reg.reg_to_tract(BuiltinOperator::SHAPE, de_shape);
+    reg.reg_to_tract(BuiltinOperator::SLICE, de_slice);
     reg.reg_to_tract(BuiltinOperator::SQUEEZE, de_squeeze);
     reg.reg_to_tract(BuiltinOperator::STRIDED_SLICE, de_strided_slice);
     reg.reg_to_tract(BuiltinOperator::TRANSPOSE, de_transpose);
@@ -95,6 +100,25 @@ fn de_shape(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let input = args_1!(op.facts()?);
     let wire = op.ctx.target.add_const(op.prefix, tensor1(&input.shape))?;
     Ok(tvec!(wire))
+}
+
+fn de_slice(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let (input, begins, sizes) = args_3!(op.facts()?);
+    let mut wire = tvec!(op.inputs[0]);
+    if let (Some(begins), Some(sizes)) = (begins.konst, sizes.konst) {
+        for ix in 0..input.rank() {
+            let start = begins.as_slice::<i32>()?[ix] as usize;
+            let size = sizes.as_slice::<i32>()?[ix] as usize;
+            if start > 0 || size.to_dim() != input.shape[ix] {
+                wire = op.ctx.target.wire_node(
+                    format!("{}.{ix}", op.prefix),
+                    Slice { axis: ix, start: start.to_dim(), end: (start + size).to_dim() },
+                    &wire,
+                )?
+            }
+        }
+    }
+    Ok(wire)
 }
 
 fn de_squeeze(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
@@ -210,4 +234,85 @@ fn ser_axisop(
             )
         }
     }
+}
+
+fn ser_downsample(
+    builder: &mut SubgraphBuilder,
+    model: &TypedModel,
+    node: &TypedNode,
+    op: &Downsample,
+) -> TractResult<()> {
+    dbg!(node.to_string());
+    dbg!(op);
+    let input_fact = model.outlet_fact(node.inputs[0])?;
+    dbg!(input_fact);
+    let output_fact = model.outlet_fact(node.id.into())?;
+    dbg!(output_fact);
+    let begins = tvec!(0i32; input_fact.rank());
+    let mut ends = input_fact
+        .shape
+        .as_concrete()
+        .context("Can not serialize symbolic dims to tflite")?
+        .iter()
+        .map(|d| *d as i32)
+        .collect::<TVec<_>>();
+    let mut strides = tvec!(1; input_fact.rank());
+    strides[op.axis] = op.stride as i32;
+    ends[op.axis] =
+        begins[op.axis] + op.stride as i32 * output_fact.shape[op.axis].as_i64().unwrap() as i32 + op.stride.signum() as i32;
+    let mut inputs = tvec!(builder.outlets_to_tensors[&node.inputs[0]]);
+    inputs.push(builder.write_fact(format!("{}.begins", node.name), tensor1(&begins))?);
+    inputs.push(builder.write_fact(format!("{}.ends", node.name), tensor1(&ends))?);
+    inputs.push(builder.write_fact(format!("{}.strides", node.name), tensor1(&strides))?);
+    let output = builder.outlets_to_tensors[&OutletId::new(node.id, 0)];
+    let options = StridedSliceOptions::create(
+        builder.fb(),
+        &StridedSliceOptionsArgs {
+            begin_mask: 0,
+            end_mask: 0,
+            ellipsis_mask: 0,
+            new_axis_mask: 0,
+            shrink_axis_mask: 0,
+        },
+    );
+    builder.write_op_with_options(
+        &inputs,
+        &[output],
+        BuiltinOp::new(45, 1, BuiltinOperator::STRIDED_SLICE, BuiltinOptions::StridedSliceOptions),
+        options.as_union_value(),
+    )
+}
+
+fn ser_slice(
+    builder: &mut SubgraphBuilder,
+    model: &TypedModel,
+    node: &TypedNode,
+    op: &Slice,
+) -> TractResult<()> {
+    let input_fact = model.outlet_fact(node.inputs[0])?;
+    let mut begins = tvec!(0i32; input_fact.rank());
+    let mut sizes = input_fact
+        .shape
+        .as_concrete()
+        .context("Can not serialize symbolic dims to tflite")?
+        .iter()
+        .map(|d| *d as i32)
+        .collect::<TVec<_>>();
+    let begin = op.start.as_i64().context("Can not serialize symbolic dims to tflite")? as i32;
+    let end = op.end.as_i64().context("Can not serialize symbolic dims to tflite")? as i32;
+    begins[op.axis] = begin;
+    sizes[op.axis] = end - begin;
+    let begins = tensor1(&begins);
+    let sizes = tensor1(&sizes);
+    let mut inputs = tvec!(builder.outlets_to_tensors[&node.inputs[0]]);
+    inputs.push(builder.write_fact(format!("{}.begins", node.name), begins)?);
+    inputs.push(builder.write_fact(format!("{}.sizes", node.name), sizes)?);
+    let output = builder.outlets_to_tensors[&OutletId::new(node.id, 0)];
+    let options = SliceOptions::create(builder.fb(), &SliceOptionsArgs {});
+    builder.write_op_with_options(
+        &inputs,
+        &[output],
+        BuiltinOp::new(65, 1, BuiltinOperator::SLICE, BuiltinOptions::SliceOptions),
+        options.as_union_value(),
+    )
 }

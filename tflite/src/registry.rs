@@ -6,7 +6,7 @@ use tract_core::ops::element_wise::ElementWiseOp;
 use crate::ser::SubgraphBuilder;
 use crate::tflite::{BuiltinOperator, Model, Operator, SubGraph};
 
-pub type ToTract = fn(op_ctx: &mut DeserOp) -> TractResult<TVec<OutletId>>;
+pub type ToTract = Box<dyn Fn(&mut DeserOp) -> TractResult<TVec<OutletId>> + Send + Sync + 'static>;
 pub type ToTflite<T> = fn(&mut SubgraphBuilder, &TypedModel, &TypedNode, &T) -> TractResult<()>;
 pub type ToTfliteRaw = Box<
     dyn Fn(&mut SubgraphBuilder, &TypedModel, &TypedNode) -> TractResult<()>
@@ -55,8 +55,11 @@ impl Registry {
         );
     }
 
-    pub fn reg_to_tract(&mut self, op: BuiltinOperator, to: ToTract) {
-        self.to_tract.insert(op.0, to);
+    pub fn reg_to_tract<T>(&mut self, op: BuiltinOperator, to: T)
+    where
+        T: Fn(&mut DeserOp) -> TractResult<TVec<OutletId>> + Send + Sync + 'static,
+    {
+        self.to_tract.insert(op.0, Box::new(to));
     }
 
     pub fn reg_element_wise(&mut self, tflite: BuiltinOperator, tract: Box<dyn ElementWiseMiniOp>) {

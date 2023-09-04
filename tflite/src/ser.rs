@@ -248,7 +248,7 @@ impl<'f, 'b, 'mb> SubgraphBuilder<'f, 'b, 'mb> {
             {
                 to_tflite(self, model, node).with_context(|| format!("Translating {node}"))?;
             } else {
-                bail!("Unsupported op: {}", node)
+                bail!("No serializer for op: {}", node)
             };
         }
         Ok(())

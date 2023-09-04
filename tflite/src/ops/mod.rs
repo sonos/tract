@@ -33,6 +33,7 @@ pub fn register_all(reg: &mut Registry) {
     nn::register_all(reg);
     reg.reg_to_tflite(ser_iff);
     reg.reg_to_tract(BuiltinOperator::SELECT, de_iff);
+    reg.reg_to_tract(BuiltinOperator::SELECT_V2, de_iff);
 }
 
 fn wire_fused_activation(
