@@ -17,13 +17,33 @@ impl Arbitrary for DownsampleProblem {
         vec(1..10usize, 1..5usize)
             .prop_flat_map(|input_shape| {
                 let rank = input_shape.len();
-                (Just(input_shape), 0..rank, 1..4isize, any::<bool>())
+                let stride_and_modulo =
+                    (1..4usize).prop_flat_map(|stride| (Just(stride as isize), 0..stride));
+                (Just(input_shape), 0..rank, stride_and_modulo, any::<bool>())
             })
-            .prop_map(|(input_shape, axis, stride, dir)| DownsampleProblem {
-                input_shape,
-                op: Downsample { axis, stride: if dir { -stride } else { stride }, modulo: 0 },
+            .prop_map(|(input_shape, axis, (stride, modulo), dir)| {
+                let modulo = modulo.min(input_shape[axis] - 1);
+                let stride = if dir { -stride } else { stride };
+                DownsampleProblem { input_shape, op: Downsample { axis, stride, modulo } }
             })
             .boxed()
+    }
+}
+
+impl DownsampleProblem {
+    fn reference(&self, input: &Tensor) -> TractResult<Tensor> {
+        let len = input.shape()[self.op.axis];
+        let mut slices = vec![];
+        let mut current = if self.op.stride > 0 {
+            self.op.modulo as isize
+        } else {
+            (len - 1 - self.op.modulo) as isize
+        };
+        while current >= 0 && current < input.shape()[self.op.axis] as isize {
+            slices.push(input.slice(self.op.axis, current as usize, current as usize + 1)?);
+            current += self.op.stride;
+        }
+        Tensor::stack_tensors(self.op.axis, &slices)
     }
 }
 
@@ -37,14 +57,7 @@ impl Test for DownsampleProblem {
         let mut input = Tensor::zero::<f32>(&self.input_shape)?;
         input.as_slice_mut::<f32>()?.iter_mut().enumerate().for_each(|(ix, x)| *x = ix as f32);
 
-        let mut slices = vec![];
-        let mut current =
-            if self.op.stride > 0 { 0isize } else { input.shape()[self.op.axis] as isize - 1 };
-        while current >= 0 && current < input.shape()[self.op.axis] as isize {
-            slices.push(input.slice(self.op.axis, current as usize, current as usize + 1)?);
-            current += self.op.stride;
-        }
-        let reference = Tensor::stack_tensors(self.op.axis, &slices)?;
+        let reference = self.reference(&input).context("Computing reference")?;
 
         let mut model = TypedModel::default();
         model.properties.insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));
@@ -69,5 +82,15 @@ pub fn suite() -> TractResult<TestSuite> {
         },
         false,
     );
+
+    suite.add_test(
+        "neg_1",
+        DownsampleProblem {
+            input_shape: vec![2],
+            op: Downsample { axis: 0, stride: -2, modulo: 0 },
+        },
+        false,
+    );
+
     Ok(suite)
 }
