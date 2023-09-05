@@ -22,6 +22,7 @@ tract-api = { path = ".." , version = "=0.20.19-pre" }
 tract-nnef = { path = "../../nnef/" , version = "=0.20.19-pre" }
 tract-onnx-opl = { path = "../../onnx-opl/" , version = "=0.20.19-pre" }
 tract-onnx = { path = "../../onnx/" , version = "=0.20.19-pre" }
+tract-extra = { path = "../../extra/" , version = "=0.20.19-pre" }
 tract-pulse = { path = "../../pulse/" , version = "=0.20.19-pre" }
 tract-libcli = { path = "../../libcli" , version = "=0.20.19-pre" }
 serde_json.workspace = true

@@ -613,8 +613,8 @@ fn nnef(matches: &clap::ArgMatches) -> tract_nnef::internal::Nnef {
     if matches.is_present("nnef-tract-extra") {
         #[cfg(feature = "extra")]
         {
-            use tract_extra::WithExtra;
-            fw = fw.with_extra();
+            use tract_extra::WithTractExtra;
+            fw = fw.with_tract_extra();
         }
         #[cfg(not(feature = "extra"))]
         {

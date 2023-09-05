@@ -19,6 +19,9 @@ pub trait NnefInterface: Sized {
     /// Allow the framework to use tract_core extensions instead of a stricter NNEF definition.
     fn enable_tract_core(&mut self) -> Result<()>;
 
+    /// Allow the framework to use tract_extra extensions.
+    fn enable_tract_extra(&mut self) -> Result<()>;
+
     /// Allow the framework to use tract_onnx extensions to support operators in ONNX that are
     /// absent from NNEF.
     fn enable_onnx(&mut self) -> Result<()>;
@@ -35,6 +38,12 @@ pub trait NnefInterface: Sized {
     /// Convenience function, similar with enable_tract_core but allowing method chaining.
     fn with_tract_core(mut self) -> Result<Self> {
         self.enable_tract_core()?;
+        Ok(self)
+    }
+
+    /// Convenience function, similar with enable_tract_core but allowing method chaining.
+    fn with_tract_extra(mut self) -> Result<Self> {
+        self.enable_tract_extra()?;
         Ok(self)
     }
 

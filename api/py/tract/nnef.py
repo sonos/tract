@@ -56,6 +56,14 @@ class Nnef:
         check(lib.tract_nnef_enable_tract_core(self.ptr))
         return self
 
+    def with_tract_extra(self) -> "Nnef":
+        """
+        Enable tract-extra extensions to NNEF.
+        """
+        self._valid()
+        check(lib.tract_nnef_enable_tract_extra(self.ptr))
+        return self
+
     def with_onnx(self) -> "Nnef":
         """
         Enable tract-opl extensions to NNEF to covers (more or) ONNX operator set

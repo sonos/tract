@@ -83,7 +83,7 @@ const char *tract_version(void);
 void tract_free_cstring(char *ptr);
 
 /**
- * Creates an instance of an NNEF framework and parser that can be used to load models.
+ * Creates an instance of an NNEF framework and parser that can be used to load and dump NNEF models.
  *
  * The returned object should be destroyed with `tract_nnef_destroy` once the model
  * has been loaded.
@@ -91,6 +91,8 @@ void tract_free_cstring(char *ptr);
 enum TRACT_RESULT tract_nnef_create(struct TractNnef **nnef);
 
 enum TRACT_RESULT tract_nnef_enable_tract_core(struct TractNnef *nnef);
+
+enum TRACT_RESULT tract_nnef_enable_tract_extra(struct TractNnef *nnef);
 
 enum TRACT_RESULT tract_nnef_enable_onnx(struct TractNnef *nnef);
 

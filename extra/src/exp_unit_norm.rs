@@ -70,7 +70,7 @@ impl EvalOp for ExpUnitNorm {
         _session: &mut SessionState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(ExpUnitNormState::default())))
+        Ok(Some(Box::<ExpUnitNormState>::default()))
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
@@ -93,7 +93,7 @@ impl ExpUnitNormState {
                     *s = x.max(op.epsilon) * (1f32 - op.alpha) + *s * op.alpha;
                 });
             }
-            time_slice.zip_mut_with(&state, |x, s| *x = *x / s.sqrt());
+            time_slice.zip_mut_with(&state, |x, s| *x /= s.sqrt());
             self.index += 1;
         }
         Ok(tvec!(input.into_tvalue()))

@@ -48,7 +48,7 @@ def test_state():
     assert numpy.argmax(confidences) == 652
 
 def test_nnef_register():
-    tract.nnef().with_tract_core().with_onnx().with_pulse()
+    tract.nnef().with_tract_core().with_onnx().with_pulse().with_tract_extra()
 
 def test_nnef():
     model = (
