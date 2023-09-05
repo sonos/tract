@@ -1,9 +1,7 @@
 use proptest::proptest;
 use proptest::test_runner::TestCaseResult;
-use tract_hir::internal::*;
-use tract_hir::ops::array;
-use tract_hir::prelude::tract_itertools::Itertools;
-use tract_hir::tract_core::ops::Downsample;
+use tract_core::ops::Downsample;
+use tract_core::tract_data::itertools::Itertools;
 
 use super::*;
 
@@ -48,13 +46,12 @@ impl Arbitrary for DelayPlusDownsampleProblem {
 
 impl DelayPlusDownsampleProblem {
     pub fn run(&self) -> TestCaseResult {
-        let mut model = InferenceModel::default();
+        let mut model = TypedModel::default();
         let s = model.symbol_table.sym("S");
-        let a = model
-            .add_source("a", f32::fact(dims!(1, s, 1)).into())
-            .unwrap();
+        let a = model.add_source("a", f32::fact(dims!(1, s, 1)).into()).unwrap();
         let crop =
-            model.wire_node("delay", expand(array::Crop::new(1, self.delay, 0)), &[a]).unwrap();
+//            model.wire_node("delay", expand(array::Crop::new(1, self.delay, 0)), &[a]).unwrap();
+            model.wire_node("delay", Slice::new(1, self.delay, s), &[a]).unwrap();
         let ds = model
             .wire_node(
                 "ds",
@@ -63,8 +60,6 @@ impl DelayPlusDownsampleProblem {
             )
             .unwrap();
         model.set_output_outlets(&ds).unwrap();
-        let model = model.into_typed().unwrap();
-        dbg!(&model);
         proptest_regular_against_pulse(model, self.pulse as _, t(self.input), 1)
     }
 }
@@ -86,7 +81,9 @@ fn test_delay() {
 
 #[test]
 fn test_from_convs() {
-    DelayPlusDownsampleProblem { input: 5, pulse: 2, delay: 1, stride: 2, modulo: 0 }.run().unwrap();
+    DelayPlusDownsampleProblem { input: 5, pulse: 2, delay: 1, stride: 2, modulo: 0 }
+        .run()
+        .unwrap();
 }
 
 #[test]
@@ -103,4 +100,3 @@ fn test_big_delay() {
 fn test_huge_delay() {
     DelayPlusDownsampleProblem { input: 4, pulse: 2, delay: 1, stride: 2, modulo: 0 }.run().unwrap()
 }
-

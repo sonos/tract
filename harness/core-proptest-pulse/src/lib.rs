@@ -7,9 +7,17 @@ use proptest::prelude::*;
 use proptest::proptest;
 use proptest::test_runner::TestCaseResult;
 use proptest::*;
-use tract_hir::internal::*;
-use tract_hir::tract_num_traits::Zero;
-use tract_ndarray::*;
+use tract_core::ndarray::arr3;
+use tract_core::num_traits::Zero;
+use tract_core::ops::array::Pad;
+use tract_core::ops::array::PadMode;
+use tract_core::ops::array::Slice;
+use tract_core::ops::cnn::ConvUnary;
+use tract_core::ops::cnn::KernelFormat;
+use tract_core::ops::cnn::PaddingSpec;
+use tract_core::ops::cnn::PoolSpec;
+use tract_core::ops::nn::DataFormat;
+use tract_ndarray::prelude::*;
 use tract_pulse::internal::*;
 
 mod conv_plus_conv;
@@ -27,7 +35,7 @@ fn setup_test_logger() {
 fn proptest_regular_against_pulse(
     model: TypedModel,
     pulse: usize,
-    input_array: ArrayD<f32>,
+    input_array: tract_ndarray::ArrayD<f32>,
     axis: usize,
 ) -> TestCaseResult {
     setup_test_logger();
@@ -80,7 +88,7 @@ fn proptest_regular_against_pulse(
         if to_write_in_chunk < pulse {
             let mut filler_shape = input_array.shape().to_vec();
             filler_shape[axis] = pulse - to_write_in_chunk;
-            chunk = concatenate(
+            chunk = tract_ndarray::concatenate(
                 Axis(axis),
                 &[chunk.view(), ArrayD::from_elem(filler_shape, std::f32::NAN).view()],
             )
@@ -94,7 +102,7 @@ fn proptest_regular_against_pulse(
                 .map(|n| n.max(0) as usize);
         }
         let mut outputs = state.run(tvec!(chunk.into_tensor().into_tvalue())).unwrap();
-        got = concatenate(
+        got = tract_ndarray::concatenate(
             Axis(output_stream_axis),
             &[got.view(), outputs.remove(0).to_array_view::<f32>().unwrap()],
         )
@@ -128,7 +136,6 @@ fn proptest_regular_against_pulse(
 proptest! {
     #[test]
     fn proptest_crop(pulse in 1i32..3, input_len in 0i32..10, begin in 0i32..3, end in 0i32..3) {
-        use tract_hir::ops::array::Slice;
         let full_len = input_len + begin + end;
         let mut model = TypedModel::default();
         let s = model.symbol_table.sym("S");
@@ -142,11 +149,10 @@ proptest! {
 
     #[test]
     fn proptest_pad(pulse in 1i32..3, input_len in 0i32..10, begin in 0i32..3, end in 0i32..3) {
-        use tract_hir::ops::array::{ Pad, PadMode };
         let mut model = TypedModel::default();
         let s = model.symbol_table.sym("S");
         let a = model.add_source("a", f32::fact(&[s]).into()).unwrap();
-        let pad = model.wire_node("pad",Pad::new(vec![(begin as _, end as _)],
+        let pad = model.wire_node("pad", Pad::new(vec![(begin as _, end as _)],
         PadMode::Constant(Arc::new(Tensor::from(-1f32)))), &[a]).unwrap();
         model.set_output_outlets(&pad).unwrap();
 
@@ -162,8 +168,6 @@ fn vec(len: impl Strategy<Value = usize>) -> impl Strategy<Value = Vec<f32>> {
 
 #[test]
 fn test_simple_conv() {
-    use tract_hir::ops::cnn::*;
-
     let mut model = TypedModel::default();
     let kernel = rctensor3(&[[[0.5f32, 1.0, -0.1]]]);
     let s = model.symbol_table.sym("S");
@@ -174,14 +178,14 @@ fn test_simple_conv() {
             "conv",
             ConvUnary {
                 pool_spec: PoolSpec {
-                    data_format: tract_hir::ops::nn::DataFormat::NCHW,
+                    data_format: DataFormat::NCHW,
                     kernel_shape: tvec!(3),
                     padding: PaddingSpec::Valid,
                     dilations: None,
                     strides: None,
                     output_channel_override: Some(1),
                 },
-                kernel_fmt: tract_core::ops::cnn::KernelFormat::OIHW,
+                kernel_fmt: KernelFormat::OIHW,
                 kernel,
                 group: 1,
                 bias: None,
@@ -198,7 +202,6 @@ fn test_simple_conv() {
 
 #[test]
 fn test_pad_before_1() {
-    use tract_hir::ops::array::{Pad, PadMode};
     let mut model = TypedModel::default();
     let s = model.symbol_table.sym("S");
     let a = model.add_source("a", f32::fact(&[s]).into()).unwrap();
@@ -217,7 +220,6 @@ fn test_pad_before_1() {
 
 #[test]
 fn test_pad_before_2() {
-    use tract_hir::ops::array::{Pad, PadMode};
     let mut model = TypedModel::default();
     let s = model.symbol_table.sym("S");
     let a = model.add_source("a", f32::fact(&[s]).into()).unwrap();

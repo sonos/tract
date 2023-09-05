@@ -1,9 +1,6 @@
 use proptest::proptest;
 use proptest::test_runner::TestCaseResult;
 use proptest::*;
-use tract_hir::internal::*;
-use tract_hir::ops::array::{Pad, PadMode};
-use tract_ndarray::*;
 
 use super::*;
 
@@ -63,7 +60,6 @@ impl Arbitrary for PadPlusConvProblem {
 
 impl PadPlusConvProblem {
     pub fn run(&self) -> TestCaseResult {
-        use tract_hir::ops::cnn::*;
         let mut model = TypedModel::default();
         let s = model.symbol_table.sym("S");
         let mut wire = model.add_source("a", f32::fact(dims!(1, 1, s)).into()).unwrap();
@@ -84,7 +80,7 @@ impl PadPlusConvProblem {
                 "conv",
                 ConvUnary {
                     pool_spec: PoolSpec {
-                        data_format: tract_hir::ops::nn::DataFormat::NCHW,
+                        data_format: DataFormat::NCHW,
                         kernel_shape: self.ker.shape()[2..].into(),
                         padding: PaddingSpec::Valid,
                         dilations: Some(tvec!(self.dilation)),

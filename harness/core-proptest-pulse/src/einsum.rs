@@ -1,4 +1,3 @@
-use tract_hir::internal::*;
 use tract_core::ops::einsum::*;
 
 use super::*;

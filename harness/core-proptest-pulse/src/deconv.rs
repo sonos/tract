@@ -1,7 +1,5 @@
 use proptest::proptest;
 use proptest::test_runner::TestCaseResult;
-use tract_hir::internal::*;
-use tract_hir::ops::cnn::{self, PoolSpec};
 
 use super::*;
 
@@ -11,14 +9,14 @@ struct DeconvOp {
     dilation: usize,
     adj: usize,
     ker: Array3<f32>,
-    padding: cnn::PaddingSpec,
+    padding: PaddingSpec,
 }
 
 impl DeconvOp {
     fn chain(&self, name: &str, model: &mut TypedModel, after: OutletId) -> OutletId {
         let deconv = tract_core::ops::cnn::DeconvUnary {
             pool_spec: PoolSpec {
-                data_format: tract_hir::ops::nn::DataFormat::NCHW,
+                data_format: DataFormat::NCHW,
                 kernel_shape: tvec!(self.ker.shape()[2]),
                 padding: self.padding.clone(),
                 strides: Some(self.stride).filter(|d| *d > 1).map(|d| tvec!(d)),
@@ -46,15 +44,15 @@ impl Arbitrary for DeconvOp {
             0usize..4,
             vec(1usize..4),
             prop_oneof![
-                Just(cnn::PaddingSpec::Valid),
-                Just(cnn::PaddingSpec::SameUpper),
-                Just(cnn::PaddingSpec::SameLower)
+                Just(PaddingSpec::Valid),
+                Just(PaddingSpec::SameUpper),
+                Just(PaddingSpec::SameLower)
             ],
         )
             .prop_filter(
                 "Same padding geometry constraint",
                 |(stride, dilation, _adj, ker, padding)| {
-                    padding == &cnn::PaddingSpec::Valid || ((ker.len() - 1) * dilation > stride - 1)
+                    padding == &PaddingSpec::Valid || ((ker.len() - 1) * dilation > stride - 1)
                 },
             )
             .prop_map(|(stride, dilation, adj, ker, padding)| DeconvOp {
@@ -122,7 +120,7 @@ fn example_0() {
             dilation: 1,
             adj: 0,
             ker: arr3(&[[[1.0f32]]]),
-            padding: cnn::PaddingSpec::Valid,
+            padding: PaddingSpec::Valid,
         },
     };
     pb.run().unwrap()
@@ -138,7 +136,7 @@ fn example_1() {
             dilation: 1,
             adj: 0,
             ker: arr3(&[[[0.0f32, 0.0]]]),
-            padding: cnn::PaddingSpec::Valid,
+            padding: PaddingSpec::Valid,
         },
     };
     pb.run().unwrap()
@@ -154,7 +152,7 @@ fn example_2() {
             dilation: 1,
             adj: 0,
             ker: arr3(&[[[0.0f32, 1.0]]]),
-            padding: cnn::PaddingSpec::Valid,
+            padding: PaddingSpec::Valid,
         },
     };
     pb.run().unwrap()
@@ -170,7 +168,7 @@ fn example_3() {
             dilation: 1,
             adj: 0,
             ker: arr3(&[[[0.0f32, 1.0]]]),
-            padding: cnn::PaddingSpec::Valid,
+            padding: PaddingSpec::Valid,
         },
     };
     pb.run().unwrap()
@@ -186,7 +184,7 @@ fn dilation_0() {
             dilation: 2,
             adj: 0,
             ker: arr3(&[[[0.0f32, 0.0]]]),
-            padding: cnn::PaddingSpec::Valid,
+            padding: PaddingSpec::Valid,
         },
     };
     pb.run().unwrap()
@@ -202,7 +200,7 @@ fn dilation_1() {
             dilation: 2,
             adj: 0,
             ker: arr3(&[[[0.0f32, 1.0]]]),
-            padding: cnn::PaddingSpec::SameUpper,
+            padding: PaddingSpec::SameUpper,
         },
     };
     pb.run().unwrap()
@@ -218,7 +216,7 @@ fn stride_0() {
             dilation: 1,
             adj: 0,
             ker: arr3(&[[[1.0f32]]]),
-            padding: cnn::PaddingSpec::Valid,
+            padding: PaddingSpec::Valid,
         },
     };
     pb.run().unwrap()
@@ -234,7 +232,7 @@ fn same_upper_0() {
             dilation: 1,
             adj: 0,
             ker: arr3(&[[[0.0f32, 1.0]]]),
-            padding: cnn::PaddingSpec::SameUpper,
+            padding: PaddingSpec::SameUpper,
         },
     };
     pb.run().unwrap()
@@ -250,7 +248,7 @@ fn adj_0() {
             dilation: 1,
             adj: 1,
             ker: arr3(&[[[0.0f32]]]),
-            padding: cnn::PaddingSpec::Valid,
+            padding: PaddingSpec::Valid,
         },
     };
     pb.run().unwrap()
@@ -265,9 +263,9 @@ fn deconv2d() {
     kernel.as_slice_mut::<f32>().unwrap().iter_mut().enumerate().for_each(|(ix, x)| *x = ix as f32);
     let deconv = tract_core::ops::cnn::DeconvUnary {
         pool_spec: PoolSpec {
-            data_format: tract_hir::ops::nn::DataFormat::NCHW,
+            data_format: DataFormat::NCHW,
             kernel_shape: tvec!(1, 3),
-            padding: cnn::PaddingSpec::Explicit(tvec!(0, 1), tvec!(0, 1)),
+            padding: PaddingSpec::Explicit(tvec!(0, 1), tvec!(0, 1)),
             strides: Some(tvec!(1, 2)),
             dilations: Some(tvec![1, 1]),
             output_channel_override: Some(2),
