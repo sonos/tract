@@ -1,10 +1,11 @@
 use crate::internal::*;
+use std::ops::Deref;
 use std::rc::Rc;
 
 use tract_ndarray::Array;
 use TValue::*;
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Eq)]
 pub enum TValue {
     Const(Arc<Tensor>),
     Var(Rc<Tensor>),
@@ -13,6 +14,12 @@ pub enum TValue {
 impl std::fmt::Debug for TValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         (**self).fmt(f)
+    }
+}
+
+impl PartialEq for TValue {
+    fn eq(&self, other: &Self) -> bool {
+        self.deref() == other.deref()
     }
 }
 
