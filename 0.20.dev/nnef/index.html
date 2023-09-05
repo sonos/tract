@@ -354,13 +354,6 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#tract.nnef.Nnef.with_tract_extra" class="md-nav__link">
-    with_tract_extra()
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#tract.nnef.Nnef.write_model_to_dir" class="md-nav__link">
     write_model_to_dir()
   </a>
@@ -561,13 +554,6 @@
           <li class="md-nav__item">
   <a href="#tract.nnef.Nnef.with_tract_core" class="md-nav__link">
     with_tract_core()
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#tract.nnef.Nnef.with_tract_extra" class="md-nav__link">
-    with_tract_extra()
   </a>
   
 </li>
@@ -775,15 +761,7 @@ serializeing most of the models tract can handle. These extension can be activat
 <span class="normal">117</span>
 <span class="normal">118</span>
 <span class="normal">119</span>
-<span class="normal">120</span>
-<span class="normal">121</span>
-<span class="normal">122</span>
-<span class="normal">123</span>
-<span class="normal">124</span>
-<span class="normal">125</span>
-<span class="normal">126</span>
-<span class="normal">127</span>
-<span class="normal">128</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span> <span class="nc">Nnef</span><span class="p">:</span>
+<span class="normal">120</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span> <span class="nc">Nnef</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Represent a NNEF context in tract.</span>
 
@@ -833,14 +811,6 @@ serializeing most of the models tract can handle. These extension can be activat
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_nnef_enable_tract_core</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">))</span>
-        <span class="k">return</span> <span class="bp">self</span>
-
-    <span class="k">def</span> <span class="nf">with_tract_extra</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Nnef&quot;</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Enable tract-extra extensions to NNEF.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
-        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_nnef_enable_tract_extra</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">))</span>
         <span class="k">return</span> <span class="bp">self</span>
 
     <span class="k">def</span> <span class="nf">with_onnx</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Nnef&quot;</span><span class="p">:</span>
@@ -1004,13 +974,13 @@ serializeing most of the models tract can handle. These extension can be activat
 
           <details class="quote">
             <summary>Source code in <code>tract/nnef.py</code></summary>
-            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">83</span>
-<span class="normal">84</span>
-<span class="normal">85</span>
-<span class="normal">86</span>
-<span class="normal">87</span>
-<span class="normal">88</span>
-<span class="normal">89</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">with_extended_identifier_syntax</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Nnef&quot;</span><span class="p">:</span>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">75</span>
+<span class="normal">76</span>
+<span class="normal">77</span>
+<span class="normal">78</span>
+<span class="normal">79</span>
+<span class="normal">80</span>
+<span class="normal">81</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">with_extended_identifier_syntax</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Nnef&quot;</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Enable tract-opl extensions to NNEF for extended identifiers (will support PyTorch 2 path-like ids)</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -1041,13 +1011,13 @@ serializeing most of the models tract can handle. These extension can be activat
 
           <details class="quote">
             <summary>Source code in <code>tract/nnef.py</code></summary>
-            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">67</span>
-<span class="normal">68</span>
-<span class="normal">69</span>
-<span class="normal">70</span>
-<span class="normal">71</span>
-<span class="normal">72</span>
-<span class="normal">73</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">with_onnx</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Nnef&quot;</span><span class="p">:</span>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">59</span>
+<span class="normal">60</span>
+<span class="normal">61</span>
+<span class="normal">62</span>
+<span class="normal">63</span>
+<span class="normal">64</span>
+<span class="normal">65</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">with_onnx</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Nnef&quot;</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Enable tract-opl extensions to NNEF to covers (more or) ONNX operator set</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -1078,13 +1048,13 @@ serializeing most of the models tract can handle. These extension can be activat
 
           <details class="quote">
             <summary>Source code in <code>tract/nnef.py</code></summary>
-            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">75</span>
-<span class="normal">76</span>
-<span class="normal">77</span>
-<span class="normal">78</span>
-<span class="normal">79</span>
-<span class="normal">80</span>
-<span class="normal">81</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">with_pulse</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Nnef&quot;</span><span class="p">:</span>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">67</span>
+<span class="normal">68</span>
+<span class="normal">69</span>
+<span class="normal">70</span>
+<span class="normal">71</span>
+<span class="normal">72</span>
+<span class="normal">73</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">with_pulse</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Nnef&quot;</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Enable tract-opl extensions to NNEF for tract pulse operators (for audio streaming)</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -1140,43 +1110,6 @@ serializeing most of the models tract can handle. These extension can be activat
 
 
 
-<h3 id="tract.nnef.Nnef.with_tract_extra" class="doc doc-heading">
-          <code class="highlight language-python"><span class="n">with_tract_extra</span><span class="p">()</span></code>
-
-</h3>
-
-
-  <div class="doc doc-contents ">
-  
-      <p>Enable tract-extra extensions to NNEF.</p>
-
-          <details class="quote">
-            <summary>Source code in <code>tract/nnef.py</code></summary>
-            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">59</span>
-<span class="normal">60</span>
-<span class="normal">61</span>
-<span class="normal">62</span>
-<span class="normal">63</span>
-<span class="normal">64</span>
-<span class="normal">65</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">with_tract_extra</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Nnef&quot;</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Enable tract-extra extensions to NNEF.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
-    <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_nnef_enable_tract_extra</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">))</span>
-    <span class="k">return</span> <span class="bp">self</span>
-</code></pre></div></td></tr></table></div>
-          </details>
-  </div>
-
-</div>
-
-
-<div class="doc doc-object doc-function">
-
-
-
-
 <h3 id="tract.nnef.Nnef.write_model_to_dir" class="doc doc-heading">
           <code class="highlight language-python"><span class="n">write_model_to_dir</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">path</span><span class="p">)</span></code>
 
@@ -1190,18 +1123,18 @@ serializeing most of the models tract can handle. These extension can be activat
 
           <details class="quote">
             <summary>Source code in <code>tract/nnef.py</code></summary>
-            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 91</span>
-<span class="normal"> 92</span>
-<span class="normal"> 93</span>
-<span class="normal"> 94</span>
-<span class="normal"> 95</span>
-<span class="normal"> 96</span>
-<span class="normal"> 97</span>
-<span class="normal"> 98</span>
-<span class="normal"> 99</span>
-<span class="normal">100</span>
-<span class="normal">101</span>
-<span class="normal">102</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">write_model_to_dir</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="n">Model</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">83</span>
+<span class="normal">84</span>
+<span class="normal">85</span>
+<span class="normal">86</span>
+<span class="normal">87</span>
+<span class="normal">88</span>
+<span class="normal">89</span>
+<span class="normal">90</span>
+<span class="normal">91</span>
+<span class="normal">92</span>
+<span class="normal">93</span>
+<span class="normal">94</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">write_model_to_dir</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="n">Model</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Save `model` as a NNEF directory model in `path`.</span>
 
@@ -1238,18 +1171,18 @@ serializeing most of the models tract can handle. These extension can be activat
 
           <details class="quote">
             <summary>Source code in <code>tract/nnef.py</code></summary>
-            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">104</span>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 96</span>
+<span class="normal"> 97</span>
+<span class="normal"> 98</span>
+<span class="normal"> 99</span>
+<span class="normal">100</span>
+<span class="normal">101</span>
+<span class="normal">102</span>
+<span class="normal">103</span>
+<span class="normal">104</span>
 <span class="normal">105</span>
 <span class="normal">106</span>
-<span class="normal">107</span>
-<span class="normal">108</span>
-<span class="normal">109</span>
-<span class="normal">110</span>
-<span class="normal">111</span>
-<span class="normal">112</span>
-<span class="normal">113</span>
-<span class="normal">114</span>
-<span class="normal">115</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">write_model_to_tar</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="n">Model</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="normal">107</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">write_model_to_tar</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="n">Model</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Save `model` as a NNEF tar archive in `path`.</span>
 
@@ -1286,18 +1219,18 @@ serializeing most of the models tract can handle. These extension can be activat
 
           <details class="quote">
             <summary>Source code in <code>tract/nnef.py</code></summary>
-            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">117</span>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">109</span>
+<span class="normal">110</span>
+<span class="normal">111</span>
+<span class="normal">112</span>
+<span class="normal">113</span>
+<span class="normal">114</span>
+<span class="normal">115</span>
+<span class="normal">116</span>
+<span class="normal">117</span>
 <span class="normal">118</span>
 <span class="normal">119</span>
-<span class="normal">120</span>
-<span class="normal">121</span>
-<span class="normal">122</span>
-<span class="normal">123</span>
-<span class="normal">124</span>
-<span class="normal">125</span>
-<span class="normal">126</span>
-<span class="normal">127</span>
-<span class="normal">128</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">write_model_to_tar_gz</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="n">Model</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="normal">120</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">write_model_to_tar_gz</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="n">Model</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Save `model` as a NNEF tar compressed archive in `path`.</span>
 
