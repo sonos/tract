@@ -130,12 +130,11 @@ proptest! {
     fn proptest_crop(pulse in 1i32..3, input_len in 0i32..10, begin in 0i32..3, end in 0i32..3) {
         use tract_hir::ops::array::Slice;
         let full_len = input_len + begin + end;
-        let mut model = InferenceModel::default();
+        let mut model = TypedModel::default();
         let s = model.symbol_table.sym("S");
         let a = model.add_source("a", f32::fact(&[s]).into()).unwrap();
         let slice = model.wire_node("slice", Slice::new(0, begin as usize, (input_len + begin) as usize), &[a]).unwrap();
         model.set_output_outlets(&slice).unwrap();
-        let model = model.into_typed().unwrap();
 
         let input = Array1::range(1.0f32, full_len as f32 + 1.0, 1.0);
         proptest_regular_against_pulse(model, pulse as _, input.into_dyn(), 0)?;
@@ -144,13 +143,12 @@ proptest! {
     #[test]
     fn proptest_pad(pulse in 1i32..3, input_len in 0i32..10, begin in 0i32..3, end in 0i32..3) {
         use tract_hir::ops::array::{ Pad, PadMode };
-        let mut model = InferenceModel::default();
+        let mut model = TypedModel::default();
         let s = model.symbol_table.sym("S");
         let a = model.add_source("a", f32::fact(&[s]).into()).unwrap();
         let pad = model.wire_node("pad",Pad::new(vec![(begin as _, end as _)],
         PadMode::Constant(Arc::new(Tensor::from(-1f32)))), &[a]).unwrap();
         model.set_output_outlets(&pad).unwrap();
-        let model = model.into_typed().unwrap();
 
         let input = Array1::range(1.0f32, input_len as f32 + 1.0, 1.0);
         proptest_regular_against_pulse(model, pulse as _, input.into_dyn(), 0)?;
@@ -166,14 +164,33 @@ fn vec(len: impl Strategy<Value = usize>) -> impl Strategy<Value = Vec<f32>> {
 fn test_simple_conv() {
     use tract_hir::ops::cnn::*;
 
-    let mut model = InferenceModel::default();
-    let ker = model.add_const("kernel", tensor3(&[[[0.5f32, 1.0, -0.1]]])).unwrap();
+    let mut model = TypedModel::default();
+    let kernel = rctensor3(&[[[0.5f32, 1.0, -0.1]]]);
     let s = model.symbol_table.sym("S");
     let a = model.add_source("a", f32::fact(dims!(1, 1, s)).into()).unwrap();
 
-    model.wire_node("conv", expand(Conv::default()), &[a, ker]).unwrap();
+    model
+        .wire_node(
+            "conv",
+            ConvUnary {
+                pool_spec: PoolSpec {
+                    data_format: tract_hir::ops::nn::DataFormat::NCHW,
+                    kernel_shape: tvec!(3),
+                    padding: PaddingSpec::Valid,
+                    dilations: None,
+                    strides: None,
+                    output_channel_override: Some(1),
+                },
+                kernel_fmt: tract_core::ops::cnn::KernelFormat::OIHW,
+                kernel,
+                group: 1,
+                bias: None,
+                q_params: None,
+            },
+            &[a],
+        )
+        .unwrap();
     model.auto_outputs().unwrap();
-    let model = model.into_typed().unwrap();
 
     let input = arr3(&[[[1.0f32, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0]]]);
     proptest_regular_against_pulse(model, 4, input.into_dyn(), 2).unwrap();
@@ -182,7 +199,7 @@ fn test_simple_conv() {
 #[test]
 fn test_pad_before_1() {
     use tract_hir::ops::array::{Pad, PadMode};
-    let mut model = InferenceModel::default();
+    let mut model = TypedModel::default();
     let s = model.symbol_table.sym("S");
     let a = model.add_source("a", f32::fact(&[s]).into()).unwrap();
     model
@@ -193,7 +210,6 @@ fn test_pad_before_1() {
         )
         .unwrap();
     model.auto_outputs().unwrap();
-    let model = model.into_typed().unwrap();
 
     let input = arr1(&[1.0]);
     proptest_regular_against_pulse(model, 1, input.into_dyn(), 0).unwrap();
@@ -202,7 +218,7 @@ fn test_pad_before_1() {
 #[test]
 fn test_pad_before_2() {
     use tract_hir::ops::array::{Pad, PadMode};
-    let mut model = InferenceModel::default();
+    let mut model = TypedModel::default();
     let s = model.symbol_table.sym("S");
     let a = model.add_source("a", f32::fact(&[s]).into()).unwrap();
     model
@@ -213,7 +229,6 @@ fn test_pad_before_2() {
         )
         .unwrap();
     model.auto_outputs().unwrap();
-    let model = model.into_typed().unwrap();
 
     let input = arr1(&[1.0, 2.0]);
     proptest_regular_against_pulse(model, 2, input.into_dyn(), 0).unwrap();
