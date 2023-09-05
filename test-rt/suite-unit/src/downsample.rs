@@ -21,9 +21,9 @@ impl Arbitrary for DownsampleProblem {
                     (1..4usize).prop_flat_map(|stride| (Just(stride as isize), 0..stride));
                 (Just(input_shape), 0..rank, stride_and_modulo, any::<bool>())
             })
-            .prop_map(|(input_shape, axis, (stride, modulo), dir)| {
-                let modulo = modulo.min(input_shape[axis] - 1);
-                let stride = if dir { -stride } else { stride };
+            .prop_map(|(input_shape, axis, (stride, modulo), backward)| {
+                let modulo = if backward { 0 } else { modulo.min(input_shape[axis] - 1) };
+                let stride = if backward { -stride } else { stride };
                 DownsampleProblem { input_shape, op: Downsample { axis, stride, modulo } }
             })
             .boxed()
