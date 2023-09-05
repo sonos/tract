@@ -86,6 +86,7 @@ impl EvalOp for Downsample {
 impl TypedOp for Downsample {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(self.axis < inputs[0].rank());
+        ensure!(self.modulo == 0 || self.stride > 0, "non-zero modulo is only defined with forward strides");
         let mut downed = inputs[0].clone();
         let down_len = self.transform_dim(&downed.shape[self.axis]);
         downed.shape.set(self.axis, down_len);
