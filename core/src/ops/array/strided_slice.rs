@@ -204,7 +204,7 @@ impl StridedSlice {
                 if preped.stride != 1 {
                     wire = target.wire_node(
                         format!("{prefix}.stride-axis-{axis}"),
-                        crate::ops::downsample::Downsample::new(axis, preped.stride as isize),
+                        crate::ops::downsample::Downsample::new(axis, preped.stride as isize, 0),
                         [wire].as_ref(),
                     )?[0];
                 }
