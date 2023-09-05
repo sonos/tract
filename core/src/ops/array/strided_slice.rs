@@ -204,7 +204,7 @@ impl StridedSlice {
                 if preped.stride != 1 {
                     wire = target.wire_node(
                         format!("{prefix}.stride-axis-{axis}"),
-                        crate::ops::downsample::Downsample::new(axis, preped.stride as isize, 0),
+                        crate::ops::downsample::Downsample::new(axis, preped.stride as isize),
                         [wire].as_ref(),
                     )?[0];
                 }
@@ -312,4 +312,58 @@ impl TypedOp for StridedSlice {
     }
 
     as_op!();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn apply(
+        input: &[i32],
+        start: Option<isize>,
+        end: Option<isize>,
+        stride: Option<isize>,
+    ) -> TValue {
+        // [0,1,2,3,4,5][::2] => [0, 2, 4]
+        let op = StridedSlice {
+            optional_axes_input: None,
+            optional_steps_input: if stride.is_some() { Some(3) } else { None },
+            begin_mask: if start.is_some() { 0 } else { 1 },
+            end_mask: if end.is_some() { 0 } else { 1 },
+            shrink_axis_mask: 0,
+        };
+        let mut inputs = tvec!(
+            tensor1(input).into(),
+            tensor1(&[start.unwrap_or(0) as i32]).into(),
+            tensor1(&[end.unwrap_or(0) as i32]).into(),
+        );
+        if let Some(stride) = stride {
+            inputs.push(tensor1(&[stride as i32]).into());
+        }
+        op.eval(inputs).unwrap().remove(0)
+    }
+
+    #[test]
+    fn numpy_pos_stride() {
+        // [0,1,2,3][::2] => [0, 2]
+        assert_eq!(apply(&[0, 1, 2, 3], None, None, Some(2)), tensor1(&[0, 2]).into());
+    }
+
+    #[test]
+    fn numpy_neg_stride() {
+        // [0,1,2,3][::-2] => [3, 1]
+        assert_eq!(apply(&[0, 1, 2, 3], None, None, Some(-2)), tensor1(&[3, 1]).into());
+    }
+
+    #[test]
+    fn numpy_neg_stride_with_start_even() {
+        // [0,1,2,3][-1::-2] => [3, 1]
+        assert_eq!(apply(&[0, 1, 2, 3], Some(-1), None, Some(-2)), tensor1(&[3, 1]).into());
+    }
+
+    #[test]
+    fn numpy_neg_stride_with_start_odd() {
+        // [0,1,2,3][-1::-2] => [3, 1]
+        assert_eq!(apply(&[0, 1, 2, 3, 4], Some(-1), None, Some(-2)), tensor1(&[4, 2, 0]).into());
+    }
 }
