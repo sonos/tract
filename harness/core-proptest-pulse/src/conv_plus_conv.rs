@@ -15,15 +15,28 @@ struct ConvOp {
 }
 
 impl ConvOp {
-    fn chain(&self, name: &str, model: &mut InferenceModel, after: OutletId) -> OutletId {
-        let filters = model.add_const(format!("{name}-kernel"), self.ker.clone()).unwrap();
-        let conv = Conv {
-            dilations: Some(tvec!(self.dilation)),
-            strides: Some(tvec!(self.stride)),
-            padding: self.padding.clone(),
-            ..Conv::default()
-        };
-        model.wire_node(name, expand(conv), &[after, filters]).unwrap()[0]
+    fn chain(&self, name: &str, model: &mut TypedModel, after: &[OutletId]) -> TVec<OutletId> {
+        model
+            .wire_node(
+                name,
+                ConvUnary {
+                    pool_spec: PoolSpec {
+                        data_format: tract_hir::ops::nn::DataFormat::NCHW,
+                        kernel_shape: self.ker.shape()[2..].into(),
+                        padding: self.padding.clone(),
+                        dilations: Some(tvec!(self.dilation)),
+                        strides: Some(tvec!(self.stride)),
+                        output_channel_override: Some(1),
+                    },
+                    kernel_fmt: tract_core::ops::cnn::KernelFormat::OIHW,
+                    kernel: self.ker.clone().into_arc_tensor(),
+                    group: 1,
+                    bias: None,
+                    q_params: None,
+                },
+                &after,
+            )
+            .unwrap()
     }
 }
 
@@ -88,14 +101,15 @@ impl ConvPlusConvProblem {
     }
 
     pub fn model(ops: &[ConvOp]) -> TypedModel {
-        let mut model = InferenceModel::default();
+        let mut model = TypedModel::default();
         let s = model.symbol_table.sym("S");
-        let mut wire = model.add_source("a", f32::fact(dims!(1, 1, s)).into()).unwrap();
+        let wire = model.add_source("a", f32::fact(dims!(1, 1, s)).into()).unwrap();
+        let mut wire = tvec!(wire);
         for (ix, cv) in ops.iter().enumerate() {
-            wire = cv.chain(&format!("conv{ix}"), &mut model, wire);
+            wire = cv.chain(&format!("conv{ix}"), &mut model, &wire);
         }
-        model.auto_outputs().unwrap();
-        model.into_typed().unwrap()
+        model.set_output_outlets(&wire).unwrap();
+        model
     }
 
     pub fn run(&self) -> TestCaseResult {

@@ -64,7 +64,7 @@ impl Arbitrary for PadPlusConvProblem {
 impl PadPlusConvProblem {
     pub fn run(&self) -> TestCaseResult {
         use tract_hir::ops::cnn::*;
-        let mut model = InferenceModel::default();
+        let mut model = TypedModel::default();
         let s = model.symbol_table.sym("S");
         let mut wire = model.add_source("a", f32::fact(dims!(1, 1, s)).into()).unwrap();
         if self.pad_before > 0 || self.pad_after > 0 {
@@ -79,15 +79,28 @@ impl PadPlusConvProblem {
                 )
                 .unwrap()[0];
         }
-        let conv = Conv {
-            dilations: Some(tvec!(self.dilation)),
-            strides: Some(tvec!(self.stride)),
-            ..Conv::default()
-        };
-        let kernel = model.add_const("kernel", self.ker.clone()).unwrap();
-        let conv = model.wire_node("conv", expand(conv), &[wire, kernel]).unwrap();
+        let conv = model
+            .wire_node(
+                "conv",
+                ConvUnary {
+                    pool_spec: PoolSpec {
+                        data_format: tract_hir::ops::nn::DataFormat::NCHW,
+                        kernel_shape: self.ker.shape()[2..].into(),
+                        padding: PaddingSpec::Valid,
+                        dilations: Some(tvec!(self.dilation)),
+                        strides: Some(tvec!(self.stride)),
+                        output_channel_override: Some(1),
+                    },
+                    kernel_fmt: tract_core::ops::cnn::KernelFormat::OIHW,
+                    kernel: self.ker.clone().into_arc_tensor(),
+                    group: 1,
+                    bias: None,
+                    q_params: None,
+                },
+                &[wire],
+            )
+            .unwrap();
         model.set_output_outlets(&conv).unwrap();
-        let model = model.into_typed().unwrap();
         proptest_regular_against_pulse(model, self.pulse as _, self.input.clone().into_dyn(), 2)
     }
 }
