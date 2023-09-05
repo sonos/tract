@@ -140,7 +140,6 @@ impl Stft {
                     let win = win.as_slice::<T>()?;
                     v.iter_mut().zip(win.iter()).for_each(|(v, w)| *v = *v * Complex::new(*w, T::zero()));
                 }
-                dbg!(&v);
                 fft.process(&mut v);
                 oslice
                     .index_axis_mut(Axis(self.axis), f)
