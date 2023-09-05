@@ -1,8 +1,6 @@
 use proptest::proptest;
 use proptest::test_runner::TestCaseResult;
-use tract_hir::internal::*;
-use tract_hir::ops::cnn::PaddingSpec;
-use tract_hir::ops::{array, cnn, nn};
+use tract_core::ops::cnn::MaxPool;
 
 use super::*;
 
@@ -47,25 +45,21 @@ impl Arbitrary for DelayPlusPoolProblem {
 
 impl DelayPlusPoolProblem {
     pub fn run(&self) -> TestCaseResult {
-        let mut model = InferenceModel::default();
+        let mut model = TypedModel::default();
         let s = model.symbol_table.sym("S");
-        let a = model
-            .add_source("a", f32::fact(dims!(1, s, 1)).into())
-            .unwrap();
-        let crop =
-            model.wire_node("delay", expand(array::Crop::new(1, self.delay, 0)), &[a]).unwrap();
-        let pool_spec = cnn::PoolSpec::new(
-            nn::DataFormat::NHWC,
+        let a = model.add_source("a", f32::fact(dims!(1, s, 1)).into()).unwrap();
+        let crop = model.wire_node("delay", Slice::new(1, self.delay, s), &[a]).unwrap();
+        let pool_spec = PoolSpec::new(
+            DataFormat::NHWC,
             tvec!(self.pool_window),
             self.padding.clone(),
             None,
             Some(tvec!(self.stride)),
             None,
         );
-        let pool = model.wire_node("pool", cnn::MaxPool::new(pool_spec, None), &crop).unwrap();
+        let pool = model.wire_node("pool", MaxPool::new(pool_spec, None), &crop).unwrap();
         model.set_output_outlets(&pool).unwrap();
         let input = arr1(&self.input).into_shape((1, self.input.len(), 1)).unwrap().into_dyn();
-        let model = model.into_typed().unwrap();
         proptest_regular_against_pulse(model, self.pulse as _, input, 1)
     }
 }

@@ -1,8 +1,6 @@
 use proptest::proptest;
 use proptest::test_runner::TestCaseResult;
-use tract_hir::internal::*;
-use tract_hir::ops::cnn::*;
-use tract_hir::prelude::tract_itertools::Itertools;
+use tract_core::tract_data::itertools::Itertools;
 
 use super::*;
 
@@ -21,7 +19,7 @@ impl ConvOp {
                 name,
                 ConvUnary {
                     pool_spec: PoolSpec {
-                        data_format: tract_hir::ops::nn::DataFormat::NCHW,
+                        data_format: DataFormat::NCHW,
                         kernel_shape: self.ker.shape()[2..].into(),
                         padding: self.padding.clone(),
                         dilations: Some(tvec!(self.dilation)),
