@@ -33,7 +33,7 @@ fn ignore_onnx(t: &[String]) -> bool {
 
 fn ignore_conv(t: &[String]) -> bool {
     let [section, unit] = t else { return false };
-    section == "deconv"
+    ["deconv", "slice", "downsample"].contains(&&**section)
         // grouping and depthwise
         || unit.starts_with("group")
         // conv 3D
