@@ -125,6 +125,14 @@ pub unsafe extern "C" fn tract_nnef_enable_tract_core(nnef: *mut TractNnef) -> T
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn tract_nnef_enable_tract_extra(nnef: *mut TractNnef) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(nnef);
+        (*nnef).0.enable_tract_extra()
+    })
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn tract_nnef_enable_onnx(nnef: *mut TractNnef) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(nnef);

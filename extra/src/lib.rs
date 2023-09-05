@@ -2,29 +2,29 @@ use tract_nnef::internal::*;
 
 mod exp_unit_norm;
 
-pub trait WithExtra {
-    fn enable_extra(&mut self);
-    fn with_extra(self) -> Self;
+pub trait WithTractExtra {
+    fn enable_tract_extra(&mut self);
+    fn with_tract_extra(self) -> Self;
 }
 
-impl WithExtra for tract_nnef::framework::Nnef {
-    fn enable_extra(&mut self) {
+impl WithTractExtra for tract_nnef::framework::Nnef {
+    fn enable_tract_extra(&mut self) {
         self.enable_tract_core();
-        self.registries.push(tract_nnef_registry());
+        self.registries.push(tract_extra_registry());
     }
 
-    fn with_extra(mut self) -> Self {
-        self.enable_extra();
+    fn with_tract_extra(mut self) -> Self {
+        self.enable_tract_extra();
         self
     }
 }
 
-pub fn tract_nnef_registry() -> Registry {
+pub fn tract_extra_registry() -> Registry {
     let mut reg = Registry::new("tract_extra");
     exp_unit_norm::register(&mut reg);
     reg
 }
 
 pub fn register_pulsifiers() {
-    let _ = tract_nnef_registry();
+    let _ = tract_extra_registry();
 }

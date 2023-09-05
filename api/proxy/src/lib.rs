@@ -69,6 +69,10 @@ impl NnefInterface for Nnef {
         check!(sys::tract_nnef_enable_tract_core(self.0))
     }
 
+    fn enable_tract_extra(&mut self) -> Result<()> {
+        check!(sys::tract_nnef_enable_tract_extra(self.0))
+    }
+
     fn enable_onnx(&mut self) -> Result<()> {
         check!(sys::tract_nnef_enable_onnx(self.0))
     }

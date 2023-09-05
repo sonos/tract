@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use ndarray::{Data, Dimension, RawData};
+use tract_extra::WithTractExtra;
 use tract_libcli::annotations::Annotations;
 use tract_libcli::profile::BenchLimits;
 use tract_nnef::internal::parse_tdim;
@@ -43,6 +44,11 @@ impl NnefInterface for Nnef {
 
     fn enable_tract_core(&mut self) -> Result<()> {
         self.0.enable_tract_core();
+        Ok(())
+    }
+
+    fn enable_tract_extra(&mut self) -> Result<()> {
+        self.0.enable_tract_extra();
         Ok(())
     }
 
