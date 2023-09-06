@@ -96,5 +96,5 @@ fn ser_iff(builder: &mut SubgraphBuilder, model: &TypedModel, node: &TypedNode, 
 }
 
 fn de_iff(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
-    wire_with_rank_broadcast(op.prefix, op.ctx.target, Iff, &op.inputs)
+    wire_with_rank_broadcast(op.prefix, op.ctx.target, Iff, op.inputs)
 }
