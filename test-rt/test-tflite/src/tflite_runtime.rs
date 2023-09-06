@@ -42,9 +42,7 @@ impl State for TfliteState {
         ensure!(inputs.len() == interpreter.input_tensor_count());
         for (ix, input) in inputs.iter().enumerate() {
             let input_tensor = interpreter.input(ix)?;
-            dbg!(&input_tensor);
             assert_eq!(input_tensor.shape().dimensions(), input.shape());
-            dbg!(&input);
             input_tensor.set_data(unsafe { input.as_bytes() })?;
         }
         interpreter.invoke()?;
@@ -57,7 +55,10 @@ impl State for TfliteState {
                 DataType::Int64 => i64::datum_type(),
                 DataType::Int8 => {
                     if let Some(qp) = output_tensor.quantization_parameters() {
-                        i8::datum_type().quantize(QParams::ZpScale { zero_point: qp.zero_point, scale: qp.scale })
+                        i8::datum_type().quantize(QParams::ZpScale {
+                            zero_point: qp.zero_point,
+                            scale: qp.scale,
+                        })
                     } else {
                         i8::datum_type()
                     }
@@ -81,3 +82,18 @@ fn runtime() -> &'static TfliteRuntime {
 }
 
 include!(concat!(env!("OUT_DIR"), "/tests/tests.rs"));
+
+#[cfg(test)]
+mod tests{
+    use super::*;
+
+    #[test]
+    fn test_trivial() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let wire = model.add_source("x", f32::fact(&[1]))?;
+        model.set_output_outlets(&[wire])?;
+        let out = runtime().prepare(model)?.run(tvec!(tensor1(&[0f32]).into_tvalue()))?.remove(0);
+        assert_eq!(out, tensor1(&[0f32]).into_tvalue());
+        Ok(())
+    }
+}

@@ -14,13 +14,14 @@ pub fn suite() -> infra::TestSuite {
         "proptest",
         QConvProblemParams { conv: cv, no_kernel_zero_point: true, .. QConvProblemParams::default() },
     );
-    infra::TestSuite::default().with("onnx", onnx).with("conv", unit)
+    infra::TestSuite::default().with("onnx", onnx).with("unit", unit)
 }
 
 fn ignore_onnx(t: &[String]) -> bool {
     let name = t.last().unwrap();
     let included = "_conv_ Conv1d Conv2d squeeze _transpose_ test_reshape test_flatten where less greater equal slice";
     let excluded = "
+            test_slice_start_out_of_bounds
             test_Conv1d_groups
             test_Conv2d_groups
             test_Conv1d_depthwise_with_multiplier
@@ -33,7 +34,7 @@ fn ignore_onnx(t: &[String]) -> bool {
 
 fn ignore_conv(t: &[String]) -> bool {
     let [section, unit] = t else { return false };
-    ["deconv", "slice", "downsample"].contains(&&**section)
+    ["deconv"].contains(&&**section)
         // grouping and depthwise
         || unit.starts_with("group")
         // conv 3D
