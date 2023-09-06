@@ -1,16 +1,21 @@
+use crate::ops::wire_fused_activation;
 use crate::registry::{DeserOp, Registry};
 use crate::ser::{BuiltinOp, SubgraphBuilder};
 use crate::tflite::{
-    BuiltinOperator, BuiltinOptions, MaximumMinimumOptions, MaximumMinimumOptionsArgs,
+    ActivationFunctionType, AddOptions, AddOptionsArgs, BuiltinOperator, BuiltinOptions,
+    MaximumMinimumOptions, MaximumMinimumOptionsArgs, SubOptions, SubOptionsArgs,
 };
 use tract_core::internal::*;
-use tract_core::ops::binary::{wire_cast, wire_with_rank_broadcast, TypedBinOp};
+use tract_core::ops::binary::{wire_cast, wire_rank_broadcast, TypedBinOp};
 use tract_core::ops::logic;
 
 pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tflite(ser_bin);
+
     reg.reg_to_tract(BuiltinOperator::MAXIMUM, |op| deser_bin(op, tract_core::ops::math::max()));
     reg.reg_to_tract(BuiltinOperator::MINIMUM, |op| deser_bin(op, tract_core::ops::math::min()));
+    reg.reg_to_tract(BuiltinOperator::ADD, deser_add);
+    reg.reg_to_tract(BuiltinOperator::SUB, deser_sub);
 
     reg.reg_to_tract(BuiltinOperator::EQUAL, |op| deser_bin(op, tract_core::ops::logic::equals()));
     reg.reg_to_tract(BuiltinOperator::NOT_EQUAL, |op| deser_bin(op, logic::not_equals()));
@@ -22,7 +27,7 @@ pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tract(BuiltinOperator::LOGICAL_AND, |op| deser_bin(op, logic::and()));
 }
 
-fn deser_bin(op: &mut DeserOp, mini: TypedBinOp) -> TractResult<TVec<OutletId>> {
+fn wire_cast_and_rank_broadcast(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let wire = wire_cast(
         &format!("{}.cast", op.prefix),
         op.ctx.target,
@@ -30,7 +35,28 @@ fn deser_bin(op: &mut DeserOp, mini: TypedBinOp) -> TractResult<TVec<OutletId>> 
         DatumType::super_type_for(op.facts()?.iter().map(|f| f.datum_type))
             .context("No super type")?,
     )?;
-    wire_with_rank_broadcast(op.prefix, op.ctx.target, mini, &wire)
+    wire_rank_broadcast(op.prefix, op.ctx.target, &wire)
+}
+
+fn deser_bin(op: &mut DeserOp, mini: TypedBinOp) -> TractResult<TVec<OutletId>> {
+    let wires = wire_cast_and_rank_broadcast(op)?;
+    op.ctx.target.wire_node(op.prefix, mini, &wires)
+}
+
+fn deser_add(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let options = builtin!(op, builtin_options_as_add_options);
+    ensure!(!options.pot_scale_int16());
+    let wires = wire_cast_and_rank_broadcast(op)?;
+    let wires = op.ctx.target.wire_node(op.prefix, tract_core::ops::math::add(), &wires)?;
+    wire_fused_activation(op, &wires, &options.fused_activation_function())
+}
+
+fn deser_sub(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let options = builtin!(op, builtin_options_as_sub_options);
+    ensure!(!options.pot_scale_int16());
+    let wires = wire_cast_and_rank_broadcast(op)?;
+    let wires = op.ctx.target.wire_node(op.prefix, tract_core::ops::math::sub(), &wires)?;
+    wire_fused_activation(op, &wires, &options.fused_activation_function())
 }
 
 fn ser_bin(
@@ -67,6 +93,36 @@ fn ser_bin(
     ser_logic!(logic::And, 86, 1, LOGICAL_AND);
 
     match op.0.as_linalg_binop().with_context(|| "Missing implementation for binary")? {
+        BinOp::Add => {
+            let options = AddOptions::create(
+                builder.fb(),
+                &AddOptionsArgs {
+                    fused_activation_function: ActivationFunctionType::NONE,
+                    pot_scale_int16: false,
+                },
+            );
+            builder.write_op_with_options(
+                &inputs,
+                &outputs,
+                BuiltinOp::new(0, 1, BuiltinOperator::ADD, BuiltinOptions::AddOptions),
+                options.as_union_value(),
+            )
+        }
+        BinOp::Sub => {
+            let options = SubOptions::create(
+                builder.fb(),
+                &SubOptionsArgs {
+                    fused_activation_function: ActivationFunctionType::NONE,
+                    pot_scale_int16: false,
+                },
+            );
+            builder.write_op_with_options(
+                &inputs,
+                &outputs,
+                BuiltinOp::new(41, 1, BuiltinOperator::SUB, BuiltinOptions::SubOptions),
+                options.as_union_value(),
+            )
+        }
         BinOp::Max => {
             let options =
                 MaximumMinimumOptions::create(builder.fb(), &MaximumMinimumOptionsArgs {});
