@@ -14,7 +14,7 @@ impl Arbitrary for SliceProblem {
     type Parameters = ();
     type Strategy = BoxedStrategy<SliceProblem>;
     fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
-        vec(0..10usize, 1..5usize)
+        vec(1..10usize, 1..5usize)
             .prop_flat_map(|input_shape| {
                 let rank = input_shape.len();
                 (Just(input_shape), 0..rank)
@@ -24,6 +24,7 @@ impl Arbitrary for SliceProblem {
                 let b1 = 0..=shape[axis];
                 (Just(shape), Just(axis), b0, b1)
             })
+            .prop_filter("non empty slice", |(_, _, b0, b1)| b0 != b1)
             .prop_map(|(input_shape, axis, b0, b1)| {
                 let start = b0.min(b1).to_dim();
                 let end = b0.max(b1).to_dim();

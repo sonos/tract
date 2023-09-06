@@ -242,13 +242,8 @@ fn ser_downsample(
     node: &TypedNode,
     op: &Downsample,
 ) -> TractResult<()> {
-    dbg!(node.to_string());
-    dbg!(op);
     let input_fact = model.outlet_fact(node.inputs[0])?;
-    dbg!(input_fact);
-    let output_fact = model.outlet_fact(node.id.into())?;
-    dbg!(output_fact);
-    let begins = tvec!(0i32; input_fact.rank());
+    let mut begins = tvec!(0i32; input_fact.rank());
     let mut ends = input_fact
         .shape
         .as_concrete()
@@ -258,8 +253,12 @@ fn ser_downsample(
         .collect::<TVec<_>>();
     let mut strides = tvec!(1; input_fact.rank());
     strides[op.axis] = op.stride as i32;
-    ends[op.axis] =
-        begins[op.axis] + op.stride as i32 * output_fact.shape[op.axis].as_i64().unwrap() as i32 + op.stride.signum() as i32;
+    if op.modulo > 0 {
+        begins[op.axis] = op.modulo as i32;
+    } else if op.stride < 0 {
+        begins[op.axis] = -1;
+        ends[op.axis] = 0;
+    }
     let mut inputs = tvec!(builder.outlets_to_tensors[&node.inputs[0]]);
     inputs.push(builder.write_fact(format!("{}.begins", node.name), tensor1(&begins))?);
     inputs.push(builder.write_fact(format!("{}.ends", node.name), tensor1(&ends))?);
@@ -269,7 +268,7 @@ fn ser_downsample(
         builder.fb(),
         &StridedSliceOptionsArgs {
             begin_mask: 0,
-            end_mask: 0,
+            end_mask: 1 << op.axis,
             ellipsis_mask: 0,
             new_axis_mask: 0,
             shrink_axis_mask: 0,

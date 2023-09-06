@@ -29,7 +29,6 @@ impl TfliteProtoModel {
 
     pub fn root(&self) -> tflite::Model {
         unsafe { tflite::root_as_model_unchecked(&self.0) }
-        //        tflite::model::Model::from_buffer(&self.0).context("Failed to read flat buffer model")
     }
 }
 
