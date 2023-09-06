@@ -14,17 +14,12 @@ impl Runtime for TfliteRuntime {
     fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
         let mut buffer = vec![];
         self.0.write(&model, &mut buffer)?;
-        let output_dt = model
-            .output_outlets()?
-            .iter()
-            .map(|oo| model.outlet_fact(*oo).unwrap().datum_type)
-            .collect();
-        Ok(Box::new(TfliteRunnable(buffer, output_dt)))
+        Ok(Box::new(TfliteRunnable(buffer)))
     }
 }
 
 #[derive(Clone)]
-struct TfliteRunnable(Vec<u8>, TVec<DatumType>);
+struct TfliteRunnable(Vec<u8>);
 
 impl Runnable for TfliteRunnable {
     fn spawn(&self) -> TractResult<Box<dyn State>> {
@@ -53,6 +48,16 @@ impl State for TfliteState {
                 DataType::Float32 => f32::datum_type(),
                 DataType::Bool => bool::datum_type(),
                 DataType::Int64 => i64::datum_type(),
+                DataType::Uint8 => {
+                    if let Some(qp) = output_tensor.quantization_parameters() {
+                        u8::datum_type().quantize(QParams::ZpScale {
+                            zero_point: qp.zero_point,
+                            scale: qp.scale,
+                        })
+                    } else {
+                        u8::datum_type()
+                    }
+                }
                 DataType::Int8 => {
                     if let Some(qp) = output_tensor.quantization_parameters() {
                         i8::datum_type().quantize(QParams::ZpScale {
@@ -84,7 +89,7 @@ fn runtime() -> &'static TfliteRuntime {
 include!(concat!(env!("OUT_DIR"), "/tests/tests.rs"));
 
 #[cfg(test)]
-mod tests{
+mod tests {
     use super::*;
 
     #[test]

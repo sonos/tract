@@ -125,7 +125,11 @@ impl<'f, 'b, 'mb> SubgraphBuilder<'f, 'b, 'mb> {
         fact: impl Into<TypedFact>,
     ) -> TractResult<i32> {
         let fact = fact.into();
-        if let Some(qp) = fact.datum_type.qparams() {
+        if fact.datum_type.unquantized() == i8::datum_type()
+            || fact.datum_type.unquantized() == u8::datum_type()
+        {
+            let qp =
+                fact.datum_type.qparams().unwrap_or(QParams::ZpScale { zero_point: 0, scale: 1. });
             self.write_fact_with_per_axis_q(
                 name,
                 fact,
