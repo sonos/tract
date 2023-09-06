@@ -76,11 +76,17 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
 fn pad(node: &NodeProto, pool_rules: bool) -> TractResult<cnn::PaddingSpec> {
     let ceil_mode = node.get_attr_opt::<isize>("ceil_mode")?.unwrap_or(0) == 1;
     let default = match node.get_attr_opt_vec::<isize>("kernel_shape")? {
-        Some(shape) => cnn::PaddingSpec::ExplicitOnnxPool(
-            tvec!(0; shape.len()),
-            tvec!(0; shape.len()),
-            ceil_mode,
-        ),
+        Some(shape) => {
+            if pool_rules {
+                cnn::PaddingSpec::ExplicitOnnxPool(
+                    tvec!(0; shape.len()),
+                    tvec!(0; shape.len()),
+                    ceil_mode,
+                )
+            } else {
+                cnn::PaddingSpec::Explicit(tvec!(0; shape.len()), tvec!(0; shape.len()))
+            }
+        }
         None => cnn::PaddingSpec::Valid,
     };
     if let Some(pads) = node.get_attr_opt_tvec("pads")? {
