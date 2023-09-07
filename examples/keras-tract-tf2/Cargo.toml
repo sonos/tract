@@ -1,5 +1,5 @@
 [package]
-name = "jupyter-keras-tract-tf2"
+name = "keras-tract-tf2"
 version = "0.20.7-pre"
 authors = ["Matthew Alhonte <mattalhonte@gmail.com>"]
 license = "MIT OR Apache-2.0"
