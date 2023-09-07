@@ -220,6 +220,18 @@ pub fn handle(
         }
     }
 
+    if let Some(path) = sub_matches.value_of("tflite") {
+        let tflite = tract_tflite::tflite();
+        if let Some(mut typed) = model.downcast_ref::<TypedModel>().cloned() {
+            rename_outputs(&mut typed, sub_matches)?;
+            let file = std::fs::File::create(path)?;
+            tflite.write(&typed, file)
+                .context("Writting model to tflite")?;
+        } else {
+            bail!("Only typed model can be dumped")
+        }
+    }
+
     if options.cost {
         let total = annotations.tags.values().sum::<NodeTags>();
         let assert =
