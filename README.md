@@ -1,10 +1,14 @@
 ![tract-logo](assets/tract-logo/PNG/tract-horizontal-blue.png)
 
+![Rust](https://img.shields.io/badge/rust-%23000000.svg?style=for-the-badge&logo=rust&logoColor=white)
 ![rustc >= 1.65.0](https://img.shields.io/badge/rustc-%3E%3D1.65.0-brightgreen)
 ![MIT/Apache 2](https://img.shields.io/crates/l/tract)
 [![Native Linux test status](https://github.com/snipsco/tract/workflows/Native%20Linux/badge.svg)](https://github.com/snipsco/tract/actions)
 [![Embedded targets status](https://github.com/snipsco/tract/workflows/Embedded%20targets/badge.svg)](https://github.com/snipsco/tract/actions)
 [![Doc](https://docs.rs/tract-core/badge.svg)](https://docs.rs/tract-core)
+
+[![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)](https://pypi.org/project/tract/)
+
 
 Sonos' Neural Network inference engine.
 
@@ -14,13 +18,12 @@ _This project used to be called tfdeploy, or Tensorflow-deploy-rust._
 
 `tract` is a Neural Network inference toolkit. It can read ONNX or NNEF, optimize them and run them.
 
-## Quick start
+## Quick start, examples
 
 * [MobileNet v2 with ONNX](examples/onnx-mobilenet-v2)
 * [BERT example with ONNX](examples/pytorch-albert-v2)
 * [MobileNet v2 with TensorFlow](examples/tensorflow-mobilenet-v2)
-* [From Keras and TensorFlow 1 in Jupyter to tract](examples/jupyter-keras-tract-tf1)
-* [From Keras and TensorFlow 2 in Jupyter to tract](examples/jupyter-keras-tract-tf2)
+* [From Keras and TensorFlow 2 to tract](examples/keras-tract-tf2)
 * [ResNet with PyTorch](examples/pytorch-resnet)
 
 There is also [some technical documentation](doc/) and [blog](https://tech-blog.sonos.com/posts/optimising-a-neural-network-for-inference/) posts.
@@ -36,7 +39,7 @@ squeezenet, vgg19, zfnet512.
 
 Notable missing parts are operators dealing with Tensor Sequences and Optional Tensors : tract /really/ wants to flow Tensors and nothing else.
 This is structural. Changing it would be pretty difficult, and it's unclear whether it can be done without impairing performance or maintanability.
-We are not convinced these features have shown their interest in the wild yet, so we prefer to leave them aside.
+We are not convinced these features have shown their interest in the wild yet, so we prefer to leavie them aside.
 
 Other dark corners are specific operators likes "Resize" which fit perfectly in the framework, but need a complex internal logic that is far
 from our core business. In these cases, we are happy to accept contributions, and to help. 
