@@ -15,7 +15,8 @@ rustc --version
 if [ `uname` = "Darwin" ]
 then
     brew install coreutils
-elif [ -n "$GITHUB_ACTIONS" ]
+fi
+if [ -n "$GITHUB_ACTIONS" ]
 then
     pip install numpy
 fi
