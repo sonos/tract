@@ -329,6 +329,12 @@ fn dump_subcommand<'a>() -> clap::Command<'a> {
             .help("Dump the network in NNEF format (as a tar.gz file)"),
             )
         .arg(
+            Arg::new("tflite")
+            .takes_value(true)
+            .long("tflite")
+            .help("Dump the network in TfLite format"),
+            )
+        .arg(
             Arg::new("compress-submodels")
             .long("compress-submodels")
             .help("Compress submodels if any (as a .tgz file)"),
