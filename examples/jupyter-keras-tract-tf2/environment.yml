@@ -135,6 +135,7 @@ dependencies:
     - skl2onnx==1.7.0
     - tensorflow-addons==0.11.2
     - threadpoolctl==2.1.0
+    - tract==0.20.18
     - typeguard==2.9.1
     - typing-extensions==3.7.4.3
-prefix: /home/matt/anaconda3/envs/tf_37
+prefix: /home/kali/anaconda3/envs/tf_37
