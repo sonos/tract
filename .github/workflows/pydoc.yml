@@ -35,4 +35,6 @@ jobs:
           else
             mike deploy --rebase 0.20.dev
           fi
-          git push origin gh-pages:gh-pages
+          git fetch
+          git rebase --onto origin/gh-pages gh-pages
+          git push origin -f gh-pages:gh-pages
