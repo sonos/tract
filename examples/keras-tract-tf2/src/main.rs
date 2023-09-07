@@ -1,4 +1,3 @@
-use tract_core::internal::Approximation;
 use tract_core::ndarray::{IxDyn, OwnedRepr};
 use tract_onnx::prelude::*;
 
@@ -21,6 +20,6 @@ fn main() -> TractResult<()> {
 
     // Input the generated data into the model
     let found = model.run(tvec![input.into()]).unwrap().remove(0);
-    assert!(found.close_enough(&expected, Approximation::Approximate).is_ok());
+    assert!(found.close_enough(&expected, true).is_ok());
     Ok(())
 }
