@@ -27,7 +27,7 @@ members = [
     "examples/tensorflow-mobilenet-v2",
     "examples/tflite-mobilenet-v3",
     "examples/jupyter-keras-tract-tf1",
-    "examples/jupyter-keras-tract-tf2",
+    "examples/keras-tract-tf2",
     "examples/nnef-dump-mobilenet-v2",
     "examples/nnef-mobilenet-v2",
     "examples/onnx-mobilenet-v2",
