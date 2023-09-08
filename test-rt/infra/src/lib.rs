@@ -26,10 +26,17 @@ pub trait Test: 'static + Send + Sync + DynClone {
 
 dyn_clone::clone_trait_object!(Test);
 
+#[derive(Clone, Debug, Copy, PartialEq, Eq)]
+pub enum TestStatus {
+    OK,
+    Ignored,
+    Skipped,
+}
+
 #[derive(Clone)]
 pub enum TestSuite {
     Node(HashMap<String, TestSuite>),
-    Leaf(Box<dyn Test>, bool),
+    Leaf(Box<dyn Test>, TestStatus),
 }
 
 impl Default for TestSuite {
@@ -41,7 +48,7 @@ impl Default for TestSuite {
 
 impl<T: Test> From<T> for TestSuite {
     fn from(value: T) -> Self {
-        TestSuite::Leaf(Box::new(value), true)
+        TestSuite::Leaf(Box::new(value), TestStatus::OK)
     }
 }
 
@@ -70,10 +77,14 @@ impl TestSuite {
         self
     }
 
-    pub fn add_test(&mut self, id: impl ToString, test: impl Test, ignore: bool) {
+    pub fn add_test(&mut self, id: impl ToString, test: impl Test) {
+        self.add_test_with_status(id, test, TestStatus::OK)
+    }
+
+    pub fn add_test_with_status(&mut self, id: impl ToString, test: impl Test, status: TestStatus) {
         match self {
             TestSuite::Node(it) => {
-                it.insert(id.to_string(), TestSuite::Leaf(Box::new(test), !ignore));
+                it.insert(id.to_string(), TestSuite::Leaf(Box::new(test), status));
             }
             TestSuite::Leaf(..) => panic!("Can not add test case to a leaf"),
         }
@@ -127,12 +138,37 @@ impl TestSuite {
                     prefix.pop();
                 }
             }
-            TestSuite::Leaf(_, run) => *run = *run && !ign(&*prefix),
+            TestSuite::Leaf(_, run) => {
+                if *run == TestStatus::OK && ign(&*prefix) {
+                    *run = TestStatus::Ignored
+                }
+            }
         }
     }
 
     pub fn ignore(&mut self, ign: &dyn Fn(&[String]) -> bool) {
         self.ignore_rec(&mut vec![], ign)
+    }
+
+    fn skip_rec(&mut self, prefix: &mut Vec<String>, ign: &dyn Fn(&[String]) -> bool) {
+        match self {
+            TestSuite::Node(n) => {
+                for (id, test) in n.iter_mut().sorted_by_key(|(k, _)| k.to_owned()) {
+                    prefix.push(id.to_owned());
+                    test.skip_rec(prefix, ign);
+                    prefix.pop();
+                }
+            }
+            TestSuite::Leaf(_, run) => {
+                if ign(&*prefix) {
+                    *run = TestStatus::Skipped
+                }
+            }
+        }
+    }
+
+    pub fn skip(&mut self, ign: &dyn Fn(&[String]) -> bool) {
+        self.skip_rec(&mut vec![], ign)
     }
 
     fn dump(
@@ -149,7 +185,7 @@ impl TestSuite {
             TestSuite::Node(h) => {
                 if id.len() > 0 {
                     writeln!(rs, "mod {id} {{").unwrap();
-                    writeln!(rs, "use super::*;").unwrap();
+                    writeln!(rs, "#[allow(unused_imports)] use super::*;").unwrap();
                 }
                 for (id, test) in h.iter().sorted_by_key(|(k, _)| k.to_owned()) {
                     test.dump(test_suite, runtime, &full_id, id, rs, approx)?;
@@ -158,19 +194,21 @@ impl TestSuite {
                     writeln!(rs, "}}").unwrap();
                 }
             }
-            TestSuite::Leaf(_, run) => {
-                writeln!(rs, "#[allow(non_snake_case)]").unwrap();
-                writeln!(rs, "#[test]").unwrap();
-                if !run {
-                    writeln!(rs, "#[ignore]").unwrap();
+            TestSuite::Leaf(_, status) => {
+                if *status != TestStatus::Skipped {
+                    writeln!(rs, "#[allow(non_snake_case)]").unwrap();
+                    writeln!(rs, "#[test]").unwrap();
+                    if *status == TestStatus::Ignored {
+                        writeln!(rs, "#[ignore]").unwrap();
+                    }
+                    writeln!(rs, "fn {id}() -> TractResult<()> {{",).unwrap();
+                    writeln!(
+                        rs,
+                        "    {test_suite}.get({full_id:?}).run_with_approx({full_id:?}, {runtime}, {approx})",
+                        )
+                        .unwrap();
+                    writeln!(rs, "}}").unwrap();
                 }
-                writeln!(rs, "fn {id}() -> TractResult<()> {{",).unwrap();
-                writeln!(
-                    rs,
-                    "    {test_suite}.get({full_id:?}).run_with_approx({full_id:?}, {runtime}, {approx})",
-                    )
-                    .unwrap();
-                writeln!(rs, "}}").unwrap();
             }
         }
         Ok(())

@@ -80,7 +80,6 @@ pub fn suite() -> TractResult<TestSuite> {
             input_shape: vec![1],
             op: Downsample { axis: 0, stride: -1, modulo: 0 },
         },
-        false,
     );
 
     suite.add_test(
@@ -89,7 +88,6 @@ pub fn suite() -> TractResult<TestSuite> {
             input_shape: vec![2],
             op: Downsample { axis: 0, stride: -2, modulo: 0 },
         },
-        false,
     );
 
     Ok(suite)
