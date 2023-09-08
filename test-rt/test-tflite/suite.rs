@@ -5,14 +5,19 @@ use suite_unit::conv_q::{QConvProblem, QConvProblemParams};
 pub fn suite() -> infra::TestSuite {
     let mut onnx = suite_onnx::suite().clone();
     onnx.ignore(&ignore_onnx);
+    onnx.skip(&skip_onnx);
     let mut unit = suite_unit::suite().unwrap().clone();
-    unit.ignore(&ignore_conv);
+    unit.ignore(&ignore_unit);
     let cv =
         ConvProblemParams { no_group: true, geo_rank: Some(1..3), ..ConvProblemParams::default() };
     unit.get_sub_mut("conv_f32").add_arbitrary::<ConvProblem>("proptest", cv.clone());
     unit.get_sub_mut("conv_q").add_arbitrary::<QConvProblem>(
         "proptest",
-        QConvProblemParams { conv: cv, no_kernel_zero_point: true, .. QConvProblemParams::default() },
+        QConvProblemParams {
+            conv: cv,
+            no_kernel_zero_point: true,
+            ..QConvProblemParams::default()
+        },
     );
     infra::TestSuite::default().with("onnx", onnx).with("unit", unit)
 }
@@ -34,7 +39,20 @@ fn ignore_onnx(t: &[String]) -> bool {
         || excluded.split_whitespace().any(|s| s == name)
 }
 
-fn ignore_conv(t: &[String]) -> bool {
+// We must *never* run these, even in --ignored mode, as they trigger buggy aborts in tflite runtime!
+fn skip_onnx(t: &[String]) -> bool {
+    let name = t.last().unwrap();
+    let excluded = "
+            test_clip_default_int8_max_expanded
+            test_clip_default_int8_min_expanded
+            test_BatchNorm3d_eval
+            test_BatchNorm3d_momentum_eval
+            test_PReLU_3d
+            ";
+    excluded.split_whitespace().any(|s| s == name)
+}
+
+fn ignore_unit(t: &[String]) -> bool {
     let [section, unit] = t else { return false };
     ["deconv"].contains(&&**section)
         // grouping and depthwise

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use tract_hir::internal::*;
 use tract_onnx::pb::TensorProto;
 
-use infra::{Test, TestSuite};
+use infra::{Test, TestStatus, TestSuite};
 
 pub fn suite() -> &'static TestSuite {
     lazy_static::lazy_static! {
@@ -201,7 +201,7 @@ fn full() -> TestSuite {
             let mut units = TestSuite::default();
             for t in &tests {
                 let details = working_list.iter().find(|pair| &pair.0 == t).map(|pair| &*pair.1);
-                let skipped = details.is_none()
+                let ignored = details.is_none()
                     || details.unwrap().iter().any(|s| {
                         s.strip_prefix("since:")
                             .map(|since| since.parse::<usize>().unwrap() > opset)
@@ -216,7 +216,7 @@ fn full() -> TestSuite {
                     .iter()
                     .find_map(|s| s.strip_prefix("input:"))
                     .map(|s| s.to_owned());
-                units.add_test(
+                units.add_test_with_status(
                     t,
                     OnnxTestCase {
                         path: node_tests.join(t),
@@ -224,7 +224,7 @@ fn full() -> TestSuite {
                         ignore_output_shapes,
                         input,
                     },
-                    skipped,
+                    if ignored { TestStatus::Ignored } else { TestStatus::OK },
                 );
             }
             tags.add(identifier, units);
