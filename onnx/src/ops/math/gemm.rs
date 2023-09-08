@@ -34,8 +34,9 @@ impl Expansion for Gemm {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(inputs, 3)?;
-        s.equals(&inputs[2].datum_type, &outputs[0].datum_type)?;
+        if inputs.len() == 3 {
+            s.equals(&inputs[2].datum_type, &outputs[0].datum_type)?;
+        }
         s.equals(&inputs[0].rank, 2)?;
         s.equals(&inputs[1].rank, 2)?;
         check_output_arity(outputs, 1)?;
@@ -56,7 +57,7 @@ impl Expansion for Gemm {
         model: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let (a, b, mut c) = (inputs[0], inputs[1], inputs[2]);
+        let (a, b, c) = (inputs[0], inputs[1], inputs.get(2));
         let axes = AxesMapping::for_numpy_matmul(2, self.trans_a, self.trans_b, false)?;
         let mut wire = model.wire_node(
             format!("{name}.ab"),
@@ -72,7 +73,8 @@ impl Expansion for Gemm {
                 &[alpha, wire],
             )?[0];
         }
-        if self.beta != 0.0f32 {
+        if self.beta != 0.0f32 && c.is_some() {
+            let mut c = c.copied().unwrap();
             while model.outlet_fact(wire)?.rank() > model.outlet_fact(c)?.rank() {
                 c = model.wire_node(
                     format!("{}.c_add_axis_{}", name, model.outlet_fact(c)?.rank()),
