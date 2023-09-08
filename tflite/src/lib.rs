@@ -28,6 +28,7 @@ pub mod prelude {
 pub mod internal {
     pub use crate::model::TfliteProtoModel;
     pub use tract_core::internal::*;
+    pub use tract_core;
 }
 
 pub fn tflite() -> Tflite {

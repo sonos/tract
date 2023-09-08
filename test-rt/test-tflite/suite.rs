@@ -19,7 +19,7 @@ pub fn suite() -> infra::TestSuite {
 
 fn ignore_onnx(t: &[String]) -> bool {
     let name = t.last().unwrap();
-    let included = "_conv_ Conv1d Conv2d squeeze _transpose_ test_reshape test_flatten where less greater equal slice";
+    let included = "_conv_ Conv1d Conv2d squeeze _transpose_ test_reshape test_flatten where less greater equal slice test_add test_mul test_sub test_div";
     let excluded = "
             test_slice_start_out_of_bounds
             test_Conv1d_groups
@@ -27,7 +27,9 @@ fn ignore_onnx(t: &[String]) -> bool {
             test_Conv1d_depthwise_with_multiplier
             test_Conv2d_depthwise_with_multiplier
             test_Conv2d_groups_thnn
-            test_reshape_allowzero_reordered";
+            test_reshape_allowzero_reordered
+            test_div_uint8
+            ";
     !included.split_whitespace().any(|s| name.contains(s))
         || excluded.split_whitespace().any(|s| s == name)
 }

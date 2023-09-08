@@ -27,7 +27,12 @@ struct OnnxTestCase {
 }
 
 impl Test for OnnxTestCase {
-    fn run_with_approx(&self, _id: &str, runtime: &dyn Runtime, approx: Approximation) -> TractResult<()> {
+    fn run_with_approx(
+        &self,
+        _id: &str,
+        runtime: &dyn Runtime,
+        approx: Approximation,
+    ) -> TractResult<()> {
         setup_test_logger();
         let model_file = self.path.join("model.onnx");
         info!("Loading {:?}", model_file);
@@ -78,7 +83,7 @@ impl Test for OnnxTestCase {
                 let model = model.into_typed()?.into_decluttered()?;
                 info!("Test model (mode: {}) {:#?}", runtime.name(), self.path);
                 let runnable = runtime.prepare(model)?;
-                run_model(&*runnable, inputs, &data_path, approx);
+                run_model(&*runnable, inputs, &data_path, approx)?;
                 info!("Test model (mode: {}) {:#?} OK.", runtime.name(), self.path);
             }
         }
@@ -256,11 +261,11 @@ fn run_model(
     inputs: TVec<Tensor>,
     data_path: &std::path::Path,
     approx: Approximation,
-) {
+) -> TractResult<()> {
     let expected = load_half_dataset("output", data_path);
     trace!("Loaded output asserts: {:?}", expected);
     let inputs = inputs.into_iter().map(|t| t.into_tvalue()).collect();
-    let computed = model.run(inputs).unwrap();
+    let computed = model.run(inputs)?;
     if computed.len() != expected.len() {
         panic!(
             "For {:?}, different number of results: got:{} expected:{}",
@@ -273,14 +278,15 @@ fn run_model(
         //                println!("computed: {:?}", computed[ix].dump(true));
         //                println!("expected: {:?}", expected[ix].dump(true));
         if let Err(e) = a.close_enough(b, approx) {
-            panic!(
+            bail!(
                 "For {:?}, different ({approx:?}) result for output #{}:\ngot:\n{:?}\nexpected:\n{:?} \n{}",
                 data_path,
                 ix,
                 a.cast_to::<f32>().unwrap().to_array_view::<f32>().unwrap(),
                 b.cast_to::<f32>().unwrap().to_array_view::<f32>().unwrap(),
                 e //                e.display_chain()
-            )
+            );
         }
     }
+    Ok(())
 }

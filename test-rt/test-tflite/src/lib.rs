@@ -12,6 +12,7 @@ mod tflite_runtime;
 
 mod tflite_predump {
     use super::*;
+    #[derive(Debug)]
     struct TflitePredump(Tflite);
 
     impl Runtime for TflitePredump {
@@ -38,6 +39,7 @@ mod tflite_predump {
 
 mod tflite_cycle {
     use super::*;
+    #[derive(Debug)]
     struct TfliteCyclingRuntime(Tflite);
 
     impl Runtime for TfliteCyclingRuntime {
@@ -49,8 +51,30 @@ mod tflite_cycle {
             info!("Store to Tflite");
             let mut buffer = vec![];
             self.0.write(&model, &mut buffer)?;
+            std::fs::write("foo.tfllite", &buffer)?;
             info!("Reload from Tflite");
-            let reloaded = self.0.model_for_read(&mut &*buffer)?;
+            let mut reloaded = self.0.model_for_read(&mut &*buffer)?;
+            for i in 0..model.inputs.len() {
+                if model.input_fact(i)? != reloaded.input_fact(i)?
+                    && model.input_fact(i)?.datum_type.unquantized()
+                        == reloaded.input_fact(i)?.datum_type.unquantized()
+                {
+                    let old_source_outlet = reloaded.inputs[i];
+                    let name = reloaded.node(old_source_outlet.node).name.clone();
+                    let new_source = reloaded.add_source(&name, model.input_fact(i)?.clone())?;
+                    let wire = reloaded.wire_node(
+                        format!("{}.qp", name),
+                        tract_core::ops::cast::cast(reloaded.input_fact(i)?.datum_type),
+                        &[new_source],
+                    )?[0];
+                    reloaded.inputs.pop();
+                    reloaded.inputs[i] = new_source;
+                    let succs = reloaded.node(old_source_outlet.node).outputs[0].successors.clone();
+                    for succ in succs {
+                        reloaded.add_edge(wire, succ)?;
+                    }
+                }
+            }
             Ok(Box::new(Arc::new(reloaded.into_optimized()?.into_runnable()?)))
         }
     }

@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use tflitec::interpreter::Interpreter;
 use tflitec::model::Model;
 use tflitec::tensor::DataType;
@@ -5,6 +7,12 @@ use tflitec::tensor::DataType;
 use super::*;
 
 struct TfliteRuntime(Tflite);
+
+impl Debug for TfliteRuntime {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "TfliteRuntime")
+    }
+}
 
 impl Runtime for TfliteRuntime {
     fn name(&self) -> Cow<str> {
@@ -24,6 +32,12 @@ struct TfliteRunnable(Vec<u8>);
 impl Runnable for TfliteRunnable {
     fn spawn(&self) -> TractResult<Box<dyn State>> {
         Ok(Box::new(TfliteState(self.clone())))
+    }
+}
+
+impl Debug for TfliteRunnable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "TfliteRunnable")
     }
 }
 

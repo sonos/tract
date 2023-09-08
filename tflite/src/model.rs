@@ -1,4 +1,5 @@
 use std::collections::hash_map::Entry;
+use std::fmt::Debug;
 
 use flatbuffers::FlatBufferBuilder;
 use tract_core::internal::*;
@@ -9,6 +10,12 @@ use crate::tflite;
 use crate::tflite::{Buffer, BufferArgs};
 
 pub struct Tflite(Registry);
+
+impl Debug for Tflite {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "tract-TfLite-framework")
+    }
+}
 
 impl Default for Tflite {
     fn default() -> Self {
