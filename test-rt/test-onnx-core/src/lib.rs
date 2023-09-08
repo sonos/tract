@@ -14,6 +14,7 @@ mod unoptimized {
         &UnoptimizedRuntime
     }
 
+    #[derive(Debug)]
     pub struct UnoptimizedRuntime;
 
     impl Runtime for UnoptimizedRuntime {

@@ -1,9 +1,17 @@
 #![cfg(test)]
+use std::fmt::Debug;
+
 use log::*;
 use tract_nnef::internal::*;
 use tract_onnx_opl::*;
 
 struct NnefCyclingRuntime(Nnef);
+
+impl Debug for NnefCyclingRuntime {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "NnefCyclingRuntime")
+    }
+}
 
 impl Runtime for NnefCyclingRuntime {
     fn name(&self) -> Cow<str> {
