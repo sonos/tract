@@ -49,7 +49,6 @@ fn deser_bin(op: &mut DeserOp, mini: TypedBinOp) -> TractResult<TVec<OutletId>> 
 
 fn deser_add(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let options = builtin!(op, builtin_options_as_add_options);
-    ensure!(!options.pot_scale_int16());
     let wires = wire_cast_and_rank_broadcast(op)?;
     let wires = op.ctx.target.wire_node(op.prefix, tract_core::ops::math::add(), &wires)?;
     wire_fused_activation(op, &wires, &options.fused_activation_function())
@@ -57,7 +56,6 @@ fn deser_add(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
 
 fn deser_sub(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let options = builtin!(op, builtin_options_as_sub_options);
-    ensure!(!options.pot_scale_int16());
     let wires = wire_cast_and_rank_broadcast(op)?;
     let wires = op.ctx.target.wire_node(op.prefix, tract_core::ops::math::sub(), &wires)?;
     wire_fused_activation(op, &wires, &options.fused_activation_function())
