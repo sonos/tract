@@ -733,6 +733,7 @@ impl Parameters {
             });
             stage!("nnef-declutter", typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
         }
+        #[cfg(feature = "tflite")]
         if matches.is_present("tflite-cycle") {
             stage!("tflite-cycle", typed_model -> typed_model, |m:TypedModel| {
                 let tflite = tract_tflite::tflite();
@@ -742,6 +743,10 @@ impl Parameters {
                 tflite.model_for_read(&mut &*vec).context("Deserializing from tflite intermediary")
             });
             stage!("tflite-declutter", typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
+        }
+        #[cfg(not(feature = "tflite"))]
+        if matches.is_present("tflite-cycle") {
+            bail!("This tract build did not include tflite features.");
         }
         if let Some(sub) = matches.value_of("extract-decluttered-sub") {
             stage!("extract", typed_model -> typed_model, |m:TypedModel| {

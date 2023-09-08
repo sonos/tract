@@ -220,6 +220,7 @@ pub fn handle(
         }
     }
 
+    #[cfg(feature = "tflite")]
     if let Some(path) = sub_matches.value_of("tflite") {
         let tflite = tract_tflite::tflite();
         if let Some(mut typed) = model.downcast_ref::<TypedModel>().cloned() {
@@ -230,6 +231,11 @@ pub fn handle(
         } else {
             bail!("Only typed model can be dumped")
         }
+    }
+
+    #[cfg(not(feature = "tflite"))]
+    if sub_matches.value_of("tflite").is_some() {
+        bail!("This is a tract build without support for tflite.")
     }
 
     if options.cost {
