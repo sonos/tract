@@ -1,16 +1,20 @@
 use tract_core::internal::*;
 use tract_core::ops::array::{Pad, PadMode};
-use tract_core::ops::cnn::{ConvUnary, PaddingSpec};
-use tract_core::ops::nn::DataFormat;
+use tract_core::ops::binary::wire_with_rank_broadcast;
 use tract_core::ops::cnn::KernelFormat;
+use tract_core::ops::cnn::{ConvUnary, PaddingSpec};
+use tract_core::ops::element_wise::ElementWiseOp;
+use tract_core::ops::math::Recip;
+use tract_core::ops::nn::DataFormat;
 
 pub fn rewrite_for_tflite(model: &mut TypedModel) -> TractResult<()> {
     Rewriter::default()
-        .with_rule_for::<ConvUnary>("kernel-in-ohwi", kernel_in_ohwi)
-        .with_rule_for::<ConvUnary>("make_1d_2d", make_1d_2d)
-        .with_rule_for::<ConvUnary>("force_n_axis", force_n_axis)
-        .with_rule_for::<ConvUnary>("nchw-to-nhwc", nchw_to_nhwc)
-        .with_rule_for::<ConvUnary>("padding", padding)
+        .with_rule_for("kernel-in-ohwi", kernel_in_ohwi)
+        .with_rule_for("make_1d_2d", make_1d_2d)
+        .with_rule_for("force_n_axis", force_n_axis)
+        .with_rule_for("nchw-to-nhwc", nchw_to_nhwc)
+        .with_rule_for("padding", padding)
+        .with_rule_for("manual_recip", manual_recip)
         .rewrite(&(), model)
 }
 
@@ -182,4 +186,30 @@ fn padding(
         return Ok(Some(patch));
     }
     Ok(None)
+}
+
+fn manual_recip(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    name: &str,
+    recip: &ElementWiseOp,
+) -> TractResult<Option<TypedModelPatch>> {
+    if recip.0.is::<Recip>() {
+        let mut patch = TypedModelPatch::default();
+        let input = patch.tap_model(model, node.inputs[0])?;
+        let dt = model.outlet_fact(node.inputs[0])?.datum_type;
+        let one = tensor0(1i32).cast_to_dt(dt)?.into_owned().into_tensor();
+        let one = patch.add_const(format!("{name}.one"), one)?;
+        let wire = wire_with_rank_broadcast(
+            name,
+            &mut patch,
+            tract_core::ops::math::div(),
+            &[one, input],
+        )?;
+        patch.shunt_outside(model, node.id.into(), wire[0])?;
+        Ok(Some(patch))
+    } else {
+        Ok(None)
+    }
 }

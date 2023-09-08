@@ -307,7 +307,7 @@ impl DatumType {
     pub fn quantize(&self, qparams: QParams) -> DatumType {
         match self {
             DatumType::I8 => DatumType::QI8(qparams),
-            DatumType::U8 => DatumType::QI8(qparams),
+            DatumType::U8 => DatumType::QU8(qparams),
             DatumType::I32 => DatumType::QI32(qparams),
             DatumType::QI8(_) => DatumType::QI8(qparams),
             DatumType::QU8(_) => DatumType::QU8(qparams),

@@ -1,11 +1,13 @@
+use std::fmt::Debug;
+
 use crate::internal::*;
 
-pub trait Runtime {
+pub trait Runtime: Debug {
     fn name(&self) -> Cow<str>;
     fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>>;
 }
 
-pub trait Runnable {
+pub trait Runnable: Debug {
     fn run(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         self.spawn()?.run(inputs)
     }
@@ -16,7 +18,7 @@ pub trait State {
     fn run(&mut self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>>;
 }
 
-
+#[derive(Debug)]
 pub struct DefaultRuntime;
 
 impl Runtime for DefaultRuntime {
