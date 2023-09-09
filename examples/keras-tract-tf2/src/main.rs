@@ -5,8 +5,6 @@ fn main() -> TractResult<()> {
     let model = tract_onnx::onnx()
     // load the model
     .model_for_path("example.onnx")?
-    // kill over-spcified output fact in ONNX
-    .with_output_fact(0, Default::default())?
     // optimize graph
     .into_optimized()?
     // make the model runnable and fix its inputs and outputs

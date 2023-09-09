@@ -180,7 +180,7 @@ impl<'a> ParsingContext<'a> {
         let mut outputs = vec![];
         for output in graph.output.iter() {
             let mut fact = InferenceFact::default();
-            if !self.framework.ignore_output_shapes {
+            if self.framework.use_output_shapes {
                 if let Some(f) = output.r#type.as_ref().and_then(|t| t.value.as_ref()) {
                     let pb::type_proto::Value::TensorType(f) = f;
                     fact = translate_inference_fact(&ctx, f)?
@@ -222,7 +222,7 @@ impl OnnxOpRegister {
 #[derive(Clone, Default)]
 pub struct Onnx {
     pub op_register: OnnxOpRegister,
-    pub ignore_output_shapes: bool,
+    pub use_output_shapes: bool,
     pub ignore_output_types: bool,
 }
 
@@ -263,7 +263,7 @@ impl Onnx {
     }
 
     pub fn with_ignore_output_shapes(self, ignore: bool) -> Onnx {
-        Self { ignore_output_shapes: ignore, ..self }
+        Self { use_output_shapes: !ignore, ..self }
     }
 
     pub fn with_ignore_output_types(self, ignore: bool) -> Onnx {
