@@ -46,7 +46,7 @@ impl Gather {
                 let kcoords = &ocoords[self.axis..][..indices.ndim()];
                 let k = indices[kcoords];
                 let k = if k < 0 { k + data_view.shape()[self.axis] as i64 } else { k } as usize;
-                icoords.push(k as usize);
+                icoords.push(k);
                 icoords.extend(ocoords[self.axis + indices.ndim()..].iter().copied());
                 data_view[&*icoords].clone()
             },
