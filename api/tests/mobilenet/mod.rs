@@ -150,7 +150,6 @@ fn test_concretize() -> anyhow::Result<()> {
     ensure_models()?;
     let mut model = onnx()?.model_for_path("mobilenetv2-7.onnx")?;
     model.set_input_fact(0, "B,3,224,224,f32")?;
-    model.set_output_fact(0, None)?;
     model.analyse()?;
     let mut typed = model.into_typed()?.into_decluttered()?;
     assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F32");
@@ -166,7 +165,6 @@ fn test_pulse() -> anyhow::Result<()> {
     ensure_models()?;
     let mut model = onnx()?.model_for_path("mobilenetv2-7.onnx")?;
     model.set_input_fact(0, "B,3,224,224,f32")?;
-    model.set_output_fact(0, None)?;
     model.analyse()?;
     let mut typed = model.into_typed()?.into_decluttered()?;
     assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F32");
@@ -186,7 +184,6 @@ fn test_half() -> anyhow::Result<()> {
     ensure_models()?;
     let mut model = onnx()?.model_for_path("mobilenetv2-7.onnx")?;
     model.set_input_fact(0, "B,3,224,224,f32")?;
-    model.set_output_fact(0, None)?;
     model.analyse()?;
     let mut typed = model.into_typed()?.into_decluttered()?;
     typed.half()?;
@@ -200,7 +197,6 @@ fn test_typed_model_to_nnef_and_back() -> anyhow::Result<()> {
     ensure_models()?;
     let mut model = onnx()?.model_for_path("mobilenetv2-7.onnx")?;
     model.set_input_fact(0, "B,3,224,224,f32")?;
-    model.set_output_fact(0, None)?;
     model.analyse()?;
     let typed = model.into_typed()?;
     let dir = tempfile::tempdir()?;

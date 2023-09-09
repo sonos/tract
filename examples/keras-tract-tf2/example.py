@@ -31,9 +31,8 @@ input = np.random.random((1,100)).astype(np.float32)
 tf_output = model.predict(input)
 
 # Run the model in tract and check output against TensorFlow
-tract_model = tract.onnx().model_for_path("example.onnx")
-tract_model.set_output_fact(0, None)
-tract_output = tract_model.into_optimized().into_runnable().run([input])[0].to_numpy()
+tract_output = tract.onnx().model_for_path("example.onnx")\
+        .into_optimized().into_runnable().run([input])[0].to_numpy()
 assert(np.allclose(tf_output, tract_output))
 
 # Save input and reference output for Rust demo

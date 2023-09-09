@@ -77,7 +77,6 @@ def test_inference_model():
 def test_set_output_names_on_inference_model():
     model = tract.onnx().model_for_path("./mobilenetv2-7.onnx")
     model.set_input_fact(0, "B,3,224,224,f32")
-    model.set_output_fact(0, None)
     model.analyse()
     model.set_output_names(["mobilenetv20_output_pred_fwd"])
     assert str(model.output_fact(0)) == "B,1000,1,1,F32"
@@ -100,7 +99,6 @@ def test_set_output_names():
 def test_concretize():
     model = tract.onnx().model_for_path("./mobilenetv2-7.onnx")
     model.set_input_fact(0, "B,3,224,224,f32")
-    model.set_output_fact(0, None)
     model.analyse()
     typed = model.into_typed().into_decluttered()
     assert str(typed.input_fact(0)) == "B,3,224,224,F32"
@@ -112,7 +110,6 @@ def test_concretize():
 def test_pulse():
     model = tract.onnx().model_for_path("./mobilenetv2-7.onnx")
     model.set_input_fact(0, "B,3,224,224,f32")
-    model.set_output_fact(0, None)
     model.analyse()
     typed = model.into_typed().into_decluttered()
     assert str(typed.input_fact(0)) == "B,3,224,224,F32"
@@ -128,7 +125,6 @@ def test_pulse():
 def test_half():
     model = tract.onnx().model_for_path("./mobilenetv2-7.onnx")
     model.set_input_fact(0, "1,3,224,224,f32")
-    model.set_output_fact(0, None)
     model.analyse()
     typed = model.into_typed().into_decluttered()
     typed.half()
@@ -138,7 +134,6 @@ def test_half():
 def test_typed_model_to_nnef_and_back():
     model = tract.onnx().model_for_path("./mobilenetv2-7.onnx")
     model.set_input_fact(0, "B,3,224,224,f32")
-    model.set_output_fact(0, None)
     model.analyse()
     typed = model.into_typed()
     with tempfile.TemporaryDirectory() as tmpdirname:

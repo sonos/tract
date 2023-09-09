@@ -1,3 +1,6 @@
+# Unreleased
+* ONNX ignoring output shapes is now the default
+
 # 0.20.18 - 2023-08-30
 * [intel] fix in AVX512F matrix vector product
 * [tflite] alpha, embryonic support. some convolutional models working.
