@@ -6,7 +6,6 @@ pub struct Gather {
     pub axis: usize,
 }
 
-
 impl Op for Gather {
     fn name(&self) -> Cow<str> {
         "Gather".into()
@@ -37,35 +36,23 @@ impl Gather {
     unsafe fn eval_t<T: Datum>(&self, data: TValue, indices: &TValue) -> TractResult<TValue> {
         let data_view = data.to_array_view_unchecked::<T>();
         let indices = indices.cast_to::<i64>()?;
-        if indices.shape().len() == 0 {
-            let mut index = *indices.to_scalar::<i64>()?;
-            if index < 0 {
-                index += data_view.shape()[0] as i64;
-            }
-            let mut tensor =
-                data_view.index_axis(Axis(self.axis), index as usize).to_owned().into_tensor();
-            tensor.set_datum_type(data.datum_type());
-            return Ok(tensor.into_tvalue());
-        }
-
-        let mut output = Tensor::uninitialized_dt(
-            data.datum_type(),
-            &self.compute_output_shape(data.shape(), indices.shape())?,
-        )?;
-        let mut view = output.to_array_view_mut_unchecked::<T>();
-        for (indices_coords, indices_value) in indices.to_array_view::<i64>()?.indexed_iter() {
-            let mut to_update = view.index_axis_mut(Axis(self.axis), indices_coords[0]);
-            for idx in 1..indices_coords.ndim() {
-                to_update = to_update.index_axis_move(Axis(0), indices_coords[idx]);
-            }
-            let index_value = if *indices_value >= 0 {
-                *indices_value
-            } else {
-                indices_value + data_view.shape()[self.axis] as i64
-            } as usize;
-            anyhow::ensure!(index_value < data_view.shape()[self.axis]);
-            to_update.assign(&data_view.index_axis(Axis(self.axis), index_value));
-        }
+        let indices = indices.to_array_view::<i64>()?;
+        let output = ArrayD::from_shape_fn(
+            &*self.compute_output_shape(data.shape(), indices.shape())?,
+            |coords| {
+                let ocoords = coords.as_array_view();
+                let ocoords = ocoords.as_slice().unwrap();
+                let mut icoords: TVec<usize> = ocoords[0..self.axis].into();
+                let kcoords = &ocoords[self.axis..][..indices.ndim()];
+                let k = indices[kcoords];
+                let k = if k < 0 { k + data_view.shape()[self.axis] as i64 } else { k } as usize;
+                icoords.push(k as usize);
+                icoords.extend(ocoords[self.axis + indices.ndim()..].iter().copied());
+                data_view[&*icoords].clone()
+            },
+        );
+        let mut output = output.into_tensor();
+        unsafe { output.set_datum_type(data.datum_type()) };
         Ok(output.into_tvalue())
     }
 }
