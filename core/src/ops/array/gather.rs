@@ -20,16 +20,9 @@ impl Gather {
         input_shape: &[D],
         indices_shape: &[D],
     ) -> TractResult<TVec<D>> {
-        let mut output_shape = tvec![];
-        for (idx, dim) in input_shape.iter().enumerate() {
-            if idx != self.axis {
-                output_shape.push(dim.clone());
-            } else {
-                for idx2 in indices_shape {
-                    output_shape.push(idx2.clone());
-                }
-            }
-        }
+        let mut output_shape:TVec<D> = input_shape[..self.axis].into();
+        output_shape.extend(indices_shape.iter().cloned());
+        output_shape.extend(input_shape[self.axis + 1..].iter().cloned());
         Ok(output_shape)
     }
 
@@ -73,7 +66,7 @@ impl TypedOp for Gather {
     ) -> TractResult<Option<TypedModelPatch>> {
         let indices_fact = model.outlet_fact(node.inputs[1])?;
         if let Some(indices) = indices_fact.konst.as_ref() {
-            if indices.len() == 1 {
+            if indices.rank() == 1 && indices.len() == 1 {
                 let mut patch = TypedModelPatch::default();
                 let mut wire = patch.tap_model(model, node.inputs[0])?;
                 let index = indices.cast_to_scalar::<i64>()?;
@@ -90,11 +83,6 @@ impl TypedOp for Gather {
                         start: index.clone(),
                         end: index + 1,
                     },
-                    &[wire],
-                )?[0];
-                wire = patch.wire_node(
-                    format!("{}.rm_axis", node.name),
-                    crate::ops::change_axes::AxisOp::Rm(self.axis),
                     &[wire],
                 )?[0];
                 patch.shunt_outside(model, node.id.into(), wire)?;
