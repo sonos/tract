@@ -65,7 +65,7 @@ impl Expansion for MatMulInference {
         }
         if implicit_n {
             let b = InOut::In(1);
-            let n_axis = axes.axis((b, axes.rank(b) - 2))?;
+            let n_axis = axes.axis((b, axes.rank(b) - 1))?;
             axes = axes.remove_output_axis(0, n_axis.outputs[0][0])?;
         }
         target.wire_node(
