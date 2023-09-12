@@ -53,6 +53,7 @@ members = [
 [workspace.dependencies]
 ansi_term = "0.12.1"
 # anyhow = { version = "1.0.43", features = [ "backtrace" ] }
+anstyle = "=1.0.2"
 anyhow = "1.0.43"
 approx = "0.5"
 atty = "0.2.14"
