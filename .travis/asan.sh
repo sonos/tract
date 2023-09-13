@@ -4,6 +4,11 @@ set -ex
 
 TARGET=$(rustc -vV | sed -n 's|host: ||p')
 
+if [ -n "$GITHUB_ACTIONS" ]
+then
+    pip install numpy
+fi
+
 rustup toolchain add nightly
 rustup component add rust-src --toolchain nightly-$TARGET
 
