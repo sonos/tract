@@ -6,7 +6,7 @@ TARGET=$(rustc -vV | sed -n 's|host: ||p')
 
 if [ -n "$GITHUB_ACTIONS" ]
 then
-    pip install numpy
+    pip3 install numpy
 fi
 
 rustup toolchain add nightly
