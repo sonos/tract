@@ -113,8 +113,7 @@ string-interner = "0.14"
 tar = "0.4.37"
 tempfile = "3.8"
 tensorflow = "0.17.0"
-# tflitec = { git = "https://github.com/kali/tflitec-rs.git", rev="b37d65a" }
-tflitec = { path = "../../github/tflitec-rs" }
+tflitec = { git = "https://github.com/kali/tflitec-rs.git", rev="b37d65a" }
 time = "=0.3.23"
 time-macros = "=0.2.10"
 tokenizers = "0.13"
