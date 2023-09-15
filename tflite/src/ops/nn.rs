@@ -11,11 +11,16 @@ use tract_core::prelude::tract_itertools::Itertools;
 use crate::registry::{DeserOp, Registry};
 use crate::ser::BuiltinOp;
 use crate::ser::SubgraphBuilder;
+use crate::tflite::ArgMaxOptions;
+use crate::tflite::ArgMaxOptionsArgs;
 use crate::tflite::BuiltinOptions;
+use crate::tflite::ExpandDimsOptions;
+use crate::tflite::ExpandDimsOptionsArgs;
 use crate::tflite::ReducerOptions;
 use crate::tflite::ReducerOptionsArgs;
 use crate::tflite::SoftmaxOptions;
 use crate::tflite::SoftmaxOptionsArgs;
+use crate::tflite::TensorType;
 use crate::tflite::{BuiltinOperator, FullyConnectedOptionsWeightsFormat};
 
 pub fn register_all(reg: &mut Registry) {
@@ -155,34 +160,62 @@ fn ser_reduce(
     )?;
     let inputs = [builder.map_outlet(model, node.inputs[0])?, axes];
     let output = builder.map_outlets(model, [OutletId::from(node.id)])?;
-    let options = ReducerOptions::create(builder.fb(), &ReducerOptionsArgs { keep_dims: true });
-    ensure!(model.outlet_fact(node.inputs[0])?.datum_type != f64::datum_type());
-    match op.reducer {
-        Reducer::Max => builder.write_op_with_options(
+    if matches!(op.reducer, Reducer::ArgMin(_) | Reducer::ArgMax(_)) {
+        let mut intermediate_shape = model.outlet_fact(node.inputs[0])?.shape.to_vec();
+        for axis in op.axes.iter().sorted().rev() {
+            intermediate_shape.remove(*axis);
+        }
+        let intermediate_fact = i32::fact(intermediate_shape);
+        let intermediate_tensor =
+            builder.write_fact(format!("{}.removed_axes", node.name), intermediate_fact)?;
+        let options = ArgMaxOptions::create(
+            builder.fb(),
+            &ArgMaxOptionsArgs { output_type: TensorType::INT64 },
+        );
+        builder.write_op_with_options(
             &inputs,
-            &output,
-            BuiltinOp::new(82, 1, BuiltinOperator::REDUCE_MAX, BuiltinOptions::ReducerOptions),
+            &[intermediate_tensor],
+            BuiltinOp::new(56, 1, BuiltinOperator::ARG_MAX, BuiltinOptions::ArgMaxOptions),
             options.as_union_value(),
-        ),
-        Reducer::Min => builder.write_op_with_options(
-            &inputs,
+        )?;
+        let expand_dim_options = ExpandDimsOptions::create(builder.fb(), &ExpandDimsOptionsArgs {});
+        builder.write_op_with_options(
+            &[intermediate_tensor, axes],
             &output,
-            BuiltinOp::new(89, 1, BuiltinOperator::REDUCE_MIN, BuiltinOptions::ReducerOptions),
-            options.as_union_value(),
-        ),
-        Reducer::Prod => builder.write_op_with_options(
-            &inputs,
-            &output,
-            BuiltinOp::new(81, 1, BuiltinOperator::REDUCE_PROD, BuiltinOptions::ReducerOptions),
-            options.as_union_value(),
-        ),
-        Reducer::Sum => builder.write_op_with_options(
-            &inputs,
-            &output,
-            BuiltinOp::new(74, 1, BuiltinOperator::SUM, BuiltinOptions::ReducerOptions),
-            options.as_union_value(),
-        ),
-        _ => todo!(),
+            BuiltinOp::new(70, 1, BuiltinOperator::EXPAND_DIMS, BuiltinOptions::ExpandDimsOptions),
+            expand_dim_options.as_union_value(),
+        )?;
+        Ok(())
+    } else {
+        let options = ReducerOptions::create(builder.fb(), &ReducerOptionsArgs { keep_dims: true });
+        ensure!(model.outlet_fact(node.inputs[0])?.datum_type != f64::datum_type());
+        match op.reducer {
+            Reducer::Max => builder.write_op_with_options(
+                &inputs,
+                &output,
+                BuiltinOp::new(82, 1, BuiltinOperator::REDUCE_MAX, BuiltinOptions::ReducerOptions),
+                options.as_union_value(),
+            ),
+            Reducer::Min => builder.write_op_with_options(
+                &inputs,
+                &output,
+                BuiltinOp::new(89, 1, BuiltinOperator::REDUCE_MIN, BuiltinOptions::ReducerOptions),
+                options.as_union_value(),
+            ),
+            Reducer::Prod => builder.write_op_with_options(
+                &inputs,
+                &output,
+                BuiltinOp::new(81, 1, BuiltinOperator::REDUCE_PROD, BuiltinOptions::ReducerOptions),
+                options.as_union_value(),
+            ),
+            Reducer::Sum => builder.write_op_with_options(
+                &inputs,
+                &output,
+                BuiltinOp::new(74, 1, BuiltinOperator::SUM, BuiltinOptions::ReducerOptions),
+                options.as_union_value(),
+            ),
+            Reducer::ArgMin(_) | Reducer::ArgMax(_) => unreachable!(),
+        }
     }
 }
 
