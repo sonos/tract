@@ -38,6 +38,8 @@ mod tflite_predump {
 }
 
 mod tflite_cycle {
+    use tract_tflite::internal::tract_core::ops::dummy::Dummy;
+
     use super::*;
     #[derive(Debug)]
     struct TfliteCyclingRuntime(Tflite);
@@ -73,6 +75,13 @@ mod tflite_cycle {
                     for succ in succs {
                         reloaded.add_edge(wire, succ)?;
                     }
+                    for output in &mut reloaded.outputs {
+                        if *output == old_source_outlet {
+                            *output = new_source;
+                        }
+                    }
+                    reloaded.nodes[old_source_outlet.node].name.push_str(".old");
+                    reloaded.nodes[old_source_outlet.node].op = Box::new(Dummy);
                 }
             }
             Ok(Box::new(Arc::new(reloaded.into_optimized()?.into_runnable()?)))
