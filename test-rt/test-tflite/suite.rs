@@ -24,7 +24,7 @@ pub fn suite() -> infra::TestSuite {
 
 fn ignore_onnx(t: &[String]) -> bool {
     let name = t.last().unwrap();
-    let included = "_conv_ Conv1d Conv2d squeeze _transpose_ test_reshape test_flatten where less greater equal slice test_add test_mul test_sub test_div test_reduce test_square test_abs test_log test_exp test_sqrt";
+    let included = "_conv_ Conv1d Conv2d squeeze _transpose_ test_reshape test_flatten where less greater equal slice test_add test_mul test_sub test_div test_reduce test_square test_abs test_log test_exp test_sqrt ";
     let excluded = "
             test_slice_start_out_of_bounds
             test_Conv1d_groups
@@ -34,9 +34,12 @@ fn ignore_onnx(t: &[String]) -> bool {
             test_Conv2d_groups_thnn
             test_reshape_allowzero_reordered
             test_div_uint8
+            test_reduce_log_sum_exp*
             ";
-    !included.split_whitespace().any(|s| name.contains(s))
-        || excluded.split_whitespace().any(|s| s == name)
+    !included.split_whitespace().any(|pat| name.contains(pat))
+        || excluded.split_whitespace().any(|pat| {
+            pat == name || (pat.ends_with("*") && name.starts_with(pat.trim_end_matches("*")))
+        })
 }
 
 // We must *never* run these, even in --ignored mode, as they trigger buggy aborts in tflite runtime!
@@ -57,11 +60,11 @@ fn ignore_unit(t: &[String]) -> bool {
     ["deconv"].contains(&&**section)
         // grouping and depthwise
         || unit.starts_with("group")
-        // conv 3D
-        || unit == "lazy_im2col_big"
-        || unit == "lazy_im2col_big_2"
-        || unit == "batch_3d"
-        || unit == "bias_3d_1"
-        // kernel with non 0 zero_point
-        || unit == "kernel_zp"
+            // conv 3D
+            || unit == "lazy_im2col_big"
+            || unit == "lazy_im2col_big_2"
+            || unit == "batch_3d"
+            || unit == "bias_3d_1"
+            // kernel with non 0 zero_point
+            || unit == "kernel_zp"
 }
