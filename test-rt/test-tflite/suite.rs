@@ -38,7 +38,7 @@ fn ignore_onnx(t: &[String]) -> bool {
             ";
     !included.split_whitespace().any(|pat| name.contains(pat))
         || excluded.split_whitespace().any(|pat| {
-            pat == name || (pat.ends_with("*") && name.starts_with(pat.trim_end_matches("*")))
+            pat == name || (pat.ends_with('*') && name.starts_with(pat.trim_end_matches('*')))
         })
 }
 

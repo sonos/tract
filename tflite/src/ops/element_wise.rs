@@ -20,7 +20,7 @@ pub fn register_all(reg: &mut Registry) {
 }
 
 fn deser(op: &mut DeserOp, ew: ElementWiseOp) -> TractResult<TVec<OutletId>> {
-    op.ctx.target.wire_node(op.prefix, ew, &op.inputs)
+    op.ctx.target.wire_node(op.prefix, ew, op.inputs)
 }
 
 fn ser(
