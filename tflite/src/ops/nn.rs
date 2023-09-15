@@ -1,12 +1,18 @@
 use tract_core::internal::*;
+use tract_core::ops as core;
 use tract_core::ops::binary::wire_cast;
 use tract_core::ops::binary::wire_with_rank_broadcast;
-use tract_core::prelude::tract_itertools::Itertools;
-use tract_core::ops as core;
 use tract_core::ops::cast::Cast;
 use tract_core::ops::einsum::EinSum;
+use tract_core::ops::nn::{Reduce, Reducer};
+use tract_core::prelude::tract_itertools::Itertools;
 
 use crate::registry::{DeserOp, Registry};
+use crate::ser::BuiltinOp;
+use crate::ser::SubgraphBuilder;
+use crate::tflite::BuiltinOptions;
+use crate::tflite::ReducerOptions;
+use crate::tflite::ReducerOptionsArgs;
 use crate::tflite::{BuiltinOperator, FullyConnectedOptionsWeightsFormat};
 
 pub fn register_all(reg: &mut Registry) {
@@ -16,7 +22,12 @@ pub fn register_all(reg: &mut Registry) {
 
     reg.reg_to_tract(BuiltinOperator::RELU, de_relu);
     reg.reg_to_tract(BuiltinOperator::RELU6, de_relu6);
-    reg.reg_element_wise(BuiltinOperator::HARD_SWISH, Box::new(core::nn::HardSwish {}));
+
+    reg.reg_to_tflite(ser_reduce);
+    reg.reg_to_tract(BuiltinOperator::REDUCE_MAX, |op| de_reduce(op, Reducer::Max));
+    reg.reg_to_tract(BuiltinOperator::REDUCE_MIN, |op| de_reduce(op, Reducer::Min));
+    reg.reg_to_tract(BuiltinOperator::SUM, |op| de_reduce(op, Reducer::Sum));
+    reg.reg_to_tract(BuiltinOperator::REDUCE_PROD, |op| de_reduce(op, Reducer::Prod));
 }
 
 fn de_fully_connected(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
@@ -27,12 +38,7 @@ fn de_fully_connected(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     ensure!(!options.keep_num_dims());
     ensure!(!options.asymmetric_quantize_inputs());
     let mut inputs: TVec<OutletId> = op.inputs.into();
-    let qp = super::linearops_quantization_suport(
-        op,
-        &input,
-        &mut inputs,
-        false,
-    )?;
+    let qp = super::linearops_quantization_suport(op, &input, &mut inputs, false)?;
     let operating_dt =
         if input.datum_type.is_float() { input.datum_type } else { i32::datum_type() };
     let einsum = EinSum { axes: "BI,OI,O,,,,,,->BO".parse()?, q_params: qp, operating_dt };
@@ -40,8 +46,8 @@ fn de_fully_connected(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     super::wire_fused_activation(op, &wires, &options.fused_activation_function())
 }
 
-fn de_reduce_mean(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
-    let (input, axes) = args_2!(op.facts()?);
+fn de_reduce(op: &mut DeserOp, reducer: Reducer) -> TractResult<TVec<OutletId>> {
+    let (_, axes) = args_2!(op.facts()?);
     let options = builtin!(op, builtin_options_as_reducer_options);
     let axes: TVec<usize> = axes
         .konst
@@ -52,11 +58,10 @@ fn de_reduce_mean(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         .map(|d| *d as usize)
         .sorted()
         .collect();
-    let norm: TDim = axes.iter().map(|d| &input.shape[*d]).product();
     let p = &op.prefix;
     let mut wire = op.ctx.target.wire_node(
-        format!("{p}.sum"),
-        core::nn::Reduce::new(axes.clone(), core::nn::Reducer::Sum),
+        format!("{p}.reduce"),
+        core::nn::Reduce::new(axes.clone(), reducer),
         &[op.inputs[0]],
     )?;
     if !options.keep_dims() {
@@ -65,6 +70,23 @@ fn de_reduce_mean(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
                 op.ctx.target.wire_node(format!("{p}.rm_axis_{axis}"), AxisOp::Rm(*axis), &wire)?;
         }
     }
+    Ok(wire)
+}
+
+fn de_reduce_mean(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let (input, axes) = args_2!(op.facts()?);
+    let axes: TVec<usize> = axes
+        .konst
+        .as_ref()
+        .unwrap()
+        .as_slice::<i32>()?
+        .iter()
+        .map(|d| *d as usize)
+        .sorted()
+        .collect();
+    let norm: TDim = axes.iter().map(|d| &input.shape[*d]).product();
+    let wire = de_reduce(op, Reducer::Sum)?;
+    let p = &op.prefix;
     let norm = op.ctx.target.add_const(format!("{p}.card"), tensor0(norm))?;
     let norm = op.ctx.target.wire_node(
         format!("{p}.as_float"),
@@ -115,4 +137,46 @@ pub fn de_relu6(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         core::math::min(),
         &wires,
     )
+}
+
+fn ser_reduce(
+    builder: &mut SubgraphBuilder,
+    model: &TypedModel,
+    node: &TypedNode,
+    op: &Reduce,
+) -> TractResult<()> {
+    let axes = builder.write_fact(
+        format!("{}.axes", node.name),
+        tensor1(&op.axes.iter().map(|axis| *axis as i32).collect_vec()),
+    )?;
+    let inputs = [builder.map_outlet(model, node.inputs[0])?, axes];
+    let output = builder.map_outlets(model, [OutletId::from(node.id)])?;
+    let options = ReducerOptions::create(builder.fb(), &ReducerOptionsArgs { keep_dims: true });
+    match op.reducer {
+        Reducer::Max => builder.write_op_with_options(
+            &inputs,
+            &output,
+            BuiltinOp::new(82, 1, BuiltinOperator::REDUCE_MAX, BuiltinOptions::ReducerOptions),
+            options.as_union_value(),
+        ),
+        Reducer::Min => builder.write_op_with_options(
+            &inputs,
+            &output,
+            BuiltinOp::new(89, 1, BuiltinOperator::REDUCE_MIN, BuiltinOptions::ReducerOptions),
+            options.as_union_value(),
+        ),
+        Reducer::Prod => builder.write_op_with_options(
+            &inputs,
+            &output,
+            BuiltinOp::new(81, 1, BuiltinOperator::REDUCE_PROD, BuiltinOptions::ReducerOptions),
+            options.as_union_value(),
+        ),
+        Reducer::Sum => builder.write_op_with_options(
+            &inputs,
+            &output,
+            BuiltinOp::new(74, 1, BuiltinOperator::SUM, BuiltinOptions::ReducerOptions),
+            options.as_union_value(),
+        ),
+        _ => todo!(),
+    }
 }

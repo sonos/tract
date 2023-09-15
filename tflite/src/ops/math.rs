@@ -12,7 +12,6 @@ use tract_core::ops::logic;
 
 pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tflite(ser_bin);
-    reg.reg_to_tflite(ser_bin);
 
     reg.reg_to_tract(BuiltinOperator::ADD, deser_add);
     reg.reg_to_tract(BuiltinOperator::SUB, deser_sub);
