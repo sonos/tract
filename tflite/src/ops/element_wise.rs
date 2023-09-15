@@ -1,21 +1,26 @@
 use crate::registry::{DeserOp, Registry};
 use crate::ser::{BuiltinOp, SubgraphBuilder};
 use crate::tflite::{
-    AbsOptions, AbsOptionsArgs, BuiltinOperator, BuiltinOptions, ExpOptions, ExpOptionsArgs,
-    SquareOptions, SquareOptionsArgs,
+    AbsOptions, AbsOptionsArgs, BuiltinOperator, BuiltinOptions, CosOptions, CosOptionsArgs,
+    ExpOptions, ExpOptionsArgs, HardSwishOptions, HardSwishOptionsArgs, SquareOptions,
+    SquareOptionsArgs,
 };
 use tract_core::internal::*;
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::math::*;
+use tract_core::ops::nn::{hard_swish, HardSwish};
 
 pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tflite(ser);
 
     reg.reg_to_tract(BuiltinOperator::ABS, |op| deser(op, abs()));
-    reg.reg_to_tract(BuiltinOperator::LOG, |op| deser(op, ln()));
+    reg.reg_to_tract(BuiltinOperator::COS, |op| deser(op, cos()));
     reg.reg_to_tract(BuiltinOperator::EXP, |op| deser(op, exp()));
-    reg.reg_to_tract(BuiltinOperator::SQUARE, |op| deser(op, square()));
+    reg.reg_to_tract(BuiltinOperator::HARD_SWISH, |op| deser(op, hard_swish()));
+    reg.reg_to_tract(BuiltinOperator::LOG, |op| deser(op, ln()));
+    reg.reg_to_tract(BuiltinOperator::SIN, |op| deser(op, sin()));
     reg.reg_to_tract(BuiltinOperator::SQRT, |op| deser(op, sqrt()));
+    reg.reg_to_tract(BuiltinOperator::SQUARE, |op| deser(op, square()));
     reg.reg_to_tract(BuiltinOperator::RSQRT, |op| deser(op, rsqrt()));
 }
 
@@ -31,12 +36,20 @@ fn ser(
 ) -> TractResult<()> {
     let input = builder.map_outlet(model, node.inputs[0])?;
     let output = builder.map_outlet(model, node.id.into())?;
-    if (*op.0).is::<Square>() {
-        let options = SquareOptions::create(builder.fb(), &SquareOptionsArgs {});
+    if (*op.0).is::<Abs>() {
+        let options = AbsOptions::create(builder.fb(), &AbsOptionsArgs {});
         builder.write_op_with_options(
             &[input],
             &[output],
-            BuiltinOp::new(92, 1, BuiltinOperator::SQUARE, BuiltinOptions::SquareOptions),
+            BuiltinOp::new(101, 1, BuiltinOperator::ABS, BuiltinOptions::AbsOptions),
+            options.as_union_value(),
+        )
+    } else if (*op.0).is::<Cos>() {
+        let options = CosOptions::create(builder.fb(), &CosOptionsArgs {});
+        builder.write_op_with_options(
+            &[input],
+            &[output],
+            BuiltinOp::new(108, 1, BuiltinOperator::COS, BuiltinOptions::CosOptions),
             options.as_union_value(),
         )
     } else if (*op.0).is::<Exp>() {
@@ -47,14 +60,24 @@ fn ser(
             BuiltinOp::new(47, 1, BuiltinOperator::EXP, BuiltinOptions::ExpOptions),
             options.as_union_value(),
         )
-    } else if (*op.0).is::<Abs>() {
-        let options = AbsOptions::create(builder.fb(), &AbsOptionsArgs {});
+    } else if (*op.0).is::<HardSwish>() {
+        let options = HardSwishOptions::create(builder.fb(), &HardSwishOptionsArgs {});
         builder.write_op_with_options(
             &[input],
             &[output],
-            BuiltinOp::new(101, 1, BuiltinOperator::ABS, BuiltinOptions::AbsOptions),
+            BuiltinOp::new(117, 1, BuiltinOperator::HARD_SWISH, BuiltinOptions::HardSwishOptions),
             options.as_union_value(),
         )
+    } else if (*op.0).is::<Square>() {
+        let options = SquareOptions::create(builder.fb(), &SquareOptionsArgs {});
+        builder.write_op_with_options(
+            &[input],
+            &[output],
+            BuiltinOp::new(92, 1, BuiltinOperator::SQUARE, BuiltinOptions::SquareOptions),
+            options.as_union_value(),
+        )
+    } else if (*op.0).is::<Sin>() {
+        builder.write_op(&[input], &[output], 66, 1, BuiltinOperator::SIN)
     } else if (*op.0).is::<Sqrt>() {
         builder.write_op(&[input], &[output], 75, 1, BuiltinOperator::SQRT)
     } else if (*op.0).is::<Rsqrt>() {
@@ -62,6 +85,6 @@ fn ser(
     } else if (*op.0).is::<Ln>() {
         builder.write_op(&[input], &[output], 73, 1, BuiltinOperator::LOG)
     } else {
-        todo!("{:?}", op)
+        todo!("Serialization of ElementWise op {:?}", op)
     }
 }
