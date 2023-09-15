@@ -1,8 +1,16 @@
+use regex::Regex;
 use suite_unit::conv_f32::{ConvProblem, ConvProblemParams};
 use suite_unit::conv_q::{QConvProblem, QConvProblemParams};
 
 #[allow(clippy::needless_update)]
-pub fn suite() -> infra::TestSuite {
+pub fn suite() -> &'static infra::TestSuite {
+    lazy_static::lazy_static! {
+        static ref SUITE: infra::TestSuite  = mk_suite();
+    };
+    &*SUITE
+}
+
+fn mk_suite() -> infra::TestSuite {
     let mut onnx = suite_onnx::suite().clone();
     onnx.ignore(&ignore_onnx);
     onnx.skip(&skip_onnx);
@@ -22,10 +30,59 @@ pub fn suite() -> infra::TestSuite {
     infra::TestSuite::default().with("onnx", onnx).with("unit", unit)
 }
 
+fn patterns(s: &str) -> Vec<Regex> {
+    s.trim()
+        .lines()
+        .map(|s| s.split_once("#").map(|(left, _)| left).unwrap_or(s).trim())
+        .filter(|s| !s.is_empty())
+        .map(|pat| Regex::new(pat).unwrap())
+        .collect()
+}
+
 fn ignore_onnx(t: &[String]) -> bool {
     let name = t.last().unwrap();
-    let included = "_conv_ Conv1d Conv2d squeeze _transpose_ test_reshape test_flatten where less greater equal slice test_add test_mul test_sub test_div test_reduce test_square test_abs test_log test_exp test_sqrt test_rsqrt test_clip test_and test_or test_batchnorm hardswish test_cos test_sin test_reciprocal";
-    let excluded = "
+    let included = patterns(
+        "
+        _conv_
+        Conv1d
+        Conv2d
+        squeeze
+        _transpose_
+        test_reshape
+        test_flatten
+
+        where
+        less
+        greater
+        equal
+
+        slice
+        test_add
+        test_mul
+        test_sub
+        test_div
+
+        test_reduce
+
+        test_square
+        test_abs
+        test_log
+        test_exp
+        test_sqrt
+        test_rsqrt
+        test_hardswish
+
+        test_clip
+        test_and
+        test_or
+        test_batchnorm
+        test_cos
+        test_sin
+        # lol, no tan :)
+
+        test_reciprocal",
+    );
+    let excluded = patterns("
             test_slice_start_out_of_bounds
             test_Conv1d_groups
             test_Conv2d_groups
@@ -34,14 +91,11 @@ fn ignore_onnx(t: &[String]) -> bool {
             test_Conv2d_groups_thnn
             test_reshape_allowzero_reordered
             test_div_uint8
-            test_reduce_log_sum_exp*
-            test_cosh*
-            test_sinh*
-            ";
-    !included.split_whitespace().any(|pat| name.contains(pat))
-        || excluded.split_whitespace().any(|pat| {
-            pat == name || (pat.ends_with('*') && name.starts_with(pat.trim_end_matches('*')))
-        })
+            test_reduce_log_sum_exp.*                        # tflite does not support f64 reducers 🤷
+            test_cosh.*
+            test_sinh.*
+            ");
+    !included.iter().any(|pat| pat.is_match(name)) || excluded.iter().any(|pat| pat.is_match(name))
 }
 
 // We must *never* run these, even in --ignored mode, as they trigger buggy aborts in tflite runtime!

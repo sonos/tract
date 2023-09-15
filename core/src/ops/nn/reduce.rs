@@ -286,7 +286,6 @@ impl TypedOp for Reduce {
         } else {
             inputs[0].datum_type
         };
-        ensure!(!shape.iter().any(|d| *d == 768.to_dim()));
         Ok(tvec!(dt.fact(shape)))
     }
 

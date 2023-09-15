@@ -6,11 +6,14 @@ edition = "2021"
 [dependencies]
 
 [build-dependencies]
+lazy_static.workspace = true
+regex.workspace = true
 infra = { path = "../infra" }
 suite-onnx = { path = "../suite-onnx" }
 suite-unit = { path = "../suite-unit" }
 
 [dev-dependencies]
+regex.workspace = true
 lazy_static.workspace = true
 log.workspace = true
 tflitec.workspace = true
