@@ -53,7 +53,6 @@ mod tflite_cycle {
             info!("Store to Tflite");
             let mut buffer = vec![];
             self.0.write(&model, &mut buffer)?;
-            std::fs::write("foo.tfllite", &buffer)?;
             info!("Reload from Tflite");
             let mut reloaded = self.0.model_for_read(&mut &*buffer)?;
             for i in 0..model.inputs.len() {

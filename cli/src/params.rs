@@ -735,6 +735,10 @@ impl Parameters {
         }
         #[cfg(feature = "tflite")]
         if matches.is_present("tflite-cycle") {
+            stage!("tflite-cycle-predump", typed_model -> typed_model, |mut m:TypedModel| {
+                tract_tflite::rewriter::rewrite_for_tflite(&mut m)?;
+                Ok(m)
+            });
             stage!("tflite-cycle", typed_model -> typed_model, |m:TypedModel| {
                 let tflite = tract_tflite::tflite();
                 let mut vec = vec!();

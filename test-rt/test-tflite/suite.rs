@@ -71,11 +71,12 @@ fn ignore_onnx(t: &[String]) -> bool {
 
         test_abs
         test_exp
-        test_hardswish
         test_log
+        test_reciprocal
         test_square
         test_sqrt
         test_rsqrt
+
 
         test_cos
         test_sin
@@ -83,8 +84,10 @@ fn ignore_onnx(t: &[String]) -> bool {
 
         test_clip
         test_batchnorm
+        test_hardswish
+        test_selu
+        ",
 
-        test_reciprocal",
     );
     let excluded = patterns("
             test_slice_start_out_of_bounds

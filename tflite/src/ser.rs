@@ -82,6 +82,7 @@ impl<'f, 'b> ModelBuilder<'f, 'b> {
 pub struct SubgraphBuilder<'f, 'b, 'mb> {
     pub model: &'mb mut ModelBuilder<'f, 'b>,
     pub tensors: Vec<WIPOffset<Tensor<'f>>>,
+    pub const_cache: Vec<(Arc<tract_core::prelude::Tensor>, i32)>,
     pub operators: Vec<WIPOffset<Operator<'f>>>,
     pub outlets_to_tensors: HashMap<OutletId, i32>,
 }
@@ -93,6 +94,7 @@ impl<'f, 'b, 'mb> SubgraphBuilder<'f, 'b, 'mb> {
             tensors: vec![],
             operators: vec![],
             outlets_to_tensors: HashMap::new(),
+            const_cache: vec!(),
         }
     }
 
@@ -119,6 +121,7 @@ impl<'f, 'b, 'mb> SubgraphBuilder<'f, 'b, 'mb> {
     ) -> TractResult<TVec<i32>> {
         outlets.into_iter().map(|o| self.map_outlet(model, *o.borrow())).collect()
     }
+
     pub fn write_fact(
         &mut self,
         name: impl AsRef<str>,
@@ -197,6 +200,11 @@ impl<'f, 'b, 'mb> SubgraphBuilder<'f, 'b, 'mb> {
     ) -> TractResult<i32> {
         let fact = fact.into();
         let buffer = if let Some(k) = &fact.konst {
+            if let Some(pair) = self.const_cache.iter().find(|(t, _id)| t == k) {
+                return Ok(pair.1);
+            }
+            self.const_cache.push((k.clone(), self.tensors.len() as i32));
+
             let data = self.fb().create_vector(unsafe { k.as_bytes() });
             let buffer = Buffer::create(self.fb(), &BufferArgs { data: Some(data) });
             self.model.buffers.push(buffer);
@@ -326,7 +334,7 @@ impl<'f, 'b, 'mb> SubgraphBuilder<'f, 'b, 'mb> {
     }
 
     fn finish(self, model: &TypedModel) -> TractResult<WIPOffset<SubGraph<'f>>> {
-        let Self { model: ModelBuilder { builder, .. }, tensors, operators, outlets_to_tensors } =
+        let Self { model: ModelBuilder { builder, .. }, tensors, operators, outlets_to_tensors, .. } =
             self;
         let inputs = model.inputs.iter().map(|i| outlets_to_tensors[i]).collect_vec();
         let outputs = model.outputs.iter().map(|i| outlets_to_tensors[i]).collect_vec();

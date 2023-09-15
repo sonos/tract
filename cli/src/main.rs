@@ -61,8 +61,9 @@ pub const STAGES: &[&str] = &[
     "set-declutter",
     "nnef-cycle",
     "nnef-cycle-declutter",
-    "tlite-cycle",
-    "tfile-cycle-declutter",
+    "tflite-cycle-predump",
+    "tflite-cycle",
+    "tflite-cycle-declutter",
     "before-optimize",
     "optimize",
 ];
