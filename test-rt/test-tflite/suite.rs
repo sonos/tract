@@ -48,37 +48,41 @@ fn ignore_onnx(t: &[String]) -> bool {
         Conv2d
         squeeze
         _transpose_
-        test_reshape
+
         test_flatten
+        test_reshape
+        test_slice
+        test_split
 
         where
         less
         greater
         equal
 
-        slice
         test_add
         test_mul
         test_sub
         test_div
-
-        test_reduce
-
-        test_square
-        test_abs
-        test_log
-        test_exp
-        test_sqrt
-        test_rsqrt
-        test_hardswish
-
-        test_clip
         test_and
         test_or
-        test_batchnorm
+
+        test_reduce
+        test_softmax
+
+        test_abs
+        test_exp
+        test_hardswish
+        test_log
+        test_square
+        test_sqrt
+        test_rsqrt
+
         test_cos
         test_sin
         # lol, no tan :)
+
+        test_clip
+        test_batchnorm
 
         test_reciprocal",
     );
@@ -90,6 +94,7 @@ fn ignore_onnx(t: &[String]) -> bool {
             test_Conv2d_depthwise_with_multiplier
             test_Conv2d_groups_thnn
             test_reshape_allowzero_reordered
+            test_split_zero_size
             test_div_uint8
             test_reduce_log_sum_exp.*                        # tflite does not support f64 reducers 🤷
             test_cosh.*
