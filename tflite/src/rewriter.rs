@@ -5,7 +5,7 @@ use tract_core::ops::cnn::KernelFormat;
 use tract_core::ops::cnn::{ConvUnary, PaddingSpec};
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::math::Recip;
-use tract_core::ops::nn::DataFormat;
+use tract_core::ops::nn::{DataFormat, Softmax};
 
 pub fn rewrite_for_tflite(model: &mut TypedModel) -> TractResult<()> {
     Rewriter::default()
@@ -15,6 +15,7 @@ pub fn rewrite_for_tflite(model: &mut TypedModel) -> TractResult<()> {
         .with_rule_for("nchw-to-nhwc", nchw_to_nhwc)
         .with_rule_for("padding", padding)
         .with_rule_for("manual_recip", manual_recip)
+        .with_rule_for("softmax_on_last_axis", softmax_on_last_axis)
         .rewrite(&(), model)
 }
 
@@ -206,6 +207,40 @@ fn manual_recip(
             &mut patch,
             tract_core::ops::math::div(),
             &[one, input],
+        )?;
+        patch.shunt_outside(model, node.id.into(), wire[0])?;
+        Ok(Some(patch))
+    } else {
+        Ok(None)
+    }
+}
+
+fn softmax_on_last_axis(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    name: &str,
+    softmax: &Softmax,
+) -> TractResult<Option<TypedModelPatch>> {
+    let rank = model.outlet_fact(node.inputs[0])?.rank();
+    ensure!(softmax.axes.len() == 1);
+    if softmax.axes[0] != rank - 1 {
+        let mut patch = TypedModelPatch::default();
+        let mut wire = tvec!(patch.tap_model(model, node.inputs[0])?);
+        wire = patch.wire_node(
+            format!("{name}.move_axis"),
+            AxisOp::Move(softmax.axes[0], rank - 1),
+            &wire,
+        )?;
+        wire = patch.wire_node(
+            format!("{name}.softmax"),
+            Softmax { axes: tvec!(rank - 1), ..*softmax },
+            &wire,
+        )?;
+        wire = patch.wire_node(
+            format!("{name}.move_axis_back"),
+            AxisOp::Move(rank - 1, softmax.axes[0]),
+            &wire,
         )?;
         patch.shunt_outside(model, node.id.into(), wire[0])?;
         Ok(Some(patch))

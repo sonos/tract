@@ -4,6 +4,7 @@ use tract_core::ops::binary::wire_cast;
 use tract_core::ops::binary::wire_with_rank_broadcast;
 use tract_core::ops::cast::Cast;
 use tract_core::ops::einsum::EinSum;
+use tract_core::ops::nn::Softmax;
 use tract_core::ops::nn::{Reduce, Reducer};
 use tract_core::prelude::tract_itertools::Itertools;
 
@@ -13,11 +14,14 @@ use crate::ser::SubgraphBuilder;
 use crate::tflite::BuiltinOptions;
 use crate::tflite::ReducerOptions;
 use crate::tflite::ReducerOptionsArgs;
+use crate::tflite::SoftmaxOptions;
+use crate::tflite::SoftmaxOptionsArgs;
 use crate::tflite::{BuiltinOperator, FullyConnectedOptionsWeightsFormat};
 
 pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tract(BuiltinOperator::FULLY_CONNECTED, de_fully_connected);
     reg.reg_to_tract(BuiltinOperator::MEAN, de_reduce_mean);
+    reg.reg_to_tflite(ser_softmax);
     reg.reg_to_tract(BuiltinOperator::SOFTMAX, de_softmax);
 
     reg.reg_to_tract(BuiltinOperator::RELU, de_relu);
@@ -152,6 +156,7 @@ fn ser_reduce(
     let inputs = [builder.map_outlet(model, node.inputs[0])?, axes];
     let output = builder.map_outlets(model, [OutletId::from(node.id)])?;
     let options = ReducerOptions::create(builder.fb(), &ReducerOptionsArgs { keep_dims: true });
+    ensure!(model.outlet_fact(node.inputs[0])?.datum_type != f64::datum_type());
     match op.reducer {
         Reducer::Max => builder.write_op_with_options(
             &inputs,
@@ -179,4 +184,23 @@ fn ser_reduce(
         ),
         _ => todo!(),
     }
+}
+
+fn ser_softmax(
+    builder: &mut SubgraphBuilder,
+    model: &TypedModel,
+    node: &TypedNode,
+    op: &Softmax,
+) -> TractResult<()> {
+    let rank = model.outlet_fact(node.inputs[0])?.rank();
+    let input = builder.map_outlet(model, node.inputs[0])?;
+    let output = builder.map_outlet(model, node.id.into())?;
+    ensure!(&*op.axes == &[rank - 1]);
+    let options = SoftmaxOptions::create(builder.fb(), &SoftmaxOptionsArgs { beta: 1f32 });
+    builder.write_op_with_options(
+        &[input],
+        &[output],
+        BuiltinOp::new(25, 1, BuiltinOperator::SOFTMAX, BuiltinOptions::SoftmaxOptions),
+        options.as_union_value(),
+    )
 }
