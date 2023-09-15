@@ -85,7 +85,11 @@ fn ignore_onnx(t: &[String]) -> bool {
         test_clip
         test_batchnorm
         test_hardswish
+        test_leakyrelu
+        test_prelu
+        test_relu
         test_selu
+        test_thresholdrelu
         ",
 
     );

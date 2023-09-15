@@ -2,13 +2,13 @@ use crate::registry::{DeserOp, Registry};
 use crate::ser::{BuiltinOp, SubgraphBuilder};
 use crate::tflite::{
     AbsOptions, AbsOptionsArgs, BuiltinOperator, BuiltinOptions, CosOptions, CosOptionsArgs,
-    ExpOptions, ExpOptionsArgs, HardSwishOptions, HardSwishOptionsArgs, SquareOptions,
-    SquareOptionsArgs,
+    ExpOptions, ExpOptionsArgs, HardSwishOptions, HardSwishOptionsArgs, LeakyReluOptions,
+    LeakyReluOptionsArgs, SquareOptions, SquareOptionsArgs,
 };
 use tract_core::internal::*;
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::math::*;
-use tract_core::ops::nn::{hard_swish, HardSwish};
+use tract_core::ops::nn::{hard_swish, leaky_relu, HardSwish, LeakyRelu};
 
 pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tflite(ser);
@@ -17,6 +17,7 @@ pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tract(BuiltinOperator::COS, |op| deser(op, cos()));
     reg.reg_to_tract(BuiltinOperator::EXP, |op| deser(op, exp()));
     reg.reg_to_tract(BuiltinOperator::HARD_SWISH, |op| deser(op, hard_swish()));
+    reg.reg_to_tract(BuiltinOperator::LEAKY_RELU, de_leaky_relu);
     reg.reg_to_tract(BuiltinOperator::LOG, |op| deser(op, ln()));
     reg.reg_to_tract(BuiltinOperator::SIN, |op| deser(op, sin()));
     reg.reg_to_tract(BuiltinOperator::SQRT, |op| deser(op, sqrt()));
@@ -26,6 +27,11 @@ pub fn register_all(reg: &mut Registry) {
 
 fn deser(op: &mut DeserOp, ew: ElementWiseOp) -> TractResult<TVec<OutletId>> {
     op.ctx.target.wire_node(op.prefix, ew, op.inputs)
+}
+
+fn de_leaky_relu(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let options = builtin!(op, builtin_options_as_leaky_relu_options);
+    op.ctx.target.wire_node(op.prefix, leaky_relu(options.alpha()), op.inputs)
 }
 
 fn ser(
@@ -66,6 +72,15 @@ fn ser(
             &[input],
             &[output],
             BuiltinOp::new(117, 1, BuiltinOperator::HARD_SWISH, BuiltinOptions::HardSwishOptions),
+            options.as_union_value(),
+        )
+    } else if let Some(leaky) = (*op.0).downcast_ref::<LeakyRelu>() {
+        let options =
+            LeakyReluOptions::create(builder.fb(), &LeakyReluOptionsArgs { alpha: leaky.alpha });
+        builder.write_op_with_options(
+            &[input],
+            &[output],
+            BuiltinOp::new(98, 1, BuiltinOperator::LEAKY_RELU, BuiltinOptions::LeakyReluOptions),
             options.as_union_value(),
         )
     } else if (*op.0).is::<Square>() {
