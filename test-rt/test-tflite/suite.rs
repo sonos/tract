@@ -2,14 +2,14 @@ use regex::Regex;
 use suite_unit::conv_f32::{ConvProblem, ConvProblemParams};
 use suite_unit::conv_q::{QConvProblem, QConvProblemParams};
 
-#[allow(clippy::needless_update)]
 pub fn suite() -> &'static infra::TestSuite {
     lazy_static::lazy_static! {
         static ref SUITE: infra::TestSuite  = mk_suite();
     };
-    &*SUITE
+    &SUITE
 }
 
+#[allow(clippy::needless_update)]
 fn mk_suite() -> infra::TestSuite {
     let mut onnx = suite_onnx::suite().clone();
     onnx.ignore(&ignore_onnx);
@@ -33,7 +33,7 @@ fn mk_suite() -> infra::TestSuite {
 fn patterns(s: &str) -> Vec<Regex> {
     s.trim()
         .lines()
-        .map(|s| s.split_once("#").map(|(left, _)| left).unwrap_or(s).trim())
+        .map(|s| s.split_once('#').map(|(left, _)| left).unwrap_or(s).trim())
         .filter(|s| !s.is_empty())
         .map(|pat| Regex::new(pat).unwrap())
         .collect()
@@ -91,7 +91,6 @@ fn ignore_onnx(t: &[String]) -> bool {
         test_selu
         test_thresholdrelu
         ",
-
     );
     let excluded = patterns("
             test_slice_start_out_of_bounds
