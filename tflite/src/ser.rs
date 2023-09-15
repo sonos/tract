@@ -262,12 +262,16 @@ impl<'f, 'b, 'mb> SubgraphBuilder<'f, 'b, 'mb> {
         &mut self,
         inputs: &[i32],
         outputs: &[i32],
-        deprecated_builtin_code: i8,
+        deprecated_builtin_code: i16,
         version: i32,
         code: BuiltinOperator,
     ) -> TractResult<()> {
         let op = BuiltinOp {
-            deprecated_builtin_code,
+            deprecated_builtin_code: if deprecated_builtin_code > 127 {
+                127i8
+            } else {
+                deprecated_builtin_code as i8
+            },
             version,
             code,
             options_type: BuiltinOptions::NONE,

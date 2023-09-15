@@ -1,5 +1,5 @@
 use tract_core::internal::*;
-use tract_core::ops::array::{Slice, TypedConcat};
+use tract_core::ops::array::{MultiBroadcastTo, Slice, TypedConcat};
 use tract_core::ops::binary::wire_cast;
 use tract_core::ops::Downsample;
 use tract_core::prelude::tract_itertools::Itertools;
@@ -17,8 +17,11 @@ use super::wire_fused_activation;
 
 pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tflite(ser_axisop);
+    reg.reg_to_tflite(ser_broadcast_to);
     reg.reg_to_tflite(ser_downsample);
     reg.reg_to_tflite(ser_slice);
+
+    reg.reg_to_tract(BuiltinOperator::BROADCAST_TO, de_broadcast_to);
     reg.reg_to_tract(BuiltinOperator::CONCATENATION, de_concat);
     reg.reg_to_tract(BuiltinOperator::EXPAND_DIMS, de_expand_dims);
     reg.reg_to_tract(BuiltinOperator::PAD, de_pad);
@@ -29,6 +32,13 @@ pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tract(BuiltinOperator::SQUEEZE, de_squeeze);
     reg.reg_to_tract(BuiltinOperator::STRIDED_SLICE, de_strided_slice);
     reg.reg_to_tract(BuiltinOperator::TRANSPOSE, de_transpose);
+}
+
+fn de_broadcast_to(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let (_input, shape) = args_2!(op.facts()?);
+    let shape = shape.konst.clone().context("Dynamic BROADCAST_TO is not supported")?;
+    let shape = shape.cast_to::<i32>()?.as_slice::<i32>()?.iter().map(|d| *d as usize).collect();
+    op.ctx.target.wire_node(op.prefix, MultiBroadcastTo { shape }, &op.inputs[0..1])
 }
 
 fn de_concat(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
@@ -234,6 +244,21 @@ fn ser_axisop(
             )
         }
     }
+}
+
+fn ser_broadcast_to(
+    builder: &mut SubgraphBuilder,
+    _model: &TypedModel,
+    node: &TypedNode,
+    _op: &MultiBroadcastTo,
+) -> TractResult<()> {
+    let mut inputs = tvec!(builder.outlets_to_tensors[&node.inputs[0]]);
+    let output = builder.outlets_to_tensors[&node.id.into()];
+    let shape =
+        node.outputs[0].fact.shape.iter().map(|x| x.to_i32()).collect::<TractResult<Vec<i32>>>()?;
+    let shape = builder.write_fact(format!("{}.shape", node.name), tensor1(&shape))?;
+    inputs.push(shape);
+    builder.write_op(&inputs, &[output], 130, 3, BuiltinOperator::BROADCAST_TO)
 }
 
 fn ser_downsample(
