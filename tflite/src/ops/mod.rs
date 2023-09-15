@@ -23,12 +23,14 @@ macro_rules! builtin {
 
 mod array;
 mod cnn;
+mod element_wise;
 mod math;
 mod nn;
 
 pub fn register_all(reg: &mut Registry) {
     array::register_all(reg);
     cnn::register_all(reg);
+    element_wise::register_all(reg);
     math::register_all(reg);
     nn::register_all(reg);
     reg.reg_to_tflite(ser_iff);

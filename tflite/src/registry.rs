@@ -1,7 +1,6 @@
 use std::any::TypeId;
 
 use tract_core::internal::*;
-use tract_core::ops::element_wise::ElementWiseOp;
 
 use crate::ser::SubgraphBuilder;
 use crate::tflite::{BuiltinOperator, Model, Operator, SubGraph};
@@ -17,9 +16,6 @@ pub type ToTfliteRaw = Box<
 
 #[derive(Default)]
 pub struct Registry {
-    //    pub primitives: HashMap<Identifier, PrimitiveDecl>,
-    //    pub unit_element_wise_ops: Vec<(Identifier, Box<dyn ElementWiseMiniOp>)>,
-    pub element_wise_ops: Vec<(i32, Box<dyn ElementWiseMiniOp>)>,
     pub to_tract: HashMap<i32, ToTract>,
     pub to_tflite: HashMap<TypeId, ToTfliteRaw>,
 }
@@ -62,10 +58,6 @@ impl Registry {
         self.to_tract.insert(op.0, Box::new(to));
     }
 
-    pub fn reg_element_wise(&mut self, tflite: BuiltinOperator, tract: Box<dyn ElementWiseMiniOp>) {
-        self.element_wise_ops.push((tflite.0, tract));
-    }
-
     pub fn deser_op(
         &self,
         model: &Model,
@@ -88,11 +80,7 @@ impl Registry {
             operator_code.deprecated_builtin_code() as i32
         };
         let ctx = DeserContext { model, subgraph, target };
-        let results = if let Some(ew) =
-            self.element_wise_ops.iter().find(|bin| bin.0 == opcode).map(|pair| pair.1.clone())
-        {
-            target.wire_node(prefix, ElementWiseOp(ew.clone()), &inputs)?
-        } else if let Some(op) = self.to_tract.get(&opcode) {
+        let results = if let Some(op) = self.to_tract.get(&opcode) {
             let output_facts = flat_op
                 .outputs()
                 .unwrap()

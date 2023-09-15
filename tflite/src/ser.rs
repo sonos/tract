@@ -272,7 +272,6 @@ impl<'f, 'b, 'mb> SubgraphBuilder<'f, 'b, 'mb> {
             code,
             options_type: BuiltinOptions::NONE,
         };
-        dbg!(&op);
         let opcode_index = self.model.operator_code_index(op);
         let inputs = self.fb().create_vector(inputs);
         let outputs = self.fb().create_vector(outputs);
