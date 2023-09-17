@@ -15,7 +15,8 @@ test-command = """pytest {project}"""
 [tool.cibuildwheel.linux]
 skip = "cp312-* *-musllinux_i686"
 before-build = """
-yum install -y openblas-devel
+set -ex
+yum install -y openblas-devel cmake pkgconfig
 cargo --version || (curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
 . $HOME/.cargo/env
 rustup toolchain add stable
@@ -33,14 +34,14 @@ RUSTC_WRAPPER=sccache
 archs = "x86_64 universal2 arm64"
 skip = "cp312-*"
 before-build = """
-brew install openblas
+brew install openblas cmake
 rustup target add aarch64-apple-darwin
 [ -e $HOME/.local/bin/sccache ] || ./.travis/setup-sccache.sh ]
 """
 
 [tool.cibuildwheel.windows]
 before-build = """
-choco install mingw
+pip install numpy -C-Dallow-noblas=true
 """
 skip = "cp312-* *-win32"
 
