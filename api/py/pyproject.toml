@@ -39,5 +39,8 @@ rustup target add aarch64-apple-darwin
 """
 
 [tool.cibuildwheel.windows]
+before-build = """
+choco install mingw
+"""
 skip = "cp312-* *-win32"
 
