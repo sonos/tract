@@ -42,7 +42,7 @@ rustup target add aarch64-apple-darwin
 [tool.cibuildwheel.windows]
 # pip install numpy --config-settings=setup-args="-Dallow-noblas=true" 
 before-build = """
-pip3 install numpy==1.25.2
+pip3 install numpy
 """
 skip = "cp312-* *-win32 cp36-* cp37-*"
 
