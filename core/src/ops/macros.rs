@@ -146,7 +146,6 @@ macro_rules! args_7 {
             inputs.pop().unwrap(),
             inputs.pop().unwrap(),
         );
-        ::std::mem::drop($inputs);
         result
     }};
 }
@@ -159,7 +158,7 @@ macro_rules! args_8 {
         if inputs.len() != 8 {
             $crate::internal::bail!("Expected 8 arg, got {:?}", inputs)
         }
-        $inputs.reverse();
+        inputs.reverse();
         let result = (
             inputs.pop().unwrap(),
             inputs.pop().unwrap(),
