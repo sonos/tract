@@ -66,15 +66,14 @@ impl Expansion for Topk {
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         let input = model.outlet_fact(inputs[0])?;
-        let k = model.outlet_fact(inputs[1])?;
-        if let Some(k) = &k.konst {
-            let rank = input.rank();
-            let k = k.as_slice::<i64>()?[0] as usize;
-            let axis = if self.axis >= 0 { self.axis } else { self.axis + rank as i64 } as usize;
-            model.wire_node(prefix, tract_core::ops::array::Topk { axis, k, largest: self.largest }, &[inputs[0]])
-        } else {
-            bail!("tract only suports TopK with a known constant K");
-        }
+        let rank = input.rank();
+        let axis = if self.axis >= 0 { self.axis } else { self.axis + rank as i64 } as usize;
+        let fallback_k = model.symbol_table.new_with_prefix("k").into();
+        model.wire_node(
+            prefix,
+            tract_core::ops::array::Topk { axis, fallback_k, largest: self.largest },
+            &[inputs[0], inputs[1]],
+        )
     }
 
     fn nboutputs(&self) -> TractResult<usize> {

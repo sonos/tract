@@ -8,7 +8,7 @@ pub fn register(registry: &mut Registry) {
         "tract_core_topk",
         &[
             TypeName::Scalar.tensor().named("input"),
-            TypeName::Integer.named("k"),
+            TypeName::Integer.tensor().named("k"),
             TypeName::Integer.named("axis"),
             TypeName::Logical.named("largest"),
         ],
@@ -20,10 +20,11 @@ pub fn register(registry: &mut Registry) {
 fn ser_topk(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
     let op = node.op().downcast_ref::<ops::array::Topk>().unwrap();
     let input = ast.mapping[&node.inputs[0]].clone();
+    let k = ast.mapping[&node.inputs[1]].clone();
     Ok(Some(invocation(
         "tract_core_topk",
-        &[input],
-        &[("k", numeric(op.k)), ("largest", logical(op.largest)), ("axis", numeric(op.axis))],
+        &[input, k],
+        &[("largest", logical(op.largest)), ("axis", numeric(op.axis))],
     )))
 }
 
@@ -32,5 +33,6 @@ fn de_topk(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
     let k = invocation.named_arg_as(builder, "k")?;
     let axis = invocation.named_arg_as(builder, "axis")?;
     let largest = invocation.named_arg_as(builder, "largest")?;
-    builder.wire(ops::array::Topk { largest, k, axis }, &[input])
+    let fallback_k = builder.model.symbol_table.new_with_prefix("k").into();
+    builder.wire(ops::array::Topk { largest, fallback_k, axis }, &[input, k])
 }
