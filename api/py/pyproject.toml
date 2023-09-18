@@ -43,7 +43,7 @@ rustup target add aarch64-apple-darwin
 # pip install numpy --config-settings=setup-args="-Dallow-noblas=true" 
 before-build = """
 choco install mingw --version=8.1.0
-pip install numpy --config-settings=setup-args="-Dallow-noblas=true" 
+pip install "numpy==1.24.4"
 """
 skip = "cp312-* *-win32 cp36-* cp37-*"
 
