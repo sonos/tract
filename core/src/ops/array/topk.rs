@@ -7,7 +7,7 @@ use crate::internal::*;
 pub struct Topk {
     pub axis: usize,
     pub largest: bool,
-    pub k: usize,
+    pub fallback_k: TDim,
 }
 
 impl Op for Topk {
@@ -24,9 +24,10 @@ impl EvalOp for Topk {
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let input = args_1!(inputs);
+        let (input, k) = args_2!(inputs);
         let mut output_shape: TVec<usize> = input.shape().into();
-        output_shape[self.axis] = self.k;
+        let k = k.cast_to_scalar::<i64>()? as usize;
+        output_shape[self.axis] = k;
         let mut output_values = Tensor::zero::<f32>(&output_shape)?;
         let mut output_indices = Tensor::zero::<i64>(&output_shape)?;
         let mut iterating_shape = output_shape.clone();
@@ -47,7 +48,7 @@ impl EvalOp for Topk {
                 .map(|x| if self.largest { -x } else { x })
                 .enumerate()
                 .sorted_by(|a, b| a.1.total_cmp(&b.1))
-                .take(self.k)
+                .take(k)
                 .map(|(pos, val)| if self.largest { (pos, -val) } else { (pos, val) })
                 .enumerate()
             {
@@ -64,8 +65,13 @@ impl TypedOp for Topk {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact_values = inputs[0].without_value();
         let mut fact_indices = inputs[0].without_value();
-        fact_values.shape.set(self.axis, self.k.to_dim());
-        fact_indices.shape.set(self.axis, self.k.to_dim());
+        let k: TDim = if let Some(k) = &inputs[1].konst {
+            k.cast_to_scalar::<i64>()?.into()
+        } else {
+            self.fallback_k.clone()
+        };
+        fact_values.shape.set(self.axis, k.clone());
+        fact_indices.shape.set(self.axis, k);
         fact_indices.datum_type = i64::datum_type();
         Ok(tvec!(fact_values, fact_indices))
     }

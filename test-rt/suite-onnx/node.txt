@@ -789,9 +789,9 @@ test_thresholdedrelu_example_expanded_ver18
 test_thresholdedrelu_expanded_ver18
 test_tile input:x
 test_tile_precomputed input:x
-test_top_k input:x since:10
-test_top_k_negative_axis input:x
-test_top_k_smallest input:x
+test_top_k since:10
+test_top_k_negative_axis
+test_top_k_smallest
 test_transpose_all_permutations_0
 test_transpose_all_permutations_1
 test_transpose_all_permutations_2
