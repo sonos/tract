@@ -44,6 +44,7 @@ rustup target add aarch64-apple-darwin
 before-build = """
 choco install mingw --version=8.1.0
 pip install "numpy==1.24.4"
+pip install "numpy==1.25.2"
 """
 skip = "cp312-* *-win32 cp36-* cp37-*"
 
