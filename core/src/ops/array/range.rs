@@ -4,12 +4,8 @@ use crate::internal::*;
 
 #[derive(Debug, Default, Clone, new, Hash)]
 pub struct Range {
-    pub start: Tensor,
-    pub end: Tensor,
-    pub step: Tensor,
+    len: TDim,
 }
-
-
 
 impl Op for Range {
     fn name(&self) -> Cow<str> {
@@ -21,14 +17,12 @@ impl Op for Range {
 
 impl EvalOp for Range {
     fn is_stateless(&self) -> bool {
-        self.start.datum_type() != TDim::datum_type()
-            || (self.start.to_scalar::<TDim>().unwrap().to_i64().is_ok()
-                && self.end.to_scalar::<TDim>().unwrap().to_i64().is_ok()
-                && self.step.to_scalar::<TDim>().unwrap().to_i64().is_ok())
+        true
     }
 
-    fn eval(&self, _inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let tensor = self.make(None)?;
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        let (start, end, step) = args_3!(inputs);
+        let tensor = self.make(&start, &end, &step, None)?;
         Ok(tvec!(tensor.into_tvalue()))
     }
 
@@ -50,9 +44,10 @@ impl OpState for Range {
         &mut self,
         session: &mut SessionState,
         _op: &dyn Op,
-        _inputs: TVec<TValue>,
+        inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        Ok(tvec!(self.make(Some(&session.resolved_symbols))?.into_tvalue()))
+        let (start, end, step) = args_3!(inputs);
+        Ok(tvec!(self.make(&start, &end, &step, Some(&session.resolved_symbols))?.into_tvalue()))
     }
 }
 trivial_op_state_freeeze!(Range);
@@ -75,63 +70,83 @@ impl Range {
         }
     }
 
-    fn make(&self, values: Option<&SymbolValues>) -> TractResult<Tensor> {
-        if self.start.datum_type() == TDim::datum_type() {
+    fn make(
+        &self,
+        start: &Tensor,
+        end: &Tensor,
+        step: &Tensor,
+        values: Option<&SymbolValues>,
+    ) -> TractResult<Tensor> {
+        if start.datum_type() == TDim::datum_type() {
             let none = SymbolValues::default();
             let values = values.unwrap_or(&none);
-            let start = self.start.to_scalar::<TDim>()?.eval(values).to_i64()?;
-            let end = self.end.to_scalar::<TDim>()?.eval(values).to_i64()?;
-            let step = self.step.to_scalar::<TDim>()?.eval(values).to_i64()?;
-            #[allow(clippy::cast_abs_to_unsigned)]
-            let len = ((end - start).abs() as usize).divceil(step.abs() as usize);
-            Self::make_t::<TDim>(&self.start, &self.step, len)
+            let len = {
+                let start = start.to_scalar::<TDim>()?.eval(values).to_i64()?;
+                let end = end.to_scalar::<TDim>()?.eval(values).to_i64()?;
+                let step = step.to_scalar::<TDim>()?.eval(values).to_i64()?;
+                #[allow(clippy::cast_abs_to_unsigned)]
+                ((end - start).abs() as usize).divceil(step.abs() as usize)
+            };
+            Self::make_t::<TDim>(start, step, len)
         } else {
-            let len = dispatch_numbers!(Self::len_for_numbers(self.start.datum_type())(self))?;
-            dispatch_numbers!(Self::make_t(self.start.datum_type())(&self.start, &self.step, len))
+            let len = dispatch_numbers!(Self::len_for_numbers(start.datum_type())(
+                self, start, end, step
+            ))?;
+            dispatch_numbers!(Self::make_t(start.datum_type())(start, step, len))
         }
     }
 
-    fn len_for_numbers<T: Datum + AsPrimitive<f64>>(&self) -> TractResult<usize> {
-        let start = self.start.to_scalar::<T>()?;
-        let end = self.end.to_scalar::<T>()?;
-        let step = self.step.to_scalar::<T>()?;
+    fn len_for_numbers<T: Datum + AsPrimitive<f64>>(
+        &self,
+        start: &Tensor,
+        end: &Tensor,
+        step: &Tensor,
+    ) -> TractResult<usize> {
+        let start = start.to_scalar::<T>()?;
+        let end = end.to_scalar::<T>()?;
+        let step = step.to_scalar::<T>()?;
         Ok(((end.as_() - start.as_()) / (step.as_())).ceil() as usize)
     }
 }
 
 impl TypedOp for Range {
-    fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        ensure!(self.start.datum_type() == self.end.datum_type());
-        ensure!(self.start.datum_type() == self.step.datum_type());
-        let len = if self.start.datum_type() == TDim::datum_type() {
-            let start = self.start.to_scalar::<TDim>()?;
-            let end = self.end.to_scalar::<TDim>()?;
-            let step = self.step.to_scalar::<TDim>()?.to_i64()?;
-            (end.clone() - start).divceil(step as usize)
-        } else {
-            dispatch_numbers!(Self::len_for_numbers(self.start.datum_type())(self))?.into()
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        let [start, end, step] = inputs else {
+            bail!("Expects three inputs");
         };
-        Ok(tvec!(self.start.datum_type().fact(&[len])))
+        ensure!(start.datum_type() == end.datum_type());
+        ensure!(start.datum_type() == step.datum_type());
+        ensure!(start.rank() == 0);
+        ensure!(end.rank() == 0);
+        ensure!(step.rank() == 0);
+        if let (Some(start), Some(end), Some(step)) = (&start.konst, &end.konst, &step.konst) {
+            let len = dispatch_numbers!(Self::len_for_numbers(start.datum_type())(
+                self, start, end, step
+            ))?;
+            Ok(tvec!(start.datum_type().fact([len])))
+        } else {
+            Ok(tvec!(start.datum_type.fact(&[self.len.clone()])))
+        }
     }
 
+    /*
     fn concretize_dims(
         &self,
         _source: &TypedModel,
         node: &TypedNode,
         target: &mut TypedModel,
-        _mapping: &HashMap<OutletId, OutletId>,
+        mapping: &HashMap<OutletId, OutletId>,
         values: &SymbolValues,
     ) -> TractResult<TVec<OutletId>> {
-        let op = if self.start.datum_type() == TDim::datum_type() {
-            let start = self.start.to_scalar::<TDim>()?.eval(values).into();
-            let end = self.end.to_scalar::<TDim>()?.eval(values).into();
-            let step = self.step.to_scalar::<TDim>()?.eval(values).into();
-            Self { start, end, step }
+        let op = if let Some(len) = &self.len {
+            let len = len.eval(values);
+            Range { len: Some(len) }
         } else {
             self.clone()
         };
-        target.wire_node(&node.name, op, &[])
+        target.wire_node(&node.name, op, &node.inputs.iter().map(|i| mapping[i]).collect_vec())
     }
+    */
 
     as_op!();
 }

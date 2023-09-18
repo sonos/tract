@@ -531,6 +531,8 @@ test_prelu_example_expanded
 test_qlinearmatmul_2D                                                                
 test_qlinearmatmul_3D                                                                
 test_quantizelinear                                                                 input:x not-nnef
+test_range_float_type_positive_delta
+test_range_int32_type_negative_delta
 test_reciprocal
 test_reciprocal_example
 test_reduce_l1_default_axes_keepdims_example input:data

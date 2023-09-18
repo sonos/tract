@@ -5,10 +5,10 @@ use tract_core::ops::array::Range;
 pub fn register(registry: &mut Registry) {
     registry.register_dumper(TypeId::of::<Range>(), range_dump);
     registry.register_primitive(
-        "tract_core_range", 
+        "tract_core_range",
         &range_parameters(),
-        &[("output", TypeName::Scalar.tensor())], 
-        range_load
+        &[("output", TypeName::Scalar.tensor())],
+        range_load,
     );
 }
 
@@ -20,31 +20,19 @@ fn range_parameters() -> Vec<Parameter> {
     ]
 }
 
-fn range_dump(_ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
-    let op = node.op_as::<Range>().unwrap();
+fn range_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
+    let start = ast.mapping[&node.inputs[0]].clone();
+    let end = ast.mapping[&node.inputs[1]].clone();
+    let step = ast.mapping[&node.inputs[2]].clone();
 
-    let start = op.start.to_scalar::<TDim>()?;
-    let end = op.end.to_scalar::<TDim>()?;
-    let step = op.step.to_scalar::<TDim>()?;
-
-    Ok(Some(invocation(
-        "tract_core_range",
-        &[],
-        &[("start", tdim(start)), ("end", tdim(end)), ("step", tdim(step))],
-    )))
+    Ok(Some(invocation("tract_core_range", &[start, end, step], &[])))
 }
 
-fn range_load(
-    builder: &mut ModelBuilder,
-    invocation: &ResolvedInvocation,
-) -> TractResult<Value> {
-    let start: TDim = invocation.named_arg_as(builder, "start")?;
-    let end: TDim = invocation.named_arg_as(builder, "end")?;
-    let step: TDim = invocation.named_arg_as(builder, "step")?;
+fn range_load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
+    let start: OutletId = invocation.named_arg_as(builder, "start")?;
+    let end: OutletId = invocation.named_arg_as(builder, "end")?;
+    let step: OutletId = invocation.named_arg_as(builder, "step")?;
 
-    let start: Tensor = start.into();
-    let end: Tensor = end.into();
-    let step: Tensor = step.into();
-
-    builder.wire(Range::new(start, end, step), &[])
+    let len = builder.model.symbol_table.new_with_prefix("range");
+    builder.wire(Range::new(len.into()), &[start, end, step])
 }

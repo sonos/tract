@@ -3,13 +3,10 @@ use crate::internal::*;
 #[derive(Debug, Default, Clone, new, Hash)]
 pub struct Range;
 
-
-
 impl Expansion for Range {
     fn name(&self) -> Cow<str> {
         "Range".into()
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -50,30 +47,7 @@ impl Expansion for Range {
         model: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let start = model
-            .outlet_fact(inputs[0])?
-            .konst
-            .clone()
-            .context("Range needs fixed inputs")?
-            .into_tensor();
-        let end = model
-            .outlet_fact(inputs[1])?
-            .konst
-            .clone()
-            .context("Range needs fixed inputs")?
-            .into_tensor();
-        let step = model
-            .outlet_fact(inputs[2])?
-            .konst
-            .clone()
-            .context("Range needs fixed inputs")?
-            .into_tensor();
-        let dt =
-            DatumType::super_type_for([start.datum_type(), end.datum_type(), step.datum_type()])
-                .context("No supertype found for range inputs")?;
-        let start = start.cast_to_dt(dt)?.into_owned();
-        let end = end.cast_to_dt(dt)?.into_owned();
-        let step = step.cast_to_dt(dt)?.into_owned();
-        model.wire_node(prefix, tract_core::ops::array::Range { start, end, step }, &[])
+        let len = model.symbol_table.new_with_prefix("range");
+        model.wire_node(prefix, tract_core::ops::array::Range::new(len.into()), inputs)
     }
 }
