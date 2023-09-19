@@ -257,7 +257,16 @@ pub fn for_string(
             .shape
             .as_concrete_finite()?
             .context("Must specify concrete shape when giving tensor value")?;
-        let tensor = dispatch_numbers!(parse_values(dt)(&*shape, value.collect()))?;
+        let tensor = if dt == TDim::datum_type() {
+            let mut tensor = Tensor::zero::<TDim>(&shape)?;
+            let values = value
+                .map(|v| parse_tdim(symbol_table, v))
+                .collect::<TractResult<Vec<_>>>()?;
+            tensor.as_slice_mut::<TDim>()?.iter_mut().zip(values).for_each(|(t, v)| *t = v);
+            tensor
+        } else {
+            dispatch_numbers!(parse_values(dt)(&*shape, value.collect()))?
+        };
         Ok((name, tensor.into()))
     } else {
         Ok((name, parse_spec(symbol_table, value)?))
