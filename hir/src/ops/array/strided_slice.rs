@@ -19,12 +19,35 @@ impl InferenceRulesOp for StridedSlice {
         s.equals(&inputs[1].rank, 1)?;
         s.equals(&inputs[2].rank, 1)?;
         s.equals(&inputs[1].shape[0], &inputs[2].shape[0])?;
+        s.equals(
+            &outputs[0].rank,
+            inputs[0].rank.bex() - self.shrink_axis_mask.count_ones() as i64,
+        )?;
         if let Some(axis) = self.optional_axes_input {
             s.equals(&inputs[1].shape, &inputs[axis].shape)?;
         };
         if let Some(step) = self.optional_steps_input {
             s.equals(&inputs[1].shape, &inputs[step].shape)?;
         };
+        if let Some(axes_input) = self.optional_axes_input {
+            s.given(&inputs[axes_input].value, move |s, axes| {
+                let axes = axes.cast_to::<i64>()?;
+                let axes = axes.as_slice::<i64>()?.iter().map(|a| *a as usize).collect_vec();
+                s.given(&outputs[0].rank, move |s, orank| {
+                    let mut iaxis = 0;
+                    for oaxis in 0..orank as usize {
+                        while self.shrink_axis_mask & (1 << iaxis) != 0 {
+                            iaxis += 1;
+                        }
+                        if !axes.contains(&iaxis) {
+                            s.equals(&inputs[0].shape[iaxis], &outputs[0].shape[oaxis])?;
+                        }
+                        iaxis += 1;
+                    }
+                    Ok(())
+                })
+            })?;
+        }
         s.given(&inputs[0].shape, move |s, input_shape| {
             s.given_all(inputs[1..].iter().map(|i| &i.value), move |s, params| {
                 let begin = &params[0];
@@ -62,7 +85,6 @@ impl InferenceRulesOp for StridedSlice {
         })
     }
 
-
     to_typed!();
     as_op!();
 }
@@ -70,8 +92,8 @@ impl InferenceRulesOp for StridedSlice {
 #[cfg(test)]
 mod tests {
     #![allow(non_snake_case)]
-    use tract_core::ops::array::strided_slice::Dim;
     use super::*;
+    use tract_core::ops::array::strided_slice::Dim;
     use tract_ndarray::{arr1, arr2, arr3};
 
     pub fn strided_slice(begin_mask: i64, end_mask: i64, shrink_axis_mask: i64) -> StridedSlice {
