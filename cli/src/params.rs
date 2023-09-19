@@ -852,11 +852,17 @@ impl Parameters {
                 {
                     let value = value.clone().into_arc_tensor();
                     let id = raw_model.node_id_by_name(konst)?;
-                    info!("Commuting {} into a const of {:?}", raw_model.node_display(id), value);
+                    info!(
+                        "Commuting {}, fact:{:?} into a const of {:?}",
+                        raw_model.node_display(id),
+                        raw_model.outlet_typedfact(id.into())?,
+                        value
+                    );
                     let op = Box::new(Const::new(value.clone().into_arc_tensor()));
                     if let Some(inf) = raw_model.downcast_mut::<InferenceModel>() {
                         inf.inputs.retain(|i| i.node != id);
                         inf.nodes[id].op = op;
+                        inf.nodes[id].outputs[0].fact = Default::default();
                     } else if let Some(typ) = raw_model.downcast_mut::<TypedModel>() {
                         typ.inputs.retain(|i| i.node != id);
                         typ.nodes[id].op = op;
