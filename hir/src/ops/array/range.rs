@@ -1,3 +1,5 @@
+use tract_core::ops::binary::wire_cast;
+
 use crate::internal::*;
 
 #[derive(Debug, Default, Clone, new, Hash)]
@@ -47,7 +49,12 @@ impl Expansion for Range {
         model: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
+        let dt: DatumType = DatumType::super_type_for(
+            inputs.iter().map(|o| model.outlet_fact(*o).unwrap().datum_type),
+        )
+        .context("No supertype for inputs")?;
+        let inputs = wire_cast(prefix, model, inputs, dt)?;
         let len = model.symbol_table.new_with_prefix("range");
-        model.wire_node(prefix, tract_core::ops::array::Range::new(len.into()), inputs)
+        model.wire_node(prefix, tract_core::ops::array::Range::new(len.into()), &inputs)
     }
 }
