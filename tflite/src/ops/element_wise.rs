@@ -3,10 +3,11 @@ use crate::ser::{BuiltinOp, SubgraphBuilder};
 use crate::tflite::{
     AbsOptions, AbsOptionsArgs, BuiltinOperator, BuiltinOptions, CosOptions, CosOptionsArgs,
     ExpOptions, ExpOptionsArgs, HardSwishOptions, HardSwishOptionsArgs, LeakyReluOptions,
-    LeakyReluOptionsArgs, SquareOptions, SquareOptionsArgs,
+    LeakyReluOptionsArgs, LogicalNotOptionsArgs, SquareOptions, SquareOptionsArgs, LogicalNotOptions,
 };
 use tract_core::internal::*;
 use tract_core::ops::element_wise::ElementWiseOp;
+use tract_core::ops::logic::{ Not, not };
 use tract_core::ops::math::*;
 use tract_core::ops::nn::{hard_swish, leaky_relu, HardSwish, LeakyRelu};
 
@@ -19,6 +20,7 @@ pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tract(BuiltinOperator::HARD_SWISH, |op| deser(op, hard_swish()));
     reg.reg_to_tract(BuiltinOperator::LEAKY_RELU, de_leaky_relu);
     reg.reg_to_tract(BuiltinOperator::LOG, |op| deser(op, ln()));
+    reg.reg_to_tract(BuiltinOperator::LOGICAL_NOT, |op| deser(op, not()));
     reg.reg_to_tract(BuiltinOperator::SIN, |op| deser(op, sin()));
     reg.reg_to_tract(BuiltinOperator::SQRT, |op| deser(op, sqrt()));
     reg.reg_to_tract(BuiltinOperator::SQUARE, |op| deser(op, square()));
@@ -81,6 +83,14 @@ fn ser(
             &[input],
             &[output],
             BuiltinOp::new(98, 1, BuiltinOperator::LEAKY_RELU, BuiltinOptions::LeakyReluOptions),
+            options.as_union_value(),
+        )
+    } else if (*op.0).is::<Not>() {
+        let options = LogicalNotOptions::create(builder.fb(), &LogicalNotOptionsArgs {});
+        builder.write_op_with_options(
+            &[input],
+            &[output],
+            BuiltinOp::new(87, 1, BuiltinOperator::LOGICAL_NOT, BuiltinOptions::LogicalNotOptions),
             options.as_union_value(),
         )
     } else if (*op.0).is::<Square>() {
