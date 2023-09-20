@@ -54,10 +54,11 @@ fn ignore_onnx(t: &[String]) -> bool {
         test_slice
         test_split
 
-        where
-        less
-        greater
-        equal
+        test_where
+        test_less
+        test_greater
+        test_equal
+        test_not
 
         test_add
         test_mul
