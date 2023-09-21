@@ -72,7 +72,6 @@ impl InferenceRulesOp for StridedSlice {
                 for (ix, axis) in axes.into_iter().enumerate() {
                     let preped =
                         self.prepare_one_dim(ix, &input_shape[axis], begin, end, &strides)?;
-                    dbg!(&preped);
                     output_shape[axis] = preped.soft_len()?;
                     if preped.shrink {
                         shrink.push(axis);
