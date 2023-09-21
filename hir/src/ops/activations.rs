@@ -83,6 +83,22 @@ activation!(Softsign, |_op, name: &str, model: &mut TypedModel, inputs| {
 });
 
 #[derive(Debug, Clone, new)]
+pub struct Celu(pub f32);
+
+activation!(Celu, |op, name: &str, model: &mut TypedModel, inputs| {
+    cst!(model, inputs, name, zero, 0.0);
+    cst!(model, inputs, name, one, 1.0);
+    cst!(model, inputs, name, alpha, op.0);
+    let x_over_alpha = model.wire_node(name.to_string() + ".x_over_alpha", div(), &[inputs[0], alpha])?;
+    let x_over_alpha_exp = model.wire_node(name.to_string() + ".exp", exp(), &[x_over_alpha[0]])?;
+    let minus_one = model.wire_node(name.to_string() + ".minus_one", sub(), &[x_over_alpha_exp[0], one])?;
+    let wire = model.wire_node(name.to_string() + ".sat-zero", min(), &[zero, minus_one[0]])?;
+    let relu = model.wire_node(name.to_string() + ".relu", max(), &[zero, inputs[0]])?;
+    let wire = model.wire_node(name.to_string(), add(), &[relu[0], wire[0]])?;
+    Ok(wire)
+});
+
+#[derive(Debug, Clone, new)]
 pub struct Elu(pub f32);
 
 activation!(Elu, |op, name: &str, model: &mut TypedModel, inputs| {

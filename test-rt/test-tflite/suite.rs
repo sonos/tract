@@ -71,7 +71,9 @@ fn ignore_onnx(t: &[String]) -> bool {
         test_softmax
 
         test_abs
+        test_ceil
         test_exp
+        test_floor
         test_log
         test_reciprocal
         test_square

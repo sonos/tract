@@ -126,6 +126,7 @@ test_castlike_STRING_to_FLOAT
 test_castlike_STRING_to_FLOAT_expanded not-nnef
 test_ceil
 test_ceil_example
+test_celu
 test_celu_expanded
 test_clip
 test_clip_default_inbounds
