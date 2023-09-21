@@ -33,6 +33,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("ArgMin", arg_max_min);
     reg.insert("AveragePool", average_pool);
     reg.insert("BatchNormalization", batch_normalization);
+    reg.insert("Celu", celu);
     reg.insert("Conv", conv);
     reg.insert("ConvInteger", conv_integer);
     reg.insert("ConvTranspose", conv_transpose::conv_transpose);
@@ -214,6 +215,14 @@ pub fn average_pool(
         )),
         vec![],
     ))
+}
+
+pub fn celu(
+    _ctx: &ParsingContext,
+    node: &NodeProto,
+) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
+    let alpha = node.get_attr_opt("alpha")?.unwrap_or(1.);
+    Ok((expand(ops::activations::Celu(alpha)), vec![]))
 }
 
 pub fn elu(

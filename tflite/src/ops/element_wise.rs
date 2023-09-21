@@ -15,8 +15,10 @@ pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tflite(ser);
 
     reg.reg_to_tract(BuiltinOperator::ABS, |op| deser(op, abs()));
+    reg.reg_to_tract(BuiltinOperator::CEIL, |op| deser(op, ceil()));
     reg.reg_to_tract(BuiltinOperator::COS, |op| deser(op, cos()));
     reg.reg_to_tract(BuiltinOperator::EXP, |op| deser(op, exp()));
+    reg.reg_to_tract(BuiltinOperator::FLOOR, |op| deser(op, floor()));
     reg.reg_to_tract(BuiltinOperator::HARD_SWISH, |op| deser(op, hard_swish()));
     reg.reg_to_tract(BuiltinOperator::LEAKY_RELU, de_leaky_relu);
     reg.reg_to_tract(BuiltinOperator::LOG, |op| deser(op, ln()));
@@ -101,6 +103,10 @@ fn ser(
             BuiltinOp::new(92, 1, BuiltinOperator::SQUARE, BuiltinOptions::SquareOptions),
             options.as_union_value(),
         )
+    } else if (*op.0).is::<Ceil>() {
+        builder.write_op(&[input], &[output], 104, 1, BuiltinOperator::CEIL)
+    } else if (*op.0).is::<Floor>() {
+        builder.write_op(&[input], &[output], 8, 1, BuiltinOperator::FLOOR)
     } else if (*op.0).is::<Sin>() {
         builder.write_op(&[input], &[output], 66, 1, BuiltinOperator::SIN)
     } else if (*op.0).is::<Sqrt>() {
