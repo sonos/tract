@@ -62,7 +62,7 @@ impl StridedSlice {
             None
         } else if end.datum_type() == i64::datum_type() {
             let end = *end.as_slice::<i64>()?.get(ix).unwrap();
-            if end == std::i64::MAX || end == std::i64::MIN || end == std::i64::MIN + 1 {
+            if end == std::i64::MAX || end == std::i64::MIN || end == std::i64::MIN + 1 || end == std::i32::MAX as _ {
                 None
             } else {
                 Some(end.to_dim())
