@@ -32,7 +32,7 @@ impl ProtoFusedSpec {
     pub fn name(&self) -> String {
         use ProtoFusedSpec::*;
         match self {
-            AddMatMul(geo, _, _) => format!("matmul(k={}, {:?})", geo.k, geo),
+            AddMatMul(geo, _, _) => format!("matmul(k={})", geo.k),
             BinScalar(_, op) => format!("scalar{op:?}"),
             BinPerRow(_, op, _) => format!("row{op:?}"),
             BinPerCol(_, op, _) => format!("col{op:?}"),
@@ -269,7 +269,7 @@ impl Op for LirMatMulUnary {
         } else {
             infos.push(format!("Mult: {}", self.mmm));
         }
-        infos.push(format!("Ops: {}", self.micro_ops.iter().map(|o| o.name()).join(" . ")));
+        infos.push(format!("Ops: {}", self.micro_ops.iter().map(|o| o.name()).join(" >>> ")));
         Ok(infos)
     }
 
@@ -593,7 +593,7 @@ impl LirMatMulUnary {
         new_op.update_trivial_path();
         let mut inputs = patch.taps(model, &node.inputs)?;
         inputs.extend(additional_inputs.iter().cloned());
-        let output = patch.wire_node(&node.name, new_op, &inputs)?;
+        let output = patch.wire_node(&succ.name, new_op, &inputs)?;
         patch.shunt_outside(model, succ.id.into(), output[0])?;
         Ok(Some(patch))
     }
