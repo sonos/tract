@@ -221,7 +221,7 @@ pub fn handle_reference_stage(
     output_params: &DisplayParams,
     run_params: &RunParams,
 ) -> TractResult<()> {
-    debug!("Computing results for reference stage");
+    info!("Computing results for reference stage");
     let reference_model =
         params.reference_model.as_ref().context("No reference model. need --with ?")?;
     let reference_model = reference_model
@@ -280,7 +280,7 @@ where
     O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone,
     Graph<F, O>: Model,
 {
-    debug!("Obtained reference data, starting test run");
+    info!("Obtained reference data, starting test run");
     // Execute the model step-by-step on tract.
     let plan = SimplePlan::new(tract)?;
     let mut state = SimpleState::new(plan)?;
