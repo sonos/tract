@@ -23,7 +23,7 @@ pub enum ProtoFusedSpec {
     BinPerRow(usize, BinOp, MapOutputAxisToInput),
     BinPerCol(usize, BinOp, MapOutputAxisToInput),
     AddRowColProducts(usize, usize),
-    AddUnicast(OutputStoreSpec, usize),
+    AddUnicast(OutputStoreSpec, usize, MapOutputAxisToInput),
     Scaler(Scaler),
     Store(OutputStoreSpec),
 }
@@ -37,7 +37,7 @@ impl ProtoFusedSpec {
             BinPerRow(_, op, _) => format!("row{op:?}"),
             BinPerCol(_, op, _) => format!("col{op:?}"),
             AddRowColProducts(_, _) => "add_row_col_product".to_string(),
-            AddUnicast(_, _) => "add_to_matrix".to_string(),
+            AddUnicast(_, _, _) => "add_to_matrix".to_string(),
             Scaler(s) => format!("scale({})", 1f32 * *s),
             Store(_oss) => "store".to_string(),
         }
@@ -91,8 +91,9 @@ impl ProtoFusedSpec {
             ProtoFusedSpec::AddRowColProducts(row, col) => {
                 FusedSpec::AddRowColProducts(&inputs[*row], &inputs[*col])
             }
-            ProtoFusedSpec::AddUnicast(store, v) => unsafe {
-                let view = inputs[*v].view_offsetting_unchecked(output_coords);
+            ProtoFusedSpec::AddUnicast(store, v, map) => unsafe {
+                let mut view = inputs[*v].view();
+                map.translate_view(output_coords, &mut view);
                 FusedSpec::AddUnicast(store.wrap(&view))
             },
             ProtoFusedSpec::Scaler(scaler) => scaler.as_fused_spec(),
@@ -149,7 +150,7 @@ impl ProtoFusedSpec {
             ProtoFusedSpec::AddRowColProducts(row, col) => {
                 FusedSpec::AddRowColProducts(&inputs[*row], &inputs[*col])
             }
-            ProtoFusedSpec::AddUnicast(store, v) => unsafe {
+            ProtoFusedSpec::AddUnicast(store, v, _) => unsafe {
                 let view = inputs[*v].view();
                 FusedSpec::AddUnicast(store.wrap(&view))
             },
@@ -177,7 +178,10 @@ impl ProtoFusedSpec {
             }
             BinScalar(..) | Scaler(..) | AddRowColProducts(_, _) => {}
             BinPerRow(_, _, map) | BinPerCol(_, _, map) => map.rm_c_axis(axis),
-            AddUnicast(oss, _) | Store(oss, ..) => match oss {
+            AddUnicast(_, _, map) => {
+                map.rm_c_axis(axis);
+            }
+            Store(oss, ..) => match oss {
                 OutputStoreSpec::View { m_axis, n_axis, .. } => {
                     *m_axis -= (*m_axis > axis) as usize;
                     *n_axis -= (*n_axis > axis) as usize;
@@ -491,14 +495,17 @@ impl TypedOp for LirMatMulUnary {
                 let other_slot = 1 - node.outputs[0].successors[0].slot;
                 let other_input = succ.inputs[other_slot];
                 let other_input = patch.tap_model(model, other_input)?;
+                let other_fact = patch.outlet_fact(other_input)?;
 
-                if patch.outlet_fact(other_input)?.shape == self.c_fact.shape {
+                if other_fact.shape == self.c_fact.shape {
                     let other_storage = unsafe { self.mmm.c_view(self.c_m_axis, self.c_n_axis) };
+                    let mapping =
+                        MapOutputAxisToInput((0..other_fact.rank()).map(|x| (x, x)).collect());
                     return self.fuse_op(
                         model,
                         node,
                         patch,
-                        vec![ProtoFusedSpec::AddUnicast(other_storage, node.inputs.len())],
+                        vec![ProtoFusedSpec::AddUnicast(other_storage, node.inputs.len(), mapping)],
                         &[other_input],
                     );
                 }
