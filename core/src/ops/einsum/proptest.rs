@@ -121,6 +121,7 @@ impl BinEinsumProblem {
         model = model.into_decluttered()?;
         let expected = model.clone().into_runnable()?.run(inputs.clone())?.remove(0);
         let optimised = model.clone().into_optimized()?;
+        dbg!(&optimised);
         let found = optimised.into_runnable()?.run(inputs.clone())?.remove(0);
         found.close_enough(&expected, Approximation::Close)
     }
@@ -156,6 +157,20 @@ fn unicast_1() {
         a_constant: false,
         b_constant: false,
         unicast_add_constant: Some(tensor2(&[[0f32, 0.], [0., 1.]])),
+    }
+    .check()
+    .unwrap()
+}
+
+#[test]
+fn unicast_2() {
+    BinEinsumProblem {
+        expr: "abk,gk->abg".parse().unwrap(),
+        a: Tensor::zero::<f32>(&[2, 2, 1]).unwrap(),
+        b: Tensor::zero::<f32>(&[1, 1]).unwrap(),
+        a_constant: false,
+        b_constant: false,
+        unicast_add_constant: Some(tensor3(&[[[0f32], [0.]], [[0.], [1.]]])),
     }
     .check()
     .unwrap()
