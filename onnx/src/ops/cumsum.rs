@@ -18,9 +18,9 @@ fn cumsum(
 }
 
 #[derive(Debug, Clone, Hash)]
-struct CumSum {
-    reverse: bool,
-    exclusive: bool,
+pub struct CumSum {
+    pub reverse: bool,
+    pub exclusive: bool,
 }
 
 impl Expansion for CumSum {
