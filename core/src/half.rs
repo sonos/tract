@@ -4,6 +4,7 @@ use crate::ops::array::{Pad, PadMode};
 use crate::ops::cnn::{ConvUnary, DeconvUnary};
 use crate::ops::einsum::EinSum;
 use crate::ops::konst::Const;
+use crate::ops::scan::Scan;
 use crate::ops::source::TypedSource;
 
 #[derive(Debug)]
@@ -27,6 +28,9 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Hal
                 bias: op.bias.as_ref().map(tensor_f32_to_f16),
                 ..op.clone()
             })
+        } else if let Some(op) = node.op_as::<Scan>() {
+            let body = HalfTranslator.translate_model(&op.body)?;
+            Box::new(Scan { body, .. op.clone() })
         } else if let Some(op) = node.op_as::<EinSum>() {
             Box::new(EinSum { operating_dt: dt_f32_to_f16(op.operating_dt), ..op.clone() })
         } else if let Some(op) = node.op_as::<DeconvUnary>() {

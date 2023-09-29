@@ -2,6 +2,8 @@ mod data_formats;
 mod reduce;
 mod softmax;
 
+use tract_num_traits::{AsPrimitive, Zero};
+
 pub use self::data_formats::{BaseDataShape, DataFormat, DataShape, SymDataShape};
 pub use self::reduce::{Reduce, Reducer};
 pub use self::softmax::Softmax;
@@ -19,5 +21,6 @@ element_wise!(hard_swish, HardSwish,
                                          );
 
 element_wise!(leaky_relu, LeakyRelu { alpha: f32 },
- [f32] => |op, xs| { xs.iter_mut().for_each(|x| *x *= if *x < 0. { op.alpha } else { 1.0 }); Ok(()) }
+ [f32] => |op, xs| { xs.iter_mut().for_each(|x| *x *= if *x < 0. { op.alpha } else { 1.0 }); Ok(()) },
+ [f16] => |op, xs| { xs.iter_mut().for_each(|x| *x *= if *x < f16::zero() { AsPrimitive::<f16>::as_(op.alpha) } else { (1.0).as_() }); Ok(()) }
 );
