@@ -12,7 +12,7 @@ pub struct Scan {
     pub skip: usize,
     pub reset_every_turn: bool,
     pub body: TypedModel,
-    decluttered: bool,
+    pub decluttered: bool,
     pub input_mapping: Vec<InputMapping>,
     pub output_mapping: Vec<OutputMapping<TDim>>,
 }
