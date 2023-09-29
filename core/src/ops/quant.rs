@@ -69,8 +69,8 @@ fn info_quantize_linear_i8(q: &QuantizeLinearI8) -> TractResult<Vec<String>> {
 
 #[derive(Clone, Debug, new)]
 pub struct DequantizeLinearF32 {
-    scale: f32,
-    zero_point: i32,
+    pub scale: f32,
+    pub zero_point: i32,
 }
 
 impl DequantizeLinearF32 {

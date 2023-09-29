@@ -4,7 +4,7 @@ use tract_hir::internal::*;
 
 mod array;
 mod cast;
-mod cumsum;
+pub mod cumsum;
 mod d2s;
 mod einsum;
 mod fft;

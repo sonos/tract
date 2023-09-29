@@ -1,7 +1,7 @@
-mod global_pools;
-mod layer_max;
-mod reduce;
-mod softmax;
+pub mod global_pools;
+pub mod layer_max;
+pub mod reduce;
+pub mod softmax;
 
 pub use global_pools::*;
 pub use layer_max::*;

@@ -3,7 +3,7 @@ use crate::internal::*;
 
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct Flatten {
-    axis: i64,
+    pub axis: i64,
 }
 
 impl Flatten {

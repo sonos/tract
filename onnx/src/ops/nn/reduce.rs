@@ -27,10 +27,10 @@ pub(crate) fn reduce(
 
 #[derive(Debug, Clone, Hash)]
 struct ReduceSum13 {
-    have_axis_input: bool,
-    keep_dims: bool,
-    noop_with_empty_axes: bool,
-    reducer: tract_hir::ops::nn::Reducer,
+    pub have_axis_input: bool,
+    pub keep_dims: bool,
+    pub noop_with_empty_axes: bool,
+    pub reducer: tract_hir::ops::nn::Reducer,
 }
 
 

@@ -109,9 +109,9 @@ impl Reducer {
 
 #[derive(Clone, Debug, new, Hash)]
 pub struct Reduce {
-    axes: Option<Vec<i64>>,
-    keep_dims: bool,
-    reducer: Reducer,
+    pub axes: Option<Vec<i64>>,
+    pub keep_dims: bool,
+    pub reducer: Reducer,
 }
 
 
