@@ -303,10 +303,10 @@ impl Framework<pb::ModelProto, InferenceModel> for Onnx {
     fn proto_model_for_path(&self, p: impl AsRef<path::Path>) -> TractResult<pb::ModelProto> {
         let p = p.as_ref();
         let mut file = fs::File::open(p).with_context(|| format!("Opening {p:?}"))?;
-        Ok(self.proto_model_for_read(&mut file)?)        
+        Ok(self.proto_model_for_read(&mut file)?)
     }
 
-    #[cfg(any(windows, unix))]
+    #[cfg(all(any(windows, unix), not(target_os = "emscripten")))]
     fn proto_model_for_path(&self, p: impl AsRef<path::Path>) -> TractResult<pb::ModelProto> {
         let p = p.as_ref();
         let map = unsafe { memmap2::Mmap::map(&fs::File::open(p).with_context(|| format!("Opening {p:?}"))?)? };
