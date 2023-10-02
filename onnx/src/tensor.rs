@@ -69,11 +69,11 @@ fn extend_bytes_from_path(buf: &mut Vec<u8>, p: impl AsRef<Path>) -> TractResult
     while reader.fill_buf()?.len() > 0 {
         buf.extend_from_slice(reader.buffer());
         reader.consume(reader.buffer().len());
-    }    
+    }
     Ok(())
 }
 
-#[cfg(any(windows, unix))]
+#[cfg(all(any(windows, unix), not(target_os = "emscripten")))]
 fn extend_bytes_from_path(buf: &mut Vec<u8>, p: impl AsRef<Path>) -> TractResult<()> {
     let file = fs::File::open(p)?;
     let mmap = unsafe { memmap2::Mmap::map(&file)? };
