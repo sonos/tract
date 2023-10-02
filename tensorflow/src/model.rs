@@ -91,7 +91,7 @@ impl Tensorflow {
         Ok(GraphDef::decode(b)?)
     }
 
-    #[cfg(any(windows, unix))]
+    #[cfg(all(any(windows, unix), not(target_os = "emscripten")))]
     pub fn read_frozen_from_path(&self, p: impl AsRef<path::Path>) -> TractResult<GraphDef> {
         let map = unsafe { memmap2::Mmap::map(&fs::File::open(p)?)? };
         Ok(GraphDef::decode(&*map)?)
