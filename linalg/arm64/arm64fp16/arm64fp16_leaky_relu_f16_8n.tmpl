@@ -1,0 +1,63 @@
+// vim: ft=arm
+
+// no preservation either for v0-v7 and v16-v31
+
+.text
+.align 4
+
+{% if needs_pragma == true %}
+.cpu generic+fp+simd+fp16
+{% endif %}
+.global {{G}}arm64fp16_leaky_relu_f16_8n_{{suffix}}
+{{G}}arm64fp16_leaky_relu_f16_8n_{{suffix}}:
+
+    cmp         x1, #0
+    beq         .return
+
+    mov         v31.8h[0], w2
+    dup         v31.8h, v31.8h[0]
+    
+    cmp         x1, #32
+    blt         .loop
+
+.loop4:
+    ld1         { v16.8h, v17.8h, v18.8h, v19.8h }, [x0]
+
+    fmul        v20.8h, v16.8h, v31.8h
+    fmul        v21.8h, v17.8h, v31.8h
+    fmul        v22.8h, v18.8h, v31.8h
+    fmul        v23.8h, v19.8h, v31.8h
+
+    fcmge       v24.8h, v16.8h, #0.0
+    fcmge       v25.8h, v17.8h, #0.0
+    fcmge       v26.8h, v18.8h, #0.0
+    fcmge       v27.8h, v19.8h, #0.0
+
+    bsl         v24.16b, v16.16b, v20.16b
+    bsl         v25.16b, v17.16b, v21.16b
+    bsl         v26.16b, v18.16b, v22.16b
+    bsl         v27.16b, v19.16b, v23.16b
+
+    st1         { v24.8h, v25.8h, v26.8h, v27.8h }, [x0], #64
+
+    subs        x1, x1, #32
+    cmp         x1, #32
+    bge         .loop4
+
+    cmp         x1, #0
+    beq         .return
+
+.loop:
+    ld1         { v16.8h }, [x0]
+
+    fmul        v17.8h, v16.8h, v31.8h
+    fcmge       v18.8h, v16.8h, #0.0
+    bsl         v18.16b, v16.16b, v17.16b
+    
+    st1         { v18.8h }, [x0], #16
+
+    subs        x1, x1, #8
+    bne         .loop
+
+.return:
+    ret
