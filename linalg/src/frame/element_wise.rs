@@ -8,6 +8,42 @@ use crate::LADatum;
 use super::element_wise_helper::run_over_slice_with_alignment;
 
 macro_rules! ew_impl {
+    ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr) => {
+        paste! {
+            mod [<sys_ $func>] {
+                #[allow(unused_imports)]
+                use tract_data::prelude::f16;
+                extern_kernel!(fn $func(ptr: *mut $ti, count: usize) -> ());
+            }
+
+            #[derive(Copy, Clone, Debug)]
+            #[allow(non_camel_case_types)]
+            pub struct $func;
+
+            impl ElementWiseKer<$ti, ()> for $func {
+                #[inline(always)]
+                fn name() -> &'static str {
+                    stringify!($func)
+                }
+                #[inline(always)]
+                fn nr() -> usize {
+                    $nr
+                }
+                #[inline(always)]
+                fn alignment_items() -> usize {
+                    $alignment_items
+                }
+                #[inline(always)]
+                fn alignment_bytes() -> usize {
+                    $alignment_items * std::mem::size_of::<$ti>()
+                }
+                #[inline(never)]
+                fn run(buf: &mut [$ti], _params: ()) {
+                    unsafe { [<sys_ $func>]::$func(buf.as_mut_ptr(), buf.len()) }
+                }
+            }
+        }
+    };
     ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr, $params: ty) => {
         paste! {
             mod [<sys_ $func>] {
@@ -46,21 +82,24 @@ macro_rules! ew_impl {
     };
 }
 
-pub trait ElementWise<T, Params = usize>: Send + Sync + Debug + dyn_clone::DynClone
+pub trait ElementWise<T, Params = ()>: Send + Sync + Debug + dyn_clone::DynClone
 where
-    Params: Copy + Send + Sync + Debug + 'static,
+    Params: Copy + Send + Sync + Debug + 'static + Default,
     T: Copy + Debug + PartialEq + Send + Sync,
 {
-    fn run(&self, vec: &mut [T], params: Params) -> TractResult<()>;
+    fn run(&self, vec: &mut [T]) -> TractResult<()> {
+        self.run_with_params(vec, Params::default())
+    }
+    fn run_with_params(&self, vec: &mut [T], params: Params) -> TractResult<()>;
 }
 
 dyn_clone::clone_trait_object!(<T, Params> ElementWise<T, Params> where T: Copy, Params: Copy);
 
 #[derive(Debug, Clone, new)]
-pub struct ElementWiseImpl<K, T, Params = usize>
+pub struct ElementWiseImpl<K, T, Params = ()>
 where
     T: LADatum,
-    Params: Copy + Send + Sync + Debug + 'static,
+    Params: Copy + Send + Sync + Debug + 'static + Default,
     K: ElementWiseKer<T, Params> + Clone,
 {
     phantom: PhantomData<(K, T, Params)>,
@@ -69,10 +108,10 @@ where
 impl<K, T, Params> ElementWise<T, Params> for ElementWiseImpl<K, T, Params>
 where
     T: LADatum,
-    Params: Copy + Send + Sync + Debug + 'static,
+    Params: Copy + Send + Sync + Debug + 'static + Default,
     K: ElementWiseKer<T, Params> + Clone,
 {
-    fn run(&self, vec: &mut [T], params: Params) -> TractResult<()> {
+    fn run_with_params(&self, vec: &mut [T], params: Params) -> TractResult<()> {
         run_over_slice_with_alignment(
             vec,
             |data| K::run(data, params),
@@ -82,10 +121,10 @@ where
     }
 }
 
-pub trait ElementWiseKer<T, Params = usize>:
+pub trait ElementWiseKer<T, Params = ()>:
     Send + Sync + Debug + dyn_clone::DynClone + Clone + 'static
 where
-    Params: Copy + Send + Sync + Debug + 'static,
+    Params: Copy + Send + Sync + Debug + 'static + Default,
     T: LADatum,
 {
     fn name() -> &'static str;
@@ -116,7 +155,7 @@ pub mod test {
         }
         let expected = values.iter().copied().map(reference).collect::<Vec<_>>();
         let mut found = values;
-        op.run(&mut found, 0).unwrap();
+        op.run(&mut found).unwrap();
         tensor1(&found)
             .close_enough(&tensor1(&expected), true)
             .map_err(|e| TestCaseError::fail(e.root_cause().to_string()))?;

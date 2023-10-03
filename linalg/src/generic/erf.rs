@@ -43,7 +43,7 @@ impl ElementWiseKer<f32> for SErf4 {
         4
     }
 
-    fn run(x: &mut [f32], _: usize) {
+    fn run(x: &mut [f32], _: ()) {
         debug_assert!(x.len() % Self::nr() == 0);
         debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
         x.iter_mut().for_each(serf)
