@@ -143,19 +143,35 @@ pub mod test {
     use proptest::test_runner::{TestCaseError, TestCaseResult};
     use tract_data::internal::*;
 
-    pub fn test_element_wise<K: ElementWiseKer<T>, T: LADatum, F: Fn(T) -> T>(
+    pub fn test_element_wise<K: ElementWiseKer<T, ()>, T: LADatum, F: Fn(T) -> T>(
         values: &[T],
         reference: F,
     ) -> TestCaseResult {
+        test_element_wise_params::<K, T, F, ()>(values, reference, ())
+    }
+
+    pub fn test_element_wise_params<
+        K: ElementWiseKer<T, Params>,
+        T: LADatum,
+        F: Fn(T) -> T,
+        Params,
+    >(
+        values: &[T],
+        reference: F,
+        params: Params,
+    ) -> TestCaseResult
+    where
+        Params: Copy + Send + Sync + Debug + 'static + Default,
+    {
         crate::setup_test_logger();
-        let op = ElementWiseImpl::<K, T>::new();
+        let op = ElementWiseImpl::<K, T, Params>::new();
         let mut values = values.to_vec();
         while values.len() < K::nr() {
             values.push(T::zero());
         }
         let expected = values.iter().copied().map(reference).collect::<Vec<_>>();
         let mut found = values;
-        op.run(&mut found).unwrap();
+        op.run_with_params(&mut found, params).unwrap();
         tensor1(&found)
             .close_enough(&tensor1(&expected), true)
             .map_err(|e| TestCaseError::fail(e.root_cause().to_string()))?;
