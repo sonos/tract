@@ -86,7 +86,7 @@ impl ElementWiseKer<f32> for STanh4 {
         4
     }
 
-    fn run(x: &mut [f32]) {
+    fn run(x: &mut [f32], _: usize) {
         debug_assert!(x.len() % Self::nr() == 0);
         debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
         x.iter_mut().for_each(|px| *px = stanh(*px))
@@ -119,7 +119,7 @@ impl ElementWiseKer<f16> for HTanh8 {
         8
     }
 
-    fn run(x: &mut [f16]) {
+    fn run(x: &mut [f16], _: usize) {
         debug_assert!(x.len() % Self::nr() == 0);
         debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
         x.iter_mut().for_each(|px| *px = htanh(*px))
