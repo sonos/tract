@@ -1,6 +1,6 @@
 macro_rules! tanh_impl {
     ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr, $cond: expr) => {
-        ew_impl!($ti, $func, $nr, $alignment_items);
+        ew_impl!($ti, $func, $nr, $alignment_items, usize);
         #[cfg(test)]
         paste! {
             mod [<test_ $func>] {
@@ -81,7 +81,7 @@ pub mod test {
                         .iter()
                         .map(|x| <f32 as num_traits::AsPrimitive<$t>>::as_(*x))
                         .collect();
-                    <$ker>::ew().run(&mut input).unwrap();
+                    <$ker>::ew().run(&mut input, 0).unwrap();
                     tensor1(&input)
                         .close_enough(&tensor1(&expected), Approximation::Close)
                         .unwrap();
