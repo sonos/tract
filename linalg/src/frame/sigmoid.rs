@@ -86,6 +86,7 @@ pub mod test {
         f32: AsPrimitive<T>,
         T: AsPrimitive<f32>,
     {
+        crate::setup_test_logger();
         let values: Vec<T> = values.iter().copied().map(|x| x.as_()).collect();
         crate::frame::element_wise::test::test_element_wise::<K, _, _>(&values, |x| {
             (1f32).as_() / (1f32.as_() + (-x).exp())

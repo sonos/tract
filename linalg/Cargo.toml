@@ -36,6 +36,7 @@ walkdir.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
+env_logger.workspace = true
 nu-ansi-term.workspace = true
 proptest.workspace = true
 core_affinity.workspace = true

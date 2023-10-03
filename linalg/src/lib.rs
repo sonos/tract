@@ -208,3 +208,9 @@ impl LADatum for i32 {
         any::<i32>().boxed()
     }
 }
+
+#[cfg(test)]
+#[allow(dead_code)]
+fn setup_test_logger() {
+    let _ = env_logger::Builder::from_env("TRACT_LOG").try_init();
+}

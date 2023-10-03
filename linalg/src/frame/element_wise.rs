@@ -164,6 +164,7 @@ pub mod test {
         values: &[T],
         reference: F,
     ) -> TestCaseResult {
+        crate::setup_test_logger();
         let op = ElementWiseImpl::<K, T>::new();
         let mut values = values.to_vec();
         while values.len() < K::nr() {

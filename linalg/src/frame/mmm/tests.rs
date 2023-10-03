@@ -233,6 +233,7 @@ where
     i32: AsPrimitive<TI>,
     usize: AsPrimitive<TI>,
 {
+    crate::setup_test_logger();
     assert_eq!(a.datum_type(), TA::datum_type());
     let op = MatMatMulImpl::<K, TI>::default();
     unsafe {
@@ -281,6 +282,7 @@ where
     i32: AsPrimitive<TI>,
     usize: AsPrimitive<TI>,
 {
+    crate::setup_test_logger();
     unsafe {
         let op = MatMatMulImpl::<K, TI>::default();
         let mut packed_a =
@@ -327,6 +329,7 @@ where
     i32: AsPrimitive<TI>,
     usize: AsPrimitive<TI>,
 {
+    crate::setup_test_logger();
     let op = MatMatMulImpl::<K, TI>::default();
 
     let mut found = Tensor::zero::<TC>(&[m, n]).unwrap();
