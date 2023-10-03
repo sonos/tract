@@ -1,6 +1,6 @@
 macro_rules! leaky_relu_impl {
     ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr, $cond: expr) => {
-        ew_impl!($ti, $func, $nr, $alignment_items);
+        ew_impl!($ti, $func, $nr, $alignment_items, $ti);
         #[cfg(test)]
         paste! {
             mod [<test_ $func>] {
