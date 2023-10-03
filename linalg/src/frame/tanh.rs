@@ -70,8 +70,8 @@ pub mod test {
 
             #[test]
             fn tanh_asymptots() {
-                use $crate::frame::element_wise::*;
                 use tract_data::internal::*;
+                use $crate::frame::element_wise::*;
                 if $cond {
                     let mut input: Vec<$t> = [-100f32, 100f32]
                         .iter()
