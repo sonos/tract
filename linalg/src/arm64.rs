@@ -13,10 +13,6 @@ use crate::Ops;
 use crate::frame::element_wise::ElementWiseKer;
 use crate::frame::mmm::kernel::MatMatMulKer;
 
-lazy_static::lazy_static! {
-    static ref KIND: Kind = Kind::choose();
-}
-
 // https://en.wikipedia.org/wiki/Comparison_of_ARMv8-A_cores
 const PART_A53: &str = "0xd03";
 const PART_A55: &str = "0xd05";
@@ -38,13 +34,23 @@ fn max_cpuid() -> std::io::Result<String> {
 }
 
 lazy_static::lazy_static! {
+    static ref KIND: Kind = Kind::choose();
+
     static ref CPU_FEATURES: Vec<String> = {
-        let cpu_info = std::fs::read_to_string("/proc/cpuinfo").unwrap();
-        let line = cpu_info
+        #[cfg(test)] crate::setup_test_logger();
+        let Ok(cpu_info) = std::fs::read_to_string("/proc/cpuinfo") else {
+            log::warn!("Could not read /proc/cpuinfo. CPU Features detection may be impaired.");
+            return vec!();
+        };
+        if let Some(line) = cpu_info
             .lines()
             .filter(|line| line.starts_with("Features"))
-            .next().unwrap();
-        line.split_once(":").unwrap().1.split_whitespace().map(|s| s.to_string()).collect()
+            .next() {
+            line.split_once(":").unwrap().1.split_whitespace().map(|s| s.to_string()).collect()
+        } else {
+            log::warn!("Could not find \"Features  :\" lines in /proc/cpuinfo. CPU Features detection may be impaired.");
+            vec!()
+        }
     };
 
     static ref HAS_FP16: bool = {
@@ -54,7 +60,7 @@ lazy_static::lazy_static! {
 
 #[inline]
 pub fn has_fp16() -> bool {
-    *HAS_FP16
+    cfg!(feature_cpu = "fp16") || *KIND == Kind::CortexA55 || *KIND == Kind::CortexA75 || *HAS_FP16
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
@@ -70,6 +76,8 @@ enum Kind {
 
 impl Kind {
     fn choose() -> Kind {
+        #[cfg(test)]
+        crate::setup_test_logger();
         let kind = if let Ok(kind) = std::env::var("TRACT_CPU_AARCH64_KIND") {
             log::info!("CPU kind forced with TRACT_CPU_AARCH64_KIND: {}", kind);
             let kind = kind.to_lowercase();
@@ -195,6 +203,8 @@ pub fn plug(ops: &mut Ops) {
         log::info!("ARMv8.2 tanh_f16 and sigmoid_f16 activated");
         ops.tanh_f16 = Box::new(|| arm64fp16_tanh_f16_8n::ew());
         ops.sigmoid_f16 = Box::new(|| arm64fp16_sigmoid_f16_8n::ew());
+    } else {
+        log::info!("No native fp16 support");
     }
     #[cfg(target_os = "macos")]
     {
