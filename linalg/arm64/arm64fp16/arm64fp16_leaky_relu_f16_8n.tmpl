@@ -14,8 +14,8 @@
     cmp         x1, #0
     beq         .return
 
-    mov         v31.8h[0], w2
-    dup         v31.8h, v31.8h[0]
+    mov         v31.h[0], w2
+    dup         v31.8h, v31.h[0]
     mov         x2, x0
     
     cmp         x1, #64
