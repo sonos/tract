@@ -99,5 +99,11 @@ name = "x86_64"
 harness = false
 
 [[bench]]
+bench = false
 name = "intel"
+harness = false
+
+[[bench]]
+bench = false
+name = "leaky_relu"
 harness = false

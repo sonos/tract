@@ -8,6 +8,9 @@ mod cortex_a55;
 //mod cortex_a73;
 pub use arm64simd::*;
 
+mod leaky_relu;
+pub use leaky_relu::*;
+
 use crate::Ops;
 
 use crate::frame::element_wise::ElementWiseKer;
@@ -196,11 +199,13 @@ pub fn plug(ops: &mut Ops) {
             ops.mmv_f16 = Box::new(|_, _| arm64fp16_mmm_f16_128x1_gen::mmm());
         }
     }
+    ops.leaky_relu_f32 = Box::new(|| arm64simd_leaky_relu_f32_8n::ew());
     ops.sigmoid_f32 = Box::new(|| arm64simd_sigmoid_f32_4n::ew());
     ops.tanh_f32 = Box::new(|| arm64simd_tanh_f32_4n::ew());
     #[cfg(not(feature = "no_fp16"))]
     if has_fp16() {
         log::info!("ARMv8.2 tanh_f16 and sigmoid_f16 activated");
+        ops.leaky_relu_f16 = Box::new(|| arm64fp16_leaky_relu_f16_16n::ew());
         ops.tanh_f16 = Box::new(|| arm64fp16_tanh_f16_8n::ew());
         ops.sigmoid_f16 = Box::new(|| arm64fp16_sigmoid_f16_8n::ew());
     } else {
