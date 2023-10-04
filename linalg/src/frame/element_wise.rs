@@ -7,20 +7,14 @@ use crate::LADatum;
 
 use super::element_wise_helper::run_over_slice_with_alignment;
 
-macro_rules! ew_impl {
-    ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr) => {
+macro_rules! ew_impl_wrap {
+    ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr, $params: ty, $run: item) => {
         paste! {
-            mod [<sys_ $func>] {
-                #[allow(unused_imports)]
-                use tract_data::prelude::f16;
-                extern_kernel!(fn $func(ptr: *mut $ti, count: usize) -> ());
-            }
-
             #[derive(Copy, Clone, Debug)]
             #[allow(non_camel_case_types)]
             pub struct $func;
 
-            impl ElementWiseKer<$ti, ()> for $func {
+            impl crate::frame::element_wise::ElementWiseKer<$ti, $params> for $func {
                 #[inline(always)]
                 fn name() -> &'static str {
                     stringify!($func)
@@ -37,11 +31,26 @@ macro_rules! ew_impl {
                 fn alignment_bytes() -> usize {
                     $alignment_items * std::mem::size_of::<$ti>()
                 }
+                $run
+            }
+        }
+    };
+}
+
+macro_rules! ew_impl {
+    ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr) => {
+        paste! {
+            mod [<sys_ $func>] {
+                #[allow(unused_imports)]
+                use tract_data::prelude::f16;
+                extern_kernel!(fn $func(ptr: *mut $ti, count: usize) -> ());
+            }
+            ew_impl_wrap!($ti, $func, $nr, $alignment_items, (),
                 #[inline(never)]
                 fn run(buf: &mut [$ti], _params: ()) {
                     unsafe { [<sys_ $func>]::$func(buf.as_mut_ptr(), buf.len()) }
                 }
-            }
+            );
         }
     };
     ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr, $params: ty) => {
@@ -51,33 +60,12 @@ macro_rules! ew_impl {
                 use tract_data::prelude::f16;
                 extern_kernel!(fn $func(ptr: *mut $ti, count: usize, params: $params) -> ());
             }
-
-            #[derive(Copy, Clone, Debug)]
-            #[allow(non_camel_case_types)]
-            pub struct $func;
-
-            impl ElementWiseKer<$ti, $params> for $func {
-                #[inline(always)]
-                fn name() -> &'static str {
-                    stringify!($func)
-                }
-                #[inline(always)]
-                fn nr() -> usize {
-                    $nr
-                }
-                #[inline(always)]
-                fn alignment_items() -> usize {
-                    $alignment_items
-                }
-                #[inline(always)]
-                fn alignment_bytes() -> usize {
-                    $alignment_items * std::mem::size_of::<$ti>()
-                }
+            ew_impl_wrap!($ti, $func, $nr, $alignment_items, $params,
                 #[inline(never)]
                 fn run(buf: &mut [$ti], params: $params) {
                     unsafe { [<sys_ $func>]::$func(buf.as_mut_ptr(), buf.len(), params) }
                 }
-            }
+            );
         }
     };
 }

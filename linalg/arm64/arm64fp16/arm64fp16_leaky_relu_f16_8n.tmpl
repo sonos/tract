@@ -16,12 +16,15 @@
 
     mov         v31.8h[0], w2
     dup         v31.8h, v31.8h[0]
+    mov         x2, x0
     
-    cmp         x1, #32
+    cmp         x1, #64
     blt         .loop
 
+    ld1         { v16.8h, v17.8h, v18.8h, v19.8h }, [x2], #64
 .loop4:
-    ld1         { v16.8h, v17.8h, v18.8h, v19.8h }, [x0]
+
+    ld1         { v0.8h, v1.8h, v2.8h, v3.8h }, [x2], #64
 
     fmul        v20.8h, v16.8h, v31.8h
     fmul        v21.8h, v17.8h, v31.8h
@@ -40,8 +43,13 @@
 
     st1         { v24.8h, v25.8h, v26.8h, v27.8h }, [x0], #64
 
+    and         v16.16b, v0.16b, v0.16b
+    and         v17.16b, v1.16b, v1.16b
+    and         v18.16b, v2.16b, v2.16b
+    and         v19.16b, v3.16b, v3.16b
+
     subs        x1, x1, #32
-    cmp         x1, #32
+    cmp         x1, #64
     bge         .loop4
 
     cmp         x1, #0
