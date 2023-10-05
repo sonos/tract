@@ -12,6 +12,7 @@ fn leaky_relu_f16(c: &mut Criterion) {
     group.bench_function("rust", |b| b.iter(|| rust_fp16(input, alpha)));
     group.bench_function("rust_with_f16", |b| b.iter(|| unsafe { rust_with_fp16(input, alpha) }));
     group.bench_function("linalg", |b| b.iter(|| linalg16(input, alpha)));
+    group.bench_function("linalg-asm", |b| b.iter(|| tract_linalg::arm64::arm64fp16_leaky_relu_f16_16n::run(input, alpha)));
 }
 
 #[inline(never)]
