@@ -1105,22 +1105,42 @@ pub fn suite() -> TractResult<TestSuite> {
         },
     );
 
-    /*
-    #[test]
-    suite.insert("group_owhi_1",
-    ConvProblem {
-    shape_in: DataFormat::CHW.from_n_c_hw(1, 2, [1]).unwrap(),
-    kernel_format: KernelFormat::OHWI,
-    group: 2,
-    data: arr2(&[[0.0], [1.0]]).into_dyn(),
-    kernel: arr3(&[[[0.0, 0.0]], [[1.0, 0.0]]]).into_dyn(),
-    bias: None,
-    pad: PaddingSpec::Valid,
-    strides: tvec!(1),
-    });
-    assert_eq!(pb.tract($runtime).unwrap(), pb.reference());
-    Ok(())
-    }
-    */
+    suite.add(
+        "dw_k4_0",
+        ConvProblem {
+            shape_in: DataFormat::CHW.from_n_c_hw(1, 2, [8]).unwrap(),
+            kernel_format: KernelFormat::OHWI,
+            group: 2,
+            data: arr2(&[
+                [0.0f32, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0],
+                [2.0, 3.0, 4.0, 5.0, 2.0, 3.0, 4.0, 5.0],
+            ])
+            .into_dyn(),
+            kernel: arr3(&[[[1.0f32, 2.0], [-1.0, 1.0], [0.0, 3.0], [3.0, 0.0]]]).into_dyn(),
+            bias: None,
+            pad: PaddingSpec::Valid,
+            strides: tvec!(1),
+        },
+    );
+
+    suite.add(
+        "dw_k4_d2_0",
+        ConvProblem {
+            shape_in: DataFormat::CHW.from_n_c_hw(1, 2, [6, 2]).unwrap(),
+            kernel_format: KernelFormat::HWIO,
+            group: 2,
+            data: arr3(&[
+                [[0.0f32, 0.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0]],
+                [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0], [1.0, 0.0], [0.0, 0.0]],
+            ])
+            .into_dyn(),
+            kernel: arr4(&[[[[0.0f32], [0.0]], [[0.0], [0.0]]], [[[0.0], [0.0]], [[0.0], [-1.0]]]])
+                .into_dyn(),
+            bias: None,
+            pad: PaddingSpec::SameUpper,
+            strides: tvec!(1, 1),
+        },
+    );
+
     Ok(suite)
 }
