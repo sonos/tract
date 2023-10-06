@@ -82,8 +82,26 @@ impl DepthWise {
         bias: *const T,
         optr: *mut T,
     ) {
-        if zone.values_offsets.len() == 4 {
-            self.process_zone_4(zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr)
+        if zone.values_offsets.len() == 2 {
+            self.process_zone_n::<T, 2, 4>(
+                zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr,
+            )
+        } else if zone.values_offsets.len() == 3 {
+            self.process_zone_n::<T, 3, 4>(
+                zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr,
+            )
+        } else if zone.values_offsets.len() == 4 {
+            self.process_zone_n::<T, 4, 4>(
+                zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr,
+            )
+        } else if zone.values_offsets.len() == 5 {
+            self.process_zone_n::<T, 5, 2>(
+                zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr,
+            )
+        } else if zone.values_offsets.len() == 9 {
+            self.process_zone_n::<T, 9, 1>(
+                zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr,
+            )
         } else {
             zone.visit_output(&self.patch, |visitor| {
                 for c in 0..*self.input_shape.c() as isize {
@@ -98,7 +116,7 @@ impl DepthWise {
 
     #[inline(never)]
     #[allow(clippy::too_many_arguments)]
-    unsafe fn process_zone_4<T: Datum + Copy + ndarray::LinalgScalar>(
+    unsafe fn process_zone_n<T: Datum + Copy + ndarray::LinalgScalar, const N: usize, const UNROLL: usize>(
         &self,
         zone: &Zone,
         c_stride_i: isize,
@@ -110,83 +128,70 @@ impl DepthWise {
         optr: *mut T,
     ) {
         let mut visitor = ZoneScanner::new(zone, &self.patch);
-        let ioffset0 = zone.values_offsets[0].1;
-        let ioffset1 = zone.values_offsets[1].1;
-        let ioffset2 = zone.values_offsets[2].1;
-        let ioffset3 = zone.values_offsets[3].1;
+        let mut ioffset = [0isize; N];
+        for i in 0..N {
+            ioffset[i] = zone.values_offsets[i].1;
+        }
+        let mut k = [T::zero(); N];
         for c in 0..*self.input_shape.c() as isize {
             visitor.reset();
-            let kptr = kptr.offset(k_stride_i * c);
             let iptr = iptr.offset(c_stride_i * c);
             let optr = optr.offset(c_stride_o * c);
-            let k0 = *kptr.add(zone.values_offsets[0].0);
-            let k1 = *kptr.add(zone.values_offsets[1].0);
-            let k2 = *kptr.add(zone.values_offsets[2].0);
-            let k3 = *kptr.add(zone.values_offsets[3].0);
+            for n in 0..N {
+                k[n] = *kptr.offset(k_stride_i * c).add(zone.values_offsets[n].0);
+            }
             let bias = *bias.offset(c);
             while !visitor.done {
                 let iptr = iptr.offset(visitor.input_center_offset);
                 let optr = optr.offset(visitor.output_offset);
                 let mut i = 0isize;
-                while i + 4 < visitor.inner_loop_len as isize {
-                    let iptr_a = iptr.offset(visitor.inner_loop_input_full_stride * i);
-                    let iptr_b = iptr.offset(visitor.inner_loop_input_full_stride * (i + 1));
-                    let iptr_c = iptr.offset(visitor.inner_loop_input_full_stride * (i + 2));
-                    let iptr_d = iptr.offset(visitor.inner_loop_input_full_stride * (i + 3));
-                    let optr_a = optr.offset(visitor.inner_loop_output_stride * i);
-                    let optr_b = optr.offset(visitor.inner_loop_output_stride * (i + 1));
-                    let optr_c = optr.offset(visitor.inner_loop_output_stride * (i + 2));
-                    let optr_d = optr.offset(visitor.inner_loop_output_stride * (i + 3));
-                    let i0_a = *iptr_a.offset(ioffset0);
-                    let i0_b = *iptr_b.offset(ioffset0);
-                    let i0_c = *iptr_c.offset(ioffset0);
-                    let i0_d = *iptr_d.offset(ioffset0);
-                    let i1_a = *iptr_a.offset(ioffset1);
-                    let i1_b = *iptr_b.offset(ioffset1);
-                    let i1_c = *iptr_c.offset(ioffset1);
-                    let i1_d = *iptr_d.offset(ioffset1);
-                    let i2_a = *iptr_a.offset(ioffset2);
-                    let i2_b = *iptr_b.offset(ioffset2);
-                    let i2_c = *iptr_c.offset(ioffset2);
-                    let i2_d = *iptr_d.offset(ioffset2);
-                    let i3_a = *iptr_a.offset(ioffset3);
-                    let i3_b = *iptr_b.offset(ioffset3);
-                    let i3_c = *iptr_c.offset(ioffset3);
-                    let i3_d = *iptr_d.offset(ioffset3);
-                    let p0_a = i0_a * k0;
-                    let p1_a = i1_a * k1;
-                    let p2_a = i2_a * k2;
-                    let p3_a = i3_a * k3;
-                    let p0_b = i0_b * k0;
-                    let p1_b = i1_b * k1;
-                    let p2_b = i2_b * k2;
-                    let p3_b = i3_b * k3;
-                    let p0_c = i0_c * k0;
-                    let p1_c = i1_c * k1;
-                    let p2_c = i2_c * k2;
-                    let p3_c = i3_c * k3;
-                    let p0_d = i0_d * k0;
-                    let p1_d = i1_d * k1;
-                    let p2_d = i2_d * k2;
-                    let p3_d = i3_d * k3;
-                    *optr_a = bias + p0_a + p1_a + p2_a + p3_a;
-                    *optr_b = bias + p0_b + p1_b + p2_b + p3_b;
-                    *optr_c = bias + p0_c + p1_c + p2_c + p3_c;
-                    *optr_d = bias + p0_d + p1_d + p2_d + p3_d;
-                    i += 4;
+                while i + (UNROLL as isize) < visitor.inner_loop_len as isize {
+                    let iptr = iptr.offset(visitor.inner_loop_input_full_stride * i);
+                    let optr = optr.offset(visitor.inner_loop_output_stride * i);
+                    let mut iptrs = [std::ptr::null(); UNROLL];
+                    for u in 0..UNROLL {
+                        iptrs[u] = iptr.offset(visitor.inner_loop_input_full_stride * u as isize);
+                    }
+                    let mut optrs = [std::ptr::null_mut(); UNROLL];
+                    for u in 0..UNROLL {
+                        optrs[u] = optr.offset(visitor.inner_loop_output_stride * u as isize);
+                    }
+                    let mut is = [[T::zero(); N]; UNROLL];
+                    for u in 0..UNROLL {
+                        for n in 0..N {
+                            is[u][n] = *iptrs[u].offset(ioffset[n]);
+                        }
+                    }
+                    let mut ps = [[T::zero(); N]; UNROLL];
+                    for u in 0..UNROLL {
+                        for n in 0..N {
+                            ps[u][n] = is[u][n] * k[n];
+                        }
+                    }
+                    for u in 0..UNROLL {
+                        let mut sum = bias;
+                        for n in 0..N {
+                            sum = sum + ps[u][n];
+                        }
+                        *optrs[u] = sum;
+                    }
+                    i += UNROLL as isize;
                 }
                 while i < visitor.inner_loop_len as isize {
                     let iptr = iptr.offset(visitor.inner_loop_input_full_stride * i);
                     let optr = optr.offset(visitor.inner_loop_output_stride * i);
-                    let i0 = *iptr.offset(ioffset0);
-                    let i1 = *iptr.offset(ioffset1);
-                    let i2 = *iptr.offset(ioffset2);
-                    let i3 = *iptr.offset(ioffset3);
-                    let p0 = i0 * k0;
-                    let p1 = i1 * k1;
-                    let p2 = i2 * k2;
-                    let p3 = i3 * k3;
-                    let sum = bias + p0 + p1 + p2 + p3;
+                    let mut is = [T::zero(); N];
+                    for n in 0..N {
+                        is[n] = *iptr.offset(ioffset[n]);
+                    }
+                    let mut p = [T::zero(); N];
+                    for n in 0..N {
+                        p[n] = is[n] * k[n];
+                    }
+                    let mut sum = bias;
+                    for n in 0..N {
+                        sum = sum + p[n];
+                    }
                     *optr = sum;
                     i += 1;
                 }

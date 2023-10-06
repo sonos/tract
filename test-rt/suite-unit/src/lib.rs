@@ -38,7 +38,7 @@ pub fn qtensor(shape: Vec<usize>) -> BoxedStrategy<ArrayD<i8>> {
 }
 
 pub fn shapes(rank: usize) -> BoxedStrategy<(Vec<usize>, Vec<usize>)> {
-    vec((1usize..4, 0usize..5).prop_map(|(k, exceed)| (k, k + exceed)), rank..=rank)
+    vec((1usize..5, 0usize..5).prop_map(|(k, exceed)| (k, k + exceed)), rank..=rank)
         .prop_map(|v| v.into_iter().unzip())
         .boxed()
 }
