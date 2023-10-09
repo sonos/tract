@@ -12,6 +12,7 @@ mod leaky_relu;
 pub use leaky_relu::*;
 
 use crate::Ops;
+use crate::f16;
 
 use crate::frame::element_wise::ElementWiseKer;
 use crate::frame::mmm::kernel::MatMatMulKer;
@@ -64,6 +65,32 @@ lazy_static::lazy_static! {
 #[inline]
 pub fn has_fp16() -> bool {
     cfg!(feature_cpu = "fp16") || *KIND == Kind::CortexA55 || *KIND == Kind::CortexA75 || *HAS_FP16
+}
+
+#[target_feature(enable = "fp16")]
+#[inline]
+pub unsafe fn add_f16(a: f16, b: f16) -> f16 {
+    let result: u16;
+    std::arch::asm!(
+        "fadd {0:h}, {1:h}, {2:h}",
+        lateout(vreg) result,
+        in(vreg) a.to_bits(),
+        in(vreg) b.to_bits(),
+        options(pure, nomem, nostack, preserves_flags));
+    f16::from_bits(result)
+}
+
+#[target_feature(enable = "fp16")]
+#[inline]
+pub unsafe fn mul_f16(a: f16, b: f16) -> f16 {
+    let result: u16;
+    std::arch::asm!(
+        "fmul {0:h}, {1:h}, {2:h}",
+        lateout(vreg) result,
+        in(vreg) a.to_bits(),
+        in(vreg) b.to_bits(),
+        options(pure, nomem, nostack, preserves_flags));
+    f16::from_bits(result)
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
