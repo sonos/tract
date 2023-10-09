@@ -82,6 +82,7 @@ impl DepthWise {
         bias: *const T,
         optr: *mut T,
     ) {
+        /*
         if zone.values_offsets.len() == 2 {
             self.process_zone_n::<T, 2, 4>(
                 zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr,
@@ -90,18 +91,21 @@ impl DepthWise {
             self.process_zone_n::<T, 3, 4>(
                 zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr,
             )
-        } else if zone.values_offsets.len() == 4 {
+        } else */
+        if zone.values_offsets.len() == 4 {
             self.process_zone_n::<T, 4, 4>(
                 zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr,
             )
-        } else if zone.values_offsets.len() == 5 {
-            self.process_zone_n::<T, 5, 2>(
-                zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr,
-            )
-        } else if zone.values_offsets.len() == 9 {
-            self.process_zone_n::<T, 9, 1>(
-                zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr,
-            )
+            /*
+            } else if zone.values_offsets.len() == 5 {
+                self.process_zone_n::<T, 5, 2>(
+                    zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr,
+                )
+            } else if zone.values_offsets.len() == 9 {
+                self.process_zone_n::<T, 9, 1>(
+                    zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr,
+                )
+                */
         } else {
             zone.visit_output(&self.patch, |visitor| {
                 for c in 0..*self.input_shape.c() as isize {
@@ -116,7 +120,11 @@ impl DepthWise {
 
     #[inline(never)]
     #[allow(clippy::too_many_arguments)]
-    unsafe fn process_zone_n<T: Datum + Copy + ndarray::LinalgScalar, const N: usize, const UNROLL: usize>(
+    unsafe fn process_zone_n<
+        T: Datum + Copy + ndarray::LinalgScalar,
+        const N: usize,
+        const UNROLL: usize,
+    >(
         &self,
         zone: &Zone,
         c_stride_i: isize,
@@ -211,21 +219,7 @@ impl DepthWise {
     ) {
         let mut sum = *bias.offset(c);
         let mut iter = visitor.valid_offsets_ker_in();
-        if iter.size_hint() == (4, Some(4)) {
-            let (ix, v) = iter.next().unwrap();
-            let k0 = *kptr.add(ix);
-            let i0 = *iptr.offset(v);
-            let (ix, v) = iter.next().unwrap();
-            let k1 = *kptr.add(ix);
-            let i1 = *iptr.offset(v);
-            let (ix, v) = iter.next().unwrap();
-            let k2 = *kptr.add(ix);
-            let i2 = *iptr.offset(v);
-            let (ix, v) = iter.next().unwrap();
-            let k3 = *kptr.add(ix);
-            let i3 = *iptr.offset(v);
-            sum = sum + k0 * i0 + k1 * i1 + k2 * i2 + k3 * i3;
-        } else if iter.size_hint() == (3, Some(3)) {
+        if iter.size_hint() == (3, Some(3)) {
             let (ix, v) = iter.next().unwrap();
             let k0 = *kptr.add(ix);
             let i0 = *iptr.offset(v);
