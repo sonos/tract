@@ -1,6 +1,6 @@
 [package]
 name = "tract-proxy-sys"
-version = "0.20.19"
+version = "0.20.20-pre"
 license = "MIT OR Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -14,7 +14,7 @@ include = [ "Cargo.toml", "src/**/*.rs", "LICENSE*", "build.rs", "tract.h" ]
 
 
 [dependencies]
-tract-ffi = { path =  "../../ffi" , version = "=0.20.19" }
+tract-ffi = { path =  "../../ffi" , version = "=0.20.20-pre" }
 
 [build-dependencies]
 bindgen.workspace = true
