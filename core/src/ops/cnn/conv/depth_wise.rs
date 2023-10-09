@@ -35,14 +35,32 @@ impl EvalOp for DepthWise {
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
+        let dt = inputs[0].datum_type();
+        #[cfg(target_arch = "aarch64")]
+        if dt == f16::datum_type() && tract_linalg::arm64::has_fp16() {
+            return self.eval_t::<f16>(
+                inputs,
+                |a, b| unsafe { tract_linalg::arm64::add_f16(a, b) },
+                |a, b| unsafe { tract_linalg::arm64::mul_f16(a, b) },
+            );
+        }
+        dispatch_floatlike!(Self::eval_native_t(dt)(self, inputs))
     }
 }
 
 impl DepthWise {
+    fn eval_native_t<T: Datum + Copy + num_traits::Zero + ndarray::LinalgScalar>(
+        &self,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        self.eval_t::<T>(inputs, |a, b| a + b, |a, b| a * b)
+    }
+
     fn eval_t<T: Datum + Copy + num_traits::Zero + ndarray::LinalgScalar>(
         &self,
         inputs: TVec<TValue>,
+        add: impl Fn(T, T) -> T + Copy + 'static,
+        mul: impl Fn(T, T) -> T + Copy + 'static,
     ) -> TractResult<TVec<TValue>> {
         let img = args_1!(inputs);
         let mut output = unsafe { Tensor::uninitialized::<T>(&self.output_shape.shape)? };
@@ -62,16 +80,7 @@ impl DepthWise {
                 let optr = optr.offset(n_stride_o * n);
                 for zone in &self.patch.zones {
                     self.process_zone(
-                        zone,
-                        c_stride_i,
-                        c_stride_o,
-                        k_stride_i,
-                        iptr,
-                        kptr,
-                        bias,
-                        optr,
-                        |a, b| a + b,
-                        |a, b| a * b,
+                        zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul,
                     )
                 }
             }
@@ -81,6 +90,7 @@ impl DepthWise {
 
     #[inline(never)]
     #[allow(clippy::too_many_arguments)]
+    #[target_feature(enable = "fp16")]
     unsafe fn process_zone<T: Datum + Copy + Zero>(
         &self,
         zone: &Zone,
@@ -132,6 +142,7 @@ impl DepthWise {
 
     #[inline(never)]
     #[allow(clippy::too_many_arguments)]
+    #[target_feature(enable = "fp16")]
     unsafe fn process_zone_n<T: Datum + Copy + Zero, const N: usize, const UNROLL: usize>(
         &self,
         zone: &Zone,
