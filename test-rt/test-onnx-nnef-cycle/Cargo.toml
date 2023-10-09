@@ -11,6 +11,6 @@ suite-onnx = { path = "../suite-onnx" }
 [dev-dependencies]
 lazy_static.workspace = true
 log.workspace = true
-tract-nnef = { path = "../../nnef", version = "=0.20.19-pre" }
-tract-onnx-opl = { path = "../../onnx-opl", version = "=0.20.19-pre" }
+tract-nnef = { path = "../../nnef", version = "=0.20.19" }
+tract-onnx-opl = { path = "../../onnx-opl", version = "=0.20.19" }
 suite-onnx = { path = "../suite-onnx" }

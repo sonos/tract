@@ -1,6 +1,6 @@
 [package]
 name = "tract-libcli"
-version = "0.20.19-pre"
+version = "0.20.19"
 license = "MIT OR Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -23,10 +23,10 @@ py_literal.workspace = true
 rand.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tract-core = { version = "=0.20.19-pre", path = "../core" }
-tract-hir = { version = "=0.20.19-pre", path = "../hir" }
-tract-onnx = { version = "=0.20.19-pre", path = "../onnx", optional = true }
-tract-tflite = { version = "=0.20.19-pre", path = "../tflite", optional = true }
+tract-core = { version = "=0.20.19", path = "../core" }
+tract-hir = { version = "=0.20.19", path = "../hir" }
+tract-onnx = { version = "=0.20.19", path = "../onnx", optional = true }
+tract-tflite = { version = "=0.20.19", path = "../tflite", optional = true }
 
 [features]
 # hir = ["tract-hir"]

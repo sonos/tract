@@ -17,8 +17,8 @@ regex.workspace = true
 lazy_static.workspace = true
 log.workspace = true
 tflitec.workspace = true
-tract-tflite = { path = "../../tflite", version = "=0.20.19-pre" }
-tract-onnx-opl = { path = "../../onnx-opl", version = "=0.20.19-pre" }
+tract-tflite = { path = "../../tflite", version = "=0.20.19" }
+tract-onnx-opl = { path = "../../onnx-opl", version = "=0.20.19" }
 infra = { path = "../infra" }
 suite-onnx = { path = "../suite-onnx" }
 suite-unit = { path = "../suite-unit" }
