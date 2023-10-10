@@ -5,23 +5,6 @@ pub struct MultiBroadcastTo {
     pub shape: ShapeFact,
 }
 
-
-
-impl MultiBroadcastTo {
-    pub fn eval_t<T: Datum>(input: &Tensor, shape: &[usize]) -> TractResult<TVec<TValue>> {
-        unsafe {
-            let view = input.to_array_view_unchecked::<T>();
-            let mut output = view
-                .broadcast(shape)
-                .with_context(|| format!("Broadcasting {view:?} to {shape:?}"))?
-                .into_owned()
-                .into_tensor();
-            output.set_datum_type(input.datum_type());
-            Ok(tvec![output.into_tvalue()])
-        }
-    }
-}
-
 impl Op for MultiBroadcastTo {
     fn name(&self) -> Cow<str> {
         "MultiBroadcastTo".into()
@@ -39,7 +22,8 @@ impl EvalOp for MultiBroadcastTo {
         let input = args_1!(inputs);
         let dims: Vec<usize> =
             self.shape.iter().map(|d| d.to_usize()).collect::<TractResult<_>>()?;
-        dispatch_datum!(Self::eval_t(input.datum_type())(&*input, &*dims))
+        let output = input.broadcast_to_shape(&dims)?;
+        Ok(tvec!(output.into_tvalue()))
     }
 
     fn state(
@@ -64,9 +48,7 @@ impl OpState for MultiBroadcastToState {
     ) -> TractResult<TVec<TValue>> {
         let op = op.downcast_ref::<MultiBroadcastTo>().context("Wrong op")?;
         let shape = op.shape.eval_to_usize(&session.resolved_symbols)?;
-        dispatch_datum_by_size!(MultiBroadcastTo::eval_t(inputs[0].datum_type())(
-            &inputs[0], &*shape
-        ))
+        Ok(tvec!(inputs[0].broadcast_to_shape(&*shape)?.into_tvalue()))
     }
 }
 
@@ -92,10 +74,10 @@ impl TypedOp for MultiBroadcastTo {
     }
 
     fn declutter(
-            &self,
-            model: &TypedModel,
-            node: &TypedNode,
-        ) -> TractResult<Option<TypedModelPatch>> {
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
         let input_fact = model.outlet_fact(node.inputs[0])?;
         if input_fact.shape == self.shape {
             TypedModelPatch::shunt_one_op(model, node)
@@ -106,4 +88,3 @@ impl TypedOp for MultiBroadcastTo {
 
     as_op!();
 }
-
