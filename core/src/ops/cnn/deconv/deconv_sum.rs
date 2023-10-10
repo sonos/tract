@@ -42,11 +42,7 @@ impl EvalOp for DeconvSum {
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        dispatch_floatlike!(Self::eval_with_values(inputs[0].datum_type())(
-            self,
-            inputs,
-            &SymbolValues::default()
-        ))
+        self.eval_with_values(inputs, &Default::default())
     }
 
     fn state(
@@ -65,23 +61,19 @@ impl OpState for DeconvSum {
         _op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        dispatch_floatlike!(Self::eval_with_values(inputs[0].datum_type())(
-            self,
-            inputs,
-            &session.resolved_symbols
-        ))
+        self.eval_with_values(inputs, &session.resolved_symbols)
     }
 }
 trivial_op_state_freeeze!(DeconvSum);
 
 impl DeconvSum {
-    fn eval_with_values<T: Datum + Float + Copy + AddAssign<T>>(
+    fn eval_with_values(
         &self,
         inputs: TVec<TValue>,
         values: &SymbolValues,
     ) -> TractResult<TVec<TValue>> {
         let gemm = args_1!(inputs).into_tensor();
-        debug_assert_eq!(gemm.datum_type(), T::datum_type());
+        let dt = gemm.datum_type();
         let input_shape = self.input_shape.eval_to_usize(values)?.into_owned();
         let input_shape = self.pool_spec.data_format.shape(input_shape)?;
         let output_shape =
@@ -95,33 +87,13 @@ impl DeconvSum {
             &self.adjustments,
         )?;
         let mut tensor = if let Some(b) = &self.bias {
-            if output_shape.shape[0..output_shape.c_axis()].iter().all(|d| *d == 1) {
-                unsafe {
-                    let mut tensor = Tensor::uninitialized::<T>(&output_shape.shape)?;
-                    let values = b.as_ptr::<T>()?;
-                    let slice = tensor.as_ptr_mut::<T>()?;
-                    let stride = *output_shape.c_stride();
-                    for ix in 0..b.len() {
-                        let v = *values.add(ix);
-                        for p in 0..stride {
-                            *slice.add(stride * ix + p) = v;
-                        }
-                    }
-                    tensor
-                }
-            } else {
-                let mut tensor = Tensor::zero::<T>(&output_shape.shape)?;
-                let mut output = tensor.to_array_view_mut::<T>()?;
-                let mut bias_shape = tvec!(1; output_shape.rank());
-                bias_shape[output_shape.c_axis()] = b.len();
-                let b = b.clone().into_tensor().into_shape(&bias_shape)?;
-                output += &b.to_array_view::<T>()?;
-                tensor
-            }
+            let mut bias_shape = tvec!(1; output_shape.rank());
+            bias_shape[output_shape.c_axis()] = b.len();
+            let b = b.clone().into_tensor().into_shape(&bias_shape)?;
+            b.broadcast_to_shape(&output_shape.shape)?
         } else {
-            Tensor::zero::<T>(&output_shape.shape)?
+            Tensor::zero_dt(dt, &output_shape.shape)?
         };
-        let mut output = tensor.to_array_view_mut::<T>()?;
         let hw = *gemm.shape().last().unwrap();
         let n = *output_shape.n().unwrap_or(&1);
         let n_o_hkwk_hw = gemm.into_shape(&[
@@ -130,10 +102,33 @@ impl DeconvSum {
             self.pool_spec.kernel_shape.iter().product(),
             hw,
         ])?;
-        let n_o_hkwk_hw: ArrayView4<T> = n_o_hkwk_hw.to_array_view::<T>()?.into_dimensionality()?;
         if !self.pool_spec.data_format.has_n() {
-            output = output.insert_axis(Axis(0));
+            tensor.insert_axis(0)?;
         }
+        dispatch_floatlike!(Self::eval_t(dt)(
+            self,
+            &input_shape,
+            &output_shape,
+            &spatial_output_details,
+            &n_o_hkwk_hw,
+            &mut tensor
+        ))?;
+        if !self.pool_spec.data_format.has_n() {
+            tensor.remove_axis(0)?;
+        }
+        Ok(tvec!(tensor.into_tvalue()))
+    }
+
+    fn eval_t<T: Datum + Float + Copy + AddAssign<T>>(
+        &self,
+        input_shape: &DataShape,
+        output_shape: &DataShape,
+        spatial_output_details: &[ComputedPaddedDim<usize>],
+        n_o_hkwk_hw: &Tensor,
+        output: &mut Tensor,
+    ) -> TractResult<()> {
+        let output = output.to_array_view_mut::<T>()?;
+        let n_o_hkwk_hw: ArrayView4<T> = n_o_hkwk_hw.to_array_view::<T>()?.into_dimensionality()?;
         match input_shape.hw_rank() {
             1 => self.main_loop_1d(
                 &input_shape,
@@ -141,30 +136,29 @@ impl DeconvSum {
                 &spatial_output_details,
                 &n_o_hkwk_hw,
                 &mut output.into_dimensionality().unwrap(),
-            )?,
+            ),
             2 => self.main_loop_2d(
                 &input_shape,
                 &output_shape,
                 &spatial_output_details,
                 &n_o_hkwk_hw,
                 &mut output.into_dimensionality().unwrap(),
-            )?,
+            ),
             3 => self.main_loop_3d(
                 &input_shape,
                 &output_shape,
                 &spatial_output_details,
                 &n_o_hkwk_hw,
                 &mut output.into_dimensionality().unwrap(),
-            )?,
+            ),
             _ => self.main_loop(
                 &input_shape,
                 &output_shape,
                 &spatial_output_details,
                 &n_o_hkwk_hw,
                 &mut output.into_dimensionality().unwrap(),
-            )?,
+            ),
         }
-        Ok(tvec!(tensor.into_tvalue()))
     }
 
     pub fn main_loop_1d<T: Datum + Float + AddAssign>(

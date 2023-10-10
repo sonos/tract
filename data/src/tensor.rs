@@ -2,6 +2,7 @@
 use crate::datum::{round_ties_to_even, scale_by, Blob, ClampCast, Datum, DatumType, QParams};
 use crate::dim::TDim;
 use crate::TVec;
+use anyhow::Context;
 use half::f16;
 use itertools::Itertools;
 use ndarray::prelude::*;
@@ -536,6 +537,23 @@ impl Tensor {
             dispatch_datum_by_size!(make(self.datum_type())(self, &mut t));
             Ok(t)
         }
+    }
+
+    fn broadcast_to_shape_t<T: Datum>(&self, shape: &[usize]) -> anyhow::Result<Tensor> {
+        unsafe {
+            let view = self.to_array_view_unchecked::<T>();
+            let mut output = view
+                .broadcast(shape)
+                .with_context(|| format!("Broadcasting {view:?} to {shape:?}"))?
+                .into_owned()
+                .into_tensor();
+            output.set_datum_type(self.datum_type());
+            Ok(output)
+        }
+    }
+
+    pub fn broadcast_to_shape(&self, shape: &[usize]) -> anyhow::Result<Tensor> {
+        dispatch_datum!(Self::broadcast_to_shape_t(self.dt)(self, shape))
     }
 
     fn clip_range_bounds(

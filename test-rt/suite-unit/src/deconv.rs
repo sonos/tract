@@ -526,6 +526,22 @@ pub fn suite() -> TractResult<TestSuite> {
     );
 
     suite.add(
+        "bias_1",
+        DeconvProblem {
+            data_format: HWC,
+            kernel_format: OIHW,
+            padding: PaddingSpec::Valid,
+            input: arr2(&[[0.0], [0.0]]).into_dyn(),
+            kernel: arr3(&[[[0.0]]]).into_dyn(),
+            bias: Some(arr1(&[1.0f32]).into_dyn()),
+            strides: tvec!(1),
+            dilations: tvec!(1),
+            adjustments: tvec!(0),
+            group: 1,
+        },
+    );
+
+    suite.add(
         "rank_5_with_group",
         DeconvProblem {
             data_format: HWC,

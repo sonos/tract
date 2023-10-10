@@ -126,6 +126,7 @@ inherits="release"
 lto=false
 
 [profile.release]
+debug = true
 lto = true
 
 [profile.bench]
