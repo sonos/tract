@@ -27,6 +27,7 @@ ndarray.workspace = true
 num-integer.workspace = true
 num-traits.workspace = true
 num-complex.workspace = true
+paste.workspace = true
 rustfft.workspace = true
 smallvec.workspace = true
 tract-linalg = { version = "=0.20.19-pre", path = "../linalg" }
