@@ -264,6 +264,7 @@ macro_rules! impl_eval {
             }
 
             #[inline(never)]
+            #[allow(clippy::too_many_arguments)]
             $(#[$meta])*
             unsafe fn [<inner_loop_ $suffix>]<T: Datum + Copy>(
                 iptr: *const T,
