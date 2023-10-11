@@ -64,7 +64,7 @@ lazy_static::lazy_static! {
 
 #[inline]
 pub fn has_fp16() -> bool {
-    cfg!(feature_cpu = "fp16") || *KIND == Kind::CortexA55 || *KIND == Kind::CortexA75 || *HAS_FP16
+    cfg!(target_os = "macos") || cfg!(feature_cpu = "fp16") || *KIND == Kind::CortexA55 || *KIND == Kind::CortexA75 || *HAS_FP16
 }
 
 #[target_feature(enable = "fp16")]
