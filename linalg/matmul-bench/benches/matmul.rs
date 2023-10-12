@@ -76,7 +76,7 @@ pub fn tract_blaslike(
                         FusedSpec::AddMatMul {
                             k,
                             a: a_storage.wrap(&pa.view()),
-                            b: b_storage.wrap(&pb.view()).unwrap(),
+                            b: b_storage.wrap(&pb.view()),
                         },
                         FusedSpec::Store(c_storage.wrap(&mut c.view_mut())),
                     ],
