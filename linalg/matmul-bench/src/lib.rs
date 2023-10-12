@@ -442,7 +442,7 @@ pub fn tract(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) 
                 FusedSpec::AddMatMul {
                     k,
                     a: a_storage.wrap(&pa.view()),
-                    b: b_storage.wrap(&pb.view()).unwrap(),
+                    b: b_storage.wrap(&pb.view()),
                 },
                 FusedSpec::Store(c_storage.wrap(&mut tc.view_mut())),
             ],

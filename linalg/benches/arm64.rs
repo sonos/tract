@@ -1,16 +1,15 @@
 use std::time::Instant;
 
 use tract_data::prelude::*;
-use tract_linalg::frame::mmm::LinearSpec;
+use tract_linalg::LADatum;
+use tract_linalg::frame::mmm::FusedSpec;
 use tract_linalg::frame::mmm::MatMatMulKer;
-use tract_linalg::frame::mmm::MatMatMulKerSpec;
-use tract_linalg::mmm::{InputStoreKer, OutputStoreKer};
 
 fn ruin_cache() {
     let _a = (0..1000000).collect::<Vec<i32>>();
 }
 
-fn bench_to_nanos<T: Datum + Copy + num_traits::Zero, K: MatMatMulKer<T>>(
+fn bench_to_nanos<T: LADatum + Copy + num_traits::Zero, K: MatMatMulKer<T>>(
     k: usize,
     loops: usize,
 ) -> f64 {
