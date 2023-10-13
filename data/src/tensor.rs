@@ -2,7 +2,7 @@
 use crate::datum::{round_ties_to_even, scale_by, Blob, ClampCast, Datum, DatumType, QParams};
 use crate::dim::TDim;
 use crate::TVec;
-use anyhow::Context;
+use anyhow::{ensure, Context};
 use half::f16;
 use itertools::Itertools;
 use ndarray::prelude::*;
@@ -554,6 +554,41 @@ impl Tensor {
 
     pub fn broadcast_to_shape(&self, shape: &[usize]) -> anyhow::Result<Tensor> {
         dispatch_datum!(Self::broadcast_to_shape_t(self.dt)(self, shape))
+    }
+
+    pub fn broadcast_vector_to_shape(
+        &self,
+        shape: &[usize],
+        axis: usize,
+    ) -> anyhow::Result<Tensor> {
+        ensure!(self.rank() == 1);
+        ensure!(shape[axis] == self.len());
+        unsafe {
+            let mut output = Tensor::uninitialized_dt(self.datum_type(), shape)?;
+            if output.len() == 0 {
+                return Ok(output);
+            }
+            let inner_len = shape[axis + 1..].iter().product::<usize>();
+
+            unsafe fn splat<T: Datum>(input: &Tensor, output: &mut Tensor, inner_len: usize) {
+                for ix in 0..input.len() {
+                    let value: &T = &input.as_slice_unchecked()[ix];
+                    output.as_slice_mut_unchecked::<T>()[ix * inner_len..(ix + 1) * inner_len]
+                        .iter_mut()
+                        .for_each(|item| *item = value.clone());
+                }
+            }
+            dispatch_datum!(splat(self.datum_type())(&self, &mut output, inner_len));
+
+            let outer_len = shape[0..axis].iter().product::<usize>();
+            let repeat_bytes_len = inner_len * self.as_bytes().len();
+            let bytes = output.as_bytes_mut();
+            for ix in 1..outer_len {
+                bytes.copy_within(0..repeat_bytes_len, ix * repeat_bytes_len);
+            }
+
+            Ok(output)
+        }
     }
 
     fn clip_range_bounds(
@@ -1512,7 +1547,10 @@ impl IntoArcTensor for Arc<Tensor> {
 
 #[cfg(test)]
 mod tests {
+    use crate::prelude::tensor1;
+
     use super::*;
+    use proptest::collection::vec;
     use proptest::prelude::*;
 
     #[derive(Debug)]
@@ -1577,6 +1615,56 @@ mod tests {
     #[test]
     fn t_2_2() {
         PermuteAxisProblem { shape: vec![2, 2], permutation: vec![1, 0] }.check().unwrap();
+    }
+
+    #[derive(Debug)]
+    struct BroadcastVecToShape {
+        vec: Vec<f32>,
+        axis: usize,
+        shape: TVec<usize>,
+    }
+
+    impl BroadcastVecToShape {
+        fn check(&self) -> proptest::test_runner::TestCaseResult {
+            let input = tensor1(&self.vec);
+            let mut intermediate = tvec![1usize; self.shape.len()];
+            intermediate[self.axis] = self.vec.len();
+            let reference = input
+                .clone()
+                .into_shape(&intermediate)
+                .unwrap()
+                .broadcast_to_shape(&self.shape)
+                .unwrap();
+            prop_assert_eq!(
+                reference,
+                input.broadcast_vector_to_shape(&self.shape, self.axis).unwrap()
+            );
+            Ok(())
+        }
+    }
+
+    impl Arbitrary for BroadcastVecToShape {
+        type Strategy = BoxedStrategy<BroadcastVecToShape>;
+        type Parameters = ();
+
+        fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
+            vec(0usize..5, 0usize..4)
+                .prop_flat_map(|shape| {
+                    (vec(-10f32..10f32, 0usize..5), Just(shape.clone()), 0..shape.len() + 1)
+                })
+                .prop_map(|(vec, mut shape, axis)| {
+                    shape.insert(axis, vec.len());
+                    BroadcastVecToShape { vec, shape: shape.into(), axis }
+                })
+                .boxed()
+        }
+    }
+
+    proptest::proptest! {
+        #[test]
+        fn broadcast_vector_to_shape_prop(pb: BroadcastVecToShape) {
+            pb.check().unwrap()
+        }
     }
 
     #[test]
