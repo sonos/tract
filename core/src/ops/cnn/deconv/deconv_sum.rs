@@ -87,10 +87,7 @@ impl DeconvSum {
             &self.adjustments,
         )?;
         let mut tensor = if let Some(b) = &self.bias {
-            let mut bias_shape = tvec!(1; output_shape.rank());
-            bias_shape[output_shape.c_axis()] = b.len();
-            let b = b.clone().into_tensor().into_shape(&bias_shape)?;
-            b.broadcast_to_shape(&output_shape.shape)?
+            b.broadcast_vector_to_shape(&output_shape.shape, output_shape.c_axis())?
         } else {
             Tensor::zero_dt(dt, &output_shape.shape)?
         };
