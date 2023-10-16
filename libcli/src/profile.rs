@@ -1,14 +1,12 @@
-use tract_core::{
-    internal::*,
-    ops::{scan::State, submodel::TypedModelOpState},
-};
+use tract_core::internal::*;
+use tract_core::ops::scan::State;
+use tract_core::ops::submodel::TypedModelOpState;
 
+use crate::annotations::*;
 use crate::model::Model;
-use crate::{annotations::*, tensor::make_inputs_for_model};
-use std::{
-    any::TypeId,
-    time::{Duration, Instant},
-};
+use crate::tensor::make_inputs_for_model;
+use std::any::TypeId;
+use std::time::Duration;
 
 pub struct BenchLimits {
     pub max_iters: usize,
@@ -35,7 +33,7 @@ pub fn profile(
     let plan = TypedSimplePlan::new(model.clone())?;
     let mut state = TypedSimpleState::new(Arc::new(plan))?;
 
-    let start = Instant::now();
+    let start = crate::time::now();
     let mut time_accounted_by_inner_nodes = Duration::default();
     while iters < bench_limits.max_iters && start.elapsed() < bench_limits.max_time {
         rec_profiler(
@@ -82,14 +80,19 @@ pub fn rec_profiler(
         inputs.clone(),
         |session_state, mut node_state, node, input| {
             // Profile node
-            let start = Instant::now();
-            let res = tract_core::plan::eval(session_state, node_state.as_deref_mut(), node, input.clone());
+            let start = crate::time::now();
+            let res = tract_core::plan::eval(
+                session_state,
+                node_state.as_deref_mut(),
+                node,
+                input.clone(),
+            );
             let elapsed = start.elapsed().mul_f32(multiplier.unwrap_or(1) as _);
             let node_id = NodeQId(prefix.into(), node.id);
             *dg.node_mut(node_id).profile.get_or_insert(Duration::default()) += elapsed;
 
             if !folded {
-                let start = Instant::now();
+                let start = crate::time::now();
                 profile_submodel(
                     node,
                     node_state,
