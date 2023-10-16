@@ -9,3 +9,4 @@ pub mod model;
 pub mod profile;
 pub mod tensor;
 pub mod terminal;
+pub mod time;
