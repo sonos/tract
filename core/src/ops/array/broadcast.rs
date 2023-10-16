@@ -48,7 +48,7 @@ impl OpState for MultiBroadcastToState {
     ) -> TractResult<TVec<TValue>> {
         let op = op.downcast_ref::<MultiBroadcastTo>().context("Wrong op")?;
         let shape = op.shape.eval_to_usize(&session.resolved_symbols)?;
-        Ok(tvec!(inputs[0].broadcast_to_shape(&*shape)?.into_tvalue()))
+        Ok(tvec!(inputs[0].broadcast_to_shape(&shape)?.into_tvalue()))
     }
 }
 
