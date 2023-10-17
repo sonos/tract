@@ -35,9 +35,7 @@ fn deser(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractRe
     let axis = invocation.named_arg_as(builder, "axis")?;
     let begin = invocation.named_arg_as(builder, "begin")?;
     let value: Tensor = tensor0(invocation.named_arg_as::<f32>(builder, "value")?);
-    let end = builder.allowing_new_symbols(|builder| {
-        TractResult::Ok(invocation.named_arg_as(builder, "end")?)
-    })?;
+    let end = builder.allowing_new_symbols(|builder| invocation.named_arg_as(builder, "end"))?;
     let op = PulseMask { axis, begin, end, value };
     builder.wire(op, &[wire])
 }
