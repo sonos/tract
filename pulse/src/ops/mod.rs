@@ -10,6 +10,7 @@ pub mod cnn;
 pub mod delay;
 pub mod downsample;
 pub mod dummy;
+pub mod mask;
 pub mod scan;
 pub mod slice;
 pub mod source;

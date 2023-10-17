@@ -2,6 +2,7 @@ use crate::internal::*;
 
 mod broadcast;
 mod concat;
+mod mask;
 mod pad;
 mod slice;
 

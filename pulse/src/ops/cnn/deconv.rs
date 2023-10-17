@@ -3,6 +3,7 @@ use tract_core::num_traits::Zero;
 use tract_core::ops::cnn::DeconvUnary;
 use tract_core::ops::cnn::PaddingSpec;
 use tract_pulse_opl::ops::DeconvDelay;
+use tract_pulse_opl::ops::PulseMask;
 
 register_all!(DeconvUnary: pulsify);
 
@@ -37,9 +38,15 @@ fn pulsify(
     let mut pulse_op = op.clone();
     pulse_op.adjustments[geo_axis] = stride - 1;
     pulse_op.pool_spec.padding = PaddingSpec::Valid;
-    let deconv =
-        target.wire_node(format!("{}.deconv", node.name), pulse_op, &[mapping[&node.inputs[0]]])?
-            [0];
+    let mut wire = tvec![mapping[&node.inputs[0]]];
+    let mask = PulseMask {
+        axis: stream.axis,
+        begin: stream.delay,
+        end: stream.dim.clone() + stream.delay,
+        value: Tensor::zero_scalar_dt(fact.datum_type)?,
+    };
+    wire = target.wire_node(format!("{}.mask", node.name), mask, &wire)?;
+    wire = target.wire_node(format!("{}.deconv", node.name), pulse_op, &wire)?;
     let overlap = overlap(stream.axis, op);
     let deconv_input_dim = (stream.dim.clone() - 1) * stride + 1;
     let output_shape = tract_core::ops::cnn::deconv::output_shape(
@@ -56,7 +63,7 @@ fn pulsify(
         &op.pool_spec.strides(),
         &op.adjustments,
     )?;
-    let mut wire = target.wire_node(
+    wire = target.wire_node(
         &node.name,
         DeconvDelay {
             axis: stream.axis,
@@ -67,7 +74,7 @@ fn pulsify(
             pulse: pulse.to_owned(),
             deconv_output_dim: output_shape[stream.axis].clone(),
         },
-        &[deconv],
+        &wire,
     )?;
 
     for (geo_axis, padding) in paddings.iter().enumerate() {

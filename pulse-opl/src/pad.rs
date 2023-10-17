@@ -64,6 +64,29 @@ fn deser(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractRe
     builder.wire(op, &[wire])
 }
 
+pub(crate) unsafe fn fill_slice_constant<T: Datum + Copy>(
+    data: &mut Tensor,
+    constant: &Tensor,
+    axis: usize,
+    range: std::ops::Range<usize>,
+) {
+    let c = constant.to_scalar_unchecked::<T>();
+    data.to_array_view_mut_unchecked::<T>().slice_axis_mut(Axis(axis), range.into()).fill(*c);
+}
+
+unsafe fn fill_slice_with_frame<T: Datum + Copy>(
+    data: &mut Tensor,
+    axis: usize,
+    valid: &Tensor,
+    range: std::ops::Range<usize>,
+) {
+    let mut data = data.to_array_view_mut_unchecked::<T>();
+    let valid = valid.to_array_view_unchecked::<T>();
+    for i in range {
+        data.slice_axis_mut(Axis(axis), (i..i + 1).into()).assign(&valid);
+    }
+}
+
 #[derive(Debug, Clone, Default, Hash)]
 struct PulsePadOpState {
     current_pos: usize,
@@ -89,29 +112,6 @@ impl PulsePadOpState {
         let data = input.to_array_view_unchecked::<T>();
         self.last_valid_frame =
             Some(data.index_axis(Axis(op.axis), frame).to_owned().into_tensor());
-    }
-
-    unsafe fn fill_slice_constant<T: Datum + Copy>(
-        data: &mut Tensor,
-        constant: &Tensor,
-        axis: usize,
-        range: std::ops::Range<usize>,
-    ) {
-        let c = constant.to_scalar_unchecked::<T>();
-        data.to_array_view_mut_unchecked::<T>().slice_axis_mut(Axis(axis), range.into()).fill(*c);
-    }
-
-    unsafe fn fill_slice_with_frame<T: Datum + Copy>(
-        data: &mut Tensor,
-        axis: usize,
-        valid: &Tensor,
-        range: std::ops::Range<usize>,
-    ) {
-        let mut data = data.to_array_view_mut_unchecked::<T>();
-        let valid = valid.to_array_view_unchecked::<T>();
-        for i in range {
-            data.slice_axis_mut(Axis(axis), (i..i + 1).into()).assign(&valid);
-        }
     }
 
     fn pad(
@@ -156,7 +156,7 @@ impl PulsePadOpState {
             let fill_up_to = (op.begin_input - pulse_begin).min(pulse);
             match &op.mode {
                 PadMode::Constant(c) => unsafe {
-                    dispatch_copy_by_size!(Self::fill_slice_constant(input.datum_type())(
+                    dispatch_copy_by_size!(fill_slice_constant(input.datum_type())(
                         &mut input,
                         c,
                         op.axis,
@@ -166,7 +166,7 @@ impl PulsePadOpState {
                 PadMode::Edge => {
                     let frame = input.slice(op.axis, fill_up_to, fill_up_to + 1)?;
                     unsafe {
-                        dispatch_copy_by_size!(Self::fill_slice_with_frame(input.datum_type())(
+                        dispatch_copy_by_size!(fill_slice_with_frame(input.datum_type())(
                             &mut input,
                             op.axis,
                             &frame,
@@ -181,7 +181,7 @@ impl PulsePadOpState {
             let fill_from = pulse - (pulse_end - end_input).min(pulse);
             match &op.mode {
                 PadMode::Constant(c) => unsafe {
-                    dispatch_copy_by_size!(Self::fill_slice_constant(input.datum_type())(
+                    dispatch_copy_by_size!(fill_slice_constant(input.datum_type())(
                         &mut input,
                         c,
                         op.axis,
@@ -191,7 +191,7 @@ impl PulsePadOpState {
                 PadMode::Edge => {
                     let last_frame = self.last_valid_frame.as_ref().unwrap();
                     unsafe {
-                        dispatch_copy_by_size!(Self::fill_slice_with_frame(input.datum_type())(
+                        dispatch_copy_by_size!(fill_slice_with_frame(input.datum_type())(
                             &mut input,
                             op.axis,
                             last_frame,

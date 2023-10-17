@@ -188,9 +188,7 @@ impl DeconvSum {
                         };
                         unsafe {
                             let value = *n_o_hkwk_hw.uget((n, o, kx, gx));
-                            if !value.is_nan() {
-                                *output.uget_mut(coord) += value;
-                            }
+                            *output.uget_mut(coord) += value;
                         }
                     }
                 }
@@ -377,9 +375,7 @@ impl DeconvSum {
                         };
                         unsafe {
                             let value = *n_o_hkwk_hw.uget((n, o, kix, gix));
-                            if !value.is_nan() {
-                                *output.uget_mut(coord) += value;
-                            }
+                            *output.uget_mut(coord) += value;
                         }
                     }
                 }
@@ -425,9 +421,7 @@ impl DeconvSum {
                             let ocoord =
                                 self.pool_spec.data_format.with_n().from_n_c_hw(n, o, ocoord)?;
                             let value = n_o_hkwk_hw[(n, o, kix, gix)];
-                            if !value.is_nan() {
-                                output[&*ocoord.shape] += value
-                            }
+                            output[&*ocoord.shape] += value
                         }
                     }
                 }

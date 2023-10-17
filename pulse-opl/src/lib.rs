@@ -3,6 +3,7 @@ use tract_nnef::internal::*;
 mod concat;
 mod deconv_delay;
 mod delay;
+mod mask;
 mod pad;
 mod slice;
 
@@ -17,6 +18,7 @@ pub mod prelude {
 pub mod ops {
     pub use super::deconv_delay::DeconvDelay;
     pub use super::delay::{ Delay, DelayState };
+    pub use super::mask::PulseMask;
     pub use super::pad::PulsePad;
     pub use super::slice::PulsedAxisSlice;
 }
@@ -41,6 +43,7 @@ pub fn tract_nnef_registry() -> Registry {
     let mut reg = Registry::new("tract_pulse");
     reg.aliases.push("pulse".into());
     delay::register(&mut reg);
+    mask::register(&mut reg);
     pad::register(&mut reg);
     reg
 }
