@@ -119,6 +119,9 @@ where
                     FusedKerSpec::ScalarMax(m) => scalar!(ab, m, |a, b| if a > b { a } else { b }),
                     FusedKerSpec::ScalarSub(m) => scalar!(ab, m, |a, b| a - b),
                     FusedKerSpec::ScalarSubF(m) => scalar!(ab, m, |a, b| b - a),
+                    FusedKerSpec::LeakyRelu(m) => {
+                        scalar!(ab, m, |a, b| if b > TI::zero() { b } else { a * b })
+                    }
                     FusedKerSpec::PerRowMin(m) => per_row!(ab, m, |a, b| if a < b { a } else { b }),
                     FusedKerSpec::PerRowMax(m) => per_row!(ab, m, |a, b| if a > b { a } else { b }),
                     FusedKerSpec::PerRowAdd(m) => per_row!(ab, m, |a, b| a + b),
@@ -274,6 +277,9 @@ where
                     FusedKerSpec::ScalarMax(m) => scalar!(ab, m, |a, b| if a > b { a } else { b }),
                     FusedKerSpec::ScalarSub(m) => scalar!(ab, m, |a, b| a - b),
                     FusedKerSpec::ScalarSubF(m) => scalar!(ab, m, |a, b| b - a),
+                    FusedKerSpec::LeakyRelu(m) => {
+                        scalar!(ab, m, |a, b| if b > TI::zero() { b } else { a * b })
+                    }
                     FusedKerSpec::PerRowMul(m) => per_row!(ab, m, |a, b| a * b),
                     FusedKerSpec::PerRowMin(m) => per_row!(ab, m, |a, b| if a < b { a } else { b }),
                     FusedKerSpec::PerRowMax(m) => per_row!(ab, m, |a, b| if a > b { a } else { b }),
@@ -497,7 +503,7 @@ where
 unsafe fn store_t<TC, TI, AB>(tile: &OutputStoreKer, ab: &[AB])
 where
     TC: Copy,
-    AB: AsRef<[TI]> + fmt::Debug
+    AB: AsRef<[TI]> + fmt::Debug,
 {
     for i in 0usize..ab.len() {
         for j in 0usize..ab[0].as_ref().len() {
