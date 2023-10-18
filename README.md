@@ -38,7 +38,7 @@ bvlc_alexnet, densenet121, inception_v1, inception_v2, resnet50, shufflenet,
 squeezenet, vgg19, zfnet512.
 
 Notable missing parts are operators dealing with Tensor Sequences and Optional Tensors : tract /really/ wants to flow Tensors and nothing else.
-This is structural. Changing it would be pretty difficult, and it's unclear whether it can be done without impairing performance or maintanability.
+This is structural. Changing it would be pretty difficult, and it's unclear whether it can be done without impairing performance or maintainability.
 We are not convinced these features have shown their interest in the wild yet, so we prefer to leavie them aside.
 
 Other dark corners are specific operators likes "Resize" which fit perfectly in the framework, but need a complex internal logic that is far
@@ -87,7 +87,7 @@ A remainder: NNEF is not expressive enough to represent all ONNX. tract-OPL exte
 NNEF using proprietary to support what is missing. Notable extensions are pulse
 operators, recurring operators (as Scan) and symbolic extensions.
 
-There is no stricts check in place here, so... implementation is not bullet proof.
+There is no strict check in place here, so... implementation is not bullet proof.
 * NNEF part aims at being very stable. It is strongly constrained with compatibility
 with NNEF specification.
 * tract-opl is a bit more in flux. Nevertheless we try to maintain the following
@@ -98,13 +98,13 @@ golden rule:
 * in practise, breaking changes have been relatively rare so far. Most models are
 forward and retro compatible from when tract has acquired NNEF support.
 
-Notable breakage occured:
+Notable breakage occurred:
 * 0.16.3 (forward compatible) on Scan operator
 * 0.17.0 for binary decision tree classifier
 
 Starting with `0.17.0`, a model property is injected in tract-opl files (`tract_nnef_ser_version`)
 to tag which version of tract generated the file. As most models will remain compatible,
-tract will not do any version check. It is up to the application developper to do so.
+tract will not do any version check. It is up to the application developer to do so.
 
 A softer version tag exists as `tract_nnef_format_version`. pre-0.17.0 version set it to
 `alpha1`, post-0.17.0 set it `beta1`. Don't put too much emphasis into the "alpha-ness" naming 
@@ -141,7 +141,7 @@ tutorials and pre-trained models for keyword spotting. While the exercise
 is ultimately meant for micro-controllers, `tract` can run the intermediate
 TensorFlow models.
 
-For instance, on a Rasperry Pi Zero, the "CNN M" model runs in about 70
+For instance, on a Raspberry Pi Zero, the "CNN M" model runs in about 70
 micro-seconds, and 11 micro-seconds on a Raspberry Pi 3.
 
 ### Snips wake word models
