@@ -30,7 +30,7 @@ So the modelBuffer(the model read from a flatbuffer file) has a few components (
 ### Operators
 
 - the list of builtin Operators can be found in the [generated tflite schema](./src/tflite_generated.rs) around line 443 in the const array `ENUM_VALUES_BUILTIN_OPERATOR: [BuiltinOperator; 162]`.
-- the offical docs on supported supset of tensorflow operators in [TFLite](https://www.tensorflow.org/lite/guide/op_select_allowlist)
+- the official docs on supported supset of tensorflow operators in [TFLite](https://www.tensorflow.org/lite/guide/op_select_allowlist)
 - the [tflite c code](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/c)
 
 ### Subgraphs
