@@ -682,6 +682,12 @@ impl Parameters {
             dec.optimize(&mut m)?;
             Ok(m)
         });
+        #[cfg(not(feature = "pulse"))]
+        {
+            if matches.value_of("pulse").is_some() {
+                bail!("This build of tract has pulse disabled.")
+            }
+        }
         #[cfg(feature = "pulse")]
         {
             if let Some(spec) = matches.value_of("pulse") {
