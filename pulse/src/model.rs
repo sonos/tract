@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use std::sync::RwLock;
 
 use crate::fact::StreamInfo;
 use crate::{internal::*, ops::sync_inputs};
@@ -109,7 +109,7 @@ impl SpecialOps<PulsedFact, Box<dyn PulsedOp>> for PulsedModel {
     }
 }
 
-struct Pulsifier(Symbol, TDim, Arc<Mutex<HashMap<TypeId, crate::ops::OpPulsifier>>>);
+struct Pulsifier(Symbol, TDim, Arc<RwLock<HashMap<TypeId, crate::ops::OpPulsifier>>>);
 
 impl std::fmt::Debug for Pulsifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -138,10 +138,12 @@ impl
             )?
             .unwrap());
         }
+        log::debug!("Pulsifying node {node}");
 
         if let Some(pulsified) =
             OpPulsifier::pulsify(source, node, target, mapping, &self.0, &self.1)?
         {
+            log::debug!("Pulsified node {node} with adhoc pulsifier");
             return Ok(pulsified);
         }
 
@@ -150,6 +152,7 @@ impl
         if pulse_facts.iter().all(|pf| pf.stream.is_none()) {
             let pulse_op = NonPulsingWrappingOp(node.op.clone());
             let inputs: TVec<OutletId> = node.inputs.iter().map(|i| mapping[i]).collect();
+            log::debug!("Pulsified node {node} with NonPulsingWrappingOp");
             return target.wire_node(&node.name, pulse_op, &inputs);
         }
 
@@ -162,6 +165,7 @@ impl
         if axis_info.outputs[0].len() == 1 {
             let pulse_op = PulseWrappingOp(node.op.clone());
             let inputs = sync_inputs(node, target, mapping)?;
+            log::debug!("Pulsified node {node} with PulsingWrappingOp");
             return target.wire_node(&node.name, pulse_op, &inputs);
         }
 

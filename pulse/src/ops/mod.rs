@@ -1,5 +1,5 @@
 use std::any::Any;
-use std::sync::Mutex;
+use std::sync::RwLock;
 
 use crate::internal::*;
 use lazy_static::lazy_static;
@@ -64,12 +64,12 @@ pub struct OpPulsifier {
 }
 
 impl OpPulsifier {
-    pub fn inventory() -> Arc<Mutex<HashMap<TypeId, OpPulsifier>>> {
+    pub fn inventory() -> Arc<RwLock<HashMap<TypeId, OpPulsifier>>> {
         lazy_static! {
-            static ref INVENTORY: Arc<Mutex<HashMap<TypeId, OpPulsifier>>> = {
+            static ref INVENTORY: Arc<RwLock<HashMap<TypeId, OpPulsifier>>> = {
                 let mut it = HashMap::default();
                 register_all(&mut it);
-                Arc::new(Mutex::new(it))
+                Arc::new(RwLock::new(it))
             };
         };
         (*INVENTORY).clone()
@@ -77,7 +77,7 @@ impl OpPulsifier {
 
     pub fn register<T: Any>(func: PulsifierFn) -> TractResult<()> {
         let inv = Self::inventory();
-        let mut inv = inv.lock().map_err(|e| anyhow!("Fail to lock inventory {e}"))?;
+        let mut inv = inv.write().map_err(|e| anyhow!("Fail to lock inventory {e}"))?;
         inv.insert(
             std::any::TypeId::of::<T>(),
             OpPulsifier {
@@ -98,7 +98,7 @@ impl OpPulsifier {
         pulse: &TDim,
     ) -> TractResult<Option<TVec<OutletId>>> {
         let inv = Self::inventory();
-        let inv = inv.lock().map_err(|e| anyhow!("Fail to lock inventory {e}"))?;
+        let inv = inv.read().map_err(|e| anyhow!("Fail to lock inventory {e}"))?;
         if let Some(pulsifier) = inv.get(&(*node.op).type_id()) {
             if let Some(pulsified) = (pulsifier.func)(source, node, target, mapping, symbol, pulse)?
             {
