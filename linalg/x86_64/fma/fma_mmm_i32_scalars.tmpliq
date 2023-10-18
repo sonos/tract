@@ -6,3 +6,6 @@
 {% include "fma_mmm_ymm_scalar.tmpliq" label:"scalar_add", op:"vpaddd", from:from, to:to%}
 {% include "fma_mmm_ymm_scalar.tmpliq" label:"scalar_sub", op:"vpsubd", from:from, to:to%}
 {% include "fma_mmm_ymm_scalar.tmpliq" label:"scalar_sub_flipped", op:"vpsubd", from:from, to:to, flipped: true%}
+
+{{L}}leaky_relu:
+    jmp    {{L}}unsupported

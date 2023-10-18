@@ -105,6 +105,7 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                     offset += TI::datum_type().size_of() * K::mr() * K::nr();
                     FusedKerSpec::Done
                 }
+                FS::LeakyRelu(t) => FKS::LeakyRelu(*t.to_scalar()?),
                 FS::AddMatMul { a, b, .. } => {
                     for input in [a, b] {
                         let mut ld = ld(ix, self.uspecs.len(), offset as _);

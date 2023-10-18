@@ -43,6 +43,7 @@ pub enum FusedSpec<'t> {
     BinPerCol(TensorView<'t>, BinOp),
     AddRowColProducts(&'t Tensor, &'t Tensor),
     AddUnicast(OutputStore),
+    LeakyRelu(&'t Tensor),
     QScale(isize, RoundingPolicy, i32),
     RoundingShiftRight(usize, RoundingPolicy),
     ShiftLeft(usize),
@@ -77,6 +78,8 @@ pub enum FusedKerSpec<TI: Copy> {
     ScalarMul(TI),                              // jump_to:scalar_mul
     ScalarSub(TI),                              // jump_to:scalar_sub
     ScalarSubF(TI),                             // jump_to:scalar_sub_flipped
+
+    LeakyRelu(TI),                              // jump_to:leaky_relu
 
     PerRowMin(*const TI),                       // jump_to:per_row_min
     PerRowMax(*const TI),                       // jump_to:per_row_max
@@ -137,6 +140,7 @@ pub mod test {
                 use $crate::frame::mmm::fuse::test;
                 use $crate::frame::mmm::fuse::test::tile;
                 use $crate::frame::mmm::fuse::FusedKerSpec;
+                use num_traits::Zero;
 
                 #[test]
                 fn return_zeros() {
@@ -209,7 +213,9 @@ pub mod test {
                 bin!(ScalarAdd,  scalar, |a,b| a+b);
                 bin!(ScalarMul,  scalar, |a,b| a*b);
                 bin!(ScalarSub,  scalar, |a,b| a-b);
-                bin!(ScalarSubF, scalar,  |a,b| b-a);
+                bin!(ScalarSubF, scalar, |a,b| b-a);
+
+                bin!(LeakyRelu,  scalar, |a,b| if b > <$ti>::zero() { b } else { a * b });
 
                 #[test]
                 fn return_c_add_row_col_product() {

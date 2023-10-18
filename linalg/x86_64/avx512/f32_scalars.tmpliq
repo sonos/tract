@@ -7,6 +7,7 @@
 {% include "zmm_scalar.tmpliq" label:"scalar_sub", op:"vsubps", from:from, to:to %}
 {% include "zmm_scalar.tmpliq" label:"scalar_sub_flipped", op:"vsubps", from:from, to:to, flipped: true %}
 
+{{L}}leaky_relu:
 {{L}}q_scale:
 {{L}}q_shl:
 {{L}}q_shr:
