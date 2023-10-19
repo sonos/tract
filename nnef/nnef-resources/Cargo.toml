@@ -1,6 +1,6 @@
 [package]
 name = "tract-nnef-resources"
-version = "0.20.20-pre"
+version = "0.20.20"
 authors = [
 	"Mathieu Poumeyrol <kali@zoy.org>",
 	"Hubert de La Jonquière <hubert.delajonquiere@sonos.com>"
@@ -22,6 +22,6 @@ serde_json.workspace = true
 serde.workspace = true
 anyhow.workspace = true
 nom.workspace = true
-tract-nnef = { version = "=0.20.20-pre", path = "../../nnef" }
+tract-nnef = { version = "=0.20.20", path = "../../nnef" }
 
 

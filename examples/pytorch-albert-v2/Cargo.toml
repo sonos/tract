@@ -13,4 +13,4 @@ tokenizers.workspace = true
 clap_builder = { version = "=4.3.24" }
 clap_lex = { version = "=0.5.0" }
 jobserver = "=0.1.26"
-tract-onnx = { path = "../../onnx", version = "=0.20.20-pre" }
+tract-onnx = { path = "../../onnx", version = "=0.20.20" }
