@@ -557,7 +557,7 @@ macro_rules! given_tuple {
         #[allow(non_camel_case_types)]
         impl<'s, $($id: Factoid + Output,)*> fmt::Debug for $Name<'s, $($id,)*> {
             fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                write!(f, "Given2Rule {{ {:?} }}", ($(&self.$id),*))
+                write!(f, "GivenRule {{ {:?} }}", ($(&self.$id),*))
             }
         }
 
