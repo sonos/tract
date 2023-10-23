@@ -176,7 +176,7 @@ cargo build --target wasm32-wasi
 Then run the example with wasmtime, use `--dir=.` to specify the directory path used in the example.
 
 ```sh
-wasmtime ../../target/wasm32-wasi/debug/example-onnx-mobilenet-v2.wasm --dir=.
+wasmtime --dir . ../../target/wasm32-wasi/debug/example-onnx-mobilenet-v2.wasm
 ```
 
 You should see the same result as the native one.
