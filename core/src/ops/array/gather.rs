@@ -31,7 +31,7 @@ impl Gather {
         let indices = indices.cast_to::<i64>()?;
         let indices = indices.to_array_view::<i64>()?;
         let output_shape = &*self.compute_output_shape(data.shape(), indices.shape())?;
-        let mut output = Tensor::uninitialized::<T>(&output_shape)?;
+        let mut output = Tensor::uninitialized::<T>(output_shape)?;
         let mut output_view = output.to_array_view_mut::<T>()?;
         for coords in tract_ndarray::indices(output_shape) {
             let ocoords = coords.as_array_view();
