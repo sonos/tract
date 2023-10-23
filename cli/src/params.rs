@@ -84,7 +84,7 @@ pub struct ModelBuildingError(pub Box<dyn Model>, pub Box<dyn std::error::Error 
 
 impl std::fmt::Display for ModelBuildingError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(&*self.1, f)
+        write!(f, "ModelBuildingError")
     }
 }
 
@@ -659,11 +659,14 @@ impl Parameters {
 
         stage!("analyse", inference_model -> inference_model,
         |mut m:InferenceModel| -> TractResult<_> {
-            let result = m.analyse(!matches.is_present("analyse-fail-fast"));
-            match result {
-                Ok(_) => Ok(m),
-                Err(e) => Err(ModelBuildingError(Box::new(m), e.into()).into())
-            }});
+            m.analyse(!matches.is_present("analyse-fail-fast")).map_err(|e|
+                ModelBuildingError(Box::new(m.clone()), e.into())
+            )?;
+            if let Some(fail) = m.missing_type_shape()?.iter().next() {
+                bail!(ModelBuildingError(Box::new(m.clone()), format!("{} has incomplete typing", m.node(fail.node)).into()))
+            }
+            Ok(m)
+        });
         if let Some(ext) = tf_model_extensions {
             #[cfg(feature = "tf")]
             stage!("tf-preproc", inference_model -> inference_model, |m:InferenceModel| ext.preproc(m));
