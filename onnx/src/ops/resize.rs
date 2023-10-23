@@ -233,34 +233,33 @@ impl EvalOp for Resize {
             scales.map(|t| &**t),
             sizes.map(|t| &**t),
         )?;
+        let scales: TVec<f32> = if let Some(scales) = scales {
+            scales.as_slice::<f32>()?.into()
+        } else {
+            output_shape.iter().zip(inputs[0].shape()).map(|(o, i)| *o as f32 / *i as f32).collect()
+        };
         let mut data = inputs.remove(0).into_tensor().into_array::<f32>()?;
-        for axis in 0..data.ndim() {
-            #[allow(clippy::comparison_chain)]
-            if output_shape[axis] == data.shape()[axis] {
-                continue;
-            } else if output_shape[axis] > data.shape()[axis] {
-                let scale = output_shape[axis] as f32 / data.shape()[axis] as f32;
-                let mut new_shape: TVec<usize> = data.shape().into();
-                new_shape[axis] = output_shape[axis];
-                data = tract_ndarray::ArrayD::from_shape_fn(&*new_shape, |co_o| -> f32 {
-                    let x_out = co_o[axis];
-                    let x_in = self.coord_transformer.transform(
-                        x_out,
-                        scale,
-                        data.shape()[axis],
-                        new_shape[axis],
-                    );
-                    let mut co_i = co_o;
-                    let x_left = (x_in as usize).clamp(0, data.shape()[axis] - 1);
-                    co_i[axis] = x_left;
-                    let y_left = data[&co_i];
-                    let x_right = (x_left + 1).min(data.shape()[axis] - 1);
-                    co_i[axis] = x_right;
-                    let y_right = data[&co_i];
-                    let x_frac = x_in - x_left as f32;
-                    self.interpolator.interpolate(y_left, y_right, x_frac, self.nearest)
-                })
-            }
+        for (axis, scale) in scales.into_iter().enumerate().filter(|(_, s)| *s != 1.0) {
+            let mut new_shape: TVec<usize> = data.shape().into();
+            new_shape[axis] = output_shape[axis];
+            data = tract_ndarray::ArrayD::from_shape_fn(&*new_shape, |co_o| -> f32 {
+                let x_out = co_o[axis];
+                let x_in = self.coord_transformer.transform(
+                    x_out,
+                    scale,
+                    data.shape()[axis],
+                    new_shape[axis],
+                );
+                let mut co_i = co_o;
+                let x_left = (x_in as usize).clamp(0, data.shape()[axis] - 1);
+                co_i[axis] = x_left;
+                let y_left = data[&co_i];
+                let x_right = (x_left + 1).min(data.shape()[axis] - 1);
+                co_i[axis] = x_right;
+                let y_right = data[&co_i];
+                let x_frac = x_in - x_left as f32;
+                self.interpolator.interpolate(y_left, y_right, x_frac, self.nearest)
+            })
         }
         Ok(tvec!(data.into_tvalue()))
     }
