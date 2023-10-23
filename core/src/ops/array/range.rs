@@ -120,33 +120,22 @@ impl TypedOp for Range {
         ensure!(end.rank() == 0);
         ensure!(step.rank() == 0);
         if let (Some(start), Some(end), Some(step)) = (&start.konst, &end.konst, &step.konst) {
-            let len = dispatch_numbers!(Self::len_for_numbers(start.datum_type())(
-                self, start, end, step
-            ))?;
+            let len = if start.datum_type() == TDim::datum_type() {
+                let start = start.to_scalar::<TDim>()?;
+                let end = end.to_scalar::<TDim>()?;
+                let step = step.cast_to_scalar::<i64>()?;
+                (end.clone() - start).divceil(step as usize)
+            } else {
+                dispatch_numbers!(Self::len_for_numbers(start.datum_type())(
+                    self, start, end, step
+                ))?
+                .to_dim()
+            };
             Ok(tvec!(start.datum_type().fact([len])))
         } else {
             Ok(tvec!(start.datum_type.fact(&[self.len.clone()])))
         }
     }
-
-    /*
-    fn concretize_dims(
-        &self,
-        _source: &TypedModel,
-        node: &TypedNode,
-        target: &mut TypedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-        values: &SymbolValues,
-    ) -> TractResult<TVec<OutletId>> {
-        let op = if let Some(len) = &self.len {
-            let len = len.eval(values);
-            Range { len: Some(len) }
-        } else {
-            self.clone()
-        };
-        target.wire_node(&node.name, op, &node.inputs.iter().map(|i| mapping[i]).collect_vec())
-    }
-    */
 
     as_op!();
 }
