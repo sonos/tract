@@ -662,7 +662,7 @@ impl Parameters {
             m.analyse(!matches.is_present("analyse-fail-fast")).map_err(|e|
                 ModelBuildingError(Box::new(m.clone()), e.into())
             )?;
-            if let Some(fail) = m.missing_type_shape()?.iter().next() {
+            if let Some(fail) = m.missing_type_shape()?.first() {
                 bail!(ModelBuildingError(Box::new(m.clone()), format!("{} has incomplete typing", m.node(fail.node)).into()))
             }
             Ok(m)
