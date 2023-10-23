@@ -20,7 +20,7 @@ impl Gather {
         input_shape: &[D],
         indices_shape: &[D],
     ) -> TractResult<TVec<D>> {
-        let mut output_shape:TVec<D> = input_shape[..self.axis].into();
+        let mut output_shape: TVec<D> = input_shape[..self.axis].into();
         output_shape.extend(indices_shape.iter().cloned());
         output_shape.extend(input_shape[self.axis + 1..].iter().cloned());
         Ok(output_shape)
@@ -30,21 +30,20 @@ impl Gather {
         let data_view = data.to_array_view_unchecked::<T>();
         let indices = indices.cast_to::<i64>()?;
         let indices = indices.to_array_view::<i64>()?;
-        let output = ArrayD::from_shape_fn(
-            &*self.compute_output_shape(data.shape(), indices.shape())?,
-            |coords| {
-                let ocoords = coords.as_array_view();
-                let ocoords = ocoords.as_slice().unwrap();
-                let mut icoords: TVec<usize> = ocoords[0..self.axis].into();
-                let kcoords = &ocoords[self.axis..][..indices.ndim()];
-                let k = indices[kcoords];
-                let k = if k < 0 { k + data_view.shape()[self.axis] as i64 } else { k } as usize;
-                icoords.push(k);
-                icoords.extend(ocoords[self.axis + indices.ndim()..].iter().copied());
-                data_view[&*icoords].clone()
-            },
-        );
-        let mut output = output.into_tensor();
+        let output_shape = &*self.compute_output_shape(data.shape(), indices.shape())?;
+        let mut output = Tensor::uninitialized::<T>(&output_shape)?;
+        let mut output_view = output.to_array_view_mut::<T>()?;
+        for coords in tract_ndarray::indices(output_shape) {
+            let ocoords = coords.as_array_view();
+            let ocoords = ocoords.as_slice().unwrap();
+            let mut icoords: TVec<usize> = ocoords[0..self.axis].into();
+            let kcoords = &ocoords[self.axis..][..indices.ndim()];
+            let k = indices[kcoords];
+            let k = if k < 0 { k + data_view.shape()[self.axis] as i64 } else { k } as usize;
+            icoords.push(k);
+            icoords.extend(ocoords[self.axis + indices.ndim()..].iter().copied());
+            output_view[ocoords] = data_view.get(&*icoords).context("Invalid gather")?.clone();
+        }
         unsafe { output.set_datum_type(data.datum_type()) };
         Ok(output.into_tvalue())
     }
