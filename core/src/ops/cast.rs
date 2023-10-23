@@ -11,7 +11,9 @@ pub struct Cast {
 
 impl Cast {
     fn do_eval(&self, input: &Tensor, symbols: &SymbolValues) -> TractResult<TVec<TValue>> {
-        if input.datum_type() == TDim::datum_type() {
+        if input.datum_type() == self.to {
+            Ok(tvec!(input.clone().into_tvalue()))
+        } else if input.datum_type() == TDim::datum_type() {
             unsafe {
                 let mut tmp = Tensor::uninitialized_dt(i64::datum_type(), input.shape())?;
                 for (dim, i) in
