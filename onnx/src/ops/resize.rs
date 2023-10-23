@@ -7,8 +7,6 @@ pub fn resize(
     ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    dbg!(ctx.onnx_operator_set_version);
-    dbg!(node);
     let op = match ctx.onnx_operator_set_version {
         10 => resize_10(node)?,
         11..=12 => resize_11(node)?,
@@ -350,8 +348,6 @@ impl TypedOp for Resize {
         let roi = self.optional_roi_input.and_then(|ix| inputs.get(ix));
         let scales = self.optional_scales_input.and_then(|ix| inputs.get(ix));
         let sizes = self.optional_sizes_input.and_then(|ix| inputs.get(ix));
-        dbg!(self);
-        dbg!(roi, scales, sizes);
         let output_shape = self.compute_output_shape(
             &inputs[0].shape,
             scales.and_then(|f| f.konst.as_deref()),
