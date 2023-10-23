@@ -17,7 +17,7 @@ impl Op for Range {
 
 impl EvalOp for Range {
     fn is_stateless(&self) -> bool {
-        true
+        false
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
