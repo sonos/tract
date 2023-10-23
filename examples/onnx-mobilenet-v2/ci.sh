@@ -2,7 +2,8 @@
 
 set -ex
 
-wget -q https://github.com/onnx/models/raw/main/vision/classification/mobilenet/model/mobilenetv2-7.onnx -O mobilenetv2-7.onnx
+[ -e mobilenetv2-7.onnx ] || \
+    wget -q https://github.com/onnx/models/raw/main/vision/classification/mobilenet/model/mobilenetv2-7.onnx -O mobilenetv2-7.onnx
 
 # on win/linux
 cargo run
@@ -11,7 +12,7 @@ wasmtime -V || curl https://wasmtime.dev/install.sh -sSf | bash # install wasmti
 PATH=$PATH:$HOME/.wasmtime/bin
 rustup target install wasm32-wasi
 cargo build --target wasm32-wasi
-wasmtime ../../target/wasm32-wasi/debug/example-onnx-mobilenet-v2.wasm --dir=.
+wasmtime --dir . ../../target/wasm32-wasi/debug/example-onnx-mobilenet-v2.wasm
 
 cargo clean
 rm  mobilenetv2-7.onnx
