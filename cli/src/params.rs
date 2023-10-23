@@ -98,7 +98,7 @@ impl std::error::Error for ModelBuildingError {
 type PulsedModel = ();
 
 /// Structure holding the parsed parameters.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Parameters {
     pub graph: SomeGraphDef,
 
@@ -628,7 +628,9 @@ impl Parameters {
                             $to = Some(Arc::new(it));
                         }
                         Err(e) => {
-                            if let Some(last_model) = last_model.take() {
+                            if e.is::<ModelBuildingError>() {
+                                return Err(e)?;
+                            } else if let Some(last_model) = last_model.take() {
                                 return Err(ModelBuildingError(last_model, e.into()))?;
                             } else {
                                 return Err(e)?;
