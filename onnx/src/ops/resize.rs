@@ -345,7 +345,7 @@ impl TypedOp for Resize {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let roi = self.optional_roi_input.and_then(|ix| inputs.get(ix));
+        let _roi = self.optional_roi_input.and_then(|ix| inputs.get(ix));
         let scales = self.optional_scales_input.and_then(|ix| inputs.get(ix));
         let sizes = self.optional_sizes_input.and_then(|ix| inputs.get(ix));
         let output_shape = self.compute_output_shape(
