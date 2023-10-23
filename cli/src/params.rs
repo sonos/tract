@@ -485,8 +485,9 @@ impl Parameters {
         if let Some(inputs) = matches.values_of("input") {
             for (ix, v) in inputs.enumerate() {
                 let (name, fact) = tensor::for_string(symbol_table, v)?;
+                let input_index = if name.is_some() { None } else { Some(ix) };
                 result.add(TensorValues {
-                    input_index: Some(ix),
+                    input_index,
                     output_index: None,
                     name,
                     values: fact.value.concretize().map(|t| vec![t.into_tensor().into()]),
