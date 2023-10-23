@@ -49,6 +49,7 @@ test_qlinearmatmul_2D
 test_qlinearmatmul_3D
 test_reshape_reordered_dims
 test_resize_upsample_scales_linear_align_corners
+test_resize_downsample_scales_linear
 test_unsqueeze
 "#
     .trim()
