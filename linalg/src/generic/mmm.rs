@@ -435,6 +435,9 @@ where
                     FusedKerSpec::ScalarMax(m) => scalar!(ab, m, |a, b| if a > b { a } else { b }),
                     FusedKerSpec::ScalarSub(m) => scalar!(ab, m, |a, b| a - b),
                     FusedKerSpec::ScalarSubF(m) => scalar!(ab, m, |a, b| b - a),
+                    FusedKerSpec::LeakyRelu(m) => {
+                        scalar!(ab, m, |a, b| if b > TI::zero() { b } else { a * b })
+                    }
                     FusedKerSpec::PerRowMin(m) => per_row!(ab, m, |a, b| if a < b { a } else { b }),
                     FusedKerSpec::PerRowMax(m) => per_row!(ab, m, |a, b| if a > b { a } else { b }),
                     FusedKerSpec::PerRowAdd(m) => per_row!(ab, m, |a, b| a + b),
