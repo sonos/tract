@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use crate::frame::mmm::FusedKerSpec;
 use crate::LADatum;
 
-use super::{MatMatMul, MatMatMulImpl};
+use super::{MatMatMul, MatMatMulImpl, FusedSpec};
 
 pub trait MatMatMulKer<TI>: Copy + Clone + Debug + Send + Sync + 'static
 where
@@ -23,6 +23,11 @@ where
 
     fn mmm() -> Box<dyn MatMatMul> {
         Box::<MatMatMulImpl<Self, TI>>::default()
+    }
+
+    #[allow(unused_variables)]
+    fn can_fuse(spec: &FusedSpec) -> bool {
+        true
     }
 }
 

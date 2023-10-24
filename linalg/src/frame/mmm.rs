@@ -24,7 +24,7 @@ pub use storage::*;
 pub fn no_prefetch(_ptr: *const u8, _len: usize) {}
 
 macro_rules! MMMKernel {
-    ($ti:ident, $func:ident; $mr: expr, $nr: expr; $alignment_bytes_packed_a: expr, $alignment_bytes_packed_b: expr; $end_padding_packed_a: expr, $end_padding_packed_b: expr ; $prefetch: ident, $cond: expr) => {
+    ($ti:ident, $func:ident; $mr: expr, $nr: expr; $alignment_bytes_packed_a: expr, $alignment_bytes_packed_b: expr; $end_padding_packed_a: expr, $end_padding_packed_b: expr ; $prefetch: ident, $cond: expr $(, can_fuse: $can_fuse:expr)?) => {
         paste! {
             mod [<sys_ $func>] {
                 use crate::frame::mmm::*;
@@ -76,6 +76,11 @@ macro_rules! MMMKernel {
                 fn prefetch(ptr: *const u8, len: usize) {
                     ($prefetch)(ptr, len)
                 }
+                $(
+                    fn can_fuse(spec: &FusedSpec) -> bool {
+                        ($can_fuse)(sepc)
+                    }
+                )?
             }
         }
         test_mmm_kernel!($ti, $func, $cond);
