@@ -12,3 +12,20 @@
     eor         v{{r}}.8b, v{{r}}.8b, v{{r}}.8b
 {% endfor %}
     b .non_linear_loop
+
+.leaky_relu:
+    add         x2, x0, #8
+    ld1         {v4.s}[0], [ x2 ]
+    dup         v4.4s, v4.s[0]
+
+    // bsl cond/dst, then, else
+    // fcmge dst, src, #0.0
+    {% for r in (from..to) %}
+        mul   v0.4s, v{{r}}.4s, v4.4s
+        cmge  v1.4s, v{{r}}.4s, #0
+        bsl   v1.16b, v{{r}}.16b, v0.16b
+        and   v{{r}}.16b, v1.16b, v1.16b
+    {% endfor %}
+
+    b .non_linear_loop
+
