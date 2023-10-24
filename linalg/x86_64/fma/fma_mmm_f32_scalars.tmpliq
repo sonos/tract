@@ -8,6 +8,22 @@
 {% include "fma_mmm_ymm_scalar.tmpliq" label:"scalar_sub_flipped", op:"vsubps", from:from, to:to, flipped: true%}
 
 {{L}}leaky_relu:
+    // can only use ymm12 to ymm15
+    // ymm15 <- alpha
+    vbroadcastss    ymm15, dword ptr [rdi + 8]
+    // ymm14 <- all zero
+    vpxor           ymm14, ymm14, ymm14
+
+    {% for reg in (from..to) %}
+        // ymm12 <- alpha * x
+        vmulps      ymm12, ymm{{reg}}, ymm15
+        vcmpps     ymm13, ymm14, ymm{{reg}}, 1 // 1 means LT
+        vblendvps   ymm{{reg}}, ymm12, ymm{{reg}}, ymm13
+    {% endfor %}
+    // select muled of orginal
+
+    jmp    {{L}}non_linear_loop
+
 {{L}}q_scale:
 {{L}}q_shl:
 {{L}}q_shr:

@@ -134,13 +134,13 @@ pub mod test {
         ($cond:expr, $ker:ident, $tc:ty, $ti: ty) => {
             mod fuse {
                 use super::super::$ker;
+                use num_traits::Zero;
                 #[allow(unused_imports)]
                 use tract_data::prelude::f16;
                 #[allow(unused_imports)]
                 use $crate::frame::mmm::fuse::test;
                 use $crate::frame::mmm::fuse::test::tile;
                 use $crate::frame::mmm::fuse::FusedKerSpec;
-                use num_traits::Zero;
 
                 #[test]
                 fn return_zeros() {
@@ -194,28 +194,28 @@ pub mod test {
                     };
                 }
 
-                bin!(PerColMin,  per_col, fmin);
-                bin!(PerColMax,  per_col, fmax);
-                bin!(PerColAdd,  per_col, |a,b| a+b);
-                bin!(PerColMul,  per_col, |a,b| a*b);
-                bin!(PerColSub,  per_col, |a,b| a-b);
-                bin!(PerColSubF, per_col,  |a,b| b-a);
+                bin!(PerColMin, per_col, fmin);
+                bin!(PerColMax, per_col, fmax);
+                bin!(PerColAdd, per_col, |a, b| a + b);
+                bin!(PerColMul, per_col, |a, b| a * b);
+                bin!(PerColSub, per_col, |a, b| a - b);
+                bin!(PerColSubF, per_col, |a, b| b - a);
 
-                bin!(PerRowMin,  per_row, fmin);
-                bin!(PerRowMax,  per_row, fmax);
-                bin!(PerRowAdd,  per_row, |a,b| a+b);
-                bin!(PerRowMul,  per_row, |a,b| a*b);
-                bin!(PerRowSub,  per_row, |a,b| a-b);
-                bin!(PerRowSubF, per_row,  |a,b| b-a);
+                bin!(PerRowMin, per_row, fmin);
+                bin!(PerRowMax, per_row, fmax);
+                bin!(PerRowAdd, per_row, |a, b| a + b);
+                bin!(PerRowMul, per_row, |a, b| a * b);
+                bin!(PerRowSub, per_row, |a, b| a - b);
+                bin!(PerRowSubF, per_row, |a, b| b - a);
 
-                bin!(ScalarMin,  scalar, fmin);
-                bin!(ScalarMax,  scalar, fmax);
-                bin!(ScalarAdd,  scalar, |a,b| a+b);
-                bin!(ScalarMul,  scalar, |a,b| a*b);
-                bin!(ScalarSub,  scalar, |a,b| a-b);
-                bin!(ScalarSubF, scalar, |a,b| b-a);
+                bin!(ScalarMin, scalar, fmin);
+                bin!(ScalarMax, scalar, fmax);
+                bin!(ScalarAdd, scalar, |a, b| a + b);
+                bin!(ScalarMul, scalar, |a, b| a * b);
+                bin!(ScalarSub, scalar, |a, b| a - b);
+                bin!(ScalarSubF, scalar, |a, b| b - a);
 
-                bin!(LeakyRelu,  scalar, |a,b| if b > <$ti>::zero() { b } else { a * b });
+                bin!(LeakyRelu, scalar, |a, b| if b > <$ti>::zero() { b } else { a * b });
 
                 #[test]
                 fn return_c_add_row_col_product() {
@@ -489,10 +489,10 @@ pub mod test {
         K: MatMatMulKer<TI>,
         TC: LADatum + AsPrimitive<TI>,
         TI: LADatum + AsPrimitive<TC>,
-        usize: AsPrimitive<TC> + AsPrimitive<TI>,
+        isize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
         let len = K::mr() * K::nr();
-        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
+        let v: Vec<TC> = (0..len as isize).map(|f| (f - len as isize / 2).as_()).collect();
         let five: TI = 5.as_();
         fused_ops::<K, TC, TI, _>(&v, &[op(five)], |_, _, c| f(five, c))
     }
