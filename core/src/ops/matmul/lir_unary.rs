@@ -434,6 +434,9 @@ impl TypedOp for LirMatMulUnary {
                 );
             }
             if let Some(op) = op.downcast_ref::<LeakyRelu>() {
+                if !self.mmm.can_fuse(&FusedSpec::LeakyRelu(&tensor0(op.alpha))) {
+                    return Ok(None)
+                }
                 let alpha = patch.add_const(
                     node.name.to_string() + ".alpha",
                     tensor0(op.alpha).cast_to_dt(self.mmm.internal_type())?.into_owned(),

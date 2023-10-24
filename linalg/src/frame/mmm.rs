@@ -78,7 +78,7 @@ macro_rules! MMMKernel {
                 }
                 $(
                     fn can_fuse(spec: &FusedSpec) -> bool {
-                        ($can_fuse)(sepc)
+                        ($can_fuse)(spec)
                     }
                 )?
             }
