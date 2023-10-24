@@ -15,10 +15,9 @@
     vpxorq          zmm14, zmm14, zmm14
 
     {% for reg in (from..to) %}
-        // ymm12 <- alpha * x
-        vmulps      zmm12, zmm{{reg}}, zmm15
-        vcmpps      k1, zmm14, zmm{{reg}}, 1 // 1 means LT
-        vblendmps   zmm{{reg}} {k1}, zmm12, zmm{{reg}}
+        vcmpps      k1, zmm{{reg}}, zmm14, 1 // 1 means LT
+        // ymm12 <- alpha * x if < 0
+        vmulps      zmm{{reg}} {k1}, zmm{{reg}}, zmm15
     {% endfor %}
     // select muled of orginal
 
