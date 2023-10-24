@@ -13,6 +13,23 @@
 {% endfor %}
     b .non_linear_loop
 
+.leaky_relu:
+    add         x2, x0, #8
+    ld1         {v4.s}[0], [ x2 ]
+    dup         v4.8h, v4.h[0]
+
+    // bsl cond/dst, then, else
+    // fcmge dst, src, #0.0
+    {% for r in (from..to) %}
+        fmul  v0.8h, v{{r}}.8h, v4.8h
+        fcmge v1.8h, v{{r}}.8h, #0.0
+        bsl   v1.16b, v{{r}}.16b, v0.16b
+        and   v{{r}}.16b, v1.16b, v1.16b
+    {% endfor %}
+
+    b .non_linear_loop
+
+
 .q_scale:
 .q_shl:
 .q_shr:
