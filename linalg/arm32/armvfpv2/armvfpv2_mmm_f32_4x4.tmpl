@@ -287,6 +287,15 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
 
     b .non_linear_loop
 
+.leaky_relu:
+    vmov            s0, r3
+    {% for reg in (16..31) %}
+        vmul.f32        s1, s0, s{{reg}}
+        vcmp.f32        s{{reg}}, #0
+        vmrs            apsr_nzcv, fpscr
+        vmovlt          s{{reg}}, s1
+    {% endfor %}
+    b .non_linear_loop
 
 .per_row_min:
     vldm    r3, {s0, s1, s2, s3}
