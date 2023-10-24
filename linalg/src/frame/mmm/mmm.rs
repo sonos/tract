@@ -36,6 +36,8 @@ pub trait MatMatMul:
         col_stride: isize,
     ) -> OutputStoreSpec;
 
+    fn can_fuse(&self, spec: &FusedSpec) -> bool;
+
     unsafe fn run(&self, m: usize, n: usize, non_linear: &[FusedSpec]) -> anyhow::Result<()> {
         let mut scratch = self.allocate_scratch_space();
         self.run_with_scratch_space(m, n, &mut *scratch, non_linear)
@@ -151,6 +153,10 @@ where
 
     fn internal_type(&self) -> DatumType {
         TI::datum_type()
+    }
+
+    fn can_fuse(&self, spec: &FusedSpec) -> bool {
+        K::can_fuse(spec)
     }
 
     unsafe fn a_packed(&self, item_size: usize, k: usize) -> InputStoreSpec {
