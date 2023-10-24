@@ -7,3 +7,14 @@
 {% include "armv7neon_mmm_q_scalar.tmpliq" label:"scalar_sub", op:"vsub.s32", from:from, to:to%}
 {% include "armv7neon_mmm_q_scalar.tmpliq" label:"scalar_sub_flipped", op:"vsub.s32", from:from, to:to, flipped:true%}
 
+.leaky_relu:
+    vmov            s0, r3
+    vdup.32         q0, d0[0]
+    {% for reg in (from..to) %}
+        vmul.s32    q2, q{{reg}}, q0
+        vcgt.s32    q1, q{{reg}}, 0
+        vbsl        q1, q{{reg}}, q2
+        vmov        q{{reg}}, q1
+    {% endfor %}
+    b .non_linear_loop
+

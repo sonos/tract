@@ -1,4 +1,3 @@
-use crate::frame::element_wise::*;
 use crate::frame::mmm::*;
 
 extern_kernel!(fn armv7neon_prefetch(start: *const u8, end: *const u8) -> ());
