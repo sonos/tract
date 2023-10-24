@@ -1,6 +1,7 @@
 use crate::internal::*;
 use crate::ops::binary::wire_with_rank_broadcast;
 use crate::ops::cast::cast;
+use crate::ops::nn::LeakyRelu;
 use ndarray::*;
 use tract_itertools::Itertools;
 
@@ -20,6 +21,7 @@ pub enum ProtoInputStoreSpec {
 pub enum ProtoFusedSpec {
     AddMatMul(AddMatMulGeometry, usize, usize),
     BinScalar(usize, BinOp),
+    LeakyRelu(usize),
     BinPerRow(usize, BinOp, MapOutputAxisToInput),
     BinPerCol(usize, BinOp, MapOutputAxisToInput),
     AddRowColProducts(usize, usize),
@@ -34,6 +36,7 @@ impl ProtoFusedSpec {
         match self {
             AddMatMul(geo, _, _) => format!("matmul(k={})", geo.k),
             BinScalar(_, op) => format!("scalar{op:?}"),
+            LeakyRelu(alpha) => format!("leaky_relu({alpha:?})"),
             BinPerRow(_, op, _) => format!("row{op:?}"),
             BinPerCol(_, op, _) => format!("col{op:?}"),
             AddRowColProducts(_, _) => "add_row_col_product".to_string(),
@@ -78,6 +81,7 @@ impl ProtoFusedSpec {
                 }
             }
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),
+            ProtoFusedSpec::LeakyRelu(v) => FusedSpec::LeakyRelu(&inputs[*v]),
             ProtoFusedSpec::BinPerRow(v, op, map) => {
                 let mut v = inputs[*v].view();
                 unsafe { map.translate_view(output_coords, &mut v) }
@@ -139,6 +143,7 @@ impl ProtoFusedSpec {
                 }
             }
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),
+            ProtoFusedSpec::LeakyRelu(v) => FusedSpec::LeakyRelu(&inputs[*v]),
             ProtoFusedSpec::BinPerRow(v, op, _) => {
                 let v = inputs[*v].view();
                 FusedSpec::BinPerRow(v, *op)
@@ -176,7 +181,7 @@ impl ProtoFusedSpec {
                 geo.c_to_a_axis_mapping.rm_c_axis(axis);
                 geo.c_to_b_axis_mapping.rm_c_axis(axis);
             }
-            BinScalar(..) | Scaler(..) | AddRowColProducts(_, _) => {}
+            BinScalar(..) | Scaler(..) | AddRowColProducts(_, _) | LeakyRelu(_) => {}
             BinPerRow(_, _, map) | BinPerCol(_, _, map) => map.rm_c_axis(axis),
             AddUnicast(_, _, map) => {
                 map.rm_c_axis(axis);
@@ -426,6 +431,19 @@ impl TypedOp for LirMatMulUnary {
                     patch,
                     vec![ProtoFusedSpec::Scaler(op.scaler)],
                     &[],
+                );
+            }
+            if let Some(op) = op.downcast_ref::<LeakyRelu>() {
+                let alpha = patch.add_const(
+                    node.name.to_string() + ".alpha",
+                    tensor0(op.alpha).cast_to_dt(self.mmm.internal_type())?.into_owned(),
+                )?;
+                return self.fuse_op(
+                    model,
+                    node,
+                    patch,
+                    vec![ProtoFusedSpec::LeakyRelu(node.inputs.len())],
+                    &[alpha],
                 );
             }
         }
