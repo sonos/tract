@@ -36,10 +36,10 @@ range      : [-128, 127]
 granularity: per-tensor
 */
 
-pub fn qtensor(shape: Vec<usize>) -> BoxedStrategy<ArrayD<i8>> {
+pub fn qtensor(shape: Vec<usize>) -> BoxedStrategy<Tensor> {
     let len = shape.iter().product::<usize>();
     vec(any::<i8>(), len..=len)
-        .prop_map(move |vec| ArrayD::from_shape_vec(shape.clone(), vec).unwrap())
+        .prop_map(move |vec| ArrayD::from_shape_vec(shape.clone(), vec).unwrap().into_tensor())
         .boxed()
 }
 
@@ -85,7 +85,7 @@ pub struct QConvProblem {
     group: usize,
     data: Tensor,
     kernel: Tensor,
-    bias: Option<ArrayD<i32>>,
+    bias: Option<Array1<i32>>,
     qp: [Tensor; 6],
 }
 
@@ -95,6 +95,8 @@ impl QConvProblem {
     }
 
     fn reference(&self) -> Tensor {
+        assert!(self.data.datum_type().size_of() == 1);
+        assert!(self.kernel.datum_type().size_of() == 1);
         assert_eq!(self.data.shape(), &*self.shape_in.shape);
         let n = *self.shape_in.n().unwrap_or(&1);
         let ci_per_g = self.shape_in.c() / self.group;
@@ -296,7 +298,7 @@ impl Arbitrary for QConvProblem {
                     };
                     let kernel = qtensor(ker_shape);
                     let bias = proptest::option::of(
-                        qtensor(vec![co0 * group]).prop_map(|a| a.mapv(|v| v as i32)),
+                        qtensor(vec![co0 * group]).prop_map(|b| arr1(b.cast_to::<i32>().unwrap().as_slice::<i32>().unwrap())),
                     );
                     (Just((kf, shape_in, co0 * group, group)), data_in, kernel, bias, qp)
                     // FIXME
@@ -394,8 +396,8 @@ pub fn suite() -> TractResult<TestSuite> {
             co: 1,
             kernel_format: OIHW,
             group: 1,
-            data: tensor2(&[[1]]),
-            kernel: tensor3(&[[[0]]]),
+            data: tensor2(&[[1i8]]),
+            kernel: tensor3(&[[[0i8]]]),
             bias: None,
             qp: qp_noop_i8(),
         },
@@ -439,8 +441,8 @@ pub fn suite() -> TractResult<TestSuite> {
             co: 1,
             kernel_format: OIHW,
             group: 1,
-            data: tensor3(&[[[0], [0]]]),
-            kernel: tensor4(&[[[[0]]]]),
+            data: tensor3(&[[[0i8], [0]]]),
+            kernel: tensor4(&[[[[0i8]]]]),
             bias: None,
             qp: qp_noop_i8(),
         },
@@ -452,15 +454,13 @@ pub fn suite() -> TractResult<TestSuite> {
             co: 1,
             kernel_format: OIHW,
             group: 1,
-            data: tensor3(&[[[0], [0]], [[0], [0]], [[0], [0]]]),
-            kernel: tensor3(&[[[0, 0]]]),
+            data: tensor3(&[[[0i8], [0]], [[0], [0]], [[0], [0]]]),
+            kernel: tensor3(&[[[0i8, 0]]]),
             bias: None,
             qp: qp_noop_i8(),
         },
     );
     let qp = qp_noop_i8();
-    let data = Tensor::zero::<i8>(&[2, 1, 1]).unwrap();
-    let kernel = tensor3(&[[[1i8]]]);
     suite.add(
         "batch_1",
         QConvProblem {
@@ -468,8 +468,8 @@ pub fn suite() -> TractResult<TestSuite> {
             co: 1,
             kernel_format: OIHW,
             group: 1,
-            data,
-            kernel,
+            data: Tensor::zero::<i8>(&[2, 1, 1]).unwrap(),
+            kernel: tensor3(&[[[1i8]]]),
             bias: None,
             qp,
         },
@@ -483,8 +483,8 @@ pub fn suite() -> TractResult<TestSuite> {
             co: 1,
             kernel_format: OIHW,
             group: 1,
-            data: tensor2(&[[-1]]),
-            kernel: tensor3(&[[[1]]]),
+            data: tensor2(&[[-1i8]]),
+            kernel: tensor3(&[[[1i8]]]),
             bias: None,
             qp,
         },
@@ -498,8 +498,8 @@ pub fn suite() -> TractResult<TestSuite> {
             co: 1,
             kernel_format: OIHW,
             group: 1,
-            data: tensor2(&[[41]]),
-            kernel: tensor3(&[[[1]]]),
+            data: tensor2(&[[41i8]]),
+            kernel: tensor3(&[[[1i8]]]),
             bias: None,
             qp,
         },
@@ -513,8 +513,8 @@ pub fn suite() -> TractResult<TestSuite> {
             co: 1,
             kernel_format: OIHW,
             group: 1,
-            data: tensor2(&[[-1]]),
-            kernel: tensor3(&[[[2]]]),
+            data: tensor2(&[[-1i8]]),
+            kernel: tensor3(&[[[2i8]]]),
             bias: None,
             qp,
         },
@@ -531,7 +531,7 @@ pub fn suite() -> TractResult<TestSuite> {
             group: 1,
             data: tensor2(&[[0i8]]),
             kernel: tensor3(&[[[0i8]]]),
-            bias: Some(arr1(&[35i32]).into_dyn()),
+            bias: Some(arr1(&[35i32])),
             qp,
         },
     );
@@ -557,8 +557,8 @@ pub fn suite() -> TractResult<TestSuite> {
             co: 2,
             kernel_format: OIHW,
             group: 2,
-            data: tensor2(&[[0, 0]]),
-            kernel: tensor3(&[[[0]], [[0]]]),
+            data: tensor2(&[[0i8, 0]]),
+            kernel: tensor3(&[[[0i8]], [[0]]]),
             bias: None,
             qp: qp_noop_i8(),
         },
@@ -572,8 +572,8 @@ pub fn suite() -> TractResult<TestSuite> {
             co: 2,
             kernel_format: OIHW,
             group: 2,
-            data: tensor3(&[[[0], [0]]]),
-            kernel: tensor3(&[[[1]], [[0]]]),
+            data: tensor3(&[[[0i8], [0]]]),
+            kernel: tensor3(&[[[1i8]], [[0]]]),
             bias: None,
             qp,
         },
@@ -587,8 +587,8 @@ pub fn suite() -> TractResult<TestSuite> {
             co: 2,
             kernel_format: OIHW,
             group: 2,
-            data: tensor2(&[[0, 0]]),
-            kernel: tensor3(&[[[0]], [[1]]]),
+            data: tensor2(&[[0i8, 0]]),
+            kernel: tensor3(&[[[0i8]], [[1]]]),
             bias: None,
             qp,
         },
@@ -607,8 +607,8 @@ pub fn suite() -> TractResult<TestSuite> {
             kernel_format: OIHW,
             group: 1,
             data: tensor2(&[[4i8]]),
-            kernel: tensor3(&[[[-5]]]),
-            bias: Some(arr1(&[-125i32]).into_dyn()),
+            kernel: tensor3(&[[[-5i8]]]),
+            bias: Some(arr1(&[-125i32])),
             qp,
         },
     );
@@ -638,7 +638,7 @@ pub fn suite() -> TractResult<TestSuite> {
             group: 1,
             data: Tensor::zero::<i8>(&[1, 1, 1, 1]).unwrap(),
             kernel: Tensor::zero::<i8>(&[2, 1, 1, 1]).unwrap(),
-            bias: Some(tract_ndarray::arr1(&[1, 2]).into_dyn()),
+            bias: Some(arr1(&[1, 2])),
             qp: qp_noop_i8(),
         },
     );
@@ -653,7 +653,7 @@ pub fn suite() -> TractResult<TestSuite> {
             group: 1,
             data: Tensor::zero::<i8>(&[1, 1]).unwrap(),
             kernel: Tensor::zero::<i8>(&[2, 1, 1]).unwrap(),
-            bias: Some(tract_ndarray::arr1(&[0, 1]).into_dyn()),
+            bias: Some(arr1(&[0, 1])),
             qp,
         },
     );
@@ -671,7 +671,7 @@ pub fn suite() -> TractResult<TestSuite> {
             group: 1,
             data: Tensor::zero::<i8>(&[2, 1]).unwrap(),
             kernel,
-            bias: Some(ArrayD::zeros([5].as_ref())),
+            bias: Some(Array1::zeros([5])),
             qp,
         },
     );
@@ -685,7 +685,7 @@ pub fn suite() -> TractResult<TestSuite> {
             group: 1,
             data: Tensor::zero::<i8>(&[1, 1, 1, 1]).unwrap(),
             kernel: Tensor::zero::<i8>(&[2, 1, 1, 1]).unwrap(),
-            bias: Some(tract_ndarray::arr1(&[0, 1]).into_dyn()),
+            bias: Some(arr1(&[0, 1])),
             qp: qp_noop_i8(),
         },
     );
@@ -699,7 +699,7 @@ pub fn suite() -> TractResult<TestSuite> {
             group: 1,
             data: Tensor::zero::<i8>(&[1, 1, 1, 1]).unwrap(),
             kernel: Tensor::zero::<i8>(&[1, 1, 1, 1]).unwrap(),
-            bias: Some(tract_ndarray::arr1(&[1]).into_dyn()),
+            bias: Some(arr1(&[1])),
             qp: qp_noop_i8(),
         },
     );
@@ -714,7 +714,7 @@ pub fn suite() -> TractResult<TestSuite> {
             group: 1,
             data: Tensor::zero::<i8>(&[1, 1]).unwrap(),
             kernel: Tensor::zero::<i8>(&[2, 1, 1]).unwrap(),
-            bias: Some(ArrayD::zeros([2].as_ref())),
+            bias: Some(arr1(&[0, 0])),
             qp,
         },
     );
@@ -728,7 +728,7 @@ pub fn suite() -> TractResult<TestSuite> {
             group: 1,
             data: Tensor::zero::<i8>(&[1, 1, 1]).unwrap(),
             kernel: Tensor::zero::<i8>(&[1, 1, 1]).unwrap(),
-            bias: Some(arr1(&[1]).into_dyn()),
+            bias: Some(arr1(&[1])),
             qp,
         },
     );
@@ -742,7 +742,7 @@ pub fn suite() -> TractResult<TestSuite> {
             group: 1,
             data: Tensor::zero::<i8>(&[1, 1, 1]).unwrap(),
             kernel: Tensor::zero::<i8>(&[2, 1, 1]).unwrap(),
-            bias: Some(arr1(&[0, 1]).into_dyn()),
+            bias: Some(arr1(&[0, 1])),
             qp,
         },
     );
