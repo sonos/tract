@@ -39,7 +39,7 @@ squeezenet, vgg19, zfnet512.
 
 Notable missing parts are operators dealing with Tensor Sequences and Optional Tensors : tract /really/ wants to flow Tensors and nothing else.
 This is structural. Changing it would be pretty difficult, and it's unclear whether it can be done without impairing performance or maintainability.
-We are not convinced these features have shown their interest in the wild yet, so we prefer to leavie them aside.
+We are not convinced these features have shown their interest in the wild yet, so we prefer to leave them aside.
 
 Other dark corners are specific operators likes "Resize" which fit perfectly in the framework, but need a complex internal logic that is far
 from our core business. In these cases, we are happy to accept contributions, and to help. 
@@ -95,7 +95,7 @@ golden rule:
 
      `models serialized with tract 0.x.y should work with tract 0.x.z where z >= y`
 
-* in practise, breaking changes have been relatively rare so far. Most models are
+* in practice, breaking changes have been relatively rare so far. Most models are
 forward and retro compatible from when tract has acquired NNEF support.
 
 Notable breakage occurred:
