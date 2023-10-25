@@ -1,7 +1,6 @@
 use infra::{Test, TestSuite};
 use proptest::collection::vec;
 use proptest::prelude::*;
-// use proptest::*;
 use tract_core::internal::*;
 use tract_core::ops::cnn::KernelFormat::*;
 use tract_core::ops::cnn::{ConvUnary, KernelFormat, PaddingSpec, PoolSpec};
@@ -38,9 +37,15 @@ granularity: per-tensor
 
 pub fn qtensor(shape: Vec<usize>) -> BoxedStrategy<Tensor> {
     let len = shape.iter().product::<usize>();
-    vec(any::<i8>(), len..=len)
-        .prop_map(move |vec| ArrayD::from_shape_vec(shape.clone(), vec).unwrap().into_tensor())
-        .boxed()
+    let shape2 = shape.clone();
+    prop_oneof![
+        vec(-100..100i8, len..=len)
+            .prop_map(move |vec| ArrayD::from_shape_vec(shape.clone(), vec).unwrap().into_tensor())
+            .boxed(),
+        vec(0..200u8, len..=len)
+            .prop_map(move |vec| ArrayD::from_shape_vec(shape2.clone(), vec).unwrap().into_tensor())
+            .boxed(),
+    ].boxed()
 }
 
 #[allow(clippy::arc_with_non_send_sync)]
@@ -193,11 +198,11 @@ impl QConvProblem {
     fn tract(&self) -> TractResult<TypedModel> {
         assert!(self.data.shape() == &*self.shape_in.shape);
         let mut model = TypedModel::default();
-        let kdt = DatumType::QI8(QParams::ZpScale {
+        let kdt = self.kernel.datum_type().quantize(QParams::ZpScale {
             zero_point: self.qp[0].cast_to_scalar()?,
             scale: *self.qp[1].to_scalar()?,
         });
-        let idt = DatumType::QI8(QParams::ZpScale {
+        let idt = self.data.datum_type().quantize(QParams::ZpScale {
             zero_point: self.qp[2].cast_to_scalar()?,
             scale: *self.qp[3].to_scalar()?,
         });
@@ -241,10 +246,11 @@ impl Test for QConvProblem {
         approx: Approximation,
     ) -> infra::TestResult {
         let reference = self.reference();
+        dbg!(&reference);
         let mut model = self.tract()?;
         model.properties.insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));
         let model = runtime.prepare(model)?;
-        let idt = DatumType::QI8(QParams::ZpScale {
+        let idt = self.data.datum_type().quantize(QParams::ZpScale {
             zero_point: self.qp[2].cast_to_scalar()?,
             scale: *self.qp[3].to_scalar()?,
         });
@@ -816,6 +822,20 @@ pub fn suite() -> TractResult<TestSuite> {
             group: 1,
             data: Tensor::zero::<i8>(&[1, 1, 2]).unwrap(),
             kernel: Tensor::zero::<i8>(&[2, 1, 2]).unwrap(),
+            bias: None,
+            qp,
+        },
+    );
+    let qp = qp_noop_i8();
+    suite.add(
+        "i8_u8",
+        QConvProblem {
+            shape_in: CHW.from_n_c_hw(1, 1, [1]).unwrap(),
+            co: 1,
+            kernel_format: OIHW,
+            group: 1,
+            data: Tensor::zero::<u8>(&[1, 1]).unwrap(),
+            kernel: Tensor::zero::<i8>(&[1, 1, 1]).unwrap(),
             bias: None,
             qp,
         },
