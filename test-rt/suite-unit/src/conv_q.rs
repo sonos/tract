@@ -206,7 +206,7 @@ impl QConvProblem {
             zero_point: self.qp[2].cast_to_scalar()?,
             scale: *self.qp[3].to_scalar()?,
         });
-        let cdt = DatumType::QI8(QParams::ZpScale {
+        let cdt = self.data.datum_type().quantize(QParams::ZpScale {
             zero_point: self.qp[4].cast_to_scalar()?,
             scale: *self.qp[5].to_scalar()?,
         });
