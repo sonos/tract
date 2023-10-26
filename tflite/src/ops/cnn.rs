@@ -167,6 +167,7 @@ fn de_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let strides = tvec!(options.stride_h() as usize, options.stride_w() as usize);
     let dilations =
         tvec!(options.dilation_h_factor() as usize, options.dilation_w_factor() as usize);
+    let ci = KernelFormat::OHWI.i(&kernel_full_shape);
     let co = KernelFormat::OHWI.o(&kernel_full_shape);
     let pool_spec = core::cnn::PoolSpec {
         data_format: tract_core::ops::nn::DataFormat::NHWC,
@@ -185,6 +186,7 @@ fn de_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         kernel_fmt: KernelFormat::OHWI,
         kernel,
         group: 1,
+        input_channels: *ci,
         bias: Some(bias),
         q_params,
     };
@@ -223,6 +225,7 @@ fn de_dw_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         kernel_fmt: KernelFormat::OHWI,
         kernel,
         group: co,
+        input_channels: co,
         bias: Some(bias),
         q_params,
     };

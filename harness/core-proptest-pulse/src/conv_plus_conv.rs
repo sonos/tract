@@ -28,6 +28,7 @@ impl ConvOp {
                     },
                     kernel_fmt: tract_core::ops::cnn::KernelFormat::OIHW,
                     kernel: self.ker.clone().into_arc_tensor(),
+                    input_channels: self.ker.shape()[1],
                     group: 1,
                     bias: None,
                     q_params: None,
