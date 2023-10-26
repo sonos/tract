@@ -35,26 +35,40 @@ range      : [-128, 127]
 granularity: per-tensor
 */
 
-pub fn qtensor(shape: Vec<usize>) -> BoxedStrategy<Tensor> {
+pub fn qtensor(shape: Vec<usize>, dt: DatumType) -> BoxedStrategy<Tensor> {
     let len = shape.iter().product::<usize>();
     let shape2 = shape.clone();
-    prop_oneof![
+    if dt.unquantized().is_signed() {
         vec(-100..100i8, len..=len)
             .prop_map(move |vec| ArrayD::from_shape_vec(shape.clone(), vec).unwrap().into_tensor())
-            .boxed(),
+            .boxed()
+    } else {
         vec(0..200u8, len..=len)
             .prop_map(move |vec| ArrayD::from_shape_vec(shape2.clone(), vec).unwrap().into_tensor())
-            .boxed(),
-    ].boxed()
+            .boxed()
+    }
 }
 
 #[allow(clippy::arc_with_non_send_sync)]
-pub fn q_params(params: &QConvProblemParams, co: usize) -> BoxedStrategy<[Tensor; 6]> {
-    let a0 = if params.no_kernel_zero_point { Just(0i32).boxed() } else { (-10..10i32).boxed() };
+pub fn q_params(
+    params: &QConvProblemParams,
+    co: usize,
+    kdt: DatumType,
+    iodt: DatumType,
+) -> BoxedStrategy<[Tensor; 6]> {
+    let a0 = if params.no_kernel_zero_point {
+        Just(0i32).boxed()
+    } else if kdt.is_signed() {
+        (-10..10i32).boxed()
+    } else {
+        (0..20i32).boxed()
+    };
+    let b0 = if iodt.is_signed() { -10i32..10i32 } else { 0..20 };
+    let c0 = if iodt.is_signed() { -10i32..10i32 } else { 0..20 };
     (
         a0,
-        -10i32..10,
-        -10i32..10,
+        b0,
+        c0,
         prop_oneof![
             (Just(false), (-3..3i32).prop_map(|x| vec!(x)).boxed()),
             (Just(true), vec(-3..3i32, co..=co).boxed())
@@ -88,9 +102,9 @@ pub struct QConvProblem {
     kernel_format: KernelFormat,
     co: usize,
     group: usize,
-    data: Tensor,
     kernel: Tensor,
     bias: Option<Array1<i32>>,
+    data: Tensor,
     qp: [Tensor; 6],
 }
 
@@ -111,6 +125,36 @@ impl QConvProblem {
         let c0 = self.qp[4].cast_to_scalar::<i32>().unwrap();
         let b_scale = self.qp[3].cast_to_scalar::<f32>().unwrap();
         let c_scale = self.qp[5].cast_to_scalar::<f32>().unwrap();
+        assert!(
+            a0 <= self
+                .kernel
+                .datum_type()
+                .unquantized()
+                .max_value()
+                .cast_to_scalar::<i32>()
+                .unwrap()
+        );
+        assert!(
+            a0 >= self
+                .kernel
+                .datum_type()
+                .unquantized()
+                .min_value()
+                .cast_to_scalar::<i32>()
+                .unwrap()
+        );
+        assert!(
+            b0 <= self.data.datum_type().unquantized().max_value().cast_to_scalar::<i32>().unwrap()
+        );
+        assert!(
+            b0 >= self.data.datum_type().unquantized().min_value().cast_to_scalar::<i32>().unwrap()
+        );
+        assert!(
+            c0 <= self.data.datum_type().unquantized().max_value().cast_to_scalar::<i32>().unwrap()
+        );
+        assert!(
+            c0 >= self.data.datum_type().unquantized().min_value().cast_to_scalar::<i32>().unwrap()
+        );
         let shape_out: TVec<usize> = izip!(self.shape_in.hw_dims(), self.geo_ker())
             .map(|(i, k)| (*i + 1).saturating_sub(*k))
             .collect();
@@ -178,21 +222,30 @@ impl QConvProblem {
             shape[shape_out.c_axis()] = bias.len();
             temp += &bias.clone().into_shape(shape).unwrap();
         }
+        let cdt = self.output_dt();
         temp.axis_iter_mut(Axis(shape_out.c_axis())).zip(a_scale).for_each(
             |(mut view, a_scale)| {
                 view.mapv_inplace(|i| {
                     (round_ties_to_even(i as f32 / c_scale * a_scale * b_scale) as i32 + c0)
-                        .max(std::i8::MIN as i32)
-                        .min(std::i8::MAX as i32)
-                })
+                        .max(cdt.unquantized().min_value().cast_to_scalar::<i32>().unwrap())
+                        .min(cdt.unquantized().max_value().cast_to_scalar::<i32>().unwrap())
+                });
             },
         );
-        temp.into_tensor()
-            .cast_to_dt(
-                i8::datum_type().quantize(QParams::ZpScale { zero_point: c0, scale: c_scale }),
-            )
+        let mut tensor = temp
+            .into_tensor()
+            .cast_to_dt(self.data.datum_type().unquantized())
             .unwrap()
-            .into_owned()
+            .into_owned();
+        unsafe { tensor.set_datum_type(cdt) };
+        tensor
+    }
+
+    fn output_dt(&self) -> DatumType {
+        self.data.datum_type().quantize(QParams::ZpScale {
+            zero_point: self.qp[4].cast_to_scalar().unwrap(),
+            scale: *self.qp[5].to_scalar().unwrap(),
+        })
     }
 
     fn tract(&self) -> TractResult<TypedModel> {
@@ -205,10 +258,6 @@ impl QConvProblem {
         let idt = self.data.datum_type().quantize(QParams::ZpScale {
             zero_point: self.qp[2].cast_to_scalar()?,
             scale: *self.qp[3].to_scalar()?,
-        });
-        let cdt = self.data.datum_type().quantize(QParams::ZpScale {
-            zero_point: self.qp[4].cast_to_scalar()?,
-            scale: *self.qp[5].to_scalar()?,
         });
         let wire = model.add_source("input", idt.fact(&self.shape_in.shape))?;
         let mut inputs = tvec!(wire);
@@ -230,7 +279,7 @@ impl QConvProblem {
             kernel.into_arc_tensor(),
             self.group,
             self.bias.clone().map(|a| a.into_arc_tensor()),
-            Some(cdt),
+            Some(self.output_dt()),
         );
         let wire = model.wire_node("conv", op, &inputs)?[0];
         model.set_output_outlets(&[wire])?;
@@ -274,9 +323,21 @@ impl Arbitrary for QConvProblem {
             1usize..=8,
             1usize..=(if params.conv.no_group { 1 } else { 3 }),
             geo_rank.prop_flat_map(crate::shapes),
+            prop_oneof![Just(DatumType::I8), Just(DatumType::U8)],
+            prop_oneof![Just(DatumType::I8), Just(DatumType::U8)],
         )
             .prop_flat_map(
-                move |(df, kf, n, mut ci0, mut co0, group, (mut ker_shape, data_shape))| {
+                move |(
+                    df,
+                    kf,
+                    n,
+                    mut ci0,
+                    mut co0,
+                    group,
+                    (mut ker_shape, data_shape),
+                    kdt,
+                    iodt,
+                )| {
                     // FIXME in HWIO order, only regular and depthwise are supported
                     if params.conv.no_arbitrary_grouping && group > 1 {
                         ci0 = 1;
@@ -285,9 +346,9 @@ impl Arbitrary for QConvProblem {
                     if kf == KernelFormat::HWIO && group > 1 {
                         ci0 = 1;
                     }
-                    let qp = q_params(&params, co0 * group);
+                    let qp = q_params(&params, co0 * group, kdt, iodt);
                     let shape_in = df.from_n_c_hw(n, ci0 * group, data_shape).unwrap();
-                    let data_in = qtensor(shape_in.shape.iter().cloned().collect());
+                    let data_in = qtensor(shape_in.shape.iter().cloned().collect(), iodt);
                     match kf {
                         KernelFormat::HWIO => {
                             ker_shape.push(ci0 * group);
@@ -302,16 +363,27 @@ impl Arbitrary for QConvProblem {
                             ker_shape.push(ci0 * group)
                         }
                     };
-                    let kernel = qtensor(ker_shape);
+                    let kernel = qtensor(ker_shape, kdt);
                     let bias = proptest::option::of(
-                        qtensor(vec![co0 * group]).prop_map(|b| arr1(b.cast_to::<i32>().unwrap().as_slice::<i32>().unwrap())),
+                        qtensor(vec![co0 * group], i32::datum_type()).prop_map(|b| {
+                            arr1(b.cast_to::<i32>().unwrap().as_slice::<i32>().unwrap())
+                        }),
                     );
                     (Just((kf, shape_in, co0 * group, group)), data_in, kernel, bias, qp)
                     // FIXME
                 },
             )
             .prop_map(|((kernel_format, shape_in, co, group), data, kernel, bias, qp)| {
-                QConvProblem { shape_in, co, kernel_format, group, data: data.into_tensor(), kernel: kernel.into_tensor(), bias, qp }
+                QConvProblem {
+                    shape_in,
+                    co,
+                    kernel_format,
+                    group,
+                    data: data.into_tensor(),
+                    kernel: kernel.into_tensor(),
+                    bias,
+                    qp,
+                }
             })
             .boxed()
     }
@@ -382,7 +454,7 @@ pub fn suite() -> TractResult<TestSuite> {
     qp[1] = tensor1(&[1f32, 0.5]);
     qp[2] = tensor0(-2i8);
     suite.add(
-        "weird_4",
+        "scale_per_channel_0",
         QConvProblem {
             shape_in: CHW.from_n_c_hw(1, 1, [1]).unwrap(),
             kernel_format: OIHW,
@@ -406,6 +478,22 @@ pub fn suite() -> TractResult<TestSuite> {
             kernel: tensor3(&[[[0i8]]]),
             bias: None,
             qp: qp_noop_i8(),
+        },
+    );
+    let mut qp = qp_noop_i8();
+    qp[0] = tensor0(2i32);
+    qp[2] = tensor0(-3i32);
+    suite.add(
+        "a0_b0_0",
+        QConvProblem {
+            shape_in: CHW.from_n_c_hw(1, 1, [2]).unwrap(),
+            co: 1,
+            kernel_format: OIHW,
+            group: 1,
+            data: tensor2(&[[0i8, 0]]),
+            kernel: tensor3(&[[[0i8]]]),
+            bias: None,
+            qp,
         },
     );
 
@@ -837,6 +925,54 @@ pub fn suite() -> TractResult<TestSuite> {
             data: Tensor::zero::<u8>(&[1, 1]).unwrap(),
             kernel: Tensor::zero::<i8>(&[1, 1, 1]).unwrap(),
             bias: None,
+            qp,
+        },
+    );
+    /*
+    let mut qp = qp_noop_i8();
+    qp[2] = tensor0(-1i32);
+    qp[5] = tensor0(0.5f32);
+    suite.add(
+    "i8_u8_0",
+    QConvProblem {
+    shape_in: CHW.from_n_c_hw(1, 1, [1]).unwrap(),
+    co: 1,
+    kernel_format: OIHW,
+    group: 1,
+    data: Tensor::zero::<u8>(&[1, 1]).unwrap(),
+    kernel: tensor3(&[[[1i8]]]),
+    bias: None,
+    qp,
+    },
+    );
+    */
+    let mut qp = qp_noop_i8();
+    qp[1] = tensor0(2f32);
+    suite.add(
+        "i8_u8_ascale",
+        QConvProblem {
+            shape_in: CHW.from_n_c_hw(1, 1, [1]).unwrap(),
+            co: 1,
+            kernel_format: OIHW,
+            group: 1,
+            kernel: Tensor::zero::<i8>(&[1, 1, 1]).unwrap(),
+            bias: None,
+            data: Tensor::zero::<u8>(&[1, 1]).unwrap(),
+            qp,
+        },
+    );
+    let mut qp = qp_noop_i8();
+    qp[4] = tensor0(2i32);
+    suite.add(
+        "i8_u8_c0",
+        QConvProblem {
+            shape_in: CHW.from_n_c_hw(1, 1, [1]).unwrap(),
+            co: 1,
+            kernel_format: OIHW,
+            group: 1,
+            kernel: tensor3(&[[[1i8]]]),
+            bias: None,
+            data: tensor2(&[[4u8]]),
             qp,
         },
     );

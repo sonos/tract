@@ -86,11 +86,13 @@ fn ser_conv(
             &kscale,
             0,
         )?);
-        let bias_dt = i32::datum_type().quantize(QParams::ZpScale { zero_point: 0, scale: iscale });
-        bias = bias.clone().into_tensor().cast_to_dt(bias_dt)?.into_owned().into_arc_tensor();
-        inputs.push(builder.write_fact_faking_per_axis_q(
+        let bscale = kscale.iter().map(|k| k * iscale).collect_vec();
+        bias = bias.clone().into_tensor().cast_to::<i32>()?.into_owned().into_arc_tensor();
+        inputs.push(builder.write_fact_with_per_axis_q(
             &format!("{node_name}.bias"),
             &bias,
+            &vec![0i64; bias.len()],
+            &bscale,
             0,
         )?);
     } else {
