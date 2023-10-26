@@ -239,6 +239,7 @@ mod test {
                 },
                 kernel_fmt: tract_core::ops::cnn::KernelFormat::OIHW,
                 kernel: rctensor3(&[[[1f32, 2f32]]]),
+                input_channels: 1,
                 group: 1,
                 bias: None,
                 q_params: None,

@@ -391,6 +391,7 @@ pub fn conv_or_deconv(
             pool_spec,
             KernelFormat::OIHW,
             kernel.clone(),
+            DataFormat::NCHW.shape(input_fact.shape)?.c().to_usize()?,
             group,
             bias.map(Tensor::into_arc_tensor),
             Some(output_dt).filter(|dt| dt.is_quantized()),

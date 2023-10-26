@@ -73,6 +73,7 @@ impl TypedOp for SpaceToBatchUnary {
                 if let (Some(conv_op), Some(_)) =
                     (conv_node.op_as::<ConvUnary>(), b2s_node.op_as::<BatchToSpaceUnary>())
                 {
+                    let input_channels = node.outputs[0].fact.shape.last().unwrap().to_usize()?;
                     let op = ConvUnary {
                         pool_spec: PoolSpec {
                             data_format: conv_op.pool_spec.data_format,
@@ -85,6 +86,7 @@ impl TypedOp for SpaceToBatchUnary {
                         kernel_fmt: conv_op.kernel_fmt,
                         kernel: conv_op.kernel.clone(),
                         group: conv_op.group,
+                        input_channels,
                         bias: None,
                         q_params: None,
                     };

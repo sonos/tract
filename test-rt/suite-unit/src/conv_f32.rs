@@ -178,6 +178,7 @@ impl ConvProblem {
             ),
             self.kernel_format,
             self.kernel.clone().into_arc_tensor(),
+            *self.shape_in.c(),
             self.group,
             self.bias.clone().map(|a| a.into_arc_tensor()),
             None,
