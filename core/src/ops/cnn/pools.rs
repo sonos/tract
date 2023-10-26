@@ -12,7 +12,8 @@ pub struct PoolSpec {
     pub padding: PaddingSpec,
     pub dilations: Option<TVec<usize>>,
     pub strides: Option<TVec<usize>>,
-    pub output_channel_override: Option<usize>,
+    pub input_channel: usize,
+    pub output_channel: usize,
 }
 
 impl PoolSpec {
@@ -60,7 +61,7 @@ impl PoolSpec {
         let spatial_dims = computed.into_iter().map(|d| d.convoluted).collect::<TVec<D>>();
         let oshape = self.data_format.from_n_c_hw(
             ishape.n().cloned().unwrap_or_else(|| 1.into()),
-            self.output_channel_override.map(|i| i.into()).unwrap_or_else(|| ishape.c().clone()),
+            self.output_channel.into(),
             spatial_dims,
         )?;
         Ok(oshape)
@@ -94,12 +95,11 @@ impl PoolSpec {
         op.change_shape_array(&mut strides, false)?;
         let padding = self.padding.change_geo_axes(op)?;
         Ok(PoolSpec {
-            data_format: self.data_format,
             kernel_shape,
             padding,
             dilations: Some(dilations),
             strides: Some(strides),
-            output_channel_override: self.output_channel_override,
+            ..self.clone()
         })
     }
 }
