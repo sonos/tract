@@ -28,7 +28,7 @@ pub(crate) fn wire_offset_u8_as_i8(
             }
             DatumType::I32 | DatumType::I8 => {
                 *zero_point = model.wire_node(
-                    "{model_name}.{matrix_name}.cast_zp",
+                    "{model_name}.{zero_point_name}.cast",
                     cast(i32::datum_type()),
                     &[*zero_point],
                 )?[0];

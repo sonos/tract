@@ -69,7 +69,6 @@ fn ser_conv(
         .into_arc_tensor()
     });
     if conv.q_params.is_some() {
-        ensure!(conv.kernel.datum_type().zp_scale().0 == 0);
         let iscale = model.node_input_facts(node.id).unwrap()[0].datum_type.zp_scale().1;
         let kscale_tract = model.node_input_facts(node.id).unwrap()[2]
             .konst
