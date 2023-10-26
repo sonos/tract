@@ -3,6 +3,7 @@ use ops::binary::wire_with_rank_broadcast;
 
 use crate::internal::*;
 use crate::ops;
+use crate::ops::cast::cast;
 
 /// Wires the offsetting of a matrix and zero point node.
 ///
@@ -17,7 +18,7 @@ pub(crate) fn wire_offset_u8_as_i8(
 ) -> TractResult<OutletId> {
     let fact = model.outlet_fact(matrix)?;
     if let DatumType::U8 = fact.datum_type.unquantized() {
-        match model.outlet_fact(*zero_point)?.datum_type.unquantized() {
+        match dbg!(model.outlet_fact(*zero_point)?.datum_type.unquantized()) {
             DatumType::U8 => {
                 *zero_point = model.wire_node(
                     format!("{model_name}.offset_{zero_point_name}_as_i8"),
@@ -25,11 +26,15 @@ pub(crate) fn wire_offset_u8_as_i8(
                     &[*zero_point],
                 )?[0];
             }
-            DatumType::I32 => {
-                let zp_rank = model.outlet_fact(*zero_point)?.rank();
+            DatumType::I32 | DatumType::I8 => {
+                *zero_point = model.wire_node(
+                    "{model_name}.{matrix_name}.cast_zp",
+                    cast(i32::datum_type()),
+                    &[*zero_point],
+                )?[0];
                 let cst = model.add_const(
                     format!("{model_name}.offset_{zero_point_name}_as_i8.min"),
-                    tensor0(-128i32).broadcast_into_rank(zp_rank)?.into_arc_tensor(),
+                    rctensor0(-128i32),
                 )?;
                 *zero_point = model.wire_node(
                     format!("{model_name}.offset_{zero_point_name}_as_i8"),
