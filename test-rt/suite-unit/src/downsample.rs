@@ -61,7 +61,7 @@ impl Test for DownsampleProblem {
 
         let mut model = TypedModel::default();
         model.properties.insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));
-        let wire = model.add_source("input", TypedFact::from(&input).without_value())?;
+        let wire = model.add_source("input", TypedFact::shape_and_dt_of(&input))?;
         let output = model.wire_node("downsample", self.op.clone(), &[wire])?;
         model.set_output_outlets(&output)?;
         let mut output = runtime.prepare(model)?.run(tvec![input.clone().into_tvalue()])?;

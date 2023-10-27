@@ -100,13 +100,13 @@ impl BinEinsumProblem {
             model.add_const("a", self.a.clone())?
         } else {
             inputs.push(self.a.clone().into_tvalue());
-            model.add_source("a", TypedFact::from(&self.a).without_value())?
+            model.add_source("a", TypedFact::shape_and_dt_of(&self.a))?
         };
         let b = if self.b_constant {
             model.add_const("b", self.b.clone())?
         } else {
             inputs.push(self.b.clone().into_tvalue());
-            model.add_source("b", TypedFact::from(&self.b).without_value())?
+            model.add_source("b", TypedFact::shape_and_dt_of(&self.b))?
         };
         let mut output = model.wire_node(
             "einsum",

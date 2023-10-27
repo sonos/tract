@@ -312,7 +312,7 @@ pub fn retrieve_or_make_inputs(
                     })
                     .collect();
             }
-            if TypedFact::from(&*value[0]).compatible_with(&fact) {
+            if TypedFact::shape_and_dt_of(&*value[0]).compatible_with(&fact) {
                 info!("Using fixed input for input called {} ({} turn(s))", name, value.len());
                 tmp.push(value.iter().map(|t| t.clone().into_tensor().into()).collect())
             } else if fact.datum_type == f16::datum_type()

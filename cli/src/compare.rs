@@ -276,7 +276,7 @@ pub fn compare<F, O>(
     run_params: &RunParams,
 ) -> TractResult<()>
 where
-    F: Fact + Clone + for<'a> From<&'a Tensor> + Hash,
+    F: Fact + Clone + for<'a> From<&'a Arc<Tensor>> + Hash,
     O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone,
     Graph<F, O>: Model,
 {
