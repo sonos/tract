@@ -41,8 +41,8 @@ Notable missing parts are operators dealing with Tensor Sequences and Optional T
 This is structural. Changing it would be pretty difficult, and it's unclear whether it can be done without impairing performance or maintainability.
 We are not convinced these features have shown their interest in the wild yet, so we prefer to leave them aside.
 
-Other dark corners are specific operators likes "Resize" which fit perfectly in the framework, but need a complex internal logic that is far
-from our core business. In these cases, we are happy to accept contributions, and to help. 
+Other dark corners are specific operators like "Resize" which fit perfectly in the framework but need a complex internal logic that is far
+from our core business. In these cases, we are happy to accept contributions and to help. 
 
 The following operators are implemented and tested.
 
@@ -136,7 +136,7 @@ information.
 
 https://github.com/ARM-software/ML-KWS-for-MCU
 
-ARM demonstrated the capabilited of the Cortex-M family by providing
+ARM demonstrated the capabilities of the Cortex-M family by providing
 tutorials and pre-trained models for keyword spotting. While the exercise
 is ultimately meant for micro-controllers, `tract` can run the intermediate
 TensorFlow models.
@@ -179,7 +179,7 @@ covered by the following licence statement.
 
 Note: files in the `onnx/protos` directory are copied from the
 [ONNX](https://github.com/onnx/onnx) project and are not
-covered by the following licence statement.
+covered by the following license statement.
 
 ## Apache 2.0/MIT
 
@@ -190,6 +190,6 @@ at your option.
 
 ## Contribution
 
-Unless you explicitly state otherwise, any contribution intentionally submitted
+Unless you explicitly state otherwise, any Contribution intentionally submitted
 for inclusion in the work by you, as defined in the Apache-2.0 license, shall
 be dual licensed as above, without any additional terms or conditions.
