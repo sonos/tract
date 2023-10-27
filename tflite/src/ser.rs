@@ -94,7 +94,7 @@ impl<'f, 'b, 'mb> SubgraphBuilder<'f, 'b, 'mb> {
             tensors: vec![],
             operators: vec![],
             outlets_to_tensors: HashMap::new(),
-            const_cache: vec!(),
+            const_cache: vec![],
         }
     }
 
@@ -130,6 +130,7 @@ impl<'f, 'b, 'mb> SubgraphBuilder<'f, 'b, 'mb> {
         let fact = fact.into();
         if fact.datum_type.unquantized() == i8::datum_type()
             || fact.datum_type.unquantized() == u8::datum_type()
+            || fact.datum_type.qparams().is_some()
         {
             let qp =
                 fact.datum_type.qparams().unwrap_or(QParams::ZpScale { zero_point: 0, scale: 1. });
@@ -334,8 +335,13 @@ impl<'f, 'b, 'mb> SubgraphBuilder<'f, 'b, 'mb> {
     }
 
     fn finish(self, model: &TypedModel) -> TractResult<WIPOffset<SubGraph<'f>>> {
-        let Self { model: ModelBuilder { builder, .. }, tensors, operators, outlets_to_tensors, .. } =
-            self;
+        let Self {
+            model: ModelBuilder { builder, .. },
+            tensors,
+            operators,
+            outlets_to_tensors,
+            ..
+        } = self;
         let inputs = model.inputs.iter().map(|i| outlets_to_tensors[i]).collect_vec();
         let outputs = model.outputs.iter().map(|i| outlets_to_tensors[i]).collect_vec();
         let inputs = builder.create_vector(&inputs);
