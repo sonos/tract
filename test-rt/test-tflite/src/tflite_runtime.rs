@@ -22,6 +22,7 @@ impl Runtime for TfliteRuntime {
     fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
         let mut buffer = vec![];
         self.0.write(&model, &mut buffer)?;
+        std::fs::write("foo.tflite", &buffer)?;
         Ok(Box::new(TfliteRunnable(buffer)))
     }
 }
@@ -53,6 +54,7 @@ impl State for TfliteState {
             let input_tensor = interpreter.input(ix)?;
             assert_eq!(input_tensor.shape().dimensions(), input.shape());
             input_tensor.set_data(unsafe { input.as_bytes() })?;
+            dbg!(&input_tensor);
         }
         interpreter.invoke()?;
         let mut outputs = tvec![];
