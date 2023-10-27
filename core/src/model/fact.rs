@@ -217,6 +217,15 @@ impl TypedFact {
         Self::dt_shape(T::datum_type(), shape)
     }
 
+    pub fn shape_and_dt_of(t: &Tensor) -> TypedFact {
+        TypedFact {
+            datum_type: t.datum_type(),
+            shape: ShapeFact::from_dims(t.shape().iter().map(TDim::from)),
+            uniform: None,
+            konst: None,
+        }
+    }
+
     pub fn dt_scalar(datum_type: DatumType) -> TypedFact {
         TypedFact { datum_type, shape: ShapeFact::scalar(), konst: None, uniform: None }
     }
@@ -334,17 +343,12 @@ impl Fact for TypedFact {
     fn datum_type(&self) -> Option<DatumType> {
         Some(self.datum_type)
     }
+
 }
 
 impl From<Tensor> for TypedFact {
     fn from(t: Tensor) -> TypedFact {
         TypedFact::from(t.into_arc_tensor())
-    }
-}
-
-impl<'t> From<&'t Tensor> for TypedFact {
-    fn from(t: &'t Tensor) -> TypedFact {
-        TypedFact::from(t.clone())
     }
 }
 
@@ -367,12 +371,7 @@ impl<'a> From<&'a TypedFact> for TypedFact {
 
 impl<'a> From<&'a Arc<Tensor>> for TypedFact {
     fn from(t: &'a Arc<Tensor>) -> TypedFact {
-        TypedFact {
-            datum_type: t.datum_type(),
-            shape: ShapeFact::from_dims(t.shape().iter().map(TDim::from)),
-            uniform: t.as_uniform().map(Arc::new),
-            konst: Some(t.clone()),
-        }
+        Arc::clone(t).into()
     }
 }
 
