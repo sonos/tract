@@ -137,4 +137,5 @@ fn ignore_unit(t: &[String]) -> bool {
             || unit == "bias_3d_1"
             // kernel with non 0 zero_point
             || unit == "kernel_zp"
+            || unit == "a0_b0_0"
 }

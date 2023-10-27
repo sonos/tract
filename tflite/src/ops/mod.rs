@@ -78,8 +78,12 @@ fn linearops_quantization_suport(
             rctensor0(k_qp.scale().unwrap().get(0))
         };
         let k_zp = k_qp.zero_point().unwrap().iter().map(|i| i as i32).collect_vec();
-        ensure!(k_zp.iter().all(|x| *x == 0));
-        inputs.push(op.ctx.target.add_const(format!("{p}.k0"), rctensor0(0i8))?);
+        let k_zp = if k_zp.iter().all_equal() {
+            tensor0(k_zp[0])
+        } else {
+            tensor1(&k_zp)
+        };
+        inputs.push(op.ctx.target.add_const(format!("{p}.k0"), k_zp.into_arc_tensor())?);
         inputs.push(op.ctx.target.add_const(format!("{p}.kscale"), k_scale)?);
         inputs.push(op.ctx.target.add_const(format!("{p}.i0"), rctensor0(iqp.zp_scale().0 as i8))?);
         inputs.push(op.ctx.target.add_const(format!("{p}.iscale"), rctensor0(iqp.zp_scale().1))?);
@@ -91,7 +95,12 @@ fn linearops_quantization_suport(
     }
 }
 
-fn ser_iff(builder: &mut SubgraphBuilder, model: &TypedModel, node: &TypedNode, _op: &Iff) -> TractResult<()> {
+fn ser_iff(
+    builder: &mut SubgraphBuilder,
+    model: &TypedModel,
+    node: &TypedNode,
+    _op: &Iff,
+) -> TractResult<()> {
     let inputs = builder.map_outlets(model, &node.inputs)?;
     let outputs = builder.map_outlets(model, [OutletId::new(node.id, 0)])?;
     builder.write_op(&inputs, &outputs, 123, 1, BuiltinOperator::SELECT_V2)

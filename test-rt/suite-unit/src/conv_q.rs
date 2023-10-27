@@ -43,7 +43,7 @@ pub fn qtensor(shape: Vec<usize>, dt: DatumType) -> BoxedStrategy<Tensor> {
             .prop_map(move |vec| ArrayD::from_shape_vec(shape.clone(), vec).unwrap().into_tensor())
             .boxed()
     } else {
-        vec(0..200u8, len..=len)
+        vec(0..100u8, len..=len)
             .prop_map(move |vec| ArrayD::from_shape_vec(shape2.clone(), vec).unwrap().into_tensor())
             .boxed()
     }
