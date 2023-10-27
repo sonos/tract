@@ -10,6 +10,7 @@ use crate::ops;
 use crate::ops::array::Pad;
 use crate::ops::array::PadMode;
 use crate::ops::binary::TypedBinOp;
+use crate::ops::cast::cast;
 use crate::ops::cnn::PaddingSpec::*;
 use crate::ops::einsum::EinSum;
 use crate::ops::math::Add;
@@ -102,7 +103,12 @@ impl ConvUnary {
                     inputs[1] =
                         model.wire_node(name, ops::quant::offset_u8_as_i8(), &[inputs[1]])?[0];
                 }
-                DatumType::I32 => {
+                DatumType::I32 | DatumType::I8 => {
+                    inputs[1] = model.wire_node(
+                        format!("{name}.cast"),
+                        cast(i32::datum_type()),
+                        &[inputs[1]],
+                    )?[0];
                     let cst = model.add_const(format!("{name}.cst"), tensor0(-128i32))?;
                     inputs[1] = model.wire_node(name, ops::math::add(), &[inputs[1], cst])?[0];
                 }
@@ -162,7 +168,6 @@ impl ConvUnary {
         let [a0, mut a_scale, mut b0, b_scale, c0, c_scale] = wires[1..] else {
             bail!("Wrong number of inputs")
         };
-
         let b = wire_offset_u8_as_i8(model, name, wires[0], "b", &mut b0, "b0")?;
         let b_fact = model.outlet_fact(b)?.clone();
         let (_, m, k, n, mmm) = self.compute_geo(&b_fact)?;
@@ -1043,9 +1048,9 @@ impl TypedOp for ConvUnary {
     ) -> TractResult<Option<TypedModelPatch>> {
         if let DatumType::U8 = self.kernel.datum_type().unquantized() {
             let mut patch = TypedModelPatch::default();
-            let mut inputs = patch.taps(model, &node.inputs)?;
-            let new_op = self.kernel_offset_u8_as_i8(&mut inputs, &mut patch)?.unwrap();
-            let wire = patch.wire_node(&node.name, new_op, &inputs)?;
+            let mut wire = patch.taps(model, &node.inputs)?;
+            let new_op = self.kernel_offset_u8_as_i8(&mut wire, &mut patch)?.unwrap();
+            let wire = patch.wire_node(&node.name, new_op, &wire)?;
             patch.shunt_outside(model, node.id.into(), wire[0])?;
             patch.obliterate(node.id)?;
             return Ok(Some(patch.with_context("kernel-u8-to-i8")));
