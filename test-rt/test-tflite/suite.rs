@@ -24,6 +24,7 @@ fn mk_suite() -> infra::TestSuite {
         QConvProblemParams {
             conv: cv,
             no_kernel_zero_point: true,
+            tflite_rules: true,
             ..QConvProblemParams::default()
         },
     );

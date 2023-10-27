@@ -69,29 +69,34 @@ fn ser_conv(
         .into_arc_tensor()
     });
     if conv.q_params.is_some() {
-        let iscale = model.node_input_facts(node.id).unwrap()[0].datum_type.zp_scale().1;
         let facts = model.node_input_facts(node.id)?;
+        let iscale = facts[0].datum_type.zp_scale().1;
         let k0_tract = facts[1].konst.as_ref().unwrap().cast_to_scalar::<i32>()? as i64;
-        let kscale_tract = facts[2].konst.as_ref().unwrap().as_slice::<f32>()?;
-        let co = conv.kernel.shape()[0];
-        let kscale =
-            if kscale_tract.len() == 1 { vec![kscale_tract[0]; co] } else { kscale_tract.to_vec() };
-        inputs.push(builder.write_fact_with_per_axis_q(
-            &format!("{node_name}.weights"),
-            &conv.kernel,
-            &vec![k0_tract; conv.kernel.shape()[0]],
-            &kscale,
-            0,
-        )?);
-        let bscale = kscale.iter().map(|k| k * iscale).collect_vec();
-        bias = bias.clone().into_tensor().cast_to::<i32>()?.into_owned().into_arc_tensor();
-        inputs.push(builder.write_fact_with_per_axis_q(
-            &format!("{node_name}.bias"),
-            &bias,
-            &vec![0i64; bias.len()],
-            &bscale,
-            0,
-        )?);
+        let kscale = facts[2].konst.as_ref().unwrap().as_slice::<f32>()?;
+        let per_channel = !kscale.iter().all_equal();
+        if per_channel {
+            inputs.push(builder.write_fact_with_per_axis_q(
+                &format!("{node_name}.weights"),
+                &conv.kernel,
+                &vec![k0_tract; conv.kernel.shape()[0]],
+                &kscale,
+                0,
+            )?);
+            let bscale = kscale.iter().map(|k| k * iscale).collect_vec();
+            bias = bias.clone().into_tensor().cast_to::<i32>()?.into_owned().into_arc_tensor();
+            inputs.push(builder.write_fact_with_per_axis_q(
+                &format!("{node_name}.bias"),
+                &bias,
+                &vec![0i64; bias.len()],
+                &bscale,
+                0,
+            )?);
+        } else {
+            inputs.push(builder.write_fact(&format!("{node_name}.weights"), &conv.kernel)?);
+            let bias_qdt = bias.datum_type().quantize(QParams::ZpScale { zero_point: 0, scale: iscale * kscale[0] });
+            let bias = bias.cast_to_dt(bias_qdt)?.into_owned();
+            inputs.push(builder.write_fact(&format!("{node_name}.bias"), &bias)?);
+        }
     } else {
         inputs.push(builder.write_fact(&format!("{node_name}.weights"), &conv.kernel)?);
         inputs.push(builder.write_fact(&format!("{node_name}.bias"), &bias)?);

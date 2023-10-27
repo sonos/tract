@@ -56,31 +56,35 @@ pub fn q_params(
     kdt: DatumType,
     iodt: DatumType,
 ) -> BoxedStrategy<[Tensor; 6]> {
-    let a0 = if params.no_kernel_zero_point {
-        Just(0i32).boxed()
-    } else if kdt.is_signed() {
-        (-10..10i32).boxed()
+    let params = params.clone();
+    let per_channel = if params.tflite_rules && (kdt.is_unsigned() || iodt.is_unsigned()) {
+        Just(false).boxed()
     } else {
-        (0..20i32).boxed()
+        any::<bool>().boxed()
     };
-    let b0 = if iodt.is_signed() { -10i32..10i32 } else { 0..20 };
-    let c0 = if iodt.is_signed() { -10i32..10i32 } else { 0..20 };
-    (
-        a0,
-        b0,
-        c0,
-        prop_oneof![
-            (Just(false), (-3..3i32).prop_map(|x| vec!(x)).boxed()),
-            (Just(true), vec(-3..3i32, co..=co).boxed())
-        ],
-        -3..3i32,
-        -3..3i32,
-    )
-        .prop_map(|(a0, b0, c0, a_scale, b_scale, c_scale)| {
-            let a_scale_values = a_scale.1.iter().map(|x| 2f32.powi(*x)).collect_vec();
+    per_channel
+        .prop_flat_map(move |per_channel| {
+            let a0 = if params.no_kernel_zero_point {
+                Just(0i32).boxed()
+            } else if kdt.is_signed() {
+                (-10..10i32).boxed()
+            } else {
+                (0..20i32).boxed()
+            };
+            let b0 = if iodt.is_signed() { -10i32..10i32 } else { 0..20 };
+            let c0 = if iodt.is_signed() { -10i32..10i32 } else { 0..20 };
+            let a_scale = if per_channel {
+                (-3..3i32).prop_map(|x| vec![x]).boxed()
+            } else {
+                vec(-3..3i32, co..=co).boxed()
+            };
+            (Just(per_channel), a0, b0, c0, a_scale, -3..3i32, -3..3i32)
+        })
+        .prop_map(|(per_channel, a0, b0, c0, a_scale, b_scale, c_scale)| {
+            let a_scale_values = a_scale.iter().map(|x| 2f32.powi(*x)).collect_vec();
             [
                 tensor0(a0),
-                if a_scale.0 { tensor1(&a_scale_values) } else { tensor0(a_scale_values[0]) },
+                if per_channel { tensor1(&a_scale_values) } else { tensor0(a_scale_values[0]) },
                 tensor0(b0),
                 tensor0(2f32.powi(b_scale)),
                 tensor0(c0),
@@ -94,6 +98,7 @@ pub fn q_params(
 pub struct QConvProblemParams {
     pub conv: ConvProblemParams,
     pub no_kernel_zero_point: bool,
+    pub tflite_rules: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -295,7 +300,6 @@ impl Test for QConvProblem {
         approx: Approximation,
     ) -> infra::TestResult {
         let reference = self.reference();
-        dbg!(&reference);
         let mut model = self.tract()?;
         model.properties.insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));
         let model = runtime.prepare(model)?;
@@ -962,6 +966,21 @@ pub fn suite() -> TractResult<TestSuite> {
         },
     );
     let mut qp = qp_noop_i8();
+    qp[2] = tensor0(1i32);
+    suite.add(
+        "i8_u8_d0",
+        QConvProblem {
+            shape_in: CHW.from_n_c_hw(1, 1, [1]).unwrap(),
+            co: 1,
+            kernel_format: OIHW,
+            group: 1,
+            kernel: tensor3(&[[[-3i8]]]),
+            bias: None,
+            data: tensor2(&[[1u8]]),
+            qp,
+        },
+    );
+    let mut qp = qp_noop_i8();
     qp[4] = tensor0(2i32);
     suite.add(
         "i8_u8_c0",
@@ -987,6 +1006,20 @@ pub fn suite() -> TractResult<TestSuite> {
             kernel: tensor3(&[[[0u8, 0]]]),
             bias: None,
             data: tensor2(&[[-9i8, 0]]),
+            qp,
+        },
+    );
+    let qp = qp_noop_i8();
+    suite.add(
+        "u8_i8_1",
+        QConvProblem {
+            shape_in: CHW.from_n_c_hw(1, 1, [1]).unwrap(),
+            co: 2,
+            kernel_format: OIHW,
+            group: 1,
+            kernel: tensor3(&[[[0u8]], [[0]]]),
+            bias: None,
+            data: tensor2(&[[0i8]]),
             qp,
         },
     );
