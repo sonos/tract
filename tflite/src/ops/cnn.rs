@@ -70,18 +70,16 @@ fn ser_conv(
     });
     if conv.q_params.is_some() {
         let iscale = model.node_input_facts(node.id).unwrap()[0].datum_type.zp_scale().1;
-        let kscale_tract = model.node_input_facts(node.id).unwrap()[2]
-            .konst
-            .as_ref()
-            .unwrap()
-            .as_slice::<f32>()?;
+        let facts = model.node_input_facts(node.id)?;
+        let k0_tract = facts[1].konst.as_ref().unwrap().cast_to_scalar::<i32>()? as i64;
+        let kscale_tract = facts[2].konst.as_ref().unwrap().as_slice::<f32>()?;
         let co = conv.kernel.shape()[0];
         let kscale =
             if kscale_tract.len() == 1 { vec![kscale_tract[0]; co] } else { kscale_tract.to_vec() };
         inputs.push(builder.write_fact_with_per_axis_q(
             &format!("{node_name}.weights"),
             &conv.kernel,
-            &vec![0i64; conv.kernel.shape()[0]],
+            &vec![k0_tract; conv.kernel.shape()[0]],
             &kscale,
             0,
         )?);
