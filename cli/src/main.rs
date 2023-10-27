@@ -41,9 +41,15 @@ fn info_usage(stage: &str, probe: Option<&Probe>) {
     }
     if log::log_enabled!(log::Level::Info) {
         let usage = readings_probe::get_os_readings().unwrap();
+        let allocated = readings_probe::alloc::ALLOCATED.load(std::sync::atomic::Ordering::Relaxed);
+        let freeed = readings_probe::alloc::FREEED.load(std::sync::atomic::Ordering::Relaxed);
         info!(
-            "Resource usage {}: vsz:{} rsz:{} rszmax:{}",
-            stage, usage.virtual_size, usage.resident_size, usage.resident_size_max
+            "Resource usage {}: vsz:{} rsz:{} rszmax:{} alloc:{}",
+            stage,
+            usage.virtual_size,
+            usage.resident_size,
+            usage.resident_size_max,
+            allocated - freeed
         );
     }
 }

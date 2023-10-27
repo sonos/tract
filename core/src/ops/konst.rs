@@ -25,7 +25,7 @@ impl TypedOp for Const {
     as_op!();
 
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(self.0.as_ref().into()))
+        Ok(tvec!(Arc::clone(&self.0).into()))
     }
 
     fn change_axes(
