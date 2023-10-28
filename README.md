@@ -1,22 +1,21 @@
-![tract-logo](assets/tract-logo/PNG/tract-horizontal-blue.png)
-
-![Rust](https://img.shields.io/badge/rust-%23000000.svg?style=for-the-badge&logo=rust&logoColor=white)
-![rustc >= 1.65.0](https://img.shields.io/badge/rustc-%3E%3D1.65.0-brightgreen)
-![MIT/Apache 2](https://img.shields.io/crates/l/tract)
-[![Native Linux test status](https://github.com/snipsco/tract/workflows/Native%20Linux/badge.svg)](https://github.com/snipsco/tract/actions)
-[![Embedded targets status](https://github.com/snipsco/tract/workflows/Embedded%20targets/badge.svg)](https://github.com/snipsco/tract/actions)
-[![Doc](https://docs.rs/tract-core/badge.svg)](https://docs.rs/tract-core)
-
-[![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)](https://pypi.org/project/tract/)
-
-
-Sonos' Neural Network inference engine.
+# Tract: Sonos' Neural Network Inference Engine ![rustc >= 1.65.0](https://img.shields.io/badge/rustc-%3E%3D1.65.0-brightgreen) ![MIT/Apache 2](https://img.shields.io/crates/l/tract) [![Embedded targets status](https://github.com/snipsco/tract/workflows/Embedded%20targets/badge.svg)](https://github.com/snipsco/tract/actions) [![Doc](https://docs.rs/tract-core/badge.svg)](https://docs.rs/tract-core) 
 
 _This project used to be called tfdeploy, or Tensorflow-deploy-rust._
 
 ## What ?
 
 `tract` is a Neural Network inference toolkit. It can read ONNX or NNEF, optimize them and run them.
+
+## 💻Tech Stack
+![Rust](https://img.shields.io/badge/rust-%23000000.svg?style=for-the-badge&logo=rust&logoColor=white)
+[![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)](https://pypi.org/project/tract/)
+
+## Features
+
+- **ONNX and NNEF Support:** Tract can read and optimize models in both ONNX and NNEF formats.
+- **High Performance:** Tract is optimized for speed, allowing for fast and efficient neural network inference.
+- **Supported Operators:** Tract supports a wide range of operators, making it compatible with diverse neural network architectures.
+- **Easy Integration:** Tract can be easily integrated into different platforms and projects.
 
 ## Quick start, examples
 
