@@ -1009,6 +1009,22 @@ pub fn suite() -> TractResult<TestSuite> {
             qp,
         },
     );
+    let mut qp = qp_noop_i8();
+    qp[2] = tensor0(1i32);
+    qp[4] = tensor0(2i32);
+    suite.add(
+        "i8_u8_weird",
+        QConvProblem {
+            shape_in: CHW.from_n_c_hw(1, 1, [1]).unwrap(),
+            co: 1,
+            kernel_format: OIHW,
+            group: 1,
+            kernel: tensor3(&[[[-1i8]]]),
+            bias: None,
+            data: tensor2(&[[0u8]]),
+            qp,
+        },
+    );
     let qp = qp_noop_i8();
     suite.add(
         "u8_i8_0",

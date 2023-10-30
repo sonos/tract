@@ -47,7 +47,7 @@ fn de_fully_connected(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     ensure!(!options.keep_num_dims());
     ensure!(!options.asymmetric_quantize_inputs());
     let mut inputs: TVec<OutletId> = op.inputs.into();
-    let qp = super::linearops_quantization_suport(op, &input, &mut inputs, false)?;
+    let qp = super::linearops_quantization_suport(op, &input, &mut inputs)?;
     let operating_dt =
         if input.datum_type.is_float() { input.datum_type } else { i32::datum_type() };
     let einsum = EinSum { axes: "BI,OI,O,,,,,,->BO".parse()?, q_params: qp, operating_dt };

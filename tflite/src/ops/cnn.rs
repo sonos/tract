@@ -177,7 +177,7 @@ fn de_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         output_channel_override: Some(*co),
     };
     let mut inputs = tvec!(op.inputs[0]);
-    let q_params = super::linearops_quantization_suport(op, &input, &mut inputs, true)?;
+    let q_params = super::linearops_quantization_suport(op, &input, &mut inputs)?;
     let bias_dt = bias.datum_type().unquantized();
     let bias = bias.into_tensor().cast_to_dt(bias_dt)?.into_owned().into_arc_tensor();
     let conv = core::cnn::ConvUnary {
@@ -217,7 +217,7 @@ fn de_dw_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         output_channel_override: Some(co),
     };
     let mut inputs = tvec!(op.inputs[0]);
-    let q_params = super::linearops_quantization_suport(op, &input, &mut inputs, true)?;
+    let q_params = super::linearops_quantization_suport(op, &input, &mut inputs)?;
     let conv = core::cnn::ConvUnary {
         pool_spec,
         kernel_fmt: KernelFormat::OHWI,

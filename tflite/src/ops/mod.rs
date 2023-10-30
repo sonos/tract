@@ -63,7 +63,6 @@ fn linearops_quantization_suport(
     op: &mut DeserOp,
     input: &TypedFact,
     inputs: &mut TVec<OutletId>,
-    kscale_is_per_axis: bool,
 ) -> TractResult<Option<DatumType>> {
     if op.output_facts[0].datum_type.is_quantized() {
         let p = &op.prefix;
@@ -72,7 +71,7 @@ fn linearops_quantization_suport(
         let k_input = op.flat.inputs().unwrap().get(1);
         let k_tensor = op.ctx.subgraph.tensors().unwrap().get(k_input as usize);
         let k_qp = k_tensor.quantization().unwrap();
-        let k_scale = if kscale_is_per_axis {
+        let k_scale = if k_qp.scale().unwrap().len() > 1 {
             rctensor1(&k_qp.scale().unwrap().iter().collect_vec())
         } else {
             rctensor0(k_qp.scale().unwrap().get(0))
@@ -85,9 +84,9 @@ fn linearops_quantization_suport(
         };
         inputs.push(op.ctx.target.add_const(format!("{p}.k0"), k_zp.into_arc_tensor())?);
         inputs.push(op.ctx.target.add_const(format!("{p}.kscale"), k_scale)?);
-        inputs.push(op.ctx.target.add_const(format!("{p}.i0"), rctensor0(iqp.zp_scale().0 as i8))?);
+        inputs.push(op.ctx.target.add_const(format!("{p}.i0"), rctensor0(iqp.zp_scale().0 as i32))?);
         inputs.push(op.ctx.target.add_const(format!("{p}.iscale"), rctensor0(iqp.zp_scale().1))?);
-        inputs.push(op.ctx.target.add_const(format!("{p}.c0"), rctensor0(oqp.zp_scale().0 as i8))?);
+        inputs.push(op.ctx.target.add_const(format!("{p}.c0"), rctensor0(oqp.zp_scale().0 as i32))?);
         inputs.push(op.ctx.target.add_const(format!("{p}.cscale"), rctensor0(oqp.zp_scale().1))?);
         Ok(Some(oqp))
     } else {
