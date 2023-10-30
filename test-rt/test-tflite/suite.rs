@@ -139,4 +139,7 @@ fn ignore_unit(t: &[String]) -> bool {
             // kernel with non 0 zero_point
             || unit == "kernel_zp"
             || unit == "a0_b0_0"
+            // tflite does not saturate before truncating
+            || unit == "i8_u8_sat_0"
+            || unit == "i8_u8_weird"
 }
