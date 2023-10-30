@@ -92,11 +92,10 @@ fn ser_conv(
                 0,
             )?);
         } else {
-            dbg!(&conv.kernel);
             inputs.push(builder.write_fact(&format!("{node_name}.weights"), &conv.kernel)?);
             let bias_qdt = bias.datum_type().quantize(QParams::ZpScale { zero_point: 0, scale: iscale * kscale[0] });
             let bias = bias.cast_to_dt(bias_qdt)?.into_owned();
-            inputs.push(builder.write_fact(&format!("{node_name}.bias"), &bias)?);
+            inputs.push(builder.write_fact(&format!("{node_name}.bias"), bias)?);
         }
     } else {
         inputs.push(builder.write_fact(&format!("{node_name}.weights"), &conv.kernel)?);
