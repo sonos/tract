@@ -103,14 +103,14 @@ pub struct QConvProblemParams {
 
 #[derive(Debug, Clone)]
 pub struct QConvProblem {
-    shape_in: DataShape,
-    kernel_format: KernelFormat,
-    co: usize,
-    group: usize,
-    kernel: Tensor,
-    bias: Option<Array1<i32>>,
-    data: Tensor,
-    qp: [Tensor; 6],
+    pub shape_in: DataShape,
+    pub kernel_format: KernelFormat,
+    pub co: usize,
+    pub group: usize,
+    pub kernel: Tensor,
+    pub bias: Option<Array1<i32>>,
+    pub data: Tensor,
+    pub qp: [Tensor; 6],
 }
 
 impl QConvProblem {
