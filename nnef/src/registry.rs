@@ -10,7 +10,8 @@ use tract_core::dyn_clone::clone_box;
 use tract_core::ops::binary::*;
 
 pub type ToTract = fn(&mut ModelBuilder, &ResolvedInvocation) -> TractResult<Value>;
-pub type FromTract = fn(&mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>>;
+pub type FromTract =
+    Box<dyn Fn(&mut IntoAst, &TypedNode) -> TractResult<Option<Arc<RValue>>> + Send + Sync>;
 pub type FromTractWithOp<O> =
     fn(&mut IntoAst, node: &TypedNode, op: &O) -> TractResult<Option<Arc<RValue>>>;
 pub type BinOp = (Identifier, Box<dyn BinMiniOp>);
@@ -47,10 +48,7 @@ pub struct Registry {
     pub unit_element_wise_ops: Vec<(Identifier, Box<dyn ElementWiseMiniOp>)>,
     pub element_wise_ops: Vec<(Identifier, TypeId, FromTract, Vec<ast::Parameter>, ToTract)>,
     pub binary_ops: Vec<BinOp>,
-    pub from_tract: HashMap<
-        TypeId,
-        Box<dyn Fn(&mut IntoAst, &TypedNode) -> TractResult<Option<Arc<RValue>>> + Send + Sync>,
-    >,
+    pub from_tract: HashMap<TypeId, FromTract>,
     pub extensions: Vec<Extension>,
 }
 

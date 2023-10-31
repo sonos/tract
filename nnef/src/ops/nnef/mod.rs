@@ -84,7 +84,7 @@ pub fn tract_nnef() -> Registry {
     registry.register_element_wise(
         "leaky_relu",
         TypeId::of::<ops::nn::LeakyRelu>(),
-        ser::leaky_relu,
+        Box::new(ser::leaky_relu),
         vec![TypeName::Scalar.tensor().named("x"), TypeName::Scalar.named("alpha")],
         deser::leaky_relu,
     );
