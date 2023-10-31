@@ -103,7 +103,6 @@ impl OpState for DelayState {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Delay {
-    pub datum_type: DatumType,
     pub buffer_shape: TVec<TDim>,
     pub axis: usize,
     pub delay: usize,
@@ -114,7 +113,7 @@ impl Delay {
     pub fn new_typed(input_fact: &TypedFact, axis: usize, delay: usize, overlap: usize) -> Delay {
         let mut buffer_shape: TVec<TDim> = input_fact.shape.to_tvec();
         buffer_shape[axis] = (delay + overlap).to_dim();
-        Delay { datum_type: input_fact.datum_type, buffer_shape, axis, delay, overlap }
+        Delay { buffer_shape, axis, delay, overlap }
     }
 }
 
@@ -126,7 +125,7 @@ impl Op for Delay {
     fn info(&self) -> TractResult<Vec<String>> {
         Ok(vec![
             format!("axis: {} delay: {} overlap: {}", self.axis, self.delay, self.overlap),
-            format!("buffer: {:?} {:?}", self.buffer_shape, self.datum_type),
+            format!("buffer: {:?}", self.buffer_shape),
         ])
     }
 
@@ -157,8 +156,8 @@ impl TypedOp for Delay {
         Ok(tvec!(fact))
     }
 
-    fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        Ok(tvec!((Cost::Buffer(self.datum_type), self.buffer_shape.iter().product())))
+    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        Ok(tvec!((Cost::Buffer(inputs[0].datum_type), self.buffer_shape.iter().product())))
     }
 
     fn suggested_axis_changes(&self) -> TractResult<TVec<(InOut, AxisOp)>> {
