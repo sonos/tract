@@ -12,14 +12,15 @@ pub fn register(registry: &mut Registry) {
             TypeName::Scalar.tensor().named("input"),
             TypeName::Scalar.tensor().named("state"),
             TypeName::Integer.named("axis"),
+            TypeName::Scalar.named("alpha"),
             TypeName::Integer.named("skip").default(0),
             TypeName::Logical.named("stateless").default(false),
-            TypeName::Scalar.named("alpha"),
             TypeName::Scalar.named("epsilon").default(1e-14f32),
         ],
         &[("output", TypeName::Scalar.tensor())],
         de_eun,
     );
+    registry.register_dumper(ser_eun);
 
     OpPulsifier::register::<ExpUnitNorm>(pulsify).unwrap();
 }
@@ -34,6 +35,26 @@ fn de_eun(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractR
     let skip = invocation.named_arg_as::<i64>(builder, "skip")? as usize;
     let op = ExpUnitNorm { alpha, axis, epsilon, stateless, skip };
     builder.wire(op, &[wire, state])
+}
+
+fn ser_eun(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &ExpUnitNorm,
+) -> TractResult<Option<Arc<RValue>>> {
+    let input = ast.mapping[&node.inputs[0]].clone();
+    let state = ast.mapping[&node.inputs[1]].clone();
+    Ok(Some(invocation(
+        "tract_extra_exp_unit_norm",
+        &[input, state],
+        &[
+            ("axis", numeric(op.axis)),
+            ("alpha", numeric(op.alpha)),
+            ("epsilon", numeric(op.epsilon)),
+            ("stateless", logical(op.stateless)),
+            ("skip", numeric(op.skip)),
+        ],
+    )))
 }
 
 #[derive(Clone, Debug, PartialEq)]
