@@ -1,9 +1,9 @@
 use crate::internal::*;
 use crate::ser::*;
-use tract_core::ops;
+use tract_core::ops::array::Topk;
 
 pub fn register(registry: &mut Registry) {
-    registry.register_dumper(TypeId::of::<ops::array::Topk>(), ser_topk);
+    registry.register_dumper(ser_topk);
     registry.register_primitive(
         "tract_core_topk",
         &[
@@ -17,8 +17,7 @@ pub fn register(registry: &mut Registry) {
     );
 }
 
-fn ser_topk(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
-    let op = node.op().downcast_ref::<ops::array::Topk>().unwrap();
+fn ser_topk(ast: &mut IntoAst, node: &TypedNode, op: &Topk) -> TractResult<Option<Arc<RValue>>> {
     let input = ast.mapping[&node.inputs[0]].clone();
     let k = ast.mapping[&node.inputs[1]].clone();
     Ok(Some(invocation(
@@ -34,5 +33,5 @@ fn de_topk(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
     let axis = invocation.named_arg_as(builder, "axis")?;
     let largest = invocation.named_arg_as(builder, "largest")?;
     let fallback_k = builder.model.symbol_table.new_with_prefix("k").into();
-    builder.wire(ops::array::Topk { largest, fallback_k, axis }, &[input, k])
+    builder.wire(Topk { largest, fallback_k, axis }, &[input, k])
 }

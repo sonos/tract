@@ -14,7 +14,7 @@ pub fn register(registry: &mut Registry) {
         &[("output", TypeName::Scalar.tensor())], 
         load
     );
-    registry.register_dumper(TypeId::of::<Multinomial>(), dump);
+    registry.register_dumper(dump);
 }
 
 /// https://github.com/onnx/onnx/blob/main/docs/Operators.md#Multinomial
@@ -136,8 +136,7 @@ fn parameters() -> Vec<Parameter> {
     ]
 }
 
-fn dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
-    let op = node.op_as::<Multinomial>().context("wrong op")?;
+fn dump(ast: &mut IntoAst, node: &TypedNode, op: &Multinomial) -> TractResult<Option<Arc<RValue>>> {
     let input = ast.mapping[&node.inputs[0]].clone();
 
     let dtype = match op.dtype {

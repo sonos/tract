@@ -5,7 +5,7 @@ use tract_core::ops::array::ScatterNd;
 pub fn register(registry: &mut Registry) {
     use crate::internal::*;
 
-    registry.register_dumper(TypeId::of::<ScatterElements>(), ser_scatter_elements);
+    registry.register_dumper(ser_scatter_elements);
     registry.register_primitive(
         "tract_core_scatter_elements",
         &[
@@ -18,7 +18,7 @@ pub fn register(registry: &mut Registry) {
         de_scatter_elements,
     );
 
-    registry.register_dumper(TypeId::of::<ScatterNd>(), ser_scatter_nd);
+    registry.register_dumper(ser_scatter_nd);
     registry.register_primitive(
         "tract_core_scatter_nd",
         &[
@@ -31,7 +31,11 @@ pub fn register(registry: &mut Registry) {
     );
 }
 
-fn ser_scatter_nd(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
+fn ser_scatter_nd(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    _: &ScatterNd,
+) -> TractResult<Option<Arc<RValue>>> {
     let wire = ast.mapping[&node.inputs[0]].clone();
     let indices = ast.mapping[&node.inputs[1]].clone();
     let updates = ast.mapping[&node.inputs[2]].clone();
@@ -48,8 +52,11 @@ fn de_scatter_nd(
     builder.wire(ScatterNd, &[wire, indices, updates])
 }
 
-fn ser_scatter_elements(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
-    let op = node.op().downcast_ref::<ScatterElements>().unwrap();
+fn ser_scatter_elements(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &ScatterElements,
+) -> TractResult<Option<Arc<RValue>>> {
     let wire = ast.mapping[&node.inputs[0]].clone();
     let indices = ast.mapping[&node.inputs[1]].clone();
     let updates = ast.mapping[&node.inputs[2]].clone();

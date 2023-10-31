@@ -21,7 +21,7 @@ pub fn register(registry: &mut Registry) {
         &[("output", TypeName::Scalar.tensor())],
         load,
     );
-    registry.register_dumper(TypeId::of::<Random>(), dump);
+    registry.register_dumper(dump);
 }
 
 fn load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
@@ -30,9 +30,7 @@ fn load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractRes
     let fact = dt.fact(&shape);
     let dist: String = invocation.named_arg_as(builder, "dist")?;
     let parameters: TVec<Arc<Tensor>> = invocation.named_arg_as(builder, "parameters")?;
-    let [p1, p2] = &*parameters else {
-        bail!("Random expect two parameters")
-    };
+    let [p1, p2] = &*parameters else { bail!("Random expect two parameters") };
     let dist = match &*dist {
         "normal" => Dist::Normal { mean: p1.clone(), dev: p2.clone() },
         "uniform" => Dist::Uniform { low: p1.clone(), high: p2.clone() },
@@ -43,8 +41,7 @@ fn load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractRes
     builder.wire(op, &[])
 }
 
-fn dump(_ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
-    let op = node.op_as::<Random>().context("wrong op")?;
+fn dump(_ast: &mut IntoAst, _node: &TypedNode, op: &Random) -> TractResult<Option<Arc<RValue>>> {
     let mut named = vec![
         ("datum_type", string(format!("{:?}", op.fact.datum_type))),
         ("shape", tdims(&op.fact.shape)),
@@ -89,8 +86,6 @@ pub struct Random {
     pub dist: Dist,
     pub seed: Option<u64>,
 }
-
-
 
 impl Op for Random {
     fn name(&self) -> Cow<str> {

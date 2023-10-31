@@ -1,9 +1,9 @@
 use crate::internal::*;
 use crate::ser::*;
-use tract_core::ops;
+use tract_core::ops::Downsample;
 
 pub fn register(registry: &mut Registry) {
-    registry.register_dumper(TypeId::of::<ops::Downsample>(), ser_downsample);
+    registry.register_dumper(ser_downsample);
     registry.register_primitive(
         "tract_core_downsample",
         &[
@@ -17,8 +17,11 @@ pub fn register(registry: &mut Registry) {
     );
 }
 
-fn ser_downsample(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
-    let op = node.op().downcast_ref::<ops::Downsample>().unwrap();
+fn ser_downsample(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &Downsample,
+) -> TractResult<Option<Arc<RValue>>> {
     let wire = ast.mapping[&node.inputs[0]].clone();
     Ok(Some(invocation(
         "tract_core_downsample",
@@ -39,5 +42,5 @@ fn de_downsample(
     let axis = invocation.named_arg_as(builder, "axis")?;
     let stride = invocation.named_arg_as::<i64>(builder, "stride")? as isize;
     let modulo = invocation.named_arg_as(builder, "modulo")?;
-    builder.wire(ops::Downsample { axis, stride, modulo }, &[wire])
+    builder.wire(Downsample { axis, stride, modulo }, &[wire])
 }

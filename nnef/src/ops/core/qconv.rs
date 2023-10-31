@@ -9,7 +9,7 @@ use tract_core::ops::cnn::KernelFormat;
 use super::qmatmul::qparams_as_outlets;
 
 pub fn register(registry: &mut Registry) {
-    registry.register_dumper(TypeId::of::<tract_core::ops::cnn::ConvUnary>(), qconv_unary_dump);
+    registry.register_dumper(qconv_unary_dump);
     registry.register_primitive(
         "tract_core_qconv",
         &qconv_parameters(),
@@ -37,8 +37,7 @@ fn qconv_parameters() -> Vec<Parameter> {
     ]
 }
 
-fn qconv_unary_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
-    let op = node.op_as::<ConvUnary>().unwrap();
+fn qconv_unary_dump(ast: &mut IntoAst, node: &TypedNode, op: &ConvUnary) -> TractResult<Option<Arc<RValue>>> {
     if op.q_params.is_none() || node.outputs[0].fact.datum_type.is_quantized() {
         return Ok(None);
     }

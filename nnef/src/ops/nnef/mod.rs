@@ -7,13 +7,6 @@ pub mod ser;
 pub fn tract_nnef() -> Registry {
     use tract_core::ops;
     let mut registry = Registry::new("tract_nnef");
-    macro_rules! dumper {
-        ($op:ty, $path: path) => {
-            registry.register_dumper(TypeId::of::<$op>(), |ast, node| {
-                $path(ast, node, node.op().downcast_ref::<$op>().unwrap())
-            })
-        };
-    }
     let mut stdlib = crate::framework::stdlib();
 
     let mut primitive = |registry: &mut Registry, id: &str, func: ToTract| {
@@ -23,27 +16,27 @@ pub fn tract_nnef() -> Registry {
     };
 
     primitive(&mut registry, "external", deser::external);
-    dumper!(ops::source::TypedSource, ser::source);
+    registry.register_dumper(ser::source);
     primitive(&mut registry, "variable", deser::variable);
-    dumper!(ops::konst::Const, ser::konst);
+    registry.register_dumper(ser::konst);
 
     primitive(&mut registry, "reshape", deser::reshape);
     primitive(&mut registry, "transpose", deser::transpose);
 
     primitive(&mut registry, "concat", deser::concat);
-    dumper!(ops::array::TypedConcat, ser::concat);
+    registry.register_dumper(ser::concat);
     primitive(&mut registry, "slice", deser::slice);
-    dumper!(ops::array::Slice, ser::slice);
+    registry.register_dumper(ser::slice);
 
     primitive(&mut registry, "squeeze", deser::squeeze);
     primitive(&mut registry, "unsqueeze", deser::unsqueeze);
-    dumper!(ops::change_axes::AxisOp, ser::axis_op);
+    registry.register_dumper(ser::axis_op);
 
     primitive(&mut registry, "tile", deser::tile);
-    dumper!(ops::array::Tile, ser::tile);
+    registry.register_dumper(ser::tile);
 
     primitive(&mut registry, "pad", deser::pad);
-    dumper!(ops::array::Pad, ser::pad);
+    registry.register_dumper(ser::pad);
 
     primitive(&mut registry, "stack", deser::stack);
     primitive(&mut registry, "unstack", deser::unstack);
@@ -107,34 +100,34 @@ pub fn tract_nnef() -> Registry {
     registry.register_binary("or", &ops::logic::Or {});
 
     registry.register_binary("select", &ops::logic::Or {});
-    dumper!(ops::logic::Iff, ser::select);
+    registry.register_dumper(ser::select);
     primitive(&mut registry, "select", deser::select);
 
     registry.register_binary("min", &ops::math::Min {});
     registry.register_binary("max", &ops::math::Max {});
 
     primitive(&mut registry, "matmul", deser::matmul);
-//    dumper!(ops::matmul::MatMul, ser::matmul);
+    //    registry.register_dumper(ser::matmul);
 
     primitive(&mut registry, "conv", deser::conv);
-    dumper!(ops::cnn::ConvUnary, ser::conv);
+    registry.register_dumper(ser::conv);
     primitive(&mut registry, "deconv", deser::deconv);
-    dumper!(ops::cnn::DeconvUnary, ser::deconv);
+    registry.register_dumper(ser::deconv);
 
     primitive(&mut registry, "sum_reduce", deser::reduce);
     primitive(&mut registry, "max_reduce", deser::reduce);
     primitive(&mut registry, "min_reduce", deser::reduce);
     primitive(&mut registry, "argmax_reduce", deser::reduce);
     primitive(&mut registry, "argmin_reduce", deser::reduce);
-    dumper!(ops::nn::Reduce, ser::reduce);
+    registry.register_dumper(ser::reduce);
 
     primitive(&mut registry, "softmax", deser::softmax);
-    dumper!(ops::nn::Softmax, ser::softmax);
+    registry.register_dumper(ser::softmax);
 
     primitive(&mut registry, "max_pool_with_index", deser::max_pool_with_index);
-    dumper!(ops::cnn::MaxPool, ser::max_pool);
+    registry.register_dumper(ser::max_pool);
     primitive(&mut registry, "box", deser::sum_pool);
-    dumper!(ops::cnn::SumPool, ser::sum_pool);
+    registry.register_dumper(ser::sum_pool);
 
     for frag in stdlib {
         if frag.body.is_some() {

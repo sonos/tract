@@ -1,10 +1,10 @@
 use crate::internal::*;
 use crate::ser::*;
-use tract_core::ops;
+use tract_core::ops::math::{ComplexToInnerDim, InnerDimToComplex};
 
 pub fn register(registry: &mut Registry) {
-    registry.register_dumper(TypeId::of::<ops::math::ComplexToInnerDim>(), ser_ctid);
-    registry.register_dumper(TypeId::of::<ops::math::InnerDimToComplex>(), ser_idtc);
+    registry.register_dumper(ser_ctid);
+    registry.register_dumper(ser_idtc);
     registry.register_primitive(
         "tract_core_complex_to_inner_dim",
         &[TypeName::Complex.tensor().named("input")],
@@ -19,7 +19,11 @@ pub fn register(registry: &mut Registry) {
     );
 }
 
-fn ser_ctid(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
+fn ser_ctid(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    _: &ComplexToInnerDim,
+) -> TractResult<Option<Arc<RValue>>> {
     let wire = ast.mapping[&node.inputs[0]].clone();
     Ok(Some(invocation("tract_core_complex_to_inner_dim", &[wire], &[])))
 }
@@ -29,7 +33,11 @@ fn de_ctid(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
     builder.wire(ops::math::ComplexToInnerDim, &[wire])
 }
 
-fn ser_idtc(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
+fn ser_idtc(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    _: &InnerDimToComplex,
+) -> TractResult<Option<Arc<RValue>>> {
     let wire = ast.mapping[&node.inputs[0]].clone();
     Ok(Some(invocation("tract_core_inner_dim_to_complex", &[wire], &[])))
 }

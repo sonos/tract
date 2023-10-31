@@ -1,10 +1,10 @@
-use std::{any::TypeId, sync::Arc};
+use std::sync::Arc;
 
 use crate::internal::*;
 use tract_core::ops::store::Store;
 
 pub fn register(registry: &mut Registry) {
-    registry.register_dumper(TypeId::of::<Store>(), ser_store);
+    registry.register_dumper(ser_store);
     registry.register_primitive(
         "tract_core_store",
         &[
@@ -17,8 +17,7 @@ pub fn register(registry: &mut Registry) {
     );
 }
 
-fn ser_store(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
-    let op = node.op().downcast_ref::<Store>().unwrap();
+fn ser_store(ast: &mut IntoAst, node: &TypedNode, op: &Store) -> TractResult<Option<Arc<RValue>>> {
     let wires: TVec<RValue> = node.inputs.iter().map(|it| (*ast.mapping[it]).clone()).collect();
     Ok(Some(invocation(
         "tract_core_store",

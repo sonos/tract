@@ -1,9 +1,9 @@
-use tract_core::ops::{self, submodel::SubmodelOp};
+use tract_core::ops::submodel::SubmodelOp;
 
 use crate::internal::*;
 
 pub fn register(registry: &mut Registry) {
-    registry.register_dumper(TypeId::of::<ops::submodel::SubmodelOp>(), ser_submodel);
+    registry.register_dumper(ser_submodel);
     registry.register_primitive(
         "tract_core_submodel",
         &[TypeName::Scalar.tensor().array().named("input"), TypeName::String.named("label")],
@@ -31,8 +31,11 @@ fn de_submodel(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> T
     builder.model.wire_node(label, op, &wires).map(Value::from)
 }
 
-fn ser_submodel(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
-    let op = node.op_as::<SubmodelOp>().unwrap();
+fn ser_submodel(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &SubmodelOp,
+) -> TractResult<Option<Arc<RValue>>> {
     let input = tvec![ast.mapping[&node.inputs[0]].clone()];
     let invoke = invocation("tract_core_submodel", &input, &[("label", string(op.label()))]);
     ast.resources.insert(op.label().to_string(), Arc::new(TypedModelResource(op.model().clone())));

@@ -21,11 +21,10 @@ pub fn register(registry: &mut Registry) {
         &[("output", TypeName::Scalar.tensor())],
         deser,
     );
-    registry.register_dumper(TypeId::of::<PulsePad>(), ser)
+    registry.register_dumper(ser)
 }
 
-fn ser(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
-    let op = node.op_as::<PulsePad>().unwrap();
+fn ser(ast: &mut IntoAst, node: &TypedNode, op: &PulsePad) -> TractResult<Option<Arc<RValue>>> {
     let wire = ast.mapping[&node.inputs[0]].clone();
     let dt = ast.model.outlet_fact(node.inputs[0])?.datum_type;
     let (border, value) = tract_nnef::ops::nnef::ser::pad_mode(&op.mode, dt)?;
