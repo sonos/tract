@@ -2,7 +2,7 @@ use crate::internal::*;
 use tract_core::ops::fft::{Fft, Stft};
 
 pub fn register(registry: &mut Registry) {
-    registry.register_dumper(TypeId::of::<Fft>(), ser_fft);
+    registry.register_dumper(ser_fft);
     registry.register_primitive(
         "tract_core_fft",
         &[
@@ -13,7 +13,7 @@ pub fn register(registry: &mut Registry) {
         &[("output", TypeName::Scalar.tensor())],
         de_fft,
     );
-    registry.register_dumper(TypeId::of::<Stft>(), ser_stft);
+    registry.register_dumper(ser_stft);
     registry.register_primitive(
         "tract_core_stft",
         &[
@@ -28,9 +28,8 @@ pub fn register(registry: &mut Registry) {
     );
 }
 
-fn ser_fft(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
+fn ser_fft(ast: &mut IntoAst, node: &TypedNode, op: &Fft) -> TractResult<Option<Arc<RValue>>> {
     let input = ast.mapping[&node.inputs[0]].clone();
-    let op = node.op_as::<Fft>().context("wrong op")?;
     Ok(Some(invocation(
         "tract_core_fft",
         &[input],
@@ -46,9 +45,8 @@ fn de_fft(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractR
     builder.wire(op, &[input])
 }
 
-fn ser_stft(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
+fn ser_stft(ast: &mut IntoAst, node: &TypedNode, op: &Stft) -> TractResult<Option<Arc<RValue>>> {
     let input = ast.mapping[&node.inputs[0]].clone();
-    let op = node.op_as::<Stft>().context("wrong op")?;
     let mut named: TVec<(_, RValue)> = tvec![
         ("axis", numeric(op.axis)),
         ("frame", numeric(op.frame)),

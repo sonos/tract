@@ -12,7 +12,7 @@ pub fn register(registry: &mut Registry) {
         &[("output", TypeName::Integer.tensor())], 
         load
     );
-    registry.register_dumper(TypeId::of::<NonMaxSuppression>(), dump);
+    registry.register_dumper(dump);
 }
 
 #[derive(Copy, Clone, Debug, Hash)]
@@ -231,8 +231,7 @@ fn parameters() -> Vec<Parameter> {
     ]
 }
 
-fn dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
-    let op = node.op_as::<NonMaxSuppression>().context("wrong op")?;
+fn dump(ast: &mut IntoAst, node: &TypedNode, op: &NonMaxSuppression) -> TractResult<Option<Arc<RValue>>> {
     let boxes = ast.mapping[&node.inputs[0]].clone();
     let scores = ast.mapping[&node.inputs[1]].clone();
     let max_output_boxes_per_class = ast.mapping[&node.inputs[2]].clone();

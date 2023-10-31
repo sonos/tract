@@ -3,12 +3,11 @@ use crate::ast::Identifier;
 use crate::deser::Value;
 use crate::internal::*;
 use crate::ser::*;
-use tract_core::ops;
 use tract_core::ops::scan::*;
 use tract_itertools::Itertools;
 
 pub fn register(registry: &mut Registry) {
-    registry.register_dumper(TypeId::of::<ops::scan::Scan>(), ser_scan);
+    registry.register_dumper(ser_scan);
     registry.register_primitive(
         "tract_core_scan",
         &[
@@ -50,8 +49,7 @@ pub fn register(registry: &mut Registry) {
     );
 }
 
-fn ser_scan(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
-    let op = node.op().downcast_ref::<Scan>().unwrap();
+fn ser_scan(ast: &mut IntoAst, node: &TypedNode, op: &Scan) -> TractResult<Option<Arc<RValue>>> {
     let (mut body, body_tensors) = crate::ser::to_fragment_def(ast, &op.body)?;
     body.decl.id = Identifier(format!("scan_body_{}", ast.fragments.len()));
     let mut scan = vec![];

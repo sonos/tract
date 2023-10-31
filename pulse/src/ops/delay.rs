@@ -2,11 +2,10 @@ use crate::internal::*;
 use tract_pulse_opl::ops::Delay;
 
 pub fn register(registry: &mut Registry) {
-    registry.register_dumper(TypeId::of::<Delay>(), ser_delay)
+    registry.register_dumper(ser_delay)
 }
 
-fn ser_delay(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
-    let op = node.op().downcast_ref::<Delay>().unwrap();
+fn ser_delay(ast: &mut IntoAst, node: &TypedNode, op: &Delay) -> TractResult<Option<Arc<RValue>>> {
     let wire = ast.mapping[&node.inputs[0]].clone();
     Ok(Some(invocation(
         "tract_pulse_delay",

@@ -4,7 +4,7 @@ use crate::internal::*;
 use crate::ser::tdim;
 
 pub fn register(registry: &mut Registry) {
-    registry.register_dumper(TypeId::of::<DynSlice>(), ser);
+    registry.register_dumper(ser);
     registry.register_primitive(
         "tract_core_dyn_slice",
         &[
@@ -20,8 +20,7 @@ pub fn register(registry: &mut Registry) {
     );
 }
 
-pub fn ser(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
-    let op = node.op().downcast_ref::<DynSlice>().unwrap();
+pub fn ser(ast: &mut IntoAst, node: &TypedNode, op: &DynSlice) -> TractResult<Option<Arc<RValue>>> {
     let input = ast.mapping[&node.inputs[0]].clone();
     let start = ast.mapping[&node.inputs[1]].clone();
     let end = ast.mapping[&node.inputs[2]].clone();

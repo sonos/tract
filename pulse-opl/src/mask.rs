@@ -15,11 +15,10 @@ pub fn register(registry: &mut Registry) {
         &[("output", TypeName::Scalar.tensor())],
         deser,
     );
-    registry.register_dumper(TypeId::of::<PulseMask>(), ser)
+    registry.register_dumper(ser)
 }
 
-fn ser(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
-    let op = node.op_as::<PulseMask>().unwrap();
+fn ser(ast: &mut IntoAst, node: &TypedNode, op: &PulseMask) -> TractResult<Option<Arc<RValue>>> {
     let wire = ast.mapping[&node.inputs[0]].clone();
     let params = vec![
         ("axis", numeric(op.axis)),

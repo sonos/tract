@@ -16,8 +16,8 @@ pub fn register(registry: &mut Registry) {
         &[("output", TypeName::Scalar.tensor())],
         load_reverse_lookup,
     );
-    registry.register_dumper(TypeId::of::<DirectLookup>(), dump_direct_lookup);
-    registry.register_dumper(TypeId::of::<ReverseLookup>(), dump_reverse_lookup);
+    registry.register_dumper(dump_direct_lookup);
+    registry.register_dumper(dump_reverse_lookup);
 }
 
 #[derive(Clone, Debug, Hash)]
@@ -25,8 +25,6 @@ pub struct DirectLookup {
     values: Arc<Tensor>,
     fallback_value: Arc<Tensor>,
 }
-
-
 
 impl DirectLookup {
     pub fn new(values: Arc<Tensor>, fallback_value: Arc<Tensor>) -> TractResult<DirectLookup> {
@@ -75,7 +73,11 @@ impl TypedOp for DirectLookup {
         Ok(tvec!(self.values.datum_type().fact(inputs[0].shape.iter())))
     }
 
-    fn axes_mapping(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<AxesMapping> {
+    fn axes_mapping(
+        &self,
+        inputs: &[&TypedFact],
+        outputs: &[&TypedFact],
+    ) -> TractResult<AxesMapping> {
         AxesMapping::natural(inputs, outputs)
     }
 
@@ -98,8 +100,6 @@ pub struct ReverseLookup {
     index: HashMap<u64, SmallVec<[i32; 1]>>,
     fallback_value: i32,
 }
-
-
 
 impl ReverseLookup {
     pub fn new(keys: Arc<Tensor>, fallback_value: i32) -> TractResult<ReverseLookup> {
@@ -179,7 +179,11 @@ impl TypedOp for ReverseLookup {
         Ok(tvec!(i32::fact(inputs[0].shape.iter())))
     }
 
-    fn axes_mapping(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<AxesMapping> {
+    fn axes_mapping(
+        &self,
+        inputs: &[&TypedFact],
+        outputs: &[&TypedFact],
+    ) -> TractResult<AxesMapping> {
         AxesMapping::natural(inputs, outputs)
     }
 
@@ -212,17 +216,23 @@ fn parameters_reverse_lookup() -> Vec<Parameter> {
     ]
 }
 
-fn dump_direct_lookup(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
+fn dump_direct_lookup(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &DirectLookup,
+) -> TractResult<Option<Arc<RValue>>> {
     let input = ast.mapping[&node.inputs[0]].clone();
-    let op = node.op_as::<DirectLookup>().context("wrong op")?;
     let keys = ast.konst_variable(format!("{}.values", node.name), &op.values)?;
     let fallback = ast.konst_variable(format!("{}.fallback", node.name), &op.fallback_value)?;
     Ok(Some(invocation("tract_onnx_ml_direct_lookup", &[input, keys, fallback], &[])))
 }
 
-fn dump_reverse_lookup(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
+fn dump_reverse_lookup(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &ReverseLookup,
+) -> TractResult<Option<Arc<RValue>>> {
     let input = ast.mapping[&node.inputs[0]].clone();
-    let op = node.op_as::<ReverseLookup>().context("wrong op")?;
     let values = ast.konst_variable(format!("{}.keys", node.name), &op.keys)?;
     Ok(Some(invocation(
         "tract_onnx_ml_reverse_lookup",

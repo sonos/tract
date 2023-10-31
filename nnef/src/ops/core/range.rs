@@ -3,7 +3,7 @@ use crate::ser::*;
 use tract_core::ops::array::Range;
 
 pub fn register(registry: &mut Registry) {
-    registry.register_dumper(TypeId::of::<Range>(), range_dump);
+    registry.register_dumper(range_dump);
     registry.register_primitive(
         "tract_core_range",
         &range_parameters(),
@@ -20,7 +20,7 @@ fn range_parameters() -> Vec<Parameter> {
     ]
 }
 
-fn range_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
+fn range_dump(ast: &mut IntoAst, node: &TypedNode, _: &Range) -> TractResult<Option<Arc<RValue>>> {
     let start = ast.mapping[&node.inputs[0]].clone();
     let end = ast.mapping[&node.inputs[1]].clone();
     let step = ast.mapping[&node.inputs[2]].clone();

@@ -72,8 +72,7 @@ pub fn parameters() -> Vec<Parameter> {
     ]
 }
 
-pub fn dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
-    let lrn = node.op_as::<Lrn>().unwrap();
+pub fn dump(ast: &mut IntoAst, node: &TypedNode, lrn: &Lrn) -> TractResult<Option<Arc<RValue>>> {
     let input = ast.mapping[&node.inputs[0]].clone();
     Ok(Some(invocation(
         "tract_onnx_lrn",
@@ -87,10 +86,7 @@ pub fn dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValu
     )))
 }
 
-pub fn load(
-    builder: &mut ModelBuilder,
-    invocation: &ResolvedInvocation,
-) -> TractResult<Value> {
+pub fn load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
     let alpha = invocation.named_arg_as(builder, "alpha")?;
     let beta = invocation.named_arg_as(builder, "beta")?;

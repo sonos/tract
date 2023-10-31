@@ -40,7 +40,7 @@ fn onnx_opl_registry() -> Registry {
         is_inf::load,
     );
     registry.register_unit_element_wise("tract_onnx_is_nan", &is_nan::IsNan {});
-    registry.register_dumper(TypeId::of::<lrn::Lrn>(), lrn::dump);
+    registry.register_dumper(lrn::dump);
     registry.register_primitive(
             "tract_onnx_lrn", 
             &lrn::parameters(), 

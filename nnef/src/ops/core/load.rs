@@ -1,10 +1,10 @@
-use std::{any::TypeId, sync::Arc};
+use std::sync::Arc;
 
 use crate::internal::*;
 use tract_core::ops::load::Load;
 
 pub fn register(registry: &mut Registry) {
-    registry.register_dumper(TypeId::of::<Load>(), ser_load);
+    registry.register_dumper(ser_load);
     registry.register_primitive(
         "tract_core_load",
         &[TypeName::Scalar.tensor().array().named("input"), TypeName::String.named("id")],
@@ -13,8 +13,7 @@ pub fn register(registry: &mut Registry) {
     );
 }
 
-fn ser_load(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
-    let op = node.op().downcast_ref::<Load>().unwrap();
+fn ser_load(ast: &mut IntoAst, node: &TypedNode, op: &Load) -> TractResult<Option<Arc<RValue>>> {
     let wire = ast.mapping[&node.inputs[0]].clone();
     Ok(Some(invocation("tract_core_load", &[wire], &[("id", string(op.id.clone()))])))
 }

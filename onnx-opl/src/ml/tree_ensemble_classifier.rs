@@ -3,12 +3,12 @@ use tract_nnef::internal::*;
 
 pub fn register(registry: &mut Registry) {
     registry.register_primitive(
-        "tract_onnx_ml_tree_ensemble_classifier", 
+        "tract_onnx_ml_tree_ensemble_classifier",
         &parameters(),
-        &[("output", TypeName::Scalar.tensor())], 
-        load
+        &[("output", TypeName::Scalar.tensor())],
+        load,
     );
-    registry.register_dumper(TypeId::of::<TreeEnsembleClassifier>(), dump);
+    registry.register_dumper(dump);
 }
 
 pub fn parse_aggregate(s: &str) -> TractResult<Aggregate> {
@@ -25,8 +25,6 @@ pub fn parse_aggregate(s: &str) -> TractResult<Aggregate> {
 pub struct TreeEnsembleClassifier {
     pub ensemble: TreeEnsemble,
 }
-
-
 
 impl Op for TreeEnsembleClassifier {
     fn name(&self) -> Cow<str> {
@@ -71,8 +69,11 @@ fn parameters() -> Vec<Parameter> {
     ]
 }
 
-fn dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
-    let op = node.op_as::<TreeEnsembleClassifier>().context("wrong op")?;
+fn dump(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &TreeEnsembleClassifier,
+) -> TractResult<Option<Arc<RValue>>> {
     let input = ast.mapping[&node.inputs[0]].clone();
     let trees = ast.konst_variable(format!("{}_trees", node.name), &op.ensemble.data.trees)?;
     let nodes = ast.konst_variable(format!("{}_nodes", node.name), &op.ensemble.data.nodes)?;
@@ -94,10 +95,7 @@ fn dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>>
     )))
 }
 
-fn load(
-    builder: &mut ModelBuilder,
-    invocation: &ResolvedInvocation,
-) -> TractResult<Value> {
+fn load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
     let trees = invocation.named_arg_as(builder, "trees")?;
     let nodes = invocation.named_arg_as(builder, "nodes")?;

@@ -3,12 +3,12 @@ use crate::ser::*;
 use tract_core::ops::array::OneHot;
 
 pub fn register(registry: &mut Registry) {
-    registry.register_dumper(TypeId::of::<OneHot>(), one_hot_dump);
+    registry.register_dumper(one_hot_dump);
     registry.register_primitive(
-        "tract_core_one_hot", 
+        "tract_core_one_hot",
         &one_hot_parameters(),
         &[("output", TypeName::Scalar.tensor())],
-         one_hot_load
+        one_hot_load,
     );
 }
 
@@ -22,17 +22,20 @@ pub fn one_hot_parameters() -> Vec<Parameter> {
     ]
 }
 
-pub fn one_hot_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
-    let one_hot = node.op_as::<OneHot>().unwrap();
+pub fn one_hot_dump(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &OneHot,
+) -> TractResult<Option<Arc<RValue>>> {
     let input = ast.mapping[&node.inputs[0]].clone();
     Ok(Some(invocation(
         "tract_core_one_hot",
         &[input],
         &[
-            ("axis", numeric(one_hot.axis)),
-            ("dim", numeric(one_hot.dim)),
-            ("value_off", numeric(one_hot.off.cast_to_scalar::<f32>()?)),
-            ("value_on", numeric(one_hot.on.cast_to_scalar::<f32>()?)),
+            ("axis", numeric(op.axis)),
+            ("dim", numeric(op.dim)),
+            ("value_off", numeric(op.off.cast_to_scalar::<f32>()?)),
+            ("value_on", numeric(op.on.cast_to_scalar::<f32>()?)),
         ],
     )))
 }

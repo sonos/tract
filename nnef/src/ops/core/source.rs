@@ -3,7 +3,7 @@ use crate::ser::*;
 use tract_core::ops::source::TypedSource;
 
 pub fn register(registry: &mut Registry) {
-    registry.register_dumper(TypeId::of::<TypedSource>(), external_dump);
+    registry.register_dumper(external_dump);
     registry.register_primitive(
         "tract_core_external",
         &external_parameters(),
@@ -12,8 +12,11 @@ pub fn register(registry: &mut Registry) {
     );
 }
 
-fn external_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
-    let op = node.op_as::<TypedSource>().unwrap();
+fn external_dump(
+    ast: &mut IntoAst,
+    _node: &TypedNode,
+    op: &TypedSource,
+) -> TractResult<Option<Arc<RValue>>> {
     for dim in op.fact.shape.iter() {
         for sym in dim.symbols() {
             ast.ensure_symbol(&sym)?;

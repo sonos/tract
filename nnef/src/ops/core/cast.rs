@@ -3,7 +3,7 @@ use crate::ser::*;
 use tract_core::ops::cast::Cast;
 
 pub fn register(registry: &mut Registry) {
-    registry.register_dumper(TypeId::of::<tract_core::ops::cast::Cast>(), cast_dump);
+    registry.register_dumper(cast_dump);
     registry.register_primitive(
         "tract_core_cast",
         &cast_parameters(),
@@ -16,8 +16,7 @@ fn cast_parameters() -> Vec<Parameter> {
     vec![TypeName::Scalar.tensor().named("input"), TypeName::String.named("to")]
 }
 
-fn cast_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
-    let op = node.op_as::<Cast>().unwrap();
+fn cast_dump(ast: &mut IntoAst, node: &TypedNode, op: &Cast) -> TractResult<Option<Arc<RValue>>> {
     let input = ast.mapping[&node.inputs[0]].clone();
     Ok(Some(invocation("tract_core_cast", &[input], &[("to", datum_type(op.to))])))
 }

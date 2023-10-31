@@ -11,6 +11,8 @@ use tract_core::ops::binary::*;
 
 pub type ToTract = fn(&mut ModelBuilder, &ResolvedInvocation) -> TractResult<Value>;
 pub type FromTract = fn(&mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>>;
+pub type FromTractWithOp<O> =
+    fn(&mut IntoAst, node: &TypedNode, op: &O) -> TractResult<Option<Arc<RValue>>>;
 pub type BinOp = (Identifier, Box<dyn BinMiniOp>);
 pub type Extension = Box<
     dyn Fn(&mut crate::deser::ModelBuilder, &[Identifier]) -> TractResult<ControlFlow<(), ()>>
@@ -45,7 +47,10 @@ pub struct Registry {
     pub unit_element_wise_ops: Vec<(Identifier, Box<dyn ElementWiseMiniOp>)>,
     pub element_wise_ops: Vec<(Identifier, TypeId, FromTract, Vec<ast::Parameter>, ToTract)>,
     pub binary_ops: Vec<BinOp>,
-    pub from_tract: HashMap<TypeId, FromTract>,
+    pub from_tract: HashMap<
+        TypeId,
+        Box<dyn Fn(&mut IntoAst, &TypedNode) -> TractResult<Option<Arc<RValue>>> + Send + Sync>,
+    >,
     pub extensions: Vec<Extension>,
 }
 
@@ -70,8 +75,14 @@ impl Registry {
         self
     }
 
-    pub fn register_dumper(&mut self, id: TypeId, func: FromTract) {
-        self.from_tract.insert(id, func);
+    pub fn register_dumper<O: TypedOp>(&mut self, dumper: FromTractWithOp<O>) {
+        self.from_tract.insert(
+            std::any::TypeId::of::<O>(),
+            Box::new(move |ast: &mut IntoAst, node: &TypedNode| {
+                let op = node.op_as::<O>().unwrap();
+                dumper(ast, node, op)
+            }),
+        );
     }
 
     pub fn register_primitive(
@@ -90,9 +101,7 @@ impl Registry {
         };
         let primitive_decl = PrimitiveDecl { decl, docstrings: None, to_tract: func };
         self.primitives.insert(id.clone(), primitive_decl);
-        self.primitives
-            .get_mut(&id)
-            .expect("Unexpected empty entry in primitives hashmap")
+        self.primitives.get_mut(&id).expect("Unexpected empty entry in primitives hashmap")
     }
 
     pub fn register_fragment(&mut self, def: FragmentDef) {

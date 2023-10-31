@@ -9,8 +9,8 @@ pub fn register(registry: &mut Registry) {
                 pub fn ser_gather(
                     ast: &mut IntoAst,
                     node: &TypedNode,
+                    op: &$GatherOp,
                 ) -> TractResult<Option<Arc<RValue>>> {
-                    let op = node.op().downcast_ref::<$GatherOp>().unwrap();
                     let wire = ast.mapping[&node.inputs[0]].clone();
                     let indices = ast.mapping[&node.inputs[1]].clone();
                     Ok(Some(invocation(
@@ -30,7 +30,7 @@ pub fn register(registry: &mut Registry) {
                     builder.wire((<$GatherOp>::new(value)), &[wire, indices])
                 }
             }
-            registry.register_dumper(TypeId::of::<$GatherOp>(), $name::ser_gather);
+            registry.register_dumper($name::ser_gather);
             registry.register_primitive(
                 concat!("tract_core_", stringify!($name)),
                 &[
