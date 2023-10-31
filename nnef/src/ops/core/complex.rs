@@ -30,7 +30,7 @@ fn ser_ctid(
 
 fn de_ctid(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let wire = invocation.named_arg_as(builder, "input")?;
-    builder.wire(ops::math::ComplexToInnerDim, &[wire])
+    builder.wire(ComplexToInnerDim, &[wire])
 }
 
 fn ser_idtc(
@@ -44,5 +44,5 @@ fn ser_idtc(
 
 fn de_idtc(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let wire = invocation.named_arg_as(builder, "input")?;
-    builder.wire(ops::math::InnerDimToComplex, &[wire])
+    builder.wire(InnerDimToComplex, &[wire])
 }
