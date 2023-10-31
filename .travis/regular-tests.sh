@@ -45,6 +45,19 @@ fi
 
 export CACHEDIR
 
+cargo check --all-targets
+
+# useful as debug_asserts will come into play
+cargo -q test -q -p tract-core --features paranoid_assertions
+cargo -q test -q -p test-onnx-core
+cargo -q test -q -p test-onnx-nnef-cycle
+
+cargo check -p tract-nnef --features complex
+cargo check -p tract-tflite
+cargo check -p tract --no-default-features
+
+
+
 if [ `arch` = "x86_64" -a "$RUST_VERSION" = "stable" ]
 then
     ALL_FEATURES=--all-features
