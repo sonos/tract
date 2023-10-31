@@ -9,7 +9,7 @@ edition = "2021"
 
 [dependencies]
 
-tract-core = { path = "../../core", version = "=0.20.21-pre" }
-tract-onnx = { path = "../../onnx", version = "=0.20.21-pre" }
+tract-core = { path = "../../core", version = "=0.20.21" }
+tract-onnx = { path = "../../onnx", version = "=0.20.21" }
 ndarray-npy.workspace = true
 
