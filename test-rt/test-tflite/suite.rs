@@ -128,18 +128,23 @@ fn skip_onnx(t: &[String]) -> bool {
 
 fn ignore_unit(t: &[String]) -> bool {
     let [section, unit] = t else { return false };
-    ["deconv"].contains(&&**section)
-        // grouping and depthwise
-        || unit.starts_with("group")
-            // conv 3D
-            || unit == "lazy_im2col_big"
-            || unit == "lazy_im2col_big_2"
-            || unit == "batch_3d"
-            || unit == "bias_3d_1"
-            // kernel with non 0 zero_point
-            || unit == "kernel_zp"
-            || unit == "a0_b0_0"
-            // tflite does not saturate before truncating
-            || unit == "i8_u8_sat_0"
-            || unit == "i8_u8_weird"
+    let unit_exclude_patterns = patterns(
+        "
+            # grouping and depthwise
+            group.*
+            lazy_im2col_big
+            lazy_im2col_big_2
+            batch_3d
+            bias_3d_1
+
+            # kernel with non 0 zero_point
+            kernel_zp
+            a0_b0_0
+
+            # tflite does not support mixed type convolution
+            i8_u8.*
+            u8_i8.*
+        "
+    );
+    ["deconv"].contains(&&**section) || unit_exclude_patterns.iter().any(|pat| pat.is_match(unit))
 }
