@@ -26,17 +26,8 @@ then
     sysctl -n machdep.cpu.brand_string
     brew install coreutils
 else
-    sudo apt-get install -y llvm
+    sudo apt-get install -y llvm python3 python3-numpy
 fi
-
-# if [ `uname` = "Linux" -a -z "$TRAVIS" ]
-# then
-#     apt-get update
-#     apt-get -y upgrade
-#     apt-get install -y unzip wget curl python awscli build-essential git pkg-config libssl-dev
-#     cargo --version || ( curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y )
-# fi
-
 
 if [ -z "$CACHEDIR" ]
 then
