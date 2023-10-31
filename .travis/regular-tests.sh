@@ -25,6 +25,7 @@ if [ `uname` = "Darwin" ]
 then
     sysctl -n machdep.cpu.brand_string
     brew install coreutils
+    pip install numpy
 else
     sudo apt-get install -y llvm python3 python3-numpy
 fi
