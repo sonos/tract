@@ -9,6 +9,7 @@ edition = "2021"
 lazy_static.workspace = true
 regex.workspace = true
 infra = { path = "../infra" }
+tract-core = { path = "../../core" }
 suite-onnx = { path = "../suite-onnx" }
 suite-unit = { path = "../suite-unit" }
 
@@ -17,6 +18,7 @@ regex.workspace = true
 lazy_static.workspace = true
 log.workspace = true
 tflitec.workspace = true
+tract-core = { path = "../../core", version = "=0.20.22-pre" }
 tract-tflite = { path = "../../tflite", version = "=0.20.22-pre" }
 tract-onnx-opl = { path = "../../onnx-opl", version = "=0.20.22-pre" }
 infra = { path = "../infra" }

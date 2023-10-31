@@ -2,6 +2,7 @@ use infra::Test;
 use regex::Regex;
 use suite_unit::conv_f32::{ConvProblem, ConvProblemParams};
 use suite_unit::conv_q::{QConvProblem, QConvProblemParams};
+use tract_core::internal::*;
 
 pub fn suite() -> &'static infra::TestSuite {
     lazy_static::lazy_static! {
@@ -20,7 +21,7 @@ fn mk_suite() -> infra::TestSuite {
     let cv =
         ConvProblemParams { no_group: true, geo_rank: Some(1..3), ..ConvProblemParams::default() };
     unit.get_sub_mut("conv_f32").add_arbitrary::<ConvProblem>("proptest", cv.clone());
-    unit.get_sub_mut("conv_q").add_arbitrary::<QConvProblem>(
+    unit.get_sub_mut("conv_q").add_arbitrary_with_filter::<QConvProblem>(
         "proptest",
         QConvProblemParams {
             conv: cv,
@@ -28,6 +29,7 @@ fn mk_suite() -> infra::TestSuite {
             tflite_rules: true,
             ..QConvProblemParams::default()
         },
+        compatible_conv_q,
     );
     infra::TestSuite::default().with("onnx", onnx).with("unit", unit)
 }
@@ -128,34 +130,45 @@ fn skip_onnx(t: &[String]) -> bool {
 }
 
 fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
-    if let Some(qcp) = case.downcast_ref::<QConvProblem>() {
-        if !is_tflite_compatible(qcp) {
-            return true
+    if let Some(cp) = case.downcast_ref::<ConvProblem>() {
+        if !compatible_conv_f32(cp) {
+            return true;
         }
     }
-    let [section, unit] = t else { return false };
-    let unit_exclude_patterns = patterns(
-        "
-            # grouping and depthwise
-            group.*
-            lazy_im2col_big
-            lazy_im2col_big_2
-            batch_3d
-            bias_3d_1
-
-            # kernel with non 0 zero_point
-            kernel_zp
-            a0_b0_0
-
-            # tflite does not support mixed type convolution
-            i8_u8.*
-            u8_i8.*
-        ",
-    );
-    ["deconv"].contains(&&**section) || unit_exclude_patterns.iter().any(|pat| pat.is_match(unit))
+    if let Some(qcp) = case.downcast_ref::<QConvProblem>() {
+        if !compatible_conv_q(qcp) {
+            return true;
+        }
+    }
+    let [section, _unit] = t else { return false };
+    ["deconv"].contains(&&**section)
 }
 
-fn is_tflite_compatible(qcp: &QConvProblem) -> bool {
-    false
+fn compatible_conv_f32(qcp: &ConvProblem) -> bool {
+    qcp.group == 1 && qcp.kernel.ndim() == 4
 }
 
+fn compatible_conv_q(qcp: &QConvProblem) -> bool {
+    if qcp.group != 1 {
+        return false;
+    }
+    let idt = qcp.data.datum_type();
+    let kdt = qcp.kernel.datum_type();
+    // all u8 and per-layer
+    if idt.unquantized() == u8::datum_type()
+        && kdt.unquantized() == u8::datum_type()
+        && qcp.qp.iter().all(|qp| qp.is_uniform())
+    {
+        return true;
+    }
+    // all i8 and no zero_point
+    if idt.unquantized() == i8::datum_type()
+        && kdt.unquantized() == i8::datum_type()
+        && qcp.qp[0].is_zero().unwrap()
+        && qcp.qp[2].is_zero().unwrap()
+        && qcp.qp[4].is_zero().unwrap()
+    {
+        return true;
+    }
+    return false;
+}
