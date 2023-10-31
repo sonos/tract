@@ -18,7 +18,7 @@ pub(crate) fn wire_offset_u8_as_i8(
 ) -> TractResult<OutletId> {
     let fact = model.outlet_fact(matrix)?;
     if let DatumType::U8 = fact.datum_type.unquantized() {
-        match dbg!(model.outlet_fact(*zero_point)?.datum_type.unquantized()) {
+        match model.outlet_fact(*zero_point)?.datum_type.unquantized() {
             DatumType::U8 => {
                 *zero_point = model.wire_node(
                     format!("{model_name}.offset_{zero_point_name}_as_i8"),

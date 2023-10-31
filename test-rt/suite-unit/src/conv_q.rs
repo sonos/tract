@@ -125,41 +125,19 @@ impl QConvProblem {
         let n = *self.shape_in.n().unwrap_or(&1);
         let ci_per_g = self.shape_in.c() / self.group;
         let co_per_g = self.co / self.group;
-        let a0 = self.qp[0].cast_to_scalar::<i32>().unwrap();
-        let b0 = self.qp[2].cast_to_scalar::<i32>().unwrap();
-        let c0 = self.qp[4].cast_to_scalar::<i32>().unwrap();
+        let a0 = *self.qp[0].to_scalar::<i32>().unwrap();
+        let b0 = *self.qp[2].to_scalar::<i32>().unwrap();
+        let c0 = *self.qp[4].to_scalar::<i32>().unwrap();
         let b_scale = self.qp[3].cast_to_scalar::<f32>().unwrap();
         let c_scale = self.qp[5].cast_to_scalar::<f32>().unwrap();
-        assert!(
-            a0 <= self
-                .kernel
-                .datum_type()
-                .unquantized()
-                .max_value()
-                .cast_to_scalar::<i32>()
-                .unwrap()
-        );
-        assert!(
-            a0 >= self
-                .kernel
-                .datum_type()
-                .unquantized()
-                .min_value()
-                .cast_to_scalar::<i32>()
-                .unwrap()
-        );
-        assert!(
-            b0 <= self.data.datum_type().unquantized().max_value().cast_to_scalar::<i32>().unwrap()
-        );
-        assert!(
-            b0 >= self.data.datum_type().unquantized().min_value().cast_to_scalar::<i32>().unwrap()
-        );
-        assert!(
-            c0 <= self.data.datum_type().unquantized().max_value().cast_to_scalar::<i32>().unwrap()
-        );
-        assert!(
-            c0 >= self.data.datum_type().unquantized().min_value().cast_to_scalar::<i32>().unwrap()
-        );
+        let kdt = self.kernel.datum_type();
+        let idt = self.data.datum_type();
+        assert!(a0 <= kdt.unquantized().max_value().cast_to_scalar::<i32>().unwrap());
+        assert!(a0 >= kdt.unquantized().min_value().cast_to_scalar::<i32>().unwrap());
+        assert!(b0 <= idt.unquantized().max_value().cast_to_scalar::<i32>().unwrap());
+        assert!(b0 >= idt.unquantized().min_value().cast_to_scalar::<i32>().unwrap());
+        assert!(c0 <= idt.unquantized().max_value().cast_to_scalar::<i32>().unwrap());
+        assert!(c0 >= idt.unquantized().min_value().cast_to_scalar::<i32>().unwrap());
         let shape_out: TVec<usize> = izip!(self.shape_in.hw_dims(), self.geo_ker())
             .map(|(i, k)| (*i + 1).saturating_sub(*k))
             .collect();
@@ -394,7 +372,7 @@ impl Arbitrary for QConvProblem {
 }
 
 fn qp_noop_i8() -> [Tensor; 6] {
-    [tensor0(0i8), tensor0(1f32), tensor0(0i8), tensor0(1f32), tensor0(0i8), tensor0(1f32)]
+    [tensor0(0i32), tensor0(1f32), tensor0(0i32), tensor0(1f32), tensor0(0i32), tensor0(1f32)]
 }
 
 pub fn suite() -> TractResult<TestSuite> {
@@ -456,7 +434,7 @@ pub fn suite() -> TractResult<TestSuite> {
     );
     let mut qp = qp_noop_i8();
     qp[1] = tensor1(&[1f32, 0.5]);
-    qp[2] = tensor0(-2i8);
+    qp[2] = tensor0(-2i32);
     suite.add(
         "scale_per_channel_0",
         QConvProblem {
@@ -757,7 +735,7 @@ pub fn suite() -> TractResult<TestSuite> {
     );
 
     let mut qp = qp_noop_i8();
-    qp[2] = tensor0(-1);
+    qp[2] = tensor0(-1i32);
     let mut kernel = Tensor::zero::<i8>(&[5, 1, 2]).unwrap();
     *kernel.as_slice_mut::<i8>().unwrap().last_mut().unwrap() = -1;
     suite.add(
@@ -1013,7 +991,24 @@ pub fn suite() -> TractResult<TestSuite> {
     qp[2] = tensor0(1i32);
     qp[4] = tensor0(2i32);
     suite.add(
-        "i8_u8_weird",
+        "i8_u8_weird_0",
+        QConvProblem {
+            shape_in: CHW.from_n_c_hw(1, 1, [1]).unwrap(),
+            co: 1,
+            kernel_format: OIHW,
+            group: 1,
+            kernel: tensor3(&[[[-1i8]]]),
+            bias: None,
+            data: tensor2(&[[0u8]]),
+            qp,
+        },
+    );
+    let mut qp = qp_noop_i8();
+    qp[1] = tensor0(2f32);
+    qp[2] = tensor0(1i32);
+    qp[3] = tensor0(4f32);
+    suite.add(
+        "i8_u8_scales_0",
         QConvProblem {
             shape_in: CHW.from_n_c_hw(1, 1, [1]).unwrap(),
             co: 1,
