@@ -2,6 +2,7 @@
 use std::collections::HashMap;
 use std::io::Write;
 
+use downcast_rs::Downcast;
 use dyn_clone::DynClone;
 use itertools::Itertools;
 use proptest::prelude::{any_with, Arbitrary};
@@ -16,14 +17,14 @@ pub fn setup_test_logger() {
 
 pub type TestResult = anyhow::Result<()>;
 
-pub trait Test: 'static + Send + Sync + DynClone {
+pub trait Test: Downcast + 'static + Send + Sync + DynClone {
     fn run(&self, id: &str, runtime: &dyn Runtime) -> TestResult {
         self.run_with_approx(id, runtime, Approximation::Close)
     }
     fn run_with_approx(&self, id: &str, runtime: &dyn Runtime, approx: Approximation)
         -> TestResult;
 }
-
+downcast_rs::impl_downcast!(Test);
 dyn_clone::clone_trait_object!(Test);
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
@@ -129,17 +130,21 @@ impl TestSuite {
         }
     }
 
-    fn ignore_rec(&mut self, prefix: &mut Vec<String>, ign: &dyn Fn(&[String]) -> bool) {
+    fn ignore_rec(
+        &mut self,
+        prefix: &mut Vec<String>,
+        ignore: &dyn Fn(&[String], &dyn Test) -> bool,
+    ) {
         match self {
             TestSuite::Node(n) => {
                 for (id, test) in n.iter_mut().sorted_by_key(|(k, _)| k.to_owned()) {
                     prefix.push(id.to_owned());
-                    test.ignore_rec(prefix, ign);
+                    test.ignore_rec(prefix, ignore);
                     prefix.pop();
                 }
             }
-            TestSuite::Leaf(_, run) => {
-                if *run == TestStatus::OK && ign(&*prefix) {
+            TestSuite::Leaf(case, run) => {
+                if *run == TestStatus::OK && ignore(prefix, &**case) {
                     *run = TestStatus::Ignored
                 }
             }
@@ -147,6 +152,10 @@ impl TestSuite {
     }
 
     pub fn ignore(&mut self, ign: &dyn Fn(&[String]) -> bool) {
+        self.ignore_rec(&mut vec![], &|name, _| ign(name))
+    }
+
+    pub fn ignore_case(&mut self, ign: &dyn Fn(&[String], &dyn Test) -> bool) {
         self.ignore_rec(&mut vec![], ign)
     }
 

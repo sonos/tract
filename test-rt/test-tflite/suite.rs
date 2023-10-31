@@ -1,3 +1,4 @@
+use infra::Test;
 use regex::Regex;
 use suite_unit::conv_f32::{ConvProblem, ConvProblemParams};
 use suite_unit::conv_q::{QConvProblem, QConvProblemParams};
@@ -15,7 +16,7 @@ fn mk_suite() -> infra::TestSuite {
     onnx.ignore(&ignore_onnx);
     onnx.skip(&skip_onnx);
     let mut unit = suite_unit::suite().unwrap().clone();
-    unit.ignore(&ignore_unit);
+    unit.ignore_case(&ignore_unit);
     let cv =
         ConvProblemParams { no_group: true, geo_rank: Some(1..3), ..ConvProblemParams::default() };
     unit.get_sub_mut("conv_f32").add_arbitrary::<ConvProblem>("proptest", cv.clone());
@@ -126,7 +127,12 @@ fn skip_onnx(t: &[String]) -> bool {
     excluded.split_whitespace().any(|s| s == name)
 }
 
-fn ignore_unit(t: &[String]) -> bool {
+fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
+    if let Some(qcp) = case.downcast_ref::<QConvProblem>() {
+        if !is_tflite_compatible(qcp) {
+            return true
+        }
+    }
     let [section, unit] = t else { return false };
     let unit_exclude_patterns = patterns(
         "
@@ -144,7 +150,12 @@ fn ignore_unit(t: &[String]) -> bool {
             # tflite does not support mixed type convolution
             i8_u8.*
             u8_i8.*
-        "
+        ",
     );
     ["deconv"].contains(&&**section) || unit_exclude_patterns.iter().any(|pat| pat.is_match(unit))
 }
+
+fn is_tflite_compatible(qcp: &QConvProblem) -> bool {
+    false
+}
+
