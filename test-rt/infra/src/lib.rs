@@ -1,11 +1,14 @@
 #![allow(clippy::len_zero)]
+use core::fmt;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::io::Write;
 
 use downcast_rs::Downcast;
 use dyn_clone::DynClone;
 use itertools::Itertools;
 use proptest::prelude::{any_with, Arbitrary};
+use proptest::strategy::Strategy;
 use proptest::test_runner::{Config, FileFailurePersistence, TestRunner};
 use tract_core::internal::Approximation;
 use tract_core::runtime::Runtime;
@@ -68,9 +71,20 @@ impl TestSuite {
         id: impl ToString,
         params: A::Parameters,
     ) where
-        A::Parameters: Clone + Send + Sync,
+        A::Parameters: Clone + Send + Sync + Debug,
     {
-        self.add(id, ProptestWrapper::<A>(params));
+        self.add(id, ProptestWrapper::<A>(params, |_| true));
+    }
+
+     pub fn add_arbitrary_with_filter<A: Arbitrary + Test + Clone>(
+        &mut self,
+        id: impl ToString,
+        params: A::Parameters,
+        filter: fn(&A) -> bool,
+    ) where
+        A::Parameters: Clone + Send + Sync + Debug,
+    {
+        self.add(id, ProptestWrapper::<A>(params, filter));
     }
 
     pub fn with(mut self, id: impl ToString, test: impl Into<TestSuite>) -> Self {
@@ -234,14 +248,48 @@ impl TestSuite {
     }
 }
 
-#[derive(Clone, Debug)]
-struct ProptestWrapper<A: Arbitrary + Test + Clone>(A::Parameters)
+/*
+trait TestFilter<A>: DynClone + Send + Sync {
+    fn filter(&self, a: &A) -> bool;
+}
+dyn_clone::clone_trait_object!(<A> TestFilter<A>);
+
+#[derive(Clone)]
+struct AcceptAllFilter;
+
+impl<A> TestFilter<A> for AcceptAllFilter {
+    fn filter(&self, _a: &A) -> bool {
+        true
+    }
+}
+
+#[derive(Clone)]
+struct FilterWrapper<A, F>(F);
+
+impl<A: Clone, F: Clone> TestFilter<A> for FilterWrapper<A, F> {
+    fn filter(&self, a: &A) -> bool {
+        (self.0)(a)
+    }
+}
+*/
+
+#[derive(Clone)]
+struct ProptestWrapper<A: Arbitrary + Test + Clone>(A::Parameters, fn(&A) -> bool)
 where
-    A::Parameters: Clone + Send + Sync;
+    A::Parameters: Clone + Send + Sync + Debug;
+
+impl<A: Arbitrary + Test + Clone + Send + Sync> Debug for ProptestWrapper<A>
+where
+    A::Parameters: Clone + Send + Sync + Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.0)
+    }
+}
 
 impl<A: Arbitrary + Test + Clone> Test for ProptestWrapper<A>
 where
-    A::Parameters: Clone + Send + Sync,
+    A::Parameters: Clone + Send + Sync + Debug,
 {
     fn run_with_approx(
         &self,
@@ -253,10 +301,14 @@ where
             failure_persistence: Some(Box::new(FileFailurePersistence::Off)),
             ..Config::default()
         });
-        runner.run(&any_with::<A>(self.0.clone()), |v| {
-            v.run_with_approx(id, runtime, approx)
-                .map_err(|e| proptest::test_runner::TestCaseError::Fail(format!("{e:?}").into()))
-        })?;
+        runner.run(
+            &any_with::<A>(self.0.clone()).prop_filter("Test case filter", |a| self.1(a)),
+            |v| {
+                v.run_with_approx(id, runtime, approx).map_err(|e| {
+                    proptest::test_runner::TestCaseError::Fail(format!("{e:?}").into())
+                })
+            },
+        )?;
         Ok(())
     }
 }
