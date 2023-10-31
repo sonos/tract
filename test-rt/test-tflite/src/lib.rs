@@ -22,7 +22,7 @@ mod tflite_predump {
 
         fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
             let mut model = model.clone();
-            tract_tflite::rewriter::rewrite_for_tflite(&mut model)?;
+            tract_tflite::rewriter::rewrite_for_tflite(&mut model).context("Preparing model")?;
             Ok(Box::new(Arc::new(model.into_runnable()?)))
         }
     }

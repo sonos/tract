@@ -808,6 +808,14 @@ impl TypedOp for ConvUnary {
         if inputs.len() != 1 + q_inputs {
             bail!("Wrong number of inputs: expected {} got {}", 1 + q_inputs, inputs.len());
         }
+        if self.q_params.is_some() {
+            ensure!(inputs[1].datum_type == i32::datum_type());
+            ensure!(inputs[2].datum_type == f32::datum_type());
+            ensure!(inputs[3].datum_type == i32::datum_type());
+            ensure!(inputs[4].datum_type == f32::datum_type());
+            ensure!(inputs[5].datum_type == i32::datum_type());
+            ensure!(inputs[6].datum_type == f32::datum_type());
+        }
         ensure!(self.pool_spec.rank() == self.kernel.rank() - 2);
         if self.pool_spec.data_format.shape(&*inputs[0].shape)?.c()
             != &self.input_channels().to_dim()
