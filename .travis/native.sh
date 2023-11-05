@@ -4,6 +4,7 @@ set -ex
 
 rustup update
 
+cargo check --all-targets
 ./.travis/regular-tests.sh
 
 if [ -n "$CI" ]
