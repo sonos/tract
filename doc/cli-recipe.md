@@ -4,7 +4,7 @@
 interactive usage.
 
 Please do not make assumptions on the exact forms of its outputs. We do not commit on
-any form of stability suitable to script writting.
+any form of stability suitable to script writing.
 
 We are going to use [ONNX mobilenet](../examples/onnx-mobilenet-v2) as examples in these notes. See its
 code and README to download a the model.
