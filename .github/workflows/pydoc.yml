@@ -31,9 +31,9 @@ jobs:
           version=${{steps.version.outputs.value}}
           if [ -n "$version" ]
           then
-            mike deploy --rebase $version
+            mike deploy $version
           else
-            mike deploy --rebase 0.20.dev
+            mike deploy 0.20.dev
           fi
           git fetch
           git rebase --onto origin/gh-pages gh-pages
