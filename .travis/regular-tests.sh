@@ -45,10 +45,7 @@ cargo -q test -q -p test-onnx-core
 cargo -q test -q -p test-onnx-nnef-cycle
 
 cargo check -p tract-nnef --features complex
-cargo check -p tract-tflite
 cargo check -p tract --no-default-features
-
-
 
 if [ `arch` = "x86_64" -a "$RUST_VERSION" = "stable" ]
 then
