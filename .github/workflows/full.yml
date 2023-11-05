@@ -135,6 +135,14 @@ jobs:
         #     - name: Stop sccache server
         #       run: sccache --stop-server || true
 
+  tflite:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Full test
+      run: .travis/tflite.sh
+
   onnx-with-asserts:
     runs-on: ubuntu-latest
 
