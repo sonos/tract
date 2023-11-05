@@ -37,8 +37,6 @@ fi
 
 export CACHEDIR
 
-cargo check --all-targets
-
 # useful as debug_asserts will come into play
 cargo -q test -q -p tract-core --features paranoid_assertions
 cargo -q test -q -p test-onnx-core
