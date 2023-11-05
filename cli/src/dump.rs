@@ -165,7 +165,7 @@ pub fn handle(
             let file = std::fs::File::create(path)?;
             let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
             nnef.write_to_tar_with_config(&typed, encoder, compress_submodels)
-                .context("Writting model to tgz")?;
+                .context("Writing model to tgz")?;
         } else {
             bail!("Only typed model can be dumped")
         }
@@ -177,7 +177,7 @@ pub fn handle(
             rename_outputs(&mut typed, sub_matches)?;
             let file = std::fs::File::create(path)?;
             nnef.write_to_tar_with_config(&typed, file, compress_submodels)
-                .context("Writting model to tar")?;
+                .context("Writing model to tar")?;
         } else {
             bail!("Only typed model can be dumped")
         }
@@ -227,7 +227,7 @@ pub fn handle(
             rename_outputs(&mut typed, sub_matches)?;
             let file = std::fs::File::create(path)?;
             tflite.write(&typed, file)
-                .context("Writting model to tflite")?;
+                .context("Writing model to tflite")?;
         } else {
             bail!("Only typed model can be dumped")
         }
