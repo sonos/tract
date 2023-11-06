@@ -198,7 +198,7 @@ impl<'a> ParsingContext<'a> {
         for info in &graph.value_info {
             if let Some(TypeProto { value: Some(Value::TensorType(t)), .. }) = &info.r#type {
                 if let Some(outlet) = outlets_by_name.get(&info.name) {
-                    model.set_outlet_fact(*outlet, translate_inference_fact(&ctx, t)?.without_datum_type())?;
+                    model.set_outlet_fact(*outlet, translate_inference_fact(&ctx, t)?)?;
                 }
             }
         }
