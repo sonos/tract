@@ -164,7 +164,7 @@ easy to get the right version for tract conversion to work.
 Finally we grab the single Tensor output by the plan execution, convert it to a
 ndarray ArrayView of f32 values. It is a single dimension (a vector...) of 1001
 category scores (1000 labels plus the dummy one). We need pick the maximum
-score, with its index, and diplay it...
+score, with its index, and display it...
 
 ```rust
     let best = result[0]
