@@ -155,7 +155,8 @@ pub trait ModelInterface: Sized {
         values: impl IntoIterator<Item = (impl AsRef<str>, i64)>,
     ) -> Result<()>;
 
-    fn half(&mut self) -> Result<()>;
+    fn half_from_f32(&mut self) -> Result<()>;
+    fn half_to_f32(&mut self) -> Result<()>;
 
     fn pulse(&mut self, name: impl AsRef<str>, value: impl AsRef<str>) -> Result<()>;
 

@@ -3,6 +3,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use half::f16;
 use ndarray::{Data, Dimension, RawData};
 use tract_extra::WithTractExtra;
 use tract_libcli::annotations::Annotations;
