@@ -337,8 +337,13 @@ impl ModelInterface for Model {
         Ok(())
     }
 
-    fn half(&mut self) -> Result<()> {
-        check!(sys::tract_model_half(self.0))?;
+    fn half_from_f32(&mut self) -> Result<()> {
+        check!(sys::tract_model_half_from_f32(self.0))?;
+        Ok(())
+    }
+
+    fn half_to_f32(&mut self) -> Result<()> {
+        check!(sys::tract_model_half_to_f32(self.0))?;
         Ok(())
     }
 

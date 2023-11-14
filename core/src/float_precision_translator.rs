@@ -24,6 +24,12 @@ impl<T1: Datum + Float, T2: Datum + Float> FloatPrecisionTranslator<T1, T2> {
     }
 }
 
+impl<T1: Datum + Float, T2: Datum + Float> Default for FloatPrecisionTranslator<T1, T2> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T1: Datum + Float, T2: Datum + Float>
     Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>>
     for FloatPrecisionTranslator<T1, T2>
