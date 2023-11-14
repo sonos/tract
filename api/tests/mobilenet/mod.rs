@@ -179,15 +179,35 @@ fn test_pulse() -> anyhow::Result<()> {
 }
 
 #[test]
-fn test_half() -> anyhow::Result<()> {
+fn test_half_from_f32() -> anyhow::Result<()> {
     ensure_models()?;
     let mut model = onnx()?.model_for_path("mobilenetv2-7.onnx")?;
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.analyse()?;
     let mut typed = model.into_typed()?.into_decluttered()?;
-    typed.half()?;
+    typed.half_from_f32()?;
     assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F16");
     assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,F16");
+    Ok(())
+}
+
+#[test]
+fn test_half_to_f32() -> anyhow::Result<()> {
+    ensure_models()?;
+    let mut model = onnx()?.model_for_path("mobilenetv2-7.onnx")?;
+    model.set_input_fact(0, "B,3,224,224,f32")?;
+    model.analyse()?;
+    let mut typed = model.into_typed()?.into_decluttered()?;
+    
+    // Convert model to half
+    typed.half_from_f32()?;
+    assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F16");
+    assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,F16");
+
+    // Convert back to f32
+    typed.half_to_f32()?;
+    assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F32");
+    assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,F32");
     Ok(())
 }
 

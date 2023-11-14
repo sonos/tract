@@ -676,10 +676,19 @@ pub unsafe extern "C" fn tract_model_pulse_simple(
 
 /// Convert the model from single precision to half precision.
 #[no_mangle]
-pub unsafe extern "C" fn tract_model_half(model: *mut TractModel) -> TRACT_RESULT {
+pub unsafe extern "C" fn tract_model_half_from_f32(model: *mut TractModel) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(model);
-        (*model).0.half()
+        (*model).0.half_from_f32()
+    })
+}
+
+/// Convert the model from half precision to single precision.
+#[no_mangle]
+pub unsafe extern "C" fn tract_model_half_to_f32(model: *mut TractModel) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(model);
+        (*model).0.half_to_f32()
     })
 }
 

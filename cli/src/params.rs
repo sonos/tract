@@ -715,7 +715,7 @@ impl Parameters {
         if matches.is_present("half-floats") {
             stage!("half-float", typed_model -> typed_model, |m:TypedModel| {
                 use tract_core::model::translator::Translate;
-                tract_core::half::HalfTranslator.translate_model(&m)
+                tract_core::float_precision_translator::FloatPrecisionTranslator::<f32, f16>::new().translate_model(&m)
             });
         }
         if let Some(set) = matches.values_of("set") {

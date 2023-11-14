@@ -239,8 +239,21 @@ impl ModelInterface for Model {
         Ok(())
     }
 
-    fn half(&mut self) -> Result<()> {
-        self.0 = tract_nnef::tract_core::half::HalfTranslator.translate_model(&self.0)?;
+    fn half_from_f32(&mut self) -> Result<()> {
+        self.0 = tract_nnef::tract_core::float_precision_translator::FloatPrecisionTranslator::<
+            f32,
+            f16,
+        >::new()
+        .translate_model(&self.0)?;
+        Ok(())
+    }
+    
+    fn half_to_f32(&mut self) -> Result<()> {
+        self.0 = tract_nnef::tract_core::float_precision_translator::FloatPrecisionTranslator::<
+            f16,
+            f32,
+        >::new()
+        .translate_model(&self.0)?;
         Ok(())
     }
 
