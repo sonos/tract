@@ -170,5 +170,5 @@ fn compatible_conv_q(qcp: &QConvProblem) -> bool {
     {
         return true;
     }
-    return false;
+    false
 }
