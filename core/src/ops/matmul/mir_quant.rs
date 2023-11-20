@@ -16,8 +16,7 @@ pub(crate) fn wire_offset_u8_as_i8(
     zero_point: &mut OutletId,
     zero_point_name: &str,
 ) -> TractResult<OutletId> {
-    let fact = model.outlet_fact(matrix)?;
-    if let DatumType::U8 = fact.datum_type.unquantized() {
+    if let DatumType::U8 = model.outlet_fact(matrix)?.datum_type.unquantized() {
         match model.outlet_fact(*zero_point)?.datum_type.unquantized() {
             DatumType::U8 => {
                 *zero_point = model.wire_node(
@@ -34,7 +33,7 @@ pub(crate) fn wire_offset_u8_as_i8(
                 )?[0];
                 let cst = model.add_const(
                     format!("{model_name}.offset_{zero_point_name}_as_i8.min"),
-                    rctensor0(-128i32),
+                    tensor0(-128i32).broadcast_into_rank(model.outlet_fact(*zero_point)?.rank())?
                 )?;
                 *zero_point = model.wire_node(
                     format!("{model_name}.offset_{zero_point_name}_as_i8"),

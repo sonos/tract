@@ -144,7 +144,7 @@ impl EvalOp for TypedBinOp {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a, b) = args_2!(inputs);
-        debug_assert_eq!(a.rank(), b.rank());
+        ensure!(a.rank() == b.rank());
         Ok(tvec!(self.0.eval(a, b)?.into_tvalue()))
     }
 }
