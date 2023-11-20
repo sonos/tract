@@ -79,7 +79,7 @@ fn ser_conv(
                 &format!("{node_name}.weights"),
                 &conv.kernel,
                 &vec![k0_tract; conv.kernel.shape()[0]],
-                &kscale,
+                kscale,
                 0,
             )?);
             let bscale = kscale.iter().map(|k| k * iscale).collect_vec();
