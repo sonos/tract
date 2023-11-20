@@ -38,12 +38,12 @@ fi
 export CACHEDIR
 
 # useful as debug_asserts will come into play
-cargo -q test -q -p tract-core --features paranoid_assertions
-cargo -q test -q -p test-onnx-core
-cargo -q test -q -p test-onnx-nnef-cycle
+cargo -q test -q -p tract-core --features paranoid_assertions $CARGO_EXTRA
+cargo -q test -q -p test-onnx-core $CARGO_EXTRA
+cargo -q test -q -p test-onnx-nnef-cycle $CARGO_EXTRA
 
-cargo check -p tract-nnef --features complex
-cargo check -p tract --no-default-features
+cargo check -p tract-nnef --features complex $CARGO_EXTRA
+cargo check -p tract --no-default-features $CARGO_EXTRA
 
 if [ `arch` = "x86_64" -a "$RUST_VERSION" = "stable" ]
 then
