@@ -116,11 +116,9 @@ impl PulsedOp for DeconvUnary {
         stream.dim = output_shape[stream.axis].clone();
         let pulse_len = fact.shape[stream.axis].clone() * stride;
         output_shape[stream.axis] = pulse_len + overlap;
+        let c_axis = self.pool_spec.data_format.shape(&output_shape)?.c_axis();
+        output_shape[c_axis] = self.pool_spec.output_channels.into();
         fact.shape = output_shape.into();
-        if let Some(c) = self.pool_spec.output_channel_override {
-            let c_axis = self.pool_spec.data_format.shape(&fact.shape)?.c_axis();
-            fact.shape.set(c_axis, c.to_dim())
-        }
         Ok(tvec!(fact))
     }
 

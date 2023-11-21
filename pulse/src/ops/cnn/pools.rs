@@ -83,7 +83,7 @@ pub fn pulsed_output_facts(
     let spatial_dims = computed.into_iter().map(|d| d.convoluted).collect::<TVec<TDim>>();
     let oshape = spec.data_format.from_n_c_hw(
         ishape.n().cloned().unwrap_or_else(|| 1.to_dim()),
-        spec.output_channel_override.map(|d| d.to_dim()).unwrap_or_else(|| ishape.c().clone()),
+        spec.output_channels.into(),
         spatial_dims,
     )?;
     let mut fact = inputs[0].clone();
@@ -234,8 +234,13 @@ mod test {
                     dilations: None,
                     strides: None,
                     kernel_shape: tvec![2],
-                    padding: tract_core::ops::cnn::PaddingSpec::ExplicitOnnxPool(tvec![1], tvec![0], false),
-                    output_channel_override: Some(1),
+                    padding: tract_core::ops::cnn::PaddingSpec::ExplicitOnnxPool(
+                        tvec![1],
+                        tvec![0],
+                        false,
+                    ),
+                    input_channels: 1,
+                    output_channels: 1,
                 },
                 kernel_fmt: tract_core::ops::cnn::KernelFormat::OIHW,
                 kernel: rctensor3(&[[[1f32, 2f32]]]),

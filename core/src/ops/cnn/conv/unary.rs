@@ -828,14 +828,16 @@ impl TypedOp for ConvUnary {
                     self
                     );
         }
+        /*
         if self.pool_spec.output_channel_override != Some(self.output_channels()) {
-            bail!(
-                "Inconsistent convolution: output channels from pool spec is {:?}, kernel expects {} output channels.\n{:?}",
-                self.pool_spec.output_channel_override,
-                self.output_channels(),
-                self
-                );
+        bail!(
+        "Inconsistent convolution: output channels from pool spec is {:?}, kernel expects {} output channels.\n{:?}",
+        self.pool_spec.output_channel_override,
+        self.output_channels(),
+        self
+        );
         }
+        */
         if let ExplicitOnnxPool(bef, after, _) | Explicit(bef, after) = &self.pool_spec.padding {
             anyhow::ensure!(bef.len() == self.pool_spec.rank());
             anyhow::ensure!(after.len() == self.pool_spec.rank());
@@ -1140,7 +1142,8 @@ mod test {
                 padding: Valid,
                 dilations: None,
                 strides: None,
-                output_channel_override: Some(1),
+                input_channels: 1,
+                output_channels: 1,
             },
             kernel_fmt: KernelFormat::OIHW,
             kernel: rctensor4(&[[[[1u8, 1], [1, 1]]]]),
@@ -1184,7 +1187,8 @@ mod test {
                     strides: None,
                     kernel_shape: tvec![2],
                     padding: Explicit(tvec![0], tvec![0]),
-                    output_channel_override: Some(1),
+                    input_channels: 1,
+                    output_channels: 1,
                 },
                 kernel_fmt: crate::ops::cnn::KernelFormat::OIHW,
                 kernel: rctensor3(&[[[1f32, 2f32]]]),

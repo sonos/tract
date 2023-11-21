@@ -142,11 +142,8 @@ impl DeconvProblem {
             self.padding.clone(),
             Some(self.dilations.clone()),
             Some(self.strides.clone()),
-            Some(match self.kernel_format {
-                KernelFormat::OIHW => self.kernel.shape()[0] * self.group,
-                KernelFormat::HWIO => self.kernel.shape()[self.kernel.ndim() - 1] * self.group,
-                KernelFormat::OHWI => self.kernel.shape()[0] * self.group,
-            }),
+            self.kernel_format.input_channels(self.kernel.shape(), self.group),
+            self.kernel_format.output_channels(self.kernel.shape(), self.group),
         );
         let op = DeconvUnary::new(
             pool_spec,

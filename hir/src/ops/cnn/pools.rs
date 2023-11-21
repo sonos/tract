@@ -1,9 +1,22 @@
 use crate::infer::*;
 use crate::internal::*;
 
-pub use tract_core::ops::cnn::{MaxPool, PoolSpec, SumPool};
+use tract_core::ops::cnn::MaxPool;
+use tract_core::ops::cnn::PoolSpec;
+use tract_core::ops::cnn::SumPool;
 
-impl InferenceRulesOp for SumPool {
+#[derive(Debug, Clone, new, Hash)]
+pub struct HirSumPool {
+    pub pool_spec: PoolSpec,
+    pub count_include_pad: bool,
+    pub normalize: bool,
+}
+
+impl Expansion for HirSumPool {
+    fn name(&self) -> Cow<str> {
+        "SumPool".into()
+    }
+
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -16,11 +29,44 @@ impl InferenceRulesOp for SumPool {
         rules_for_shape(&self.pool_spec, s, inputs, outputs)
     }
 
-    as_op!();
-    to_typed!();
+    fn wire(
+        &self,
+        prefix: &str,
+        model: &mut TypedModel,
+        inputs: &[OutletId],
+    ) -> TractResult<TVec<OutletId>> {
+        let c = self
+            .pool_spec
+            .data_format
+            .shape(&model.outlet_fact(inputs[0])?.shape)?
+            .c()
+            .to_usize()
+            .context("Expect constant integer depth")?;
+        let pool_spec =
+            PoolSpec { input_channels: c, output_channels: c, ..self.pool_spec.clone() };
+        model.wire_node(
+            prefix,
+            SumPool {
+                pool_spec,
+                count_include_pad: self.count_include_pad,
+                normalize: self.normalize,
+            },
+            inputs,
+        )
+    }
 }
 
-impl InferenceRulesOp for MaxPool {
+#[derive(Debug, Clone, new, Hash)]
+pub struct HirMaxPool {
+    pub pool_spec: PoolSpec,
+    pub with_index_outputs: Option<DatumType>,
+}
+
+impl Expansion for HirMaxPool {
+    fn name(&self) -> Cow<str> {
+        "MaxPool".into()
+    }
+
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -41,8 +87,27 @@ impl InferenceRulesOp for MaxPool {
         Ok(1 + self.with_index_outputs.is_some() as usize)
     }
 
-    as_op!();
-    to_typed!();
+    fn wire(
+        &self,
+        prefix: &str,
+        model: &mut TypedModel,
+        inputs: &[OutletId],
+    ) -> TractResult<TVec<OutletId>> {
+        let c = self
+            .pool_spec
+            .data_format
+            .shape(&model.outlet_fact(inputs[0])?.shape)?
+            .c()
+            .to_usize()
+            .context("Expect constant integer depth")?;
+        let pool_spec =
+            PoolSpec { input_channels: c, output_channels: c, ..self.pool_spec.clone() };
+        model.wire_node(
+            prefix,
+            MaxPool { pool_spec, with_index_outputs: self.with_index_outputs },
+            inputs,
+        )
+    }
 }
 
 pub fn rules_for_shape<'r, 'p: 'r, 's: 'r>(
@@ -68,9 +133,8 @@ pub fn rules_for_shape<'r, 'p: 'r, 's: 'r>(
             if ishape.n_axis().is_some() {
                 s.equals(&o.shape[ishape.n_axis().unwrap()], ishape.n_dim().unwrap())?;
             }
-            if let Some(c) = pool_spec.output_channel_override {
-                s.equals(&o.shape[ishape.c_axis()], c.to_dim())?;
-            } else {
+            // hack for max and sum pool, convolutions know this and deal with it on their side
+            if pool_spec.input_channels == 0 && pool_spec.output_channels == 0 {
                 s.equals(&o.shape[ishape.c_axis()], ishape.c_dim())?;
             }
         }
