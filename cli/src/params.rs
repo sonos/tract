@@ -712,10 +712,16 @@ impl Parameters {
                 stage!("pulse-declutter", typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
             }
         }
-        if matches.is_present("half-floats") {
-            stage!("half-float", typed_model -> typed_model, |m:TypedModel| {
+        if matches.is_present("f32-to-f16") {
+            stage!("f32-to-f16", typed_model -> typed_model, |m:TypedModel| {
                 use tract_core::model::translator::Translate;
-                tract_core::floats::FloatPrecisionTranslator::<f32, f16>::new().translate_model(&m)
+                tract_core::floats::FloatPrecisionTranslator::<f32, f16>::default().translate_model(&m)
+            });
+        }
+        if matches.is_present("f16-to-f32") {
+            stage!("f16-to-f32", typed_model -> typed_model, |m:TypedModel| {
+                use tract_core::model::translator::Translate;
+                tract_core::floats::FloatPrecisionTranslator::<f16, f32>::default().translate_model(&m)
             });
         }
         if let Some(set) = matches.values_of("set") {

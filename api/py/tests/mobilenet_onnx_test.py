@@ -122,28 +122,28 @@ def test_pulse():
     assert properties == ["pulse.delay", "pulse.input_axes", "pulse.output_axes"]
     assert typed.property("pulse.delay").to_numpy() == [0]
 
-def test_half_from_f32():
+def test_f32_to_f16():
     model = tract.onnx().model_for_path("./mobilenetv2-7.onnx")
     model.set_input_fact(0, "1,3,224,224,f32")
     model.analyse()
     typed = model.into_typed().into_decluttered()
-    typed.half_from_f32()
+    typed.f32_to_f16()
     assert str(typed.input_fact(0)) == "1,3,224,224,F16"
     assert str(typed.output_fact(0)) == "1,1000,F16"
 
-def test_half_to_f32():
+def test_f16_to_f32():
     model = tract.onnx().model_for_path("./mobilenetv2-7.onnx")
     model.set_input_fact(0, "1,3,224,224,f32")
     model.analyse()
     
     #Convert model to half
     typed = model.into_typed().into_decluttered()
-    typed.half_from_f32()
+    typed.f32_to_f16()
     assert str(typed.input_fact(0)) == "1,3,224,224,F16"
     assert str(typed.output_fact(0)) == "1,1000,F16"
     
     # Convert back to f32
-    typed.half_to_f32()
+    typed.f16_to_f32()
     assert str(typed.input_fact(0)) == "1,3,224,224,F32"
     assert str(typed.output_fact(0)) == "1,1000,F32"
 

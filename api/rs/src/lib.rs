@@ -240,20 +240,20 @@ impl ModelInterface for Model {
         Ok(())
     }
 
-    fn half_from_f32(&mut self) -> Result<()> {
+    fn f32_to_f16(&mut self) -> Result<()> {
         self.0 = tract_nnef::tract_core::floats::FloatPrecisionTranslator::<
             f32,
             f16,
-        >::new()
+        >::default()
         .translate_model(&self.0)?;
         Ok(())
     }
     
-    fn half_to_f32(&mut self) -> Result<()> {
+    fn f16_to_f32(&mut self) -> Result<()> {
         self.0 = tract_nnef::tract_core::floats::FloatPrecisionTranslator::<
             f16,
             f32,
-        >::new()
+        >::default()
         .translate_model(&self.0)?;
         Ok(())
     }
