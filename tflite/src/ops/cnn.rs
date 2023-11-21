@@ -30,13 +30,19 @@ fn average_pool_2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         Padding::VALID => PaddingSpec::Valid,
         _ => todo!(),
     };
+    let ci = DataFormat::NHWC
+        .shape(&op.facts()?[0].shape)?
+        .c()
+        .to_usize()
+        .context("Except defined integer depth")?;
     let pool_spec = core::cnn::PoolSpec {
         data_format: DataFormat::NHWC,
         kernel_shape,
         padding,
         strides: Some(strides),
         dilations: None,
-        output_channel_override: None,
+        input_channels: ci,
+        output_channels: ci,
     };
     let pool = core::cnn::SumPool { pool_spec, normalize: true, count_include_pad: false };
     let wires = op.ctx.target.wire_node(op.prefix, pool, &op.inputs[0..1])?;
@@ -60,7 +66,7 @@ fn ser_conv(
     let node_name = &node.name;
     let mut inputs = tvec!(builder.outlets_to_tensors[&node.inputs[0]]);
     let mut bias = conv.bias.clone().unwrap_or_else(|| {
-        let co = conv.pool_spec.output_channel_override.unwrap();
+        let co = conv.pool_spec.output_channels;
         if conv.q_params.is_some() {
             Tensor::zero::<i32>(&[co]).unwrap()
         } else {
@@ -124,8 +130,7 @@ fn ser_conv(
             options.as_union_value(),
         )
     } else {
-        let depth_multiplier =
-            (conv.pool_spec.output_channel_override.unwrap() / conv.group) as i32;
+        let depth_multiplier = (conv.pool_spec.output_channels / conv.group) as i32;
         let options = DepthwiseConv2DOptions::create(
             builder.fb(),
             &DepthwiseConv2DOptionsArgs {
@@ -167,15 +172,16 @@ fn de_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let strides = tvec!(options.stride_h() as usize, options.stride_w() as usize);
     let dilations =
         tvec!(options.dilation_h_factor() as usize, options.dilation_w_factor() as usize);
-    let ci = KernelFormat::OHWI.i(&kernel_full_shape);
-    let co = KernelFormat::OHWI.o(&kernel_full_shape);
+    let input_channels = *KernelFormat::OHWI.i(&kernel_full_shape);
+    let output_channels = *KernelFormat::OHWI.o(&kernel_full_shape);
     let pool_spec = core::cnn::PoolSpec {
         data_format: tract_core::ops::nn::DataFormat::NHWC,
         kernel_shape,
         padding,
         strides: Some(strides),
         dilations: Some(dilations),
-        output_channel_override: Some(*co),
+        input_channels,
+        output_channels,
     };
     let mut inputs = tvec!(op.inputs[0]);
     let q_params = super::linearops_quantization_suport(op, &input, &mut inputs)?;
@@ -186,7 +192,7 @@ fn de_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         kernel_fmt: KernelFormat::OHWI,
         kernel,
         group: 1,
-        input_channels: *ci,
+        input_channels,
         bias: Some(bias),
         q_params,
     };
@@ -209,14 +215,15 @@ fn de_dw_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let strides = tvec!(options.stride_h() as usize, options.stride_w() as usize);
     let dilations =
         tvec!(options.dilation_h_factor() as usize, options.dilation_w_factor() as usize);
-    let co = *KernelFormat::OHWI.i(&kernel_full_shape);
+    let output_channels = *KernelFormat::OHWI.i(&kernel_full_shape);
     let pool_spec = core::cnn::PoolSpec {
         data_format: tract_core::ops::nn::DataFormat::NHWC,
         kernel_shape,
         padding,
         strides: Some(strides),
         dilations: Some(dilations),
-        output_channel_override: Some(co),
+        input_channels: output_channels,
+        output_channels,
     };
     let mut inputs = tvec!(op.inputs[0]);
     let q_params = super::linearops_quantization_suport(op, &input, &mut inputs)?;
@@ -224,8 +231,8 @@ fn de_dw_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         pool_spec,
         kernel_fmt: KernelFormat::OHWI,
         kernel,
-        group: co,
-        input_channels: co,
+        group: output_channels,
+        input_channels: output_channels,
         bias: Some(bias),
         q_params,
     };

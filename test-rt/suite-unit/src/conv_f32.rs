@@ -162,6 +162,7 @@ impl ConvProblem {
         assert_eq!(self.data.shape(), &*self.shape_in.shape, "inconsistent shapes in test");
         let mut model = TypedModel::default();
         let wire = model.add_source("input", f32::fact(&self.shape_in.shape))?;
+        let ci = *self.shape_in.c();
         let co = match self.kernel_format {
             KernelFormat::OIHW => self.kernel.shape()[0],
             KernelFormat::HWIO => self.kernel.shape()[self.kernel.ndim() - 1] * self.group,
@@ -174,7 +175,8 @@ impl ConvProblem {
                 self.pad.clone(),
                 None,
                 Some(self.strides.clone()),
-                Some(co),
+                ci,
+                co,
             ),
             self.kernel_format,
             self.kernel.clone().into_arc_tensor(),

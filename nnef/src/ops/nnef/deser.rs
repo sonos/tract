@@ -300,7 +300,8 @@ pub fn read_conv_parameters(
         padding,
         if dilation.len() > 0 { Some(dilation) } else { None },
         if stride.len() > 0 { Some(stride) } else { None },
-        Some(kernel_shape[0]),
+        kernel_shape[1] * group,
+        kernel_shape[0],
     );
 
     let border: String = invocation.named_arg_as(builder, "border")?;
@@ -403,11 +404,14 @@ pub fn conv_or_deconv(
 fn pool_spec_for_pools(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-    shape: &[usize],
+    kernel_shape: &[usize],
+    channels: usize,
 ) -> TractResult<ops::cnn::PoolSpec> {
-    let spatial_shape = DataFormat::NCHW.shape(shape)?.hw_dims().into();
+    let kernel_shape = DataFormat::NCHW.shape(kernel_shape)?;
+    let spatial_shape = kernel_shape.hw_dims();
     let dilation: TVec<usize> = invocation.named_arg_as(builder, "dilation")?;
-    if dilation.len() > 0 && (dilation.len() != shape.len() || dilation[0] != 1 || dilation[1] != 1)
+    if dilation.len() > 0
+        && (dilation.len() != kernel_shape.rank() || dilation[0] != 1 || dilation[1] != 1)
     {
         bail!("dilation should be like [1, 1, ... ]. Got dilation {:?}.", dilation);
     }
@@ -417,7 +421,8 @@ fn pool_spec_for_pools(
         Some(DataFormat::NCHW.shape(&dilation)?.hw_dims().into())
     };
     let stride: TVec<usize> = invocation.named_arg_as(builder, "stride")?;
-    if stride.len() > 0 && (stride.len() != shape.len() || stride[0] != 1 || stride[1] != 1) {
+    if stride.len() > 0 && (stride.len() != kernel_shape.rank() || stride[0] != 1 || stride[1] != 1)
+    {
         bail!("stride should be like [1, 1, ... ]. Got stride {:?}.", stride);
     }
     let spatial_stride = if stride.len() == 0 || stride.iter().all(|it| *it == 1) {
@@ -444,11 +449,12 @@ fn pool_spec_for_pools(
     };
     Ok(PoolSpec::new(
         DataFormat::NCHW,
-        spatial_shape,
+        spatial_shape.into(),
         padding,
         spatial_dilation,
         spatial_stride,
-        None,
+        channels,
+        channels,
     ))
 }
 
@@ -472,10 +478,15 @@ pub fn max_pool_with_index(
             size
             );
     }
+    let channels = DataFormat::NCHW
+        .shape(&input_fact.shape)?
+        .c()
+        .to_usize()
+        .context("Expect constant channel depth")?;
     let border: String = invocation.named_arg_as(builder, "border")?;
     assert!(&*border == "ignore" || &*border == "constant");
     //FIXME : constant is not actually supported, but it should be the same in most cases
-    let pool_spec = pool_spec_for_pools(builder, invocation, &size)?;
+    let pool_spec = pool_spec_for_pools(builder, invocation, &size, channels)?;
     let op = ops::cnn::MaxPool { pool_spec, with_index_outputs: Some(i64::datum_type()) };
     builder.wire(op, &[input])
 }
@@ -497,9 +508,14 @@ pub fn sum_pool(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
             size
             );
     }
+    let channels = DataFormat::NCHW
+        .shape(&input_fact.shape)?
+        .c()
+        .to_usize()
+        .context("Expect constant channel depth")?;
     let border: String = invocation.named_arg_as(builder, "border")?;
     assert!(&*border == "ignore" || &*border == "constant");
-    let pool_spec = pool_spec_for_pools(builder, invocation, &size)?;
+    let pool_spec = pool_spec_for_pools(builder, invocation, &size, channels)?;
     let op = ops::cnn::SumPool {
         pool_spec,
         count_include_pad: false,

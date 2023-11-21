@@ -208,7 +208,8 @@ impl Expansion for Conv {
             strides: self.strides.clone(),
             dilations: self.dilations.clone(),
             kernel_shape: self.kernel_fmt.hw(kernel_full_shape).into(),
-            output_channel_override: Some(output_channels),
+            input_channels,
+            output_channels,
         };
 
         let quantized = self.k_zero_point_input.is_some()

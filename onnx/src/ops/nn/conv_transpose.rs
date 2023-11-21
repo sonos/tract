@@ -43,13 +43,10 @@ pub struct ConvTranspose {
     have_bias: bool,
 }
 
-
-
 impl Expansion for ConvTranspose {
     fn name(&self) -> Cow<str> {
         "ConvTranspose".into()
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -81,13 +78,16 @@ impl Expansion for ConvTranspose {
                     }
                     y_shape
                 } else {
+                    let ci = KernelFormat::OIHW.input_channels(&w_shape, self.group);
+                    let co = KernelFormat::OIHW.output_channels(&w_shape, self.group);
                     let pool_spec = PoolSpec::new(
                         DataFormat::NCHW,
                         w_shape[2..].into(),
                         self.padding_spec.clone(),
                         self.dilations.clone(),
                         self.strides.clone(),
-                        Some(w_shape[1] * self.group),
+                        co, // reverse order for conv transpose 
+                        ci,
                     );
                     tract_core::ops::cnn::deconv::output_shape(
                         &pool_spec,
@@ -134,6 +134,8 @@ impl Expansion for ConvTranspose {
                 None
             };
 
+            let ci = KernelFormat::OIHW.input_channels(kernel.shape(), self.group);
+            let co = KernelFormat::OIHW.output_channels(kernel.shape(), self.group);
             let op = if let Some(output_shape) = &self.output_shape {
                 let x_shape = &target.outlet_fact(inputs[0])?.shape;
                 let pool_spec = PoolSpec::new(
@@ -142,7 +144,8 @@ impl Expansion for ConvTranspose {
                     self.padding_spec.clone(),
                     self.dilations.clone(),
                     self.strides.clone(),
-                    Some(kernel.shape()[0] * self.group),
+                    ci,
+                    co,
                 );
                 let adjustments = adjustments(
                     &pool_spec,
@@ -164,7 +167,8 @@ impl Expansion for ConvTranspose {
                     self.padding_spec.clone(),
                     self.dilations.clone(),
                     self.strides.clone(),
-                    Some(kernel.shape()[0] * self.group),
+                    ci,
+                    co,
                 );
                 tract_core::ops::cnn::DeconvUnary::new(
                     pool_spec,

@@ -55,7 +55,8 @@ impl DelayPlusPoolProblem {
             self.padding.clone(),
             None,
             Some(tvec!(self.stride)),
-            None,
+            1,
+            1,
         );
         let pool = model.wire_node("pool", MaxPool::new(pool_spec, None), &crop).unwrap();
         model.set_output_outlets(&pool).unwrap();
