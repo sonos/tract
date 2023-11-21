@@ -9,26 +9,8 @@ use crate::ops::konst::Const;
 use crate::ops::scan::Scan;
 use crate::ops::source::TypedSource;
 
-#[derive(Debug)]
-pub struct FloatPrecisionTranslator<T1: Datum + Float, T2: Datum + Float> {
-    _source_float_precision: PhantomData<T1>,
-    _target_float_precision: PhantomData<T2>,
-}
-
-impl<T1: Datum + Float, T2: Datum + Float> FloatPrecisionTranslator<T1, T2> {
-    pub fn new() -> Self {
-        Self {
-            _source_float_precision: PhantomData::<T1>,
-            _target_float_precision: PhantomData::<T2>,
-        }
-    }
-}
-
-impl<T1: Datum + Float, T2: Datum + Float> Default for FloatPrecisionTranslator<T1, T2> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+#[derive(Debug, Default)]
+pub struct FloatPrecisionTranslator<T1: Datum + Float, T2: Datum + Float>(PhantomData<(T1, T2)>);
 
 impl<T1: Datum + Float, T2: Datum + Float>
     Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>>
@@ -52,7 +34,7 @@ impl<T1: Datum + Float, T2: Datum + Float>
                 ..op.clone()
             })
         } else if let Some(op) = node.op_as::<Scan>() {
-            let body = FloatPrecisionTranslator::<T1, T2>::new().translate_model(&op.body)?;
+            let body = FloatPrecisionTranslator::<T1, T2>::default().translate_model(&op.body)?;
             Box::new(Scan { body, ..op.clone() })
         } else if let Some(op) = node.op_as::<EinSum>() {
             Box::new(EinSum {

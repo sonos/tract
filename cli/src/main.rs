@@ -125,7 +125,8 @@ fn main() -> tract_core::anyhow::Result<()> {
         .arg(arg!(--"optimize-step" [STEP] "Stop optimizing process after application of patch number N"))
         .arg(arg!(--"extract-decluttered-sub" [SUB] "Zoom on a subgraph after decluttering by parent node name"))
 
-        .arg(arg!(--"half-floats" "Convert the decluttered network from f32 to f16"))
+        .arg(arg!(--"f32-to-f16" "Convert the decluttered network from f32 to f16"))
+        .arg(arg!(--"f16-to-f32" "Convert the decluttered network from f16 to f32"))
         .arg(Arg::new("set").long("set").multiple_occurrences(true).takes_value(true)
          .long_help("Set a symbol to a concrete value after decluttering"))
 
