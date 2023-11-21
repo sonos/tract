@@ -74,7 +74,7 @@ pub mod ops;
 pub mod axes;
 pub mod broadcast;
 pub mod framework;
-pub mod float_precision_translator;
+pub mod floats;
 pub mod model;
 pub mod optim;
 pub mod plan;

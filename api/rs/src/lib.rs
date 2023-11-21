@@ -241,7 +241,7 @@ impl ModelInterface for Model {
     }
 
     fn half_from_f32(&mut self) -> Result<()> {
-        self.0 = tract_nnef::tract_core::float_precision_translator::FloatPrecisionTranslator::<
+        self.0 = tract_nnef::tract_core::floats::FloatPrecisionTranslator::<
             f32,
             f16,
         >::new()
@@ -250,7 +250,7 @@ impl ModelInterface for Model {
     }
     
     fn half_to_f32(&mut self) -> Result<()> {
-        self.0 = tract_nnef::tract_core::float_precision_translator::FloatPrecisionTranslator::<
+        self.0 = tract_nnef::tract_core::floats::FloatPrecisionTranslator::<
             f16,
             f32,
         >::new()
