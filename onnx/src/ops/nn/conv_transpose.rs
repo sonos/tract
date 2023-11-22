@@ -69,7 +69,6 @@ impl Expansion for ConvTranspose {
                 x_shape.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<usize>>>(),
                 w_shape.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<usize>>>(),
             ) {
-                let zeros = tvec!(0; x_shape.len() - 2);
                 let y_shape = if let Some(output_shape) = &self.output_shape {
                     let mut y_shape = x_shape;
                     y_shape[1] = w_shape[1] * self.group;
@@ -78,21 +77,23 @@ impl Expansion for ConvTranspose {
                     }
                     y_shape
                 } else {
-                    let ci = KernelFormat::OIHW.input_channels(&w_shape, self.group);
-                    let co = KernelFormat::OIHW.output_channels(&w_shape, self.group);
+                    // ONNX deconv kernels are stored as gi_o_h_w (convolution are go_i_hw)
+                    // so tract KernelFormat (in|out)put_channel functions do not work.
+                    let ci = w_shape[0];
+                    let co = w_shape[1] * self.group;
                     let pool_spec = PoolSpec::new(
                         DataFormat::NCHW,
                         w_shape[2..].into(),
                         self.padding_spec.clone(),
                         self.dilations.clone(),
                         self.strides.clone(),
-                        co, // reverse order for conv transpose 
                         ci,
+                        co,
                     );
                     tract_core::ops::cnn::deconv::output_shape(
                         &pool_spec,
                         &x_shape,
-                        &self.adjustments.clone().unwrap_or(zeros),
+                        &self.adjustments.clone().unwrap_or_else(|| tvec!(0; x_shape.len() - 2 )),
                     )?
                 };
                 let y_shape = y_shape.iter().map(|x| x.to_dim()).collect::<TVec<TDim>>();
@@ -116,11 +117,12 @@ impl Expansion for ConvTranspose {
     ) -> TractResult<TVec<OutletId>> {
         if let Some(k) = target.outlet_fact(inputs[1])?.konst.clone() {
             let zeros = tvec!(0; k.rank() - 2);
-            // ONNX and tract conventions are backwards: in ONNX OIHW, I is the number of
-            // channels post deconv
-            let mut axes: TVec<usize> = (0..k.rank()).collect();
-            axes.swap(0, 1);
-            let kernel = k.into_tensor().permute_axes(&axes)?;
+            // ONNX deconv kernels are stored as gi_o_h_w (convolution are go_i_hw)
+            let kernel = k
+                .into_tensor()
+                .split_axis(0, self.group)?
+                .move_axis(1, 2)?
+                .collapse_axis_with_next(0);
 
             let bias = if self.have_bias {
                 Some(
@@ -134,8 +136,8 @@ impl Expansion for ConvTranspose {
                 None
             };
 
-            let ci = KernelFormat::OIHW.input_channels(kernel.shape(), self.group);
-            let co = KernelFormat::OIHW.output_channels(kernel.shape(), self.group);
+            let ci = KernelFormat::OIHW.input_channels(kernel.shape(), self.group).into_owned();
+            let co = KernelFormat::OIHW.output_channels(kernel.shape(), self.group).into_owned();
             let op = if let Some(output_shape) = &self.output_shape {
                 let x_shape = &target.outlet_fact(inputs[0])?.shape;
                 let pool_spec = PoolSpec::new(

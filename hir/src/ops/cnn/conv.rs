@@ -191,8 +191,9 @@ impl Expansion for Conv {
         let input_shape = self.data_format.shape(input.shape.iter().collect::<TVec<_>>())?;
         let kernel_full_shape = kernel.shape();
         let group = self.group.unwrap_or(1);
-        let input_channels = self.kernel_fmt.input_channels(kernel_full_shape, group);
-        let output_channels = self.kernel_fmt.output_channels(kernel_full_shape, group);
+        let input_channels = self.kernel_fmt.input_channels(kernel_full_shape, group).into_owned();
+        let output_channels =
+            self.kernel_fmt.output_channels(kernel_full_shape, group).into_owned();
         if input_shape.c_dim() != &input_channels.to_dim() {
             bail!("Input has {} channels, kernel expects {}", input_shape.c_dim(), input_channels)
         }

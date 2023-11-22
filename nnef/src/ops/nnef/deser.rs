@@ -375,10 +375,6 @@ pub fn conv_or_deconv(
         } else {
             tvec!(0; pool_spec.rank())
         };
-        // nnef form is O I/g H W
-        // tract expects O/g I H W
-        let kernel =
-            kernel.into_tensor().split_axis(0, group)?.move_axis(0, 1)?.collapse_axis_with_next(1);
         Box::new(DeconvUnary::new(
             pool_spec,
             KernelFormat::OIHW,
