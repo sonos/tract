@@ -106,14 +106,12 @@ fn qconv_load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
         zero_point: c0.cast_to_scalar()?,
         scale: c_scale.cast_to_scalar()?,
     });
-    let input_channels = pool_spec.data_format.shape(input_fact.shape)?.c().to_usize()?;
 
     let op: Box<dyn TypedOp> = Box::new(ConvUnary::new(
         pool_spec,
         KernelFormat::OIHW,
         kernel.clone(),
         group,
-        input_channels,
         bias,
         Some(output_dt),
     ));

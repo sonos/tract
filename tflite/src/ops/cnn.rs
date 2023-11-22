@@ -192,7 +192,6 @@ fn de_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         kernel_fmt: KernelFormat::OHWI,
         kernel,
         group: 1,
-        input_channels,
         bias: Some(bias),
         q_params,
     };
@@ -232,7 +231,6 @@ fn de_dw_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         kernel_fmt: KernelFormat::OHWI,
         kernel,
         group: output_channels,
-        input_channels: output_channels,
         bias: Some(bias),
         q_params,
     };

@@ -188,7 +188,6 @@ fn test_simple_conv() {
                 },
                 kernel_fmt: KernelFormat::OIHW,
                 kernel,
-                input_channels: 1,
                 group: 1,
                 bias: None,
                 q_params: None,
