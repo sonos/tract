@@ -244,7 +244,6 @@ impl Expansion for Conv {
             pool_spec,
             self.kernel_fmt,
             kernel,
-            input_channels,
             group,
             bias,
             Some(output_type).filter(|_| quantized),

@@ -39,7 +39,6 @@ pub struct ConvUnary {
     pub kernel_fmt: KernelFormat,
     pub kernel: Arc<Tensor>,
 
-    pub input_channels: usize,
     pub group: usize,
 
     pub bias: Option<Arc<Tensor>>,
@@ -49,7 +48,7 @@ pub struct ConvUnary {
 
 impl ConvUnary {
     fn input_channels(&self) -> usize {
-        self.input_channels
+        self.pool_spec.input_channels
     }
 
     fn output_channels(&self) -> usize {
@@ -1035,7 +1034,6 @@ impl TypedOp for ConvUnary {
         let pool_spec = self.pool_spec.change_geo_axes(&geo_adjusted)?;
         let new_op = ConvUnary {
             pool_spec,
-            input_channels: self.input_channels,
             kernel_fmt: self.kernel_fmt,
             kernel: kernel.into_arc_tensor(),
             group: self.group,
@@ -1143,7 +1141,6 @@ mod test {
             kernel_fmt: KernelFormat::OIHW,
             kernel: rctensor4(&[[[[1u8, 1], [1, 1]]]]),
             group: 1,
-            input_channels: 1,
             bias: None,
             q_params: Some(i32::datum_type()),
         };
@@ -1188,7 +1185,6 @@ mod test {
                 kernel_fmt: crate::ops::cnn::KernelFormat::OIHW,
                 kernel: rctensor3(&[[[1f32, 2f32]]]),
                 group: 1,
-                input_channels: 1,
                 bias: None,
                 q_params: None,
             },
