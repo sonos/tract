@@ -77,8 +77,8 @@ impl Arbitrary for DeconvProblem {
                     let mut kernel_shape = hwk;
                     match kf {
                         OIHW => {
-                            kernel_shape.insert(0, co_over_group);
-                            kernel_shape.insert(1, ci_over_group * group);
+                            kernel_shape.insert(0, co_over_group * group);
+                            kernel_shape.insert(1, ci_over_group);
                         }
                         HWIO => {
                             kernel_shape.push(ci_over_group * group);
@@ -135,15 +135,15 @@ impl Arbitrary for DeconvProblem {
 }
 
 impl DeconvProblem {
-    fn as_op(&self) -> DeconvUnary {
+    fn as_op(&self) -> TractResult<DeconvUnary> {
         let pool_spec = PoolSpec::new(
             self.data_format,
             self.kernel_format.spatial_shape(self.kernel.shape()).into(),
             self.padding.clone(),
             Some(self.dilations.clone()),
             Some(self.strides.clone()),
-            self.kernel_format.input_channels(self.kernel.shape(), self.group),
-            self.kernel_format.output_channels(self.kernel.shape(), self.group),
+            self.kernel_format.input_channels(self.kernel.shape(), self.group).into_owned(),
+            self.kernel_format.output_channels(self.kernel.shape(), self.group).into_owned(),
         );
         let op = DeconvUnary::new(
             pool_spec,
@@ -153,26 +153,25 @@ impl DeconvProblem {
             self.adjustments.clone(),
             self.group,
         );
-        let fact = f32::fact(self.input.shape());
-        op.output_facts(&[&fact]).unwrap();
-        op
+        Ok(op)
     }
 
     fn tract(&self) -> TractResult<TypedModel> {
         let mut model = TypedModel::default();
-        let src = model.add_source("src", f32::fact(self.input.shape())).unwrap();
-        let output = model.wire_node("deconv", self.as_op(), &[src]).unwrap();
-        model.set_output_outlets(&output).unwrap();
+        let src = model.add_source("src", f32::fact(self.input.shape()))?;
+        let output = model.wire_node("deconv", self.as_op().context("Generating op")?, &[src])?;
+        model.set_output_outlets(&output)?;
         Ok(model)
     }
 
-    fn reference(&self) -> ArrayD<f32> {
+    fn reference(&self) -> TractResult<ArrayD<f32>> {
         use std::iter::once;
         let co = match self.kernel_format {
             KernelFormat::HWIO => self.kernel.shape()[self.kernel.ndim() - 1] * self.group,
-            KernelFormat::OIHW | KernelFormat::OHWI => self.kernel.shape()[0] * self.group,
+            KernelFormat::OIHW => self.kernel.shape()[0],
+            KernelFormat::OHWI => self.kernel.shape()[0] * self.group,
         };
-        let input_shape = self.data_format.shape(self.input.shape()).unwrap();
+        let input_shape = self.data_format.shape(self.input.shape())?;
         let n = if self.data_format.has_n() { self.input.shape()[0] } else { 1 };
         let kernel_hwdims = self.kernel_format.spatial_shape(self.kernel.shape());
         let valid_output_shape_geo: TVec<usize> = tract_itertools::izip!(
@@ -198,12 +197,12 @@ impl DeconvProblem {
                 .map(|(i, s)| i * s)
                 .collect()
         };
-        let output_shape = self.data_format.from_n_c_hw(n, co, output_shape_geo).unwrap();
+        let output_shape = self.data_format.from_n_c_hw(n, co, output_shape_geo)?;
         let mut output = ArrayD::zeros(&*output_shape.shape);
         if let Some(b) = &self.bias {
             let mut bias_shape = tvec!(1; output_shape.rank());
             bias_shape[output_shape.c_axis()] = co;
-            let b = b.clone().into_shape(&*bias_shape).unwrap();
+            let b = b.clone().into_shape(&*bias_shape)?;
             output += &b;
         }
         let co_per_group = co / self.group;
@@ -228,17 +227,16 @@ impl DeconvProblem {
                                 } else {
                                     continue;
                                 };
-                                let i = self
-                                    .data_format
-                                    .from_n_c_hw(n, ci + g * ci_per_group, hwi.slice())
-                                    .unwrap();
-                                let o = self
-                                    .data_format
-                                    .from_n_c_hw(n, co + g * co_per_group, hwo)
-                                    .unwrap();
+                                let i = self.data_format.from_n_c_hw(
+                                    n,
+                                    ci + g * ci_per_group,
+                                    hwi.slice(),
+                                )?;
+                                let o =
+                                    self.data_format.from_n_c_hw(n, co + g * co_per_group, hwo)?;
                                 let k: TVec<usize> = match self.kernel_format {
-                                    OIHW => once(co)
-                                        .chain(once(ci + ci_per_group * g))
+                                    OIHW => once(co + co_per_group * g)
+                                        .chain(once(ci))
                                         .chain(hwk.slice().iter().cloned())
                                         .collect(),
                                     HWIO => hwk
@@ -262,17 +260,21 @@ impl DeconvProblem {
                 }
             }
         }
-        output
+        Ok(output)
     }
 }
 
 impl Test for DeconvProblem {
-    fn run_with_approx(&self, id: &str, runtime: &dyn Runtime, approx: Approximation) -> TestResult {
-        let reference = self.reference().into_tensor();
-        let mut model = self.tract()?;
+    fn run_with_approx(
+        &self,
+        id: &str,
+        runtime: &dyn Runtime,
+        approx: Approximation,
+    ) -> TestResult {
+        let reference = self.reference().context("Running reference")?.into_tensor();
+        let mut model = self.tract().context("Generating model")?;
         model.properties.insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));
-        let mut output =
-            runtime.prepare(model)?.run(tvec![self.input.clone().into_tvalue()])?;
+        let mut output = runtime.prepare(model)?.run(tvec![self.input.clone().into_tvalue()])?;
         let output = output.remove(0).into_tensor();
         output.close_enough(&reference, approx)
     }
@@ -433,7 +435,7 @@ pub fn suite() -> TractResult<TestSuite> {
             kernel_format: OIHW,
             padding: PaddingSpec::Valid,
             input: arr2(&[[0.0, 0.0]]).into_dyn(),
-            kernel: arr3(&[[[0.0], [0.0]]]).into_dyn(),
+            kernel: arr3(&[[[0.0]], [[0.0]]]).into_dyn(),
             bias: None,
             strides: tvec!(1),
             dilations: tvec!(1),
@@ -465,7 +467,7 @@ pub fn suite() -> TractResult<TestSuite> {
             kernel_format: OIHW,
             padding: PaddingSpec::Valid,
             input: ndarray::arr2(&[[1.0, 0.0]]).into_dyn(),
-            kernel: ndarray::arr3(&[[[1.0], [0.0]]]).into_dyn(),
+            kernel: ndarray::arr3(&[[[1.0]], [[0.0]]]).into_dyn(),
             bias: None,
             strides: tvec!(1),
             dilations: tvec!(1),
@@ -481,7 +483,7 @@ pub fn suite() -> TractResult<TestSuite> {
             kernel_format: OIHW,
             padding: PaddingSpec::Valid,
             input: ndarray::arr2(&[[0.0, 1.0]]).into_dyn(),
-            kernel: ndarray::arr3(&[[[0.0], [0.0]], [[1.0], [0.0]]]).into_dyn(),
+            kernel: ndarray::arr3(&[[[0.0]], [[1.0]], [[0.0]], [[0.0]]]).into_dyn(),
             bias: None,
             strides: tvec!(1),
             dilations: tvec!(1),
@@ -497,7 +499,23 @@ pub fn suite() -> TractResult<TestSuite> {
             kernel_format: OIHW,
             padding: PaddingSpec::Valid,
             input: arr2(&[[0f32, 1.]]).into_dyn(),
-            kernel: arr3(&[[[0f32], [1.]]]).into_dyn(),
+            kernel: arr3(&[[[0f32]], [[1.]]]).into_dyn(),
+            bias: None,
+            strides: tvec!(1),
+            dilations: tvec!(1),
+            adjustments: tvec!(0),
+            group: 2,
+        },
+    );
+
+    suite.add(
+        "group_hwio_0",
+        DeconvProblem {
+            data_format: CHW,
+            kernel_format: HWIO,
+            padding: PaddingSpec::Valid,
+            input: Array2::from_shape_vec((4, 1), vec![0f32, 0., 1., 0.]).unwrap().into_dyn(),
+            kernel: Array3::from_shape_vec((1, 4, 1), vec![0f32, 0., 1., 0.]).unwrap().into_dyn(),
             bias: None,
             strides: tvec!(1),
             dilations: tvec!(1),
@@ -546,7 +564,7 @@ pub fn suite() -> TractResult<TestSuite> {
             padding: PaddingSpec::Valid,
             input: arr4(&[[[[0.0, 0.0, 0.0, 1.0]]]]).into_dyn(),
             kernel: arr1(&[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0])
-                .into_shape(vec![1, 4, 1, 2, 1])
+                .into_shape(vec![2, 2, 1, 2, 1])
                 .unwrap()
                 .into_dyn(),
             bias: None,
@@ -564,7 +582,7 @@ pub fn suite() -> TractResult<TestSuite> {
             kernel_format: OIHW,
             padding: PaddingSpec::Valid,
             input: ndarray::Array4::zeros([1, 4, 1, 1]).into_dyn(),
-            kernel: ndarray::Array4::zeros([1, 4, 1, 1]).into_dyn(),
+            kernel: ndarray::Array4::zeros([2, 2, 1, 1]).into_dyn(),
             bias: None,
             strides: tvec!(1, 1),
             dilations: tvec!(1, 1),

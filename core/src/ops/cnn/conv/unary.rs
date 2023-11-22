@@ -53,16 +53,11 @@ impl ConvUnary {
     }
 
     fn output_channels(&self) -> usize {
-        self.kernel_fmt.output_channels(self.kernel.shape(), self.group)
+        *self.kernel_fmt.output_channels(self.kernel.shape(), self.group)
     }
 
-    pub fn kernel_as_group_o_ihw(&self) -> TractResult<Arc<Tensor>> {
-        self.kernel_fmt.kernel_as_group_o_ihw(
-            &self.kernel,
-            self.group,
-            self.input_channels(),
-            self.output_channels(),
-        )
+    pub fn kernel_as_group_o_ihw(&self) -> TractResult<Tensor> {
+        self.kernel_fmt.kernel_as_group_o_ihw(&self.kernel, self.group)
     }
 
     // shape is g,packed
@@ -301,7 +296,7 @@ impl ConvUnary {
             c_axis,
             h_axis,
             b_storage,
-        )?;
+        ).context("in wire_lir_matmatmul")?;
 
         let wire = self.wire_remove_group(model, name, &wire, &mmm_output_shape, c_axis)?;
         let wire = self.wire_rm_n_if_needed(model, name, &wire)?;
@@ -472,7 +467,7 @@ impl ConvUnary {
         c_n_axis: usize,
         b_storage: InputStoreSpec,
     ) -> TractResult<TVec<OutletId>> {
-        let kernels = self.kernel_as_packed_as(&mmm.a_pack(), k, m)?;
+        let kernels = self.kernel_as_packed_as(&mmm.a_pack(), k, m).context("in kernel_as_packed_as")?;
         let a_storage = unsafe { mmm.a_packed(self.kernel.datum_type().size_of(), k) };
         let (mut c_to_a_axis_mapping, mut c_to_b_axis_mapping) = (tvec!(), tvec!());
 
@@ -523,7 +518,7 @@ impl ConvUnary {
             patch,
             input_shape,
             output_shape,
-            self.kernel_as_group_o_ihw().context("in kernel_as_group_o_ihw")?,
+            self.kernel_as_group_o_ihw().context("in kernel_as_group_o_ihw")?.into_arc_tensor(),
             bias,
         );
         Ok(Box::new(op))

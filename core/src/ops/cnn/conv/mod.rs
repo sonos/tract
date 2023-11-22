@@ -54,50 +54,51 @@ impl KernelFormat {
         &full_shape[self.o_axis(full_shape)]
     }
 
-    pub fn input_channels<D: DimLike>(&self, full_shape: &[D], group: usize) -> D {
+    pub fn input_channels<'s, D: DimLike>(&self, full_kernel_shape: &'s [D], group: usize) -> Cow<'s, D> {
         match self {
-            KernelFormat::OIHW => self.i(full_shape).clone() * group,
-            KernelFormat::HWIO | KernelFormat::OHWI => self.i(full_shape).clone(),
+            KernelFormat::OIHW => Cow::Owned(self.i(full_kernel_shape).clone() * group),
+            KernelFormat::HWIO | KernelFormat::OHWI => Cow::Borrowed(self.i(full_kernel_shape)),
         }
     }
 
-    pub fn output_channels<D: DimLike>(&self, full_shape: &[D], group: usize) -> D {
+    pub fn output_channels<'s, D: DimLike>(&self, full_kernel_shape: &'s [D], group: usize) -> Cow<'s, D> {
         match self {
-            KernelFormat::OIHW => self.o(full_shape).clone(),
-            KernelFormat::HWIO | KernelFormat::OHWI => self.o(full_shape).clone() * group,
+            KernelFormat::OIHW => Cow::Borrowed(self.o(full_kernel_shape)),
+            KernelFormat::HWIO | KernelFormat::OHWI => Cow::Owned(self.o(full_kernel_shape).clone() * group),
         }
     }
 
-    pub fn kernel_as_group_o_ihw(
-        &self,
-        kernel: &Tensor,
-        group: usize,
-        input_channels: usize,
-        output_channels: usize,
-    ) -> TractResult<Arc<Tensor>> {
-        let final_shape = [group, output_channels / group, kernel.len() / output_channels];
-        trace!("kernel shape (group, output, rest) = {:?}", final_shape);
+    pub fn kernel_as_group_o_i_hw(&self, kernel: &Tensor, group: usize) -> TractResult<Tensor> {
+        let input_channels = self.input_channels(kernel.shape(), group);
+        let output_channels = self.output_channels(kernel.shape(), group);
+        let shape_g_o_i_hw = [
+            group,
+            output_channels.into_owned() / group,
+            input_channels.into_owned() / group,
+            self.hw(kernel.shape()).iter().product(),
+        ];
+        trace!("kernel shape (group, output, rest) = {:?}", shape_g_o_i_hw);
         let hw_rank = kernel.rank() - 2;
         match self {
             KernelFormat::HWIO => {
-                // HWGIO
-                let tensor = kernel.clone().split_axis(hw_rank, input_channels / group)?;
-                // GOIHW
-                let mut permutation: Vec<usize> = vec![hw_rank + 1, hw_rank + 2, hw_rank];
-                permutation.extend(0..hw_rank);
-                let tensor =
-                    tensor.permute_axes(&permutation)?.into_shape(&final_shape)?.into_arc_tensor();
-                Ok(tensor)
+                let mut hw_gi_o = kernel.clone();
+                for _ in 0..hw_rank - 1 {
+                    hw_gi_o = hw_gi_o.collapse_axis_with_next(0);
+                }
+                let hw_g_i_o = hw_gi_o.split_axis(1, group)?;
+                let g_o_i_hw = hw_g_i_o.move_axis(0, 3)?.move_axis(1, 2)?;
+                Ok(g_o_i_hw)
             }
-            KernelFormat::OIHW => Ok(kernel.clone().into_shape(&final_shape)?.into_arc_tensor()),
+            KernelFormat::OIHW => Ok(kernel.clone().into_shape(&shape_g_o_i_hw)?),
             KernelFormat::OHWI => {
                 // move I to OIHW, then same as OIHW
-                Ok(kernel
-                    .clone()
-                    .move_axis(kernel.rank() - 1, 1)?
-                    .into_shape(&final_shape)?
-                    .into_arc_tensor())
+                Ok(kernel.clone().move_axis(kernel.rank() - 1, 1)?.into_shape(&shape_g_o_i_hw)?)
             }
         }
+    }
+
+    pub fn kernel_as_group_o_ihw(&self, kernel: &Tensor, group: usize) -> TractResult<Tensor> {
+        let group_o_i_hw = self.kernel_as_group_o_i_hw(kernel, group)?;
+        Ok(group_o_i_hw.collapse_axis_with_next(2))
     }
 }
