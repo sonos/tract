@@ -9,7 +9,6 @@ pub struct DepthWise {
     patch: Patch,
     input_shape: DataShape,
     output_shape: DataShape,
-    bias: Arc<Tensor>,
 }
 
 impl Op for DepthWise {
@@ -61,22 +60,23 @@ impl DepthWise {
 
 impl TypedOp for DepthWise {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        anyhow::ensure!(inputs.len() == 3);
         anyhow::ensure!(
             self.input_shape.c() == self.output_shape.c(),
             "DepthWiseConv must have same input and output channels"
         );
         anyhow::ensure!(
-            *self.input_shape.c() == self.bias.len(),
+            self.input_shape.c().to_dim() == inputs[2].shape.volume(),
             "DepthWiseConv data has {} channels, bias has {}",
             self.input_shape.c(),
-            self.bias.len()
+            inputs[2].shape.len()
         );
         Ok(tvec!(inputs[0].datum_type.fact(&self.output_shape.shape)))
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let [_input, kernel] = inputs else {
-            bail!("Depthwise expects two inputs");
+        let [_input, kernel, _bias] = inputs else {
+            bail!("Depthwise expects three inputs");
         };
         let n_output_points = self.patch.output_shape.iter().cloned().product::<usize>();
         Ok(tvec!((
@@ -98,7 +98,7 @@ macro_rules! impl_eval {
                 add: impl Fn(T, T) -> T + Copy + 'static,
                 mul: impl Fn(T, T) -> T + Copy + 'static,
             ) -> TractResult<TVec<TValue>> {
-                let (img, kernel) = args_2!(inputs);
+                let (img, kernel, bias) = args_3!(inputs);
                 let mut output = unsafe { Tensor::uninitialized::<T>(&dw.output_shape.shape)? };
                 let iptr = img.as_ptr::<T>()?;
                 let optr = output.as_ptr_mut::<T>()?;
@@ -108,7 +108,7 @@ macro_rules! impl_eval {
                 let n_stride_o = *dw.output_shape.n_stride().unwrap_or(&0) as isize;
                 let c_stride_i = *dw.input_shape.c_stride() as isize;
                 let c_stride_o = *dw.output_shape.c_stride() as isize;
-                let bias = dw.bias.as_ptr::<T>()?;
+                let bias = bias.as_ptr::<T>()?;
                 let kptr = kernel.as_ptr::<T>()?;
                 unsafe {
                     for n in 0..n as isize {

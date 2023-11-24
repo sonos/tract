@@ -521,21 +521,22 @@ impl ConvUnary {
         name: &str,
         inputs: &[OutletId],
     ) -> TractResult<OutletId> {
-        let input_fact = model.outlet_fact(inputs[0])?;
+        let input_fact = model.outlet_fact(inputs[0])?.clone();
         let input_shape = input_fact.shape.as_concrete().unwrap();
         let ConcretePoolGeometry { input_shape, patch, output_shape } =
             self.pool_spec.compute_geo(&input_fact.shape)?.to_concrete(input_shape)?.into_owned();
+        let kernel = model.add_const(format!("{name}.kernels"), self.kernel.clone())?;
+        let kernel = self.wire_kernel_as_group_o_i_hw(model, name, kernel)?;
+        let kernel =
+            AxisOp::wire_collapse_axis(model, &format!("{name}.collapse_i_hw"), kernel, 2)?;
         let bias = if let Some(b) = &self.bias {
             b.clone()
         } else {
             Tensor::zero_dt(input_fact.datum_type, &[*input_shape.c()])?.into_arc_tensor()
         };
-        let kernel = model.add_const(format!("{name}.kernels"), self.kernel.clone())?;
-        let kernel = self.wire_kernel_as_group_o_i_hw(model, name, kernel)?;
-        let kernel =
-            AxisOp::wire_collapse_axis(model, &format!("{name}.collapse_i_hw"), kernel, 2)?;
-        let op = DepthWise::new(patch, input_shape, output_shape, bias);
-        Ok(model.wire_node(name, op, &[inputs[0], kernel])?[0])
+        let bias = model.add_const(format!("{name}.bias"), bias)?;
+        let op = DepthWise::new(patch, input_shape, output_shape);
+        Ok(model.wire_node(name, op, &[inputs[0], kernel, bias])?[0])
     }
 
     fn declutter_stride_slice_to_downsample(
