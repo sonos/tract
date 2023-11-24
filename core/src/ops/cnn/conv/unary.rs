@@ -31,8 +31,6 @@ use crate::ops::nn::{BaseDataShape, DataFormat, DataShape};
 use tract_linalg::frame::Packer;
 use tract_linalg::mmm::MatMatMul;
 
-use std::iter::Sum;
-
 #[derive(Debug, Clone, new, Hash)]
 pub struct ConvUnary {
     pub pool_spec: PoolSpec,
@@ -59,11 +57,10 @@ impl ConvUnary {
         self.kernel_fmt.kernel_as_group_o_ihw(&self.kernel, self.group)
     }
 
-    fn wire_kernel_prep(
+    fn wire_kernel_as_group_o_i_hw(
         &self,
         model: &mut TypedModel,
         name: &str,
-        packer: Packer,
         mut kernel: OutletId,
     ) -> TractResult<OutletId> {
         for (ix, op) in self
@@ -74,6 +71,17 @@ impl ConvUnary {
         {
             kernel = model.wire_node(format!("{name}.prep_kernel.{ix}"), op, &[kernel])?[0];
         }
+        Ok(kernel)
+    }
+
+    fn wire_kernel_packing(
+        &self,
+        model: &mut TypedModel,
+        name: &str,
+        packer: Packer,
+        kernel: OutletId,
+    ) -> TractResult<OutletId> {
+        let mut kernel = self.wire_kernel_as_group_o_i_hw(model, name, kernel)?;
         let i = (self.input_channels() / self.group).to_dim();
         let hw = self.pool_spec.kernel_shape.iter().product::<usize>().to_dim();
         kernel = model.wire_node(
@@ -471,7 +479,7 @@ impl ConvUnary {
     ) -> TractResult<TVec<OutletId>> {
         let kernel = model.add_const(format!("{name}.kernels"), self.kernel.clone())?;
         let kernels = self
-            .wire_kernel_prep(model, name, mmm.a_pack(), kernel)
+            .wire_kernel_packing(model, name, mmm.a_pack(), kernel)
             .context("in kernel_as_packed_as")?;
         let a_dt = model.outlet_fact(kernels)?.datum_type;
         let a_storage = unsafe { mmm.a_packed(a_dt.size_of(), k) };
@@ -507,26 +515,27 @@ impl ConvUnary {
         )
     }
 
-    pub fn to_depth_wise<T>(&self, input: &TypedFact) -> TractResult<Box<dyn TypedOp>>
-    where
-        T: Datum + Clone + ::ndarray::LinalgScalar + PartialEq + Sum,
-    {
-        let input_shape = input.shape.as_concrete().unwrap();
+    pub fn wire_as_depth_wise(
+        &self,
+        model: &mut TypedModel,
+        name: &str,
+        inputs: &[OutletId],
+    ) -> TractResult<OutletId> {
+        let input_fact = model.outlet_fact(inputs[0])?;
+        let input_shape = input_fact.shape.as_concrete().unwrap();
         let ConcretePoolGeometry { input_shape, patch, output_shape } =
-            self.pool_spec.compute_geo(&input.shape)?.to_concrete(input_shape)?.into_owned();
+            self.pool_spec.compute_geo(&input_fact.shape)?.to_concrete(input_shape)?.into_owned();
         let bias = if let Some(b) = &self.bias {
             b.clone()
         } else {
-            Tensor::zero::<T>(&[*input_shape.c()])?.into_arc_tensor()
+            Tensor::zero_dt(input_fact.datum_type, &[*input_shape.c()])?.into_arc_tensor()
         };
-        let op = DepthWise::new(
-            patch,
-            input_shape,
-            output_shape,
-            self.kernel_as_group_o_ihw().context("in kernel_as_group_o_ihw")?.into_arc_tensor(),
-            bias,
-        );
-        Ok(Box::new(op))
+        let kernel = model.add_const(format!("{name}.kernels"), self.kernel.clone())?;
+        let kernel = self.wire_kernel_as_group_o_i_hw(model, name, kernel)?;
+        let kernel =
+            AxisOp::wire_collapse_axis(model, &format!("{name}.collapse_i_hw"), kernel, 2)?;
+        let op = DepthWise::new(patch, input_shape, output_shape, bias);
+        Ok(model.wire_node(name, op, &[inputs[0], kernel])?[0])
     }
 
     fn declutter_stride_slice_to_downsample(
@@ -1057,7 +1066,6 @@ impl TypedOp for ConvUnary {
 
         let input_fact = model.outlet_fact(node.inputs[0])?;
         unsafe {
-            let dt = input_fact.datum_type;
             if self.q_params.is_some() {
                 let mut patch = TypedModelPatch::default();
                 let inputs = patch.taps(model, &node.inputs)?;
@@ -1090,9 +1098,12 @@ impl TypedOp for ConvUnary {
                 && self.group == self.input_channels()
                 && input_fact.shape.as_concrete().is_some()
             {
-                let op = dispatch_floatlike!(Self::to_depth_wise(dt)(self, input_fact))
-                    .context("in to_depth_wise")?;
-                Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?))
+                let mut patch = TypedModelPatch::default();
+                let wire = patch.tap_model(model, node.inputs[0])?;
+                let wire = self.wire_as_depth_wise(&mut patch, &node.name, &[wire])?;
+                patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
+                patch.obliterate(node.id)?;
+                Ok(Some(patch))
             } else {
                 let mut patch = TypedModelPatch::default();
                 let wire = patch.tap_model(model, node.inputs[0])?;

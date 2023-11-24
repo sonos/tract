@@ -9,7 +9,6 @@ pub struct DepthWise {
     patch: Patch,
     input_shape: DataShape,
     output_shape: DataShape,
-    kernel_chw: Arc<Tensor>,
     bias: Arc<Tensor>,
 }
 
@@ -38,12 +37,14 @@ impl EvalOp for DepthWise {
         let dt = inputs[0].datum_type();
         #[cfg(target_arch = "aarch64")]
         if dt == f16::datum_type() && tract_linalg::arm64::has_fp16() {
-            return unsafe { eval_t_aarch64fp16::<f16>(
-                self,
-                inputs,
-                |a, b| tract_linalg::arm64::add_f16(a, b),
-                |a, b| tract_linalg::arm64::mul_f16(a, b),
-            ) };
+            return unsafe {
+                eval_t_aarch64fp16::<f16>(
+                    self,
+                    inputs,
+                    |a, b| tract_linalg::arm64::add_f16(a, b),
+                    |a, b| tract_linalg::arm64::mul_f16(a, b),
+                )
+            };
         }
         dispatch_floatlike!(Self::eval_gen(dt)(self, inputs))
     }
@@ -56,7 +57,6 @@ impl DepthWise {
     ) -> TractResult<TVec<TValue>> {
         unsafe { eval_t_generic::<T>(self, inputs, |a, b| a + b, |a, b| a * b) }
     }
-
 }
 
 impl TypedOp for DepthWise {
@@ -75,10 +75,13 @@ impl TypedOp for DepthWise {
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        let [_input, kernel] = inputs else {
+            bail!("Depthwise expects two inputs");
+        };
         let n_output_points = self.patch.output_shape.iter().cloned().product::<usize>();
         Ok(tvec!((
             Cost::FMA(inputs[0].datum_type),
-            (self.input_shape.n().unwrap_or(&1) * n_output_points * self.kernel_chw.len()).to_dim()
+            kernel.shape.volume() * self.input_shape.n().unwrap_or(&1) * n_output_points
         )))
     }
 
@@ -95,18 +98,18 @@ macro_rules! impl_eval {
                 add: impl Fn(T, T) -> T + Copy + 'static,
                 mul: impl Fn(T, T) -> T + Copy + 'static,
             ) -> TractResult<TVec<TValue>> {
-                let img = args_1!(inputs);
+                let (img, kernel) = args_2!(inputs);
                 let mut output = unsafe { Tensor::uninitialized::<T>(&dw.output_shape.shape)? };
                 let iptr = img.as_ptr::<T>()?;
                 let optr = output.as_ptr_mut::<T>()?;
-                let k_stride_i = dw.kernel_chw.strides()[1];
+                let k_stride_i = kernel.strides()[1];
                 let n = *dw.input_shape.n().unwrap_or(&1);
                 let n_stride_i = *dw.input_shape.n_stride().unwrap_or(&0) as isize;
                 let n_stride_o = *dw.output_shape.n_stride().unwrap_or(&0) as isize;
                 let c_stride_i = *dw.input_shape.c_stride() as isize;
                 let c_stride_o = *dw.output_shape.c_stride() as isize;
                 let bias = dw.bias.as_ptr::<T>()?;
-                let kptr = dw.kernel_chw.as_ptr::<T>()?;
+                let kptr = kernel.as_ptr::<T>()?;
                 unsafe {
                     for n in 0..n as isize {
                         let iptr = iptr.offset(n_stride_i * n);
@@ -305,9 +308,9 @@ macro_rules! impl_eval {
 
 impl_eval!(generic);
 impl_eval! {
-#[target_feature(enable = "fp16")] 
+#[target_feature(enable = "fp16")]
 #[cfg(target_arch = "aarch64")]
-aarch64fp16 
+aarch64fp16
 }
 //#[target_feature(enable = "fp16")] impl_eval!(aarch64fp16);
 
