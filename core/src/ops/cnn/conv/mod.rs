@@ -124,7 +124,7 @@ impl KernelFormat {
 
     pub fn kernel_as_group_o_i_hw(&self, kernel: &Tensor, group: usize) -> TractResult<Tensor> {
         let mut kernel = kernel.clone();
-        let ops = self.kernel_as_group_o_i_hw_ops(&kernel.shape(), group)?;
+        let ops = self.kernel_as_group_o_i_hw_ops(kernel.shape(), group)?;
         for op in &ops {
             op.change_tensor(&mut kernel, false)?;
         }
