@@ -50,7 +50,7 @@ impl ConvUnary {
     }
 
     fn output_channels(&self) -> usize {
-        *self.kernel_fmt.output_channels(self.kernel.shape(), self.group)
+        self.pool_spec.output_channels
     }
 
     pub fn kernel_as_group_o_ihw(&self) -> TractResult<Tensor> {
@@ -63,9 +63,10 @@ impl ConvUnary {
         name: &str,
         mut kernel: OutletId,
     ) -> TractResult<OutletId> {
+        let fact = model.outlet_fact(kernel)?;
         for (ix, op) in self
             .kernel_fmt
-            .kernel_as_group_o_i_hw_ops(self.kernel.shape(), self.group)?
+            .kernel_as_group_o_i_hw_ops(&fact.shape, self.group)?
             .into_iter()
             .enumerate()
         {
@@ -449,7 +450,7 @@ impl ConvUnary {
 
         trace!("output channels: {:?}", self.output_channels());
         let m = self.output_channels() / self.group;
-        let k = self.kernel.len() / self.output_channels();
+        let k = self.input_channels() * self.pool_spec.kernel_shape.iter().product::<usize>() / self.group;
         let n: TDim =
             self.pool_spec.output_shape(&input_fact.shape)?.hw_dims().iter().cloned().product();
 
