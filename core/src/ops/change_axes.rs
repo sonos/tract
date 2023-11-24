@@ -81,17 +81,14 @@ impl AxisOp {
                     .chain(std::iter::once(Add(*at)))
                     .collect()
             }
-            Reshape(at, from, to) if from[from.len() - 1] == 1.to_dim() => std::iter::once(Rm(at
-                + from.len()
-                - 1))
-            .chain(Reshape(*at, from[..from.len() - 1].into(), to.clone()).simplify())
-            .collect(),
+            Reshape(at, from, to) if from[from.len() - 1] == 1.to_dim() => {
+                std::iter::once(Rm(at + from.len() - 1))
+                    .chain(Reshape(*at, from[..from.len() - 1].into(), to.clone()).simplify())
+                    .collect()
+            }
             Reshape(at, from, to) if to[to.len() - 1] == 1.to_dim() => {
                 std::iter::once(Add(at + from.len()))
-                    .chain(
-                        Reshape(*at, from.clone(), to[..to.len() - 1].into())
-                            .simplify(),
-                    )
+                    .chain(Reshape(*at, from.clone(), to[..to.len() - 1].into()).simplify())
                     .collect()
             }
             other => tvec!(other.clone()),
@@ -435,6 +432,33 @@ impl AxisOp {
         }
         !matches!(self, Move(_, _))
     }
+
+    pub fn wire_split_axis(
+        model: &mut TypedModel,
+        name: &str,
+        outlet: OutletId,
+        axis: usize,
+        outer_dim: usize,
+    ) -> TractResult<OutletId> {
+        let fact = model.outlet_fact(outlet)?;
+        let dim: TDim = fact.shape[axis].clone();
+        let inner_dim = dim.clone() / outer_dim;
+        let op = Self::Reshape(axis, tvec!(dim.clone()), tvec!(outer_dim.to_dim(), inner_dim));
+        Ok(model.wire_node(name, op, &[outlet])?[0])
+    }
+
+    pub fn wire_collapse_axis(
+        model: &mut TypedModel,
+        name: &str,
+        outlet: OutletId,
+        axis: usize,
+    ) -> TractResult<OutletId> {
+        let fact = model.outlet_fact(outlet)?;
+        let dim: TDim = fact.shape[axis].clone();
+        let next_dim: TDim = fact.shape[axis + 1].clone();
+        let op = Self::Reshape(axis, tvec!(dim.clone(), next_dim.clone()), tvec!(dim * next_dim));
+        Ok(model.wire_node(name, op, &[outlet])?[0])
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -680,7 +704,6 @@ impl TypedOp for AxisOp {
     }
 }
 
-
 // a, b, c is a <- b, b <- c, c <- a
 fn perm_to_cycles(perm: &[usize]) -> TVec<TVec<usize>> {
     let mut cycles: TVec<TVec<usize>> = tvec!();
@@ -791,7 +814,10 @@ pub fn compute_shape_with_tf_rules(input: &[TDim], shape_spec: &[TDim]) -> Tract
     Ok(shape)
 }
 
-pub fn to_axis_ops_with_tf_rules(input_orig: &[TDim], output_spec: &[TDim]) -> TractResult<TVec<AxisOp>> {
+pub fn to_axis_ops_with_tf_rules(
+    input_orig: &[TDim],
+    output_spec: &[TDim],
+) -> TractResult<TVec<AxisOp>> {
     let final_output = compute_shape_with_tf_rules(input_orig, output_spec)?;
     let mut stack: TVec<AxisOp> = tvec!();
     'top: loop {
@@ -1365,7 +1391,10 @@ mod proptests {
 
     #[test]
     fn axis_op_merge() {
-        assert_eq!(&*to_axis_ops_with_tf_rules(s![2, 3, 5, 7], s!(2, 0, 35)).unwrap(), &[r!(2 ; 5,7 => 35 )])
+        assert_eq!(
+            &*to_axis_ops_with_tf_rules(s![2, 3, 5, 7], s!(2, 0, 35)).unwrap(),
+            &[r!(2 ; 5,7 => 35 )]
+        )
     }
 
     #[test]
