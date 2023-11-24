@@ -2,6 +2,7 @@ use crate::deser::Value;
 use crate::internal::*;
 use crate::ops::nnef::deser::read_conv_parameters;
 use crate::ops::nnef::ser::make_conv_named_args;
+use crate::ops::nnef::ser::ser_axis_op;
 use crate::ser::*;
 use tract_core::ops::cnn::ConvUnary;
 use tract_core::ops::cnn::KernelFormat;
@@ -37,7 +38,11 @@ fn qconv_parameters() -> Vec<Parameter> {
     ]
 }
 
-fn qconv_unary_dump(ast: &mut IntoAst, node: &TypedNode, op: &ConvUnary) -> TractResult<Option<Arc<RValue>>> {
+fn qconv_unary_dump(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &ConvUnary,
+) -> TractResult<Option<Arc<RValue>>> {
     if op.q_params.is_none() || node.outputs[0].fact.datum_type.is_quantized() {
         return Ok(None);
     }
@@ -48,23 +53,30 @@ fn qconv_unary_dump(ast: &mut IntoAst, node: &TypedNode, op: &ConvUnary) -> Trac
         named_args.push((name, (*ast.mapping[&node.inputs[1 + ix]]).clone()));
     }
 
-    let ci = op
-        .pool_spec
-        .data_format
-        .shape(&ast.model.outlet_fact(node.inputs[0])?.shape.to_tvec())?
-        .c()
-        .to_usize()?;
-    let output_shape = op.pool_spec.data_format.shape(node.outputs[0].fact.shape.to_tvec())?;
-    let co = output_shape.c().to_usize()?;
     let mut wire = ast.mapping[&node.inputs[0]].clone();
-    let mut kernel_shape = tvec!(co, ci / op.group);
-    kernel_shape.extend(op.pool_spec.kernel_shape.iter().copied());
-    let mut weights = op.kernel_as_group_o_ihw()?.into_tensor();
-    weights.set_shape(&kernel_shape)?;
-    let weigths = ast.konst_variable(format!("{name}_weigths"), &weights.into_arc_tensor())?;
+    let mut weights = ast.konst_variable(format!("{name}_weights"), &op.kernel)?;
+    let mut rank = op.kernel.rank();
+    for fix in op.kernel_fmt.kernel_as_group_o_i_h_w_ops(op.kernel.shape(), op.group) {
+        weights = ser_axis_op(&fix, weights, rank);
+        match fix {
+            AxisOp::Add(_) => rank += 1,
+            AxisOp::Rm(_) => rank -= 1,
+            AxisOp::Move(_, _) => (),
+            AxisOp::Reshape(_, before, after) => rank = rank + after.len() - before.len(),
+        }
+    }
+    weights = ser_axis_op(
+        &AxisOp::Reshape(
+            0,
+            tvec!(op.group.to_dim(), op.pool_spec.output_channels.to_dim() / op.group),
+            tvec!(op.pool_spec.output_channels.to_dim()),
+        ),
+        weights,
+        rank,
+    );
     wire = ast.force_variable(format!("{name}_input"), &wire);
 
-    let mut inputs = tvec![wire, weigths];
+    let mut inputs = tvec![wire, weights];
     if let Some(bias) = op.bias.as_ref() {
         let bias = ast.konst(format!("{name}_bias"), bias)?;
         inputs.push(bias)

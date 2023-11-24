@@ -78,53 +78,80 @@ impl KernelFormat {
         }
     }
 
+    pub fn kernel_as_group_o_i_h_w_ops(
+        &self,
+        full_shape: &[impl DimLike],
+        group: usize,
+    ) -> TVec<AxisOp> {
+        let geo_rank = full_shape.len() - 2;
+        match self {
+            // g is on i
+            KernelFormat::HWIO => {
+                tvec!(
+                    AxisOp::Reshape(
+                        geo_rank,
+                        tvec!(self.i(full_shape).to_dim()),
+                        tvec!(group.to_dim(), self.i(full_shape).to_dim() / group),
+                    ), // h w g i o
+                    AxisOp::Move(geo_rank, 0),     // g h w i o
+                    AxisOp::Move(geo_rank + 2, 1), // g o h w i
+                    AxisOp::Move(geo_rank + 2, 2)
+                ) // g o i h w
+            }
+            // g is on o
+            KernelFormat::OIHW => {
+                tvec!(AxisOp::Reshape(
+                    0,
+                    tvec!(self.o(full_shape).to_dim()),
+                    tvec!(group.to_dim(), self.o(full_shape).to_dim() / group),
+                ))
+            }
+            // g is on i
+            KernelFormat::OHWI => {
+                tvec!(
+                    AxisOp::Reshape(
+                        geo_rank + 1,
+                        tvec!(self.i(full_shape).to_dim()),
+                        tvec!(group.to_dim(), self.i(full_shape).to_dim() / group),
+                    ), // o h w g i
+                    AxisOp::Move(geo_rank + 1, 0), // g o h w i
+                    AxisOp::Move(geo_rank + 2, 2)
+                )
+            }
+        }
+    }
+
     pub fn kernel_as_group_o_i_hw_ops(
         &self,
         full_shape: &[impl DimLike],
         group: usize,
-    ) -> TractResult<TVec<AxisOp>> {
-        let mut ops = tvec!();
-        ops.push(AxisOp::Reshape(
-            self.h_axis(),
-            self.hw(full_shape).iter().map(|t| t.to_dim()).collect(),
-            tvec!(self.hw(full_shape).iter().map(|t| t.to_dim()).product()),
-        ));
-        match self {
-            // g is on i
-            KernelFormat::HWIO => {
-                ops.push(AxisOp::Reshape(
-                    1,
-                    tvec!(self.i(full_shape).to_dim()),
-                    tvec!(group.to_dim(), self.i(full_shape).to_dim() / group),
-                ));
-                ops.push(AxisOp::Move(0, 3));
-                ops.push(AxisOp::Move(1, 2));
-            }
-            // g is on o
-            KernelFormat::OIHW => {
-                ops.push(AxisOp::Reshape(
-                    0,
-                    tvec!(self.o(full_shape).to_dim()),
-                    tvec!(group.to_dim(), self.o(full_shape).to_dim() / group),
-                ));
-            }
-            // g is on i
-            KernelFormat::OHWI => {
-                ops.push(AxisOp::Reshape(
-                    2,
-                    tvec!(self.i(full_shape).to_dim()),
-                    tvec!(group.to_dim(), self.i(full_shape).to_dim() / group),
-                )); // o hw g i
-                ops.push(AxisOp::Move(2, 0)); // g o hw i
-                ops.push(AxisOp::Move(2, 3));
-            }
+    ) -> TVec<AxisOp> {
+        let mut ops = self.kernel_as_group_o_i_h_w_ops(full_shape, group);
+        if self.hw(full_shape).len() > 1 {
+            ops.push(AxisOp::Reshape(
+                3,
+                self.hw(full_shape).iter().map(|t| t.to_dim()).collect(),
+                tvec!(self.hw(full_shape).iter().map(|t| t.to_dim()).product()),
+            ));
         }
-        Ok(ops)
+        ops
+    }
+
+    pub fn kernel_as_group_o_ihw_ops(
+        &self,
+        full_shape: &[impl DimLike],
+        group: usize,
+    ) -> TVec<AxisOp> {
+        let i = (self.input_channels(full_shape, group).into_owned() / group).to_dim();
+        let hw = self.hw(full_shape).iter().map(|t| t.to_dim()).product::<TDim>();
+        let mut ops = self.kernel_as_group_o_i_hw_ops(full_shape, group);
+        ops.push(AxisOp::Reshape(2, tvec!(i.clone(), hw.clone()), tvec!(i * hw)));
+        ops
     }
 
     pub fn kernel_as_group_o_i_hw(&self, kernel: &Tensor, group: usize) -> TractResult<Tensor> {
         let mut kernel = kernel.clone();
-        let ops = self.kernel_as_group_o_i_hw_ops(kernel.shape(), group)?;
+        let ops = self.kernel_as_group_o_i_hw_ops(kernel.shape(), group);
         for op in &ops {
             op.change_tensor(&mut kernel, false)?;
         }
