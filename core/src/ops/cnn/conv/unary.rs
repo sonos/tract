@@ -129,17 +129,14 @@ impl ConvUnary {
     }
 
     // group,bias
-    fn bias_as_non_linear<T>(
+    fn bias_as_non_linear(
         &self,
         c_group_axis: usize,
-    ) -> TractResult<Option<(ProtoFusedSpec, Tensor)>>
-    where
-        T: Datum + Copy + Zero,
-    {
+    ) -> TractResult<Option<(ProtoFusedSpec, Tensor)>> {
         use tract_linalg::mmm::BinOp::Add;
         if let Some(bias) = &self.bias {
             if let Some(uni) = bias.as_uniform() {
-                if uni == Tensor::zero_scalar::<T>()? {
+                if uni.is_zero()? {
                     Ok(None)
                 } else {
                     Ok(Some((ProtoFusedSpec::BinScalar(2, Add), uni)))
@@ -500,9 +497,7 @@ impl ConvUnary {
         let mut wires: TVec<OutletId> = wire.into();
         wires.push(kernels);
         let mut ops: Vec<ProtoFusedSpec> = vec![ProtoFusedSpec::AddMatMul(geo, 1, 0)];
-        if let Some((fused, tensor)) =
-            dispatch_numbers!(Self::bias_as_non_linear(mmm.internal_type())(self, c_m_axis - 1))?
-        {
+        if let Some((fused, tensor)) = self.bias_as_non_linear(c_m_axis - 1)? {
             let bias = model.add_const(format!("{name}.bias"), tensor)?;
             wires.push(bias);
             ops.push(fused);
