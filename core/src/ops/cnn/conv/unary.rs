@@ -1,5 +1,4 @@
 use ndarray::*;
-use num_integer::Integer;
 use tract_data::itertools::izip;
 use tract_linalg::mmm::InputStoreSpec;
 use tract_num_traits::Zero;
@@ -20,6 +19,7 @@ use crate::ops::math::Sub;
 use crate::ops::matmul::lir_unary::AddMatMulGeometry;
 use crate::ops::matmul::lir_unary::MapOutputAxisToInput;
 use crate::ops::matmul::mir_quant::wire_offset_u8_as_i8;
+use crate::ops::matmul::pack::MatMatMulPack;
 
 use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
@@ -59,29 +59,34 @@ impl ConvUnary {
         self.kernel_fmt.kernel_as_group_o_ihw(&self.kernel, self.group)
     }
 
-    // shape is g,packed
-    fn kernel_as_packed_as(&self, packer: &Packer, k: usize, m: usize) -> TractResult<Arc<Tensor>> {
-        let kernel = self.kernel_as_group_o_ihw()?;
-        unsafe {
-            let packed = Integer::next_multiple_of(
-                &packer.len(k, m),
-                &(packer.alignment() / kernel.datum_type().size_of()),
-            );
-            let packed = Tensor::uninitialized_aligned_dt(
-                kernel.datum_type(),
-                &[self.group, packed],
-                packer.alignment(),
-            )?;
-            for g in 0..self.group {
-                packer.pack(
-                    &mut TensorView::at_prefix(&packed, &[g])?,
-                    &kernel.view_at_prefix(&[g])?,
-                    1,
-                    0,
-                );
-            }
-            Ok(packed.into_arc_tensor())
+    fn wire_kernel_prep(
+        &self,
+        model: &mut TypedModel,
+        name: &str,
+        packer: Packer,
+        mut kernel: OutletId,
+    ) -> TractResult<OutletId> {
+        for (ix, op) in self
+            .kernel_fmt
+            .kernel_as_group_o_i_hw_ops(self.kernel.shape(), self.group)?
+            .into_iter()
+            .enumerate()
+        {
+            kernel = model.wire_node(format!("{name}.prep_kernel.{ix}"), op, &[kernel])?[0];
         }
+        let i = (self.input_channels() / self.group).to_dim();
+        let hw = self.pool_spec.kernel_shape.iter().product::<usize>().to_dim();
+        kernel = model.wire_node(
+            format!("{name}.prep_kernel.merge_i_hw"),
+            AxisOp::Reshape(2, tvec!(i.clone(), hw.clone()), tvec!(i * hw)),
+            &[kernel],
+        )?[0];
+        kernel = model.wire_node(
+            format!("{name}.prep_kernel.pack"),
+            MatMatMulPack { packer, k_axis: 2, mn_axis: 1 },
+            &[kernel],
+        )?[0];
+        Ok(kernel)
     }
 
     pub fn kernel_offset_u8_as_i8(
@@ -165,7 +170,7 @@ impl ConvUnary {
         };
         let b = wire_offset_u8_as_i8(model, name, wires[0], "b", &mut b0, "b0")?;
         let b_fact = model.outlet_fact(b)?.clone();
-        let (_, m, k, n, mmm) = self.compute_geo(&b_fact)?;
+        let (_, _, k, n, mmm) = self.compute_geo(&b_fact)?;
         let output_shape = self.pool_spec.output_shape(&b_fact.shape)?;
 
         if !model.outlet_fact(a_scale)?.shape.volume().is_one() {
@@ -225,7 +230,6 @@ impl ConvUnary {
             mmm,
             i32::datum_type(),
             mmm_output_shape.clone().into(),
-            m,
             k,
             c_axis,
             h_axis,
@@ -271,7 +275,7 @@ impl ConvUnary {
         let b_dt = b_fact.datum_type;
         let c_dt = crate::ops::matmul::output_type(b_fact.datum_type);
 
-        let (_, m, k, _, mmm) = self.compute_geo(model.outlet_fact(wire[0])?)?;
+        let (_, _, k, _, mmm) = self.compute_geo(model.outlet_fact(wire[0])?)?;
         let geo_output_shape = self.pool_spec.output_shape(&b_fact.shape)?;
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&geo_output_shape)?;
 
@@ -283,19 +287,20 @@ impl ConvUnary {
         )?;
 
         let b_storage = unsafe { mmm.b_packed(b_dt.size_of(), k) };
-        let wire = self.wire_lir_matmatmul(
-            model,
-            name,
-            &wire,
-            mmm,
-            c_dt,
-            mmm_output_shape.clone().into(),
-            m.to_usize().unwrap(),
-            k.to_usize().unwrap(),
-            c_axis,
-            h_axis,
-            b_storage,
-        ).context("in wire_lir_matmatmul")?;
+        let wire = self
+            .wire_lir_matmatmul(
+                model,
+                name,
+                &wire,
+                mmm,
+                c_dt,
+                mmm_output_shape.clone().into(),
+                k.to_usize().unwrap(),
+                c_axis,
+                h_axis,
+                b_storage,
+            )
+            .context("in wire_lir_matmatmul")?;
 
         let wire = self.wire_remove_group(model, name, &wire, &mmm_output_shape, c_axis)?;
         let wire = self.wire_rm_n_if_needed(model, name, &wire)?;
@@ -365,7 +370,7 @@ impl ConvUnary {
         mut wire: OutletId,
     ) -> TractResult<TVec<OutletId>> {
         let mut b_fact = model.outlet_fact(wire)?.clone();
-        let (geo, m, k, _, mmm) = self.compute_geo(&b_fact)?;
+        let (geo, _, k, _, mmm) = self.compute_geo(&b_fact)?;
         let input_shape = b_fact.shape.as_concrete().unwrap().to_vec();
         let mut geo = geo.to_concrete(&input_shape)?.into_owned();
         let mut input_shape: DataShape = self.pool_spec.data_format.shape(input_shape.into())?;
@@ -415,7 +420,6 @@ impl ConvUnary {
             mmm,
             c_dt,
             mmm_output_shape.clone().into(),
-            m.to_usize().unwrap(),
             k,
             c_axis,
             h_axis,
@@ -460,14 +464,17 @@ impl ConvUnary {
         mmm: Box<dyn MatMatMul>,
         c_datum_type: DatumType,
         mmm_output_shape: ShapeFact,
-        m: usize,
         k: usize,
         c_m_axis: usize,
         c_n_axis: usize,
         b_storage: InputStoreSpec,
     ) -> TractResult<TVec<OutletId>> {
-        let kernels = self.kernel_as_packed_as(&mmm.a_pack(), k, m).context("in kernel_as_packed_as")?;
-        let a_storage = unsafe { mmm.a_packed(self.kernel.datum_type().size_of(), k) };
+        let kernel = model.add_const(format!("{name}.kernels"), self.kernel.clone())?;
+        let kernels = self
+            .wire_kernel_prep(model, name, mmm.a_pack(), kernel)
+            .context("in kernel_as_packed_as")?;
+        let a_dt = model.outlet_fact(kernels)?.datum_type;
+        let a_storage = unsafe { mmm.a_packed(a_dt.size_of(), k) };
         let (mut c_to_a_axis_mapping, mut c_to_b_axis_mapping) = (tvec!(), tvec!());
 
         c_to_a_axis_mapping.push((c_m_axis - 1, 0)); // Group
@@ -483,7 +490,6 @@ impl ConvUnary {
             c_to_b_axis_mapping: MapOutputAxisToInput(c_to_b_axis_mapping),
         };
         let mut wires: TVec<OutletId> = wire.into();
-        let kernels = model.add_const(format!("{name}.kernels"), kernels)?;
         wires.push(kernels);
         let mut ops: Vec<ProtoFusedSpec> = vec![ProtoFusedSpec::AddMatMul(geo, 1, 0)];
         if let Some((fused, tensor)) =
@@ -529,7 +535,7 @@ impl ConvUnary {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         let input_fact = model.outlet_fact(node.inputs[0])?;
-        let spatial_rank = self.kernel.rank() - 2;
+        let spatial_rank = self.pool_spec.rank();
         if let Some(axis) = (0..spatial_rank).find(|&ax| {
             self.pool_spec.stride(ax) > 1
                 && self.pool_spec.padding.valid_dim(ax, self.pool_spec.stride(ax) == 1)
@@ -822,16 +828,6 @@ impl TypedOp for ConvUnary {
                     self
                     );
         }
-        /*
-        if self.pool_spec.output_channel_override != Some(self.output_channels()) {
-        bail!(
-        "Inconsistent convolution: output channels from pool spec is {:?}, kernel expects {} output channels.\n{:?}",
-        self.pool_spec.output_channel_override,
-        self.output_channels(),
-        self
-        );
-        }
-        */
         if let ExplicitOnnxPool(bef, after, _) | Explicit(bef, after) = &self.pool_spec.padding {
             anyhow::ensure!(bef.len() == self.pool_spec.rank());
             anyhow::ensure!(after.len() == self.pool_spec.rank());
@@ -874,8 +870,7 @@ impl TypedOp for ConvUnary {
         }
         let h_axis = shape.h_axis();
         let geo = "HWXYZ".chars().chain('a'..);
-        let kernel_spatial_shape =
-            &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
+        let kernel_spatial_shape = &self.pool_spec.kernel_shape;
         let padding = self.pool_spec.computed_padding(shape.hw_dims());
         for ((ix, &dim), repr) in kernel_spatial_shape.iter().enumerate().zip(geo) {
             if dim == 1
@@ -927,8 +922,7 @@ impl TypedOp for ConvUnary {
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         let shape = self.pool_spec.data_format.shape(inputs[0].shape.to_tvec())?;
-        let kernel_spatial_shape =
-            &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
+        let kernel_spatial_shape = &self.pool_spec.kernel_shape;
         let output_dims = self.pool_spec.padding.compute(
             shape.hw_dims(),
             kernel_spatial_shape,
