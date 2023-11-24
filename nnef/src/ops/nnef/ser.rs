@@ -397,17 +397,11 @@ pub fn sum_pool(
     cnn_pool(ast, node, "box", &op.pool_spec, Some(("normalize", logical(op.normalize))))
 }
 
-pub fn axis_op(
-    ast: &mut IntoAst,
-    node: &TypedNode,
-    op: &ops::change_axes::AxisOp,
-) -> TractResult<Option<Arc<RValue>>> {
-    let wire = ast.mapping[&node.inputs[0]].clone();
-    let invoke = match op {
+pub fn ser_axis_op(op: &ops::change_axes::AxisOp, wire: Arc<RValue>, rank: usize) -> Arc<RValue> {
+    match op {
         AxisOp::Rm(axis) => invocation("squeeze", &[wire], &[("axes", ints(&[*axis]))]),
         AxisOp::Add(axis) => invocation("unsqueeze", &[wire], &[("axes", ints(&[*axis]))]),
         AxisOp::Move(from, to) => {
-            let rank = node.outputs[0].fact.rank();
             let mut perm: TVec<usize> = (0..rank).collect();
             if from < to {
                 perm[*from..(to + 1)].rotate_left(1);
@@ -425,8 +419,17 @@ pub fn axis_op(
                 ("axis_count", numeric(from.len())),
             ],
         ),
-    };
-    Ok(Some(invoke))
+    }
+}
+
+pub fn axis_op(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &ops::change_axes::AxisOp,
+) -> TractResult<Option<Arc<RValue>>> {
+    let wire = ast.mapping[&node.inputs[0]].clone();
+    let rank = node.outputs[0].fact.rank();
+    Ok(Some(ser_axis_op(op, wire, rank)))
 }
 
 pub fn reduce(

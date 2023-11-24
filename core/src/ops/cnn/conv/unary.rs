@@ -1,4 +1,3 @@
-use ndarray::*;
 use tract_data::itertools::izip;
 use tract_linalg::mmm::InputStoreSpec;
 use tract_num_traits::Zero;
@@ -20,6 +19,7 @@ use crate::ops::matmul::lir_unary::AddMatMulGeometry;
 use crate::ops::matmul::lir_unary::MapOutputAxisToInput;
 use crate::ops::matmul::mir_quant::wire_offset_u8_as_i8;
 use crate::ops::matmul::pack::MatMatMulPack;
+use crate::ops::nn::Reduce;
 
 use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
@@ -53,43 +53,31 @@ impl ConvUnary {
         self.pool_spec.output_channels
     }
 
-    pub fn kernel_as_group_o_ihw(&self) -> TractResult<Tensor> {
-        self.kernel_fmt.kernel_as_group_o_ihw(&self.kernel, self.group)
-    }
-
-    fn wire_kernel_as_group_o_i_hw(
+    fn wire_kernel_as_g_o_ihw(
         &self,
         model: &mut TypedModel,
         name: &str,
         mut kernel: OutletId,
-    ) -> TractResult<OutletId> {
+    ) -> TractResult<TVec<OutletId>> {
         let fact = model.outlet_fact(kernel)?;
         for (ix, op) in self
             .kernel_fmt
-            .kernel_as_group_o_i_hw_ops(&fact.shape, self.group)?
+            .kernel_as_group_o_ihw_ops(&fact.shape, self.group)
             .into_iter()
             .enumerate()
         {
             kernel = model.wire_node(format!("{name}.prep_kernel.{ix}"), op, &[kernel])?[0];
         }
-        Ok(kernel)
+        Ok(tvec!(kernel))
     }
 
-    fn wire_kernel_packing(
+    fn wire_pack_g_o_ihw(
         &self,
         model: &mut TypedModel,
         name: &str,
         packer: Packer,
-        kernel: OutletId,
+        mut kernel: OutletId,
     ) -> TractResult<OutletId> {
-        let mut kernel = self.wire_kernel_as_group_o_i_hw(model, name, kernel)?;
-        let i = (self.input_channels() / self.group).to_dim();
-        let hw = self.pool_spec.kernel_shape.iter().product::<usize>().to_dim();
-        kernel = model.wire_node(
-            format!("{name}.prep_kernel.merge_i_hw"),
-            AxisOp::Reshape(2, tvec!(i.clone(), hw.clone()), tvec!(i * hw)),
-            &[kernel],
-        )?[0];
         kernel = model.wire_node(
             format!("{name}.prep_kernel.pack"),
             MatMatMulPack { packer, k_axis: 2, mn_axis: 1 },
@@ -199,20 +187,25 @@ impl ConvUnary {
             &[b, b0],
         )?[0];
 
-        let a = self.kernel_as_group_o_ihw()?.into_tensor();
-        let a = a.cast_to_dt(i32::datum_type())?;
-        let a = a.to_array_view::<i32>()?;
-        let sum_a = a.sum_axis(Axis(a.ndim() - 1));
-        let mut sum_a_shape: TVec<usize> = sum_a.shape().into();
+        let kernel = model.add_const(format!("{name}.kernel"), self.kernel.clone())?;
+        let g_o_ihw = self.wire_kernel_as_g_o_ihw(model, name, kernel)?;
+        let g_o_ihw_as_i32 =
+            model.wire_node(format!("{name}.kernel_as_i32"), cast(i32::datum_type()), &g_o_ihw)?;
+        let sum_a_g_c_k = model.wire_node(
+            format!("{name}.sum_a_g_c_k"),
+            Reduce::new(tvec!(2), ops::nn::Reducer::Sum),
+            &g_o_ihw_as_i32,
+        )?;
+        let sum_a_g_c = model.wire_node(format!("{name}.rm_k"), AxisOp::Rm(2), &sum_a_g_c_k)?;
         // align sum_A from G,C to "C" shape: N,HW,G,C (or N,G,C,HW)
-        sum_a_shape.insert(0, 1);
-        if self.pool_spec.data_format.c_is_last() {
-            sum_a_shape.insert(1, 1);
-        } else {
-            sum_a_shape.push(1)
-        }
-        let sum_a = sum_a.into_shape(&*sum_a_shape)?;
-        let sum_a = model.add_const(format!("{name}.sum_a"), sum_a)?;
+        let sum_a_n_g_c =
+            model.wire_node(format!("{name}.sum_a_n_g_c"), AxisOp::Add(0), &sum_a_g_c)?;
+        let hw_position = if self.pool_spec.data_format.c_is_last() { 1 } else { 3 };
+        let sum_a = model.wire_node(
+            format!("{name}.sum_a_n_g_c"),
+            AxisOp::Add(hw_position),
+            &sum_a_n_g_c,
+        )?;
 
         let mut sum_b = model.wire_node(
             format!("{name}.sum_b"),
@@ -242,8 +235,16 @@ impl ConvUnary {
             b_storage,
         )?;
 
-        let wire =
-            qmm::compensate_zero_points(model, name, wire[0], k.to_dim(), a0, b0, sum_a, sum_b[0])?;
+        let wire = qmm::compensate_zero_points(
+            model,
+            name,
+            wire[0],
+            k.to_dim(),
+            a0,
+            b0,
+            sum_a[0],
+            sum_b[0],
+        )?;
 
         let wire = self.wire_remove_group(model, name, &[wire], &mmm_output_shape, c_axis)?;
         let wire = self.wire_rm_n_if_needed(model, name, &wire)?;
@@ -271,6 +272,7 @@ impl ConvUnary {
         };
         model.wire_node(format!("{name}.reshape_group"), op, wire)
     }
+
     pub unsafe fn wire_as_im2col_pair(
         &self,
         model: &mut TypedModel,
@@ -450,7 +452,8 @@ impl ConvUnary {
 
         trace!("output channels: {:?}", self.output_channels());
         let m = self.output_channels() / self.group;
-        let k = self.input_channels() * self.pool_spec.kernel_shape.iter().product::<usize>() / self.group;
+        let k = self.input_channels() * self.pool_spec.kernel_shape.iter().product::<usize>()
+            / self.group;
         let n: TDim =
             self.pool_spec.output_shape(&input_fact.shape)?.hw_dims().iter().cloned().product();
 
@@ -476,8 +479,9 @@ impl ConvUnary {
         b_storage: InputStoreSpec,
     ) -> TractResult<TVec<OutletId>> {
         let kernel = model.add_const(format!("{name}.kernels"), self.kernel.clone())?;
+        let g_o_ihw = self.wire_kernel_as_g_o_ihw(model, name, kernel)?;
         let kernels = self
-            .wire_kernel_packing(model, name, mmm.a_pack(), kernel)
+            .wire_pack_g_o_ihw(model, name, mmm.a_pack(), g_o_ihw[0])
             .context("in kernel_as_packed_as")?;
         let a_dt = model.outlet_fact(kernels)?.datum_type;
         let a_storage = unsafe { mmm.a_packed(a_dt.size_of(), k) };
@@ -522,9 +526,7 @@ impl ConvUnary {
         let ConcretePoolGeometry { input_shape, patch, output_shape } =
             self.pool_spec.compute_geo(&input_fact.shape)?.to_concrete(input_shape)?.into_owned();
         let kernel = model.add_const(format!("{name}.kernels"), self.kernel.clone())?;
-        let kernel = self.wire_kernel_as_group_o_i_hw(model, name, kernel)?;
-        let kernel =
-            AxisOp::wire_collapse_axis(model, &format!("{name}.collapse_i_hw"), kernel, 2)?;
+        let kernel = self.wire_kernel_as_g_o_ihw(model, name, kernel)?;
         let bias = if let Some(b) = &self.bias {
             b.clone()
         } else {
@@ -532,7 +534,7 @@ impl ConvUnary {
         };
         let bias = model.add_const(format!("{name}.bias"), bias)?;
         let op = DepthWise::new(patch, input_shape, output_shape);
-        Ok(model.wire_node(name, op, &[inputs[0], kernel, bias])?[0])
+        Ok(model.wire_node(name, op, &[inputs[0], kernel[0], bias])?[0])
     }
 
     fn declutter_stride_slice_to_downsample(
@@ -1086,7 +1088,9 @@ impl TypedOp for ConvUnary {
             {
                 let mut patch = TypedModelPatch::new("wire_as_lazy_im2col");
                 let mut wire = patch.tap_model(model, node.inputs[0])?;
-                wire = self.wire_as_lazy_im2col(&mut patch, &node.name, wire)?[0];
+                wire = self
+                    .wire_as_lazy_im2col(&mut patch, &node.name, wire)
+                    .context("wire_as_lazy_im2col")?[0];
                 patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                 patch.obliterate(node.id)?;
                 Ok(Some(patch))
@@ -1097,7 +1101,9 @@ impl TypedOp for ConvUnary {
             {
                 let mut patch = TypedModelPatch::default();
                 let wire = patch.tap_model(model, node.inputs[0])?;
-                let wire = self.wire_as_depth_wise(&mut patch, &node.name, &[wire])?;
+                let wire = self
+                    .wire_as_depth_wise(&mut patch, &node.name, &[wire])
+                    .context("wire_as_depth_wise")?;
                 patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                 patch.obliterate(node.id)?;
                 Ok(Some(patch))

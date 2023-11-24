@@ -439,12 +439,12 @@ impl AxisOp {
         outlet: OutletId,
         axis: usize,
         outer_dim: usize,
-    ) -> TractResult<OutletId> {
+    ) -> TractResult<TVec<OutletId>> {
         let fact = model.outlet_fact(outlet)?;
         let dim: TDim = fact.shape[axis].clone();
         let inner_dim = dim.clone() / outer_dim;
         let op = Self::Reshape(axis, tvec!(dim.clone()), tvec!(outer_dim.to_dim(), inner_dim));
-        Ok(model.wire_node(name, op, &[outlet])?[0])
+        model.wire_node(name, op, &[outlet])
     }
 
     pub fn wire_collapse_axis(
@@ -452,12 +452,12 @@ impl AxisOp {
         name: &str,
         outlet: OutletId,
         axis: usize,
-    ) -> TractResult<OutletId> {
+    ) -> TractResult<TVec<OutletId>> {
         let fact = model.outlet_fact(outlet)?;
         let dim: TDim = fact.shape[axis].clone();
         let next_dim: TDim = fact.shape[axis + 1].clone();
         let op = Self::Reshape(axis, tvec!(dim.clone(), next_dim.clone()), tvec!(dim * next_dim));
-        Ok(model.wire_node(name, op, &[outlet])?[0])
+        model.wire_node(name, op, &[outlet])
     }
 }
 
