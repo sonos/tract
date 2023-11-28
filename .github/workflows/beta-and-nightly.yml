@@ -97,7 +97,7 @@ jobs:
       run: rustup update
     - name: Install cargo-deny
       run: |
-        curl -L https://github.com/EmbarkStudios/cargo-deny/releases/download/0.11.0/cargo-deny-0.11.0-x86_64-unknown-linux-musl.tar.gz \
-            | tar -zx --strip-components=1 "cargo-deny-0.11.0-x86_64-unknown-linux-musl/cargo-deny"
+        curl -L https://github.com/EmbarkStudios/cargo-deny/releases/download/0.14.3/cargo-deny-0.14.3-x86_64-unknown-linux-musl.tar.gz \
+            | tar -zx --strip-components=1 "cargo-deny-0.14.3-x86_64-unknown-linux-musl/cargo-deny"
     - name: Run cargo-deny
       run: .travis/cargo-deny-check.sh

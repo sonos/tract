@@ -32,12 +32,9 @@ deny = [
 
 # Skip some multiple-versions checks, until they can be fixed.
 skip = [
-    { name = "half", version="1.8.2" }, # old versions pulled by serde_cbor and criterionin dev mode
     { name = "hashbrown", version="0.11.2" }, # string interner pulls old version
-    { name = "quick-error", version="<2" }, # cascading from flate
     { name = "regex-syntax", version="<8" },
     { name = "syn", version="<2" },
-    { name = "bitflags", version="<2" },
 ]
 
 [sources]
