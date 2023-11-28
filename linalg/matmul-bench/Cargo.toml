@@ -12,8 +12,8 @@ cblas = { version = "0.3", optional = true }
 accelerate-src = { version = "0.3", optional = true }
 blis-src = { version = "0.2", features = ["static"], optional = true }
 matrixmultiply = "*"
-tract-data = { path = "../../data", version = "=0.20.22-pre" }
-tract-linalg = { path = "../../linalg", version = "=0.20.22-pre" }
+tract-data = { path = "../../data", version = "=0.20.22" }
+tract-linalg = { path = "../../linalg", version = "=0.20.22" }
 
 
 [features]
