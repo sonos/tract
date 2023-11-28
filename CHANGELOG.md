@@ -1,3 +1,6 @@
+# 0.20.22 - 2023-11-28
+* [ONNX] LayerNormalization support
+
 # 0.20.21 - 2023-10-31
 * [ONNX] ignoring output shapes is now the default
 
