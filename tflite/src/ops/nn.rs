@@ -124,7 +124,7 @@ pub fn de_relu(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         op.ctx.target.outlet_fact(input)?.datum_type,
     )?;
     wire_with_rank_broadcast(
-        &format!("{}.relu", op.prefix),
+        format!("{}.relu", op.prefix),
         op.ctx.target,
         core::math::max(),
         &wires,
@@ -141,7 +141,7 @@ pub fn de_relu6(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         op.ctx.target.outlet_fact(input)?.datum_type,
     )?;
     wire_with_rank_broadcast(
-        &format!("{}.relu6", op.prefix),
+        format!("{}.relu6", op.prefix),
         op.ctx.target,
         core::math::min(),
         &wires,

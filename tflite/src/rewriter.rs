@@ -87,7 +87,7 @@ fn homogeneous_convolution(
             let mut wire = patch.taps(model, &node.inputs)?;
             let k0_fix = patch.add_const(format!("{name}.128"), tensor0(128i32))?;
             wire[1] = wire_with_rank_broadcast(
-                &format!("{name}.fix_k0"),
+                format!("{name}.fix_k0"),
                 &mut patch,
                 add(),
                 &[wire[1], k0_fix],
@@ -114,7 +114,7 @@ fn homogeneous_convolution(
             let mut wire = patch.taps(model, &node.inputs)?;
             let k0_fix = patch.add_const(format!("{name}.128"), tensor0(128i32))?;
             wire[1] = wire_with_rank_broadcast(
-                &format!("{name}.fix_k0"),
+                format!("{name}.fix_k0"),
                 &mut patch,
                 sub(),
                 &[wire[1], k0_fix],
