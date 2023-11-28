@@ -15,6 +15,7 @@ pub fn register(registry: &mut Registry) {
             TypeName::Scalar.named("alpha"),
             TypeName::Integer.named("skip").default(0),
             TypeName::Logical.named("stateless").default(false),
+            TypeName::Logical.named("complex").default(false),
             TypeName::Scalar.named("epsilon").default(1e-14f32),
         ],
         &[("output", TypeName::Scalar.tensor())],
@@ -32,8 +33,9 @@ fn de_eun(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractR
     let alpha = invocation.named_arg_as(builder, "alpha")?;
     let epsilon = invocation.named_arg_as(builder, "epsilon")?;
     let stateless = invocation.named_arg_as::<bool>(builder, "stateless")?;
+    let complex = invocation.named_arg_as::<bool>(builder, "complex")?;
     let skip = invocation.named_arg_as::<i64>(builder, "skip")? as usize;
-    let op = ExpUnitNorm { alpha, axis, epsilon, stateless, skip };
+    let op = ExpUnitNorm { alpha, axis, epsilon, stateless, skip, complex };
     builder.wire(op, &[wire, state])
 }
 
@@ -52,6 +54,7 @@ fn ser_eun(
             ("alpha", numeric(op.alpha)),
             ("epsilon", numeric(op.epsilon)),
             ("stateless", logical(op.stateless)),
+            ("complex", logical(op.complex)),
             ("skip", numeric(op.skip)),
         ],
     )))
@@ -64,6 +67,7 @@ pub struct ExpUnitNorm {
     pub axis: usize,
     pub skip: usize,
     pub stateless: bool,
+    pub complex: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]
@@ -101,20 +105,34 @@ impl EvalOp for ExpUnitNorm {
 
 impl ExpUnitNormState {
     fn eval(&mut self, op: &ExpUnitNorm, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        use tract_ndarray::Axis;
         let (input, state0) = args_2!(inputs);
         let mut input = input.into_tensor();
-        let mut view = input.to_array_view_mut::<f32>()?;
+        let mut x_view = input.to_array_view_mut::<f32>()?;
         if self.hidden.is_none() || op.stateless {
             self.hidden = Some(state0.into_tensor());
         }
+        if op.complex {
+            ensure!(x_view.shape()[x_view.ndim() - 1] == 2);
+        }
         let mut state = self.hidden.as_mut().unwrap().to_array_view_mut::<f32>()?;
-        for mut time_slice in view.axis_iter_mut(tract_ndarray::Axis(op.axis)) {
+        for mut time_slice in x_view.axis_iter_mut(Axis(op.axis)) {
             if self.index >= op.skip {
-                state.zip_mut_with(&time_slice, |s: &mut f32, x: &f32| {
+                let normed = if op.complex {
+                    time_slice.mapv(|x| x * x).sum_axis(Axis(time_slice.ndim() - 1)).mapv(|x| x.sqrt())
+                } else {
+                    time_slice.mapv(|x| x.abs())
+                };
+                state.zip_mut_with(&normed, |s: &mut f32, x: &f32| {
                     *s = x.max(op.epsilon) * (1f32 - op.alpha) + *s * op.alpha;
                 });
             }
-            time_slice.zip_mut_with(&state, |x, s| *x /= s.sqrt());
+            if op.complex {
+                let state_view = state.view().insert_axis(Axis(state.ndim()));
+                time_slice.zip_mut_with(&state_view, |x, s| *x /= s.sqrt());
+            } else {
+                time_slice.zip_mut_with(&state, |x, s| *x /= s.sqrt());
+            }
             self.index += 1;
         }
         Ok(tvec!(input.into_tvalue()))
@@ -136,7 +154,11 @@ impl OpState for ExpUnitNormState {
 impl TypedOp for ExpUnitNorm {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut state_shape = inputs[0].shape.clone();
-        let _ = state_shape.remove_axis(self.axis);
+        state_shape.remove_axis(self.axis)?;
+        if self.complex {
+            ensure!(inputs[0].shape[inputs[0].rank() - 1] == 2.to_dim());
+            state_shape.remove_axis(state_shape.rank() - 1)?;
+        }
         ensure!(inputs[1].without_value() == inputs[0].datum_type.fact(state_shape));
         Ok(tvec!(inputs[0].without_value()))
     }
