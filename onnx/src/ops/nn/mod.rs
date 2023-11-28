@@ -10,6 +10,7 @@ mod batch_norm;
 mod conv_transpose;
 mod dropout;
 mod instance_norm;
+mod layer_norm;
 mod lrn;
 mod reduce;
 
@@ -45,6 +46,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Hardmax", layer_hard_max);
     reg.insert("HardSigmoid", hard_sigmoid);
     reg.insert("InstanceNormalization", instance_norm::instance_normalization);
+    reg.insert("LayerNormalization", layer_norm::layer_norm);
     reg.insert("LeakyRelu", leaky_relu);
     reg.insert("LogSoftmax", layer_log_soft_max);
     reg.insert("LRN", lrn::lrn);
