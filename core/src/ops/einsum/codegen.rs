@@ -224,7 +224,7 @@ fn dequant(
     let name = &node.name;
     let mut patch = TypedModelPatch::new("Dequantizing einsum");
     let taps = patch.taps(model, &node.inputs)?;
-    let [a, b, bias, mut a0, mut a_scale, mut b0, b_scale, c0, c_scale] = *taps else {
+    let [mut a, mut b, bias, mut a0, mut a_scale, mut b0, b_scale, c0, c_scale] = *taps else {
         bail!("Expect exactly 9 inputs")
     };
 
@@ -240,8 +240,8 @@ fn dequant(
         }
     }
 
-    let a = wire_offset_u8_as_i8(&mut patch, &node.name, a, "a", &mut a0, "a0")?;
-    let b = wire_offset_u8_as_i8(&mut patch, &node.name, b, "b", &mut b0, "b0")?;
+    wire_offset_u8_as_i8(&mut patch, &node.name, &mut a, "a", &mut a0)?;
+    wire_offset_u8_as_i8(&mut patch, &node.name, &mut b, "b", &mut b0)?;
 
     let mut output = patch.wire_node(
         &node.name,

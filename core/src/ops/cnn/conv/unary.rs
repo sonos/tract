@@ -155,36 +155,36 @@ impl ConvUnary {
         use crate::ops::matmul::mir_quant as qmm;
 
         let c_dt = self.q_params.unwrap();
-        let &[input, mut a0, mut a_scale, mut b0, b_scale, c0, c_scale] = wires else {
+        let &[mut x, mut k0, mut k_scale, mut x0, x_scale, y0, y_scale] = wires else {
             bail!("Wrong number of inputs")
         };
-        let kernel = model.add_const(format!("{name}.kernel"), self.kernel.clone())?;
-        let kernel = wire_offset_u8_as_i8(model, name, kernel, "a", &mut a0, "a0")?;
-        let b = wire_offset_u8_as_i8(model, name, input, "b", &mut b0, "b0")?;
+        let mut kernel = model.add_const(format!("{name}.kernel"), self.kernel.clone())?;
+        wire_offset_u8_as_i8(model, name, &mut kernel, "k", &mut k0)?;
+        wire_offset_u8_as_i8(model, name, &mut x, "x", &mut x0)?;
 
         let a_fact = model.outlet_fact(kernel)?.clone();
-        let b_fact = model.outlet_fact(b)?.clone();
+        let b_fact = model.outlet_fact(x)?.clone();
         let (_, _, k, n, mmm) = self.compute_geo(&a_fact, &b_fact)?;
         let output_shape = self.pool_spec.output_shape(&b_fact.shape)?;
 
-        if !model.outlet_fact(a_scale)?.shape.volume().is_one() {
+        if !model.outlet_fact(k_scale)?.shape.volume().is_one() {
             // requant is performed before geo_reshape, so we need at most one geo axis to the
             // right
             if !output_shape.fmt.c_is_last() {
-                a_scale = model.wire_node(
+                k_scale = model.wire_node(
                     format!("{name}.a_scale_axis_fix"),
                     AxisOp::Add(1),
-                    &[a_scale],
+                    &[k_scale],
                 )?[0];
             }
         }
 
-        let abc_scale = qmm::combine_scales(model, name, a_scale, b_scale, c_scale)?;
+        let abc_scale = qmm::combine_scales(model, name, k_scale, x_scale, y_scale)?;
 
         let im2col = model.wire_node(
             format!("{name}.im2col"),
             Im2Col::new(self.pool_spec.clone(), self.group, k, &b_fact.shape, mmm.clone())?,
-            &[b, b0],
+            &[x, x0],
         )?[0];
 
         let g_o_ihw = self.wire_kernel_as_g_o_ihw(model, name, kernel)?;
@@ -218,9 +218,9 @@ impl ConvUnary {
                 model.wire_node(format!("{name}.transpose_sum_b"), AxisOp::Move(3, 1), &sum_b)?;
         }
 
-        let b_dt = model.outlet_fact(b)?.datum_type;
+        let x_dt = model.outlet_fact(x)?.datum_type;
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
-        let b_storage = unsafe { mmm.b_packed(b_dt.size_of(), k) };
+        let b_storage = unsafe { mmm.b_packed(x_dt.size_of(), k) };
         let wire = self.wire_mm_weights_bias(
             model,
             name,
@@ -240,15 +240,15 @@ impl ConvUnary {
             name,
             wire[0],
             k.to_dim(),
-            a0,
-            b0,
+            k0,
+            x0,
             sum_a[0],
             sum_b[0],
         )?;
 
         let wire = self.wire_remove_group(model, name, &[wire], &mmm_output_shape, c_axis)?;
         let wire = self.wire_rm_n_if_needed(model, name, &wire)?;
-        let wire = qmm::requant(model, name, wire[0], c_dt, abc_scale, c0)?;
+        let wire = qmm::requant(model, name, wire[0], c_dt, abc_scale, y0)?;
         Self::wire_geo_reshape(model, name, &[wire], &output_shape)
     }
 

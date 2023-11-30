@@ -10,47 +10,45 @@ use crate::ops::cast::cast;
 /// Only wires nodes of u8 type and leaves nodes of different type untouched.
 pub(crate) fn wire_offset_u8_as_i8(
     model: &mut TypedModel,
-    model_name: &str,
-    matrix: OutletId,
-    matrix_name: &str,
+    prefix: &str,
+    input: &mut OutletId,
+    input_name: &str,
     zero_point: &mut OutletId,
-    zero_point_name: &str,
-) -> TractResult<OutletId> {
-    if let DatumType::U8 = model.outlet_fact(matrix)?.datum_type.unquantized() {
+) -> TractResult<()> {
+    if let DatumType::U8 = model.outlet_fact(*input)?.datum_type.unquantized() {
         match model.outlet_fact(*zero_point)?.datum_type.unquantized() {
             DatumType::U8 => {
                 *zero_point = model.wire_node(
-                    format!("{model_name}.offset_{zero_point_name}_as_i8"),
+                    format!("{prefix}.offset_{input_name}_zp_as_i8"),
                     ops::quant::offset_u8_as_i8(),
                     &[*zero_point],
                 )?[0];
             }
             DatumType::I32 | DatumType::I8 => {
                 *zero_point = model.wire_node(
-                    "{model_name}.{zero_point_name}.cast",
+                    format!("{prefix}.{input_name}_zp.cast"),
                     cast(i32::datum_type()),
                     &[*zero_point],
                 )?[0];
                 let cst = model.add_const(
-                    format!("{model_name}.offset_{zero_point_name}_as_i8.min"),
-                    tensor0(-128i32).broadcast_into_rank(model.outlet_fact(*zero_point)?.rank())?
+                    format!("{prefix}.offset_{input_name}_zp_as_i8.min"),
+                    tensor0(-128i32).broadcast_into_rank(model.outlet_fact(*zero_point)?.rank())?,
                 )?;
                 *zero_point = model.wire_node(
-                    format!("{model_name}.offset_{zero_point_name}_as_i8"),
+                    format!("{prefix}.offset_{input_name}_zp_as_i8"),
                     ops::math::add(),
                     &[*zero_point, cst],
                 )?[0];
             }
             _ => (),
         }
-        Ok(model.wire_node(
-            format!("{model_name}.offset_{matrix_name}_as_i8"),
+        *input = model.wire_node(
+            format!("{prefix}.offset_{input_name}_as_i8"),
             ops::quant::offset_u8_as_i8(),
-            &[matrix],
-        )?[0])
-    } else {
-        Ok(matrix)
+            &[*input],
+        )?[0];
     }
+    Ok(())
 }
 
 pub(crate) fn combine_scales(
