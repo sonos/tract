@@ -596,34 +596,26 @@ impl ConvUnary {
         if self.group == 1
             && self.pool_spec.strides().iter().all(|s| *s == 1)
             && self.pool_spec.dilations().iter().all(|d| *d == 1)
-            && self.kernel.len() == self.input_channels() * self.output_channels()
+            && self.pool_spec.kernel_shape.iter().product::<usize>() == 1
             && self
                 .pool_spec
                 .computed_padding(input_shape.hw_dims())
                 .iter()
                 .all(|pad| pad.pad_after.is_zero() && pad.pad_before.is_zero())
         {
-            let name = &node.name;
-            let ci = self.input_channels();
-            let co = self.output_channels();
-            let ker = self.kernel.clone().into_tensor();
-            let a_shape = if self.kernel_fmt == KernelFormat::HWIO { [ci, co] } else { [co, ci] };
-            let a = ker.into_shape(&a_shape)?.into_arc_tensor();
             let mut patch = TypedModelPatch::new("declutter_as_einsum");
-            let a = patch.add_const(format!("{name}.filters"), a)?;
             let mut inputs = patch.taps(model, &node.inputs)?;
-            inputs.insert(0, a);
-            let mut axes = self.axes_mapping(&input_facts, &output_facts)?.with_extra_input(0)?;
-            axes = axes.with_extra_axis('0', InOut::In(0), 0)?.with_extra_axis(
-                '1',
-                InOut::In(0),
-                1,
-            )?;
-            if self.kernel_fmt == KernelFormat::HWIO {
-                axes = axes.linking('I', '0')?.linking('O', '1')?;
-            } else {
-                axes = axes.linking('I', '1')?.linking('O', '0')?;
-            }
+            let name = &node.name;
+            let co = self.output_channels();
+            let ker = patch.add_const(format!("{name}.filters"), self.kernel.clone())?;
+            let ker = self.wire_kernel_as_g_o_ihw(&mut patch, &format!("{name}.filters"), ker)?;
+            let ker = patch.wire_node(&format!("{name}.filters_as_co_ci"), AxisOp::Rm(0), &ker)?;
+            inputs.insert(0, ker[0]);
+            let mut axes = self
+                .axes_mapping(&input_facts, &output_facts)?
+                .with_extra_input(0)?
+                .with_extra_axis_occurency('O', InOut::In(0), 0)?
+                .with_extra_axis_occurency('I', InOut::In(0), 1)?;
             let wire = if self.q_params.is_some() {
                 let bias = self.bias.clone().unwrap_or_else(|| rctensor0(0i32));
                 anyhow::ensure!(bias.rank() == 0 || bias.rank() == 1);
