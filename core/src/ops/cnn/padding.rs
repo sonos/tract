@@ -192,10 +192,11 @@ impl PaddingSpec {
         } else {
             let kernel_field = (kernel - 1) * dilation + 1;
             let dividend = input.clone() + bef + aft - kernel_field;
-            let output = dividend.divceil(stride) + 1;
+            let output = dividend.div(stride) + 1;
             ComputedPaddedDim::new(input.clone(), output, bef.into(), aft.into())
         }
     }
+
     fn explicit_usize(
         input: usize,
         kernel: usize,
