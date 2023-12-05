@@ -198,11 +198,11 @@ impl Expansion for Conv {
             bail!("Input has {} channels, kernel expects {}", input_shape.c_dim(), input_channels)
         }
         let bias = if let Some(slot) = self.bias_input {
-            Some(model.outlet_fact(inputs[slot])?.konst.clone().context("Bias must be const")?)
+            inputs[slot]
         } else {
-            None
+            model.add_const(format!("{prefix}.bias"), Tensor::zero_scalar_dt(model.outlet_fact(inputs[0])?.datum_type)?)?
         };
-        let mut wires = vec![inputs[0]];
+        let mut wires = vec![inputs[0], inputs[1], bias];
         let pool_spec = PoolSpec {
             data_format: self.data_format,
             padding: self.padding.clone(),
@@ -227,15 +227,19 @@ impl Expansion for Conv {
             macro_rules! qp {
                 ($id: ident, $def: expr, $ty: ty) => {
                     let wire = self.$id.map(|i| inputs[i]).unwrap_or($def);
-                    let wire = model.wire_node(format!("{prefix}.cast_{}", stringify!($id)), cast(<$ty>::datum_type()), &[wire])?[0];
+                    let wire = model.wire_node(
+                        format!("{prefix}.cast_{}", stringify!($id)),
+                        cast(<$ty>::datum_type()),
+                        &[wire],
+                    )?[0];
                     wires.push(wire);
-                }
+                };
             }
 
-            qp!(k_zero_point_input, zero, i32);
-            qp!(k_scale_input, one, f32);
             qp!(x_zero_point_input, zero, i32);
             qp!(x_scale_input, one, f32);
+            qp!(k_zero_point_input, zero, i32);
+            qp!(k_scale_input, one, f32);
             qp!(y_zero_point_input, zero, i32);
             qp!(y_scale_input, one, f32);
         };
@@ -243,9 +247,7 @@ impl Expansion for Conv {
         let reduced = ConvUnary::new(
             pool_spec,
             self.kernel_fmt,
-            kernel,
             group,
-            bias,
             Some(output_type).filter(|_| quantized),
         );
         model.wire_node(prefix, reduced, &wires)

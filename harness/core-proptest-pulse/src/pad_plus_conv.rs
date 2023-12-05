@@ -75,6 +75,8 @@ impl PadPlusConvProblem {
                 )
                 .unwrap()[0];
         }
+        let kernel = model.add_const("kernel", self.ker.clone()).unwrap();
+        let bias = model.add_const("bias", tensor0(0f32)).unwrap();
         let conv = model
             .wire_node(
                 "conv",
@@ -89,12 +91,10 @@ impl PadPlusConvProblem {
                         output_channels: 1,
                     },
                     kernel_fmt: tract_core::ops::cnn::KernelFormat::OIHW,
-                    kernel: self.ker.clone().into_arc_tensor(),
                     group: 1,
-                    bias: None,
                     q_params: None,
                 },
-                &[wire],
+                &[wire, kernel, bias],
             )
             .unwrap();
         model.set_output_outlets(&conv).unwrap();

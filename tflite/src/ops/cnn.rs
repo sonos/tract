@@ -8,6 +8,7 @@ use crate::tflite::{
 use tract_core::internal::*;
 use tract_core::ops as core;
 use tract_core::ops::array::{Pad, PadMode};
+use tract_core::ops::cast::cast;
 use tract_core::ops::cnn::KernelFormat;
 use tract_core::ops::cnn::{ConvUnary, PaddingSpec};
 use tract_core::ops::nn::DataFormat;
@@ -64,17 +65,9 @@ fn ser_conv(
             || conv.pool_spec.padding == PaddingSpec::SameUpper
     );
     let node_name = &node.name;
-    let mut inputs = tvec!(builder.outlets_to_tensors[&node.inputs[0]]);
-    let mut bias = conv.bias.clone().unwrap_or_else(|| {
-        let co = conv.pool_spec.output_channels;
-        if conv.q_params.is_some() {
-            Tensor::zero::<i32>(&[co]).unwrap()
-        } else {
-            Tensor::zero::<f32>(&[co]).unwrap()
-        }
-        .into_arc_tensor()
-    });
+    let mut inputs = tvec!(builder.outlets_to_tensors[&node.inputs[0]],);
     if conv.q_params.is_some() {
+        /*
         let facts = model.node_input_facts(node.id)?;
         let iscale = facts[0].datum_type.zp_scale().1;
         let k0_tract = facts[1].konst.as_ref().unwrap().cast_to_scalar::<i32>()? as i64;
@@ -99,13 +92,17 @@ fn ser_conv(
             )?);
         } else {
             inputs.push(builder.write_fact(&format!("{node_name}.weights"), &conv.kernel)?);
-            let bias_qdt = bias.datum_type().quantize(QParams::ZpScale { zero_point: 0, scale: iscale * kscale[0] });
+            let bias_qdt = bias
+                .datum_type()
+                .quantize(QParams::ZpScale { zero_point: 0, scale: iscale * kscale[0] });
             let bias = bias.cast_to_dt(bias_qdt)?.into_owned();
             inputs.push(builder.write_fact(&format!("{node_name}.bias"), bias)?);
         }
+        */
+        todo!();
     } else {
-        inputs.push(builder.write_fact(&format!("{node_name}.weights"), &conv.kernel)?);
-        inputs.push(builder.write_fact(&format!("{node_name}.bias"), &bias)?);
+        inputs.push(builder.outlets_to_tensors[&node.inputs[1]]);
+        inputs.push(builder.outlets_to_tensors[&node.inputs[2]]);
     }
     let output = builder.outlets_to_tensors[&node.id.into()];
 
@@ -159,10 +156,8 @@ fn ser_conv(
 
 fn de_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let (input, kernel, bias) = args_3!(op.facts()?);
-    let kernel = kernel.konst.unwrap();
-    let bias = bias.konst.unwrap();
-    let kernel_full_shape: TVec<usize> = kernel.shape().into();
-    let kernel_shape: TVec<usize> = KernelFormat::OHWI.spatial_shape(&kernel_full_shape).into();
+    let kernel_full_shape = kernel.shape.as_concrete().context("Expect concrete kernel shape")?;
+    let kernel_spatial_shape = KernelFormat::OHWI.spatial_shape(&kernel_full_shape);
     let options = builtin!(op, builtin_options_as_conv_2_doptions);
     let padding = match options.padding() {
         Padding::SAME => PaddingSpec::SameUpper,
@@ -176,7 +171,7 @@ fn de_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let output_channels = *KernelFormat::OHWI.o(&kernel_full_shape);
     let pool_spec = core::cnn::PoolSpec {
         data_format: tract_core::ops::nn::DataFormat::NHWC,
-        kernel_shape,
+        kernel_shape: kernel_spatial_shape.into(),
         padding,
         strides: Some(strides),
         dilations: Some(dilations),
@@ -185,16 +180,14 @@ fn de_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     };
     let mut inputs = tvec!(op.inputs[0]);
     let q_params = super::linearops_quantization_suport(op, &input, &mut inputs)?;
-    let bias_dt = bias.datum_type().unquantized();
-    let bias = bias.into_tensor().cast_to_dt(bias_dt)?.into_owned().into_arc_tensor();
-    let conv = core::cnn::ConvUnary {
-        pool_spec,
-        kernel_fmt: KernelFormat::OHWI,
-        kernel,
-        group: 1,
-        bias: Some(bias),
-        q_params,
-    };
+    let bias_dt = bias.datum_type.unquantized();
+    let bias = op.ctx.target.wire_node(
+        format!("{}.cast_bias", op.prefix),
+        cast(bias_dt),
+        &[op.inputs[2]],
+    )?[0];
+    let conv =
+        core::cnn::ConvUnary { pool_spec, kernel_fmt: KernelFormat::OHWI, group: 1, q_params };
     let wires = op.ctx.target.wire_node(op.prefix, conv, &inputs)?;
     wire_fused_activation(op, &wires, &options.fused_activation_function())
 }
@@ -229,9 +222,7 @@ fn de_dw_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let conv = core::cnn::ConvUnary {
         pool_spec,
         kernel_fmt: KernelFormat::OHWI,
-        kernel,
         group: output_channels,
-        bias: Some(bias),
         q_params,
     };
     let wires = op.ctx.target.wire_node(op.prefix, conv, &inputs)?;

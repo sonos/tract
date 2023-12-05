@@ -27,32 +27,40 @@ fn kernel_in_ohwi(
     name: &str,
     conv: &ConvUnary,
 ) -> TractResult<Option<TypedModelPatch>> {
-    let rank = conv.kernel.rank();
-    let fact = model.outlet_fact(node.inputs[0])?;
-    let shape = conv.pool_spec.data_format.shape(&fact.shape)?;
-    if conv.group != 1 && conv.group.to_dim() != *shape.c() {
+    if conv.kernel_fmt == KernelFormat::OHWI {
+        return Ok(None);
+    }
+    if conv.group != 1 && conv.group != conv.output_channels() {
         bail!("Arbitrary grouping is not supported in tflite")
     }
-    let kernel = match conv.kernel_fmt {
-        // onnx: (go)IHW => OHW(gi)
-        KernelFormat::OIHW => conv
-            .kernel
-            .clone()
-            .into_tensor()
-            .split_axis(0, conv.group)?
-            .move_axis(0, rank)?
-            .move_axis(1, rank)?
-            .collapse_axis_with_next(rank - 1),
-        // tf: HW(gi)O => OHW(gi)
-        KernelFormat::HWIO => conv.kernel.clone().into_tensor().move_axis(rank - 1, 0)?,
-        // tflite: (go)HWI
-        KernelFormat::OHWI => return Ok(None),
-    };
-    let mut new = conv.clone();
-    new.kernel_fmt = KernelFormat::OHWI;
-    new.kernel = kernel.into_arc_tensor();
     let mut patch = TypedModelPatch::default();
     let mut wire = patch.taps(model, &node.inputs)?;
+    let prefix = format!("{name}.kernel_reorg");
+    for (ix, op) in conv
+        .kernel_fmt
+        .kernel_as_group_o_i_h_w_ops(&patch.outlet_fact(wire[1])?.shape, conv.group)
+        .into_iter()
+        .enumerate()
+    {
+        wire[1] = patch.wire_node(format!("{prefix}.{ix}"), op, &[wire[1]])?[0];
+    }
+    let geo_rank = conv.pool_spec.kernel_shape.len();
+    // group_o_i_h_w -> o_h_w_gi
+    let ci = conv.input_channels();
+    wire[1] =
+        patch.wire_node(format!("{prefix}.mv_g"), AxisOp::Move(0, geo_rank + 3), &[wire[1]])?[0];
+    wire[1] =
+        patch.wire_node(format!("{prefix}.mv_i"), AxisOp::Move(1, geo_rank + 3), &[wire[1]])?[0];
+    wire[1] = patch.wire_node(
+        format!("{prefix}.gi"),
+        AxisOp::Reshape(
+            geo_rank + 1,
+            tvec!(conv.group.to_dim(), (ci / conv.group).to_dim()),
+            tvec!(ci.to_dim()),
+        ),
+        &[wire[1]],
+    )?[0];
+    let mut new = ConvUnary { kernel_fmt: KernelFormat::OHWI, ..conv.clone() };
     wire = patch.wire_node(name, new, &wire)?;
     patch.shunt_outside(model, node.id.into(), wire[0])?;
     Ok(Some(patch))
@@ -67,9 +75,12 @@ fn homogeneous_convolution(
 ) -> TractResult<Option<TypedModelPatch>> {
     let input_fact = model.outlet_fact(node.inputs[0])?;
     let idt = input_fact.datum_type;
-    let kdt = conv.kernel.datum_type();
+    let kernel_fact = model.outlet_fact(node.inputs[1])?;
+    let kdt = kernel_fact.datum_type;
     match (kdt.unquantized(), idt.unquantized()) {
         (DatumType::I8, DatumType::U8) => {
+            todo!()
+                /*
             let new_qp =
                 QParams::ZpScale { zero_point: kdt.zp_scale().0 + 128, scale: kdt.zp_scale().1 };
             let new_dt = u8::datum_type().quantize(new_qp);
@@ -95,8 +106,11 @@ fn homogeneous_convolution(
             wire = patch.wire_node(name, new, &wire)?;
             patch.shunt_outside(model, node.id.into(), wire[0])?;
             Ok(Some(patch))
+            */
         }
         (DatumType::U8, DatumType::I8) => {
+            todo!()
+                /*
             let new_qp =
                 QParams::ZpScale { zero_point: kdt.zp_scale().0 - 128, scale: kdt.zp_scale().1 };
             let new_dt = i8::datum_type().quantize(new_qp);
@@ -122,6 +136,7 @@ fn homogeneous_convolution(
             wire = patch.wire_node(name, new, &wire)?;
             patch.shunt_outside(model, node.id.into(), wire[0])?;
             Ok(Some(patch))
+            */
         }
         _ => Ok(None),
     }
@@ -156,15 +171,14 @@ fn make_1d_2d(
     conv: &ConvUnary,
 ) -> TractResult<Option<TypedModelPatch>> {
     if conv.pool_spec.rank() == 1 {
-        let pos = conv.pool_spec.data_format.h_axis() + 1;
         let mut new = conv.clone();
         new.pool_spec = conv.pool_spec.change_geo_axes(&AxisOp::Add(1))?;
-        let mut kernel = new.kernel.clone().into_tensor();
-        kernel.insert_axis(conv.kernel_fmt.h_axis() + 1)?;
-        new.kernel = kernel.into_arc_tensor();
         let mut patch = TypedModelPatch::default();
         let mut wire = patch.taps(model, &node.inputs)?;
+        let pos = conv.pool_spec.data_format.h_axis() + 1;
         wire[0] = patch.wire_node(format!("{name}.add_dim"), AxisOp::Add(pos), &[wire[0]])?[0];
+        let pos = conv.kernel_fmt.h_axis() + 1;
+        wire[1] = patch.wire_node(format!("{name}.add_dim_k"), AxisOp::Add(pos), &[wire[1]])?[0];
         wire = patch.wire_node(name, new, &wire)?;
         wire = patch.wire_node(format!("{name}.rm_dim"), AxisOp::Rm(pos), &wire)?;
         patch.shunt_outside(model, node.id.into(), wire[0])?;

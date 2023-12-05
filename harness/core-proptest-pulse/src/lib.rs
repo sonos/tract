@@ -172,6 +172,8 @@ fn test_simple_conv() {
     let kernel = rctensor3(&[[[0.5f32, 1.0, -0.1]]]);
     let s = model.symbol_table.sym("S");
     let a = model.add_source("a", f32::fact(dims!(1, 1, s)).into()).unwrap();
+    let kernel = model.add_const("kernel", kernel).unwrap();
+    let bias = model.add_const("bias", tensor0(0f32)).unwrap();
 
     model
         .wire_node(
@@ -187,12 +189,10 @@ fn test_simple_conv() {
                     output_channels: 1,
                 },
                 kernel_fmt: KernelFormat::OIHW,
-                kernel,
                 group: 1,
-                bias: None,
                 q_params: None,
             },
-            &[a],
+            &[a, kernel, bias],
         )
         .unwrap();
     model.auto_outputs().unwrap();

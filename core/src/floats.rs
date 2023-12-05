@@ -27,12 +27,14 @@ impl<T1: Datum + Float, T2: Datum + Float>
             Box::new(TypedSource::new(fact_float_precision_conversion::<T1, T2>(&source.fact)))
         } else if let Some(konst) = node.op_as::<Const>() {
             Box::new(Const(tensor_float_precision_conversion::<T1, T2>(&konst.0)))
+                /*
         } else if let Some(op) = node.op_as::<ConvUnary>() {
             Box::new(ConvUnary {
                 kernel: tensor_float_precision_conversion::<T1, T2>(&op.kernel),
                 bias: op.bias.as_ref().map(tensor_float_precision_conversion::<T1, T2>),
                 ..op.clone()
             })
+            */
         } else if let Some(op) = node.op_as::<Scan>() {
             let body = FloatPrecisionTranslator::<T1, T2>::default().translate_model(&op.body)?;
             Box::new(Scan { body, ..op.clone() })
