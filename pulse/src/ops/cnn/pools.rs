@@ -226,6 +226,8 @@ mod test {
         let stream_sym = model.symbol_table.sym("S");
         let stream_dim = stream_sym.to_dim();
         let source = model.add_source("source", f32::fact(dims!(1, stream_dim)))?;
+        let kernel = model.add_const("kernel", rctensor3(&[[[1f32, 2f32]]]))?;
+        let bias = model.add_const("bias", rctensor0(0f32))?;
         let conv = model.wire_node(
             "conv",
             ConvUnary {
@@ -243,12 +245,10 @@ mod test {
                     output_channels: 1,
                 },
                 kernel_fmt: tract_core::ops::cnn::KernelFormat::OIHW,
-                kernel: rctensor3(&[[[1f32, 2f32]]]),
                 group: 1,
-                bias: None,
                 q_params: None,
             },
-            &[source],
+            &[source, kernel, bias],
         )?;
         model.set_output_outlets(&conv)?;
         let pulsed = PulsedModel::new(&model, stream_sym, &1.to_dim())?;

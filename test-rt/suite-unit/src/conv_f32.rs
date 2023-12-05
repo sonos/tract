@@ -168,6 +168,13 @@ impl ConvProblem {
             KernelFormat::HWIO => self.kernel.shape()[self.kernel.ndim() - 1] * self.group,
             KernelFormat::OHWI => self.kernel.shape()[0] * self.group,
         };
+        let kernel = model.add_const("kernel", self.kernel.clone().into_arc_tensor())?;
+        let bias = if let Some(bias) = &self.bias {
+            bias.clone().into_arc_tensor()
+        } else {
+            rctensor0(0f32)
+        };
+        let bias = model.add_const("bias", bias)?;
         let op = ConvUnary::new(
             PoolSpec::new(
                 self.shape_in.fmt,
@@ -179,12 +186,10 @@ impl ConvProblem {
                 co,
             ),
             self.kernel_format,
-            self.kernel.clone().into_arc_tensor(),
             self.group,
-            self.bias.clone().map(|a| a.into_arc_tensor()),
             None,
         );
-        let wire = model.wire_node("conv", op, &[wire])?[0];
+        let wire = model.wire_node("conv", op, &[wire, kernel, bias])?[0];
         model.set_output_outlets(&[wire])?;
         Ok(model)
     }
@@ -262,8 +267,12 @@ impl Test for ConvProblem {
     ) -> TestResult {
         let reference = self.reference().into_tensor();
         let mut model = self.tract()?;
+        dbg!(&model);
+        model.declutter()?;
+        dbg!(&model);
         model.properties.insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));
-        let mut output = runtime.prepare(model)?.run(tvec![self.data.clone().into_tvalue()])?;
+        let mut output =
+            dbg!(runtime.prepare(model)?).run(tvec![self.data.clone().into_tvalue()])?;
         let output = output.remove(0).into_tensor();
         output.close_enough(&reference, approx)
     }
@@ -753,6 +762,20 @@ pub fn suite() -> TractResult<TestSuite> {
             group: 1,
             data: arr3(&[[[0.0], [0.0]], [[1.0], [0.0]]]).into_dyn(),
             kernel: arr4(&[[[[0.0, 1.0]]]]).into_dyn(),
+            bias: None,
+            pad: PaddingSpec::SameUpper,
+            strides: tvec!(1, 1),
+        },
+    );
+
+    suite.add(
+        "same_2d_3",
+        ConvProblem {
+            shape_in: DataFormat::CHW.from_n_c_hw(1, 1, [2, 3])?,
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: arr3(&[[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]]).into_dyn(),
+            kernel: arr4(&[[[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]]]).into_dyn(),
             bias: None,
             pad: PaddingSpec::SameUpper,
             strides: tvec!(1, 1),

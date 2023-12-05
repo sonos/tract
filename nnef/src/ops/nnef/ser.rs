@@ -187,13 +187,13 @@ pub fn conv_or_deconv(
     node: &TypedNode,
     pool_spec: &PoolSpec,
     kernel_format: KernelFormat,
-    kernel: &Tensor,
-    bias: &Option<Arc<Tensor>>,
     group: usize,
     deconv: bool,
     adjustments: Option<&[usize]>,
 ) -> TractResult<Option<Arc<RValue>>> {
     let mut wire = ast.mapping[&node.inputs[0]].clone();
+    let kernel = ast.mapping[&node.inputs[1]].clone();
+    let bias = ast.mapping[&node.inputs[2]].clone();
     let data_format = pool_spec.data_format;
     if !data_format.has_n() {
         wire = invocation("unsqueeze", &[wire], &[("axes", ints(&[0]))]);
@@ -205,7 +205,8 @@ pub fn conv_or_deconv(
     }
     wire = ast.force_variable(format!("{}_input", node.name), &wire);
 
-    let mut inputs = tvec![wire];
+    let inputs = tvec![wire, kernel, bias];
+    /*
     // nnef: O I/g H W
     let mut kernel_go_i_h_w =
         kernel_format.kernel_as_group_o_i_hw(kernel, group)?.collapse_axis_with_next(0);
@@ -219,6 +220,7 @@ pub fn conv_or_deconv(
     if let Some(bias) = bias.as_ref() {
         inputs.push(ast.konst(format!("{}_bias", node.name), bias)?);
     }
+    */
 
     let named_args = make_conv_named_args(node, pool_spec, group, deconv, adjustments)?;
 
@@ -252,17 +254,7 @@ pub fn conv(
     if op.q_params.is_some() && !node.outputs[0].fact.datum_type.is_quantized() {
         return Ok(None);
     }
-    conv_or_deconv(
-        ast,
-        node,
-        &op.pool_spec,
-        op.kernel_fmt,
-        &op.kernel,
-        &op.bias,
-        op.group,
-        false,
-        None,
-    )
+    conv_or_deconv(ast, node, &op.pool_spec, op.kernel_fmt, op.group, false, None)
 }
 
 pub fn deconv(
@@ -270,17 +262,18 @@ pub fn deconv(
     node: &TypedNode,
     op: &ops::cnn::deconv::DeconvUnary,
 ) -> TractResult<Option<Arc<RValue>>> {
+    todo!();
+    /*
     conv_or_deconv(
         ast,
         node,
         &op.pool_spec,
         op.kernel_format,
-        &op.kernel,
-        &op.bias,
         op.group,
         true,
         Some(&op.adjustments),
     )
+    */
 }
 
 fn cnn_pool_fragment(

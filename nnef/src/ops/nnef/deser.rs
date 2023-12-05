@@ -319,8 +319,12 @@ pub fn conv_or_deconv(
     use ops::cnn::{ConvUnary, KernelFormat};
 
     let input: OutletId = invocation.named_arg_as(builder, "input")?;
-    let kernel: Arc<Tensor> = invocation.named_arg_as(builder, "filter")?;
+    let kernel: OutletId = invocation.named_arg_as(builder, "filter")?;
+    let bias: OutletId = invocation.named_arg_as(builder, "bias")?;
     let input_fact = builder.model.outlet_fact(input)?.clone();
+    let kernel_fact = builder.model.outlet_fact(kernel)?.clone();
+    /*
+    let bias_fact = builder.model.outlet_fact(bias)?;
     if input_fact.rank() != kernel.rank() {
         bail!(
             "Convolution input expected as NCHW, filter as OIHW. Got {:?} and {:?}.",
@@ -328,15 +332,20 @@ pub fn conv_or_deconv(
             kernel
         );
     }
-    let mut inputs = tvec!(input);
+    */
+    let mut inputs = tvec!(input, kernel, bias);
 
-    let (group, pool_spec) =
-        read_conv_parameters(builder, invocation, kernel.shape(), &input_fact)?;
+    let (group, pool_spec) = read_conv_parameters(
+        builder,
+        invocation,
+        kernel_fact.shape.as_concrete().context("Except fixed kernel shape")?,
+        &input_fact,
+    )?;
 
     let output_dt =
         invocation.dt_from_quant_file.get(0).cloned().flatten().unwrap_or(DatumType::F32);
     if let (Some(a), Some(b), Some(c)) =
-        (kernel.datum_type().qparams(), input_fact.datum_type.qparams(), output_dt.qparams())
+        (kernel_fact.datum_type.qparams(), input_fact.datum_type.qparams(), output_dt.qparams())
     {
         inputs.push(builder.add_const(tensor0(a.zp_scale().0))?);
         inputs.push(builder.add_const(tensor0(a.zp_scale().1))?);
@@ -344,23 +353,6 @@ pub fn conv_or_deconv(
         inputs.push(builder.add_const(tensor0(b.zp_scale().1))?);
         inputs.push(builder.add_const(tensor0(c.zp_scale().0))?);
         inputs.push(builder.add_const(tensor0(c.zp_scale().1))?);
-    };
-    let bias: Arc<Tensor> = invocation.named_arg_as(builder, "bias")?;
-
-    // Remove or reshape bias for efficient processing
-    let bias: Option<Tensor> = if bias.is_uniform() && bias.cast_to_scalar::<f32>()? == 0.0 {
-        None
-    } else if bias.rank() > 1 {
-        let output_channels = kernel.shape()[0];
-        ensure!(
-            output_channels == bias.len(),
-            "Bias tensor should be scalar or have one value per output channel"
-        );
-        let mut reshaped_bias = bias.into_tensor();
-        reshaped_bias.set_shape(&[output_channels])?;
-        Some(reshaped_bias)
-    } else {
-        Some(bias.into_tensor())
     };
 
     let op: Box<dyn TypedOp> = if deconv {
@@ -375,21 +367,20 @@ pub fn conv_or_deconv(
         } else {
             tvec!(0; pool_spec.rank())
         };
+        todo!()
+        /*
         Box::new(DeconvUnary::new(
             pool_spec,
             KernelFormat::OIHW,
-            kernel.into_arc_tensor(),
-            bias.map(Tensor::into_arc_tensor),
             adjustments,
             group,
         ))
+        */
     } else {
         Box::new(ConvUnary::new(
             pool_spec,
             KernelFormat::OIHW,
-            kernel.clone(),
             group,
-            bias.map(Tensor::into_arc_tensor),
             Some(output_dt).filter(|dt| dt.is_quantized()),
         ))
     };

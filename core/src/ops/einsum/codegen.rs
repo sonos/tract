@@ -223,22 +223,26 @@ fn dequant(
 ) -> TractResult<Option<TypedModelPatch>> {
     let name = &node.name;
     let mut patch = TypedModelPatch::new("Dequantizing einsum");
-    let taps = patch.taps(model, &node.inputs)?;
-    let [mut a, mut b, bias, mut a0, mut a_scale, mut b0, b_scale, c0, c_scale] = *taps else {
-        bail!("Expect exactly 9 inputs")
-    };
 
-    if !patch.outlet_fact(a_scale)?.shape.volume().is_one() {
-        let q_axis_in_output = op.axes.axis((InOut::In(4), 0))?.outputs[0][0];
-        let output_rank = node.outputs[0].fact.rank();
-        for i in 1..(output_rank - q_axis_in_output) {
-            a_scale = patch.wire_node(
-                format!("{name}.a_scale_axis_fix_{i}"),
-                AxisOp::Add(i),
-                &[a_scale],
-            )?[0];
+    let mut taps = patch.taps(model, &node.inputs)?;
+    for ab in [0, 1] {
+        let scale_input = 4 + ab * 2;
+        if !patch.outlet_fact(taps[scale_input])?.shape.volume().is_one() {
+            let q_axis_in_output = op.axes.axis((InOut::In(scale_input), 0))?.outputs[0][0];
+            let output_rank = node.outputs[0].fact.rank();
+            for i in 1..(output_rank - q_axis_in_output) {
+                taps[scale_input] = patch.wire_node(
+                    format!("{name}.scale_input{ab}_axis_fix_{i}"),
+                    AxisOp::Add(i),
+                    &[taps[scale_input]],
+                )?[0];
+            }
         }
     }
+
+    let [mut a, mut b, bias, mut a0, a_scale, mut b0, b_scale, c0, c_scale] = *taps else {
+        bail!("Expect exactly 9 inputs")
+    };
 
     wire_offset_u8_as_i8(&mut patch, &node.name, &mut a, "a", &mut a0)?;
     wire_offset_u8_as_i8(&mut patch, &node.name, &mut b, "b", &mut b0)?;

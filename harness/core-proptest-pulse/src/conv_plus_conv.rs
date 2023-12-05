@@ -14,6 +14,8 @@ struct ConvOp {
 
 impl ConvOp {
     fn chain(&self, name: &str, model: &mut TypedModel, after: &[OutletId]) -> TVec<OutletId> {
+        let kernel = model.add_const(format!("{name}.k"), self.ker.clone()).unwrap();
+        let bias = model.add_const(format!("{name}.b"), tensor0(0f32)).unwrap();
         model
             .wire_node(
                 name,
@@ -28,12 +30,10 @@ impl ConvOp {
                         output_channels: 1,
                     },
                     kernel_fmt: tract_core::ops::cnn::KernelFormat::OIHW,
-                    kernel: self.ker.clone().into_arc_tensor(),
                     group: 1,
-                    bias: None,
                     q_params: None,
                 },
-                &after,
+                &[after[0], kernel, bias],
             )
             .unwrap()
     }

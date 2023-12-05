@@ -128,8 +128,10 @@ pub fn generic() -> Ops {
 #[allow(unreachable_code, unused_mut)]
 pub fn best() -> Ops {
     let mut ops = generic();
+    /*
     #[cfg(target_arch = "x86_64")]
     x86_64_fma::plug(&mut ops);
+    */
     #[cfg(any(target_arch = "arm", target_arch = "armv7"))]
     arm32::plug(&mut ops);
     #[cfg(target_arch = "aarch64")]

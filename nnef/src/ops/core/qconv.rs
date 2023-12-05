@@ -54,6 +54,10 @@ fn qconv_unary_dump(
     }
 
     let mut wire = ast.mapping[&node.inputs[0]].clone();
+    ensure!(op.kernel_fmt == KernelFormat::OIHW);
+    let mut weights = ast.mapping[&node.inputs[1]].clone();
+    let mut bias = ast.mapping[&node.inputs[2]].clone();
+    /*
     let mut weights = ast.konst_variable(format!("{name}_weights"), &op.kernel)?;
     let mut rank = op.kernel.rank();
     for fix in op.kernel_fmt.kernel_as_group_o_i_h_w_ops(op.kernel.shape(), op.group) {
@@ -76,20 +80,22 @@ fn qconv_unary_dump(
     );
     wire = ast.force_variable(format!("{name}_input"), &wire);
 
-    let mut inputs = tvec![wire, weights];
     if let Some(bias) = op.bias.as_ref() {
         let bias = ast.konst(format!("{name}_bias"), bias)?;
         inputs.push(bias)
     }
+    */
+    let mut inputs = tvec![wire, weights, bias];
 
     Ok(Some(invocation("tract_core_qconv", &inputs, &named_args)))
 }
 
 fn qconv_load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let mut inputs: TVec<OutletId> = tvec!(invocation.named_arg_as(builder, "input")?);
-    let kernel: Arc<Tensor> = invocation.named_arg_as(builder, "filter")?;
+    inputs.push(invocation.named_arg_as(builder, "filter")?);
+    inputs.push(invocation.named_arg_as(builder, "bias")?);
 
-    let input_fact = builder.model.outlet_fact(inputs[0])?.clone();
+    /*
     if input_fact.rank() != kernel.rank() {
         bail!(
             "Convolution input expected as NCHW, filter as OIHW. Got {:?} and {:?}.",
@@ -97,9 +103,16 @@ fn qconv_load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
             kernel
         );
     }
+    */
 
-    let (group, pool_spec) =
-        read_conv_parameters(builder, invocation, kernel.shape(), &input_fact)?;
+    let input_fact = builder.model.outlet_fact(inputs[0])?.clone();
+    let kernel_fact = builder.model.outlet_fact(inputs[1])?.clone();
+    let (group, pool_spec) = read_conv_parameters(
+        builder,
+        invocation,
+        kernel_fact.shape.as_concrete().context("Expect fixed size kernel")?,
+        &input_fact,
+    )?;
 
     let qparams = qparams_as_outlets(builder, invocation).context("Loading qparams")?;
     inputs.extend(qparams.iter().cloned());
@@ -122,9 +135,7 @@ fn qconv_load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     let op: Box<dyn TypedOp> = Box::new(ConvUnary::new(
         pool_spec,
         KernelFormat::OIHW,
-        kernel.clone(),
         group,
-        bias,
         Some(output_dt),
     ));
 

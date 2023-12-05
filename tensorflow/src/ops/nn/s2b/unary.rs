@@ -66,6 +66,8 @@ impl TypedOp for SpaceToBatchUnary {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
+        todo!();
+        /*
         if let Some(conv_node) = model.single_succ(node.id)? {
             if let Some(b2s_node) = model.single_succ(conv_node.id)? {
                 if let (Some(conv_op), Some(_)) =
@@ -77,19 +79,18 @@ impl TypedOp for SpaceToBatchUnary {
                             ..conv_op.pool_spec.clone()
                         },
                         kernel_fmt: conv_op.kernel_fmt,
-                        kernel: conv_op.kernel.clone(),
                         group: conv_op.group,
-                        bias: None,
                         q_params: None,
                     };
                     let mut patch = TypedModelPatch::default();
-                    let tap = patch.tap_model(model, node.inputs[0])?;
+                    let mut taps = patch.taps(model, &node.inputs)?;
                     let out = patch.model.wire_node(&*conv_node.name, op, &[tap])?[0];
                     patch.shunt_outside(model, OutletId::new(b2s_node.id, 0), out)?;
                     return Ok(Some(patch));
                 }
             }
         }
+        */
         Ok(None)
     }
 
