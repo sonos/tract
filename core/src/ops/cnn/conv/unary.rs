@@ -943,9 +943,20 @@ impl TypedOp for ConvUnary {
         &self,
         model: &TypedModel,
         node: &TypedNode,
-        _io: InOut,
+        io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
+        if io == InOut::In(2) {
+            if let &AxisOp::Rm(_) = change {
+                return Ok(Some(AxisChangeConsequence {
+                    substitute_op: Some(Box::new(self.clone())),
+                    wire_changes: tvec!(),
+                }));
+            }
+        }
+        if io != InOut::In(0) && io != InOut::Out(0) {
+            return Ok(None);
+        }
         let full_input_shape = model.outlet_fact(node.inputs[0])?.shape.to_tvec();
         let shape = self.pool_spec.data_format.shape(full_input_shape.clone())?;
         // remove n
