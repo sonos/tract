@@ -13,15 +13,12 @@ fn pulsify(
     _symbol: &Symbol,
     _pulse: &TDim,
 ) -> TractResult<Option<TVec<OutletId>>> {
-    fn zero<D: Datum>() -> Tensor {
-        tensor0(D::default())
-    }
     let fact = target.outlet_fact(mapping[&node.inputs[0]])?;
-    let zero = dispatch_numbers!(zero(fact.datum_type)());
+    let zero = Tensor::zero_scalar_dt(fact.datum_type)?;
     if let Some((wire, pool_spec)) =
         pulsify_pooled_input(&op.pool_spec, source, node, target, mapping, Some(zero))?
     {
-        let mut wires:TVec<_> = node.inputs.iter().map(|i| mapping[i]).collect();
+        let mut wires: TVec<_> = node.inputs.iter().map(|i| mapping[i]).collect();
         wires[0] = wire;
         Ok(Some(target.wire_node(&node.name, ConvUnary { pool_spec, ..op.clone() }, &wires)?))
     } else {

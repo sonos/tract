@@ -88,7 +88,12 @@ impl Arbitrary for ConvPlusConvProblem {
 impl ConvPlusConvProblem {
     pub fn min_input_size(ops: &[ConvOp]) -> usize {
         let model = Self::model(ops);
-        let dims: Vec<&TDim> = model.nodes.iter().map(|n| &n.outputs[0].fact.shape[2]).collect();
+        let dims: Vec<&TDim> = model
+            .nodes
+            .iter()
+            .filter(|node| !node.outputs[0].fact.shape.is_concrete())
+            .map(|n| &n.outputs[0].fact.shape[2])
+            .collect();
         for s in 0usize.. {
             let symbols =
                 SymbolValues::default().with(&model.symbol_table.get("S").unwrap(), s as _);

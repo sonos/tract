@@ -1,4 +1,5 @@
 use crate::internal::*;
+use crate::ops::cnn::wire_reshape_bias;
 use crate::ops::cnn::KernelFormat;
 use crate::ops::cnn::PoolSpec;
 use crate::ops::einsum::EinSum;
@@ -7,9 +8,6 @@ use crate::ops::einsum::EinSum;
 pub struct DeconvUnary {
     pub pool_spec: PoolSpec,
     pub kernel_format: KernelFormat,
-    pub kernel: Arc<Tensor>,
-    pub bias: Option<Arc<Tensor>>,
-
     pub adjustments: TVec<usize>,
     pub group: usize,
 }
@@ -19,9 +17,9 @@ impl DeconvUnary {
         &self,
         name: &str,
         target: &mut TypedModel,
-        input: OutletId,
+        inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let input_shape = target.outlet_fact(input)?.shape.clone();
+        let input_shape = target.outlet_fact(inputs[0])?.shape.clone();
         let shape = self.pool_spec.data_format.shape(input_shape.to_tvec())?;
         let geo_dim = shape.hw_dims().iter().product();
 
@@ -29,7 +27,7 @@ impl DeconvUnary {
         let mut input = target.wire_node(
             format!("{name}.reshaped_input"),
             AxisOp::Reshape(shape.h_axis(), shape.hw_dims().into(), tvec!(geo_dim)),
-            &[input],
+            &[inputs[0]],
         )?;
 
         // rework input to (N) (G) I/G HW or (N) (G) HW I/G
@@ -58,15 +56,24 @@ impl DeconvUnary {
                 )?;
             }
         }
-        let kernel_as_group_o_i_hw =
-            self.kernel_format.kernel_as_group_o_i_hw(&self.kernel, self.group)?;
-        let mut kernel_as_optg_ohw_i =
-            kernel_as_group_o_i_hw.move_axis(2, 3)?.collapse_axis_with_next(1);
-        if self.group == 1 {
-            kernel_as_optg_ohw_i.remove_axis(0)?;
+
+        let mut kernel = tvec!(inputs[1]);
+        let kernel_fact = target.outlet_fact(kernel[0])?.clone();
+        for (ix, op) in self
+            .kernel_format
+            .kernel_as_group_o_i_hw_ops(&kernel_fact.shape, self.group)
+            .into_iter()
+            .enumerate()
+        {
+            kernel = target.wire_node(format!("{name}.kernel.{ix}"), op, &kernel)?;
         }
-        let kernel =
-            target.add_const(format!("{}.kernel", name), kernel_as_optg_ohw_i.into_arc_tensor())?;
+
+        kernel = target.wire_node(format!("{name}.kernel.mv_i"), AxisOp::Move(2, 3), &kernel)?;
+        kernel =
+            AxisOp::wire_collapse_axis(target, format!("{name}.kernel.col_ohw"), kernel[0], 1)?;
+        if self.group == 1 {
+            kernel = target.wire_node(format!("{name}.kernel.rm_g"), AxisOp::Rm(0), &kernel)?;
+        }
         let mut expr = if self.pool_spec.data_format.c_is_last() {
             "gmk,Ngnk->Ngmn".to_string()
         } else {
@@ -80,9 +87,18 @@ impl DeconvUnary {
         }
         let einsum = target.wire_node(
             format!("{name}.einsum"),
-            EinSum { axes: expr.parse()?, operating_dt: self.kernel.datum_type(), q_params: None },
-            &[kernel, input[0]],
+            EinSum { axes: expr.parse()?, operating_dt: kernel_fact.datum_type, q_params: None },
+            &[kernel[0], input[0]],
         )?;
+
+        let bias = wire_reshape_bias(
+            target,
+            format!("{name}.reshape_bias"),
+            inputs[2],
+            shape.rank(),
+            shape.c_axis(),
+            self.pool_spec.output_channels,
+        )?[0];
 
         // einsum must be (N_)CHkWk_HW
         let deconv_sum = target.wire_node(
@@ -92,10 +108,9 @@ impl DeconvUnary {
                 self.kernel_format,
                 input_shape,
                 self.adjustments.clone(),
-                self.bias.clone(),
                 self.group,
             ),
-            &einsum,
+            &[einsum[0], bias],
         )?;
         Ok(deconv_sum)
     }
@@ -119,25 +134,31 @@ impl EvalOp for DeconvUnary {
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let input = args_1!(inputs);
+        ensure!(inputs.len() == 3);
         let mut model = TypedModel::default();
-        let source = model.add_source("source", input.datum_type().fact(input.shape()))?;
-        let output = self.wire_with_deconv_sum("adhoc", &mut model, source)?;
+        let inputs = inputs
+            .into_iter()
+            .enumerate()
+            .map(|(ix, input)| model.add_const(format!("s{ix}"), input.into_tensor()))
+            .collect::<TractResult<TVec<OutletId>>>()?;
+        let output = self.wire_with_deconv_sum("adhoc", &mut model, &inputs)?;
         model.set_output_outlets(&output)?;
-        model.into_runnable()?.run(tvec!(input)).context("In adhoc deconvolution eval")
+        model.into_runnable()?.run(tvec![]).context("In adhoc deconvolution eval")
     }
 }
 
 impl TypedOp for DeconvUnary {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        ensure!(inputs.len() == 3);
         let x_fact = inputs[0];
+        let k_fact = inputs[1];
         ensure!(
             &self.pool_spec.input_channels.to_dim()
                 == self.pool_spec.data_format.shape(&inputs[0].shape)?.c()
         );
         ensure!(
-            self.pool_spec.input_channels
-                == *self.kernel_format.input_channels(&self.kernel.shape(), self.group)
+            self.pool_spec.input_channels.to_dim()
+                == *self.kernel_format.input_channels(&k_fact.shape, self.group)
         );
         let output_shape = super::output_shape(&self.pool_spec, &x_fact.shape, &self.adjustments)?;
         Ok(tvec!(x_fact.datum_type.fact(&output_shape)))
@@ -149,6 +170,7 @@ impl TypedOp for DeconvUnary {
         outputs: &[&TypedFact],
     ) -> TractResult<AxesMapping> {
         let fact = &inputs[0];
+        let k_fact = &inputs[1];
         let shape = self.pool_spec.data_format.shape(fact.shape.iter().collect::<Vec<TDim>>())?;
         let mut axes = AxesMapping::disconnected(inputs, outputs)?
             .renaming((InOut::In(0), shape.c_axis()), 'I')?
@@ -160,10 +182,9 @@ impl TypedOp for DeconvUnary {
         }
         let h_axis = shape.h_axis();
         let geo = "HWXYZ".chars().chain('a'..);
-        let kernel_spatial_shape =
-            &self.kernel.shape()[self.kernel_format.h_axis()..][..shape.hw_rank()];
-        for ((ix, &dim), repr) in kernel_spatial_shape.iter().enumerate().zip(geo) {
-            if dim == 1
+        let kernel_spatial_shape = self.kernel_format.spatial_shape(&k_fact.shape);
+        for ((ix, &ref dim), repr) in kernel_spatial_shape.iter().enumerate().zip(geo) {
+            if dim.is_one()
                 && self.pool_spec.stride(ix) == 1
                 && self.pool_spec.padding.valid_dim(ix, true)
                 && self.adjustments[ix] == 0
@@ -182,11 +203,21 @@ impl TypedOp for DeconvUnary {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         let mut patch = TypedModelPatch::default();
-        let input = patch.tap_model(model, node.inputs[0])?;
+        let mut inputs = patch.taps(model, &node.inputs)?;
+        let x_shape = patch.outlet_fact(inputs[0])?;
+        let x_shape = self.pool_spec.data_format.shape(x_shape.shape.to_tvec())?;
+        inputs[2] = wire_reshape_bias(
+            &mut patch,
+            &node.name,
+            inputs[2],
+            x_shape.rank(),
+            x_shape.c_axis(),
+            self.pool_spec.output_channels,
+        )?[0];
         let output = self
-            .wire_with_deconv_sum(&node.name, &mut patch, input)
+            .wire_with_deconv_sum(&node.name, &mut patch, &inputs)
             .context("In wire_with_deconv_sum")?;
-        patch.shunt_outside(model, (node.id, 0).into(), output[0])?;
+        patch.shunt_outside(model, node.id.into(), output[0])?;
         Ok(Some(patch))
     }
 

@@ -46,6 +46,8 @@ fn pulsify(
         value: Tensor::zero_scalar_dt(fact.datum_type)?,
     };
     wire = target.wire_node(format!("{}.mask", node.name), mask, &wire)?;
+    wire.push(mapping[&node.inputs[1]]);
+    wire.push(mapping[&node.inputs[2]]);
     wire = target.wire_node(format!("{}.deconv", node.name), pulse_op, &wire)?;
     let overlap = overlap(stream.axis, op);
     let deconv_input_dim = (stream.dim.clone() - 1) * stride + 1;
@@ -54,7 +56,7 @@ fn pulsify(
         &fact.streaming_shape(),
         &op.adjustments,
     )?;
-    let kernel_spatial_shape = op.kernel_format.hw(op.kernel.shape());
+    let kernel_spatial_shape = &op.pool_spec.kernel_shape;
     let shape = op.pool_spec.data_format.shape(fact.streaming_shape())?;
     let paddings = op.pool_spec.padding.compute_for_deconv(
         shape.hw_dims(),
@@ -97,8 +99,7 @@ fn pulsify(
 
 fn overlap(pulse_axis: usize, op: &DeconvUnary) -> usize {
     let geo_axis = pulse_axis - op.pool_spec.data_format.h_axis();
-    let axis_in_kernel = op.kernel_format.h_axis() + geo_axis;
-    (op.kernel.shape()[axis_in_kernel] - 1) * op.pool_spec.dilation(geo_axis)
+    (op.pool_spec.kernel_shape[geo_axis] - 1) * op.pool_spec.dilation(geo_axis)
 }
 
 impl PulsedOp for DeconvUnary {

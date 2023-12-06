@@ -7,7 +7,6 @@ use tract_core::ops;
 use tract_core::ops::cnn::KernelFormat;
 use tract_core::ops::cnn::PoolSpec;
 use tract_core::ops::nn::DataFormat;
-use tract_core::tract_data::itertools::Itertools;
 
 pub fn source(
     ast: &mut IntoAst,
@@ -186,7 +185,6 @@ pub fn conv_or_deconv(
     ast: &mut IntoAst,
     node: &TypedNode,
     pool_spec: &PoolSpec,
-    kernel_format: KernelFormat,
     group: usize,
     deconv: bool,
     adjustments: Option<&[usize]>,
@@ -206,22 +204,6 @@ pub fn conv_or_deconv(
     wire = ast.force_variable(format!("{}_input", node.name), &wire);
 
     let inputs = tvec![wire, kernel, bias];
-    /*
-    // nnef: O I/g H W
-    let mut kernel_go_i_h_w =
-        kernel_format.kernel_as_group_o_i_hw(kernel, group)?.collapse_axis_with_next(0);
-    // split hw... as h_w_...
-    for (ix, dim) in kernel_format.hw(kernel.shape()).iter().dropping_back(1).enumerate() {
-        kernel_go_i_h_w = kernel_go_i_h_w.split_axis(ix + 2, *dim)?;
-    }
-    inputs.push(
-        ast.konst_variable(format!("{}_weigths", node.name), &kernel_go_i_h_w.into_arc_tensor())?,
-    );
-    if let Some(bias) = bias.as_ref() {
-        inputs.push(ast.konst(format!("{}_bias", node.name), bias)?);
-    }
-    */
-
     let named_args = make_conv_named_args(node, pool_spec, group, deconv, adjustments)?;
 
     let name = if deconv { "deconv" } else { "conv" };
@@ -254,7 +236,7 @@ pub fn conv(
     if op.q_params.is_some() && !node.outputs[0].fact.datum_type.is_quantized() {
         return Ok(None);
     }
-    conv_or_deconv(ast, node, &op.pool_spec, op.kernel_fmt, op.group, false, None)
+    conv_or_deconv(ast, node, &op.pool_spec, op.group, false, None)
 }
 
 pub fn deconv(
@@ -262,18 +244,7 @@ pub fn deconv(
     node: &TypedNode,
     op: &ops::cnn::deconv::DeconvUnary,
 ) -> TractResult<Option<Arc<RValue>>> {
-    todo!();
-    /*
-    conv_or_deconv(
-        ast,
-        node,
-        &op.pool_spec,
-        op.kernel_format,
-        op.group,
-        true,
-        Some(&op.adjustments),
-    )
-    */
+    conv_or_deconv(ast, node, &op.pool_spec, op.group, true, Some(&op.adjustments))
 }
 
 fn cnn_pool_fragment(

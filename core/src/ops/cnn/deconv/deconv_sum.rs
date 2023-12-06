@@ -26,7 +26,6 @@ pub struct DeconvSum {
     /// shape of the deconvolution input
     pub input_shape: ShapeFact,
     pub adjustments: TVec<usize>,
-    pub bias: Option<Arc<Tensor>>,
     pub group: usize,
 }
 
@@ -74,8 +73,7 @@ impl DeconvSum {
         inputs: TVec<TValue>,
         values: &SymbolValues,
     ) -> TractResult<TVec<TValue>> {
-        let gemm = args_1!(inputs).into_tensor();
-        let dt = gemm.datum_type();
+        let (gemm, bias) = args_2!(inputs);
         let input_shape = self.input_shape.eval_to_usize(values)?.into_owned();
         let input_shape = self.pool_spec.data_format.shape(input_shape)?;
         let output_shape =
@@ -88,14 +86,10 @@ impl DeconvSum {
             &self.pool_spec.strides(),
             &self.adjustments,
         )?;
-        let mut tensor = if let Some(b) = &self.bias {
-            b.broadcast_vector_to_shape(&output_shape.shape, output_shape.c_axis())?
-        } else {
-            Tensor::zero_dt(dt, &output_shape.shape)?
-        };
+        let mut tensor = bias.broadcast_to_shape(&output_shape.shape)?;
         let hw = *gemm.shape().last().unwrap();
         let n = *output_shape.n().unwrap_or(&1);
-        let n_o_hkwk_hw = gemm.into_shape(&[
+        let n_o_hkwk_hw = gemm.into_tensor().into_shape(&[
             n,
             *output_shape.c(),
             self.pool_spec.kernel_shape.iter().product(),
@@ -121,8 +115,11 @@ impl DeconvSum {
 
 impl TypedOp for DeconvSum {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        ensure!(inputs.len() == 2);
         let shape = super::output_shape(&self.pool_spec, &self.input_shape, &self.adjustments)?;
-        Ok(tvec!(inputs[0].datum_type.fact(&*shape)))
+        ensure!(inputs[1].rank() == shape.len());
+        ensure!(inputs[1].shape.iter().zip(shape.iter()).all(|(b, o)| b.is_one() || b == o.to_dim()));
+        Ok(tvec!(inputs[0].datum_type.fact(shape)))
     }
 
     fn concretize_dims(
@@ -136,7 +133,7 @@ impl TypedOp for DeconvSum {
         target.wire_node(
             &node.name,
             Self { input_shape: self.input_shape.eval(values)?.into_owned(), ..self.clone() },
-            &[mapping[&node.inputs[0]]],
+            &[mapping[&node.inputs[0]], mapping[&node.inputs[1]]],
         )
     }
 

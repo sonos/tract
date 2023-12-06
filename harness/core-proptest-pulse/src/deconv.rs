@@ -25,12 +25,12 @@ impl DeconvOp {
                 output_channels: self.ker.shape()[0],
             },
             kernel_format: tract_core::ops::cnn::KernelFormat::OIHW,
-            kernel: self.ker.clone().into_arc_tensor(),
-            bias: None,
             adjustments: tvec!(self.adj),
             group: 1,
         };
-        model.wire_node(name, deconv, &[after]).unwrap()[0]
+        let kernel = model.add_const("kernel", self.ker.clone()).unwrap();
+        let bias = model.add_const("bias", rctensor0(0f32)).unwrap();
+        model.wire_node(name, deconv, &[after, kernel, bias]).unwrap()[0]
     }
 }
 
@@ -273,12 +273,12 @@ fn deconv2d() {
             output_channels: 2,
         },
         kernel_format: tract_core::ops::cnn::KernelFormat::OIHW,
-        kernel: kernel.into_arc_tensor(),
-        bias: None,
         adjustments: tvec!(0, 0),
         group: 1,
     };
-    let deconv = model.wire_node("deconv", deconv, &[a]).unwrap();
+    let kernel = model.add_const("kernel", kernel).unwrap();
+    let bias = model.add_const("bias", rctensor0(0f32)).unwrap();
+    let deconv = model.wire_node("deconv", deconv, &[a, kernel, bias]).unwrap();
     model.set_output_outlets(&deconv).unwrap();
     model.declutter().unwrap();
 

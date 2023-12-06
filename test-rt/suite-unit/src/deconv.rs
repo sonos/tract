@@ -145,21 +145,23 @@ impl DeconvProblem {
             self.kernel_format.input_channels(self.kernel.shape(), self.group).into_owned(),
             self.kernel_format.output_channels(self.kernel.shape(), self.group).into_owned(),
         );
-        let op = DeconvUnary::new(
-            pool_spec,
-            self.kernel_format,
-            self.kernel.clone().into_arc_tensor(),
-            self.bias.as_ref().map(|b| b.clone().into_arc_tensor()),
-            self.adjustments.clone(),
-            self.group,
-        );
+        let op =
+            DeconvUnary::new(pool_spec, self.kernel_format, self.adjustments.clone(), self.group);
         Ok(op)
     }
 
     fn tract(&self) -> TractResult<TypedModel> {
         let mut model = TypedModel::default();
         let src = model.add_source("src", f32::fact(self.input.shape()))?;
-        let output = model.wire_node("deconv", self.as_op().context("Generating op")?, &[src])?;
+        let kernel = model.add_const("kernel", self.kernel.clone().into_tensor())?;
+        let bias =
+            self.bias.as_ref().map(|b| b.clone().into_tensor()).unwrap_or_else(|| tensor0(0f32));
+        let bias = model.add_const("bias", bias)?;
+        let output = model.wire_node(
+            "deconv",
+            self.as_op().context("Generating op")?,
+            &[src, kernel, bias],
+        )?;
         model.set_output_outlets(&output)?;
         Ok(model)
     }
@@ -553,6 +555,38 @@ pub fn suite() -> TractResult<TestSuite> {
             dilations: tvec!(1),
             adjustments: tvec!(0),
             group: 1,
+        },
+    );
+
+    suite.add(
+        "bias_2",
+        DeconvProblem {
+            data_format: CHW,
+            kernel_format: OIHW,
+            padding: PaddingSpec::Valid,
+            input: arr2(&[[0f32, 1.]]).into_dyn(),
+            kernel: arr3(&[[[1f32]], [[0.]]]).into_dyn(),
+            bias: Some(arr1(&[0f32, 0.]).into_dyn()),
+            strides: tvec!(1),
+            dilations: tvec!(1),
+            adjustments: tvec!(0),
+            group: 1,
+        },
+    );
+
+    suite.add(
+        "bias_group_0",
+        DeconvProblem {
+            data_format: CHW,
+            kernel_format: OIHW,
+            padding: PaddingSpec::Valid,
+            input: arr2(&[[0f32], [1.]]).into_dyn(),
+            kernel: arr3(&[[[1f32]], [[0.]]]).into_dyn(),
+            bias: Some(arr1(&[0f32, 0.]).into_dyn()),
+            strides: tvec!(1),
+            dilations: tvec!(1),
+            adjustments: tvec!(0),
+            group: 2,
         },
     );
 

@@ -115,75 +115,73 @@ impl Expansion for ConvTranspose {
         target: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        if let Some(k) = target.outlet_fact(inputs[1])?.konst.clone() {
-            let zeros = tvec!(0; k.rank() - 2);
-            // ONNX deconv kernels are stored as gi_o_h_w (convolution are go_i_hw)
-            let kernel = k
-                .into_tensor()
-                .split_axis(0, self.group)?
-                .move_axis(1, 2)?
-                .collapse_axis_with_next(0);
+        // ONNX deconv kernels are stored as gi_o_h_w (convolution are go_i_hw)
+        /*
+        let kernel =
+            k.into_tensor().split_axis(0, self.group)?.move_axis(1, 2)?.collapse_axis_with_next(0);
+        */
+        let mut kernel = AxisOp::wire_split_axis(
+            target,
+            format!("{prefix}.kernel_split_group"),
+            inputs[1],
+            0,
+            self.group,
+        )?;
+        kernel =
+            target.wire_node(format!("{prefix}.kernel_reorder"), AxisOp::Move(1, 2), &kernel)?;
+        kernel = AxisOp::wire_collapse_axis(
+            target,
+            format!("{prefix}.kernel_merge_group"),
+            kernel[0],
+            0,
+        )?;
 
-            let bias = if self.have_bias {
-                Some(
-                    target
-                        .outlet_fact(inputs[2])?
-                        .konst
-                        .clone()
-                        .context("bias must be a constant")?,
-                )
-            } else {
-                None
-            };
-
-            let ci = KernelFormat::OIHW.input_channels(kernel.shape(), self.group).into_owned();
-            let co = KernelFormat::OIHW.output_channels(kernel.shape(), self.group).into_owned();
-            let op = if let Some(output_shape) = &self.output_shape {
-                let x_shape = &target.outlet_fact(inputs[0])?.shape;
-                let pool_spec = PoolSpec::new(
-                    DataFormat::NCHW,
-                    kernel.shape()[2..].into(),
-                    self.padding_spec.clone(),
-                    self.dilations.clone(),
-                    self.strides.clone(),
-                    ci,
-                    co,
-                );
-                let adjustments = adjustments(
-                    &pool_spec,
-                    &x_shape.as_concrete().context("expects concrete dim for deconv")?[2..],
-                    output_shape,
-                )?;
-                tract_core::ops::cnn::DeconvUnary::new(
-                    pool_spec,
-                    KernelFormat::OIHW,
-                    kernel.into_arc_tensor(),
-                    bias,
-                    adjustments,
-                    self.group,
-                )
-            } else {
-                let pool_spec = PoolSpec::new(
-                    DataFormat::NCHW,
-                    kernel.shape()[2..].into(),
-                    self.padding_spec.clone(),
-                    self.dilations.clone(),
-                    self.strides.clone(),
-                    ci,
-                    co,
-                );
-                tract_core::ops::cnn::DeconvUnary::new(
-                    pool_spec,
-                    KernelFormat::OIHW,
-                    kernel.into_arc_tensor(),
-                    bias,
-                    self.adjustments.clone().unwrap_or(zeros),
-                    self.group,
-                )
-            };
-            target.wire_node(prefix, op, &[inputs[0]])
+        let bias = if self.have_bias {
+            inputs[2]
         } else {
-            bail!("Kernel values are expected to be constant.")
-        }
+            target.add_const(
+                format!("{prefix}.bias"),
+                Tensor::zero_scalar_dt(target.outlet_fact(inputs[0])?.datum_type)?,
+            )?
+        };
+
+        let kernel_shape = target
+            .outlet_fact(kernel[0])?
+            .shape
+            .as_concrete()
+            .context("Expects concrete kernel shape")?;
+        let ci = KernelFormat::OIHW.input_channels(&kernel_shape, self.group).into_owned();
+        let co = KernelFormat::OIHW.output_channels(&kernel_shape, self.group).into_owned();
+        let pool_spec = PoolSpec::new(
+            DataFormat::NCHW,
+            kernel_shape[2..].into(),
+            self.padding_spec.clone(),
+            self.dilations.clone(),
+            self.strides.clone(),
+            ci,
+            co,
+        );
+        let op = if let Some(output_shape) = &self.output_shape {
+            let x_shape = &target.outlet_fact(inputs[0])?.shape;
+            let adjustments = adjustments(
+                &pool_spec,
+                &x_shape.as_concrete().context("expects concrete dim for deconv")?[2..],
+                output_shape,
+            )?;
+            tract_core::ops::cnn::DeconvUnary::new(
+                pool_spec,
+                KernelFormat::OIHW,
+                adjustments,
+                self.group,
+            )
+        } else {
+            tract_core::ops::cnn::DeconvUnary::new(
+                pool_spec,
+                KernelFormat::OIHW,
+                self.adjustments.clone().unwrap_or_else(|| tvec!(0; kernel_shape.len() - 2)),
+                self.group,
+            )
+        };
+        target.wire_node(prefix, op, &[inputs[0], kernel[0], bias])
     }
 }
