@@ -600,23 +600,28 @@ impl ConvUnary {
                 let op = EinSum { axes, operating_dt: input_facts[0].datum_type, q_params: None };
                 let mut wire = patch.wire_node(format!("{name}.einsum"), op, &taps[0..2])?[0];
 
-                let bias_current_shape =
-                    if bias_fact.rank() == 0 { tvec!() } else { tvec!(co.to_dim()) };
-                let mut bias_shape = tvec!(1.to_dim(); input_shape.rank());
-                if bias_fact.rank() > 0 {
-                    bias_shape[input_shape.c_axis()] = co.to_dim();
+                if !bias_fact.konst.as_ref().map(|f| f.is_zero()).transpose()?.unwrap_or(false) {
+                    let bias_current_shape =
+                        if bias_fact.rank() == 0 { tvec!() } else { tvec!(co.to_dim()) };
+                    let mut bias_shape = tvec!(1.to_dim(); input_shape.rank());
+                    if bias_fact.rank() > 0 {
+                        bias_shape[input_shape.c_axis()] = co.to_dim();
+                    }
+                    let b = patch.wire_node(
+                        format!("{name}.bias.reshape"),
+                        AxisOp::Reshape(0, bias_current_shape, bias_shape),
+                        &[taps[2]],
+                    )?[0];
+                    wire = patch.wire_node(
+                        format!("{name}.bias"),
+                        crate::ops::math::add(),
+                        &[wire, b],
+                    )?[0];
                 }
-                let b = patch.wire_node(
-                    format!("{name}.bias.reshape"),
-                    AxisOp::Reshape(0, bias_current_shape, bias_shape),
-                    &[taps[2]],
-                )?[0];
-                wire =
-                    patch.wire_node(format!("{name}.bias"), crate::ops::math::add(), &[wire, b])?
-                        [0];
                 wire
             };
-            patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
+            patch.node_mut(wire.node).name = node.name.to_string();
+            patch.shunt_outside(model, node.id.into(), wire)?;
             return Ok(Some(patch));
         }
         Ok(None)

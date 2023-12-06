@@ -251,18 +251,27 @@ impl<'mb> ModelBuilder<'mb> {
             inner_scope.insert(par.id.clone(), invocation.named_arg_as::<Value>(self, &par.id.0)?);
         }
         self.scopes.push(inner_scope);
-        self.naming_scopes.push(invocation.invocation.id.clone());
-        self.wire_body(body)?;
-        self.naming_scopes.pop();
+        self.with_extra_naming_scope(invocation.invocation.id.clone(), |b| b.wire_body(body))?;
         let inner_scope = self.scopes.pop().unwrap();
         Ok(Value::Tuple(
             decl.results.iter().map(|res| inner_scope.get(&res.id).unwrap()).cloned().collect(),
         ))
     }
 
+    fn with_extra_naming_scope<F: FnOnce(&mut Self) -> R, R>(
+        &mut self,
+        name: Identifier,
+        f: F,
+    ) -> R {
+        self.naming_scopes.push(name);
+        let r = f(self);
+        self.naming_scopes.pop();
+        r
+    }
+
     fn generate_node_name(&self) -> String {
         let name = self.naming_scopes.iter().map(|n| &n.0).join("_");
-        if self.model.nodes().iter().any(|n| n.name.starts_with(&name)) {
+        if self.model.nodes().iter().any(|n| n.name == name) {
             for i in 0.. {
                 let candidate = format!("{name}_{i}");
                 if !self.model.nodes().iter().any(|n| n.name.starts_with(&candidate)) {
@@ -309,10 +318,12 @@ impl<'a> ResolvedInvocation<'a> {
         T: CoerceFrom<Value>,
     {
         let rv = self.named_arg(name)?;
-        let v = rv
-            .resolve(builder, &[])
-            .with_context(|| format!("Resolving argument `{name}' ({rv:?})"))?;
-        v.to::<T>(builder).with_context(|| format!("Converting argument `{name}' from {v:?}"))
+        builder.with_extra_naming_scope(Identifier(name.into()), |builder| {
+            let v = rv
+                .resolve(builder, &[])
+                .with_context(|| format!("Resolving argument `{name}' ({rv:?})"))?;
+            v.to::<T>(builder).with_context(|| format!("Converting argument `{name}' from {v:?}"))
+        })
     }
 
     pub fn optional_named_arg_as<T>(
@@ -713,7 +724,7 @@ impl CoerceFrom<Value> for bool {
             Value::Tensor(t) => Ok(*t.to_scalar::<bool>()?),
             Value::Wire(_) => {
                 Ok(*from.to::<Arc<Tensor>>(builder)?.cast_to::<bool>()?.to_scalar::<bool>()?)
-            },
+            }
             Value::Dim(n) => Ok(!n.is_zero()),
             _ => bail!("Can not build a boolean from {:?}", from),
         }
