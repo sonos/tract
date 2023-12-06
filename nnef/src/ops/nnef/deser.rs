@@ -323,16 +323,6 @@ pub fn conv_or_deconv(
     let bias: OutletId = invocation.named_arg_as(builder, "bias")?;
     let input_fact = builder.model.outlet_fact(input)?.clone();
     let kernel_fact = builder.model.outlet_fact(kernel)?.clone();
-    /*
-    let bias_fact = builder.model.outlet_fact(bias)?;
-    if input_fact.rank() != kernel.rank() {
-        bail!(
-            "Convolution input expected as NCHW, filter as OIHW. Got {:?} and {:?}.",
-            input_fact,
-            kernel
-        );
-    }
-    */
     let mut inputs = tvec!(input, kernel, bias);
 
     let (group, pool_spec) = read_conv_parameters(
@@ -367,15 +357,7 @@ pub fn conv_or_deconv(
         } else {
             tvec!(0; pool_spec.rank())
         };
-        todo!()
-        /*
-        Box::new(DeconvUnary::new(
-            pool_spec,
-            KernelFormat::OIHW,
-            adjustments,
-            group,
-        ))
-        */
+        Box::new(DeconvUnary::new(pool_spec, KernelFormat::OIHW, adjustments, group))
     } else {
         Box::new(ConvUnary::new(
             pool_spec,

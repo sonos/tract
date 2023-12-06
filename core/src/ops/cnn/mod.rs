@@ -17,3 +17,43 @@ pub use self::patch_axis::PatchAxis;
 pub use self::patches::{Patch, PatchSpec};
 pub use self::pools::PoolSpec;
 pub use self::sumpool::SumPool;
+
+use super::array::MultiBroadcastTo;
+
+fn wire_reshape_bias(
+    model: &mut TypedModel,
+    name: impl AsRef<str>,
+    outlet: OutletId,
+    rank: usize,
+    c_axis: usize,
+    output_channels: usize,
+) -> TractResult<TVec<OutletId>> {
+    let name = name.as_ref();
+    let mut bias = tvec!(outlet);
+    let fact = model.outlet_fact(outlet)?.clone();
+    if fact.shape.volume().is_one() && fact.rank() > 0 {
+        bias = model.wire_node(
+            format!("{name}.bias.broadcast_as_scalar"),
+            AxisOp::Reshape(0, fact.shape.to_tvec(), tvec![]),
+            &bias,
+        )?;
+    }
+    if model.outlet_fact(bias[0])?.rank() == 0 {
+        bias = model.wire_node(
+            format!("{name}.bias.broadcast"),
+            MultiBroadcastTo { shape: tvec!(output_channels).into() },
+            &bias,
+        )?;
+    }
+    let fact = model.outlet_fact(bias[0])?.clone();
+    let mut bias_final_shape = tvec![1.to_dim(); rank];
+    bias_final_shape[c_axis] = output_channels.to_dim();
+    if &*bias_final_shape != &*fact.shape {
+        bias = model.wire_node(
+            format!("{name}.bias"),
+            AxisOp::Reshape(0, fact.shape.to_tvec(), bias_final_shape),
+            &bias,
+        )?;
+    }
+    Ok(bias)
+}

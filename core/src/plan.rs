@@ -554,13 +554,13 @@ where
     F: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
-     eprint!("{node} {input:?}");
+    // eprint!("{node} {input:?}");
     let r = match state {
         Some(ref mut state) => state.eval(session_state, node.op(), input),
         None => node.op().eval(input),
     }
     .with_context(|| format!("Evaluating {node}"));
-    eprintln!(" ==> {}", r.as_ref().unwrap()[0].dump(true)?);
+    // eprintln!(" ==> {}", r.as_ref().unwrap()[0].dump(true)?);
     r
 }
 

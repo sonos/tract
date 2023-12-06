@@ -267,6 +267,7 @@ impl AxisOp {
                 shape.insert(*to, axis);
             }
             Reshape(at, from, to) => {
+                ensure!(from.iter().product::<TDim>() == to.iter().product::<TDim>());
                 if shape.len() >= from.len() + *at
                     && tract_itertools::izip!(shape.iter().skip(*at), from)
                         .all(|(shape, spec)| shape.to_dim() == *spec)
@@ -435,7 +436,7 @@ impl AxisOp {
 
     pub fn wire_split_axis(
         model: &mut TypedModel,
-        name: &str,
+        name: impl ToString,
         outlet: OutletId,
         axis: usize,
         outer_dim: usize,
@@ -444,12 +445,12 @@ impl AxisOp {
         let dim: TDim = fact.shape[axis].clone();
         let inner_dim = dim.clone() / outer_dim;
         let op = Self::Reshape(axis, tvec!(dim.clone()), tvec!(outer_dim.to_dim(), inner_dim));
-        model.wire_node(name, op, &[outlet])
+        model.wire_node(name.to_string(), op, &[outlet])
     }
 
     pub fn wire_collapse_axis(
         model: &mut TypedModel,
-        name: &str,
+        name: impl ToString,
         outlet: OutletId,
         axis: usize,
     ) -> TractResult<TVec<OutletId>> {
@@ -457,7 +458,7 @@ impl AxisOp {
         let dim: TDim = fact.shape[axis].clone();
         let next_dim: TDim = fact.shape[axis + 1].clone();
         let op = Self::Reshape(axis, tvec!(dim.clone(), next_dim.clone()), tvec!(dim * next_dim));
-        model.wire_node(name, op, &[outlet])
+        model.wire_node(name.to_string(), op, &[outlet])
     }
 }
 
