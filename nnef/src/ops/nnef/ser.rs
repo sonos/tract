@@ -4,7 +4,6 @@ use crate::internal::*;
 use crate::ser::*;
 use tract_core::num_traits::Zero;
 use tract_core::ops;
-use tract_core::ops::cnn::KernelFormat;
 use tract_core::ops::cnn::PoolSpec;
 use tract_core::ops::nn::DataFormat;
 
