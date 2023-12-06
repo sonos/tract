@@ -875,8 +875,8 @@ impl TypedOp for ConvUnary {
             }
         }
         if self.q_params.is_some() {
-            for qp_ix in 3..9 {
-                if inputs[qp_ix].rank() == 1 {
+            for (qp_ix, qp) in inputs.iter().enumerate().skip(3) {
+                if qp.rank() == 1 {
                     axes = match qp_ix {
                         3 | 4 => axes.linking('I', (InOut::In(qp_ix), 0))?,
                         5 | 6 => axes.linking('O', (InOut::In(qp_ix), 0))?,

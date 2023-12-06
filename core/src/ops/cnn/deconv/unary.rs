@@ -183,7 +183,7 @@ impl TypedOp for DeconvUnary {
         let h_axis = shape.h_axis();
         let geo = "HWXYZ".chars().chain('a'..);
         let kernel_spatial_shape = self.kernel_format.spatial_shape(&k_fact.shape);
-        for ((ix, &ref dim), repr) in kernel_spatial_shape.iter().enumerate().zip(geo) {
+        for ((ix, dim), repr) in kernel_spatial_shape.iter().enumerate().zip(geo) {
             if dim.is_one()
                 && self.pool_spec.stride(ix) == 1
                 && self.pool_spec.padding.valid_dim(ix, true)

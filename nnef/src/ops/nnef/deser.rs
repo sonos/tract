@@ -320,11 +320,27 @@ pub fn conv_or_deconv(
 
     let input: OutletId = invocation.named_arg_as(builder, "input")?;
     let kernel: OutletId = invocation.named_arg_as(builder, "filter")?;
-    let bias: OutletId = invocation.named_arg_as(builder, "bias")?;
+    let mut bias: OutletId = invocation.named_arg_as(builder, "bias")?;
     let input_fact = builder.model.outlet_fact(input)?.clone();
     let kernel_fact = builder.model.outlet_fact(kernel)?.clone();
-    let mut inputs = tvec!(input, kernel, bias);
 
+    let name = &*invocation.invocation.id.0;
+    while let Some((axis, _)) = builder
+        .model
+        .outlet_fact(bias)?
+        .shape
+        .to_tvec()
+        .iter()
+        .enumerate()
+        .rev()
+        .find(|(_, dim)| dim.is_one())
+    {
+        bias =
+            builder.model.wire_node(format!("{name}.bias_rm_{axis}"), AxisOp::Rm(axis), &[bias])?
+                [0];
+    }
+
+    let mut inputs = tvec!(input, kernel, bias);
     let (group, pool_spec) = read_conv_parameters(
         builder,
         invocation,

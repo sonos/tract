@@ -33,7 +33,7 @@ fn wire_reshape_bias(
     let fact = model.outlet_fact(outlet)?.clone();
     if fact.shape.volume().is_one() && fact.rank() > 0 {
         bias = model.wire_node(
-            format!("{name}.bias.broadcast_as_scalar"),
+            format!("{name}.bias.make_scalar"),
             AxisOp::Reshape(0, fact.shape.to_tvec(), tvec![]),
             &bias,
         )?;
@@ -48,7 +48,7 @@ fn wire_reshape_bias(
     let fact = model.outlet_fact(bias[0])?.clone();
     let mut bias_final_shape = tvec![1.to_dim(); rank];
     bias_final_shape[c_axis] = output_channels.to_dim();
-    if &*bias_final_shape != &*fact.shape {
+    if *bias_final_shape != *fact.shape {
         bias = model.wire_node(
             format!("{name}.bias"),
             AxisOp::Reshape(0, fact.shape.to_tvec(), bias_final_shape),

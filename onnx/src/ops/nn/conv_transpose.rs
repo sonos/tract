@@ -150,8 +150,8 @@ impl Expansion for ConvTranspose {
             .shape
             .as_concrete()
             .context("Expects concrete kernel shape")?;
-        let ci = KernelFormat::OIHW.input_channels(&kernel_shape, self.group).into_owned();
-        let co = KernelFormat::OIHW.output_channels(&kernel_shape, self.group).into_owned();
+        let ci = KernelFormat::OIHW.input_channels(kernel_shape, self.group).into_owned();
+        let co = KernelFormat::OIHW.output_channels(kernel_shape, self.group).into_owned();
         let pool_spec = PoolSpec::new(
             DataFormat::NCHW,
             kernel_shape[2..].into(),

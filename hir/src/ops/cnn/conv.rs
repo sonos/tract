@@ -197,11 +197,14 @@ impl Expansion for Conv {
         if input_shape.c_dim() != &input_channels.to_dim() {
             bail!("Input has {} channels, kernel expects {}", input_shape.c_dim(), input_channels)
         }
-        let bias = if let Some(slot) = self.bias_input {
+        let mut bias = if let Some(slot) = self.bias_input {
             inputs[slot]
         } else {
             model.add_const(format!("{prefix}.bias"), Tensor::zero_scalar_dt(model.outlet_fact(inputs[0])?.datum_type)?)?
         };
+        while let Some(axis) =  model.outlet_fact(bias)?.shape.to_tvec().iter().enumerate().rev().position(|(_, dim)| dim.is_one()) {
+            bias = model.wire_node(format!("{prefix}.bias_rm_{axis}"), AxisOp::Rm(axis), &[bias])?[0];
+        }
         let mut wires = vec![inputs[0], inputs[1], bias];
         let pool_spec = PoolSpec {
             data_format: self.data_format,
