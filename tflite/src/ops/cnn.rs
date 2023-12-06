@@ -157,7 +157,7 @@ fn ser_conv(
 fn de_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let (input, kernel, bias) = args_3!(op.facts()?);
     let kernel_full_shape = kernel.shape.as_concrete().context("Expect concrete kernel shape")?;
-    let kernel_spatial_shape = KernelFormat::OHWI.spatial_shape(&kernel_full_shape);
+    let kernel_spatial_shape = KernelFormat::OHWI.spatial_shape(kernel_full_shape);
     let options = builtin!(op, builtin_options_as_conv_2_doptions);
     let padding = match options.padding() {
         Padding::SAME => PaddingSpec::SameUpper,
@@ -167,8 +167,8 @@ fn de_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let strides = tvec!(options.stride_h() as usize, options.stride_w() as usize);
     let dilations =
         tvec!(options.dilation_h_factor() as usize, options.dilation_w_factor() as usize);
-    let input_channels = *KernelFormat::OHWI.i(&kernel_full_shape);
-    let output_channels = *KernelFormat::OHWI.o(&kernel_full_shape);
+    let input_channels = *KernelFormat::OHWI.i(kernel_full_shape);
+    let output_channels = *KernelFormat::OHWI.o(kernel_full_shape);
     let pool_spec = core::cnn::PoolSpec {
         data_format: tract_core::ops::nn::DataFormat::NHWC,
         kernel_shape: kernel_spatial_shape.into(),
