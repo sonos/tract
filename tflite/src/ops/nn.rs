@@ -28,6 +28,8 @@ use crate::tflite::{BuiltinOperator, FullyConnectedOptionsWeightsFormat};
 
 pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tflite(ser_matmul);
+    reg.reg_to_tract(BuiltinOperator::BATCH_MATMUL, de_batch_matmul);
+
     reg.reg_to_tract(BuiltinOperator::FULLY_CONNECTED, de_fully_connected);
     reg.reg_to_tract(BuiltinOperator::MEAN, de_reduce_mean);
     reg.reg_to_tflite(ser_softmax);
@@ -41,6 +43,28 @@ pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tract(BuiltinOperator::REDUCE_MIN, |op| de_reduce(op, Reducer::Min));
     reg.reg_to_tract(BuiltinOperator::SUM, |op| de_reduce(op, Reducer::Sum));
     reg.reg_to_tract(BuiltinOperator::REDUCE_PROD, |op| de_reduce(op, Reducer::Prod));
+}
+
+fn de_batch_matmul(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let (a, b) = args_2!(op.facts()?);
+    let options = builtin!(op, builtin_options_as_batch_mat_mul_options);
+    ensure!(a.datum_type.is_float());
+    ensure!(!options.asymmetric_quantize_inputs());
+    ensure!(a.rank() == b.rank());
+    let rank = a.rank();
+    let mut axes = tvec!(
+        Axis::new('M', 2, 1).input(0, rank - 2 + options.adj_x() as usize).output(0, rank - 2),
+        Axis::new('N', 2, 1).input(1, rank - 1 - options.adj_y() as usize).output(0, rank - 1),
+        Axis::new('K', 2, 1)
+            .input(0, rank - 1 - options.adj_x() as usize)
+            .input(1, rank - 2 + options.adj_y() as usize)
+    );
+    for (ix, repr) in ('a'..).take(rank - 2).enumerate() {
+        axes.push(Axis::new(repr, 2, 1).input(0, ix).input(1, ix).output(0, ix));
+    }
+    let axes: AxesMapping = AxesMapping::new(2, 1, axes)?;
+    let einsum = EinSum { axes, q_params: None, operating_dt: a.datum_type };
+    op.ctx.target.wire_node(op.prefix, einsum, &op.inputs)
 }
 
 fn de_fully_connected(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {

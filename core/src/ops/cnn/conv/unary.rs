@@ -9,8 +9,8 @@ use crate::ops::array::Pad;
 use crate::ops::array::PadMode;
 use crate::ops::binary::TypedBinOp;
 use crate::ops::cast::cast;
-use crate::ops::cnn::PaddingSpec::*;
 use crate::ops::cnn::wire_reshape_bias_for_bin;
+use crate::ops::cnn::PaddingSpec::*;
 use crate::ops::einsum::EinSum;
 use crate::ops::math::{add, div, mul, sub};
 use crate::ops::math::{Add, Div, Mul, Sub};
@@ -510,8 +510,14 @@ impl ConvUnary {
             self.pool_spec.compute_geo(&x_fact.shape)?.to_concrete(x_shape)?.into_owned();
         let kernel = self.wire_kernel_as_g_o_ihw(model, name, kernel)?;
         let c_axis = self.pool_spec.data_format.shape(x_shape)?.c_axis();
-        bias =
-            wire_reshape_bias_for_bin(model, name, bias, x_fact.rank(), c_axis, self.output_channels())?[0];
+        bias = wire_reshape_bias_for_bin(
+            model,
+            name,
+            bias,
+            x_fact.rank(),
+            c_axis,
+            self.output_channels(),
+        )?[0];
         let op = DepthWise::new(patch, input_shape, output_shape);
         Ok(model.wire_node(name, op, &[x, kernel[0], bias])?[0])
     }
@@ -946,6 +952,9 @@ impl TypedOp for ConvUnary {
         io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
+        if io == InOut::In(1) {
+            return Ok(None);
+        }
         if io == InOut::In(2) {
             if let &AxisOp::Rm(_) = change {
                 return Ok(Some(AxisChangeConsequence {
@@ -954,9 +963,6 @@ impl TypedOp for ConvUnary {
                 }));
             }
         }
-        if io != InOut::In(0) && io != InOut::Out(0) {
-            return Ok(None);
-        }
         let full_input_shape = model.outlet_fact(node.inputs[0])?.shape.to_tvec();
         let shape = self.pool_spec.data_format.shape(full_input_shape.clone())?;
         // remove n
@@ -964,12 +970,13 @@ impl TypedOp for ConvUnary {
             assert_eq!(n, 0);
             if change == &AxisOp::Rm(n) {
                 let op = ConvUnary { pool_spec: self.pool_spec.dispose_n_axis(), ..self.clone() };
-                return Ok(Some(AxisChangeConsequence::new(
-                    model,
-                    node,
-                    Some(Box::new(op)),
-                    change,
-                )));
+                return Ok(Some(AxisChangeConsequence {
+                    substitute_op: Some(Box::new(op)),
+                    wire_changes: tvec!(
+                        (InOut::In(0), change.clone()),
+                        (InOut::Out(0), change.clone())
+                    ),
+                }));
             }
             if change.transform_axis(n).map(|axis| axis > 0).unwrap_or(true) {
                 return Ok(None);
@@ -1010,7 +1017,8 @@ impl TypedOp for ConvUnary {
                     && self.pool_spec.stride(a - h_axis) == 1
                     && self.pool_spec.kernel_shape[a - h_axis] == 1 =>
             {
-                (Rm(a - h_axis), Rm(a - h_axis + kh_axis))
+                let geo_axis = a - h_axis;
+                (Rm(geo_axis), Rm(kh_axis + geo_axis))
             }
             Add(a) if hw_axes.contains(a) => (Add(a - h_axis), Add(a - h_axis + kh_axis)),
             Move(f, t) if hw_axes.contains(f) && hw_axes.contains(t) => {
