@@ -269,7 +269,7 @@ impl<'mb> ModelBuilder<'mb> {
         r
     }
 
-    fn generate_node_name(&self) -> String {
+    pub fn generate_node_name(&self) -> String {
         let name = self.naming_scopes.iter().map(|n| &n.0).join("_");
         if self.model.nodes().iter().any(|n| n.name == name) {
             for i in 0.. {
