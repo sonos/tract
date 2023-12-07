@@ -267,9 +267,9 @@ impl Test for ConvProblem {
     ) -> TestResult {
         let reference = self.reference().into_tensor();
         let mut model = self.tract()?;
-        dbg!(&model);
+ //       dbg!(&model);
         model.declutter()?;
-        dbg!(&model);
+ //       dbg!(&model);
         model.properties.insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));
         let mut output =
             dbg!(runtime.prepare(model)?).run(tvec![self.data.clone().into_tvalue()])?;
@@ -1164,6 +1164,20 @@ pub fn suite() -> TractResult<TestSuite> {
             bias: None,
             pad: PaddingSpec::SameUpper,
             strides: tvec!(1, 1),
+        },
+    );
+
+    suite.add(
+        "from_1d_to_2d",
+        ConvProblem {
+            shape_in: DataFormat::CHW.from_n_c_hw(1, 1, [2]).unwrap(),
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: arr2(&[[0.0f32, 0.0]]).into_dyn(),
+            kernel: arr3(&[[[0.0f32, 0.0]]]).into_dyn(),
+            bias: None,
+            pad: PaddingSpec::Valid,
+            strides: tvec!(1),
         },
     );
 

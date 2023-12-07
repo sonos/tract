@@ -20,12 +20,10 @@ pub use self::sumpool::SumPool;
 
 use super::array::MultiBroadcastTo;
 
-fn wire_reshape_bias(
+pub fn wire_reshape_bias_as_vector(
     model: &mut TypedModel,
     name: impl AsRef<str>,
     outlet: OutletId,
-    rank: usize,
-    c_axis: usize,
     output_channels: usize,
 ) -> TractResult<TVec<OutletId>> {
     let name = name.as_ref();
@@ -45,6 +43,19 @@ fn wire_reshape_bias(
             &bias,
         )?;
     }
+    Ok(bias)
+}
+
+pub fn wire_reshape_bias_for_bin(
+    model: &mut TypedModel,
+    name: impl AsRef<str>,
+    outlet: OutletId,
+    rank: usize,
+    c_axis: usize,
+    output_channels: usize,
+) -> TractResult<TVec<OutletId>> {
+    let name = name.as_ref();
+    let mut bias = wire_reshape_bias_as_vector(model, name, outlet, output_channels)?;
     let fact = model.outlet_fact(bias[0])?.clone();
     let mut bias_final_shape = tvec![1.to_dim(); rank];
     bias_final_shape[c_axis] = output_channels.to_dim();

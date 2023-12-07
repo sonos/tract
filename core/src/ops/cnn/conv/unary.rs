@@ -9,8 +9,8 @@ use crate::ops::array::Pad;
 use crate::ops::array::PadMode;
 use crate::ops::binary::TypedBinOp;
 use crate::ops::cast::cast;
-use crate::ops::cnn::wire_reshape_bias;
 use crate::ops::cnn::PaddingSpec::*;
+use crate::ops::cnn::wire_reshape_bias_for_bin;
 use crate::ops::einsum::EinSum;
 use crate::ops::math::{add, div, mul, sub};
 use crate::ops::math::{Add, Div, Mul, Sub};
@@ -511,7 +511,7 @@ impl ConvUnary {
         let kernel = self.wire_kernel_as_g_o_ihw(model, name, kernel)?;
         let c_axis = self.pool_spec.data_format.shape(x_shape)?.c_axis();
         bias =
-            wire_reshape_bias(model, name, bias, x_fact.rank(), c_axis, self.output_channels())?[0];
+            wire_reshape_bias_for_bin(model, name, bias, x_fact.rank(), c_axis, self.output_channels())?[0];
         let op = DepthWise::new(patch, input_shape, output_shape);
         Ok(model.wire_node(name, op, &[x, kernel[0], bias])?[0])
     }
@@ -700,7 +700,7 @@ impl ConvUnary {
         let operand = patch.tap_model(model, other_input)?;
 
         let renamed = format!("{name}.{succ_name}");
-        bias = wire_reshape_bias(
+        bias = wire_reshape_bias_for_bin(
             &mut patch,
             format!("{renamed}.reshape_bias"),
             bias,
@@ -709,7 +709,7 @@ impl ConvUnary {
             self.output_channels(),
         )?[0];
 
-        let operand = wire_reshape_bias(
+        let operand = wire_reshape_bias_for_bin(
             &mut patch,
             format!("{renamed}.reshape_operand"),
             operand,

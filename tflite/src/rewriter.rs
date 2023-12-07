@@ -8,8 +8,10 @@ use tract_core::ops::math::{add, sub, Recip};
 use tract_core::ops::nn::{DataFormat, Softmax};
 
 pub fn rewrite_for_tflite(model: &mut TypedModel) -> TractResult<()> {
+    tract_core::ops::einsum::rewrite_einsums_as_matmul(model)?;
     Rewriter::default()
         .with_rule_for("kernel-in-ohwi", kernel_in_ohwi)
+        .with_rule_for("bias_as_vector", bias_as_vector)
         .with_rule_for("homogeneous-convolution", homogeneous_convolution)
         .with_rule_for("make_1d_2d", make_1d_2d)
         .with_rule_for("force_n_axis", force_n_axis)
@@ -48,9 +50,9 @@ fn kernel_in_ohwi(
     // group_o_i_h_w -> o_h_w_gi
     let ci = conv.input_channels();
     wire[1] =
-        patch.wire_node(format!("{prefix}.mv_g"), AxisOp::Move(0, geo_rank + 3), &[wire[1]])?[0];
+        patch.wire_node(format!("{prefix}.mv_g"), AxisOp::Move(0, geo_rank + 2), &[wire[1]])?[0];
     wire[1] =
-        patch.wire_node(format!("{prefix}.mv_i"), AxisOp::Move(1, geo_rank + 3), &[wire[1]])?[0];
+        patch.wire_node(format!("{prefix}.mv_i"), AxisOp::Move(1, geo_rank + 2), &[wire[1]])?[0];
     wire[1] = patch.wire_node(
         format!("{prefix}.gi"),
         AxisOp::Reshape(
@@ -60,8 +62,28 @@ fn kernel_in_ohwi(
         ),
         &[wire[1]],
     )?[0];
-    let mut new = ConvUnary { kernel_fmt: KernelFormat::OHWI, ..conv.clone() };
+    let new = ConvUnary { kernel_fmt: KernelFormat::OHWI, ..conv.clone() };
     wire = patch.wire_node(name, new, &wire)?;
+    patch.shunt_outside(model, node.id.into(), wire[0])?;
+    Ok(Some(patch))
+}
+
+fn bias_as_vector(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    name: &str,
+    conv: &ConvUnary,
+) -> TractResult<Option<TypedModelPatch>> {
+    let bias_fact = model.outlet_fact(node.inputs[2])?;
+    let co = conv.output_channels();
+    if *bias_fact.shape == [co.to_dim()] {
+        return Ok(None)
+    }
+    let mut patch = TypedModelPatch::default();
+    let mut wire = patch.taps(model, &node.inputs)?;
+    wire[2] = tract_core::ops::cnn::wire_reshape_bias_as_vector(&mut patch, name, wire[2], conv.output_channels())?[0];
+    wire = patch.wire_node(name, conv.clone(), &wire)?;
     patch.shunt_outside(model, node.id.into(), wire[0])?;
     Ok(Some(patch))
 }
@@ -175,12 +197,12 @@ fn make_1d_2d(
         new.pool_spec = conv.pool_spec.change_geo_axes(&AxisOp::Add(1))?;
         let mut patch = TypedModelPatch::default();
         let mut wire = patch.taps(model, &node.inputs)?;
-        let pos = conv.pool_spec.data_format.h_axis() + 1;
-        wire[0] = patch.wire_node(format!("{name}.add_dim"), AxisOp::Add(pos), &[wire[0]])?[0];
-        let pos = conv.kernel_fmt.h_axis() + 1;
-        wire[1] = patch.wire_node(format!("{name}.add_dim_k"), AxisOp::Add(pos), &[wire[1]])?[0];
+        let pos_data = conv.pool_spec.data_format.h_axis() + 1;
+        wire[0] = patch.wire_node(format!("{name}.add_dim"), AxisOp::Add(pos_data), &[wire[0]])?[0];
+        let pos_kernel = conv.kernel_fmt.h_axis() + 1;
+        wire[1] = patch.wire_node(format!("{name}.add_dim_k"), AxisOp::Add(pos_kernel), &[wire[1]])?[0];
         wire = patch.wire_node(name, new, &wire)?;
-        wire = patch.wire_node(format!("{name}.rm_dim"), AxisOp::Rm(pos), &wire)?;
+        wire = patch.wire_node(format!("{name}.rm_dim"), AxisOp::Rm(pos_data), &wire)?;
         patch.shunt_outside(model, node.id.into(), wire[0])?;
         return Ok(Some(patch));
     }

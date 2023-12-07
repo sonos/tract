@@ -1,8 +1,8 @@
 use crate::internal::*;
 use crate::ops::array::MultiBroadcastTo;
-use crate::ops::cnn::wire_reshape_bias;
 use crate::ops::cnn::KernelFormat;
 use crate::ops::cnn::PoolSpec;
+use crate::ops::cnn::wire_reshape_bias_for_bin;
 use crate::ops::einsum::EinSum;
 
 #[derive(Clone, Debug, new, Hash)]
@@ -92,7 +92,7 @@ impl DeconvUnary {
             &[kernel[0], input[0]],
         )?;
 
-        let mut bias = wire_reshape_bias(
+        let mut bias = wire_reshape_bias_for_bin(
             target,
             format!("{name}.reshape_bias"),
             inputs[2],

@@ -3,6 +3,7 @@ use tract_core::ops as core;
 use tract_core::ops::binary::wire_cast;
 use tract_core::ops::binary::wire_with_rank_broadcast;
 use tract_core::ops::cast::Cast;
+use tract_core::ops::einsum::BasicMatMul;
 use tract_core::ops::einsum::EinSum;
 use tract_core::ops::nn::Softmax;
 use tract_core::ops::nn::{Reduce, Reducer};
@@ -13,6 +14,8 @@ use crate::ser::BuiltinOp;
 use crate::ser::SubgraphBuilder;
 use crate::tflite::ArgMaxOptions;
 use crate::tflite::ArgMaxOptionsArgs;
+use crate::tflite::BatchMatMulOptions;
+use crate::tflite::BatchMatMulOptionsArgs;
 use crate::tflite::BuiltinOptions;
 use crate::tflite::ExpandDimsOptions;
 use crate::tflite::ExpandDimsOptionsArgs;
@@ -24,6 +27,7 @@ use crate::tflite::TensorType;
 use crate::tflite::{BuiltinOperator, FullyConnectedOptionsWeightsFormat};
 
 pub fn register_all(reg: &mut Registry) {
+    reg.reg_to_tflite(ser_matmul);
     reg.reg_to_tract(BuiltinOperator::FULLY_CONNECTED, de_fully_connected);
     reg.reg_to_tract(BuiltinOperator::MEAN, de_reduce_mean);
     reg.reg_to_tflite(ser_softmax);
@@ -40,12 +44,13 @@ pub fn register_all(reg: &mut Registry) {
 }
 
 fn de_fully_connected(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
-    let (input, _weights, _bias) = args_3!(op.facts()?);
+    let (input, weights, bias) = args_3!(op.facts()?);
     let options = builtin!(op, builtin_options_as_fully_connected_options);
-    ensure!(input.datum_type.is_quantized());
     ensure!(options.weights_format() == FullyConnectedOptionsWeightsFormat::DEFAULT);
-    ensure!(!options.keep_num_dims());
     ensure!(!options.asymmetric_quantize_inputs());
+    ensure!(input.rank() == 2);
+    ensure!(weights.rank() == 2);
+    ensure!(bias.rank() == 1);
     let mut inputs: TVec<OutletId> = op.inputs.into();
     let qp = super::linearops_quantization_suport(op, &input, &mut inputs)?;
     let operating_dt =
@@ -146,6 +151,34 @@ pub fn de_relu6(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         core::math::min(),
         &wires,
     )
+}
+
+fn ser_matmul(
+    builder: &mut SubgraphBuilder,
+    model: &TypedModel,
+    node: &TypedNode,
+    op: &BasicMatMul,
+) -> TractResult<()> {
+    let mut inputs =
+        [builder.map_outlet(model, node.inputs[0])?, builder.map_outlet(model, node.inputs[1])?];
+    let (adj_x, adj_y) = if op.transpose_c {
+        inputs.swap(0, 1);
+        (!op.transpose_b, !op.transpose_a)
+    } else {
+        (op.transpose_a, op.transpose_b)
+    };
+    let output = builder.map_outlets(model, [OutletId::from(node.id)])?;
+    let options = BatchMatMulOptions::create(
+        builder.fb(),
+        &BatchMatMulOptionsArgs { adj_x, adj_y, asymmetric_quantize_inputs: false },
+    );
+    builder.write_op_with_options(
+        &inputs,
+        &*output,
+        BuiltinOp::new(126, 1, BuiltinOperator::BATCH_MATMUL, BuiltinOptions::BatchMatMulOptions),
+        options.as_union_value(),
+    )?;
+    Ok(())
 }
 
 fn ser_reduce(
