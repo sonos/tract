@@ -145,7 +145,7 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
 }
 
 fn compatible_conv_f32(qcp: &ConvProblem) -> bool {
-    qcp.group == 1 && qcp.kernel.ndim() == 4
+    qcp.group == 1 && (qcp.kernel.ndim() == 4 || qcp.kernel.ndim() == 3)
 }
 
 fn compatible_conv_q(qcp: &QConvProblem) -> bool {

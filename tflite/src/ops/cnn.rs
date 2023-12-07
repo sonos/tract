@@ -101,8 +101,9 @@ fn ser_conv(
         */
         todo!();
     } else {
-        inputs.push(builder.outlets_to_tensors[&node.inputs[1]]);
-        inputs.push(builder.outlets_to_tensors[&node.inputs[2]]);
+        inputs.push(builder.map_outlet(model, node.inputs[1])?);
+        ensure!(model.outlet_fact(node.inputs[2])?.rank() == 1);
+        inputs.push(builder.map_outlet(model, node.inputs[2])?);
     }
     let output = builder.outlets_to_tensors[&node.id.into()];
 
@@ -178,13 +179,13 @@ fn de_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         input_channels,
         output_channels,
     };
-    let mut inputs = tvec!(op.inputs[0]);
+    let mut inputs = tvec!(op.inputs[0], op.inputs[1], op.inputs[2]);
     let q_params = super::linearops_quantization_suport(op, &input, &mut inputs)?;
     let bias_dt = bias.datum_type.unquantized();
-    let bias = op.ctx.target.wire_node(
+    inputs[2] = op.ctx.target.wire_node(
         format!("{}.cast_bias", op.prefix),
         cast(bias_dt),
-        &[op.inputs[2]],
+        &[inputs[2]],
     )?[0];
     let conv =
         core::cnn::ConvUnary { pool_spec, kernel_fmt: KernelFormat::OHWI, group: 1, q_params };

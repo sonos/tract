@@ -5,14 +5,15 @@ set -ex
 rustup update
 
 cargo check --all-targets
-./.travis/regular-tests.sh
+./.travis/onnx-tests.sh
+./.travis/tflite.sh
 
+./.travis/regular-tests.sh
 if [ -n "$CI" ]
 then
     cargo clean
 fi
 
-./.travis/onnx-tests.sh
 if [ -n "$CI" ]
 then
     cargo clean
