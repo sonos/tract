@@ -86,7 +86,7 @@ impl DeconvSum {
             &self.pool_spec.strides(),
             &self.adjustments,
         )?;
-        let mut tensor = bias.broadcast_to_shape(&output_shape.shape)?;
+        let mut tensor = bias.into_tensor();
         let hw = *gemm.shape().last().unwrap();
         let n = *output_shape.n().unwrap_or(&1);
         let n_o_hkwk_hw = gemm.into_tensor().into_shape(&[
@@ -117,8 +117,7 @@ impl TypedOp for DeconvSum {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(inputs.len() == 2);
         let shape = super::output_shape(&self.pool_spec, &self.input_shape, &self.adjustments)?;
-        ensure!(inputs[1].rank() == shape.len());
-        ensure!(inputs[1].shape.iter().zip(shape.iter()).all(|(b, o)| b.is_one() || b == o.to_dim()));
+        ensure!(*inputs[1].shape == *shape);
         Ok(tvec!(inputs[0].datum_type.fact(shape)))
     }
 
