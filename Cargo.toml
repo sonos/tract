@@ -53,6 +53,7 @@ members = [
 [workspace.dependencies]
 ansi_term = "0.12.1"
 anstyle-parse = "=0.2.1"
+anstyle-query = "=1.0.0"
 anstyle = "=1.0.2"
 anyhow = "1.0.43"
 approx = "0.5"
