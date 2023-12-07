@@ -1,4 +1,5 @@
 use crate::internal::*;
+use crate::ops::array::MultiBroadcastTo;
 use crate::ops::cnn::wire_reshape_bias;
 use crate::ops::cnn::KernelFormat;
 use crate::ops::cnn::PoolSpec;
@@ -91,13 +92,19 @@ impl DeconvUnary {
             &[kernel[0], input[0]],
         )?;
 
-        let bias = wire_reshape_bias(
+        let mut bias = wire_reshape_bias(
             target,
             format!("{name}.reshape_bias"),
             inputs[2],
             shape.rank(),
             shape.c_axis(),
             self.pool_spec.output_channels,
+        )?[0];
+        let output_shape = super::output_shape(&self.pool_spec, &shape.shape, &self.adjustments)?;
+        bias = target.wire_node(
+            &format!("{name}.broadcast_bias"),
+            MultiBroadcastTo { shape: output_shape.into() },
+            &[bias],
         )?[0];
 
         // einsum must be (N_)CHkWk_HW
@@ -203,17 +210,7 @@ impl TypedOp for DeconvUnary {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         let mut patch = TypedModelPatch::default();
-        let mut inputs = patch.taps(model, &node.inputs)?;
-        let x_shape = patch.outlet_fact(inputs[0])?;
-        let x_shape = self.pool_spec.data_format.shape(x_shape.shape.to_tvec())?;
-        inputs[2] = wire_reshape_bias(
-            &mut patch,
-            &node.name,
-            inputs[2],
-            x_shape.rank(),
-            x_shape.c_axis(),
-            self.pool_spec.output_channels,
-        )?[0];
+        let inputs = patch.taps(model, &node.inputs)?;
         let output = self
             .wire_with_deconv_sum(&node.name, &mut patch, &inputs)
             .context("In wire_with_deconv_sum")?;
