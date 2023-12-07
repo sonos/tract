@@ -1,5 +1,7 @@
 use crate::ast::*;
 use crate::deser::Value;
+use ops::cnn::deconv::DeconvUnary;
+use ops::cnn::{ConvUnary, KernelFormat};
 use tract_core::internal::*;
 use tract_core::ops::array::PadMode;
 use tract_core::ops::cnn::deconv::adjustments;
@@ -315,16 +317,13 @@ pub fn conv_or_deconv(
     invocation: &ResolvedInvocation,
     deconv: bool,
 ) -> TractResult<Value> {
-    use ops::cnn::deconv::DeconvUnary;
-    use ops::cnn::{ConvUnary, KernelFormat};
-
     let input: OutletId = invocation.named_arg_as(builder, "input")?;
     let kernel: OutletId = invocation.named_arg_as(builder, "filter")?;
     let mut bias: OutletId = invocation.named_arg_as(builder, "bias")?;
     let input_fact = builder.model.outlet_fact(input)?.clone();
     let kernel_fact = builder.model.outlet_fact(kernel)?.clone();
 
-    let name = &*invocation.invocation.id.0;
+    let name = builder.generate_node_name();
     while let Some((axis, _)) = builder
         .model
         .outlet_fact(bias)?
@@ -350,15 +349,15 @@ pub fn conv_or_deconv(
 
     let output_dt =
         invocation.dt_from_quant_file.get(0).cloned().flatten().unwrap_or(DatumType::F32);
-    if let (Some(a), Some(b), Some(c)) =
-        (kernel_fact.datum_type.qparams(), input_fact.datum_type.qparams(), output_dt.qparams())
+    if let (Some(x), Some(k), Some(y)) =
+        (input_fact.datum_type.qparams(), kernel_fact.datum_type.qparams(), output_dt.qparams())
     {
-        inputs.push(builder.add_const(tensor0(a.zp_scale().0))?);
-        inputs.push(builder.add_const(tensor0(a.zp_scale().1))?);
-        inputs.push(builder.add_const(tensor0(b.zp_scale().0))?);
-        inputs.push(builder.add_const(tensor0(b.zp_scale().1))?);
-        inputs.push(builder.add_const(tensor0(c.zp_scale().0))?);
-        inputs.push(builder.add_const(tensor0(c.zp_scale().1))?);
+        inputs.push(builder.add_const(tensor0(x.zp_scale().0))?);
+        inputs.push(builder.add_const(tensor0(x.zp_scale().1))?);
+        inputs.push(builder.add_const(tensor0(k.zp_scale().0))?);
+        inputs.push(builder.add_const(tensor0(k.zp_scale().1))?);
+        inputs.push(builder.add_const(tensor0(y.zp_scale().0))?);
+        inputs.push(builder.add_const(tensor0(y.zp_scale().1))?);
     };
 
     let op: Box<dyn TypedOp> = if deconv {

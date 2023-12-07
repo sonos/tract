@@ -47,7 +47,7 @@ fn qconv_unary_dump(
     }
     let mut named_args = make_conv_named_args(node, &op.pool_spec, op.group, false, None)?;
 
-    for (ix, name) in ["a0", "a_scale", "b0", "b_scale", "c0", "c_scale"].iter().enumerate() {
+    for (ix, name) in ["b0", "b_scale", "a0", "a_scale", "c0", "c_scale"].iter().enumerate() {
         named_args.push((name, (*ast.mapping[&node.inputs[3 + ix]]).clone()));
     }
 
@@ -83,7 +83,9 @@ fn qconv_load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
         &input_fact,
     )?;
 
-    let qparams = qparams_as_outlets(builder, invocation).context("Loading qparams")?;
+    let mut qparams = qparams_as_outlets(builder, invocation).context("Loading qparams")?;
+    qparams.swap(0, 2);
+    qparams.swap(1, 3);
     inputs.extend(qparams.iter().cloned());
 
     let Some(c0) = &builder.model.outlet_fact(qparams[4])?.konst else {
