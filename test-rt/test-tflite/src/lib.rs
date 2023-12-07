@@ -83,7 +83,12 @@ mod tflite_cycle {
                     reloaded.nodes[old_source_outlet.node].op = Box::new(Dummy);
                 }
             }
-            Ok(Box::new(Arc::new(reloaded.into_optimized()?.into_runnable()?)))
+            Ok(Box::new(Arc::new(
+                reloaded
+                    .into_optimized()
+                    .context("Optimising post-cycle model")?
+                    .into_runnable()?,
+            )))
         }
     }
 
