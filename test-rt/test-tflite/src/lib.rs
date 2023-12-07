@@ -52,9 +52,10 @@ mod tflite_cycle {
         fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
             info!("Store to Tflite");
             let mut buffer = vec![];
-            self.0.write(&model, &mut buffer)?;
+            self.0.write(&model, &mut buffer).context("Translating model to tflite")?;
             info!("Reload from Tflite");
-            let mut reloaded = self.0.model_for_read(&mut &*buffer)?;
+            let mut reloaded =
+                self.0.model_for_read(&mut &*buffer).context("Reloading model from tflite")?;
             for i in 0..model.inputs.len() {
                 if model.input_fact(i)? != reloaded.input_fact(i)?
                     && model.input_fact(i)?.datum_type.unquantized()

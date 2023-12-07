@@ -65,15 +65,18 @@ fn ser_conv(
             || conv.pool_spec.padding == PaddingSpec::SameUpper
     );
     let node_name = &node.name;
-    let mut inputs = tvec!(builder.outlets_to_tensors[&node.inputs[0]],);
+    let mut inputs = tvec!(builder.map_outlet(model, node.inputs[0])?);
     if conv.q_params.is_some() {
-        /*
         let facts = model.node_input_facts(node.id)?;
         let iscale = facts[0].datum_type.zp_scale().1;
-        let k0_tract = facts[1].konst.as_ref().unwrap().cast_to_scalar::<i32>()? as i64;
-        let kscale = facts[2].konst.as_ref().unwrap().as_slice::<f32>()?;
+        // 0 1 2 3  4  5  6  7  8
+        // x w b x0 xs k0 ks y0 ys
+        let k0_tract = facts[5].konst.as_ref().unwrap().cast_to_scalar::<i32>()? as i64;
+        let kscale = facts[6].konst.as_ref().unwrap().as_slice::<f32>()?;
         let per_channel = !kscale.iter().all_equal();
         if per_channel {
+            todo!();
+            /*
             inputs.push(builder.write_fact_with_per_axis_q(
                 &format!("{node_name}.weights"),
                 &conv.kernel,
@@ -90,21 +93,24 @@ fn ser_conv(
                 &bscale,
                 0,
             )?);
+            */
         } else {
-            inputs.push(builder.write_fact(&format!("{node_name}.weights"), &conv.kernel)?);
+            inputs.push(builder.map_outlet(model, node.inputs[1])?);
+            inputs.push(builder.map_outlet(model, node.inputs[2])?);
+            /*
             let bias_qdt = bias
                 .datum_type()
                 .quantize(QParams::ZpScale { zero_point: 0, scale: iscale * kscale[0] });
             let bias = bias.cast_to_dt(bias_qdt)?.into_owned();
             inputs.push(builder.write_fact(&format!("{node_name}.bias"), bias)?);
+            */
         }
-        */
-        todo!();
     } else {
         inputs.push(builder.map_outlet(model, node.inputs[1])?);
         ensure!(model.outlet_fact(node.inputs[2])?.rank() == 1);
         inputs.push(builder.map_outlet(model, node.inputs[2])?);
     }
+    dbg!(&inputs);
     let output = builder.outlets_to_tensors[&node.id.into()];
 
     let padding =
@@ -194,10 +200,8 @@ fn de_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
 }
 
 fn de_dw_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
-    let (input, kernel, bias) = args_3!(op.facts()?);
-    let bias = bias.konst.unwrap();
-    let kernel = kernel.konst.unwrap();
-    let kernel_full_shape: TVec<usize> = kernel.shape().into();
+    let (input, kernel, _bias) = args_3!(op.facts()?);
+    let kernel_full_shape: TVec<usize> = kernel.shape.as_concrete().unwrap().into();
     let kernel_shape: TVec<usize> = KernelFormat::OHWI.spatial_shape(&kernel_full_shape).into();
     let options = builtin!(op, builtin_options_as_depthwise_conv_2_doptions);
     let padding = match options.padding() {
@@ -218,7 +222,7 @@ fn de_dw_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         input_channels: output_channels,
         output_channels,
     };
-    let mut inputs = tvec!(op.inputs[0]);
+    let mut inputs = tvec!(op.inputs[0], op.inputs[1], op.inputs[2]);
     let q_params = super::linearops_quantization_suport(op, &input, &mut inputs)?;
     let conv = core::cnn::ConvUnary {
         pool_spec,
