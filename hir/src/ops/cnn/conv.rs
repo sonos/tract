@@ -186,21 +186,34 @@ impl Expansion for Conv {
         let kernel_fact = model.outlet_fact(inputs[kernel_input])?.clone();
         let input = model.outlet_fact(inputs[0])?.clone();
         let input_shape = self.data_format.shape(input.shape.iter().collect::<TVec<_>>())?;
-        let kernel_full_shape = kernel_fact.shape.as_concrete().context("Expect concrete shape for kernel")?;
+        let kernel_full_shape =
+            kernel_fact.shape.as_concrete().context("Expect concrete shape for kernel")?;
         let group = self.group.unwrap_or(1);
-        let input_channels = self.kernel_fmt.input_channels(&kernel_full_shape, group).into_owned();
+        let input_channels = self.kernel_fmt.input_channels(kernel_full_shape, group).into_owned();
         let output_channels =
-            self.kernel_fmt.output_channels(&kernel_full_shape, group).into_owned();
+            self.kernel_fmt.output_channels(kernel_full_shape, group).into_owned();
         if input_shape.c_dim() != &input_channels.to_dim() {
             bail!("Input has {} channels, kernel expects {}", input_shape.c_dim(), input_channels)
         }
         let mut bias = if let Some(slot) = self.bias_input {
             inputs[slot]
         } else {
-            model.add_const(format!("{prefix}.bias"), Tensor::zero_scalar_dt(model.outlet_fact(inputs[0])?.datum_type)?)?
+            model.add_const(
+                format!("{prefix}.bias"),
+                Tensor::zero_scalar_dt(model.outlet_fact(inputs[0])?.datum_type)?,
+            )?
         };
-        while let Some(axis) =  model.outlet_fact(bias)?.shape.to_tvec().iter().enumerate().rev().position(|(_, dim)| dim.is_one()) {
-            bias = model.wire_node(format!("{prefix}.bias_rm_{axis}"), AxisOp::Rm(axis), &[bias])?[0];
+        while let Some(axis) = model
+            .outlet_fact(bias)?
+            .shape
+            .to_tvec()
+            .iter()
+            .enumerate()
+            .rev()
+            .position(|(_, dim)| dim.is_one())
+        {
+            bias =
+                model.wire_node(format!("{prefix}.bias_rm_{axis}"), AxisOp::Rm(axis), &[bias])?[0];
         }
         let mut wires = vec![inputs[0], inputs[kernel_input], bias];
         let pool_spec = PoolSpec {
@@ -208,7 +221,7 @@ impl Expansion for Conv {
             padding: self.padding.clone(),
             strides: self.strides.clone(),
             dilations: self.dilations.clone(),
-            kernel_shape: self.kernel_fmt.hw(&kernel_full_shape).into(),
+            kernel_shape: self.kernel_fmt.hw(kernel_full_shape).into(),
             input_channels,
             output_channels,
         };
