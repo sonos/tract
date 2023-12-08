@@ -75,17 +75,21 @@ fn ser_conv(
         let kscale = facts[6].konst.as_ref().unwrap().as_slice::<f32>()?;
         let per_channel = !kscale.iter().all_equal();
         if per_channel {
-            todo!();
-            /*
+            let kernel = model.outlet_fact(node.inputs[1])?.konst.as_ref().context(
+                "tract TODO: dynamic convolution and per-channel scales",
+            )?;
+            let bias = model.outlet_fact(node.inputs[2])?.konst.as_ref().context(
+                "tract TODO: dynamic convolution and per-channel scales",
+            )?;
             inputs.push(builder.write_fact_with_per_axis_q(
                 &format!("{node_name}.weights"),
-                &conv.kernel,
-                &vec![k0_tract; conv.kernel.shape()[0]],
+                kernel,
+                &vec![k0_tract; conv.output_channels()],
                 kscale,
                 0,
             )?);
             let bscale = kscale.iter().map(|k| k * iscale).collect_vec();
-            bias = bias.clone().into_tensor().cast_to::<i32>()?.into_owned().into_arc_tensor();
+            let bias = bias.clone().into_tensor().cast_to::<i32>()?.into_owned().into_arc_tensor();
             inputs.push(builder.write_fact_with_per_axis_q(
                 &format!("{node_name}.bias"),
                 &bias,
@@ -93,7 +97,6 @@ fn ser_conv(
                 &bscale,
                 0,
             )?);
-            */
         } else {
             inputs.push(builder.map_outlet(model, node.inputs[1])?);
             let bias = facts[2].konst.as_ref().context("FIXME: Dumper require constant bias")?;
