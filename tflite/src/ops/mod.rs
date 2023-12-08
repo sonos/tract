@@ -82,10 +82,10 @@ fn linearops_quantization_suport(
         } else {
             tensor1(&k_zp)
         };
-        inputs.push(op.ctx.target.add_const(format!("{p}.k0"), k_zp.into_arc_tensor())?);
-        inputs.push(op.ctx.target.add_const(format!("{p}.kscale"), k_scale)?);
         inputs.push(op.ctx.target.add_const(format!("{p}.i0"), rctensor0(iqp.zp_scale().0))?);
         inputs.push(op.ctx.target.add_const(format!("{p}.iscale"), rctensor0(iqp.zp_scale().1))?);
+        inputs.push(op.ctx.target.add_const(format!("{p}.k0"), k_zp.into_arc_tensor())?);
+        inputs.push(op.ctx.target.add_const(format!("{p}.kscale"), k_scale)?);
         inputs.push(op.ctx.target.add_const(format!("{p}.c0"), rctensor0(oqp.zp_scale().0))?);
         inputs.push(op.ctx.target.add_const(format!("{p}.cscale"), rctensor0(oqp.zp_scale().1))?);
         Ok(Some(oqp))

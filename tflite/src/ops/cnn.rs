@@ -96,21 +96,18 @@ fn ser_conv(
             */
         } else {
             inputs.push(builder.map_outlet(model, node.inputs[1])?);
-            inputs.push(builder.map_outlet(model, node.inputs[2])?);
-            /*
+            let bias = facts[2].konst.as_ref().context("FIXME: Dumper require constant bias")?;
             let bias_qdt = bias
                 .datum_type()
                 .quantize(QParams::ZpScale { zero_point: 0, scale: iscale * kscale[0] });
             let bias = bias.cast_to_dt(bias_qdt)?.into_owned();
             inputs.push(builder.write_fact(&format!("{node_name}.bias"), bias)?);
-            */
         }
     } else {
         inputs.push(builder.map_outlet(model, node.inputs[1])?);
         ensure!(model.outlet_fact(node.inputs[2])?.rank() == 1);
         inputs.push(builder.map_outlet(model, node.inputs[2])?);
     }
-    dbg!(&inputs);
     let output = builder.outlets_to_tensors[&node.id.into()];
 
     let padding =
@@ -188,11 +185,9 @@ fn de_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let mut inputs = tvec!(op.inputs[0], op.inputs[1], op.inputs[2]);
     let q_params = super::linearops_quantization_suport(op, &input, &mut inputs)?;
     let bias_dt = bias.datum_type.unquantized();
-    inputs[2] = op.ctx.target.wire_node(
-        format!("{}.cast_bias", op.prefix),
-        cast(bias_dt),
-        &[inputs[2]],
-    )?[0];
+    inputs[2] =
+        op.ctx.target.wire_node(format!("{}.cast_bias", op.prefix), cast(bias_dt), &[inputs[2]])?
+            [0];
     let conv =
         core::cnn::ConvUnary { pool_spec, kernel_fmt: KernelFormat::OHWI, group: 1, q_params };
     let wires = op.ctx.target.wire_node(op.prefix, conv, &inputs)?;

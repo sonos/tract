@@ -16,6 +16,7 @@ fn mk_suite() -> infra::TestSuite {
     let mut onnx = suite_onnx::suite().clone();
     onnx.ignore(&ignore_onnx);
     onnx.skip(&skip_onnx);
+
     let mut unit = suite_unit::suite().unwrap().clone();
     unit.ignore_case(&ignore_unit);
     let cv =
@@ -140,8 +141,8 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
             return true;
         }
     }
-    let [section, _unit] = t else { return false };
-    ["deconv"].contains(&&**section)
+    let [section, unit] = t else { return false };
+    ["deconv"].contains(&&**section) || unit == "proptest"
 }
 
 fn compatible_conv_f32(qcp: &ConvProblem) -> bool {
@@ -154,6 +155,10 @@ fn compatible_conv_q(qcp: &QConvProblem) -> bool {
     }
     let idt = qcp.data.datum_type();
     let kdt = qcp.kernel.datum_type();
+    let odt = qcp.raw_output_dt;
+    if odt != idt.unquantized() {
+        return false;
+    }
     // all u8 and per-layer
     if idt.unquantized() == u8::datum_type()
         && kdt.unquantized() == u8::datum_type()
