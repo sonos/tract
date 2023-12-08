@@ -120,7 +120,7 @@ $TRACT_RUN $MODELS/hey_snips_v4_model17.pb \
 
 $TRACT_RUN $MODELS/hey_snips_v4_model17.pb -i S,20,f32 \
     dump -q \
-    --assert-op-count AddAxis 1
+    --assert-op-count AddAxis 0
 
 $TRACT_RUN $MODELS/en_libri_real/model.onnx \
     --output-node output \
