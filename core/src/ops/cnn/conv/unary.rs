@@ -16,7 +16,7 @@ use crate::ops::math::{add, div, mul, sub};
 use crate::ops::math::{Add, Div, Mul, Sub};
 use crate::ops::matmul::lir_unary::AddMatMulGeometry;
 use crate::ops::matmul::lir_unary::MapOutputAxisToInput;
-use crate::ops::matmul::mir_quant::wire_offset_u8_as_i8;
+use crate::ops::matmul::mir_quant::wire_ensure_q8_flavour;
 use crate::ops::matmul::pack::MatMatMulPack;
 use crate::ops::nn::Reduce;
 
@@ -120,8 +120,8 @@ impl ConvUnary {
         else {
             bail!("Wrong number of inputs")
         };
-        wire_offset_u8_as_i8(model, name, &mut kernel, "k", &mut k0)?;
-        wire_offset_u8_as_i8(model, name, &mut x, "x", &mut x0)?;
+        wire_ensure_q8_flavour(model, name, &mut kernel, "k", &mut k0, i8::datum_type())?;
+        wire_ensure_q8_flavour(model, name, &mut x, "x", &mut x0, i8::datum_type())?;
 
         let a_fact = model.outlet_fact(kernel)?.clone();
         let b_fact = model.outlet_fact(x)?.clone();

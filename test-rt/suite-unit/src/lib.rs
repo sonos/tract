@@ -10,6 +10,7 @@ pub mod conv_f32;
 pub mod conv_q;
 pub mod deconv;
 pub mod downsample;
+pub mod q_flavours;
 pub mod slice;
 
 pub fn suite() -> TractResult<TestSuite> {
@@ -18,6 +19,7 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add("conv_q", conv_q::suite()?);
     suite.add("deconv", deconv::suite()?);
     suite.add("downsample", downsample::suite()?);
+    suite.add("q_flavours", q_flavours::suite()?);
     suite.add("slice", slice::suite()?);
     Ok(suite)
 }

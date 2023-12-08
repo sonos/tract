@@ -24,11 +24,7 @@ fn mk_suite() -> infra::TestSuite {
     unit.get_sub_mut("conv_f32").add_arbitrary::<ConvProblem>("proptest", cv.clone());
     unit.get_sub_mut("conv_q").add_arbitrary_with_filter::<QConvProblem>(
         "proptest",
-        QConvProblemParams {
-            conv: cv,
-            tflite_rules: true,
-            ..QConvProblemParams::default()
-        },
+        QConvProblemParams { conv: cv, tflite_rules: true, ..QConvProblemParams::default() },
         compatible_conv_q,
     );
     infra::TestSuite::default().with("onnx", onnx).with("unit", unit)
@@ -141,7 +137,7 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
         }
     }
     let [section, unit] = t else { return false };
-    ["deconv"].contains(&&**section) || unit == "proptest"
+    ["deconv"].contains(&&**section)
 }
 
 fn compatible_conv_f32(qcp: &ConvProblem) -> bool {
@@ -158,11 +154,8 @@ fn compatible_conv_q(qcp: &QConvProblem) -> bool {
     if odt != idt.unquantized() {
         return false;
     }
-    // all u8 and per-layer
-    if idt.unquantized() == u8::datum_type()
-        && kdt.unquantized() == u8::datum_type()
-        && qcp.qp.iter().all(|qp| qp.is_uniform())
-    {
+    // per-layer (will convert all to u8)
+    if qcp.qp.iter().all(|qp| qp.is_uniform()) {
         return true;
     }
     // all i8 and no zero_point

@@ -8,40 +8,51 @@ use crate::ops::cast::cast;
 /// Wires the offsetting of a matrix and zero point node.
 ///
 /// Only wires nodes of u8 type and leaves nodes of different type untouched.
-pub(crate) fn wire_offset_u8_as_i8(
+pub fn wire_ensure_q8_flavour(
     model: &mut TypedModel,
     prefix: &str,
     input: &mut OutletId,
     input_name: &str,
     zero_point: &mut OutletId,
+    wanted_raw_dt: DatumType,
 ) -> TractResult<()> {
-    if let DatumType::U8 = model.outlet_fact(*input)?.datum_type.unquantized() {
-        match model.outlet_fact(*zero_point)?.datum_type.unquantized() {
-            DatumType::U8 => {
-                *zero_point = model.wire_node(
-                    format!("{prefix}.offset_{input_name}_zp_as_i8"),
-                    ops::quant::offset_u8_as_i8(),
-                    &[*zero_point],
-                )?[0];
-            }
-            DatumType::I32 | DatumType::I8 => {
-                *zero_point = model.wire_node(
-                    format!("{prefix}.{input_name}_zp.cast"),
-                    cast(i32::datum_type()),
-                    &[*zero_point],
-                )?[0];
-                let cst = model.add_const(
-                    format!("{prefix}.offset_{input_name}_zp_as_i8.min"),
-                    tensor0(-128i32).broadcast_into_rank(model.outlet_fact(*zero_point)?.rank())?,
-                )?;
-                *zero_point = model.wire_node(
-                    format!("{prefix}.offset_{input_name}_zp_as_i8"),
-                    ops::math::add(),
-                    &[*zero_point, cst],
-                )?[0];
-            }
-            _ => (),
-        }
+    ensure!(wanted_raw_dt.qparams().is_none());
+    ensure!(wanted_raw_dt.size_of() == 1);
+    let current = model.outlet_fact(*input)?.datum_type.unquantized();
+    ensure!(current.size_of() == 1);
+    ensure!(wanted_raw_dt.size_of() == 1);
+    if model.outlet_fact(*zero_point)?.datum_type != i32::datum_type() {
+        *zero_point = model.wire_node(
+            format!("{prefix}.{input_name}_zp.cast"),
+            cast(i32::datum_type()),
+            &[*zero_point],
+        )?[0];
+    }
+    if current == wanted_raw_dt {
+        return Ok(());
+    }
+    let zp_rank = model.outlet_fact(*zero_point)?.rank();
+    let i32_128 = model.add_const(
+        format!("{prefix}.{input_name}.128"),
+        tensor0(128i32).broadcast_into_rank(zp_rank)?,
+    )?;
+    if current.unquantized().is_signed() {
+        *zero_point = model.wire_node(
+            format!("{prefix}.offset_{input_name}_zp_as_u8"),
+            ops::math::add(),
+            &[*zero_point, i32_128],
+        )?[0];
+        *input = model.wire_node(
+            format!("{prefix}.offset_{input_name}_as_u8"),
+            ops::quant::offset_i8_as_u8(),
+            &[*input],
+        )?[0];
+    } else {
+        *zero_point = model.wire_node(
+            format!("{prefix}.offset_{input_name}_zp_as_i8"),
+            ops::math::sub(),
+            &[*zero_point, i32_128],
+        )?[0];
         *input = model.wire_node(
             format!("{prefix}.offset_{input_name}_as_i8"),
             ops::quant::offset_u8_as_i8(),

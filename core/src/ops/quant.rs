@@ -383,6 +383,46 @@ pub fn scale() -> TypedBinOp {
     TypedBinOp(Box::new(Scale))
 }
 
+/// Offsets i8 integers as u8 integers.
+pub(crate) fn offset_i8_as_u8_elementwise(x: i8) -> u8 {
+    (x as u8).wrapping_add(128)
+}
+
+#[derive(Debug, Clone)]
+pub struct OffsetI8asU8 {}
+impl ElementWiseMiniOp for OffsetI8asU8 {
+    fn name(&self) -> String {
+        format!("{}{}", self.prefix(), stringify!(OffsetI8asU8))
+    }
+    fn output_type(&self, input_type: DatumType) -> Option<DatumType> {
+        Some(if let DatumType::QI8(qp) = input_type {
+            let (zp, scale) = qp.zp_scale();
+            DatumType::QU8(QParams::ZpScale { zero_point: zp + 128, scale })
+        } else if input_type == DatumType::I8 {
+            DatumType::U8
+        } else {
+            input_type
+        })
+    }
+    fn eval_out_of_place(&self, t: &Tensor) -> TractResult<Tensor> {
+        let output_type = self.output_type(t.datum_type()).unwrap();
+        let mut dst = unsafe { Tensor::uninitialized_dt(output_type, t.shape())? };
+        if t.datum_type().unquantized() == i8::datum_type() {
+            t.as_slice::<i8>()?
+                .iter()
+                .zip(dst.as_slice_mut::<u8>()?.iter_mut())
+                .for_each(|(x, y)| *y = offset_i8_as_u8_elementwise(*x));
+            return Ok(dst);
+        }
+
+        bail!("{} does not support {:?}", self.name(), t.datum_type());
+    }
+}
+
+pub fn offset_i8_as_u8() -> ElementWiseOp {
+    ElementWiseOp(Box::new(OffsetI8asU8 {}))
+}
+
 /// Offsets u8 integers as i8 integers.
 pub(crate) fn offset_u8_as_i8_elementwise(x: u8) -> i8 {
     x.wrapping_sub(128) as i8

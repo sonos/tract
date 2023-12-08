@@ -5,7 +5,7 @@ use crate::ops::matmul::lir_unary::{
     AddMatMulGeometry, LirMatMulUnary, MapOutputAxisToInput, ProtoFusedSpec,
 };
 use crate::ops::matmul::mir_quant::{
-    combine_scales, compensate_zero_points, requant, wire_offset_u8_as_i8,
+    combine_scales, compensate_zero_points, requant, wire_ensure_q8_flavour,
 };
 use crate::ops::matmul::pack::MatMatMulPack;
 use crate::ops::nn::{Reduce, Reducer};
@@ -244,8 +244,8 @@ fn dequant(
         bail!("Expect exactly 9 inputs")
     };
 
-    wire_offset_u8_as_i8(&mut patch, &node.name, &mut a, "a", &mut a0)?;
-    wire_offset_u8_as_i8(&mut patch, &node.name, &mut b, "b", &mut b0)?;
+    wire_ensure_q8_flavour(&mut patch, &node.name, &mut a, "a", &mut a0, i8::datum_type())?;
+    wire_ensure_q8_flavour(&mut patch, &node.name, &mut b, "b", &mut b0, i8::datum_type())?;
 
     let mut output = patch.wire_node(
         &node.name,
