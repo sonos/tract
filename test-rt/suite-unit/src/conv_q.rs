@@ -1123,5 +1123,40 @@ pub fn suite() -> TractResult<TestSuite> {
             raw_output_dt: DatumType::I8,
         },
     );
+    let mut qp = qp_noop_i8();
+    qp[0] = tensor0(6i32);
+    suite.add(
+        "u8_u8_i8_0",
+        QConvProblem {
+            shape_in: CHW.from_n_c_hw(1, 1, [1]).unwrap(),
+            co: 1,
+            kernel_format: OIHW,
+            group: 1,
+            kernel: tensor3(&[[[4u8]]]),
+            bias: None,
+            data: tensor2(&[[0i8]]),
+            qp,
+            raw_output_dt: DatumType::I8,
+        },
+    );
+    let mut qp = qp_noop_i8();
+    qp[0] = tensor0(1i32);
+    qp[1] = tensor0(2f32);
+    qp[3] = tensor0(2f32);
+    qp[4] = tensor0(2i32);
+    suite.add(
+        "many_qps_0",
+        QConvProblem {
+            shape_in: CHW.from_n_c_hw(1, 1, [1]).unwrap(),
+            co: 1,
+            kernel_format: OIHW,
+            group: 1,
+            kernel: tensor3(&[[[1u8]]]),
+            bias: None,
+            data: tensor2(&[[0u8]]),
+            qp,
+            raw_output_dt: DatumType::U8,
+        },
+    );
     Ok(suite)
 }
