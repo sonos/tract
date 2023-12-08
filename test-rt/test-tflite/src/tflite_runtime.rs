@@ -54,7 +54,6 @@ impl State for TfliteState {
             let input_tensor = interpreter.input(ix)?;
             assert_eq!(input_tensor.shape().dimensions(), input.shape());
             input_tensor.set_data(unsafe { input.as_bytes() })?;
-            dbg!(&input_tensor);
         }
         interpreter.invoke()?;
         let mut outputs = tvec![];

@@ -68,7 +68,7 @@ pub fn q_params(
         };
     per_channel
         .prop_flat_map(move |per_channel| {
-            let k0 = if params.no_kernel_zero_point {
+            let k0 = if per_channel && params.tflite_rules {
                 Just(0i32).boxed()
             } else if kdt.is_signed() {
                 (-10..10i32).boxed()
@@ -77,11 +77,8 @@ pub fn q_params(
             };
             let x0 = if idt.is_signed() { -10i32..10i32 } else { 0..20 };
             let y0 = if odt.is_signed() { -10i32..10i32 } else { 0..20 };
-            let k_scale = if per_channel {
-                (-3..3i32).prop_map(|x| vec![x]).boxed()
-            } else {
-                vec(-3..3i32, co..=co).boxed()
-            };
+            let k_scale_len = if per_channel { co } else { 1 };
+            let k_scale = vec(-3..3i32, k_scale_len..=k_scale_len);
             (Just(per_channel), k0, x0, y0, k_scale, -3..3i32, -3..3i32)
         })
         .prop_map(|(per_channel, k0, x0, y0, k_scale, x_scale, y_scale)| {
@@ -101,7 +98,6 @@ pub fn q_params(
 #[derive(Debug, Clone, Default)]
 pub struct QConvProblemParams {
     pub conv: ConvProblemParams,
-    pub no_kernel_zero_point: bool,
     pub tflite_rules: bool,
 }
 
@@ -221,11 +217,7 @@ impl QConvProblem {
                 });
             },
         );
-        let mut tensor = temp
-            .into_tensor()
-            .cast_to_dt(cdt.unquantized())
-            .unwrap()
-            .into_owned();
+        let mut tensor = temp.into_tensor().cast_to_dt(cdt.unquantized()).unwrap().into_owned();
         unsafe { tensor.set_datum_type(cdt) };
         tensor
     }
@@ -457,6 +449,23 @@ pub fn suite() -> TractResult<TestSuite> {
     qp[3] = tensor1(&[1f32, 0.5]);
     suite.add(
         "scale_per_channel_0",
+        QConvProblem {
+            shape_in: CHW.from_n_c_hw(1, 1, [1]).unwrap(),
+            kernel_format: OIHW,
+            co: 2,
+            group: 1,
+            data: tensor2(&[[0i8]]),
+            kernel: tensor3(&[[[0i8]], [[7]]]),
+            bias: None,
+            qp,
+            raw_output_dt: DatumType::I8,
+        },
+    );
+
+    let mut qp = qp_noop_i8();
+    qp[3] = tensor1(&[1f32, 0.5]);
+    suite.add(
+        "scale_per_channel_1",
         QConvProblem {
             shape_in: CHW.from_n_c_hw(1, 1, [1]).unwrap(),
             kernel_format: OIHW,
