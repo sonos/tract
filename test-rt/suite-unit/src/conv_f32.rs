@@ -38,6 +38,7 @@ impl ConvProblem {
             KernelFormat::HWIO => self.kernel.shape()[self.kernel.ndim() - 1],
             KernelFormat::OHWI => self.kernel.shape()[0],
         };
+        assert_eq!(self.strides.len(), self.geo_ker().len());
         let (shape_out, left_pads): (TVec<_>, TVec<_>) = match &self.pad {
             PaddingSpec::Valid => izip!(self.shape_in.hw_dims(), self.geo_ker(), &self.strides)
                 .map(|(i, k, s)| {
@@ -596,7 +597,7 @@ pub fn suite() -> TractResult<TestSuite> {
             data: ArrayD::<f32>::zeros(vec![2, 1]),
             bias: Some(arr1(&[0.0f32, 1.0]).into_dyn()),
             pad: PaddingSpec::Valid,
-            strides: tvec!(1, 1),
+            strides: tvec!(1),
         },
     );
 
@@ -1178,6 +1179,20 @@ pub fn suite() -> TractResult<TestSuite> {
             bias: None,
             pad: PaddingSpec::Valid,
             strides: tvec!(1),
+        },
+    );
+
+    suite.add(
+        "trivial_nchw",
+        ConvProblem {
+            shape_in: DataFormat::NCHW.from_n_c_hw(1, 1, [1, 1]).unwrap(),
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: arr4(&[[[[0.0f32]]]]).into_dyn(),
+            kernel: arr4(&[[[[0.0f32]]]]).into_dyn(),
+            bias: None,
+            pad: PaddingSpec::Valid,
+            strides: tvec!(1, 1),
         },
     );
 
