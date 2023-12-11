@@ -3,7 +3,7 @@
 set -ex
 
 [ -e mobilenetv2-7.onnx ] || \
-    wget -q https://github.com/onnx/models/raw/main/vision/classification/mobilenet/model/mobilenetv2-7.onnx -O mobilenetv2-7.onnx
+    wget -q https://s3.amazonaws.com/tract-ci-builds/tests/mobilenetv2-7.onnx -O mobilenetv2-7.onnx
 
 # on win/linux
 cargo run
