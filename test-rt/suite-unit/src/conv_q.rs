@@ -3,7 +3,7 @@ use proptest::collection::vec;
 use proptest::prelude::*;
 use tract_core::internal::*;
 use tract_core::ops::cnn::KernelFormat::*;
-use tract_core::ops::cnn::{ConvUnary, KernelFormat, PaddingSpec, PoolSpec};
+use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
 use tract_core::ops::math::round_ties_to_even;
 use tract_core::ops::nn::DataFormat::*;
 use tract_core::ops::nn::DataShape;
@@ -254,7 +254,7 @@ impl QConvProblem {
         for (ix, qp) in self.qp.iter().enumerate() {
             inputs.push(model.add_const(format!("qp.{ix}"), qp.clone())?);
         }
-        let op = ConvUnary::new(
+        let op = Conv::new(
             PoolSpec::new(
                 self.shape_in.fmt,
                 self.geo_ker().into(),

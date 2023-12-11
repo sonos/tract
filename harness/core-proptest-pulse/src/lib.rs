@@ -12,7 +12,7 @@ use tract_core::num_traits::Zero;
 use tract_core::ops::array::Pad;
 use tract_core::ops::array::PadMode;
 use tract_core::ops::array::Slice;
-use tract_core::ops::cnn::ConvUnary;
+use tract_core::ops::cnn::Conv;
 use tract_core::ops::cnn::KernelFormat;
 use tract_core::ops::cnn::PaddingSpec;
 use tract_core::ops::cnn::PoolSpec;
@@ -178,7 +178,7 @@ fn test_simple_conv() {
     model
         .wire_node(
             "conv",
-            ConvUnary {
+            Conv {
                 pool_spec: PoolSpec {
                     data_format: DataFormat::NCHW,
                     kernel_shape: tvec!(3),

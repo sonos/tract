@@ -3,7 +3,7 @@ use crate::internal::*;
 use crate::ops::nnef::deser::read_conv_parameters;
 use crate::ops::nnef::ser::make_conv_named_args;
 use crate::ser::*;
-use tract_core::ops::cnn::ConvUnary;
+use tract_core::ops::cnn::Conv;
 use tract_core::ops::cnn::KernelFormat;
 
 use super::qmatmul::qparams_as_outlets;
@@ -40,7 +40,7 @@ fn qconv_parameters() -> Vec<Parameter> {
 fn qconv_unary_dump(
     ast: &mut IntoAst,
     node: &TypedNode,
-    op: &ConvUnary,
+    op: &Conv,
 ) -> TractResult<Option<Arc<RValue>>> {
     if op.q_params.is_none() || node.outputs[0].fact.datum_type.is_quantized() {
         return Ok(None);
@@ -100,7 +100,7 @@ fn qconv_load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     });
 
     let op: Box<dyn TypedOp> =
-        Box::new(ConvUnary::new(pool_spec, KernelFormat::OIHW, group, Some(output_dt)));
+        Box::new(Conv::new(pool_spec, KernelFormat::OIHW, group, Some(output_dt)));
 
     builder.wire(op, &inputs)
 }

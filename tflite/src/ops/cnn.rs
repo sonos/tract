@@ -10,7 +10,7 @@ use tract_core::ops as core;
 use tract_core::ops::array::{Pad, PadMode};
 use tract_core::ops::cast::cast;
 use tract_core::ops::cnn::KernelFormat;
-use tract_core::ops::cnn::{ConvUnary, PaddingSpec};
+use tract_core::ops::cnn::{Conv, PaddingSpec};
 use tract_core::ops::nn::DataFormat;
 use tract_core::prelude::tract_itertools::Itertools;
 
@@ -54,7 +54,7 @@ fn ser_conv(
     builder: &mut SubgraphBuilder,
     model: &TypedModel,
     node: &TypedNode,
-    conv: &ConvUnary,
+    conv: &Conv,
 ) -> TractResult<()> {
     ensure!(conv.pool_spec.data_format == DataFormat::NHWC);
     ensure!(model.node_input_facts(node.id)?[0].rank() == 4);
@@ -192,7 +192,7 @@ fn de_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         op.ctx.target.wire_node(format!("{}.cast_bias", op.prefix), cast(bias_dt), &[inputs[2]])?
             [0];
     let conv =
-        core::cnn::ConvUnary { pool_spec, kernel_fmt: KernelFormat::OHWI, group: 1, q_params };
+        core::cnn::Conv { pool_spec, kernel_fmt: KernelFormat::OHWI, group: 1, q_params };
     let wires = op.ctx.target.wire_node(op.prefix, conv, &inputs)?;
     wire_fused_activation(op, &wires, &options.fused_activation_function())
 }
@@ -222,7 +222,7 @@ fn de_dw_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     };
     let mut inputs = tvec!(op.inputs[0], op.inputs[1], op.inputs[2]);
     let q_params = super::linearops_quantization_suport(op, &input, &mut inputs)?;
-    let conv = core::cnn::ConvUnary {
+    let conv = core::cnn::Conv {
         pool_spec,
         kernel_fmt: KernelFormat::OHWI,
         group: output_channels,

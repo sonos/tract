@@ -2,7 +2,6 @@ use crate::infer::*;
 use crate::internal::*;
 use crate::ops::cast::cast;
 
-use tract_core::ops::cnn::conv::ConvUnary;
 use tract_core::ops::cnn::conv::KernelFormat;
 use tract_core::ops::cnn::{PaddingSpec, PoolSpec};
 use tract_core::ops::nn::DataFormat;
@@ -257,7 +256,7 @@ impl Expansion for Conv {
             qp!(y_scale_input, one, f32);
         };
 
-        let reduced = ConvUnary::new(
+        let reduced = tract_core::ops::cnn::Conv::new(
             pool_spec,
             self.kernel_fmt,
             group,

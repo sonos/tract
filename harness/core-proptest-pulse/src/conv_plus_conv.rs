@@ -19,7 +19,7 @@ impl ConvOp {
         model
             .wire_node(
                 name,
-                ConvUnary {
+                Conv {
                     pool_spec: PoolSpec {
                         data_format: DataFormat::NCHW,
                         kernel_shape: self.ker.shape()[2..].into(),

@@ -215,7 +215,7 @@ pub fn pulsify_pooled_input(
 
 #[cfg(test)]
 mod test {
-    use tract_pulse_opl::tract_core::ops::cnn::{ConvUnary, PoolSpec};
+    use tract_pulse_opl::tract_core::ops::cnn::{Conv, PoolSpec};
     use tract_pulse_opl::tract_nnef::internal::*;
 
     use crate::model::{PulsedModel, PulsedModelExt};
@@ -230,7 +230,7 @@ mod test {
         let bias = model.add_const("bias", rctensor0(0f32))?;
         let conv = model.wire_node(
             "conv",
-            ConvUnary {
+            Conv {
                 pool_spec: PoolSpec {
                     data_format: tract_core::ops::nn::DataFormat::CHW,
                     dilations: None,

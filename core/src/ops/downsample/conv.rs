@@ -6,7 +6,7 @@ use crate::ops;
 pub fn fuse_downsample_into_conv(
     model: &TypedModel,
     conv_node: &TypedNode,
-    conv_op: &ops::cnn::conv::ConvUnary,
+    conv_op: &ops::cnn::conv::Conv,
     down_node: &TypedNode,
     down_op: &Downsample,
 ) -> TractResult<Option<TypedModelPatch>> {

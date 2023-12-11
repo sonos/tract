@@ -1,7 +1,7 @@
 use crate::ast::*;
 use crate::deser::Value;
 use ops::cnn::deconv::DeconvUnary;
-use ops::cnn::{ConvUnary, KernelFormat};
+use ops::cnn::{Conv, KernelFormat};
 use tract_core::internal::*;
 use tract_core::ops::array::PadMode;
 use tract_core::ops::cnn::deconv::adjustments;
@@ -374,7 +374,7 @@ pub fn conv_or_deconv(
         };
         Box::new(DeconvUnary::new(pool_spec, KernelFormat::OIHW, adjustments, group))
     } else {
-        Box::new(ConvUnary::new(
+        Box::new(Conv::new(
             pool_spec,
             KernelFormat::OIHW,
             group,

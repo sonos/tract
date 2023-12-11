@@ -1,14 +1,14 @@
+mod conv;
 mod depth_wise;
 mod im2col;
 mod lazy_im2col;
 mod q_sum_b;
-mod unary;
 
 use crate::internal::*;
 
 pub use self::im2col::Im2Col;
 pub(crate) use self::q_sum_b::QSumB;
-pub use self::unary::ConvUnary;
+pub use self::conv::Conv;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Default)]
 pub enum KernelFormat {
