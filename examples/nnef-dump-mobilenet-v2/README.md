@@ -42,7 +42,7 @@ convention, and the variant of Mobilenet we picked operates on inputs of
 224x224 pixels:
 
 ```sh
-tract mobilenet_v2_1.4_224_frozen.pb -i 1x224x224x3xf32 dump --nnef mobilenet.nnef.tgz
+tract mobilenet_v2_1.4_224_frozen.pb -i 1,224,224,3,f32 dump --nnef mobilenet.nnef.tgz
 ```
 
 ## Running with tract_nnef

@@ -1,5 +1,5 @@
 [package]
-name = "test-onnx-nnef-cycle"
+name = "test-nnef-cycle"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,6 +7,7 @@ edition = "2021"
 
 [build-dependencies]
 infra = { path = "../infra" }
+itertools.workspace = true
 lazy_static.workspace = true
 suite-onnx = { path = "../suite-onnx" }
 suite-unit = { path = "../suite-unit" }
@@ -14,10 +15,11 @@ tract-core = { path = "../../core", version = "=0.20.23-pre" }
 
 [dev-dependencies]
 infra = { path = "../infra" }
+itertools.workspace = true
 lazy_static.workspace = true
 log.workspace = true
+suite-onnx = { path = "../suite-onnx" }
+suite-unit = { path = "../suite-unit" }
 tract-core = { path = "../../core", version = "=0.20.23-pre" }
 tract-nnef = { path = "../../nnef", version = "=0.20.23-pre" }
 tract-onnx-opl = { path = "../../onnx-opl", version = "=0.20.23-pre" }
-suite-onnx = { path = "../suite-onnx" }
-suite-unit = { path = "../suite-unit" }
