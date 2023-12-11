@@ -1,3 +1,4 @@
+#[allow(clippy::module_inception)]
 mod conv;
 mod depth_wise;
 mod im2col;
