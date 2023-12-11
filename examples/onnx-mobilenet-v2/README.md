@@ -23,7 +23,7 @@ Models can get a big heavy, so we chose not to include them in tract git reposit
 You will need to download the models. For instance:
 
 ```sh
-wget https://github.com/onnx/models/raw/main/vision/classification/mobilenet/model/mobilenetv2-7.onnx
+wget https://s3.amazonaws.com/tract-ci-builds/tests/mobilenetv2-7.onnx 
 ```
 
 ## Input image
