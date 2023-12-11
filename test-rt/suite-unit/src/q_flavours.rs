@@ -53,6 +53,7 @@ impl Test for QFlavoursProblem {
             .run(tvec![self.input.clone().into_tvalue()])?
             .remove(0)
             .into_tensor();
+        dbg!(&output);
         let reference = self.input.cast_to::<f32>()?;
         let comparison = output.cast_to::<f32>()?;
         comparison.close_enough(&reference, approx)
@@ -62,5 +63,16 @@ impl Test for QFlavoursProblem {
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite = TestSuite::default();
     suite.add_arbitrary::<QFlavoursProblem>("proptest", ());
+    suite.add(
+        "trivial_0",
+        QFlavoursProblem {
+            input: tensor0(0u8)
+                .cast_to_dt(
+                    u8::datum_type().quantize(QParams::ZpScale { zero_point: 0, scale: 1. }),
+                )
+                .unwrap()
+                .into_owned(),
+        },
+    );
     Ok(suite)
 }

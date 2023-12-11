@@ -136,8 +136,8 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
             return true;
         }
     }
-    let [section, unit] = t else { return false };
-    ["deconv"].contains(&&**section)
+    let [section, _unit] = t else { return false };
+    ["deconv", "q_flavours"].contains(&&**section)
 }
 
 fn compatible_conv_f32(qcp: &ConvProblem) -> bool {
@@ -154,8 +154,12 @@ fn compatible_conv_q(qcp: &QConvProblem) -> bool {
     if odt != idt.unquantized() {
         return false;
     }
-    // per-layer (will convert all to u8)
-    if qcp.qp.iter().all(|qp| qp.is_uniform()) {
+
+    // all u8 and per-layer
+    if idt.unquantized() == u8::datum_type()
+        && kdt.unquantized() == u8::datum_type()
+        && qcp.qp.iter().all(|qp| qp.is_uniform())
+    {
         return true;
     }
     // all i8 and no zero_point

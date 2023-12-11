@@ -5,8 +5,7 @@ use tract_core::ops::cnn::KernelFormat;
 use tract_core::ops::cnn::{ConvUnary, PaddingSpec};
 use tract_core::ops::einsum::BasicMatMul;
 use tract_core::ops::element_wise::ElementWiseOp;
-use tract_core::ops::math::{add, sub, Recip};
-use tract_core::ops::matmul::mir_quant::wire_ensure_q8_flavour;
+use tract_core::ops::math::Recip;
 use tract_core::ops::nn::{DataFormat, Softmax};
 use tract_core::tract_data::itertools::Itertools;
 
@@ -16,7 +15,7 @@ pub fn rewrite_for_tflite(model: &mut TypedModel) -> TractResult<()> {
         .with_rule_for("trivial_axes_around_matmul", trivial_axes_around_matmul)
         .with_rule_for("kernel_in_ohwi", kernel_in_ohwi)
         .with_rule_for("bias_as_vector", bias_as_vector)
-        .with_rule_for("per_layer_in_u8", per_layer_in_u8)
+//        .with_rule_for("per_layer_in_u8", per_layer_in_u8)
         .with_rule_for("make_1d_2d", make_1d_2d)
         .with_rule_for("force_n_axis", force_n_axis)
         .with_rule_for("nchw-to-nhwc", nchw_to_nhwc)
@@ -128,6 +127,7 @@ fn bias_as_vector(
     Ok(Some(patch))
 }
 
+/*
 fn per_layer_in_u8(
     _ctx: &(),
     model: &TypedModel,
@@ -156,6 +156,7 @@ fn per_layer_in_u8(
     patch.shunt_outside(model, node.id.into(), output[0])?;
     Ok(Some(patch))
 }
+*/
 
 fn force_n_axis(
     _ctx: &(),
