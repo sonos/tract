@@ -5,6 +5,9 @@ use log::*;
 use tract_nnef::internal::*;
 use tract_onnx_opl::*;
 
+#[path="../suite.rs"]
+mod suite;
+
 struct NnefCyclingRuntime(Nnef);
 
 impl Debug for NnefCyclingRuntime {
