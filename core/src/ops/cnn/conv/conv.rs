@@ -839,7 +839,8 @@ impl TypedOp for Conv {
             inputs[2].rank() == 0
                 || (inputs[2].rank() == 1
                     && inputs[2].shape.volume() == self.output_channels().to_dim()),
-            "Bias should be scalar or a vector with one value per output channel, got:{:?}",
+            "Bias should be scalar or a vector with one value per output channel. Output channels is {}, bias is {:?}",
+            self.output_channels(),
             inputs[2]
         );
         let mut fact = self.pool_spec.output_facts(inputs)?.remove(0);
