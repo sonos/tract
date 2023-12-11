@@ -1,7 +1,7 @@
 use tract_hir::internal::*;
 use tract_ndarray::prelude::*;
 
-use tract_hir::ops::cnn::{ConvUnary, PoolSpec};
+use tract_hir::tract_core::ops::cnn::{Conv, PoolSpec};
 
 #[derive(Debug, Copy, Clone, Hash)]
 pub enum PaddingStrat {
@@ -68,11 +68,11 @@ impl TypedOp for SpaceToBatchUnary {
     ) -> TractResult<Option<TypedModelPatch>> {
         let [succ] = &*model.node(node.id).outputs[0].successors else { return Ok(None) };
         let conv_node = model.node(succ.node);
-        let Some(conv_op) = conv_node.op_as::<ConvUnary>() else { return Ok(None) };
+        let Some(conv_op) = conv_node.op_as::<Conv>() else { return Ok(None) };
         let [succ] = &*conv_node.outputs[0].successors else { return Ok(None) };
         let b2s_node = model.node(succ.node);
         let Some(_bs2_op) = b2s_node.op_as::<BatchToSpaceUnary>() else { return Ok(None) };
-        let op = ConvUnary {
+        let op = Conv {
             pool_spec: PoolSpec {
                 dilations: Some(self.block_shape.iter().map(|&i| i as usize).collect()),
                 ..conv_op.pool_spec.clone()

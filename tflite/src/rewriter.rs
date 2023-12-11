@@ -2,7 +2,7 @@ use tract_core::internal::*;
 use tract_core::ops::array::{Pad, PadMode};
 use tract_core::ops::binary::wire_with_rank_broadcast;
 use tract_core::ops::cnn::KernelFormat;
-use tract_core::ops::cnn::{ConvUnary, PaddingSpec};
+use tract_core::ops::cnn::{Conv, PaddingSpec};
 use tract_core::ops::einsum::BasicMatMul;
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::math::Recip;
@@ -61,7 +61,7 @@ fn kernel_in_ohwi(
     model: &TypedModel,
     node: &TypedNode,
     name: &str,
-    conv: &ConvUnary,
+    conv: &Conv,
 ) -> TractResult<Option<TypedModelPatch>> {
     if conv.kernel_fmt == KernelFormat::OHWI {
         return Ok(None);
@@ -96,7 +96,7 @@ fn kernel_in_ohwi(
         ),
         &[wire[1]],
     )?[0];
-    let new = ConvUnary { kernel_fmt: KernelFormat::OHWI, ..conv.clone() };
+    let new = Conv { kernel_fmt: KernelFormat::OHWI, ..conv.clone() };
     wire = patch.wire_node(name, new, &wire)?;
     patch.shunt_outside(model, node.id.into(), wire[0])?;
     Ok(Some(patch))
@@ -107,7 +107,7 @@ fn bias_as_vector(
     model: &TypedModel,
     node: &TypedNode,
     name: &str,
-    conv: &ConvUnary,
+    conv: &Conv,
 ) -> TractResult<Option<TypedModelPatch>> {
     let bias_fact = model.outlet_fact(node.inputs[2])?;
     let co = conv.output_channels();
@@ -133,7 +133,7 @@ fn per_layer_in_u8(
     model: &TypedModel,
     node: &TypedNode,
     name: &str,
-    conv: &ConvUnary,
+    conv: &Conv,
 ) -> TractResult<Option<TypedModelPatch>> {
     let input_fact = model.outlet_fact(node.inputs[0])?;
     let idt = input_fact.datum_type;
@@ -163,7 +163,7 @@ fn force_n_axis(
     model: &TypedModel,
     node: &TypedNode,
     name: &str,
-    conv: &ConvUnary,
+    conv: &Conv,
 ) -> TractResult<Option<TypedModelPatch>> {
     if !conv.pool_spec.data_format.has_n() {
         let mut new = conv.clone();
@@ -184,7 +184,7 @@ fn make_1d_2d(
     model: &TypedModel,
     node: &TypedNode,
     name: &str,
-    conv: &ConvUnary,
+    conv: &Conv,
 ) -> TractResult<Option<TypedModelPatch>> {
     if conv.pool_spec.rank() == 1 {
         let mut new = conv.clone();
@@ -209,7 +209,7 @@ fn nchw_to_nhwc(
     model: &TypedModel,
     node: &TypedNode,
     name: &str,
-    conv: &ConvUnary,
+    conv: &Conv,
 ) -> TractResult<Option<TypedModelPatch>> {
     if !conv.pool_spec.data_format.c_is_last() {
         let mut new = conv.clone();
@@ -239,7 +239,7 @@ fn padding(
     model: &TypedModel,
     node: &TypedNode,
     name: &str,
-    conv: &ConvUnary,
+    conv: &Conv,
 ) -> TractResult<Option<TypedModelPatch>> {
     if conv.pool_spec.padding != PaddingSpec::Valid
     // FIXME SameUpper should be usable, but I can't make sense of tflite output

@@ -131,7 +131,7 @@ fn pull_downsample_up(
             }
         } else if let Some(other_op) = prec.op_as::<AxisOp>() {
             return array::pull_downsample_over_axis_op(model, prec, other_op, down_node, down_op);
-        } else if let Some(conv_op) = prec.op_as::<ops::cnn::conv::ConvUnary>() {
+        } else if let Some(conv_op) = prec.op_as::<ops::cnn::conv::Conv>() {
             return conv::fuse_downsample_into_conv(model, prec, conv_op, down_node, down_op);
         } else if let Some(other_op) = prec.op_as::<ops::scan::Scan>() {
             return scan::pull_downsample_over_scan(model, prec, other_op, down_node, down_op);

@@ -80,7 +80,7 @@ impl PadPlusConvProblem {
         let conv = model
             .wire_node(
                 "conv",
-                ConvUnary {
+                Conv {
                     pool_spec: PoolSpec {
                         data_format: DataFormat::NCHW,
                         kernel_shape: self.ker.shape()[2..].into(),

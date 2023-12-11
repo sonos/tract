@@ -230,7 +230,7 @@ pub fn conv_or_deconv(
 pub fn conv(
     ast: &mut IntoAst,
     node: &TypedNode,
-    op: &ops::cnn::conv::ConvUnary,
+    op: &ops::cnn::conv::Conv,
 ) -> TractResult<Option<Arc<RValue>>> {
     if op.q_params.is_some() && !node.outputs[0].fact.datum_type.is_quantized() {
         return Ok(None);

@@ -176,7 +176,7 @@ impl ConvProblem {
             rctensor0(0f32)
         };
         let bias = model.add_const("bias", bias)?;
-        let op = ConvUnary::new(
+        let op = Conv::new(
             PoolSpec::new(
                 self.shape_in.fmt,
                 self.geo_ker().into(),

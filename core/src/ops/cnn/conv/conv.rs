@@ -31,14 +31,14 @@ use tract_linalg::frame::Packer;
 use tract_linalg::mmm::MatMatMul;
 
 #[derive(Debug, Clone, new, Hash)]
-pub struct ConvUnary {
+pub struct Conv {
     pub pool_spec: PoolSpec,
     pub kernel_fmt: KernelFormat,
     pub group: usize,
     pub q_params: Option<DatumType>,
 }
 
-impl ConvUnary {
+impl Conv {
     pub fn input_channels(&self) -> usize {
         self.pool_spec.input_channels
     }
@@ -759,9 +759,9 @@ impl ConvUnary {
     }
 }
 
-impl Op for ConvUnary {
+impl Op for Conv {
     fn name(&self) -> Cow<str> {
-        "ConvUnary".into()
+        "Conv".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -777,7 +777,7 @@ impl Op for ConvUnary {
     op_as_typed_op!();
 }
 
-impl EvalOp for ConvUnary {
+impl EvalOp for Conv {
     fn is_stateless(&self) -> bool {
         true
     }
@@ -801,7 +801,7 @@ impl EvalOp for ConvUnary {
     }
 }
 
-impl TypedOp for ConvUnary {
+impl TypedOp for Conv {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let q_inputs = if self.q_params.is_some() { 6 } else { 0 };
         if inputs.len() != 3 + q_inputs {
@@ -969,7 +969,7 @@ impl TypedOp for ConvUnary {
         if let Some(n) = shape.n_axis() {
             assert_eq!(n, 0);
             if change == &AxisOp::Rm(n) {
-                let op = ConvUnary { pool_spec: self.pool_spec.dispose_n_axis(), ..self.clone() };
+                let op = Conv { pool_spec: self.pool_spec.dispose_n_axis(), ..self.clone() };
                 return Ok(Some(AxisChangeConsequence {
                     substitute_op: Some(Box::new(op)),
                     wire_changes: tvec!(
@@ -1027,7 +1027,7 @@ impl TypedOp for ConvUnary {
             _ => return Ok(None),
         };
         let pool_spec = self.pool_spec.change_geo_axes(&geo_adjusted)?;
-        let new_op = ConvUnary { pool_spec, ..self.clone() };
+        let new_op = Conv { pool_spec, ..self.clone() };
         Ok(Some(AxisChangeConsequence {
             substitute_op: Some(Box::new(new_op)),
             wire_changes: tvec!(
@@ -1116,7 +1116,7 @@ mod test {
 
     #[test]
     fn onnx_basic_convinteger() {
-        let op = ConvUnary {
+        let op = Conv {
             pool_spec: PoolSpec {
                 data_format: NCHW,
                 kernel_shape: tvec!(2, 2),
@@ -1162,7 +1162,7 @@ mod test {
         let bias = model.add_const("bias", rctensor0(0f32))?;
         let wire = model.wire_node(
             "conv",
-            ConvUnary {
+            Conv {
                 pool_spec: PoolSpec {
                     data_format: crate::ops::nn::DataFormat::CHW,
                     dilations: None,
@@ -1181,7 +1181,7 @@ mod test {
         model.set_output_outlets(&wire)?;
         model.declutter()?;
         assert_eq!(model.nodes().len(), 4); // source + conv + kernel + bias
-        let cv = model.nodes()[3].op_as::<ConvUnary>().unwrap();
+        let cv = model.nodes()[3].op_as::<Conv>().unwrap();
         assert_eq!(cv.pool_spec.padding, Explicit(tvec![1], tvec![0])); // source + conv
         Ok(())
     }
