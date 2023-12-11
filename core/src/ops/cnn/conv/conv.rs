@@ -695,6 +695,11 @@ impl Conv {
         {
             return Ok(None);
         };
+        let mut other_expected_shape = tvec!(1.to_dim(); input_shape.rank());
+        other_expected_shape[conv_c_axis] = self.output_channels().to_dim();
+        if *other_expected_shape != *model.outlet_fact(other_input)?.shape {
+            return Ok(None);
+        }
 
         let mut patch = TypedModelPatch::default();
         let [input, mut kernel, mut bias] = &*patch.taps(model, &node.inputs)? else {
