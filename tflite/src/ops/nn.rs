@@ -64,7 +64,7 @@ fn de_batch_matmul(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     }
     let axes: AxesMapping = AxesMapping::new(2, 1, axes)?;
     let einsum = EinSum { axes, q_params: None, operating_dt: a.datum_type };
-    op.ctx.target.wire_node(op.prefix, einsum, &op.inputs)
+    op.ctx.target.wire_node(op.prefix, einsum, op.inputs)
 }
 
 fn de_fully_connected(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
@@ -198,7 +198,7 @@ fn ser_matmul(
     );
     builder.write_op_with_options(
         &inputs,
-        &*output,
+        &output,
         BuiltinOp::new(126, 1, BuiltinOperator::BATCH_MATMUL, BuiltinOptions::BatchMatMulOptions),
         options.as_union_value(),
     )?;
