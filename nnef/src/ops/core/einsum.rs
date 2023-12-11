@@ -1,11 +1,9 @@
 use crate::internal::*;
 use crate::ser::*;
-use tract_core::ops::einsum::BasicMatMul;
 use tract_core::ops::einsum::EinSum;
 use tract_core::tract_data::itertools::Itertools;
 
 pub fn register(registry: &mut Registry) {
-    registry.register_dumper(ser_basic_matmul);
     registry.register_dumper(ser);
     registry.register_primitive(
         "tract_core_einsum",
@@ -51,23 +49,6 @@ pub fn ser(ast: &mut IntoAst, node: &TypedNode, op: &EinSum) -> TractResult<Opti
         ser_einsum_q(ast, node)
     } else {
         ser_einsum(ast, node)
-    }
-}
-
-pub fn ser_basic_matmul(ast: &mut IntoAst, node: &TypedNode, op: &BasicMatMul) -> TractResult<Option<Arc<RValue>>> {
-    let inputs = node.inputs.iter().map(|i| (*ast.mapping[i]).clone()).collect_vec();
-    if op.transpose_c {
-        Ok(Some(invocation(
-            "matmul",
-            &[Arc::new(inputs[1].clone()), Arc::new(inputs[0].clone())],
-            &[("transposeA", logical(!op.transpose_b)), ("transposeB", logical(!op.transpose_a))],
-        )))
-    } else {
-        Ok(Some(invocation(
-            "matmul",
-            &[Arc::new(inputs[0].clone()), Arc::new(inputs[1].clone())],
-            &[("transposeA", logical(op.transpose_a)), ("transposeB", logical(op.transpose_b))],
-        )))
     }
 }
 
