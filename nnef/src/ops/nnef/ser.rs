@@ -9,7 +9,9 @@ use tract_core::ops::cnn::Conv;
 use tract_core::ops::cnn::DeconvUnary;
 use tract_core::ops::cnn::KernelFormat;
 use tract_core::ops::cnn::PoolSpec;
+use tract_core::ops::einsum::BasicMatMul;
 use tract_core::ops::nn::DataFormat;
+use tract_core::tract_data::itertools::Itertools;
 
 pub fn source(
     ast: &mut IntoAst,
@@ -27,6 +29,23 @@ pub fn source(
         }
     };
     Ok(None)
+}
+
+pub fn basic_matmul(ast: &mut IntoAst, node: &TypedNode, op: &BasicMatMul) -> TractResult<Option<Arc<RValue>>> {
+    let inputs = node.inputs.iter().map(|i| (*ast.mapping[i]).clone()).collect_vec();
+    if op.transpose_c {
+        Ok(Some(invocation(
+            "matmul",
+            &[Arc::new(inputs[1].clone()), Arc::new(inputs[0].clone())],
+            &[("transposeA", logical(!op.transpose_b)), ("transposeB", logical(!op.transpose_a))],
+        )))
+    } else {
+        Ok(Some(invocation(
+            "matmul",
+            &[Arc::new(inputs[0].clone()), Arc::new(inputs[1].clone())],
+            &[("transposeA", logical(op.transpose_a)), ("transposeB", logical(op.transpose_b))],
+        )))
+    }
 }
 
 pub fn konst(

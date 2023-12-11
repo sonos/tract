@@ -129,6 +129,8 @@ pub fn tract_nnef() -> Registry {
     primitive(&mut registry, "box", deser::sum_pool);
     registry.register_dumper(ser::sum_pool);
 
+    registry.register_dumper(ser::basic_matmul);
+
     for frag in stdlib {
         if frag.body.is_some() {
             registry.register_fragment(frag);
