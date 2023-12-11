@@ -9,12 +9,15 @@ fn grace_hopper() -> Value {
 fn ensure_models() -> anyhow::Result<()> {
     static START: Once = Once::new();
     START.call_once(|| {
-        for (url, file) in [(
-                "https://github.com/onnx/models/raw/main/vision/classification/mobilenet/model/mobilenetv2-7.onnx",
-                "mobilenetv2-7.onnx"),
-                (
+        for (url, file) in [
+            (
+                "https://s3.amazonaws.com/tract-ci-builds/tests/mobilenetv2-7.onnx",
+                "mobilenetv2-7.onnx",
+            ),
+            (
                 "https://sfo2.digitaloceanspaces.com/nnef-public/mobilenet_v2_1.0.onnx.nnef.tgz",
-                "mobilenet_v2_1.0.onnx.nnef.tgz")
+                "mobilenet_v2_1.0.onnx.nnef.tgz",
+            ),
         ] {
             if std::fs::metadata(file).is_err() {
                 let client = reqwest::blocking::Client::new();
@@ -198,7 +201,7 @@ fn test_f16_to_f32() -> anyhow::Result<()> {
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.analyse()?;
     let mut typed = model.into_typed()?.into_decluttered()?;
-    
+
     // Convert model to half
     typed.f32_to_f16()?;
     assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F16");
