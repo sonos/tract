@@ -8,7 +8,7 @@ from pathlib import Path
 def setup_module(module):
     if not Path("mobilenetv2-7.onnx").exists():
         urllib.request.urlretrieve(
-            "https://github.com/onnx/models/raw/main/vision/classification/mobilenet/model/mobilenetv2-7.onnx",
+            "https://s3.amazonaws.com/tract-ci-builds/tests/mobilenetv2-7.onnx",
             "mobilenetv2-7.onnx",
         )
     if not Path("mobilenet_v2_1.0.onnx.nnef.tgz").exists():
