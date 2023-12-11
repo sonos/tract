@@ -40,7 +40,7 @@ export CACHEDIR
 # useful as debug_asserts will come into play
 cargo -q test -q -p tract-core --features paranoid_assertions $CARGO_EXTRA
 cargo -q test -q -p test-onnx-core $CARGO_EXTRA
-cargo -q test -q -p test-onnx-nnef-cycle $CARGO_EXTRA
+cargo -q test -q -p test-nnef-cycle $CARGO_EXTRA
 
 cargo check -p tract-nnef --features complex $CARGO_EXTRA
 cargo check -p tract --no-default-features $CARGO_EXTRA
