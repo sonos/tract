@@ -4,6 +4,8 @@ use crate::internal::*;
 use crate::ser::*;
 use tract_core::num_traits::Zero;
 use tract_core::ops;
+use tract_core::ops::cnn::Conv;
+use tract_core::ops::cnn::KernelFormat;
 use tract_core::ops::cnn::PoolSpec;
 use tract_core::ops::nn::DataFormat;
 
@@ -192,9 +194,7 @@ pub fn conv_or_deconv(
     let kernel = ast.mapping[&node.inputs[1]].clone();
     let bias = ast.mapping[&node.inputs[2]].clone();
     let data_format = pool_spec.data_format;
-    if !data_format.has_n() {
-        wire = invocation("unsqueeze", &[wire], &[("axes", ints(&[0]))]);
-    }
+    assert!(data_format.has_n());
     if data_format.c_is_last() {
         let mut perm: TVec<usize> = (0..pool_spec.rank() + 1).collect();
         perm.insert(1, pool_spec.rank() + 1);
@@ -220,10 +220,6 @@ pub fn conv_or_deconv(
         perm.push(1);
         wire = invocation("transpose", &[wire], &[("axes", ints(&perm))]);
     }
-    if !data_format.has_n() {
-        wire = invocation("squeeze", &[wire], &[("axes", ints(&[0]))]);
-    }
-
     Ok(Some(wire))
 }
 
@@ -445,4 +441,32 @@ pub fn softmax(
         &[ast.mapping[&node.inputs[0]].clone()],
         &[("axes", RValue::Literal(crate::ast::Literal::Array(litteral_axes)))],
     )))
+}
+
+pub fn rewrite_kernel_in_oihw(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    name: &str,
+    conv: &Conv,
+) -> TractResult<Option<TypedModelPatch>> {
+    if conv.kernel_fmt == KernelFormat::OIHW {
+        return Ok(None);
+    }
+    let mut patch = TypedModelPatch::default();
+    let mut wire = patch.taps(model, &node.inputs)?;
+    let prefix = format!("{name}.kernel_reorg");
+    for (ix, op) in conv
+        .kernel_fmt
+        .kernel_as_group_o_i_h_w_ops(&patch.outlet_fact(wire[1])?.shape, conv.group)
+        .into_iter()
+        .enumerate()
+    {
+        wire[1] = patch.wire_node(format!("{prefix}.{ix}"), op, &[wire[1]])?[0];
+    }
+    wire[1] = AxisOp::wire_collapse_axis(&mut patch, format!("{name}.kernel_reorg_go"), wire[1], 0)?[0];
+    let new = Conv { kernel_fmt: KernelFormat::OIHW, ..conv.clone() };
+    wire = patch.wire_node(name, new, &wire)?;
+    patch.shunt_outside(model, node.id.into(), wire[0])?;
+    Ok(Some(patch))
 }

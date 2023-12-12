@@ -68,3 +68,25 @@ pub fn wire_reshape_bias_for_bin(
     }
     Ok(bias)
 }
+
+pub fn rewrite_conv_with_n_axis(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    name: &str,
+    conv: &Conv,
+) -> TractResult<Option<TypedModelPatch>> {
+    if !conv.pool_spec.data_format.has_n() {
+        let mut new = conv.clone();
+        new.pool_spec.data_format = conv.pool_spec.data_format.with_n();
+        let mut patch = TypedModelPatch::default();
+        let mut wire = patch.taps(model, &node.inputs)?;
+        wire[0] = patch.wire_node(format!("{name}.add_n"), AxisOp::Add(0), &[wire[0]])?[0];
+        wire = patch.wire_node(name, new, &wire)?;
+        wire = patch.wire_node(format!("{name}.rm_n"), AxisOp::Rm(0), &wire)?;
+        patch.shunt_outside(model, node.id.into(), wire[0])?;
+        return Ok(Some(patch));
+    }
+    Ok(None)
+}
+
