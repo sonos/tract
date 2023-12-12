@@ -90,3 +90,24 @@ pub fn rewrite_conv_with_n_axis(
     Ok(None)
 }
 
+pub fn rewrite_deconv_with_n_axis(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    name: &str,
+    deconv: &DeconvUnary,
+) -> TractResult<Option<TypedModelPatch>> {
+    if !deconv.pool_spec.data_format.has_n() {
+        let mut new = deconv.clone();
+        new.pool_spec.data_format = deconv.pool_spec.data_format.with_n();
+        let mut patch = TypedModelPatch::default();
+        let mut wire = patch.taps(model, &node.inputs)?;
+        wire[0] = patch.wire_node(format!("{name}.add_n"), AxisOp::Add(0), &[wire[0]])?[0];
+        wire = patch.wire_node(name, new, &wire)?;
+        wire = patch.wire_node(format!("{name}.rm_n"), AxisOp::Rm(0), &wire)?;
+        patch.shunt_outside(model, node.id.into(), wire[0])?;
+        return Ok(Some(patch));
+    }
+    Ok(None)
+}
+

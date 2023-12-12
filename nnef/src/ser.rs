@@ -9,6 +9,7 @@ pub fn to_proto_model(framework: &Nnef, model: &TypedModel) -> TractResult<Proto
     tract_core::ops::einsum::rewrite_einsums_as_matmul(&mut fixed_model)?;
     Rewriter::default()
         .with_rule_for("rewrite_conv_with_n_axis", tract_core::ops::cnn::rewrite_conv_with_n_axis)
+        .with_rule_for("rewrite_deconv_with_n_axis", tract_core::ops::cnn::rewrite_deconv_with_n_axis)
         .with_rule_for("rewrite_kernel_in_oihw", crate::ops::nnef::ser::rewrite_kernel_in_oihw)
         .rewrite(&(), &mut fixed_model)?;
     let mut into_ast = IntoAst::new(framework, &fixed_model);
