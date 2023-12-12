@@ -1,7 +1,7 @@
 use tract_core::internal::*;
 use tract_core::ops::array::{Pad, PadMode};
 use tract_core::ops::binary::wire_with_rank_broadcast;
-use tract_core::ops::cnn::KernelFormat;
+use tract_core::ops::cnn::{KernelFormat, rewrite_conv_with_n_axis};
 use tract_core::ops::cnn::{Conv, PaddingSpec};
 use tract_core::ops::einsum::BasicMatMul;
 use tract_core::ops::element_wise::ElementWiseOp;
@@ -17,7 +17,7 @@ pub fn rewrite_for_tflite(model: &mut TypedModel) -> TractResult<()> {
         .with_rule_for("bias_as_vector", bias_as_vector)
 //        .with_rule_for("per_layer_in_u8", per_layer_in_u8)
         .with_rule_for("make_1d_2d", make_1d_2d)
-        .with_rule_for("force_n_axis", force_n_axis)
+        .with_rule_for("rewrite_conv_with_n_axis", rewrite_conv_with_n_axis)
         .with_rule_for("nchw-to-nhwc", nchw_to_nhwc)
         .with_rule_for("padding", padding)
         .with_rule_for("manual_recip", manual_recip)
@@ -157,27 +157,6 @@ fn per_layer_in_u8(
     Ok(Some(patch))
 }
 */
-
-fn force_n_axis(
-    _ctx: &(),
-    model: &TypedModel,
-    node: &TypedNode,
-    name: &str,
-    conv: &Conv,
-) -> TractResult<Option<TypedModelPatch>> {
-    if !conv.pool_spec.data_format.has_n() {
-        let mut new = conv.clone();
-        new.pool_spec.data_format = conv.pool_spec.data_format.with_n();
-        let mut patch = TypedModelPatch::default();
-        let mut wire = patch.taps(model, &node.inputs)?;
-        wire[0] = patch.wire_node(format!("{name}.add_n"), AxisOp::Add(0), &[wire[0]])?[0];
-        wire = patch.wire_node(name, new, &wire)?;
-        wire = patch.wire_node(format!("{name}.rm_n"), AxisOp::Rm(0), &wire)?;
-        patch.shunt_outside(model, node.id.into(), wire[0])?;
-        return Ok(Some(patch));
-    }
-    Ok(None)
-}
 
 fn make_1d_2d(
     _ctx: &(),
