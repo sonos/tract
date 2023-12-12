@@ -229,9 +229,6 @@ pub fn conv(
     node: &TypedNode,
     op: &ops::cnn::conv::Conv,
 ) -> TractResult<Option<Arc<RValue>>> {
-    if op.q_params.is_some() && !node.outputs[0].fact.datum_type.is_quantized() {
-        return Ok(None);
-    }
     conv_or_deconv(ast, node, &op.pool_spec, op.group, false, None)
 }
 
