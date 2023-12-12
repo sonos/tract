@@ -4,14 +4,22 @@ use tract_core::ndarray::ArrayViewD;
 use tract_core::ndarray::Axis;
 use tract_itertools::Itertools;
 
-pub fn to_proto_model(framework: &Nnef, model: &TypedModel) -> TractResult<ProtoModel> {
-    let mut fixed_model = model.clone();
-    tract_core::ops::einsum::rewrite_einsums_as_matmul(&mut fixed_model)?;
+pub fn rewrite_model(model: &mut TypedModel) -> TractResult<()> {
+    tract_core::ops::einsum::rewrite_einsums_as_matmul(model)?;
     Rewriter::default()
         .with_rule_for("rewrite_conv_with_n_axis", tract_core::ops::cnn::rewrite_conv_with_n_axis)
-        .with_rule_for("rewrite_deconv_with_n_axis", tract_core::ops::cnn::rewrite_deconv_with_n_axis)
-        .with_rule_for("rewrite_kernel_in_oihw", crate::ops::nnef::ser::rewrite_kernel_conv_in_oihw)
-        .rewrite(&(), &mut fixed_model)?;
+        .with_rule_for(
+            "rewrite_deconv_with_n_axis",
+            tract_core::ops::cnn::rewrite_deconv_with_n_axis,
+        )
+        .with_rule_for("rewrite_kernel_conv_in_oihw", crate::ops::nnef::ser::rewrite_kernel_conv_in_oihw)
+        .with_rule_for("rewrite_kernel_deconv_in_oihw", crate::ops::nnef::ser::rewrite_kernel_deconv_in_oihw)
+        .rewrite(&(), model)
+}
+
+pub fn to_proto_model(framework: &Nnef, model: &TypedModel) -> TractResult<ProtoModel> {
+    let mut fixed_model = model.clone();
+    rewrite_model(&mut fixed_model)?;
     let mut into_ast = IntoAst::new(framework, &fixed_model);
     into_ast.translate().context("Translating model to AST")?;
     into_ast.into_proto_model().context("Translating AST to proto model")
@@ -269,19 +277,6 @@ impl<'a> IntoAst<'a> {
         let name = name.as_ref().to_string();
         Identifier(name)
     }
-
-    /*
-    pub fn sanitize(name: impl Into<String>) -> String {
-        let mut name = name.into();
-        if name.len() > 0
-            && !char::is_alphabetic(name.chars().next().unwrap())
-            && !name.starts_with('_')
-        {
-            name = "_".to_string() + &name;
-        }
-        name.replace(['/', '.', '-', ':', ',', ';'], "_")
-    }
-    */
 
     pub fn force_variable(&mut self, name: impl AsRef<str>, exp: &Arc<RValue>) -> Arc<RValue> {
         if let RValue::Identifier(_) = exp.as_ref() {
