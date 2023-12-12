@@ -44,7 +44,7 @@ impl QuantFormat {
             QuantFormat::Linear { params, bits, signed } => match (bits, signed) {
                 (8, true) => DatumType::QI8(*params),
                 (8, false) => DatumType::QU8(*params),
-                (32, true) => DatumType::I32,
+                (32, true) => DatumType::QI32(*params),
                 (32, false) => DatumType::U32,
                 _ => todo!(),
             },

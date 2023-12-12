@@ -1183,5 +1183,23 @@ pub fn suite() -> TractResult<TestSuite> {
             raw_output_dt: DatumType::I32,
         },
     );
+    let mut qp = qp_noop_i8();
+    qp[1] = tensor0(0.25f32);
+    qp[2] = tensor0(1i32);
+    qp[5] = tensor0(0.5f32);
+    suite.add(
+        "i32_output_1",
+        QConvProblem {
+            shape_in: CHW.from_n_c_hw(1, 1, [1]).unwrap(),
+            co: 1,
+            kernel_format: OIHW,
+            group: 1,
+            kernel: tensor3(&[[[20i8]]]),
+            bias: None,
+            data: tensor2(&[[94i8]]),
+            qp,
+            raw_output_dt: DatumType::I32,
+        },
+    );
     Ok(suite)
 }
