@@ -6,14 +6,15 @@ use nom::combinator::map_res;
 use nom::sequence::delimited;
 use tract_core::internal::*;
 
-use nom::{bytes::complete::*, multi::*};
 use nom::branch::alt;
+use nom::{bytes::complete::*, multi::*};
 use nom::{combinator::all_consuming, IResult};
 use nom::{combinator::opt, number::complete::float};
 
 use crate::ast::*;
 
-use super::parse::{logical_literal, stag, translate_error, direct_identifier, escaped_identifier};
+use super::dump::write_identifier;
+use super::parse::{direct_identifier, escaped_identifier, logical_literal, stag, translate_error};
 
 #[inline(never)]
 pub fn parse_quantization(doc: &str) -> TractResult<Vec<(Identifier, QuantFormat)>> {
@@ -84,18 +85,14 @@ pub(crate) fn write_quant_format(
     format: QuantFormat,
     allow_extended_identifier_syntax: bool,
 ) -> TractResult<()> {
-    let escaped_name = if allow_extended_identifier_syntax {
-        format!("i\"{}\"", name.0)
-    } else {
-        format!("\"{}\"", name.0)
-    };
+    write_identifier(w, name, allow_extended_identifier_syntax, true)?;
     match format {
         QuantFormat::Linear {
             params: QParams::ZpScale {zero_point, scale}, bits, signed
-        } => writeln!(w, "{}: zero_point_linear_quantize(zero_point = {}, scale = {:.9}, bits = {}, signed = {}, symmetric = {});", escaped_name, zero_point, scale, bits, signed, zero_point == 0)?,
+        } => writeln!(w, ": zero_point_linear_quantize(zero_point = {zero_point}, scale = {scale:.9}, bits = {bits}, signed = {signed}, symmetric = {});", zero_point == 0)?,
         QuantFormat::Linear {
             params: QParams::MinMax {min, max}, bits, signed: _
-        } => writeln!(w, "{}: linear_quantize(max = {:.9}, min = {:.9}, bits = {});", escaped_name, max, min, bits)?, // FIXME we lazily use rust debug escaping form here
+        } => writeln!(w, ": linear_quantize(max = {max:.9}, min = {min:.9}, bits = {bits});")?, // FIXME we lazily use rust debug escaping form here
     }
     Ok(())
 }
@@ -187,7 +184,7 @@ mod test {
             ]
         );
     }
-    
+
     #[test]
     fn test_quant_file_1() {
         assert_eq!(
