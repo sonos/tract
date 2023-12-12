@@ -21,5 +21,5 @@ log.workspace = true
 suite-onnx = { path = "../suite-onnx" }
 suite-unit = { path = "../suite-unit" }
 tract-core = { path = "../../core", version = "=0.20.23-pre" }
-tract-nnef = { path = "../../nnef", version = "=0.20.23-pre" }
 tract-onnx-opl = { path = "../../onnx-opl", version = "=0.20.23-pre" }
+tract-nnef = { path = "../../nnef", version = "=0.20.23-pre" }
