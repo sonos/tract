@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use crate::ast::*;
 use tract_core::internal::*;
 use tract_itertools::Itertools;
@@ -319,28 +321,40 @@ impl<'a> Dumper<'a> {
     }
 
     fn identifier(&mut self, id: &Identifier) -> TractResult<()> {
-        if id.0.len() == 0 {
-            return Ok(());
-        }
-        let first = id.0.chars().next().unwrap();
-        if (first.is_alphabetic() || first == '_')
-            && id.0.chars().all(|c| c.is_alphanumeric() || c == '_')
-        {
-            write!(self.w, "{}", id.0)?;
-        } else if self.nnef.allow_extended_identifier_syntax {
-            write!(self.w, "i\"{}\"", id.0.replace('\\', "\\\\").replace('\"', "\\\""))?;
-        } else {
-            if !(first.is_alphabetic() || first == '_') {
-                write!(self.w, "_")?;
-            }
-            for c in id.0.chars() {
-                if c.is_alphanumeric() {
-                    write!(self.w, "{c}")?;
-                } else {
-                    write!(self.w, "_")?;
-                }
-            }
-        }
-        Ok(())
+        write_identifier(&mut self.w, id, self.nnef.allow_extended_identifier_syntax, false)
     }
+}
+
+pub fn write_identifier(
+    w: &mut dyn Write,
+    id: &Identifier,
+    allow_extended_identifier_syntax: bool,
+    force_double_quotes: bool,
+) -> TractResult<()> {
+    if id.0.len() == 0 {
+        return Ok(());
+    }
+    let first = id.0.chars().next().unwrap();
+    let force_double_quotes = if force_double_quotes { "\"" } else { "" };
+    if (first.is_alphabetic() || first == '_')
+        && id.0.chars().all(|c| c.is_alphanumeric() || c == '_')
+    {
+        write!(w, "{force_double_quotes}{}{force_double_quotes}", id.0)?;
+    } else if allow_extended_identifier_syntax {
+        write!(w, "i\"{}\"", id.0.replace('\\', "\\\\").replace('\"', "\\\""))?;
+    } else {
+        write!(w, "{force_double_quotes}")?;
+        if !(first.is_alphabetic() || first == '_') {
+            write!(w, "_")?;
+        }
+        for c in id.0.chars() {
+            if c.is_alphanumeric() {
+                write!(w, "{c}")?;
+            } else {
+                write!(w, "_")?;
+            }
+        }
+        write!(w, "{force_double_quotes}")?;
+    }
+    Ok(())
 }
