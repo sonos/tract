@@ -5,6 +5,7 @@ use crate::ser::*;
 use tract_core::num_traits::Zero;
 use tract_core::ops;
 use tract_core::ops::cnn::Conv;
+use tract_core::ops::cnn::DeconvUnary;
 use tract_core::ops::cnn::KernelFormat;
 use tract_core::ops::cnn::PoolSpec;
 use tract_core::ops::nn::DataFormat;
@@ -460,13 +461,30 @@ pub fn rewrite_kernel_conv_in_oihw(
     )
 }
 
+pub fn rewrite_kernel_deconv_in_oihw(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    name: &str,
+    conv: &DeconvUnary,
+) -> TractResult<Option<TypedModelPatch>> {
+    rewrite_kernel_in_oihw(
+        model,
+        node,
+        name,
+        conv.kernel_format,
+        conv.group,
+        Box::new(DeconvUnary { kernel_format: KernelFormat::OIHW, ..conv.clone() }),
+    )
+}
+
 fn rewrite_kernel_in_oihw(
     model: &TypedModel,
     node: &TypedNode,
     name: &str,
     fmt: KernelFormat,
     group: usize,
-    op: Box<dyn TypedOp>,
+    new: Box<dyn TypedOp>,
 ) -> TractResult<Option<TypedModelPatch>> {
     if fmt == KernelFormat::OIHW {
         return Ok(None);
@@ -483,7 +501,6 @@ fn rewrite_kernel_in_oihw(
     }
     wire[1] =
         AxisOp::wire_collapse_axis(&mut patch, format!("{name}.kernel_reorg_go"), wire[1], 0)?[0];
-    let new = Conv { kernel_fmt: KernelFormat::OIHW, ..conv.clone() };
     wire = patch.wire_node(name, new, &wire)?;
     patch.shunt_outside(model, node.id.into(), wire[0])?;
     Ok(Some(patch))
