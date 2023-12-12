@@ -194,7 +194,7 @@ pub fn conv_or_deconv(
     let kernel = ast.mapping[&node.inputs[1]].clone();
     let bias = ast.mapping[&node.inputs[2]].clone();
     let data_format = pool_spec.data_format;
-    assert!(data_format.has_n());
+    ensure!(data_format.has_n());
     if data_format.c_is_last() {
         let mut perm: TVec<usize> = (0..pool_spec.rank() + 1).collect();
         perm.insert(1, pool_spec.rank() + 1);
@@ -443,28 +443,46 @@ pub fn softmax(
     )))
 }
 
-pub fn rewrite_kernel_in_oihw(
+pub fn rewrite_kernel_conv_in_oihw(
     _ctx: &(),
     model: &TypedModel,
     node: &TypedNode,
     name: &str,
     conv: &Conv,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if conv.kernel_fmt == KernelFormat::OIHW {
+    rewrite_kernel_in_oihw(
+        model,
+        node,
+        name,
+        conv.kernel_fmt,
+        conv.group,
+        Box::new(Conv { kernel_fmt: KernelFormat::OIHW, ..conv.clone() }),
+    )
+}
+
+fn rewrite_kernel_in_oihw(
+    model: &TypedModel,
+    node: &TypedNode,
+    name: &str,
+    fmt: KernelFormat,
+    group: usize,
+    op: Box<dyn TypedOp>,
+) -> TractResult<Option<TypedModelPatch>> {
+    if fmt == KernelFormat::OIHW {
         return Ok(None);
     }
     let mut patch = TypedModelPatch::default();
     let mut wire = patch.taps(model, &node.inputs)?;
     let prefix = format!("{name}.kernel_reorg");
-    for (ix, op) in conv
-        .kernel_fmt
-        .kernel_as_group_o_i_h_w_ops(&patch.outlet_fact(wire[1])?.shape, conv.group)
+    for (ix, op) in fmt
+        .kernel_as_group_o_i_h_w_ops(&patch.outlet_fact(wire[1])?.shape, group)
         .into_iter()
         .enumerate()
     {
         wire[1] = patch.wire_node(format!("{prefix}.{ix}"), op, &[wire[1]])?[0];
     }
-    wire[1] = AxisOp::wire_collapse_axis(&mut patch, format!("{name}.kernel_reorg_go"), wire[1], 0)?[0];
+    wire[1] =
+        AxisOp::wire_collapse_axis(&mut patch, format!("{name}.kernel_reorg_go"), wire[1], 0)?[0];
     let new = Conv { kernel_fmt: KernelFormat::OIHW, ..conv.clone() };
     wire = patch.wire_node(name, new, &wire)?;
     patch.shunt_outside(model, node.id.into(), wire[0])?;
