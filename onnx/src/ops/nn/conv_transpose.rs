@@ -168,14 +168,14 @@ impl Expansion for ConvTranspose {
                 &x_shape.as_concrete().context("expects concrete dim for deconv")?[2..],
                 output_shape,
             )?;
-            tract_core::ops::cnn::DeconvUnary::new(
+            tract_core::ops::cnn::Deconv::new(
                 pool_spec,
                 KernelFormat::OIHW,
                 adjustments,
                 self.group,
             )
         } else {
-            tract_core::ops::cnn::DeconvUnary::new(
+            tract_core::ops::cnn::Deconv::new(
                 pool_spec,
                 KernelFormat::OIHW,
                 self.adjustments.clone().unwrap_or_else(|| tvec!(0; kernel_shape.len() - 2)),

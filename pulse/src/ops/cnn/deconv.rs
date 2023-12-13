@@ -1,14 +1,14 @@
 use crate::internal::*;
 use tract_core::num_traits::Zero;
-use tract_core::ops::cnn::DeconvUnary;
+use tract_core::ops::cnn::Deconv;
 use tract_core::ops::cnn::PaddingSpec;
 use tract_pulse_opl::ops::DeconvDelay;
 use tract_pulse_opl::ops::PulseMask;
 
-register_all!(DeconvUnary: pulsify);
+register_all!(Deconv: pulsify);
 
 fn pulsify(
-    op: &DeconvUnary,
+    op: &Deconv,
     source: &TypedModel,
     node: &TypedNode,
     target: &mut PulsedModel,
@@ -97,12 +97,12 @@ fn pulsify(
     Ok(Some(wire))
 }
 
-fn overlap(pulse_axis: usize, op: &DeconvUnary) -> usize {
+fn overlap(pulse_axis: usize, op: &Deconv) -> usize {
     let geo_axis = pulse_axis - op.pool_spec.data_format.h_axis();
     (op.pool_spec.kernel_shape[geo_axis] - 1) * op.pool_spec.dilation(geo_axis)
 }
 
-impl PulsedOp for DeconvUnary {
+impl PulsedOp for Deconv {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         let stream = fact.stream.as_mut().unwrap();

@@ -14,7 +14,7 @@ struct DeconvOp {
 
 impl DeconvOp {
     fn chain(&self, name: &str, model: &mut TypedModel, after: OutletId) -> OutletId {
-        let deconv = tract_core::ops::cnn::DeconvUnary {
+        let deconv = tract_core::ops::cnn::Deconv {
             pool_spec: PoolSpec {
                 data_format: DataFormat::NCHW,
                 kernel_shape: tvec!(self.ker.shape()[2]),
@@ -262,7 +262,7 @@ fn deconv2d() {
     let a = model.add_source("a", f32::fact(dims!(1, 2, s, 8))).unwrap();
     let mut kernel = Tensor::zero::<f32>(&[2, 2, 1, 3]).unwrap();
     kernel.as_slice_mut::<f32>().unwrap().iter_mut().enumerate().for_each(|(ix, x)| *x = ix as f32);
-    let deconv = tract_core::ops::cnn::DeconvUnary {
+    let deconv = tract_core::ops::cnn::Deconv {
         pool_spec: PoolSpec {
             data_format: DataFormat::NCHW,
             kernel_shape: tvec!(1, 3),

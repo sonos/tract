@@ -135,7 +135,7 @@ impl Arbitrary for DeconvProblem {
 }
 
 impl DeconvProblem {
-    fn as_op(&self) -> TractResult<DeconvUnary> {
+    fn as_op(&self) -> TractResult<Deconv> {
         let pool_spec = PoolSpec::new(
             self.data_format,
             self.kernel_format.spatial_shape(self.kernel.shape()).into(),
@@ -146,7 +146,7 @@ impl DeconvProblem {
             self.kernel_format.output_channels(self.kernel.shape(), self.group).into_owned(),
         );
         let op =
-            DeconvUnary::new(pool_spec, self.kernel_format, self.adjustments.clone(), self.group);
+            Deconv::new(pool_spec, self.kernel_format, self.adjustments.clone(), self.group);
         Ok(op)
     }
 
