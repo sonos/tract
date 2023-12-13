@@ -48,7 +48,7 @@ mod run_as_f16 {
             let inputs = inputs
                 .into_iter()
                 .map(|v| {
-                    if v.datum_type().is_float() {
+                    if v.datum_type() == DatumType::F32 {
                         v.into_tensor()
                             .cast_to_dt(f16::datum_type())
                             .unwrap()

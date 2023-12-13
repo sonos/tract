@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 
+use rustfft::num_traits::Float;
 use tract_nnef::{
     internal::*,
     tract_ndarray::{s, ArrayView1},
@@ -7,10 +8,10 @@ use tract_nnef::{
 
 pub fn register(registry: &mut Registry) {
     registry.register_primitive(
-        "tract_onnx_non_max_suppression", 
+        "tract_onnx_non_max_suppression",
         &parameters(),
-        &[("output", TypeName::Integer.tensor())], 
-        load
+        &[("output", TypeName::Integer.tensor())],
+        load,
     );
     registry.register_dumper(dump);
 }
@@ -23,7 +24,7 @@ pub enum BoxRepr {
     CenterWidthHeight,
 }
 
-fn get_min_max(lhs: f32, rhs: f32) -> (f32, f32) {
+fn get_min_max<T: Float>(lhs: T, rhs: T) -> (T, T) {
     if lhs >= rhs {
         (rhs, lhs)
     } else {
@@ -48,12 +49,13 @@ impl BoxRepr {
     }
 
     // iou: intersection over union
-    fn should_suppress_by_iou(
+    fn should_suppress_by_iou<T: Datum + Float>(
         &self,
-        box1: ArrayView1<f32>,
-        box2: ArrayView1<f32>,
-        iou_threshold: f32,
+        box1: ArrayView1<T>,
+        box2: ArrayView1<T>,
+        iou_threshold: T,
     ) -> bool {
+        let two = T::one() + T::one();
         let (x1_min, x1_max, x2_min, x2_max, y1_min, y1_max, y2_min, y2_max) = match self {
             BoxRepr::TwoPoints => {
                 let (x1_min, x1_max) = get_min_max(box1[[1]], box1[[3]]);
@@ -65,8 +67,8 @@ impl BoxRepr {
                 (x1_min, x1_max, x2_min, x2_max, y1_min, y1_max, y2_min, y2_max)
             }
             BoxRepr::CenterWidthHeight => {
-                let (box1_width_half, box1_height_half) = (box1[[2]] / 2.0, box1[[3]] / 2.0);
-                let (box2_width_half, box2_height_half) = (box2[[2]] / 2.0, box2[[3]] / 2.0);
+                let (box1_width_half, box1_height_half) = (box1[[2]] / two, box1[[3]] / two);
+                let (box2_width_half, box2_height_half) = (box2[[2]] / two, box2[[3]] / two);
 
                 let (x1_min, x1_max) = (box1[[0]] - box1_width_half, box1[[0]] + box1_width_half);
                 let (x2_min, x2_max) = (box2[[0]] - box2_width_half, box2[[0]] + box2_width_half);
@@ -78,14 +80,14 @@ impl BoxRepr {
             }
         };
 
-        let intersection_y_min = f32::max(y1_min, y2_min);
-        let intersection_y_max = f32::min(y1_max, y2_max);
+        let intersection_y_min = T::max(y1_min, y2_min);
+        let intersection_y_max = T::min(y1_max, y2_max);
         if intersection_y_max <= intersection_y_min {
             return false;
         }
 
-        let intersection_x_min = f32::max(x1_min, x2_min);
-        let intersection_x_max = f32::min(x1_max, x2_max);
+        let intersection_x_min = T::max(x1_min, x2_min);
+        let intersection_x_max = T::min(x1_max, x2_max);
         if intersection_x_max <= intersection_x_min {
             return false;
         }
@@ -93,7 +95,7 @@ impl BoxRepr {
         let intersection_area =
             (intersection_x_max - intersection_x_min) * (intersection_y_max - intersection_y_min);
 
-        if intersection_area <= 0.0 {
+        if intersection_area.is_sign_negative() {
             return false;
         }
 
@@ -102,7 +104,7 @@ impl BoxRepr {
 
         let union_area = area1 + area2 - intersection_area;
 
-        if area1 <= 0.0 || area2 <= 0.0 || union_area <= 0.0 {
+        if area1.is_sign_negative() || area2.is_sign_negative() || union_area.is_sign_negative() {
             return false;
         }
 
@@ -119,22 +121,8 @@ pub struct NonMaxSuppression {
     pub has_score_threshold: bool,
 }
 
-
-
-impl Op for NonMaxSuppression {
-    fn name(&self) -> Cow<str> {
-        "NonMaxSuppression".into()
-    }
-
-    op_as_typed_op!();
-}
-
-impl EvalOp for NonMaxSuppression {
-    fn is_stateless(&self) -> bool {
-        true
-    }
-
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+impl NonMaxSuppression {
+    fn eval_t<T: Datum + Float>(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (boxes, scores, max_output_boxes_per_class, iou_threshold, score_threshold) =
             if self.has_score_threshold {
                 let (t1, t2, t3, t4, t5) = args_5!(inputs);
@@ -145,21 +133,21 @@ impl EvalOp for NonMaxSuppression {
             };
 
         let mut max_output_boxes_per_class = *max_output_boxes_per_class.to_scalar::<i64>()?;
-        let iou_threshold = *iou_threshold.to_scalar::<f32>()?;
+        let iou_threshold = *iou_threshold.to_scalar::<T>()?;
         let score_threshold = score_threshold
-            .map_or(Ok::<_, TractError>(None), |val| Ok(Some(*val.to_scalar::<f32>()?)))?;
+            .map_or(Ok::<_, TractError>(None), |val| Ok(Some(*val.to_scalar::<T>()?)))?;
 
         if max_output_boxes_per_class == 0 {
             max_output_boxes_per_class = i64::MAX;
         }
-        ensure!((0.0..=1.0).contains(&iou_threshold), "iou_threshold must be between 0 and 1");
+        //        ensure!((0.0..=1.0).contains(&iou_threshold), "iou_threshold must be between 0 and 1");
 
         let num_batches = scores.shape()[0];
         let num_classes = scores.shape()[1];
         let num_dim = scores.shape()[2];
 
-        let boxes = boxes.to_array_view::<f32>()?;
-        let scores = scores.to_array_view::<f32>()?;
+        let boxes = boxes.to_array_view::<T>()?;
+        let scores = scores.to_array_view::<T>()?;
 
         // items: (batch, class, index)
         let mut selected_global: TVec<(usize, usize, usize)> = tvec![];
@@ -167,7 +155,7 @@ impl EvalOp for NonMaxSuppression {
         for batch in 0..num_batches {
             for class in 0..num_classes {
                 // items: (score, index)
-                let mut candidates: TVec<(f32, usize)> =
+                let mut candidates: TVec<(T, usize)> =
                     if let Some(score_threshold) = score_threshold {
                         (0..num_dim)
                             .map(|i| (scores[[batch, class, i]], i))
@@ -180,7 +168,7 @@ impl EvalOp for NonMaxSuppression {
                 candidates.sort_by(|(a, _), (b, _)| b.partial_cmp(a).unwrap_or(Ordering::Equal));
 
                 // items: (score, index)
-                let mut selected_in_class: TVec<(f32, usize)> = tvec![];
+                let mut selected_in_class: TVec<(T, usize)> = tvec![];
 
                 for (score, index) in candidates {
                     if selected_in_class.len() as i64 >= max_output_boxes_per_class {
@@ -212,6 +200,25 @@ impl EvalOp for NonMaxSuppression {
     }
 }
 
+impl Op for NonMaxSuppression {
+    fn name(&self) -> Cow<str> {
+        "NonMaxSuppression".into()
+    }
+
+    op_as_typed_op!();
+}
+
+impl EvalOp for NonMaxSuppression {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        let dt = inputs[0].datum_type();
+        dispatch_floatlike!(Self::eval_t(dt)(self, inputs))
+    }
+}
+
 impl TypedOp for NonMaxSuppression {
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec![i64::fact([self.num_selected_indices_symbol.to_dim(), 3usize.to_dim()])])
@@ -231,7 +238,11 @@ fn parameters() -> Vec<Parameter> {
     ]
 }
 
-fn dump(ast: &mut IntoAst, node: &TypedNode, op: &NonMaxSuppression) -> TractResult<Option<Arc<RValue>>> {
+fn dump(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &NonMaxSuppression,
+) -> TractResult<Option<Arc<RValue>>> {
     let boxes = ast.mapping[&node.inputs[0]].clone();
     let scores = ast.mapping[&node.inputs[1]].clone();
     let max_output_boxes_per_class = ast.mapping[&node.inputs[2]].clone();
@@ -255,10 +266,7 @@ fn dump(ast: &mut IntoAst, node: &TypedNode, op: &NonMaxSuppression) -> TractRes
     Ok(Some(inv))
 }
 
-fn load(
-    builder: &mut ModelBuilder,
-    invocation: &ResolvedInvocation,
-) -> TractResult<Value> {
+fn load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let boxes = invocation.named_arg_as(builder, "boxes")?;
     let scores = invocation.named_arg_as(builder, "scores")?;
     let max_output_boxes_per_class =

@@ -15,6 +15,7 @@ element_wise!(sigmoid, Sigmoid,
 );
 
 element_wise!(hard_swish, HardSwish,
+[f16] => |_, xs| { xs.iter_mut().for_each(|x| *x = *x * f16::from_f32(0.0).max(f16::from_f32(1.0).min(f16::from_f32(1. / 6.) * *x + f16::from_f32(0.5)))); Ok(()) },
 [f32] => |_, xs| { xs.iter_mut().for_each(|x| *x = *x * 0f32.max(1f32.min((1. / 6.) * *x + 0.5))); Ok(()) }
                                          );
 

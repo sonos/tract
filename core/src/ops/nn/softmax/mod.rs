@@ -15,7 +15,7 @@ use ndarray::prelude::*;
 #[derive(Debug, Clone, new, Hash)]
 pub struct Softmax {
     pub axes: TVec<usize>,
-    pub output_dt: DatumType,
+    pub quant_output_dt: Option<DatumType>,
 }
 
 impl Op for Softmax {
@@ -35,27 +35,25 @@ impl TypedOp for Softmax {
         let dt = inputs[0].datum_type;
         if dt.is_float() {
             ensure!(
-                dt == self.output_dt,
-                "Softmax input {:?} and output {:?} types in float case should be equal",
-                dt,
-                self.output_dt
+                self.quant_output_dt.is_none(),
+                "Float softmax should not have quant_output_dt, have {:?}",
+                self.quant_output_dt
             );
         } else if dt.is_quantized() {
             ensure!(
-                self.output_dt.is_quantized(),
-                "Quantized softmax must have input {:?} and output {:?} quantized ",
-                dt,
-                self.output_dt
+                self.quant_output_dt.is_some_and(|q| q.is_quantized()),
+                "Quantized softmax should have a quantized output type (got {:?})",
+                self.quant_output_dt
             );
         } else {
             bail!(
                 "Unsupported datum type in softmax: input type {:?}, output type {:?}",
                 dt,
-                self.output_dt
+                self.quant_output_dt
             );
         }
 
-        let fact = self.output_dt.fact(inputs[0].shape.clone());
+        let fact = self.quant_output_dt.unwrap_or(dt).fact(inputs[0].shape.clone());
         Ok(tvec!(fact))
     }
 
@@ -80,7 +78,7 @@ impl TypedOp for Softmax {
             Ok(Some(AxisChangeConsequence::new(
                 model,
                 node,
-                Some(Box::new(Softmax { axes, output_dt: self.output_dt })),
+                Some(Box::new(Softmax { axes, ..self.clone() })),
                 change,
             )))
         } else {
@@ -104,8 +102,8 @@ impl EvalOp for Softmax {
             DatumType::F64 => self.eval_t::<f64>(input)?,
             DatumType::F32 => self.eval_t::<f32>(input)?,
             DatumType::F16 => self.eval_t::<f16>(input)?,
-            DatumType::QI8(_) | DatumType::QU8(_) => self.eval_quant_t(input)?,
-            dt => bail!("Unsupported type {:?}", dt),
+            DatumType::QI8(_) | DatumType::QU8(_) => self.eval_quant(input)?,
+            dt => bail!("Unsupported type {dt:?}"),
         };
         Ok(output)
     }
@@ -139,8 +137,10 @@ impl Softmax {
         Ok(tvec!(output.into_tvalue()))
     }
 
-    fn eval_quant_t(&self, input: TValue) -> TractResult<TVec<TValue>> {
+    fn eval_quant(&self, input: TValue) -> TractResult<TVec<TValue>> {
         let mut iterating_shape: TVec<usize> = input.shape().into();
+        let output_dt =
+            self.quant_output_dt.context("Quandized softmax eval with no output type")?;
 
         for i in 0..iterating_shape.len() {
             if self.axes.contains(&i) {
@@ -150,9 +150,9 @@ impl Softmax {
 
         // All operations will be done in u8, we will cast the result appropriately afterward.
         let src_is_signed = input.datum_type().is_signed();
-        let out_is_signed = self.output_dt.is_signed();
+        let out_is_signed = output_dt.is_signed();
         let in_qp = input.datum_type().qparams().unwrap(); // Checked as we are in the quant case
-        let out_qp = self.output_dt.qparams().unwrap(); // Checked as we are in the quant case
+        let out_qp = output_dt.qparams().unwrap(); // Checked as we are in the quant case
         let mut output = unsafe { input.into_tensor().into_array_unchecked::<u8>() };
 
         for it_coords in tract_ndarray::indices(&*iterating_shape) {
@@ -166,7 +166,7 @@ impl Softmax {
         }
 
         let mut output_tensor = output.into_tensor();
-        unsafe { output_tensor.set_datum_type(self.output_dt) };
+        unsafe { output_tensor.set_datum_type(output_dt) };
         Ok(tvec!(output_tensor.into_tvalue()))
     }
 }

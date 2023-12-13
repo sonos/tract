@@ -65,6 +65,11 @@ impl EvalOp for Fft {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let mut tensor = args_1!(inputs).into_tensor();
         match tensor.datum_type() {
+            DatumType::F16 => {
+                let mut temp = tensor.cast_to::<f32>()?.into_owned();
+                self.eval_t::<f32>(&mut temp)?;
+                tensor = temp.cast_to::<f16>()?.into_owned();
+            }
             DatumType::F32 => self.eval_t::<f32>(&mut tensor)?,
             DatumType::F64 => self.eval_t::<f64>(&mut tensor)?,
             _ => bail!("FFT not implemented for type {:?}", tensor.datum_type()),
@@ -168,6 +173,10 @@ impl EvalOp for Stft {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let output = match input.datum_type() {
+            DatumType::F16 => {
+                let mut temp = input.cast_to::<f32>()?.into_owned();
+                self.eval_t::<f32>(&mut temp)?.cast_to::<f16>()?.into_owned()
+            }
             DatumType::F32 => self.eval_t::<f32>(&input)?,
             DatumType::F64 => self.eval_t::<f64>(&input)?,
             _ => bail!("FFT not implemented for type {:?}", input.datum_type()),

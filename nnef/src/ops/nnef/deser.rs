@@ -680,8 +680,11 @@ pub fn softmax(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> T
     let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
 
     let input_fact = builder.model.outlet_fact(x)?.clone();
-    let output_dt =
-        invocation.dt_from_quant_file.get(0).cloned().flatten().unwrap_or(input_fact.datum_type);
+    let quant_output_dt = if input_fact.datum_type.is_float() {
+        None
+    } else {
+        invocation.dt_from_quant_file.get(0).cloned().flatten()
+    };
 
-    builder.wire(ops::nn::Softmax { axes, output_dt }, &[x])
+    builder.wire(ops::nn::Softmax { axes, quant_output_dt }, &[x])
 }

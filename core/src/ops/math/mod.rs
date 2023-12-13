@@ -8,6 +8,7 @@ use num_traits::bounds::Bounded;
 use num_traits::int::PrimInt;
 use num_traits::{Float, Zero};
 use tract_data::internal::ClampCast;
+use tract_data::itertools::Itertools;
 pub use tract_data::prelude::round_ties_to_even;
 use tract_linalg::{ScaleShiftAndRound, Scaler};
 use tract_num_traits::AsPrimitive;
@@ -182,7 +183,7 @@ bin_to_super_type!(max, Max, linalg:Max,
 
 bin_to_super_type!(pow, Pow,
                    declutter: declutter_pow,
-                   [f32, f64] => |c,a,b| *c = a.powf(*b),
+                   [f16, f32, f64] => |c,a,b| *c = a.powf(*b),
                    [i32, i64] => |c,a,b| *c = a.pow(*b as u32));
 
 bin_to_super_type!(shift_left, ShiftLeft,
@@ -493,8 +494,13 @@ element_wise!(q_scale, QScale{scaler: Scaler},[i32] => |op, xs| {
     Ok(())
 });
 
-element_wise!(round_half_to_even, RoundHalfToEven,[ f32] => |_, xs| {
+element_wise!(round_half_to_even, RoundHalfToEven,
+[f32] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = round_ties_to_even(*x));
+    Ok(())
+},
+[f16] => |_, xs| {
+    xs.iter_mut().for_each(|x| *x = f16::from_f32(round_ties_to_even(x.to_f32())));
     Ok(())
 };
 q: [i8, u8, i32] => round_ties_to_even);
@@ -556,7 +562,13 @@ element_wise!(tanh, Tanh,
 );
 
 element_wise!(erf, Erf,
- [f32] => |_, xs| { (tract_linalg::ops().erf_f32)().run(xs) };
+ [f32] => |_, xs| { (tract_linalg::ops().erf_f32)().run(xs) },
+ [f16] => |_, xs| {
+     let mut f32s = xs.iter().map(|x| x.to_f32()).collect_vec();
+     (tract_linalg::ops().erf_f32)().run(&mut f32s)?;
+     xs.iter_mut().zip(f32s.into_iter()).for_each(|(x, f)| *x = f16::from_f32(f));
+     Ok(())
+};
  cost: |dt| {tvec!((Cost::FMA(dt), 11), (Cost::Div(dt), 1))}
 );
 
