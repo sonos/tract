@@ -24,6 +24,7 @@ pub enum Approximation {
     Exact,
     Close,
     Approximate,
+    SuperApproximate,
 }
 
 impl From<bool> for Approximation {
@@ -46,6 +47,7 @@ impl Approximation {
             (Approximate, qp) if qp.is_quantized() => (qp.zp_scale().1 as f64, 0.),
             (Close, _) => (1e-7, 1e-7),
             (Approximate, _) => (1e-4, 5e-4),
+            (SuperApproximate, _) => (5e-2, 1e-2),
         }
     }
 }

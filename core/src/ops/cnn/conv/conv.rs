@@ -819,11 +819,11 @@ impl TypedOp for Conv {
         }
         if self.q_params.is_some() {
             ensure!(inputs[3].datum_type == i32::datum_type());
-            ensure!(inputs[4].datum_type == f32::datum_type());
+            ensure!(inputs[4].datum_type.is_float());
             ensure!(inputs[5].datum_type == i32::datum_type());
-            ensure!(inputs[6].datum_type == f32::datum_type());
+            ensure!(inputs[6].datum_type.is_float());
             ensure!(inputs[7].datum_type == i32::datum_type());
-            ensure!(inputs[8].datum_type == f32::datum_type());
+            ensure!(inputs[8].datum_type.is_float());
         }
         ensure!(self.pool_spec.rank() + 2 == inputs[1].rank());
         if self.pool_spec.data_format.shape(&*inputs[0].shape)?.c()

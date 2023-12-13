@@ -7,6 +7,12 @@ tract_core::element_wise_oop!(is_inf, IsInf { detect_positive: bool, detect_nega
             *y = (op.detect_positive && *x == std::f32::INFINITY) || (op.detect_negative && *x == std::f32::NEG_INFINITY)
         );
         Ok(())
+    },
+    [f16] => bool |op, xs, ys| {
+        xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
+            *y = (op.detect_positive && *x == f16::INFINITY) || (op.detect_negative && *x == f16::NEG_INFINITY)
+        );
+        Ok(())
     };
     prefix: "onnx."
 );

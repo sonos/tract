@@ -146,6 +146,7 @@ impl Expansion for LayerSoftmax {
         let axis = if self.axis < 0 { rank as isize + self.axis } else { self.axis } as usize;
         let reducing_axes =
             if self.coerce_to_2d { (axis..rank).collect::<TVec<usize>>() } else { tvec!(axis) };
+        let dt = if dt.is_float() { None } else { Some(dt) };
         target.wire_node(name, tract_core::ops::nn::Softmax::new(reducing_axes, dt), inputs)
     }
 }
