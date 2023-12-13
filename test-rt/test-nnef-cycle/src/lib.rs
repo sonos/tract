@@ -65,7 +65,7 @@ mod nnef_cycle {
             self.0.write_to_tar(&model, &mut buffer)?;
             info!("Reload from NNEF");
             let reloaded = self.0.model_for_read(&mut &*buffer)?;
-            eprintln!("{reloaded}");
+            // eprintln!("{}", reloaded.clone().into_decluttered().unwrap());
             Ok(Box::new(Arc::new(reloaded.into_optimized()?.into_runnable()?)))
         }
     }

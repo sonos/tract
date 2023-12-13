@@ -4,6 +4,7 @@ use crate::internal::*;
 use crate::ser::*;
 use tract_core::num_traits::Zero;
 use tract_core::ops;
+use tract_core::ops::cast::cast;
 use tract_core::ops::cnn::Conv;
 use tract_core::ops::cnn::DeconvUnary;
 use tract_core::ops::cnn::KernelFormat;
@@ -439,6 +440,39 @@ pub fn softmax(
         &[ast.mapping[&node.inputs[0]].clone()],
         &[("axes", RValue::Literal(crate::ast::Literal::Array(litteral_axes)))],
     )))
+}
+
+pub fn rewrite_consistent_quantized_conv(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    name: &str,
+    op: &Conv,
+) -> TractResult<Option<TypedModelPatch>> {
+    let facts = model.node_input_facts(node.id)?;
+    if facts.len() > 3 && facts[3..9].iter().all(|fact| fact.konst.is_some()) {
+        for ix in [0, 1] {
+            let fact = model.outlet_fact(node.inputs[ix])?;
+            if !fact.datum_type.is_quantized() {
+                let mut patch = TypedModelPatch::default();
+                let mut wire = patch.taps(model, &node.inputs)?;
+                let dt = fact.datum_type.quantize(QParams::ZpScale {
+                    zero_point: facts[3 + 2 * ix]
+                        .konst
+                        .as_ref()
+                        .unwrap()
+                        .cast_to_scalar::<i32>()?,
+                    scale: facts[4 + 2 * ix].konst.as_ref().unwrap().cast_to_scalar::<f32>()?,
+                });
+                wire[ix] =
+                    patch.wire_node(format!("{name}.cast_to_q_{ix}"), cast(dt), &[wire[ix]])?[0];
+                let output = patch.wire_node(name, op.clone(), &wire)?[0];
+                patch.shunt_outside(model, node.id.into(), output)?;
+                return Ok(Some(patch));
+            }
+        }
+    }
+    Ok(None)
 }
 
 pub fn rewrite_kernel_conv_in_oihw(

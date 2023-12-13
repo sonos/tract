@@ -35,6 +35,10 @@ pub struct Conv {
     pub pool_spec: PoolSpec,
     pub kernel_fmt: KernelFormat,
     pub group: usize,
+    // None -> floats
+    // Some(I32) -> output is I32 (use quantized kernels, but output will be i32). last 2 Q inputs
+    // are ignored
+    // Some(QXX) -> quantized XX, but parameters are ignored (I8, U8, or I32) in favor of last 2 Q inputs
     pub q_params: Option<DatumType>,
 }
 
@@ -808,6 +812,7 @@ impl EvalOp for Conv {
 
 impl TypedOp for Conv {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        ensure!(self.q_params.is_some() || inputs[0].datum_type.is_float());
         let q_inputs = if self.q_params.is_some() { 6 } else { 0 };
         if inputs.len() != 3 + q_inputs {
             bail!("Wrong number of inputs: expected {} got {}", 3 + q_inputs, inputs.len());
