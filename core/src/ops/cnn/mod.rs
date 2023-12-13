@@ -10,7 +10,7 @@ pub mod pools;
 mod sumpool;
 
 pub use self::conv::{Conv, KernelFormat};
-pub use self::deconv::DeconvUnary;
+pub use self::deconv::Deconv;
 pub use self::maxpool::MaxPool;
 pub use self::padding::PaddingSpec;
 pub use self::patch_axis::PatchAxis;
@@ -95,7 +95,7 @@ pub fn rewrite_deconv_with_n_axis(
     model: &TypedModel,
     node: &TypedNode,
     name: &str,
-    deconv: &DeconvUnary,
+    deconv: &Deconv,
 ) -> TractResult<Option<TypedModelPatch>> {
     if !deconv.pool_spec.data_format.has_n() {
         let mut new = deconv.clone();

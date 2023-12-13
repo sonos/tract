@@ -6,14 +6,14 @@ use crate::ops::cnn::wire_reshape_bias_for_bin;
 use crate::ops::einsum::EinSum;
 
 #[derive(Clone, Debug, new, Hash)]
-pub struct DeconvUnary {
+pub struct Deconv {
     pub pool_spec: PoolSpec,
     pub kernel_format: KernelFormat,
     pub adjustments: TVec<usize>,
     pub group: usize,
 }
 
-impl DeconvUnary {
+impl Deconv {
     fn wire_with_deconv_sum(
         &self,
         name: &str,
@@ -123,9 +123,9 @@ impl DeconvUnary {
     }
 }
 
-impl Op for DeconvUnary {
+impl Op for Deconv {
     fn name(&self) -> Cow<str> {
-        "DeconvUnary".into()
+        "Deconv".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -135,7 +135,7 @@ impl Op for DeconvUnary {
     op_as_typed_op!();
 }
 
-impl EvalOp for DeconvUnary {
+impl EvalOp for Deconv {
     fn is_stateless(&self) -> bool {
         true
     }
@@ -154,7 +154,7 @@ impl EvalOp for DeconvUnary {
     }
 }
 
-impl TypedOp for DeconvUnary {
+impl TypedOp for Deconv {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(inputs.len() == 3);
         let x_fact = inputs[0];

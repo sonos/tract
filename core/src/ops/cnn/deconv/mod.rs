@@ -1,10 +1,11 @@
 use crate::internal::*;
 use crate::ops::cnn::{PaddingSpec, PoolSpec};
 
+#[allow(clippy::module_inception)]
+mod deconv;
 mod deconv_sum;
-mod unary;
 
-pub use unary::DeconvUnary;
+pub use deconv::Deconv;
 
 pub fn output_shape<D: DimLike>(
     pool_spec: &PoolSpec,

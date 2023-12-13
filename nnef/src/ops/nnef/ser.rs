@@ -6,7 +6,7 @@ use tract_core::num_traits::Zero;
 use tract_core::ops;
 use tract_core::ops::cast::cast;
 use tract_core::ops::cnn::Conv;
-use tract_core::ops::cnn::DeconvUnary;
+use tract_core::ops::cnn::Deconv;
 use tract_core::ops::cnn::KernelFormat;
 use tract_core::ops::cnn::PoolSpec;
 use tract_core::ops::einsum::BasicMatMul;
@@ -255,7 +255,7 @@ pub fn conv(
 pub fn deconv(
     ast: &mut IntoAst,
     node: &TypedNode,
-    op: &ops::cnn::deconv::DeconvUnary,
+    op: &ops::cnn::deconv::Deconv,
 ) -> TractResult<Option<Arc<RValue>>> {
     conv_or_deconv(ast, node, &op.pool_spec, op.group, true, Some(&op.adjustments))
 }
@@ -516,7 +516,7 @@ pub fn rewrite_kernel_deconv_in_oihw(
     model: &TypedModel,
     node: &TypedNode,
     name: &str,
-    conv: &DeconvUnary,
+    conv: &Deconv,
 ) -> TractResult<Option<TypedModelPatch>> {
     rewrite_kernel_in_oihw(
         model,
@@ -524,7 +524,7 @@ pub fn rewrite_kernel_deconv_in_oihw(
         name,
         conv.kernel_format,
         conv.group,
-        Box::new(DeconvUnary { kernel_format: KernelFormat::OIHW, ..conv.clone() }),
+        Box::new(Deconv { kernel_format: KernelFormat::OIHW, ..conv.clone() }),
     )
 }
 

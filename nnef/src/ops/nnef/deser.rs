@@ -1,6 +1,6 @@
 use crate::ast::*;
 use crate::deser::Value;
-use ops::cnn::deconv::DeconvUnary;
+use ops::cnn::deconv::Deconv;
 use ops::cnn::{Conv, KernelFormat};
 use tract_core::internal::*;
 use tract_core::ops::array::PadMode;
@@ -367,7 +367,7 @@ pub fn conv_or_deconv(
         } else {
             tvec!(0; pool_spec.rank())
         };
-        Box::new(DeconvUnary::new(pool_spec, KernelFormat::OIHW, adjustments, group))
+        Box::new(Deconv::new(pool_spec, KernelFormat::OIHW, adjustments, group))
     } else {
         if let Some(odt) = &output_dt {
             for dt in &[&input_fact.datum_type, &kernel_fact.datum_type, odt] {
