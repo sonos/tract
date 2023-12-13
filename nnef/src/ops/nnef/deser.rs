@@ -347,8 +347,13 @@ pub fn conv_or_deconv(
         &input_fact,
     )?;
 
-    let output_dt =
-        invocation.dt_from_quant_file.get(0).cloned().flatten().unwrap_or(DatumType::F32);
+    let output_dt: Option<DatumType> = if input_fact.datum_type.is_float() {
+        None
+    } else if let Some(dt) = invocation.dt_from_quant_file.get(0).cloned().flatten() {
+        Some(dt)
+    } else {
+        Some(DatumType::I32)
+    };
 
     let op: Box<dyn TypedOp> = if deconv {
         let output_shape = invocation.named_arg_as::<TVec<usize>>(builder, "output_shape")?;
@@ -364,19 +369,14 @@ pub fn conv_or_deconv(
         };
         Box::new(DeconvUnary::new(pool_spec, KernelFormat::OIHW, adjustments, group))
     } else {
-        if !output_dt.is_float() {
-            for dt in &[&input_fact.datum_type, &kernel_fact.datum_type, &output_dt] {
+        if let Some(odt) = &output_dt {
+            for dt in &[&input_fact.datum_type, &kernel_fact.datum_type, odt] {
                 let qp = dt.qparams().unwrap_or_default();
                 inputs.push(builder.add_const(tensor0(qp.zp_scale().0))?);
                 inputs.push(builder.add_const(tensor0(qp.zp_scale().1))?);
             }
         }
-        Box::new(Conv::new(
-            pool_spec,
-            KernelFormat::OIHW,
-            group,
-            Some(output_dt).filter(|dt| !dt.is_float()),
-        ))
+        Box::new(Conv::new(pool_spec, KernelFormat::OIHW, group, output_dt))
     };
     builder.wire(op, &inputs)
 }

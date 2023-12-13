@@ -114,9 +114,9 @@ impl ResourceLoader for GraphQuantLoader {
         _framework: &Nnef,
     ) -> TractResult<Option<(String, Arc<dyn Resource>)>> {
         if path.ends_with(GRAPH_QUANT_FILENAME) {
-            let mut t = String::new();
-            reader.read_to_string(&mut t)?;
-            let quant = crate::ast::quant::parse_quantization(&t)?;
+            let mut text = String::new();
+            reader.read_to_string(&mut text)?;
+            let quant = crate::ast::quant::parse_quantization(&text)?;
             let quant: HashMap<String, QuantFormat> =
                 quant.into_iter().map(|(k, v)| (k.0, v)).collect();
             Ok(Some((path.to_str().unwrap().to_string(), Arc::new(quant))))
