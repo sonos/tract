@@ -1,0 +1,27 @@
+[package]
+name = "test-f16"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+[build-dependencies]
+lazy_static.workspace = true
+regex.workspace = true
+infra = { path = "../infra" }
+tract-core = { path = "../../core" }
+suite-onnx = { path = "../suite-onnx" }
+suite-unit = { path = "../suite-unit" }
+
+[dev-dependencies]
+regex.workspace = true
+lazy_static.workspace = true
+log.workspace = true
+tflitec.workspace = true
+tract-core = { path = "../../core", version = "=0.20.23-pre" }
+tract-onnx-opl = { path = "../../onnx-opl", version = "=0.20.23-pre" }
+infra = { path = "../infra" }
+suite-onnx = { path = "../suite-onnx" }
+suite-unit = { path = "../suite-unit" }

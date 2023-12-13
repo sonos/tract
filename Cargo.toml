@@ -44,6 +44,7 @@ members = [
     "test-rt/infra",
     "test-rt/suite-unit",
     "test-rt/suite-onnx",
+    "test-rt/test-f16",
     "test-rt/test-unit-core",
     "test-rt/test-onnx-core",
     "test-rt/test-nnef-cycle",
