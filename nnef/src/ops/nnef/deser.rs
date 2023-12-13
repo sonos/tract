@@ -340,12 +340,12 @@ pub fn conv_or_deconv(
     }
 
     let mut inputs = tvec!(input, kernel, bias);
-    let (group, pool_spec) = dbg!(read_conv_parameters(
+    let (group, pool_spec) = read_conv_parameters(
         builder,
         invocation,
         kernel_fact.shape.as_concrete().context("Except fixed kernel shape")?,
         &input_fact,
-    )?);
+    )?;
 
     let output_dt: Option<DatumType> = if input_fact.datum_type.is_float() {
         None
