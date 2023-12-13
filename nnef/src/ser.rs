@@ -348,9 +348,17 @@ impl<'a> IntoAst<'a> {
                     string(f)
                 })
                 .into());
+            } else if tensor.datum_type() == DatumType::F16 {
+                return Ok(
+                    Self::dump_rec_tensor(&tensor.to_array_view::<f16>()?, |f| numeric(f)).into()
+                );
             } else if tensor.datum_type() == DatumType::F32 {
                 return Ok(
                     Self::dump_rec_tensor(&tensor.to_array_view::<f32>()?, |f| numeric(f)).into()
+                );
+            } else if tensor.datum_type() == DatumType::F64 {
+                return Ok(
+                    Self::dump_rec_tensor(&tensor.to_array_view::<f64>()?, |f| numeric(f)).into()
                 );
             } else if self.ensure_registry(&"tract_core".into()).is_ok() {
                 if let Ok(value) = tensor.cast_to::<i64>() {
