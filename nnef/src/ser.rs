@@ -12,9 +12,18 @@ pub fn rewrite_model(model: &mut TypedModel) -> TractResult<()> {
             "rewrite_deconv_with_n_axis",
             tract_core::ops::cnn::rewrite_deconv_with_n_axis,
         )
-        .with_rule_for("rewrite_kernel_conv_in_oihw", crate::ops::nnef::ser::rewrite_kernel_conv_in_oihw)
-        .with_rule_for("rewrite_kernel_deconv_in_oihw", crate::ops::nnef::ser::rewrite_kernel_deconv_in_oihw)
-        .with_rule_for("rewrite_consistent_quantized_conv", crate::ops::nnef::ser::rewrite_consistent_quantized_conv)
+        .with_rule_for(
+            "rewrite_kernel_conv_in_oihw",
+            crate::ops::nnef::ser::rewrite_kernel_conv_in_oihw,
+        )
+        .with_rule_for(
+            "rewrite_kernel_deconv_in_oihw",
+            crate::ops::nnef::ser::rewrite_kernel_deconv_in_oihw,
+        )
+        .with_rule_for(
+            "rewrite_consistent_quantized_conv",
+            crate::ops::nnef::ser::rewrite_consistent_quantized_conv,
+        )
         .rewrite(&(), model)
 }
 
@@ -342,25 +351,21 @@ impl<'a> IntoAst<'a> {
         force_variable: bool,
     ) -> TractResult<Arc<RValue>> {
         let mut name: Identifier = name.as_ref().into();
+        let have_tract_core = self.ensure_registry(&"tract_core".into()).is_ok();
         if !force_variable && tensor.len() <= 8 {
             if tensor.datum_type() == String::datum_type() {
                 return Ok(Self::dump_rec_tensor(&tensor.to_array_view::<String>()?, |f| {
                     string(f)
                 })
                 .into());
-            } else if tensor.datum_type() == DatumType::F16 {
-                return Ok(
-                    Self::dump_rec_tensor(&tensor.to_array_view::<f16>()?, |f| numeric(f)).into()
-                );
             } else if tensor.datum_type() == DatumType::F32 {
                 return Ok(
                     Self::dump_rec_tensor(&tensor.to_array_view::<f32>()?, |f| numeric(f)).into()
                 );
-            } else if tensor.datum_type() == DatumType::F64 {
-                return Ok(
-                    Self::dump_rec_tensor(&tensor.to_array_view::<f64>()?, |f| numeric(f)).into()
-                );
-            } else if self.ensure_registry(&"tract_core".into()).is_ok() {
+            } else if have_tract_core && tensor.datum_type() == DatumType::F16 {
+                let array = Self::dump_rec_tensor(&tensor.to_array_view::<f16>()?, |f| numeric(f)).into();
+                return Ok(invocation("tract_core_cast", &[array], &[("to", string("f16"))]));
+            } else if have_tract_core && tensor.datum_type().is_integer() {
                 if let Ok(value) = tensor.cast_to::<i64>() {
                     let value =
                         Self::dump_rec_tensor(&value.to_array_view::<i64>().unwrap(), |i| {
