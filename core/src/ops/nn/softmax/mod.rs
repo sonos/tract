@@ -41,7 +41,7 @@ impl TypedOp for Softmax {
             );
         } else if dt.is_quantized() {
             ensure!(
-                self.quant_output_dt.is_some_and(|q| q.is_quantized()),
+                self.quant_output_dt.map(|q| q.is_quantized()).unwrap_or(false),
                 "Quantized softmax should have a quantized output type (got {:?})",
                 self.quant_output_dt
             );
@@ -327,7 +327,8 @@ mod test {
     impl SoftmaxProblem {
         fn check(&self) -> Result<()> {
             let inputs = tvec!(self.data.clone().into_tvalue());
-            let softmax = Softmax { axes: self.axes.clone(), output_dt: self.output_dt };
+            let quant_output_dt = Some(self.output_dt).filter(|dt| !dt.is_float());
+            let softmax = Softmax { axes: self.axes.clone(), quant_output_dt };
 
             // Compute quantized output
             let result = softmax.eval(inputs)?;
@@ -337,7 +338,7 @@ mod test {
             // Compute reference output
             let input_float = self.data.cast_to::<f32>()?;
             let inputs_float = tvec!(input_float.into_owned().into_tvalue());
-            let softmax_float = Softmax { axes: self.axes.clone(), output_dt: DatumType::F32 };
+            let softmax_float = Softmax { axes: self.axes.clone(), quant_output_dt: None };
             let reference_float = softmax_float.eval(inputs_float)?;
             let reference_array = args_1!(reference_float);
             let reference = reference_array.to_array_view::<f32>()?;
