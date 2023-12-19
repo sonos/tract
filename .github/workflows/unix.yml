@@ -23,6 +23,12 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ARN: arn:aws:iam::567805100031:role/github-runner-tract-ci
+        aws-region: us-east-2
+
     - name: Get current date
       id: date
       run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
