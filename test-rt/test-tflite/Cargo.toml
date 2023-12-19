@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 
 [build-dependencies]
+home.workspace = true
 lazy_static.workspace = true
 regex.workspace = true
 infra = { path = "../infra" }
