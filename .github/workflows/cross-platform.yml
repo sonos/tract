@@ -39,6 +39,12 @@ jobs:
       id: date
       run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: arn:aws:iam::567805100031:role/github-runner-tract-ci
+        aws-region: us-east-2
+
     - uses: actions/cache@v3
       with:
         path: |
@@ -71,6 +77,9 @@ jobs:
           - aarch64-apple-darwin
 
     runs-on: macOS-latest
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
     - uses: actions/checkout@v3
