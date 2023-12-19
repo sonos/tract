@@ -28,6 +28,9 @@ jobs:
           - wasm32-wasi
 
     runs-on: ubuntu-20.04
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
     - uses: actions/checkout@v3
