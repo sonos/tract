@@ -15,6 +15,7 @@ suite-onnx = { path = "../suite-onnx" }
 suite-unit = { path = "../suite-unit" }
 
 [dev-dependencies]
+home.workspace = true
 regex.workspace = true
 lazy_static.workspace = true
 log.workspace = true
