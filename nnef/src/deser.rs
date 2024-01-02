@@ -123,7 +123,7 @@ impl<'mb> ModelBuilder<'mb> {
             .iter()
             .find(|f| &f.decl.id.0 == "tract_core_properties")
             .and_then(|f| f.body.as_ref())
-            .and_then(|body| body.get(0))
+            .and_then(|body| body.first())
         {
             let properties: TVec<(String, Arc<Tensor>)> =
                 properties.right.resolve(self, &[])?.to(self)?;
@@ -438,7 +438,7 @@ impl RValue {
                         let out_dt = builder.model.node(outlet_id.node).outputs[outlet_id.slot]
                             .fact
                             .datum_type;
-                        if let Some(Some(dt)) = dt.get(0) {
+                        if let Some(Some(dt)) = dt.first() {
                             if out_dt.unquantized() != dt.unquantized() {
                                 return Err(format_err!(
                                     "Mismatched types expected {:?}, got {:?}",
@@ -493,7 +493,7 @@ impl RValue {
             RValue::Array(array) => Ok(Value::Array(
                 array
                     .iter()
-                    .zip(std::iter::repeat(&dt.get(0).copied().flatten()))
+                    .zip(std::iter::repeat(&dt.first().copied().flatten()))
                     .map(|(i, dt)| i.resolve(builder, &[*dt]))
                     .collect::<TractResult<_>>()?,
             )),
@@ -538,7 +538,7 @@ impl RValue {
             RValue::Literal(Literal::Array(array)) => Ok(Value::Array(
                 array
                     .iter()
-                    .zip(std::iter::repeat(&dt.get(0).copied().flatten()))
+                    .zip(std::iter::repeat(&dt.first().copied().flatten()))
                     .map(|(i, dt)| RValue::Literal(i.clone()).resolve(builder, &[*dt]))
                     .collect::<TractResult<_>>()?,
             )),

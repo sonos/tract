@@ -189,7 +189,7 @@ impl Registry {
                 tract_core::ops::element_wise::ElementWiseOp(ew.1.clone()),
                 &[input],
             )?;
-            if let Some(Some(assumed_out_dt)) = dt.get(0) {
+            if let Some(Some(assumed_out_dt)) = dt.first() {
                 let out_dt = builder.model.outlet_fact(outlet[0])?.datum_type;
                 if out_dt != *assumed_out_dt {
                     return Ok(Some(
@@ -227,7 +227,7 @@ impl Registry {
             let inputs = multicast(builder, &[a, b])?;
             let mut wire = builder
                 .wire_as_outlets(tract_core::ops::binary::TypedBinOp(bin.1.clone()), &inputs)?[0];
-            if let Some(Some(out_dt)) = dt.get(0) {
+            if let Some(Some(out_dt)) = dt.first() {
                 if out_dt != &a_dt {
                     wire =
                         builder.wire_as_outlets(tract_core::ops::cast::cast(*out_dt), &[wire])?[0];

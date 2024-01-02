@@ -62,7 +62,7 @@ fn qmatmul_load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
     let bias: OutletId = invocation.named_arg_as(builder, "bias")?;
     let qparams = qparams_as_outlets(builder, invocation)?;
     let inputs: Vec<OutletId> = [a, b, bias].into_iter().chain(qparams).collect();
-    let c_dt = if let Some(c) = invocation.dt_from_quant_file.get(0).cloned().flatten() {
+    let c_dt = if let Some(c) = invocation.dt_from_quant_file.first().cloned().flatten() {
         c
     } else {
         DatumType::from_str(&invocation.named_arg_as::<String>(builder, "output_type")?)?

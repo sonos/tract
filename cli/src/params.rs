@@ -866,7 +866,7 @@ impl Parameters {
                 if let Some(value) = tensors_values
                     .by_name(konst)
                     .and_then(|tv| tv.values.as_ref())
-                    .and_then(|v| v.get(0))
+                    .and_then(|v| v.first())
                 {
                     let value = value.clone().into_arc_tensor();
                     let id = raw_model.node_id_by_name(konst)?;

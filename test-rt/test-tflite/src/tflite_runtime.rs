@@ -86,7 +86,7 @@ impl State for TfliteState {
                 _ => bail!("unknown type in tract tflitec test Runtime"),
             };
             let tensor = unsafe {
-                Tensor::from_raw_dt(dt, &output_tensor.shape().dimensions(), output_tensor.data())?
+                Tensor::from_raw_dt(dt, output_tensor.shape().dimensions(), output_tensor.data())?
             };
             outputs.push(tensor.into_tvalue());
         }
@@ -110,7 +110,7 @@ mod tests {
     #[test]
     fn test_trivial() -> TractResult<()> {
         let mut model = TypedModel::default();
-        let wire = model.add_source("x", f32::fact(&[1]))?;
+        let wire = model.add_source("x", f32::fact([1]))?;
         model.set_output_outlets(&[wire])?;
         let out = runtime().prepare(model)?.run(tvec!(tensor1(&[0f32]).into_tvalue()))?.remove(0);
         assert_eq!(out, tensor1(&[0f32]).into_tvalue());

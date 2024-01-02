@@ -48,7 +48,7 @@ impl DelayPlusDownsampleProblem {
     pub fn run(&self) -> TestCaseResult {
         let mut model = TypedModel::default();
         let s = model.symbol_table.sym("S");
-        let a = model.add_source("a", f32::fact(dims!(1, s, 1)).into()).unwrap();
+        let a = model.add_source("a", f32::fact(dims!(1, s, 1))).unwrap();
         let crop =
 //            model.wire_node("delay", expand(array::Crop::new(1, self.delay, 0)), &[a]).unwrap();
             model.wire_node("delay", Slice::new(1, self.delay, s), &[a]).unwrap();
