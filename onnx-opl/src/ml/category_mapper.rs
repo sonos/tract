@@ -101,13 +101,16 @@ pub struct ReverseLookup {
     fallback_value: i32,
 }
 
+#[allow(clippy::manual_hash_one)]
 impl ReverseLookup {
     pub fn new(keys: Arc<Tensor>, fallback_value: i32) -> TractResult<ReverseLookup> {
         unsafe fn new_t<T: Datum + Hash>(keys: &Tensor) -> HashMap<u64, SmallVec<[i32; 1]>> {
             let keys = keys.as_slice_unchecked::<T>();
             let mut hashmap = HashMap::<u64, SmallVec<[i32; 1]>>::default();
             for (ix, k) in keys.iter().enumerate() {
-                let u = hashmap.hasher().hash_one(k);
+                let mut hasher = hashmap.hasher().build_hasher();
+                k.hash(&mut hasher);
+                let u = hasher.finish();
                 hashmap.entry(u).or_default().push(ix as i32);
             }
             hashmap
@@ -118,8 +121,9 @@ impl ReverseLookup {
 
     unsafe fn search_t<T: Datum + Hash>(&self, needle: &T) -> Option<i32> {
         let keys = self.keys.as_slice_unchecked::<T>();
-
-        let u = self.index.hasher().hash_one(needle);
+        let mut hasher = self.index.hasher().build_hasher();
+        needle.hash(&mut hasher);
+        let u = hasher.finish();
         if let Some(candidates) = self.index.get(&u) {
             for candidate in candidates {
                 if &keys[*candidate as usize] == needle {
