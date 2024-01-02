@@ -25,7 +25,7 @@ pub trait SpecialOps<F, O> {
 pub struct Graph<F, O>
 where
     F: Fact + Clone + 'static,
-    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     /// all nodes in the model
     pub nodes: Vec<Node<F, O>>,
@@ -44,7 +44,7 @@ where
 impl<F, O> Default for Graph<F, O>
 where
     F: Fact + Clone + 'static,
-    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     fn default() -> Graph<F, O> {
         Graph {
@@ -76,7 +76,7 @@ where
 impl<F, O> Graph<F, O>
 where
     F: Fact + Clone + 'static,
-    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     pub fn add_node(
         &mut self,
@@ -548,7 +548,6 @@ where
         + AsRef<dyn Op>
         + AsMut<dyn Op>
         + Clone
-       
         + 'static,
 {
     pub fn add_const(
@@ -570,19 +569,12 @@ where
 {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
         for i in 0..self.nodes.len() {
-            let input_1 = self.nodes[i]
-                .inputs
-                .get(0)
-                .map(|o| format!("{o:?}"))
-                .unwrap_or_default();
-            let input_2 = self.nodes[i]
-                .inputs
-                .get(1)
-                .map(|o| format!("{o:?}"))
-                .unwrap_or_default();
+            let input_1 =
+                self.nodes[i].inputs.first().map(|o| format!("{o:?}")).unwrap_or_default();
+            let input_2 = self.nodes[i].inputs.get(1).map(|o| format!("{o:?}")).unwrap_or_default();
             let output_1 = self
                 .outlet_successors(OutletId::new(i, 0))
-                .get(0)
+                .first()
                 .map(|o| format!("{o:?}"))
                 .unwrap_or_default();
             let output_2 = self

@@ -87,7 +87,7 @@ mod tests {
     fn declutter() -> TractResult<()> {
         let tfd = tract_tflite::tflite()
             .model_for_path(mobilenet_v2())?
-            .with_input_fact(0, input_dt().fact([1, 224, 224, 3]).into())?
+            .with_input_fact(0, input_dt().fact([1, 224, 224, 3]))?
             .into_decluttered()?
             .into_runnable()?;
         run(tfd)
@@ -97,7 +97,7 @@ mod tests {
     fn optimized() -> TractResult<()> {
         let tfd = tract_tflite::tflite()
             .model_for_path(mobilenet_v2())?
-            .with_input_fact(0, input_dt().fact([1, 224, 224, 3]).into())?
+            .with_input_fact(0, input_dt().fact([1, 224, 224, 3]))?
             .into_optimized()?
             .into_runnable()?;
         run(tfd)

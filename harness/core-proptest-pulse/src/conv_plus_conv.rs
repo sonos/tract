@@ -107,7 +107,7 @@ impl ConvPlusConvProblem {
     pub fn model(ops: &[ConvOp]) -> TypedModel {
         let mut model = TypedModel::default();
         let s = model.symbol_table.sym("S");
-        let wire = model.add_source("a", f32::fact(dims!(1, 1, s)).into()).unwrap();
+        let wire = model.add_source("a", f32::fact(dims!(1, 1, s))).unwrap();
         let mut wire = tvec!(wire);
         for (ix, cv) in ops.iter().enumerate() {
             wire = cv.chain(&format!("conv{ix}"), &mut model, &wire);

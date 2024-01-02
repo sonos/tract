@@ -18,7 +18,7 @@ use crate::deser::{ModelBuilder, ResolvedInvocation};
 // fragment external<? = scalar>( shape: integer[] ) -> ( output: tensor<?> );
 pub fn external(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let type_name = invocation.invocation.generic_type_name.unwrap_or(TypeName::Scalar);
-    let dt = if let Some(Some(dt)) = invocation.dt_from_quant_file.get(0) {
+    let dt = if let Some(Some(dt)) = invocation.dt_from_quant_file.first() {
         *dt
     } else if type_name == TypeName::Scalar {
         f32::datum_type()
@@ -45,7 +45,7 @@ pub fn variable(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
             .or_else(|| tensors.get(&Identifier(label.0.trim_start_matches('/').to_owned())))
             .ok_or_else(|| format_err!("No data for tensor {:?}", label))?,
     );
-    if let Some(Some(dt)) = invocation.dt_from_quant_file.get(0) {
+    if let Some(Some(dt)) = invocation.dt_from_quant_file.first() {
         if dt.size_of() != tensor.datum_type().size_of() {
             bail!(
                 "Mismatched tensor type for tensor {}: expected {:?}, got {:?}",
@@ -120,7 +120,7 @@ pub fn transpose(
 pub fn concat(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let axis: usize = invocation.named_arg_as(builder, "axis")?;
     let mut values: TVec<OutletId> = invocation.named_arg_as(builder, "values")?;
-    if let Some(Some(dt)) = invocation.dt_from_quant_file.get(0) {
+    if let Some(Some(dt)) = invocation.dt_from_quant_file.first() {
         for value in &mut values {
             if builder.model.node(value.node).outputs[value.slot].fact.datum_type != *dt {
                 *value = builder.wire_as_outlets(ops::cast::cast(*dt), &[*value])?[0];
@@ -349,7 +349,7 @@ pub fn conv_or_deconv(
 
     let output_dt: Option<DatumType> = if input_fact.datum_type.is_float() {
         None
-    } else if let Some(dt) = invocation.dt_from_quant_file.get(0).cloned().flatten() {
+    } else if let Some(dt) = invocation.dt_from_quant_file.first().cloned().flatten() {
         Some(dt)
     } else {
         Some(DatumType::I32)
@@ -563,7 +563,7 @@ pub fn matmul(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
             scale: a_dt.zp_scale().1 * b_dt.zp_scale().1,
             zero_point: 0,
         });
-        let c_dt = invocation.dt_from_quant_file.get(0).cloned().flatten().unwrap_or(accum_dt);
+        let c_dt = invocation.dt_from_quant_file.first().cloned().flatten().unwrap_or(accum_dt);
 
         let a_qp = a_dt.qparams().unwrap_or_default().zp_scale();
         let b_qp = b_dt.qparams().unwrap_or_default().zp_scale();
@@ -625,7 +625,7 @@ pub fn leaky_relu(
 pub fn stack(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let axis: usize = invocation.named_arg_as(builder, "axis")?;
     let mut values: TVec<OutletId> = invocation.named_arg_as(builder, "values")?;
-    if let Some(Some(dt)) = invocation.dt_from_quant_file.get(0) {
+    if let Some(Some(dt)) = invocation.dt_from_quant_file.first() {
         for value in &mut values {
             if builder.model.node(value.node).outputs[value.slot].fact.datum_type != *dt {
                 *value = builder.wire_as_outlets(ops::cast::cast(*dt), &[*value])?[0];
@@ -683,7 +683,7 @@ pub fn softmax(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> T
     let quant_output_dt = if input_fact.datum_type.is_float() {
         None
     } else {
-        invocation.dt_from_quant_file.get(0).cloned().flatten()
+        invocation.dt_from_quant_file.first().cloned().flatten()
     };
 
     builder.wire(ops::nn::Softmax { axes, quant_output_dt }, &[x])

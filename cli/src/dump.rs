@@ -76,7 +76,7 @@ fn annotate_with_onnx_model(
         if let Some(id) = model
             .node_id_by_name(&gnode.name)
             .ok()
-            .or_else(|| gnode.output.get(0).and_then(|n| model.node_id_by_name(n).ok()))
+            .or_else(|| gnode.output.first().and_then(|n| model.node_id_by_name(n).ok()))
         {
             let mut v = vec![];
             for a in gnode.attribute.iter() {

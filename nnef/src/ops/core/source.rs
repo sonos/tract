@@ -44,7 +44,7 @@ fn external_load(
     let shape: TVec<TDim> =
         builder.allowing_new_symbols(|builder| invocation.named_arg_as(builder, "shape"))?;
     let mut dt: DatumType = invocation.named_arg_as::<String>(builder, "datum_type")?.parse()?;
-    if let Some(Some(qdt)) = invocation.dt_from_quant_file.get(0) {
+    if let Some(Some(qdt)) = invocation.dt_from_quant_file.first() {
         dt = *qdt;
     }
     Ok(Value::Wire(builder.model.add_source("", dt.fact(&*shape))?))

@@ -47,12 +47,12 @@ pub mod test {
         f32: AsPrimitive<T>,
         T: AsPrimitive<f32>,
     {
-        let data = tract_data::prelude::tensor1(&values);
+        let data = tract_data::prelude::tensor1(values);
         let data = data.cast_to::<T>().unwrap();
         let data = data.as_slice::<T>().unwrap();
         let alpha: T = tract_data::prelude::tensor0(alpha).cast_to_scalar::<T>().unwrap();
         crate::frame::element_wise::test::test_element_wise_params::<K, T, _, T>(
-            &data,
+            data,
             |x: T| {
                 if x > T::zero() {
                     x

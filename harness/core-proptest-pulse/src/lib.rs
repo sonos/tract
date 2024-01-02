@@ -139,7 +139,7 @@ proptest! {
         let full_len = input_len + begin + end;
         let mut model = TypedModel::default();
         let s = model.symbol_table.sym("S");
-        let a = model.add_source("a", f32::fact(&[s]).into()).unwrap();
+        let a = model.add_source("a", f32::fact(&[s])).unwrap();
         let slice = model.wire_node("slice", Slice::new(0, begin as usize, (input_len + begin) as usize), &[a]).unwrap();
         model.set_output_outlets(&slice).unwrap();
 
@@ -151,7 +151,7 @@ proptest! {
     fn proptest_pad(pulse in 1i32..3, input_len in 0i32..10, begin in 0i32..3, end in 0i32..3) {
         let mut model = TypedModel::default();
         let s = model.symbol_table.sym("S");
-        let a = model.add_source("a", f32::fact(&[s]).into()).unwrap();
+        let a = model.add_source("a", f32::fact(&[s])).unwrap();
         let pad = model.wire_node("pad", Pad::new(vec![(begin as _, end as _)],
         PadMode::Constant(Arc::new(Tensor::from(-1f32)))), &[a]).unwrap();
         model.set_output_outlets(&pad).unwrap();
@@ -171,7 +171,7 @@ fn test_simple_conv() {
     let mut model = TypedModel::default();
     let kernel = rctensor3(&[[[0.5f32, 1.0, -0.1]]]);
     let s = model.symbol_table.sym("S");
-    let a = model.add_source("a", f32::fact(dims!(1, 1, s)).into()).unwrap();
+    let a = model.add_source("a", f32::fact(dims!(1, 1, s))).unwrap();
     let kernel = model.add_const("kernel", kernel).unwrap();
     let bias = model.add_const("bias", tensor0(0f32)).unwrap();
 
@@ -205,7 +205,7 @@ fn test_simple_conv() {
 fn test_pad_before_1() {
     let mut model = TypedModel::default();
     let s = model.symbol_table.sym("S");
-    let a = model.add_source("a", f32::fact(&[s]).into()).unwrap();
+    let a = model.add_source("a", f32::fact(&[s])).unwrap();
     model
         .wire_node(
             "pad",
@@ -223,7 +223,7 @@ fn test_pad_before_1() {
 fn test_pad_before_2() {
     let mut model = TypedModel::default();
     let s = model.symbol_table.sym("S");
-    let a = model.add_source("a", f32::fact(&[s]).into()).unwrap();
+    let a = model.add_source("a", f32::fact(&[s])).unwrap();
     model
         .wire_node(
             "pad",

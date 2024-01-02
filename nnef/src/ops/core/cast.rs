@@ -23,7 +23,7 @@ fn cast_dump(ast: &mut IntoAst, node: &TypedNode, op: &Cast) -> TractResult<Opti
 
 fn cast_load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
-    let invocation_dt = invocation.dt_from_quant_file.get(0).copied().flatten();
+    let invocation_dt = invocation.dt_from_quant_file.first().copied().flatten();
     let to = if let Ok(s) = invocation.named_arg_as::<String>(builder, "to") {
         let dt: DatumType = s.parse()?;
         if let Some(invocation_dt) = invocation_dt {
