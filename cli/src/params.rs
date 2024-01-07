@@ -740,8 +740,7 @@ impl Parameters {
                 for node in m.eval_order()? {
                     let node = m.node_mut(node);
                     if let Some(op) = node.op_as_mut::<Const>() {
-                        match op.0.datum_type() {
-                            DatumType::TDim => {
+                        if op.0.datum_type() == DatumType::TDim { {
                                 // get inner value to Arc<Tensor>
                                 let mut constant = op.0.as_ref().clone();
                                 // Generally a shape or hyperparam
@@ -752,7 +751,6 @@ impl Parameters {
 
                                 op.0 = constant.into_arc_tensor();
                             }
-                            _ => {}
                         }
                     }
                 }
