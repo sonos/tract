@@ -736,7 +736,31 @@ impl Parameters {
                 let key = typed_model.as_ref().unwrap().get_or_intern_symbol(key);
                 values.set(&key, value);
             }
-            stage!("set", typed_model -> typed_model, |m: TypedModel| {
+            stage!("set", typed_model -> typed_model, |mut m: TypedModel| {
+                for node in m.eval_order()? {
+                    let node = m.node_mut(node);
+                    if node.op_is::<Const>() {
+                        // map option to err
+                        let op = node
+                            .op_as_mut::<Const>()
+                            .unwrap();
+                        // get inner value to Arc<Tensor>
+                        let mut constant = op.0.as_ref().clone();
+
+                        match constant.datum_type() {
+                            DatumType::TDim => {
+                                // Generally a shape or hyperparam
+                                constant
+                                    .as_slice_mut::<tract_onnx::prelude::TDim>()?
+                                    .iter_mut()
+                                    .for_each(|x| *x = x.eval(&values));
+
+                                op.0 = constant.into_arc_tensor();
+                            }
+                            _ => {}
+                        }
+                    }
+                }
                 m.concretize_dims(&values)
             });
             stage!("set-declutter", typed_model -> typed_model, TypedModel::into_decluttered);
