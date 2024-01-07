@@ -740,15 +740,15 @@ impl Parameters {
                 for node in m.eval_order()? {
                     let node = m.node_mut(node);
                     if node.op_is::<Const>() {
-                        // map option to err
+                        // safe to unwrap as we know it is a Const
                         let op = node
                             .op_as_mut::<Const>()
                             .unwrap();
-                        // get inner value to Arc<Tensor>
-                        let mut constant = op.0.as_ref().clone();
 
-                        match constant.datum_type() {
+                        match op.0.datum_type() {
                             DatumType::TDim => {
+                                // get inner value to Arc<Tensor>
+                                let mut constant = op.0.as_ref().clone();
                                 // Generally a shape or hyperparam
                                 constant
                                     .as_slice_mut::<tract_onnx::prelude::TDim>()?
