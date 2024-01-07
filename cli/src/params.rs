@@ -739,12 +739,7 @@ impl Parameters {
             stage!("set", typed_model -> typed_model, |mut m: TypedModel| {
                 for node in m.eval_order()? {
                     let node = m.node_mut(node);
-                    if node.op_is::<Const>() {
-                        // safe to unwrap as we know it is a Const
-                        let op = node
-                            .op_as_mut::<Const>()
-                            .unwrap();
-
+                    if let Some(op) = node.op_as_mut::<Const>() {
                         match op.0.datum_type() {
                             DatumType::TDim => {
                                 // get inner value to Arc<Tensor>
