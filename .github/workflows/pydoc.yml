@@ -12,6 +12,7 @@ jobs:
   build_doc:
     name: Build doc
     runs-on: ubuntu-latest
+    if: github.repository == 'sonos/tract'
 
     steps:
       - uses: actions/checkout@v3
