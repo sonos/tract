@@ -29,7 +29,6 @@ impl Expansion for Pow {
         check_input_arity(inputs, 2)?;
         check_output_arity(outputs, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
-        s.equals(&inputs[0].shape, &outputs[0].shape)?;
 
         s.with(&inputs[0].shape, move |s, a_shape| {
             s.with(&inputs[1].shape, move |s, b_shape| {
