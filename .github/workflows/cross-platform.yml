@@ -39,9 +39,6 @@ jobs:
       id: date
       run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
-    - name: debug env
-      run: env
-
     - name: Configure AWS Credentials
       # if: github.repository == 'sonos/tract'
       continue-on-error: true
