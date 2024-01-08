@@ -43,7 +43,8 @@ jobs:
       run: env
 
     - name: Configure AWS Credentials
-      if: github.repository == 'sonos/tract'
+      # if: github.repository == 'sonos/tract'
+      continue-on-error: true
       uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: arn:aws:iam::567805100031:role/github-runner-tract-ci
@@ -89,7 +90,8 @@ jobs:
     - uses: actions/checkout@v3
 
     - name: Configure AWS Credentials
-      if: github.repository == 'sonos/tract'
+      # if: github.repository == 'sonos/tract'
+      continue-on-error: true
       uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: arn:aws:iam::567805100031:role/github-runner-tract-ci
