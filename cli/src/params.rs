@@ -745,7 +745,7 @@ impl Parameters {
                                 let mut constant = op.0.as_ref().clone();
                                 // Generally a shape or hyperparam
                                 constant
-                                    .as_slice_mut::<tract_onnx::prelude::TDim>()?
+                                    .as_slice_mut::<TDim>()?
                                     .iter_mut()
                                     .for_each(|x| *x = x.eval(&values));
 
