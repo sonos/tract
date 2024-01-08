@@ -89,6 +89,13 @@ jobs:
       id: date
       run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
+    - name: Configure AWS Credentials
+      if: github.repository == 'sonos/tract'
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: arn:aws:iam::567805100031:role/github-runner-tract-ci
+        aws-region: us-east-2
+
     - uses: actions/cache@v3
       with:
         path: |
@@ -105,8 +112,6 @@ jobs:
 
     - name: example tests
       env:
-        AWS_ACCESS_KEY_ID: ${{secrets.TRACT_CI_AWS_ACCESS_KEY_ID}}
-        AWS_SECRET_ACCESS_KEY: ${{secrets.TRACT_CI_AWS_SECRET_ACCESS_KEY}}
         AWS_EC2_METADATA_DISABLED: true
       run: .travis/examples.sh
 
