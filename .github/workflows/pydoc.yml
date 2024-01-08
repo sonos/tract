@@ -22,7 +22,7 @@ jobs:
         if: github.event_name == 'release' && github.event.action == 'published'
         run: echo value=$(echo ${{ github.ref }} | cut -f 3 -d / | tr -d 'v' ) >> $GITHUB_OUTPUT
 
-      - name: Build and publish doc
+      - name: Build doc
         run: |
           git config user.name "CI bot"
           git config user.email ci-bot@tract.rs
@@ -38,4 +38,9 @@ jobs:
           fi
           git fetch
           git rebase --onto origin/gh-pages gh-pages
+
+      - name: Publish doc
+        continue-on-error: true
+        run: |
+          cd api/py
           git push origin -f gh-pages:gh-pages
