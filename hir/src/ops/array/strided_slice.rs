@@ -31,9 +31,13 @@ impl InferenceRulesOp for StridedSlice {
         };
         if let Some(axes_input) = self.optional_axes_input {
             s.given(&inputs[axes_input].value, move |s, axes| {
-                let axes = axes.cast_to::<i64>()?;
-                let axes = axes.as_slice::<i64>()?.iter().map(|a| *a as usize).collect_vec();
+                let axes = axes.cast_to::<i64>()?.into_owned();
                 s.given(&outputs[0].rank, move |s, orank| {
+                    let axes = axes
+                        .as_slice::<i64>()?
+                        .iter()
+                        .map(|a| if *a >= 0 { *a } else { *a + orank } as usize)
+                        .collect_vec();
                     let mut iaxis = 0;
                     for oaxis in 0..orank as usize {
                         while self.shrink_axis_mask & (1 << iaxis) != 0 {
