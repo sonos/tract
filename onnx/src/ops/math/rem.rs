@@ -49,7 +49,7 @@ impl Expansion for RemInt {
             .with_context(|| format!("No super type for {a:?} and {b:?}"))?;
         let wires = tract_hir::ops::binary::wire_rank_broadcast(name, model, inputs)?;
         let wires = tract_hir::ops::binary::wire_cast(name, model, &wires, dt)?;
-        if dt.is_unsigned() {
+        if dt.is_unsigned() || dt == DatumType::TDim {
             return model.wire_node(name, tract_hir::ops::math::rem(), &wires);
         }
         // from onnx runtime:
