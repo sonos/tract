@@ -198,7 +198,12 @@ impl<'a> ParsingContext<'a> {
         for info in &graph.value_info {
             if let Some(TypeProto { value: Some(Value::TensorType(t)), .. }) = &info.r#type {
                 if let Some(outlet) = outlets_by_name.get(&info.name) {
-                    model.set_outlet_fact(*outlet, translate_inference_fact(&ctx, t)?)?;
+                    let mut pbfact = translate_inference_fact(&ctx, t)?;
+                    // be conservative, these are likely to be TDim
+                    if pbfact.datum_type() == Some(i64::datum_type()) {
+                        pbfact = pbfact.without_datum_type();
+                    }
+                    model.set_outlet_fact(*outlet, pbfact)?;
                 }
             }
         }
