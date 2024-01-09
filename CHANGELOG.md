@@ -1,3 +1,6 @@
+# 0.21 - Unreleased
+* MSRV is now 1.75.0
+
 # 0.20.22 - 2023-11-28
 * [ONNX] LayerNormalization support
 
