@@ -3,7 +3,7 @@
 set -ex
 
 export DEBIAN_FRONTEND=noninteractive
-export RUSTUP_TOOLCHAIN=1.65.0
+export RUSTUP_TOOLCHAIN=1.75.0
 
 if [ `whoami` != "root" ]
 then
