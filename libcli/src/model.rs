@@ -82,7 +82,7 @@ pub trait Model:
         if let Some(hir) = self.node_op(id).downcast_ref::<tract_hir::ops::scan::InferenceScan>() {
             return vec![("loop".into(), &hir.body)];
         }
-        #[cfg(feature = "hir")]
+        #[cfg(feature = "onnx")]
         if let Some(hir) = self.node_op(id).downcast_ref::<tract_onnx::ops::logic::If>() {
             return vec![("then".into(), &hir.then_body), ("else".into(), &hir.else_body)];
         }
