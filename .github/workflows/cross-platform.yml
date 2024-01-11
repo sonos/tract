@@ -16,6 +16,7 @@ jobs:
         platform:
           - raspbian
           - aarch64-unknown-linux-gnu
+          - aarch64-unknown-linux-gnu-stretch
           - armv6vfp-unknown-linux-gnueabihf
           - armv7-unknown-linux-gnueabihf
           - armv7-unknown-linux-gnueabihf-stretch

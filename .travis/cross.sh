@@ -103,11 +103,12 @@ case "$PLATFORM" in
         cargo build --target aarch64-apple-darwin
         ;;
 
-    "armv7-unknown-linux-gnueabihf-stretch")
+    "aarch64-unknown-linux-gnu-stretch" | "armv7-unknown-linux-gnueabihf-stretch" )
+        INNER_PLATFORM=${PLATFORM%-stretch}
         (cd .travis/docker-debian-stretch; docker build --tag debian-stretch .)
-        docker run -v `pwd`:/tract -w /tract -e PLATFORM=armv7-unknown-linux-gnueabihf debian-stretch ./.travis/cross.sh 
+        docker run -v `pwd`:/tract -w /tract -e PLATFORM=$INNER_PLATFORM debian-stretch ./.travis/cross.sh 
         sudo chown -R `whoami` .
-        export RUSTC_TRIPLE=armv7-unknown-linux-gnueabihf
+        export RUSTC_TRIPLE=$INNER_PLATFORM
         ;;
 
     "aarch64-unknown-linux-gnu" | "armv6vfp-unknown-linux-gnueabihf" | "armv7-unknown-linux-gnueabihf" | \
