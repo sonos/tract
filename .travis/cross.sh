@@ -106,7 +106,10 @@ case "$PLATFORM" in
     "aarch64-unknown-linux-gnu-stretch" | "armv7-unknown-linux-gnueabihf-stretch" )
         INNER_PLATFORM=${PLATFORM%-stretch}
         (cd .travis/docker-debian-stretch; docker build --tag debian-stretch .)
-        docker run -v `pwd`:/tract -w /tract -e PLATFORM=$INNER_PLATFORM debian-stretch ./.travis/cross.sh 
+        docker run -v `pwd`:/tract -w /tract \
+            -e SKIP_QEMU_TEST=skip \
+            -e PLATFORM=$INNER_PLATFORM debian-stretch \
+            ./.travis/cross.sh
         sudo chown -R `whoami` .
         export RUSTC_TRIPLE=$INNER_PLATFORM
         ;;
@@ -192,9 +195,12 @@ case "$PLATFORM" in
 
         $SUDO apt-get -y install --no-install-recommends qemu-system-arm qemu-user libssl-dev pkg-config $PACKAGES
         rustup target add $RUSTC_TRIPLE
-        qemu-$QEMU_ARCH --version
-        cargo dinghy --platform $PLATFORM $DINGHY_TEST_ARGS test --profile opt-no-lto -p tract-linalg -- --nocapture
-        cargo dinghy --platform $PLATFORM $DINGHY_TEST_ARGS test --profile opt-no-lto -p tract-core
+        if [ -z "$SKIP_QEMU_TEST" ]
+        then
+            qemu-$QEMU_ARCH --version
+            cargo dinghy --platform $PLATFORM $DINGHY_TEST_ARGS test --profile opt-no-lto -p tract-linalg -- --nocapture
+            cargo dinghy --platform $PLATFORM $DINGHY_TEST_ARGS test --profile opt-no-lto -p tract-core
+        fi
 
         # keep lto for these two are they're going to devices.
         cargo dinghy --platform $PLATFORM build --release -p tract -p example-tensorflow-mobilenet-v2
