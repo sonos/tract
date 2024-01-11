@@ -106,6 +106,7 @@ case "$PLATFORM" in
     "armv7-unknown-linux-gnueabihf-stretch")
         (cd .travis/docker-debian-stretch; docker build --tag debian-stretch .)
         docker run -v `pwd`:/tract -w /tract -e PLATFORM=armv7-unknown-linux-gnueabihf debian-stretch ./.travis/cross.sh 
+        sudo chown -R `whoami` .
         export RUSTC_TRIPLE=armv7-unknown-linux-gnueabihf
         ;;
 
