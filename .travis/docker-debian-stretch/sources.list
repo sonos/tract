@@ -1,0 +1,3 @@
+deb http://archive.debian.org/debian/ stretch contrib main non-free
+deb http://archive.debian.org/debian stretch-backports main
+deb http://archive.debian.org/debian-security stretch/updates main

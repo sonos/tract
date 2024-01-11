@@ -103,6 +103,12 @@ case "$PLATFORM" in
         cargo build --target aarch64-apple-darwin
         ;;
 
+    "armv7-unknown-linux-gnueabihf-stretch")
+        (cd .travis/docker-debian-stretch; docker build --tag debian-stretch .)
+        docker run -v `pwd`:/tract -w /tract -e PLATFORM=armv7-unknown-linux-gnueabihf debian-stretch ./.travis/cross.sh 
+        export RUSTC_TRIPLE=armv7-unknown-linux-gnueabihf
+        ;;
+
     "aarch64-unknown-linux-gnu" | "armv6vfp-unknown-linux-gnueabihf" | "armv7-unknown-linux-gnueabihf" | \
         "aarch64-unknown-linux-musl" | "armv7-unknown-linux-musl" )
 
@@ -202,9 +208,13 @@ case "$PLATFORM" in
         ;;
 esac
 
-if [ -n "$AWS_ACCESS_KEY_ID" -a -e "target/$RUSTC_TRIPLE/release/tract" ]
+if [ -e "target/$RUSTC_TRIPLE/release/tract" ]
 then
     export RUSTC_TRIPLE
     TASK_NAME=`.travis/make_bundle.sh`
-    aws s3 cp $TASK_NAME.tgz s3://tract-ci-builds/tasks/$PLATFORM/$TASK_NAME.tgz
+    echo bench task: $TASK_NAME 
+    if [ -n "$AWS_ACCESS_KEY_ID" ]
+    then
+        aws s3 cp $TASK_NAME.tgz s3://tract-ci-builds/tasks/$PLATFORM/$TASK_NAME.tgz
+    fi
 fi
