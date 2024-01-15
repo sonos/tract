@@ -1,6 +1,7 @@
 pub mod erf;
 pub mod leaky_relu;
 pub mod lut;
+pub mod max;
 pub mod mmm;
 pub mod rounding;
 pub mod sigmoid;

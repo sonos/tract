@@ -5,7 +5,7 @@ use tract_data::TractResult;
 
 use crate::LADatum;
 
-use super::element_wise_helper::run_over_slice_with_alignment;
+use super::element_wise_helper::map_slice_with_alignment;
 
 macro_rules! ew_impl_wrap {
     ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr, $params: ty, $run: item) => {
@@ -100,7 +100,7 @@ where
     K: ElementWiseKer<T, Params> + Clone,
 {
     fn run_with_params(&self, vec: &mut [T], params: Params) -> TractResult<()> {
-        run_over_slice_with_alignment(
+        map_slice_with_alignment(
             vec,
             |data| K::run(data, params),
             K::nr(),
