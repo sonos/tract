@@ -1,15 +1,17 @@
-macro_rules! max_impl {
+
+/*macro_rules! max_impl {
     ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr, $cond: expr) => {
-        ew_impl!($ti, $func, $nr, $alignment_items);
+        reduce_impl!($ti, $func, $nr, $alignment_items);
         #[cfg(test)]
         paste! {
             mod [<test_ $func>] {
                 use super::*;
-                sigmoid_frame_tests!($cond, $ti, $func);
+                max_frame_tests!($cond, $ti, $func);
             }
         }
     };
 }
+*/
 
 #[cfg(test)]
 #[macro_use]
@@ -30,6 +32,13 @@ pub mod test {
                     }
                 }
             }
+
+            #[test]
+            fn empty() {
+                if $cond {
+                    $crate::frame::max::test::test_max::<$ker, $t>(&[]).unwrap()
+                }
+            }
         };
     }
 
@@ -43,7 +52,6 @@ pub mod test {
         crate::frame::reduce::test::test_reducer::<K, _>(
             &values,
             <T as Float>::min_value(),
-            |x| x,
             |a, b| a.max(b),
         )
     }

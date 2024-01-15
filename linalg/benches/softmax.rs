@@ -1,0 +1,59 @@
+use criterion::*;
+use tract_data::prelude::*;
+use tract_linalg::frame::reduce::ReduceKer;
+
+#[inline(never)]
+fn loop1_f32(slice: &mut [f32]) -> f32 {
+    let mut max = std::f32::MIN;
+    for x in &*slice {
+        if *x > max {
+            max = *x;
+        }
+    }
+    max
+}
+
+#[inline(never)]
+fn loop2_f32(slice: &mut [f32], max: f32) -> f32 {
+    let mut sum = 0.;
+    for x in slice.iter_mut() {
+        *x = (*x - max).exp();
+        sum = sum + *x;
+    }
+    sum
+}
+
+#[inline(never)]
+fn loop3_f32(slice: &mut [f32], sum: f32) {
+    let recip = sum.recip();
+    for x in slice {
+        *x = *x * recip;
+    }
+}
+
+#[inline(never)]
+fn rust_f32(slice: &mut [f32]) {
+    let max = loop1_f32(slice);
+    let sum = loop2_f32(slice, max);
+    loop3_f32(slice, sum);
+}
+
+fn softmax_f32(c: &mut Criterion) {
+    let mut group = c.benchmark_group("softmax_f32");
+    group.throughput(Throughput::Elements(1500));
+    let mut input = unsafe { Tensor::uninitialized_aligned::<f32>(&[1500], 16).unwrap() };
+    let input = input.as_slice_mut::<f32>().unwrap();
+    group.bench_function("rust", |b| b.iter(|| rust_f32(input)));
+    group.bench_function("loop1/rust", |b| b.iter(|| loop1_f32(input)));
+    #[cfg(target_arch = "aarch64")]
+    group.bench_function("loop1/intr", |b| {
+        b.iter(|| {
+            tract_linalg::arm64::arm64simd_max_f32_16n::red().run(input).unwrap();
+        })
+    });
+    group.bench_function("rust_loop2", |b| b.iter(|| loop2_f32(input, 1.0)));
+    group.bench_function("rust_loop3", |b| b.iter(|| loop3_f32(input, 0.21)));
+}
+
+criterion_group!(benches, softmax_f32);
+criterion_main!(benches);

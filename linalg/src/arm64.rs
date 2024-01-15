@@ -10,12 +10,15 @@ pub use arm64simd::*;
 
 mod leaky_relu;
 pub use leaky_relu::*;
+mod max;
+pub use max::*;
 
 use crate::Ops;
 use crate::f16;
 
 use crate::frame::element_wise::ElementWiseKer;
 use crate::frame::mmm::kernel::MatMatMulKer;
+use crate::frame::reduce::ReduceKer;
 
 // https://en.wikipedia.org/wiki/Comparison_of_ARMv8-A_cores
 const PART_A53: &str = "0xd03";
@@ -229,6 +232,7 @@ pub fn plug(ops: &mut Ops) {
     ops.leaky_relu_f32 = Box::new(|| arm64simd_leaky_relu_f32_8n::ew());
     ops.sigmoid_f32 = Box::new(|| arm64simd_sigmoid_f32_4n::ew());
     ops.tanh_f32 = Box::new(|| arm64simd_tanh_f32_4n::ew());
+    ops.max_f32 = Box::new(|| arm64simd_max_f32_16n::red());
     #[cfg(not(feature = "no_fp16"))]
     if has_fp16() {
         log::info!("ARMv8.2 tanh_f16 and sigmoid_f16 activated");
