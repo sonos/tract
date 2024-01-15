@@ -1,5 +1,4 @@
 #![allow(dead_code, non_upper_case_globals, unused_macros, non_snake_case, unused_assignments)]
-#![feature(aarch64_target_feature)]
 
 use std::arch::asm;
 
@@ -57,6 +56,16 @@ pub unsafe fn armv8(filter: Option<&str>) {
         out("v4") _, out("v5") _, out("v6") _, out("v7") _,
         )
     });
+    s128!("fmax", 4, {
+        asm!("  fmax v0.4s, v1.4s, v1.4s
+                fmax v2.4s, v3.4s, v3.4s
+                fmax v4.4s, v5.4s, v5.4s
+                fmax v6.4s, v7.4s, v7.4s ",
+        out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+        out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+        )
+    });
+    s128!("fmax_with_dep", 1, { asm!("fmax v0.4s, v0.4s, v0.4s", out("v0") _) });
     s128!("fmla", 16, {
         asm!(" fmla v0.4s, v0.4s, v0.4s
                fmla v1.4s, v1.4s, v1.4s
