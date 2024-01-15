@@ -16,7 +16,8 @@ include!(concat!(env!("OUT_DIR"), "/extern_kernel_macro.rs"));
 pub mod frame;
 pub mod generic;
 use frame::element_wise::ElementWiseKer;
-use frame::MatMatMul;
+use frame::reduce::ReduceKer;
+use frame::{reduce, MatMatMul};
 pub use generic::{ScaleShiftAndRound, Scaler};
 #[cfg(target_arch = "x86_64")]
 pub mod x86_64_fma;
@@ -62,6 +63,8 @@ pub struct Ops {
     pub tanh_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32>> + Send + Sync>,
     pub erf_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32>> + Send + Sync>,
     pub lut_u8: Box<dyn Fn(&[u8]) -> Box<dyn lut::Lut> + Send + Sync>,
+
+    pub max_f32: Box<dyn Fn() -> Box<dyn reduce::Reduce<f32>> + Send + Sync>,
 }
 
 impl Ops {
@@ -119,6 +122,7 @@ pub fn generic() -> Ops {
         tanh_f32: Box::new(|| generic::STanh4::ew()),
         erf_f32: Box::new(|| generic::SErf4::ew()),
         lut_u8: Box::new(|table: &[u8]| Box::new(lut::LutImpl::<generic::GenericLut8>::new(table))),
+        max_f32: Box::new(|| generic::max::SMax4::red()),
         /*
         activation_f32: Box::new(|microcode| generic::SActivation::new(microcode))
         */

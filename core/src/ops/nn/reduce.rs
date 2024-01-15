@@ -1,6 +1,7 @@
 use crate::internal::Axis;
 use crate::internal::*;
 use std::convert::TryFrom;
+use std::mem::transmute;
 use tract_data::internal::ClampCast;
 use tract_data::itertools::Itertools;
 use tract_ndarray::prelude::*;
@@ -210,6 +211,12 @@ fn max_t<T>(v: ArrayViewD<T>, _: ()) -> T
 where
     T: Copy + Datum + num_traits::Bounded + ::std::cmp::PartialOrd,
 {
+    if T::datum_type() == f32::datum_type() {
+        if let Some(slice) = v.as_slice() {
+            let slice = unsafe { transmute(slice) };
+            (tract_linalg::ops().max_f32)().run(slice).unwrap();
+        }
+    }
     v.fold(T::min_value(), |acc, &v| if acc > v { acc } else { v })
 }
 
@@ -297,19 +304,23 @@ impl TypedOp for Reduce {
         outputs: &[&TypedFact],
     ) -> TractResult<AxesMapping> {
         let mut letters = 'a'..;
-        let axes = (0..inputs[0].rank()).flat_map(|ix| {
-            if self.axes.contains(&ix) {
-                tvec!(
-                    Axis::new(letters.next().unwrap(), inputs.len(), outputs.len()).input(0, ix),
-                    Axis::new(letters.next().unwrap(), inputs.len(), outputs.len()).output(0, ix),
-                )
-            } else {
-                tvec!(Axis::new(letters.next().unwrap(), inputs.len(), outputs.len())
-                    .input(0, ix)
-                    .output(0, ix))
-            }
-            .into_iter()
-        }).collect_vec();
+        let axes = (0..inputs[0].rank())
+            .flat_map(|ix| {
+                if self.axes.contains(&ix) {
+                    tvec!(
+                        Axis::new(letters.next().unwrap(), inputs.len(), outputs.len())
+                            .input(0, ix),
+                        Axis::new(letters.next().unwrap(), inputs.len(), outputs.len())
+                            .output(0, ix),
+                    )
+                } else {
+                    tvec!(Axis::new(letters.next().unwrap(), inputs.len(), outputs.len())
+                        .input(0, ix)
+                        .output(0, ix))
+                }
+                .into_iter()
+            })
+            .collect_vec();
         AxesMapping::new(1, 1, axes)
     }
 
