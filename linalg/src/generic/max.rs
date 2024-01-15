@@ -28,7 +28,7 @@ impl ReduceKer<f32> for SMax4 {
         a.max(b)
     }
 
-    fn run(x: &mut [f32], _: ()) -> f32 {
+    fn run(x: &[f32], _: ()) -> f32 {
         debug_assert!(x.len() % Self::nr() == 0);
         debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
         *x.iter().max_by(|a, b| a.total_cmp(b)).unwrap()
