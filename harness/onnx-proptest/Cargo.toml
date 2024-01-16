@@ -12,5 +12,5 @@ onnxruntime = { path = "../../../../github/onnxruntime-rs/onnxruntime" }
 onnx-pb = "0.1.4"
 anyhow = "1.0.56"
 prost = "0.11.0"
-tract-onnx = { path = "../../onnx" , version = "=0.21.0" }
+tract-onnx = { path = "../../onnx" , version = "=0.21.1-pre" }
 proptest = "1.0.0"

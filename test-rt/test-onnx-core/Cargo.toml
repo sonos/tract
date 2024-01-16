@@ -7,9 +7,9 @@ edition = "2021"
 
 [dependencies]
 lazy_static.workspace = true
-tract-core = { path = "../../core", version = "=0.21.0" }
-tract-nnef = { path = "../../nnef", version = "=0.21.0" }
-tract-onnx = { path = "../../onnx", version = "=0.21.0" }
+tract-core = { path = "../../core", version = "=0.21.1-pre" }
+tract-nnef = { path = "../../nnef", version = "=0.21.1-pre" }
+tract-onnx = { path = "../../onnx", version = "=0.21.1-pre" }
 suite-onnx = { path = "../suite-onnx" }
 
 [features]

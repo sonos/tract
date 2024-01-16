@@ -1,6 +1,6 @@
 [package]
 name = "tract-pulse-opl"
-version = "0.21.0"
+version = "0.21.1-pre"
 license = "MIT OR Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -16,7 +16,7 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 downcast-rs.workspace = true
 lazy_static.workspace = true
-tract-nnef = { version = "=0.21.0", path = "../nnef" }
+tract-nnef = { version = "=0.21.1-pre", path = "../nnef" }
 
 [features]
 complex = [ "tract-nnef/complex" ]
