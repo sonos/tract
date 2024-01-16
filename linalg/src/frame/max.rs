@@ -49,7 +49,7 @@ pub mod test {
     {
         crate::setup_test_logger();
         let values: Vec<T> = values.iter().copied().map(|x| x.as_()).collect();
-        crate::frame::reduce::test::test_reducer::<K, _>(
+        crate::frame::reduce::test::test_reduce::<K, _>(
             &values,
             <T as Float>::min_value(),
             |a, b| a.max(b),
