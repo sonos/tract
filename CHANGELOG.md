@@ -1,5 +1,6 @@
-# 0.21 - Unreleased
+# 0.21 - 2024-01-16
 * MSRV is now 1.75.0
+* [internal] ConvUnary and MatmulUnary are replaced by binary, potentially dynamic equivalent
 
 # 0.20.22 - 2023-11-28
 * [ONNX] LayerNormalization support
