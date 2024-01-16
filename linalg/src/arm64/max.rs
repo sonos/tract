@@ -29,7 +29,7 @@ reduce_impl_wrap!(
                 bne 1b
             fmax v0.4s, v0.4s, v1.4s
             fmax v2.4s, v2.4s, v3.4s
-            fmax v0.4s, v0.4s, v1.4s // TODO: TEST ME AND FIND THE BUG!
+            fmax v0.4s, v0.4s, v2.4s
             fmaxv s0, v0.4s
             ",
             len = inout(reg) len => _,
