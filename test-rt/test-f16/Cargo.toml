@@ -15,7 +15,7 @@ infra = { path = "../infra" }
 tract-core = { path = "../../core" , version = "=0.21.0" }
 suite-onnx = { path = "../suite-onnx" }
 suite-unit = { path = "../suite-unit" }
-tract-onnx-opl = { path = "../../onnx-opl", version = "=0.20.23-pre" }
+tract-onnx-opl = { path = "../../onnx-opl", version = "=0.21.0" }
 
 [dev-dependencies]
 home.workspace = true
@@ -25,7 +25,7 @@ log.workspace = true
 tflitec.workspace = true
 tract-core = { path = "../../core", version = "=0.21.0" }
 tract-nnef = { path = "../../nnef", version = "=0.21.0" }
-tract-onnx-opl = { path = "../../onnx-opl", version = "=0.20.23-pre" }
+tract-onnx-opl = { path = "../../onnx-opl", version = "=0.21.0" }
 infra = { path = "../infra" }
 suite-onnx = { path = "../suite-onnx" }
 suite-unit = { path = "../suite-unit" }

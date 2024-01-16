@@ -16,8 +16,8 @@ log.workspace = true
 prost.workspace = true
 infra = { path = "../infra" }
 tract-core = { path = "../../core" , version = "=0.21.0" }
-tract-onnx = { path = "../../onnx" , version = "=0.20.23-pre" }
-tract-hir = { path = "../../hir" , version = "=0.20.23-pre" }
+tract-onnx = { path = "../../onnx" , version = "=0.21.0" }
+tract-hir = { path = "../../hir" , version = "=0.21.0" }
 
 [features]
 onnx_1_4_1 = []
