@@ -1,5 +1,6 @@
 #![allow(clippy::missing_safety_doc)]
 #![allow(clippy::redundant_closure_call)]
+#![allow(clippy::len_zero)]
 #[macro_use]
 extern crate derive_new;
 extern crate lazy_static;
