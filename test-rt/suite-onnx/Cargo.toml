@@ -15,7 +15,7 @@ lazy_static.workspace = true
 log.workspace = true
 prost.workspace = true
 infra = { path = "../infra" }
-tract-core = { path = "../../core" , version = "=0.20.23-pre" }
+tract-core = { path = "../../core" , version = "=0.21.0" }
 tract-onnx = { path = "../../onnx" , version = "=0.20.23-pre" }
 tract-hir = { path = "../../hir" , version = "=0.20.23-pre" }
 
