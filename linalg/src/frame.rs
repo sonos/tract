@@ -14,6 +14,8 @@ pub mod reduce;
 #[macro_use]
 pub mod sigmoid;
 #[macro_use]
+pub mod softmax;
+#[macro_use]
 pub mod tanh;
 pub mod element_wise_helper;
 
