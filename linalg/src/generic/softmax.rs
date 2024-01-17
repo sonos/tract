@@ -42,6 +42,6 @@ impl MapReduceKer<f32, f32> for SSoftMaxL2 {
 
 #[cfg(test)]
 #[macro_use]
-pub mod tsoftmax {
+pub mod s {
     softmax_l2_frame_tests!(true, f32, crate::generic::softmax::SSoftMaxL2);
 }

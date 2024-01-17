@@ -37,6 +37,6 @@ impl ReduceKer<f32> for SMax4 {
 
 #[cfg(test)]
 #[macro_use]
-pub mod tmax {
+pub mod s {
     max_frame_tests!(true, f32, crate::generic::max::SMax4);
 }
