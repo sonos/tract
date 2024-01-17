@@ -8,10 +8,10 @@ mod cortex_a55;
 //mod cortex_a73;
 pub use arm64simd::*;
 
-mod leaky_relu;
-pub use leaky_relu::*;
-mod max;
-pub use max::*;
+#[cfg(not(feature = "no_fp16"))]
+mod arm64fp16;
+#[cfg(not(feature = "no_fp16"))]
+pub use arm64fp16::*;
 
 use crate::Ops;
 use crate::f16;
