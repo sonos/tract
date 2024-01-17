@@ -37,7 +37,7 @@ macro_rules! MMMKernel {
             #[derive(Copy, Clone, Debug, new)]
             pub struct $func;
 
-            impl MatMatMulKer<$ti> for $func {
+            impl $crate::frame::mmm::MatMatMulKer<$ti> for $func {
                 #[inline(always)]
                 fn name() -> &'static str {
                     stringify!($func)
@@ -67,9 +67,9 @@ macro_rules! MMMKernel {
                     $end_padding_packed_b
                 }
                 #[inline(always)]
-                fn kernel(spec: &[FusedKerSpec<$ti>]) -> isize {
+                fn kernel(spec: &[$crate::frame::mmm::FusedKerSpec<$ti>]) -> isize {
                     debug_assert!(spec.len() > 0);
-                    debug_assert!(matches!(spec[spec.len() - 1], FusedKerSpec::Done));
+                    debug_assert!(matches!(spec[spec.len() - 1], $crate::frame::mmm::FusedKerSpec::Done));
                     unsafe { [<sys_ $func>]::$func(spec.as_ptr()) }
                 }
                 #[inline(always)]
