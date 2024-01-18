@@ -87,7 +87,7 @@ liquid = "0.26"
 liquid-core = "0.26"
 log = "0.4.14"
 maplit = "1.0.2"
-memmap2 = "0.5"
+memmap2 = "0.9"
 ndarray = "0.15.3"
 ndarray-npy = { version = "0.8.0", features = [ "compressed_npz" ] }
 nom = "7.0.0"
