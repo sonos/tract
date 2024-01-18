@@ -23,6 +23,12 @@ pub mod test {
                     $crate::frame::softmax::test::test_softmax_l2::<$ker, $t>(&[0.0]).unwrap()
                 }
             }
+            #[test]
+            fn two() {
+                if $cond {
+                    $crate::frame::softmax::test::test_softmax_l2::<$ker, $t>(&[16.62555, 21.950674]).unwrap()
+                }
+            }
         };
     }
 
@@ -39,6 +45,7 @@ pub mod test {
         crate::frame::reduce::test::test_map_reduce_params::<K, T, T>(
             &values,
             <T as Float>::min_value(),
+            T::zero(),
             |x| (x - max.as_()).exp(),
             |a, b| a + b,
             max.as_(),

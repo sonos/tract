@@ -1,3 +1,4 @@
+pub mod by_scalar;
 pub mod erf;
 pub mod leaky_relu;
 pub mod lut;
@@ -8,6 +9,7 @@ pub mod sigmoid;
 pub mod softmax;
 pub mod tanh;
 
+pub use self::by_scalar::SMulByScalar4;
 pub use self::erf::SErf4;
 pub use self::leaky_relu::{HLeakyRelu8, SLeakyRelu4};
 pub use self::lut::GenericLut8;

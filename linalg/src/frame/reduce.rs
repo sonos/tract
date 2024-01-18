@@ -171,6 +171,7 @@ where
             |data| K::run(data, params),
             K::nr(),
             K::alignment_bytes(),
+            K::map_neutral(),
             K::neutral(),
             K::reduce_two,
         )
@@ -187,6 +188,7 @@ where
     fn alignment_bytes() -> usize;
     fn alignment_items() -> usize;
     fn nr() -> usize;
+    fn map_neutral() -> T;
     fn neutral() -> T;
     fn reduce_two(a: T, b: T) -> T;
     fn run(vec: &mut [T], params: Params) -> T;
@@ -232,16 +234,18 @@ pub mod test {
 
     pub fn test_map_reduce<K: MapReduceKer<T, ()>, T: LADatum>(
         values: &[T],
+        map_neutral: T,
         neutral: T,
         reference_map: impl Fn(T) -> T,
         reference_reduce: impl Fn(T, T) -> T,
     ) -> TestCaseResult {
-        test_map_reduce_params::<K, T, ()>(values, neutral, reference_map, reference_reduce, ())
+        test_map_reduce_params::<K, T, ()>(values, map_neutral, neutral, reference_map, reference_reduce, ())
     }
 
     pub fn test_map_reduce_params<K: MapReduceKer<T, Params>, T: LADatum, Params>(
         values: &[T],
-        neutral: T,
+        _neutral: T,
+        map_neutral: T,
         reference_map: impl Fn(T) -> T,
         reference_reducer: impl Fn(T, T) -> T,
         params: Params,
@@ -253,13 +257,13 @@ pub mod test {
         let op = K::red();
         let mut found = values.to_vec();
         let expected_values = values.iter().copied().map(reference_map).collect_vec();
-        let expected_reduced = expected_values.iter().fold(neutral, |acc, i| reference_reducer(acc, *i));
+        let expected_reduced = expected_values.iter().fold(map_neutral, |acc, i| reference_reducer(acc, *i));
         let red = op.run_with_params(&mut found, params).unwrap();
         tensor1(&found)
-            .close_enough(&tensor1(&expected_values), true)
+            .close_enough(&tensor1(&expected_values), Approximation::SuperApproximate)
             .map_err(|e| TestCaseError::fail(e.root_cause().to_string()))?;
         tensor0(red)
-            .close_enough(&tensor0(expected_reduced), true)
+            .close_enough(&tensor0(expected_reduced), Approximation::SuperApproximate)
             .map_err(|e| TestCaseError::fail(e.root_cause().to_string()))?;
         Ok(())
     }
