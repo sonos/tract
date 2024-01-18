@@ -1,5 +1,6 @@
 use criterion::*;
 use tract_data::prelude::*;
+use tract_linalg::element_wise::ElementWiseKer;
 use tract_linalg::frame::reduce::{MapReduceKer, ReduceKer};
 
 #[inline(never)]
@@ -64,7 +65,12 @@ fn softmax_f32(c: &mut Criterion) {
     group.bench_function("loop2/generic", |b| {
         b.iter(|| tract_linalg::generic::softmax::SSoftMaxL2::red().run_with_params(input, 10.))
     });
-    group.bench_function("rust_loop3", |b| b.iter(|| loop3_f32(input, 0.21)));
+    group.bench_function("loop3/naive", |b| b.iter(|| loop3_f32(input, 0.21)));
+    group.bench_function("loop3/generic", |b| {
+        b.iter(|| {
+            tract_linalg::generic::by_scalar::SMulByScalar4::ew().run_with_params(input, 0.21)
+        })
+    });
 }
 
 criterion_group!(benches, softmax_f32);

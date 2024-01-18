@@ -87,6 +87,7 @@ pub(crate) fn map_reduce_slice_with_alignment<T>(
     f: impl Fn(&mut [T]) -> T,
     nr: usize,
     alignment_bytes: usize,
+    map_neutral: T,
     neutral: T,
     reduce: impl Fn(T, T) -> T,
 ) -> TractResult<T>
@@ -104,7 +105,7 @@ where
             let tmp = std::slice::from_raw_parts_mut(buffer.buffer as *mut T, nr);
             let mut compute_via_temp_buffer = |slice: &mut [T], red: &mut T| {
                 tmp[..slice.len()].copy_from_slice(slice);
-                tmp[slice.len()..].fill(neutral);
+                tmp[slice.len()..].fill(map_neutral);
                 *red = reduce(*red, f(tmp));
                 slice.copy_from_slice(&tmp[..slice.len()]);
             };

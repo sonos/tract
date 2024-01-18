@@ -17,7 +17,7 @@ include!(concat!(env!("OUT_DIR"), "/extern_kernel_macro.rs"));
 pub mod frame;
 pub mod generic;
 use frame::element_wise::ElementWiseKer;
-use frame::reduce::ReduceKer;
+use frame::reduce::{MapReduceKer, ReduceKer};
 use frame::{reduce, MatMatMul};
 pub use generic::{ScaleShiftAndRound, Scaler};
 #[cfg(target_arch = "x86_64")]
@@ -57,6 +57,8 @@ pub struct Ops {
 
     pub leaky_relu_f16: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f16, f16>> + Send + Sync>,
     pub leaky_relu_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32, f32>> + Send + Sync>,
+    pub mul_by_scalar_f32:
+        Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32, f32>> + Send + Sync>,
 
     pub sigmoid_f16: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f16>> + Send + Sync>,
     pub sigmoid_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32>> + Send + Sync>,
@@ -66,6 +68,8 @@ pub struct Ops {
     pub lut_u8: Box<dyn Fn(&[u8]) -> Box<dyn lut::Lut> + Send + Sync>,
 
     pub max_f32: Box<dyn Fn() -> Box<dyn reduce::Reduce<f32>> + Send + Sync>,
+
+    pub softmax_loop2_f32: Box<dyn Fn() -> Box<dyn reduce::MapReduce<f32, f32>> + Send + Sync>,
 }
 
 impl Ops {
@@ -117,6 +121,7 @@ pub fn generic() -> Ops {
         qmmv_i32: Box::new(|_, _| generic::GenericMmm4x1::<i8, i8, i32>::mmm()),
         leaky_relu_f16: Box::new(|| generic::HLeakyRelu8::ew()),
         leaky_relu_f32: Box::new(|| generic::SLeakyRelu4::ew()),
+        mul_by_scalar_f32: Box::new(|| generic::SMulByScalar4::ew()),
         sigmoid_f16: Box::new(|| generic::HSigmoid8::ew()),
         sigmoid_f32: Box::new(|| generic::SSigmoid4::ew()),
         tanh_f16: Box::new(|| generic::HTanh8::ew()),
@@ -127,6 +132,7 @@ pub fn generic() -> Ops {
         /*
         activation_f32: Box::new(|microcode| generic::SActivation::new(microcode))
         */
+        softmax_loop2_f32: Box::new(|| generic::softmax::SSoftMaxL2::red()),
     }
 }
 
