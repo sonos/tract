@@ -363,13 +363,6 @@ fn declutter_pow(
                 &[node.inputs[0]],
                 square(),
             )?));
-        } else if b == 3.0 {
-            return Ok(Some(TypedModelPatch::replace_single_op(
-                model,
-                node,
-                &[node.inputs[0]],
-                cube(),
-            )?));
         } else if b == 0.5 {
             return Ok(Some(TypedModelPatch::replace_single_op(
                 model,
@@ -411,14 +404,6 @@ element_wise!(square, Square, [f16, f32, f64] => |_, xs| {
     Ok(())
 };
 q: [i8, u8, i32, i32] => |f : f32| f.powi(2);
-validation: Validation::Rounding
-);
-
-element_wise!(cube, Cube, [f16, f32, f64] => |_, xs| {
-    xs.iter_mut().for_each(|x| *x = x.powi(3));
-    Ok(())
-};
-q: [i8, u8, i32, i32] => |f : f32| f.powi(3);
 validation: Validation::Rounding
 );
 
