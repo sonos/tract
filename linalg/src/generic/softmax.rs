@@ -1,3 +1,5 @@
+use tract_data::internal::{tensor0, Approximation};
+
 use crate::frame::reduce::MapReduceKer;
 
 #[derive(Clone, Debug)]
@@ -38,11 +40,83 @@ impl MapReduceKer<f32, f32> for SSoftMaxL2 {
         let mut sum = 0.;
         for v in x.iter_mut() {
             let y = *v - max;
-            let y = y.exp();
+            //            let y = y.exp();
+            let y = xnnpack_loop2_exp(y);
             *v = y;
             sum += y;
         }
         sum
+    }
+}
+
+// https://github.com/google/XNNPACK/blob/3bc4ef01bbdf488556c54584fc2419dd77c39c85/src/f32-raddstoreexpminusmax/scalar-rr2-p5.c.in#L131
+// https://github.com/google/XNNPACK/blob/8951decff5114f70bae7cc2e23b732812e73acc7/src/microparams-init.c#L4121
+#[inline]
+#[allow(dead_code, non_upper_case_globals)]
+fn xnnpack_loop2_exp(vx: f32) -> f32 {
+    debug_assert!(vx <= 0f32);
+    const log2e: f32 = hexf::hexf32!("0x1.715476p+0");
+    const magic_bias: f32 = hexf::hexf32!("0x1.8000FEp23");
+    const minus_ln2_hi: f32 = hexf::hexf32!("-0x1.62E400p-1");
+    const minus_ln2_lo: f32 = hexf::hexf32!("-0x1.7F7D1Cp-20");
+    const c5: f32 = hexf::hexf32!("0x1.0F9F9Cp-7");
+    const c4: f32 = hexf::hexf32!("0x1.573A1Ap-5");
+    const c3: f32 = hexf::hexf32!("0x1.555A80p-3");
+    const c2: f32 = hexf::hexf32!("0x1.FFFDC6p-2");
+    const c1: f32 = hexf::hexf32!("0x1.FFFFF6p-1");
+    const denorm_cutoff: f32 = hexf::hexf32!("-0x1.5D589Ep6");
+
+    // Compute reduced argument n := round(x / log(2)).
+    // We do it by adding a large number (magic bias) to the product x * (1/log(2)), which cause rounding of the result
+    // to an integer, then subtracing the large number back. The trick with adding large number is valid only within
+    // certain bounds (|x| <= 2**22), but that's ok, because inputs outside of [-87.336540, 0.0] underflow expf(x)
+    // anyway. We fixup the result for such inputs at the very end of the algorithm.
+    // float vn = vx * vlog2e + vmagic_bias;
+    let mut vn: f32 = vx * log2e + magic_bias;
+
+    // Create a floating-point number s (scale) such that s == 2**n for inputs which don't cause underflow, i.e.
+    // -87.33642 <= x <= 0.0, and -126 <= n <= 0 accordingly.
+    // const float vs = uint32_as_float(float_as_uint32(vn) << 23);
+    let vs = f32::from_bits(vn.to_bits() << 23);
+
+    // Subtract the large number back to get final n := round(x / log(2)).
+    // vn -= vmagic_bias;
+    vn -= magic_bias;
+
+    // Compute reduced argument t := x - n * log(2).
+    // Use Cody-Waite range reduction method (note two constants to represent log(2)) to improve accuracy.
+    // float vt = vn * vminus_ln2_hi + vx;
+    let mut vt = vn * minus_ln2_hi + vx;
+    //vt = vn * vminus_ln2_lo + vt;
+    vt = vn * minus_ln2_lo + vt;
+
+    // Compute degree-5 polynomial approximation for exp(t) on [-log(2)/2, log(2)/2].
+    let mut vp = c5 * vt + c4;
+    vp = vp * vt + c2;
+    vp = vp * vt + c2;
+    vp = vp * vt + c1;
+
+    // Reconstruct the final f value:
+    //   f = s * (1 + t * (c1 + t * (c2 + t * (c3 + t * (c4 + t * c5)))))
+    //     = s + (t * s) * (c1 + t * (c2 + t * (c3 + t * (c4 + t * c5))))
+    //     = s + (t * s) * p
+    vt *= vs;
+    // float vf = vt * vp + vs;
+    let mut vf = vt * vp + vs;
+
+    // For inputs below denormal cutoff, replace output with +0.0f.
+    // Note that for NaN inputs, comparison result is false, and outputs are left unchanged.
+    if vx < denorm_cutoff {
+        vf = 0.0;
+    }
+    vf
+}
+
+#[cfg(test)]
+proptest::proptest! {
+    #[test]
+    fn t_xnnpack(x in -100f32..0.) {
+        tensor0(xnnpack_loop2_exp(x)).close_enough(&tensor0(x.exp()), Approximation::Approximate).unwrap();
     }
 }
 
