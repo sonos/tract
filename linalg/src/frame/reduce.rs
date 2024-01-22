@@ -172,7 +172,7 @@ where
             K::nr(),
             K::alignment_bytes(),
             K::map_neutral(),
-            K::neutral(),
+            K::reduce_neutral(),
             K::reduce_two,
         )
     }
@@ -189,7 +189,7 @@ where
     fn alignment_items() -> usize;
     fn nr() -> usize;
     fn map_neutral() -> T;
-    fn neutral() -> T;
+    fn reduce_neutral() -> T;
     fn reduce_two(a: T, b: T) -> T;
     fn run(vec: &mut [T], params: Params) -> T;
     fn red() -> Box<dyn MapReduce<T, Params>> {
