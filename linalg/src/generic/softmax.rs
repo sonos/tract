@@ -26,7 +26,7 @@ impl MapReduceKer<f32, f32> for SSoftMaxL2 {
         f32::MIN
     }
 
-    fn neutral() -> f32 {
+    fn reduce_neutral() -> f32 {
         0.
     }
 
