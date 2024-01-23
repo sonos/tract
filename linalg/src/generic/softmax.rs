@@ -1,5 +1,3 @@
-use tract_data::internal::{tensor0, Approximation};
-
 use crate::frame::reduce::MapReduceKer;
 
 #[derive(Clone, Debug)]
@@ -41,7 +39,9 @@ impl MapReduceKer<f32, f32> for SSoftMaxL2 {
         for v in x.iter_mut() {
             let y = *v - max;
             //            let y = y.exp();
-            let y = xnnpack_loop2_exp(y);
+            // let y = xnnpack_loop2_exp(y);
+            // let y = expf(y);
+            let y = very_fast_exp(y);
             *v = y;
             sum += y;
         }
@@ -116,14 +116,15 @@ fn xnnpack_loop2_exp(vx: f32) -> f32 {
 proptest::proptest! {
     #[test]
     fn t_xnnpack(x in -100f32..0.) {
+        use tract_data::internal::{tensor0, Approximation};
         tensor0(xnnpack_loop2_exp(x)).close_enough(&tensor0(x.exp()), Approximation::Approximate).unwrap();
     }
 }
 
 // ported from https://github.com/gnuradio/volk/blob/master/kernels/volk/volk_32f_expfast_32f.h
-#[inline]
+#[inline(never)]
 #[allow(dead_code)]
-fn very_fast_exp(v: f32) -> f32 {
+pub fn very_fast_exp(v: f32) -> f32 {
     const MLN2: f32 = 0.6931471805f32;
     const A: f32 = 8388608.0f32;
     const B: f32 = 1065353216.0f32;
@@ -162,6 +163,156 @@ fn exp2_p7(v: f32) -> f32 {
     v = v * fpart + EXP2P[6];
     v = v * two_pow_ipart;
     v
+}
+
+#[cfg_attr(all(test, assert_no_panic), no_panic::no_panic)]
+pub fn scalbnf(mut x: f32, mut n: i32) -> f32 {
+    let x1p127 = f32::from_bits(0x7f000000); // 0x1p127f === 2 ^ 127
+    let x1p_126 = f32::from_bits(0x800000); // 0x1p-126f === 2 ^ -126
+    let x1p24 = f32::from_bits(0x4b800000); // 0x1p24f === 2 ^ 24
+
+    if n > 127 {
+        x *= x1p127;
+        n -= 127;
+        if n > 127 {
+            x *= x1p127;
+            n -= 127;
+            if n > 127 {
+                n = 127;
+            }
+        }
+    } else if n < -126 {
+        x *= x1p_126 * x1p24;
+        n += 126 - 24;
+        if n < -126 {
+            x *= x1p_126 * x1p24;
+            n += 126 - 24;
+            if n < -126 {
+                n = -126;
+            }
+        }
+    }
+    x * f32::from_bits(((0x7f + n) as u32) << 23)
+}
+
+macro_rules! force_eval {
+    ($e:expr) => {
+        unsafe { ::core::ptr::read_volatile(&$e) }
+    };
+}
+
+macro_rules! i {
+    ($array:expr, $index:expr) => {
+        unsafe { *$array.get_unchecked($index) }
+    };
+    ($array:expr, $index:expr, = , $rhs:expr) => {
+        unsafe {
+            *$array.get_unchecked_mut($index) = $rhs;
+        }
+    };
+    ($array:expr, $index:expr, += , $rhs:expr) => {
+        unsafe {
+            *$array.get_unchecked_mut($index) += $rhs;
+        }
+    };
+    ($array:expr, $index:expr, -= , $rhs:expr) => {
+        unsafe {
+            *$array.get_unchecked_mut($index) -= $rhs;
+        }
+    };
+    ($array:expr, $index:expr, &= , $rhs:expr) => {
+        unsafe {
+            *$array.get_unchecked_mut($index) &= $rhs;
+        }
+    };
+    ($array:expr, $index:expr, == , $rhs:expr) => {
+        unsafe { *$array.get_unchecked_mut($index) == $rhs }
+    };
+}
+
+/// Exponential, base *e* (f32)
+///
+/// Calculate the exponential of `x`, that is, *e* raised to the power `x`
+/// (where *e* is the base of the natural system of logarithms, approximately 2.71828).
+#[cfg_attr(all(test, assert_no_panic), no_panic::no_panic)]
+pub fn expf(mut x: f32) -> f32 {
+    const HALF: [f32; 2] = [0.5, -0.5];
+    const LN2_HI: f32 = 6.9314575195e-01; /* 0x3f317200 */
+    const LN2_LO: f32 = 1.4286067653e-06; /* 0x35bfbe8e */
+    const INV_LN2: f32 = 1.4426950216e+00; /* 0x3fb8aa3b */
+    /*
+     * Domain [-0.34568, 0.34568], range ~[-4.278e-9, 4.447e-9]:
+     * |x*(exp(x)+1)/(exp(x)-1) - p(x)| < 2**-27.74
+     */
+    const P1: f32 = 1.6666625440e-1; /*  0xaaaa8f.0p-26 */
+    const P2: f32 = -2.7667332906e-3; /* -0xb55215.0p-32 */
+
+    let x1p127 = f32::from_bits(0x7f000000); // 0x1p127f === 2 ^ 127
+    let x1p_126 = f32::from_bits(0x800000); // 0x1p-126f === 2 ^ -126  /*original 0x1p-149f    ??????????? */
+    let mut hx = x.to_bits();
+    let sign = (hx >> 31) as i32; /* sign bit of x */
+    let signb: bool = sign != 0;
+    hx &= 0x7fffffff; /* high word of |x| */
+
+    /* special cases */
+    if hx >= 0x42aeac50 {
+        /* if |x| >= -87.33655f or NaN */
+        if hx > 0x7f800000 {
+            /* NaN */
+            return x;
+        }
+        if (hx >= 0x42b17218) && (!signb) {
+            /* x >= 88.722839f */
+            /* overflow */
+            x *= x1p127;
+            return x;
+        }
+        if signb {
+            /* underflow */
+            force_eval!(-x1p_126 / x);
+            if hx >= 0x42cff1b5 {
+                /* x <= -103.972084f */
+                return 0.;
+            }
+        }
+    }
+
+    /* argument reduction */
+    let k: i32;
+    let hi: f32;
+    let lo: f32;
+    if hx > 0x3eb17218 {
+        /* if |x| > 0.5 ln2 */
+        if hx > 0x3f851592 {
+            /* if |x| > 1.5 ln2 */
+            k = (INV_LN2 * x + i!(HALF, sign as usize)) as i32;
+        } else {
+            k = 1 - sign - sign;
+        }
+        let kf = k as f32;
+        hi = x - kf * LN2_HI; /* k*ln2hi is exact here */
+        lo = kf * LN2_LO;
+        x = hi - lo;
+    } else if hx > 0x39000000 {
+        /* |x| > 2**-14 */
+        k = 0;
+        hi = x;
+        lo = 0.;
+    } else {
+        /* raise inexact */
+        force_eval!(x1p127 + x);
+        return 1. + x;
+    }
+
+    /* x is now in primary range */
+    let xx = x * x;
+    let c = x - xx * (P1 + xx * P2);
+    let y = 1. + (x * c / (2. - c) - lo + hi);
+    if k == 0 {
+        y
+    } else {
+        scalbnf(y, k)
+    }
 }
 
 #[cfg(test)]
