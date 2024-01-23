@@ -32,8 +32,9 @@ pub mod test {
                     .unwrap()
                 }
             }
+
             #[test]
-            fn two_weird() {
+            fn two_missing_max() {
                 if $cond {
                     $crate::frame::softmax::test::test_softmax_l2::<$ker, $t>(&[
                         -46.15512, 42.875168
