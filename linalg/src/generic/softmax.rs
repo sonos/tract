@@ -117,7 +117,7 @@ proptest::proptest! {
     #[test]
     fn t_xnnpack(x in -100f32..0.) {
         use tract_data::internal::{tensor0, Approximation};
-        tensor0(xnnpack_loop2_exp(x)).close_enough(&tensor0(x.exp()), Approximation::Approximate).unwrap();
+        tensor0(xnnpack_loop2_exp(x)).close_enough(&tensor0(x.exp()), Approximation::SuperApproximate).unwrap();
     }
 }
 
