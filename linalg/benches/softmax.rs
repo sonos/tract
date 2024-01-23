@@ -65,11 +65,27 @@ fn softmax_f32(c: &mut Criterion) {
     group.bench_function("loop2/generic", |b| {
         b.iter(|| tract_linalg::generic::softmax::SSoftMaxL2::red().run_with_params(input, 10.))
     });
+    #[cfg(target_arch = "x86_64")]
+    group.bench_function("loop2/iasm", |b| {
+        b.iter(|| {
+            tract_linalg::x86_64_fma::softmax::x86_64_fma_softmax2_fastcompact_f32_32n::red()
+                .run_with_params(input, 10.)
+                .unwrap()
+        });
+    });
     group.bench_function("loop3/naive", |b| b.iter(|| loop3_f32(input, 0.21)));
     group.bench_function("loop3/generic", |b| {
         b.iter(|| {
             tract_linalg::generic::by_scalar::SMulByScalar4::ew().run_with_params(input, 0.21)
         })
+    });
+    #[cfg(target_arch = "x86_64")]
+    group.bench_function("loop3/iasm", |b| {
+        b.iter(|| {
+            tract_linalg::x86_64_fma::by_scalar::x86_64_avx_f32_mul_by_scalar_32n::ew()
+                .run_with_params(input, 0.21)
+                .unwrap()
+        });
     });
 }
 
