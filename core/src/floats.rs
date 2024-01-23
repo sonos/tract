@@ -7,9 +7,22 @@ use crate::ops::einsum::EinSum;
 use crate::ops::konst::Const;
 use crate::ops::scan::Scan;
 use crate::ops::source::TypedSource;
+use crate::transform::ModelTransformer;
 
 #[derive(Debug, Default)]
 pub struct FloatPrecisionTranslator<T1: Datum + Float, T2: Datum + Float>(PhantomData<(T1, T2)>);
+
+impl<T1: Datum + Float, T2: Datum + Float> ModelTransformer for FloatPrecisionTranslator<T1, T2> {
+    fn name(&self) -> Cow<str> {
+        format!("{:?}-to-{:?}", T1::datum_type(), T2::datum_type()).into()
+    }
+
+    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        let new = self.translate_model(model)?;
+        *model = new;
+        Ok(())
+    }
+}
 
 impl<T1: Datum + Float, T2: Datum + Float>
     Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>>

@@ -617,13 +617,13 @@ impl Parameters {
         macro_rules! stage {
             ($name:expr, $from:ident -> $to:ident, $block:expr) => {
                 if let Some(from) = $from.take() {
-                    info!(concat!("Running '", $name, "'"));
+                    info!("Running {:?}", $name);
                     let mut last_model: Option<Box<dyn Model>> =
                         if keep_last { Some(Box::new(from.as_ref().clone())) } else { None };
                     let block: &dyn Fn(_) -> TractResult<_> = &$block;
                     let owned_model =
                         Arc::try_unwrap(from).unwrap_or_else(|from| from.as_ref().clone());
-                    match block(owned_model).context(concat!("Error at stage ", $name)) {
+                    match block(owned_model).with_context(|| format!("Error at stage {:?}", $name)) {
                         Ok(it) => {
                             $to = Some(Arc::new(it));
                         }
@@ -637,7 +637,7 @@ impl Parameters {
                             }
                         }
                     }
-                    info_usage(concat!("after ", $name), probe);
+                    info_usage(&format!("after {:?}", $name), probe);
                     if reference_stage.as_deref() == Some($name) {
                         reference_model = Some($to.as_ref().unwrap().clone());
                     }
@@ -723,6 +723,14 @@ impl Parameters {
                 use tract_core::model::translator::Translate;
                 tract_core::floats::FloatPrecisionTranslator::<f16, f32>::default().translate_model(&m)
             });
+        }
+        if let Some(transform) = matches.values_of("transform") {
+            for transform in transform {
+                stage!(transform, typed_model -> typed_model, |m:TypedModel| {
+                    let transformer = tract_core::transform::get_transformer(transform).with_context(|| format!("Could not find transformer named {}", transform))?;
+                    transformer.transform_into(&m)
+                });
+            }
         }
         if let Some(set) = matches.values_of("set") {
             let mut values = SymbolValues::default();

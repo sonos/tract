@@ -1,12 +1,9 @@
-//use tract_core::ops::nn::Softmax;
 use crate::internal::*;
 
 #[derive(Debug, Clone, new, Hash)]
 pub struct Softmax {
     axis: isize,
 }
-
-
 
 impl Expansion for Softmax {
     fn name(&self) -> Cow<str> {
@@ -54,7 +51,11 @@ impl Expansion for Softmax {
 
         target.wire_node(
             name,
-            tract_core::ops::nn::Softmax { axes: tvec![axis], quant_output_dt },
+            tract_core::ops::nn::Softmax {
+                axes: tvec![axis],
+                quant_output_dt,
+                ..tract_core::ops::nn::Softmax::default()
+            },
             inputs,
         )
     }

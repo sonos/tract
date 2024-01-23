@@ -4,7 +4,7 @@ mod softmax;
 
 pub use self::data_formats::{BaseDataShape, DataFormat, DataShape, SymDataShape};
 pub use self::reduce::{Reduce, Reducer};
-pub use self::softmax::Softmax;
+pub use self::softmax::{Softmax, SoftmaxExp};
 
 pub use crate::internal::*;
 

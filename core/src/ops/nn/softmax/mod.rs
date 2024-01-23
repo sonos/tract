@@ -12,10 +12,19 @@ use std::fmt::Debug;
 use crate::internal::*;
 use ndarray::prelude::*;
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Copy, Clone, Hash, Default, PartialEq)]
+pub enum SoftmaxExp {
+    #[default]
+    Libc,
+    // https://nic.schraudolph.org/pubs/Schraudolph99.pdf
+    FastCompact,
+}
+
+#[derive(Debug, Clone, new, Hash, Default)]
 pub struct Softmax {
     pub axes: TVec<usize>,
     pub quant_output_dt: Option<DatumType>,
+    pub exp: SoftmaxExp,
 }
 
 impl Op for Softmax {
@@ -24,7 +33,7 @@ impl Op for Softmax {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("Axis: {:?}", self.axes)])
+        Ok(vec![format!("Axis: {:?}", self.axes), format!("Exp impl: {:?}", self.exp)])
     }
 
     op_as_typed_op!();
@@ -135,7 +144,7 @@ impl Softmax {
                 view.as_slice_mut().filter(|_| T::datum_type() == f32::datum_type())
             {
                 let slice: &mut [f32] = unsafe { std::mem::transmute(slice) };
-                softmax_inner_slice_f32(slice)?;
+                self.softmax_inner_slice_f32(slice)?;
             } else {
                 softmax_inner(view);
             }
@@ -176,14 +185,27 @@ impl Softmax {
         unsafe { output_tensor.set_datum_type(output_dt) };
         Ok(tvec!(output_tensor.into_tvalue()))
     }
-}
 
-fn softmax_inner_slice_f32(slice: &mut [f32]) -> TractResult<()> {
-    let max = (tract_linalg::ops().max_f32)().run(slice)?;
-    let sum = (tract_linalg::ops().softmax_loop2_f32)().run_with_params(slice, max)?;
-    let rsum = sum.recip();
-    (tract_linalg::ops().mul_by_scalar_f32)().run_with_params(slice, rsum)?;
-    Ok(())
+    fn softmax_inner_slice_f32(&self, slice: &mut [f32]) -> TractResult<()> {
+        let max = (tract_linalg::ops().max_f32)().run(slice)?;
+        let sum = match self.exp {
+            SoftmaxExp::Libc => {
+                let mut s = 0f32;
+                for x in slice.iter_mut() {
+                    let y = (*x - max).exp();
+                    s += y;
+                    *x = y;
+                }
+                s
+            }
+            SoftmaxExp::FastCompact => {
+                (tract_linalg::ops().softmax2_fastcompact_f32)().run_with_params(slice, max)?
+            }
+        };
+        let rsum = sum.recip();
+        (tract_linalg::ops().mul_by_scalar_f32)().run_with_params(slice, rsum)?;
+        Ok(())
+    }
 }
 
 fn softmax_inner<T: Float + Datum + std::iter::Sum, D: Dimension>(mut view: ArrayViewMut<T, D>) {
