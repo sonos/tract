@@ -17,7 +17,6 @@ maintenance = { status = "actively-developed" }
 derive-new.workspace = true
 downcast-rs.workspace = true
 dyn-clone.workspace = true
-hexf.workspace = true
 lazy_static.workspace = true
 log.workspace = true
 num-traits.workspace = true
