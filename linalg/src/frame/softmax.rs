@@ -26,7 +26,19 @@ pub mod test {
             #[test]
             fn two() {
                 if $cond {
-                    $crate::frame::softmax::test::test_softmax_l2::<$ker, $t>(&[16.62555, 21.950674]).unwrap()
+                    $crate::frame::softmax::test::test_softmax_l2::<$ker, $t>(&[
+                        16.62555, 21.950674,
+                    ])
+                    .unwrap()
+                }
+            }
+            #[test]
+            fn two_weird() {
+                if $cond {
+                    $crate::frame::softmax::test::test_softmax_l2::<$ker, $t>(&[
+                        -46.15512, 42.875168
+                    ])
+                    .unwrap()
                 }
             }
         };
@@ -39,6 +51,7 @@ pub mod test {
         f32: AsPrimitive<T>,
         T: AsPrimitive<f32>,
     {
+        use crate::generic::softmax::very_fast_exp;
         crate::setup_test_logger();
         let max = values.iter().max_by(|a, b| a.total_cmp(b)).unwrap();
         let values: Vec<T> = values.iter().copied().map(|x| x.as_()).collect();
@@ -46,7 +59,8 @@ pub mod test {
             &values,
             <T as Float>::min_value(),
             T::zero(),
-            |x| (x - max.as_()).exp(),
+            //            |x| (x - max.as_()).exp(),
+            |x| very_fast_exp(dbg!(x).as_() - max).as_(),
             |a, b| a + b,
             max.as_(),
         )

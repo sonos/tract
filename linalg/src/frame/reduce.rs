@@ -136,6 +136,45 @@ where
     }
 }
 
+macro_rules! map_reduce_impl_wrap {
+    ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr, $params: ty, $map_neutral: expr, $reduce_neutral: expr, $run: item, $reduce_two: item) => {
+        paste! {
+            #[derive(Copy, Clone, Debug)]
+            #[allow(non_camel_case_types)]
+            pub struct $func;
+
+            impl crate::frame::reduce::MapReduceKer<$ti, $params> for $func {
+                #[inline(always)]
+                fn name() -> &'static str {
+                    stringify!($func)
+                }
+                #[inline(always)]
+                fn nr() -> usize {
+                    $nr
+                }
+                #[inline(always)]
+                fn alignment_items() -> usize {
+                    $alignment_items
+                }
+                #[inline(always)]
+                fn alignment_bytes() -> usize {
+                    $alignment_items * std::mem::size_of::<$ti>()
+                }
+                #[inline(always)]
+                fn map_neutral() -> $ti {
+                    $map_neutral
+                }
+                #[inline(always)]
+                fn reduce_neutral() -> $ti {
+                    $reduce_neutral
+                }
+                $run
+                $reduce_two
+            }
+        }
+    };
+}
+
 pub trait MapReduce<T, Params = ()>: Send + Sync + Debug + dyn_clone::DynClone
 where
     Params: Copy + Send + Sync + Debug + 'static + Default,

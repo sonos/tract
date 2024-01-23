@@ -1,11 +1,14 @@
 use crate::frame::element_wise::ElementWiseKer;
 use crate::frame::mmm::kernel::MatMatMulKer;
+use crate::frame::reduce::MapReduceKer;
+use crate::x86_64_fma::softmax::x86_64_fma_softmaxl2_f32_32n;
 use crate::Ops;
 
 pub mod mmm;
 
 mod intel;
 pub mod max;
+pub mod softmax;
 
 tanh_impl!(f32, fma_tanh_f32, 8, 8, is_x86_feature_detected!("fma"));
 sigmoid_impl!(f32, fma_sigmoid_f32, 8, 8, is_x86_feature_detected!("fma"));
@@ -91,6 +94,8 @@ fn plug_fma(ops: &mut Ops) {
 
     ops.sigmoid_f32 = Box::new(|| fma_sigmoid_f32::ew());
     ops.tanh_f32 = Box::new(|| fma_tanh_f32::ew());
+
+    ops.softmax_loop2_f32 = Box::new(|| x86_64_fma_softmaxl2_f32_32n::red());
     log::info!("mmm_f32, mmv_f32, sigmoid_f32, tanh_f32: x86_64/fma activated");
 }
 
