@@ -131,10 +131,11 @@ impl Softmax {
             }
         }
 
-        let mut output = input.into_tensor().into_array::<T>()?;
+        let mut output = input.into_tensor();
+        let mut view = output.to_array_view_mut::<T>()?;
 
         for it_coords in tract_ndarray::indices(&*iterating_shape) {
-            let mut view = output.view_mut();
+            let mut view = view.view_mut();
             for ix in 0..iterating_shape.len() {
                 if !self.axes.contains(&ix) {
                     view.collapse_axis(Axis(ix), it_coords[ix]);
