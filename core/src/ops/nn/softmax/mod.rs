@@ -365,7 +365,8 @@ mod test {
         fn check(&self) -> Result<()> {
             let inputs = tvec!(self.data.clone().into_tvalue());
             let quant_output_dt = Some(self.output_dt).filter(|dt| !dt.is_float());
-            let softmax = Softmax { axes: self.axes.clone(), quant_output_dt };
+            let softmax =
+                Softmax { axes: self.axes.clone(), quant_output_dt, ..Softmax::default() };
 
             // Compute quantized output
             let result = softmax.eval(inputs)?;
@@ -375,7 +376,7 @@ mod test {
             // Compute reference output
             let input_float = self.data.cast_to::<f32>()?;
             let inputs_float = tvec!(input_float.into_owned().into_tvalue());
-            let softmax_float = Softmax { axes: self.axes.clone(), quant_output_dt: None };
+            let softmax_float = Softmax { axes: self.axes.clone(), ..Softmax::default() };
             let reference_float = softmax_float.eval(inputs_float)?;
             let reference_array = args_1!(reference_float);
             let reference = reference_array.to_array_view::<f32>()?;
