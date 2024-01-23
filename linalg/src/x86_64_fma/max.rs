@@ -2,7 +2,7 @@ reduce_impl_wrap!(
     f32,
     x86_64_fma_max_f32_32n,
     32,
-    32,
+    8,
     (),
     f32::MIN,
     #[inline(never)]
@@ -56,7 +56,6 @@ unsafe fn x86_64_fma_max_f32_32n_run(buf: &[f32]) -> f32 {
     out("ymm4") _, out("ymm5") _, out("ymm6") _, out("ymm7") _
     );
     acc
-
 }
 
 #[cfg(test)]

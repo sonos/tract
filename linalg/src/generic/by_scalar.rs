@@ -30,6 +30,6 @@ impl ElementWiseKer<f32, f32> for SMulByScalar4 {
 
 #[cfg(test)]
 #[macro_use]
-pub mod s {
+pub mod mul_by_scalar_f32 {
     mul_by_scalar_frame_tests!(true, f32, crate::generic::by_scalar::SMulByScalar4);
 }
