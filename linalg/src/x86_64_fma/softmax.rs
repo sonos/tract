@@ -1,6 +1,6 @@
 map_reduce_impl_wrap!(
     f32,
-    x86_64_fma_softmaxl2_f32_32n,
+    x86_64_fma_softmax2_fastcompact_f32_32n,
     32,
     8,
     f32,
@@ -10,7 +10,7 @@ map_reduce_impl_wrap!(
     fn run(buf: &mut [f32], max: f32) -> f32 {
         assert!(buf.len() % 32 == 0);
         assert!(buf.len() > 0);
-        unsafe { x86_64_fma_softmaxl2_f32_32n_run(buf, max) }
+        unsafe { x86_64_fma_softmax2_fastcompact_f32_32n_run(buf, max) }
     },
     #[inline(never)]
     fn reduce_two(a: f32, b: f32) -> f32 {
@@ -19,7 +19,7 @@ map_reduce_impl_wrap!(
 );
 
 #[target_feature(enable = "avx,fma")]
-unsafe fn x86_64_fma_softmaxl2_f32_32n_run(buf: &mut [f32], max: f32) -> f32 {
+unsafe fn x86_64_fma_softmax2_fastcompact_f32_32n_run(buf: &mut [f32], max: f32) -> f32 {
     let len = buf.len();
     let ptr = buf.as_ptr();
     let mut acc = 0f32;
@@ -109,7 +109,7 @@ unsafe fn x86_64_fma_softmaxl2_f32_32n_run(buf: &mut [f32], max: f32) -> f32 {
 }
 
 #[cfg(test)]
-mod test_x86_64_fma_softmaxl2_f32_32n {
+mod test_x86_64_fma_softmax2_fastcompact_f32_32n {
     use super::*;
-    softmax_l2_frame_tests!(is_x86_feature_detected!("fma"), f32, x86_64_fma_softmaxl2_f32_32n);
+    softmax_l2_frame_tests!(is_x86_feature_detected!("fma"), f32, x86_64_fma_softmax2_fastcompact_f32_32n);
 }
