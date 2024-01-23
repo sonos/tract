@@ -7,7 +7,7 @@ use tract_core::ops::array::PadMode;
 use tract_core::ops::cnn::deconv::adjustments;
 use tract_core::ops::cnn::PaddingSpec;
 use tract_core::ops::cnn::PoolSpec;
-use tract_core::ops::nn::DataFormat;
+use tract_core::ops::nn::{DataFormat, Softmax, SoftmaxExp};
 use tract_itertools::izip;
 use tract_itertools::Itertools;
 
@@ -686,5 +686,5 @@ pub fn softmax(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> T
         invocation.dt_from_quant_file.first().cloned().flatten()
     };
 
-    builder.wire(ops::nn::Softmax { axes, quant_output_dt }, &[x])
+    builder.wire(Softmax { axes, quant_output_dt, exp: SoftmaxExp::default() }, &[x])
 }

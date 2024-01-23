@@ -1,3 +1,5 @@
+use tract_core::ops::nn::Softmax;
+
 use crate::infer::*;
 use crate::internal::*;
 
@@ -8,8 +10,6 @@ pub struct LayerHardmax {
     axis: isize,
     coerce_to_2d: bool,
 }
-
-
 
 impl Expansion for LayerHardmax {
     fn name(&self) -> Cow<str> {
@@ -83,13 +83,10 @@ pub struct LayerLogSoftmax {
     pub coerce_to_2d: bool,
 }
 
-
-
 impl Expansion for LayerLogSoftmax {
     fn name(&self) -> Cow<str> {
         "LayerLogSoftmax".into()
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -118,8 +115,6 @@ pub struct LayerSoftmax {
     coerce_to_2d: bool,
 }
 
-
-
 impl Expansion for LayerSoftmax {
     fn name(&self) -> Cow<str> {
         "LayerSoftmax".into()
@@ -144,10 +139,10 @@ impl Expansion for LayerSoftmax {
         let rank = target.outlet_fact(input)?.rank();
         let dt = target.outlet_fact(input)?.datum_type;
         let axis = if self.axis < 0 { rank as isize + self.axis } else { self.axis } as usize;
-        let reducing_axes =
+        let axes =
             if self.coerce_to_2d { (axis..rank).collect::<TVec<usize>>() } else { tvec!(axis) };
-        let dt = if dt.is_float() { None } else { Some(dt) };
-        target.wire_node(name, tract_core::ops::nn::Softmax::new(reducing_axes, dt), inputs)
+        let quant_output_dt = if dt.is_float() { None } else { Some(dt) };
+        target.wire_node(name, Softmax { axes, quant_output_dt, ..Softmax::default() }, inputs)
     }
 }
 

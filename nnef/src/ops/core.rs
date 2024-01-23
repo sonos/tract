@@ -21,6 +21,7 @@ mod reduce;
 mod scan;
 mod scatter;
 mod shape_of;
+mod softmax;
 mod source;
 mod store;
 mod submodel;
@@ -59,6 +60,7 @@ pub fn register(registry: &mut Registry) {
     scan::register(registry);
     scatter::register(registry);
     shape_of::register(registry);
+    softmax::register(registry);
     source::register(registry);
     store::register(registry);
     submodel::register(registry);

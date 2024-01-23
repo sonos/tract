@@ -95,7 +95,7 @@ fn plug_fma(ops: &mut Ops) {
     ops.sigmoid_f32 = Box::new(|| fma_sigmoid_f32::ew());
     ops.tanh_f32 = Box::new(|| fma_tanh_f32::ew());
 
-    ops.softmax_loop2_f32 = Box::new(|| x86_64_fma_softmaxl2_f32_32n::red());
+    ops.softmax2_fastcompact_f32 = Box::new(|| x86_64_fma_softmaxl2_f32_32n::red());
     log::info!("mmm_f32, mmv_f32, sigmoid_f32, tanh_f32: x86_64/fma activated");
 }
 

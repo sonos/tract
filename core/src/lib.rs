@@ -79,6 +79,7 @@ pub mod model;
 pub mod optim;
 pub mod plan;
 pub mod runtime;
+pub mod transform;
 pub mod value;
 
 pub use dyn_clone;

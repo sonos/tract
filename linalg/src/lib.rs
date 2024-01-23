@@ -69,7 +69,7 @@ pub struct Ops {
 
     pub max_f32: Box<dyn Fn() -> Box<dyn reduce::Reduce<f32>> + Send + Sync>,
 
-    pub softmax_loop2_f32: Box<dyn Fn() -> Box<dyn reduce::MapReduce<f32, f32>> + Send + Sync>,
+    pub softmax2_fastcompact_f32: Box<dyn Fn() -> Box<dyn reduce::MapReduce<f32, f32>> + Send + Sync>,
 }
 
 impl Ops {
@@ -132,7 +132,7 @@ pub fn generic() -> Ops {
         /*
         activation_f32: Box::new(|microcode| generic::SActivation::new(microcode))
         */
-        softmax_loop2_f32: Box::new(|| generic::softmax::SSoftMaxL2::red()),
+        softmax2_fastcompact_f32: Box::new(|| generic::softmax::SSoftMaxL2::red()),
     }
 }
 

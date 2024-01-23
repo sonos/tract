@@ -11,6 +11,7 @@ use tract_core::ops::cnn::KernelFormat;
 use tract_core::ops::cnn::PoolSpec;
 use tract_core::ops::einsum::BasicMatMul;
 use tract_core::ops::nn::DataFormat;
+use tract_core::ops::nn::SoftmaxExp;
 use tract_core::tract_data::itertools::Itertools;
 
 pub fn source(
@@ -453,6 +454,9 @@ pub fn softmax(
     node: &TypedNode,
     op: &ops::nn::Softmax,
 ) -> TractResult<Option<Arc<RValue>>> {
+    if op.exp != SoftmaxExp::default() {
+        return Ok(None)
+    }
     let litteral_axes: Vec<_> = op.axes.iter().map(|&it| (it as i64).into()).collect();
     Ok(Some(invocation(
         "softmax",
