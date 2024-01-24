@@ -17,14 +17,23 @@ pub mod test {
                     }
                 }
             }
+
             #[test]
             fn single() {
                 if $cond {
                     $crate::frame::softmax::test::test_softmax_l2::<$ker, $t>(&[0.0]).unwrap()
                 }
             }
+
             #[test]
-            fn two() {
+            fn two_zeros() {
+                if $cond {
+                    $crate::frame::softmax::test::test_softmax_l2::<$ker, $t>(&[0.0, 0.0]).unwrap()
+                }
+            }
+
+            #[test]
+            fn two_0() {
                 if $cond {
                     $crate::frame::softmax::test::test_softmax_l2::<$ker, $t>(&[
                         16.62555, 21.950674,
@@ -34,10 +43,18 @@ pub mod test {
             }
 
             #[test]
+            fn two_1() {
+                if $cond {
+                    $crate::frame::softmax::test::test_softmax_l2::<$ker, $t>(&[0.0f32, 0.38132212])
+                        .unwrap()
+                }
+            }
+
+            #[test]
             fn two_missing_max() {
                 if $cond {
                     $crate::frame::softmax::test::test_softmax_l2::<$ker, $t>(&[
-                        -46.15512, 42.875168
+                        -46.15512, 42.875168,
                     ])
                     .unwrap()
                 }
@@ -61,7 +78,7 @@ pub mod test {
             <T as Float>::min_value(),
             T::zero(),
             //            |x| (x - max.as_()).exp(),
-            |x| fast_compact_exp_f32(dbg!(x).as_() - max).as_(),
+            |x| fast_compact_exp_f32(x.as_() - max).as_(),
             |a, b| a + b,
             max.as_(),
         )

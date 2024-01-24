@@ -73,6 +73,14 @@ fn softmax_f32(c: &mut Criterion) {
                 .unwrap()
         });
     });
+    #[cfg(target_arch = "aarch64")]
+    group.bench_function("loop2/iasm", |b| {
+        b.iter(|| {
+            tract_linalg::arm64::arm64simd_softmax2_fastcompact_f32_16n::red()
+                .run_with_params(input, 0.21)
+                .unwrap()
+        });
+    });
     group.bench_function("loop3/naive", |b| b.iter(|| loop3_f32(input, 0.21)));
     group.bench_function("loop3/generic", |b| {
         b.iter(|| {
@@ -83,6 +91,14 @@ fn softmax_f32(c: &mut Criterion) {
     group.bench_function("loop3/iasm", |b| {
         b.iter(|| {
             tract_linalg::x86_64_fma::by_scalar::x86_64_avx_f32_mul_by_scalar_32n::ew()
+                .run_with_params(input, 0.21)
+                .unwrap()
+        });
+    });
+    #[cfg(target_arch = "aarch64")]
+    group.bench_function("loop3/iasm", |b| {
+        b.iter(|| {
+            tract_linalg::arm64::arm64simd_mul_by_scalar_f32_16n::ew()
                 .run_with_params(input, 0.21)
                 .unwrap()
         });
