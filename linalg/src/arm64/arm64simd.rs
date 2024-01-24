@@ -1,8 +1,10 @@
+mod by_scalar;
 mod leaky_relu;
 mod max;
 
 use crate::frame::mmm::*;
 
+pub use by_scalar::arm64simd_mul_by_scalar_f32_16n;
 pub use leaky_relu::arm64simd_leaky_relu_f32_8n;
 pub use max::arm64simd_max_f32_16n;
 
