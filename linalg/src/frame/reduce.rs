@@ -82,6 +82,7 @@ where
     Params: Copy + Send + Sync + Debug + 'static + Default,
     T: Copy + Debug + PartialEq + Send + Sync,
 {
+    fn name(&self) -> &'static str;
     fn run(&self, vec: &[T]) -> TractResult<T> {
         self.run_with_params(vec, Params::default())
     }
@@ -106,6 +107,10 @@ where
     Params: Copy + Send + Sync + Debug + 'static + Default,
     K: ReduceKer<T, Params> + Clone,
 {
+    fn name(&self) -> &'static str {
+        K::name().into()
+    }
+
     fn run_with_params(&self, vec: &[T], params: Params) -> TractResult<T> {
         reduce_slice_with_alignment(
             vec,
@@ -180,6 +185,7 @@ where
     Params: Copy + Send + Sync + Debug + 'static + Default,
     T: Copy + Debug + PartialEq + Send + Sync,
 {
+    fn name(&self) -> &'static str;
     fn run(&self, vec: &mut [T]) -> TractResult<T> {
         self.run_with_params(vec, Params::default())
     }
@@ -204,6 +210,9 @@ where
     Params: Copy + Send + Sync + Debug + 'static + Default,
     K: MapReduceKer<T, Params> + Clone,
 {
+    fn name(&self) -> &'static str {
+        K::name()
+    }
     fn run_with_params(&self, vec: &mut [T], params: Params) -> TractResult<T> {
         map_reduce_slice_with_alignment(
             vec,
