@@ -101,7 +101,7 @@ where
     K: ElementWiseKer<T, Params> + Clone,
 {
     fn name(&self) -> &'static str {
-        K::name().into()
+        K::name()
     }
     fn run_with_params(&self, vec: &mut [T], params: Params) -> TractResult<()> {
         map_slice_with_alignment(

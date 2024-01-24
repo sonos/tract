@@ -108,7 +108,7 @@ where
     K: ReduceKer<T, Params> + Clone,
 {
     fn name(&self) -> &'static str {
-        K::name().into()
+        K::name()
     }
 
     fn run_with_params(&self, vec: &[T], params: Params) -> TractResult<T> {
