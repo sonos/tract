@@ -18,7 +18,7 @@ use crate::f16;
 
 use crate::frame::element_wise::ElementWiseKer;
 use crate::frame::mmm::kernel::MatMatMulKer;
-use crate::frame::reduce::ReduceKer;
+use crate::frame::reduce::{ MapReduceKer, ReduceKer};
 
 // https://en.wikipedia.org/wiki/Comparison_of_ARMv8-A_cores
 const PART_A53: &str = "0xd03";
@@ -234,6 +234,7 @@ pub fn plug(ops: &mut Ops) {
     ops.tanh_f32 = Box::new(|| arm64simd_tanh_f32_4n::ew());
     ops.max_f32 = Box::new(|| arm64simd_max_f32_16n::red());
     ops.mul_by_scalar_f32 = Box::new(|| arm64simd_mul_by_scalar_f32_16n::ew());
+    ops.softmax2_fastcompact_f32 = Box::new(|| arm64simd_softmax2_fastcompact_f32_16n::red());
     #[cfg(not(feature = "no_fp16"))]
     if has_fp16() {
         log::info!("ARMv8.2 tanh_f16 and sigmoid_f16 activated");
