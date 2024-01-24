@@ -75,6 +75,7 @@ where
     Params: Copy + Send + Sync + Debug + 'static + Default,
     T: Copy + Debug + PartialEq + Send + Sync,
 {
+    fn name(&self) -> &'static str;
     fn run(&self, vec: &mut [T]) -> TractResult<()> {
         self.run_with_params(vec, Params::default())
     }
@@ -99,6 +100,9 @@ where
     Params: Copy + Send + Sync + Debug + 'static + Default,
     K: ElementWiseKer<T, Params> + Clone,
 {
+    fn name(&self) -> &'static str {
+        K::name().into()
+    }
     fn run_with_params(&self, vec: &mut [T], params: Params) -> TractResult<()> {
         map_slice_with_alignment(
             vec,

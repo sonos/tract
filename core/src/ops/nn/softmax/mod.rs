@@ -33,7 +33,16 @@ impl Op for Softmax {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("Axis: {:?}", self.axes), format!("Exp impl: {:?}", self.exp)])
+        let mut infos = vec![format!("Axis: {:?}", self.axes), format!("Exp impl: {:?}", self.exp)];
+        if self.exp == SoftmaxExp::FastCompact {
+            infos.push(format!(
+                "{}/{}/{}",
+                (tract_linalg::ops().max_f32)().name(),
+                (tract_linalg::ops().softmax2_fastcompact_f32)().name(),
+                (tract_linalg::ops().mul_by_scalar_f32)().name()
+            ))
+        }
+        Ok(infos)
     }
 
     op_as_typed_op!();
