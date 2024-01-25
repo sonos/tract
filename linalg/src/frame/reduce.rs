@@ -141,6 +141,7 @@ where
     }
 }
 
+#[allow(unused_macros)]
 macro_rules! map_reduce_impl_wrap {
     ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr, $params: ty, $map_neutral: expr, $reduce_neutral: expr, $run: item, $reduce_two: item) => {
         paste! {
