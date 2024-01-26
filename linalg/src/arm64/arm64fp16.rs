@@ -1,7 +1,9 @@
 use tract_data::half::f16;
 
 mod leaky_relu;
+mod max;
 pub use leaky_relu::*;
+pub use max::arm64fp16_max_f16_32n;
 
 use crate::frame::mmm::*;
 MMMKernel!(f16, arm64fp16_mmm_f16_16x8_gen; 16, 8; 16, 16; 1, 1; no_prefetch, crate::arm64::has_fp16());

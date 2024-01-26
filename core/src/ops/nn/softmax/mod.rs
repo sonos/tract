@@ -8,6 +8,7 @@ use math::{
 };
 use num_traits::Float;
 use std::fmt::Debug;
+use tract_num_traits::Zero;
 
 use crate::internal::*;
 use ndarray::prelude::*;
@@ -33,8 +34,7 @@ impl Op for Softmax {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        let mut infos = vec![format!("Axis: {:?}", self.axes), format!("Exp impl: {:?}", self.exp)];
-        Ok(infos)
+        Ok(vec![format!("Axis: {:?}", self.axes), format!("Exp impl: {:?}", self.exp)])
     }
 
     op_as_typed_op!();
@@ -147,6 +147,11 @@ impl Softmax {
             {
                 let slice: &mut [f32] = unsafe { std::mem::transmute(slice) };
                 self.softmax_inner_slice_f32(slice)?;
+            } else if let Some(slice) =
+                view.as_slice_mut().filter(|_| T::datum_type() == f16::datum_type())
+            {
+                let slice: &mut [f16] = unsafe { std::mem::transmute(slice) };
+                self.softmax_inner_slice_f16(slice)?;
             } else {
                 softmax_inner(view);
             }
@@ -186,6 +191,27 @@ impl Softmax {
         let mut output_tensor = output.into_tensor();
         unsafe { output_tensor.set_datum_type(output_dt) };
         Ok(tvec!(output_tensor.into_tvalue()))
+    }
+
+    fn softmax_inner_slice_f16(&self, slice: &mut [f16]) -> TractResult<()> {
+        let max = (tract_linalg::ops().max_f16)().run(slice)?;
+        let sum = match self.exp {
+            SoftmaxExp::Libc => {
+                let mut s = f16::zero();
+                for x in slice.iter_mut() {
+                    let y = (*x - max).exp();
+                    s += y;
+                    *x = y;
+                }
+                s
+            }
+            SoftmaxExp::FastCompact => {
+                (tract_linalg::ops().softmax2_fastcompact_f16)().run_with_params(slice, max)?
+            }
+        };
+        let rsum = sum.recip();
+        (tract_linalg::ops().mul_by_scalar_f16)().run_with_params(slice, rsum)?;
+        Ok(())
     }
 
     fn softmax_inner_slice_f32(&self, slice: &mut [f32]) -> TractResult<()> {
