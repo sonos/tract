@@ -241,6 +241,8 @@ pub fn plug(ops: &mut Ops) {
         ops.leaky_relu_f16 = Box::new(|| arm64fp16_leaky_relu_f16_16n::ew());
         ops.tanh_f16 = Box::new(|| arm64fp16_tanh_f16_8n::ew());
         ops.sigmoid_f16 = Box::new(|| arm64fp16_sigmoid_f16_8n::ew());
+        ops.max_f16 = Box::new(|| arm64fp16_max_f16_32n::red());
+        ops.mul_by_scalar_f16 = Box::new(|| arm64fp16_mul_by_scalar_f16_32n::ew());
     } else {
         log::info!("No native fp16 support");
     }
