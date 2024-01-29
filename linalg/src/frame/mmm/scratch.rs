@@ -2,6 +2,7 @@ use std::alloc::Layout;
 use std::fmt::Debug;
 use tract_data::internal::*;
 
+use crate::mmm::InputStore;
 use crate::LADatum;
 
 use super::{BinOp, FusedKerSpec, FusedSpec, MatMatMulKer, OutputStoreKer};
@@ -108,6 +109,12 @@ impl<TI: LADatum> ScratchSpaceFusedNonLinear<TI> {
                 FS::LeakyRelu(t) => FKS::LeakyRelu(*t.to_scalar()?),
                 FS::AddMatMul { a, b, .. } => {
                     for input in [a, b] {
+                        if let InputStore::Packed { ptr, .. } = a {
+                            ensure!(*ptr as usize % K::alignment_bytes_packed_a() == 0);
+                        }
+                        if let InputStore::Packed { ptr, .. } = b {
+                            ensure!(*ptr as usize % K::alignment_bytes_packed_b() == 0);
+                        }
                         let mut ld = ld(ix, self.uspecs.len(), offset as _);
                         offset += std::mem::size_of::<AddMatMulTemp>();
                         if let Some(tmp) = input.scratch_panel_buffer_layout() {
