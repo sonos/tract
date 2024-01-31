@@ -334,8 +334,22 @@ fn lir_mat_mul_unary(
     let mut patch = TypedModelPatch::new("Einsum to LirMatMulUnary");
     let a = patch.tap_model(model, node.inputs[0])?;
     let b = patch.tap_model(model, node.inputs[1])?;
-    let pack_a = MatMatMulPack { packer: mmm.a_pack(), k_axis: a_k, mn_axis: a_m };
-    let pack_b = MatMatMulPack { packer: mmm.b_pack(), k_axis: b_k, mn_axis: b_n };
+    let a_output_shape_fact =
+        MatMatMulPack::output_shape(&patch.outlet_fact(a)?.shape, &mmm.a_pack(), a_m, a_k);
+    let pack_a = MatMatMulPack {
+        packer: mmm.a_pack(),
+        k_axis: a_k,
+        mn_axis: a_m,
+        output_shape_fact: a_output_shape_fact,
+    };
+    let b_output_shape_fact =
+        MatMatMulPack::output_shape(&patch.outlet_fact(b)?.shape, &mmm.b_pack(), b_n, b_k);
+    let pack_b = MatMatMulPack {
+        packer: mmm.b_pack(),
+        k_axis: b_k,
+        mn_axis: b_n,
+        output_shape_fact: b_output_shape_fact,
+    };
     let pa = patch.wire_node(format!("{name}.pack_a"), pack_a, &[a])?[0];
     let pb = patch.wire_node(format!("{name}.pack_b"), pack_b, &[b])?[0];
 
