@@ -154,6 +154,22 @@ impl Drop for Tensor {
 }
 
 impl Tensor {
+    #[allow(unreachable_code)]
+    fn default_alignment(dt: DatumType, shape: &[usize]) -> usize {
+        if shape.len() == 0 {
+            return dt.alignment();
+        }
+        #[cfg(any(target_arch = "aarch64", target_arch = "armv7"))]
+        {
+            return 128;
+        }
+        #[cfg(target_arch = "x86_64")]
+        {
+            return if is_x86_feature_detected!("avx512f") { 512 } else { 256 };
+        }
+        dt.alignment()
+    }
+
     /// Create an uninitialized tensor (dt as type paramater).
     pub unsafe fn uninitialized<T: Datum>(shape: &[usize]) -> anyhow::Result<Tensor> {
         Self::uninitialized_dt(T::datum_type(), shape)
@@ -1424,6 +1440,34 @@ impl Tensor {
         }
 
         t.into_arc_tensor()
+    }
+
+    pub fn to_aligned_default(&self) -> anyhow::Result<Self> {
+        if self.dt.is_copy() {
+            unsafe {
+                let mut t = Self::uninitialized_aligned_dt(
+                    self.dt,
+                    &self.shape,
+                    Self::default_alignment(self.dt, &self.shape),
+                )?;
+                t.as_bytes_mut().copy_from_slice(self.as_bytes());
+                Ok(t)
+            }
+        } else {
+            let mut t = Self::zero_aligned_dt(
+                self.dt,
+                &self.shape,
+                Self::default_alignment(self.dt, &self.shape),
+            )?;
+            if self.dt == String::datum_type() {
+                t.as_slice_mut::<String>()?.clone_from_slice(self.as_slice()?);
+            } else if self.dt == Blob::datum_type() {
+                t.as_slice_mut::<Blob>()?.clone_from_slice(self.as_slice()?);
+            } else if self.dt == TDim::datum_type() {
+                t.as_slice_mut::<TDim>()?.clone_from_slice(self.as_slice()?);
+            }
+            Ok(t)
+        }
     }
 }
 

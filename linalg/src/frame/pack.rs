@@ -15,20 +15,24 @@ impl Packer {
         Packer { r: nr, alignment, end_padding_record }
     }
 
+    #[inline]
     pub fn alignment(&self) -> usize {
         self.alignment
     }
 
+    #[inline]
     pub fn panel_width(&self) -> usize {
         self.r
     }
 
+    #[inline]
     pub fn len<D: DimLike>(&self, k: D, n: D) -> D {
-        (n.divceil(self.r) * (k + self.end_padding_record)) * self.r
+        n.divceil(self.r) * self.single_panel_len(k)
     }
 
-    pub fn single_panel_len(&self, k: usize) -> usize {
-        (k + self.end_padding_record) * self.r
+    #[inline]
+    pub fn single_panel_len<D: DimLike>(&self, k: D) -> D {
+        ((k + self.end_padding_record) * self.r).divceil(self.alignment()) * self.alignment()
     }
 
     #[allow(clippy::too_many_arguments)]

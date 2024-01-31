@@ -9,6 +9,7 @@ pub struct MatMatMulPack {
     pub(crate) packer: Packer,
     pub(crate) k_axis: usize,
     pub(crate) mn_axis: usize,
+    pub(crate) output_shape_fact: ShapeFact,
 }
 
 impl Op for MatMatMulPack {
@@ -25,46 +26,40 @@ impl Op for MatMatMulPack {
 
 impl EvalOp for MatMatMulPack {
     fn is_stateless(&self) -> bool {
-        true
+        self.output_shape_fact.is_concrete()
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let b = args_1!(inputs);
-        let dt = b.datum_type();
-        unsafe {
-            let output_shape = self.output_shape(b.shape());
-            let mut packed =
-                Tensor::uninitialized_aligned_dt(dt, &output_shape, self.packer.alignment())
-                    .unwrap();
-            let mut bc_shape: TVec<usize> = b.shape().into();
-            bc_shape[self.k_axis] = 1;
-            bc_shape[self.mn_axis] = 1;
-            for coord in indices(&*bc_shape) {
-                let offset = coord
-                    .as_array_view()
-                    .iter()
-                    .zip(b.strides())
-                    .map(|(x, s)| *x as isize * s)
-                    .sum::<isize>()
-                    * b.datum_type().size_of() as isize;
-                let mut prefix: TVec<usize> = coord.slice().into();
-                prefix.remove(self.k_axis.max(self.mn_axis));
-                prefix.remove(self.k_axis.min(self.mn_axis));
-                self.packer.pack(
-                    &mut packed.view_at_prefix_mut(&prefix)?,
-                    TensorView::from_bytes(&b, offset, b.shape(), b.strides()),
-                    self.k_axis,
-                    self.mn_axis,
-                )
-            }
-            Ok(tvec!(packed.into_tvalue()))
-        }
+        let output_shape = self.output_shape_fact.as_concrete().unwrap();
+        self.do_eval(&inputs[0], output_shape)
+    }
+
+    fn state(
+        &self,
+        _session: &mut SessionState,
+        _node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        Ok(Some(Box::new(self.clone())))
     }
 }
 
+impl OpState for MatMatMulPack {
+    fn eval(
+        &mut self,
+        session: &mut SessionState,
+        _op: &dyn Op,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        let output_shape = self.output_shape_fact.eval_to_usize(&session.resolved_symbols)?;
+        self.do_eval(&inputs[0], &output_shape)
+    }
+}
+
+trivial_op_state_freeeze!(MatMatMulPack);
+
 impl TypedOp for MatMatMulPack {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(inputs[0].datum_type.fact(self.output_shape(&inputs[0].shape))))
+        Ok(tvec!(inputs[0].datum_type.fact(self.output_shape_fact.iter())))
     }
 
     fn axes_mapping(
@@ -84,15 +79,64 @@ impl TypedOp for MatMatMulPack {
         AxesMapping::new(1, 1, axes)
     }
 
+    fn concretize_dims(
+        &self,
+        _source: &TypedModel,
+        node: &TypedNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        values: &SymbolValues,
+    ) -> TractResult<TVec<OutletId>> {
+        let output_shape_fact = self.output_shape_fact.eval(&values)?.into_owned();
+        let inputs: TVec<OutletId> = node.inputs.iter().map(|o| mapping[o]).collect();
+        target.wire_node(&node.name, MatMatMulPack { output_shape_fact, ..self.clone() }, &inputs)
+    }
+
     as_op!();
 }
 
 impl MatMatMulPack {
-    fn output_shape<D: DimLike>(&self, input: &[D]) -> TVec<D> {
+    fn do_eval(&self, input: &Tensor, output_shape: &[usize]) -> TractResult<TVec<TValue>> {
+        let dt = input.datum_type();
+        unsafe {
+            let mut packed =
+                Tensor::uninitialized_aligned_dt(dt, &output_shape, self.packer.alignment())
+                    .unwrap();
+            let mut bc_shape: TVec<usize> = input.shape().into();
+            bc_shape[self.k_axis] = 1;
+            bc_shape[self.mn_axis] = 1;
+            for coord in indices(&*bc_shape) {
+                let offset = coord
+                    .as_array_view()
+                    .iter()
+                    .zip(input.strides())
+                    .map(|(x, s)| *x as isize * s)
+                    .sum::<isize>()
+                    * input.datum_type().size_of() as isize;
+                let mut prefix: TVec<usize> = coord.slice().into();
+                prefix.remove(self.k_axis.max(self.mn_axis));
+                prefix.remove(self.k_axis.min(self.mn_axis));
+                self.packer.pack(
+                    &mut packed.view_at_prefix_mut(&prefix)?,
+                    TensorView::from_bytes(&input, offset, input.shape(), input.strides()),
+                    self.k_axis,
+                    self.mn_axis,
+                )
+            }
+            Ok(tvec!(packed.into_tvalue()))
+        }
+    }
+
+    pub fn output_shape<D: DimLike>(
+        input: &[D],
+        packer: &Packer,
+        mn_axis: usize,
+        k_axis: usize,
+    ) -> ShapeFact {
         let mut packed_shape: TVec<D> = input.into();
-        packed_shape.remove(self.mn_axis.max(self.k_axis));
-        packed_shape.remove(self.mn_axis.min(self.k_axis));
-        packed_shape.push(self.packer.len(input[self.k_axis].clone(), input[self.mn_axis].clone()));
-        packed_shape
+        packed_shape.remove(mn_axis.max(k_axis));
+        packed_shape.remove(mn_axis.min(k_axis));
+        packed_shape.push(packer.len(input[k_axis].clone(), input[mn_axis].clone()));
+        packed_shape.into()
     }
 }
