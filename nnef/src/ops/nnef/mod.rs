@@ -81,6 +81,8 @@ pub fn tract_nnef() -> Registry {
 
     registry.register_unit_element_wise("neg", &ops::math::Neg {});
 
+    registry.register_unit_element_wise("copy", &ops::math::Copy {});
+
     registry.register_element_wise(
         "leaky_relu",
         TypeId::of::<ops::nn::LeakyRelu>(),

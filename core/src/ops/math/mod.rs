@@ -579,6 +579,11 @@ element_wise!(neg, Neg, [i8, i16, i32, i64, f16, f32, f64, TDim] => |_, xs| {
 };
 q: [i8, u8, i32] => |x: f32| -x);
 
+element_wise!(copy, Copy, [i8, i16, i32, i64, f16, f32, f64, TDim] => |_, _| {
+    Ok(())
+};
+q: [i8, u8, i32] => |x: f32| x);
+
 element_wise!(sign, Sign, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = if x.is_zero() { *x } else { x.signum() });
     Ok(())
