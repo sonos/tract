@@ -87,7 +87,7 @@ impl TypedOp for MatMatMulPack {
         mapping: &HashMap<OutletId, OutletId>,
         values: &SymbolValues,
     ) -> TractResult<TVec<OutletId>> {
-        let output_shape_fact = self.output_shape_fact.eval(&values)?.into_owned();
+        let output_shape_fact = self.output_shape_fact.eval(values)?.into_owned();
         let inputs: TVec<OutletId> = node.inputs.iter().map(|o| mapping[o]).collect();
         target.wire_node(&node.name, MatMatMulPack { output_shape_fact, ..self.clone() }, &inputs)
     }
@@ -100,7 +100,7 @@ impl MatMatMulPack {
         let dt = input.datum_type();
         unsafe {
             let mut packed =
-                Tensor::uninitialized_aligned_dt(dt, &output_shape, self.packer.alignment())
+                Tensor::uninitialized_aligned_dt(dt, output_shape, self.packer.alignment())
                     .unwrap();
             let mut bc_shape: TVec<usize> = input.shape().into();
             bc_shape[self.k_axis] = 1;
@@ -118,7 +118,7 @@ impl MatMatMulPack {
                 prefix.remove(self.k_axis.min(self.mn_axis));
                 self.packer.pack(
                     &mut packed.view_at_prefix_mut(&prefix)?,
-                    TensorView::from_bytes(&input, offset, input.shape(), input.strides()),
+                    TensorView::from_bytes(input, offset, input.shape(), input.strides()),
                     self.k_axis,
                     self.mn_axis,
                 )
