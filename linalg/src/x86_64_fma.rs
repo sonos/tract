@@ -100,7 +100,9 @@ fn plug_fma(ops: &mut Ops) {
     ops.max_f32 = Box::new(|| max::x86_64_fma_max_f32_32n::red());
     ops.softmax2_fastcompact_f32 = Box::new(|| x86_64_fma_softmax2_fastcompact_f32_32n::red());
 
-    ops.mmm_f16 = Box::new(|_, _, _| mmm::fma_mmm_f16_8x8::mmm());
+    if is_x86_feature_detected!("f16c") {
+        ops.mmm_f16 = Box::new(|_, _, _| mmm::fma_mmm_f16_8x8::mmm());
+    }
 
     log::info!("mmm_f32, mmv_f32, sigmoid_f32, tanh_f32: x86_64/fma activated");
 }
