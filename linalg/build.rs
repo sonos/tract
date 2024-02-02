@@ -120,6 +120,7 @@ fn main() {
                     cc::Build::new()
                         .files(files)
                         .flag("-mfma")
+                        .flag("-mf16c")
                         .static_flag(true)
                         .compile("x86_64_fma");
 
