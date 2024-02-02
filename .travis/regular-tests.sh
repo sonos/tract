@@ -3,7 +3,7 @@
 if [ -e /proc/cpuinfo ]
 then
     grep "^flags" /proc/cpuinfo | head -1 | \
-        grep --color=always '\(s\?sse[0-9_]*\|fma\|avx512[^ ]*\)'
+        grep --color=always '\(s\?sse[0-9_]*\|fma\|f16c\|avx[^ ]*\)'
 fi
 
 set -ex
