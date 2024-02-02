@@ -1,12 +1,12 @@
 // vim: set syntax=asm :
 
 {{L}}{{label}}:
-    {% if type == "f32" %}
-        vbroadcastss    ymm12, dword ptr [rdi + 8]
-    {% else %}
+    {% if type == "f16" %}
         pinsrw          xmm12, word ptr [rdi + 8], 0
         vcvtph2ps       ymm12, xmm12
         vbroadcastss    ymm12, xmm12
+    {% else %}
+        vbroadcastss    ymm12, dword ptr [rdi + 8]
     {% endif %}
     
     {% if flipped %}

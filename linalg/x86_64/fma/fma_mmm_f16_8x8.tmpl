@@ -35,17 +35,13 @@ Windows ABI:
     jz      {{L}}non_linear_loop
 
 {{L}}main_loop_packed_packed:
-    vmovaps         ymm12,  [rax]
+    {% include "8x8/packed_packed_loop1/f16-avx.tmpli" %}
 
-    {% for i in (0..7) %}
-        vbroadcastss    ymm14, dword ptr [rbx + {{i}} * 4]
-        vfmadd231ps     ymm{{i}}, ymm12, ymm14
-    {% endfor %}
-
-    add             rax,    32
-    add             rbx,    32
+    add             rax,    16
+    add             rbx,    16
     dec             rcx
     jnz             {{L}}main_loop_packed_packed
+
     jmp             {{L}}non_linear_loop
 
 // NON LINEAR / ADDC
