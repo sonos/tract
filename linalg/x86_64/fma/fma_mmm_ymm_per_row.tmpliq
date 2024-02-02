@@ -6,9 +6,18 @@
 {% capture mr_over_8 %}{{ mr | divided_by: 8}}{%endcapture%}
 {% capture mr_over_8_min_1 %}{{ mr | divided_by: 8 | minus: 1}}{%endcapture%}
 
-{% for ix in (0..mr_over_8_min_1) %}
-    vmovups         ymm{{to | plus: 1 | plus: ix}},  [rax + {{ix | times: 32}}]
-{% endfor %}
+{% if type == "f16" %}
+    {% for ix in (0..mr_over_8_min_1) %}
+        vmovups         xmm{{to | plus: 1 | plus: ix}},  [rax + {{ix | times: 16}}]
+    {% endfor %}
+    {% for ix in (0..mr_over_8_min_1) %}
+        vcvtph2ps       ymm{{to | plus: 1 | plus: ix}}, xmm{{to | plus: 1 | plus: ix}}
+    {% endfor %}
+{% else %}
+    {% for ix in (0..mr_over_8_min_1) %}
+        vmovups         ymm{{to | plus: 1 | plus: ix}},  [rax + {{ix | times: 32}}]
+    {% endfor %}
+{% endif %}
 
 {% if flipped %}
     {% for acc in (from..to) %}
