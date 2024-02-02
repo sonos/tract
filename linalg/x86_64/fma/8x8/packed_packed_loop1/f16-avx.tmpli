@@ -1,0 +1,42 @@
+	// Tile size: 1x8
+	// Accumulators: 0-7
+	// Col regs: 14 then 8
+	// Row regs: 15
+
+    vmovups         xmm15, [rax]
+    vmovups         xmm14, [rbx]
+
+    vcvtph2ps       ymm15, xmm15
+    vcvtph2ps       ymm14, xmm14
+
+    vbroadcastss    ymm8, xmm14 
+    vfmadd231ps     ymm0, ymm15, ymm8
+
+    pshufd          xmm8, xmm14, 1
+    vbroadcastss    ymm8, xmm8
+    vfmadd231ps     ymm1, ymm15, ymm8
+
+    pshufd          xmm8, xmm14, 2
+    vbroadcastss    ymm8, xmm8
+    vfmadd231ps     ymm2, ymm15, ymm8
+
+    pshufd          xmm8, xmm14, 3
+    vbroadcastss    ymm8, xmm8
+    vfmadd231ps     ymm3, ymm15, ymm8
+
+    vperm2f128      ymm14, ymm14, ymm14, 1
+
+    vbroadcastss    ymm8, xmm14 
+    vfmadd231ps     ymm4, ymm15, ymm8
+
+    pshufd          xmm8, xmm14, 1
+    vbroadcastss    ymm8, xmm8 
+    vfmadd231ps     ymm5, ymm15, ymm8
+
+    pshufd          xmm8, xmm14, 2
+    vbroadcastss    ymm8, xmm8 
+    vfmadd231ps     ymm6, ymm15, ymm8
+
+    pshufd          xmm8, xmm14, 3
+    vbroadcastss    ymm8, xmm8
+    vfmadd231ps     ymm7, ymm15, ymm8
