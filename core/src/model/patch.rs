@@ -263,7 +263,7 @@ where
         } = self;
         let mut all_inputs = HashMap::new(); // new_node_id_in_model -> [ patch_outlet_id ]
         let mut model_input_outlets = target.input_outlets()?.to_vec();
-        for node in patch.nodes {
+        'node: for node in patch.nodes {
             if <Graph<F, O>>::is_source(&node.op)
                 && mapping.contains_key(&OutletId::new(node.id, 0))
             {
@@ -283,7 +283,7 @@ where
                     for ix in 0..n_outputs {
                         mapping.insert(OutletId::new(patch_node_id, ix), OutletId::new(dup, ix));
                     }
-                    continue;
+                    continue 'node;
                 }
             }
             let facts = outputs.into_iter().map(|of| of.fact).collect();

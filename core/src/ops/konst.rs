@@ -1,6 +1,6 @@
 use crate::internal::*;
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct Const(pub Arc<Tensor>);
 
 impl Op for Const {
@@ -9,6 +9,7 @@ impl Op for Const {
     }
 
     op_as_typed_op!();
+    impl_op_same_as!();
 }
 
 impl EvalOp for Const {
