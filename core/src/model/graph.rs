@@ -1,5 +1,6 @@
 use super::*;
 use crate::internal::*;
+use crate::ops::konst::Const;
 use crate::ops::Op;
 use crate::prelude::*;
 use std::fmt;
@@ -557,6 +558,13 @@ where
     ) -> TractResult<OutletId> {
         let v = v.into_arc_tensor();
         let fact = F::from(v.clone());
+        for node in &self.nodes {
+            if let Some(op) = node.op_as::<Const>() {
+                if op.0 == v {
+                    return Ok(node.id.into());
+                }
+            }
+        }
         let name = name.into();
         self.add_node(name, crate::ops::konst::Const::new(v), tvec!(fact)).map(|id| id.into())
     }

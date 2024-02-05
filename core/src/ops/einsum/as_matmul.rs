@@ -81,12 +81,11 @@ fn einsum_rules(
         .translate_to_axis_ops()?;
     let transpose_c = c_transform.len() > c_transform_t.len();
     let c_transform = if transpose_c { c_transform_t } else { c_transform };
-
     let quantize_output = if let Some(qp) = op.q_params {
         let qparams: Vec<&Tensor> = inputs[3..9]
             .iter()
             .map(|f| {
-                model
+                patch
                     .outlet_fact(*f)?
                     .konst
                     .as_deref()
