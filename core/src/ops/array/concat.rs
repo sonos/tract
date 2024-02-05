@@ -99,7 +99,7 @@ impl TypedOp for TypedConcat {
         let facts =
             inputs.iter().map(|o| patch.outlet_fact(*o)).collect::<TractResult<TVec<_>>>()?;
         let offsets = self.offsets(&facts)?;
-        std::mem::forget(facts);
+        std::mem::drop(facts);
         for (ix, (slice_start, slice_end)) in offsets.iter().tuple_windows().enumerate() {
             if let (Ok(slice_start), Ok(slice_end)) = (slice_start.to_usize(), slice_end.to_usize())
             {
