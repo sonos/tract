@@ -100,8 +100,7 @@ impl MatMatMulPack {
         let dt = input.datum_type();
         unsafe {
             let mut packed =
-                Tensor::uninitialized_aligned_dt(dt, output_shape, self.packer.alignment())
-                    .unwrap();
+                Tensor::zero_aligned_dt(dt, output_shape, self.packer.alignment()).unwrap();
             let mut bc_shape: TVec<usize> = input.shape().into();
             bc_shape[self.k_axis] = 1;
             bc_shape[self.mn_axis] = 1;
