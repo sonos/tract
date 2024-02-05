@@ -36,7 +36,7 @@ pub trait InferenceOp: Op {
             match self.eval(input_values) {
                 Ok(values) => {
                     let output_values =
-                        values.into_iter().map(|t| t.into_tensor().into()).collect::<TVec<_>>();
+                        values.into_iter().map(|t| t.into_arc_tensor().into()).collect::<TVec<_>>();
                     return Ok((infered_inputs, output_values, observed));
                 }
                 Err(e) if e.root_cause().downcast_ref::<UndeterminedSymbol>().is_some() => (),
