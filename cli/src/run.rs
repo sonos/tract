@@ -6,6 +6,8 @@ use crate::TractResult;
 use crate::{Model, Parameters};
 use ndarray_npy::NpzWriter;
 use nu_ansi_term::Color::*;
+use tract_core::ops::cnn::conv::Im2Col;
+use tract_core::ops::matmul::pack::MatMatMulPack;
 use tract_core::tract_data::itertools::izip;
 use tract_hir::internal::*;
 use tract_libcli::tensor::RunParams;
@@ -210,6 +212,9 @@ fn run_regular(
                     }
                     if assert_sane_floats {
                         for (ix, o) in r.iter().enumerate() {
+                            if node.op_is::<Im2Col>() || node.op_is::<MatMatMulPack>() {
+                                continue;
+                            }
                             if let Ok(floats) = o.as_slice::<f32>() {
                                 if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
                                     eprintln!("{floats:?}");
