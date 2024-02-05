@@ -406,7 +406,7 @@ impl Parameters {
                 output_index: None,
                 name: Some(name),
                 fact: if get_facts {
-                    Some(InferenceFact::from(&*vals[0]).without_value())
+                    Some(vals[0].datum_type().fact(vals[0].shape()).into())
                 } else {
                     None
                 },
