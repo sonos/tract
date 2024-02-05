@@ -128,20 +128,20 @@ impl Fact for InferenceFact {
     fn matches(&self, t: &Tensor, _symbols: Option<&SymbolValues>) -> TractResult<bool> {
         if let Some(dt) = self.datum_type() {
             if t.datum_type() != dt {
-                return Ok(false)
+                return Ok(false);
             }
         }
         if let Some(shape) = self.shape.concretize() {
             if *ShapeFact::from(t.shape()) != *shape {
-                return Ok(false)
+                return Ok(false);
             }
         }
         if let Some(value) = self.value.concretize() {
             if &*value != t {
-                return Ok(false)
+                return Ok(false);
             }
         }
-        return Ok(true)
+        Ok(true)
     }
 
     fn same_as(&self, other: &dyn Fact) -> bool {
