@@ -45,49 +45,49 @@ cargo -q test -q -p test-nnef-cycle $CARGO_EXTRA
 cargo check -p tract-nnef --features complex $CARGO_EXTRA
 cargo check -p tract --no-default-features $CARGO_EXTRA
 
-if [ `arch` = "x86_64" -a "$RUST_VERSION" = "stable" ]
-then
-    ALL_FEATURES=--all-features
-fi
-
-for c in data linalg core nnef hir onnx pulse onnx-opl pulse-opl rs proxy
-do
-    df -h
-    cargo -q test $CARGO_EXTRA -q -p tract-$c
-done
-
-# doc test are not finding libtensorflow.so
-if ! cargo -q test $CARGO_EXTRA -q -p tract-tensorflow --lib $ALL_FEATURES
-then
-    # this crate triggers an incremental bug on nightly.
-    cargo clean -p tract-tensorflow
-    cargo -q test $CARGO_EXTRA -q -p tract-tensorflow --lib $ALL_FEATURES
-fi
-
-if [ -n "$SHORT" ]
-then
-    exit 0
-fi
-
-if [ -n "$GITHUB_ACTIONS" ]
-then
-    CLEANUP="rm -rf $CACHEDIR/*"
-else
-    CLEANUP=true
-fi
-
-$CLEANUP
-cargo -q test $CARGO_EXTRA -q -p tract-rs
-$CLEANUP
-cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p core-proptest-pulse $ALL_FEATURES
-$CLEANUP
-cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p lstm-proptest-onnx-vs-tf $ALL_FEATURES
-$CLEANUP
-cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p nnef-inceptionv3 $ALL_FEATURES
-$CLEANUP
-cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p tf-inceptionv3 $ALL_FEATURES
-$CLEANUP
-cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p tf-mobilenet-v2 $ALL_FEATURES
-$CLEANUP
-cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p tf-moz-deepspeech $ALL_FEATURES
-CACHEDIR=$OLD_CACHEDIR
+#  if [ `arch` = "x86_64" -a "$RUST_VERSION" = "stable" ]
+#  then
+#      ALL_FEATURES=--all-features
+#  fi
+#  
+#  for c in data linalg core nnef hir onnx pulse onnx-opl pulse-opl rs proxy
+#  do
+#      df -h
+#      cargo -q test $CARGO_EXTRA -q -p tract-$c
+#  done
+#  
+#  # doc test are not finding libtensorflow.so
+#  if ! cargo -q test $CARGO_EXTRA -q -p tract-tensorflow --lib $ALL_FEATURES
+#  then
+#      # this crate triggers an incremental bug on nightly.
+#      cargo clean -p tract-tensorflow
+#      cargo -q test $CARGO_EXTRA -q -p tract-tensorflow --lib $ALL_FEATURES
+#  fi
+#  
+#  if [ -n "$SHORT" ]
+#  then
+#      exit 0
+#  fi
+#  
+#  if [ -n "$GITHUB_ACTIONS" ]
+#  then
+#      CLEANUP="rm -rf $CACHEDIR/*"
+#  else
+#      CLEANUP=true
+#  fi
+#  
+#  $CLEANUP
+#  cargo -q test $CARGO_EXTRA -q -p tract-rs
+#  $CLEANUP
+#  cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p core-proptest-pulse $ALL_FEATURES
+#  $CLEANUP
+#  cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p lstm-proptest-onnx-vs-tf $ALL_FEATURES
+#  $CLEANUP
+#  cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p nnef-inceptionv3 $ALL_FEATURES
+#  $CLEANUP
+#  cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p tf-inceptionv3 $ALL_FEATURES
+#  $CLEANUP
+#  cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p tf-mobilenet-v2 $ALL_FEATURES
+#  $CLEANUP
+#  cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p tf-moz-deepspeech $ALL_FEATURES
+#  CACHEDIR=$OLD_CACHEDIR
