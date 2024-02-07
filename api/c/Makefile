@@ -5,7 +5,7 @@ clean:
 	rm -f mobilenet libtract.so tract.h
 
 mobilenet: tract.h libtract.so mobilenet.c
-	cc mobilenet.c -o mobilenet -L. -ltract
+	cc -g mobilenet.c -o mobilenet -L. -ltract
 
 libtract.so:
 	cargo build -p tract-ffi --release
