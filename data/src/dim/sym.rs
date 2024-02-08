@@ -1,11 +1,11 @@
 use itertools::Itertools;
 use std::fmt;
 use std::sync::{Arc, Mutex, Weak};
-use string_interner::StringInterner;
+use string_interner::DefaultStringInterner;
 use string_interner::Symbol as _;
 
 #[derive(Clone, Default)]
-pub struct SymbolTable(Arc<Mutex<StringInterner>>);
+pub struct SymbolTable(Arc<Mutex<DefaultStringInterner>>);
 
 impl SymbolTable {
     pub fn get(&self, name: &str) -> Option<Symbol> {
@@ -55,7 +55,7 @@ impl fmt::Debug for SymbolTable {
 }
 
 #[derive(Clone)]
-pub struct Symbol(Weak<Mutex<StringInterner>>, string_interner::DefaultSymbol);
+pub struct Symbol(Weak<Mutex<DefaultStringInterner>>, string_interner::DefaultSymbol);
 
 impl PartialEq for Symbol {
     fn eq(&self, other: &Self) -> bool {

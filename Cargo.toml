@@ -112,7 +112,7 @@ smallvec = "1.6.1"
 scan_fmt = "0.2.6"
 serde = { version = "1.0.127", features = [ "derive" ] }
 serde_json = "1.0"
-string-interner = "0.14"
+string-interner = "0.15"
 tar = "0.4.37"
 tempfile = "3.8"
 tensorflow = "0.17.0"
