@@ -4,6 +4,7 @@ use ops::cnn::deconv::Deconv;
 use ops::cnn::{Conv, KernelFormat};
 use tract_core::internal::*;
 use tract_core::ops::array::PadMode;
+use tract_core::ops::cast::cast;
 use tract_core::ops::cnn::deconv::adjustments;
 use tract_core::ops::cnn::PaddingSpec;
 use tract_core::ops::cnn::PoolSpec;
@@ -338,6 +339,9 @@ pub fn conv_or_deconv(
             builder.model.wire_node(format!("{name}.bias_rm_{axis}"), AxisOp::Rm(axis), &[bias])?
                 [0];
     }
+
+    let bias_dt = if input_fact.datum_type.is_float() { input_fact.datum_type } else { i32::datum_type() };
+    bias = builder.model.wire_node(format!("{name}.cast_bias"), cast(bias_dt), &[bias])?[0];
 
     let mut inputs = tvec!(input, kernel, bias);
     let (group, pool_spec) = read_conv_parameters(
