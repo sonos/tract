@@ -99,10 +99,8 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
     ) -> TractResult<OutletId> {
         let v = v.into_arc_tensor();
         for node in &self.nodes {
-            if node.op_is::<Const>() {
-                if node.outputs[0].fact.konst.as_ref() == Some(&v) {
-                    return Ok(node.id.into());
-                }
+            if node.op_is::<Const>() && node.outputs[0].fact.konst.as_ref() == Some(&v) {
+                return Ok(node.id.into());
             }
         }
         let fact = TypedFact::from(v.clone());
