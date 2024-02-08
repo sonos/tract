@@ -4,7 +4,7 @@ use super::*;
 /// Infers every possible fact when all the values are concrete.
 pub fn infer_forward_concrete(
     op: &dyn Op,
-    inputs: &Vec<&InferenceFact>,
+    inputs: &[&InferenceFact],
 ) -> TractResult<Option<TVec<InferenceFact>>> {
     let input_values: TVec<_> = inputs.iter().filter_map(|t| t.value.concretize()).collect();
 

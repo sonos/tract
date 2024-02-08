@@ -122,7 +122,7 @@ impl SpecialOps<PulsedFact, Box<dyn PulsedOp>> for PulsedModel {
                 }
             }
         }
-        let op = NonPulsingWrappingOp(Box::new(Const(v.into())));
+        let op = NonPulsingWrappingOp(Box::new(Const(v)));
         Ok(self.wire_node(name, op, &[])?[0])
     }
 }
