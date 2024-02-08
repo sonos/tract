@@ -820,6 +820,7 @@ impl TypedOp for Conv {
             bail!("Wrong number of inputs: expected {} got {}", 3 + q_inputs, inputs.len());
         }
         if self.q_params.is_some() {
+            ensure!(inputs[2].datum_type == i32::datum_type());
             ensure!(inputs[3].datum_type == i32::datum_type());
             ensure!(inputs[4].datum_type.is_float());
             ensure!(inputs[5].datum_type == i32::datum_type());
