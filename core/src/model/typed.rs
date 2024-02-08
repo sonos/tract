@@ -1,6 +1,7 @@
 use crate::internal::*;
 use crate::model::*;
 use crate::ops;
+use crate::ops::konst::Const;
 use crate::optim::OptimizerSession;
 use crate::plan::{FrozenSimpleState, SimplePlan, SimpleState};
 use crate::transform::ModelTransformer;
@@ -89,6 +90,24 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
             )
         }
         .with_context(|| format!("Wiring node \"{name}\", {op:?}"))
+    }
+
+    fn add_const(
+        &mut self,
+        name: impl Into<String>,
+        v: impl IntoArcTensor,
+    ) -> TractResult<OutletId> {
+        let v = v.into_arc_tensor();
+        for node in &self.nodes {
+            if node.op_is::<Const>() {
+                if node.outputs[0].fact.konst.as_ref() == Some(&v) {
+                    return Ok(node.id.into());
+                }
+            }
+        }
+        let fact = TypedFact::from(v.clone());
+        let name = name.into();
+        self.add_node(name, crate::ops::konst::Const::new(v), tvec!(fact)).map(|id| id.into())
     }
 }
 

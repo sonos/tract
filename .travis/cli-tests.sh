@@ -116,7 +116,7 @@ $TRACT_RUN $MODELS/GRU128KeywordSpotter-v2-10epochs.onnx \
 
 $TRACT_RUN $MODELS/hey_snips_v4_model17.pb \
     -i S,20,f32 --pulse 8 dump --cost -q \
-    --assert-cost "FMA(F32)=2060448,Div(F32)=24576,Buffer(F32)=2920,Params(F32)=222299"
+    --assert-cost "FMA(F32)=2060448,Div(F32)=24576,Buffer(F32)=2920,Params(F32)=222250"
 
 $TRACT_RUN $MODELS/hey_snips_v4_model17.pb -i S,20,f32 \
     dump -q \
