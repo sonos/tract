@@ -1,6 +1,6 @@
 [package]
 name = "tract-pulse"
-version = "0.21.1"
+version = "0.21.2-pre"
 license = "MIT OR Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -17,5 +17,5 @@ maintenance = { status = "actively-developed" }
 downcast-rs.workspace = true
 lazy_static.workspace = true
 log.workspace = true
-tract-pulse-opl = { version = "=0.21.1", path = "../pulse-opl" }
+tract-pulse-opl = { version = "=0.21.2-pre", path = "../pulse-opl" }
 

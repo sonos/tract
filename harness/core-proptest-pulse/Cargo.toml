@@ -6,8 +6,8 @@ license = "MIT OR Apache-2.0"
 edition = "2021"
 
 [dependencies]
-tract-core = { path = "../../core", version = "=0.21.1" }
-tract-pulse = { path = "../../pulse", version = "=0.21.1" }
+tract-core = { path = "../../core", version = "=0.21.2-pre" }
+tract-pulse = { path = "../../pulse", version = "=0.21.2-pre" }
 
 [dev-dependencies]
 log.workspace = true
