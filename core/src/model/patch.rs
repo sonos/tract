@@ -5,6 +5,7 @@ use tract_data::itertools::{izip, Itertools};
 
 use crate::internal::*;
 use crate::model::*;
+use crate::ops::konst::Const;
 
 /// A change to apply to a model.
 ///
@@ -102,7 +103,7 @@ where
     pub fn tap_model(&mut self, model: &Graph<F, O>, outlet: OutletId) -> TractResult<OutletId> {
         let fact = model.outlet_fact(outlet)?;
         let id = self.add_source(
-            format!("incoming-{}/{}", outlet.node, outlet.slot),
+            format!("tap.{}-{}/{}", model.node(outlet.node).name, outlet.node, outlet.slot),
             dyn_clone::clone(fact),
         )?;
         self.taps.insert(id, outlet);
@@ -268,6 +269,10 @@ where
                 && mapping.contains_key(&OutletId::new(node.id, 0))
             {
                 // this is a tap
+                continue;
+            }
+            if let Some(k) = node.op_as::<Const>() {
+                mapping.insert(node.id.into(), target.add_const(&node.name, k.0.clone())?);
                 continue;
             }
             let Node { id: patch_node_id, name, inputs, op, outputs } = node;

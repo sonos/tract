@@ -3,6 +3,7 @@ use std::sync::RwLock;
 use crate::fact::StreamInfo;
 use crate::{internal::*, ops::sync_inputs};
 use tract_core::model::translator::Translate;
+use tract_pulse_opl::tract_core::ops::konst::Const;
 use tract_pulse_opl::tract_core::ops::source::TypedSource;
 
 pub type PulsedModel = Graph<PulsedFact, Box<dyn PulsedOp>>;
@@ -106,6 +107,23 @@ impl SpecialOps<PulsedFact, Box<dyn PulsedOp>> for PulsedModel {
             .enumerate()
             .try_for_each(|(ix, i)| self.add_edge(*i, InletId::new(id, ix)))?;
         Ok(self.node(id).outputs.iter().enumerate().map(|(ix, _)| OutletId::new(id, ix)).collect())
+    }
+
+    fn add_const(
+        &mut self,
+        name: impl Into<String>,
+        v: impl IntoArcTensor,
+    ) -> TractResult<OutletId> {
+        let v = v.into_arc_tensor();
+        for node in &self.nodes {
+            if let Some(op) = node.op_as::<Const>() {
+                if op.0 == v {
+                    return Ok(node.id.into());
+                }
+            }
+        }
+        let op = NonPulsingWrappingOp(Box::new(Const(v.into())));
+        Ok(self.wire_node(name, op, &[])?[0])
     }
 }
 

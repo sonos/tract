@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use tract_core::ops::konst::Const;
+
 use super::factoid::Factoid;
 use super::{InferenceFact, InferenceModel, InferenceNode, InferenceOp};
 use crate::internal::*;
@@ -118,9 +120,7 @@ impl InferenceModelExt for InferenceModel {
                         })
                         .collect()
                 } else {
-                    let outputs = node
-                        .op
-                        .to_typed(source, node, target, mapping)?;
+                    let outputs = node.op.to_typed(source, node, target, mapping)?;
                     for output in &outputs {
                         let fact = target.outlet_fact(*output)?;
                         fact.consistent().with_context(|| {
@@ -177,6 +177,25 @@ impl SpecialOps<InferenceFact, Box<dyn InferenceOp>> for InferenceModel {
             .enumerate()
             .try_for_each(|(ix, i)| self.add_edge(*i, InletId::new(id, ix)))?;
         Ok(self.node(id).outputs.iter().enumerate().map(|(ix, _)| OutletId::new(id, ix)).collect())
+    }
+
+    fn add_const(
+        &mut self,
+        name: impl Into<String>,
+        v: impl IntoArcTensor,
+    ) -> TractResult<OutletId> {
+        let v = v.into_arc_tensor();
+        for node in &self.nodes {
+            if let Some(op) = node.op_as::<Const>() {
+                if op.0 == v {
+                    return Ok(node.id.into());
+                }
+            }
+        }
+        let name = name.into();
+        let fact = TypedFact::from(v.clone());
+        self.add_node(name, crate::ops::konst::Const::new(v), tvec!(fact.into()))
+            .map(|id| id.into())
     }
 }
 
