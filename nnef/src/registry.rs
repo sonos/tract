@@ -226,16 +226,24 @@ impl Registry {
             }
             let inputs = multicast(builder, &[a, b])?;
             // FIXME: to be generalized to all binary ops (at least for quantization dt)
-            let c_dt: Option<DatumType> =
-                if (bin.0).0 == "mul" { dt.first().cloned().unwrap() } else { None };
+            let c_dt: Option<DatumType> = if &(bin.0).0 == "mul" {
+                match dt.first().cloned() {
+                    Some(c_dt) => c_dt,
+                    None => None,
+                }
+            } else {
+                None
+            };
             let mut wire = builder.wire_as_outlets(
                 tract_core::ops::binary::TypedBinOp(bin.1.clone(), c_dt),
                 &inputs,
             )?[0];
-            if let Some(Some(out_dt)) = dt.first() {
-                if out_dt != &builder.model.outlet_fact(wire)?.datum_type {
-                    wire =
-                        builder.wire_as_outlets(tract_core::ops::cast::cast(*out_dt), &[wire])?[0];
+            if c_dt.is_none() {
+                if let Some(Some(out_dt)) = dt.first() {
+                    if out_dt != &builder.model.outlet_fact(wire)?.datum_type {
+                        wire = builder
+                            .wire_as_outlets(tract_core::ops::cast::cast(*out_dt), &[wire])?[0];
+                    }
                 }
             }
             return Ok(Some(Value::Wire(wire)));
