@@ -70,8 +70,7 @@ pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + 
     fn eval_uniform_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()>;
     fn eval_in_a(&self, a: &mut Tensor, b: &Tensor) -> TractResult<()>;
     fn eval_out_of_place(&self, c: &mut Tensor, a: &Tensor, b: &Tensor) -> TractResult<()>;
-    fn generic_eval(&self, a: TValue, b: TValue) -> TractResult<Tensor> {
-        let c_dt = self.result_datum_type(a.datum_type(), b.datum_type())?;
+    fn generic_eval(&self, a: TValue, b: TValue, c_dt: DatumType) -> TractResult<Tensor> {
         if c_dt == b.datum_type() && a.len() == 1 {
             let mut b = b.into_tensor();
             self.eval_uniform_in_place(&a, &mut b)?;
@@ -94,8 +93,8 @@ pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + 
             }
         }
     }
-    fn eval(&self, a: TValue, b: TValue) -> TractResult<Tensor> {
-        self.generic_eval(a, b)
+    fn eval(&self, a: TValue, b: TValue, c_dt: DatumType) -> TractResult<Tensor> {
+        self.generic_eval(a, b, c_dt)
     }
     #[allow(unused_variables)]
     fn declutter(
@@ -125,7 +124,7 @@ dyn_clone::clone_trait_object!(BinMiniOp);
 downcast_rs::impl_downcast!(BinMiniOp);
 
 #[derive(Debug, Clone)]
-pub struct TypedBinOp(pub Box<dyn BinMiniOp>);
+pub struct TypedBinOp(pub Box<dyn BinMiniOp>, pub Option<DatumType>);
 
 impl Op for TypedBinOp {
     fn name(&self) -> Cow<str> {
@@ -139,6 +138,16 @@ impl Op for TypedBinOp {
     op_as_typed_op!();
 }
 
+impl TypedBinOp {
+    fn output_datum_type(&self, a_dt: DatumType, b_dt: DatumType) -> TractResult<DatumType> {
+        if let Some(dt) = self.1 {
+            Ok(dt)
+        } else {
+            self.0.result_datum_type(a_dt, b_dt)
+        }
+    }
+}
+
 impl EvalOp for TypedBinOp {
     fn is_stateless(&self) -> bool {
         true
@@ -147,7 +156,8 @@ impl EvalOp for TypedBinOp {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a, b) = args_2!(inputs);
         ensure!(a.rank() == b.rank());
-        Ok(tvec!(self.0.eval(a, b)?.into_tvalue()))
+        let c_dt = self.output_datum_type(a.datum_type(), b.datum_type())?;
+        Ok(tvec!(self.0.eval(a, b, c_dt)?.into_tvalue()))
     }
 }
 
@@ -156,7 +166,8 @@ impl TypedOp for TypedBinOp {
         if inputs[0].rank() != inputs[1].rank() {
             bail!("Typed ops require rank match. Invalid inputs for {}: {:?}", self.name(), inputs);
         }
-        Ok(tvec!(self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?.fact(
+        let out_dt = self.output_datum_type(inputs[0].datum_type, inputs[1].datum_type)?;
+        Ok(tvec!(out_dt.fact(
             &*crate::broadcast::multi_broadcast(&[
                 &inputs[0].shape.to_tvec(),
                 &inputs[1].shape.to_tvec()
@@ -232,8 +243,7 @@ impl TypedOp for TypedBinOp {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         let facts = model.node_input_facts(node.id)?;
-        if self.0.result_datum_type(facts[0].datum_type, facts[1].datum_type)?
-            == facts[0].datum_type
+        if self.output_datum_type(facts[0].datum_type, facts[1].datum_type)? == facts[0].datum_type
             && facts[0].without_value() == facts[1].without_value()
         {
             Ok(Some(
@@ -460,8 +470,8 @@ macro_rules! bin_to_super_type {
                 bail!("{} does not support {:?} (eval in a)", self.name(), a.datum_type());
             }
 
-            $(fn eval(&self, a: TValue, b: TValue) -> TractResult<Tensor> {
-                $eval_override(a, b)
+            $(fn eval(&self, a: TValue, b: TValue, c_dt: DatumType) -> TractResult<Tensor> {
+                $eval_override(a, b, c_dt)
             })?
 
             fn result_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
@@ -517,7 +527,7 @@ macro_rules! bin_to_super_type {
         }
 
         pub fn $func() -> $crate::ops::binary::TypedBinOp {
-            $crate::ops::binary::TypedBinOp(Box::new($Op))
+            $crate::ops::binary::TypedBinOp(Box::new($Op), None)
         }
     };
 }
@@ -635,7 +645,7 @@ macro_rules! bin_to_bool {
         }
 
         pub fn $func() -> $crate::ops::binary::TypedBinOp {
-            $crate::ops::binary::TypedBinOp(Box::new($Op))
+            $crate::ops::binary::TypedBinOp(Box::new($Op), None)
         }
     };
 }

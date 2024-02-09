@@ -217,7 +217,7 @@ impl Registry {
 
             // mitigation of nnef "scalar" type mismatch with tract-core more
             // strict types
-            if a_dt != b_dt {
+            if !a_dt.is_quantized() && !b_dt.is_quantized() && a_dt != b_dt {
                 if builder.model.node(a.node).op_is::<tract_core::ops::konst::Const>() {
                     a = builder.wire_as_outlets(tract_core::ops::cast::cast(b_dt), &[a])?[0];
                 } else {
@@ -225,10 +225,15 @@ impl Registry {
                 };
             }
             let inputs = multicast(builder, &[a, b])?;
-            let mut wire = builder
-                .wire_as_outlets(tract_core::ops::binary::TypedBinOp(bin.1.clone()), &inputs)?[0];
+            // FIXME: to be generalized to all binary ops (at least for quantization dt)
+            let c_dt: Option<DatumType> =
+                if (bin.0).0 == "mul" { dt.first().cloned().unwrap() } else { None };
+            let mut wire = builder.wire_as_outlets(
+                tract_core::ops::binary::TypedBinOp(bin.1.clone(), c_dt),
+                &inputs,
+            )?[0];
             if let Some(Some(out_dt)) = dt.first() {
-                if out_dt != &a_dt {
+                if out_dt != &builder.model.outlet_fact(wire)?.datum_type {
                     wire =
                         builder.wire_as_outlets(tract_core::ops::cast::cast(*out_dt), &[wire])?[0];
                 }
