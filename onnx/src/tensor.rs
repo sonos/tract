@@ -44,8 +44,12 @@ pub fn translate_inference_fact(
                     DimFact::from(v.to_dim())
                 }
                 Some(tensor_shape_proto::dimension::Value::DimParam(v)) => {
-                    let sym = ctx.symbol_table.sym(v);
-                    DimFact::from(sym.to_dim())
+                    if v.starts_with("unk__") {
+                        DimFact::default()
+                    } else {
+                        let sym = ctx.symbol_table.sym(v);
+                        DimFact::from(sym.to_dim())
+                    }
                 }
                 _ => DimFact::default(),
             })
@@ -55,7 +59,7 @@ pub fn translate_inference_fact(
     Ok(fact)
 }
 
-#[cfg(target_family="wasm")]
+#[cfg(target_family = "wasm")]
 fn extend_bytes_from_path(buf: &mut Vec<u8>, p: impl AsRef<Path>) -> TractResult<()> {
     use std::io::BufRead;
 
