@@ -657,8 +657,6 @@ mod tests {
     }
     impl TestMulAsQU8 {
         fn check(&self) -> TractResult<()> {
-            // here we assume we can only mul quantized tensors
-            // already aligned with output tensor zp and scale
             let mut model = TypedModel::default();
 
             let a_dt = DatumType::QU8(if let Some(a_qp) = self.a_qparams {
