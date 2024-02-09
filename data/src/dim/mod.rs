@@ -72,7 +72,11 @@ pub trait DimLike:
     /// do not use num_traits::Mul as it implies a regular Mul
     fn one() -> Self;
 
+    /// Substitute as many symbols as possible in the dim value.
     fn eval(&self, values: &SymbolValues) -> Self;
+
+    /// Full evaluation of the symbol, failing if a symbol is missing
+    fn eval_to_i64(&self, values: &SymbolValues) -> TractResult<i64>;
 
     fn substitute(&self, from: &Symbol, to: &Self) -> Self;
 }
@@ -144,6 +148,10 @@ impl DimLike for TDim {
     fn substitute(&self, from: &Symbol, to: &Self) -> Self {
         self.substitute(from, to)
     }
+
+    fn eval_to_i64(&self, values: &SymbolValues) -> TractResult<i64> {
+        TDim::eval_to_i64(&self, values)
+    }
 }
 
 impl<'a> std::convert::TryFrom<&'a TDim> for TDim {
@@ -174,6 +182,10 @@ impl DimLike for usize {
 
     fn substitute(&self, _from: &Symbol, _to: &Self) -> Self {
         *self
+    }
+
+    fn eval_to_i64(&self, _: &SymbolValues) -> TractResult<i64> {
+        Ok(*self as i64)
     }
 }
 

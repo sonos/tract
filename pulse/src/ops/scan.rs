@@ -93,7 +93,7 @@ impl PulsedOp for Scan {
                         if axis == output_mapping.scan.unwrap().1.axis {
                             inputs[first_scan_slot].pulse().unwrap().to_dim()
                         } else {
-                            d
+                            d.clone()
                         }
                     })
                     .collect();

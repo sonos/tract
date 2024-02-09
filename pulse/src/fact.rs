@@ -33,8 +33,6 @@ pub struct PulsedFact {
     pub stream: Option<StreamInfo>,
 }
 
-
-
 impl PulsedFact {
     pub fn from_tensor_fact_pulse(
         tf: &TypedFact,
@@ -46,7 +44,7 @@ impl PulsedFact {
             .shape
             .stream_info(symbol)
             .ok_or_else(|| format_err!("Can not pulse a tensor with no streaming dim"))?;
-        let mut shape: TVec<TDim> = tf.shape.iter().collect();
+        let mut shape: TVec<TDim> = tf.shape.to_tvec();
         shape[axis] = pulse.clone();
         Ok(PulsedFact {
             datum_type,
@@ -72,7 +70,7 @@ impl PulsedFact {
             self.shape
                 .iter()
                 .enumerate()
-                .map(|(ix, d)| if ix == stream.axis { stream.dim.clone() } else { d })
+                .map(|(ix, d)| if ix == stream.axis { stream.dim.clone() } else { d.clone() })
                 .collect()
         } else {
             self.shape.to_tvec()
