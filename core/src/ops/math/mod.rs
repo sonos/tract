@@ -648,27 +648,43 @@ mod tests {
     }
 
     struct TestMulAsQU8 {
-        tensor_mul_input1: [u8; 4],
-        scalar_mul_input_2: u8,
-        zero_point: i32,
-        scale: f32,
+        tensor_mul_input_a: [u8; 4],
+        scalar_mul_input_b: u8,
+        output_qparams: QParams,
         expected_output: [u8; 4],
+        a_qparams: Option<QParams>,
+        b_qparams: Option<QParams>,
     }
     impl TestMulAsQU8 {
         fn check(&self) -> TractResult<()> {
             // here we assume we can only mul quantized tensors
             // already aligned with output tensor zp and scale
             let mut model = TypedModel::default();
-            let input_dt =
-                DatumType::QU8(QParams::ZpScale { zero_point: self.zero_point, scale: self.scale });
-            let x = model.add_source("x", TypedFact::dt_shape(input_dt, [2_usize, 2]))?;
-            let mut a_tensor = tensor0(self.scalar_mul_input_2).broadcast_into_rank(2)?;
-            unsafe { a_tensor.set_datum_type(input_dt) };
-            let a = model.add_const("a", a_tensor.into_arc_tensor())?;
+
+            let a_dt = DatumType::QU8(if let Some(a_qp) = self.a_qparams {
+                a_qp
+            } else {
+                self.output_qparams
+            });
+
+            let b_dt = DatumType::QU8(if let Some(b_qp) = self.b_qparams {
+                b_qp
+            } else {
+                self.output_qparams
+            });
+
+            let x = model.add_source("a", TypedFact::dt_shape(a_dt, [2_usize, 2]))?;
+
+            let mut b_tensor = tensor0(self.scalar_mul_input_b).broadcast_into_rank(2)?;
+            unsafe { b_tensor.set_datum_type(b_dt) };
+            let a = model.add_const("b", b_tensor.into_arc_tensor())?;
+
             let y = model.wire_node("y", mul(), &[x, a])?[0];
             model.set_output_outlets(&[y])?;
-            let mut input_data = Tensor::from_shape(&[2, 2], &self.tensor_mul_input1)?;
-            unsafe { input_data.set_datum_type(input_dt) };
+
+            let mut input_data = Tensor::from_shape(&[2, 2], &self.tensor_mul_input_a)?;
+            unsafe { input_data.set_datum_type(a_dt) };
+
             let result = SimplePlan::new(&model)?.run(tvec!(input_data.into()))?;
             let arr = result[0].to_array_view::<u8>()?;
             assert_eq!(arr, Tensor::from_shape(&[2, 2], &self.expected_output)?.to_array_view()?);
@@ -680,11 +696,12 @@ mod tests {
     fn mul_as_qu8_overflow_clamp() -> TractResult<()> {
         // last value in output tensor overflow hence is clamped
         TestMulAsQU8 {
-            tensor_mul_input1: [1_u8, 2, 3, 128],
-            scalar_mul_input_2: 4_u8,
-            zero_point: 0,
-            scale: 1.,
+            tensor_mul_input_a: [1_u8, 2, 3, 128],
+            scalar_mul_input_b: 4_u8,
+            output_qparams: QParams::ZpScale { scale: 1., zero_point: 0 },
             expected_output: [4_u8, 8, 12, 255],
+            a_qparams: None, // aligned with output_qparams
+            b_qparams: None, // aligned with output_qparams
         }
         .check()
     }
@@ -693,12 +710,28 @@ mod tests {
     fn mul_as_qu8_non_neutral_scale_and_offset() -> TractResult<()> {
         // attempt with non neutral scale and offset
         TestMulAsQU8 {
-            tensor_mul_input1: [1_u8, 2, 3, 128], // real: -3, 0, 3, 378
-            scalar_mul_input_2: 4_u8,             // real: 6
-            zero_point: 2,
-            scale: 3.,
+            tensor_mul_input_a: [1_u8, 2, 3, 128], // real: -3, 0, 3, 378
+            scalar_mul_input_b: 4_u8,              // real: 6
+            output_qparams: QParams::ZpScale { scale: 3., zero_point: 2 },
             // optima in non quantized output real: -18, 0, 18, 2268
-            expected_output: [0_u8, 2, 8, 255], // approx obtained: -6, 0, 18, 759
+            expected_output: [0_u8, 2, 8, 255], // approx obtained real: -6, 0, 18, 759
+            a_qparams: None,                    // aligned with output_qparams
+            b_qparams: None,                    // aligned with output_qparams
+        }
+        .check()
+    }
+
+    #[test]
+    fn mul_as_qu8_non_aligned_scale_and_offset() -> TractResult<()> {
+        // attempt with non neutral scale and offset
+        TestMulAsQU8 {
+            tensor_mul_input_a: [1_u8, 2, 3, 128], // real: 18, 22.5, 27, 589,5
+            scalar_mul_input_b: 6_u8,              // real: 5
+            output_qparams: QParams::ZpScale { scale: 1., zero_point: 0 },
+            // optima in non quantized output real: -18, 0, 18, 2268
+            expected_output: [17_u8, 22, 27, 255], // real approx obtained == u8 observed
+            a_qparams: Some(QParams::ZpScale { scale: 4.5, zero_point: -3 }),
+            b_qparams: Some(QParams::ZpScale { scale: 2.5, zero_point: 4 }),
         }
         .check()
     }
