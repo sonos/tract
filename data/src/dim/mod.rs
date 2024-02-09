@@ -150,7 +150,7 @@ impl DimLike for TDim {
     }
 
     fn eval_to_i64(&self, values: &SymbolValues) -> TractResult<i64> {
-        TDim::eval_to_i64(&self, values)
+        TDim::eval_to_i64(self, values)
     }
 }
 
