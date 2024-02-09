@@ -8,8 +8,6 @@ pub struct Squeeze {
     axes: Option<Vec<isize>>,
 }
 
-
-
 impl Squeeze {
     pub fn output_shape<D: DimLike>(&self, input: &[D]) -> TractResult<TVec<D>> {
         if let Some(ref axes) = self.axes {
@@ -38,7 +36,6 @@ impl Expansion for Squeeze {
     fn name(&self) -> Cow<str> {
         "Squeeze".into()
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -72,7 +69,7 @@ impl Expansion for Squeeze {
                 .shape
                 .iter()
                 .enumerate()
-                .filter(|(_ix, d)| d == &1.to_dim())
+                .filter(|(_ix, d)| d.is_one())
                 .map(|(ix, _d)| ix as isize)
                 .collect()
         };

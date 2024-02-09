@@ -189,7 +189,9 @@ impl Expansion for DynamicQuantizeLinear {
         s.equals(&inputs[0].shape, &outputs[0].shape)?;
         s.equals(&outputs[0].datum_type, u8::datum_type())?;
         s.equals(&outputs[1].datum_type, f32::datum_type())?;
+        s.equals(&outputs[1].rank, 0)?;
         s.equals(&outputs[2].datum_type, u8::datum_type())?;
+        s.equals(&outputs[2].rank, 0)?;
 
         Ok(())
     }

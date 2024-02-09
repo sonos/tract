@@ -292,7 +292,7 @@ where
                             for (dim_abstract, dim_concrete) in f.shape.iter().zip(v.shape()) {
                                 Self::resolve(
                                     &mut session_state.resolved_symbols,
-                                    &dim_abstract,
+                                    dim_abstract,
                                     *dim_concrete as i64,
                                 );
                             }
@@ -363,7 +363,7 @@ where
         let model = plan.model.borrow();
         if let Ok(fact) = model.outlet_fact(outlet)?.to_typed_fact() {
             for (expected, provided) in fact.shape.iter().zip(t.shape()) {
-                Self::resolve(&mut session_state.resolved_symbols, &expected, *provided as i64)
+                Self::resolve(&mut session_state.resolved_symbols, expected, *provided as i64)
             }
         }
         let fact = self.plan.borrow().model().outlet_fact(outlet)?;

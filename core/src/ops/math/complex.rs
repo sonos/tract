@@ -66,7 +66,7 @@ impl EvalOp for ComplexToInnerDim {
 impl TypedOp for ComplexToInnerDim {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = inputs[0].without_value();
-        fact.shape = fact.shape.iter().chain(once(2.to_dim())).into();
+        fact.shape = fact.shape.iter().cloned().chain(once(2.to_dim())).into();
         fact.datum_type = fact.datum_type.decomplexify()?;
         Ok(tvec!(fact))
     }
