@@ -194,13 +194,12 @@ impl Expansion for Conv {
         if input_shape.c_dim() != &input_channels.to_dim() {
             bail!("Input has {} channels, kernel expects {}", input_shape.c_dim(), input_channels)
         }
+        let bias_dt =
+            if input.datum_type.is_float() { input.datum_type } else { i32::datum_type() };
         let mut bias = if let Some(slot) = self.bias_input {
-            inputs[slot]
+            model.wire_node("{prefix}.bias", cast(bias_dt), &[inputs[slot]])?[0]
         } else {
-            model.add_const(
-                format!("{prefix}.bias"),
-                Tensor::zero_scalar_dt(model.outlet_fact(inputs[0])?.datum_type)?,
-            )?
+            model.add_const(format!("{prefix}.bias"), Tensor::zero_scalar_dt(bias_dt)?)?
         };
         while let Some(axis) = model
             .outlet_fact(bias)?

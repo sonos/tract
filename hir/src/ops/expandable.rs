@@ -90,7 +90,7 @@ impl EvalOp for Box<dyn Expansion> {
             .map(|(ix, i)| {
                 adhoc.add_source(
                     format!("adhoc-source-{ix}"),
-                    TypedFact::from(i.clone().into_tensor()),
+                    TypedFact::from(i.clone().into_arc_tensor()),
                 )
             })
             .collect::<TractResult<TVec<OutletId>>>()?;

@@ -437,9 +437,9 @@ impl Scan {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        for (model_ix, mapping) in self.output_mapping.iter().enumerate() {
+        for (mapping_ix, mapping) in self.output_mapping.iter().enumerate() {
             if let Some((_, scan_info)) = mapping.scan {
-                let emitter_outlet = self.body.output_outlets()?[model_ix];
+                let emitter_outlet = self.body.output_outlets()?[mapping_ix];
                 if self.body.node(emitter_outlet.node).outputs[emitter_outlet.slot].successors.len()
                     > 0
                     || self.body.inputs.contains(&emitter_outlet)
@@ -463,7 +463,7 @@ impl Scan {
                         patch.apply(&mut new_body)?;
                     }
                 }
-                let emitter_outlet = new_body.output_outlets()?[model_ix];
+                let emitter_outlet = new_body.output_outlets()?[mapping_ix];
                 let invariants = {
                     let (input_facts, output_facts) = new_body.node_facts(emitter_outlet.node)?;
                     new_body
@@ -480,6 +480,7 @@ impl Scan {
                 let mut new_scan_outputs = node.outputs.len();
                 let mut outer_slots = vec![];
 
+                // rewire input of the extracted node through the scan outlet boundary
                 for (input_slot, input) in
                     new_body.node(emitter_outlet.node).inputs.clone().iter().enumerate()
                 {
@@ -492,8 +493,8 @@ impl Scan {
                     let outer_slot = if new_body.outlet_fact(*input)?.konst.is_some() {
                         if mapping.last_value_slot.is_none() {
                             mapping.last_value_slot = Some(new_scan_outputs);
+                            new_scan_outputs += 1;
                         }
-                        new_scan_outputs += 1;
                         mapping.last_value_slot.unwrap()
                     } else if let &[axis] = &*axis_tracking.inputs[input_slot] {
                         if mapping.scan.is_none() {

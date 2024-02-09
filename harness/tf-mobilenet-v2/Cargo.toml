@@ -6,7 +6,7 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 image.workspace = true
-tract-tensorflow = { path = "../../tensorflow", version = "=0.21.1-pre" }
+tract-tensorflow = { path = "../../tensorflow", version = "=0.21.2-pre" }
 
 [dev-dependencies]
 dinghy-test.workspace = true

@@ -12,4 +12,4 @@ dyn-clone.workspace = true
 env_logger.workspace = true
 itertools.workspace = true
 proptest.workspace = true
-tract-core = { path = "../../core", version = "=0.21.1-pre" }
+tract-core = { path = "../../core", version = "=0.21.2-pre" }

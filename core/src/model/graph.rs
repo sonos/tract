@@ -16,6 +16,11 @@ pub trait SpecialOps<F, O> {
         op: impl Into<O>,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>>;
+    fn add_const(
+        &mut self,
+        name: impl Into<String>,
+        v: impl IntoArcTensor,
+    ) -> TractResult<OutletId>;
 }
 
 /// Main model class
@@ -536,29 +541,6 @@ where
 
     pub fn outlet_successors(&self, outlet: OutletId) -> &[InletId] {
         &self.nodes[outlet.node].outputs[outlet.slot].successors
-    }
-}
-
-impl<F: Fact + Clone + 'static, O> Graph<F, O>
-where
-    F: Fact + Clone + 'static + From<std::sync::Arc<Tensor>>,
-    O: fmt::Debug
-        + fmt::Display
-        + From<crate::ops::konst::Const>
-        + AsRef<dyn Op>
-        + AsMut<dyn Op>
-        + Clone
-        + 'static,
-{
-    pub fn add_const(
-        &mut self,
-        name: impl Into<String>,
-        v: impl IntoArcTensor,
-    ) -> TractResult<OutletId> {
-        let v = v.into_arc_tensor();
-        let fact = F::from(v.clone());
-        let name = name.into();
-        self.add_node(name, crate::ops::konst::Const::new(v), tvec!(fact)).map(|id| id.into())
     }
 }
 

@@ -125,12 +125,23 @@ impl Fact for InferenceFact {
         Ok(Cow::Owned(TypedFact::try_from(self)?))
     }
 
-    fn matches(&self, t: &Tensor, symbols: Option<&SymbolValues>) -> TractResult<bool> {
-        let other = InferenceFact::from(t);
-
-        Ok(self.datum_type.unify(&other.datum_type).is_ok()
-            && self.value.unify(&other.value).is_ok()
-            && self.shape.matches(t, symbols).is_ok())
+    fn matches(&self, t: &Tensor, _symbols: Option<&SymbolValues>) -> TractResult<bool> {
+        if let Some(dt) = self.datum_type() {
+            if t.datum_type() != dt {
+                return Ok(false);
+            }
+        }
+        if let Some(shape) = self.shape.concretize() {
+            if *ShapeFact::from(t.shape()) != *shape {
+                return Ok(false);
+            }
+        }
+        if let Some(value) = self.value.concretize() {
+            if &*value != t {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
 
     fn same_as(&self, other: &dyn Fact) -> bool {
@@ -180,7 +191,7 @@ impl<'a> From<&'a TypedFact> for InferenceFact {
     fn from(t: &'a TypedFact) -> InferenceFact {
         let mut fact = InferenceFact::dt_shape(t.datum_type, t.shape.iter());
         if let Some(k) = &t.konst {
-            fact.value = k.clone().into_arc_tensor().into();
+            fact.value = Arc::clone(k).into();
         }
         fact
     }
@@ -194,7 +205,7 @@ impl From<TypedFact> for InferenceFact {
 
 impl<'a> From<&'a Arc<Tensor>> for InferenceFact {
     fn from(t: &'a Arc<Tensor>) -> InferenceFact {
-        InferenceFact::from(&TypedFact::from(t.clone()))
+        InferenceFact::from(&TypedFact::from(Arc::clone(t)))
     }
 }
 
@@ -209,11 +220,5 @@ impl From<Tensor> for InferenceFact {
         let mut fact = InferenceFact::dt_shape(t.datum_type(), t.shape());
         fact.value = t.into_arc_tensor().into();
         fact
-    }
-}
-
-impl<'a> From<&'a Tensor> for InferenceFact {
-    fn from(t: &'a Tensor) -> InferenceFact {
-        InferenceFact::from(t.clone())
     }
 }
