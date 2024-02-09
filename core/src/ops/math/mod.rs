@@ -50,9 +50,8 @@ where
 bin_to_super_type!(mul, Mul,
                    cost: |dt| tvec!((Cost::FMA(dt), 1)),
                    declutter: declutter_mul,
-                    eval_override: |a:TValue, b: TValue, c_dt: DatumType| -> TractResult<Tensor> {
+                   eval_override: |a:TValue, b: TValue, c_dt: DatumType| -> TractResult<Tensor> {
                         if let (Some(a_qp), Some(b_qp), Some(c_qp)) = (a.datum_type().qparams(), b.datum_type().qparams(), c_dt.qparams()) {
-                            // TODO: use c_dt differently
                             let multiplier = a_qp.zp_scale().1  *b_qp.zp_scale().1 * (1.0/ c_qp.zp_scale().1);
                             let a = a.to_array_view::<u8>()?;
                             let b = b.to_array_view::<u8>()?;
@@ -64,7 +63,6 @@ bin_to_super_type!(mul, Mul,
                                 .and_broadcast(b)
                                 .for_each(|c,a,b| *c = (scale_by((*a as i32 - a_qp.zp_scale().0 as i32) * (*b as i32 - b_qp.zp_scale().0 as i32), multiplier) + c_qp.zp_scale().0 as i32).clamp_cast());
                             Ok(c)
-                            // Mul.generic_eval(a, b, c_dt)
                         } else {
                             Mul.generic_eval(a, b, c_dt)
                         }
