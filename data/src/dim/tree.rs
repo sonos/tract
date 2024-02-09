@@ -78,7 +78,7 @@ impl TDim {
                 terms.iter().try_fold(0, |acc, it| it.eval_to_i64(values).map(|x| acc + x))
             }
             Mul(terms) => {
-                terms.iter().try_fold(0, |acc, it| it.eval_to_i64(values).map(|x| acc * x))
+                terms.iter().try_fold(1, |acc, it| it.eval_to_i64(values).map(|x| acc * x))
             }
             Div(a, q) => Ok(a.eval_to_i64(values)? / *q as i64),
             MulInt(p, a) => Ok(a.eval_to_i64(values)? * *p),
