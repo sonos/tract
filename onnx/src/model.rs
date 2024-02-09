@@ -99,7 +99,7 @@ impl<'a> ParsingContext<'a> {
                 let fact = input.r#type.as_ref().unwrap().value.as_ref().unwrap();
                 #[allow(irrefutable_let_patterns)]
                 let fact: InferenceFact = if let pb::type_proto::Value::TensorType(fact) = fact {
-                    translate_inference_fact(&ctx, fact)?
+                    translate_inference_fact(&ctx, fact, true)?
                 } else {
                     bail!("Can not parse tensor type");
                 };
@@ -183,7 +183,7 @@ impl<'a> ParsingContext<'a> {
             if self.framework.use_output_shapes {
                 if let Some(f) = output.r#type.as_ref().and_then(|t| t.value.as_ref()) {
                     let pb::type_proto::Value::TensorType(f) = f;
-                    fact = translate_inference_fact(&ctx, f)?
+                    fact = translate_inference_fact(&ctx, f, false)?
                 };
             }
             if self.framework.ignore_output_types {
@@ -198,7 +198,7 @@ impl<'a> ParsingContext<'a> {
         for info in &graph.value_info {
             if let Some(TypeProto { value: Some(Value::TensorType(t)), .. }) = &info.r#type {
                 if let Some(outlet) = outlets_by_name.get(&info.name) {
-                    let mut pbfact = translate_inference_fact(&ctx, t)?;
+                    let mut pbfact = translate_inference_fact(&ctx, t, false)?;
                     // be conservative, these are likely to be TDim
                     if pbfact.datum_type() == Some(i64::datum_type()) {
                         pbfact = pbfact.without_datum_type();
