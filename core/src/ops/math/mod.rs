@@ -52,7 +52,7 @@ bin_to_super_type!(mul, Mul,
                    declutter: declutter_mul,
                    eval_override: |a:TValue, b: TValue, c_dt: DatumType| -> TractResult<Tensor> {
                         if let (Some(a_qp), Some(b_qp), Some(c_qp)) = (a.datum_type().qparams(), b.datum_type().qparams(), c_dt.qparams()) {
-                            let multiplier = a_qp.zp_scale().1  *b_qp.zp_scale().1 * (1.0/ c_qp.zp_scale().1);
+                            let multiplier = a_qp.zp_scale().1  * b_qp.zp_scale().1 * (1.0/ c_qp.zp_scale().1);
                             let a = a.to_array_view::<u8>()?;
                             let b = b.to_array_view::<u8>()?;
                             let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()]).context("no broadcast solution")?;
@@ -671,19 +671,23 @@ mod tests {
                 self.output_qparams
             });
 
-            let x = model.add_source("a", TypedFact::dt_shape(a_dt, [2_usize, 2]))?;
+            let a = model.add_source("a", TypedFact::dt_shape(a_dt, [2_usize, 2]))?;
 
             let mut b_tensor = tensor0(self.scalar_mul_input_b).broadcast_into_rank(2)?;
             unsafe { b_tensor.set_datum_type(b_dt) };
-            let a = model.add_const("b", b_tensor.into_arc_tensor())?;
+            let b = model.add_const("b", b_tensor.into_arc_tensor())?;
 
-            let y = model.wire_node("y", mul(), &[x, a])?[0];
-            model.set_output_outlets(&[y])?;
+            // we need to wire correctly output to the mul {
+            let mut op = mul();
+            op.1 = Some(DatumType::QU8(self.output_qparams));
+            // }
+            let c = model.wire_node("c", op, &[a, b])?[0];
+            model.set_output_outlets(&[c])?;
 
-            let mut input_data = Tensor::from_shape(&[2, 2], &self.tensor_mul_input_a)?;
-            unsafe { input_data.set_datum_type(a_dt) };
+            let mut a_data = Tensor::from_shape(&[2, 2], &self.tensor_mul_input_a)?;
+            unsafe { a_data.set_datum_type(a_dt) };
 
-            let result = SimplePlan::new(&model)?.run(tvec!(input_data.into()))?;
+            let result = SimplePlan::new(&model)?.run(tvec!(a_data.into()))?;
             let arr = result[0].to_array_view::<u8>()?;
             assert_eq!(arr, Tensor::from_shape(&[2, 2], &self.expected_output)?.to_array_view()?);
             Ok(())
@@ -697,9 +701,9 @@ mod tests {
             tensor_mul_input_a: [1_u8, 2, 3, 128],
             scalar_mul_input_b: 4_u8,
             output_qparams: QParams::ZpScale { scale: 1., zero_point: 0 },
-            expected_output: [4_u8, 8, 12, 255],
             a_qparams: None, // aligned with output_qparams
             b_qparams: None, // aligned with output_qparams
+            expected_output: [4_u8, 8, 12, 255],
         }
         .check()
     }
@@ -712,9 +716,9 @@ mod tests {
             scalar_mul_input_b: 4_u8,              // real: 6
             output_qparams: QParams::ZpScale { scale: 3., zero_point: 2 },
             // optima in non quantized output real: -18, 0, 18, 2268
-            expected_output: [0_u8, 2, 8, 255], // approx obtained real: -6, 0, 18, 759
             a_qparams: None,                    // aligned with output_qparams
             b_qparams: None,                    // aligned with output_qparams
+            expected_output: [0_u8, 2, 8, 255], // approx obtained real: -6, 0, 18, 759
         }
         .check()
     }
@@ -723,13 +727,13 @@ mod tests {
     fn mul_as_qu8_non_aligned_scale_and_offset() -> TractResult<()> {
         // attempt with non neutral scale and offset
         TestMulAsQU8 {
-            tensor_mul_input_a: [1_u8, 2, 3, 128], // real: 18, 22.5, 27, 589,5
+            tensor_mul_input_a: [3_u8, 4, 10, 25], // real: 0, 4.5, 31.5, 99
             scalar_mul_input_b: 6_u8,              // real: 5
             output_qparams: QParams::ZpScale { scale: 1., zero_point: 0 },
-            // optima in non quantized output real: -18, 0, 18, 2268
-            expected_output: [17_u8, 22, 27, 255], // real approx obtained == u8 observed
-            a_qparams: Some(QParams::ZpScale { scale: 4.5, zero_point: -3 }),
+            a_qparams: Some(QParams::ZpScale { scale: 4.5, zero_point: 3 }),
             b_qparams: Some(QParams::ZpScale { scale: 2.5, zero_point: 4 }),
+            // optima in non quantized output real: 0, 22.5, 157,5, 495
+            expected_output: [0_u8, 22, 158, 255],
         }
         .check()
     }
