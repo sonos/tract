@@ -32,6 +32,7 @@ impl TryFrom<DataType> for DatumType {
 pub fn translate_inference_fact(
     ctx: &ParsingContext,
     t: &type_proto::Tensor,
+    include_unknown_symbols: bool,
 ) -> TractResult<InferenceFact> {
     let mut fact = InferenceFact::default();
     fact = fact.with_datum_type(DataType::from_i32(t.elem_type).unwrap().try_into()?);
@@ -44,7 +45,7 @@ pub fn translate_inference_fact(
                     DimFact::from(v.to_dim())
                 }
                 Some(tensor_shape_proto::dimension::Value::DimParam(v)) => {
-                    if v.starts_with("unk__") {
+                    if v.starts_with("unk__") && !include_unknown_symbols {
                         DimFact::default()
                     } else {
                         let sym = ctx.symbol_table.sym(v);
