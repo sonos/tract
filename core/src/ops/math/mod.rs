@@ -725,7 +725,7 @@ mod tests {
 
     #[test]
     fn mul_as_qu8_non_aligned_scale_and_offset() -> TractResult<()> {
-        // attempt with non neutral scale and offset
+        // attempt with all scale and offset not aligned
         TestMulAsQU8 {
             tensor_mul_input_a: [3_u8, 4, 10, 25], // real: 0, 4.5, 31.5, 99
             scalar_mul_input_b: 6_u8,              // real: 5
