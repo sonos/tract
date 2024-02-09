@@ -184,7 +184,7 @@ impl Expansion for Conv {
         let kernel_input = self.k_input.unwrap_or(1);
         let kernel_fact = model.outlet_fact(inputs[kernel_input])?.clone();
         let input = model.outlet_fact(inputs[0])?.clone();
-        let input_shape = self.data_format.shape(input.shape.iter().collect::<TVec<_>>())?;
+        let input_shape = self.data_format.shape(&input.shape)?;
         let kernel_full_shape =
             kernel_fact.shape.as_concrete().context("Expect concrete shape for kernel")?;
         let group = self.group.unwrap_or(1);

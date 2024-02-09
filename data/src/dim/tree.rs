@@ -67,6 +67,24 @@ impl TDim {
         }
     }
 
+    pub fn eval_to_i64(&self, values: &SymbolValues) -> anyhow::Result<i64> {
+        match self {
+            Sym(sym) => {
+                let Some(v) = values[sym] else { anyhow::bail!(UndeterminedSymbol(self.clone())) };
+                Ok(v)
+            }
+            Val(v) => Ok(*v),
+            Add(terms) => {
+                terms.iter().try_fold(0, |acc, it| it.eval_to_i64(values).map(|x| acc + x))
+            }
+            Mul(terms) => {
+                terms.iter().try_fold(0, |acc, it| it.eval_to_i64(values).map(|x| acc * x))
+            }
+            Div(a, q) => Ok(a.eval_to_i64(values)? / *q as i64),
+            MulInt(p, a) => Ok(a.eval_to_i64(values)? * *p),
+        }
+    }
+
     pub fn eval(&self, values: &SymbolValues) -> TDim {
         match self {
             Sym(sym) => values[sym].map(Val).unwrap_or_else(|| Sym(sym.clone())),
@@ -80,10 +98,20 @@ impl TDim {
 
     pub fn substitute(&self, from: &Symbol, to: &Self) -> Self {
         match self {
-            Sym(sym) => if sym == from { to.clone() } else { self.clone() },
+            Sym(sym) => {
+                if sym == from {
+                    to.clone()
+                } else {
+                    self.clone()
+                }
+            }
             Val(v) => Val(*v),
-            Add(terms) => terms.iter().fold(Val(0), |acc, it| -> TDim { acc + it.substitute(from, to) }),
-            Mul(terms) => terms.iter().fold(Val(1), |acc, it| -> TDim { acc * it.substitute(from, to) }),
+            Add(terms) => {
+                terms.iter().fold(Val(0), |acc, it| -> TDim { acc + it.substitute(from, to) })
+            }
+            Mul(terms) => {
+                terms.iter().fold(Val(1), |acc, it| -> TDim { acc * it.substitute(from, to) })
+            }
             Div(a, q) => a.substitute(from, to) / *q as i64,
             MulInt(p, a) => a.substitute(from, to) * *p,
         }

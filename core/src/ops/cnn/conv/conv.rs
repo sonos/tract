@@ -549,10 +549,7 @@ impl Conv {
             new_op.pool_spec.strides.as_mut().unwrap()[axis] /= downsample_factor;
             let mut patch = TypedModelPatch::default();
             let mut taps = patch.taps(model, &node.inputs)?;
-            let shape = self
-                .pool_spec
-                .data_format
-                .shape(input_fact.shape.iter().collect::<TVec<TDim>>())?;
+            let shape = self.pool_spec.data_format.shape(&input_fact.shape)?;
             taps[0] = patch.wire_node(
                 format!("{}.downsample.{}", node.name, axis),
                 crate::ops::Downsample::new(axis + shape.h_axis(), downsample_factor as isize, 0),
@@ -869,7 +866,7 @@ impl TypedOp for Conv {
         outputs: &[&TypedFact],
     ) -> TractResult<AxesMapping> {
         let fact = &inputs[0];
-        let shape = self.pool_spec.data_format.shape(fact.shape.iter().collect::<Vec<TDim>>())?;
+        let shape = self.pool_spec.data_format.shape(&fact.shape)?;
         let mut axes = AxesMapping::disconnected(inputs, outputs)?
             .renaming((InOut::In(0), shape.c_axis()), 'I')?
             .renaming((InOut::Out(0), shape.c_axis()), 'O')?;

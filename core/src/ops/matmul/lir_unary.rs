@@ -389,13 +389,19 @@ impl TypedOp for LirMatMulUnary {
                 *sums.entry(cost).or_default() += count;
             }
         }
-        let loops = self
-            .c_fact
-            .shape
-            .iter()
-            .enumerate()
-            .map(|(ix, d)| if ix == self.c_m_axis || ix == self.c_n_axis { 1.to_dim() } else { d })
-            .product::<TDim>();
+        let loops =
+            self.c_fact
+                .shape
+                .iter()
+                .enumerate()
+                .map(|(ix, d)| {
+                    if ix == self.c_m_axis || ix == self.c_n_axis {
+                        1.to_dim()
+                    } else {
+                        d.clone()
+                    }
+                })
+                .product::<TDim>();
         for s in &mut sums.values_mut() {
             *s *= &loops;
         }
@@ -435,7 +441,7 @@ impl TypedOp for LirMatMulUnary {
             }
             if let Some(op) = op.downcast_ref::<LeakyRelu>() {
                 if !self.mmm.can_fuse(&FusedSpec::LeakyRelu(&tensor0(op.alpha))) {
-                    return Ok(None)
+                    return Ok(None);
                 }
                 let alpha = patch.add_const(
                     node.name.to_string() + ".alpha",
@@ -601,7 +607,7 @@ impl LirMatMulUnary {
                 .shape
                 .iter()
                 .enumerate()
-                .all(|(ax, dim)| ax == self.c_m_axis || ax == self.c_n_axis || dim == TDim::Val(1))
+                .all(|(ax, dim)| ax == self.c_m_axis || ax == self.c_n_axis || dim.is_one())
             && self.micro_ops.iter().all(|o| !o.has_symbols())
     }
 

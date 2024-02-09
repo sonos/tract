@@ -33,11 +33,6 @@ impl ShapeFact {
         self.concrete.is_some()
     }
 
-    /// Iterator over dimension of the shape.
-    pub fn iter(&self) -> impl Iterator<Item = TDim> + '_ {
-        self.dims.iter().cloned()
-    }
-
     /// Convert the shape to an array of extended dimensions.
     #[inline]
     pub fn to_tvec(&self) -> TVec<TDim> {
@@ -65,7 +60,9 @@ impl ShapeFact {
             Ok(Cow::Borrowed(c))
         } else {
             Ok(Cow::Owned(
-                self.iter().map(|d| d.eval(values).to_usize()).collect::<TractResult<TVec<_>>>()?,
+                self.iter()
+                    .map(|d| d.eval_to_i64(values).map(|d| d as usize))
+                    .collect::<TractResult<TVec<_>>>()?,
             ))
         }
     }
@@ -76,7 +73,9 @@ impl ShapeFact {
             Ok(unsafe { std::mem::transmute(Cow::Borrowed(c)) })
         } else {
             Ok(Cow::Owned(
-                self.iter().map(|d| d.eval(values).to_isize()).collect::<TractResult<TVec<_>>>()?,
+                self.iter()
+                    .map(|d| d.eval_to_i64(values).map(|d| d as isize))
+                    .collect::<TractResult<TVec<_>>>()?,
             ))
         }
     }
@@ -343,7 +342,6 @@ impl Fact for TypedFact {
     fn datum_type(&self) -> Option<DatumType> {
         Some(self.datum_type)
     }
-
 }
 
 impl From<Tensor> for TypedFact {

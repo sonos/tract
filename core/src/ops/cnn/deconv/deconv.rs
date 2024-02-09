@@ -1,8 +1,8 @@
 use crate::internal::*;
 use crate::ops::array::MultiBroadcastTo;
+use crate::ops::cnn::wire_reshape_bias_for_bin;
 use crate::ops::cnn::KernelFormat;
 use crate::ops::cnn::PoolSpec;
-use crate::ops::cnn::wire_reshape_bias_for_bin;
 use crate::ops::einsum::EinSum;
 
 #[derive(Clone, Debug, new, Hash)]
@@ -178,7 +178,7 @@ impl TypedOp for Deconv {
     ) -> TractResult<AxesMapping> {
         let fact = &inputs[0];
         let k_fact = &inputs[1];
-        let shape = self.pool_spec.data_format.shape(fact.shape.iter().collect::<Vec<TDim>>())?;
+        let shape = self.pool_spec.data_format.shape(&fact.shape)?;
         let mut axes = AxesMapping::disconnected(inputs, outputs)?
             .renaming((InOut::In(0), shape.c_axis()), 'I')?
             .renaming((InOut::Out(0), shape.c_axis()), 'O')?;
