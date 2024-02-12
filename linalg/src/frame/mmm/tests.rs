@@ -334,7 +334,7 @@ where
 
     let mut found = Tensor::zero::<TC>(&[m, n]).unwrap();
     let c_store = op
-        .c_from_data_and_strides(TC::datum_type().size_of(), m, n, n as isize, 1)
+        .c_from_data_and_strides(TC::datum_type().size_of(), n as isize, 1)
         .wrap(&found.view_mut());
     let mut spec: TVec<FusedSpec> = spec.into();
     spec.push(FusedSpec::Store(c_store));
