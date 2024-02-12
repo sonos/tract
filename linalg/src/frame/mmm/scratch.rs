@@ -187,7 +187,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
     ) {
         if down < self.valid_down_tiles && right < self.valid_right_tiles {
             self.for_valid_tile::<K>(specs, down, right);
-            let err = K::kernel(&self.uspecs());
+            let err = K::kernel(self.uspecs());
             debug_assert_eq!(err, 0, "Kernel return error {err}");
         } else {
             let remnant_down =
@@ -195,7 +195,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
             let remnant_right =
                 if right < self.valid_right_tiles { K::nr() } else { self.remnant_right };
             self.for_border_tile::<K>(specs, down, right, remnant_down, remnant_right);
-            let err = K::kernel(&self.uspecs());
+            let err = K::kernel(self.uspecs());
             debug_assert_eq!(err, 0, "Kernel return error {err}");
             self.postprocess_tile::<K>(specs, down, right, remnant_down, remnant_right);
         }
