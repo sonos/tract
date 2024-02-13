@@ -70,8 +70,21 @@ pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + 
     fn eval_uniform_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()>;
     fn eval_in_a(&self, a: &mut Tensor, b: &Tensor) -> TractResult<()>;
     fn eval_out_of_place(&self, c: &mut Tensor, a: &Tensor, b: &Tensor) -> TractResult<()>;
+
+    #[allow(unused_variables)]
+    fn maybe_eval_qbinary_as_float_op(
+        &self,
+        a: &TValue,
+        b: &TValue,
+        c_dt: &DatumType,
+    ) -> TractResult<Option<Tensor>> {
+        Ok(None)
+    }
+
     fn generic_eval(&self, a: TValue, b: TValue, c_dt: DatumType) -> TractResult<Tensor> {
-        if c_dt == b.datum_type() && a.len() == 1 {
+        if let Some(tensor) = self.maybe_eval_qbinary_as_float_op(&a, &b, &c_dt)? {
+            Ok(tensor)
+        } else if c_dt == b.datum_type() && a.len() == 1 {
             let mut b = b.into_tensor();
             self.eval_uniform_in_place(&a, &mut b)?;
             Ok(b)
@@ -326,6 +339,7 @@ macro_rules! bin_to_super_type {
      $(out_of_place: $out_of_place:expr,)?
      $(validation: $validation:expr,)?
      $(q: $([$($typ_dt:ident),*] => $cab_dt:expr),* ;)?
+     $(q_op_on_f32: $q_op_on_f32: expr,)?
      $( [$($typ:ident),*] => $cab:expr),*) => {
         #[derive(Debug, Clone, Hash)]
         pub struct $Op;
@@ -524,6 +538,38 @@ macro_rules! bin_to_super_type {
                     fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
                         ($operating_datum_type)(a, b)
                     })?
+
+            #[allow(unused_variables)]
+            fn maybe_eval_qbinary_as_float_op(
+                &self,
+                a: &TValue,
+                b: &TValue,
+                c_dt: &DatumType,
+            ) -> TractResult<Option<Tensor>> {
+                $(
+                if let (Some(a_qp), Some(b_qp), Some(c_qp)) =
+                    (a.datum_type().qparams(), b.datum_type().qparams(), c_dt.qparams())
+                {
+                    let c_inv_scale = 1.0 / c_qp.zp_scale().1;
+                    let a = a.to_array_view::<u8>()?;
+                    let b = b.to_array_view::<u8>()?;
+                    let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])
+                        .context("no broadcast solution")?;
+                    let mut c = Tensor::zero_dt(*c_dt, &c_shape)?;
+                    let view = c.to_array_view_mut::<u8>()?;
+                    crate::ndarray::Zip::from(view).and_broadcast(a).and_broadcast(b).for_each(|c, a, b| {
+                        *c = (($q_op_on_f32(
+                                    scale_by((*a as i32 - a_qp.zp_scale().0 as i32) as f32, a_qp.zp_scale().1),
+                                    scale_by((*b as i32 - b_qp.zp_scale().0 as i32) as f32, b_qp.zp_scale().1),
+                        ) * c_inv_scale) as i32
+                            + c_qp.zp_scale().0 as i32)
+                            .clamp_cast()
+                    });
+                    return Ok(Some(c));
+                }
+                )?
+                Ok(None)
+            }
         }
 
         pub fn $func() -> $crate::ops::binary::TypedBinOp {
