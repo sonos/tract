@@ -20,6 +20,26 @@ pub use complex::{ComplexToInnerDim, InnerDimToComplex};
 
 bin_to_super_type!(add, Add,
                    declutter: declutter_add,
+                   eval_override: |a:TValue, b: TValue, c_dt: DatumType| -> TractResult<Tensor> {
+                       if let (Some(a_qp), Some(b_qp), Some(c_qp)) = (a.datum_type().qparams(), b.datum_type().qparams(), c_dt.qparams()) {
+                           let c_inv_scale = 1.0/ c_qp.zp_scale().1;
+                           let a = a.to_array_view::<u8>()?;
+                           let b = b.to_array_view::<u8>()?;
+                           let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()]).context("no broadcast solution")?;
+                           let mut c = Tensor::zero_dt(c_dt, &c_shape)?;
+                           let view = c.to_array_view_mut::<u8>()?;
+                           crate::ndarray::Zip::from(view)
+                               .and_broadcast(a)
+                               .and_broadcast(b)
+                               .for_each(|c,a,b| *c = (
+                                       ((scale_by((*a as i32 - a_qp.zp_scale().0 as i32) as f32, a_qp.zp_scale().1) +
+                                       scale_by((*b as i32 - b_qp.zp_scale().0 as i32) as f32, b_qp.zp_scale().1))
+                                       * c_inv_scale) as i32 + c_qp.zp_scale().0 as i32).clamp_cast());
+                           Ok(c)
+                       } else {
+                           Mul.generic_eval(a, b, c_dt)
+                       }
+                   },
                    linalg: Add,
                    validation: Validation::Rounding,
                    q: [i8, u8, i32, i32] => add_quant;

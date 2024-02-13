@@ -226,7 +226,7 @@ impl Registry {
             }
             let inputs = multicast(builder, &[a, b])?;
             // FIXME: to be generalized to all binary ops (at least for quantization dt)
-            let c_dt: Option<DatumType> = if &(bin.0).0 == "mul" {
+            let c_dt: Option<DatumType> = if ["mul", "add"].contains(&(bin.0).0.as_str()) {
                 match dt.first().cloned() {
                     Some(c_dt) => c_dt,
                     None => None,
