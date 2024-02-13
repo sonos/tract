@@ -667,7 +667,8 @@ mod tests {
         Ok(())
     }
 
-    struct TestMulAsQU8 {
+    struct TestOpWithQU8 {
+        operator: crate::ops::binary::TypedBinOp,
         tensor_mul_input_a: [u8; 4],
         scalar_mul_input_b: u8,
         output_qparams: QParams,
@@ -675,7 +676,7 @@ mod tests {
         a_qparams: Option<QParams>,
         b_qparams: Option<QParams>,
     }
-    impl TestMulAsQU8 {
+    impl TestOpWithQU8 {
         fn check(&self) -> TractResult<()> {
             let mut model = TypedModel::default();
 
@@ -698,7 +699,7 @@ mod tests {
             let b = model.add_const("b", b_tensor.into_arc_tensor())?;
 
             // we need to wire correctly output to the mul {
-            let mut op = mul();
+            let mut op = self.operator.clone();
             op.1 = Some(DatumType::QU8(self.output_qparams));
             // }
             let c = model.wire_node("c", op, &[a, b])?[0];
@@ -717,7 +718,8 @@ mod tests {
     #[test]
     fn mul_as_qu8_overflow_clamp() -> TractResult<()> {
         // last value in output tensor overflow hence is clamped
-        TestMulAsQU8 {
+        TestOpWithQU8 {
+            operator: mul(),
             tensor_mul_input_a: [1_u8, 2, 3, 128],
             scalar_mul_input_b: 4_u8,
             output_qparams: QParams::ZpScale { scale: 1., zero_point: 0 },
@@ -731,7 +733,8 @@ mod tests {
     #[test]
     fn mul_as_qu8_non_neutral_scale_and_offset() -> TractResult<()> {
         // attempt with non neutral scale and offset
-        TestMulAsQU8 {
+        TestOpWithQU8 {
+            operator: mul(),
             tensor_mul_input_a: [1_u8, 2, 3, 128], // real: -3, 0, 3, 378
             scalar_mul_input_b: 4_u8,              // real: 6
             output_qparams: QParams::ZpScale { scale: 3., zero_point: 2 },
@@ -746,14 +749,31 @@ mod tests {
     #[test]
     fn mul_as_qu8_non_aligned_scale_and_offset() -> TractResult<()> {
         // attempt with all scale and offset not aligned
-        TestMulAsQU8 {
+        TestOpWithQU8 {
+            operator: mul(),
             tensor_mul_input_a: [3_u8, 4, 10, 25], // real: 0, 4.5, 31.5, 99
             scalar_mul_input_b: 6_u8,              // real: 5
             output_qparams: QParams::ZpScale { scale: 1., zero_point: 0 },
             a_qparams: Some(QParams::ZpScale { scale: 4.5, zero_point: 3 }),
             b_qparams: Some(QParams::ZpScale { scale: 2.5, zero_point: 4 }),
-            // optima in non quantized output real: 0, 22.5, 157,5, 495
+            // optima in non quantized output real: 0, 22.5, 157.5, 495
             expected_output: [0_u8, 22, 158, 255],
+        }
+        .check()
+    }
+
+    #[test]
+    fn add_as_qu8_non_aligned_scale_and_offset() -> TractResult<()> {
+        // attempt with all scale and offset not aligned
+        TestOpWithQU8 {
+            operator: add(),
+            tensor_mul_input_a: [3_u8, 4, 10, 25], // real: 0, 4.5, 31.5, 99
+            scalar_mul_input_b: 6_u8,              // real: 5
+            output_qparams: QParams::ZpScale { scale: 1., zero_point: 0 },
+            a_qparams: Some(QParams::ZpScale { scale: 4.5, zero_point: 3 }),
+            b_qparams: Some(QParams::ZpScale { scale: 2.5, zero_point: 4 }),
+            // optima in non quantized output real: 5, 9.5, 36.5, 104
+            expected_output: [5_u8, 9, 37, 104],
         }
         .check()
     }
