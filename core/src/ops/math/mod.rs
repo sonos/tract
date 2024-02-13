@@ -37,7 +37,7 @@ bin_to_super_type!(add, Add,
                                        * c_inv_scale) as i32 + c_qp.zp_scale().0 as i32).clamp_cast());
                            Ok(c)
                        } else {
-                           Mul.generic_eval(a, b, c_dt)
+                           Add.generic_eval(a, b, c_dt)
                        }
                    },
                    linalg: Add,
