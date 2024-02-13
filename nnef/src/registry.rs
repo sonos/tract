@@ -217,7 +217,7 @@ impl Registry {
 
             // mitigation of nnef "scalar" type mismatch with tract-core more
             // strict types
-            if !a_dt.is_quantized() && !b_dt.is_quantized() && a_dt != b_dt {
+            if (!a_dt.is_quantized() || !b_dt.is_quantized()) && a_dt != b_dt {
                 if builder.model.node(a.node).op_is::<tract_core::ops::konst::Const>() {
                     a = builder.wire_as_outlets(tract_core::ops::cast::cast(b_dt), &[a])?[0];
                 } else {
