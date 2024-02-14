@@ -63,11 +63,14 @@ inference(char *model_name, TractValue *input, TractValue *input2, prediction *i
     check(tract_onnx_destroy(&onnx));
     assert(!onnx);
 
-    // Convert inference model to a typed model
-    check(tract_inference_model_into_typed(&inference_model, &model));
-    assert(model);
+    // Convert inference model to a typed model and optimize it
+    // check(tract_inference_model_into_typed(&inference_model, &model));
+    // assert(model);
+    // check(tract_model_optimize(model));
+    // assert(model);
 
-    check(tract_model_optimize(model));
+    // or
+    check(tract_inference_model_into_optimized(&inference_model,&model));
     assert(model);
 
     // Make the model runnable
@@ -87,6 +90,9 @@ inference(char *model_name, TractValue *input, TractValue *input2, prediction *i
     const float *data = NULL;
     check(tract_value_as_bytes(output, NULL, NULL, NULL, (const void**) &data));
 
+    check(tract_runnable_release(&runnable));
+    assert(!runnable);
+
     float max = data[0];
     int argmax = 0;
     for(int i = 0; i < 1000; i++) {
@@ -99,21 +105,18 @@ inference(char *model_name, TractValue *input, TractValue *input2, prediction *i
     assert(data[argmax] == max);
     printf("\nModel: %s\nMax is %f for category %d\n", model_name, max, argmax);
 
-    check(tract_runnable_release(&runnable));
-    assert(!runnable);
+    // or spawn a state to run the model
+    // TractState *state = NULL;
+    // check(tract_runnable_spawn_state(runnable, &state));
+    // assert(state);
 
-    /* // or spawn a state to run the model
-    TractState *state = NULL;
-    check(tract_runnable_spawn_state(runnable, &state));
-    assert(state);
+    // check(tract_state_run(state, &input, &output));
 
-    check(tract_state_run(state, &input, &output));
+    // check(tract_value_as_bytes(output, NULL, NULL, NULL, (const void**) &data));
+    // check(tract_state_destroy(&state));
+    // assert(!state);
 
-    check(tract_value_as_bytes(output, NULL, NULL, NULL, (const void**) &data));
-    check(tract_state_destroy(&state));
-    assert(!state);
-
-    printf("\nModel: %s\nMax is %f for category %d\n", model_name, max, argmax); */
+    // printf("\nModel: %s\nMax is %f for category %d\n", model_name, max, argmax);
 
     gettimeofday(&t2, NULL);
     elapsedTime = (t2.tv_sec - t1.tv_sec) * 1000.0;      // sec to ms
@@ -131,7 +134,33 @@ inference(char *model_name, TractValue *input, TractValue *input2, prediction *i
 int
 main(int argc, char **argv)
 {
-    size_t shape[4] = {1, 3, 224, 224};
+    char command[256];
+    snprintf(command, sizeof (command), "python3 ../../../dAIEdgeServer/scripts/get_size_io.py %s", argv[1]);
+
+    FILE *cmd = popen(command, "r");
+    char result[100];
+    while (fgets(result, sizeof(result), cmd) !=NULL) {}
+    pclose(cmd);
+
+    size_t shape[4];
+    char *token;
+
+    // Skip "name of first node: " prefix
+    token = strtok(result, ":");
+    token = strtok(NULL, ":");
+    token = strtok(token, " ");
+    size_t i = 0;
+    while (token) {
+        char *endptr;
+        long number = strtol(token, &endptr, 10);
+        shape[i++] = number;
+        if (number == 0) {
+            break;
+        }
+
+        token = strtok(NULL, " ");
+    }
+    fprintf(stderr, "\nShape: %zu, %zu, %zu, %zu\n", shape[0], shape[1], shape[2], shape[3]);
 
     int calculated_shape = shape[0] * shape[1] * shape[2] * shape[3];
     float *image = malloc(calculated_shape*sizeof(float));

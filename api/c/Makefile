@@ -1,5 +1,5 @@
-run: mobilenet mobilenet_v2_1.0.onnx.nnef.tgz
-	LD_LIBRARY_PATH=. ./mobilenet
+run: mobilenet
+	LD_LIBRARY_PATH=. ./mobilenet ../../../inputs/mobilenetv2-1.0/mobilenetv2-1.0.onnx
 
 clean:
 	rm -f mobilenet libtract.so tract.h
@@ -14,6 +14,3 @@ libtract.so:
 tract.h:
 	cd ../ffi ; cbindgen -l c > tract.h
 	cp ../ffi/tract.h .
-
-mobilenet_v2_1.0.onnx.nnef.tgz:
-	wget -q https://sfo2.digitaloceanspaces.com/nnef-public/mobilenet_v2_1.0.onnx.nnef.tgz

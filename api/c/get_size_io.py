@@ -11,6 +11,7 @@ model = onnx.load(sys.argv[1])
 # using the standard python-for-protobuf methods
 
 # iterate through inputs of the graph
+k = 0
 for input in model.graph.input:
     print (input.name, end=": ")
     # get type of input tensor
@@ -29,3 +30,4 @@ for input in model.graph.input:
     else:
         print ("unknown rank", end="")
     print()
+    if (k == 0): break
