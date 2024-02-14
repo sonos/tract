@@ -20,8 +20,8 @@ macro_rules! b( ($e:expr) => { Box::new($e) } );
 
 #[derive(Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Debug)]
 pub enum TDim {
-    Sym(Symbol),
     Val(i64),
+    Sym(Symbol),
     Add(Vec<TDim>),
     Mul(Vec<TDim>),
     MulInt(i64, Box<TDim>),
