@@ -6,7 +6,7 @@ use ndarray::*;
 use tract_itertools::Itertools;
 
 use tract_linalg::mmm::{
-    BinOp, FusedSpec, InputStoreSpec, MatMatMul, OutputStoreSpec, ScratchSpace, VirtualInputSpec,
+    BinOp, FusedSpec, InputStore, InputStoreSpec, MatMatMul, OutputStoreSpec, ScratchSpace,
 };
 use tract_linalg::Scaler;
 use tract_smallvec::ToSmallVec;

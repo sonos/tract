@@ -21,10 +21,10 @@ pub trait MatMatMul:
 
     fn internal_type(&self) -> DatumType;
 
-    unsafe fn a_packed(&self, item_size: usize, k: usize) -> InputStoreSpec;
+    unsafe fn a_packed(&self, item_size: usize, k: usize) -> Box<dyn InputStoreSpec>;
 
-    unsafe fn b_packed(&self, item_size: usize, k: usize) -> InputStoreSpec;
-    unsafe fn b_virtual_input(&self, func: Box<dyn VirtualInputSpec>, k: usize) -> InputStoreSpec;
+    unsafe fn b_packed(&self, item_size: usize, k: usize) -> Box<dyn InputStoreSpec>;
+    //    unsafe fn b_virtual_input(&self, func: Box<dyn VirtualInputSpec>, k: usize) -> InputStoreSpec;
 
     unsafe fn c_view(&self, m_axis: usize, n_axis: usize) -> OutputStoreSpec;
     unsafe fn c_from_data_and_strides(
@@ -142,19 +142,21 @@ where
         K::can_fuse(spec)
     }
 
-    unsafe fn a_packed(&self, item_size: usize, k: usize) -> InputStoreSpec {
+    unsafe fn a_packed(&self, item_size: usize, k: usize) -> Box<dyn InputStoreSpec> {
         let panel_bytes = k * K::mr() * item_size;
-        InputStoreSpec::Prepacked { panel_bytes }
+        Box::new(PrepackedSpec { panel_bytes })
     }
 
-    unsafe fn b_packed(&self, item_size: usize, k: usize) -> InputStoreSpec {
+    unsafe fn b_packed(&self, item_size: usize, k: usize) -> Box<dyn InputStoreSpec> {
         let panel_bytes = k * K::nr() * item_size;
-        InputStoreSpec::Prepacked { panel_bytes }
+        Box::new(PrepackedSpec { panel_bytes })
     }
 
+    /*
     unsafe fn b_virtual_input(&self, func: Box<dyn VirtualInputSpec>, k: usize) -> InputStoreSpec {
         InputStoreSpec::VirtualPacking { packer: self.b_pack(), func, k }
     }
+    */
 
     unsafe fn c_view(&self, m_axis: usize, n_axis: usize) -> OutputStoreSpec {
         OutputStoreSpec::View { m_axis, n_axis, mr: K::mr(), nr: K::nr() }

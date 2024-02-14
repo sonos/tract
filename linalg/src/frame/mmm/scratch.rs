@@ -1,13 +1,10 @@
+use super::{BinOp, FusedKerSpec, FusedSpec, MatMatMulKer, OutputStoreKer};
+use crate::LADatum;
+use downcast_rs::{impl_downcast, Downcast};
 use std::alloc::Layout;
 use std::fmt::Debug;
-use tract_data::internal::*;
-
-use crate::mmm::InputStore;
-use crate::LADatum;
-
-use super::{BinOp, FusedKerSpec, FusedSpec, MatMatMulKer, OutputStoreKer};
-use downcast_rs::{impl_downcast, Downcast};
 use tract_data::internal::num_integer::Integer;
+use tract_data::internal::*;
 
 pub trait ScratchSpace: Downcast + Send {}
 impl_downcast!(ScratchSpace);
@@ -16,7 +13,7 @@ impl_downcast!(ScratchSpace);
 pub struct ScratchSpaceImpl<TI: LADatum> {
     uspecs: Vec<FusedKerSpec<TI>>,
     layout: Layout,
-    buffer: *const u8,
+    buffer: *mut u8,
     loc_dependant: TVec<LocDependant>,
     valid_down_tiles: usize,
     remnant_down: usize,
@@ -29,7 +26,7 @@ impl<TI: LADatum> Default for ScratchSpaceImpl<TI> {
         ScratchSpaceImpl {
             uspecs: vec![],
             layout: unsafe { Layout::from_size_align_unchecked(0, 1) },
-            buffer: std::ptr::null(),
+            buffer: std::ptr::null_mut(),
             loc_dependant: tvec!(),
             valid_down_tiles: 0,
             remnant_down: 0,
@@ -44,7 +41,7 @@ struct LocDependant {
     spec: usize,
     uspec: usize,
     loc: *const u8,
-    buffer: Option<*const u8>,
+    buffer: Option<*mut u8>,
 }
 
 impl<TI: LADatum> ScratchSpace for ScratchSpaceImpl<TI> {}
@@ -86,7 +83,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
         self.remnant_right = n % K::nr();
         let mut offset = 0;
         let mut align = std::mem::size_of::<*const ()>();
-        fn ld(spec: usize, uspec: usize, loc: *const u8) -> LocDependant {
+        fn ld(spec: usize, uspec: usize, loc: *mut u8) -> LocDependant {
             LocDependant { spec, uspec, loc, buffer: None }
         }
         // we're cheating here, storing offset as the buf pointer first
@@ -126,6 +123,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                 FS::LeakyRelu(t) => FKS::LeakyRelu(*t.to_scalar()?),
                 FS::AddMatMul { a, b, .. } => {
                     for input in [a, b] {
+                        /*
                         if cfg!(debug_assertions) {
                             if let InputStore::Packed { ptr, .. } = a {
                                 ensure!(*ptr as usize % K::alignment_bytes_packed_a() == 0);
@@ -134,6 +132,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                                 ensure!(*ptr as usize % K::alignment_bytes_packed_b() == 0);
                             }
                         }
+                        */
                         let mut ld = ld(ix, self.uspecs.len(), offset as _);
                         offset += std::mem::size_of::<AddMatMulTemp>();
                         if let Some(tmp) = input.scratch_panel_buffer_layout() {

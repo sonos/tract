@@ -2,7 +2,7 @@ use crate::internal::*;
 use std::fmt::Debug;
 use std::ops::Range;
 use tract_linalg::frame::PackingWriter;
-use tract_linalg::mmm::{VirtualInput, VirtualInputSpec};
+use tract_linalg::mmm::{InputStore, InputStoreSpec};
 
 #[derive(Clone, Hash)]
 pub struct LazyIm2colSpec {
@@ -17,7 +17,7 @@ impl Debug for LazyIm2colSpec {
 }
 
 impl LazyIm2colSpec {
-    fn wrap_t<T: Datum + Copy>(&self, view: &TensorView) -> Box<dyn VirtualInput> {
+    fn wrap_t<T: Datum + Copy>(&self, view: &TensorView) -> Box<dyn InputStore> {
         let input = LazyIm2col::<T> {
             ptr: view.as_ptr().unwrap(),
             n: self.n_bytes_offsets.len(),
@@ -28,8 +28,8 @@ impl LazyIm2colSpec {
     }
 }
 
-impl VirtualInputSpec for LazyIm2colSpec {
-    fn wrap(&self, view: &TensorView) -> Box<dyn VirtualInput> {
+impl InputStoreSpec for LazyIm2colSpec {
+    fn wrap(&self, view: &TensorView) -> Box<dyn InputStore> {
         dispatch_copy!(Self::wrap_t(view.datum_type())(self, view))
     }
 }
@@ -231,7 +231,7 @@ impl<T: Datum + Copy> LazyIm2col<T> {
     }
 }
 
-impl<T: Datum + Copy> VirtualInput for LazyIm2col<T> {
+impl<T: Datum + Copy> InputStore for LazyIm2col<T> {
     fn input(
         &self,
         packer: &tract_linalg::frame::Packer,
