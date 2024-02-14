@@ -48,11 +48,13 @@ pub enum FusedSpec<'t> {
     RoundingShiftRight(usize, RoundingPolicy),
     ShiftLeft(usize),
     Store(OutputStore),
-    AddMatMul { k: usize, a: InputStore, b: InputStore },
+    AddMatMul { k: usize, a: Box<dyn InputStore>, b: Box<dyn InputStore> },
 }
 
 impl<'t> FusedSpec<'t> {
     pub fn prefer_col_outer(&self) -> bool {
+        false
+        /*
         if let FusedSpec::AddMatMul { b, .. } = self {
             match b {
                 InputStore::Packed { .. } => false,
@@ -61,6 +63,7 @@ impl<'t> FusedSpec<'t> {
         } else {
             false
         }
+        */
     }
 }
 
@@ -137,12 +140,12 @@ pub mod test {
                 use num_traits::Zero;
                 #[allow(unused_imports)]
                 use tract_data::prelude::f16;
+                use tract_data::prelude::tensor0;
                 #[allow(unused_imports)]
                 use $crate::frame::mmm::fuse::test;
                 use $crate::frame::mmm::fuse::test::tile;
-                use $crate::frame::mmm::{ FusedSpec, MatMatMulKer };
                 use $crate::frame::mmm::fuse::FusedKerSpec;
-                use tract_data::prelude::tensor0;
+                use $crate::frame::mmm::{FusedSpec, MatMatMulKer};
 
                 #[test]
                 fn return_zeros() {
@@ -217,8 +220,13 @@ pub mod test {
                 bin!(ScalarSub, scalar, |a, b| a - b, true);
                 bin!(ScalarSubF, scalar, |a, b| b - a, true);
 
-                bin!(LeakyRelu, scalar, |a, b| if b > <$ti>::zero() { b } else { a * b }, 
-                     <$ker as MatMatMulKer<$ti>>::can_fuse(&FusedSpec::LeakyRelu(&tensor0(<$ti>::zero())))
+                bin!(
+                    LeakyRelu,
+                    scalar,
+                    |a, b| if b > <$ti>::zero() { b } else { a * b },
+                    <$ker as MatMatMulKer<$ti>>::can_fuse(&FusedSpec::LeakyRelu(&tensor0(
+                        <$ti>::zero()
+                    )))
                 );
 
                 #[test]
