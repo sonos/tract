@@ -29,6 +29,7 @@ struct OnnxTestCase {
 impl Test for OnnxTestCase {
     fn run_with_approx(
         &self,
+        _suite: &str,
         _id: &str,
         runtime: &dyn Runtime,
         approx: Approximation,
