@@ -35,6 +35,7 @@ impl Arbitrary for QFlavoursProblem {
 impl Test for QFlavoursProblem {
     fn run_with_approx(
         &self,
+        _suite: &str,
         id: &str,
         runtime: &dyn Runtime,
         approx: Approximation,
