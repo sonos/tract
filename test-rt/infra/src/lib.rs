@@ -21,11 +21,16 @@ pub fn setup_test_logger() {
 pub type TestResult = anyhow::Result<()>;
 
 pub trait Test: Downcast + 'static + Send + Sync + DynClone {
-    fn run(&self, id: &str, runtime: &dyn Runtime) -> TestResult {
-        self.run_with_approx(id, runtime, Approximation::Close)
+    fn run(&self, suite: &str, id: &str, runtime: &dyn Runtime) -> TestResult {
+        self.run_with_approx(suite, id, runtime, Approximation::Close)
     }
-    fn run_with_approx(&self, id: &str, runtime: &dyn Runtime, approx: Approximation)
-        -> TestResult;
+    fn run_with_approx(
+        &self,
+        suite: &str,
+        id: &str,
+        runtime: &dyn Runtime,
+        approx: Approximation,
+    ) -> TestResult;
 }
 downcast_rs::impl_downcast!(Test);
 dyn_clone::clone_trait_object!(Test);
@@ -76,7 +81,7 @@ impl TestSuite {
         self.add(id, ProptestWrapper::<A>(params, |_| true));
     }
 
-     pub fn add_arbitrary_with_filter<A: Arbitrary + Test + Clone>(
+    pub fn add_arbitrary_with_filter<A: Arbitrary + Test + Clone>(
         &mut self,
         id: impl ToString,
         params: A::Parameters,
@@ -196,6 +201,7 @@ impl TestSuite {
 
     fn dump(
         &self,
+        test_suite_name: &str,
         test_suite: &str,
         runtime: &str,
         prefix: &str,
@@ -211,7 +217,7 @@ impl TestSuite {
                     writeln!(rs, "#[allow(unused_imports)] use super::*;").unwrap();
                 }
                 for (id, test) in h.iter().sorted_by_key(|(k, _)| k.to_owned()) {
-                    test.dump(test_suite, runtime, &full_id, id, rs, approx)?;
+                    test.dump(test_suite_name, test_suite, runtime, &full_id, id, rs, approx)?;
                 }
                 if id.len() > 0 {
                     writeln!(rs, "}}").unwrap();
@@ -227,7 +233,7 @@ impl TestSuite {
                     writeln!(rs, "fn {id}() -> TractResult<()> {{",).unwrap();
                     writeln!(
                         rs,
-                        "    {test_suite}.get({full_id:?}).run_with_approx({full_id:?}, {runtime}, {approx})",
+                        "    {test_suite}.get({full_id:?}).run_with_approx({test_suite_name:?}, {full_id:?}, {runtime}, {approx})",
                         )
                         .unwrap();
                     writeln!(rs, "}}").unwrap();
@@ -244,34 +250,9 @@ impl TestSuite {
         std::fs::create_dir_all(&test_dir).unwrap();
         let test_file = test_dir.join(name).with_extension("rs");
         let mut rs = std::fs::File::create(test_file).unwrap();
-        self.dump(test_suite, runtime, "", "", &mut rs, approx).unwrap();
+        self.dump(name, test_suite, runtime, "", "", &mut rs, approx).unwrap();
     }
 }
-
-/*
-trait TestFilter<A>: DynClone + Send + Sync {
-    fn filter(&self, a: &A) -> bool;
-}
-dyn_clone::clone_trait_object!(<A> TestFilter<A>);
-
-#[derive(Clone)]
-struct AcceptAllFilter;
-
-impl<A> TestFilter<A> for AcceptAllFilter {
-    fn filter(&self, _a: &A) -> bool {
-        true
-    }
-}
-
-#[derive(Clone)]
-struct FilterWrapper<A, F>(F);
-
-impl<A: Clone, F: Clone> TestFilter<A> for FilterWrapper<A, F> {
-    fn filter(&self, a: &A) -> bool {
-        (self.0)(a)
-    }
-}
-*/
 
 #[derive(Clone)]
 struct ProptestWrapper<A: Arbitrary + Test + Clone>(A::Parameters, fn(&A) -> bool)
@@ -293,18 +274,25 @@ where
 {
     fn run_with_approx(
         &self,
+        suite: &str,
         id: &str,
         runtime: &dyn Runtime,
         approx: Approximation,
     ) -> TestResult {
+        // voluntarily leak name as proptest requires it to be a &'static str
+        let crate_name = std::env::var("CARGO_PKG_NAME").unwrap();
+        let name = format!("{crate_name}::{suite}::{id}");
+        let test_name = unsafe { std::mem::transmute(name.as_str()) };
+        std::mem::forget(name);
         let mut runner = TestRunner::new(Config {
             failure_persistence: Some(Box::new(FileFailurePersistence::Off)),
+            test_name: Some(test_name),
             ..Config::default()
         });
         runner.run(
             &any_with::<A>(self.0.clone()).prop_filter("Test case filter", |a| self.1(a)),
             |v| {
-                v.run_with_approx(id, runtime, approx).map_err(|e| {
+                v.run_with_approx(suite, id, runtime, approx).map_err(|e| {
                     proptest::test_runner::TestCaseError::Fail(format!("{e:?}").into())
                 })
             },

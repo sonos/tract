@@ -277,6 +277,7 @@ impl QConvProblem {
 impl Test for QConvProblem {
     fn run_with_approx(
         &self,
+        _suite: &str,
         id: &str,
         runtime: &dyn Runtime,
         approx: Approximation,
