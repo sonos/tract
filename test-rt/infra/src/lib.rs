@@ -201,6 +201,7 @@ impl TestSuite {
         self.skip_rec(&mut vec![], ign)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn dump(
         &self,
         test_suite_name: &str,
