@@ -38,8 +38,8 @@ unsafe fn run(
     n: usize,
     be: &mut Bencher,
     mm: &dyn MatMatMul,
-    pa: InputStore,
-    pb: InputStore,
+    pa: Box<dyn InputStore>,
+    pb: Box<dyn InputStore>,
     cold: bool,
 ) {
     let mut scratch = mm.allocate_scratch_space();

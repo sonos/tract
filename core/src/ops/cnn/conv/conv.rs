@@ -22,6 +22,7 @@ use crate::ops::nn::Reduce;
 
 use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
+use super::lazy_im2col::LazyIm2colSpec;
 use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolGeometry, PoolSpec};
 use crate::ops::matmul::lir_unary::{LirMatMulUnary, ProtoFusedSpec};
@@ -400,8 +401,8 @@ impl Conv {
                     .map(move |x| (x + (ici * c_stride) as isize) * size_of_b)
             })
             .collect();
-        let virtual_input = super::lazy_im2col::LazyIm2colSpec { n_bytes_offsets, k_bytes_offsets };
-        let b_storage = mmm.b_virtual_input(Box::new(virtual_input), k);
+        let b_storage =
+            Box::new(LazyIm2colSpec { packer: mmm.b_pack(), n_bytes_offsets, k_bytes_offsets });
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&geo.output_shape)?;
 
         let kernel = self.wire_kernel_as_g_o_ihw(model, name, kernel)?[0];
@@ -465,7 +466,7 @@ impl Conv {
         k: usize,
         c_m_axis: usize,
         c_n_axis: usize,
-        b_storage: InputStoreSpec,
+        b_storage: Box<dyn InputStoreSpec>,
     ) -> TractResult<TVec<OutletId>> {
         ensure!(model.outlet_fact(bias)?.datum_type == mmm.internal_type());
         let packed_ker = self
