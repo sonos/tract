@@ -1,3 +1,4 @@
+use std::alloc::Layout;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::Range;
@@ -33,6 +34,12 @@ impl Packer {
     #[inline]
     pub fn single_panel_len<D: DimLike>(&self, k: D) -> D {
         ((k + self.end_padding_record) * self.r).divceil(self.alignment()) * self.alignment()
+    }
+
+    #[inline]
+    pub fn single_panel_layout(&self, k: usize, item_size: usize) -> Layout {
+        assert!(k > 0);
+        Layout::from_size_align(self.single_panel_len(k) * item_size, self.alignment()).unwrap()
     }
 
     #[allow(clippy::too_many_arguments)]

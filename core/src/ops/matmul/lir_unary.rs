@@ -6,7 +6,7 @@ use ndarray::*;
 use tract_itertools::Itertools;
 
 use tract_linalg::mmm::{
-    BinOp, FusedSpec, InputStore, InputStoreSpec, MatMatMul, OutputStoreSpec, ScratchSpace,
+    BinOp, FusedSpec, InputStoreSpec, MatMatMul, OutputStoreSpec, ScratchSpace,
 };
 use tract_linalg::Scaler;
 use tract_smallvec::ToSmallVec;
@@ -14,7 +14,7 @@ use tract_smallvec::ToSmallVec;
 #[derive(Clone, Debug)]
 pub enum ProtoInputStoreSpec {
     Packed { item_size: usize },
-    Virtual { func: Box<dyn VirtualInputSpec> },
+    Virtual { func: Box<dyn InputStoreSpec> },
 }
 
 #[derive(Clone, Debug)]
@@ -219,8 +219,8 @@ impl MapOutputAxisToInput {
 #[derive(Clone, Debug)]
 pub struct AddMatMulGeometry {
     pub k: TDim,
-    pub a_storage: Option<InputStoreSpec>,
-    pub b_storage: Option<InputStoreSpec>,
+    pub a_storage: Option<Box<dyn InputStoreSpec>>,
+    pub b_storage: Option<Box<dyn InputStoreSpec>>,
     pub mmm: Box<dyn MatMatMul>,
     pub c_to_a_axis_mapping: MapOutputAxisToInput,
     pub c_to_b_axis_mapping: MapOutputAxisToInput,
