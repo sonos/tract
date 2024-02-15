@@ -3,10 +3,12 @@ use core::fmt;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::io::Write;
+use std::sync::Mutex;
 
 use downcast_rs::Downcast;
 use dyn_clone::DynClone;
 use itertools::Itertools;
+use lazy_static::lazy_static;
 use proptest::prelude::{any_with, Arbitrary};
 use proptest::strategy::Strategy;
 use proptest::test_runner::{Config, FileFailurePersistence, TestRunner};
@@ -279,11 +281,13 @@ where
         runtime: &dyn Runtime,
         approx: Approximation,
     ) -> TestResult {
-        // voluntarily leak name as proptest requires it to be a &'static str
+        lazy_static! {
+            static ref TEST_NAMES: Mutex<Vec<String>> = Mutex::new(vec!());
+        }
         let crate_name = std::env::var("CARGO_PKG_NAME").unwrap();
         let name = format!("{crate_name}::{suite}::{id}");
-        let test_name = unsafe { std::mem::transmute(name.as_str()) };
-        std::mem::forget(name);
+        let test_name: &'static str = unsafe { std::mem::transmute(name.as_str()) };
+        TEST_NAMES.lock().unwrap().push(name);
         let mut runner = TestRunner::new(Config {
             failure_persistence: Some(Box::new(FileFailurePersistence::Off)),
             test_name: Some(test_name),
