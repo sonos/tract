@@ -1196,5 +1196,23 @@ pub fn suite() -> TractResult<TestSuite> {
         },
     );
 
+    let mut data = Tensor::zero::<f32>(&[1, 5, 6]).unwrap();
+    *data.as_slice_mut::<f32>().unwrap().last_mut().unwrap() = 1.0;
+    let mut kernel = Tensor::zero::<f32>(&[1, 1, 3, 2]).unwrap();
+    *kernel.as_slice_mut::<f32>().unwrap().last_mut().unwrap() = 1.0;
+    suite.add(
+        "pack_0",
+        ConvProblem {
+            shape_in: DataFormat::CHW.from_n_c_hw(1, 1, [5, 6]).unwrap(),
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: data.into_array::<f32>().unwrap(),
+            kernel: kernel.into_array::<f32>().unwrap(),
+            bias: None,
+            pad: PaddingSpec::Valid,
+            strides: tvec!(1, 1),
+        },
+    );
+
     Ok(suite)
 }
