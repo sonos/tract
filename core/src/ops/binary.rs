@@ -556,11 +556,11 @@ macro_rules! bin_to_super_type {
                         let c_inv_scale = 1.0 / c_scale;
                         let a = a.to_array_view::<u8>()?;
                         let b = b.to_array_view::<u8>()?;
-                        let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])
+                        let c_shape = $crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])
                             .context("no broadcast solution")?;
                         let mut c = Tensor::zero_dt(*c_dt, &c_shape)?;
                         let view = c.to_array_view_mut::<u8>()?;
-                        crate::ndarray::Zip::from(view).and_broadcast(a).and_broadcast(b).for_each(|c, a, b| {
+                        $crate::ndarray::Zip::from(view).and_broadcast(a).and_broadcast(b).for_each(|c, a, b| {
                             *c = (($q_op_on_f32(
                                         scale_by((*a as i32 - a_zp as i32) as f32, a_scale),
                                         scale_by((*b as i32 - b_zp as i32) as f32, b_scale),
