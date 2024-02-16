@@ -109,10 +109,12 @@ impl ProtoFusedSpec {
         fs
     }
 
-    pub fn has_symbols(&self) -> bool {
+    pub fn is_trivial(&self) -> bool {
         match self {
-            ProtoFusedSpec::AddMatMul(geo, _, _) => geo.k.as_i64().is_none(),
-            _ => false,
+            ProtoFusedSpec::AddMatMul(geo, _, _) => {
+                geo.k.as_i64().is_some() && geo.a_storage.is_some() && geo.b_storage.is_some()
+            }
+            _ => true,
         }
     }
 
@@ -127,18 +129,8 @@ impl ProtoFusedSpec {
                 let b = inputs[*b].view();
                 unsafe {
                     let k = geo.k.as_i64().unwrap_unchecked() as usize;
-                    // careful here. this work because a_packed() return a packer from which
-                    // nothing is borrowed
-                    let a = if let Some(sto) = &geo.a_storage {
-                        sto.wrap(&a)
-                    } else {
-                        geo.mmm.a_packed(a.datum_type().size_of(), k).wrap(&a)
-                    };
-                    let b = if let Some(sto) = &geo.b_storage {
-                        sto.wrap(&b)
-                    } else {
-                        geo.mmm.b_packed(b.datum_type().size_of(), k).wrap(&b)
-                    };
+                    let a = geo.a_storage.as_ref().unwrap().wrap(&a);
+                    let b = geo.b_storage.as_ref().unwrap().wrap(&b);
                     FusedSpec::AddMatMul { k, a, b }
                 }
             }
@@ -608,7 +600,7 @@ impl LirMatMulUnary {
                 .iter()
                 .enumerate()
                 .all(|(ax, dim)| ax == self.c_m_axis || ax == self.c_n_axis || dim.is_one())
-            && self.micro_ops.iter().all(|o| !o.has_symbols())
+            && self.micro_ops.iter().all(|o| o.is_trivial())
     }
 
     fn fuse_op(

@@ -1392,7 +1392,7 @@ impl Tensor {
 
     #[inline]
     pub fn view(&self) -> view::TensorView {
-        unsafe { view::TensorView::at_prefix_unchecked(self, &[]) }
+        unsafe { view::TensorView::view(self) }
     }
 
     #[inline]
@@ -1412,7 +1412,7 @@ impl Tensor {
 
     #[inline]
     pub fn view_mut(&mut self) -> view::TensorView {
-        unsafe { view::TensorView::at_prefix_unchecked(self, &[]) }
+        unsafe { view::TensorView::view(self) }
     }
 
     #[inline]
