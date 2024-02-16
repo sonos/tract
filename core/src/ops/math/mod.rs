@@ -235,7 +235,6 @@ bin_to_super_type!(max, Max,
                             } else {
                                 (&a, &a_zp, &a_scale, &b, &b_zp)
                             };
-                            // relu with 0 on 1st input tensor
                             if e.is_uniform() && e.cast_to_scalar::<u8>()? as i32 == *e_zp { // is relu
                                 let multiplier = d_scale  * (1.0/ c_scale);
                                 let d = d.to_array_view::<u8>()?;
