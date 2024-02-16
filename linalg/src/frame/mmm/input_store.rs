@@ -20,7 +20,7 @@ pub struct PrepackedSpec {
 
 impl InputStoreSpec for PrepackedSpec {
     fn wrap(&self, view: &TensorView) -> Box<dyn InputStore> {
-        let ptr = unsafe { view.as_ptr_unchecked() as *const u8 };
+        let ptr = unsafe { view.as_ptr_unchecked() };
         Box::new(Prepacked { ptr, panel_bytes: self.panel_bytes as isize })
     }
 }
