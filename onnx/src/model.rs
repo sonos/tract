@@ -39,7 +39,7 @@ pub fn optional_outputs(pb: &pb::NodeProto) -> impl Iterator<Item = Option<usize
 #[derive(Clone)]
 pub struct TensorPlusPath<'a> {
     pub tensor: &'a pb::TensorProto,
-    pub model_path: &'a str,
+    pub model_dir: &'a str,
 }
 
 #[derive(Clone)]
@@ -48,7 +48,7 @@ pub struct ParsingContext<'a> {
     pub framework: &'a Onnx,
     pub model: &'a pb::ModelProto,
     pub parent_graphs: Vec<&'a pb::GraphProto>,
-    pub model_path: Option<&'a str>,
+    pub model_dir: Option<&'a str>,
     pub symbol_table: SymbolTable,
 }
 
@@ -70,12 +70,12 @@ impl<'a> ParsingContext<'a> {
         trace!("trying to initialize initializers hashmap...");
         #[allow(unused_assignments)]
         let mut initializers: HashMap<&str, Tensor> = HashMap::default();
-        if let Some(path) = self.model_path {
+        if let Some(model_dir) = self.model_dir {
             initializers = graph
                 .initializer
                 .iter()
                 .map(|tensor| {
-                    let tensor_struct: TensorPlusPath = TensorPlusPath { tensor, model_path: path };
+                    let tensor_struct = TensorPlusPath { tensor, model_dir };
                     Ok((&*tensor.name, tensor_struct.try_into()?))
                 })
                 .collect::<TractResult<_>>()?;
@@ -238,7 +238,7 @@ impl Onnx {
     pub fn parse_with_symbols(
         &self,
         proto: &pb::ModelProto,
-        path: Option<&str>,
+        model_dir: Option<&str>,
         symbol_table: &SymbolTable,
     ) -> TractResult<ParseResult> {
         let onnx_operator_set_version = proto
@@ -260,7 +260,7 @@ impl Onnx {
             model: proto,
             parent_graphs: vec![],
             onnx_operator_set_version,
-            model_path: path,
+            model_dir,
             symbol_table: symbol_table.clone(),
         };
         trace!("created ParsingContext");
