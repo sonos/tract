@@ -277,7 +277,7 @@ impl Parameters {
                 let graph = onnx.proto_model_for_read(&mut *location.read()?)?;
                 info_usage("proto model loaded", probe);
                 let path = &location.path().clone();
-                let mut parsed = onnx.parse_with_symbols(&graph, path.to_str(), symbol_table)?;
+                let mut parsed = onnx.parse_with_symbols(&graph, path.parent().and_then(|it| it.to_str()), symbol_table)?;
 
                 if matches.is_present("determinize") {
                     tract_onnx::Onnx::determinize(&mut parsed.model)?;
