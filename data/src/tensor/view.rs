@@ -125,7 +125,7 @@ impl<'a> TensorView<'a> {
     #[inline]
     pub fn rank(&self) -> usize {
         match &self.indexing {
-            Indexing::Prefix(i) => &self.tensor.rank() - i,
+            Indexing::Prefix(i) => self.tensor.rank() - i,
             Indexing::Custom { shape, .. } => shape.len(),
         }
     }
