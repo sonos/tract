@@ -242,44 +242,19 @@ impl<T: Datum + Copy> InputStore for LazyIm2col<T> {
     }
 
     fn panel(&self, i: usize, buffer: Option<*mut u8>) -> *const u8 {
+        let mn_start = i * self.packer.r;
+        let mn_end = (mn_start + self.packer.r).min(self.n);
+        let mn_range = mn_start as isize..mn_end as isize;
+        let k_range = 0..self.k as isize;
         let packed = buffer.unwrap();
-        let mn_end = ((i + 1) * self.packer.r).min(self.n) as isize;
-        let mn_range = (i * self.packer.r) as isize..mn_end;
-        if mn_range.len() == self.packer.r && mn_range.start % self.packer.r as isize == 0 {
+        if mn_range.len() == self.packer.r && mn_start % self.packer.r == 0 {
             let mut writer = self.packer.write_single_panel_with_k_outer(packed as *mut T);
-            self.write(&mut writer, 0..self.k as isize, mn_range)
+            self.write(&mut writer, k_range, mn_range);
         } else {
-            let mut writer = self.packer.write_with_k_outer(packed as *mut T, self.k, self.n);
-            self.write(&mut writer, 0..self.k as isize, mn_range)
+            let mut writer =
+                self.packer.write_with_k_outer(packed as *mut T, k_range.len(), mn_range.len());
+            self.write(&mut writer, k_range, mn_range);
         }
         packed
     }
-    /*
-    fn input(
-    &self,
-    packer: &tract_linalg::frame::Packer,
-    packed: *mut u8,
-    k_range: std::ops::Range<usize>,
-    mn_range: std::ops::Range<usize>,
-    ) {
-    let mn_end = mn_range.end.min(self.n) as isize;
-    let n_range = mn_range.start as isize..mn_end;
-    if n_range.len() == packer.r && mn_range.start % packer.r == 0 {
-    let mut writer = packer.write_single_panel_with_k_outer(packed as *mut T);
-    self.write(
-    &mut writer,
-    k_range.start as isize..k_range.end as isize,
-    mn_range.start as isize..n_range.end,
-    )
-    } else {
-    let mut writer =
-    packer.write_with_k_outer(packed as *mut T, k_range.len(), n_range.len());
-    self.write(
-    &mut writer,
-    k_range.start as isize..k_range.end as isize,
-    mn_range.start as isize..n_range.end,
-    )
-    }
-    }
-    */
 }
