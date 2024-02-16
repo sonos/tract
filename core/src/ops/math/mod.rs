@@ -267,6 +267,7 @@ bin_to_super_type!(max, Max,
 
 bin_to_super_type!(pow, Pow,
                    declutter: declutter_pow,
+                   q_op_on_f32: |a: f32, b: f32| -> f32 {a.powf(b)},
                    [f16, f32, f64] => |c,a,b| *c = a.powf(*b),
                    [i32, i64] => |c,a,b| *c = a.pow(*b as u32));
 
