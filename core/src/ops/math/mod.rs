@@ -135,6 +135,22 @@ eval_override: |a:TValue, b: TValue, c_dt: DatumType| -> TractResult<Tensor> {
                 crate::ndarray::Zip::from(view).and_broadcast(a).and_broadcast(b).for_each(|c,a,b| *c = a.clone() / *b);
                 Ok(c)
             }
+        } else if let (DatumType::QU8(QParams::ZpScale {zero_point: a_zp, scale: a_scale}),
+                       DatumType::QU8(QParams::ZpScale {zero_point: b_zp, scale: b_scale}),
+                       DatumType::QU8(QParams::ZpScale {zero_point: c_zp, scale: c_scale})) =
+                (a.datum_type(), b.datum_type(), c_dt) {
+
+               let multiplier = a_scale  * (1.0 / b_scale) * (1.0/ c_scale);
+                let a = a.to_array_view::<u8>()?;
+                let b = b.to_array_view::<u8>()?;
+                let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()]).context("no broadcast solution")?;
+                let mut c = Tensor::zero_dt(c_dt, &c_shape)?;
+                let view = c.to_array_view_mut::<u8>()?;
+                crate::ndarray::Zip::from(view)
+                    .and_broadcast(a)
+                    .and_broadcast(b)
+                    .for_each(|c,a,b| *c = (scale_by((*a as i32 - a_zp as i32) / (*b as i32 - b_zp as i32), multiplier) + c_zp as i32).clamp_cast());
+                Ok(c)
         } else {
             Div.generic_eval(a, b, c_dt)
         }
@@ -199,11 +215,53 @@ bin_to_super_type!(rem, Rem,
 bin_to_super_type!(min, Min, linalg:Min,
                    operating_datum_type: super::logic::operating_datum_type_for_cmp,
                    q: [i8, u8, i32] => |c, a, b, _, _| *c = if a < b { *a } else { *b };
+                   q_op_on_f32: |a: f32, b: f32| a.min(b),
                    [f16, f32, f64] => |c,a,b| *c = a.min(*b),
                    [i8, i16, i32, i64, u8, u16, u32, u64] => |c, a, b| *c = *a.min(b));
-bin_to_super_type!(max, Max, linalg:Max,
+
+bin_to_super_type!(max, Max,
+                   eval_override: |a:TValue, b: TValue, c_dt: DatumType| -> TractResult<Tensor> {
+                   // Attempt to optimize relu case
+                    if let (DatumType::QU8(QParams::ZpScale {zero_point: a_zp, scale: a_scale}),
+                            DatumType::QU8(QParams::ZpScale {zero_point: b_zp, scale: b_scale}),
+                            DatumType::QU8(QParams::ZpScale {zero_point: c_zp, scale: c_scale})) =
+                        (a.datum_type(), b.datum_type(), c_dt)
+                    {
+                        if a.is_uniform() || b.is_uniform() {
+                            // select e between a and b as uniform if exist
+                            // and d remaining a or b
+                            let (d, d_zp, d_scale, e, e_zp) = if a.is_uniform() && !b.is_uniform() {
+                                (&b, &b_zp, &b_scale, &a, &a_zp)
+                            } else {
+                                (&a, &a_zp, &a_scale, &b, &b_zp)
+                            };
+                            // relu with 0 on 1st input tensor
+                            if e.is_uniform() && e.cast_to_scalar::<u8>()? as i32 == *e_zp { // is relu
+                                let multiplier = d_scale  * (1.0/ c_scale);
+                                let d = d.to_array_view::<u8>()?;
+                                let mut c = Tensor::zero_dt(c_dt, d.shape())?;
+                                let view = c.to_array_view_mut::<u8>()?;
+                                crate::ndarray::Zip::from(view)
+                                    .and_broadcast(d)
+                                    .for_each(|c,d| {
+                                        let d_min_zp = *d as i32 - *d_zp as i32;
+                                        let c_val: i32 = if d_min_zp < 0 {
+                                            0
+                                        } else {
+                                            d_min_zp
+                                        };
+                                        *c = (scale_by(c_val, multiplier) + c_zp as i32).clamp_cast();
+                                    });
+                                return Ok(c)
+                            }
+                        }
+                    }
+                    Max.generic_eval(a, b, c_dt)
+                   },
+                   linalg:Max,
                    operating_datum_type: super::logic::operating_datum_type_for_cmp,
                    q: [i8, u8, i32] => |c, a, b, _, _| *c = if a < b { *b } else { *a };
+                   q_op_on_f32: |a: f32, b: f32| -> f32 {a.max(b)},
                    [f16, f32, f64] => |c,a,b| *c = a.max(*b),
                    [i8, i16, i32, i64, u8, u16, u32, u64] => |c, a, b| *c = *a.max(b));
 
@@ -764,6 +822,68 @@ mod tests {
             b_qparams: Some(QParams::ZpScale { scale: 2.5, zero_point: 4 }),
             // optima in non quantized output real: 5, 9.5, 36.5, 104
             expected_output: [5_u8, 9, 37, 104],
+        }
+        .check()
+    }
+
+    #[test]
+    fn div_as_qu8_non_aligned_scale_and_offset() -> TractResult<()> {
+        // attempt with all scale and offset not aligned
+        TestOpWithQU8 {
+            operator: div(),
+            tensor_mul_input_a: [3_u8, 5, 10, 25], // real: 0, 9, 31.5, 99
+            scalar_mul_input_b: 6_u8,              // real: 5
+            output_qparams: QParams::ZpScale { scale: 1., zero_point: 0 },
+            a_qparams: Some(QParams::ZpScale { scale: 4.5, zero_point: 3 }),
+            b_qparams: Some(QParams::ZpScale { scale: 2.5, zero_point: 4 }),
+            // optima in non quantized output real: 0, 1.8, 6.3, 19.8
+            expected_output: [0_u8, 2, 5, 20],
+        }
+        .check()
+    }
+
+    #[test]
+    fn max_0_as_qu8_non_aligned_scale_and_offset() -> TractResult<()> {
+        // relu in qu8
+        TestOpWithQU8 {
+            operator: max(),
+            tensor_mul_input_a: [100_u8, 5, 110, 99], // real: 0, −427.5, 45, -4.5
+            scalar_mul_input_b: 100_u8,               // real: 0
+            output_qparams: QParams::ZpScale { scale: 1., zero_point: 0 },
+            a_qparams: Some(QParams::ZpScale { scale: 4.5, zero_point: 100 }),
+            b_qparams: Some(QParams::ZpScale { scale: 4.5, zero_point: 100 }),
+            // optima in non quantized output real: 0, 0, 45, 0
+            expected_output: [0_u8, 0, 45, 0],
+        }
+        .check()
+    }
+
+    #[test]
+    fn max_15_as_qu8_non_aligned_scale_and_offset() -> TractResult<()> {
+        TestOpWithQU8 {
+            operator: max(),
+            tensor_mul_input_a: [5_u8, 9, 8, 20], // real: 0, 16, 12, 60
+            scalar_mul_input_b: 15_u8,            // real: 15
+            output_qparams: QParams::ZpScale { scale: 1., zero_point: 0 },
+            a_qparams: Some(QParams::ZpScale { scale: 4., zero_point: 5 }),
+            b_qparams: Some(QParams::ZpScale { scale: 3., zero_point: 10 }),
+            // optima in non quantized output real: 15, 16, 15, 60
+            expected_output: [15_u8, 16, 15, 60],
+        }
+        .check()
+    }
+
+    #[test]
+    fn min_15_as_qu8_non_aligned_scale_and_offset() -> TractResult<()> {
+        TestOpWithQU8 {
+            operator: min(),
+            tensor_mul_input_a: [5_u8, 9, 8, 20], // real: 0, 16, 12, 60
+            scalar_mul_input_b: 15_u8,            // real: 15
+            output_qparams: QParams::ZpScale { scale: 1., zero_point: 0 },
+            a_qparams: Some(QParams::ZpScale { scale: 4., zero_point: 5 }),
+            b_qparams: Some(QParams::ZpScale { scale: 3., zero_point: 10 }),
+            // optima in non quantized output real: 0, 15, 12, 15
+            expected_output: [0_u8, 15, 12, 15],
         }
         .check()
     }
