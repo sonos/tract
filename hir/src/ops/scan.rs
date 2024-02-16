@@ -35,7 +35,7 @@ impl Op for InferenceScan {
 
 impl EvalOp for InferenceScan {
     fn is_stateless(&self) -> bool {
-        true
+        false
     }
 
     fn state(
