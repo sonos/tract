@@ -102,26 +102,30 @@ impl MatMatMulPack {
             let mut packed =
                 Tensor::uninitialized_aligned_dt(dt, output_shape, self.packer.alignment())
                     .unwrap();
-            let mut bc_shape: TVec<usize> = input.shape().into();
-            bc_shape[self.k_axis] = 1;
-            bc_shape[self.mn_axis] = 1;
-            for coord in indices(&*bc_shape) {
-                let offset = coord
-                    .as_array_view()
-                    .iter()
-                    .zip(input.strides())
-                    .map(|(x, s)| *x as isize * s)
-                    .sum::<isize>()
-                    * input.datum_type().size_of() as isize;
-                let mut prefix: TVec<usize> = coord.slice().into();
-                prefix.remove(self.k_axis.max(self.mn_axis));
-                prefix.remove(self.k_axis.min(self.mn_axis));
-                self.packer.pack(
-                    &mut packed.view_at_prefix_mut(&prefix)?,
-                    TensorView::from_bytes(input, offset, input.shape(), input.strides()),
-                    self.k_axis,
-                    self.mn_axis,
-                )
+            if input.rank() == 2 {
+                self.packer.pack(&mut packed.view(), input.view(), self.k_axis, self.mn_axis)
+            } else {
+                let mut bc_shape: TVec<usize> = input.shape().into();
+                bc_shape[self.k_axis] = 1;
+                bc_shape[self.mn_axis] = 1;
+                for coord in indices(&*bc_shape) {
+                    let offset = coord
+                        .as_array_view()
+                        .iter()
+                        .zip(input.strides())
+                        .map(|(x, s)| *x as isize * s)
+                        .sum::<isize>()
+                        * input.datum_type().size_of() as isize;
+                    let mut prefix: TVec<usize> = coord.slice().into();
+                    prefix.remove(self.k_axis.max(self.mn_axis));
+                    prefix.remove(self.k_axis.min(self.mn_axis));
+                    self.packer.pack(
+                        &mut packed.view_at_prefix_mut(&prefix)?,
+                        TensorView::from_bytes(input, offset, input.shape(), input.strides()),
+                        self.k_axis,
+                        self.mn_axis,
+                    )
+                }
             }
             Ok(tvec!(packed.into_tvalue()))
         }
