@@ -339,7 +339,7 @@ macro_rules! bin_to_super_type {
      $(out_of_place: $out_of_place:expr,)?
      $(validation: $validation:expr,)?
      $(q: $([$($typ_dt:ident),*] => $cab_dt:expr),* ;)?
-     $(q_op_on_f32: $q_op_on_f32: expr,)?
+     $(q_op_on_f32: $q_op_on_f32:expr,)?
      $( [$($typ:ident),*] => $cab:expr),*) => {
         #[derive(Debug, Clone, Hash)]
         pub struct $Op;
@@ -547,26 +547,29 @@ macro_rules! bin_to_super_type {
                 c_dt: &DatumType,
             ) -> TractResult<Option<Tensor>> {
                 $(
-                if let (Some(a_qp), Some(b_qp), Some(c_qp)) =
-                    (a.datum_type().qparams(), b.datum_type().qparams(), c_dt.qparams())
-                {
-                    let c_inv_scale = 1.0 / c_qp.zp_scale().1;
-                    let a = a.to_array_view::<u8>()?;
-                    let b = b.to_array_view::<u8>()?;
-                    let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])
-                        .context("no broadcast solution")?;
-                    let mut c = Tensor::zero_dt(*c_dt, &c_shape)?;
-                    let view = c.to_array_view_mut::<u8>()?;
-                    crate::ndarray::Zip::from(view).and_broadcast(a).and_broadcast(b).for_each(|c, a, b| {
-                        *c = (($q_op_on_f32(
-                                    scale_by((*a as i32 - a_qp.zp_scale().0 as i32) as f32, a_qp.zp_scale().1),
-                                    scale_by((*b as i32 - b_qp.zp_scale().0 as i32) as f32, b_qp.zp_scale().1),
-                        ) * c_inv_scale) as i32
-                            + c_qp.zp_scale().0 as i32)
-                            .clamp_cast()
-                    });
-                    return Ok(Some(c));
-                }
+                    // we apply only if type is QU8 zp_scale datum type
+                    if let (DatumType::QU8(QParams::ZpScale {zero_point: a_zp, scale: a_scale}),
+                            DatumType::QU8(QParams::ZpScale {zero_point: b_zp, scale: b_scale}),
+                            DatumType::QU8(QParams::ZpScale {zero_point: c_zp, scale: c_scale})) =
+                        (a.datum_type(), b.datum_type(), c_dt)
+                    {
+                        let c_inv_scale = 1.0 / c_scale;
+                        let a = a.to_array_view::<u8>()?;
+                        let b = b.to_array_view::<u8>()?;
+                        let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])
+                            .context("no broadcast solution")?;
+                        let mut c = Tensor::zero_dt(*c_dt, &c_shape)?;
+                        let view = c.to_array_view_mut::<u8>()?;
+                        crate::ndarray::Zip::from(view).and_broadcast(a).and_broadcast(b).for_each(|c, a, b| {
+                            *c = (($q_op_on_f32(
+                                        scale_by((*a as i32 - a_zp as i32) as f32, a_scale),
+                                        scale_by((*b as i32 - b_zp as i32) as f32, b_scale),
+                            ) * c_inv_scale) as i32
+                                + *c_zp as i32)
+                                .clamp_cast()
+                        });
+                        return Ok(Some(c));
+                    }
                 )?
                 Ok(None)
             }

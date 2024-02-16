@@ -53,8 +53,13 @@ bin_to_super_type!(mul, Mul,
                    cost: |dt| tvec!((Cost::FMA(dt), 1)),
                    declutter: declutter_mul,
                    eval_override: |a:TValue, b: TValue, c_dt: DatumType| -> TractResult<Tensor> {
-                       if let (Some(a_qp), Some(b_qp), Some(c_qp)) = (a.datum_type().qparams(), b.datum_type().qparams(), c_dt.qparams()) {
-                           let multiplier = a_qp.zp_scale().1  * b_qp.zp_scale().1 * (1.0/ c_qp.zp_scale().1);
+                    // we apply only if type is QU8 zp_scale datum type
+                    if let (DatumType::QU8(QParams::ZpScale {zero_point: a_zp, scale: a_scale}),
+                            DatumType::QU8(QParams::ZpScale {zero_point: b_zp, scale: b_scale}),
+                            DatumType::QU8(QParams::ZpScale {zero_point: c_zp, scale: c_scale})) =
+                        (a.datum_type(), b.datum_type(), c_dt)
+                    {
+                           let multiplier = a_scale  * b_scale * (1.0/ c_scale);
                            let a = a.to_array_view::<u8>()?;
                            let b = b.to_array_view::<u8>()?;
                            let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()]).context("no broadcast solution")?;
@@ -63,7 +68,7 @@ bin_to_super_type!(mul, Mul,
                            crate::ndarray::Zip::from(view)
                                .and_broadcast(a)
                                .and_broadcast(b)
-                               .for_each(|c,a,b| *c = (scale_by((*a as i32 - a_qp.zp_scale().0 as i32) * (*b as i32 - b_qp.zp_scale().0 as i32), multiplier) + c_qp.zp_scale().0 as i32).clamp_cast());
+                               .for_each(|c,a,b| *c = (scale_by((*a as i32 - a_zp as i32) * (*b as i32 - b_zp as i32), multiplier) + c_zp as i32).clamp_cast());
                            Ok(c)
                        } else {
                            Mul.generic_eval(a, b, c_dt)
