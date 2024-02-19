@@ -539,6 +539,10 @@ macro_rules! bin_to_super_type {
                         ($operating_datum_type)(a, b)
                     })?
 
+
+            /// Default simple binary operation for QFormat where
+            /// we dequantise & apply requested operation in float & requantize it
+            /// several implementation are provided with pro & con
             #[allow(unused_variables)]
             fn maybe_eval_qbinary_as_float_op(
                 &self,
@@ -547,28 +551,78 @@ macro_rules! bin_to_super_type {
                 c_dt: &DatumType,
             ) -> TractResult<Option<Tensor>> {
                 $(
-                    // we apply only if type is QU8 zp_scale datum type
-                    if let (DatumType::QU8(QParams::ZpScale {zero_point: a_zp, scale: a_scale}),
-                            DatumType::QU8(QParams::ZpScale {zero_point: b_zp, scale: b_scale}),
-                            DatumType::QU8(QParams::ZpScale {zero_point: c_zp, scale: c_scale})) =
-                        (a.datum_type(), b.datum_type(), c_dt)
-                    {
-                        let c_inv_scale = 1.0 / c_scale;
-                        let a = a.to_array_view::<u8>()?;
-                        let b = b.to_array_view::<u8>()?;
-                        let c_shape = $crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])
-                            .context("no broadcast solution")?;
-                        let mut c = Tensor::zero_dt(*c_dt, &c_shape)?;
-                        let view = c.to_array_view_mut::<u8>()?;
-                        $crate::ndarray::Zip::from(view).and_broadcast(a).and_broadcast(b).for_each(|c, a, b| {
-                            *c = (($q_op_on_f32(
-                                        scale_by((*a as i32 - a_zp as i32) as f32, a_scale),
-                                        scale_by((*b as i32 - b_zp as i32) as f32, b_scale),
-                            ) * c_inv_scale) as i32
-                                + *c_zp as i32)
-                                .clamp_cast()
-                        });
+                    /// Implementation strive to minimise memory allocation and access
+                    /// we apply only if type is QU8 zp_scale datum type
+                    /// maybe more suited for large models tensors
+                    fn memory_optimised_q_binary_as_float_op(
+                        a: &TValue,
+                        b: &TValue,
+                        c_dt: &DatumType,
+                    ) -> TractResult<Option<Tensor>> {
+                        if let (DatumType::QU8(QParams::ZpScale {zero_point: a_zp, scale: a_scale}),
+                                DatumType::QU8(QParams::ZpScale {zero_point: b_zp, scale: b_scale}),
+                                DatumType::QU8(QParams::ZpScale {zero_point: c_zp, scale: c_scale})) =
+                            (a.datum_type(), b.datum_type(), c_dt)
+                        {
+                            let c_inv_scale = 1.0 / c_scale;
+                            let a = a.to_array_view::<u8>()?;
+                            let b = b.to_array_view::<u8>()?;
+                            let c_shape = $crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])
+                                .context("no broadcast solution")?;
+                            let mut c = Tensor::zero_dt(*c_dt, &c_shape)?;
+                            let view = c.to_array_view_mut::<u8>()?;
+                            $crate::ndarray::Zip::from(view).and_broadcast(a).and_broadcast(b).for_each(|c, a, b| {
+                                *c = (($q_op_on_f32(
+                                            scale_by((*a as i32 - a_zp as i32) as f32, a_scale),
+                                            scale_by((*b as i32 - b_zp as i32) as f32, b_scale),
+                                ) * c_inv_scale) as i32
+                                    + *c_zp as i32)
+                                    .clamp_cast()
+                            });
+                            return Ok(Some(c));
+                        }
+                        Ok(None)
+                    }
+
+                    /// Apply to all Q types
+                    /// Take more memory but hopefully faster than memory_optimised_q_binary_as_float_op
+                    /// especially once cast_to_dt will have will have vectorized implementations
+                    fn generic_q_binary_as_float_op(
+                        a: &TValue,
+                        b: &TValue,
+                        c_dt: &DatumType,
+                        accumulator_dt: DatumType
+                    ) -> TractResult<Option<Tensor>> {
+                        if let (Some(QParams::ZpScale {zero_point: a_zp, scale: a_scale}),
+                                Some(QParams::ZpScale {zero_point: b_zp, scale: b_scale}),
+                                Some(QParams::ZpScale {zero_point: c_zp, scale: c_scale})) =
+                            (a.datum_type().qparams(), b.datum_type().qparams(), c_dt.qparams())
+                        {
+                            let a = a.cast_to_dt(accumulator_dt)?.into_owned();
+                            let b = b.cast_to_dt(accumulator_dt)?.into_owned();
+                            let c_shape = $crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])
+                                .context("no broadcast solution")?;
+                            let mut c = Tensor::zero_dt(accumulator_dt, &c_shape)?;
+                            match accumulator_dt {
+                                DatumType::F32 => {
+                                    let view = c.to_array_view_mut::<f32>()?;
+                                    $crate::ndarray::Zip::from(view).and_broadcast(a.to_array_view()?).and_broadcast(b.to_array_view()?).for_each(|c, a, b| {
+                                        *c = $q_op_on_f32(*a,*b);
+                                    })
+                                },
+                                other => bail!("unexpected accumulator data type as {:?}", other)
+                            };
+
+                            return Ok(Some(c.cast_to_dt(*c_dt)?.into_owned()));
+                        }
+                        Ok(None)
+                    }
+
+                    if let Some(c) = memory_optimised_q_binary_as_float_op(a, b, c_dt)? {
                         return Ok(Some(c));
+                    }
+                    if let Some(d) = generic_q_binary_as_float_op(a, b, c_dt, DatumType::F32)? {
+                        return Ok(Some(d));
                     }
                 )?
                 Ok(None)
