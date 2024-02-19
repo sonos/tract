@@ -22,6 +22,7 @@ bytes.workspace = true
 derive-new.workspace = true
 log.workspace = true
 memmap2.workspace = true
+nom.workspace = true
 num-integer.workspace = true
 prost.workspace = true
 smallvec.workspace = true
