@@ -71,9 +71,9 @@ fn read_bytes_from_path(buf: &mut Vec<u8>, p: impl AsRef<Path>, offset: usize, l
 
 
     let mut reader = std::io::BufReader::new(file);
-    reader.seek_relative(offset);
+    reader.seek_relative(offset as i64);
     while reader.fill_buf()?.len() > 0 {
-        let num_read = std::usize::min(reader.buffer().len(), length - buf.len());
+        let num_read = std::cmp::min(reader.buffer().len(), length - buf.len());
         buf.extend_from_slice(reader.buffer()[..num_read]);
         if buf.len() == length {
             break;
