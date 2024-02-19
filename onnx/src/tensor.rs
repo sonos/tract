@@ -40,21 +40,22 @@ pub fn translate_inference_fact(
         let shape: TVec<DimFact> = shape
             .dim
             .iter()
-            .map(|d| match &d.value {
+            .map(|d| -> TractResult<DimFact> {
+                match &d.value {
                 Some(tensor_shape_proto::dimension::Value::DimValue(v)) if *v >= 0 => {
-                    DimFact::from(v.to_dim())
+                    Ok(DimFact::from(v.to_dim()))
                 }
                 Some(tensor_shape_proto::dimension::Value::DimParam(v)) => {
                     if v.starts_with("unk__") && !include_unknown_symbols {
-                        DimFact::default()
+                        Ok(DimFact::default())
                     } else {
-                        let sym = ctx.symbol_table.sym(v);
-                        DimFact::from(sym.to_dim())
+                        let dim = parse_tdim(&ctx.symbol_table, v)?;
+                        Ok(DimFact::from(dim))
                     }
                 }
-                _ => DimFact::default(),
-            })
-            .collect();
+                _ => Ok(DimFact::default()),
+            }})
+            .collect::<TractResult<_>>()?;
         fact = fact.with_shape(ShapeFactoid::closed(shape));
     }
     Ok(fact)
@@ -74,7 +75,7 @@ fn read_bytes_from_path(buf: &mut Vec<u8>, p: impl AsRef<Path>, offset: usize, l
     reader.seek_relative(offset as i64);
     while reader.fill_buf()?.len() > 0 {
         let num_read = std::cmp::min(reader.buffer().len(), length - buf.len());
-        buf.extend_from_slice(reader.buffer()[..num_read]);
+        buf.extend_from_slice(&reader.buffer()[..num_read]);
         if buf.len() == length {
             break;
         }
@@ -188,6 +189,10 @@ fn common_tryfrom(t: &TensorProto, path: Option<&str>) -> TractResult<Tensor> {
             }
             DatumType::I32 => Array::from_shape_vec(&*shape, t.int32_data.to_vec())?.into(),
             DatumType::I64 => Array::from_shape_vec(&*shape, t.int64_data.to_vec())?.into(),
+            DatumType::F16 => {
+                Array::from_shape_vec(&*shape, t.int32_data.iter().map(|&x| f16::from_bits(x as u16)).collect())?
+                    .into()
+            }
             DatumType::F32 => Array::from_shape_vec(&*shape, t.float_data.to_vec())?.into(),
             DatumType::F64 => Array::from_shape_vec(&*shape, t.double_data.to_vec())?.into(),
             DatumType::String => {
@@ -200,7 +205,7 @@ fn common_tryfrom(t: &TensorProto, path: Option<&str>) -> TractResult<Tensor> {
                     .context("Invalid UTF8 buffer")?;
                 Array::from_shape_vec(&*shape, strings)?.into()
             }
-            _ => unimplemented!("FIXME, struct tensor loading"),
+            _ => unimplemented!("FIXME, struct tensor loading: {:?}", dt),
         };
         Ok(it)
     }
