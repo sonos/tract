@@ -113,9 +113,7 @@ bin_to_super_type!(mul, Mul,
                            }
                        }
                    },
-                   q: [i8, u8, i32] => |c, a, b, zp, scale| {
-                    *c = (scale_by((a.clone() as i32 - zp as i32) * (*b as i32 - zp as i32) , scale) + zp as i32).clamp_cast()
-                   };
+                   q_op_on_f32: |a: f32, b: f32| a * b,
 [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() * b
 );
 
@@ -176,6 +174,7 @@ out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
             Ok(false)
         }
 },
+q_op_on_f32: |a: f32, b: f32| a / b,
 [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64] => |c, a, b| *c = a.clone() / b
 );
 
@@ -342,38 +341,48 @@ fn declutter_mul(
                 &[],
                 &[node.id.into()],
                 &|patch, _| {
-                    let scalar =
-                        patch.add_const(format!("{}.zero", node.name), uniform.uni.clone())?;
+                    let scalar = patch.add_const(
+                        format!("{}.zero", node.name),
+                        if uniform.uni.datum_type().is_quantized() {
+                            let output_dt = node.outputs[0].fact.datum_type().unwrap();
+                            Arc::new(uniform.uni.clone().cast_to_dt(output_dt)?.into_owned())
+                        } else {
+                            uniform.uni.clone()
+                        },
+                    )?;
                     let op = MultiBroadcastTo::new(shape.clone());
                     patch.wire_node(&node.name, op, &[scalar])
                 },
             )?));
         }
         let dt = uniform.uni.datum_type();
-        let integer = uniform.uni.cast_to_scalar::<i64>()?;
-        if tensor0(integer)
-            .cast_to_dt(uniform.uni.datum_type())?
-            .close_enough(&uniform.uni, false)
-            .is_ok()
-            && dt.is_integer()
-            && uniform.uni.cast_to_scalar::<i64>()?.count_ones() == 1
-        {
-            let shift = integer.trailing_zeros();
-            return Ok(Some(TypedModelPatch::rewire(
-                model,
-                &[uniform.var],
-                &[node.id.into()],
-                &|patch, taps| {
-                    let shift = patch.add_const(
-                        format!("{}.shift", node.name),
-                        tensor0(shift)
-                            .cast_to_dt(dt)?
-                            .into_owned()
-                            .broadcast_into_rank(var_fact.rank())?,
-                    )?;
-                    patch.wire_node(&node.name, shift_left(), &[taps[0], shift])
-                },
-            )?));
+        if !dt.is_quantized() {
+            // avoid cast potential with Q tensor
+            let integer = uniform.uni.cast_to_scalar::<i64>()?;
+            if tensor0(integer)
+                .cast_to_dt(uniform.uni.datum_type())?
+                .close_enough(&uniform.uni, false)
+                .is_ok()
+                && uniform.uni.cast_to_scalar::<i64>()?.count_ones() == 1
+                && dt.is_integer()
+            {
+                let shift = integer.trailing_zeros();
+                return Ok(Some(TypedModelPatch::rewire(
+                    model,
+                    &[uniform.var],
+                    &[node.id.into()],
+                    &|patch, taps| {
+                        let shift = patch.add_const(
+                            format!("{}.shift", node.name),
+                            tensor0(shift)
+                                .cast_to_dt(dt)?
+                                .into_owned()
+                                .broadcast_into_rank(var_fact.rank())?,
+                        )?;
+                        patch.wire_node(&node.name, shift_left(), &[taps[0], shift])
+                    },
+                )?));
+            }
         }
     }
     Ok(None)
