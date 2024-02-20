@@ -230,12 +230,13 @@ bin_to_super_type!(max, Max,
                         if a.is_uniform() || b.is_uniform() {
                             // select e between a and b as uniform if exist
                             // and d remaining a or b
-                            let (d, d_zp, d_scale, e, e_zp) = if a.is_uniform() && !b.is_uniform() {
-                                (&b, &b_zp, &b_scale, &a, &a_zp)
+                            let (d, d_zp, d_scale, e, e_zp, e_scale) = if a.is_uniform() && !b.is_uniform() {
+                                (&b, &b_zp, &b_scale, &a, &a_zp, &a_scale)
                             } else {
-                                (&a, &a_zp, &a_scale, &b, &b_zp)
+                                (&a, &a_zp, &a_scale, &b, &b_zp, &b_scale)
                             };
-                            if e.is_uniform() && e.cast_to_scalar::<u8>()? as i32 == *e_zp { // is relu
+                            if e.is_uniform() { // may be relu or any scalar
+                                let e_val_as_d_aligned: i32 = scale_by(e.cast_to_scalar::<u8>()? as i32 - e_zp, e_scale / d_scale);
                                 let multiplier = d_scale  * (1.0/ c_scale);
                                 let d = d.to_array_view::<u8>()?;
                                 let mut c = Tensor::zero_dt(c_dt, d.shape())?;
@@ -244,8 +245,8 @@ bin_to_super_type!(max, Max,
                                     .and_broadcast(d)
                                     .for_each(|c,d| {
                                         let d_min_zp = *d as i32 - *d_zp as i32;
-                                        let c_val: i32 = if d_min_zp < 0 {
-                                            0
+                                        let c_val: i32 = if d_min_zp < e_val_as_d_aligned {
+                                            e_val_as_d_aligned
                                         } else {
                                             d_min_zp
                                         };
