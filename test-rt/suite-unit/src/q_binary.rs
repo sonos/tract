@@ -158,6 +158,7 @@ impl Test for QBinaryOpProblem {
     #[warn(unused_variables)]
     fn run_with_approx(
         &self,
+        _suite: &str,
         id: &str,
         runtime: &dyn Runtime,
         approx: Approximation,
