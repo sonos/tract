@@ -593,7 +593,6 @@ macro_rules! bin_to_super_type {
                         c_dt: &DatumType,
                         accumulator_dt: DatumType
                     ) -> TractResult<Option<Tensor>> {
-                        dbg!("generic call",a, b, c_dt, a.datum_type().qparams(), b.datum_type().qparams(), c_dt.qparams());
                         if let (Some(QParams::ZpScale {zero_point: a_zp, scale: a_scale}),
                                 Some(QParams::ZpScale {zero_point: b_zp, scale: b_scale}),
                                 Some(QParams::ZpScale {zero_point: c_zp, scale: c_scale})) =
@@ -625,7 +624,6 @@ macro_rules! bin_to_super_type {
                     if let Some(d) = generic_q_binary_as_float_op(a, b, c_dt, DatumType::F32)? {
                         return Ok(Some(d));
                     }
-                    dbg!("HU nobodoy called me, smell bad ...");
                 )?
                 Ok(None)
             }
