@@ -4,7 +4,7 @@ use tract_core::internal::*;
 
 use crate::conv_q::qtensor;
 
-#[derive(Debug, Clone)] //, Default
+#[derive(Debug, Clone)]
 struct QBinaryOpProblem {
     operator: tract_core::ops::binary::TypedBinOp,
     tensor_a: Tensor,
