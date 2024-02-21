@@ -174,6 +174,13 @@ impl Op for BasicMatMul {
         "MatMul".into()
     }
 
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![format!(
+            "transpose_a: {} transpose_b: {} transpose_c: {} q: {:?}",
+            self.transpose_a, self.transpose_b, self.transpose_c, self.quantize_output
+        )])
+    }
+
     op_as_typed_op!();
 }
 

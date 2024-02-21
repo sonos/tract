@@ -6,6 +6,7 @@ use crate::tract_data::itertools::Itertools;
 
 mod eval;
 
+pub mod as_blas;
 use super::array::TypedConcat;
 use super::math::add;
 mod as_matmul;

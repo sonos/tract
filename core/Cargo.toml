@@ -17,6 +17,9 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 anyhow.workspace = true
 bit-set.workspace = true
+cblas = { version = "0.4" }
+# blis-src = { version = "0.2", features = ["static", "pthreads"] }
+openblas-src = { version = "0.10", features = ["static"] }
 derive-new.workspace = true
 downcast-rs.workspace = true
 dyn-clone.workspace = true
