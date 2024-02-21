@@ -1,4 +1,0 @@
-"foo": zero_point_linear_quantize(zero_point = 2, scale = 0.003906250, bits = 8, signed = false, symmetric = false);
-"input": zero_point_linear_quantize(zero_point = 128, scale = 0.007812500, bits = 8, signed = false, symmetric = false);
-"output_raw": zero_point_linear_quantize(zero_point = 128, scale = 0.007812500, bits = 8, signed = false, symmetric = false);
-"output_relu_y_3": zero_point_linear_quantize(zero_point = 128, scale = 0.007812500, bits = 8, signed = false, symmetric = false);
