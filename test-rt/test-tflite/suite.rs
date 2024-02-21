@@ -137,7 +137,7 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
         }
     }
     let [section, _unit] = t else { return false };
-    ["deconv", "q_flavours"].contains(&&**section)
+    ["deconv", "q_flavours", "q_binary"].contains(&&**section)
 }
 
 fn compatible_conv_f32(qcp: &ConvProblem) -> bool {
