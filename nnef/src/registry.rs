@@ -226,17 +226,10 @@ impl Registry {
             }
             let inputs = multicast(builder, &[a, b])?;
 
-            // FIXME: to be generalized to all binary ops (at least for quantization dt)
-            // for now is ignored rem and all bool and bit wise operators
-            let c_dt: Option<DatumType> =
-                if ["mul", "div", "add", "sub", "min", "max"].contains(&(bin.0).0.as_str()) {
-                    match dt.first().cloned() {
-                        Some(c_dt) => c_dt,
-                        None => None,
-                    }
-                } else {
-                    None
-                };
+            let c_dt: Option<DatumType> = match dt.first().cloned() {
+                Some(c_dt) => c_dt,
+                None => None,
+            };
             let mut wire = builder.wire_as_outlets(
                 tract_core::ops::binary::TypedBinOp(bin.1.clone(), c_dt),
                 &inputs,
