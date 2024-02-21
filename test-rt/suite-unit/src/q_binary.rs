@@ -12,6 +12,17 @@ struct QBinaryOpProblem {
     c_dt: DatumType,
 }
 
+impl Default for QBinaryOpProblem {
+    fn default() -> QBinaryOpProblem {
+        QBinaryOpProblem {
+            operator: tract_core::ops::math::mul(),
+            tensor_a: Tensor::default(),
+            tensor_b: Tensor::default(),
+            c_dt: DatumType::QU8(QParams::ZpScale { zero_point: 0, scale: 1. }),
+        }
+    }
+}
+
 impl QBinaryOpProblem {
     fn pick_signed_datum(signed: bool) -> DatumType {
         if signed {
