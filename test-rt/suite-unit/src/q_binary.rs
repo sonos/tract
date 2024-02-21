@@ -155,7 +155,6 @@ impl Arbitrary for QBinaryOpProblem {
 }
 
 impl Test for QBinaryOpProblem {
-    #[warn(unused_variables)]
     fn run_with_approx(
         &self,
         _suite: &str,
