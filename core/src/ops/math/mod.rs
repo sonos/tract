@@ -147,7 +147,12 @@ eval_override: |a:TValue, b: TValue, c_dt: DatumType| -> TractResult<Tensor> {
                 crate::ndarray::Zip::from(view)
                     .and_broadcast(a)
                     .and_broadcast(b)
-                    .for_each(|c,a,b| *c = (scale_by((*a as i32 - a_zp as i32) / (*b as i32 - b_zp as i32), multiplier) + c_zp as i32).clamp_cast());
+                    // maintain division in f32 before rescale to maintain high accuracy
+                    .for_each(|c,a,b| *c = (
+                            scale_by(
+                                (*a as i32 - a_zp as i32) as f32 / (*b as i32 - b_zp as i32) as f32, multiplier
+                            ) as i32 + c_zp as i32
+                        ).clamp_cast());
                 Ok(c)
         } else {
             Div.generic_eval(a, b, c_dt)
