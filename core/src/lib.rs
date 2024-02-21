@@ -45,6 +45,10 @@
 //! tract-tensorflow or tract-onnx crates.
 //!
 
+extern crate cblas;
+// extern crate blis_src;
+extern crate openblas_src;
+
 pub extern crate anyhow;
 extern crate bit_set;
 #[macro_use]
