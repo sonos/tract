@@ -202,12 +202,7 @@ impl Test for QBinaryOpProblem {
             .all(|x: &mut f32, xref: &f32| {
                 let closest_x = (*x).clamp(min_repr_val, max_repr_val);
                 // core maximal accepted distance by default
-                let distance = if &closest_x < xref {
-                    (xref - closest_x).abs()
-                } else {
-                    (closest_x - xref).abs()
-                };
-                distance <= scale * acceptable_scale_error_ratio
+                (xref - closest_x).abs() <= scale * acceptable_scale_error_ratio
             });
         Ok(())
     }
