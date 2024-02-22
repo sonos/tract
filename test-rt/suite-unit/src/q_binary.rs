@@ -54,6 +54,14 @@ impl Arbitrary for QBinaryOpProblem {
     type Strategy = BoxedStrategy<QBinaryOpProblem>;
 
     fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
+        let tested_operators = prop_oneof![
+            Just(tract_core::ops::math::mul()),
+            Just(tract_core::ops::math::div()),
+            Just(tract_core::ops::math::add()),
+            Just(tract_core::ops::math::sub()),
+            Just(tract_core::ops::math::min()),
+            Just(tract_core::ops::math::max()),
+        ];
         (
             (1..20usize),
             any::<bool>(),
@@ -62,35 +70,33 @@ impl Arbitrary for QBinaryOpProblem {
             (1..4usize),
             (1..4usize),
             (1..4usize),
-            (1..6usize),
+            tested_operators,
         )
-            .prop_flat_map(
-                |(len, a_signed, b_signed, c_signed, a_scale, b_scale, c_scale, op_index)| {
-                    let a_dt = Self::pick_signed_datum(a_signed);
-                    let b_dt = Self::pick_signed_datum(b_signed);
-                    let c_dt = Self::pick_signed_datum(c_signed);
-                    fn just_scale(scale: usize) -> Just<f32> {
-                        Just(scale as f32 * 0.5)
-                    }
-                    (
-                        // tensor a
-                        Just(a_dt),
-                        qtensor(vec![1], a_dt),
-                        just_scale(a_scale),
-                        qtensor(vec![len], a_dt),
-                        // tensor b
-                        Just(b_dt),
-                        qtensor(vec![1], b_dt),
-                        just_scale(b_scale),
-                        qtensor(vec![len], b_dt),
-                        // dt of c
-                        Just(c_dt),
-                        qtensor(vec![1], c_dt),
-                        just_scale(c_scale),
-                        Just(op_index),
-                    )
-                },
-            )
+            .prop_flat_map(|(len, a_signed, b_signed, c_signed, a_scale, b_scale, c_scale, op)| {
+                let a_dt = Self::pick_signed_datum(a_signed);
+                let b_dt = Self::pick_signed_datum(b_signed);
+                let c_dt = Self::pick_signed_datum(c_signed);
+                fn just_scale(scale: usize) -> Just<f32> {
+                    Just(scale as f32 * 0.5)
+                }
+                (
+                    // tensor a
+                    Just(a_dt),
+                    qtensor(vec![1], a_dt),
+                    just_scale(a_scale),
+                    qtensor(vec![len], a_dt),
+                    // tensor b
+                    Just(b_dt),
+                    qtensor(vec![1], b_dt),
+                    just_scale(b_scale),
+                    qtensor(vec![len], b_dt),
+                    // dt of c
+                    Just(c_dt),
+                    qtensor(vec![1], c_dt),
+                    just_scale(c_scale),
+                    Just(op),
+                )
+            })
             .prop_map(
                 |(
                     a_dt,
@@ -104,7 +110,7 @@ impl Arbitrary for QBinaryOpProblem {
                     c_dt,
                     c_zp,
                     c_scale,
-                    op_index,
+                    op,
                 )| {
                     let tensor_a = Self::get_qtensor(
                         a_values.into_tensor(),
@@ -122,20 +128,7 @@ impl Arbitrary for QBinaryOpProblem {
                         zero_point: c_zp.into_tensor().cast_to_scalar::<i32>().unwrap(),
                         scale: c_scale,
                     });
-                    let ops = [
-                        tract_core::ops::math::mul(),
-                        tract_core::ops::math::div(),
-                        tract_core::ops::math::add(),
-                        tract_core::ops::math::sub(),
-                        tract_core::ops::math::min(),
-                        tract_core::ops::math::max(),
-                    ];
-                    QBinaryOpProblem {
-                        operator: ops[op_index].to_owned(),
-                        tensor_a,
-                        tensor_b,
-                        c_dt,
-                    }
+                    QBinaryOpProblem { operator: op.to_owned(), tensor_a, tensor_b, c_dt }
                 },
             )
             .prop_filter("div does not allow 0 divisor", |q_prob| {
