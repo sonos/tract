@@ -27,19 +27,23 @@ bin_to_bool!(not_equals, NotEquals, /* flip: commute, */
 bin_to_bool!(less, Less,
              codegen: codegen_compare_to_zero,
              operating_datum_type: operating_datum_type_for_cmp,
-             [bool, u8, u16, u32, u64, i8, i16, i32, i64, f16, f32, f64] => |c, &a, &b | *c = a < b);
+             [bool, u8, u16, u32, u64, i8, i16, i32, i64, f16, f32, f64] => |c, &a, &b | *c = a < b,
+             [TDim] => |c, a, b | *c = a < b);
 bin_to_bool!(less_equal, LessEqual,
              codegen: codegen_compare_to_zero,
              operating_datum_type: operating_datum_type_for_cmp,
-             [bool, u8, u16, u32, u64, i8, i16, i32, i64, f16, f32, f64] => |c, &a, &b | *c = a <= b);
+             [bool, u8, u16, u32, u64, i8, i16, i32, i64, f16, f32, f64] => |c, &a, &b | *c = a <= b,
+             [TDim] => |c, a, b | *c = a < b);
 bin_to_bool!(greater, Greater,
              codegen: codegen_compare_to_zero,
              operating_datum_type: operating_datum_type_for_cmp,
-             [bool, u8, u16, u32, u64, i8, i16, i32, i64, f16, f32, f64] => |c, &a, &b | *c = a > b);
+             [bool, u8, u16, u32, u64, i8, i16, i32, i64, f16, f32, f64] => |c, &a, &b | *c = a > b,
+             [TDim] => |c, a, b | *c = a < b);
 bin_to_bool!(greater_equal, GreaterEqual,
              codegen: codegen_compare_to_zero,
              operating_datum_type: operating_datum_type_for_cmp,
-             [bool, u8, u16, u32, u64, i8, i16, i32, i64, f16, f32, f64] => |c, &a, &b | *c = a >= b);
+             [bool, u8, u16, u32, u64, i8, i16, i32, i64, f16, f32, f64] => |c, &a, &b | *c = a >= b,
+             [TDim] => |c, a, b | *c = a < b);
 
 pub fn operating_datum_type_for_cmp(a: DatumType, b: DatumType) -> TractResult<DatumType> {
     let dt = a
@@ -183,7 +187,11 @@ impl TypedOp for Iff {
         Ok(tvec!(inputs[1].datum_type.fact(shape)))
     }
 
-    fn axes_mapping(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<AxesMapping> {
+    fn axes_mapping(
+        &self,
+        inputs: &[&TypedFact],
+        outputs: &[&TypedFact],
+    ) -> TractResult<AxesMapping> {
         AxesMapping::natural(inputs, outputs)
     }
 }
