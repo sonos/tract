@@ -28,10 +28,15 @@ fn matmul_to_sgemm(
     _ctx: &(),
     model: &TypedModel,
     node: &TypedNode,
-    node_name: &str,
+    _node_name: &str,
     op: &BasicMatMul,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if !op.transpose_a && !op.transpose_b && !op.transpose_c && op.quantize_output.is_none() {
+    if !op.transpose_a
+        && !op.transpose_b
+        && !op.transpose_c
+        && op.quantize_output.is_none()
+        && model.node_input_facts(node.id)?.iter().all(|f| f.datum_type == f32::datum_type())
+    {
         TypedModelPatch::replace_single_op(model, node, &node.inputs, SGemm::default()).map(Some)
     } else {
         Ok(None)
@@ -88,30 +93,62 @@ impl EvalOp for SGemm {
                 let mut b_ptr = b_ptr;
                 let mut c_ptr = c_ptr;
                 for (axis, x) in prefix.as_array_view().iter().enumerate() {
-                    if axis > silent_a_axis && a.shape()[axis - silent_a_axis] !=  1 {
+                    if axis >= silent_a_axis && a.shape()[axis - silent_a_axis] != 1 {
                         a_ptr = a_ptr.offset(*x as isize * a.strides()[axis - silent_a_axis]);
                     }
-                    if axis > silent_b_axis && b.shape()[axis - silent_b_axis] !=  1 {
+                    if axis >= silent_b_axis && b.shape()[axis - silent_b_axis] != 1 {
                         b_ptr = b_ptr.offset(*x as isize * b.strides()[axis - silent_b_axis]);
                     }
                     c_ptr = c_ptr.offset(*x as isize * c.strides()[axis]);
                 }
-                cblas::sgemm(
-                    cblas::Layout::RowMajor,
-                    cblas::Transpose::None,
-                    cblas::Transpose::None,
-                    m as _,
-                    n as _,
-                    k as _,
-                    1.0,
-                    std::slice::from_raw_parts(a_ptr, m * k),
-                    k as _,
-                    std::slice::from_raw_parts(b_ptr, k * n),
-                    n as _,
-                    0.0,
-                    std::slice::from_raw_parts_mut(c_ptr, m * n),
-                    n as _,
-                )
+                if m == 1 {
+                    cblas::sgemv(
+                        cblas::Layout::RowMajor,
+                        cblas::Transpose::Ordinary,
+                        k as _,
+                        n as _,
+                        1.0,
+                        std::slice::from_raw_parts(b_ptr, n * k),
+                        n as _,
+                        std::slice::from_raw_parts(a_ptr, k),
+                        1,
+                        0.0,
+                        std::slice::from_raw_parts_mut(c_ptr, n),
+                        1,
+                    )
+                } else if n == 1 {
+                    cblas::sgemv(
+                        cblas::Layout::RowMajor,
+                        cblas::Transpose::None,
+                        m as _,
+                        k as _,
+                        1.0,
+                        std::slice::from_raw_parts(a_ptr, m * k),
+                        k as _,
+                        std::slice::from_raw_parts(b_ptr, k),
+                        1,
+                        0.0,
+                        std::slice::from_raw_parts_mut(c_ptr, m),
+                        1,
+                    )
+                } else {
+                    cblas::sgemm(
+                        cblas::Layout::RowMajor,
+                        cblas::Transpose::None,
+                        cblas::Transpose::None,
+                        m as _,
+                        n as _,
+                        k as _,
+                        1.0,
+                        std::slice::from_raw_parts(a_ptr, m * k),
+                        k as _,
+                        std::slice::from_raw_parts(b_ptr, k * n),
+                        n as _,
+                        0.0,
+                        std::slice::from_raw_parts_mut(c_ptr, m * n),
+                        n as _,
+                    )
+                }
             }
 
             Ok(tvec!(c.into_tvalue()))
