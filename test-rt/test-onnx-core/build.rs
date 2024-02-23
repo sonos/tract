@@ -7,4 +7,10 @@ fn main() {
         "unoptimized()",
         "Approximation::Approximate",
     );
+    suite.test_runtime(
+        "as_blas",
+        "suite_onnx::suite()",
+        "as_blas()",
+        "Approximation::Approximate",
+    );
 }
