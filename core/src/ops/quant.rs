@@ -11,6 +11,7 @@ use tract_linalg::Scaler;
 use super::binary::TypedBinOp;
 use super::math::round_ties_to_even;
 
+/*
 pub fn quantize_linear_f32_u8(x: f32, scale: f32, zero_point: i32) -> u8 {
     (((x * scale).round() as i32) + zero_point)
         .clamp(u8::min_value() as i32, u8::max_value() as i32) as u8
@@ -20,7 +21,9 @@ pub fn quantize_linear_f32_i8(x: f32, scale: f32, zero_point: i32) -> i8 {
     (((x * scale).round() as i32) + zero_point)
         .clamp(i8::min_value() as i32, i8::max_value() as i32) as i8
 }
+*/
 
+/*
 element_wise_oop!(quantize_linear_u8,
  QuantizeLinearU8 {
      scale: f32,
@@ -250,6 +253,7 @@ impl TypedOp for DequantizeLinearF32 {
 
     as_op!();
 }
+*/
 
 element_wise_oop!(lookup_table,
  LookupTable {
