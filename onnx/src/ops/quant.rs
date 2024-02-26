@@ -1,7 +1,7 @@
 use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::NodeProto;
 use tract_hir::internal::*;
-use tract_hir::ops::quant::*;
+use tract_hir::ops::cast::cast;
 use tract_ndarray::ArrayViewD;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
@@ -13,7 +13,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
 fn quantize_linear(
     _ctx: &ParsingContext,
     node: &NodeProto,
-) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
+    ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let op = QuantizeLinear::new(Some(2).filter(|_| node.input.len() == 3));
     Ok((expand(op), vec![]))
 }
@@ -21,7 +21,7 @@ fn quantize_linear(
 fn dequantize_linear(
     _ctx: &ParsingContext,
     node: &NodeProto,
-) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
+    ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let op = DequantizeLinear::new(Some(2).filter(|_| node.input.len() == 3));
     Ok((expand(op), vec![]))
 }
@@ -29,7 +29,7 @@ fn dequantize_linear(
 fn dynamic_quantize_linear(
     _ctx: &ParsingContext,
     _node: &NodeProto,
-) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
+    ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let op = DynamicQuantizeLinear::new();
     Ok((expand(op), vec![]))
 }
@@ -38,8 +38,6 @@ fn dynamic_quantize_linear(
 pub struct QuantizeLinear {
     optional_zero_point_input: Option<usize>,
 }
-
-
 
 impl Expansion for QuantizeLinear {
     fn name(&self) -> Cow<str> {
@@ -51,14 +49,14 @@ impl Expansion for QuantizeLinear {
         s: &mut Solver<'r>,
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
-    ) -> TractResult<()> {
+        ) -> TractResult<()> {
         check_input_arity(inputs, 2 + self.optional_zero_point_input.is_some() as usize)?;
         check_output_arity(outputs, 1)?;
         //         s.equals(&inputs[1].rank, 0)?; broken in Onnx test suite
         s.equals(&inputs[1].datum_type, f32::datum_type())?;
         if self.optional_zero_point_input.is_some() {
             s.equals(&outputs[0].datum_type, &inputs[2].datum_type)?;
-        //            s.equals(&inputs[2].rank, 0)?; // broken in Onnx test suite
+            //            s.equals(&inputs[2].rank, 0)?; // broken in Onnx test suite
         } else {
             s.equals(&outputs[0].datum_type, u8::datum_type())?;
         }
@@ -71,15 +69,13 @@ impl Expansion for QuantizeLinear {
         prefix: &str,
         target: &mut TypedModel,
         inputs: &[OutletId],
-    ) -> TractResult<TVec<OutletId>> {
-        use tract_hir::ops::quant::*;
+        ) -> TractResult<TVec<OutletId>> {
         let scale = target
             .outlet_fact(inputs[1])?
             .konst
             .as_ref()
             .context("y_scale must be a const")?
-            .as_slice::<f32>()?[0]
-            .recip();
+            .as_slice::<f32>()?[0];
         let zero_point = if self.optional_zero_point_input.is_some() {
             target
                 .outlet_fact(inputs[2])?
@@ -90,12 +86,10 @@ impl Expansion for QuantizeLinear {
         } else {
             rctensor0(0u8)
         };
-        let op: Box<dyn TypedOp> = if zero_point.datum_type() == u8::datum_type() {
-            Box::new(quantize_linear_u8(scale, zero_point.as_slice::<u8>()?[0]))
-        } else {
-            Box::new(quantize_linear_i8(scale, zero_point.as_slice::<i8>()?[0]))
-        };
-        target.wire_node(prefix, op, &[inputs[0]])
+        let dst = zero_point.datum_type().with_zp_scale(zero_point.cast_to_scalar::<i32>()?, scale);
+        let quant = target.wire_node(format!("{prefix}.cvt"), cast(dst), &[inputs[0]])?;
+        // ONNX expect unquantized types
+        target.wire_node(prefix, cast(dst.unquantized()), &quant)
     }
 }
 
@@ -103,8 +97,6 @@ impl Expansion for QuantizeLinear {
 pub struct DequantizeLinear {
     optional_zero_point_input: Option<usize>,
 }
-
-
 
 impl Expansion for DequantizeLinear {
     fn name(&self) -> Cow<str> {
@@ -116,7 +108,7 @@ impl Expansion for DequantizeLinear {
         s: &mut Solver<'r>,
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
-    ) -> TractResult<()> {
+        ) -> TractResult<()> {
         check_input_arity(inputs, 2 + self.optional_zero_point_input.is_some() as usize)?;
         check_output_arity(outputs, 1)?;
         //         s.equals(&inputs[1].rank, 0)?; broken in Onnx test suite
@@ -135,7 +127,7 @@ impl Expansion for DequantizeLinear {
         prefix: &str,
         target: &mut TypedModel,
         inputs: &[OutletId],
-    ) -> TractResult<TVec<OutletId>> {
+        ) -> TractResult<TVec<OutletId>> {
         let scale = target
             .outlet_fact(inputs[1])?
             .konst
@@ -152,21 +144,13 @@ impl Expansion for DequantizeLinear {
         } else {
             rctensor0(0u8)
         };
-        let op: Box<dyn TypedOp> = if zero_point.datum_type() == u8::datum_type() {
-            Box::new(DequantizeLinearF32::new(scale, zero_point.as_slice::<u8>()?[0] as i32))
-        } else if zero_point.datum_type() == i8::datum_type() {
-            Box::new(DequantizeLinearF32::new(scale, zero_point.as_slice::<i8>()?[0] as i32))
-        } else {
-            Box::new(DequantizeLinearF32::new(scale, zero_point.as_slice::<i32>()?[0]))
-        };
-        target.wire_node(prefix, op, &[inputs[0]])
+        let q = target.wire_node(format!("{prefix}.ri_cast"), cast(i32::datum_type().with_zp_scale(zero_point.cast_to_scalar::<i32>()?, scale)), &[inputs[0]])?;
+        target.wire_node(prefix, cast(f32::datum_type()), &q)
     }
 }
 
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct DynamicQuantizeLinear {}
-
-
 
 impl Expansion for DynamicQuantizeLinear {
     fn name(&self) -> Cow<str> {
@@ -182,7 +166,7 @@ impl Expansion for DynamicQuantizeLinear {
         s: &mut Solver<'r>,
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
-    ) -> TractResult<()> {
+        ) -> TractResult<()> {
         check_input_arity(inputs, 1)?;
         check_output_arity(outputs, 3)?;
         s.equals(&inputs[0].datum_type, f32::datum_type())?;
@@ -201,7 +185,7 @@ impl Expansion for DynamicQuantizeLinear {
         prefix: &str,
         target: &mut TypedModel,
         inputs: &[OutletId],
-    ) -> TractResult<TVec<OutletId>> {
+        ) -> TractResult<TVec<OutletId>> {
         let op: Box<dyn TypedOp> = Box::new(DynamicQuantizeLinearU8::new());
         target.wire_node(format!("{prefix}.dynamic_quantize"), op, &[inputs[0]])
     }
@@ -267,8 +251,6 @@ impl Op for DynamicQuantizeLinearU8 {
     op_as_typed_op!();
 }
 
-
-
 impl EvalOp for DynamicQuantizeLinearU8 {
     fn is_stateless(&self) -> bool {
         true
@@ -287,7 +269,7 @@ impl EvalOp for DynamicQuantizeLinearU8 {
             zero_point,
             input.as_slice::<f32>()?,
             dst.as_slice_mut::<u8>()?,
-        );
+            );
 
         let quantized_tensor = dst.into_tvalue();
         let scale_tensor = tensor0(scale).into();
@@ -342,7 +324,7 @@ mod tests {
             (
                 &[1., 2.1, 1.3, 2.5, 3.34, 4., 1.5, 2.6, 3.9, 4., 3., 2.345],
                 &[64, 134, 83, 159, 213, 255, 96, 166, 249, 255, 191, 149],
-            ),
+                ),
         ];
 
         for (v, quantized_ok) in &data {
@@ -356,7 +338,7 @@ mod tests {
                 zero_point,
                 v.as_slice().unwrap(),
                 quantized.as_slice_mut().unwrap(),
-            );
+                );
             assert_eq!(quantized.as_slice().unwrap(), *quantized_ok);
         }
     }

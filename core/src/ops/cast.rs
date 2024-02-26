@@ -11,6 +11,8 @@ pub struct Cast {
 
 impl Cast {
     fn do_eval(&self, input: &Tensor, symbols: &SymbolValues) -> TractResult<TVec<TValue>> {
+        dbg!(self);
+        dbg!(input);
         if input.datum_type() == self.to {
             Ok(tvec!(input.clone().into_tvalue()))
         } else if input.datum_type() == TDim::datum_type() {
@@ -24,7 +26,9 @@ impl Cast {
                 Ok(tvec!(tmp.cast_to_dt(self.to)?.into_owned().into_tvalue()))
             }
         } else {
-            Ok(tvec!(input.cast_to_dt(self.to)?.into_owned().into_tvalue()))
+            let out = input.cast_to_dt(self.to)?;
+            dbg!(&out);
+            Ok(tvec!(out.into_owned().into_tvalue()))
         }
     }
 }
