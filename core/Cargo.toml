@@ -17,9 +17,9 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 anyhow.workspace = true
 bit-set.workspace = true
-cblas = { version = "0.4" }
-# blis-src = { version = "0.2", features = ["static", "pthreads"] }
-openblas-src = { version = "0.10", features = ["static"] }
+cblas = { version = "0.4", optional = true }
+blis-src = { version = "0.2", features = ["static", "pthreads"], optional = true }
+openblas-src = { version = "0.10", features = ["static"], optional = true }
 derive-new.workspace = true
 downcast-rs.workspace = true
 dyn-clone.workspace = true
@@ -39,6 +39,9 @@ tract-data = { version = "=0.21.2-pre", path = "../data" }
 [features]
 default = [ ]
 complex = [ "tract-data/complex", "tract-linalg/complex" ]
+blas = [ "cblas" ]
+blis = [ "blas", "blis-src" ]
+openblas = [ "blas", "openblas-src" ]
 paranoid_assertions = []
 
 [dev-dependencies]
