@@ -165,6 +165,7 @@ macro_rules! element_wise {
         $(; q: $( [$($typ_dt:ident),*] => $f_f32:expr),*)?
         $(; cost: $cost:expr )?
         $(; declutter: $declutter:expr )?
+        $(; eval_override: $eval_override: expr)?
         $(; operating_datum_type: $operating_datum_type:expr )?
         $(; prefix: $prefix:expr )?
         $(; quantize: $quantize:expr )?
@@ -177,6 +178,7 @@ macro_rules! element_wise {
                 format!("{}{}", self.prefix(), stringify!($Op))
             }
             fn eval_in_place(&self, t: &mut Tensor) -> TractResult<()> {
+                $( return $eval_override(self, t); )?
                 $(
                     $(if t.datum_type() == $typ::datum_type() {
                         let t: &mut[$typ] = t.as_slice_mut::<$typ>()?;
