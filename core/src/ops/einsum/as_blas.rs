@@ -160,11 +160,11 @@ impl TypedOp for SGemm {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(inputs[0].datum_type == f32::datum_type());
         ensure!(inputs[1].datum_type == f32::datum_type());
-        Ok(tvec!(f32::fact(&self.output_shape(&*inputs[0].shape, &*inputs[1].shape)?)))
+        Ok(tvec!(f32::fact(&self.output_shape(&inputs[0].shape, &inputs[1].shape)?)))
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let fma = self.output_shape(&*inputs[0].shape, &*inputs[1].shape)?.iter().product::<TDim>()
+        let fma = self.output_shape(&inputs[0].shape, &inputs[1].shape)?.iter().product::<TDim>()
             * inputs[0].shape.last().unwrap();
         Ok(tvec!((Cost::FMA(f32::datum_type()), fma)))
     }
