@@ -26,6 +26,11 @@ fn einsum_rules(
     {
         return Ok(None);
     }
+    if op.q_params.is_some()
+        && model.node_input_facts(node.id)?.iter().skip(3).any(|i| i.konst.is_none())
+    {
+        return Ok(None);
+    }
     let (m, k, n) = match ensure_mkn_axes(op, model, node)? {
         AxesOrPatch::Axes(m, k, n) => (m, k, n),
         AxesOrPatch::Patch(p) => return Ok(Some(p)),
