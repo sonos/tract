@@ -18,10 +18,10 @@ fn mk_suite() -> infra::TestSuite {
     infra::TestSuite::default().with("onnx", onnx).with("unit", unit)
 }
 
-fn ignore_onnx(t: &[String]) -> bool {
+fn ignore_onnx(_t: &[String]) -> bool {
     false
 }
 
-fn ignore_unit(t: &[String], tc: &dyn Test) -> bool {
+fn ignore_unit(_t: &[String], _tc: &dyn Test) -> bool {
     false
 }

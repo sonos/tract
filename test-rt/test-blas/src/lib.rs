@@ -1,9 +1,7 @@
 #![cfg(test)]
 use std::fmt::Debug;
 
-use log::*;
 use tract_core::internal::*;
-use tract_onnx_opl::*;
 
 #[path="../suite.rs"]
 mod suite;
