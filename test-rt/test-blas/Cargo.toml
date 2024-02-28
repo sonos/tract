@@ -1,0 +1,24 @@
+[package]
+name = "test-blas"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+[build-dependencies]
+infra = { path = "../infra" }
+itertools.workspace = true
+lazy_static.workspace = true
+suite-onnx = { path = "../suite-onnx" }
+suite-unit = { path = "../suite-unit" }
+tract-core = { path = "../../core", version = "=0.21.2-pre", features = [ "openblas" ] }
+
+[dev-dependencies]
+infra = { path = "../infra" }
+itertools.workspace = true
+lazy_static.workspace = true
+log.workspace = true
+suite-onnx = { path = "../suite-onnx" }
+suite-unit = { path = "../suite-unit" }
+tract-core = { path = "../../core", version = "=0.21.2-pre", features = [ "openblas" ]  }
+tract-onnx-opl = { path = "../../onnx-opl", version = "=0.21.2-pre" }
