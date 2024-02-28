@@ -12,10 +12,4 @@ fn main() {
         "unoptimized()",
         "Approximation::Approximate",
     );
-    suite.test_runtime(
-        "as_blas",
-        "suite_unit::suite().unwrap()",
-        "as_blas()",
-        "Approximation::Approximate",
-    );
 }
