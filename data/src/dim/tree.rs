@@ -1,6 +1,7 @@
 use super::sym::*;
 use itertools::Itertools;
 use num_traits::{AsPrimitive, PrimInt, Zero};
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::{fmt, ops};
@@ -18,7 +19,7 @@ impl std::error::Error for UndeterminedSymbol {}
 
 macro_rules! b( ($e:expr) => { Box::new($e) } );
 
-#[derive(Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum TDim {
     Sym(Symbol),
     Val(i64),
@@ -29,6 +30,30 @@ pub enum TDim {
 }
 
 use TDim::*;
+
+fn tdim_compare(a: &TDim, b: &TDim) -> Ordering {
+    match (a, b) {
+        (Sym(a), Sym(b)) => a.cmp(&b),
+        (Val(a), Val(b)) => a.cmp(&b),
+        (Add(a), Add(b)) | (Mul(a), Mul(b)) => a.len().cmp(&b.len()).then(
+            a.iter()
+                .zip(b.iter())
+                .fold(Ordering::Equal, |acc, (a, b)| acc.then_with(|| tdim_compare(a, b))),
+        ),
+        (MulInt(p, d), MulInt(q, e)) => p.cmp(&q).then_with(|| tdim_compare(d, e)),
+        (Div(d, p), Div(e, q)) => p.cmp(&q).then_with(|| tdim_compare(d, e)),
+        (Sym(_), _) => Ordering::Less,
+        (_, Sym(_)) => Ordering::Greater,
+        (Val(_), _) => Ordering::Less,
+        (_, Val(_)) => Ordering::Greater,
+        (Add(_), _) => Ordering::Less,
+        (_, Add(_)) => Ordering::Greater,
+        (Mul(_), _) => Ordering::Less,
+        (_, Mul(_)) => Ordering::Greater,
+        (MulInt(_, _), _) => Ordering::Less,
+        (_, MulInt(_, _)) => Ordering::Greater,
+    }
+}
 
 impl fmt::Display for TDim {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
@@ -121,7 +146,7 @@ impl TDim {
         self.simplify()
             .wiggle()
             .into_iter()
-            .sorted()
+            .sorted_by(tdim_compare)
             .unique()
             .map(|e| e.simplify())
             .min_by_key(|e| e.cost())
@@ -235,11 +260,11 @@ impl TDim {
                     }
                 }
 
-                let mut members: Vec<_> = simplified_terms
+                let mut members: Vec<TDim> = simplified_terms
                     .into_iter()
                     .filter_map(|(term, count)| evaluate_count(term, count))
                     .collect();
-                members.sort();
+                members.sort_by(tdim_compare);
 
                 match members.len() {
                     0 => TDim::Val(0),
