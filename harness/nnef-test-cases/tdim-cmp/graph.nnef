@@ -1,0 +1,11 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+graph dummy_net(input_0) -> (v90)
+{
+    input_0 = external<integer>(shape = [1, 6]);
+    v37 = tract_core_range(0, 6, step = 1);
+    v131 = add(v37, 1);
+    v90 = lt(v37, v131);
+}

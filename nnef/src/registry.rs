@@ -212,19 +212,26 @@ impl Registry {
                 invocation.arguments[0].rvalue.resolve(builder, &[])?.to::<OutletId>(builder)?;
             let mut b =
                 invocation.arguments[1].rvalue.resolve(builder, &[])?.to::<OutletId>(builder)?;
-            let a_dt = builder.model.outlet_fact(a)?.datum_type;
-            let b_dt = builder.model.outlet_fact(b)?.datum_type;
+            let a_fact = builder.model.outlet_fact(a)?;
+            let b_fact = builder.model.outlet_fact(b)?;
+            let mut a_dt = a_fact.datum_type;
+            let mut b_dt = b_fact.datum_type;
 
             // mitigation of nnef "scalar" type mismatch with tract-core more
             // strict types
-            if a_dt != b_dt {
+            if a_dt != b_dt && a_fact.rank() == 0 && b_fact.rank() == 0 {
                 if builder.model.node(a.node).op_is::<tract_core::ops::konst::Const>() {
                     a = builder.wire_as_outlets(tract_core::ops::cast::cast(b_dt), &[a])?[0];
+                    a_dt = b_dt;
                 } else {
                     b = builder.wire_as_outlets(tract_core::ops::cast::cast(a_dt), &[b])?[0];
+                    b_dt = a_dt;
                 };
             }
-            let inputs = multicast(builder, &[a, b])?;
+            let operating_dt = bin.1.operating_datum_type(a_dt, b_dt)?;
+            a = builder.wire_as_outlets(tract_core::ops::cast::cast(operating_dt), &[a])?[0];
+            b = builder.wire_as_outlets(tract_core::ops::cast::cast(operating_dt), &[b])?[0];
+            let inputs = multi_rank_broadcast(builder, &[a, b])?;
             let mut wire = builder
                 .wire_as_outlets(tract_core::ops::binary::TypedBinOp(bin.1.clone()), &inputs)?[0];
             if let Some(Some(out_dt)) = dt.first() {
@@ -251,7 +258,10 @@ impl Registry {
     }
 }
 
-pub fn multicast(builder: &mut ModelBuilder, inputs: &[OutletId]) -> TractResult<TVec<OutletId>> {
+pub fn multi_rank_broadcast(
+    builder: &mut ModelBuilder,
+    inputs: &[OutletId],
+) -> TractResult<TVec<OutletId>> {
     let ranks = inputs
         .iter()
         .map(|&i| Ok(builder.model.outlet_fact(i)?.rank()))
