@@ -53,6 +53,7 @@ members = [
 ]
 
 [workspace.dependencies]
+accelerate-src = "0.3"
 ansi_term = "0.12.1"
 anstyle-parse = "0.2.1"
 anstyle-query = "1.0.0"
@@ -62,10 +63,12 @@ approx = "0.5"
 atty = "0.2.14"
 bindgen= "0.66"
 bit-set= "0.5.2"
+blis-src = { version = "0.2", features = ["static", "pthreads"] }
 boow = "0.1.3"
 box_drawing = "0.1.2"
 byteorder = "1.4.3"
 bytes = "1.0.1"
+cblas = "0.4"
 cc = "1.0.69"
 clap = { version = "~3.1", features = [ "cargo" ] }
 colorous = "1.0.5"
@@ -96,6 +99,7 @@ nu-ansi-term = "0.46"
 num-complex = "0.4.0"
 num-integer = "0.1.44"
 num-traits = "0.2.14"
+openblas-src = { version = "0.10", features = ["static"] }
 paste = "1.0.5"
 proptest = "1.0.0"
 prost = "0.11.0"
