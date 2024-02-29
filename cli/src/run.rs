@@ -147,6 +147,7 @@ fn run_regular(
     sub_matches: &clap::ArgMatches,
 ) -> TractResult<TVec<Vec<TValue>>> {
     let steps = sub_matches.is_present("steps");
+    let check_f16_overflow = sub_matches.is_present("check-f16-overflow");
     let assert_sane_floats = sub_matches.is_present("assert-sane-floats");
     let mut npz = if let Some(npz) = sub_matches.value_of("save-steps") {
         let npz = std::fs::File::create(npz).with_context(|| format!("Creating {npz}"))?;
@@ -208,6 +209,15 @@ fn run_regular(
                                 name = format!("turn_{turn}/{name}");
                             }
                             npz_add_tensor(npz, name, t)?;
+                        }
+                    }
+                    if check_f16_overflow {
+                        for (ix, o) in r.iter().enumerate() {
+                            if let Ok(f32s) = o.as_slice::<f32>() {
+                                if f32s.iter().any(|f| f.abs() > f16::MAX.to_f32()) {
+                                    warn!("{node}, output {ix} overflows f16");
+                                }
+                            }
                         }
                     }
                     if assert_sane_floats {
