@@ -256,8 +256,8 @@ impl TypedOp for EinSum {
                             .collect::<TVec<_>>()
                             .into_iter()
                     })
-                    .max()
-                    .unwrap()
+                    .find(|d| !d.is_one())
+                    .unwrap_or_else(|| 1.to_dim())
             })
             .product::<TDim>();
         Ok(tvec!((Cost::FMA(self.operating_dt), oshape.iter().product::<TDim>() * ks)))
