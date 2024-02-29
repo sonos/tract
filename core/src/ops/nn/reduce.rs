@@ -50,6 +50,7 @@ pub enum Reducer {
     Min,
     Prod,
     Sum,
+    MeanOfSquares,
 }
 
 impl Reducer {
@@ -90,6 +91,7 @@ impl Reducer {
                         ))
                     }
                 }
+                MeanOfSquares => self.mean_of_squares(axes, input)?,
             };
             if input.datum_type().is_quantized()
                 && input.datum_type().unquantized() == t.datum_type().unquantized()
@@ -176,6 +178,16 @@ impl Reducer {
             output = Some(current_output);
         }
         output.unwrap().into_tensor()
+    }
+
+    fn mean_of_squares(&self, axis: &[usize], input: &Tensor) -> TractResult<Tensor> {
+        let dt = input.datum_type();
+        let mut input = input.cast_to::<f32>()?.into_owned();
+        input.as_slice_mut::<f32>()?.iter_mut().for_each(|x| *x = *x * *x);
+        let mut output = unsafe { self.sum::<f32>(axis, &input) };
+        let norm = output.len() as f32 / input.len() as f32;
+        output.as_slice_mut::<f32>()?.iter_mut().for_each(|x| *x = *x * norm);
+        Ok(output.cast_to_dt(dt)?.into_owned())
     }
 }
 

@@ -272,7 +272,7 @@ fn ser_reduce(
                 BuiltinOp::new(74, 1, BuiltinOperator::SUM, BuiltinOptions::ReducerOptions),
                 options.as_union_value(),
             ),
-            Reducer::ArgMin(_) | Reducer::ArgMax(_) => unreachable!(),
+            Reducer::ArgMin(_) | Reducer::ArgMax(_) | Reducer::MeanOfSquares => unreachable!(),
         }
     }
 }
