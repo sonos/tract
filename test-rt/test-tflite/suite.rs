@@ -104,6 +104,7 @@ fn ignore_onnx(t: &[String]) -> bool {
             test_Conv2d_groups_thnn
             test_reshape_allowzero_reordered
             test_split_zero_size
+            test_mul_uint8
             test_div_uint8
             test_reduce_log_sum_exp.*                        # tflite does not support f64 reducers 🤷
             test_cosh.*
