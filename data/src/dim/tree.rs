@@ -33,15 +33,15 @@ use TDim::*;
 
 fn tdim_compare(a: &TDim, b: &TDim) -> Ordering {
     match (a, b) {
-        (Sym(a), Sym(b)) => a.cmp(&b),
-        (Val(a), Val(b)) => a.cmp(&b),
+        (Sym(a), Sym(b)) => a.cmp(b),
+        (Val(a), Val(b)) => a.cmp(b),
         (Add(a), Add(b)) | (Mul(a), Mul(b)) => a.len().cmp(&b.len()).then(
             a.iter()
                 .zip(b.iter())
                 .fold(Ordering::Equal, |acc, (a, b)| acc.then_with(|| tdim_compare(a, b))),
         ),
-        (MulInt(p, d), MulInt(q, e)) => p.cmp(&q).then_with(|| tdim_compare(d, e)),
-        (Div(d, p), Div(e, q)) => p.cmp(&q).then_with(|| tdim_compare(d, e)),
+        (MulInt(p, d), MulInt(q, e)) => p.cmp(q).then_with(|| tdim_compare(d, e)),
+        (Div(d, p), Div(e, q)) => p.cmp(q).then_with(|| tdim_compare(d, e)),
         (Sym(_), _) => Ordering::Less,
         (_, Sym(_)) => Ordering::Greater,
         (Val(_), _) => Ordering::Less,
