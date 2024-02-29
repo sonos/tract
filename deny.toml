@@ -33,8 +33,9 @@ deny = [
 
 # Skip some multiple-versions checks, until they can be fixed.
 skip = [
-    { name = "regex-syntax", version="<8" },
+    { name = "bitflags", version="<2" },
     { name = "itertools", version="<0.12.1" },
+    { name = "regex-syntax", version="<8" },
     { name = "syn", version="<2" },
 ]
 
