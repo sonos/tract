@@ -12,6 +12,7 @@ use tract_itertools::izip;
 use tract_ndarray::*;
 
 use crate::conv_f32::ConvProblemParams;
+use crate::q_helpers::qtensor;
 
 /* https://www.tensorflow.org/lite/performance/quantization_spec
 CONV_2D
@@ -34,23 +35,6 @@ data_type  : int8
 range      : [-128, 127]
 granularity: per-tensor
 */
-
-pub fn qtensor(shape: Vec<usize>, dt: DatumType) -> BoxedStrategy<Tensor> {
-    assert!(dt.unquantized() == dt);
-    let len = shape.iter().product::<usize>();
-    let range = if dt.is_signed() { -100..100i32 } else { 0..100i32 };
-    vec(range, len..=len)
-        .prop_map(move |v| {
-            ArrayD::from_shape_vec(shape.clone(), v)
-                .unwrap()
-                .into_tensor()
-                .cast_to_dt(dt.unquantized())
-                .unwrap()
-                .into_owned()
-        })
-        .boxed()
-}
-
 #[allow(clippy::arc_with_non_send_sync)]
 pub fn q_params(
     params: &QConvProblemParams,
