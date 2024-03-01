@@ -227,10 +227,10 @@ impl Registry {
                     b = builder.wire_as_outlets(tract_core::ops::cast::cast(a_dt), &[b])?[0];
                     b_dt = a_dt;
                 };
+                let operating_dt = bin.1.operating_datum_type(a_dt, b_dt)?;
+                a = builder.wire_as_outlets(tract_core::ops::cast::cast(operating_dt), &[a])?[0];
+                b = builder.wire_as_outlets(tract_core::ops::cast::cast(operating_dt), &[b])?[0];
             }
-            let operating_dt = bin.1.operating_datum_type(a_dt, b_dt)?;
-            a = builder.wire_as_outlets(tract_core::ops::cast::cast(operating_dt), &[a])?[0];
-            b = builder.wire_as_outlets(tract_core::ops::cast::cast(operating_dt), &[b])?[0];
             let inputs = multi_rank_broadcast(builder, &[a, b])?;
 
             let c_dt: Option<DatumType> = dt.first().cloned().and_then(|dt| dt);
