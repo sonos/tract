@@ -418,7 +418,10 @@ pub fn expand_mean_of_squares(
     if op.reducer == Reducer::MeanOfSquares {
         let mut patch = TypedModelPatch::default();
         let mut wire = tvec!(patch.tap_model(model, node.inputs[0])?);
-        wire = patch.wire_node(format!("{name}.to_f32"), cast(f32::datum_type()), &wire)?;
+        let dt = model.outlet_fact(node.inputs[0])?.datum_type;
+        if dt != f32::datum_type() {
+            wire = patch.wire_node(format!("{name}.to_f32"), cast(f32::datum_type()), &wire)?;
+        }
         wire = patch.wire_node(format!("{name}.sqr"), square(), &wire)?;
         let input_size = patch.outlet_fact(wire[0])?.shape.volume();
         let input_size = patch.add_const(format!("{name}.input_size"), tensor0(input_size))?;
@@ -438,11 +441,9 @@ pub fn expand_mean_of_squares(
         let norm = patch.wire_node(format!("{name}.norm"), div(), &norm)?[0];
         wire =
             wire_with_rank_broadcast(format!("{name}.card"), &mut patch, mul(), &[wire[0], norm])?;
-        wire = patch.wire_node(
-            format!("{name}.from_f32"),
-            cast(model.outlet_fact(node.inputs[0])?.datum_type),
-            &wire,
-        )?;
+        if dt != f32::datum_type() {
+            wire = patch.wire_node(format!("{name}.from_f32"), cast(dt), &wire)?;
+        }
         patch.shunt_outside(model, node.id.into(), wire[0])?;
         Ok(Some(patch))
     } else {
