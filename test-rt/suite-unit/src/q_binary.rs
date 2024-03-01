@@ -190,20 +190,20 @@ impl Test for QBinaryOpProblem {
             .iter_mut()
             .for_each(|x: &mut f32| *x = (*x).clamp(min_repr_val, max_repr_val));
 
-        let mut diff = result.cast_to::<f32>()?.into_owned();
+        let mut fp_results = result.cast_to::<f32>()?.into_owned();
 
         let acceptable_scale_error_ratio = match approx {
             Approximation::Exact => 0.,
-            Approximation::Approximate => 1.,
-            _ => 2.,
+            Approximation::Approximate => 2.,
+            _ => 3.,
         };
-        tract_core::ndarray::Zip::from(diff.to_array_view_mut()?)
+        assert!(tract_core::ndarray::Zip::from(fp_results.to_array_view_mut()?)
             .and(reference.to_array_view()?)
             .all(|x: &mut f32, xref: &f32| {
                 let closest_x = (*x).clamp(min_repr_val, max_repr_val);
                 // core maximal accepted distance by default
                 (xref - closest_x).abs() <= scale * acceptable_scale_error_ratio
-            });
+            }));
         Ok(())
     }
 }
