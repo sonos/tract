@@ -23,7 +23,7 @@ impl Default for QBinaryOpProblem {
     }
 }
 
-impl QBinaryOpProblem {
+impl QOpProblem for QBinaryOpProblem {
     fn reference_float_ops(&self) -> TractResult<Tensor> {
         let a = self.tensor_a.cast_to::<f32>()?.clone().into_owned();
         let b = self.tensor_b.cast_to::<f32>()?.clone().into_owned();
@@ -149,36 +149,7 @@ impl Test for QBinaryOpProblem {
             .run(tvec![self.tensor_a.clone().into_tvalue()])?
             .remove(0)
             .into_tensor();
-        let mut reference = self.reference_float_ops()?;
-
-        let (zero_point, scale) = self.c_dt.zp_scale();
-        let min_repr_val = (self.c_dt.unquantized().min_value().cast_to_scalar::<f32>()?
-            - zero_point as f32)
-            * scale;
-        let max_repr_val = (self.c_dt.unquantized().max_value().cast_to_scalar::<f32>()?
-            - zero_point as f32)
-            * scale;
-
-        reference
-            .to_array_view_mut()?
-            .iter_mut()
-            .for_each(|x: &mut f32| *x = (*x).clamp(min_repr_val, max_repr_val));
-
-        let mut fp_results = result.cast_to::<f32>()?.into_owned();
-
-        let acceptable_scale_error_ratio = match approx {
-            Approximation::Exact => 0.,
-            Approximation::Approximate => 2.,
-            _ => 3.,
-        };
-        assert!(tract_core::ndarray::Zip::from(fp_results.to_array_view_mut()?)
-            .and(reference.to_array_view()?)
-            .all(|x: &mut f32, xref: &f32| {
-                let closest_x = (*x).clamp(min_repr_val, max_repr_val);
-                // core maximal accepted distance by default
-                (xref - closest_x).abs() <= scale * acceptable_scale_error_ratio
-            }));
-        Ok(())
+        self.check_ref_with_approx(result, approx)
     }
 }
 
