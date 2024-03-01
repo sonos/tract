@@ -212,24 +212,30 @@ pub fn suite() -> TractResult<TestSuite> {
     let mut suite = TestSuite::default();
     suite.add_arbitrary::<QBinaryOpProblem>("proptest", ());
 
+    fn qu8_dt(zp: i32, scale: f32) -> DatumType {
+        u8::datum_type().quantize(QParams::ZpScale { zero_point: zp, scale })
+    }
+
+    fn qu8_tensor(tensor: Tensor, zp: i32, scale: f32) -> TractResult<Tensor> {
+        Ok(tensor.cast_to_dt(qu8_dt(zp, scale))?.into_owned())
+    }
+
+    fn qu8_tensor0(value: u8, zp: i32, scale: f32) -> TractResult<Tensor> {
+        qu8_tensor(tensor0(value), zp, scale)
+    }
+
+    fn qu8_tensor1(values: &[u8], zp: i32, scale: f32) -> TractResult<Tensor> {
+        qu8_tensor(tensor1(values), zp, scale)
+    }
+
     // simplification 0 at declutter constant
     suite.add(
         "trivial_mul_0_case",
         QBinaryOpProblem {
             operator: tract_core::ops::math::mul(),
-            tensor_a: tensor0(0u8)
-                .cast_to_dt(
-                    u8::datum_type().quantize(QParams::ZpScale { zero_point: 0, scale: 1. }),
-                )
-                .unwrap()
-                .into_owned(),
-            tensor_b: tensor0(0u8)
-                .cast_to_dt(
-                    u8::datum_type().quantize(QParams::ZpScale { zero_point: 0, scale: 1. }),
-                )
-                .unwrap()
-                .into_owned(),
-            c_dt: DatumType::QU8(QParams::ZpScale { zero_point: 0, scale: 1. }),
+            tensor_a: qu8_tensor0(0u8, 0, 1.)?,
+            tensor_b: qu8_tensor0(0u8, 0, 1.)?,
+            c_dt: qu8_dt(0, 1.),
         },
     );
 
@@ -237,19 +243,9 @@ pub fn suite() -> TractResult<TestSuite> {
         "trivial_mul_as_qu8_overflow_clamp",
         QBinaryOpProblem {
             operator: tract_core::ops::math::mul(),
-            tensor_a: tensor1(&[1_u8, 2, 3, 128])
-                .cast_to_dt(
-                    u8::datum_type().quantize(QParams::ZpScale { zero_point: 0, scale: 1. }),
-                )
-                .unwrap()
-                .into_owned(),
-            tensor_b: tensor1(&[4u8])
-                .cast_to_dt(
-                    u8::datum_type().quantize(QParams::ZpScale { zero_point: 0, scale: 1. }),
-                )
-                .unwrap()
-                .into_owned(),
-            c_dt: DatumType::QU8(QParams::ZpScale { zero_point: 0, scale: 1. }),
+            tensor_a: qu8_tensor1(&[1_u8, 2, 3, 128], 0, 1.)?,
+            tensor_b: qu8_tensor1(&[4u8], 0, 1.)?,
+            c_dt: qu8_dt(0, 1.),
         },
     );
 
@@ -257,19 +253,9 @@ pub fn suite() -> TractResult<TestSuite> {
         "trivial_mul_as_qu8_non_neutral_scale_and_offset",
         QBinaryOpProblem {
             operator: tract_core::ops::math::mul(),
-            tensor_a: tensor1(&[1_u8, 2, 3, 128])
-                .cast_to_dt(
-                    u8::datum_type().quantize(QParams::ZpScale { zero_point: 3, scale: 2. }),
-                )
-                .unwrap()
-                .into_owned(),
-            tensor_b: tensor1(&[4u8])
-                .cast_to_dt(
-                    u8::datum_type().quantize(QParams::ZpScale { zero_point: 3, scale: 2. }),
-                )
-                .unwrap()
-                .into_owned(),
-            c_dt: DatumType::QU8(QParams::ZpScale { zero_point: 3, scale: 2. }),
+            tensor_a: qu8_tensor1(&[1_u8, 2, 3, 128], 3, 2.)?,
+            tensor_b: qu8_tensor1(&[4u8], 3, 2.)?,
+            c_dt: qu8_dt(3, 2.),
         },
     );
 
@@ -277,19 +263,9 @@ pub fn suite() -> TractResult<TestSuite> {
         "trivial_mul_as_qu8_non_aligned_scale_and_offset",
         QBinaryOpProblem {
             operator: tract_core::ops::math::mul(),
-            tensor_a: tensor1(&[3_u8, 4, 10, 25])
-                .cast_to_dt(
-                    u8::datum_type().quantize(QParams::ZpScale { zero_point: 3, scale: 4.5 }),
-                )
-                .unwrap()
-                .into_owned(),
-            tensor_b: tensor1(&[6u8])
-                .cast_to_dt(
-                    u8::datum_type().quantize(QParams::ZpScale { zero_point: 4, scale: 2.5 }),
-                )
-                .unwrap()
-                .into_owned(),
-            c_dt: DatumType::QU8(QParams::ZpScale { zero_point: 0, scale: 1. }),
+            tensor_a: qu8_tensor1(&[3_u8, 4, 10, 25], 3, 4.5)?,
+            tensor_b: qu8_tensor1(&[6u8], 4, 2.5)?,
+            c_dt: qu8_dt(0, 1.),
         },
     );
 
@@ -297,19 +273,9 @@ pub fn suite() -> TractResult<TestSuite> {
         "trivial_max_0_as_qu8_non_aligned_scale_and_offset",
         QBinaryOpProblem {
             operator: tract_core::ops::math::max(),
-            tensor_a: tensor1(&[100_u8, 5, 110, 99])
-                .cast_to_dt(
-                    u8::datum_type().quantize(QParams::ZpScale { zero_point: 100, scale: 4.5 }),
-                )
-                .unwrap()
-                .into_owned(),
-            tensor_b: tensor1(&[100u8])
-                .cast_to_dt(
-                    u8::datum_type().quantize(QParams::ZpScale { zero_point: 100, scale: 4.5 }),
-                )
-                .unwrap()
-                .into_owned(),
-            c_dt: DatumType::QU8(QParams::ZpScale { zero_point: 0, scale: 1. }),
+            tensor_a: qu8_tensor1(&[100_u8, 5, 110, 99], 100, 4.5)?,
+            tensor_b: qu8_tensor1(&[100u8], 100, 4.5)?,
+            c_dt: qu8_dt(0, 1.),
         },
     );
 
@@ -317,19 +283,9 @@ pub fn suite() -> TractResult<TestSuite> {
         "trivial_min_15_as_qu8_non_aligned_scale_and_offset",
         QBinaryOpProblem {
             operator: tract_core::ops::math::min(),
-            tensor_a: tensor1(&[5_u8, 9, 8, 20])
-                .cast_to_dt(
-                    u8::datum_type().quantize(QParams::ZpScale { zero_point: 5, scale: 4. }),
-                )
-                .unwrap()
-                .into_owned(),
-            tensor_b: tensor1(&[15u8])
-                .cast_to_dt(
-                    u8::datum_type().quantize(QParams::ZpScale { zero_point: 10, scale: 3. }),
-                )
-                .unwrap()
-                .into_owned(),
-            c_dt: DatumType::QU8(QParams::ZpScale { zero_point: 0, scale: 1. }),
+            tensor_a: qu8_tensor1(&[5_u8, 9, 8, 20], 5, 4.)?,
+            tensor_b: qu8_tensor1(&[15u8], 10, 3.)?,
+            c_dt: qu8_dt(0, 1.),
         },
     );
 
@@ -337,19 +293,9 @@ pub fn suite() -> TractResult<TestSuite> {
         "trivial_max_15_as_qu8_non_aligned_scale_and_offset",
         QBinaryOpProblem {
             operator: tract_core::ops::math::max(),
-            tensor_a: tensor1(&[5_u8, 9, 8, 20])
-                .cast_to_dt(
-                    u8::datum_type().quantize(QParams::ZpScale { zero_point: 5, scale: 4. }),
-                )
-                .unwrap()
-                .into_owned(),
-            tensor_b: tensor1(&[15u8])
-                .cast_to_dt(
-                    u8::datum_type().quantize(QParams::ZpScale { zero_point: 10, scale: 3. }),
-                )
-                .unwrap()
-                .into_owned(),
-            c_dt: DatumType::QU8(QParams::ZpScale { zero_point: 0, scale: 1. }),
+            tensor_a: qu8_tensor1(&[5_u8, 9, 8, 20], 5, 4.)?,
+            tensor_b: qu8_tensor1(&[15u8], 10, 3.)?,
+            c_dt: qu8_dt(0, 1.),
         },
     );
 
@@ -357,19 +303,9 @@ pub fn suite() -> TractResult<TestSuite> {
         "trivial_add_as_qu8_non_aligned_scale_and_offset",
         QBinaryOpProblem {
             operator: tract_core::ops::math::add(),
-            tensor_a: tensor1(&[3_u8, 4, 10, 25])
-                .cast_to_dt(
-                    u8::datum_type().quantize(QParams::ZpScale { zero_point: 3, scale: 4.5 }),
-                )
-                .unwrap()
-                .into_owned(),
-            tensor_b: tensor1(&[6u8])
-                .cast_to_dt(
-                    u8::datum_type().quantize(QParams::ZpScale { zero_point: 4, scale: 2.5 }),
-                )
-                .unwrap()
-                .into_owned(),
-            c_dt: DatumType::QU8(QParams::ZpScale { zero_point: 0, scale: 1. }),
+            tensor_a: qu8_tensor1(&[3_u8, 4, 10, 25], 3, 4.5)?,
+            tensor_b: qu8_tensor1(&[6u8], 4, 2.5)?,
+            c_dt: qu8_dt(0, 1.),
         },
     );
 
@@ -377,19 +313,9 @@ pub fn suite() -> TractResult<TestSuite> {
         "trivial_div_as_qu8_non_aligned_scale_and_offset",
         QBinaryOpProblem {
             operator: tract_core::ops::math::div(),
-            tensor_a: tensor1(&[3_u8, 4, 10, 25])
-                .cast_to_dt(
-                    u8::datum_type().quantize(QParams::ZpScale { zero_point: 3, scale: 4.5 }),
-                )
-                .unwrap()
-                .into_owned(),
-            tensor_b: tensor1(&[6u8])
-                .cast_to_dt(
-                    u8::datum_type().quantize(QParams::ZpScale { zero_point: 4, scale: 2.5 }),
-                )
-                .unwrap()
-                .into_owned(),
-            c_dt: DatumType::QU8(QParams::ZpScale { zero_point: 0, scale: 1. }),
+            tensor_a: qu8_tensor1(&[3_u8, 4, 10, 25], 3, 4.5)?,
+            tensor_b: qu8_tensor1(&[6u8], 4, 2.5)?,
+            c_dt: qu8_dt(0, 1.),
         },
     );
 

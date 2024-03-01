@@ -138,7 +138,7 @@ eval_override: |a:TValue, b: TValue, c_dt: DatumType| -> TractResult<Tensor> {
                        DatumType::QU8(QParams::ZpScale {zero_point: c_zp, scale: c_scale})) =
                 (a.datum_type(), b.datum_type(), c_dt) {
 
-               let multiplier = a_scale  * (1.0 / b_scale) * (1.0/ c_scale);
+               let multiplier = a_scale / (b_scale * c_scale);
                 let a = a.to_array_view::<u8>()?;
                 let b = b.to_array_view::<u8>()?;
                 let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()]).context("no broadcast solution")?;
@@ -349,7 +349,7 @@ fn declutter_mul(
                     let scalar = patch.add_const(
                         format!("{}.zero", node.name),
                         if uniform.uni.datum_type().is_quantized() {
-                            let output_dt = node.outputs[0].fact.datum_type().unwrap();
+                            let output_dt = node.outputs[0].fact.datum_type;
                             Arc::new(uniform.uni.clone().cast_to_dt(output_dt)?.into_owned())
                         } else {
                             uniform.uni.clone()

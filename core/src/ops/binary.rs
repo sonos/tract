@@ -593,11 +593,7 @@ macro_rules! bin_to_super_type {
                         c_dt: &DatumType,
                         accumulator_dt: DatumType
                     ) -> TractResult<Option<Tensor>> {
-                        if let (Some(QParams::ZpScale {zero_point: a_zp, scale: a_scale}),
-                                Some(QParams::ZpScale {zero_point: b_zp, scale: b_scale}),
-                                Some(QParams::ZpScale {zero_point: c_zp, scale: c_scale})) =
-                            (a.datum_type().qparams(), b.datum_type().qparams(), c_dt.qparams())
-                        {
+                        if a.datum_type().is_quantized() && b.datum_type().is_quantized() && c_dt.is_quantized() {
                             let a = a.cast_to_dt(accumulator_dt)?.into_owned();
                             let b = b.cast_to_dt(accumulator_dt)?.into_owned();
                             let c_shape = $crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])

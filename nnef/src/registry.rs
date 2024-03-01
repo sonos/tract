@@ -226,10 +226,7 @@ impl Registry {
             }
             let inputs = multicast(builder, &[a, b])?;
 
-            let c_dt: Option<DatumType> = match dt.first().cloned() {
-                Some(c_dt) => c_dt,
-                None => None,
-            };
+            let c_dt: Option<DatumType> = dt.first().cloned().and_then(|dt| dt);
             let mut wire = builder.wire_as_outlets(
                 tract_core::ops::binary::TypedBinOp(bin.1.clone(), c_dt),
                 &inputs,
