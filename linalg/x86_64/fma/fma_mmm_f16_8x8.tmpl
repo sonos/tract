@@ -1,0 +1,104 @@
+{% comment %}
+// vim: set syntax=asm :
+
+/* mmm 16 x 6:
+
+    ymm0 ymm2 ymm4 ymm6 ymm8 ymm10
+    ymm1 ymm3 ymm5 ymm7 ymm9 ymm11
+
+System V ABI:
+    args: rdi, rsi, rdx, rcx, r8, r9
+    preserve: rbx, rsp, rbp, r12, r13, r14, r15
+    scratch: rax, rdi, rsi, rdx, rcx, r8, r9, r10, r11
+    return: rax (+rdx)
+
+Windows ABI:
+    args: RCX, RDX, R8, R9
+    preserve: RBX, RBP, RDI, RSI, RSP, R12, R13, R14, R15, and XMM6-15
+    scratch: RAX, RCX, RDX, R8, R9, R10, R11, XMM0-5, and the upper portions of YMM0-15 and ZMM0-15
+    return: rax (+rdx)
+*/
+{% endcomment %}
+
+{% include "preamble.tmpliq" type:"f16", size:"8x8", suffix:suffix, G:G %}
+
+{{L}}clear:
+    vzeroall
+    jmp             {{L}}non_linear_loop
+
+{{L}}add_mat_mul:
+    mov     rbx,    [rdi + 24]   // B
+    mov     rax,    [rdi + 16]   // A
+
+    mov     rcx,    [rdi + 8]    // k
+    test    rcx,    rcx
+    jz      {{L}}non_linear_loop
+
+{{L}}main_loop_packed_packed:
+    {% include "8x8/packed_packed_loop1/f16-avx.tmpli" %}
+
+    add             rax,    16
+    add             rbx,    16
+    dec             rcx
+    jnz             {{L}}main_loop_packed_packed
+
+    jmp             {{L}}non_linear_loop
+
+// NON LINEAR / ADDC
+
+{% include "fma_mmm_f32_scalars.tmpliq" from:0, to:7, type:"f16" %}
+{% include "fma_mmm_f32_per_rows.tmpliq" mr:8, from:0, to:7, type:"f16" %}
+{% include "fma_mmm_f32_per_cols.tmpliq" mr:8, from:0, to:7, type:"f16" %}
+
+{{L}}add_unicast:
+    mov     r8,     [rdi + 8]           // c ptr
+    mov     rsi,    [rdi + 16]          // row stride
+    mov     rdx,    [rdi + 24]          // col stride
+
+    {% for col in (0..7) %}
+        mov r10, r8
+        {% for row in (0..7) %}
+            pinsrw      xmm8, word ptr [r10], {{row}}
+            add         r10, rsi
+        {% endfor %}
+        vcvtph2ps ymm8, xmm8
+        vaddps    ymm{{col}}, ymm{{col}}, ymm8
+        add r8, rdx
+    {% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}add_row_col_products:
+    mov             rax, [ rdi + 8 ]
+    mov             rbx, [ rdi + 16 ]
+
+    vmovups         xmm12, [rax]
+    vcvtph2ps       ymm12, xmm12
+
+{% for i in (0..7) %}
+    pinsrw          xmm14, word ptr [rbx + {{i|times:2}} ], 0
+    vcvtph2ps       ymm14, xmm14
+    vbroadcastss    ymm14, xmm14
+    vfmadd231ps     ymm{{i}}, ymm12, ymm14
+{% endfor %}
+    jmp    {{L}}non_linear_loop
+
+{{L}}store:
+    mov     r8,     [rdi + 8]           // c ptr
+    mov     rsi,    [rdi + 16]          // row stride
+    mov     rdx,    [rdi + 24]          // col stride
+
+    {% for col in (0..7) %}
+        mov r10, r8
+        vcvtps2ph xmm8, ymm{{col}}, 0
+        {% for row in (0..7) %}
+            pextrw      word ptr [r10], xmm8, {{row}}
+            add         r10, rsi
+        {% endfor %}
+        add r8, rdx
+    {% endfor %}
+
+    jmp     {{L}}non_linear_loop
+
+
+{% include "postamble.tmpliq" type:"f16", size:"8x8", suffix:suffix, G:G, L:L %}

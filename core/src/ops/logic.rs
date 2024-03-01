@@ -183,7 +183,11 @@ impl TypedOp for Iff {
         Ok(tvec!(inputs[1].datum_type.fact(shape)))
     }
 
-    fn axes_mapping(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<AxesMapping> {
+    fn axes_mapping(
+        &self,
+        inputs: &[&TypedFact],
+        outputs: &[&TypedFact],
+    ) -> TractResult<AxesMapping> {
         AxesMapping::natural(inputs, outputs)
     }
 }

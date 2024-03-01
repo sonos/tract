@@ -1,4 +1,6 @@
 use crate::internal::*;
+#[cfg(feature="blas")]
+use crate::ops::einsum::as_blas::AsBlas;
 use std::borrow::Cow;
 use std::fmt::Debug;
 
@@ -9,6 +11,8 @@ use crate::ops::nn::{Softmax, SoftmaxExp, TypedModel};
 
 pub fn get_transformer(name: &str) -> Option<Box<dyn ModelTransformer>> {
     match name {
+        #[cfg(feature="blas")]
+        "as-blas" => Some(Box::<AsBlas>::default()),
         "f32-to-f16" => Some(Box::<FloatPrecisionTranslator<f32, f16>>::default()),
         "f16-to-f32" => Some(Box::<FloatPrecisionTranslator<f32, f16>>::default()),
         "softmax-fast-compact" => Some(Box::new(SoftmaxFastCompact)),

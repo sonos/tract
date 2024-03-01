@@ -26,6 +26,11 @@ fn einsum_rules(
     {
         return Ok(None);
     }
+    if op.q_params.is_some()
+        && model.node_input_facts(node.id)?.iter().skip(3).any(|i| i.konst.is_none())
+    {
+        return Ok(None);
+    }
     let (m, k, n) = match ensure_mkn_axes(op, model, node)? {
         AxesOrPatch::Axes(m, k, n) => (m, k, n),
         AxesOrPatch::Patch(p) => return Ok(Some(p)),
@@ -172,6 +177,13 @@ impl BasicMatMul {
 impl Op for BasicMatMul {
     fn name(&self) -> Cow<str> {
         "MatMul".into()
+    }
+
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![format!(
+            "transpose_a: {} transpose_b: {} transpose_c: {} q: {:?}",
+            self.transpose_a, self.transpose_b, self.transpose_c, self.quantize_output
+        )])
     }
 
     op_as_typed_op!();

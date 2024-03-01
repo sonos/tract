@@ -4,7 +4,7 @@ use nom::bytes::complete::tag;
 use nom::character::complete::{alpha1, alphanumeric1, digit1};
 use nom::combinator::{all_consuming, map, map_res, recognize};
 use nom::multi::many0;
-use nom::sequence::{delimited, pair, separated_pair};
+use nom::sequence::{delimited, pair, separated_pair, tuple};
 use nom::IResult;
 
 pub fn parse_tdim(symbol_table: &SymbolTable, input: &str) -> TractResult<TDim> {
@@ -22,7 +22,7 @@ macro_rules! bin {
     ($name: ident, $next: ident, $op: expr, $builder: expr) => {
         fn $name<'i>(symbol_table: &SymbolTable, input: &'i str) -> IResult<&'i str, TDim> {
             let s = symbol_table;
-            alt((map(separated_pair(|i| $next(s, i), tag($op), |i| $next(s, i)), $builder), |i| {
+            alt((map(separated_pair(|i| $next(s, i), tuple((many0(tag(" ")), tag($op), many0(tag(" ")))), |i| $next(s, i)), $builder), |i| {
                 $next(s, i)
             }))(input)
         }

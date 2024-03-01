@@ -59,7 +59,7 @@ pub(super) fn ensure_mkn_axes<'a>(
 
     let non_trivial_k_axis = candidate_k_axes
         .iter()
-        .filter(|a| input_facts[0].shape[a.inputs[0][0]] > 1.to_dim())
+        .filter(|a| !input_facts[0].shape[a.inputs[0][0]].is_one())
         .collect::<TVec<_>>();
 
     let k_axis = if non_trivial_k_axis.len() > 1 {
@@ -79,7 +79,7 @@ pub(super) fn ensure_mkn_axes<'a>(
                 && (a.inputs[1].len() == 0 || input_facts[1].shape[a.inputs[1][0]].is_one())
                 && a.outputs[0].len() == 1
         })
-        .max_by_key(|a| &output_shape[a.outputs[0][0]]);
+        .max_by_key(|a| output_shape[a.outputs[0][0]].as_i64().unwrap_or(i64::MAX));
     let Some(m_axis) = m_axis else {
         return Ok(AxesOrPatch::Patch(inject_m_or_n_axis(op, model, node, false, &[k_axis])?));
     };
@@ -91,7 +91,7 @@ pub(super) fn ensure_mkn_axes<'a>(
                 && a.inputs[1].len() == 1
                 && a.outputs[0].len() == 1
         })
-        .max_by_key(|a| &output_shape[a.outputs[0][0]]);
+        .max_by_key(|a| output_shape[a.outputs[0][0]].as_i64().unwrap_or(i64::MAX));
     let Some(n_axis) = n_axis else {
         return Ok(AxesOrPatch::Patch(inject_m_or_n_axis(
             op,
@@ -306,23 +306,25 @@ fn lir_mat_mul_unary(
     let m = &input_facts[0].shape[a_m];
     let k = &input_facts[0].shape[a_k];
     let n = &input_facts[1].shape[b_n];
-    if m < n {
-        let expr = op
-            .axes
-            .iter_all_axes()
-            .map(|axis| {
-                let mut axis = axis.clone();
-                axis.inputs.swap(0, 1);
-                axis
-            })
-            .collect::<TVec<Axis>>();
-        return TypedModelPatch::replace_single_op(
-            model,
-            node,
-            &[node.inputs[1], node.inputs[0]],
-            EinSum { axes: AxesMapping::new(node.inputs.len(), 1, expr)?, ..op.clone() },
-        )
-        .map(Some);
+    if let (Some(m), Some(n)) = (m.as_i64(), n.as_i64()) {
+        if m < n {
+            let expr = op
+                .axes
+                .iter_all_axes()
+                .map(|axis| {
+                    let mut axis = axis.clone();
+                    axis.inputs.swap(0, 1);
+                    axis
+                })
+                .collect::<TVec<Axis>>();
+            return TypedModelPatch::replace_single_op(
+                model,
+                node,
+                &[node.inputs[1], node.inputs[0]],
+                EinSum { axes: AxesMapping::new(node.inputs.len(), 1, expr)?, ..op.clone() },
+            )
+            .map(Some);
+        }
     }
     let a_dt = input_facts[0].datum_type;
     let b_dt = input_facts[1].datum_type;
