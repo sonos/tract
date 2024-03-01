@@ -366,7 +366,7 @@ impl crate::ops::binary::BinMiniOp for Scale {
                 let factor = a.cast_to_scalar::<f32>()?;
                 let scaler = Scaler::new(factor, RoundingPolicy::Even);
 
-                let op = ElementWiseOp(Box::new(QScale { scaler }));
+                let op = ElementWiseOp(Box::new(QScale { scaler }), None);
                 let patch =
                     TypedModelPatch::replace_single_op(model, node, &node.inputs[1..2], op)?;
 
@@ -411,8 +411,8 @@ impl ElementWiseMiniOp for OffsetI8asU8 {
             input_type
         })
     }
-    fn eval_out_of_place(&self, t: &Tensor) -> TractResult<Tensor> {
-        let output_type = self.output_type(t.datum_type()).unwrap();
+    fn eval_out_of_place(&self, t: &Tensor, out_dt: Option<DatumType>) -> TractResult<Tensor> {
+        let output_type = out_dt.unwrap_or(self.output_type(t.datum_type()).unwrap());
         let mut dst = unsafe { Tensor::uninitialized_dt(output_type, t.shape())? };
         if t.datum_type().unquantized() == i8::datum_type() {
             t.as_slice::<i8>()?
@@ -427,7 +427,7 @@ impl ElementWiseMiniOp for OffsetI8asU8 {
 }
 
 pub fn offset_i8_as_u8() -> ElementWiseOp {
-    ElementWiseOp(Box::new(OffsetI8asU8 {}))
+    ElementWiseOp(Box::new(OffsetI8asU8 {}), None)
 }
 
 /// Offsets u8 integers as i8 integers.
@@ -451,8 +451,8 @@ impl ElementWiseMiniOp for OffsetU8asI8 {
             input_type
         })
     }
-    fn eval_out_of_place(&self, t: &Tensor) -> TractResult<Tensor> {
-        let output_type = self.output_type(t.datum_type()).unwrap();
+    fn eval_out_of_place(&self, t: &Tensor, out_dt: Option<DatumType>) -> TractResult<Tensor> {
+        let output_type = out_dt.unwrap_or(self.output_type(t.datum_type()).unwrap());
         let mut dst = unsafe { Tensor::uninitialized_dt(output_type, t.shape())? };
         if t.datum_type().unquantized() == u8::datum_type() {
             t.as_slice::<u8>()?
@@ -466,7 +466,7 @@ impl ElementWiseMiniOp for OffsetU8asI8 {
     }
 }
 pub fn offset_u8_as_i8() -> ElementWiseOp {
-    ElementWiseOp(Box::new(OffsetU8asI8 {}))
+    ElementWiseOp(Box::new(OffsetU8asI8 {}), None)
 }
 
 #[cfg(test)]

@@ -17,7 +17,7 @@ fn cast(
     if to == i64::datum_type() {
         to = TDim::datum_type();
     }
-    Ok((ElementWiseOp(Box::new(Cast::new(to))).into_hir(), vec![]))
+    Ok((ElementWiseOp(Box::new(Cast::new(to)), None).into_hir(), vec![]))
 }
 
 #[derive(Debug, Clone, new, Hash)]
@@ -34,7 +34,7 @@ impl ElementWiseMiniOp for Cast {
         Some(self.to)
     }
 
-    fn eval_out_of_place(&self, t: &Tensor) -> TractResult<Tensor> {
+    fn eval_out_of_place(&self, t: &Tensor, _out_dt: Option<DatumType>) -> TractResult<Tensor> {
         if t.datum_type() == String::datum_type() && self.to == f32::datum_type() {
             unsafe {
                 let mut output = Tensor::uninitialized::<f32>(t.shape())?;

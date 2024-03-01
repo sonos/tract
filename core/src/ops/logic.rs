@@ -80,7 +80,7 @@ fn codegen_compare_to_zero(
                 model,
                 node,
                 &[uniform.var],
-                ElementWiseOp(mapped()),
+                ElementWiseOp(mapped(), None),
             )?));
         }
     }
