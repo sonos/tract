@@ -1,8 +1,9 @@
 use crate::internal::Axis;
 use crate::internal::*;
-use crate::ops::binary::TypedBinOp;
+use crate::ops::binary::{wire_cast, wire_with_rank_broadcast, TypedBinOp};
+use crate::ops::cast::cast;
 use crate::ops::element_wise::ElementWiseOp;
-use crate::ops::math::{Mul, Square};
+use crate::ops::math::{div, mul, square, Mul, Square};
 use std::convert::TryFrom;
 use std::mem::transmute;
 use tract_data::internal::ClampCast;
@@ -189,7 +190,7 @@ impl Reducer {
         input.as_slice_mut::<f32>()?.iter_mut().for_each(|x| *x = *x * *x);
         let mut output = unsafe { self.sum::<f32>(axis, &input) };
         let norm = output.len() as f32 / input.len() as f32;
-        output.as_slice_mut::<f32>()?.iter_mut().for_each(|x| *x = *x * norm);
+        output.as_slice_mut::<f32>()?.iter_mut().for_each(|x| *x *= norm);
         Ok(output.cast_to_dt(dt)?.into_owned())
     }
 }
@@ -405,4 +406,46 @@ impl TypedOp for Reduce {
     }
 
     as_op!();
+}
+
+pub fn expand_mean_of_squares(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    name: &str,
+    op: &Reduce,
+) -> TractResult<Option<TypedModelPatch>> {
+    if op.reducer == Reducer::MeanOfSquares {
+        let mut patch = TypedModelPatch::default();
+        let mut wire = tvec!(patch.tap_model(model, node.inputs[0])?);
+        wire = patch.wire_node(format!("{name}.to_f32"), cast(f32::datum_type()), &wire)?;
+        wire = patch.wire_node(format!("{name}.sqr"), square(), &wire)?;
+        let input_size = patch.outlet_fact(wire[0])?.shape.volume();
+        let input_size = patch.add_const(format!("{name}.input_size"), tensor0(input_size))?;
+        wire = patch.wire_node(
+            format!("{name}.sum"),
+            Reduce::new(op.axes.clone(), Reducer::Sum),
+            &wire,
+        )?;
+        let output_size = patch.outlet_fact(wire[0])?.shape.volume();
+        let output_size = patch.add_const(format!("{name}.output_size"), tensor0(output_size))?;
+        let norm = wire_cast(
+            format!("{name}.norm"),
+            &mut patch,
+            &[output_size, input_size],
+            f32::datum_type(),
+        )?;
+        let norm = patch.wire_node(format!("{name}.norm"), div(), &norm)?[0];
+        wire =
+            wire_with_rank_broadcast(format!("{name}.card"), &mut patch, mul(), &[wire[0], norm])?;
+        wire = patch.wire_node(
+            format!("{name}.from_f32"),
+            cast(model.outlet_fact(node.inputs[0])?.datum_type),
+            &wire,
+        )?;
+        patch.shunt_outside(model, node.id.into(), wire[0])?;
+        Ok(Some(patch))
+    } else {
+        Ok(None)
+    }
 }

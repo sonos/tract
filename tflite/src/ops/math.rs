@@ -3,8 +3,8 @@ use crate::registry::{DeserOp, Registry};
 use crate::ser::{BuiltinOp, SubgraphBuilder};
 use crate::tflite::{
     ActivationFunctionType, AddOptions, AddOptionsArgs, BuiltinOperator, BuiltinOptions,
-    MaximumMinimumOptions, MaximumMinimumOptionsArgs, MulOptions, MulOptionsArgs, SubOptions,
-    SubOptionsArgs, DivOptions, DivOptionsArgs,
+    DivOptions, DivOptionsArgs, MaximumMinimumOptions, MaximumMinimumOptionsArgs, MulOptions,
+    MulOptionsArgs, SubOptions, SubOptionsArgs,
 };
 use tract_core::internal::*;
 use tract_core::ops::binary::{wire_cast, wire_rank_broadcast, TypedBinOp};
@@ -32,7 +32,7 @@ pub fn register_all(reg: &mut Registry) {
 
 fn wire_cast_and_rank_broadcast(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let wire = wire_cast(
-        &format!("{}.cast", op.prefix),
+        format!("{}.cast", op.prefix),
         op.ctx.target,
         op.inputs,
         DatumType::super_type_for(op.facts()?.iter().map(|f| f.datum_type))

@@ -5,8 +5,8 @@ use tract_core::ops::cnn::{rewrite_conv_with_n_axis, KernelFormat};
 use tract_core::ops::cnn::{Conv, PaddingSpec};
 use tract_core::ops::einsum::BasicMatMul;
 use tract_core::ops::element_wise::ElementWiseOp;
-use tract_core::ops::math::{div, mul, square, Recip};
-use tract_core::ops::nn::{DataFormat, Reduce, Reducer, Softmax};
+use tract_core::ops::math::Recip;
+use tract_core::ops::nn::{expand_mean_of_squares, DataFormat, Softmax};
 use tract_core::tract_data::itertools::Itertools;
 
 pub fn rewrite_for_tflite(model: &mut TypedModel) -> TractResult<()> {
@@ -323,35 +323,6 @@ fn softmax_on_last_axis(
             AxisOp::Move(rank - 1, softmax.axes[0]),
             &wire,
         )?;
-        patch.shunt_outside(model, node.id.into(), wire[0])?;
-        Ok(Some(patch))
-    } else {
-        Ok(None)
-    }
-}
-
-fn expand_mean_of_squares(
-    _ctx: &(),
-    model: &TypedModel,
-    node: &TypedNode,
-    name: &str,
-    op: &Reduce,
-) -> TractResult<Option<TypedModelPatch>> {
-    if op.reducer == Reducer::MeanOfSquares {
-        let mut patch = TypedModelPatch::default();
-        let mut wire = tvec!(patch.tap_model(model, node.inputs[0])?);
-        wire = patch.wire_node(format!("{name}.sqr"), square(), &wire)?;
-        let input_size = patch.outlet_fact(wire[0])?.shape.volume();
-        let input_size = patch.add_const(format!("{name}.input_size"), tensor0(input_size))?;
-        wire = patch.wire_node(
-            format!("{name}.sum"),
-            Reduce::new(op.axes.clone(), Reducer::Sum),
-            &wire,
-        )?;
-        let output_size = patch.outlet_fact(wire[0])?.shape.volume();
-        let output_size = patch.add_const(format!("{name}.output_size"), tensor0(output_size))?;
-        let norm = patch.wire_node(format!("{name}.norm"), div(), &[input_size, output_size])?[0];
-        wire = patch.wire_node(format!("{name}.card"), mul(), &[wire[0], norm])?;
         patch.shunt_outside(model, node.id.into(), wire[0])?;
         Ok(Some(patch))
     } else {

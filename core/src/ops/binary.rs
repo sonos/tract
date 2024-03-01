@@ -4,11 +4,12 @@ use std::fmt;
 use tract_data::itertools::izip;
 
 pub fn wire_cast(
-    prefix: &str,
+    prefix: impl AsRef<str>,
     target: &mut TypedModel,
     inputs: &[OutletId],
     operating_datum_type: DatumType,
 ) -> TractResult<TVec<OutletId>> {
+    let prefix = prefix.as_ref();
     let mut wires = tvec!();
     for (ix, mut wire) in inputs.iter().copied().enumerate() {
         if target.outlet_fact(wire)?.datum_type != operating_datum_type {
