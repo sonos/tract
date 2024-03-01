@@ -101,11 +101,11 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add_arbitrary::<QElmWiseOpProblem>("proptest", ());
 
     suite.add(
-        "trivial_tanh_0_case",
+        "tanh_sweep_case",
         QElmWiseOpProblem {
             operator: tract_core::ops::math::tanh(),
-            tensor_input: qu8_tensor0(0u8, 0, 1.)?,
-            out_dt: qu8_dt(0, 1.),
+            tensor_input: qu8_tensor1(&(0u8..=100).collect::<Box<[u8]>>(), 50, 0.05)?,
+            out_dt: qu8_dt(127, 0.001),
         },
     );
 
