@@ -11,7 +11,7 @@ struct QElmWiseOpProblem {
     out_dt: DatumType,
 }
 
-impl QElmWiseOpProblem {
+impl QOpProblem for QElmWiseOpProblem {
     fn reference_float_ops(&self) -> TractResult<Tensor> {
         let inp = self.tensor_input.cast_to::<f32>()?.clone().into_owned();
         Ok(self.operator.eval(tvec![inp.into_tvalue()])?.remove(0).into_tensor())
@@ -23,9 +23,12 @@ impl Arbitrary for QElmWiseOpProblem {
     type Strategy = BoxedStrategy<QElmWiseOpProblem>;
 
     fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
-        let tested_operators =
-            prop_oneof![Just(tract_core::ops::math::cos()), Just(tract_core::ops::math::tanh()),];
-        ((1..20usize), any::<bool>(), any::<bool>(), (1..4usize), (1..4usize), tested_operators)
+        let tested_operators = prop_oneof![
+            Just(tract_core::ops::math::cos()),
+            Just(tract_core::ops::math::tanh()),
+            Just(tract_core::ops::nn::sigmoid())
+        ];
+        ((1..20usize), any::<bool>(), any::<bool>(), (1..10usize), (1..10usize), tested_operators)
             .prop_flat_map(|(len, inp_signed, out_signed, inp_scale, out_scale, op)| {
                 let inp_dt = pick_signed_datum(inp_signed);
                 let out_dt = pick_signed_datum(out_signed);
@@ -89,37 +92,7 @@ impl Test for QElmWiseOpProblem {
             .run(tvec![self.tensor_input.clone().into_tvalue()])?
             .remove(0)
             .into_tensor();
-        let mut reference = self.reference_float_ops()?;
-
-        let (zero_point, scale) = self.out_dt.zp_scale();
-        let min_repr_val = (self.out_dt.unquantized().min_value().cast_to_scalar::<f32>()?
-            - zero_point as f32)
-            * scale;
-        let max_repr_val = (self.out_dt.unquantized().max_value().cast_to_scalar::<f32>()?
-            - zero_point as f32)
-            * scale;
-
-        reference
-            .to_array_view_mut()?
-            .iter_mut()
-            .for_each(|x: &mut f32| *x = (*x).clamp(min_repr_val, max_repr_val));
-
-        let mut diff = result.cast_to::<f32>()?.into_owned();
-
-        let acceptable_scale_error_ratio = match approx {
-            Approximation::Exact => 0.,
-            Approximation::Approximate => 1.,
-            _ => 2.,
-        };
-        tract_core::ndarray::Zip::from(diff.to_array_view_mut()?)
-            .and(reference.to_array_view()?)
-            .for_each(|x: &mut f32, xref: &f32| {
-                dbg!(&x);
-                let closest_x = (*x).clamp(min_repr_val, max_repr_val);
-                // core maximal accepted distance by default
-                assert!((xref - closest_x).abs() <= scale * acceptable_scale_error_ratio)
-            });
-        Ok(())
+        self.check_ref_with_approx(result, approx)
     }
 }
 
@@ -127,7 +100,6 @@ pub fn suite() -> TractResult<TestSuite> {
     let mut suite = TestSuite::default();
     suite.add_arbitrary::<QElmWiseOpProblem>("proptest", ());
 
-    // simplification 0 at declutter constant
     suite.add(
         "trivial_tanh_0_case",
         QElmWiseOpProblem {
