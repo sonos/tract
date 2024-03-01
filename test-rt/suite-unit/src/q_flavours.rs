@@ -3,7 +3,7 @@ use proptest::prelude::*;
 use tract_core::internal::*;
 use tract_core::ops::quant::{offset_i8_as_u8, offset_u8_as_i8};
 
-use crate::conv_q::qtensor;
+use crate::q_helpers::qtensor;
 
 #[derive(Debug, Clone, Default)]
 struct QFlavoursProblem {
