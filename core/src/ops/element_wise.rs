@@ -104,7 +104,9 @@ impl TypedOp for ElementWiseOp {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = inputs[0].clone().without_value();
         let dt = self.output_datum_type(fact.datum_type);
-        if let Some(dt) = self.0.output_type(dt) {
+        if let Some(dt) = self.1 {
+            fact.datum_type = dt;
+        } else if let Some(dt) = self.0.output_type(dt) {
             fact.datum_type = dt;
         }
         Ok(tvec!(fact))
@@ -195,18 +197,21 @@ macro_rules! element_wise {
                 $(
                     $(
                        $(
-                        let dt = out_dt.unwrap_or(t.datum_type());
-                        if dt.unquantized() == <$typ_dt>::datum_type().unquantized() {
+                        let input_dt = t.datum_type();
+                        let sout_dt = out_dt.unwrap_or(input_dt);
+                        if sout_dt.unquantized() == <$typ_dt>::datum_type().unquantized() {
+                           unsafe { t.set_datum_type(sout_dt) } // force cast
                            let t: &mut[$typ_dt] = t.as_slice_mut::<$typ_dt>()?;
-                           let f: fn(&Self, &mut[$typ_dt], DatumType) -> TractResult<()> = |_, xs, dt| {
-                            let (zp, scale) = dt.zp_scale();
-                            xs.iter_mut().for_each(|x| {
-                                let x_f32 = (*x as f32 - zp as f32) * scale;
-                                *x = (($f_f32(x_f32) / scale) + zp as f32).as_()
-                            });
-                            Ok(())
-                        };
-                           f(self, t, dt)?;
+                           let f: fn(&Self, &mut[$typ_dt], DatumType, DatumType) -> TractResult<()> = |_, xs, input_dt, out_dt| {
+                               let (izp, iscale) = input_dt.zp_scale();
+                               let (ozp, oscale) = out_dt.zp_scale();
+                               xs.iter_mut().for_each(|x| {
+                                   let x_f32 = (*x as f32 - izp as f32) * iscale;
+                                   *x = (($f_f32(x_f32) / oscale) + ozp as f32).as_()
+                               });
+                               Ok(())
+                           };
+                           f(self, t, input_dt, sout_dt)?;
                            return Ok(())
                        }
                        )*

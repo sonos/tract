@@ -573,10 +573,10 @@ macro_rules! bin_to_super_type {
                             let mut c = Tensor::zero_dt(*c_dt, &c_shape)?;
                             let view = c.to_array_view_mut::<u8>()?;
                             $crate::ndarray::Zip::from(view).and_broadcast(a).and_broadcast(b).for_each(|c, a, b| {
-                                *c = (($q_op_on_f32(
-                                            scale_by((*a as i32 - a_zp as i32) as f32, a_scale),
-                                            scale_by((*b as i32 - b_zp as i32) as f32, b_scale),
-                                ) * c_inv_scale) as i32
+                                *c = (scale_by($q_op_on_f32(
+                                            ((*a as i32 - a_zp as i32) as f32 * a_scale),
+                                            ((*b as i32 - b_zp as i32) as f32 * b_scale),
+                                ), c_inv_scale) as i32
                                     + *c_zp as i32)
                                     .clamp_cast()
                             });
