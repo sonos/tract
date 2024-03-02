@@ -190,11 +190,11 @@ impl Registry {
                 tract_core::ops::element_wise::ElementWiseOp(ew.1.clone(), c_dt),
                 &[input],
             )?;
-            if let Some(Some(assumed_out_dt)) = dt.first() {
+            if let Some(assumed_out_dt) = c_dt {
                 let out_dt = builder.model.outlet_fact(outlet[0])?.datum_type;
-                if out_dt != *assumed_out_dt {
+                if out_dt != assumed_out_dt {
                     return Ok(Some(
-                        builder.wire(tract_core::ops::cast::cast(*assumed_out_dt), &outlet)?,
+                        builder.wire(tract_core::ops::cast::cast(assumed_out_dt), &outlet)?,
                     ));
                 }
             }
