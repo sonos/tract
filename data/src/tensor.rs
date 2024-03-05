@@ -1470,7 +1470,7 @@ impl Tensor {
         t.into_arc_tensor()
     }
 
-    /// Offsets the tensor as an u8 type if it's an u8 type, otherwise passes it unchanged.
+    /// Offsets the tensor as an u8 type if it's an i8 type, otherwise passes it unchanged.
     pub fn offset_i8_as_u8(self: &Arc<Self>) -> Arc<Self> {
         let mut t = if let DatumType::I8 = self.dt.unquantized() {
             self.to_array_view::<i8>().unwrap().mapv(|v| (v as u8).wrapping_add(128)).into_tensor()

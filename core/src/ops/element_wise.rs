@@ -197,7 +197,7 @@ macro_rules! element_wise {
                 $(
                     $(
                        $(
-                        let input_dt = t.datum_type();
+                        let mut input_dt = t.datum_type();
                         let sout_dt = out_dt.unwrap_or(input_dt);
                         if sout_dt.unquantized() == <$typ_dt>::datum_type().unquantized() {
                            if input_dt.unquantized() != sout_dt.unquantized() {
@@ -207,6 +207,7 @@ macro_rules! element_wise {
                                    DatumType::I8 => t.clone().into_arc_tensor().offset_i8_as_u8(),
                                    unknown_dt => bail!("unexpected quantization input dt {:?}", unknown_dt)
                                }.into_tensor();
+                               input_dt = t.datum_type(); // because zero_point change
                            }
                            unsafe { t.set_datum_type(sout_dt) } // force cast
                            let t: &mut[$typ_dt] = t.as_slice_mut::<$typ_dt>()?;
