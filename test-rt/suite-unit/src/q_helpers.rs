@@ -41,8 +41,16 @@ pub fn qu8_dt(zp: i32, scale: f32) -> DatumType {
     u8::datum_type().with_zp_scale(zp, scale)
 }
 
+pub fn qi8_dt(zp: i32, scale: f32) -> DatumType {
+    i8::datum_type().with_zp_scale(zp, scale)
+}
+
 pub fn qu8_tensor(tensor: Tensor, zp: i32, scale: f32) -> TractResult<Tensor> {
     Ok(tensor.cast_to_dt(qu8_dt(zp, scale))?.into_owned())
+}
+
+pub fn qi8_tensor(tensor: Tensor, zp: i32, scale: f32) -> TractResult<Tensor> {
+    Ok(tensor.cast_to_dt(qi8_dt(zp, scale))?.into_owned())
 }
 
 pub fn qu8_tensor0(value: u8, zp: i32, scale: f32) -> TractResult<Tensor> {
@@ -51,6 +59,10 @@ pub fn qu8_tensor0(value: u8, zp: i32, scale: f32) -> TractResult<Tensor> {
 
 pub fn qu8_tensor1(values: &[u8], zp: i32, scale: f32) -> TractResult<Tensor> {
     qu8_tensor(tensor1(values), zp, scale)
+}
+
+pub fn qi8_tensor1(values: &[i8], zp: i32, scale: f32) -> TractResult<Tensor> {
+    qi8_tensor(tensor1(values), zp, scale)
 }
 
 pub trait QOpProblem {

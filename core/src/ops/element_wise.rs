@@ -200,6 +200,14 @@ macro_rules! element_wise {
                         let input_dt = t.datum_type();
                         let sout_dt = out_dt.unwrap_or(input_dt);
                         if sout_dt.unquantized() == <$typ_dt>::datum_type().unquantized() {
+                           if input_dt.unquantized() != sout_dt.unquantized() {
+                               // align unquantized input type to unquantized output type
+                               *t = match input_dt.unquantized() {
+                                   DatumType::U8 => t.clone().into_arc_tensor().offset_u8_as_i8(),
+                                   DatumType::I8 => t.clone().into_arc_tensor().offset_i8_as_u8(),
+                                   unknown_dt => bail!("unexpected quantization input dt {:?}", unknown_dt)
+                               }.into_tensor();
+                           }
                            unsafe { t.set_datum_type(sout_dt) } // force cast
                            let t: &mut[$typ_dt] = t.as_slice_mut::<$typ_dt>()?;
                            let f: fn(&Self, &mut[$typ_dt], DatumType, DatumType) -> TractResult<()> = |_, xs, input_dt, out_dt| {
