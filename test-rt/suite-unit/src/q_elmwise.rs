@@ -109,5 +109,13 @@ pub fn suite() -> TractResult<TestSuite> {
         },
     );
 
+    suite.add(
+        "cos_switch_qi8_to_qu8_case",
+        QElmWiseOpProblem {
+            operator: tract_core::ops::math::cos(),
+            tensor_input: qi8_tensor1(&[-16], 39, 0.5)?,
+            out_dt: qu8_dt(2, 0.5),
+        },
+    );
     Ok(suite)
 }

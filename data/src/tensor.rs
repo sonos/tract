@@ -1470,6 +1470,24 @@ impl Tensor {
         t.into_arc_tensor()
     }
 
+    /// Offsets the tensor as an u8 type if it's an u8 type, otherwise passes it unchanged.
+    pub fn offset_i8_as_u8(self: &Arc<Self>) -> Arc<Self> {
+        let mut t = if let DatumType::I8 = self.dt.unquantized() {
+            self.to_array_view::<i8>().unwrap().mapv(|v| (v as u8).wrapping_add(128)).into_tensor()
+        } else {
+            return self.clone();
+        };
+
+        if let DatumType::QI8(qp) = self.dt {
+            if let QParams::ZpScale { zero_point, scale } = qp {
+                t.dt = DatumType::QU8(QParams::ZpScale { zero_point: zero_point + 128, scale });
+            } else {
+                t.dt = DatumType::QU8(qp);
+            }
+        }
+        t.into_arc_tensor()
+    }
+
     pub fn to_aligned_default(&self) -> anyhow::Result<Self> {
         if self.dt.is_copy() {
             unsafe {
