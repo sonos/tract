@@ -104,6 +104,7 @@ fn ignore_onnx(t: &[String]) -> bool {
             test_Conv2d_groups_thnn
             test_reshape_allowzero_reordered
             test_split_zero_size
+            test_mul_uint8
             test_div_uint8
             test_reduce_log_sum_exp.*                        # tflite does not support f64 reducers 🤷
             test_cosh.*
@@ -137,7 +138,7 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
         }
     }
     let [section, _unit] = t else { return false };
-    ["deconv", "q_flavours"].contains(&&**section)
+    ["deconv", "q_flavours", "q_binary"].contains(&&**section)
 }
 
 fn compatible_conv_f32(qcp: &ConvProblem) -> bool {
