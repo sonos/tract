@@ -38,7 +38,7 @@ pub fn pick_signed_datum(signed: bool) -> DatumType {
 }
 
 pub fn qu8_dt(zp: i32, scale: f32) -> DatumType {
-    u8::datum_type().quantize(QParams::ZpScale { zero_point: zp, scale })
+    u8::datum_type().with_zp_scale(zp, scale)
 }
 
 pub fn qu8_tensor(tensor: Tensor, zp: i32, scale: f32) -> TractResult<Tensor> {
