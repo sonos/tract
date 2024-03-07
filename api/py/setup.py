@@ -5,14 +5,12 @@ import toml
 import re
 import os
 
-if os.path.exists("rust-workspace"):
-    shutil.rmtree("rust-workspace")
-
-shutil.copytree(
+if not os.path.exists("rust-workspace"):
+    shutil.copytree(
         "../..",
         "rust-workspace",
         ignore = shutil.ignore_patterns(".cached", "target", ".git", "issue-*", ".travis", "assets", ".github", "py")
-)
+    )
 
 version = toml.load("rust-workspace/api/Cargo.toml")["package"]["version"]
 version = re.sub("\-alpha\.", "a", version)

@@ -1,1 +1,2 @@
 graft rust-workspace
+graft docs
