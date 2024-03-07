@@ -5,4 +5,5 @@ __pycache__
 build
 mobilenet_v2_1.0.onnx.nnef.tgz
 rust-workspace
+dist
 

@@ -7,7 +7,7 @@ import re
 shutil.copytree(
         "../..",
         "rust-workspace",
-        ignore = shutil.ignore_patterns(".cached", "target", "rust-workspace", ".git", "issue-*", "cli", "api/py/*"),
+        ignore = shutil.ignore_patterns(".cached", "target", ".git", "issue-*", "cli", "py", ".travis", "assets"),
         dirs_exist_ok = True
 )
 
