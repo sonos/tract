@@ -3,12 +3,15 @@ from setuptools_rust import Binding, RustExtension
 import shutil
 import toml
 import re
+import os
 
-shutil.rmtree("rust-workspace")
+if os.path.exists("rust-workspace"):
+    shutil.rmtree("rust-workspace")
+
 shutil.copytree(
         "../..",
         "rust-workspace",
-        ignore = shutil.ignore_patterns(".cached", "target", ".git", "issue-*", ".travis", "assets", ".github")
+        ignore = shutil.ignore_patterns(".cached", "target", ".git", "issue-*", ".travis", "assets", ".github", "py")
 )
 
 version = toml.load("rust-workspace/api/Cargo.toml")["package"]["version"]
