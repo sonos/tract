@@ -602,7 +602,7 @@ pub fn select(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     let cond = invocation.named_arg_as(builder, "condition")?;
     let true_value = invocation.named_arg_as(builder, "true_value")?;
     let false_value = invocation.named_arg_as(builder, "false_value")?;
-    let inputs = crate::registry::multicast(builder, &[cond, true_value, false_value])?;
+    let inputs = crate::registry::multi_rank_broadcast(builder, &[cond, true_value, false_value])?;
 
     builder.wire(ops::logic::Iff {}, &inputs)
 }

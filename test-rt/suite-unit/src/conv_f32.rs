@@ -262,18 +262,18 @@ impl Arbitrary for ConvProblem {
 impl Test for ConvProblem {
     fn run_with_approx(
         &self,
+        _suite: &str,
         id: &str,
         runtime: &dyn Runtime,
         approx: Approximation,
     ) -> TestResult {
         let reference = self.reference().into_tensor();
         let mut model = self.tract()?;
- //       dbg!(&model);
+        //       dbg!(&model);
         model.declutter()?;
- //       dbg!(&model);
+        //       dbg!(&model);
         model.properties.insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));
-        let mut output =
-            dbg!(runtime.prepare(model)?).run(tvec![self.data.clone().into_tvalue()])?;
+        let mut output = runtime.prepare(model)?.run(tvec![self.data.clone().into_tvalue()])?;
         let output = output.remove(0).into_tensor();
         output.close_enough(&reference, approx)
     }
@@ -1190,6 +1190,24 @@ pub fn suite() -> TractResult<TestSuite> {
             group: 1,
             data: arr4(&[[[[0.0f32]]]]).into_dyn(),
             kernel: arr4(&[[[[0.0f32]]]]).into_dyn(),
+            bias: None,
+            pad: PaddingSpec::Valid,
+            strides: tvec!(1, 1),
+        },
+    );
+
+    let mut data = Tensor::zero::<f32>(&[1, 5, 6]).unwrap();
+    *data.as_slice_mut::<f32>().unwrap().last_mut().unwrap() = 1.0;
+    let mut kernel = Tensor::zero::<f32>(&[1, 1, 3, 2]).unwrap();
+    *kernel.as_slice_mut::<f32>().unwrap().last_mut().unwrap() = 1.0;
+    suite.add(
+        "pack_0",
+        ConvProblem {
+            shape_in: DataFormat::CHW.from_n_c_hw(1, 1, [5, 6]).unwrap(),
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: data.into_array::<f32>().unwrap(),
+            kernel: kernel.into_array::<f32>().unwrap(),
             bias: None,
             pad: PaddingSpec::Valid,
             strides: tvec!(1, 1),

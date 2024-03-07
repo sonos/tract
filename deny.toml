@@ -21,6 +21,7 @@ unmaintained = "warn"
 yanked = "deny"
 ignore = [
 	"RUSTSEC-2021-0145", # in atty, only impacts benches (through criterion) or pytorch example
+	"RUSTSEC-2023-0080", # transpose has an unsafe method, but rustfst uses it a safe predictable manner
 ]
 
 [bans]
@@ -32,10 +33,9 @@ deny = [
 
 # Skip some multiple-versions checks, until they can be fixed.
 skip = [
-    { name = "hashbrown", version="0.11.2" }, # string interner pulls old version
-    { name = "regex-syntax", version="<8" },
+    { name = "bitflags", version="<2" },
     { name = "itertools", version="<0.12.1" },
-    { name = "bitflags", version="<2.4.2" },
+    { name = "regex-syntax", version="<8" },
     { name = "syn", version="<2" },
 ]
 

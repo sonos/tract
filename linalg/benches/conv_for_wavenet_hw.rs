@@ -14,7 +14,7 @@ fn conv(c: &mut Criterion, dilation: usize, pulse: usize, ci: usize, co: usize) 
         let k = ci * 3;
         let mm =
             tract_linalg::ops().mmm(F32, F32, F32, Some(co), Some(ci * 3), Some(pulse)).unwrap();
-        mm.c_from_data_and_strides(F32.size_of(), co, t, t as _, 1);
+        mm.c_from_data_and_strides(F32.size_of(), t as _, 1);
         let a = Tensor::zero_aligned::<f32>(&[mm.a_pack().len(k, co)], mm.a_pack().alignment())
             .unwrap();
         let input = Tensor::zero::<f32>(&[ci, t]).unwrap();

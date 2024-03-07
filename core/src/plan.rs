@@ -151,16 +151,13 @@ where
 {
     pub fn new(plan: P) -> TractResult<SimpleState<F, O, M, P>> {
         let values = vec![None; plan.borrow().model.borrow().nodes().len()];
-        let mut session = SessionState::default();
+        let session = SessionState::default();
         let model = plan.borrow().model();
-        let states: Vec<Option<Box<dyn OpState>>> = model
-            .nodes()
-            .iter()
-            .map(|n: &Node<F, O>| n.op().state(&mut session, n.id))
-            .collect::<TractResult<_>>()?;
+        let states: Vec<Option<Box<dyn OpState>>> = vec![None; model.nodes.len()];
         let mut state =
             SimpleState { plan, states, session_state: session, values, _phantom: PhantomData };
         state.populate_consts();
+        state.reset_op_states()?;
         Ok(state)
     }
 
@@ -183,13 +180,10 @@ where
     /// Reset op inner state.
     pub fn reset_op_states(&mut self) -> TractResult<()> {
         let &mut SimpleState { ref plan, ref mut session_state, ref mut states, .. } = self;
-        *states = plan
-            .borrow()
-            .model()
-            .nodes()
-            .iter()
-            .map(|n| n.op().state(session_state, n.id))
-            .collect::<TractResult<_>>()?;
+        for (ix, n) in plan.borrow().model().nodes().iter().enumerate() {
+            states[ix] =
+                if n.op().is_stateless() { None } else { n.op().state(session_state, ix)? };
+        }
         Ok(())
     }
 
@@ -346,7 +340,10 @@ where
 
     fn resolve(symbols: &mut SymbolValues, expected: &TDim, provided: i64) {
         match expected {
-            TDim::Sym(s) => symbols[s] = Some(provided),
+            TDim::Sym(s) => {
+                info!("Determined symbol {s}={provided}");
+                symbols[s] = Some(provided)
+            },
             TDim::MulInt(x, expr) => Self::resolve(symbols, expr, provided / *x),
             _ => (),
         }

@@ -1,11 +1,12 @@
 use crate::internal::*;
 use std::fmt::Debug;
 use std::ops::Range;
-use tract_linalg::frame::PackingWriter;
-use tract_linalg::mmm::{VirtualInput, VirtualInputSpec};
+use tract_linalg::frame::{Packer, PackingWriter};
+use tract_linalg::mmm::{InputStore, InputStoreSpec};
 
 #[derive(Clone, Hash)]
 pub struct LazyIm2colSpec {
+    pub packer: Packer,
     pub n_bytes_offsets: Vec<isize>,
     pub k_bytes_offsets: Vec<isize>,
 }
@@ -17,9 +18,11 @@ impl Debug for LazyIm2colSpec {
 }
 
 impl LazyIm2colSpec {
-    fn wrap_t<T: Datum + Copy>(&self, view: &TensorView) -> Box<dyn VirtualInput> {
+    fn wrap_t<T: Datum + Copy>(&self, view: &TensorView) -> Box<dyn InputStore> {
         let input = LazyIm2col::<T> {
+            packer: self.packer.clone(),
             ptr: view.as_ptr().unwrap(),
+            k: self.k_bytes_offsets.len(),
             n: self.n_bytes_offsets.len(),
             n_byte_offsets: self.n_bytes_offsets.as_ptr(),
             k_byte_offsets: self.k_bytes_offsets.as_ptr(),
@@ -28,15 +31,17 @@ impl LazyIm2colSpec {
     }
 }
 
-impl VirtualInputSpec for LazyIm2colSpec {
-    fn wrap(&self, view: &TensorView) -> Box<dyn VirtualInput> {
+impl InputStoreSpec for LazyIm2colSpec {
+    fn wrap(&self, view: &TensorView) -> Box<dyn InputStore> {
         dispatch_copy!(Self::wrap_t(view.datum_type())(self, view))
     }
 }
 
 #[derive(Clone, Debug)]
 struct LazyIm2col<T: Datum + Copy> {
+    packer: Packer,
     ptr: *const T,
+    k: usize,
     n: usize,
     n_byte_offsets: *const isize,
     k_byte_offsets: *const isize,
@@ -231,31 +236,25 @@ impl<T: Datum + Copy> LazyIm2col<T> {
     }
 }
 
-impl<T: Datum + Copy> VirtualInput for LazyIm2col<T> {
-    fn input(
-        &self,
-        packer: &tract_linalg::frame::Packer,
-        packed: *mut u8,
-        k_range: std::ops::Range<usize>,
-        mn_range: std::ops::Range<usize>,
-    ) {
-        let mn_end = mn_range.end.min(self.n) as isize;
-        let n_range = mn_range.start as isize..mn_end;
-        if n_range.len() == packer.r && mn_range.start % packer.r == 0 {
-            let mut writer = packer.write_single_panel_with_k_outer(packed as *mut T);
-            self.write(
-                &mut writer,
-                k_range.start as isize..k_range.end as isize,
-                mn_range.start as isize..n_range.end,
-            )
+impl<T: Datum + Copy> InputStore for LazyIm2col<T> {
+    fn scratch_panel_buffer_layout(&self) -> Option<std::alloc::Layout> {
+        Some(self.packer.single_panel_layout(self.k, T::datum_type().size_of()))
+    }
+
+    fn panel(&self, i: usize, buffer: Option<*mut u8>) -> *const u8 {
+        let mn_start = i * self.packer.r;
+        let mn_end = (mn_start + self.packer.r).min(self.n);
+        let mn_range = mn_start as isize..mn_end as isize;
+        let k_range = 0..self.k as isize;
+        let packed = buffer.unwrap();
+        if mn_range.len() == self.packer.r && mn_start % self.packer.r == 0 {
+            let mut writer = self.packer.write_single_panel_with_k_outer(packed as *mut T);
+            self.write(&mut writer, k_range, mn_range);
         } else {
             let mut writer =
-                packer.write_with_k_outer(packed as *mut T, k_range.len(), n_range.len());
-            self.write(
-                &mut writer,
-                k_range.start as isize..k_range.end as isize,
-                mn_range.start as isize..n_range.end,
-            )
+                self.packer.write_with_k_outer(packed as *mut T, k_range.len(), mn_range.len());
+            self.write(&mut writer, k_range, mn_range);
         }
+        packed
     }
 }

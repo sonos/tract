@@ -1,10 +1,13 @@
+use std::alloc::Layout;
+
 use proptest::arbitrary::Arbitrary;
 use proptest::prelude::*;
 use proptest::strategy::{BoxedStrategy, Strategy};
 use tract_data::internal::*;
 use tract_linalg::frame::mmm::FusedSpec;
-use tract_linalg::frame::mmm::{VirtualInput, VirtualInputSpec};
-use tract_linalg::frame::PackingWriter;
+// use tract_linalg::frame::mmm::{VirtualInput, VirtualInputSpec};
+use tract_linalg::frame::{Packer, PackingWriter};
+use tract_linalg::mmm::{InputStore, InputStoreSpec};
 use DatumType::F32;
 
 proptest::proptest! {
@@ -89,6 +92,16 @@ fn test_lazy_3() {
     .check()
 }
 
+#[test]
+fn test_eager_asan_0() {
+    ConvProblem {
+        lazy_im2col: false,
+        input: tensor(vec![3, 3, 5]),
+        filters: tensor(vec![3, 3, 3, 1]),
+    }
+    .check()
+}
+
 // 2D valid, no group, no dil, no stride, HWIO, CHW
 #[derive(Clone, Debug)]
 pub struct ConvProblem {
@@ -143,12 +156,19 @@ impl ConvProblem {
         unsafe {
             mmm.a_pack().pack(packed_filter.view_mut(), reshaped_filters.view(), 0, 1);
             let a_store = mmm.a_packed(F32.size_of(), k).wrap(&packed_filter.view());
-            let im2col: Box<dyn VirtualInputSpec> = if self.lazy_im2col {
-                Box::new(LazyIm2colSpec { full_kernel_shape: self.filters.shape().into() })
+            let im2col: Box<dyn InputStoreSpec> = if self.lazy_im2col {
+                Box::new(LazyIm2colSpec {
+                    full_kernel_shape: self.filters.shape().into(),
+                    packer: mmm.b_pack(),
+                })
             } else {
-                Box::new(EagerIm2colSpec { full_kernel_shape: self.filters.shape().into() })
+                Box::new(EagerIm2colSpec {
+                    full_kernel_shape: self.filters.shape().into(),
+                    packer: mmm.b_pack(),
+                })
             };
-            let b_store = mmm.b_virtual_input(im2col, k).wrap(&self.input.view());
+            //            let b_store = mmm.b_virtual_input(im2col, k).wrap(&self.input.view());
+            let b_store = im2col.wrap(&self.input.view());
             let c_store = mmm.c_view(0, 1).wrap(&output.view());
             mmm.run(
                 m,
@@ -178,41 +198,29 @@ impl Arbitrary for ConvProblem {
     type Strategy = BoxedStrategy<Self>;
     fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
         (any::<bool>(), 1..4usize, 1..4usize, 1..4usize, 1..4usize, 0..3usize, 0..3usize)
-            .prop_flat_map(|(eager_im2col, h, w, i, o, extra_h, extra_w)| {
+            .prop_map(|(eager_im2col, h, w, i, o, extra_h, extra_w)| {
                 let filters = tensor(vec![h, w, i, o]);
                 let input = tensor(vec![i, h + extra_h, w + extra_w]);
-                (Just(eager_im2col), filters, input)
-            })
-            .prop_map(|(eager_im2col, filters, input)| ConvProblem {
-                lazy_im2col: eager_im2col,
-                filters,
-                input,
+                ConvProblem { lazy_im2col: eager_im2col, filters, input }
             })
             .boxed()
     }
 }
 
-fn tensor(shape: Vec<usize>) -> BoxedStrategy<Tensor> {
-    let len = shape.iter().product::<usize>();
-    proptest::collection::vec(any::<i8>(), len..=len)
-        .prop_map(move |vec| {
-            tract_ndarray::ArrayD::from_shape_vec(shape.clone(), vec)
-                .unwrap()
-                .into_tensor()
-                .cast_to_dt(F32)
-                .unwrap()
-                .into_owned()
-        })
-        .boxed()
+fn tensor(shape: Vec<usize>) -> Tensor {
+    let mut tensor = Tensor::zero::<f32>(&shape).unwrap();
+    tensor.as_slice_mut::<f32>().unwrap().iter_mut().enumerate().for_each(|(ix, x)| *x = ix as f32);
+    tensor
 }
 
 #[derive(Clone, Debug, Hash)]
 struct EagerIm2colSpec {
+    packer: Packer,
     full_kernel_shape: TVec<usize>,
 }
 
-impl VirtualInputSpec for EagerIm2colSpec {
-    fn wrap(&self, input: &TensorView) -> Box<dyn VirtualInput> {
+impl InputStoreSpec for EagerIm2colSpec {
+    fn wrap(&self, input: &TensorView) -> Box<dyn InputStore> {
         let (_, k, n, h, w) = mknhw(&self.full_kernel_shape, input.shape());
         // let input = input.to_array_view::<f32>().unwrap();
         let ci = input.shape()[0];
@@ -224,45 +232,54 @@ impl VirtualInputSpec for EagerIm2colSpec {
         )
         .into_shape([k, n])
         .unwrap();
-        Box::new(EagerIm2col { im2col: im2col.into_tensor() })
+        Box::new(EagerIm2col { im2col: im2col.into_tensor(), packer: self.packer.clone(), k })
     }
 }
 
 #[derive(Clone, Debug)]
 struct EagerIm2col {
+    packer: Packer,
     im2col: Tensor,
+    k: usize,
 }
 
-impl VirtualInput for EagerIm2col {
-    fn input(
-        &self,
-        packer: &tract_linalg::frame::Packer,
-        packed: *mut u8,
-        k_range: std::ops::Range<usize>,
-        mn_range: std::ops::Range<usize>,
-    ) {
+impl InputStore for EagerIm2col {
+    fn scratch_panel_buffer_layout(&self) -> Option<std::alloc::Layout> {
+        Some(
+            Layout::from_size_align(
+                self.packer.single_panel_len(self.k) * f32::datum_type().size_of(),
+                self.packer.alignment(),
+            )
+            .unwrap(),
+        )
+    }
+
+    fn panel(&self, i: usize, buffer: Option<*mut u8>) -> *const u8 {
+        let buffer = buffer.unwrap();
         let mn = self.im2col.shape()[1];
         unsafe {
-            packer.pack_t::<f32>(
-                packed as _,
+            self.packer.pack_t::<f32>(
+                buffer as _,
                 self.im2col.as_ptr().unwrap(),
                 mn,
                 mn as isize,
                 1,
-                k_range,
-                mn_range,
+                0..self.k,
+                (i * self.packer.r)..((i + 1) * self.packer.r),
             );
         }
+        buffer
     }
 }
 
 #[derive(Clone, Debug, Hash)]
 struct LazyIm2colSpec {
+    packer: Packer,
     full_kernel_shape: TVec<usize>,
 }
 
-impl VirtualInputSpec for LazyIm2colSpec {
-    fn wrap(&self, input: &TensorView) -> Box<dyn VirtualInput> {
+impl InputStoreSpec for LazyIm2colSpec {
+    fn wrap(&self, input: &TensorView) -> Box<dyn InputStore> {
         let (_, _, _, h, w) = mknhw(&self.full_kernel_shape, input.shape());
         let kh = self.full_kernel_shape[0];
         let kw = self.full_kernel_shape[1];
@@ -282,12 +299,20 @@ impl VirtualInputSpec for LazyIm2colSpec {
                 (0..w as isize).map(move |w| (h * input_strides[1] + w * input_strides[2]))
             })
             .collect();
-        unsafe { Box::new(LazyIm2col { image: input.as_ptr_unchecked(), k_offsets, n_offsets }) }
+        unsafe {
+            Box::new(LazyIm2col {
+                image: input.as_ptr_unchecked(),
+                k_offsets,
+                n_offsets,
+                packer: self.packer.clone(),
+            })
+        }
     }
 }
 
 #[derive(Clone, Debug)]
 struct LazyIm2col {
+    packer: Packer,
     image: *const f32,
     n_offsets: Vec<isize>,
     k_offsets: Vec<isize>,
@@ -295,20 +320,26 @@ struct LazyIm2col {
 unsafe impl Send for LazyIm2col {}
 unsafe impl Sync for LazyIm2col {}
 
-impl VirtualInput for LazyIm2col {
-    fn input(
-        &self,
-        packer: &tract_linalg::frame::Packer,
-        packed: *mut u8,
-        k_range: std::ops::Range<usize>,
-        mn_range: std::ops::Range<usize>,
-    ) {
-        let mn_end = mn_range.end.min(self.n_offsets.len());
-        let n_range = mn_range.start..mn_end;
+impl InputStore for LazyIm2col {
+    fn scratch_panel_buffer_layout(&self) -> Option<std::alloc::Layout> {
+        Some(
+            Layout::from_size_align(
+                self.packer.single_panel_len(self.k_offsets.len() * f32::datum_type().size_of()),
+                self.packer.alignment(),
+            )
+            .unwrap(),
+        )
+    }
+
+    fn panel(&self, i: usize, buffer: Option<*mut u8>) -> *const u8 {
+        let buffer = buffer.unwrap() as *mut f32;
+        let mn_end = ((i + 1) * self.packer.r).min(self.n_offsets.len());
+        let n_range = (i * self.packer.r)..mn_end;
+        let k = self.k_offsets.len();
         unsafe {
-            let mut writer = packer.write_with_k_outer(packed as _, k_range.len(), n_range.len());
-            for k in k_range.start..k_range.end {
-                for n in n_range.start..n_range.end {
+            let mut writer = self.packer.write_with_k_outer(buffer, k, n_range.len());
+            for k in 0..k {
+                for n in n_range.clone() {
                     writer.write(
                         *self.image.offset(
                             self.n_offsets.get_unchecked(n) + self.k_offsets.get_unchecked(k),
@@ -317,5 +348,6 @@ impl VirtualInput for LazyIm2col {
                 }
             }
         }
+        buffer as _
     }
 }

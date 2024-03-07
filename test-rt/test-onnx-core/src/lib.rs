@@ -1,6 +1,8 @@
 #![cfg(test)]
+use tract_core::internal::*;
+
 mod default {
-    use tract_core::internal::*;
+    use super::*;
     pub fn default() -> &'static DefaultRuntime {
         &DefaultRuntime
     }
@@ -8,7 +10,7 @@ mod default {
 }
 
 mod unoptimized {
-    use tract_core::internal::*;
+    use super::*;
 
     pub fn unoptimized() -> &'static UnoptimizedRuntime {
         &UnoptimizedRuntime

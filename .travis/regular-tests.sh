@@ -3,7 +3,7 @@
 if [ -e /proc/cpuinfo ]
 then
     grep "^flags" /proc/cpuinfo | head -1 | \
-        grep --color=always '\(s\?sse[0-9_]*\|fma\|avx512[^ ]*\)'
+        grep --color=always '\(s\?sse[0-9_]*\|fma\|f16c\|avx[^ ]*\)'
 fi
 
 set -ex
@@ -41,6 +41,7 @@ export CACHEDIR
 cargo -q test -q -p tract-core --features paranoid_assertions $CARGO_EXTRA
 cargo -q test -q -p test-onnx-core $CARGO_EXTRA
 cargo -q test -q -p test-nnef-cycle $CARGO_EXTRA
+cargo -q test -q -p test-blas $CARGO_EXTRA
 
 cargo check -p tract-nnef --features complex $CARGO_EXTRA
 cargo check -p tract --no-default-features $CARGO_EXTRA
@@ -71,12 +72,12 @@ then
     exit 0
 fi
 
-if [ -n "$GITHUB_ACTIONS" ]
-then
-    CLEANUP="rm -rf $CACHEDIR/*"
-else
-    CLEANUP=true
-fi
+# if [ -n "$GITHUB_ACTIONS" ]
+# then
+#     CLEANUP="rm -rf $CACHEDIR/*"
+# else
+     CLEANUP=true
+# fi
 
 $CLEANUP
 cargo -q test $CARGO_EXTRA -q -p tract-rs

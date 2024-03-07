@@ -15,8 +15,11 @@ rust-version = "1.75"
 maintenance = { status = "actively-developed" }
 
 [dependencies]
+accelerate-src = { workspace = true, optional = true }
 anyhow.workspace = true
 bit-set.workspace = true
+blis-src = { version = "0.2", features = ["static", "pthreads"], optional = true }
+cblas = { version = "0.4", optional = true }
 derive-new.workspace = true
 downcast-rs.workspace = true
 dyn-clone.workspace = true
@@ -27,6 +30,7 @@ ndarray.workspace = true
 num-integer.workspace = true
 num-traits.workspace = true
 num-complex.workspace = true
+openblas-src = { workspace=true, optional = true }
 paste.workspace = true
 rustfft.workspace = true
 smallvec.workspace = true
@@ -36,6 +40,10 @@ tract-data = { version = "=0.21.2-pre", path = "../data" }
 [features]
 default = [ ]
 complex = [ "tract-data/complex", "tract-linalg/complex" ]
+blas = [ "cblas" ]
+accelerate = [ "blas", "accelerate-src" ]
+blis = [ "blas", "blis-src" ]
+openblas = [ "blas", "openblas-src" ]
 paranoid_assertions = []
 
 [dev-dependencies]

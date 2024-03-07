@@ -6,7 +6,7 @@ use ndarray::*;
 use tract_itertools::Itertools;
 
 use tract_linalg::mmm::{
-    BinOp, FusedSpec, InputStoreSpec, MatMatMul, OutputStoreSpec, ScratchSpace, VirtualInputSpec,
+    BinOp, FusedSpec, InputStoreSpec, MatMatMul, OutputStoreSpec, ScratchSpace,
 };
 use tract_linalg::Scaler;
 use tract_smallvec::ToSmallVec;
@@ -14,7 +14,7 @@ use tract_smallvec::ToSmallVec;
 #[derive(Clone, Debug)]
 pub enum ProtoInputStoreSpec {
     Packed { item_size: usize },
-    Virtual { func: Box<dyn VirtualInputSpec> },
+    Virtual { func: Box<dyn InputStoreSpec> },
 }
 
 #[derive(Clone, Debug)]
@@ -109,10 +109,12 @@ impl ProtoFusedSpec {
         fs
     }
 
-    pub fn has_symbols(&self) -> bool {
+    pub fn is_trivial(&self) -> bool {
         match self {
-            ProtoFusedSpec::AddMatMul(geo, _, _) => geo.k.as_i64().is_none(),
-            _ => false,
+            ProtoFusedSpec::AddMatMul(geo, _, _) => {
+                geo.k.as_i64().is_some() && geo.a_storage.is_some() && geo.b_storage.is_some()
+            }
+            _ => true,
         }
     }
 
@@ -127,18 +129,8 @@ impl ProtoFusedSpec {
                 let b = inputs[*b].view();
                 unsafe {
                     let k = geo.k.as_i64().unwrap_unchecked() as usize;
-                    // careful here. this work because a_packed() return a packer from which
-                    // nothing is borrowed
-                    let a = if let Some(sto) = &geo.a_storage {
-                        sto.wrap(&a)
-                    } else {
-                        geo.mmm.a_packed(a.datum_type().size_of(), k).wrap(&a)
-                    };
-                    let b = if let Some(sto) = &geo.b_storage {
-                        sto.wrap(&b)
-                    } else {
-                        geo.mmm.b_packed(b.datum_type().size_of(), k).wrap(&b)
-                    };
+                    let a = geo.a_storage.as_ref().unwrap().wrap(&a);
+                    let b = geo.b_storage.as_ref().unwrap().wrap(&b);
                     FusedSpec::AddMatMul { k, a, b }
                 }
             }
@@ -219,8 +211,8 @@ impl MapOutputAxisToInput {
 #[derive(Clone, Debug)]
 pub struct AddMatMulGeometry {
     pub k: TDim,
-    pub a_storage: Option<InputStoreSpec>,
-    pub b_storage: Option<InputStoreSpec>,
+    pub a_storage: Option<Box<dyn InputStoreSpec>>,
+    pub b_storage: Option<Box<dyn InputStoreSpec>>,
     pub mmm: Box<dyn MatMatMul>,
     pub c_to_a_axis_mapping: MapOutputAxisToInput,
     pub c_to_b_axis_mapping: MapOutputAxisToInput,
@@ -608,7 +600,7 @@ impl LirMatMulUnary {
                 .iter()
                 .enumerate()
                 .all(|(ax, dim)| ax == self.c_m_axis || ax == self.c_n_axis || dim.is_one())
-            && self.micro_ops.iter().all(|o| !o.has_symbols())
+            && self.micro_ops.iter().all(|o| o.is_trivial())
     }
 
     fn fuse_op(

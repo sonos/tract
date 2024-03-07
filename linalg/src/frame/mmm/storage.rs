@@ -14,8 +14,6 @@ pub enum OutputStoreSpec {
         col_byte_stride: isize,
         mr: usize,
         nr: usize,
-        m: usize,
-        n: usize,
     },
 }
 
@@ -29,20 +27,12 @@ pub struct OutputStore {
     pub(crate) item_size: usize,
     pub(crate) item_count: usize,
     pub(crate) mr: usize,
-    pub(crate) m: usize,
-    pub(crate) n: usize,
 }
 
 impl OutputStoreSpec {
     #[inline]
     pub unsafe fn wrap(&self, tensor: &TensorView) -> OutputStore {
         let (mr, nr, row_byte_stride, col_byte_stride) = self.compute_strides(tensor);
-        let (m, n) = match self {
-            OutputStoreSpec::View { m_axis, n_axis, .. } => {
-                (tensor.shape()[*m_axis], tensor.shape()[*n_axis])
-            }
-            OutputStoreSpec::Strides { m, n, .. } => (*m, *n),
-        };
         OutputStore {
             ptr: tensor.as_ptr_unchecked::<u8>() as _,
             row_byte_stride,
@@ -52,8 +42,6 @@ impl OutputStoreSpec {
             item_size: tensor.datum_type().size_of(),
             mr,
             item_count: tensor.len(),
-            m,
-            n,
         }
     }
 

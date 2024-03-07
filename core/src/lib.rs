@@ -45,6 +45,15 @@
 //! tract-tensorflow or tract-onnx crates.
 //!
 
+#[cfg(feature="blas")]
+extern crate cblas;
+#[cfg(feature="accelerate")]
+extern crate accelerate_src;
+#[cfg(feature="blis")]
+extern crate blis_src;
+#[cfg(feature="openblas")]
+extern crate openblas_src;
+
 pub extern crate anyhow;
 extern crate bit_set;
 #[macro_use]

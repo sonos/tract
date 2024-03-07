@@ -13,7 +13,7 @@ graph network(input) -> (output) {
   default_state = [[[0.0, 0.0], [0.0, 0.0]]];
   state = tract_core_load(default_state, id = "state-0");
   v2_linear_output = matmul(input, state, transposeA = false, transposeB = true);
-  new_state = add(v2_linear_output, v2_linear_output);
-  dummy = tract_core_store(input = v2_linear_output, state = new_state, id = "state-0");
+  new_state_1 = add(v2_linear_output, v2_linear_output);
+  dummy = tract_core_store(input = v2_linear_output, state = new_state_1, id = "state-0");
   output = tract_core_force_eval([v2_linear_output, dummy], slots = [1]);
 }

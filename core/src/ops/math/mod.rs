@@ -23,6 +23,7 @@ bin_to_super_type!(add, Add,
                    linalg: Add,
                    validation: Validation::Rounding,
                    q: [i8, u8, i32, i32] => add_quant;
+                   q_op_on_f32: |a: f32, b: f32| -> f32 {a+b},
                    [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() + b);
 
 fn add_quant<T>(c: &mut T, a: &T, b: &T, zp: i32, _: f32)
@@ -37,6 +38,7 @@ bin_to_super_type!(sub, Sub,
                    declutter: declutter_sub,
                    linalg:Sub,
                    q: [i8, u8, i32, i32] => sub_quant;
+                   q_op_on_f32: |a: f32, b: f32| -> f32 {a-b},
                    [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() - b);
 
 fn sub_quant<T>(c: &mut T, a: &T, b: &T, zp: i32, _: f32)
@@ -50,6 +52,28 @@ where
 bin_to_super_type!(mul, Mul,
                    cost: |dt| tvec!((Cost::FMA(dt), 1)),
                    declutter: declutter_mul,
+                   eval_override: |a:TValue, b: TValue, c_dt: DatumType| -> TractResult<Tensor> {
+                    // we apply only if type is QU8 zp_scale datum type
+                    if let (DatumType::QU8(QParams::ZpScale {zero_point: a_zp, scale: a_scale}),
+                            DatumType::QU8(QParams::ZpScale {zero_point: b_zp, scale: b_scale}),
+                            DatumType::QU8(QParams::ZpScale {zero_point: c_zp, scale: c_scale})) =
+                        (a.datum_type(), b.datum_type(), c_dt)
+                    {
+                           let multiplier = a_scale  * b_scale * (1.0/ c_scale);
+                           let a = a.to_array_view::<u8>()?;
+                           let b = b.to_array_view::<u8>()?;
+                           let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()]).context("no broadcast solution")?;
+                           let mut c = Tensor::zero_dt(c_dt, &c_shape)?;
+                           let view = c.to_array_view_mut::<u8>()?;
+                           crate::ndarray::Zip::from(view)
+                               .and_broadcast(a)
+                               .and_broadcast(b)
+                               .for_each(|c,a,b| *c = (scale_by((*a as i32 - a_zp as i32) * (*b as i32 - b_zp as i32), multiplier) + c_zp as i32).clamp_cast());
+                           Ok(c)
+                       } else {
+                           Mul.generic_eval(a, b, c_dt)
+                       }
+                   },
                    linalg: Mul,
                    out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
                        if c.datum_type() == TDim::datum_type() &&
@@ -89,16 +113,14 @@ bin_to_super_type!(mul, Mul,
                            }
                        }
                    },
-                   q: [i8, u8, i32] => |c, a, b, zp, scale| {
-                    *c = (scale_by((a.clone() as i32 - zp as i32) * (*b as i32 - zp as i32) , scale) + zp as i32).clamp_cast()
-                   };
+                   q_op_on_f32: |a: f32, b: f32| a * b,
 [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() * b
 );
 
 bin_to_super_type!(div, Div,
 cost: |dt| tvec!((Cost::Div(dt), 1)),
 declutter: declutter_div,
-eval_override: |a:TValue, b: TValue| -> TractResult<Tensor> {
+eval_override: |a:TValue, b: TValue, c_dt: DatumType| -> TractResult<Tensor> {
     if
         a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
             let a = a.to_array_view::<TDim>()?;
@@ -111,8 +133,29 @@ eval_override: |a:TValue, b: TValue| -> TractResult<Tensor> {
                 crate::ndarray::Zip::from(view).and_broadcast(a).and_broadcast(b).for_each(|c,a,b| *c = a.clone() / *b);
                 Ok(c)
             }
+        } else if let (DatumType::QU8(QParams::ZpScale {zero_point: a_zp, scale: a_scale}),
+                       DatumType::QU8(QParams::ZpScale {zero_point: b_zp, scale: b_scale}),
+                       DatumType::QU8(QParams::ZpScale {zero_point: c_zp, scale: c_scale})) =
+                (a.datum_type(), b.datum_type(), c_dt) {
+
+               let multiplier = a_scale / (b_scale * c_scale);
+                let a = a.to_array_view::<u8>()?;
+                let b = b.to_array_view::<u8>()?;
+                let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()]).context("no broadcast solution")?;
+                let mut c = Tensor::zero_dt(c_dt, &c_shape)?;
+                let view = c.to_array_view_mut::<u8>()?;
+                crate::ndarray::Zip::from(view)
+                    .and_broadcast(a)
+                    .and_broadcast(b)
+                    // maintain division in f32 before rescale to maintain high accuracy
+                    .for_each(|c,a,b| *c = (
+                            scale_by(
+                                (*a as i32 - a_zp as i32) as f32 / (*b as i32 - b_zp as i32) as f32, multiplier
+                            ) as i32 + c_zp as i32
+                        ).clamp_cast());
+                Ok(c)
         } else {
-            Div.generic_eval(a,b)
+            Div.generic_eval(a, b, c_dt)
         }
 },
 out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
@@ -136,11 +179,12 @@ out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
             Ok(false)
         }
 },
+q_op_on_f32: |a: f32, b: f32| a / b,
 [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64] => |c, a, b| *c = a.clone() / b
 );
 
 bin_to_super_type!(rem, Rem,
-                                      eval_override: |a:TValue, b: TValue| -> TractResult<Tensor> {
+                                      eval_override: |a:TValue, b: TValue, c_dt: DatumType| -> TractResult<Tensor> {
                                           if
                                               a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
                                                   let a = a.to_array_view::<TDim>()?;
@@ -154,7 +198,7 @@ bin_to_super_type!(rem, Rem,
                                                       Ok(c)
                                                   }
                                               } else {
-                                                  Rem.generic_eval(a,b)
+                                                  Rem.generic_eval(a,b, c_dt)
                                               }
                                       },
                                       out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
@@ -175,16 +219,59 @@ bin_to_super_type!(rem, Rem,
 bin_to_super_type!(min, Min, linalg:Min,
                    operating_datum_type: super::logic::operating_datum_type_for_cmp,
                    q: [i8, u8, i32] => |c, a, b, _, _| *c = if a < b { *a } else { *b };
+                   q_op_on_f32: |a: f32, b: f32| a.min(b),
                    [f16, f32, f64] => |c,a,b| *c = a.min(*b),
                    [i8, i16, i32, i64, u8, u16, u32, u64] => |c, a, b| *c = *a.min(b));
-bin_to_super_type!(max, Max, linalg:Max,
+
+bin_to_super_type!(max, Max,
+                   eval_override: |a:TValue, b: TValue, c_dt: DatumType| -> TractResult<Tensor> {
+                   // Attempt to optimize relu case
+                    if let (DatumType::QU8(QParams::ZpScale {zero_point: a_zp, scale: a_scale}),
+                            DatumType::QU8(QParams::ZpScale {zero_point: b_zp, scale: b_scale}),
+                            DatumType::QU8(QParams::ZpScale {zero_point: c_zp, scale: c_scale})) =
+                        (a.datum_type(), b.datum_type(), c_dt)
+                    {
+                        if a.is_uniform() || b.is_uniform() {
+                            // select e between a and b as uniform if exist
+                            // and d remaining a or b
+                            let (d, d_zp, d_scale, e, e_zp, e_scale) = if a.is_uniform() && !b.is_uniform() {
+                                (&b, &b_zp, &b_scale, &a, &a_zp, &a_scale)
+                            } else {
+                                (&a, &a_zp, &a_scale, &b, &b_zp, &b_scale)
+                            };
+                            if e.is_uniform() { // may be relu or any scalar
+                                let e_val_as_d_aligned: i32 = scale_by(e.cast_to_scalar::<u8>()? as i32 - e_zp, e_scale / d_scale);
+                                let multiplier = d_scale  * (1.0/ c_scale);
+                                let d = d.to_array_view::<u8>()?;
+                                let mut c = Tensor::zero_dt(c_dt, d.shape())?;
+                                let view = c.to_array_view_mut::<u8>()?;
+                                crate::ndarray::Zip::from(view)
+                                    .and_broadcast(d)
+                                    .for_each(|c,d| {
+                                        let d_min_zp = *d as i32 - *d_zp as i32;
+                                        let c_val: i32 = if d_min_zp < e_val_as_d_aligned {
+                                            e_val_as_d_aligned
+                                        } else {
+                                            d_min_zp
+                                        };
+                                        *c = (scale_by(c_val, multiplier) + c_zp as i32).clamp_cast();
+                                    });
+                                return Ok(c)
+                            }
+                        }
+                    }
+                    Max.generic_eval(a, b, c_dt)
+                   },
+                   linalg:Max,
                    operating_datum_type: super::logic::operating_datum_type_for_cmp,
                    q: [i8, u8, i32] => |c, a, b, _, _| *c = if a < b { *b } else { *a };
+                   q_op_on_f32: |a: f32, b: f32| -> f32 {a.max(b)},
                    [f16, f32, f64] => |c,a,b| *c = a.max(*b),
                    [i8, i16, i32, i64, u8, u16, u32, u64] => |c, a, b| *c = *a.max(b));
 
 bin_to_super_type!(pow, Pow,
                    declutter: declutter_pow,
+                   q_op_on_f32: |a: f32, b: f32| -> f32 {a.powf(b)},
                    [f16, f32, f64] => |c,a,b| *c = a.powf(*b),
                    [i32, i64] => |c,a,b| *c = a.pow(*b as u32));
 
@@ -259,38 +346,48 @@ fn declutter_mul(
                 &[],
                 &[node.id.into()],
                 &|patch, _| {
-                    let scalar =
-                        patch.add_const(format!("{}.zero", node.name), uniform.uni.clone())?;
+                    let scalar = patch.add_const(
+                        format!("{}.zero", node.name),
+                        if uniform.uni.datum_type().is_quantized() {
+                            let output_dt = node.outputs[0].fact.datum_type;
+                            Arc::new(uniform.uni.clone().cast_to_dt(output_dt)?.into_owned())
+                        } else {
+                            uniform.uni.clone()
+                        },
+                    )?;
                     let op = MultiBroadcastTo::new(shape.clone());
                     patch.wire_node(&node.name, op, &[scalar])
                 },
             )?));
         }
         let dt = uniform.uni.datum_type();
-        let integer = uniform.uni.cast_to_scalar::<i64>()?;
-        if tensor0(integer)
-            .cast_to_dt(uniform.uni.datum_type())?
-            .close_enough(&uniform.uni, false)
-            .is_ok()
-            && dt.is_integer()
-            && uniform.uni.cast_to_scalar::<i64>()?.count_ones() == 1
-        {
-            let shift = integer.trailing_zeros();
-            return Ok(Some(TypedModelPatch::rewire(
-                model,
-                &[uniform.var],
-                &[node.id.into()],
-                &|patch, taps| {
-                    let shift = patch.add_const(
-                        format!("{}.shift", node.name),
-                        tensor0(shift)
-                            .cast_to_dt(dt)?
-                            .into_owned()
-                            .broadcast_into_rank(var_fact.rank())?,
-                    )?;
-                    patch.wire_node(&node.name, shift_left(), &[taps[0], shift])
-                },
-            )?));
+        if !dt.is_quantized() {
+            // avoid cast potential with Q tensor
+            let integer = uniform.uni.cast_to_scalar::<i64>()?;
+            if tensor0(integer)
+                .cast_to_dt(uniform.uni.datum_type())?
+                .close_enough(&uniform.uni, false)
+                .is_ok()
+                && uniform.uni.cast_to_scalar::<i64>()?.count_ones() == 1
+                && dt.is_integer()
+            {
+                let shift = integer.trailing_zeros();
+                return Ok(Some(TypedModelPatch::rewire(
+                    model,
+                    &[uniform.var],
+                    &[node.id.into()],
+                    &|patch, taps| {
+                        let shift = patch.add_const(
+                            format!("{}.shift", node.name),
+                            tensor0(shift)
+                                .cast_to_dt(dt)?
+                                .into_owned()
+                                .broadcast_into_rank(var_fact.rank())?,
+                        )?;
+                        patch.wire_node(&node.name, shift_left(), &[taps[0], shift])
+                    },
+                )?));
+            }
         }
     }
     Ok(None)
@@ -628,62 +725,6 @@ mod tests {
             .unwrap();
         assert!(op.0.downcast_ref::<ShiftLeft>().is_some());
         Ok(())
-    }
-
-    struct TestMulAsQU8 {
-        tensor_mul_input1: [u8; 4],
-        scalar_mul_input_2: u8,
-        zero_point: i32,
-        scale: f32,
-        expected_output: [u8; 4],
-    }
-    impl TestMulAsQU8 {
-        fn check(&self) -> TractResult<()> {
-            // here we assume we can only mul quantized tensors
-            // already aligned with output tensor zp and scale
-            let mut model = TypedModel::default();
-            let input_dt =
-                DatumType::QU8(QParams::ZpScale { zero_point: self.zero_point, scale: self.scale });
-            let x = model.add_source("x", TypedFact::dt_shape(input_dt, [2_usize, 2]))?;
-            let mut a_tensor = tensor0(self.scalar_mul_input_2).broadcast_into_rank(2)?;
-            unsafe { a_tensor.set_datum_type(input_dt) };
-            let a = model.add_const("a", a_tensor.into_arc_tensor())?;
-            let y = model.wire_node("y", mul(), &[x, a])?[0];
-            model.set_output_outlets(&[y])?;
-            let mut input_data = Tensor::from_shape(&[2, 2], &self.tensor_mul_input1)?;
-            unsafe { input_data.set_datum_type(input_dt) };
-            let result = SimplePlan::new(&model)?.run(tvec!(input_data.into()))?;
-            let arr = result[0].to_array_view::<u8>()?;
-            assert_eq!(arr, Tensor::from_shape(&[2, 2], &self.expected_output)?.to_array_view()?);
-            Ok(())
-        }
-    }
-
-    #[test]
-    fn mul_as_qu8_overflow_clamp() -> TractResult<()> {
-        // last value in output tensor overflow hence is clamped
-        TestMulAsQU8 {
-            tensor_mul_input1: [1_u8, 2, 3, 128],
-            scalar_mul_input_2: 4_u8,
-            zero_point: 0,
-            scale: 1.,
-            expected_output: [4_u8, 8, 12, 255],
-        }
-        .check()
-    }
-
-    #[test]
-    fn mul_as_qu8_non_neutral_scale_and_offset() -> TractResult<()> {
-        // attempt with non neutral scale and offset
-        TestMulAsQU8 {
-            tensor_mul_input1: [1_u8, 2, 3, 128], // real: -3, 0, 3, 378
-            scalar_mul_input_2: 4_u8,             // real: 6
-            zero_point: 2,
-            scale: 3.,
-            // optima in non quantized output real: -18, 0, 18, 2268
-            expected_output: [0_u8, 2, 8, 255], // approx obtained: -6, 0, 18, 759
-        }
-        .check()
     }
 
     #[test]

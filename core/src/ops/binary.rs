@@ -70,9 +70,21 @@ pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + 
     fn eval_uniform_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()>;
     fn eval_in_a(&self, a: &mut Tensor, b: &Tensor) -> TractResult<()>;
     fn eval_out_of_place(&self, c: &mut Tensor, a: &Tensor, b: &Tensor) -> TractResult<()>;
-    fn generic_eval(&self, a: TValue, b: TValue) -> TractResult<Tensor> {
-        let c_dt = self.result_datum_type(a.datum_type(), b.datum_type())?;
-        if c_dt == b.datum_type() && a.len() == 1 {
+
+    #[allow(unused_variables)]
+    fn maybe_eval_qbinary_as_float_op(
+        &self,
+        a: &TValue,
+        b: &TValue,
+        c_dt: &DatumType,
+    ) -> TractResult<Option<Tensor>> {
+        Ok(None)
+    }
+
+    fn generic_eval(&self, a: TValue, b: TValue, c_dt: DatumType) -> TractResult<Tensor> {
+        if let Some(tensor) = self.maybe_eval_qbinary_as_float_op(&a, &b, &c_dt)? {
+            Ok(tensor)
+        } else if c_dt == b.datum_type() && a.len() == 1 {
             let mut b = b.into_tensor();
             self.eval_uniform_in_place(&a, &mut b)?;
             Ok(b)
@@ -94,8 +106,8 @@ pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + 
             }
         }
     }
-    fn eval(&self, a: TValue, b: TValue) -> TractResult<Tensor> {
-        self.generic_eval(a, b)
+    fn eval(&self, a: TValue, b: TValue, c_dt: DatumType) -> TractResult<Tensor> {
+        self.generic_eval(a, b, c_dt)
     }
     #[allow(unused_variables)]
     fn declutter(
@@ -125,7 +137,7 @@ dyn_clone::clone_trait_object!(BinMiniOp);
 downcast_rs::impl_downcast!(BinMiniOp);
 
 #[derive(Debug, Clone)]
-pub struct TypedBinOp(pub Box<dyn BinMiniOp>);
+pub struct TypedBinOp(pub Box<dyn BinMiniOp>, pub Option<DatumType>);
 
 impl Op for TypedBinOp {
     fn name(&self) -> Cow<str> {
@@ -139,6 +151,16 @@ impl Op for TypedBinOp {
     op_as_typed_op!();
 }
 
+impl TypedBinOp {
+    fn output_datum_type(&self, a_dt: DatumType, b_dt: DatumType) -> TractResult<DatumType> {
+        if let Some(dt) = self.1 {
+            Ok(dt)
+        } else {
+            self.0.result_datum_type(a_dt, b_dt)
+        }
+    }
+}
+
 impl EvalOp for TypedBinOp {
     fn is_stateless(&self) -> bool {
         true
@@ -147,7 +169,8 @@ impl EvalOp for TypedBinOp {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a, b) = args_2!(inputs);
         ensure!(a.rank() == b.rank());
-        Ok(tvec!(self.0.eval(a, b)?.into_tvalue()))
+        let c_dt = self.output_datum_type(a.datum_type(), b.datum_type())?;
+        Ok(tvec!(self.0.eval(a, b, c_dt)?.into_tvalue()))
     }
 }
 
@@ -156,7 +179,8 @@ impl TypedOp for TypedBinOp {
         if inputs[0].rank() != inputs[1].rank() {
             bail!("Typed ops require rank match. Invalid inputs for {}: {:?}", self.name(), inputs);
         }
-        Ok(tvec!(self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?.fact(
+        let out_dt = self.output_datum_type(inputs[0].datum_type, inputs[1].datum_type)?;
+        Ok(tvec!(out_dt.fact(
             &*crate::broadcast::multi_broadcast(&[
                 &inputs[0].shape.to_tvec(),
                 &inputs[1].shape.to_tvec()
@@ -232,8 +256,7 @@ impl TypedOp for TypedBinOp {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         let facts = model.node_input_facts(node.id)?;
-        if self.0.result_datum_type(facts[0].datum_type, facts[1].datum_type)?
-            == facts[0].datum_type
+        if self.output_datum_type(facts[0].datum_type, facts[1].datum_type)? == facts[0].datum_type
             && facts[0].without_value() == facts[1].without_value()
         {
             Ok(Some(
@@ -316,6 +339,7 @@ macro_rules! bin_to_super_type {
      $(out_of_place: $out_of_place:expr,)?
      $(validation: $validation:expr,)?
      $(q: $([$($typ_dt:ident),*] => $cab_dt:expr),* ;)?
+     $(q_op_on_f32: $q_op_on_f32:expr,)?
      $( [$($typ:ident),*] => $cab:expr),*) => {
         #[derive(Debug, Clone, Hash)]
         pub struct $Op;
@@ -460,8 +484,8 @@ macro_rules! bin_to_super_type {
                 bail!("{} does not support {:?} (eval in a)", self.name(), a.datum_type());
             }
 
-            $(fn eval(&self, a: TValue, b: TValue) -> TractResult<Tensor> {
-                $eval_override(a, b)
+            $(fn eval(&self, a: TValue, b: TValue, c_dt: DatumType) -> TractResult<Tensor> {
+                $eval_override(a, b, c_dt)
             })?
 
             fn result_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
@@ -514,10 +538,95 @@ macro_rules! bin_to_super_type {
                     fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
                         ($operating_datum_type)(a, b)
                     })?
+
+
+            /// Default simple binary operation for QFormat where
+            /// we dequantise & apply requested operation in float & requantize it
+            /// several implementation are provided with pro & con
+            #[allow(unused_variables)]
+            fn maybe_eval_qbinary_as_float_op(
+                &self,
+                a: &TValue,
+                b: &TValue,
+                c_dt: &DatumType,
+            ) -> TractResult<Option<Tensor>> {
+                $(
+                    /// Implementation strive to minimise memory allocation and access
+                    /// we apply only if type is QU8 zp_scale datum type
+                    /// maybe more suited for large models tensors
+                    fn memory_optimised_q_binary_as_float_op(
+                        a: &TValue,
+                        b: &TValue,
+                        c_dt: &DatumType,
+                    ) -> TractResult<Option<Tensor>> {
+                        if let (DatumType::QU8(QParams::ZpScale {zero_point: a_zp, scale: a_scale}),
+                                DatumType::QU8(QParams::ZpScale {zero_point: b_zp, scale: b_scale}),
+                                DatumType::QU8(QParams::ZpScale {zero_point: c_zp, scale: c_scale})) =
+                            (a.datum_type(), b.datum_type(), c_dt)
+                        {
+                            let c_inv_scale = 1.0 / c_scale;
+                            let a = a.to_array_view::<u8>()?;
+                            let b = b.to_array_view::<u8>()?;
+                            let c_shape = $crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])
+                                .context("no broadcast solution")?;
+                            let mut c = Tensor::zero_dt(*c_dt, &c_shape)?;
+                            let view = c.to_array_view_mut::<u8>()?;
+                            $crate::ndarray::Zip::from(view).and_broadcast(a).and_broadcast(b).for_each(|c, a, b| {
+                                *c = (($q_op_on_f32(
+                                            scale_by((*a as i32 - a_zp as i32) as f32, a_scale),
+                                            scale_by((*b as i32 - b_zp as i32) as f32, b_scale),
+                                ) * c_inv_scale) as i32
+                                    + *c_zp as i32)
+                                    .clamp_cast()
+                            });
+                            return Ok(Some(c));
+                        }
+                        Ok(None)
+                    }
+
+                    /// Apply to all Q types
+                    /// Take more memory but hopefully faster than memory_optimised_q_binary_as_float_op
+                    /// especially once cast_to_dt will have will have vectorized implementations
+                    fn generic_q_binary_as_float_op(
+                        a: &TValue,
+                        b: &TValue,
+                        c_dt: &DatumType,
+                        accumulator_dt: DatumType
+                    ) -> TractResult<Option<Tensor>> {
+                        if a.datum_type().is_quantized() && b.datum_type().is_quantized() && c_dt.is_quantized() {
+                            let a = a.cast_to_dt(accumulator_dt)?.into_owned();
+                            let b = b.cast_to_dt(accumulator_dt)?.into_owned();
+                            let c_shape = $crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])
+                                .context("no broadcast solution")?;
+                            let mut c = Tensor::zero_dt(accumulator_dt, &c_shape)?;
+                            match accumulator_dt {
+                                DatumType::F32 => {
+                                    let view = c.to_array_view_mut::<f32>()?;
+                                    $crate::ndarray::Zip::from(view).and_broadcast(a.to_array_view()?).and_broadcast(b.to_array_view()?).for_each(|c, a, b| {
+                                        *c = $q_op_on_f32(*a,*b);
+                                    })
+                                },
+                                other => bail!("unexpected accumulator data type as {:?}", other)
+                            };
+
+                            return Ok(Some(c.cast_to_dt(*c_dt)?.into_owned()));
+                        }
+                        Ok(None)
+                    }
+
+                    if let Some(c) = memory_optimised_q_binary_as_float_op(a, b, c_dt)? {
+                        return Ok(Some(c));
+                    }
+                    if let Some(d) = generic_q_binary_as_float_op(a, b, c_dt, DatumType::F32)? {
+                        return Ok(Some(d));
+                    }
+                )?
+                Ok(None)
+            }
         }
 
         pub fn $func() -> $crate::ops::binary::TypedBinOp {
-            $crate::ops::binary::TypedBinOp(Box::new($Op))
+            $crate::ops::binary::TypedBinOp(Box::new($Op), None)
         }
     };
 }
@@ -635,7 +744,7 @@ macro_rules! bin_to_bool {
         }
 
         pub fn $func() -> $crate::ops::binary::TypedBinOp {
-            $crate::ops::binary::TypedBinOp(Box::new($Op))
+            $crate::ops::binary::TypedBinOp(Box::new($Op), None)
         }
     };
 }

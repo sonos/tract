@@ -51,9 +51,9 @@ pub fn tract_blaslike(
 
     unsafe {
         let mmm = tract_linalg::ops().mmm(dt, dt, dt, Some(m), Some(k), Some(n)).unwrap();
-        let a_storage = mmm.a_packed(f16::datum_type().size_of(), k);
-        let b_storage = mmm.b_packed(f16::datum_type().size_of(), k);
-        let c_storage = mmm.c_view(1, 0);
+        let a_storage = mmm.a_packed(dt.size_of(), k);
+        let b_storage = mmm.b_packed(dt.size_of(), k);
+        let c_storage = mmm.c_view(0, 1);
 
         let mut pa =
             Tensor::zero_aligned_dt(dt, &[mmm.a_pack().len(k, m)], mmm.a_pack().alignment())
@@ -128,5 +128,9 @@ fn inception(c: &mut Criterion) {
     matmul(c, 64, 288, 21609);
 }
 
-criterion_group!(benches, big, wavenet, asr_15M, inception);
+fn whisper_base(c: &mut Criterion) {
+    matmul(c, 512, 512, 1500);
+}
+
+criterion_group!(benches, big, wavenet, asr_15M, inception, whisper_base);
 criterion_main!(benches);

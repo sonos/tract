@@ -76,6 +76,11 @@ impl<'a> TensorView<'a> {
     }
 
     #[inline]
+    pub unsafe fn view(tensor: &'a Tensor) -> TensorView<'a> {
+        TensorView { tensor, offset_bytes: 0, indexing: Indexing::Prefix(0), phantom: PhantomData }
+    }
+
+    #[inline]
     pub fn datum_type(&self) -> DatumType {
         self.tensor.datum_type()
     }
@@ -99,7 +104,16 @@ impl<'a> TensorView<'a> {
     #[inline]
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
-        self.shape().iter().product::<usize>()
+        match &self.indexing {
+            Indexing::Prefix(i) => {
+                if *i == 0 {
+                    self.tensor.len()
+                } else {
+                    self.tensor.strides[*i - 1] as usize
+                }
+            }
+            Indexing::Custom { shape, .. } => shape.iter().product(),
+        }
     }
 
     #[inline]
@@ -110,7 +124,10 @@ impl<'a> TensorView<'a> {
 
     #[inline]
     pub fn rank(&self) -> usize {
-        self.shape().len()
+        match &self.indexing {
+            Indexing::Prefix(i) => self.tensor.rank() - i,
+            Indexing::Custom { shape, .. } => shape.len(),
+        }
     }
 
     fn check_dt<D: Datum>(&self) -> anyhow::Result<()> {
@@ -205,11 +222,7 @@ impl<'a> TensorView<'a> {
 
     #[inline]
     fn offset_for_coords(&self, coords: &[usize]) -> isize {
-        self.strides()
-            .iter()
-            .zip(coords.as_ref())
-            .map(|(s, c)| *s * *c as isize)
-            .sum::<isize>()
+        self.strides().iter().zip(coords.as_ref()).map(|(s, c)| *s * *c as isize).sum::<isize>()
     }
 
     #[inline]

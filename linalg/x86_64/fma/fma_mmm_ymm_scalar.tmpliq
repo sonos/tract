@@ -1,7 +1,14 @@
 // vim: set syntax=asm :
 
 {{L}}{{label}}:
-    vbroadcastss    ymm12, dword ptr [rdi + 8]
+    {% if type == "f16" %}
+        pinsrw          xmm12, word ptr [rdi + 8], 0
+        vcvtph2ps       ymm12, xmm12
+        vbroadcastss    ymm12, xmm12
+    {% else %}
+        vbroadcastss    ymm12, dword ptr [rdi + 8]
+    {% endif %}
+    
     {% if flipped %}
         {% for reg in (from..to) %}
             {{op}}          ymm{{reg}}, ymm{{reg}}, ymm12

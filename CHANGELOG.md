@@ -1,3 +1,7 @@
+# Unreleased
+
+* [ONNX] Support for external storage of tensors with offsest and length
+
 # 0.21 - 2024-01-16
 * MSRV is now 1.75.0
 * [internal] ConvUnary and MatmulUnary are replaced by binary, potentially dynamic equivalent
@@ -7,6 +11,7 @@
 
 # 0.20.21 - 2023-10-31
 * [ONNX] ignoring output shapes is now the default
+* 
 
 # 0.20.18 - 2023-08-30
 * [intel] fix in AVX512F matrix vector product

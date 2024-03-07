@@ -1148,6 +1148,28 @@ impl Tensor {
             } else {
                 let (s_zp, s_scale) = self.datum_type().zp_scale();
                 let (d_zp, d_scale) = dst_dt.zp_scale();
+                if self.datum_type().is_quantized() && dst_dt.is_float() {
+                    macro_rules! q_to_fp {
+                        ($source:ty, $dest:ty) => {
+                            if <$source>::datum_type().unquantized()
+                                == self.datum_type().unquantized()
+                                && <$dest>::datum_type().unquantized() == dst_dt.unquantized()
+                            {
+                                self.as_slice_unchecked::<$source>()
+                                    .iter()
+                                    .zip(result.as_slice_mut_unchecked::<$dest>().iter_mut())
+                                    .for_each(|(&s, d)| {
+                                        *d = (s as $dest - s_zp as $dest) * s_scale as $dest;
+                                    });
+                                return Ok(Cow::Owned(result));
+                            }
+                        };
+                    }
+                    q_to_fp!(i8, f64);
+                    q_to_fp!(i8, f32);
+                    q_to_fp!(u8, f64);
+                    q_to_fp!(u8, f32);
+                }
                 //TODO: optimize scale_by
                 macro_rules! q8_to_q8 {
                     ($typ:ty) => {
@@ -1234,6 +1256,10 @@ impl Tensor {
                     q_via_f32!(i32, i8, |f| round_ties_to_even(f).clamp_cast());
                     q_via_f32!(u8, i32, |f| round_ties_to_even(f).clamp_cast());
                     q_via_f32!(i8, i32, |f| round_ties_to_even(f).clamp_cast());
+
+                    // ensure cast to different scale offset work
+                    q_via_f32!(i8, i8, |f| round_ties_to_even(f).clamp_cast());
+                    q_via_f32!(u8, u8, |f| round_ties_to_even(f).clamp_cast());
                 }
 
                 q_n!(i8, i32);
@@ -1392,7 +1418,7 @@ impl Tensor {
 
     #[inline]
     pub fn view(&self) -> view::TensorView {
-        unsafe { view::TensorView::at_prefix_unchecked(self, &[]) }
+        unsafe { view::TensorView::view(self) }
     }
 
     #[inline]
@@ -1412,7 +1438,7 @@ impl Tensor {
 
     #[inline]
     pub fn view_mut(&mut self) -> view::TensorView {
-        unsafe { view::TensorView::at_prefix_unchecked(self, &[]) }
+        unsafe { view::TensorView::view(self) }
     }
 
     #[inline]

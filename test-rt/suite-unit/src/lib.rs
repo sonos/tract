@@ -10,6 +10,7 @@ pub mod conv_f32;
 pub mod conv_q;
 pub mod deconv;
 pub mod downsample;
+pub mod q_binary;
 pub mod q_flavours;
 pub mod slice;
 
@@ -21,6 +22,7 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add("downsample", downsample::suite()?);
     suite.add("q_flavours", q_flavours::suite()?);
     suite.add("slice", slice::suite()?);
+    suite.add("q_binary", q_binary::suite()?);
     Ok(suite)
 }
 
@@ -31,7 +33,6 @@ pub fn tensor<'a>(shape: impl IntoIterator<Item = &'a usize>) -> BoxedStrategy<A
         .prop_map(move |vec| ArrayD::from_shape_vec(shape.to_vec(), vec).unwrap())
         .boxed()
 }
-
 pub fn qtensor(shape: Vec<usize>) -> BoxedStrategy<ArrayD<i8>> {
     let len = shape.iter().product::<usize>();
     vec(any::<i8>(), len..=len)

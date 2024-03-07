@@ -39,7 +39,7 @@ impl Expansion for InferenceBinOp {
         )?;
         let wires = wire_rank_broadcast(prefix, target, inputs)?;
         let wires = wire_cast(prefix, target, &wires, operating_datum_type)?;
-        target.wire_node(prefix, mir::binary::TypedBinOp(self.0.clone()), &wires)
+        target.wire_node(prefix, mir::binary::TypedBinOp(self.0.clone(), None), &wires)
     }
 }
 
@@ -129,7 +129,7 @@ impl EvalOp for Nary {
             if t.datum_type() != operating_datum_type {
                 t = t.cast_to_dt(operating_datum_type)?.into_owned();
             }
-            t = self.0.eval(t.into_tvalue(), i.into_tvalue())?;
+            t = self.0.eval(t.into_tvalue(), i.into_tvalue(), operating_datum_type)?;
         }
         if self.1 {
             dispatch_numbers!(Self::normalize_t(t.datum_type())(&mut t, inputs.len()))?;
@@ -185,7 +185,7 @@ impl InferenceRulesOp for Nary {
             let wires = wire_rank_broadcast(&format!("{}.{}", node.name, ix), target, &[wire, *i])?;
             wire = target.wire_node(
                 format!("{}.{}", node.name, ix),
-                mir::binary::TypedBinOp(self.0.clone()),
+                mir::binary::TypedBinOp(self.0.clone(), None),
                 &wires,
             )?[0];
         }
