@@ -4,11 +4,11 @@ import shutil
 import toml
 import re
 
+shutil.rmtree("rust-workspace")
 shutil.copytree(
         "../..",
         "rust-workspace",
-        ignore = shutil.ignore_patterns(".cached", "target", ".git", "issue-*", "cli", "py", ".travis", "assets"),
-        dirs_exist_ok = True
+        ignore = shutil.ignore_patterns(".cached", "target", ".git", "issue-*", ".travis", "assets", ".github")
 )
 
 version = toml.load("rust-workspace/api/Cargo.toml")["package"]["version"]
