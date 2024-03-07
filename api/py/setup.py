@@ -1,9 +1,17 @@
 from setuptools import setup
 from setuptools_rust import Binding, RustExtension
+import shutil
 import toml
 import re
 
-version = toml.load("../Cargo.toml")["package"]["version"]
+shutil.copytree(
+        "../..",
+        "rust-workspace",
+        ignore = shutil.ignore_patterns(".cached", "target", "rust-workspace", ".git", "issue-*", "cli", "api/py/*"),
+        dirs_exist_ok = True
+)
+
+version = toml.load("rust-workspace/api/Cargo.toml")["package"]["version"]
 version = re.sub("\-alpha\.", "a", version)
 version = re.sub("\-.*", ".dev", version)
 
@@ -38,7 +46,7 @@ setup(
             "License :: OSI Approved :: Apache Software License",
             "License :: OSI Approved :: MIT License"
             ],
-        rust_extensions=[RustExtension("tract.tract", binding=Binding.NoBinding, path="../ffi/Cargo.toml")],
+        rust_extensions=[RustExtension("tract.tract", binding=Binding.NoBinding, path="rust-workspace/api/ffi/Cargo.toml")],
         packages=["tract"],
         zip_safe=False,
         python_requires=">=3.7",
