@@ -26,4 +26,5 @@ env_logger.workspace = true
 
 [features]
 default = []
+accelerate = ["tract-nnef/accelerate"]
 getrandom-js = ["getrandom/js"]

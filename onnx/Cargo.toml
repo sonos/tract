@@ -38,4 +38,5 @@ env_logger.workspace = true
 
 [features]
 default = []
+accelerate = ["tract-hir/accelerate", "tract-nnef/accelerate", "tract-onnx-opl/accelerate"]
 getrandom-js = ["tract-onnx-opl/getrandom-js"]

@@ -21,3 +21,6 @@ tract-core = { version = "=0.21.2-pre", path = "../core" }
 
 [dev-dependencies]
 env_logger.workspace = true
+
+[features]
+accelerate = ["tract-core/accelerate"]

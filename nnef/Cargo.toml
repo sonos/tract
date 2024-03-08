@@ -29,4 +29,5 @@ serde_json.workspace = true
 
 [features]
 default = ["flate2"]
+accelerate = ["tract-core/accelerate"]
 complex = [ "tract-core/complex" ]

@@ -1,5 +1,5 @@
 #![allow(clippy::excessive_precision)]
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios")]
 mod apple_amx;
 mod arm64simd;
 pub mod cortex_a53;
@@ -186,17 +186,18 @@ pub fn plug(ops: &mut Ops) {
         Kind::CortexA55 => Some(cortex_a55::model()),
         _ => None,
     };
-    ops.mmm_f32 = if let Some(model) = model {
-        Box::new(move |m, k, n| model.pick(&impls, m, k, n))
-    } else {
-        Box::new(move |_, _, n| {
-            if n.unwrap_or(8) < 8 {
-                arm64simd_mmm_f32_16x4_gen::mmm()
-            } else {
-                arm64simd_mmm_f32_8x8_gen::mmm()
-            }
-        })
-    };
+    ops.mmm_f32 = Box::new(|_, _, _|arm64simd_mmm_f32_24x4_a55::mmm());
+    //ops.mmm_f32 = if let Some(model) = model {
+    //    Box::new(move |m, k, n| model.pick(&impls, m, k, n))
+    //} else {
+    //    Box::new(move |_, _, n| {
+    //        if n.unwrap_or(8) < 8 {
+    //            arm64simd_mmm_f32_16x4_gen::mmm()
+    //        } else {
+    //            arm64simd_mmm_f32_8x8_gen::mmm()
+    //        }
+    //    })
+    //};
     #[cfg(feature = "no_fp16")]
     if has_fp16() {
         log::warn!(
