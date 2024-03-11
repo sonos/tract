@@ -135,7 +135,7 @@ int
 main(int argc, char **argv)
 {
     char command[256];
-    snprintf(command, sizeof (command), "python3 ../../../dAIEdgeServer/scripts/get_size_io.py %s", argv[1]);
+    snprintf(command, sizeof (command), "python3 get_size_io.py %s", argv[1]);
 
     FILE *cmd = popen(command, "r");
     char result[100];
