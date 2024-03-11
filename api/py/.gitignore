@@ -4,4 +4,6 @@ __pycache__
 *.onnx
 build
 mobilenet_v2_1.0.onnx.nnef.tgz
+rust-workspace
+dist
 
