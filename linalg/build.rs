@@ -165,7 +165,7 @@ fn main() {
                 false,
             );
             cc::Build::new().files(files).static_flag(true).compile("arm64simd");
-            if os == "macos" {
+            if os == "macos" || os == "ios" {
                 // aarch64 darwin => M1
                 let files = preprocess_files("arm64/apple_amx", &[], &suffix, false);
                 cc::Build::new().files(files).static_flag(true).compile("appleamx");
@@ -285,7 +285,7 @@ fn preprocess_file(
     let mut parser = liquid::ParserBuilder::with_stdlib()
         .partials(liquid::partials::LazyCompiler::new(partials))
         .filter(F16);
-    if os == "macos" && arch == "aarch64" {
+    if (os == "macos" || os == "ios") && arch == "aarch64" {
         parser = apple_amx_instructions::register(parser);
         globals.extend(apple_amx_instructions::globals());
     }
