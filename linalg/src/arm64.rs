@@ -246,6 +246,7 @@ pub fn plug(ops: &mut Ops) {
     }
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     {
+        log::info!("Apple AMX activated with kernel 32x32");
         ops.mmm_f32 = Box::new(|_, _, _| apple_amx::apple_amx_mmm_f32_32x32::mmm());
     }
 }
