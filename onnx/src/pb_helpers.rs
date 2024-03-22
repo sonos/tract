@@ -105,11 +105,11 @@ impl<'a> AttrScalarType<'a> for DatumType {
     }
 }
 
-impl<'a> AttrScalarType<'a> for Tensor {
+impl<'a> AttrScalarType<'a> for &'a TensorProto {
     fn get_attr_opt_scalar(node: &'a NodeProto, name: &str) -> TractResult<Option<Self>> {
-        node.get_attr_opt_with_type(name, AttributeType::Tensor)?
-            .map(|attr| attr.t.as_ref().unwrap().try_into())
-            .transpose()
+        Ok(node
+            .get_attr_opt_with_type(name, AttributeType::Tensor)?
+            .map(|attr| attr.t.as_ref().unwrap()))
     }
 }
 
@@ -245,13 +245,6 @@ where
 {
     fn get_attr_opt_tvec(node: &'a NodeProto, name: &str) -> TractResult<Option<TVec<Self>>> {
         T::get_attr_opt_slice(node, name)?.and_ok(Into::into)
-    }
-}
-
-impl<'a> AttrTVecType<'a> for Tensor {
-    fn get_attr_opt_tvec(node: &'a NodeProto, name: &str) -> TractResult<Option<TVec<Self>>> {
-        node.get_attr_opt_with_type(name, AttributeType::Tensors)?
-            .and_try(|attr| attr.tensors.iter().map(|t| t.try_into()).try_collect())
     }
 }
 

@@ -1,10 +1,10 @@
-use crate::model::{ParsingContext, TensorPlusPath};
+use crate::model::ParsingContext;
 use crate::pb::tensor_proto::DataType;
 use crate::pb::*;
+use crate::data_resolver::ModelDataResolver;
 use prost::Message;
 use std::convert::{TryFrom, TryInto};
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tract_hir::internal::*;
 
 impl TryFrom<DataType> for DatumType {
@@ -42,75 +42,52 @@ pub fn translate_inference_fact(
             .iter()
             .map(|d| -> TractResult<DimFact> {
                 match &d.value {
-                Some(tensor_shape_proto::dimension::Value::DimValue(v)) if *v >= 0 => {
-                    Ok(DimFact::from(v.to_dim()))
-                }
-                Some(tensor_shape_proto::dimension::Value::DimParam(v)) => {
-                    if v.starts_with("unk__") && !include_unknown_symbols {
-                        Ok(DimFact::default())
-                    } else {
-                        let dim = parse_tdim(&ctx.symbol_table, v)?;
-                        Ok(DimFact::from(dim))
+                    Some(tensor_shape_proto::dimension::Value::DimValue(v)) if *v >= 0 => {
+                        Ok(DimFact::from(v.to_dim()))
                     }
+                    Some(tensor_shape_proto::dimension::Value::DimParam(v)) => {
+                        if v.starts_with("unk__") && !include_unknown_symbols {
+                            Ok(DimFact::default())
+                        } else {
+                            let dim = parse_tdim(&ctx.symbol_table, v)?;
+                            Ok(DimFact::from(dim))
+                        }
+                    }
+                    _ => Ok(DimFact::default()),
                 }
-                _ => Ok(DimFact::default()),
-            }})
+            })
             .collect::<TractResult<_>>()?;
         fact = fact.with_shape(ShapeFactoid::closed(shape));
     }
     Ok(fact)
 }
 
-#[cfg(target_family = "wasm")]
-fn read_bytes_from_path(buf: &mut Vec<u8>, p: impl AsRef<Path>, offset: usize, length: Option<usize>) -> TractResult<()> {
-    use std::io::BufRead;
-
-    let file = fs::File::open(p)?;
-    let file_size = file.metadata()?.len() as usize;
-    let length = length.unwrap_or(file_size - offset);
-    buf.reserve(length);
-
-
-    let mut reader = std::io::BufReader::new(file);
-    reader.seek_relative(offset as i64);
-    while reader.fill_buf()?.len() > 0 {
-        let num_read = std::cmp::min(reader.buffer().len(), length - buf.len());
-        buf.extend_from_slice(&reader.buffer()[..num_read]);
-        if buf.len() == length {
-            break;
-        }
-        reader.consume(reader.buffer().len());
-    }
-    Ok(())
-}
-
-#[cfg(not(target_family = "wasm"))]
-fn read_bytes_from_path(buf: &mut Vec<u8>, p: impl AsRef<Path>, offset: usize, length: Option<usize>) -> TractResult<()> {
-    let file = fs::File::open(p)?;
-    let mmap = unsafe { memmap2::Mmap::map(&file)? };
-    match length {
-        Some(length) => buf.extend_from_slice(&mmap[offset..offset+length]),
-        None => buf.extend_from_slice(&mmap[offset..]),
-    }
-    Ok(())
-}
-
-fn get_external_resources(t: &TensorProto, path: &str) -> TractResult<Vec<u8>> {
+fn get_external_resources(
+    provider: &dyn ModelDataResolver,
+    t: &TensorProto,
+    path: &str,
+) -> TractResult<Vec<u8>> {
     let mut tensor_data: Vec<u8> = Vec::new();
     trace!("number of external file needed for this tensor: {}", t.external_data.len());
-    let location = t.external_data.iter()
+    let location = t
+        .external_data
+        .iter()
         .find(|it| it.key == "location")
         .map(|it| it.value.as_str())
         .context("Could not find external data location")?;
 
-    let offset: usize = t.external_data.iter()
+    let offset: usize = t
+        .external_data
+        .iter()
         .find(|it| it.key == "offset")
         .map(|it| it.value.parse())
         .transpose()
         .context("Error while parsing offset value on external data description")?
         .unwrap_or(0);
 
-    let length: Option<usize> = t.external_data.iter()
+    let length: Option<usize> = t
+        .external_data
+        .iter()
         .find(|it| it.key == "length")
         .map(|it| it.value.parse())
         .transpose()
@@ -119,7 +96,7 @@ fn get_external_resources(t: &TensorProto, path: &str) -> TractResult<Vec<u8>> {
     let p = PathBuf::from(format!("{}/{}", path, location));
 
     trace!("external file detected: {:?}, offset {:?}, length: {:?}", p, offset, length);
-    read_bytes_from_path(&mut tensor_data, p, offset, length)?;
+    provider.read_bytes_from_path(&mut tensor_data, &p, offset, length)?;
     trace!("external file loaded");
     Ok(tensor_data)
 }
@@ -147,17 +124,22 @@ fn create_tensor(shape: Vec<usize>, dt: DatumType, data: &[u8]) -> TractResult<T
     }
 }
 
-fn common_tryfrom(t: &TensorProto, path: Option<&str>) -> TractResult<Tensor> {
+pub fn load_tensor(
+    provider: &dyn ModelDataResolver,
+    t: &TensorProto,
+    path: Option<&str>,
+) -> TractResult<Tensor> {
     let dt = DataType::from_i32(t.data_type).unwrap().try_into()?;
     let shape: Vec<usize> = t.dims.iter().map(|&i| i as usize).collect();
     // detect if the tensor is rather in an external file than inside the onnx file directly
-    let is_external = t.data_location.is_some() && t.data_location == Some(tensor_proto::DataLocation::External as i32);
+    let is_external = t.data_location.is_some()
+        && t.data_location == Some(tensor_proto::DataLocation::External as i32);
     if t.raw_data.len() > 0 {
         create_tensor(shape, dt, &t.raw_data)
     } else if is_external {
         if let Some(model_path) = path {
             // external files will be loaded and fed to the tensor if necessary
-            let external_data = get_external_resources(t, model_path)?;
+            let external_data = get_external_resources(provider, t, model_path)?;
             create_tensor(shape, dt, &external_data)
         } else {
             bail!("no model path was specified in the parsing context, yet external data was detected. aborting");
@@ -189,10 +171,11 @@ fn common_tryfrom(t: &TensorProto, path: Option<&str>) -> TractResult<Tensor> {
             }
             DatumType::I32 => Array::from_shape_vec(&*shape, t.int32_data.to_vec())?.into(),
             DatumType::I64 => Array::from_shape_vec(&*shape, t.int64_data.to_vec())?.into(),
-            DatumType::F16 => {
-                Array::from_shape_vec(&*shape, t.int32_data.iter().map(|&x| f16::from_bits(x as u16)).collect())?
-                    .into()
-            }
+            DatumType::F16 => Array::from_shape_vec(
+                &*shape,
+                t.int32_data.iter().map(|&x| f16::from_bits(x as u16)).collect(),
+            )?
+            .into(),
             DatumType::F32 => Array::from_shape_vec(&*shape, t.float_data.to_vec())?.into(),
             DatumType::F64 => Array::from_shape_vec(&*shape, t.double_data.to_vec())?.into(),
             DatumType::String => {
@@ -211,34 +194,9 @@ fn common_tryfrom(t: &TensorProto, path: Option<&str>) -> TractResult<Tensor> {
     }
 }
 
-impl TryFrom<TensorPlusPath<'_>> for Tensor {
-    type Error = TractError;
-    fn try_from(st: TensorPlusPath) -> TractResult<Tensor> {
-        common_tryfrom(st.tensor, Some(st.model_dir))
-    }
-}
-
-impl<'a> TryFrom<&'a TensorProto> for Tensor {
-    type Error = TractError;
-    fn try_from(t: &TensorProto) -> TractResult<Tensor> {
-        common_tryfrom(t, None)
-    }
-}
-
-impl TryFrom<TensorProto> for Tensor {
-    type Error = TractError;
-    fn try_from(t: TensorProto) -> TractResult<Tensor> {
-        (&t).try_into()
-    }
-}
-
 pub fn proto_from_reader<R: ::std::io::Read>(mut r: R) -> TractResult<TensorProto> {
     let mut v = vec![];
     r.read_to_end(&mut v)?;
     let b = bytes::Bytes::from(v);
     TensorProto::decode(b).context("Can not parse protobuf input")
-}
-
-pub fn from_reader<R: ::std::io::Read>(r: R) -> TractResult<Tensor> {
-    proto_from_reader(r)?.try_into()
 }

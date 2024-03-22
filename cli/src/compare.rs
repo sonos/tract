@@ -185,14 +185,17 @@ pub fn handle_pbdir(
     output_params: &DisplayParams,
     run_params: &RunParams,
 ) -> TractResult<()> {
+    use tract_onnx::data_resolver::FopenDataResolver;
+    use tract_onnx::tensor::load_tensor;
+
     let mut values: HashMap<String, Vec<TractResult<TValue>>> = HashMap::new();
     for entry in fs::read_dir(pbdir)? {
         let entry = entry?;
         let file = fs::File::open(entry.path())?;
         let tensor = tract_onnx::tensor::proto_from_reader(file)?;
         let name = tensor.name.to_string();
-        let value: Tensor = tensor.try_into()?;
-        values.insert(name, vec![Ok(value.into())]);
+        let value: Tensor = load_tensor(&FopenDataResolver, &tensor, None)?;
+        values.insert(name, vec!(Ok(value.into_tvalue())));
     }
     dispatch_model_no_pulse!(params.tract_model, |m| compare(
         cumulative,

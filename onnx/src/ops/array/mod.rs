@@ -80,11 +80,11 @@ pub fn constant_like(
 }
 
 pub fn constant_of_shape(
-    _ctx: &ParsingContext,
+    ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let mut value = match node.get_attr_opt::<Tensor>("value")? {
-        Some(val) => val.into_arc_tensor(),
+    let mut value = match node.get_attr_opt("value")? {
+        Some(val) => ctx.load_tensor(val)?.into_arc_tensor(),
         None => rctensor0(0.0),
     };
     if value.rank() > 0 {
