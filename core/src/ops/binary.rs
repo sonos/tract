@@ -30,7 +30,7 @@ pub fn wire_rank_broadcast(
 ) -> TractResult<TVec<OutletId>> {
     let facts = inputs
         .iter()
-        .map(|o| target.outlet_fact(*o).map(|ok| ok.clone()))
+        .map(|o| target.outlet_fact(*o).cloned())
         .collect::<TractResult<TVec<_>>>()?;
     let max_rank = facts.iter().map(|f| f.rank()).max().unwrap();
     let mut wires = tvec!();

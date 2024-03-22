@@ -1,6 +1,6 @@
 #![allow(clippy::len_zero)]
 #![allow(clippy::missing_safety_doc)]
-#[macro_use]
+
 pub extern crate itertools;
 
 #[macro_use]

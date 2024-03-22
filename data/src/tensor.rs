@@ -1283,7 +1283,7 @@ impl Tensor {
     /// Access the data as a scalar, after a cast.
     pub fn cast_to_scalar<D: Datum + Copy>(&self) -> anyhow::Result<D> {
         let casted = self.cast_to::<D>()?;
-        casted.to_scalar::<D>().map(|&x| x)
+        casted.to_scalar::<D>().copied()
     }
 
     /// Access the nth element of the tensor, returned as a 0-rank Tensor

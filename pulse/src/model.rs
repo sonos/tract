@@ -127,7 +127,11 @@ impl SpecialOps<PulsedFact, Box<dyn PulsedOp>> for PulsedModel {
     }
 }
 
-struct Pulsifier(Symbol, TDim, Arc<RwLock<HashMap<TypeId, crate::ops::OpPulsifier>>>);
+struct Pulsifier(
+    Symbol,
+    TDim,
+    #[allow(dead_code)] Arc<RwLock<HashMap<TypeId, crate::ops::OpPulsifier>>>,
+);
 
 impl std::fmt::Debug for Pulsifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
