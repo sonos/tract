@@ -3,6 +3,8 @@ use prost::Message;
 use std::path::PathBuf;
 use tract_hir::internal::*;
 use tract_onnx::pb::TensorProto;
+use tract_onnx::data_resolver::FopenDataResolver;
+use tract_onnx::tensor::load_tensor;
 
 use infra::{Test, TestStatus, TestSuite};
 
@@ -251,7 +253,8 @@ pub fn load_half_dataset(prefix: &str, path: &std::path::Path) -> TVec<Tensor> {
         let filename = path.join(format!("{prefix}_{i}.pb"));
         let bytes = bytes::Bytes::from(std::fs::read(filename).unwrap());
         let tensor = TensorProto::decode(bytes).unwrap();
-        vec.push(tensor.try_into().unwrap())
+        let tensor = load_tensor(&FopenDataResolver, &tensor, None).unwrap();
+        vec.push(tensor)
     }
     debug!("{:?}: {:?}", path, vec);
     vec

@@ -71,6 +71,9 @@ fn annotate_with_onnx_model(
     model: &dyn Model,
     model_proto: &tract_onnx::pb::ModelProto,
 ) -> TractResult<()> {
+    use tract_onnx::data_resolver::FopenDataResolver;
+    use tract_onnx::tensor::load_tensor;
+
     let bold = Style::new().bold();
     for gnode in model_proto.graph.as_ref().unwrap().node.iter() {
         if let Some(id) = model
@@ -81,7 +84,7 @@ fn annotate_with_onnx_model(
             let mut v = vec![];
             for a in gnode.attribute.iter() {
                 let value = if let Some(t) = &a.t {
-                    format!("{:?}", Tensor::try_from(t)?)
+                    format!("{:?}", load_tensor(&FopenDataResolver, t, None)?)
                 } else {
                     format!("{a:?}")
                 };
@@ -226,8 +229,7 @@ pub fn handle(
         if let Some(mut typed) = model.downcast_ref::<TypedModel>().cloned() {
             rename_outputs(&mut typed, sub_matches)?;
             let file = std::fs::File::create(path)?;
-            tflite.write(&typed, file)
-                .context("Writing model to tflite")?;
+            tflite.write(&typed, file).context("Writing model to tflite")?;
         } else {
             bail!("Only typed model can be dumped")
         }

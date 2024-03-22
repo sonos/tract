@@ -45,11 +45,11 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
 }
 
 fn konst(
-    _ctx: &ParsingContext,
+    ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let value = if let Some(v) = node.get_attr_opt::<Tensor>("value")? {
-        v
+    let value = if let Some(v) = node.get_attr_opt("value")? {
+        ctx.load_tensor(v)?
     } else if let Some(i) = node.get_attr_opt::<i64>("value_int")? {
         tensor0(i)
     } else if let Some(v) = node.get_attr_opt::<f32>("value_float")? {
