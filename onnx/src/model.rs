@@ -55,7 +55,7 @@ pub struct ParseResult {
 
 impl<'a> ParsingContext<'a> {
     pub fn load_tensor(&self, proto: &TensorProto) -> TractResult<Tensor> {
-        load_tensor(&*self.framework.provider, &proto, self.model_dir)
+        load_tensor(&*self.framework.provider, proto, self.model_dir)
     }
 
     pub fn parse_graph(&self, graph: &pb::GraphProto) -> TractResult<ParseResult> {
