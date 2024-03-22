@@ -16,9 +16,9 @@ impl SubmodelOp {
     pub fn new(model: Box<dyn InnerModel>, label: &str) -> TractResult<Self> {
         Ok(Self { model, label: label.to_string(), decluttered: false, codegen: false })
     }
-    
+
     pub fn iteration_count(&self, _inputs: &[&TypedFact]) -> Option<TDim> {
-        None 
+        None
     }
 
     pub fn model(&self) -> &TypedModel {
@@ -121,7 +121,7 @@ impl InnerModel for TypedModel {
         let facts = self
             .output_outlets()?
             .iter()
-            .map(|outlet| self.outlet_fact(*outlet).map(|c| c.clone()))
+            .map(|outlet| self.outlet_fact(*outlet).cloned())
             .collect::<TractResult<TVec<_>>>()?;
         Ok(facts)
     }
@@ -154,7 +154,6 @@ impl InnerModel for TypedModel {
     }
 }
 
-
 pub type TypedModelOpState = TypedSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>;
 
 impl OpState for TypedModelOpState {
@@ -169,7 +168,8 @@ impl OpState for TypedModelOpState {
     }
 }
 
-pub type FrozenSubmodelOpState = TypedFrozenSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>;
+pub type FrozenSubmodelOpState =
+    TypedFrozenSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>;
 
 impl FrozenOpState for FrozenSubmodelOpState {
     fn unfreeze(&self) -> Box<dyn OpState> {

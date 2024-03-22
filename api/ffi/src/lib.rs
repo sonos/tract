@@ -23,7 +23,7 @@ pub enum TRACT_RESULT {
 }
 
 thread_local! {
-    pub(crate) static LAST_ERROR: RefCell<Option<CString>> = RefCell::new(None);
+    pub(crate) static LAST_ERROR: RefCell<Option<CString>> = const { RefCell::new(None) };
 }
 
 fn wrap<F: FnOnce() -> anyhow::Result<()>>(func: F) -> TRACT_RESULT {
