@@ -311,7 +311,7 @@ impl Framework<pb::ModelProto, InferenceModel> for Onnx {
         Ok(self.proto_model_for_read(&mut file)?)
     }
 
-    #[cfg(all(any(windows, unix), not(target_os = "emscripten")))]
+    #[cfg(not(target_family = "wasm"))]
     fn proto_model_for_path(&self, p: impl AsRef<path::Path>) -> TractResult<pb::ModelProto> {
         let p = p.as_ref();
         let map = unsafe { memmap2::Mmap::map(&fs::File::open(p).with_context(|| format!("Opening {p:?}"))?)? };

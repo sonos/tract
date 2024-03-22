@@ -84,7 +84,7 @@ fn read_bytes_from_path(buf: &mut Vec<u8>, p: impl AsRef<Path>, offset: usize, l
     Ok(())
 }
 
-#[cfg(all(any(windows, unix), not(target_os = "emscripten")))]
+#[cfg(not(target_family = "wasm"))]
 fn read_bytes_from_path(buf: &mut Vec<u8>, p: impl AsRef<Path>, offset: usize, length: Option<usize>) -> TractResult<()> {
     let file = fs::File::open(p)?;
     let mmap = unsafe { memmap2::Mmap::map(&file)? };
