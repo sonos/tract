@@ -12,7 +12,7 @@ pub fn default() -> Box<dyn ModelDataResolver> {
 
 #[cfg(target_family = "wasm")]
 pub fn default() -> Box<dyn ModelDataResolver> {
-    Box::new(Filerovider)
+    Box::new(FopenDataResolver)
 }
 
 pub trait ModelDataResolver {
