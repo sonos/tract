@@ -11,6 +11,7 @@ mod suite;
 mod nnef_predump {
     use super::*;
 
+    #[allow(dead_code)]
     struct NnefPredumpRuntime(Nnef);
 
     impl Debug for NnefPredumpRuntime {
