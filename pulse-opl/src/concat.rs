@@ -135,6 +135,7 @@ unsafe fn overwrite_part_of_pulse<T: Datum>(
 }
 
 #[derive(Copy, Clone, Debug)]
+#[allow(dead_code)]
 enum RangeInRange {
     /// ----[--]<-->HHHH----
     Before(usize),
