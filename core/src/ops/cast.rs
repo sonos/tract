@@ -175,45 +175,6 @@ fn codegen_quant_ew_chain_to_lut(
                     transform_quant_seq_to_lut(model, origin.inputs[0], next.id.into())
                         .context("Transforming sequence to LUT")?,
                 ));
-                /*
-                   let mut adhoc_model = TypedModel::default();
-                   let mut wire = adhoc_model.add_source("ad-hoc", dt.fact([256]))?;
-                   let mut next = model.single_succ(dequant.id)?.unwrap();
-                   let mut name = None;
-                // plug in dequant
-                wire =
-                adhoc_model.wire_node(&*dequant.name, dequant.op.clone(), [wire].as_ref())?[0];
-                while next.id != op.id {
-                name.get_or_insert(&*next.name);
-                wire = adhoc_model.wire_node(&*next.name, next.op.clone(), [wire].as_ref())?[0];
-                next = model.single_succ(next.id)?.unwrap();
-                }
-                // plug in quant
-                wire = adhoc_model.wire_node(&*op.name, op.op.clone(), [wire].as_ref())?[0];
-                adhoc_model.set_output_outlets(&[wire])?;
-                let input = (0u8..=255).collect::<Vec<u8>>();
-                let input = match dt {
-                DatumType::I8 => unsafe {
-                tensor1(std::mem::transmute::<&[u8], &[i8]>(&*input))
-                },
-                DatumType::U8 => tensor1(&input),
-                _ => unreachable!(),
-                };
-                let output =
-                SimplePlan::new(adhoc_model)?.run(tvec!(input.into_tvalue()))?.remove(0);
-                let table: &[u8] = match dt {
-                DatumType::I8 => unsafe { std::mem::transmute(output.as_slice::<i8>()?) },
-                DatumType::U8 => output.as_slice::<u8>()?,
-                _ => unreachable!(),
-                };
-                let op = lookup_table((tract_linalg::ops().lut_u8)(table));
-                let mut patch = TypedModelPatch::default();
-                let mut wire: OutletId = patch.tap_model(model, dequant.inputs[0])?;
-
-                wire = patch.wire_node(name.unwrap_or(&*dequant.name), op, [wire].as_ref())?[0];
-                patch.shunt_outside(model, OutletId::new(op.id, 0), wire)?;
-                return Ok(Some(patch));
-                */
             }
         }
         let (input_facts, output_facts) = model.node_facts(next.id)?;
@@ -242,12 +203,11 @@ fn transform_quant_seq_to_lut(
     let mut adhoc_model = TypedModel::default();
     let wire = adhoc_model.add_source("ad-hoc", incoming_dt.fact([256]))?;
     let mut next = model.single_succ(src.node)?.unwrap();
-    let mut name = None;
     // plug in dequant
     let dequant = model.node(src.node);
-    let mut wire = tvec!(wire);
+    let name = &dequant.name;
+    let mut wire: TVec<OutletId> = tvec!(wire);
     while next.id != dst.node {
-        name.get_or_insert(&*next.name);
         wire = adhoc_model.wire_node(&*next.name, next.op.clone(), &wire)?;
         next = model.single_succ(next.id)?.unwrap();
     }
@@ -263,7 +223,6 @@ fn transform_quant_seq_to_lut(
             eval(s, op, node, inputs)
         })?
         .remove(0);
-    dbg!(&output);
 
     let table: &[u8] = match incoming_dt.unquantized() {
         DatumType::I8 => unsafe { std::mem::transmute(output.as_slice::<i8>()?) },
@@ -272,10 +231,10 @@ fn transform_quant_seq_to_lut(
     };
     let op = crate::ops::quant::lookup_table((tract_linalg::ops().lut_u8)(table));
     let mut patch = TypedModelPatch::default();
-    let mut wire: OutletId = patch.tap_model(model, src)?;
-
-    wire = patch.wire_node(name.unwrap_or(&*dequant.name), op, [wire].as_ref())?[0];
-    patch.shunt_outside(model, dst, wire)?;
+    let mut wire = patch.taps(model, &[src])?;
+    wire = patch.wire_node(format!("{name}.lut"), op, &wire)?;
+    wire = patch.wire_node(format!("{name}.cast"), cast(outgoing_dt), &wire)?;
+    patch.shunt_outside(model, dst, wire[0])?;
     Ok(patch)
 }
 
