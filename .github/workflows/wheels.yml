@@ -17,15 +17,16 @@ on:
 env:
   CARGO_INCREMENTAL: false
   PYPI_VERSION_OVERRIDE: ${{ inputs.pypi_version_override }}
+  CIBW_ENVIRONMENT_PASS_LINUX: PYPI_VERSION_OVERRIDE
 
 jobs:
   build_wheels:
     name: Build wheels on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os}}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-20.04, windows-2019, macos-11]
+        os: [ubuntu-20.04,windows-2019, macos-11]
 
     steps:
       - uses: actions/checkout@v3
@@ -38,13 +39,13 @@ jobs:
       - uses: actions/setup-python@v3
 
       - name: Install cibuildwheel
-        run: python -m pip install cibuildwheel
+        run: python -m pipinstall cibuildwheel
 
       - name: Build wheels
         uses: nick-fields/retry@v2
         with:
           max_attempts: 3
-          timeout_seconds: 36000 # 10 hours :/
+          timeout_seconds:36000 # 10 hours :/
           command: python -m cibuildwheel --output-dir wheelhouse api/py
 
       - uses: actions/upload-artifact@v3
