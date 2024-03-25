@@ -17,7 +17,7 @@ on:
 env:
   CARGO_INCREMENTAL: false
   PYPI_VERSION_OVERRIDE: ${{ inputs.pypi_version_override }}
-  CIBW_ENVIRONMENT_PASS_LINUX: PYPI_VERSION_OVERRIDE
+  CIBW_ENVIRONMENT_PASS_LINUX: "PYPI_VERSION_OVERRIDE"
 
 jobs:
   build_wheels:
