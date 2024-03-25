@@ -3,7 +3,7 @@ mod reduce;
 mod softmax;
 
 pub use self::data_formats::{BaseDataShape, DataFormat, DataShape, SymDataShape};
-pub use self::reduce::{Reduce, Reducer};
+pub use self::reduce::{Reduce, Reducer, expand_mean_of_squares};
 pub use self::softmax::{Softmax, SoftmaxExp};
 
 pub use crate::internal::*;

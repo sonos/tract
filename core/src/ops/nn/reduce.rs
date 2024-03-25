@@ -1,5 +1,9 @@
 use crate::internal::Axis;
 use crate::internal::*;
+use crate::ops::binary::{wire_cast, wire_with_rank_broadcast, TypedBinOp};
+use crate::ops::cast::cast;
+use crate::ops::element_wise::ElementWiseOp;
+use crate::ops::math::{div, mul, square, Mul, Square};
 use std::convert::TryFrom;
 use std::mem::transmute;
 use tract_data::internal::ClampCast;
@@ -50,6 +54,7 @@ pub enum Reducer {
     Min,
     Prod,
     Sum,
+    MeanOfSquares,
 }
 
 impl Reducer {
@@ -90,6 +95,7 @@ impl Reducer {
                         ))
                     }
                 }
+                MeanOfSquares => self.mean_of_squares(axes, input)?,
             };
             if input.datum_type().is_quantized()
                 && input.datum_type().unquantized() == t.datum_type().unquantized()
@@ -176,6 +182,16 @@ impl Reducer {
             output = Some(current_output);
         }
         output.unwrap().into_tensor()
+    }
+
+    fn mean_of_squares(&self, axis: &[usize], input: &Tensor) -> TractResult<Tensor> {
+        let dt = input.datum_type();
+        let mut input = input.cast_to::<f32>()?.into_owned();
+        input.as_slice_mut::<f32>()?.iter_mut().for_each(|x| *x = *x * *x);
+        let mut output = unsafe { self.sum::<f32>(axis, &input) };
+        let norm = output.len() as f32 / input.len() as f32;
+        output.as_slice_mut::<f32>()?.iter_mut().for_each(|x| *x *= norm);
+        Ok(output.cast_to_dt(dt)?.into_owned())
     }
 }
 
@@ -298,6 +314,51 @@ impl TypedOp for Reduce {
         Ok(tvec!(dt.fact(shape)))
     }
 
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if self.reducer == Reducer::Sum {
+            let Some(prec) = model.single_prec(node.id)? else { return Ok(None) };
+            let Some(prec_ew) = prec.op_as::<ElementWiseOp>() else { return Ok(None) };
+            if !prec_ew.0.is::<Square>() {
+                return Ok(None);
+            }
+            if node.outputs.len() != 1 || node.outputs[0].successors.len() != 1 {
+                return Ok(None);
+            }
+            let our_inlet = node.outputs[0].successors[0];
+            let succ = model.node(our_inlet.node);
+            let Some(succ_bin) = succ.op_as::<TypedBinOp>() else { return Ok(None) };
+            if !succ_bin.0.is::<Mul>() {
+                return Ok(None);
+            }
+            let other = succ.inputs[1 - our_inlet.slot];
+            let Some(other_konst) = model.outlet_fact(other)?.uniform.as_ref() else {
+                return Ok(None);
+            };
+            let norm: TDim = self.axes.iter().map(|&ax| &prec.outputs[0].fact.shape[ax]).product();
+            let Some(norm) = norm.as_i64() else { return Ok(None) };
+            if norm == 0 {
+                return Ok(None);
+            }
+            let norm = tensor0((norm as f32).recip());
+            if other_konst.close_enough(&norm, Approximation::Close).is_ok() {
+                let mut patch = TypedModelPatch::default();
+                let wire = patch.tap_model(model, prec.inputs[0])?;
+                let wire = patch.wire_node(
+                    &node.name,
+                    Reduce::new(self.axes.clone(), Reducer::MeanOfSquares),
+                    &[wire],
+                )?[0];
+                patch.shunt_outside(model, succ.id.into(), wire)?;
+                return Ok(Some(patch));
+            }
+        }
+        Ok(None)
+    }
+
     fn axes_mapping(
         &self,
         inputs: &[&TypedFact],
@@ -345,4 +406,47 @@ impl TypedOp for Reduce {
     }
 
     as_op!();
+}
+
+pub fn expand_mean_of_squares(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    name: &str,
+    op: &Reduce,
+) -> TractResult<Option<TypedModelPatch>> {
+    if op.reducer == Reducer::MeanOfSquares {
+        let mut patch = TypedModelPatch::default();
+        let mut wire = tvec!(patch.tap_model(model, node.inputs[0])?);
+        let dt = model.outlet_fact(node.inputs[0])?.datum_type;
+        if dt != f32::datum_type() {
+            wire = patch.wire_node(format!("{name}.to_f32"), cast(f32::datum_type()), &wire)?;
+        }
+        wire = patch.wire_node(format!("{name}.sqr"), square(), &wire)?;
+        let input_size = patch.outlet_fact(wire[0])?.shape.volume();
+        let input_size = patch.add_const(format!("{name}.input_size"), tensor0(input_size))?;
+        wire = patch.wire_node(
+            format!("{name}.sum"),
+            Reduce::new(op.axes.clone(), Reducer::Sum),
+            &wire,
+        )?;
+        let output_size = patch.outlet_fact(wire[0])?.shape.volume();
+        let output_size = patch.add_const(format!("{name}.output_size"), tensor0(output_size))?;
+        let norm = wire_cast(
+            format!("{name}.norm"),
+            &mut patch,
+            &[output_size, input_size],
+            f32::datum_type(),
+        )?;
+        let norm = patch.wire_node(format!("{name}.norm"), div(), &norm)?[0];
+        wire =
+            wire_with_rank_broadcast(format!("{name}.card"), &mut patch, mul(), &[wire[0], norm])?;
+        if dt != f32::datum_type() {
+            wire = patch.wire_node(format!("{name}.from_f32"), cast(dt), &wire)?;
+        }
+        patch.shunt_outside(model, node.id.into(), wire[0])?;
+        Ok(Some(patch))
+    } else {
+        Ok(None)
+    }
 }

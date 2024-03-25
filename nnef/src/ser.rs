@@ -24,6 +24,7 @@ pub fn rewrite_model(model: &mut TypedModel) -> TractResult<()> {
             "rewrite_consistent_quantized_conv",
             crate::ops::nnef::ser::rewrite_consistent_quantized_conv,
         )
+        .with_rule_for("expand_mean_of_square", tract_core::ops::nn::expand_mean_of_squares)
         .rewrite(&(), model)
 }
 
@@ -363,7 +364,8 @@ impl<'a> IntoAst<'a> {
                     Self::dump_rec_tensor(&tensor.to_array_view::<f32>()?, |f| numeric(f)).into()
                 );
             } else if have_tract_core && tensor.datum_type() == DatumType::F16 {
-                let array = Self::dump_rec_tensor(&tensor.to_array_view::<f16>()?, |f| numeric(f)).into();
+                let array =
+                    Self::dump_rec_tensor(&tensor.to_array_view::<f16>()?, |f| numeric(f)).into();
                 return Ok(invocation("tract_core_cast", &[array], &[("to", string("f16"))]));
             } else if have_tract_core && tensor.datum_type().is_integer() {
                 if let Ok(value) = tensor.cast_to::<i64>() {

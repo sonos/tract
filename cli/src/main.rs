@@ -236,6 +236,11 @@ fn main() -> tract_core::anyhow::Result<()> {
                 .help("Save intermediary values as a npz file"),
         )
         .arg(
+            Arg::new("check-f16-overflow")
+                .long("check-f16-overflow")
+                .help("Check for f16 overflow in all outputs"),
+        )
+        .arg(
             Arg::new("assert-sane-floats")
                 .long("assert-sane-floats")
                 .help("Check float for NaN and infinites at each step"),

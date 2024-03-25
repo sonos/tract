@@ -1,12 +1,12 @@
 use tract_core::internal::*;
 use tract_core::ops::array::{Pad, PadMode};
 use tract_core::ops::binary::wire_with_rank_broadcast;
-use tract_core::ops::cnn::{KernelFormat, rewrite_conv_with_n_axis};
+use tract_core::ops::cnn::{rewrite_conv_with_n_axis, KernelFormat};
 use tract_core::ops::cnn::{Conv, PaddingSpec};
 use tract_core::ops::einsum::BasicMatMul;
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::math::Recip;
-use tract_core::ops::nn::{DataFormat, Softmax};
+use tract_core::ops::nn::{expand_mean_of_squares, DataFormat, Softmax};
 use tract_core::tract_data::itertools::Itertools;
 
 pub fn rewrite_for_tflite(model: &mut TypedModel) -> TractResult<()> {
@@ -22,6 +22,7 @@ pub fn rewrite_for_tflite(model: &mut TypedModel) -> TractResult<()> {
         .with_rule_for("padding", padding)
         .with_rule_for("manual_recip", manual_recip)
         .with_rule_for("softmax_on_last_axis", softmax_on_last_axis)
+        .with_rule_for("expand-means-of-square", expand_mean_of_squares)
         .rewrite(&(), model)
 }
 
