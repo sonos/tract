@@ -11,6 +11,7 @@ use tract_linalg::Scaler;
 use super::binary::TypedBinOp;
 use super::math::round_ties_to_even;
 
+/*
 pub fn quantize_linear_f32_u8(x: f32, scale: f32, zero_point: i32) -> u8 {
     (((x * scale).round() as i32) + zero_point)
         .clamp(u8::min_value() as i32, u8::max_value() as i32) as u8
@@ -20,7 +21,9 @@ pub fn quantize_linear_f32_i8(x: f32, scale: f32, zero_point: i32) -> i8 {
     (((x * scale).round() as i32) + zero_point)
         .clamp(i8::min_value() as i32, i8::max_value() as i32) as i8
 }
+*/
 
+/*
 element_wise_oop!(quantize_linear_u8,
  QuantizeLinearU8 {
      scale: f32,
@@ -250,24 +253,34 @@ impl TypedOp for DequantizeLinearF32 {
 
     as_op!();
 }
+*/
 
-element_wise_oop!(lookup_table,
+element_wise!(lookup_table,
  LookupTable {
      table: Box<dyn Lut>
- },
- [i8] => i8 |op, xs, ys| {
-     ys.copy_from_slice(xs);
+ }, ;
+ eval_override: |op: &LookupTable, xs: &mut Tensor| {
+ //    dbg!(&op.table.table());
+ //    dbg!(&xs);
+     let bytes = unsafe { xs.as_bytes_mut() };
+  //   dbg!(&bytes);
+     op.table.run(bytes);
+   //  dbg!(&bytes);
+     Ok(())
+}
+ /*
+ [i8] => |op, xs| {
      unsafe {
-         let casted = std::slice::from_raw_parts_mut(ys.as_mut_ptr() as *mut u8, ys.len());
+         let casted = std::slice::from_raw_parts_mut(xs.as_mut_ptr() as *mut u8, xs.len());
          op.table.run(casted);
      }
      Ok(())
  },
- [u8] => u8 |op, xs, ys| {
-     ys.copy_from_slice(xs);
-     op.table.run(ys);
+ [u8] => |op, xs| {
+     op.table.run(xs);
      Ok(())
  }
+ */
 );
 
 #[derive(Debug, Clone, Hash)]
