@@ -9,9 +9,14 @@ on:
       publish:
         description: force publish to pypi
         type: boolean
+      pypi_version_override:
+        description: override version id detection
+        type: string
+
 
 env:
   CARGO_INCREMENTAL: false
+  PYPI_VERSION_OVERRIDE: ${{ inputs.pypi_version_override }}
 
 jobs:
   build_wheels:
