@@ -674,17 +674,17 @@ pub unsafe extern "C" fn tract_model_pulse_simple(
     })
 }
 
-/// Apply a transformer to the model.
+/// Apply a transform to the model.
 #[no_mangle]
 pub unsafe extern "C" fn tract_model_transform(
     model: *mut TractModel,
-    transformer: *const i8,
+    transform: *const i8,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
-        check_not_null!(model, transformer);
-        let t = CStr::from_ptr(transformer)
+        check_not_null!(model, transform);
+        let t = CStr::from_ptr(transform)
             .to_str()
-            .context("failed to parse transformer name (not utf8)")?;
+            .context("failed to parse transform name (not utf8)")?;
         (*model).0.transform(t)
     })
 }

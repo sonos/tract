@@ -350,9 +350,9 @@ enum TRACT_RESULT tract_model_pulse_simple(struct TractModel **model,
                                            const int8_t *pulse_expr);
 
 /**
- * Apply a transformer to the model.
+ * Apply a transform to the model.
  */
-enum TRACT_RESULT tract_model_transform(struct TractModel *model, const int8_t *transformer);
+enum TRACT_RESULT tract_model_transform(struct TractModel *model, const int8_t *transform);
 
 /**
  * Declutter a TypedModel in-place.

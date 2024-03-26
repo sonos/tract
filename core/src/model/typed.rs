@@ -4,7 +4,7 @@ use crate::ops;
 use crate::ops::konst::Const;
 use crate::optim::OptimizerSession;
 use crate::plan::{FrozenSimpleState, SimplePlan, SimpleState};
-use crate::transform::ModelTransformer;
+use crate::transform::ModelTransform;
 
 /// A model with completely determined types and shapes.
 pub type TypedModel = Graph<TypedFact, Box<dyn TypedOp>>;
@@ -168,8 +168,8 @@ impl TypedModel {
     }
 
     /// Perform declutter passes on the network.
-    pub fn transform(&mut self, transformer: &dyn ModelTransformer) -> TractResult<()> {
-        transformer.transform(self)
+    pub fn transform(&mut self, transform: &dyn ModelTransform) -> TractResult<()> {
+        transform.transform(self)
     }
 
     /// Perform declutter passes on the network.
