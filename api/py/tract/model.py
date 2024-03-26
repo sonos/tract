@@ -141,11 +141,11 @@ class Model:
         self._valid()
         check(lib.tract_model_pulse_simple(byref(self.ptr), symbol.encode("utf-8"), str(pulse).encode("utf-8")))
 
-    def transform(self, transformer: str) -> None:
-        """Apply a transformer to the model
+    def transform(self, transform: str) -> None:
+        """Apply a transform to the model
         """
         self._valid()
-        check(lib.tract_model_transform(self.ptr, str(transformer).encode("utf-8")))
+        check(lib.tract_model_transform(self.ptr, str(transform).encode("utf-8")))
 
     def f32_to_f16(self) -> None:
         """Convert the model from f32 to half precision

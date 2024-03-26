@@ -8,12 +8,12 @@ use crate::ops::cast::Cast;
 use crate::ops::konst::Const;
 use crate::ops::scan::Scan;
 use crate::ops::source::TypedSource;
-use crate::transform::ModelTransformer;
+use crate::transform::ModelTransform;
 
 #[derive(Debug, Default)]
 pub struct FloatPrecisionTranslator<T1: Datum + Float, T2: Datum + Float>(PhantomData<(T1, T2)>);
 
-impl<T1: Datum + Float, T2: Datum + Float> ModelTransformer for FloatPrecisionTranslator<T1, T2> {
+impl<T1: Datum + Float, T2: Datum + Float> ModelTransform for FloatPrecisionTranslator<T1, T2> {
     fn name(&self) -> Cow<str> {
         format!("{:?}-to-{:?}", T1::datum_type(), T2::datum_type()).into()
     }

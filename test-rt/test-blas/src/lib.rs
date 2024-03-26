@@ -21,7 +21,7 @@ mod as_blas {
             Cow::Borrowed("as_blas")
         }
         fn prepare(&self, mut model: TypedModel) -> TractResult<Box<dyn Runnable>> {
-            tract_core::transform::get_transformer("as-blas").unwrap().transform(&mut model)?;
+            tract_core::transform::get_transform("as-blas").unwrap().transform(&mut model)?;
             Ok(Box::new(Arc::new(model.into_runnable()?)))
         }
     }

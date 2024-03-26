@@ -337,8 +337,8 @@ impl ModelInterface for Model {
         Ok(())
     }
 
-    fn transform(&mut self, transformer: &str) -> Result<()> {
-        let t = CString::new(transformer)?;
+    fn transform(&mut self, transform: &str) -> Result<()> {
+        let t = CString::new(transform)?;
         check!(sys::tract_model_transform(self.0, t.as_ptr()))?;
         Ok(())
     }

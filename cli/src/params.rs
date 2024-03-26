@@ -732,8 +732,8 @@ impl Parameters {
         if let Some(transform) = matches.values_of("transform") {
             for transform in transform {
                 stage!(transform, typed_model -> typed_model, |m:TypedModel| {
-                    let transformer = tract_core::transform::get_transformer(transform).with_context(|| format!("Could not find transformer named {}", transform))?;
-                    transformer.transform_into(&m)
+                    let transform = tract_core::transform::get_transform(transform).with_context(|| format!("Could not find transform named {}", transform))?;
+                    transform.transform_into(&m)
                 });
             }
         }

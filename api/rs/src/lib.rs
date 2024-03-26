@@ -238,10 +238,10 @@ impl ModelInterface for Model {
         Ok(())
     }
 
-    fn transform(&mut self, transformer: &str) -> Result<()> {
-        let transformer = tract_onnx::tract_core::transform::get_transformer(transformer)
-            .with_context(|| format!("transorfer `{transformer}' could not be found"))?;
-        transformer.transform(&mut self.0)
+    fn transform(&mut self, transform: &str) -> Result<()> {
+        let transform = tract_onnx::tract_core::transform::get_transform(transform)
+            .with_context(|| format!("transorm `{transform}' could not be found"))?;
+        transform.transform(&mut self.0)
     }
 
     fn pulse(&mut self, name: impl AsRef<str>, value: impl AsRef<str>) -> Result<()> {
