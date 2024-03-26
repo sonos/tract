@@ -23,12 +23,6 @@ pub trait ModelDataResolver {
         offset: usize,
         length: Option<usize>,
     ) -> TractResult<()>;
-
-    fn read(&self, p: &Path) -> TractResult<Box<[u8]>> {
-        let mut v = vec![];
-        self.read_bytes_from_path(&mut v, p, 0, None)?;
-        Ok(v.into_boxed_slice())
-    }
 }
 
 pub struct FopenDataResolver;
