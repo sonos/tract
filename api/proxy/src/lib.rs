@@ -337,13 +337,9 @@ impl ModelInterface for Model {
         Ok(())
     }
 
-    fn f32_to_f16(&mut self) -> Result<()> {
-        check!(sys::tract_model_f32_to_f16(self.0))?;
-        Ok(())
-    }
-
-    fn f16_to_f32(&mut self) -> Result<()> {
-        check!(sys::tract_model_f16_to_f32(self.0))?;
+    fn transform(&mut self, transformer: &str) -> Result<()> {
+        let t = CString::new(transformer)?;
+        check!(sys::tract_model_transform(self.0, t.as_ptr()))?;
         Ok(())
     }
 

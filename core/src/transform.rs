@@ -14,7 +14,7 @@ pub fn get_transformer(name: &str) -> Option<Box<dyn ModelTransformer>> {
         #[cfg(feature="blas")]
         "as-blas" => Some(Box::<AsBlas>::default()),
         "f32-to-f16" => Some(Box::<FloatPrecisionTranslator<f32, f16>>::default()),
-        "f16-to-f32" => Some(Box::<FloatPrecisionTranslator<f32, f16>>::default()),
+        "f16-to-f32" => Some(Box::<FloatPrecisionTranslator<f16, f32>>::default()),
         "softmax-fast-compact" => Some(Box::new(SoftmaxFastCompact)),
         _ => None,
     }

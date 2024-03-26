@@ -350,9 +350,9 @@ enum TRACT_RESULT tract_model_pulse_simple(struct TractModel **model,
                                            const int8_t *pulse_expr);
 
 /**
- * Convert the model from single precision to half precision.
+ * Apply a transformer to the model.
  */
-enum TRACT_RESULT tract_model_half(struct TractModel *model);
+enum TRACT_RESULT tract_model_transform(struct TractModel *model, const int8_t *transformer);
 
 /**
  * Declutter a TypedModel in-place.
