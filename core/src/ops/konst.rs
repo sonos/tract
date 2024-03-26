@@ -51,4 +51,24 @@ impl TypedOp for Const {
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         Ok(tvec!((Cost::Params(self.0.datum_type().unquantized()), self.0.len().into())))
     }
+
+    fn concretize_dims(
+        &self,
+        _source: &TypedModel,
+        node: &TypedNode,
+        target: &mut TypedModel,
+        _mapping: &HashMap<OutletId, OutletId>,
+        values: &SymbolValues,
+    ) -> TractResult<TVec<OutletId>> {
+        let op = if self.0.datum_type() == TDim::datum_type() {
+            let mut tensor = self.0.clone().into_tensor();
+            for d in tensor.as_slice_mut::<TDim>()? {
+                *d = d.eval(&values);
+            }
+            Const(tensor.into_arc_tensor())
+        } else {
+            self.clone()
+        };
+        target.wire_node(&node.name, op, &[])
+    }
 }
