@@ -188,7 +188,7 @@ fn test_f32_to_f16() -> anyhow::Result<()> {
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.analyse()?;
     let mut typed = model.into_typed()?.into_decluttered()?;
-    typed.f32_to_f16()?;
+    typed.transform("f32-to-f16")?;
     assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F16");
     assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,F16");
     Ok(())
@@ -203,12 +203,12 @@ fn test_f16_to_f32() -> anyhow::Result<()> {
     let mut typed = model.into_typed()?.into_decluttered()?;
 
     // Convert model to half
-    typed.f32_to_f16()?;
+    typed.transform("f32-to-f16")?;
     assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F16");
     assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,F16");
 
     // Convert back to f32
-    typed.f16_to_f32()?;
+    typed.transform("f16-to-f32")?;
     assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F32");
     assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,F32");
     Ok(())

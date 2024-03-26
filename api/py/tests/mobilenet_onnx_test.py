@@ -127,7 +127,7 @@ def test_f32_to_f16():
     model.set_input_fact(0, "1,3,224,224,f32")
     model.analyse()
     typed = model.into_typed().into_decluttered()
-    typed.f32_to_f16()
+    typed.transform("f32-to-f16")
     assert str(typed.input_fact(0)) == "1,3,224,224,F16"
     assert str(typed.output_fact(0)) == "1,1000,F16"
 
@@ -138,12 +138,12 @@ def test_f16_to_f32():
     
     #Convert model to half
     typed = model.into_typed().into_decluttered()
-    typed.f32_to_f16()
+    typed.transform("f32-to-f16")
     assert str(typed.input_fact(0)) == "1,3,224,224,F16"
     assert str(typed.output_fact(0)) == "1,1000,F16"
     
     # Convert back to f32
-    typed.f16_to_f32()
+    typed.transform("f16-to-f32")
     assert str(typed.input_fact(0)) == "1,3,224,224,F32"
     assert str(typed.output_fact(0)) == "1,1000,F32"
 
