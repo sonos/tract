@@ -51,13 +51,13 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                 .map(|o| self.outlet_fact(*o).cloned())
                 .collect::<TractResult<TVec<_>>>()?;
 
-            if op.is_stateless() & (input_facts.len() > 0) {
+            if op.is_stateless() && input_facts.len() > 0 {
                 if let Some(tensors) = input_facts
                     .iter()
                     .map(|f| f.konst.clone().map(|t| t.into_tvalue()))
                     .collect::<Option<TVec<_>>>()
                 {
-                    if let Ok(outputs) = op.eval(tensors) {
+                    if let Ok(outputs) = op.eval_with_session(&SessionState::default(), tensors) {
                         return outputs
                             .into_iter()
                             .enumerate()

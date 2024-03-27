@@ -31,15 +31,13 @@ impl EvalOp for Cast {
         if input.datum_type() == self.to {
             Ok(tvec!(input))
         } else if input.datum_type() == TDim::datum_type() {
-            unsafe {
-                let mut tmp = Tensor::uninitialized_dt(i64::datum_type(), input.shape())?;
-                for (dim, i) in
-                    tract_itertools::izip!(input.as_slice::<TDim>()?, tmp.as_slice_mut::<i64>()?)
-                {
-                    *i = dim.eval(&state.resolved_symbols).to_i64()?
-                }
-                Ok(tvec!(tmp.cast_to_dt(self.to)?.into_owned().into_tvalue()))
+            let mut tmp = Tensor::zero_dt(i64::datum_type(), input.shape())?;
+            for (dim, i) in
+                tract_itertools::izip!(input.as_slice::<TDim>()?, tmp.as_slice_mut::<i64>()?)
+            {
+                *i = dim.eval(&state.resolved_symbols).to_i64()?
             }
+            Ok(tvec!(tmp.cast_to_dt(self.to)?.into_owned().into_tvalue()))
         } else {
             Ok(tvec!(input.cast_to_dt(self.to)?.into_owned().into_tvalue()))
         }
