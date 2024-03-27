@@ -34,27 +34,12 @@ impl Op for DynSlice {
 
 impl EvalOp for DynSlice {
     fn is_stateless(&self) -> bool {
-        false
+        true
     }
 
-    fn eval(&self, _inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        unreachable!()
-    }
-
-    fn state(
+    fn eval_with_session(
         &self,
-        _session: &mut SessionState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(self.clone())))
-    }
-}
-
-impl OpState for DynSlice {
-    fn eval(
-        &mut self,
-        session: &mut SessionState,
-        _op: &dyn Op,
+        session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let start = inputs[1]
@@ -75,8 +60,6 @@ impl OpState for DynSlice {
         Ok(tvec!(slice.into()))
     }
 }
-
-trivial_op_state_freeeze!(DynSlice);
 
 impl TypedOp for DynSlice {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {

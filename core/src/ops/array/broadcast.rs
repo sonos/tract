@@ -15,39 +15,15 @@ impl Op for MultiBroadcastTo {
 
 impl EvalOp for MultiBroadcastTo {
     fn is_stateless(&self) -> bool {
-        self.shape.is_concrete()
+        true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let input = args_1!(inputs);
-        let dims: Vec<usize> =
-            self.shape.iter().map(|d| d.to_usize()).collect::<TractResult<_>>()?;
-        let output = input.broadcast_to_shape(&dims)?;
-        Ok(tvec!(output.into_tvalue()))
-    }
-
-    fn state(
+    fn eval_with_session(
         &self,
-        _session: &mut SessionState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(MultiBroadcastToState)))
-    }
-}
-
-#[derive(Clone, Debug)]
-struct MultiBroadcastToState;
-trivial_op_state_freeeze!(MultiBroadcastToState);
-
-impl OpState for MultiBroadcastToState {
-    fn eval(
-        &mut self,
-        session: &mut SessionState,
-        op: &dyn Op,
+        session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let op = op.downcast_ref::<MultiBroadcastTo>().context("Wrong op")?;
-        let shape = op.shape.eval_to_usize(&session.resolved_symbols)?;
+        let shape = self.shape.eval_to_usize(&session.resolved_symbols)?;
         Ok(tvec!(inputs[0].broadcast_to_shape(&shape)?.into_tvalue()))
     }
 }

@@ -64,31 +64,12 @@ impl Op for Slice {
 
 impl EvalOp for Slice {
     fn is_stateless(&self) -> bool {
-        self.start.to_usize().is_ok() && self.end.to_usize().is_ok()
+        true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let input = args_1!(inputs);
-        let start = self.start.to_usize()?;
-        let end = self.end.to_usize()?;
-        eval_slice(&input, self.axis, start, end)
-    }
-
-    fn state(
+    fn eval_with_session(
         &self,
-        _session: &mut SessionState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(if !self.is_stateless() { Some(Box::new(self.clone())) } else { None })
-    }
-}
-
-trivial_op_state_freeeze!(Slice);
-impl OpState for Slice {
-    fn eval(
-        &mut self,
-        session: &mut SessionState,
-        _op: &dyn Op,
+        session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
