@@ -288,7 +288,7 @@ where
                                     &mut session_state.resolved_symbols,
                                     dim_abstract,
                                     *dim_concrete as i64,
-                                );
+                                )?;
                             }
                         }
                     }
@@ -338,14 +338,21 @@ where
         Ok(())
     }
 
-    fn resolve(symbols: &mut SymbolValues, expected: &TDim, provided: i64) {
+    fn resolve(symbols: &mut SymbolValues, expected: &TDim, provided: i64) -> TractResult<()> {
         match expected {
             TDim::Sym(s) => {
-                info!("Determined symbol {s}={provided}");
-                symbols[s] = Some(provided)
+                if let Some(before) = symbols[s] {
+                    if before != provided {
+                        bail!("Clashing resolution for symbol {s}. {before} != {provided}.")
+                    }
+                } else {
+                    info!("Determined symbol {s}={provided}");
+                    symbols[s] = Some(provided);
+                }
+                Ok(())
             }
             TDim::MulInt(x, expr) => Self::resolve(symbols, expr, provided / *x),
-            _ => (),
+            _ => Ok(()),
         }
     }
 
@@ -360,7 +367,7 @@ where
         let model = plan.model.borrow();
         if let Ok(fact) = model.outlet_fact(outlet)?.to_typed_fact() {
             for (expected, provided) in fact.shape.iter().zip(t.shape()) {
-                Self::resolve(&mut session_state.resolved_symbols, expected, *provided as i64)
+                Self::resolve(&mut session_state.resolved_symbols, expected, *provided as i64)?;
             }
         }
         let fact = self.plan.borrow().model().outlet_fact(outlet)?;
