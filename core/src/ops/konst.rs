@@ -63,7 +63,7 @@ impl TypedOp for Const {
         let op = if self.0.datum_type() == TDim::datum_type() {
             let mut tensor = self.0.clone().into_tensor();
             for d in tensor.as_slice_mut::<TDim>()? {
-                *d = d.eval(&values);
+                *d = d.eval(values);
             }
             Const(tensor.into_arc_tensor())
         } else {
