@@ -1,22 +1,22 @@
 use itertools::Itertools;
-use std::fmt;
-use std::sync::{Arc, Mutex, Weak};
+use std::fmt::{self, Display};
+use std::sync::{Arc, Mutex};
 use string_interner::DefaultStringInterner;
 use string_interner::Symbol as _;
 
 #[derive(Clone, Default)]
-pub struct SymbolTable(Arc<Mutex<DefaultStringInterner>>);
+pub struct SymbolTable(pub Arc<Mutex<DefaultStringInterner>>);
 
 impl SymbolTable {
     pub fn get(&self, name: &str) -> Option<Symbol> {
         let table = self.0.lock().unwrap();
-        table.get(name).map(|sym| Symbol(Arc::downgrade(&self.0), sym))
+        table.get(name).map(|sym| Symbol(Arc::clone(&self.0), sym))
     }
 
     pub fn sym(&self, name: &str) -> Symbol {
         let mut table = self.0.lock().unwrap();
         let sym = table.get_or_intern(name);
-        Symbol(Arc::downgrade(&self.0), sym)
+        Symbol(Arc::clone(&self.0), sym)
     }
 
     pub fn new_with_prefix(&self, prefix: &str) -> Symbol {
@@ -33,7 +33,7 @@ impl SymbolTable {
                 i += 1;
             }
         };
-        Symbol(Arc::downgrade(&self.0), sym)
+        Symbol(Arc::clone(&self.0), sym)
     }
 }
 
@@ -55,11 +55,11 @@ impl fmt::Debug for SymbolTable {
 }
 
 #[derive(Clone)]
-pub struct Symbol(Weak<Mutex<DefaultStringInterner>>, string_interner::DefaultSymbol);
+pub struct Symbol(Arc<Mutex<DefaultStringInterner>>, string_interner::DefaultSymbol);
 
 impl PartialEq for Symbol {
     fn eq(&self, other: &Self) -> bool {
-        self.0.ptr_eq(&other.0) && self.1 == other.1
+        Arc::ptr_eq(&self.0, &other.0) && self.1 == other.1
     }
 }
 
@@ -85,11 +85,9 @@ impl std::hash::Hash for Symbol {
 
 impl std::fmt::Display for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(table) = self.0.upgrade() {
-            if let Ok(table) = table.lock() {
-                if let Some(s) = table.resolve(self.1) {
-                    return write!(f, "{s}");
-                }
+        if let Ok(table) = self.0.lock() {
+            if let Some(s) = table.resolve(self.1) {
+                return write!(f, "{s}");
             }
         }
         write!(f, "<Sym{}>", self.1.to_usize())
@@ -98,14 +96,7 @@ impl std::fmt::Display for Symbol {
 
 impl fmt::Debug for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(table) = self.0.upgrade() {
-            if let Ok(table) = table.lock() {
-                if let Some(s) = table.resolve(self.1) {
-                    return write!(f, "{s}");
-                }
-            }
-        }
-        write!(f, "<Sym{}>", self.1.to_usize())
+        Display::fmt(&self, f)
     }
 }
 
