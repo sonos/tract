@@ -343,7 +343,7 @@ where
             TDim::Sym(s) => {
                 info!("Determined symbol {s}={provided}");
                 symbols[s] = Some(provided)
-            },
+            }
             TDim::MulInt(x, expr) => Self::resolve(symbols, expr, provided / *x),
             _ => (),
         }
@@ -442,15 +442,12 @@ where
         node: usize,
         inputs: TVec<TValue>,
     ) -> TractResult<()> {
-        let SimpleState { ref plan, ref mut session_state, ref mut values, .. } = self;
+        let SimpleState { ref plan, ref mut session_state, ref mut values, ref mut states, .. } =
+            self;
         let plan = plan.borrow();
         let nodes = plan.model().nodes();
         let node = &nodes[node];
-        let vs = match self.states[node.id] {
-            Some(ref mut state) => state.eval(session_state, node.op(), inputs),
-            None => node.op().eval(inputs),
-        }
-        .with_context(|| format!("Evaluating {node}"))?;
+        let vs = eval(session_state, states[node.id].as_deref_mut(), node, inputs)?;
         values[node.id] = Some(vs);
         Ok(())
     }
@@ -473,14 +470,12 @@ where
                 }
             }
             let Self { ref mut states, ref mut session_state, ref plan, .. } = self;
-            let plan = plan.borrow();
-            match states[node] {
-                Some(ref mut state) => {
-                    state.eval(session_state, plan.model().nodes()[node].op(), inputs)
-                }
-                None => plan.model().nodes()[node].op().eval(inputs),
-            }
-            .with_context(|| format!("Evaluating {node:?}"))?
+            eval(
+                session_state,
+                states[node].as_deref_mut(),
+                &plan.borrow().model().nodes[node],
+                inputs,
+            )?
         };
         self.values[node] = Some(values);
         Ok(self.values[node].as_ref().unwrap())
@@ -550,10 +545,10 @@ where
     // eprint!("{node} {input:?}");
     let r = match state {
         Some(ref mut state) => state.eval(session_state, node.op(), input),
-        None => node.op().eval(input),
+        None => node.op().eval_with_session(session_state, input),
     }
     .with_context(|| format!("Evaluating {node}"));
-     // eprintln!(" ==> {}", r.as_ref().unwrap()[0].dump(true)?);
+    // eprintln!(" ==> {}", r.as_ref().unwrap()[0].dump(true)?);
     r
 }
 
