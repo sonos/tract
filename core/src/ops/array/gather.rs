@@ -28,7 +28,6 @@ impl Gather {
 
     unsafe fn eval_t<T: Datum>(&self, data: TValue, indices: &TValue) -> TractResult<TValue> {
         let data_view = data.to_array_view_unchecked::<T>();
-        let indices = indices.cast_to::<i64>()?;
         let indices = indices.to_array_view::<i64>()?;
         let output_shape = &*self.compute_output_shape(data.shape(), indices.shape())?;
         let mut output = Tensor::uninitialized::<T>(output_shape)?;
@@ -53,6 +52,7 @@ impl TypedOp for Gather {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        ensure!(inputs[1].datum_type == i64::datum_type());
         Ok(tvec!(inputs[0].datum_type.fact(
             &*self.compute_output_shape(&inputs[0].shape.to_tvec(), &inputs[1].shape.to_tvec())?
         )))
