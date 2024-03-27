@@ -32,7 +32,7 @@ impl super::TypedPass for PropConst {
                     .map(|f| f.konst.clone().map(|t| t.into_tvalue()))
                     .collect()
                 {
-                    match node.op.eval(inputs) {
+                    match node.op.eval_with_session(&SessionState::default(), inputs) {
                         Ok(res) => {
                             for (ix, output) in res.into_iter().enumerate() {
                                 let mut name = node.name.clone();

@@ -101,7 +101,7 @@ pub trait EvalOp {
         session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        self.eval(inputs)
+        self.eval(inputs).context("Running legacy eval")
     }
 
     #[allow(unused_variables)]
