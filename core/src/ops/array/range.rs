@@ -17,40 +17,18 @@ impl Op for Range {
 
 impl EvalOp for Range {
     fn is_stateless(&self) -> bool {
-        false
+        true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let (start, end, step) = args_3!(inputs);
-        let tensor = self.make(&start, &end, &step, None)?;
-        Ok(tvec!(tensor.into_tvalue()))
-    }
-
-    fn state(
+    fn eval_with_session(
         &self,
-        _session: &mut SessionState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
-        if self.is_stateless() {
-            Ok(None)
-        } else {
-            Ok(Some(Box::new(self.clone())))
-        }
-    }
-}
-
-impl OpState for Range {
-    fn eval(
-        &mut self,
-        session: &mut SessionState,
-        _op: &dyn Op,
+        session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let (start, end, step) = args_3!(inputs);
-        Ok(tvec!(self.make(&start, &end, &step, Some(&session.resolved_symbols))?.into_tvalue()))
+        Ok(tvec!(self.make(&start, &end, &step, &session.resolved_symbols)?.into_tvalue()))
     }
 }
-trivial_op_state_freeeze!(Range);
 
 impl Range {
     fn make_t<T: Datum + for<'a> std::ops::Add<&'a T, Output = T>>(
@@ -75,11 +53,9 @@ impl Range {
         start: &Tensor,
         end: &Tensor,
         step: &Tensor,
-        values: Option<&SymbolValues>,
+        values: &SymbolValues,
     ) -> TractResult<Tensor> {
         if start.datum_type() == TDim::datum_type() {
-            let none = SymbolValues::default();
-            let values = values.unwrap_or(&none);
             let len = {
                 let start = start.to_scalar::<TDim>()?.eval(values).to_i64()?;
                 let end = end.to_scalar::<TDim>()?.eval(values).to_i64()?;

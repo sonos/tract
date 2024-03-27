@@ -41,34 +41,12 @@ impl Op for Tile {
 
 impl EvalOp for Tile {
     fn is_stateless(&self) -> bool {
-        self.multipliers.iter().all(|m| m.to_usize().is_ok())
+        true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let multipliers: TVec<usize> =
-            self.multipliers.iter().map(|m| m.to_usize()).collect::<TractResult<_>>()?;
-        let result = dispatch_datum_by_size!(Self::eval_t(inputs[0].datum_type())(
-            &inputs[0],
-            &multipliers
-        ))?;
-        Ok(tvec!(result))
-    }
-
-    fn state(
+    fn eval_with_session(
         &self,
-        _session: &mut SessionState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(self.clone())))
-    }
-}
-
-trivial_op_state_freeeze!(Tile);
-impl OpState for Tile {
-    fn eval(
-        &mut self,
-        session: &mut SessionState,
-        _op: &dyn Op,
+        session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let multipliers: TVec<usize> = self
@@ -82,6 +60,7 @@ impl OpState for Tile {
         ))?;
         Ok(tvec!(result))
     }
+
 }
 
 impl TypedOp for Tile {
