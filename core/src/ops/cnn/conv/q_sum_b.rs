@@ -8,8 +8,6 @@ pub struct QSumB {
     pub k: usize,
 }
 
-
-
 impl Op for QSumB {
     fn name(&self) -> Cow<str> {
         "QSumB".into()
@@ -25,37 +23,16 @@ impl Op for QSumB {
 
 impl EvalOp for QSumB {
     fn is_stateless(&self) -> bool {
-        self.n.to_usize().is_ok()
+        true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let n = self.n.to_usize()?;
-        self.eval(inputs, n)
-    }
-
-    fn state(
+    fn eval_with_session(
         &self,
-        _session: &mut SessionState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(QSumBState)))
-    }
-}
-
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-struct QSumBState;
-trivial_op_state_freeeze!(QSumBState);
-
-impl OpState for QSumBState {
-    fn eval(
-        &mut self,
-        session: &mut SessionState,
-        op: &dyn Op,
+        session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let op = op.downcast_ref::<QSumB>().unwrap();
-        let n = op.n.eval(&session.resolved_symbols).to_usize()?;
-        op.eval(inputs, n)
+        let n = self.n.eval_to_i64(&session.resolved_symbols)? as usize;
+        self.eval(inputs, n)
     }
 }
 

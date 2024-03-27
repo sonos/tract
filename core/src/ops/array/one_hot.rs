@@ -66,14 +66,6 @@ impl EvalOp for OneHot {
             Ok(tvec!(output.into_tvalue()))
         }
     }
-
-    fn state(
-        &self,
-        _session: &mut SessionState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(None)
-    }
 }
 
 impl OneHot {
