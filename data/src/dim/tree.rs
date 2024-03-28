@@ -477,8 +477,7 @@ impl TDim {
         if self == other {
             return true;
         }
-        let symbols: Vec<Symbol> =
-            self.symbols().union(&other.symbols()).into_iter().cloned().collect();
+        let symbols: Vec<Symbol> = self.symbols().union(&other.symbols()).cloned().collect();
         if symbols.len() != 1 {
             return false;
         }
