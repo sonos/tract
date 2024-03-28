@@ -353,6 +353,11 @@ impl<'a> IntoAst<'a> {
     ) -> TractResult<Arc<RValue>> {
         let mut name: Identifier = name.as_ref().into();
         let have_tract_core = self.ensure_registry(&"tract_core".into()).is_ok();
+        if tensor.datum_type() == TDim::datum_type() {
+            return Ok(
+                Self::dump_rec_tensor(&tensor.to_array_view::<TDim>()?, |f| tdim(f)).into()
+            );
+        }
         if !force_variable && tensor.len() <= 8 {
             if tensor.datum_type() == String::datum_type() {
                 return Ok(Self::dump_rec_tensor(&tensor.to_array_view::<String>()?, |f| {
