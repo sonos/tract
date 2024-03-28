@@ -457,7 +457,7 @@ impl RValue {
                     let sym = builder.model.symbol_table.sym(&id.0);
                     Ok(Value::Dim(sym.into()))
                 } else {
-                    bail!("Can not resolve {:?}. Not a known identifier, and symbol introduction is forbiddent out of \"external\" shape field", id);
+                    bail!("Can not resolve {:?}. Not a known identifier, and symbol introduction is forbidden out of \"external\" shape field", id);
                 }
             }
             RValue::Invocation(inv) => builder
