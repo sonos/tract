@@ -381,7 +381,7 @@ impl TDim {
         }
     }
 
-    fn gcd(&self) -> u64 {
+    pub fn gcd(&self) -> u64 {
         use self::TDim::*;
         use num_integer::Integer;
         match self {

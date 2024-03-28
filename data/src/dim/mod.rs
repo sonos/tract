@@ -4,6 +4,7 @@ use std::fmt;
 use std::ops;
 
 mod parse;
+mod resolve;
 mod sym;
 mod tree;
 
