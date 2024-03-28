@@ -225,7 +225,7 @@ impl Nnef {
         for (label, t) in &proto_model.tensors {
             let label = label.0.to_string() + ".dat";
             let label = label.trim_start_matches('/');
-            let parent = path.join(&label).parent().unwrap().to_owned();
+            let parent = path.join(label).parent().unwrap().to_owned();
             std::fs::create_dir_all(&parent).with_context(|| format!("Creating dir {parent:?}"))?;
             let filename = path.join(label).to_owned();
             let mut file = std::fs::File::create(&filename)
