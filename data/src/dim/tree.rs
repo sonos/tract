@@ -1,3 +1,4 @@
+use super::resolve::solve_for;
 use super::sym::*;
 use itertools::Itertools;
 use num_traits::{AsPrimitive, PrimInt, Zero};
@@ -470,18 +471,18 @@ impl TDim {
         }
     }
 
-    /// Check if a dim is 'compatible with' another, meaning that the current dim
-    /// is a "sub" dimension within or equal to the _other dim
-    pub fn compatible_with(&self, _other: &TDim) -> bool {
-        match (self, _other) {
-            // If we compare a concrete dim to symbol dim we are always
-            // true but the inverse do not hold since we consider in this
-            // implementation that _other should always hold maximal `genericity`
-            // due to `compatible_with` fn name sementics
-            (TDim::Val(_dim), TDim::Sym(_other_dim)) => true,
-            // for all other case equality is required
-            (dim, other_dim) => dim == other_dim,
+    /// true is both are equal of if there is one single symbol involved and there is a solution
+    /// to make them equal
+    pub fn compatible_with(&self, other: &TDim) -> bool {
+        if self == other {
+            return true;
         }
+        let symbols: Vec<Symbol> =
+            self.symbols().union(&other.symbols()).into_iter().cloned().collect();
+        if symbols.len() != 1 {
+            return false;
+        }
+        solve_for(&symbols[0], self, other).is_some()
     }
 }
 

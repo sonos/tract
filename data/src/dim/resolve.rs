@@ -2,7 +2,7 @@ use tract_num_traits::Zero;
 
 use crate::internal::*;
 
-fn solve_for(sym: &Symbol, left: &TDim, right: &TDim) -> Option<TDim> {
+pub fn solve_for(sym: &Symbol, left: &TDim, right: &TDim) -> Option<TDim> {
     if !left.symbols().contains(sym) && !right.symbols().contains(sym) {
         return None;
     }
