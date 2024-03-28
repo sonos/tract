@@ -453,7 +453,10 @@ impl RValue {
                         }
                     }
                     Ok(outlet)
+                } else if let Some(sym) = builder.model.symbol_table.get(&id.0) {
+                    Ok(Value::Dim(sym.into()))
                 } else if builder.allow_new_symbol {
+                    warn!("Introducing symbol {id:?} without forward declaration (\"extension tract_symbol ...\"). May be deprecated soon.");
                     let sym = builder.model.symbol_table.sym(&id.0);
                     Ok(Value::Dim(sym.into()))
                 } else {
