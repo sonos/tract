@@ -89,7 +89,12 @@ impl Nnef {
         ar.into_inner().context("Finalizing tar")
     }
 
-    pub fn write_to_tar_with_config<W: std::io::Write>(&self, model: &TypedModel, w: W, compress_nested_models: bool) -> TractResult<W> {
+    pub fn write_to_tar_with_config<W: std::io::Write>(
+        &self,
+        model: &TypedModel,
+        w: W,
+        compress_nested_models: bool,
+    ) -> TractResult<W> {
         let mut ar = tar::Builder::new(w);
         self._write_to_tar(model, &mut ar, compress_nested_models)?;
         ar.into_inner().context("Finalizing tar")
@@ -123,8 +128,13 @@ impl Nnef {
             let mut quant_data = vec![];
 
             for (name, format) in quantization.into_iter() {
-                write_quant_format(&mut quant_data, &name, format, self.allow_extended_identifier_syntax)
-                    .context("Serializing graph.quant")?;
+                write_quant_format(
+                    &mut quant_data,
+                    &name,
+                    format,
+                    self.allow_extended_identifier_syntax,
+                )
+                .context("Serializing graph.quant")?;
             }
 
             header.set_path("graph.quant").context("Setting graph.quant path")?;
@@ -163,7 +173,10 @@ impl Nnef {
 
                 if compress_nested_models {
                     filename.set_extension("nnef.tgz");
-                    let encoder = flate2::write::GzEncoder::new(&mut submodel_data, flate2::Compression::default());
+                    let encoder = flate2::write::GzEncoder::new(
+                        &mut submodel_data,
+                        flate2::Compression::default(),
+                    );
                     self.write(typed_model, encoder)?;
                 } else {
                     filename.set_extension("nnef.tar");
@@ -200,15 +213,24 @@ impl Nnef {
         if let Some(quantization) = proto_model.quantization {
             let mut graph_quant = std::fs::File::create(path.join("graph.quant"))?;
             for (name, format) in quantization.into_iter().sorted_by_key(|(x, _)| x.clone()) {
-                write_quant_format(&mut graph_quant, &name, format, self.allow_extended_identifier_syntax)?;
+                write_quant_format(
+                    &mut graph_quant,
+                    &name,
+                    format,
+                    self.allow_extended_identifier_syntax,
+                )?;
             }
         }
 
         for (label, t) in &proto_model.tensors {
             let label = label.0.to_string() + ".dat";
-            std::fs::create_dir_all(path.join(&label).parent().unwrap())?;
-            let filename = path.join(label);
-            let mut file = std::fs::File::create(filename)?;
+            let label = label.trim_start_matches('/');
+            let parent = path.join(&label).parent().unwrap().to_owned();
+            std::fs::create_dir_all(&parent).with_context(|| format!("Creating dir {parent:?}"))?;
+            let filename = path.join(label).to_owned();
+            let mut file = std::fs::File::create(&filename)
+                .with_context(|| format!("Creating file {filename:?}"))?;
+
             crate::tensors::write_tensor(&mut file, t)?;
         }
         Ok(())
@@ -356,12 +378,12 @@ fn proto_model_from_resources(
     let quantization = if let Some(q_r) =
         new_resources.remove(crate::resource::GRAPH_QUANT_FILENAME)
     {
-        let Ok(q_r) = q_r
-            .downcast_arc::<HashMap<String, QuantFormat>>() else {
+        let Ok(q_r) = q_r.downcast_arc::<HashMap<String, QuantFormat>>() else {
             bail!("Error while downcasting quantization format resource")
-            };
+        };
         let Ok(q_r) = Arc::try_unwrap(q_r) else {
-            bail!("Error while extracting quantization format resource from shared reference. Only one reference to it is expected")};
+            bail!("Error while extracting quantization format resource from shared reference. Only one reference to it is expected")
+        };
         Some(q_r.into_iter().map(|(k, v)| (Identifier(k), v)).collect())
     } else {
         None
