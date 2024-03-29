@@ -338,22 +338,21 @@ where
         Ok(())
     }
 
-    fn resolve(symbols: &mut SymbolValues, expected: &TDim, provided: i64) -> TractResult<()> {
-        match expected {
-            TDim::Sym(s) => {
-                if let Some(before) = symbols[s] {
-                    if before != provided {
-                        bail!("Clashing resolution for symbol {s}. {before} != {provided}.")
-                    }
-                } else {
-                    info!("Determined symbol {s}={provided}");
-                    symbols[s] = Some(provided);
-                }
-                Ok(())
+    fn resolve(symbols: &mut SymbolValues, expression: &TDim, provided: i64) -> TractResult<()> {
+        let expected = expression.eval(&symbols);
+        if let Ok(x) = expected.to_i64() {
+            if x != provided {
+                bail!("Clashing resolution for expression. {expression}={x} != {provided}.")
             }
-            TDim::MulInt(x, expr) => Self::resolve(symbols, expr, provided / *x),
-            _ => Ok(()),
         }
+        if expected.symbols().len() == 1 {
+            let sym = expected.symbols().into_iter().next().unwrap();
+            if let Some(v) = solve_for(&sym, &expected, &provided.to_dim()) {
+                info!("Determined symbol {sym}={v}");
+                symbols[&sym] = Some(v.to_i64().unwrap());
+            }
+        }
+        Ok(())
     }
 
     pub fn set_input(&mut self, input: usize, t: TValue) -> TractResult<()> {
