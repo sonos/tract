@@ -1,6 +1,6 @@
 [package]
 name = "tract-tensorflow"
-version = "0.21.2"
+version = "0.21.3-pre"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT OR Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -23,8 +23,8 @@ memmap2.workspace = true
 prost.workspace = true
 prost-types.workspace = true
 tensorflow = { workspace = true, optional = true }
-tract-hir = { version = "=0.21.2", path = "../hir" }
-tract-pulse = { version = "=0.21.2", path = "../pulse" }
+tract-hir = { version = "=0.21.3-pre", path = "../hir" }
+tract-pulse = { version = "=0.21.3-pre", path = "../pulse" }
 
 # [build-dependencies]
 # protobuf-src = "1.0.5+3.19.3"

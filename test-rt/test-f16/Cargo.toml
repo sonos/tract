@@ -12,10 +12,10 @@ home.workspace = true
 lazy_static.workspace = true
 regex.workspace = true
 infra = { path = "../infra" }
-tract-core = { path = "../../core" , version = "=0.21.2" }
+tract-core = { path = "../../core" , version = "=0.21.3-pre" }
 suite-onnx = { path = "../suite-onnx" }
 suite-unit = { path = "../suite-unit" }
-tract-onnx-opl = { path = "../../onnx-opl", version = "=0.21.2" }
+tract-onnx-opl = { path = "../../onnx-opl", version = "=0.21.3-pre" }
 
 [dev-dependencies]
 home.workspace = true
@@ -23,9 +23,9 @@ regex.workspace = true
 lazy_static.workspace = true
 log.workspace = true
 tflitec.workspace = true
-tract-core = { path = "../../core", version = "=0.21.2" }
-tract-nnef = { path = "../../nnef", version = "=0.21.2" }
-tract-onnx-opl = { path = "../../onnx-opl", version = "=0.21.2" }
+tract-core = { path = "../../core", version = "=0.21.3-pre" }
+tract-nnef = { path = "../../nnef", version = "=0.21.3-pre" }
+tract-onnx-opl = { path = "../../onnx-opl", version = "=0.21.3-pre" }
 infra = { path = "../infra" }
 suite-onnx = { path = "../suite-onnx" }
 suite-unit = { path = "../suite-unit" }

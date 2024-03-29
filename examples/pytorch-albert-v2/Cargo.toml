@@ -13,4 +13,4 @@ ndarray.workspace = true
 tokenizers.workspace = true
 clap_builder = { version = "4.4" }
 clap_lex = { version = "0.6" }
-tract-onnx = { path = "../../onnx", version = "=0.21.2" }
+tract-onnx = { path = "../../onnx", version = "=0.21.3-pre" }
