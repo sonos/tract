@@ -1,5 +1,5 @@
 #![allow(clippy::excessive_precision)]
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 mod apple_amx;
 mod arm64simd;
 pub mod cortex_a53;
@@ -13,12 +13,12 @@ mod arm64fp16;
 #[cfg(not(feature = "no_fp16"))]
 pub use arm64fp16::*;
 
-use crate::Ops;
 use crate::f16;
+use crate::Ops;
 
 use crate::frame::element_wise::ElementWiseKer;
 use crate::frame::mmm::kernel::MatMatMulKer;
-use crate::frame::reduce::{ MapReduceKer, ReduceKer};
+use crate::frame::reduce::{MapReduceKer, ReduceKer};
 
 // https://en.wikipedia.org/wiki/Comparison_of_ARMv8-A_cores
 const PART_A53: &str = "0xd03";
@@ -38,6 +38,39 @@ fn max_cpuid() -> std::io::Result<String> {
         .map(|line| line.split_whitespace().last().unwrap_or(""))
         .max();
     Ok(max.unwrap_or("").to_string())
+}
+
+#[cfg(any(target_os = "macos"))]
+fn has_amx() -> bool {
+    true
+}
+
+#[cfg(any(target_os = "ios"))]
+fn has_amx() -> bool {
+    use std::ffi::{c_char, c_void, CStr, CString};
+    use std::ptr::null_mut;
+
+    extern "C" {
+        fn sysctlbyname(
+            name: *const c_char,
+            oldp: *mut c_void,
+            oldlenp: *mut isize,
+            newp: *mut c_void,
+            newlen: isize,
+        );
+    }
+
+    unsafe {
+        let mut len: isize = 0;
+        let name = CString::new("hw.machine").unwrap();
+        sysctlbyname(name.as_ptr(), null_mut(), &mut len, null_mut(), 0);
+        let mut buf = vec![0u8; len as _];
+        sysctlbyname(name.as_ptr(), buf.as_mut_ptr() as _, &mut len, null_mut(), 0);
+        let version = CStr::from_bytes_with_nul(&buf).unwrap().to_string_lossy().into_owned();
+        let major = version.trim_start_matches("iPhone").split_once(",").unwrap().0;
+        // iPhone12,1 is the one branded "iPhone 11", with Apple A13 bionic, first CPU featuring amx
+        major.parse::<usize>().unwrap() >= 12
+    }
 }
 
 lazy_static::lazy_static! {
@@ -67,7 +100,11 @@ lazy_static::lazy_static! {
 
 #[inline]
 pub fn has_fp16() -> bool {
-    cfg!(target_os = "macos") || cfg!(feature_cpu = "fp16") || *KIND == Kind::CortexA55 || *KIND == Kind::CortexA75 || *HAS_FP16
+    cfg!(target_os = "macos")
+        || cfg!(feature_cpu = "fp16")
+        || *KIND == Kind::CortexA55
+        || *KIND == Kind::CortexA75
+        || *HAS_FP16
 }
 
 #[target_feature(enable = "fp16")]
@@ -244,8 +281,10 @@ pub fn plug(ops: &mut Ops) {
     } else {
         log::info!("No native fp16 support");
     }
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     {
-        ops.mmm_f32 = Box::new(|_, _, _| apple_amx::apple_amx_mmm_f32_32x32::mmm());
+        if has_amx() {
+            ops.mmm_f32 = Box::new(|_, _, _| apple_amx::apple_amx_mmm_f32_32x32::mmm());
+        }
     }
 }
