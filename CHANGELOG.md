@@ -3,6 +3,7 @@
 # 0.21.2 - 2024-03-29
 * [ONNX] Support for external storage of tensors with offset and length
 * [ONNX] Lots of fixes around binary quantized operators (add, mul, etc)
+* [PY] Fix python source distribution
 * [AMX] Activate AMX on iOS
 * [API] Introduce transforms in external api
 * [BLAS] Introduce a simple BLAS transform for Matrix multiplication
