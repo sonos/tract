@@ -1,6 +1,6 @@
 [package]
 name = "tract-nnef"
-version = "0.21.2-pre"
+version = "0.21.2"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT OR Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -21,7 +21,7 @@ nom.workspace = true
 tar.workspace = true
 flate2 = { workspace = true, optional = true }
 walkdir.workspace = true
-tract-core = { version = "=0.21.2-pre", path = "../core" }
+tract-core = { version = "=0.21.2", path = "../core" }
 
 [dev-dependencies]
 temp-dir = "0.1.11"
