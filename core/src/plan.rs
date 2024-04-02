@@ -339,7 +339,7 @@ where
     }
 
     fn resolve(symbols: &mut SymbolValues, expression: &TDim, provided: i64) -> TractResult<()> {
-        let expected = expression.eval(&symbols);
+        let expected = expression.eval(symbols);
         if let Ok(x) = expected.to_i64() {
             if x != provided {
                 bail!("Clashing resolution for expression. {expression}={x} != {provided}.")
