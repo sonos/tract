@@ -94,7 +94,7 @@ lazy_static::lazy_static! {
 }
 
 #[cfg(target_os = "macos")]
-fn has_amx() -> bool {
+pub fn has_amx() -> bool {
     true
 }
 
