@@ -17,6 +17,13 @@ fn use_masm() -> bool {
     env::var("CARGO_CFG_TARGET_ENV") == Ok("msvc".to_string()) && var("HOST").contains("-windows-")
 }
 
+fn include_amx() -> bool {
+    let arch = var("CARGO_CFG_TARGET_ARCH");
+    let os = var("CARGO_CFG_TARGET_OS");
+    os == "macos"
+        || (env::var("CARGO_FEATURE_APPLE_AMX_IOS").is_ok() && os == "ios" && arch == "aarch64")
+}
+
 fn jump_table() -> Vec<String> {
     println!("cargo:rerun-if-changed=src/frame/mmm/fuse.rs");
     std::fs::read_to_string("src/frame/mmm/fuse.rs")
@@ -165,8 +172,7 @@ fn main() {
                 false,
             );
             cc::Build::new().files(files).static_flag(true).compile("arm64simd");
-            if os == "macos" || os == "ios" {
-                // aarch64 darwin => M1
+            if include_amx() {
                 let files = preprocess_files("arm64/apple_amx", &[], &suffix, false);
                 cc::Build::new().files(files).static_flag(true).compile("appleamx");
             }
@@ -247,7 +253,7 @@ fn preprocess_file(
     println!("cargo:rerun-if-changed={}", template.as_ref().to_string_lossy());
     let family = var("CARGO_CFG_TARGET_FAMILY");
     let os = var("CARGO_CFG_TARGET_OS");
-    let arch = var("CARGO_CFG_TARGET_ARCH");
+
     // We also check to see if we're on a windows host, if we aren't, we won't be
     // able to use the Microsoft assemblers,
     let msvc = use_masm();
@@ -285,7 +291,7 @@ fn preprocess_file(
     let mut parser = liquid::ParserBuilder::with_stdlib()
         .partials(liquid::partials::LazyCompiler::new(partials))
         .filter(F16);
-    if (os == "macos" || os == "ios") && arch == "aarch64" {
+    if include_amx() {
         parser = apple_amx_instructions::register(parser);
         globals.extend(apple_amx_instructions::globals());
     }

@@ -1,5 +1,5 @@
 #![allow(clippy::excessive_precision)]
-#[cfg(any(target_os = "macos", target_os = "ios"))]
+#[cfg(any(target_os = "macos", all(target_os = "ios", feature= "apple-amx-ios")))]
 mod apple_amx;
 mod arm64simd;
 pub mod cortex_a53;
@@ -100,7 +100,7 @@ fn has_amx() -> bool {
     true
 }
 
-#[cfg(target_os = "ios")]
+#[cfg(all(target_os = "ios", feature = "apple-amx-ios"))]
 fn has_amx() -> bool {
     // iPhone12,1 is the one branded "iPhone 11", with Apple A13 bionic, first CPU featuring amx
     IPHONE_MODEL_MAJOR.map(|it| it >= 12).unwrap_or(false)
@@ -299,7 +299,7 @@ pub fn plug(ops: &mut Ops) {
     } else {
         log::info!("No native fp16 support");
     }
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    #[cfg(any(target_os = "macos", all(target_os = "ios", feature = "apple-amx-ios")))]
     {
         if has_amx() {
             log::info!("AMX optimisation activated");
