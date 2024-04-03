@@ -1,5 +1,5 @@
 #![allow(clippy::excessive_precision)]
-#[cfg(any(target_os = "macos", all(target_os = "ios", feature= "apple-amx-ios")))]
+#[cfg(any(target_os = "macos", all(target_os = "ios", feature = "apple-amx-ios")))]
 mod apple_amx;
 mod arm64simd;
 pub mod cortex_a53;
@@ -40,7 +40,6 @@ fn max_cpuid() -> std::io::Result<String> {
     Ok(max.unwrap_or("").to_string())
 }
 
-
 lazy_static::lazy_static! {
     static ref KIND: Kind = Kind::choose();
 
@@ -52,9 +51,8 @@ lazy_static::lazy_static! {
         };
         if let Some(line) = cpu_info
             .lines()
-            .filter(|line| line.starts_with("Features"))
-            .next() {
-            line.split_once(":").unwrap().1.split_whitespace().map(|s| s.to_string()).collect()
+            .find(|line| line.starts_with("Features")) {
+            line.split_once(':').unwrap().1.split_whitespace().map(|s| s.to_string()).collect()
         } else {
             log::warn!("Could not find \"Features  :\" lines in /proc/cpuinfo. CPU Features detection may be impaired.");
             vec!()
@@ -62,7 +60,7 @@ lazy_static::lazy_static! {
     };
 
     static ref HAS_FP16: bool = {
-        CPU_FEATURES.iter().find(|s| &**s == "asimdhp").is_some()
+        CPU_FEATURES.iter().any(|s| &**s == "asimdhp")
     };
 }
 
