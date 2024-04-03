@@ -34,6 +34,7 @@ rustls.workspace = true
 scan_fmt.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+tract-linalg = { version = "=0.21.3-pre", path = "../linalg" }
 tract-core = { version = "=0.21.3-pre", path = "../core" }
 tract-hir = { version = "=0.21.3-pre", path = "../hir" }
 tract-nnef = { version = "=0.21.3-pre", path = "../nnef" }
@@ -47,6 +48,7 @@ tract-tflite = { optional = true, version = "=0.21.3-pre", path = "../tflite" }
 
 [features]
 default = ["onnx", "tf", "pulse", "pulse-opl", "tflite", "extra"]
+apple-amx-ios = [ "tract-linalg/apple-amx-ios" ]
 onnx = [ "tract-onnx", "tract-libcli/hir", "tract-libcli/onnx" ]
 extra = [ "tract-extra" ]
 pulse-opl = [ "tract-pulse-opl" ]

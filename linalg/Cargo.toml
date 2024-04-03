@@ -47,6 +47,7 @@ core_affinity.workspace = true
 # It is not meant to be used in other situations, where run-time detection is
 # preferred.
 no_fp16 = []
+apple-amx-ios = []
 default = []
 complex = [ "tract-data/complex" ]
 
