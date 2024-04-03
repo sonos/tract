@@ -302,6 +302,7 @@ pub fn plug(ops: &mut Ops) {
         if has_amx() {
             log::info!("AMX optimisation activated");
             ops.mmm_f32 = Box::new(|_, _, _| apple_amx::apple_amx_mmm_f32_32x32::mmm());
+            // ops.mmv_f32 = Box::new(|_, _| apple_amx::apple_amx_mmm_f32_32x1::mmm());
         } else {
             log::info!("Noe AMX optimisation");
         }
