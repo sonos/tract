@@ -9,7 +9,7 @@ cargo install tomato-toml
 
 CRATE_PATH=$1
 VERSION=$2
-. ./.all_crates_sh
+. ./.all_crates.sh
 
 if [ -z "$VERSION" ]
 then
