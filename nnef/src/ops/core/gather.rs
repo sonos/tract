@@ -27,7 +27,10 @@ pub fn register(registry: &mut Registry) {
                 ) -> TractResult<Value> {
                     let wire = invocation.named_arg_as(builder, "input")?;
                     let indices = invocation.named_arg_as(builder, "indices")?;
-                    let cast_indices = builder.wire_as_outlets(tract_core::ops::cast::cast(i64::datum_type()), &[indices])?[0];
+                    let cast_indices = builder.wire_as_outlets(
+                        tract_core::ops::cast::cast(i64::datum_type()),
+                        &[indices],
+                    )?[0];
                     let value = invocation.named_arg_as(builder, stringify!($field_name))?;
                     builder.wire((<$GatherOp>::new(value)), &[wire, cast_indices])
                 }
