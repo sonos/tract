@@ -1,5 +1,8 @@
 # Unreleased
 
+# 0.21.3 - 2024-04-03
+* [AMX] Put AMX for iOS behind a feature gate ("tract-linalg/apple-amx-ios")
+
 # 0.21.2 - 2024-03-29
 * [ONNX] Support for external storage of tensors with offset and length
 * [ONNX] Lots of fixes around binary quantized operators (add, mul, etc)
