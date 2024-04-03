@@ -1,6 +1,6 @@
 [package]
 name = "tract-hir"
-version = "0.21.3"
+version = "0.21.4-pre"
 license = "MIT OR Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -17,7 +17,7 @@ maintenance = { status = "actively-developed" }
 derive-new.workspace = true
 log.workspace = true
 
-tract-core = { version = "=0.21.3", path = "../core" }
+tract-core = { version = "=0.21.4-pre", path = "../core" }
 
 [dev-dependencies]
 env_logger.workspace = true
