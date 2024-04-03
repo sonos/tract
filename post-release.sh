@@ -1,7 +1,7 @@
 #!/bin/sh
 
 VERSION=$1
-source .all_crates.sh
+. ./.all_crates.sh
 
 if [ `uname` = "Darwin" ]
 then
