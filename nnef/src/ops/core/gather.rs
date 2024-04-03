@@ -1,4 +1,5 @@
 use crate::internal::*;
+use tract_core::ops::cast::Cast;
 
 pub fn register(registry: &mut Registry) {
     macro_rules! gather_op_nnef {
@@ -26,8 +27,9 @@ pub fn register(registry: &mut Registry) {
                 ) -> TractResult<Value> {
                     let wire = invocation.named_arg_as(builder, "input")?;
                     let indices = invocation.named_arg_as(builder, "indices")?;
+                    let cast_indices = builder.wire_as_outlets(tract_core::ops::cast::cast(i64::datum_type()), &[indices])?[0];
                     let value = invocation.named_arg_as(builder, stringify!($field_name))?;
-                    builder.wire((<$GatherOp>::new(value)), &[wire, indices])
+                    builder.wire((<$GatherOp>::new(value)), &[wire, cast_indices])
                 }
             }
             registry.register_dumper($name::ser_gather);
