@@ -348,7 +348,7 @@ where
         if expected.symbols().len() == 1 {
             let sym = expected.symbols().into_iter().next().unwrap();
             if let Some(v) = solve_for(&sym, &expected, &provided.to_dim()) {
-                info!("Determined symbol {sym}={v}");
+                debug!("Determined symbol {sym}={v}");
                 symbols[&sym] = Some(v.to_i64().unwrap());
             }
         }
