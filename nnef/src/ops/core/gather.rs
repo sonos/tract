@@ -1,5 +1,4 @@
 use crate::internal::*;
-use tract_core::ops::cast::Cast;
 
 pub fn register(registry: &mut Registry) {
     macro_rules! gather_op_nnef {
