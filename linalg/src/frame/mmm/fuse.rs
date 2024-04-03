@@ -479,7 +479,7 @@ pub mod test {
     {
         let len = K::mr() * K::nr();
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-        let bias: Vec<TI> = (0..K::nr()).map(|f| f.as_()).collect();
+        let bias: Vec<TI> = (0..K::nr()).map(|f| (f + 1).as_()).collect();
         fused_ops::<K, TC, TI, _>(&v, &[op(bias.as_ptr())], |_, col, c| f(bias[col], c))
     }
 
@@ -492,7 +492,7 @@ pub mod test {
     {
         let len = K::mr() * K::nr();
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-        let bias: Vec<TI> = (0..K::mr()).map(|f| f.as_()).collect();
+        let bias: Vec<TI> = (0..K::mr()).map(|f| (f + 1).as_()).collect();
         fused_ops::<K, TC, TI, _>(&v, &[op(bias.as_ptr())], |row, _, c| f(bias[row], c))
     }
 
@@ -517,9 +517,9 @@ pub mod test {
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
         let len = K::mr() * K::nr();
-        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-        let rows: Vec<TI> = (0..K::mr()).map(|f| f.as_()).collect();
-        let cols: Vec<TI> = (0..K::nr()).map(|f| f.as_()).collect();
+        let v: Vec<TC> = (0..len).map(|f| (f + 1).as_()).collect();
+        let rows: Vec<TI> = (0..K::mr()).map(|f| (f + 3).as_()).collect();
+        let cols: Vec<TI> = (0..K::nr()).map(|f| (f + 2).as_()).collect();
         fused_ops::<K, TC, TI, _>(
             &v,
             &[FusedKerSpec::AddRowColProducts(rows.as_ptr(), cols.as_ptr())],
