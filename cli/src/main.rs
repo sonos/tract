@@ -193,7 +193,7 @@ fn main() -> tract_core::anyhow::Result<()> {
         clap::Command::new("bench").long_about("Benchmarks tract on randomly generated input.");
     let bench = run_options(bench);
     let bench = output_options(bench);
-    let bench = benchlimits_options(bench);
+    let bench = bench_options(bench);
     let bench = assertions_options(bench);
     app = app.subcommand(bench);
 
@@ -370,7 +370,7 @@ fn dump_subcommand<'a>() -> clap::Command<'a> {
     let dump = run_options(dump);
     let dump = output_options(dump);
     let dump = assertions_options(dump);
-    let dump = benchlimits_options(dump);
+    let dump = bench_options(dump);
     dump
 }
 
@@ -415,10 +415,12 @@ fn assertions_options(command: clap::Command) -> clap::Command {
             )
 }
 
-fn benchlimits_options(command: clap::Command) -> clap::Command {
+fn bench_options(command: clap::Command) -> clap::Command {
     use clap::*;
     command.args(&[
-                     arg!(-n --"max-iters" [max_iters] "Sets the maximum number of iterations for each node [default: 100_000]."),
+                     arg!(-n --"warmup-time" [warmup_time] "Time to run (approx.) before starting the clock."),
+                     arg!(-n --"warmup-loops" [warmup_loops] "Number of loops to run before starting the clock."),
+                     arg!(-n --"max-loops" [max_iters] "Sets the maximum number of iterations for each node [default: 100_000].").alias("max-iters"),
                      arg!(--"max-time" [max_time] "Sets the maximum execution time for each node (in ms) [default: 5000].") ])
 }
 
