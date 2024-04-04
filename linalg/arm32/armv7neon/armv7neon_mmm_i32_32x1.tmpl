@@ -80,9 +80,9 @@ armv7neon_mmm_i32_32x1_{{suffix}}:
     b .non_linear_loop
 
 .add_row_col_products:
-    vldm    	r3, { s0 }
+    vldm    	r4, { s0 }
 
-    vldmia          r4!, { q4-q7 }
+    vldmia          r3!, { q4-q7 }
 
     vmla.s32        q8, q4, d0[0]
     vmla.s32        q9, q5, d0[0]
@@ -90,7 +90,7 @@ armv7neon_mmm_i32_32x1_{{suffix}}:
     vmla.s32        q10, q6, d0[0]
     vmla.s32        q11, q7, d0[0]
 
-    vldmia          r4!, { q4-q7 }
+    vldmia          r3!, { q4-q7 }
 
     vmla.s32        q12, q4, d0[0]
     vmla.s32        q13, q5, d0[0]
