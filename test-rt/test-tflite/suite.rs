@@ -46,9 +46,10 @@ fn ignore_onnx(t: &[String]) -> bool {
         _conv_
         Conv1d
         Conv2d
+
         squeeze
         _transpose_
-
+        test_concat
         test_flatten
         test_reshape
         test_slice
@@ -138,7 +139,7 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
         }
     }
     let [section, _unit] = t else { return false };
-    ["deconv", "q_flavours", "q_binary"].contains(&&**section)
+    ["deconv", "q_flavours", "q_binary", "q_elmwise"].contains(&&**section)
 }
 
 fn compatible_conv_f32(qcp: &ConvProblem) -> bool {

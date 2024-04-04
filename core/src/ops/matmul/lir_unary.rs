@@ -224,11 +224,17 @@ pub struct ConcreteMatrixGeometry {
     pub n: usize,
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Hash)]
 pub struct SymbolicMatrixGeometry {
     pub m: TDim,
     pub n: TDim,
     pub mmm: Box<dyn MatMatMul>,
+}
+
+impl std::fmt::Debug for SymbolicMatrixGeometry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "m:{} n:{} mmm:{}", self.m, self.n, self.mmm.kernel_name())
+    }
 }
 
 impl ResolveTo<ConcreteMatrixGeometry> for SymbolicMatrixGeometry {

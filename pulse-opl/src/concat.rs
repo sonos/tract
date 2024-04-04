@@ -1,5 +1,4 @@
 use std::ops::Range;
-use tract_core::ndarray::*;
 use tract_nnef::internal::*;
 use tract_nnef::tract_core::trivial_op_state_freeeze;
 
@@ -12,7 +11,6 @@ pub struct PulsedSameAxisConcat {
     input_delay: usize,
     input_len: TDim,
 }
-
 
 impl Op for PulsedSameAxisConcat {
     fn name(&self) -> Cow<str> {
@@ -66,76 +64,65 @@ impl OpState for PulsedSameAxisConcatState {
         let current_pos = self.current_pos;
         self.current_pos += pulse;
 
-        unsafe {
-            let pre_length = op.pre_slice.shape()[op.axis];
-            let pre_offset = op.input_delay - pre_length;
-            dispatch_datum_by_size!(overwrite_part_of_pulse(data.datum_type())(
-                op.axis,
-                &mut data,
-                current_pos,
-                &op.pre_slice,
-                pre_offset
-            ));
-            if let Ok(l) = op.input_len.eval(&session.resolved_symbols).to_usize() {
-                let post_offset = op.input_delay + l;
-                dispatch_datum_by_size!(overwrite_part_of_pulse(data.datum_type())(
-                    op.axis,
-                    &mut data,
-                    current_pos,
-                    &op.post_slice,
-                    post_offset
-                ));
-            }
+        let pre_length = op.pre_slice.shape()[op.axis];
+        let pre_offset = op.input_delay - pre_length;
+        overwrite_part_of_pulse(op.axis, &mut data, current_pos, &op.pre_slice, pre_offset)?;
+        if let Ok(l) = op.input_len.eval(&session.resolved_symbols).to_usize() {
+            let post_offset = op.input_delay + l;
+            overwrite_part_of_pulse(op.axis, &mut data, current_pos, &op.post_slice, post_offset)?;
         }
 
         Ok(tvec!(data.into_tvalue()))
     }
 }
 
-unsafe fn overwrite_part_of_pulse<T: Datum>(
+pub fn overwrite_part_of_pulse(
     axis: usize,
     pulse_data: &mut Tensor,
     current_pos: usize,
     const_data: &Tensor,
     const_offset: usize,
-) {
+) -> TractResult<()> {
     let pulse = pulse_data.shape()[axis];
     let const_length = const_data.shape()[axis];
     let const_range = const_offset..const_offset + const_length;
     let pulse_range = current_pos..current_pos + pulse;
-    let axis = Axis(axis);
-    let mut pulse_data = pulse_data.to_array_view_mut_unchecked::<T>();
-    let const_data = const_data.to_array_view_unchecked::<T>();
 
     match range_in_range(&pulse_range, &const_range) {
         RangeInRange::Before(_) | RangeInRange::After(_) => (),
         RangeInRange::Begin(offset) => {
             // ----[<----->HHH]HH----
-            pulse_data
-                .slice_axis_mut(axis, (offset..pulse).into())
-                .assign(&const_data.slice_axis(axis, (0..pulse - offset).into()));
+            pulse_data.assign_slice(offset..pulse, const_data, 0..pulse - offset, axis)?;
         }
         RangeInRange::Contain(offset) => {
             // ----[<----->HHHHHHH-]---
-            pulse_data
-                .slice_axis_mut(axis, (offset..offset + const_length).into())
-                .assign(&const_data);
+            pulse_data.assign_slice(
+                offset..offset + const_length,
+                const_data,
+                0..const_length,
+                axis,
+            )?;
         }
         RangeInRange::Inside(offset) => {
             // ----------<H>[HH]HH----
-            pulse_data.assign(&const_data.slice_axis(axis, (offset..offset + pulse).into()));
+            pulse_data.assign_slice(0..pulse, const_data, offset..offset + pulse, axis)?;
         }
         RangeInRange::End(offset) => {
             // --------<HHH>[HHHH-]---
-            pulse_data
-                .slice_axis_mut(axis, (0..const_length - offset).into())
-                .assign(&const_data.slice_axis(axis, (offset..const_length).into()));
+            pulse_data.assign_slice(
+                0..const_length - offset,
+                const_data,
+                offset..const_length,
+                axis,
+            )?;
         }
     }
+    Ok(())
 }
 
 #[derive(Copy, Clone, Debug)]
-enum RangeInRange {
+#[allow(dead_code)]
+pub enum RangeInRange {
     /// ----[--]<-->HHHH----
     Before(usize),
     /// ----[<----->HHH]HH----
@@ -150,7 +137,7 @@ enum RangeInRange {
     After(usize),
 }
 
-fn range_in_range(needle: &Range<usize>, haystack: &Range<usize>) -> RangeInRange {
+pub fn range_in_range(needle: &Range<usize>, haystack: &Range<usize>) -> RangeInRange {
     if needle.end <= haystack.start {
         RangeInRange::Before(haystack.start - needle.end)
     } else if needle.start < haystack.start {

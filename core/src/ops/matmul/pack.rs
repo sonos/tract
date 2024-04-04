@@ -26,36 +26,18 @@ impl Op for MatMatMulPack {
 
 impl EvalOp for MatMatMulPack {
     fn is_stateless(&self) -> bool {
-        self.output_shape_fact.is_concrete()
+        true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let output_shape = self.output_shape_fact.as_concrete().unwrap();
-        self.do_eval(&inputs[0], output_shape)
-    }
-
-    fn state(
+    fn eval_with_session(
         &self,
-        _session: &mut SessionState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(self.clone())))
-    }
-}
-
-impl OpState for MatMatMulPack {
-    fn eval(
-        &mut self,
-        session: &mut SessionState,
-        _op: &dyn Op,
+        session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let output_shape = self.output_shape_fact.eval_to_usize(&session.resolved_symbols)?;
         self.do_eval(&inputs[0], &output_shape)
     }
 }
-
-trivial_op_state_freeeze!(MatMatMulPack);
 
 impl TypedOp for MatMatMulPack {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {

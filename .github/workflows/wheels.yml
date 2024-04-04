@@ -9,14 +9,20 @@ on:
       publish:
         description: force publish to pypi
         type: boolean
+      pypi_version_override:
+        description: override version id detection
+        type: string
+
 
 env:
   CARGO_INCREMENTAL: false
+  PYPI_VERSION_OVERRIDE: ${{ inputs.pypi_version_override }}
+  CIBW_ENVIRONMENT_PASS_LINUX: "PYPI_VERSION_OVERRIDE"
 
 jobs:
   build_wheels:
     name: Build wheels on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os}}
     strategy:
       fail-fast: false
       matrix:

@@ -4,7 +4,7 @@ use crate::ops;
 use crate::ops::konst::Const;
 use crate::optim::OptimizerSession;
 use crate::plan::{FrozenSimpleState, SimplePlan, SimpleState};
-use crate::transform::ModelTransformer;
+use crate::transform::ModelTransform;
 
 /// A model with completely determined types and shapes.
 pub type TypedModel = Graph<TypedFact, Box<dyn TypedOp>>;
@@ -51,13 +51,13 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                 .map(|o| self.outlet_fact(*o).cloned())
                 .collect::<TractResult<TVec<_>>>()?;
 
-            if op.is_stateless() & (input_facts.len() > 0) {
+            if op.is_stateless() && input_facts.len() > 0 {
                 if let Some(tensors) = input_facts
                     .iter()
                     .map(|f| f.konst.clone().map(|t| t.into_tvalue()))
                     .collect::<Option<TVec<_>>>()
                 {
-                    if let Ok(outputs) = op.eval(tensors) {
+                    if let Ok(outputs) = op.eval_with_session(&SessionState::default(), tensors) {
                         return outputs
                             .into_iter()
                             .enumerate()
@@ -168,8 +168,8 @@ impl TypedModel {
     }
 
     /// Perform declutter passes on the network.
-    pub fn transform(&mut self, transformer: &dyn ModelTransformer) -> TractResult<()> {
-        transformer.transform(self)
+    pub fn transform(&mut self, transform: &dyn ModelTransform) -> TractResult<()> {
+        transform.transform(self)
     }
 
     /// Perform declutter passes on the network.

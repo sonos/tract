@@ -96,6 +96,15 @@ pub trait EvalOp {
     }
 
     #[allow(unused_variables)]
+    fn eval_with_session(
+        &self,
+        session: &SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        self.eval(inputs).context("Running legacy eval")
+    }
+
+    #[allow(unused_variables)]
     fn state(
         &self,
         session: &mut SessionState,
@@ -145,7 +154,11 @@ pub trait TypedOp:
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>>;
 
     #[allow(unused_variables)]
-    fn axes_mapping(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<AxesMapping> {
+    fn axes_mapping(
+        &self,
+        inputs: &[&TypedFact],
+        outputs: &[&TypedFact],
+    ) -> TractResult<AxesMapping> {
         AxesMapping::disconnected(inputs, outputs)
     }
 

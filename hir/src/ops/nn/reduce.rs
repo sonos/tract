@@ -211,7 +211,7 @@ impl Expansion for Reduce {
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         let mut wire = inputs[0];
-        let fact = target.outlet_fact(wire)?;
+        let fact = target.outlet_fact(wire)?.clone();
         let mut axes = self.resolve_axes(fact.rank())?;
         axes.sort();
         if fact.datum_type == TDim::datum_type() {
@@ -222,6 +222,13 @@ impl Expansion for Reduce {
             )?[0];
         }
         wire = self.reducer.wire(axes.clone(), name, target, wire).context("wiring reducer")?;
+        if fact.datum_type == TDim::datum_type() {
+            wire = target.wire_node(
+                format!("{name}.cast_to_tdim"),
+                tract_core::ops::cast::cast(TDim::datum_type()),
+                &[wire],
+            )?[0];
+        }
         if !self.keep_dims {
             for axis in axes.into_iter().rev() {
                 wire = target.wire_node(

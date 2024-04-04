@@ -33,7 +33,7 @@ pub trait InferenceOp: Op {
                 .iter()
                 .map(|i| i.value.concretize().unwrap().into_tvalue())
                 .collect(); // checked
-            match self.eval(input_values) {
+            match self.eval_with_session(&SessionState::default(), input_values) {
                 Ok(values) => {
                     let output_values =
                         values.into_iter().map(|t| t.into_arc_tensor().into()).collect::<TVec<_>>();

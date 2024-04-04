@@ -24,6 +24,7 @@ pub fn rewrite_model(model: &mut TypedModel) -> TractResult<()> {
             "rewrite_consistent_quantized_conv",
             crate::ops::nnef::ser::rewrite_consistent_quantized_conv,
         )
+        .with_rule_for("expand_mean_of_square", tract_core::ops::nn::expand_mean_of_squares)
         .rewrite(&(), model)
 }
 
@@ -352,6 +353,9 @@ impl<'a> IntoAst<'a> {
     ) -> TractResult<Arc<RValue>> {
         let mut name: Identifier = name.as_ref().into();
         let have_tract_core = self.ensure_registry(&"tract_core".into()).is_ok();
+        if tensor.datum_type() == TDim::datum_type() {
+            return Ok(Self::dump_rec_tensor(&tensor.to_array_view::<TDim>()?, tdim).into());
+        }
         if !force_variable && tensor.len() <= 8 {
             if tensor.datum_type() == String::datum_type() {
                 return Ok(Self::dump_rec_tensor(&tensor.to_array_view::<String>()?, |f| {
@@ -363,7 +367,8 @@ impl<'a> IntoAst<'a> {
                     Self::dump_rec_tensor(&tensor.to_array_view::<f32>()?, |f| numeric(f)).into()
                 );
             } else if have_tract_core && tensor.datum_type() == DatumType::F16 {
-                let array = Self::dump_rec_tensor(&tensor.to_array_view::<f16>()?, |f| numeric(f)).into();
+                let array =
+                    Self::dump_rec_tensor(&tensor.to_array_view::<f16>()?, |f| numeric(f)).into();
                 return Ok(invocation("tract_core_cast", &[array], &[("to", string("f16"))]));
             } else if have_tract_core && tensor.datum_type().is_integer() {
                 if let Ok(value) = tensor.cast_to::<i64>() {

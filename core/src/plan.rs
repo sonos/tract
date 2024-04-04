@@ -288,7 +288,7 @@ where
                                     &mut session_state.resolved_symbols,
                                     dim_abstract,
                                     *dim_concrete as i64,
-                                );
+                                )?;
                             }
                         }
                     }
@@ -338,15 +338,21 @@ where
         Ok(())
     }
 
-    fn resolve(symbols: &mut SymbolValues, expected: &TDim, provided: i64) {
-        match expected {
-            TDim::Sym(s) => {
-                info!("Determined symbol {s}={provided}");
-                symbols[s] = Some(provided)
-            },
-            TDim::MulInt(x, expr) => Self::resolve(symbols, expr, provided / *x),
-            _ => (),
+    fn resolve(symbols: &mut SymbolValues, expression: &TDim, provided: i64) -> TractResult<()> {
+        let expected = expression.eval(symbols);
+        if let Ok(x) = expected.to_i64() {
+            if x != provided {
+                bail!("Clashing resolution for expression. {expression}={x} != {provided}.")
+            }
         }
+        if expected.symbols().len() == 1 {
+            let sym = expected.symbols().into_iter().next().unwrap();
+            if let Some(v) = solve_for(&sym, &expected, &provided.to_dim()) {
+                debug!("Determined symbol {sym}={v}");
+                symbols[&sym] = Some(v.to_i64().unwrap());
+            }
+        }
+        Ok(())
     }
 
     pub fn set_input(&mut self, input: usize, t: TValue) -> TractResult<()> {
@@ -360,7 +366,7 @@ where
         let model = plan.model.borrow();
         if let Ok(fact) = model.outlet_fact(outlet)?.to_typed_fact() {
             for (expected, provided) in fact.shape.iter().zip(t.shape()) {
-                Self::resolve(&mut session_state.resolved_symbols, expected, *provided as i64)
+                Self::resolve(&mut session_state.resolved_symbols, expected, *provided as i64)?;
             }
         }
         let fact = self.plan.borrow().model().outlet_fact(outlet)?;
@@ -442,15 +448,12 @@ where
         node: usize,
         inputs: TVec<TValue>,
     ) -> TractResult<()> {
-        let SimpleState { ref plan, ref mut session_state, ref mut values, .. } = self;
+        let SimpleState { ref plan, ref mut session_state, ref mut values, ref mut states, .. } =
+            self;
         let plan = plan.borrow();
         let nodes = plan.model().nodes();
         let node = &nodes[node];
-        let vs = match self.states[node.id] {
-            Some(ref mut state) => state.eval(session_state, node.op(), inputs),
-            None => node.op().eval(inputs),
-        }
-        .with_context(|| format!("Evaluating {node}"))?;
+        let vs = eval(session_state, states[node.id].as_deref_mut(), node, inputs)?;
         values[node.id] = Some(vs);
         Ok(())
     }
@@ -473,14 +476,12 @@ where
                 }
             }
             let Self { ref mut states, ref mut session_state, ref plan, .. } = self;
-            let plan = plan.borrow();
-            match states[node] {
-                Some(ref mut state) => {
-                    state.eval(session_state, plan.model().nodes()[node].op(), inputs)
-                }
-                None => plan.model().nodes()[node].op().eval(inputs),
-            }
-            .with_context(|| format!("Evaluating {node:?}"))?
+            eval(
+                session_state,
+                states[node].as_deref_mut(),
+                &plan.borrow().model().nodes[node],
+                inputs,
+            )?
         };
         self.values[node] = Some(values);
         Ok(self.values[node].as_ref().unwrap())
@@ -550,7 +551,7 @@ where
     // eprint!("{node} {input:?}");
     let r = match state {
         Some(ref mut state) => state.eval(session_state, node.op(), input),
-        None => node.op().eval(input),
+        None => node.op().eval_with_session(session_state, input),
     }
     .with_context(|| format!("Evaluating {node}"));
     // eprintln!(" ==> {}", r.as_ref().unwrap()[0].dump(true)?);

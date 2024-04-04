@@ -1,7 +1,6 @@
-use std::ops::Range;
-
 use crate::internal::*;
 use tract_core::ops::array::TypedConcat;
+use tract_pulse_opl::concat::overwrite_part_of_pulse;
 use tract_pulse_opl::ops::Delay;
 use tract_pulse_opl::tract_core::trivial_op_state_freeeze;
 
@@ -173,83 +172,5 @@ impl OpState for PulsedSameAxisConcatState {
         }
 
         Ok(tvec!(data.into_tvalue()))
-    }
-}
-
-pub fn overwrite_part_of_pulse(
-    axis: usize,
-    pulse_data: &mut Tensor,
-    current_pos: usize,
-    const_data: &Tensor,
-    const_offset: usize,
-) -> TractResult<()> {
-    let pulse = pulse_data.shape()[axis];
-    let const_length = const_data.shape()[axis];
-    let const_range = const_offset..const_offset + const_length;
-    let pulse_range = current_pos..current_pos + pulse;
-
-    match range_in_range(&pulse_range, &const_range) {
-        RangeInRange::Before(_) | RangeInRange::After(_) => (),
-        RangeInRange::Begin(offset) => {
-            // ----[<----->HHH]HH----
-            pulse_data.assign_slice(offset..pulse, const_data, 0..pulse - offset, axis)?;
-        }
-        RangeInRange::Contain(offset) => {
-            // ----[<----->HHHHHHH-]---
-            pulse_data.assign_slice(
-                offset..offset + const_length,
-                const_data,
-                0..const_length,
-                axis,
-            )?;
-        }
-        RangeInRange::Inside(offset) => {
-            // ----------<H>[HH]HH----
-            pulse_data.assign_slice(0..pulse, const_data, offset..offset + pulse, axis)?;
-        }
-        RangeInRange::End(offset) => {
-            // --------<HHH>[HHHH-]---
-            pulse_data.assign_slice(
-                0..const_length - offset,
-                const_data,
-                offset..const_length,
-                axis,
-            )?;
-        }
-    }
-    Ok(())
-}
-
-#[derive(Copy, Clone, Debug)]
-enum RangeInRange {
-    /// ----[--]<-->HHHH----
-    Before(usize),
-    /// ----[<----->HHH]HH----
-    Begin(usize),
-    /// ----[<----->HHHHHHH-]---
-    Contain(usize),
-    /// ----------<H>[HH]HH----
-    Inside(usize),
-    /// --------<HHH>[HHHH-]---
-    End(usize),
-    /// --------HHHHHHH<->[--]---
-    After(usize),
-}
-
-fn range_in_range(needle: &Range<usize>, haystack: &Range<usize>) -> RangeInRange {
-    if needle.end <= haystack.start {
-        RangeInRange::Before(haystack.start - needle.end)
-    } else if needle.start < haystack.start {
-        if needle.end < haystack.end {
-            RangeInRange::Begin(haystack.start - needle.start)
-        } else {
-            RangeInRange::Contain(haystack.start - needle.start)
-        }
-    } else if needle.start >= haystack.end {
-        RangeInRange::After(needle.start - haystack.end)
-    } else if needle.end > haystack.end {
-        RangeInRange::End(needle.start - haystack.start)
-    } else {
-        RangeInRange::Inside(needle.start - haystack.start)
     }
 }

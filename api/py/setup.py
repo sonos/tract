@@ -12,9 +12,11 @@ if not os.path.exists("rust-workspace"):
         ignore = shutil.ignore_patterns(".cached", "target", ".git", "issue-*", ".travis", "assets", ".github", "py")
     )
 
-version = toml.load("rust-workspace/api/Cargo.toml")["package"]["version"]
-version = re.sub("\-alpha\.", "a", version)
-version = re.sub("\-.*", ".dev", version)
+version = os.environ.get("PYPI_VERSION_OVERRIDE")
+if version is None or version == "":
+    version = toml.load("rust-workspace/api/Cargo.toml")["package"]["version"]
+    version = re.sub("\-alpha\.", "a", version)
+    version = re.sub("\-.*", ".dev", version)
 
 with open('docs/index.md', 'r') as file:
     readme = file.read()

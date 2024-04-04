@@ -3,13 +3,11 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use half::f16;
 use ndarray::{Data, Dimension, RawData};
 use tract_extra::WithTractExtra;
 use tract_libcli::annotations::Annotations;
 use tract_libcli::profile::BenchLimits;
 use tract_nnef::internal::parse_tdim;
-use tract_nnef::prelude::translator::Translate;
 use tract_nnef::prelude::{
     Framework, IntoTValue, SymbolValues, TValue, TVec, Tensor, TractResult, TypedFact, TypedModel,
     TypedRunnableModel, TypedSimplePlan, TypedSimpleState,
@@ -240,22 +238,10 @@ impl ModelInterface for Model {
         Ok(())
     }
 
-    fn f32_to_f16(&mut self) -> Result<()> {
-        self.0 = tract_nnef::tract_core::floats::FloatPrecisionTranslator::<
-            f32,
-            f16,
-        >::default()
-        .translate_model(&self.0)?;
-        Ok(())
-    }
-    
-    fn f16_to_f32(&mut self) -> Result<()> {
-        self.0 = tract_nnef::tract_core::floats::FloatPrecisionTranslator::<
-            f16,
-            f32,
-        >::default()
-        .translate_model(&self.0)?;
-        Ok(())
+    fn transform(&mut self, transform: &str) -> Result<()> {
+        let transform = tract_onnx::tract_core::transform::get_transform(transform)
+            .with_context(|| format!("transorm `{transform}' could not be found"))?;
+        transform.transform(&mut self.0)
     }
 
     fn pulse(&mut self, name: impl AsRef<str>, value: impl AsRef<str>) -> Result<()> {

@@ -173,15 +173,11 @@ pub fn for_data(
     if filename.ends_with(".pb") {
         #[cfg(feature = "onnx")]
         {
-            /*
-            let file =
-                fs::File::open(filename).with_context(|| format!("Can't open {filename:?}"))?;
-                */
+            use tract_onnx::data_resolver::FopenDataResolver;
+            use tract_onnx::tensor::load_tensor;
             let proto = ::tract_onnx::tensor::proto_from_reader(reader)?;
-            Ok((
-                Some(proto.name.to_string()).filter(|s| !s.is_empty()),
-                Tensor::try_from(proto)?.into(),
-            ))
+            let tensor = load_tensor(&FopenDataResolver, &proto, None)?;
+            Ok((Some(proto.name.to_string()).filter(|s| !s.is_empty()), tensor.into()))
         }
         #[cfg(not(feature = "onnx"))]
         {
@@ -259,9 +255,8 @@ pub fn for_string(
             .context("Must specify concrete shape when giving tensor value")?;
         let tensor = if dt == TDim::datum_type() {
             let mut tensor = Tensor::zero::<TDim>(&shape)?;
-            let values = value
-                .map(|v| parse_tdim(symbol_table, v))
-                .collect::<TractResult<Vec<_>>>()?;
+            let values =
+                value.map(|v| parse_tdim(symbol_table, v)).collect::<TractResult<Vec<_>>>()?;
             tensor.as_slice_mut::<TDim>()?.iter_mut().zip(values).for_each(|(t, v)| *t = v);
             tensor
         } else {

@@ -61,6 +61,8 @@ pub struct Ops {
     pub leaky_relu_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32, f32>> + Send + Sync>,
     pub mul_by_scalar_f32:
         Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32, f32>> + Send + Sync>,
+    pub mul_by_scalar_f16:
+        Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f16, f16>> + Send + Sync>,
 
     pub sigmoid_f16: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f16>> + Send + Sync>,
     pub sigmoid_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32>> + Send + Sync>,
@@ -69,8 +71,10 @@ pub struct Ops {
     pub erf_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32>> + Send + Sync>,
     pub lut_u8: Box<dyn Fn(&[u8]) -> Box<dyn lut::Lut> + Send + Sync>,
 
+    pub max_f16: Box<dyn Fn() -> Box<dyn reduce::Reduce<f16>> + Send + Sync>,
     pub max_f32: Box<dyn Fn() -> Box<dyn reduce::Reduce<f32>> + Send + Sync>,
 
+    pub softmax2_fastcompact_f16: Box<dyn Fn() -> Box<dyn reduce::MapReduce<f16, f16>> + Send + Sync>,
     pub softmax2_fastcompact_f32: Box<dyn Fn() -> Box<dyn reduce::MapReduce<f32, f32>> + Send + Sync>,
 }
 
@@ -123,6 +127,7 @@ pub fn generic() -> Ops {
         qmmv_i32: Box::new(|_, _| generic::GenericMmm4x1::<i8, i8, i32>::mmm()),
         leaky_relu_f16: Box::new(|| generic::HLeakyRelu8::ew()),
         leaky_relu_f32: Box::new(|| generic::SLeakyRelu4::ew()),
+        mul_by_scalar_f16: Box::new(|| generic::HMulByScalar8::ew()),
         mul_by_scalar_f32: Box::new(|| generic::SMulByScalar4::ew()),
         sigmoid_f16: Box::new(|| generic::HSigmoid8::ew()),
         sigmoid_f32: Box::new(|| generic::SSigmoid4::ew()),
@@ -130,10 +135,12 @@ pub fn generic() -> Ops {
         tanh_f32: Box::new(|| generic::STanh4::ew()),
         erf_f32: Box::new(|| generic::SErf4::ew()),
         lut_u8: Box::new(|table: &[u8]| Box::new(lut::LutImpl::<generic::GenericLut8>::new(table))),
+        max_f16: Box::new(|| generic::max::HMax8::red()),
         max_f32: Box::new(|| generic::max::SMax4::red()),
         /*
         activation_f32: Box::new(|microcode| generic::SActivation::new(microcode))
         */
+        softmax2_fastcompact_f16: Box::new(|| generic::softmax::HSoftMaxL2::red()),
         softmax2_fastcompact_f32: Box::new(|| generic::softmax::SSoftMaxL2::red()),
     }
 }

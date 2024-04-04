@@ -13,6 +13,7 @@ mod tflite_runtime;
 mod tflite_predump {
     use super::*;
     #[derive(Debug)]
+    #[allow(dead_code)]
     struct TflitePredump(Tflite);
 
     impl Runtime for TflitePredump {

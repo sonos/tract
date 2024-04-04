@@ -1,4 +1,3 @@
-use std::convert::TryInto;
 use std::path::PathBuf;
 use std::{fs, path};
 
@@ -8,8 +7,9 @@ use tract_hir::internal::*;
 use tract_hir::prelude::tract_itertools::Itertools;
 
 use crate::pb::type_proto::Value;
-use crate::pb::{self, TypeProto};
-use crate::tensor::translate_inference_fact;
+use crate::pb::{self, TensorProto, TypeProto};
+use crate::data_resolver::{self, ModelDataResolver};
+use crate::tensor::{load_tensor, translate_inference_fact};
 use prost::Message;
 
 pub fn optional_inputs(pb: &pb::NodeProto) -> impl Iterator<Item = Option<usize>> + '_ {
@@ -37,12 +37,6 @@ pub fn optional_outputs(pb: &pb::NodeProto) -> impl Iterator<Item = Option<usize
 }
 
 #[derive(Clone)]
-pub struct TensorPlusPath<'a> {
-    pub tensor: &'a pb::TensorProto,
-    pub model_dir: &'a str,
-}
-
-#[derive(Clone)]
 pub struct ParsingContext<'a> {
     pub onnx_operator_set_version: i64,
     pub framework: &'a Onnx,
@@ -60,6 +54,10 @@ pub struct ParseResult {
 }
 
 impl<'a> ParsingContext<'a> {
+    pub fn load_tensor(&self, proto: &TensorProto) -> TractResult<Tensor> {
+        load_tensor(&*self.framework.provider, proto, self.model_dir)
+    }
+
     pub fn parse_graph(&self, graph: &pb::GraphProto) -> TractResult<ParseResult> {
         let mut ctx = self.clone();
         ctx.parent_graphs.push(graph);
@@ -69,23 +67,14 @@ impl<'a> ParsingContext<'a> {
         let mut closures_to_wire = vec![];
         trace!("trying to initialize initializers hashmap...");
         #[allow(unused_assignments)]
-        let mut initializers: HashMap<&str, Tensor> = HashMap::default();
-        if let Some(model_dir) = self.model_dir {
-            initializers = graph
-                .initializer
-                .iter()
-                .map(|tensor| {
-                    let tensor_struct = TensorPlusPath { tensor, model_dir };
-                    Ok((&*tensor.name, tensor_struct.try_into()?))
-                })
-                .collect::<TractResult<_>>()?;
-        } else {
-            initializers = graph
-                .initializer
-                .iter()
-                .map(|init| Ok((&*init.name, init.try_into()?)))
-                .collect::<TractResult<_>>()?;
-        }
+        let mut initializers: HashMap<&str, Tensor> = graph
+            .initializer
+            .iter()
+            .map(|name| {
+                let t = self.load_tensor(name)?;
+                Ok((&*name.name, t))
+            })
+            .collect::<TractResult<_>>()?;
         for (k, v) in initializers.iter().sorted_by_key(|kv| kv.0) {
             trace!("Initializer: {} {:?}", k, v);
         }
@@ -224,11 +213,23 @@ impl OnnxOpRegister {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct Onnx {
     pub op_register: OnnxOpRegister,
     pub use_output_shapes: bool,
     pub ignore_output_types: bool,
+    pub provider: Arc<dyn ModelDataResolver + Send + Sync>,
+}
+
+impl Default for Onnx {
+    fn default() -> Self {
+        Onnx {
+            op_register: Default::default(),
+            use_output_shapes: Default::default(),
+            ignore_output_types: Default::default(),
+            provider: Arc::new(data_resolver::MmapDataResolver),
+        }
+    }
 }
 
 impl Onnx {
@@ -311,10 +312,12 @@ impl Framework<pb::ModelProto, InferenceModel> for Onnx {
         Ok(self.proto_model_for_read(&mut file)?)
     }
 
-    #[cfg(all(any(windows, unix), not(target_os = "emscripten")))]
+    #[cfg(not(target_family = "wasm"))]
     fn proto_model_for_path(&self, p: impl AsRef<path::Path>) -> TractResult<pb::ModelProto> {
         let p = p.as_ref();
-        let map = unsafe { memmap2::Mmap::map(&fs::File::open(p).with_context(|| format!("Opening {p:?}"))?)? };
+        let map = unsafe {
+            memmap2::Mmap::map(&fs::File::open(p).with_context(|| format!("Opening {p:?}"))?)?
+        };
         Ok(crate::pb::ModelProto::decode(&*map)?)
     }
 

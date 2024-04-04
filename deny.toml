@@ -1,4 +1,6 @@
+
 # add whatever else we support.
+[graph]
 targets = [
     { triple = "x86_64-unknown-linux-gnu" },
     { triple = "x86_64-unknown-linux-musl" },
@@ -16,8 +18,8 @@ targets = [
 ]
 
 [advisories]
-vulnerability = "deny"
-unmaintained = "warn"
+version = 2
+git-fetch-with-cli = true
 yanked = "deny"
 ignore = [
 	"RUSTSEC-2021-0145", # in atty, only impacts benches (through criterion) or pytorch example
@@ -33,7 +35,6 @@ deny = [
 
 # Skip some multiple-versions checks, until they can be fixed.
 skip = [
-    { name = "bitflags", version="<2" },
     { name = "itertools", version="<0.12.1" },
     { name = "regex-syntax", version="<8" },
     { name = "syn", version="<2" },
@@ -46,7 +47,6 @@ allow-git = [
 
 [licenses]
 allow = [
-    "BSD-3-Clause",                   # https://tldrlegal.com/license/bsd-3-clause-license-(revised)
     "Apache-2.0",                     # https://tldrlegal.com/license/apache-license-2.0-(apache-2.0)
     "MIT",                            # https://tldrlegal.com/license/mit-license
     "Unicode-DFS-2016"                # https://spdx.org/licenses/Unicode-DFS-2016.html 

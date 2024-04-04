@@ -182,18 +182,19 @@ impl Registry {
                 .with_context(|| format!("Deserializing op `{}'", invocation.id.0))?;
             return Ok(Some(out_value));
         }
+        let c_dt: Option<DatumType> = dt.first().cloned().and_then(|dt| dt);
         if let Some(ew) = self.unit_element_wise_ops.iter().find(|ew| ew.0 == invocation.id) {
             let input =
                 invocation.arguments[0].rvalue.resolve(builder, &[])?.to::<OutletId>(builder)?;
             let outlet = builder.wire_as_outlets(
-                tract_core::ops::element_wise::ElementWiseOp(ew.1.clone()),
+                tract_core::ops::element_wise::ElementWiseOp(ew.1.clone(), c_dt),
                 &[input],
             )?;
-            if let Some(Some(assumed_out_dt)) = dt.first() {
+            if let Some(assumed_out_dt) = c_dt {
                 let out_dt = builder.model.outlet_fact(outlet[0])?.datum_type;
-                if out_dt != *assumed_out_dt {
+                if out_dt != assumed_out_dt {
                     return Ok(Some(
-                        builder.wire(tract_core::ops::cast::cast(*assumed_out_dt), &outlet)?,
+                        builder.wire(tract_core::ops::cast::cast(assumed_out_dt), &outlet)?,
                     ));
                 }
             }

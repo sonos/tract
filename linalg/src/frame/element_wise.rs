@@ -27,10 +27,6 @@ macro_rules! ew_impl_wrap {
                 fn alignment_items() -> usize {
                     $alignment_items
                 }
-                #[inline(always)]
-                fn alignment_bytes() -> usize {
-                    $alignment_items * std::mem::size_of::<$ti>()
-                }
                 $run
             }
         }
@@ -120,7 +116,9 @@ where
     T: LADatum,
 {
     fn name() -> &'static str;
-    fn alignment_bytes() -> usize;
+    fn alignment_bytes() -> usize {
+        Self::alignment_items() * T::datum_type().size_of()
+    }
     fn alignment_items() -> usize;
     fn nr() -> usize;
     fn run(vec: &mut [T], params: Params);

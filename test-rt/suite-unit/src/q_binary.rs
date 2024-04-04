@@ -2,7 +2,7 @@ use infra::{Test, TestSuite};
 use proptest::prelude::*;
 use tract_core::internal::*;
 
-use crate::conv_q::qtensor;
+use crate::q_helpers::*;
 
 #[derive(Debug, Clone)]
 struct QBinaryOpProblem {
@@ -23,25 +23,7 @@ impl Default for QBinaryOpProblem {
     }
 }
 
-impl QBinaryOpProblem {
-    fn pick_signed_datum(signed: bool) -> DatumType {
-        if signed {
-            DatumType::I8
-        } else {
-            DatumType::U8
-        }
-    }
-
-    fn get_qtensor(values: Tensor, dt: DatumType, zp: Tensor, scale: f32) -> Tensor {
-        let mut values = values;
-        let zp = zp.cast_to_scalar::<i32>().unwrap();
-        let dt = dt.quantize(QParams::ZpScale { zero_point: zp, scale });
-        unsafe {
-            values.set_datum_type(dt);
-        }
-        values
-    }
-
+impl QOpProblem for QBinaryOpProblem {
     fn reference_float_ops(&self) -> TractResult<Tensor> {
         let a = self.tensor_a.cast_to::<f32>()?.clone().into_owned();
         let b = self.tensor_b.cast_to::<f32>()?.clone().into_owned();
@@ -73,9 +55,9 @@ impl Arbitrary for QBinaryOpProblem {
             tested_operators,
         )
             .prop_flat_map(|(len, a_signed, b_signed, c_signed, a_scale, b_scale, c_scale, op)| {
-                let a_dt = Self::pick_signed_datum(a_signed);
-                let b_dt = Self::pick_signed_datum(b_signed);
-                let c_dt = Self::pick_signed_datum(c_signed);
+                let a_dt = pick_signed_datum(a_signed);
+                let b_dt = pick_signed_datum(b_signed);
+                let c_dt = pick_signed_datum(c_signed);
                 fn just_scale(scale: usize) -> Just<f32> {
                     Just(scale as f32 * 0.5)
                 }
@@ -112,18 +94,10 @@ impl Arbitrary for QBinaryOpProblem {
                     c_scale,
                     op,
                 )| {
-                    let tensor_a = Self::get_qtensor(
-                        a_values.into_tensor(),
-                        a_dt,
-                        a_zp.into_tensor(),
-                        a_scale,
-                    );
-                    let tensor_b = Self::get_qtensor(
-                        b_values.into_tensor(),
-                        b_dt,
-                        b_zp.into_tensor(),
-                        b_scale,
-                    );
+                    let tensor_a =
+                        build_qtensor(a_values.into_tensor(), a_dt, a_zp.into_tensor(), a_scale);
+                    let tensor_b =
+                        build_qtensor(b_values.into_tensor(), b_dt, b_zp.into_tensor(), b_scale);
                     let c_dt = c_dt.quantize(QParams::ZpScale {
                         zero_point: c_zp.into_tensor().cast_to_scalar::<i32>().unwrap(),
                         scale: c_scale,
@@ -175,59 +149,13 @@ impl Test for QBinaryOpProblem {
             .run(tvec![self.tensor_a.clone().into_tvalue()])?
             .remove(0)
             .into_tensor();
-        let mut reference = self.reference_float_ops()?;
-
-        let (zero_point, scale) = self.c_dt.zp_scale();
-        let min_repr_val = (self.c_dt.unquantized().min_value().cast_to_scalar::<f32>()?
-            - zero_point as f32)
-            * scale;
-        let max_repr_val = (self.c_dt.unquantized().max_value().cast_to_scalar::<f32>()?
-            - zero_point as f32)
-            * scale;
-
-        reference
-            .to_array_view_mut()?
-            .iter_mut()
-            .for_each(|x: &mut f32| *x = (*x).clamp(min_repr_val, max_repr_val));
-
-        let mut fp_results = result.cast_to::<f32>()?.into_owned();
-
-        let acceptable_scale_error_ratio = match approx {
-            Approximation::Exact => 0.,
-            Approximation::Approximate => 2.,
-            _ => 3.,
-        };
-        assert!(tract_core::ndarray::Zip::from(fp_results.to_array_view_mut()?)
-            .and(reference.to_array_view()?)
-            .all(|x: &mut f32, xref: &f32| {
-                let closest_x = (*x).clamp(min_repr_val, max_repr_val);
-                // core maximal accepted distance by default
-                (xref - closest_x).abs() <= scale * acceptable_scale_error_ratio
-            }));
-        Ok(())
+        self.check_ref_with_approx(result, approx)
     }
 }
 
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite = TestSuite::default();
     suite.add_arbitrary::<QBinaryOpProblem>("proptest", ());
-
-    fn qu8_dt(zp: i32, scale: f32) -> DatumType {
-        u8::datum_type().quantize(QParams::ZpScale { zero_point: zp, scale })
-    }
-
-    fn qu8_tensor(tensor: Tensor, zp: i32, scale: f32) -> TractResult<Tensor> {
-        Ok(tensor.cast_to_dt(qu8_dt(zp, scale))?.into_owned())
-    }
-
-    fn qu8_tensor0(value: u8, zp: i32, scale: f32) -> TractResult<Tensor> {
-        qu8_tensor(tensor0(value), zp, scale)
-    }
-
-    fn qu8_tensor1(values: &[u8], zp: i32, scale: f32) -> TractResult<Tensor> {
-        qu8_tensor(tensor1(values), zp, scale)
-    }
-
     // simplification 0 at declutter constant
     suite.add(
         "trivial_mul_0_case",

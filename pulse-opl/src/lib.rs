@@ -1,6 +1,6 @@
 use tract_nnef::internal::*;
 
-mod concat;
+pub mod concat;
 mod deconv_delay;
 mod delay;
 mod mask;

@@ -155,11 +155,7 @@ pub fn read_tensor<R: std::io::Read>(mut reader: R) -> TractResult<Tensor> {
 
 pub fn write_tensor<W: std::io::Write>(w: &mut W, tensor: &Tensor) -> TractResult<()> {
     unsafe {
-        let tensor = if tensor.datum_type() == TDim::datum_type() {
-            tensor.cast_to::<i64>()?
-        } else {
-            Cow::Borrowed(tensor)
-        };
+        ensure!(tensor.datum_type() != TDim::datum_type());
         let mut header: Header = std::mem::zeroed();
         header.magic = [0x4e, 0xef];
         header.version_maj = 1;

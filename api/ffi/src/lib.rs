@@ -23,7 +23,7 @@ pub enum TRACT_RESULT {
 }
 
 thread_local! {
-    pub(crate) static LAST_ERROR: RefCell<Option<CString>> = RefCell::new(None);
+    pub(crate) static LAST_ERROR: RefCell<Option<CString>> = const { RefCell::new(None) };
 }
 
 fn wrap<F: FnOnce() -> anyhow::Result<()>>(func: F) -> TRACT_RESULT {
@@ -674,21 +674,18 @@ pub unsafe extern "C" fn tract_model_pulse_simple(
     })
 }
 
-/// Convert the model from single precision to half precision.
+/// Apply a transform to the model.
 #[no_mangle]
-pub unsafe extern "C" fn tract_model_f32_to_f16(model: *mut TractModel) -> TRACT_RESULT {
+pub unsafe extern "C" fn tract_model_transform(
+    model: *mut TractModel,
+    transform: *const i8,
+) -> TRACT_RESULT {
     wrap(|| unsafe {
-        check_not_null!(model);
-        (*model).0.f32_to_f16()
-    })
-}
-
-/// Convert the model from half precision to single precision.
-#[no_mangle]
-pub unsafe extern "C" fn tract_model_f16_to_f32(model: *mut TractModel) -> TRACT_RESULT {
-    wrap(|| unsafe {
-        check_not_null!(model);
-        (*model).0.f16_to_f32()
+        check_not_null!(model, transform);
+        let t = CStr::from_ptr(transform)
+            .to_str()
+            .context("failed to parse transform name (not utf8)")?;
+        (*model).0.transform(t)
     })
 }
 

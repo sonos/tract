@@ -22,7 +22,7 @@ impl Expansion for ElementWiseOp {
         let wires = wire_cast(prefix, target, inputs, operating_datum_type)?;
         target.wire_node(
             prefix,
-            tract_core::ops::element_wise::ElementWiseOp(self.0.clone()),
+            tract_core::ops::element_wise::ElementWiseOp(self.0.clone(), None),
             &wires,
         )
     }

@@ -141,17 +141,21 @@ class Model:
         self._valid()
         check(lib.tract_model_pulse_simple(byref(self.ptr), symbol.encode("utf-8"), str(pulse).encode("utf-8")))
 
+    def transform(self, transform: str) -> None:
+        """Apply a transform to the model
+        """
+        self._valid()
+        check(lib.tract_model_transform(self.ptr, str(transform).encode("utf-8")))
+
     def f32_to_f16(self) -> None:
         """Convert the model from f32 to half precision
         """
-        self._valid()
-        check(lib.tract_model_f32_to_f16(self.ptr))
+        self.transform("f32-to-f16")
     
     def f16_to_f32(self) -> None:
         """Convert the model from half to f32 precision
         """
-        self._valid()
-        check(lib.tract_model_f16_to_f32(self.ptr))
+        self.transform("f16-to-f32")
 
     def declutter(self) -> None:
         """Declutter a model.

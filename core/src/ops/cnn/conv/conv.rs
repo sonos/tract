@@ -168,7 +168,7 @@ impl Conv {
             model.wire_node(format!("{name}.rm_k"), AxisOp::Rm(2), &sum_ker_g_c_k)?;
         // align sum_A from G,C to "C" shape: N,HW,G,C (or N,G,C,HW)
         let sum_ker_n_g_c =
-            model.wire_node(format!("{name}.sum_ker_n_g_c"), AxisOp::Add(0), &sum_ker_a_g_c)?;
+            model.wire_node(format!("{name}.sum_ker_n_g_c.axis_0"), AxisOp::Add(0), &sum_ker_a_g_c)?;
         let hw_position = if self.pool_spec.data_format.c_is_last() { 1 } else { 3 };
         let sum_ker = model.wire_node(
             format!("{name}.sum_ker_n_g_c"),

@@ -5,7 +5,7 @@ use tract_data::TractResult;
 
 use crate::LADatum;
 
-use super::element_wise_helper::{reduce_slice_with_alignment, map_reduce_slice_with_alignment};
+use super::element_wise_helper::{map_reduce_slice_with_alignment, reduce_slice_with_alignment};
 
 macro_rules! reduce_impl_wrap {
     ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr, $params: ty, $neutral: expr, $run: item, $reduce_two: item) => {
@@ -130,7 +130,9 @@ where
     T: LADatum,
 {
     fn name() -> &'static str;
-    fn alignment_bytes() -> usize;
+    fn alignment_bytes() -> usize {
+        Self::alignment_items() * T::datum_type().size_of()
+    }
     fn alignment_items() -> usize;
     fn nr() -> usize;
     fn neutral() -> T;
@@ -141,6 +143,7 @@ where
     }
 }
 
+#[allow(unused_macros)]
 macro_rules! map_reduce_impl_wrap {
     ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr, $params: ty, $map_neutral: expr, $reduce_neutral: expr, $run: item, $reduce_two: item) => {
         paste! {
@@ -233,7 +236,9 @@ where
     T: LADatum,
 {
     fn name() -> &'static str;
-    fn alignment_bytes() -> usize;
+    fn alignment_bytes() -> usize {
+        Self::alignment_items() * T::datum_type().size_of()
+    }
     fn alignment_items() -> usize;
     fn nr() -> usize;
     fn map_neutral() -> T;
@@ -287,7 +292,14 @@ pub mod test {
         reference_map: impl Fn(T) -> T,
         reference_reduce: impl Fn(T, T) -> T,
     ) -> TestCaseResult {
-        test_map_reduce_params::<K, T, ()>(values, map_neutral, neutral, reference_map, reference_reduce, ())
+        test_map_reduce_params::<K, T, ()>(
+            values,
+            map_neutral,
+            neutral,
+            reference_map,
+            reference_reduce,
+            (),
+        )
     }
 
     pub fn test_map_reduce_params<K: MapReduceKer<T, Params>, T: LADatum, Params>(
@@ -305,7 +317,8 @@ pub mod test {
         let op = K::red();
         let mut found = values.to_vec();
         let expected_values = values.iter().copied().map(reference_map).collect_vec();
-        let expected_reduced = expected_values.iter().fold(map_neutral, |acc, i| reference_reducer(acc, *i));
+        let expected_reduced =
+            expected_values.iter().fold(map_neutral, |acc, i| reference_reducer(acc, *i));
         let red = op.run_with_params(&mut found, params).unwrap();
         tensor1(&found)
             .close_enough(&tensor1(&expected_values), Approximation::SuperApproximate)

@@ -17,11 +17,11 @@ pub trait ElementWiseMiniOp:
         None
     }
     #[allow(unused_variables)]
-    fn eval_in_place(&self, t: &mut Tensor) -> TractResult<()> {
+    fn eval_in_place(&self, t: &mut Tensor, out_dt: Option<DatumType>) -> TractResult<()> {
         bail!("Element wise eval in-place not defined");
     }
     #[allow(unused_variables)]
-    fn eval_out_of_place(&self, t: &Tensor) -> TractResult<Tensor> {
+    fn eval_out_of_place(&self, t: &Tensor, out_dt: Option<DatumType>) -> TractResult<Tensor> {
         bail!("Element wise eval out-of-place place not defined");
     }
     #[allow(unused_variables)]
@@ -60,7 +60,13 @@ dyn_clone::clone_trait_object!(ElementWiseMiniOp);
 downcast_rs::impl_downcast!(ElementWiseMiniOp);
 
 #[derive(Debug, Clone)]
-pub struct ElementWiseOp(pub Box<dyn ElementWiseMiniOp>);
+pub struct ElementWiseOp(pub Box<dyn ElementWiseMiniOp>, pub Option<DatumType>);
+
+impl ElementWiseOp {
+    fn output_datum_type(&self, input_dt: DatumType) -> DatumType {
+        self.1.unwrap_or(self.0.operating_datum_type(input_dt))
+    }
+}
 
 impl Op for ElementWiseOp {
     fn name(&self) -> Cow<str> {
@@ -85,10 +91,10 @@ impl EvalOp for ElementWiseOp {
 
     fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         if let Some(_dt) = self.0.output_type(inputs[0].datum_type()) {
-            Ok(tvec!(self.0.eval_out_of_place(&inputs[0])?.into_tvalue()))
+            Ok(tvec!(self.0.eval_out_of_place(&inputs[0], self.1)?.into_tvalue()))
         } else {
             let mut m = inputs.remove(0).into_tensor();
-            self.0.eval_in_place(&mut m)?;
+            self.0.eval_in_place(&mut m, self.1)?;
             Ok(tvec!(m.into()))
         }
     }
@@ -97,8 +103,10 @@ impl EvalOp for ElementWiseOp {
 impl TypedOp for ElementWiseOp {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = inputs[0].clone().without_value();
-        let dt = self.0.operating_datum_type(fact.datum_type);
-        if let Some(dt) = self.0.output_type(dt) {
+        let dt = self.output_datum_type(fact.datum_type);
+        if let Some(dt) = self.1 {
+            fact.datum_type = dt;
+        } else if let Some(dt) = self.0.output_type(dt) {
             fact.datum_type = dt;
         }
         Ok(tvec!(fact))
@@ -149,7 +157,7 @@ impl TypedOp for ElementWiseOp {
         zero_point: i32,
     ) -> TractResult<Option<Box<dyn TypedOp>>> {
         if let Some(mini) = self.0.quantize(dt, scale, zero_point)? {
-            Ok(Some(Box::new(ElementWiseOp(mini))))
+            Ok(Some(Box::new(ElementWiseOp(mini, self.1))))
         } else {
             Ok(None)
         }
@@ -176,9 +184,9 @@ macro_rules! element_wise {
             fn name(&self) -> String {
                 format!("{}{}", self.prefix(), stringify!($Op))
             }
-            fn eval_in_place(&self, t: &mut Tensor) -> TractResult<()> {
+            fn eval_in_place(&self, t: &mut Tensor, out_dt: Option<DatumType>) -> TractResult<()> {
                 $(
-                    $(if t.datum_type() == $typ::datum_type() {
+                    $(if out_dt.unwrap_or(t.datum_type()) == $typ::datum_type() {
                         let t: &mut[$typ] = t.as_slice_mut::<$typ>()?;
                         let f: fn(&Self, &mut[$typ]) -> TractResult<()> = $f;
                         f(self, t)?;
@@ -188,24 +196,37 @@ macro_rules! element_wise {
                 )*
                 $(
                     $(
-                       $(if t.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
-                           let dt = t.datum_type();
+                       $(
+                        let mut input_dt = t.datum_type();
+                        let sout_dt = out_dt.unwrap_or(input_dt);
+                        if sout_dt.unquantized() == <$typ_dt>::datum_type().unquantized() {
+                           if input_dt.unquantized() != sout_dt.unquantized() {
+                               // align unquantized input type to unquantized output type
+                               *t = match input_dt.unquantized() {
+                                   DatumType::U8 => t.clone().into_arc_tensor().offset_u8_as_i8(),
+                                   DatumType::I8 => t.clone().into_arc_tensor().offset_i8_as_u8(),
+                                   unknown_dt => bail!("unexpected quantization input dt {:?}", unknown_dt)
+                               }.into_tensor();
+                               input_dt = t.datum_type(); // because zero_point change
+                           }
+                           unsafe { t.set_datum_type(sout_dt) } // force cast
                            let t: &mut[$typ_dt] = t.as_slice_mut::<$typ_dt>()?;
-                           let f: fn(&Self, &mut[$typ_dt], DatumType) -> TractResult<()> = |_, xs, dt| {
-                            let (zp, scale) = dt.zp_scale();
-                            xs.iter_mut().for_each(|x| {
-                                let x_f32 = (*x as f32 - zp as f32) * scale;
-                                *x = (($f_f32(x_f32) / scale) + zp as f32).as_()
-                            });
-                            Ok(())
-                        };
-                           f(self, t, dt)?;
+                           let f: fn(&Self, &mut[$typ_dt], DatumType, DatumType) -> TractResult<()> = |_, xs, input_dt, out_dt| {
+                               let (izp, iscale) = input_dt.zp_scale();
+                               let (ozp, oscale) = out_dt.zp_scale();
+                               xs.iter_mut().for_each(|x| {
+                                   let x_f32 = (*x as f32 - izp as f32) * iscale;
+                                   *x = (($f_f32(x_f32) / oscale) + ozp as f32).as_()
+                               });
+                               Ok(())
+                           };
+                           f(self, t, input_dt, sout_dt)?;
                            return Ok(())
                        }
                        )*
                    )*
                 )?
-                bail!("{} does not support {:?}", self.name(), t.datum_type());
+                bail!("{} does not support {:?}", self.name(), out_dt.unwrap_or(t.datum_type()));
             }
             $(
             fn cost_per_element(&self, dt: DatumType) -> TVec<(Cost, usize)> {
@@ -247,7 +268,7 @@ macro_rules! element_wise {
             )?
         }
         pub fn $func($( $($var: $var_typ),* )?) -> $crate::ops::element_wise::ElementWiseOp {
-            $crate::ops::element_wise::ElementWiseOp(Box::new($Op { $( $($var),* )? } ))
+            $crate::ops::element_wise::ElementWiseOp(Box::new($Op { $( $($var),* )? }), None)
         }
     }
 }
@@ -278,7 +299,7 @@ macro_rules! element_wise_oop {
                 )*
                 None
             }
-            fn eval_out_of_place(&self, t: &Tensor) -> TractResult<Tensor> {
+            fn eval_out_of_place(&self, t: &Tensor, _out_dt: Option<DatumType>) -> TractResult<Tensor> {
                 $(
                     let mut dst = unsafe { Tensor::uninitialized_dt(<$typ_dst>::datum_type(), &t.shape())? };
                     $(if t.datum_type() == $typ::datum_type() {
@@ -327,7 +348,7 @@ macro_rules! element_wise_oop {
         }
         $(#[$fmeta])*
         pub fn $func($( $($var: $var_typ),* )?) -> $crate::ops::element_wise::ElementWiseOp {
-            $crate::ops::element_wise::ElementWiseOp(Box::new($Op { $( $($var),* )? } ))
+            $crate::ops::element_wise::ElementWiseOp(Box::new($Op { $( $($var),* )? }), None)
         }
     }
 }

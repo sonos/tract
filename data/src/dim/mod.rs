@@ -4,10 +4,12 @@ use std::fmt;
 use std::ops;
 
 mod parse;
+mod resolve;
 mod sym;
 mod tree;
 
 pub use self::parse::parse_tdim;
+pub use self::resolve::solve_for;
 pub use self::sym::{Symbol, SymbolTable, SymbolValues};
 pub use self::tree::{TDim, UndeterminedSymbol};
 

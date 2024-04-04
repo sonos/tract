@@ -1,6 +1,6 @@
 use tract_ndarray::Dimension;
 
-use crate::transform::ModelTransformer;
+use crate::transform::ModelTransform;
 use crate::{broadcast, internal::*};
 use std::borrow::Cow;
 use std::fmt::Debug;
@@ -10,7 +10,7 @@ use super::{rewrite_einsums_as_matmul, BasicMatMul};
 #[derive(Debug, Default)]
 pub struct AsBlas;
 
-impl ModelTransformer for AsBlas {
+impl ModelTransform for AsBlas {
     fn name(&self) -> Cow<str> {
         "as-blas".into()
     }

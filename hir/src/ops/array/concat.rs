@@ -71,7 +71,7 @@ impl Expansion for Concat {
     ) -> TractResult<TVec<OutletId>> {
         let facts = inputs
             .iter()
-            .map(|i| target.outlet_fact(*i).map(|x| x.clone()))
+            .map(|i| target.outlet_fact(*i).cloned())
             .collect::<TractResult<TVec<_>>>()?;
 
         let super_type = if let Some(super_type) =

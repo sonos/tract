@@ -5,12 +5,13 @@ use log::*;
 use tract_nnef::internal::*;
 use tract_onnx_opl::*;
 
-#[path="../suite.rs"]
+#[path = "../suite.rs"]
 mod suite;
 
 mod nnef_predump {
     use super::*;
 
+    #[allow(dead_code)]
     struct NnefPredumpRuntime(Nnef);
 
     impl Debug for NnefPredumpRuntime {
@@ -40,7 +41,6 @@ mod nnef_predump {
 
     include!(concat!(env!("OUT_DIR"), "/tests/nnef_cycle.rs"));
 }
-
 
 mod nnef_cycle {
     use super::*;

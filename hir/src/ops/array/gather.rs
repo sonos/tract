@@ -1,3 +1,5 @@
+use tract_core::ops::cast::cast;
+
 use crate::infer::*;
 use crate::internal::*;
 
@@ -5,7 +7,6 @@ use crate::internal::*;
 pub struct Gather {
     axis: i64,
 }
-
 
 impl Gather {
     pub fn to_type_op(&self, input_rank: usize) -> tract_core::ops::array::Gather {
@@ -19,7 +20,6 @@ impl Expansion for Gather {
         "Gather".into()
     }
 
-
     fn wire(
         &self,
         prefix: &str,
@@ -27,7 +27,13 @@ impl Expansion for Gather {
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         let input_rank = model.outlet_fact(inputs[0])?.rank();
-        model.wire_node(prefix, self.to_type_op(input_rank), inputs)
+        let mut inputs: TVec<OutletId> = inputs.into();
+        inputs[1] = model.wire_node(
+            format!("{prefix}.cast_to_i64"),
+            cast(i64::datum_type()),
+            &[inputs[1]],
+        )?[0];
+        model.wire_node(prefix, self.to_type_op(input_rank), &inputs)
     }
 
     fn rules<'r, 'p: 'r, 's: 'r>(

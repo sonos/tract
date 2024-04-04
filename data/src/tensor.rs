@@ -1283,7 +1283,7 @@ impl Tensor {
     /// Access the data as a scalar, after a cast.
     pub fn cast_to_scalar<D: Datum + Copy>(&self) -> anyhow::Result<D> {
         let casted = self.cast_to::<D>()?;
-        casted.to_scalar::<D>().map(|&x| x)
+        casted.to_scalar::<D>().copied()
     }
 
     /// Access the nth element of the tensor, returned as a 0-rank Tensor
@@ -1467,6 +1467,24 @@ impl Tensor {
             }
         }
 
+        t.into_arc_tensor()
+    }
+
+    /// Offsets the tensor as an u8 type if it's an i8 type, otherwise passes it unchanged.
+    pub fn offset_i8_as_u8(self: &Arc<Self>) -> Arc<Self> {
+        let mut t = if let DatumType::I8 = self.dt.unquantized() {
+            self.to_array_view::<i8>().unwrap().mapv(|v| (v as u8).wrapping_add(128)).into_tensor()
+        } else {
+            return self.clone();
+        };
+
+        if let DatumType::QI8(qp) = self.dt {
+            if let QParams::ZpScale { zero_point, scale } = qp {
+                t.dt = DatumType::QU8(QParams::ZpScale { zero_point: zero_point + 128, scale });
+            } else {
+                t.dt = DatumType::QU8(qp);
+            }
+        }
         t.into_arc_tensor()
     }
 

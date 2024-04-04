@@ -518,49 +518,26 @@ impl Op for AxisOp {
     op_as_typed_op!();
 }
 
-#[derive(Debug, Clone)]
-struct ReshapeState;
-trivial_op_state_freeeze!(ReshapeState);
-
 impl EvalOp for AxisOp {
     fn is_stateless(&self) -> bool {
-        match self {
-            AxisOp::Reshape(_, from, _) => from.iter().all(|d| d.to_usize().is_ok()),
-            _ => true,
-        }
+        true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let mut input = args_1!(inputs).into_tensor();
-        self.change_tensor(&mut input, false)?;
-        Ok(tvec!(input.into_tvalue()))
-    }
-
-    fn state(
+    fn eval_with_session(
         &self,
-        _session: &mut SessionState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(if !self.is_stateless() { Some(Box::new(ReshapeState)) } else { None })
-    }
-}
-
-impl OpState for ReshapeState {
-    fn eval(
-        &mut self,
-        session: &mut SessionState,
-        op: &dyn Op,
+        session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let op = op.downcast_ref::<AxisOp>().unwrap();
-        match op {
+        let mut input = args_1!(inputs).into_tensor();
+        match self {
             AxisOp::Reshape(skip, from, to) => {
                 let from = from.iter().map(|d| d.eval(&session.resolved_symbols)).collect();
                 let to = to.iter().map(|d| d.eval(&session.resolved_symbols)).collect();
-                AxisOp::Reshape(*skip, from, to).eval(inputs)
+                AxisOp::Reshape(*skip, from, to).change_tensor(&mut input, false)?
             }
-            _ => bail!("Only reshape can be stateful"),
+            _ => self.change_tensor(&mut input, false)?,
         }
+        Ok(tvec!(input.into_tvalue()))
     }
 }
 

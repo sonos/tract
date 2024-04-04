@@ -1,10 +1,10 @@
 use super::*;
 use nom::branch::alt;
 use nom::bytes::complete::tag;
-use nom::character::complete::{alpha1, alphanumeric1, digit1};
+use nom::character::complete::{alpha1, alphanumeric1, digit1, one_of};
 use nom::combinator::{all_consuming, map, map_res, recognize};
 use nom::multi::many0;
-use nom::sequence::{delimited, pair, separated_pair, tuple};
+use nom::sequence::{delimited, pair, separated_pair};
 use nom::IResult;
 
 pub fn parse_tdim(symbol_table: &SymbolTable, input: &str) -> TractResult<TDim> {
@@ -22,7 +22,7 @@ macro_rules! bin {
     ($name: ident, $next: ident, $op: expr, $builder: expr) => {
         fn $name<'i>(symbol_table: &SymbolTable, input: &'i str) -> IResult<&'i str, TDim> {
             let s = symbol_table;
-            alt((map(separated_pair(|i| $next(s, i), tuple((many0(tag(" ")), tag($op), many0(tag(" ")))), |i| $next(s, i)), $builder), |i| {
+            alt((map(separated_pair(|i| $next(s, i), stag($op), |i| $next(s, i)), $builder), |i| {
                 $next(s, i)
             }))(input)
         }
@@ -35,7 +35,7 @@ bin!(mul, div, "*", |(a, b)| a * b);
 
 fn div<'i>(symbol_table: &SymbolTable, input: &'i str) -> IResult<&'i str, TDim> {
     let s = symbol_table;
-    alt((map(separated_pair(|i| atom(s, i), tag("/"), numeric), |(a, b)| a / b), |i| atom(s, i)))(
+    alt((map(separated_pair(|i| atom(s, i), stag("/"), numeric), |(a, b)| a / b), |i| atom(s, i)))(
         input,
     )
 }
@@ -44,8 +44,8 @@ fn atom<'i>(symbol_table: &SymbolTable, i: &'i str) -> IResult<&'i str, TDim> {
     alt((
         map(numeric, TDim::Val),
         map(|i| identifier(symbol_table, i), TDim::Sym),
-        map(pair(recognize(tag("-")), |i| atom(symbol_table, i)), |(_, dim)| dim * -1),
-        delimited(tag("("), |i| expr(symbol_table, i), tag(")")),
+        map(pair(recognize(stag("-")), |i| atom(symbol_table, i)), |(_, dim)| dim * -1),
+        delimited(stag("("), |i| expr(symbol_table, i), stag(")")),
     ))(i)
 }
 
@@ -57,6 +57,21 @@ fn identifier<'i>(symbol_table: &SymbolTable, i: &'i str) -> IResult<&'i str, Sy
 
 fn numeric(i: &str) -> IResult<&str, i64> {
     map_res(digit1, std::str::FromStr::from_str)(i)
+}
+
+fn spaces(i: &str) -> IResult<&str, ()> {
+    map(many0(one_of(" \t\n\r")), |_| ())(i)
+}
+
+fn spaced<'s, O, F>(it: F) -> impl FnMut(&'s str) -> IResult<&'s str, O>
+where
+    F: FnMut(&'s str) -> IResult<&'s str, O>,
+{
+    delimited(spaces, it, spaces)
+}
+
+pub(super) fn stag<'s>(t: &'static str) -> impl FnMut(&'s str) -> IResult<&'s str, &'s str> {
+    spaced(tag(t))
 }
 
 #[cfg(test)]
@@ -88,7 +103,7 @@ mod test {
         assert_eq!(parse_tdim(&table, "1*2").unwrap(), 2.into());
         assert_eq!(parse_tdim(&table, "1/2").unwrap(), 0.into());
     }
-    
+
     #[test]
     fn parse_prio() {
         let table = SymbolTable::default();

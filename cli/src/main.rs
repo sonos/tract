@@ -127,7 +127,7 @@ fn main() -> tract_core::anyhow::Result<()> {
 
         .arg(Arg::new("f32-to-f16").long("f32-to-f16").alias("half-floats").long_help("Convert the decluttered network from f32 to f16"))
         .arg(arg!(--"f16-to-f32" "Convert the decluttered network from f16 to f32"))
-        .arg(Arg::new("transform").long("transform").multiple_occurrences(true).takes_value(true).help("Apply a built-in transformation to the model"))
+        .arg(Arg::new("transform").short('t').long("transform").multiple_occurrences(true).takes_value(true).help("Apply a built-in transformation to the model"))
         .arg(Arg::new("set").long("set").multiple_occurrences(true).takes_value(true)
          .long_help("Set a symbol to a concrete value after decluttering"))
 
@@ -234,6 +234,11 @@ fn main() -> tract_core::anyhow::Result<()> {
                 .long("save-steps")
                 .takes_value(true)
                 .help("Save intermediary values as a npz file"),
+        )
+        .arg(
+            Arg::new("check-f16-overflow")
+                .long("check-f16-overflow")
+                .help("Check for f16 overflow in all outputs"),
         )
         .arg(
             Arg::new("assert-sane-floats")

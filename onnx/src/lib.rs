@@ -19,6 +19,7 @@ pub mod pb {
 }
 
 pub mod pb_helpers;
+pub mod data_resolver;
 pub mod tensor;
 
 pub use model::Onnx;
