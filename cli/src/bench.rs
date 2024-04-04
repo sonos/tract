@@ -2,8 +2,8 @@ use crate::Parameters;
 use readings_probe::Probe;
 use std::time::{Duration, Instant};
 use tract_hir::internal::*;
-use tract_libcli::terminal;
 use tract_libcli::profile::BenchLimits;
+use tract_libcli::terminal;
 
 pub fn criterion(
     params: &Parameters,
@@ -32,18 +32,20 @@ pub fn handle(
     probe: Option<&Probe>,
 ) -> TractResult<()> {
     let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
-
     let model =
         params.tract_model.downcast_ref::<TypedModel>().context("Can only bench TypedModel")?;
+    let inputs = tract_libcli::tensor::retrieve_or_make_inputs(model, &run_params)?.remove(0);
     let plan = SimplePlan::new(model)?;
+
+    limits.warmup(&model, &inputs)?;
+
     let mut state = SimpleState::new(plan)?;
+    let mut iters = 0;
 
     let progress = probe.and_then(|m| m.get_i64("progress"));
     info!("Starting bench itself");
-    let mut iters = 0;
-    let inputs = tract_libcli::tensor::retrieve_or_make_inputs(model, &run_params)?.remove(0);
     let start = Instant::now();
-    while iters < limits.max_iters && start.elapsed() < limits.max_time {
+    while iters < limits.max_loops && start.elapsed() < limits.max_time {
         if let Some(mon) = probe {
             let _ = mon.log_event(&format!("loop_{iters}"));
         }

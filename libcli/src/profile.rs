@@ -1,4 +1,5 @@
 use tract_core::internal::*;
+use tract_core::num_traits::Zero;
 use tract_core::ops::scan::State;
 use tract_core::ops::submodel::TypedModelOpState;
 
@@ -9,13 +10,43 @@ use std::any::TypeId;
 use std::time::Duration;
 
 pub struct BenchLimits {
-    pub max_iters: usize,
+    pub warmup_loops: usize,
+    pub warmup_time: std::time::Duration,
+    pub max_loops: usize,
     pub max_time: std::time::Duration,
 }
 
 impl Default for BenchLimits {
     fn default() -> Self {
-        BenchLimits { max_iters: 100_000, max_time: std::time::Duration::from_secs(5) }
+        BenchLimits {
+            warmup_loops: 0,
+            warmup_time: Duration::default(),
+            max_loops: 100_000,
+            max_time: std::time::Duration::from_secs(5),
+        }
+    }
+}
+
+impl BenchLimits {
+    pub fn warmup(&self, model: &TypedModel, inputs: &TVec<TValue>) -> TractResult<()> {
+        if self.warmup_time.is_zero() && self.warmup_loops.is_zero() {
+            return Ok(());
+        }
+        let plan = TypedSimplePlan::new(model.clone())?;
+        let mut state = TypedSimpleState::new(Arc::new(plan))?;
+        let mut iters = 0;
+        let max_loops =
+            if self.warmup_loops.is_zero() { usize::max_value() } else { self.warmup_loops };
+        let max_time = if self.warmup_time.is_zero() { Duration::MAX } else { self.warmup_time };
+
+        let start_warmup = crate::time::now();
+        debug!("Warming up before profiling...");
+        while iters < max_loops && start_warmup.elapsed() < max_time {
+            state.run(inputs.clone())?;
+            iters += 1;
+        }
+        debug!("Done warming up.");
+        Ok(())
     }
 }
 
@@ -30,12 +61,14 @@ pub fn profile(
     info!("Running entire network");
     let mut iters = 0usize;
     let prefix = tvec!();
+
+    bench_limits.warmup(model, inputs)?;
+
     let plan = TypedSimplePlan::new(model.clone())?;
     let mut state = TypedSimpleState::new(Arc::new(plan))?;
-
     let start = crate::time::now();
     let mut time_accounted_by_inner_nodes = Duration::default();
-    while iters < bench_limits.max_iters && start.elapsed() < bench_limits.max_time {
+    while iters < bench_limits.max_loops && start.elapsed() < bench_limits.max_time {
         rec_profiler(
             &mut state,
             dg,
@@ -49,7 +82,7 @@ pub fn profile(
         iters += 1;
     }
     let entire = start.elapsed() - time_accounted_by_inner_nodes;
-    info!("Running {} iterations max. for each node.", bench_limits.max_iters);
+    info!("Running {} iterations max. for each node.", bench_limits.max_loops);
     info!("Running for {} ms max. for each node.", bench_limits.max_time.as_millis());
 
     let denum = (iters as f32).recip();

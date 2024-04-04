@@ -293,7 +293,11 @@ impl Parameters {
                 let graph = onnx.proto_model_for_read(&mut *location.read()?)?;
                 info_usage("proto model loaded", probe);
                 let path = &location.path().clone();
-                let mut parsed = onnx.parse_with_symbols(&graph, path.parent().and_then(|it| it.to_str()), symbol_table)?;
+                let mut parsed = onnx.parse_with_symbols(
+                    &graph,
+                    path.parent().and_then(|it| it.to_str()),
+                    symbol_table,
+                )?;
 
                 if matches.is_present("determinize") {
                     tract_onnx::Onnx::determinize(&mut parsed.model)?;
@@ -1000,15 +1004,23 @@ impl Parameters {
 }
 
 pub fn bench_limits_from_clap(matches: &clap::ArgMatches) -> TractResult<BenchLimits> {
-    let max_iters =
-        matches.value_of("max-iters").map(usize::from_str).transpose()?.unwrap_or(100_000);
+    let max_loops =
+        matches.value_of("max-loops").map(usize::from_str).transpose()?.unwrap_or(100_000);
+    let warmup_loops =
+        matches.value_of("warmup-loops").map(usize::from_str).transpose()?.unwrap_or(0);
     let max_time = matches
         .value_of("max-time")
         .map(u64::from_str)
         .transpose()?
         .map(std::time::Duration::from_millis)
         .unwrap_or(std::time::Duration::from_secs(5));
-    Ok(BenchLimits { max_iters, max_time })
+    let warmup_time = matches
+        .value_of("warmup-time")
+        .map(u64::from_str)
+        .transpose()?
+        .map(std::time::Duration::from_millis)
+        .unwrap_or(std::time::Duration::from_secs(0));
+    Ok(BenchLimits { max_loops, max_time, warmup_time, warmup_loops })
 }
 
 pub fn display_params_from_clap(
