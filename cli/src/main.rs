@@ -418,9 +418,9 @@ fn assertions_options(command: clap::Command) -> clap::Command {
 fn bench_options(command: clap::Command) -> clap::Command {
     use clap::*;
     command.args(&[
-                     arg!(-n --"warmup-time" [warmup_time] "Time to run (approx.) before starting the clock."),
-                     arg!(-n --"warmup-loops" [warmup_loops] "Number of loops to run before starting the clock."),
-                     arg!(-n --"max-loops" [max_iters] "Sets the maximum number of iterations for each node [default: 100_000].").alias("max-iters"),
+                     arg!(--"warmup-time" [warmup_time] "Time to run (approx.) before starting the clock."),
+                     arg!(--"warmup-loops" [warmup_loops] "Number of loops to run before starting the clock."),
+                     arg!(--"max-loops" [max_iters] "Sets the maximum number of iterations for each node [default: 100_000].").alias("max-iters"),
                      arg!(--"max-time" [max_time] "Sets the maximum execution time for each node (in ms) [default: 5000].") ])
 }
 
