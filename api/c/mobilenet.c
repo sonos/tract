@@ -56,7 +56,9 @@ inference(char *model_name, TractValue *input, TractValue *input2, prediction *i
     // Load the model
     TractModel *model = NULL;
     TractInferenceModel *inference_model = NULL;
+    fprintf(stderr, "Before tract_onnx_model_for_path\n");
     check(tract_onnx_model_for_path(onnx, model_name, &inference_model));
+    fprintf(stderr, "After tract_onnx_model_for_path\n");
     assert(inference_model);
     assert(onnx);
 

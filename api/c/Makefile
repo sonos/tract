@@ -7,7 +7,7 @@ clean:
 mobilenet: tract.h libtract.a mobilenet.c
 	cc -g mobilenet.c -o mobilenet -L. -ltract -lm -lpthread
 
-libtract.so:
+libtract.a:
 	cargo build -p tract-ffi --release
 	cp ../../target/release/libtract.a .
 

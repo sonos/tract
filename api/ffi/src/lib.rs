@@ -264,7 +264,7 @@ pub unsafe extern "C" fn tract_onnx_destroy(onnx: *mut *mut TractOnnx) -> TRACT_
 }
 
 /// Parse and load an ONNX model as a tract InferenceModel.
-///
+/// println!("cargo:rerun-if-changed=tract.h");
 /// `path` is a null-terminated utf-8 string pointer. It must point to a `.onnx` model file.
 #[no_mangle]
 pub unsafe extern "C" fn tract_onnx_model_for_path(
@@ -274,10 +274,17 @@ pub unsafe extern "C" fn tract_onnx_model_for_path(
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(onnx, path, model);
+        println!("Inside the onnx_model_for_path function!");
+        println!("Model path: {:?}", path);
+        println!("Onnx: {:?}", onnx);
+        println!("Model: {:?}\n", model);
         *model = std::ptr::null_mut();
         let path = CStr::from_ptr(path).to_str()?;
+        println!("Model path: {:?}\n", path);
         let m = Box::new(TractInferenceModel((*onnx).0.model_for_path(path)?));
+        println!("After inizialing the TractInferenceModel inside the model_for_path function!\n");
         *model = Box::into_raw(m);
+        println!("End of onnx_model_for_path function!\n");
         Ok(())
     })
 }

@@ -234,6 +234,8 @@ impl Default for Onnx {
 
 impl Onnx {
     pub fn parse(&self, proto: &pb::ModelProto, path: Option<&str>) -> TractResult<ParseResult> {
+        println!("Parse the proto file!");
+        println!("Create the graph!\n");
         self.parse_with_symbols(proto, path, &SymbolTable::default())
     }
     pub fn parse_with_symbols(
@@ -292,16 +294,21 @@ impl Onnx {
 impl Framework<pb::ModelProto, InferenceModel> for Onnx {
     fn model_for_path(&self, p: impl AsRef<path::Path>) -> TractResult<InferenceModel> {
         let mut path = PathBuf::new();
+        println!("Inside the model_for_path function in ParseResult!");
+        println!("Path: {:?}", p.as_ref());
         path.push(&p);
         let mut dir: Option<&str> = None;
         if let Some(dir_opt) = path.parent() {
             dir = dir_opt.to_str();
         }
+        println!("Dir: {:?}", dir);
         let proto = self.proto_model_for_path(p)?;
+        // The graph is created in below function
         let ParseResult { model, unresolved_inputs, .. } = self.parse(&proto, dir)?;
         if unresolved_inputs.len() > 0 {
             bail!("Could not resolve inputs at top-level: {:?}", unresolved_inputs)
         }
+        println!("Before returning to OnnxInterface!\n");
         Ok(model)
     }
 
@@ -314,10 +321,12 @@ impl Framework<pb::ModelProto, InferenceModel> for Onnx {
 
     #[cfg(not(target_family = "wasm"))]
     fn proto_model_for_path(&self, p: impl AsRef<path::Path>) -> TractResult<pb::ModelProto> {
+        println!("Inside the proto_model_for_path function in wasm!\n");
         let p = p.as_ref();
         let map = unsafe {
             memmap2::Mmap::map(&fs::File::open(p).with_context(|| format!("Opening {p:?}"))?)?
         };
+        // Opening file and decode it
         Ok(crate::pb::ModelProto::decode(&*map)?)
     }
 
