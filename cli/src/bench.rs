@@ -37,7 +37,7 @@ pub fn handle(
     let inputs = tract_libcli::tensor::retrieve_or_make_inputs(model, &run_params)?.remove(0);
     let plan = SimplePlan::new(model)?;
 
-    limits.warmup(&model, &inputs)?;
+    limits.warmup(model, &inputs)?;
 
     let mut state = SimpleState::new(plan)?;
     let mut iters = 0;
