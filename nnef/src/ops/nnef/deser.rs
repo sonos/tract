@@ -121,11 +121,14 @@ pub fn transpose(
 pub fn concat(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let axis: usize = invocation.named_arg_as(builder, "axis")?;
     let mut values: TVec<OutletId> = invocation.named_arg_as(builder, "values")?;
-    if let Some(Some(dt)) = invocation.dt_from_quant_file.first() {
-        for value in &mut values {
-            if builder.model.node(value.node).outputs[value.slot].fact.datum_type != *dt {
-                *value = builder.wire_as_outlets(ops::cast::cast(*dt), &[*value])?[0];
-            }
+    let dt = if let Some(dt) = invocation.dt_from_quant_file.first().and_then(|it| *it) {
+        dt
+    } else {
+        builder.model.outlet_fact(values[0])?.datum_type
+    };
+    for value in &mut values {
+        if builder.model.outlet_fact(*value)?.datum_type != dt {
+            *value = builder.wire_as_outlets(ops::cast::cast(dt), &[*value])?[0];
         }
     }
 
@@ -340,7 +343,8 @@ pub fn conv_or_deconv(
                 [0];
     }
 
-    let bias_dt = if input_fact.datum_type.is_float() { input_fact.datum_type } else { i32::datum_type() };
+    let bias_dt =
+        if input_fact.datum_type.is_float() { input_fact.datum_type } else { i32::datum_type() };
     bias = builder.model.wire_node(format!("{name}.cast_bias"), cast(bias_dt), &[bias])?[0];
 
     let mut inputs = tvec!(input, kernel, bias);

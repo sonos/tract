@@ -99,7 +99,7 @@ pub fn read_tensor<R: std::io::Read>(mut reader: R) -> TractResult<Tensor> {
             (0, 4, 64) => DatumType::I64,
 
             // 5 - 0b0101 - bool values, 1 bit or 8 bits (0 means false, non-zero means true)
-            (0, 5, 1) => DatumType::Bool,
+            (0, 5, 1|8) => DatumType::Bool,
             (TRACT_ITEM_TYPE_VENDOR, 0x1000, 0xFFFF) => DatumType::String,
             #[cfg(feature="complex")]
             (TRACT_ITEM_TYPE_VENDOR, 0, 32) => DatumType::ComplexF16,
@@ -182,7 +182,8 @@ pub fn write_tensor<W: std::io::Write>(w: &mut W, tensor: &Tensor) -> TractResul
             DatumType::ComplexF16|DatumType::ComplexF32|DatumType::ComplexF64 => (TRACT_ITEM_TYPE_VENDOR, 0),
             #[cfg(feature="complex")]
             DatumType::ComplexI16|DatumType::ComplexI32|DatumType::ComplexI64 => (TRACT_ITEM_TYPE_VENDOR, 4),
-            DatumType::Bool|DatumType::TDim|DatumType::Blob => bail!("Don't know how to serialize {:?}", tensor.datum_type()),
+            DatumType::TDim|DatumType::Blob => bail!("Don't know how to serialize {:?}", tensor.datum_type()),
+            DatumType::Bool => (0, 5),
         };
         header. item_type = it;
         header.item_type_vendor = itv;
