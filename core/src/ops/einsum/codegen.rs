@@ -306,25 +306,28 @@ fn lir_mat_mul_unary(
     let m = &input_facts[0].shape[a_m];
     let k = &input_facts[0].shape[a_k];
     let n = &input_facts[1].shape[b_n];
-    if let (Some(m), Some(n)) = (m.as_i64(), n.as_i64()) {
-        if m < n {
-            let expr = op
-                .axes
-                .iter_all_axes()
-                .map(|axis| {
-                    let mut axis = axis.clone();
-                    axis.inputs.swap(0, 1);
-                    axis
-                })
-                .collect::<TVec<Axis>>();
-            return TypedModelPatch::replace_single_op(
-                model,
-                node,
-                &[node.inputs[1], node.inputs[0]],
-                EinSum { axes: AxesMapping::new(node.inputs.len(), 1, expr)?, ..op.clone() },
-            )
-            .map(Some);
-        }
+    let must_transpose = match (m.as_i64(), n.as_i64()) {
+        (Some(m), Some(n)) => m < n,
+        (None, Some(n)) => n >= 8,
+        _ => false,
+    };
+    if must_transpose {
+        let expr = op
+            .axes
+            .iter_all_axes()
+            .map(|axis| {
+                let mut axis = axis.clone();
+                axis.inputs.swap(0, 1);
+                axis
+            })
+            .collect::<TVec<Axis>>();
+        return TypedModelPatch::replace_single_op(
+            model,
+            node,
+            &[node.inputs[1], node.inputs[0]],
+            EinSum { axes: AxesMapping::new(node.inputs.len(), 1, expr)?, ..op.clone() },
+        )
+        .map(Some);
     }
     let a_dt = input_facts[0].datum_type;
     let b_dt = input_facts[1].datum_type;
