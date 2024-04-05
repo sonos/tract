@@ -325,9 +325,13 @@ impl EvalOp for LirMatMulUnary {
         Ok(Some(Box::new(State)))
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval_with_session(
+        &self,
+        session: &SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         let mut scratch = unsafe { self.mmm.allocate_scratch_space() };
-        eval(self, &Default::default(), scratch.as_mut(), &inputs)
+        eval(self, &session.resolved_symbols, scratch.as_mut(), &inputs)
     }
 }
 
