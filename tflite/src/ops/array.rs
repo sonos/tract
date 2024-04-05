@@ -8,7 +8,8 @@ use tract_ndarray::ArrayView2;
 use crate::registry::{DeserOp, Registry};
 use crate::ser::{BuiltinOp, SubgraphBuilder};
 use crate::tflite::{
-    BuiltinOperator, BuiltinOptions, ExpandDimsOptions, ExpandDimsOptionsArgs, ReshapeOptions,
+    ActivationFunctionType, BuiltinOperator, BuiltinOptions, ConcatenationOptions,
+    ConcatenationOptionsArgs, ExpandDimsOptions, ExpandDimsOptionsArgs, ReshapeOptions,
     ReshapeOptionsArgs, SliceOptions, SliceOptionsArgs, SqueezeOptions, SqueezeOptionsArgs,
     StridedSliceOptions, StridedSliceOptionsArgs, TransposeOptions, TransposeOptionsArgs,
 };
@@ -18,6 +19,7 @@ use super::wire_fused_activation;
 pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tflite(ser_axisop);
     reg.reg_to_tflite(ser_broadcast_to);
+    reg.reg_to_tflite(ser_concat);
     reg.reg_to_tflite(ser_downsample);
     reg.reg_to_tflite(ser_slice);
 
@@ -259,6 +261,29 @@ fn ser_broadcast_to(
     let shape = builder.write_fact(format!("{}.shape", node.name), tensor1(&shape))?;
     inputs.push(shape);
     builder.write_op(&inputs, &[output], 130, 3, BuiltinOperator::BROADCAST_TO)
+}
+
+fn ser_concat(
+    builder: &mut SubgraphBuilder,
+    _model: &TypedModel,
+    node: &TypedNode,
+    op: &TypedConcat,
+) -> TractResult<()> {
+    let options = ConcatenationOptions::create(
+        builder.fb(),
+        &ConcatenationOptionsArgs {
+            axis: op.axis as i32,
+            fused_activation_function: ActivationFunctionType::NONE,
+        },
+    );
+    let inputs = node.inputs.iter().map(|outlet| builder.outlets_to_tensors[outlet]).collect_vec();
+    let output = builder.outlets_to_tensors[&node.id.into()];
+    builder.write_op_with_options(
+        &inputs,
+        &[output],
+        BuiltinOp::new(2, 1, BuiltinOperator::CONCATENATION, BuiltinOptions::ConcatenationOptions),
+        options.as_union_value(),
+    )
 }
 
 fn ser_downsample(

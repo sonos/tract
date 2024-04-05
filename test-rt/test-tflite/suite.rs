@@ -46,9 +46,10 @@ fn ignore_onnx(t: &[String]) -> bool {
         _conv_
         Conv1d
         Conv2d
+
         squeeze
         _transpose_
-
+        test_concat
         test_flatten
         test_reshape
         test_slice

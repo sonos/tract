@@ -1,6 +1,9 @@
 # Unreleased
 
-# 0.21.2 - 2024-03-29
+# 0.21.3 - 2024-04-03
+* [AMX] Put AMX for iOS behind a feature gate ("tract-linalg/apple-amx-ios").
+
+# 0.21.2 - 2024-03-29 (yanked)
 * [ONNX] Support for external storage of tensors with offset and length
 * [ONNX] Lots of fixes around binary quantized operators (add, mul, etc)
 * [PY] Fix python source distribution
@@ -8,6 +11,8 @@
 * [API] Introduce transforms in external api
 * [BLAS] Introduce a simple BLAS transform for Matrix multiplication
 * [F16] Introduce a Reduce<MeanOfSquares> that solves many L2 normalization errors in f16
+
+This version has been yanked to revert systematic activation of AMX on iOS. AMX is a private API and Apple may reject an App that performs AMX instructions.
 
 # 0.21.1 - 2024-02-08
 * [ONNX] Support for external storage of tensors with offset and length
