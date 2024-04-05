@@ -4,5 +4,6 @@
 #![allow(improper_ctypes)]
 #![allow(deref_nullptr)]
 #![allow(clippy::redundant_static_lifetimes)]
+#![allow(clippy::useless_transmute)]
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
