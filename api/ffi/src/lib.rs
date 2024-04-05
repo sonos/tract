@@ -280,7 +280,6 @@ pub unsafe extern "C" fn tract_onnx_model_for_path(
         println!("Model: {:?}\n", model);
         *model = std::ptr::null_mut();
         let path = CStr::from_ptr(path).to_str()?;
-        println!("Model path: {:?}\n", path);
         let m = Box::new(TractInferenceModel((*onnx).0.model_for_path(path)?));
         println!("After inizialing the TractInferenceModel inside the model_for_path function!\n");
         *model = Box::into_raw(m);
