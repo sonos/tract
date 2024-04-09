@@ -3,15 +3,21 @@ use tract_core::tract_data::itertools::Itertools;
 
 use crate::ast::quant::write_quant_format;
 use crate::ast::{Document, Identifier, ProtoModel, QuantFormat};
+use crate::resource::{LazyDat, LazyDatLoader};
 use crate::{internal::*, nnef};
 use std::io::Read;
 #[cfg(target_family = "unix")]
 use std::os::unix::prelude::OsStrExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 pub fn stdlib() -> Vec<FragmentDef> {
     crate::ast::parse::parse_fragments(include_str!("../stdlib.nnef")).unwrap()
+}
+
+pub enum LazyDataProvider {
+    None,
+    File(PathBuf),
 }
 
 pub struct Nnef {
@@ -27,6 +33,7 @@ impl Default for Nnef {
             stdlib: stdlib(),
             registries: vec![crate::ops::tract_nnef()],
             resource_loaders: vec![
+                LazyDatLoader.into_boxed(),
                 GraphNnefLoader.into_boxed(),
                 DatLoader.into_boxed(),
                 GraphQuantLoader.into_boxed(),
@@ -267,7 +274,13 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
                 .skip(path.components().count())
                 .collect::<std::path::PathBuf>();
             let mut stream = std::fs::File::open(entry.path())?;
-            read_stream(&subpath, &mut stream, &mut resources, self)?;
+            read_stream(
+                &subpath,
+                &LazyDataProvider::File(entry.path().to_owned()),
+                &mut stream,
+                &mut resources,
+                self,
+            )?;
         }
         proto_model_from_resources(resources)
     }
@@ -293,7 +306,7 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
         for entry in tar.entries()? {
             let mut entry = entry?;
             let path = entry.path()?.to_path_buf();
-            read_stream(&path, &mut entry, &mut resources, self)?;
+            read_stream(&path, &LazyDataProvider::None, &mut entry, &mut resources, self)?;
         }
         proto_model_from_resources(resources)
     }
@@ -313,7 +326,7 @@ fn proto_model_from_resources(
     // Iter resources IDs to detect submodels. Submodels are IDs with
     // - two path compoents (ex: XXX/file)
     // - a graph.nnef file as filename
-    let sub_models = resources
+    let sub_model_ids = resources
         .keys()
         .clone()
         .filter_map(|id| {
@@ -330,8 +343,8 @@ fn proto_model_from_resources(
 
     // If there are submodels, we use the associated resources to create a TypedModel resource and add
     // it as a new resource.
-    let mut new_resources = if sub_models.len() > 0 {
-        sub_models.into_iter().try_fold(resources, |r, it| -> TractResult<HashMap<_, _>> {
+    let new_resources = if sub_model_ids.len() > 0 {
+        sub_model_ids.into_iter().try_fold(resources, |r, it| -> TractResult<HashMap<_, _>> {
             let (submodel_resources, mut resources): (HashMap<String, Arc<dyn Resource>>, _) =
                 r.into_iter().partition(|(k, _v)| k.starts_with(&it));
             let submodel_resources = submodel_resources
@@ -347,56 +360,44 @@ fn proto_model_from_resources(
         resources
     };
 
-    // NNEF document extraction
-    let doc = new_resources
-        .remove(crate::resource::GRAPH_NNEF_FILENAME)
-        .with_context(|| {
-            anyhow!("Resource {} was not found in the model", crate::resource::GRAPH_NNEF_FILENAME)
-        })?
-        .downcast_arc::<Document>()
-        .map_err(|_| anyhow!("Error while downcasting NNEF document resource"))?;
+    let mut resources = HashMap::default();
+    let mut tensors = HashMap::default();
+    let mut lazy_tensors = HashMap::default();
+    let mut doc: Option<Arc<Document>> = None;
+    let mut quantization = None;
+    for (k, res) in new_resources {
+        if let Ok(t) = res.clone().downcast_arc::<Tensor>() {
+            tensors.insert(Identifier(k), t);
+        } else if let Ok(t) = res.clone().downcast_arc::<LazyDat>() {
+            lazy_tensors.insert(Identifier(k), t);
+        } else if k == crate::resource::GRAPH_NNEF_FILENAME {
+            doc = Some(
+                res.downcast_arc::<Document>()
+                    .map_err(|_| anyhow!("graph.nnef must be a Document"))?,
+            );
+        } else if k == crate::resource::GRAPH_QUANT_FILENAME {
+            let map = res
+                .downcast_arc::<HashMap<String, QuantFormat>>()
+                .map_err(|_| anyhow!("graph.quant must be quantization information"))?;
+            quantization =
+                Some(map.iter().map(|(k, v)| (Identifier::from(&**k), v.clone())).collect())
+        } else {
+            resources.insert(k, res);
+        }
+    }
 
-    let doc = Arc::try_unwrap(doc)
-        .map_err(|_| anyhow!("Error while extracting NNEF Document from shared reference. Only one reference to the document is expected"))?;
+    let Some(doc) = doc else { bail!("Could not find graph.nnef") };
+    let doc = Arc::try_unwrap(doc).unwrap();
 
-    // Collect all resources that can be downcastable to Arc<Tensor>.
-    let tensors: HashMap<_, _> = new_resources
-        .iter()
-        .filter_map(|(key, resource)| {
-            Arc::clone(resource)
-                .downcast_arc::<Tensor>()
-                .ok()
-                .map(|r| (Identifier::from(&**key), r))
-        })
-        .collect();
-    // Iterate over tensors keys to remove them from the global resources hash map.
-    tensors.keys().for_each(|k| {
-        new_resources.remove(&*k.0);
-    });
-
-    // Quantization format resources extraction if present.
-    let quantization = if let Some(q_r) =
-        new_resources.remove(crate::resource::GRAPH_QUANT_FILENAME)
-    {
-        let Ok(q_r) = q_r.downcast_arc::<HashMap<String, QuantFormat>>() else {
-            bail!("Error while downcasting quantization format resource")
-        };
-        let Ok(q_r) = Arc::try_unwrap(q_r) else {
-            bail!("Error while extracting quantization format resource from shared reference. Only one reference to it is expected")
-        };
-        Some(q_r.into_iter().map(|(k, v)| (Identifier(k), v)).collect())
-    } else {
-        None
-    };
-
-    let proto = ProtoModel { doc, tensors, quantization, resources: new_resources };
+    let proto = ProtoModel { doc, tensors, lazy_tensors, quantization, resources };
     proto.validate()?;
     Ok(proto)
 }
 
-fn read_stream<R: std::io::Read>(
+fn read_stream(
     path: &Path,
-    reader: &mut R,
+    lazy_data_provider: &LazyDataProvider,
+    reader: &mut impl std::io::Read,
     resources: &mut HashMap<String, Arc<dyn Resource>>,
     framework: &Nnef,
 ) -> TractResult<()> {
@@ -408,9 +409,10 @@ fn read_stream<R: std::io::Read>(
     let mut last_loader_name;
     for loader in framework.resource_loaders.iter() {
         last_loader_name = Some(loader.name());
-        let loaded = loader.try_load(path, reader, framework).with_context(|| {
-            anyhow!("Error while loading resource by {:?} at path {:?}", loader.name(), path)
-        })?;
+        let loaded =
+            loader.try_load(path, lazy_data_provider, reader, framework).with_context(|| {
+                anyhow!("Error while loading resource by {:?} at path {:?}", loader.name(), path)
+            })?;
         if let Some((id, resource)) = loaded {
             ensure!(
                 !resources.contains_key(&id),

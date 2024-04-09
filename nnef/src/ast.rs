@@ -1,5 +1,6 @@
 use crate::internal::*;
 use tract_itertools::Itertools;
+use crate::resource::LazyDat;
 
 pub mod dump;
 pub mod dump_doc;
@@ -10,6 +11,7 @@ pub mod quant;
 pub struct ProtoModel {
     pub doc: Document,
     pub tensors: HashMap<Identifier, Arc<Tensor>>,
+    pub lazy_tensors: HashMap<Identifier, Arc<LazyDat>>,
     pub quantization: Option<HashMap<Identifier, QuantFormat>>,
     pub resources: HashMap<String, Arc<dyn Resource>>,
 }

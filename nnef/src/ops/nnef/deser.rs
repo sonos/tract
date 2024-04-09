@@ -39,42 +39,50 @@ pub fn external(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
 pub fn variable(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let shape: TVec<usize> = invocation.named_arg_as(builder, "shape")?;
     let label = Identifier(invocation.named_arg_as(builder, "label")?);
+    let sanitized_label = Identifier(label.0.trim_start_matches('/').to_owned());
+    let lazy_tensors = &builder.proto_model.lazy_tensors;
     let tensors = &builder.proto_model.tensors;
-    let mut tensor = Arc::clone(
-        tensors
-            .get(&label)
-            .or_else(|| tensors.get(&Identifier(label.0.trim_start_matches('/').to_owned())))
-            .ok_or_else(|| format_err!("No data for tensor {:?}", label))?,
-    );
+
+    let mut wire = if let Some(t) = tensors.get(&label).or_else(|| tensors.get(&sanitized_label)) {
+        builder.wire_as_outlets(tract_core::ops::konst::Const::new(t.clone()), &[])?
+    } else if let Some(lt) = lazy_tensors.get(&label).or_else(|| lazy_tensors.get(&sanitized_label))
+    {
+        builder.wire_as_outlets(tract_core::ops::konst::LazyConst::new(lt.clone()), &[])?
+    } else {
+        bail!("No data for tensor {:?}", label)
+    };
+    let fact = builder.model.outlet_fact(wire[0])?;
+    if fact.shape.as_concrete().unwrap() != &*shape {
+        bail!(
+            "Wrong shape for tensor: {:?}, tensor file says {:?}, graph files says {:?}",
+            label,
+            fact.shape,
+            shape
+        );
+    }
+
     if let Some(Some(dt)) = invocation.dt_from_quant_file.first() {
-        if dt.size_of() != tensor.datum_type().size_of() {
+        if dt.size_of() != fact.datum_type.size_of() {
             bail!(
                 "Mismatched tensor type for tensor {}: expected {:?}, got {:?}",
                 label.0,
                 *dt,
-                tensor.datum_type()
+                fact.datum_type
             );
         }
-        if *dt != tensor.datum_type() {
+        if *dt != fact.datum_type {
             trace!(
                 "Casting tensor {} from {:?} to {:?} when deserializing",
                 label.0,
-                tensor.datum_type(),
+                fact.datum_type,
                 *dt
             );
             //FIXME: avoid cast by late-loading tensors ?
-            tensor = tensor.cast_to_dt(*dt)?.into_owned().into_arc_tensor()
+            wire = builder.wire_as_outlets(cast(*dt), &wire)?;
         }
     }
-    if tensor.shape() != &*shape {
-        bail!(
-            "Wrong shape for tensor: {:?}, tensor file says {:?}, graph files says {:?}",
-            label,
-            tensor.shape(),
-            shape
-        );
-    }
-    builder.wire(tract_core::ops::konst::Const::new(tensor), &[])
+
+    Ok(wire.into())
 }
 
 // fragment reshape<?>( input: tensor<?>, shape: integer[], axis_start: integer = 0, axis_count: integer = -1 )

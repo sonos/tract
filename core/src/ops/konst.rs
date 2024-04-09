@@ -1,3 +1,7 @@
+use std::fmt::Debug;
+
+use dyn_clone::DynClone;
+
 use crate::internal::*;
 
 #[derive(Debug, Clone, new, Hash, Eq, PartialEq)]
@@ -72,3 +76,60 @@ impl TypedOp for Const {
         target.wire_node(&node.name, op, &[])
     }
 }
+
+#[derive(Debug, Clone, new)]
+pub struct LazyConst(pub Arc<dyn LazyConstProvider>);
+
+impl Op for LazyConst {
+    fn name(&self) -> Cow<str> {
+        "LazyConst".into()
+    }
+
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec!(format!("{:?}", self.0)))
+    }
+
+    op_as_typed_op!();
+}
+
+impl EvalOp for LazyConst {
+    fn is_stateless(&self) -> bool {
+        false
+    }
+
+    fn state(
+        &self,
+        _session: &mut SessionState,
+        _node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        Ok(Some(Box::new(self.clone())))
+    }
+}
+
+impl OpState for LazyConst {
+    fn eval(
+        &mut self,
+        _session: &mut SessionState,
+        _op: &dyn Op,
+        _inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        Ok(tvec!(self.0.eval()?))
+    }
+}
+
+trivial_op_state_freeeze!(LazyConst);
+
+impl TypedOp for LazyConst {
+    as_op!();
+
+    fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        Ok(tvec!(self.0.output_fact()?))
+    }
+}
+
+pub trait LazyConstProvider: DynClone + Debug + Send + Sync + 'static {
+    fn output_fact(&self) -> TractResult<TypedFact>;
+    fn eval(&self) -> TractResult<TValue>;
+}
+
+dyn_clone::clone_trait_object!(LazyConstProvider);
