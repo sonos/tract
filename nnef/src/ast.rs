@@ -1,3 +1,7 @@
+use std::fs::File;
+use std::io::Read;
+use std::path::PathBuf;
+
 use crate::internal::*;
 use tract_itertools::Itertools;
 use crate::resource::LazyDat;
@@ -6,6 +10,21 @@ pub mod dump;
 pub mod dump_doc;
 pub mod parse;
 pub mod quant;
+
+#[derive(Clone,Debug)]
+pub enum LazyReader {
+    File(PathBuf),
+}
+
+impl LazyReader {
+    pub fn read(&self) -> TractResult<Box<dyn Read>> {
+        match self {
+            LazyReader::File(p) => {
+                Ok(Box::new(File::open(p).with_context(|| format!("Opening {p:?}"))?))
+            }
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct ProtoModel {

@@ -1,7 +1,6 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use crate::ast::{Document, QuantFormat};
-use crate::framework::LazyDataProvider;
+use crate::ast::{Document, LazyReader, QuantFormat};
 use crate::internal::*;
 use tract_core::downcast_rs::{impl_downcast, DowncastSync};
 use tract_core::ops::konst::LazyConstProvider;
@@ -34,7 +33,7 @@ pub trait ResourceLoader: Send + Sync {
     fn try_load(
         &self,
         path: &Path,
-        lazy_data_provider: &LazyDataProvider,
+        lazy_data_provider: Option<LazyReader>,
         reader: &mut dyn std::io::Read,
         framework: &Nnef,
     ) -> TractResult<Option<(String, Arc<dyn Resource>)>>;
@@ -60,7 +59,7 @@ impl ResourceLoader for GraphNnefLoader {
     fn try_load(
         &self,
         path: &Path,
-        _lazy_data_provider: &LazyDataProvider,
+        _lazy_data_provider: Option<LazyReader>,
         reader: &mut dyn std::io::Read,
         _framework: &Nnef,
     ) -> TractResult<Option<(String, Arc<dyn Resource>)>> {
@@ -88,7 +87,7 @@ impl ResourceLoader for DatLoader {
     fn try_load(
         &self,
         path: &Path,
-        _lazy_data_provider: &LazyDataProvider,
+        _lazy_data_provider: Option<LazyReader>,
         reader: &mut dyn std::io::Read,
         _framework: &Nnef,
     ) -> TractResult<Option<(String, Arc<dyn Resource>)>> {
@@ -102,9 +101,9 @@ impl ResourceLoader for DatLoader {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug)]
 pub struct LazyDat {
-    path: PathBuf,
+    reader: LazyReader,
     fact: TypedFact,
 }
 
@@ -121,28 +120,28 @@ impl ResourceLoader for LazyDatLoader {
     fn try_load(
         &self,
         path: &Path,
-        lazy_data_provider: &LazyDataProvider,
+        lazy_data_provider: Option<LazyReader>,
         reader: &mut dyn std::io::Read,
         _framework: &Nnef,
     ) -> TractResult<Option<(String, Arc<dyn Resource>)>> {
-        let LazyDataProvider::File(f) = lazy_data_provider else { return Ok(None) };
-        if path.extension().map(|e| e == "dat").unwrap_or(false) {
-            let tensor = crate::tensors::read_tensor(reader)
-                .with_context(|| format!("Error while reading tensor {path:?}"))?;
-            let lazy_dat = LazyDat {
-                fact: TypedFact::dt_shape(tensor.datum_type(), tensor.shape()),
-                path: f.clone(),
-            };
-            Ok(Some((resource_path_to_id(path)?, Arc::new(lazy_dat))))
-        } else {
-            Ok(None)
+        if let Some(lazy) = lazy_data_provider {
+            if path.extension().map(|e| e == "dat").unwrap_or(false) {
+                let tensor = crate::tensors::read_tensor(reader)
+                    .with_context(|| format!("Error while reading tensor {path:?}"))?;
+                let dat = LazyDat {
+                    fact: TypedFact::dt_shape(tensor.datum_type(), tensor.shape()),
+                    reader: lazy,
+                };
+                return Ok(Some((resource_path_to_id(path)?, Arc::new(dat))));
+            }
         }
+        Ok(None)
     }
 }
 
 impl LazyConstProvider for LazyDat {
     fn eval(&self) -> TractResult<TValue> {
-        let tensor = crate::tensors::read_tensor(&std::fs::File::open(&self.path)?)
+        let tensor = crate::tensors::read_tensor(self.reader.read()?)
             .with_context(|| format!("Error while reading tensor {:?}", self))?;
         Ok(tensor.into_tvalue())
     }
@@ -165,7 +164,7 @@ impl ResourceLoader for GraphQuantLoader {
     fn try_load(
         &self,
         path: &Path,
-        _lazy_data_provider: &LazyDataProvider,
+        _lazy_data_provider: Option<LazyReader>,
         reader: &mut dyn std::io::Read,
         _framework: &Nnef,
     ) -> TractResult<Option<(String, Arc<dyn Resource>)>> {
@@ -200,7 +199,7 @@ impl ResourceLoader for TypedModelLoader {
     fn try_load(
         &self,
         path: &Path,
-        _lazy_data_provider: &LazyDataProvider,
+        _lazy_data_provider: Option<LazyReader>,
         reader: &mut dyn std::io::Read,
         framework: &Nnef,
     ) -> TractResult<Option<(String, Arc<dyn Resource>)>> {

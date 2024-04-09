@@ -2,22 +2,17 @@ use tar::Builder;
 use tract_core::tract_data::itertools::Itertools;
 
 use crate::ast::quant::write_quant_format;
-use crate::ast::{Document, Identifier, ProtoModel, QuantFormat};
+use crate::ast::{Document, Identifier, LazyReader, ProtoModel, QuantFormat};
 use crate::resource::{LazyDat, LazyDatLoader};
 use crate::{internal::*, nnef};
 use std::io::Read;
 #[cfg(target_family = "unix")]
 use std::os::unix::prelude::OsStrExt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::str::FromStr;
 
 pub fn stdlib() -> Vec<FragmentDef> {
     crate::ast::parse::parse_fragments(include_str!("../stdlib.nnef")).unwrap()
-}
-
-pub enum LazyDataProvider {
-    None,
-    File(PathBuf),
 }
 
 pub struct Nnef {
@@ -276,7 +271,7 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
             let mut stream = std::fs::File::open(entry.path())?;
             read_stream(
                 &subpath,
-                &LazyDataProvider::File(entry.path().to_owned()),
+                Some(LazyReader::File(entry.path().to_owned())),
                 &mut stream,
                 &mut resources,
                 self,
@@ -306,7 +301,7 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
         for entry in tar.entries()? {
             let mut entry = entry?;
             let path = entry.path()?.to_path_buf();
-            read_stream(&path, &LazyDataProvider::None, &mut entry, &mut resources, self)?;
+            read_stream(&path, None, &mut entry, &mut resources, self)?;
         }
         proto_model_from_resources(resources)
     }
@@ -396,7 +391,7 @@ fn proto_model_from_resources(
 
 fn read_stream(
     path: &Path,
-    lazy_data_provider: &LazyDataProvider,
+    lazy_data_provider: Option<LazyReader>,
     reader: &mut impl std::io::Read,
     resources: &mut HashMap<String, Arc<dyn Resource>>,
     framework: &Nnef,
@@ -409,8 +404,9 @@ fn read_stream(
     let mut last_loader_name;
     for loader in framework.resource_loaders.iter() {
         last_loader_name = Some(loader.name());
-        let loaded =
-            loader.try_load(path, lazy_data_provider, reader, framework).with_context(|| {
+        let loaded = loader
+            .try_load(path, lazy_data_provider.clone(), reader, framework)
+            .with_context(|| {
                 anyhow!("Error while loading resource by {:?} at path {:?}", loader.name(), path)
             })?;
         if let Some((id, resource)) = loaded {
