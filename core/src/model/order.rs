@@ -136,14 +136,11 @@ where
             .iter()
             .filter(|n| !ups[*n].iter().any(|up| todo.contains(*up)))
             .min_by_key(|&candidate| {
-                let mut state = todo.clone();
-                state.remove(candidate);
-                state
-                    .iter()
+                todo.iter()
+                    .filter(|it| *it != candidate)
                     .flat_map(|down| ups[down].iter().copied())
-                    .filter(|up| !state.contains(*up))
-                    .sorted()
-                    .dedup()
+                    .filter(|up| *up == candidate || !todo.contains(*up))
+                    .unique()
                     .map(|n| costs[n])
                     .sum::<usize>()
             })
