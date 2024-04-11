@@ -4,7 +4,7 @@ pub fn cast(to: DatumType) -> Cast {
     Cast { to }
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct Cast {
     pub to: DatumType,
 }
@@ -15,6 +15,7 @@ impl Op for Cast {
     }
 
     op_as_typed_op!();
+    impl_op_same_as!();
 }
 
 impl EvalOp for Cast {
