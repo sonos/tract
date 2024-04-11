@@ -17,6 +17,7 @@ use tract_libcli::display_params::DisplayParams;
 use tract_libcli::model::Model;
 use tract_libcli::profile::BenchLimits;
 
+use fs_err as fs;
 use readings_probe::*;
 
 mod bench;
@@ -259,7 +260,7 @@ fn main() -> tract_core::anyhow::Result<()> {
     let matches = app.get_matches();
 
     let probe = if matches.is_present("readings") {
-        let file = std::fs::File::create("readings.out").unwrap();
+        let file = fs::File::create("readings.out").unwrap();
         let mut probe = Probe::new(file).unwrap();
         probe.register_i64("progress").unwrap();
         let heartbeat = matches.value_of("readings-heartbeat").unwrap().parse::<f32>().unwrap();

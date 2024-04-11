@@ -22,6 +22,7 @@ criterion.workspace = true
 colorous.workspace = true
 env_logger.workspace = true
 flate2.workspace = true
+fs-err.workspace = true
 lazy_static.workspace = true
 log.workspace = true
 ndarray-npy.workspace = true
