@@ -3,10 +3,11 @@ use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
 
 use crate::internal::*;
-use crate::model::order::eval_order_for_nodes;
 use crate::model::{Fact, Graph, OutletId};
 use crate::ops::konst::Const;
 use crate::ops::FrozenOpState;
+
+use self::order::eval_order_for_nodes_memory;
 
 #[derive(Default)]
 pub struct SessionState {
@@ -78,7 +79,7 @@ where
         let inputs = model.borrow().input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
         let outputs_nodes = outputs.iter().map(|n| n.node).collect::<Vec<usize>>();
         let mut order =
-            eval_order_for_nodes(model.borrow().nodes(), &inputs, &outputs_nodes, deps)?;
+            eval_order_for_nodes_memory(model.borrow().nodes(), &inputs, &outputs_nodes, deps)?;
         order.retain(|node| !model.borrow().node(*node).op_is::<Const>());
         let mut values_needed_until_step = vec![0; model.borrow().nodes().len()];
         for (step, node) in order.iter().enumerate() {
