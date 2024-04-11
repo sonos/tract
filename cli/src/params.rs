@@ -1,3 +1,4 @@
+use fs_err as fs;
 use reqwest::Url;
 use scan_fmt::scan_fmt;
 use std::io::Cursor;
@@ -59,7 +60,7 @@ impl Location {
 
     fn read(&self) -> TractResult<Box<dyn Read>> {
         match self {
-            Location::Fs(p) => Ok(Box::new(std::fs::File::open(p)?)),
+            Location::Fs(p) => Ok(Box::new(fs::File::open(p)?)),
             Location::Http(u) => Ok(Box::new(reqwest::blocking::get(u.clone())?)),
         }
     }
@@ -161,8 +162,11 @@ impl Parameters {
     fn disco_model(matches: &clap::ArgMatches) -> TractResult<(Location, bool)> {
         let model = matches.value_of("model").context("Model argument required")?;
         let location = Location::find(model)?;
-        let onnx_tc = location.is_dir() && location.path().join("model.onnx").exists();
-        Ok((location, onnx_tc))
+        if location.is_dir() && location.path().join("model.onnx").exists() {
+            Ok((Location::Fs(location.path().join("model.onnx")), false))
+        } else {
+            Ok((location, false))
+        }
     }
 
     fn load_model(
@@ -393,7 +397,7 @@ impl Parameters {
                     .next()
                     .unwrap()
                     .parse::<usize>()?;
-                let fd = std::fs::File::open(file.path())?;
+                let fd = fs::File::open(file.path())?;
                 let (name, tensor) =
                     tensor::for_data(symbol_table, file.path().to_str().unwrap(), fd)?;
                 result.push(TensorValues {
@@ -442,11 +446,11 @@ impl Parameters {
         get_values: bool,
         get_facts: bool,
     ) -> TractResult<Vec<TensorValues>> {
-        let files = std::fs::read_dir(input)?;
+        let files = fs::read_dir(input)?;
         let vector = files
             .map(|n| {
                 let file_path = n?.path();
-                let tensor_file = std::fs::read(&file_path)?;
+                let tensor_file = fs::read(&file_path)?;
                 let file_name = file_path.as_os_str().to_str().unwrap();
                 if let Ok((turn, name)) =
                     scan_fmt::scan_fmt!(file_name, "turn_{d}/{}.dat", usize, String)

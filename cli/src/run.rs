@@ -1,9 +1,10 @@
-use std::fs::File;
+use fs::File;
 use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::TractResult;
 use crate::{Model, Parameters};
+use fs_err as fs;
 use ndarray_npy::NpzWriter;
 use nu_ansi_term::Color::*;
 use tract_core::ops::cnn::conv::Im2Col;
@@ -63,7 +64,7 @@ pub fn handle(
     }
 
     if let Some(file_path) = sub_matches.value_of("save-outputs-nnef") {
-        std::fs::create_dir_all(file_path)
+        fs::create_dir_all(file_path)
             .with_context(|| format!("Creating {file_path} directory"))?;
         for (ix, outputs) in outputs.iter().enumerate() {
             let name = params
@@ -73,12 +74,12 @@ pub fn handle(
                 .unwrap_or_else(|| format!("output_{ix}.dat"));
 
             if outputs.len() == 1 {
-                let mut f = std::fs::File::create(PathBuf::from_str(file_path)?.join(&name))?;
+                let mut f = fs::File::create(PathBuf::from_str(file_path)?.join(&name))?;
                 write_tensor(&mut f, &outputs[0])?;
             } else {
                 for (turn, output) in outputs.iter().enumerate() {
                     let name = format!("turn_{turn}/{name}");
-                    let mut f = std::fs::File::open(PathBuf::from_str(file_path)?.join(name))?;
+                    let mut f = fs::File::open(PathBuf::from_str(file_path)?.join(name))?;
                     write_tensor(&mut f, output)?;
                 }
             }
@@ -87,7 +88,7 @@ pub fn handle(
 
     if let Some(file_path) = sub_matches.value_of("save-outputs-npz") {
         let file =
-            std::fs::File::create(file_path).with_context(|| format!("Creating {file_path}"))?;
+            fs::File::create(file_path).with_context(|| format!("Creating {file_path}"))?;
         let mut npz = ndarray_npy::NpzWriter::new_compressed(file);
 
         for (ix, outputs) in outputs.iter().enumerate() {
@@ -150,7 +151,7 @@ fn run_regular(
     let check_f16_overflow = sub_matches.is_present("check-f16-overflow");
     let assert_sane_floats = sub_matches.is_present("assert-sane-floats");
     let mut npz = if let Some(npz) = sub_matches.value_of("save-steps") {
-        let npz = std::fs::File::create(npz).with_context(|| format!("Creating {npz}"))?;
+        let npz = fs::File::create(npz).with_context(|| format!("Creating {npz}"))?;
         Some(ndarray_npy::NpzWriter::new_compressed(npz))
     } else {
         None

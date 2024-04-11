@@ -10,6 +10,7 @@ use tract_libcli::model::Model;
 use tract_libcli::profile::BenchLimits;
 use tract_libcli::tensor::retrieve_or_make_inputs;
 use tract_libcli::terminal;
+use fs_err as fs;
 
 #[allow(unused_variables)]
 pub fn annotate_with_graph_def(
@@ -165,7 +166,7 @@ pub fn handle(
         let nnef = super::nnef(matches);
         if let Some(mut typed) = model.downcast_ref::<TypedModel>().cloned() {
             rename_outputs(&mut typed, sub_matches)?;
-            let file = std::fs::File::create(path)?;
+            let file = fs::File::create(path)?;
             let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
             nnef.write_to_tar_with_config(&typed, encoder, compress_submodels)
                 .context("Writing model to tgz")?;
@@ -178,7 +179,7 @@ pub fn handle(
         let nnef = super::nnef(matches);
         if let Some(mut typed) = model.downcast_ref::<TypedModel>().cloned() {
             rename_outputs(&mut typed, sub_matches)?;
-            let file = std::fs::File::create(path)?;
+            let file = fs::File::create(path)?;
             nnef.write_to_tar_with_config(&typed, file, compress_submodels)
                 .context("Writing model to tar")?;
         } else {
@@ -215,7 +216,7 @@ pub fn handle(
                 tract_nnef::ast::dump::Dumper::new(&nnef, &mut std::io::stdout())
                     .document(&proto.doc)?;
             } else {
-                let mut file = std::fs::File::create(path)?;
+                let mut file = fs::File::create(path)?;
                 tract_nnef::ast::dump::Dumper::new(&nnef, &mut file).document(&proto.doc)?;
             }
         } else {
@@ -228,7 +229,7 @@ pub fn handle(
         let tflite = tract_tflite::tflite();
         if let Some(mut typed) = model.downcast_ref::<TypedModel>().cloned() {
             rename_outputs(&mut typed, sub_matches)?;
-            let file = std::fs::File::create(path)?;
+            let file = fs::File::create(path)?;
             tflite.write(&typed, file).context("Writing model to tflite")?;
         } else {
             bail!("Only typed model can be dumped")
