@@ -133,6 +133,11 @@ pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + 
     fn as_linalg_binop(&self) -> Option<tract_linalg::mmm::BinOp> {
         None
     }
+
+    #[allow(unused_variables)]
+    fn same_as(&self, other: &dyn BinMiniOp) -> bool {
+        false
+    }
 }
 dyn_clone::clone_trait_object!(BinMiniOp);
 downcast_rs::impl_downcast!(BinMiniOp);
@@ -147,6 +152,11 @@ impl Op for TypedBinOp {
 
     fn validation(&self) -> Validation {
         self.0.validation()
+    }
+
+    fn same_as(&self, other: &dyn Op) -> bool {
+        let Some(other) = other.downcast_ref::<TypedBinOp>() else { return false };
+        self.1 == other.1 && self.0.same_as(&*other.0)
     }
 
     op_as_typed_op!();
@@ -348,6 +358,10 @@ macro_rules! bin_to_super_type {
         impl $crate::ops::binary::BinMiniOp for $Op {
             fn name(&self) -> &'static str {
                 stringify!($Op)
+            }
+
+            fn same_as(&self, other: &dyn $crate::ops::binary::BinMiniOp) -> bool {
+                other.downcast_ref::<$Op>().is_some()
             }
 
             fn eval_uniform_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {

@@ -54,6 +54,11 @@ pub trait ElementWiseMiniOp:
     fn info(&self) -> TractResult<Vec<String>> {
         Ok(vec![])
     }
+
+    #[allow(unused_variables)]
+    fn same_as(&self, other: &dyn ElementWiseMiniOp) -> bool {
+        false
+    }
 }
 
 dyn_clone::clone_trait_object!(ElementWiseMiniOp);
@@ -79,6 +84,11 @@ impl Op for ElementWiseOp {
 
     fn validation(&self) -> Validation {
         self.0.validation()
+    }
+
+    fn same_as(&self, other: &dyn Op) -> bool {
+        let Some(other) = other.downcast_ref::<ElementWiseOp>() else { return false };
+        self.1 == other.1 && self.0.same_as(&*other.0)
     }
 
     op_as_typed_op!();
@@ -183,6 +193,12 @@ macro_rules! element_wise {
         impl $crate::ops::element_wise::ElementWiseMiniOp for $Op {
             fn name(&self) -> String {
                 format!("{}{}", self.prefix(), stringify!($Op))
+            }
+            #[allow(unused_variables)]
+            fn same_as(&self, other: &dyn ElementWiseMiniOp) -> bool {
+                let Some(other) = other.downcast_ref::<$Op>() else { return false };
+                $( $( if self.$var != other.$var { return false; })* )?
+                true
             }
             fn eval_in_place(&self, t: &mut Tensor, out_dt: Option<DatumType>) -> TractResult<()> {
                 $(
