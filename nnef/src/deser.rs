@@ -750,6 +750,7 @@ impl CoerceFrom<Value> for f32 {
     fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         match from {
             Value::Scalar(f) => Ok(*f),
+            Value::Dim(d) => Ok(d.to_i64()? as f32),
             Value::Tensor(t) => Ok(*t.to_scalar::<f32>()?),
             Value::Wire(_) => {
                 Ok(*from.to::<Arc<Tensor>>(builder)?.cast_to::<f32>()?.to_scalar::<f32>()?)
