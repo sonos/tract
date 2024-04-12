@@ -331,6 +331,9 @@ fn declutter_mul(
     model: &TypedModel,
     node: &TypedNode,
 ) -> TractResult<Option<TypedModelPatch>> {
+    if node.inputs[0] == node.inputs[1] {
+        return Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs[0..1], square())?))
+    }
     if let Some(p) = declutter_neutral(model, node, 1, true).context("decluttering neutral")? {
         return Ok(Some(p));
     }
