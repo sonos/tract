@@ -1,5 +1,5 @@
-use tract_core::prelude::*;
 use crate::model::Model;
+use tract_core::prelude::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Io {
@@ -15,6 +15,7 @@ pub struct DisplayParams {
     pub invariants: bool,
     pub quiet: bool,
     pub natural_order: bool,
+    pub opt_ram_order: bool,
     pub debug_op: bool,
     pub cost: bool,
     pub profile: bool,
@@ -60,5 +61,15 @@ impl DisplayParams {
 
     pub fn should_draw(&self) -> bool {
         !self.natural_order
+    }
+
+    pub fn order(&self, model: &dyn Model) -> TractResult<Vec<usize>> {
+        if self.natural_order {
+            Ok((0..model.nodes_len()).collect())
+        } else if self.opt_ram_order {
+            model.eval_order_opt_ram()
+        } else {
+            model.eval_order()
+        }
     }
 }

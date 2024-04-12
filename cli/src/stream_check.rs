@@ -34,7 +34,7 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> TractResult<()> {
     let mut annotations = Annotations::from_model(&*params.tract_model)?;
     annotate_with_graph_def(&mut annotations, &*params.tract_model, &params.graph)?;
 
-    let eval_order = ::tract_core::model::eval_order(decl)?;
+    let eval_order = tract_core::model::order::eval_order_opt_ram(decl)?;
 
     for &decl_node in eval_order.iter() {
         let pulsed_node = match pulsed.node_by_name(&*decl.node(decl_node).name) {

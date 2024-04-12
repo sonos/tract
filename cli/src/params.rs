@@ -1040,6 +1040,7 @@ pub fn display_params_from_clap(
         invariants: matches.is_present("invariants"),
         quiet: matches.is_present("quiet"),
         natural_order: matches.is_present("natural-order"),
+        opt_ram_order: matches.is_present("opt-ram-order"),
         debug_op: matches.is_present("debug-op"),
         node_ids: matches.values_of("node-id").map(|values| {
             values.map(|id| tvec!((id.parse::<usize>().unwrap(), "".to_string()))).collect()
