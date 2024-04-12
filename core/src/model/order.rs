@@ -81,8 +81,19 @@ where
     Ok(order)
 }
 
-/// Find a working evaluation order for a list of nodes.
-pub fn eval_order_for_nodes_memory<F, O>(
+/// Find an evaluation order for a list of model trying to minimize memory occupation.
+pub fn eval_order_opt_ram<F, O>(model: &super::Graph<F, O>) -> TractResult<Vec<usize>>
+where
+    F: Fact + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+{
+    let inputs = model.input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
+    let targets = model.output_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
+    eval_order_opt_ram_for_nodes(model.nodes(), &inputs, &targets, &[])
+}
+
+/// Find an evaluation order for a list of nodes trying to minimize memory occupation.
+pub fn eval_order_opt_ram_for_nodes<F, O>(
     nodes: &[Node<F, O>],
     _model_inputs: &[usize],
     model_outputs: &[usize],

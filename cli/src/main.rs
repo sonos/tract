@@ -464,6 +464,7 @@ fn output_options(command: clap::Command) -> clap::Command {
     command
         .args(&[
             arg!(--"natural-order" "dump nodes in id order instead of evaluation order"),
+            arg!(--"opt-ram-order" "dump nodes in RAM optimising order"),
             arg!(-q --quiet "don't dump"),
         ])
         .arg(Arg::new("debug-op").long("debug-op").help("show debug dump for each op"))

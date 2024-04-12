@@ -429,7 +429,13 @@ where
 
     /// Computes an evalutation order for the graph inputs and outputs
     pub fn eval_order(&self) -> TractResult<Vec<usize>> {
-        eval_order(self)
+        super::order::eval_order(self)
+    }
+
+    /// Computes an evalutation order for the graph inputs and outputs. This order will minimize
+    /// temporary buffers.
+    pub fn eval_order_opt_ram(&self) -> TractResult<Vec<usize>> {
+        super::order::eval_order_opt_ram(self)
     }
 
     #[cfg(not(all(debug_assertions, feature = "paranoid_assertions")))]

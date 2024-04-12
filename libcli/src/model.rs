@@ -38,8 +38,8 @@ pub trait Model:
     /// Eval order for the model
     fn eval_order(&self) -> TractResult<Vec<usize>>;
 
-    /// Eval order for the model overriding input and outputs node
-    fn eval_order_for_io(&self, inputs: &[usize], outputs: &[usize]) -> TractResult<Vec<usize>>;
+    /// Eval order for the model
+    fn eval_order_opt_ram(&self) -> TractResult<Vec<usize>>;
 
     /// Inputs of the model
     fn input_outlets(&self) -> &[OutletId];
@@ -171,11 +171,11 @@ where
     }
 
     fn eval_order(&self) -> TractResult<Vec<usize>> {
-        crate::model::eval_order(self)
+        tract_core::model::order::eval_order(self)
     }
 
-    fn eval_order_for_io(&self, inputs: &[usize], outputs: &[usize]) -> TractResult<Vec<usize>> {
-        crate::model::order::eval_order_for_nodes(&self.nodes, inputs, outputs, &[])
+    fn eval_order_opt_ram(&self) -> TractResult<Vec<usize>> {
+        tract_core::model::order::eval_order_opt_ram(self)
     }
 
     fn input_outlets(&self) -> &[OutletId] {
