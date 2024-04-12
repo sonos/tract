@@ -80,6 +80,7 @@ dyn-clone = "1.0.4"
 env_logger = "0.10"
 flatbuffers = "23.1.21"
 flate2 = "1.0.20"
+fs-err = "2"
 fs2 = "0.4.3"
 getrandom = "0.2"
 half = { version="2.2.1", features = [ "std", "num-traits" ] }
