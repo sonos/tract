@@ -1,7 +1,9 @@
 //! Evaluation order for nodes.
 use crate::internal::*;
-use bit_set::{self, BitSet};
+use bit_set::BitSet;
+use std::collections::BinaryHeap;
 use std::fmt::{Debug, Display};
+use std::iter::once;
 use tract_data::itertools::Itertools;
 
 /// Find an evaluation order for a model, using its default inputs and outputs
@@ -27,14 +29,14 @@ where
     F: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
-    let mut done = bit_set::BitSet::with_capacity(nodes.len());
+    let mut done = BitSet::with_capacity(nodes.len());
     let mut order: Vec<usize> = vec![];
     for &model_target in model_outputs {
         if done.contains(model_target) {
             continue;
         }
         let mut current_stack: Vec<(usize, usize)> = vec![(model_target, 0)];
-        let mut pending = bit_set::BitSet::with_capacity(nodes.len());
+        let mut pending = BitSet::with_capacity(nodes.len());
         while let Some((current_node, current_input)) = current_stack.pop() {
             let deps_from_inputs = nodes[current_node].inputs.len();
             let all_deps_count =
@@ -132,59 +134,107 @@ where
                                 * f.shape
                                     .as_concrete()
                                     .map(|dims| dims.iter().product())
-                                    .unwrap_or(0)
+                                    .unwrap_or(1)
                         })
-                        .unwrap_or(0)
+                        .unwrap_or(1)
                 })
                 .sum()
         })
         .collect_vec();
-    let mut todo = bit_set::BitSet::with_capacity(nodes.len());
-    todo.extend(model_outputs.iter().copied());
-    loop {
-        let mut up: BitSet = todo.iter().flat_map(|n| ups[n].iter().copied()).collect::<BitSet>();
-        up.difference_with(&todo);
-        if up.len() == 0 {
-            break;
-        } else {
-            todo.union_with(&up);
-        }
+
+    struct DFS {
+        nodes: usize,
+        costs: Vec<usize>,
+        ups: Vec<TVec<usize>>,
+        downs: Vec<TVec<usize>>,
+        outputs: Vec<usize>,
     }
-    let mut order = vec![];
-    let mut active = BitSet::with_capacity(nodes.len());
-    let mut candidates = BitSet::with_capacity(nodes.len());
-    candidates.extend(todo.iter().filter(|n| ups[*n].len() == 0));
-    while todo.len() > 0 {
-        let next = candidates
-            .iter()
-            .filter(|n| !ups[*n].iter().any(|up| todo.contains(*up)))
-            .min_by_key(|&candidate| {
-                active.clear();
-                active.extend(
-                    todo.iter()
-                        .filter(|it| *it != candidate)
-                        .flat_map(|down| ups[down].iter().copied())
-                        .filter(|up| *up == candidate || !todo.contains(*up)),
-                );
-                active.iter().map(|n| costs[n]).sum::<usize>()
-            })
-            .context("Dependency loop detected.")?;
-        order.push(next);
-        todo.remove(next);
-        candidates.remove(next);
-        candidates.extend(
-            downs[next]
+
+    let dfs = DFS { nodes: nodes.len(), costs, ups, downs, outputs: model_outputs.to_vec() };
+
+    #[derive(Debug, Default, Clone, PartialEq, Eq)]
+    struct Path {
+        order: Vec<usize>,
+        alive: Vec<usize>,
+        space_now: usize,
+        space_max: usize,
+    }
+
+    impl Path {
+        fn candidates(&self, dfs: &DFS) -> Vec<usize> {
+            (0..dfs.nodes)
+                .filter(|node| {
+                    !self.order.contains(node)
+                        && dfs.ups[*node].iter().all(|up| self.alive.contains(up))
+                })
+                .collect()
+        }
+
+        fn follow(&self, dfs: &DFS, next: usize) -> Path {
+            let it = self.follow_one(dfs, next);
+            if let [one] = it.candidates(dfs)[..] {
+                it.follow(dfs, one)
+            } else {
+                it
+            }
+        }
+
+        fn follow_one(&self, dfs: &DFS, next: usize) -> Path {
+            let order = self.order.iter().copied().chain(once(next)).collect_vec();
+            let alive = self
+                .alive
                 .iter()
                 .copied()
-                .filter(|n| todo.contains(*n) && ups[*n].iter().all(|up| !todo.contains(*up))),
-        );
+                .chain(once(next))
+                .filter(|n| dfs.downs[*n].iter().any(|down| !order.contains(down)))
+                .collect_vec();
+            let space_now = alive.iter().map(|a| dfs.costs[*a]).sum::<usize>();
+            let space_max = space_now.max(self.space_max);
+            Path { order, alive, space_now, space_max }
+        }
     }
-    Ok(order)
+
+    impl PartialOrd for Path {
+        fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+
+    impl Ord for Path {
+        fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+            self.space_max
+                .cmp(&other.space_max)
+                .then(self.space_now.cmp(&other.space_now))
+                .then(self.order.cmp(&other.order))
+                .reverse()
+        }
+    }
+
+    let mut to_explore = BinaryHeap::<Path>::new();
+    to_explore.push(Path::default());
+    let mut best = eval_order_for_nodes(nodes, _model_inputs, model_outputs, more_dependencies)?
+        .iter()
+        .fold(Path::default(), |path, next| path.follow_one(&dfs, *next));
+    while let Some(from) = to_explore.pop() {
+        println!("best {} ::: [{}] ::: {:?}", best.space_max, to_explore.len(), from.order,);
+        if dfs.outputs.iter().all(|t| from.order.contains(t)) {
+            best = from;
+            continue;
+        }
+        for c in from.candidates(&dfs) {
+            let next = from.follow(&dfs, c);
+            if next.space_max < best.space_max {
+                to_explore.push(next);
+            }
+        }
+    }
+    Ok(best.order)
 }
 
 #[cfg(test)]
 mod tests {
     use crate::internal::*;
+    use crate::ops::array::Gather;
     use crate::ops::math;
 
     #[test]
@@ -195,6 +245,7 @@ mod tests {
         let add = model.wire_node("add", math::add(), &[a, b]).unwrap()[0];
         model.auto_outputs().unwrap();
         assert_eq!(model.eval_order().unwrap(), vec!(a.node, b.node, add.node));
+        assert_eq!(model.eval_order_opt_ram().unwrap(), vec!(a.node, b.node, add.node));
     }
 
     #[test]
@@ -204,6 +255,7 @@ mod tests {
         let add = model.wire_node("add", math::add(), &[a, a]).unwrap()[0];
         model.auto_outputs().unwrap();
         assert_eq!(model.eval_order().unwrap(), vec!(a.node, add.node));
+        assert_eq!(model.eval_order_opt_ram().unwrap(), vec!(a.node, add.node));
     }
 
     #[test]
@@ -214,10 +266,29 @@ mod tests {
         let neg = model.wire_node("neg", math::add(), &[add, a]).unwrap()[0];
         model.add_edge(neg, InletId::new(add.node, 1)).unwrap();
         model.set_output_outlets(&[neg]).unwrap();
+        let cloned = model.clone();
         let (rx, tx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
-            rx.send(model.eval_order()).unwrap();
+            rx.send(cloned.eval_order()).unwrap();
         });
         assert!(tx.recv_timeout(std::time::Duration::from_secs(1)).unwrap().is_err());
+        let (rx, tx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            rx.send(model.eval_order_opt_ram()).unwrap();
+        });
+        assert!(tx.recv_timeout(std::time::Duration::from_secs(1)).unwrap().is_err());
+    }
+
+    #[test]
+    fn opt_ram() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let b = model.add_const("b", tensor1(&[0i64; 1000]))?;
+        let d = model.add_const("d", tensor1(&[0i64; 100]))?;
+        let a = model.add_source("a", i32::fact([10]))?;
+        let c = model.wire_node("c", Gather::new(0), &[a, b])?[0];
+        let e = model.wire_node("e", Gather::new(0), &[c, d])?[0];
+        model.set_output_outlets(&[e]).unwrap();
+        assert!(model.eval_order_opt_ram()? == &[a.node, b.node, c.node, d.node, e.node]);
+        Ok(())
     }
 }
