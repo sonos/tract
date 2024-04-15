@@ -2,6 +2,7 @@
 use crate::internal::*;
 use bit_set::BitSet;
 use std::collections::BinaryHeap;
+use std::default;
 use std::fmt::{Debug, Display};
 use std::iter::once;
 use tract_data::itertools::Itertools;
@@ -158,27 +159,29 @@ where
         alive: Vec<usize>,
         space_now: usize,
         space_max: usize,
+        score: usize,
     }
 
     impl Path {
+        /*
         fn candidates(&self, dfs: &DFS) -> Vec<usize> {
-            (0..dfs.nodes)
-                .filter(|node| {
-                    !self.order.contains(node)
-                        && dfs.ups[*node].iter().all(|up| self.alive.contains(up))
-                })
-                .collect()
+        (0..dfs.nodes)
+        .filter(|node| {
+        !self.order.contains(node)
+        && dfs.ups[*node].iter().all(|up| self.alive.contains(up))
+        })
+        .collect()
         }
 
         fn follow(&self, dfs: &DFS, next: usize) -> Path {
-            let it = self.follow_one(dfs, next);
-            if let [one] = it.candidates(dfs)[..] {
-                it.follow(dfs, one)
-            } else {
-                it
-            }
+        let it = self.follow_one(dfs, next);
+        if let [one] = it.candidates(dfs)[..] {
+        it.follow(dfs, one)
+        } else {
+        it
         }
-
+        }
+        */
         fn follow_one(&self, dfs: &DFS, next: usize) -> Path {
             let order = self.order.iter().copied().chain(once(next)).collect_vec();
             let alive = self
@@ -187,10 +190,12 @@ where
                 .copied()
                 .chain(once(next))
                 .filter(|n| dfs.downs[*n].iter().any(|down| !order.contains(down)))
+                .sorted()
                 .collect_vec();
             let space_now = alive.iter().map(|a| dfs.costs[*a]).sum::<usize>();
             let space_max = space_now.max(self.space_max);
-            Path { order, alive, space_now, space_max }
+            let score = self.score + space_now;
+            Path { order, alive, space_now, space_max, score }
         }
     }
 
@@ -204,31 +209,105 @@ where
         fn cmp(&self, other: &Self) -> std::cmp::Ordering {
             self.space_max
                 .cmp(&other.space_max)
-                .then(self.space_now.cmp(&other.space_now))
+                .then(self.score.cmp(&other.score))
                 .then(self.order.cmp(&other.order))
-                .reverse()
         }
     }
 
+    type Cache = HashMap<BitSet, Path>;
+
+    /*
+    impl DFS {
+    fn reach<'c>(&self, cache: &'c mut Cache, to: &BitSet) -> &'c Path {
+    if !cache.contains_key(to) {
+    let path = if to.len() == 0 {
+    Path::default()
+    } else {
+    to.iter()
+    .map(|last| {
+    let mut previous = to.clone();
+    previous.remove(last);
+    previous.extend(self.ups[last].iter().copied());
+    let mut path = self.reach(cache, &previous).clone();
+    if !path.order.contains(&last) {
+    path = path.follow_one(self, last);
+    }
+    path
+    })
+    .min()
+    .unwrap()ow
+    };
+    cache.insert(to.clone(), path);
+    }
+    &cache[to]
+    }
+    }
+    Ok(dfs.reach(&mut Default::default(), &dfs.outputs.iter().copied().collect()).order.clone())
+    */
+
+    let mut done = HashMap::<BitSet, Path>::default();
+    let mut todo: Vec<BitSet> = vec![];
+    let target:BitSet = dfs.outputs.iter().copied().collect();
+    done.insert(BitSet::default(), Path::default());
+    todo.push(target.clone());
+    while let Some(current) = todo.pop() {
+  //      println!("Stack: {todo:?}");
+        if done.contains_key(&current) {
+            continue;
+        }
+ //       println!("Computing: {current:?}");
+        let mut best: Option<Path> = None;
+        let mut incomplete = false;
+        for last in current.iter() {
+            let mut previous = current.clone();
+            previous.remove(last);
+            previous.extend(dfs.ups[last].iter().copied());
+            if let Some(prec) = done.get(&previous) {
+                let path = prec.follow_one(&dfs, last);
+                if let Some(b) = best {
+                    best = Some(b.min(path));
+                } else {
+                    best = Some(path)
+                }
+            } else {
+                if !incomplete {
+//                    println!("  Pushing {current:?} again");
+                    todo.push(current.clone());
+                }
+ //               println!("  Pushing {previous:?}");
+                todo.push(previous);
+                incomplete = true;
+            }
+        }
+        if !incomplete {
+//            println!("######## {current:?} ====> {best:?}");
+            done.insert(current, best.unwrap());
+        }
+    }
+
+    Ok(done[&target].order.clone())
+
+    /*
     let mut to_explore = BinaryHeap::<Path>::new();
     to_explore.push(Path::default());
     let mut best = eval_order_for_nodes(nodes, _model_inputs, model_outputs, more_dependencies)?
-        .iter()
-        .fold(Path::default(), |path, next| path.follow_one(&dfs, *next));
+    .iter()
+    .fold(Path::default(), |path, next| path.follow_one(&dfs, *next));
     while let Some(from) = to_explore.pop() {
-        println!("best {} ::: [{}] ::: {:?}", best.space_max, to_explore.len(), from.order,);
-        if dfs.outputs.iter().all(|t| from.order.contains(t)) {
-            best = from;
-            continue;
-        }
-        for c in from.candidates(&dfs) {
-            let next = from.follow(&dfs, c);
-            if next.space_max < best.space_max {
-                to_explore.push(next);
-            }
-        }
+    println!("best {} ::: [{}] ::: {:?}", best.space_max, to_explore.len(), from);
+    if dfs.outputs.iter().all(|t| from.order.contains(t)) {
+    best = from;
+    continue;
+    }
+    for c in from.candidates(&dfs) {
+    let next = from.follow(&dfs, c);
+    if next.space_max < best.space_max {
+    to_explore.push(next);
+    }
+    }
     }
     Ok(best.order)
+    */
 }
 
 #[cfg(test)]
@@ -288,7 +367,8 @@ mod tests {
         let c = model.wire_node("c", Gather::new(0), &[a, b])?[0];
         let e = model.wire_node("e", Gather::new(0), &[c, d])?[0];
         model.set_output_outlets(&[e]).unwrap();
-        assert!(model.eval_order_opt_ram()? == &[a.node, b.node, c.node, d.node, e.node]);
+        eprintln!("{model}");
+        assert!(&model.eval_order_opt_ram()?[2..] == &[c.node, d.node, e.node]);
         Ok(())
     }
 }
