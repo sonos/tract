@@ -203,8 +203,7 @@ where
         } else {
             tocompute
                 .difference(&done.done)
-                .filter(|n| dfs.ups[*n].iter().all(|n| done.done.contains(*n)))
-                .next()
+                .find(|n| dfs.ups[*n].iter().all(|n| done.done.contains(*n)))
                 .unwrap()
         };
         done.follow_one(&dfs, next);
