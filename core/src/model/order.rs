@@ -1,6 +1,7 @@
 //! Evaluation order for nodes.
 use crate::internal::*;
 use bit_set::BitSet;
+use std::collections::VecDeque;
 use std::fmt::{Debug, Display};
 use tract_data::itertools::Itertools;
 
@@ -148,6 +149,26 @@ where
             self.alive.push(next);
             self.alive.retain(|n| dfs.downs[*n].iter().any(|down| !self.done.contains(*down)))
         }
+
+        fn missing_upstream_starters(&self, dfs: &Dfs, from: usize) -> Vec<usize> {
+            let mut found = vec![];
+            let mut done = self.done.clone();
+            let mut todo = VecDeque::<usize>::new();
+            todo.push_back(from);
+            done.insert(from);
+            while let Some(next) = todo.pop_front() {
+                if dfs.ups[next].len() == 0 {
+                    found.push(next);
+                }
+                for up in &dfs.ups[next] {
+                    if done.insert(*up) {
+                        todo.push_back(*up);
+                    }
+                }
+            }
+            assert!(found.len() > 0);
+            found
+        }
     }
 
     let mut done: Path = Path::default();
@@ -168,28 +189,25 @@ where
             .sorted()
             .unique()
             .collect_vec();
-        if let Some(next) =
+        let next = if let Some(next) =
             candidates.iter().copied().find(|n| dfs.ups[*n].iter().all(|n| done.done.contains(*n)))
         {
-            done.follow_one(&dfs, next);
+            next
+        } else if let Some(next) = candidates
+            .iter()
+            .map(|c| done.missing_upstream_starters(&dfs, *c))
+            .min_by_key(|p| p.len())
+            .map(|s| s[0])
+        {
+            next
         } else {
-            let next = candidates.first().copied().unwrap_or_else(|| {
-                tocompute.iter().find(|n| !done.done.contains(*n)).unwrap()
-            });
-            let mut stack: Vec<usize> = vec![next];
-            while stack.len() > 0 {
-                let target = *stack.last().unwrap();
-                for up in &dfs.ups[target] {
-                    if !done.done.contains(*up) {
-                        stack.push(*up);
-                    }
-                }
-                if *stack.last().unwrap() == target {
-                    done.follow_one(&dfs, target);
-                    stack.pop();
-                }
-            }
-        }
+            tocompute
+                .difference(&done.done)
+                .filter(|n| dfs.ups[*n].iter().all(|n| done.done.contains(*n)))
+                .next()
+                .unwrap()
+        };
+        done.follow_one(&dfs, next);
     }
 
     Ok(done.order.clone())
