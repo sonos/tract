@@ -124,13 +124,17 @@ eval_override: |a:TValue, b: TValue, c_dt: DatumType| -> TractResult<Tensor> {
     if
         a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
             let a = a.to_array_view::<TDim>()?;
-            let b = b.cast_to::<i32>()?;
-            let b = b.to_array_view::<i32>()?;
+            let b = b.to_array_view::<TDim>()?;
             let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()]).context("no broadcast solution")?;
             unsafe {
+                let a = a.broadcast(&*c_shape).unwrap();
+                let b = b.broadcast(&*c_shape).unwrap();
                 let mut c = Tensor::uninitialized_dt(DatumType::TDim, &c_shape)?;
-                let view = c.to_array_view_mut::<TDim>()?;
-                crate::ndarray::Zip::from(view).and_broadcast(a).and_broadcast(b).for_each(|c,a,b| *c = a.clone() / *b);
+                let mut view = c.to_array_view_mut::<TDim>()?;
+                for coords in crate::ndarray::indices(&*c_shape) {
+                    let (p, q) = a[&coords].maybe_div(&b[&coords])?;
+                    view[&coords] = p/q;
+                }
                 Ok(c)
             }
         } else if let (DatumType::QU8(QParams::ZpScale {zero_point: a_zp, scale: a_scale}),
@@ -332,7 +336,12 @@ fn declutter_mul(
     node: &TypedNode,
 ) -> TractResult<Option<TypedModelPatch>> {
     if node.inputs[0] == node.inputs[1] {
-        return Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs[0..1], square())?))
+        return Ok(Some(TypedModelPatch::replace_single_op(
+            model,
+            node,
+            &node.inputs[0..1],
+            square(),
+        )?));
     }
     if let Some(p) = declutter_neutral(model, node, 1, true).context("decluttering neutral")? {
         return Ok(Some(p));

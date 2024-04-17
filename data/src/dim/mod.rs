@@ -258,6 +258,11 @@ mod tests {
     }
 
     #[test]
+    fn div_sym_sym_simply_1() {
+        assert_eq!((s()).maybe_div(&(s())).unwrap(), (TDim::Val(1), 1));
+    }
+
+    #[test]
     fn div_sym_sym_complex() {
         let s = s();
         let b = S.0.sym("b");
