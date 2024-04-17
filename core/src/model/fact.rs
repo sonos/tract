@@ -236,28 +236,6 @@ impl TypedFact {
         TypedFact { datum_type, shape: shape.into(), konst: None, uniform: None }
     }
 
-    /// compute number of elements based on shape if all of TDim::Val kind
-    pub fn n_elements(&self) -> TractResult<u64> {
-        self.shape.iter().try_fold(1u64, |prod, x| {
-            if let TDim::Val(v) = x {
-                if *v <= 0i64 {
-                    bail!("unexpected dim value <=0 : {:?}", v);
-                }
-                Ok(prod * (*v as u64))
-            } else {
-                bail!(
-                    "can not compute n elements because some shape elements are not known {:?}",
-                    x
-                )
-            }
-        })
-    }
-
-    /// is either rank 0 or contains only 1 element
-    pub fn is_scalar_compatible(&self) -> bool {
-        self.rank() == 0 || self.n_elements().is_ok_and(|nb_elements| nb_elements == 1)
-    }
-
     pub fn rank(&self) -> usize {
         if cfg!(debug_assertions) {
             self.consistent().unwrap();
