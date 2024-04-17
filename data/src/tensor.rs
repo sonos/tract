@@ -1374,6 +1374,16 @@ impl Tensor {
                 strides: self.strides.clone(),
                 ..*self
             }
+        } else if self.dt == DatumType::Blob {
+            let data: Vec<Blob> = self.as_slice::<Blob>().unwrap().to_vec();
+            let data = data.into_boxed_slice();
+            let data = Box::into_raw(data);
+            Tensor {
+                data: data as *mut u8,
+                shape: self.shape.clone(),
+                strides: self.strides.clone(),
+                ..*self
+            }
         } else if self.dt == DatumType::TDim {
             let data: Vec<TDim> = self.as_slice::<TDim>().unwrap().to_vec();
             let data = data.into_boxed_slice();
@@ -1385,6 +1395,7 @@ impl Tensor {
                 ..*self
             }
         } else {
+            assert!(self.dt.is_copy());
             unsafe {
                 let tensor = Tensor::uninitialized_dt(self.datum_type(), self.shape()).unwrap();
                 if self.len() > 0 {
