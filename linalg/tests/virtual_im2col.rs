@@ -167,7 +167,6 @@ impl ConvProblem {
                     packer: mmm.b_pack(),
                 })
             };
-            //            let b_store = mmm.b_virtual_input(im2col, k).wrap(&self.input.view());
             let b_store = im2col.wrap(&self.input.view());
             let c_store = mmm.c_view(0, 1).wrap(&output.view());
             mmm.run(
