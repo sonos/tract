@@ -92,9 +92,9 @@ impl TypedOp for Range {
         };
         ensure!(start.datum_type() == end.datum_type());
         ensure!(start.datum_type() == step.datum_type());
-        ensure!(start.is_scalar_compatible());
-        ensure!(end.is_scalar_compatible());
-        ensure!(step.is_scalar_compatible());
+        ensure!(start.shape.volume().is_one());
+        ensure!(end.shape.volume().is_one());
+        ensure!(step.shape.volume().is_one());
         if let (Some(start), Some(end), Some(step)) = (&start.konst, &end.konst, &step.konst) {
             let len = if start.datum_type() == TDim::datum_type() {
                 let start = start.to_scalar::<TDim>()?;
