@@ -25,6 +25,7 @@ impl ResourceLoader for JsonLoader {
     fn try_load(
         &self,
         path: &Path,
+        _lazy_data_provider: Option<LazyReader>,
         reader: &mut dyn std::io::Read,
         _framework: &tract_nnef::framework::Nnef,
     ) -> TractResult<Option<(String, Arc<dyn Resource>)>> {
