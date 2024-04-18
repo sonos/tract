@@ -90,7 +90,7 @@ impl std::fmt::Display for Blob {
 
 impl std::fmt::Debug for Blob {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        <Self as Display>::fmt(&self, fmt)
+        <Self as Display>::fmt(self, fmt)
     }
 }
 

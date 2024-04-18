@@ -99,19 +99,19 @@ pub fn read_tensor<R: std::io::Read>(mut reader: R) -> TractResult<Tensor> {
             (0, 4, 64) => DatumType::I64,
 
             // 5 - 0b0101 - bool values, 1 bit or 8 bits (0 means false, non-zero means true)
-            (0, 5, 1|8) => DatumType::Bool,
+            (0, 5, 1 | 8) => DatumType::Bool,
             (TRACT_ITEM_TYPE_VENDOR, 0x1000, 0xFFFF) => DatumType::String,
-            #[cfg(feature="complex")]
+            #[cfg(feature = "complex")]
             (TRACT_ITEM_TYPE_VENDOR, 0, 32) => DatumType::ComplexF16,
-            #[cfg(feature="complex")]
+            #[cfg(feature = "complex")]
             (TRACT_ITEM_TYPE_VENDOR, 0, 64) => DatumType::ComplexF32,
-            #[cfg(feature="complex")]
+            #[cfg(feature = "complex")]
             (TRACT_ITEM_TYPE_VENDOR, 0, 128) => DatumType::ComplexF64,
-            #[cfg(feature="complex")]
+            #[cfg(feature = "complex")]
             (TRACT_ITEM_TYPE_VENDOR, 4, 32) => DatumType::ComplexI16,
-            #[cfg(feature="complex")]
+            #[cfg(feature = "complex")]
             (TRACT_ITEM_TYPE_VENDOR, 4, 64) => DatumType::ComplexI32,
-            #[cfg(feature="complex")]
+            #[cfg(feature = "complex")]
             (TRACT_ITEM_TYPE_VENDOR, 4, 128) => DatumType::ComplexI64,
             _ => bail!(
                 "Unsupported type in tensor type:{} bits_per_item:{}",
@@ -171,21 +171,36 @@ pub fn write_tensor<W: std::io::Write>(w: &mut W, tensor: &Tensor) -> TractResul
         header.bits_per_item = (tensor.datum_type().size_of() * 8) as u32;
 
         let (itv, it) = match tensor.datum_type() {
-            DatumType::F16|DatumType::F32|DatumType::F64 => (0, 0),
-            DatumType::U8|DatumType::U16|DatumType::U32|DatumType::U64|DatumType::QU8(_) => (0, 2),
-            DatumType::I8|DatumType::I16|DatumType::I32|DatumType::I64|DatumType::QI8(_)|DatumType::QI32(_) => (0, 3),
+            DatumType::F16 | DatumType::F32 | DatumType::F64 => (0, 0),
+            DatumType::U8
+            | DatumType::U16
+            | DatumType::U32
+            | DatumType::U64
+            | DatumType::QU8(_) => (0, 2),
+            DatumType::I8
+            | DatumType::I16
+            | DatumType::I32
+            | DatumType::I64
+            | DatumType::QI8(_)
+            | DatumType::QI32(_) => (0, 3),
             DatumType::String => {
                 header.bits_per_item = 0xFFFF;
                 (TRACT_ITEM_TYPE_VENDOR, 0x1000)
             }
-            #[cfg(feature="complex")]
-            DatumType::ComplexF16|DatumType::ComplexF32|DatumType::ComplexF64 => (TRACT_ITEM_TYPE_VENDOR, 0),
-            #[cfg(feature="complex")]
-            DatumType::ComplexI16|DatumType::ComplexI32|DatumType::ComplexI64 => (TRACT_ITEM_TYPE_VENDOR, 4),
-            DatumType::TDim|DatumType::Blob => bail!("Don't know how to serialize {:?}", tensor.datum_type()),
+            #[cfg(feature = "complex")]
+            DatumType::ComplexF16 | DatumType::ComplexF32 | DatumType::ComplexF64 => {
+                (TRACT_ITEM_TYPE_VENDOR, 0)
+            }
+            #[cfg(feature = "complex")]
+            DatumType::ComplexI16 | DatumType::ComplexI32 | DatumType::ComplexI64 => {
+                (TRACT_ITEM_TYPE_VENDOR, 4)
+            }
             DatumType::Bool => (0, 5),
+            DatumType::TDim | DatumType::Blob | DatumType::Payload => {
+                bail!("Don't know how to serialize {:?}", tensor.datum_type())
+            }
         };
-        header. item_type = it;
+        header.item_type = it;
         header.item_type_vendor = itv;
         let header_buf: &[u8; 128] = std::mem::transmute(&header);
         w.write_all(header_buf)?;
@@ -211,11 +226,11 @@ mod test {
     }
 
     #[test]
-    #[cfg(feature="complex")]
+    #[cfg(feature = "complex")]
     fn serde_tensor_complex_f32() -> TractResult<()> {
         let t = tensor2(&[
             [Complex::new(1.0f32, 2.0), Complex::new(2.0, 1.0), Complex::new(3.5, 2.4)],
-            [Complex::new(3.0, 4.5), Complex::new(3.0, 2.5), Complex::new(1.5, 2.5)]
+            [Complex::new(3.0, 4.5), Complex::new(3.0, 2.5), Complex::new(1.5, 2.5)],
         ]);
         let mut buffer = Vec::<u8>::new();
         write_tensor(&mut buffer, &t)?;
@@ -225,11 +240,11 @@ mod test {
     }
 
     #[test]
-    #[cfg(feature="complex")]
+    #[cfg(feature = "complex")]
     fn serde_tensor_complex_f64() -> TractResult<()> {
         let t = tensor2(&[
             [Complex::new(1.0f64, 2.0), Complex::new(2.0, 1.0), Complex::new(3.5, 2.4)],
-            [Complex::new(3.0, 4.5), Complex::new(3.0, 2.5), Complex::new(1.5, 2.5)]
+            [Complex::new(3.0, 4.5), Complex::new(3.0, 2.5), Complex::new(1.5, 2.5)],
         ]);
         let mut buffer = Vec::<u8>::new();
         write_tensor(&mut buffer, &t)?;
@@ -239,11 +254,11 @@ mod test {
     }
 
     #[test]
-    #[cfg(feature="complex")]
+    #[cfg(feature = "complex")]
     fn serde_tensor_complex_i32() -> TractResult<()> {
         let t = tensor2(&[
             [Complex::new(1i32, 2), Complex::new(2, 1), Complex::new(3, 2)],
-            [Complex::new(3, 4), Complex::new(3, 2), Complex::new(1, 2)]
+            [Complex::new(3, 4), Complex::new(3, 2), Complex::new(1, 2)],
         ]);
         let mut buffer = Vec::<u8>::new();
         write_tensor(&mut buffer, &t)?;
@@ -253,11 +268,11 @@ mod test {
     }
 
     #[test]
-    #[cfg(feature="complex")]
+    #[cfg(feature = "complex")]
     fn serde_tensor_complex_i64() -> TractResult<()> {
         let t = tensor2(&[
             [Complex::new(1i64, 2), Complex::new(2, 1), Complex::new(3, 2)],
-            [Complex::new(3, 4), Complex::new(3, 2), Complex::new(1, 2)]
+            [Complex::new(3, 4), Complex::new(3, 2), Complex::new(1, 2)],
         ]);
         let mut buffer = Vec::<u8>::new();
         write_tensor(&mut buffer, &t)?;
