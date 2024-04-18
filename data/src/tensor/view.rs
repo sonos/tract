@@ -179,13 +179,13 @@ impl<'a> TensorView<'a> {
 
     /// Access the data as a slice.
     #[inline]
-    pub unsafe fn as_slice_unchecked<D: Datum>(&self) -> &[D] {
+    pub unsafe fn as_slice_unchecked<D: Datum>(&self) -> &'a [D] {
         std::slice::from_raw_parts::<D>(self.as_ptr_unchecked(), self.len())
     }
 
     /// Access the data as a slice.
     #[inline]
-    pub fn as_slice<D: Datum>(&self) -> anyhow::Result<&[D]> {
+    pub fn as_slice<D: Datum>(&self) -> anyhow::Result<&'a [D]> {
         self.check_dt::<D>()?;
         unsafe { Ok(self.as_slice_unchecked()) }
     }

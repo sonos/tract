@@ -3,6 +3,7 @@ use crate::internal::*;
 use ndarray::*;
 
 use tract_linalg::frame::Packer;
+use tract_linalg::mmm::{EagerPackedInput, MMMInput};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MatMatMulPack {
@@ -40,8 +41,8 @@ impl EvalOp for MatMatMulPack {
 }
 
 impl TypedOp for MatMatMulPack {
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(inputs[0].datum_type.fact(self.output_shape_fact.iter())))
+    fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        Ok(tvec!(PayloadWrapper::datum_type().fact(self.output_shape_fact.iter())))
     }
 
     fn axes_mapping(
@@ -81,15 +82,30 @@ impl MatMatMulPack {
     fn do_eval(&self, input: &Tensor, output_shape: &[usize]) -> TractResult<TVec<TValue>> {
         let dt = input.datum_type();
         unsafe {
-            let mut packed =
-                Tensor::uninitialized_aligned_dt(dt, output_shape, self.packer.alignment())
-                    .unwrap();
-            if input.rank() == 2 {
-                self.packer.pack(&mut packed.view(), input.view(), self.k_axis, self.mn_axis)
+            let k = input.shape()[self.k_axis];
+            let n = input.shape()[self.mn_axis];
+            let panel_bytes = self.packer.single_panel_len(k) * dt.size_of();
+            let packed_len = self.packer.len(k, n);
+
+            let pack_one = |view| -> TractResult<PayloadWrapper> {
+                let mut packed =
+                    Tensor::uninitialized_aligned_dt(dt, &[packed_len], self.packer.alignment())?;
+                self.packer.pack(&mut packed.view_mut(), view, self.k_axis, self.mn_axis);
+                let input: Box<dyn MMMInput> =
+                    Box::new(EagerPackedInput { packed: packed, panel_bytes });
+                Ok(PayloadWrapper(Arc::new(input)))
+            };
+
+            let stores = if input.rank() == 2 {
+                tensor0(pack_one(input.view())?)
             } else {
+                let mut stores =
+                    Tensor::uninitialized_dt(PayloadWrapper::datum_type(), output_shape)?;
+                let mut stores_view = stores.to_array_view_mut::<PayloadWrapper>()?;
                 let mut bc_shape: TVec<usize> = input.shape().into();
                 bc_shape[self.k_axis] = 1;
                 bc_shape[self.mn_axis] = 1;
+
                 for coord in indices(&*bc_shape) {
                     let offset = coord
                         .as_array_view()
@@ -98,31 +114,32 @@ impl MatMatMulPack {
                         .map(|(x, s)| *x as isize * s)
                         .sum::<isize>()
                         * input.datum_type().size_of() as isize;
-                    let mut prefix: TVec<usize> = coord.slice().into();
-                    prefix.remove(self.k_axis.max(self.mn_axis));
-                    prefix.remove(self.k_axis.min(self.mn_axis));
-                    self.packer.pack(
-                        &mut packed.view_at_prefix_mut(&prefix)?,
-                        TensorView::from_bytes(input, offset, input.shape(), input.strides()),
-                        self.k_axis,
-                        self.mn_axis,
-                    )
+                    let mut pack_coords: TVec<usize> = coord.slice().into();
+                    pack_coords.remove(self.k_axis.max(self.mn_axis));
+                    pack_coords.remove(self.k_axis.min(self.mn_axis));
+                    stores_view[&*pack_coords] = pack_one(TensorView::from_bytes(
+                        input,
+                        offset,
+                        input.shape(),
+                        input.strides(),
+                    ))?;
                 }
-            }
-            Ok(tvec!(packed.into_tvalue()))
+                stores
+            };
+            Ok(tvec!(stores.into_tvalue()))
         }
     }
 
     pub fn output_shape<D: DimLike>(
         input: &[D],
-        packer: &Packer,
+        _packer: &Packer,
         mn_axis: usize,
         k_axis: usize,
     ) -> ShapeFact {
         let mut packed_shape: TVec<D> = input.into();
         packed_shape.remove(mn_axis.max(k_axis));
         packed_shape.remove(mn_axis.min(k_axis));
-        packed_shape.push(packer.len(input[k_axis].clone(), input[mn_axis].clone()));
+        //        packed_shape.push(packer.len(input[k_axis].clone(), input[mn_axis].clone()));
         packed_shape.into()
     }
 }

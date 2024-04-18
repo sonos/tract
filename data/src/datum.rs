@@ -211,6 +211,10 @@ impl DatumType {
         matches!(self, DatumType::F16 | DatumType::F32 | DatumType::F64)
     }
 
+    pub fn is_number(&self) -> bool {
+        self.is_signed() | self.is_unsigned() | self.is_float() | self.is_quantized()
+    }
+
     #[cfg(feature = "complex")]
     pub fn is_complex(&self) -> bool {
         self.is_complex_float() || self.is_complex_signed()

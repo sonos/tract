@@ -1,4 +1,5 @@
 use tract_linalg::frame::{MatMatMul, Packer, PackingWriter};
+use tract_linalg::mmm::{EagerPackedInput, MMMInput};
 
 use crate::internal::*;
 use ndarray::prelude::*;
@@ -116,7 +117,7 @@ impl Im2Col {
         Ok(Im2Col { pool_spec, group, geometry })
     }
 
-    // packed shape is Batch,Group,Packed
+    // packed shape is Batch,Group
     fn packed_shape<D: DimLike>(
         input_shape: &BaseDataShape<D, TVec<D>>,
         conv_output_shape: &BaseDataShape<D, TVec<D>>,
@@ -127,8 +128,6 @@ impl Im2Col {
         let mut output_shape: TVec<D> = tvec!();
         output_shape.push(input_shape.n().cloned().unwrap_or_else(|| 1.into()));
         output_shape.push(group.into());
-        let n: D = conv_output_shape.hw_dims().iter().cloned().product();
-        output_shape.push(b_pack.len(k.into(), n));
         Ok(output_shape)
     }
 }
@@ -156,14 +155,13 @@ impl EvalOp for Im2Col {
         unsafe {
             let mut input = inputs.remove(0).into_tensor();
             let pad_value: Option<&Tensor> = if inputs.len() > 0 { Some(&inputs[0]) } else { None };
-            let mut output = Tensor::uninitialized_aligned_dt(
-                input.datum_type(),
-                &geometry.packed_shape,
-                geometry.b_pack.alignment(),
-            )?;
+            let mut output = Tensor::uninitialized::<PayloadWrapper>(&geometry.packed_shape)?;
             if !self.pool_spec.data_format.has_n() {
                 input.insert_axis(0)?;
             }
+            let mut output_view = output.to_array_view_mut::<PayloadWrapper>()?;
+            let panel_bytes =
+                geometry.b_pack.single_panel_len(geometry.k) * input.datum_type().size_of();
 
             // in the loop, we have normalized the input so that N is
             // always here, and output so that N and G are there.
@@ -171,17 +169,24 @@ impl EvalOp for Im2Col {
                 for i in 0..*geometry.input_shape_with_n.n().unwrap_or(&1) {
                     let input = input.view_at_prefix(&[i])?;
                     for g in 0..self.group {
-                        let full_prefix = [i, g];
-                        let actual_prefix = &full_prefix[..=(self.group > 1) as usize];
-                        let mut packed = output.view_at_prefix_mut(actual_prefix)?;
+                        let pad_value: Option<&Tensor> =
+                            if inputs.len() > 0 { Some(&inputs[0]) } else { None };
+                        let mut data = Tensor::uninitialized_aligned_dt(
+                            input.datum_type(),
+                            &[geometry.b_pack.len(geometry.k, geometry.n)],
+                            geometry.b_pack.alignment(),
+                        )?;
                         dispatch_copy_by_size!(Patcher::patch(input.datum_type())(
                             &geometry.patcher,
                             &geometry,
                             &input,
-                            &mut packed,
+                            &mut data.view_mut(),
                             g,
                             pad_value
-                        ))?
+                        ))?;
+                        let input: Box<dyn MMMInput> =
+                            Box::new(EagerPackedInput { packed: data, panel_bytes });
+                        output_view[[i, g]] = PayloadWrapper(Arc::new(input));
                     }
                 }
             }
@@ -195,6 +200,7 @@ impl TypedOp for Im2Col {
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let input_shape = self.pool_spec.data_format.shape(inputs[0].shape.to_tvec())?;
+        /*
         let output_shape = self.pool_spec.output_shape(&inputs[0].shape)?;
         let shape = Self::packed_shape(
             &input_shape,
@@ -204,6 +210,11 @@ impl TypedOp for Im2Col {
             self.geometry.b_pack(),
         )?;
         Ok(tvec!(inputs[0].datum_type.fact(shape)))
+        */
+        Ok(tvec!(PayloadWrapper::fact(&[
+            input_shape.n().cloned().unwrap_or(1.into()),
+            self.group.into()
+        ])))
     }
 
     fn declutter(

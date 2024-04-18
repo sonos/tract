@@ -379,8 +379,10 @@ fn lir_mat_mul_unary(
     let name = &node.name;
     let geo = AddMatMulGeometry {
         k: k.clone(),
+        /*
         a_storage: k.as_i64().map(|k| unsafe { mmm.a_packed(a_dt.size_of(), k as usize) }),
         b_storage: k.as_i64().map(|k| unsafe { mmm.b_packed(b_dt.size_of(), k as usize) }),
+        */
         mmm: mmm.clone(),
         c_to_a_axis_mapping: MapOutputAxisToInput(c_to_a_axis_mapping),
         c_to_b_axis_mapping: MapOutputAxisToInput(c_to_b_axis_mapping),

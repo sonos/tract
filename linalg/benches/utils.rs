@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use criterion::*;
 use tract_data::internal::*;
-use tract_linalg::frame::mmm::{FusedSpec, InputStore};
+use tract_linalg::frame::mmm::{FusedSpec, MMMInput};
 use tract_linalg::frame::MatMatMul;
 
 use DatumType::*;
@@ -38,8 +38,8 @@ unsafe fn run(
     n: usize,
     be: &mut Bencher,
     mm: &dyn MatMatMul,
-    pa: Box<dyn InputStore>,
-    pb: Box<dyn InputStore>,
+    pa: Box<dyn MMMInput>,
+    pb: Box<dyn MMMInput>,
     cold: bool,
 ) {
     let mut scratch = mm.allocate_scratch_space();

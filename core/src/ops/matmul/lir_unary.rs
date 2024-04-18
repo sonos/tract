@@ -5,17 +5,17 @@ use crate::ops::nn::LeakyRelu;
 use ndarray::*;
 use tract_itertools::Itertools;
 
-use tract_linalg::mmm::{
-    BinOp, FusedSpec, InputStoreSpec, MatMatMul, OutputStoreSpec,
-};
+use tract_linalg::mmm::{BinOp, FusedSpec, MMMInput, MatMatMul, OutputStoreSpec, ScratchSpace};
 use tract_linalg::Scaler;
 use tract_smallvec::ToSmallVec;
 
+/*
 #[derive(Clone, Debug)]
 pub enum ProtoInputStoreSpec {
-    Packed { item_size: usize },
-    Virtual { func: Box<dyn InputStoreSpec> },
+Packed { item_size: usize },
+//    Virtual { func: Box<dyn MMMInputLayout> },
 }
+*/
 
 #[derive(Clone, Debug)]
 pub enum ProtoFusedSpec {
@@ -59,25 +59,33 @@ impl ProtoFusedSpec {
                 unsafe {
                     geo.c_to_a_axis_mapping.translate_view(output_coords, &mut a);
                 }
+                let a: &'t Box<dyn MMMInput> = a.as_slice::<PayloadWrapper>().unwrap()[0]
+                    .downcast_ref::<Box<dyn MMMInput>>()
+                    .unwrap();
                 let mut b = inputs[*b].view();
                 unsafe {
                     geo.c_to_b_axis_mapping.translate_view(output_coords, &mut b);
                 }
                 let k = geo.k.eval(symbols).to_usize().unwrap();
+                let b = b.as_slice::<PayloadWrapper>().unwrap()[0]
+                    .downcast_ref::<Box<dyn MMMInput>>()
+                    .unwrap();
                 unsafe {
+                    /*
                     // careful here. this work because a_packed() return a packer from which
                     // nothing is borrowed
                     let a = if let Some(sto) = &geo.a_storage {
-                        sto.wrap(&a)
+                    sto.wrap(&a)
                     } else {
-                        geo.mmm.a_packed(a.datum_type().size_of(), k).wrap(&a)
+                    geo.mmm.a_packed(a.datum_type().size_of(), k).wrap(&a)
                     };
                     let b = if let Some(sto) = &geo.b_storage {
-                        sto.wrap(&b)
+                    sto.wrap(&b)
                     } else {
-                        geo.mmm.b_packed(b.datum_type().size_of(), k).wrap(&b)
+                    geo.mmm.b_packed(b.datum_type().size_of(), k).wrap(&b)
                     };
-                    FusedSpec::AddMatMul { k, a, b }
+                    */
+                    FusedSpec::AddMatMul { k, a: &**a, b: &**b }
                 }
             }
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),
@@ -112,7 +120,7 @@ impl ProtoFusedSpec {
     pub fn is_trivial(&self) -> bool {
         match self {
             ProtoFusedSpec::AddMatMul(geo, _, _) => {
-                geo.k.as_i64().is_some() && geo.a_storage.is_some() && geo.b_storage.is_some()
+                geo.k.as_i64().is_some() // && geo.a_storage.is_some() && geo.b_storage.is_some()
             }
             _ => true,
         }
@@ -125,13 +133,25 @@ impl ProtoFusedSpec {
     ) -> FusedSpec<'t> {
         let fs = match self {
             ProtoFusedSpec::AddMatMul(geo, a, b) => {
-                let a = inputs[*a].view();
-                let b = inputs[*b].view();
+                let a = &inputs[*a];
+                let b = &inputs[*b];
                 unsafe {
                     let k = geo.k.as_i64().unwrap_unchecked() as usize;
+                    /*
                     let a = geo.a_storage.as_ref().unwrap().wrap(&a);
                     let b = geo.b_storage.as_ref().unwrap().wrap(&b);
-                    FusedSpec::AddMatMul { k, a, b }
+                    */
+                    let a = a
+                        .to_scalar::<PayloadWrapper>()
+                        .unwrap()
+                        .downcast_ref::<Box<dyn MMMInput>>()
+                        .unwrap();
+                    let b = b
+                        .to_scalar::<PayloadWrapper>()
+                        .unwrap()
+                        .downcast_ref::<Box<dyn MMMInput>>()
+                        .unwrap();
+                    FusedSpec::AddMatMul { k, a: &**a, b: &**b }
                 }
             }
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),
@@ -155,6 +175,29 @@ impl ProtoFusedSpec {
             ProtoFusedSpec::Store(oss) => unsafe { FusedSpec::Store(oss.wrap(&output.view_mut())) },
         };
         fs
+    }
+
+    fn check_inputs(&self, inputs: &[&TypedFact]) -> TractResult<()> {
+        use ProtoFusedSpec::*;
+        match self {
+            AddMatMul(_geo, a, b) => {
+                ensure!(inputs[*a].datum_type == PayloadWrapper::datum_type());
+                ensure!(inputs[*b].datum_type == PayloadWrapper::datum_type());
+            }
+            BinScalar(v, _)
+            | LeakyRelu(v)
+            | BinPerCol(v, _, _)
+            | BinPerRow(v, _, _)
+            | AddUnicast(_, v, _) => {
+                ensure!(inputs[*v].datum_type.is_number());
+            }
+            AddRowColProducts(row, col) => {
+                ensure!(inputs[*row].datum_type.is_number());
+                ensure!(inputs[*col].datum_type.is_number());
+            }
+            _ => (),
+        };
+        Ok(())
     }
 
     fn cost(&self, m: &TDim, n: &TDim, idt: DatumType) -> TVec<(Cost, TDim)> {
@@ -211,8 +254,10 @@ impl MapOutputAxisToInput {
 #[derive(Clone, Debug)]
 pub struct AddMatMulGeometry {
     pub k: TDim,
-    pub a_storage: Option<Box<dyn InputStoreSpec>>,
-    pub b_storage: Option<Box<dyn InputStoreSpec>>,
+    /*
+    pub a_storage: Option<Box<dyn MMMInputLayout>>,
+    pub b_storage: Option<Box<dyn MMMInputLayout>>,
+    */
     pub mmm: Box<dyn MatMatMul>,
     pub c_to_a_axis_mapping: MapOutputAxisToInput,
     pub c_to_b_axis_mapping: MapOutputAxisToInput,
@@ -378,10 +423,13 @@ fn eval(
 }
 
 impl TypedOp for LirMatMulUnary {
-    fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(self.c_m_axis < self.c_fact.rank());
         ensure!(self.c_n_axis < self.c_fact.rank());
         ensure!(self.trivial_path == self.can_use_trivial_path());
+        for op in &self.micro_ops {
+            op.check_inputs(inputs)?;
+        }
         Ok(tvec!(self.c_fact.clone()))
     }
 

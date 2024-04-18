@@ -125,6 +125,7 @@ fn plug_avx512f(ops: &mut Ops) {
 }
 
 pub fn plug(ops: &mut Ops) {
+    /*
     if is_x86_feature_detected!("avx2") {
         plug_avx2(ops);
         if is_x86_feature_detected!("fma") {
@@ -134,4 +135,5 @@ pub fn plug(ops: &mut Ops) {
             }
         }
     }
+    */
 }

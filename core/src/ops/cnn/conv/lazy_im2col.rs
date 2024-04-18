@@ -1,9 +1,10 @@
 use crate::internal::*;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::ops::Range;
 use tract_linalg::frame::{Packer, PackingWriter};
-use tract_linalg::mmm::{InputStore, InputStoreSpec};
+use tract_linalg::mmm::MMMInput;
 
+/*
 #[derive(Clone, Hash)]
 pub struct LazyIm2colSpec {
     pub packer: Packer,
@@ -17,8 +18,14 @@ impl Debug for LazyIm2colSpec {
     }
 }
 
+impl Display for LazyIm2colSpec {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "LazyIm2colSpec {{...}}")
+    }
+}
+
 impl LazyIm2colSpec {
-    fn wrap_t<T: Datum + Copy>(&self, view: &TensorView) -> Box<dyn InputStore> {
+    fn wrap_t<T: Datum + Copy>(&self, view: &TensorView) -> Box<dyn MMMInput> {
         let input = LazyIm2col::<T> {
             packer: self.packer.clone(),
             ptr: view.as_ptr().unwrap(),
@@ -31,11 +38,12 @@ impl LazyIm2colSpec {
     }
 }
 
-impl InputStoreSpec for LazyIm2colSpec {
-    fn wrap(&self, view: &TensorView) -> Box<dyn InputStore> {
+impl MMMInputLayout for LazyIm2colSpec {
+    fn wrap(&self, view: &TensorView) -> Box<dyn MMMInput> {
         dispatch_copy!(Self::wrap_t(view.datum_type())(self, view))
     }
 }
+*/
 
 #[derive(Clone, Debug)]
 struct LazyIm2col<T: Datum + Copy> {
@@ -45,6 +53,19 @@ struct LazyIm2col<T: Datum + Copy> {
     n: usize,
     n_byte_offsets: *const isize,
     k_byte_offsets: *const isize,
+}
+
+impl<T: Datum + Copy> Display for LazyIm2col<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl<T: Datum + Copy> Hash for LazyIm2col<T> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.packer.hash(state);
+        (self.k, self.n, self.ptr as usize, self.n_byte_offsets, self.k_byte_offsets).hash(state);
+    }
 }
 
 unsafe impl<T: Datum + Copy> Send for LazyIm2col<T> {}
@@ -236,7 +257,7 @@ impl<T: Datum + Copy> LazyIm2col<T> {
     }
 }
 
-impl<T: Datum + Copy> InputStore for LazyIm2col<T> {
+impl<T: Datum + Copy> MMMInput for LazyIm2col<T> {
     fn scratch_panel_buffer_layout(&self) -> Option<std::alloc::Layout> {
         Some(self.packer.single_panel_layout(self.k, T::datum_type().size_of()))
     }
